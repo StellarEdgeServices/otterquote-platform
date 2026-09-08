@@ -45,7 +45,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
-import { logNotificationFailure } from "./notification-failure.ts";
+import { logNotificationFailureLoud } from "./notification-failure.ts";
 import {
   buildUpgradeOrderInsert,
   UPGRADE_PRODUCT_CODE,
@@ -382,7 +382,7 @@ async function recordOrderCreated(
     // notification failure into a client-facing throw here — the order is
     // already recorded, and possibly paid for; log it instead.
     console.error(`[${FUNCTION_NAME}] notify-measurement-order invoke failed:`, e);
-    await logNotificationFailure(
+    await logNotificationFailureLoud(
       (row) => supabase.from("activity_log").insert(row),
       e,
       {
@@ -392,6 +392,8 @@ async function recordOrderCreated(
         userId: buyerUserId,
         extra: { order_id: order.id, claim_id: claimId },
       },
+      // gh-1538: platform_alerts_log is the surface an operator watches.
+      (alert) => supabase.from("platform_alerts_log").insert(alert),
     );
   }
 }
