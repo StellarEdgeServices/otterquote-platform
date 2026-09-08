@@ -241,10 +241,6 @@ LEGACY_EXEMPT = {
     "scripts/ci-file-integrity.py": "no negative-control test yet (pre-gh-1738)",
     "scripts/migration-filename-lint.py": "no negative-control test yet (pre-gh-1738)",
     "scripts/patch-fatigue-detector.py": "no negative-control test yet (pre-gh-1738)",
-    "scripts/schema-column-lint.py": (
-        "firing is not this detector's gap -- CHECK 2 (wiring reconciliation) is "
-        "what covers it; see gh-1738 instance 5"
-    ),
     "scripts/schema-secret-lint.py": "no negative-control test yet (pre-gh-1738)",
 }
 

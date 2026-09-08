@@ -315,21 +315,52 @@ export function signedPriceRecordFor(
 }
 
 /**
- * Every value `signed_price_reason` can ever hold. Exported so the database
- * CHECK constraint and this module cannot drift apart unnoticed: the draft
- * migration written on 2026-09-06 listed only three reasons, and #1798 added
- * two more (`properties_unreadable`, `reconciliation_error`) -- had it been
- * applied as drafted, every write on the two NEW halt paths would have been
- * rejected by the constraint and swallowed by the non-fatal catch, losing
- * exactly the verdicts this issue exists to record.
+ * Every value `signed_price_reason` can ever hold.
+ *
+ * WHY A RECORD AND NOT AN ARRAY (PR #1856 REVIEW blocker 3). The first version
+ * of this was `readonly UnverifiedReason[]`, which guards only ONE direction:
+ * it stops the migration's CHECK from listing a value the union does not have.
+ * The direction that actually caused the defect this file documents is the
+ * OTHER one -- #1798 ADDED two members to `UnverifiedReason`, and a list that
+ * merely holds valid members stays perfectly type-correct while silently
+ * covering a subset. An array cannot notice that.
+ *
+ * `Record<UnverifiedReason, true>` can: every union member is a REQUIRED key,
+ * so adding a sixth reason to the union without adding it here fails
+ * `deno check` at the type level, before any test runs. The array below is
+ * derived from those keys, so the runtime list can never be a subset of the
+ * union either.
  */
-export const UNVERIFIED_REASONS: readonly UnverifiedReason[] = [
-  "no_expected",
-  "field_absent",
-  "unparseable",
-  "properties_unreadable",
-  "reconciliation_error",
-] as const;
+const REASON_COVERAGE: Record<UnverifiedReason, true> = {
+  no_expected: true,
+  field_absent: true,
+  unparseable: true,
+  properties_unreadable: true,
+  reconciliation_error: true,
+};
+
+/**
+ * The reasons, as a list. Derived -- never hand-maintained -- so the database
+ * CHECK constraint and this module cannot drift apart unnoticed in either
+ * direction: the draft migration written on 2026-09-06 listed only three
+ * reasons, and #1798 added two more (`properties_unreadable`,
+ * `reconciliation_error`). Had it been applied as drafted, every write on the
+ * two NEW halt paths would have been rejected by the constraint and swallowed
+ * by the non-fatal handler, losing exactly the verdicts this issue exists to
+ * record.
+ */
+export const UNVERIFIED_REASONS: readonly UnverifiedReason[] =
+  Object.keys(REASON_COVERAGE) as UnverifiedReason[];
+
+/**
+ * Compile-time exhaustiveness backstop. Reachable only if a new
+ * `UnverifiedReason` is added and some switch below is not extended to handle
+ * it -- at which point `deno check` fails on the argument type rather than the
+ * code silently taking a `default:` branch.
+ */
+function assertNeverReason(reason: never): never {
+  throw new Error(`#1314 unhandled UnverifiedReason: ${JSON.stringify(reason)}`);
+}
 
 /** Operator-facing remediation, per unverified reason. */
 export function remediationFor(reason: UnverifiedReason): string {
@@ -347,8 +378,12 @@ export function remediationFor(reason: UnverifiedReason): string {
         "the envelope or record a disposition by hand.";
     case "field_absent":
     case "no_expected":
-    default:
       return "The signed document does not carry a readable contract price -- re-issue the envelope from " +
         "a template that does, or record a disposition by hand.";
   }
+  // [PR #1856 REVIEW blocker 3] No `default:` here, deliberately. A default
+  // branch silently absorbs any reason added to the union later -- the exact
+  // one-directional blindness this review caught. With the switch exhaustive,
+  // adding a sixth reason makes `deno check` fail on this line instead.
+  return assertNeverReason(reason);
 }

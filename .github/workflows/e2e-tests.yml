@@ -314,5 +314,18 @@ jobs:
       # Scoped to supabase/functions/ only — still no --allow-net/--allow-env/--allow-sys,
       # so the gh-422 secret/network guarantee is unchanged; only local source reads
       # are permitted, and the whole repo is already present on the runner's disk.
+      #
+      # gh-1314 (PR #1856 REVIEW blocker 1): supabase/migrations_drafts is added to
+      # the read allowlist for one reason, and it is a narrow one. price-verify.test.ts
+      # asserts that the `signed_price_reason` CHECK in the paired draft migration
+      # accepts every member of price-verify.ts's UnverifiedReason union — the exact
+      # drift that, left unguarded, would have had the database silently reject every
+      # write on the two halt paths PR #1798 added. That guard has to read the .sql
+      # file, which lives in a SIBLING directory, so under the old allowlist it could
+      # never pass on CI: NotCapable, permanently red, reproduced locally before this
+      # change. The addition is source-only and read-only — SQL drafts hold no
+      # secrets, and no --allow-net/--allow-env/--allow-sys is granted here — so the
+      # gh-422 guarantee is unchanged in substance: these tests still cannot reach the
+      # network, the environment, or anything outside two source directories.
       - name: Edge Function unit tests (pure-unit, no secrets)
-        run: deno test --allow-read=supabase/functions supabase/functions/
+        run: deno test --allow-read=supabase/functions,supabase/migrations_drafts supabase/functions/

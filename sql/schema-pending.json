@@ -1,0 +1,22 @@
+{
+  "_README": [
+    "gh-1314 / PR #1856. Columns a merged code path writes that the PRODUCTION schema does not have YET,",
+    "because their migration is drafted and awaiting the migration gate + Dustin's approval.",
+    "",
+    "Every entry is a DECLARED, GREPPABLE gap, not a suppression:",
+    "  - schema-column-lint.py prints it as a loud PENDING line, on every run, in the CI log;",
+    "  - the named migration file MUST exist, or the lint fails;",
+    "  - once the migration is applied and sql/schema-snapshot.json is refreshed, the entry becomes STALE",
+    "    and the lint FAILS until it is deleted. A declaration cannot outlive the gap it describes.",
+    "",
+    "Adding an entry here is not a way to skip a migration. It is a way to say, in one greppable place,",
+    "which migration a merged writer is waiting on -- instead of leaving `main` red with no owner named."
+  ],
+  "claims": {
+    "signed_contract_price":   { "migration": "supabase/migrations_drafts/gh1314_persist_signed_price.sql", "issue": "#1314", "note": "signed-price verdict persistence (step 4)" },
+    "signed_price_raw":        { "migration": "supabase/migrations_drafts/gh1314_persist_signed_price.sql", "issue": "#1314", "note": "pre-parse string; unparseable is a real state" },
+    "signed_price_verdict":    { "migration": "supabase/migrations_drafts/gh1314_persist_signed_price.sql", "issue": "#1314", "note": "PriceEvaluation.state" },
+    "signed_price_reason":     { "migration": "supabase/migrations_drafts/gh1314_persist_signed_price.sql", "issue": "#1314", "note": "PriceEvaluation.reason; CHECK covers all five UnverifiedReason values" },
+    "signed_price_checked_at": { "migration": "supabase/migrations_drafts/gh1314_persist_signed_price.sql", "issue": "#1314", "note": "when the reconciliation last ran for this claim" }
+  }
+}

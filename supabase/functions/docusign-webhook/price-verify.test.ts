@@ -370,3 +370,41 @@ Deno.test("gh-1314 step 4: rawSignedPriceFrom reports null when the READ failed,
     { state: "unverified", reason: "field_absent", raw: null, expected: 100 },
   );
 });
+
+/* [PR #1856 REVIEW blocker 3] The union->array direction — the one that
+ * actually caused the #1798 defect — is now guarded at COMPILE time by
+ * `Record<UnverifiedReason, true>`. These assert the runtime half of that
+ * contract; the compile half is proven by the mutation in the PR comment
+ * (adding a sixth reason to the union fails `deno check` in two places). */
+
+Deno.test("gh-1314 step 4: the reason list is DERIVED, so it can never be a subset of the union", () => {
+  // Every reason the disposition table halts or flags on must appear. If the
+  // list were hand-maintained (it was), a new union member could be omitted here
+  // and every check downstream would keep passing on a partial list.
+  for (const reason of ["no_expected", "field_absent", "unparseable", "properties_unreadable", "reconciliation_error"] as const) {
+    assertEquals(UNVERIFIED_REASONS.includes(reason), true, `${reason} missing from UNVERIFIED_REASONS`);
+  }
+  assertEquals(UNVERIFIED_REASONS.length, 5);
+  // NEG: a value that is not a reason must not be in the list — proof the
+  // assertion above is a membership test and not a tautology over its own input.
+  assertEquals((UNVERIFIED_REASONS as readonly string[]).includes("flag"), false);
+});
+
+Deno.test("gh-1314 step 4: remediationFor is exhaustive — no default branch absorbs a new reason", async () => {
+  const src = await Deno.readTextFile(new URL("./price-verify.ts", import.meta.url));
+  const fn = src.slice(src.indexOf("export function remediationFor"));
+  const body = fn.slice(0, fn.indexOf("\n}\n") + 3);
+  assertEquals(
+    /\n\s*default:/.test(body),
+    false,
+    "REGRESSION (gh-1314 step 4): remediationFor has a `default:` branch again. A default silently " +
+      "absorbs any reason added to the union later, which is the one-directional blindness PR #1856's " +
+      "review caught. Keep the switch exhaustive and let assertNeverReason fail the type-check instead.",
+  );
+  assertStringIncludes(body, "assertNeverReason(reason)");
+  // Positive control: every reason still gets operator text, so removing the
+  // default did not remove coverage.
+  for (const reason of UNVERIFIED_REASONS) {
+    assertEquals(remediationFor(reason).length > 40, true, `${reason} has no remediation text`);
+  }
+});
