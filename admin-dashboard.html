@@ -390,6 +390,15 @@ function fmtUsd(cents) {
  *                     count and the EF's reason — NEVER $0.
  * An absent field means the deployed EF predates the revenue read: also
  * NOT RUN (0 queries), which is exactly true.
+ *
+ * gh-1774 (#1340 phase 4 follow-up): the payload previously didn't declare
+ * which Stripe account or mode it read — the same undeclared-scope class as
+ * #1637's GA4 denominator. rev.mode/rev.account (present whenever kind is
+ * measured/measured_zero) render here the way visits.hosts already renders
+ * on the Marketing tab (visitsDenominatorScopeHtml() below) — the tile
+ * states what it counted. A deployed EF older than this field simply omits
+ * mode/account and the scope line is skipped, same "absent means predates
+ * this" treatment as the rest of this tile.
  */
 function revenueTileHtml(rev) {
   if (!rev || rev.kind === 'not_run') {
@@ -405,9 +414,15 @@ function revenueTileHtml(rev) {
   var note = 'Succeeded charges net of refunds since ' + esc(String(rev.window_start_iso || '').slice(0, 10)) +
     ' (UTC) &middot; ' + chargeCount + ' charge' + (chargeCount === 1 ? '' : 's') +
     (rev.non_usd_ignored ? ' &middot; ' + Number(rev.non_usd_ignored) + ' non-USD ignored' : '');
+  var scopeText = (rev.mode || rev.account)
+    ? 'Account ' + (rev.account ? esc(String(rev.account)) : 'unknown') +
+      ' &middot; ' + (rev.mode ? esc(String(rev.mode)) : 'mode unknown') + ' mode'
+    : null;
   return '<div class="' + cls + '"><div class="tile-label">Revenue MTD (Stripe)</div>' +
     '<div class="tile-value">' + fmtUsd(rev.value_cents) + flag + '</div>' +
-    '<div class="tile-note">' + note + '</div></div>';
+    '<div class="tile-note">' + note + '</div>' +
+    (scopeText ? '<div class="visits-denominator-scope">' + scopeText + '</div>' : '') +
+    '</div>';
 }
 
 function renderTopPage() {

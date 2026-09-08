@@ -165,6 +165,16 @@ const mod = [
     "function buildAudienceVisitsSeries(",
     "export function buildAudienceVisitsSeries(",
   ),
+  // gh-1774 (#1340 phase 4 follow-up) — Revenue MTD scope declaration
+  // (mode/account), same pure-extraction treatment as the rest of this file.
+  grabBlock("function stripeAccountLabel(").replace(
+    "function stripeAccountLabel(",
+    "export function stripeAccountLabel(",
+  ),
+  grabBlock("function stripeModeFromBalance(").replace(
+    "function stripeModeFromBalance(",
+    "export function stripeModeFromBalance(",
+  ),
 ].join("\n\n");
 const url = "data:application/typescript," + encodeURIComponent(mod);
 const {
@@ -187,6 +197,8 @@ const {
   sumInvariantMismatches,
   invariantToleranceValues,
   buildAudienceVisitsSeries,
+  stripeAccountLabel,
+  stripeModeFromBalance,
   // deno-lint-ignore no-explicit-any
 } = await import(url) as any;
 
@@ -955,4 +967,56 @@ Deno.test("buildAudienceVisitsSeries: /guides/ and /blog/ section-index visits (
   );
   assertEquals(result.homeowner.total, 65);
   assertEquals(result.unattributed.total, 0);
+});
+
+// --- stripeAccountLabel / stripeModeFromBalance (gh-1774) ------------------
+// #1340 phase 4 follow-up: Revenue MTD's payload previously declared no
+// account or mode at all -- the same undeclared-scope class that made
+// #1637's GA4 denominator look correct while counting the wrong hosts (a
+// 32.7x error). These two pure functions are what fetchRevenueMtd calls to
+// populate RevenueMtd.account / RevenueMtd.mode; fetchRevenueMtd itself
+// (the live Stripe fetch) is out of scope for this file per the note at the
+// top of this file -- same reason the rest of fetchRevenueMtd isn't
+// exercised here.
+
+Deno.test("stripeAccountLabel: renders only the key's last four characters, never the key itself", () => {
+  // Deliberately NOT shaped like a real Stripe key (no sk_live_/sk_test_
+  // prefix) -- stripeAccountLabel is a plain string-suffix function, and a
+  // realistic-looking fixture here would itself trip GitHub secret scanning.
+  const key = "not-a-real-secret-fixture-0123";
+  const label = stripeAccountLabel(key);
+  assertEquals(label, "…0123");
+  assertEquals((label as string).includes(key.slice(0, key.length - 4)), false);
+});
+
+Deno.test("stripeAccountLabel: a key shorter than 4 characters (malformed/empty) yields no label rather than echoing the whole thing", () => {
+  assertEquals(stripeAccountLabel("abc"), undefined);
+  assertEquals(stripeAccountLabel(""), undefined);
+});
+
+Deno.test("stripeModeFromBalance: livemode true/false map to 'live'/'test' -- read from the response, not the key prefix", () => {
+  assertEquals(stripeModeFromBalance({ object: "balance", livemode: true }), "live");
+  assertEquals(stripeModeFromBalance({ object: "balance", livemode: false }), "test");
+});
+
+// This is the negative control that matters most here: a `mode` that always
+// resolves to the same value regardless of what the Stripe response actually
+// says is not a scope declaration, it's a constant -- indistinguishable from
+// not having the field at all, and exactly the failure mode #1637's fix
+// (visits.scope) exists to prevent for this payload too.
+Deno.test("stripeModeFromBalance NEGATIVE CONTROL: live and test balance bodies must NOT resolve to the same mode", () => {
+  const live = stripeModeFromBalance({ livemode: true });
+  const test = stripeModeFromBalance({ livemode: false });
+  assertEquals(live, "live");
+  assertEquals(test, "test");
+  if (live === test) {
+    throw new Error("stripeModeFromBalance returned the same mode for livemode:true and livemode:false -- a constant, not a scope declaration");
+  }
+});
+
+Deno.test("stripeModeFromBalance: a malformed/missing livemode field (non-boolean, absent, or null body) resolves to undefined rather than a guessed mode", () => {
+  assertEquals(stripeModeFromBalance({ object: "balance" }), undefined);
+  assertEquals(stripeModeFromBalance({ livemode: "true" }), undefined); // string, not boolean
+  assertEquals(stripeModeFromBalance(null), undefined);
+  assertEquals(stripeModeFromBalance(undefined), undefined);
 });
