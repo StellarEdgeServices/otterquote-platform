@@ -1,0 +1,12 @@
+# FIXTURE (bad): the flow-sequence spelling of the trigger, which a
+# key-only match would miss entirely.
+name: prt flow sequence (bad)
+on: [push, pull_request_target]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+      - run: npm ci

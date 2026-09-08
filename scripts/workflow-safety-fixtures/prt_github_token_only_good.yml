@@ -1,0 +1,15 @@
+# FIXTURE (good): the automatic token only, scoped by the file's permissions block.
+name: prt github token only (good)
+on:
+  pull_request_target:
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: core.info('label only')

@@ -1,0 +1,12 @@
+# FIXTURE (good): the documented safe form -- env indirection, quoted variable.
+name: prt env indirection (good)
+on:
+  pull_request_target:
+jobs:
+  echo:
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          echo "Title: $PR_TITLE"

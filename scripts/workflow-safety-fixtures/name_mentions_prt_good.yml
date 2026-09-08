@@ -1,0 +1,16 @@
+# FIXTURE (good): FALSE-POSITIVE control. This file only MENTIONS the string
+# `pull_request_target` -- in a job's display name -- and triggers on
+# `pull_request`. An unanchored search armed all three rules here (observed
+# live against this repo's own workflow-safety-ratchet.yml, 2026-09-08); the
+# anchored trigger match must leave it alone.
+name: mentions prt in a name (good)
+on:
+  pull_request:
+    branches: [main]
+jobs:
+  scan:
+    name: No unsafe pull_request_target workflow
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "${{ github.event.pull_request.title }}"
