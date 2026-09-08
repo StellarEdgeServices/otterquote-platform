@@ -66,3 +66,5 @@ Copy everything below the line into a new `YYYY-MM-DD-HH-MM-[session-type].md` f
 ---
 <!-- ARCHIVED: [date] — added by Cowork archive skill after processing -->
 ```
+
+<!-- ceo37-guard-control: trivial change for closure-guard.yml negative-control PR (issue #1877), delete-safe -->
