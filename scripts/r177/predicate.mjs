@@ -141,6 +141,15 @@ const RULES = [
   { rule: 'currency-amount', re: /_CENTS\s*=/ },
   { rule: 'money-word', re: /\b(price|pricing|fee|fees|refund|charge|charges|rebate|credit|payout|commission|discount|invoice)\b/i },
   { rule: 'legal-consent-word', re: /\b(licens(e|ed|ing)|insured|bonded|vetted|certified|guarantee[ds]?|warrant(y|ies|ed)|consent|agree(ment|s)?|(?<![/\w-])terms|on behalf of|public adjuster|arbitration|disclaimer|liab(le|ility))\b/i },
+  // gh-1899 conjunct (2): privacy / data-rights / CAN-SPAM vocabulary. Before this rule the
+  // predicate had NO privacy term at all -- a diff could rewrite CCPA/CPRA sale-and-sharing
+  // opt-out language, or set the CAN-SPAM postal address, and the labeller stayed silent, so
+  // the ABSENCE of `r177:legal-read` was no evidence a diff was legally clean. Measured on
+  // the real diffs: #1870 (privacy.html CCPA rights) 0 -> 6 lines, #1862 (CAN-SPAM postal
+  // address constant) 0 -> 4, #1839 (Meta Pixel privacy change, already a LEGAL-READ FAIL)
+  // 0 -> 1. `POSTAL_ADDRESS` is spelled separately from `postal[_\s]address` because \b does
+  // not split on `_`, so the SCREAMING_CASE constant name is not reached by the prose form.
+  { rule: 'privacy-data-rights-word', re: /\b(personal (information|data)|CCPA|CPRA|GDPR|CalOPPA|VCDPA|CAN-?SPAM|do not sell|sale or sharing|opt[-\s]?out|unsubscribe|postal[_\s]address|POSTAL_ADDRESS|data subject|data protection|privacy policy|right to (delete|know|correct)|sell (your|my) personal)\b/i },
 ];
 
 // Lines that are obviously not user-facing content.
@@ -220,6 +229,18 @@ export function isCodeComment(text, file, htmlBlock = 'text') {
   return false;
 }
 
+// gh-1899: a legal/money WORD that occurs only inside a URL path segment is a slug, not
+// wording anyone reads. Without this, widening the vocabulary widens the false positives too:
+// #1889 is a pure routing diff whose only three hits are `warranty` x2 and `prices` x1 inside
+// `/blog/...` slugs in `_redirects` and an edge function's route table. Stripping URL path
+// tokens before the WORD rules and the money-IDENTIFIER rule takes #1889 from 3 hits to 0.
+//
+// Deliberately NOT applied to the currency rules: a literal `$1500` in a path is still a price,
+// and `_CENTS =` is not URL-shaped. Measured across 32 PRs: 11 hits gained, 3 lost, and all 3
+// losses are URL slugs -- no prose hit is lost anywhere.
+const URL_PATH_TOKEN_RE = /(?:https?:\/\/\S+)|(?:\/[A-Za-z0-9._~-]+)+/g;
+function deslug(text) { return text.replace(URL_PATH_TOKEN_RE, ' '); }
+
 export function classifyLine(text, file, mode = 'full', htmlBlock = 'text') {
   if (mode === 'none') return null;
   if (isNoiseLine(text)) return null;
@@ -232,7 +253,10 @@ export function classifyLine(text, file, mode = 'full', htmlBlock = 'text') {
   // Harness paths stop here: a literal price in a script is still a price, but a
   // fixture's `acvPayout` and a --help string's "credit" are not money wording.
   if (mode === 'currency-only') return null;
-  if (!comment && file && CODE_FILE_RE.test(file) && MONEY_IDENT_RE.test(text)) {
+  // gh-1899: the WORD rules and the identifier rule read the line with URL path tokens
+  // stripped; the currency rules above deliberately read the raw line.
+  const prose = deslug(text);
+  if (!comment && file && CODE_FILE_RE.test(file) && MONEY_IDENT_RE.test(prose)) {
     if (SQL_COMMENT_ON_RE.test(text)) return null;          // database docstring, not money logic
     if (SQL_PERMISSION_RE.test(text)) return 'money-permission';
     return 'money-identifier';
@@ -240,7 +264,7 @@ export function classifyLine(text, file, mode = 'full', htmlBlock = 'text') {
   if (comment) return null;
   for (const { rule, re } of RULES) {
     if (rule === 'currency-amount') continue;
-    if (re.test(text)) return rule;
+    if (re.test(prose)) return rule;
   }
   return null;
 }
