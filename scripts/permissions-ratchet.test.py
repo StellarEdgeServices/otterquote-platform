@@ -136,6 +136,72 @@ check_true(
     len(hard_fails4) == 0,
 )
 
+# ---------------------------------------------------------------------------
+# Layer 2b -- rule 4 (dynamic-sql-grant), independent of the fixture files.
+# gh-1767 REVIEW: FAIL probe (g), PR #1836 comment 5578275973: a GRANT to
+# anon wrapped in dynamic SQL (EXECUTE '<literal>' / EXECUTE format(...))
+# is live, executable SQL that rules 1-3's statement splitter cannot see,
+# because it blanks quoted/dollar-quoted content before splitting.
+# ---------------------------------------------------------------------------
+print()
+print("Layer 2b: direct dynamic-sql-grant control (PR #1836 REVIEW: FAIL probe g)")
+
+DYNAMIC_GRANT_EXECUTE_LITERAL = (
+    "BEGIN;\n\nDO $$\nBEGIN\n"
+    "  EXECUTE 'GRANT EXECUTE ON FUNCTION public.f() TO anon';\n"
+    "END\n$$;\n\nCOMMIT;\n"
+)
+findings5, _pass_notes5 = ratchet.evaluate_file(
+    "dynctrl_execute.sql", "", DYNAMIC_GRANT_EXECUTE_LITERAL
+)
+hard_fails5 = [f for f in findings5 if f.severity == "FAIL"]
+check_true(
+    "a GRANT ... TO anon wrapped in DO $$ EXECUTE '<literal>' FAILS as dynamic-sql-grant",
+    len(hard_fails5) == 1 and hard_fails5[0].rule == "dynamic-sql-grant",
+)
+
+DYNAMIC_GRANT_FORMAT_UNKNOWN_ROLE = (
+    "BEGIN;\n\nDO $$\nDECLARE\n  role_var text := 'anon';\nBEGIN\n"
+    "  EXECUTE format('GRANT SELECT ON t TO %I', role_var);\n"
+    "END\n$$;\n\nCOMMIT;\n"
+)
+findings6, _pass_notes6 = ratchet.evaluate_file(
+    "dynctrl_format.sql", "", DYNAMIC_GRANT_FORMAT_UNKNOWN_ROLE
+)
+hard_fails6 = [f for f in findings6 if f.severity == "FAIL"]
+check_true(
+    "EXECUTE format('GRANT ... TO %I', role_var) FAILS CLOSED as "
+    "dynamic-sql-grant-unknown-role (role not statically known)",
+    len(hard_fails6) == 1 and hard_fails6[0].rule == "dynamic-sql-grant-unknown-role",
+)
+
+DYNAMIC_REVOKE_EXECUTE_LITERAL = (
+    "BEGIN;\n\nDO $$\nBEGIN\n"
+    "  EXECUTE 'REVOKE ALL ON FUNCTION public.f() FROM anon';\n"
+    "END\n$$;\n\nCOMMIT;\n"
+)
+findings7, _pass_notes7 = ratchet.evaluate_file(
+    "dynctrl_revoke.sql", "", DYNAMIC_REVOKE_EXECUTE_LITERAL
+)
+hard_fails7 = [f for f in findings7 if f.severity == "FAIL"]
+check_true(
+    "the REVOKE direction of the same dynamic-SQL shape PASSES "
+    "(rule 4 preserves the GRANT/REVOKE asymmetry)",
+    len(hard_fails7) == 0,
+)
+
+DYNAMIC_GRANT_WORD_IN_PROSE = (
+    "BEGIN;\n\nINSERT INTO audit_log(msg) VALUES ('reviewed the GRANT policy');\n\nCOMMIT;\n"
+)
+findings8, _pass_notes8 = ratchet.evaluate_file(
+    "dynctrl_prose.sql", "", DYNAMIC_GRANT_WORD_IN_PROSE
+)
+hard_fails8 = [f for f in findings8 if f.severity == "FAIL"]
+check_true(
+    "the word GRANT in prose text with no TO <role> shape PASSES rule 4",
+    len(hard_fails8) == 0,
+)
+
 print()
 print("assertions: %d, failures: %d" % (TOTAL_CHECKS, len(FAILURES)))
 if FAILURES:

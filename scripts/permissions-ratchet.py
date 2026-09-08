@@ -67,6 +67,50 @@ changed file, but only for statements that intersect at least one added line
      surfaces in this repo's own convention as a fresh CREATE POLICY
      statement (typically preceded by its own DROP POLICY, which this rule
      does not need to see -- only the newly-added CREATE POLICY matters).
+  4. DYNAMIC SQL (PR #1836 comment 5578275973, probe (g) -- a confirmed,
+     reproducible evasion, not a hypothetical): a GRANT ... TO <role> can be
+     issued from inside a string that is EXECUTE'd rather than written as a
+     literal top-level statement, e.g.
+       DO $$ BEGIN EXECUTE 'GRANT EXECUTE ON FUNCTION public.f() TO anon';
+       END $$;
+     or the same thing via `EXECUTE format('GRANT ... TO %I', role_expr)`.
+     Rules 1-3 run on statements produced by splitting the NOISE-STRIPPED
+     text on top-level ';' -- and strip_noise() blanks the CONTENTS of every
+     quoted/dollar-quoted span BEFORE that split, by design (see "Comment /
+     string-literal / dollar-quote stripping" below), so a GRANT living
+     inside a string is invisible to rules 1-3 no matter how it is quoted.
+     Rule 4 closes that gap the simple, safe way rather than trying to
+     parse "is this string actually EXECUTE'd" (which would require
+     understanding PERFORM/EXECUTE/format()/RAISE/etc. call sites -- a full
+     SQL interpreter, not a diff-scoped ratchet): it scans the RAW,
+     UN-blanked content of every single-quoted and dollar-quoted span that
+     intersects an added line (`find_dynamic_sql_grant_findings`,
+     `strip_noise_and_collect`) for a `GRANT ... TO <role-list>` shape,
+     independent of whether that span is provably executed. Two outcomes:
+       - The TO clause names a literal role not on ALLOWLISTED_GRANT_ROLES
+         (e.g. `TO anon`, including when only the object name is
+         parameterised, `format('GRANT ... TO anon', fn)`) -> FAILS as
+         `dynamic-sql-grant`.
+       - The TO clause is itself a format()-style placeholder (`TO %I`,
+         `TO %1$I`, ...) bound to a variable, so the role cannot be
+         statically read off the migration text -- FAILS CLOSED as
+         `dynamic-sql-grant-unknown-role` rather than passing for lack of a
+         matchable role name.
+     REVOKE is unaffected (the regex only fires on GRANT, never REVOKE),
+     preserving the same asymmetry as rule 1.
+     ACCEPTED FALSE-POSITIVE COST: because rule 4 does not distinguish
+     "this quoted span is executed" from "this quoted span is merely a
+     string constant" (e.g. logged via RAISE NOTICE, or an audit-log
+     message), a migration that logs the literal text
+     "GRANT EXECUTE ON FUNCTION x() TO anon" as a warning/reminder also
+     fails rule 4 -- see
+     scripts/permissions-ratchet-fixtures/dollar_quoted_body_with_grant_text_bad.sql.
+     This is deliberate, not an oversight: this shape is rare (grep across
+     this repo's migration history finds zero real occurrences), the
+     `permissions-ratchet: reviewed` bypass label exists precisely for a
+     human to clear a reviewed false positive like this one, and the
+     alternative -- trying to determine "provably executed" -- reopens
+     exactly the evasion this rule exists to close.
 
 ALLOWLIST -- what's on it and why (issue: "enumerate current grants in
 supabase/migrations and justify each allowlisted role")
@@ -176,15 +220,32 @@ BYPASS_LABEL = "permissions-ratchet: reviewed"
 #   - '...' single-quoted string literals, with '' as the escaped quote
 #   - $$...$$ / $tag$...$tag$ dollar-quoted strings (function bodies)
 # so that `-- GRANT ... TO anon` inside a comment, or a GRANT-shaped string
-# literal inside a function body, can never masquerade as a live statement,
-# and so that a semicolon inside any of the above can never be mistaken for
-# a statement terminator.
+# literal inside a function body, can never masquerade as a live TOP-LEVEL
+# statement for rules 1-3's statement splitter, and so that a semicolon
+# inside any of the above can never be mistaken for a statement terminator.
+#
+# strip_noise_and_collect() does this same walk but additionally records
+# the RAW (un-blanked) content and source-line span of every single-quoted
+# and dollar-quoted region it passes over (comments are never recorded --
+# they are not executable under any circumstance, dynamically or
+# otherwise). Rule 4 (dynamic-sql-grant, see module docstring) scans that
+# recorded content separately for a GRANT hiding inside a string that gets
+# EXECUTE'd -- exactly the content this function blanks out for splitting
+# purposes, which is why rule 4 cannot be implemented as a fourth statement
+# type in classify_statements() and needs its own pass over the raw spans.
 # ---------------------------------------------------------------------------
 _DOLLAR_TAG_RE = re.compile(r"\$([A-Za-z_][A-Za-z0-9_]*)?\$")
 
 
-def strip_noise(text: str) -> str:
+def strip_noise_and_collect(text: str):
+    """Returns (stripped_text, literal_spans) where literal_spans is a list
+    of (kind, content_start, content_end, content) for every single-quoted
+    ('single') and dollar-quoted ('dollar') region, in ORIGINAL-text offsets
+    with the surrounding quote/tag delimiters excluded from `content`.
+    `content` is the raw, un-blanked text -- callers that want the '' ->
+    ' escape collapsed (single-quoted literals only) do that themselves."""
     out = []
+    literal_spans = []
     i = 0
     n = len(text)
     while i < n:
@@ -220,6 +281,9 @@ def strip_noise(text: str) -> str:
         if ch == "'":
             out.append(" ")
             i += 1
+            content_start = i
+            content_end = i
+            closed = False
             while i < n:
                 if text[i : i + 2] == "''":
                     out.append("  ")
@@ -227,10 +291,17 @@ def strip_noise(text: str) -> str:
                     continue
                 if text[i] == "'":
                     out.append(" ")
+                    content_end = i
                     i += 1
+                    closed = True
                     break
                 out.append("\n" if text[i] == "\n" else " ")
                 i += 1
+            if not closed:
+                content_end = i
+            literal_spans.append(
+                ("single", content_start, content_end, text[content_start:content_end])
+            )
             continue
 
         if ch == "$":
@@ -239,22 +310,32 @@ def strip_noise(text: str) -> str:
                 tag = m.group(0)
                 out.append(" " * len(tag))
                 i += len(tag)
+                content_start = i
                 end = text.find(tag, i)
                 if end == -1:
                     end = n
+                content_end = end
                 for k in range(i, end):
                     out.append("\n" if text[k] == "\n" else " ")
                 i = end
                 if end < n:
                     out.append(" " * len(tag))
                     i += len(tag)
+                literal_spans.append(
+                    ("dollar", content_start, content_end, text[content_start:content_end])
+                )
                 continue
 
         out.append(ch)
         i += 1
     result = "".join(out)
     assert len(result) == len(text)  # offsets/line numbers must stay aligned
-    return result
+    return result, literal_spans
+
+
+def strip_noise(text: str) -> str:
+    stripped, _literal_spans = strip_noise_and_collect(text)
+    return stripped
 
 
 # ---------------------------------------------------------------------------
@@ -338,6 +419,21 @@ CREATE_POLICY_RE = re.compile(r"^\s*CREATE\s+POLICY\b", re.I)
 USING_TRUE_RE = re.compile(r"\bUSING\s*\(\s*TRUE\s*\)", re.I)
 WITH_CHECK_TRUE_RE = re.compile(r"\bWITH\s+CHECK\s*\(\s*TRUE\s*\)", re.I)
 ROLE_SPLIT_RE = re.compile(r"[,\s]+")
+
+# Rule 4 (dynamic-sql-grant): matched against the RAW content of a
+# single-quoted or dollar-quoted span (see strip_noise_and_collect), never
+# against the noise-stripped top-level text. The roles group is restricted
+# to a tight identifier/placeholder character class -- letters, digits,
+# underscore, comma, whitespace, `%`/`$` (format() placeholders), and `"`
+# (quoted identifiers) -- so it naturally stops at the first character that
+# cannot be part of a role list (a closing `'`, a `)`, a stray `;`) instead
+# of having to separately hunt for that boundary.
+DYNAMIC_GRANT_RE = re.compile(
+    r"\bGRANT\b.*?\bTO\s+(?P<roles>[A-Za-z0-9_%$,\s\"]+)", re.I | re.S
+)
+# format()-style placeholders: %I, %L, %s, and the positional %1$I form.
+FORMAT_PLACEHOLDER_RE = re.compile(r"%\d*\$?[A-Za-z]")
+_ROLE_STRIP_CHARS = "'\";"
 
 
 def extract_roles(stmt: Statement):
@@ -490,6 +586,82 @@ def classify_statements(file_rel: str, statements):
     return findings, pass_notes
 
 
+def _dynamic_roles(roles_text: str):
+    """Splits a rule-4 `roles` capture (already restricted to a tight
+    identifier/placeholder character class by DYNAMIC_GRANT_RE) into role
+    tokens, mirroring extract_roles()'s comma/whitespace splitting and
+    stray-quote/semicolon stripping so a trailing `'` or `;` that leaked in
+    from the surrounding quoted text (e.g. `TO anon'` before the string's
+    closing quote) never becomes part of the role name itself."""
+    m = re.search(r"\bWITH\s+GRANT\s+OPTION\b", roles_text, re.I)
+    if m:
+        roles_text = roles_text[: m.start()]
+    roles = []
+    for tok in ROLE_SPLIT_RE.split(roles_text):
+        tok = tok.strip().strip(_ROLE_STRIP_CHARS).strip()
+        if tok:
+            roles.append(tok)
+    return roles
+
+
+def find_dynamic_sql_grant_findings(file_rel: str, new_text: str, added_lines: set):
+    """Rule 4: a GRANT ... TO <role> hiding inside a single-quoted or
+    dollar-quoted span that intersects an added line -- see the module
+    docstring's DYNAMIC SQL / RULE 4 section for the full rationale and the
+    accepted false-positive tradeoff. Runs independently of
+    classify_statements()/statements_touched_by_diff() because it needs the
+    RAW content strip_noise() blanks out, not the noise-stripped statement
+    text."""
+    findings = []
+    _stripped, literal_spans = strip_noise_and_collect(new_text)
+    for kind, start, _end, content in literal_spans:
+        if not content.strip():
+            continue
+        start_line = new_text.count("\n", 0, start) + 1
+        end_line = start_line + content.count("\n")
+        if not any(ln in added_lines for ln in range(start_line, end_line + 1)):
+            continue
+        for m in DYNAMIC_GRANT_RE.finditer(content):
+            roles_text = m.group("roles")
+            match_line = start_line + content[: m.start()].count("\n")
+            excerpt = content[m.start() : m.end()].strip()[:160]
+            if FORMAT_PLACEHOLDER_RE.search(roles_text):
+                findings.append(
+                    Finding(
+                        "dynamic-sql-grant-unknown-role",
+                        "FAIL",
+                        file_rel,
+                        match_line,
+                        "%s-quoted literal, once EXECUTE'd, would run a GRANT ... TO "
+                        "<parameter> whose role is a format()-style placeholder and "
+                        "cannot be statically determined -- treated as a violation "
+                        "rather than passed for lack of a matchable role name: %s"
+                        % (kind, excerpt),
+                    )
+                )
+                continue
+            roles = _dynamic_roles(roles_text)
+            bad_roles = [r for r in roles if r.lower() not in ALLOWLISTED_GRANT_ROLES]
+            if bad_roles:
+                findings.append(
+                    Finding(
+                        "dynamic-sql-grant",
+                        "FAIL",
+                        file_rel,
+                        match_line,
+                        "%s-quoted literal contains a GRANT to role(s) not on the "
+                        "allowlist (%s): %s -- %s"
+                        % (
+                            kind,
+                            ", ".join(sorted(ALLOWLISTED_GRANT_ROLES)),
+                            ", ".join(bad_roles),
+                            excerpt,
+                        ),
+                    )
+                )
+    return findings
+
+
 # ---------------------------------------------------------------------------
 # Diff plumbing
 # ---------------------------------------------------------------------------
@@ -556,7 +728,13 @@ def evaluate_file(file_rel: str, old_text: str, new_text: str):
     if not added_lines:
         return [], []
     touched = statements_touched_by_diff(new_text, added_lines)
-    return classify_statements(file_rel, touched)
+    findings, pass_notes = classify_statements(file_rel, touched)
+    # Rule 4 runs over raw quoted/dollar-quoted spans directly, not over the
+    # statements rules 1-3 see -- a GRANT hiding inside a string that gets
+    # EXECUTE'd is exactly the content strip_noise() blanks out for those
+    # rules' statement splitter. See find_dynamic_sql_grant_findings().
+    findings = findings + find_dynamic_sql_grant_findings(file_rel, new_text, added_lines)
+    return findings, pass_notes
 
 
 def apply_bypass(findings, labels):
