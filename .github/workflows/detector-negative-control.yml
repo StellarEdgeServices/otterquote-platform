@@ -119,6 +119,45 @@ jobs:
       - name: Self-test the gate's own detection logic
         run: python scripts/detector-negative-control-check.test.py
 
+      # gh-1840 control 1, BUILD-FAILING. Self-tests
+      # scripts/spec-spy-order-check.py (a spy installed inside a Playwright
+      # page.evaluate()/addInitScript() block without a preceding `typeof`
+      # guard, e.g. PR #1720's original entry-point-reachability spec) --
+      # also registered in DETECTOR_REGISTRY above so the step immediately
+      # below re-confirms its self-test demonstrated the SPY_UNVERIFIED
+      # negative-control token actually passing, not merely present in
+      # source. Independent of "Run the gate against this repo" below: this
+      # step fails on a regression in the CHECKER's own detection logic,
+      # not on new debt found in the rest of the repo.
+      - name: Self-test the spec-spy-order-check gate (gh-1840 control 1)
+        run: python scripts/spec-spy-order-check.test.py
+
+      # gh-1840 control 2, BUILD-FAILING. Self-tests
+      # scripts/workflow-step-unrun-check.py (a step that never ran because
+      # an earlier step in the same job crashed, e.g. PR #1737's
+      # require_cli() ordering defect, reported as UNRUN rather than
+      # silently absent). See that script's own module docstring for why it
+      # is a post-hoc triage tool over job-result JSON rather than a live
+      # per-push gate -- this step proves its detection logic against the
+      # committed fixtures, the same role the step above plays for control 1.
+      - name: Self-test the workflow-step-unrun-check gate (gh-1840 control 2)
+        run: python scripts/workflow-step-unrun-check.test.py
+
+      # Self-disclosure, per gh-1840's own instruction to say things plainly
+      # rather than narrow scope quietly: the three self-test steps above
+      # (this file's original one plus the two just added) have no
+      # `if: always()` and are not `needs:`-decoupled from each other or
+      # from "Run the gate against this repo" below -- a crash in any ONE of
+      # them skips the rest, including the gate run itself, exactly the
+      # shape scripts/workflow-step-unrun-check.py (control 2, immediately
+      # above) exists to name. That script cannot watch ITS OWN job in real
+      # time (see its module docstring: job-result data only exists once a
+      # run has finished), so this residual risk is disclosed, not solved,
+      # here. "Publish gate report to the job summary" / "Upload gate
+      # report" below both keep `if: always()` specifically so a crash at
+      # any step still leaves a visible, non-silent job summary and
+      # artifact rather than nothing at all.
+
       # BUILD-FAILING as of gh-1841 (previously advisory -- see the
       # workflow-level comment above for the history and the precondition
       # that made this safe). The exit code is still captured into
