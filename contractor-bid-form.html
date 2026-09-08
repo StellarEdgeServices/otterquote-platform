@@ -2733,11 +2733,28 @@
     const successState = document.getElementById('successState');
 
     // ── Gutter Guard Dynamic Entries ──
+    // gh-1730/gh-1693: delegated on the container instead of an inline onclick=
+    // built inside this template literal -- the bare ${idx} used to close the
+    // attribute, which tools/inline_handler_attr_check.py (STRICT_FILES) now
+    // catches here the same way it already does on contractor-opportunities.html.
+    function onGutterGuardEntriesClick(event) {
+      const btn = event.target.closest('[data-oq-action="gutter-guard-remove"]');
+      if (!btn) return;
+      removeGutterGuardEntry(btn.dataset.oqIdx);
+    }
+
+    function bindGutterGuardContainerActions(el) {
+      if (!el || el.dataset.oqActionsBound) return;
+      el.addEventListener('click', onGutterGuardEntriesClick);
+      el.dataset.oqActionsBound = '1';
+    }
+
     function addGutterGuardEntry(prefill) {
       gutterGuardCount++;
       const idx = gutterGuardCount;
       const container = document.getElementById('gutterGuardEntries');
       if (!container) return;
+      bindGutterGuardContainerActions(container);
       const entry = document.createElement('div');
       entry.id = `gutterGuardEntry_${idx}`;
       entry.style.cssText = 'display:flex;align-items:center;gap:var(--sp-3);flex-wrap:wrap;';
@@ -2749,7 +2766,7 @@
           <span>$</span>
           <input type="number" name="gutterGuardPrice_${idx}" step="0.01" min="0" placeholder="Price" value="${prefill?.price != null ? prefill.price : ''}" style="border-radius:0 var(--radius-md) var(--radius-md) 0;">
         </div>
-        <button type="button" class="btn-sm" onclick="removeGutterGuardEntry(${idx})" style="flex-shrink:0;">Remove</button>
+        <button type="button" class="btn-sm" data-oq-action="gutter-guard-remove" data-oq-idx="${idx}" style="flex-shrink:0;">Remove</button>
       `;
       container.appendChild(entry);
     }
@@ -4780,10 +4797,33 @@
       { key: 'wind_damage', label: 'Wind Damage Warranty' },
     ];
 
+    // gh-1730/gh-1693: delegated on the container instead of the two inline
+    // onclick= attributes below, each built inside this template literal with
+    // a bare ${idx} closing them -- STRICT_FILES now catches that shape here
+    // the same way it already does on contractor-opportunities.html.
+    const WARRANTY_CARD_ACTIONS = {
+      'warranty-remove':        function (d) { removeWarrantyCard(d.oqIdx); },
+      'warranty-save-template': function (d) { saveWarrantyAsTemplate(d.oqIdx); },
+    };
+
+    function onWarrantyCardsContainerClick(event) {
+      const btn = event.target.closest('[data-oq-action]');
+      if (!btn) return;
+      const fn = WARRANTY_CARD_ACTIONS[btn.dataset.oqAction];
+      if (fn) fn(btn.dataset);
+    }
+
+    function bindWarrantyCardsContainerActions(el) {
+      if (!el || el.dataset.oqActionsBound) return;
+      el.addEventListener('click', onWarrantyCardsContainerClick);
+      el.dataset.oqActionsBound = '1';
+    }
+
     function addWarrantyCard(prefillData) {
       warrantyCardCount++;
       const idx = warrantyCardCount;
       const container = document.getElementById('warrantyCardsContainer');
+      bindWarrantyCardsContainerActions(container);
 
       const card = document.createElement('div');
       card.className = 'warranty-card';
@@ -4800,7 +4840,7 @@
       card.innerHTML = `
         <div class="warranty-card-header">
           <span class="warranty-card-title">Warranty #${idx}</span>
-          <button type="button" class="btn-sm" style="background:rgba(255,255,255,0.15);border-color:rgba(255,255,255,0.3);color:#fff;" onclick="removeWarrantyCard(${idx})">Remove</button>
+          <button type="button" class="btn-sm" style="background:rgba(255,255,255,0.15);border-color:rgba(255,255,255,0.3);color:#fff;" data-oq-action="warranty-remove" data-oq-idx="${idx}">Remove</button>
         </div>
         <div class="warranty-card-body">
           <div class="warranty-name-price-row">
@@ -4834,7 +4874,7 @@
           </div>
           <div class="warranty-save-bar">
             <input type="text" name="wc_${idx}_template_name" placeholder="Save as template: enter name…" value="${escHtmlBid(prefillData?.name ?? '')}">
-            <button type="button" class="btn-sm" onclick="saveWarrantyAsTemplate(${idx})">Save as Template</button>
+            <button type="button" class="btn-sm" data-oq-action="warranty-save-template" data-oq-idx="${idx}">Save as Template</button>
           </div>
         </div>
       `;
