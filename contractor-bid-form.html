@@ -2732,12 +2732,55 @@
     const submitBtn = document.getElementById('submitBtn');
     const successState = document.getElementById('successState');
 
+    // ── gh-1730 / gh-1693 — delegated action dispatch ────────────────────
+    // The three dynamic controls on this page (gutter-guard Remove, warranty
+    // Remove, warranty Save as Template) used to be rendered as
+    // `onclick="fn(${idx})"` inside a template literal. That is the gh-1693
+    // shape: the attribute's closing quote lives in interpolated code, so the
+    // handler survives only as long as the interpolated value never contains a
+    // quote. `${idx}` is a counter today and so it never does — which is
+    // exactly why tools/inline_handler_attr_check.py reports these three as
+    // LATENT rather than broken, and exactly why they are worth converting
+    // before someone keys one of them on something a user types.
+    //
+    // Same fix as contractor-opportunities.html: no dynamically-rendered
+    // element carries an inline handler at all. One delegated listener per
+    // container reads `data-oq-action` + `data-oq-idx` and dispatches. It is
+    // bound once and survives every re-render, because these render paths
+    // append children to the container and never replace the container.
+    const OQ_BID_FORM_ACTIONS = {
+      'gutter-remove':         function (idx) { removeGutterGuardEntry(idx); },
+      'warranty-remove':       function (idx) { removeWarrantyCard(idx); },
+      'warranty-save-template':function (idx) { saveWarrantyAsTemplate(idx); }
+    };
+
+    function onBidFormDelegatedClick(event) {
+      const btn = event.target.closest('[data-oq-action]');
+      if (!btn) return;
+      if (btn.disabled) return;
+      const fn = OQ_BID_FORM_ACTIONS[btn.dataset.oqAction];
+      if (!fn) return;
+      // The three actions this dispatcher serves are all keyed on a numeric
+      // counter. Anything else is refused rather than coerced — a NaN index
+      // would silently remove nothing and look like a dead button.
+      const idx = Number(btn.dataset.oqIdx);
+      if (!Number.isFinite(idx)) return;
+      fn(idx);
+    }
+
+    function bindBidFormActions(el) {
+      if (!el || el.dataset.oqActionsBound) return;
+      el.addEventListener('click', onBidFormDelegatedClick);
+      el.dataset.oqActionsBound = '1';
+    }
+
     // ── Gutter Guard Dynamic Entries ──
     function addGutterGuardEntry(prefill) {
       gutterGuardCount++;
       const idx = gutterGuardCount;
       const container = document.getElementById('gutterGuardEntries');
       if (!container) return;
+      bindBidFormActions(container);
       const entry = document.createElement('div');
       entry.id = `gutterGuardEntry_${idx}`;
       entry.style.cssText = 'display:flex;align-items:center;gap:var(--sp-3);flex-wrap:wrap;';
@@ -2749,7 +2792,7 @@
           <span>$</span>
           <input type="number" name="gutterGuardPrice_${idx}" step="0.01" min="0" placeholder="Price" value="${prefill?.price != null ? prefill.price : ''}" style="border-radius:0 var(--radius-md) var(--radius-md) 0;">
         </div>
-        <button type="button" class="btn-sm" onclick="removeGutterGuardEntry(${idx})" style="flex-shrink:0;">Remove</button>
+        <button type="button" class="btn-sm" data-oq-action="gutter-remove" data-oq-idx="${idx}" style="flex-shrink:0;">Remove</button>
       `;
       container.appendChild(entry);
     }
@@ -4784,6 +4827,7 @@
       warrantyCardCount++;
       const idx = warrantyCardCount;
       const container = document.getElementById('warrantyCardsContainer');
+      bindBidFormActions(container);
 
       const card = document.createElement('div');
       card.className = 'warranty-card';
@@ -4800,7 +4844,7 @@
       card.innerHTML = `
         <div class="warranty-card-header">
           <span class="warranty-card-title">Warranty #${idx}</span>
-          <button type="button" class="btn-sm" style="background:rgba(255,255,255,0.15);border-color:rgba(255,255,255,0.3);color:#fff;" onclick="removeWarrantyCard(${idx})">Remove</button>
+          <button type="button" class="btn-sm" style="background:rgba(255,255,255,0.15);border-color:rgba(255,255,255,0.3);color:#fff;" data-oq-action="warranty-remove" data-oq-idx="${idx}">Remove</button>
         </div>
         <div class="warranty-card-body">
           <div class="warranty-name-price-row">
@@ -4834,7 +4878,7 @@
           </div>
           <div class="warranty-save-bar">
             <input type="text" name="wc_${idx}_template_name" placeholder="Save as template: enter name…" value="${escHtmlBid(prefillData?.name ?? '')}">
-            <button type="button" class="btn-sm" onclick="saveWarrantyAsTemplate(${idx})">Save as Template</button>
+            <button type="button" class="btn-sm" data-oq-action="warranty-save-template" data-oq-idx="${idx}">Save as Template</button>
           </div>
         </div>
       `;
