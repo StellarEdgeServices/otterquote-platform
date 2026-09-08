@@ -24,6 +24,9 @@ jobs:
   mirror:
     name: Reset staging to main HEAD
     runs-on: ubuntu-latest
+    # gh-1731: explicit timeout. 0 minutes saved on a healthy run; caps a hung
+    # job at 5 minutes instead of GitHub's 6-hour default (360 billable min).
+    timeout-minutes: 5
     steps:
       - name: Checkout main
         uses: actions/checkout@v4

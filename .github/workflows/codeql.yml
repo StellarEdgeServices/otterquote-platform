@@ -1,9 +1,24 @@
 name: "CodeQL SAST"
 
+# gh-1731 (COST GATE), 2026-09-08: the `pull_request` trigger is REMOVED.
+# Measured, 7-day census Sep 1-7 2026 (Actions API, job-level ceil(sec/60),
+# 1-minute-per-job billing floor): this workflow ran 454 times, of which 327
+# were `pull_request` and 127 were `push` to main, at 1.88 billable job-min per
+# run. The PR half alone was 327 x 1.88 = 615 min/7d = 2,635 job-min/month --
+# the second-largest single line in the repo after Playwright E2E.
+#
+# What is preserved, and why this is not a coverage hole: `push: main` is kept,
+# so EVERY commit that actually reaches main is still scanned, and the weekly
+# cron still sweeps the whole default branch. What is given up is scanning each
+# intermediate PR iteration -- i.e. the finding arrives at merge instead of a
+# few minutes earlier on the PR. CodeQL is not a branch-protection-required
+# context (live required_status_checks.contexts on main, 2026-09-08T02:41Z, is
+# exactly ["Null-Byte & Size Sanity Check", "5-Page Revenue-Path Smoke Check"]),
+# and #1651 records that CodeQL's measured yield on this repo's actual defect
+# population is zero. If that yield ever becomes non-zero, put `pull_request`
+# back and pay the 2,635 min/month deliberately rather than by default.
 on:
   push:
-    branches: [ "main" ]
-  pull_request:
     branches: [ "main" ]
   schedule:
     - cron: '30 1 * * 1'
@@ -26,6 +41,10 @@ jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
+    # gh-1731: every job in this repo now carries an explicit timeout. Saves 0
+    # minutes on a healthy run; caps a hung job at 20 minutes instead of
+    # GitHub's 6-hour default, i.e. 360 billable minutes from one stuck run.
+    timeout-minutes: 20
     permissions:
       security-events: write
       packages: read
