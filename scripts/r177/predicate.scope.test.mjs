@@ -193,7 +193,20 @@ describe('detectLegalMoneyContent — predicate scope (gh-1701, 2026-09-06)', ()
         if (!TEXT_EXT.test(rel)) continue;
         let body;
         try { body = fs.readFileSync(abs, 'utf8'); } catch { continue; }
-        if (COPY_VOCAB.test(body) && !COPY_GUARD_FILES.has(rel)) missing.push(rel);
+        // gh-1738 (#1742, scripts/detector-negative-control-check.py): the
+        // "detector negative control" family of scripts keeps a registry of
+        // OTHER detector scripts' filenames (e.g. the quoted path literal
+        // "scripts/check-partner-consent-link.py"), and several of those
+        // filenames themselves contain COPY_VOCAB words (consent, guarantee,
+        // ...) as part of the hyphenated basename, not as prose. A quoted
+        // path-only token is a file reference, never customer copy — same
+        // idea as HARNESS_PATH_RES scoping scripts/ and tools/ to
+        // currency-only in predicate.mjs — so strip such tokens before
+        // testing for real copy vocabulary. This only narrows what a QUOTED,
+        // WHOLE-STRING file path can trigger; vocabulary appearing in actual
+        // prose is untouched.
+        const scanBody = body.replace(/(["'`])[\w./-]+\.(?:py|m?[jt]s|sh|sql|html?|txt)\1/g, '');
+        if (COPY_VOCAB.test(scanBody) && !COPY_GUARD_FILES.has(rel)) missing.push(rel);
       }
     }
     assert.deepEqual(missing, [],
