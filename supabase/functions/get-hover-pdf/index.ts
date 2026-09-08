@@ -105,8 +105,13 @@ serve(async (req) => {
       callerEmail = user.email ?? null;
       const allowed = await canAccessClaim(supabase, claim_id, user);
       if (!allowed) {
+        // gh-1748: `reason` disambiguates this 403 from the manual-fulfilment
+        // gate below — both returned a byte-identical body before this
+        // change, and the client could not tell an ordinary claim-visibility
+        // refusal (this one) from the D-317 internal-artifact refusal. See
+        // the gate's own comment for why that mattered.
         return new Response(
-          JSON.stringify({ error: "Claim not found or access denied" }),
+          JSON.stringify({ error: "Claim not found or access denied", reason: "access_denied" }),
           { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
@@ -175,8 +180,16 @@ serve(async (req) => {
     // function's own header already documents) or the same PRIMARY_ADMIN_EMAIL
     // identity admin-contractor-action / send-measurement-ready gate on.
     if (pdfSource.kind === "manual" && !isServiceRole && callerEmail !== PRIMARY_ADMIN_EMAIL) {
+      // gh-1748: `reason: "internal_artifact"` is what lets the client tell
+      // this refusal apart from the canAccessClaim 403 above — the two were
+      // byte-identical before this change, so a caller correctly denied
+      // *claim* access (an everyday, reachable case — bid window closed,
+      // contractor not yet quoted, etc.) was shown copy written for this
+      // narrower, currently-unreachable policy refusal, which is false for
+      // that caller. Only this branch may claim "internal artifact"; every
+      // other 403 in this function must use a different (or absent) reason.
       return new Response(
-        JSON.stringify({ error: "Claim not found or access denied" }),
+        JSON.stringify({ error: "Claim not found or access denied", reason: "internal_artifact" }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
