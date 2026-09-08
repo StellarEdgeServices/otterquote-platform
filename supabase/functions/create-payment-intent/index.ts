@@ -371,6 +371,94 @@ serve(async (req) => {
       // hover_measurement amount is already enforced server-side by D-181 above.
     }
 
+    // ===== #1760 UNCONDITIONAL LIVE-CHARGE GUARD ============================
+    // gh-1760. Read claims.is_test for EVERY charge type, regardless of
+    // metadata.type, and refuse a live charge on an unauthorized test claim.
+    //
+    // WHY THIS EXISTS SEPARATELY FROM THE PER-TYPE GUARDS ABOVE. #1467's guard
+    // is correct and deployed, but it is applied INSIDE the metadata.type
+    // switch, and only two of the four branches carry it:
+    //
+    //   platform_fee        :181 -> guarded (GATE 2, service-role only)
+    //   measurement_upgrade :265 -> guarded (via evaluateMeasurementUpgradeGate)
+    //   hover_measurement   :341 -> ownership check ONLY   <-- the gap
+    //   deductible_escrow   :341 -> ownership check ONLY   <-- the gap
+    //
+    // The live-vs-test Stripe key is selected from the request Origin (below),
+    // so a real browser on a production origin receives the LIVE key on those
+    // two paths irrespective of claims.is_test. Measured ceiling on
+    // 2026-09-07: 11 is_test claims with no live_charge_authorized_at marker x
+    // $15.00 hover price = $165.00, plus one carrying deductible_amount
+    // 1000.00 = $1,165.00. Nothing has ever been charged through it.
+    //
+    // A PER-TYPE GUARD IS THE SHAPE THAT PRODUCED THIS GAP and it will produce
+    // the next one when charge type five is added. This check is unconditional
+    // by construction: it sits at the same brace depth as the rate-limit call,
+    // outside every metadata.type branch, and guard-unconditional.test.ts
+    // asserts that depth equality and fails when it is reversed.
+    //
+    // PLACEMENT, AND WHY IT IS BELOW THE SWITCH RATHER THAN ABOVE IT. Two
+    // reasons, both about not changing anything that already works:
+    //   1. Every existing authorization branch keeps its exact status code and
+    //      ordering (403 service-role, 403 ownership, 400 missing deductible).
+    //      Hoisting above the switch would turn some of those into a 422 and
+    //      would leak a claim's test status to an unauthenticated caller.
+    //   2. `amount` has been server-derived by this point, so the refusal can
+    //      name the amount NOT taken -- which live-charge-guard.ts explicitly
+    //      requires ("a refusal that does not say what it cost is
+    //      indistinguishable from a charge that never had a reason to happen").
+    // It is still ONE unconditional check, and it is the last thing evaluated
+    // before any Stripe key is selected or any PaymentIntent is created.
+    //
+    // The per-type guards above are DELIBERATELY LEFT IN PLACE. They keep
+    // their existing platform_alerts_log alert_type names
+    // (`platform_fee_refused_unauthorized_test`,
+    // `measurement_upgrade_refused_unauthorized_test`) so nothing querying
+    // that table changes behaviour, and they remain defence in depth if this
+    // block is ever moved. live-charge-guard.ts is NOT edited by this change,
+    // so the byte-identical-copies invariant asserted by
+    // tools/live_charge_guard_parity_check.py cannot be broken by it.
+    const { data: unconditionalGuardClaim } = await supabase
+      .from("claims")
+      .select(GUARD_SELECT)
+      .eq("id", metadata.claim_id)
+      .maybeSingle();
+    const unconditionalGuard = evaluateLiveChargeGuard(unconditionalGuardClaim);
+    if (!unconditionalGuard.allow) {
+      const unconditionalMessage =
+        `[gh-1760 unconditional guard, metadata.type=${metadata.type}] ` +
+        describeGuardVerdict(
+          unconditionalGuard,
+          metadata.claim_id,
+          typeof amount === "number" ? amount : null,
+        );
+      console.error(`[${FUNCTION_NAME}] ${unconditionalMessage}`);
+      try {
+        await supabase.from("platform_alerts_log").insert({
+          // New name, not a reuse: the two existing per-type names stay bound
+          // to their own branches so an operator can tell WHICH check refused.
+          alert_type: "live_charge_refused_unauthorized_test",
+          function_name: FUNCTION_NAME,
+          message: unconditionalMessage,
+          sent_at: new Date().toISOString(),
+        });
+      } catch (alertErr) {
+        console.error("platform_alerts_log insert failed:", alertErr);
+      }
+      // Same 422 + same REFUSAL_CODE as the per-type gates: a caller that
+      // already handles one refusal handles this one unchanged.
+      return new Response(
+        JSON.stringify({
+          error: unconditionalMessage,
+          code: REFUSAL_CODE,
+          reason: unconditionalGuard.reason,
+          guard: "unconditional",
+        }),
+        { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+    // ===== end #1760 UNCONDITIONAL LIVE-CHARGE GUARD ========================
+
     // ===== RATE LIMIT =====
     const { data: rateLimitResult, error: rlError } = await supabase.rpc("check_rate_limit", {
       p_function_name: FUNCTION_NAME,

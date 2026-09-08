@@ -338,6 +338,15 @@ verify_jwt = false
 [functions.get-homeowner-list]
 verify_jwt = false
 
+# gh-1796: sets claims.loss_sheet_reviewed_at from the loss-sheet queue on
+# admin-homeowners.html (Dustin's ruling on #1597). Same admin allow-list and
+# same in-handler two-layer gate as get-homeowner-list — the list and its button
+# must agree on who counts as admin. Pinned at creation so a flagless
+# `functions deploy` (CLI default verify_jwt=true) can't silently flip it and
+# break the gateway path this handler's own auth depends on.
+[functions.mark-loss-sheet-reviewed]
+verify_jwt = false
+
 # gh-1412: manual measurement-fulfilment loop notifications. Both do auth
 # in-handler (the project-wide ES256/HS256 gateway mismatch makes verify_jwt
 # unreliable for these callers) and are pinned at creation so a flagless

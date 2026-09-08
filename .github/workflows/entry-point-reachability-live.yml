@@ -14,13 +14,32 @@ name: Entry-Point Reachability (Live)
 # integration creates a GitHub Deployment + deployment_status per deploy;
 # this also fires for deploy previews, which target_url filters out).
 #
-# KNOWN GAP (see gh-1697 closing comment): this workflow was authored and
-# reviewed for correctness but its trigger could not be exercised from the
-# authoring environment -- there is no way to generate a real
-# `deployment_status` event without an actual Netlify deploy completing
-# against this repo. Treat "does deployment_status actually fire the way
-# this workflow assumes" as an open follow-up until it is observed running
-# for a real deploy (see the gh-1697 closing comment's QUESTIONS/BLOCKER).
+# gh-1729 UPDATE (2026-09-07): the "known gap" below was measured, not just
+# suspected -- it is not a gap, it is a certainty. `deployment_status` cannot
+# fire in this repo:
+#
+#   GET /repos/StellarEdgeServices/otterquote-platform/deployments   -> 200, count 0
+#   GET /repos/StellarEdgeServices/otterquote-platform/environments  -> {"total_count":0}
+#
+# Zero GitHub Deployments have ever existed here and no environment is
+# defined -- Netlify's integration with this repo does not create them. Two
+# recent `main` tips also carried zero commit statuses of any kind, so there
+# is no other GitHub-side event to react to either. The `deployment_status`
+# trigger below is left in place (harmless, and free if Netlify's GitHub App
+# integration is ever reconfigured to emit it), but this workflow's real
+# trigger is now the `schedule` + `poll-for-new-deploy` job added below,
+# which asks NETLIFY DIRECTLY whether a new production deploy has completed
+# -- see scripts/deploy-completion-poll.py for the full reasoning, including
+# the async-merge trap (a trigger keyed on the merge commit runs against
+# bytes that have not deployed yet and is worse than no check at all; this
+# polls Netlify's own `published_deploy`, never the triggering commit).
+#
+# KNOWN GAP, ORIGINAL (see gh-1697 closing comment): this workflow was
+# authored and reviewed for correctness but its trigger could not be
+# exercised from the authoring environment -- there is no way to generate a
+# real `deployment_status` event without an actual Netlify deploy completing
+# against this repo. Superseded by the measurement above: it cannot be
+# exercised because it cannot occur, not because nobody has tried yet.
 #
 # Scope note: every entry point this spec clicks has its target function
 # replaced with a spy BEFORE the click (see entry-point-reachability.spec.ts)
@@ -31,6 +50,13 @@ name: Entry-Point Reachability (Live)
 
 on:
   deployment_status:
+  schedule:
+    # gh-1729: the real trigger. Every 15 minutes, ask Netlify (not GitHub)
+    # whether jade-alpaca-b82b5e's published production deploy has changed
+    # since the last time this workflow checked. This is what actually keys
+    # on the deploy COMPLETING rather than the merge happening -- see
+    # scripts/deploy-completion-poll.py.
+    - cron: '*/15 * * * *'
   workflow_dispatch:
     inputs:
       base_url:
@@ -39,15 +65,118 @@ on:
         default: 'https://otterquote.com'
 
 jobs:
+  poll-for-new-deploy:
+    name: Poll Netlify for a new production deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: github.event_name == 'schedule'
+    outputs:
+      changed: ${{ steps.poll.outputs.changed }}
+      commit_ref: ${{ steps.poll.outputs.commit_ref }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Self-test the poll decision logic
+        run: python3 scripts/deploy-completion-poll.test.py
+
+      # actions/cache has no "overwrite an existing key" primitive, so this
+      # keys each run's saved state uniquely (by run id) and restores the
+      # newest prior entry via the shared prefix -- the standard idiom for
+      # state that must change on every run. GitHub evicts old entries under
+      # its normal cache LRU; nothing here needs them kept beyond the most
+      # recent one, and letting them expire is a feature (no unbounded growth).
+      - name: Restore last-seen deploy state
+        uses: actions/cache/restore@v4
+        with:
+          path: .netlify-deploy-poll-state.json
+          key: netlify-deploy-poll-state-${{ github.run_id }}
+          restore-keys: |
+            netlify-deploy-poll-state-
+
+      - name: Check Netlify for a completed production deploy
+        id: poll
+        env:
+          NETLIFY_PAT: ${{ secrets.NETLIFY_PAT }}
+        run: |
+          set +e
+          python3 scripts/deploy-completion-poll.py \
+            --site-name jade-alpaca-b82b5e \
+            --last-seen-file .netlify-deploy-poll-state.json
+          poll_exit=$?
+          set -e
+          # Exit-code contract (scripts/deploy-completion-poll.py, same
+          # convention as netlify-deploy-drift.py): 0 = measured/unchanged,
+          # 2 = measured/changed (a new deploy just completed -- the routine,
+          # DESIRED case this workflow exists to catch, not a failure), 3 =
+          # UNMEASURED, 1 = uncaught error/timeout. REVIEW: FAIL (PR #1809
+          # comment 5577200063) caught this step running with no exit-code
+          # handling at all, so it went red on exit 2 -- the expected, common
+          # case -- exactly as loudly as on a broken poller, training
+          # reviewers to ignore red here. Fixed below: 0 and 2 both PROCEED
+          # to the reachability spec; 1 and 3 FAIL THE JOB LOUDLY, because
+          # "unmeasured is not a pass" is this repo's standing rule (gh-1419).
+          case "$poll_exit" in
+            0)
+              echo "poll: exit 0 -- measured, no new deploy since last check. Proceeding (the spec job's if: condition will skip it)."
+              ;;
+            2)
+              echo "poll: exit 2 -- measured, a new production deploy completed. Proceeding to the reachability spec."
+              ;;
+            3)
+              echo "::error::poll: exit 3 -- UNMEASURED (could not read Netlify: bad token, network, or bad site name). Failing the job loudly rather than reporting silent green."
+              exit 1
+              ;;
+            1)
+              echo "::error::poll: exit 1 -- error or timeout in the poll script. Failing the job loudly."
+              exit 1
+              ;;
+            *)
+              echo "::error::poll: exit $poll_exit -- unexpected exit code (expected 0, 1, 2, or 3). Failing the job loudly."
+              exit 1
+              ;;
+          esac
+
+      - name: Save deploy state for the next scheduled run
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .netlify-deploy-poll-state.json
+          key: netlify-deploy-poll-state-${{ github.run_id }}
+
   entry-point-reachability-live:
     name: Entry-Point Reachability (Live)
+    needs: [poll-for-new-deploy]
+    permissions:
+      contents: read
+      # REVIEW: FAIL (PR #1809 comment 5577200063): the "Alarm on a real
+      # production reachability failure" step below posts an issue comment
+      # via the ambient github.token, but this repo's
+      # default_workflow_permissions is `read` and neither the job nor the
+      # workflow granted issues:write -- so the alarm 403s on every real
+      # failure, reproducing the exact #1721 defect class ("the drift
+      # detector's own comment channel silently 403s") this issue's body
+      # cites as the reason "on failure it must do something" matters. Same
+      # shape as edge-function-drift.yml's `netlify-drift` job: scoped to
+      # this job only (poll-for-new-deploy doesn't need it).
+      issues: write
+    # `needs` alone would skip this job whenever poll-for-new-deploy is
+    # itself skipped (every non-schedule trigger) -- always() plus the
+    # explicit per-trigger conditions below is what keeps workflow_dispatch
+    # and deployment_status working exactly as before.
+    if: |
+      always() &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.deployment_status.state == 'success' &&
+        contains(github.event.deployment_status.target_url, 'otterquote.com') &&
+        !contains(github.event.deployment_status.target_url, 'deploy-preview')) ||
+       (github.event_name == 'schedule' && needs.poll-for-new-deploy.outputs.changed == 'true'))
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    if: >
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.deployment_status.state == 'success' &&
-       contains(github.event.deployment_status.target_url, 'otterquote.com') &&
-       !contains(github.event.deployment_status.target_url, 'deploy-preview'))
 
     steps:
       - name: Checkout code
@@ -81,6 +210,12 @@ jobs:
         working-directory: tests/e2e
         env:
           LIVE_BASE_URL: ${{ github.event.inputs.base_url || github.event.deployment_status.target_url || 'https://otterquote.com' }}
+          # gh-1729: logged only, for the async-trap negative control -- the
+          # published commit ref this run's poll observed, so a closing
+          # comment can paste it beside the merge sha and show they can
+          # differ. Never used to select what to fetch: this spec always
+          # hits LIVE_BASE_URL, which is the one URL Netlify actually serves.
+          POLLED_PUBLISHED_COMMIT_REF: ${{ needs.poll-for-new-deploy.outputs.commit_ref }}
         run: npx playwright test --config=smoke/playwright.entrypoint-live.config.ts
 
       - name: Upload report on failure
@@ -90,3 +225,25 @@ jobs:
           name: entry-point-reachability-live-report
           path: tests/e2e/playwright-report/
           retention-days: 14
+
+      # #1729's own body: "On failure it must do something. Today there is
+      # no alert, no issue, no rollback." This is that something -- the
+      # ambient per-run github.token (the #1721/#1733 reference pattern:
+      # minted per-run, scoped to this repo, never stored) posts a comment
+      # naming the run and the URL whose spec just failed live. Deliberately
+      # NOT routed through netlify-deploy-drift.py's alarm path (that file
+      # is owned by #1549/#1779 right now) -- this is its own minimal,
+      # independent alarm, on its own issue.
+      - name: Alarm on a real production reachability failure
+        if: failure() && github.event_name != 'workflow_dispatch'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const base = "${{ github.event.inputs.base_url || github.event.deployment_status.target_url || 'https://otterquote.com' }}";
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: 1729,
+              body: `Entry-point reachability spec FAILED against the live production site (${base}), run triggered by \`${context.eventName}\`. See run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
+            });
