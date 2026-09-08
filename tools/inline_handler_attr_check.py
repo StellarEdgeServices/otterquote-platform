@@ -87,7 +87,19 @@ REGEX_PRECEDERS = set("(,=:[!&|?{};+-*%~^<>\n")
 # inline handler attribute is an ERROR -- they have no inline handlers left to interpolate
 # into, so a new one is a regression of the gh-1693 fix. Add a file here the run you
 # convert it, never before.
-STRICT_FILES = {"contractor-opportunities.html"}
+#
+# gh-1730 EXCEPTION: contractor-bid-form.html is added below NOT converted -- the CTO
+# wave-4 dispatch (#1730 comment 5572644362) requires this guard to catch a LIVE,
+# unconverted instance of the gh-1693 defect class in this file (interpolated
+# onclick= attributes at lines 2752, 4803, 4837 -- not JSON.stringify, so previously
+# only a WARN [latent-handler-attr], never an error) and states plainly that a RED
+# result here, before the fix, IS the evidence #1730 closes on. This build's scope
+# does not include converting those three call sites to addEventListener + dataset
+# (see tests/e2e/smoke/entry-point-reachability.spec.ts's contractor-bid-form.html
+# header comment for why, and the follow-up this leaves for the next build). Until
+# that conversion lands, `python3 tools/inline_handler_attr_check.py` returns
+# nonzero for this file -- deliberately, not a regression of this tool.
+STRICT_FILES = {"contractor-opportunities.html", "contractor-bid-form.html"}
 
 # An expression that PROVABLY emits a double quote. JSON.stringify always does -- that is
 # the whole gh-1693 defect. A bare `${idx}` numeric interpolation does not, which is why

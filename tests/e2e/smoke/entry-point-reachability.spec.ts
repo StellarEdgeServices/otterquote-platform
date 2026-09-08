@@ -62,6 +62,10 @@
  *   Select This Contractor        | bids.html                     | inline onclick
  *   Approve                       | admin-payouts.html            | inline onclick
  *   Reject                        | admin-payouts.html            | inline onclick
+ *   confirmSelection (Yes, Cont.) | bids.html                     | inline onclick
+ *   feeAcceptanceCheckbox         | contractor-bid-form.html      | test.fixme (see gh-1730)
+ *   submitBtn (Submit Bid)        | contractor-bid-form.html      | test.fixme (see gh-1730)
+ *   signContractBtn (Continue)    | contract-signing.html         | addEventListener (own listener)
  *
  * The six #1693-regression entry points are the first six rows above --
  * those are the ones the gh-1697 closing criterion's negative control
@@ -70,6 +74,57 @@
  * the JSON.stringify-inside-onclick pattern); they're included here because
  * gh-1697 names them as money/critical-control surfaces this mechanism must
  * also cover going forward.
+ *
+ * ── gh-1730 (Part 1 coverage extension) ───────────────────────────────────
+ * PR #1720 (Part 1, above) covered 9 entry points. Wave-4 CTO dispatch
+ * (#1730 comment 5572644362) named four more, in priority order because
+ * `confirmSelection` is worth more than the other three combined -- it is
+ * the button that AWARDS THE CONTRACT, not merely opens the award modal
+ * (`selectContractor`, already covered):
+ *
+ *   1. `confirmSelection` (bids.html) -- full coverage below.
+ *   2. `contractor-bid-form.html #feeAcceptanceCheckbox` / `#submitBtn` --
+ *      test.fixme below. Neither control's real handler can be verified
+ *      "bound" by this spec's existing techniques without an HTML change:
+ *      `#submitBtn` submits `<form id="bidForm">` via a bare anonymous
+ *      `bidForm.addEventListener('submit', async (e) => {...})` -- no named
+ *      target function for installSpy() to wrap at all. `#feeAcceptanceCheckbox`
+ *      changes call `updateFeeCheckboxState` (a named function declaration,
+ *      so installSpy()'s bare-identifier reassignment SUCCEEDS), but
+ *      `_feeAcceptanceCheckbox.addEventListener('change', updateFeeCheckboxState)`
+ *      captured that function BY VALUE when the listener was registered --
+ *      reassigning the module-scope identifier afterward does not change
+ *      what the already-registered listener calls, so a real click would
+ *      keep reaching the ORIGINAL function and never the spy, making
+ *      Assertion 3 unable to distinguish a live handler from a dead one for
+ *      this specific binding shape. This is a fourth defect shape, distinct
+ *      from the three DEFECTs installSpy()'s own comment names (assert-after,
+ *      replace-not-wrap, `window[name]`-only) -- worth naming here rather
+ *      than rediscovering silently: capture-by-value listeners need the spy
+ *      installed BEFORE the addEventListener() call that captures it, which
+ *      for these two controls means changing the HTML (this build's scope
+ *      excludes editing contractor-bid-form.html; see the PR body).
+ *   3. `contract-signing.html #signContractBtn` -- full coverage below.
+ *      Bound via a THIRD binding kind neither `assertHandlerBound()` style
+ *      recognizes: a plain, non-delegated `addEventListener('click', ...)`
+ *      directly on the element, inside `setupEventListeners()`. See
+ *      `installListenerRegistry()` / `assertListenerBound()` below for how
+ *      Assertion 2 is established for this kind.
+ *
+ * Also per 5572644362: `contractor-bid-form.html:4114`'s onclick is cited
+ * as gh-1693's shape. Measured against the file as it stands on `main`
+ * today, line 4114 (`onclick="openBidFormEstimatePdf()"`) and its two
+ * neighbors at 4123/4127 are static, fully-closed inline handlers with no
+ * interpolation -- not a violation under `tools/inline_handler_attr_check.py`'s
+ * own definition (see that file's module docstring: static handlers are
+ * deliberately not flagged, they cannot break). The live instances of the
+ * flagged shape in this file today -- interpolated `onclick=` attributes
+ * closed outside their JS string literal, the exact structural defect class
+ * STRICT_FILES exists to catch -- are at lines 2752, 4803 and 4837 (verified
+ * by running the tool with `--verbose` against `main`; see this PR's RED/GREEN
+ * evidence). `contractor-bid-form.html` is added to STRICT_FILES below
+ * regardless of the exact line drift, because the tool's job is to catch the
+ * PATTERN wherever it lives in a converted file, not one cited line number.
  */
 import { test, expect, type Page, type Locator } from '@playwright/test';
 
@@ -181,6 +236,67 @@ async function installSpy(page: Page, name: string) {
       );
     }
   }, name);
+}
+
+/**
+ * gh-1730: Assertion 2 ("a handler is actually bound") for a THIRD binding
+ * kind this spec did not previously need to recognize -- a plain,
+ * non-delegated `el.addEventListener('click', fn)` registered directly on
+ * the control itself (contract-signing.html's #signContractBtn). Neither
+ * of assertHandlerBound()'s two checks observes this: `typeof el.onclick
+ * === 'function'` stays false forever (addEventListener never touches the
+ * `.onclick` property, by design -- that's the whole reason DOM listeners
+ * support multiple handlers per event), and there is no data-oq-action
+ * ancestor marker because this binding isn't delegated.
+ *
+ * installListenerRegistry() closes that gap the way installSpy() closes
+ * gh-1697's DEFECT 1 (assert-before-acting, not after): instrument BEFORE
+ * the page's own script can call addEventListener, via page.addInitScript()
+ * -- which Playwright guarantees runs before ANY page script, the same
+ * ordering guarantee forceDemoMode()'s config.js patch exists to provide
+ * for CONFIG.DEMO_MODE (see forceDemoMode()'s own comment). Wraps
+ * EventTarget.prototype.addEventListener and records every (elementId,
+ * type) pair registered on an Element that carries an id. Call this BEFORE
+ * page.goto(), same ordering requirement as forceDemoMode().
+ *
+ * This is the closest analogue available without a CDP
+ * `DOMDebugger.getEventListeners` round trip to what assertHandlerBound()
+ * checks for the other two binding kinds: it observes the BINDING CALL
+ * itself, not a side effect of it, so a control whose wiring silently never
+ * ran (the exact #1693 failure shape, just for a different binding style)
+ * is reported as unbound instead of passing by accident.
+ */
+async function installListenerRegistry(page: Page) {
+  await page.addInitScript(() => {
+    (window as any).__oqListenerLog = [];
+    const origAdd = EventTarget.prototype.addEventListener;
+    EventTarget.prototype.addEventListener = function (
+      this: EventTarget,
+      type: string,
+      ...rest: unknown[]
+    ) {
+      if (this instanceof Element && this.id) {
+        (window as any).__oqListenerLog.push([this.id, type]);
+      }
+      // @ts-expect-error -- forwarding the original call's exact arguments
+      return origAdd.call(this, type, ...rest);
+    };
+  });
+}
+
+/** Assertion 2 (addEventListener binding kind): see installListenerRegistry() above. */
+async function assertListenerBound(page: Page, elementId: string, eventType: string, name: string) {
+  const bound = await page.evaluate(
+    ({ elementId, eventType }) => {
+      const log = ((window as any).__oqListenerLog || []) as [string, string][];
+      return log.some(([id, type]) => id === elementId && type === eventType);
+    },
+    { elementId, eventType }
+  );
+  expect(
+    bound,
+    `[${name}] ASSERTION 2 (handler bound) FAILED: no addEventListener('${eventType}', ...) was recorded for #${elementId}. installListenerRegistry() instruments EventTarget.prototype.addEventListener before any page script runs (see its own comment) -- this means the binding call itself never happened, not that this check merely couldn't see it.`
+  ).toBe(true);
 }
 
 async function outerHtmlOf(locator: Locator): Promise<string> {
@@ -475,6 +591,199 @@ test.describe('bids.html entry points', () => {
     const card = page.locator('#bidsGrid .bid-card', { hasText: DEMO_CONTRACTOR_NAME });
     const loc = card.getByRole('button', { name: 'Select This Contractor' });
     await assertEntryPointReachable(page, loc, 'Select This Contractor', 'selectContractor', [DEMO_BID_ID]);
+  });
+
+  // gh-1730 (CTO wave-4 dispatch, #1730 comment 5572644362, priority #1):
+  // "Select This Contractor" above only proves the modal OPENS --
+  // window.selectContractor was itself replaced with a spy for that test,
+  // so its real code (which builds #modalConfirmBtn's
+  // onclick="confirmSelection()" markup) never ran. confirmSelection() is
+  // the button that actually AWARDS THE CONTRACT once the homeowner
+  // confirms; #1730's body: "a dead award button loses a signed contract
+  // rather than a click." This test therefore does NOT spy
+  // selectContractor -- it lets the real handler run so the modal (and
+  // #modalConfirmBtn's real, unmodified onclick binding) exists, then
+  // spies only confirmSelection before clicking "Yes, Continue".
+  test('confirmSelection (Yes, Continue — awards the contract)', async ({ page }) => {
+    await forceDemoMode(page);
+    await page.goto(PAGE, { waitUntil: 'load' });
+    await page.locator('#bidsGrid .bid-card', { hasText: DEMO_CONTRACTOR_NAME }).waitFor();
+
+    // Real click through the REAL (unspied) selectContractor() to open the
+    // confirm modal exactly as a homeowner would -- this is the only way
+    // #modalConfirmBtn's onclick="confirmSelection()" markup gets wired,
+    // since selectContractor() builds/restores that button (see its "Bug 5
+    // fix" comment in bids.html).
+    const card = page.locator('#bidsGrid .bid-card', { hasText: DEMO_CONTRACTOR_NAME });
+    await card.getByRole('button', { name: 'Select This Contractor' }).click();
+    await page.locator('#confirmModal.active').waitFor();
+
+    await page.evaluate(() => {
+      (window as any).__oqSpyCalls = [];
+    });
+    await installSpy(page, 'confirmSelection');
+
+    // confirmSelection() takes no arguments -- it reads the module-scope
+    // `pendingBidId` selectContractor() just set, not a click-time argument.
+    const loc = page.locator('#modalConfirmBtn');
+    await assertEntryPointReachable(page, loc, 'confirmSelection', 'confirmSelection', []);
+  });
+});
+
+// ── contractor-bid-form.html ──────────────────────────────────────────────
+// gh-1730 (CTO wave-4 dispatch, #1730 comment 5572644362, priority #2):
+// D-215 Layer 1, the point at which a contractor accepts the platform fee
+// before submitting a bid. NOT test.fixme because the controls are hard to
+// find or the money path is unclear -- both are exactly where the dispatch
+// says (#feeAcceptanceCheckbox / #submitBtn, wired around
+// contractor-bid-form.html:4964-5053/5295) -- but because neither control's
+// binding can be proven or disproven "bound" by this spec's existing
+// techniques without an HTML change this build is not scoped to make (see
+// the PR body and this file's own header comment, "gh-1730" section, for
+// the full reasoning on both):
+//
+//   #submitBtn   -- `<button type="submit" form="bidForm">`. Its behaviour
+//                   lives on `bidForm.addEventListener('submit', async (e)
+//                   => {...})` -- an anonymous inline arrow function, never
+//                   assigned a name. installSpy() requires a bare
+//                   identifier to reassign; there is no identifier here at
+//                   all, named or otherwise, to install a spy on.
+//
+//   #feeAcceptanceCheckbox -- changes call `updateFeeCheckboxState`, which
+//                   IS a named function declaration (installSpy() can
+//                   locate and reassign the identifier without error) --
+//                   but `_feeAcceptanceCheckbox.addEventListener('change',
+//                   updateFeeCheckboxState)` already ran by the time this
+//                   spec could install a spy, and addEventListener()
+//                   captures the function BY VALUE at registration time.
+//                   Reassigning the `updateFeeCheckboxState` identifier
+//                   afterward does not change what that already-registered
+//                   listener calls -- a real click would keep silently
+//                   reaching the ORIGINAL function, and Assertion 3 would
+//                   report a pass regardless of whether the real handler is
+//                   alive or dead. Producing a green here would be exactly
+//                   the false-confidence failure mode this whole spec
+//                   exists to prevent (see PR #1720 comment 5560323618,
+//                   quoted in installSpy()'s own comment above).
+//
+// Fixed by installing a listener registry (installListenerRegistry(), used
+// below for contract-signing.html's #signContractBtn) BEFORE
+// contractor-bid-form.html's script runs -- that observes the
+// addEventListener() call itself rather than trying to intercept what it
+// captured. That is a legitimate next step and does not require touching
+// the button markup, only the timing of instrumentation; it is left as
+// test.fixme rather than done here because implementing and proving it out
+// is more than this build's remaining scope, not because it needs an HTML
+// fix. Concrete next step, unblocked today: extend the
+// installListenerRegistry()/assertListenerBound() pair below to also
+// record 'submit'/'change' events (not just 'click'), then write these two
+// tests the same shape as signContractBtn's.
+test.describe('contractor-bid-form.html entry points', () => {
+  test.fixme(
+    'feeAcceptanceCheckbox (D-215 Layer 1 fee acceptance)',
+    {
+      annotation: {
+        type: 'fixme',
+        description:
+          "gh-1730: updateFeeCheckboxState is captured BY VALUE when " +
+          "_feeAcceptanceCheckbox.addEventListener('change', updateFeeCheckboxState) " +
+          "registers -- installSpy()'s bare-identifier reassignment happens too late to " +
+          'affect what that listener calls, so Assertion 3 cannot yet distinguish a live ' +
+          "handler from a dead one for this control. Needs installListenerRegistry() " +
+          "extended to 'change' events (see this file's contractor-bid-form.html header comment).",
+      },
+    },
+    async () => {}
+  );
+
+  test.fixme(
+    'submitBtn (Submit Bid)',
+    {
+      annotation: {
+        type: 'fixme',
+        description:
+          "gh-1730: #submitBtn's behaviour is bidForm's anonymous inline " +
+          "addEventListener('submit', async (e) => {...}) -- no named target function " +
+          'exists for installSpy() to spy on. Needs installListenerRegistry() extended to ' +
+          "'submit' events plus a different Assertion-3 technique (there is no target " +
+          'function identifier to assert was called with expected arguments, only that ' +
+          "the listener itself fired) -- see this file's contractor-bid-form.html header comment.",
+      },
+    },
+    async () => {}
+  );
+});
+
+// ── contract-signing.html ──────────────────────────────────────────────────
+// gh-1730 (CTO wave-4 dispatch, #1730 comment 5572644362, priority #3):
+// #signContractBtn is the signing ceremony's own Step-2 "Continue" button --
+// disabled until DocuSign reports the signature complete, then advances to
+// Step 3 (confirmation). Bound via `document.getElementById('signContractBtn')
+// .addEventListener('click', () => { if (state.contractSigned) goToStep(3); })`
+// inside setupEventListeners() -- a plain, non-delegated addEventListener()
+// directly on the element, the THIRD binding kind this spec has needed (see
+// installListenerRegistry() above). Unlike #feeAcceptanceCheckbox above,
+// this IS provable: the arrow function calls `goToStep` by BARE IDENTIFIER
+// from inside its own body, which JS resolves via a LIVE scope lookup at
+// call time (not a captured value) -- installSpy()'s bare-identifier
+// reassignment therefore does reach this call site, same as any inline
+// onclick="fn()" markup, even though the outer listener itself is anonymous.
+//
+// This page has no CONFIG.DEMO_MODE data branch (unlike
+// contractor-opportunities.html/bids.html): its DOMContentLoaded init()
+// unconditionally queries Supabase for a real claim/contractor/bid and only
+// calls setupEventListeners() after that succeeds. forceDemoMode() alone
+// stops Auth.requireAuth() from redirecting away (same as every other test
+// in this file) but cannot supply the claim data init() then tries to
+// fetch — with no backend in this local run, init()'s own try block throws
+// and lands in its catch (shows #pageError, per contract-signing.html's own
+// error handling), which never reaches setupEventListeners(). Rather than
+// mock every network call init() makes before that point, this test drives
+// the page's own setupEventListeners()/goToStep() functions directly --
+// the same "call the page's own exported functions with a synthetic state
+// instead of running the real init() flow" approach this file's header
+// comment describes for contractor-opportunities.html's render(), applied
+// here for the same reason: init()'s failure (expected, not a defect) would
+// otherwise leave the button never wired and #pageContent hidden.
+test.describe('contract-signing.html entry points', () => {
+  const PAGE = '/contract-signing.html?claim_id=reach-claim-signing&contractor_id=reach-contractor-signing';
+
+  test('signContractBtn (Continue → Step 3 — the signing ceremony’s own entry point)', async ({ page }) => {
+    // Must be installed before page.goto() -- see installListenerRegistry()'s
+    // own comment on why this ordering is load-bearing, same requirement as
+    // forceDemoMode()'s config.js patch immediately below.
+    await installListenerRegistry(page);
+    await forceDemoMode(page);
+    await page.goto(PAGE, { waitUntil: 'load' });
+
+    await page.evaluate(() => {
+      // @ts-expect-error -- globals defined by contract-signing.html's own inline script
+      document.getElementById('pageContent').style.display = 'block';
+      // @ts-expect-error
+      setupEventListeners();
+      // @ts-expect-error
+      goToStep(2);
+      // Step 2's Continue button ships `disabled` until the real DocuSign
+      // flow reports a signature; simulate "already signed" the same way
+      // bids.html's upgrade-pay test simulates "panel already open with a
+      // price loaded" (see that test's comment above) to exercise this
+      // entry point on its own, without driving the DocuSign iframe.
+      // @ts-expect-error
+      document.getElementById('signContractBtn').disabled = false;
+      // @ts-expect-error
+      state.contractSigned = true;
+    });
+
+    const loc = page.locator('#signContractBtn');
+    await assertExists(loc, 'signContractBtn');
+    await assertListenerBound(page, 'signContractBtn', 'click', 'signContractBtn');
+
+    await page.evaluate(() => {
+      (window as any).__oqSpyCalls = [];
+    });
+    await installSpy(page, 'goToStep');
+    await resetSpyLog(page);
+    await assertClickReaches(page, loc, 'signContractBtn', 'goToStep', [3]);
   });
 });
 
