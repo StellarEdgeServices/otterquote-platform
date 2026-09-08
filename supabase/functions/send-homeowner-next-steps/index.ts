@@ -140,7 +140,7 @@ import {
 import { buildEmailContent } from "./email-content.ts";
 import {
   canSendWithOptOut,
-  collectOptedOutClaimIds,
+  fetchOptedOutClaimIds,
   isOptedOut,
 } from "./optout-filter.ts";
 import {
@@ -369,6 +369,22 @@ serve(async (req: Request) => {
     return jsonResponse({ ok: false, error: "activity_log read failed" }, 500, corsHeaders);
   }
 
+  // gh-1786 / D-320: claim ids whose homeowner clicked "Stop these updates".
+  // Deliberately its OWN filtered, bounded query — NOT reduced from the
+  // `activity` read above, which has no event_type predicate and can be
+  // silently truncated by PostgREST's row cap on a user with a lot of
+  // history (see optout-filter.ts for the full reasoning; this is the fix
+  // for the LEGAL-READ FAIL on PR #1810 comments 5577266980 / 5577311497).
+  const { optedOut: optedOutClaimIds, error: optOutErr } = await fetchOptedOutClaimIds(
+    supabase,
+    userIds,
+    claimIds,
+  );
+  if (optOutErr) {
+    console.error(`[${FUNCTION_NAME}] opt-out read failed:`, optOutErr.message);
+    return jsonResponse({ ok: false, error: "opt-out read failed" }, 500, corsHeaders);
+  }
+
   // Real (non-self-generated) activity per user, latest timestamp.
   const realActivityByUser = new Map<string, string>();
   // Already-sent nudge stages per claim: claim_id -> (stage -> stamp
@@ -376,10 +392,6 @@ serve(async (req: Request) => {
   // send after the '2h' one; if the same stage was stamped more than once
   // (pre-unique-index race) the EARLIEST stamp wins.
   const nudgeSentByClaim = new Map<string, Map<NudgeStage, string>>();
-  // gh-1786 / D-320: claim ids whose homeowner clicked "Stop these updates".
-  // Read from the SAME activity_log rows the nudge stamps come from — no schema
-  // change, per D-320's no-migration constraint.
-  const optedOutClaimIds = collectOptedOutClaimIds((activity || []) as any[]);
 
   for (const row of (activity || []) as any[]) {
     // An opt-out is not homeowner progress on the claim. Like our own nudge

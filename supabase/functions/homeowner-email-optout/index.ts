@@ -24,12 +24,13 @@
  * page whether the token matched or not. It never reads back who the token
  * belongs to and never varies its response on existence."
  *
- * This implementation holds to that literally:
- *   - ONE response body, ONE status (200), for every input: a valid token, an
- *     invalid token, a forged signature, a token for a claim that does not
- *     exist, a missing token, and an internal database failure all return the
- *     identical bytes. There is no error page and no success page — there is
- *     one page.
+ * This implementation holds to that for every input REACHABLE WITHOUT a
+ * correctly-signed token:
+ *   - ONE response body, ONE status (200), for: a missing token, an invalid
+ *     token, a forged signature, and a token for a claim that does not exist
+ *     (or has no owner row) — all return the identical bytes, page(). There is
+ *     no way to distinguish "no such claim" from "wrong signature" from
+ *     "never tried" from the response.
  *   - It returns nothing about the claim: no email address, no name, no status.
  *   - It is idempotent: a second click writes nothing new and still returns the
  *     same page.
@@ -37,6 +38,24 @@
  * they are unsubscribed when they are not. That is the accepted trade for not
  * leaking claim existence, and it is why the token is signed rather than being a
  * bare id — a corrupted link is the only path to that outcome.
+ *
+ * gh-1786 LEGAL-READ FAIL (PR #1810 comment 5577311497) corrected one gap in
+ * this: THREE branches used to also return page() — the success page — after
+ * the token had ALREADY verified but the suppression row was never written
+ * (missing SUPABASE_URL/service-role key, a failed claim lookup, or an insert
+ * error other than the idempotent-retry 23505). That told a homeowner the
+ * series had stopped when it had not, which is its own failure of the same
+ * promise this endpoint exists to keep. Those three now return failurePage()
+ * — a distinct, non-200 response — instead. This does NOT reopen an
+ * enumeration oracle: reaching any of those three branches requires a token
+ * that has already passed HMAC verification, which requires the signing
+ * secret; nobody without a real, previously-issued token can ever produce
+ * one, so this carve-out cannot be used to learn whether an arbitrary
+ * guessed id names a real claim — only whether OtterQuote's own
+ * infrastructure was healthy at the moment a genuine recipient clicked their
+ * own link. The claim-does-not-exist / no-owner-row branch is deliberately
+ * NOT part of this carve-out and still returns page() unchanged, preserving
+ * the original invariant for that specific question.
  *
  * ─── AUTH ──────────────────────────────────────────────────────────────────
  * verify_jwt = false in supabase/config.toml (an email recipient has no JWT).
@@ -109,6 +128,60 @@ function page(): Response {
   });
 }
 
+// gh-1786 LEGAL-READ FAIL (PR #1810 comment 5577311497): three branches below
+// used to call page() — the SUCCESS page, "Updates stopped" — after a token
+// had already verified but the suppression row was never written (missing
+// config, a failed claim lookup, or an insert error). That told a homeowner
+// the series had stopped when it had not. This is a DIFFERENT page for those
+// three branches only; every branch reachable WITHOUT a verified token (a
+// missing token, one that fails HMAC verification, or a forged one) still
+// returns page() unchanged, so the no-enumeration-oracle invariant in the
+// header comment above still holds — an attacker who cannot forge a valid
+// token can never reach this response, so it reveals nothing about whether
+// an arbitrary id is a real claim. Wording is operational, not a legal claim.
+const FAILURE_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>We couldn't process that</title>
+</head>
+<body style="margin:0;padding:0;background:#F8FAFC;font-family:Arial,Helvetica,sans-serif;color:#1F2937;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#F8FAFC;">
+    <tr>
+      <td align="center" style="padding:2rem 1rem;">
+        <table role="presentation" width="600" cellspacing="0" cellpadding="0"
+               style="max-width:600px;width:100%;background:#ffffff;border-radius:0.75rem;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+          <tr>
+            <td style="background:#0D1B2E;padding:1.5rem 2rem;text-align:center;">
+              <span style="font-size:20px;font-weight:700;color:#ffffff;letter-spacing:-0.3px;">Otter Quotes</span>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:2rem;">
+              <h1 style="margin:0 0 1rem;font-size:20px;">We couldn't process that</h1>
+              <p style="margin:0;line-height:1.6;">We couldn't record your request &mdash; please try the link again or reply to this email.</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+function failurePage(): Response {
+  return new Response(FAILURE_HTML, {
+    status: 500,
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-store",
+      "X-Robots-Tag": "noindex, nofollow",
+      "Referrer-Policy": "no-referrer",
+    },
+  });
+}
+
 async function readToken(req: Request): Promise<string | null> {
   const fromQuery = new URL(req.url).searchParams.get("t");
   if (fromQuery) return fromQuery;
@@ -159,7 +232,7 @@ serve(async (req: Request) => {
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     if (!supabaseUrl || !serviceRoleKey) {
       console.error(`[${FUNCTION_NAME}] server configuration error — opt-out for a verified token was NOT recorded`);
-      return page();
+      return failurePage();
     }
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
@@ -173,7 +246,7 @@ serve(async (req: Request) => {
       .maybeSingle();
     if (claimErr) {
       console.error(`[${FUNCTION_NAME}] claim lookup failed for a verified token: ${claimErr.message}`);
-      return page();
+      return failurePage();
     }
     if (!claim?.user_id) {
       console.warn(`[${FUNCTION_NAME}] verified token names a claim with no owner row — nothing recorded`);
@@ -210,7 +283,7 @@ serve(async (req: Request) => {
     });
     if (insertErr && insertErr.code !== "23505") {
       console.error(`[${FUNCTION_NAME}] failed to record opt-out for claim ${claimId}: ${insertErr.message}`);
-      return page();
+      return failurePage();
     }
     console.log(`[${FUNCTION_NAME}] recorded opt-out for claim ${claimId}`);
     return page();

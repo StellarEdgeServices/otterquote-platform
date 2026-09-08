@@ -62,6 +62,70 @@ export function isOptedOut(optedOut: ReadonlySet<string>, claimId: string): bool
   return optedOut.has(claimId);
 }
 
+// ─── PR #1810 LEGAL-READ FAIL (comments 5577266980 / 5577311497) ───────────
+// The pre-send suppression read must be COMPLETE — a truncated read that
+// drops the one row that says "stop" and then sends anyway is the exact
+// CAN-SPAM failure #1786 exists to close. The general activity_log read in
+// index.ts (`.from("activity_log").select(...).in("user_id", userIds)`, no
+// event_type filter, no order, no limit) is NOT safe to reduce this from: it
+// has no event_type predicate, so on a user with a lot of history it can hit
+// PostgREST's row cap before the opt-out row is even considered, and with no
+// ORDER BY which rows survive a cap is arbitrary (this repo already ruled
+// this exact shape a silent-truncation hazard on this table — gh-1340 ->
+// PR #1435/#1439). One live user already holds 1,032 activity_log rows.
+//
+// fetchOptedOutClaimIds below gives the opt-out check its OWN query instead,
+// bounded two ways so it cannot be truncated regardless of how much other
+// history these users accumulate:
+//   - event_type = OPTOUT_EVENT_TYPE narrows to opt-out rows only.
+//   - metadata->>claim_id IN (candidateClaimIds) bounds the result to AT MOST
+//     candidateClaimIds.length rows — never more than this batch's own
+//     candidate set (itself capped at BATCH_LIMIT=200 by the caller), which
+//     is far below any PostgREST page cap. That is a provable bound, not a
+//     "hope the cap is high enough" one — paging would also fix truncation,
+//     but this needs no loop and no extra round trips.
+//   - user_id IN (candidateUserIds) is included too, purely so Postgres can
+//     use idx_activity_log_user_id instead of a sequential scan; it narrows
+//     in the same direction as the claim_id filter, never the opposite, so
+//     it cannot reintroduce truncation risk.
+
+/** Structural subset of the Supabase/PostgREST query builder this module
+ * needs — kept narrow and self-referential (each filter method returns the
+ * same builder shape, and the builder itself is thenable) so this file stays
+ * testable with a lightweight fake instead of a real @supabase/supabase-js
+ * client, while still being satisfied by the real one as-is. */
+export interface OptOutFilterBuilder
+  extends PromiseLike<{ data: ActivityRowLike[] | null; error: { message: string } | null }> {
+  eq(column: string, value: string): OptOutFilterBuilder;
+  in(column: string, values: readonly string[]): OptOutFilterBuilder;
+}
+
+export interface OptOutQueryClient {
+  from(table: string): {
+    select(columns: string): OptOutFilterBuilder;
+  };
+}
+
+/**
+ * The opt-out check's own filtered, bounded read — see the block comment
+ * above for why this cannot reuse the general activity_log read in index.ts.
+ */
+export async function fetchOptedOutClaimIds(
+  client: OptOutQueryClient,
+  candidateUserIds: readonly string[],
+  candidateClaimIds: readonly string[],
+): Promise<{ optedOut: Set<string>; error: { message: string } | null }> {
+  if (candidateClaimIds.length === 0) return { optedOut: new Set(), error: null };
+  const { data, error } = await client
+    .from("activity_log")
+    .select("event_type, metadata")
+    .eq("event_type", OPTOUT_EVENT_TYPE)
+    .in("user_id", candidateUserIds)
+    .in("metadata->>claim_id", candidateClaimIds);
+  if (error) return { optedOut: new Set(), error };
+  return { optedOut: collectOptedOutClaimIds((data || []) as ActivityRowLike[]), error: null };
+}
+
 /**
  * Whether this run may send at all. CAN-SPAM requires a working opt-out
  * mechanism in the message; if no signing secret is configured, no verifiable
