@@ -241,6 +241,11 @@ SHAPE_PATTERNS = [
     # (not folded into HEX_RUN_20) because K/I are not hex digits, so an
     # AKIA... key does not reliably trip the hex-run pattern either.
     ("AWS_ACCESS_KEY_ID", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
+    # gh-1888: PR #1791 only added AKIA (long-term access key ID). AWS's other
+    # three key-ID prefixes share the identical [0-9A-Z]{16} 20-char body and the
+    # same danger class: ASIA (STS temporary/session -- the specific miss named in
+    # gh-1888), AIDA (IAM user), AROA (assumed-role), AGPA (IAM group).
+    ("AWS_TEMP_ACCESS_KEY_ID", re.compile(r"\b(?:ASIA|AIDA|AROA|AGPA)[0-9A-Z]{16}\b")),
     ("JWT_SHAPED", re.compile(
         r"\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\b"  # full 3-segment JWT
         r"|\beyJ[A-Za-z0-9_-]{20,}\b"  # bare header/fragment, no dots
@@ -353,7 +358,7 @@ UUID_LIKE_PATTERN = re.compile(
 VALUE_SHAPE_SECRET_CLASSES = frozenset({
     "PRIVATE_KEY_PEM", "JSON_BLOB", "JWT_SHAPED", "STRIPE_LIVE_KEY",
     "STRIPE_WEBHOOK_SECRET", "GITHUB_PAT", "HEX_RUN_20",
-    "GENERIC_BASE64_HIGH_ENTROPY", "AWS_ACCESS_KEY_ID",
+    "GENERIC_BASE64_HIGH_ENTROPY", "AWS_ACCESS_KEY_ID", "AWS_TEMP_ACCESS_KEY_ID",
 })
 VALUE_SHAPE_BENIGN_CLASSES = frozenset({
     "URL_LIKE", "EMAIL_LIKE", "UUID_LIKE", "SHORT_LOW_ENTROPY", "EMPTY",
