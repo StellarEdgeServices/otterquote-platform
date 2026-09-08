@@ -32,7 +32,10 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
-import { logNotificationFailure } from "./notification-failure.ts";
+import {
+  isVerifySendRequested,
+  logNotificationFailureLoud,
+} from "./notification-failure.ts";
 import {
   footerPostalAddressHtml,
   footerPostalAddressText,
@@ -257,7 +260,16 @@ serve(async (req: Request) => {
       .maybeSingle();
 
     const buyerEmail = buyerProfile?.email || "";
-    if (claim?.is_test === true || (buyerEmail && isTestAccount(buyerEmail))) {
+    // gh-1538: an explicit, per-request opt-out of the is_test send skip.
+    // Computed only HERE — after the service-role bearer check above has
+    // already returned 401 for any other caller — so it grants a machine
+    // caller nothing it could not already do to non-test data. See
+    // notification-failure.ts for the full rationale.
+    const verifySend = isVerifySendRequested(req.headers);
+    if (verifySend) {
+      console.log(`[${FUNCTION_NAME}] X-Verify-Send: 1 — is_test send skip bypassed for order=${orderId}`);
+    }
+    if ((claim?.is_test === true || (buyerEmail && isTestAccount(buyerEmail))) && !verifySend) {
       console.log(`[${FUNCTION_NAME}] skipping test order ${orderId} (is_test=${claim?.is_test}, buyer=${buyerEmail})`);
       return json({ success: true, skipped: true, reason: "test_account" }, 200, corsHeaders);
     }
@@ -368,7 +380,7 @@ serve(async (req: Request) => {
       // the admin purchase-notification email could fail with zero record
       // of why. Log it and return a specific error instead.
       console.error(`[${FUNCTION_NAME}] send failed for order=${orderId}:`, sendErr);
-      await logNotificationFailure(
+      await logNotificationFailureLoud(
         (row) => sb.from("activity_log").insert(row),
         sendErr,
         {
@@ -376,8 +388,10 @@ serve(async (req: Request) => {
           recipientRole: order.requested_by_role || "homeowner",
           isTest: claim?.is_test === true,
           userId: order.user_id,
-          extra: { order_id: orderId, claim_id: order.claim_id },
+          extra: { order_id: orderId, claim_id: order.claim_id, verify_send: verifySend },
         },
+        // gh-1538: platform_alerts_log is the surface an operator watches.
+        (alert) => sb.from("platform_alerts_log").insert(alert),
       );
       return json({ error: "Failed to send notification" }, 502, corsHeaders);
     }
