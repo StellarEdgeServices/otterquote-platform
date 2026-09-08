@@ -241,6 +241,22 @@ SHAPE_PATTERNS = [
     # (not folded into HEX_RUN_20) because K/I are not hex digits, so an
     # AKIA... key does not reliably trip the hex-run pattern either.
     ("AWS_ACCESS_KEY_ID", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
+    # gh-1888: AKIA only covers the long-term access key ID prefix. AWS
+    # issues the identical 20-char [0-9A-Z]{16}-bodied shape under other
+    # prefixes for other principal types — same shape, same danger class,
+    # none caught by AWS_ACCESS_KEY_ID above:
+    #   ASIA = STS temporary/session access key ID (the gh-1888 gap itself —
+    #          same risk as a long-term key while the session is live)
+    #   AIDA = IAM user
+    #   AROA = assumed-role
+    #   AGPA = IAM group
+    # Kept as separate named classes (not folded into one alternation) so a
+    # sweep report names the specific principal type, mirroring why
+    # AWS_ACCESS_KEY_ID is its own class rather than merged into HEX_RUN_20.
+    ("AWS_TEMP_ACCESS_KEY_ID", re.compile(r"\bASIA[0-9A-Z]{16}\b")),
+    ("AWS_IAM_USER_ID", re.compile(r"\bAIDA[0-9A-Z]{16}\b")),
+    ("AWS_ASSUMED_ROLE_ID", re.compile(r"\bAROA[0-9A-Z]{16}\b")),
+    ("AWS_IAM_GROUP_ID", re.compile(r"\bAGPA[0-9A-Z]{16}\b")),
     ("JWT_SHAPED", re.compile(
         r"\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\b"  # full 3-segment JWT
         r"|\beyJ[A-Za-z0-9_-]{20,}\b"  # bare header/fragment, no dots
@@ -354,6 +370,8 @@ VALUE_SHAPE_SECRET_CLASSES = frozenset({
     "PRIVATE_KEY_PEM", "JSON_BLOB", "JWT_SHAPED", "STRIPE_LIVE_KEY",
     "STRIPE_WEBHOOK_SECRET", "GITHUB_PAT", "HEX_RUN_20",
     "GENERIC_BASE64_HIGH_ENTROPY", "AWS_ACCESS_KEY_ID",
+    "AWS_TEMP_ACCESS_KEY_ID", "AWS_IAM_USER_ID", "AWS_ASSUMED_ROLE_ID",
+    "AWS_IAM_GROUP_ID",
 })
 VALUE_SHAPE_BENIGN_CLASSES = frozenset({
     "URL_LIKE", "EMAIL_LIKE", "UUID_LIKE", "SHORT_LOW_ENTROPY", "EMPTY",
