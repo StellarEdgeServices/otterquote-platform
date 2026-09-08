@@ -10,28 +10,44 @@ name: Detector Negative Control Gate
 # cannot fire, shipped inside the fix for checkers that cannot fire. A PR
 # review on #1742 caught this before merge; this file is the fix.
 #
-# TWO STEPS, DELIBERATELY DIFFERENT FAILURE SEMANTICS -- see each step's
+# BOTH STEPS ARE NOW BUILD-FAILING (flipped by gh-1841) -- see each step's
 # comment for the reasoning:
 #   1. Self-test the gate's OWN logic       -> BUILD-FAILING (hard gate)
-#   2. Run the gate against this repo       -> ADVISORY (report-only, see below)
+#   2. Run the gate against this repo       -> BUILD-FAILING (flipped, see below)
 #
-# WHY ADVISORY FOR STEP 2, NOT BUILD-FAILING:
-# Run cold against `main` as of this workflow's landing, the gate already
-# reports GATE: FAIL with two pre-existing, known findings that predate this
-# workflow and are not this PR's defect: scripts/check-legal-surface-links.py
-# has one stale fixture (a 404 the fixture expects, #766, appears since
-# fixed), and scripts/schema-column-lint.py's declared extensions are not
-# fully reconciled against schema-lint.yml's push.paths (the .js/.ts/.tsx gap
-# this very gate exists to catch -- ironic, but real, and already true before
-# this workflow existed). Wiring this in as a REQUIRED, build-failing check
-# today would make it red on every single PR regardless of what that PR
-# touches, which is exactly this repo's Credential Shape Sweep since #1717:
-# a check nobody can ever make green trains everyone to ignore it, which is
-# worse than not having the check. Advisory-first, with a loud and complete
-# summary every run (never silent, never truncated), is the honest choice
-# until the two pre-existing findings above are cleared or explicitly
-# exempted -- at which point flipping this job's exit code to build-failing
-# is a one-line change (see step 2 below) and the natural next step.
+# WHY STEP 2 WAS ADVISORY UNTIL NOW, AND WHY IT IS SAFE TO FLIP:
+# Run cold against `main` as of this workflow's landing, the gate reported
+# GATE: FAIL with two pre-existing, known findings that predated this
+# workflow and were not that PR's defect: scripts/check-legal-surface-links.py
+# had one stale fixture (a negative control pinned to #766's 404, which was
+# fixed out from under it), and scripts/schema-column-lint.py's declared
+# extensions were not fully reconciled against schema-lint.yml's push.paths
+# (the .js/.ts/.tsx gap this very gate exists to catch -- ironic, but real,
+# and already true before this workflow existed). Wiring this in as a
+# REQUIRED, build-failing check at that point would have made it red on
+# every single PR regardless of what that PR touched, which is exactly this
+# repo's Credential Shape Sweep since #1717: a check nobody can ever make
+# green trains everyone to ignore it, which is worse than not having the
+# check. Advisory-first, with a loud and complete summary every run (never
+# silent, never truncated), was the honest choice until those findings were
+# cleared -- documented at the time as "a one-line change" once that
+# happened (see step 2 below).
+#
+# gh-1841 cleared both pre-existing findings, plus two brand-new ones this
+# same gate had already caught in advisory mode and nobody had acted on
+# (scripts/check-credential-claims.py and scripts/check-supabase-js-sri.py,
+# both detector-shaped, both shipped with no self-test -- precisely the
+# instance-1/2/4 shape this gate exists to catch, arriving twice more while
+# advisory): scripts/check-legal-surface-links.test.py's negative control no
+# longer pins to a specific tracked defect (#766) that can be fixed out from
+# under it; scripts/schema-lint.yml's push trigger dropped its stale
+# paths: filter to match the pull_request trigger's already-reviewed,
+# unfiltered posture (PR #1740 comment 5560891984); and
+# check-credential-claims.py / check-supabase-js-sri.py each gained a real
+# self-test with its own negative control. `python
+# scripts/detector-negative-control-check.py` now reports VIOLATIONS: 0 /
+# GATE: PASS on `main` -- the precondition this comment named for the flip.
+# Step 2 below now propagates its exit code instead of neutralizing it.
 #
 # NOT REPEATING INSTANCE 3 (PR #1737: a new step crashed and silently
 # short-circuited a job, killing a pre-existing check that ran later in the
@@ -103,23 +119,25 @@ jobs:
       - name: Self-test the gate's own detection logic
         run: python scripts/detector-negative-control-check.test.py
 
-      # ADVISORY. See the workflow-level comment above for why. The step's
-      # own exit code is captured and neutralized (`|| true`) so a crash or a
-      # FAIL verdict here can never fail this job or block a merge; the full,
-      # untruncated report is always written to the job summary instead, so
-      # a finding is loud without being a gate. `set +e` / manual exit-code
-      # capture is used instead of `continue-on-error: true` so the step's
-      # own status still reads green in the Actions UI rather than showing a
-      # misleading "failed but continued" warning icon for a state that is
-      # working exactly as designed.
-      - name: Run the gate against this repo (report-only)
+      # BUILD-FAILING as of gh-1841 (previously advisory -- see the
+      # workflow-level comment above for the history and the precondition
+      # that made this safe). The exit code is still captured into
+      # $GITHUB_OUTPUT first (so the job-summary step below can report it,
+      # and so the report/artifact steps below still run via `if: always()`
+      # even on failure), but it is no longer neutralized: `|| code=$?`
+      # only stops `set -e` from killing the script mid-capture (standard
+      # bash: a command on the left of `||` doesn't trigger -e), and the
+      # explicit `exit "$code"` at the end propagates a non-zero verdict to
+      # the job for real. No `set +e` / `set -e` toggling and no `|| true`
+      # remain in this step.
+      - name: Run the gate against this repo
         id: gate
         run: |
-          set +e
-          python scripts/detector-negative-control-check.py > gate-report.txt 2>&1
-          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
-          set -e
+          python scripts/detector-negative-control-check.py > gate-report.txt 2>&1 || code=$?
+          : "${code:=0}"
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           cat gate-report.txt
+          exit "$code"
 
       - name: Publish gate report to the job summary
         if: always()
@@ -127,7 +145,7 @@ jobs:
           {
             echo "# Detector Negative Control Gate (gh-1738)"
             echo
-            echo "Exit code: \`${{ steps.gate.outputs.exit_code }}\` -- ADVISORY, does not block this PR."
+            echo "Exit code: \`${{ steps.gate.outputs.exit_code }}\` -- BUILD-FAILING as of gh-1841: a non-zero value here already failed this job."
             echo
             echo '```'
             cat gate-report.txt 2>/dev/null || echo "(no report produced -- see the step log above)"
