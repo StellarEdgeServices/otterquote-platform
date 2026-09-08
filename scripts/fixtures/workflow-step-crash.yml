@@ -1,0 +1,51 @@
+# gh-1840 control-2 fixture: a minimal, deliberately-stubbed reproduction of
+# PR #1737's real ordering defect (commit dd05d10 on wm/gh1700-crm-ef-drift-hthf,
+# caught by review before merge -- see the merged edge-function-drift.yml's own
+# "gh-1737 review" comment on its "Self-test the remote-project detector"
+# step). The NEW step "Self-test the remote-project detector (otter-crm)" was
+# placed BEFORE "Install Supabase CLI", and its self-test at the time called
+# the real require_cli() (no fake yet), so it crashed for lack of the CLI --
+# short-circuiting the job before "Check deployed Edge Functions against
+# main", an unrelated, PRE-EXISTING step later in the same job, ever ran.
+# No `if: always()` on that step means GitHub Actions auto-skips it once an
+# earlier step in the same job fails -- see scripts/fixtures/
+# workflow-step-crash.job.json for the resulting Actions API step shape this
+# repro produces (skipped, not "did not need to run").
+#
+# This YAML is illustrative only -- scripts/workflow-step-unrun-check.py does
+# not parse workflow YAML; it reads a run's own JOB RESULT JSON (the Actions
+# API "get a job for a workflow run" shape), which is what actually carries
+# each step's conclusion. See that script's module docstring.
+name: Edge Function Drift (fixture)
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  drift:
+    name: Deployed source vs main
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # NEW step, added in the same PR as the crash. At the time this ran,
+      # it called the real require_cli() instead of a fixture-injected fake
+      # -- crashes here because the CLI is not yet on PATH.
+      - name: Self-test the remote-project detector (otter-crm)
+        run: python3 scripts/edge-function-drift-remote.test.py
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v3
+        with:
+          version: 2.116.0
+
+      # PRE-EXISTING step, unrelated to the new one above. Never runs once
+      # the step above crashes -- GitHub Actions auto-skips every subsequent
+      # step in the job by default.
+      - name: Check deployed Edge Functions against main
+        run: python3 scripts/edge-function-drift-check.py --project-ref x
+
+      - name: Publish drift table to the job summary
+        if: always()
+        run: echo "publishes even on failure"

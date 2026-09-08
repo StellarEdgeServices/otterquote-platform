@@ -220,6 +220,21 @@ DETECTOR_REGISTRY = {
         "test": "scripts/drift-detector-age.test.py",
         "negative_tokens": ["STALE", "UNMEASURED"],
     },
+    # gh-1840 control 1 -- severed from #1738's LIMITATIONS ("a
+    # test-authoring-order defect in a Playwright spec ... out of reach for
+    # a static check at this scope" -- this is that check).
+    "scripts/spec-spy-order-check.py": {
+        "test": "scripts/spec-spy-order-check.test.py",
+        "negative_tokens": ["SPY_UNVERIFIED"],
+    },
+    # gh-1840 control 2 -- severed from #1738's LIMITATIONS ("a job-ordering
+    # / fail-open-vs-fail-closed property of a workflow's step sequence ...
+    # CHECK 2's reconciliation logic does not model step ordering" -- this
+    # is that check).
+    "scripts/workflow-step-unrun-check.py": {
+        "test": "scripts/workflow-step-unrun-check.test.py",
+        "negative_tokens": ["UNRUN"],
+    },
 }
 
 # Detector-shaped scripts that predate this gate (gh-1738) and have no test file

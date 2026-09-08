@@ -1,0 +1,17 @@
+{
+  "_comment": "gh-1840 control-2 good fixture -- same job shape as workflow-step-crash.job.json but every step succeeded (the ordering fix: 'Install Supabase CLI' before the self-test, and a fake require_cli() in the self-test itself, per the real 'gh-1737 review fix' commit). scripts/workflow-step-unrun-check.py must be silent (no UNRUN lines) on this fixture.",
+  "id": 33900000003,
+  "run_id": 33900000002,
+  "name": "drift",
+  "status": "completed",
+  "conclusion": "success",
+  "steps": [
+    { "name": "Set up job", "status": "completed", "conclusion": "success", "number": 1 },
+    { "name": "Run actions/checkout@v4", "status": "completed", "conclusion": "success", "number": 2 },
+    { "name": "Install Supabase CLI", "status": "completed", "conclusion": "success", "number": 3 },
+    { "name": "Self-test the remote-project detector (otter-crm)", "status": "completed", "conclusion": "success", "number": 4 },
+    { "name": "Check deployed Edge Functions against main", "status": "completed", "conclusion": "success", "number": 5 },
+    { "name": "Publish drift table to the job summary", "status": "completed", "conclusion": "success", "number": 6 },
+    { "name": "Complete job", "status": "completed", "conclusion": "success", "number": 7 }
+  ]
+}
