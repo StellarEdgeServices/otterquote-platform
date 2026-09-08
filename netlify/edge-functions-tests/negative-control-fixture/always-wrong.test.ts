@@ -12,13 +12,23 @@
 // If this file is ever changed to pass, or the CI step stops asserting
 // this command's exit code is non-zero, the gate has gone blind exactly
 // like the four original gh-1738 instances did.
+//
+// DISTINCTIVE MARKER (PR #1820 review comment 5577474087): a bare non-zero
+// exit code is not enough -- a missing/renamed fixture file ALSO makes
+// `deno test` exit non-zero ("Import ... failed, not found"), so a workflow
+// step that only checks the exit code would report "observed failing as
+// expected" for the wrong reason, which is a vacuous gate of exactly the
+// class gh-1738 exists to catch. Both assertions below carry the literal
+// string NEGATIVE-CONTROL-EXPECTED-FAILURE-gh1738 so the workflow step can
+// grep the captured output for it and distinguish "the fixture's own
+// deliberate assertion fired" from "the file could not be found/loaded."
 
 import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 
 // A stub "handler" shaped like a real edge function, that always throws --
 // the "stub that always throws" shape named in the work order.
 async function alwaysThrowingHandler(): Promise<Response> {
-  throw new Error("negative-control: this handler always throws by design");
+  throw new Error("NEGATIVE-CONTROL-EXPECTED-FAILURE-gh1738: this handler always throws by design");
 }
 
 Deno.test("negative control: asserts a value that can never match (must FAIL every run)", () => {
@@ -26,7 +36,7 @@ Deno.test("negative control: asserts a value that can never match (must FAIL eve
   // Deliberately wrong: 1 + 1 is 2, never 3. If this ever reads `ok`, the
   // test command is not actually being executed, or assertEquals has
   // stopped asserting.
-  assertEquals(actual, 3, "deliberately wrong assertion -- must fail every run");
+  assertEquals(actual, 3, "NEGATIVE-CONTROL-EXPECTED-FAILURE-gh1738: deliberately wrong assertion -- must fail every run");
 });
 
 Deno.test("negative control: a handler that always throws must be observed throwing, unhandled", async () => {

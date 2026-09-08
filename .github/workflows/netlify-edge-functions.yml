@@ -126,21 +126,62 @@ jobs:
       # that fixture exits 0, this step fails the job with an explicit
       # message: the gate itself has gone blind, exactly the shape gh-1738
       # was filed to end, and that must never pass silently.
+      #
+      # A bare non-zero exit code is NOT enough (PR #1820 review comment
+      # 5577474087): a missing/renamed fixture file also makes `deno test`
+      # exit non-zero ("Import ... failed, not found"), which is an
+      # unrelated error, not the fixture's own deliberate assertion firing.
+      # A step that only checked the exit code would report "observed
+      # failing as expected" in that case too -- a vacuous gate, exactly the
+      # defect class gh-1738 exists to catch, now latent in the control
+      # meant to guarantee it can't recur. This step therefore requires
+      # THREE things together, not just one:
+      #   1. the fixture file exists before it is even run;
+      #   2. `deno test` exits non-zero; and
+      #   3. the captured output both shows Deno's own "N passed | M failed"
+      #      summary line (proof the test actually ran to completion, not a
+      #      module-load/not-found error) AND contains the fixture's
+      #      distinctive marker string, NEGATIVE-CONTROL-EXPECTED-FAILURE-gh1738
+      #      (proof the failure is the fixture's own assertion, not some
+      #      other unrelated non-zero exit).
       - name: Negative control -- observe the test command actually failing
         id: negctrl
         if: always()
         run: |
           set +e
-          out=$(deno test netlify/edge-functions-tests/negative-control-fixture/always-wrong.test.ts 2>&1)
-          code=$?
-          clean=$(echo "$out" | sed -E 's/\x1B\[[0-9;]*[mK]//g')
-          echo "$clean"
-          if [ "$code" -eq 0 ]; then
-            echo "::error::Negative control PASSED -- it must always FAIL. The test command is no longer capable of failing, which means the tests above prove nothing. This is the exact defect class gh-1738 exists to catch, occurring in the gate meant to catch it."
+          FIXTURE="netlify/edge-functions-tests/negative-control-fixture/always-wrong.test.ts"
+          MARKER="NEGATIVE-CONTROL-EXPECTED-FAILURE-gh1738"
+
+          if [ ! -f "$FIXTURE" ]; then
+            echo "::error::negative-control fixture missing ($FIXTURE) -- cannot observe a deliberate failure that never ran. A missing/renamed fixture also makes 'deno test' exit non-zero for an UNRELATED reason (module not found), which would otherwise be misread as the control working. This check catches that before the test command even runs."
             echo "negctrl_observed_failing=false" >> "$GITHUB_OUTPUT"
             exit 1
           fi
-          echo "Negative control observed FAILING as expected (exit $code) -- the test command can fail, so the passing suite above is evidence."
+
+          deno test "$FIXTURE" > nc.log 2>&1
+          code=$?
+          clean=$(sed -E 's/\x1B\[[0-9;]*[mK]//g' nc.log)
+          echo "$clean"
+
+          if [ "$code" -eq 0 ]; then
+            echo "::error::negative control PASSED -- it must always FAIL. The test command is no longer capable of failing, which means the tests above prove nothing. This is the exact defect class gh-1738 exists to catch, occurring in the gate meant to catch it."
+            echo "negctrl_observed_failing=false" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          if ! echo "$clean" | grep -qE '(FAILED \| )?[0-9]+ passed \| [0-9]+ failed'; then
+            echo "::error::negative control did not actually run -- no Deno test summary line ('N passed | M failed') found in the output, which means 'deno test' exited non-zero for a reason OTHER than the fixture's own assertion (e.g. a module-load or not-found error). That would be a vacuous pass of this gate -- the same blind-gate defect class gh-1738 exists to catch, now latent in the control meant to guarantee it can't recur."
+            echo "negctrl_observed_failing=false" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          if ! echo "$clean" | grep -qF "$MARKER"; then
+            echo "::error::negative control did not fail for the right reason -- expected marker '$MARKER' not found in the test output, even though a Deno test summary line was present. This means some assertion other than the fixture's own deliberately-wrong one is what failed, so this is not the observation the gate exists to make."
+            echo "negctrl_observed_failing=false" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          echo "Negative control observed FAILING for the right reason (exit $code, fixture present, test summary line present, marker '$MARKER' present) -- the test command can fail on its own deliberate assertion, so the passing suite above is evidence."
           echo "negctrl_observed_failing=true" >> "$GITHUB_OUTPUT"
           echo "negctrl_exit=$code" >> "$GITHUB_OUTPUT"
 
