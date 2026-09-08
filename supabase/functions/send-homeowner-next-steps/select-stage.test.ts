@@ -3,9 +3,12 @@
 
 import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
+  type ActivityLogRow,
   FORTY_EIGHT_HOURS_MS,
   isNudgeEligibleStatus,
   type NudgeStage,
+  reduceActivityRows,
+  screenClaim,
   selectStage,
   STAGE_GAP_MS,
   TWO_HOURS_MS,
@@ -126,4 +129,172 @@ Deno.test("a full simulated hourly cron over a first-run backlog claim (age 752h
 Deno.test("malformed timestamps fail closed", () => {
   assertEquals(selectStage({ id: "c", created_at: "not-a-date" }, none, NOW), null);
   assertEquals(selectStage(claimAged(100 * H), new Map([["2h", "garbage"]]), NOW), null);
+});
+
+// ── gh-1580 acceptance test (CTO RUN 28, comment 5572642959) ────────────────
+//
+// "seed one is_test homeowner claim at documents_needed with zero
+//  activity_log rows and zero hover_orders, invoke send-homeowner-next-steps
+//  by hand, and assert EXACTLY ONE activity_log row with
+//  event_type = 'next_steps_nudge_sent'; then add a single activity_log row
+//  to that claim, invoke again, and assert ZERO further nudges."
+//
+// Both halves, on the real screen index.ts calls. The second half is the one
+// that can fail: a screen that nudges a claim which has since moved is #1786's
+// defect made worse, and a strip that pins every new claim is not a detector.
+
+const NUDGE_EVENT = "next_steps_nudge_sent";
+const OPTOUT_EVENT = "homeowner_nudge_opt_out";
+const USER = "u-homeowner-1";
+const CLAIM = "claim-1";
+
+const seededClaim = (ageMs: number, status = "documents_needed") => ({
+  id: CLAIM,
+  user_id: USER,
+  status,
+  created_at: new Date(NOW - ageMs).toISOString(),
+});
+
+const screen = (
+  claim: ReturnType<typeof seededClaim>,
+  rows: ActivityLogRow[],
+  opts: { optedOut?: string[]; hover?: string[] } = {},
+) =>
+  screenClaim(claim, {
+    optedOutClaimIds: new Set(opts.optedOut ?? []),
+    claimIdsWithHoverOrder: new Set(opts.hover ?? []),
+    reduced: reduceActivityRows(rows, NUDGE_EVENT, OPTOUT_EVENT),
+    now: NOW,
+  });
+
+const nudgeStamp = (stage: NudgeStage, ago: number): ActivityLogRow => ({
+  user_id: USER,
+  event_type: NUDGE_EVENT,
+  metadata: { claim_id: CLAIM, nudge_stage: stage },
+  created_at: new Date(NOW - ago).toISOString(),
+});
+
+const realRow = (ago: number, type = "claim_documents_uploaded"): ActivityLogRow => ({
+  user_id: USER,
+  event_type: type,
+  metadata: null,
+  created_at: new Date(NOW - ago).toISOString(),
+});
+
+Deno.test("ACCEPTANCE half 1 — zero activity_log rows, zero hover_orders, 2h old: EXACTLY ONE nudge, stage '2h'", () => {
+  const d = screen(seededClaim(3 * H), []);
+  assertEquals(d.stage, "2h");
+  assertEquals(d.skipped_reason, undefined);
+});
+
+Deno.test("ACCEPTANCE half 2 — ONE real activity_log row after signup: ZERO further nudges (the discriminating half)", () => {
+  const d = screen(seededClaim(3 * H), [realRow(1 * H)]);
+  assertEquals(d.stage, null);
+  assertEquals(d.skipped_reason, "real_activity_since_created");
+});
+
+Deno.test("half 2 still holds at 48h+ — a claim that moved is never back-filled with the '48h' email either", () => {
+  const d = screen(seededClaim(200 * H), [realRow(150 * H)]);
+  assertEquals(d.stage, null);
+  assertEquals(d.skipped_reason, "real_activity_since_created");
+});
+
+Deno.test("NEGATIVE CONTROL — activity BEFORE the claim existed does not disqualify it (a screen that skips everything is not a screen)", () => {
+  // 5h-old claim, an activity row from before it was created (a prior claim
+  // by the same homeowner). The handler's predicate is lastReal > created_at.
+  const d = screen(seededClaim(5 * H), [realRow(9 * H)]);
+  assertEquals(d.stage, "2h");
+  assertEquals(d.skipped_reason, undefined);
+});
+
+Deno.test("our OWN nudge stamp is not 'real activity' — otherwise the '2h' send would disqualify its own '48h' follow-up", () => {
+  const d = screen(seededClaim(50 * H), [nudgeStamp("2h", 48 * H)]);
+  assertEquals(d.skipped_reason, undefined);
+  assertEquals(d.stage, "48h");
+});
+
+Deno.test("gh-1786 — an opt-out row is not 'real activity' and never looks like homeowner progress", () => {
+  const optOutRow: ActivityLogRow = {
+    user_id: USER,
+    event_type: OPTOUT_EVENT,
+    metadata: { claim_id: CLAIM },
+    created_at: new Date(NOW - 1 * H).toISOString(),
+  };
+  // Not counted as movement...
+  const reduced = reduceActivityRows([optOutRow], NUDGE_EVENT, OPTOUT_EVENT);
+  assertEquals(reduced.realActivityByUser.size, 0);
+  // ...and the claim is screened out by the opt-out gate, not by activity.
+  const d = screen(seededClaim(3 * H), [optOutRow], { optedOut: [CLAIM] });
+  assertEquals(d.stage, null);
+  assertEquals(d.skipped_reason, "opted_out");
+});
+
+Deno.test("gate order — opt-out is decided before hover_orders and before stage selection", () => {
+  const d = screen(seededClaim(3 * H), [], { optedOut: [CLAIM], hover: [CLAIM] });
+  assertEquals(d.skipped_reason, "opted_out");
+});
+
+Deno.test("a hover_orders row disqualifies the claim (it took the paid path, not the stalled one)", () => {
+  const d = screen(seededClaim(3 * H), [], { hover: [CLAIM] });
+  assertEquals(d.stage, null);
+  assertEquals(d.skipped_reason, "has_hover_order");
+});
+
+Deno.test("status gate survives the extraction — a draft is screened out before anything else", () => {
+  assertEquals(screen(seededClaim(3 * H, "draft"), []).skipped_reason, "ineligible_status");
+  assertEquals(screen(seededClaim(3 * H, "bidding"), []).skipped_reason, "ineligible_status");
+});
+
+Deno.test("duplicate stamps for one stage: the EARLIEST wins (pre-#1725 race must not delay the '48h' send)", () => {
+  const reduced = reduceActivityRows(
+    [nudgeStamp("2h", 10 * H), nudgeStamp("2h", 48 * H)],
+    NUDGE_EVENT,
+    OPTOUT_EVENT,
+  );
+  assertEquals(
+    reduced.nudgeSentByClaim.get(CLAIM)?.get("2h"),
+    new Date(NOW - 48 * H).toISOString(),
+  );
+});
+
+Deno.test("a nudge stamp carrying no claim_id / an unknown stage is ignored rather than trusted", () => {
+  const rows: ActivityLogRow[] = [
+    { user_id: USER, event_type: NUDGE_EVENT, metadata: { nudge_stage: "2h" }, created_at: new Date(NOW).toISOString() },
+    { user_id: USER, event_type: NUDGE_EVENT, metadata: { claim_id: CLAIM, nudge_stage: "9h" }, created_at: new Date(NOW).toISOString() },
+  ];
+  const reduced = reduceActivityRows(rows, NUDGE_EVENT, OPTOUT_EVENT);
+  assertEquals(reduced.nudgeSentByClaim.size, 0);
+  assertEquals(reduced.realActivityByUser.size, 0); // and they are not "real activity" either
+});
+
+Deno.test("the full acceptance sequence, run as the cron would: nudge, then movement, then silence forever", () => {
+  const created = NOW;
+  const rows: ActivityLogRow[] = [];
+  const sent: { stage: NudgeStage; atH: number }[] = [];
+  for (let h = 0; h <= 200; h++) {
+    const t = created + h * H;
+    // The homeowner uploads one document at h=10 — real movement.
+    if (h === 10) rows.push({ ...realRow(0), created_at: new Date(t).toISOString() });
+    const d = screenClaim(
+      { id: CLAIM, user_id: USER, status: "documents_needed", created_at: new Date(created).toISOString() },
+      {
+        optedOutClaimIds: new Set<string>(),
+        claimIdsWithHoverOrder: new Set<string>(),
+        reduced: reduceActivityRows(rows, NUDGE_EVENT, OPTOUT_EVENT),
+        now: t,
+      },
+    );
+    if (d.stage) {
+      sent.push({ stage: d.stage, atH: h });
+      rows.push({
+        user_id: USER,
+        event_type: NUDGE_EVENT,
+        metadata: { claim_id: CLAIM, nudge_stage: d.stage },
+        created_at: new Date(t).toISOString(),
+      });
+    }
+  }
+  // Exactly one email: the '2h' at h=2. The h=10 upload stops the series —
+  // the '48h' email that WOULD have gone at h=48 never does.
+  assertEquals(sent, [{ stage: "2h", atH: 2 }]);
 });

@@ -110,3 +110,39 @@ Deno.test("gh-1314: the price gate precedes every path to money", () => {
       "A mismatch must block the invoice, not be discovered after money moves.",
   );
 });
+
+/* [#1314 step 4, 2026-09-08] The verdict must be RECORDED, and recorded before
+ * the branches that return early. */
+
+Deno.test("gh-1314 step 4: the verdict is persisted BEFORE the disposition branches", () => {
+  const verdictAt = code.indexOf("const verdict = priceVerdictFor(signerStatusResult, expected);");
+  const persistAt = code.indexOf("await persistSignedPriceVerdict(supabase, claim.id, signerStatusResult, verdict)");
+  const dispositionAt = code.indexOf("const disposition = dispositionFor(verdict);");
+  assertEquals(verdictAt > -1 && persistAt > -1 && dispositionAt > -1, true, "expected call sites missing");
+  assertEquals(
+    verdictAt < persistAt && persistAt < dispositionAt,
+    true,
+    "REGRESSION (gh-1314 step 4): the persistence write no longer sits between the verdict and the " +
+      "disposition chain. The halt branches return early, so a write inside them records every " +
+      "verdict EXCEPT the halting ones — which are the ones this issue exists to make queryable.",
+  );
+});
+
+Deno.test("gh-1314 step 4: the fail-closed catch records its verdict too", () => {
+  const catchAt = code.indexOf("} catch (priceErr) {");
+  const tail = code.slice(catchAt, catchAt + 2500);
+  assertStringIncludes(tail, "await persistSignedPriceVerdict(supabase, claim.id, null, verdict)");
+});
+
+Deno.test("gh-1314 step 4: a REJECTED persistence write is logged, not swallowed", () => {
+  // PostgREST reports a rejected write in `error` on a RESOLVED promise; it does
+  // not throw. A bare try/catch would swallow a missing column or a violated
+  // CHECK in silence — the #1538 failure mode.
+  assertStringIncludes(src, "signed-price persistence REJECTED");
+  assertEquals(
+    /const \{ error \} = await supabase\s*\n?\s*\.from\("claims"\)/.test(src),
+    true,
+    "REGRESSION (gh-1314 step 4): the persistence write no longer inspects PostgREST's `error`, " +
+      "so a rejected write is silent.",
+  );
+});

@@ -57,6 +57,15 @@ jobs:
         with:
           python-version: '3.11'
 
+      # gh-1314 / PR #1856: the linter now has one way NOT to fail -- a column
+      # declared pending in sql/schema-pending.json against a drafted migration.
+      # An escape hatch on a fail-hard money-path check is worth exactly as much
+      # as the test that shows it cannot be widened by accident, so that test runs
+      # FIRST, in this same job: an undeclared column must still fail, a missing
+      # migration file must fail, and a stale declaration must fail.
+      - name: Pending-column mechanism, proof of detection
+        run: python3 scripts/schema-column-lint.test.py
+
       # FAIL-HARD MODE: All violations cleared in PR #148 (2026-05-26).
       # Any new FAIL line will block the PR. See ADR-010 for column contract rules.
       - name: Run schema column linter

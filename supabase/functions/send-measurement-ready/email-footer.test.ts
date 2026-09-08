@@ -2,12 +2,13 @@
 //
 // Run: deno test supabase/functions/<function>/email-footer.test.ts
 //
-// CEO Tier B ruling (2026-09-08, on R-177 LEGAL-READ FAIL ceo35-legalread-j):
-// until #1824 is answered, the postal-address line is OMITTED ENTIRELY. The
-// tripwire below is the INVERSE of the version this replaces: the prior test
-// asserted the literal token `{{POSTAL_ADDRESS}}` WAS the rendered value —
-// this one FAILS the moment a literal placeholder ever reaches either
-// renderer again, and PASSES on omission (empty string / no element).
+// #1824 is ANSWERED (Dustin's ruling, comment 5583808162, 2026-09-08T10:35:53Z):
+// POSTAL_ADDRESS is the D-237 mailbox address. The tests below were originally
+// written against the un-answered (empty/omitted) state; they are updated
+// here to assert the resolved state instead. The placeholder-token tripwire
+// is unchanged: it still FAILS the moment either renderer emits the literal
+// `{{POSTAL_ADDRESS}}` token, and PASSES as long as the render path only ever
+// carries the real constant.
 
 import {
   assertEquals,
@@ -21,12 +22,14 @@ import {
   POSTAL_ADDRESS_PLACEHOLDER,
 } from "./email-footer.ts";
 
-Deno.test("gh-1824: the address is omitted, not a literal placeholder — Dustin has not answered yet", () => {
-  // TRIPWIRE, not an aspiration. When #1824 is answered and POSTAL_ADDRESS
-  // becomes a real address, this assertion flips and the change is visible
-  // in the test run, not silent.
-  assertEquals(POSTAL_ADDRESS, "");
-  assertEquals(isPostalAddressResolved(), false);
+Deno.test("gh-1824: the D-237 mailbox address is the resolved constant, not a placeholder", () => {
+  // #1824 is answered (comment 5583808162): POSTAL_ADDRESS is the D-237
+  // mailbox address, and isPostalAddressResolved() flips to true.
+  assertEquals(
+    POSTAL_ADDRESS,
+    "Stellar Edge Services, LLC d/b/a Otter Quotes · 3410 N High School Rd, Ste G #102, Indianapolis, IN 46224",
+  );
+  assertEquals(isPostalAddressResolved(), true);
 });
 
 Deno.test("gh-1824: both renderers emit whatever the single constant holds — no second source", () => {
@@ -44,13 +47,18 @@ Deno.test("gh-1824: the placeholder token never reaches the render path — FAIL
   assertEquals(html.includes("{{"), false);
 });
 
-Deno.test("gh-1824: the un-answered state emits no address line at all", () => {
-  // Omission means nothing to find in the rendered message — not an empty
-  // element sitting where the address would go.
+Deno.test("gh-1824: the resolved state emits the address line, not an empty render", () => {
   const text: string = footerPostalAddressText();
   const html: string = footerPostalAddressHtml();
-  assertEquals(text.length, 0);
-  assertEquals(html.length, 0);
+  assertEquals(text.length > 0, true);
+  assertEquals(html.length > 0, true);
+});
+
+Deno.test("gh-1824: the D-237 mailbox address line is present in both renderers (Dustin's ruling, comment 5583808162)", () => {
+  const expected =
+    "Stellar Edge Services, LLC d/b/a Otter Quotes · 3410 N High School Rd, Ste G #102, Indianapolis, IN 46224";
+  assertEquals(footerPostalAddressText(), expected);
+  assertStringIncludes(footerPostalAddressHtml(), expected);
 });
 
 Deno.test("gh-1824: the retired literal-token constant is still greppable, for the historical record", () => {

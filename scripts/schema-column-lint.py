@@ -36,6 +36,18 @@ from pathlib import Path
 
 SCHEMA_FILE_DEFAULT = "sql/schema-snapshot.json"
 
+# gh-1314 / PR #1856 REVIEW blocker 2. Columns a merged writer uses whose
+# migration is drafted but NOT YET APPLIED. Declared in one greppable file so
+# the gap is loud rather than silent, and so it cannot outlive itself:
+#   - each entry names the migration file, which must exist;
+#   - a declared column that IS already in the snapshot is a STALE declaration
+#     and fails the lint until the entry is deleted.
+# This is deliberately NOT a suppression list. Before it, the only two ways to
+# merge a writer ahead of its migration were to leave `main` red with no owner
+# named, or to hide the write behind a non-literal argument -- which downgrades
+# a hard violation to a WARN that nobody reads. See the file's own _README.
+PENDING_FILE_DEFAULT = "sql/schema-pending.json"
+
 # File extensions to scan
 SCAN_EXTENSIONS = {".html", ".js", ".ts", ".tsx", ".jsx"}
 
@@ -73,6 +85,54 @@ def load_schema(schema_path: str) -> dict[str, set[str]]:
     with open(schema_path) as f:
         raw = json.load(f)
     return {tbl: set(cols) for tbl, cols in raw.items()}
+
+
+def load_pending(pending_path: str, schema: dict[str, set[str]]) -> dict[tuple[str, str], dict]:
+    """Load sql/schema-pending.json -> {(table, column): entry}.
+
+    Fails hard (exit 2) on a declaration that is malformed, names a migration
+    file that does not exist, or has gone stale because the column now exists in
+    the snapshot. A gap that has closed must be deleted, not left standing.
+    """
+    if not os.path.exists(pending_path):
+        return {}
+    with open(pending_path) as f:
+        raw = json.load(f)
+
+    pending: dict[tuple[str, str], dict] = {}
+    errors: list[str] = []
+    root = os.path.dirname(os.path.dirname(os.path.abspath(pending_path)))
+    for table, cols in raw.items():
+        if table.startswith("_"):
+            continue  # _README and friends
+        if not isinstance(cols, dict):
+            errors.append(f"{table}: expected an object of column -> entry")
+            continue
+        for col, entry in cols.items():
+            if not isinstance(entry, dict) or "migration" not in entry or "issue" not in entry:
+                errors.append(f"{table}.{col}: each entry needs at least 'migration' and 'issue'")
+                continue
+            mig = os.path.join(root, entry["migration"])
+            if not os.path.exists(mig):
+                errors.append(
+                    f"{table}.{col}: declared migration '{entry['migration']}' does not exist. "
+                    "A pending declaration must point at the migration that closes it."
+                )
+                continue
+            if col in schema.get(table, set()):
+                errors.append(
+                    f"{table}.{col}: STALE declaration — this column IS in the schema snapshot now. "
+                    "The migration has landed; delete this entry from sql/schema-pending.json."
+                )
+                continue
+            pending[(table, col)] = entry
+
+    if errors:
+        print("ERROR: sql/schema-pending.json is not usable as written:", file=sys.stderr)
+        for e in errors:
+            print(f"  {e}", file=sys.stderr)
+        sys.exit(2)
+    return pending
 
 
 # ---------------------------------------------------------------------------
@@ -381,6 +441,11 @@ def main() -> int:
         help=f"Path to schema snapshot JSON (relative to --root; default: {SCHEMA_FILE_DEFAULT})",
     )
     parser.add_argument(
+        "--pending",
+        default=PENDING_FILE_DEFAULT,
+        help=f"Path to the pending-column declarations (relative to --root; default: {PENDING_FILE_DEFAULT})",
+    )
+    parser.add_argument(
         "--warn-only",
         action="store_true",
         help="Print violations as warnings and exit 0 (for gradual rollout)",
@@ -390,6 +455,7 @@ def main() -> int:
     repo_root = os.path.abspath(args.root)
     schema_path = os.path.join(repo_root, args.schema)
     schema = load_schema(schema_path)
+    pending = load_pending(os.path.join(repo_root, args.pending), schema)
 
     violations: list[dict] = []
     warnings: list[dict] = []
@@ -422,6 +488,21 @@ def main() -> int:
     for w in sorted(warnings, key=lambda x: (x["file"], x["line"])):
         print(f"WARN  {w['file']}:{w['line']} — {w['message']}")
 
+    # gh-1314: a violation whose column is DECLARED pending is reported loudly on
+    # its own line, every run, and does not fail the build. Everything else is
+    # still a hard failure.
+    pending_hits = [v for v in violations if (v["table"], v["bad_col"]) in pending]
+    violations = [v for v in violations if (v["table"], v["bad_col"]) not in pending]
+
+    for v in sorted(pending_hits, key=lambda x: (x["file"], x["line"])):
+        entry = pending[(v["table"], v["bad_col"])]
+        print(
+            f"PENDING  {v['file']}:{v['line']} — column '{v['bad_col']}' on '{v['table']}' is not in the "
+            f"schema snapshot yet; declared in {PENDING_FILE_DEFAULT} against {entry['migration']} "
+            f"({entry['issue']}). This is a DECLARED gap, not a clean bill of health: the writer is "
+            f"merged and the migration is not applied."
+        )
+
     for v in sorted(violations, key=lambda x: (x["file"], x["line"])):
         print(f"FAIL  {v['file']}:{v['line']} — {v['message']}")
 
@@ -429,8 +510,15 @@ def main() -> int:
     print(
         f"Scanned {files_scanned} files | "
         f"{len(violations)} violation(s) | "
+        f"{len(pending_hits)} pending | "
         f"{len(warnings)} warning(s)"
     )
+    if pending_hits:
+        print(
+            f"{len(pending_hits)} write(s) target columns whose migration has NOT been applied. "
+            "Apply the migrations named above, refresh sql/schema-snapshot.json, then delete their "
+            "entries from sql/schema-pending.json — a stale declaration fails this check."
+        )
 
     if violations:
         print("Schema contract check FAILED.")
