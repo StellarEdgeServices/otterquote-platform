@@ -85,6 +85,18 @@ to only what got built. Instances 1 and 3 need a different mechanism; this issue
 mechanism is not a census of all five, only of shapes #2, #4, and (the harder half)
 #5.
 
+  UPDATE (gh-1840): that different mechanism now exists --
+  scripts/behavioural-ordering-check.py, wired by
+  .github/workflows/behavioural-ordering.yml. It does not attempt the general
+  problem this block correctly called out of reach ("semantic understanding of
+  *when* an assertion's precondition was established"). It checks the specific
+  ORDERED property that made #1720 fail -- a spy installer must refuse on
+  `typeof <target> !== 'function'` BEFORE it replaces the binding -- and, for
+  #1737, flags a verification step that can only run if an earlier verification
+  step did not crash. The paragraphs above are left standing as the record of
+  what this gate does and does not cover; they are not amended, because the
+  limitation described is still true OF THIS FILE.
+
 Zero-discovery roots -- history of this gap, and its current state
 --------------------------------------------------------------------
 A root with no scripts/ directory and no .github/workflows/ directory makes every

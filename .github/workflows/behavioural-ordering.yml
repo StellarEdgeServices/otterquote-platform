@@ -1,0 +1,65 @@
+name: Behavioural Ordering Gate
+
+# gh-1840 -- the successor gate for the two shapes gh-1738 explicitly SEVERED
+# to a successor issue and which scripts/detector-negative-control-check.py
+# names in its own LIMITATIONS block as out of reach for its technique:
+#
+#   instance 1 (PR #1720): a spy installed on a target it never proved existed,
+#     manufacturing the binding the spec asserted -- "11 passed" over four
+#     money-path handlers throwing ReferenceError.
+#   instance 3 (PR #1737): a step that crashed and short-circuited its job
+#     before an unrelated, pre-existing check later in the same job ever ran.
+#
+# Landing that gate with no workflow invoking it would be the gh-1738 class
+# reproduced inside gh-1840's own fix, so this file ships in the same PR.
+#
+# NOT REPEATING INSTANCE 3 IN THIS FILE, which would be the obvious way to
+# embarrass this gate: the two steps below are ordered self-test-then-run, and
+# the second carries `if: always()` so that a crash in the self-test cannot make
+# the repo scan silently vanish. Both steps propagate their exit code, so a
+# failure in either is loud. This is the gate obeying its own CHECK B, and the
+# self-test asserts that property against fixtures rather than trusting it.
+#
+# NOT REPEATING INSTANCE 5: deliberately no `paths:` filter. CHECK A walks every
+# spec file under tests/ and CHECK B walks every workflow file, so it must see
+# the repo's full current state on every run regardless of what a given PR
+# touched -- a paths: filter would silently stop catching a spy helper or a
+# workflow step added in a file this PR does not otherwise touch.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  behavioural-ordering:
+    name: Behavioural Ordering Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      # CHECK B parses workflow YAML structurally rather than by substring, for
+      # the same reason detector-negative-control-check.py does: a script name
+      # inside a comment is not that workflow invoking it.
+      - name: Install PyYAML
+        run: pip install --quiet --disable-pip-version-check pyyaml
+
+      # BUILD-FAILING. Proves the gate still rejects both RED fixtures and stays
+      # silent on both GREEN ones before its verdict on the repo is trusted.
+      - name: Self-test the gate against its RED and GREEN fixtures
+        run: python scripts/behavioural-ordering-check.test.py
+
+      # BUILD-FAILING, and `if: always()` so a crash in the self-test above
+      # cannot make this step's absence read as its success -- which is the
+      # exact defect (instance 3) this gate exists to catch.
+      - name: Run the gate against this repo
+        if: always()
+        run: python scripts/behavioural-ordering-check.py
