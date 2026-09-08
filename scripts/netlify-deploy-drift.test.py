@@ -1625,6 +1625,224 @@ def main():
     check("--self-test built into the script passes", nd.self_test(), 0)
 
     # -------------------------------------------------------------------------------
+    print("\ncount_errored_since_publish -- pure function (gh-1549 CTO comment 5572642795,")
+    print("2026-09-07T15:13:49Z: app.otterquote.com errored 30 of its last 30 production")
+    print("deploys for 2+ days while this detector kept reporting it IDENTICAL)")
+    # -------------------------------------------------------------------------------
+    _ESP_PUBLISHED_AT = "2026-09-05T05:52:09.494Z"
+
+    check("count_errored_since_publish: no deploys -> 0",
+          nd.count_errored_since_publish([], _ESP_PUBLISHED_AT), 0)
+    check("count_errored_since_publish: no published_at -> 0",
+          nd.count_errored_since_publish(
+              [{"state": "error", "created_at": "2026-09-07T13:59:11Z", "error_message": "Canceled build"}],
+              None),
+          0)
+
+    _esp_mixed = [
+        {"state": "error", "created_at": "2026-09-07T13:59:11Z", "error_message": "Canceled build"},
+        {"state": "error", "created_at": "2026-09-07T13:36:06Z", "error_message": "Canceled build"},
+        {"state": "error", "created_at": "2026-09-07T13:24:05Z", "error_message": "Canceled build"},
+        {"state": "error", "created_at": "2026-09-07T13:09:45Z", "error_message": "Canceled build"},
+        {"state": "error", "created_at": "2026-09-04T00:00:00Z", "error_message": "Canceled build"},  # OLDER than publish
+        {"state": "ready", "created_at": _ESP_PUBLISHED_AT, "error_message": None},  # the published deploy itself
+    ]
+    check("count_errored_since_publish: counts only the 4 errors NEWER than published_at "
+          "(the 5th, older, error does not count)",
+          nd.count_errored_since_publish(_esp_mixed, _ESP_PUBLISHED_AT), 4)
+
+    _esp_all_older = [
+        {"state": "error", "created_at": "2026-08-01T00:00:00Z", "error_message": "Canceled build"},
+        {"state": "error", "created_at": "2026-08-02T00:00:00Z", "error_message": "Canceled build"},
+    ]
+    check("count_errored_since_publish: errors OLDER than the publish -> 0 (they do not count)",
+          nd.count_errored_since_publish(_esp_all_older, _ESP_PUBLISHED_AT), 0)
+
+    check("count_errored_since_publish: a benign no-content cancel is excluded, not counted",
+          nd.count_errored_since_publish(
+              [{"state": "error", "created_at": "2026-09-07T14:00:00Z", "error_message": NO_CONTENT}],
+              _ESP_PUBLISHED_AT),
+          0)
+
+    check("count_errored_since_publish: non-error deploy states are excluded",
+          nd.count_errored_since_publish(
+              [{"state": "ready", "created_at": "2026-09-07T14:00:00Z", "error_message": None},
+               {"state": "building", "created_at": "2026-09-07T14:05:00Z", "error_message": None}],
+              _ESP_PUBLISHED_AT),
+          0)
+
+    check("count_errored_since_publish: deploys with unparseable/missing created_at are excluded",
+          nd.count_errored_since_publish(
+              [{"state": "error", "created_at": "not-a-date", "error_message": "Canceled build"},
+               {"state": "error", "created_at": None, "error_message": "Canceled build"}],
+              _ESP_PUBLISHED_AT),
+          0)
+
+    # -------------------------------------------------------------------------------
+    print("\nevaluate_site errored_since_publish precedence -- outranks IDENTICAL and any")
+    print("other clean verdict (gh-1549 CTO comment 5572642795)")
+    # -------------------------------------------------------------------------------
+    # Default (errored_since_publish=0, unpassed by any pre-existing caller) leaves a
+    # clean run unaffected, and reports the field as int 0, never None, on a measured row.
+    r = nd.evaluate_site(SITE, same_sha, "2026-09-01T00:00:00Z", same_sha, 0, "ready", None, None)
+    check("errored_since_publish defaults to 0 and does not disturb a clean IDENTICAL run",
+          r["verdict"], nd.IDENTICAL)
+    check("errored_since_publish=0 is reported as int 0 (never None) on a measured git row",
+          r["errored_since_publish"], 0)
+
+    # The gap this rule closes: the single newest fetched deploy (what the OLD
+    # single-signal check alone would inspect) is NOT itself erroring -- but real
+    # errors sit further back in the same fetched window, still newer than publish.
+    r = nd.evaluate_site(SITE, same_sha, "2026-09-01T00:00:00Z", same_sha, 0, "ready", None, None,
+                          errored_since_publish=2)
+    check("errored_since_publish=2 with a clean SIGNAL deploy still -> BUILD_FAILING "
+          "(outranks IDENTICAL)", r["verdict"], nd.BUILD_FAILING)
+    check("errored_since_publish is carried on the BUILD_FAILING row it produced",
+          r["errored_since_publish"], 2)
+    check("the precedence branch's own detail names the count",
+          "errored_since_publish=2" in r["detail"], True)
+
+    # Outranks a would-be BEHIND too -- the branch fires unconditionally on n>0, before
+    # the sha compare (IDENTICAL/BEHIND) ever runs, regardless of what that compare
+    # would otherwise have concluded.
+    r = nd.evaluate_site(SITE, "1" * 40, "2026-09-01T00:00:00Z", "2" * 40, 9, "ready", None, None,
+                          errored_since_publish=1)
+    check("errored_since_publish=1 fires even where the sha compare underneath would say BEHIND",
+          r["verdict"], nd.BUILD_FAILING)
+
+    # When BOTH signals fire (the signal deploy IS itself the erroring one, same as
+    # before this change), the pre-existing branch wins first and its detail text is
+    # byte-for-byte unchanged -- additive, not a rewrite of the existing path.
+    r = nd.evaluate_site(SITE, same_sha, "2026-09-01T00:00:00Z", same_sha, 0, "error", CREDIT, None,
+                          errored_since_publish=1)
+    check("both signals firing -> the pre-existing signal-deploy detail wins, byte-unchanged",
+          r["detail"], CREDIT)
+    check("errored_since_publish is still carried on that row even though the OTHER "
+          "branch returned it", r["errored_since_publish"], 1)
+
+    # -------------------------------------------------------------------------------
+    print("\nerrored_since_publish is present-but-None on rows this signal does not apply to")
+    # -------------------------------------------------------------------------------
+    check("unmeasured_row carries errored_since_publish=None (could not measure, not zero)",
+          nd.unmeasured_row(SITE, "some failure")["errored_since_publish"], None)
+    check("out_of_scope_row carries errored_since_publish=None (chose not to measure)",
+          nd.out_of_scope_row(SITE, "some reason")["errored_since_publish"], None)
+    check("evaluate_non_git_site row carries errored_since_publish=None "
+          "(deploy-specific signal, not applicable to a content-hash site)",
+          nd.evaluate_non_git_site(SITE, "a" * 64, "a" * 64, None, None, 90)["errored_since_publish"],
+          None)
+
+    # -------------------------------------------------------------------------------
+    print("\nfetch_netlify_production_deploys -- the shared fetch check_site() now uses for")
+    print("both select_signal_deploy() and count_errored_since_publish() (one Netlify call,")
+    print("not two); fetch_netlify_newest_production_deploy stays a thin wrapper over it")
+    # -------------------------------------------------------------------------------
+    def _thirty_error_deploys(req, timeout=20):
+        return _json_response(
+            [{"id": "e%d" % i, "state": "error",
+              "created_at": "2026-09-07T%02d:00:00Z" % (i % 24),
+              "error_message": "Canceled build"} for i in range(30)]
+        )
+
+    nd.urllib.request.urlopen = _thirty_error_deploys
+    try:
+        data, reason = nd.fetch_netlify_production_deploys("site-123", "fake-token-not-real")
+        check("fetch_netlify_production_deploys returns all 30 (per_page raised from 10 -> 30, "
+              "gh-1549: the live app.otterquote.com incident had exactly 30/30 erroring)",
+              len(data), 30)
+    finally:
+        nd.urllib.request.urlopen = real_urlopen
+
+    # -------------------------------------------------------------------------------
+    print("\nACCEPTANCE TEST (CTO work order, issue #1549 comment 5572642795, verbatim): a")
+    print("site fixture whose published deploy is ready and whose two newest production")
+    print("deploys are error must report BUILD_FAILING with errored_since_publish=2, exit")
+    print("2, and MUST NOT report IDENTICAL.")
+    # -------------------------------------------------------------------------------
+    _acc_published_at = "2026-09-05T05:52:09.494Z"
+    nd.urllib.request.urlopen = _make_router(
+        site_body={"published_deploy": {"commit_ref": same_sha, "published_at": _acc_published_at}},
+        deploys_body=[
+            {"state": "error", "created_at": "2026-09-07T13:59:11Z", "error_message": "Canceled build"},
+            {"state": "error", "created_at": "2026-09-07T13:36:06Z", "error_message": "Canceled build"},
+            {"state": "ready", "created_at": _acc_published_at, "error_message": None},
+        ],
+        github_commit_body={"sha": same_sha},
+    )
+    try:
+        row = nd.check_site(SITE, "fake-netlify-token", "fake-github-token")
+        check("ACCEPTANCE: verdict is BUILD_FAILING", row["verdict"], nd.BUILD_FAILING)
+        check("ACCEPTANCE: verdict is never IDENTICAL", row["verdict"] != nd.IDENTICAL, True)
+        check("ACCEPTANCE: errored_since_publish=2, an int", row["errored_since_publish"], 2)
+        check("ACCEPTANCE: report_exit_code for this row is 2", nd.report_exit_code([row]), 2)
+    finally:
+        nd.urllib.request.urlopen = real_urlopen
+
+    # ACCEPTANCE, clause 2: zero errors newer than publish -> errored_since_publish=0,
+    # prior (IDENTICAL) verdict unchanged. This is the jade-alpaca-b82b5e shape.
+    nd.urllib.request.urlopen = _make_router(
+        site_body={"published_deploy": {"commit_ref": same_sha, "published_at": _acc_published_at}},
+        deploys_body=[{"state": "ready", "created_at": _acc_published_at, "error_message": None}],
+        github_commit_body={"sha": same_sha},
+    )
+    try:
+        row = nd.check_site(SITE, "fake-netlify-token", "fake-github-token")
+        check("ACCEPTANCE: zero errors newer than publish -> errored_since_publish=0",
+              row["errored_since_publish"], 0)
+        check("ACCEPTANCE: verdict unchanged (still IDENTICAL) when errored_since_publish=0",
+              row["verdict"], nd.IDENTICAL)
+    finally:
+        nd.urllib.request.urlopen = real_urlopen
+
+    # ACCEPTANCE, clause 3: an error OLDER than the publish does not count -> 0, verdict
+    # unaffected by a pre-publish historical failure that a later redeploy resolved.
+    nd.urllib.request.urlopen = _make_router(
+        site_body={"published_deploy": {"commit_ref": same_sha, "published_at": _acc_published_at}},
+        deploys_body=[
+            {"state": "ready", "created_at": _acc_published_at, "error_message": None},
+            {"state": "error", "created_at": "2026-09-01T00:00:00Z", "error_message": "Canceled build"},
+        ],
+        github_commit_body={"sha": same_sha},
+    )
+    try:
+        row = nd.check_site(SITE, "fake-netlify-token", "fake-github-token")
+        check("ACCEPTANCE: an error OLDER than the publish does not count -> errored_since_publish=0",
+              row["errored_since_publish"], 0)
+        check("ACCEPTANCE: a pre-publish historical error does not disturb IDENTICAL",
+              row["verdict"], nd.IDENTICAL)
+    finally:
+        nd.urllib.request.urlopen = real_urlopen
+
+    # -------------------------------------------------------------------------------
+    print("\nSHARPER NEGATIVE CONTROL: the exact shape that escaped detection live (issue")
+    print("comment 5572061113) -- the single NEWEST fetched deploy is a later 'ready'")
+    print("attempt that was never actually published, while real errors sit underneath it,")
+    print("still newer than the publish. The pre-existing single-signal check alone (what")
+    print("shipped before this rule) would pick that 'ready' entry as its signal and fall")
+    print("through to the sha compare -> IDENTICAL. errored_since_publish is what catches it.")
+    # -------------------------------------------------------------------------------
+    nd.urllib.request.urlopen = _make_router(
+        site_body={"published_deploy": {"commit_ref": same_sha, "published_at": _acc_published_at}},
+        deploys_body=[
+            {"state": "ready", "created_at": "2026-09-07T14:10:00Z", "error_message": None},
+            {"state": "error", "created_at": "2026-09-07T13:59:11Z", "error_message": "Canceled build"},
+            {"state": "error", "created_at": "2026-09-07T13:36:06Z", "error_message": "Canceled build"},
+        ],
+        github_commit_body={"sha": same_sha},
+    )
+    try:
+        row = nd.check_site(SITE, "fake-netlify-token", "fake-github-token")
+        check("SHARPER CONTROL: signal deploy alone (newest='ready') would say IDENTICAL "
+              "-- confirm the underlying signal really is 'ready', not itself an error",
+              row["deploy_state"], "ready")
+        check("SHARPER CONTROL: errored_since_publish still counts the 2 real errors underneath",
+              row["errored_since_publish"], 2)
+        check("SHARPER CONTROL: verdict is BUILD_FAILING (the precedence branch is what saves this)",
+              row["verdict"], nd.BUILD_FAILING)
+    finally:
+        nd.urllib.request.urlopen = real_urlopen
+
+    # -------------------------------------------------------------------------------
     print("\nRECORDED LIVE FIXTURE -- otterquote-platform, captured 2026-09-02 ~20:30Z")
     print("(gh-1549 dispatch rw-f22-20260902T181106-lnoj: no NETLIFY_PAT was reachable in")
     print("this Code-lane session -- see the script's CROSS-REPO SCOPE GAP note and the")

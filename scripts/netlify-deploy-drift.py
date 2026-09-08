@@ -212,6 +212,33 @@ EXPLICIT SITE CLASSIFICATION -- SIX SITES, NOT THREE (gh-1734, 2026-09-07)
   custom_domain, or is retired, or is reassigned a documented owner, this table entry
   needs a human to notice and update it -- the script cannot detect that on its own.
 
+ERRORED_SINCE_PUBLISH PRECEDENCE (gh-1549 CTO comment 5572642795, 2026-09-07 -- filed
+after a THIRD instance of this issue's own founding class was found by hand, not by
+this detector: app.otterquote.com errored 30 of its last 30 production deploys and
+served code published 2026-09-05, for 2+ days, while every run of this script kept
+reporting it IDENTICAL, because its published_deploy.commit_ref genuinely still
+matched `main`)
+  A git-mode site's `published_deploy.commit_ref == main` being true answers "is the
+  published commit current" -- it does not answer "has the pipeline been healthy
+  since that publish", and this script used to only answer the first question.
+  check_site() now also computes errored_since_publish: the count of error-state
+  production deploys (excluding benign no-content cancels, same
+  BENIGN_DEPLOY_ERROR_SUBSTRINGS discipline as everywhere else in this module) whose
+  created_at is strictly newer than the currently published deploy's published_at --
+  see count_errored_since_publish(). It is printed as an integer (never a boolean --
+  a count is falsifiable, a boolean is not) on every measured git-mode site row, 0 on
+  a clean run and never omitted, so a discriminating "0 here, N there" read is always
+  possible from one invocation. n > 0 makes evaluate_site() return BUILD_FAILING,
+  outranking IDENTICAL and every other "clean" verdict, at the same priority as the
+  existing single-newest-deploy BUILD_FAILING check -- and independently of it: the
+  existing check only inspects the ONE deploy select_signal_deploy() would choose as
+  this row's signal, so a run where that single newest attempt happens to be benign
+  or `ready` while one or more REAL errors sit further back in the same fetched list,
+  still newer than the publish, used to report a clean signal and miss them. This
+  rule closes exactly that gap. Non-git (content-hash) sites report
+  errored_since_publish=None -- the signal is deploy-specific and those sites have no
+  such compare.
+
 USAGE
   NETLIFY_PAT=... GITHUB_PERSONAL_ACCESS_TOKEN=... python scripts/netlify-deploy-drift.py
   python scripts/netlify-deploy-drift.py --json
@@ -517,6 +544,40 @@ def select_signal_deploy(deploys):
     return ordered[0], 0
 
 
+def count_errored_since_publish(deploys, published_at):
+    """Pure: count of production deploys whose state is a FAILING_DEPLOY_STATE (and
+    whose error_message is NOT a benign no-content cancel -- see
+    BENIGN_DEPLOY_ERROR_SUBSTRINGS / is_benign_deploy_error(), same non-shadowing
+    discipline as select_signal_deploy()) with created_at strictly newer than
+    published_at. gh-1549 CTO comment 5572642795 (2026-09-07T15:13:49Z, filed after
+    app.otterquote.com errored 30 of its last 30 production deploys for 2+ days while
+    still reading IDENTICAL): select_signal_deploy() only inspects the SINGLE newest
+    fetched deploy, so a run in which that newest attempt happens to be benign or
+    ready -- while one or more REAL errors sit further back in the same list, still
+    newer than the publish -- reports a clean signal and misses every one of them.
+    This is the independent, exhaustive count over the whole fetched list that closes
+    that gap; see its caller, evaluate_site()'s errored_since_publish precedence
+    branch, for how the count becomes a verdict. Deploys with no parseable created_at
+    are excluded -- they cannot be ordered against published_at, so counting them
+    either way would be a guess, not a measurement. Pure, never raises; an
+    unparseable/missing published_at returns 0 (nothing to compare newer-than)."""
+    threshold = _parse_iso8601(published_at)
+    if threshold is None:
+        return 0
+    count = 0
+    for d in deploys or []:
+        if d.get("state") not in FAILING_DEPLOY_STATES:
+            continue
+        if is_benign_deploy_error(d.get("error_message")):
+            continue
+        created = _parse_iso8601(d.get("created_at"))
+        if created is None:
+            continue
+        if created > threshold:
+            count += 1
+    return count
+
+
 def _plural(n):
     return "commit" if n == 1 else "commits"
 
@@ -581,6 +642,11 @@ def unmeasured_row(site, reason):
         "content_sha256": None,
         "expected_sha256": None,
         "age_days": None,
+        # gh-1549 errored_since_publish (CTO comment 5572642795): None here, not 0 --
+        # this row means "could not measure", so there is no count to report, and 0
+        # would misread as "measured, and clean". Only a real check_site() measurement
+        # (evaluate_site()) ever reports an integer.
+        "errored_since_publish": None,
     }
 
 
@@ -611,6 +677,9 @@ def out_of_scope_row(site, reason):
         "content_sha256": None,
         "expected_sha256": None,
         "age_days": None,
+        # gh-1549 errored_since_publish: None -- this site was never measured (chose
+        # not to, and said why), so there is no deploy-error count to report either.
+        "errored_since_publish": None,
     }
 
 
@@ -628,6 +697,7 @@ def evaluate_site(
     base_head_sha=None,
     main_ahead_of_production=None,
     benign_newer_count=0,
+    errored_since_publish=0,
 ):
     """Pure verdict logic given already-fetched fields. No network, no I/O.
 
@@ -641,16 +711,42 @@ def evaluate_site(
     never BUILD_FAILING: the verdict falls through to the sha compare and the row carries
     no_content_skip=True so the detail line says why the newest attempt "errored".
 
-    Priority order (gh-1549 CTO comment 5524997596: three independent signals, none
-    of which may shadow another into looking clean):
+    Priority order (gh-1549 CTO comment 5524997596, extended by comment 5572642795's
+    errored_since_publish precedence rule: independent signals, none of which may
+    shadow another into looking clean):
       1. BUILD_FAILING -- see the module docstring's "TWO INDEPENDENT SIGNALS": a
          still-matching published_deploy must never hide a newer deploy attempt
-         that is actively erroring.
+         that is actively erroring. Two independent ways in: (a) the single newest
+         fetched deploy (select_signal_deploy()'s choice) is itself a non-benign
+         error, or (b) errored_since_publish > 0 -- see that parameter's own note
+         below, which catches a case (a) cannot: a real error sitting BEHIND the
+         newest fetched attempt (which may itself be benign/ready) is still an
+         unresolved failure since the last publish.
       2. QUEUED_STALE -- a build stuck in limbo (done=False, no error, no deploy
          produced) for longer than the staleness threshold. This is the #1517
          shape BUILD_FAILING cannot see: BUILD_FAILING reads the newest production
          DEPLOY, and a build that never produced one has no deploy to fail on.
       3. BEHIND / IDENTICAL -- the sha compare, as before.
+
+    errored_since_publish (gh-1549 CTO comment 5572642795, 2026-09-07T15:13:49Z --
+    filed after app.otterquote.com errored 30 of its last 30 production deploys for
+    over two days while this detector kept reporting it IDENTICAL): the count of
+    error-state production deploys (excluding benign no-content cancels, same
+    is_benign_deploy_error() discipline as everywhere else in this module) with
+    created_at strictly newer than the currently PUBLISHED deploy's published_at --
+    see count_errored_since_publish(), which check_site() computes from the SAME
+    fetched deploys list select_signal_deploy() reads, independently of which single
+    deploy that function chooses as "the" signal. `published_deploy.commit_ref ==
+    main` can be true (a sha compare reports IDENTICAL, honestly) while the pipeline
+    has been failing on every attempt since that publish -- a sha compare answers "is
+    the published commit current", not "is the pipeline healthy since it published",
+    and those are different questions. n > 0 outranks IDENTICAL (and every other
+    "clean" verdict) by resolving to BUILD_FAILING here, at the same priority-1
+    position as the existing signal-deploy check -- always reported as the printed
+    integer `errored_since_publish` on the row (never a boolean: a count is
+    falsifiable, a boolean is not), and 0 (not None) whenever this function actually
+    measured a git-mode site, so a clean run is visibly "measured n=0", not silently
+    unmentioned.
     """
     row = {
         "key": site["key"],
@@ -668,6 +764,7 @@ def evaluate_site(
         "base_head_sha": base_head_sha if base_dir else None,
         "main_ahead_of_production": main_ahead_of_production if base_dir else None,
         "no_content_skip": False,
+        "errored_since_publish": errored_since_publish,
     }
 
     benign = is_benign_deploy_error(deploy_error_message)
@@ -681,6 +778,27 @@ def evaluate_site(
         )
         row["verdict"] = BUILD_FAILING
         row["detail"] = detail
+        return row
+
+    # gh-1549 errored_since_publish precedence (CTO comment 5572642795): fires only
+    # when the check above did NOT already -- i.e. the single newest fetched deploy is
+    # not itself the erroring one (benign, or a later ready/other-state attempt) -- but
+    # one or more REAL errors newer than the publish exist further back in the same
+    # fetched list. Never shadowed by IDENTICAL/BEHIND below it.
+    if errored_since_publish > 0:
+        row["verdict"] = BUILD_FAILING
+        row["detail"] = (
+            "%d error-state production deploy%s newer than the currently published "
+            "deploy (published %s) -- errored_since_publish=%d outranks a clean sha "
+            "compare: the published commit matching `main` does not mean the pipeline "
+            "has been healthy since that publish (gh-1549)"
+            % (
+                errored_since_publish,
+                "" if errored_since_publish == 1 else "s",
+                row["since"] or "?",
+                errored_since_publish,
+            )
+        )
         return row
 
     if queued_stale_build is not None:
@@ -771,6 +889,11 @@ def evaluate_non_git_site(site, content_sha256, expected_sha256, published_at, n
         "content_sha256": content_sha256,
         "expected_sha256": expected_sha256,
         "age_days": None,
+        # gh-1549 errored_since_publish: this signal is git-deploy-specific (it counts
+        # error-state PRODUCTION DEPLOY attempts against a `main` publish); a content-hash
+        # site has no such compare, so None here -- not 0, which would misread as
+        # "measured, and clean" for a check this mode does not perform.
+        "errored_since_publish": None,
     }
 
     age_days = None
@@ -1181,6 +1304,14 @@ def render_text(rows, code, warnings=None, alarm_post_status=None, alarm_post_de
                     r["base_dir"].rstrip("/"),
                     (r.get("base_head_sha") or "?")[:12],
                 )
+            # gh-1549 CTO comment 5572642795: printed on every measured git-mode row,
+            # clean (0) or not -- an integer, never a boolean, and never omitted just
+            # because this run's verdict came from BEHIND/IDENTICAL rather than this
+            # signal (the discriminating control the CTO asked for is "0 on one site
+            # and N on the other, from one invocation", which requires the 0 to be
+            # visible too, not only the alarming N).
+            if r.get("errored_since_publish") is not None:
+                line += "  errored_since_publish=%d" % r["errored_since_publish"]
             lines.append(line)
             if r["verdict"] == IDENTICAL and (r.get("base_dir") or r.get("no_content_skip")):
                 lines.append("    %s" % r["detail"])
@@ -1345,20 +1476,49 @@ def fetch_netlify_site(site_id, token):
     return _get_json("https://api.netlify.com/api/v1/sites/%s" % site_id, token)
 
 
-def fetch_netlify_newest_production_deploy(site_id, token):
+_DEPLOYS_PER_PAGE = 30
+# gh-1549 CTO comment 5572642795: raised from the original 10 (2026-09-03). The
+# app.otterquote.com incident measured 2026-09-07 (issue comment 5572061113) found 30
+# of the site's last 30 production deploys erroring -- 10 would silently truncate
+# count_errored_since_publish() on exactly the incident that field exists to count,
+# the same "count what you can see" defect this whole rule is closing.
+
+
+def fetch_netlify_production_deploys(site_id, token, per_page=_DEPLOYS_PER_PAGE):
+    """Raw production-context deploys for a site, newest-and-oldest mixed in API
+    order (callers needing an order use created_at, same as select_signal_deploy() /
+    count_errored_since_publish()). check_site() fetches this ONCE and derives both
+    the single "signal" deploy (select_signal_deploy()) and the errored_since_publish
+    count (count_errored_since_publish()) from the same list, rather than two network
+    round-trips for what is the same underlying data. Returns (list_or_None, reason);
+    empty/missing/malformed all resolve to None, same fail-loud discipline as every
+    other fetch in this module."""
     if not token:
         return None, "no %s found in the environment" % NETLIFY_TOKEN_ENV_VAR
     data, reason = _get_json(
-        "https://api.netlify.com/api/v1/sites/%s/deploys?production=true&per_page=10" % site_id,
+        "https://api.netlify.com/api/v1/sites/%s/deploys?production=true&per_page=%d"
+        % (site_id, per_page),
         token,
     )
     if data is None:
         return None, reason
     if not isinstance(data, list) or not data:
         return None, "Netlify API reachable but returned zero production-context deploys"
+    return data, "ok"
+
+
+def fetch_netlify_newest_production_deploy(site_id, token):
+    """The single deploy select_signal_deploy() would choose from
+    fetch_netlify_production_deploys()'s list -- kept as its own function for callers
+    (and tests) that only need that one deploy; check_site() itself now calls
+    fetch_netlify_production_deploys() directly so it can also compute
+    errored_since_publish from the same fetched list without a second Netlify call."""
+    deploys, reason = fetch_netlify_production_deploys(site_id, token)
+    if deploys is None:
+        return None, reason
     # The newest NON-benign deploy is the signal (see select_signal_deploy); a copy is
     # returned carrying how many newer no-content cancels were skipped over.
-    chosen, benign_newer = select_signal_deploy(data)
+    chosen, benign_newer = select_signal_deploy(deploys)
     chosen = dict(chosen)
     chosen["_benign_newer_count"] = benign_newer
     return chosen, "ok"
@@ -1582,9 +1742,16 @@ def check_site(site, netlify_token, github_token, now=None, queued_stale_minutes
             site, "site has no published_deploy.commit_ref (never deployed to production?)"
         )
 
-    deploy_data, reason = fetch_netlify_newest_production_deploy(site["site_id"], netlify_token)
-    if deploy_data is None:
+    deploys_data, reason = fetch_netlify_production_deploys(site["site_id"], netlify_token)
+    if deploys_data is None:
         return unmeasured_row(site, "Netlify deploys fetch failed: %s" % reason)
+
+    # Both derived from the SAME fetched list (one Netlify call): the single "signal"
+    # deploy select_signal_deploy() picks, and the independent errored_since_publish
+    # count (gh-1549 CTO comment 5572642795) -- see evaluate_site()'s docstring for why
+    # neither may shadow the other.
+    signal_deploy, benign_newer_count = select_signal_deploy(deploys_data)
+    errored_since_publish = count_errored_since_publish(deploys_data, published_at)
 
     builds_data, reason = fetch_netlify_builds(site["site_id"], netlify_token)
     if builds_data is None:
@@ -1630,14 +1797,15 @@ def check_site(site, netlify_token, github_token, now=None, queued_stale_minutes
         published_at=published_at,
         main_sha=main_sha,
         ahead_by=ahead_by,
-        deploy_state=deploy_data.get("state"),
-        deploy_error_message=deploy_data.get("error_message"),
-        deploy_skipped=deploy_data.get("skipped"),
+        deploy_state=signal_deploy.get("state"),
+        deploy_error_message=signal_deploy.get("error_message"),
+        deploy_skipped=signal_deploy.get("skipped"),
         queued_stale_build=queued_stale_build,
         base_dir=base_dir,
         base_head_sha=base_head_sha,
         main_ahead_of_production=main_ahead_of_production,
-        benign_newer_count=deploy_data.get("_benign_newer_count") or 0,
+        benign_newer_count=benign_newer_count,
+        errored_since_publish=errored_since_publish,
     )
 
 
