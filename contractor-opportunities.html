@@ -1273,7 +1273,37 @@
                 window.open(data.url, '_blank');
             } catch (err) {
                 console.error('Failed to open measurement PDF:', err);
-                alert('The measurement PDF is not available for this project yet. The measurement may still be in progress.');
+                // gh-1748: get-hover-pdf returns 403 from TWO different refusals -
+                // (a) the D-317 cl. 7 / #1636 manual-fulfilment gate (index.ts:~180),
+                // an internal-artifact policy refusal, and (b) an ordinary
+                // canAccessClaim() denial (index.ts:~106) - bid window closed,
+                // contractor not yet quoted, contractors.status not 'active', etc.
+                // This call site had NO 403 branch at all and told the contractor the
+                // measurement was "still in progress" for both, which is false for
+                // either refusal: a policy/authorization refusal is not a fulfilment
+                // state. Mirrors openBidFormHoverPdf() in contractor-bid-form.html
+                // (PR #1894) so the two callers of this endpoint cannot drift apart.
+                if (err?.context?.status === 403) {
+                    let reason = null;
+                    try {
+                        const body = await err.context.clone().json();
+                        reason = body?.reason ?? null;
+                    } catch (parseErr) {
+                        console.error('Failed to parse 403 response body:', parseErr);
+                    }
+                    if (reason === 'internal_artifact') {
+                        alert('The measurement report is internal to the homeowner\'s file and not part of the bid packet.');
+                    } else {
+                        // Covers reason === 'access_denied' and any unrecognized or
+                        // missing reason (parse failure, a deployed function that
+                        // predates the reason field, a cached response) - never
+                        // assert the internal-artifact copy without the reason to
+                        // back it.
+                        alert('You do not have access to this claim\'s measurement report.');
+                    }
+                } else {
+                    alert('The measurement PDF is not available for this project yet. The measurement may still be in progress.');
+                }
             } finally {
                 if (btn) { btn.disabled = false; btn.innerHTML = '&#x1F4CF; Measurement PDF'; }
             }
