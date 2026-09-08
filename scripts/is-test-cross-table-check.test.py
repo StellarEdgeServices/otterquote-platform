@@ -122,6 +122,177 @@ class RunTests(unittest.TestCase):
         self.assertEqual(code, 3)
 
 
+class ManagementApiTests(unittest.TestCase):
+    """--management-api mode -- the PR #1826 review fix (comment 5577633751):
+    a read-only, production-safe path that needs only SUPABASE_ACCESS_TOKEN,
+    not a service-role key. Exercised only against a stubbed urlopen -- no
+    real network, no real token."""
+
+    def test_fetch_parses_stubbed_response_into_offender_shape(self):
+        stub_rows = [
+            {
+                "profile_id": "67da903b-ac48-4287-846c-0052583d5282",
+                "profile_is_test": False,
+                "contractor_id": "8fa0d121-d7e1-4064-8da3-c1bf6d83a4be",
+                "contractor_is_test": True,
+                "company_name": "PFW Walk Roofing LLC",
+            }
+        ]
+
+        def fake_urlopen(req, timeout=30):
+            self.assertIn("/v1/projects/yeszghaspzwwstvsrioa/database/query", req.full_url)
+            self.assertEqual(req.get_header("Authorization"), "Bearer fake-pat")
+            payload = json.loads(req.data.decode("utf-8"))
+            self.assertIn("is distinct from c.is_test", payload["query"])
+            return _FakeResponse(json.dumps(stub_rows).encode("utf-8"), status=201)
+
+        offenders = guard.fetch_disagreements_via_management_api(
+            "yeszghaspzwwstvsrioa", "fake-pat", urlopen=fake_urlopen
+        )
+        self.assertEqual(len(offenders), 1)
+        self.assertEqual(offenders[0]["profile_id"], "67da903b-ac48-4287-846c-0052583d5282")
+        self.assertFalse(offenders[0]["profile_is_test"])
+        self.assertTrue(offenders[0]["contractor_is_test"])
+
+    def test_run_management_api_clean_stub_exits_0(self):
+        fake = lambda req, timeout=30: _FakeResponse(b"[]", status=201)
+        with patch("sys.stdout", new_callable=io.StringIO):
+            code = guard.run_management_api("yeszghaspzwwstvsrioa", "fake-pat", fetcher=lambda *a, **k: [])
+        self.assertEqual(code, 0)
+
+    def test_run_management_api_disagreement_stub_exits_1(self):
+        offenders = [{
+            "profile_id": "p1", "profile_is_test": False,
+            "contractor_id": "c1", "contractor_is_test": True, "company_name": "A",
+        }]
+        with patch("sys.stdout", new_callable=io.StringIO), patch("sys.stderr", new_callable=io.StringIO):
+            code = guard.run_management_api("yeszghaspzwwstvsrioa", "fake-pat", fetcher=lambda *a, **k: offenders)
+        self.assertEqual(code, 1)
+
+    def test_run_management_api_missing_project_ref_exits_3(self):
+        with patch("sys.stderr", new_callable=io.StringIO):
+            code = guard.run_management_api(
+                None, "fake-pat", fetcher=lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not fetch"))
+            )
+        self.assertEqual(code, 3)
+
+    def test_run_management_api_missing_token_exits_3(self):
+        with patch("sys.stderr", new_callable=io.StringIO):
+            code = guard.run_management_api(
+                "yeszghaspzwwstvsrioa", "",
+                fetcher=lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not fetch")),
+            )
+        self.assertEqual(code, 3)
+
+    def test_run_management_api_bad_token_401_exits_3_not_0(self):
+        """UNMEASURED must never look like a clean pass (gh-1419). Mirrors the live
+        HTTP 401 ('JWT could not be decoded') observed against the real Management
+        API with a deliberately bad token while building this fix (2026-09-08)."""
+        def fake_urlopen(req, timeout=30):
+            raise guard.urllib.error.HTTPError(
+                req.full_url, 401, "Unauthorized",
+                hdrs=None, fp=io.BytesIO(b'{"message":"JWT could not be decoded"}'),
+            )
+        with patch("sys.stderr", new_callable=io.StringIO):
+            code = guard.run_management_api("yeszghaspzwwstvsrioa", "bad-token", fetcher=lambda ref, tok: guard.fetch_disagreements_via_management_api(ref, tok, urlopen=fake_urlopen))
+        self.assertEqual(code, 3)
+
+    def test_fetch_unreachable_api_raises_fetch_error(self):
+        def fake_urlopen(req, timeout=30):
+            raise guard.urllib.error.URLError("connection refused")
+        with self.assertRaises(guard.FetchError):
+            guard.fetch_disagreements_via_management_api("yeszghaspzwwstvsrioa", "fake-pat", urlopen=fake_urlopen)
+
+    def test_fetch_non_array_response_raises_fetch_error(self):
+        fake = lambda req, timeout=30: _FakeResponse(b'{"not": "a list"}', status=201)
+        with self.assertRaises(guard.FetchError):
+            guard.fetch_disagreements_via_management_api("yeszghaspzwwstvsrioa", "fake-pat", urlopen=fake)
+
+    def test_file_issue_fires_only_on_disagreement(self):
+        offenders = [{
+            "profile_id": "p1", "profile_is_test": False,
+            "contractor_id": "c1", "contractor_is_test": True, "company_name": "A",
+        }]
+        posted = {}
+
+        def fake_poster(body):
+            posted["body"] = body
+            return True, "https://github.com/example/issues/1763#issuecomment-1"
+
+        with patch("sys.stdout", new_callable=io.StringIO), patch("sys.stderr", new_callable=io.StringIO):
+            code = guard.run_management_api(
+                "yeszghaspzwwstvsrioa", "fake-pat", fetcher=lambda *a, **k: offenders,
+                file_issue=True, poster=fake_poster,
+            )
+        self.assertEqual(code, 1)
+        self.assertIn("p1", posted["body"])
+        self.assertIn("gh-1763", posted["body"])
+
+    def test_file_issue_does_not_fire_on_clean(self):
+        def fake_poster(body):
+            raise AssertionError("must not post an alarm comment when there is nothing to alarm about")
+
+        with patch("sys.stdout", new_callable=io.StringIO):
+            code = guard.run_management_api(
+                "yeszghaspzwwstvsrioa", "fake-pat", fetcher=lambda *a, **k: [],
+                file_issue=True, poster=fake_poster,
+            )
+        self.assertEqual(code, 0)
+
+    def test_file_issue_does_not_fire_on_unmeasured(self):
+        """A measurement gap is not a drift finding -- same rule as netlify-deploy-drift.py."""
+        def fake_poster(body):
+            raise AssertionError("must not post an alarm comment for an UNMEASURED run")
+
+        def failing_fetcher(*a, **k):
+            raise guard.FetchError("simulated fetch failure")
+
+        with patch("sys.stderr", new_callable=io.StringIO):
+            code = guard.run_management_api(
+                "yeszghaspzwwstvsrioa", "fake-pat", fetcher=failing_fetcher,
+                file_issue=True, poster=fake_poster,
+            )
+        self.assertEqual(code, 3)
+
+    def test_post_issue_comment_no_token_skips_without_raising(self):
+        with patch.dict(guard.os.environ, {}, clear=True), patch("sys.stderr", new_callable=io.StringIO):
+            success, detail = guard.post_issue_comment("body text")
+        self.assertFalse(success)
+        self.assertIn("no GITHUB_TOKEN", detail)
+
+    def test_post_issue_comment_posts_to_the_gh1763_issue(self):
+        def fake_urlopen(req, timeout=30):
+            self.assertIn(f"/issues/{guard.ALARM_ISSUE_NUMBER}/comments", req.full_url)
+            self.assertEqual(req.get_header("Authorization"), "Bearer fake-gh-token")
+            return _FakeResponse(json.dumps({"html_url": "https://github.com/x/y/issues/1763#c1"}).encode("utf-8"))
+
+        with patch.dict(guard.os.environ, {"GITHUB_TOKEN": "fake-gh-token"}, clear=False), \
+             patch.object(guard.urllib.request, "urlopen", fake_urlopen), \
+             patch("sys.stderr", new_callable=io.StringIO):
+            success, detail = guard.post_issue_comment("body text")
+        self.assertTrue(success)
+        self.assertEqual(detail, "https://github.com/x/y/issues/1763#c1")
+
+    def test_main_routes_management_api_flag(self):
+        """CLI wiring: --management-api --project-ref <ref> reads SUPABASE_ACCESS_TOKEN,
+        not SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY, and never touches the PostgREST path."""
+        called = {}
+
+        def fake_run_management_api(project_ref, token, fetcher=None, file_issue=False, poster=None):
+            called["project_ref"] = project_ref
+            called["token"] = token
+            return 0
+
+        with patch.object(guard.sys, "argv", ["is-test-cross-table-check.py", "--management-api", "--project-ref", "yeszghaspzwwstvsrioa"]), \
+             patch.object(guard, "run_management_api", fake_run_management_api), \
+             patch.object(guard, "run", lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not call PostgREST run()"))), \
+             patch.dict(guard.os.environ, {"SUPABASE_ACCESS_TOKEN": "fake-pat"}, clear=False):
+            code = guard.main()
+        self.assertEqual(code, 0)
+        self.assertEqual(called["project_ref"], "yeszghaspzwwstvsrioa")
+        self.assertEqual(called["token"], "fake-pat")
+
+
 class SelfTestProdGuardTests(unittest.TestCase):
     """The --self-test fixture-write path must refuse production outright, before
     making any network call at all."""

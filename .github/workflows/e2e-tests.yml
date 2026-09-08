@@ -134,6 +134,16 @@ jobs:
     # self_test() refuses that project ref outright before making any network
     # call, per gh-1763's hard limits -- the RED control's seeded write may only
     # ever happen in a local/fixture context.
+    #
+    # PR #1826 review (comment 5577633751): this job proves the DETECTION LOGIC
+    # isn't regressed, and nothing else -- it says nothing about the actual
+    # production disagreement count on any given day. That coverage is the
+    # `is-test-cross-table-guard-prod` job in
+    # .github/workflows/edge-function-drift.yml, on the same daily schedule as
+    # the other production-drift detectors, reading production read-only via
+    # the Management API (--management-api --project-ref) since this job's
+    # PostgREST + service-role-key path is structurally unusable against
+    # production (no SUPABASE_SERVICE_ROLE_KEY for prod exists anywhere).
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
