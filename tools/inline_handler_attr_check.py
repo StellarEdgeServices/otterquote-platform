@@ -99,8 +99,9 @@ REGEX_PRECEDERS = set("(,=:[!&|?{};+-*%~^<>\n")
 # file's `OQ_CARD_ACTIONS` / `onOpportunityCardClick` for the pattern this
 # one copies): a single container-level dispatcher
 # `OQ_BID_FORM_ACTIONS` / `onBidFormDelegatedClick`, bound by
-# `bindBidFormActions()` on both the gutter-guard and warranty containers in
-# contractor-bid-form.html, now reads `data-oq-action`/`data-oq-idx` off the
+# `bindBidFormActions()` on both of that file's dynamic containers (the ones
+# addGutterGuardEntry() and addWarrantyCard() append into), now reads
+# `data-oq-action`/`data-oq-idx` off the
 # clicked element instead of an inline onclick=, so the guard is green here
 # for the same reason it is green on contractor-opportunities.html -- no
 # inline handler is left to interpolate into, not because the pattern is
