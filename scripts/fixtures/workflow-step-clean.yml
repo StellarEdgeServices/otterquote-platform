@@ -1,0 +1,35 @@
+# gh-1840 control-2 fixture: the FIXED ordering counterpart to
+# workflow-step-crash.yml -- "Install Supabase CLI" moved before the new
+# self-test step (and, in the real incident, the self-test itself switched
+# to a fixture-injected fake require_cli() so it no longer depends on the
+# CLI being on PATH at all -- see the real edge-function-drift.yml's "gh-1737
+# review" comment). Every step succeeds; scripts/workflow-step-unrun-check.py
+# must be silent on the job JSON this ordering produces
+# (workflow-step-clean.job.json).
+name: Edge Function Drift (fixture, fixed ordering)
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  drift:
+    name: Deployed source vs main
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v3
+        with:
+          version: 2.116.0
+
+      - name: Self-test the remote-project detector (otter-crm)
+        run: python3 scripts/edge-function-drift-remote.test.py
+
+      - name: Check deployed Edge Functions against main
+        run: python3 scripts/edge-function-drift-check.py --project-ref x
+
+      - name: Publish drift table to the job summary
+        if: always()
+        run: echo "publishes even on failure"
