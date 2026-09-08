@@ -30,6 +30,10 @@
 //   is NOT changed by this PR — see the PR body for the documented dashboard step.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import {
+  evaluateDisputeRouting,
+  maySubmitFinalEvidence,
+} from "./dispute-routing.ts";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -381,8 +385,26 @@ function buildEvidencePayload(params: {
     "evidence[product_description]": productDescription,
     "evidence[service_documentation]": serviceDocLines.join("\n"),
     "evidence[customer_communication]": customerCommunication,
-    "evidence[submit]": "true",
   };
+
+  // ── gh-1759 GATE 2: do not spend Stripe's ONE final submission blind ───────
+  // `evidence[submit]: "true"` is irreversible — Stripe accepts exactly one
+  // final submission per dispute. Before this change it was set
+  // UNCONDITIONALLY, including on the path where `claim` and `feeAcceptance`
+  // are both null, which submitted a payload whose own text reads "FEE
+  // ACCEPTANCE RECORD: Not found in database" and closed the case against us.
+  //
+  // Omitting the key does not throw the evidence away: Stripe saves it as DRAFT
+  // against the dispute, so the human working the queue item starts from what we
+  // did assemble. Gate 1 (evaluateDisputeRouting) already keeps an unresolvable
+  // dispute out of this branch entirely; this is the second, independent gate,
+  // here because gate 1 is a boolean someone will refactor one day.
+  if (maySubmitFinalEvidence({
+    claimResolved: claim !== null,
+    feeAcceptanceResolved: feeAcceptance !== null,
+  })) {
+    evidence["evidence[submit]"] = "true";
+  }
 
   if (feeAcceptance?.invoice_url) {
     evidence["evidence[receipt]"] = feeAcceptance.invoice_url;
@@ -470,16 +492,42 @@ async function handleDisputeCreated(
     }
   }
 
+  // ── gh-1759 GATE 1: an unresolvable dispute goes to a human ───────────────
+  // Previously `routeToManualQueue` considered only the amount and the reason,
+  // so a sub-$500 dispute we could not tie to any claim fell into the
+  // auto-submit branch and spent Stripe's single final submission on an empty
+  // payload. `claim === null` now routes to the same manual queue that >= $500
+  // and non-delivery disputes already use — which means a ClickUp task and an
+  // admin_dispute_queue row, i.e. VISIBLE WORK RATHER THAN SILENCE.
   const isNonDelivery = NON_DELIVERY_REASONS.has(dispute.reason);
   const isLargeAmount = dispute.amount >= AMOUNT_THRESHOLD_CENTS;
-  const routeToManualQueue = isNonDelivery || isLargeAmount;
-  const routing: "auto_submit" | "manual_queue" = routeToManualQueue
-    ? "manual_queue"
-    : "auto_submit";
+  const isClaimUnresolved = claim === null;
+  const routingVerdict = evaluateDisputeRouting({
+    reason: dispute.reason,
+    amountCents: dispute.amount,
+    claimResolved: !isClaimUnresolved,
+  });
+  const routeToManualQueue = routingVerdict.routing === "manual_queue";
+  const routing = routingVerdict.routing;
 
   console.log(
-    `[${FN_NAME}] routing=${routing} isLargeAmount=${isLargeAmount} isNonDelivery=${isNonDelivery}`,
+    `[${FN_NAME}] routing=${routing} manualQueueReason=${routingVerdict.reason ?? "none"} ` +
+      `isLargeAmount=${isLargeAmount} isNonDelivery=${isNonDelivery} isClaimUnresolved=${isClaimUnresolved}`,
   );
+
+  if (isClaimUnresolved) {
+    // Loud, because the pre-gh-1759 behaviour here was silent auto-concession.
+    await supabase.from("platform_alerts_log").insert({
+      alert_type: "dispute_claim_unresolved",
+      function_name: FN_NAME,
+      message:
+        `Dispute ${dispute.id} ($${amountDollars}, ${dispute.reason}) could NOT be resolved to a claim ` +
+        `by charge ${dispute.charge} (claims.platform_fee_stripe_id) or by payment_intent ` +
+        `${dispute.payment_intent ?? "none"} (quotes.payment_intent_id). Routed to the manual queue; ` +
+        `NO final evidence was submitted, so the one-shot submission is still available (gh-1759).`,
+      sent_at: new Date().toISOString(),
+    });
+  }
 
   const stubNotes = [
     claim?.completion_date
@@ -644,11 +692,11 @@ async function handleDisputeCreated(
             routing: "manual_queue",
             clickup_task_id: clickupTaskId,
             clickup_task_url: clickupTaskUrl,
-            reason: routeToManualQueue
-              ? isNonDelivery
-                ? "non_delivery_reason"
-                : "amount_threshold"
-              : null,
+            // gh-1759: routingVerdict.reason already distinguishes
+            // claim_unresolved / non_delivery_reason / amount_threshold, so the
+            // operator reading admin_dispute_queue is told WHY, including the
+            // new third case that used to be invisible.
+            reason: routingVerdict.reason,
           },
         })
         .eq("id", disputeRowId);
@@ -699,6 +747,10 @@ interface StripePaymentIntent {
   livemode: boolean;
   metadata: Record<string, string>;
   last_payment_error?: { message?: string; code?: string } | null;
+  // gh-1759: the charge id this webhook needs in order to fill
+  // claims.platform_fee_stripe_id on the ACH settle path. An id string on an
+  // unexpanded PaymentIntent; null before a charge exists.
+  latest_charge?: string | { id?: string } | null;
 }
 
 interface StripePaymentIntentEvent {
@@ -753,9 +805,50 @@ async function handlePlatformFeePaymentSucceeded(
   // Only flip platform_fee_charged + notify the FIRST time this settles (idempotent).
   const { data: claimRow } = await supabase
     .from("claims")
-    .select("id, platform_fee_charged")
+    .select("id, platform_fee_charged, platform_fee_stripe_id")
     .eq("id", q.claim_id)
     .maybeSingle();
+
+  // ── gh-1759 THE WRITER, ACH HALF ───────────────────────────────────────────
+  // docusign-webhook writes platform_fee_stripe_id on the SYNCHRONOUS success
+  // path, where a card charge already has a charge id. An ACH charge does not:
+  // create-payment-intent returns charge_id = null while the intent is
+  // 'processing', so for ACH this listener is the ONLY place the charge id can
+  // be learned. Without this half, every ACH-paid platform fee would still have
+  // an empty column and its dispute would still be unresolvable.
+  //
+  // Written OUTSIDE the platform_fee_charged idempotence branch on purpose: a
+  // redelivery of this event that finds platform_fee_charged already true must
+  // still be able to fill a charge id that is missing (for instance on the one
+  // historical row the backfill covers). It is written only when absent, so a
+  // redelivery can never overwrite a value already recorded.
+  const latestChargeId = typeof paymentIntent.latest_charge === "string"
+    ? paymentIntent.latest_charge
+    : (paymentIntent.latest_charge?.id ?? null);
+  if (claimRow && latestChargeId) {
+    const existing = (claimRow as { platform_fee_stripe_id: string | null }).platform_fee_stripe_id;
+    if (!existing) {
+      const feeCentsRaw = paymentIntent.metadata?.platform_fee_cents;
+      const feeCents = feeCentsRaw != null && feeCentsRaw !== "" ? Number(feeCentsRaw) : NaN;
+      const feeUpdate: Record<string, unknown> = { platform_fee_stripe_id: latestChargeId };
+      // metadata[platform_fee_cents] is set by create-payment-intent's
+      // off-session platform-fee branch and excludes the card surcharge, so it
+      // is the fee itself. numeric(10,2) in DOLLARS.
+      if (Number.isFinite(feeCents) && feeCents > 0) {
+        feeUpdate.platform_fee_amount = Math.round(feeCents) / 100;
+      }
+      const { error: feeIdErr } = await supabase
+        .from("claims")
+        .update(feeUpdate)
+        .eq("id", q.claim_id)
+        .is("platform_fee_stripe_id", null);
+      if (feeIdErr) {
+        console.error(`[${FN_NAME}] gh-1759: failed to record platform_fee_stripe_id on claim ${q.claim_id}:`, feeIdErr);
+      } else {
+        console.log(`[${FN_NAME}] gh-1759: recorded platform_fee_stripe_id=${latestChargeId} on claim ${q.claim_id}`);
+      }
+    }
+  }
 
   if (claimRow && (claimRow as { id: string; platform_fee_charged: boolean }).platform_fee_charged !== true) {
     await supabase
