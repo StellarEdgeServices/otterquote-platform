@@ -764,9 +764,40 @@ interface RevenueMtd {
   currency?: string;
   charge_count?: number;
   non_usd_ignored?: number;
+  // gh-1774 (#1340 phase 4 follow-up): scope declaration on the #1637
+  // pinned-contract pattern (visits.scope / visits.hosts). Present and
+  // non-null whenever kind is "measured" or "measured_zero"; deliberately
+  // ABSENT (not empty-string) on "not_run" — a number with no scope must not
+  // claim one. See stripeAccountLabel / stripeModeFromBalance below.
+  mode?: "live" | "test";
+  account?: string;
   queries: number;
   window_start_iso: string;
   reason?: string;
+}
+
+// gh-1774: safe-to-render account label derived from the Stripe secret key
+// itself — the key's last four characters, NEVER the key. Deliberately does
+// not call GET /v1/account: many restricted keys lack permission to read the
+// Account resource, while every key can authenticate a /v1/charges or
+// /v1/balance call, so a key-derived label is the option that can't fail
+// silently into "no account shown".
+function stripeAccountLabel(stripeKey: string): string | undefined {
+  return stripeKey.length >= 4 ? `…${stripeKey.slice(-4)}` : undefined;
+}
+
+// gh-1774: mode must come from the Stripe response's own `livemode` field,
+// never inferred from the key prefix — an sk_live_ key can be run under a
+// test-mode override, so the prefix alone would lie about what was actually
+// queried. Pure over an already-parsed JSON body (rather than doing the
+// fetch inline) so it is unit-testable without a live Stripe call — the
+// same class of bug this issue exists to close (#1637's GA4 denominator)
+// would reappear here as a `mode` that always reads "live" regardless of
+// which key answered.
+function stripeModeFromBalance(balanceBody: unknown): "live" | "test" | undefined {
+  const livemode = (balanceBody as { livemode?: unknown } | null)?.livemode;
+  if (typeof livemode !== "boolean") return undefined;
+  return livemode ? "live" : "test";
 }
 
 async function fetchRevenueMtd(nowMs: number): Promise<RevenueMtd> {
@@ -780,6 +811,34 @@ async function fetchRevenueMtd(nowMs: number): Promise<RevenueMtd> {
   }
 
   const basicAuth = btoa(`${stripeKey}:`);
+  const account = stripeAccountLabel(stripeKey);
+
+  // gh-1774: resolve scope (mode) BEFORE summing charges. GET /v1/balance is
+  // a single lightweight, always-available call whose response carries
+  // livemode regardless of how many charges exist in the window — reading
+  // livemode off the first charge instead would leave measured_zero months
+  // (no charges to read it from) without a mode, which is exactly the
+  // undeclared-scope gap this issue closes. A number whose scope can't be
+  // resolved is reported not_run rather than guessed.
+  let mode: "live" | "test" | undefined;
+  try {
+    const balanceRes = await fetch(`${STRIPE_API_BASE}/balance`, {
+      headers: { Authorization: `Basic ${basicAuth}` },
+    });
+    base.queries++;
+    if (!balanceRes.ok) {
+      console.error(`[${FUNCTION_NAME}] Stripe /balance returned ${balanceRes.status}`);
+      return { kind: "not_run", ...base, reason: `Stripe API returned HTTP ${balanceRes.status} resolving account scope` };
+    }
+    mode = stripeModeFromBalance(await balanceRes.json());
+    if (!mode) {
+      return { kind: "not_run", ...base, reason: "Stripe /balance response did not carry a livemode flag" };
+    }
+  } catch (err) {
+    console.error(`[${FUNCTION_NAME}] Stripe scope read failed:`, err);
+    return { kind: "not_run", ...base, reason: "Stripe request failed before account scope could be resolved" };
+  }
+
   const createdGte = Math.floor(windowStart.getTime() / 1000);
 
   let totalCents = 0;
@@ -822,6 +881,8 @@ async function fetchRevenueMtd(nowMs: number): Promise<RevenueMtd> {
           value_cents: totalCents,
           currency: "usd",
           charge_count: chargeCount,
+          mode,
+          account,
           ...base,
         };
         if (nonUsdIgnored > 0) result.non_usd_ignored = nonUsdIgnored;
