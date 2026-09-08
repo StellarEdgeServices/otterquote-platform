@@ -102,8 +102,14 @@
  *      replace-not-wrap, `window[name]`-only) -- worth naming here rather
  *      than rediscovering silently: capture-by-value listeners need the spy
  *      installed BEFORE the addEventListener() call that captures it, which
- *      for these two controls means changing the HTML (this build's scope
- *      excludes editing contractor-bid-form.html; see the PR body).
+ *      for these two controls means changing the HTML. gh-1730 Part 2 DID
+ *      edit contractor-bid-form.html (converting the three STRICT_FILES
+ *      call sites below to delegated data-oq-action listeners), but that is
+ *      a different pair of controls -- #feeAcceptanceCheckbox and #submitBtn
+ *      are untouched by that conversion, so this fourth defect shape still
+ *      applies to them unchanged; extending installSpy()/installListenerRegistry()
+ *      to intercept the handler reference at registration time (not just
+ *      record that a listener was attached) remains the follow-up next build.
  *   3. `contract-signing.html #signContractBtn` -- full coverage below.
  *      Bound via a THIRD binding kind neither `assertHandlerBound()` style
  *      recognizes: a plain, non-delegated `addEventListener('click', ...)`
@@ -120,11 +126,18 @@
  * deliberately not flagged, they cannot break). The live instances of the
  * flagged shape in this file today -- interpolated `onclick=` attributes
  * closed outside their JS string literal, the exact structural defect class
- * STRICT_FILES exists to catch -- are at lines 2752, 4803 and 4837 (verified
+ * STRICT_FILES exists to catch -- were at lines 2752, 4803 and 4837 (verified
  * by running the tool with `--verbose` against `main`; see this PR's RED/GREEN
  * evidence). `contractor-bid-form.html` is added to STRICT_FILES below
  * regardless of the exact line drift, because the tool's job is to catch the
  * PATTERN wherever it lives in a converted file, not one cited line number.
+ *
+ * gh-1730 Part 2: those three sites are now converted to the same delegated
+ * `data-oq-action` + addEventListener pattern contractor-opportunities.html
+ * uses (`onGutterGuardEntriesClick` / `onWarrantyCardsContainerClick` in
+ * contractor-bid-form.html), so `tools/inline_handler_attr_check.py` is green
+ * on this file rather than red -- STRICT_FILES now guards real cleanliness
+ * here, not a deliberately-red placeholder.
  */
 import { test, expect, type Page, type Locator } from '@playwright/test';
 
@@ -638,9 +651,14 @@ test.describe('bids.html entry points', () => {
 // says (#feeAcceptanceCheckbox / #submitBtn, wired around
 // contractor-bid-form.html:4964-5053/5295) -- but because neither control's
 // binding can be proven or disproven "bound" by this spec's existing
-// techniques without an HTML change this build is not scoped to make (see
-// the PR body and this file's own header comment, "gh-1730" section, for
-// the full reasoning on both):
+// techniques without a TIMING change to the spec's own instrumentation
+// (installing a listener registry before these two addEventListener() calls
+// run, not an HTML change to the controls themselves -- gh-1730 Part 2 DID
+// edit contractor-bid-form.html, converting the unrelated STRICT_FILES call
+// sites at 2752/4803/4837 to delegated data-oq-action listeners, but left
+// #feeAcceptanceCheckbox/#submitBtn's own binding code untouched; see the PR
+// body and this file's own header comment, "gh-1730" section, for the full
+// reasoning on both):
 //
 //   #submitBtn   -- `<button type="submit" form="bidForm">`. Its behaviour
 //                   lives on `bidForm.addEventListener('submit', async (e)
