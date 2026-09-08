@@ -1,5 +1,0 @@
-# Synthetic, non-real negative-control fixture for gh-1888 -- proves the
-# Credential Shape Sweep CI job now FAILS on an ASIA-prefixed AWS STS
-# temporary access key ID shape it previously missed. Removed in the very
-# next commit on this PR, which must then show the job PASSING.
-fixture_value = "ASIA1234567890ABCDEF"
