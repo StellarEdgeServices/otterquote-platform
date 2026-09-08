@@ -1,4 +1,4 @@
-name: R-177 legal-read needed
+name: R-177 legal-read labeller (informational, always green)
 
 # R-177 (2026-09-07) retired R-120's human-signature gate. Constitution entry 6
 # now reads: a diff that touches legal wording, consent language, pricing or
@@ -21,6 +21,14 @@ name: R-177 legal-read needed
 # offline signing page, and the `R-120 signed review` required status check on
 # main (removed from branch protection 2026-09-07T21:04Z).
 #
+#
+# gh-1880: the job/check NAME used to be "R-177 legal-read needed", which reads
+# as a gate that passes when no legal read is needed. It is not: conclusion is
+# `success` identically whether the predicate fired or not, so an auditor
+# skimming check-runs cannot tell "not needed" from "needed and unhandled" --
+# the real signal lives in the PR's labels/comments, not this check's
+# conclusion. Renamed so `conclusion: success` next to this check can no
+# longer be misread as a legal-read gate having passed.
 # Why pull_request_target: the predicate and this workflow definition are taken
 # from the BASE branch, so a PR cannot edit the labeller that reads it, and the
 # job has the `pull-requests: write` token it needs to label. The PR head is
@@ -41,7 +49,7 @@ concurrency:
 
 jobs:
   r177-legal-read:
-    name: R-177 legal-read needed
+    name: R-177 legal-read labeller (informational, always green)
     runs-on: ubuntu-latest
     # gh-1731: explicit timeout. 0 minutes saved on a healthy run; caps a hung
     # job at 10 minutes instead of GitHub's 6-hour default (360 billable min).
