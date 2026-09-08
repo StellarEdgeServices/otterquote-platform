@@ -111,7 +111,18 @@ jobs:
         run: python3 scripts/ci-test-function-parity.py
 
   edge-function-tests:
-    name: Edge Function Tests (Deno)
+    # Renamed from "Edge Function Tests (Deno)" (gh-1738): the old name was
+    # load-bearing on trust it hadn't earned -- this job runs `deno test`
+    # scoped to supabase/functions/ ONLY (see the step below) and has never
+    # exercised netlify/edge-functions/*.ts. That gap is now covered
+    # separately by .github/workflows/netlify-edge-functions.yml, whose own
+    # job name says what IT covers instead of borrowing this one's. Verified
+    # safe to rename: `git grep -n "Edge Function Tests"` finds this `name:`
+    # as the only occurrence in the repo, and branch protection's
+    # required_status_checks.contexts (queried live via the API) is exactly
+    # ["Null-Byte & Size Sanity Check", "5-Page Revenue-Path Smoke Check"] --
+    # this check was never in it.
+    name: Supabase Edge Function Tests (Deno)
     runs-on: ubuntu-latest
     timeout-minutes: 5
 

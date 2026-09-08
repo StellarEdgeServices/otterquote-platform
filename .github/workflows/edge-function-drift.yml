@@ -64,8 +64,24 @@
 # can measure anything. Until that secret exists, the step below fails LOUD
 # (UNMEASURED, exit 2) by design -- per gh-1419, that is correct behavior, not
 # a bug to silence.
+#
+# Renamed from "Edge Function Drift" (gh-1738): the old name did not say
+# which edge functions -- this workflow compares DEPLOYED SUPABASE Edge
+# Functions against `main` (SUPABASE_PROJECT_REF below, plus the otter-crm
+# remote-project steps); it has never looked at netlify/edge-functions/*.ts,
+# which is a different deploy target (Netlify, not Supabase) with no drift
+# concept in the same sense (Netlify redeploys from `main` on every push;
+# there is no "deployed source vs main" gap for it to measure). Verified
+# safe to rename: `git grep -n "Edge Function Drift"` finds this `name:`
+# plus two unrelated comment references in scripts/ (not check names), and
+# branch protection's required_status_checks.contexts (queried live via the
+# API) is exactly ["Null-Byte & Size Sanity Check", "5-Page Revenue-Path
+# Smoke Check"] -- this workflow was never in it. This workflow also never
+# runs on `pull_request` (schedule / workflow_dispatch / push-to-main only,
+# see `on:` below), so it was never a per-PR check context in the first
+# place -- only a workflow-run label in the Actions tab.
 
-name: Edge Function Drift
+name: Supabase Edge Function Drift
 
 on:
   schedule:
