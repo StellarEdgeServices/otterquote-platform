@@ -14,6 +14,14 @@
  *   - user_id (homeowner): 403 unless the user owns at least one claim AND
  *     every claim they own has is_test = true (claims.is_test).
  *
+ * gh-1513 cross-table fix (#1773 forensics): a single table's is_test column
+ * is not a safe inference on its own (production measurement: 8 of 13
+ * contractors rows this gate would mint for are linked to a profiles row
+ * that disagrees). Both paths above additionally require the target's
+ * linked profiles.is_test to be literally true, and the mint email is
+ * always resolved from the auth user record itself rather than a joined
+ * table's email column.
+ *
  * Mechanism: generates a Supabase magic link via the admin auth API
  * (auth.admin.generateLink) using the service-role key injected into every
  * Edge Function by the platform (SUPABASE_SERVICE_ROLE_KEY — never stored in
@@ -116,6 +124,14 @@ serve(async (req) => {
           .from("claims")
           .select("id, is_test")
           .eq("user_id", userId);
+        return { data, error: error ? { message: error.message } : null };
+      },
+      async getProfileById(userId) {
+        const { data, error } = await supabase
+          .from("profiles")
+          .select("id, is_test")
+          .eq("id", userId)
+          .maybeSingle();
         return { data, error: error ? { message: error.message } : null };
       },
       async getAuthUserById(userId) {

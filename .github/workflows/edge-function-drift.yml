@@ -179,7 +179,23 @@ jobs:
       # repo secret (see scripts/edge-function-drift-remote.py's docstring for
       # the exact scope needed), this step is EXPECTED to fail red. That red
       # is honest signal, not a regression to silence.
+      # gh-1700 follow-up: this step must run even when the step above (the
+      # otterquote-platform check) fails. Without `if: always()`, a REAL
+      # drift finding on otterquote-platform (exit 1/2, by design -- that is
+      # the alarm working) short-circuits the job and this step reports
+      # `skipped`, not `failure` or `success` -- silently dropping otter-crm
+      # coverage exactly when a human is already looking at a red job for a
+      # different reason. Measured live: run 34163238073 (2026-09-07,
+      # otterquote-platform DRIFTED on validate-contract-template) skipped
+      # this step entirely. That is instance 3 of #1738's table -- "which
+      # makes the page look covered" relocated from the detector into the
+      # workflow that runs it. Authorised by CTO A: on #1700
+      # (2026-09-07T15:13:53Z): "if: always(), and it rides along" --
+      # rejected alternative was splitting the two projects into separate
+      # jobs, which would conflict with #1733/#1779's concurrent edits to
+      # this same file.
       - name: "Check deployed Edge Functions against main (remote projects: otter-crm)"
+        if: always()
         env:
           GH_CROSS_REPO_PAT: ${{ secrets.GH_CROSS_REPO_PAT }}
           SUPABASE_CRM_ACCESS_TOKEN: ${{ secrets.SUPABASE_CRM_ACCESS_TOKEN }}

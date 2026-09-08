@@ -12,76 +12,23 @@
 // and this test fails until a satisfying document exists again. Before this
 // test, the manifest could be bumped to anything and nothing would notice.
 //
-// Does NOT import index.ts directly. index.ts calls Deno.serve(...) at
-// module scope (needs --allow-net to bind) and Deno.env.get(...) inside the
-// handler (needs --allow-env), but the gh-422 pure-unit lane runs
-// `deno test --allow-read=supabase/functions supabase/functions/` with
-// neither flag (see .github/workflows/e2e-tests.yml and this directory's
-// guard-order.test.ts header for the fuller rationale). So, following the
-// exact technique starter-template.test.ts already established for this
-// same constraint:
-//   - MANIFEST is lifted OUT of index.ts by locating its literal source
-//     (string search + brace-depth matching) and dynamically importing that
-//     slice via a data: URL — the real manifest, never a hand-copied value.
-//   - extractPdfText is index.ts's own function, duplicated verbatim below
-//     (byte-for-byte the same body as index.ts's extractPdfText) because it
-//     is not exported and index.ts cannot be imported under this constraint.
-//     This is NOT scan.mjs's offline replica from `In Flight/gh1315-cto27/`
-//     — that script was a diagnosis-only tool built separately (documented on
-//     #1761) and is not read or exercised anywhere in this file.
-//   - fieldIdFromTag is imported directly from ./starter-template.ts — a real,
-//     exported repo function, not a copy. (#1761's Work section names this
-//     function "fieldIdFromAnchor"; no function of that name exists anywhere
-//     in the repo. fieldIdFromTag is the real, already-exported equivalent —
-//     it parses a BoldSign field id out of a `{{...}}` tag string, which is
-//     exactly what the issue asks this test to prove for contract_price.)
-// The required-anchor scan itself (`text.includes(anchor)`) is reproduced
-// below as a tiny local helper mirroring index.ts's inline `.map()` scan in
-// its Deno.serve handler verbatim — there is no standalone
-// `scanRequiredAnchors` function anywhere in the repo to import (the scan is
-// inline request-handling logic, not a function), so none can be imported by
-// name; the predicate it reproduces is exactly index.ts's own.
+// [gh-1315 / #1664] This file used to lift MANIFEST out of index.ts by string
+// search + brace matching and dynamically import the slice via a data: URL,
+// because index.ts calls Deno.serve(...) at module scope and the gh-422
+// pure-unit lane runs with no --allow-net. #1664 removed the need for that
+// hack: MANIFEST, the `tag` builder, the SignerIndex constants and the
+// required-anchor scan now live in ./manifest.ts, and extractPdfText in
+// ./pdf-text.ts — both pure, IO-free modules with no Deno.serve at module
+// scope. The lift is now not just unnecessary but broken (`const MANIFEST` no
+// longer appears in index.ts, so the slice was empty and the data: module
+// exported nothing: "SyntaxError: Export 'MANIFEST' is not defined in module").
+// Everything below imports the real repo functions directly — the same move
+// #1664 already made in starter-template.test.ts and revalidate.test.ts — so
+// there is nothing left in this file to drift out of sync with index.ts.
 import { assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
-import * as pdfjsLib from "npm:pdfjs-dist@4.0.379/legacy/build/pdf.mjs";
-import "npm:pdfjs-dist@4.0.379/legacy/build/pdf.worker.mjs";
+import { MANIFEST, scanRequiredAnchors } from "./manifest.ts";
+import { extractPdfText } from "./pdf-text.ts";
 import { fieldIdFromTag } from "./starter-template.ts";
-
-// ─── the real v3 manifest, lifted out of index.ts (same technique as starter-template.test.ts) ───
-const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
-const tagFn = src.slice(src.indexOf("function tag("), src.indexOf("const CONTRACTOR_IDX"));
-const mStart = src.indexOf("const MANIFEST: any = {");
-let depth = 0, mEnd = -1;
-for (let i = src.indexOf("{", mStart); i < src.length; i++) {
-  if (src[i] === "{") depth++;
-  else if (src[i] === "}") { depth--; if (depth === 0) { mEnd = i + 1; break; } }
-}
-const modSrc = tagFn + "\nconst CONTRACTOR_IDX = 1;\nconst HOMEOWNER_IDX = 2;\n" +
-  src.slice(mStart, mEnd) + ";\nexport { MANIFEST };\n";
-// deno-lint-ignore no-explicit-any
-const { MANIFEST } = await import("data:application/typescript," + encodeURIComponent(modSrc)) as any;
-
-// ─── index.ts's own extractPdfText, duplicated verbatim (see file header) ───
-async function extractPdfText(pdfBytes: Uint8Array): Promise<string> {
-  // deno-lint-ignore no-explicit-any
-  (pdfjsLib as any).GlobalWorkerOptions.workerSrc = "";
-  const pdf = await pdfjsLib.getDocument({ data: pdfBytes.slice(), isEvalSupported: false, disableFontFace: true }).promise;
-  let full = "";
-  for (let n = 1; n <= pdf.numPages; n++) {
-    const tc = await (await pdf.getPage(n)).getTextContent();
-    // deno-lint-ignore no-explicit-any
-    full += tc.items.map((it: any) => it.str ?? "").join(" ") + "\n";
-  }
-  return full;
-}
-
-// ─── index.ts's own required-anchor scan, reproduced verbatim (see file header) ───
-function scanRequiredAnchors(
-  text: string,
-  required: Array<{ anchor: string }>,
-): { requiredFoundCount: number; requiredCount: number } {
-  const requiredFoundCount = required.filter((r) => text.includes(r.anchor)).length;
-  return { requiredFoundCount, requiredCount: required.length };
-}
 
 const FIXTURE_PDF_URL = new URL(
   "./__fixtures__/otterquote-v3-reference-roofing-retail.pdf",
@@ -99,7 +46,9 @@ Deno.test("v3 roofing/retail fixture: every required anchor is found by the repo
     "roofing/retail requiredCount drifted from 13 — this test's premise (and #1761's) needs updating",
   );
 
-  const { requiredFoundCount, requiredCount } = scanRequiredAnchors(text, slot.required);
+  const results = scanRequiredAnchors(text, slot);
+  const requiredFoundCount = results.filter((r) => r.found).length;
+  const requiredCount = results.length;
   assertEquals(
     requiredFoundCount,
     requiredCount,
