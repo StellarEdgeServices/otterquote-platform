@@ -10,6 +10,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import { GA4Gate } from './components/GA4Gate';
+import { MetaPixelGate } from './components/MetaPixelGate';
 import { SentryInitializer } from './components/SentryInitializer';
 import { AuthProvider } from './providers/auth-provider';
 import { QueryClientProvider } from './lib/query-client';
@@ -29,6 +30,8 @@ export default function RootLayout({
       <body>
         {/* GA4 — OtterQuote property; host-gated (gh-1619), see GA4Gate */}
         <GA4Gate />
+        {/* Meta Pixel — host-gated + dark (placeholder ID), see MetaPixelGate (gh-1817) */}
+        <MetaPixelGate />
         <SentryInitializer />
         <QueryClientProvider>
           <AuthProvider>{children}</AuthProvider>

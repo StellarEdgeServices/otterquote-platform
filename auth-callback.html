@@ -26,6 +26,7 @@
 </script>
 <!-- GA4 — fires auth_success engagement event before redirect so sessions aren't counted as bounces -->
 <script src="/js/ga-gate.js"></script>
+<script src="/js/meta-pixel-gate.js"></script>
 <script>gtag('config','G-D1Y1TLGEFY');</script>
 <!-- Microsoft Clarity (wwr7qlk8g5) is loaded by /js/ga-gate.js, behind the same production-host gate as GA4 (gh-1619). Do not add a per-page loader. -->
 <!-- D-208: Capture auth tokens before Supabase createClient() clears the URL -->
