@@ -130,18 +130,18 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import {
-  isNudgeEligibleStatus,
+  type ActivityLogRow,
   NUDGE_ELIGIBLE_STATUS,
   NUDGE_EXCLUDED_STATUS,
   type NudgeStage,
-  selectStage,
+  reduceActivityRows,
+  screenClaim,
   TWO_HOURS_MS,
 } from "./select-stage.ts";
 import { buildEmailContent } from "./email-content.ts";
 import {
   canSendWithOptOut,
   fetchOptedOutClaimIds,
-  isOptedOut,
 } from "./optout-filter.ts";
 import {
   buildOptOutUrl,
@@ -385,73 +385,35 @@ serve(async (req: Request) => {
     return jsonResponse({ ok: false, error: "opt-out read failed" }, 500, corsHeaders);
   }
 
-  // Real (non-self-generated) activity per user, latest timestamp.
-  const realActivityByUser = new Map<string, string>();
-  // Already-sent nudge stages per claim: claim_id -> (stage -> stamp
-  // created_at). The stamp time is what selectStage uses to space the '48h'
-  // send after the '2h' one; if the same stage was stamped more than once
-  // (pre-unique-index race) the EARLIEST stamp wins.
-  const nudgeSentByClaim = new Map<string, Map<NudgeStage, string>>();
-
-  for (const row of (activity || []) as any[]) {
-    // An opt-out is not homeowner progress on the claim. Like our own nudge
-    // stamp, it must never count as "real activity" — otherwise clicking the
-    // opt-out link would ALSO look like movement and change what the admin
-    // dashboard's "no activity since signup" strip shows.
-    if (row.event_type === OPTOUT_EVENT_TYPE) continue;
-    if (row.event_type === NUDGE_EVENT_TYPE) {
-      const md = row.metadata || {};
-      if (md.claim_id && (md.nudge_stage === "2h" || md.nudge_stage === "48h")) {
-        let stages = nudgeSentByClaim.get(md.claim_id);
-        if (!stages) {
-          stages = new Map<NudgeStage, string>();
-          nudgeSentByClaim.set(md.claim_id, stages);
-        }
-        const prevStamp = stages.get(md.nudge_stage as NudgeStage);
-        if (!prevStamp || row.created_at < prevStamp) {
-          stages.set(md.nudge_stage as NudgeStage, row.created_at);
-        }
-      }
-      continue; // our own stamp never counts as "real" homeowner activity
-    }
-    const prev = realActivityByUser.get(row.user_id);
-    if (!prev || row.created_at > prev) {
-      realActivityByUser.set(row.user_id, row.created_at);
-    }
-  }
-
+  // Real (non-self-generated) activity per user, and the already-sent nudge
+  // stages per claim. gh-1580: both reductions live in ./select-stage.ts so
+  // the acceptance test on this issue can exercise them without a database;
+  // this call is the only implementation, not a copy of one.
+  const reduced = reduceActivityRows(
+    (activity || []) as ActivityLogRow[],
+    NUDGE_EVENT_TYPE,
+    OPTOUT_EVENT_TYPE,
+  );
   const results: ScanResult[] = [];
 
-  const emptySends: ReadonlyMap<NudgeStage, string> = new Map();
-
   for (const claim of claims as ClaimRow[]) {
-    // Defense in depth for CTO RUN 22 defect 1: the query already filters on
-    // status, but a claim that somehow arrives here in any other state (a
-    // `draft` above all) must never be told "You're one step from bids".
-    if (!isNudgeEligibleStatus(claim.status)) {
-      results.push({ claim_id: claim.id, stages_sent: [], skipped_reason: "ineligible_status" });
+    // gh-1580: the whole screen — status, opt-out, hover_orders, real
+    // activity since signup, then stage selection — in ./select-stage.ts's
+    // screenClaim(), in this exact order (the opt-out gate must run before
+    // any stage selection or stamp). Extracted so the discriminating half of
+    // this issue's acceptance test ("add one activity_log row, invoke again,
+    // assert ZERO further nudges") is a unit test rather than a live seed.
+    const decision = screenClaim(claim, {
+      optedOutClaimIds,
+      claimIdsWithHoverOrder,
+      reduced,
+      now,
+    });
+    if (decision.skipped_reason) {
+      results.push({ claim_id: claim.id, stages_sent: [], skipped_reason: decision.skipped_reason });
       continue;
     }
-    // gh-1786 / D-320: the homeowner asked us to stop. Checked BEFORE any
-    // stage selection, contact lookup or stamp, so an opted-out claim costs no
-    // reads and can never be stamped as sent.
-    if (isOptedOut(optedOutClaimIds, claim.id)) {
-      results.push({ claim_id: claim.id, stages_sent: [], skipped_reason: "opted_out" });
-      continue;
-    }
-    if (claimIdsWithHoverOrder.has(claim.id)) {
-      results.push({ claim_id: claim.id, stages_sent: [], skipped_reason: "has_hover_order" });
-      continue;
-    }
-    const lastReal = realActivityByUser.get(claim.user_id);
-    if (lastReal && lastReal > claim.created_at) {
-      results.push({ claim_id: claim.id, stages_sent: [], skipped_reason: "real_activity_since_created" });
-      continue;
-    }
-
-    // CTO RUN 22 defect 2: at most ONE stage per claim per run (see
-    // ./select-stage.ts for the full decision table and its tests).
-    const stage = selectStage(claim, nudgeSentByClaim.get(claim.id) ?? emptySends, now);
+    const stage = decision.stage;
     if (stage === null) {
       results.push({ claim_id: claim.id, stages_sent: [] });
       continue;
