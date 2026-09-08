@@ -68,6 +68,9 @@ jobs:
       - name: Analytics loader single-source guard (gtag.js + clarity.ms behind the host gate, gh-1619)
         run: python3 scripts/check-gtag-single-source.py
 
+      - name: supabase-js CDN pin + SRI guard (gh-1793)
+        run: python3 scripts/check-supabase-js-sri.py
+
   typescript-check:
     name: TypeScript Check
     runs-on: ubuntu-latest
