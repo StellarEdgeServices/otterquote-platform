@@ -49,6 +49,24 @@ changed file, but only for statements that intersect at least one added line
      role list -- that asymmetry (REVOKE-to-anon is the FIX, GRANT-to-anon is
      the DEFECT) is the whole point of gh-1767 and is what the #1634
      forward/rollback pair in the closing criterion demonstrates.
+     UNANCHORED (gh-1767 fix2, PR #1836 comment 5578401122 probe (f)): a
+     statement is classified as GRANT-shaped or REVOKE-shaped by whether
+     `\bGRANT\b` / `\bREVOKE\b` appears ANYWHERE in it (REVOKE checked
+     first), not only at statement-start. The original `^\s*GRANT\b` anchor
+     let `ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON
+     FUNCTIONS TO anon;` -- a fully static, non-dynamic, executable grant --
+     ship clean, because that statement starts with ALTER, never GRANT. The
+     unanchored scan catches that (and any future prefix: `CREATE ... WITH
+     GRANT`, etc.) while still passing the REVOKE direction of the same
+     phrasing (`ALTER DEFAULT PRIVILEGES ... REVOKE ... FROM anon;` --
+     REVOKE-shaped, checked first) and the one legitimate statement whose
+     text contains the word GRANT while still being a REVOKE (`REVOKE GRANT
+     OPTION FOR ... FROM anon;` -- starts with REVOKE, so it is
+     REVOKE-shaped before rule 1 ever looks for a GRANT clause). Both checks
+     run against `stmt.stripped`, which already has every comment/string/
+     dollar-quote span blanked by strip_noise() before statement-splitting,
+     so a stray GRANT/REVOKE token inside a string or comment can never
+     trigger this rule -- that is rule 4's separate job, immediately below.
   2. ALTER FUNCTION ... SECURITY DEFINER (or CREATE OR REPLACE FUNCTION ...
      SECURITY DEFINER, which has identical alter-semantics for a function
      that already exists) newly appearing in the SAME file's added
@@ -98,6 +116,41 @@ changed file, but only for statements that intersect at least one added line
          matchable role name.
      REVOKE is unaffected (the regex only fires on GRANT, never REVOKE),
      preserving the same asymmetry as rule 1.
+     CONCATENATION-AWARE (gh-1767 fix2, PR #1836 comment 5578401122 probes
+     (a)/(e), and the follow-up work order's own `quote_ident(r)` example):
+     the original single-span scan missed a role supplied via `||` string
+     concatenation. Two mechanisms close this, because the concatenation
+     shows up in two structurally different ways --
+       - TOP-LEVEL: `EXECUTE 'GRANT ... TO ' || 'anon';` is TWO separate
+         literal_spans (each single-quoted region is its own span).
+         `_group_concatenated_spans` merges spans separated by nothing but
+         `\s*\|\|\s*` (comments in between already blanked to whitespace)
+         into one logical string by joining their `.content` fields
+         directly, regardless of which side of the `TO` keyword the split
+         falls on.
+       - NESTED (the more realistic real-world shape): a concatenation
+         written INSIDE a `$$...$$` PL/pgSQL body (e.g. `CREATE FUNCTION
+         ... AS $$ ... EXECUTE '...' || quote_ident(r); ... $$`) is never
+         split into separate spans at all -- dollar-quoted content is raw
+         and is not re-parsed for quotes nested inside it, so the inner
+         `'...'` literal's quote characters are just ordinary characters
+         inside the outer span's content. `_collapse_literal_concat`
+         collapses `'...' || '...'` glue (both sides literals) to nothing
+         within that raw content, joining the segments; `_UNRESOLVED_CONCAT_RE`
+         separately catches the case where the left side is a literal
+         ending in an incomplete GRANT...TO clause and the right side is
+         NOT a literal (a function call, a variable) -- the role "arrives
+         from elsewhere" and can never be read statically off the migration
+         text, so this FAILS CLOSED as `dynamic-sql-grant-unknown-role`
+         rather than silently passing for lack of a match (the original bug:
+         `EXECUTE 'GRANT ... TO ' || 'anon';`'s first span alone captured
+         only the trailing whitespace before its closing quote as "roles",
+         which `_dynamic_roles()` correctly reduced to an empty list, but
+         nothing treated an EMPTY role list as a violation -- it silently
+         fell through as a pass). A positive control
+         (`dynamic_sql_grant_concat_service_role_good.sql`) confirms the
+         merge logic actually resolves and allowlist-checks the role rather
+         than failing closed unconditionally on every concatenated GRANT.
      ACCEPTED FALSE-POSITIVE COST: because rule 4 does not distinguish
      "this quoted span is executed" from "this quoted span is merely a
      string constant" (e.g. logged via RAISE NOTICE, or an audit-log
@@ -239,11 +292,17 @@ _DOLLAR_TAG_RE = re.compile(r"\$([A-Za-z_][A-Za-z0-9_]*)?\$")
 
 def strip_noise_and_collect(text: str):
     """Returns (stripped_text, literal_spans) where literal_spans is a list
-    of (kind, content_start, content_end, content) for every single-quoted
-    ('single') and dollar-quoted ('dollar') region, in ORIGINAL-text offsets
-    with the surrounding quote/tag delimiters excluded from `content`.
-    `content` is the raw, un-blanked text -- callers that want the '' ->
-    ' escape collapsed (single-quoted literals only) do that themselves."""
+    of (kind, raw_start, raw_end, content_start, content_end, content) for
+    every single-quoted ('single') and dollar-quoted ('dollar') region, in
+    ORIGINAL-text offsets. `content` is the raw, un-blanked text between the
+    delimiters (callers that want the '' -> ' escape collapsed, single-
+    quoted literals only, do that themselves); `raw_start`/`raw_end` are the
+    offsets of the delimiters THEMSELVES (opening quote/tag through closing
+    quote/tag, inclusive) -- rule 4's concatenation grouping
+    (`_group_concatenated_spans`) needs these to tell whether two adjacent
+    literals are joined end-to-end by nothing but `||`/whitespace/comments,
+    which `content_start`/`content_end` alone (delimiters excluded) cannot
+    answer."""
     out = []
     literal_spans = []
     i = 0
@@ -279,6 +338,7 @@ def strip_noise_and_collect(text: str):
             continue
 
         if ch == "'":
+            raw_start = i
             out.append(" ")
             i += 1
             content_start = i
@@ -300,13 +360,14 @@ def strip_noise_and_collect(text: str):
             if not closed:
                 content_end = i
             literal_spans.append(
-                ("single", content_start, content_end, text[content_start:content_end])
+                ("single", raw_start, i, content_start, content_end, text[content_start:content_end])
             )
             continue
 
         if ch == "$":
             m = _DOLLAR_TAG_RE.match(text, i)
             if m:
+                raw_start = i
                 tag = m.group(0)
                 out.append(" " * len(tag))
                 i += len(tag)
@@ -322,7 +383,7 @@ def strip_noise_and_collect(text: str):
                     out.append(" " * len(tag))
                     i += len(tag)
                 literal_spans.append(
-                    ("dollar", content_start, content_end, text[content_start:content_end])
+                    ("dollar", raw_start, i, content_start, content_end, text[content_start:content_end])
                 )
                 continue
 
@@ -407,8 +468,23 @@ def split_statements(original_text: str, stripped_text: str):
 # Statement classification
 # ---------------------------------------------------------------------------
 
-REVOKE_RE = re.compile(r"^\s*REVOKE\b", re.I)
-GRANT_RE = re.compile(r"^\s*GRANT\b", re.I)
+# UNANCHORED (gh-1767 fix2, PR #1836 comment 5578401122 probe (f)): a
+# statement is REVOKE-shaped / GRANT-shaped if the keyword appears ANYWHERE
+# in it, not only at statement-start. This is what lets rule 1 catch
+# `ALTER DEFAULT PRIVILEGES ... GRANT ... TO anon` (starts with ALTER, not
+# GRANT -- the old `^\s*GRANT\b` anchor never even looked at it) while still
+# passing `ALTER DEFAULT PRIVILEGES ... REVOKE ... FROM anon` (starts with
+# ALTER too, but is REVOKE-shaped) and `REVOKE GRANT OPTION FOR ... FROM
+# anon` (contains the word GRANT, but is checked against REVOKE_RE FIRST in
+# classify_statements, so it is treated as REVOKE-shaped and never reaches
+# the GRANT branch at all). Both regexes operate on `stmt.stripped`, which
+# has already had every comment/string/dollar-quote span blanked out by
+# strip_noise() before statement-splitting -- so a stray "grant"/"revoke"
+# inside a string literal or comment can never trigger either branch here;
+# that is rule 4's separate job. \b word boundaries mean an identifier like
+# `grant_type` or `revoke_reason` never matches either.
+REVOKE_RE = re.compile(r"\bREVOKE\b", re.I)
+GRANT_RE = re.compile(r"\bGRANT\b", re.I)
 GRANT_TO_RE = re.compile(
     r"\bTO\s+(.+?)(?:\bWITH\s+GRANT\s+OPTION\b|;|\Z)", re.I | re.S
 )
@@ -434,6 +510,47 @@ DYNAMIC_GRANT_RE = re.compile(
 # format()-style placeholders: %I, %L, %s, and the positional %1$I form.
 FORMAT_PLACEHOLDER_RE = re.compile(r"%\d*\$?[A-Za-z]")
 _ROLE_STRIP_CHARS = "'\";"
+
+# gh-1767 fix2 (PR #1836 comment 5578401122, probes (a)/(e)/quote_ident):
+# concatenation-awareness for rule 4. Two distinct mechanisms, because a
+# GRANT split by `||` shows up in two structurally different ways:
+#
+#   (1) TOP-LEVEL concatenation -- `EXECUTE 'GRANT ... TO ' || 'anon';` --
+#       strip_noise_and_collect() records this as TWO SEPARATE literal_spans
+#       (each single-quoted region is its own span, delimiters excluded from
+#       `content`). `_group_concatenated_spans` merges adjacent spans whose
+#       ONLY separation is `\s*\|\|\s*` (comments in between are already
+#       blanked to whitespace by strip_noise) into one logical string by
+#       concatenating their `.content` fields directly -- no stray quote
+#       characters to clean up, since delimiters were never part of either
+#       span's content.
+#   (2) NESTED concatenation -- the far more realistic real-world shape,
+#       `CREATE FUNCTION ... AS $$ ... EXECUTE '...' || quote_ident(r); ...
+#       $$` -- the whole function body is ONE dollar-quoted span (dollar-
+#       quoted content is raw and is never re-parsed for quotes nested
+#       inside it), so the inner `'...'` literal is never split out as its
+#       own span at all; its quote characters are just ordinary characters
+#       inside that one span's raw `content`. `_collapse_literal_concat`
+#       handles the case where BOTH sides of a `||` are string literals
+#       (collapses the `'...  ||  '` glue to nothing, joining the two
+#       segments); `_UNRESOLVED_CONCAT_RE` catches the case where the LEFT
+#       side is a literal ending in an incomplete GRANT...TO clause and the
+#       RIGHT side is NOT a literal (a function call, a variable) -- the
+#       role "arrives from elsewhere" and can never be read statically off
+#       the migration text, so this fails closed as dynamic-sql-grant-
+#       unknown-role rather than silently passing for lack of a match.
+_CONCAT_BETWEEN_RE = re.compile(r"\A\s*\|\|\s*\Z", re.S)
+_CONCAT_GLUE_RE = re.compile(r"'\s*\|\|\s*'", re.S)
+# GRANT ... TO immediately hitting a live string-literal boundary that then
+# continues via `||` into something NOT re-collapsed above (because it
+# wasn't `'...'`) -- e.g. `'GRANT ... TO ' || quote_ident(r)`. Also covers
+# the plain "ends bare right at/after TO, nothing further in this span at
+# all" shape (`\Z`), which is the trailing-whitespace-swallowed-the-whole-
+# roles-group case DYNAMIC_GRANT_RE's own `if not roles:` branch below
+# already handles for MOST trailing-whitespace amounts, but not the exact-
+# one-trailing-space case (`\s+` and the roles group can't both claim the
+# same single character, so DYNAMIC_GRANT_RE fails to match at all there).
+_UNRESOLVED_CONCAT_RE = re.compile(r"\bGRANT\b.*?\bTO\b(?:\s*\Z|\s*'\s*\|\|)", re.I | re.S)
 
 
 def extract_roles(stmt: Statement):
@@ -477,14 +594,14 @@ def classify_statements(file_rel: str, statements):
     grant_stmts = []
 
     for stmt in statements:
-        if REVOKE_RE.match(stmt.stripped):
+        if REVOKE_RE.search(stmt.stripped):
             pass_notes.append(
                 "PASS  [revoke-always-ok] %s:%d -- REVOKE always passes"
                 % (file_rel, stmt.line_no)
             )
             continue
 
-        if GRANT_RE.match(stmt.stripped):
+        if GRANT_RE.search(stmt.stripped):
             grant_stmts.append(stmt)
             roles = extract_roles(stmt)
             bad_roles = [r for r in roles if r.lower() not in ALLOWLISTED_GRANT_ROLES]
@@ -604,24 +721,74 @@ def _dynamic_roles(roles_text: str):
     return roles
 
 
+def _group_concatenated_spans(stripped: str, literal_spans):
+    """Groups the INDICES of adjacent literal_spans that are joined
+    end-to-end by a bare `||` (see _CONCAT_BETWEEN_RE) into lists. Compares
+    the STRIPPED text between one span's raw delimiter-end and the next
+    span's raw delimiter-start, so any comment sitting in that gap (already
+    blanked to whitespace by strip_noise) is correctly ignored rather than
+    blocking the merge."""
+    groups = []
+    current = [0]
+    for idx in range(1, len(literal_spans)):
+        prev_raw_end = literal_spans[idx - 1][2]
+        cur_raw_start = literal_spans[idx][1]
+        between = stripped[prev_raw_end:cur_raw_start]
+        if _CONCAT_BETWEEN_RE.match(between):
+            current.append(idx)
+        else:
+            groups.append(current)
+            current = [idx]
+    groups.append(current)
+    return groups
+
+
+def _collapse_literal_concat(raw: str) -> str:
+    """Collapses `'...' || '...'` glue (closing quote, optional whitespace,
+    `||`, optional whitespace, opening quote) to nothing, WITHIN a single
+    span's raw content, so two or more literal segments concatenated
+    together INSIDE a larger dollar-quoted body (e.g. a `CREATE FUNCTION
+    ... AS $$ ... $$` whose body contains `'a' || 'b'`) read as one
+    continuous string for scanning. Looped to handle 3+ segments
+    (`'a' || 'b' || 'c'`)."""
+    prev = None
+    while raw != prev:
+        prev = raw
+        raw = _CONCAT_GLUE_RE.sub("", raw)
+    return raw
+
+
 def find_dynamic_sql_grant_findings(file_rel: str, new_text: str, added_lines: set):
     """Rule 4: a GRANT ... TO <role> hiding inside a single-quoted or
     dollar-quoted span that intersects an added line -- see the module
-    docstring's DYNAMIC SQL / RULE 4 section for the full rationale and the
-    accepted false-positive tradeoff. Runs independently of
+    docstring's DYNAMIC SQL / RULE 4 section for the full rationale, the
+    concatenation-awareness added in gh-1767 fix2, and the accepted
+    false-positive tradeoff. Runs independently of
     classify_statements()/statements_touched_by_diff() because it needs the
     RAW content strip_noise() blanks out, not the noise-stripped statement
     text."""
     findings = []
-    _stripped, literal_spans = strip_noise_and_collect(new_text)
-    for kind, start, _end, content in literal_spans:
-        if not content.strip():
+    stripped, literal_spans = strip_noise_and_collect(new_text)
+    if not literal_spans:
+        return findings
+
+    for group in _group_concatenated_spans(stripped, literal_spans):
+        spans = [literal_spans[i] for i in group]
+        raw_merged = "".join(s[5] for s in spans)  # s[5] == content
+        if not raw_merged.strip():
             continue
-        start_line = new_text.count("\n", 0, start) + 1
-        end_line = start_line + content.count("\n")
+
+        start_line = new_text.count("\n", 0, spans[0][3]) + 1  # s[3] == content_start
+        end_line = new_text.count("\n", 0, spans[-1][4]) + 1  # s[4] == content_end
         if not any(ln in added_lines for ln in range(start_line, end_line + 1)):
             continue
+
+        content = _collapse_literal_concat(raw_merged)
+        kind = spans[0][0] if len(spans) == 1 else "%s(x%d, concatenated)" % (spans[0][0], len(spans))
+
+        matched_any = False
         for m in DYNAMIC_GRANT_RE.finditer(content):
+            matched_any = True
             roles_text = m.group("roles")
             match_line = start_line + content[: m.start()].count("\n")
             excerpt = content[m.start() : m.end()].strip()[:160]
@@ -641,6 +808,22 @@ def find_dynamic_sql_grant_findings(file_rel: str, new_text: str, added_lines: s
                 )
                 continue
             roles = _dynamic_roles(roles_text)
+            if not roles:
+                findings.append(
+                    Finding(
+                        "dynamic-sql-grant-unknown-role",
+                        "FAIL",
+                        file_rel,
+                        match_line,
+                        "%s-quoted literal contains a GRANT ... TO clause whose role "
+                        "could not be statically resolved (the TO clause has no "
+                        "matchable role text -- likely completed by string "
+                        "concatenation or a separate expression) -- treated as a "
+                        "violation rather than passed for lack of a matchable role "
+                        "name: %s" % (kind, excerpt),
+                    )
+                )
+                continue
             bad_roles = [r for r in roles if r.lower() not in ALLOWLISTED_GRANT_ROLES]
             if bad_roles:
                 findings.append(
@@ -659,6 +842,36 @@ def find_dynamic_sql_grant_findings(file_rel: str, new_text: str, added_lines: s
                         ),
                     )
                 )
+
+        if not matched_any:
+            # DYNAMIC_GRANT_RE's tight role character class (deliberately
+            # excludes quote/pipe characters) never even attempted a match
+            # here -- either the span/group ends bare right at "TO" with
+            # nothing after it at all, or "TO" immediately hits a live
+            # string-literal boundary that continues via `||` into
+            # something _collapse_literal_concat couldn't resolve (not
+            # another string literal -- a function call, a variable). Same
+            # unresolved-role posture as the `if not roles:` branch above,
+            # reached via a different shape.
+            m2 = _UNRESOLVED_CONCAT_RE.search(content)
+            if m2:
+                match_line = start_line + content[: m2.start()].count("\n")
+                excerpt = content[m2.start() : m2.end()].strip()[:160]
+                findings.append(
+                    Finding(
+                        "dynamic-sql-grant-unknown-role",
+                        "FAIL",
+                        file_rel,
+                        match_line,
+                        "%s-quoted literal contains an unresolved GRANT ... TO "
+                        "clause -- the role is either missing entirely or supplied "
+                        "by concatenation with a non-literal expression, and cannot "
+                        "be statically determined -- treated as a violation rather "
+                        "than passed for lack of a matchable role name: %s"
+                        % (kind, excerpt),
+                    )
+                )
+
     return findings
 
 

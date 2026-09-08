@@ -202,6 +202,130 @@ check_true(
     len(hard_fails8) == 0,
 )
 
+# ---------------------------------------------------------------------------
+# Layer 2c -- gh-1767 fix2 (PR #1836 comment 5578401122): rule 1 unanchored
+# + rule 4 concatenation-aware, independent of the fixture files.
+# ---------------------------------------------------------------------------
+print()
+print("Layer 2c: rule 1 unanchored / rule 4 concatenation-aware (PR #1836 REVIEW: FAIL round 2)")
+
+ALTER_DEFAULT_PRIV_GRANT_ANON = (
+    "BEGIN;\n\nALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON "
+    "FUNCTIONS TO anon;\n\nCOMMIT;\n"
+)
+findings9, _pass_notes9 = ratchet.evaluate_file(
+    "altdef_grant.sql", "", ALTER_DEFAULT_PRIV_GRANT_ANON
+)
+hard_fails9 = [f for f in findings9 if f.severity == "FAIL"]
+check_true(
+    "probe (f): static ALTER DEFAULT PRIVILEGES ... GRANT ... TO anon FAILS "
+    "even though it does not start with the word GRANT",
+    len(hard_fails9) == 1 and hard_fails9[0].rule == "grant-to-disallowed-role",
+)
+
+ALTER_DEFAULT_PRIV_REVOKE_ANON = (
+    "BEGIN;\n\nALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE EXECUTE ON "
+    "FUNCTIONS FROM anon;\n\nCOMMIT;\n"
+)
+findings10, _pass_notes10 = ratchet.evaluate_file(
+    "altdef_revoke.sql", "", ALTER_DEFAULT_PRIV_REVOKE_ANON
+)
+hard_fails10 = [f for f in findings10 if f.severity == "FAIL"]
+check_true(
+    "the REVOKE direction of the same ALTER DEFAULT PRIVILEGES phrasing "
+    "PASSES -- rule 1's unanchored scan is not so broad it starts flagging "
+    "REVOKE-shaped statements that don't start with the word REVOKE",
+    len(hard_fails10) == 0,
+)
+
+REVOKE_GRANT_OPTION_FOR = (
+    "BEGIN;\n\nREVOKE GRANT OPTION FOR EXECUTE ON FUNCTION public.f() FROM "
+    "anon;\n\nCOMMIT;\n"
+)
+findings11, _pass_notes11 = ratchet.evaluate_file(
+    "revoke_grant_option.sql", "", REVOKE_GRANT_OPTION_FOR
+)
+hard_fails11 = [f for f in findings11 if f.severity == "FAIL"]
+check_true(
+    "REVOKE GRANT OPTION FOR ... FROM anon PASSES -- contains the literal "
+    "word GRANT but is REVOKE-shaped (checked first, unconditionally)",
+    len(hard_fails11) == 0,
+)
+
+DYNAMIC_GRANT_CONCAT_AFTER_TO = (
+    "BEGIN;\n\nEXECUTE 'GRANT EXECUTE ON FUNCTION public.f() TO ' || "
+    "'anon';\n\nCOMMIT;\n"
+)
+findings12, _pass_notes12 = ratchet.evaluate_file(
+    "dynctrl_concat_after_to.sql", "", DYNAMIC_GRANT_CONCAT_AFTER_TO
+)
+hard_fails12 = [f for f in findings12 if f.severity == "FAIL"]
+check_true(
+    "probe (a): role split via || concat right at the TO boundary FAILS "
+    "as dynamic-sql-grant with the role correctly resolved to anon",
+    len(hard_fails12) == 1 and hard_fails12[0].rule == "dynamic-sql-grant",
+)
+
+DYNAMIC_GRANT_CONCAT_SPLIT_BEFORE_TO = (
+    "BEGIN;\n\nEXECUTE 'GRANT EXECUTE ON FUNCTION public.f() ' || "
+    "'TO anon';\n\nCOMMIT;\n"
+)
+findings13, _pass_notes13 = ratchet.evaluate_file(
+    "dynctrl_concat_before_to.sql", "", DYNAMIC_GRANT_CONCAT_SPLIT_BEFORE_TO
+)
+hard_fails13 = [f for f in findings13 if f.severity == "FAIL"]
+check_true(
+    "probe (e): split before the TO keyword also FAILS as dynamic-sql-grant "
+    "by design (span merge), not by dollar-quote accident",
+    len(hard_fails13) == 1 and hard_fails13[0].rule == "dynamic-sql-grant",
+)
+
+DYNAMIC_GRANT_CONCAT_UNKNOWN_ROLE = (
+    "BEGIN;\n\nCREATE OR REPLACE FUNCTION public.grant_to_role(r text) "
+    "RETURNS void AS $$\nBEGIN\n  EXECUTE 'GRANT EXECUTE ON FUNCTION "
+    "public.f() TO ' || quote_ident(r);\nEND;\n$$ LANGUAGE plpgsql;"
+    "\n\nCOMMIT;\n"
+)
+findings14, _pass_notes14 = ratchet.evaluate_file(
+    "dynctrl_concat_unknown.sql", "", DYNAMIC_GRANT_CONCAT_UNKNOWN_ROLE
+)
+hard_fails14 = [f for f in findings14 if f.severity == "FAIL"]
+check_true(
+    "role concatenated from a non-literal expression (quote_ident(r)) FAILS "
+    "CLOSED as dynamic-sql-grant-unknown-role, same posture as an unresolved "
+    "format() placeholder",
+    len(hard_fails14) == 1 and hard_fails14[0].rule == "dynamic-sql-grant-unknown-role",
+)
+
+DYNAMIC_GRANT_CONCAT_SERVICE_ROLE = (
+    "BEGIN;\n\nEXECUTE 'GRANT EXECUTE ON FUNCTION public.f() TO ' || "
+    "'service_role';\n\nCOMMIT;\n"
+)
+findings15, _pass_notes15 = ratchet.evaluate_file(
+    "dynctrl_concat_service_role.sql", "", DYNAMIC_GRANT_CONCAT_SERVICE_ROLE
+)
+hard_fails15 = [f for f in findings15 if f.severity == "FAIL"]
+check_true(
+    "positive control: a || -concatenated GRANT that resolves to the "
+    "allowlisted service_role PASSES -- the merge logic actually checks "
+    "the allowlist, it does not fail closed unconditionally",
+    len(hard_fails15) == 0,
+)
+
+DYNAMIC_REVOKE_CONCAT = (
+    "BEGIN;\n\nEXECUTE 'REVOKE EXECUTE ON FUNCTION public.f() FROM ' || "
+    "'anon';\n\nCOMMIT;\n"
+)
+findings16, _pass_notes16 = ratchet.evaluate_file(
+    "dynctrl_revoke_concat.sql", "", DYNAMIC_REVOKE_CONCAT
+)
+hard_fails16 = [f for f in findings16 if f.severity == "FAIL"]
+check_true(
+    "REVOKE split across the same || concatenation shape PASSES -- rule 4 "
+    "only ever fires on GRANT, the merge does not change that",
+    len(hard_fails16) == 0,
+)
+
 print()
 print("assertions: %d, failures: %d" % (TOTAL_CHECKS, len(FAILURES)))
 if FAILURES:
