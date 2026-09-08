@@ -64,8 +64,24 @@
 # can measure anything. Until that secret exists, the step below fails LOUD
 # (UNMEASURED, exit 2) by design -- per gh-1419, that is correct behavior, not
 # a bug to silence.
+#
+# Renamed from "Edge Function Drift" (gh-1738): the old name did not say
+# which edge functions -- this workflow compares DEPLOYED SUPABASE Edge
+# Functions against `main` (SUPABASE_PROJECT_REF below, plus the otter-crm
+# remote-project steps); it has never looked at netlify/edge-functions/*.ts,
+# which is a different deploy target (Netlify, not Supabase) with no drift
+# concept in the same sense (Netlify redeploys from `main` on every push;
+# there is no "deployed source vs main" gap for it to measure). Verified
+# safe to rename: `git grep -n "Edge Function Drift"` finds this `name:`
+# plus two unrelated comment references in scripts/ (not check names), and
+# branch protection's required_status_checks.contexts (queried live via the
+# API) is exactly ["Null-Byte & Size Sanity Check", "5-Page Revenue-Path
+# Smoke Check"] -- this workflow was never in it. This workflow also never
+# runs on `pull_request` (schedule / workflow_dispatch / push-to-main only,
+# see `on:` below), so it was never a per-PR check context in the first
+# place -- only a workflow-run label in the Actions tab.
 
-name: Edge Function Drift
+name: Supabase Edge Function Drift
 
 on:
   schedule:
@@ -85,6 +101,8 @@ on:
       - 'scripts/edge-function-drift-remote.test.py'
       - 'scripts/netlify-deploy-drift.py'
       - 'scripts/netlify-deploy-drift.test.py'
+      - 'scripts/is-test-cross-table-check.py'
+      - 'scripts/is-test-cross-table-check.test.py'
       - '.github/workflows/edge-function-drift.yml'
 
 env:
@@ -347,3 +365,66 @@ jobs:
           name: netlify-deploy-drift-report
           path: netlify-drift-report.json
           if-no-files-found: ignore
+
+  is-test-cross-table-guard-prod:
+    name: is-test cross-table guard — production (gh-1763)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      # File an alarm comment on gh-1763 -- the alarm IS the comment (the #1295
+      # pattern), same shape as the netlify-drift job's issues: write above.
+      # Not needed by `drift`/`netlify-drift`, so scoped to this job only.
+      issues: write
+
+    # PR #1826 review (comment 5577633751): the "is-test Cross-Table Guard
+    # (gh-1763)" job in e2e-tests.yml only ever ran `--self-test` against the
+    # CI-test project (zsdvaqilfdclwosmiheh) -- it never asserted the
+    # disagreement count against PRODUCTION on any schedule, so it could stay
+    # green in CI while production silently regressed. The CTO's ruling on
+    # #1763 (comment 5572645535, item 3) requires "a CI or cron assertion that
+    # the disagreement count stays 0" for the real data, "not optional and not
+    # a follow-up." THIS job is that mechanism, run on the same schedule as the
+    # `drift`/`netlify-drift` jobs above: it runs the SAME read-only
+    # disagreement query the issue body specifies, against production
+    # (SUPABASE_PROJECT_REF), via the Management API's `database/query` SQL
+    # endpoint -- a single SELECT, never a write -- authenticated with
+    # SUPABASE_ACCESS_TOKEN (a Personal Access Token), not a service-role key,
+    # because the Code lane has no service-role key for production anywhere
+    # (same credential this file's `drift` job above already uses). No
+    # continue-on-error: an UNMEASURED result (missing token, unreachable API,
+    # malformed response) must fail this job exactly as loudly as a real
+    # disagreement finding (gh-1419) -- see
+    # scripts/is-test-cross-table-check.py's run_management_api(). Proven live
+    # 2026-09-08 against both projects plus a deliberately bad token -- see
+    # PR #1826's evidence comment.
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      # Pure client-side logic, no network -- catches a regression in the
+      # Management-API parsing/exit-code path even on a run where production
+      # is unreachable. Same discipline as every other detector in this file.
+      - name: Self-test the detector (hermetic)
+        run: python3 scripts/is-test-cross-table-check.test.py
+
+      # Read-only against production. `--file-issue` posts to gh-1763 itself
+      # on a real disagreement (never on UNMEASURED alone -- a measurement gap
+      # is not a drift finding, same rule the netlify-drift job above follows
+      # via its own --file-issue). GITHUB_TOKEN is this job's own ambient
+      # token, which carries issues: write via the permissions block above --
+      # scoped correctly, since gh-1763 lives in this same repo (same fix
+      # gh-1721 applied to the netlify-drift job's alarm POST).
+      - name: Check profiles.is_test vs contractors.is_test on production (read-only)
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/is-test-cross-table-check.py \
+            --management-api \
+            --project-ref "$SUPABASE_PROJECT_REF" \
+            --file-issue
