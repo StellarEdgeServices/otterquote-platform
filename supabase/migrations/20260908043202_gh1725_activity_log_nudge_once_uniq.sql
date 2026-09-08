@@ -1,0 +1,53 @@
+-- gh-1725: unique partial index on activity_log making the homeowner-nudge
+-- mailer's duplicate-send guard reachable. Today that guard is dead code:
+-- send-homeowner-next-steps/index.ts:534 catches SQLSTATE 23505 on the stamp
+-- INSERT, but no unique index exists, so Postgres never raises it and two
+-- overlapping invocations of the v113 cron (jobid 20, '*/30 * * * *', active)
+-- can double-email one homeowner.
+--
+-- Approved by the CTO ruling on #1580 comment 5532497935 ("index applied ->
+-- v113 applied -> nothing calls send-homeowner-next-steps before the index
+-- exists"). tier:3b, and its R-097 window was already served: opened with that
+-- ruling and closed 2026-09-04T21:39:08Z without objection. #1725 carries
+-- `tier:3b-approved` from creation.
+--
+-- ONE CORRECTION TO THE RULING'S SQL, decided as the CTO batch of CEO RUN 35
+-- (claim ceo-2026-09-07T20:08:08Z) and recorded on #1725:
+--
+--   DECIDED: the metadata JSON key is `nudge_stage`, NOT `stage`.
+--   REJECTED ALTERNATIVE: shipping the ruling's literal `metadata->>'stage'`.
+--
+-- The ruling's predicate keys on metadata->>'stage'. The merged function
+-- writes `metadata: { claim_id: claim.id, nudge_stage: stage, ... }` at
+-- index.ts:521, and documents that same shape in its own header docblock at
+-- lines 54-55. The key `stage` is written nowhere. An index built on
+-- metadata->>'stage' with a `WHERE metadata->>'stage' IS NOT NULL` predicate
+-- would therefore match ZERO rows forever: it would create without error,
+-- satisfy a "does the index exist" check, and still never fire -- reinstating
+-- the exact defect this migration exists to remove, one layer further down and
+-- behind a green checkmark. `nudge_stage` is what the code writes and is what
+-- this index keys on.
+--
+-- R-147 pre-flight, measured against production (yeszghaspzwwstvsrioa) at
+-- 2026-09-08T04:27:32Z, read-only:
+--   select count(*) from activity_log where event_type='next_steps_nudge_sent'
+--     -> 0
+--   duplicate (user_id, event_type, claim_id, nudge_stage) groups with
+--     nudge_stage not null -> 0 rows
+--   activity_log total rows -> 1050
+-- So CREATE UNIQUE INDEX cannot fail on a pre-existing duplicate today.
+--
+-- CREATE INDEX CONCURRENTLY cannot run inside a transaction block, so this
+-- file intentionally carries no BEGIN/COMMIT wrapper and must stay the only
+-- statement in its migration file (migration-author-code skill convention,
+-- same as 20260903184350_gh1544_contractors_email_lower_uniq.sql). On failure
+-- CONCURRENTLY leaves an INVALID index behind rather than rolling back
+-- automatically -- see the rollback file's note before retrying.
+--
+-- Rollback:   20260908043202_gh1725_activity_log_nudge_once_uniq_rollback.sql
+-- Pre-flight: 20260908043202_gh1725_activity_log_nudge_once_uniq_pre-flight.md
+
+CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS activity_log_nudge_once_uniq
+  ON activity_log (user_id, event_type, (metadata->>'claim_id'), (metadata->>'nudge_stage'))
+  WHERE metadata->>'nudge_stage' IS NOT NULL
+    AND event_type = 'next_steps_nudge_sent';
