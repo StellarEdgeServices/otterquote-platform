@@ -205,7 +205,27 @@ describe('detectLegalMoneyContent — predicate scope (gh-1701, 2026-09-06)', ()
         // testing for real copy vocabulary. This only narrows what a QUOTED,
         // WHOLE-STRING file path can trigger; vocabulary appearing in actual
         // prose is untouched.
-        const scanBody = body.replace(/(["'`])[\w./-]+\.(?:py|m?[jt]s|sh|sql|html?|txt)\1/g, '');
+        let scanBody = body.replace(/(["'`])[\w./-]+\.(?:py|m?[jt]s|sh|sql|html?|txt)\1/g, '');
+        // gh-1767 (scripts/permissions-ratchet.py, PR #1836): a docstring
+        // explaining why the OLD R-120 predicate over-fired on PR #1634
+        // enumerates the SQL OPERAND NAME FRAGMENTS that tripped it —
+        // "the operand names contain commission/payout/rebate/\n    fee_" —
+        // wrapped across a line by the file's own prose width, same as any
+        // paragraph. That is a list of code-identifier fragments (mirroring
+        // MONEY_IDENT_RE's own vocabulary in predicate.mjs) being quoted for
+        // an explanation, not a customer-facing sentence — same idea as the
+        // #1735 "rule's own text quoted in a script" case above, one shape
+        // over. Distinguish it from genuine slash-joined customer prose (e.g.
+        // a "Licensed/Bonded/Insured" badge) by requiring an underscore
+        // somewhere in the run: natural-language copy never contains a raw
+        // `_`, while a snake_case/prefix fragment like `fee_` is exactly the
+        // tell that this is code, not copy. Only strips slash-runs that
+        // contain that tell; a plain "certified/licensed" run is left alone
+        // and still trips the ratchet if it shows up in an unlisted file.
+        scanBody = scanBody.replace(
+          /\b[a-z][a-z0-9_]*(?:\/\s*[a-z][a-z0-9_]*)+\b/gi,
+          (m) => (m.includes('_') ? '' : m),
+        );
         if (COPY_VOCAB.test(scanBody) && !COPY_GUARD_FILES.has(rel)) missing.push(rel);
       }
     }
