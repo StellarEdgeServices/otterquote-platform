@@ -90,7 +90,7 @@ export async function logNotificationFailure(
   return row;
 }
 
-/* ──────────────────────────────────────────────────────────────────────────
+/*
  * gh-1538 (second pass): the activity_log row above is durable but it is not
  * LOUD. `activity_log` is an append-only audit table with no admin surface
  * that filters it — a `notification_failed` row lands there and is seen by
@@ -111,7 +111,7 @@ export async function logNotificationFailure(
  * other. `platform_alerts_log` has no is_test column, so test traffic is
  * marked in the message text instead of being dropped — a verification run
  * must be able to see its own alert.
- * ────────────────────────────────────────────────────────────────────────── */
+ */
 
 export interface PlatformAlertRow {
   alert_type: "notification_failed";
@@ -167,7 +167,7 @@ export async function logNotificationFailureLoud(
   return { row, alert };
 }
 
-/* ──────────────────────────────────────────────────────────────────────────
+/*
  * gh-1538: the X-Verify-Send escape hatch, and why it is shaped this way.
  *
  * This issue's closes-on needs one `activity_log` row of
@@ -198,7 +198,7 @@ export async function logNotificationFailureLoud(
  * Consequence to state plainly: with this header, a real email IS sent to the
  * address on an is_test row. That is the point — a verification that does not
  * send proves nothing — and it is why the header is admin-only and logged.
- * ────────────────────────────────────────────────────────────────────────── */
+ */
 
 /** The request header that opts a single call out of the is_test send skip. */
 export const VERIFY_SEND_HEADER = "X-Verify-Send";
