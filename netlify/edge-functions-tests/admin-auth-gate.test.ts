@@ -1,5 +1,13 @@
 // Deno unit tests for admin-auth-gate.ts (gh-1738).
-// Run: deno test netlify/edge-functions/admin-auth-gate.test.ts
+// Run: deno test netlify/edge-functions-tests/admin-auth-gate.test.ts
+//
+// gh-1738 note: this file lives in netlify/edge-functions-tests/, a
+// SIBLING of netlify/edge-functions/, not inside it. Netlify auto-discovers
+// every .ts file directly under netlify/edge-functions/ as a deployable edge
+// function candidate (confirmed empirically: an earlier version of this PR
+// placed the test files there and broke the Netlify deploy preview build,
+// exit code 2 -- see PR #1820 history). Keeping tests out of that directory
+// entirely is the fix; the negative-control fixture follows the same rule.
 //
 // gh-1738: this gate is the ONLY thing standing in front of /admin-* pages
 // at the edge (client-side JS and Supabase RLS are the other two layers per
@@ -10,7 +18,7 @@
 // any secret. Pure-unit, no network, no secrets.
 
 import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
-import handler from "./admin-auth-gate.ts";
+import handler from "../edge-functions/admin-auth-gate.ts";
 
 function base64url(obj: unknown): string {
   const json = JSON.stringify(obj);

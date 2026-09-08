@@ -17,7 +17,7 @@ name: Netlify Edge Function Tests (Deno)
 # THE GATE ITSELF IS NOT TRUSTED UNTIL IT HAS BEEN OBSERVED FAILING (gh-1738's
 # own thesis, applied here rather than assumed of this workflow): the
 # "Negative control" step below runs the identical `deno test` command
-# against netlify/edge-functions/tests/negative-control-fixture/, a
+# against netlify/edge-functions-tests/negative-control-fixture/, a
 # deliberately-broken fixture that is NEVER part of the main test step, and
 # the job fails loudly if that command does NOT fail. A CI job that is red
 # for every real change and can never observe itself rejecting a broken case
@@ -30,17 +30,30 @@ name: Netlify Edge Function Tests (Deno)
 # below includes exactly that shape (a matched path that fires, an unmatched
 # path that falls through via context.next()) in addition to its other
 # branches.
+#
+# TESTS LIVE IN A SIBLING DIRECTORY, NOT netlify/edge-functions/ ITSELF: an
+# earlier version of this PR co-located *.test.ts beside the real functions
+# (matching supabase/functions/'s convention) and it broke the Netlify
+# deploy-preview build (exit code 2) -- Netlify auto-discovers every .ts file
+# directly under netlify/edge-functions/ (no `directory` override in
+# netlify.toml) as a deployable edge-function candidate, test files included,
+# and a file with no compatible default-export handler fails that bundling
+# step. Tests and the negative-control fixture now live in
+# netlify/edge-functions-tests/, a sibling Netlify never scans, and import
+# each handler with a relative `../edge-functions/<name>.ts` path.
 
 on:
   push:
     branches: [main]
     paths:
       - 'netlify/edge-functions/**'
+      - 'netlify/edge-functions-tests/**'
       - '.github/workflows/netlify-edge-functions.yml'
   pull_request:
     branches: [main]
     paths:
       - 'netlify/edge-functions/**'
+      - 'netlify/edge-functions-tests/**'
       - '.github/workflows/netlify-edge-functions.yml'
 
 jobs:
@@ -57,14 +70,16 @@ jobs:
         with:
           deno-version: '2.8.3'
 
-      # Pure-unit, same convention as supabase/functions/ (gh-422): each
-      # function's handler is imported directly and called with a real
-      # Request plus a minimal fake Netlify context (next()/rewrite()
-      # captured, never a live edge runtime) -- no network, no secrets.
-      # Files are listed explicitly (not `netlify/edge-functions/` as a
-      # directory glob) so this step can never accidentally pick up the
-      # negative-control fixture under tests/ -- that separation is what
-      # keeps this step's exit code meaningful.
+      # Pure-unit, same handler-testing convention as supabase/functions/
+      # (gh-422): each function's handler is imported directly and called
+      # with a real Request plus a minimal fake Netlify context
+      # (next()/rewrite() captured, never a live edge runtime) -- no
+      # network, no secrets. Test files live in netlify/edge-functions-tests/
+      # (a sibling of netlify/edge-functions/, not inside it -- see the
+      # workflow-level comment above for why) and are listed explicitly here
+      # (not a directory glob) so this step can never accidentally pick up
+      # the negative-control fixture -- that separation is what keeps this
+      # step's exit code meaningful.
       #
       # Deno's own pretty reporter prints each file's "N passed | M failed"
       # summary; this loop captures it per file (ANSI stripped) so the job
@@ -74,7 +89,7 @@ jobs:
         id: tests
         run: |
           set +e
-          FILES="netlify/edge-functions/admin-auth-gate.test.ts netlify/edge-functions/blog-guides-redirect.test.ts netlify/edge-functions/recruit-redirect.test.ts netlify/edge-functions/ref-redirect.test.ts"
+          FILES="netlify/edge-functions-tests/admin-auth-gate.test.ts netlify/edge-functions-tests/blog-guides-redirect.test.ts netlify/edge-functions-tests/recruit-redirect.test.ts netlify/edge-functions-tests/ref-redirect.test.ts"
           OVERALL_EXIT=0
           {
             echo "## Per-function assertion counts"
@@ -105,7 +120,7 @@ jobs:
 
       # NEGATIVE CONTROL. This is the half that makes the step above trusted
       # rather than merely green. It runs the SAME test command shape against
-      # a fixture engineered to fail (netlify/edge-functions/tests/
+      # a fixture engineered to fail (netlify/edge-functions-tests/
       # negative-control-fixture/always-wrong.test.ts -- a wrong assertion
       # AND a handler that always throws, unhandled). If `deno test` against
       # that fixture exits 0, this step fails the job with an explicit
@@ -116,7 +131,7 @@ jobs:
         if: always()
         run: |
           set +e
-          out=$(deno test netlify/edge-functions/tests/negative-control-fixture/always-wrong.test.ts 2>&1)
+          out=$(deno test netlify/edge-functions-tests/negative-control-fixture/always-wrong.test.ts 2>&1)
           code=$?
           clean=$(echo "$out" | sed -E 's/\x1B\[[0-9;]*[mK]//g')
           echo "$clean"
@@ -141,5 +156,5 @@ jobs:
             echo
             echo "Observed failing as expected: \`${{ steps.negctrl.outputs.negctrl_observed_failing }}\` (exit code \`${{ steps.negctrl.outputs.negctrl_exit }}\`)"
             echo
-            echo "A gate is not trusted until it has been observed rejecting the thing it exists to reject (gh-1738). The row above is that observation for THIS gate: \`netlify/edge-functions/tests/negative-control-fixture/always-wrong.test.ts\` is deliberately broken and must fail every run."
+            echo "A gate is not trusted until it has been observed rejecting the thing it exists to reject (gh-1738). The row above is that observation for THIS gate: \`netlify/edge-functions-tests/negative-control-fixture/always-wrong.test.ts\` is deliberately broken and must fail every run."
           } >> "$GITHUB_STEP_SUMMARY"

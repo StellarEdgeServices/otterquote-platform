@@ -1,5 +1,10 @@
 // Deno unit tests for blog-guides-redirect.ts (gh-1738).
-// Run: deno test netlify/edge-functions/blog-guides-redirect.test.ts
+// Run: deno test netlify/edge-functions-tests/blog-guides-redirect.test.ts
+//
+// gh-1738 note: lives in netlify/edge-functions-tests/, a SIBLING of
+// netlify/edge-functions/ -- see admin-auth-gate.test.ts for why (Netlify
+// auto-discovers every .ts directly under netlify/edge-functions/ as a
+// deployable candidate; a test file there broke the deploy preview build).
 //
 // gh-1738 instance 5-analog: this function was ADDED (PR #1789) specifically
 // because a fresh-context reviewer found the equivalent `_redirects` rules
@@ -9,7 +14,7 @@
 // This is the first automated coverage it has had.
 
 import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
-import handler from "./blog-guides-redirect.ts";
+import handler from "../edge-functions/blog-guides-redirect.ts";
 
 function fakeContext() {
   let nextCalled = false;

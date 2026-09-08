@@ -1,12 +1,17 @@
 // Deno unit tests for recruit-redirect.ts (gh-1738).
-// Run: deno test netlify/edge-functions/recruit-redirect.test.ts
+// Run: deno test netlify/edge-functions-tests/recruit-redirect.test.ts
+//
+// gh-1738 note: lives in netlify/edge-functions-tests/, a SIBLING of
+// netlify/edge-functions/ -- see admin-auth-gate.test.ts for why (Netlify
+// auto-discovers every .ts directly under netlify/edge-functions/ as a
+// deployable candidate; a test file there broke the deploy preview build).
 //
 // gh-1738: this file (the highest-value entry point on the site, per its own
 // header comment) had zero automated coverage before this test existed.
 // Pure-unit -- no network, no secrets.
 
 import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.177.0/testing/asserts.ts";
-import handler from "./recruit-redirect.ts";
+import handler from "../edge-functions/recruit-redirect.ts";
 
 // Captures what the handler asked Netlify to rewrite to, without needing a
 // real Netlify runtime. context.rewrite() serves the target's content as a
