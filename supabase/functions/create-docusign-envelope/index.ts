@@ -1,5 +1,12 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.104.0";
+import {
+  CONTRACT_PRICE_FIELD_ID,
+  CURRENT_TEMPLATE_MANIFEST_VERSION,
+  TemplateNotUsableError,
+  type TemplateUsability,
+  isTemplateUsable,
+} from "./template-validity.ts";
 // deno-lint-ignore no-explicit-any
 async function getHomeownerName(supabase, claimId) {
   const empty = {
@@ -1874,6 +1881,46 @@ async function autoPopulateFields(supabase, claimId, contractorId, signerName, s
     bidData
   };
 }
+// [gh-1315] Look up the contractor_templates row for this slot and apply the
+// shared invariant (_shared/template-validity.ts). Throws TemplateNotUsableError
+// (422, code TEMPLATE_NOT_USABLE) naming the template id and the exact reason.
+// A contractor with NO row for the slot is refused too: bid_can_submit would
+// have refused the bid ('not_found'), so reaching here without a row means the
+// gate was bypassed (auto-bid or a legacy JSONB-only slot) — do not fall through
+// to an unvalidated PDF.
+// deno-lint-ignore no-explicit-any
+async function assertContractorTemplateUsable(supabase: any, contractorId: string, trade: string, fundingType: string) {
+  const { data: rows, error } = await supabase
+    .from("contractor_templates")
+    .select("id, contractor_id, trade, funding_type, status, validation_result, pdf_storage_path")
+    .eq("contractor_id", contractorId)
+    .ilike("trade", trade)
+    .ilike("funding_type", fundingType)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (error) {
+    throw new Error(`contractor_templates lookup failed for contractor ${contractorId} (${trade}/${fundingType}): ${error.message}`);
+  }
+  const row = rows?.[0] ?? null;
+  if (!row) {
+    const usability: TemplateUsability = {
+      usable: false,
+      code: "status_not_validated",
+      reason: `no contractor_templates row for contractor ${contractorId} slot ${trade}/${fundingType}; upload and validate the template on the profile before signing`,
+      storedManifestVersion: null,
+      missingFieldIds: [],
+    };
+    throw new TemplateNotUsableError(usability, null);
+  }
+  const usability = isTemplateUsable(row, CURRENT_TEMPLATE_MANIFEST_VERSION, {
+    requireFieldIds: [CONTRACT_PRICE_FIELD_ID],
+  });
+  console.log(`[gh-1315] template invariant: contractor=${contractorId} template=${row.id} slot=${trade}/${fundingType} status=${row.status} stored=${usability.storedManifestVersion ?? "none"} current=${CURRENT_TEMPLATE_MANIFEST_VERSION} usable=${usability.usable}${usability.code ? ` code=${usability.code}` : ""}`);
+  if (!usability.usable) {
+    throw new TemplateNotUsableError(usability, row.id);
+  }
+  return row;
+}
 // ========== HANDLER: CONTRACTOR SIGN (new — Step A) ==========
 async function handleContractorSign(supabase, requestBody, corsHeaders) {
   const { claim_id, contractor_id, signer, fields: providedFields, return_url, quote_id } = requestBody;
@@ -1925,6 +1972,16 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
     if (s.includes("retail") || s.includes("cash")) return "retail";
     return s;
   };
+  // [gh-1315] The template-validity INVARIANT, enforced where the status is
+  // READ. Until now this flow attached whatever PDF the legacy
+  // contractors.contract_templates JSONB pointed at and never looked at the
+  // contractor_templates row that bid_can_submit gated on — so a template
+  // validated under the retired v2 manifest (or seeded with no result at all)
+  // reached BoldSign, carried no v3 `contract_price` tag, and every completion
+  // raised `signed_price_unverified reason=field_absent` (#1314). Refuse here,
+  // by template id and reason, rather than mint a document that cannot be
+  // reconciled. Legal text and pricing below are untouched.
+  await assertContractorTemplateUsable(supabase, contractor_id, trade, fundingType);
   const templates = contractorData?.contract_templates || [];
   let matchingTemplate = templates.find((t)=>t.trade && t.trade.toLowerCase() === trade && t.funding_type && normalizeSlotFunding(t.funding_type) === fundingType);
   if (!matchingTemplate) {
@@ -2852,6 +2909,24 @@ serve(async (req)=>{
     }
   } catch (error) {
     console.error("create-docusign-envelope error:", error);
+    if (error instanceof TemplateNotUsableError) {
+      // [gh-1315] Specific, template-id-bearing refusal — never a generic 500.
+      return new Response(JSON.stringify({
+        error: error.code,
+        message: error.message,
+        template_id: error.templateId,
+        reason_code: error.usability.code,
+        stored_manifest_version: error.usability.storedManifestVersion,
+        current_manifest_version: CURRENT_TEMPLATE_MANIFEST_VERSION,
+        missing_field_ids: error.usability.missingFieldIds
+      }), {
+        status: error.statusCode,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json"
+        }
+      });
+    }
     if (error instanceof DocumentTooLargeError) {
       return new Response(JSON.stringify({
         error: error.code,

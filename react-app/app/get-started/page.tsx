@@ -1077,7 +1077,7 @@ export default function GetStartedPage() {
               <div className="benefit-icon">🎯</div>
               <div className="benefit-text">
                 <h4>Contractors compete</h4>
-                <p>Contractors in your area submit quotes for your job. You compare and choose the best deal.</p>
+                <p>We put your job in front of contractors who serve your area. You compare the quotes that come in and choose the best deal.</p>
               </div>
             </div>
 

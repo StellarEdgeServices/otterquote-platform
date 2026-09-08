@@ -17,7 +17,7 @@ DOUBLE-quoted string. The browser's parser terminates the attribute at the
 first unescaped `"` -- right after `openUpgradePanel(` -- and reinterprets the
 rest as bogus attributes. Six buttons on that page were dead in production:
 the three document links and all three upgrade-panel actions. No contractor
-could buy the upgrade, and every gate we own (review, R-120, drift-by-content-
+could buy the upgrade, and every gate we own (review, the R-177 legal-read, drift-by-content-
 hash, the post-deploy check) passed on it, because every one of them measures
 what was SHIPPED and none measures whether the shipped thing can be OPERATED.
 
@@ -292,7 +292,7 @@ SELF_TEST_BAD = [
     ("gh1693-upgrade-open", False,
      """<script>var h = '<button onclick="openUpgradePanel(' + JSON.stringify(String(o.id)) + ')">Buy</button>';</script>"""),
     # Shape of the "Pay Securely" button. The live function is confirmUpgradePayment();
-    # the fixture uses a neutral name because R-120's money-identifier rule matches
+    # the fixture uses a neutral name because the R-177 predicate's money-identifier rule matches
     # "Payment" on any code line and a test fixture is not money copy. What this fixture
     # tests is the SHAPE -- a `disabled` button whose handler is closed by a bare
     # JSON.stringify -- and that is preserved byte for byte.
@@ -428,7 +428,7 @@ def main():
         print("same string. When a bare JSON.stringify() closes it instead, the browser")
         print("terminates the attribute at that quote and silently drops the handler")
         print("(gh-1693: six dead buttons on the money path, shipped green through every")
-        print("gate we own -- review, R-120, drift-by-content-hash and the post-deploy check")
+        print("gate we own -- review, the R-177 legal-read, drift-by-content-hash and the post-deploy check")
         print("all measure what was SHIPPED, none measure whether it can be OPERATED).")
         return 1
 
