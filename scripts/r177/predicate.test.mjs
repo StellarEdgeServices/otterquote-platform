@@ -199,3 +199,82 @@ describe('gh-1701 criterion 2 -- the true positive that must survive the narrowi
     assert.ok(r.lines.some((l) => l.rule === 'legal-consent-word'));
   });
 });
+
+// gh-1701 criterion 1 (2026-09-08): the three false-positive SHAPES from the
+// issue's measurement table, each asserted by name so a regression in any one
+// of them is caught individually instead of buried in an aggregate `hit`.
+//
+// Measured against predicate.mjs on main (de65261) before this PR, node --test:
+//   SHAPE 1 (html <script> // comment, word rule)      -> hit=true  ["legal-consent-word"]  FALSE POSITIVE
+//   SHAPE 2 (py docstring line, tools/ harness path)    -> hit=false []                      already silent
+//   SHAPE 3 (py test-fixture money identifier, tools/)  -> hit=false []                      already silent
+// Shapes 2 and 3 were already silenced by the 2026-09-06 HARNESS_PATH_RES
+// `currency-only` scoping (word rules and MONEY_IDENT_RE never run on a
+// harness path at all, comment or not) -- they are asserted here as a
+// regression guard, not because this PR changes their behaviour. Only SHAPE 1
+// requires a predicate change; its fixture is the one that flips from failing
+// to passing across this diff.
+describe('gh-1701 criterion 1 -- the three false-positive shapes (2026-09-08)', () => {
+  it('SHAPE 1: a `//` comment inside a .html <script> block does not fire the word rules', () => {
+    const d = [
+      'diff --git a/contractor-opportunities.html b/contractor-opportunities.html',
+      '--- a/contractor-opportunities.html',
+      '+++ b/contractor-opportunities.html',
+      '@@ -1,3 +1,4 @@',
+      ' <script>',
+      '   function foo() {',
+      '+    // the pay button was load-bearing; keep that guarantee explicitly.',
+      '     bar();',
+      '',
+    ].join('\n');
+    const r = detectLegalMoneyContent(d);
+    assert.equal(r.hit, false, `expected silence, got ${JSON.stringify(r.lines)}`);
+  });
+
+  it('SHAPE 1b: a `/* */` comment inside a .html <script> block does not fire the word rules', () => {
+    const d = [
+      'diff --git a/contractor-opportunities.html b/contractor-opportunities.html',
+      '--- a/contractor-opportunities.html',
+      '+++ b/contractor-opportunities.html',
+      '@@ -1,3 +1,4 @@',
+      ' <script>',
+      '   function foo() {',
+      '+    /* keep that guarantee explicitly */',
+      '     bar();',
+      '',
+    ].join('\n');
+    const r = detectLegalMoneyContent(d);
+    assert.equal(r.hit, false, `expected silence, got ${JSON.stringify(r.lines)}`);
+  });
+
+  it("SHAPE 1 control: the same page's HTML TEXT NODE (outside <script>) still fires", () => {
+    const d = [
+      'diff --git a/contractor-opportunities.html b/contractor-opportunities.html',
+      '--- a/contractor-opportunities.html',
+      '+++ b/contractor-opportunities.html',
+      '@@ -1,4 +1,5 @@',
+      ' <script>',
+      '   // keep that guarantee explicitly -- inside the block, must stay silent',
+      ' </script>',
+      '+<p>We guarantee the workmanship on every project.</p>',
+      '',
+    ].join('\n');
+    const r = detectLegalMoneyContent(d);
+    assert.equal(r.hit, true, `expected the text-node line to still fire, got ${JSON.stringify(r.lines)}`);
+    assert.equal(r.lines.length, 1);
+    assert.equal(r.lines[0].rule, 'legal-consent-word');
+    assert.ok(r.lines[0].text.startsWith('<p>'), r.lines[0].text);
+  });
+
+  it('SHAPE 2: a Python docstring line under a tools/ harness path does not fire (already currency-only scoped)', () => {
+    const d = 'diff --git a/tools/inline_handler_attr_check.py b/tools/inline_handler_attr_check.py\n--- a/tools/inline_handler_attr_check.py\n+++ b/tools/inline_handler_attr_check.py\n@@ -1,1 +1,2 @@\n x\n+  is a guaranteed break (it always emits the same shape)\n';
+    const r = detectLegalMoneyContent(d);
+    assert.equal(r.hit, false, `expected silence, got ${JSON.stringify(r.lines)}`);
+  });
+
+  it('SHAPE 3: a money-identifier-shaped test-fixture literal under tools/ does not fire (already currency-only scoped)', () => {
+    const d = 'diff --git a/tools/inline_handler_attr_check.py b/tools/inline_handler_attr_check.py\n--- a/tools/inline_handler_attr_check.py\n+++ b/tools/inline_handler_attr_check.py\n@@ -1,1 +1,2 @@\n x\n+    ("gh1693-upgrade-pay", False, "confirmUpgradePayment shape"),\n';
+    const r = detectLegalMoneyContent(d);
+    assert.equal(r.hit, false, `expected silence, got ${JSON.stringify(r.lines)}`);
+  });
+});
