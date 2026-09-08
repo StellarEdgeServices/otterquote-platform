@@ -103,9 +103,43 @@ jobs:
         env:
           NETLIFY_PAT: ${{ secrets.NETLIFY_PAT }}
         run: |
+          set +e
           python3 scripts/deploy-completion-poll.py \
             --site-name jade-alpaca-b82b5e \
             --last-seen-file .netlify-deploy-poll-state.json
+          poll_exit=$?
+          set -e
+          # Exit-code contract (scripts/deploy-completion-poll.py, same
+          # convention as netlify-deploy-drift.py): 0 = measured/unchanged,
+          # 2 = measured/changed (a new deploy just completed -- the routine,
+          # DESIRED case this workflow exists to catch, not a failure), 3 =
+          # UNMEASURED, 1 = uncaught error/timeout. REVIEW: FAIL (PR #1809
+          # comment 5577200063) caught this step running with no exit-code
+          # handling at all, so it went red on exit 2 -- the expected, common
+          # case -- exactly as loudly as on a broken poller, training
+          # reviewers to ignore red here. Fixed below: 0 and 2 both PROCEED
+          # to the reachability spec; 1 and 3 FAIL THE JOB LOUDLY, because
+          # "unmeasured is not a pass" is this repo's standing rule (gh-1419).
+          case "$poll_exit" in
+            0)
+              echo "poll: exit 0 -- measured, no new deploy since last check. Proceeding (the spec job's if: condition will skip it)."
+              ;;
+            2)
+              echo "poll: exit 2 -- measured, a new production deploy completed. Proceeding to the reachability spec."
+              ;;
+            3)
+              echo "::error::poll: exit 3 -- UNMEASURED (could not read Netlify: bad token, network, or bad site name). Failing the job loudly rather than reporting silent green."
+              exit 1
+              ;;
+            1)
+              echo "::error::poll: exit 1 -- error or timeout in the poll script. Failing the job loudly."
+              exit 1
+              ;;
+            *)
+              echo "::error::poll: exit $poll_exit -- unexpected exit code (expected 0, 1, 2, or 3). Failing the job loudly."
+              exit 1
+              ;;
+          esac
 
       - name: Save deploy state for the next scheduled run
         if: always()
@@ -117,6 +151,19 @@ jobs:
   entry-point-reachability-live:
     name: Entry-Point Reachability (Live)
     needs: [poll-for-new-deploy]
+    permissions:
+      contents: read
+      # REVIEW: FAIL (PR #1809 comment 5577200063): the "Alarm on a real
+      # production reachability failure" step below posts an issue comment
+      # via the ambient github.token, but this repo's
+      # default_workflow_permissions is `read` and neither the job nor the
+      # workflow granted issues:write -- so the alarm 403s on every real
+      # failure, reproducing the exact #1721 defect class ("the drift
+      # detector's own comment channel silently 403s") this issue's body
+      # cites as the reason "on failure it must do something" matters. Same
+      # shape as edge-function-drift.yml's `netlify-drift` job: scoped to
+      # this job only (poll-for-new-deploy doesn't need it).
+      issues: write
     # `needs` alone would skip this job whenever poll-for-new-deploy is
     # itself skipped (every non-schedule trigger) -- always() plus the
     # explicit per-trigger conditions below is what keeps workflow_dispatch
