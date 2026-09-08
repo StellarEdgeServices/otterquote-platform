@@ -158,7 +158,7 @@ export const MEASUREMENTS_COPY = {
   // Followup note in the adjuster form (help-measurements.html:719) — "<strong>What happens
   // next:</strong> …" flattened.
   adjusterFollowupNote:
-    "What happens next: If your adjuster doesn't respond within 48 hours, we'll text you with a recommended call script so you can follow up directly.",
+    "What happens next: Your adjuster replies straight to you. If you haven't heard back in 48 hours, call them directly to follow up.",
   // Send button (help-measurements.html:723).
   sendMeasurementEmailButton: 'Send Request to Adjuster',
 
@@ -166,10 +166,10 @@ export const MEASUREMENTS_COPY = {
   emailSuccessIcon: '✓',
   emailSuccessTitle: 'Measurement Request Sent',
   emailSuccessText:
-    "We've emailed your adjuster requesting property measurements. When they reply, we'll automatically capture the documents and attach them to your claim.",
+    "We've emailed your adjuster requesting property measurements. Their reply goes straight to your own inbox. When the documents arrive, upload them here and we'll attach them to your claim.",
   // "<strong>48-Hour Follow-Up:</strong> …" flattened (help-measurements.html:738).
   emailSuccess48HourNote:
-    "48-Hour Follow-Up: If we don't hear back within 48 hours, we'll text you with a call script to follow up directly with your adjuster.",
+    "If you don't hear back: Adjusters often take a few days. If there's no reply after 48 hours, call your adjuster directly and ask them to send the documents by email.",
 
   // ── Operational status / transient button labels (help-measurements.html:801-1088) ──
   // User-facing toast + button-state strings the PR-2 page will render.
@@ -177,7 +177,7 @@ export const MEASUREMENTS_COPY = {
   statusPaymentInitError: 'Could not initialize payment. Please try again.',
   statusEmailValidation: "Please enter the adjuster's email address.",
   statusEmailSent:
-    "Email sent to your adjuster. We'll follow up if they don't respond within 48 hours.",
+    "Email sent to your adjuster. Their reply goes straight to your own inbox.",
   statusEmailError: 'Failed to send email. Please try again or contact support.',
   loadingButton: 'Loading...',
   payProcessingButton: 'Processing...',

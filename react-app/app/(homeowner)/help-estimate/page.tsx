@@ -261,12 +261,12 @@ function SuccessSection() {
       <h2>Email Sent Successfully</h2>
       <p>
         Your request has been sent to your adjuster. They&apos;ll reply directly to you with
-        your insurance estimate attached. We&apos;ve also set up a special reply address so any
-        documents they send back will be automatically captured.
+        your insurance estimate attached. Their reply goes straight to your own inbox. When the
+        documents arrive, upload them here and we&apos;ll add them to your claim.
       </p>
       <p className="he-success-followup">
-        We&apos;ll send you a follow-up reminder in 48 hours if you haven&apos;t heard back. You
-        can always call your adjuster directly if you prefer a faster response.
+        Adjusters often take a few days. If you haven&apos;t heard back in 48 hours, you can
+        call your adjuster directly to follow up.
       </p>
       <a href="/dashboard" className="he-btn he-btn-amber">
         Return to Dashboard
