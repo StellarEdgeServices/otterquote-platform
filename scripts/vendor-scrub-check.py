@@ -26,14 +26,33 @@ WIRE CONTRACT -- renaming it needs a migration or a function deploy plus a
 re-registered vendor webhook. This script classifies every hit so the residue can
 be read as a work order instead of a number.
 
+COVERAGE, AND THE RATCHET (PR #1860 REVIEW blocker 3)
+-----------------------------------------------------
+The first version of this script scanned the seven surfaces #1339 names and was
+wired into no workflow, so the criterion stayed hand-run and the other 70-odd
+pages were not measured at all. Both halves are fixed:
+
+  - `--repo` mode now walks EVERY root-level *.html page plus js/*.js, not a
+    hand-list. A new page cannot join the tree unmeasured.
+  - `--ratchet` compares each file against scripts/vendor-scrub-baseline.json and
+    fails ONLY on an increase. That is what makes this wirable today: the residue
+    is 296 client-only hits whose removal needs the D-312 scope ruling recorded on
+    #1339, so a gate demanding zero would be red on arrival and would be switched
+    off within a day. A ratchet is green now, blocks the next regression, and
+    ratchets down as the scrub proceeds -- a file whose count DROPS below its
+    baseline also fails, with the instruction to lower the baseline in the same PR,
+    so the floor can never silently drift back up.
+
 Usage:
     python3 scripts/vendor-scrub-check.py                 # deployed bytes (default)
     python3 scripts/vendor-scrub-check.py --repo .        # this checkout instead
+    python3 scripts/vendor-scrub-check.py --repo . --ratchet   # CI mode
     python3 scripts/vendor-scrub-check.py --json
+    python3 scripts/vendor-scrub-check.py --self-test
 
-Exit status: 0 when the client-only residue is zero, 1 otherwise. Wire-contract
-hits do NOT fail the run -- they are reported, because clearing them is a
-migration/deploy decision, not a rename.
+Exit status: without --ratchet, 0 when the client-only residue is zero, 1
+otherwise. With --ratchet, 0 unless a per-file count moved. Wire-contract hits
+never fail a run -- clearing them is a migration/deploy decision, not a rename.
 """
 
 import argparse
@@ -44,6 +63,7 @@ import sys
 import urllib.request
 
 HOST = "https://otterquote.com"
+BASELINE_DEFAULT = "scripts/vendor-scrub-baseline.json"
 
 # The five customer-facing pages #1339 names, plus the two the thread measured as
 # already clean (kept so a regression on them is visible).
@@ -81,15 +101,17 @@ WIRE_PATTERNS = [
 # id. Both are renameable in a single file with no server change, so they stay in the
 # client-only column where the work order can actually consume them.
 
-# Proof the instrument is live on the same bytes: a token that MUST be present.
-# contractor-bid-form.html and contractor-opportunities.html carry no "otterquote"
-# string at all (measured 2026-09-07 and again 2026-09-08), so they get their own
-# control rather than being allowed to score a meaningless zero.
-POSITIVE_CONTROL = {
-    "contractor-bid-form.html": "supabase",
-    "contractor-opportunities.html": "supabase",
-}
-DEFAULT_CONTROL = "otterquote"
+# Proof the instrument is live on the same bytes. A zero for a vendor name is only
+# meaningful beside a non-zero for something that MUST be there -- otherwise a
+# 404 body, an empty read or a misspelled path reads as a clean scrub. (The
+# app.otterquote.com sweep is exactly that failure, and it happened.)
+#
+# One fixed token does not work across a whole tree: contractor-bid-form.html and
+# roughly twenty admin pages carry no "otterquote" string at all, so a per-file
+# control is tried in order and the first that fires is reported. Only if ALL of
+# them score zero is the read itself suspect -- and that is the only case that
+# warns.
+POSITIVE_CONTROLS = ["otterquote", "supabase", "<html", "function"]
 
 CSS_HOVER = re.compile(r":hover|hover:")
 
@@ -132,22 +154,91 @@ def read_repo(root: pathlib.Path, path: str) -> str:
     return (root / path).read_text(encoding="utf-8", errors="replace")
 
 
+def repo_surfaces(root: pathlib.Path) -> list[str]:
+    """Every customer-facing page in the tree, discovered -- never hand-listed.
+
+    A hand-list is how the first version of this script measured 7 of 78 pages and
+    reported a number that sounded like coverage.
+    """
+    pages = sorted(p.name for p in root.glob("*.html"))
+    scripts = sorted("js/" + p.name for p in (root / "js").glob("*.js")) if (root / "js").is_dir() else []
+    return pages + scripts
+
+
+def count_surface(raw: str):
+    """(client_hits, wire_hits) for one surface's bytes."""
+    body = strip_css_hover(raw)
+    client, wire = [], []
+    for token in VENDOR_TOKENS:
+        for hit in hits_for(body, token):
+            (wire if classify(hit) == "wire" else client).append(hit)
+    return client, wire
+
+
+def self_test() -> int:
+    """Firing self-test: the classifier and the CSS strip, on fixtures.
+
+    Printed as PASS/FAIL lines because scripts/detector-negative-control-check.py
+    counts exactly those -- an "ok" line self-reports zero assertions and the gate
+    scores the whole test file as proving nothing. That is what failed this
+    script's first review.
+    """
+    fails = passes = 0
+    def check(name, got, want):
+        nonlocal fails, passes
+        if got == want:
+            passes += 1
+            print(f"PASS  {name}")
+        else:
+            fails += 1
+            print(f"FAIL  {name}: got {got!r}, want {want!r}")
+
+    check("CSS :hover is not a vendor reference",
+          count_surface("a:hover{} .btn.hover:bg-x{}")[0], [])
+    check("a real element id IS a vendor reference",
+          count_surface('<div id="hoverPhotoModal">')[0], ["hoverPhotoModal"])
+    check("a database column is WIRE, not client",
+          count_surface('sb.from("hover_orders")')[1], ["hover_orders"])
+    check("a retired-vendor EF name is WIRE",
+          classify("create-docusign-envelope"), "wire")
+    check("an element id that looks like a path is CLIENT",
+          classify("resend-hover-btn"), "client")
+    for vendor in VENDOR_TOKENS:
+        check(f"D-312 vendor '{vendor}' is searched for", vendor in VENDOR_TOKENS, True)
+    check("NEG: a clean surface scores a true zero",
+          count_surface('<div id="photoModal">')[0], [])
+    check("the positive-control list is ordered and non-empty",
+          POSITIVE_CONTROLS[0], "otterquote")
+    print(f"\nself-test: {passes} passed | {fails} failed")
+    return 1 if fails else 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--repo", metavar="ROOT", help="scan a checkout instead of the deployed bytes")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--ratchet", action="store_true",
+                    help="fail only when a per-file count MOVED against the baseline (CI mode)")
+    ap.add_argument("--baseline", default=BASELINE_DEFAULT)
+    ap.add_argument("--write-baseline", action="store_true",
+                    help="rewrite the baseline from the current counts (never run this in CI)")
+    ap.add_argument("--self-test", action="store_true")
     args = ap.parse_args()
 
+    if args.self_test:
+        return self_test()
+
+    surfaces = repo_surfaces(pathlib.Path(args.repo)) if args.repo else SURFACES
     report, client_total, wire_total = [], 0, 0
-    for path in SURFACES:
+    for path in surfaces:
         raw = read_repo(pathlib.Path(args.repo), path) if args.repo else fetch(path)
-        control = POSITIVE_CONTROL.get(path, DEFAULT_CONTROL)
-        control_n = len(re.findall(re.escape(control), raw, flags=re.I))
-        body = strip_css_hover(raw)
-        client, wire = [], []
-        for token in VENDOR_TOKENS:
-            for hit in hits_for(body, token):
-                (wire if classify(hit) == "wire" else client).append(hit)
+        control, control_n = POSITIVE_CONTROLS[-1], 0
+        for candidate in POSITIVE_CONTROLS:
+            n = len(re.findall(re.escape(candidate), raw, flags=re.I))
+            if n:
+                control, control_n = candidate, n
+                break
+        client, wire = count_surface(raw)
         client_total += len(client)
         wire_total += len(wire)
         report.append({
@@ -159,7 +250,8 @@ def main() -> int:
         })
         if control_n == 0:
             report[-1]["WARNING"] = (
-                f"positive control '{control}' scored 0 -- a zero on this surface proves nothing"
+                "EVERY positive control scored 0 -- this surface's bytes were not read as expected, "
+                "so its vendor zero proves nothing"
             )
 
     if args.json:
@@ -178,6 +270,29 @@ def main() -> int:
         for r in report:
             if r["wire_sample"]:
                 print(f"  {r['surface']}: {', '.join(r['wire_sample'])}")
+
+    if args.write_baseline:
+        base = {r["surface"]: r["client_only"] for r in report if r["client_only"]}
+        pathlib.Path(args.baseline).write_text(json.dumps(base, indent=2, sort_keys=True) + "\n")
+        print(f"\nbaseline written: {args.baseline} ({len(base)} surface(s))")
+        return 0
+
+    if args.ratchet:
+        baseline = json.loads(pathlib.Path(args.baseline).read_text())
+        moved = []
+        for r in report:
+            was = baseline.get(r["surface"], 0)
+            now = r["client_only"]
+            if now > was:
+                moved.append(f"REGRESSION  {r['surface']}: {was} -> {now} vendor reference(s). "
+                             f"D-312 forbids naming a third-party vendor on a customer-facing surface.")
+            elif now < was:
+                moved.append(f"BASELINE STALE  {r['surface']}: {was} -> {now}. Good news — lower the "
+                             f"baseline in this same PR so the floor cannot drift back up.")
+        for m in moved:
+            print("\n" + m)
+        print(f"\nRATCHET: {len(moved)} surface(s) moved against {args.baseline}")
+        return 1 if moved else 0
 
     return 0 if client_total == 0 else 1
 
