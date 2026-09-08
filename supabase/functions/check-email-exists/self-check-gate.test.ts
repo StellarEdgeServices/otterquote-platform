@@ -80,3 +80,56 @@ Deno.test("computeSelfCheck: email match is case-insensitive", () => {
   assertEquals(computeSelfCheck("Me@RoofCo.com", "me@roofco.com", null), true);
   assertEquals(computeSelfCheck("me@roofco.com", "ME@ROOFCO.COM", null), true);
 });
+
+// ---------------------------------------------------------------------------
+// gh-1724 step 2 (per-IP rate limiting): the limiter buckets an anonymous
+// caller by a uuid synthesized from their client IP. Two properties make the
+// per-IP counting correct, and both are worth asserting directly:
+//   1. DETERMINISTIC   - the same IP must always map to the same bucket uuid,
+//      or every request would land in a fresh bucket and the limit never trips.
+//   2. DISTINCT        - different IPs must map to different buckets, or one
+//      IP's burst would throttle an unrelated legitimate caller.
+// ipBucketUuid is async and uses crypto.subtle, so it is eval'd whole (its body
+// has no TS annotations to strip beyond the signature).
+const ipBucketSrc = grabFunction("async function ipBucketUuid(")
+  .replace("async function ipBucketUuid(ip: string): Promise<string> {", "async function ipBucketUuid(ip) {");
+const ipBucketUuid: (ip: string) => Promise<string> =
+  new Function(`${ipBucketSrc}\nreturn ipBucketUuid;`)();
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+Deno.test("ipBucketUuid: output is a syntactically valid uuid (accepted by the uuid column)", async () => {
+  assertEquals(UUID_RE.test(await ipBucketUuid("203.0.113.7")), true);
+});
+
+Deno.test("ipBucketUuid: deterministic - same IP -> same bucket (so the window can fill)", async () => {
+  assertEquals(await ipBucketUuid("203.0.113.7"), await ipBucketUuid("203.0.113.7"));
+});
+
+Deno.test("ipBucketUuid: distinct - different IPs -> different buckets (one IP can't throttle another)", async () => {
+  const a = await ipBucketUuid("203.0.113.7");
+  const b = await ipBucketUuid("203.0.113.8");
+  assertEquals(a === b, false);
+});
+
+// clientIp precedence: x-forwarded-for (first hop) wins, then cf-connecting-ip,
+// then x-real-ip, then a stable "unknown" fallback (so a header-less caller
+// still gets a single shared bucket rather than bypassing the limiter).
+const clientIpSrc = grabFunction("function clientIp(")
+  .replace("function clientIp(req: Request): string {", "function clientIp(req) {");
+const clientIp: (req: { headers: { get(k: string): string | null } }) => string =
+  new Function(`${clientIpSrc}\nreturn clientIp;`)();
+
+function fakeReq(headers: Record<string, string>) {
+  return { headers: { get: (k: string) => headers[k.toLowerCase()] ?? null } };
+}
+
+Deno.test("clientIp: takes the first hop of x-forwarded-for", () => {
+  assertEquals(clientIp(fakeReq({ "x-forwarded-for": "198.51.100.5, 10.0.0.1" })), "198.51.100.5");
+});
+
+Deno.test("clientIp: falls back to cf-connecting-ip, then x-real-ip, then 'unknown'", () => {
+  assertEquals(clientIp(fakeReq({ "cf-connecting-ip": "198.51.100.9" })), "198.51.100.9");
+  assertEquals(clientIp(fakeReq({ "x-real-ip": "198.51.100.11" })), "198.51.100.11");
+  assertEquals(clientIp(fakeReq({})), "unknown");
+});

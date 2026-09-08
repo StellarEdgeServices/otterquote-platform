@@ -49,16 +49,26 @@
  * same shape on hit and miss. This is the manual-JWT-check-despite-
  * verify_jwt=false pattern already used by resend-hover-link/index.ts.
  *
- * Residual, stated honestly (see gh-1724 acceptance criteria): this closes
- * the `status`/stage leak and the third-party self-check leak entirely,
- * but the `exists` boolean itself is still an oracle for any caller,
- * anonymous or not — an unauthenticated `curl` still learns whether an
- * address has an account. Volume is what step 2 (per-IP rate limiting)
- * would address; it is not done here (see PR description / issue comment
- * for why: check_rate_limit() denies by default when no rate_limit_config
- * row exists for a function — see create-docusign-envelope/index.ts:2477-86
- * — "That default has produced this exact outage four times now" — and
- * this issue's own file scope does not include a migration to add one).
+ * gh-1724 step 2 (per-IP rate limiting): NOW IMPLEMENTED here. Each caller
+ * is bucketed by client IP (a stable uuid synthesized from the IP, since
+ * this endpoint is anonymous and has no auth.uid()) and gated through the
+ * existing check_rate_limit() / rate_limit_config machinery. The limiter
+ * ARMS only once the companion migration
+ * (supabase/migrations/20260908203218_gh1724_check_email_exists_rate_limit.sql)
+ * inserts the 'check-email-exists' rate_limit_config row; until then
+ * check_rate_limit() returns "No rate limit config found ... Denying by
+ * default", which this function treats as ALLOW (fail-open) so that merging
+ * and deploying this code AHEAD of the migration is a behavioural no-op and
+ * cannot cause a signup outage — the deny-by-default hazard noted at
+ * create-docusign-envelope/index.ts is deliberately neutralised for this
+ * anonymous UX pre-check. Once the row exists the limiter engages with no
+ * further deploy.
+ *
+ * Residual, stated honestly: the `exists` boolean itself is still an oracle
+ * for any caller under the per-IP limit — rate limiting caps enumeration
+ * VOLUME, it does not remove the single-lookup oracle. That residual, and
+ * the sibling-endpoint enumeration on /auth/v1/otp and /auth/v1/recover, are
+ * tracked on gh-1883.
  *
  * Usage:
  *   POST /functions/v1/check-email-exists
@@ -117,6 +127,32 @@ function escapeIlike(value: string): string {
   return value.replace(/[%_\\]/g, (ch) => `\\${ch}`);
 }
 
+// gh-1724 step 2: per-IP bucket key for the rate limiter. This endpoint is
+// anonymous (verify_jwt=false, no auth.uid()), and rate_limits.caller_id is a
+// uuid column, so we synthesize a stable uuid from the client IP:
+// SHA-256("check-email-exists:" || ip), first 16 bytes, formatted 8-4-4-4-12.
+// Postgres does not enforce RFC-4122 version/variant bits on the uuid type, so
+// any 32 hex digits are a valid, deterministic bucket key — determinism per IP
+// is the only property required for per-IP counting.
+function clientIp(req: Request): string {
+  const xff = req.headers.get("x-forwarded-for");
+  if (xff && xff.trim()) return xff.split(",")[0].trim();
+  return (
+    req.headers.get("cf-connecting-ip") ||
+    req.headers.get("x-real-ip") ||
+    "unknown"
+  );
+}
+
+async function ipBucketUuid(ip: string): Promise<string> {
+  const bytes = new TextEncoder().encode("check-email-exists:" + ip);
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+  const h = Array.from(digest.slice(0, 16))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`;
+}
+
 // gh-1724: the decision of whether to disclose `status` in the response.
 // Pulled out as a pure function (no Supabase call, no request object) so it
 // is unit-testable in isolation from the auth.getUser() network call and the
@@ -158,6 +194,36 @@ serve(async (req: Request) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
   const sb = createClient(supabaseUrl, serviceRoleKey);
+
+  // gh-1724 step 2: per-IP rate limit, checked BEFORE the auth.getUser() call
+  // and the DB lookup so a throttled caller consumes neither. FAIL-OPEN posture
+  // (matching the rest of this function): the limiter only REJECTS on an actual
+  // per-IP window breach against a configured, enabled rate_limit_config row.
+  // A missing config ("Denying by default"), an RPC error, or a thrown
+  // exception all ALLOW — a signup pre-check must never be trapped by
+  // rate-limit plumbing. The 429 body is identical for existing and absent
+  // addresses (the check runs before the lookup, so it cannot distinguish
+  // them), so throttling introduces no new enumeration oracle.
+  try {
+    const ipUuid = await ipBucketUuid(clientIp(req));
+    const { data: rl, error: rlErr } = await sb.rpc("check_rate_limit", {
+      p_function_name: "check-email-exists",
+      p_user_id: ipUuid,
+    });
+    if (rlErr) {
+      console.warn("[check-email-exists] rate-limit RPC errored, failing open:", rlErr.message);
+    } else if (rl && rl.allowed === false) {
+      const reason = String(rl.reason ?? "");
+      if (reason.includes("No rate limit config found")) {
+        // Limiter not yet armed (migration not applied) — fail open.
+        console.warn("[check-email-exists] rate limiter unconfigured; failing open until migration applied");
+      } else {
+        return json({ error: "Too many requests" }, 429, corsHeaders);
+      }
+    }
+  } catch (rlCatch) {
+    console.warn("[check-email-exists] rate-limit check threw, failing open:", rlCatch);
+  }
 
   // gh-1724: gate the `status` field on the caller proving (via a valid
   // Supabase user JWT) that they ARE the email address being looked up.
