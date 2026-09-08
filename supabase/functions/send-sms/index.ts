@@ -227,6 +227,38 @@ serve(async (req) => {
 
     console.log("SMS sent successfully. SID:", twilioData.sid);
 
+    // ── Log the SID (gh-1825) ────────────────────────────────────────────
+    // This function reports "sent" on Twilio's initial API acceptance only
+    // and never reads the final carrier delivery status — recorded here so
+    // platform-health-check's Phase 4 (sms-delivery-status-check) has a
+    // durable trail of what we sent, independent of its own direct Twilio
+    // poll. Best-effort and non-blocking: a logging failure must never
+    // become a second failure on top of an already-sent message, so this
+    // is wrapped and never awaited-into-the-response. No user_id is
+    // available for service-role-triggered sends (e.g. notify-contractors),
+    // so the system-placeholder UUID already used elsewhere for the same
+    // reason (see stripe-webhook/index.ts) is used here too. Phone number
+    // is truncated to the last 4 digits — the SID and Twilio remain the
+    // source of truth for the full number.
+    try {
+      const { error: logErr } = await supabase.from("activity_log").insert({
+        user_id: "00000000-0000-0000-0000-000000000000",
+        event_type: "sms_sent",
+        title: "sms_sent",
+        metadata: {
+          sid: twilioData.sid,
+          to_last4: String(to).slice(-4),
+          status: "sent",
+          notification_id: notification_id ?? null,
+        },
+      });
+      if (logErr) {
+        console.error(`[${FUNCTION_NAME}] activity_log insert failed:`, logErr.message);
+      }
+    } catch (logErr) {
+      console.error(`[${FUNCTION_NAME}] activity_log write threw:`, logErr);
+    }
+
     return new Response(
       JSON.stringify({
         sid: twilioData.sid,
