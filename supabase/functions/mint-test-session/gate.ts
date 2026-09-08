@@ -10,6 +10,19 @@
 // gh-1513, R-174: minting is permitted ONLY for rows whose is_test column is
 // literally true, re-derived from a live query every call — never from a
 // caller-supplied flag.
+//
+// gh-1513 cross-table fix (#1773 forensics, 2026-09-07): a single table's
+// is_test column is not a safe inference on its own — measured on
+// production, `profiles.is_test` and `contractors.is_test` disagree for 8 of
+// 13 rows this gate would otherwise mint against, and one such row's
+// `contractors.user_id` resolves to the PRIMARY ADMIN account while its
+// `contractors.email` column resolves (via GoTrue's own email-keyed lookup
+// inside generateLink) to a *different* auth user entirely. So this gate now
+// requires (a) agreement between the target's own is_test flag AND its
+// linked `profiles.is_test`, and (b) the magic link is generated for the
+// email GoTrue itself reports for the resolved auth user id — never for a
+// caller-supplied or joined-table email column that might describe a
+// different identity than the one actually being minted for.
 
 export interface ContractorRow {
   id: string;
@@ -21,6 +34,11 @@ export interface ContractorRow {
 export interface ClaimRow {
   id: string;
   is_test: boolean;
+}
+
+export interface ProfileRow {
+  id: string;
+  is_test: boolean | null;
 }
 
 export interface AuthUserRow {
@@ -56,6 +74,9 @@ export interface DbAdapter {
   getClaimsByUserId(
     userId: string,
   ): Promise<{ data: ClaimRow[] | null; error: AdapterError | null }>;
+  getProfileById(
+    userId: string,
+  ): Promise<{ data: ProfileRow | null; error: AdapterError | null }>;
   getAuthUserById(
     userId: string,
   ): Promise<{ data: AuthUserRow | null; error: AdapterError | null }>;
@@ -95,13 +116,13 @@ function jsonError(status: number, error: string): MintResult {
  * arrives as a thrown exception (index.ts's outer catch-all — auth client
  * construction, anything unexpected) or as a returned `{ error }` from a
  * DbAdapter call inside resolveAndMint (getContractorById, getClaimsByUserId,
- * getAuthUserById, generateMagicLink — gh-1562 fixup, PR #1563 review: these
- * four were still shipping raw adapter error text after the first pass).
- * This is a credential-minting endpoint, so error detail — a message, a
- * stack, PostgREST/driver text — can leak internal structure to whoever can
- * reach it. The function has no Sentry init, so console.error is the only
- * server-side detail sink; the response body is always the same fixed,
- * generic string — never error.message, error.stack, or String(error).
+ * getProfileById, getAuthUserById, generateMagicLink — gh-1562 fixup, PR
+ * #1563 review: these were still shipping raw adapter error text after the
+ * first pass). This is a credential-minting endpoint, so error detail — a
+ * message, a stack, PostgREST/driver text — can leak internal structure to
+ * whoever can reach it. The function has no Sentry init, so console.error is
+ * the only server-side detail sink; the response body is always the same
+ * fixed, generic string — never error.message, error.stack, or String(error).
  */
 export function unexpectedErrorResponse(error: unknown): MintResult {
   console.error("mint-test-session error:", error);
@@ -109,19 +130,55 @@ export function unexpectedErrorResponse(error: unknown): MintResult {
 }
 
 /**
+ * Cross-table agreement check (gh-1513 cross-table fix). A target's own
+ * table saying is_test=true is necessary but not sufficient — the linked
+ * profiles row must agree. A missing profiles row or a false/null
+ * profiles.is_test is a refusal, never a default, matching the "null is a
+ * refusal, not a default" rule this gate already applies to its own column.
+ */
+async function profileAgreesIsTest(
+  db: DbAdapter,
+  userId: string,
+): Promise<{ ok: true } | { ok: false; result: MintResult }> {
+  const { data: profile, error } = await db.getProfileById(userId);
+  if (error) return { ok: false, result: unexpectedErrorResponse(error) };
+  if (!profile) {
+    return {
+      ok: false,
+      result: jsonError(403, "Forbidden: target has no profiles row"),
+    };
+  }
+  if (profile.is_test !== true) {
+    return {
+      ok: false,
+      result: jsonError(
+        403,
+        "Forbidden: profiles.is_test disagrees with the target's own is_test flag",
+      ),
+    };
+  }
+  return { ok: true };
+}
+
+/**
  * Core R-174 gate + mint logic.
  *
  * Input: exactly one of contractor_id | user_id (non-empty string).
  *   - contractor_id: 403 unless contractors.is_test is literally true for
- *     that row. Target is the contractor's linked auth user (user_id).
+ *     that row AND the linked profiles row also has is_test = true (cross-
+ *     table agreement, gh-1513 fix). Target is the contractor's linked auth
+ *     user (user_id).
  *   - user_id: 403 unless the user owns at least one claim AND every claim
- *     they own has is_test = true. Target is that user_id directly.
+ *     they own has is_test = true, AND the linked profiles row also has
+ *     is_test = true. Target is that user_id directly.
  *
- * On success, mints a Supabase magic link for the target's email via
- * db.generateMagicLink, writes a non-fatal activity_log row
- * (event_type: "test_session_minted", actor = caller identity in metadata,
- * target = user_id), and returns the { ok, action_link, user_id, email,
- * is_test: true, expires_in } shape.
+ * On success, resolves the target's email from the auth user record itself
+ * (never from a joined table's email column, which is not guaranteed to
+ * describe the same identity as the resolved user id — gh-1513 cross-table
+ * fix), mints a Supabase magic link for that email via db.generateMagicLink,
+ * writes a non-fatal activity_log row (event_type: "test_session_minted",
+ * actor = caller identity in metadata, target = user_id), and returns the
+ * { ok, action_link, user_id, email, is_test: true, expires_in } shape.
  */
 export async function resolveAndMint(
   input: MintInput,
@@ -142,7 +199,6 @@ export async function resolveAndMint(
   }
 
   let targetUserId: string;
-  let targetEmail: string;
   let resolvedContractorId: string | null = null;
 
   if (contractorId !== undefined) {
@@ -161,7 +217,6 @@ export async function resolveAndMint(
       return jsonError(404, "Contractor has no linked auth user");
     }
     targetUserId = contractor.user_id;
-    targetEmail = contractor.email;
     resolvedContractorId = contractor.id;
   } else {
     const { data: claims, error } = await db.getClaimsByUserId(userId!);
@@ -173,16 +228,27 @@ export async function resolveAndMint(
     if (!claims.every((c) => c.is_test === true)) {
       return jsonError(403, "Forbidden: not every claim owned by user is is_test");
     }
-
-    const { data: authUser, error: authErr } = await db.getAuthUserById(userId!);
-    // gh-1562 fixup: same leak class as getContractorById above.
-    if (authErr) return unexpectedErrorResponse(authErr);
-    if (!authUser || !authUser.email) {
-      return jsonError(404, "Auth user not found");
-    }
     targetUserId = userId!;
-    targetEmail = authUser.email;
   }
+
+  // gh-1513 cross-table fix: the target's own table said is_test=true; the
+  // linked profiles row must agree before anything is minted.
+  const agreement = await profileAgreesIsTest(db, targetUserId);
+  if (!agreement.ok) return agreement.result;
+
+  // gh-1513 cross-table fix: resolve the mint email from the auth user
+  // record itself, never from contractors.email or any other joined
+  // column — those are not guaranteed to describe the same identity as the
+  // auth user id being minted for (measured: one production contractor row
+  // whose user_id names the primary admin but whose email column resolves,
+  // via GoTrue's own email lookup, to a different auth user entirely).
+  const { data: authUser, error: authErr } = await db.getAuthUserById(targetUserId);
+  // gh-1562 fixup: same leak class as getContractorById above.
+  if (authErr) return unexpectedErrorResponse(authErr);
+  if (!authUser || !authUser.email) {
+    return jsonError(404, "Auth user not found");
+  }
+  const targetEmail = authUser.email;
 
   const { data: link, error: linkError } = await db.generateMagicLink(targetEmail);
   // gh-1562 fixup: same leak class as getContractorById above — this branch

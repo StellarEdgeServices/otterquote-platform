@@ -937,24 +937,6 @@ serve(async (req) => {
               );
             }
 
-            if (
-              !contractor.stripe_customer_id ||
-              !contractor.stripe_payment_method_id
-            ) {
-              // U15-2: distinct signed-but-unbilled state. No card on file at signing
-              // (pre-charge) — record 'no_method' on the selected quote so this stall is
-              // queryable and distinct from 'dunning' (a charge was attempted + declined).
-              // Leave payment_intent_id null and do NOT set contract_signed_at; the throw
-              // below is then de-blinded by the augmented catch (alert + activity_log).
-              await supabase
-                .from("quotes")
-                .update({ payment_status: "no_method" })
-                .eq("id", quote.id);
-              throw new Error(
-                `Contractor ${contractor.id} does not have payment method on file`
-              );
-            }
-
             // Fetch platform fee percentage (fallback only — per-bid fee takes precedence per D-214/D-215)
             const { data: platformSettings } = await supabase
               .from("platform_settings")
@@ -1064,6 +1046,43 @@ serve(async (req) => {
                   status: 200,
                   headers: { ...corsHeaders, "Content-Type": "application/json" },
                 }
+              );
+            }
+
+            // ── #1467 GATE 1 ORDERING (gh-1467) ─────────────────────────
+            // This card-on-file check USED TO SIT ABOVE the gate-1 guard, 34
+            // lines earlier, between the contractor lookup and the fee
+            // computation. That ordering made gate 1 UNREACHABLE for every
+            // card-less contractor: the throw fired first and the request was
+            // bucketed as `signed_unbilled_no_method`, so the guard was never
+            // evaluated and never observed refusing. Exactly one of thirteen
+            // contractors has a payment method on file, and its profile row
+            // asserts is_test = false — so the set of contractors that could
+            // reach gate 1 and the set a test ceremony may lawfully run on
+            // were DISJOINT, and gate 1 could not be exercised at all.
+            //
+            // The guard is now evaluated FIRST. A test claim is refused whether
+            // or not a card exists; a claim the guard permits then falls
+            // through to the same no-method check, unchanged in behaviour.
+            // Nothing about the charge itself moves — only the order in which
+            // the two pre-charge conditions are tested. gate-ordering.test.ts
+            // asserts this order and fails when it is reversed. See
+            // live-charge-guard.ts and issue #1467.
+            if (
+              !contractor.stripe_customer_id ||
+              !contractor.stripe_payment_method_id
+            ) {
+              // U15-2: distinct signed-but-unbilled state. No card on file at signing
+              // (pre-charge) — record 'no_method' on the selected quote so this stall is
+              // queryable and distinct from 'dunning' (a charge was attempted + declined).
+              // Leave payment_intent_id null and do NOT set contract_signed_at; the throw
+              // below is then de-blinded by the augmented catch (alert + activity_log).
+              await supabase
+                .from("quotes")
+                .update({ payment_status: "no_method" })
+                .eq("id", quote.id);
+              throw new Error(
+                `Contractor ${contractor.id} does not have payment method on file`
               );
             }
 
