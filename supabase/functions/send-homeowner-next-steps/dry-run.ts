@@ -68,17 +68,73 @@ export function candidateIsTestFlag(dryRun: boolean): boolean {
   return dryRun === true;
 }
 
-/** One claim the pipeline WOULD have emailed, had this not been a dry run. */
-export interface WouldSend {
-  claim_id: string;
-  user_id: string;
-  stage: string;
-  to: string;
-  subject: string;
-  /** First line of the rendered text body — enough to see the copy rendered,
-   * short enough not to paste a whole email into an issue comment. */
-  text_first_line: string;
-  /** True when the rendered body carries the D-320 opt-out line. A dry run
-   * that reports `false` here is a CAN-SPAM defect caught before a send. */
-  has_optout_link: boolean;
+/** Authorization for a DRY RUN specifically — and it does not inherit the
+ * batch gate's permissive branch.
+ *
+ * PR #1859's REVIEW: FAIL (comment 5584464326) refuted this PR's own safety
+ * claim by quoting the gate it relied on:
+ *
+ *     if (!cronSecret) { authorized = true; }   // <- fails OPEN
+ *
+ * With `CRON_SECRET` unset that authorizes every caller. For a cron batch
+ * that means "a stranger can trigger a run" (pre-existing, deliberate for
+ * dev/staging, and not this PR's to change). For a dry run it would have
+ * meant "a stranger gets a list of claims", so a dry run now requires
+ * POSITIVE proof of authorization — a matching X-Cron-Secret or the
+ * service-role bearer — and the permissive branch is not proof of anything.
+ *
+ * Fails closed on every unset/empty input: no secret configured means no dry
+ * run, rather than a dry run for anyone. */
+export function dryRunAuthorized(input: {
+  cronSecret?: string | null;
+  incomingCronSecret?: string | null;
+  authHeader?: string | null;
+  serviceRoleKey?: string | null;
+}): boolean {
+  const { cronSecret, incomingCronSecret, authHeader, serviceRoleKey } = input;
+  if (cronSecret && incomingCronSecret && incomingCronSecret === cronSecret) return true;
+  if (serviceRoleKey && authHeader && authHeader.startsWith("Bearer ")) {
+    return authHeader.slice(7) === serviceRoleKey;
+  }
+  return false;
 }
+
+/** Minimal shape of the PostgREST builder the candidate scan chains onto —
+ * enough for a recording fake to stand in for it in a test. */
+export interface CandidateQueryBuilder {
+  select(columns: string): CandidateQueryBuilder;
+  eq(column: string, value: unknown): CandidateQueryBuilder;
+  neq(column: string, value: unknown): CandidateQueryBuilder;
+  lte(column: string, value: unknown): CandidateQueryBuilder;
+  limit(n: number): CandidateQueryBuilder;
+}
+
+/** The candidate scan, extracted so the `is_test` filter is ASSERTABLE.
+ *
+ * The review's first blocker was that the safety properties lived in
+ * index.ts and had no assertions. This one is "the scan is always filtered on
+ * is_test, to exactly the value candidateIsTestFlag returns" — a fake builder
+ * records the calls and the test reads them back. Dropping the filter, or
+ * pointing it at the wrong population, fails that test. */
+export function buildCandidateQuery(
+  table: CandidateQueryBuilder,
+  opts: {
+    scanIsTest: boolean;
+    eligibleStatus: string;
+    excludedStatus: string;
+    cutoffIso: string;
+    limit: number;
+  },
+): CandidateQueryBuilder {
+  return table
+    .select("id, user_id, status, created_at, is_test")
+    .eq("is_test", opts.scanIsTest)
+    .eq("status", opts.eligibleStatus)
+    .neq("status", opts.excludedStatus)
+    .eq("ready_for_bids", false)
+    .eq("has_measurements", false)
+    .lte("created_at", opts.cutoffIso)
+    .limit(opts.limit);
+}
+
+export type { PreviewRow } from "./deliver-stage.ts";
