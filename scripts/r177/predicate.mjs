@@ -82,8 +82,11 @@ const HARNESS_PATH_RES = [
 
 // The exception: files under those paths that hold, quote or emit customer
 // money/legal COPY. Weakening one of these is precisely the diff R-177 exists to
-// put in front of a second reader — #1646 both removes "licensed, insured" sitewide AND
-// adds the guard that keeps it removed — so they are scanned in full.
+// put in front of a second reader — #1646 both removes the D-104 credential-claim
+// phrasing sitewide AND adds the guard that keeps it removed — so they are scanned
+// in full. (The removed phrase is deliberately NOT quoted here: this file is inside
+// COPY_GUARD_FILES, and check-credential-claims.py scans it, so quoting the claim in
+// a comment makes the guard fail on the guard — gh-1617.)
 //
 // Listing a file here only ever makes the gate scan MORE, so over-inclusion is
 // safe by construction. The list is kept honest by
