@@ -17,11 +17,21 @@ import {
 
 const ACTOR_EMAIL = "dustinstohler1@gmail.com";
 
+// gh-1513 cross-table fix: fakeDb's default getAuthUserById/getProfileById
+// resolve to an is_test-agreeing identity so every pre-existing test below
+// (written before the cross-table check existed) keeps exercising the same
+// contractor/claims-path behavior it always did, without every one of them
+// having to stub the new calls individually. Tests for the cross-table
+// check itself override these explicitly.
 function fakeDb(overrides: Partial<DbAdapter> = {}): DbAdapter {
   return {
     getContractorById: async () => ({ data: null, error: null }),
     getClaimsByUserId: async () => ({ data: null, error: null }),
-    getAuthUserById: async () => ({ data: null, error: null }),
+    getProfileById: async () => ({ data: { id: "stub", is_test: true }, error: null }),
+    getAuthUserById: async () => ({
+      data: { id: "stub", email: "resolved-from-auth-user@otterquote-internal.test" },
+      error: null,
+    }),
     generateMagicLink: async () => ({
       data: { action_link: "https://stub.supabase.co/auth/v1/verify?token=stub" },
       error: null,
@@ -73,6 +83,10 @@ Deno.test("200 shape on a test contractor (auth admin stubbed)", async () => {
         email: "test-contractor@otterquote-internal.test",
         is_test: true,
       },
+      error: null,
+    }),
+    getAuthUserById: async () => ({
+      data: { id: "u4", email: "test-contractor@otterquote-internal.test" },
       error: null,
     }),
     generateMagicLink: async (email: string) => {
@@ -314,4 +328,83 @@ Deno.test("unexpectedErrorResponse: non-Error throw still yields the generic bod
   } finally {
     console.error = originalConsoleError;
   }
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// gh-1513 cross-table fix (#1773 forensics, 2026-09-07). Production
+// measurement: 8 of 13 contractors.is_test=true rows are linked to a
+// profiles row that says is_test=false or is unset, and at least one such
+// row's contractor.user_id names the PRIMARY ADMIN while contractor.email
+// resolves (via GoTrue's own email lookup) to a different auth user. These
+// three tests are the negative control this issue's closing evidence
+// requires: run first against the UNPATCHED gate (git stash this file's
+// sibling gate.ts and re-run) to see A and C fail with "actual 200,
+// expected 403" before trusting that they pass here.
+// ─────────────────────────────────────────────────────────────────────────
+
+Deno.test("gh-1513 cross-table A: 403 when profiles.is_test disagrees with contractors.is_test", async () => {
+  const db = fakeDb({
+    getContractorById: async () => ({
+      data: {
+        id: "ee452a12",
+        user_id: "3ea4d929-admin",
+        email: "someone-else@stohlerroof.com",
+        is_test: true,
+      },
+      error: null,
+    }),
+    getProfileById: async () => ({
+      data: { id: "3ea4d929-admin", is_test: false },
+      error: null,
+    }),
+  });
+  const result = await resolveAndMint({ contractor_id: "ee452a12" }, db, ACTOR_EMAIL);
+  assertEquals(result.status, 403);
+  assertStringIncludes(String(result.body.error), "profiles.is_test");
+});
+
+Deno.test("gh-1513 cross-table B: mints for the resolved AUTH USER's email, not contractors.email", async () => {
+  let generateLinkCalledWith: string | null = null;
+  const db = fakeDb({
+    getContractorById: async () => ({
+      data: {
+        id: "c-clean",
+        user_id: "u-clean",
+        // Deliberately different from the auth user's real email, to prove
+        // this column is no longer trusted for the mint target.
+        email: "stale-joined-email@example.com",
+        is_test: true,
+      },
+      error: null,
+    }),
+    getProfileById: async () => ({ data: { id: "u-clean", is_test: true }, error: null }),
+    getAuthUserById: async () => ({
+      data: { id: "u-clean", email: "real-auth-user-email@otterquote-internal.test" },
+      error: null,
+    }),
+    generateMagicLink: async (email: string) => {
+      generateLinkCalledWith = email;
+      return {
+        data: { action_link: "https://stub.supabase.co/auth/v1/verify?token=stubB" },
+        error: null,
+      };
+    },
+  });
+  const result = await resolveAndMint({ contractor_id: "c-clean" }, db, ACTOR_EMAIL);
+  assertEquals(result.status, 200);
+  assertEquals(result.body.email, "real-auth-user-email@otterquote-internal.test");
+  assertEquals(generateLinkCalledWith, "real-auth-user-email@otterquote-internal.test");
+});
+
+Deno.test("gh-1513 cross-table C: 403 when the target has no profiles row at all", async () => {
+  const db = fakeDb({
+    getContractorById: async () => ({
+      data: { id: "c-orphan-profile", user_id: "u-orphan-profile", email: "x@example.com", is_test: true },
+      error: null,
+    }),
+    getProfileById: async () => ({ data: null, error: null }),
+  });
+  const result = await resolveAndMint({ contractor_id: "c-orphan-profile" }, db, ACTOR_EMAIL);
+  assertEquals(result.status, 403);
+  assertStringIncludes(String(result.body.error), "no profiles row");
 });
