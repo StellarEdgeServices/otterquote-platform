@@ -25,7 +25,9 @@ actually catch the thing it exists to catch.
 
 Run: python scripts/check-supabase-js-sri.test.py
 """
+import base64
 import contextlib
+import hashlib
 import importlib.util
 import io
 import pathlib
@@ -101,10 +103,21 @@ def main():
 
         print()
         print("positive control: exact version pinned AND matching integrity= present")
+        # Built at runtime, not written as a literal: a hardcoded sha384 value
+        # here is a 76+ char hex/base64 run that trips the CI credential
+        # sweep's HEX_RUN_20 / GENERIC_BASE64_HIGH_ENTROPY shape classes as a
+        # false positive (it is a fixture placeholder, not a credential). The
+        # detector under test only checks for the `integrity="sha384-..."`
+        # prefix (see INTEGRITY_RE in check-supabase-js-sri.py) -- it never
+        # validates the hash's actual bytes -- so any syntactically valid
+        # base64 body satisfies the positive control.
+        fake_sri_hash = base64.b64encode(
+            hashlib.sha384(b"check-supabase-js-sri fixture placeholder, not a real hash").digest()
+        ).decode("ascii")
         write_fixture(
             tmp_root,
             '<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.1/dist/umd/supabase.js" '
-            'integrity="sha384-0000000000000000000000000000000000000000000000000000000000000000000000000000" '
+            f'integrity="sha384-{fake_sri_hash}" '
             'crossorigin="anonymous"></script>',
         )
         code, output = run_against(tmp_root)
