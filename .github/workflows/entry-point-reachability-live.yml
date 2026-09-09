@@ -47,6 +47,22 @@ name: Entry-Point Reachability (Live)
 # local OR live. Submit Bid/Renew Bid are asserted by href only, never
 # clicked. Running this against production performs no purchase, no
 # approval, and no navigation away from the page under test.
+#
+# gh-1729 conjunct 2 (2026-09-09): closes-on's second conjunct asks for
+# "the same check observed FAILING against a deploy known to have a dead
+# entry point." Satisfying that by actually publishing the pre-#1696 broken
+# tree to otterquote.com was considered and rejected on this thread three
+# times (5584503609, 5588711002, 5591229650) -- deliberately shipping a
+# broken money-path entry point to production to prove a test CAN fail is
+# not a trade worth making. The `negative-control-known-broken-fixture` job
+# below is the recorded amendment: the exact same spec, the exact same LIVE
+# config (playwright.entrypoint-live.config.ts, unchanged), pointed via
+# LIVE_BASE_URL at a LOCAL static server serving commit 0aa1d61 (the
+# verified pre-#1696 broken tree) instead of the real otterquote.com. It
+# never touches production. The job itself goes RED if the spec
+# unexpectedly PASSES against that known-dead tree -- "a control a broken
+# tree also passes is not a control" (issue #1697's own Attack-A logic),
+# applied to the control mechanism itself.
 
 on:
   deployment_status:
@@ -57,6 +73,19 @@ on:
     # on the deploy COMPLETING rather than the merge happening -- see
     # scripts/deploy-completion-poll.py.
     - cron: '*/15 * * * *'
+  push:
+    # gh-1729 conjunct 2: re-run the negative control (see the job below)
+    # whenever the guard itself, the spec it runs, or the live config
+    # changes, so a future edit that quietly breaks the control's ability to
+    # fail is caught before it ships, not discovered by absence. Does not
+    # fire the live-site jobs above -- those stay scoped to schedule/
+    # deployment_status/workflow_dispatch, so this trigger cannot spam
+    # otterquote.com on every push.
+    branches: [main]
+    paths:
+      - '.github/workflows/entry-point-reachability-live.yml'
+      - 'tests/e2e/smoke/entry-point-reachability.spec.ts'
+      - 'tests/e2e/smoke/playwright.entrypoint-live.config.ts'
   workflow_dispatch:
     inputs:
       base_url:
@@ -247,3 +276,117 @@ jobs:
               issue_number: 1729,
               body: `Entry-point reachability spec FAILED against the live production site (${base}), run triggered by \`${context.eventName}\`. See run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
             });
+
+  negative-control-known-broken-fixture:
+    name: Negative control -- spec MUST fail against the known-broken tree
+    # gh-1729 conjunct 2. Runs on workflow_dispatch (on-demand evidence) and
+    # on push to the paths named above (regression guard on the control
+    # itself) -- deliberately NOT on schedule or deployment_status, so this
+    # never adds runtime to the routine 15-minute production poll and never
+    # touches otterquote.com. Independent of the two jobs above: no `needs`,
+    # so it runs even when they are skipped (e.g. a push where the poll job
+    # doesn't apply).
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout current tree (spec + Playwright config)
+        uses: actions/checkout@v4
+
+      # The known-dead pre-#1696 tree, checked into its own subdirectory
+      # rather than checked out over the current tree, so the spec file and
+      # live config used to test it are always the CURRENT, unchanged ones
+      # (per #1729's own recorded amendment: "the same spec/runner against a
+      # local fixture checkout of the pre-#1696 tree"). Only the served HTML
+      # is old; the test harness is not.
+      - name: Checkout known-broken pre-#1696 tree (commit 0aa1d61) into a separate path
+        uses: actions/checkout@v4
+        with:
+          ref: 0aa1d61b24e84bbd35b000e2cda616d4ec270de5
+          path: known-broken-fixture
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+          cache-dependency-path: 'tests/e2e/package.json'
+
+      - name: Install E2E test dependencies
+        working-directory: tests/e2e
+        run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('tests/e2e/package-lock.json') }}
+          restore-keys: |
+            playwright-chromium-${{ runner.os }}-
+
+      - name: Install Playwright browser (chromium)
+        working-directory: tests/e2e
+        run: npx playwright install --with-deps chromium
+
+      # Same static-file-server method Part 1 uses in
+      # smoke/playwright.smoke.config.ts (`python3 -m http.server --directory
+      # <repo root>`), just pointed at known-broken-fixture/ instead of the
+      # real checkout, and on a different port (4174, vs 4173 for Part 1) so
+      # the two never collide if this job is ever merged into the same
+      # runner as Part 1.
+      - name: Serve the known-broken tree locally
+        run: |
+          nohup python3 -m http.server 4174 --directory known-broken-fixture \
+            > known-broken-server.log 2>&1 &
+          echo $! > known-broken-server.pid
+          for i in $(seq 1 20); do
+            if curl -sf -o /dev/null "http://127.0.0.1:4174/contractor-opportunities.html"; then
+              echo "Local server up after ${i} attempt(s)."
+              break
+            fi
+            sleep 0.5
+          done
+
+      # This is the unchanged Part-2 config (playwright.entrypoint-live.config.ts)
+      # and the unchanged spec (entry-point-reachability.spec.ts) -- the only
+      # thing that differs from a real Part-2 run against production is
+      # LIVE_BASE_URL. `continue-on-error` + `set +e` so this step's own exit
+      # code never fails the job directly -- the NEXT step is what decides
+      # pass/fail, because for this job "the spec failed" is success.
+      - name: Run the UNCHANGED live spec against the known-broken tree (expected to FAIL)
+        id: run_spec
+        working-directory: tests/e2e
+        continue-on-error: true
+        env:
+          LIVE_BASE_URL: http://127.0.0.1:4174
+        run: |
+          set +e
+          npx playwright test --config=smoke/playwright.entrypoint-live.config.ts
+          echo "spec_exit_code=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Assert the spec FAILED -- a control the broken tree also passes is not a control
+        run: |
+          exit_code="${{ steps.run_spec.outputs.spec_exit_code }}"
+          echo "Reachability spec exit code against known-broken commit 0aa1d61: ${exit_code}"
+          if [ "${exit_code}" = "0" ]; then
+            echo "::error::NEGATIVE CONTROL INVALID: the entry-point reachability spec PASSED (exit 0) against the known-broken pre-#1696 tree (commit 0aa1d61), the same tree PR #1720's own pre-merge control showed failing on all six #1693-regression entry points. A control that a broken tree also passes is not a control (gh-1697/gh-1729 sec 7.3b). Failing this job."
+            exit 1
+          else
+            echo "Negative control OK: the spec correctly failed (exit ${exit_code}) against the known-broken tree -- the mechanism can produce RED, not just GREEN."
+          fi
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: negative-control-known-broken-fixture-report
+          path: tests/e2e/playwright-report/
+          retention-days: 14
+
+      - name: Stop local server
+        if: always()
+        run: |
+          if [ -f known-broken-server.pid ]; then
+            kill "$(cat known-broken-server.pid)" 2>/dev/null || true
+          fi
