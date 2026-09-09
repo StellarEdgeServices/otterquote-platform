@@ -278,3 +278,82 @@ describe('gh-1701 criterion 1 -- the three false-positive shapes (2026-09-08)', 
     assert.equal(r.hit, false, `expected silence, got ${JSON.stringify(r.lines)}`);
   });
 });
+// ---------------------------------------------------------------------------
+// gh-1899 conjunct (2): privacy / data-rights / CAN-SPAM vocabulary + URL-slug guard.
+//
+// These are the controls named in the instruction that opened #1899, pinned here as
+// fixtures so they cannot silently regress. Every line below is copied verbatim from
+// the real PR diff it names -- none is invented.
+//
+// NOT covered here, and deliberately said rather than implied: the two `sign_ok`
+// controls from the same instruction (the labeller bot's own instructional comment
+// REJECTED beside a genuine signature ACCEPTED) belong to the merge tool
+// `In Flight/bin/pr-merge-serial-device.py`, which is not in this repository. Those two
+// controls currently have no automated home anywhere. See the PR body.
+// ---------------------------------------------------------------------------
+describe('privacy / data-rights / CAN-SPAM vocabulary (gh-1899)', () => {
+  it('CONTROL 3 (named): #1870 CCPA/CPRA opt-out prose FIRES (it was silent before)', () => {
+    const r = detectLegalMoneyContent(diff('privacy.html', [
+      `                <p>We do not sell your personal information to third parties for money. For information about sharing that may qualify as a 'sale' or 'share' under the CCPA and CPRA, and how to opt out, see Section 12.</p>`,
+    ]));
+    assert.equal(r.hit, true, `expected the CCPA text to fire, got ${JSON.stringify(r.lines)}`);
+    assert.equal(r.lines.length, 1);
+    assert.equal(r.lines[0].rule, 'privacy-data-rights-word');
+  });
+
+  it('CONTROL 3b (named): #1870 "Right to Opt-Out" list item FIRES', () => {
+    const r = detectLegalMoneyContent(diff('privacy.html', [
+      '                    <li><strong>Right to Opt-Out:</strong> You can opt out of the sale or sharing of your personal information.</li>',
+    ]));
+    assert.equal(r.hit, true, `expected the opt-out right to fire, got ${JSON.stringify(r.lines)}`);
+    assert.equal(r.lines[0].rule, 'privacy-data-rights-word');
+  });
+
+  it('CONTROL 4 (named): #1889 routing slugs stay SILENT (they fired before the URL-slug guard)', () => {
+    const r = detectLegalMoneyContent([
+      diff('_redirects', ['/blog/roof-shingle-warranty-tiers-explained /blog/roof-shingle-warranty-tiers-explained.html 301']),
+      diff('netlify/edge-functions/blog-guides-redirect.ts', [
+        `  '/blog/roof-shingle-warranty-tiers-explained':`,
+        `  '/blog/why-roofers-quote-different-prices':`,
+      ]),
+    ].join(''));
+    assert.equal(r.hit, false, `expected routing slugs to be silent, got ${JSON.stringify(r.lines)}`);
+  });
+
+  it('#1862 CAN-SPAM postal-address constant FIRES (it was silent before)', () => {
+    const r = detectLegalMoneyContent(diff('supabase/functions/send-measurement-ready/email-footer.ts', [
+      'export const POSTAL_ADDRESS: string = "Stellar Edge Services, LLC d/b/a Otter Quotes · 3410 N High School Rd, Ste G #102, Indianapolis, IN 46224";',
+    ]));
+    assert.equal(r.hit, true, `expected the CAN-SPAM postal address to fire, got ${JSON.stringify(r.lines)}`);
+    assert.equal(r.lines[0].rule, 'privacy-data-rights-word');
+  });
+
+  it('#1839 Meta Pixel privacy disclosure FIRES (the current predicate misses it entirely)', () => {
+    const r = detectLegalMoneyContent(diff('privacy.html', [
+      `                    <li><strong>Meta (Facebook) Pixel:</strong> Advertising and conversion-measurement analytics used to understand how visitors interact with our platform. Meta's handling of this data is governed by Meta's own privacy policy.</li>`,
+    ]));
+    assert.equal(r.hit, true, `expected the Meta Pixel disclosure to fire, got ${JSON.stringify(r.lines)}`);
+    assert.equal(r.lines[0].rule, 'privacy-data-rights-word');
+  });
+
+  // --- the guard must not become a hole: a pass is evidence only beside a fail ---
+
+  it('URL-slug guard does NOT silence a currency amount inside a path', () => {
+    const r = detectLegalMoneyContent(diff('_redirects', ['/promo/save-$150-today /promo/index.html 301']));
+    assert.equal(r.hit, true, `a price in a path is still a price, got ${JSON.stringify(r.lines)}`);
+    assert.equal(r.lines[0].rule, 'currency-amount');
+  });
+
+  it('URL-slug guard does NOT silence a legal word that also appears outside the path', () => {
+    const r = detectLegalMoneyContent(diff('index.html', [
+      '<a href="/blog/roof-shingle-warranty-tiers-explained">Read our workmanship warranty terms</a>',
+    ]));
+    assert.equal(r.hit, true, `prose beside a slug must still fire, got ${JSON.stringify(r.lines)}`);
+    assert.equal(r.lines[0].rule, 'legal-consent-word');
+  });
+
+  it('the new vocabulary does not fire on an unrelated diff', () => {
+    const r = detectLegalMoneyContent(diff('js/nav.js', ['  const el = document.querySelector(".nav-toggle");']));
+    assert.equal(r.hit, false, `expected silence, got ${JSON.stringify(r.lines)}`);
+  });
+});
