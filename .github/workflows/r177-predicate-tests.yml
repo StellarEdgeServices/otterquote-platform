@@ -54,5 +54,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+      - name: Guard against an empty test glob (gh-1885)
+        run: |
+          shopt -s nullglob
+          files=(scripts/r177/*.test.mjs)
+          echo "Matched ${#files[@]} test file(s): ${files[*]}"
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "::error::scripts/r177/*.test.mjs matched 0 files -- the R-177 predicate test suite is missing, not passing. A PR that deletes or renames it must not turn this job green (gh-1885)." >&2
+            exit 1
+          fi
       - name: node --test scripts/r177/*.test.mjs
         run: node --test scripts/r177/*.test.mjs
