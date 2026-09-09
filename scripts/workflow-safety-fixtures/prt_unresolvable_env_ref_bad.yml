@@ -1,0 +1,14 @@
+# FIXTURE (bad): a ref built from an env name this file never defines. The
+# checkout target cannot be read, so it cannot be judged safe. FAILS CLOSED --
+# an unreadable ref on a stranger-triggered checkout is not evidence of
+# safety, and treating it as one is how BLOCKER 2 got in.
+name: unresolvable env ref
+on:
+  pull_request_target: {types: [opened]}
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOME_REF_SET_SOMEWHERE_ELSE }}

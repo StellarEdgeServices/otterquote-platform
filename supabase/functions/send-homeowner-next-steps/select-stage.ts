@@ -88,3 +88,140 @@ export function selectStage(
   if (now - stampMs < STAGE_GAP_MS) return null;
   return "48h";
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// gh-1580 — the CANDIDATE SCREEN, extracted from index.ts so the acceptance
+// test CTO RUN 28 named on this issue (comment 5572642959) can exist as a repo
+// artifact instead of as a live prod seed nobody can run twice.
+//
+// That acceptance test, verbatim: "seed one is_test homeowner claim at
+// documents_needed with zero activity_log rows and zero hover_orders, invoke
+// send-homeowner-next-steps by hand, and assert EXACTLY ONE activity_log row
+// with event_type = 'next_steps_nudge_sent'; then add a single activity_log
+// row to that claim, invoke again, and assert ZERO further nudges."
+//
+// The second half is the discriminating one, and until now it lived only in
+// the handler's inline loop: nothing could exercise it without a database.
+// The two functions below are that loop, moved verbatim in behaviour (no
+// predicate changed, no order changed) so index.ts calls them instead of
+// re-implementing them. A duplicate would be worse than no test at all — it
+// would prove a copy, which is the false-confidence failure #1697's spec
+// exists to prevent.
+//
+// NOT covered here, and named rather than glossed: `isNewUntouched()` in
+// admin-dashboard.html (the "NEW — no activity since signup" strip predicate)
+// is inline in that page's <script> and is not importable. This issue's own
+// dispatch (5572642959) forbids reopening admin-dashboard.html, so the strip
+// half of the acceptance test stays a live observation, not a unit test.
+
+export type NudgeSkipReason =
+  | "has_hover_order"
+  | "real_activity_since_created"
+  | "ineligible_status"
+  | "opted_out";
+
+/** One activity_log row, as the handler selects it. */
+export interface ActivityLogRow {
+  user_id: string;
+  event_type: string;
+  metadata?: { claim_id?: string; nudge_stage?: string } | null;
+  created_at: string;
+}
+
+export interface ReducedActivity {
+  /** user_id -> ISO timestamp of the latest REAL (non-self-generated) row. */
+  realActivityByUser: Map<string, string>;
+  /** claim_id -> (stage -> ISO created_at of the EARLIEST stamp for it). */
+  nudgeSentByClaim: Map<string, Map<NudgeStage, string>>;
+}
+
+/**
+ * Reduce the raw activity_log read into the two maps the per-claim screen
+ * needs. Two event types are deliberately NOT "real homeowner activity":
+ *
+ *   - our own `nudgeEventType` stamp — otherwise the '2h' send would itself
+ *     disqualify the claim from ever reaching '48h';
+ *   - the `optOutEventType` row — clicking "Stop these updates" is not
+ *     progress on the claim, and counting it would also change what the
+ *     admin dashboard's "no activity since signup" strip shows.
+ */
+export function reduceActivityRows(
+  rows: readonly ActivityLogRow[],
+  nudgeEventType: string,
+  optOutEventType: string,
+): ReducedActivity {
+  const realActivityByUser = new Map<string, string>();
+  const nudgeSentByClaim = new Map<string, Map<NudgeStage, string>>();
+
+  for (const row of rows) {
+    if (row.event_type === optOutEventType) continue;
+    if (row.event_type === nudgeEventType) {
+      const md = row.metadata || {};
+      if (md.claim_id && (md.nudge_stage === "2h" || md.nudge_stage === "48h")) {
+        let stages = nudgeSentByClaim.get(md.claim_id);
+        if (!stages) {
+          stages = new Map<NudgeStage, string>();
+          nudgeSentByClaim.set(md.claim_id, stages);
+        }
+        const prevStamp = stages.get(md.nudge_stage as NudgeStage);
+        // If the same stage was stamped more than once (pre-unique-index
+        // race, #1725) the EARLIEST stamp wins.
+        if (!prevStamp || row.created_at < prevStamp) {
+          stages.set(md.nudge_stage as NudgeStage, row.created_at);
+        }
+      }
+      continue;
+    }
+    const prev = realActivityByUser.get(row.user_id);
+    if (!prev || row.created_at > prev) {
+      realActivityByUser.set(row.user_id, row.created_at);
+    }
+  }
+
+  return { realActivityByUser, nudgeSentByClaim };
+}
+
+export interface ScreenClaim extends StageClaim {
+  user_id: string;
+  status: string;
+}
+
+export interface ClaimDecision {
+  /** The one stage to send this run, or null for "send nothing". */
+  stage: NudgeStage | null;
+  /** Set only when the claim was screened OUT before stage selection. */
+  skipped_reason?: NudgeSkipReason;
+}
+
+/**
+ * The per-claim screen, in the handler's own order. Order is load-bearing:
+ * an opted-out claim must cost no reads and must never be stamped, so the
+ * opt-out gate runs before the hover/activity gates and before selectStage.
+ */
+export function screenClaim(
+  claim: ScreenClaim,
+  ctx: {
+    optedOutClaimIds: ReadonlySet<string>;
+    claimIdsWithHoverOrder: ReadonlySet<string>;
+    reduced: ReducedActivity;
+    now: number;
+  },
+): ClaimDecision {
+  if (!isNudgeEligibleStatus(claim.status)) {
+    return { stage: null, skipped_reason: "ineligible_status" };
+  }
+  if (ctx.optedOutClaimIds.has(claim.id)) {
+    return { stage: null, skipped_reason: "opted_out" };
+  }
+  if (ctx.claimIdsWithHoverOrder.has(claim.id)) {
+    return { stage: null, skipped_reason: "has_hover_order" };
+  }
+  const lastReal = ctx.reduced.realActivityByUser.get(claim.user_id);
+  if (lastReal && lastReal > claim.created_at) {
+    return { stage: null, skipped_reason: "real_activity_since_created" };
+  }
+  const emptySends: ReadonlyMap<NudgeStage, string> = new Map();
+  return {
+    stage: selectStage(claim, ctx.reduced.nudgeSentByClaim.get(claim.id) ?? emptySends, ctx.now),
+  };
+}

@@ -1,0 +1,11 @@
+# FIXTURE (bad): the PR title is an attacker-authored string pasted into a shell.
+name: prt untrusted run (bad)
+on:
+  pull_request_target:
+jobs:
+  echo:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "Title: ${{ github.event.pull_request.title }}"
+          echo "Branch: ${{ github.head_ref }}"

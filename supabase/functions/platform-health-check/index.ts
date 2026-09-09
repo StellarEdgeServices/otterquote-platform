@@ -44,6 +44,16 @@
  *      (a UTC-only timestamp previously caused a human to misread a 9pm ET
  *      event as "~1am ET" — see #527).
  *
+ * 6. SMS final-delivery-status check (added Sep 2026 — gh-1825, tier:3a):
+ *    `send-sms` reports "sent" on Twilio's initial API acceptance only and
+ *    never reads the final carrier delivery status. Phase 4 pulls the most
+ *    recent messages from Twilio directly (see sms-delivery-check.ts) and
+ *    alarms via the same fireAlert() path as Phases 1-3 when >= 3
+ *    consecutive sends to REAL (non-555) recipients come back `undelivered`.
+ *    Soft-fails (no alert, no throw) if TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN
+ *    are not set in this function's env. Read-only: sends no SMS, changes no
+ *    send-sms behaviour.
+ *
  * Scheduled: every 15 minutes via pg_cron (schedule: "* /15 * * * *")
  * Auth: verify_jwt = false (see supabase/config.toml). Gated instead by a
  * caller-identity check at the top of the handler: the request must carry
@@ -61,10 +71,13 @@
  *   SUPABASE_SERVICE_ROLE_KEY
  *   MAILGUN_API_KEY
  *   MAILGUN_DOMAIN
+ *   TWILIO_ACCOUNT_SID    (Phase 4 only; Phase 4 soft-skips if absent)
+ *   TWILIO_AUTH_TOKEN     (Phase 4 only; Phase 4 soft-skips if absent)
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { findConsecutiveUndelivered, buildSmsAlertMessage, type TwilioMessageRow } from "./sms-delivery-check.ts";
 
 // =============================================================================
 // CONSTANTS
@@ -112,6 +125,14 @@ const CRON_STALENESS_THRESHOLDS: Record<string, number> = {
 
 // Dedup window: don't re-alert for the same function within 15 minutes
 const ALERT_DEDUP_MS = 15 * 60 * 1000;
+
+// gh-1825 Phase 4: how many most-recent Twilio messages to pull per tick, and
+// how many CONSECUTIVE undelivered sends to REAL (non-555) recipients before
+// alarming. 3 is deliberately above 1 so a single carrier blip does not page;
+// the production account's entire lifetime history is only 30 messages
+// (measured 2026-09-08, #1825 comment 5583955467), so 50 covers it with room.
+const SMS_MESSAGES_PAGE_SIZE = 50;
+const SMS_CONSECUTIVE_UNDELIVERED_THRESHOLD = 3;
 
 // =============================================================================
 // HELPERS
@@ -836,6 +857,85 @@ async function runPublicPathProbes(
   return { probed: PUBLIC_PATHS.length, alertsFired, results };
 }
 
+/**
+ * Phase 4 (gh-1825): SMS final-delivery-status observability.
+ *
+ * `send-sms` reports `status: "sent"` on Twilio's initial API acceptance
+ * only — it never reads the final carrier delivery status, so a carrier
+ * rejection (e.g. the account's current toll-free-unverified 30032 errors,
+ * #1825) is invisible to us. This phase pulls the most recent Twilio
+ * messages directly (no dependency on our own logging — the alarm must
+ * work even before any log/migration lands, per #1825's code-half plan)
+ * and alarms via the SAME `fireAlert` path Phases 1-3 already use, rather
+ * than inventing a new alert surface.
+ *
+ * Tier 3a (CTO ruling, #1825 comment 5583955467): read-only observability,
+ * changes no send behaviour, sends no SMS.
+ *
+ * Soft-fails (returns zero-effect result, does not throw and does not
+ * block Phases 1-3) if TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN are not
+ * configured in this function's env, or if the Twilio call itself fails —
+ * an observability check must not become a new source of alert noise or
+ * cron failure.
+ */
+async function runSmsDeliveryCheck(
+  supabase: ReturnType<typeof createClient>,
+  mailgunApiKey: string,
+  mailgunDomain: string,
+): Promise<{ checked: number; alertsFired: number; consecutiveUndelivered: number; skipped?: string }> {
+  const accountSid = Deno.env.get("TWILIO_ACCOUNT_SID");
+  const authToken = Deno.env.get("TWILIO_AUTH_TOKEN");
+
+  if (!accountSid || !authToken) {
+    console.warn("[platform-health-check] Phase 4 (SMS delivery): skipped, TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN not set");
+    return { checked: 0, alertsFired: 0, consecutiveUndelivered: 0, skipped: "twilio-creds-not-configured" };
+  }
+
+  let messages: TwilioMessageRow[];
+  try {
+    // Messages.json (NOT Accounts/{sid}.json, which returns the auth token
+    // in cleartext) lists this account's messages newest-first by default.
+    const basicAuth = btoa(`${accountSid}:${authToken}`);
+    const res = await fetch(
+      `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json?PageSize=${SMS_MESSAGES_PAGE_SIZE}`,
+      { headers: { Authorization: `Basic ${basicAuth}` } },
+    );
+    if (!res.ok) {
+      console.error("[platform-health-check] Phase 4 (SMS delivery): Twilio Messages.json failed:", res.status);
+      return { checked: 0, alertsFired: 0, consecutiveUndelivered: 0, skipped: `twilio-http-${res.status}` };
+    }
+    const data = await res.json();
+    messages = (data.messages ?? [])
+      .filter((m: TwilioMessageRow) => (m.direction ?? "").startsWith("outbound"));
+  } catch (err) {
+    console.error("[platform-health-check] Phase 4 (SMS delivery): Twilio fetch threw:", err);
+    return { checked: 0, alertsFired: 0, consecutiveUndelivered: 0, skipped: "twilio-fetch-error" };
+  }
+
+  const result = findConsecutiveUndelivered(messages, SMS_CONSECUTIVE_UNDELIVERED_THRESHOLD);
+  let alertsFired = 0;
+
+  if (result.alarmed) {
+    const subject = `OtterQuote Health Alert — ${result.consecutiveCount} consecutive undelivered SMS sends`;
+    const message = buildSmsAlertMessage(result, SMS_CONSECUTIVE_UNDELIVERED_THRESHOLD) +
+      `\nChecked at: ${formatDualTimestamp(new Date())}\n` +
+      `This is an automated alert from OtterQuote platform monitoring (gh-1825).\n` +
+      `Resolve this alert at: https://otterquote.com/admin-contractors.html`;
+
+    const { alerted } = await fireAlert(
+      supabase, mailgunApiKey, mailgunDomain,
+      "sms_consecutive_undelivered", "send-sms", subject, message,
+    );
+    if (alerted) alertsFired++;
+  }
+
+  return {
+    checked: messages.length,
+    alertsFired,
+    consecutiveUndelivered: result.consecutiveCount,
+  };
+}
+
 // =============================================================================
 // MAIN HANDLER
 // =============================================================================
@@ -891,6 +991,11 @@ serve(async (req) => {
   // ── Phase 2: Cron job staleness ────────────────────────────────────────────
   const phase2 = await runStalenessCheck(supabase, mailgunApiKey, mailgunDomain);
 
+  // ── Phase 4: SMS final-delivery-status check (gh-1825) ──────────────────────
+  // Independent of Phases 1-3 (different data source, own soft-fail path) —
+  // ordering relative to them does not matter.
+  const phase4 = await runSmsDeliveryCheck(supabase, mailgunApiKey, mailgunDomain);
+
   const elapsed = Date.now() - startedAt;
 
   const result = {
@@ -903,7 +1008,11 @@ serve(async (req) => {
     probedPaths:        phase3.probed,
     pathAlertsCount:    phase3.alertsFired,
     pathResults:        phase3.results,
-    totalAlerts:        phase1.alertsFired + phase2.alertsFired + phase3.alertsFired,
+    smsChecked:         phase4.checked,
+    smsAlertsCount:     phase4.alertsFired,
+    smsConsecutiveUndelivered: phase4.consecutiveUndelivered,
+    smsSkipped:         phase4.skipped ?? null,
+    totalAlerts:        phase1.alertsFired + phase2.alertsFired + phase3.alertsFired + phase4.alertsFired,
     elapsedMs:          elapsed,
     ranAt:              new Date().toISOString(),
   };

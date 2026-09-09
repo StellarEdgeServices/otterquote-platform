@@ -25,7 +25,7 @@
 //
 // Exports:
 //   detectLegalMoneyContent(diffText) -> { hit, lines: [{file, line, rule, side, text}], files }
-//   classifyLine, scanModeFor, isNoiseLine, isCodeComment
+//   classifyLine, scanModeFor, isNoiseLine, isCodeComment, nextHtmlBlockState
 //   PREDICATE_FILES, COPY_GUARD_FILES
 
 // ---------------------------------------------------------------------------
@@ -141,6 +141,15 @@ const RULES = [
   { rule: 'currency-amount', re: /_CENTS\s*=/ },
   { rule: 'money-word', re: /\b(price|pricing|fee|fees|refund|charge|charges|rebate|credit|payout|commission|discount|invoice)\b/i },
   { rule: 'legal-consent-word', re: /\b(licens(e|ed|ing)|insured|bonded|vetted|certified|guarantee[ds]?|warrant(y|ies|ed)|consent|agree(ment|s)?|(?<![/\w-])terms|on behalf of|public adjuster|arbitration|disclaimer|liab(le|ility))\b/i },
+  // gh-1899 conjunct (2): privacy / data-rights / CAN-SPAM vocabulary. Before this rule the
+  // predicate had NO privacy term at all -- a diff could rewrite CCPA/CPRA sale-and-sharing
+  // opt-out language, or set the CAN-SPAM postal address, and the labeller stayed silent, so
+  // the ABSENCE of `r177:legal-read` was no evidence a diff was legally clean. Measured on
+  // the real diffs: #1870 (privacy.html CCPA rights) 0 -> 6 lines, #1862 (CAN-SPAM postal
+  // address constant) 0 -> 4, #1839 (Meta Pixel privacy change, already a LEGAL-READ FAIL)
+  // 0 -> 1. `POSTAL_ADDRESS` is spelled separately from `postal[_\s]address` because \b does
+  // not split on `_`, so the SCREAMING_CASE constant name is not reached by the prose form.
+  { rule: 'privacy-data-rights-word', re: /\b(personal (information|data)|CCPA|CPRA|GDPR|CalOPPA|VCDPA|CAN-?SPAM|do not sell|sale or sharing|opt[-\s]?out|unsubscribe|postal[_\s]address|POSTAL_ADDRESS|data subject|data protection|privacy policy|right to (delete|know|correct)|sell (your|my) personal)\b/i },
 ];
 
 // Lines that are obviously not user-facing content.
@@ -178,18 +187,64 @@ export function isNoiseLine(text) {
 // change (#1674) were blocked on the words "Agreement" / "guarantee" / "/terms"
 // inside comments. A comment line is skipped for the WORD rules; currency amounts
 // and money identifiers on real code lines still fire. HTML/Markdown/prose files
-// are not code, so their lines are never treated as comments.
+// are not code, so their lines are never treated as comments -- EXCEPT the
+// `<script>`/`<style>` blocks inside an `.html` file (gh-1701 instance 1, below):
+// most of our JS lives inline in those blocks, and a `//`/`/* */` comment there
+// is exactly as much "not customer copy" as the same comment in a `.js` file.
+// HTML TEXT NODES and attribute copy are NOT script/style content and keep
+// scanning exactly as before -- this only narrows what happens INSIDE the two
+// block types.
 const CODE_FILE_RE = /\.(m?[jt]sx?|py|sql|toml|ya?ml|sh|go|rs|java|kt|swift|c|cc|cpp|h)$/i;
 const COMMENT_LINE_RE = /^\s*(\/\/|\/\*|\*|#(?!\{)|--|<!--)/;
 
-export function isCodeComment(text, file) {
-  return !!file && CODE_FILE_RE.test(file) && COMMENT_LINE_RE.test(text);
+// gh-1701 instance 1: track whether a given `.html` diff line sits inside a
+// `<script>` or `<style>` block. Diff-only, best-effort like every other rule
+// in this file -- it only ever sees the diff text, never the whole file, so a
+// block whose opening tag falls outside the visible hunk context is not
+// detected. `nextHtmlBlockState` is called for EVERY visible line (context
+// lines included), in order, so the state carries forward correctly whether
+// the open/close tag is itself part of the hunk's change or just context.
+const HTML_FILE_RE = /\.html?$/i;
+const SCRIPT_OPEN_RE = /<script(?:\s[^>]*)?>/i;
+const SCRIPT_CLOSE_RE = /<\/script\s*>/i;
+const STYLE_OPEN_RE = /<style(?:\s[^>]*)?>/i;
+const STYLE_CLOSE_RE = /<\/style\s*>/i;
+
+export function nextHtmlBlockState(state, text) {
+  if (state === 'script') return SCRIPT_CLOSE_RE.test(text) ? 'text' : 'script';
+  if (state === 'style') return STYLE_CLOSE_RE.test(text) ? 'text' : 'style';
+  const scriptOpen = SCRIPT_OPEN_RE.exec(text);
+  if (scriptOpen && !SCRIPT_CLOSE_RE.test(text.slice(scriptOpen.index))) return 'script';
+  const styleOpen = STYLE_OPEN_RE.exec(text);
+  if (styleOpen && !STYLE_CLOSE_RE.test(text.slice(styleOpen.index))) return 'style';
+  return 'text';
 }
 
-export function classifyLine(text, file, mode = 'full') {
+export function isCodeComment(text, file, htmlBlock = 'text') {
+  if (!file) return false;
+  if (CODE_FILE_RE.test(file)) return COMMENT_LINE_RE.test(text);
+  if (HTML_FILE_RE.test(file) && (htmlBlock === 'script' || htmlBlock === 'style')) {
+    return COMMENT_LINE_RE.test(text);
+  }
+  return false;
+}
+
+// gh-1899: a legal/money WORD that occurs only inside a URL path segment is a slug, not
+// wording anyone reads. Without this, widening the vocabulary widens the false positives too:
+// #1889 is a pure routing diff whose only three hits are `warranty` x2 and `prices` x1 inside
+// `/blog/...` slugs in `_redirects` and an edge function's route table. Stripping URL path
+// tokens before the WORD rules and the money-IDENTIFIER rule takes #1889 from 3 hits to 0.
+//
+// Deliberately NOT applied to the currency rules: a literal `$1500` in a path is still a price,
+// and `_CENTS =` is not URL-shaped. Measured across 32 PRs: 11 hits gained, 3 lost, and all 3
+// losses are URL slugs -- no prose hit is lost anywhere.
+const URL_PATH_TOKEN_RE = /(?:https?:\/\/\S+)|(?:\/[A-Za-z0-9._~-]+)+/g;
+function deslug(text) { return text.replace(URL_PATH_TOKEN_RE, ' '); }
+
+export function classifyLine(text, file, mode = 'full', htmlBlock = 'text') {
   if (mode === 'none') return null;
   if (isNoiseLine(text)) return null;
-  const comment = isCodeComment(text, file);
+  const comment = isCodeComment(text, file, htmlBlock);
   for (const { rule, re } of RULES) {
     if (rule !== 'currency-amount') continue;
     if (comment && !/_CENTS\s*=/.test(text)) continue; // "$25" in a comment is prose
@@ -198,7 +253,10 @@ export function classifyLine(text, file, mode = 'full') {
   // Harness paths stop here: a literal price in a script is still a price, but a
   // fixture's `acvPayout` and a --help string's "credit" are not money wording.
   if (mode === 'currency-only') return null;
-  if (!comment && file && CODE_FILE_RE.test(file) && MONEY_IDENT_RE.test(text)) {
+  // gh-1899: the WORD rules and the identifier rule read the line with URL path tokens
+  // stripped; the currency rules above deliberately read the raw line.
+  const prose = deslug(text);
+  if (!comment && file && CODE_FILE_RE.test(file) && MONEY_IDENT_RE.test(prose)) {
     if (SQL_COMMENT_ON_RE.test(text)) return null;          // database docstring, not money logic
     if (SQL_PERMISSION_RE.test(text)) return 'money-permission';
     return 'money-identifier';
@@ -206,7 +264,7 @@ export function classifyLine(text, file, mode = 'full') {
   if (comment) return null;
   for (const { rule, re } of RULES) {
     if (rule === 'currency-amount') continue;
-    if (re.test(text)) return rule;
+    if (re.test(prose)) return rule;
   }
   return null;
 }
@@ -247,6 +305,7 @@ export function detectLegalMoneyContent(diffText) {
   const seenPermission = new Set(); // gh-1701: one 'money-permission' hit per file
   let file = null;
   let mode = 'none';
+  let htmlBlock = 'text'; // gh-1701: 'text' | 'script' | 'style', reset per file
   let oldLine = 0;
   let newLine = 0;
   let inHunk = false;
@@ -260,6 +319,7 @@ export function detectLegalMoneyContent(diffText) {
       file = m ? m[2] : null;
       if (file) files.push(file);
       mode = scanModeFor(file);
+      htmlBlock = 'text';
       if (file && PREDICATE_FILES.has(file) && !seenGate.has(file)) {
         seenGate.add(file);
         out.push({ file, line: 0, rule: 'predicate-file', side: '+', text: `(any change to ${file} requires a signed approval under the pubkey currently on main)` });
@@ -268,13 +328,13 @@ export function detectLegalMoneyContent(diffText) {
     }
     if (raw.startsWith('+++ ')) {
       const p = stripDiffPath(raw.slice(4));
-      if (p) { file = p; mode = scanModeFor(file); }
+      if (p) { file = p; mode = scanModeFor(file); htmlBlock = 'text'; }
       continue;
     }
     if (raw.startsWith('--- ')) {
       if (!inHunk) {
         const p = stripDiffPath(raw.slice(4));
-        if (p && !file) { file = p; mode = scanModeFor(file); }
+        if (p && !file) { file = p; mode = scanModeFor(file); htmlBlock = 'text'; }
       }
       continue;
     }
@@ -288,11 +348,16 @@ export function detectLegalMoneyContent(diffText) {
 
     const side = raw[0];
     const text = raw.slice(1);
+    // gh-1701: advance the <script>/<style> tracker on EVERY visible line
+    // (context included) before classifying, so a comment inside the block is
+    // recognised even when the block's own open/close tag is only context.
+    const lineHtmlBlock = htmlBlock;
+    if (file && HTML_FILE_RE.test(file)) htmlBlock = nextHtmlBlockState(htmlBlock, text);
     if (side === '+') {
-      if (file && mode !== 'none') pushHit(out, seenPermission, file, newLine, classifyLine(text, file, mode), '+', text);
+      if (file && mode !== 'none') pushHit(out, seenPermission, file, newLine, classifyLine(text, file, mode, lineHtmlBlock), '+', text);
       newLine++;
     } else if (side === '-') {
-      if (file && mode !== 'none') pushHit(out, seenPermission, file, oldLine, classifyLine(text, file, mode), '-', text);
+      if (file && mode !== 'none') pushHit(out, seenPermission, file, oldLine, classifyLine(text, file, mode, lineHtmlBlock), '-', text);
       oldLine++;
     } else {
       // context line (' ') or anything else
@@ -303,4 +368,4 @@ export function detectLegalMoneyContent(diffText) {
   return { hit: out.length > 0, lines: out, files };
 }
 
-export default { detectLegalMoneyContent, PREDICATE_FILES, COPY_GUARD_FILES, scanModeFor, classifyLine, isNoiseLine, isCodeComment };
+export default { detectLegalMoneyContent, PREDICATE_FILES, COPY_GUARD_FILES, scanModeFor, classifyLine, isNoiseLine, isCodeComment, nextHtmlBlockState };

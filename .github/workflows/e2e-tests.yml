@@ -124,6 +124,22 @@ jobs:
       - name: Analytics loader single-source guard (gtag.js + clarity.ms behind the host gate, gh-1619)
         run: python3 scripts/check-gtag-single-source.py
 
+      # gh-1339 item 6 / D-312: no third-party vendor named on a customer-facing
+      # surface. A gate demanding ZERO would be red on arrival — the residue is
+      # 373 client-side references whose removal needs the D-312 scope ruling
+      # recorded on #1339 — and a gate that is red on arrival gets switched off
+      # within a day. So this is a RATCHET against scripts/vendor-scrub-baseline.json:
+      # green today, red the moment a new vendor reference lands on any page, and
+      # red again (with instructions) when a count DROPS and the baseline is not
+      # lowered in the same PR, so the floor cannot silently drift back up. Its own
+      # firing self-test runs first, because a ratchet whose detector cannot fire is
+      # a green light bolted to a wall (gh-1738).
+      - name: Vendor-scrub detector, firing self-test (D-312)
+        run: python3 scripts/vendor-scrub-check.py --self-test
+
+      - name: Vendor-scrub ratchet, all pages (D-312)
+        run: python3 scripts/vendor-scrub-check.py --repo . --ratchet
+
       - name: supabase-js CDN pin + SRI guard (gh-1793)
         run: python3 scripts/check-supabase-js-sri.py
 
@@ -314,5 +330,18 @@ jobs:
       # Scoped to supabase/functions/ only — still no --allow-net/--allow-env/--allow-sys,
       # so the gh-422 secret/network guarantee is unchanged; only local source reads
       # are permitted, and the whole repo is already present on the runner's disk.
+      #
+      # gh-1314 (PR #1856 REVIEW blocker 1): supabase/migrations_drafts is added to
+      # the read allowlist for one reason, and it is a narrow one. price-verify.test.ts
+      # asserts that the `signed_price_reason` CHECK in the paired draft migration
+      # accepts every member of price-verify.ts's UnverifiedReason union — the exact
+      # drift that, left unguarded, would have had the database silently reject every
+      # write on the two halt paths PR #1798 added. That guard has to read the .sql
+      # file, which lives in a SIBLING directory, so under the old allowlist it could
+      # never pass on CI: NotCapable, permanently red, reproduced locally before this
+      # change. The addition is source-only and read-only — SQL drafts hold no
+      # secrets, and no --allow-net/--allow-env/--allow-sys is granted here — so the
+      # gh-422 guarantee is unchanged in substance: these tests still cannot reach the
+      # network, the environment, or anything outside two source directories.
       - name: Edge Function unit tests (pure-unit, no secrets)
-        run: deno test --allow-read=supabase/functions supabase/functions/
+        run: deno test --allow-read=supabase/functions,supabase/migrations_drafts supabase/functions/

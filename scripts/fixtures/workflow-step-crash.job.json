@@ -1,0 +1,17 @@
+{
+  "_comment": "gh-1840 control-2 bad fixture -- Actions API 'get a job for a workflow run' shape (GET /repos/{owner}/{repo}/actions/jobs/{job_id}), reproducing PR #1737's step-ordering crash (see scripts/fixtures/workflow-step-crash.yml). scripts/workflow-step-unrun-check.py must report 'Check deployed Edge Functions against main' as UNRUN.",
+  "id": 33900000001,
+  "run_id": 33900000000,
+  "name": "drift",
+  "status": "completed",
+  "conclusion": "failure",
+  "steps": [
+    { "name": "Set up job", "status": "completed", "conclusion": "success", "number": 1 },
+    { "name": "Run actions/checkout@v4", "status": "completed", "conclusion": "success", "number": 2 },
+    { "name": "Self-test the remote-project detector (otter-crm)", "status": "completed", "conclusion": "failure", "number": 3 },
+    { "name": "Install Supabase CLI", "status": "completed", "conclusion": "skipped", "number": 4 },
+    { "name": "Check deployed Edge Functions against main", "status": "completed", "conclusion": "skipped", "number": 5 },
+    { "name": "Publish drift table to the job summary", "status": "completed", "conclusion": "success", "number": 6 },
+    { "name": "Complete job", "status": "completed", "conclusion": "success", "number": 7 }
+  ]
+}

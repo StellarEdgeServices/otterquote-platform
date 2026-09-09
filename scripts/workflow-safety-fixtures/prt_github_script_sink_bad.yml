@@ -1,0 +1,15 @@
+# FIXTURE (bad) -- BLOCKER 2, second half. `actions/github-script`'s `script:`
+# input is the other canonical injection sink and takes the same
+# attacker-authored strings a shell does; the first version walked `run:`
+# scalars only and never looked at `with:` at all.
+name: github-script sink
+on:
+  pull_request_target: {types: [opened]}
+jobs:
+  pwn:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            console.log("${{ github.event.pull_request.body }}")

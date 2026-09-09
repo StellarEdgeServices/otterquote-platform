@@ -130,18 +130,25 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import {
-  isNudgeEligibleStatus,
+  type ActivityLogRow,
   NUDGE_ELIGIBLE_STATUS,
   NUDGE_EXCLUDED_STATUS,
   type NudgeStage,
-  selectStage,
+  reduceActivityRows,
+  screenClaim,
   TWO_HOURS_MS,
 } from "./select-stage.ts";
 import { buildEmailContent } from "./email-content.ts";
 import {
+  buildCandidateQuery,
+  candidateIsTestFlag,
+  dryRunAuthorized,
+  parseDryRun,
+} from "./dry-run.ts";
+import { deliverStage, type PreviewRow } from "./deliver-stage.ts";
+import {
   canSendWithOptOut,
   fetchOptedOutClaimIds,
-  isOptedOut,
 } from "./optout-filter.ts";
 import {
   buildOptOutUrl,
@@ -169,6 +176,9 @@ interface ScanResult {
   // the race) — counted explicitly per condition 2, not folded silently
   // into stages_sent or dropped.
   stages_skipped_already_sent?: NudgeStage[];
+  // gh-1859 review fix (blocker 3): a previewed claim used to land here as
+  // {stages_sent: []}, indistinguishable from "selectStage returned null".
+  stages_previewed?: NudgeStage[];
   skipped_reason?:
     | "has_hover_order"
     | "real_activity_since_created"
@@ -297,6 +307,33 @@ serve(async (req: Request) => {
     return jsonResponse({ ok: false, error: "Unauthorized" }, 401, corsHeaders);
   }
 
+  // gh-1570 / gh-1580 — dry-run fixture mode, read AFTER the authorization
+  // gate so an unauthenticated caller cannot use it to enumerate fixtures.
+  // See ./dry-run.ts for why it exists and what it deliberately does not do
+  // (it writes no activity_log row and sends no email — it cannot manufacture
+  // the artifact it is meant to help produce).
+  const dryRunRequested = parseDryRun(await req.clone().json().catch(() => ({})));
+  // gh-1859 review fix: a dry run does NOT inherit the batch gate's permissive
+  // `if (!cronSecret) authorized = true` branch. That branch fails OPEN, and a
+  // dry run returns a list of claims, so it requires positive proof of
+  // authorization or it does not run at all. See dryRunAuthorized().
+  if (dryRunRequested && !dryRunAuthorized({
+    cronSecret, incomingCronSecret, authHeader, serviceRoleKey,
+  })) {
+    console.warn(`[${FUNCTION_NAME}] dry_run refused — the permissive no-CRON_SECRET branch does not authorize a preview`);
+    return jsonResponse(
+      { ok: false, error: "dry_run requires an explicit cron secret or service-role credential" },
+      401,
+      corsHeaders,
+    );
+  }
+  const dryRun = dryRunRequested;
+  const scanIsTest = candidateIsTestFlag(dryRun);
+  const wouldSend: PreviewRow[] = [];
+  if (dryRun) {
+    console.log(`[${FUNCTION_NAME}] DRY RUN — scanning is_test=true fixtures; nothing will be sent or written`);
+  }
+
   // gh-1786 / D-320 — CAN-SPAM gate, ahead of any candidate scan. A commercial
   // email with no working opt-out is the violation this issue was filed on, so
   // an unset HOMEOWNER_OPTOUT_SECRET stops the whole run rather than degrading
@@ -321,16 +358,21 @@ serve(async (req: Request) => {
   // 'draft' — redundant with the equality but stated explicitly per CTO RUN
   // 22 defect 1), ready_for_bids=false, has_measurements=false, created at
   // least 2h ago (nothing is eligible before then) ───────────────────────────
-  const { data: claims, error: scanErr } = await supabase
-    .from("claims")
-    .select("id, user_id, status, created_at, is_test")
-    .eq("is_test", false)
-    .eq("status", NUDGE_ELIGIBLE_STATUS)
-    .neq("status", NUDGE_EXCLUDED_STATUS)
-    .eq("ready_for_bids", false)
-    .eq("has_measurements", false)
-    .lte("created_at", twoHoursAgoIso)
-    .limit(BATCH_LIMIT);
+  const { data: claims, error: scanErr } = await buildCandidateQuery(
+    // deno-lint-ignore no-explicit-any
+    supabase.from("claims") as any,
+    {
+      // gh-1570: `false` on every production run (gh-1028 test-account
+      // suppression, unchanged). `true` only under an authorized dry run —
+      // the two populations are disjoint by construction, see ./dry-run.ts.
+      scanIsTest,
+      eligibleStatus: NUDGE_ELIGIBLE_STATUS,
+      excludedStatus: NUDGE_EXCLUDED_STATUS,
+      cutoffIso: twoHoursAgoIso,
+      limit: BATCH_LIMIT,
+    },
+    // deno-lint-ignore no-explicit-any
+  ) as any;
 
   if (scanErr) {
     console.error(`[${FUNCTION_NAME}] Candidate scan failed:`, scanErr.message);
@@ -338,8 +380,12 @@ serve(async (req: Request) => {
   }
 
   if (!claims || claims.length === 0) {
-    console.log(`[${FUNCTION_NAME}] Batch: no candidate claims found`);
-    return jsonResponse({ ok: true, processed: 0, results: [] }, 200, corsHeaders);
+    console.log(`[${FUNCTION_NAME}] Batch: no candidate claims found (is_test=${scanIsTest})`);
+    return jsonResponse(
+      { ok: true, processed: 0, scanned_is_test: scanIsTest, ...(dryRun ? { dry_run: true, would_send: [] } : {}), results: [] },
+      200,
+      corsHeaders,
+    );
   }
 
   const claimIds = (claims as ClaimRow[]).map((c) => c.id);
@@ -385,73 +431,35 @@ serve(async (req: Request) => {
     return jsonResponse({ ok: false, error: "opt-out read failed" }, 500, corsHeaders);
   }
 
-  // Real (non-self-generated) activity per user, latest timestamp.
-  const realActivityByUser = new Map<string, string>();
-  // Already-sent nudge stages per claim: claim_id -> (stage -> stamp
-  // created_at). The stamp time is what selectStage uses to space the '48h'
-  // send after the '2h' one; if the same stage was stamped more than once
-  // (pre-unique-index race) the EARLIEST stamp wins.
-  const nudgeSentByClaim = new Map<string, Map<NudgeStage, string>>();
-
-  for (const row of (activity || []) as any[]) {
-    // An opt-out is not homeowner progress on the claim. Like our own nudge
-    // stamp, it must never count as "real activity" — otherwise clicking the
-    // opt-out link would ALSO look like movement and change what the admin
-    // dashboard's "no activity since signup" strip shows.
-    if (row.event_type === OPTOUT_EVENT_TYPE) continue;
-    if (row.event_type === NUDGE_EVENT_TYPE) {
-      const md = row.metadata || {};
-      if (md.claim_id && (md.nudge_stage === "2h" || md.nudge_stage === "48h")) {
-        let stages = nudgeSentByClaim.get(md.claim_id);
-        if (!stages) {
-          stages = new Map<NudgeStage, string>();
-          nudgeSentByClaim.set(md.claim_id, stages);
-        }
-        const prevStamp = stages.get(md.nudge_stage as NudgeStage);
-        if (!prevStamp || row.created_at < prevStamp) {
-          stages.set(md.nudge_stage as NudgeStage, row.created_at);
-        }
-      }
-      continue; // our own stamp never counts as "real" homeowner activity
-    }
-    const prev = realActivityByUser.get(row.user_id);
-    if (!prev || row.created_at > prev) {
-      realActivityByUser.set(row.user_id, row.created_at);
-    }
-  }
-
+  // Real (non-self-generated) activity per user, and the already-sent nudge
+  // stages per claim. gh-1580: both reductions live in ./select-stage.ts so
+  // the acceptance test on this issue can exercise them without a database;
+  // this call is the only implementation, not a copy of one.
+  const reduced = reduceActivityRows(
+    (activity || []) as ActivityLogRow[],
+    NUDGE_EVENT_TYPE,
+    OPTOUT_EVENT_TYPE,
+  );
   const results: ScanResult[] = [];
 
-  const emptySends: ReadonlyMap<NudgeStage, string> = new Map();
-
   for (const claim of claims as ClaimRow[]) {
-    // Defense in depth for CTO RUN 22 defect 1: the query already filters on
-    // status, but a claim that somehow arrives here in any other state (a
-    // `draft` above all) must never be told "You're one step from bids".
-    if (!isNudgeEligibleStatus(claim.status)) {
-      results.push({ claim_id: claim.id, stages_sent: [], skipped_reason: "ineligible_status" });
+    // gh-1580: the whole screen — status, opt-out, hover_orders, real
+    // activity since signup, then stage selection — in ./select-stage.ts's
+    // screenClaim(), in this exact order (the opt-out gate must run before
+    // any stage selection or stamp). Extracted so the discriminating half of
+    // this issue's acceptance test ("add one activity_log row, invoke again,
+    // assert ZERO further nudges") is a unit test rather than a live seed.
+    const decision = screenClaim(claim, {
+      optedOutClaimIds,
+      claimIdsWithHoverOrder,
+      reduced,
+      now,
+    });
+    if (decision.skipped_reason) {
+      results.push({ claim_id: claim.id, stages_sent: [], skipped_reason: decision.skipped_reason });
       continue;
     }
-    // gh-1786 / D-320: the homeowner asked us to stop. Checked BEFORE any
-    // stage selection, contact lookup or stamp, so an opted-out claim costs no
-    // reads and can never be stamped as sent.
-    if (isOptedOut(optedOutClaimIds, claim.id)) {
-      results.push({ claim_id: claim.id, stages_sent: [], skipped_reason: "opted_out" });
-      continue;
-    }
-    if (claimIdsWithHoverOrder.has(claim.id)) {
-      results.push({ claim_id: claim.id, stages_sent: [], skipped_reason: "has_hover_order" });
-      continue;
-    }
-    const lastReal = realActivityByUser.get(claim.user_id);
-    if (lastReal && lastReal > claim.created_at) {
-      results.push({ claim_id: claim.id, stages_sent: [], skipped_reason: "real_activity_since_created" });
-      continue;
-    }
-
-    // CTO RUN 22 defect 2: at most ONE stage per claim per run (see
-    // ./select-stage.ts for the full decision table and its tests).
-    const stage = selectStage(claim, nudgeSentByClaim.get(claim.id) ?? emptySends, now);
+    const stage = decision.stage;
     if (stage === null) {
       results.push({ claim_id: claim.id, stages_sent: [] });
       continue;
@@ -493,71 +501,54 @@ serve(async (req: Request) => {
     );
 
     const sentStages: NudgeStage[] = [];
+    const previewedStages: NudgeStage[] = [];
     const skippedAlreadySentStages: NudgeStage[] = [];
     for (const stage of stagesToSend) {
-      // gh-1580 review fix (PR #1601, comment 5532245612): stamp BEFORE
-      // sending, not after. The prior send-then-stamp order's own comment
-      // admitted the failure mode: if the stamp insert failed (or a run
-      // overlapped the next 30-min cron tick), the "already sent" gate
-      // stayed unset while the email had already gone out, so the next run
-      // would see no stamp and send AGAIN to a real homeowner. There is no
-      // unique constraint backing dedup here — checked pg_indexes on prod
-      // `activity_log`: only pkey + idx_activity_log_user_id +
-      // idx_activity_log_created_at + idx_activity_log_user_created, nothing
-      // on (user_id, event_type, metadata) — and adding one is a Tier 3B
-      // schema surface, not this PR's to add. So the row is claimed FIRST;
-      // if that claim fails, the send is skipped entirely THIS run (no
-      // stamp landed, so nothing went out, and the next cron run retries
-      // cleanly). This deliberately trades the opposite failure mode: if
-      // the stamp commits but the Mailgun send then fails, that claim does
-      // NOT auto-retry (the gate is now set) — logged as an ERROR below so
-      // it's visible for manual follow-up rather than silently swallowed.
-      // Skipping a nudge is recoverable; double-emailing a real homeowner
-      // is not — this function is asymmetric about that on purpose.
-      const { error: stampError } = await supabase.from("activity_log").insert({
-        user_id: claim.user_id,
-        event_type: NUDGE_EVENT_TYPE,
-        title: stage === "2h" ? "Next-steps nudge sent (+2h)" : "Next-steps nudge sent (+48h)",
-        metadata: { claim_id: claim.id, nudge_stage: stage, system_generated: true },
-        is_test: false,
-      });
-      if (stampError) {
-        // condition 2 (gh-1580 Q&A, CTO ruling 2026-09-03T21:40:09Z): a
-        // unique-violation here means a concurrent/overlapping invocation
-        // already won the race and stamped+sent this exact (claim, stage)
-        // first — NOT a failure. Skip the send, count it explicitly, do not
-        // treat it as an error. Unreachable until the Tier 3B unique
-        // partial index lands (see the file-header comment) — before then,
-        // no unique constraint exists on activity_log for this key, so
-        // Postgres never raises 23505 and this branch is simply dead code
-        // that cannot crash anything.
-        if (stampError.code === "23505") {
-          console.log(`[${FUNCTION_NAME}] ${stage} nudge for claim ${claim.id} already sent (23505 unique-violation — concurrent run won the race) — skipping send`);
-          skippedAlreadySentStages.push(stage);
-          continue;
-        }
-        console.error(`[${FUNCTION_NAME}] Failed to stamp ${stage} nudge for claim ${claim.id} — skipping send this run, will retry next run:`, stampError.message);
-        continue; // fatal for this row this run: no stamp landed, so nothing was sent — safe to retry
-      }
+      // gh-1859 review fix: the stamp/send/preview decision moved to
+      // ./deliver-stage.ts so its three safety properties are testable with
+      // fake dependencies instead of resting on the position of one `continue`
+      // in this loop. Production behaviour is unchanged.
+      const outcome = await deliverStage(
+        {
+          dryRun,
+          mailgunConfigured: Boolean(mailgunApiKey),
+          buildEmail: buildEmailContent,
+          insertActivityLog: async (row) => {
+            const { error } = await supabase.from("activity_log").insert(row);
+            return { error: error ?? null };
+          },
+          sendEmail: (to, name, mUrl, cUrl, oUrl) =>
+            sendMailgunEmail(mailgunApiKey as string, to, name, mUrl, cUrl, oUrl),
+          log: (level, message) => console[level](`[${FUNCTION_NAME}] ${message}`),
+        },
+        {
+          claimId: claim.id,
+          userId: claim.user_id,
+          stage,
+          homeownerEmail,
+          homeownerName,
+          measurementsUrl,
+          colorUrl,
+          optOutUrl,
+        },
+      );
 
-      if (!mailgunApiKey) {
-        console.warn(`[${FUNCTION_NAME}] MAILGUN_API_KEY not set — stamp recorded, no email sent (dev/staging) for claim ${claim.id} stage ${stage}`);
+      if (outcome.kind === "previewed") {
+        wouldSend.push(outcome.preview);
+        previewedStages.push(stage);
+      } else if (outcome.kind === "sent") {
         sentStages.push(stage);
-        continue;
+      } else if (outcome.kind === "already_sent") {
+        skippedAlreadySentStages.push(stage);
       }
-
-      const sendResult = await sendMailgunEmail(mailgunApiKey, homeownerEmail, homeownerName, measurementsUrl, colorUrl, optOutUrl);
-      if (!sendResult.ok) {
-        console.error(`[${FUNCTION_NAME}] STAMPED BUT SEND FAILED for claim ${claim.id} stage ${stage} — will NOT auto-retry (stamp already committed); needs manual follow-up: ${sendResult.error}`);
-        continue; // do not count as sent — the stamp is already committed, deliberately not reversed
-      }
-      console.log(`[${FUNCTION_NAME}] Sent ${stage} nudge -> ${homeownerEmail} for claim ${claim.id}`);
-      sentStages.push(stage);
+      // stamp_failed / send_failed are logged inside deliverStage and counted
+      // as neither sent nor previewed — unchanged from the prior behaviour.
     }
 
     results.push({
       claim_id: claim.id,
       stages_sent: sentStages,
+      ...(previewedStages.length > 0 ? { stages_previewed: previewedStages } : {}),
       ...(skippedAlreadySentStages.length > 0 ? { stages_skipped_already_sent: skippedAlreadySentStages } : {}),
     });
   }
@@ -571,5 +562,25 @@ serve(async (req: Request) => {
     (sum, r) => sum + (r.stages_skipped_already_sent?.length || 0),
     0
   );
-  return jsonResponse({ ok: true, processed, skipped_already_sent: skippedAlreadySent, results }, 200, corsHeaders);
+  return jsonResponse(
+    {
+      ok: true,
+      processed,
+      skipped_already_sent: skippedAlreadySent,
+      scanned_is_test: scanIsTest,
+      // gh-1570: on a dry run `processed` is 0 by construction (nothing is
+      // stamped), and `would_send` carries what a real run would have done.
+      ...(dryRun
+        ? {
+          dry_run: true,
+          previewed: wouldSend.length,
+          // No recipient addresses: see PreviewRow in ./deliver-stage.ts.
+          would_send: wouldSend,
+        }
+        : {}),
+      results,
+    },
+    200,
+    corsHeaders,
+  );
 });

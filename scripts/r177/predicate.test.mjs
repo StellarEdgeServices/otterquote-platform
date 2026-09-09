@@ -199,3 +199,161 @@ describe('gh-1701 criterion 2 -- the true positive that must survive the narrowi
     assert.ok(r.lines.some((l) => l.rule === 'legal-consent-word'));
   });
 });
+
+// gh-1701 criterion 1 (2026-09-08): the three false-positive SHAPES from the
+// issue's measurement table, each asserted by name so a regression in any one
+// of them is caught individually instead of buried in an aggregate `hit`.
+//
+// Measured against predicate.mjs on main (de65261) before this PR, node --test:
+//   SHAPE 1 (html <script> // comment, word rule)      -> hit=true  ["legal-consent-word"]  FALSE POSITIVE
+//   SHAPE 2 (py docstring line, tools/ harness path)    -> hit=false []                      already silent
+//   SHAPE 3 (py test-fixture money identifier, tools/)  -> hit=false []                      already silent
+// Shapes 2 and 3 were already silenced by the 2026-09-06 HARNESS_PATH_RES
+// `currency-only` scoping (word rules and MONEY_IDENT_RE never run on a
+// harness path at all, comment or not) -- they are asserted here as a
+// regression guard, not because this PR changes their behaviour. Only SHAPE 1
+// requires a predicate change; its fixture is the one that flips from failing
+// to passing across this diff.
+describe('gh-1701 criterion 1 -- the three false-positive shapes (2026-09-08)', () => {
+  it('SHAPE 1: a `//` comment inside a .html <script> block does not fire the word rules', () => {
+    const d = [
+      'diff --git a/contractor-opportunities.html b/contractor-opportunities.html',
+      '--- a/contractor-opportunities.html',
+      '+++ b/contractor-opportunities.html',
+      '@@ -1,3 +1,4 @@',
+      ' <script>',
+      '   function foo() {',
+      '+    // the pay button was load-bearing; keep that guarantee explicitly.',
+      '     bar();',
+      '',
+    ].join('\n');
+    const r = detectLegalMoneyContent(d);
+    assert.equal(r.hit, false, `expected silence, got ${JSON.stringify(r.lines)}`);
+  });
+
+  it('SHAPE 1b: a `/* */` comment inside a .html <script> block does not fire the word rules', () => {
+    const d = [
+      'diff --git a/contractor-opportunities.html b/contractor-opportunities.html',
+      '--- a/contractor-opportunities.html',
+      '+++ b/contractor-opportunities.html',
+      '@@ -1,3 +1,4 @@',
+      ' <script>',
+      '   function foo() {',
+      '+    /* keep that guarantee explicitly */',
+      '     bar();',
+      '',
+    ].join('\n');
+    const r = detectLegalMoneyContent(d);
+    assert.equal(r.hit, false, `expected silence, got ${JSON.stringify(r.lines)}`);
+  });
+
+  it("SHAPE 1 control: the same page's HTML TEXT NODE (outside <script>) still fires", () => {
+    const d = [
+      'diff --git a/contractor-opportunities.html b/contractor-opportunities.html',
+      '--- a/contractor-opportunities.html',
+      '+++ b/contractor-opportunities.html',
+      '@@ -1,4 +1,5 @@',
+      ' <script>',
+      '   // keep that guarantee explicitly -- inside the block, must stay silent',
+      ' </script>',
+      '+<p>We guarantee the workmanship on every project.</p>',
+      '',
+    ].join('\n');
+    const r = detectLegalMoneyContent(d);
+    assert.equal(r.hit, true, `expected the text-node line to still fire, got ${JSON.stringify(r.lines)}`);
+    assert.equal(r.lines.length, 1);
+    assert.equal(r.lines[0].rule, 'legal-consent-word');
+    assert.ok(r.lines[0].text.startsWith('<p>'), r.lines[0].text);
+  });
+
+  it('SHAPE 2: a Python docstring line under a tools/ harness path does not fire (already currency-only scoped)', () => {
+    const d = 'diff --git a/tools/inline_handler_attr_check.py b/tools/inline_handler_attr_check.py\n--- a/tools/inline_handler_attr_check.py\n+++ b/tools/inline_handler_attr_check.py\n@@ -1,1 +1,2 @@\n x\n+  is a guaranteed break (it always emits the same shape)\n';
+    const r = detectLegalMoneyContent(d);
+    assert.equal(r.hit, false, `expected silence, got ${JSON.stringify(r.lines)}`);
+  });
+
+  it('SHAPE 3: a money-identifier-shaped test-fixture literal under tools/ does not fire (already currency-only scoped)', () => {
+    const d = 'diff --git a/tools/inline_handler_attr_check.py b/tools/inline_handler_attr_check.py\n--- a/tools/inline_handler_attr_check.py\n+++ b/tools/inline_handler_attr_check.py\n@@ -1,1 +1,2 @@\n x\n+    ("gh1693-upgrade-pay", False, "confirmUpgradePayment shape"),\n';
+    const r = detectLegalMoneyContent(d);
+    assert.equal(r.hit, false, `expected silence, got ${JSON.stringify(r.lines)}`);
+  });
+});
+// ---------------------------------------------------------------------------
+// gh-1899 conjunct (2): privacy / data-rights / CAN-SPAM vocabulary + URL-slug guard.
+//
+// These are the controls named in the instruction that opened #1899, pinned here as
+// fixtures so they cannot silently regress. Every line below is copied verbatim from
+// the real PR diff it names -- none is invented.
+//
+// NOT covered here, and deliberately said rather than implied: the two `sign_ok`
+// controls from the same instruction (the labeller bot's own instructional comment
+// REJECTED beside a genuine signature ACCEPTED) belong to the merge tool
+// `In Flight/bin/pr-merge-serial-device.py`, which is not in this repository. Those two
+// controls currently have no automated home anywhere. See the PR body.
+// ---------------------------------------------------------------------------
+describe('privacy / data-rights / CAN-SPAM vocabulary (gh-1899)', () => {
+  it('CONTROL 3 (named): #1870 CCPA/CPRA opt-out prose FIRES (it was silent before)', () => {
+    const r = detectLegalMoneyContent(diff('privacy.html', [
+      `                <p>We do not sell your personal information to third parties for money. For information about sharing that may qualify as a 'sale' or 'share' under the CCPA and CPRA, and how to opt out, see Section 12.</p>`,
+    ]));
+    assert.equal(r.hit, true, `expected the CCPA text to fire, got ${JSON.stringify(r.lines)}`);
+    assert.equal(r.lines.length, 1);
+    assert.equal(r.lines[0].rule, 'privacy-data-rights-word');
+  });
+
+  it('CONTROL 3b (named): #1870 "Right to Opt-Out" list item FIRES', () => {
+    const r = detectLegalMoneyContent(diff('privacy.html', [
+      '                    <li><strong>Right to Opt-Out:</strong> You can opt out of the sale or sharing of your personal information.</li>',
+    ]));
+    assert.equal(r.hit, true, `expected the opt-out right to fire, got ${JSON.stringify(r.lines)}`);
+    assert.equal(r.lines[0].rule, 'privacy-data-rights-word');
+  });
+
+  it('CONTROL 4 (named): #1889 routing slugs stay SILENT (they fired before the URL-slug guard)', () => {
+    const r = detectLegalMoneyContent([
+      diff('_redirects', ['/blog/roof-shingle-warranty-tiers-explained /blog/roof-shingle-warranty-tiers-explained.html 301']),
+      diff('netlify/edge-functions/blog-guides-redirect.ts', [
+        `  '/blog/roof-shingle-warranty-tiers-explained':`,
+        `  '/blog/why-roofers-quote-different-prices':`,
+      ]),
+    ].join(''));
+    assert.equal(r.hit, false, `expected routing slugs to be silent, got ${JSON.stringify(r.lines)}`);
+  });
+
+  it('#1862 CAN-SPAM postal-address constant FIRES (it was silent before)', () => {
+    const r = detectLegalMoneyContent(diff('supabase/functions/send-measurement-ready/email-footer.ts', [
+      'export const POSTAL_ADDRESS: string = "Stellar Edge Services, LLC d/b/a Otter Quotes · 3410 N High School Rd, Ste G #102, Indianapolis, IN 46224";',
+    ]));
+    assert.equal(r.hit, true, `expected the CAN-SPAM postal address to fire, got ${JSON.stringify(r.lines)}`);
+    assert.equal(r.lines[0].rule, 'privacy-data-rights-word');
+  });
+
+  it('#1839 Meta Pixel privacy disclosure FIRES (the current predicate misses it entirely)', () => {
+    const r = detectLegalMoneyContent(diff('privacy.html', [
+      `                    <li><strong>Meta (Facebook) Pixel:</strong> Advertising and conversion-measurement analytics used to understand how visitors interact with our platform. Meta's handling of this data is governed by Meta's own privacy policy.</li>`,
+    ]));
+    assert.equal(r.hit, true, `expected the Meta Pixel disclosure to fire, got ${JSON.stringify(r.lines)}`);
+    assert.equal(r.lines[0].rule, 'privacy-data-rights-word');
+  });
+
+  // --- the guard must not become a hole: a pass is evidence only beside a fail ---
+
+  it('URL-slug guard does NOT silence a currency amount inside a path', () => {
+    const r = detectLegalMoneyContent(diff('_redirects', ['/promo/save-$150-today /promo/index.html 301']));
+    assert.equal(r.hit, true, `a price in a path is still a price, got ${JSON.stringify(r.lines)}`);
+    assert.equal(r.lines[0].rule, 'currency-amount');
+  });
+
+  it('URL-slug guard does NOT silence a legal word that also appears outside the path', () => {
+    const r = detectLegalMoneyContent(diff('index.html', [
+      '<a href="/blog/roof-shingle-warranty-tiers-explained">Read our workmanship warranty terms</a>',
+    ]));
+    assert.equal(r.hit, true, `prose beside a slug must still fire, got ${JSON.stringify(r.lines)}`);
+    assert.equal(r.lines[0].rule, 'legal-consent-word');
+  });
+
+  it('the new vocabulary does not fire on an unrelated diff', () => {
+    const r = detectLegalMoneyContent(diff('js/nav.js', ['  const el = document.querySelector(".nav-toggle");']));
+    assert.equal(r.hit, false, `expected silence, got ${JSON.stringify(r.lines)}`);
+  });
+});

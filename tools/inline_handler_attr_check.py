@@ -87,7 +87,23 @@ REGEX_PRECEDERS = set("(,=:[!&|?{};+-*%~^<>\n")
 # inline handler attribute is an ERROR -- they have no inline handlers left to interpolate
 # into, so a new one is a regression of the gh-1693 fix. Add a file here the run you
 # convert it, never before.
-STRICT_FILES = {"contractor-opportunities.html"}
+#
+# gh-1730: contractor-bid-form.html was added here by the wave-4 CTO dispatch
+# (#1730 comment 5572644362) to catch a LIVE, unconverted instance of the
+# gh-1693 defect class in this file (interpolated onclick= attributes at
+# lines 2752, 4803, 4837 -- not JSON.stringify, so previously only a WARN
+# [latent-handler-attr], never an error) -- landing STRICT_FILES with those
+# three sites still red was the evidence #1730 Part 2 closes on. gh-1730
+# Part 2 then converted all three to the same delegated data-oq-action +
+# addEventListener pattern contractor-opportunities.html uses (see that
+# file's `OQ_CARD_ACTIONS` / `onOpportunityCardClick` for the pattern this
+# one copies): container-level listeners `onGutterGuardEntriesClick` and
+# `onWarrantyCardsContainerClick` in contractor-bid-form.html now read
+# `data-oq-action`/`data-oq-idx` off the clicked element instead of an
+# inline onclick=, so the guard is green here for the same reason it is
+# green on contractor-opportunities.html -- no inline handler is left to
+# interpolate into, not because the pattern is unwatched.
+STRICT_FILES = {"contractor-opportunities.html", "contractor-bid-form.html"}
 
 # An expression that PROVABLY emits a double quote. JSON.stringify always does -- that is
 # the whole gh-1693 defect. A bare `${idx}` numeric interpolation does not, which is why

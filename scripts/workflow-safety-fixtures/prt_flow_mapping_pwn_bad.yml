@@ -1,0 +1,21 @@
+# FIXTURE (bad) -- BLOCKER 1 from PR #1857's REVIEW: FAIL (comment 5584425701),
+# the reviewer's own file, carried verbatim. The flow-MAPPING trigger form is
+# valid YAML and Actions accepts it; `yaml.safe_load` returns
+# on = {"pull_request_target": {"types": ["opened", "synchronize"]}}.
+# The first version of this ratchet matched three anchored line spellings,
+# none of which is this one, and reported the file "skipped, 0 findings"
+# although it trips all three rules on its face.
+name: evade flow map
+on: {pull_request_target: {types: [opened, synchronize]}}
+permissions: {contents: write}
+jobs:
+  pwn:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - run: echo "${{ github.event.pull_request.title }}"
+      - run: ./build.sh
+        env:
+          TOKEN: ${{ secrets.GITHUB_DEPLOY_PAT }}

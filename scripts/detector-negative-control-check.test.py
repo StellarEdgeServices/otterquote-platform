@@ -31,6 +31,7 @@ bug in prose).
 
 Run: python scripts/detector-negative-control-check.test.py
 """
+import contextlib
 import importlib.util
 import sys
 import tempfile
@@ -59,6 +60,32 @@ def check_true(label, cond):
 def write(path: Path, text: str):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
+
+
+@contextlib.contextmanager
+def registry_snapshot(entries=None):
+    """Temporarily replace neg.DETECTOR_REGISTRY for a synthetic-root run_all()
+    call.
+
+    gh-1884: DETECTOR_REGISTRY is now enumerated on its own inside
+    check_firing_tests(), independent of what discover_detector_scripts() finds
+    under `root`. That means a synthetic temp root built by this suite -- which
+    deliberately never contains this repo's real registered detector files
+    (netlify-deploy-drift.py and friends) -- would otherwise see the REAL,
+    module-level DETECTOR_REGISTRY and report all of those real entries as
+    "missing", polluting every RED/GREEN/UNMEASURED assertion below with
+    violations that have nothing to do with what each block is proving. Swap in
+    only the entries (if any) that a given synthetic tree actually provides.
+    """
+    saved = dict(neg.DETECTOR_REGISTRY)
+    neg.DETECTOR_REGISTRY.clear()
+    if entries:
+        neg.DETECTOR_REGISTRY.update(entries)
+    try:
+        yield
+    finally:
+        neg.DETECTOR_REGISTRY.clear()
+        neg.DETECTOR_REGISTRY.update(saved)
 
 
 GOOD_TEST_FILE = (
@@ -161,18 +188,16 @@ def main():
 
         # Instances A and C are caught by the checker exactly as shipped -- no
         # manifest needed. Instance B needs a DETECTOR_REGISTRY entry, simulated
-        # here for this run only, then restored, exactly as a reviewer would add
-        # one permanently for a real detector.
-        saved_registry = dict(neg.DETECTOR_REGISTRY)
-        neg.DETECTOR_REGISTRY["scripts/clean-only-detector.py"] = {
-            "test": "scripts/clean-only-detector.test.py",
-            "negative_tokens": ["REJECTED"],
-        }
-        try:
+        # here for this run only (and this run only sees THAT entry -- not the
+        # real repo's registry -- per registry_snapshot()'s docstring above),
+        # exactly as a reviewer would add one permanently for a real detector.
+        with registry_snapshot({
+            "scripts/clean-only-detector.py": {
+                "test": "scripts/clean-only-detector.test.py",
+                "negative_tokens": ["REJECTED"],
+            }
+        }):
             result = neg.run_all(root)
-        finally:
-            neg.DETECTOR_REGISTRY.clear()
-            neg.DETECTOR_REGISTRY.update(saved_registry)
 
     for line in result["info"]:
         print(line)
@@ -209,7 +234,8 @@ def main():
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         build_clean_tree(root)
-        result2 = neg.run_all(root)
+        with registry_snapshot():
+            result2 = neg.run_all(root)
 
     for line in result2["info"]:
         print(line)
@@ -236,7 +262,8 @@ def main():
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         # Deliberately empty: no scripts/ dir, no .github/ dir at all.
-        result3 = neg.run_all(root)
+        with registry_snapshot():
+            result3 = neg.run_all(root)
 
     for line in result3["info"]:
         print(line)
@@ -265,7 +292,8 @@ def main():
             "name: Only\non:\n  push:\n    branches: [main]\njobs:\n  x:\n"
             "    runs-on: ubuntu-latest\n    steps:\n      - run: echo hi\n",
         )
-        result4 = neg.run_all(root)
+        with registry_snapshot():
+            result4 = neg.run_all(root)
 
     check(
         "WORKFLOWS-ONLY ROOT: measured is True (workflows dir alone counts as discovery)",
@@ -276,6 +304,119 @@ def main():
         "WORKFLOWS-ONLY ROOT: gate verdict is not UNMEASURED",
         result4["verdict"] != "UNMEASURED",
     )
+
+    # -------------------------------------------------------------------
+    # gh-1884: DETECTOR_REGISTRY is now enumerated on its own -- a registered
+    # detector's script and/or self-test being deleted must FAIL, even though
+    # discover_detector_scripts() (which only lists *.py files still present
+    # under scripts/) would never have visited it. This is the exact
+    # reproduction shape from the issue: delete the registered detector +
+    # self-test, keep everything else clean, and confirm the gate now catches
+    # it instead of reading GATE: PASS / VIOLATIONS: 0.
+    # -------------------------------------------------------------------
+    print()
+    print("=" * 70)
+    print("REGISTRY GUTTED -- registered detector's script and/or self-test deleted")
+    print("=" * 70)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        # A registered detector that is fully present and healthy, so the
+        # "both missing" and "script-only missing" and "test-only missing"
+        # cases below are each isolated, unambiguous signal -- not noise from
+        # an unrelated already-broken entry.
+        write(root / "scripts" / "present-detector.py", DETECTOR_SOURCE)
+        write(root / "scripts" / "present-detector.test.py", GOOD_TEST_FILE)
+        # scripts/deleted-both.py and its self-test: deliberately never
+        # written -- simulating a PR that deletes both files outright.
+        # scripts/script-only-missing.py: self-test present, script itself
+        # deleted.
+        write(root / "scripts" / "script-only-missing.test.py", GOOD_TEST_FILE)
+        # scripts/test-only-missing.py: script present, self-test deleted.
+        write(root / "scripts" / "test-only-missing.py", DETECTOR_SOURCE)
+
+        with registry_snapshot({
+            "scripts/present-detector.py": {
+                "test": "scripts/present-detector.test.py",
+                "negative_tokens": [],
+            },
+            "scripts/deleted-both.py": {
+                "test": "scripts/deleted-both.test.py",
+                "negative_tokens": [],
+            },
+            "scripts/script-only-missing.py": {
+                "test": "scripts/script-only-missing.test.py",
+                "negative_tokens": [],
+            },
+            "scripts/test-only-missing.py": {
+                "test": "scripts/test-only-missing.test.py",
+                "negative_tokens": [],
+            },
+        }):
+            result5 = neg.run_all(root)
+
+    for line in result5["info"]:
+        print(line)
+    for line in result5["violations"]:
+        print(line)
+    print("GATE: %s  (exit %d)" % (result5["verdict"], result5["code"]))
+
+    check("REGISTRY GUTTED: gate verdict", result5["verdict"], "FAIL")
+    check("REGISTRY GUTTED: gate exit code", result5["code"], 1)
+    check_true(
+        "REGISTRY GUTTED: deleted-both caught (script AND self-test missing)",
+        any(
+            "deleted-both.py" in v and "BOTH the detector script and its self-test" in v
+            for v in result5["violations"]
+        ),
+    )
+    check_true(
+        "REGISTRY GUTTED: script-only-missing caught (script missing, self-test present)",
+        any(
+            "script-only-missing.py" in v and "script itself is missing" in v
+            for v in result5["violations"]
+        ),
+    )
+    check_true(
+        "REGISTRY GUTTED: test-only-missing caught (self-test missing)",
+        any("test-only-missing.py" in v and "self-test" in v for v in result5["violations"]),
+    )
+    check_true(
+        "REGISTRY GUTTED: the healthy, present-and-registered detector raises no violation",
+        not any("present-detector.py" in v for v in result5["violations"]),
+    )
+
+    # -------------------------------------------------------------------
+    # gh-1884: the measured guard's workflows disjunct used to be a bare
+    # `(root / ".github" / "workflows").exists()` -- true for an EMPTY
+    # directory, not just a populated one. Prove the fix: an existing-but-
+    # empty .github/workflows/ (no *.yml files) plus zero detector scripts
+    # must still read UNMEASURED, not silently PASS.
+    # -------------------------------------------------------------------
+    print()
+    print("=" * 70)
+    print("WORKFLOWS DIR EXISTS BUT EMPTY -- still UNMEASURED, not PASS")
+    print("=" * 70)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        # The directory itself exists (mkdir only -- no .yml file inside), and
+        # scripts/ is never created at all.
+        (root / ".github" / "workflows").mkdir(parents=True)
+        with registry_snapshot():
+            result6 = neg.run_all(root)
+
+    for line in result6["info"]:
+        print(line)
+    print("GATE: %s  (exit %d)" % (result6["verdict"], result6["code"]))
+
+    check(
+        "EMPTY WORKFLOWS DIR: measured flag is False (dir existing is not enough)",
+        result6["measured"],
+        False,
+    )
+    check("EMPTY WORKFLOWS DIR: gate verdict is UNMEASURED", result6["verdict"], "UNMEASURED")
+    check("EMPTY WORKFLOWS DIR: gate exit code is 3", result6["code"], 3)
 
     # Regression coverage for the other half of the same review comment: CHECK 3
     # used to return completely bare (no info line at all) when
