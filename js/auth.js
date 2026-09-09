@@ -92,6 +92,17 @@ function _isPartnerSurfaceFile(pathname) {
 }
 
 /**
+ * Is this path a contractor-only surface? Mirrors the `path.includes('contractor')`
+ * test requireAuth() already uses to pick /contractor-login.html, so the two
+ * cannot drift: whatever requireAuth() calls a contractor page and stamps into
+ * cs_redirect is exactly what redirectToDashboard() will refuse to replay for a
+ * non-contractor.
+ */
+function _isContractorSurfaceFile(pathname) {
+  return pathname.indexOf('contractor') !== -1;
+}
+
+/**
  * gh-851: single source of truth for the partner agent_type values, mirroring
  * the gh-807 fix for _isPartnerSurfaceFile() above. Previously redeclared
  * identically at three call sites in this file (sendMagicLink, requireAuth,
@@ -697,12 +708,52 @@ window.Auth = {
     // is itself a partner surface (legitimate deep-link-while-logged-out case).
     // gh-807: both sides of this check now use the shared partner-surface
     // definition (was `indexOf('partner-') === 0` on the saved target only).
+    // gh-1412: the gh-817 guard below only discards a stale cs_redirect when we
+    // are ALREADY on a partner surface. The identical failure for a homeowner was
+    // left unguarded, and it is the reported symptom: dustin@otterquote.com has
+    // no contractors row and resolved_user_role returns 'homeowner' cleanly, yet
+    // he lands on the contractor surface after a password login on login.html.
+    // That path never touches auth-callback.html — it calls this function
+    // directly — and this shortcut runs BEFORE any role check, so a leftover
+    // cs_redirect='/contractor-dashboard.html', stamped by requireAuth() during
+    // an earlier logged-out visit in the same tab, is replayed verbatim for a
+    // user whose role says otherwise. Honour a saved role-specific target only
+    // when the resolved role actually agrees with it; a homeowner-ish target
+    // (no role surface in the path) is replayed as before and costs no getRole().
+    let _role = null, _roleFetched = false;
+    const roleOnce = async () => {
+      if (!_roleFetched) { _role = await this.getRole(); _roleFetched = true; }
+      return _role;
+    };
+
     const savedRedirect = sessionStorage.getItem('cs_redirect');
     if (savedRedirect) {
       sessionStorage.removeItem('cs_redirect');
       const staleCrossSurface = onPartnerPage && !_isPartnerSurfaceFile(savedRedirect);
+
+      let roleDisagrees = false;
+      let savedSurface = null;
+      if (!staleCrossSurface) {
+        if (_isContractorSurfaceFile(savedRedirect)) savedSurface = 'contractor';
+        else if (_isPartnerSurfaceFile(savedRedirect)) savedSurface = 'partner';
+        if (savedSurface) {
+          const actualRole = await roleOnce();
+          // Fail OPEN on an unresolved role (null): getRole() returning null is a
+          // known transient (gh-959), and treating it as disagreement would strand
+          // a legitimate deep-link. Only a positively-resolved, mismatched role
+          // discards the target.
+          if (actualRole) {
+            roleDisagrees = savedSurface === 'contractor'
+              ? actualRole !== 'contractor'
+              : !PARTNER_ROLES.includes(actualRole);
+          }
+        }
+      }
+
       if (staleCrossSurface) {
         console.warn('[Auth] redirectToDashboard: discarding stale cs_redirect=' + savedRedirect + ' — already on partner surface (' + currentFile + ')');
+      } else if (roleDisagrees) {
+        console.warn('[Auth] redirectToDashboard: discarding stale cs_redirect=' + savedRedirect + ' — saved ' + savedSurface + ' surface disagrees with resolved role (' + _role + ')');
       } else {
         window.location.href = savedRedirect;
         return;
@@ -732,8 +783,8 @@ window.Auth = {
       return;
     }
 
-    // Otherwise route by role
-    const role = await this.getRole();
+    // Otherwise route by role (reuses the role resolved above, if it was needed)
+    const role = await roleOnce();
     if (role === 'contractor') {
       window.location.href = '/contractor-dashboard.html';
     } else if (PARTNER_ROLES.includes(role)) {
