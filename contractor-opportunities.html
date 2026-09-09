@@ -1281,8 +1281,8 @@
                 // This call site had NO 403 branch at all and told the contractor the
                 // measurement was "still in progress" for both, which is false for
                 // either refusal: a policy/authorization refusal is not a fulfilment
-                // state. Mirrors openBidFormHoverPdf() in contractor-bid-form.html
-                // (PR #1894) so the two callers of this endpoint cannot drift apart.
+                // state. Mirrors the bid form's PDF-refusal handler in
+                // contractor-bid-form.html (PR #1894) so the two callers of this endpoint cannot drift apart.
                 if (err?.context?.status === 403) {
                     let reason = null;
                     try {
