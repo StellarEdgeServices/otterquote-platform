@@ -92,14 +92,41 @@ function _isPartnerSurfaceFile(pathname) {
 }
 
 /**
- * Is this path a contractor-only surface? Mirrors the `path.includes('contractor')`
- * test requireAuth() already uses to pick /contractor-login.html, so the two
- * cannot drift: whatever requireAuth() calls a contractor page and stamps into
- * cs_redirect is exactly what redirectToDashboard() will refuse to replay for a
- * non-contractor.
+ * The contractor-ROLE-GATED pages: those that call `Auth.requireAuth('contractor')`.
+ *
+ * REVIEW: FAIL (PR #1914) rejected the first version of this, which tested
+ * `pathname.indexOf('contractor') !== -1` on the theory that it mirrored
+ * requireAuth()'s own login-page choice. It does not mirror anything useful:
+ * requireAuth() uses that substring only to pick WHICH LOGIN PAGE to bounce to,
+ * never to assert a page is contractor-only. `contractor-about.html` calls bare
+ * `requireAuth()` (any role), so the substring test silently discarded a
+ * homeowner's legitimate deep link to it.
+ *
+ * This list is instead derived from the actual gate. Only a page that calls
+ * requireAuth() can ever write cs_redirect (js/auth.js:499 is the sole writer),
+ * and of the contractor-named pages exactly these seven require the contractor
+ * ROLE; `contractor-about.html` is any-role and the remaining six
+ * (agreement/faq/how-it-works/join/login/pre-approval) call requireAuth() not at
+ * all and so can never be stamped.
+ *
+ * Kept honest by `tests/auth-cs-redirect-role-guard.mjs`, which re-derives this
+ * set from the HTML on every CI run and fails if the two disagree. If you add a
+ * contractor-gated page, that test tells you to add it here. Erring toward
+ * omission is deliberate: a missing entry replays as before (the old behaviour),
+ * while a wrong entry would silently eat a legitimate link.
  */
-function _isContractorSurfaceFile(pathname) {
-  return pathname.indexOf('contractor') !== -1;
+var CONTRACTOR_GATED_FILES = [
+  'contractor-auto-bids.html',
+  'contractor-bid-form.html',
+  'contractor-dashboard.html',
+  'contractor-onboarding.html',
+  'contractor-opportunities.html',
+  'contractor-profile.html',
+  'contractor-settings.html'
+];
+function _isContractorGatedFile(pathname) {
+  var file = pathname.substring(pathname.lastIndexOf('/') + 1);
+  return CONTRACTOR_GATED_FILES.indexOf(file) !== -1;
 }
 
 /**
@@ -708,18 +735,32 @@ window.Auth = {
     // is itself a partner surface (legitimate deep-link-while-logged-out case).
     // gh-807: both sides of this check now use the shared partner-surface
     // definition (was `indexOf('partner-') === 0` on the saved target only).
-    // gh-1412: the gh-817 guard below only discards a stale cs_redirect when we
-    // are ALREADY on a partner surface. The identical failure for a homeowner was
-    // left unguarded, and it is the reported symptom: dustin@otterquote.com has
-    // no contractors row and resolved_user_role returns 'homeowner' cleanly, yet
-    // he lands on the contractor surface after a password login on login.html.
-    // That path never touches auth-callback.html — it calls this function
-    // directly — and this shortcut runs BEFORE any role check, so a leftover
-    // cs_redirect='/contractor-dashboard.html', stamped by requireAuth() during
-    // an earlier logged-out visit in the same tab, is replayed verbatim for a
-    // user whose role says otherwise. Honour a saved role-specific target only
-    // when the resolved role actually agrees with it; a homeowner-ish target
-    // (no role surface in the path) is replayed as before and costs no getRole().
+    // gh-1412 / #1476: the gh-817 guard below only discards a stale cs_redirect
+    // when we are ALREADY on a partner surface. The identical failure for a
+    // homeowner was left unguarded, and it is the reported symptom:
+    // dustin@otterquote.com has no contractors row and resolved_user_role returns
+    // 'homeowner' cleanly, yet he lands on the contractor surface after a password
+    // login on login.html. That path never touches auth-callback.html -- it calls
+    // this function directly -- so this shortcut runs BEFORE any role check and a
+    // leftover cs_redirect='/contractor-dashboard.html', stamped by requireAuth()
+    // during an earlier logged-out visit in the same tab, is replayed verbatim for
+    // a user whose role says otherwise.
+    //
+    // CONTRACTOR ARM ONLY, deliberately. The first version of this also
+    // role-checked partner-surface targets and REVIEW: FAIL (PR #1914) caught it
+    // breaking tests/auth-partner-surface-single-source.mjs: getRole() resolves a
+    // single scalar and is contractor-first by design (see the comment at the
+    // contractors lookup below), so a DUAL-ROLE account (contractor record +
+    // referral_agents record, e.g. dustinstohler1@gmail.com) resolves to
+    // 'contractor' and `!PARTNER_ROLES.includes(role)` reads as "the role
+    // disagrees" when the truth is "this API cannot represent partner agreement
+    // for this user." That discarded a legitimate partner deep link and then hit
+    // the onPartnerPage early-return below, stranding the user with no navigation
+    // at all. 'contractor' is the ONE answer getRole() gives authoritatively --
+    // contractor-first precedence means a positive 'contractor' is trustworthy and
+    // a non-'contractor' answer positively excludes contractor identity -- so it is
+    // the only arm this guard is entitled to have. The partner case keeps the
+    // gh-817 staleCrossSurface guard and nothing more.
     let _role = null, _roleFetched = false;
     const roleOnce = async () => {
       if (!_roleFetched) { _role = await this.getRole(); _roleFetched = true; }
@@ -731,29 +772,33 @@ window.Auth = {
       sessionStorage.removeItem('cs_redirect');
       const staleCrossSurface = onPartnerPage && !_isPartnerSurfaceFile(savedRedirect);
 
+      // Belt, per PR #1914 review: cs_redirect's only writer is
+      // window.location.pathname, so it is same-origin today and a probe confirmed
+      // no off-site value is reachable in production (`//evil.example/...` and
+      // `/\evil.example/...` both 404 to Netlify's default page, which loads no
+      // auth.js). This block is the one that replays it, though, and the whole file
+      // is one path-normalising rewrite rule away from that stopping being true.
+      // Require a single leading slash before navigating anywhere.
+      const offSite = savedRedirect.charAt(0) !== '/' ||
+                      savedRedirect.charAt(1) === '/' ||
+                      savedRedirect.charAt(1) === '\\';
+
       let roleDisagrees = false;
-      let savedSurface = null;
-      if (!staleCrossSurface) {
-        if (_isContractorSurfaceFile(savedRedirect)) savedSurface = 'contractor';
-        else if (_isPartnerSurfaceFile(savedRedirect)) savedSurface = 'partner';
-        if (savedSurface) {
-          const actualRole = await roleOnce();
-          // Fail OPEN on an unresolved role (null): getRole() returning null is a
-          // known transient (gh-959), and treating it as disagreement would strand
-          // a legitimate deep-link. Only a positively-resolved, mismatched role
-          // discards the target.
-          if (actualRole) {
-            roleDisagrees = savedSurface === 'contractor'
-              ? actualRole !== 'contractor'
-              : !PARTNER_ROLES.includes(actualRole);
-          }
-        }
+      if (!staleCrossSurface && !offSite && _isContractorGatedFile(savedRedirect)) {
+        const actualRole = await roleOnce();
+        // Fail OPEN on an unresolved role (null): getRole() returning null is a
+        // known transient (gh-959), and treating it as disagreement would strand a
+        // legitimate deep link. Only a positively-resolved, non-contractor role
+        // discards a contractor-gated target.
+        if (actualRole) roleDisagrees = actualRole !== 'contractor';
       }
 
       if (staleCrossSurface) {
         console.warn('[Auth] redirectToDashboard: discarding stale cs_redirect=' + savedRedirect + ' — already on partner surface (' + currentFile + ')');
+      } else if (offSite) {
+        console.warn('[Auth] redirectToDashboard: discarding non-same-origin cs_redirect=' + savedRedirect);
       } else if (roleDisagrees) {
-        console.warn('[Auth] redirectToDashboard: discarding stale cs_redirect=' + savedRedirect + ' — saved ' + savedSurface + ' surface disagrees with resolved role (' + _role + ')');
+        console.warn('[Auth] redirectToDashboard: discarding stale cs_redirect=' + savedRedirect + ' — contractor-gated target, resolved role is ' + _role);
       } else {
         window.location.href = savedRedirect;
         return;
