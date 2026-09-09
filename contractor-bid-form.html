@@ -4211,12 +4211,31 @@
         document.body.removeChild(hoverPdfLink);
       } catch (err) {
         console.error('Failed to open measurement PDF:', err);
-        // gh-1748: get-hover-pdf (index.ts:166-182, D-317 cl. 7 / #1636) returns
-        // 403 when the caller is not entitled to a manual-fulfilment PDF — that
-        // is a policy refusal, not a missing file, so it gets its own honest
-        // copy instead of the "still in progress" 404 wording.
+        // gh-1748: get-hover-pdf returns 403 from TWO different refusals —
+        // (a) the D-317 cl. 7 / #1636 manual-fulfilment gate (index.ts:~177),
+        // an internal-artifact policy refusal, and (b) an ordinary
+        // canAccessClaim() denial (index.ts:~106) — bid window closed,
+        // contractor not yet quoted, etc. Both used to return the same
+        // status with a byte-identical body, so the client could not tell
+        // them apart and showed the internal-artifact copy for both,
+        // including the everyday (b) case where it is false. The server now
+        // sets `reason` on each; only "internal_artifact" gets that copy.
         if (err?.context?.status === 403) {
-          alert('The measurement report is internal to the homeowner\'s file and not part of the bid packet.');
+          let reason = null;
+          try {
+            const body = await err.context.clone().json();
+            reason = body?.reason ?? null;
+          } catch (parseErr) {
+            console.error('Failed to parse 403 response body:', parseErr);
+          }
+          if (reason === 'internal_artifact') {
+            alert('The measurement report is internal to the homeowner\'s file and not part of the bid packet.');
+          } else {
+            // Covers reason === 'access_denied' and any unrecognized/missing
+            // reason (parse failure, older cached response, etc.) — never
+            // assert the internal-artifact copy without the reason to back it.
+            alert('You do not have access to this claim\'s measurement report.');
+          }
         } else {
           alert('The measurement PDF is not available for this project yet. The measurement may still be in progress.');
         }
@@ -4789,142 +4808,6 @@
       }
     }
 
-    const WARRANTY_COVERAGE_LINES = [
-      { key: 'material_defects', label: 'Material Defects Warranty' },
-      { key: 'labor', label: 'Labor Warranty' },
-      { key: 'algae_resistance', label: 'Algae Resistance Warranty' },
-      { key: 'hail_damage', label: 'Hail Damage Warranty' },
-      { key: 'wind_damage', label: 'Wind Damage Warranty' },
-    ];
-
-    // gh-1730/gh-1693: delegated on the container instead of the two inline
-    // onclick= attributes below, each built inside this template literal with
-    // a bare ${idx} closing them -- STRICT_FILES now catches that shape here
-    // the same way it already does on contractor-opportunities.html.
-    const WARRANTY_CARD_ACTIONS = {
-      'warranty-remove':        function (d) { removeWarrantyCard(d.oqIdx); },
-      'warranty-save-template': function (d) { saveWarrantyAsTemplate(d.oqIdx); },
-    };
-
-    function onWarrantyCardsContainerClick(event) {
-      const btn = event.target.closest('[data-oq-action]');
-      if (!btn) return;
-      const fn = WARRANTY_CARD_ACTIONS[btn.dataset.oqAction];
-      if (fn) fn(btn.dataset);
-    }
-
-    function bindWarrantyCardsContainerActions(el) {
-      if (!el || el.dataset.oqActionsBound) return;
-      el.addEventListener('click', onWarrantyCardsContainerClick);
-      el.dataset.oqActionsBound = '1';
-    }
-
-    function addWarrantyCard(prefillData) {
-      warrantyCardCount++;
-      const idx = warrantyCardCount;
-      const container = document.getElementById('warrantyCardsContainer');
-      bindWarrantyCardsContainerActions(container);
-
-      const card = document.createElement('div');
-      card.className = 'warranty-card';
-      card.id = `warrantyCard_${idx}`;
-
-      const coverageRowsHtml = WARRANTY_COVERAGE_LINES.map(line => `
-        <tr>
-          <td style="font-weight:500;">${escHtmlBid(line.label)}</td>
-          <td><input type="number" class="warranty-years-input" name="wc_${idx}_${line.key}_years" min="0" max="100" placeholder="—" value="${prefillData?.[line.key]?.years ?? ''}"></td>
-          <td><input type="text" class="warranty-notes-input" name="wc_${idx}_${line.key}_notes" placeholder="Notes…" value="${escHtmlBid(prefillData?.[line.key]?.notes ?? '')}"></td>
-        </tr>
-      `).join('');
-
-      card.innerHTML = `
-        <div class="warranty-card-header">
-          <span class="warranty-card-title">Warranty #${idx}</span>
-          <button type="button" class="btn-sm" style="background:rgba(255,255,255,0.15);border-color:rgba(255,255,255,0.3);color:#fff;" data-oq-action="warranty-remove" data-oq-idx="${idx}">Remove</button>
-        </div>
-        <div class="warranty-card-body">
-          <div class="warranty-name-price-row">
-            <div class="form-group">
-              <label class="form-label" style="font-size:0.8rem;">Warranty Name</label>
-              <input type="text" name="wc_${idx}_name" placeholder="e.g., CertainTeed Integrity Roof System Warranty" value="${escHtmlBid(prefillData?.name ?? '')}">
-            </div>
-            <div class="form-group" style="min-width:140px;">
-              <label class="form-label" style="font-size:0.8rem;">Warranty Price</label>
-              <div class="input-prefix">
-                <span>$</span>
-                <input type="number" name="wc_${idx}_price" min="0" step="0.01" placeholder="0" value="${prefillData?.price ?? ''}">
-              </div>
-            </div>
-          </div>
-          <table class="warranty-coverage-table">
-            <thead>
-              <tr>
-                <th style="width:40%;">Coverage Type</th>
-                <th style="width:15%;">Years</th>
-                <th>Notes</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${coverageRowsHtml}
-            </tbody>
-          </table>
-          <div class="form-group">
-            <label class="form-label" style="font-size:0.8rem;color:var(--slate);">Additional Warranty Notes</label>
-            <textarea name="wc_${idx}_additional_notes" style="min-height:70px;width:100%;padding:var(--sp-3);border:1px solid #CBD5E1;border-radius:var(--radius-md);font-family:var(--font-body);font-size:0.875rem;resize:vertical;" placeholder="Any additional details about this warranty…">${escHtmlBid(prefillData?.additional_notes ?? '')}</textarea>
-          </div>
-          <div class="warranty-save-bar">
-            <input type="text" name="wc_${idx}_template_name" placeholder="Save as template: enter name…" value="${escHtmlBid(prefillData?.name ?? '')}">
-            <button type="button" class="btn-sm" data-oq-action="warranty-save-template" data-oq-idx="${idx}">Save as Template</button>
-          </div>
-        </div>
-      `;
-
-      container.appendChild(card);
-    }
-
-    function removeWarrantyCard(idx) {
-      const card = document.getElementById(`warrantyCard_${idx}`);
-      if (card) card.remove();
-    }
-
-    function getWarrantyCardData(idx) {
-      const card = document.getElementById(`warrantyCard_${idx}`);
-      if (!card) return null;
-
-      const get = name => {
-        const el = card.querySelector(`[name="wc_${idx}_${name}"]`);
-        return el ? el.value : '';
-      };
-
-      const coverage = {};
-      WARRANTY_COVERAGE_LINES.forEach(line => {
-        coverage[line.key] = {
-          years: parseInt(get(`${line.key}_years`)) || null,
-          notes: get(`${line.key}_notes`) || null,
-        };
-      });
-
-      return {
-        name: get('name') || null,
-        price: parseFloat(get('price')) || 0,
-        ...coverage,
-        additional_notes: get('additional_notes') || null,
-      };
-    }
-
-    function collectAllWarrantyData() {
-      const warranties = [];
-      const cards = document.querySelectorAll('.warranty-card');
-      cards.forEach(card => {
-        const idMatch = card.id.match(/warrantyCard_(\d+)/);
-        if (idMatch) {
-          const data = getWarrantyCardData(parseInt(idMatch[1]));
-          if (data) warranties.push(data);
-        }
-      });
-      return warranties;
-    }
-
     // Template management
     function populateWarrantyTemplateDropdown(templates) {
       const bar = document.getElementById('warrantyTemplateBar');
@@ -4936,61 +4819,6 @@
 
       bar.style.display = 'flex';
       bar._templates = templates;
-    }
-
-    function loadWarrantyTemplate() {
-      const sel = document.getElementById('warrantyTemplateSelect');
-      const bar = document.getElementById('warrantyTemplateBar');
-      if (!sel || !bar?._templates) return;
-
-      const idx = parseInt(sel.value);
-      if (isNaN(idx) || idx < 0) return;
-
-      const template = bar._templates[idx];
-      if (!template) return;
-
-      addWarrantyCard(template);
-    }
-
-    async function saveWarrantyAsTemplate(cardIdx) {
-      if (!currentContractor) {
-        alert('Cannot save template — contractor profile not loaded.');
-        return;
-      }
-
-      const data = getWarrantyCardData(cardIdx);
-      if (!data) return;
-
-      const nameInput = document.querySelector(`[name="wc_${cardIdx}_template_name"]`);
-      const templateName = nameInput?.value?.trim() || data.name || `Warranty Template ${cardIdx}`;
-      data.name = templateName;
-
-      // Merge into existing templates
-      const existing = currentContractor.auto_bid_value_adds || {};
-      const templates = Array.isArray(existing.warranty_templates) ? [...existing.warranty_templates] : [];
-
-      // Replace existing template with same name, otherwise append
-      const existingIdx = templates.findIndex(t => t.name === templateName);
-      if (existingIdx >= 0) {
-        templates[existingIdx] = data;
-      } else {
-        templates.push(data);
-      }
-
-      const updatedVA = { ...existing, warranty_templates: templates };
-
-      const { error } = await sb
-        .from('contractors')
-        .update({ auto_bid_value_adds: updatedVA })
-        .eq('id', currentContractor.id);
-
-      if (error) {
-        alert('Failed to save template: ' + error.message);
-      } else {
-        currentContractor.auto_bid_value_adds = updatedVA;
-        populateWarrantyTemplateDropdown(templates);
-        alert(`Template "${templateName}" saved!`);
-      }
     }
 
     // ── Character counter ──

@@ -1,7 +1,7 @@
 /**
  * blog-guides-redirect.ts — Netlify Edge Function (gh-1745, PR #1789 fix round 1)
  *
- * Intercepts the 6 extensionless /blog/ and /guides/ paths listed below and
+ * Intercepts the 18 extensionless /blog/ and /guides/ paths listed below and
  * 301s each to its .html twin, running AHEAD of Netlify's built-in Pretty
  * URLs post-processing.
  *
@@ -23,9 +23,10 @@
  * The `_redirects` rules added for gh-1745 are left in place unchanged as
  * the documented source of truth (same convention as recruit-redirect.ts);
  * this function exists solely to win the race against Pretty URLs for
- * these 6 literal paths. Everything else on the site — every other page,
+ * these 18 literal paths (gh-1745 wave 2, CRO RUN 20, widened from the
+ * original 6). Everything else on the site — every other page,
  * every other `_redirects` rule — is untouched: this matches on exact
- * pathname only, no wildcard, so it cannot catch any path outside the 6
+ * pathname only, no wildcard, so it cannot catch any path outside the 18
  * listed below.
  *
  * 301 (not a 200 rewrite like recruit-redirect.ts) because gh-1745 is a
@@ -55,6 +56,36 @@ const REDIRECT_MAP: Record<string, string> = {
     '/guides/how-to-negotiate-with-insurer.html',
   '/guides/how-to-read-contractor-estimate':
     '/guides/how-to-read-contractor-estimate.html',
+
+  // gh-1745 wave 2 (CRO RUN 20): the remaining 12 /blog/ articles that
+  // had a .html twin but no entry here -- same mechanism, same reasoning
+  // as the six above, extended to the full set per the CLOSE-REVIEW: FAIL
+  // finding on the issue (6 of 18 content pages covered; these 12 were
+  // still serving byte-identical duplicate content on both URL forms).
+  '/blog/aerial-roof-measurement-reports':
+    '/blog/aerial-roof-measurement-reports.html',
+  '/blog/does-homeowners-insurance-cover-roof-damage':
+    '/blog/does-homeowners-insurance-cover-roof-damage.html',
+  '/blog/hail-vs-wind-roof-damage':
+    '/blog/hail-vs-wind-roof-damage.html',
+  '/blog/public-adjuster-vs-diy-roof-claim':
+    '/blog/public-adjuster-vs-diy-roof-claim.html',
+  '/blog/rcv-vs-acv-roof-insurance':
+    '/blog/rcv-vs-acv-roof-insurance.html',
+  '/blog/roof-shingle-warranty-tiers-explained':
+    '/blog/roof-shingle-warranty-tiers-explained.html',
+  '/blog/roofing-estimate-red-flags':
+    '/blog/roofing-estimate-red-flags.html',
+  '/blog/storm-chaser-roofing-scams':
+    '/blog/storm-chaser-roofing-scams.html',
+  '/blog/what-is-recoverable-depreciation-roofing':
+    '/blog/what-is-recoverable-depreciation-roofing.html',
+  '/blog/what-is-scope-of-loss-roofing':
+    '/blog/what-is-scope-of-loss-roofing.html',
+  '/blog/when-not-to-file-roof-insurance-claim':
+    '/blog/when-not-to-file-roof-insurance-claim.html',
+  '/blog/why-roofers-quote-different-prices':
+    '/blog/why-roofers-quote-different-prices.html',
 };
 
 export default async (req: Request, context: any) => {
@@ -65,7 +96,7 @@ export default async (req: Request, context: any) => {
 
     const dest = new URL(target, url.origin);
     // Forward any incoming query string unchanged (cache-busting params,
-    // utm_* tracking, etc.) — none of these 6 pages expect query params
+    // utm_* tracking, etc.) — none of these pages expect query params
     // today, but there's no reason to drop them on the way to the .html twin.
     url.searchParams.forEach((value, key) => dest.searchParams.set(key, value));
 

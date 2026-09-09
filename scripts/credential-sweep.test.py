@@ -195,6 +195,35 @@ def run_all(tmp_root: pathlib.Path):
     )
 
     # -------------------------------------------------------------------------------
+    print("\nshape scan (default mode, what CI invokes): AWS_TEMP_ACCESS_KEY_ID + siblings (gh-1888)")
+    # -------------------------------------------------------------------------------
+    # gh-1888: #1791 only ever added the AKIA (long-term) shape. ASIA (STS
+    # temporary/session access key ID) is the same 20-char [0-9A-Z]{16} body
+    # and the same danger class, but had no pattern at all -- a committed
+    # temporary AWS credential would pass "Credential Shape Sweep" silently.
+    # AIDA (IAM user), AROA (assumed-role), AGPA (IAM group) share the
+    # identical shape and are added in the same pass. Fixtures built from
+    # two pieces joined at runtime, same discipline as the AKIA fixture
+    # above and every other fake secret in this file -- obviously fake,
+    # never real key material.
+    for _prefix, _class_name in (
+        ("ASIA", "AWS_TEMP_ACCESS_KEY_ID"),
+        ("AIDA", "AWS_IAM_USER_ID"),
+        ("AROA", "AWS_ASSUMED_ROLE_ID"),
+        ("AGPA", "AWS_IAM_GROUP_ID"),
+    ):
+        _aws_allowlist = sweep.Allowlist()
+        _aws_findings = []
+        _fake_line = "AWS_KEY=" + _prefix + ("Z" * 16)
+        sweep.scan_file("fake/creds.env", _fake_line, _aws_allowlist, _aws_findings)
+        check(f"shape scan flags exactly one {_prefix}-shaped finding", len(_aws_findings), 1)
+        check(
+            f"shape scan classifies {_prefix}-shaped as {_class_name}, not a generic hex/base64 run",
+            _aws_findings[0]["class"] if _aws_findings else None,
+            _class_name,
+        )
+
+    # -------------------------------------------------------------------------------
     print("\n--stores mode: classify_field_name (SECRET_LIKE wins ties; UNCLASSIFIED for neither)")
     # -------------------------------------------------------------------------------
     check("classify_field_name('STRIPE_API_KEY')", sweep.classify_field_name("STRIPE_API_KEY"), "SECRET_LIKE_NAME")
@@ -276,6 +305,26 @@ def run_all(tmp_root: pathlib.Path):
         "AWS_ACCESS_KEY_ID is registered as a secret-shaped class for --stores mode",
         "AWS_ACCESS_KEY_ID" in sweep.VALUE_SHAPE_SECRET_CLASSES,
     )
+    # gh-1888: same shape family as AKIA above -- ASIA (STS temporary) is the
+    # gap this issue closes; AIDA/AROA/AGPA ride along in the same pass.
+    # Built from two pieces joined at runtime, like _fake_akia_value above,
+    # so no matchable run appears in this file's committed source.
+    for _prefix, _class_name in (
+        ("ASIA", "AWS_TEMP_ACCESS_KEY_ID"),
+        ("AIDA", "AWS_IAM_USER_ID"),
+        ("AROA", "AWS_ASSUMED_ROLE_ID"),
+        ("AGPA", "AWS_IAM_GROUP_ID"),
+    ):
+        _fake_value = _prefix + ("Z" * 16)
+        check(
+            f"classify_value_shape({_prefix}-shaped) -> {_class_name}",
+            sweep.classify_value_shape(_fake_value),
+            _class_name,
+        )
+        check_true(
+            f"{_class_name} is registered as a secret-shaped class for --stores mode",
+            _class_name in sweep.VALUE_SHAPE_SECRET_CLASSES,
+        )
 
     # -------------------------------------------------------------------------------
     print("\n--stores mode: stores_mismatches -- both mismatch directions, non-mismatches excluded")

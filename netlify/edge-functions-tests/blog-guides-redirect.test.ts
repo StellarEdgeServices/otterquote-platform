@@ -75,3 +75,49 @@ Deno.test("blog-guides-redirect: the .html twin itself is not in the map and fal
 
   assertEquals(ctx.nextCalled, true);
 });
+
+Deno.test("blog-guides-redirect: a wave-2 /blog/ path (previously unmapped) 301s to its .html twin", async () => {
+  const req = new Request(
+    "https://otterquote.com/blog/rcv-vs-acv-roof-insurance",
+  );
+  const ctx = fakeContext();
+  const res = await handler(req, ctx);
+
+  assertEquals(res.status, 301);
+  assertEquals(
+    res.headers.get("location"),
+    "https://otterquote.com/blog/rcv-vs-acv-roof-insurance.html",
+  );
+  assertEquals(ctx.nextCalled, false);
+});
+
+Deno.test("blog-guides-redirect: all 18 mapped paths (config.path) 301 and none loop to itself", async () => {
+  const REDIRECT_MAP_KEYS = [
+    "/blog/what-to-do-after-storm-damages-roof",
+    "/blog/how-to-negotiate-better-roof-repair-insurance-claim",
+    "/guides/how-to-file-property-damage-claim",
+    "/guides/how-to-choose-contractor",
+    "/guides/how-to-negotiate-with-insurer",
+    "/guides/how-to-read-contractor-estimate",
+    "/blog/aerial-roof-measurement-reports",
+    "/blog/does-homeowners-insurance-cover-roof-damage",
+    "/blog/hail-vs-wind-roof-damage",
+    "/blog/public-adjuster-vs-diy-roof-claim",
+    "/blog/rcv-vs-acv-roof-insurance",
+    "/blog/roof-shingle-warranty-tiers-explained",
+    "/blog/roofing-estimate-red-flags",
+    "/blog/storm-chaser-roofing-scams",
+    "/blog/what-is-recoverable-depreciation-roofing",
+    "/blog/what-is-scope-of-loss-roofing",
+    "/blog/when-not-to-file-roof-insurance-claim",
+    "/blog/why-roofers-quote-different-prices",
+  ];
+  for (const p of REDIRECT_MAP_KEYS) {
+    const req = new Request(`https://otterquote.com${p}`);
+    const ctx = fakeContext();
+    const res = await handler(req, ctx);
+    assertEquals(res.status, 301, `expected 301 for ${p}`);
+    const loc = res.headers.get("location");
+    assertEquals(loc, `https://otterquote.com${p}.html`, `wrong location for ${p}`);
+  }
+});
