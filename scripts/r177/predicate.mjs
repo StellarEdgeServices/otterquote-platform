@@ -8,7 +8,7 @@
 // over that same head sha. Dustin is never asked to read a diff.
 //
 // THIS MODULE IS A LABELLER, NOT A GATE. Its only consumer is
-// .github/workflows/r177-legal-read.yml, the "R-177 legal-read needed" check,
+// .github/workflows/r177-legal-read.yml, the "R-177 legal-read labeller (informational, always green)" check,
 // which ALWAYS exits 0: when the predicate fires it labels the PR
 // `r177:legal-read` and posts one notice. The R-177 comment pair is enforced by
 // the CTO's merge tooling, not by a required status check.

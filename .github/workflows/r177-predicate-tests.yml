@@ -4,7 +4,7 @@ name: R-177 predicate tests
 #
 # scripts/r177/predicate.test.mjs and predicate.scope.test.mjs are the only
 # automated thing holding the legal/money predicate honest. The predicate is now
-# a LABELLER, not a gate ("R-177 legal-read needed",
+# a LABELLER, not a gate ("R-177 legal-read labeller (informational, always green)",
 # .github/workflows/r177-legal-read.yml, which always exits 0), so this suite is
 # the only place a scope regression is caught at all — the COPY_GUARD_FILES
 # ratchet in predicate.scope.test.mjs walks scripts/ and tools/ and fails,

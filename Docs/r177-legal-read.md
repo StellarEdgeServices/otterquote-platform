@@ -24,7 +24,7 @@
 | --- | --- | --- |
 | `LEGAL-READ: PASS\|FAIL — …` | a fresh-context refuter agent, **not** the PR's author | after reading the full diff at the current head sha |
 | `R-177 SIGNED: pr=… sha=… — Ben, CEO` | the CEO (Ben) | after a `LEGAL-READ: PASS` on that same head sha |
-| the `r177:legal-read` label + one notice comment | the **R-177 legal-read needed** workflow, automatically | when the predicate fires |
+| the `r177:legal-read` label + one notice comment | the **R-177 legal-read labeller (informational, always green)** workflow, automatically | when the predicate fires |
 
 A **`LEGAL-READ: FAIL`**, or any diff that introduces a legal position, price, promise or consent text **with no D-number behind it**, does not merge. It goes to **Dustin as Tier C** under constitution entry 2, with the CEO's recommendation — exactly as any new decision does. That is a *decision* reaching him, not a diff.
 
@@ -32,7 +32,7 @@ A **`LEGAL-READ: FAIL`**, or any diff that introduces a legal position, price, p
 
 **The predicate is a labeller. It is not a gate. It always exits 0.**
 
-`.github/workflows/r177-legal-read.yml` — the check named **`R-177 legal-read needed`** — runs `detectLegalMoneyContent()` from `scripts/r177/predicate.mjs` over the PR diff. When it fires it:
+`.github/workflows/r177-legal-read.yml` — the check named **`R-177 legal-read labeller (informational, always green)`** — runs `detectLegalMoneyContent()` from `scripts/r177/predicate.mjs` over the PR diff. When it fires it:
 
 1. adds the label **`r177:legal-read`** to the PR (creating the label on the repo if it does not exist yet), and
 2. posts **one** comment — *"R-177: this diff touches legal/money text — a LEGAL-READ and a CEO R-177 SIGNED comment are required before merge (constitution entry 6)"* — only if no such comment is already on the PR, and never edits or repeats it.
