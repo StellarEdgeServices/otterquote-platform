@@ -105,21 +105,21 @@ const STATIC = {
   emailPreviewHeading: 'Email Preview',
   emailPreviewLoading: 'Loading...',
   adjusterFollowupNote:
-    "What happens next: If your adjuster doesn't respond within 48 hours, we'll text you with a recommended call script so you can follow up directly.",
+    "What happens next: Your adjuster replies straight to you. If you haven't heard back in 48 hours, call them directly to follow up.",
   sendMeasurementEmailButton: 'Send Request to Adjuster',
   // Email success (730-742)
   emailSuccessIcon: '✓',
   emailSuccessTitle: 'Measurement Request Sent',
   emailSuccessText:
-    "We've emailed your adjuster requesting property measurements. When they reply, we'll automatically capture the documents and attach them to your claim.",
+    "We've emailed your adjuster requesting property measurements. Their reply goes straight to your own inbox. When the documents arrive, upload them here and we'll attach them to your claim.",
   emailSuccess48HourNote:
-    "48-Hour Follow-Up: If we don't hear back within 48 hours, we'll text you with a call script to follow up directly with your adjuster.",
+    "If you don't hear back: Adjusters often take a few days. If there's no reply after 48 hours, call your adjuster directly and ask them to send the documents by email.",
   // Operational (801-1088)
   statusInitError: 'Failed to load page. Please refresh.',
   statusPaymentInitError: 'Could not initialize payment. Please try again.',
   statusEmailValidation: "Please enter the adjuster's email address.",
   statusEmailSent:
-    "Email sent to your adjuster. We'll follow up if they don't respond within 48 hours.",
+    "Email sent to your adjuster. Their reply goes straight to your own inbox.",
   statusEmailError: 'Failed to send email. Please try again or contact support.',
   loadingButton: 'Loading...',
   payProcessingButton: 'Processing...',
