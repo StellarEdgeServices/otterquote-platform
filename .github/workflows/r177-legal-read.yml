@@ -106,9 +106,9 @@ jobs:
               const detection = detectLegalMoneyContent(diffText);
 
               if (!detection.hit) {
-                core.info(`R-177 legal-read needed: no legal/money content at head ${short}. No label, no comment.`);
+                core.info(`R-177 legal-read labeller: no legal/money content at head ${short}. No label, no comment.`);
                 await core.summary
-                  .addHeading('R-177 legal-read needed: no legal/money content')
+                  .addHeading('R-177 legal-read labeller: no legal/money content')
                   .addRaw(`\nNo added or removed line at head \`${short}\` matched the money, pricing, legal or consent rules (see \`scripts/r177/predicate.mjs\`).\n`)
                   .write();
                 return;
@@ -173,7 +173,7 @@ jobs:
               }
 
               await core.summary
-                .addHeading('R-177 legal-read needed')
+                .addHeading('R-177 legal-read labeller (informational, always green)')
                 .addRaw(`\nThe predicate flagged ${detection.lines.length} line(s) at head \`${short}\`. Labelled \`${LABEL}\`.\n\n${grouped}${more}\n`)
                 .write();
             } catch (e) {
