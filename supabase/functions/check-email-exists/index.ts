@@ -49,24 +49,60 @@
  * same shape on hit and miss. This is the manual-JWT-check-despite-
  * verify_jwt=false pattern already used by resend-hover-link/index.ts.
  *
+ * gh-1724 step 2 [SECURITY]: the `status`/stage fix above (PR #1806) left
+ * the `exists` boolean itself still a free, unmetered oracle for any
+ * anonymous caller — a refuter fired 30 unauthenticated requests at the
+ * deployed function and all 30 were accepted (200 x30, no limiter of any
+ * kind; see In Flight/reports/cto30-refute-1724-20260908.md). This EF now
+ * calls `check_rate_limit()` per request, keyed on a SYNTHETIC per-IP
+ * bucket rather than a real user_id: the caller has no session at this
+ * point (that is the whole reason this endpoint is pre-auth), so there is
+ * no `auth.uid()` to key on the way create-hover-order/index.ts does. The
+ * bucket id is `sha256("check-email-exists:" + clientIp)` reshaped into
+ * UUID form (see `ipToUuid()` below) — deterministic per IP, namespaced to
+ * this function so the same hash can't be correlated with any other
+ * caller_id use of the same IP elsewhere, and it costs nothing beyond the
+ * config row this needs (see the gh1724 migration alongside this file;
+ * check_rate_limit() denies by default when no rate_limit_config row
+ * exists for a function — see create-docusign-envelope/index.ts:2477-86 —
+ * "That default has produced this exact outage four times now" — which is
+ * why the row is added in lockstep with this call, not after it).
+ * Limits: 10/hour, 30/day, 300/month per IP bucket — a judgment call
+ * mirroring gh973's register_partner (10/30/300), the closest analog: an
+ * anonymous, form-adjacent endpoint a real applicant hits at most a
+ * handful of times. Client IP is read from `cf-connecting-ip` first (set
+ * by the Cloudflare edge in front of this project, not attacker-supplied)
+ * and falls back to the first hop of `x-forwarded-for`.
+ *
+ * Rate-limit-check failure posture is deliberately DIFFERENT from the
+ * lookup's fail-open posture below: if the `check_rate_limit()` RPC itself
+ * errors (not "not allowed" — an actual call failure), this function logs
+ * and falls through to the lookup rather than blocking, because an infra
+ * hiccup in the limiter must not trap a legitimate new applicant either.
+ * An explicit `{ allowed: false }` result, by contrast, always returns 429
+ * — that is the guard doing its job, not a failure of it.
+ *
  * Residual, stated honestly (see gh-1724 acceptance criteria): this closes
- * the `status`/stage leak and the third-party self-check leak entirely,
- * but the `exists` boolean itself is still an oracle for any caller,
- * anonymous or not — an unauthenticated `curl` still learns whether an
- * address has an account. Volume is what step 2 (per-IP rate limiting)
- * would address; it is not done here (see PR description / issue comment
- * for why: check_rate_limit() denies by default when no rate_limit_config
- * row exists for a function — see create-docusign-envelope/index.ts:2477-86
- * — "That default has produced this exact outage four times now" — and
- * this issue's own file scope does not include a migration to add one).
+ * the `status`/stage leak, the third-party self-check leak, AND makes the
+ * remaining `exists`-boolean oracle expensive to harvest in bulk from one
+ * IP. It does NOT close the boolean oracle itself (a single well-paced
+ * probe of any one address is still answered — that was always out of
+ * scope; the issue's `closes-on` asks for a burst to be rejected, not for
+ * `exists` to stop existing), and it does not address the two sharper,
+ * out-of-scope oracles on other unauthenticated endpoints on this host
+ * (`/auth/v1/otp`, `/auth/v1/recover`) that the same refuter report
+ * identifies and that gh-1883 tracks separately — not this file.
  *
  * Usage:
  *   POST /functions/v1/check-email-exists
  *   Body:     { "email": "someone@example.com" }
- *   Response: { "exists": boolean }
- *             { "exists": boolean, "status": string | null }  -- only when
- *               the caller's own verified session email matches the email
- *               being checked.
+ *   Response: { "exists": boolean }                                  200
+ *             { "exists": boolean, "status": string | null }         200
+ *               -- `status` only when the caller's own verified session
+ *               email matches the email being checked.
+ *             { "error": "Too many requests. Please try again later." }
+ *                                                                     429
+ *               -- per-IP burst limit exceeded (see gh-1724 step 2 above).
  *
  * No JWT required to call this at all: it is called before any auth
  * session exists on the join page (pre-magic-link, pre-OAuth), so
@@ -109,12 +145,49 @@ function json(body: unknown, status: number, corsHeaders: Record<string, string>
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const FUNCTION_NAME = "check-email-exists";
 
 // Escape Postgres LIKE/ILIKE wildcard characters so an email containing a
 // literal "%" or "_" can't turn this into a pattern match against other
 // addresses.
 function escapeIlike(value: string): string {
   return value.replace(/[%_\\]/g, (ch) => `\\${ch}`);
+}
+
+// gh-1724 step 2: best-effort client IP for the rate-limit bucket.
+// `cf-connecting-ip` is set by the Cloudflare edge in front of this
+// project (visible in this function's own response headers as
+// `server: cloudflare`) and cannot be forged by the caller the way a
+// client-supplied `x-forwarded-for` entry sometimes can; it is preferred
+// over `x-forwarded-for`, whose first hop is used only as a fallback.
+// "unknown" is returned only if neither header is present, which puts
+// every such caller in one shared bucket -- a degraded-but-safe default,
+// not a bypass.
+function getClientIp(req: Request): string {
+  const cf = req.headers.get("cf-connecting-ip");
+  if (cf) return cf.trim();
+  const xff = req.headers.get("x-forwarded-for");
+  if (xff) return xff.split(",")[0].trim();
+  return "unknown";
+}
+
+// gh-1724 step 2: deterministic per-IP synthetic UUID for check_rate_limit's
+// `p_user_id` column. This endpoint runs pre-auth and has no real user_id
+// to key on, but check_rate_limit()'s per-caller counting (v57) works on
+// any uuid, so a stable hash of the IP gives per-IP buckets without a
+// schema change. Namespaced with the function name so the same IP hashes
+// to a different bucket id than it would for any other caller_id use --
+// this is a rate-limit key, not intended to double as a durable identity.
+// Version/variant nibbles are set only so the result is a syntactically
+// well-formed UUID string; it is a hash, not a random UUID.
+async function ipToUuid(ip: string): Promise<string> {
+  const data = new TextEncoder().encode(`${FUNCTION_NAME}:${ip}`);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  const bytes = new Uint8Array(digest).slice(0, 16);
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 // gh-1724: the decision of whether to disclose `status` in the response.
@@ -143,6 +216,29 @@ serve(async (req: Request) => {
     return json({ error: "Method not allowed" }, 405, corsHeaders);
   }
 
+  const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  const sb = createClient(supabaseUrl, serviceRoleKey);
+
+  // gh-1724 step 2: per-IP burst gate, checked BEFORE parsing the body so a
+  // rejected caller never reaches the JSON parse or the DB lookup below.
+  // See the file header for the bucket design and the fail-open-on-RPC-
+  // error / fail-closed-on-explicit-deny split.
+  const clientIp = getClientIp(req);
+  const ipBucketId = await ipToUuid(clientIp);
+  const { data: rateLimitResult, error: rlError } = await sb.rpc("check_rate_limit", {
+    p_function_name: FUNCTION_NAME,
+    p_user_id: ipBucketId,
+  });
+  if (rlError) {
+    // RPC failure, not a rate-limit decision -- log and fall through
+    // (fail OPEN), matching this file's stated posture for infra hiccups.
+    console.error(`[${FUNCTION_NAME}] rate limit check failed, failing open:`, rlError);
+  } else if (!rateLimitResult?.allowed) {
+    console.warn(`[${FUNCTION_NAME}] RATE LIMITED ip=${clientIp}: ${rateLimitResult?.reason}`);
+    return json({ error: "Too many requests. Please try again later." }, 429, corsHeaders);
+  }
+
   let email = "";
   try {
     const body = await req.json();
@@ -154,10 +250,6 @@ serve(async (req: Request) => {
   if (!email || !EMAIL_RE.test(email)) {
     return json({ error: "Missing or invalid email" }, 400, corsHeaders);
   }
-
-  const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
-  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-  const sb = createClient(supabaseUrl, serviceRoleKey);
 
   // gh-1724: gate the `status` field on the caller proving (via a valid
   // Supabase user JWT) that they ARE the email address being looked up.
