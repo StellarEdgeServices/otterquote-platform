@@ -2,19 +2,41 @@
  * OtterQuote Edge Function: notify-admin-new-homeowner
  *
  * Sends an admin notification email to Dustin whenever a real homeowner
- * signs up (profiles insert, role='homeowner') or creates a claim (claims
- * insert). Filed for gh-1932 — Part 2 of ceo42-cust-visibility-20260914.md
- * found NO push alert existed for either event; only new-contractor pushed.
+ * creates a claim (claims insert). Filed for gh-1932 — Part 2 of
+ * ceo42-cust-visibility-20260914.md found NO push alert existed for
+ * homeowner signup or claim creation; only new-contractor pushed. (First
+ * pass also alerted on bare signup; dropped in the gh-1932 rework — see
+ * below.)
  *
  * Pattern copied from notify-admin-new-contractor/index.ts: service-role
  * auth for the trigger path, notifications-table idempotency, test-account
  * filter, Mailgun sender. NOT called by browser clients.
  *
- * Triggered by two PostgreSQL triggers (trg_notify_admin_new_homeowner,
- * trg_notify_admin_new_claim) via pg_net, AFTER INSERT on profiles
- * (role='homeowner') and claims respectively — see the accompanying
- * migration. Each trigger POSTs {event_type, record} where record is the
- * new row as jsonb.
+ * Triggered by a PostgreSQL trigger (trg_notify_admin_new_claim) via pg_net,
+ * AFTER INSERT on claims — see the accompanying migration. The trigger
+ * POSTs {event_type, record} where record is the new row as jsonb.
+ *
+ * gh-1932 rework (refuter FAIL, 2026-09-14): a second trigger on profiles
+ * (AFTER INSERT WHERE role='homeowner') was built and deployed in the first
+ * pass, then DROPPED — there is no reliable per-request signal for
+ * "homeowner" at auth signup time. Confirmed by reading the real signup
+ * path (js/auth.js signUpWithPassword -> sb.auth.signUp with no
+ * options.data at all) and the schema: profiles.role defaults to
+ * 'homeowner' for EVERY new auth user (text NOT NULL DEFAULT 'homeowner'),
+ * and a contractor's row only becomes role='contractor' via a SEPARATE,
+ * later INSERT into public.contractors (trg_sync_contractor_profile_role),
+ * observed live 2s-31min after the profiles row was created. Gating the
+ * trigger on profiles.role at INSERT time therefore fired "New homeowner"
+ * for every contractor signup too (confirmed: role default made this
+ * unconditional). auth-callback.html's `intent` query param is a
+ * client-side-only routing hint, never persisted to any column the DB can
+ * see. With no reliable signal, this EF now alerts on claims INSERT only
+ * -- the point a homeowner is unambiguously real and engaged, and the one
+ * event that also carries an address, closing the original signup path's
+ * "where are they" gap too. The function still ACCEPTS event_type
+ * homeowner_signup defensively (see payload tolerance below) in case a
+ * future, real signal is found and a trigger/webhook is re-added, but
+ * nothing in this repo currently sends it.
  *
  * Payload tolerance: also accepts Supabase's native database-webhook shape
  * {type:"INSERT", table, record} and derives event_type from table
@@ -282,7 +304,7 @@ serve(async (req: Request) => {
       const fullName = (record.full_name as string) || "(no name given)";
       const cityStateZip = [record.address_city, record.address_state, record.address_zip]
         .filter(Boolean)
-        .join(", ") || "not provided";
+        .join(", ") || "location not yet provided";
       const signupTs = record.created_at
         ? new Date(record.created_at as string).toLocaleString("en-US", { timeZone: "America/Chicago" })
         : new Date().toLocaleString("en-US", { timeZone: "America/Chicago" });
@@ -339,17 +361,22 @@ serve(async (req: Request) => {
     }
 
     // claims rows carry is_test but not email — resolve the owning profile
-    // for the exclusion filter and the masked email in the subject.
+    // for the exclusion filter, the masked email in the subject, and a
+    // name fallback (gh-1932 rework: claims.homeowner_name is preferred
+    // when present, profiles.full_name is the fallback — at claim-creation
+    // time one of the two is normally populated, unlike at bare signup).
     let email = "";
     let profileIsTest = false;
+    let profileFullName = "";
     if (userId) {
       const { data: profile } = await sb
         .from("profiles")
-        .select("email, is_test")
+        .select("email, is_test, full_name")
         .eq("id", userId)
         .maybeSingle();
-      email         = profile?.email || "";
-      profileIsTest = profile?.is_test === true;
+      email           = profile?.email || "";
+      profileIsTest   = profile?.is_test === true;
+      profileFullName = profile?.full_name || "";
     }
 
     const claimIsTest = record.is_test === true;
@@ -379,7 +406,11 @@ serve(async (req: Request) => {
     }
 
     const claimNumber = (record.claim_number as string) || claimId;
-    const propertyAddr = (record.property_address as string) || "not provided";
+    const homeownerName = (record.homeowner_name as string) || profileFullName || "(no name given)";
+    const propertyAddrParts = [record.property_address, record.property_state]
+      .filter(Boolean)
+      .join(", ");
+    const propertyAddr = propertyAddrParts || "location not yet provided";
     const createdTs = record.created_at
       ? new Date(record.created_at as string).toLocaleString("en-US", { timeZone: "America/Chicago" })
       : new Date().toLocaleString("en-US", { timeZone: "America/Chicago" });
@@ -389,7 +420,7 @@ serve(async (req: Request) => {
     const textBody = [
       `A new claim was created on Otter Quotes.`,
       `Claim    : #${claimNumber}`,
-      `Homeowner: ${maskedEmail}`,
+      `Homeowner: ${homeownerName} (${maskedEmail})`,
       `Created  : ${createdTs} CT`,
       `Property : ${propertyAddr}`,
       ``,
@@ -398,7 +429,7 @@ serve(async (req: Request) => {
     ].join("\n");
     const htmlBody = buildEmailHtml("New Claim Created", [
       ["Claim", `#${escapeHtml(claimNumber)}`],
-      ["Homeowner", escapeHtml(maskedEmail)],
+      ["Homeowner", `${escapeHtml(homeownerName)} (${escapeHtml(maskedEmail)})`],
       ["Created", `${escapeHtml(createdTs)} CT`],
       ["Property", escapeHtml(propertyAddr)],
     ]);
