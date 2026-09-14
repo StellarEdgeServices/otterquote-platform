@@ -82,6 +82,7 @@ const ADMIN_PORTAL_URL = "https://otterquote.com/admin-dashboard.html";
 const NOTIF_TYPE_HOMEOWNER = "admin_new_homeowner";
 const NOTIF_TYPE_CLAIM     = "admin_new_claim";
 const NOTIF_TYPE_DIGEST    = "admin_homeowner_signup_digest";
+const NOTIF_TYPE_BACKFILL  = "admin_homeowner_signup_backfill";
 
 const DEFAULT_MIN_AGE_MINUTES = 20;
 const MAX_AGE_DAYS            = 7;
@@ -207,7 +208,8 @@ function buildEmailHtml(heading: string, rows: [string, string][], extraHtml?: s
 
 type NormalizedEvent =
   | { eventType: "claim_created"; record: Record<string, unknown> }
-  | { eventType: "signup_sweep"; minAgeMinutes: number };
+  | { eventType: "signup_sweep"; minAgeMinutes: number }
+  | { eventType: "signup_backfill" };
 
 function normalizeBody(body: any): NormalizedEvent | null {
   if (!body || typeof body !== "object") return null;
@@ -223,6 +225,14 @@ function normalizeBody(body: any): NormalizedEvent | null {
         ? body.min_age_minutes
         : DEFAULT_MIN_AGE_MINUTES;
     return { eventType: "signup_sweep", minAgeMinutes };
+  }
+
+  // gh-1932 rework 3: one-time, manually-invoked catch-up for the backlog
+  // that predates MAX_AGE_DAYS=7 (the recurring sweep's window). Runs once
+  // ever, gated by NOTIF_TYPE_BACKFILL, independent of the recurring
+  // sweep's own NOTIF_TYPE_DIGEST gate. Not on the cron schedule.
+  if (body.event_type === "signup_backfill") {
+    return { eventType: "signup_backfill" };
   }
 
   // Supabase native database-webhook shape: {type:"INSERT", table, record}
@@ -276,6 +286,10 @@ serve(async (req: Request) => {
 
     if (normalized.eventType === "signup_sweep") {
       return await handleSignupSweep(sb, normalized.minAgeMinutes, mailgunDomain, mailgunKey, corsHeaders);
+    }
+
+    if (normalized.eventType === "signup_backfill") {
+      return await handleSignupBackfill(sb, mailgunDomain, mailgunKey, corsHeaders);
     }
 
     // eventType === "claim_created"
@@ -560,6 +574,135 @@ async function handleSignupSweep(
 
   return new Response(
     JSON.stringify({ success: true, sweep: true, alerted: toAlert.length, mailgun_id: lastMailgunId }),
+    { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+  );
+}
+
+// gh-1932 rework 3: one-time backlog catch-up, no age cap. The recurring
+// sweep is capped at MAX_AGE_DAYS=7, so its first run only covered 1 of the
+// 19 pre-existing zero-claim homeowners. This covers the rest (any
+// role='homeowner' profile with no claims row, no contractors row, not
+// excluded/is_test, not yet in NOTIF_TYPE_HOMEOWNER) in ONE digest email,
+// then marks them alerted the same way the recurring digest does. Gated by
+// NOTIF_TYPE_BACKFILL so it can only ever send once, independent of the
+// recurring sweep's own digest gate (which already fired).
+async function handleSignupBackfill(
+  sb: ReturnType<typeof createClient>,
+  mailgunDomain: string,
+  mailgunKey: string,
+  corsHeaders: Record<string, string>,
+) {
+  const { data: backfillRows } = await sb
+    .from("notifications")
+    .select("id")
+    .eq("notification_type", NOTIF_TYPE_BACKFILL)
+    .limit(1);
+  if (backfillRows && backfillRows.length > 0) {
+    return new Response(
+      JSON.stringify({ success: true, backfill: true, already_ran: true }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  }
+
+  const { data: candidates, error: candErr } = await sb
+    .from("profiles")
+    .select("id, email, full_name, address_city, address_state, address_zip, created_at, is_test")
+    .eq("role", "homeowner");
+
+  if (candErr) {
+    console.error("notify-admin-new-homeowner: backfill candidate query failed:", candErr);
+    return new Response(
+      JSON.stringify({ error: "backfill candidate query failed" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  }
+
+  const ids = (candidates || []).map((c: any) => c.id);
+  let contractorIds = new Set<string>();
+  let claimedIds = new Set<string>();
+  if (ids.length > 0) {
+    const [{ data: contractorRows }, { data: claimRows }] = await Promise.all([
+      sb.from("contractors").select("user_id").in("user_id", ids),
+      sb.from("claims").select("user_id").in("user_id", ids),
+    ]);
+    contractorIds = new Set((contractorRows || []).map((r: any) => r.user_id));
+    claimedIds = new Set((claimRows || []).map((r: any) => r.user_id));
+  }
+
+  const eligible = (candidates || []).filter(
+    (c: any) =>
+      !contractorIds.has(c.id) &&
+      !claimedIds.has(c.id) &&
+      c.is_test !== true &&
+      !isExcludedEmail(c.email || ""),
+  );
+
+  let alreadyAlertedIds = new Set<string>();
+  if (eligible.length > 0) {
+    const { data: alertedRows } = await sb
+      .from("notifications")
+      .select("user_id")
+      .eq("notification_type", NOTIF_TYPE_HOMEOWNER)
+      .in("user_id", eligible.map((e: any) => e.id));
+    alreadyAlertedIds = new Set((alertedRows || []).map((r: any) => r.user_id));
+  }
+
+  const toAlert = eligible.filter((e: any) => !alreadyAlertedIds.has(e.id));
+
+  const locationOf = (p: any) =>
+    [p.address_city, p.address_state, p.address_zip].filter(Boolean).join(", ") || "location not yet provided";
+
+  const rowsHtml = toAlert
+    .map((p: any) => {
+      const ts = new Date(p.created_at).toLocaleString("en-US", { timeZone: "America/Chicago" });
+      return `<tr><td style="padding:4px 8px;color:#64748B;">${escapeHtml(maskEmail(p.email || ""))}</td><td style="padding:4px 8px;">${escapeHtml(ts)} CT</td><td style="padding:4px 8px;">${escapeHtml(locationOf(p))}</td></tr>`;
+    })
+    .join("");
+  const extraHtml = `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;font-size:13px;margin-bottom:20px;border:1px solid #E2E8F0;">
+      <tr style="background:#F8FAFC;"><th align="left" style="padding:6px 8px;">Email</th><th align="left" style="padding:6px 8px;">Signed up</th><th align="left" style="padding:6px 8px;">Location</th></tr>
+      ${rowsHtml}
+    </table>`;
+
+  const subject  = `[OtterQuote] Homeowner signup backlog catch-up digest: ${toAlert.length} homeowner(s)`;
+  const textLines = toAlert.map((p: any) => `- ${maskEmail(p.email || "")} | ${new Date(p.created_at).toLocaleString("en-US", { timeZone: "America/Chicago" })} CT | ${locationOf(p)}`);
+  const textBody = [
+    `One-time backlog catch-up for the gh-1932 homeowner signup sweep (no age cap).`,
+    `${toAlert.length} homeowner(s) with no claim, older than the recurring sweep's 7-day window, were found and are listed below.`,
+    `They are now marked alerted; the recurring 15-minute sweep keeps its 7-day window going forward.`,
+    ``,
+    ...textLines,
+    ``,
+    `Open the admin dashboard:`,
+    ADMIN_PORTAL_URL,
+  ].join("\n");
+  const htmlBody = buildEmailHtml(
+    "Homeowner Signup Backlog Catch-up",
+    [["Count", String(toAlert.length)]],
+    extraHtml,
+  );
+
+  const mgData = await sendMail(mailgunDomain, mailgunKey, subject, textBody, htmlBody);
+
+  await sb.from("notifications").insert({
+    user_id: null, claim_id: null, channel: "email",
+    notification_type: NOTIF_TYPE_BACKFILL, recipient: ADMIN_EMAIL,
+    message_preview: `Backfill digest: ${toAlert.length} homeowner(s)`,
+    sent_at: new Date().toISOString(), delivered: true, mailgun_id: mgData.id,
+  });
+
+  const markRows = toAlert.map((p: any) => ({
+    user_id: p.id, claim_id: null, channel: "email",
+    notification_type: NOTIF_TYPE_HOMEOWNER, recipient: ADMIN_EMAIL,
+    message_preview: `Included in backfill digest`,
+    sent_at: new Date().toISOString(), delivered: true, mailgun_id: mgData.id,
+  }));
+  if (markRows.length > 0) {
+    const { error: markErr } = await sb.from("notifications").insert(markRows);
+    if (markErr) console.warn("notify-admin-new-homeowner: failed to mark backfill as alerted:", markErr);
+  }
+
+  return new Response(
+    JSON.stringify({ success: true, backfill: true, count: toAlert.length, mailgun_id: mgData.id }),
     { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
   );
 }
