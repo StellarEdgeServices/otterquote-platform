@@ -360,6 +360,10 @@
                     sms_opt_in:         smsConsent,
                     sms_opt_in_at:      smsConsent ? new Date().toISOString() : null,
                     sms_opt_in_source:  smsConsent ? 'contractor-signup' : null,
+                    // R-177 rework: version tag for the exact sentence in the
+                    // <span> above this script (NOT the wording itself — do not
+                    // reword the checkbox copy without also bumping this tag).
+                    sms_consent_text_version: smsConsent ? 'contractor-v1-2026-09-14' : null,
                     role:               'contractor',
                     onboarding_step:    1,
                 }));
@@ -405,7 +409,7 @@
                 console.warn('Auth.ready() not available, continuing anyway');
             }
         }
-        
+
         const googleBtn = document.getElementById('google-btn');
         if (googleBtn) {
             googleBtn.addEventListener('click', async () => {
