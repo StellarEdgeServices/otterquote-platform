@@ -73,15 +73,23 @@ on:
     # on the deploy COMPLETING rather than the merge happening -- see
     # scripts/deploy-completion-poll.py.
     - cron: '*/15 * * * *'
-  push:
-    # gh-1729 conjunct 2: re-run the negative control (see the job below)
-    # whenever the guard itself, the spec it runs, or the live config
-    # changes, so a future edit that quietly breaks the control's ability to
-    # fail is caught before it ships, not discovered by absence. Does not
-    # fire the live-site jobs above -- those stay scoped to schedule/
-    # deployment_status/workflow_dispatch, so this trigger cannot spam
-    # otterquote.com on every push.
-    branches: [main]
+  pull_request:
+    # gh-1729 conjunct 2, corrected per REVIEW: FAIL (PR #1915 comment
+    # 5601447534): re-run the negative control (see the job below) whenever
+    # the guard itself, the spec it runs, or the live config changes, so a
+    # future edit that quietly breaks the control's ability to fail is
+    # caught before it ships, not discovered by absence. This was
+    # originally `push: branches: [main]`, which only runs AFTER a merge
+    # lands on main -- the "caught before it ships" framing was true of the
+    # intent but false as written against a post-merge trigger. `pull_request`
+    # on the same three paths makes it a genuine pre-merge check at the same
+    # cost. Does not fire the live-site jobs above -- those stay scoped to
+    # schedule/deployment_status/workflow_dispatch, so this trigger cannot
+    # touch otterquote.com. Verified: `poll-for-new-deploy`'s `if:` requires
+    # `github.event_name == 'schedule'` and `entry-point-reachability-live`'s
+    # three-armed `if:` requires workflow_dispatch, a `deployment_status`
+    # event, or schedule -- all false for `pull_request`, so both jobs are
+    # skipped on this trigger and only the negative-control job below runs.
     paths:
       - '.github/workflows/entry-point-reachability-live.yml'
       - 'tests/e2e/smoke/entry-point-reachability.spec.ts'
@@ -280,13 +288,15 @@ jobs:
   negative-control-known-broken-fixture:
     name: Negative control -- spec MUST fail against the known-broken tree
     # gh-1729 conjunct 2. Runs on workflow_dispatch (on-demand evidence) and
-    # on push to the paths named above (regression guard on the control
-    # itself) -- deliberately NOT on schedule or deployment_status, so this
-    # never adds runtime to the routine 15-minute production poll and never
-    # touches otterquote.com. Independent of the two jobs above: no `needs`,
-    # so it runs even when they are skipped (e.g. a push where the poll job
-    # doesn't apply).
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
+    # on pull_request against the paths named above (a genuine pre-merge
+    # regression guard on the control itself, per REVIEW: FAIL on PR #1915
+    # comment 5601447534 -- this was `push` originally, which only ran
+    # post-merge) -- deliberately NOT on schedule or deployment_status, so
+    # this never adds runtime to the routine 15-minute production poll and
+    # never touches otterquote.com. Independent of the two jobs above: no
+    # `needs`, so it runs even when they are skipped (e.g. a pull_request
+    # where the poll job doesn't apply).
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -340,13 +350,27 @@ jobs:
           nohup python3 -m http.server 4174 --directory known-broken-fixture \
             > known-broken-server.log 2>&1 &
           echo $! > known-broken-server.pid
+          server_up=0
           for i in $(seq 1 20); do
             if curl -sf -o /dev/null "http://127.0.0.1:4174/contractor-opportunities.html"; then
               echo "Local server up after ${i} attempt(s)."
+              server_up=1
               break
             fi
             sleep 0.5
           done
+          # REVIEW: FAIL (PR #1915 comment 5601447534): this loop used to fall
+          # through silently after 20 failed attempts. If the server never
+          # binds 4174, every test in the next step fails on
+          # connection-refused, exit != 0, and the job below would have
+          # declared "the mechanism can produce RED" having proven only that
+          # Playwright can fail to reach a dead port. Fail loudly here
+          # instead, before the spec ever runs.
+          if [ "${server_up}" != "1" ]; then
+            echo "::error::Local fixture server on 127.0.0.1:4174 never came up after 20 attempts (~10s). Cannot run the negative control against a server that isn't serving known-broken-fixture/. Dumping known-broken-server.log:"
+            cat known-broken-server.log || true
+            exit 1
+          fi
 
       # This is the unchanged Part-2 config (playwright.entrypoint-live.config.ts)
       # and the unchanged spec (entry-point-reachability.spec.ts) -- the only
@@ -358,23 +382,75 @@ jobs:
         id: run_spec
         working-directory: tests/e2e
         continue-on-error: true
+        shell: bash
         env:
           LIVE_BASE_URL: http://127.0.0.1:4174
         run: |
           set +e
-          npx playwright test --config=smoke/playwright.entrypoint-live.config.ts
-          echo "spec_exit_code=$?" >> "$GITHUB_OUTPUT"
+          # REVIEW: FAIL (PR #1915 comment 5601447534): capture the spec's own
+          # stdout/stderr (via `tee`, so it still streams live to the job log)
+          # so the next step can assert on its CONTENT, not just its exit
+          # code. PIPESTATUS[0] is the `npx playwright test` exit code, not
+          # `tee`'s -- this is bash (the runner's default shell), where
+          # PIPESTATUS is always available regardless of `pipefail`.
+          npx playwright test --config=smoke/playwright.entrypoint-live.config.ts 2>&1 | tee spec-output.log
+          exit_code="${PIPESTATUS[0]}"
+          echo "spec_exit_code=${exit_code}" >> "$GITHUB_OUTPUT"
 
       - name: Assert the spec FAILED -- a control the broken tree also passes is not a control
+        working-directory: tests/e2e
         run: |
           exit_code="${{ steps.run_spec.outputs.spec_exit_code }}"
           echo "Reachability spec exit code against known-broken commit 0aa1d61: ${exit_code}"
+
+          # REVIEW: FAIL (PR #1915 comment 5601447534): with continue-on-error
+          # true, if run_spec dies before its own echo runs (npx missing, the
+          # runner OOM's, the 10-minute job timeout fires mid-run),
+          # spec_exit_code is the EMPTY STRING. `[ "" = "0" ]` is false, so the
+          # old check below would have reported this as a correctly-failed
+          # negative control while proving nothing. Reject empty explicitly.
+          if [ -z "${exit_code}" ]; then
+            echo "::error::NEGATIVE CONTROL INVALID: spec_exit_code is EMPTY -- the run_spec step never reached its own exit-code echo (npx missing, runner OOM, or the 10-minute timeout). An empty value is not '0' and must not be treated as a valid non-zero (failed) result. Failing loudly."
+            exit 1
+          fi
+
           if [ "${exit_code}" = "0" ]; then
             echo "::error::NEGATIVE CONTROL INVALID: the entry-point reachability spec PASSED (exit 0) against the known-broken pre-#1696 tree (commit 0aa1d61), the same tree PR #1720's own pre-merge control showed failing on all six #1693-regression entry points. A control that a broken tree also passes is not a control (gh-1697/gh-1729 sec 7.3b). Failing this job."
             exit 1
-          else
-            echo "Negative control OK: the spec correctly failed (exit ${exit_code}) against the known-broken tree -- the mechanism can produce RED, not just GREEN."
           fi
+
+          echo "Negative control OK: the spec correctly failed (exit ${exit_code}) against the known-broken tree -- the mechanism can produce RED, not just GREEN."
+
+          # REVIEW: FAIL (PR #1915 comment 5601447534): a non-zero exit code
+          # alone cannot distinguish "the #1693 regression is detectable" from
+          # "the harness fell over" -- a crashed browser or a dead dependency
+          # also exits non-zero. Assert the CONTENT of the failure: all six
+          # named #1693-regression entry points must appear in the spec's own
+          # output, and the handler-bound assertion string those entry points
+          # are expected to fail on must appear too.
+          entry_points="doc-estimate doc-measurements doc-hover upgrade-open upgrade-pay upgrade-cancel"
+          found=0
+          missing=""
+          for ep in $entry_points; do
+            if grep -q -- "${ep}" spec-output.log; then
+              found=$((found + 1))
+            else
+              missing="${missing} ${ep}"
+            fi
+          done
+          echo "Named #1693-regression entry points found in spec output: ${found}/6"
+
+          if [ "${found}" -lt 6 ]; then
+            echo "::error::NEGATIVE CONTROL INVALID: only ${found}/6 of the named #1693-regression entry points (doc-estimate, doc-measurements, doc-hover, upgrade-open, upgrade-pay, upgrade-cancel) appear in the spec's output. Missing:${missing}. A non-zero exit code alone does not prove the RIGHT thing failed -- it is equally consistent with the harness itself falling over (dead server, crashed browser, timeout) before most or all of the six entry-point tests ran. Failing this job."
+            exit 1
+          fi
+
+          if ! grep -q "ASSERTION 2 (handler bound) FAILED" spec-output.log; then
+            echo "::error::NEGATIVE CONTROL INVALID: all six named entry points appear in the spec output, but the string 'ASSERTION 2 (handler bound) FAILED' does not. That is what entry-point-reachability.spec.ts emits when a click handler was never bound -- the #1693 regression shape this negative control exists to prove is detectable. Its absence means the six tests failed for some OTHER reason, which this control cannot distinguish from the regression it claims to catch. Failing this job."
+            exit 1
+          fi
+
+          echo "Content assertion OK: all six named entry points and the handler-bound failure string are present in the spec output -- this negative control proves the #1693 regression shape is detectable, not just that something, anything, went wrong."
 
       - name: Upload report
         if: always()
