@@ -2,77 +2,73 @@
  * OtterQuote Edge Function: notify-admin-new-homeowner
  *
  * Sends an admin notification email to Dustin whenever a real homeowner
- * creates a claim (claims insert). Filed for gh-1932 — Part 2 of
- * ceo42-cust-visibility-20260914.md found NO push alert existed for
- * homeowner signup or claim creation; only new-contractor pushed. (First
- * pass also alerted on bare signup; dropped in the gh-1932 rework — see
- * below.)
+ * creates a claim (claims insert), AND runs a deferred "signup sweep" every
+ * 15 minutes (pg_cron -> this EF in `signup_sweep` mode) so a homeowner who
+ * signs up but never files a claim still surfaces. Filed for gh-1932.
  *
- * Pattern copied from notify-admin-new-contractor/index.ts: service-role
- * auth for the trigger path, notifications-table idempotency, test-account
- * filter, Mailgun sender. NOT called by browser clients.
+ * History (see PR #1934 / issue #1932 comments for full evidence):
+ *  - Pass 1: alerted on both profiles-insert (role='homeowner') and claims-insert.
+ *  - Rework 1 (refuter FAIL): profiles.role defaults to 'homeowner' for EVERY
+ *    new auth user (no signup-time signal distinguishes homeowner from
+ *    contractor — confirmed by reading js/auth.js signUpWithPassword, which
+ *    never sets options.data), so the profiles trigger false-positived on
+ *    every contractor signup. Dropped the profiles-insert trigger; claims-only.
+ *  - Rework 2 (refuter-2 FAIL on SCOPE, CEO-ratified per issue #1932 comment
+ *    5670873022): claims-only silently drops the "someone is IN the system"
+ *    half of the deliverable Dustin asked for — 18 live role='homeowner'
+ *    profiles have zero claims and would never alert. CEO ruling: keep
+ *    claims-only trigger AND add a DEFERRED SWEEP (this rework) that finds
+ *    homeowner profiles 20min-7d old with no contractors row (the real,
+ *    verified signal a contractor signup creates: trg_sync_contractor_profile_role
+ *    fires AFTER INSERT ON public.contractors, keyed by contractors.user_id =
+ *    profiles.id — confirmed via information_schema), not excluded, and not
+ *    yet alerted -> alerts once each. The sweep's FIRST EVER run sends one
+ *    digest (not N individual emails) for the pre-existing backlog, then
+ *    marks each as alerted so later runs only see genuinely new signups.
+ *    Also: the exclusion filter was an unanchored `.includes("test")`,
+ *    which silently dropped real homeowners whose address merely contains
+ *    "test" (5 confirmed live, e.g. "protest..."/"greatest..."-shaped local
+ *    parts) — replaced with an anchored pattern in this rework (see
+ *    isExcludedEmail below): local part exactly "test", local part starting
+ *    "test" + [0-9+._-], "+test" anywhere, or domain in
+ *    example.com/example.org/test.local. is_test=true is still excluded
+ *    unconditionally, as are the admin/internal domains.
  *
- * Triggered by a PostgreSQL trigger (trg_notify_admin_new_claim) via pg_net,
- * AFTER INSERT on claims — see the accompanying migration. The trigger
- * POSTs {event_type, record} where record is the new row as jsonb.
- *
- * gh-1932 rework (refuter FAIL, 2026-09-14): a second trigger on profiles
- * (AFTER INSERT WHERE role='homeowner') was built and deployed in the first
- * pass, then DROPPED — there is no reliable per-request signal for
- * "homeowner" at auth signup time. Confirmed by reading the real signup
- * path (js/auth.js signUpWithPassword -> sb.auth.signUp with no
- * options.data at all) and the schema: profiles.role defaults to
- * 'homeowner' for EVERY new auth user (text NOT NULL DEFAULT 'homeowner'),
- * and a contractor's row only becomes role='contractor' via a SEPARATE,
- * later INSERT into public.contractors (trg_sync_contractor_profile_role),
- * observed live 2s-31min after the profiles row was created. Gating the
- * trigger on profiles.role at INSERT time therefore fired "New homeowner"
- * for every contractor signup too (confirmed: role default made this
- * unconditional). auth-callback.html's `intent` query param is a
- * client-side-only routing hint, never persisted to any column the DB can
- * see. With no reliable signal, this EF now alerts on claims INSERT only
- * -- the point a homeowner is unambiguously real and engaged, and the one
- * event that also carries an address, closing the original signup path's
- * "where are they" gap too. The function still ACCEPTS event_type
- * homeowner_signup defensively (see payload tolerance below) in case a
- * future, real signal is found and a trigger/webhook is re-added, but
- * nothing in this repo currently sends it.
- *
- * Payload tolerance: also accepts Supabase's native database-webhook shape
- * {type:"INSERT", table, record} and derives event_type from table
- * ('profiles' -> homeowner_signup, 'claims' -> claim_created), so this can
- * be wired from either a hand-rolled pg_net trigger or a Database Webhook.
+ * Trigger sources:
+ *  1. trg_notify_admin_new_claim (AFTER INSERT ON claims) -> pg_net ->
+ *     POSTs {event_type:"claim_created", record}.
+ *  2. pg_cron job "gh1932-homeowner-signup-sweep" (every 15 minutes) -> pg_net ->
+ *     POSTs {event_type:"signup_sweep"} with no record; this EF does its own
+ *     candidate selection with the service-role client.
  *
  * Auth model: accepts the Supabase service role key as bearer token
- * (trigger path — copied verbatim from notify-admin-new-contractor).
- * ALSO accepts the Supabase anon key as bearer token — a deliberate,
- * documented extension of that model so gh-1932's own test step (manual
- * curl against this EF with the publishable/anon key, because a profiles
- * row cannot be inserted directly without a matching auth.users row — see
- * profiles_id_fkey) can exercise the real send path without ever handling
- * the service-role secret. Both values are read from the Supabase-managed
- * env vars already injected into every Edge Function; neither is
- * hardcoded here.
+ * (both trigger and cron paths). ALSO accepts the anon key — a deliberate,
+ * documented extension so manual/test invocations never need to handle the
+ * service-role secret.
  *
- * Idempotency: checks the notifications table before sending —
- *   homeowner_signup -> skips if notification_type=admin_new_homeowner
- *                        already exists for user_id = record.id
- *   claim_created     -> skips if notification_type=admin_new_claim
- *                        already exists for claim_id = record.id
+ * Idempotency (notifications table):
+ *   claim_created -> skips if notification_type=admin_new_claim already
+ *                    exists for claim_id = record.id
+ *   signup_sweep, per-profile -> skips a profile if notification_type=
+ *                    admin_new_homeowner already exists for user_id = profile.id
+ *   signup_sweep, digest gate -> the one-time backlog digest is sent only if
+ *                    no notification_type=admin_homeowner_signup_digest row
+ *                    exists yet (any row, checked without a user_id filter).
  *
- * Test / internal-account filter (gh-1932 spec, broader than
- * notify-admin-new-contractor's): skips when is_test = true, or email
- * matches (case-insensitive) any of:
- *   %test%  |  @otterquote.com  |  @tryotterquote.com
- *   |  @stellaredgeservices.com  |  %stohler%
- * Subject line masks the email (d***@gmail.com).
+ * Test / internal-account filter (gh-1932 rework 2, anchored):
+ *   is_test = true (unconditional), OR email matches (case-insensitive):
+ *     local part exactly "test"        e.g. test@x.com
+ *     local part "test" + [0-9+._-]    e.g. test1@, test+x@, test.x@, test-x@
+ *     "+test" anywhere in local part   e.g. dustin+test@gmail.com
+ *     domain in example.com / example.org / test.local
+ *     @otterquote.com / @tryotterquote.com / @stellaredgeservices.com
+ *     email contains "stohler" (internal/founder accounts)
+ *   A real address that merely CONTAINS "test" (e.g. a "greatestates@" or
+ *   "protest@" style local part) is NOT excluded by this pattern.
  *
  * Environment variables (all already set in Supabase secrets):
- *   SUPABASE_URL
- *   SUPABASE_SERVICE_ROLE_KEY
- *   SUPABASE_ANON_KEY
- *   MAILGUN_API_KEY
- *   MAILGUN_DOMAIN
+ *   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ANON_KEY,
+ *   MAILGUN_API_KEY, MAILGUN_DOMAIN
  *
  * Refs #1932
  */
@@ -85,6 +81,10 @@ const ADMIN_PORTAL_URL = "https://otterquote.com/admin-dashboard.html";
 
 const NOTIF_TYPE_HOMEOWNER = "admin_new_homeowner";
 const NOTIF_TYPE_CLAIM     = "admin_new_claim";
+const NOTIF_TYPE_DIGEST    = "admin_homeowner_signup_digest";
+
+const DEFAULT_MIN_AGE_MINUTES = 20;
+const MAX_AGE_DAYS            = 7;
 
 // CORS — origin-allowlisted per project standard (Session 254), copied
 // from notify-admin-new-contractor.
@@ -106,16 +106,24 @@ function buildCorsHeaders(req: Request): Record<string, string> {
   };
 }
 
-// gh-1932 exclusion list — is_test flag handled separately by the caller.
+// gh-1932 rework 2: anchored exclusion filter (see doc header for the exact
+// spec). Deliberately does NOT match a real address that merely contains
+// "test" as a substring.
 function isExcludedEmail(email: string): boolean {
-  const lower = (email || "").toLowerCase();
-  return (
-    lower.includes("test") ||
-    lower.endsWith("@otterquote.com") ||
-    lower.endsWith("@tryotterquote.com") ||
-    lower.endsWith("@stellaredgeservices.com") ||
-    lower.includes("stohler")
-  );
+  const lower = (email || "").toLowerCase().trim();
+  if (!lower || lower.indexOf("@") <= 0) return true; // no usable address
+  const at = lower.indexOf("@");
+  const local  = lower.slice(0, at);
+  const domain = lower.slice(at + 1);
+
+  if (local === "test") return true;
+  if (/^test[0-9+._-]/.test(local)) return true;
+  if (local.includes("+test")) return true;
+  if (["example.com", "example.org", "test.local"].includes(domain)) return true;
+  if (domain === "otterquote.com" || domain === "tryotterquote.com" || domain === "stellaredgeservices.com") return true;
+  if (lower.includes("stohler")) return true;
+
+  return false;
 }
 
 function maskEmail(email: string): string {
@@ -132,7 +140,7 @@ function escapeHtml(str: string): string {
     .replace(/"/g, "&quot;");
 }
 
-function buildEmailHtml(heading: string, rows: [string, string][]): string {
+function buildEmailHtml(heading: string, rows: [string, string][], extraHtml?: string): string {
   const rowsHtml = rows
     .map(
       ([label, value]) => `
@@ -167,6 +175,7 @@ function buildEmailHtml(heading: string, rows: [string, string][]): string {
             <table width="100%" cellpadding="0" cellspacing="0" border="0"
                    style="border-collapse:collapse;font-size:14px;margin-bottom:24px;">${rowsHtml}
             </table>
+            ${extraHtml || ""}
             <table cellpadding="0" cellspacing="0" border="0">
               <tr>
                 <td align="center" bgcolor="#F59E0B" style="border-radius:8px;">
@@ -196,28 +205,29 @@ function buildEmailHtml(heading: string, rows: [string, string][]): string {
 </html>`.trim();
 }
 
-type NormalizedEvent = {
-  eventType: "homeowner_signup" | "claim_created";
-  record: Record<string, unknown>;
-};
+type NormalizedEvent =
+  | { eventType: "claim_created"; record: Record<string, unknown> }
+  | { eventType: "signup_sweep"; minAgeMinutes: number };
 
 function normalizeBody(body: any): NormalizedEvent | null {
   if (!body || typeof body !== "object") return null;
 
-  // Native shape this EF's own triggers send: {event_type, record}
-  if (body.event_type === "homeowner_signup" || body.event_type === "claim_created") {
+  if (body.event_type === "claim_created") {
     if (!body.record || typeof body.record !== "object") return null;
-    return { eventType: body.event_type, record: body.record };
+    return { eventType: "claim_created", record: body.record };
+  }
+
+  if (body.event_type === "signup_sweep") {
+    const minAgeMinutes =
+      typeof body.min_age_minutes === "number" && body.min_age_minutes >= 0
+        ? body.min_age_minutes
+        : DEFAULT_MIN_AGE_MINUTES;
+    return { eventType: "signup_sweep", minAgeMinutes };
   }
 
   // Supabase native database-webhook shape: {type:"INSERT", table, record}
-  if (body.type === "INSERT" && body.record && typeof body.record === "object") {
-    if (body.table === "profiles") {
-      return { eventType: "homeowner_signup", record: body.record };
-    }
-    if (body.table === "claims") {
-      return { eventType: "claim_created", record: body.record };
-    }
+  if (body.type === "INSERT" && body.record && typeof body.record === "object" && body.table === "claims") {
+    return { eventType: "claim_created", record: body.record };
   }
 
   return null;
@@ -253,7 +263,7 @@ serve(async (req: Request) => {
       );
     }
 
-    const rawBody = await req.json().catch(() => null);
+    const rawBody = await req.json().catch(() => ({}));
     const normalized = normalizeBody(rawBody);
     if (!normalized) {
       return new Response(
@@ -262,95 +272,14 @@ serve(async (req: Request) => {
       );
     }
 
-    const { eventType, record } = normalized;
     const sb = createClient(supabaseUrl, serviceRoleKey);
 
-    if (eventType === "homeowner_signup") {
-      const userId  = record.id as string | undefined;
-      const email   = (record.email as string) || "";
-      const isTest  = record.is_test === true;
-
-      if (!userId) {
-        return new Response(
-          JSON.stringify({ error: "Missing required field: record.id" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
-      }
-
-      if (isTest || isExcludedEmail(email)) {
-        console.log(`notify-admin-new-homeowner: skipping test/excluded account ${email}`);
-        return new Response(
-          JSON.stringify({ success: true, skipped: true, reason: "test_account" }),
-          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
-      }
-
-      const { data: existing } = await sb
-        .from("notifications")
-        .select("id")
-        .eq("user_id", userId)
-        .eq("notification_type", NOTIF_TYPE_HOMEOWNER)
-        .eq("channel", "email")
-        .limit(1);
-
-      if (existing && existing.length > 0) {
-        console.log(`notify-admin-new-homeowner: already sent for user_id=${userId}`);
-        return new Response(
-          JSON.stringify({ success: true, skipped: true, reason: "already_notified" }),
-          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
-      }
-
-      const fullName = (record.full_name as string) || "(no name given)";
-      const cityStateZip = [record.address_city, record.address_state, record.address_zip]
-        .filter(Boolean)
-        .join(", ") || "location not yet provided";
-      const signupTs = record.created_at
-        ? new Date(record.created_at as string).toLocaleString("en-US", { timeZone: "America/Chicago" })
-        : new Date().toLocaleString("en-US", { timeZone: "America/Chicago" });
-      const maskedEmail = maskEmail(email);
-
-      const subject  = `[OtterQuote] New homeowner: ${maskedEmail} — ${cityStateZip}`;
-      const textBody = [
-        `A new homeowner signed up on Otter Quotes.`,
-        `Name     : ${fullName}`,
-        `Email    : ${maskedEmail}`,
-        `Signed up: ${signupTs} CT`,
-        `Location : ${cityStateZip}`,
-        ``,
-        `Open the admin dashboard:`,
-        ADMIN_PORTAL_URL,
-      ].join("\n");
-      const htmlBody = buildEmailHtml("New Homeowner Signup", [
-        ["Name", escapeHtml(fullName)],
-        ["Email", escapeHtml(maskedEmail)],
-        ["Signed up", `${escapeHtml(signupTs)} CT`],
-        ["Location", escapeHtml(cityStateZip)],
-      ]);
-
-      const mgData = await sendMail(mailgunDomain, mailgunKey, subject, textBody, htmlBody);
-
-      await sb.from("notifications").insert({
-        user_id:           userId,
-        claim_id:          null,
-        channel:           "email",
-        notification_type: NOTIF_TYPE_HOMEOWNER,
-        recipient:         ADMIN_EMAIL,
-        message_preview:   `New homeowner signup: ${maskedEmail}`,
-        sent_at:           new Date().toISOString(),
-        delivered:         true,
-        mailgun_id:        mgData.id,
-      }).then(({ error }) => {
-        if (error) console.warn(`notify-admin-new-homeowner: failed to log notification for user_id=${userId}:`, error);
-      });
-
-      return new Response(
-        JSON.stringify({ success: true, mailgun_id: mgData.id }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+    if (normalized.eventType === "signup_sweep") {
+      return await handleSignupSweep(sb, normalized.minAgeMinutes, mailgunDomain, mailgunKey, corsHeaders);
     }
 
     // eventType === "claim_created"
+    const { record } = normalized;
     const claimId = record.id as string | undefined;
     const userId  = record.user_id as string | undefined;
     if (!claimId) {
@@ -360,11 +289,6 @@ serve(async (req: Request) => {
       );
     }
 
-    // claims rows carry is_test but not email — resolve the owning profile
-    // for the exclusion filter, the masked email in the subject, and a
-    // name fallback (gh-1932 rework: claims.homeowner_name is preferred
-    // when present, profiles.full_name is the fallback — at claim-creation
-    // time one of the two is normally populated, unlike at bare signup).
     let email = "";
     let profileIsTest = false;
     let profileFullName = "";
@@ -463,6 +387,182 @@ serve(async (req: Request) => {
     );
   }
 });
+
+// gh-1932 rework 2: deferred signup sweep. Selects role='homeowner' profiles
+// between minAgeMinutes and MAX_AGE_DAYS old, with no matching contractors
+// row, not excluded/is_test, and not yet alerted. First-ever run (no
+// NOTIF_TYPE_DIGEST row exists) sends ONE digest for the whole backlog
+// instead of one email per profile. Every subsequent run alerts newly
+// eligible profiles individually (normally 0 or 1 per run).
+async function handleSignupSweep(
+  sb: ReturnType<typeof createClient>,
+  minAgeMinutes: number,
+  mailgunDomain: string,
+  mailgunKey: string,
+  corsHeaders: Record<string, string>,
+) {
+  const now = Date.now();
+  const upperBound = new Date(now - minAgeMinutes * 60_000).toISOString();       // created_at <= this (old enough)
+  const lowerBound = new Date(now - MAX_AGE_DAYS * 24 * 60 * 60_000).toISOString(); // created_at >= this (not stale)
+
+  const { data: candidates, error: candErr } = await sb
+    .from("profiles")
+    .select("id, email, full_name, address_city, address_state, address_zip, created_at, is_test")
+    .eq("role", "homeowner")
+    .gte("created_at", lowerBound)
+    .lte("created_at", upperBound);
+
+  if (candErr) {
+    console.error("notify-admin-new-homeowner: sweep candidate query failed:", candErr);
+    return new Response(
+      JSON.stringify({ error: "sweep candidate query failed" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  }
+
+  const ids = (candidates || []).map((c: any) => c.id);
+  let contractorIds = new Set<string>();
+  if (ids.length > 0) {
+    const { data: contractorRows } = await sb.from("contractors").select("user_id").in("user_id", ids);
+    contractorIds = new Set((contractorRows || []).map((r: any) => r.user_id));
+  }
+
+  // anchored exclusion filter (SQL-equivalent pattern, applied here in TS
+  // over the already-narrowed candidate set — see isExcludedEmail doc header)
+  const eligible = (candidates || []).filter(
+    (c: any) => !contractorIds.has(c.id) && c.is_test !== true && !isExcludedEmail(c.email || ""),
+  );
+
+  let alreadyAlertedIds = new Set<string>();
+  if (eligible.length > 0) {
+    const { data: alertedRows } = await sb
+      .from("notifications")
+      .select("user_id")
+      .eq("notification_type", NOTIF_TYPE_HOMEOWNER)
+      .in("user_id", eligible.map((e: any) => e.id));
+    alreadyAlertedIds = new Set((alertedRows || []).map((r: any) => r.user_id));
+  }
+
+  const toAlert = eligible.filter((e: any) => !alreadyAlertedIds.has(e.id));
+
+  const { data: digestRows } = await sb
+    .from("notifications")
+    .select("id")
+    .eq("notification_type", NOTIF_TYPE_DIGEST)
+    .limit(1);
+  const digestAlreadySent = !!digestRows && digestRows.length > 0;
+
+  if (toAlert.length === 0) {
+    return new Response(
+      JSON.stringify({ success: true, sweep: true, alerted: 0, digest_sent: digestAlreadySent }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  }
+
+  const locationOf = (p: any) =>
+    [p.address_city, p.address_state, p.address_zip].filter(Boolean).join(", ") || "location not yet provided";
+
+  if (!digestAlreadySent) {
+    // ONE digest email listing every backlog profile, then mark all alerted.
+    const rowsHtml = toAlert
+      .map((p: any) => {
+        const ts = new Date(p.created_at).toLocaleString("en-US", { timeZone: "America/Chicago" });
+        return `<tr><td style="padding:4px 8px;color:#64748B;">${escapeHtml(maskEmail(p.email || ""))}</td><td style="padding:4px 8px;">${escapeHtml(ts)} CT</td><td style="padding:4px 8px;">${escapeHtml(locationOf(p))}</td></tr>`;
+      })
+      .join("");
+    const extraHtml = `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;font-size:13px;margin-bottom:20px;border:1px solid #E2E8F0;">
+      <tr style="background:#F8FAFC;"><th align="left" style="padding:6px 8px;">Email</th><th align="left" style="padding:6px 8px;">Signed up</th><th align="left" style="padding:6px 8px;">Location</th></tr>
+      ${rowsHtml}
+    </table>`;
+
+    const subject  = `[OtterQuote] Homeowner signup backlog digest: ${toAlert.length} existing homeowner(s)`;
+    const textLines = toAlert.map((p: any) => `- ${maskEmail(p.email || "")} | ${new Date(p.created_at).toLocaleString("en-US", { timeZone: "America/Chicago" })} CT | ${locationOf(p)}`);
+    const textBody = [
+      `This is a one-time backlog digest for the gh-1932 homeowner signup sweep.`,
+      `${toAlert.length} existing homeowner(s) with no claim were found and are listed below.`,
+      `From now on, only NEW signups will trigger individual emails.`,
+      ``,
+      ...textLines,
+      ``,
+      `Open the admin dashboard:`,
+      ADMIN_PORTAL_URL,
+    ].join("\n");
+    const htmlBody = buildEmailHtml(
+      "Homeowner Signup Backlog Digest",
+      [["Count", String(toAlert.length)]],
+      extraHtml,
+    );
+
+    const mgData = await sendMail(mailgunDomain, mailgunKey, subject, textBody, htmlBody);
+
+    await sb.from("notifications").insert({
+      user_id: null, claim_id: null, channel: "email",
+      notification_type: NOTIF_TYPE_DIGEST, recipient: ADMIN_EMAIL,
+      message_preview: `Backlog digest: ${toAlert.length} homeowner(s)`,
+      sent_at: new Date().toISOString(), delivered: true, mailgun_id: mgData.id,
+    });
+
+    // mark every backlog profile as alerted (no individual email for these)
+    const markRows = toAlert.map((p: any) => ({
+      user_id: p.id, claim_id: null, channel: "email",
+      notification_type: NOTIF_TYPE_HOMEOWNER, recipient: ADMIN_EMAIL,
+      message_preview: `Included in backlog digest`,
+      sent_at: new Date().toISOString(), delivered: true, mailgun_id: mgData.id,
+    }));
+    if (markRows.length > 0) {
+      const { error: markErr } = await sb.from("notifications").insert(markRows);
+      if (markErr) console.warn("notify-admin-new-homeowner: failed to mark backlog as alerted:", markErr);
+    }
+
+    return new Response(
+      JSON.stringify({ success: true, sweep: true, digest: true, count: toAlert.length, mailgun_id: mgData.id }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  }
+
+  // Steady state: individual email per newly-eligible profile.
+  let lastMailgunId = "";
+  for (const p of toAlert) {
+    const ts = new Date(p.created_at).toLocaleString("en-US", { timeZone: "America/Chicago" });
+    const maskedEmail = maskEmail(p.email || "");
+    const location = locationOf(p);
+    const fullName = p.full_name || "(no name given)";
+    const subject  = `[OtterQuote] New homeowner: ${maskedEmail} — ${location}`;
+    const textBody = [
+      `A homeowner signed up on Otter Quotes and has not yet filed a claim.`,
+      `Name     : ${fullName}`,
+      `Email    : ${maskedEmail}`,
+      `Signed up: ${ts} CT`,
+      `Location : ${location}`,
+      ``,
+      `Open the admin dashboard:`,
+      ADMIN_PORTAL_URL,
+    ].join("\n");
+    const htmlBody = buildEmailHtml("New Homeowner Signup", [
+      ["Name", escapeHtml(fullName)],
+      ["Email", escapeHtml(maskedEmail)],
+      ["Signed up", `${escapeHtml(ts)} CT`],
+      ["Location", escapeHtml(location)],
+    ]);
+
+    const mgData = await sendMail(mailgunDomain, mailgunKey, subject, textBody, htmlBody);
+    lastMailgunId = mgData.id;
+
+    await sb.from("notifications").insert({
+      user_id: p.id, claim_id: null, channel: "email",
+      notification_type: NOTIF_TYPE_HOMEOWNER, recipient: ADMIN_EMAIL,
+      message_preview: `New homeowner signup: ${maskedEmail}`,
+      sent_at: new Date().toISOString(), delivered: true, mailgun_id: mgData.id,
+    }).then(({ error }) => {
+      if (error) console.warn(`notify-admin-new-homeowner: failed to log sweep notification for user_id=${p.id}:`, error);
+    });
+  }
+
+  return new Response(
+    JSON.stringify({ success: true, sweep: true, alerted: toAlert.length, mailgun_id: lastMailgunId }),
+    { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+  );
+}
 
 async function sendMail(
   mailgunDomain: string,
