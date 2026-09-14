@@ -966,8 +966,20 @@ window.Auth = {
                 attestation_signer_name:  attestationPayload ? data.contact_name : null,
                 attestation_signer_title: data.signer_title || null,
                 attestation_text_version: attestationPayload ? (attestationPayload.text_version) : null,
-                // TCPA SMS consent
+                // TCPA SMS consent (legacy field — data.sms_consent_ts is never
+                // set by contractor-join.html today, so this has always
+                // written NULL for every contractor; left as-is for back-compat).
                 sms_consent_ts: data.sms_consent_ts || null,
+                // gh-1916 / R-134: the real opt-in the SMS send-side gate reads
+                // (supabase/functions/notify-contractors, process-dunning).
+                // data.sms_opt_in is only ever `true` (checkbox checked) or
+                // undefined (unchecked, or pre-this-change localStorage
+                // payload) — coerced to a real boolean/NULL here so an
+                // unchecked signup persists NULL, not `false`, matching the
+                // migration's column default and the issue's negative control.
+                sms_opt_in: data.sms_opt_in === true ? true : null,
+                sms_opt_in_at: data.sms_opt_in === true ? (data.sms_opt_in_at || new Date().toISOString()) : null,
+                sms_opt_in_source: data.sms_opt_in === true ? (data.sms_opt_in_source || 'contractor-signup') : null,
                 // New contractors default to pending_approval status
                 status: 'pending_approval',
               })
@@ -985,55 +997,6 @@ window.Auth = {
                 } catch (ipErr) {
                   console.warn('record_attestation_ip RPC failed (non-fatal):', ipErr);
                 }
-              }
-
-              // Send email notification for new contractor signup (pending_approval status)
-              try {
-                const signupMessage = `New contractor has signed up and is pending approval:
-
-Company Name: ${data.company_name || '(not provided)'}
-Contact Name: ${data.contact_name || '(not provided)'}
-Email: ${data.email || user.email}
-Phone: ${data.phone || '(not provided)'}
-
-Status: pending_approval
-Date: ${new Date().toISOString()}
-
-Log in to the admin panel to review and approve this contractor.`;
-
-                await fetch(`${window.location.origin}/functions/v1/send-support-email`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    from_name: data.company_name || 'New Contractor',
-                    from_email: data.email || user.email,
-                    subject: 'New Contractor Signup — Pending Approval',
-                    message: signupMessage
-                  })
-                });
-              } catch (emailErr) {
-                console.warn('Error sending signup notification email:', emailErr);
-                // Don't fail signup if email fails
-              }
-
-              // Send welcome email to the contractor
-              try {
-                // D-220 P16 U1b: welcome email moved server-side to send-welcome-email.
-                // The template + recipient now live in the Edge Function; the browser
-                // passes only the contractor id and the caller's verified session JWT.
-                const { data: { session: welcomeSession } } = await sb.auth.getSession();
-                await fetch(`${CONFIG.SUPABASE_URL}/functions/v1/send-welcome-email`, {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': 'Bearer ' + (welcomeSession?.access_token || ''),
-                    'apikey': CONFIG.SUPABASE_ANON,
-                  },
-                  body: JSON.stringify({ contractor_id: newContractor.id })
-                });
-              } catch (welcomeErr) {
-                console.warn('Error sending contractor welcome email:', welcomeErr);
-                // Non-fatal
               }
             }
 
