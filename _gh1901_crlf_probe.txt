@@ -1,4 +1,0 @@
-regex \s test
-backslash \\ test
-backtick ` test
-end
