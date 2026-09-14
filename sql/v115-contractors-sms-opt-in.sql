@@ -10,7 +10,11 @@
 ALTER TABLE public.contractors
   ADD COLUMN IF NOT EXISTS sms_opt_in boolean DEFAULT NULL,
   ADD COLUMN IF NOT EXISTS sms_opt_in_at timestamptz DEFAULT NULL,
-  ADD COLUMN IF NOT EXISTS sms_opt_in_source text DEFAULT NULL;
+  ADD COLUMN IF NOT EXISTS sms_opt_in_source text DEFAULT NULL,
+  -- R-177 rework (2026-09-14): text-version persistence the issue's scope
+  -- item 1 asks for -- "the exact text shown" -- so a later audit can prove
+  -- which consent sentence a contractor actually agreed to.
+  ADD COLUMN IF NOT EXISTS sms_consent_text_version text DEFAULT NULL;
 
 COMMENT ON COLUMN public.contractors.sms_opt_in IS
   'gh-1916/R-134: real TCPA express-consent SMS opt-in, distinct from the legacy sms_consent_ts field. NULL = never asked (no send, pre-migration default for every existing row). TRUE = checked the consent checkbox at contractor-join.html signup. FALSE is reserved for a future explicit decline/STOP path (none exists yet — see sms_opt_in_source). Read by supabase/functions/notify-contractors and supabase/functions/process-dunning before any Twilio send to a contractor number; send-sms itself is recipient-agnostic and cannot gate on this.';
@@ -18,3 +22,5 @@ COMMENT ON COLUMN public.contractors.sms_opt_in_at IS
   'gh-1916/R-134: timestamp the consent checkbox was checked at signup. NULL whenever sms_opt_in is not true.';
 COMMENT ON COLUMN public.contractors.sms_opt_in_source IS
   'gh-1916/R-134: free-text provenance of the opt-in, e.g. contractor-signup. NULL whenever sms_opt_in is not true.';
+COMMENT ON COLUMN public.contractors.sms_consent_text_version IS
+  'gh-1916/R-177: short version tag for the exact consent sentence shown when sms_opt_in was set (e.g. contractor-v1-2026-09-14). NULL whenever sms_opt_in is not true. Lets a later audit prove which consent string a contractor actually agreed to, independent of the checkbox copy having since changed.';

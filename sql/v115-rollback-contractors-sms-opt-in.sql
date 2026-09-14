@@ -7,4 +7,5 @@
 ALTER TABLE public.contractors
   DROP COLUMN IF EXISTS sms_opt_in,
   DROP COLUMN IF EXISTS sms_opt_in_at,
-  DROP COLUMN IF EXISTS sms_opt_in_source;
+  DROP COLUMN IF EXISTS sms_opt_in_source,
+  DROP COLUMN IF EXISTS sms_consent_text_version;
