@@ -14,6 +14,17 @@
 // R-120: the two added customer-facing strings are the human-read content on
 // this PR. They carry no price, no contractor name and no third-party vendor
 // name (D-312), and they promise only what the endpoint does.
+//
+// gh-1944: this template is a Tier B promotional nudge, not a transactional
+// message, so CAN-SPAM's physical-postal-address requirement applies to it.
+// The address comes from ./email-footer.ts — the same D-237 mailbox address
+// already ruled on for #1824 — never typed here directly, so there is one
+// source of truth to update if it ever changes.
+
+import {
+  footerPostalAddressHtml,
+  footerPostalAddressText,
+} from "./email-footer.ts";
 
 // The homeowner-facing opt-out wording. D-320 point 4, verbatim phrase.
 export const OPTOUT_LINK_TEXT = "Stop these updates";
@@ -49,6 +60,8 @@ export function buildEmailContent(
     "— The Otter Quotes Team",
     "",
     `${OPTOUT_TEXT_LINE} ${optOutUrl}`,
+    "",
+    footerPostalAddressText(),
   ].join("\n");
 
   const htmlBody = `<!DOCTYPE html>
@@ -94,6 +107,7 @@ export function buildEmailContent(
               &mdash; The Otter Quotes Team
               <br><br>
               <a href="${optOutUrl}" style="color:#64748B;text-decoration:underline;">${OPTOUT_LINK_TEXT}</a>
+              ${footerPostalAddressHtml()}
             </td>
           </tr>
         </table>

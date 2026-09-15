@@ -1027,8 +1027,21 @@
       });
 
       // GA4 funnel step &mdash; homeowner intake begins when they click a homeowner CTA
+      //
+      // gh-1940 (round 3, REVIEW: FAIL on #1948 twice, finding 3) &mdash; this
+      // used to be 'form_start', which collides with GA4 Enhanced
+      // Measurement's own automatic 'form_start' (fires on any page with a
+      // <form>, elsewhere in this same funnel) and merges two populations
+      // with different parameter shapes into one event. Renamed to
+      // 'homeowner_cta_form_start' &mdash; deliberately NOT the same name as
+      // get-started/page.tsx's 'homeowner_form_start': a CTA click here and
+      // a first field touch there are two different, legitimately separate
+      // funnel steps (a visitor can land on /get-started directly, skipping
+      // this one), so giving them the same name would just move the
+      // ambiguity instead of removing it. Neither name collides with GA4's
+      // reserved 'form_start'.
       if (ctaType === 'homeowner_cta') {
-        gtag('event', 'form_start', {
+        gtag('event', 'homeowner_cta_form_start', {
           form_name: 'homeowner_intake',
           source_page: 'index',
         });

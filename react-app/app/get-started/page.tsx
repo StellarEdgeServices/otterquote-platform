@@ -72,6 +72,25 @@
  *   than left stale, per the independent-review finding on PR #1929. D-207
  *   itself is unaffected; only this sentence's description of button
  *   position was wrong.
+ *
+ *   [gh-1940 rebase onto #1929, CEO RUN 47, 2026-09-15] #1948 (homeowner
+ *   funnel GA4 step events, REVIEW: PASS at 2026-09-15T08:44:43Z on head
+ *   d2901a12) was built against this file's retired single-step form and
+ *   went `mergeable_state: dirty` once #1929's two-step rewrite landed
+ *   first, exactly as both PRs' own collision notes predicted. Rebased
+ *   here rather than re-authored from scratch, per the independent
+ *   reviewer's own instruction embedded in the pre-rebase file (see the
+ *   removed NOTE that used to sit above the old `profile_info`/
+ *   `credentials` useEffects): `STEP_NAMES` is re-derived from #1929's
+ *   real two screens (`home_info` = Step 1's address, `account` = Step
+ *   2's name/email/password), and `TRACKED_FIELDS` gains `project_type`,
+ *   #1929's one new Step-1 field. The security contract this PR exists
+ *   for — `TRACK_EVENT_KEYS` is the only source of which keys `track()`
+ *   reads, `FIELD_SANITIZERS` is the only path a value takes to reach
+ *   `gtag()`, and no field VALUE (only field NAMES, closed unions) can
+ *   reach GA4 — is carried over byte-for-byte; only the two step names
+ *   and the one new tracked field name changed. Not re-reviewed as part
+ *   of this rebase; flagged for a fresh independent review before merge.
  */
 
 'use client';
@@ -99,6 +118,17 @@ const SUPPORT_EMAIL = 'info@otterquote.com';
 const MIN_PASSWORD_LENGTH = 8;
 
 /**
+ * gh-1940 (amended after REVIEW: FAIL on #1948, finding 2) — how long we
+ * wait, after kicking off the Google OAuth redirect, before treating
+ * "still on this page" as evidence the redirect did not actually happen.
+ * `signInWithOAuth` normally navigates the browser away in well under a
+ * second; 2.5s is generous headroom above that, not a tuned timeout. See
+ * handleGoogle for how this is used — it is a redirect-detection window,
+ * not a network timeout on the Supabase call itself.
+ */
+const GOOGLE_REDIRECT_GRACE_MS = 2500;
+
+/**
  * Shown when Supabase tells us the email already has an account. Dustin's
  * 2026-08-26 direction makes password the fallback path, and a generic
  * "something went wrong" on a duplicate email is the single most common way a
@@ -107,8 +137,6 @@ const MIN_PASSWORD_LENGTH = 8;
  */
 const ALREADY_REGISTERED_MESSAGE =
   'An account with that email already exists. Sign in instead — use the "Sign in here" link below, or reset your password from that page if you have forgotten it.';
-
-type ReferralSource = 'insurance_agent' | 'realtor' | 'friend' | 'web' | '';
 
 // gh-1901: Step 1 "what do you need help with" options. Kept short and
 // storm-damage-led to match the trades OtterQuote actually serves; trade-selector
@@ -125,12 +153,311 @@ const PROJECT_TYPE_OPTIONS: { value: ProjectType; label: string }[] = [
   { value: 'other', label: 'Other' },
 ];
 
-// ─── GA4 helper ──────────────────────────────────────────────────────────────
+// ─── GA4 helper ───────────────────────────────────────────────────────
+//
+// gh-1940 (round 3, REVIEW: FAIL on #1948 twice) — every closed vocabulary
+// this page hands to GA4 is defined once, as an `as const` array, with two
+// things derived from it: a TypeScript literal-union type (catches a typo
+// or a wrong-shaped call at `tsc --noEmit` time) and a `Set` backing a
+// same-named `sanitize*` function (the SAME check, run again at runtime, on
+// every call, regardless of how the value reached this file). Type and
+// runtime share one source and cannot drift apart. Round 2 applied this
+// pattern to exactly one field (`TrackedField`/`sanitizeTrackedField`);
+// round 3 applies it to every parameter `track()` accepts, because round
+// 2's per-field guarantee did not extend to the object those fields lived
+// in — see the comment on `track()` below for the attack that found that
+// gap and how this closes it.
+//
+// gh-1940 (rebase onto #1929's two-step form, CEO RUN 47) — the shipped,
+// REVIEW: PASS (2026-09-15T08:44:43Z) contract of this block is unchanged
+// by the rebase: TRACK_EVENT_KEYS is still the only source of which keys
+// `track()` reads, FIELD_SANITIZERS is still the only path a value takes
+// to reach `gtag()`, and every sanitizer is still a closed `Set.has()` or a
+// bounded shape check. The only things that changed are (a) STEP_NAMES,
+// re-derived below from #1929's real two screens instead of the retired
+// single-step grouping, and (b) TRACKED_FIELDS gaining `project_type`,
+// #1929's one new Step-1 field. See the comment on STEP_NAMES and on the
+// `markFieldTouched` call sites for exactly what moved and why.
+
+const REFERRAL_SOURCES = ['insurance_agent', 'realtor', 'friend', 'web', ''] as const;
+type ReferralSource = (typeof REFERRAL_SOURCES)[number];
+const REFERRAL_SOURCE_SET: ReadonlySet<string> = new Set<string>(REFERRAL_SOURCES);
+function sanitizeReferralSource(value: unknown): ReferralSource {
+  return typeof value === 'string' && REFERRAL_SOURCE_SET.has(value) ? (value as ReferralSource) : '';
+}
+
+const SIGNUP_METHODS = ['google', 'password'] as const;
+type SignupMethod = (typeof SIGNUP_METHODS)[number];
+const SIGNUP_METHOD_SET: ReadonlySet<string> = new Set<string>(SIGNUP_METHODS);
+function sanitizeSignupMethod(value: unknown): SignupMethod | 'unknown' {
+  return typeof value === 'string' && SIGNUP_METHOD_SET.has(value) ? (value as SignupMethod) : 'unknown';
+}
+
+/**
+ * gh-1940 (rebase onto #1929, CEO RUN 47) — re-derived from #1929's real
+ * two screens instead of the retired single-step `'profile_info'` /
+ * `'credentials'` grouping (which matched `validateProfile()` /
+ * `validateEmailAndPassword()` on the single-step form this PR was
+ * originally built against). #1929 turned this into an actual two-step UI
+ * gated on its own `step` state:
+ *   - Step 1 ("Tell Us About Your Home", `gs-step-indicator` label "Your
+ *     Home") — property address plus the optional project-type chip,
+ *     gated by `validateHomeInfo()`.
+ *   - Step 2 ("Create Your Account", `gs-step-indicator` label "Your
+ *     Account") — name/email/password/phone/consent, gated by
+ *     `validateAccountProfile()` + `validateEmailAndPassword()`.
+ * `home_info` / `account` name those two screens directly, so
+ * `form_step_complete` now reports a boundary the visitor can actually see
+ * — the defect the independent review flagged this exact rebase for.
+ */
+const STEP_NAMES = ['home_info', 'account'] as const;
+type StepName = (typeof STEP_NAMES)[number];
+const STEP_NAME_SET: ReadonlySet<string> = new Set<string>(STEP_NAMES);
+function sanitizeStepName(value: unknown): StepName | 'unknown' {
+  return typeof value === 'string' && STEP_NAME_SET.has(value) ? (value as StepName) : 'unknown';
+}
+
+/**
+ * `job_type` and `source` on `homeowner_signup` are `URLSearchParams.get()`
+ * values off the page URL — a marketing link controls them, so there is no
+ * fixed vocabulary to allowlist the way the sets above do; legitimate
+ * values are open-ended by design. Round 3 (REVIEW: FAIL finding 2) asked
+ * this pair be "brought inside the closed set, or routed through the same
+ * sanitizer" — a closed set is not possible here, so this is the latter: a
+ * bounded SHAPE check instead of a bounded VOCABULARY check. Anything
+ * containing a space, `@`, `.`, `!`, or any punctuation outside `-`/`_`, or
+ * longer than 40 characters, is rejected outright — which covers every
+ * field this page collects except an unusually simple alphanumeric
+ * password. That residual is disclosed here, not hidden: this is a bound on
+ * the SHAPE of an open channel, not a closed allowlist, and is not claimed
+ * to be more than that. It does stop the exact values the independent
+ * reviewer planted (`Hunter2-Sekrit-9f2a!` — rejected on `!`; a street
+ * address — rejected on spaces/comma/length) — see the report for the
+ * re-run repro.
+ */
+const MARKETING_PARAM_RE = /^[A-Za-z0-9_-]{1,40}$/;
+function sanitizeMarketingParam(value: unknown): string | null {
+  return typeof value === 'string' && MARKETING_PARAM_RE.test(value) ? value : null;
+}
 
 function gtag(...args: unknown[]) {
   if (typeof window !== 'undefined' && (window as any).gtag) {
     (window as any).gtag(...args);
   }
+}
+
+/**
+ * gh-1940 (amended after REVIEW: FAIL on #1948) — closed allowlist of field
+ * NAMES `form_abandon`'s `last_field` may carry. `TRACKED_FIELDS` is the
+ * single source of truth: `TrackedField` is derived from it with `typeof
+ * […][number]` (so the type and the runtime Set can never drift apart), and
+ * `TRACKED_FIELD_SET` backs `sanitizeTrackedField` below.
+ *
+ * Every call site passes a hardcoded literal, never `e.target.id` /
+ * `e.target.name` / `e.target.value` — that is layer 1, and it is real:
+ * `markFieldTouched(field: TrackedField)` (below) rejects anything not in
+ * this exact list at compile time (`tsc --noEmit`, verified by the
+ * independent reviewer against the positive control
+ * `markFieldTouched((e.target as HTMLInputElement).value)` → TS2345).
+ *
+ * The FAIL finding was that layer 1 stopped one function short of the GA4
+ * boundary: `track()` took `Record<string, unknown>`, so a value could
+ * reach `gtag()` through any path that did NOT go through
+ * `markFieldTouched` — writing `lastFieldRef.current` directly with an `as`
+ * cast, or adding an extra property to the params object. Layer 2 below
+ * closes that: `track()` is now generic over a closed `TrackEventParams`
+ * map, so the *parameter bag itself* — not just `markFieldTouched`'s
+ * argument — is typed per event. See the comment on `track()` for exactly
+ * which of the reviewer's six attacks this stops, and which one it cannot
+ * (and why layer 3, `sanitizeTrackedField`, exists for that one).
+ *
+ * gh-1940 (rebase onto #1929, CEO RUN 47) — `project_type` added: #1929's
+ * one new Step-1 field (the "what do you need help with" chip). Its click
+ * handler (`handleProjectTypeChip`, below) now calls `markFieldTouched`
+ * the same way every other field on this page does; everything else in
+ * this list is untouched from the reviewed head.
+ */
+const TRACKED_FIELDS = [
+  'first_name',
+  'last_name',
+  'email',
+  'password',
+  'confirm_password',
+  'phone',
+  'sms_consent',
+  'referrer_opt_out',
+  'address',
+  'referral_source',
+  'ref_name',
+  'ref_email',
+  'project_type',
+] as const;
+
+type TrackedField = (typeof TRACKED_FIELDS)[number];
+
+const TRACKED_FIELD_SET: ReadonlySet<string> = new Set<string>(TRACKED_FIELDS);
+
+/**
+ * Layer 3 — the runtime backstop underneath the two type-level layers.
+ *
+ * Why a third layer is needed at all: TypeScript's `as T` assertion can
+ * force a `string` into any type that overlaps it, including a string
+ * literal union like `TrackedField`, and the compiler allows this by
+ * design (it is documented, intentional behavior, not a gap someone could
+ * "just fix" in the parameter typing). Concretely: nothing above stops
+ * `lastFieldRef.current = someInputValue as TrackedField` from compiling.
+ * That is attack 5 in the independent review — the one attack of six that
+ * still compiles clean after the `track()` fix below.
+ *
+ * This function is the boundary that attack has to cross to reach GA4: it
+ * is called at the one place `lastFieldRef.current` is read for emission
+ * (the `pagehide` handler), and it maps anything not in the fixed
+ * `TRACKED_FIELD_SET` — a value, an empty string, `undefined` coerced to
+ * "undefined", anything — to the literal string `'none'`. Unlike the type
+ * checks, this runs every time, in production, regardless of whether a
+ * future edit forgets a cast is dangerous. It cannot be bypassed by an `as`
+ * assertion because it is not a type check — it is an actual `Set.has()`
+ * evaluated at runtime.
+ */
+function sanitizeTrackedField(value: unknown): TrackedField | 'none' {
+  return typeof value === 'string' && TRACKED_FIELD_SET.has(value) ? (value as TrackedField) : 'none';
+}
+
+/**
+ * Layer 2 — typed per event instead of `Record<string, unknown>`, so a
+ * value can no longer reach `gtag()` by skipping `markFieldTouched` and
+ * writing an extra/mistyped property directly into the object literal at a
+ * `track()` call site — for a call written as a plain object literal.
+ *
+ * Round 3 (REVIEW: FAIL on #1948 twice) is why that qualifier matters: this
+ * check is TypeScript's excess-property ("freshness") check, and it ONLY
+ * runs against a fresh object literal passed directly as the argument.
+ * Assign the exact same object to a `const` first, or build it with
+ * `satisfies`, and the check does not run at all:
+ *
+ *   const leak = { last_field: 'email' as const, addr: liveAddr, pw: livePw };
+ *   track('form_abandon', leak);   // tsc --noEmit → exit 0
+ *
+ * The independent reviewer built that and shipped a real password and
+ * street address to `analytics.google.com/g/collect`. So layer 2 alone is
+ * not the guarantee it was described as — it depends on how a future call
+ * site happens to be written, and a `const`-hoisted params object is an
+ * entirely ordinary refactor, not an attack someone has to go looking for.
+ *
+ * This layer is kept (it still catches the common mistake — a bare literal
+ * with a bad value — at compile time, for free) but it is no longer treated
+ * as the enforcement point. That is now `track()` itself; see its comment
+ * below for the choke point that does not depend on how the object was
+ * constructed.
+ */
+interface TrackEventParams {
+  // Renamed from `form_start` (see round 2, finding 4): GA4 Enhanced
+  // Measurement auto-collects its own `form_start` on every page with a
+  // <form>, and reusing that name merged two populations with different
+  // parameter shapes into one event. Namespacing this one avoids the
+  // collision without touching any GA4 property setting (out of scope for
+  // this PR). index.html's homeowner-CTA event was renamed too, to a THIRD,
+  // distinctly-named event (`homeowner_cta_form_start`) rather than this
+  // one — see the comment there for why they should not share a name.
+  homeowner_form_start: Record<string, never>;
+  form_step_complete: { step_name: StepName };
+  form_abandon: { last_field: TrackedField | 'none' };
+  sign_up: { method: SignupMethod; referral_source: ReferralSource };
+  // job_type/source: URLSearchParams.get() off the page URL, controlled by
+  // a marketing link — round 3 finding 2 flagged these as the two open
+  // `string` channels inside an otherwise-closed map. Kept as `string |
+  // null` / `string` here (no fixed vocabulary is possible for campaign
+  // data), and instead routed through `sanitizeMarketingParam` inside
+  // `track()` itself — see that function and `sanitizeMarketingParam`'s own
+  // comment for what that bound does and does not guarantee.
+  homeowner_signup: { job_type: string | null; source: string };
+}
+
+/**
+ * Per-event whitelist of the ONLY keys `track()` will ever read off the
+ * caller's params object, and the sanitizer each of those keys is passed
+ * through before being handed to `gtag()`. Built from the same kind of `as
+ * const` source as the types above (`TrackEventParams`'s own keys), so this
+ * table and the interface cannot silently drift apart the way `track()`'s
+ * old behavior (forward the object as-is) could drift from what the type
+ * claimed to guarantee.
+ */
+const TRACK_EVENT_KEYS: { [E in keyof TrackEventParams]: ReadonlyArray<keyof TrackEventParams[E] & string> } = {
+  homeowner_form_start: [],
+  form_step_complete: ['step_name'],
+  form_abandon: ['last_field'],
+  sign_up: ['method', 'referral_source'],
+  homeowner_signup: ['job_type', 'source'],
+};
+
+const FIELD_SANITIZERS: Record<string, (value: unknown) => unknown> = {
+  step_name: sanitizeStepName,
+  last_field: sanitizeTrackedField,
+  method: sanitizeSignupMethod,
+  referral_source: sanitizeReferralSource,
+  job_type: sanitizeMarketingParam,
+  source: sanitizeMarketingParam,
+};
+
+/**
+ * gh-1940 — single GA4 call site for this page, so a reviewer auditing
+ * "does any event parameter carry a field VALUE" has one function to read
+ * instead of N.
+ *
+ * gh-1940 (round 3, REVIEW: FAIL on #1948 twice, finding 1) — `track()` used
+ * to trust the shape of whatever object the caller handed it, forwarding it
+ * to `gtag()` essentially unchanged, and relying on TypeScript's
+ * excess-property check to have already rejected anything extra. That check
+ * is a compile-time convenience with a documented hole (see the comment on
+ * `TrackEventParams` above), so this function no longer relies on it, or on
+ * anything else about how the caller constructed the object.
+ *
+ * `track()` now builds the object it sends to `gtag()` itself: for the
+ * event being fired, it reads ONLY the keys `TRACK_EVENT_KEYS[event]` lists
+ * — any other property on the object the caller passed, however that
+ * object was built (`const`-hoisted, `satisfies`-cast, spread from
+ * somewhere else, a shape nobody has written yet), is never looked at and
+ * cannot reach GA4 through this function. Every value it DOES read is also
+ * passed through that key's `FIELD_SANITIZERS` entry before being included
+ * — a closed `Set` lookup for the five keys that have a fixed vocabulary
+ * (`step_name`, `last_field`, `method`, `referral_source`), and a bounded
+ * shape check for the two that cannot (`job_type`, `source`). This is the
+ * single runtime choke point the round-3 review asked for: it runs
+ * unconditionally, on every call, in production, and it is what actually
+ * decides what reaches `gtag()` — not the object literal's freshness.
+ *
+ * Re-run against the round-3 attacks:
+ *   - `const leak = {...}; track('form_abandon', leak)`                → `addr`/`pw` are not in `TRACK_EVENT_KEYS.form_abandon`, dropped; `last_field` still sanitized
+ *   - `track('homeowner_signup', { job_type: password, source: address })` → both rejected by `sanitizeMarketingParam` (punctuation/length)
+ *   - `track('form_step_complete', { step_name: email as StepName })`  → `sanitizeStepName` returns `'unknown'`, not the cast-laundered value
+ *   - `gtag('event', 'form_abandon', { last_field: password, addr: address })` → NOT stopped by this function, because it does not go through this function at all — see below.
+ *
+ * What this does NOT do: prevent something from calling `gtag(...)`
+ * directly instead of going through `track()`. `gtag` is an ordinary
+ * module-level function in this file, not a private class member, and nothing
+ * in TypeScript can make a function callable from exactly one other function
+ * in the same module. That gap is real, disclosed rather than claimed away:
+ * the realistic fix is outside what a type signature in this file can do —
+ * an ESLint rule (e.g. `no-restricted-syntax` matching a bare `gtag(` call
+ * outside `track()`/`fbq`) enforced in CI, or a naming convention hostile
+ * enough to deter an accidental direct call. Neither is implemented here;
+ * both are repo-wide tooling changes and out of this PR's footprint.
+ *
+ * Production/staging/localhost gating is inherited for free: `gtag()`
+ * above is a no-op unless `window.gtag` exists, and `window.gtag` is only
+ * ever defined by <GA4Gate> (app/components/GA4Gate.tsx), which requests
+ * the GA4 library at all only on ALLOWED_HOSTS (gh-1619). Do not add a
+ * second host check here — one gate, same as gh-1619 intended.
+ */
+function track<E extends keyof TrackEventParams>(event: E, params: TrackEventParams[E]): void {
+  const allowedKeys = TRACK_EVENT_KEYS[event];
+  const raw = params as unknown as Record<string, unknown>;
+  const safeParams: Record<string, unknown> = {};
+  for (const key of allowedKeys) {
+    const sanitize = FIELD_SANITIZERS[key];
+    safeParams[key] = sanitize ? sanitize(raw[key]) : undefined;
+  }
+  gtag('event', event, safeParams);
 }
 
 // ─── Meta Pixel helper — gh-1817 ──────────────────────────────────────────
@@ -209,6 +536,120 @@ export default function GetStartedPage() {
    */
   const signupNavigation = useRef(false);
 
+  // ── gh-1940: funnel step instrumentation ──
+  //
+  // formStartedRef: has the visitor touched this form at all yet. Gates
+  // `homeowner_form_start` (fires once) and gates `form_abandon` (never
+  // fires for a visitor who only looked at the page — page_view already
+  // covers that).
+  //
+  // lastFieldRef: the NAME (never the value — see TrackedField above) of the
+  // most recently touched field, read by the pagehide handler below when it
+  // decides whether to send `form_abandon`. Written by markFieldTouched
+  // ONLY — every call site below passes a hardcoded TrackedField literal,
+  // and the pagehide handler additionally re-validates it through
+  // `sanitizeTrackedField` at the point of emission (see that function's
+  // comment for why the second check is not redundant).
+  //
+  // signupCompletedRef: true once the visitor has genuinely converted (or,
+  // for the Google path, is genuinely mid-redirect to Google — see
+  // handleGoogle's grace-period comment below for why that path needs more
+  // care than "set it and forget it"). Suppresses `form_abandon` on a real
+  // conversion's navigation-away.
+  //
+  // abandonFiredRef: once-guard so `form_abandon` cannot double-fire. The
+  // independent review could not prove a double-fire in headless Chromium
+  // (no bfcache restore in that harness) but flagged it as unproven, not
+  // cleared — real bfcache restore-then-leave, or iOS Safari backgrounding,
+  // can both re-run `pagehide`. A ref costs nothing and removes the question
+  // entirely rather than leaving it to a browser this harness cannot drive.
+  //
+  // homeInfoStepFiredRef / accountStepFiredRef: gh-1940 (rebase onto #1929,
+  // CEO RUN 47) — renamed from profileStepFiredRef/credentialsStepFiredRef
+  // to match the STEP_NAMES rename (home_info/account) below them; same
+  // once-guard role, now gating the two screens #1929 actually has instead
+  // of the retired single-step field grouping.
+  const formStartedRef = useRef(false);
+  const lastFieldRef = useRef<TrackedField | null>(null);
+  const signupCompletedRef = useRef(false);
+  const abandonFiredRef = useRef(false);
+  const homeInfoStepFiredRef = useRef(false);
+  const accountStepFiredRef = useRef(false);
+  // Pending "did the Google redirect actually happen" timer — see
+  // handleGoogle and GOOGLE_REDIRECT_GRACE_MS above.
+  const googleGraceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const markFieldTouched = useCallback((field: TrackedField) => {
+    lastFieldRef.current = field;
+    if (!formStartedRef.current) {
+      formStartedRef.current = true;
+      track('homeowner_form_start', {});
+    }
+  }, []);
+
+  // `form_step_complete{step_name:'home_info'}` no longer fires from an
+  // `[address]` effect (gh-1940, CEO RUN 47 fix, ceo47-review-pr1948 defect
+  // 1) — that effect fired on the FIRST KEYSTROKE in the address box
+  // because `validateHomeInfo()`'s criterion (`address.trim()` non-empty)
+  // is satisfied by one character, long before the visitor has actually
+  // finished Step 1. The event now fires exactly once, inside
+  // `handleContinueToAccount`, immediately after `validateHomeInfo()`
+  // passes — the moment the visitor actually completes Step 1 and clicks
+  // Continue. See `handleContinueToAccount` below.
+
+  /**
+   * `form_step_complete{step_name:'account'}` — fires once Step 2 (name,
+   * email, password) is valid, using the same criteria
+   * `validateAccountProfile()` + `validateEmailAndPassword()` gate on
+   * submit. gh-1940 (rebase onto #1929, CEO RUN 47): this replaces the
+   * retired `'credentials'` step. Under #1929's reorder, name and
+   * email/password now live on the same screen (Step 2), so the two
+   * former sub-groups collapse into the one real screen boundary; phone
+   * and the two consent checkboxes are optional on Step 2 and are not
+   * required for this event, matching validateAccountProfile/
+   * validateEmailAndPassword exactly.
+   */
+  useEffect(() => {
+    if (
+      !accountStepFiredRef.current &&
+      firstName.trim() &&
+      lastName.trim() &&
+      email.trim() &&
+      isValidEmail(email.trim()) &&
+      password.length >= MIN_PASSWORD_LENGTH &&
+      password === confirmPassword
+    ) {
+      accountStepFiredRef.current = true;
+      track('form_step_complete', { step_name: 'account' });
+    }
+  }, [firstName, lastName, email, password, confirmPassword]);
+
+  // `form_abandon` — fires on real page unload (pagehide beats beforeunload
+  // for mobile Safari/bfcache reliability) when the visitor started the form
+  // but did not complete signup. `last_field` is re-validated through
+  // `sanitizeTrackedField` immediately before it is read here — this is the
+  // runtime layer described on that function, and it is what stands between
+  // GA4 and a value smuggled into `lastFieldRef.current` via an `as`
+  // assertion (the one attack the type system cannot see through).
+  // `abandonFiredRef` makes this a true once-guard: the event fires on the
+  // FIRST pagehide only, never on a bfcache restore-then-leave-again.
+  useEffect(() => {
+    const handlePageHide = () => {
+      if (
+        formStartedRef.current &&
+        !signupCompletedRef.current &&
+        !abandonFiredRef.current
+      ) {
+        abandonFiredRef.current = true;
+        track('form_abandon', {
+          last_field: sanitizeTrackedField(lastFieldRef.current ?? 'none'),
+        });
+      }
+    };
+    window.addEventListener('pagehide', handlePageHide);
+    return () => window.removeEventListener('pagehide', handlePageHide);
+  }, []);
+
   // ── Redirect if already logged in ──
   useEffect(() => {
     if (loading) return;
@@ -224,17 +665,26 @@ export default function GetStartedPage() {
   // ── Phone formatting on autofill ──
   const handlePhoneChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     setPhone(formatPhoneValue(e.target.value));
-  }, []);
+    // gh-1940 (REVIEW: FAIL finding 3) — shared onChange/onBlur handler, so
+    // this also covers the autofill case markFieldTouched's onFocus-only
+    // wiring used to miss.
+    markFieldTouched('phone');
+  }, [markFieldTouched]);
 
   // ── Referral chip click ──
   const handleReferralChip = useCallback((val: ReferralSource) => {
     setReferralSource(prev => (prev === val ? '' : val));
-  }, []);
+    markFieldTouched('referral_source');
+  }, [markFieldTouched]);
 
   // ── Project-type chip click (Step 1) — gh-1901 ──
+  // gh-1940 (rebase onto #1929, CEO RUN 47): new markFieldTouched call site
+  // — project_type did not exist when #1948 was written; it is #1929's one
+  // new Step-1 field, added to TRACKED_FIELDS above.
   const handleProjectTypeChip = useCallback((val: ProjectType) => {
     setProjectType(prev => (prev === val ? '' : val));
-  }, []);
+    markFieldTouched('project_type');
+  }, [markFieldTouched]);
 
   // ── Step 1 → Step 2 (gh-1901: home info before account fields) ──
   const handleContinueToAccount = (e: FormEvent) => {
@@ -244,6 +694,15 @@ export default function GetStartedPage() {
     if (problem) {
       setError(problem);
       return;
+    }
+    // gh-1940 (CEO RUN 47 fix, ceo47-review-pr1948 defect 1) — this is the
+    // real Step 1 -> Step 2 boundary the visitor can actually see (the
+    // Continue click, after validateHomeInfo() has already passed), not an
+    // `[address]` effect that fired on the first keystroke. Once-guarded
+    // the same way every other step event is.
+    if (!homeInfoStepFiredRef.current) {
+      homeInfoStepFiredRef.current = true;
+      track('form_step_complete', { step_name: 'home_info' });
     }
     setStep(2);
   };
@@ -400,16 +859,32 @@ export default function GetStartedPage() {
     localStorage.setItem('cs_auth_role', 'homeowner');
   };
 
-  /** GA4 sign-up events — `method` distinguishes the two paths Dustin asked for. */
+  /**
+   * GA4 sign-up events — `method` distinguishes the two paths Dustin asked
+   * for.
+   *
+   * gh-1940 (amended after REVIEW: FAIL on #1948, finding 2): this function
+   * used to also set `signupCompletedRef.current = true` here, on the
+   * theory that reaching this point means the signup genuinely happened.
+   * That was true for the password path but NOT for the Google path: on
+   * Google, this fires BEFORE `supabase.auth.signInWithOAuth` is even
+   * called (deliberately — see handleGoogle), so "reached here" only meant
+   * "about to attempt the redirect", not "converted". If the redirect
+   * then failed to complete, nothing ever cleared the flag, and every
+   * visitor who clicked Google and did not come back was invisible to
+   * `form_abandon` while still being counted as a `sign_up`. Each caller
+   * now owns setting `signupCompletedRef` itself, at the point it actually
+   * knows whether the funnel step it represents will complete.
+   */
   const fireSignupAnalytics = (method: 'google' | 'password') => {
     const params = new URLSearchParams(
       typeof window !== 'undefined' ? window.location.search : '',
     );
-    gtag('event', 'sign_up', {
+    track('sign_up', {
       method,
       referral_source: referralSource || 'web',
     });
-    gtag('event', 'homeowner_signup', {
+    track('homeowner_signup', {
       job_type: params.get('job_type') || null,
       source: params.get('utm_source') || referralSource || 'direct',
     });
@@ -431,6 +906,22 @@ export default function GetStartedPage() {
       setError(problem);
       return;
     }
+    // gh-1940 (CEO RUN 47 fix, ceo47-review-pr1948 defect 2) — the
+    // `[firstName, lastName, email, password, confirmPassword]` effect
+    // above requires a valid email+password, so it never fires for a
+    // visitor who converts through Google (name only). This is the moment
+    // the visitor commits to the Google sign-in — right after the Step 2
+    // name validation it actually needs — so `account` fires here instead,
+    // once-guarded on the SAME ref as the password path (whichever path
+    // reaches its completion point first wins; the other is a no-op).
+    // Deliberately no `method` param: `form_step_complete`'s
+    // `TRACK_EVENT_KEYS` entry is `['step_name']` only — adding a value-
+    // carrying key here would mean widening that allowlist, which is out
+    // of scope (see track()'s comment on the security contract).
+    if (!accountStepFiredRef.current) {
+      accountStepFiredRef.current = true;
+      track('form_step_complete', { step_name: 'account' });
+    }
     // CEO RUN 43 review F2 — see validateSmsConsent().
     const smsProblemGoogle = validateSmsConsent();
     if (smsProblemGoogle) {
@@ -449,6 +940,25 @@ export default function GetStartedPage() {
       fireSignupAnalytics('google');
       signupNavigation.current = true;
 
+      // gh-1940 (REVIEW: FAIL finding 2) — optimistically suppress
+      // form_abandon, since a successful signInWithOAuth unloads this page
+      // in well under GOOGLE_REDIRECT_GRACE_MS and we want no abandon on
+      // that ordinary-success path. But arm a grace-period timer that
+      // flips the suppression back off if we are STILL on this page once
+      // it elapses — meaning the redirect did not actually happen (blocked,
+      // stalled, or the user backed out of the Google chooser without it
+      // registering as an error here). If it fires, a later real leave
+      // is then correctly captured as an abandonment instead of being
+      // permanently invisible.
+      signupCompletedRef.current = true;
+      if (googleGraceTimeoutRef.current !== null) {
+        clearTimeout(googleGraceTimeoutRef.current);
+      }
+      googleGraceTimeoutRef.current = setTimeout(() => {
+        signupCompletedRef.current = false;
+        googleGraceTimeoutRef.current = null;
+      }, GOOGLE_REDIRECT_GRACE_MS);
+
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: { redirectTo: GOOGLE_OAUTH_REDIRECT },
@@ -458,6 +968,16 @@ export default function GetStartedPage() {
     } catch (err: unknown) {
       console.error('[get-started] Google sign-up error:', err);
       signupNavigation.current = false;
+      // gh-1940 (REVIEW: FAIL finding 2) — a caught error means the OAuth
+      // round-trip definitely did not start, so un-suppress form_abandon
+      // immediately rather than waiting out the grace period, and cancel
+      // the pending timer so it cannot re-run this after a later, unrelated
+      // successful signup attempt.
+      if (googleGraceTimeoutRef.current !== null) {
+        clearTimeout(googleGraceTimeoutRef.current);
+        googleGraceTimeoutRef.current = null;
+      }
+      signupCompletedRef.current = false;
       setGoogleLoading(false);
       setError('Google sign-up failed. Please try again, or create your account with the email and password form above.');
     }
@@ -528,6 +1048,13 @@ export default function GetStartedPage() {
       }
 
       fireSignupAnalytics('password');
+      // gh-1940 (REVIEW: FAIL finding 2) — unlike the Google path, reaching
+      // this line means supabase.auth.signUp already returned successfully
+      // (no signUpError, and not the already-registered branch above), so
+      // the account genuinely exists now. No grace period needed: set the
+      // completion flag immediately, whether or not a session redirect
+      // follows.
+      signupCompletedRef.current = true;
 
       if (data.session) {
         // Project auto-confirms email — session is live, so hand off to
@@ -1008,7 +1535,8 @@ export default function GetStartedPage() {
                     autoComplete="street-address"
                     placeholder="123 Main St, Anytown, ST 12345"
                     value={address}
-                    onChange={e => setAddress(e.target.value)}
+                    onChange={e => { setAddress(e.target.value); markFieldTouched('address'); }}
+                    onFocus={() => markFieldTouched('address')}
                   />
                   <span className="form-hint">The address for your project.</span>
                 </div>
@@ -1072,7 +1600,8 @@ export default function GetStartedPage() {
                       autoComplete="given-name"
                       placeholder="Jane"
                       value={firstName}
-                      onChange={e => setFirstName(e.target.value)}
+                      onChange={e => { setFirstName(e.target.value); markFieldTouched('first_name'); }}
+                      onFocus={() => markFieldTouched('first_name')}
                     />
                   </div>
                   <div className="form-group">
@@ -1085,7 +1614,8 @@ export default function GetStartedPage() {
                       autoComplete="family-name"
                       placeholder="Smith"
                       value={lastName}
-                      onChange={e => setLastName(e.target.value)}
+                      onChange={e => { setLastName(e.target.value); markFieldTouched('last_name'); }}
+                      onFocus={() => markFieldTouched('last_name')}
                     />
                   </div>
                 </div>
@@ -1101,7 +1631,8 @@ export default function GetStartedPage() {
                     autoComplete="email"
                     placeholder="jane@example.com"
                     value={email}
-                    onChange={e => setEmail(e.target.value)}
+                    onChange={e => { setEmail(e.target.value); markFieldTouched('email'); }}
+                    onFocus={() => markFieldTouched('email')}
                   />
                   <span className="form-hint">This is how you&apos;ll sign in, and where bid alerts go.</span>
                 </div>
@@ -1118,7 +1649,8 @@ export default function GetStartedPage() {
                     autoComplete="new-password"
                     placeholder="At least 8 characters"
                     value={password}
-                    onChange={e => setPassword(e.target.value)}
+                    onChange={e => { setPassword(e.target.value); markFieldTouched('password'); }}
+                    onFocus={() => markFieldTouched('password')}
                   />
                   <span className="form-hint">Minimum {MIN_PASSWORD_LENGTH} characters.</span>
                 </div>
@@ -1134,7 +1666,8 @@ export default function GetStartedPage() {
                     autoComplete="new-password"
                     placeholder="Re-enter your password"
                     value={confirmPassword}
-                    onChange={e => setConfirmPassword(e.target.value)}
+                    onChange={e => { setConfirmPassword(e.target.value); markFieldTouched('confirm_password'); }}
+                    onFocus={() => markFieldTouched('confirm_password')}
                   />
                 </div>
 
@@ -1158,6 +1691,7 @@ export default function GetStartedPage() {
                     value={phone}
                     onChange={handlePhoneChange}
                     onBlur={handlePhoneChange}
+                    onFocus={() => markFieldTouched('phone')}
                   />
                   <span className="form-hint">For bid notifications and updates via text.</span>
                 </div>
@@ -1171,7 +1705,8 @@ export default function GetStartedPage() {
                       id="sms-consent"
                       className="form-checkbox"
                       checked={smsConsent}
-                      onChange={e => setSmsConsent(e.target.checked)}
+                      onChange={e => { setSmsConsent(e.target.checked); markFieldTouched('sms_consent'); }}
+                      onFocus={() => markFieldTouched('sms_consent')}
                     />
                     <span style={{ fontSize: '0.9rem', lineHeight: 1.5, color: 'var(--slate, #94a3b8)' }}>
                       {/* TWILIO MESSAGE_FLOW required language */}
@@ -1198,7 +1733,8 @@ export default function GetStartedPage() {
                       id="referrer-updates-opt-out"
                       className="form-checkbox"
                       checked={referrerOptOut}
-                      onChange={e => setReferrerOptOut(e.target.checked)}
+                      onChange={e => { setReferrerOptOut(e.target.checked); markFieldTouched('referrer_opt_out'); }}
+                      onFocus={() => markFieldTouched('referrer_opt_out')}
                     />
                     <span style={{ fontSize: '0.9rem', lineHeight: 1.5, color: 'var(--slate, #94a3b8)' }}>
                       <strong style={{ color: 'inherit' }}>Don&apos;t send project updates to the person who referred me</strong>
@@ -1248,7 +1784,8 @@ export default function GetStartedPage() {
                           className="form-input"
                           placeholder="Agent / Realtor name"
                           value={refName}
-                          onChange={e => setRefName(e.target.value)}
+                          onChange={e => { setRefName(e.target.value); markFieldTouched('ref_name'); }}
+                          onFocus={() => markFieldTouched('ref_name')}
                         />
                       </div>
                       <div className="form-group">
@@ -1259,7 +1796,8 @@ export default function GetStartedPage() {
                           className="form-input"
                           placeholder="agent@company.com"
                           value={refEmail}
-                          onChange={e => setRefEmail(e.target.value)}
+                          onChange={e => { setRefEmail(e.target.value); markFieldTouched('ref_email'); }}
+                          onFocus={() => markFieldTouched('ref_email')}
                         />
                       </div>
                     </div>

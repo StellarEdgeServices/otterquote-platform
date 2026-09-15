@@ -22,6 +22,25 @@
 // Manager + ad account. The host allowlist below is what actually gates
 // firing on production vs. staging/preview/localhost -- see the check
 // immediately below the ID.
+//
+// gh-1969: fbevents.js derives its `dl` (document link) parameter from
+// window.location.href / a ComparedURL helper (confirmed by fetching the
+// served connect.facebook.net/en_US/fbevents.js and reading it directly --
+// it reads location internally; there is no fbq('set', ...) or fbq('init',
+// ..., {...}) option that overrides dl to a fragment-stripped value, and
+// the "unwanteddata" plugin only strips server-configured query keys, never
+// the fragment). So unlike a param we could scrub before firing, the only
+// way to keep a live Supabase access_token/refresh_token/provider_token
+// pair (implicit-flow OAuth, js/auth.js) out of the facebook.com/tr `dl`
+// value is to never load fbevents.js at all while the fragment carries one.
+// This is the exact predicate PR #1947 added to js/ga-gate.js for Clarity
+// -- see that file's gh-1931 (round 2) comment for why it is a fragment
+// substring check and not a page-path allowlist: "a path list can never be
+// complete." Residual risk this does not close: a future token shape that
+// does not use these three fragment key names would not match this
+// predicate; if Supabase or a future auth provider ever adds a differently
+// named implicit-flow fragment parameter, this gate (and ga-gate.js) both
+// need updating together.
 (function () {
   var ALLOWED_HOSTS = ['otterquote.com', 'www.otterquote.com', 'app.otterquote.com'];
   var PIXEL_ID = '800470107451795';
@@ -40,6 +59,14 @@
 
   if (ALLOWED_HOSTS.indexOf(window.location.hostname) === -1) {
     return; // not a recognised production host -- fbevents.js never loads
+  }
+
+  var hash = window.location.hash;
+  var urlHasAuthToken = hash.indexOf('access_token') !== -1 ||
+    hash.indexOf('refresh_token') !== -1 ||
+    hash.indexOf('provider_token') !== -1;
+  if (urlHasAuthToken) {
+    return; // a live Supabase credential is in this URL; the pixel never loads.
   }
 
   var s = document.createElement('script');
