@@ -23,9 +23,22 @@ gh-1817: extended to also guard the Meta Pixel loader (fbevents.js), routed
 through the same two-file gate pattern (js/meta-pixel-gate.js and
 react-app/app/components/MetaPixelGate.tsx).
 
+gh-1969: js/meta-pixel-gate.js was found sending a token-bearing URL
+fragment (Supabase access_token/refresh_token) to facebook.com/tr as `dl`,
+because fbevents.js reads window.location itself and offers no supported
+override -- the only fix is to never load fbevents.js while the fragment
+carries a live credential (the same fragment predicate PR #1947 added to
+js/ga-gate.js for Clarity). This check now also asserts that predicate is
+present in js/meta-pixel-gate.js, so a future edit that removes it (the
+"single loader location" property alone does not catch this class -- the
+gate file can load fbevents.js unconditionally and still pass the loader
+scan) fails CI instead of shipping silently.
+
 Exit codes:
   0 -- no violations
-  1 -- one or more ungated loader sites (each printed as path:line)
+  1 -- one or more ungated loader sites, or the pixel gate is missing its
+       token-fragment predicate (each printed as path:line or as a named
+       violation)
 """
 from __future__ import annotations
 import pathlib, re, sys
@@ -42,6 +55,54 @@ LOADER_RES = [
     ("clarity.ms loader", re.compile(r"clarity\.ms/tag")),
     ("fbevents.js loader", re.compile(r"connect\.facebook\.net/[^\s\"']*fbevents\.js")),
 ]
+META_PIXEL_GATE = REPO / "js" / "meta-pixel-gate.js"
+# gh-1969: the fragment predicate must gate the fbevents.js load itself.
+# Match the actual `hash.indexOf('access_token')`-style code, not prose --
+# a comment mentioning these names (as this very file's writeup does) must
+# NOT satisfy the check, or a planted removal of the real predicate that
+# leaves the comment behind would pass. hash/window.location.hash is
+# required too, since the token names alone could appear in an unrelated
+# check.
+TOKEN_NAMES = ("access_token", "refresh_token", "provider_token")
+TOKEN_CODE_RES = {
+    name: re.compile(r"""(?:hash|location\.hash)[^\n]*indexOf\(['"]""" + re.escape(name) + r"""['"]\)""")
+    for name in TOKEN_NAMES
+}
+RETURN_STATEMENT_RE = re.compile(r"\breturn\b[^\n]*;")
+FBEVENTS_SRC_RE = re.compile(r"s\.src\s*=.*fbevents\.js")
+
+
+def check_meta_pixel_fragment_guard() -> list[str]:
+    rel = META_PIXEL_GATE.relative_to(REPO).as_posix()
+    if not META_PIXEL_GATE.is_file():
+        return [f"{rel}: file missing"]
+    text = META_PIXEL_GATE.read_text(encoding="utf-8", errors="replace")
+
+    missing = [name for name, rx in TOKEN_CODE_RES.items() if not rx.search(text)]
+    if missing:
+        return [f"{rel}: missing live token-fragment predicate code for {missing} "
+                f"(a substring/comment mention is not enough -- gh-1969 fragment guard "
+                f"removed or weakened)"]
+
+    fb_match = FBEVENTS_SRC_RE.search(text)
+    if fb_match is None:
+        return [f"{rel}: fbevents.js script-src assignment not found -- cannot verify the "
+                f"fragment predicate gates it"]
+    fbevents_pos = fb_match.start()
+
+    last_token_code_pos = max(rx.search(text).start() for rx in TOKEN_CODE_RES.values())
+    if last_token_code_pos > fbevents_pos:
+        return [f"{rel}: token-fragment predicate code appears after the fbevents.js script "
+                f"tag is built -- it must gate the load, not run after it"]
+
+    # The predicate must actually short-circuit before the load: there must
+    # be a `return` between the last token check and the fbevents.js src
+    # assignment (mirrors js/ga-gate.js's `if (urlHasAuthToken) { return; }`).
+    between = text[last_token_code_pos:fbevents_pos]
+    if not RETURN_STATEMENT_RE.search(between):
+        return [f"{rel}: no return/early-exit found between the token-fragment predicate and "
+                f"the fbevents.js load -- the predicate is not actually gating it"]
+    return []
 SCAN_SUFFIXES = {".html", ".js", ".jsx", ".ts", ".tsx"}
 SKIP_DIR_NAMES = {"node_modules", ".git", ".next", "dist", "build", "coverage", "playwright-report", "test-results"}
 SELF = pathlib.Path(__file__).resolve()
@@ -62,6 +123,7 @@ def scan_files() -> list[pathlib.Path]:
 
 def main() -> int:
     violations: list[str] = []
+    violations.extend(check_meta_pixel_fragment_guard())
     for path in scan_files():
         rel = path.relative_to(REPO).as_posix()
         if rel in GATE_FILES:
