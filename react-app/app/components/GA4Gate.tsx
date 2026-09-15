@@ -1,6 +1,7 @@
 "use client";
 
 import Script from "next/script";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
 /**
@@ -36,7 +37,43 @@ const MEASUREMENT_ID = "G-D1Y1TLGEFY";
 // js/ga-gate.js (the marketing-site gate for the same vendor).
 const CLARITY_PROJECT_ID = "wwr7qlk8g5";
 
+// gh-1939 REWORK (CTO RUN 31 REVIEW: FAIL D-2, Dustin ruling 2026-09-15):
+// root-mounting a session-replay recorder with no pathname gate turns it on
+// across every authenticated route (dashboard/admin/contractor/partner/
+// homeowner-(homeowner) group) with no masking configured anywhere in the
+// repo -- the same shape that failed a LEGAL-READ on PR #1928 for Meta
+// Pixel (see MetaPixelGate.tsx:32-43). Dustin has ruled Clarity may ship
+// path-scoped to unauthenticated funnel routes only, never on dashboard/
+// admin/contractor/authenticated pages. Mirrors MetaPixelGate.tsx's
+// ALLOWED_PATHS pattern exactly, including its route enumeration:
+// `/get-started` is the homeowner sign-up / pre-login intake form and is
+// unauthenticated by design (an "already-authenticated" redirect only,
+// never a login requirement). Every other route under react-app/app was
+// re-checked against its own auth guard before this list was written:
+// `/` is an unauthenticated D-211 scaffold placeholder, not part of the
+// funnel; `/login` and `/contractor/login` are unauthenticated
+// auth-utility pages, not funnel or marketing, and `/contractor/login` is
+// contractor-namespaced (excluded by the ruling's own words); `/refer`
+// requires a signed-in user (redirects to /login otherwise); `/trade-
+// selector` is an auth-protected intake wizard by its own docstring and
+// redirects unauthenticated visitors back to `/get-started`
+// (`useAuthReady` -> `if (!user) window.location.href = GET_STARTED_URL`);
+// `/auth-callback` is a transient post-signup token-processing page, not
+// marketing/funnel copy; every `/(homeowner)/*`, `/admin/*`,
+// `/contractor/*` (other than `/contractor/login`) and `/partner/*` route
+// is gated by a shared auth shell (HomeownerShell, ContractorShell,
+// RequireAdmin, or an inline `!user` guard) that requires a live session.
+// Everything not explicitly listed is denied by default -- adding a route
+// here is a deliberate, reviewed decision, same posture as ALLOWED_HOSTS.
+const CLARITY_ALLOWED_PATHS = ["/get-started"];
+
+function isClarityAllowedPath(pathname: string | null): boolean {
+  if (!pathname) return false;
+  return CLARITY_ALLOWED_PATHS.some(p => pathname === p || pathname.startsWith(p + "/"));
+}
+
 export function GA4Gate() {
+  const pathname = usePathname();
   const [allowed, setAllowed] = useState(false);
   const [clarityAllowed, setClarityAllowed] = useState(false);
 
@@ -60,9 +97,13 @@ export function GA4Gate() {
         hash.indexOf("access_token") !== -1 ||
         hash.indexOf("refresh_token") !== -1 ||
         hash.indexOf("provider_token") !== -1;
-      setClarityAllowed(!hasAuthTokenInFragment);
+      // gh-1939 REWORK: Clarity now requires BOTH the host allowlist above
+      // AND the pathname allowlist -- an unauthenticated-funnel route that
+      // also does not carry a Supabase auth-fragment token. gtag behaviour
+      // (above/below) is completely unaffected by this path check.
+      setClarityAllowed(!hasAuthTokenInFragment && isClarityAllowedPath(pathname));
     }
-  }, []);
+  }, [pathname]);
 
   if (!allowed) return null;
 
