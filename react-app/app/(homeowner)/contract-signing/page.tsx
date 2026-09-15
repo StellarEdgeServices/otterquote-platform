@@ -38,6 +38,7 @@ import {
   useContractSigningData,
   type SigningParams,
 } from './use-contract-signing-data';
+import { track } from '@/lib/track';
 
 export default function ContractSigningPage() {
   // Resolve whether this render is the DocuSign embedded-return view loaded INSIDE
@@ -133,6 +134,13 @@ function SignContent() {
       contractorId,
       signedAt: new Date().toISOString(),
     }).finally(() => {
+      // gh-1940: "contract signed" funnel step — fired after the sign
+      // completion write settles (recordHomeownerSigned is best-effort and
+      // never throws, so this runs either way, matching that function's own
+      // "the webhook is the source of truth" note) and right before the
+      // immediate redirect below, hence beacon:true — see the ROOT CAUSE
+      // NOTE in app/lib/track.ts.
+      track('contract_signed', { claim_id: cid || null }, { beacon: true });
       if (cid) {
         window.location.href = buildProjectConfirmationUrl(cid);
       }

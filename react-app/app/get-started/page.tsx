@@ -77,10 +77,11 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { ChangeEvent, FormEvent } from 'react';
+import type { ChangeEvent, FocusEvent, FormEvent } from 'react';
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import { supabase } from '@/lib/supabase';
 import { readReferralIds, writeReferralIds } from '@/lib/cookie-storage';
+import { track } from '@/lib/track';
 import { formatPhoneValue, isValidEmail } from './utils';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -124,14 +125,6 @@ const PROJECT_TYPE_OPTIONS: { value: ProjectType; label: string }[] = [
   { value: 'water_damage', label: 'Water Damage' },
   { value: 'other', label: 'Other' },
 ];
-
-// ─── GA4 helper ──────────────────────────────────────────────────────────────
-
-function gtag(...args: unknown[]) {
-  if (typeof window !== 'undefined' && (window as any).gtag) {
-    (window as any).gtag(...args);
-  }
-}
 
 // ─── Meta Pixel helper — gh-1817 ──────────────────────────────────────────
 
@@ -209,6 +202,60 @@ export default function GetStartedPage() {
    */
   const signupNavigation = useRef(false);
 
+  // ── GA4 funnel tracking state (gh-1940) ──
+  // formStartedRef: true once the homeowner has touched any field on either
+  // step — gates `form_start` to fire once, and gates `form_abandon` so a
+  // visitor who never interacted (bounced straight off page_view) isn't
+  // counted as an abandon.
+  // lastFieldRef: the NAME of the most recently focused field, never its
+  // value — this is the load-bearing, PII-free parameter #1940 asks for on
+  // form_abandon.
+  // completedRef: true once sign-up analytics has fired (either path) — this
+  // is the app's own signal that the form was completed rather than
+  // abandoned, so the pagehide listener below knows not to fire form_abandon
+  // once fireSignupAnalytics has run.
+  const formStartedRef = useRef(false);
+  const lastFieldRef = useRef<string | null>(null);
+  const completedRef = useRef(false);
+
+  const markFieldTouched = useCallback((fieldName: string) => {
+    lastFieldRef.current = fieldName;
+    if (!formStartedRef.current) {
+      formStartedRef.current = true;
+      track('form_start', { form_name: 'homeowner_signup' });
+    }
+  }, []);
+
+  // Delegated focus handler on each <form> — React's onFocus bubbles (it is
+  // backed by the native `focusin` event), so one handler on the form
+  // catches every field's first focus without a per-input prop.
+  const handleFormFieldFocus = useCallback((e: FocusEvent<HTMLFormElement>) => {
+    const id = (e.target as HTMLElement).id;
+    if (id) markFieldTouched(id);
+  }, [markFieldTouched]);
+
+  // ── form_abandon (gh-1940) — fired on unmount/navigation away, by nature,
+  // per #1940's own spec. `pagehide` covers both a real tab close/back and
+  // the full-page `window.location.href` redirects this page uses elsewhere
+  // (unlike `beforeunload`, it also fires on bfcache navigations). Uses
+  // beacon transport since it is, by definition, sent right as the page is
+  // leaving — see the ROOT CAUSE NOTE in app/lib/track.ts for why that
+  // matters. ──
+  useEffect(() => {
+    const handlePageHide = () => {
+      if (completedRef.current) return;
+      if (!formStartedRef.current) return;
+      track(
+        'form_abandon',
+        { last_field: lastFieldRef.current || 'unknown', step: step === 1 ? 'home_info' : 'account' },
+        { beacon: true },
+      );
+    };
+    window.addEventListener('pagehide', handlePageHide);
+    return () => window.removeEventListener('pagehide', handlePageHide);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
+
   // ── Redirect if already logged in ──
   useEffect(() => {
     if (loading) return;
@@ -228,13 +275,15 @@ export default function GetStartedPage() {
 
   // ── Referral chip click ──
   const handleReferralChip = useCallback((val: ReferralSource) => {
+    markFieldTouched('referral_source');
     setReferralSource(prev => (prev === val ? '' : val));
-  }, []);
+  }, [markFieldTouched]);
 
   // ── Project-type chip click (Step 1) — gh-1901 ──
   const handleProjectTypeChip = useCallback((val: ProjectType) => {
+    markFieldTouched('project_type');
     setProjectType(prev => (prev === val ? '' : val));
-  }, []);
+  }, [markFieldTouched]);
 
   // ── Step 1 → Step 2 (gh-1901: home info before account fields) ──
   const handleContinueToAccount = (e: FormEvent) => {
@@ -246,6 +295,7 @@ export default function GetStartedPage() {
       return;
     }
     setStep(2);
+    track('form_step_complete', { step_name: 'home_info' });
   };
 
   // ── Validation ──
@@ -400,19 +450,36 @@ export default function GetStartedPage() {
     localStorage.setItem('cs_auth_role', 'homeowner');
   };
 
-  /** GA4 sign-up events — `method` distinguishes the two paths Dustin asked for. */
+  /**
+   * GA4 sign-up events — `method` distinguishes the two paths Dustin asked
+   * for.
+   *
+   * gh-1940: both call sites below fire this function and then, in the same
+   * synchronous block, navigate the page away (Google OAuth handoff, or the
+   * password auto-confirm redirect) — see the ROOT CAUSE NOTE in
+   * app/lib/track.ts for why that made `sign_up`/`homeowner_signup` never
+   * actually land in GA4 despite being emitted. `beacon: true` is the fix;
+   * `completedRef` tells the pagehide-based form_abandon listener the form
+   * was completed, not abandoned, once this has run.
+   */
   const fireSignupAnalytics = (method: 'google' | 'password') => {
+    completedRef.current = true;
     const params = new URLSearchParams(
       typeof window !== 'undefined' ? window.location.search : '',
     );
-    gtag('event', 'sign_up', {
-      method,
-      referral_source: referralSource || 'web',
-    });
-    gtag('event', 'homeowner_signup', {
-      job_type: params.get('job_type') || null,
-      source: params.get('utm_source') || referralSource || 'direct',
-    });
+    track(
+      'sign_up',
+      { method, referral_source: referralSource || 'web' },
+      { beacon: true },
+    );
+    track(
+      'homeowner_signup',
+      {
+        job_type: params.get('job_type') || null,
+        source: params.get('utm_source') || referralSource || 'direct',
+      },
+      { beacon: true },
+    );
     // gh-1817: Meta Pixel Lead event — fires on both the Google OAuth and
     // password sign-up paths, matching the GA4 call sites above exactly.
     fbq('track', 'Lead');
@@ -991,6 +1058,7 @@ export default function GetStartedPage() {
               <form
                 className="gs-form"
                 onSubmit={handleContinueToAccount}
+                onFocus={handleFormFieldFocus}
                 noValidate
               >
                 <h1>Tell Us About Your Home</h1>
@@ -1059,7 +1127,7 @@ export default function GetStartedPage() {
                   Free, and takes under a minute. We&apos;ll match {address ? 'your home' : 'you'} with contractors next.
                 </p>
                 {/* ── Email + Password Sign-Up Form ── */}
-                <form className="gs-form" onSubmit={handleSubmit} noValidate>
+                <form className="gs-form" onSubmit={handleSubmit} onFocus={handleFormFieldFocus} noValidate>
                 {/* Name row */}
                 <div className="form-row">
                   <div className="form-group">
