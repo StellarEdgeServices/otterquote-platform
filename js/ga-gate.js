@@ -28,10 +28,136 @@
 // a new preview/staging surface than a new production domain, so it never
 // loads the library. Extending the allowlist is a deliberate, reviewed
 // decision, not a default.
+//
+// gh-1964: Clarity page-set gate (default-deny).
+//
+// The host gate above stops Clarity from loading on the WRONG HOST. It says
+// nothing about the wrong PAGE: Clarity session replay records DOM and
+// input, and this file was included -- and its host check passed -- on 9 of
+// 12 admin-*.html pages plus contractor-profile.html, all of them requiring
+// an authenticated admin or contractor session, with no masking configured.
+// contractor-profile.html renders a live Supabase signed URL into a <video
+// src> at ~line 1810 -- a bearer credential -- which a session recorder then
+// captures. scripts/check-gtag-single-source.py enforces WHERE the loader
+// lives; it never checked WHICH PAGES include it. That is the gap this gate
+// closes, mirroring the allowlist pattern already proven on the app side at
+// react-app/app/components/MetaPixelGate.tsx:70 (ALLOWED_PATHS).
+//
+// This is DEFAULT-DENY, for Clarity only -- GA4's behaviour above is
+// unchanged. CLARITY_ALLOWED_PATHS is the complete set of unauthenticated
+// marketing/funnel pages this repo's own HTML was read to identify (see
+// scripts/check-clarity-page-gate.py for the enumeration and the
+// authenticated/unauthenticated evidence behind each page's classification).
+// A page missing from this list fails closed: Clarity simply never loads
+// there, including on a brand-new page nobody has added yet. Extending this
+// list is a deliberate, reviewed decision, exactly like ALLOWED_HOSTS above
+// -- never a default.
 (function () {
   var ALLOWED_HOSTS = ['otterquote.com', 'www.otterquote.com', 'app.otterquote.com'];
   var MEASUREMENT_ID = 'G-D1Y1TLGEFY';
   var CLARITY_PROJECT_ID = 'wwr7qlk8g5';
+
+  // gh-1964: the public, unauthenticated pages Clarity is allowed to record.
+  // Entries are normalised paths (see normalizeClarityPath below): no
+  // trailing slash (except root), no .html extension, and directory-index
+  // pages collapse to their directory ("/blog/index.html" -> "/blog"). Every
+  // entry here was derived from this repo's own HTML -- a page is on this
+  // list only because reading its markup and scripts found no
+  // Auth.requireAuth()/admin-email/getSession-redirect gate on it, never
+  // because of what its filename suggests. auth-callback.html is
+  // deliberately left OFF this list even though it carries no such gate
+  // itself: it is the OAuth/magic-link landing target that can carry a live
+  // token in the URL fragment, the gh-1931 fragment check below already
+  // blocks Clarity there whenever a token is actually present, and keeping
+  // it off the allowlist is defense in depth for the token-absent case (a
+  // stale or reloaded tab).
+  var CLARITY_ALLOWED_PATHS = [
+    '/',
+    '/blog',
+    '/blog/aerial-roof-measurement-reports',
+    '/blog/does-homeowners-insurance-cover-roof-damage',
+    '/blog/hail-damage-roof-inspection-first-72-hours',
+    '/blog/hail-vs-wind-roof-damage',
+    '/blog/how-to-negotiate-better-roof-repair-insurance-claim',
+    '/blog/public-adjuster-vs-diy-roof-claim',
+    '/blog/rcv-vs-acv-roof-insurance',
+    '/blog/roof-shingle-warranty-tiers-explained',
+    '/blog/roofing-estimate-red-flags',
+    '/blog/storm-chaser-roofing-scams',
+    '/blog/what-is-recoverable-depreciation-roofing',
+    '/blog/what-is-scope-of-loss-roofing',
+    '/blog/what-to-do-after-storm-damages-roof',
+    '/blog/when-not-to-file-roof-insurance-claim',
+    '/blog/why-roofers-quote-different-prices',
+    '/coming-soon',
+    '/contractor-agreement',
+    '/contractor-faq',
+    '/contractor-how-it-works',
+    '/contractor-join',
+    '/contractor-login',
+    '/contractor-pre-approval',
+    '/contractors',
+    '/faq',
+    '/guides',
+    '/guides/how-to-choose-contractor',
+    '/guides/how-to-file-property-damage-claim',
+    '/guides/how-to-negotiate-with-insurer',
+    '/guides/how-to-read-contractor-estimate',
+    '/how-it-works',
+    '/landing',
+    '/login',
+    '/onboarding-demo',
+    '/oq-voice-ai',
+    '/partner-adjusters',
+    '/partner-agreement',
+    '/partner-app',
+    '/partner-app-install-android',
+    '/partner-app-install-ios',
+    '/partner-inspectors',
+    '/partner-insurance',
+    '/partner-insurance-fees',
+    '/partner-insurance-how-it-works',
+    '/partner-insurance-why',
+    '/partner-login',
+    '/partner-other',
+    '/partner-profile',
+    '/partner-re',
+    '/privacy',
+    '/recruit',
+    '/ref',
+    '/ref-inspector',
+    '/ref-insurance',
+    '/ref-re',
+    '/stellar-edge',
+    '/terms',
+    '/tools',
+    '/tools-crm',
+    '/tools-online-presence',
+    '/tools-voice-ai'
+  ];
+
+  // Normalises a pathname so a Pretty-URL twin matches its .html original:
+  // trailing slash stripped (root "/" kept as-is), ".html" extension
+  // stripped, and a directory's own "/index" collapses onto the directory.
+  function normalizeClarityPath(pathname) {
+    var p = pathname;
+    if (p.length > 1 && p.charAt(p.length - 1) === '/') {
+      p = p.slice(0, -1);
+    }
+    if (p.slice(-5) === '.html') {
+      p = p.slice(0, -5);
+    }
+    if (p === '') {
+      p = '/';
+    }
+    if (p.slice(-6) === '/index') {
+      p = p.slice(0, -6);
+      if (p === '') {
+        p = '/';
+      }
+    }
+    return p;
+  }
 
   // dataLayer/gtag are defined unconditionally so every page's existing
   // gtag('event', ...) / gtag('config', ...) calls keep working (as harmless
@@ -50,6 +176,16 @@
   s.async = true;
   s.src = 'https://www.googletagmanager.com/gtag/js?id=' + MEASUREMENT_ID;
   document.head.appendChild(s);
+
+  // gh-1964: default-deny page-set gate, Clarity only. GA4 above already
+  // loaded unconditionally on any allowed host; Clarity additionally
+  // requires the current page to be on the public allowlist above. A page
+  // that is missing from CLARITY_ALLOWED_PATHS -- including every
+  // admin-*.html page and contractor-profile.html -- fails closed here and
+  // never reaches the fragment check or the vendor snippet below.
+  if (CLARITY_ALLOWED_PATHS.indexOf(normalizeClarityPath(window.location.pathname)) === -1) {
+    return; // not a recognised public page -- Clarity never loads
+  }
 
   // gh-1931 (round 2): Supabase's implicit OAuth flow appends a live
   // access_token/refresh_token pair to whatever redirect URL the caller
@@ -70,6 +206,11 @@
   // parameter names and never appear outside that fragment, so a raw
   // substring check on window.location.hash carries no collateral risk --
   // a URL fragment is never a marketing/referral parameter.
+  //
+  // gh-1964: kept as-is (PR #1947) on top of the page-set gate above -- the
+  // page-set gate stops Clarity on authenticated PAGES; this stops it on any
+  // allowlisted page that happens to be carrying a live credential in its
+  // URL right now (e.g. login.html mid magic-link exchange).
   var hash = window.location.hash;
   var urlHasAuthToken = hash.indexOf('access_token') !== -1 ||
     hash.indexOf('refresh_token') !== -1 ||
@@ -132,8 +273,9 @@
   }
 
   // Microsoft Clarity -- the vendor snippet, verbatim apart from living
-  // behind the allowlist check above. Reached only on a production host,
-  // and never on a URL carrying a live auth credential (see gh-1931 above).
+  // behind the allowlist checks above. Reached only on a production host,
+  // only on an allowlisted public page (gh-1964), and never on a URL
+  // carrying a live auth credential (see gh-1931 above).
   (function (c, l, a, r, i, t, y) {
     c[a] = c[a] || function () { (c[a].q = c[a].q || []).push(arguments); };
     t = l.createElement(r); t.async = 1; t.src = 'https://www.clarity.ms/tag/' + i;

@@ -124,6 +124,9 @@ jobs:
       - name: Analytics loader single-source guard (gtag.js + clarity.ms behind the host gate, gh-1619)
         run: python3 scripts/check-gtag-single-source.py
 
+      - name: Clarity page-set gate guard (default-deny, no authenticated page on the allowlist, gh-1964)
+        run: python3 scripts/check-clarity-page-gate.py
+
       # gh-1339 item 6 / D-312: no third-party vendor named on a customer-facing
       # surface. A gate demanding ZERO would be red on arrival — the residue is
       # 373 client-side references whose removal needs the D-312 scope ruling
