@@ -457,6 +457,24 @@ async function getContractorContacts(contractor: Record<string, any>, supabase: 
     if (profile?.phone) phones.push(profile.phone);
   }
 
+  // gh-1916 / R-134 protective gate: this function bypasses send-sms's own
+  // service-role/JWT auth gate entirely — process-dunning calls Twilio
+  // directly (sendSMS() below), and every one of its 4 sendSMSToAll() call
+  // sites (TRIGGER immediate, CRON hourly, CRON 8am warning, and both
+  // homeowner-choice GET branches) funnels through this one function. So the
+  // opt-in check goes here, once, rather than at each call site: a contractor
+  // without a real, stored `sms_opt_in = true` gets phones: [] — NULL (never
+  // asked — the default for every pre-migration row) and false (declined)
+  // both refuse. Email is unaffected; only the phones list is suppressed.
+  if (contractor.sms_opt_in !== true) {
+    if (phones.length > 0) {
+      console.warn(
+        `[process-dunning] SMS refused (gh-1916 R-134 gate) — sms_opt_in is not true for contractor ${contractor.id ?? "(unknown)"} (value=${String(contractor.sms_opt_in)}). ${phones.length} phone(s) suppressed. No Twilio call attempted.`
+      );
+    }
+    return { emails, phones: [] };
+  }
+
   return { emails, phones };
 }
 
@@ -671,7 +689,7 @@ serve(async (req) => {
         .from("payment_failures")
         .select(`
           *,
-          contractors:contractor_id (id, company_name, email, notification_emails, notification_phones, user_id),
+          contractors:contractor_id (id, company_name, email, notification_emails, notification_phones, user_id, sms_opt_in),
           claims:claim_id (id, property_address, status)
         `)
         .eq("id", failId)
@@ -1045,7 +1063,7 @@ serve(async (req) => {
       // Look up contractor (including timezone + address_state for derivation)
       const { data: contractor } = await supabase
         .from("contractors")
-        .select("id, company_name, email, notification_emails, notification_phones, user_id, timezone, address_state")
+        .select("id, company_name, email, notification_emails, notification_phones, user_id, timezone, address_state, sms_opt_in")
         .eq("id", contractor_id)
         .single();
 
@@ -1156,7 +1174,7 @@ serve(async (req) => {
         *,
         contractors:contractor_id (
           id, company_name, email, notification_emails, notification_phones,
-          user_id, timezone, address_state
+          user_id, timezone, address_state, sms_opt_in
         ),
         claims:claim_id (id, property_address, status)
       `)

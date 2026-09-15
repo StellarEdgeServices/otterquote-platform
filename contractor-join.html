@@ -232,10 +232,16 @@
                          contributor to the card overflowing an 800px viewport
                          (~105px incl. its sp-8 bottom margin). Tightened rather
                          than removed — the TCPA consent copy has to stay whole. -->
+                    <!-- gh-1916 (R-177 LEGAL-READ pending before merge): copy mirrors
+                         the homeowner SMS-consent checkbox on react-app/app/get-started
+                         (page.tsx) — same wording pattern, "contractor" substituted for
+                         the homeowner context, plus "HELP for help" per this issue's
+                         closes-on. This checkbox is UNCHECKED by default (no `checked`
+                         attribute) — the required negative-control state. -->
                     <div class="form-group" style="margin-bottom: var(--sp-3);">
                         <label style="display: flex; align-items: flex-start; gap: var(--sp-3); font-weight: 400; color: var(--white); font-size: 0.85rem; line-height: 1.35;">
                             <input type="checkbox" id="smsConsent" name="smsConsent" style="margin-top: 0.35rem; cursor: pointer; width: 18px; height: 18px; flex-shrink: 0;">
-                            <span>By checking this box, you agree to receive text messages from Otter Quotes about your account and platform updates. Message and data rates may apply. Reply STOP to unsubscribe.</span>
+                            <span>I agree to receive transactional SMS from Otter Quotes about my contractor account and platform opportunities. Message frequency varies. Message and data rates may apply. Reply STOP to opt out, HELP for help. See our <a href="privacy.html" style="color: var(--amber); text-decoration: underline;">Privacy Policy</a> and <a href="terms.html" style="color: var(--amber); text-decoration: underline;">Terms of Service</a>.</span>
                         </label>
                     </div>
 
@@ -339,6 +345,11 @@
                 }
 
                 // Store signup data for auth.js handleAuthCallback to persist
+                // gh-1916 / R-134: sms_opt_in / sms_opt_in_at / sms_opt_in_source
+                // are the real TCPA opt-in fields (contractors.sms_opt_in, new
+                // nullable boolean column, default NULL). The pre-existing
+                // sms_consent boolean is left in place for back-compat but is no
+                // longer what the send-side gate reads.
                 localStorage.setItem('cs_contractor_signup', JSON.stringify({
                     email,
                     company_name:       bizName,
@@ -347,6 +358,13 @@
                     signer_last_name:   lastName,
                     phone:              phone,
                     sms_consent:        smsConsent,
+                    sms_opt_in:         smsConsent,
+                    sms_opt_in_at:      smsConsent ? new Date().toISOString() : null,
+                    sms_opt_in_source:  smsConsent ? 'contractor-signup' : null,
+                    // R-177 rework: version tag for the exact sentence in the
+                    // <span> above this script (NOT the wording itself — do not
+                    // reword the checkbox copy without also bumping this tag).
+                    sms_consent_text_version: smsConsent ? 'contractor-v1-2026-09-14' : null,
                     role:               'contractor',
                     onboarding_step:    1,
                 }));
@@ -397,7 +415,7 @@
                 console.warn('Auth.ready() not available, continuing anyway');
             }
         }
-        
+
         const googleBtn = document.getElementById('google-btn');
         if (googleBtn) {
             googleBtn.addEventListener('click', async () => {
