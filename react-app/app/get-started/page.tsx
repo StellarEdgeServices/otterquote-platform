@@ -42,7 +42,7 @@ import { supabase } from '@/lib/supabase';
 import { readReferralIds, writeReferralIds } from '@/lib/cookie-storage';
 import { formatPhoneValue, isValidEmail } from './utils';
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// ─── Constants ───────────────────────────────────────────────────────
 
 const AUTH_CALLBACK_URL = 'https://app.otterquote.com/auth-callback';
 // Same target the magic link used, plus the homeowner intent marker the static
@@ -69,11 +69,19 @@ const ALREADY_REGISTERED_MESSAGE =
 
 type ReferralSource = 'insurance_agent' | 'realtor' | 'friend' | 'web' | '';
 
-// ─── GA4 helper ──────────────────────────────────────────────────────────────
+// ─── GA4 helper ───────────────────────────────────────────────────────
 
 function gtag(...args: unknown[]) {
   if (typeof window !== 'undefined' && (window as any).gtag) {
     (window as any).gtag(...args);
+  }
+}
+
+// ─── Meta Pixel helper — gh-1817 ────────────────────────────────────────────
+
+function fbq(...args: unknown[]) {
+  if (typeof window !== 'undefined' && (window as any).fbq) {
+    (window as any).fbq(...args);
   }
 }
 
@@ -93,7 +101,7 @@ function isAlreadyRegisteredError(err: unknown): boolean {
   );
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
+// ─── Component ───────────────────────────────────────────────────────
 
 export default function GetStartedPage() {
   const { user, role, loading } = useAuthReady();
@@ -280,6 +288,9 @@ export default function GetStartedPage() {
       job_type: params.get('job_type') || null,
       source: params.get('utm_source') || referralSource || 'direct',
     });
+    // gh-1817: Meta Pixel Lead event — fires on both the Google OAuth and
+    // password sign-up paths, matching the GA4 call sites above exactly.
+    fbq('track', 'Lead');
   };
 
   // ── Google OAuth sign-up (primary path, Dustin 2026-08-26) ──
@@ -1095,7 +1106,7 @@ export default function GetStartedPage() {
   );
 }
 
-// ─── Google "G" mark (same SVG as /login and the static login.html) ──────────
+// ─── Google "G" mark (same SVG as /login and the static login.html) ──────────────────────────────────────────────────
 function GoogleIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
