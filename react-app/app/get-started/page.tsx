@@ -7,9 +7,12 @@
  * Auth flow:
  *   - If user is already logged in, redirect to appropriate dashboard.
  *   - New users choose one of two paths, both of which collect the same profile
- *     data first: Google OAuth (primary, button at the top of the card) or
- *     email + password. Either way we do leads insert (non-fatal) → write
- *     localStorage (cs_signup) → hand off to Supabase auth.
+ *     data first: Google OAuth or email + password. Google's button sits
+ *     BELOW the account form as of 2026-09-15 (gh-1901 Option 1 note below),
+ *     not above it and not visually primary — this line used to say
+ *     otherwise and was corrected once the button moved. Either way we do
+ *     leads insert (non-fatal) → write localStorage (cs_signup) → hand off
+ *     to Supabase auth.
  *   - HubSpot contact creation (D-189) no longer fires from this page —
  *     the user has no session/JWT yet at this point, and create-hubspot-contact's
  *     homeowner mode requires one (D-211 CODE-3 hardening, 86e1xdaxe #1), so the
@@ -19,18 +22,56 @@
  *
  * References: D-189 (HubSpot), D-211 (React surface), #405 (post-auth HubSpot move)
  *
+ *   [gh-1901, 2026-09-14, Tier A/B] Two-step reorder: CRO RUN 20 found the
+ *   page asked for an account (8 fields, 2 checkboxes) before a word about
+ *   the home, against the page's own "tell us about your home" promise. Step
+ *   1 asks only the property address before any account field is shown; the
+ *   "what do you need help with" chip is offered but optional (CEO RUN 43
+ *   review F4 — no consumer reads project_type yet, so it must not gate
+ *   Step 1). Step 2 is the account form this file already had (name/email/
+ *   password, Google or password). Phone stays optional on Step 2, but is
+ *   now REQUIRED when the SMS-consent checkbox is ticked (CEO RUN 43 review
+ *   F2 — a consent timestamp with no phone number is an orphan TCR record);
+ *   see validateSmsConsent() below. Correction to the original claim here
+ *   (CEO RUN 43 review F3): phone/address/name are NOT dead weight past this
+ *   page — trade-selector/page.tsx writes phone/address/full_name to
+ *   `profiles`, and auth-callback/page.tsx sends phone/address to HubSpot;
+ *   neither call is made FROM this file, which is the only reason this
+ *   page's own leads-insert/signUp() calls don't need them. No Supabase
+ *   schema or Edge Function changed; SMS-consent and referrer opt-out
+ *   checkbox COPY is untouched (Tier C boundary — only the phone
+ *   requirement gating it is new). Closes on a fresh auth.users count 14
+ *   days post-deploy beside the pre-change baseline (2 signups / 7 days,
+ *   0 / 24h at 2026-09-08).
+ *
+ *   [CEO RUN 44 rebase, 2026-09-15] Rebased onto main past #1928 (gh-1817
+ *   Meta Pixel Lead event + CRLF→LF normalization), #1914, #1934, #1935,
+ *   #1936, #1937. fbq() and the fbq('track','Lead') call in
+ *   fireSignupAnalytics are restored from main — see F1 in the CEO RUN 43
+ *   FAIL review comment on this PR. Line endings normalized to LF to match
+ *   main and remove the whole-file CRLF/LF diff that hid the pixel loss the
+ *   first time.
+ *
  *   [D-207 Google OAuth removed pre-launch] — REVERSED for this page on
  *   2026-08-26 by Dustin. His direction, verbatim: "The login for customers
  *   still has a magic link. I'd like to remove that as an option for homeowners
  *   if possible. I want it to be Oauth or set a password. I don't want to force
  *   homeowners to leave the site as the first step." D-207's pre-launch removal
- *   therefore no longer governs the homeowner sign-up surface: the Google button
- *   is back above the form as the primary path, email + password is the
- *   alternative, and magic link is gone from this page entirely (both the
- *   signInWithOtp call and the "check your email" panel that only it could
- *   reach). The reversal is recorded rather than deleted so nobody re-applies
- *   D-207 here without a newer decision from Dustin. /login and /contractor/login
- *   are untouched — this reversal is scoped to homeowner sign-up.
+ *   therefore no longer governs the homeowner sign-up surface: Google OAuth
+ *   and email + password are both offered on Step 2, and magic link is gone
+ *   from this page entirely (both the signInWithOtp call and the "check your
+ *   email" panel that only it could reach). The reversal is recorded rather
+ *   than deleted so nobody re-applies D-207 here without a newer decision
+ *   from Dustin. /login and /contractor/login are untouched — this reversal
+ *   is scoped to homeowner sign-up.
+ *
+ *   [Positional correction, 2026-09-15] This paragraph originally said the
+ *   Google button sits "above the form as the primary path" — true on
+ *   2026-08-26, false since the same-day gh-1901 Option 1 move put it BELOW
+ *   the account form instead (see the note above). Corrected here rather
+ *   than left stale, per the independent-review finding on PR #1929. D-207
+ *   itself is unaffected; only this sentence's description of button
+ *   position was wrong.
  */
 
 'use client';
@@ -42,7 +83,7 @@ import { supabase } from '@/lib/supabase';
 import { readReferralIds, writeReferralIds } from '@/lib/cookie-storage';
 import { formatPhoneValue, isValidEmail } from './utils';
 
-// ─── Constants ───────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const AUTH_CALLBACK_URL = 'https://app.otterquote.com/auth-callback';
 // Same target the magic link used, plus the homeowner intent marker the static
@@ -69,7 +110,22 @@ const ALREADY_REGISTERED_MESSAGE =
 
 type ReferralSource = 'insurance_agent' | 'realtor' | 'friend' | 'web' | '';
 
-// ─── GA4 helper ───────────────────────────────────────────────────────
+// gh-1901: Step 1 "what do you need help with" options. Kept short and
+// storm-damage-led to match the trades OtterQuote actually serves; trade-selector
+// (the very next screen after account creation) is still where the homeowner
+// gives the full project detail — this is only the one-word headline CRO RUN 20
+// asked to see ahead of account creation, not a replacement for that page.
+type ProjectType = 'roof' | 'siding' | 'windows_doors' | 'water_damage' | 'other' | '';
+
+const PROJECT_TYPE_OPTIONS: { value: ProjectType; label: string }[] = [
+  { value: 'roof', label: 'Roof' },
+  { value: 'siding', label: 'Siding' },
+  { value: 'windows_doors', label: 'Windows/Doors' },
+  { value: 'water_damage', label: 'Water Damage' },
+  { value: 'other', label: 'Other' },
+];
+
+// ─── GA4 helper ──────────────────────────────────────────────────────────────
 
 function gtag(...args: unknown[]) {
   if (typeof window !== 'undefined' && (window as any).gtag) {
@@ -77,7 +133,7 @@ function gtag(...args: unknown[]) {
   }
 }
 
-// ─── Meta Pixel helper — gh-1817 ────────────────────────────────────────────
+// ─── Meta Pixel helper — gh-1817 ──────────────────────────────────────────
 
 function fbq(...args: unknown[]) {
   if (typeof window !== 'undefined' && (window as any).fbq) {
@@ -101,7 +157,7 @@ function isAlreadyRegisteredError(err: unknown): boolean {
   );
 }
 
-// ─── Component ───────────────────────────────────────────────────────
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export default function GetStartedPage() {
   const { user, role, loading } = useAuthReady();
@@ -114,6 +170,17 @@ export default function GetStartedPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
+  // gh-1901: asked in Step 1, before any account field — "what does the
+  // homeowner want help with" is the value CRO RUN 20 found missing ahead of
+  // account creation. Informational only: carried in the cs_signup
+  // localStorage payload for the next step (trade-selector) to prefill, never
+  // sent to the `leads` insert or supabase.auth.signUp() — no backend schema
+  // touched by this field.
+  const [projectType, setProjectType] = useState<ProjectType>('');
+  // gh-1901: two-step flow — Step 1 asks about the home, Step 2 asks for the
+  // account. Client-side only; no route change, so /get-started keeps its
+  // one URL and Google's redirectTo target is untouched.
+  const [step, setStep] = useState<1 | 2>(1);
   const [smsConsent, setSmsConsent] = useState(false);
   // gh-1337: homeowner opt-out for referrer progress-update emails. Copy
   // approved by Dustin on #1336 (R-120) — do not reword. Default false
@@ -164,17 +231,54 @@ export default function GetStartedPage() {
     setReferralSource(prev => (prev === val ? '' : val));
   }, []);
 
+  // ── Project-type chip click (Step 1) — gh-1901 ──
+  const handleProjectTypeChip = useCallback((val: ProjectType) => {
+    setProjectType(prev => (prev === val ? '' : val));
+  }, []);
+
+  // ── Step 1 → Step 2 (gh-1901: home info before account fields) ──
+  const handleContinueToAccount = (e: FormEvent) => {
+    e.preventDefault();
+    setError('');
+    const problem = validateHomeInfo();
+    if (problem) {
+      setError(problem);
+      return;
+    }
+    setStep(2);
+  };
+
   // ── Validation ──
 
   /**
-   * Profile fields both paths need. Google hands us the email only after the
-   * round-trip, so email/password are validated separately by the form path —
-   * but everything else has to be on the clipboard before we leave the site,
-   * because register-time data cannot be recovered from an OAuth callback.
+   * gh-1901: Step 1 — about the home, asked before any account field exists
+   * on screen. Only the address is required to advance. The "what do you
+   * need help with" chip (project_type) is offered but NOT required (CEO
+   * RUN 43 review F4): no downstream consumer reads project_type yet, so
+   * requiring it would add the exact funnel friction this PR exists to
+   * remove, for a field nothing currently uses.
    */
-  const validateProfile = (): string | null => {
-    if (!firstName.trim() || !lastName.trim() || !phone.trim() || !address.trim()) {
-      return 'Please fill in your name, phone, and property address before continuing.';
+  const validateHomeInfo = (): string | null => {
+    if (!address.trim()) {
+      return 'Please enter your property address.';
+    }
+    return null;
+  };
+
+  /**
+   * Step 2 — account fields both the Google and password paths need. Google
+   * hands us the email only after the round-trip, so email/password are
+   * validated separately by the form path — but name has to be on the
+   * clipboard before we leave the site, because register-time data cannot be
+   * recovered from an OAuth callback. Step 1 (validateHomeInfo) already
+   * guarantees address by the time this runs — projectType is optional
+   * (CEO RUN 43 review F4: no consumer reads it yet), so it is NOT
+   * guaranteed here. This line used to claim otherwise; corrected per the
+   * independent-review finding on PR #1929.
+   */
+  const validateAccountProfile = (): string | null => {
+    if (!firstName.trim() || !lastName.trim()) {
+      return 'Please fill in your name before continuing.';
     }
     return null;
   };
@@ -186,6 +290,23 @@ export default function GetStartedPage() {
       return `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`;
     }
     if (password !== confirmPassword) return 'Passwords do not match.';
+    return null;
+  };
+
+  /**
+   * CEO RUN 43 review F2: phone is optional on Step 2, but the SMS-consent
+   * checkbox writes `sms_consent_ts` into cs_signup regardless of whether a
+   * phone number was ever entered — a consent timestamp for a subscriber
+   * who does not exist. Required on both the Google and password paths
+   * (handleGoogle and handleSubmit each call this before persisting), the
+   * same way validateAccountProfile is required on both. Consent checkbox
+   * copy itself is untouched — this only adds a phone requirement to using
+   * it, which is validation logic, not consent wording (Tier C boundary).
+   */
+  const validateSmsConsent = (): string | null => {
+    if (smsConsent && !phone.trim()) {
+      return 'Please add a phone number, or leave the SMS-consent box unchecked, before continuing.';
+    }
     return null;
   };
 
@@ -246,6 +367,10 @@ export default function GetStartedPage() {
         last_name: lastName.trim(),
         phone: phone.trim(),
         address: address.trim(),
+        // gh-1901: Step 1's "what do you need help with" answer, carried
+        // forward for trade-selector to prefill — same non-schema-touching
+        // localStorage bridge every other field here already uses.
+        project_type: projectType || null,
         referral_source:
           referralSource || (storedReferralAgentId ? 'partner_link' : 'web'),
         referring_agent_name: refName.trim() || null,
@@ -293,13 +418,23 @@ export default function GetStartedPage() {
     fbq('track', 'Lead');
   };
 
-  // ── Google OAuth sign-up (primary path, Dustin 2026-08-26) ──
+  // ── Google OAuth sign-up (Dustin 2026-08-26; button sits below the form
+  //    since the gh-1901 Option 1 move, not primary — see header) ──
   const handleGoogle = async () => {
     setError('');
 
-    const problem = validateProfile();
+    // gh-1901: Google button now lives in Step 2, so address is already
+    // guaranteed by the Step 1 → Step 2 transition below; only name remains
+    // to check here.
+    const problem = validateAccountProfile();
     if (problem) {
       setError(problem);
+      return;
+    }
+    // CEO RUN 43 review F2 — see validateSmsConsent().
+    const smsProblemGoogle = validateSmsConsent();
+    if (smsProblemGoogle) {
+      setError(smsProblemGoogle);
       return;
     }
 
@@ -324,7 +459,7 @@ export default function GetStartedPage() {
       console.error('[get-started] Google sign-up error:', err);
       signupNavigation.current = false;
       setGoogleLoading(false);
-      setError('Google sign-up failed. Please try again, or create your account with an email and password below.');
+      setError('Google sign-up failed. Please try again, or create your account with the email and password form above.');
     }
   };
 
@@ -333,7 +468,7 @@ export default function GetStartedPage() {
     e.preventDefault();
     setError('');
 
-    const profileProblem = validateProfile();
+    const profileProblem = validateAccountProfile();
     if (profileProblem) {
       setError(profileProblem);
       return;
@@ -343,7 +478,14 @@ export default function GetStartedPage() {
       setError(credentialProblem);
       return;
     }
-    // SMS consent optional per TCR/CTIA rules — do not block on unchecked
+    // An UNCHECKED SMS-consent box is fine per TCR/CTIA rules — do not block
+    // on that. A CHECKED box with no phone number is the defect (CEO RUN 43
+    // review F2); validateSmsConsent() only fires when the box is checked.
+    const smsProblem = validateSmsConsent();
+    if (smsProblem) {
+      setError(smsProblem);
+      return;
+    }
 
     setSubmitting(true);
 
@@ -455,6 +597,54 @@ export default function GetStartedPage() {
           font-size: 1rem;
           margin-bottom: var(--sp-8, 2rem);
           line-height: 1.6;
+        }
+        /* gh-1901: two-step layout — step indicator + back link */
+        .gs-step-indicator {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 0.8rem;
+          font-weight: 600;
+          color: var(--slate, #94a3b8);
+          margin-bottom: var(--sp-4, 1rem);
+          letter-spacing: 0.02em;
+          text-transform: uppercase;
+        }
+        .gs-step-indicator .gs-step-current { color: var(--amber, #E07B00); }
+        .gs-back-link {
+          background: none;
+          border: none;
+          color: var(--slate, #94a3b8);
+          font-size: 0.85rem;
+          font-family: inherit;
+          cursor: pointer;
+          padding: 0;
+          margin-bottom: var(--sp-4, 1rem);
+        }
+        .gs-back-link:hover { color: var(--amber, #E07B00); }
+        .project-type-options {
+          display: flex;
+          gap: var(--sp-3, 0.75rem);
+          flex-wrap: wrap;
+        }
+        .project-type-chip {
+          padding: 10px 18px;
+          border-radius: 9999px;
+          border: 1px solid rgba(255,255,255,0.15);
+          background: transparent;
+          color: var(--slate, #94a3b8);
+          font-size: 0.9rem;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.15s;
+          font-family: inherit;
+        }
+        .project-type-chip:hover { border-color: var(--amber, #E07B00); color: var(--amber, #E07B00); }
+        .project-type-chip.active {
+          background: var(--amber, #E07B00);
+          color: var(--navy, #0B1929);
+          border-color: var(--amber, #E07B00);
+          font-weight: 700;
         }
         .gs-form {
           display: flex;
@@ -743,7 +933,14 @@ export default function GetStartedPage() {
             border-left: none;
             border-bottom: 1px solid rgba(255,255,255,0.06);
             padding: 1.5rem;
-            order: -1;
+            /* order: -1 removed 2026-09-15 (gh-1901 round 3, independent
+               review): this rule put the benefits panel — including the
+               "Continue with Google" copy above — ahead of the account
+               form on phones, undoing the Option 1 move for the mobile
+               majority of homeowner traffic even though desktop and the
+               form's own internal order were already form-first. Natural
+               source order (form, then benefits) now applies at this
+               breakpoint too. */
           }
           .gs-left { padding: 2rem 1.5rem; }
           .form-row { grid-template-columns: 1fr; }
@@ -756,59 +953,111 @@ export default function GetStartedPage() {
         {/* ── Left: Form ── */}
         <div className="gs-left">
           <div className="gs-form-wrap">
-            <h1>Get Started</h1>
-            <p className="gs-subtitle">
-              Create your free account and start getting competitive quotes from contractors.
-            </p>
-
             {/* ── Account-Confirmation State ── */}
             {confirmEmailSent ? (
-              <div className="gs-confirm-sent">
-                <div className="gs-confirm-icon">✉️</div>
-                <h2>Confirm Your Email</h2>
-                <p>Your account is created. We sent a one-time confirmation link to:</p>
-                <div className="gs-confirm-email">{sentToEmail}</div>
-                <p style={{ marginTop: '1rem' }}>
-                  Click the link to activate your account. After that, sign in any time with
-                  the password you just set.
+              <>
+                <h1>Get Started</h1>
+                <p className="gs-subtitle">
+                  Create your free account and start getting competitive quotes from contractors.
                 </p>
+                <div className="gs-confirm-sent">
+                  <div className="gs-confirm-icon">✉️</div>
+                  <h2>Confirm Your Email</h2>
+                  <p>Your account is created. We sent a one-time confirmation link to:</p>
+                  <div className="gs-confirm-email">{sentToEmail}</div>
+                  <p style={{ marginTop: '1rem' }}>
+                    Click the link to activate your account. After that, sign in any time with
+                    the password you just set.
+                  </p>
+                  <p className="text-sm-center">
+                    <a href={LOGIN_URL}>Go to sign in</a>
+                  </p>
+                </div>
+              </>
+            ) : step === 1 ? (
+              /*
+                ── Step 1: About the home — gh-1901 ──
+                CRO RUN 20 (#1901): the page's own promise is "tell us about
+                your home", but the old single-step form asked for an account
+                first — 8 fields and 2 checkboxes, none about the home, before
+                anything else. This step asks only what the backend needs to
+                let the homeowner move forward: the property address (already
+                collected pre-account, just reordered — see form-group below)
+                and, new, a one-tap "what do you need help with" chip. Neither
+                field touches the `leads` insert or supabase.auth.signUp() —
+                both are staged in cs_signup for trade-selector, same as every
+                other pre-account field on this page already was.
+              */
+              <form
+                className="gs-form"
+                onSubmit={handleContinueToAccount}
+                noValidate
+              >
+                <h1>Tell Us About Your Home</h1>
+                <p className="gs-subtitle">
+                  It&apos;s free, and takes under a minute. Create your account next.
+                </p>
+
+                <div className="form-group">
+                  <label className="form-label" htmlFor="address">Property Address</label>
+                  <input
+                    type="text"
+                    id="address"
+                    className="form-input"
+                    required
+                    autoComplete="street-address"
+                    placeholder="123 Main St, Anytown, ST 12345"
+                    value={address}
+                    onChange={e => setAddress(e.target.value)}
+                  />
+                  <span className="form-hint">The address for your project.</span>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">What do you need help with?</label>
+                  <div className="project-type-options">
+                    {PROJECT_TYPE_OPTIONS.map(({ value, label }) => (
+                      <button
+                        key={value}
+                        type="button"
+                        className={`project-type-chip${projectType === value ? ' active' : ''}`}
+                        onClick={() => handleProjectTypeChip(value)}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {error && <div className="form-error" role="alert">{error}</div>}
+
+                <button type="submit" className="btn-primary-full">
+                  Continue
+                </button>
+
                 <p className="text-sm-center">
-                  <a href={LOGIN_URL}>Go to sign in</a>
+                  Already have an account?{' '}
+                  <a href={LOGIN_URL}>Sign in here</a>
                 </p>
-              </div>
+              </form>
             ) : (
               <>
-                {/*
-                  Google OAuth — primary path, restored 2026-08-26 on Dustin's
-                  direction (see the file header for the D-207 reversal). It sits
-                  above the form deliberately: he does not want the first step of
-                  a homeowner sign-up to be leaving the site for an inbox, and
-                  one Google click beats seven fields for most visitors. The
-                  profile fields below are still collected first — validateProfile()
-                  runs on click and persistSignupContext() stashes the payload
-                  before the browser leaves for Google.
-                */}
                 <button
                   type="button"
-                  className="btn-google"
-                  onClick={handleGoogle}
-                  disabled={googleLoading || submitting}
+                  className="gs-back-link"
+                  onClick={() => { setError(''); setStep(1); }}
                 >
-                  {googleLoading ? (
-                    'Redirecting to Google…'
-                  ) : (
-                    <>
-                      <GoogleIcon />
-                      Sign up with Google
-                    </>
-                  )}
+                  &larr; Back
                 </button>
-                <p className="gs-oauth-hint">
-                  Fill in your details below first — we carry them over to your new account.
+                <div className="gs-step-indicator">
+                  <span>Your Home</span>
+                  <span>&rarr;</span>
+                  <span className="gs-step-current">Your Account</span>
+                </div>
+                <h1>Create Your Account</h1>
+                <p className="gs-subtitle">
+                  Free, and takes under a minute. We&apos;ll match {address ? 'your home' : 'you'} with contractors next.
                 </p>
-
-                <div className="oauth-divider"><span>or sign up with email</span></div>
-
                 {/* ── Email + Password Sign-Up Form ── */}
                 <form className="gs-form" onSubmit={handleSubmit} noValidate>
                 {/* Name row */}
@@ -889,14 +1138,21 @@ export default function GetStartedPage() {
                   />
                 </div>
 
-                {/* Phone */}
+                {/* Phone — optional by default (gh-1901: this page's own
+                    leads-insert/signUp() calls never read it). But see the
+                    SMS-consent checkbox just below: validateSmsConsent()
+                    now requires a phone number the moment that box is
+                    ticked, so a consent timestamp is never recorded against
+                    no phone (CEO RUN 43 review F2). Phone still matters
+                    downstream even when unchecked — trade-selector writes
+                    it to `profiles` and auth-callback sends it to HubSpot
+                    (CEO RUN 43 review F3). */}
                 <div className="form-group">
-                  <label className="form-label" htmlFor="phone">Phone</label>
+                  <label className="form-label" htmlFor="phone">Phone <span style={{ fontWeight: 400, color: 'var(--slate, #94a3b8)' }}>(optional)</span></label>
                   <input
                     type="tel"
                     id="phone"
                     className="form-input"
-                    required
                     autoComplete="tel"
                     placeholder="(317) 555-1234"
                     value={phone}
@@ -956,21 +1212,8 @@ export default function GetStartedPage() {
                   </label>
                 </div>
 
-                {/* Property Address */}
-                <div className="form-group">
-                  <label className="form-label" htmlFor="address">Property Address</label>
-                  <input
-                    type="text"
-                    id="address"
-                    className="form-input"
-                    required
-                    autoComplete="street-address"
-                    placeholder="123 Main St, Anytown, ST 12345"
-                    value={address}
-                    onChange={e => setAddress(e.target.value)}
-                  />
-                  <span className="form-hint">The address for your project.</span>
-                </div>
+                {/* Property Address moved to Step 1 (gh-1901) — already
+                    captured in `address` state by the time this step renders. */}
 
                 {/* Referral Source */}
                 <fieldset className="referral-section" style={{ padding: '1rem', background: 'rgba(255,255,255,0.03)', borderRadius: 8, border: '1px solid rgba(255,255,255,0.06)' }}>
@@ -1055,6 +1298,47 @@ export default function GetStartedPage() {
                   <a href="https://otterquote.com/contractor-join.html">Apply to join here</a>
                 </p>
                 </form>
+
+                <div className="oauth-divider"><span>or continue with Google</span></div>
+
+                {/*
+                  Google OAuth — alternative path (restored 2026-08-26 on
+                  Dustin's direction, see the file header for the D-207
+                  reversal). MOVED BELOW the form 2026-09-15 (gh-1901 comment
+                  5673014838, Option 1): the button sat above the form,
+                  styled primary, read "Sign up with Google", and did
+                  nothing but show validateAccountProfile's error until
+                  name/phone/address were filled — a trap for the mobile /
+                  in-app-browser audience the ads deliver. Moving it below
+                  the form makes the visual order match the actual order.
+                  validateAccountProfile() (name) and validateSmsConsent()
+                  (phone, only if SMS-consent is checked) still run on
+                  click, and persistSignupContext() still stashes Step 1 +
+                  Step 2 fields before the browser leaves for Google —
+                  unchanged. Relabelled "Continue with Google" per the same
+                  finding: button copy only, no consent/terms/legal text
+                  touched (Tier B, Dustin-ruled on #1901). Options 2 and 3
+                  from the same finding are NOT implemented here — Dustin's
+                  ruling covers Option 1 only.
+                */}
+                <button
+                  type="button"
+                  className="btn-google"
+                  onClick={handleGoogle}
+                  disabled={googleLoading || submitting}
+                >
+                  {googleLoading ? (
+                    'Redirecting to Google…'
+                  ) : (
+                    <>
+                      <GoogleIcon />
+                      Continue with Google
+                    </>
+                  )}
+                </button>
+                <p className="gs-oauth-hint">
+                  We&apos;ll carry the details above into your new account.
+                </p>
               </>
             )}
           </div>
@@ -1072,7 +1356,7 @@ export default function GetStartedPage() {
               <div className="benefit-icon">🔐</div>
               <div className="benefit-text">
                 <h4>Create your account</h4>
-                <p>Sign up with Google or set a password. You stay on the site — no waiting on an email to get started.</p>
+                <p>Continue with Google or set a password. You stay on the site — no waiting on an email to get started.</p>
               </div>
             </div>
 
@@ -1106,7 +1390,7 @@ export default function GetStartedPage() {
   );
 }
 
-// ─── Google "G" mark (same SVG as /login and the static login.html) ──────────────────────────────────────────────────
+// ─── Google "G" mark (same SVG as /login and the static login.html) ──────────
 function GoogleIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
