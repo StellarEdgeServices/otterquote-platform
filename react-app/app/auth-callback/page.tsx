@@ -22,6 +22,18 @@
  * so that pre-auth call always 401'd. The session is live by the time we reach
  * routeSession() below, so supabase.functions.invoke attaches a valid JWT
  * automatically (same pattern as contractor/pre-approval's HubSpot sync).
+ *
+ * gh-1940: GA4 `sign_up` (Google path) also fires here, post-auth, for the
+ * same reliability reason as the HubSpot call above. get-started/page.tsx's
+ * `handleGoogle` fires its own local `sign_up` immediately before
+ * `supabase.auth.signInWithOAuth` redirects the browser to
+ * accounts.google.com — a real GA4 count of 0 over 10 days despite 2 real
+ * signups in the same window (see #1940) shows that pre-redirect emit is
+ * not reliably delivered. This page is the LANDING both OAuth paths return
+ * to, with a live session and no imminent unload, so it is a materially
+ * safer place to count the "account created" funnel step. Fires at most
+ * once per user (maybeFireGoogleSignUp below), gated on the account being
+ * newly created — a returning Google sign-in must never emit this.
  */
 
 'use client';
@@ -31,6 +43,8 @@ import type { Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 
 import { readReferralIds, writeReferralIds } from '@/lib/cookie-storage';
+import { maybeFireGoogleSignUp } from './signup-analytics';
+
 // ─── HubSpot — D-189, fired post-auth (#405) ─────────────────────────────────
 
 /** Same payload shape create-hubspot-contact's homeowner mode always expected. */
@@ -217,6 +231,10 @@ export default function AuthCallbackPage() {
       // Homeowner path confirmed (not a contractor record, no contractor intent) —
       // safe to fire the post-auth HubSpot sync now that a session JWT exists (#405).
       fireHomeownerHubspotContact(session.user.email);
+
+      // gh-1940: GA4 `sign_up` (Google path) — see maybeFireGoogleSignUp's
+      // header for the full guard rationale (new-user + one-time marker).
+      maybeFireGoogleSignUp(session.user);
 
       // Homeowner: returning (has claim) → dashboard, new → trade-selector
       try {
