@@ -51,8 +51,23 @@
   s.src = 'https://www.googletagmanager.com/gtag/js?id=' + MEASUREMENT_ID;
   document.head.appendChild(s);
 
+  // gh-1931: auth-callback.html receives the Supabase implicit-flow URL
+  // fragment (#access_token=...&refresh_token=...) after OAuth/magic-link
+  // sign-in. Clarity records the full page URL (and session replay), which
+  // means a live bearer-token pair was being captured and retained by a
+  // third-party vendor. This page is a redirect shim nobody reads, so there
+  // is no analytics value in Clarity being on it -- only GA4 (the
+  // auth_success engagement event, unaffected by this check) belongs here.
+  // CLARITY_EXCLUDED_PATHS is intentionally a small explicit list, not a
+  // pattern match, so a new exclusion is a deliberate, reviewed decision.
+  var CLARITY_EXCLUDED_PATHS = ['/auth-callback.html'];
+  if (CLARITY_EXCLUDED_PATHS.indexOf(window.location.pathname) !== -1) {
+    return; // Clarity never loads here; gtag.js above is unaffected.
+  }
+
   // Microsoft Clarity -- the vendor snippet, verbatim apart from living
-  // behind the allowlist check above. Reached only on a production host.
+  // behind the allowlist check above. Reached only on a production host,
+  // and never on a Clarity-excluded path (see gh-1931 above).
   (function (c, l, a, r, i, t, y) {
     c[a] = c[a] || function () { (c[a].q = c[a].q || []).push(arguments); };
     t = l.createElement(r); t.async = 1; t.src = 'https://www.clarity.ms/tag/' + i;

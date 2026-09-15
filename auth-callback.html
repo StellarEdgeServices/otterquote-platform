@@ -27,7 +27,7 @@
 <!-- GA4 — fires auth_success engagement event before redirect so sessions aren't counted as bounces -->
 <script src="/js/ga-gate.js"></script>
 <script>gtag('config','G-D1Y1TLGEFY');</script>
-<!-- Microsoft Clarity (wwr7qlk8g5) is loaded by /js/ga-gate.js, behind the same production-host gate as GA4 (gh-1619). Do not add a per-page loader. -->
+<!-- gh-1931: Microsoft Clarity does NOT load on this page. This page carries the Supabase auth URL fragment (#access_token=.../#refresh_token=...), and Clarity records the full page URL, so it was capturing live bearer tokens into a third-party vendor. /js/ga-gate.js excludes this exact path from the Clarity load (GA4 still fires normally, gh-1619). Do not add a per-page Clarity loader here. -->
 <!-- D-208: Capture auth tokens before Supabase createClient() clears the URL -->
 <script>window._oq_has_auth_in_url = window.location.hash.includes('access_token') || window.location.search.includes('code=');</script>
 <meta charset="UTF-8">
