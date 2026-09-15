@@ -126,6 +126,18 @@
  *   this function sends nothing rather than send without a working opt-out),
  *   HOMEOWNER_OPTOUT_SECRET_PREVIOUS (optional, verification only, for rotation)
  *
+ * gh-1933 follow-up: whenever this scan finds a homeowner at the '48h' stage
+ * (documents_needed, no measurements, no hover order, zero real activity for
+ * >= 48h — the exact condition selectStage already screens for), it also
+ * sends ONE admin digest email to Dustin listing every such homeowner found
+ * this run (masked email, claim id, days stalled, dashboard link), reusing
+ * this function's own screening rather than a second query. Idempotent per
+ * claim per UTC calendar day via the notifications table (see
+ * ./admin-digest.ts). A dry run sends and writes nothing, same as the rest
+ * of this function. The digest is independent of cron.job 20's active state
+ * — it fires whenever this function is invoked and finds a match, same as
+ * the homeowner nudge it rides alongside.
+ *
  * gh-1786 follow-up (this change): the Mailgun send now also carries the
  * RFC 8058 `List-Unsubscribe` / `List-Unsubscribe-Post` headers, pointed at
  * the SAME per-claim signed URL the footer link already uses (./optout-token.ts
@@ -169,6 +181,14 @@ import {
   OPTOUT_SECRET_ENV,
   signOptOutToken,
 } from "./optout-token.ts";
+import {
+  ADMIN_DIGEST_EMAIL,
+  ADMIN_DIGEST_NOTIFICATION_TYPE,
+  buildAdminDigestEmail,
+  filterNotYetDigestedToday,
+  type StalledCandidate,
+  utcDayStartIso,
+} from "./admin-digest.ts";
 
 const FUNCTION_NAME = "send-homeowner-next-steps";
 const BATCH_LIMIT = 200;
@@ -265,6 +285,39 @@ async function sendMailgunEmail(
       return { ok: false, error: `Mailgun ${res.status}: ${errText}` };
     }
     return { ok: true };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}
+
+// gh-1933: sends the one stalled-homeowner digest email to Dustin. Separate
+// from sendMailgunEmail above — different recipient, different content, no
+// opt-out link (this is an internal admin notice, not a homeowner-facing
+// commercial email; D-320's opt-out mechanism does not apply to it).
+async function sendAdminDigestMail(
+  apiKey: string,
+  subject: string,
+  textBody: string,
+  htmlBody: string,
+): Promise<{ ok: boolean; mailgunId?: string; error?: string }> {
+  const formData = new URLSearchParams();
+  formData.append("from", "Otter Quotes <notifications@mail.otterquote.com>");
+  formData.append("to", ADMIN_DIGEST_EMAIL);
+  formData.append("subject", subject);
+  formData.append("text", textBody);
+  formData.append("html", htmlBody);
+  try {
+    const res = await fetch("https://api.mailgun.net/v3/mail.otterquote.com/messages", {
+      method: "POST",
+      headers: { Authorization: `Basic ${btoa(`api:${apiKey}`)}` },
+      body: formData,
+    });
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "(unreadable)");
+      return { ok: false, error: `Mailgun ${res.status}: ${errText}` };
+    }
+    const data = await res.json().catch(() => ({}));
+    return { ok: true, mailgunId: (data as { id?: string })?.id };
   } catch (err) {
     return { ok: false, error: String(err) };
   }
@@ -459,6 +512,12 @@ serve(async (req: Request) => {
     OPTOUT_EVENT_TYPE,
   );
   const results: ScanResult[] = [];
+  // gh-1933: every claim this scan finds sitting at the '48h' stage — i.e.
+  // documents_needed, no measurements, no hover order, zero real activity
+  // for >= 48h — regardless of whether the homeowner email actually sends
+  // (previewed under dry run, sent, or already_sent). Captured once we have
+  // a resolved email, below.
+  const stalledForDigest: StalledCandidate[] = [];
 
   for (const claim of claims as ClaimRow[]) {
     // gh-1580: the whole screen — status, opt-out, hover_orders, real
@@ -505,6 +564,19 @@ serve(async (req: Request) => {
       console.warn(`[${FUNCTION_NAME}] No email for homeowner ${claim.user_id} on claim ${claim.id} — skipping`);
       results.push({ claim_id: claim.id, stages_sent: [], skipped_reason: "no_email" });
       continue;
+    }
+
+    // gh-1933: the screen already IS the "documents_needed, no measurements,
+    // no hover order, zero real activity >= 48h" condition — stage === '48h'
+    // means selectStage() found exactly that. Reusing the screening, not
+    // duplicating it (issue body).
+    if (stage === "48h") {
+      stalledForDigest.push({
+        claimId: claim.id,
+        userId: claim.user_id,
+        email: homeownerEmail,
+        createdAtIso: claim.created_at,
+      });
     }
 
     const measurementsUrl = `${siteUrl}/help-measurements.html`;
@@ -571,6 +643,66 @@ serve(async (req: Request) => {
     });
   }
 
+  // ── gh-1933: admin stalled-homeowner digest ───────────────────────────────
+  // ONE email, listing every '48h'-stage claim this run found, idempotent
+  // per claim per UTC day. A dry run writes nothing and sends nothing, same
+  // as the rest of this function.
+  let adminDigestSent = 0;
+  let adminDigestError: string | undefined;
+  if (!dryRun && stalledForDigest.length > 0) {
+    const todayStartIso = utcDayStartIso(now);
+    const digestClaimIds = stalledForDigest.map((s) => s.claimId);
+    const { data: alreadyDigestedRows, error: digestCheckErr } = await supabase
+      .from("notifications")
+      .select("claim_id")
+      .eq("notification_type", ADMIN_DIGEST_NOTIFICATION_TYPE)
+      .in("claim_id", digestClaimIds)
+      .gte("sent_at", todayStartIso);
+    if (digestCheckErr) {
+      console.error(`[${FUNCTION_NAME}] admin digest idempotency check failed:`, digestCheckErr.message);
+      adminDigestError = "idempotency_check_failed";
+    } else {
+      const alreadyDigestedToday = new Set(
+        (alreadyDigestedRows || []).map((r: { claim_id: string }) => r.claim_id),
+      );
+      const newForDigest = filterNotYetDigestedToday(stalledForDigest, alreadyDigestedToday);
+      if (newForDigest.length > 0) {
+        if (!mailgunApiKey) {
+          console.error(`[${FUNCTION_NAME}] admin digest skipped: MAILGUN_API_KEY not configured`);
+          adminDigestError = "mailgun_not_configured";
+        } else {
+          const { subject, textBody, htmlBody } = buildAdminDigestEmail(
+            newForDigest,
+            `${siteUrl}/admin-homeowners.html`,
+            now,
+          );
+          const digestResult = await sendAdminDigestMail(mailgunApiKey, subject, textBody, htmlBody);
+          if (digestResult.ok) {
+            adminDigestSent = newForDigest.length;
+            const markRows = newForDigest.map((s) => ({
+              user_id: s.userId,
+              claim_id: s.claimId,
+              channel: "email",
+              notification_type: ADMIN_DIGEST_NOTIFICATION_TYPE,
+              recipient: ADMIN_DIGEST_EMAIL,
+              message_preview: `Included in stalled-homeowner digest`,
+              sent_at: new Date().toISOString(),
+              delivered: true,
+              mailgun_id: digestResult.mailgunId,
+            }));
+            const { error: markErr } = await supabase.from("notifications").insert(markRows);
+            if (markErr) {
+              console.warn(`[${FUNCTION_NAME}] admin digest sent but failed to mark notifications:`, markErr.message);
+            }
+          } else {
+            console.error(`[${FUNCTION_NAME}] admin digest send failed:`, digestResult.error);
+            adminDigestError = digestResult.error;
+          }
+        }
+      }
+    }
+  }
+
   const processed = results.filter((r) => r.stages_sent.length > 0).length;
   // Counted output per condition 2 — never a silent return. Zero today is
   // expected and correct (no unique index yet => 23505 cannot fire); a
@@ -586,6 +718,11 @@ serve(async (req: Request) => {
       processed,
       skipped_already_sent: skippedAlreadySent,
       scanned_is_test: scanIsTest,
+      // gh-1933: count of homeowners newly included in today's admin digest
+      // (0 is correct and expected whenever nobody is at the '48h' stage, or
+      // everyone found was already digested today).
+      admin_digest_sent: adminDigestSent,
+      ...(adminDigestError ? { admin_digest_error: adminDigestError } : {}),
       // gh-1570: on a dry run `processed` is 0 by construction (nothing is
       // stamped), and `would_send` carries what a real run would have done.
       ...(dryRun
