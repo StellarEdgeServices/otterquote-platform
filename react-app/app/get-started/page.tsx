@@ -418,7 +418,8 @@ export default function GetStartedPage() {
     fbq('track', 'Lead');
   };
 
-  // ── Google OAuth sign-up (primary path, Dustin 2026-08-26) ──
+  // ── Google OAuth sign-up (Dustin 2026-08-26; button sits below the form
+  //    since the gh-1901 Option 1 move, not primary — see header) ──
   const handleGoogle = async () => {
     setError('');
 
@@ -932,7 +933,14 @@ export default function GetStartedPage() {
             border-left: none;
             border-bottom: 1px solid rgba(255,255,255,0.06);
             padding: 1.5rem;
-            order: -1;
+            /* order: -1 removed 2026-09-15 (gh-1901 round 3, independent
+               review): this rule put the benefits panel — including the
+               "Continue with Google" copy above — ahead of the account
+               form on phones, undoing the Option 1 move for the mobile
+               majority of homeowner traffic even though desktop and the
+               form's own internal order were already form-first. Natural
+               source order (form, then benefits) now applies at this
+               breakpoint too. */
           }
           .gs-left { padding: 2rem 1.5rem; }
           .form-row { grid-template-columns: 1fr; }
@@ -1348,7 +1356,7 @@ export default function GetStartedPage() {
               <div className="benefit-icon">🔐</div>
               <div className="benefit-text">
                 <h4>Create your account</h4>
-                <p>Sign up with Google or set a password. You stay on the site — no waiting on an email to get started.</p>
+                <p>Continue with Google or set a password. You stay on the site — no waiting on an email to get started.</p>
               </div>
             </div>
 
