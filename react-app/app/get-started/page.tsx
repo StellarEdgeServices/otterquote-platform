@@ -7,9 +7,12 @@
  * Auth flow:
  *   - If user is already logged in, redirect to appropriate dashboard.
  *   - New users choose one of two paths, both of which collect the same profile
- *     data first: Google OAuth (primary, button at the top of the card) or
- *     email + password. Either way we do leads insert (non-fatal) → write
- *     localStorage (cs_signup) → hand off to Supabase auth.
+ *     data first: Google OAuth or email + password. Google's button sits
+ *     BELOW the account form as of 2026-09-15 (gh-1901 Option 1 note below),
+ *     not above it and not visually primary — this line used to say
+ *     otherwise and was corrected once the button moved. Either way we do
+ *     leads insert (non-fatal) → write localStorage (cs_signup) → hand off
+ *     to Supabase auth.
  *   - HubSpot contact creation (D-189) no longer fires from this page —
  *     the user has no session/JWT yet at this point, and create-hubspot-contact's
  *     homeowner mode requires one (D-211 CODE-3 hardening, 86e1xdaxe #1), so the
@@ -54,13 +57,21 @@
  *   still has a magic link. I'd like to remove that as an option for homeowners
  *   if possible. I want it to be Oauth or set a password. I don't want to force
  *   homeowners to leave the site as the first step." D-207's pre-launch removal
- *   therefore no longer governs the homeowner sign-up surface: the Google button
- *   is back above the form as the primary path, email + password is the
- *   alternative, and magic link is gone from this page entirely (both the
- *   signInWithOtp call and the "check your email" panel that only it could
- *   reach). The reversal is recorded rather than deleted so nobody re-applies
- *   D-207 here without a newer decision from Dustin. /login and /contractor/login
- *   are untouched — this reversal is scoped to homeowner sign-up.
+ *   therefore no longer governs the homeowner sign-up surface: Google OAuth
+ *   and email + password are both offered on Step 2, and magic link is gone
+ *   from this page entirely (both the signInWithOtp call and the "check your
+ *   email" panel that only it could reach). The reversal is recorded rather
+ *   than deleted so nobody re-applies D-207 here without a newer decision
+ *   from Dustin. /login and /contractor/login are untouched — this reversal
+ *   is scoped to homeowner sign-up.
+ *
+ *   [Positional correction, 2026-09-15] This paragraph originally said the
+ *   Google button sits "above the form as the primary path" — true on
+ *   2026-08-26, false since the same-day gh-1901 Option 1 move put it BELOW
+ *   the account form instead (see the note above). Corrected here rather
+ *   than left stale, per the independent-review finding on PR #1929. D-207
+ *   itself is unaffected; only this sentence's description of button
+ *   position was wrong.
  */
 
 'use client';
@@ -260,7 +271,10 @@ export default function GetStartedPage() {
    * validated separately by the form path — but name has to be on the
    * clipboard before we leave the site, because register-time data cannot be
    * recovered from an OAuth callback. Step 1 (validateHomeInfo) already
-   * guarantees address + projectType by the time this runs.
+   * guarantees address by the time this runs — projectType is optional
+   * (CEO RUN 43 review F4: no consumer reads it yet), so it is NOT
+   * guaranteed here. This line used to claim otherwise; corrected per the
+   * independent-review finding on PR #1929.
    */
   const validateAccountProfile = (): string | null => {
     if (!firstName.trim() || !lastName.trim()) {
@@ -444,7 +458,7 @@ export default function GetStartedPage() {
       console.error('[get-started] Google sign-up error:', err);
       signupNavigation.current = false;
       setGoogleLoading(false);
-      setError('Google sign-up failed. Please try again, or create your account with an email and password below.');
+      setError('Google sign-up failed. Please try again, or create your account with the email and password form above.');
     }
   };
 
