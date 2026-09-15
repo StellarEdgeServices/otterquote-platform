@@ -4,9 +4,12 @@
 // dependency executor call site in index.ts).
 //
 // Reuses send-homeowner-next-steps's OWN screening — `stage === '48h'` from
-// ./select-stage.ts is exactly "documents_needed, no measurements, no hover
-// order, zero real activity >= 48h" — rather than re-deriving the condition
-// here (gh-1933 body: "Reuse the screening; do not duplicate it").
+// ./select-stage.ts means: at documents_needed, no measurements, no hover
+// order, the claim itself is >= 48 hours old, AND no real activity has ever
+// been recorded on the homeowner's ACCOUNT since the claim was created (not
+// a 48-hour activity window — see select-stage.ts's real_activity_since_created,
+// which is keyed by user_id, not claim_id) — rather than re-deriving the
+// condition here (gh-1933 body: "Reuse the screening; do not duplicate it").
 //
 // Idempotent per homeowner (claim) per UTC calendar day. The `notifications`
 // table has no dedicated date/bucket column (see notify-admin-new-homeowner's
@@ -82,7 +85,7 @@ export function buildAdminDigestEmail(
   const verb = rows.length === 1 ? "is" : "are";
   const textLines = rows.map((r) => `- ${r.maskedEmail} | claim ${r.claimId} | stalled ${r.daysStalled}d`);
   const textBody = [
-    `${rows.length} homeowner${plural} ${verb} stuck at documents_needed with no measurements, no Hover order, and no real activity for 48+ hours.`,
+    `${rows.length} homeowner${plural} ${verb} stuck at documents_needed for 48+ hours, with no measurements, no Hover order, and no activity recorded on their account since the claim was created.`,
     "",
     ...textLines,
     "",
@@ -101,7 +104,7 @@ export function buildAdminDigestEmail(
 <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;">
 <tr><td style="background:#0B1929;padding:20px 24px;"><h2 style="color:#F59E0B;margin:0;font-size:1.1rem;">Stalled Homeowners</h2></td></tr>
 <tr><td style="padding:24px;color:#0B1929;">
-<p style="margin:0 0 16px;">${rows.length} homeowner${plural} ${verb} stuck at documents_needed (no measurements, no Hover order, no real activity for 48+ hours).</p>
+<p style="margin:0 0 16px;">${rows.length} homeowner${plural} ${verb} stuck at documents_needed for 48+ hours, with no measurements, no Hover order, and no activity recorded on their account since the claim was created.</p>
 <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:13px;margin-bottom:20px;border:1px solid #E2E8F0;">
 <tr style="background:#F8FAFC;"><th align="left" style="padding:6px 8px;">Homeowner</th><th align="left" style="padding:6px 8px;">Claim</th><th align="left" style="padding:6px 8px;">Stalled</th></tr>
 ${rowsHtml}

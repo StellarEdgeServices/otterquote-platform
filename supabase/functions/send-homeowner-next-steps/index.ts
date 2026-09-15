@@ -127,16 +127,24 @@
  *   HOMEOWNER_OPTOUT_SECRET_PREVIOUS (optional, verification only, for rotation)
  *
  * gh-1933 follow-up: whenever this scan finds a homeowner at the '48h' stage
- * (documents_needed, no measurements, no hover order, zero real activity for
- * >= 48h — the exact condition selectStage already screens for), it also
- * sends ONE admin digest email to Dustin listing every such homeowner found
- * this run (masked email, claim id, days stalled, dashboard link), reusing
- * this function's own screening rather than a second query. Idempotent per
- * claim per UTC calendar day via the notifications table (see
- * ./admin-digest.ts). A dry run sends and writes nothing, same as the rest
- * of this function. The digest is independent of cron.job 20's active state
- * — it fires whenever this function is invoked and finds a match, same as
- * the homeowner nudge it rides alongside.
+ * (documents_needed, no measurements, no hover order, the claim itself >= 48h
+ * old, AND no activity ever recorded on the homeowner's ACCOUNT since the
+ * claim was created — see ./select-stage.ts's real_activity_since_created;
+ * it is not a 48-hour activity window, the 48h figure is the claim's AGE —
+ * the exact condition selectStage already screens for), it also sends ONE
+ * admin digest email to Dustin listing every such homeowner found this run
+ * (masked email, claim id, days stalled, dashboard link), reusing this
+ * function's own screening rather than a second query. See
+ * ./admin-digest-executor.ts for the injected-dependency executor (gh-1933
+ * review fix D1) that decides what a dry run vs. a real run does with that
+ * list, and ./admin-digest.ts for the pure render/mask/day-bucket functions
+ * it calls. A plain dry run sends and writes nothing, same as the rest of
+ * this function; the opt-in `admin_digest_preview: true` request-body flag
+ * (honoured only alongside `dry_run: true` — gh-1933 D2) is the one way to
+ * preview the digest without a live cron invocation. The real digest is
+ * independent of cron.job 20's active state — it fires whenever this
+ * function is invoked and finds a match, same as the homeowner nudge it
+ * rides alongside.
  *
  * gh-1786 follow-up (this change): the Mailgun send now also carries the
  * RFC 8058 `List-Unsubscribe` / `List-Unsubscribe-Post` headers, pointed at
@@ -184,11 +192,15 @@ import {
 import {
   ADMIN_DIGEST_EMAIL,
   ADMIN_DIGEST_NOTIFICATION_TYPE,
-  buildAdminDigestEmail,
-  filterNotYetDigestedToday,
   type StalledCandidate,
-  utcDayStartIso,
 } from "./admin-digest.ts";
+import {
+  type AdminDigestDeps,
+  type AdminDigestResult,
+  isDigestCandidate,
+  parseAdminDigestPreview,
+  runAdminDigest,
+} from "./admin-digest-executor.ts";
 
 const FUNCTION_NAME = "send-homeowner-next-steps";
 const BATCH_LIMIT = 200;
@@ -246,6 +258,35 @@ function jsonResponse(data: unknown, status: number, corsHeaders: Record<string,
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+}
+
+// gh-1933 review fix (D2) — shared response-shaping for runAdminDigest's
+// result, used at both call sites (the "no candidates at all" early return
+// and the end-of-handler path) so the two can never drift into different
+// response shapes for the same (dryRun, previewSend) combination.
+function buildDigestResponseFields(
+  outcome: AdminDigestResult,
+  dryRun: boolean,
+  previewSend: boolean,
+): Record<string, unknown> {
+  const base: Record<string, unknown> = {
+    // gh-1933: count of homeowners newly included in a sent digest — real or
+    // preview. 0 is correct and expected on a plain dry run (nothing sends),
+    // whenever nobody is at the '48h' stage, or everyone found was already
+    // digested today.
+    admin_digest_sent: outcome.sent,
+    ...(outcome.error ? { admin_digest_error: outcome.error } : {}),
+  };
+  if (dryRun && previewSend) {
+    // gh-1933 D2 — this is the branch that produces #1933's closing artifact.
+    return { ...base, admin_digest_preview: true };
+  }
+  if (dryRun && !previewSend) {
+    // gh-1933 D2 — unchanged zero-send/zero-write dry run, plus a preview of
+    // what a real run would include (never a real recipient address).
+    return { ...base, would_digest: outcome.wouldDigest ?? [] };
+  }
+  return base;
 }
 
 // ─── Copy ──────────────────────────────────────────────────────────────────
@@ -383,7 +424,8 @@ serve(async (req: Request) => {
   // See ./dry-run.ts for why it exists and what it deliberately does not do
   // (it writes no activity_log row and sends no email — it cannot manufacture
   // the artifact it is meant to help produce).
-  const dryRunRequested = parseDryRun(await req.clone().json().catch(() => ({})));
+  const requestBody = await req.clone().json().catch(() => ({}));
+  const dryRunRequested = parseDryRun(requestBody);
   // gh-1859 review fix: a dry run does NOT inherit the batch gate's permissive
   // `if (!cronSecret) authorized = true` branch. That branch fails OPEN, and a
   // dry run returns a list of claims, so it requires positive proof of
@@ -404,6 +446,15 @@ serve(async (req: Request) => {
   if (dryRun) {
     console.log(`[${FUNCTION_NAME}] DRY RUN — scanning is_test=true fixtures; nothing will be sent or written`);
   }
+  // gh-1933 D2 — the opt-in flag that makes #1933's closing artifact
+  // reachable: a dry invocation against an is_test homeowner seeded into the
+  // stalled ('48h') condition can now actually produce exactly one admin
+  // digest. Honoured ONLY when `dry_run: true` — see ./admin-digest-executor.ts
+  // for why (a real run ignores this flag entirely; that is asserted there,
+  // not just claimed here).
+  const adminDigestPreviewRequested = parseAdminDigestPreview(requestBody);
+  const adminDigestPreview = dryRun && adminDigestPreviewRequested;
+  const adminDigestPreviewIgnored = adminDigestPreviewRequested && !dryRun;
 
   // gh-1786 / D-320 — CAN-SPAM gate, ahead of any candidate scan. A commercial
   // email with no working opt-out is the violation this issue was filed on, so
@@ -424,6 +475,38 @@ serve(async (req: Request) => {
   const supabase = createClient(supabaseUrl, serviceRoleKey);
   const now = Date.now();
   const twoHoursAgoIso = new Date(now - TWO_HOURS_MS).toISOString();
+
+  // gh-1933 review fix (D1) — the digest's injected dependencies, wired here
+  // exactly once and passed into runAdminDigest at every call site below
+  // (the "no candidates found at all" early return, and the end-of-handler
+  // path). See ./admin-digest-executor.ts for what each function must do;
+  // this is the only place any of them touches Supabase or Mailgun.
+  const adminDigestDeps: AdminDigestDeps = {
+    fetchAlreadyDigestedToday: async (claimIds, todayStartIso) => {
+      const { data, error } = await supabase
+        .from("notifications")
+        .select("claim_id")
+        .eq("notification_type", ADMIN_DIGEST_NOTIFICATION_TYPE)
+        .in("claim_id", claimIds)
+        .gte("sent_at", todayStartIso);
+      if (error) {
+        console.error(`[${FUNCTION_NAME}] admin digest idempotency check failed:`, error.message);
+        return { claimIds: new Set<string>(), error: error.message };
+      }
+      return { claimIds: new Set((data || []).map((r: { claim_id: string }) => r.claim_id)) };
+    },
+    sendAdminDigestMail: (subject, textBody, htmlBody) =>
+      sendAdminDigestMail(mailgunApiKey as string, subject, textBody, htmlBody),
+    insertNotificationRows: async (rows) => {
+      const { error } = await supabase.from("notifications").insert(rows);
+      if (error) {
+        console.warn(`[${FUNCTION_NAME}] admin digest sent but failed to mark notifications:`, error.message);
+      }
+      return { error: error?.message ?? null };
+    },
+    mailgunConfigured: Boolean(mailgunApiKey),
+    now,
+  };
 
   // ── Candidate scan: is_test=false, status='documents_needed' (and never
   // 'draft' — redundant with the equality but stated explicitly per CTO RUN
@@ -452,8 +535,27 @@ serve(async (req: Request) => {
 
   if (!claims || claims.length === 0) {
     console.log(`[${FUNCTION_NAME}] Batch: no candidate claims found (is_test=${scanIsTest})`);
+    // gh-1933: no claims matched at all, so the digest candidate set is
+    // trivially empty too — still routed through runAdminDigest (a no-op
+    // I/O-wise for zero candidates, see its NEGATIVE CONTROLs) rather than
+    // hand-special-cased, so this response's digest fields never diverge in
+    // shape from the main path below.
+    const emptyDigestOutcome = await runAdminDigest(adminDigestDeps, {
+      dryRun,
+      previewSend: adminDigestPreview,
+      candidates: [],
+      siteUrl,
+    });
     return jsonResponse(
-      { ok: true, processed: 0, scanned_is_test: scanIsTest, ...(dryRun ? { dry_run: true, would_send: [] } : {}), results: [] },
+      {
+        ok: true,
+        processed: 0,
+        scanned_is_test: scanIsTest,
+        ...(dryRun ? { dry_run: true, would_send: [] } : {}),
+        ...buildDigestResponseFields(emptyDigestOutcome, dryRun, adminDigestPreview),
+        ...(adminDigestPreviewIgnored ? { admin_digest_preview_ignored: true } : {}),
+        results: [],
+      },
       200,
       corsHeaders,
     );
@@ -566,11 +668,12 @@ serve(async (req: Request) => {
       continue;
     }
 
-    // gh-1933: the screen already IS the "documents_needed, no measurements,
-    // no hover order, zero real activity >= 48h" condition — stage === '48h'
-    // means selectStage() found exactly that. Reusing the screening, not
-    // duplicating it (issue body).
-    if (stage === "48h") {
+    // gh-1933 review fix (D1) — the screen already IS the fully-stalled
+    // condition; isDigestCandidate (./admin-digest-executor.ts) is the
+    // extracted, independently-tested predicate for it, rather than an
+    // inline `stage === "48h"` with no assertion of its own. Reusing the
+    // screening, not duplicating it (issue body).
+    if (isDigestCandidate(stage)) {
       stalledForDigest.push({
         claimId: claim.id,
         userId: claim.user_id,
@@ -644,64 +747,18 @@ serve(async (req: Request) => {
   }
 
   // ── gh-1933: admin stalled-homeowner digest ───────────────────────────────
-  // ONE email, listing every '48h'-stage claim this run found, idempotent
-  // per claim per UTC day. A dry run writes nothing and sends nothing, same
-  // as the rest of this function.
-  let adminDigestSent = 0;
-  let adminDigestError: string | undefined;
-  if (!dryRun && stalledForDigest.length > 0) {
-    const todayStartIso = utcDayStartIso(now);
-    const digestClaimIds = stalledForDigest.map((s) => s.claimId);
-    const { data: alreadyDigestedRows, error: digestCheckErr } = await supabase
-      .from("notifications")
-      .select("claim_id")
-      .eq("notification_type", ADMIN_DIGEST_NOTIFICATION_TYPE)
-      .in("claim_id", digestClaimIds)
-      .gte("sent_at", todayStartIso);
-    if (digestCheckErr) {
-      console.error(`[${FUNCTION_NAME}] admin digest idempotency check failed:`, digestCheckErr.message);
-      adminDigestError = "idempotency_check_failed";
-    } else {
-      const alreadyDigestedToday = new Set(
-        (alreadyDigestedRows || []).map((r: { claim_id: string }) => r.claim_id),
-      );
-      const newForDigest = filterNotYetDigestedToday(stalledForDigest, alreadyDigestedToday);
-      if (newForDigest.length > 0) {
-        if (!mailgunApiKey) {
-          console.error(`[${FUNCTION_NAME}] admin digest skipped: MAILGUN_API_KEY not configured`);
-          adminDigestError = "mailgun_not_configured";
-        } else {
-          const { subject, textBody, htmlBody } = buildAdminDigestEmail(
-            newForDigest,
-            `${siteUrl}/admin-homeowners.html`,
-            now,
-          );
-          const digestResult = await sendAdminDigestMail(mailgunApiKey, subject, textBody, htmlBody);
-          if (digestResult.ok) {
-            adminDigestSent = newForDigest.length;
-            const markRows = newForDigest.map((s) => ({
-              user_id: s.userId,
-              claim_id: s.claimId,
-              channel: "email",
-              notification_type: ADMIN_DIGEST_NOTIFICATION_TYPE,
-              recipient: ADMIN_DIGEST_EMAIL,
-              message_preview: `Included in stalled-homeowner digest`,
-              sent_at: new Date().toISOString(),
-              delivered: true,
-              mailgun_id: digestResult.mailgunId,
-            }));
-            const { error: markErr } = await supabase.from("notifications").insert(markRows);
-            if (markErr) {
-              console.warn(`[${FUNCTION_NAME}] admin digest sent but failed to mark notifications:`, markErr.message);
-            }
-          } else {
-            console.error(`[${FUNCTION_NAME}] admin digest send failed:`, digestResult.error);
-            adminDigestError = digestResult.error;
-          }
-        }
-      }
-    }
-  }
+  // ONE email, listing every '48h'-stage claim this run found. Production
+  // behaviour is unchanged from before this review fix (gh-1933 review fix
+  // D1): the decision of what a dry run / real run / preview run does with
+  // `stalledForDigest` now lives in ./admin-digest-executor.ts's
+  // runAdminDigest, tested independently of this handler — see that file
+  // and admin-digest-executor.test.ts for the properties this rests on.
+  const digestOutcome = await runAdminDigest(adminDigestDeps, {
+    dryRun,
+    previewSend: adminDigestPreview,
+    candidates: stalledForDigest,
+    siteUrl,
+  });
 
   const processed = results.filter((r) => r.stages_sent.length > 0).length;
   // Counted output per condition 2 — never a silent return. Zero today is
@@ -718,11 +775,8 @@ serve(async (req: Request) => {
       processed,
       skipped_already_sent: skippedAlreadySent,
       scanned_is_test: scanIsTest,
-      // gh-1933: count of homeowners newly included in today's admin digest
-      // (0 is correct and expected whenever nobody is at the '48h' stage, or
-      // everyone found was already digested today).
-      admin_digest_sent: adminDigestSent,
-      ...(adminDigestError ? { admin_digest_error: adminDigestError } : {}),
+      ...buildDigestResponseFields(digestOutcome, dryRun, adminDigestPreview),
+      ...(adminDigestPreviewIgnored ? { admin_digest_preview_ignored: true } : {}),
       // gh-1570: on a dry run `processed` is 0 by construction (nothing is
       // stamped), and `would_send` carries what a real run would have done.
       ...(dryRun
