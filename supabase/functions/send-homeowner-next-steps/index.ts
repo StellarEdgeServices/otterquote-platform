@@ -189,15 +189,11 @@ import {
   OPTOUT_SECRET_ENV,
   signOptOutToken,
 } from "./optout-token.ts";
-import {
-  ADMIN_DIGEST_EMAIL,
-  ADMIN_DIGEST_NOTIFICATION_TYPE,
-  type StalledCandidate,
-} from "./admin-digest.ts";
+import { ADMIN_DIGEST_EMAIL, ADMIN_DIGEST_NOTIFICATION_TYPE } from "./admin-digest.ts";
 import {
   type AdminDigestDeps,
   type AdminDigestResult,
-  isDigestCandidate,
+  type ScreenedCandidate,
   parseAdminDigestPreview,
   runAdminDigest,
 } from "./admin-digest-executor.ts";
@@ -614,12 +610,17 @@ serve(async (req: Request) => {
     OPTOUT_EVENT_TYPE,
   );
   const results: ScanResult[] = [];
-  // gh-1933: every claim this scan finds sitting at the '48h' stage — i.e.
-  // documents_needed, no measurements, no hover order, zero real activity
-  // for >= 48h — regardless of whether the homeowner email actually sends
-  // (previewed under dry run, sent, or already_sent). Captured once we have
-  // a resolved email, below.
-  const stalledForDigest: StalledCandidate[] = [];
+  // gh-1933 review fix round 2 — EVERY screened claim that reaches a
+  // resolved email, carrying whichever stage selectStage() picked
+  // ('2h' or '48h'), regardless of whether the homeowner email actually
+  // sends (previewed under dry run, sent, or already_sent). Unfiltered on
+  // purpose: the '48h'-only digest filter used to live here as a call-site
+  // `if`, which a mutant could silently defeat (index.ts has no tests of
+  // its own). It now lives inside the tested executor —
+  // selectDigestCandidates in ./admin-digest-executor.ts, called first
+  // thing by runAdminDigest — so this array is deliberately the raw,
+  // unfiltered input to that function.
+  const stalledForDigest: ScreenedCandidate[] = [];
 
   for (const claim of claims as ClaimRow[]) {
     // gh-1580: the whole screen — status, opt-out, hover_orders, real
@@ -668,19 +669,24 @@ serve(async (req: Request) => {
       continue;
     }
 
-    // gh-1933 review fix (D1) — the screen already IS the fully-stalled
-    // condition; isDigestCandidate (./admin-digest-executor.ts) is the
-    // extracted, independently-tested predicate for it, rather than an
-    // inline `stage === "48h"` with no assertion of its own. Reusing the
-    // screening, not duplicating it (issue body).
-    if (isDigestCandidate(stage)) {
-      stalledForDigest.push({
-        claimId: claim.id,
-        userId: claim.user_id,
-        email: homeownerEmail,
-        createdAtIso: claim.created_at,
-      });
-    }
+    // gh-1933 review fix round 2 — push EVERY screened claim (with its
+    // stage) unconditionally, with NO filter here. The '48h'-only filter
+    // used to be `if (isDigestCandidate(stage))` at this exact call site,
+    // and a call-site mutant (`if (true)`) could silently defeat it with
+    // the full suite green, because index.ts itself has no tests. The
+    // filter now lives INSIDE the tested executor — selectDigestCandidates,
+    // called first thing by runAdminDigest in ./admin-digest-executor.ts —
+    // so every branch it reaches has already been proven to only ever see
+    // '48h' candidates. Reusing the screening, not duplicating it (issue
+    // body): this is still the same screenClaim()/selectStage() result,
+    // just handed over unfiltered instead of pre-filtered.
+    stalledForDigest.push({
+      claimId: claim.id,
+      userId: claim.user_id,
+      email: homeownerEmail,
+      createdAtIso: claim.created_at,
+      stage,
+    });
 
     const measurementsUrl = `${siteUrl}/help-measurements.html`;
     const colorUrl = `${siteUrl}/color-selection.html?claim_id=${claim.id}`;

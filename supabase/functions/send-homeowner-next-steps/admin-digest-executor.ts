@@ -6,15 +6,28 @@
 // notification inserts, only '48h'-stage claims enter the digest, and a
 // failed send inserts nothing — had no assertions: they lived entirely in the
 // POSITION of one `!dryRun` in one `if` inside the handler. See
-// admin-digest-executor.test.ts's three MUTANT runs for proof each one now
-// turns the suite red.
+// admin-digest-executor.test.ts's MUTANT runs for proof each one now turns
+// the suite red.
+//
+// ROUND 2 (Kevin's re-review of bb317b4d, ahead of Marty's re-review): the
+// FIRST version of this file exported `isDigestCandidate` as a pure function
+// but still called it at the CALL SITE, in index.ts — `if (isDigestCandidate(stage))
+// { stalledForDigest.push(...) }`. index.ts has no tests of its own, so a
+// call-site mutant (`if (true)`) bypassed the filter with the full suite
+// still green: mutating the PREDICATE's body was tested, mutating the CALL
+// was not. The fix is `selectDigestCandidates` below: index.ts now pushes
+// EVERY screened claim, unconditionally, with its stage attached
+// (ScreenedCandidate), and this file's OWN entry point — runAdminDigest —
+// applies the filter itself, before any dryRun/preview/real branch. There is
+// no longer a conditional anywhere outside this tested file that decides
+// which claims reach the digest.
 //
 // admin-digest.ts still owns the PURE rendering/masking/day-bucket functions
 // (buildAdminDigestEmail, maskEmail, utcDayStartIso, filterNotYetDigestedToday,
 // daysStalled) — those needed no extraction, they already took no I/O. This
-// file owns the ORDER OF OPERATIONS around them: which branch runs for a real
-// run vs. a dry run vs. a dry-run preview (gh-1933 D2), and the two actual
-// I/O calls (send the email, write the dedup rows).
+// file owns the ORDER OF OPERATIONS around them: which claims qualify, which
+// branch runs for a real run vs. a dry run vs. a dry-run preview (gh-1933
+// D2), and the two actual I/O calls (send the email, write the dedup rows).
 
 import type { NudgeStage } from "./select-stage.ts";
 import {
@@ -37,9 +50,11 @@ import {
  * for where '48h' is decided. Extracted to a named, exported, pure function
  * (rather than an inline `if (stage === "48h")` at the call site) so the rule
  * itself is directly testable and provably load-bearing — see
- * admin-digest-executor.test.ts's MUTANT B, which sets this to always return
- * true and shows a '2h'-stage (NOT stalled) homeowner would then be named to
- * Dustin as stuck for 48+ hours.
+ * admin-digest-executor.test.ts's MUTANT B'', which sets this to always
+ * return true and shows a '2h'-stage (NOT stalled) homeowner would then be
+ * named to Dustin as stuck for 48+ hours (and MUTANT B', which instead
+ * removes the call to this function from selectDigestCandidates below —
+ * same observable defect, different line).
  *
  * D3 (Marty/CTO ruling — not changed here on a guess; it is Dustin's product
  * decision to make, not this PR's): '48h' is a TERMINAL stage
@@ -57,6 +72,40 @@ import {
  */
 export function isDigestCandidate(stage: NudgeStage | null): boolean {
   return stage === "48h";
+}
+
+/** A screened claim as index.ts's per-claim loop produces it, BEFORE the
+ * digest filter is applied — every claim that reached the point of having a
+ * resolved homeowner email, carrying whichever stage selectStage() picked
+ * for it ('2h' or '48h'). Round 2: index.ts pushes ALL of these
+ * unconditionally; this file decides which ones become digest candidates. */
+export interface ScreenedCandidate extends StalledCandidate {
+  stage: NudgeStage;
+}
+
+/**
+ * gh-1933 round 2 — THE call site for isDigestCandidate, moved inside this
+ * tested executor instead of living in untested index.ts. Filters a full,
+ * unconditional list of screened claims down to digest candidates, and
+ * strips the `stage` field the digest itself never needed (StalledCandidate
+ * has no `stage` — ./admin-digest.ts's buildAdminDigestEmail /
+ * filterNotYetDigestedToday / daysStalled never look at it).
+ *
+ * Called FIRST thing inside runAdminDigest, before the dryRun/preview/real
+ * branch — see admin-digest-executor.test.ts's MUTANT B' (delete this call,
+ * pass `input.candidates` straight through) and MUTANT B'' (make
+ * isDigestCandidate return true) for proof both ways of defeating this
+ * filter turn the suite red.
+ */
+export function selectDigestCandidates(screened: ScreenedCandidate[]): StalledCandidate[] {
+  return screened
+    .filter((c) => isDigestCandidate(c.stage))
+    .map((c) => ({
+      claimId: c.claimId,
+      userId: c.userId,
+      email: c.email,
+      createdAtIso: c.createdAtIso,
+    }));
 }
 
 /** gh-1933 D2 — the opt-in preview flag. Same strict-literal-`true`-only
@@ -113,7 +162,10 @@ export interface AdminDigestInput {
    * proves index.ts's `dryRun && adminDigestPreviewRequested` gate at the
    * call site is the only place that matters. */
   previewSend: boolean;
-  candidates: StalledCandidate[];
+  /** Round 2: EVERY screened claim, unconditionally — filtering to '48h'
+   * candidates happens inside runAdminDigest via selectDigestCandidates,
+   * not at the call site. */
+  candidates: ScreenedCandidate[];
   siteUrl: string;
 }
 
@@ -163,21 +215,28 @@ export async function runAdminDigest(
 ): Promise<AdminDigestResult> {
   const dashboardUrl = `${input.siteUrl}/admin-homeowners.html`;
 
+  // gh-1933 round 2 — filter FIRST, before any dryRun/preview/real branch,
+  // so every branch below only ever sees claims that already passed
+  // isDigestCandidate. This is what makes a call-site mutant (index.ts
+  // pushing an unfiltered list, or any future caller doing the same)
+  // unable to bypass the filter: the filter is not the caller's job.
+  const candidates = selectDigestCandidates(input.candidates);
+
   if (input.dryRun) {
     if (!input.previewSend) {
-      return { sent: 0, wouldDigest: buildWouldDigest(input.candidates, deps.now) };
+      return { sent: 0, wouldDigest: buildWouldDigest(candidates, deps.now) };
     }
 
     // gh-1933 D2 — the preview send. NEGATIVE CONTROL: zero candidates sends
     // nothing (this is #1933's own closing artifact's paired negative
     // control, not just a robustness nicety).
-    if (input.candidates.length === 0) {
+    if (candidates.length === 0) {
       return { sent: 0 };
     }
     if (!deps.mailgunConfigured) {
       return { sent: 0, error: "mailgun_not_configured" };
     }
-    const built = buildAdminDigestEmail(input.candidates, dashboardUrl, deps.now);
+    const built = buildAdminDigestEmail(candidates, dashboardUrl, deps.now);
     const previewSubject = `[DRY RUN PREVIEW] ${built.subject}`;
     const result = await deps.sendAdminDigestMail(previewSubject, built.textBody, built.htmlBody);
     if (!result.ok) {
@@ -186,11 +245,11 @@ export async function runAdminDigest(
     // No notifications row: see the function doc above for why a preview
     // must not be able to suppress tomorrow's — or even today's real, later
     // — digest for the same claim.
-    return { sent: input.candidates.length };
+    return { sent: candidates.length };
   }
 
   // ── Real run ───────────────────────────────────────────────────────────
-  if (input.candidates.length === 0) {
+  if (candidates.length === 0) {
     // NEGATIVE CONTROL: nothing stalled this run -> no dedup read, no send,
     // no write. Mirrors the pre-extraction `stalledForDigest.length > 0`
     // guard in index.ts.
@@ -198,12 +257,12 @@ export async function runAdminDigest(
   }
 
   const todayStartIso = utcDayStartIso(deps.now);
-  const digestClaimIds = input.candidates.map((c) => c.claimId);
+  const digestClaimIds = candidates.map((c) => c.claimId);
   const already = await deps.fetchAlreadyDigestedToday(digestClaimIds, todayStartIso);
   if (already.error) {
     return { sent: 0, error: "idempotency_check_failed" };
   }
-  const newForDigest = filterNotYetDigestedToday(input.candidates, already.claimIds);
+  const newForDigest = filterNotYetDigestedToday(candidates, already.claimIds);
   if (newForDigest.length === 0) {
     return { sent: 0 };
   }
