@@ -34,29 +34,54 @@ present in js/meta-pixel-gate.js, so a future edit that removes it (the
 gate file can load fbevents.js unconditionally and still pass the loader
 scan) fails CI instead of shipping silently.
 
-gh-1969 follow-up (ceo47-review-pr1970-20260915.md, defect 1): the first cut
-of this check searched the gate file's raw source text, so a predicate that
-was still textually present but no longer *live* -- commented out with
-`//`, wrapped in a `/* */` block, or neutered with a constant-folded
+gh-1969 follow-up round 1 (ceo47-review-pr1970-20260915.md, defect 1): the
+first cut of this check searched the gate file's raw source text, so a
+predicate that was still textually present but no longer *live* -- commented
+out with `//`, wrapped in a `/* */` block, or neutered with a constant-folded
 condition such as `if (false && urlHasAuthToken)` -- still satisfied the
-regex search and exited 0 while the runtime leak remained. This version:
+regex search and exited 0 while the runtime leak remained. That version
+fixed those three shapes with comment-stripping plus a constant-fold
+denylist on the guarding `if`.
 
-  1. Strips JS comments (`//` to end of line, `/* ... */` blocks) from the
-     gate file's text before every regex search below, using a small
-     string-aware scanner so a comment marker that appears inside a string
-     literal (e.g. the `'https://connect.facebook.net/...'` script-src
-     literal, which contains `//`) is never mistaken for a comment start.
-  2. After stripping, additionally rejects a predicate whose *governing*
-     `if (...)` condition is constant-folded into always-false or
-     always-true noise -- `false && ...`, `0 && ...`, `... && false`,
-     `... && 0`, `true || ...`, `1 || ...`, `... || true`, `... || 1` --
-     which would otherwise still contain the real token-check substrings
-     and a real `return`, and so still pass a naive text search.
+gh-1969 follow-up round 2 (cto32-review-pr1977-20260915.md, defects 1-3):
+the denylist approach is inherently incomplete -- it is a list of known-bad
+shapes, and the refuter planted 12+ more that still exited 0 while the
+runtime harness showed the FAKE123 fragment leaking: the governing `if`
+moved/deleted, the predicate wrapped in a nested function, the condition
+swapped for an unrelated flag, the predicate variable reassigned to false
+before the check, `!1 &&` / `(false) &&` / `null &&` (denylist misses on
+every one), predicate code pasted into a string literal, and a genuinely
+commented-out predicate hidden from the comment stripper by a `/"/`-style
+regex literal that fooled its (regex-unaware) string tracking.
+
+This version replaces the "does the predicate substantively exist"
+denylist/allowlist approach with a **structural** one: after stripping
+comments (now regex-literal-aware, see strip_js_comments), it requires the
+*exact* canonical guard block below -- CANONICAL_BLOCK_SRC, the real form
+in js/meta-pixel-gate.js today -- to appear verbatim (whitespace amount and
+kind aside; no other difference is tolerated) at the top level of the gate
+IIFE (not nested inside any `if`/function -- see _scan_structure's depth
+tracking), in the same top-level block as the fbevents.js script-src
+assignment, and strictly before it. It also requires `urlHasAuthToken` is
+never reassigned anywhere else in the file. A denylist can always be one
+shape behind the next planted bypass; requiring the known-good shape to
+match exactly closes the whole class at once instead. The tradeoff is
+deliberate: if js/meta-pixel-gate.js's guard ever changes on purpose,
+CANONICAL_BLOCK_SRC in this checker must change with it, in the same
+commit -- and the checker says so when it does not.
+
+Known accepted gap (cto32-review-pr1977-20260915.md defect 4, left as-is):
+a `return` with the semicolon dropped (relying on ASI) does not match
+CANONICAL_BLOCK_SRC's literal `return;`, so it exits 1 even on a gate that
+still short-circuits correctly at runtime. This is a fail-*closed* false
+positive -- it blocks CI on a harmless style edit, it never lets a leak
+through -- so it is left alone rather than special-cased.
 
 Exit codes:
   0 -- no violations
-  1 -- one or more ungated loader sites, or the pixel gate is missing (or
-       has a dead/neutered) token-fragment predicate (each printed as
+  1 -- one or more ungated loader sites, or the pixel gate's token-fragment
+       guard is missing, not the canonical live block, wrongly located, or
+       the predicate variable is reassigned elsewhere (each printed as
        path:line or as a named violation)
 """
 from __future__ import annotations
@@ -77,23 +102,75 @@ LOADER_RES = [
 META_PIXEL_GATE = REPO / "js" / "meta-pixel-gate.js"
 
 
+def _looks_like_division(prev_sig: str) -> bool:
+    """True if a `/` right after `prev_sig` is almost certainly a division
+    operator rather than the start of a regex literal -- the standard
+    lexer heuristic: division follows an identifier/number character or a
+    closing `)`/`]`; a regex literal follows everything else (operators,
+    punctuation, or the start of input/statement). Not a full JS parser,
+    and deliberately not: getting this wrong pushes the checker toward
+    treating a `/` as regex-literal-start it should not have, which can
+    only make comment-stripping *more* conservative (less gets removed),
+    never less."""
+    return prev_sig != "" and (prev_sig.isalnum() or prev_sig in ")]$_")
+
+
+def _skip_regex_literal(text: str, i: int) -> int | None:
+    """If a JS regex literal (`/.../flags`) starts at text[i] == '/',
+    return the index just past its flags; otherwise None. Honors `[...]`
+    character classes (a `/` inside one does not close the literal) and
+    backslash escapes; a literal newline before an unescaped closing `/`
+    means this was not actually a regex literal (bails to None)."""
+    n = len(text)
+    j = i + 1
+    in_class = False
+    while j < n:
+        cj = text[j]
+        if cj == "\\" and j + 1 < n:
+            j += 2
+            continue
+        if cj == "[":
+            in_class = True
+        elif cj == "]":
+            in_class = False
+        elif cj == "/" and not in_class:
+            k = j + 1
+            while k < n and text[k].isalpha():
+                k += 1
+            return k
+        elif cj == "\n":
+            return None
+        j += 1
+    return None
+
+
 def strip_js_comments(text: str) -> str:
     """Remove `//...` and `/*...*/` comments from JS source, without ever
-    treating characters inside a string literal (', ", `) as a comment
-    marker. Newlines inside a removed comment are preserved as newlines so
-    that surrounding line-based logic (none currently depends on it here,
-    but callers may) still lines up; comment bodies themselves become
-    spaces so a comment does not accidentally glue two tokens together
-    (e.g. `if(x)/*c*/{` must not become `if(x){` -- it already would be
-    fine here, but staying token-safe is cheap and avoids surprises).
-    Does not handle JS regex literals (`/foo\\//`) specially; this file's
-    gate scripts do not contain any, and getting that wrong would be far
-    riskier than the case this guards against.
-    """
+    treating characters inside a string literal (', ", `) -- or inside a
+    regex literal (`/like this/flags`) -- as a comment marker or a string
+    delimiter. Newlines inside a removed comment are preserved as newlines
+    so surrounding line-based logic still lines up; comment bodies become
+    a single collapsing newline rather than being kept.
+
+    gh-1969 (cto32-review-pr1977-20260915.md, defect 3): the first version
+    of this function did not know about regex literals, so `/"/ ` (a
+    one-character-class regex containing a quote) was read as `/` followed
+    by a string opening at `"` -- everything up to the *next* `"` (which
+    could be inside a second, unrelated regex literal several lines later)
+    was then treated as "inside a string" and passed through unstripped,
+    including any genuine `//`-commented-out lines in between. A commented-
+    out predicate bracketed by two such regex literals therefore looked
+    untouched -- still textually present -- to every check below, even
+    though at runtime it never executes. This version recognizes a regex
+    literal via the standard division-vs-regex heuristic (see
+    _looks_like_division) and skips over it as a single opaque token,
+    exactly like a string, so the quote inside it can never be mistaken for
+    a string delimiter."""
     out: list[str] = []
     i = 0
     n = len(text)
     in_str: str | None = None
+    prev_sig = ""
     while i < n:
         c = text[i]
         if in_str:
@@ -104,6 +181,7 @@ def strip_js_comments(text: str) -> str:
                 continue
             if c == in_str:
                 in_str = None
+                prev_sig = c
             i += 1
             continue
         if c in ("'", '"', "`"):
@@ -118,6 +196,7 @@ def strip_js_comments(text: str) -> str:
             else:
                 out.append("\n")
                 i = j + 1
+            prev_sig = ""
             continue
         if c == "/" and i + 1 < n and text[i + 1] == "*":
             j = text.find("*/", i + 2)
@@ -126,78 +205,130 @@ def strip_js_comments(text: str) -> str:
             else:
                 out.append("\n" * text.count("\n", i, j + 2))
                 i = j + 2
+            prev_sig = ""
             continue
+        if c == "/" and not _looks_like_division(prev_sig):
+            end = _skip_regex_literal(text, i)
+            if end is not None:
+                out.append(text[i:end])
+                prev_sig = "/"
+                i = end
+                continue
         out.append(c)
+        if not c.isspace():
+            prev_sig = c
         i += 1
     return "".join(out)
 
 
-# gh-1969: the fragment predicate must gate the fbevents.js load itself.
-# Match the actual `hash.indexOf('access_token')`-style code, not prose --
-# a comment mentioning these names (as this very file's writeup does) must
-# NOT satisfy the check, or a planted removal of the real predicate that
-# leaves the comment behind would pass. hash/window.location.hash is
-# required too, since the token names alone could appear in an unrelated
-# check. Comments are stripped before this ever runs (see
-# strip_js_comments), so a `//`- or `/* */`-commented predicate no longer
-# matches at all.
-TOKEN_NAMES = ("access_token", "refresh_token", "provider_token")
-TOKEN_CODE_RES = {
-    name: re.compile(r"""(?:hash|location\.hash)[^\n]*indexOf\(['"]""" + re.escape(name) + r"""['"]\)""")
-    for name in TOKEN_NAMES
-}
-RETURN_STATEMENT_RE = re.compile(r"\breturn\b[^\n]*;")
 FBEVENTS_SRC_RE = re.compile(r"s\.src\s*=.*fbevents\.js")
 
-# gh-1969 defect 1 (ceo47-review-pr1970-20260915.md): a predicate can stay
-# textually intact yet be neutered by constant-folding its guarding `if`
-# condition -- `if (false && urlHasAuthToken)` never executes the return,
-# `if (true || urlHasAuthToken)` always executes it regardless of the
-# actual check. Either makes the condition dead weight rather than a live
-# gate. We find the nearest enclosing `if (...)` for each token-check match
-# and require its condition contain none of these constant-folding shapes.
-# This is deliberately a denylist of known-cheap tells, not a general
-# constant-expression evaluator -- see the docstring's "at least" scoping.
-NEUTER_RES = [
-    ("false && ...", re.compile(r"\b(?:false|0)\s*&&")),
-    ("... && false", re.compile(r"&&\s*(?:false|0)\b")),
-    ("true || ...", re.compile(r"\b(?:true|1)\s*\|\|")),
-    ("... || true", re.compile(r"\|\|\s*(?:true|1)\b")),
-]
+# gh-1969 round 2 (cto32-review-pr1977-20260915.md): the exact guard block
+# from js/meta-pixel-gate.js on origin/main today. If that file's guard
+# ever changes on purpose, this constant must change with it, in the same
+# commit -- that is the intended coupling, not a bug to route around.
+CANONICAL_BLOCK_SRC = """\
+var hash = window.location.hash;
+var urlHasAuthToken = hash.indexOf('access_token') !== -1 ||
+hash.indexOf('refresh_token') !== -1 ||
+hash.indexOf('provider_token') !== -1;
+if (urlHasAuthToken) {
+return;
+}"""
 
 
-def _enclosing_if_condition(text: str, pos: int) -> str | None:
-    """Return the condition text of the nearest `if ( ... )` whose opening
-    paren is the last one before `pos` that is still unclosed at `pos` --
-    i.e. the `if` statement `pos` lexically sits inside. Returns None if
-    `pos` is not inside any `if (...)` condition or body reachable this
-    way (best-effort; false negatives here fail closed via the ordering /
-    return checks that already run, not silently pass)."""
-    # Walk backwards from pos tracking paren depth to find the start of the
-    # innermost enclosing (...) group, then confirm it is an `if` group.
+def _ws_tolerant_pattern(src: str) -> re.Pattern[str]:
+    """Build a regex matching `src` exactly, token for token, tolerating
+    only how much (or what kind of) whitespace separates each token --
+    i.e. re-indenting or re-wrapping the canonical block still matches,
+    but adding, removing, or altering any token does not."""
+    tokens = src.split()
+    return re.compile(r"\s+".join(re.escape(t) for t in tokens))
+
+
+CANONICAL_BLOCK_RE = _ws_tolerant_pattern(CANONICAL_BLOCK_SRC)
+REASSIGN_RE = re.compile(r"\burlHasAuthToken\s*=(?!=)")
+
+
+def _scan_structure(text: str):
+    """Walk *comment-stripped* JS text once (string- and regex-literal
+    aware, same heuristic as strip_js_comments) and return three things
+    indexed by character position (length len(text)+1, so a match's
+    `.end()` can be queried too):
+
+      depth_before[i] -- brace nesting depth just before text[i]. A `{`
+                         or `}` inside a string or regex literal is walked
+                         over, never counted.
+      span_before[i]  -- an id naming which top-level (depth 0->1) block
+                         text[i] is a direct descendant of (0 at depth 0).
+                         Two positions share a span id only when they sit
+                         inside the *same* outer function/block, however
+                         deeply either is nested inside it -- this is how
+                         the guard and the fbevents.js src line are
+                         confirmed to be in the same gate IIFE rather than,
+                         say, two different top-level IIFEs in the file.
+      string_spans    -- (start, end) ranges covering each string literal
+                         (quotes included), so a match found inside one
+                         (predicate text pasted into a string) can be
+                         excluded.
+    """
+    n = len(text)
+    depth_before = [0] * (n + 1)
+    span_before = [0] * (n + 1)
+    string_spans: list[tuple[int, int]] = []
     depth = 0
-    j = pos - 1
-    # First, are we inside a body (past the closing paren of an if) rather
-    # than inside the condition itself? Search for the nearest preceding
-    # `if (` and take everything up to its matching `)`, then check pos
-    # falls before that `)` (condition) or after (body, e.g. inside the
-    # `{ ... return; }` block) -- either way we want that if's condition.
-    if_starts = [m.start() for m in re.finditer(r"\bif\s*\(", text[:pos])]
-    if not if_starts:
-        return None
-    start = if_starts[-1]
-    open_paren = text.index("(", start)
-    depth = 0
-    k = open_paren
-    while k < len(text):
-        if text[k] == "(":
+    span_stack: list[int] = []
+    next_span_id = 1
+    in_str: str | None = None
+    str_start = 0
+    prev_sig = ""
+    i = 0
+    while i < n:
+        depth_before[i] = depth
+        span_before[i] = span_stack[-1] if span_stack else 0
+        c = text[i]
+        if in_str:
+            if c == "\\" and i + 1 < n:
+                i += 2
+                continue
+            if c == in_str:
+                string_spans.append((str_start, i + 1))
+                in_str = None
+                prev_sig = c
+            i += 1
+            continue
+        if c in ("'", '"', "`"):
+            in_str = c
+            str_start = i
+            i += 1
+            continue
+        if c == "/" and not _looks_like_division(prev_sig):
+            end = _skip_regex_literal(text, i)
+            if end is not None:
+                i = end
+                prev_sig = "/"
+                continue
+        if c == "{":
             depth += 1
-        elif text[k] == ")":
-            depth -= 1
-            if depth == 0:
-                return text[open_paren + 1 : k]
-        k += 1
-    return None
+            if depth == 1:
+                span_stack.append(next_span_id)
+                next_span_id += 1
+            i += 1
+            prev_sig = c
+            continue
+        if c == "}":
+            if depth == 1 and span_stack:
+                span_stack.pop()
+            depth = max(0, depth - 1)
+            i += 1
+            prev_sig = c
+            continue
+        if not c.isspace():
+            prev_sig = c
+        i += 1
+    depth_before[n] = depth
+    span_before[n] = span_stack[-1] if span_stack else 0
+    return depth_before, span_before, string_spans
 
 
 def check_meta_pixel_fragment_guard() -> list[str]:
@@ -207,57 +338,44 @@ def check_meta_pixel_fragment_guard() -> list[str]:
     raw_text = META_PIXEL_GATE.read_text(encoding="utf-8", errors="replace")
     text = strip_js_comments(raw_text)
 
-    missing = [name for name, rx in TOKEN_CODE_RES.items() if not rx.search(text)]
-    if missing:
-        return [f"{rel}: missing live token-fragment predicate code for {missing} "
-                f"(a substring/comment mention is not enough -- gh-1969 fragment guard "
-                f"removed or weakened)"]
-
     fb_match = FBEVENTS_SRC_RE.search(text)
     if fb_match is None:
         return [f"{rel}: fbevents.js script-src assignment not found -- cannot verify the "
                 f"fragment predicate gates it"]
     fbevents_pos = fb_match.start()
 
-    token_matches = {name: rx.search(text) for name, rx in TOKEN_CODE_RES.items()}
-    last_token_code_pos = max(m.start() for m in token_matches.values())
-    if last_token_code_pos > fbevents_pos:
-        return [f"{rel}: token-fragment predicate code appears after the fbevents.js script "
-                f"tag is built -- it must gate the load, not run after it"]
+    depth_before, span_before, string_spans = _scan_structure(text)
 
-    # The predicate must actually short-circuit before the load: there must
-    # be a `return` between the last token check and the fbevents.js src
-    # assignment (mirrors js/ga-gate.js's `if (urlHasAuthToken) { return; }`).
-    between = text[last_token_code_pos:fbevents_pos]
-    if not RETURN_STATEMENT_RE.search(between):
-        return [f"{rel}: no return/early-exit found between the token-fragment predicate and "
-                f"the fbevents.js load -- the predicate is not actually gating it"]
+    def _inside_string(pos: int) -> bool:
+        return any(s <= pos < e for s, e in string_spans)
 
-    # gh-1969 defect 1: the predicate must also be a *live* condition, not
-    # one neutered by a constant-folded `if`. Check every `if` that encloses
-    # a token-check match (the check may reference the raw hash.indexOf(...)
-    # expressions directly, or a variable like `urlHasAuthToken` computed
-    # from them -- either way, walk every `if (...)` in the file whose
-    # condition mentions the token names or is the one wrapping the return
-    # we just verified).
-    neutered: list[str] = []
-    checked_conditions: set[str] = set()
-    candidate_positions = list(token_matches.values()) + [RETURN_STATEMENT_RE.search(between)]
-    for m in candidate_positions:
-        if m is None:
-            continue
-        cond = _enclosing_if_condition(text, last_token_code_pos if m in token_matches.values() else last_token_code_pos + m.start())
-        if cond is None or cond in checked_conditions:
-            continue
-        checked_conditions.add(cond)
-        for label, rx in NEUTER_RES:
-            if rx.search(cond):
-                neutered.append(f"{rel}: token-fragment predicate's guarding `if ({cond.strip()})` "
-                                 f"is constant-folded ({label}) -- gh-1969 fragment guard neutered, "
-                                 f"not a live condition")
-                break
-    if neutered:
-        return neutered
+    gate_span = span_before[fbevents_pos]
+    valid_guards = [
+        m for m in CANONICAL_BLOCK_RE.finditer(text)
+        if not _inside_string(m.start())
+        and depth_before[m.start()] == 1
+        and span_before[m.start()] == gate_span
+        and m.end() <= fbevents_pos
+    ]
+    if not valid_guards:
+        return [f"{rel}: the token-fragment guard is not the exact canonical block this "
+                f"checker requires (CANONICAL_BLOCK_SRC in scripts/check-gtag-single-source.py) "
+                f"-- it must appear verbatim (whitespace aside), at the top level of the gate "
+                f"IIFE with no enclosing conditional or wrapping function, in the same top-level "
+                f"block as -- and strictly before -- the fbevents.js script-src assignment. If "
+                f"js/meta-pixel-gate.js's guard changed on purpose, CANONICAL_BLOCK_SRC in this "
+                f"checker must be updated deliberately alongside it (gh-1969) -- this failure "
+                f"must not be silenced generically"]
+
+    reassigned = [
+        m for m in REASSIGN_RE.finditer(text)
+        if not _inside_string(m.start())
+        and not any(g.start() <= m.start() < g.end() for g in valid_guards)
+    ]
+    if reassigned:
+        return [f"{rel}: urlHasAuthToken is assigned somewhere outside the canonical guard "
+                f"block -- the gh-1969 fragment-guard predicate must not be reassigned anywhere "
+                f"else in the file"]
 
     return []
 
@@ -320,10 +438,10 @@ def main() -> int:
 
 
 # ---------------------------------------------------------------------------
-# Self-test: planted fixtures proving this check actually catches the
-# gh-1969 defect-1 bypass classes (commented-out predicate, block-commented
-# predicate, constant-folded/neutered predicate) as well as a clean pass and
-# a plain removal. Run with `--self-test`; does not touch the real repo.
+# Self-test: planted fixtures proving this check catches every bypass shape
+# found across both rounds of review (ceo47-review-pr1970-20260915.md and
+# cto32-review-pr1977-20260915.md), plus a clean pass. Run with
+# `--self-test`; does not touch the real repo.
 # ---------------------------------------------------------------------------
 CLEAN_GATE = """\
 (function () {
@@ -349,6 +467,18 @@ CLEAN_GATE = """\
 })();
 """
 
+GUARD_BLOCK = """\
+  var hash = window.location.hash;
+  var urlHasAuthToken = hash.indexOf('access_token') !== -1 ||
+    hash.indexOf('refresh_token') !== -1 ||
+    hash.indexOf('provider_token') !== -1;
+  if (urlHasAuthToken) {
+    return; // a live Supabase credential is in this URL; the pixel never loads.
+  }
+"""
+
+assert GUARD_BLOCK in CLEAN_GATE  # keep the two literals in sync
+
 FIXTURES: dict[str, tuple[str, int]] = {}
 
 
@@ -356,35 +486,16 @@ def _mk(name: str, gate_body: str, expect_exit: int) -> None:
     FIXTURES[name] = (gate_body, expect_exit)
 
 
+# --- round 1 fixtures (ceo47-review-pr1970-20260915.md defect 1) -----------
+
 _mk("clean", CLEAN_GATE, 0)
 
-_mk(
-    "predicate_removed",
-    CLEAN_GATE.replace(
-        """  var hash = window.location.hash;
-  var urlHasAuthToken = hash.indexOf('access_token') !== -1 ||
-    hash.indexOf('refresh_token') !== -1 ||
-    hash.indexOf('provider_token') !== -1;
-  if (urlHasAuthToken) {
-    return; // a live Supabase credential is in this URL; the pixel never loads.
-  }
-""",
-        "",
-    ),
-    1,
-)
+_mk("predicate_removed", CLEAN_GATE.replace(GUARD_BLOCK, ""), 1)
 
 _mk(
     "commented_line",
     CLEAN_GATE.replace(
-        """  var hash = window.location.hash;
-  var urlHasAuthToken = hash.indexOf('access_token') !== -1 ||
-    hash.indexOf('refresh_token') !== -1 ||
-    hash.indexOf('provider_token') !== -1;
-  if (urlHasAuthToken) {
-    return; // a live Supabase credential is in this URL; the pixel never loads.
-  }
-""",
+        GUARD_BLOCK,
         """  // var hash = window.location.hash;
   // var urlHasAuthToken = hash.indexOf('access_token') !== -1 ||
   //   hash.indexOf('refresh_token') !== -1 ||
@@ -400,14 +511,7 @@ _mk(
 _mk(
     "commented_block",
     CLEAN_GATE.replace(
-        """  var hash = window.location.hash;
-  var urlHasAuthToken = hash.indexOf('access_token') !== -1 ||
-    hash.indexOf('refresh_token') !== -1 ||
-    hash.indexOf('provider_token') !== -1;
-  if (urlHasAuthToken) {
-    return; // a live Supabase credential is in this URL; the pixel never loads.
-  }
-""",
+        GUARD_BLOCK,
         """  /*
   var hash = window.location.hash;
   var urlHasAuthToken = hash.indexOf('access_token') !== -1 ||
@@ -424,24 +528,14 @@ _mk(
 
 _mk(
     "neutered_false_and",
-    CLEAN_GATE.replace(
-        "if (urlHasAuthToken) {",
-        "if (false && urlHasAuthToken) {",
-    ),
+    CLEAN_GATE.replace("if (urlHasAuthToken) {", "if (false && urlHasAuthToken) {"),
     1,
 )
 
 _mk(
     "mention_only_predicate_removed",
     CLEAN_GATE.replace(
-        """  var hash = window.location.hash;
-  var urlHasAuthToken = hash.indexOf('access_token') !== -1 ||
-    hash.indexOf('refresh_token') !== -1 ||
-    hash.indexOf('provider_token') !== -1;
-  if (urlHasAuthToken) {
-    return; // a live Supabase credential is in this URL; the pixel never loads.
-  }
-""",
+        GUARD_BLOCK,
         """  // NOTE: this gate used to check location.hash for access_token,
   // refresh_token and provider_token here. Do not remove -- gh-1969.
 """,
@@ -449,9 +543,168 @@ _mk(
     1,
 )
 
+# --- round 2 fixtures (cto32-review-pr1977-20260915.md defects 1-3) --------
+
+_mk(
+    "host_allowlist_moved_ifblock_deleted",
+    CLEAN_GATE.replace(
+        """  if (urlHasAuthToken) {
+    return; // a live Supabase credential is in this URL; the pixel never loads.
+  }
+""",
+        "",
+    ),
+    1,
+)
+
+_mk(
+    "predicate_in_nested_function",
+    CLEAN_GATE.replace(
+        """  if (urlHasAuthToken) {
+    return; // a live Supabase credential is in this URL; the pixel never loads.
+  }
+""",
+        """  var maybeSkip = function () {
+    if (urlHasAuthToken) {
+      return;
+    }
+  };
+  maybeSkip();
+""",
+    ),
+    1,
+)
+
+_mk(
+    "condition_swapped_debug_flag",
+    CLEAN_GATE.replace("if (urlHasAuthToken) {", "if (window.__OQ_DEBUG_PIXEL) {"),
+    1,
+)
+
+_mk(
+    "wrapped_in_if_false",
+    CLEAN_GATE.replace(
+        GUARD_BLOCK,
+        """  if (false) {
+  var hash = window.location.hash;
+  var urlHasAuthToken = hash.indexOf('access_token') !== -1 ||
+    hash.indexOf('refresh_token') !== -1 ||
+    hash.indexOf('provider_token') !== -1;
+  if (urlHasAuthToken) {
+    return;
+  }
+  }
+""",
+    ),
+    1,
+)
+
+_mk(
+    "reassigned_false_before_if",
+    CLEAN_GATE.replace(
+        "    hash.indexOf('provider_token') !== -1;\n  if (urlHasAuthToken) {",
+        "    hash.indexOf('provider_token') !== -1;\n  urlHasAuthToken = false;\n  if (urlHasAuthToken) {",
+    ),
+    1,
+)
+
+_mk(
+    "enabled_flag_and",
+    CLEAN_GATE.replace(
+        "if (urlHasAuthToken) {",
+        "var enabled = false;\n  if (enabled && urlHasAuthToken) {",
+    ),
+    1,
+)
+
+_mk("inverted_bang", CLEAN_GATE.replace("if (urlHasAuthToken) {", "if (!urlHasAuthToken) {"), 1)
+
+_mk(
+    "hash_replaced_with_search",
+    CLEAN_GATE.replace(
+        "var hash = window.location.hash;", "var hash = window.location.search;"
+    ),
+    1,
+)
+
+_mk("not1_and", CLEAN_GATE.replace("if (urlHasAuthToken) {", "if (!1 && urlHasAuthToken) {"), 1)
+
+_mk(
+    "paren_false_and",
+    CLEAN_GATE.replace("if (urlHasAuthToken) {", "if ((false) && urlHasAuthToken) {"),
+    1,
+)
+
+_mk("null_and", CLEAN_GATE.replace("if (urlHasAuthToken) {", "if (null && urlHasAuthToken) {"), 1)
+
+_mk(
+    "predicate_in_string_literal",
+    CLEAN_GATE.replace(
+        GUARD_BLOCK,
+        """  var legacyNote = "var hash = window.location.hash; var urlHasAuthToken = """
+        """hash.indexOf('access_token') !== -1; if (urlHasAuthToken) { return; }";
+""",
+    ),
+    1,
+)
+
+_mk(
+    "commented_between_quote_bearing_regex_literals",
+    CLEAN_GATE.replace(
+        GUARD_BLOCK,
+        """  var q1 = /"/;
+  // var hash = window.location.hash;
+  // var urlHasAuthToken = hash.indexOf('access_token') !== -1 ||
+  //   hash.indexOf('refresh_token') !== -1 ||
+  //   hash.indexOf('provider_token') !== -1;
+  // if (urlHasAuthToken) {
+  //   return;
+  // }
+  var q2 = /"/;
+""",
+    ),
+    1,
+)
+
+
+def _self_test_strip_js_comments() -> int:
+    """Unit-level checks on strip_js_comments itself, independent of the
+    fixtures above -- these are the specific properties round 2's fix
+    depends on."""
+    failures = 0
+
+    def check(label: str, condition: bool) -> None:
+        nonlocal failures
+        print(f"[self-test:strip_js_comments] {label}: {'OK' if condition else 'FAIL'}")
+        if not condition:
+            failures += 1
+
+    src_url = "s.src = 'https://connect.facebook.net/en_US/fbevents.js'; // load it\n"
+    stripped = strip_js_comments(src_url)
+    check(
+        "URL-in-string-literal preserved through comment stripping",
+        "https://connect.facebook.net/en_US/fbevents.js" in stripped and "load it" not in stripped,
+    )
+
+    genuine_comment = "// this whole line is a comment\nvar x = 1;\n"
+    check(
+        "genuine // comment lines ARE stripped",
+        "this whole line is a comment" not in strip_js_comments(genuine_comment)
+        and "var x = 1;" in strip_js_comments(genuine_comment),
+    )
+
+    fooling_attempt = 'var q1 = /"/;\n// var real = "still code";\nvar q2 = /"/;\n'
+    stripped_fooling = strip_js_comments(fooling_attempt)
+    check(
+        "quote-bearing regex literal does not fool string tracking into hiding a // comment",
+        "still code" not in stripped_fooling and "var q1 = /\"/;" in stripped_fooling,
+    )
+
+    return 1 if failures else 0
+
 
 def self_test() -> int:
-    import shutil, tempfile
+    import tempfile
 
     failures = 0
     for name, (gate_body, expect_exit) in FIXTURES.items():
@@ -470,6 +723,9 @@ def self_test() -> int:
             if not ok:
                 failures += 1
     print(f"[self-test] {len(FIXTURES) - failures}/{len(FIXTURES)} fixtures behaved as expected")
+
+    failures += _self_test_strip_js_comments()
+
     return 1 if failures else 0
 
 
