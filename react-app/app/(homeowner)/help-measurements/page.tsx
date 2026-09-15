@@ -500,7 +500,7 @@ function PageBody({
   );
 }
 
-// ── Presentational pieces ──────────────────────────────────────────────
+// ── Presentational pieces ────────────────────────────────────────────────────
 
 function PathCard({
   badge,
