@@ -34,6 +34,7 @@ import {
 } from './utils';
 import { HELP_MATERIALS_CSS } from './styles';
 import { DesignerProductGrid } from './components/DesignerProductGrid';
+import { track } from '@/lib/track';
 import type {
   MaterialCatalogRow,
   MaterialSelectionState,
@@ -78,7 +79,7 @@ function HelpMaterialsContent() {
   const step = currentStep(state);
   const noClaim = !claimLoading && !claimError && !claimId;
 
-  // ── Selection handlers (mirror the static select* functions) ──────────────
+  // ── Selection handlers (mirror the static select* functions) ───────────────
   function selectCategory(category: 'shingles' | 'metal') {
     setState({ ...initialSelectionState(), category });
   }
@@ -118,7 +119,7 @@ function HelpMaterialsContent() {
     }));
   }
 
-  // ── Confirm (single claims write, no EF) ──────────────────────────────────
+  // ── Confirm (single claims write, no EF) ────────────────────────────────
   async function handleConfirm() {
     setSubmitError(null);
     if (!claimId) {
@@ -129,6 +130,8 @@ function HelpMaterialsContent() {
     try {
       await saveMaterialSelection(claimId, buildClaimMaterialUpdate(state));
       setSaved(true);
+      // gh-1940: fired after the save succeeds.
+      track('help_tool_used', { tool: 'help_materials' });
       // Mirror the static success affordance — land on the React dashboard.
       window.location.href = '/dashboard';
     } catch {
