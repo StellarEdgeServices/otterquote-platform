@@ -51,23 +51,37 @@
   s.src = 'https://www.googletagmanager.com/gtag/js?id=' + MEASUREMENT_ID;
   document.head.appendChild(s);
 
-  // gh-1931: auth-callback.html receives the Supabase implicit-flow URL
-  // fragment (#access_token=...&refresh_token=...) after OAuth/magic-link
-  // sign-in. Clarity records the full page URL (and session replay), which
-  // means a live bearer-token pair was being captured and retained by a
-  // third-party vendor. This page is a redirect shim nobody reads, so there
-  // is no analytics value in Clarity being on it -- only GA4 (the
-  // auth_success engagement event, unaffected by this check) belongs here.
-  // CLARITY_EXCLUDED_PATHS is intentionally a small explicit list, not a
-  // pattern match, so a new exclusion is a deliberate, reviewed decision.
-  var CLARITY_EXCLUDED_PATHS = ['/auth-callback.html'];
-  if (CLARITY_EXCLUDED_PATHS.indexOf(window.location.pathname) !== -1) {
-    return; // Clarity never loads here; gtag.js above is unaffected.
+  // gh-1931 (round 2): Supabase's implicit/PKCE OAuth flow appends a live
+  // access_token/refresh_token pair (or a PKCE ?code=) to whatever redirect
+  // URL the caller passed -- js/auth.js's sendMagicLink/signInWithGoogle/
+  // signUpWithPassword/sendPasswordReset all take an arbitrary redirectTo,
+  // so this was never a property of one page. Round 1 of this fix excluded
+  // only /auth-callback.html by path; independent review on the PR measured
+  // five MORE pages still leaking the same way (dashboard.html,
+  // contractor-pre-approval.html, partner-dashboard.html,
+  // login.html?recovery=1, partner-insurance.html?g=1 -- plus
+  // partner-login.html?recovery=1, sendPasswordReset's own default, found
+  // re-deriving this list), and showed the path guard is bypassed by the
+  // extensionless Pretty-URLs twin (/auth-callback with no .html). A path
+  // list can never be complete -- any future signInWithGoogle('/new.html')
+  // silently reopens it -- so this gates on what actually makes a URL
+  // dangerous: a live credential in it, using the same condition this
+  // codebase already writes twice (auth-callback.html's and dashboard.html's
+  // D-208 guard): window.location.hash.includes('access_token') ||
+  // window.location.search.includes('code='). Reading raw hash/search
+  // (a substring check, not a parsed param lookup) is deliberate: it can't
+  // itself leak or mutate the URL, and "access_token" / "code=" are
+  // Supabase's own parameter names, not something this app defines, so it
+  // does not need to enumerate every page that might carry them.
+  var urlHasAuthToken = window.location.hash.indexOf('access_token') !== -1 ||
+    window.location.search.indexOf('code=') !== -1;
+  if (urlHasAuthToken) {
+    return; // a live Supabase credential is in this URL; Clarity never loads.
   }
 
   // Microsoft Clarity -- the vendor snippet, verbatim apart from living
   // behind the allowlist check above. Reached only on a production host,
-  // and never on a Clarity-excluded path (see gh-1931 above).
+  // and never on a URL carrying a live auth credential (see gh-1931 above).
   (function (c, l, a, r, i, t, y) {
     c[a] = c[a] || function () { (c[a].q = c[a].q || []).push(arguments); };
     t = l.createElement(r); t.async = 1; t.src = 'https://www.clarity.ms/tag/' + i;
