@@ -39,6 +39,7 @@
 
     <!-- Google Analytics -->
     <script src="/js/ga-gate.js"></script>
+    <script src="/js/meta-pixel-gate.js"></script>
     <script>gtag('config', 'G-D1Y1TLGEFY');</script>
 <!-- Microsoft Clarity (wwr7qlk8g5) is loaded by /js/ga-gate.js, behind the same production-host gate as GA4 (gh-1619). Do not add a per-page loader. -->
 
@@ -368,6 +369,11 @@
                 // GA4
                 if (typeof gtag === 'function') {
                     gtag('event', 'contractor_signup_step1', { event_category: 'contractor_funnel' });
+                }
+
+                // gh-1817: Meta Pixel Lead event — contractor sign-up form submit
+                if (typeof fbq === 'function') {
+                    fbq('track', 'Lead');
                 }
 
                 document.getElementById('successMessage').classList.add('show');

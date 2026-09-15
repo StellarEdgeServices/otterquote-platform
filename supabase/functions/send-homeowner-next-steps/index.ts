@@ -125,6 +125,19 @@
  *   HOMEOWNER_OPTOUT_SECRET (gh-1786 / D-320 — REQUIRED to send; with it unset
  *   this function sends nothing rather than send without a working opt-out),
  *   HOMEOWNER_OPTOUT_SECRET_PREVIOUS (optional, verification only, for rotation)
+ *
+ * gh-1786 follow-up (this change): the Mailgun send now also carries the
+ * RFC 8058 `List-Unsubscribe` / `List-Unsubscribe-Post` headers, pointed at
+ * the SAME per-claim signed URL the footer link already uses (./optout-token.ts
+ * buildOptOutUrl). This is the mailbox-provider-facing one-click surface
+ * (the Gmail/Outlook "Unsubscribe" affordance next to the sender); the footer
+ * link already satisfied the in-body CAN-SPAM requirement, so this adds no
+ * new secret, no new endpoint and no new recipient-facing copy — same link,
+ * a second place it appears. `List-Unsubscribe-Post: List-Unsubscribe=One-Click`
+ * is what makes a mail client's one-click button call the URL with a bare
+ * POST instead of opening it in a browser; homeowner-email-optout/index.ts
+ * already accepts a POST with no body (reading `t` from the query string
+ * either way), so no endpoint change was needed for this to work.
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
@@ -235,6 +248,11 @@ async function sendMailgunEmail(
   formData.append("subject", subject);
   formData.append("text", textBody);
   formData.append("html", htmlBody);
+  // gh-1786 follow-up: RFC 8058 mailbox-provider one-click unsubscribe, same
+  // signed link the footer already carries — see the file header. Mailgun
+  // passes any `h:<Header-Name>` form field through as a literal MIME header.
+  formData.append("h:List-Unsubscribe", `<${optOutUrl}>`);
+  formData.append("h:List-Unsubscribe-Post", "List-Unsubscribe=One-Click");
 
   try {
     const res = await fetch("https://api.mailgun.net/v3/mail.otterquote.com/messages", {

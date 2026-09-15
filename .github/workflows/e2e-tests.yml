@@ -211,6 +211,9 @@ jobs:
       - name: auth.js partner-surface single-source-of-truth unit test (#807 regression)
         run: node tests/auth-partner-surface-single-source.mjs
 
+      - name: auth.js cs_redirect role-guard unit test (gh-1412/#1476 regression)
+        run: node tests/auth-cs-redirect-role-guard.mjs
+
       - name: tsc --noEmit type gate (gh-414)
         working-directory: react-app
         run: npx tsc --noEmit

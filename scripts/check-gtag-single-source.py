@@ -19,6 +19,10 @@ and the first sweep found the React loader only because it looked past
 node_modules, .next, build output and this script) for any occurrence of an
 analytics loader URL outside the gate files.
 
+gh-1817: extended to also guard the Meta Pixel loader (fbevents.js), routed
+through the same two-file gate pattern (js/meta-pixel-gate.js and
+react-app/app/components/MetaPixelGate.tsx).
+
 Exit codes:
   0 -- no violations
   1 -- one or more ungated loader sites (each printed as path:line)
@@ -30,10 +34,13 @@ REPO = pathlib.Path(__file__).resolve().parent.parent
 GATE_FILES = {
     "js/ga-gate.js",
     "react-app/app/components/GA4Gate.tsx",
+    "js/meta-pixel-gate.js",
+    "react-app/app/components/MetaPixelGate.tsx",
 }
 LOADER_RES = [
     ("gtag.js loader", re.compile(r"googletagmanager\.com/gtag/js")),
     ("clarity.ms loader", re.compile(r"clarity\.ms/tag")),
+    ("fbevents.js loader", re.compile(r"connect\.facebook\.net/[^\s\"']*fbevents\.js")),
 ]
 SCAN_SUFFIXES = {".html", ".js", ".jsx", ".ts", ".tsx"}
 SKIP_DIR_NAMES = {"node_modules", ".git", ".next", "dist", "build", "coverage", "playwright-report", "test-results"}
