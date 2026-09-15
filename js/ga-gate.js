@@ -47,11 +47,23 @@
 // unchanged. CLARITY_ALLOWED_PATHS is the complete set of unauthenticated
 // marketing/funnel pages this repo's own HTML was read to identify (see
 // scripts/check-clarity-page-gate.py for the enumeration and the
-// authenticated/unauthenticated evidence behind each page's classification).
-// A page missing from this list fails closed: Clarity simply never loads
-// there, including on a brand-new page nobody has added yet. Extending this
-// list is a deliberate, reviewed decision, exactly like ALLOWED_HOSTS above
-// -- never a default.
+// authenticated/unauthenticated/session-touching evidence behind each page's
+// classification). A page missing from this list fails closed: Clarity
+// simply never loads there, including on a brand-new page nobody has added
+// yet. Extending this list is a deliberate, reviewed decision, exactly like
+// ALLOWED_HOSTS above -- never a default.
+//
+// PR #1978 refuter review (cto32-review-pr1978-20260915.md, defect D1):
+// '/contractor-pre-approval' was on this list even though
+// contractor-pre-approval.html requires a live session -- it calls
+// `window.Auth.getSession()`, loads the signed-in contractor's own
+// `contractors` row, prefills their phone/trades/service area, and accepts
+// insurance/license document uploads. It was misclassified PUBLIC because
+// its guard (`if (!session) { ...; showPanel('error'); return; }`) did not
+// match any AUTH_MARKERS pattern at the time. It is removed below, and
+// scripts/check-clarity-page-gate.py's classifier is now fail-closed at the
+// session layer, not just the explicit-auth-gate layer (see that script's
+// module docstring).
 (function () {
   var ALLOWED_HOSTS = ['otterquote.com', 'www.otterquote.com', 'app.otterquote.com'];
   var MEASUREMENT_ID = 'G-D1Y1TLGEFY';
@@ -64,13 +76,17 @@
   // entry here was derived from this repo's own HTML -- a page is on this
   // list only because reading its markup and scripts found no
   // Auth.requireAuth()/admin-email/getSession-redirect gate on it, never
-  // because of what its filename suggests. auth-callback.html is
-  // deliberately left OFF this list even though it carries no such gate
-  // itself: it is the OAuth/magic-link landing target that can carry a live
-  // token in the URL fragment, the gh-1931 fragment check below already
-  // blocks Clarity there whenever a token is actually present, and keeping
-  // it off the allowlist is defense in depth for the token-absent case (a
-  // stale or reloaded tab).
+  // because of what its filename suggests. A page that DOES touch a session
+  // (Auth.getUser()/hasPartnerSession() bouncing an already-signed-in
+  // visitor, an OAuth-initiation call, etc.) but has been read and judged
+  // safe is listed with its one-line reason in
+  // scripts/check-clarity-page-gate.py's SESSION_AWARE_PUBLIC set, not
+  // silently assumed here. auth-callback.html is deliberately left OFF this
+  // list even though it carries no such gate itself: it is the OAuth/magic-
+  // link landing target that can carry a live token in the URL fragment, the
+  // gh-1931 fragment check below already blocks Clarity there whenever a
+  // token is actually present, and keeping it off the allowlist is defense
+  // in depth for the token-absent case (a stale or reloaded tab).
   var CLARITY_ALLOWED_PATHS = [
     '/',
     '/blog',
@@ -95,7 +111,6 @@
     '/contractor-how-it-works',
     '/contractor-join',
     '/contractor-login',
-    '/contractor-pre-approval',
     '/contractors',
     '/faq',
     '/guides',
@@ -181,8 +196,9 @@
   // loaded unconditionally on any allowed host; Clarity additionally
   // requires the current page to be on the public allowlist above. A page
   // that is missing from CLARITY_ALLOWED_PATHS -- including every
-  // admin-*.html page and contractor-profile.html -- fails closed here and
-  // never reaches the fragment check or the vendor snippet below.
+  // admin-*.html page, contractor-profile.html and contractor-pre-
+  // approval.html -- fails closed here and never reaches the fragment check
+  // or the vendor snippet below.
   if (CLARITY_ALLOWED_PATHS.indexOf(normalizeClarityPath(window.location.pathname)) === -1) {
     return; // not a recognised public page -- Clarity never loads
   }
