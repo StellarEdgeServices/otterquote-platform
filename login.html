@@ -389,9 +389,9 @@
     form.classList.add('hidden');
     document.getElementById('google-btn').classList.add('hidden');
     document.querySelector('.oauth-divider').classList.add('hidden');
-    document.querySelector('.login-form-wrap > h1').classList.add('hidden');
-    document.querySelector('.login-form-wrap > .subtitle').classList.add('hidden');
     setNewPasswordSection.classList.add('active');
+    document.querySelector('.login-form-wrap > h1') && document.querySelector('.login-form-wrap > h1').classList.add('hidden');
+    document.querySelector('.login-form-wrap > .subtitle') && document.querySelector('.login-form-wrap > .subtitle').classList.add('hidden');
   }
 
   // ── 2026-08-25 ──────────────────────────────────────────────────────────
@@ -599,8 +599,8 @@
         if (code === 'same_password') {
           msg = 'That is already your password. Choose a different new password, or go back to sign in and use it.';
         } else if (code === 'weak_password') {
-          msg = (err.message || 'That password is too weak.') + ' Please choose a stronger password.';
-        } else if (['otp_expired','session_not_found','session_expired','bad_jwt','flow_state_expired'].includes(code) || err?.status === 401 || err?.status === 403) {
+          msg = (err.message || 'That password is too weak.').replace(/\.?\s*$/, '. ') + 'Please choose a stronger password.';
+        } else if (['otp_expired','session_not_found','session_expired','bad_jwt','flow_state_expired'].includes(code) || err?.status === 401 || err?.status === 403 || err?.name === 'AuthSessionMissingError') {
           msg = 'Your reset link has expired. Please request a new reset link and try again.';
         } else {
           msg = 'Something went wrong' + (err && err.message ? ': ' + err.message : '.') + ' Please try again.';
