@@ -587,23 +587,15 @@ export default function GetStartedPage() {
     }
   }, []);
 
-  /**
-   * `form_step_complete{step_name:'home_info'}` — fires once Step 1 (the
-   * property address; project_type is optional and not required to
-   * advance) is valid, using the exact same criterion `validateHomeInfo()`
-   * uses to gate the Step 1 → Step 2 "Continue" button. gh-1940 (rebase
-   * onto #1929, CEO RUN 47): this replaces the retired `'profile_info'`
-   * step, which used to fire on firstName+lastName+phone+address — all
-   * four of those are now Step 2 fields under #1929's reorder, and address
-   * alone gates Step 1, so the grouping is re-derived from that reality
-   * rather than carried over.
-   */
-  useEffect(() => {
-    if (!homeInfoStepFiredRef.current && address.trim()) {
-      homeInfoStepFiredRef.current = true;
-      track('form_step_complete', { step_name: 'home_info' });
-    }
-  }, [address]);
+  // `form_step_complete{step_name:'home_info'}` no longer fires from an
+  // `[address]` effect (gh-1940, CEO RUN 47 fix, ceo47-review-pr1948 defect
+  // 1) — that effect fired on the FIRST KEYSTROKE in the address box
+  // because `validateHomeInfo()`'s criterion (`address.trim()` non-empty)
+  // is satisfied by one character, long before the visitor has actually
+  // finished Step 1. The event now fires exactly once, inside
+  // `handleContinueToAccount`, immediately after `validateHomeInfo()`
+  // passes — the moment the visitor actually completes Step 1 and clicks
+  // Continue. See `handleContinueToAccount` below.
 
   /**
    * `form_step_complete{step_name:'account'}` — fires once Step 2 (name,
@@ -702,6 +694,15 @@ export default function GetStartedPage() {
     if (problem) {
       setError(problem);
       return;
+    }
+    // gh-1940 (CEO RUN 47 fix, ceo47-review-pr1948 defect 1) — this is the
+    // real Step 1 -> Step 2 boundary the visitor can actually see (the
+    // Continue click, after validateHomeInfo() has already passed), not an
+    // `[address]` effect that fired on the first keystroke. Once-guarded
+    // the same way every other step event is.
+    if (!homeInfoStepFiredRef.current) {
+      homeInfoStepFiredRef.current = true;
+      track('form_step_complete', { step_name: 'home_info' });
     }
     setStep(2);
   };
@@ -904,6 +905,22 @@ export default function GetStartedPage() {
     if (problem) {
       setError(problem);
       return;
+    }
+    // gh-1940 (CEO RUN 47 fix, ceo47-review-pr1948 defect 2) — the
+    // `[firstName, lastName, email, password, confirmPassword]` effect
+    // above requires a valid email+password, so it never fires for a
+    // visitor who converts through Google (name only). This is the moment
+    // the visitor commits to the Google sign-in — right after the Step 2
+    // name validation it actually needs — so `account` fires here instead,
+    // once-guarded on the SAME ref as the password path (whichever path
+    // reaches its completion point first wins; the other is a no-op).
+    // Deliberately no `method` param: `form_step_complete`'s
+    // `TRACK_EVENT_KEYS` entry is `['step_name']` only — adding a value-
+    // carrying key here would mean widening that allowlist, which is out
+    // of scope (see track()'s comment on the security contract).
+    if (!accountStepFiredRef.current) {
+      accountStepFiredRef.current = true;
+      track('form_step_complete', { step_name: 'account' });
     }
     // CEO RUN 43 review F2 — see validateSmsConsent().
     const smsProblemGoogle = validateSmsConsent();
