@@ -64,6 +64,7 @@ import {
   clearHoverChargeRecord,
   type PendingHoverCharge,
 } from './hover-charge-storage';
+import { track } from '@/lib/track';
 
 /**
  * NEW operational copy for the gh-951 resume flow — like gh-416's ORDER_RETRY_COPY
@@ -82,7 +83,7 @@ export const RESUME_COPY = {
     "We found an unfinished measurement order from your last visit. If you completed payment and don't see a confirmation, contact support with your claim number — we'll verify your payment and complete the order. If you did not finish paying, you can safely start over below.",
 } as const;
 
-// ── Top-level page ───────────────────────────────────────────────────────────────
+// ── Top-level page ────────────────────────────────────────────────────
 
 export default function HelpMeasurementsPage() {
   return (
@@ -107,7 +108,7 @@ function Content() {
   return <PageBody data={data} user={measUser} />;
 }
 
-// ── Page body: path state machine ───────────────────────────────────────────────
+// ── Page body: path state machine ──────────────────────────────────────────
 
 type View = 'select' | 'hover' | 'adjuster';
 type HoverStage = 'intro' | 'card' | 'success';
@@ -254,6 +255,10 @@ function PageBody({
       // gh-951: the order step reached (a graceful-degrade) completion — clear the resume
       // pointer so a later reload doesn't re-attempt an already-placed order.
       clearHoverChargeRecord();
+      // gh-1940: this is a real completed Stripe charge (the $15 RoofScope
+      // order), not the CRO funnel's main job-payment step — see the
+      // gh-1940 report for why GA4 `purchase` is not wired here instead.
+      track('help_tool_used', { tool: 'help_measurements', method: 'hover_payment' });
       setHoverStage('success');
     },
     [profile, claim, user],
@@ -291,6 +296,7 @@ function PageBody({
         adjusterEmail: email,
         adjusterPhone: phone,
       });
+      track('help_tool_used', { tool: 'help_measurements', method: 'email_request' });
       setAdjStage('success');
     } catch {
       setStatus({ text: M.statusEmailError, type: 'error' });
@@ -494,7 +500,7 @@ function PageBody({
   );
 }
 
-// ── Presentational pieces ────────────────────────────────────────────────────────
+// ── Presentational pieces ──────────────────────────────────────────────────────
 
 function PathCard({
   badge,
@@ -589,7 +595,7 @@ function Boot() {
   );
 }
 
-// ── Styles (dark homeowner theme, matching the H5/H7 sibling ports) ───────────────
+// ── Styles (dark homeowner theme, matching the H5/H7 sibling ports) ────────────────────────
 
 const STYLES = `
   .hm-container { max-width: 900px; margin: 0 auto; padding: 2rem 1.5rem 3rem; color: var(--white,#fff); }

@@ -25,9 +25,10 @@ import { useAuthReady } from '@/hooks/use-auth-ready';
 import { supabase } from '@/lib/supabase';
 import { readReferralIds } from '@/lib/cookie-storage';
 import { isTestEmail } from '@/lib/test-signal';
+import { track } from '@/lib/track';
 import { parseAddress } from './utils';
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// ─── Constants ─────────────────────────────────────────────────────────────────
 
 const DASHBOARD_URL = 'https://otterquote.com/dashboard.html';
 const REPAIR_INTAKE_URL = 'https://otterquote.com/repair-intake.html';
@@ -58,7 +59,7 @@ interface WizardState {
   repairReplace: Partial<Record<TradeKey, RepairIntent>>;
 }
 
-// ─── GA4 helper ──────────────────────────────────────────────────────────────
+// ─── GA4 helper ────────────────────────────────────────────────────
 
 function gtag(...args: unknown[]) {
   if (typeof window !== 'undefined' && (window as any).gtag) {
@@ -66,7 +67,7 @@ function gtag(...args: unknown[]) {
   }
 }
 
-// ─── Referral resolution ─────────────────────────────────────────────────────
+// ─── Referral resolution ────────────────────────────────────────────────────
 
 async function resolveReferralAgentId(partnerIdParam: string | null): Promise<string | null> {
   if (!partnerIdParam) return null;
@@ -99,7 +100,7 @@ async function resolveReferralAgentId(partnerIdParam: string | null): Promise<st
   return null;
 }
 
-// ─── Step indicator ───────────────────────────────────────────────────────────
+// ─── Step indicator ──────────────────────────────────────────────────────────────────
 
 function StepIndicator({
   totalSteps,
@@ -167,7 +168,7 @@ function StepIndicator({
   );
 }
 
-// ─── Card components ──────────────────────────────────────────────────────────
+// ─── Card components ──────────────────────────────────────────────────────────────────
 
 function SelectionCard({
   selected,
@@ -300,7 +301,7 @@ function ActionButtons({
   );
 }
 
-// ─── Main component ───────────────────────────────────────────────────────────
+// ─── Main component ──────────────────────────────────────────────────────────────────
 
 export default function TradeSelectorPage() {
   const { user, settled } = useAuthReady();
@@ -601,7 +602,15 @@ export default function TradeSelectorPage() {
             // fallback always found neither and unconditionally inserted a
             // SECOND claim row for every repair-path homeowner using this
             // (the actually-live) React surface.
-            if (insertedClaim) savedClaimId = insertedClaim.id;
+            if (insertedClaim) {
+              savedClaimId = insertedClaim.id;
+              // gh-1940: "claim started" funnel step — fires once, only on
+              // the first claim row for this user (the `else` branch above
+              // is an update to an already-started claim, not a new start).
+              // No property_address/PII — funding_type and policy_type are
+              // job-category selections, not personal data.
+              track('claim_started', { funding_type: fundingType, policy_type: policyType });
+            }
           }
 
           // #571: the claim_submitted advance now lives in the database —
