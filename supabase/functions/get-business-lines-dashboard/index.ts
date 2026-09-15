@@ -125,6 +125,10 @@ import {
   type Ga4Exclusions,
   type Ga4SessionsByDayResult,
 } from "./ga4.ts";
+import {
+  computeMovement,
+  homeownerBucket,
+} from "./movement.ts";
 
 const FUNCTION_NAME = "get-business-lines-dashboard";
 // gh-1534: kept in sync with supabase/functions/_shared/admin.ts ADMIN_EMAILS — do not
@@ -161,35 +165,9 @@ function jsonResponse(
 }
 
 // ── Days-since-movement ──────────────────────────────────────────────────
-// today - max(...every timestamp that counts as "this member did something").
-// Returns { days, latest_iso, inputs } — inputs are the individual candidate
-// timestamps that fed the max(), so the UI can show exactly what a "hand
-// computed spot check" (gh-1340 closes-on) would have to reproduce.
-interface MovementInput { label: string; iso: string | null }
-
-function computeMovement(nowMs: number, inputs: MovementInput[]) {
-  let latest: MovementInput | null = null;
-  let latestMs = -Infinity;
-  for (const inp of inputs) {
-    if (!inp.iso) continue;
-    const t = new Date(inp.iso).getTime();
-    if (!isNaN(t) && t > latestMs) {
-      latestMs = t;
-      latest = inp;
-    }
-  }
-  if (!latest) {
-    return { days: null, latest_label: null, latest_iso: null, inputs, bucket: "unknown" as const };
-  }
-  const days = Math.floor((nowMs - latestMs) / 86400000);
-  return { days, latest_label: latest.label, latest_iso: latest.iso, inputs, bucket: bucketFor(days) };
-}
-
-function bucketFor(days: number): "green" | "yellow" | "red" {
-  if (days <= 7) return "green";
-  if (days <= 13) return "yellow";
-  return "red";
-}
+// computeMovement/bucketFor/homeownerBucket moved to ./movement.ts (gh-1570)
+// so they can be exercised by `deno test` as a pure module — see that file's
+// header comment. Behaviour here is unchanged; only the location moved.
 
 // A tile value that is always real — 0 is a MEASURED ZERO, never omitted.
 function measured(value: number) {
@@ -1170,13 +1148,32 @@ serve(async (req: Request) => {
       ]);
 
       const isComplete = checklist[checklist.length - 1].done;
+      const firstActivityIso = firstActivityByUser.get(p.id) || null;
+
+      // gh-1570: the stuck-first table (admin-dashboard.html) sorts/colors
+      // purely off movement.bucket, which computeMovement derives from raw
+      // updated_at timestamps — an unrelated system write (e.g. a bulk
+      // column backfill) bumps updated_at and paints a claim green even
+      // though it has never had one real activity_log event. homeownerBucket
+      // (movement.ts) forces the bucket to "red" whenever a claim exists and
+      // firstActivityIso is null, regardless of what bucketFor's raw-days
+      // verdict says. movement.days/latest_iso are left untouched below —
+      // only the bucket used for coloring/sorting changes, and "complete"
+      // still wins over the override (a finished claim is not "stuck").
+      const zeroActivityBucket = homeownerBucket(movement, firstActivityIso, !!claim);
 
       return {
         id: p.id,
         label: p.full_name || p.email || p.id,
         is_test: p.is_test === true,
         checklist,
-        movement: { ...movement, bucket: isComplete ? "complete" : movement.bucket },
+        movement: {
+          ...movement,
+          bucket: isComplete ? "complete" : zeroActivityBucket,
+          // Harmless, additive: lets the client distinguish "genuinely stuck"
+          // from "stuck — zero real activity ever" without re-deriving it.
+          zero_activity: !!claim && !firstActivityIso,
+        },
         // gh-1580: signup time — the CRM render needs this to compute "age in
         // hours" for the NEW strip without a second derived source of truth.
         created_at: p.created_at,
@@ -1184,7 +1181,7 @@ serve(async (req: Request) => {
         // activity since signup" strip keys off this rather than re-deriving
         // it from movement.bucket, which a freshly-created row buckets green
         // (see p.updated_at as a movement input above) regardless of activity.
-        first_activity_at: firstActivityByUser.get(p.id) || null,
+        first_activity_at: firstActivityIso,
       };
     });
 
