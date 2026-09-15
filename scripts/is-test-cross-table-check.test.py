@@ -20,6 +20,7 @@ import io
 import pathlib
 import sys
 import unittest
+import uuid
 from unittest.mock import patch
 
 HERE = pathlib.Path(__file__).resolve().parent
@@ -291,6 +292,135 @@ class ManagementApiTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(called["project_ref"], "yeszghaspzwwstvsrioa")
         self.assertEqual(called["token"], "fake-pat")
+
+
+class RecurrenceGuardTests(unittest.TestCase):
+    """gh-1763 recurrence (CLOSE-REVIEW FAIL, comment 5596021411; adjudication
+    5590705970): profile `edcbe10f-7efa-4945-be3b-5c3e4ef8f2e2` (role=homeowner,
+    is_test=false) disagreed with contractor `5ece9e69-91f8-48cd-b4fa-412dec4f8dee`
+    ("Indy Rooftops, LLC", is_test=true) and was invisible to the pre-fix guard,
+    because both the PostgREST fetch and DISAGREEMENT_SQL scoped the profiles
+    side to `role = 'contractor'`. This fixture reproduces that exact shape.
+
+    `_fake_urlopen_role_sensitive` mimics real PostgREST filtering behavior
+    (it actually applies `role=eq.contractor` if present in the URL, the way
+    the live API would) rather than always returning every row -- so
+    `test_recurrence_homeowner_role_profile_is_caught` FAILS (reports exit 0,
+    clean) if run against the pre-fix `fetch_profiles_by_ids` /
+    `find_disagreements` call path (role filter still in the URL) and PASSES
+    (exit 1, caught) against the fix (no role filter)."""
+
+    def _fake_urlopen_role_sensitive(self, contractors_payload, profiles_payload):
+        def fake_urlopen(req, timeout=30):
+            url = req.full_url
+            if "/rest/v1/contractors" in url:
+                return _FakeResponse(json.dumps(contractors_payload).encode("utf-8"))
+            if "/rest/v1/profiles" in url:
+                if "role=eq.contractor" in url:
+                    # Mirrors real PostgREST: a homeowner-role profile is
+                    # invisible to the fetch whenever this filter is present.
+                    filtered = [p for p in profiles_payload if p.get("role") == "contractor"]
+                else:
+                    filtered = profiles_payload
+                return _FakeResponse(json.dumps(filtered).encode("utf-8"))
+            raise AssertionError(f"unexpected URL in test: {url}")
+        return fake_urlopen
+
+    def test_recurrence_homeowner_role_profile_is_caught(self):
+        """Exact shape of the 8th disagreement: profile edcbe10f role=homeowner
+        is_test=false, contractor 5ece9e69 is_test=true, company Indy Rooftops, LLC.
+        A role-agnostic guard must report this as a disagreement (exit 1)."""
+        contractors = [{
+            "id": "5ece9e69-91f8-48cd-b4fa-412dec4f8dee",
+            "user_id": "edcbe10f-7efa-4945-be3b-5c3e4ef8f2e2",
+            "is_test": True,
+            "company_name": "Indy Rooftops, LLC",
+        }]
+        profiles = [{
+            "id": "edcbe10f-7efa-4945-be3b-5c3e4ef8f2e2",
+            "is_test": False,
+            "role": "homeowner",
+        }]
+        fake = self._fake_urlopen_role_sensitive(contractors, profiles)
+        with patch("sys.stdout", new_callable=io.StringIO), patch("sys.stderr", new_callable=io.StringIO):
+            code = guard.run("https://example.supabase.co", "fake-key", urlopen=fake)
+        self.assertEqual(
+            code, 1,
+            "role-agnostic guard must catch a homeowner-role profile disagreeing "
+            "with its contractor identity -- this is the exact gh-1763 recurrence shape",
+        )
+
+    def test_fetch_profiles_by_ids_is_role_agnostic(self):
+        """The defect's actual location: the PostgREST fetch must not scope by role."""
+        captured = {}
+
+        def fake_urlopen(req, timeout=30):
+            captured["url"] = req.full_url
+            return _FakeResponse(b"[]")
+
+        guard.fetch_profiles_by_ids(
+            "https://example.supabase.co", "fake-key", ["edcbe10f-7efa-4945-be3b-5c3e4ef8f2e2"],
+            urlopen=fake_urlopen,
+        )
+        self.assertNotIn(
+            "role=eq.contractor", captured["url"],
+            "profiles fetch must not scope by role -- that is exactly what let the "
+            "homeowner-role recurrence go undetected",
+        )
+
+    def test_disagreement_sql_is_role_agnostic(self):
+        """The Management-API mode's SQL predicate must not scope by role either --
+        same defect, same fix, in the production-safe scheduled-check code path."""
+        self.assertNotIn("role = 'contractor'", guard.DISAGREEMENT_SQL)
+        self.assertNotIn("role='contractor'", guard.DISAGREEMENT_SQL)
+
+    def test_self_test_seeds_and_repairs_both_shapes(self):
+        """Live self-test fixture now covers both bad shapes: role=contractor
+        (original 7 rows) and role=homeowner (the 8th, recurrence). Exercised
+        end-to-end against a stubbed urlopen that fakes the full Supabase
+        surface self_test() drives (auth admin, profiles, contractors)."""
+        created_profiles = {}
+        created_contractors = {}
+
+        def fake_urlopen(req, timeout=30):
+            url = req.full_url
+            method = req.get_method()
+            if "/auth/v1/admin/users" in url and method == "POST":
+                uid = f"user-{len(created_profiles) + len(created_contractors) + 1}-{uuid.uuid4().hex[:6]}"
+                return _FakeResponse(json.dumps({"id": uid}).encode("utf-8"))
+            if "/rest/v1/profiles" in url and method == "POST":
+                body = json.loads(req.data.decode("utf-8"))
+                created_profiles[body["id"]] = {"id": body["id"], "is_test": body["is_test"], "role": body["role"]}
+                return _FakeResponse(b"")
+            if "/rest/v1/contractors" in url and method == "POST":
+                body = json.loads(req.data.decode("utf-8"))
+                cid = f"contractor-{len(created_contractors) + 1}"
+                created_contractors[cid] = {"id": cid, "user_id": body["user_id"], "is_test": body["is_test"], "company_name": body["company_name"]}
+                return _FakeResponse(json.dumps([{"id": cid}]).encode("utf-8"))
+            if "/rest/v1/contractors" in url and method == "PATCH":
+                cid = url.split("id=eq.")[1].split("&")[0]
+                body = json.loads(req.data.decode("utf-8"))
+                created_contractors[cid]["is_test"] = body["is_test"]
+                return _FakeResponse(b"")
+            if "/rest/v1/contractors" in url and method == "GET":
+                return _FakeResponse(json.dumps([
+                    {"id": c["id"], "user_id": c["user_id"], "is_test": c["is_test"], "company_name": c["company_name"]}
+                    for c in created_contractors.values()
+                ]).encode("utf-8"))
+            if "/rest/v1/profiles" in url and method == "GET":
+                # role-agnostic: no role filter applied, matching the fix.
+                self.assertNotIn("role=eq.contractor", url)
+                return _FakeResponse(json.dumps(list(created_profiles.values())).encode("utf-8"))
+            if method == "DELETE":
+                return _FakeResponse(b"")
+            raise AssertionError(f"unexpected request in self-test fake: {method} {url}")
+
+        with patch("sys.stdout", new_callable=io.StringIO), patch("sys.stderr", new_callable=io.StringIO):
+            code = guard.self_test("https://zsdvaqilfdclwosmiheh.supabase.co", "fake-key", urlopen=fake_urlopen)
+        self.assertEqual(code, 0, "self-test covering both the contractor-role and homeowner-role bad shapes must PASS")
+        self.assertEqual(len(created_contractors), 2)
+        roles_seeded = {p["role"] for p in created_profiles.values()}
+        self.assertEqual(roles_seeded, {"contractor", "homeowner"})
 
 
 class SelfTestProdGuardTests(unittest.TestCase):
