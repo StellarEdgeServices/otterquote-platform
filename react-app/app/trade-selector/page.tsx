@@ -25,6 +25,7 @@ import { useAuthReady } from '@/hooks/use-auth-ready';
 import { supabase } from '@/lib/supabase';
 import { readReferralIds } from '@/lib/cookie-storage';
 import { isTestEmail } from '@/lib/test-signal';
+import { track } from '@/lib/track';
 import { parseAddress } from './utils';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -601,7 +602,15 @@ export default function TradeSelectorPage() {
             // fallback always found neither and unconditionally inserted a
             // SECOND claim row for every repair-path homeowner using this
             // (the actually-live) React surface.
-            if (insertedClaim) savedClaimId = insertedClaim.id;
+            if (insertedClaim) {
+              savedClaimId = insertedClaim.id;
+              // gh-1940: "claim started" funnel step — fires once, only on
+              // the first claim row for this user (the `else` branch above
+              // is an update to an already-started claim, not a new start).
+              // No property_address/PII — funding_type and policy_type are
+              // job-category selections, not personal data.
+              track('claim_started', { funding_type: fundingType, policy_type: policyType });
+            }
           }
 
           // #571: the claim_submitted advance now lives in the database —

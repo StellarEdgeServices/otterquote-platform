@@ -34,6 +34,7 @@ import {
 } from './utils';
 import { HELP_MATERIALS_CSS } from './styles';
 import { DesignerProductGrid } from './components/DesignerProductGrid';
+import { track } from '@/lib/track';
 import type {
   MaterialCatalogRow,
   MaterialSelectionState,
@@ -129,6 +130,8 @@ function HelpMaterialsContent() {
     try {
       await saveMaterialSelection(claimId, buildClaimMaterialUpdate(state));
       setSaved(true);
+      // gh-1940: fired after the save succeeds.
+      track('help_tool_used', { tool: 'help_materials' });
       // Mirror the static success affordance — land on the React dashboard.
       window.location.href = '/dashboard';
     } catch {

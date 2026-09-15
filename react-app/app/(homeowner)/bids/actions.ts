@@ -22,6 +22,7 @@
 
 import { supabase } from '@/lib/supabase';
 import { extractOwnerPhotoPath, mapAwardError, STATIC_ORIGIN } from './utils';
+import { track } from '@/lib/track';
 import type { BidRow, BidsClaim, ContractorProfile } from './types';
 
 export interface ActionResult {
@@ -127,6 +128,10 @@ export async function awardClaimToContractor(params: {
     .eq('claim_id', claim.id)
     .neq('id', bid.id);
   if (rejectErr) return { ok: false, error: rejectErr.message };
+
+  // gh-1940: "bid accepted" funnel step — fired here, after every write
+  // above has succeeded, not on the modal's confirm click.
+  track('bid_accepted', { claim_id: claim.id });
 
   const qs = new URLSearchParams({
     claim_id: claim.id,
