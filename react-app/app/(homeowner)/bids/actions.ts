@@ -22,6 +22,7 @@
 
 import { supabase } from '@/lib/supabase';
 import { extractOwnerPhotoPath, mapAwardError, STATIC_ORIGIN } from './utils';
+import { track } from '@/lib/track';
 import type { BidRow, BidsClaim, ContractorProfile } from './types';
 
 export interface ActionResult {
@@ -127,6 +128,13 @@ export async function awardClaimToContractor(params: {
     .eq('claim_id', claim.id)
     .neq('id', bid.id);
   if (rejectErr) return { ok: false, error: rejectErr.message };
+
+  // gh-1940: "bid accepted" funnel step — fired here, after every write
+  // above has succeeded, not on the modal's confirm click. The caller
+  // (SelectContractorModal) navigates to the returned href immediately on
+  // `ok: true`, so this uses beacon transport — see the ROOT CAUSE NOTE in
+  // app/lib/track.ts for why an emit right before navigation needs it.
+  track('bid_accepted', { claim_id: claim.id }, { beacon: true });
 
   const qs = new URLSearchParams({
     claim_id: claim.id,
