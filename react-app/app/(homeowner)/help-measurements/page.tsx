@@ -83,7 +83,7 @@ export const RESUME_COPY = {
     "We found an unfinished measurement order from your last visit. If you completed payment and don't see a confirmation, contact support with your claim number — we'll verify your payment and complete the order. If you did not finish paying, you can safely start over below.",
 } as const;
 
-// ── Top-level page ──────────────────────────────────────────────────────────────────
+// ── Top-level page ───────────────────────────────────────────────────────────────
 
 export default function HelpMeasurementsPage() {
   return (
@@ -108,7 +108,7 @@ function Content() {
   return <PageBody data={data} user={measUser} />;
 }
 
-// ── Page body: path state machine ────────────────────────────────────────────────
+// ── Page body: path state machine ───────────────────────────────────────────────
 
 type View = 'select' | 'hover' | 'adjuster';
 type HoverStage = 'intro' | 'card' | 'success';
@@ -500,7 +500,7 @@ function PageBody({
   );
 }
 
-// ── Presentational pieces ────────────────────────────────────────────────────
+// ── Presentational pieces ────────────────────────────────────────────────────────
 
 function PathCard({
   badge,
