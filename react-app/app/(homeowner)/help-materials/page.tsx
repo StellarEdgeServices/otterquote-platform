@@ -79,7 +79,7 @@ function HelpMaterialsContent() {
   const step = currentStep(state);
   const noClaim = !claimLoading && !claimError && !claimId;
 
-  // ── Selection handlers (mirror the static select* functions) ───────────────
+  // ── Selection handlers (mirror the static select* functions) ──────────────
   function selectCategory(category: 'shingles' | 'metal') {
     setState({ ...initialSelectionState(), category });
   }
@@ -119,7 +119,7 @@ function HelpMaterialsContent() {
     }));
   }
 
-  // ── Confirm (single claims write, no EF) ────────────────────────────────
+  // ── Confirm (single claims write, no EF) ──────────────────────────────────
   async function handleConfirm() {
     setSubmitError(null);
     if (!claimId) {
