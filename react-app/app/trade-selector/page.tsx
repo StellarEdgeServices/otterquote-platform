@@ -28,7 +28,7 @@ import { isTestEmail } from '@/lib/test-signal';
 import { track } from '@/lib/track';
 import { parseAddress } from './utils';
 
-// ─── Constants ─────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const DASHBOARD_URL = 'https://otterquote.com/dashboard.html';
 const REPAIR_INTAKE_URL = 'https://otterquote.com/repair-intake.html';
@@ -59,7 +59,7 @@ interface WizardState {
   repairReplace: Partial<Record<TradeKey, RepairIntent>>;
 }
 
-// ─── GA4 helper ──────────────────────────────────────────────
+// ─── GA4 helper ──────────────────────────────────────────────────────────────
 
 function gtag(...args: unknown[]) {
   if (typeof window !== 'undefined' && (window as any).gtag) {
@@ -67,7 +67,7 @@ function gtag(...args: unknown[]) {
   }
 }
 
-// ─── Referral resolution ─────────────────────────────────────────────
+// ─── Referral resolution ─────────────────────────────────────────────────────
 
 async function resolveReferralAgentId(partnerIdParam: string | null): Promise<string | null> {
   if (!partnerIdParam) return null;
@@ -100,7 +100,7 @@ async function resolveReferralAgentId(partnerIdParam: string | null): Promise<st
   return null;
 }
 
-// ─── Step indicator ────────────────────────────────────────────────
+// ─── Step indicator ───────────────────────────────────────────────────────────
 
 function StepIndicator({
   totalSteps,
@@ -168,7 +168,7 @@ function StepIndicator({
   );
 }
 
-// ─── Card components ──────────────────────────────────────────────────
+// ─── Card components ──────────────────────────────────────────────────────────
 
 function SelectionCard({
   selected,
@@ -301,7 +301,7 @@ function ActionButtons({
   );
 }
 
-// ─── Main component ────────────────────────────────────────────────
+// ─── Main component ───────────────────────────────────────────────────────────
 
 export default function TradeSelectorPage() {
   const { user, settled } = useAuthReady();
