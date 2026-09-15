@@ -389,6 +389,8 @@
     form.classList.add('hidden');
     document.getElementById('google-btn').classList.add('hidden');
     document.querySelector('.oauth-divider').classList.add('hidden');
+    document.querySelector('.login-form-wrap > h1').classList.add('hidden');
+    document.querySelector('.login-form-wrap > .subtitle').classList.add('hidden');
     setNewPasswordSection.classList.add('active');
   }
 
@@ -592,7 +594,18 @@
         await Auth.redirectToDashboard();
       } catch (err) {
         console.error('Set new password error:', err);
-        newPasswordError.textContent = 'Something went wrong. Please request a new reset link and try again.';
+        const code = err && err.code;
+        let msg;
+        if (code === 'same_password') {
+          msg = 'That is already your password. Choose a different new password, or go back to sign in and use it.';
+        } else if (code === 'weak_password') {
+          msg = (err.message || 'That password is too weak.') + ' Please choose a stronger password.';
+        } else if (['otp_expired','session_not_found','session_expired','bad_jwt','flow_state_expired'].includes(code) || err?.status === 401 || err?.status === 403) {
+          msg = 'Your reset link has expired. Please request a new reset link and try again.';
+        } else {
+          msg = 'Something went wrong' + (err && err.message ? ': ' + err.message : '.') + ' Please try again.';
+        }
+        newPasswordError.textContent = msg;
         newPasswordError.style.display = 'block';
         btn.classList.remove('btn-loading');
         btn.disabled = false;
