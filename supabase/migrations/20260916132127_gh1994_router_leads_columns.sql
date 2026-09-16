@@ -4,6 +4,31 @@
 -- cro-2026-09-16T11:19:36Z); filed as issue #1994; Dustin's verbatim
 -- 2026-09-16 spec is quoted in full on the issue body.
 --
+-- FIX ROUND 3 (PR #1997, CEO RUN 48, same claim continued) -- LEGAL-READ:
+-- PASS (comment 5702548623) but REVIEW: FAIL (comment 5702597120, blocking
+-- finding B1) on the fix round 2 head (7caa7d38): set_lead_role and
+-- update_lead_contact's fix-round-2 guard (30-minute window AND
+-- prefill_used_at IS NULL) made them RETURN void and no-op silently when
+-- the guard failed, and start.html treated that no-op as success -- so
+-- Back-from-a-destination-page -> correct a typo -> pick a new role
+-- silently discarded BOTH the correction and the new role (the DB kept
+-- the original typo and the original role, with no error anywhere in the
+-- chain). Cure (Ben, decided): both functions now RETURN boolean (true
+-- only when a row was actually touched -- DROP FUNCTION IF EXISTS first,
+-- since Postgres can't change a return type via CREATE OR REPLACE and
+-- neither function has ever been applied to production); start.html
+-- (this file's own change is SQL-only -- see that file's own fix round 3
+-- comments) now inserts a fresh lead with the current field values and
+-- retries against the new id whenever either RPC returns false or
+-- throws, instead of silently proceeding. Also in this round: maxlength
+-- attributes added to start.html's inputs matching these same DB caps,
+-- partner-re.html's trailing newline (lost to an earlier push) restored,
+-- and several more stale comments fixed (this file's own now-inaccurate
+-- "silently no-ops" language in both functions' trailing comments, a
+-- historical CI-re-trigger note that read as an ongoing fact, and a
+-- garbled sentence plus a stale ">60 min" prefill-window claim repeated
+-- identically across all six destination pages' head comments).
+--
 -- FIX ROUND 2 (PR #1997, CEO RUN 48, same claim continued) -- REVIEW: FAIL
 -- (comment 5700804646) and LEGAL-READ: FAIL (comment 5700654821) on the
 -- fix round 1 head (5edfb837) found the same blocker independently: the
@@ -317,16 +342,36 @@ GRANT EXECUTE ON FUNCTION public.get_lead_prefill(uuid) TO anon, authenticated;
 COMMENT ON FUNCTION public.get_lead_prefill(uuid) IS
   'gh-1994 fix round 1: SECURITY DEFINER, single-use prefill lookup for the router''s ?lead=<uuid> redirect. Stamps prefill_used_at atomically via UPDATE...RETURNING and returns zero rows on a second call, past the 30-minute window, or for any id that never matched -- callers must treat an empty result as "no prefill available", never as an error.';
 
--- 6. Role/industry RPC -- CHANGED in fix round 2 (Ben, REVIEW 5700804646 /
--- LEGAL-READ 5700654821, non-blocking items): the two write RPCs on this
--- lead row (this one and update_lead_contact) now share the exact same
--- guard -- the 30-minute window used by get_lead_prefill, AND
--- prefill_used_at IS NULL. Before this, set_lead_role kept its own
--- 60-minute window with no prefill_used_at check at all, which meant a
--- role could still be (re)written up to 30 minutes after the lead's
--- contact info had already been read out via ?lead=<uuid> -- widening,
--- not shrinking, the window an id-holder could act in after prefill. Also
--- explicitly rejects a NULL role (fix round 2 non-blocking item): the old
+-- 6. Role/industry RPC -- return type CHANGED in fix round 3 (Ben, REVIEW
+-- 5702597120 finding B1, blocking): fix round 2 gave this function and
+-- update_lead_contact a shared guard (30-minute window AND
+-- prefill_used_at IS NULL) but left them RETURNS void, so the no-op case
+-- (guard fails, zero rows touched) was indistinguishable from success to
+-- any caller -- start.html's Step 2 handler treated a resolved promise
+-- with no `.error` as "role written" regardless, so the real flow the
+-- reviewer traced (Back from a destination page after it has already
+-- called get_lead_prefill and stamped prefill_used_at -> correct the
+-- email -> pick a new role) silently discarded both the correction and
+-- the new role, leaving the original typo/role in the database with no
+-- error anywhere in the chain. Fix: RETURNS boolean, true only when the
+-- UPDATE actually touched a row (checked via GET DIAGNOSTICS ROW_COUNT,
+-- not by re-SELECTing). DROP FUNCTION IF EXISTS first because Postgres
+-- will not let CREATE OR REPLACE change a function's return type in
+-- place; safe here because this function has never been applied to
+-- production. start.html now branches on this return value -- see that
+-- file's own fix round 3 comments for the fresh-lead-insert fallback a
+-- `false` now triggers, instead of silently proceeding as fix round 2 did.
+--
+-- CHANGED in fix round 2 (Ben, REVIEW 5700804646 / LEGAL-READ 5700654821,
+-- non-blocking items, both still true after the fix round 3 return-type
+-- change above): the two write RPCs on this lead row (this one and
+-- update_lead_contact) share the exact same guard -- the 30-minute window
+-- used by get_lead_prefill, AND prefill_used_at IS NULL. Before fix round
+-- 2, set_lead_role kept its own 60-minute window with no prefill_used_at
+-- check at all, which meant a role could still be (re)written up to 30
+-- minutes after the lead's contact info had already been read out via
+-- ?lead=<uuid> -- widening, not shrinking, the window an id-holder could
+-- act in after prefill. Also explicitly rejects a NULL role: the old
 -- `IF p_role NOT IN (...)` check evaluates to NULL, not TRUE, when p_role
 -- itself is NULL, so a NULL role previously fell through the guard
 -- entirely and was written as-is (silently clearing any existing role and,
@@ -335,16 +380,20 @@ COMMENT ON FUNCTION public.get_lead_prefill(uuid) IS
 -- already in this repo: a SECURITY DEFINER RPC is how this codebase lets
 -- an anonymous client write a column no anon RLS policy exposes directly,
 -- rather than widening leads' RLS or table grants.
+DROP FUNCTION IF EXISTS public.set_lead_role(uuid, text, text);
+
 CREATE OR REPLACE FUNCTION public.set_lead_role(
   p_lead_id uuid,
   p_role text,
   p_partner_industry text DEFAULT NULL
 )
-RETURNS void
+RETURNS boolean
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
+DECLARE
+  v_rows int;
 BEGIN
   IF p_role IS NULL THEN
     RAISE EXCEPTION 'set_lead_role: role required';
@@ -366,6 +415,9 @@ BEGIN
    WHERE id = p_lead_id
      AND created_at > now() - interval '30 minutes'
      AND prefill_used_at IS NULL;
+
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  RETURN v_rows > 0;
 END;
 $$;
 
@@ -373,12 +425,22 @@ REVOKE ALL ON FUNCTION public.set_lead_role(uuid, text, text) FROM PUBLIC, anon,
 GRANT EXECUTE ON FUNCTION public.set_lead_role(uuid, text, text) TO anon, authenticated;
 
 COMMENT ON FUNCTION public.set_lead_role(uuid, text, text) IS
-  'gh-1994 fix round 2: SECURITY DEFINER role/industry write for the router''s Step 2/2a, called by an anon client (leads has no anon UPDATE policy). Raises on a NULL or invalid role/partner_industry; otherwise silently no-ops (0 rows updated, no error) once prefill_used_at is set, past the 30-minute window (tightened from 60 and unified with get_lead_prefill/update_lead_contact -- Ben''s fix round 2 ruling), or for an id that never matched -- callers must not depend on an error to detect the no-op cases.';
+  'gh-1994 fix round 3: SECURITY DEFINER role/industry write for the router''s Step 2/2a, called by an anon client (leads has no anon UPDATE policy). Raises on a NULL or invalid role/partner_industry; otherwise RETURNS boolean -- true when a row was actually updated, false (not an error) once prefill_used_at is set, past the 30-minute window, or for an id that never matched. Callers MUST check this return value -- a false result means the write did not happen and the caller (start.html) is expected to insert a fresh lead and retry against the new id rather than silently proceeding.';
 
--- 7. Contact-update RPC -- new in fix round 1 (Ben's ruling item 7: "A
--- resubmit after going back updates the existing lead through the RPC
--- instead of inserting a duplicate."), guard unified with set_lead_role in
--- fix round 2 (Ben, REVIEW 5700804646 / LEGAL-READ 5700654821) -----------
+-- 7. Contact-update RPC -- return type CHANGED in fix round 3 (Ben, REVIEW
+-- 5702597120 finding B1, blocking) -- same fix and same reason as
+-- set_lead_role above: RETURNS void plus a silent guard no-op made a
+-- discarded correction indistinguishable from a saved one. RETURNS
+-- boolean now (true only when the UPDATE touched a row, via GET
+-- DIAGNOSTICS ROW_COUNT); DROP FUNCTION IF EXISTS first since Postgres
+-- can't change a return type via CREATE OR REPLACE and this function has
+-- never been applied to production. start.html now inserts a fresh lead
+-- and retries on `false`, instead of treating it as a completed update.
+--
+-- New in fix round 1 (Ben's ruling item 7: "A resubmit after going back
+-- updates the existing lead through the RPC instead of inserting a
+-- duplicate."), guard unified with set_lead_role in fix round 2 (Ben,
+-- REVIEW 5700804646 / LEGAL-READ 5700654821) -------------------------
 -- The anon INSERT policy has no matching anon UPDATE policy, so a plain
 -- second `sb.from('leads').insert({id: <same uuid>, ...})` would hit the
 -- primary key and error, not update -- an RPC is the only anon-safe path to
@@ -394,11 +456,14 @@ COMMENT ON FUNCTION public.set_lead_role(uuid, text, text) IS
 -- email/phone prefill, that data is legitimately elsewhere already, and a
 -- late resubmit updating it further would let anyone still holding the id
 -- silently overwrite what the destination page displayed or already
--- submitted downstream. Revalidates phone shape server-side (mirrors
--- start.html's isValidUsPhone: exactly 10 digits, area/exchange codes
--- 2-9, not all one repeated digit) so a resubmit can't be used to plant
--- an invalid phone the client-side check would have blocked on a fresh
--- insert. Fix round 2 non-blocking item: length caps (name <= 200, email
+-- submitted downstream -- fix round 3 closes the actual loophole this
+-- guard could previously hide (see the return-type note above: refusing
+-- used to mean silently keeping the visitor's OLD, uncorrected data
+-- instead of preventing an overwrite of someone else's). Revalidates
+-- phone shape server-side (mirrors start.html's isValidUsPhone: exactly
+-- 10 digits, area/exchange codes 2-9, not all one repeated digit) so a
+-- resubmit can't be used to plant an invalid phone the client-side check
+-- would have blocked on a fresh insert. Length caps (name <= 200, email
 -- <= 320, phone <= 20) mirror the table's own
 -- leads_name_length_check / leads_email_length_check /
 -- leads_phone_length_check CHECK constraints below (belt-and-suspenders --
@@ -406,17 +471,21 @@ COMMENT ON FUNCTION public.set_lead_role(uuid, text, text) IS
 -- CHECK applies to every write regardless of path, but raising here gives
 -- start.html a clean RAISE EXCEPTION instead of a raw constraint-violation
 -- error string to handle).
+DROP FUNCTION IF EXISTS public.update_lead_contact(uuid, text, text, text);
+
 CREATE OR REPLACE FUNCTION public.update_lead_contact(
   p_lead_id uuid,
   p_name text,
   p_email text,
   p_phone text
 )
-RETURNS void
+RETURNS boolean
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
+DECLARE
+  v_rows int;
 BEGIN
   IF p_name IS NULL OR btrim(p_name) = '' THEN
     RAISE EXCEPTION 'update_lead_contact: name required';
@@ -446,6 +515,9 @@ BEGIN
    WHERE id = p_lead_id
      AND created_at > now() - interval '30 minutes'
      AND prefill_used_at IS NULL;
+
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  RETURN v_rows > 0;
 END;
 $$;
 
@@ -453,7 +525,7 @@ REVOKE ALL ON FUNCTION public.update_lead_contact(uuid, text, text, text) FROM P
 GRANT EXECUTE ON FUNCTION public.update_lead_contact(uuid, text, text, text) TO anon, authenticated;
 
 COMMENT ON FUNCTION public.update_lead_contact(uuid, text, text, text) IS
-  'gh-1994 fix round 2: SECURITY DEFINER contact-info update for a Step 1 resubmit (browser back to Step 1, then Continue again) -- updates the existing row instead of start.html inserting a duplicate. Raises on invalid or over-length (name>200/email>320/phone>20) input; otherwise silently no-ops (0 rows updated, no error) once prefill_used_at is set, past the 30-minute window, or for an id that never matched -- same convention, and now the same window and prefill_used_at guard, as set_lead_role/get_lead_prefill.';
+  'gh-1994 fix round 3: SECURITY DEFINER contact-info update for a Step 1 resubmit (browser back to Step 1, then Continue again) -- updates the existing row instead of start.html inserting a duplicate. Raises on invalid or over-length (name>200/email>320/phone>20) input; otherwise RETURNS boolean -- true when a row was actually updated, false (not an error) once prefill_used_at is set, past the 30-minute window, or for an id that never matched. Callers MUST check this return value -- a false result means the correction was NOT saved and the caller (start.html) is expected to insert a fresh lead with the current values rather than silently discarding them.';
 
 COMMIT;
 
@@ -473,11 +545,13 @@ COMMIT;
 -- this PR does the same, applied by Ben per this ruling (comment
 -- 5698874513, item 5), which stands as the human review the ratchet's
 -- bypass exists for. The ratchet still prints every finding as BYPASSED,
--- not silently. Label applied to PR #1997 as part of this fix round; this
--- comment-only touch exists solely to re-trigger CI against the now-labeled
--- PR (the ratchet workflow reads PR labels at run time, not at push time,
--- so a label added after the last push does not re-evaluate an existing
--- check run on its own).
+-- not silently. Label applied to PR #1997 in fix round 1 and unchanged
+-- since (fix round 3: corrected this comment, which previously described
+-- a specific one-time re-trigger commit from fix round 1 as if it were an
+-- ongoing fact about this file -- it isn't; the label persists across
+-- pushes on its own, and the ratchet workflow reads it fresh on every new
+-- commit's CI run, so no comment-only push is needed to "activate" it
+-- again after this point).
 
 -- ROLLBACK (manual -- this migration is not applied, and phase 1 was not
 -- granted a separate supabase/migrations_rollbacks/ file; inline per the
