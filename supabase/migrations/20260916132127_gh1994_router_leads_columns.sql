@@ -4,6 +4,28 @@
 -- cro-2026-09-16T11:19:36Z); filed as issue #1994; Dustin's verbatim
 -- 2026-09-16 spec is quoted in full on the issue body.
 --
+-- FIX ROUND 2 (PR #1997, CEO RUN 48, same claim continued) -- REVIEW: FAIL
+-- (comment 5700804646) and LEGAL-READ: FAIL (comment 5700654821) on the
+-- fix round 1 head (5edfb837) found the same blocker independently: the
+-- homeowner redirect (start.html, unchanged by this file) sent
+-- ?lead=<uuid> to the React get-started page, which does not strip or use
+-- it -- fixed in start.html, not here (see that file's own fix round 2
+-- comments). This file's non-blocking fix round 2 items, all below at
+-- their point of use: set_lead_role and update_lead_contact now share
+-- get_lead_prefill's exact guard (30-minute window AND prefill_used_at IS
+-- NULL, tightened from set_lead_role's previous unguarded 60-minute
+-- window); set_lead_role rejects a NULL role explicitly instead of
+-- silently falling through; three new length-cap CHECK constraints
+-- (name<=200, email<=320, phone<=20) plus matching RAISEs in
+-- update_lead_contact; `pg_temp` added last in every function's
+-- search_path (defense-in-depth against a search_path-hijack via a
+-- session-local temp schema, standard practice for SECURITY DEFINER
+-- functions, independent of anything either refuter flagged); and the
+-- stale comments the above changes would otherwise leave behind (the old
+-- "not set_lead_role's 60-minute one" line, the old 60-minute references
+-- in set_lead_role's own header/trailing comment, and the old "no
+-- server-side format CHECK in phase 1" phone comment).
+--
 -- FIX ROUND 1 (PR #1997, CEO RUN 48, claim ceo-2026-09-16T13:09:26Z) --
 -- rewritten after REVIEW: FAIL (comment 5698829220) and LEGAL-READ: FAIL
 -- (comment 5698634115), per Ben's ruling (comment 5698874513, items 2-6).
@@ -146,8 +168,58 @@ BEGIN
   END IF;
 END $$;
 
+-- Length caps -- new in fix round 2 (Ben, non-blocking item). Belt-and-
+-- suspenders with the same caps in update_lead_contact() above: a CHECK
+-- constraint applies to every write to this table regardless of path (the
+-- anon INSERT at Step 1, either RPC's UPDATE, or a future admin console
+-- write), where the RPC-level check only covers callers of that RPC. Caps
+-- chosen to be generously larger than any legitimate value while still
+-- bounding worst-case row/index size and query-log noise from an abusive
+-- anon insert: 200 chars for name, 320 for email (RFC 5321 §4.5.3.1.3's
+-- own max total-address length), 20 digits for phone (already
+-- format-constrained to exactly 10 by isValidUsPhone/update_lead_contact,
+-- but the leads_role_check/leads_partner_industry_check precedent above is
+-- to guard every column that has a shape, not only the ones an RPC
+-- currently touches -- phone can still arrive via the anon INSERT path,
+-- which enforces no format at all).
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conrelid = 'public.leads'::regclass AND conname = 'leads_name_length_check'
+  ) THEN
+    ALTER TABLE public.leads
+      ADD CONSTRAINT leads_name_length_check
+        CHECK (name IS NULL OR char_length(name) <= 200);
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conrelid = 'public.leads'::regclass AND conname = 'leads_email_length_check'
+  ) THEN
+    ALTER TABLE public.leads
+      ADD CONSTRAINT leads_email_length_check
+        CHECK (email IS NULL OR char_length(email) <= 320);
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conrelid = 'public.leads'::regclass AND conname = 'leads_phone_length_check'
+  ) THEN
+    ALTER TABLE public.leads
+      ADD CONSTRAINT leads_phone_length_check
+        CHECK (phone IS NULL OR char_length(phone) <= 20);
+  END IF;
+END $$;
+
 COMMENT ON COLUMN public.leads.phone IS
-  'gh-1994: router Step 1, required 10-digit US number (NANP-shaped: area/exchange codes 2-9, not all-same-digit), validated client-side only (no server-side format CHECK in phase 1).';
+  'gh-1994: router Step 1, required 10-digit US number (NANP-shaped: area/exchange codes 2-9, not all-same-digit), validated client-side and (fix round 2) in update_lead_contact(); leads_phone_length_check bounds it at the DB layer for every write path, including the anon INSERT, which enforces no format at all.';
 COMMENT ON COLUMN public.leads.role IS
   'gh-1994: router Step 2 answer (homeowner/contractor/referral_partner). Forced NULL on INSERT by trg_leads_force_safe_insert_defaults; set post-insert only via set_lead_role().';
 COMMENT ON COLUMN public.leads.partner_industry IS
@@ -174,7 +246,7 @@ CREATE OR REPLACE FUNCTION public.leads_force_safe_insert_defaults()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, pg_temp
 AS $$
 BEGIN
   NEW.created_at        := now();
@@ -223,7 +295,7 @@ RETURNS TABLE(name text, email text, phone text)
 LANGUAGE plpgsql
 SECURITY DEFINER
 VOLATILE
-SET search_path = public
+SET search_path = public, pg_temp
 AS $$
 BEGIN
   RETURN QUERY
@@ -245,14 +317,24 @@ GRANT EXECUTE ON FUNCTION public.get_lead_prefill(uuid) TO anon, authenticated;
 COMMENT ON FUNCTION public.get_lead_prefill(uuid) IS
   'gh-1994 fix round 1: SECURITY DEFINER, single-use prefill lookup for the router''s ?lead=<uuid> redirect. Stamps prefill_used_at atomically via UPDATE...RETURNING and returns zero rows on a second call, past the 30-minute window, or for any id that never matched -- callers must treat an empty result as "no prefill available", never as an error.';
 
--- 6. Role/industry RPC -- UNCHANGED from the original version of this file
--- (Ben's ruling item: "set_lead_role stays") -------------------------------
--- Sets role (and partner_industry, for referral_partner only) on a lead row
--- created within the last 60 minutes. Mirrors the register_partner() /
--- record_first_touch_attribution() precedent already in this repo: a
--- SECURITY DEFINER RPC is how this codebase lets an anonymous client write a
--- column no anon RLS policy exposes directly, rather than widening leads'
--- RLS or table grants.
+-- 6. Role/industry RPC -- CHANGED in fix round 2 (Ben, REVIEW 5700804646 /
+-- LEGAL-READ 5700654821, non-blocking items): the two write RPCs on this
+-- lead row (this one and update_lead_contact) now share the exact same
+-- guard -- the 30-minute window used by get_lead_prefill, AND
+-- prefill_used_at IS NULL. Before this, set_lead_role kept its own
+-- 60-minute window with no prefill_used_at check at all, which meant a
+-- role could still be (re)written up to 30 minutes after the lead's
+-- contact info had already been read out via ?lead=<uuid> -- widening,
+-- not shrinking, the window an id-holder could act in after prefill. Also
+-- explicitly rejects a NULL role (fix round 2 non-blocking item): the old
+-- `IF p_role NOT IN (...)` check evaluates to NULL, not TRUE, when p_role
+-- itself is NULL, so a NULL role previously fell through the guard
+-- entirely and was written as-is (silently clearing any existing role and,
+-- via the CASE below, partner_industry too) instead of raising. Mirrors
+-- the register_partner() / record_first_touch_attribution() precedent
+-- already in this repo: a SECURITY DEFINER RPC is how this codebase lets
+-- an anonymous client write a column no anon RLS policy exposes directly,
+-- rather than widening leads' RLS or table grants.
 CREATE OR REPLACE FUNCTION public.set_lead_role(
   p_lead_id uuid,
   p_role text,
@@ -261,9 +343,13 @@ CREATE OR REPLACE FUNCTION public.set_lead_role(
 RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, pg_temp
 AS $$
 BEGIN
+  IF p_role IS NULL THEN
+    RAISE EXCEPTION 'set_lead_role: role required';
+  END IF;
+
   IF p_role NOT IN ('homeowner', 'contractor', 'referral_partner') THEN
     RAISE EXCEPTION 'set_lead_role: invalid role %', p_role;
   END IF;
@@ -278,7 +364,8 @@ BEGIN
      SET role             = p_role,
          partner_industry = CASE WHEN p_role = 'referral_partner' THEN p_partner_industry ELSE NULL END
    WHERE id = p_lead_id
-     AND created_at > now() - interval '60 minutes';
+     AND created_at > now() - interval '30 minutes'
+     AND prefill_used_at IS NULL;
 END;
 $$;
 
@@ -286,24 +373,39 @@ REVOKE ALL ON FUNCTION public.set_lead_role(uuid, text, text) FROM PUBLIC, anon,
 GRANT EXECUTE ON FUNCTION public.set_lead_role(uuid, text, text) TO anon, authenticated;
 
 COMMENT ON FUNCTION public.set_lead_role(uuid, text, text) IS
-  'gh-1994: SECURITY DEFINER role/industry write for the router''s Step 2/2a, called by an anon client (leads has no anon UPDATE policy). Silently no-ops (0 rows updated, no error) past the 60-minute window or for an id that never matched -- callers must not depend on an error to detect that case. Unchanged in fix round 1 per Ben''s ruling.';
+  'gh-1994 fix round 2: SECURITY DEFINER role/industry write for the router''s Step 2/2a, called by an anon client (leads has no anon UPDATE policy). Raises on a NULL or invalid role/partner_industry; otherwise silently no-ops (0 rows updated, no error) once prefill_used_at is set, past the 30-minute window (tightened from 60 and unified with get_lead_prefill/update_lead_contact -- Ben''s fix round 2 ruling), or for an id that never matched -- callers must not depend on an error to detect the no-op cases.';
 
 -- 7. Contact-update RPC -- new in fix round 1 (Ben's ruling item 7: "A
 -- resubmit after going back updates the existing lead through the RPC
--- instead of inserting a duplicate.") ---------------------------------------
+-- instead of inserting a duplicate."), guard unified with set_lead_role in
+-- fix round 2 (Ben, REVIEW 5700804646 / LEGAL-READ 5700654821) -----------
 -- The anon INSERT policy has no matching anon UPDATE policy, so a plain
 -- second `sb.from('leads').insert({id: <same uuid>, ...})` would hit the
 -- primary key and error, not update -- an RPC is the only anon-safe path to
 -- an update, exactly like set_lead_role above. Restricted to the same
--- 30-minute window as the (tightened) prefill RPC, not set_lead_role's
--- 60-minute one: a resubmit is closer in nature to "is this still the same
--- live funnel visit" than to a role click, and reusing the tighter window
--- keeps a stale/shared leadId from being replayed to overwrite a lead's
--- contact info long after the visit ended. Revalidates phone shape
--- server-side (mirrors start.html's isValidUsPhone: exactly 10 digits,
--- area/exchange codes 2-9, not all one repeated digit) so a resubmit can't
--- be used to plant an invalid phone the client-side check would have
--- blocked on a fresh insert.
+-- 30-minute window as the prefill RPC AND set_lead_role (fix round 2:
+-- set_lead_role was tightened from 60 to 30 minutes specifically so both
+-- write RPCs on this row share one window with get_lead_prefill) -- a
+-- resubmit is closer in nature to "is this still the same live funnel
+-- visit" than to a role click, and the shared window keeps a stale/shared
+-- leadId from being replayed to overwrite a lead's contact info long
+-- after the visit ended. Also refuses once prefill_used_at is set (fix
+-- round 2): once a destination page has redeemed the id for a name/
+-- email/phone prefill, that data is legitimately elsewhere already, and a
+-- late resubmit updating it further would let anyone still holding the id
+-- silently overwrite what the destination page displayed or already
+-- submitted downstream. Revalidates phone shape server-side (mirrors
+-- start.html's isValidUsPhone: exactly 10 digits, area/exchange codes
+-- 2-9, not all one repeated digit) so a resubmit can't be used to plant
+-- an invalid phone the client-side check would have blocked on a fresh
+-- insert. Fix round 2 non-blocking item: length caps (name <= 200, email
+-- <= 320, phone <= 20) mirror the table's own
+-- leads_name_length_check / leads_email_length_check /
+-- leads_phone_length_check CHECK constraints below (belt-and-suspenders --
+-- the CHECK constraints alone already cover this RPC's UPDATE, since a
+-- CHECK applies to every write regardless of path, but raising here gives
+-- start.html a clean RAISE EXCEPTION instead of a raw constraint-violation
+-- error string to handle).
 CREATE OR REPLACE FUNCTION public.update_lead_contact(
   p_lead_id uuid,
   p_name text,
@@ -313,19 +415,28 @@ CREATE OR REPLACE FUNCTION public.update_lead_contact(
 RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, pg_temp
 AS $$
 BEGIN
   IF p_name IS NULL OR btrim(p_name) = '' THEN
     RAISE EXCEPTION 'update_lead_contact: name required';
   END IF;
+  IF char_length(p_name) > 200 THEN
+    RAISE EXCEPTION 'update_lead_contact: name too long';
+  END IF;
   IF p_email IS NULL OR p_email !~ '^[^\s@]+@[^\s@]+\.[^\s@]+$' THEN
     RAISE EXCEPTION 'update_lead_contact: invalid email';
+  END IF;
+  IF char_length(p_email) > 320 THEN
+    RAISE EXCEPTION 'update_lead_contact: email too long';
   END IF;
   IF p_phone IS NULL
      OR p_phone !~ '^[2-9]\d{2}[2-9]\d{6}$'
      OR p_phone ~ '^(\d)\1{9}$' THEN
     RAISE EXCEPTION 'update_lead_contact: invalid phone';
+  END IF;
+  IF char_length(p_phone) > 20 THEN
+    RAISE EXCEPTION 'update_lead_contact: phone too long';
   END IF;
 
   UPDATE public.leads
@@ -333,7 +444,8 @@ BEGIN
          email = p_email,
          phone = p_phone
    WHERE id = p_lead_id
-     AND created_at > now() - interval '30 minutes';
+     AND created_at > now() - interval '30 minutes'
+     AND prefill_used_at IS NULL;
 END;
 $$;
 
@@ -341,7 +453,7 @@ REVOKE ALL ON FUNCTION public.update_lead_contact(uuid, text, text, text) FROM P
 GRANT EXECUTE ON FUNCTION public.update_lead_contact(uuid, text, text, text) TO anon, authenticated;
 
 COMMENT ON FUNCTION public.update_lead_contact(uuid, text, text, text) IS
-  'gh-1994 fix round 1: SECURITY DEFINER contact-info update for a Step 1 resubmit (browser back to Step 1, then Continue again) -- updates the existing row instead of start.html inserting a duplicate. Silently no-ops (0 rows updated, no error) past the 30-minute window or for an id that never matched, same convention as set_lead_role/get_lead_prefill.';
+  'gh-1994 fix round 2: SECURITY DEFINER contact-info update for a Step 1 resubmit (browser back to Step 1, then Continue again) -- updates the existing row instead of start.html inserting a duplicate. Raises on invalid or over-length (name>200/email>320/phone>20) input; otherwise silently no-ops (0 rows updated, no error) once prefill_used_at is set, past the 30-minute window, or for an id that never matched -- same convention, and now the same window and prefill_used_at guard, as set_lead_role/get_lead_prefill.';
 
 COMMIT;
 
@@ -383,6 +495,9 @@ COMMIT;
 -- DROP FUNCTION IF EXISTS public.get_lead_prefill(uuid);
 -- DROP TRIGGER IF EXISTS trg_leads_force_safe_insert_defaults ON public.leads;
 -- DROP FUNCTION IF EXISTS public.leads_force_safe_insert_defaults();
+-- ALTER TABLE public.leads DROP CONSTRAINT IF EXISTS leads_phone_length_check;
+-- ALTER TABLE public.leads DROP CONSTRAINT IF EXISTS leads_email_length_check;
+-- ALTER TABLE public.leads DROP CONSTRAINT IF EXISTS leads_name_length_check;
 -- ALTER TABLE public.leads DROP CONSTRAINT IF EXISTS leads_converted_user_id_fkey;
 -- ALTER TABLE public.leads DROP CONSTRAINT IF EXISTS leads_partner_industry_check;
 -- ALTER TABLE public.leads DROP CONSTRAINT IF EXISTS leads_role_check;
