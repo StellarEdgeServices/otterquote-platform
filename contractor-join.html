@@ -1,6 +1,33 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<!-- gh-1994 fix round 1 (REVIEW): capture ?lead=<uuid> and strip it from the
+     visible URL via history.replaceState BEFORE any analytics loader below
+     (js/ga-gate.js, js/meta-pixel-gate.js -- and any third-party script they
+     load, e.g. gtag.js/fbevents.js/clarity.js) executes, so no GA4, Meta
+     Pixel or Clarity beacon -- including each library's own automatic
+     page_view/pageview call, which reads the CURRENT URL at the moment that
+     library's script runs -- can ever record `lead=<uuid>`. This must stay
+     the first script in <head>, above Sentry and everything else, or a
+     lookup at the top of the destination page.tsx>get_lead_prefill() call
+     stack. The bottom-of-page prefill script below reads
+     window.__oqRouterLeadId instead of re-parsing location.search, since by
+     the time it runs the URL no longer carries `lead`. -->
+<script>
+(function () {
+  try {
+    var params = new URLSearchParams(window.location.search);
+    var lead = params.get('lead');
+    if (lead) {
+      window.__oqRouterLeadId = lead;
+      params.delete('lead');
+      var qs = params.toString();
+      var newUrl = window.location.pathname + (qs ? '?' + qs : '') + window.location.hash;
+      history.replaceState(history.state, '', newUrl);
+    }
+  } catch (e) { /* URL API unavailable: prefill simply won't run this load */ }
+})();
+</script>
 <!-- Sentry Error Monitoring -->
 <script
   src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
@@ -441,8 +468,7 @@
 <script>
 (function () {
   try {
-    var params = new URLSearchParams(window.location.search);
-    var leadId = params.get('lead');
+    var leadId = window.__oqRouterLeadId;
     if (!leadId) return;
     if (typeof supabase === 'undefined' || typeof CONFIG === 'undefined' ||
         !CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_ANON) return;
