@@ -31,6 +31,7 @@ import type { Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 
 import { readReferralIds, writeReferralIds } from '@/lib/cookie-storage';
+import { recordFirstTouch } from '@/lib/attribution';
 // ─── HubSpot — D-189, fired post-auth (#405) ─────────────────────────────────
 
 /** Same payload shape create-hubspot-contact's homeowner mode always expected. */
@@ -172,6 +173,11 @@ export default function AuthCallbackPage() {
       } catch {
         // Non-fatal — see above
       }
+
+      // gh-1983: persist first-touch ad attribution (UTM / fbclid / gclid)
+      // onto the profile — write-once, server-guarded, bounded to 2.5 s and
+      // non-fatal. Awaited because every branch below navigates away.
+      await recordFirstTouch(supabase);
 
       const intent =
         typeof localStorage !== 'undefined'

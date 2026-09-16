@@ -100,6 +100,7 @@ import type { ChangeEvent, FormEvent } from 'react';
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import { supabase } from '@/lib/supabase';
 import { readReferralIds, writeReferralIds } from '@/lib/cookie-storage';
+import { readFirstTouch } from '@/lib/attribution';
 import { formatPhoneValue, isValidEmail } from './utils';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -1031,7 +1032,10 @@ export default function GetStartedPage() {
         password,
         options: {
           emailRedirectTo: AUTH_CALLBACK_URL,
-          data: { role: 'homeowner' },
+          // gh-1983: carry the first-touch ad attribution in user_metadata so a
+          // confirmation link opened in a different browser/device still
+          // attributes (record_first_touch_attribution falls back to it).
+          data: { role: 'homeowner', oq_attribution: readFirstTouch() },
         },
       });
       if (signUpError) throw signUpError;
