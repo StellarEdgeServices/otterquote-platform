@@ -487,10 +487,11 @@
 
         await render();
 
+        // fix4 (CEO ruling, PR #1979 comment 5698878146): claim_id removed —
+        // a per-homeowner database identifier must not reach GA4.
         gtag('event', 'view_contractor_profile_page', {
           contractor_id: contractorId,
           company_name: contractor.company_name,
-          claim_id: claimId || 'none',
         });
 
       } catch (err) {

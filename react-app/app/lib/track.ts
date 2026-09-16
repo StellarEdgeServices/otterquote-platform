@@ -313,17 +313,25 @@ export function track<E extends keyof TrackEventParams>(event: E, params: TrackE
  *     nothing was successfully queued.
  *   - `true` once `event_callback` actually fires (gtag.js loaded, queued
  *     and — per GA4's own `event_timeout` semantics — sent or scheduled to
- *     send the hit).
- *   - `true` on the `timeoutMs` timeout, PROVIDED the synchronous
- *     `gtag(...)` call above did not throw: by the time the timer fires,
- *     `dataLayer.push` has already run (it is synchronous), so the event
- *     is durably queued for whenever the real gtag.js library loads and
- *     drains that queue — this function cannot wait forever for a
- *     library that may take seconds to load without defeating the entire
- *     point of bounding the navigation delay, so "queued" is treated as
- *     good enough to count once the bound is reached, not as a delivery
- *     guarantee. See cto32-review-pr1979-20260915.md's S3 scenario for the
- *     measured gap this leaves on a multi-second gtag.js load.
+ *     send the hit). This is the ONLY `true` outcome (fix4, N4).
+ *   - `false` on the `timeoutMs` timeout, even though the synchronous
+ *     `gtag(...)` call above ran without throwing and `dataLayer.push` has
+ *     already happened: whether the real gtag.js library ever loads to
+ *     drain that queue before the caller's next `window.location.href`
+ *     tears the page down is genuinely unknown at this point, not merely
+ *     slow-but-certain. fix4 (N4, cto32-review2-pr1979 finding, CEO ruling
+ *     PR #1979 comment 5698878146): resolving `true` here used to also set
+ *     `signup-analytics.ts`'s once-only marker on an outcome that might be
+ *     a real loss — permanently burning the one retry chance a later
+ *     landing (reload, revisit) would have had. Resolving `false` instead
+ *     means the caller (`maybeFireGoogleSignUp`) leaves the marker unset on
+ *     a genuine timeout, at the cost of a possible rare double-count if the
+ *     hit actually did make it out just after the bound — deliberately
+ *     biased toward "don't lose the event" over "never duplicate", the
+ *     opposite bias from the settled-callback case above. The navigation
+ *     delay bound itself is unchanged: this timer still fires at
+ *     `timeoutMs` either way, so the caller is never blocked longer than
+ *     before.
  */
 export function fireSignUpAndWait(params: TrackEventParams['sign_up'], timeoutMs = 1000): Promise<boolean> {
   return new Promise((resolve) => {
@@ -346,7 +354,8 @@ export function fireSignUpAndWait(params: TrackEventParams['sign_up'], timeoutMs
       clearTimeout(timer);
       resolve(queued);
     };
-    timer = setTimeout(() => finish(true), timeoutMs);
+    // fix4 (N4): timeout resolves false, not true — see the header above.
+    timer = setTimeout(() => finish(false), timeoutMs);
 
     try {
       const safe = buildSafeParams('sign_up', params);

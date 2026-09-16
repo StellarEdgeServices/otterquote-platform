@@ -206,13 +206,20 @@ describe('fireSignUpAndWait()', () => {
     expect(queued).toBe(true);
   });
 
-  it('resolves true on the ~1000ms timeout when gtag was present and the call did not throw', async () => {
+  it('fix4 (N4) — resolves false on the ~1000ms timeout even though gtag was present and the call did not throw', async () => {
+    // NEGATIVE CONTROL for the pre-fix4 behavior this replaces: the old
+    // code resolved `true` here (see git history / cto32-review2-pr1979's
+    // N4 finding) — that resolution let signup-analytics.ts's once-only
+    // marker be set on an outcome that might be a real loss (gtag.js never
+    // actually drains the queued hit before the caller navigates away).
+    // Resolving false means the caller does NOT burn that marker on an
+    // unconfirmed send.
     vi.useFakeTimers();
     (window as unknown as { gtag: unknown }).gtag = vi.fn(); // never invokes event_callback (gtag.js never loads)
     const p = fireSignUpAndWait({ method: 'google', referral_source: 'web' }, 1000);
     await vi.advanceTimersByTimeAsync(1000);
     const queued = await p;
-    expect(queued).toBe(true);
+    expect(queued).toBe(false);
   });
 
   it('resolves false if the synchronous gtag(...) call throws — nothing was queued', async () => {

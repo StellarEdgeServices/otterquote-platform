@@ -1713,8 +1713,9 @@
         // Guarded: an ad blocker can 503 gtag, and a telemetry failure must
         // never be what stops a signer from reaching their contract.
         if (typeof gtag === 'function') {
+          // fix4 (CEO ruling, PR #1979 comment 5698878146): claim_id removed —
+          // a per-homeowner database identifier must not reach GA4.
           gtag('event', 'role_copy_mismatch', {
-            claim_id: state.claimId,
             sign_role: state.signRole,
             problems: problems.join('; '),
           });
@@ -1967,10 +1968,12 @@
         containerEl.style.display = 'block';
         document.getElementById('docusignFrame').src = result.signing_url;
 
+        // fix4 (CEO ruling, PR #1979 comment 5698878146): claim_id and
+        // envelope_id removed — a per-homeowner database identifier and a
+        // DocuSign envelope identifier must not reach GA4. contractor_id
+        // kept (not a homeowner identifier; matches #1988's bid_accepted).
         gtag('event', 'docusign_envelope_created', {
-          claim_id: state.claimId,
           contractor_id: state.contractorId,
-          envelope_id: result.envelope_id,
         });
 
       } catch (err) {
@@ -2039,10 +2042,15 @@
         }
       }
 
+      // fix4 (CEO ruling, PR #1979 comment 5698878146): claim_id and
+      // envelope_id removed — this is the LIVE contract_signed emission
+      // (contract-signing.html is where signing actually happens in
+      // production; bids.html, contractor-about.html, project-confirmation.html,
+      // contractor-dashboard.html and the React bids page all redirect here).
+      // contractor_id kept (not a homeowner identifier; matches #1988's
+      // bid_accepted).
       gtag('event', 'contract_signed', {
-        claim_id: state.claimId,
         contractor_id: state.contractorId,
-        envelope_id: state.envelopeId,
       });
 
       // Redirect after a brief pause. The contractor (first signer) returns to
