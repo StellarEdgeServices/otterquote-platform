@@ -19,7 +19,7 @@ real-world count.** Including fixtures must be explicit and named at the call si
 | Case | Flags that can disagree | Live disagreement | Which one governs |
 |---|---|---|---|
 | `auth.users` | `.test`-domain heuristic vs. `profiles.is_test` (join `profiles.id = auth.users.id`) | 46 total; 41 not-`.test`-domain; 22 `profiles.is_test=false`; 1 user has no profile row. **18 profiles are `is_test=true` with a non-`.test` email.** | **`profiles.is_test` governs.** The domain heuristic over-counts "real" users by 19. Proof: re-running #1944's shape under each filter — `documents_needed` claims whose owner disagrees returns **2** under the domain filter and **0** under `profiles.is_test` / `claims.is_test`. The domain filter fails the negative control; the flag join does not. |
-| `claims` vs. its owner `profiles` row | `claims.is_test` vs. `profiles.is_test` (join `claims.user_id = profiles.id`) | **2** rows disagree (both `status=active`, `claims.is_test=true`, `profiles.is_test=false`: ids `73208937…`, `474af0fc…`) | **`claims.is_test` governs claims-table counts.** A claim is the unit being measured; use the row's own flag, not its owner's. This changes the "active: 1" figure in §A below to **1**, not higher — the 2 disagreeing rows are `is_test=true` on the claim, so they were already excluded from the `is_test=false` count. |
+| `claims` vs. its owner `profiles` row | `claims.is_test` vs. `profiles.is_test` (join `claims.user_id = profiles.id`) | **2** rows disagree (both `status=active`, `claims.is_test=true`, `profiles.is_test=false`: ids `73208937…`, `474af0fc…`) | **`claims.is_test` governs claims-table counts.** A claim is the unit being measured; use the row's own flag, not its owner's. This changes the "active: 1" figure in §A below to **1**, not higher — the 2 disagreeing rows are `is_test=true` on the claim, so they were already excluded from the `is_test=false` count. **Exception for money paths:** this default governs claims-table *counts*; when the row carries a real money event — a live charge (`live_charge_authorized_at IS NOT NULL`) or a hover order with a genuine Stripe payment intent — a claim counts as test only when **both** `claims.is_test` and `profiles.is_test` are `true`. If the two disagree, the claim is treated as real. Known disagreement under this exception: claim `73208937…` (`claims.is_test=true`, `profiles.is_test=false`, `live_charge_authorized_at` = 2026-09-05) — see §I. |
 | `profiles` vs. `contractors` (#1763) | `contractors.is_test` vs. owning `profiles.is_test` (join `contractors.user_id = profiles.id`) | **0** rows disagree, live, this session | **Stale finding retired.** #1763's "7 rows disagree" is not reproducible today — either fixed or the data has moved on. #1763 should be re-verified against this count before it is treated as still open on this specific claim. |
 | `referrals` vs. its `referral_agents` row | `referrals.is_test` (own column) vs. `referral_agents.is_test` (join `referral_agent_id`) | **4** rows disagree, live, this session | **`referrals.is_test` governs referrals-table counts,** same reasoning as the claims row above — the row's own flag, not its owner's. `referrals` total 20 / own-flag non-test 16; by-agent-flag non-test would read 12 instead, a 4-row difference. |
 
@@ -198,7 +198,7 @@ Per #1961's framing ("a metric that silently counts fixtures as customers is wor
 metric"), the same risk applies with more force to a path that spends real money. Measured read-only
 against `yeszghaspzwwstvsrioa` this session; no writes, no Stripe calls made by this session.
 
-- **`hover_orders` total: 3.** Of these, **2 belong to `is_test=true` claims, 1 to a real claim.**
+- **`hover_orders` total: 3.** By `claims.is_test` alone, 2 (`716e0bab…`, `3b4622fb…`) sit on claim `73208937…` and 1 (`c9096712…`) on claim `5c16cc1e…`. **Corrected under the money-path exception in the tie-break table above:** claim `73208937…` has `profiles.is_test=false` and `live_charge_authorized_at` set (2026-09-05 19:26Z), so it fails the both-flags-true test and is real, not test — both of its hover orders, including the $55 order (`3b4622fb…`, real payment intent `pi_3UDD9…`, created 2026-09-08), are governed as real for money-path purposes. **0 of the 3 hover orders belong to a claim that is test under both flags; all 3 are real.**
 - **`hover_orders.rebate_stripe_id` is NULL on all 3 rows, and `rebate_paid_at` is NULL on all 3
   rows.** No rebate has ever been marked paid on any hover order, test or real, as of this session.
 - **`activity_log` (1,055 rows total) has 0 rows with `event_type` matching `%rebate%` or
@@ -209,11 +209,7 @@ against `yeszghaspzwwstvsrioa` this session; no writes, no Stripe calls made by 
   failure — the code has no success-path activity_log write to distinguish these).
 - **Reading the one qualifying real row directly:** `hover_orders` id `c9096712…` (claim `5c16cc1e…`,
   `is_test=false`) has `rebate_due=true`, `rebate_paid_at=NULL`, `rebate_stripe_id=NULL`, and a real
-  `homeowner_stripe_payment_intent_id`. This row is currently eligible for the scan to act on the next
-  time it runs (job 10 is `active=true`, `*/30 * * * *`) — the code path re-read in §D confirms the
-  scan query would pick it up (`rebate_due=true AND rebate_paid_at IS NULL AND
-  homeowner_stripe_payment_intent_id IS NOT NULL`), and it is real, not a fixture, so this is expected
-  behavior, not a defect.
+  `homeowner_stripe_payment_intent_id`. Despite matching the scan's own query predicate, this row is not actually refundable by the scan right now because its claim's `completion_date` is `NULL`, and `rebateOne` returns early with "Job not marked complete" before ever calling Stripe (`process-hover-rebate/index.ts:102-110`) — real, not a fixture, and currently un-refundable for a reason unrelated to `is_test`.
 - **Has the scan ever issued a refund for an `is_test` claim's hover order?** No evidence of it having
   issued *any* refund at all, test or real — no `rebate_stripe_id` populated anywhere, no
   `rebate_paid_at` set anywhere, and 0 rebate/refund rows in `activity_log`. **Answer: not
@@ -224,8 +220,8 @@ against `yeszghaspzwwstvsrioa` this session; no writes, no Stripe calls made by 
   check could not be performed even if an id existed. This is a limitation of this session, not a
   finding that the check was run and passed — flagged as a gap for whoever next has Stripe MCP access.
 - **The defect that remains regardless of history:** the scan's query has **no `is_test` predicate**.
-  The 2 `is_test=true` hover orders are not currently `rebate_due=true` (both read `rebate_due=false`
-  in this session), so they are not eligible for the scan today — but nothing in the code prevents a
+  The 2 hover orders on claim `73208937…` are not currently `rebate_due=true` (both read `rebate_due=false`
+  in this session) — and, per the money-path correction above, that claim is real, not test, so this isn't a test-fixture case today; but nothing in the code prevents a
   future `is_test=true` hover order with `rebate_due=true` and a real-looking
   `homeowner_stripe_payment_intent_id` from being refunded by this cron job the next time it runs.
   That is the live risk, independent of whether it has fired historically.
@@ -234,29 +230,50 @@ against `yeszghaspzwwstvsrioa` this session; no writes, no Stripe calls made by 
 
 ## J. Summary counts — re-derived so they add up
 
-Counting every row across §B–D that is a genuine steering surface over the six tables (excluding
-§A's negative-control row, §E's exec-tooling rows which are counted separately below, and row 6/5a
-which are new additions rather than PR rows being reclassified):
+Counting every row across §B–E that carries an actual Yes/No/N/A verdict row in one of those
+sections' tables (§A's negative-control row is excluded as out-of-class; §F/§G are transactional
+lookups and a completeness sweep, not steering verdicts, and are not part of this tally either):
 
-- **Rows carried from the PR, reclassified this session:** row 3 (Admin Homeowners: **Partial → Yes**),
-  row 5 (Admin Referrals partner table: **Partial → Yes**), `process-hover-rebate-scan` (**N/A →
-  No**), `send-incomplete-onboarding-reminders` (**not confirmed → No**).
-- **Rows added because they were missing from the PR entirely:** `check-siding-design-completion`
-  (No), `home-profile-prompt-hourly` (No), `watch-template-mapping` (No, deliberate), six admin HTML
-  pages (No ×6), one react admin page (No), one DB view (No), five exec-tooling lines (No filter
-  stated ×4, one self-flagged-unreliable ×1).
-- **Filters `is_test` (yes or yes-by-design):** §B row 1, §B row 3, §C rows 7–8, §D
-  `send-homeowner-next-steps` (currently inactive), `gh1932-homeowner-signup-sweep`,
-  `process-dunning-cron` (charge-guard, fail-closed — see below), §B row 5, §E's CRO convention row
-  (`:44,57`) — **9 of the 33 rows now enumerated in §B–E.**
-- **Does not filter:** everything else — **24 of 33.**
-- **N/A / out of scope by design:** §B row 6 (partner-scoped), 3 cron jobs (§D: platform-health-check,
-  manufacturer-cert-scrape, warranty-manifest-refresh — confirmed this session to read none of the
-  six tables).
-- **No "Partial" rows remain** — both of the PR's two partials were resolved to Yes on re-read, which
-  is why this count (9 / 24) does not match the PR's arithmetic (10 / 8 / 2 of "20"): the PR's total
-  was wrong (it undercounted by 13 rows, all newly added here), double-counted row 3, and
-  misclassified the hover-rebate scan and the onboarding-reminder row.
+**Derived by script, not by hand — this is the whole basis for the numbers below:**
+
+```
+$ python3 count_rows.py Docs/is-test-steering-queries.md
+Section rows  Yes  No   N/A
+B       7     3    3    1
+C       3     2    1    0
+D       11    1    10   0
+E       8     1    7    0
+-----------------------------
+TOTAL   29    7    21   1
+
+29 rows across sections B-E = 7 Yes / 21 No / 1 N/A
+```
+
+The script reads every row's own `**Yes**` / `**No**` / `**N/A**` (or `**Not stated**`, folded into
+"No" — an unstated filter is a filter that does not exist) verdict marker directly off the table
+text in §B, §C, §D's classification table and §E; it does not hardcode a row count or a
+column position, because several rows here have fewer cells than their header (a separate, non-blocking
+defect, unchanged by this fix).
+
+- **Filters `is_test` (7 Yes):** §B row 1, §B row 3, §B row 5, §C rows 7–8, §D
+  `send-homeowner-next-steps` (currently inactive), §E's CRO convention row (`:44,57`).
+- **Does not filter (21 No):** every other tabulated row in §B–E — §B rows 2, 4, 5a; §C
+  row 9; the 10 remaining §D cron rows; 6 of §E's remaining 7 rows.
+- **N/A / out of scope (1):** §B row 6 (partner-scoped self-service dashboard).
+- **Named in prose, not tabulated, and excluded from the 29-row count on purpose (not double-counted,
+  not silently dropped):**
+  - `gh1932-homeowner-signup-sweep` (cron job 21) is not a second steering surface — job 21 *is*
+    the trigger for §C row 8 (`notify-admin-new-homeowner`'s signup-sweep path). Giving it its own
+    row, on top of §C row 8, is what double-counted it in the old summary below.
+  - `process-dunning-cron` (cron job 5) is a money-path charge-guard with a fail-open/fail-closed
+    rule, not a `SELECT`-shaped steering query with a Yes/No verdict — see the dedicated paragraph
+    below. It is documented in prose, not given a table row.
+  - The 3 cron jobs confirmed genuinely out of scope this session (`platform-health-check-cron`,
+    `manufacturer-cert-scrape`, `warranty-manifest-refresh`) never read any of the six named tables,
+    so §D's classification table never gave them rows either; they are named in §D's prose only.
+- **This replaces the PR's "9 / 24 / 4 of 33" (9+24+4 = 37, an arithmetic error over-counting by 4)
+  and the round-1 figure before that ("10 / 8 / 2 of 20").** The corrected, script-derived total is
+  **29 tabulated rows = 7 Yes / 21 No / 1 N/A** across §B–E.
 
 **`process-dunning-cron` charge-guard, corrected:** `live-charge-guard.ts` evaluates `is_test`,
 `live_charge_authorized_at` on the claim row. **A null or undefined `is_test` REFUSES the charge**
