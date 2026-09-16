@@ -87,8 +87,6 @@
   .form-input::placeholder { color: rgba(255,255,255,0.35); }
   .form-input:focus { outline: none; border-color: var(--amber); box-shadow: 0 0 0 3px var(--amber-glow); }
   .field-error { color: #FCA5A5; font-size: 0.85rem; margin-top: var(--sp-1); min-height: 1.1em; }
-  .router-consent { color: var(--slate); font-size: 0.8rem; line-height: 1.5; margin-top: var(--sp-2); }
-  .router-consent a { color: var(--amber); text-decoration: underline; }
   .router-btn { width: 100%; padding: var(--sp-3) var(--sp-6); font-size: 1rem; margin-top: var(--sp-2); }
   .router-error { display: none; background: var(--red-light); color: #7F1D1D; border-radius: var(--radius-md); padding: var(--sp-3); margin-bottom: var(--sp-4); font-size: 0.9rem; }
   .router-error.show { display: block; }
@@ -130,35 +128,21 @@
       <form id="step1Form" novalidate>
         <div class="form-group">
           <label for="routerName" class="form-label required">Full Name</label>
-          <input type="text" id="routerName" name="name" class="form-input" autocomplete="name" placeholder="Jane Smith" required>
+          <input type="text" id="routerName" name="name" class="form-input" autocomplete="name" placeholder="Jane Smith" required aria-describedby="routerNameError">
           <div class="field-error" id="routerNameError"></div>
         </div>
 
         <div class="form-group">
           <label for="routerEmail" class="form-label required">Email</label>
-          <input type="email" id="routerEmail" name="email" class="form-input" autocomplete="email" inputmode="email" placeholder="jane@example.com" required>
+          <input type="email" id="routerEmail" name="email" class="form-input" autocomplete="email" inputmode="email" placeholder="jane@example.com" required aria-describedby="routerEmailError">
           <div class="field-error" id="routerEmailError"></div>
         </div>
 
         <div class="form-group">
           <label for="routerPhone" class="form-label required">Phone Number</label>
-          <input type="tel" id="routerPhone" name="phone" class="form-input" autocomplete="tel" inputmode="tel" placeholder="(555) 123-4567" required>
+          <input type="tel" id="routerPhone" name="phone" class="form-input" autocomplete="tel" inputmode="tel" placeholder="(555) 123-4567" required aria-describedby="routerPhoneError">
           <div class="field-error" id="routerPhoneError"></div>
         </div>
-
-        <!-- Consent text reused VERBATIM, unmodified, from the only
-             non-checkbox general contact/privacy consent disclosure already
-             live in this repo for a contact-info form:
-             react-app/app/get-started/page.tsx:1830-1833
-             ("By creating an account, you agree to our Terms of Service and
-             Privacy Policy."), linking to the same two pages it links to
-             there. No new consent/legal copy is written by this file --
-             #1994 item 6 / Tier C. -->
-        <p class="router-consent">
-          By creating an account, you agree to our
-          <a href="https://otterquote.com/terms.html" target="_blank" rel="noopener">Terms of Service</a> and
-          <a href="https://otterquote.com/privacy.html" target="_blank" rel="noopener">Privacy Policy</a>.
-        </p>
 
         <button type="submit" id="step1Submit" class="btn btn-primary router-btn">Continue</button>
       </form>
@@ -168,7 +152,6 @@
     <section class="router-step" id="step2" data-step="2">
       <button type="button" class="router-back" id="backTo1">&larr; Back</button>
       <h1>I am a&hellip;</h1>
-      <p class="router-sub">No skip option here on purpose &mdash; every visitor answers this so we route you correctly the first time.</p>
       <div class="role-options">
         <button type="button" class="role-option" data-router-role="homeowner">Homeowner <span class="role-arrow">&rarr;</span></button>
         <button type="button" class="role-option" data-router-role="contractor">Contractor <span class="role-arrow">&rarr;</span></button>
@@ -232,7 +215,7 @@
   var steps = { 1: document.getElementById('step1'), 2: document.getElementById('step2'), '2a': document.getElementById('step2a'), 3: document.getElementById('step3') };
   var routerError = document.getElementById('routerError');
 
-  function showStep(key) {
+  function renderStep(key) {
     Object.keys(steps).forEach(function (k) { steps[k].classList.toggle('active', k === String(key)); });
     var doneCount = key === 1 ? 0 : (key === 2 || key === '2a') ? 1 : 2;
     [1, 2, 3].forEach(function (n) { progressEls[n].classList.toggle('done', n <= doneCount); });
@@ -248,6 +231,15 @@
   function fieldError(id, msg) {
     var el = document.getElementById(id);
     if (el) el.textContent = msg || '';
+    // gh-1994 fix round 1 (REVIEW): keep aria-invalid in sync with the
+    // visible error text on the input the error div describes (id minus
+    // its "Error" suffix -- routerNameError -> routerName, etc).
+    var inputId = id.replace(/Error$/, '');
+    var input = document.getElementById(inputId);
+    if (input) {
+      if (msg) input.setAttribute('aria-invalid', 'true');
+      else input.removeAttribute('aria-invalid');
+    }
   }
 
   // ── Attribution: current-URL params first, oq_ft cookie (gh-1983) as
@@ -288,18 +280,55 @@
   }
 
   // ── Phone validation: exactly 10 US digits after stripping formatting,
-  // optionally with a leading country code 1. ──
+  // optionally with a leading country code 1, NANP-shaped (area/exchange
+  // codes 2-9), and not all one repeated digit. Mirrors the server-side
+  // check in update_lead_contact() (fix round 1, migration
+  // 20260916132127_gh1994_router_leads_columns.sql) so a phone this client
+  // accepts is never rejected by a resubmit's server-side revalidation. ──
   function normalizePhone(raw) {
     var digits = (raw || '').replace(/\D/g, '');
     if (digits.length === 11 && digits.charAt(0) === '1') digits = digits.slice(1);
     return digits;
   }
   function isValidUsPhone(raw) {
-    return normalizePhone(raw).length === 10;
+    var digits = normalizePhone(raw);
+    if (digits.length !== 10) return false;
+    if (/^(\d)\1{9}$/.test(digits)) return false; // all-same-digit (e.g. 5555555555)
+    if (!/^[2-9]\d{2}[2-9]\d{6}$/.test(digits)) return false; // area/exchange codes must start 2-9
+    return true;
   }
 
   // ── State ──
   var leadId = null;
+  // gh-1994 fix round 1 (ruling item 7): a resubmit (browser/back-button
+  // return to Step 1, then Continue again) updates the existing lead via
+  // update_lead_contact() instead of start.html inserting a duplicate row.
+  // sessionStorage (per-tab, cleared when the tab closes) is enough to
+  // detect "this same browsing session already created a lead" -- it is
+  // never read as a source of truth for anything beyond that id.
+  var LEAD_ID_STORAGE_KEY = 'oq_router_lead_id';
+  function getStoredLeadId() {
+    try { return sessionStorage.getItem(LEAD_ID_STORAGE_KEY); } catch (e) { return null; }
+  }
+  function setStoredLeadId(id) {
+    try { sessionStorage.setItem(LEAD_ID_STORAGE_KEY, id); } catch (e) { /* private-mode / blocked storage: resubmit dedup best-effort only */ }
+  }
+
+  // ── History: Step 2 and Step 2a each get their own history entry (pushed
+  // on the way forward) so the browser/hardware back button steps the
+  // router backward one screen at a time instead of leaving the page
+  // entirely (REVIEW finding: back button exits the router). The on-screen
+  // "← Back" buttons call history.back() rather than rendering a step
+  // directly, so both paths go through the same popstate handler. ──
+  try { history.replaceState({ step: 1 }, '', location.href); } catch (e) {}
+  window.addEventListener('popstate', function (e) {
+    var step = (e.state && e.state.step) || 1;
+    renderStep(step);
+  });
+  function goToStep(key) {
+    try { history.pushState({ step: key }, '', location.href); } catch (e) {}
+    renderStep(key);
+  }
 
   // ── Step 1: contact info -> immediate leads insert ──
   var step1Form = document.getElementById('step1Form');
@@ -328,6 +357,43 @@
 
     step1Submit.disabled = true;
     step1Submit.textContent = 'Please wait…';
+
+    function onStep1Settled(res, threw) {
+      step1Submit.disabled = false;
+      step1Submit.textContent = 'Continue';
+      if (threw || (res && res.error)) {
+        console.error('[router] Step 1 save failed:', threw || (res && res.error));
+        showError('Something went wrong saving your info. Please try again.');
+        return;
+      }
+      // GA4 — no PII, per #1994 item 4.
+      try { gtag('event', 'router_contact_submitted'); } catch (e) {}
+      // Meta Lead — same bare call as contractor-join.html:376's precedent,
+      // no PII payload.
+      try { fbq('track', 'Lead'); } catch (e) {}
+      goToStep(2);
+    }
+
+    // gh-1994 fix round 1 (ruling item 7): if this tab already created a
+    // lead (sessionStorage), a second Step 1 submit (e.g. browser back from
+    // Step 2, edit a field, Continue again) UPDATEs that same row through
+    // update_lead_contact() instead of inserting a new one -- the anon INSERT
+    // policy has no matching anon UPDATE policy, so a plain re-insert with
+    // the same id would hit the primary key and error, and a fresh insert
+    // would leave the abandoned original row behind as a duplicate.
+    var storedLeadId = getStoredLeadId();
+
+    if (storedLeadId) {
+      leadId = storedLeadId;
+      sb.rpc('update_lead_contact', {
+        p_lead_id: leadId,
+        p_name: name,
+        p_email: email,
+        p_phone: normalizePhone(phoneRaw)
+      }).then(function (res) { onStep1Settled(res, null); })
+        .catch(function (err) { onStep1Settled(null, err); });
+      return;
+    }
 
     // Client-generated id (crypto.randomUUID): leads has no anon SELECT
     // policy (confirmed live, 2026-09-16 -- only "Allow authenticated
@@ -360,25 +426,9 @@
       fbclid: attr.fbclid,
       gclid: attr.gclid
     }).then(function (res) {
-      step1Submit.disabled = false;
-      step1Submit.textContent = 'Continue';
-      if (res && res.error) {
-        console.error('[router] leads insert failed:', res.error);
-        showError('Something went wrong saving your info. Please try again.');
-        return;
-      }
-      // GA4 — no PII, per #1994 item 4.
-      try { gtag('event', 'router_contact_submitted'); } catch (e) {}
-      // Meta Lead — same bare call as contractor-join.html:376's precedent,
-      // no PII payload.
-      try { fbq('track', 'Lead'); } catch (e) {}
-      showStep(2);
-    }).catch(function (err) {
-      step1Submit.disabled = false;
-      step1Submit.textContent = 'Continue';
-      console.error('[router] leads insert threw:', err);
-      showError('Something went wrong saving your info. Please try again.');
-    });
+      if (!(res && res.error)) setStoredLeadId(leadId);
+      onStep1Settled(res, null);
+    }).catch(function (err) { onStep1Settled(null, err); });
   });
 
   // ── Step 2: "I am a" ──
@@ -396,7 +446,7 @@
         if (res && res.error) console.error('[router] set_lead_role failed:', res.error);
         try { gtag('event', 'router_role_selected', { role: role }); } catch (e) {}
         if (role === 'referral_partner') {
-          showStep('2a');
+          goToStep('2a');
           return;
         }
         redirectTo(ROLE_DESTINATIONS[role]);
@@ -407,14 +457,14 @@
         // collect their info itself; the leads row already exists from
         // Step 1 either way, closes-on control (c)).
         try { gtag('event', 'router_role_selected', { role: role }); } catch (e) {}
-        if (role === 'referral_partner') { showStep('2a'); return; }
+        if (role === 'referral_partner') { goToStep('2a'); return; }
         redirectTo(ROLE_DESTINATIONS[role]);
       });
     });
   });
 
-  document.getElementById('backTo1').addEventListener('click', function () { showStep(1); });
-  document.getElementById('backTo2').addEventListener('click', function () { showStep(2); });
+  document.getElementById('backTo1').addEventListener('click', function () { history.back(); });
+  document.getElementById('backTo2').addEventListener('click', function () { history.back(); });
 
   // ── Step 2a: partner industry — labels from js/agent-types.js
   // (AgentTypes.CHOOSER_LABELS), destinations are this router's own map
@@ -459,7 +509,7 @@
   // ── Step 3: redirect with ?lead=<uuid> ONLY -- no email/phone/name in the
   // query string (closes-on control (b)). ──
   function redirectTo(baseUrl) {
-    showStep(3);
+    renderStep(3);
     var sep = baseUrl.indexOf('?') === -1 ? '?' : '&';
     var dest = baseUrl + sep + 'lead=' + encodeURIComponent(leadId);
     window.location.href = dest;
