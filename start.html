@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Sentry Error Monitoring -->
+<script
+  src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
+  crossorigin="anonymous"
+></script>
+<script>
+  Sentry.onLoad(function() {
+    Sentry.init({
+      environment: window.location.hostname.includes("staging") ? "staging" : "production",
+      // gh-439: drop phantom events from non-http(s) preview contexts (data:/file:/blob:
+      // URLs -- e.g. Claude's HTML preview renders pages via data: URIs; relative scripts
+      // like js/auth.js then fail and report noise such as "Auth is not defined").
+      denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+      beforeSend: function (event) {
+        var proto = window.location.protocol;
+        if (proto !== "http:" && proto !== "https:") return null;
+        var req = event.request && event.request.url;
+        if (req && /^(data|file|blob):/.test(req)) return null;
+        return event;
+      }
+    });
+  });
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>Get Started | Otter Quotes</title>
+<meta name="description" content="Tell us who you are and we'll get you to the right place &mdash; homeowner, contractor, or referral partner.">
+<link rel="canonical" href="https://otterquote.com/start.html">
+<meta name="robots" content="noindex, follow">
+<meta property="og:title" content="Get Started &mdash; Otter Quotes">
+<meta property="og:description" content="Tell us who you are and we'll get you to the right place.">
+<meta property="og:url" content="https://otterquote.com/start.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Otter Quotes">
+<meta property="og:image" content="https://otterquote.com/img/otter-logo.svg">
+
+<!-- Google Analytics / Meta Pixel / Clarity — gh-1994 item 4: same two
+     include files every public page loads, in the same order, no per-page
+     loader (js/ga-gate.js's own module docstring: "the ONLY place gtag.js
+     is requested"; js/meta-pixel-gate.js: "the ONLY place fbevents.js is
+     requested"). Clarity rides the GA4 gate's own host check; this page is
+     not on js/ga-gate.js's CLARITY_ALLOWED_PATHS default-deny list yet
+     (out of this PR's file grant -- flagged under QUESTIONS in the PR). -->
+<script src="/js/ga-gate.js"></script>
+<script src="/js/meta-pixel-gate.js"></script>
+<script>gtag('config', 'G-D1Y1TLGEFY');</script>
+<!-- Microsoft Clarity (wwr7qlk8g5) is loaded by /js/ga-gate.js, behind the same production-host gate as GA4 (gh-1619). Do not add a per-page loader. -->
+
+<!-- Supabase -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js" integrity="sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz" crossorigin="anonymous"></script>
+
+<!-- Google Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- Shared Styles -->
+<link rel="stylesheet" href="css/design-system.css">
+<link rel="stylesheet" href="css/nav.css">
+
+<style>
+  body { background-color: var(--navy); }
+  main { min-height: calc(100vh - 120px); display: flex; align-items: flex-start; justify-content: center; padding: var(--sp-8) var(--sp-4) var(--sp-16); }
+  .router-card {
+    width: 100%;
+    max-width: 480px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 8px 40px rgba(0,0,0,0.3);
+    padding: var(--sp-6);
+  }
+  .router-progress { display: flex; gap: var(--sp-2); margin-bottom: var(--sp-6); }
+  .router-progress span { flex: 1; height: 4px; border-radius: var(--radius-full); background: rgba(255,255,255,0.12); }
+  .router-progress span.done { background: var(--amber); }
+  .router-step { display: none; }
+  .router-step.active { display: block; animation: fadeUp 0.25s ease both; }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+  .router-step h1 { font-family: var(--font-heading, var(--font-body)); font-size: 1.5rem; color: var(--white); margin-bottom: var(--sp-2); line-height: 1.25; }
+  .router-step p.router-sub { color: var(--slate); font-size: 0.95rem; margin-bottom: var(--sp-5); }
+  .form-group { margin-bottom: var(--sp-4); }
+  .form-label { display: block; font-weight: 600; color: var(--white); margin-bottom: var(--sp-1); font-size: 0.95rem; }
+  .form-label.required::after { content: ' *'; color: var(--red); }
+  .form-input { width: 100%; padding: var(--sp-3) var(--sp-4); border: 1px solid rgba(255,255,255,0.14); border-radius: var(--radius-md); font-family: var(--font-body); font-size: 1rem; background: rgba(255,255,255,0.06); color: var(--white); }
+  .form-input::placeholder { color: rgba(255,255,255,0.35); }
+  .form-input:focus { outline: none; border-color: var(--amber); box-shadow: 0 0 0 3px var(--amber-glow); }
+  .field-error { color: #FCA5A5; font-size: 0.85rem; margin-top: var(--sp-1); min-height: 1.1em; }
+  .router-btn { width: 100%; padding: var(--sp-3) var(--sp-6); font-size: 1rem; margin-top: var(--sp-2); }
+  .router-error { display: none; background: var(--red-light); color: #7F1D1D; border-radius: var(--radius-md); padding: var(--sp-3); margin-bottom: var(--sp-4); font-size: 0.9rem; }
+  .router-error.show { display: block; }
+  .role-options { display: flex; flex-direction: column; gap: var(--sp-3); }
+  .role-option {
+    display: flex; align-items: center; justify-content: space-between;
+    width: 100%; text-align: left; cursor: pointer;
+    padding: var(--sp-4); border-radius: var(--radius-md);
+    border: 1px solid rgba(255,255,255,0.14); background: rgba(255,255,255,0.04);
+    color: var(--white); font-family: var(--font-body); font-size: 1.05rem; font-weight: 600;
+    transition: border-color 0.15s ease, background 0.15s ease;
+  }
+  .role-option:hover, .role-option:focus-visible { border-color: var(--amber); background: rgba(224,123,0,0.08); }
+  .role-option .role-arrow { color: var(--amber); font-size: 1.2rem; }
+  .router-back { display: inline-flex; align-items: center; gap: var(--sp-1); color: var(--slate); font-size: 0.9rem; background: none; border: none; cursor: pointer; margin-bottom: var(--sp-4); padding: 0; }
+  .router-back:hover { color: var(--white); }
+  .router-spinner-wrap { text-align: center; padding: var(--sp-10) 0; color: var(--slate); }
+</style>
+</head>
+<body>
+
+<header id="site-header"></header>
+
+<main>
+  <div class="router-card">
+    <div class="router-progress" id="routerProgress">
+      <span id="progressStep1"></span>
+      <span id="progressStep2"></span>
+      <span id="progressStep3"></span>
+    </div>
+
+    <div class="router-error" id="routerError" role="alert"></div>
+
+    <!-- ═══════════ Step 1 — contact info ═══════════ -->
+    <section class="router-step active" id="step1" data-step="1">
+      <h1>Let's get you started</h1>
+      <p class="router-sub">Tell us how to reach you. Takes about 30 seconds.</p>
+
+      <!-- gh-1994 fix round 3 (non-blocking N4): maxlength on each input
+           matches the DB-layer CHECK constraints (leads_name_length_check
+           /leads_email_length_check/leads_phone_length_check, migration
+           20260916132127_gh1994_router_leads_columns.sql) so a visitor who
+           pastes an over-length value is stopped by the browser before
+           submit rather than hitting a generic "something went wrong"
+           error from a server-side constraint violation on insert. -->
+      <form id="step1Form" novalidate>
+        <div class="form-group">
+          <label for="routerName" class="form-label required">Full Name</label>
+          <input type="text" id="routerName" name="name" class="form-input" autocomplete="name" placeholder="Jane Smith" required maxlength="200" aria-describedby="routerNameError">
+          <div class="field-error" id="routerNameError"></div>
+        </div>
+
+        <div class="form-group">
+          <label for="routerEmail" class="form-label required">Email</label>
+          <input type="email" id="routerEmail" name="email" class="form-input" autocomplete="email" inputmode="email" placeholder="jane@example.com" required maxlength="320" aria-describedby="routerEmailError">
+          <div class="field-error" id="routerEmailError"></div>
+        </div>
+
+        <div class="form-group">
+          <label for="routerPhone" class="form-label required">Phone Number</label>
+          <input type="tel" id="routerPhone" name="phone" class="form-input" autocomplete="tel" inputmode="tel" placeholder="(555) 123-4567" required maxlength="20" aria-describedby="routerPhoneError">
+          <div class="field-error" id="routerPhoneError"></div>
+        </div>
+
+        <button type="submit" id="step1Submit" class="btn btn-primary router-btn">Continue</button>
+      </form>
+    </section>
+
+    <!-- ═══════════ Step 2 — "I am a" ═══════════ -->
+    <section class="router-step" id="step2" data-step="2">
+      <button type="button" class="router-back" id="backTo1">&larr; Back</button>
+      <h1>I am a&hellip;</h1>
+      <div class="role-options">
+        <button type="button" class="role-option" data-router-role="homeowner">Homeowner <span class="role-arrow">&rarr;</span></button>
+        <button type="button" class="role-option" data-router-role="contractor">Contractor <span class="role-arrow">&rarr;</span></button>
+        <button type="button" class="role-option" data-router-role="referral_partner">Referral Partner <span class="role-arrow">&rarr;</span></button>
+      </div>
+    </section>
+
+    <!-- ═══════════ Step 2a — partner industry ═══════════ -->
+    <!-- Industry set is loaded from js/agent-types.js (AgentTypes.CHOOSER_LABELS,
+         gh-914 single source for the partner-page industry set) at runtime by
+         renderPartnerIndustries() below -- never hand-copied here, per that
+         file's own CI check (tools/agent_type_labels_check.py). -->
+    <section class="router-step" id="step2a" data-step="2a">
+      <button type="button" class="router-back" id="backTo2">&larr; Back</button>
+      <h1>What industry are you in?</h1>
+      <p class="router-sub">This tells us which partner program fits you.</p>
+      <div class="role-options" id="partnerIndustryOptions"></div>
+    </section>
+
+    <!-- ═══════════ Step 3 — redirecting ═══════════ -->
+    <section class="router-step" id="step3" data-step="3">
+      <div class="router-spinner-wrap">
+        <p>Taking you to the right place&hellip;</p>
+      </div>
+    </section>
+  </div>
+</main>
+
+<footer id="site-footer"></footer>
+
+<script src="js/cookie-storage.js"></script>
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/nav.js"></script>
+<script src="js/agent-types.js"></script>
+
+<script>
+(function () {
+  'use strict';
+
+  // gh-1994: this page owns its own Supabase client rather than depending on
+  // js/supabase-client.js (not included on most static marketing pages
+  // today -- see js/auth.js:1443-1447's own count of "9 of 11" pages that
+  // lack it). Pattern below matches contractor-join.html's own working
+  // `const sb = supabase.createClient(...)` local-client declaration. (Fix
+  // round 3: removed this comment's own stale claim that partner-re.html
+  // reads an unbound bare `sb` -- withdrawn back in fix round 1's PR body
+  // once `js/config.js` was confirmed to declare `sb` as a page-level
+  // global; this file's own copy of that same claim was missed until the
+  // fix round 3 REVIEW pass caught it.)
+  var sb = null;
+  try {
+    if (typeof supabase !== 'undefined' && typeof CONFIG !== 'undefined') {
+      sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, {
+        auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' }
+      });
+    }
+  } catch (e) { /* handled by the null-check on every use below */ }
+
+  // ── Elements ──
+  var progressEls = { 1: document.getElementById('progressStep1'), 2: document.getElementById('progressStep2'), 3: document.getElementById('progressStep3') };
+  var steps = { 1: document.getElementById('step1'), 2: document.getElementById('step2'), '2a': document.getElementById('step2a'), 3: document.getElementById('step3') };
+  var routerError = document.getElementById('routerError');
+
+  function renderStep(key) {
+    Object.keys(steps).forEach(function (k) { steps[k].classList.toggle('active', k === String(key)); });
+    var doneCount = key === 1 ? 0 : (key === 2 || key === '2a') ? 1 : 2;
+    [1, 2, 3].forEach(function (n) { progressEls[n].classList.toggle('done', n <= doneCount); });
+    routerError.classList.remove('show');
+    window.scrollTo({ top: 0, behavior: 'instant' in window ? 'instant' : 'auto' });
+  }
+
+  function showError(msg) {
+    routerError.textContent = msg;
+    routerError.classList.add('show');
+  }
+
+  function fieldError(id, msg) {
+    var el = document.getElementById(id);
+    if (el) el.textContent = msg || '';
+    // gh-1994 fix round 1 (REVIEW): keep aria-invalid in sync with the
+    // visible error text on the input the error div describes (id minus
+    // its "Error" suffix -- routerNameError -> routerName, etc).
+    var inputId = id.replace(/Error$/, '');
+    var input = document.getElementById(inputId);
+    if (input) {
+      if (msg) input.setAttribute('aria-invalid', 'true');
+      else input.removeAttribute('aria-invalid');
+    }
+  }
+
+  // ── Attribution: current-URL params first, oq_ft cookie (gh-1983) as
+  // fallback for any key the current URL didn't carry (e.g. a visitor who
+  // arrived on an earlier tagged page and clicked through to /start.html
+  // with a clean URL). Mirrors attribution-core.ts's own sanitising
+  // (printable-only, trimmed, length-capped) without importing that TS
+  // module into a plain script tag. ──
+  var ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid'];
+  var CLICK_ID_KEYS = { fbclid: true, gclid: true };
+
+  function cleanAttrValue(raw, max) {
+    if (typeof raw !== 'string') return null;
+    var v = raw.replace(/[^\x20-\x7E]/g, '').trim().slice(0, max || 200);
+    return v || null;
+  }
+
+  function readOqFtCookie() {
+    try {
+      var m = document.cookie.match(/(?:^|; )oq_ft=([^;]*)/);
+      if (!m) return null;
+      var obj = JSON.parse(decodeURIComponent(m[1]));
+      return obj && typeof obj === 'object' ? obj : null;
+    } catch (e) { return null; }
+  }
+
+  function collectAttribution() {
+    var params = new URLSearchParams(window.location.search);
+    var cookieFt = readOqFtCookie();
+    var out = {};
+    ATTR_KEYS.forEach(function (k) {
+      var max = CLICK_ID_KEYS[k] ? 1000 : 200;
+      var fromUrl = cleanAttrValue(params.get(k), max);
+      var fromCookie = cookieFt ? cleanAttrValue(cookieFt[k], max) : null;
+      out[k] = fromUrl || fromCookie || null;
+    });
+    return out;
+  }
+
+  // ── Phone validation: exactly 10 US digits after stripping formatting,
+  // optionally with a leading country code 1, NANP-shaped (area/exchange
+  // codes 2-9), and not all one repeated digit. Mirrors the server-side
+  // check in update_lead_contact() (fix round 1, migration
+  // 20260916132127_gh1994_router_leads_columns.sql) so a phone this client
+  // accepts is never rejected by a resubmit's server-side revalidation. ──
+  function normalizePhone(raw) {
+    var digits = (raw || '').replace(/\D/g, '');
+    if (digits.length === 11 && digits.charAt(0) === '1') digits = digits.slice(1);
+    return digits;
+  }
+  function isValidUsPhone(raw) {
+    var digits = normalizePhone(raw);
+    if (digits.length !== 10) return false;
+    if (/^(\d)\1{9}$/.test(digits)) return false; // all-same-digit (e.g. 5555555555)
+    if (!/^[2-9]\d{2}[2-9]\d{6}$/.test(digits)) return false; // area/exchange codes must start 2-9
+    return true;
+  }
+
+  // ── State ──
+  var leadId = null;
+  // gh-1994 fix round 1 (ruling item 7): a resubmit (browser/back-button
+  // return to Step 1, then Continue again) updates the existing lead via
+  // update_lead_contact() instead of start.html inserting a duplicate row.
+  // sessionStorage (per-tab, cleared when the tab closes) is enough to
+  // detect "this same browsing session already created a lead" -- it is
+  // never read as a source of truth for anything beyond that id.
+  var LEAD_ID_STORAGE_KEY = 'oq_router_lead_id';
+  function getStoredLeadId() {
+    try { return sessionStorage.getItem(LEAD_ID_STORAGE_KEY); } catch (e) { return null; }
+  }
+  function setStoredLeadId(id) {
+    try { sessionStorage.setItem(LEAD_ID_STORAGE_KEY, id); } catch (e) { /* private-mode / blocked storage: resubmit dedup best-effort only */ }
+  }
+
+  // gh-1994 fix round 3 (Ben, REVIEW 5702597120 finding B1, blocking):
+  // shared fresh-insert path. Both update_lead_contact (Step 1 resubmit)
+  // and set_lead_role (Step 2/2a) now RETURN boolean and can legitimately
+  // return false -- once prefill_used_at is set or the 30-minute window
+  // has passed, the RPC no-ops rather than erroring. Fix round 2 treated
+  // "no error" as "success" for both, which meant Back-from-a-destination
+  // (which stamps prefill_used_at via that page's own get_lead_prefill
+  // call) -> correct a typo -> pick a new role silently discarded both the
+  // correction and the new role: the DB kept the original values with no
+  // error anywhere in the chain (Ben's traced flow, B1). insertFreshLead
+  // is the same client-generated-id insert Step 1 already used for a
+  // brand-new visitor, factored out so a stale/prefilled/expired lead id
+  // can fall back to it instead of the visitor's data vanishing.
+  function insertFreshLead(name, email, phoneDigits) {
+    var newId = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : (
+      'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+        var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+      })
+    );
+    var attr = collectAttribution();
+    return sb.from('leads').insert({
+      id: newId,
+      name: name,
+      email: email,
+      phone: phoneDigits,
+      source: 'router',
+      utm_source: attr.utm_source,
+      utm_medium: attr.utm_medium,
+      utm_campaign: attr.utm_campaign,
+      utm_content: attr.utm_content,
+      utm_term: attr.utm_term,
+      fbclid: attr.fbclid,
+      gclid: attr.gclid
+    }).then(function (res) {
+      if (res && res.error) throw res.error;
+      setStoredLeadId(newId);
+      return newId;
+    });
+  }
+
+  // ── History: Step 2 and Step 2a each get their own history entry (pushed
+  // on the way forward) so the browser/hardware back button steps the
+  // router backward one screen at a time instead of leaving the page
+  // entirely (REVIEW finding: back button exits the router). The on-screen
+  // "← Back" buttons call history.back() rather than rendering a step
+  // directly, so both paths go through the same popstate handler. ──
+  try { history.replaceState({ step: 1 }, '', location.href); } catch (e) {}
+  window.addEventListener('popstate', function (e) {
+    var step = (e.state && e.state.step) || 1;
+    renderStep(step);
+  });
+  function goToStep(key) {
+    try { history.pushState({ step: key }, '', location.href); } catch (e) {}
+    renderStep(key);
+  }
+
+  // ── Step 1: contact info -> immediate leads insert ──
+  var step1Form = document.getElementById('step1Form');
+  var step1Submit = document.getElementById('step1Submit');
+
+  step1Form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    fieldError('routerNameError', '');
+    fieldError('routerEmailError', '');
+    fieldError('routerPhoneError', '');
+    routerError.classList.remove('show');
+
+    var name = document.getElementById('routerName').value.trim();
+    var email = document.getElementById('routerEmail').value.trim();
+    var phoneRaw = document.getElementById('routerPhone').value.trim();
+
+    var hasError = false;
+    if (!name) { fieldError('routerNameError', 'Please enter your name.'); hasError = true; }
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { fieldError('routerEmailError', 'Please enter a valid email address.'); hasError = true; }
+    // Negative control (closes-on a): empty (or otherwise invalid) phone
+    // blocks Step 1 -- no leads row is inserted and Step 2 never shows.
+    if (!phoneRaw || !isValidUsPhone(phoneRaw)) { fieldError('routerPhoneError', 'Please enter a valid 10-digit US phone number.'); hasError = true; }
+    if (hasError) return;
+
+    if (!sb) { showError('Something went wrong loading the form. Please refresh and try again.'); return; }
+
+    step1Submit.disabled = true;
+    step1Submit.textContent = 'Please wait…';
+
+    function onStep1Settled(res, threw) {
+      step1Submit.disabled = false;
+      step1Submit.textContent = 'Continue';
+      if (threw || (res && res.error)) {
+        console.error('[router] Step 1 save failed:', threw || (res && res.error));
+        showError('Something went wrong saving your info. Please try again.');
+        return;
+      }
+      // GA4 — no PII, per #1994 item 4.
+      try { gtag('event', 'router_contact_submitted'); } catch (e) {}
+      // Meta Lead — same bare call as contractor-join.html:376's precedent,
+      // no PII payload.
+      try { fbq('track', 'Lead'); } catch (e) {}
+      goToStep(2);
+    }
+
+    // gh-1994 fix round 1 (ruling item 7): if this tab already created a
+    // lead (sessionStorage), a second Step 1 submit (e.g. browser back from
+    // Step 2, edit a field, Continue again) UPDATEs that same row through
+    // update_lead_contact() instead of inserting a new one -- the anon INSERT
+    // policy has no matching anon UPDATE policy, so a plain re-insert with
+    // the same id would hit the primary key and error, and a fresh insert
+    // would leave the abandoned original row behind as a duplicate.
+    //
+    // gh-1994 fix round 3 (Ben, B1 cure item b): update_lead_contact now
+    // RETURNS boolean and `false` is a real, non-error outcome (the guard
+    // -- 30-minute window or prefill_used_at already set -- refused the
+    // write). Fix round 2 checked only `res.error` here, so that refusal
+    // read as success and the correction was silently lost. A `false` (or
+    // a thrown error) now falls back to insertFreshLead with the corrected
+    // values instead of losing them -- this is the actual B1 fix; the
+    // update path above it is unchanged and still the common case.
+    var storedLeadId = getStoredLeadId();
+    var phoneDigits = normalizePhone(phoneRaw);
+
+    if (storedLeadId) {
+      leadId = storedLeadId;
+      sb.rpc('update_lead_contact', {
+        p_lead_id: leadId,
+        p_name: name,
+        p_email: email,
+        p_phone: phoneDigits
+      }).then(function (res) {
+        if (res && res.error) throw res.error;
+        if (res && res.data === true) { onStep1Settled(null, null); return; }
+        console.warn('[router] update_lead_contact no-op (stale/prefilled/expired lead) -- inserting a fresh lead instead of losing the correction');
+        return insertFreshLead(name, email, phoneDigits).then(function (newId) {
+          leadId = newId;
+          onStep1Settled(null, null);
+        });
+      }).catch(function (err) {
+        console.warn('[router] update_lead_contact failed -- inserting a fresh lead instead:', err);
+        insertFreshLead(name, email, phoneDigits).then(function (newId) {
+          leadId = newId;
+          onStep1Settled(null, null);
+        }).catch(function (err2) { onStep1Settled(null, err2); });
+      });
+      return;
+    }
+
+    // Client-generated id (crypto.randomUUID): leads has no anon SELECT
+    // policy (confirmed live, 2026-09-16 -- only "Allow authenticated
+    // reads"), so `.insert().select()` could never read the DB-generated
+    // default back (same class of problem partner-re.html's own comment
+    // describes for referral_agents/register_partner). Generating the id
+    // client-side and passing it explicitly sidesteps that entirely: no
+    // RPC round-trip needed just to learn the row's own id. (Fix round 3:
+    // this is now insertFreshLead(), shared with the fallback above and
+    // with Step 2/2a's own fallback below.)
+    insertFreshLead(name, email, phoneDigits).then(function (newId) {
+      leadId = newId;
+      onStep1Settled(null, null);
+    }).catch(function (err) { onStep1Settled(null, err); });
+  });
+
+  // ── Step 2: "I am a" ──
+  var ROLE_DESTINATIONS = {
+    homeowner: 'https://app.otterquote.com/get-started',
+    contractor: 'contractor-join.html'
+  };
+
+  // gh-1994 fix round 2 (Ben, REVIEW 5700804646 / LEGAL-READ 5700654821):
+  // the homeowner destination is the React get-started page
+  // (react-app/app/get-started/page.tsx), which this PR is explicitly
+  // barred from touching -- it does not strip `lead` from the URL or use
+  // it for anything, so a ?lead=<uuid> sent there would land in that
+  // origin's GA4/Meta/Clarity/Sentry beacons AND stay live for the full
+  // 30-minute prefill-read/overwrite window for anyone who captured the
+  // URL. DECIDED cure (Ben): homeowners get NO lead param at all, only
+  // attribution (utm_*/fbclid/gclid, never PII) -- the lead row and
+  // role=homeowner are already saved server-side by this point in the
+  // flow, so nothing is lost by not round-tripping the id. Contractor and
+  // referral-partner destinations are this repo's own static pages
+  // (contractor-join.html, partner-*.html), which DO strip+prefill via
+  // the early-strip head script added in fix round 1 -- unaffected, still
+  // get ?lead=<uuid>. Revisit once phase 2 adds strip+prefill support to
+  // the React page.
+  var NO_LEAD_ID_DESTINATIONS = { homeowner: true };
+
+  function appendParams(baseUrl, obj) {
+    var parts = [];
+    Object.keys(obj).forEach(function (k) {
+      if (obj[k]) parts.push(encodeURIComponent(k) + '=' + encodeURIComponent(obj[k]));
+    });
+    if (!parts.length) return baseUrl;
+    var sep = baseUrl.indexOf('?') === -1 ? '?' : '&';
+    return baseUrl + sep + parts.join('&');
+  }
+
+  // gh-1994 fix round 3 (Ben, REVIEW 5702597120 finding B1, blocking):
+  // shared fallback for both Step 2's role click and Step 2a's industry
+  // click. set_lead_role now RETURNS boolean and `false` is a real,
+  // non-error refusal (prefill_used_at already set, or past its 30-minute
+  // window) -- fix round 2 only checked `res.error` here, so that refusal
+  // was invisible and a Back-from-a-destination visitor's new role choice
+  // was silently discarded, leaving the original (now-stale) lead's role
+  // unchanged with no error anywhere in the chain (Ben's traced B1 flow).
+  // On `false` or a thrown error, this re-reads the CURRENT Step 1 field
+  // values (those inputs are hidden, not removed, once a later step is
+  // active, so `.value` still reflects whatever the visitor last typed),
+  // inserts a fresh lead with them via insertFreshLead, and retries
+  // set_lead_role against the new id. Never rejects -- even a failure
+  // after the fallback still proceeds to the destination, per the
+  // pre-existing "the role write failing must never strand a visitor on
+  // the router" rule (closes-on control (c)); it is logged instead.
+  function setRoleWithFallback(role, industry) {
+    var payload = { p_lead_id: leadId, p_role: role };
+    if (industry) payload.p_partner_industry = industry;
+
+    function fallback() {
+      var freshName = document.getElementById('routerName').value.trim();
+      var freshEmail = document.getElementById('routerEmail').value.trim();
+      var freshPhone = normalizePhone(document.getElementById('routerPhone').value.trim());
+      return insertFreshLead(freshName, freshEmail, freshPhone).then(function (newId) {
+        leadId = newId;
+        var retryPayload = { p_lead_id: newId, p_role: role };
+        if (industry) retryPayload.p_partner_industry = industry;
+        return sb.rpc('set_lead_role', retryPayload).then(function (res) {
+          if (res && res.error) throw res.error;
+          if (!(res && res.data === true)) {
+            console.error('[router] set_lead_role still refused on a brand-new lead (' + newId + ') -- proceeding to the destination anyway');
+          }
+        });
+      }).catch(function (err) {
+        console.error('[router] fresh-lead fallback failed -- proceeding to the destination anyway:', err);
+      });
+    }
+
+    return sb.rpc('set_lead_role', payload).then(function (res) {
+      if (res && res.error) throw res.error;
+      if (res && res.data === true) return;
+      console.warn('[router] set_lead_role no-op (stale/prefilled/expired lead) -- inserting a fresh lead and retrying');
+      return fallback();
+    }).catch(function (err) {
+      console.warn('[router] set_lead_role failed -- inserting a fresh lead and retrying:', err);
+      return fallback();
+    });
+  }
+
+  var roleButtons = document.querySelectorAll('#step2 .role-option');
+  // gh-1994 fix round 2 (Ben, non-blocking item): disable the role buttons
+  // while their set_lead_role request is in flight, so a fast double-click
+  // cannot fire two RPC calls (and, worse, race two different roles onto
+  // the same lead). Re-enabled once the request settles (success or
+  // error) rather than left disabled, because on error the visitor stays
+  // on Step 2 (see the catch handler below) and must be able to try again
+  // or pick a different role.
+  function setRoleButtonsDisabled(disabled) {
+    roleButtons.forEach(function (b) { b.disabled = disabled; });
+  }
+
+  roleButtons.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      if (btn.disabled) return;
+      var role = btn.getAttribute('data-router-role');
+      if (!sb || !leadId) { showError('Something went wrong. Please refresh and start over.'); return; }
+
+      setRoleButtonsDisabled(true);
+
+      function proceed() {
+        setRoleButtonsDisabled(false);
+        try { gtag('event', 'router_role_selected', { role: role }); } catch (e) {}
+        if (role === 'referral_partner') {
+          goToStep('2a');
+          return;
+        }
+        if (NO_LEAD_ID_DESTINATIONS[role]) {
+          redirectTo(appendParams(ROLE_DESTINATIONS[role], collectAttribution()), true);
+        } else {
+          redirectTo(ROLE_DESTINATIONS[role]);
+        }
+      }
+
+      setRoleWithFallback(role, null).then(proceed).catch(proceed);
+    });
+  });
+
+  document.getElementById('backTo1').addEventListener('click', function () { history.back(); });
+  document.getElementById('backTo2').addEventListener('click', function () { history.back(); });
+
+  // ── Step 2a: partner industry — labels from js/agent-types.js
+  // (AgentTypes.CHOOSER_LABELS), destinations are this router's own map
+  // (not a duplicate label map, so tools/agent_type_labels_check.py's CI
+  // check is unaffected). ──
+  var PARTNER_INDUSTRY_DESTINATIONS = {
+    re_agent: 'partner-re.html',
+    insurance_agent: 'partner-insurance.html',
+    home_inspector: 'partner-inspectors.html',
+    adjuster: 'partner-adjusters.html',
+    other: 'partner-other.html'
+  };
+  var PARTNER_INDUSTRY_ORDER = ['re_agent', 'insurance_agent', 'home_inspector', 'adjuster', 'other'];
+
+  var industryButtons = []; // populated below once rendered
+
+  (function renderPartnerIndustries() {
+    var wrap = document.getElementById('partnerIndustryOptions');
+    var labels = (window.AgentTypes && window.AgentTypes.CHOOSER_LABELS) || {};
+    PARTNER_INDUSTRY_ORDER.forEach(function (code) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'role-option';
+      btn.setAttribute('data-industry', code);
+      btn.innerHTML = (labels[code] || code) + ' <span class="role-arrow">→</span>';
+      btn.addEventListener('click', function () { selectPartnerIndustry(code, btn); });
+      wrap.appendChild(btn);
+      industryButtons.push(btn);
+    });
+  })();
+
+  // gh-1994 fix round 2 (Ben, non-blocking item): same double-submit guard
+  // as the Step 2 role buttons -- disable every industry button while a
+  // click's set_lead_role request is in flight.
+  function setIndustryButtonsDisabled(disabled) {
+    industryButtons.forEach(function (b) { b.disabled = disabled; });
+  }
+
+  function selectPartnerIndustry(industry, btn) {
+    if (btn && btn.disabled) return;
+    if (!sb || !leadId) { showError('Something went wrong. Please refresh and start over.'); return; }
+    setIndustryButtonsDisabled(true);
+
+    function proceed() {
+      setIndustryButtonsDisabled(false);
+      try { gtag('event', 'router_partner_industry', { industry: industry }); } catch (e) {}
+      redirectTo(PARTNER_INDUSTRY_DESTINATIONS[industry]);
+    }
+
+    setRoleWithFallback('referral_partner', industry).then(proceed).catch(proceed);
+  }
+
+  // ── Step 3: redirect. `preBuilt` (fix round 2) means `dest` is already a
+  // complete, final URL (e.g. the homeowner path's attribution-only URL
+  // built by appendParams above) that must NOT have `?lead=<uuid>`
+  // appended on top of it -- every other destination keeps the original
+  // behavior of appending ?lead=<uuid> ONLY, no email/phone/name in the
+  // query string (closes-on control (b)). ──
+  function redirectTo(dest, preBuilt) {
+    renderStep(3);
+    if (!preBuilt) {
+      var sep = dest.indexOf('?') === -1 ? '?' : '&';
+      dest = dest + sep + 'lead=' + encodeURIComponent(leadId);
+    }
+    window.location.href = dest;
+  }
+
+  // gh-1994 fix round 2 (Ben, non-blocking item), corrected in fix round 3
+  // (Ben, REVIEW 5702597120 finding B1, blocking -- this comment's own
+  // "safe regardless" claim was the CONTRADICTION the reviewer quoted
+  // verbatim: measured behavior was a silent no-op, not a safe update): a
+  // bfcache restore (e.g. Android/iOS back-gesture from
+  // app.otterquote.com/get-started or from contractor-join.html/
+  // partner-*.html back to this page) resurrects the router's in-memory JS
+  // exactly as it was mid-flow -- still on Step 2/2a/3 with a `leadId`
+  // that has, in the realistic case (the visitor actually reached a
+  // destination page, whose own prefill script already called
+  // get_lead_prefill on load), its prefill_used_at already stamped.
+  // Resetting to Step 1 alone was NOT sufficient fix round 2 believed it
+  // to be: a resubmit would still try update_lead_contact against that
+  // same now-prefilled id, get back `false` (fix round 3's new return
+  // value), and -- as of this same fix round -- fall back to
+  // insertFreshLead rather than silently discard the correction (see that
+  // fallback above). Clearing BOTH the in-memory `leadId` and the
+  // sessionStorage id here (B1 cure item c) is a cheap belt-and-suspenders
+  // on top of that fallback: it means a post-bfcache resubmit takes the
+  // plain fresh-insert branch directly, without needing the
+  // update_lead_contact round-trip and its fallback at all.
+  window.addEventListener('pageshow', function (e) {
+    if (e.persisted) {
+      try { history.replaceState({ step: 1 }, '', location.pathname + location.search); } catch (e2) {}
+      renderStep(1);
+      leadId = null;
+      try { sessionStorage.removeItem(LEAD_ID_STORAGE_KEY); } catch (e3) {}
+    }
+  });
+})();
+</script>
+
+</body>
+</html>

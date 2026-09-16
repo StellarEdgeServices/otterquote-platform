@@ -572,7 +572,18 @@
     "name",
     "zip",
     "source",
-    "created_at"
+    "created_at",
+    "phone",
+    "role",
+    "partner_industry",
+    "utm_source",
+    "utm_medium",
+    "utm_campaign",
+    "utm_content",
+    "utm_term",
+    "fbclid",
+    "gclid",
+    "converted_user_id"
   ],
   "material_catalog": [
     "id",
