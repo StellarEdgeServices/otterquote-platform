@@ -883,7 +883,8 @@ export default function TradeSelectorPage() {
         }
       `}</style>
 
-      <div className="ts-page">
+      {/* gh-1939: authenticated page on the Clarity allowlist -- mask all text/inputs in replay (Dustin: "Fields masked."). */}
+      <div className="ts-page" data-clarity-mask="true">
         <div className="ts-container">
           {/* Step indicator */}
           <StepIndicator totalSteps={totalSteps} currentStep={currentStep} />

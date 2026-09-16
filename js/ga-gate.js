@@ -87,6 +87,16 @@
   // gh-1931 fragment check below already blocks Clarity there whenever a
   // token is actually present, and keeping it off the allowlist is defense
   // in depth for the token-absent case (a stale or reloaded tab).
+  // gh-1939 SCOPE EXTENSION (Dustin, 2026-09-16, #1939 comment 5691693161,
+  // verbatim selected option: "Funnel to bid accept (Recommended)"): the
+  // homeowner funnel pages up to bid acceptance are added below even though
+  // they are AUTHENTICATED. Each one is listed in
+  // scripts/check-clarity-page-gate.py's RULED_AUTHENTICATED_ALLOWED with the
+  // ruling, and that check FAILS unless the page's <body> carries
+  // data-clarity-mask="true" (all text and inputs masked in replay). Still
+  // excluded by the same ruling: contract-signing, auth-callback, admin-*,
+  // contractor-* and partner-* authenticated pages. The gh-1931 fragment
+  // token check below runs on every one of them.
   var CLARITY_ALLOWED_PATHS = [
     '/',
     '/blog',
@@ -105,13 +115,16 @@
     '/blog/what-to-do-after-storm-damages-roof',
     '/blog/when-not-to-file-roof-insurance-claim',
     '/blog/why-roofers-quote-different-prices',
+    '/bids',
     '/coming-soon',
+    '/contractor-about',
     '/contractor-agreement',
     '/contractor-faq',
     '/contractor-how-it-works',
     '/contractor-join',
     '/contractor-login',
     '/contractors',
+    '/dashboard',
     '/faq',
     '/guides',
     '/guides/how-to-choose-contractor',
@@ -138,11 +151,15 @@
     '/partner-profile',
     '/partner-re',
     '/privacy',
+    '/project-info-acv',
+    '/project-info-cash',
+    '/project-info-rcv',
     '/recruit',
     '/ref',
     '/ref-inspector',
     '/ref-insurance',
     '/ref-re',
+    '/repair-intake',
     '/stellar-edge',
     '/terms',
     '/tools',
@@ -274,7 +291,13 @@
     '/partner-login.html',
     '/partner-insurance.html'
   ];
-  if (!urlHasAuthToken && PKCE_CALLBACK_PATHS.indexOf(window.location.pathname) !== -1) {
+  // gh-1939 review finding 4: compare NORMALISED paths -- /dashboard is now
+  // allowlisted, and its Pretty-URL twin must not skip this leg.
+  var pkceNormalised = [];
+  for (var pk = 0; pk < PKCE_CALLBACK_PATHS.length; pk++) {
+    pkceNormalised.push(normalizeClarityPath(PKCE_CALLBACK_PATHS[pk]));
+  }
+  if (!urlHasAuthToken && pkceNormalised.indexOf(normalizeClarityPath(window.location.pathname)) !== -1) {
     try {
       urlHasAuthToken = new URLSearchParams(window.location.search).has('code');
     } catch (e) {
@@ -287,6 +310,39 @@
   if (urlHasAuthToken) {
     return; // a live Supabase credential is in this URL; Clarity never loads.
   }
+
+  // gh-1939 review finding 1: data-clarity-mask hides a field in replay, but
+  // Clarity's fraud checksum still uploads a 28-bit hash of any typed value of
+  // 5+ characters at the Text/TextImage privacy levels -- brute-forceable for
+  // a phone number or ZIP. Clarity drops a field to its Exclude level (value
+  // AND checksum blanked) when an attribute value contains "secret", so every
+  // input/textarea/select on any page Clarity loads on is tagged, including
+  // ones rendered later. The observer is registered here, before the vendor
+  // snippet, so it runs ahead of Clarity's own on every mutation batch.
+  (function () {
+    var SEL = 'input, textarea, select';
+    function tag(el) {
+      if (el && el.setAttribute && !el.hasAttribute('data-oq-privacy')) {
+        el.setAttribute('data-oq-privacy', 'secret');
+      }
+    }
+    function tagAll(root) {
+      if (!root || root.nodeType !== 1) return;
+      if (root.matches && root.matches(SEL)) tag(root);
+      var nodes = root.querySelectorAll ? root.querySelectorAll(SEL) : [];
+      for (var i = 0; i < nodes.length; i++) tag(nodes[i]);
+    }
+    try {
+      new MutationObserver(function (muts) {
+        for (var m = 0; m < muts.length; m++) {
+          var added = muts[m].addedNodes;
+          for (var n = 0; n < added.length; n++) tagAll(added[n]);
+        }
+      }).observe(document.documentElement, { childList: true, subtree: true });
+    } catch (e) { /* no MutationObserver -- DOMContentLoaded pass below still runs */ }
+    tagAll(document.documentElement);
+    document.addEventListener('DOMContentLoaded', function () { tagAll(document.documentElement); });
+  })();
 
   // Microsoft Clarity -- the vendor snippet, verbatim apart from living
   // behind the allowlist checks above. Reached only on a production host,

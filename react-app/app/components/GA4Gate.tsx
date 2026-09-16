@@ -65,7 +65,17 @@ const CLARITY_PROJECT_ID = "wwr7qlk8g5";
 // RequireAdmin, or an inline `!user` guard) that requires a live session.
 // Everything not explicitly listed is denied by default -- adding a route
 // here is a deliberate, reviewed decision, same posture as ALLOWED_HOSTS.
-const CLARITY_ALLOWED_PATHS = ["/get-started"];
+// gh-1939 SCOPE EXTENSION (Dustin, 2026-09-16, #1939 comment 5691693161,
+// verbatim selected option: "Funnel to bid accept (Recommended)" -- "React
+// /trade-selector, project-info (cash/RCV/ACV), repair-intake, dashboard,
+// bids, contractor-about. Fields masked. Excluded: contract-signing (the
+// signing ceremony), auth-callback, admin, contractor and partner pages.").
+// `/trade-selector` is the only React route in that set (the rest are static
+// pages gated by js/ga-gate.js). It is authenticated, so its page root
+// carries data-clarity-mask="true" -- clarity-route-guard.test.ts fails if
+// any authenticated path here loses that attribute. The fragment token guard
+// below still runs first on every path.
+const CLARITY_ALLOWED_PATHS = ["/get-started", "/trade-selector"];
 
 function isClarityAllowedPath(pathname: string | null): boolean {
   if (!pathname) return false;
@@ -126,6 +136,35 @@ function stopClarity(): void {
 
 const CLARITY_STOP_POLL_MS = 150;
 
+// gh-1939 review finding 1 -- twin of js/ga-gate.js: data-clarity-mask hides
+// a field in replay but Clarity's fraud checksum still uploads a 28-bit hash
+// of typed values. An attribute value containing "secret" drops the field to
+// Clarity's Exclude level (value and checksum blanked). Tag every input on
+// any route Clarity loads on, including later renders; started BEFORE the
+// clarity-init script renders so this observer runs ahead of Clarity's.
+let clarityInputExclusionStarted = false;
+export function startClarityInputExclusion(): void {
+  if (clarityInputExclusionStarted || typeof document === "undefined") return;
+  clarityInputExclusionStarted = true;
+  const SEL = "input, textarea, select";
+  const tag = (el: Element) => {
+    if (!el.hasAttribute("data-oq-privacy")) el.setAttribute("data-oq-privacy", "secret");
+  };
+  const tagAll = (root: Node) => {
+    if (!(root instanceof Element)) return;
+    if (root.matches(SEL)) tag(root);
+    root.querySelectorAll(SEL).forEach(tag);
+  };
+  try {
+    new MutationObserver(muts => {
+      for (const m of muts) m.addedNodes.forEach(tagAll);
+    }).observe(document.documentElement, { childList: true, subtree: true });
+  } catch {
+    /* no MutationObserver -- initial pass below still runs */
+  }
+  tagAll(document.documentElement);
+}
+
 export function GA4Gate() {
   const pathname = usePathname();
   const [allowed, setAllowed] = useState(false);
@@ -158,6 +197,7 @@ export function GA4Gate() {
       // also does not carry a Supabase auth-fragment token. gtag behaviour
       // (above/below) is completely unaffected by this path check.
       const nextClarityAllowed = !hasAuthTokenInFragment && isClarityAllowedPath(pathname);
+      if (nextClarityAllowed) startClarityInputExclusion();
       setClarityAllowed(nextClarityAllowed);
 
       // gh-1939 R-1 fix: stop Clarity (and keep it stopped) the moment a
