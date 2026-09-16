@@ -437,28 +437,78 @@
     contractor: 'contractor-join.html'
   };
 
-  document.querySelectorAll('#step2 .role-option').forEach(function (btn) {
+  // gh-1994 fix round 2 (Ben, REVIEW 5700804646 / LEGAL-READ 5700654821):
+  // the homeowner destination is the React get-started page
+  // (react-app/app/get-started/page.tsx), which this PR is explicitly
+  // barred from touching -- it does not strip `lead` from the URL or use
+  // it for anything, so a ?lead=<uuid> sent there would land in that
+  // origin's GA4/Meta/Clarity/Sentry beacons AND stay live for the full
+  // 30-minute prefill-read/overwrite window for anyone who captured the
+  // URL. DECIDED cure (Ben): homeowners get NO lead param at all, only
+  // attribution (utm_*/fbclid/gclid, never PII) -- the lead row and
+  // role=homeowner are already saved server-side by this point in the
+  // flow, so nothing is lost by not round-tripping the id. Contractor and
+  // referral-partner destinations are this repo's own static pages
+  // (contractor-join.html, partner-*.html), which DO strip+prefill via
+  // the early-strip head script added in fix round 1 -- unaffected, still
+  // get ?lead=<uuid>. Revisit once phase 2 adds strip+prefill support to
+  // the React page.
+  var NO_LEAD_ID_DESTINATIONS = { homeowner: true };
+
+  function appendParams(baseUrl, obj) {
+    var parts = [];
+    Object.keys(obj).forEach(function (k) {
+      if (obj[k]) parts.push(encodeURIComponent(k) + '=' + encodeURIComponent(obj[k]));
+    });
+    if (!parts.length) return baseUrl;
+    var sep = baseUrl.indexOf('?') === -1 ? '?' : '&';
+    return baseUrl + sep + parts.join('&');
+  }
+
+  var roleButtons = document.querySelectorAll('#step2 .role-option');
+  // gh-1994 fix round 2 (Ben, non-blocking item): disable the role buttons
+  // while their set_lead_role request is in flight, so a fast double-click
+  // cannot fire two RPC calls (and, worse, race two different roles onto
+  // the same lead). Re-enabled once the request settles (success or
+  // error) rather than left disabled, because on error the visitor stays
+  // on Step 2 (see the catch handler below) and must be able to try again
+  // or pick a different role.
+  function setRoleButtonsDisabled(disabled) {
+    roleButtons.forEach(function (b) { b.disabled = disabled; });
+  }
+
+  roleButtons.forEach(function (btn) {
     btn.addEventListener('click', function () {
+      if (btn.disabled) return;
       var role = btn.getAttribute('data-router-role');
       if (!sb || !leadId) { showError('Something went wrong. Please refresh and start over.'); return; }
 
-      sb.rpc('set_lead_role', { p_lead_id: leadId, p_role: role }).then(function (res) {
-        if (res && res.error) console.error('[router] set_lead_role failed:', res.error);
+      setRoleButtonsDisabled(true);
+
+      function proceed() {
+        setRoleButtonsDisabled(false);
         try { gtag('event', 'router_role_selected', { role: role }); } catch (e) {}
         if (role === 'referral_partner') {
           goToStep('2a');
           return;
         }
-        redirectTo(ROLE_DESTINATIONS[role]);
+        if (NO_LEAD_ID_DESTINATIONS[role]) {
+          redirectTo(appendParams(ROLE_DESTINATIONS[role], collectAttribution()), true);
+        } else {
+          redirectTo(ROLE_DESTINATIONS[role]);
+        }
+      }
+
+      sb.rpc('set_lead_role', { p_lead_id: leadId, p_role: role }).then(function (res) {
+        if (res && res.error) console.error('[router] set_lead_role failed:', res.error);
+        proceed();
       }).catch(function (err) {
         console.error('[router] set_lead_role threw:', err);
         // gh-1994: the role write failing must never strand a visitor on
         // the router -- proceed to the destination regardless (it can still
         // collect their info itself; the leads row already exists from
         // Step 1 either way, closes-on control (c)).
-        try { gtag('event', 'router_role_selected', { role: role }); } catch (e) {}
-        if (role === 'referral_partner') { goToStep('2a'); return; }
-        redirectTo(ROLE_DESTINATIONS[role]);
+        proceed();
       });
     });
   });
@@ -479,6 +529,8 @@
   };
   var PARTNER_INDUSTRY_ORDER = ['re_agent', 'insurance_agent', 'home_inspector', 'adjuster', 'other'];
 
+  var industryButtons = []; // populated below once rendered
+
   (function renderPartnerIndustries() {
     var wrap = document.getElementById('partnerIndustryOptions');
     var labels = (window.AgentTypes && window.AgentTypes.CHOOSER_LABELS) || {};
@@ -488,32 +540,70 @@
       btn.className = 'role-option';
       btn.setAttribute('data-industry', code);
       btn.innerHTML = (labels[code] || code) + ' <span class="role-arrow">→</span>';
-      btn.addEventListener('click', function () { selectPartnerIndustry(code); });
+      btn.addEventListener('click', function () { selectPartnerIndustry(code, btn); });
       wrap.appendChild(btn);
+      industryButtons.push(btn);
     });
   })();
 
-  function selectPartnerIndustry(industry) {
+  // gh-1994 fix round 2 (Ben, non-blocking item): same double-submit guard
+  // as the Step 2 role buttons -- disable every industry button while a
+  // click's set_lead_role request is in flight.
+  function setIndustryButtonsDisabled(disabled) {
+    industryButtons.forEach(function (b) { b.disabled = disabled; });
+  }
+
+  function selectPartnerIndustry(industry, btn) {
+    if (btn && btn.disabled) return;
     if (!sb || !leadId) { showError('Something went wrong. Please refresh and start over.'); return; }
+    setIndustryButtonsDisabled(true);
+
+    function proceed() {
+      setIndustryButtonsDisabled(false);
+      try { gtag('event', 'router_partner_industry', { industry: industry }); } catch (e) {}
+      redirectTo(PARTNER_INDUSTRY_DESTINATIONS[industry]);
+    }
+
     sb.rpc('set_lead_role', { p_lead_id: leadId, p_role: 'referral_partner', p_partner_industry: industry }).then(function (res) {
       if (res && res.error) console.error('[router] set_lead_role (industry) failed:', res.error);
-      try { gtag('event', 'router_partner_industry', { industry: industry }); } catch (e) {}
-      redirectTo(PARTNER_INDUSTRY_DESTINATIONS[industry]);
+      proceed();
     }).catch(function (err) {
       console.error('[router] set_lead_role (industry) threw:', err);
-      try { gtag('event', 'router_partner_industry', { industry: industry }); } catch (e) {}
-      redirectTo(PARTNER_INDUSTRY_DESTINATIONS[industry]);
+      proceed();
     });
   }
 
-  // ── Step 3: redirect with ?lead=<uuid> ONLY -- no email/phone/name in the
+  // ── Step 3: redirect. `preBuilt` (fix round 2) means `dest` is already a
+  // complete, final URL (e.g. the homeowner path's attribution-only URL
+  // built by appendParams above) that must NOT have `?lead=<uuid>`
+  // appended on top of it -- every other destination keeps the original
+  // behavior of appending ?lead=<uuid> ONLY, no email/phone/name in the
   // query string (closes-on control (b)). ──
-  function redirectTo(baseUrl) {
+  function redirectTo(dest, preBuilt) {
     renderStep(3);
-    var sep = baseUrl.indexOf('?') === -1 ? '?' : '&';
-    var dest = baseUrl + sep + 'lead=' + encodeURIComponent(leadId);
+    if (!preBuilt) {
+      var sep = dest.indexOf('?') === -1 ? '?' : '&';
+      dest = dest + sep + 'lead=' + encodeURIComponent(leadId);
+    }
     window.location.href = dest;
   }
+
+  // gh-1994 fix round 2 (Ben, non-blocking item): a bfcache restore (e.g.
+  // Android/iOS back-gesture from app.otterquote.com/get-started or from
+  // contractor-join.html/partner-*.html back to this page) resurrects the
+  // router's in-memory JS exactly as it was mid-flow -- still on Step 2/2a/3
+  // with a `leadId` that may already be role-assigned, past its RPC
+  // window, or past its 30-minute prefill window. Resetting to Step 1 on
+  // every persisted pageshow is the safe default: a fresh Step 1 submit
+  // either starts a new lead or (via the existing sessionStorage dedup)
+  // updates the same one through update_lead_contact, both of which are
+  // safe regardless of what state the bfcache snapshot froze.
+  window.addEventListener('pageshow', function (e) {
+    if (e.persisted) {
+      try { history.replaceState({ step: 1 }, '', location.pathname + location.search); } catch (e2) {}
+      renderStep(1);
+    }
+  });
 })();
 </script>
 
