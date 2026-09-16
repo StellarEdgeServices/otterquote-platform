@@ -23,17 +23,20 @@
  * routeSession() below, so supabase.functions.invoke attaches a valid JWT
  * automatically (same pattern as contractor/pre-approval's HubSpot sync).
  *
- * gh-1940: GA4 `sign_up` (Google path) also fires here, post-auth, for the
- * same reliability reason as the HubSpot call above. get-started/page.tsx's
- * `handleGoogle` fires its own local `sign_up` immediately before
- * `supabase.auth.signInWithOAuth` redirects the browser to
- * accounts.google.com — a real GA4 count of 0 over 10 days despite 2 real
- * signups in the same window (see #1940) shows that pre-redirect emit is
- * not reliably delivered. This page is the LANDING both OAuth paths return
- * to, with a live session and no imminent unload, so it is a materially
- * safer place to count the "account created" funnel step. Fires at most
- * once per user (maybeFireGoogleSignUp below), gated on the account being
- * newly created — a returning Google sign-in must never emit this.
+ * gh-1940: GA4 `sign_up` (Google path) also fires here, post-auth. This is
+ * now the ONLY place a Google sign_up is counted — get-started/page.tsx no
+ * longer fires one pre-redirect (see its `fireSignupAnalytics`) — fixed per
+ * cto32-review-pr1979-20260915.md (REVIEW: FAIL, findings B1/B2): the
+ * pre-redirect emit was in fact delivered (contrary to the original claim
+ * this file's history carried), so keeping BOTH emits double-counted every
+ * delivered Google signup. Fires at most once per user
+ * (maybeFireGoogleSignUp below), gated on the account being newly created
+ * with a bounded clock-skew allowance — a returning Google sign-in must
+ * never emit this. The call is AWAITED (bounded to ~1s — see
+ * lib/track.ts's fireSignUpAndWait) so the redirect below cannot tear the
+ * page down before the hit has had a real chance to be queued/sent; the
+ * referral_source dimension is carried through the `cs_signup` payload
+ * get-started/page.tsx already wrote before the redirect.
  */
 
 'use client';
@@ -43,7 +46,7 @@ import type { Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 
 import { readReferralIds, writeReferralIds } from '@/lib/cookie-storage';
-import { maybeFireGoogleSignUp } from './signup-analytics';
+import { maybeFireGoogleSignUp, readReferralSourceFromCsSignup } from './signup-analytics';
 
 // ─── HubSpot — D-189, fired post-auth (#405) ─────────────────────────────────
 
@@ -232,9 +235,11 @@ export default function AuthCallbackPage() {
       // safe to fire the post-auth HubSpot sync now that a session JWT exists (#405).
       fireHomeownerHubspotContact(session.user.email);
 
-      // gh-1940: GA4 `sign_up` (Google path) — see maybeFireGoogleSignUp's
-      // header for the full guard rationale (new-user + one-time marker).
-      maybeFireGoogleSignUp(session.user);
+      // gh-1940 fix2: GA4 `sign_up` (Google path) — see
+      // maybeFireGoogleSignUp's header for the full guard rationale
+      // (new-user + one-time marker) and lib/track.ts's fireSignUpAndWait
+      // for why this is awaited before the redirect below.
+      await maybeFireGoogleSignUp(session.user, readReferralSourceFromCsSignup());
 
       // Homeowner: returning (has claim) → dashboard, new → trade-selector
       try {
