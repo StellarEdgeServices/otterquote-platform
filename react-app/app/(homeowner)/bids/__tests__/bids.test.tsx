@@ -45,10 +45,10 @@ const authed = (over: Record<string, unknown> = {}) => ({
 const bid = (over: Partial<BidRow> = {}): BidRow =>
   ({ id: 'b1', claim_id: 'c1', contractor_id: 'k1', total_price: 10000, bid_status: 'submitted', ...over }) as BidRow;
 
-// ──────────────────────────────────────────────────────────────────────────────
+// PLACEHOLDER_DIVIDER_LINE_48
 // (a) Homeowner gate — the shell enforces it; /bids wraps in <HomeownerShell active="bids">.
 //     Audit fold-in #4: unauth → get-started.html, NEVER the /sign-in.html dead-end.
-// ──────────────────────────────────────────────────────────────────────────────
+// PLACEHOLDER_DIVIDER_LINE_51
 describe('(a) HomeownerShell gate on /bids', () => {
   let originalLocation: Location;
   beforeEach(() => {
@@ -89,9 +89,9 @@ describe('(a) HomeownerShell gate on /bids', () => {
   });
 });
 
-// ──────────────────────────────────────────────────────────────────────────────
+// PLACEHOLDER_DIVIDER_LINE_92
 // (b) D-150 bid expiration — active / expiring / expired.
-// ──────────────────────────────────────────────────────────────────────────────
+// PLACEHOLDER_DIVIDER_LINE_94
 describe('(b) D-150 bid expiry states', () => {
   it('active bid well before expiry shows no warning', () => {
     const e = deriveBidExpiry(bid({ expires_at: '2026-07-30' }), NOW);
@@ -149,9 +149,9 @@ describe('(b) D-150 bid expiry states', () => {
   });
 });
 
-// ──────────────────────────────────────────────────────────────────────────────
+// PLACEHOLDER_DIVIDER_LINE_152
 //     Action-button state machine (select / renew / contract / not-selected).
-// ──────────────────────────────────────────────────────────────────────────────
+// PLACEHOLDER_DIVIDER_LINE_154
 describe('action button state machine', () => {
   it('offers selection on an open active bid', () => {
     const a = deriveBidAction({ id: 'c1', user_id: 'u1', status: 'active' }, bid());
@@ -186,9 +186,9 @@ describe('action button state machine', () => {
   });
 });
 
-// ──────────────────────────────────────────────────────────────────────────────
+// PLACEHOLDER_DIVIDER_LINE_189
 // (c) Cards ↔ Compare toggle + comparison-grid cell-state mapping.
-// ──────────────────────────────────────────────────────────────────────────────
+// PLACEHOLDER_DIVIDER_LINE_191
 describe('(c) compare toggle + grid cell states', () => {
   const va = (extra: Record<string, unknown>) => ({ value_adds: extra });
   const contractors: Record<string, ContractorProfile> = {
@@ -270,9 +270,9 @@ describe('(c) compare toggle + grid cell states', () => {
   });
 });
 
-// ──────────────────────────────────────────────────────────────────────────────
+// PLACEHOLDER_DIVIDER_LINE_273
 //     Best-price / all-expired selectors.
-// ──────────────────────────────────────────────────────────────────────────────
+// PLACEHOLDER_DIVIDER_LINE_275
 describe('best-price + all-expired selectors', () => {
   it('flags only the lowest active bid when 2+ compete', () => {
     const lo = bid({ id: 'b1', total_price: 9000 });
@@ -291,9 +291,9 @@ describe('best-price + all-expired selectors', () => {
   });
 });
 
-// ──────────────────────────────────────────────────────────────────────────────
+// PLACEHOLDER_DIVIDER_LINE_294
 // (e) Empty + error states render.
-// ──────────────────────────────────────────────────────────────────────────────
+// PLACEHOLDER_DIVIDER_LINE_296
 describe('(e) empty + error states', () => {
   it('renders the no-bids-yet empty state with the waiting indicator', () => {
     render(<EmptyState />);
@@ -320,7 +320,7 @@ describe('(e) empty + error states', () => {
   });
 });
 
-// ── (f) gh-1532 award-refusal copy ──────────────────────────────────────────────
+// ── (f) gh-1532 award-refusal copy PLACEHOLDER_DIVIDER_LINE_323
 describe('(f) award-refusal copy (gh-1532)', () => {
   const RAW =
     'contractor_no_payment_method: the selected contractor has not added a payment method, ' +
@@ -366,7 +366,7 @@ describe('(f) award-refusal copy (gh-1532)', () => {
   });
 });
 
-// ──────────────────────────────────────────────────────────────────────────────
+// PLACEHOLDER_DIVIDER_LINE_369
 // gh-1940 fix2 (cto32-review-pr1979-20260915.md, finding N5/M9) — the
 // `bids_viewed` once-guard's decision function, extracted to `shouldFireBidsViewed`
 // in utils.ts so page.tsx's `bidsViewedFiredRef` guard is covered by a test
@@ -374,7 +374,7 @@ describe('(f) award-refusal copy (gh-1532)', () => {
 // Removing the guard in page.tsx (mutant M9) means every render would call this
 // with `alreadyFired: false`, which the "does not fire again once already fired"
 // case below directly guards against.
-// ──────────────────────────────────────────────────────────────────────────────
+// PLACEHOLDER_DIVIDER_LINE_377
 describe('shouldFireBidsViewed — bids_viewed once-guard', () => {
   it('fires on the first render with claim + bids loaded and >=1 bid', () => {
     expect(
