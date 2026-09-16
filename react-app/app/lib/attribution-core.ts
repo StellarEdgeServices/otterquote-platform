@@ -226,14 +226,15 @@ export function decodeFirstTouchParam(raw: string | null | undefined): FirstTouc
   }
 }
 
+/** Upper bound on the encoded `ft` value added to an OAuth redirectTo. */
+export const FT_URL_PARAM_MAX = 1500;
+
 /**
  * Append the stored first touch to an OAuth redirectTo URL. Google refuses
  * OAuth inside the Facebook/Instagram in-app WebView and the user finishes in
  * Safari/Chrome — a different cookie jar — so the redirect URL is the only
  * thing that reliably crosses. Returns the URL unchanged when there is no touch.
  */
-export const FT_URL_PARAM_MAX = 1500;
-
 export function withFirstTouchParam(redirectUrl: string, ft: FirstTouch | null): string {
   if (!ft) return redirectUrl;
   try {
