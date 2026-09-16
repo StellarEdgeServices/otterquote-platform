@@ -87,6 +87,16 @@
   // gh-1931 fragment check below already blocks Clarity there whenever a
   // token is actually present, and keeping it off the allowlist is defense
   // in depth for the token-absent case (a stale or reloaded tab).
+  // gh-1939 SCOPE EXTENSION (Dustin, 2026-09-16, #1939 comment 5691693161,
+  // verbatim selected option: "Funnel to bid accept (Recommended)"): the
+  // homeowner funnel pages up to bid acceptance are added below even though
+  // they are AUTHENTICATED. Each one is listed in
+  // scripts/check-clarity-page-gate.py's RULED_AUTHENTICATED_ALLOWED with the
+  // ruling, and that check FAILS unless the page's <body> carries
+  // data-clarity-mask="true" (all text and inputs masked in replay). Still
+  // excluded by the same ruling: contract-signing, auth-callback, admin-*,
+  // contractor-* and partner-* authenticated pages. The gh-1931 fragment
+  // token check below runs on every one of them.
   var CLARITY_ALLOWED_PATHS = [
     '/',
     '/blog',
@@ -105,13 +115,16 @@
     '/blog/what-to-do-after-storm-damages-roof',
     '/blog/when-not-to-file-roof-insurance-claim',
     '/blog/why-roofers-quote-different-prices',
+    '/bids',
     '/coming-soon',
+    '/contractor-about',
     '/contractor-agreement',
     '/contractor-faq',
     '/contractor-how-it-works',
     '/contractor-join',
     '/contractor-login',
     '/contractors',
+    '/dashboard',
     '/faq',
     '/guides',
     '/guides/how-to-choose-contractor',
@@ -138,11 +151,15 @@
     '/partner-profile',
     '/partner-re',
     '/privacy',
+    '/project-info-acv',
+    '/project-info-cash',
+    '/project-info-rcv',
     '/recruit',
     '/ref',
     '/ref-inspector',
     '/ref-insurance',
     '/ref-re',
+    '/repair-intake',
     '/stellar-edge',
     '/terms',
     '/tools',

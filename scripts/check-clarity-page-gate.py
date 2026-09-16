@@ -393,6 +393,33 @@ SESSION_AWARE_PUBLIC: dict[str, str] = {
 # discipline as SESSION_AWARE_PUBLIC above, never a bare path with no reason.
 PUBLIC_PAGES: dict[str, str] = {}
 
+# gh-1939 SCOPE EXTENSION -- the ONE reviewed door for an AUTHENTICATED page
+# onto the Clarity allowlist. Dustin, 2026-09-16, #1939 comment 5691693161,
+# verbatim selected option: "Funnel to bid accept (Recommended)" -- "React
+# /trade-selector, project-info (cash/RCV/ACV), repair-intake, dashboard,
+# bids, contractor-about. Fields masked. Excluded: contract-signing (the
+# signing ceremony), auth-callback, admin, contractor and partner pages."
+# An entry here is NOT enough on its own: the page's <body> tag must also
+# carry data-clarity-mask="true" (BODY_MASK_RE), or the check fails. Adding a
+# path requires a new Dustin ruling quoted in its reason -- never an
+# engineering judgement.
+RULED_AUTHENTICATED_ALLOWED: dict[str, str] = {
+    "/dashboard": "homeowner dashboard -- Dustin ruling #1939 c.5691693161",
+    "/bids": "homeowner bid review + accept -- Dustin ruling #1939 c.5691693161",
+    "/contractor-about": "contractor profile + 'Select This Contractor' (second award path) -- Dustin ruling #1939 c.5691693161",
+    "/project-info-cash": "post-trade-selector intake (cash) -- Dustin ruling #1939 c.5691693161",
+    "/project-info-rcv": "post-trade-selector intake (RCV) -- Dustin ruling #1939 c.5691693161",
+    "/project-info-acv": "post-trade-selector intake (ACV) -- Dustin ruling #1939 c.5691693161",
+    "/repair-intake": "repair intake + photo upload -- Dustin ruling #1939 c.5691693161",
+}
+
+BODY_MASK_RE = re.compile(r"<body\b[^>]*\bdata-clarity-mask\s*=\s*[\'\"]true[\'\"]", re.I)
+
+
+def body_is_masked(path: pathlib.Path) -> bool:
+    raw = strip_html_comments(path.read_text(encoding="utf-8", errors="replace"))
+    return BODY_MASK_RE.search(raw) is not None
+
 
 def classify(path: pathlib.Path) -> tuple[str, list[tuple[str, int]], list[tuple[str, int]]]:
     """Returns (class, auth_hits, session_hits). class is one of AUTH,
@@ -605,7 +632,8 @@ def analyze_gate_file(gate_src: str) -> tuple[list[str] | None, bool, list[str]]
     return entries, gate_live, problems
 
 
-def main_check(root: pathlib.Path) -> tuple[int, str]:
+def main_check(root: pathlib.Path, ruled: dict[str, str] | None = None) -> tuple[int, str]:
+    ruled = RULED_AUTHENTICATED_ALLOWED if ruled is None else ruled
     lines: list[str] = []
     violations: list[str] = []
 
@@ -630,7 +658,18 @@ def main_check(root: pathlib.Path) -> tuple[int, str]:
 
         rows.append((rel, norm, cls, auth_hits, session_hits))
 
-        if cls == "AUTH" and norm in allowlist_set:
+        if cls in ("AUTH", "SESSION") and norm in allowlist_set and norm in ruled:
+            # gh-1939: Dustin-ruled authenticated page -- allowed ONLY with a
+            # masked <body>; the row is re-labelled so the table shows it.
+            if body_is_masked(path):
+                rows[-1] = (rel, norm, cls + "-RULED", auth_hits, session_hits)
+            else:
+                violations.append(
+                    f"{rel}: {norm!r} is a Dustin-ruled authenticated Clarity page "
+                    f"(RULED_AUTHENTICATED_ALLOWED) but its <body> lacks "
+                    f"data-clarity-mask=\"true\" -- personal fields would be recorded unmasked"
+                )
+        elif cls == "AUTH" and norm in allowlist_set:
             violations.append(
                 f"{rel}: classified AUTHENTICATED ({auth_hits[0][0]}@L{auth_hits[0][1]}) "
                 f"but its normalised path {norm!r} is on js/ga-gate.js's "
@@ -658,7 +697,7 @@ def main_check(root: pathlib.Path) -> tuple[int, str]:
     lines.append(f"check-clarity-page-gate: {len(rows)} page(s) include a Clarity-carrying loader")
     lines.append(f"{'CLASS':8s} {'PATH':55s} {'NORMALISED':30s} EVIDENCE")
     for rel, norm, cls, auth_hits, session_hits in rows:
-        hits = auth_hits if cls == "AUTH" else session_hits if cls == "SESSION" else []
+        hits = auth_hits if cls.startswith("AUTH") else session_hits if cls.startswith("SESSION") else []
         evidence = "; ".join(f"{lbl}@L{ln}" for lbl, ln in hits) if hits else "-"
         lines.append(f"{cls:8s} {rel:55s} {norm:30s} {evidence}")
     lines.append("")
@@ -770,7 +809,7 @@ class _SelfTestRunner:
             self.results.append(f"FAIL  {name}" + (f" -- {detail}" if detail else ""))
 
     def run_scenario(self, name: str, gate_js: str, extra_files: dict[str, str] | None,
-                      expect_exit: int) -> None:
+                      expect_exit: int, ruled: dict[str, str] | None = None) -> None:
         with tempfile.TemporaryDirectory() as td:
             tmp = pathlib.Path(td)
             _write_fixture_tree(tmp, gate_js)
@@ -779,7 +818,7 @@ class _SelfTestRunner:
                     p = tmp / rel
                     p.parent.mkdir(parents=True, exist_ok=True)
                     p.write_text(content, encoding="utf-8")
-            code, output = main_check(tmp)
+            code, output = main_check(tmp, ruled=ruled if ruled is not None else {})
             self.check(
                 f"self-test:{name}",
                 code == expect_exit,
@@ -871,6 +910,37 @@ def run_self_test() -> tuple[int, str]:
         "  var CLARITY_PROJECT_ID = 'wwr7qlk8g5';\n  var rx = /'/g; // stray quote inside a regex literal",
     )
     r.run_scenario("regex_literal_does_not_desync_comment_strip_exit_1", regex_confusion_gate, None, 1)
+
+    # gh-1939: a Dustin-ruled authenticated page -- allowed only with a masked <body>.
+    masked_admin = _ADMIN_HTML.replace("<body>", '<body data-clarity-mask="true">')
+    r.run_scenario(
+        "ruled_auth_page_masked_body_exit_0",
+        _gate_js(extra_allow="    ,'/admin'\n"),
+        {"admin.html": masked_admin},
+        0,
+        ruled={"/admin": "fixture ruling"},
+    )
+    r.run_scenario(
+        "ruled_auth_page_unmasked_body_exit_1",
+        _gate_js(extra_allow="    ,'/admin'\n"),
+        None,
+        1,
+        ruled={"/admin": "fixture ruling"},
+    )
+    r.run_scenario(
+        "masked_but_not_ruled_auth_page_exit_1",
+        _gate_js(extra_allow="    ,'/admin'\n"),
+        {"admin.html": masked_admin},
+        1,
+        ruled={},
+    )
+    r.run_scenario(
+        "ruled_auth_page_mask_only_in_html_comment_exit_1",
+        _gate_js(extra_allow="    ,'/admin'\n"),
+        {"admin.html": _ADMIN_HTML.replace("<body>", '<!-- <body data-clarity-mask="true"> --><body>')},
+        1,
+        ruled={"/admin": "fixture ruling"},
+    )
 
     output = "\n".join(r.results) + "\n"
     return (1 if r.failed else 0), output
