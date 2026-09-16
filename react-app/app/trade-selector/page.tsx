@@ -27,6 +27,7 @@ import { readReferralIds } from '@/lib/cookie-storage';
 import { recordFirstTouch } from '@/lib/attribution';
 import { isTestEmail } from '@/lib/test-signal';
 import { parseAddress } from './utils';
+import { gtagEventBeforeNavigation } from '@/lib/ga-events';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -466,6 +467,8 @@ export default function TradeSelectorPage() {
       // id) and passed through the redirect URL — see the redirect logic
       // near the end of this function.
       let savedClaimId: string | null = null;
+      // gh-1984: analytics sends awaited (bounded) before the redirect below.
+      const analyticsSends: Promise<void>[] = [];
 
       // Read cs_signup profile data from localStorage
       let csSignup: Record<string, unknown> = {};
@@ -608,7 +611,21 @@ export default function TradeSelectorPage() {
             // fallback always found neither and unconditionally inserted a
             // SECOND claim row for every repair-path homeowner using this
             // (the actually-live) React surface.
-            if (insertedClaim) savedClaimId = insertedClaim.id;
+            if (insertedClaim) {
+              savedClaimId = insertedClaim.id;
+              // gh-1984: GA4 key event — fired only when a NEW claims row was
+              // created (not on the update branch above). No PII.
+              analyticsSends.push(
+                gtagEventBeforeNavigation('claim_started', {
+                  funding_type: fundingType,
+                  policy_type: policyType,
+                  job_type: jobType,
+                  trades: trades.join(','),
+                  source: 'trade_selector',
+                  test_account: isTestEmail(user.email),
+                }),
+              );
+            }
           }
 
           // #571: the claim_submitted advance now lives in the database —
@@ -621,12 +638,12 @@ export default function TradeSelectorPage() {
       }
 
       // GA4 funnel event
-      gtag('event', 'trade_selector_complete', {
+      analyticsSends.push(gtagEventBeforeNavigation('trade_selector_complete', {
         funding_type: fundingType,
         policy_type: policyType,
         trades: trades.join(','),
         has_repair: hasRepair,
-      });
+      }));
 
       // Write oq_trade_selections for repair-intake.html cross-page handoff (feature parity D-211)
       // repair-intake.html reads sessionStorage('oq_trade_selections') as { [tradeName]: boolean }
@@ -658,9 +675,13 @@ export default function TradeSelectorPage() {
       if (savedClaimId) {
         redirectUrl += `?claim_id=${encodeURIComponent(savedClaimId)}`;
       }
-      setTimeout(() => {
-        window.location.href = redirectUrl;
-      }, 300);
+      // gh-1984: wait for the analytics sends (each bounded to 1 s), never less
+      // than the original 300 ms.
+      await Promise.all([
+        Promise.all(analyticsSends),
+        new Promise((resolve) => setTimeout(resolve, 300)),
+      ]);
+      window.location.href = redirectUrl;
     } catch (err) {
       console.error('[trade-selector] completion error:', err);
       setError('Something went wrong. Please try again.');

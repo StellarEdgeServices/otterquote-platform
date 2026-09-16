@@ -1751,6 +1751,18 @@
             }
 
             if (!createError && newClaim) {
+              // gh-1984: GA4 key event — a claims row was created here (draft
+              // auto-create for a signed-in homeowner with none). `source` lets
+              // reports separate it from the trade-selector path. No PII.
+              if (typeof gtag === 'function') {
+                try {
+                  gtag('event', 'claim_started', {
+                    job_type: 'draft',
+                    source: 'dashboard_autocreate',
+                    test_account: Auth.isTestEmail(currentUser.email),
+                  });
+                } catch (e) { /* non-fatal */ }
+              }
               currentClaim = newClaim;
               window.currentClaim = currentClaim;  // gh-1276 follow-up: Home Profile IIFE reads window.currentClaim
               console.log('[Dashboard] Created new claim:', newClaim.id);
