@@ -1970,7 +1970,7 @@
 
         // fix4 (CEO ruling, PR #1979 comment 5698878146): claim_id and
         // envelope_id removed — a per-homeowner database identifier and a
-        // DocuSign envelope identifier must not reach GA4. contractor_id
+        // signing-envelope identifier must not reach GA4. contractor_id
         // kept (not a homeowner identifier; matches #1988's bid_accepted).
         gtag('event', 'docusign_envelope_created', {
           contractor_id: state.contractorId,
