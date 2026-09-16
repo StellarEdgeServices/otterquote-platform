@@ -23,7 +23,7 @@ import { useBidUpdates } from '@/hooks/use-bid-updates';
 import { HomeownerShell } from '../_shell/HomeownerShell';
 import { useBidContractors, useBidsClaim, useBidUpdatedNotifications, useContractorLicenses } from './use-bids-data';
 import { acknowledgeBidUpdatedNotifications, requestBidRenewal } from './actions';
-import { isAllExpired, showCompareToggle } from './utils';
+import { isAllExpired, showCompareToggle, shouldFireBidsViewed } from './utils';
 import { BIDS_STYLES } from './styles';
 import { track } from '@/lib/track';
 import { BidCard } from './components/BidCard';
@@ -70,9 +70,17 @@ function BidsContent() {
   // show (not on every render/poll from the realtime hook).
   const bidsViewedFiredRef = useRef(false);
   useEffect(() => {
-    if (bidsViewedFiredRef.current) return;
-    if (claimLoading || (!!claimId && bidsLoading)) return;
-    if (bids.length === 0) return;
+    if (
+      !shouldFireBidsViewed({
+        alreadyFired: bidsViewedFiredRef.current,
+        claimLoading,
+        hasClaimId: !!claimId,
+        bidsLoading,
+        bidCount: bids.length,
+      })
+    ) {
+      return;
+    }
     bidsViewedFiredRef.current = true;
     track('bids_viewed', { bid_count: bids.length });
   }, [claimLoading, bidsLoading, claimId, bids.length]);
