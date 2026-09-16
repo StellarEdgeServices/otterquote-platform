@@ -811,12 +811,20 @@
   <div class="container">
     <p class="two-track-heading">Otter Quotes works for both types of homeowner:</p>
     <div class="two-track-grid">
-      <a href="https://app.otterquote.com/get-started?track=insurance" class="track-card">
+      <!-- gh-1994 phase 2 (round 2, Ben ruling on review 5705874119 finding
+           B2 -- "No role-preset / skip links. Every visitor answers 'I am
+           a'."): these two cards used to preset the ?track= param and skip
+           straight to app.otterquote.com/get-started, bypassing the role
+           router. Both now go through /start.html like every other
+           homeowner CTA; the track param is dropped rather than carried,
+           since nothing downstream (start.html, get-started/page.tsx) reads
+           it -- start.html's own role-selection step now does this job. -->
+      <a href="/start.html" class="track-card">
         <span class="track-card-icon"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="display:block;margin-bottom:12px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>
         <h3>I have an insurance claim</h3>
         <p>Your insurer has approved a repair &mdash; or you're in the process of filing. Otter Quotes helps you gather your insurance estimate and measurements, then gets multiple contractors competing on your job. You choose the one you trust most.</p>
       </a>
-      <a href="https://app.otterquote.com/get-started?track=retail" class="track-card">
+      <a href="/start.html" class="track-card">
         <span class="track-card-icon"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="display:block;margin-bottom:12px"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg></span>
         <h3>I'm paying out of pocket</h3>
         <p>No insurance involved &mdash; you just need the work done and you want a fair price. Otter Quotes handles the measurements and gets contractors to compete for your business, so you know what the market actually charges before you commit to anyone.</p>
@@ -1050,6 +1058,22 @@
 (function() {
   'use strict';
 
+  // gh-1994 phase 2 (round 2, review 5705874119 finding B1): true when href
+  // resolves to the router, whether served as /start.html (local/static),
+  // /start (Netlify pretty-URL rewrite), or /start/ (trailing slash) -- with
+  // or without a query string. Also true for the pre-router app.otterquote.
+  // com/get-started destination, which this same page may still carry.
+  function isRouterOrGetStartedHref(href) {
+    if (!href) return false;
+    if (href.indexOf('get-started') !== -1) return true;
+    try {
+      var p = new URL(href, window.location.href).pathname.replace(/\/+$/, '');
+      return p === '/start' || p === '/start.html';
+    } catch (e) {
+      return false;
+    }
+  }
+
   // ── CTA Click Tracking ──
   // Track every CTA button click with position context
   document.querySelectorAll('a.btn').forEach(function(btn) {
@@ -1060,10 +1084,16 @@
       var sectionClass = section ? (section.className.split(' ')[0] || 'unknown') : 'unknown';
 
       // Determine CTA type
-      // gh-1994 phase 2: 'get-started' CTAs now point at /start.html (the
-      // router); still detected here so the funnel event below keeps firing.
+      // gh-1994 phase 2 (round 2, review 5705874119 finding B1): 'get-started'
+      // CTAs now point at /start.html (the router); still detected here so
+      // the funnel event below keeps firing. Matches by normalized pathname,
+      // not href.includes('start.html'), because Netlify's pretty-URL
+      // rewrite serves the on-disk href="/start.html" as href="/start" (no
+      // ".html") on this page's own deploy preview -- a substring check on
+      // 'start.html' never matches that served href, only a local static
+      // server without the rewrite (the bug this round's review caught).
       var ctaType = 'other';
-      if (href.includes('get-started') || href.includes('start.html')) ctaType = 'homeowner_cta';
+      if (isRouterOrGetStartedHref(href)) ctaType = 'homeowner_cta';
       else if (href.includes('contractor-join')) ctaType = 'contractor_apply_cta';
       else if (href.includes('contractor-login')) ctaType = 'contractor_login_cta';
 
@@ -1159,12 +1189,18 @@
 </script>
 
 <script>
-// gh-1994 phase 2: carry utm_*/fbclid/gclid from this page's own URL onto
-// every "Get started" CTA that now points at /start.html, on top of the
-// oq_ft cookie fallback (gh-1983) start.html's own collectAttribution()
-// already reads -- belt and suspenders for cookie-blocked browsers. No PII,
-// same allow-list start.html reads. Idempotent: run once per page load,
-// never runs twice on the same anchor.
+// gh-1994 phase 2 (round 2, review 5705874119 B1/N1): carry utm_*/fbclid/
+// gclid from this page's own URL onto every "Get started" CTA that points
+// at the router, on top of the oq_ft cookie fallback (gh-1983)
+// start.html's own collectAttribution() already reads -- belt and
+// suspenders for cookie-blocked browsers. No PII, same allow-list
+// start.html reads. Matches by normalized pathname, not an exact-string
+// selector, because Netlify's pretty-URL rewrite serves the on-disk
+// href="/start.html" as href="/start" (no ".html", no trailing slash) --
+// an exact-string selector never matches that served markup, only a local
+// static server without the rewrite. Also tolerates a trailing slash
+// ("/start/") and a login.html-style relative "start.html". Idempotent:
+// run once per page load, never runs twice on the same anchor.
 (function () {
   'use strict';
   var ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid'];
@@ -1175,8 +1211,20 @@
     if (v) qs += (qs ? '&' : '?') + k + '=' + encodeURIComponent(v);
   });
   if (!qs) return;
-  document.querySelectorAll('a[href="/start.html"], a[href="start.html"]').forEach(function (a) {
-    a.setAttribute('href', a.getAttribute('href') + qs);
+  function isStartHref(href) {
+    if (!href) return false;
+    try {
+      var p = new URL(href, window.location.href).pathname.replace(/\/+$/, '');
+      return p === '/start' || p === '/start.html';
+    } catch (e) {
+      return false;
+    }
+  }
+  document.querySelectorAll('a[href]').forEach(function (a) {
+    var href = a.getAttribute('href');
+    if (isStartHref(href)) {
+      a.setAttribute('href', href + qs);
+    }
   });
 })();
 </script>
