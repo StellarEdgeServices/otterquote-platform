@@ -101,6 +101,18 @@
   excludedPattern = ['^/admin-sw\.js$', '^/admin-app\.webmanifest$']
   function = "admin-auth-gate"
 
+# First-touch ad attribution — gh-1983 (2026-09-16)
+# On a GET carrying utm_* / fbclid / gclid with no stored first touch, adds
+# Set-Cookie oq_ft (Domain=.otterquote.com, 90 d) to the normal response —
+# including the /get-started* 301 to app.otterquote.com — so the attribution
+# reaches the React signup before any JS runs. Untagged requests return
+# immediately. Static asset paths are excluded to keep invocations to pages.
+# Source: netlify/edge-functions/first-touch-attribution.ts
+[[edge_functions]]
+  path = "/*"
+  excludedPath = ["/js/*", "/css/*", "/img/*", "/assets/*", "/data/*", "/*.js", "/*.css", "/*.png", "/*.jpg", "/*.jpeg", "/*.svg", "/*.webp", "/*.ico", "/*.webmanifest", "/*.txt", "/*.xml", "/*.json", "/*.woff2"]
+  function = "first-touch-attribution"
+
 # Referral short-link query passthrough — #630 (2026-08-06)
 # /ref/:code must always redirect to /ref.html?code=:code, but Netlify's
 # declarative redirect engine only auto-forwards the incoming query string

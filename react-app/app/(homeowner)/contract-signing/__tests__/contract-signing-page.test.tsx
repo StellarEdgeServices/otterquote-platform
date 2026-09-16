@@ -233,10 +233,12 @@ describe('contract-signing page — contract_signed once-guard (gh-1940 fix2, fi
 
     await waitFor(() => expect(recordHomeownerSigned as unknown as Fn).toHaveBeenCalledTimes(1));
     expect(track as unknown as Fn).toHaveBeenCalledTimes(1);
-    expect(track as unknown as Fn).toHaveBeenCalledWith(
-      'contract_signed',
-      expect.objectContaining({ claim_id: 'c1' }),
-    );
+    // fix3 (CEO ruling, PR #1979 comment 5698022815): no claim_id — a
+    // per-homeowner database identifier must not reach GA4. contract_signed
+    // now carries no params at all; the event NAME is the funnel step.
+    expect(track as unknown as Fn).toHaveBeenCalledWith('contract_signed', {});
+    const payload = (track as unknown as Fn).mock.calls[0][1];
+    expect(payload).not.toHaveProperty('claim_id');
   });
 
   it('does not fire contract_signed when the signing write failed', async () => {

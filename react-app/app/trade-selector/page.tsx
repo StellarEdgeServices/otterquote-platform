@@ -24,9 +24,10 @@ import type { ReactNode, ChangeEvent } from 'react';
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import { supabase } from '@/lib/supabase';
 import { readReferralIds } from '@/lib/cookie-storage';
+import { recordFirstTouch } from '@/lib/attribution';
 import { isTestEmail } from '@/lib/test-signal';
-import { track } from '@/lib/track';
 import { parseAddress } from './utils';
+import { gtagEventBeforeNavigation } from '@/lib/ga-events';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -466,6 +467,8 @@ export default function TradeSelectorPage() {
       // id) and passed through the redirect URL — see the redirect logic
       // near the end of this function.
       let savedClaimId: string | null = null;
+      // gh-1984: analytics sends awaited (bounded) before the redirect below.
+      const analyticsSends: Promise<void>[] = [];
 
       // Read cs_signup profile data from localStorage
       let csSignup: Record<string, unknown> = {};
@@ -501,6 +504,12 @@ export default function TradeSelectorPage() {
         } catch (profileErr) {
           console.warn('[trade-selector] profile upsert failed:', profileErr);
         }
+
+        // gh-1983: second chance to persist first-touch ad attribution (the
+        // first is /auth-callback). Runs BEFORE the claim write so the claims
+        // BEFORE INSERT trigger copies it onto the new claim; the RPC also
+        // backfills an existing claim. Write-once and non-fatal.
+        await recordFirstTouch(supabase);
 
         // ── Insert or update claims table ──
         try {
@@ -604,12 +613,23 @@ export default function TradeSelectorPage() {
             // (the actually-live) React surface.
             if (insertedClaim) {
               savedClaimId = insertedClaim.id;
-              // gh-1940: "claim started" funnel step — fires once, only on
-              // the first claim row for this user (the `else` branch above
-              // is an update to an already-started claim, not a new start).
-              // No property_address/PII — funding_type and policy_type are
-              // job-category selections, not personal data.
-              track('claim_started', { funding_type: fundingType, policy_type: policyType });
+              // gh-1940/gh-1984: "claim started" funnel step — fires once,
+              // only on the first claim row for this user (the `else`
+              // branch above is an update to an already-started claim, not
+              // a new start). #1988/gh-1984 already shipped this emission
+              // on this exact surface (dedupe per gh-1940 ruling
+              // 2026-09-16T13:12:08Z comment 5698022815) — kept as-is
+              // rather than adding a second, PR #1979-local emission here.
+              analyticsSends.push(
+                gtagEventBeforeNavigation('claim_started', {
+                  funding_type: fundingType,
+                  policy_type: policyType,
+                  job_type: jobType,
+                  trades: trades.join(','),
+                  source: 'trade_selector',
+                  test_account: isTestEmail(user.email),
+                }),
+              );
             }
           }
 
@@ -623,12 +643,12 @@ export default function TradeSelectorPage() {
       }
 
       // GA4 funnel event
-      gtag('event', 'trade_selector_complete', {
+      analyticsSends.push(gtagEventBeforeNavigation('trade_selector_complete', {
         funding_type: fundingType,
         policy_type: policyType,
         trades: trades.join(','),
         has_repair: hasRepair,
-      });
+      }));
 
       // Write oq_trade_selections for repair-intake.html cross-page handoff (feature parity D-211)
       // repair-intake.html reads sessionStorage('oq_trade_selections') as { [tradeName]: boolean }
@@ -660,9 +680,13 @@ export default function TradeSelectorPage() {
       if (savedClaimId) {
         redirectUrl += `?claim_id=${encodeURIComponent(savedClaimId)}`;
       }
-      setTimeout(() => {
-        window.location.href = redirectUrl;
-      }, 300);
+      // gh-1984: wait for the analytics sends (each bounded to 1 s), never less
+      // than the original 300 ms.
+      await Promise.all([
+        Promise.all(analyticsSends),
+        new Promise((resolve) => setTimeout(resolve, 300)),
+      ]);
+      window.location.href = redirectUrl;
     } catch (err) {
       console.error('[trade-selector] completion error:', err);
       setError('Something went wrong. Please try again.');
@@ -864,7 +888,8 @@ export default function TradeSelectorPage() {
         }
       `}</style>
 
-      <div className="ts-page">
+      {/* gh-1939: authenticated page on the Clarity allowlist -- mask all text/inputs in replay (Dustin: "Fields masked."). */}
+      <div className="ts-page" data-clarity-mask="true">
         <div className="ts-container">
           {/* Step indicator */}
           <StepIndicator totalSteps={totalSteps} currentStep={currentStep} />

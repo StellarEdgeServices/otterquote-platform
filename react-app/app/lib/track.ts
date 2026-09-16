@@ -7,10 +7,21 @@
  * in gh-1948) for the signup form's own events (form_start,
  * form_step_complete, form_abandon, homeowner_signup, and the PASSWORD path's
  * sign_up) — that one is NOT duplicated here. This file exists for the funnel
- * steps AFTER signup (claim_started through contract_signed), which had no
- * shared call site before this PR, plus the OAuth-callback sign_up guard in
- * app/auth-callback/page.tsx (the GOOGLE path's sign_up — see
- * app/auth-callback/signup-analytics.ts).
+ * steps AFTER signup, which had no shared call site before this PR, plus the
+ * OAuth-callback sign_up guard in app/auth-callback/page.tsx (the GOOGLE
+ * path's sign_up — see app/auth-callback/signup-analytics.ts).
+ *
+ * `claim_started` is deliberately NOT one of the events this file emits
+ * (fix3, dedupe onto main): #1988/gh-1984 shipped `claim_started` on
+ * `react-app/app/trade-selector/page.tsx` (via `@/lib/ga-events`'s
+ * `gtagEventBeforeNavigation`, with `source`/`test_account`/`job_type`/
+ * `trades` params and an awaited beacon-safe send) before this PR reached
+ * main. This PR originally added a second, competing `track('claim_started',
+ * ...)` call in the SAME branch of the SAME function — a literal same-code-
+ * path double emission once merged. Rebasing onto main surfaced that exact
+ * conflict; the resolution keeps main's (#1988's) emission and drops this
+ * file's. See `trade-selector/__tests__/claim-started-dedupe.test.ts` for
+ * the 1-not-2 count.
  *
  * `transport_type: 'beacon'` was REMOVED from this design (present in
  * PR #1960, which this PR supersedes) per the independent review at
@@ -39,6 +50,29 @@
  * (`FIELD_SANITIZERS`), so what reaches `gtag()` is built by this function
  * from a fixed vocabulary, never forwarded from the caller's object as-is.
  *
+ * fix3 (CEO ruling, PR #1979 comment 5698022815, claim ceo-2026-09-16T13:09:26Z,
+ * conditions 1-2) — two changes made rebasing this PR onto main (which by
+ * then carried #1988's independent GA4 work):
+ *   1. `claim_id` — a per-homeowner database identifier — is removed from
+ *      every payload below (`bid_accepted`, `contract_signed`). The LEGAL-READ
+ *      on this PR (comment 5690670203) flagged it as the one privacy-shaped
+ *      element sending a DB id into a GA4 property linked for remarketing;
+ *      the ruling's cure is to drop it, not gate it — the event NAME is the
+ *      funnel step, no id travels with it. `bid_accepted` gains
+ *      `bid_id`/`contractor_id`/`bid_amount`/`source`/`test_account` in its
+ *      place (see next point); `contract_signed` carries no params at all.
+ *   2. `bid_accepted` on this page (`(homeowner)/bids`, not linked from the
+ *      live dashboard — see actions.ts's own header) is a second surface for
+ *      the same conceptual funnel step #1988 already instruments on the
+ *      LIVE surface, `bids.html` (`source: 'bids_page'`). Per the ruling,
+ *      param NAMES now match #1988's shape (`bid_id`, `contractor_id`,
+ *      `bid_amount`, `source`, `test_account`) rather than PR #1979's own
+ *      `{ claim_id }` shape, so the two surfaces are analytics-equivalent —
+ *      this page's `source` is `'bids_react'`, distinct from
+ *      `bids.html`'s `'bids_page'`, so the two remain distinguishable in GA4
+ *      while carrying the same field vocabulary. See
+ *      `bids/__tests__/bids-actions-dedupe.test.ts` for the 1-not-2 count.
+ *
  * Safe by construction, matching get-started's local track():
  *   - Never throws — every failure mode (gtag absent, window absent, a
  *     malformed param) is swallowed. Analytics must never break a user
@@ -57,8 +91,6 @@
  *     caller-supplied object's keys unfiltered.
  */
 
-type FundingType = 'insurance' | 'cash' | null;
-type PolicyType = 'rcv' | 'acv' | 'idk' | null;
 type PhotoTier = 'main' | 'tier1' | 'tier2' | 'tier3' | 'tier4';
 type HelpTool = 'help_estimate' | 'help_materials' | 'help_measurements';
 type HelpMethod = 'hover_payment' | 'email_request';
@@ -74,18 +106,28 @@ type HelpMethod = 'hover_payment' | 'email_request';
 export type ReferralSource = 'insurance_agent' | 'realtor' | 'friend' | 'web' | 'partner_link' | '';
 
 type TrackEventParams = {
-  /** trade-selector — first claim row for this user only (see call site). */
-  claim_started: { funding_type: FundingType; policy_type: PolicyType };
   /** repair-intake — once per confirmed photo upload. `tier` is a category label, not file content or a file name. */
   document_uploaded: { tier: PhotoTier };
   /** help-estimate / help-materials / help-measurements — fires only on confirmed success. */
   help_tool_used: { tool: HelpTool; method?: HelpMethod };
   /** bids page — first render with >=1 bid loaded. */
   bids_viewed: { bid_count: number };
-  /** bids/actions.ts — after every award write succeeds. */
-  bid_accepted: { claim_id: string };
-  /** contract-signing — after the sign-complete write settles (and only if it succeeded — see that page). */
-  contract_signed: { claim_id: string | null };
+  /**
+   * bids/actions.ts — after every award write succeeds. No claim_id (fix3,
+   * CEO ruling on PR #1979): a per-homeowner database identifier must not
+   * reach a GA4 property linked for remarketing. Shape matches #1988's
+   * `bids.html` bid_accepted so the two surfaces (this unlinked React page
+   * and the live static page) are analytics-equivalent, distinguished only
+   * by `source`.
+   */
+  bid_accepted: { bid_id: string; contractor_id: string; bid_amount: number; source: 'bids_react'; test_account: boolean };
+  /**
+   * contract-signing — after the sign-complete write settles (and only if
+   * it succeeded — see that page). No params at all (fix3): the event NAME
+   * is the funnel step; the claim_id this used to carry is removed per the
+   * CEO ruling on PR #1979, same reasoning as bid_accepted above.
+   */
+  contract_signed: Record<string, never>;
   /**
    * auth-callback landing — gh-1940 sign_up reliability fix. Fired ONLY for
    * a newly-created user, ONLY once, at the point session + role are known
@@ -107,12 +149,11 @@ type TrackEventParams = {
  * drift the way "forward the object as-is" could.
  */
 const TRACK_EVENT_KEYS: { [E in keyof TrackEventParams]: ReadonlyArray<keyof TrackEventParams[E] & string> } = {
-  claim_started: ['funding_type', 'policy_type'],
   document_uploaded: ['tier'],
   help_tool_used: ['tool', 'method'],
   bids_viewed: ['bid_count'],
-  bid_accepted: ['claim_id'],
-  contract_signed: ['claim_id'],
+  bid_accepted: ['bid_id', 'contractor_id', 'bid_amount', 'source', 'test_account'],
+  contract_signed: [],
   sign_up: ['method', 'referral_source'],
 };
 
@@ -133,16 +174,6 @@ const TRACK_EVENT_KEYS: { [E in keyof TrackEventParams]: ReadonlyArray<keyof Tra
  * `undefined` means "drop this key from the outgoing payload entirely",
  * used only for `help_tool_used.method`.
  */
-const FUNDING_TYPES: ReadonlySet<string> = new Set(['insurance', 'cash']);
-function sanitizeFundingType(value: unknown): FundingType {
-  return typeof value === 'string' && FUNDING_TYPES.has(value) ? (value as FundingType) : null;
-}
-
-const POLICY_TYPES: ReadonlySet<string> = new Set(['rcv', 'acv', 'idk']);
-function sanitizePolicyType(value: unknown): PolicyType {
-  return typeof value === 'string' && POLICY_TYPES.has(value) ? (value as PolicyType) : null;
-}
-
 const PHOTO_TIERS: ReadonlySet<string> = new Set(['main', 'tier1', 'tier2', 'tier3', 'tier4']);
 function sanitizeTier(value: unknown): PhotoTier | 'unknown' {
   return typeof value === 'string' && PHOTO_TIERS.has(value) ? (value as PhotoTier) : 'unknown';
@@ -177,6 +208,21 @@ function sanitizeIdLike(value: unknown): string | null {
   return typeof value === 'string' && ID_LIKE_RE.test(value) ? value : null;
 }
 
+/** fix3 — bid_accepted.bid_amount: a bounded non-negative number, never a string. */
+function sanitizeBidAmount(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0;
+}
+
+/** fix3 — bid_accepted.source: closed set, this file's one call site only. */
+const BID_ACCEPTED_SOURCES: ReadonlySet<string> = new Set(['bids_react']);
+function sanitizeBidAcceptedSource(value: unknown): 'bids_react' | 'unknown' {
+  return typeof value === 'string' && BID_ACCEPTED_SOURCES.has(value) ? (value as 'bids_react') : 'unknown';
+}
+
+function sanitizeBoolean(value: unknown): boolean {
+  return value === true;
+}
+
 const SIGN_UP_METHODS: ReadonlySet<string> = new Set(['google']);
 function sanitizeSignUpMethod(value: unknown): 'google' | 'unknown' {
   return typeof value === 'string' && SIGN_UP_METHODS.has(value) ? (value as 'google') : 'unknown';
@@ -188,12 +234,17 @@ function sanitizeReferralSource(value: unknown): ReferralSource {
 }
 
 const FIELD_SANITIZERS: { [E in keyof TrackEventParams]: { [K in keyof TrackEventParams[E]]-?: (value: unknown) => unknown } } = {
-  claim_started: { funding_type: sanitizeFundingType, policy_type: sanitizePolicyType },
   document_uploaded: { tier: sanitizeTier },
   help_tool_used: { tool: sanitizeHelpTool, method: sanitizeHelpMethod },
   bids_viewed: { bid_count: sanitizeBidCount },
-  bid_accepted: { claim_id: sanitizeIdLike },
-  contract_signed: { claim_id: sanitizeIdLike },
+  bid_accepted: {
+    bid_id: sanitizeIdLike,
+    contractor_id: sanitizeIdLike,
+    bid_amount: sanitizeBidAmount,
+    source: sanitizeBidAcceptedSource,
+    test_account: sanitizeBoolean,
+  },
+  contract_signed: {},
   sign_up: { method: sanitizeSignUpMethod, referral_source: sanitizeReferralSource },
 };
 

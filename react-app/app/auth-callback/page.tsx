@@ -47,6 +47,7 @@ import { supabase } from '@/lib/supabase';
 
 import { readReferralIds, writeReferralIds } from '@/lib/cookie-storage';
 import { maybeFireGoogleSignUp, readReferralSourceFromCsSignup } from './signup-analytics';
+import { adoptFirstTouchFromParam, recordFirstTouch } from '@/lib/attribution';
 
 // ─── HubSpot — D-189, fired post-auth (#405) ─────────────────────────────────
 
@@ -125,6 +126,24 @@ export default function AuthCallbackPage() {
     const errorCode = detectHashError();
     const hasTokens = urlHasAuthTokens();
 
+    // gh-1983: hold a first touch carried on ?ft= (Google OAuth redirectTo) and
+    // strip it from the address bar before analytics read the URL. It is
+    // adopted in routeSession() only once a real session exists — proof of an
+    // auth return (a crafted link cannot seed a campaign), with no race against
+    // Supabase clearing the hash before hydration.
+    let ftParam: string | null = null;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.has('ft')) {
+        ftParam = params.get('ft');
+        const clean = new URL(window.location.href);
+        clean.searchParams.delete('ft');
+        window.history.replaceState(window.history.state, '', clean.toString());
+      }
+    } catch {
+      // non-fatal
+    }
+
     // Immediate error — no point subscribing
     if (errorCode) {
       setPageState('error');
@@ -189,6 +208,12 @@ export default function AuthCallbackPage() {
       } catch {
         // Non-fatal — see above
       }
+
+      // gh-1983: persist first-touch ad attribution (UTM / fbclid / gclid)
+      // onto the profile — write-once, server-guarded, bounded to 2.5 s and
+      // non-fatal. Awaited because every branch below navigates away.
+      adoptFirstTouchFromParam(ftParam);
+      await recordFirstTouch(supabase);
 
       const intent =
         typeof localStorage !== 'undefined'

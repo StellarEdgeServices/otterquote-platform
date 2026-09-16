@@ -117,7 +117,9 @@ function findNavHits(files: string[]): NavHit[] {
       return line;
     };
 
-    const isUnderGetStarted = rel.split(path.sep).includes("get-started");
+    const segments = rel.split(path.sep);
+    const allowed = extractClarityAllowedPaths(readGA4GateSource());
+    const isUnderAllowedRoute = allowed.some(p => segments.includes(p.slice(1)));
 
     for (const [re, kind, targetGroup] of [
       [NAV_CALL_RE, "router-nav", 2] as const,
@@ -129,8 +131,10 @@ function findNavHits(files: string[]): NavHit[] {
         const capturedTarget = match[targetGroup];
         if (!isInternalRoute(capturedTarget)) continue;
 
-        const targetsGetStarted = capturedTarget.startsWith("/get-started");
-        const leavesGetStarted = isUnderGetStarted;
+        const targetsGetStarted = allowed.some(
+          p => capturedTarget === p || capturedTarget.startsWith(p + "/") || capturedTarget.startsWith(p + "?")
+        );
+        const leavesGetStarted = isUnderAllowedRoute;
 
         if (targetsGetStarted || leavesGetStarted) {
           hits.push({
@@ -147,33 +151,48 @@ function findNavHits(files: string[]): NavHit[] {
 }
 
 describe("gh-1939 R-1: Clarity route-guard regression", () => {
-  it("CLARITY_ALLOWED_PATHS is exactly ['/get-started']", () => {
+  it("CLARITY_ALLOWED_PATHS is exactly the ruled set (Dustin 2026-09-16, #1939 comment 5691693161)", () => {
     const paths = extractClarityAllowedPaths(readGA4GateSource());
-    expect(paths).toEqual(["/get-started"]);
+    expect(paths).toEqual(["/get-started", "/trade-selector"]);
   });
 
-  it("no client-side navigation targets /get-started, and nothing inside app/get-started/ client-side-navigates to another internal route", () => {
+  it("every AUTHENTICATED allowlisted route masks its page root (data-clarity-mask=\"true\")", () => {
+    // /get-started is unauthenticated (Clarity project masking covers its
+    // inputs); every other allowed route is authenticated and must mask.
+    // path -> [page file, regex the MASKED ROOT element itself must match]
+    const AUTHENTICATED_ALLOWED: Record<string, [string, RegExp]> = {
+      "/trade-selector": ["trade-selector/page.tsx", /<div className="ts-page"[^>]*\sdata-clarity-mask="true"/],
+    };
+    const paths = extractClarityAllowedPaths(readGA4GateSource());
+    for (const p of paths) {
+      if (p === "/get-started") continue;
+      const entry = AUTHENTICATED_ALLOWED[p];
+      expect(entry, `no reviewed page mapping for allowlisted path ${p}`).toBeDefined();
+      const [rel, rootRe] = entry;
+      const src = fs.readFileSync(path.join(APP_ROOT, rel), "utf8");
+      expect(src).toMatch(rootRe);
+      // an unmask anywhere under the route would re-expose a subtree
+      const routeDir = path.join(APP_ROOT, p.slice(1));
+      for (const f of walkTsxFiles(routeDir)) {
+        expect(fs.readFileSync(f, "utf8"), `${f} unmasks a subtree`).not.toMatch(/data-clarity-unmask/);
+      }
+    }
+  });
+
+  it("no client-side navigation targets an allowlisted route, and nothing inside one client-side-navigates to another internal route", () => {
     const files = walkTsxFiles(APP_ROOT);
     const hits = findNavHits(files);
-
     if (hits.length > 0) {
-      const report = hits.map(h => `${h.file}:${h.line} (${h.kind} -> "${h.target}")`).join("\n");
-      throw new Error(
-        "gh-1939 R-1 regression: found a client-side navigation that would let " +
-          "Microsoft Clarity survive a route change (see GA4Gate.tsx's stopClarity " +
-          "docstring -- the JS-level stop is best-effort, the real backstop is that " +
-          "no such navigation exists):\n" +
-          report
+      // eslint-disable-next-line no-console
+      console.error(
+        "Client-side navigation into/out of a Clarity-allowlisted route found -- see gh-1939 R-1:\n" +
+          hits.map(h => `  ${h.file}:${h.line} ${h.kind} -> ${h.target}`).join("\n")
       );
     }
     expect(hits).toEqual([]);
   });
 });
 
-// Belt-and-suspenders sanity check on the scanner itself: not exercised
-// against real repo files above, so prove the regex logic actually catches
-// what it claims to on synthetic input (a scanner with no positive test is
-// a scanner nobody has verified fires).
 describe("gh-1939 R-1: scanner self-test (synthetic fixtures, not real files)", () => {
   it("flags router.push targeting /get-started from an arbitrary file", () => {
     const source = `

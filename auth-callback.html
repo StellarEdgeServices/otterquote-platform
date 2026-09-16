@@ -190,6 +190,11 @@
       return;
     }
 
+    // gh-1983: persist first-touch ad attribution before any routing branch
+    // (write-once RPC, 2.5 s bound, never throws). The homeowner path here does
+    // not go through Auth.handleAuthCallback().
+    try { if (Auth.recordFirstTouchAttribution) await Auth.recordFirstTouchAttribution(); } catch (e) { /* non-fatal */ }
+
     var intent = _oqGetIntent();
 
     var role = null;

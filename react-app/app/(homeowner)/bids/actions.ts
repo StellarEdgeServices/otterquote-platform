@@ -23,6 +23,7 @@
 import { supabase } from '@/lib/supabase';
 import { extractOwnerPhotoPath, mapAwardError, STATIC_ORIGIN } from './utils';
 import { track } from '@/lib/track';
+import { isTestEmail } from '@/lib/test-signal';
 import type { BidRow, BidsClaim, ContractorProfile } from './types';
 
 export interface ActionResult {
@@ -130,8 +131,22 @@ export async function awardClaimToContractor(params: {
   if (rejectErr) return { ok: false, error: rejectErr.message };
 
   // gh-1940: "bid accepted" funnel step — fired here, after every write
-  // above has succeeded, not on the modal's confirm click.
-  track('bid_accepted', { claim_id: claim.id });
+  // above has succeeded, not on the modal's confirm click. fix3 (CEO ruling,
+  // PR #1979 comment 5698022815): no claim_id (a per-homeowner database
+  // identifier must not reach GA4 remarketing); params now match #1988's
+  // `bids.html` bid_accepted (bid_id/contractor_id/bid_amount/source/
+  // test_account) — this page and that one are the same funnel step on two
+  // surfaces, distinguished only by `source`. `test_account` is read fresh
+  // here (this is a standalone action, not a component with hook access to
+  // the current user) rather than threaded through `params`.
+  const { data: userData } = await supabase.auth.getUser();
+  track('bid_accepted', {
+    bid_id: bid.id,
+    contractor_id: bid.contractor_id,
+    bid_amount: Number(bid.total_price) || 0,
+    source: 'bids_react',
+    test_account: isTestEmail(userData?.user?.email),
+  });
 
   const qs = new URLSearchParams({
     claim_id: claim.id,

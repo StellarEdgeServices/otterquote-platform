@@ -152,8 +152,12 @@ function SignContent() {
       // completion write settles. fix2 (finding N4): only when the write
       // actually succeeded — recordHomeownerSigned never rejects, so a
       // failed write must be read from its return value, not a catch.
+      // fix3 (CEO ruling, PR #1979 comment 5698022815): no claim_id — a
+      // per-homeowner database identifier must not reach a GA4 property
+      // linked for remarketing. The event NAME is the funnel step; no
+      // replacement param is added.
       if (wroteOk) {
-        track('contract_signed', { claim_id: cid || null });
+        track('contract_signed', {});
       }
       if (cid) {
         window.location.href = buildProjectConfirmationUrl(cid);

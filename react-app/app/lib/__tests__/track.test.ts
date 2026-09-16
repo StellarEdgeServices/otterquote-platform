@@ -14,16 +14,54 @@ describe('track()', () => {
   });
 
   it('calls window.gtag with the event name and params', () => {
-    track('bid_accepted', { claim_id: 'claim-1' });
+    track('bid_accepted', {
+      bid_id: 'bid-1',
+      contractor_id: 'contractor-1',
+      bid_amount: 4200,
+      source: 'bids_react',
+      test_account: false,
+    });
     expect(gtagSpy).toHaveBeenCalledTimes(1);
-    expect(gtagSpy).toHaveBeenCalledWith('event', 'bid_accepted', { claim_id: 'claim-1' });
+    expect(gtagSpy).toHaveBeenCalledWith('event', 'bid_accepted', {
+      bid_id: 'bid-1',
+      contractor_id: 'contractor-1',
+      bid_amount: 4200,
+      source: 'bids_react',
+      test_account: false,
+    });
   });
 
   it('never sends transport_type — the D-B1/D-M1 fake fix this PR removes', () => {
-    track('contract_signed', { claim_id: 'claim-2' });
+    track('contract_signed', {});
     const payload = gtagSpy.mock.calls[0][2] as Record<string, unknown>;
     expect(payload).not.toHaveProperty('transport_type');
-    expect(Object.keys(payload).sort()).toEqual(['claim_id']);
+    expect(Object.keys(payload).sort()).toEqual([]);
+  });
+
+  it('fix3 (CEO ruling, PR #1979 comment 5698022815) — bid_accepted and contract_signed never carry claim_id', () => {
+    // NEGATIVE CONTROL: this is the exact payload shape fix2 shipped and the
+    // LEGAL-READ on this PR (comment 5690670203) flagged — a per-homeowner
+    // database identifier reaching a GA4 property linked for remarketing.
+    // Casting past the closed TrackEventParams type (the same class of
+    // attack the M7/M8 mutants below exercise) proves the whitelist is what
+    // rejects it, not merely "the caller stopped passing it".
+    track('bid_accepted', {
+      bid_id: 'bid-1',
+      contractor_id: 'contractor-1',
+      bid_amount: 100,
+      source: 'bids_react',
+      test_account: false,
+      claim_id: 'claim-should-never-reach-ga4',
+    } as unknown as Parameters<typeof track<'bid_accepted'>>[1]);
+    track('contract_signed', { claim_id: 'claim-should-never-reach-ga4' } as unknown as Parameters<
+      typeof track<'contract_signed'>
+    >[1]);
+    const bidAcceptedPayload = gtagSpy.mock.calls[0][2] as Record<string, unknown>;
+    const contractSignedPayload = gtagSpy.mock.calls[1][2] as Record<string, unknown>;
+    expect(bidAcceptedPayload).not.toHaveProperty('claim_id');
+    expect(contractSignedPayload).not.toHaveProperty('claim_id');
+    expect(Object.values(bidAcceptedPayload)).not.toContain('claim-should-never-reach-ga4');
+    expect(Object.keys(contractSignedPayload)).toEqual([]);
   });
 
   it('is a no-op (never throws) when window.gtag is absent — GA4Gate not loaded', () => {
@@ -35,7 +73,7 @@ describe('track()', () => {
     (window as unknown as { gtag: unknown }).gtag = () => {
       throw new Error('boom');
     };
-    expect(() => track('claim_started', { funding_type: 'cash', policy_type: null })).not.toThrow();
+    expect(() => track('bids_viewed', { bid_count: 1 })).not.toThrow();
   });
 });
 
@@ -79,22 +117,35 @@ describe('track() — PII rejection (re-run of cto32-review-pr1979 mutants M6/M7
     expect(payload.tier).not.toBe('invoice_march_2026.pdf');
   });
 
-  it('M7 — a street address cast into bid_accepted.claim_id is rejected, not forwarded', () => {
-    track('bid_accepted', { claim_id: '123 Main St, Springfield, IL 62704' });
+  it('M7 — a street address cast into bid_accepted.bid_id is rejected, not forwarded', () => {
+    track('bid_accepted', {
+      bid_id: '123 Main St, Springfield, IL 62704',
+      contractor_id: 'contractor-1',
+      bid_amount: 100,
+      source: 'bids_react',
+      test_account: false,
+    });
     const gtag = window as unknown as { gtag: ReturnType<typeof vi.fn> };
     const payload = gtag.gtag.mock.calls[0][2] as Record<string, unknown>;
-    expect(payload.claim_id).toBeNull();
+    expect(payload.bid_id).toBeNull();
   });
 
-  it('M8 — an extra field-carrying key on bid_accepted is never read, whitelist or not', () => {
-    const leaked = { claim_id: 'claim-9', address: '123 Main St, Springfield' } as unknown as {
-      claim_id: string;
-    };
+  it('M8 — an extra field-carrying key (claim_id) on bid_accepted is never read, whitelist or not', () => {
+    const leaked = {
+      bid_id: 'bid-1',
+      contractor_id: 'contractor-1',
+      bid_amount: 100,
+      source: 'bids_react',
+      test_account: false,
+      claim_id: 'claim-9',
+      address: '123 Main St, Springfield',
+    } as unknown as { bid_id: string; contractor_id: string; bid_amount: number; source: 'bids_react'; test_account: boolean };
     track('bid_accepted', leaked);
     const gtag = window as unknown as { gtag: ReturnType<typeof vi.fn> };
     const payload = gtag.gtag.mock.calls[0][2] as Record<string, unknown>;
-    expect(Object.keys(payload).sort()).toEqual(['claim_id']);
+    expect(Object.keys(payload).sort()).toEqual(['bid_amount', 'bid_id', 'contractor_id', 'source', 'test_account']);
     expect(payload).not.toHaveProperty('address');
+    expect(payload).not.toHaveProperty('claim_id');
   });
 
   it('M11 — an email address cast into help_tool_used.method is dropped, not forwarded', () => {
