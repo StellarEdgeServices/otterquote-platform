@@ -67,6 +67,45 @@ function gtag(...args: unknown[]) {
   }
 }
 
+/**
+ * gh-1984: send a GA4 event that must survive the redirect that follows it.
+ * Measured 2026-09-16 (GA4 realtime, property 541423859): two live test runs
+ * of this page produced homeowner_signup x2 but trade_selector_complete x0 —
+ * the event fired ~300 ms before `window.location.href` and was dropped.
+ * Uses the beacon transport and resolves on gtag's event_callback, or after
+ * `timeoutMs` (gtag blocked / not loaded), whichever comes first.
+ */
+function gtagEventBeforeNavigation(
+  name: string,
+  params: Record<string, unknown>,
+  timeoutMs = 1000,
+): Promise<void> {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (!done) {
+        done = true;
+        resolve();
+      }
+    };
+    setTimeout(finish, timeoutMs);
+    try {
+      if (typeof window !== 'undefined' && (window as any).gtag) {
+        (window as any).gtag('event', name, {
+          ...params,
+          transport_type: 'beacon',
+          event_callback: finish,
+          event_timeout: timeoutMs,
+        });
+      } else {
+        finish();
+      }
+    } catch {
+      finish();
+    }
+  });
+}
+
 // ─── Referral resolution ─────────────────────────────────────────────────────
 
 async function resolveReferralAgentId(partnerIdParam: string | null): Promise<string | null> {
@@ -466,6 +505,8 @@ export default function TradeSelectorPage() {
       // id) and passed through the redirect URL — see the redirect logic
       // near the end of this function.
       let savedClaimId: string | null = null;
+      // gh-1984: analytics sends awaited (bounded) before the redirect below.
+      const analyticsSends: Promise<void>[] = [];
 
       // Read cs_signup profile data from localStorage
       let csSignup: Record<string, unknown> = {};
@@ -608,7 +649,20 @@ export default function TradeSelectorPage() {
             // fallback always found neither and unconditionally inserted a
             // SECOND claim row for every repair-path homeowner using this
             // (the actually-live) React surface.
-            if (insertedClaim) savedClaimId = insertedClaim.id;
+            if (insertedClaim) {
+              savedClaimId = insertedClaim.id;
+              // gh-1984: GA4 key event — fired only when a NEW claims row was
+              // created (not on the update branch above). No PII.
+              analyticsSends.push(
+                gtagEventBeforeNavigation('claim_started', {
+                  funding_type: fundingType,
+                  policy_type: policyType,
+                  job_type: jobType,
+                  trades: trades.join(','),
+                  test_account: isTestEmail(user.email),
+                }),
+              );
+            }
           }
 
           // #571: the claim_submitted advance now lives in the database —
@@ -621,12 +675,12 @@ export default function TradeSelectorPage() {
       }
 
       // GA4 funnel event
-      gtag('event', 'trade_selector_complete', {
+      analyticsSends.push(gtagEventBeforeNavigation('trade_selector_complete', {
         funding_type: fundingType,
         policy_type: policyType,
         trades: trades.join(','),
         has_repair: hasRepair,
-      });
+      }));
 
       // Write oq_trade_selections for repair-intake.html cross-page handoff (feature parity D-211)
       // repair-intake.html reads sessionStorage('oq_trade_selections') as { [tradeName]: boolean }
@@ -658,9 +712,13 @@ export default function TradeSelectorPage() {
       if (savedClaimId) {
         redirectUrl += `?claim_id=${encodeURIComponent(savedClaimId)}`;
       }
-      setTimeout(() => {
-        window.location.href = redirectUrl;
-      }, 300);
+      // gh-1984: wait for the analytics sends (each bounded to 1 s), never less
+      // than the original 300 ms.
+      await Promise.all([
+        Promise.all(analyticsSends),
+        new Promise((resolve) => setTimeout(resolve, 300)),
+      ]);
+      window.location.href = redirectUrl;
     } catch (err) {
       console.error('[trade-selector] completion error:', err);
       setError('Something went wrong. Please try again.');

@@ -1309,6 +1309,14 @@
                     if (insertErr || !newClaim) throw new Error(insertErr?.message || 'Failed to create claim');
                     claimId = newClaim.id;
                     sessionStorage.setItem('oq_claim_id', claimId);
+                    // gh-1984: GA4 key event — this branch creates the claims row. No PII.
+                    if (typeof gtag === 'function') {
+                        gtag('event', 'claim_started', {
+                            job_type: 'repair',
+                            test_account: Auth.isTestEmail(user.email),
+                            transport_type: 'beacon',
+                        });
+                    }
                 } else {
                     // Update existing claim with repair data
                     const { error: updateErr } = await sb

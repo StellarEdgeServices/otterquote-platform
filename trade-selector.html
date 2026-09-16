@@ -1457,7 +1457,29 @@
               // neither and unconditionally inserted a SECOND claim row for
               // every repair-path homeowner. Fixed here at the source: pass
               // it through the redirect below instead.
-              if (insertedClaim) savedClaimId = insertedClaim.id;
+              if (insertedClaim) {
+                savedClaimId = insertedClaim.id;
+                // gh-1984: GA4 key event — new claims row only. No PII.
+                if (typeof gtag === 'function') {
+                  // Beacon + callback: this page redirects ~500 ms later and
+                  // an ordinary send is dropped (measured on the React twin).
+                  window.__oqClaimStartedSent = new Promise(function (resolve) {
+                    var done = false;
+                    function finish() { if (!done) { done = true; resolve(); } }
+                    setTimeout(finish, 1000);
+                    try {
+                      gtag('event', 'claim_started', {
+                        funding_type: claimData.funding_type || '',
+                        job_type: claimData.job_type || '',
+                        test_account: Auth.isTestEmail(user.email),
+                        transport_type: 'beacon',
+                        event_callback: finish,
+                        event_timeout: 1000,
+                      });
+                    } catch (e) { finish(); }
+                  });
+                }
+              }
             }
 
             // #571: the claim_submitted advance now lives in the database —
@@ -1500,7 +1522,8 @@
           redirectUrl += `?claim_id=${encodeURIComponent(savedClaimId)}`;
         }
 
-        // Redirect
+        // Redirect — gh-1984: after the claim_started send settles (<= 1 s).
+        try { if (window.__oqClaimStartedSent) await window.__oqClaimStartedSent; } catch (_) {}
         setTimeout(() => {
           window.location.href = redirectUrl;
         }, 500);
