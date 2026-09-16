@@ -19,6 +19,7 @@
 
 import {
   FT_COOKIE,
+  FT_PARAM_KEYS,
   FT_STORAGE_KEY,
   buildFirstTouchCookie,
   deserializeFirstTouch,
@@ -74,6 +75,44 @@ export function readFirstTouch(): FirstTouch | null {
   return cookie || local;
 }
 
+/** Facebook / Instagram / Messenger in-app browsers (WebView user agents). */
+export function isMetaInAppBrowser(ua: string | null | undefined): boolean {
+  return /FBAN|FBAV|FB_IAB|FBIOS|Instagram|Messenger/i.test(ua || '');
+}
+
+/**
+ * Google refuses OAuth inside embedded WebViews, so a Facebook/Instagram
+ * in-app user who picks "Continue with Google" is told to reopen the page in
+ * Safari/Chrome — a different cookie jar, where oq_ft does not exist. The only
+ * thing that crosses that hop is the URL, so on /get-started inside a Meta
+ * in-app browser we put the stored touch's tracked params back into the
+ * address bar (history.replaceState, no navigation). "Open in browser" then
+ * lands tagged and the server/client capture records it again.
+ * Returns true when the URL was changed.
+ */
+export function retagUrlForInAppBrowser(ft: FirstTouch | null): boolean {
+  if (!isBrowser() || !ft) return false;
+  try {
+    if (!isMetaInAppBrowser(navigator.userAgent)) return false;
+    if (!window.location.pathname.startsWith('/get-started')) return false;
+    const url = new URL(window.location.href);
+    if (FT_PARAM_KEYS.some((k) => url.searchParams.get(k))) return false;
+    let changed = false;
+    for (const k of FT_PARAM_KEYS) {
+      const v = ft[k];
+      if (v) {
+        url.searchParams.set(k, v);
+        changed = true;
+      }
+    }
+    if (!changed) return false;
+    window.history.replaceState(window.history.state, '', url.toString());
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Store this page's tagged touch if none is stored; heal a half-missing store. */
 export function captureFirstTouch(): FirstTouch | null {
   if (!isBrowser()) return null;
@@ -83,6 +122,7 @@ export function captureFirstTouch(): FirstTouch | null {
     if (existing) {
       if (!local) writeLocal(existing);
       if (!cookie) writeCookie(existing);
+      retagUrlForInAppBrowser(existing);
       return existing;
     }
     const ft = parseFirstTouch(window.location.href, document.referrer);
@@ -119,8 +159,15 @@ export async function recordFirstTouch(client: RpcClient, timeoutMs = 2500): Pro
         return null;
       },
     );
-    const timeout = new Promise((resolve) => setTimeout(() => resolve(null), timeoutMs));
-    return await Promise.race([call, timeout]);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise((resolve) => {
+      timer = setTimeout(() => resolve(null), timeoutMs);
+    });
+    try {
+      return await Promise.race([call, timeout]);
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
   } catch {
     return null;
   }

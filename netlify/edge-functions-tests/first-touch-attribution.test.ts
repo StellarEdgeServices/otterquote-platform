@@ -54,6 +54,7 @@ Deno.test("the /get-started 301 keeps its status and Location and gains the cook
   });
   const req = new Request("https://otterquote.com/get-started?gclid=g1");
   const res = await handler(req, fakeContext(redirect));
+  assert(res instanceof Response, "a response is returned");
   assertEquals(res.status, 301);
   assertEquals(res.headers.get("location"), "https://app.otterquote.com/get-started?gclid=g1");
   assert(cookieFrom(res).includes("gclid"), cookieFrom(res));
@@ -82,7 +83,16 @@ Deno.test("a malformed stored cookie does not block a new tagged touch", async (
     new Request("https://otterquote.com/?utm_source=fb", { headers: { cookie: "oq_ft=%7Bnot-json" } }),
     fakeContext(),
   );
+  assert(res instanceof Response, "a response is returned");
   assert(cookieFrom(res).startsWith("oq_ft="));
+});
+
+Deno.test("a long real-world fbclid (>200 chars) is kept whole", async () => {
+  const fbclid = "IwY2xjawF" + "a".repeat(400);
+  const res = await handler(new Request(`https://otterquote.com/?fbclid=${fbclid}`), fakeContext());
+  assert(res instanceof Response, "a response is returned");
+  const ft = deserializeFirstTouch(readCookieValue(cookieFrom(res).split(";")[0], "oq_ft"));
+  assertEquals(ft?.fbclid, fbclid);
 });
 
 Deno.test("non-GET requests are ignored", async () => {
@@ -97,6 +107,7 @@ Deno.test("preview hosts get a host-only cookie (no Domain attribute)", async ()
     new Request("https://deploy-preview-1--jade-alpaca-b82b5e.netlify.app/?utm_source=fb"),
     fakeContext(),
   );
+  assert(res instanceof Response, "a response is returned");
   const c = cookieFrom(res);
   assert(c.startsWith("oq_ft="));
   assert(!c.includes("Domain="), c);

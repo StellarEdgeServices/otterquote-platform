@@ -13,7 +13,7 @@ import {
   cleanValue,
   FT_COOKIE,
 } from '../attribution-core';
-import { captureFirstTouch, readFirstTouch, recordFirstTouch } from '../attribution';
+import { captureFirstTouch, readFirstTouch, recordFirstTouch, isMetaInAppBrowser, retagUrlForInAppBrowser } from '../attribution';
 
 const NOW = new Date('2026-09-16T03:00:00.000Z');
 
@@ -45,6 +45,14 @@ describe('attribution-core parseFirstTouch', () => {
     expect(parseFirstTouch('https://app.otterquote.com/get-started?track=insurance&ref=abc', 'https://google.com', NOW)).toBeNull();
     expect(parseFirstTouch('https://app.otterquote.com/?utm_source=%20%20', null, NOW)).toBeNull();
     expect(parseFirstTouch('not a url', null, NOW)).toBeNull();
+  });
+
+  it('keeps a long click id whole (fbclid/gclid cap 1000) but caps utm values at 200', () => {
+    const long = 'IwY2' + 'a'.repeat(400);
+    const ft = parseFirstTouch(`https://otterquote.com/?fbclid=${long}&utm_campaign=${'c'.repeat(400)}`, null, NOW)!;
+    expect(ft.fbclid).toBe(long);
+    expect(ft.utm_campaign).toHaveLength(200);
+    expect(deserializeFirstTouch(JSON.stringify(ft))?.fbclid).toBe(long);
   });
 
   it('strips non-printable characters and caps length', () => {
@@ -157,5 +165,42 @@ describe('recordFirstTouch', () => {
     await expect(recordFirstTouch({ rpc: vi.fn().mockRejectedValue(new Error('boom')) })).resolves.toBeNull();
     await expect(recordFirstTouch({ rpc: () => new Promise(() => {}) }, 20)).resolves.toBeNull();
     warn.mockRestore();
+  });
+});
+
+describe('Meta in-app browser URL re-tag (OAuth hand-off to Safari/Chrome)', () => {
+  const FB_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 [FBAN/FBIOS;FBAV/450.0]';
+  const stored = { v: 1 as const, utm_source: 'fb', utm_campaign: 'test', fbclid: 'x', ts: NOW.toISOString() };
+
+  beforeEach(() => {
+    clearFirstTouch();
+    vi.restoreAllMocks();
+  });
+
+  it('detects FB/Instagram user agents and not ordinary Safari', () => {
+    expect(isMetaInAppBrowser(FB_UA)).toBe(true);
+    expect(isMetaInAppBrowser('Mozilla/5.0 (iPhone) Instagram 300.0')).toBe(true);
+    expect(isMetaInAppBrowser('Mozilla/5.0 (iPhone) Version/17.0 Mobile Safari/604.1')).toBe(false);
+  });
+
+  it('puts stored params back on an untagged /get-started inside the FB in-app browser', () => {
+    vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue(FB_UA);
+    window.history.replaceState({}, '', '/get-started?track=insurance');
+    expect(retagUrlForInAppBrowser(stored)).toBe(true);
+    const url = new URL(window.location.href);
+    expect(url.searchParams.get('utm_source')).toBe('fb');
+    expect(url.searchParams.get('fbclid')).toBe('x');
+    expect(url.searchParams.get('track')).toBe('insurance');
+  });
+
+  it('NEGATIVE CONTROL: no re-tag in a normal browser, off /get-started, or when already tagged', () => {
+    window.history.replaceState({}, '', '/get-started');
+    expect(retagUrlForInAppBrowser(stored)).toBe(false);
+    vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue(FB_UA);
+    window.history.replaceState({}, '', '/trade-selector');
+    expect(retagUrlForInAppBrowser(stored)).toBe(false);
+    window.history.replaceState({}, '', '/get-started?gclid=g');
+    expect(retagUrlForInAppBrowser(stored)).toBe(false);
+    expect(new URL(window.location.href).searchParams.get('fbclid')).toBeNull();
   });
 });

@@ -55,7 +55,8 @@ COMMENT ON COLUMN public.claims.first_touch_at IS
   'gh-1983: copied from the owner''s profiles row at claim INSERT (trg_claims_copy_first_touch) or backfilled by record_first_touch_attribution().';
 
 -- 2. Sanitiser ------------------------------------------------------------------
--- Printable characters only, trimmed, capped at 255; empty -> NULL.
+-- Printable characters only, trimmed, capped (255 default; click IDs pass 1000,
+-- because a truncated fbclid/gclid can never be matched back to Meta/Google); empty -> NULL.
 CREATE OR REPLACE FUNCTION public.gh1983_attr_clean(p text, p_max int DEFAULT 255)
 RETURNS text
 LANGUAGE sql
@@ -65,6 +66,10 @@ SET search_path TO 'public', 'pg_temp'
 AS $$
   SELECT NULLIF(left(btrim(regexp_replace(COALESCE(p, ''), '[[:cntrl:]]', '', 'g')), p_max), '');
 $$;
+
+-- Project default privileges grant EXECUTE on new public functions to anon and
+-- authenticated explicitly, so REVOKE ... FROM PUBLIC alone does not remove it.
+REVOKE ALL ON FUNCTION public.gh1983_attr_clean(text, int) FROM PUBLIC, anon, authenticated;
 
 -- 3. The RPC --------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.record_first_touch_attribution(p_attr jsonb DEFAULT NULL)
@@ -136,8 +141,8 @@ BEGIN
          utm_campaign             = public.gh1983_attr_clean(v_attr->>'utm_campaign'),
          utm_content              = public.gh1983_attr_clean(v_attr->>'utm_content'),
          utm_term                 = public.gh1983_attr_clean(v_attr->>'utm_term'),
-         fbclid                   = public.gh1983_attr_clean(v_attr->>'fbclid'),
-         gclid                    = public.gh1983_attr_clean(v_attr->>'gclid'),
+         fbclid                   = public.gh1983_attr_clean(v_attr->>'fbclid', 1000),
+         gclid                    = public.gh1983_attr_clean(v_attr->>'gclid', 1000),
          first_touch_landing_path = public.gh1983_attr_clean(v_attr->>'landing_path'),
          first_touch_referrer     = public.gh1983_attr_clean(v_attr->>'referrer'),
          first_touch_at           = v_ts
@@ -218,7 +223,7 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.claims_copy_first_touch() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.claims_copy_first_touch() FROM PUBLIC, anon, authenticated;
 
 CREATE OR REPLACE TRIGGER trg_claims_copy_first_touch
   BEFORE INSERT ON public.claims

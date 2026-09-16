@@ -49,6 +49,13 @@ export interface FirstTouch {
 }
 
 const VALUE_MAX = 200;
+/** Click IDs are opaque and only useful whole; Meta's fbclid can exceed 200 chars. */
+const CLICK_ID_MAX = 1000;
+const CLICK_ID_KEYS: ReadonlySet<string> = new Set(['fbclid', 'gclid']);
+
+function maxFor(key: string): number {
+  return CLICK_ID_KEYS.has(key) ? CLICK_ID_MAX : VALUE_MAX;
+}
 const PATH_MAX = 200;
 /** Stay well below the 4096-byte per-cookie browser limit. */
 const COOKIE_VALUE_MAX = 3000;
@@ -91,7 +98,7 @@ export function parseFirstTouch(
   }
   const ft: FirstTouch = { v: 1, ts: now.toISOString() };
   for (const key of FT_PARAM_KEYS) {
-    const val = cleanValue(u.searchParams.get(key));
+    const val = cleanValue(u.searchParams.get(key), maxFor(key));
     if (val) ft[key] = val;
   }
   if (!hasTrackedKey(ft)) return null;
@@ -117,7 +124,7 @@ export function deserializeFirstTouch(raw: string | null | undefined): FirstTouc
   if (!ts || Number.isNaN(Date.parse(ts))) return null;
   const ft: FirstTouch = { v: 1, ts };
   for (const key of FT_PARAM_KEYS) {
-    const val = cleanValue(src[key]);
+    const val = cleanValue(src[key], maxFor(key));
     if (val) ft[key] = val;
   }
   if (!hasTrackedKey(ft)) return null;

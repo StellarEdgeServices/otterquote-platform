@@ -923,9 +923,47 @@ window.Auth = {
    * Handle post-auth profile creation and routing.
    * Call this when user logs in via magic link to create their profile from signup data.
    */
+  /**
+   * gh-1983 — static-stack twin of react-app/app/lib/attribution.ts
+   * recordFirstTouch(). Reads the oq_ft cookie (then localStorage), sends it to
+   * record_first_touch_attribution, resolves within 2.5 s, never throws.
+   */
+  async recordFirstTouchAttribution() {
+    if (!sb) return null;
+    let attr = null;
+    try {
+      const pair = (document.cookie || '').split(';').map(s => s.trim()).find(s => s.indexOf('oq_ft=') === 0);
+      const raw = pair ? decodeURIComponent(pair.slice(6)) : (localStorage.getItem('oq_ft') || null);
+      const parsed = raw ? JSON.parse(raw) : null;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) attr = parsed;
+    } catch (e) {
+      attr = null; // malformed store — the RPC still tries user_metadata
+    }
+    let timer;
+    try {
+      const call = sb.rpc('record_first_touch_attribution', { p_attr: attr }).then(
+        (res) => { if (res && res.error) console.warn('[attribution] record failed (non-fatal):', res.error); return res ? res.data : null; },
+        (err) => { console.warn('[attribution] record failed (non-fatal):', err); return null; }
+      );
+      const timeout = new Promise((resolve) => { timer = setTimeout(() => resolve(null), 2500); });
+      return await Promise.race([call, timeout]);
+    } catch (e) {
+      return null;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  },
+
   async handleAuthCallback() {
     const user = await this.getUser();
     if (!user) return;
+
+    // gh-1983: persist first-touch ad attribution for the static-stack sign-in
+    // path too (the React /auth-callback does the same). The oq_ft cookie is
+    // set on .otterquote.com by the Netlify edge function / Next middleware /
+    // React client; the RPC is write-once, refuses post-signup touches, and
+    // falls back to user_metadata. Bounded and non-fatal.
+    await this.recordFirstTouchAttribution();
 
     // Determine role: stored value > contractor record check > default homeowner
     let role = localStorage.getItem('cs_auth_role') || sessionStorage.getItem('cs_auth_role');
