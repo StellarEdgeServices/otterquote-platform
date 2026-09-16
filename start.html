@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Sentry Error Monitoring -->
+<script
+  src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
+  crossorigin="anonymous"
+></script>
+<script>
+  Sentry.onLoad(function() {
+    Sentry.init({
+      environment: window.location.hostname.includes("staging") ? "staging" : "production",
+      // gh-439: drop phantom events from non-http(s) preview contexts (data:/file:/blob:
+      // URLs -- e.g. Claude's HTML preview renders pages via data: URIs; relative scripts
+      // like js/auth.js then fail and report noise such as "Auth is not defined").
+      denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+      beforeSend: function (event) {
+        var proto = window.location.protocol;
+        if (proto !== "http:" && proto !== "https:") return null;
+        var req = event.request && event.request.url;
+        if (req && /^(data|file|blob):/.test(req)) return null;
+        return event;
+      }
+    });
+  });
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>Get Started | Otter Quotes</title>
+<meta name="description" content="Tell us who you are and we'll get you to the right place &mdash; homeowner, contractor, or referral partner.">
+<link rel="canonical" href="https://otterquote.com/start.html">
+<meta name="robots" content="noindex, follow">
+<meta property="og:title" content="Get Started &mdash; Otter Quotes">
+<meta property="og:description" content="Tell us who you are and we'll get you to the right place.">
+<meta property="og:url" content="https://otterquote.com/start.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Otter Quotes">
+<meta property="og:image" content="https://otterquote.com/img/otter-logo.svg">
+
+<!-- Google Analytics / Meta Pixel / Clarity — gh-1994 item 4: same two
+     include files every public page loads, in the same order, no per-page
+     loader (js/ga-gate.js's own module docstring: "the ONLY place gtag.js
+     is requested"; js/meta-pixel-gate.js: "the ONLY place fbevents.js is
+     requested"). Clarity rides the GA4 gate's own host check; this page is
+     not on js/ga-gate.js's CLARITY_ALLOWED_PATHS default-deny list yet
+     (out of this PR's file grant -- flagged under QUESTIONS in the PR). -->
+<script src="/js/ga-gate.js"></script>
+<script src="/js/meta-pixel-gate.js"></script>
+<script>gtag('config', 'G-D1Y1TLGEFY');</script>
+<!-- Microsoft Clarity (wwr7qlk8g5) is loaded by /js/ga-gate.js, behind the same production-host gate as GA4 (gh-1619). Do not add a per-page loader. -->
+
+<!-- Supabase -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js" integrity="sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz" crossorigin="anonymous"></script>
+
+<!-- Google Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- Shared Styles -->
+<link rel="stylesheet" href="css/design-system.css">
+<link rel="stylesheet" href="css/nav.css">
+
+<style>
+  body { background-color: var(--navy); }
+  main { min-height: calc(100vh - 120px); display: flex; align-items: flex-start; justify-content: center; padding: var(--sp-8) var(--sp-4) var(--sp-16); }
+  .router-card {
+    width: 100%;
+    max-width: 480px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 8px 40px rgba(0,0,0,0.3);
+    padding: var(--sp-6);
+  }
+  .router-progress { display: flex; gap: var(--sp-2); margin-bottom: var(--sp-6); }
+  .router-progress span { flex: 1; height: 4px; border-radius: var(--radius-full); background: rgba(255,255,255,0.12); }
+  .router-progress span.done { background: var(--amber); }
+  .router-step { display: none; }
+  .router-step.active { display: block; animation: fadeUp 0.25s ease both; }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+  .router-step h1 { font-family: var(--font-heading, var(--font-body)); font-size: 1.5rem; color: var(--white); margin-bottom: var(--sp-2); line-height: 1.25; }
+  .router-step p.router-sub { color: var(--slate); font-size: 0.95rem; margin-bottom: var(--sp-5); }
+  .form-group { margin-bottom: var(--sp-4); }
+  .form-label { display: block; font-weight: 600; color: var(--white); margin-bottom: var(--sp-1); font-size: 0.95rem; }
+  .form-label.required::after { content: ' *'; color: var(--red); }
+  .form-input { width: 100%; padding: var(--sp-3) var(--sp-4); border: 1px solid rgba(255,255,255,0.14); border-radius: var(--radius-md); font-family: var(--font-body); font-size: 1rem; background: rgba(255,255,255,0.06); color: var(--white); }
+  .form-input::placeholder { color: rgba(255,255,255,0.35); }
+  .form-input:focus { outline: none; border-color: var(--amber); box-shadow: 0 0 0 3px var(--amber-glow); }
+  .field-error { color: #FCA5A5; font-size: 0.85rem; margin-top: var(--sp-1); min-height: 1.1em; }
+  .router-consent { color: var(--slate); font-size: 0.8rem; line-height: 1.5; margin-top: var(--sp-2); }
+  .router-consent a { color: var(--amber); text-decoration: underline; }
+  .router-btn { width: 100%; padding: var(--sp-3) var(--sp-6); font-size: 1rem; margin-top: var(--sp-2); }
+  .router-error { display: none; background: var(--red-light); color: #7F1D1D; border-radius: var(--radius-md); padding: var(--sp-3); margin-bottom: var(--sp-4); font-size: 0.9rem; }
+  .router-error.show { display: block; }
+  .role-options { display: flex; flex-direction: column; gap: var(--sp-3); }
+  .role-option {
+    display: flex; align-items: center; justify-content: space-between;
+    width: 100%; text-align: left; cursor: pointer;
+    padding: var(--sp-4); border-radius: var(--radius-md);
+    border: 1px solid rgba(255,255,255,0.14); background: rgba(255,255,255,0.04);
+    color: var(--white); font-family: var(--font-body); font-size: 1.05rem; font-weight: 600;
+    transition: border-color 0.15s ease, background 0.15s ease;
+  }
+  .role-option:hover, .role-option:focus-visible { border-color: var(--amber); background: rgba(224,123,0,0.08); }
+  .role-option .role-arrow { color: var(--amber); font-size: 1.2rem; }
+  .router-back { display: inline-flex; align-items: center; gap: var(--sp-1); color: var(--slate); font-size: 0.9rem; background: none; border: none; cursor: pointer; margin-bottom: var(--sp-4); padding: 0; }
+  .router-back:hover { color: var(--white); }
+  .router-spinner-wrap { text-align: center; padding: var(--sp-10) 0; color: var(--slate); }
+</style>
+</head>
+<body>
+
+<header id="site-header"></header>
+
+<main>
+  <div class="router-card">
+    <div class="router-progress" id="routerProgress">
+      <span id="progressStep1"></span>
+      <span id="progressStep2"></span>
+      <span id="progressStep3"></span>
+    </div>
+
+    <div class="router-error" id="routerError" role="alert"></div>
+
+    <!-- ═══════════ Step 1 — contact info ═══════════ -->
+    <section class="router-step active" id="step1" data-step="1">
+      <h1>Let's get you started</h1>
+      <p class="router-sub">Tell us how to reach you. Takes about 30 seconds.</p>
+
+      <form id="step1Form" novalidate>
+        <div class="form-group">
+          <label for="routerName" class="form-label required">Full Name</label>
+          <input type="text" id="routerName" name="name" class="form-input" autocomplete="name" placeholder="Jane Smith" required>
+          <div class="field-error" id="routerNameError"></div>
+        </div>
+
+        <div class="form-group">
+          <label for="routerEmail" class="form-label required">Email</label>
+          <input type="email" id="routerEmail" name="email" class="form-input" autocomplete="email" inputmode="email" placeholder="jane@example.com" required>
+          <div class="field-error" id="routerEmailError"></div>
+        </div>
+
+        <div class="form-group">
+          <label for="routerPhone" class="form-label required">Phone Number</label>
+          <input type="tel" id="routerPhone" name="phone" class="form-input" autocomplete="tel" inputmode="tel" placeholder="(555) 123-4567" required>
+          <div class="field-error" id="routerPhoneError"></div>
+        </div>
+
+        <!-- Consent text reused VERBATIM, unmodified, from the only
+             non-checkbox general contact/privacy consent disclosure already
+             live in this repo for a contact-info form:
+             react-app/app/get-started/page.tsx:1830-1833
+             ("By creating an account, you agree to our Terms of Service and
+             Privacy Policy."), linking to the same two pages it links to
+             there. No new consent/legal copy is written by this file --
+             #1994 item 6 / Tier C. -->
+        <p class="router-consent">
+          By creating an account, you agree to our
+          <a href="https://otterquote.com/terms.html" target="_blank" rel="noopener">Terms of Service</a> and
+          <a href="https://otterquote.com/privacy.html" target="_blank" rel="noopener">Privacy Policy</a>.
+        </p>
+
+        <button type="submit" id="step1Submit" class="btn btn-primary router-btn">Continue</button>
+      </form>
+    </section>
+
+    <!-- ═══════════ Step 2 — "I am a" ═══════════ -->
+    <section class="router-step" id="step2" data-step="2">
+      <button type="button" class="router-back" id="backTo1">&larr; Back</button>
+      <h1>I am a&hellip;</h1>
+      <p class="router-sub">No skip option here on purpose &mdash; every visitor answers this so we route you correctly the first time.</p>
+      <div class="role-options">
+        <button type="button" class="role-option" data-router-role="homeowner">Homeowner <span class="role-arrow">&rarr;</span></button>
+        <button type="button" class="role-option" data-router-role="contractor">Contractor <span class="role-arrow">&rarr;</span></button>
+        <button type="button" class="role-option" data-router-role="referral_partner">Referral Partner <span class="role-arrow">&rarr;</span></button>
+      </div>
+    </section>
+
+    <!-- ═══════════ Step 2a — partner industry ═══════════ -->
+    <!-- Industry set is loaded from js/agent-types.js (AgentTypes.CHOOSER_LABELS,
+         gh-914 single source for the partner-page industry set) at runtime by
+         renderPartnerIndustries() below -- never hand-copied here, per that
+         file's own CI check (tools/agent_type_labels_check.py). -->
+    <section class="router-step" id="step2a" data-step="2a">
+      <button type="button" class="router-back" id="backTo2">&larr; Back</button>
+      <h1>What industry are you in?</h1>
+      <p class="router-sub">This tells us which partner program fits you.</p>
+      <div class="role-options" id="partnerIndustryOptions"></div>
+    </section>
+
+    <!-- ═══════════ Step 3 — redirecting ═══════════ -->
+    <section class="router-step" id="step3" data-step="3">
+      <div class="router-spinner-wrap">
+        <p>Taking you to the right place&hellip;</p>
+      </div>
+    </section>
+  </div>
+</main>
+
+<footer id="site-footer"></footer>
+
+<script src="js/cookie-storage.js"></script>
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/nav.js"></script>
+<script src="js/agent-types.js"></script>
+
+<script>
+(function () {
+  'use strict';
+
+  // gh-1994: this page owns its own Supabase client rather than depending on
+  // js/supabase-client.js (not included on most static marketing pages
+  // today -- see js/auth.js:1443-1447's own count of "9 of 11" pages that
+  // lack it) or on a page-local `sb` declared elsewhere (partner-re.html's
+  // inline script reads a bare `sb` that is never declared/assigned
+  // anywhere reachable from that page -- likely a pre-existing bug,
+  // independent of this PR; flagged under CONTRADICTIONS in the report, not
+  // fixed here). Pattern below matches contractor-join.html's own working
+  // `const sb = supabase.createClient(...)` local-client declaration.
+  var sb = null;
+  try {
+    if (typeof supabase !== 'undefined' && typeof CONFIG !== 'undefined') {
+      sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, {
+        auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' }
+      });
+    }
+  } catch (e) { /* handled by the null-check on every use below */ }
+
+  // ── Elements ──
+  var progressEls = { 1: document.getElementById('progressStep1'), 2: document.getElementById('progressStep2'), 3: document.getElementById('progressStep3') };
+  var steps = { 1: document.getElementById('step1'), 2: document.getElementById('step2'), '2a': document.getElementById('step2a'), 3: document.getElementById('step3') };
+  var routerError = document.getElementById('routerError');
+
+  function showStep(key) {
+    Object.keys(steps).forEach(function (k) { steps[k].classList.toggle('active', k === String(key)); });
+    var doneCount = key === 1 ? 0 : (key === 2 || key === '2a') ? 1 : 2;
+    [1, 2, 3].forEach(function (n) { progressEls[n].classList.toggle('done', n <= doneCount); });
+    routerError.classList.remove('show');
+    window.scrollTo({ top: 0, behavior: 'instant' in window ? 'instant' : 'auto' });
+  }
+
+  function showError(msg) {
+    routerError.textContent = msg;
+    routerError.classList.add('show');
+  }
+
+  function fieldError(id, msg) {
+    var el = document.getElementById(id);
+    if (el) el.textContent = msg || '';
+  }
+
+  // ── Attribution: current-URL params first, oq_ft cookie (gh-1983) as
+  // fallback for any key the current URL didn't carry (e.g. a visitor who
+  // arrived on an earlier tagged page and clicked through to /start.html
+  // with a clean URL). Mirrors attribution-core.ts's own sanitising
+  // (printable-only, trimmed, length-capped) without importing that TS
+  // module into a plain script tag. ──
+  var ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid'];
+  var CLICK_ID_KEYS = { fbclid: true, gclid: true };
+
+  function cleanAttrValue(raw, max) {
+    if (typeof raw !== 'string') return null;
+    var v = raw.replace(/[^\x20-\x7E]/g, '').trim().slice(0, max || 200);
+    return v || null;
+  }
+
+  function readOqFtCookie() {
+    try {
+      var m = document.cookie.match(/(?:^|; )oq_ft=([^;]*)/);
+      if (!m) return null;
+      var obj = JSON.parse(decodeURIComponent(m[1]));
+      return obj && typeof obj === 'object' ? obj : null;
+    } catch (e) { return null; }
+  }
+
+  function collectAttribution() {
+    var params = new URLSearchParams(window.location.search);
+    var cookieFt = readOqFtCookie();
+    var out = {};
+    ATTR_KEYS.forEach(function (k) {
+      var max = CLICK_ID_KEYS[k] ? 1000 : 200;
+      var fromUrl = cleanAttrValue(params.get(k), max);
+      var fromCookie = cookieFt ? cleanAttrValue(cookieFt[k], max) : null;
+      out[k] = fromUrl || fromCookie || null;
+    });
+    return out;
+  }
+
+  // ── Phone validation: exactly 10 US digits after stripping formatting,
+  // optionally with a leading country code 1. ──
+  function normalizePhone(raw) {
+    var digits = (raw || '').replace(/\D/g, '');
+    if (digits.length === 11 && digits.charAt(0) === '1') digits = digits.slice(1);
+    return digits;
+  }
+  function isValidUsPhone(raw) {
+    return normalizePhone(raw).length === 10;
+  }
+
+  // ── State ──
+  var leadId = null;
+
+  // ── Step 1: contact info -> immediate leads insert ──
+  var step1Form = document.getElementById('step1Form');
+  var step1Submit = document.getElementById('step1Submit');
+
+  step1Form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    fieldError('routerNameError', '');
+    fieldError('routerEmailError', '');
+    fieldError('routerPhoneError', '');
+    routerError.classList.remove('show');
+
+    var name = document.getElementById('routerName').value.trim();
+    var email = document.getElementById('routerEmail').value.trim();
+    var phoneRaw = document.getElementById('routerPhone').value.trim();
+
+    var hasError = false;
+    if (!name) { fieldError('routerNameError', 'Please enter your name.'); hasError = true; }
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { fieldError('routerEmailError', 'Please enter a valid email address.'); hasError = true; }
+    // Negative control (closes-on a): empty (or otherwise invalid) phone
+    // blocks Step 1 -- no leads row is inserted and Step 2 never shows.
+    if (!phoneRaw || !isValidUsPhone(phoneRaw)) { fieldError('routerPhoneError', 'Please enter a valid 10-digit US phone number.'); hasError = true; }
+    if (hasError) return;
+
+    if (!sb) { showError('Something went wrong loading the form. Please refresh and try again.'); return; }
+
+    step1Submit.disabled = true;
+    step1Submit.textContent = 'Please wait…';
+
+    // Client-generated id (crypto.randomUUID): leads has no anon SELECT
+    // policy (confirmed live, 2026-09-16 -- only "Allow authenticated
+    // reads"), so `.insert().select()` could never read the DB-generated
+    // default back (same class of problem partner-re.html's own comment
+    // describes for referral_agents/register_partner). Generating the id
+    // client-side and passing it explicitly sidesteps that entirely: no
+    // RPC round-trip needed just to learn the row's own id.
+    leadId = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : (
+      'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+        var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+      })
+    );
+
+    var attr = collectAttribution();
+    var phoneDigits = normalizePhone(phoneRaw);
+
+    sb.from('leads').insert({
+      id: leadId,
+      name: name,
+      email: email,
+      phone: phoneDigits,
+      source: 'router',
+      utm_source: attr.utm_source,
+      utm_medium: attr.utm_medium,
+      utm_campaign: attr.utm_campaign,
+      utm_content: attr.utm_content,
+      utm_term: attr.utm_term,
+      fbclid: attr.fbclid,
+      gclid: attr.gclid
+    }).then(function (res) {
+      step1Submit.disabled = false;
+      step1Submit.textContent = 'Continue';
+      if (res && res.error) {
+        console.error('[router] leads insert failed:', res.error);
+        showError('Something went wrong saving your info. Please try again.');
+        return;
+      }
+      // GA4 — no PII, per #1994 item 4.
+      try { gtag('event', 'router_contact_submitted'); } catch (e) {}
+      // Meta Lead — same bare call as contractor-join.html:376's precedent,
+      // no PII payload.
+      try { fbq('track', 'Lead'); } catch (e) {}
+      showStep(2);
+    }).catch(function (err) {
+      step1Submit.disabled = false;
+      step1Submit.textContent = 'Continue';
+      console.error('[router] leads insert threw:', err);
+      showError('Something went wrong saving your info. Please try again.');
+    });
+  });
+
+  // ── Step 2: "I am a" ──
+  var ROLE_DESTINATIONS = {
+    homeowner: 'https://app.otterquote.com/get-started',
+    contractor: 'contractor-join.html'
+  };
+
+  document.querySelectorAll('#step2 .role-option').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var role = btn.getAttribute('data-router-role');
+      if (!sb || !leadId) { showError('Something went wrong. Please refresh and start over.'); return; }
+
+      sb.rpc('set_lead_role', { p_lead_id: leadId, p_role: role }).then(function (res) {
+        if (res && res.error) console.error('[router] set_lead_role failed:', res.error);
+        try { gtag('event', 'router_role_selected', { role: role }); } catch (e) {}
+        if (role === 'referral_partner') {
+          showStep('2a');
+          return;
+        }
+        redirectTo(ROLE_DESTINATIONS[role]);
+      }).catch(function (err) {
+        console.error('[router] set_lead_role threw:', err);
+        // gh-1994: the role write failing must never strand a visitor on
+        // the router -- proceed to the destination regardless (it can still
+        // collect their info itself; the leads row already exists from
+        // Step 1 either way, closes-on control (c)).
+        try { gtag('event', 'router_role_selected', { role: role }); } catch (e) {}
+        if (role === 'referral_partner') { showStep('2a'); return; }
+        redirectTo(ROLE_DESTINATIONS[role]);
+      });
+    });
+  });
+
+  document.getElementById('backTo1').addEventListener('click', function () { showStep(1); });
+  document.getElementById('backTo2').addEventListener('click', function () { showStep(2); });
+
+  // ── Step 2a: partner industry — labels from js/agent-types.js
+  // (AgentTypes.CHOOSER_LABELS), destinations are this router's own map
+  // (not a duplicate label map, so tools/agent_type_labels_check.py's CI
+  // check is unaffected). ──
+  var PARTNER_INDUSTRY_DESTINATIONS = {
+    re_agent: 'partner-re.html',
+    insurance_agent: 'partner-insurance.html',
+    home_inspector: 'partner-inspectors.html',
+    adjuster: 'partner-adjusters.html',
+    other: 'partner-other.html'
+  };
+  var PARTNER_INDUSTRY_ORDER = ['re_agent', 'insurance_agent', 'home_inspector', 'adjuster', 'other'];
+
+  (function renderPartnerIndustries() {
+    var wrap = document.getElementById('partnerIndustryOptions');
+    var labels = (window.AgentTypes && window.AgentTypes.CHOOSER_LABELS) || {};
+    PARTNER_INDUSTRY_ORDER.forEach(function (code) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'role-option';
+      btn.setAttribute('data-industry', code);
+      btn.innerHTML = (labels[code] || code) + ' <span class="role-arrow">→</span>';
+      btn.addEventListener('click', function () { selectPartnerIndustry(code); });
+      wrap.appendChild(btn);
+    });
+  })();
+
+  function selectPartnerIndustry(industry) {
+    if (!sb || !leadId) { showError('Something went wrong. Please refresh and start over.'); return; }
+    sb.rpc('set_lead_role', { p_lead_id: leadId, p_role: 'referral_partner', p_partner_industry: industry }).then(function (res) {
+      if (res && res.error) console.error('[router] set_lead_role (industry) failed:', res.error);
+      try { gtag('event', 'router_partner_industry', { industry: industry }); } catch (e) {}
+      redirectTo(PARTNER_INDUSTRY_DESTINATIONS[industry]);
+    }).catch(function (err) {
+      console.error('[router] set_lead_role (industry) threw:', err);
+      try { gtag('event', 'router_partner_industry', { industry: industry }); } catch (e) {}
+      redirectTo(PARTNER_INDUSTRY_DESTINATIONS[industry]);
+    });
+  }
+
+  // ── Step 3: redirect with ?lead=<uuid> ONLY -- no email/phone/name in the
+  // query string (closes-on control (b)). ──
+  function redirectTo(baseUrl) {
+    showStep(3);
+    var sep = baseUrl.indexOf('?') === -1 ? '?' : '&';
+    var dest = baseUrl + sep + 'lead=' + encodeURIComponent(leadId);
+    window.location.href = dest;
+  }
+})();
+</script>
+
+</body>
+</html>

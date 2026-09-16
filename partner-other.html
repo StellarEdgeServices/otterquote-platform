@@ -1373,5 +1373,45 @@ function toggleFaq(btn) {
 }
     </script>
 
+<!-- gh-1994: router prefill -- reads ?lead=<uuid> (no PII in the URL) set by
+     otterquote.com/start.html and fills name/email/phone via the
+     get_lead_prefill() SECURITY DEFINER RPC (see
+     supabase/migrations/20260916132127_gh1994_router_leads_columns.sql,
+     not applied by that PR). Uses its own local anon client rather than a
+     page-level `sb`/`window.sb`, since this page does not reliably have one
+     (js/supabase-client.js is not included here). Silent no-op when the
+     param is absent, the migration is not yet applied, or the lookup
+     returns no row (expired >60 min or unknown id) -- never blocks manual
+     entry, per #1994 item 3 ("prefill without PII in URLs"). -->
+<script>
+(function () {
+  try {
+    var params = new URLSearchParams(window.location.search);
+    var leadId = params.get('lead');
+    if (!leadId) return;
+    if (typeof supabase === 'undefined' || typeof CONFIG === 'undefined' ||
+        !CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_ANON) return;
+    var _sb = window.sb || supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
+    _sb.rpc('get_lead_prefill', { p_lead_id: leadId }).then(function (res) {
+      var row = res && res.data && res.data[0];
+      if (!row) return; // expired, unknown id, or migration not applied yet
+      var setVal = function (id, val) {
+        if (!val) return;
+        var el = document.getElementById(id);
+        if (el && !el.value) el.value = val;
+      };
+      var full = (row.name || '').trim();
+      var sp = full.indexOf(' ');
+      var firstName = sp === -1 ? full : full.slice(0, sp);
+      var lastName = sp === -1 ? '' : full.slice(sp + 1);
+      setVal('firstName', firstName);
+      setVal('lastName', lastName);
+      setVal('email', row.email);
+      setVal('phone', row.phone);
+    }).catch(function () { /* gh-1994 prefill is a nicety, never block signup */ });
+  } catch (e) { /* gh-1994 prefill is a nicety, never block signup */ }
+})();
+</script>
+
 </body>
 </html>
