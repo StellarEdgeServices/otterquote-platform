@@ -601,20 +601,30 @@ export default function TradeSelectorPage() {
 
           // #482: static-stack parity — property_address/property_state must land
           // on the claim (contractor cards + D-178 state gating read them).
-          // gh-1993: property_address is now the STREET LINE ONLY (not the
-          // full combined address) — property_city/property_zip are new
-          // additive columns (see the migration in this PR) that carry
-          // what used to be folded into property_address as free text.
-          // parsedAddress is the shared parse computed above (structured
-          // cs_signup fields, or parseAddress() fallback) — same value the
-          // profiles upsert above just used, so the two write sites cannot
-          // drift out of sync with each other.
+          // gh-1993 REVIEW: FAIL (PR #1998 comment 5698654086, B1/B2) +
+          // CEO RULING (comment 5698876771): property_address STAYS the full
+          // combined line ("street, city, ST zip"), not the street line
+          // alone — notify-contractors, check-siding-design-completion, the
+          // contractor opportunities card (D-074 city-before-street-reveal),
+          // agreement_requested email/SMS, DocuSign customer_address and
+          // color-selection.html's ZIP extraction all parse this column
+          // expecting the combined shape. #1993's body said "street line for
+          // existing readers" — the ruling amends that: nothing in #1993
+          // asked to change what downstream readers get, only to split the
+          // INPUT. csSignup.address is already the combined line get-started
+          // built via fullAddress(street, city, state, zip) — using it
+          // directly here (instead of re-deriving from parsedAddress) means
+          // this column is byte-identical to what main wrote before this PR.
+          // property_city/property_zip are the two NEW additive columns
+          // (migration in this PR, already applied to production — see that
+          // file) that carry the split city/zip alongside the unchanged
+          // combined property_address.
           const claimPayload: Record<string, unknown> = {
             funding_type: fundingType,
             policy_type: policyType,
             trades: trades,
             job_type: jobType,
-            property_address: parsedAddress.street,
+            property_address: (csSignup.address as string) || null,
             property_city: parsedAddress.city,
             property_state: parsedAddress.state,
             property_zip: parsedAddress.zip,
@@ -634,40 +644,29 @@ export default function TradeSelectorPage() {
               referrer_updates_opt_out: csSignup.referrer_updates_opt_out,
             }),
           };
-          // gh-1993: property_city/property_zip are additive columns filed
-          // as a migration in THIS SAME PR but, per the PR contract, NOT
-          // applied here — the orchestrator applies after review. Until it
-          // does, PostgREST rejects the WHOLE insert/update on an unknown
-          // column (unlike a plain 400 on just that field), which would
-          // silently break claim creation for every homeowner on this page.
-          // claimPayloadPreMigration is the fallback shape (mirrors
-          // mark-loss-sheet-reviewed's PG_UNDEFINED_COLUMN handling for
-          // gh-1796): tried first is the full payload; on 42703
-          // (undefined_column) specifically, retry once with the two new
-          // keys stripped so property_address/property_state/trades/etc.
-          // still land. Any other error is left alone (not retried,
-          // not swallowed here — the outer catch below still applies).
-          const PG_UNDEFINED_COLUMN = '42703';
-          const { property_city: _omitCity, property_zip: _omitZip, ...claimPayloadPreMigration } = claimPayload;
-          void _omitCity;
-          void _omitZip;
+          // gh-1993 CEO RULING (comment 5698876771): property_city/
+          // property_zip are applied to production now (Tier 3A additive,
+          // verified present) — no pre-migration retry path. REVIEW: FAIL
+          // B3 was correct that the retry this PR previously had only
+          // matched 42703 (a SELECT-on-missing-column code) when PostgREST
+          // actually rejects an insert/update payload naming an unknown
+          // column with PGRST204, so the retry never would have fired
+          // anyway. Rather than fix the error code, the columns are simply
+          // live now, so there is no pre-migration window to guard and no
+          // dead retry path to carry.
 
           if (existingClaim) {
-            const { error: updateErr } = await supabase
+            await supabase
               .from('claims')
               .update(claimPayload)
               .eq('id', existingClaim.id);
-            if (updateErr?.code === PG_UNDEFINED_COLUMN) {
-              console.warn('[trade-selector] property_city/property_zip not present yet (gh-1993 migration pending) — retrying claim update without them');
-              await supabase.from('claims').update(claimPayloadPreMigration).eq('id', existingClaim.id);
-            }
             savedClaimId = existingClaim.id;
           } else {
             // gh-397/#689: stamp is_test on this React parity insert path —
             // PR #714 only fixed the COI-identity contractor insert, never
             // any claims insert. Predicate mirrors the CEO-approved
             // contractor check (#543 / test-exclusion.ts).
-            let { data: insertedClaim, error: insertErr } = await supabase
+            const { data: insertedClaim } = await supabase
               .from('claims')
               .insert({
                 user_id: user.id,
@@ -677,19 +676,6 @@ export default function TradeSelectorPage() {
               })
               .select('id')
               .single();
-            if (insertErr?.code === PG_UNDEFINED_COLUMN) {
-              console.warn('[trade-selector] property_city/property_zip not present yet (gh-1993 migration pending) — retrying claim insert without them');
-              ({ data: insertedClaim } = await supabase
-                .from('claims')
-                .insert({
-                  user_id: user.id,
-                  ...claimPayloadPreMigration,
-                  is_test: isTestEmail(user.email),
-                  created_at: new Date().toISOString(),
-                })
-                .select('id')
-                .single());
-            }
             // gh-1276: capture the new row's id — previously never captured
             // here either (same gap as the static trade-selector.html this
             // file keeps parity with), so repair-intake.html's

@@ -1045,21 +1045,21 @@ function renderBusinessInfo(){
       <div class="field">
         <label for="addressStreet">Business address</label>
         <div class="helper">The address customers see on Google Maps and directories.</div>
-        <input type="text" id="addressStreet" placeholder="123 Main St" value="${escapeAttr(b.addressStreet)}">
+        <input type="text" id="addressStreet" autocomplete="address-line1" placeholder="123 Main St" value="${escapeAttr(b.addressStreet)}">
       </div>
       <div class="field">
         <div class="field-row">
           <div>
             <label for="addressCity">City</label>
-            <input type="text" id="addressCity" placeholder="Springfield" value="${escapeAttr(b.addressCity)}">
+            <input type="text" id="addressCity" autocomplete="address-level2" placeholder="Springfield" value="${escapeAttr(b.addressCity)}">
           </div>
           <div>
             <label for="bizState">State</label>
-            <select id="bizState">${stateOptionsHtml(b.addressState)}</select>
+            <select id="bizState" autocomplete="address-level1">${stateOptionsHtml(b.addressState)}</select>
           </div>
           <div>
             <label for="addressZip">ZIP</label>
-            <input type="text" id="addressZip" inputmode="numeric" maxlength="5" placeholder="62701" value="${escapeAttr(b.addressZip)}">
+            <input type="text" id="addressZip" inputmode="numeric" pattern="\d{5}" maxlength="5" autocomplete="postal-code" placeholder="62701" value="${escapeAttr(b.addressZip)}">
           </div>
         </div>
       </div>

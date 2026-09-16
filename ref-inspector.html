@@ -529,6 +529,17 @@
     grid-template-columns: 1fr;
   }
 
+  /* REVIEW: FAIL B4 (PR #1998 comment 5698654086) — `.form-row.address-row`
+     (2fr 1fr 1fr, defined earlier in this file) has higher specificity than
+     the plain `.form-row` rule right above, so it kept winning inside this
+     mobile query regardless of source order, forcing a 3-column City/State/
+     ZIP grid onto a 375px screen (measured scrollW=739 vs the single-box
+     baseline's 375). Same selector specificity here, later in the cascade,
+     collapses it to one column like every other field on this page. */
+  .form-row.address-row {
+    grid-template-columns: 1fr;
+  }
+
   .ref-badge {
     flex-direction: column;
     text-align: center;
