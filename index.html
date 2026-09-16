@@ -697,6 +697,52 @@
   .trust-badges-row { gap: var(--sp-3); }
   .trust-badge { min-width: 120px; padding: var(--sp-4); }
 }
+
+/* gh-1990: on very small phones the hero's decorative stack (logo, 3-step
+   callout, subtitle) pushes "Get My Free Quotes" below the first screen.
+   Reflow order only (no copy added/removed, href unchanged, desktop
+   untouched by the 768px query above): shrink the illustration/callout and
+   move the CTA up to sit right under the headline. */
+@media (max-width: 480px) {
+  .hero { padding: var(--sp-8) 0 var(--sp-8); }
+  .hero .container {
+    display: flex;
+    flex-direction: column;
+  }
+  .hero-logo {
+    height: 44px;
+    margin: 0 auto var(--sp-2);
+    order: 1;
+  }
+  .hero h1 {
+    order: 2;
+    font-size: 1.375rem;
+    line-height: 1.2;
+    margin: 0 auto var(--sp-3);
+  }
+  .hero-cta {
+    order: 3;
+    margin: 0 auto var(--sp-3);
+    gap: var(--sp-2);
+  }
+  .hero-cta .btn-lg {
+    font-size: 0.95rem;
+    padding: var(--sp-3) var(--sp-4);
+  }
+  .hero-callout-block {
+    order: 4;
+    margin: 0 auto var(--sp-4);
+  }
+  .hero-subtitle {
+    order: 5;
+    margin: 0 auto var(--sp-4);
+    font-size: 0.95rem;
+  }
+  .hero-trust {
+    order: 6;
+    margin-top: var(--sp-4);
+  }
+}
 </style>
 </head>
 <body>
