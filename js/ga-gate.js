@@ -75,6 +75,21 @@
 // (an email address) shown to the very visitor Clarity is recording, not
 // just an anonymous one. It is removed below and from
 // scripts/check-clarity-page-gate.py's SESSION_AWARE_PUBLIC.
+//
+// gh-1981 fix round 1 (PR #1996 review, comment 5698663751; Ben's ruling,
+// comment 5698879235): the #1981 SESSION_AWARE_PUBLIC re-audit above missed
+// '/partner-profile'. Its reason claimed Auth.getUser() "resolves only the
+// signed-in partner's own PUBLIC referral code ... rendered as a public
+// referral link". Runtime measurement showed otherwise: with no ?code= in
+// the URL, a signed-in partner's own full profile card -- name, company,
+// service area, photo, bio -- is rendered via card.innerHTML
+// (partner-profile.html:238-247, renderProfile() at :209), and Clarity
+// loaded (1 request) while it did. Ben's ruling: this counts as account
+// data ("a partner's own identity rendered because they are signed in"),
+// removal is the R-134-protective shape, and a bare ?code= profile view has
+// no measurement value to Sloane's funnel -- a conditional ?code=-only skip
+// was considered and rejected. Removed below and from
+// scripts/check-clarity-page-gate.py's SESSION_AWARE_PUBLIC.
 (function () {
   var ALLOWED_HOSTS = ['otterquote.com', 'www.otterquote.com', 'app.otterquote.com'];
   var MEASUREMENT_ID = 'G-D1Y1TLGEFY';
@@ -158,7 +173,6 @@
     '/partner-insurance-why',
     '/partner-login',
     '/partner-other',
-    '/partner-profile',
     '/partner-re',
     '/privacy',
     '/project-info-acv',

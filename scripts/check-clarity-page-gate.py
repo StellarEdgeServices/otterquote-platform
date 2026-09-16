@@ -366,11 +366,6 @@ SESSION_AWARE_PUBLIC: dict[str, str] = {
     "/partner-other": "hasPartnerSession() only redirects an ALREADY-signed-in "
                       "partner to partner-dashboard.html; same pattern as "
                       "partner-adjusters.html (partner-other.html:1064).",
-    "/partner-profile": "Auth.getUser() resolves only the signed-in partner's own "
-                        "PUBLIC referral code (referral_agents.unique_code), which "
-                        "the page then renders as a public referral link; no "
-                        "private data is shown to an anonymous visitor "
-                        "(partner-profile.html:239-245).",
     "/partner-re": "hasPartnerSession() only redirects an ALREADY-signed-in partner "
                    "to partner-dashboard.html; same pattern as "
                    "partner-adjusters.html (partner-re.html:1341).",
@@ -995,16 +990,13 @@ def run_self_test() -> tuple[int, str]:
     # exception ("only redirects an already-signed-in visitor") that was
     # wrong about what login.html actually does -- it renders the signed-in
     # visitor's own email into the DOM (routeOrExplainNonHomeowner(),
-    # login.html) instead of only bouncing them, unlike every other entry in
-    # SESSION_AWARE_PUBLIC (re-audited: none of the other 11 render session
-    # data -- each is a bare window.location redirect, or in
-    # partner-profile.html's case a resolved PUBLIC referral code). '/login'
-    # is removed from both js/ga-gate.js's CLARITY_ALLOWED_PATHS and this
-    # file's SESSION_AWARE_PUBLIC. Unlike the scenarios above, this checks
-    # the REAL production gate file and the REAL SESSION_AWARE_PUBLIC dict
-    # (not a synthetic fixture) -- the point is to fail --self-test (and so
-    # fail CI, via check-clarity-page-gate.test.py) if either is ever
-    # silently reverted.
+    # login.html) instead of only bouncing them. '/login' is removed from
+    # both js/ga-gate.js's CLARITY_ALLOWED_PATHS and this file's
+    # SESSION_AWARE_PUBLIC. Unlike the scenarios above, this checks the REAL
+    # production gate file and the REAL SESSION_AWARE_PUBLIC dict (not a
+    # synthetic fixture) -- the point is to fail --self-test (and so fail
+    # CI, via check-clarity-page-gate.test.py) if either is ever silently
+    # reverted.
     real_gate_src = (REPO / "js" / "ga-gate.js").read_text(encoding="utf-8")
     real_entries, _, _ = analyze_gate_file(real_gate_src)
     r.check(
@@ -1015,6 +1007,30 @@ def run_self_test() -> tuple[int, str]:
     r.check(
         "gh1981_login_not_in_real_session_aware_public",
         "/login" not in SESSION_AWARE_PUBLIC,
+        f"SESSION_AWARE_PUBLIC keys: {sorted(SESSION_AWARE_PUBLIC)}",
+    )
+
+    # gh-1981 fix round 1 (PR #1996 review, comment 5698663751; Ben's ruling,
+    # comment 5698879235): the re-audit above initially missed
+    # '/partner-profile'. Its SESSION_AWARE_PUBLIC reason claimed
+    # Auth.getUser() "resolves only the signed-in partner's own PUBLIC
+    # referral code ... rendered as a public referral link" -- but with no
+    # ?code= in the URL, the signed-in partner's own full profile card
+    # (name, company, service area, photo, bio) is rendered via
+    # card.innerHTML (partner-profile.html:238-247, renderProfile() at
+    # :209), and Clarity loaded while it did. Ben ruled this counts as
+    # account data and ordered plain removal (a conditional ?code=-only skip
+    # was considered and rejected). Same real-file/real-dict check as the
+    # '/login' pair above, same reason: fail --self-test (and CI) if
+    # '/partner-profile' is ever silently reverted into either.
+    r.check(
+        "gh1981_partner_profile_not_on_real_clarity_allowed_paths",
+        real_entries is not None and "/partner-profile" not in real_entries,
+        f"js/ga-gate.js CLARITY_ALLOWED_PATHS entries: {real_entries}",
+    )
+    r.check(
+        "gh1981_partner_profile_not_in_real_session_aware_public",
+        "/partner-profile" not in SESSION_AWARE_PUBLIC,
         f"SESSION_AWARE_PUBLIC keys: {sorted(SESSION_AWARE_PUBLIC)}",
     )
 
