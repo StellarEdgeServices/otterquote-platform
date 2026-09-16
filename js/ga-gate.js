@@ -291,7 +291,13 @@
     '/partner-login.html',
     '/partner-insurance.html'
   ];
-  if (!urlHasAuthToken && PKCE_CALLBACK_PATHS.indexOf(window.location.pathname) !== -1) {
+  // gh-1939 review finding 4: compare NORMALISED paths -- /dashboard is now
+  // allowlisted, and its Pretty-URL twin must not skip this leg.
+  var pkceNormalised = [];
+  for (var pk = 0; pk < PKCE_CALLBACK_PATHS.length; pk++) {
+    pkceNormalised.push(normalizeClarityPath(PKCE_CALLBACK_PATHS[pk]));
+  }
+  if (!urlHasAuthToken && pkceNormalised.indexOf(normalizeClarityPath(window.location.pathname)) !== -1) {
     try {
       urlHasAuthToken = new URLSearchParams(window.location.search).has('code');
     } catch (e) {
@@ -304,6 +310,39 @@
   if (urlHasAuthToken) {
     return; // a live Supabase credential is in this URL; Clarity never loads.
   }
+
+  // gh-1939 review finding 1: data-clarity-mask hides a field in replay, but
+  // Clarity's fraud checksum still uploads a 28-bit hash of any typed value of
+  // 5+ characters at the Text/TextImage privacy levels -- brute-forceable for
+  // a phone number or ZIP. Clarity drops a field to its Exclude level (value
+  // AND checksum blanked) when an attribute value contains "secret", so every
+  // input/textarea/select on any page Clarity loads on is tagged, including
+  // ones rendered later. The observer is registered here, before the vendor
+  // snippet, so it runs ahead of Clarity's own on every mutation batch.
+  (function () {
+    var SEL = 'input, textarea, select';
+    function tag(el) {
+      if (el && el.setAttribute && !el.hasAttribute('data-oq-privacy')) {
+        el.setAttribute('data-oq-privacy', 'secret');
+      }
+    }
+    function tagAll(root) {
+      if (!root || root.nodeType !== 1) return;
+      if (root.matches && root.matches(SEL)) tag(root);
+      var nodes = root.querySelectorAll ? root.querySelectorAll(SEL) : [];
+      for (var i = 0; i < nodes.length; i++) tag(nodes[i]);
+    }
+    try {
+      new MutationObserver(function (muts) {
+        for (var m = 0; m < muts.length; m++) {
+          var added = muts[m].addedNodes;
+          for (var n = 0; n < added.length; n++) tagAll(added[n]);
+        }
+      }).observe(document.documentElement, { childList: true, subtree: true });
+    } catch (e) { /* no MutationObserver -- DOMContentLoaded pass below still runs */ }
+    tagAll(document.documentElement);
+    document.addEventListener('DOMContentLoaded', function () { tagAll(document.documentElement); });
+  })();
 
   // Microsoft Clarity -- the vendor snippet, verbatim apart from living
   // behind the allowlist checks above. Reached only on a production host,

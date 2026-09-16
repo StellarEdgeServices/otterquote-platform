@@ -111,6 +111,7 @@ USAGE
 """
 from __future__ import annotations
 import pathlib
+import html.parser
 import re
 import sys
 import tempfile
@@ -413,12 +414,48 @@ RULED_AUTHENTICATED_ALLOWED: dict[str, str] = {
     "/repair-intake": "repair intake + photo upload -- Dustin ruling #1939 c.5691693161",
 }
 
-BODY_MASK_RE = re.compile(r"<body\b[^>]*\bdata-clarity-mask\s*=\s*[\'\"]true[\'\"]", re.I)
+class _BodyMaskParser(html.parser.HTMLParser):
+    """gh-1939 review finding 2: find the FIRST real <body> start tag -- not a
+    string inside <script>, not inside <template>/<noscript>, not a custom
+    element like <body-x> -- and every data-clarity-unmask anywhere."""
+
+    RAW_SKIP = {"script", "style", "template", "noscript"}
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.skip_depth = 0
+        self.body_attrs: dict[str, str] | None = None
+        self.unmask_tags: list[str] = []
+
+    def handle_starttag(self, tag, attrs):
+        a = {k.lower(): (v or "") for k, v in attrs}
+        if "data-clarity-unmask" in a:
+            self.unmask_tags.append(tag)
+        if tag in self.RAW_SKIP:
+            self.skip_depth += 1
+            return
+        if tag == "body" and self.skip_depth == 0 and self.body_attrs is None:
+            self.body_attrs = a
+
+    def handle_endtag(self, tag):
+        if tag in self.RAW_SKIP and self.skip_depth > 0:
+            self.skip_depth -= 1
 
 
-def body_is_masked(path: pathlib.Path) -> bool:
-    raw = strip_html_comments(path.read_text(encoding="utf-8", errors="replace"))
-    return BODY_MASK_RE.search(raw) is not None
+def body_mask_problem(path: pathlib.Path) -> str | None:
+    """None when the page's real <body> carries data-clarity-mask="true" and
+    nothing on the page carries data-clarity-unmask; else the reason."""
+    raw = path.read_text(encoding="utf-8", errors="replace")
+    p = _BodyMaskParser()
+    p.feed(raw)
+    p.close()
+    if p.body_attrs is None:
+        return "no real <body> start tag found"
+    if p.body_attrs.get("data-clarity-mask", "").strip().lower() != "true":
+        return "its real <body> lacks data-clarity-mask=\"true\""
+    if p.unmask_tags:
+        return f"it carries data-clarity-unmask on <{p.unmask_tags[0]}>, re-exposing a subtree"
+    return None
 
 
 def classify(path: pathlib.Path) -> tuple[str, list[tuple[str, int]], list[tuple[str, int]]]:
@@ -661,13 +698,14 @@ def main_check(root: pathlib.Path, ruled: dict[str, str] | None = None) -> tuple
         if cls in ("AUTH", "SESSION") and norm in allowlist_set and norm in ruled:
             # gh-1939: Dustin-ruled authenticated page -- allowed ONLY with a
             # masked <body>; the row is re-labelled so the table shows it.
-            if body_is_masked(path):
+            problem = body_mask_problem(path)
+            if problem is None:
                 rows[-1] = (rel, norm, cls + "-RULED", auth_hits, session_hits)
             else:
                 violations.append(
                     f"{rel}: {norm!r} is a Dustin-ruled authenticated Clarity page "
-                    f"(RULED_AUTHENTICATED_ALLOWED) but its <body> lacks "
-                    f"data-clarity-mask=\"true\" -- personal fields would be recorded unmasked"
+                    f"(RULED_AUTHENTICATED_ALLOWED) but {problem} -- personal fields "
+                    f"would be recorded unmasked"
                 )
         elif cls == "AUTH" and norm in allowlist_set:
             violations.append(
@@ -941,6 +979,22 @@ def run_self_test() -> tuple[int, str]:
         1,
         ruled={"/admin": "fixture ruling"},
     )
+
+    decoys = {
+        "decoy_in_script_string": _ADMIN_HTML.replace("Auth.requireAuth('admin');", "Auth.requireAuth('admin'); var d = '<body data-clarity-mask=\"true\">';"),
+        "decoy_in_template": _ADMIN_HTML.replace("<body>", '<template><body data-clarity-mask="true"></template><body>'),
+        "decoy_in_noscript_head": _ADMIN_HTML.replace("</head>", '<noscript><body data-clarity-mask="true"></noscript></head>'),
+        "decoy_custom_element": _ADMIN_HTML.replace("<body>", '<body-x data-clarity-mask="true"></body-x><body>'),
+        "masked_body_with_unmask_child": masked_admin.replace("<script>", '<div data-clarity-unmask="true">x</div><script>'),
+    }
+    for dname, dhtml in decoys.items():
+        r.run_scenario(
+            f"ruled_auth_page_{dname}_exit_1",
+            _gate_js(extra_allow="    ,'/admin'\n"),
+            {"admin.html": dhtml},
+            1,
+            ruled={"/admin": "fixture ruling"},
+        )
 
     output = "\n".join(r.results) + "\n"
     return (1 if r.failed else 0), output

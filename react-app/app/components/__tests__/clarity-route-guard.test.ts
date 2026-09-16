@@ -119,7 +119,7 @@ function findNavHits(files: string[]): NavHit[] {
 
     const segments = rel.split(path.sep);
     const allowed = extractClarityAllowedPaths(readGA4GateSource());
-    const isUnderGetStarted = allowed.some(p => segments.includes(p.slice(1)));
+    const isUnderAllowedRoute = allowed.some(p => segments.includes(p.slice(1)));
 
     for (const [re, kind, targetGroup] of [
       [NAV_CALL_RE, "router-nav", 2] as const,
@@ -134,7 +134,7 @@ function findNavHits(files: string[]): NavHit[] {
         const targetsGetStarted = allowed.some(
           p => capturedTarget === p || capturedTarget.startsWith(p + "/") || capturedTarget.startsWith(p + "?")
         );
-        const leavesGetStarted = isUnderGetStarted;
+        const leavesGetStarted = isUnderAllowedRoute;
 
         if (targetsGetStarted || leavesGetStarted) {
           hits.push({
@@ -159,16 +159,23 @@ describe("gh-1939 R-1: Clarity route-guard regression", () => {
   it("every AUTHENTICATED allowlisted route masks its page root (data-clarity-mask=\"true\")", () => {
     // /get-started is unauthenticated (Clarity project masking covers its
     // inputs); every other allowed route is authenticated and must mask.
-    const AUTHENTICATED_ALLOWED: Record<string, string> = {
-      "/trade-selector": "trade-selector/page.tsx",
+    // path -> [page file, regex the MASKED ROOT element itself must match]
+    const AUTHENTICATED_ALLOWED: Record<string, [string, RegExp]> = {
+      "/trade-selector": ["trade-selector/page.tsx", /<div className="ts-page"[^>]*\sdata-clarity-mask="true"/],
     };
     const paths = extractClarityAllowedPaths(readGA4GateSource());
     for (const p of paths) {
       if (p === "/get-started") continue;
-      const rel = AUTHENTICATED_ALLOWED[p];
-      expect(rel, `no reviewed page mapping for allowlisted path ${p}`).toBeDefined();
+      const entry = AUTHENTICATED_ALLOWED[p];
+      expect(entry, `no reviewed page mapping for allowlisted path ${p}`).toBeDefined();
+      const [rel, rootRe] = entry;
       const src = fs.readFileSync(path.join(APP_ROOT, rel), "utf8");
-      expect(src).toMatch(/data-clarity-mask="true"/);
+      expect(src).toMatch(rootRe);
+      // an unmask anywhere under the route would re-expose a subtree
+      const routeDir = path.join(APP_ROOT, p.slice(1));
+      for (const f of walkTsxFiles(routeDir)) {
+        expect(fs.readFileSync(f, "utf8"), `${f} unmasks a subtree`).not.toMatch(/data-clarity-unmask/);
+      }
     }
   });
 

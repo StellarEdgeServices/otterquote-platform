@@ -136,6 +136,35 @@ function stopClarity(): void {
 
 const CLARITY_STOP_POLL_MS = 150;
 
+// gh-1939 review finding 1 -- twin of js/ga-gate.js: data-clarity-mask hides
+// a field in replay but Clarity's fraud checksum still uploads a 28-bit hash
+// of typed values. An attribute value containing "secret" drops the field to
+// Clarity's Exclude level (value and checksum blanked). Tag every input on
+// any route Clarity loads on, including later renders; started BEFORE the
+// clarity-init script renders so this observer runs ahead of Clarity's.
+let clarityInputExclusionStarted = false;
+export function startClarityInputExclusion(): void {
+  if (clarityInputExclusionStarted || typeof document === "undefined") return;
+  clarityInputExclusionStarted = true;
+  const SEL = "input, textarea, select";
+  const tag = (el: Element) => {
+    if (!el.hasAttribute("data-oq-privacy")) el.setAttribute("data-oq-privacy", "secret");
+  };
+  const tagAll = (root: Node) => {
+    if (!(root instanceof Element)) return;
+    if (root.matches(SEL)) tag(root);
+    root.querySelectorAll(SEL).forEach(tag);
+  };
+  try {
+    new MutationObserver(muts => {
+      for (const m of muts) m.addedNodes.forEach(tagAll);
+    }).observe(document.documentElement, { childList: true, subtree: true });
+  } catch {
+    /* no MutationObserver -- initial pass below still runs */
+  }
+  tagAll(document.documentElement);
+}
+
 export function GA4Gate() {
   const pathname = usePathname();
   const [allowed, setAllowed] = useState(false);
@@ -168,6 +197,7 @@ export function GA4Gate() {
       // also does not carry a Supabase auth-fragment token. gtag behaviour
       // (above/below) is completely unaffected by this path check.
       const nextClarityAllowed = !hasAuthTokenInFragment && isClarityAllowedPath(pathname);
+      if (nextClarityAllowed) startClarityInputExclusion();
       setClarityAllowed(nextClarityAllowed);
 
       // gh-1939 R-1 fix: stop Clarity (and keep it stopped) the moment a
