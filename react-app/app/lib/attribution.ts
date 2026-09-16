@@ -19,7 +19,7 @@
 
 import {
   FT_COOKIE,
-  FT_PARAM_KEYS,
+  decodeFirstTouchParam,
   FT_STORAGE_KEY,
   buildFirstTouchCookie,
   deserializeFirstTouch,
@@ -75,41 +75,24 @@ export function readFirstTouch(): FirstTouch | null {
   return cookie || local;
 }
 
-/** Facebook / Instagram / Messenger in-app browsers (WebView user agents). */
-export function isMetaInAppBrowser(ua: string | null | undefined): boolean {
-  return /FBAN|FBAV|FB_IAB|FBIOS|Instagram|Messenger/i.test(ua || '');
-}
-
 /**
- * Google refuses OAuth inside embedded WebViews, so a Facebook/Instagram
- * in-app user who picks "Continue with Google" is told to reopen the page in
- * Safari/Chrome — a different cookie jar, where oq_ft does not exist. The only
- * thing that crosses that hop is the URL, so on /get-started inside a Meta
- * in-app browser we put the stored touch's tracked params back into the
- * address bar (history.replaceState, no navigation). "Open in browser" then
- * lands tagged and the server/client capture records it again.
- * Returns true when the URL was changed.
+ * Post-OAuth: if nothing is stored in this browser but the callback URL carries
+ * a first touch (`?ft=`, added to redirectTo by /get-started), store it here so
+ * recordFirstTouch() and /trade-selector see it. Covers the Facebook in-app
+ * browser -> Safari/Chrome hand-off forced by Google's WebView OAuth block.
  */
-export function retagUrlForInAppBrowser(ft: FirstTouch | null): boolean {
-  if (!isBrowser() || !ft) return false;
+export function adoptFirstTouchFromParam(raw: string | null | undefined): FirstTouch | null {
+  if (!isBrowser()) return null;
   try {
-    if (!isMetaInAppBrowser(navigator.userAgent)) return false;
-    if (!window.location.pathname.startsWith('/get-started')) return false;
-    const url = new URL(window.location.href);
-    if (FT_PARAM_KEYS.some((k) => url.searchParams.get(k))) return false;
-    let changed = false;
-    for (const k of FT_PARAM_KEYS) {
-      const v = ft[k];
-      if (v) {
-        url.searchParams.set(k, v);
-        changed = true;
-      }
-    }
-    if (!changed) return false;
-    window.history.replaceState(window.history.state, '', url.toString());
-    return true;
+    const existing = readFirstTouch();
+    if (existing) return existing;
+    const ft = decodeFirstTouchParam(raw);
+    if (!ft) return null;
+    writeLocal(ft);
+    writeCookie(ft);
+    return ft;
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -122,7 +105,6 @@ export function captureFirstTouch(): FirstTouch | null {
     if (existing) {
       if (!local) writeLocal(existing);
       if (!cookie) writeCookie(existing);
-      retagUrlForInAppBrowser(existing);
       return existing;
     }
     const ft = parseFirstTouch(window.location.href, document.referrer);

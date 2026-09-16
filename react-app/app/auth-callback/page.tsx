@@ -31,7 +31,7 @@ import type { Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 
 import { readReferralIds, writeReferralIds } from '@/lib/cookie-storage';
-import { recordFirstTouch } from '@/lib/attribution';
+import { adoptFirstTouchFromParam, recordFirstTouch } from '@/lib/attribution';
 // ─── HubSpot — D-189, fired post-auth (#405) ─────────────────────────────────
 
 /** Same payload shape create-hubspot-contact's homeowner mode always expected. */
@@ -106,6 +106,9 @@ export default function AuthCallbackPage() {
 
   useEffect(() => {
     // Capture hash state before Supabase's onAuthStateChange processes and clears it
+    // gh-1983: adopt a first touch carried on ?ft= (OAuth redirectTo) before
+    // Supabase rewrites the URL; no-op when this browser already has one.
+    adoptFirstTouchFromParam(new URLSearchParams(window.location.search).get('ft'));
     const errorCode = detectHashError();
     const hasTokens = urlHasAuthTokens();
 

@@ -101,6 +101,7 @@ import { useAuthReady } from '@/hooks/use-auth-ready';
 import { supabase } from '@/lib/supabase';
 import { readReferralIds, writeReferralIds } from '@/lib/cookie-storage';
 import { readFirstTouch } from '@/lib/attribution';
+import { withFirstTouchParam } from '@/lib/attribution-core';
 import { formatPhoneValue, isValidEmail } from './utils';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -962,7 +963,9 @@ export default function GetStartedPage() {
 
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
         provider: 'google',
-        options: { redirectTo: GOOGLE_OAUTH_REDIRECT },
+        // gh-1983: carry the first touch in the callback URL — survives the
+        // FB/IG in-app browser -> Safari/Chrome switch Google's WebView block forces.
+        options: { redirectTo: withFirstTouchParam(GOOGLE_OAUTH_REDIRECT, readFirstTouch()) },
       });
       if (oauthError) throw oauthError;
       // On success the browser navigates to Google; nothing else to do.

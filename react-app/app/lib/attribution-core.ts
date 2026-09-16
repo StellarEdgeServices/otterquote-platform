@@ -195,3 +195,50 @@ export function firstTouchSetCookie(
   if (!ft) return null;
   return buildFirstTouchCookie(ft, u.hostname, u.protocol === 'https:');
 }
+
+/** Query-string key used to carry a first touch across a browser switch. */
+export const FT_URL_PARAM = 'ft';
+
+function toBase64Url(ascii: string): string {
+  return btoa(ascii).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function fromBase64Url(b64u: string): string {
+  const b64 = b64u.replace(/-/g, '+').replace(/_/g, '/');
+  return atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4));
+}
+
+/**
+ * Encode a first touch for a URL (base64url JSON). Values are printable ASCII
+ * by construction (cleanValue), so btoa is safe.
+ */
+export function encodeFirstTouchParam(ft: FirstTouch): string {
+  return toBase64Url(serializeFirstTouch(ft));
+}
+
+/** Decode + validate an untrusted `ft` query value; null on anything malformed. */
+export function decodeFirstTouchParam(raw: string | null | undefined): FirstTouch | null {
+  if (!raw || raw.length > 4000 || !/^[A-Za-z0-9_-]+$/.test(raw)) return null;
+  try {
+    return deserializeFirstTouch(fromBase64Url(raw));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Append the stored first touch to an OAuth redirectTo URL. Google refuses
+ * OAuth inside the Facebook/Instagram in-app WebView and the user finishes in
+ * Safari/Chrome — a different cookie jar — so the redirect URL is the only
+ * thing that reliably crosses. Returns the URL unchanged when there is no touch.
+ */
+export function withFirstTouchParam(redirectUrl: string, ft: FirstTouch | null): string {
+  if (!ft) return redirectUrl;
+  try {
+    const u = new URL(redirectUrl);
+    u.searchParams.set(FT_URL_PARAM, encodeFirstTouchParam(ft));
+    return u.toString();
+  } catch {
+    return redirectUrl;
+  }
+}

@@ -12,8 +12,11 @@ import {
   readCookieValue,
   cleanValue,
   FT_COOKIE,
+  withFirstTouchParam,
+  decodeFirstTouchParam,
+  encodeFirstTouchParam,
 } from '../attribution-core';
-import { captureFirstTouch, readFirstTouch, recordFirstTouch, isMetaInAppBrowser, retagUrlForInAppBrowser } from '../attribution';
+import { captureFirstTouch, readFirstTouch, recordFirstTouch, adoptFirstTouchFromParam } from '../attribution';
 
 const NOW = new Date('2026-09-16T03:00:00.000Z');
 
@@ -168,39 +171,36 @@ describe('recordFirstTouch', () => {
   });
 });
 
-describe('Meta in-app browser URL re-tag (OAuth hand-off to Safari/Chrome)', () => {
-  const FB_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 [FBAN/FBIOS;FBAV/450.0]';
-  const stored = { v: 1 as const, utm_source: 'fb', utm_campaign: 'test', fbclid: 'x', ts: NOW.toISOString() };
+describe('OAuth browser-switch carry (?ft= on redirectTo)', () => {
+  const ft = parseFirstTouch('https://app.otterquote.com/get-started?utm_source=fb&utm_campaign=test&fbclid=' + 'x'.repeat(500), null, NOW)!;
 
-  beforeEach(() => {
-    clearFirstTouch();
-    vi.restoreAllMocks();
+  beforeEach(() => clearFirstTouch());
+
+  it('round-trips through withFirstTouchParam / decodeFirstTouchParam and keeps intent', () => {
+    const url = withFirstTouchParam('https://app.otterquote.com/auth-callback?intent=homeowner', ft);
+    const u = new URL(url);
+    expect(u.searchParams.get('intent')).toBe('homeowner');
+    expect(decodeFirstTouchParam(u.searchParams.get('ft'))).toEqual(ft);
   });
 
-  it('detects FB/Instagram user agents and not ordinary Safari', () => {
-    expect(isMetaInAppBrowser(FB_UA)).toBe(true);
-    expect(isMetaInAppBrowser('Mozilla/5.0 (iPhone) Instagram 300.0')).toBe(true);
-    expect(isMetaInAppBrowser('Mozilla/5.0 (iPhone) Version/17.0 Mobile Safari/604.1')).toBe(false);
+  it('NEGATIVE CONTROL: no touch -> redirect URL unchanged; junk ft -> null', () => {
+    expect(withFirstTouchParam('https://app.otterquote.com/auth-callback?intent=homeowner', null)).toBe(
+      'https://app.otterquote.com/auth-callback?intent=homeowner',
+    );
+    expect(decodeFirstTouchParam('%%%')).toBeNull();
+    expect(decodeFirstTouchParam(btoa('{"utm_source":"fb"}'))).toBeNull();
+    expect(decodeFirstTouchParam(null)).toBeNull();
   });
 
-  it('puts stored params back on an untagged /get-started inside the FB in-app browser', () => {
-    vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue(FB_UA);
-    window.history.replaceState({}, '', '/get-started?track=insurance');
-    expect(retagUrlForInAppBrowser(stored)).toBe(true);
-    const url = new URL(window.location.href);
-    expect(url.searchParams.get('utm_source')).toBe('fb');
-    expect(url.searchParams.get('fbclid')).toBe('x');
-    expect(url.searchParams.get('track')).toBe('insurance');
+  it('adopts the param into an empty browser (the Safari side of the hand-off)', () => {
+    const adopted = adoptFirstTouchFromParam(encodeFirstTouchParam(ft));
+    expect(adopted?.utm_campaign).toBe('test');
+    expect(readFirstTouch()?.fbclid).toBe(ft.fbclid);
   });
 
-  it('NEGATIVE CONTROL: no re-tag in a normal browser, off /get-started, or when already tagged', () => {
-    window.history.replaceState({}, '', '/get-started');
-    expect(retagUrlForInAppBrowser(stored)).toBe(false);
-    vi.spyOn(window.navigator, 'userAgent', 'get').mockReturnValue(FB_UA);
-    window.history.replaceState({}, '', '/trade-selector');
-    expect(retagUrlForInAppBrowser(stored)).toBe(false);
-    window.history.replaceState({}, '', '/get-started?gclid=g');
-    expect(retagUrlForInAppBrowser(stored)).toBe(false);
-    expect(new URL(window.location.href).searchParams.get('fbclid')).toBeNull();
+  it('never overrides a touch already stored in this browser', () => {
+    window.history.replaceState({}, '', '/?utm_source=youtube');
+    captureFirstTouch();
+    expect(adoptFirstTouchFromParam(encodeFirstTouchParam(ft))?.utm_source).toBe('youtube');
   });
 });
