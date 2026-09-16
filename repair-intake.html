@@ -1313,8 +1313,8 @@
                     if (typeof gtag === 'function') {
                         gtag('event', 'claim_started', {
                             job_type: 'repair',
+                            source: 'repair_intake',
                             test_account: Auth.isTestEmail(user.email),
-                            transport_type: 'beacon',
                         });
                     }
                 } else {

@@ -2118,8 +2118,8 @@
               // bid_amount, not value/currency: the job price is not Otter Quotes
               // revenue, and GA4's revenue metrics would read `value` as if it were.
               bid_amount: Number(bid.total_price) || 0,
+              source: 'bids_page',
               test_account: !!(currentUser && Auth.isTestEmail(currentUser.email)),
-              transport_type: 'beacon',
               event_callback: finish,
               event_timeout: 1000,
             });

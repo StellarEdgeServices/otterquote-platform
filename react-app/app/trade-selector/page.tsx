@@ -27,6 +27,7 @@ import { readReferralIds } from '@/lib/cookie-storage';
 import { recordFirstTouch } from '@/lib/attribution';
 import { isTestEmail } from '@/lib/test-signal';
 import { parseAddress } from './utils';
+import { gtagEventBeforeNavigation } from '@/lib/ga-events';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -65,45 +66,6 @@ function gtag(...args: unknown[]) {
   if (typeof window !== 'undefined' && (window as any).gtag) {
     (window as any).gtag(...args);
   }
-}
-
-/**
- * gh-1984: send a GA4 event that must survive the redirect that follows it.
- * Measured 2026-09-16 (GA4 realtime, property 541423859): two live test runs
- * of this page produced homeowner_signup x2 but trade_selector_complete x0 —
- * the event fired ~300 ms before `window.location.href` and was dropped.
- * Uses the beacon transport and resolves on gtag's event_callback, or after
- * `timeoutMs` (gtag blocked / not loaded), whichever comes first.
- */
-function gtagEventBeforeNavigation(
-  name: string,
-  params: Record<string, unknown>,
-  timeoutMs = 1000,
-): Promise<void> {
-  return new Promise((resolve) => {
-    let done = false;
-    const finish = () => {
-      if (!done) {
-        done = true;
-        resolve();
-      }
-    };
-    setTimeout(finish, timeoutMs);
-    try {
-      if (typeof window !== 'undefined' && (window as any).gtag) {
-        (window as any).gtag('event', name, {
-          ...params,
-          transport_type: 'beacon',
-          event_callback: finish,
-          event_timeout: timeoutMs,
-        });
-      } else {
-        finish();
-      }
-    } catch {
-      finish();
-    }
-  });
 }
 
 // ─── Referral resolution ─────────────────────────────────────────────────────
@@ -659,6 +621,7 @@ export default function TradeSelectorPage() {
                   policy_type: policyType,
                   job_type: jobType,
                   trades: trades.join(','),
+                  source: 'trade_selector',
                   test_account: isTestEmail(user.email),
                 }),
               );

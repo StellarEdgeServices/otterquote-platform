@@ -1461,8 +1461,8 @@
                 savedClaimId = insertedClaim.id;
                 // gh-1984: GA4 key event — new claims row only. No PII.
                 if (typeof gtag === 'function') {
-                  // Beacon + callback: this page redirects ~500 ms later and
-                  // an ordinary send is dropped (measured on the React twin).
+                  // Awaited (event_callback, <= 1 s) before the redirect below:
+                  // a send fired just before navigation was dropped (measured on the React twin).
                   window.__oqClaimStartedSent = new Promise(function (resolve) {
                     var done = false;
                     function finish() { if (!done) { done = true; resolve(); } }
@@ -1471,8 +1471,8 @@
                       gtag('event', 'claim_started', {
                         funding_type: claimData.funding_type || '',
                         job_type: claimData.job_type || '',
+                        source: 'trade_selector_static',
                         test_account: Auth.isTestEmail(user.email),
-                        transport_type: 'beacon',
                         event_callback: finish,
                         event_timeout: 1000,
                       });
@@ -1522,11 +1522,14 @@
           redirectUrl += `?claim_id=${encodeURIComponent(savedClaimId)}`;
         }
 
-        // Redirect — gh-1984: after the claim_started send settles (<= 1 s).
-        try { if (window.__oqClaimStartedSent) await window.__oqClaimStartedSent; } catch (_) {}
-        setTimeout(() => {
-          window.location.href = redirectUrl;
-        }, 500);
+        // Redirect — gh-1984: after max(claim_started send settled (<= 1 s), 500 ms).
+        try {
+          await Promise.all([
+            window.__oqClaimStartedSent || Promise.resolve(),
+            new Promise((resolve) => setTimeout(resolve, 500)),
+          ]);
+        } catch (_) {}
+        window.location.href = redirectUrl;
       } catch (error) {
         console.error('Error completing selection:', error);
         showError('Something went wrong. Please try again.');

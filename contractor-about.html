@@ -962,6 +962,26 @@
           price: bid.total_price,
           source: 'contractor_about_page',
         });
+        // gh-1984: GA4 key event bid_accepted — twin of bids.html's call site
+        // (the profile page's "Select This Contractor" is a second live award
+        // path). Only after accept_bid() succeeded; awaited <= 1 s so the
+        // redirect below does not drop it. bid_amount, not value/currency.
+        await new Promise(function (resolve) {
+          var done = false;
+          function finish() { if (!done) { done = true; resolve(); } }
+          setTimeout(finish, 1000);
+          try {
+            gtag('event', 'bid_accepted', {
+              bid_id: bid.id,
+              contractor_id: bid.contractor_id,
+              bid_amount: Number(bid.total_price) || 0,
+              source: 'contractor_about_page',
+              test_account: !!(currentUser && Auth.isTestEmail(currentUser.email)),
+              event_callback: finish,
+              event_timeout: 1000,
+            });
+          } catch (e) { finish(); }
+        });
 
         // gh-1293 criterion 3b: same non-fatal bid-accepted contractor email as
         // bids.html's identical accept_bid call site — see that file for the
