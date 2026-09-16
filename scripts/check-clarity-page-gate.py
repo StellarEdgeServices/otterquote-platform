@@ -344,11 +344,6 @@ SESSION_AWARE_PUBLIC: dict[str, str] = {
                           "contractor to their dashboard (with a loop-guard for "
                           "the dashboard<->login bounce); a signed-out visitor "
                           "sees only the login form (contractor-login.html:471-478).",
-    "/login": "Auth.getUser()-derived role check only redirects an "
-              "already-signed-in visitor to their dashboard, and is explicitly "
-              "bypassed for the admin-gate-bounce and password-recovery cases "
-              "so a signed-out visitor is never shown session data (login.html"
-              ":420-465, 632).",
     "/partner-adjusters": "hasPartnerSession() only redirects an ALREADY-signed-in "
                            "partner to partner-dashboard.html; renders no "
                            "session-scoped data to an anonymous visitor "
@@ -371,11 +366,6 @@ SESSION_AWARE_PUBLIC: dict[str, str] = {
     "/partner-other": "hasPartnerSession() only redirects an ALREADY-signed-in "
                       "partner to partner-dashboard.html; same pattern as "
                       "partner-adjusters.html (partner-other.html:1064).",
-    "/partner-profile": "Auth.getUser() resolves only the signed-in partner's own "
-                        "PUBLIC referral code (referral_agents.unique_code), which "
-                        "the page then renders as a public referral link; no "
-                        "private data is shown to an anonymous visitor "
-                        "(partner-profile.html:239-245).",
     "/partner-re": "hasPartnerSession() only redirects an ALREADY-signed-in partner "
                    "to partner-dashboard.html; same pattern as "
                    "partner-adjusters.html (partner-re.html:1341).",
@@ -995,6 +985,54 @@ def run_self_test() -> tuple[int, str]:
             1,
             ruled={"/admin": "fixture ruling"},
         )
+
+    # gh-1981: '/login' sat on CLARITY_ALLOWED_PATHS via a SESSION_AWARE_PUBLIC
+    # exception ("only redirects an already-signed-in visitor") that was
+    # wrong about what login.html actually does -- it renders the signed-in
+    # visitor's own email into the DOM (routeOrExplainNonHomeowner(),
+    # login.html) instead of only bouncing them. '/login' is removed from
+    # both js/ga-gate.js's CLARITY_ALLOWED_PATHS and this file's
+    # SESSION_AWARE_PUBLIC. Unlike the scenarios above, this checks the REAL
+    # production gate file and the REAL SESSION_AWARE_PUBLIC dict (not a
+    # synthetic fixture) -- the point is to fail --self-test (and so fail
+    # CI, via check-clarity-page-gate.test.py) if either is ever silently
+    # reverted.
+    real_gate_src = (REPO / "js" / "ga-gate.js").read_text(encoding="utf-8")
+    real_entries, _, _ = analyze_gate_file(real_gate_src)
+    r.check(
+        "gh1981_login_not_on_real_clarity_allowed_paths",
+        real_entries is not None and "/login" not in real_entries,
+        f"js/ga-gate.js CLARITY_ALLOWED_PATHS entries: {real_entries}",
+    )
+    r.check(
+        "gh1981_login_not_in_real_session_aware_public",
+        "/login" not in SESSION_AWARE_PUBLIC,
+        f"SESSION_AWARE_PUBLIC keys: {sorted(SESSION_AWARE_PUBLIC)}",
+    )
+
+    # gh-1981 fix round 1 (PR #1996 review, comment 5698663751; Ben's ruling,
+    # comment 5698879235): the re-audit above initially missed
+    # '/partner-profile'. Its SESSION_AWARE_PUBLIC reason claimed
+    # Auth.getUser() "resolves only the signed-in partner's own PUBLIC
+    # referral code ... rendered as a public referral link" -- but with no
+    # ?code= in the URL, the signed-in partner's own full profile card
+    # (name, company, service area, photo, bio) is rendered via
+    # card.innerHTML (partner-profile.html:238-247, renderProfile() at
+    # :209), and Clarity loaded while it did. Ben ruled this counts as
+    # account data and ordered plain removal (a conditional ?code=-only skip
+    # was considered and rejected). Same real-file/real-dict check as the
+    # '/login' pair above, same reason: fail --self-test (and CI) if
+    # '/partner-profile' is ever silently reverted into either.
+    r.check(
+        "gh1981_partner_profile_not_on_real_clarity_allowed_paths",
+        real_entries is not None and "/partner-profile" not in real_entries,
+        f"js/ga-gate.js CLARITY_ALLOWED_PATHS entries: {real_entries}",
+    )
+    r.check(
+        "gh1981_partner_profile_not_in_real_session_aware_public",
+        "/partner-profile" not in SESSION_AWARE_PUBLIC,
+        f"SESSION_AWARE_PUBLIC keys: {sorted(SESSION_AWARE_PUBLIC)}",
+    )
 
     output = "\n".join(r.results) + "\n"
     return (1 if r.failed else 0), output
