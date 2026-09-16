@@ -95,8 +95,20 @@ export function MetaPixelGate() {
         src="https://connect.facebook.net/en_US/fbevents.js"
         strategy="afterInteractive"
       />
+      {/*
+        gh-2000: this must be Meta's standard base-code stub (checks for a
+        `callMethod` fbevents.js installs on load and forwards to it), not
+        a stub that only ever pushes onto a queue. fbevents.js mutates this
+        SAME fbq object in place -- it does not reassign window.fbq -- and
+        drains whatever was queued at load time exactly once. A plain
+        queue-push stub kept init/PageView "working" (queued before
+        fbevents.js loads, drained on load) while silently dropping every
+        event fired afterward, including fbq('track','Lead') on submit,
+        because nothing ever reads the queue again once fbevents.js has
+        taken over via callMethod. See #2000 for the live proof.
+      */}
       <Script id="meta-pixel-init" strategy="afterInteractive">
-        {`window.fbq = window.fbq || function () { (window.fbq.queue = window.fbq.queue || []).push(arguments); };
+        {`if (!window.fbq) { var n = function () { n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments); }; window.fbq = n; if (!window._fbq) { window._fbq = n; } n.push = n; n.loaded = true; n.version = '2.0'; n.queue = []; }
 fbq('init', '${PIXEL_ID}');
 fbq('track', 'PageView');`}
       </Script>

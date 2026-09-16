@@ -49,9 +49,30 @@
   // fbq('track', ...) / fbq('trackCustom', ...) calls keep working (as
   // harmless queued-but-never-sent pushes) even when the pixel never loads
   // -- callers do not need to know whether the gate passed.
-  window.fbq = window.fbq || function () {
-    (window.fbq.queue = window.fbq.queue || []).push(arguments);
-  };
+  //
+  // gh-2000: this must be Meta's standard base-code stub, not just a queue
+  // push. fbevents.js does not reassign window.fbq wholesale -- it installs
+  // a `callMethod` property on the SAME fbq object and drains whatever was
+  // queued at load time exactly once. A stub that only ever pushes to the
+  // queue keeps "working" for init/PageView (queued before fbevents.js
+  // loads, drained on load) while silently black-holing every event fired
+  // afterward (Lead on submit, any trackCustom, etc.), because nothing
+  // reads the queue again once fbevents.js has taken over via callMethod.
+  // See #2000 for the live proof (fbq.callMethod.apply(...) reaches Meta,
+  // the plain stub call does not).
+  if (!window.fbq) {
+    var fbqStub = function () {
+      fbqStub.callMethod
+        ? fbqStub.callMethod.apply(fbqStub, arguments)
+        : fbqStub.queue.push(arguments);
+    };
+    window.fbq = fbqStub;
+    if (!window._fbq) { window._fbq = fbqStub; }
+    fbqStub.push = fbqStub;
+    fbqStub.loaded = true;
+    fbqStub.version = '2.0';
+    fbqStub.queue = [];
+  }
 
   if (!PIXEL_ID) {
     return; // no real pixel ID configured yet -- complete no-op, dark merge
