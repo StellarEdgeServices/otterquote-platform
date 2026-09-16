@@ -102,7 +102,7 @@ import { supabase } from '@/lib/supabase';
 import { readReferralIds, writeReferralIds } from '@/lib/cookie-storage';
 import { formatPhoneValue, isValidEmail } from './utils';
 
-// ─── Constants ───────────────────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const AUTH_CALLBACK_URL = 'https://app.otterquote.com/auth-callback';
 // Same target the magic link used, plus the homeowner intent marker the static
@@ -153,7 +153,7 @@ const PROJECT_TYPE_OPTIONS: { value: ProjectType; label: string }[] = [
   { value: 'other', label: 'Other' },
 ];
 
-// ─── GA4 helper ──────────────────────────────────────────────────────
+// ─── GA4 helper ───────────────────────────────────────────────────────
 //
 // gh-1940 (round 3, REVIEW: FAIL on #1948 twice) — every closed vocabulary
 // this page hands to GA4 is defined once, as an `as const` array, with two
@@ -460,7 +460,7 @@ function track<E extends keyof TrackEventParams>(event: E, params: TrackEventPar
   gtag('event', event, safeParams);
 }
 
-// ─── Meta Pixel helper — gh-1817 ───────────────────────────────────────────────────────────────
+// ─── Meta Pixel helper — gh-1817 ──────────────────────────────────────────
 
 function fbq(...args: unknown[]) {
   if (typeof window !== 'undefined' && (window as any).fbq) {
@@ -484,7 +484,7 @@ function isAlreadyRegisteredError(err: unknown): boolean {
   );
 }
 
-// ─── Component ──────────────────────────────────────────────────────────────────
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export default function GetStartedPage() {
   const { user, role, loading } = useAuthReady();
@@ -1950,7 +1950,7 @@ export default function GetStartedPage() {
   );
 }
 
-// ─── Google "G" mark (same SVG as /login and the static login.html) ─────────────────────
+// ─── Google "G" mark (same SVG as /login and the static login.html) ──────────
 function GoogleIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
