@@ -499,6 +499,19 @@ select.form-input option {
     grid-template-columns: 1fr;
   }
 
+  /* FIX ROUND 2 (PR #1998 comment 5700692978, N1) — same B4 bug as
+     ref-re.html/ref-inspector.html: `.form-row.address-row` (2fr 1fr 1fr,
+     defined earlier in this file) has higher specificity (0,2,0) than the
+     plain `.form-row` rule above (0,1,0), so it kept winning inside this
+     mobile query regardless of source order, leaving City/State/ZIP as
+     three columns on phones and truncating typed values (measured ZIP
+     input clientWidth too narrow for 5 digits at 375px, e.g. "46060"
+     rendering as "4606"). Same selector specificity here, later in the
+     cascade, collapses it to one column like every other field. */
+  .form-row.address-row {
+    grid-template-columns: 1fr;
+  }
+
   .agent-badge {
     flex-direction: column;
     gap: var(--sp-2);

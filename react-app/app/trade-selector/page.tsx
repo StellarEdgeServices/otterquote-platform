@@ -58,12 +58,16 @@ const TRADE_OPTIONS: { key: TradeKey; label: string; icon: string }[] = [
 // homeowner who already said "Gutters" doesn't have to say it twice.
 // Keys are get-started's ProjectType values 1:1 — 'other' and '' (unset)
 // intentionally have no entry, so they fall through to no pre-selection.
-const PROJECT_TYPE_TO_TRADE: Partial<Record<string, TradeKey>> = {
-  roof: 'roofing',
-  siding: 'siding',
-  gutters: 'gutters',
-  windows: 'windows',
-};
+// FIX ROUND 2 (PR #1998 comment 5700692978, non-blocking #4): a Map (rather
+// than a plain object indexed by an arbitrary string) sidesteps prototype
+// lookups entirely — .get() never resolves 'constructor'/'toString'/etc.
+// against Object.prototype the way `obj[projectType]` can.
+const PROJECT_TYPE_TO_TRADE: ReadonlyMap<string, TradeKey> = new Map([
+  ['roof', 'roofing'],
+  ['siding', 'siding'],
+  ['gutters', 'gutters'],
+  ['windows', 'windows'],
+]);
 
 interface WizardState {
   fundingType: FundingType;
@@ -347,7 +351,7 @@ export default function TradeSelectorPage() {
       if (!raw) return;
       const signup = JSON.parse(raw) as Record<string, unknown>;
       const projectType = typeof signup.project_type === 'string' ? signup.project_type : '';
-      const mapped = PROJECT_TYPE_TO_TRADE[projectType];
+      const mapped = PROJECT_TYPE_TO_TRADE.get(projectType);
       if (mapped) {
         setWizardState(prev => (prev.trades.length === 0 ? { ...prev, trades: [mapped] } : prev));
       }
