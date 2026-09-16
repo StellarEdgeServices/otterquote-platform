@@ -722,6 +722,14 @@ function movementHtml(m) {
   // this only changes what reaches the DOM. m.days gets the same numeric
   // shape constraint.
   var safeBucket = (m.bucket === 'red' || m.bucket === 'yellow' || m.bucket === 'green' || m.bucket === 'unknown') ? m.bucket : 'unknown';
+  // CEO RUN 48 fix-round (gh-1570 non-blocking 4, review 5703958709): a
+  // forced-red zero-activity row was rendering "🔴 0 days", which reads as
+  // "moved today" — the opposite of what forced red means. m.zero_activity
+  // (get-business-lines-dashboard, additive) says the row is red because
+  // there is no real activity/progress at all, not because of a days count.
+  if (safeBucket === 'red' && m.zero_activity === true) {
+    return '<span class="movement-badge movement-red">🔴 no activity</span>';
+  }
   var days = (typeof m.days === 'number' && isFinite(m.days)) ? m.days : 0;
   return '<span class="movement-badge movement-' + safeBucket + '">' + icon + ' ' + days + ' day' + (days === 1 ? '' : 's') + '</span>';
 }

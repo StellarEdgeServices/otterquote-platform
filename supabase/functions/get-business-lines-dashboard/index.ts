@@ -126,8 +126,11 @@ import {
   type Ga4SessionsByDayResult,
 } from "./ga4.ts";
 import {
+  claimHasMilestoneProgress,
   computeMovement,
   homeownerBucket,
+  isRealActivityRow,
+  type ClaimMilestones,
 } from "./movement.ts";
 
 const FUNCTION_NAME = "get-business-lines-dashboard";
@@ -690,6 +693,10 @@ interface ActivityRow {
   // can exclude system-generated absence nudges (metadata.system_generated)
   // from movement/first-activity — see the exclusion below.
   metadata: Record<string, unknown> | null;
+  // CEO RUN 48 fix-round (gh-1570, comment 5703958709): needed to exclude
+  // admin-authored rows (loss_sheet_reviewed) from counting as homeowner
+  // activity — see isRealActivityRow (movement.ts) and its use below.
+  event_type: string | null;
 }
 
 async function fetchAllActivity(
@@ -701,7 +708,7 @@ async function fetchAllActivity(
   for (let page = 0; page < ACTIVITY_MAX_PAGES; page++) {
     const { data, error } = await db
       .from("activity_log")
-      .select("user_id, created_at, metadata")
+      .select("user_id, created_at, metadata, event_type")
       .order("created_at", { ascending: false })
       .range(from, from + ACTIVITY_PAGE - 1);
     if (error) return { data: null, error };
@@ -949,7 +956,7 @@ serve(async (req: Request) => {
       // role='homeowner' or it silently lists contractors as homeowners.
       supabase.from("profiles").select("id, full_name, email, created_at, updated_at, is_test, role"),
       supabase.from("claims").select(
-        "id, user_id, created_at, updated_at, hover_order_id, hover_status, has_measurements, " +
+        "id, user_id, created_at, updated_at, status, hover_order_id, hover_status, has_measurements, " +
         "ready_for_bids, bids_submitted_at, selected_contractor_id, contract_sent_at, " +
         "contract_signed_at, platform_fee_charged, completion_date, color_selected_at, " +
         "deductible_collected_at, is_test"
@@ -1055,9 +1062,21 @@ serve(async (req: Request) => {
     // show "no activity since signup" (null = never) without re-deriving it
     // client-side from a raw activity_log scan.
     const firstActivityByUser = new Map<string, string>();
+    // CEO RUN 48 fix-round (gh-1570, comment 5703958709): a claim's real
+    // progress often logs no activity_log row under the HOMEOWNER's own
+    // user_id at all — bids are logged under the contractor
+    // (auto_bid_submitted, metadata.claim_id), and this catches that (and
+    // any future claim-referencing event) without needing a per-event-type
+    // allowlist. Same exclusions as firstActivityByUser/lastActivityByUser
+    // (isRealActivityRow): system-generated nudges and admin-authored rows
+    // (loss_sheet_reviewed) do not count here either — an admin's action on
+    // a claim is not the claim moving on its own.
+    const claimIdsWithRealActivity = new Set<string>();
     for (const row of activityLog as ActivityRow[]) {
+      if (!isRealActivityRow(row)) continue;
+      const metaClaimId = (row.metadata as { claim_id?: string } | null)?.claim_id;
+      if (metaClaimId) claimIdsWithRealActivity.add(metaClaimId);
       if (!row.user_id) continue;
-      if ((row.metadata as { system_generated?: boolean } | null)?.system_generated === true) continue;
       const prevLast = lastActivityByUser.get(row.user_id);
       if (!prevLast || new Date(row.created_at).getTime() > new Date(prevLast).getTime()) {
         lastActivityByUser.set(row.user_id, row.created_at);
@@ -1150,29 +1169,69 @@ serve(async (req: Request) => {
       const isComplete = checklist[checklist.length - 1].done;
       const firstActivityIso = firstActivityByUser.get(p.id) || null;
 
+      // CEO RUN 48 fix-round (gh-1570, comment 5703958709, replacing the
+      // round-1 `!firstActivityIso` test CTO32/CEO48 both FAILed): most real
+      // claim progress writes NO activity_log row under the homeowner's own
+      // user_id — bids log under the contractor, colour/deductible/
+      // measurement-upload log nothing, and the docusign contract-signed
+      // mail row carries no user_id at all (NOT NULL column). So
+      // "homeowner activity" alone is the wrong test; a claim also counts as
+      // moving if IT has moved (claimHasMilestoneProgress, reading the
+      // claim's own status/columns/bid count) or if ANY user's activity_log
+      // row references this claim (claimIdsWithRealActivity, built above —
+      // catches auto_bid_submitted etc. without a per-event-type list).
+      // Admin-authored rows (loss_sheet_reviewed) count toward NEITHER path
+      // (isRealActivityRow / ADMIN_ORIGIN_EVENT_TYPES, movement.ts) — an
+      // admin reviewing a loss sheet is not the homeowner or the claim doing
+      // anything. Only a claim still at documents_needed-or-earlier with
+      // none of the above is forced red.
+      const claimMilestones: ClaimMilestones | null = claim ? {
+        status: claim.status ?? null,
+        hasMeasurements: claim.has_measurements === true,
+        readyForBids: claim.ready_for_bids === true,
+        bidsReceived,
+        bidsSubmittedAt: claim.bids_submitted_at ?? null,
+        contractSignedAt: claim.contract_signed_at ?? null,
+        colorSelectedAt: claim.color_selected_at ?? null,
+        deductibleCollectedAt: claim.deductible_collected_at ?? null,
+        selectedContractorId: claim.selected_contractor_id ?? null,
+        platformFeeCharged: claim.platform_fee_charged === true,
+        completionDate: claim.completion_date ?? null,
+      } : null;
+      const hasRealActivity = !!firstActivityIso ||
+        (!!claim && claimIdsWithRealActivity.has(claim.id)) ||
+        claimHasMilestoneProgress(claimMilestones);
+
       // gh-1570: the stuck-first table (admin-dashboard.html) sorts/colors
       // purely off movement.bucket, which computeMovement derives from raw
       // updated_at timestamps — an unrelated system write (e.g. a bulk
       // column backfill) bumps updated_at and paints a claim green even
       // though it has never had one real activity_log event. homeownerBucket
       // (movement.ts) forces the bucket to "red" whenever a claim exists and
-      // firstActivityIso is null, regardless of what bucketFor's raw-days
+      // hasRealActivity is false, regardless of what bucketFor's raw-days
       // verdict says. movement.days/latest_iso are left untouched below —
       // only the bucket used for coloring/sorting changes, and "complete"
       // still wins over the override (a finished claim is not "stuck").
-      const zeroActivityBucket = homeownerBucket(movement, firstActivityIso, !!claim);
+      const zeroActivityBucket = homeownerBucket(movement, !!claim, hasRealActivity);
 
       return {
         id: p.id,
         label: p.full_name || p.email || p.id,
-        is_test: p.is_test === true,
+        // CEO RUN 48 fix-round (gh-1570 review finding 5, Docs/is-test-
+        // steering-queries.md line 22): "claims.is_test governs claims-table
+        // counts... use the row's own flag, not its owner's." A homeowner
+        // CRM row IS a claim row once a claim exists, so it takes the
+        // claim's own is_test flag when there is one, falling back to the
+        // profile's flag only for a homeowner with no claim yet (nothing
+        // else to key off).
+        is_test: claim ? claim.is_test === true : p.is_test === true,
         checklist,
         movement: {
           ...movement,
           bucket: isComplete ? "complete" : zeroActivityBucket,
           // Harmless, additive: lets the client distinguish "genuinely stuck"
           // from "stuck — zero real activity ever" without re-deriving it.
-          zero_activity: !!claim && !firstActivityIso,
+          zero_activity: !!claim && !hasRealActivity,
         },
         // gh-1580: signup time — the CRM render needs this to compute "age in
         // hours" for the NEW strip without a second derived source of truth.
