@@ -24,6 +24,7 @@ import type { ReactNode, ChangeEvent } from 'react';
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import { supabase } from '@/lib/supabase';
 import { readReferralIds } from '@/lib/cookie-storage';
+import { recordFirstTouch } from '@/lib/attribution';
 import { isTestEmail } from '@/lib/test-signal';
 import { parseAddress } from './utils';
 
@@ -500,6 +501,12 @@ export default function TradeSelectorPage() {
         } catch (profileErr) {
           console.warn('[trade-selector] profile upsert failed:', profileErr);
         }
+
+        // gh-1983: second chance to persist first-touch ad attribution (the
+        // first is /auth-callback). Runs BEFORE the claim write so the claims
+        // BEFORE INSERT trigger copies it onto the new claim; the RPC also
+        // backfills an existing claim. Write-once and non-fatal.
+        await recordFirstTouch(supabase);
 
         // ── Insert or update claims table ──
         try {

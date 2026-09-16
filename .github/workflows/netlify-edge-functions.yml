@@ -48,12 +48,14 @@ on:
     paths:
       - 'netlify/edge-functions/**'
       - 'netlify/edge-functions-tests/**'
+      - 'react-app/app/lib/attribution-core.ts'
       - '.github/workflows/netlify-edge-functions.yml'
   pull_request:
     branches: [main]
     paths:
       - 'netlify/edge-functions/**'
       - 'netlify/edge-functions-tests/**'
+      - 'react-app/app/lib/attribution-core.ts'
       - '.github/workflows/netlify-edge-functions.yml'
 
 jobs:
@@ -89,7 +91,7 @@ jobs:
         id: tests
         run: |
           set +e
-          FILES="netlify/edge-functions-tests/admin-auth-gate.test.ts netlify/edge-functions-tests/blog-guides-redirect.test.ts netlify/edge-functions-tests/recruit-redirect.test.ts netlify/edge-functions-tests/ref-redirect.test.ts"
+          FILES="netlify/edge-functions-tests/admin-auth-gate.test.ts netlify/edge-functions-tests/blog-guides-redirect.test.ts netlify/edge-functions-tests/recruit-redirect.test.ts netlify/edge-functions-tests/ref-redirect.test.ts netlify/edge-functions-tests/first-touch-attribution.test.ts"
           OVERALL_EXIT=0
           {
             echo "## Per-function assertion counts"

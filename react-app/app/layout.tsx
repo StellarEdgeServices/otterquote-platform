@@ -9,6 +9,7 @@
 
 import type { Metadata } from 'next';
 import './globals.css';
+import { AttributionCapture } from './components/AttributionCapture';
 import { GA4Gate } from './components/GA4Gate';
 import { MetaPixelGate } from './components/MetaPixelGate';
 import { SentryInitializer } from './components/SentryInitializer';
@@ -33,6 +34,8 @@ export default function RootLayout({
         {/* Meta Pixel — OtterQuote property; host-gated (gh-1817), see MetaPixelGate */}
         <MetaPixelGate />
         <SentryInitializer />
+        {/* gh-1983 — first-touch ad attribution (client fallback to the server cookie) */}
+        <AttributionCapture />
         <QueryClientProvider>
           <AuthProvider>{children}</AuthProvider>
         </QueryClientProvider>
