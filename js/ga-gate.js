@@ -64,6 +64,17 @@
 // scripts/check-clarity-page-gate.py's classifier is now fail-closed at the
 // session layer, not just the explicit-auth-gate layer (see that script's
 // module docstring).
+//
+// gh-1981: '/login' was on this list via a SESSION_AWARE_PUBLIC exception
+// ("only redirects an already-signed-in visitor to their dashboard").
+// That exception was wrong about what the page does: login.html's
+// routeOrExplainNonHomeowner() renders "You're already signed in as
+// <role> (<the visitor's own email>)" into the DOM via innerHTML for any
+// signed-in contractor/partner, WITH an offer to stay on the page and
+// switch accounts instead of redirecting -- session-scoped account data
+// (an email address) shown to the very visitor Clarity is recording, not
+// just an anonymous one. It is removed below and from
+// scripts/check-clarity-page-gate.py's SESSION_AWARE_PUBLIC.
 (function () {
   var ALLOWED_HOSTS = ['otterquote.com', 'www.otterquote.com', 'app.otterquote.com'];
   var MEASUREMENT_ID = 'G-D1Y1TLGEFY';
@@ -133,7 +144,6 @@
     '/guides/how-to-read-contractor-estimate',
     '/how-it-works',
     '/landing',
-    '/login',
     '/onboarding-demo',
     '/oq-voice-ai',
     '/partner-adjusters',
