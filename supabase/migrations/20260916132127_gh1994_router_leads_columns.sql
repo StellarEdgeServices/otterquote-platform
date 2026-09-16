@@ -361,7 +361,11 @@ COMMIT;
 -- this PR does the same, applied by Ben per this ruling (comment
 -- 5698874513, item 5), which stands as the human review the ratchet's
 -- bypass exists for. The ratchet still prints every finding as BYPASSED,
--- not silently.
+-- not silently. Label applied to PR #1997 as part of this fix round; this
+-- comment-only touch exists solely to re-trigger CI against the now-labeled
+-- PR (the ratchet workflow reads PR labels at run time, not at push time,
+-- so a label added after the last push does not re-evaluate an existing
+-- check run on its own).
 
 -- ROLLBACK (manual -- this migration is not applied, and phase 1 was not
 -- granted a separate supabase/migrations_rollbacks/ file; inline per the
