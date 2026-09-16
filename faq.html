@@ -551,7 +551,7 @@
   <div class="container">
     <h2>Ready to Get Started?</h2>
     <p>It takes less than 2 minutes. We'll handle the rest.</p>
-    <a href="https://app.otterquote.com/get-started" class="btn btn-primary btn-lg">Get Started Free</a>
+    <a href="/start.html" class="btn btn-primary btn-lg">Get Started Free</a>
   </div>
 </section>
 
@@ -569,5 +569,27 @@
 <script src="js/config.js"></script>
 <script src="js/auth.js"></script>
 <script src="js/nav.js"></script>
+<script>
+// gh-1994 phase 2: carry utm_*/fbclid/gclid from this page's own URL onto
+// every "Get started" CTA that now points at /start.html, on top of the
+// oq_ft cookie fallback (gh-1983) start.html's own collectAttribution()
+// already reads -- belt and suspenders for cookie-blocked browsers. No PII,
+// same allow-list start.html reads. Idempotent: run once per page load,
+// never runs twice on the same anchor.
+(function () {
+  'use strict';
+  var ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid'];
+  var params = new URLSearchParams(window.location.search);
+  var qs = '';
+  ATTR_KEYS.forEach(function (k) {
+    var v = params.get(k);
+    if (v) qs += (qs ? '&' : '?') + k + '=' + encodeURIComponent(v);
+  });
+  if (!qs) return;
+  document.querySelectorAll('a[href="/start.html"], a[href="start.html"]').forEach(function (a) {
+    a.setAttribute('href', a.getAttribute('href') + qs);
+  });
+})();
+</script>
 </body>
 </html>

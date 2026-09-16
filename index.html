@@ -783,7 +783,7 @@
       Otter Quotes brings contractors to you. They compete, you win!
     </p>
     <div class="hero-cta">
-      <a href="https://app.otterquote.com/get-started" class="btn btn-primary btn-lg">Get My Free Quotes</a>
+      <a href="/start.html" class="btn btn-primary btn-lg">Get My Free Quotes</a>
       <a href="contractor-join.html" class="btn btn-secondary btn-lg">I'm a Contractor</a>
     </div>
     <div class="hero-trust">
@@ -902,7 +902,7 @@
 <section class="mid-cta">
   <div class="container">
     <p>Ready to see what contractors will offer?</p>
-    <a href="https://app.otterquote.com/get-started" class="btn btn-primary btn-lg">Tell Us About Your Home &mdash; It's Free</a>
+    <a href="/start.html" class="btn btn-primary btn-lg">Tell Us About Your Home &mdash; It's Free</a>
   </div>
 </section>
 
@@ -1010,7 +1010,7 @@
   <div class="container">
     <h2>Get Your Best Deal on Home Repairs</h2>
     <p>It takes less than 2 minutes to describe your home and what needs to be done. We'll walk you through the rest &mdash; and it costs you nothing.</p>
-    <a href="https://app.otterquote.com/get-started" class="btn btn-primary btn-lg">Get Started Free</a>
+    <a href="/start.html" class="btn btn-primary btn-lg">Get Started Free</a>
     <div class="guarantee-banner">
       <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:2px"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
       <p>
@@ -1060,8 +1060,10 @@
       var sectionClass = section ? (section.className.split(' ')[0] || 'unknown') : 'unknown';
 
       // Determine CTA type
+      // gh-1994 phase 2: 'get-started' CTAs now point at /start.html (the
+      // router); still detected here so the funnel event below keeps firing.
       var ctaType = 'other';
-      if (href.includes('get-started')) ctaType = 'homeowner_cta';
+      if (href.includes('get-started') || href.includes('start.html')) ctaType = 'homeowner_cta';
       else if (href.includes('contractor-join')) ctaType = 'contractor_apply_cta';
       else if (href.includes('contractor-login')) ctaType = 'contractor_login_cta';
 
@@ -1156,6 +1158,28 @@
 })();
 </script>
 
+<script>
+// gh-1994 phase 2: carry utm_*/fbclid/gclid from this page's own URL onto
+// every "Get started" CTA that now points at /start.html, on top of the
+// oq_ft cookie fallback (gh-1983) start.html's own collectAttribution()
+// already reads -- belt and suspenders for cookie-blocked browsers. No PII,
+// same allow-list start.html reads. Idempotent: run once per page load,
+// never runs twice on the same anchor.
+(function () {
+  'use strict';
+  var ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid'];
+  var params = new URLSearchParams(window.location.search);
+  var qs = '';
+  ATTR_KEYS.forEach(function (k) {
+    var v = params.get(k);
+    if (v) qs += (qs ? '&' : '?') + k + '=' + encodeURIComponent(v);
+  });
+  if (!qs) return;
+  document.querySelectorAll('a[href="/start.html"], a[href="start.html"]').forEach(function (a) {
+    a.setAttribute('href', a.getAttribute('href') + qs);
+  });
+})();
+</script>
 </body>
 </html>
 <!-- deploy: 20260421234910 -->

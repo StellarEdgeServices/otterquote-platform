@@ -543,7 +543,7 @@
       <div class="cta-box">
         <h3>Your Best Negotiating Tool: Real Contractor Bids</h3>
         <p>Whether you're supplementing an insurance estimate yourself or preparing documentation for a public adjuster, having multiple competitive bids from contractors in your area is the clearest evidence of what the work actually costs. Otter Quotes puts those bids in your hands without the phone tag.</p>
-        <a href="https://app.otterquote.com/get-started" class="btn btn-primary btn-lg">Get Competing Bids &mdash; Free</a>
+        <a href="/start.html" class="btn btn-primary btn-lg">Get Competing Bids &mdash; Free</a>
       </div>
 
       <!-- FAQ Section -->
@@ -597,7 +597,7 @@
       <div class="cta-box" style="margin-top: var(--sp-12); margin-bottom: var(--sp-8);">
         <h3>Know What the Repair Actually Costs Before You Settle</h3>
         <p>Otter Quotes puts your project in front of contractors who serve your area and delivers the bids that come in to your dashboard &mdash; so you have real numbers to compare against your insurance estimate before you sign anything.</p>
-        <a href="https://app.otterquote.com/get-started" class="btn btn-primary btn-lg">Get Started &mdash; It's Free</a>
+        <a href="/start.html" class="btn btn-primary btn-lg">Get Started &mdash; It's Free</a>
       </div>
 
     </div>
@@ -783,5 +783,27 @@
 }
 </script>
 
+<script>
+// gh-1994 phase 2: carry utm_*/fbclid/gclid from this page's own URL onto
+// every "Get started" CTA that now points at /start.html, on top of the
+// oq_ft cookie fallback (gh-1983) start.html's own collectAttribution()
+// already reads -- belt and suspenders for cookie-blocked browsers. No PII,
+// same allow-list start.html reads. Idempotent: run once per page load,
+// never runs twice on the same anchor.
+(function () {
+  'use strict';
+  var ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid'];
+  var params = new URLSearchParams(window.location.search);
+  var qs = '';
+  ATTR_KEYS.forEach(function (k) {
+    var v = params.get(k);
+    if (v) qs += (qs ? '&' : '?') + k + '=' + encodeURIComponent(v);
+  });
+  if (!qs) return;
+  document.querySelectorAll('a[href="/start.html"], a[href="start.html"]').forEach(function (a) {
+    a.setAttribute('href', a.getAttribute('href') + qs);
+  });
+})();
+</script>
 </body>
 </html>

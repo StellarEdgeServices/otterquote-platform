@@ -474,7 +474,7 @@
     <div class="cta-box" style="margin-top: var(--sp-12); margin-bottom: var(--sp-8);">
       <h3>Ready to Move Forward?</h3>
       <p>Once your insurance claim is approved, let Otter Quotes connect you with contractors. Get competitive bids, compare options, and choose the best fit &mdash; all without paying anything upfront. You focus on recovery; we handle the rest.</p>
-      <a href="https://app.otterquote.com/get-started" class="btn btn-primary btn-lg">Get Started Today</a>
+      <a href="/start.html" class="btn btn-primary btn-lg">Get Started Today</a>
     </div>
 
   </div>
@@ -606,6 +606,28 @@ document.querySelectorAll('.faq-item h3').forEach(item => {
         this.parentElement.classList.toggle('active');
     });
 });
+</script>
+<script>
+// gh-1994 phase 2: carry utm_*/fbclid/gclid from this page's own URL onto
+// every "Get started" CTA that now points at /start.html, on top of the
+// oq_ft cookie fallback (gh-1983) start.html's own collectAttribution()
+// already reads -- belt and suspenders for cookie-blocked browsers. No PII,
+// same allow-list start.html reads. Idempotent: run once per page load,
+// never runs twice on the same anchor.
+(function () {
+  'use strict';
+  var ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid'];
+  var params = new URLSearchParams(window.location.search);
+  var qs = '';
+  ATTR_KEYS.forEach(function (k) {
+    var v = params.get(k);
+    if (v) qs += (qs ? '&' : '?') + k + '=' + encodeURIComponent(v);
+  });
+  if (!qs) return;
+  document.querySelectorAll('a[href="/start.html"], a[href="start.html"]').forEach(function (a) {
+    a.setAttribute('href', a.getAttribute('href') + qs);
+  });
+})();
 </script>
 </body>
 </html>

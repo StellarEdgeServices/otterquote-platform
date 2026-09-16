@@ -266,7 +266,7 @@
 
         <p class="text-sm text-center" style="color: var(--gray);">
           Don't have an account yet?
-          <a href="get-started.html" style="color: var(--amber); font-weight: 600;">Create one free</a>
+          <a href="start.html" style="color: var(--amber); font-weight: 600;">Create one free</a>
         </p>
 
         <p class="text-sm text-center" style="color: var(--gray);">
@@ -652,5 +652,27 @@
 
 <footer id="site-footer"></footer>
 
+<script>
+// gh-1994 phase 2: carry utm_*/fbclid/gclid from this page's own URL onto
+// every "Get started" CTA that now points at /start.html, on top of the
+// oq_ft cookie fallback (gh-1983) start.html's own collectAttribution()
+// already reads -- belt and suspenders for cookie-blocked browsers. No PII,
+// same allow-list start.html reads. Idempotent: run once per page load,
+// never runs twice on the same anchor.
+(function () {
+  'use strict';
+  var ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid'];
+  var params = new URLSearchParams(window.location.search);
+  var qs = '';
+  ATTR_KEYS.forEach(function (k) {
+    var v = params.get(k);
+    if (v) qs += (qs ? '&' : '?') + k + '=' + encodeURIComponent(v);
+  });
+  if (!qs) return;
+  document.querySelectorAll('a[href="/start.html"], a[href="start.html"]').forEach(function (a) {
+    a.setAttribute('href', a.getAttribute('href') + qs);
+  });
+})();
+</script>
 </body>
 </html>
