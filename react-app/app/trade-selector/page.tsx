@@ -53,6 +53,22 @@ const TRADE_OPTIONS: { key: TradeKey; label: string; icon: string }[] = [
   { key: 'windows', label: 'Windows', icon: '🪟' },
 ];
 
+// gh-1991: get-started Step 1's "what do you need help with?" chip
+// (cs_signup.project_type) pre-selects the matching trade here so a
+// homeowner who already said "Gutters" doesn't have to say it twice.
+// Keys are get-started's ProjectType values 1:1 — 'other' and '' (unset)
+// intentionally have no entry, so they fall through to no pre-selection.
+// FIX ROUND 2 (PR #1998 comment 5700692978, non-blocking #4): a Map (rather
+// than a plain object indexed by an arbitrary string) sidesteps prototype
+// lookups entirely — .get() never resolves 'constructor'/'toString'/etc.
+// against Object.prototype the way `obj[projectType]` can.
+const PROJECT_TYPE_TO_TRADE: ReadonlyMap<string, TradeKey> = new Map([
+  ['roof', 'roofing'],
+  ['siding', 'siding'],
+  ['gutters', 'gutters'],
+  ['windows', 'windows'],
+]);
+
 interface WizardState {
   fundingType: FundingType;
   policyType: PolicyType;
@@ -323,6 +339,27 @@ export default function TradeSelectorPage() {
   const [completing, setCompleting] = useState(false);
   const [error, setError] = useState('');
 
+  // gh-1991: pre-select the trade get-started's project_type chip already
+  // told us. Read-only, runs once on mount; only applies while `trades` is
+  // still empty so it can never clobber a selection the visitor made on
+  // THIS page (e.g. after using Back). Not gated on auth `settled` — this
+  // only touches local UI state, no network/DB call.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = localStorage.getItem('cs_signup');
+      if (!raw) return;
+      const signup = JSON.parse(raw) as Record<string, unknown>;
+      const projectType = typeof signup.project_type === 'string' ? signup.project_type : '';
+      const mapped = PROJECT_TYPE_TO_TRADE.get(projectType);
+      if (mapped) {
+        setWizardState(prev => (prev.trades.length === 0 ? { ...prev, trades: [mapped] } : prev));
+      }
+    } catch {
+      // cs_signup missing/malformed — no prefill, not fatal
+    }
+  }, []);
+
   // Auth guard + returning-user guard
   useEffect(() => {
     if (!settled) return;
@@ -479,15 +516,29 @@ export default function TradeSelectorPage() {
         // cs_signup missing — continue with empty
       }
 
+      // gh-1993: get-started now collects street/city/state/zip as four
+      // separate fields and writes them to cs_signup directly
+      // (address_street/address_city/address_state/address_zip) alongside
+      // the combined `address` line it keeps for other readers (HubSpot).
+      // Prefer the structured fields — no free-text parsing needed, no
+      // street-suffix-vs-state ambiguity to resolve. Fall back to
+      // parseAddress(csSignup.address) only for a cs_signup payload written
+      // before this change (a tab left open across the deploy that still
+      // only carries the combined string) — one parse, shared by both
+      // write sites below, same as before this change.
+      const structuredStreet = (csSignup.address_street as string) || '';
+      const parsedAddress = structuredStreet.trim()
+        ? {
+            street: structuredStreet.trim() || null,
+            city: ((csSignup.address_city as string) || '').trim() || null,
+            state: ((csSignup.address_state as string) || '').trim() || null,
+            zip: ((csSignup.address_zip as string) || '').trim() || null,
+          }
+        : parseAddress((csSignup.address as string) || '');
+
       if (user) {
         // ── Upsert profiles table ──
         try {
-          const address = (csSignup.address as string) || '';
-          // gh-1579: tolerant regex-first parse (comma-split fallback) — see
-          // ./utils.ts. The old addressParts[1..3] comma-index split assumed
-          // exactly 4 comma segments and silently dropped state/zip on any
-          // address with fewer.
-          const parsedAddress = parseAddress(address);
           await supabase.from('profiles').upsert({
             id: user.id,
             role: 'homeowner',
@@ -554,18 +605,33 @@ export default function TradeSelectorPage() {
 
           // #482: static-stack parity — property_address/property_state must land
           // on the claim (contractor cards + D-178 state gating read them).
-          const csAddress = (csSignup.address as string) || '';
-          // gh-1579: same tolerant parser as the profiles upsert above —
-          // one helper, both write sites (./utils.ts parseAddress).
-          const csStateToken = parseAddress(csAddress).state;
-
+          // gh-1993 REVIEW: FAIL (PR #1998 comment 5698654086, B1/B2) +
+          // CEO RULING (comment 5698876771): property_address STAYS the full
+          // combined line ("street, city, ST zip"), not the street line
+          // alone — notify-contractors, check-siding-design-completion, the
+          // contractor opportunities card (D-074 city-before-street-reveal),
+          // agreement_requested email/SMS, DocuSign customer_address and
+          // color-selection.html's ZIP extraction all parse this column
+          // expecting the combined shape. #1993's body said "street line for
+          // existing readers" — the ruling amends that: nothing in #1993
+          // asked to change what downstream readers get, only to split the
+          // INPUT. csSignup.address is already the combined line get-started
+          // built via fullAddress(street, city, state, zip) — using it
+          // directly here (instead of re-deriving from parsedAddress) means
+          // this column is byte-identical to what main wrote before this PR.
+          // property_city/property_zip are the two NEW additive columns
+          // (migration in this PR, already applied to production — see that
+          // file) that carry the split city/zip alongside the unchanged
+          // combined property_address.
           const claimPayload: Record<string, unknown> = {
             funding_type: fundingType,
             policy_type: policyType,
             trades: trades,
             job_type: jobType,
-            property_address: csAddress || null,
-            property_state: csStateToken,
+            property_address: (csSignup.address as string) || null,
+            property_city: parsedAddress.city,
+            property_state: parsedAddress.state,
+            property_zip: parsedAddress.zip,
             updated_at: new Date().toISOString(),
             ...(referralSource && { referral_source: referralSource }),
             ...(referralAgentId && { referral_agent_id: referralAgentId }),
@@ -582,6 +648,16 @@ export default function TradeSelectorPage() {
               referrer_updates_opt_out: csSignup.referrer_updates_opt_out,
             }),
           };
+          // gh-1993 CEO RULING (comment 5698876771): property_city/
+          // property_zip are applied to production now (Tier 3A additive,
+          // verified present) — no pre-migration retry path. REVIEW: FAIL
+          // B3 was correct that the retry this PR previously had only
+          // matched 42703 (a SELECT-on-missing-column code) when PostgREST
+          // actually rejects an insert/update payload naming an unknown
+          // column with PGRST204, so the retry never would have fired
+          // anyway. Rather than fix the error code, the columns are simply
+          // live now, so there is no pre-migration window to guard and no
+          // dead retry path to carry.
 
           if (existingClaim) {
             await supabase

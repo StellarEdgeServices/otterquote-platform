@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { formatPhoneValue, isValidEmail } from '../utils';
+import { formatPhoneValue, isValidEmail, isValidZip, fullAddress } from '../utils';
 
 describe('formatPhoneValue', () => {
   it('formats a 10-digit number', () => {
@@ -48,5 +48,43 @@ describe('isValidEmail', () => {
     expect(isValidEmail('@domain.com')).toBe(false);
     expect(isValidEmail('user@')).toBe(false);
     expect(isValidEmail('user @domain.com')).toBe(false);
+  });
+});
+
+// gh-1993: single "address" box replaced with Street / City / State / ZIP.
+describe('isValidZip', () => {
+  it('accepts exactly 5 digits', () => {
+    expect(isValidZip('46201')).toBe(true);
+    expect(isValidZip(' 46201 ')).toBe(true);
+  });
+
+  it('rejects anything not exactly 5 digits', () => {
+    expect(isValidZip('')).toBe(false);
+    expect(isValidZip('4620')).toBe(false);
+    expect(isValidZip('462011')).toBe(false);
+    expect(isValidZip('4620a')).toBe(false);
+    expect(isValidZip('46201-1234')).toBe(false);
+  });
+});
+
+describe('fullAddress', () => {
+  it('joins all four fields with the standard "street, city, state zip" shape', () => {
+    expect(fullAddress('123 Main St', 'Anytown', 'IN', '46201')).toBe('123 Main St, Anytown, IN 46201');
+  });
+
+  it('omits a blank city without leaving a stray comma', () => {
+    expect(fullAddress('123 Main St', '', 'IN', '46201')).toBe('123 Main St, IN 46201');
+  });
+
+  it('omits a blank state/zip pair without a stray trailing separator', () => {
+    expect(fullAddress('123 Main St', 'Anytown', '', '')).toBe('123 Main St, Anytown');
+  });
+
+  it('trims whitespace on every segment', () => {
+    expect(fullAddress('  123 Main St  ', ' Anytown ', ' IN ', ' 46201 ')).toBe('123 Main St, Anytown, IN 46201');
+  });
+
+  it('returns empty string when every field is blank', () => {
+    expect(fullAddress('', '', '', '')).toBe('');
   });
 });

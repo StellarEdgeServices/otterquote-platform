@@ -196,7 +196,9 @@
     "referrer_updates_opt_out",
     "measurement_shape",
     "live_charge_authorized_at",
-    "live_charge_authorized_by"
+    "live_charge_authorized_by",
+    "property_city",
+    "property_zip"
   ],
   "coming_soon_waitlist": [
     "id",
