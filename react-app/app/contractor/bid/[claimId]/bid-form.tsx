@@ -338,7 +338,9 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
             title: `Bid updated for project ${String(claim.id).slice(0, 8) || '…'}`, created_at: nowIso,
           });
         } catch (e) { console.warn('Activity log failed (non-fatal):', e); }
-        track('bid_updated', { claim_id: claim.id, bid_amount: bidAmount });
+        // fix4 (CEO ruling, PR #1979 comment 5698878146): claim_id removed —
+        // a per-homeowner database identifier must not reach GA4.
+        track('bid_updated', { bid_amount: bidAmount });
         try {
           await supabase.functions.invoke('notify-contractors', { body: buildNotifyContractorsBody(mode === 'renew', String(claim.id), contractor.id) });
         } catch (e) { console.warn('Bid update/renewal email failed (non-fatal):', e); }

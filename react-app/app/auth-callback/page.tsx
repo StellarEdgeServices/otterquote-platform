@@ -22,6 +22,21 @@
  * so that pre-auth call always 401'd. The session is live by the time we reach
  * routeSession() below, so supabase.functions.invoke attaches a valid JWT
  * automatically (same pattern as contractor/pre-approval's HubSpot sync).
+ *
+ * gh-1940: GA4 `sign_up` (Google path) also fires here, post-auth. This is
+ * now the ONLY place a Google sign_up is counted — get-started/page.tsx no
+ * longer fires one pre-redirect (see its `fireSignupAnalytics`) — fixed per
+ * cto32-review-pr1979-20260915.md (REVIEW: FAIL, findings B1/B2): the
+ * pre-redirect emit was in fact delivered (contrary to the original claim
+ * this file's history carried), so keeping BOTH emits double-counted every
+ * delivered Google signup. Fires at most once per user
+ * (maybeFireGoogleSignUp below), gated on the account being newly created
+ * with a bounded clock-skew allowance — a returning Google sign-in must
+ * never emit this. The call is AWAITED (bounded to ~1s — see
+ * lib/track.ts's fireSignUpAndWait) so the redirect below cannot tear the
+ * page down before the hit has had a real chance to be queued/sent; the
+ * referral_source dimension is carried through the `cs_signup` payload
+ * get-started/page.tsx already wrote before the redirect.
  */
 
 'use client';
@@ -31,7 +46,9 @@ import type { Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 
 import { readReferralIds, writeReferralIds } from '@/lib/cookie-storage';
+import { maybeFireGoogleSignUp, readReferralSourceFromCsSignup } from './signup-analytics';
 import { adoptFirstTouchFromParam, recordFirstTouch } from '@/lib/attribution';
+
 // ─── HubSpot — D-189, fired post-auth (#405) ─────────────────────────────────
 
 /** Same payload shape create-hubspot-contact's homeowner mode always expected. */
@@ -242,6 +259,12 @@ export default function AuthCallbackPage() {
       // Homeowner path confirmed (not a contractor record, no contractor intent) —
       // safe to fire the post-auth HubSpot sync now that a session JWT exists (#405).
       fireHomeownerHubspotContact(session.user.email);
+
+      // gh-1940 fix2: GA4 `sign_up` (Google path) — see
+      // maybeFireGoogleSignUp's header for the full guard rationale
+      // (new-user + one-time marker) and lib/track.ts's fireSignUpAndWait
+      // for why this is awaited before the redirect below.
+      await maybeFireGoogleSignUp(session.user, readReferralSourceFromCsSignup());
 
       // Homeowner: returning (has claim) → dashboard, new → trade-selector
       try {

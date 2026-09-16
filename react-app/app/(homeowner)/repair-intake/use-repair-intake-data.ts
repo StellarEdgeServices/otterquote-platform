@@ -14,6 +14,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { isTestEmail } from '@/lib/test-signal';
+import { track } from '@/lib/track';
 import {
   buildClaimInsert,
   buildClaimUpdate,
@@ -156,6 +157,11 @@ export async function submitRepairIntake(
     if (uploadErr) {
       // Faithful: a single failed photo must not abort the submission.
       console.warn('Photo upload failed:', uploadErr.message);
+    } else {
+      // gh-1940: "documents uploaded" funnel step — fired per file, only on
+      // a confirmed storage write. `tier` is a photo-category label
+      // (PhotoTier), not file content or a filename — no PII.
+      track('document_uploaded', { tier });
     }
   }
 

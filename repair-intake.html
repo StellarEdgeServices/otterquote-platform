@@ -1355,8 +1355,10 @@
                 }).eq('id', claimId).eq('user_id', user.id);
 
                 // ── GA4 ─────────────────────────────────────────────────────
+                // fix4 (CEO ruling, PR #1979 comment 5698878146): claim_id
+                // removed — a per-homeowner database identifier must not
+                // reach GA4.
                 gtag('event', 'repair_submitted', {
-                    claim_id: claimId,
                     trade: selectedTrade,
                     repair_type: state.selectedRepairType,
                     has_material: !!(materialBrand || materialProduct)

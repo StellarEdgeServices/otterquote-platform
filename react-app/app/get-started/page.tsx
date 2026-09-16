@@ -953,15 +953,37 @@ export default function GetStartedPage() {
    * `form_abandon` while still being counted as a `sign_up`. Each caller
    * now owns setting `signupCompletedRef` itself, at the point it actually
    * knows whether the funnel step it represents will complete.
+   *
+   * gh-1940 fix2 (cto32-review-pr1979-20260915.md, REVIEW: FAIL, findings
+   * B1/B2): this used to fire `sign_up` for BOTH methods here, pre-redirect.
+   * For the Google path, that pre-redirect hit turned out to be reliably
+   * delivered (contradicting this PR's original premise) and auth-callback's
+   * OAuth-landing emit (signup-analytics.ts's maybeFireGoogleSignUp) was
+   * ADDED alongside it rather than replacing it, so every delivered Google
+   * signup was counted twice. `sign_up` is now counted in exactly one place
+   * per method: the landing, for Google; here, unchanged, for password.
+   * `referral_source` still reaches the landing's emit — it was already
+   * being written into `cs_signup` below (persistSignupContext), which
+   * auth-callback reads via `readReferralSourceFromCsSignup`.
+   * `homeowner_signup` and the Meta `Lead` call below are UNCHANGED for
+   * both methods: neither was identified as double-counted or lost by the
+   * review (only `sign_up` was), and Meta Pixel is host-AND-path-gated to
+   * `/get-started` only (components/MetaPixelGate.tsx `ALLOWED_PATHS`) —
+   * `window.fbq` is never defined on `/auth-callback`, so a Lead call moved
+   * there would silently no-op. Not adding a Meta Pixel mount there, or any
+   * other new vendor call, per that gate's own "do not add a second mount"
+   * warning.
    */
   const fireSignupAnalytics = (method: 'google' | 'password') => {
     const params = new URLSearchParams(
       typeof window !== 'undefined' ? window.location.search : '',
     );
-    track('sign_up', {
-      method,
-      referral_source: referralSource || 'web',
-    });
+    if (method === 'password') {
+      track('sign_up', {
+        method,
+        referral_source: referralSource || 'web',
+      });
+    }
     track('homeowner_signup', {
       job_type: params.get('job_type') || null,
       source: params.get('utm_source') || referralSource || 'direct',

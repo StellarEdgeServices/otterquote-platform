@@ -689,8 +689,13 @@ export default function TradeSelectorPage() {
             // (the actually-live) React surface.
             if (insertedClaim) {
               savedClaimId = insertedClaim.id;
-              // gh-1984: GA4 key event — fired only when a NEW claims row was
-              // created (not on the update branch above). No PII.
+              // gh-1940/gh-1984: "claim started" funnel step — fires once,
+              // only on the first claim row for this user (the `else`
+              // branch above is an update to an already-started claim, not
+              // a new start). #1988/gh-1984 already shipped this emission
+              // on this exact surface (dedupe per gh-1940 ruling
+              // 2026-09-16T13:12:08Z comment 5698022815) — kept as-is
+              // rather than adding a second, PR #1979-local emission here.
               analyticsSends.push(
                 gtagEventBeforeNavigation('claim_started', {
                   funding_type: fundingType,
