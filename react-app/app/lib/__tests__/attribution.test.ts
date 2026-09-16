@@ -183,6 +183,20 @@ describe('OAuth browser-switch carry (?ft= on redirectTo)', () => {
     expect(decodeFirstTouchParam(u.searchParams.get('ft'))).toEqual(ft);
   });
 
+  it('sheds optional fields, then drops ft entirely, to keep redirectTo <= 1500-char ft', () => {
+    const big = parseFirstTouch(
+      'https://app.otterquote.com/get-started?utm_source=fb&utm_term=' + 't'.repeat(200) + '&utm_content=' + 'c'.repeat(200) + '&fbclid=' + 'f'.repeat(700),
+      null, NOW,
+    )!;
+    const slimmed = decodeFirstTouchParam(new URL(withFirstTouchParam('https://app.otterquote.com/auth-callback', big)).searchParams.get('ft'));
+    expect(slimmed?.fbclid).toBe(big.fbclid);
+    expect(slimmed?.utm_term).toBeUndefined();
+    const huge = { ...big, gclid: 'g'.repeat(1000), fbclid: 'f'.repeat(1000) };
+    expect(withFirstTouchParam('https://app.otterquote.com/auth-callback?intent=homeowner', huge)).toBe(
+      'https://app.otterquote.com/auth-callback?intent=homeowner',
+    );
+  });
+
   it('NEGATIVE CONTROL: no touch -> redirect URL unchanged; junk ft -> null', () => {
     expect(withFirstTouchParam('https://app.otterquote.com/auth-callback?intent=homeowner', null)).toBe(
       'https://app.otterquote.com/auth-callback?intent=homeowner',

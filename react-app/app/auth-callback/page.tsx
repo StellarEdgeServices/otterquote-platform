@@ -106,11 +106,23 @@ export default function AuthCallbackPage() {
 
   useEffect(() => {
     // Capture hash state before Supabase's onAuthStateChange processes and clears it
-    // gh-1983: adopt a first touch carried on ?ft= (OAuth redirectTo) before
-    // Supabase rewrites the URL; no-op when this browser already has one.
-    adoptFirstTouchFromParam(new URLSearchParams(window.location.search).get('ft'));
     const errorCode = detectHashError();
     const hasTokens = urlHasAuthTokens();
+
+    // gh-1983: adopt a first touch carried on ?ft= (Google OAuth redirectTo) —
+    // only on a real auth return, so a crafted link cannot seed a campaign —
+    // then strip it from the address bar before analytics read the URL.
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.has('ft')) {
+        if (hasTokens) adoptFirstTouchFromParam(params.get('ft'));
+        const clean = new URL(window.location.href);
+        clean.searchParams.delete('ft');
+        window.history.replaceState(window.history.state, '', clean.toString());
+      }
+    } catch {
+      // non-fatal
+    }
 
     // Immediate error — no point subscribing
     if (errorCode) {

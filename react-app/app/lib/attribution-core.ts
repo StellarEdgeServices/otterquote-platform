@@ -232,11 +232,26 @@ export function decodeFirstTouchParam(raw: string | null | undefined): FirstTouc
  * Safari/Chrome — a different cookie jar — so the redirect URL is the only
  * thing that reliably crosses. Returns the URL unchanged when there is no touch.
  */
+export const FT_URL_PARAM_MAX = 1500;
+
 export function withFirstTouchParam(redirectUrl: string, ft: FirstTouch | null): string {
   if (!ft) return redirectUrl;
   try {
+    // Keep the Google authorize URL small — a rejected redirect would break
+    // sign-up itself, which matters more than attribution. Shed the least
+    // useful fields first; if still too long, send no ft at all.
+    let encoded = encodeFirstTouchParam(ft);
+    if (encoded.length > FT_URL_PARAM_MAX) {
+      const slim: FirstTouch = { ...ft };
+      delete slim.landing_path;
+      delete slim.referrer;
+      delete slim.utm_term;
+      delete slim.utm_content;
+      encoded = encodeFirstTouchParam(slim);
+      if (encoded.length > FT_URL_PARAM_MAX) return redirectUrl;
+    }
     const u = new URL(redirectUrl);
-    u.searchParams.set(FT_URL_PARAM, encodeFirstTouchParam(ft));
+    u.searchParams.set(FT_URL_PARAM, encoded);
     return u.toString();
   } catch {
     return redirectUrl;
