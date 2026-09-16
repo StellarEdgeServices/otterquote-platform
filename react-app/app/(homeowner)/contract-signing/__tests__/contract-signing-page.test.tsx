@@ -197,13 +197,13 @@ describe('contract-signing page — init-time signed=true return', () => {
   });
 });
 
-// ───────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 // gh-1940 fix2 (cto32-review-pr1979-20260915.md, finding B3) — contract_signed
 // once-guard. The review's own probe found DocuSignEmbed's message listener
 // can invoke onComplete twice in one tick (a `session_end` message and a
 // separate `signing_complete` message both independently call it), which
 // doubled `contract_signed` for one signature.
-// ──────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 describe('contract-signing page — contract_signed once-guard (gh-1940 fix2, finding B3)', () => {
   async function proceedToSigningIframe() {
     (createHomeownerEnvelope as unknown as Fn).mockResolvedValue({
