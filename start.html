@@ -125,22 +125,29 @@
       <h1>Let's get you started</h1>
       <p class="router-sub">Tell us how to reach you. Takes about 30 seconds.</p>
 
+      <!-- gh-1994 fix round 3 (non-blocking N4): maxlength on each input
+           matches the DB-layer CHECK constraints (leads_name_length_check
+           /leads_email_length_check/leads_phone_length_check, migration
+           20260916132127_gh1994_router_leads_columns.sql) so a visitor who
+           pastes an over-length value is stopped by the browser before
+           submit rather than hitting a generic "something went wrong"
+           error from a server-side constraint violation on insert. -->
       <form id="step1Form" novalidate>
         <div class="form-group">
           <label for="routerName" class="form-label required">Full Name</label>
-          <input type="text" id="routerName" name="name" class="form-input" autocomplete="name" placeholder="Jane Smith" required aria-describedby="routerNameError">
+          <input type="text" id="routerName" name="name" class="form-input" autocomplete="name" placeholder="Jane Smith" required maxlength="200" aria-describedby="routerNameError">
           <div class="field-error" id="routerNameError"></div>
         </div>
 
         <div class="form-group">
           <label for="routerEmail" class="form-label required">Email</label>
-          <input type="email" id="routerEmail" name="email" class="form-input" autocomplete="email" inputmode="email" placeholder="jane@example.com" required aria-describedby="routerEmailError">
+          <input type="email" id="routerEmail" name="email" class="form-input" autocomplete="email" inputmode="email" placeholder="jane@example.com" required maxlength="320" aria-describedby="routerEmailError">
           <div class="field-error" id="routerEmailError"></div>
         </div>
 
         <div class="form-group">
           <label for="routerPhone" class="form-label required">Phone Number</label>
-          <input type="tel" id="routerPhone" name="phone" class="form-input" autocomplete="tel" inputmode="tel" placeholder="(555) 123-4567" required aria-describedby="routerPhoneError">
+          <input type="tel" id="routerPhone" name="phone" class="form-input" autocomplete="tel" inputmode="tel" placeholder="(555) 123-4567" required maxlength="20" aria-describedby="routerPhoneError">
           <div class="field-error" id="routerPhoneError"></div>
         </div>
 
@@ -195,12 +202,13 @@
   // gh-1994: this page owns its own Supabase client rather than depending on
   // js/supabase-client.js (not included on most static marketing pages
   // today -- see js/auth.js:1443-1447's own count of "9 of 11" pages that
-  // lack it) or on a page-local `sb` declared elsewhere (partner-re.html's
-  // inline script reads a bare `sb` that is never declared/assigned
-  // anywhere reachable from that page -- likely a pre-existing bug,
-  // independent of this PR; flagged under CONTRADICTIONS in the report, not
-  // fixed here). Pattern below matches contractor-join.html's own working
-  // `const sb = supabase.createClient(...)` local-client declaration.
+  // lack it). Pattern below matches contractor-join.html's own working
+  // `const sb = supabase.createClient(...)` local-client declaration. (Fix
+  // round 3: removed this comment's own stale claim that partner-re.html
+  // reads an unbound bare `sb` -- withdrawn back in fix round 1's PR body
+  // once `js/config.js` was confirmed to declare `sb` as a page-level
+  // global; this file's own copy of that same claim was missed until the
+  // fix round 3 REVIEW pass caught it.)
   var sb = null;
   try {
     if (typeof supabase !== 'undefined' && typeof CONFIG !== 'undefined') {
@@ -314,6 +322,47 @@
     try { sessionStorage.setItem(LEAD_ID_STORAGE_KEY, id); } catch (e) { /* private-mode / blocked storage: resubmit dedup best-effort only */ }
   }
 
+  // gh-1994 fix round 3 (Ben, REVIEW 5702597120 finding B1, blocking):
+  // shared fresh-insert path. Both update_lead_contact (Step 1 resubmit)
+  // and set_lead_role (Step 2/2a) now RETURN boolean and can legitimately
+  // return false -- once prefill_used_at is set or the 30-minute window
+  // has passed, the RPC no-ops rather than erroring. Fix round 2 treated
+  // "no error" as "success" for both, which meant Back-from-a-destination
+  // (which stamps prefill_used_at via that page's own get_lead_prefill
+  // call) -> correct a typo -> pick a new role silently discarded both the
+  // correction and the new role: the DB kept the original values with no
+  // error anywhere in the chain (Ben's traced flow, B1). insertFreshLead
+  // is the same client-generated-id insert Step 1 already used for a
+  // brand-new visitor, factored out so a stale/prefilled/expired lead id
+  // can fall back to it instead of the visitor's data vanishing.
+  function insertFreshLead(name, email, phoneDigits) {
+    var newId = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : (
+      'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+        var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+      })
+    );
+    var attr = collectAttribution();
+    return sb.from('leads').insert({
+      id: newId,
+      name: name,
+      email: email,
+      phone: phoneDigits,
+      source: 'router',
+      utm_source: attr.utm_source,
+      utm_medium: attr.utm_medium,
+      utm_campaign: attr.utm_campaign,
+      utm_content: attr.utm_content,
+      utm_term: attr.utm_term,
+      fbclid: attr.fbclid,
+      gclid: attr.gclid
+    }).then(function (res) {
+      if (res && res.error) throw res.error;
+      setStoredLeadId(newId);
+      return newId;
+    });
+  }
+
   // ── History: Step 2 and Step 2a each get their own history entry (pushed
   // on the way forward) so the browser/hardware back button steps the
   // router backward one screen at a time instead of leaving the page
@@ -381,7 +430,17 @@
     // policy has no matching anon UPDATE policy, so a plain re-insert with
     // the same id would hit the primary key and error, and a fresh insert
     // would leave the abandoned original row behind as a duplicate.
+    //
+    // gh-1994 fix round 3 (Ben, B1 cure item b): update_lead_contact now
+    // RETURNS boolean and `false` is a real, non-error outcome (the guard
+    // -- 30-minute window or prefill_used_at already set -- refused the
+    // write). Fix round 2 checked only `res.error` here, so that refusal
+    // read as success and the correction was silently lost. A `false` (or
+    // a thrown error) now falls back to insertFreshLead with the corrected
+    // values instead of losing them -- this is the actual B1 fix; the
+    // update path above it is unchanged and still the common case.
     var storedLeadId = getStoredLeadId();
+    var phoneDigits = normalizePhone(phoneRaw);
 
     if (storedLeadId) {
       leadId = storedLeadId;
@@ -389,9 +448,22 @@
         p_lead_id: leadId,
         p_name: name,
         p_email: email,
-        p_phone: normalizePhone(phoneRaw)
-      }).then(function (res) { onStep1Settled(res, null); })
-        .catch(function (err) { onStep1Settled(null, err); });
+        p_phone: phoneDigits
+      }).then(function (res) {
+        if (res && res.error) throw res.error;
+        if (res && res.data === true) { onStep1Settled(null, null); return; }
+        console.warn('[router] update_lead_contact no-op (stale/prefilled/expired lead) -- inserting a fresh lead instead of losing the correction');
+        return insertFreshLead(name, email, phoneDigits).then(function (newId) {
+          leadId = newId;
+          onStep1Settled(null, null);
+        });
+      }).catch(function (err) {
+        console.warn('[router] update_lead_contact failed -- inserting a fresh lead instead:', err);
+        insertFreshLead(name, email, phoneDigits).then(function (newId) {
+          leadId = newId;
+          onStep1Settled(null, null);
+        }).catch(function (err2) { onStep1Settled(null, err2); });
+      });
       return;
     }
 
@@ -401,33 +473,12 @@
     // default back (same class of problem partner-re.html's own comment
     // describes for referral_agents/register_partner). Generating the id
     // client-side and passing it explicitly sidesteps that entirely: no
-    // RPC round-trip needed just to learn the row's own id.
-    leadId = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : (
-      'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
-        var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
-        return v.toString(16);
-      })
-    );
-
-    var attr = collectAttribution();
-    var phoneDigits = normalizePhone(phoneRaw);
-
-    sb.from('leads').insert({
-      id: leadId,
-      name: name,
-      email: email,
-      phone: phoneDigits,
-      source: 'router',
-      utm_source: attr.utm_source,
-      utm_medium: attr.utm_medium,
-      utm_campaign: attr.utm_campaign,
-      utm_content: attr.utm_content,
-      utm_term: attr.utm_term,
-      fbclid: attr.fbclid,
-      gclid: attr.gclid
-    }).then(function (res) {
-      if (!(res && res.error)) setStoredLeadId(leadId);
-      onStep1Settled(res, null);
+    // RPC round-trip needed just to learn the row's own id. (Fix round 3:
+    // this is now insertFreshLead(), shared with the fallback above and
+    // with Step 2/2a's own fallback below.)
+    insertFreshLead(name, email, phoneDigits).then(function (newId) {
+      leadId = newId;
+      onStep1Settled(null, null);
     }).catch(function (err) { onStep1Settled(null, err); });
   });
 
@@ -465,6 +516,56 @@
     return baseUrl + sep + parts.join('&');
   }
 
+  // gh-1994 fix round 3 (Ben, REVIEW 5702597120 finding B1, blocking):
+  // shared fallback for both Step 2's role click and Step 2a's industry
+  // click. set_lead_role now RETURNS boolean and `false` is a real,
+  // non-error refusal (prefill_used_at already set, or past its 30-minute
+  // window) -- fix round 2 only checked `res.error` here, so that refusal
+  // was invisible and a Back-from-a-destination visitor's new role choice
+  // was silently discarded, leaving the original (now-stale) lead's role
+  // unchanged with no error anywhere in the chain (Ben's traced B1 flow).
+  // On `false` or a thrown error, this re-reads the CURRENT Step 1 field
+  // values (those inputs are hidden, not removed, once a later step is
+  // active, so `.value` still reflects whatever the visitor last typed),
+  // inserts a fresh lead with them via insertFreshLead, and retries
+  // set_lead_role against the new id. Never rejects -- even a failure
+  // after the fallback still proceeds to the destination, per the
+  // pre-existing "the role write failing must never strand a visitor on
+  // the router" rule (closes-on control (c)); it is logged instead.
+  function setRoleWithFallback(role, industry) {
+    var payload = { p_lead_id: leadId, p_role: role };
+    if (industry) payload.p_partner_industry = industry;
+
+    function fallback() {
+      var freshName = document.getElementById('routerName').value.trim();
+      var freshEmail = document.getElementById('routerEmail').value.trim();
+      var freshPhone = normalizePhone(document.getElementById('routerPhone').value.trim());
+      return insertFreshLead(freshName, freshEmail, freshPhone).then(function (newId) {
+        leadId = newId;
+        var retryPayload = { p_lead_id: newId, p_role: role };
+        if (industry) retryPayload.p_partner_industry = industry;
+        return sb.rpc('set_lead_role', retryPayload).then(function (res) {
+          if (res && res.error) throw res.error;
+          if (!(res && res.data === true)) {
+            console.error('[router] set_lead_role still refused on a brand-new lead (' + newId + ') -- proceeding to the destination anyway');
+          }
+        });
+      }).catch(function (err) {
+        console.error('[router] fresh-lead fallback failed -- proceeding to the destination anyway:', err);
+      });
+    }
+
+    return sb.rpc('set_lead_role', payload).then(function (res) {
+      if (res && res.error) throw res.error;
+      if (res && res.data === true) return;
+      console.warn('[router] set_lead_role no-op (stale/prefilled/expired lead) -- inserting a fresh lead and retrying');
+      return fallback();
+    }).catch(function (err) {
+      console.warn('[router] set_lead_role failed -- inserting a fresh lead and retrying:', err);
+      return fallback();
+    });
+  }
+
   var roleButtons = document.querySelectorAll('#step2 .role-option');
   // gh-1994 fix round 2 (Ben, non-blocking item): disable the role buttons
   // while their set_lead_role request is in flight, so a fast double-click
@@ -499,17 +600,7 @@
         }
       }
 
-      sb.rpc('set_lead_role', { p_lead_id: leadId, p_role: role }).then(function (res) {
-        if (res && res.error) console.error('[router] set_lead_role failed:', res.error);
-        proceed();
-      }).catch(function (err) {
-        console.error('[router] set_lead_role threw:', err);
-        // gh-1994: the role write failing must never strand a visitor on
-        // the router -- proceed to the destination regardless (it can still
-        // collect their info itself; the leads row already exists from
-        // Step 1 either way, closes-on control (c)).
-        proceed();
-      });
+      setRoleWithFallback(role, null).then(proceed).catch(proceed);
     });
   });
 
@@ -564,13 +655,7 @@
       redirectTo(PARTNER_INDUSTRY_DESTINATIONS[industry]);
     }
 
-    sb.rpc('set_lead_role', { p_lead_id: leadId, p_role: 'referral_partner', p_partner_industry: industry }).then(function (res) {
-      if (res && res.error) console.error('[router] set_lead_role (industry) failed:', res.error);
-      proceed();
-    }).catch(function (err) {
-      console.error('[router] set_lead_role (industry) threw:', err);
-      proceed();
-    });
+    setRoleWithFallback('referral_partner', industry).then(proceed).catch(proceed);
   }
 
   // ── Step 3: redirect. `preBuilt` (fix round 2) means `dest` is already a
@@ -588,20 +673,33 @@
     window.location.href = dest;
   }
 
-  // gh-1994 fix round 2 (Ben, non-blocking item): a bfcache restore (e.g.
-  // Android/iOS back-gesture from app.otterquote.com/get-started or from
-  // contractor-join.html/partner-*.html back to this page) resurrects the
-  // router's in-memory JS exactly as it was mid-flow -- still on Step 2/2a/3
-  // with a `leadId` that may already be role-assigned, past its RPC
-  // window, or past its 30-minute prefill window. Resetting to Step 1 on
-  // every persisted pageshow is the safe default: a fresh Step 1 submit
-  // either starts a new lead or (via the existing sessionStorage dedup)
-  // updates the same one through update_lead_contact, both of which are
-  // safe regardless of what state the bfcache snapshot froze.
+  // gh-1994 fix round 2 (Ben, non-blocking item), corrected in fix round 3
+  // (Ben, REVIEW 5702597120 finding B1, blocking -- this comment's own
+  // "safe regardless" claim was the CONTRADICTION the reviewer quoted
+  // verbatim: measured behavior was a silent no-op, not a safe update): a
+  // bfcache restore (e.g. Android/iOS back-gesture from
+  // app.otterquote.com/get-started or from contractor-join.html/
+  // partner-*.html back to this page) resurrects the router's in-memory JS
+  // exactly as it was mid-flow -- still on Step 2/2a/3 with a `leadId`
+  // that has, in the realistic case (the visitor actually reached a
+  // destination page, whose own prefill script already called
+  // get_lead_prefill on load), its prefill_used_at already stamped.
+  // Resetting to Step 1 alone was NOT sufficient fix round 2 believed it
+  // to be: a resubmit would still try update_lead_contact against that
+  // same now-prefilled id, get back `false` (fix round 3's new return
+  // value), and -- as of this same fix round -- fall back to
+  // insertFreshLead rather than silently discard the correction (see that
+  // fallback above). Clearing BOTH the in-memory `leadId` and the
+  // sessionStorage id here (B1 cure item c) is a cheap belt-and-suspenders
+  // on top of that fallback: it means a post-bfcache resubmit takes the
+  // plain fresh-insert branch directly, without needing the
+  // update_lead_contact round-trip and its fallback at all.
   window.addEventListener('pageshow', function (e) {
     if (e.persisted) {
       try { history.replaceState({ step: 1 }, '', location.pathname + location.search); } catch (e2) {}
       renderStep(1);
+      leadId = null;
+      try { sessionStorage.removeItem(LEAD_ID_STORAGE_KEY); } catch (e3) {}
     }
   });
 })();
