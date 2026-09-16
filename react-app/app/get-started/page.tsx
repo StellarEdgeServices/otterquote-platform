@@ -102,7 +102,7 @@ import { supabase } from '@/lib/supabase';
 import { readReferralIds, writeReferralIds } from '@/lib/cookie-storage';
 import { readFirstTouch } from '@/lib/attribution';
 import { withFirstTouchParam } from '@/lib/attribution-core';
-import { formatPhoneValue, isValidEmail } from './utils';
+import { formatPhoneValue, isValidEmail, isValidZip, fullAddress } from './utils';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -145,14 +145,55 @@ const ALREADY_REGISTERED_MESSAGE =
 // (the very next screen after account creation) is still where the homeowner
 // gives the full project detail — this is only the one-word headline CRO RUN 20
 // asked to see ahead of account creation, not a replacement for that page.
-type ProjectType = 'roof' | 'siding' | 'windows_doors' | 'water_damage' | 'other' | '';
+// gh-1991: Roof/Siding/Gutters/Windows/Other — exactly the four trades
+// trade-selector (TRADE_OPTIONS, ./../trade-selector/page.tsx) offers,
+// plus "Other". "Water Damage" and "Doors" removed — not trades OtterQuote
+// sells (CRO standing position 11). Values are named to match
+// trade-selector's TradeKey 1:1 (`windows_doors` -> `windows`, new
+// `gutters`) so the mapping in that page's pre-select effect is a direct
+// lookup, not a translation table that can drift out of sync.
+type ProjectType = 'roof' | 'siding' | 'gutters' | 'windows' | 'other' | '';
 
 const PROJECT_TYPE_OPTIONS: { value: ProjectType; label: string }[] = [
   { value: 'roof', label: 'Roof' },
   { value: 'siding', label: 'Siding' },
-  { value: 'windows_doors', label: 'Windows/Doors' },
-  { value: 'water_damage', label: 'Water Damage' },
+  { value: 'gutters', label: 'Gutters' },
+  { value: 'windows', label: 'Windows' },
   { value: 'other', label: 'Other' },
+];
+
+// gh-1993: 50 states + DC + Puerto Rico — matches VALID_STATE_CODES in
+// trade-selector/utils.ts (the same set that page's address-parsing safety
+// net trusts) so a value picked here is never later rejected downstream as
+// "not a real state". Kept local (not imported) so this page has no
+// cross-feature dependency on trade-selector's module.
+const STATE_CODE_OPTIONS: { value: string; label: string }[] = [
+  { value: 'AL', label: 'Alabama' }, { value: 'AK', label: 'Alaska' },
+  { value: 'AZ', label: 'Arizona' }, { value: 'AR', label: 'Arkansas' },
+  { value: 'CA', label: 'California' }, { value: 'CO', label: 'Colorado' },
+  { value: 'CT', label: 'Connecticut' }, { value: 'DE', label: 'Delaware' },
+  { value: 'DC', label: 'District of Columbia' }, { value: 'FL', label: 'Florida' },
+  { value: 'GA', label: 'Georgia' }, { value: 'HI', label: 'Hawaii' },
+  { value: 'ID', label: 'Idaho' }, { value: 'IL', label: 'Illinois' },
+  { value: 'IN', label: 'Indiana' }, { value: 'IA', label: 'Iowa' },
+  { value: 'KS', label: 'Kansas' }, { value: 'KY', label: 'Kentucky' },
+  { value: 'LA', label: 'Louisiana' }, { value: 'ME', label: 'Maine' },
+  { value: 'MD', label: 'Maryland' }, { value: 'MA', label: 'Massachusetts' },
+  { value: 'MI', label: 'Michigan' }, { value: 'MN', label: 'Minnesota' },
+  { value: 'MS', label: 'Mississippi' }, { value: 'MO', label: 'Missouri' },
+  { value: 'MT', label: 'Montana' }, { value: 'NE', label: 'Nebraska' },
+  { value: 'NV', label: 'Nevada' }, { value: 'NH', label: 'New Hampshire' },
+  { value: 'NJ', label: 'New Jersey' }, { value: 'NM', label: 'New Mexico' },
+  { value: 'NY', label: 'New York' }, { value: 'NC', label: 'North Carolina' },
+  { value: 'ND', label: 'North Dakota' }, { value: 'OH', label: 'Ohio' },
+  { value: 'OK', label: 'Oklahoma' }, { value: 'OR', label: 'Oregon' },
+  { value: 'PA', label: 'Pennsylvania' }, { value: 'PR', label: 'Puerto Rico' },
+  { value: 'RI', label: 'Rhode Island' }, { value: 'SC', label: 'South Carolina' },
+  { value: 'SD', label: 'South Dakota' }, { value: 'TN', label: 'Tennessee' },
+  { value: 'TX', label: 'Texas' }, { value: 'UT', label: 'Utah' },
+  { value: 'VT', label: 'Vermont' }, { value: 'VA', label: 'Virginia' },
+  { value: 'WA', label: 'Washington' }, { value: 'WV', label: 'West Virginia' },
+  { value: 'WI', label: 'Wisconsin' }, { value: 'WY', label: 'Wyoming' },
 ];
 
 // ─── GA4 helper ───────────────────────────────────────────────────────
@@ -498,7 +539,18 @@ export default function GetStartedPage() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [phone, setPhone] = useState('');
-  const [address, setAddress] = useState('');
+  // gh-1993: single free-text "address" box replaced with four separate
+  // fields (Street / City / State / ZIP) — Dustin, 2026-09-16 chat,
+  // verbatim: "Every address collection should have separate boxes...
+  // Not all in one box." `state` is a 2-letter USPS code (STATE_CODE_OPTIONS
+  // below drives the <select>, so an invalid code can't be typed) and `zip`
+  // is validated to exactly 5 digits in validateHomeInfo(). See fullAddress()
+  // below for how these four recombine into the one `address` string
+  // existing readers (auth-callback's HubSpot sync) still expect.
+  const [street, setStreet] = useState('');
+  const [city, setCity] = useState('');
+  const [addrState, setAddrState] = useState('');
+  const [zip, setZip] = useState('');
   // gh-1901: asked in Step 1, before any account field — "what does the
   // homeowner want help with" is the value CRO RUN 20 found missing ahead of
   // account creation. Informational only: carried in the cs_signup
@@ -715,13 +767,29 @@ export default function GetStartedPage() {
    * gh-1901: Step 1 — about the home, asked before any account field exists
    * on screen. Only the address is required to advance. The "what do you
    * need help with" chip (project_type) is offered but NOT required (CEO
-   * RUN 43 review F4): no downstream consumer reads project_type yet, so
-   * requiring it would add the exact funnel friction this PR exists to
-   * remove, for a field nothing currently uses.
+   * RUN 43 review F4): requiring it would add funnel friction for an
+   * optional signal. gh-1991 (CEO RUN 48): trade-selector now reads it to
+   * pre-select a trade, but that is prefill convenience, not a gate — it
+   * stays optional.
+   *
+   * gh-1993 (CEO RUN 48): the single "address" box is now four required
+   * fields — street, city, state, ZIP — each checked individually so the
+   * error names the actual missing piece instead of a generic "enter your
+   * address". ZIP is shape-checked (5 digits) here; state can't be invalid
+   * since it only ever comes from the STATE_CODE_OPTIONS <select>.
    */
   const validateHomeInfo = (): string | null => {
-    if (!address.trim()) {
-      return 'Please enter your property address.';
+    if (!street.trim()) {
+      return 'Please enter your street address.';
+    }
+    if (!city.trim()) {
+      return 'Please enter your city.';
+    }
+    if (!addrState.trim()) {
+      return 'Please select your state.';
+    }
+    if (!isValidZip(zip)) {
+      return 'Please enter a valid 5-digit ZIP code.';
     }
     return null;
   };
@@ -827,7 +895,15 @@ export default function GetStartedPage() {
         first_name: firstName.trim(),
         last_name: lastName.trim(),
         phone: phone.trim(),
-        address: address.trim(),
+        // gh-1993: combined line kept for existing readers (auth-callback's
+        // HubSpot sync reads `address` as one string) alongside the four
+        // split fields trade-selector's claim/profile writers now read
+        // directly — no re-parsing needed on that end.
+        address: fullAddress(street, city, addrState, zip),
+        address_street: street.trim(),
+        address_city: city.trim(),
+        address_state: addrState.trim(),
+        address_zip: zip.trim(),
         // gh-1901: Step 1's "what do you need help with" answer, carried
         // forward for trade-selector to prefill — same non-schema-touching
         // localStorage bridge every other field here already uses.
@@ -1532,20 +1608,80 @@ export default function GetStartedPage() {
                   It&apos;s free, and takes under a minute. Create your account next.
                 </p>
 
+                {/*
+                  gh-1993: single free-text box split into Street / City /
+                  State / ZIP — Dustin's ruling, verbatim, in the file
+                  header at the top of this component. Autocomplete
+                  attributes (address-line1/address-level2/address-level1/
+                  postal-code) are the standard WHATWG token set, so phones
+                  autofill each box correctly instead of dumping the whole
+                  saved address into one field.
+                */}
                 <div className="form-group">
-                  <label className="form-label" htmlFor="address">Property Address</label>
+                  <label className="form-label" htmlFor="street">Street Address</label>
                   <input
                     type="text"
-                    id="address"
+                    id="street"
                     className="form-input"
                     required
-                    autoComplete="street-address"
-                    placeholder="123 Main St, Anytown, ST 12345"
-                    value={address}
-                    onChange={e => { setAddress(e.target.value); markFieldTouched('address'); }}
+                    autoComplete="address-line1"
+                    placeholder="123 Main St"
+                    value={street}
+                    onChange={e => { setStreet(e.target.value); markFieldTouched('address'); }}
                     onFocus={() => markFieldTouched('address')}
                   />
                   <span className="form-hint">The address for your project.</span>
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="city">City</label>
+                    <input
+                      type="text"
+                      id="city"
+                      className="form-input"
+                      required
+                      autoComplete="address-level2"
+                      placeholder="Anytown"
+                      value={city}
+                      onChange={e => { setCity(e.target.value); markFieldTouched('address'); }}
+                      onFocus={() => markFieldTouched('address')}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="state">State</label>
+                    <select
+                      id="state"
+                      className="form-input"
+                      required
+                      autoComplete="address-level1"
+                      value={addrState}
+                      onChange={e => { setAddrState(e.target.value); markFieldTouched('address'); }}
+                      onFocus={() => markFieldTouched('address')}
+                    >
+                      <option value="">Select...</option>
+                      {STATE_CODE_OPTIONS.map(({ value, label }) => (
+                        <option key={value} value={value}>{label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="zip">ZIP Code</label>
+                    <input
+                      type="text"
+                      id="zip"
+                      className="form-input"
+                      required
+                      inputMode="numeric"
+                      autoComplete="postal-code"
+                      pattern="\d{5}"
+                      maxLength={5}
+                      placeholder="12345"
+                      value={zip}
+                      onChange={e => { setZip(e.target.value.replace(/\D/g, '').slice(0, 5)); markFieldTouched('address'); }}
+                      onFocus={() => markFieldTouched('address')}
+                    />
+                  </div>
                 </div>
 
                 <div className="form-group">
@@ -1591,7 +1727,7 @@ export default function GetStartedPage() {
                 </div>
                 <h1>Create Your Account</h1>
                 <p className="gs-subtitle">
-                  Free, and takes under a minute. We&apos;ll match {address ? 'your home' : 'you'} with contractors next.
+                  Free, and takes under a minute. We&apos;ll match {street ? 'your home' : 'you'} with contractors next.
                 </p>
                 {/* ── Email + Password Sign-Up Form ── */}
                 <form className="gs-form" onSubmit={handleSubmit} noValidate>
@@ -1756,7 +1892,8 @@ export default function GetStartedPage() {
                 </div>
 
                 {/* Property Address moved to Step 1 (gh-1901) — already
-                    captured in `address` state by the time this step renders. */}
+                    captured in street/city/addrState/zip state (gh-1993)
+                    by the time this step renders. */}
 
                 {/* Referral Source */}
                 <fieldset className="referral-section" style={{ padding: '1rem', background: 'rgba(255,255,255,0.03)', borderRadius: 8, border: '1px solid rgba(255,255,255,0.06)' }}>

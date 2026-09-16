@@ -53,6 +53,18 @@ const TRADE_OPTIONS: { key: TradeKey; label: string; icon: string }[] = [
   { key: 'windows', label: 'Windows', icon: '🪟' },
 ];
 
+// gh-1991: get-started Step 1's "what do you need help with?" chip
+// (cs_signup.project_type) pre-selects the matching trade here so a
+// homeowner who already said "Gutters" doesn't have to say it twice.
+// Keys are get-started's ProjectType values 1:1 — 'other' and '' (unset)
+// intentionally have no entry, so they fall through to no pre-selection.
+const PROJECT_TYPE_TO_TRADE: Partial<Record<string, TradeKey>> = {
+  roof: 'roofing',
+  siding: 'siding',
+  gutters: 'gutters',
+  windows: 'windows',
+};
+
 interface WizardState {
   fundingType: FundingType;
   policyType: PolicyType;
@@ -323,6 +335,27 @@ export default function TradeSelectorPage() {
   const [completing, setCompleting] = useState(false);
   const [error, setError] = useState('');
 
+  // gh-1991: pre-select the trade get-started's project_type chip already
+  // told us. Read-only, runs once on mount; only applies while `trades` is
+  // still empty so it can never clobber a selection the visitor made on
+  // THIS page (e.g. after using Back). Not gated on auth `settled` — this
+  // only touches local UI state, no network/DB call.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = localStorage.getItem('cs_signup');
+      if (!raw) return;
+      const signup = JSON.parse(raw) as Record<string, unknown>;
+      const projectType = typeof signup.project_type === 'string' ? signup.project_type : '';
+      const mapped = PROJECT_TYPE_TO_TRADE[projectType];
+      if (mapped) {
+        setWizardState(prev => (prev.trades.length === 0 ? { ...prev, trades: [mapped] } : prev));
+      }
+    } catch {
+      // cs_signup missing/malformed — no prefill, not fatal
+    }
+  }, []);
+
   // Auth guard + returning-user guard
   useEffect(() => {
     if (!settled) return;
@@ -479,15 +512,29 @@ export default function TradeSelectorPage() {
         // cs_signup missing — continue with empty
       }
 
+      // gh-1993: get-started now collects street/city/state/zip as four
+      // separate fields and writes them to cs_signup directly
+      // (address_street/address_city/address_state/address_zip) alongside
+      // the combined `address` line it keeps for other readers (HubSpot).
+      // Prefer the structured fields — no free-text parsing needed, no
+      // street-suffix-vs-state ambiguity to resolve. Fall back to
+      // parseAddress(csSignup.address) only for a cs_signup payload written
+      // before this change (a tab left open across the deploy that still
+      // only carries the combined string) — one parse, shared by both
+      // write sites below, same as before this change.
+      const structuredStreet = (csSignup.address_street as string) || '';
+      const parsedAddress = structuredStreet.trim()
+        ? {
+            street: structuredStreet.trim() || null,
+            city: ((csSignup.address_city as string) || '').trim() || null,
+            state: ((csSignup.address_state as string) || '').trim() || null,
+            zip: ((csSignup.address_zip as string) || '').trim() || null,
+          }
+        : parseAddress((csSignup.address as string) || '');
+
       if (user) {
         // ── Upsert profiles table ──
         try {
-          const address = (csSignup.address as string) || '';
-          // gh-1579: tolerant regex-first parse (comma-split fallback) — see
-          // ./utils.ts. The old addressParts[1..3] comma-index split assumed
-          // exactly 4 comma segments and silently dropped state/zip on any
-          // address with fewer.
-          const parsedAddress = parseAddress(address);
           await supabase.from('profiles').upsert({
             id: user.id,
             role: 'homeowner',
@@ -554,18 +601,23 @@ export default function TradeSelectorPage() {
 
           // #482: static-stack parity — property_address/property_state must land
           // on the claim (contractor cards + D-178 state gating read them).
-          const csAddress = (csSignup.address as string) || '';
-          // gh-1579: same tolerant parser as the profiles upsert above —
-          // one helper, both write sites (./utils.ts parseAddress).
-          const csStateToken = parseAddress(csAddress).state;
-
+          // gh-1993: property_address is now the STREET LINE ONLY (not the
+          // full combined address) — property_city/property_zip are new
+          // additive columns (see the migration in this PR) that carry
+          // what used to be folded into property_address as free text.
+          // parsedAddress is the shared parse computed above (structured
+          // cs_signup fields, or parseAddress() fallback) — same value the
+          // profiles upsert above just used, so the two write sites cannot
+          // drift out of sync with each other.
           const claimPayload: Record<string, unknown> = {
             funding_type: fundingType,
             policy_type: policyType,
             trades: trades,
             job_type: jobType,
-            property_address: csAddress || null,
-            property_state: csStateToken,
+            property_address: parsedAddress.street,
+            property_city: parsedAddress.city,
+            property_state: parsedAddress.state,
+            property_zip: parsedAddress.zip,
             updated_at: new Date().toISOString(),
             ...(referralSource && { referral_source: referralSource }),
             ...(referralAgentId && { referral_agent_id: referralAgentId }),
@@ -582,19 +634,40 @@ export default function TradeSelectorPage() {
               referrer_updates_opt_out: csSignup.referrer_updates_opt_out,
             }),
           };
+          // gh-1993: property_city/property_zip are additive columns filed
+          // as a migration in THIS SAME PR but, per the PR contract, NOT
+          // applied here — the orchestrator applies after review. Until it
+          // does, PostgREST rejects the WHOLE insert/update on an unknown
+          // column (unlike a plain 400 on just that field), which would
+          // silently break claim creation for every homeowner on this page.
+          // claimPayloadPreMigration is the fallback shape (mirrors
+          // mark-loss-sheet-reviewed's PG_UNDEFINED_COLUMN handling for
+          // gh-1796): tried first is the full payload; on 42703
+          // (undefined_column) specifically, retry once with the two new
+          // keys stripped so property_address/property_state/trades/etc.
+          // still land. Any other error is left alone (not retried,
+          // not swallowed here — the outer catch below still applies).
+          const PG_UNDEFINED_COLUMN = '42703';
+          const { property_city: _omitCity, property_zip: _omitZip, ...claimPayloadPreMigration } = claimPayload;
+          void _omitCity;
+          void _omitZip;
 
           if (existingClaim) {
-            await supabase
+            const { error: updateErr } = await supabase
               .from('claims')
               .update(claimPayload)
               .eq('id', existingClaim.id);
+            if (updateErr?.code === PG_UNDEFINED_COLUMN) {
+              console.warn('[trade-selector] property_city/property_zip not present yet (gh-1993 migration pending) — retrying claim update without them');
+              await supabase.from('claims').update(claimPayloadPreMigration).eq('id', existingClaim.id);
+            }
             savedClaimId = existingClaim.id;
           } else {
             // gh-397/#689: stamp is_test on this React parity insert path —
             // PR #714 only fixed the COI-identity contractor insert, never
             // any claims insert. Predicate mirrors the CEO-approved
             // contractor check (#543 / test-exclusion.ts).
-            const { data: insertedClaim } = await supabase
+            let { data: insertedClaim, error: insertErr } = await supabase
               .from('claims')
               .insert({
                 user_id: user.id,
@@ -604,6 +677,19 @@ export default function TradeSelectorPage() {
               })
               .select('id')
               .single();
+            if (insertErr?.code === PG_UNDEFINED_COLUMN) {
+              console.warn('[trade-selector] property_city/property_zip not present yet (gh-1993 migration pending) — retrying claim insert without them');
+              ({ data: insertedClaim } = await supabase
+                .from('claims')
+                .insert({
+                  user_id: user.id,
+                  ...claimPayloadPreMigration,
+                  is_test: isTestEmail(user.email),
+                  created_at: new Date().toISOString(),
+                })
+                .select('id')
+                .single());
+            }
             // gh-1276: capture the new row's id — previously never captured
             // here either (same gap as the static trade-selector.html this
             // file keeps parity with), so repair-intake.html's
