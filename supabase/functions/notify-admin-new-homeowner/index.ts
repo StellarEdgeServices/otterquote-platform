@@ -50,6 +50,17 @@
  * documented extension so manual/test invocations never need to handle the
  * service-role secret.
  *
+ * Exception (gh-1994 fix round 1, REVIEW 5707519022 B1): event_type=
+ * router_lead does NOT accept the anon key. It is reachable only from the
+ * trg_notify_admin_new_router_lead trigger, which authenticates with the
+ * service-role key resolved from vault -- the anon key is public, and
+ * router_lead's own dedupe stamp (alerted_at) lives on a table the anon
+ * role can insert into, so accepting anon here would let anyone name an
+ * existing (or self-inserted) lead id and trigger a send. Checked at the
+ * event_type dispatch site below, in addition to (not instead of) the
+ * general authorized gate above -- claim_created/signup_sweep/
+ * signup_backfill are unaffected and still accept either key.
+ *
  * Idempotency (notifications table, plus a dedicated column for router_lead):
  *   claim_created -> skips if notification_type=admin_new_claim already
  *                    exists for claim_id = record.id
@@ -59,11 +70,14 @@
  *                    no notification_type=admin_homeowner_signup_digest row
  *                    exists yet (any row, checked without a user_id filter).
  *   router_lead -> skips unless an atomic `UPDATE leads SET alerted_at = now()
- *                    WHERE id = $1 AND alerted_at IS NULL` actually touches a
- *                    row (see handleRouterLead) -- a `leads` row has no
- *                    claim_id/user_id to key the notifications table on
- *                    before it converts, so the dedupe lives on the row
- *                    itself, per gh-1994's own instruction.
+ *                    WHERE id = $1 AND alerted_at IS NULL AND role IS NOT NULL
+ *                    AND email NOT ILIKE '%@otterquote-internal.test'
+ *                    RETURNING ...` actually touches a row (see
+ *                    handleRouterLead; gh-1994 fix round 1, REVIEW B1) -- a
+ *                    `leads` row has no claim_id/user_id to key the
+ *                    notifications table on before it converts, so the
+ *                    dedupe AND the eligibility check both live on the row
+ *                    itself, in one query, per gh-1994's own instruction.
  *
  * Test / internal-account filter (gh-1932 rework 2, anchored):
  *   is_test = true (unconditional), OR email matches (case-insensitive):
@@ -77,8 +91,11 @@
  *   "protest@" style local part) is NOT excluded by this pattern.
  *   router_lead uses a SEPARATE, narrower exclusion (gh-1994): `leads` has
  *   no is_test column, so only a reserved email suffix
- *   (@otterquote-internal.test) is excluded -- see notify-helpers.ts's
- *   isRouterLeadExcluded().
+ *   (@otterquote-internal.test) is excluded -- enforced directly in
+ *   handleRouterLead's claim query (gh-1994 fix round 1, REVIEW B1;
+ *   ROUTER_LEAD_EXCLUDED_EMAIL_SUFFIX in notify-helpers.ts is the single
+ *   source for the literal suffix, also used by notify-helpers.test.ts and
+ *   the exported isRouterLeadExcluded() helper it tests).
  *
  * Environment variables (all already set in Supabase secrets):
  *   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ANON_KEY,
@@ -93,11 +110,10 @@ import {
   ADMIN_EMAIL,
   normalizeBody,
   escapeHtml,
-  isRouterLeadExcluded,
+  ROUTER_LEAD_EXCLUDED_EMAIL_SUFFIX,
   roleLabel,
-  partnerIndustryLabel,
-  buildAttributionSource,
-  buildRouterLeadSubjectAndText,
+  isRouterLeadAuthorized,
+  buildRouterLeadEmail,
 } from "./notify-helpers.ts";
 
 const ADMIN_PORTAL_URL = "https://otterquote.com/admin-dashboard.html";
@@ -272,6 +288,16 @@ serve(async (req: Request) => {
     }
 
     if (normalized.eventType === "router_lead") {
+      // gh-1994 fix round 1 (REVIEW B1): stricter than the general
+      // `authorized` gate above -- router_lead requires the service-role
+      // credential specifically, never the anon key.
+      if (!isRouterLeadAuthorized(bearerToken, serviceRoleKey)) {
+        console.error("notify-admin-new-homeowner: router_lead requires the service-role credential");
+        return new Response(
+          JSON.stringify({ error: "Unauthorized" }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
       return await handleRouterLead(sb, normalized.record, mailgunDomain, mailgunKey, corsHeaders);
     }
 
@@ -391,6 +417,15 @@ serve(async (req: Request) => {
 // only the caller whose UPDATE actually flips alerted_at from NULL sends
 // the email. No customer-facing copy, no SMS -- admin-only, per Dustin's
 // GO comment (#1994 comment 5706456515).
+// gh-1994 fix round 1 (REVIEW 5707519022, B1): the request body's `record`
+// is untrusted -- only `record.id` is read from it, and only to pick which
+// row this one atomic query targets. Every value that ends up in the email
+// (name/email/phone/role/partner_industry/utm_*) comes from that query's
+// RETURNING clause, never from the request body. Eligibility (not yet
+// alerted, role actually set, not the excluded test suffix) is enforced IN
+// the same query's WHERE clause -- one round trip, one place the decision
+// is made. If zero rows come back, no email is sent, and the response does
+// not distinguish which of those reasons (or a nonexistent id) it was.
 async function handleRouterLead(
   sb: ReturnType<typeof createClient>,
   record: Record<string, unknown>,
@@ -398,7 +433,7 @@ async function handleRouterLead(
   mailgunKey: string,
   corsHeaders: Record<string, string>,
 ) {
-  const leadId = record.id as string | undefined;
+  const leadId = record?.id as string | undefined;
   if (!leadId) {
     return new Response(
       JSON.stringify({ error: "Missing required field: record.id" }),
@@ -406,27 +441,16 @@ async function handleRouterLead(
     );
   }
 
-  const email = (record.email as string) || "";
-  if (isRouterLeadExcluded(email)) {
-    console.log(`notify-admin-new-homeowner: skipping excluded router lead ${leadId} (${email})`);
-    return new Response(
-      JSON.stringify({ success: true, skipped: true, reason: "excluded_email" }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
-  }
-
-  // Atomic dedupe: only the request whose UPDATE actually flips alerted_at
-  // from NULL to non-NULL proceeds to send. A retried/duplicate delivery,
-  // or a second role change on the same lead before prefill (set_lead_role
-  // allows more than one role write within its 30-minute/prefill_used_at
-  // window), sees zero rows back and skips -- "one email per lead" per
-  // this dispatch's own instruction.
-  const { data: claimed, error: claimErr } = await sb
+  const { data: claimedRows, error: claimErr } = await sb
     .from("leads")
     .update({ alerted_at: new Date().toISOString() })
     .eq("id", leadId)
     .is("alerted_at", null)
-    .select("id");
+    .not("role", "is", null)
+    .not("email", "ilike", `%${ROUTER_LEAD_EXCLUDED_EMAIL_SUFFIX}`)
+    .select(
+      "name, email, phone, role, partner_industry, utm_source, utm_medium, utm_campaign, utm_content, utm_term, fbclid, gclid",
+    );
 
   if (claimErr) {
     console.error(`notify-admin-new-homeowner: alerted_at claim failed for lead_id=${leadId}:`, claimErr);
@@ -436,34 +460,48 @@ async function handleRouterLead(
     );
   }
 
-  if (!claimed || claimed.length === 0) {
-    console.log(`notify-admin-new-homeowner: router lead ${leadId} already alerted`);
+  const leadRow = claimedRows?.[0] as Record<string, unknown> | undefined;
+  if (!leadRow) {
+    console.log(
+      `notify-admin-new-homeowner: router lead ${leadId} not eligible to alert (already sent / no role / excluded / not found)`,
+    );
     return new Response(
-      JSON.stringify({ success: true, skipped: true, reason: "already_notified" }),
+      JSON.stringify({ success: true, skipped: true, reason: "not_eligible" }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
 
-  const { subject, textBody } = buildRouterLeadSubjectAndText(record);
-  const name       = (record.name  as string) || "(no name given)";
-  const phone      = (record.phone as string) || "(no phone)";
-  const role       = roleLabel(record.role);
-  const industry   = partnerIndustryLabel(record.partner_industry);
-  const attribution = buildAttributionSource(record);
+  // gh-1994 fix round 1 (REVIEW B1, N6): buildRouterLeadEmail() reads only
+  // `leadRow` -- the query's RETURNING result above -- never the request
+  // body. See its doc comment in notify-helpers.ts.
+  const { subject, textBody, htmlRows, extraHtml } = buildRouterLeadEmail(leadRow);
+  const htmlBody = buildEmailHtml("New Router Lead", htmlRows, extraHtml);
 
-  const rows: [string, string][] = [
-    ["Name", escapeHtml(name)],
-    ["Email", escapeHtml(email || "(no email)")],
-    ["Phone", escapeHtml(phone)],
-    ["Role", escapeHtml(role)],
-  ];
-  if (industry) rows.push(["Industry", escapeHtml(industry)]);
-  rows.push(["Attribution", escapeHtml(attribution)]);
-
-  const extraHtml = `<p style="font-family:sans-serif;font-size:12px;color:#94A3B8;margin:0 0 16px;">Phone carries no consent — callback only.</p>`;
-  const htmlBody = buildEmailHtml("New Router Lead", rows, extraHtml);
-
-  const mgData = await sendMail(mailgunDomain, mailgunKey, subject, textBody, htmlBody);
+  let mgData: { id: string };
+  try {
+    mgData = await sendMail(mailgunDomain, mailgunKey, subject, textBody, htmlBody);
+  } catch (mailErr) {
+    // gh-1994 fix round 1 (REVIEW N1): the row is already stamped
+    // alerted_at from the claim above. If the send itself throws, revert
+    // the stamp so a retry (the trigger's own delivery retry, or a manual
+    // re-POST) can claim and send again, instead of the alert being lost
+    // for good on a row that looks "already alerted" but never sent.
+    console.error(`notify-admin-new-homeowner: mailgun send failed for lead_id=${leadId}, reverting alerted_at:`, mailErr);
+    const { error: revertErr } = await sb
+      .from("leads")
+      .update({ alerted_at: null })
+      .eq("id", leadId);
+    if (revertErr) {
+      console.error(
+        `notify-admin-new-homeowner: failed to revert alerted_at for lead_id=${leadId} after mailgun failure:`,
+        revertErr,
+      );
+    }
+    return new Response(
+      JSON.stringify({ error: "failed to send router lead alert email" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  }
 
   await sb.from("notifications").insert({
     user_id:           null,
@@ -471,7 +509,7 @@ async function handleRouterLead(
     channel:           "email",
     notification_type: NOTIF_TYPE_ROUTER_LEAD,
     recipient:         ADMIN_EMAIL,
-    message_preview:   `New router lead (${role}): ${name}`,
+    message_preview:   `New router lead (${roleLabel(leadRow.role)}): ${(leadRow.name as string) || "(no name given)"}`,
     sent_at:           new Date().toISOString(),
     delivered:         true,
     mailgun_id:        mgData.id,

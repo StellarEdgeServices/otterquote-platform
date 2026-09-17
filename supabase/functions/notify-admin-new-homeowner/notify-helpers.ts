@@ -16,7 +16,29 @@
  * (name, email, phone, role, partner industry, attribution source) -- no
  * customer-facing copy, no SMS, phone carries no consent (manual callback
  * only).
+ *
+ * Fix round 1 (REVIEW 5707519022 on PR #2005, Ben CEO RUN 48 dispatch):
+ *  - B1: index.ts's handleRouterLead() no longer builds the email from the
+ *    request body. It reads only `record.id`, atomically claims the row
+ *    (`UPDATE ... WHERE alerted_at IS NULL AND role IS NOT NULL AND email
+ *    NOT ILIKE '%@otterquote-internal.test' RETURNING ...`), and this
+ *    module's functions render ONLY that returned row. roleLabel() and
+ *    partnerIndustryLabel() below now always return a value from a fixed
+ *    label map -- an unrecognized value renders as "Other", it is never
+ *    passed through raw -- and the subject stripCrlf()s its own output as
+ *    defense-in-depth on top of that.
+ *  - B2: partnerIndustryLabel() no longer declares its own
+ *    re_agent/insurance_agent/home_inspector/adjuster/other label map (that
+ *    was exactly the "re-introduced local label map" class gh-914's
+ *    tools/agent_type_labels_check.py exists to catch). It now imports
+ *    ADMIN_DROPDOWN_LABELS from the single source, react-app/app/lib/
+ *    agent-types.ts -- plain TS with no framework dependency, so Deno can
+ *    import it directly by relative path.
+ *  - N3: buildAttributionSource() caps each utm_* value at 200 chars before
+ *    it reaches Dustin's inbox (an anon insert controls these values).
  */
+
+import { ADMIN_DROPDOWN_LABELS, type AgentType } from "../../../react-app/app/lib/agent-types.ts";
 
 // Single source of truth for the admin recipient -- index.ts imports this
 // instead of declaring its own copy, so "the recipient is unchanged" is a
@@ -99,38 +121,77 @@ export function isRouterLeadExcluded(email: unknown): boolean {
   return lower.endsWith(ROUTER_LEAD_EXCLUDED_EMAIL_SUFFIX);
 }
 
+// gh-1994 fix round 1 (REVIEW B1): a fixed label map, no raw passthrough.
+// `leads.role` is DB-CHECK-constrained to these three values in practice,
+// but roleLabel() renders ANY input this way regardless -- an unrecognized
+// value (which should be unreachable given the CHECK, but this function
+// must not assume that) maps to "Other", never to the raw string, so it
+// can never carry attacker-controlled text (e.g. CRLF) into the subject.
 const ROLE_LABELS: Record<string, string> = {
   homeowner: "Homeowner",
   contractor: "Contractor",
   referral_partner: "Referral partner",
 };
-
-// Mirrors js/agent-types.js's CHOOSER_LABELS keys (gh-914 single source),
-// same five values leads_partner_industry_check restricts partner_industry
-// to (gh-1994 phase-1 migration).
-const PARTNER_INDUSTRY_LABELS: Record<string, string> = {
-  re_agent: "Real estate agent",
-  insurance_agent: "Insurance agent",
-  home_inspector: "Home inspector",
-  adjuster: "Insurance adjuster",
-  other: "Other",
-};
+const UNKNOWN_LABEL = "Other";
 
 export function roleLabel(role: unknown): string {
   const r = String(role ?? "");
-  return ROLE_LABELS[r] || r || "(no role)";
+  return ROLE_LABELS[r] || UNKNOWN_LABEL;
 }
+
+// gh-1994 fix round 1 (REVIEW B2): re_agent/insurance_agent/home_inspector/
+// adjuster/other display strings come from the gh-914 single source
+// (react-app/app/lib/agent-types.ts's ADMIN_DROPDOWN_LABELS) instead of a
+// locally re-declared map -- tools/agent_type_labels_check.py (chained into
+// the "Null-Byte & Size Sanity Check" CI job) fails the build on exactly
+// that re-introduction. LEAD_PARTNER_INDUSTRY_KEYS is the subset of
+// AgentType that leads_partner_industry_check actually allows (no
+// 'customer' -- gh-1994 phase-1 migration). An unrecognized/forged value
+// renders as ADMIN_DROPDOWN_LABELS.other ("Other"), same "fixed map only"
+// rule as roleLabel() above.
+const LEAD_PARTNER_INDUSTRY_KEYS: readonly AgentType[] = [
+  "re_agent",
+  "insurance_agent",
+  "home_inspector",
+  "adjuster",
+  "other",
+];
 
 export function partnerIndustryLabel(industry: unknown): string | null {
   if (!industry) return null;
   const i = String(industry);
-  return PARTNER_INDUSTRY_LABELS[i] || i;
+  if ((LEAD_PARTNER_INDUSTRY_KEYS as readonly string[]).includes(i)) {
+    return ADMIN_DROPDOWN_LABELS[i as AgentType];
+  }
+  return ADMIN_DROPDOWN_LABELS.other;
+}
+
+// gh-1994 fix round 1 (REVIEW B1): strip CR/LF from any string that ends up
+// in an email header field. Applied to the router-lead subject below.
+// roleLabel() already guarantees a mapped, CRLF-free value, so this is
+// belt-and-suspenders -- cheap enough to apply unconditionally rather than
+// rely solely on every caller upstream staying disciplined.
+export function stripCrlf(str: string): string {
+  return String(str ?? "").replace(/[\r\n]+/g, " ");
 }
 
 // gh-1994: human-readable attribution summary for the admin email. Lists
 // only the attribution fields actually present on the lead row (utm_*,
 // fbclid, gclid) -- never invents a value -- and reports "Direct / no
 // attribution" instead of an empty string when none are present.
+// gh-1994 fix round 1 (REVIEW N3): each utm_* value is capped at
+// UTM_MAX_LEN characters before it reaches this string -- these values
+// come from an anon-writable insert (the router's Step 1) with no
+// length cap at the DB layer, so an arbitrarily long value could otherwise
+// land in Dustin's inbox unbounded.
+export const UTM_MAX_LEN = 200;
+
+function truncateAttr(value: string): string {
+  return value.length > UTM_MAX_LEN
+    ? `${value.slice(0, UTM_MAX_LEN)}...(truncated)`
+    : value;
+}
+
 export function buildAttributionSource(record: Record<string, unknown>): string {
   const parts: string[] = [];
   const utmSource   = record.utm_source   as string | undefined;
@@ -141,15 +202,67 @@ export function buildAttributionSource(record: Record<string, unknown>): string 
   const fbclid      = record.fbclid       as string | undefined;
   const gclid       = record.gclid        as string | undefined;
 
-  if (utmSource)   parts.push(`utm_source=${utmSource}`);
-  if (utmMedium)   parts.push(`utm_medium=${utmMedium}`);
-  if (utmCampaign) parts.push(`utm_campaign=${utmCampaign}`);
-  if (utmContent)  parts.push(`utm_content=${utmContent}`);
-  if (utmTerm)     parts.push(`utm_term=${utmTerm}`);
+  if (utmSource)   parts.push(`utm_source=${truncateAttr(utmSource)}`);
+  if (utmMedium)   parts.push(`utm_medium=${truncateAttr(utmMedium)}`);
+  if (utmCampaign) parts.push(`utm_campaign=${truncateAttr(utmCampaign)}`);
+  if (utmContent)  parts.push(`utm_content=${truncateAttr(utmContent)}`);
+  if (utmTerm)     parts.push(`utm_term=${truncateAttr(utmTerm)}`);
   if (fbclid)       parts.push("fbclid present");
   if (gclid)        parts.push("gclid present");
 
   return parts.length > 0 ? parts.join(", ") : "Direct / no attribution";
+}
+
+// gh-1994 fix round 1 (REVIEW B1): router_lead is reachable ONLY with the
+// service-role credential -- unlike the other three event types, which
+// also accept the anon key (see index.ts's "Auth model" header comment).
+// Extracted as its own pure function, and imported by index.ts rather than
+// re-implemented inline, so this exact rule is what `deno test` exercises
+// (an anon-keyed request cannot reach handleRouterLead at all).
+export function isRouterLeadAuthorized(bearerToken: string, serviceRoleKey: string): boolean {
+  return !!bearerToken && bearerToken === serviceRoleKey;
+}
+
+// gh-1994 fix round 1 (REVIEW B1, N6): the ONE function that decides what
+// reaches Dustin's inbox for a router lead. Takes a database ROW -- the
+// `RETURNING` result of handleRouterLead's atomic claim-and-read query, or
+// anything shaped like one -- and reads ONLY the fields it names below.
+// index.ts's handleRouterLead passes this function the query's returned
+// row and nothing else, so an attacker-controlled request body (even one
+// that reached this far, which fix round 1's auth + DB-only-claim changes
+// should already prevent) has no field this function will read. Every
+// string rendered into `htmlRows` is escapeHtml()'d here; `textBody` stays
+// unescaped plain text, matching claim_created's own plain-text/HTML split
+// convention elsewhere in this file/index.ts.
+export interface RouterLeadEmail {
+  subject: string;
+  textBody: string;
+  htmlRows: [string, string][];
+  extraHtml: string;
+}
+
+export function buildRouterLeadEmail(leadRow: Record<string, unknown>): RouterLeadEmail {
+  const { subject, textBody } = buildRouterLeadSubjectAndText(leadRow);
+  const name        = (leadRow.name  as string) || "(no name given)";
+  const email       = (leadRow.email as string) || "(no email)";
+  const phone       = (leadRow.phone as string) || "(no phone)";
+  const role        = roleLabel(leadRow.role);
+  const industry    = partnerIndustryLabel(leadRow.partner_industry);
+  const attribution = buildAttributionSource(leadRow);
+
+  const htmlRows: [string, string][] = [
+    ["Name", escapeHtml(name)],
+    ["Email", escapeHtml(email)],
+    ["Phone", escapeHtml(phone)],
+    ["Role", escapeHtml(role)],
+  ];
+  if (industry) htmlRows.push(["Industry", escapeHtml(industry)]);
+  htmlRows.push(["Attribution", escapeHtml(attribution)]);
+
+  const extraHtml =
+    `<p style="font-family:sans-serif;font-size:12px;color:#94A3B8;margin:0 0 16px;">Phone carries no consent — callback only.</p>`;
+
+  return { subject, textBody, htmlRows, extraHtml };
 }
 
 // gh-1994: subject + plain-text body for the router-lead admin email. Pure
@@ -167,7 +280,7 @@ export function buildRouterLeadSubjectAndText(record: Record<string, unknown>): 
   const industry = partnerIndustryLabel(record.partner_industry);
   const attribution = buildAttributionSource(record);
 
-  const subject = `[OtterQuote] New router lead: ${role}`;
+  const subject = stripCrlf(`[OtterQuote] New router lead: ${role}`);
   const lines = [
     `A new lead came through the front-door router on Otter Quotes.`,
     `Name       : ${name}`,

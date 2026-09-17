@@ -9,6 +9,10 @@ import {
   partnerIndustryLabel,
   buildAttributionSource,
   buildRouterLeadSubjectAndText,
+  isRouterLeadAuthorized,
+  buildRouterLeadEmail,
+  stripCrlf,
+  UTM_MAX_LEN,
 } from "./notify-helpers.ts";
 
 // ---------------------------------------------------------------------------
@@ -152,19 +156,62 @@ Deno.test("isRouterLeadExcluded: negative control — a real address is never ex
 // roleLabel / partnerIndustryLabel / buildAttributionSource
 // ---------------------------------------------------------------------------
 
-Deno.test("roleLabel: known roles map to display labels; unknown passes through", () => {
+// gh-1994 fix round 1 (REVIEW B1): fixed map only, no raw passthrough --
+// an unrecognized value (which the DB CHECK should prevent, but this
+// function must not assume that) renders as "Other", never as the raw
+// string, so it can never carry attacker-controlled text into the subject.
+Deno.test("roleLabel: known roles map to display labels; unknown/missing renders as Other, never raw", () => {
   assertStrictEquals(roleLabel("homeowner"), "Homeowner");
   assertStrictEquals(roleLabel("contractor"), "Contractor");
   assertStrictEquals(roleLabel("referral_partner"), "Referral partner");
-  assertStrictEquals(roleLabel("something_new"), "something_new");
-  assertStrictEquals(roleLabel(null), "(no role)");
+  assertStrictEquals(roleLabel("something_new"), "Other", "unrecognized value must not pass through raw");
+  assertStrictEquals(roleLabel(null), "Other");
+  assertStrictEquals(roleLabel(undefined), "Other");
 });
 
-Deno.test("partnerIndustryLabel: known industries map, absent industry is null", () => {
-  assertStrictEquals(partnerIndustryLabel("re_agent"), "Real estate agent");
-  assertStrictEquals(partnerIndustryLabel("adjuster"), "Insurance adjuster");
+Deno.test("roleLabel: a CRLF/header-injection-shaped forged value is neutralized to the fixed label, not passed through", () => {
+  const forged = "homeowner\r\nBcc: victim@example.com";
+  assertStrictEquals(roleLabel(forged), "Other", "must not echo the forged value back");
+});
+
+// gh-1994 fix round 1 (REVIEW B2): sourced from the gh-914 single source
+// (react-app/app/lib/agent-types.ts's ADMIN_DROPDOWN_LABELS), not a local
+// re-declaration -- and an unrecognized/forged value renders as "Other",
+// same rule as roleLabel() above.
+Deno.test("partnerIndustryLabel: known industries map from the gh-914 single source, absent industry is null", () => {
+  assertStrictEquals(partnerIndustryLabel("re_agent"), "Real Estate Agent");
+  assertStrictEquals(partnerIndustryLabel("insurance_agent"), "Insurance Agent");
+  assertStrictEquals(partnerIndustryLabel("home_inspector"), "Home Inspector");
+  assertStrictEquals(partnerIndustryLabel("adjuster"), "Insurance Adjuster");
+  assertStrictEquals(partnerIndustryLabel("other"), "Other");
   assertStrictEquals(partnerIndustryLabel(null), null);
   assertStrictEquals(partnerIndustryLabel(undefined), null);
+});
+
+Deno.test("partnerIndustryLabel: an unrecognized/forged value (incl. 'customer', which leads_partner_industry_check disallows) renders as Other, never raw", () => {
+  assertStrictEquals(partnerIndustryLabel("customer"), "Other");
+  assertStrictEquals(partnerIndustryLabel("<script>alert(1)</script>"), "Other");
+  assertStrictEquals(partnerIndustryLabel("re_agent\r\nBcc: victim@example.com"), "Other");
+});
+
+// ---------------------------------------------------------------------------
+// stripCrlf / isRouterLeadAuthorized (gh-1994 fix round 1, REVIEW B1)
+// ---------------------------------------------------------------------------
+
+Deno.test("stripCrlf: removes CR and LF, collapsing them to a space", () => {
+  assertStrictEquals(stripCrlf("homeowner\r\nBcc: victim@example.com"), "homeowner Bcc: victim@example.com");
+  assertStrictEquals(stripCrlf("a\nb\rc\r\nd"), "a b c d");
+  assertStrictEquals(stripCrlf("clean"), "clean");
+  assertStrictEquals(stripCrlf(null as unknown as string), "");
+});
+
+Deno.test("isRouterLeadAuthorized: only the exact service-role key authorizes; anon does not", () => {
+  const SERVICE = "service-role-secret";
+  const ANON = "anon-public-key";
+  assertStrictEquals(isRouterLeadAuthorized(SERVICE, SERVICE), true);
+  assertStrictEquals(isRouterLeadAuthorized(ANON, SERVICE), false, "anon key must be rejected (401)");
+  assertStrictEquals(isRouterLeadAuthorized("", SERVICE), false, "no bearer token must be rejected");
+  assertStrictEquals(isRouterLeadAuthorized(SERVICE, ""), false, "an empty configured service key must never match");
 });
 
 Deno.test("buildAttributionSource: lists only present fields", () => {
@@ -207,7 +254,7 @@ Deno.test("buildRouterLeadSubjectAndText: phone is shown AS-IS, never masked", (
 Deno.test("buildRouterLeadSubjectAndText: includes partner industry only when present", () => {
   const withIndustry = buildRouterLeadSubjectAndText({ role: "referral_partner", partner_industry: "re_agent" });
   assert(withIndustry.textBody.includes("Industry"));
-  assert(withIndustry.textBody.includes("Real estate agent"));
+  assert(withIndustry.textBody.includes("Real Estate Agent"));
 
   const withoutIndustry = buildRouterLeadSubjectAndText({ role: "homeowner" });
   assert(!withoutIndustry.textBody.includes("Industry"));
@@ -218,7 +265,99 @@ Deno.test("buildRouterLeadSubjectAndText: missing fields fall back to explicit p
   assert(textBody.includes("(no name given)"));
   assert(textBody.includes("(no email)"));
   assert(textBody.includes("(no phone)"));
-  assert(textBody.includes("(no role)"));
+  assert(textBody.includes("Role       : Other"), "a missing role must render the fixed 'Other' label, not a placeholder string");
+});
+
+Deno.test("buildRouterLeadSubjectAndText: CRLF injection in role is neutralized in the subject (REVIEW B1 repro)", () => {
+  // Reproduces the exact attack string from REVIEW 5707519022 B1's evidence.
+  // Even though leads_role_check should make this DB-unreachable, this
+  // function must not assume that -- it renders directly from whatever
+  // object it is given.
+  const forgedRole = "homeowner\r\nBcc: victim@example.com";
+  const { subject } = buildRouterLeadSubjectAndText({ role: forgedRole });
+  assert(!subject.includes("\r") && !subject.includes("\n"), "subject must contain no CR/LF");
+  assert(!subject.includes("Bcc:"), "forged header must not survive into the subject");
+  assertStrictEquals(subject, "[OtterQuote] New router lead: Other");
+});
+
+// ---------------------------------------------------------------------------
+// buildAttributionSource — utm_* length cap (gh-1994 fix round 1, REVIEW N3)
+// ---------------------------------------------------------------------------
+
+Deno.test("buildAttributionSource: caps each utm_* value at UTM_MAX_LEN characters", () => {
+  const longValue = "x".repeat(UTM_MAX_LEN + 50);
+  const source = buildAttributionSource({ utm_source: longValue });
+  const utmPart = source.split(", ").find((p) => p.startsWith("utm_source="))!;
+  const rendered = utmPart.slice("utm_source=".length);
+  assert(rendered.length < longValue.length, "long utm value must be truncated");
+  assert(rendered.startsWith("x".repeat(UTM_MAX_LEN)), "must keep the first UTM_MAX_LEN characters");
+  assert(rendered.includes("truncated"), "truncation must be visibly marked, not silent");
+});
+
+Deno.test("buildAttributionSource: a value at or under UTM_MAX_LEN is not touched", () => {
+  const exact = "x".repeat(UTM_MAX_LEN);
+  const source = buildAttributionSource({ utm_source: exact });
+  assertStrictEquals(source, `utm_source=${exact}`);
+});
+
+// ---------------------------------------------------------------------------
+// buildRouterLeadEmail — renders ONLY from the row it is given (gh-1994 fix
+// round 1, REVIEW B1/N6): the closest a pure-function test can get to
+// proving "forged request-body fields are ignored", since the actual
+// enforcement (index.ts's handleRouterLead reads only `record.id` from the
+// request and passes this function the database RETURNING row, never the
+// request body) lives in index.ts, which cannot be imported under
+// `deno test` (see file header). This test proves the render step itself:
+// given a row shaped exactly like the claim query's RETURNING result, only
+// those named fields are read.
+// ---------------------------------------------------------------------------
+
+Deno.test("buildRouterLeadEmail: renders name/email/phone/role/industry/attribution from the row, HTML-escaped", () => {
+  const leadRow = {
+    name: `<script>alert(1)</script>`,
+    email: "jane@example.com",
+    phone: "5125551234",
+    role: "referral_partner",
+    partner_industry: "re_agent",
+    utm_source: "fb",
+  };
+  const result = buildRouterLeadEmail(leadRow);
+  assertStrictEquals(result.subject, "[OtterQuote] New router lead: Referral partner");
+  assert(result.textBody.includes("5125551234"), "phone must appear unmasked in the plain-text body");
+
+  const nameRow = result.htmlRows.find(([label]) => label === "Name");
+  assert(nameRow, "Name row must be present");
+  assert(!nameRow![1].includes("<script>"), "raw <script> must not survive into the HTML row");
+  assert(nameRow![1].includes("&lt;script&gt;"), "must be HTML-escaped");
+
+  const industryRow = result.htmlRows.find(([label]) => label === "Industry");
+  assertStrictEquals(industryRow?.[1], "Real Estate Agent");
+});
+
+Deno.test("buildRouterLeadEmail: extra/unknown keys on the row (a stand-in for forged request-body fields) are ignored", () => {
+  const leadRow = {
+    name: "Jane Homeowner",
+    email: "jane@example.com",
+    phone: "5125551234",
+    role: "homeowner",
+    // Fields that only exist in an attacker-controlled request body, never
+    // in the claim query's RETURNING list -- must have no effect on output.
+    id: "attacker-supplied-id",
+    subject_override: "FREE MONEY",
+    admin_dashboard_url: "http://phish.example",
+  };
+  const result = buildRouterLeadEmail(leadRow);
+  assertStrictEquals(result.subject, "[OtterQuote] New router lead: Homeowner");
+  assert(!result.textBody.includes("FREE MONEY"));
+  assert(!result.textBody.includes("phish.example"));
+  assert(!result.htmlRows.some(([, v]) => v.includes("phish.example")));
+});
+
+Deno.test("buildRouterLeadEmail: a CRLF-shaped forged role does not reach the subject (REVIEW B1 repro, end to end)", () => {
+  const leadRow = { role: "homeowner\r\nBcc: victim@example.com", email: "x@example.com" };
+  const result = buildRouterLeadEmail(leadRow);
+  assert(!result.subject.includes("\r") && !result.subject.includes("\n"));
+  assert(!result.subject.includes("Bcc:"));
 });
 
 Deno.test("buildRouterLeadSubjectAndText: is pure — identical input produces identical output", () => {

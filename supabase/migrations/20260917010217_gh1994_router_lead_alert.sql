@@ -80,6 +80,20 @@
 -- in the Edge Function's isRouterLeadExcluded() (same constant, single
 -- source: supabase/functions/notify-admin-new-homeowner/notify-helpers.ts).
 --
+-- Fix round 1 (REVIEW 5707519022 on PR #2005, Ben CEO RUN 48 dispatch):
+--  - N2: public.leads_force_safe_insert_defaults() (the phase-1 BEFORE
+--    INSERT guard trigger function, supabase/migrations/20260916132127) is
+--    re-declared here via CREATE OR REPLACE to also force NEW.alerted_at :=
+--    NULL on every insert, same reasoning as its existing four forced
+--    columns: without this, an anon insert (with_check=true) could set
+--    alerted_at itself and suppress its own alert. This is the only edit
+--    this migration makes to a function an earlier, already-applied
+--    migration defined -- everything else in this file remains additive.
+--  - N7: notify_admin_new_router_lead()'s search_path now lists pg_temp
+--    last (`public, net, pg_temp`), matching the phase-1 migration's own
+--    convention for SECURITY DEFINER functions on this table, rather than
+--    omitting it.
+--
 -- Sweep for a lead that never picks a role: NOT built. This repo already has
 -- a cron-driven sweep pattern (pg_cron job "gh1932-homeowner-signup-sweep",
 -- supabase/migrations/20260914211825_gh1932_homeowner_signup_sweep_cron.sql
@@ -99,14 +113,43 @@ ALTER TABLE public.leads
   ADD COLUMN IF NOT EXISTS alerted_at timestamptz;
 
 COMMENT ON COLUMN public.leads.alerted_at IS
-  'gh-1994: stamped by notify-admin-new-homeowner (event_type=router_lead) the moment it sends the one-time new-lead admin alert for this row -- an atomic UPDATE ... WHERE alerted_at IS NULL is what actually enforces "one email per lead"; NULL means not yet alerted (or alert not yet attempted/failed).';
+  'gh-1994: stamped by notify-admin-new-homeowner (event_type=router_lead) the moment it sends the one-time new-lead admin alert for this row -- an atomic UPDATE ... WHERE alerted_at IS NULL is what actually enforces "one email per lead"; NULL means not yet alerted (or alert not yet attempted/failed, incl. a reverted stamp after a Mailgun send failure -- fix round 1 REVIEW N1).';
 
--- 2. Trigger function ------------------------------------------------------
+-- 2. Guard-trigger update (fix round 1, REVIEW N2) --------------------------
+-- Re-declares the phase-1 BEFORE INSERT guard (public.leads_force_safe_
+-- insert_defaults(), supabase/migrations/20260916132127) to also force
+-- alerted_at to NULL on every insert, for the same reason it already forces
+-- created_at/converted_user_id/role/partner_industry: the anon INSERT
+-- policy is with_check=true, so without this an anon insert could set
+-- alerted_at itself and suppress its own row's alert before role is ever
+-- set. This is the only column added to that function's forced set; its
+-- other four assignments are unchanged (copied verbatim from the applied
+-- migration, not re-derived).
+CREATE OR REPLACE FUNCTION public.leads_force_safe_insert_defaults()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+  NEW.created_at        := now();
+  NEW.converted_user_id := NULL;
+  NEW.role              := NULL;
+  NEW.partner_industry  := NULL;
+  NEW.alerted_at        := NULL;
+  RETURN NEW;
+END;
+$$;
+
+COMMENT ON FUNCTION public.leads_force_safe_insert_defaults() IS
+  'gh-1994 fix round 1 (REVIEW N2): BEFORE INSERT guard on public.leads -- forces created_at=now() and nulls converted_user_id/role/partner_industry/alerted_at so an anon insert (with_check=true) cannot forge them or suppress its own alert. SECURITY DEFINER only so the function itself cannot be re-pointed by a non-owner; it grants no privilege an ordinary trigger would lack.';
+
+-- 3. Trigger function ------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.notify_admin_new_router_lead()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, net
+SET search_path = public, net, pg_temp
 AS $$
 DECLARE
   v_service_key TEXT;
@@ -158,7 +201,7 @@ $$;
 COMMENT ON FUNCTION public.notify_admin_new_router_lead() IS
 'gh-1994: fires via pg_net on leads UPDATE the moment role transitions from NULL to non-NULL (router Step 2/2a, via set_lead_role()). Calls notify-admin-new-homeowner (event_type=router_lead) to alert Dustin of a new router lead. SECURITY DEFINER. Non-fatal: errors are logged, not raised.';
 
--- 3. Trigger -----------------------------------------------------------
+-- 4. Trigger -----------------------------------------------------------
 DROP TRIGGER IF EXISTS trg_notify_admin_new_router_lead ON public.leads;
 
 CREATE TRIGGER trg_notify_admin_new_router_lead
@@ -180,10 +223,26 @@ COMMIT;
 -- granted a separate supabase/migrations_rollbacks/ file either). Dropping
 -- the trigger and function is sufficient to stop new alerts; alerted_at is
 -- also dropped here for a fully clean revert, since nothing else in the
--- schema depends on it.
+-- schema depends on it. leads_force_safe_insert_defaults() is restored to
+-- its phase-1 body (20260916132127) since this migration's step 2 replaced
+-- it in place rather than adding a new function.
 -- =============================================================================
 -- BEGIN;
 -- DROP TRIGGER IF EXISTS trg_notify_admin_new_router_lead ON public.leads;
 -- DROP FUNCTION IF EXISTS public.notify_admin_new_router_lead();
+-- CREATE OR REPLACE FUNCTION public.leads_force_safe_insert_defaults()
+-- RETURNS trigger
+-- LANGUAGE plpgsql
+-- SECURITY DEFINER
+-- SET search_path = public, pg_temp
+-- AS $$
+-- BEGIN
+--   NEW.created_at        := now();
+--   NEW.converted_user_id := NULL;
+--   NEW.role              := NULL;
+--   NEW.partner_industry  := NULL;
+--   RETURN NEW;
+-- END;
+-- $$;
 -- ALTER TABLE public.leads DROP COLUMN IF EXISTS alerted_at;
 -- COMMIT;
