@@ -4,7 +4,12 @@
 // wiring tests for the homeowner CRM row, replacing round 1's wiring test
 // (movement.test.ts's old "index.ts wiring" Deno.test), which review2
 // correctly called out as "a string match on two lines; it does not
-// exercise how the row is built."
+// exercise how the row is built." FIX ROUND 3 (review 5706511176) rewrote
+// the B1 section: claim.updated_at/profile.updated_at are no longer read for
+// movement AT ALL (movement.ts's homeownerBucket header comment has the full
+// rationale), so the old "admin-tainted timestamp" tests are replaced with
+// tests that prove updated_at is never an input, period — including the
+// live cbf2c780 shape (a cron bump, not an admin one).
 //
 // index.ts is a single-file EF with no exports (same shape marketing-
 // series.test.ts already works around for this exact file), so this test
@@ -13,12 +18,12 @@
 // brace-counting grabBlock() this directory's marketing-series.test.ts and
 // ga4-report/index.test.ts already use), re-export it, and import the
 // result via a data: URL alongside REAL imports of its movement.ts
-// dependencies (claimHasMilestoneProgress, claimUpdatedAtIsAdminTainted,
-// computeMovement, homeownerBucket). This exercises the actual production
-// implementation, not a re-implementation of it — a revert of index.ts's
-// wiring (round 1's logic, or removing the admin-row filter in movement.ts)
-// makes these tests fail. See the mutant-proof transcript pasted in the
-// PR #1976 FIX ROUND 2 evidence comment.
+// dependencies (claimHasMilestoneProgress, computeMovement, homeownerBucket).
+// This exercises the actual production implementation, not a
+// re-implementation of it — a revert of index.ts's wiring (any prior
+// round's logic, or removing the admin-row filter in movement.ts) makes
+// these tests fail. See the mutant-proof transcript pasted in the PR #1976
+// FIX ROUND 3 evidence comment.
 import { assert, assertEquals, assertNotEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
 
 const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
@@ -75,7 +80,7 @@ function grabBlock(marker: string): string {
 }
 
 const mod = [
-  `import { claimHasMilestoneProgress, claimUpdatedAtIsAdminTainted, computeMovement, homeownerBucket, type ClaimMilestones } from "${movementModuleUrl}";`,
+  `import { claimHasMilestoneProgress, computeMovement, homeownerBucket, type ClaimMilestones } from "${movementModuleUrl}";`,
   grabBlock("interface HomeownerProfileLike").replace(
     "interface HomeownerProfileLike",
     "export interface HomeownerProfileLike",
@@ -105,13 +110,16 @@ function profile(overrides: Record<string, unknown> = {}) {
 }
 
 // A claim fixture with every signal null/false by default, same convention
-// as movement.test.ts's noProgress().
+// as movement.test.ts's noProgress(). updated_at defaults to something
+// RECENT and deliberately noisy (a cron-shaped bump) — every test that does
+// not care about updated_at should still pass, which is itself part of the
+// FIX ROUND 3 proof: updated_at is inert no matter what it says.
 function claim(overrides: Record<string, unknown> = {}) {
   return {
     id: "c1",
     user_id: "u1",
     created_at: "2026-08-05T00:00:00Z",
-    updated_at: "2026-08-05T00:00:00Z",
+    updated_at: "2026-09-16T11:59:00Z", // ~1 minute before NOW — would read "0 days, green" if it leaked in
     status: "documents_needed",
     hover_order_id: null,
     hover_status: null,
@@ -121,11 +129,15 @@ function claim(overrides: Record<string, unknown> = {}) {
     selected_contractor_id: null,
     contract_sent_at: null,
     contract_signed_at: null,
+    contract_declined_at: null,
+    contract_voided_at: null,
+    color_confirmed_at: null,
+    contractor_switched_at: null,
+    project_confirmation_signed_at: null,
     platform_fee_charged: false,
     completion_date: null,
     color_selected_at: null,
     deductible_collected_at: null,
-    loss_sheet_reviewed_at: null,
     is_test: false,
     ...overrides,
   };
@@ -153,49 +165,64 @@ function run(p: unknown, userClaims: unknown[], overrides: Partial<ReturnType<ty
   );
 }
 
-// ── B1 (review 5705734203 finding 1) — admin-tainted claim.updated_at ────
+// ── B1 (review 5706511176 finding B1, DECIDED, FIX ROUND 3) ──────────────
+// claim.updated_at / profile.updated_at are NEVER a movement input, full
+// stop — not "unless admin-tainted" (review 2's now-removed heuristic), just
+// never. These tests prove it for BOTH kinds of writer review3 named: an
+// admin write (mark-loss-sheet-reviewed, the 4595b6f0 shape) and a plain
+// cron/trigger write (process-bid-expirations, the cbf2c780 shape) get
+// identical treatment — because there is no special-casing left at all.
 
-Deno.test("buildHomeownerRow (B1): 4595b6f0 shape — draft claim, admin-reviewed, zero real evidence -> red, and claim.updated_at (admin-tainted) is NOT the movement input", () => {
-  // updated_at bumped by the SAME admin write that set loss_sheet_reviewed_at
-  // (0.237s apart, same shape as the live 4595b6f0 row cited in movement.ts),
-  // 7 days before NOW — this is exactly the raw shape that would read
-  // "7 days, green" if claim.updated_at were allowed to feed movement.
+Deno.test("buildHomeownerRow (B1) FIX ROUND 3: 4595b6f0 shape — draft claim, has_measurements=true (real progress) but NO allow-listed timestamp and NO qualifying activity_log row -> movement is 'unknown' pre-override, and homeownerBucket forces red", () => {
   const c = claim({
-    updated_at: "2026-09-09T11:21:03.079Z",
-    loss_sheet_reviewed_at: "2026-09-09T11:21:02.842Z",
+    has_measurements: true, // real progress; keeps claimHasMilestoneProgress true
+    updated_at: "2026-09-09T11:21:03.079Z", // recent-ish; MUST be ignored entirely
   });
-  const p = profile({ updated_at: "2026-08-01T00:00:00Z" }); // old, uninformative
+  const p = profile({ updated_at: "2026-08-01T00:00:00Z" }); // also MUST be ignored entirely
   const row = run(p, [c]);
-  assertEquals(row.movement.bucket, "red", "hasRealActivity is false (no milestones, admin row already excluded upstream) -> the zero-activity override must force red");
-  assertEquals(row.movement.zero_activity, true);
-  assertNotEquals(row.movement.latest_label, "claim updated_at", "claim.updated_at was admin-tainted and must be excluded from the movement inputs entirely");
+  assertEquals(row.movement.latest_iso, null, "no allow-listed claim timestamp and no real activity_log row exist in this fixture -> nothing should have fed computeMovement");
+  assertEquals(row.movement.zero_activity, false, "claimHasMilestoneProgress is true (has_measurements) -> this is NOT the zero-activity case");
+  assertEquals(row.movement.bucket, "red", "an 'unknown' recency on a claim is forced red too (homeownerBucket) -- exactly the live 4595b6f0 shape");
 });
 
-Deno.test("buildHomeownerRow (B1) NEGATIVE CONTROL: same admin-review timing, but claim HAS real milestone progress -> not forced red, and claim.updated_at is still excluded from recency (73208937-style genuine activity must date recency from the real milestone, not the admin bump)", () => {
+Deno.test("buildHomeownerRow (B1) FIX ROUND 3, cbf2c780 SHAPE: claim.updated_at bumped by a cron 1 minute ago, but the claim's real milestone history is weeks old -> recency comes from the real milestones, NEVER shows '0 days'", () => {
   const c = claim({
-    updated_at: "2026-09-09T11:21:03.079Z",
-    loss_sheet_reviewed_at: "2026-09-09T11:21:02.842Z",
+    status: "bidding",
+    bids_submitted_at: "2026-08-11T14:11:11.866Z", // ~36 days before NOW
+    // contract_sent_at is the MORE RECENT real signal, ~13 days before NOW —
+    // this is the one that should win, not the 1-minute-old updated_at.
+    contract_sent_at: "2026-09-03T18:35:38.932Z",
+    updated_at: "2026-09-16T11:59:59Z", // cron-bumped ~1 second before NOW
+  });
+  const p = profile();
+  const row = run(p, [c]);
+  assertNotEquals(row.movement.days, 0, "must not read '0 days' off the cron-bumped claim.updated_at (the live cbf2c780 symptom)");
+  assertEquals(row.movement.latest_label, "claim contract_sent_at", "the most recent REAL milestone timestamp must win, not the cron's touch");
+  assert((row.movement.days ?? 0) >= 12, `expected >= 12 days since the real 2026-09-03 contract_sent_at, got ${row.movement.days}`);
+});
+
+Deno.test("buildHomeownerRow (B1) FIX ROUND 3 NEGATIVE CONTROL: claim has a real, recent milestone timestamp -> normal bucket, not forced, and it is genuinely used", () => {
+  const c = claim({
     platform_fee_charged: true, // real progress signal, independent of any activity_log row
-    color_selected_at: "2026-08-20T00:00:00Z", // real, older, non-admin timestamp
+    color_selected_at: "2026-09-15T00:00:00Z", // real, 2 days before NOW
+    updated_at: "2026-07-01T00:00:00Z", // stale and IRRELEVANT — must not suppress the real recent signal
   });
   const p = profile();
   const row = run(p, [c]);
   assertEquals(row.movement.zero_activity, false, "claimHasMilestoneProgress is true -> this claim is not stuck, override must not fire");
-  assertNotEquals(row.movement.latest_label, "claim updated_at", "claim.updated_at is still admin-tainted here even though the claim has real progress elsewhere");
-  assertEquals(row.movement.latest_label, "claim color_selected_at", "recency must come from the real milestone timestamp, not the admin-bumped updated_at");
+  assertEquals(row.movement.latest_label, "claim color_selected_at", "recency must come from the real milestone timestamp");
+  assertEquals(row.movement.bucket, "green");
 });
 
-Deno.test("buildHomeownerRow NEGATIVE CONTROL: claim.updated_at with NO loss_sheet_reviewed_at at all (73208937/f57c49a0 shape) -> updated_at is a real signal and IS used", () => {
-  const c = claim({
-    updated_at: "2026-09-14T00:00:00Z", // 2 days ago
-    loss_sheet_reviewed_at: null,
-    platform_fee_charged: true, // e.g. 73208937's real Stripe charge
-  });
+Deno.test("buildHomeownerRow (B1) FIX ROUND 3: bids.created_at (a contractor's quote) is an explicit milestone timestamp", () => {
+  const c = claim({ status: "bidding" });
   const p = profile();
-  const row = run(p, [c]);
-  assertEquals(row.movement.latest_label, "claim updated_at");
-  assertEquals(row.movement.bucket, "green");
-  assertEquals(row.movement.zero_activity, false);
+  const quotesByClaimId = new Map<string, unknown[]>([
+    ["c1", [{ id: "q1", created_at: "2026-09-14T00:00:00Z" }, { id: "q2", created_at: "2026-09-10T00:00:00Z" }]],
+  ]);
+  const row = run(p, [c], { quotesByClaimId });
+  assertEquals(row.movement.latest_label, "claim quotes.created_at (latest bid received)");
+  assertEquals(row.movement.latest_iso, "2026-09-14T00:00:00Z", "the LATEST of multiple bids must win");
 });
 
 // ── item 4 (system-notification exclusion) at the full-row level ─────────
@@ -208,22 +235,25 @@ Deno.test("buildHomeownerRow NEGATIVE CONTROL: claim.updated_at with NO loss_she
 // claim_id in metadata still read as hasRealActivity=true and fell through
 // to the (admin-tainted) raw bucket instead of being forced red.
 Deno.test("buildHomeownerRow: claim referenced ONLY by a system-notification row (simulating the pre-item-4-fix reducer output) -> red once that reference is correctly excluded upstream", () => {
-  const c = claim({
-    updated_at: "2026-09-09T00:00:00Z", // 7 days ago — would read green if not overridden
-  });
+  const c = claim(); // no milestone progress, no allow-listed timestamp
   const p = profile();
   // Correct (post-fix) reducer output: the notification_failed row's claim_id
-  // was excluded by isRealActivityRow, so claimIdsWithRealActivity does NOT
-  // contain c1.
-  const fixed = run(p, [c], { claimIdsWithRealActivity: new Set() });
+  // was excluded by isRealActivityRow, so neither claimIdsWithRealActivity
+  // nor claimLastRealActivityByClaimId contains c1.
+  const fixed = run(p, [c], { claimIdsWithRealActivity: new Set(), claimLastRealActivityByClaimId: new Map() });
   assertEquals(fixed.movement.bucket, "red");
   assertEquals(fixed.movement.zero_activity, true);
 
   // Mutant: the round-1 reducer (before item 4's SYSTEM_NOTIFICATION_EVENT_TYPES
-  // exclusion existed) would have put c1 into this set, because
+  // exclusion existed) would have put c1 into BOTH maps together (they are
+  // populated from the same loop iteration in index.ts), because
   // notification_failed carries metadata.claim_id and round 1's
-  // isRealActivityRow did not yet filter it.
-  const mutant = run(p, [c], { claimIdsWithRealActivity: new Set(["c1"]) });
+  // isRealActivityRow did not yet filter it — including its own (recent)
+  // created_at as a false recency signal.
+  const mutant = run(p, [c], {
+    claimIdsWithRealActivity: new Set(["c1"]),
+    claimLastRealActivityByClaimId: new Map([["c1", "2026-09-15T00:00:00Z"]]), // 2 days before NOW
+  });
   assertEquals(mutant.movement.bucket, "green", "documents this is exactly the shape that produced the reported false-green — see isRealActivityRow's SYSTEM_NOTIFICATION_EVENT_TYPES test in movement.test.ts for the fix at its source");
 });
 

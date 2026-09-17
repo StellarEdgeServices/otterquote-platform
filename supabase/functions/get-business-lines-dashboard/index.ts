@@ -127,7 +127,6 @@ import {
 } from "./ga4.ts";
 import {
   claimHasMilestoneProgress,
-  claimUpdatedAtIsAdminTainted,
   computeMovement,
   homeownerBucket,
   isRealActivityRow,
@@ -930,6 +929,14 @@ function buildHomeownerRow(
   const claim = userClaims[0] || null;
   const claimQuotes = claim ? (quotesByClaimId.get(claim.id) || []) : [];
   const bidsReceived = claimQuotes.length;
+  // FIX ROUND 3 (gh-1570, review 5706511176, finding B1): "bids.created_at"
+  // as an explicit milestone timestamp — a contractor's bid is real claim
+  // progress with its own honest date, independent of claim.updated_at.
+  const latestBidReceivedAt = claimQuotes.reduce((max: string | null, q: any) => {
+    if (!q?.created_at) return max;
+    if (!max || new Date(q.created_at).getTime() > new Date(max).getTime()) return q.created_at;
+    return max;
+  }, null as string | null);
 
   const checklist = [
     { key: "account", label: "Account created", done: true },
@@ -944,29 +951,59 @@ function buildHomeownerRow(
     { key: "complete", label: "Complete", done: !!claim && !!claim.completion_date },
   ];
 
-  // FIX ROUND 2 (review 5705734203, finding 1/B1): `mark-loss-sheet-reviewed`
-  // writes `claims.loss_sheet_reviewed_at`, and that UPDATE also bumps the
-  // table's generic `updated_at` (confirmed live, movement.ts header
-  // comment) — so `claim.updated_at` is excluded from movement recency
-  // whenever `claimUpdatedAtIsAdminTainted` says it was set by that same
-  // admin write. This is NOT a blanket drop: a claim with no
-  // loss_sheet_reviewed_at (or whose updated_at is far from it) keeps its
-  // own updated_at as a real recency signal (e.g. 73208937's Stripe charge).
-  // A claim-referenced real activity row (claimLastRealActivityByClaimId —
-  // e.g. a contractor's bid) is ALSO fed in here, so recency can be dated by
-  // real claim-level activity even when it never touched claim.updated_at.
-  const claimUpdatedAtAdmissible = !!claim &&
-    !claimUpdatedAtIsAdminTainted(claim.updated_at ?? null, claim.loss_sheet_reviewed_at ?? null);
-
+  // FIX ROUND 3 (review 5706511176, finding B1, DECIDED): `claim.updated_at`
+  // and `profile.updated_at` are NEVER read for movement — see movement.ts's
+  // header comment on `homeownerBucket` for the full live enumeration of why
+  // review 2's per-writer taint heuristic (`claimUpdatedAtIsAdminTainted`,
+  // removed this round) could not keep up: a generic trigger bumps
+  // `updated_at` on every claims UPDATE, and at least six unrelated Edge
+  // Functions (the hourly `process-bid-expirations` cron among them —
+  // `cbf2c780`'s live "green / 0 days" symptom) write claims columns that
+  // have nothing to do with the homeowner doing anything. Recency now comes
+  // EXCLUSIVELY from: (a) real claim-linked activity_log evidence
+  // (homeowner-keyed `lastActivityByUser` and claim-referenced
+  // `claimLastRealActivityByClaimId`, both already filtered through
+  // isRealActivityRow's admin/system exclusions), and (b) an explicit
+  // allow-list of claim milestone timestamp columns — every column that
+  // ALSO feeds `claimHasMilestoneProgress` below, so a signal real enough to
+  // count as progress is real enough to date recency, and nothing else is.
+  // `bids_submitted_at`/`quotes.created_at` cover bid receipt (bids
+  // themselves log no activity_log row under the homeowner — they are
+  // CONTRACTOR-keyed); `contract_*_at`/`color_*_at`/`deductible_collected_at`/
+  // `contractor_switched_at`/`project_confirmation_signed_at`/
+  // `completion_date` cover the rest of the funnel's own claim-column
+  // writes. NOT included: `loss_sheet_reviewed_at` (admin-authored, the
+  // original motivating bug), `live_charge_authorized_at` ("set out of band
+  // by a human" per create-payment-intent/live-charge-guard.ts — confirmed
+  // live to be identical to 73208937's `updated_at`, i.e. it IS one of the
+  // non-homeowner writers, not a homeowner-activity signal), the four
+  // `*_bid_released_at` columns and `bid_window_expires_at`/
+  // `bid_window_notified_at` (system/cron-gated releases and the
+  // `process-bid-expirations` cron itself — the exact `cbf2c780` writer),
+  // `first_touch_at` / `profile_prompt_sent_at` (marketing attribution and a
+  // nudge-send stamp, not a homeowner action), and `hover_orders.fulfilled_at`
+  // (there is no dedicated "measurements uploaded" timestamp column on
+  // `claims` at all; the closest candidate is written via the same
+  // admin-gated flow as the already-excluded `measurement_order_fulfilled`
+  // activity_log event, so it is treated the same way — admin-authored, not
+  // included). A claim can therefore have real, undeniable progress
+  // (`has_measurements=true`) with NO allow-listed timestamp and NO
+  // qualifying activity_log row at all — `computeMovement` then honestly
+  // returns `bucket: "unknown"` rather than inventing a date, and
+  // `homeownerBucket` forces that to red too (see its own header comment).
   const movement = computeMovement(now, [
-    { label: "profile updated_at", iso: p.updated_at },
     ...(claim ? [
-      ...(claimUpdatedAtAdmissible ? [{ label: "claim updated_at", iso: claim.updated_at }] : []),
       { label: "claim bids_submitted_at", iso: claim.bids_submitted_at },
+      { label: "claim quotes.created_at (latest bid received)", iso: latestBidReceivedAt },
       { label: "claim contract_sent_at", iso: claim.contract_sent_at },
       { label: "claim contract_signed_at", iso: claim.contract_signed_at },
+      { label: "claim contract_declined_at", iso: claim.contract_declined_at },
+      { label: "claim contract_voided_at", iso: claim.contract_voided_at },
       { label: "claim color_selected_at", iso: claim.color_selected_at },
+      { label: "claim color_confirmed_at", iso: claim.color_confirmed_at },
       { label: "claim deductible_collected_at", iso: claim.deductible_collected_at },
+      { label: "claim contractor_switched_at", iso: claim.contractor_switched_at },
+      { label: "claim project_confirmation_signed_at", iso: claim.project_confirmation_signed_at },
       { label: "claim completion_date", iso: claim.completion_date },
       { label: "claim-referenced activity_log event", iso: claimLastRealActivityByClaimId.get(claim.id) || null },
     ] : []),
@@ -1004,6 +1041,11 @@ function buildHomeownerRow(
     selectedContractorId: claim.selected_contractor_id ?? null,
     platformFeeCharged: claim.platform_fee_charged === true,
     completionDate: claim.completion_date ?? null,
+    contractDeclinedAt: claim.contract_declined_at ?? null,
+    contractVoidedAt: claim.contract_voided_at ?? null,
+    colorConfirmedAt: claim.color_confirmed_at ?? null,
+    contractorSwitchedAt: claim.contractor_switched_at ?? null,
+    projectConfirmationSignedAt: claim.project_confirmation_signed_at ?? null,
   } : null;
   const hasRealActivity = !!firstActivityIso ||
     (!!claim && claimIdsWithRealActivity.has(claim.id)) ||
@@ -1047,8 +1089,10 @@ function buildHomeownerRow(
     created_at: p.created_at,
     // gh-1580: null = never had an activity_log row. Admin CRM "NEW — no
     // activity since signup" strip keys off this rather than re-deriving
-    // it from movement.bucket, which a freshly-created row buckets green
-    // (see p.updated_at as a movement input above) regardless of activity.
+    // it from movement.bucket. FIX ROUND 3: movement.bucket can no longer be
+    // falsely fresh from p.updated_at at all (it is no longer a movement
+    // input — see the computeMovement call above), but first_activity_at
+    // remains its own, more precise signal for this specific strip.
     first_activity_at: firstActivityIso,
   };
 }
@@ -1126,11 +1170,18 @@ serve(async (req: Request) => {
         "id, user_id, created_at, updated_at, status, hover_order_id, hover_status, has_measurements, " +
         "ready_for_bids, bids_submitted_at, selected_contractor_id, contract_sent_at, " +
         "contract_signed_at, platform_fee_charged, completion_date, color_selected_at, " +
-        // loss_sheet_reviewed_at: FIX ROUND 2 (review 5705734203, finding 1/B1) —
-        // needed so claimUpdatedAtIsAdminTainted (movement.ts) can detect when
-        // claim.updated_at was bumped by the SAME admin write that set this
-        // column, and exclude that bump from movement recency.
-        "deductible_collected_at, loss_sheet_reviewed_at, is_test"
+        // FIX ROUND 3 (review 5706511176, finding B1): `updated_at` is kept
+        // ONLY to pick each homeowner's most-recently-touched claim
+        // (userClaims sort below) — it is no longer fed into computeMovement
+        // for recency at all. `loss_sheet_reviewed_at` (FIX ROUND 2) is
+        // dropped: its only consumer, claimUpdatedAtIsAdminTainted, is
+        // removed this round. contract_declined_at/contract_voided_at/
+        // color_confirmed_at/contractor_switched_at/project_confirmation_signed_at
+        // are added — explicit milestone timestamp columns (movement.ts's
+        // new allow-list) that feed both claimHasMilestoneProgress and
+        // computeMovement now that raw updated_at cannot.
+        "deductible_collected_at, is_test, contract_declined_at, contract_voided_at, " +
+        "color_confirmed_at, contractor_switched_at, project_confirmation_signed_at"
       ),
       supabase.from("quotes").select(
         "id, claim_id, contractor_id, status, payment_status, contractor_signed_at, " +
@@ -1245,10 +1296,11 @@ serve(async (req: Request) => {
     const claimIdsWithRealActivity = new Set<string>();
     // FIX ROUND 2 (gh-1570): a claim-referenced real activity row (e.g. a
     // contractor's auto_bid_submitted) should also be able to feed movement
-    // RECENCY, not just the red/not-red decision — otherwise a claim with a
-    // months-old bid but no other signal still dates its "days since
-    // movement" off claim.updated_at alone. Keyed by claim_id -> latest
-    // real-activity created_at seen for that claim.
+    // RECENCY, not just the red/not-red decision. FIX ROUND 3: this is now
+    // one of only two families of recency input at all (the other being the
+    // explicit milestone-timestamp allow-list) — see buildHomeownerRow's
+    // computeMovement call. Keyed by claim_id -> latest real-activity
+    // created_at seen for that claim.
     const claimLastRealActivityByClaimId = new Map<string, string>();
     for (const row of activityLog as ActivityRow[]) {
       if (!isRealActivityRow(row)) continue;

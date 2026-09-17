@@ -43,13 +43,13 @@ export function bucketFor(days: number): "green" | "yellow" | "red" {
 }
 
 // gh-1570: the admin CRM "stuck-first" table sorts/colors purely off
-// movement.bucket (admin-dashboard.html), and movement is computed from raw
-// updated_at timestamps — an unrelated system write (e.g. a bulk column
-// backfill) bumps profile.updated_at / claim.updated_at and makes a claim
-// that has NEVER had one real activity_log event look "green" again once it
-// ages past gh-1580's 72h "NEW" strip window. That is the identical
-// false-freshness bug gh-1580 already fixed for the NEW strip, recurring here
-// because the stuck-first table never got the same fix.
+// movement.bucket (admin-dashboard.html). Originally movement was computed
+// from raw updated_at timestamps — an unrelated system write (e.g. a bulk
+// column backfill) bumped profile.updated_at / claim.updated_at and made a
+// claim that has NEVER had one real activity_log event look "green" again
+// once it aged past gh-1580's 72h "NEW" strip window. That was the identical
+// false-freshness bug gh-1580 already fixed for the NEW strip, recurring
+// here because the stuck-first table never got the same fix.
 //
 // This is deliberately scoped to homeowners who HAVE a claim: a homeowner
 // with no claim yet has nothing to be "stuck" on (their row is still on the
@@ -76,6 +76,46 @@ export function bucketFor(days: number): "green" | "yellow" | "red" {
 // (homeowner-keyed OR claim-referenced, see `isRealActivityRow` /
 // `ADMIN_ORIGIN_EVENT_TYPES` below) is the only shape still forced red.
 //
+// FIX ROUND 3 (review 5706511176, finding B1, DECIDED): review2's
+// `claimUpdatedAtIsAdminTainted` heuristic covered exactly one writer
+// (mark-loss-sheet-reviewed). Live evidence this round: a generic Postgres
+// trigger bumps `claims.updated_at` on EVERY update to the row, and at least
+// six other Edge Functions (`process-bid-expirations`'s hourly cron,
+// `admin-measurements`, `check-siding-design-completion`,
+// `process-dunning`, `hover-webhook`, `parse-hover-measurements`,
+// `docusign-webhook`) write `claims` columns having nothing to do with
+// homeowner activity — `cbf2c780` showed "green / 0 days" purely from
+// `process-bid-expirations`'s cron stamping `bid_window_notified_at` (and,
+// via the generic trigger, `updated_at`) the moment its bid window expired.
+// A per-writer allow/deny-list of "which column bump is real" cannot keep
+// up with every current and future write path, so raw `updated_at` (claim
+// OR profile) is no longer read for movement AT ALL — see index.ts's
+// `buildHomeownerRow`, whose `computeMovement` inputs are now built
+// EXCLUSIVELY from (a) real claim-linked `activity_log` rows (after the
+// system/admin exclusions below) and (b) an explicit allow-list of claim
+// milestone timestamp columns (bids_submitted_at, quotes.created_at,
+// contract_sent_at/signed_at/declined_at/voided_at, color_selected_at/
+// color_confirmed_at, deductible_collected_at, contractor_switched_at,
+// project_confirmation_signed_at, completion_date). `claimUpdatedAtIsAdminTainted`
+// is removed entirely — there is no longer a `claim.updated_at` input for it
+// to taint-check.
+//
+// A direct consequence: a claim can have real, undeniable progress
+// (`claimHasMilestoneProgress` true — e.g. `has_measurements=true`) yet have
+// NO column in the explicit allow-list set and NO qualifying `activity_log`
+// row at all (measurement UPLOAD itself has no dedicated timestamp column on
+// `claims`, and its own `activity_log` counterpart is `measurement_order_fulfilled`,
+// which is admin-authored and already excluded — see ADMIN_ORIGIN_EVENT_TYPES).
+// `computeMovement` then legitimately returns `bucket: "unknown"` (no
+// admissible input at all) rather than fabricating a date. An "unknown"
+// recency is never safe to show as green/yellow — the CRM cannot verify
+// this claim is fresh, which is exactly the same "needs a human to look"
+// signal as zero real activity, so it is ALSO forced red here, alongside
+// the pre-existing `!hasRealActivity` case. (Live example: `4595b6f0` —
+// `has_measurements=true` correctly keeps `hasRealActivity` true, but the
+// claim has no allow-listed timestamp and no qualifying activity_log row,
+// so raw `movement.bucket` is `"unknown"`, and it is forced red here.)
+//
 // movement.days / latest_iso are left untouched by the caller; only the
 // bucket used for coloring/sorting changes.
 export function homeownerBucket(
@@ -83,7 +123,7 @@ export function homeownerBucket(
   hasClaim: boolean,
   hasRealActivity: boolean,
 ): MovementBucket {
-  if (hasClaim && !hasRealActivity) return "red";
+  if (hasClaim && (!hasRealActivity || movement.bucket === "unknown")) return "red";
   return movement.bucket;
 }
 
@@ -116,6 +156,15 @@ export interface ClaimMilestones {
   selectedContractorId: string | null;
   platformFeeCharged: boolean;
   completionDate: string | null;
+  // FIX ROUND 3 (gh-1570) — added alongside the same columns now feeding
+  // computeMovement's explicit milestone allow-list (index.ts), so progress
+  // evidence and recency evidence stay in sync: anything real enough to date
+  // a claim's recency is also real enough to count as progress.
+  contractDeclinedAt: string | null;
+  contractVoidedAt: string | null;
+  colorConfirmedAt: string | null;
+  contractorSwitchedAt: string | null;
+  projectConfirmationSignedAt: string | null;
 }
 
 // documents_needed is the table's own DEFAULT; draft is the only status that
@@ -154,7 +203,12 @@ export function claimHasMilestoneProgress(claim: ClaimMilestones | null): boolea
     !!claim.deductibleCollectedAt ||
     !!claim.selectedContractorId ||
     claim.platformFeeCharged === true ||
-    !!claim.completionDate
+    !!claim.completionDate ||
+    !!claim.contractDeclinedAt ||
+    !!claim.contractVoidedAt ||
+    !!claim.colorConfirmedAt ||
+    !!claim.contractorSwitchedAt ||
+    !!claim.projectConfirmationSignedAt
   );
 }
 
@@ -250,43 +304,14 @@ export function isRealActivityRow(row: ActivityLikeRow): boolean {
   return true;
 }
 
-// ── Admin-tainted claims.updated_at (CEO RUN 48 FIX ROUND 2, gh-1570) ─────
-//
-// Review 5705734203 finding 1 (B1): `mark-loss-sheet-reviewed` writes
-// `claims.loss_sheet_reviewed_at`, and that UPDATE also bumps the table's
-// generic `updated_at` (confirmed live: the two are 0.07-0.24s apart for
-// every admin-reviewed claim checked, e.g. 4595b6f0's updated_at
-// 11:21:03.079 vs loss_sheet_reviewed_at 11:21:02.842). `computeMovement`
-// including `claim.updated_at` therefore re-introduces the exact
-// false-freshness bug this issue exists to fix, EVEN THOUGH the admin's
-// `activity_log` row is now correctly excluded — a claim can have real
-// milestone progress (e.g. has_measurements=true, which correctly keeps it
-// out of the forced-red override) and STILL have its raw recency dated by
-// the admin's bump once that row is excluded from `hasRealActivity`'s
-// activity-log path but not from `computeMovement`'s inputs.
-//
-// This is a narrow, surgical exclusion — NOT a blanket drop of
-// `claim.updated_at` (that would regress claims whose updated_at reflects a
-// genuine, non-admin event, e.g. `73208937`'s real Stripe charge on
-// 2026-09-05, which has no `loss_sheet_reviewed_at` at all and must keep
-// dating its own movement from `updated_at`). `profile.updated_at` is left
-// untouched entirely: `mark-loss-sheet-reviewed` never writes to `profiles`,
-// so it cannot be the source of a false bump there.
-//
-// A 5-second tolerance comfortably covers the sub-second gap between two
-// sequential writes inside one HTTP request handler while remaining nowhere
-// close to a window that could mask a genuinely later, unrelated real update
-// (the smallest gap between an admin write and any real subsequent event in
-// the data checked this round is measured in DAYS, not seconds).
-const ADMIN_UPDATE_TOLERANCE_MS = 5000;
-
-export function claimUpdatedAtIsAdminTainted(
-  updatedAtIso: string | null,
-  lossSheetReviewedAtIso: string | null,
-): boolean {
-  if (!updatedAtIso || !lossSheetReviewedAtIso) return false;
-  const u = new Date(updatedAtIso).getTime();
-  const r = new Date(lossSheetReviewedAtIso).getTime();
-  if (isNaN(u) || isNaN(r)) return false;
-  return Math.abs(u - r) <= ADMIN_UPDATE_TOLERANCE_MS;
-}
+// `claimUpdatedAtIsAdminTainted` (FIX ROUND 2) is REMOVED as of FIX ROUND 3
+// (review 5706511176, finding B1, DECIDED): it heuristically taint-checked
+// `claim.updated_at` against ONE known admin writer
+// (`mark-loss-sheet-reviewed`'s `loss_sheet_reviewed_at`), but a generic
+// Postgres trigger bumps `claims.updated_at` on every update regardless of
+// writer, and at least six other Edge Functions touch `claims` columns
+// unrelated to homeowner activity (see homeownerBucket's header comment
+// above for the full live enumeration and the `cbf2c780` example). A
+// per-writer heuristic cannot keep up with every current and future write
+// path, so the cure is not a smarter taint check — it is reading
+// `claim.updated_at` / `profile.updated_at` for movement NEVER, full stop.

@@ -15,7 +15,6 @@
 import { assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import {
   claimHasMilestoneProgress,
-  claimUpdatedAtIsAdminTainted,
   type ClaimMilestones,
   computeMovement,
   bucketFor,
@@ -41,6 +40,11 @@ function noProgress(overrides: Partial<ClaimMilestones> = {}): ClaimMilestones {
     selectedContractorId: null,
     platformFeeCharged: false,
     completionDate: null,
+    contractDeclinedAt: null,
+    contractVoidedAt: null,
+    colorConfirmedAt: null,
+    contractorSwitchedAt: null,
+    projectConfirmationSignedAt: null,
     ...overrides,
   };
 }
@@ -258,26 +262,43 @@ Deno.test("isRealActivityRow: dispute.auto_evidence_submitted / dispute.routed_t
   assertEquals(isRealActivityRow({ event_type: "dispute.routed_to_manual_queue", metadata: { claim_id: "c1" } }), false);
 });
 
-// ── FIX ROUND 2 (review 5705734203, finding 1/B1) — admin-tainted updated_at
+// ── FIX ROUND 3 (review 5706511176, finding B1, DECIDED) ──────────────────
+// claimUpdatedAtIsAdminTainted is REMOVED this round: a generic Postgres
+// trigger bumps claims.updated_at on every update regardless of writer, and
+// at least six Edge Functions beyond mark-loss-sheet-reviewed touch claims
+// columns unrelated to homeowner activity (process-bid-expirations's hourly
+// cron, admin-measurements, check-siding-design-completion, process-dunning,
+// hover-webhook, parse-hover-measurements, docusign-webhook). The cure is
+// architectural, not a smarter heuristic: claim.updated_at / profile.updated_at
+// are no longer read for movement at all (index.ts's buildHomeownerRow) — see
+// homeownerBucket's own header comment for the full enumeration and the
+// mutant proof ("movement reading updated_at again") in the PR evidence
+// comment. This is exercised at the full-row level in homeowner-row.test.ts
+// (the cbf2c780 shape specifically), not as a pure-function test here, since
+// there is no longer a pure taint-check function to unit-test in isolation.
 
-Deno.test("claimUpdatedAtIsAdminTainted: updated_at within 5s of loss_sheet_reviewed_at -> true (same shape as live 4595b6f0: 0.237s apart)", () => {
-  assertEquals(
-    claimUpdatedAtIsAdminTainted("2026-09-09T11:21:03.079Z", "2026-09-09T11:21:02.842Z"),
-    true,
-  );
+Deno.test("PROGRESS_CLAIM_STATUSES: 'awarded' is in the allowlist (FIX ROUND 3 mutant — removing it must fail this test)", () => {
+  assertEquals(PROGRESS_CLAIM_STATUSES.has("awarded"), true);
 });
 
-Deno.test("claimUpdatedAtIsAdminTainted NEGATIVE CONTROL: no loss_sheet_reviewed_at at all (73208937 shape) -> false, updated_at is a real signal", () => {
-  assertEquals(claimUpdatedAtIsAdminTainted("2026-09-14T00:00:00Z", null), false);
+Deno.test("homeownerBucket (e), FIX ROUND 3: claim exists, real progress exists (hasRealActivity=true) but recency is 'unknown' (no allow-listed timestamp, no qualifying activity_log row) -> forced red, not left at raw 'unknown'", () => {
+  const movement = computeMovement(Date.UTC(2026, 8, 17), []); // no inputs at all -> unknown
+  assertEquals(movement.bucket, "unknown");
+  const bucket = homeownerBucket(movement, /* hasClaim */ true, /* hasRealActivity */ true);
+  assertEquals(bucket, "red");
 });
 
-Deno.test("claimUpdatedAtIsAdminTainted NEGATIVE CONTROL: updated_at days after loss_sheet_reviewed_at (a genuine later event, not the admin write itself) -> false", () => {
-  assertEquals(
-    claimUpdatedAtIsAdminTainted("2026-09-14T00:00:00Z", "2026-09-01T00:00:00Z"),
-    false,
-  );
+Deno.test("homeownerBucket (f) NEGATIVE CONTROL, FIX ROUND 3: claim exists, real progress AND a real dated signal -> ordinary bucketFor result, not forced", () => {
+  const now = Date.UTC(2026, 8, 17);
+  const movement = computeMovement(now, [{ label: "claim color_selected_at", iso: "2026-09-15T00:00:00Z" }]); // 2 days ago
+  assertEquals(movement.bucket, "green");
+  const bucket = homeownerBucket(movement, /* hasClaim */ true, /* hasRealActivity */ true);
+  assertEquals(bucket, "green");
 });
 
-Deno.test("claimUpdatedAtIsAdminTainted: null updated_at -> false (nothing to taint)", () => {
-  assertEquals(claimUpdatedAtIsAdminTainted(null, "2026-09-01T00:00:00Z"), false);
+Deno.test("homeownerBucket (g) NEGATIVE CONTROL, FIX ROUND 3: no claim at all, recency 'unknown' -> NOT forced (the unknown-forces-red rule is claim-scoped, same as the zero-activity override)", () => {
+  const movement = computeMovement(Date.UTC(2026, 8, 17), []);
+  assertEquals(movement.bucket, "unknown");
+  const bucket = homeownerBucket(movement, /* hasClaim */ false, /* hasRealActivity */ false);
+  assertEquals(bucket, "unknown");
 });
