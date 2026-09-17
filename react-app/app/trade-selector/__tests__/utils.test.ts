@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { parseAddress } from '../utils';
+import { parseAddress, isValidZip, fullAddress, hasFullAddress } from '../utils';
 
 describe('parseAddress (gh-1579)', () => {
   it('parses the real production defect shape: "street, city ST zip" (2 comma segments)', () => {
@@ -255,5 +255,54 @@ describe('parseAddress (gh-1579)', () => {
         expect(parseAddress(address)).toEqual({ street, city: null, state, zip });
       });
     });
+  });
+});
+
+/**
+ * gh-2004 — pure-function coverage for the three helpers the address
+ * fallback/collection flow relies on. The DOM-level behavior (fallback to
+ * profile, empty-profile shows the fields, claim payload never null) is
+ * covered by gh2004-address-fallback.test.tsx; this file stays pure/no-DOM
+ * per its header.
+ */
+
+describe('isValidZip (gh-2004)', () => {
+  it('accepts exactly 5 digits', () => {
+    expect(isValidZip('46060')).toBe(true);
+  });
+  it('rejects fewer than 5 digits', () => {
+    expect(isValidZip('460')).toBe(false);
+  });
+  it('rejects a 9-digit ZIP+4', () => {
+    expect(isValidZip('46060-1234')).toBe(false);
+  });
+  it('rejects non-digits', () => {
+    expect(isValidZip('ABCDE')).toBe(false);
+  });
+  it('rejects empty', () => {
+    expect(isValidZip('')).toBe(false);
+  });
+});
+
+describe('fullAddress (gh-2004)', () => {
+  it('recombines all four fields into "street, city, ST zip"', () => {
+    expect(fullAddress('910 Congress Street', 'Noblesville', 'IN', '46060'))
+      .toBe('910 Congress Street, Noblesville, IN 46060');
+  });
+  it('trims each field before joining', () => {
+    expect(fullAddress(' 1 Main St ', ' Anytown ', ' IN ', ' 46060 '))
+      .toBe('1 Main St, Anytown, IN 46060');
+  });
+});
+
+describe('hasFullAddress (gh-2004)', () => {
+  it('true when all four fields are non-empty', () => {
+    expect(hasFullAddress({ street: '1 Main St', city: 'Anytown', state: 'IN', zip: '46060' })).toBe(true);
+  });
+  it('false when any one field is null (the exact all-but-one-NULL shape this page must never insert)', () => {
+    expect(hasFullAddress({ street: '1 Main St', city: null, state: 'IN', zip: '46060' })).toBe(false);
+  });
+  it("false when all four fields are null (claim 9bea2213's shape, the bug this issue reports)", () => {
+    expect(hasFullAddress({ street: null, city: null, state: null, zip: null })).toBe(false);
   });
 });

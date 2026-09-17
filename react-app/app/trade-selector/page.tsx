@@ -26,7 +26,7 @@ import { supabase } from '@/lib/supabase';
 import { readReferralIds } from '@/lib/cookie-storage';
 import { recordFirstTouch } from '@/lib/attribution';
 import { isTestEmail } from '@/lib/test-signal';
-import { parseAddress } from './utils';
+import { parseAddress, fullAddress, isValidZip, hasFullAddress, type ParsedAddress } from './utils';
 import { gtagEventBeforeNavigation } from '@/lib/ga-events';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -68,6 +68,49 @@ const PROJECT_TYPE_TO_TRADE: ReadonlyMap<string, TradeKey> = new Map([
   ['gutters', 'gutters'],
   ['windows', 'windows'],
 ]);
+
+// gh-2004: 50 states + DC + Puerto Rico — byte-for-byte the same list as
+// get-started/page.tsx's STATE_CODE_OPTIONS (kept local rather than
+// imported, matching that file's own "no cross-feature dependency" choice)
+// so a homeowner who lands here with no cs_signup/profile address sees the
+// identical state picker get-started already shipped in #1993/#1998.
+const STATE_CODE_OPTIONS: { value: string; label: string }[] = [
+  { value: 'AL', label: 'Alabama' }, { value: 'AK', label: 'Alaska' },
+  { value: 'AZ', label: 'Arizona' }, { value: 'AR', label: 'Arkansas' },
+  { value: 'CA', label: 'California' }, { value: 'CO', label: 'Colorado' },
+  { value: 'CT', label: 'Connecticut' }, { value: 'DE', label: 'Delaware' },
+  { value: 'DC', label: 'District of Columbia' }, { value: 'FL', label: 'Florida' },
+  { value: 'GA', label: 'Georgia' }, { value: 'HI', label: 'Hawaii' },
+  { value: 'ID', label: 'Idaho' }, { value: 'IL', label: 'Illinois' },
+  { value: 'IN', label: 'Indiana' }, { value: 'IA', label: 'Iowa' },
+  { value: 'KS', label: 'Kansas' }, { value: 'KY', label: 'Kentucky' },
+  { value: 'LA', label: 'Louisiana' }, { value: 'ME', label: 'Maine' },
+  { value: 'MD', label: 'Maryland' }, { value: 'MA', label: 'Massachusetts' },
+  { value: 'MI', label: 'Michigan' }, { value: 'MN', label: 'Minnesota' },
+  { value: 'MS', label: 'Mississippi' }, { value: 'MO', label: 'Missouri' },
+  { value: 'MT', label: 'Montana' }, { value: 'NE', label: 'Nebraska' },
+  { value: 'NV', label: 'Nevada' }, { value: 'NH', label: 'New Hampshire' },
+  { value: 'NJ', label: 'New Jersey' }, { value: 'NM', label: 'New Mexico' },
+  { value: 'NY', label: 'New York' }, { value: 'NC', label: 'North Carolina' },
+  { value: 'ND', label: 'North Dakota' }, { value: 'OH', label: 'Ohio' },
+  { value: 'OK', label: 'Oklahoma' }, { value: 'OR', label: 'Oregon' },
+  { value: 'PA', label: 'Pennsylvania' }, { value: 'PR', label: 'Puerto Rico' },
+  { value: 'RI', label: 'Rhode Island' }, { value: 'SC', label: 'South Carolina' },
+  { value: 'SD', label: 'South Dakota' }, { value: 'TN', label: 'Tennessee' },
+  { value: 'TX', label: 'Texas' }, { value: 'UT', label: 'Utah' },
+  { value: 'VT', label: 'Vermont' }, { value: 'VA', label: 'Virginia' },
+  { value: 'WA', label: 'Washington' }, { value: 'WV', label: 'West Virginia' },
+  { value: 'WI', label: 'Wisconsin' }, { value: 'WY', label: 'Wyoming' },
+];
+
+interface AddressFormState {
+  street: string;
+  city: string;
+  state: string;
+  zip: string;
+}
+
+const EMPTY_ADDRESS_FORM: AddressFormState = { street: '', city: '', state: '', zip: '' };
 
 interface WizardState {
   fundingType: FundingType;
@@ -339,6 +382,23 @@ export default function TradeSelectorPage() {
   const [completing, setCompleting] = useState(false);
   const [error, setError] = useState('');
 
+  // gh-2004: a returning homeowner who reaches this page without a live
+  // `cs_signup` in localStorage (new device, cleared storage, or a plain
+  // sign-in that skipped get-started) previously created a claim with
+  // property_address/city/state/zip all NULL — example claim `9bea2213`.
+  // `resolvedAddress` is the single source of truth every write site below
+  // reads from; it stays null only while we are still checking cs_signup
+  // and the profile, or while an address-less visitor is on the new
+  // 'address' step. `addressResolving` gates the whole page the same way
+  // `!settled` already does, so no step ever renders before we know
+  // whether the address step is needed.
+  const [resolvedAddress, setResolvedAddress] = useState<ParsedAddress | null>(null);
+  const [addressResolving, setAddressResolving] = useState(true);
+  const [needsAddressStep, setNeedsAddressStep] = useState(false);
+  const [addressForm, setAddressForm] = useState<AddressFormState>(EMPTY_ADDRESS_FORM);
+  const [addressFormError, setAddressFormError] = useState('');
+  const [addressSaving, setAddressSaving] = useState(false);
+
   // gh-1991: pre-select the trade get-started's project_type chip already
   // told us. Read-only, runs once on mount; only applies while `trades` is
   // still empty so it can never clobber a selection the visitor made on
@@ -359,6 +419,80 @@ export default function TradeSelectorPage() {
       // cs_signup missing/malformed — no prefill, not fatal
     }
   }, []);
+
+  // gh-2004: resolve an address for this claim BEFORE any step renders,
+  // trying — in order — (1) cs_signup's structured fields, (2) a legacy
+  // cs_signup payload written before #1993 (a single combined string), (3)
+  // the signed-in user's saved profile (the fix for the actual bug: a
+  // returning homeowner with no live cs_signup). Only when all three come
+  // up short do we ask the homeowner here. Every candidate must clear
+  // hasFullAddress() (all four fields non-empty) before it is accepted —
+  // never insert a claim with a NULL address field from this page, not
+  // just never insert one with all four NULL.
+  useEffect(() => {
+    if (!settled || !user) return;
+    let cancelled = false;
+
+    (async () => {
+      let csSignup: Record<string, unknown> = {};
+      try {
+        const raw = typeof localStorage !== 'undefined' ? localStorage.getItem('cs_signup') : null;
+        if (raw) csSignup = JSON.parse(raw);
+      } catch {
+        // cs_signup missing/malformed — treated the same as absent below
+      }
+
+      // 1. cs_signup's structured fields (get-started, post-#1993).
+      const structured: ParsedAddress = {
+        street: ((csSignup.address_street as string) || '').trim() || null,
+        city: ((csSignup.address_city as string) || '').trim() || null,
+        state: ((csSignup.address_state as string) || '').trim() || null,
+        zip: ((csSignup.address_zip as string) || '').trim() || null,
+      };
+      if (hasFullAddress(structured)) {
+        if (!cancelled) { setResolvedAddress(structured); setAddressResolving(false); }
+        return;
+      }
+
+      // 2. A legacy cs_signup payload (pre-#1993, combined string only).
+      const legacyParsed = parseAddress((csSignup.address as string) || '');
+      if (hasFullAddress(legacyParsed)) {
+        if (!cancelled) { setResolvedAddress(legacyParsed); setAddressResolving(false); }
+        return;
+      }
+
+      // 3. gh-2004: no usable cs_signup — fall back to the profile this
+      // user already saved (verified live: profiles.address_street/
+      // address_city/address_state/address_zip all exist, nullable text).
+      try {
+        const { data: profileRow } = await supabase
+          .from('profiles')
+          .select('address_street, address_city, address_state, address_zip')
+          .eq('id', user.id)
+          .maybeSingle();
+        const fromProfile: ParsedAddress = {
+          street: (profileRow?.address_street || '').trim() || null,
+          city: (profileRow?.address_city || '').trim() || null,
+          state: (profileRow?.address_state || '').trim() || null,
+          zip: (profileRow?.address_zip || '').trim() || null,
+        };
+        if (hasFullAddress(fromProfile)) {
+          if (!cancelled) { setResolvedAddress(fromProfile); setAddressResolving(false); }
+          return;
+        }
+      } catch (e) {
+        console.warn('[trade-selector] gh-2004 profile address lookup failed:', e);
+      }
+
+      // 4. Nothing usable anywhere — ask the homeowner on the new step.
+      if (!cancelled) {
+        setNeedsAddressStep(true);
+        setAddressResolving(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [settled, user]);
 
   // Auth guard + returning-user guard
   useEffect(() => {
@@ -400,9 +534,14 @@ export default function TradeSelectorPage() {
   }, [settled, user]);
 
   // ── Step sequence ──
-  const stepSequence: string[] = wizardState.fundingType === 'insurance'
+  // gh-2004: 'address' only ever joins the sequence when the resolution
+  // effect above found no usable address anywhere (cs_signup, legacy
+  // cs_signup, profile). It always leads — the same position get-started
+  // asks for it in — so a claim can never be created before it is answered.
+  const baseSequence: string[] = wizardState.fundingType === 'insurance'
     ? ['funding', 'policy', 'trades', 'repair']
     : ['funding', 'trades', 'repair'];
+  const stepSequence: string[] = needsAddressStep ? ['address', ...baseSequence] : baseSequence;
   const totalSteps = stepSequence.length;
 
   // ── Navigation ──
@@ -413,10 +552,69 @@ export default function TradeSelectorPage() {
     }
   }, []);
 
+  // ── Step 0 (gh-2004, only when needed): Address ──
+  // Same field-by-field validation as get-started's validateHomeInfo() so
+  // the two forms behave identically.
+  const validateAddressForm = (): string | null => {
+    if (!addressForm.street.trim()) return 'Please enter your street address.';
+    if (!addressForm.city.trim()) return 'Please enter your city.';
+    if (!addressForm.state.trim()) return 'Please select your state.';
+    if (!isValidZip(addressForm.zip)) return 'Please enter a valid 5-digit ZIP code.';
+    return null;
+  };
+
+  const handleAddressContinue = async () => {
+    const validationError = validateAddressForm();
+    if (validationError) {
+      setAddressFormError(validationError);
+      return;
+    }
+    setAddressFormError('');
+    const parsed: ParsedAddress = {
+      street: addressForm.street.trim(),
+      city: addressForm.city.trim(),
+      state: addressForm.state.trim(),
+      zip: addressForm.zip.trim(),
+    };
+    setResolvedAddress(parsed);
+
+    // gh-2004: write the address back to the profile right away — a
+    // returning homeowner who hits this step once should never hit it
+    // again. Non-fatal: handleComplete's own upsert (below) re-persists the
+    // same values from resolvedAddress regardless of whether this succeeds.
+    if (user) {
+      setAddressSaving(true);
+      try {
+        await supabase.from('profiles').upsert({
+          id: user.id,
+          address_street: parsed.street,
+          address_city: parsed.city,
+          address_state: parsed.state,
+          address_zip: parsed.zip,
+          updated_at: new Date().toISOString(),
+        });
+      } catch (e) {
+        console.warn('[trade-selector] gh-2004 address write-back to profile failed:', e);
+      } finally {
+        setAddressSaving(false);
+      }
+    }
+
+    goToStep(stepSequence.indexOf('funding'));
+  };
+
   // ── Step 1: Funding ──
   const handleFundingSelect = (type: 'insurance' | 'cash') => {
     setWizardState(prev => ({ ...prev, fundingType: type, policyType: null }));
-    setTimeout(() => goToStep(1), 300);
+    // gh-2004: was a bare `goToStep(1)`, which only worked because 'funding'
+    // was always stepSequence[0] and the next step ('policy' or 'trades')
+    // was always stepSequence[1]. Once 'address' can lead the sequence,
+    // 'funding' is stepSequence[1] instead, so the fixed index would land
+    // back on funding itself instead of advancing. indexOf('funding') + 1
+    // is correct in both cases: index 0 (no address step) or 1 (address
+    // step present) — the step immediately after funding either way.
+    const fundingIdx = stepSequence.indexOf('funding');
+    setTimeout(() => goToStep(fundingIdx + 1), 300);
   };
 
   // ── Step 2 (Insurance): Policy ──
@@ -516,25 +714,17 @@ export default function TradeSelectorPage() {
         // cs_signup missing — continue with empty
       }
 
-      // gh-1993: get-started now collects street/city/state/zip as four
-      // separate fields and writes them to cs_signup directly
-      // (address_street/address_city/address_state/address_zip) alongside
-      // the combined `address` line it keeps for other readers (HubSpot).
-      // Prefer the structured fields — no free-text parsing needed, no
-      // street-suffix-vs-state ambiguity to resolve. Fall back to
-      // parseAddress(csSignup.address) only for a cs_signup payload written
-      // before this change (a tab left open across the deploy that still
-      // only carries the combined string) — one parse, shared by both
-      // write sites below, same as before this change.
-      const structuredStreet = (csSignup.address_street as string) || '';
-      const parsedAddress = structuredStreet.trim()
-        ? {
-            street: structuredStreet.trim() || null,
-            city: ((csSignup.address_city as string) || '').trim() || null,
-            state: ((csSignup.address_state as string) || '').trim() || null,
-            zip: ((csSignup.address_zip as string) || '').trim() || null,
-          }
-        : parseAddress((csSignup.address as string) || '');
+      // gh-2004: the address this claim uses comes from `resolvedAddress`,
+      // set before this step was ever reachable — by the mount effect
+      // (cs_signup's structured fields, a legacy cs_signup combined-string
+      // parse, or the signed-in user's saved profile) or, if none of those
+      // had one, by the homeowner filling in the new address step just
+      // above. It is guaranteed non-null and hasFullAddress() by the time
+      // Continue on the final step can be clicked — see the loading gate
+      // and the 'address' step's own Continue handler. The `?? {...}`
+      // fallback below is defense in depth only; every real path already
+      // guarantees a value here.
+      const parsedAddress: ParsedAddress = resolvedAddress ?? { street: null, city: null, state: null, zip: null };
 
       if (user) {
         // ── Upsert profiles table ──
@@ -612,23 +802,35 @@ export default function TradeSelectorPage() {
           // contractor opportunities card (D-074 city-before-street-reveal),
           // agreement_requested email/SMS, DocuSign customer_address and
           // color-selection.html's ZIP extraction all parse this column
-          // expecting the combined shape. #1993's body said "street line for
-          // existing readers" — the ruling amends that: nothing in #1993
-          // asked to change what downstream readers get, only to split the
-          // INPUT. csSignup.address is already the combined line get-started
-          // built via fullAddress(street, city, state, zip) — using it
-          // directly here (instead of re-deriving from parsedAddress) means
-          // this column is byte-identical to what main wrote before this PR.
-          // property_city/property_zip are the two NEW additive columns
-          // (migration in this PR, already applied to production — see that
-          // file) that carry the split city/zip alongside the unchanged
-          // combined property_address.
+          // expecting the combined shape.
+          //
+          // gh-2004: property_address is now built from `resolvedAddress`
+          // via fullAddress() rather than read as the raw `csSignup.address`
+          // string, because resolvedAddress may have come from the profile
+          // fallback or the new address step, neither of which has a
+          // pre-built combined string to read. For the get-started
+          // cs_signup path this is byte-identical to before: get-started
+          // itself builds cs_signup.address with this exact same
+          // fullAddress(street, city, state, zip) call, so recomputing it
+          // from the same four values reproduces the same string.
+          // property_city/property_zip are the two additive columns (PR
+          // #1998's migration, already applied to production) that carry
+          // the split city/zip alongside the combined property_address.
+          // gh-2004: never NULL — resolvedAddress is hasFullAddress() by
+          // construction (see the mount effect and the address step above),
+          // so all four of property_address/city/state/zip are always
+          // populated from this page now, not just property_address.
           const claimPayload: Record<string, unknown> = {
             funding_type: fundingType,
             policy_type: policyType,
             trades: trades,
             job_type: jobType,
-            property_address: (csSignup.address as string) || null,
+            property_address: fullAddress(
+              parsedAddress.street || '',
+              parsedAddress.city || '',
+              parsedAddress.state || '',
+              parsedAddress.zip || '',
+            ) || null,
             property_city: parsedAddress.city,
             property_state: parsedAddress.state,
             property_zip: parsedAddress.zip,
@@ -771,7 +973,10 @@ export default function TradeSelectorPage() {
   };
 
   // ── Loading state ──
-  if (!settled) {
+  // gh-2004: also wait on the address-resolution effect (only meaningful
+  // once a user exists — a signed-out visitor falls through to the
+  // redirect-in-flight `!user` branch below instead of spinning forever).
+  if (!settled || (user && addressResolving)) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '80vh' }}>
         <div style={{ textAlign: 'center' }}>
@@ -956,11 +1161,57 @@ export default function TradeSelectorPage() {
           border-radius: 8px;
           margin-bottom: 1.5rem;
         }
+        /* gh-2004: address-step fields, matching get-started's
+           .form-group/.form-label/.form-input/.form-row/.form-hint
+           byte-for-byte (PR #1998) so this page's fallback address form is
+           visually identical to the one get-started already ships. */
+        .ts-address-form {
+          display: flex;
+          flex-direction: column;
+          gap: var(--sp-5, 1.25rem);
+          animation: fadeUp 0.6s ease both 0.2s;
+        }
+        .form-row {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: var(--sp-4, 1rem);
+        }
+        .form-group {
+          display: flex;
+          flex-direction: column;
+          gap: var(--sp-1, 0.25rem);
+        }
+        .form-label {
+          font-size: 0.875rem;
+          font-weight: 600;
+          color: var(--white, #fff);
+        }
+        .form-input {
+          background: rgba(255,255,255,0.05);
+          border: 1px solid rgba(255,255,255,0.15);
+          border-radius: 8px;
+          padding: 10px 14px;
+          color: var(--white, #fff);
+          font-size: 1rem;
+          width: 100%;
+          box-sizing: border-box;
+          font-family: inherit;
+          transition: border-color 0.15s;
+        }
+        .form-input:focus {
+          outline: none;
+          border-color: var(--amber, #E07B00);
+        }
+        .form-hint {
+          font-size: 0.8rem;
+          color: var(--slate, #94a3b8);
+        }
         @media (max-width: 640px) {
           .funding-grid { grid-template-columns: 1fr; }
           .policy-grid { grid-template-columns: 1fr; }
           .trade-grid { grid-template-columns: repeat(2, 1fr); }
           .rr-grid { grid-template-columns: 1fr; }
+          .form-row { grid-template-columns: 1fr; }
         }
       `}</style>
 
@@ -973,6 +1224,93 @@ export default function TradeSelectorPage() {
           {/* Error banner */}
           {error && (
             <div className="error-banner" role="alert">{error}</div>
+          )}
+
+          {/* ── STEP: Address (gh-2004, only when cs_signup/profile had none) ── */}
+          {currentStepId === 'address' && (
+            <>
+              <div className="ts-header">
+                <h1>What&apos;s the property address?</h1>
+                <p className="ts-subtitle">
+                  We need this to match you with contractors who work in your area.
+                </p>
+              </div>
+
+              <div className="ts-address-form">
+                <div className="form-group">
+                  <label className="form-label" htmlFor="ts-street">Street Address</label>
+                  <input
+                    type="text"
+                    id="ts-street"
+                    className="form-input"
+                    required
+                    autoComplete="address-line1"
+                    placeholder="123 Main St"
+                    value={addressForm.street}
+                    onChange={e => setAddressForm(prev => ({ ...prev, street: e.target.value }))}
+                  />
+                  <span className="form-hint">The address for your project.</span>
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="ts-city">City</label>
+                    <input
+                      type="text"
+                      id="ts-city"
+                      className="form-input"
+                      required
+                      autoComplete="address-level2"
+                      placeholder="Anytown"
+                      value={addressForm.city}
+                      onChange={e => setAddressForm(prev => ({ ...prev, city: e.target.value }))}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="ts-state">State</label>
+                    <select
+                      id="ts-state"
+                      className="form-input"
+                      required
+                      autoComplete="address-level1"
+                      value={addressForm.state}
+                      onChange={e => setAddressForm(prev => ({ ...prev, state: e.target.value }))}
+                    >
+                      <option value="">Select...</option>
+                      {STATE_CODE_OPTIONS.map(({ value, label }) => (
+                        <option key={value} value={value}>{label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="ts-zip">ZIP Code</label>
+                    <input
+                      type="text"
+                      id="ts-zip"
+                      className="form-input"
+                      required
+                      inputMode="numeric"
+                      autoComplete="postal-code"
+                      pattern="\d{5}"
+                      maxLength={5}
+                      placeholder="12345"
+                      value={addressForm.zip}
+                      onChange={e => setAddressForm(prev => ({ ...prev, zip: e.target.value.replace(/\D/g, '').slice(0, 5) }))}
+                    />
+                  </div>
+                </div>
+
+                {addressFormError && (
+                  <div className="error-banner" role="alert">{addressFormError}</div>
+                )}
+
+                <ActionButtons
+                  onContinue={handleAddressContinue}
+                  continueLabel={addressSaving ? 'Saving…' : 'Continue →'}
+                  loading={addressSaving}
+                />
+              </div>
+            </>
           )}
 
           {/* ── STEP: Funding ── */}
@@ -1125,7 +1463,7 @@ export default function TradeSelectorPage() {
               )}
 
               <ActionButtons
-                onBack={() => goToStep(0)}
+                onBack={() => goToStep(stepSequence.indexOf('funding'))}
                 onContinue={() => {
                   const idx = stepSequence.indexOf('trades');
                   goToStep(idx);
