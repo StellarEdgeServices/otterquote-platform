@@ -125,6 +125,13 @@ import {
   type Ga4Exclusions,
   type Ga4SessionsByDayResult,
 } from "./ga4.ts";
+import {
+  claimHasMilestoneProgress,
+  computeMovement,
+  homeownerBucket,
+  isRealActivityRow,
+  type ClaimMilestones,
+} from "./movement.ts";
 
 const FUNCTION_NAME = "get-business-lines-dashboard";
 // gh-1534: kept in sync with supabase/functions/_shared/admin.ts ADMIN_EMAILS — do not
@@ -161,35 +168,9 @@ function jsonResponse(
 }
 
 // ── Days-since-movement ──────────────────────────────────────────────────
-// today - max(...every timestamp that counts as "this member did something").
-// Returns { days, latest_iso, inputs } — inputs are the individual candidate
-// timestamps that fed the max(), so the UI can show exactly what a "hand
-// computed spot check" (gh-1340 closes-on) would have to reproduce.
-interface MovementInput { label: string; iso: string | null }
-
-function computeMovement(nowMs: number, inputs: MovementInput[]) {
-  let latest: MovementInput | null = null;
-  let latestMs = -Infinity;
-  for (const inp of inputs) {
-    if (!inp.iso) continue;
-    const t = new Date(inp.iso).getTime();
-    if (!isNaN(t) && t > latestMs) {
-      latestMs = t;
-      latest = inp;
-    }
-  }
-  if (!latest) {
-    return { days: null, latest_label: null, latest_iso: null, inputs, bucket: "unknown" as const };
-  }
-  const days = Math.floor((nowMs - latestMs) / 86400000);
-  return { days, latest_label: latest.label, latest_iso: latest.iso, inputs, bucket: bucketFor(days) };
-}
-
-function bucketFor(days: number): "green" | "yellow" | "red" {
-  if (days <= 7) return "green";
-  if (days <= 13) return "yellow";
-  return "red";
-}
+// computeMovement/bucketFor/homeownerBucket moved to ./movement.ts (gh-1570)
+// so they can be exercised by `deno test` as a pure module — see that file's
+// header comment. Behaviour here is unchanged; only the location moved.
 
 // A tile value that is always real — 0 is a MEASURED ZERO, never omitted.
 function measured(value: number) {
@@ -712,6 +693,10 @@ interface ActivityRow {
   // can exclude system-generated absence nudges (metadata.system_generated)
   // from movement/first-activity — see the exclusion below.
   metadata: Record<string, unknown> | null;
+  // CEO RUN 48 fix-round (gh-1570, comment 5703958709): needed to exclude
+  // admin-authored rows (loss_sheet_reviewed) from counting as homeowner
+  // activity — see isRealActivityRow (movement.ts) and its use below.
+  event_type: string | null;
 }
 
 async function fetchAllActivity(
@@ -723,7 +708,7 @@ async function fetchAllActivity(
   for (let page = 0; page < ACTIVITY_MAX_PAGES; page++) {
     const { data, error } = await db
       .from("activity_log")
-      .select("user_id, created_at, metadata")
+      .select("user_id, created_at, metadata, event_type")
       .order("created_at", { ascending: false })
       .range(from, from + ACTIVITY_PAGE - 1);
     if (error) return { data: null, error };
@@ -901,6 +886,379 @@ async function fetchRevenueMtd(nowMs: number): Promise<RevenueMtd> {
   }
 }
 
+// ── Homeowner CRM row (gh-1570) ──────────────────────────────────────────
+//
+// FIX ROUND 2 (review 5705734203, finding 3): pulled out of the
+// homeownerRows.map() callback into a standalone, PURE, top-level function —
+// same convention this file already uses for buildWeekWindows/countByWeek/
+// etc. (see marketing-series.test.ts's header comment) — so a `deno test`
+// can exercise the real row-building logic via source extraction instead of
+// asserting on two literal substrings (round 1's wiring test, which review2
+// correctly called out as "a string match on two lines; it does not
+// exercise how the row is built"). Every input this function needs is a
+// parameter — it closes over nothing from the request handler — so
+// extracting its source text verbatim into a synthetic module (the same
+// data: URL technique marketing-series.test.ts already uses for this file)
+// reproduces its exact real behavior, not a re-implementation of it.
+//
+// (Named interface, not an inline `{ ... }` parameter type: a source-
+// extraction test's grabBlock() locates the function's own body by
+// brace-counting from the FIRST "{" after the marker, so an inline
+// object-type literal in the parameter list would be mistaken for the
+// body's opening brace and truncate the extraction. See homeowner-
+// row.test.ts.)
+interface HomeownerProfileLike {
+  id: string;
+  full_name: string | null;
+  email: string | null;
+  // FIX ROUND 4 (gh-1570, review 5707823658, finding #1): widened from
+  // `string` to `string | null` — the caller now resolves this from
+  // `profiles.created_at` OR (schema-nullable, currently zero-live)
+  // `auth.users.created_at` before calling buildHomeownerRow, and an
+  // exhausted fallback (neither source has a value) is a real, honest null,
+  // not a shape the caller should be forced to fabricate a string for.
+  created_at: string | null;
+  updated_at: string | null;
+  is_test: boolean;
+}
+
+function buildHomeownerRow(
+  p: HomeownerProfileLike,
+  now: number,
+  userClaims: any[],
+  quotesByClaimId: Map<string, any[]>,
+  lastActivityByUser: Map<string, string>,
+  firstActivityByUser: Map<string, string>,
+  claimIdsWithRealActivity: Set<string>,
+  claimLastRealActivityByClaimId: Map<string, string>,
+) {
+  const claim = userClaims[0] || null;
+  const claimQuotes = claim ? (quotesByClaimId.get(claim.id) || []) : [];
+  const bidsReceived = claimQuotes.length;
+  // FIX ROUND 3 (gh-1570, review 5706511176, finding B1): "bids.created_at"
+  // as an explicit milestone timestamp — a contractor's bid is real claim
+  // progress with its own honest date, independent of claim.updated_at.
+  const latestBidReceivedAt = claimQuotes.reduce((max: string | null, q: any) => {
+    if (!q?.created_at) return max;
+    if (!max || new Date(q.created_at).getTime() > new Date(max).getTime()) return q.created_at;
+    return max;
+  }, null as string | null);
+
+  // FIX ROUND 4 (gh-1570, review 5707823658, finding #3): the latest of the
+  // four trade-specific "bids released to contractors" columns — written by
+  // a homeowner's OWN submit-for-bids action, never by an admin or a cron.
+  const BID_RELEASED_COLUMNS = [
+    "gutters_bid_released_at",
+    "roofing_bid_released_at",
+    "siding_bid_released_at",
+    "windows_bid_released_at",
+  ] as const;
+  const latestBidReleasedAt = claim
+    ? BID_RELEASED_COLUMNS.reduce((max: string | null, col) => {
+        const iso = claim[col];
+        if (!iso) return max;
+        if (!max || new Date(iso).getTime() > new Date(max).getTime()) return iso;
+        return max;
+      }, null as string | null)
+    : null;
+
+  const checklist = [
+    { key: "account", label: "Account created", done: true },
+    { key: "claim_created", label: "Claim created", done: !!claim },
+    { key: "measurement_ordered", label: "Measurement ordered", done: !!claim && (!!claim.hover_order_id || !!claim.hover_status) },
+    { key: "measurements_on_file", label: "Measurements on file", done: !!claim && claim.has_measurements === true },
+    { key: "ready_for_bids", label: "Ready for bids", done: !!claim && claim.ready_for_bids === true },
+    { key: "bids_received", label: "Bids received", done: bidsReceived > 0, count: bidsReceived },
+    { key: "bid_accepted", label: "Bid accepted", done: !!claim && !!claim.selected_contractor_id },
+    { key: "contract_signed", label: "Contract signed", done: !!claim && !!claim.contract_signed_at },
+    { key: "fee_charged", label: "Platform fee charged", done: !!claim && claim.platform_fee_charged === true },
+    { key: "complete", label: "Complete", done: !!claim && !!claim.completion_date },
+  ];
+
+  // FIX ROUND 3 (review 5706511176, finding B1, DECIDED): `claim.updated_at`
+  // and `profile.updated_at` are NEVER read for movement — see movement.ts's
+  // header comment on `homeownerBucket` for the full live enumeration of why
+  // review 2's per-writer taint heuristic (`claimUpdatedAtIsAdminTainted`,
+  // removed this round) could not keep up: a generic trigger bumps
+  // `updated_at` on every claims UPDATE, and at least six unrelated Edge
+  // Functions (the hourly `process-bid-expirations` cron among them —
+  // `cbf2c780`'s live "green / 0 days" symptom) write claims columns that
+  // have nothing to do with the homeowner doing anything. Recency now comes
+  // EXCLUSIVELY from: (a) real claim-linked activity_log evidence
+  // (homeowner-keyed `lastActivityByUser` and claim-referenced
+  // `claimLastRealActivityByClaimId`, both already filtered through
+  // isRealActivityRow's admin/system exclusions), and (b) an explicit
+  // allow-list of claim milestone timestamp columns — every column that
+  // ALSO feeds `claimHasMilestoneProgress` below, so a signal real enough to
+  // count as progress is real enough to date recency, and nothing else is.
+  // `bids_submitted_at`/`quotes.created_at` cover bid receipt (bids
+  // themselves log no activity_log row under the homeowner — they are
+  // CONTRACTOR-keyed); `contract_*_at`/`color_*_at`/`deductible_collected_at`/
+  // `contractor_switched_at`/`project_confirmation_signed_at`/
+  // `completion_date` cover the rest of the funnel's own claim-column
+  // writes.
+  //
+  // FIX ROUND 4 (review 5707823658, finding #3, DECIDED) adds TWO more
+  // always-admissible inputs:
+  //   - `claim.created_at` itself — a row is never younger than its own
+  //     creation, and this column is written exactly once, at insert, by
+  //     nobody's later action, so it can never be admin/cron-tainted the way
+  //     `updated_at` is. Its only job is to be a real, honest FLOOR: it lets
+  //     `computeMovement` return a genuine `days` count (bucketed naturally
+  //     off real age) instead of `"unknown"` for a claim with real progress
+  //     but no other allow-listed timestamp and no qualifying activity_log
+  //     row (the live `4595b6f0` shape) — see homeownerBucket's header
+  //     comment in movement.ts for what that changes.
+  //   - the four `*_bid_released_at` columns (latestBidReleasedAt above) —
+  //     REVERSED from FIX ROUND 3's exclusion list below. Three of the four
+  //     (roofing/gutters/windows) are stamped by `submitForBids`
+  //     (react-app/app/(homeowner)/dashboard/actions.ts), a direct
+  //     homeowner-initiated action — genuinely real, not system noise. The
+  //     fourth, `siding_bid_released_at`, is stamped by
+  //     `check-siding-design-completion`'s automated D-164 design-readiness
+  //     gate, not a homeowner click at that exact moment — but it fires only
+  //     once that SPECIFIC claim's own Hover siding design data clears a
+  //     real four-field completeness check, which is still this claim
+  //     genuinely moving forward, unlike an unrelated cron touching
+  //     `updated_at` for bookkeeping reasons. Included as one honest
+  //     enumeration of "any trade's bids were released" rather than
+  //     special-cased per trade.
+  //
+  // Still NOT included: `loss_sheet_reviewed_at` (admin-authored, the
+  // original motivating bug), `live_charge_authorized_at` ("set out of band
+  // by a human" per create-payment-intent/live-charge-guard.ts — confirmed
+  // live to be identical to 73208937's `updated_at`, i.e. it IS one of the
+  // non-homeowner writers, not a homeowner-activity signal), `bid_window_expires_at`/
+  // `bid_window_notified_at` (the `process-bid-expirations` cron's OWN
+  // bookkeeping columns — the exact `cbf2c780` writer; distinct from the
+  // `*_bid_released_at` columns above, which that cron does not write),
+  // `first_touch_at` / `profile_prompt_sent_at` (marketing attribution and a
+  // nudge-send stamp, not a homeowner action), and `hover_orders.fulfilled_at`
+  // (there is no dedicated "measurements uploaded" timestamp column on
+  // `claims` at all; the closest candidate is written via the same
+  // admin-gated flow as the already-excluded `measurement_order_fulfilled`
+  // activity_log event, so it is treated the same way — admin-authored, not
+  // included). Pre-FIX-ROUND-4, a claim with real, undeniable progress
+  // (`has_measurements=true`) but NO allow-listed timestamp and NO
+  // qualifying activity_log row at all made `computeMovement` return
+  // `bucket: "unknown"`. FIX ROUND 4's `claim.created_at` floor (below)
+  // means that shape can now only occur if a claim's own `created_at` is
+  // itself null (schema-nullable, zero live rows this round) —
+  // `homeownerBucket` still forces `"unknown"` to red as defense in depth
+  // (see its own header comment), but every claim with a real creation
+  // timestamp now gets a genuine, dateable bucket instead.
+  //
+  // No-claim rows (FIX ROUND 4, finding #1): a homeowner who has not
+  // started a claim yet still needs SOME real recency input to bucket/sort
+  // by — `p.created_at` here is already resolved by the caller (main
+  // handler below) to `profiles.created_at`, falling back to
+  // `auth.users.created_at` only for the schema-nullable "profile predates
+  // that column" case. This is signup AGE, deliberately NOT movement: a
+  // homeowner who signed up 40 days ago and never started a claim is
+  // exactly as "needs a look" red as main always painted them, without
+  // reading `profiles.updated_at` (FIX ROUND 3's cure applies here too —
+  // the next unrelated profile bump must not silently repaint this row).
+  const movement = computeMovement(now, [
+    ...(claim ? [
+      { label: "claim created_at", iso: claim.created_at },
+      { label: "claim bids_submitted_at", iso: claim.bids_submitted_at },
+      { label: "claim quotes.created_at (latest bid received)", iso: latestBidReceivedAt },
+      { label: "claim contract_sent_at", iso: claim.contract_sent_at },
+      { label: "claim contract_signed_at", iso: claim.contract_signed_at },
+      { label: "claim contract_declined_at", iso: claim.contract_declined_at },
+      { label: "claim contract_voided_at", iso: claim.contract_voided_at },
+      { label: "claim color_selected_at", iso: claim.color_selected_at },
+      { label: "claim color_confirmed_at", iso: claim.color_confirmed_at },
+      { label: "claim deductible_collected_at", iso: claim.deductible_collected_at },
+      { label: "claim contractor_switched_at", iso: claim.contractor_switched_at },
+      { label: "claim project_confirmation_signed_at", iso: claim.project_confirmation_signed_at },
+      { label: "claim completion_date", iso: claim.completion_date },
+      { label: "claim *_bid_released_at (any trade)", iso: latestBidReleasedAt },
+      { label: "claim-referenced activity_log event", iso: claimLastRealActivityByClaimId.get(claim.id) || null },
+    ] : [
+      { label: "profile created_at (signup, no claim yet)", iso: p.created_at },
+    ]),
+    { label: "activity_log last event", iso: lastActivityByUser.get(p.id) || null },
+  ]);
+
+  const isComplete = checklist[checklist.length - 1].done;
+  const firstActivityIso = firstActivityByUser.get(p.id) || null;
+
+  // CEO RUN 48 fix-round (gh-1570, comment 5703958709, replacing the
+  // round-1 `!firstActivityIso` test CTO32/CEO48 both FAILed): most real
+  // claim progress writes NO activity_log row under the homeowner's own
+  // user_id — bids log under the contractor, colour/deductible/
+  // measurement-upload log nothing, and the docusign contract-signed
+  // mail row carries no user_id at all (NOT NULL column). So
+  // "homeowner activity" alone is the wrong test; a claim also counts as
+  // moving if IT has moved (claimHasMilestoneProgress, reading the
+  // claim's own status/columns/bid count) or if ANY user's activity_log
+  // row references this claim (claimIdsWithRealActivity, built above —
+  // catches auto_bid_submitted etc. without a per-event-type list).
+  // Admin-authored rows (loss_sheet_reviewed) count toward NEITHER path
+  // (isRealActivityRow / ADMIN_ORIGIN_EVENT_TYPES, movement.ts) — an
+  // admin reviewing a loss sheet is not the homeowner or the claim doing
+  // anything. Only a claim still at documents_needed-or-earlier with
+  // none of the above is forced red.
+  const claimMilestones: ClaimMilestones | null = claim ? {
+    status: claim.status ?? null,
+    hasMeasurements: claim.has_measurements === true,
+    readyForBids: claim.ready_for_bids === true,
+    bidsReceived,
+    bidsSubmittedAt: claim.bids_submitted_at ?? null,
+    contractSignedAt: claim.contract_signed_at ?? null,
+    colorSelectedAt: claim.color_selected_at ?? null,
+    deductibleCollectedAt: claim.deductible_collected_at ?? null,
+    selectedContractorId: claim.selected_contractor_id ?? null,
+    platformFeeCharged: claim.platform_fee_charged === true,
+    completionDate: claim.completion_date ?? null,
+    contractDeclinedAt: claim.contract_declined_at ?? null,
+    contractVoidedAt: claim.contract_voided_at ?? null,
+    colorConfirmedAt: claim.color_confirmed_at ?? null,
+    contractorSwitchedAt: claim.contractor_switched_at ?? null,
+    projectConfirmationSignedAt: claim.project_confirmation_signed_at ?? null,
+    bidReleasedAt: latestBidReleasedAt,
+  } : null;
+  const hasRealActivity = !!firstActivityIso ||
+    (!!claim && claimIdsWithRealActivity.has(claim.id)) ||
+    claimHasMilestoneProgress(claimMilestones);
+
+  // gh-1570: the stuck-first table (admin-dashboard.html) sorts/colors
+  // purely off movement.bucket, which computeMovement derives from raw
+  // updated_at timestamps — an unrelated system write (e.g. a bulk
+  // column backfill) bumps updated_at and paints a claim green even
+  // though it has never had one real activity_log event. homeownerBucket
+  // (movement.ts) forces the bucket to "red" whenever a claim exists and
+  // hasRealActivity is false, regardless of what bucketFor's raw-days
+  // verdict says. movement.days/latest_iso are left untouched below —
+  // only the bucket used for coloring/sorting changes, and "complete"
+  // still wins over the override (a finished claim is not "stuck").
+  const zeroActivityBucket = homeownerBucket(movement, !!claim, hasRealActivity);
+
+  return {
+    id: p.id,
+    label: p.full_name || p.email || p.id,
+    // CEO RUN 48 FIX ROUND 2 — DECIDED (review 5705734203, finding 2/B2):
+    // reverted to exactly what `main` does. Round 1 changed this to prefer
+    // the claim's own is_test flag, which hid 73208937 (a live Stripe charge
+    // authorized 2026-09-05) and 474af0fc from the default "real" view.
+    // `Docs/is-test-steering-queries.md` requires BOTH flags true for a
+    // money-path row to be treated as test, and this issue (#1570) never
+    // needed a precedence change to close — it was never about who is
+    // visible, only about how a visible row is colored. Always the
+    // profile's own flag, regardless of whether a claim exists.
+    is_test: p.is_test === true,
+    checklist,
+    movement: {
+      ...movement,
+      bucket: isComplete ? "complete" : zeroActivityBucket,
+      // Harmless, additive: lets the client distinguish "genuinely stuck"
+      // from "stuck — zero real activity ever" without re-deriving it.
+      zero_activity: !!claim && !hasRealActivity,
+    },
+    // gh-1580: signup time — the CRM render needs this to compute "age in
+    // hours" for the NEW strip without a second derived source of truth.
+    created_at: p.created_at,
+    // gh-1580: null = never had an activity_log row. Admin CRM "NEW — no
+    // activity since signup" strip keys off this rather than re-deriving
+    // it from movement.bucket. FIX ROUND 3: movement.bucket can no longer be
+    // falsely fresh from p.updated_at at all (it is no longer a movement
+    // input — see the computeMovement call above), but first_activity_at
+    // remains its own, more precise signal for this specific strip.
+    first_activity_at: firstActivityIso,
+  };
+}
+
+// FIX ROUND 4 (gh-1570, review 5707823658, finding #4, DEAD MUTANT): this
+// loop was previously inline in the main handler below, where nothing could
+// execute it under `deno test` without a real Supabase client — every
+// existing test exercised `isRealActivityRow` directly (movement.test.ts),
+// never THIS loop's use of it, so a mutant that swapped this filter for
+// main's pre-gh-1570 loop (which counted every activity_log row
+// unconditionally, admin/system rows included) survived `deno test`
+// unnoticed. Extracted verbatim — same rationale/pattern as
+// buildHomeownerRow above and marketing-series.test.ts's existing
+// extractions — so activity-reductions.test.ts can feed it synthetic raw
+// activity_log rows (an admin `loss_sheet_reviewed` row, a system-generated
+// nudge, and one real row) and assert the admin/system rows are excluded
+// from ALL FOUR output structures, not just checked against
+// isRealActivityRow in isolation. Behavior-preserving move, not a rewrite.
+interface ActivityReductions {
+  lastActivityByUser: Map<string, string>;
+  firstActivityByUser: Map<string, string>;
+  claimIdsWithRealActivity: Set<string>;
+  claimLastRealActivityByClaimId: Map<string, string>;
+}
+
+function reduceActivity(activityLog: ActivityRow[]): ActivityReductions {
+  // gh-1580 review fix (PR #1601, comment 5532211463): a system-generated
+  // "we nagged you because nothing happened" row (metadata.system_generated
+  // === true) must NOT count as movement here, or the feature undoes
+  // itself. CEO RUN 48 fix-round (gh-1570, comment 5703958709): admin-
+  // authored rows (loss_sheet_reviewed) must not count as homeowner/claim
+  // activity either. Both exclusions live in isRealActivityRow (movement.ts)
+  // — see that function and ADMIN_ORIGIN_EVENT_TYPES/
+  // SYSTEM_NOTIFICATION_EVENT_TYPES for the full enumeration and rationale.
+  const lastActivityByUser = new Map<string, string>();
+  const firstActivityByUser = new Map<string, string>();
+  const claimIdsWithRealActivity = new Set<string>();
+  const claimLastRealActivityByClaimId = new Map<string, string>();
+  for (const row of activityLog) {
+    if (!isRealActivityRow(row)) continue;
+    const metaClaimId = (row.metadata as { claim_id?: string } | null)?.claim_id;
+    if (metaClaimId) {
+      claimIdsWithRealActivity.add(metaClaimId);
+      const prevClaimLast = claimLastRealActivityByClaimId.get(metaClaimId);
+      if (!prevClaimLast || new Date(row.created_at).getTime() > new Date(prevClaimLast).getTime()) {
+        claimLastRealActivityByClaimId.set(metaClaimId, row.created_at);
+      }
+    }
+    if (!row.user_id) continue;
+    const prevLast = lastActivityByUser.get(row.user_id);
+    if (!prevLast || new Date(row.created_at).getTime() > new Date(prevLast).getTime()) {
+      lastActivityByUser.set(row.user_id, row.created_at);
+    }
+    const prevFirst = firstActivityByUser.get(row.user_id);
+    if (!prevFirst || new Date(row.created_at).getTime() < new Date(prevFirst).getTime()) {
+      firstActivityByUser.set(row.user_id, row.created_at);
+    }
+  }
+  return { lastActivityByUser, firstActivityByUser, claimIdsWithRealActivity, claimLastRealActivityByClaimId };
+}
+
+// FIX ROUND 4 (gh-1570, review 5707823658, finding #1): resolves each
+// homeowner profile's own signup timestamp, falling back to
+// `auth.users.created_at` ONLY for a profile whose own `created_at` is
+// missing (schema-nullable; zero live rows as of this round, but not
+// guaranteed to stay that way). The async lookup is injected so this stays
+// testable without a real Supabase client — the thing actually worth
+// testing is that ONLY the missing-created_at profiles get looked up at
+// all (a mutant that looks every profile up, or none, is exactly the kind
+// of N+1-vs-silently-wrong bug this guards against).
+//
+// (Named interface, not an inline `{ ... }` parameter type — same
+// brace-counting reason HomeownerProfileLike above is named: a source-
+// extraction test locates this function's own body by counting braces from
+// the FIRST "{" after its name, so an inline object-type parameter would be
+// mistaken for the body's opening brace and truncate the extraction.)
+interface ProfileCreatedAtLike {
+  id: string;
+  created_at: string | null;
+}
+
+async function resolveMissingCreatedAt(
+  profiles: ProfileCreatedAtLike[],
+  getAuthUserCreatedAt: (userId: string) => Promise<string | null>,
+): Promise<Map<string, string>> {
+  const resolved = new Map<string, string>();
+  const missing = profiles.filter((p) => !p.created_at);
+  await Promise.all(missing.map(async (p) => {
+    const authCreatedAt = await getAuthUserCreatedAt(p.id);
+    if (authCreatedAt) resolved.set(p.id, authCreatedAt);
+  }));
+  return resolved;
+}
+
 serve(async (req: Request) => {
   const corsHeaders = buildCorsHeaders(req);
 
@@ -971,10 +1329,27 @@ serve(async (req: Request) => {
       // role='homeowner' or it silently lists contractors as homeowners.
       supabase.from("profiles").select("id, full_name, email, created_at, updated_at, is_test, role"),
       supabase.from("claims").select(
-        "id, user_id, created_at, updated_at, hover_order_id, hover_status, has_measurements, " +
+        "id, user_id, created_at, updated_at, status, hover_order_id, hover_status, has_measurements, " +
         "ready_for_bids, bids_submitted_at, selected_contractor_id, contract_sent_at, " +
         "contract_signed_at, platform_fee_charged, completion_date, color_selected_at, " +
-        "deductible_collected_at, is_test"
+        // FIX ROUND 3 (review 5706511176, finding B1): `updated_at` is kept
+        // ONLY to pick each homeowner's most-recently-touched claim
+        // (userClaims sort below) — it is no longer fed into computeMovement
+        // for recency at all. `loss_sheet_reviewed_at` (FIX ROUND 2) is
+        // dropped: its only consumer, claimUpdatedAtIsAdminTainted, is
+        // removed this round. contract_declined_at/contract_voided_at/
+        // color_confirmed_at/contractor_switched_at/project_confirmation_signed_at
+        // are added — explicit milestone timestamp columns (movement.ts's
+        // new allow-list) that feed both claimHasMilestoneProgress and
+        // computeMovement now that raw updated_at cannot.
+        "deductible_collected_at, is_test, contract_declined_at, contract_voided_at, " +
+        "color_confirmed_at, contractor_switched_at, project_confirmation_signed_at, " +
+        // FIX ROUND 4 (review 5707823658, finding #3): a homeowner's own
+        // submit-for-bids action writes one (or more) of these — a real,
+        // never admin/system-authored milestone timestamp, added to
+        // computeMovement's allow-list and claimHasMilestoneProgress.
+        "gutters_bid_released_at, roofing_bid_released_at, siding_bid_released_at, " +
+        "windows_bid_released_at"
       ),
       supabase.from("quotes").select(
         "id, claim_id, contractor_id, status, payment_status, contractor_signed_at, " +
@@ -1072,23 +1447,16 @@ serve(async (req: Request) => {
     // omit — would be stronger still, but that is a schema change: Tier 3 /
     // D-182, its own migration, and a decision about every existing writer's
     // default, which is out of scope for this fix.)
-    const lastActivityByUser = new Map<string, string>();
-    // gh-1580: also reduced to first-movement-per-user, so the CRM render can
-    // show "no activity since signup" (null = never) without re-deriving it
-    // client-side from a raw activity_log scan.
-    const firstActivityByUser = new Map<string, string>();
-    for (const row of activityLog as ActivityRow[]) {
-      if (!row.user_id) continue;
-      if ((row.metadata as { system_generated?: boolean } | null)?.system_generated === true) continue;
-      const prevLast = lastActivityByUser.get(row.user_id);
-      if (!prevLast || new Date(row.created_at).getTime() > new Date(prevLast).getTime()) {
-        lastActivityByUser.set(row.user_id, row.created_at);
-      }
-      const prevFirst = firstActivityByUser.get(row.user_id);
-      if (!prevFirst || new Date(row.created_at).getTime() < new Date(prevFirst).getTime()) {
-        firstActivityByUser.set(row.user_id, row.created_at);
-      }
-    }
+    // FIX ROUND 4 (finding #4, DEAD MUTANT): this reduction is now
+    // reduceActivity (extracted above, immediately after buildHomeownerRow)
+    // so it can be exercised end-to-end by `deno test` — see that
+    // function's header comment for the mutant this closes.
+    const {
+      lastActivityByUser,
+      firstActivityByUser,
+      claimIdsWithRealActivity,
+      claimLastRealActivityByClaimId,
+    } = reduceActivity(activityLog as ActivityRow[]);
 
     const claimsById = new Map(claims.map((c: any) => [c.id, c]));
 
@@ -1134,59 +1502,33 @@ serve(async (req: Request) => {
     // is a product decision (does Dustin want one row or many per repeat
     // homeowner?) that deserves its own issue rather than expanding this
     // one. Bites again the day a second real homeowner claim exists.
-    const homeownerRows = (profiles as any[]).map((p) => {
-      const userClaims = (claimsByUserId.get(p.id) || []).slice().sort(
-        (a, b) => new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime()
-      );
-      const claim = userClaims[0] || null;
-      const claimQuotes = claim ? (quotesByClaimId.get(claim.id) || []) : [];
-      const bidsReceived = claimQuotes.length;
-
-      const checklist = [
-        { key: "account", label: "Account created", done: true },
-        { key: "claim_created", label: "Claim created", done: !!claim },
-        { key: "measurement_ordered", label: "Measurement ordered", done: !!claim && (!!claim.hover_order_id || !!claim.hover_status) },
-        { key: "measurements_on_file", label: "Measurements on file", done: !!claim && claim.has_measurements === true },
-        { key: "ready_for_bids", label: "Ready for bids", done: !!claim && claim.ready_for_bids === true },
-        { key: "bids_received", label: "Bids received", done: bidsReceived > 0, count: bidsReceived },
-        { key: "bid_accepted", label: "Bid accepted", done: !!claim && !!claim.selected_contractor_id },
-        { key: "contract_signed", label: "Contract signed", done: !!claim && !!claim.contract_signed_at },
-        { key: "fee_charged", label: "Platform fee charged", done: !!claim && claim.platform_fee_charged === true },
-        { key: "complete", label: "Complete", done: !!claim && !!claim.completion_date },
-      ];
-
-      const movement = computeMovement(now, [
-        { label: "profile updated_at", iso: p.updated_at },
-        ...(claim ? [
-          { label: "claim updated_at", iso: claim.updated_at },
-          { label: "claim bids_submitted_at", iso: claim.bids_submitted_at },
-          { label: "claim contract_sent_at", iso: claim.contract_sent_at },
-          { label: "claim contract_signed_at", iso: claim.contract_signed_at },
-          { label: "claim color_selected_at", iso: claim.color_selected_at },
-          { label: "claim deductible_collected_at", iso: claim.deductible_collected_at },
-          { label: "claim completion_date", iso: claim.completion_date },
-        ] : []),
-        { label: "activity_log last event", iso: lastActivityByUser.get(p.id) || null },
-      ]);
-
-      const isComplete = checklist[checklist.length - 1].done;
-
-      return {
-        id: p.id,
-        label: p.full_name || p.email || p.id,
-        is_test: p.is_test === true,
-        checklist,
-        movement: { ...movement, bucket: isComplete ? "complete" : movement.bucket },
-        // gh-1580: signup time — the CRM render needs this to compute "age in
-        // hours" for the NEW strip without a second derived source of truth.
-        created_at: p.created_at,
-        // gh-1580: null = never had an activity_log row. Admin CRM "NEW — no
-        // activity since signup" strip keys off this rather than re-deriving
-        // it from movement.bucket, which a freshly-created row buckets green
-        // (see p.updated_at as a movement input above) regardless of activity.
-        first_activity_at: firstActivityByUser.get(p.id) || null,
-      };
-    });
+    //
+    // FIX ROUND 4 (finding #1): resolve the (currently zero-live)
+    // auth.users.created_at fallback BEFORE building rows, so
+    // buildHomeownerRow only ever sees an already-resolved p.created_at and
+    // stays a pure function — see resolveMissingCreatedAt's header comment.
+    const authCreatedAtByUserId = await resolveMissingCreatedAt(
+      profiles as ProfileCreatedAtLike[],
+      async (userId) => {
+        const { data, error } = await supabase.auth.admin.getUserById(userId);
+        if (error || !data?.user?.created_at) return null;
+        return data.user.created_at;
+      },
+    );
+    const homeownerRows = (profiles as any[]).map((p) =>
+      buildHomeownerRow(
+        p.created_at ? p : { ...p, created_at: authCreatedAtByUserId.get(p.id) || null },
+        now,
+        (claimsByUserId.get(p.id) || []).slice().sort(
+          (a, b) => new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime()
+        ),
+        quotesByClaimId,
+        lastActivityByUser,
+        firstActivityByUser,
+        claimIdsWithRealActivity,
+        claimLastRealActivityByClaimId,
+      )
+    );
 
     // ══════════════════════════════════════════════════════════════════════
     // CONTRACTOR audience — one row per contractor.
