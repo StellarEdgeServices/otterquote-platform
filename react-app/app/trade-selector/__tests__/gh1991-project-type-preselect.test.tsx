@@ -18,19 +18,42 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 
 vi.mock('@/hooks/use-auth-ready', () => ({ useAuthReady: vi.fn() }));
+// gh-2004: this suite is about project_type pre-select, not the address
+// fallback, so the mocked profile always has a complete address — keeps
+// `needsAddressStep` false and every existing assertion (which expects to
+// land straight on 'funding'/'trades') unchanged.
 vi.mock('@/lib/supabase', () => ({
   supabase: {
-    from: vi.fn(() => ({
-      select: () => ({
-        eq: () => ({
-          order: () => ({
-            limit: () => ({
-              maybeSingle: () => Promise.resolve({ data: null, error: null }),
+    from: vi.fn((table: string) => {
+      if (table === 'profiles') {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: () => Promise.resolve({
+                data: {
+                  address_street: '1 Test Ln',
+                  address_city: 'Testville',
+                  address_state: 'IN',
+                  address_zip: '46000',
+                },
+                error: null,
+              }),
+            }),
+          }),
+        };
+      }
+      return {
+        select: () => ({
+          eq: () => ({
+            order: () => ({
+              limit: () => ({
+                maybeSingle: () => Promise.resolve({ data: null, error: null }),
+              }),
             }),
           }),
         }),
-      }),
-    })),
+      };
+    }),
   },
 }));
 
@@ -69,6 +92,11 @@ describe('TradeSelectorPage — gh-1991 project_type pre-select', () => {
 
     render(<TradeSelectorPage />);
 
+    // gh-2004: wait for the address-resolution effect to settle (profile
+    // fallback mocked with a full address, so this always lands on
+    // 'funding' directly — see the shared mock above).
+    await waitFor(() => expect(screen.getByText('How is this job being funded?')).toBeInTheDocument());
+
     // Cash path: Funding -> Trades directly (no Policy step).
     fireEvent.click(screen.getByText("I'm paying for this myself (retail/cash)"));
 
@@ -87,6 +115,9 @@ describe('TradeSelectorPage — gh-1991 project_type pre-select', () => {
     // deliberately without the signal that drives the pre-select above.
     render(<TradeSelectorPage />);
 
+    // gh-2004: wait for the address-resolution effect to settle.
+    await waitFor(() => expect(screen.getByText('How is this job being funded?')).toBeInTheDocument());
+
     fireEvent.click(screen.getByText("I'm paying for this myself (retail/cash)"));
 
     await waitFor(() => expect(screen.getByText('What do you need done?')).toBeInTheDocument());
@@ -99,6 +130,9 @@ describe('TradeSelectorPage — gh-1991 project_type pre-select', () => {
     localStorage.setItem('cs_signup', JSON.stringify({ project_type: 'other' }));
 
     render(<TradeSelectorPage />);
+
+    // gh-2004: wait for the address-resolution effect to settle.
+    await waitFor(() => expect(screen.getByText('How is this job being funded?')).toBeInTheDocument());
 
     fireEvent.click(screen.getByText("I'm paying for this myself (retail/cash)"));
 
