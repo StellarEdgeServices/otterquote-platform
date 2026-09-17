@@ -7,6 +7,9 @@
 -- (renamed to a 14-digit UTC timestamp prefix, moved into
 -- supabase/migrations/) only after Dustin approves the apply and it is
 -- actually run. Same posture as supabase/migrations_drafts/gh1763_is_test_repair.sql.
+-- Rollback and pre-flight docs: gh1961_profiles_is_test_at_creation_rollback.sql
+-- and gh1961_profiles_is_test_at_creation_pre-flight.md in
+-- supabase/migrations_rollbacks/.
 --
 -- APPLYING is D-182 Tier 3 (flagged Tier 3A per the CTO's ruling on
 -- issuecomment-5698032041) and is Dustin's call, full stop -- this file does
@@ -19,17 +22,25 @@
 -- insert. The next concrete step is a DB default or trigger keyed on that
 -- domain, as a Tier 3A migration."
 --
--- Measured fact (2026-09-16, two separate probe batches, live Supabase
--- project yeszghaspzwwstvsrioa): public.handle_new_user() never reads
--- NEW.email for is_test purposes (it only copies it into profiles.email);
--- public.profiles.is_test defaults to false; every @otterquote-internal.test
--- signup that goes through the real signup UI therefore lands
--- is_test = false and has to be corrected by hand (13 rows flipped by hand
--- today across this issue and the sibling FYI on issuecomment-5696752753).
+-- Measured fact (2026-09-16, live Supabase project yeszghaspzwwstvsrioa):
+-- public.handle_new_user() never reads NEW.email for is_test purposes (it
+-- only copies it into profiles.email); public.profiles.is_test defaults to
+-- false; every @otterquote-internal.test signup that goes through the real
+-- signup UI therefore lands is_test = false and has to be corrected by hand.
+-- Correction: the PR's original header said "13 rows flipped by hand today"
+-- -- that number was wrong. Comment issuecomment-5698032041 records exactly
+-- 3 rows corrected (`update profiles set is_test = true where id in (...)
+-- and is_test = false returning id, is_test;` -> 3 rows, all true); the
+-- sibling FYI issuecomment-5696752753 separately reports 2 further probe
+-- rows that were already true before any correction. Neither adds to 13.
 --
--- This migration is purely ADDITIVE: it adds one new BEFORE INSERT trigger
--- and its trigger function on public.profiles. It does NOT modify
--- public.handle_new_user() or any other existing object.
+-- This migration is purely ADDITIVE: it adds two new BEFORE INSERT triggers
+-- and their trigger functions -- one on public.profiles, one on
+-- public.contractors. It does NOT modify public.handle_new_user(),
+-- public.contractors_freeze_privileged_columns(), or any other existing
+-- object.
+--
+-- === Part 1: public.profiles ===============================================
 --
 -- Design choice -- read NEW.email directly instead of looking up auth.users:
 -- live schema (checked via SELECT against yeszghaspzwwstvsrioa) shows
@@ -53,25 +64,69 @@
 -- this trigger; a non-matching or NULL email simply leaves is_test as
 -- whatever the INSERT already carried (default false).
 --
--- Idempotent by construction: CREATE OR REPLACE FUNCTION and
--- DROP TRIGGER IF EXISTS + CREATE TRIGGER both tolerate being run twice with
--- no error and no behavior change (verified locally -- see PR body).
+-- === Part 2: public.contractors (review fix, PR #2002 comment 5706433778) ==
 --
--- Scope note on claims/contractors propagation (see PR body QUESTIONS):
--- this migration does NOT propagate is_test from profiles onto claims or
--- contractors at creation. Measured live 2026-09-16 against
--- yeszghaspzwwstvsrioa: no existing trigger does that today --
--- claims_copy_first_touch (BEFORE INSERT on claims) copies only UTM /
--- first-touch columns from the owning profile, never is_test; and
--- contractors_freeze_privileged_columns (BEFORE INSERT on contractors)
--- unconditionally forces NEW.is_test := false on insert, independent of the
--- owning profile's flag. #1763's PR (cross-table guard) repairs a data
--- disagreement on 7 existing rows; it does not add a live propagation path
--- either. Widening this migration to add that propagation was judged out of
--- scope for #1961 and is raised as a question on the PR instead of acted on
--- here.
+-- Review finding B1 (blocking): with Part 1 alone, a UI-created internal
+-- test contractor ends up HALF-flagged. Sequence on a real signup, as role
+-- `authenticated`: handle_new_user() inserts the profile row, Part 1's
+-- trigger sets profiles.is_test := true; the app then inserts into
+-- contractors, and the EXISTING trigger contractors_freeze_privileged_columns
+-- (BEFORE INSERT OR UPDATE) forces NEW.is_test := false unconditionally in
+-- its INSERT branch whenever current_user = 'authenticated' and the caller
+-- is not the admin. Correction to this PR's own earlier wording: that
+-- trigger does NOT force false "unconditionally" -- only when current_user =
+-- 'authenticated' and the caller is not dustinstohler1@gmail.com; a
+-- service-role seed keeps whatever value it supplies. Result on the
+-- authenticated-signup path: profiles.is_test = true, contractors.is_test =
+-- false -- exactly the #1763 cross-table disagreement
+-- (scripts/is-test-cross-table-check.py's DISAGREEMENT_SQL), which the daily
+-- prod guard (.github/workflows/edge-function-drift.yml, cron 17 9 * * *)
+-- asserts must be 0.
+--
+-- DECIDED cure (Ben, CEO RUN 48, comment 5706433778): additive, no ALTER of
+-- any existing object -- add a second new BEFORE INSERT trigger on
+-- public.contractors whose name sorts AFTER
+-- "contractors_freeze_privileged_columns" alphabetically, so it fires after
+-- it. Postgres fires same-timing/same-event triggers on one table in
+-- alphabetical order by trigger name (documented CREATE TRIGGER behavior);
+-- "contractors_freeze_privileged_columns" < "contractors_zz_inherit_profile_is_test"
+-- by ASCII order ('f' < 'z'), and no other existing trigger on
+-- public.contractors fires BEFORE INSERT (checked live: the only other
+-- BEFORE trigger, trg_contractors_privileged_guard, is BEFORE UPDATE only).
+-- Verified empirically, not just by the documented rule: the migration's own
+-- test file proves the ordering by observing the freeze trigger's false
+-- actually get overwritten to true by this trigger on the same INSERT.
+--
+-- Behavior: on INSERT into public.contractors, if NEW.is_test is not already
+-- true, look up the owning profile (public.profiles.id = NEW.user_id); if
+-- that profile's is_test is true, set NEW.is_test := true. Never sets
+-- is_test to false. SECURITY DEFINER (matching handle_new_user() and
+-- sync_contractor_profile_role()'s own convention) so the profile lookup
+-- does not depend on the inserting role's SELECT grants/RLS on profiles --
+-- an authenticated caller only ever supplies their own user_id in practice,
+-- but the lookup does not rely on that being enforced.
+--
+-- UPDATE-path check (review ask): does contractors_freeze_privileged_columns
+-- reset is_test on UPDATE too? Read live via pg_get_functiondef -- no. Its
+-- UPDATE branch pins every privileged column, including is_test, to the
+-- OLD value ("NEW.is_test := OLD.is_test;"); it never forces false on
+-- UPDATE. So once this trigger sets is_test = true at INSERT time, later
+-- UPDATEs preserve it -- no separate UPDATE-time trigger is needed here.
+--
+-- Idempotent by construction (both parts): CREATE OR REPLACE FUNCTION and
+-- DROP TRIGGER IF EXISTS + CREATE TRIGGER all tolerate being run twice with
+-- no error and no behavior change (verified locally -- see PR body and the
+-- companion .test.sql).
+--
+-- Scope note on claims propagation (see PR body QUESTIONS, still open): this
+-- migration does not propagate is_test from profiles onto claims at
+-- creation. Measured live 2026-09-16: claims_copy_first_touch (BEFORE INSERT
+-- on claims) copies only UTM / first-touch columns from the owning profile,
+-- never is_test. Left as a follow-up question, not acted on here.
 
 begin;
+
+-- --- Part 1: public.profiles -----------------------------------------------
 
 create or replace function public.set_is_test_for_internal_test_domain()
 returns trigger
@@ -102,10 +157,47 @@ create trigger profiles_set_is_test_for_internal_domain
   for each row
   execute function public.set_is_test_for_internal_test_domain();
 
--- Manual rollback (reference only -- this migration is purely additive, so
--- reverting it is exactly undoing the two objects it created; nothing else
--- to unwind and no data was touched):
---   drop trigger if exists profiles_set_is_test_for_internal_domain on public.profiles;
---   drop function if exists public.set_is_test_for_internal_test_domain();
+-- --- Part 2: public.contractors (fires AFTER contractors_freeze_privileged_columns
+--             on INSERT, by trigger-name alphabetical order -- "zz" sorts last) ---
+
+create or replace function public.contractors_inherit_profile_is_test()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $fn$
+declare
+  v_profile_is_test boolean;
+begin
+  if NEW.is_test is not true then
+    select p.is_test into v_profile_is_test
+    from public.profiles p
+    where p.id = NEW.user_id;
+
+    if v_profile_is_test is true then
+      NEW.is_test := true;
+    end if;
+  end if;
+
+  return NEW;
+end;
+$fn$;
+
+comment on function public.contractors_inherit_profile_is_test() is
+  'gh-1961 (review fix, comment 5706433778): BEFORE INSERT trigger fn on '
+  'public.contractors, named to fire after contractors_freeze_privileged_columns '
+  'in Postgres''s alphabetical same-event trigger order. Sets NEW.is_test '
+  'true when the owning profile (profiles.id = NEW.user_id) is_test is true. '
+  'Never sets is_test false. Purely additive -- does not read or modify '
+  'contractors_freeze_privileged_columns() or any other object. Closes the '
+  '#1763 cross-table disagreement that Part 1 alone would otherwise open on '
+  'every UI-created internal test contractor.';
+
+drop trigger if exists contractors_zz_inherit_profile_is_test on public.contractors;
+
+create trigger contractors_zz_inherit_profile_is_test
+  before insert on public.contractors
+  for each row
+  execute function public.contractors_inherit_profile_is_test();
 
 commit;
