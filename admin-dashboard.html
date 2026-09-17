@@ -712,25 +712,34 @@ function checklistHtml(checklist) {
 
 function movementHtml(m) {
   if (m.bucket === 'complete') return '<span class="movement-badge movement-complete">✅ Complete</span>';
-  if (m.days === null) return '<span class="movement-badge movement-unknown">No movement recorded</span>';
-  var icon = m.bucket === 'green' ? '🟢' : m.bucket === 'yellow' ? '🟡' : '🔴';
   // gh-1381 (#42): m.bucket was interpolated straight into an HTML class
   // attribute unescaped — an EF response value containing a `"` could
   // break out of the attribute and inject markup/attributes. Constrain to
-  // the known bucket set before interpolation; the icon ternary above
-  // already only compares m.bucket (safe regardless of its content), so
-  // this only changes what reaches the DOM. m.days gets the same numeric
-  // shape constraint.
+  // the known bucket set before interpolation; the icon ternary below
+  // already only compares safeBucket (safe regardless of m.bucket's raw
+  // content), so this only changes what reaches the DOM. m.days gets the
+  // same numeric shape constraint.
   var safeBucket = (m.bucket === 'red' || m.bucket === 'yellow' || m.bucket === 'green' || m.bucket === 'unknown') ? m.bucket : 'unknown';
-  // CEO RUN 48 fix-round (gh-1570 non-blocking 4, review 5703958709): a
-  // forced-red zero-activity row was rendering "🔴 0 days", which reads as
-  // "moved today" — the opposite of what forced red means. m.zero_activity
-  // (get-business-lines-dashboard, additive) says the row is red because
-  // there is no real activity/progress at all, not because of a days count.
-  if (safeBucket === 'red' && m.zero_activity === true) {
-    return '<span class="movement-badge movement-red">🔴 no activity</span>';
-  }
   var days = (typeof m.days === 'number' && isFinite(m.days)) ? m.days : 0;
+  // CEO RUN 48 FIX ROUND 4 (review 5707823658, finding #2): forced-red MUST
+  // render red — checked BEFORE the "no movement recorded" branch below.
+  // That branch used to run first and fires whenever m.days === null, which
+  // is exactly what get-business-lines-dashboard now returns for EVERY
+  // forced-red row that has no dateable evidence at all (every genuinely
+  // zero-activity claim, plus FIX ROUND 3's "unknown recency" force-red
+  // case) — so every one of those rows was silently rendering as a neutral
+  // grey "No movement recorded" badge instead of red, hiding exactly the
+  // rows this whole feature exists to surface. gh-1570 non-blocking-4
+  // (review 5703958709) already established the sub-case (a forced-red ZERO-
+  // activity row must read "no activity", not "0 days", which would read as
+  // "moved today") — this fix keeps that distinction but makes it apply
+  // regardless of whether m.days happens to be null or a number.
+  if (safeBucket === 'red') {
+    if (m.zero_activity === true) return '<span class="movement-badge movement-red">🔴 no activity</span>';
+    return '<span class="movement-badge movement-red">🔴 ' + days + ' day' + (days === 1 ? '' : 's') + '</span>';
+  }
+  if (m.days === null) return '<span class="movement-badge movement-unknown">No movement recorded</span>';
+  var icon = safeBucket === 'green' ? '🟢' : '🟡';
   return '<span class="movement-badge movement-' + safeBucket + '">' + icon + ' ' + days + ' day' + (days === 1 ? '' : 's') + '</span>';
 }
 

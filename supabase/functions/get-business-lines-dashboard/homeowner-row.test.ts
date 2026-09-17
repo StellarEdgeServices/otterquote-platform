@@ -79,8 +79,18 @@ function grabBlock(marker: string): string {
   throw new Error(`unbalanced: ${marker}`);
 }
 
+// FIX ROUND 4 (review 5707823658, finding #4, DEAD MUTANT): reduceActivity
+// (the loop that used to be inline in the main handler, now its own
+// top-level function — see index.ts's header comment on it) and
+// resolveMissingCreatedAt (finding #1's auth.users.created_at fallback) are
+// extracted the same way buildHomeownerRow already is, so both are exercised
+// by their real production source, not a re-implementation.
 const mod = [
-  `import { claimHasMilestoneProgress, computeMovement, homeownerBucket, type ClaimMilestones } from "${movementModuleUrl}";`,
+  `import { claimHasMilestoneProgress, computeMovement, homeownerBucket, isRealActivityRow, type ClaimMilestones } from "${movementModuleUrl}";`,
+  grabBlock("interface ActivityRow").replace(
+    "interface ActivityRow",
+    "export interface ActivityRow",
+  ),
   grabBlock("interface HomeownerProfileLike").replace(
     "interface HomeownerProfileLike",
     "export interface HomeownerProfileLike",
@@ -89,10 +99,26 @@ const mod = [
     "function buildHomeownerRow(",
     "export function buildHomeownerRow(",
   ),
+  grabBlock("interface ActivityReductions").replace(
+    "interface ActivityReductions",
+    "export interface ActivityReductions",
+  ),
+  grabBlock("function reduceActivity(").replace(
+    "function reduceActivity(",
+    "export function reduceActivity(",
+  ),
+  grabBlock("interface ProfileCreatedAtLike").replace(
+    "interface ProfileCreatedAtLike",
+    "export interface ProfileCreatedAtLike",
+  ),
+  grabBlock("async function resolveMissingCreatedAt(").replace(
+    "async function resolveMissingCreatedAt(",
+    "export async function resolveMissingCreatedAt(",
+  ),
 ].join("\n\n");
 const url = "data:application/typescript," + encodeURIComponent(mod);
 // deno-lint-ignore no-explicit-any
-const { buildHomeownerRow } = await import(url) as any;
+const { buildHomeownerRow, reduceActivity, resolveMissingCreatedAt } = await import(url) as any;
 
 const NOW = Date.parse("2026-09-16T12:00:00.000Z");
 
@@ -139,6 +165,14 @@ function claim(overrides: Record<string, unknown> = {}) {
     color_selected_at: null,
     deductible_collected_at: null,
     is_test: false,
+    // FIX ROUND 4 (review 5707823658, finding #3): the four "bids released
+    // to contractors" milestone columns, and the four-column real-life
+    // schema (roofing_bid_released_at etc.) — default null, every test that
+    // does not care overrides nothing.
+    gutters_bid_released_at: null,
+    roofing_bid_released_at: null,
+    siding_bid_released_at: null,
+    windows_bid_released_at: null,
     ...overrides,
   };
 }
@@ -151,11 +185,20 @@ const emptyMaps = () => ({
   claimLastRealActivityByClaimId: new Map<string, string>(),
 });
 
-function run(p: unknown, userClaims: unknown[], overrides: Partial<ReturnType<typeof emptyMaps>> = {}) {
+function run(
+  p: unknown,
+  userClaims: unknown[],
+  overrides: Partial<ReturnType<typeof emptyMaps>> = {},
+  // FIX ROUND 4: an optional "now" override, for the one test (the
+  // f57c49a0 submit-for-bids simulation) that needs to assert `days === 0`
+  // at the exact instant a milestone timestamp is stamped — every other
+  // test keeps using the fixed module-level NOW.
+  nowOverride?: string,
+) {
   const m = { ...emptyMaps(), ...overrides };
   return buildHomeownerRow(
     p,
-    NOW,
+    nowOverride ? Date.parse(nowOverride) : NOW,
     userClaims,
     m.quotesByClaimId,
     m.lastActivityByUser,
@@ -173,16 +216,30 @@ function run(p: unknown, userClaims: unknown[], overrides: Partial<ReturnType<ty
 // cron/trigger write (process-bid-expirations, the cbf2c780 shape) get
 // identical treatment — because there is no special-casing left at all.
 
-Deno.test("buildHomeownerRow (B1) FIX ROUND 3: 4595b6f0 shape — draft claim, has_measurements=true (real progress) but NO allow-listed timestamp and NO qualifying activity_log row -> movement is 'unknown' pre-override, and homeownerBucket forces red", () => {
+Deno.test("buildHomeownerRow (B1) FIX ROUND 4: 4595b6f0 shape — draft claim, has_measurements=true (real progress) but NO allow-listed timestamp and NO qualifying activity_log row -> claim.created_at is the recency floor, naturally red off real age (not 'unknown')", () => {
   const c = claim({
     has_measurements: true, // real progress; keeps claimHasMilestoneProgress true
-    updated_at: "2026-09-09T11:21:03.079Z", // recent-ish; MUST be ignored entirely
+    created_at: "2026-08-05T00:00:00Z", // ~42 days before NOW -- the live shape
+    updated_at: "2026-09-09T11:21:03.079Z", // recent-ish; MUST still be ignored entirely
   });
   const p = profile({ updated_at: "2026-08-01T00:00:00Z" }); // also MUST be ignored entirely
   const row = run(p, [c]);
-  assertEquals(row.movement.latest_iso, null, "no allow-listed claim timestamp and no real activity_log row exist in this fixture -> nothing should have fed computeMovement");
+  assertEquals(row.movement.latest_label, "claim created_at", "FIX ROUND 4: with no other allow-listed timestamp and no real activity_log row, the claim's own creation date is the only (and correct) recency input");
+  assertEquals(row.movement.latest_iso, "2026-08-05T00:00:00Z");
   assertEquals(row.movement.zero_activity, false, "claimHasMilestoneProgress is true (has_measurements) -> this is NOT the zero-activity case");
-  assertEquals(row.movement.bucket, "red", "an 'unknown' recency on a claim is forced red too (homeownerBucket) -- exactly the live 4595b6f0 shape");
+  assertEquals(row.movement.bucket, "red", "old enough (42 days) to be naturally red off its own creation date -- no longer via the 'unknown' force-red path");
+});
+
+Deno.test("buildHomeownerRow (B1) FIX ROUND 4 DEFENSE-IN-DEPTH: a claim whose OWN created_at is somehow null (schema-nullable, zero live rows), no other evidence -> movement is genuinely 'unknown' pre-override, and homeownerBucket still forces red", () => {
+  const c = claim({
+    has_measurements: true,
+    created_at: null as unknown as string, // the one shape FIX ROUND 4's floor cannot cover
+  });
+  const p = profile();
+  const row = run(p, [c]);
+  assertEquals(row.movement.latest_iso, null, "no admissible input at all in this edge case");
+  assertEquals(row.movement.zero_activity, false, "claimHasMilestoneProgress is true -> not the zero-activity case");
+  assertEquals(row.movement.bucket, "red", "'unknown' recency on a claim is still forced red (homeownerBucket) as defense in depth");
 });
 
 Deno.test("buildHomeownerRow (B1) FIX ROUND 3, cbf2c780 SHAPE: claim.updated_at bumped by a cron 1 minute ago, but the claim's real milestone history is weeks old -> recency comes from the real milestones, NEVER shows '0 days'", () => {
@@ -311,4 +368,150 @@ Deno.test("buildHomeownerRow: a claim-referenced real activity row (e.g. a contr
   assertEquals(row.movement.zero_activity, false);
   assertEquals(row.movement.latest_label, "claim-referenced activity_log event");
   assertEquals(row.movement.bucket, "green");
+});
+
+// ── FIX ROUND 4 (review 5707823658, finding #1, DECIDED) ──────────────────
+// A homeowner with no claim yet must bucket by SIGNUP AGE (profile
+// created_at), not be left at raw 'unknown' (FIX ROUND 3's gap) and not read
+// profile.updated_at (FIX ROUND 3's own rule, which this must not regress).
+
+Deno.test("buildHomeownerRow, FIX ROUND 4 finding #1: no claim -> movement comes from profile created_at (signup age), a stale/absent updated_at is irrelevant", () => {
+  const p = profile({
+    created_at: "2026-09-14T12:00:00Z", // exactly 2 days before NOW -> green
+    updated_at: "2026-01-01T00:00:00Z", // wildly stale; MUST be ignored (FIX ROUND 3's rule, still in force)
+  });
+  const row = run(p, []);
+  assertEquals(row.movement.latest_label, "profile created_at (signup, no claim yet)");
+  assertEquals(row.movement.latest_iso, "2026-09-14T12:00:00Z");
+  assertEquals(row.movement.days, 2);
+  assertEquals(row.movement.bucket, "green");
+  assertEquals(row.movement.zero_activity, false, "zero_activity is claim-scoped -- a no-claim row is never the zero-activity case");
+});
+
+Deno.test("buildHomeownerRow, FIX ROUND 4 finding #1: no claim, old signup -> naturally red off signup age (main's colours restored, not forced via any override)", () => {
+  const p = profile({ created_at: "2026-05-14T22:45:37Z" }); // ~125 days before NOW
+  const row = run(p, []);
+  assertEquals(row.movement.bucket, "red");
+  assertEquals(row.movement.zero_activity, false);
+});
+
+Deno.test("buildHomeownerRow NEGATIVE CONTROL, FIX ROUND 4 finding #1: no claim, but a real activity_log row exists -> that wins over signup age", () => {
+  const p = profile({ created_at: "2026-05-14T22:45:37Z" }); // ~125 days ago -- would be red alone
+  const row = run(p, [], { lastActivityByUser: new Map([["u1", "2026-09-15T00:00:00Z"]]) }); // 1 day ago
+  assertEquals(row.movement.latest_label, "activity_log last event");
+  assertEquals(row.movement.bucket, "green");
+});
+
+// ── FIX ROUND 4 (review 5707823658, finding #3, DECIDED) ──────────────────
+// *_bid_released_at columns as an explicit milestone timestamp, and the
+// f57c49a0 "submit-for-bids" simulation the review specifically asked for.
+
+Deno.test("buildHomeownerRow, FIX ROUND 4 finding #3: a *_bid_released_at column is an explicit milestone timestamp and wins recency when it is the latest", () => {
+  const c = claim({ status: "bidding", roofing_bid_released_at: "2026-09-16T00:00:00Z" }); // 1 day ago
+  const p = profile();
+  const row = run(p, [c]);
+  assertEquals(row.movement.latest_label, "claim *_bid_released_at (any trade)");
+  assertEquals(row.movement.latest_iso, "2026-09-16T00:00:00Z");
+  assertEquals(row.movement.bucket, "green");
+});
+
+Deno.test("buildHomeownerRow, FIX ROUND 4 finding #3: f57c49a0 SUBMIT-FOR-BIDS SIMULATION — documents_needed/zero-evidence claim (live red shape) that just had submitForBids run on it -> green/0, like main, not red", () => {
+  // Live f57c49a0 shape BEFORE simulating the action: documents_needed,
+  // no measurements, no bid columns -> forced red, zero_activity.
+  const before = claim({ status: "documents_needed", created_at: "2026-09-16T01:04:43.981Z" });
+  const p = profile();
+  const rowBefore = run(p, [before]);
+  assertEquals(rowBefore.movement.zero_activity, true, "sanity check: this is the live pre-submit shape");
+  assertEquals(rowBefore.movement.bucket, "red");
+
+  // react-app's submitForBids (dashboard/actions.ts) on the homeowner's own
+  // click: status -> 'active', ready_for_bids -> true, and stamps every
+  // releasable trade's *_bid_released_at to NOW.
+  const after = claim({
+    status: "active",
+    ready_for_bids: true,
+    created_at: "2026-09-16T01:04:43.981Z",
+    roofing_bid_released_at: "2026-09-17T03:51:23Z", // "now" at simulation time
+    gutters_bid_released_at: "2026-09-17T03:51:23Z",
+    windows_bid_released_at: "2026-09-17T03:51:23Z",
+  });
+  const rowAfter = run(p, [after], {}, "2026-09-17T03:51:23Z");
+  assertEquals(rowAfter.movement.zero_activity, false, "submitForBids is real, homeowner-initiated progress -> no longer the zero-activity case");
+  assertEquals(rowAfter.movement.latest_label, "claim *_bid_released_at (any trade)");
+  assertEquals(rowAfter.movement.days, 0);
+  assertEquals(rowAfter.movement.bucket, "green", "must show green/0 immediately after a homeowner submits for bids, exactly like main");
+});
+
+// ── FIX ROUND 4 (review 5707823658, finding #4, DEAD MUTANT) ──────────────
+// reduceActivity is index.ts's ACTUAL loop (extracted verbatim, see its
+// header comment) — this exercises the real production filter end-to-end,
+// not isRealActivityRow in isolation (movement.test.ts already covers that).
+
+Deno.test("reduceActivity, FIX ROUND 4 finding #4: an admin loss_sheet_reviewed row and a system-generated nudge are excluded from ALL FOUR output structures; only the real row survives", () => {
+  const rows = [
+    // Admin-authored, homeowner's own user_id (the ORIGINAL gh-1570 bug shape).
+    { user_id: "u1", event_type: "loss_sheet_reviewed", metadata: { claim_id: "c1", admin_email: "x@y.com" }, created_at: "2026-09-10T00:00:00Z" },
+    // System-generated absence nudge, homeowner's own user_id.
+    { user_id: "u1", event_type: "next_steps_nudge_sent", metadata: { claim_id: "c1", system_generated: true }, created_at: "2026-09-11T00:00:00Z" },
+    // One real, homeowner-authored row referencing the same claim.
+    { user_id: "u1", event_type: "loss_sheet_parsed", metadata: { claim_id: "c1" }, created_at: "2026-09-12T00:00:00Z" },
+  ];
+  const r = reduceActivity(rows);
+  assertEquals(r.lastActivityByUser.get("u1"), "2026-09-12T00:00:00Z", "the admin row (09-10) and the system nudge (09-11) must not win the max() over the real row (09-12)");
+  assertEquals(r.firstActivityByUser.get("u1"), "2026-09-12T00:00:00Z", "and must not win the min() either -- the real row is the ONLY one counted at all");
+  assertEquals(r.claimIdsWithRealActivity.has("c1"), true, "the real row alone is enough for the claim to be marked");
+  assertEquals(r.claimLastRealActivityByClaimId.get("c1"), "2026-09-12T00:00:00Z");
+});
+
+Deno.test("reduceActivity MUTANT (must fail): swapping the filter for main's pre-gh-1570 loop (which counted every row unconditionally) lets the admin/system rows win", () => {
+  // This is the mutant literally, not a simulation: main's original reducer
+  // had no isRealActivityRow call at all -- every row counted. Reproduced
+  // inline so this test file documents (and can re-run) the exact failing
+  // transcript pasted in the evidence comment.
+  function reduceActivityMUTANT(activityLog: typeof rows) {
+    const lastActivityByUser = new Map<string, string>();
+    for (const row of activityLog) {
+      // MUTANT: the `if (!isRealActivityRow(row)) continue;` guard is GONE.
+      const prevLast = lastActivityByUser.get(row.user_id!);
+      if (!prevLast || new Date(row.created_at).getTime() > new Date(prevLast).getTime()) {
+        lastActivityByUser.set(row.user_id!, row.created_at);
+      }
+    }
+    return { lastActivityByUser };
+  }
+  const rows = [
+    { user_id: "u1", event_type: "loss_sheet_parsed", metadata: { claim_id: "c1" }, created_at: "2026-09-12T00:00:00Z" },
+    { user_id: "u1", event_type: "next_steps_nudge_sent", metadata: { claim_id: "c1", system_generated: true }, created_at: "2026-09-13T00:00:00Z" }, // LATER than the real row
+  ];
+  const mutantResult = reduceActivityMUTANT(rows);
+  const realResult = reduceActivity(rows);
+  // The mutant WRONGLY lets the system nudge (09-13) win over the real row
+  // (09-12) -- exactly the false-freshness bug this whole file exists to
+  // prevent. The real reduceActivity correctly stops at the real row.
+  assertEquals(mutantResult.lastActivityByUser.get("u1"), "2026-09-13T00:00:00Z", "documenting the mutant's WRONG answer");
+  assertEquals(realResult.lastActivityByUser.get("u1"), "2026-09-12T00:00:00Z", "the real filter correctly excludes the nudge");
+  assertNotEquals(mutantResult.lastActivityByUser.get("u1"), realResult.lastActivityByUser.get("u1"), "the mutant and the real implementation MUST disagree -- if they ever agree, this test stopped detecting the regression");
+});
+
+// ── FIX ROUND 4 (review 5707823658, finding #1) — resolveMissingCreatedAt ──
+
+Deno.test("resolveMissingCreatedAt: only profiles with a missing created_at are looked up at all", async () => {
+  const looked_up: string[] = [];
+  const profiles = [
+    { id: "u1", created_at: "2026-08-01T00:00:00Z" }, // has one -- must NOT be looked up
+    { id: "u2", created_at: null }, // missing -- must be looked up
+  ];
+  const result = await resolveMissingCreatedAt(profiles, async (userId: string) => {
+    looked_up.push(userId);
+    return "2026-06-01T00:00:00Z";
+  });
+  assertEquals(looked_up, ["u2"], "a profile that already has created_at must never trigger an auth.admin.getUserById lookup");
+  assertEquals(result.get("u2"), "2026-06-01T00:00:00Z");
+  assertEquals(result.has("u1"), false);
+});
+
+Deno.test("resolveMissingCreatedAt NEGATIVE CONTROL: the auth lookup itself returning null does not add an entry", async () => {
+  const profiles = [{ id: "u3", created_at: null }];
+  const result = await resolveMissingCreatedAt(profiles, async () => null);
+  assertEquals(result.has("u3"), false, "an exhausted fallback is a real null, not a fabricated entry");
 });

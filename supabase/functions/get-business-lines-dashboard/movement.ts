@@ -54,7 +54,17 @@ export function bucketFor(days: number): "green" | "yellow" | "red" {
 // This is deliberately scoped to homeowners who HAVE a claim: a homeowner
 // with no claim yet has nothing to be "stuck" on (their row is still on the
 // "created an account, hasn't started" step, which is not a stall), so the
-// override only fires once there is a claim to be neglecting.
+// override only fires once there is a claim to be neglecting. A no-claim
+// row's own movement.bucket is never touched by this function (hasClaim is
+// false) — it still needs SOME real recency input to color/sort by, which
+// FIX ROUND 4 (review 5707823658, finding #1) supplies in index.ts's
+// `computeMovement` call: the homeowner's own signup timestamp
+// (`profiles.created_at`, falling back to `auth.users.created_at` for the
+// schema-nullable "profile row predates that column" case), NOT
+// `profiles.updated_at` — main's mechanism happened to equal signup time for
+// a never-touched profile, but was still an `updated_at` read, and the next
+// unrelated profile bump would have broken it exactly like claimed rows
+// broke pre-FIX-ROUND-3.
 //
 // CEO RUN 48 REVIEW (5703958709) fix-round: round 1 of this override forced
 // EVERY zero-activity-log claim red forever, including claims that had moved
@@ -100,21 +110,37 @@ export function bucketFor(days: number): "green" | "yellow" | "red" {
 // is removed entirely — there is no longer a `claim.updated_at` input for it
 // to taint-check.
 //
-// A direct consequence: a claim can have real, undeniable progress
-// (`claimHasMilestoneProgress` true — e.g. `has_measurements=true`) yet have
-// NO column in the explicit allow-list set and NO qualifying `activity_log`
-// row at all (measurement UPLOAD itself has no dedicated timestamp column on
-// `claims`, and its own `activity_log` counterpart is `measurement_order_fulfilled`,
-// which is admin-authored and already excluded — see ADMIN_ORIGIN_EVENT_TYPES).
-// `computeMovement` then legitimately returns `bucket: "unknown"` (no
-// admissible input at all) rather than fabricating a date. An "unknown"
-// recency is never safe to show as green/yellow — the CRM cannot verify
-// this claim is fresh, which is exactly the same "needs a human to look"
-// signal as zero real activity, so it is ALSO forced red here, alongside
-// the pre-existing `!hasRealActivity` case. (Live example: `4595b6f0` —
-// `has_measurements=true` correctly keeps `hasRealActivity` true, but the
-// claim has no allow-listed timestamp and no qualifying activity_log row,
-// so raw `movement.bucket` is `"unknown"`, and it is forced red here.)
+// A direct consequence (FIX ROUND 3): a claim can have real, undeniable
+// progress (`claimHasMilestoneProgress` true — e.g. `has_measurements=true`)
+// yet have NO column in the explicit allow-list set and NO qualifying
+// `activity_log` row at all (measurement UPLOAD itself has no dedicated
+// timestamp column on `claims`, and its own `activity_log` counterpart is
+// `measurement_order_fulfilled`, which is admin-authored and already
+// excluded — see ADMIN_ORIGIN_EVENT_TYPES). `computeMovement` would then
+// legitimately return `bucket: "unknown"` (no admissible input at all)
+// rather than fabricate a date. An "unknown" recency is never safe to show
+// as green/yellow — the CRM cannot verify this claim is fresh, which is
+// exactly the same "needs a human to look" signal as zero real activity, so
+// it is ALSO forced red here, alongside the pre-existing `!hasRealActivity`
+// case.
+//
+// FIX ROUND 4 (review 5707823658, finding #3, DECIDED): index.ts's
+// `computeMovement` call now ALSO includes the claim's own `created_at` (a
+// row is never younger than its own creation, and `claims.created_at` is
+// the one claim timestamp that is never admin/system-tainted — it is
+// stamped once, at insert, by nobody's later action) and the four
+// `*_bid_released_at` columns (a homeowner's own submit-for-bids action) as
+// admissible recency inputs. Practical effect: `bucket: "unknown"` can now
+// only occur for a claim whose OWN `created_at` is null (schema-nullable,
+// but zero live rows as of this round) — every other claim has at least one
+// admissible timestamp (its own creation), so it gets a real, honest `days`
+// count and buckets green/yellow/red naturally off actual age, same as any
+// other claim. (Re-verified live example: `4595b6f0` no longer reads
+// `"unknown"` — its `claim.created_at` alone makes it naturally red at ~42
+// days old — the forced-red branch below now only fires for the
+// `!hasRealActivity` case for that row, not the `"unknown"` one. The
+// `"unknown"` force-red branch is kept as defense in depth for the
+// remaining null-`created_at` edge case, not removed.)
 //
 // movement.days / latest_iso are left untouched by the caller; only the
 // bucket used for coloring/sorting changes.
@@ -165,6 +191,13 @@ export interface ClaimMilestones {
   colorConfirmedAt: string | null;
   contractorSwitchedAt: string | null;
   projectConfirmationSignedAt: string | null;
+  // FIX ROUND 4 (gh-1570, review 5707823658, finding #3) — the latest of the
+  // four `*_bid_released_at` columns (gutters/roofing/siding/windows), which
+  // a homeowner's own submit-for-bids action writes. Added alongside the
+  // same column feeding computeMovement's recency allow-list (index.ts), for
+  // the same "real enough to date is real enough to count as progress"
+  // reason FIX ROUND 3 gave for every other field here.
+  bidReleasedAt: string | null;
 }
 
 // documents_needed is the table's own DEFAULT; draft is the only status that
@@ -208,7 +241,8 @@ export function claimHasMilestoneProgress(claim: ClaimMilestones | null): boolea
     !!claim.contractVoidedAt ||
     !!claim.colorConfirmedAt ||
     !!claim.contractorSwitchedAt ||
-    !!claim.projectConfirmationSignedAt
+    !!claim.projectConfirmationSignedAt ||
+    !!claim.bidReleasedAt
   );
 }
 

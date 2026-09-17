@@ -45,6 +45,7 @@ function noProgress(overrides: Partial<ClaimMilestones> = {}): ClaimMilestones {
     colorConfirmedAt: null,
     contractorSwitchedAt: null,
     projectConfirmationSignedAt: null,
+    bidReleasedAt: null,
     ...overrides,
   };
 }
@@ -301,4 +302,27 @@ Deno.test("homeownerBucket (g) NEGATIVE CONTROL, FIX ROUND 3: no claim at all, r
   assertEquals(movement.bucket, "unknown");
   const bucket = homeownerBucket(movement, /* hasClaim */ false, /* hasRealActivity */ false);
   assertEquals(bucket, "unknown");
+});
+
+// ── FIX ROUND 4 (review 5707823658, finding #3, DECIDED) ──────────────────
+// claim.created_at (index.ts) is now always an admissible computeMovement
+// input for a claimed row, so "unknown" can in practice only occur when a
+// claim's own created_at is itself missing — these two tests document that
+// narrowing at the homeownerBucket level (the actual created_at-as-floor
+// wiring is exercised at the full-row level in homeowner-row.test.ts, since
+// homeownerBucket itself takes no claim data, only a precomputed movement).
+
+Deno.test("claimHasMilestoneProgress: *_bid_released_at set (a homeowner's own submit-for-bids action) -> true (FIX ROUND 4, finding #3)", () => {
+  assertEquals(claimHasMilestoneProgress(noProgress({ bidReleasedAt: "2026-09-16T00:00:00Z" })), true);
+});
+
+Deno.test("homeownerBucket (h), FIX ROUND 4: a claim's OWN created_at is old but present -> naturally red off real age, not the 'unknown' force-red path", () => {
+  const now = Date.UTC(2026, 8, 17); // 2026-09-17
+  // Simulates 4595b6f0 post-FIX-ROUND-4: claim created_at is now one of the
+  // computeMovement inputs, so this is no longer 'unknown' pre-override.
+  const movement = computeMovement(now, [{ label: "claim created_at", iso: "2026-08-05T11:42:56Z" }]); // ~42 days
+  assertEquals(movement.bucket, "red", "old enough to be naturally red off its own creation date, not 'unknown'");
+  const bucket = homeownerBucket(movement, /* hasClaim */ true, /* hasRealActivity */ true);
+  assertEquals(bucket, "red");
+  assertEquals(bucket, movement.bucket, "not forced -- the raw bucket already agrees, unlike the pre-FIX-ROUND-4 'unknown' shape");
 });
