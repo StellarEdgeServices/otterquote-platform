@@ -40,13 +40,28 @@
  *  2. pg_cron job "gh1932-homeowner-signup-sweep" (every 15 minutes) -> pg_net ->
  *     POSTs {event_type:"signup_sweep"} with no record; this EF does its own
  *     candidate selection with the service-role client.
+ *  3. trg_notify_admin_new_router_lead (AFTER UPDATE ON leads, role NULL ->
+ *     non-NULL) -> pg_net -> POSTs {event_type:"router_lead", record}. Filed
+ *     for gh-1994 (Dustin's GO, issue #1994 comment 5706456515). See
+ *     notify-helpers.ts's doc header for the full design rationale.
  *
  * Auth model: accepts the Supabase service role key as bearer token
  * (both trigger and cron paths). ALSO accepts the anon key — a deliberate,
  * documented extension so manual/test invocations never need to handle the
  * service-role secret.
  *
- * Idempotency (notifications table):
+ * Exception (gh-1994 fix round 1, REVIEW 5707519022 B1): event_type=
+ * router_lead does NOT accept the anon key. It is reachable only from the
+ * trg_notify_admin_new_router_lead trigger, which authenticates with the
+ * service-role key resolved from vault -- the anon key is public, and
+ * router_lead's own dedupe stamp (alerted_at) lives on a table the anon
+ * role can insert into, so accepting anon here would let anyone name an
+ * existing (or self-inserted) lead id and trigger a send. Checked at the
+ * event_type dispatch site below, in addition to (not instead of) the
+ * general authorized gate above -- claim_created/signup_sweep/
+ * signup_backfill are unaffected and still accept either key.
+ *
+ * Idempotency (notifications table, plus a dedicated column for router_lead):
  *   claim_created -> skips if notification_type=admin_new_claim already
  *                    exists for claim_id = record.id
  *   signup_sweep, per-profile -> skips a profile if notification_type=
@@ -54,6 +69,15 @@
  *   signup_sweep, digest gate -> the one-time backlog digest is sent only if
  *                    no notification_type=admin_homeowner_signup_digest row
  *                    exists yet (any row, checked without a user_id filter).
+ *   router_lead -> skips unless an atomic `UPDATE leads SET alerted_at = now()
+ *                    WHERE id = $1 AND alerted_at IS NULL AND role IS NOT NULL
+ *                    AND email NOT ILIKE '%@otterquote-internal.test'
+ *                    RETURNING ...` actually touches a row (see
+ *                    handleRouterLead; gh-1994 fix round 1, REVIEW B1) -- a
+ *                    `leads` row has no claim_id/user_id to key the
+ *                    notifications table on before it converts, so the
+ *                    dedupe AND the eligibility check both live on the row
+ *                    itself, in one query, per gh-1994's own instruction.
  *
  * Test / internal-account filter (gh-1932 rework 2, anchored):
  *   is_test = true (unconditional), OR email matches (case-insensitive):
@@ -65,24 +89,40 @@
  *     email contains "stohler" (internal/founder accounts)
  *   A real address that merely CONTAINS "test" (e.g. a "greatestates@" or
  *   "protest@" style local part) is NOT excluded by this pattern.
+ *   router_lead uses a SEPARATE, narrower exclusion (gh-1994): `leads` has
+ *   no is_test column, so only a reserved email suffix
+ *   (@otterquote-internal.test) is excluded -- enforced directly in
+ *   handleRouterLead's claim query (gh-1994 fix round 1, REVIEW B1;
+ *   ROUTER_LEAD_EXCLUDED_EMAIL_SUFFIX in notify-helpers.ts is the single
+ *   source for the literal suffix, also used by notify-helpers.test.ts and
+ *   the exported isRouterLeadExcluded() helper it tests).
  *
  * Environment variables (all already set in Supabase secrets):
  *   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ANON_KEY,
  *   MAILGUN_API_KEY, MAILGUN_DOMAIN
  *
- * Refs #1932
+ * Refs #1932, #1994
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import {
+  ADMIN_EMAIL,
+  normalizeBody,
+  escapeHtml,
+  ROUTER_LEAD_EXCLUDED_EMAIL_SUFFIX,
+  roleLabel,
+  isRouterLeadAuthorized,
+  buildRouterLeadEmail,
+} from "./notify-helpers.ts";
 
-const ADMIN_EMAIL      = "dustinstohler1@gmail.com";
 const ADMIN_PORTAL_URL = "https://otterquote.com/admin-dashboard.html";
 
-const NOTIF_TYPE_HOMEOWNER = "admin_new_homeowner";
-const NOTIF_TYPE_CLAIM     = "admin_new_claim";
-const NOTIF_TYPE_DIGEST    = "admin_homeowner_signup_digest";
-const NOTIF_TYPE_BACKFILL  = "admin_homeowner_signup_backfill";
+const NOTIF_TYPE_HOMEOWNER   = "admin_new_homeowner";
+const NOTIF_TYPE_CLAIM       = "admin_new_claim";
+const NOTIF_TYPE_DIGEST      = "admin_homeowner_signup_digest";
+const NOTIF_TYPE_BACKFILL    = "admin_homeowner_signup_backfill";
+const NOTIF_TYPE_ROUTER_LEAD = "admin_router_lead";
 
 const DEFAULT_MIN_AGE_MINUTES = 20;
 const MAX_AGE_DAYS            = 7;
@@ -131,14 +171,6 @@ function maskEmail(email: string): string {
   const at = (email || "").indexOf("@");
   if (at <= 0) return "(no email)";
   return `${email[0]}***${email.slice(at)}`;
-}
-
-function escapeHtml(str: string): string {
-  return String(str ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }
 
 function buildEmailHtml(heading: string, rows: [string, string][], extraHtml?: string): string {
@@ -206,43 +238,6 @@ function buildEmailHtml(heading: string, rows: [string, string][], extraHtml?: s
 </html>`.trim();
 }
 
-type NormalizedEvent =
-  | { eventType: "claim_created"; record: Record<string, unknown> }
-  | { eventType: "signup_sweep"; minAgeMinutes: number }
-  | { eventType: "signup_backfill" };
-
-function normalizeBody(body: any): NormalizedEvent | null {
-  if (!body || typeof body !== "object") return null;
-
-  if (body.event_type === "claim_created") {
-    if (!body.record || typeof body.record !== "object") return null;
-    return { eventType: "claim_created", record: body.record };
-  }
-
-  if (body.event_type === "signup_sweep") {
-    const minAgeMinutes =
-      typeof body.min_age_minutes === "number" && body.min_age_minutes >= 0
-        ? body.min_age_minutes
-        : DEFAULT_MIN_AGE_MINUTES;
-    return { eventType: "signup_sweep", minAgeMinutes };
-  }
-
-  // gh-1932 rework 3: one-time, manually-invoked catch-up for the backlog
-  // that predates MAX_AGE_DAYS=7 (the recurring sweep's window). Runs once
-  // ever, gated by NOTIF_TYPE_BACKFILL, independent of the recurring
-  // sweep's own NOTIF_TYPE_DIGEST gate. Not on the cron schedule.
-  if (body.event_type === "signup_backfill") {
-    return { eventType: "signup_backfill" };
-  }
-
-  // Supabase native database-webhook shape: {type:"INSERT", table, record}
-  if (body.type === "INSERT" && body.record && typeof body.record === "object" && body.table === "claims") {
-    return { eventType: "claim_created", record: body.record };
-  }
-
-  return null;
-}
-
 serve(async (req: Request) => {
   const corsHeaders = buildCorsHeaders(req);
 
@@ -290,6 +285,20 @@ serve(async (req: Request) => {
 
     if (normalized.eventType === "signup_backfill") {
       return await handleSignupBackfill(sb, mailgunDomain, mailgunKey, corsHeaders);
+    }
+
+    if (normalized.eventType === "router_lead") {
+      // gh-1994 fix round 1 (REVIEW B1): stricter than the general
+      // `authorized` gate above -- router_lead requires the service-role
+      // credential specifically, never the anon key.
+      if (!isRouterLeadAuthorized(bearerToken, serviceRoleKey)) {
+        console.error("notify-admin-new-homeowner: router_lead requires the service-role credential");
+        return new Response(
+          JSON.stringify({ error: "Unauthorized" }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      return await handleRouterLead(sb, normalized.record, mailgunDomain, mailgunKey, corsHeaders);
     }
 
     // eventType === "claim_created"
@@ -401,6 +410,118 @@ serve(async (req: Request) => {
     );
   }
 });
+
+// gh-1994: alert for a router lead that just picked a role (Step 2/2a,
+// set_lead_role() success -> trg_notify_admin_new_router_lead -> here).
+// Dedupe is atomic and lives on the leads row itself (see doc header):
+// only the caller whose UPDATE actually flips alerted_at from NULL sends
+// the email. No customer-facing copy, no SMS -- admin-only, per Dustin's
+// GO comment (#1994 comment 5706456515).
+// gh-1994 fix round 1 (REVIEW 5707519022, B1): the request body's `record`
+// is untrusted -- only `record.id` is read from it, and only to pick which
+// row this one atomic query targets. Every value that ends up in the email
+// (name/email/phone/role/partner_industry/utm_*) comes from that query's
+// RETURNING clause, never from the request body. Eligibility (not yet
+// alerted, role actually set, not the excluded test suffix) is enforced IN
+// the same query's WHERE clause -- one round trip, one place the decision
+// is made. If zero rows come back, no email is sent, and the response does
+// not distinguish which of those reasons (or a nonexistent id) it was.
+async function handleRouterLead(
+  sb: ReturnType<typeof createClient>,
+  record: Record<string, unknown>,
+  mailgunDomain: string,
+  mailgunKey: string,
+  corsHeaders: Record<string, string>,
+) {
+  const leadId = record?.id as string | undefined;
+  if (!leadId) {
+    return new Response(
+      JSON.stringify({ error: "Missing required field: record.id" }),
+      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  }
+
+  const { data: claimedRows, error: claimErr } = await sb
+    .from("leads")
+    .update({ alerted_at: new Date().toISOString() })
+    .eq("id", leadId)
+    .is("alerted_at", null)
+    .not("role", "is", null)
+    .not("email", "ilike", `%${ROUTER_LEAD_EXCLUDED_EMAIL_SUFFIX}`)
+    .select(
+      "name, email, phone, role, partner_industry, utm_source, utm_medium, utm_campaign, utm_content, utm_term, fbclid, gclid",
+    );
+
+  if (claimErr) {
+    console.error(`notify-admin-new-homeowner: alerted_at claim failed for lead_id=${leadId}:`, claimErr);
+    return new Response(
+      JSON.stringify({ error: "failed to claim lead for alert" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  }
+
+  const leadRow = claimedRows?.[0] as Record<string, unknown> | undefined;
+  if (!leadRow) {
+    console.log(
+      `notify-admin-new-homeowner: router lead ${leadId} not eligible to alert (already sent / no role / excluded / not found)`,
+    );
+    return new Response(
+      JSON.stringify({ success: true, skipped: true, reason: "not_eligible" }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  }
+
+  // gh-1994 fix round 1 (REVIEW B1, N6): buildRouterLeadEmail() reads only
+  // `leadRow` -- the query's RETURNING result above -- never the request
+  // body. See its doc comment in notify-helpers.ts.
+  const { subject, textBody, htmlRows, extraHtml } = buildRouterLeadEmail(leadRow);
+  const htmlBody = buildEmailHtml("New Router Lead", htmlRows, extraHtml);
+
+  let mgData: { id: string };
+  try {
+    mgData = await sendMail(mailgunDomain, mailgunKey, subject, textBody, htmlBody);
+  } catch (mailErr) {
+    // gh-1994 fix round 1 (REVIEW N1): the row is already stamped
+    // alerted_at from the claim above. If the send itself throws, revert
+    // the stamp so a retry (the trigger's own delivery retry, or a manual
+    // re-POST) can claim and send again, instead of the alert being lost
+    // for good on a row that looks "already alerted" but never sent.
+    console.error(`notify-admin-new-homeowner: mailgun send failed for lead_id=${leadId}, reverting alerted_at:`, mailErr);
+    const { error: revertErr } = await sb
+      .from("leads")
+      .update({ alerted_at: null })
+      .eq("id", leadId);
+    if (revertErr) {
+      console.error(
+        `notify-admin-new-homeowner: failed to revert alerted_at for lead_id=${leadId} after mailgun failure:`,
+        revertErr,
+      );
+    }
+    return new Response(
+      JSON.stringify({ error: "failed to send router lead alert email" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  }
+
+  await sb.from("notifications").insert({
+    user_id:           null,
+    claim_id:          null,
+    channel:           "email",
+    notification_type: NOTIF_TYPE_ROUTER_LEAD,
+    recipient:         ADMIN_EMAIL,
+    message_preview:   `New router lead (${roleLabel(leadRow.role)}): ${(leadRow.name as string) || "(no name given)"}`,
+    sent_at:           new Date().toISOString(),
+    delivered:         true,
+    mailgun_id:        mgData.id,
+  }).then(({ error }) => {
+    if (error) console.warn(`notify-admin-new-homeowner: failed to log notification for lead_id=${leadId}:`, error);
+  });
+
+  return new Response(
+    JSON.stringify({ success: true, mailgun_id: mgData.id }),
+    { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+  );
+}
 
 // gh-1932 rework 2: deferred signup sweep. Selects role='homeowner' profiles
 // between minAgeMinutes and MAX_AGE_DAYS old, with no matching contractors
