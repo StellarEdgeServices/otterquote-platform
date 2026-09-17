@@ -18,5 +18,8 @@
     "signed_price_verdict":    { "migration": "supabase/migrations_drafts/gh1314_persist_signed_price.sql", "issue": "#1314", "note": "PriceEvaluation.state" },
     "signed_price_reason":     { "migration": "supabase/migrations_drafts/gh1314_persist_signed_price.sql", "issue": "#1314", "note": "PriceEvaluation.reason; CHECK covers all five UnverifiedReason values" },
     "signed_price_checked_at": { "migration": "supabase/migrations_drafts/gh1314_persist_signed_price.sql", "issue": "#1314", "note": "when the reconciliation last ran for this claim" }
+  },
+  "leads": {
+    "alerted_at": { "migration": "supabase/migrations/20260917010217_gh1994_router_lead_alert.sql", "issue": "#1994", "note": "router-lead admin-alert dedupe stamp -- notify-admin-new-homeowner's handleRouterLead() claims a lead atomically via UPDATE ... WHERE alerted_at IS NULL before sending" }
   }
 }
