@@ -373,7 +373,7 @@
     <div class="cta-box">
       <h3>Ready to Get Contractor Bids for Your Claim?</h3>
       <p>Understanding what your insurer will pay is step one. Step two is finding a contractor who delivers the right work at a fair price. Otter Quotes connects homeowners with roofing contractors who compete for your project &mdash; free for homeowners.</p>
-      <a href="/get-started.html" class="btn btn-primary btn-lg">Get Competing Bids Free</a>
+      <a href="/start.html" class="btn btn-primary btn-lg">Get Competing Bids Free</a>
     </div>
 
     <!-- FAQ Section -->
@@ -428,7 +428,7 @@
     <div class="cta-box" style="margin-top: var(--sp-12); margin-bottom: var(--sp-8);">
       <h3>Know Your Coverage. Get the Right Contractor.</h3>
       <p>Understanding ACV vs. RCV is the foundation of a successful insurance claim. The next step is choosing a contractor who delivers quality work at fair pricing. Compare bids from roofing professionals on Otter Quotes &mdash; free for homeowners. Or find your own contractor if you already have one in mind.</p>
-      <a href="/get-started.html" class="btn btn-primary btn-lg">Post Your Project Free</a>
+      <a href="/start.html" class="btn btn-primary btn-lg">Post Your Project Free</a>
     </div>
 
   </div>
@@ -525,6 +525,46 @@ document.querySelectorAll('.faq-item h3').forEach(item => {
         this.parentElement.classList.toggle('active');
     });
 });
+</script>
+<script>
+// gh-1994 phase 2 (round 2, review 5705874119 B1/N1): carry utm_*/fbclid/
+// gclid from this page's own URL onto every "Get started" CTA that points
+// at the router, on top of the oq_ft cookie fallback (gh-1983)
+// start.html's own collectAttribution() already reads -- belt and
+// suspenders for cookie-blocked browsers. No PII, same allow-list
+// start.html reads. Matches by normalized pathname, not an exact-string
+// selector, because Netlify's pretty-URL rewrite serves the on-disk
+// href="/start.html" as href="/start" (no ".html", no trailing slash) --
+// an exact-string selector never matches that served markup, only a local
+// static server without the rewrite. Also tolerates a trailing slash
+// ("/start/") and a login.html-style relative "start.html". Idempotent:
+// run once per page load, never runs twice on the same anchor.
+(function () {
+  'use strict';
+  var ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid'];
+  var params = new URLSearchParams(window.location.search);
+  var qs = '';
+  ATTR_KEYS.forEach(function (k) {
+    var v = params.get(k);
+    if (v) qs += (qs ? '&' : '?') + k + '=' + encodeURIComponent(v);
+  });
+  if (!qs) return;
+  function isStartHref(href) {
+    if (!href) return false;
+    try {
+      var p = new URL(href, window.location.href).pathname.replace(/\/+$/, '');
+      return p === '/start' || p === '/start.html';
+    } catch (e) {
+      return false;
+    }
+  }
+  document.querySelectorAll('a[href]').forEach(function (a) {
+    var href = a.getAttribute('href');
+    if (isStartHref(href)) {
+      a.setAttribute('href', href + qs);
+    }
+  });
+})();
 </script>
 </body>
 </html>

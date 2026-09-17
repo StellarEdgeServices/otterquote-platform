@@ -415,7 +415,7 @@
     <div class="cta-box">
       <h3>Start the Repair. Collect What You&rsquo;re Owed.</h3>
       <p>The path to collecting your recoverable depreciation starts with completing the repair. Otter Quotes connects you with roofing contractors who provide documented, warranty-backed work and the proper invoices your insurer requires. Or hire your own contractor &mdash; either way, don&rsquo;t leave money on the table.</p>
-      <a href="/get-started.html" class="btn btn-primary btn-lg">Get Competing Bids Free</a>
+      <a href="/start.html" class="btn btn-primary btn-lg">Get Competing Bids Free</a>
     </div>
 
     <!-- FAQ Section -->
@@ -470,7 +470,7 @@
     <div class="cta-box" style="margin-top: var(--sp-12); margin-bottom: var(--sp-8);">
       <h3>Don&rsquo;t Leave Depreciation Money Behind</h3>
       <p>Thousands of homeowners miss out on recoverable depreciation every year simply because they didn&rsquo;t know to ask. Now you do. Start your repair with a contractor whose license and insurance you have confirmed &mdash; get competing bids on Otter Quotes or bring your own &mdash; and make sure you collect every dollar your policy owes you.</p>
-      <a href="/get-started.html" class="btn btn-primary btn-lg">Post Your Project Free</a>
+      <a href="/start.html" class="btn btn-primary btn-lg">Post Your Project Free</a>
     </div>
 
   </div>
@@ -567,6 +567,46 @@ document.querySelectorAll('.faq-item h3').forEach(item => {
         this.parentElement.classList.toggle('active');
     });
 });
+</script>
+<script>
+// gh-1994 phase 2 (round 2, review 5705874119 B1/N1): carry utm_*/fbclid/
+// gclid from this page's own URL onto every "Get started" CTA that points
+// at the router, on top of the oq_ft cookie fallback (gh-1983)
+// start.html's own collectAttribution() already reads -- belt and
+// suspenders for cookie-blocked browsers. No PII, same allow-list
+// start.html reads. Matches by normalized pathname, not an exact-string
+// selector, because Netlify's pretty-URL rewrite serves the on-disk
+// href="/start.html" as href="/start" (no ".html", no trailing slash) --
+// an exact-string selector never matches that served markup, only a local
+// static server without the rewrite. Also tolerates a trailing slash
+// ("/start/") and a login.html-style relative "start.html". Idempotent:
+// run once per page load, never runs twice on the same anchor.
+(function () {
+  'use strict';
+  var ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid'];
+  var params = new URLSearchParams(window.location.search);
+  var qs = '';
+  ATTR_KEYS.forEach(function (k) {
+    var v = params.get(k);
+    if (v) qs += (qs ? '&' : '?') + k + '=' + encodeURIComponent(v);
+  });
+  if (!qs) return;
+  function isStartHref(href) {
+    if (!href) return false;
+    try {
+      var p = new URL(href, window.location.href).pathname.replace(/\/+$/, '');
+      return p === '/start' || p === '/start.html';
+    } catch (e) {
+      return false;
+    }
+  }
+  document.querySelectorAll('a[href]').forEach(function (a) {
+    var href = a.getAttribute('href');
+    if (isStartHref(href)) {
+      a.setAttribute('href', href + qs);
+    }
+  });
+})();
 </script>
 </body>
 </html>

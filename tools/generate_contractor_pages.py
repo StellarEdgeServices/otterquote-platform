@@ -297,7 +297,7 @@ def generate_html(c: dict, slug: str, _licenses: list) -> str:
 
     <div class="cta-bar">
       <p>Ready to connect with a contractor?</p>
-      <a href="/get-started.html" class="btn btn-primary btn-lg">Start Your Project with Otter Quotes</a>
+      <a href="/start.html" class="btn btn-primary btn-lg">Start Your Project with Otter Quotes</a>
     </div>
 
     <p class="disclosure">

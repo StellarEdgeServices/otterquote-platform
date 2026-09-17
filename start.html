@@ -372,6 +372,21 @@
   try { history.replaceState({ step: 1 }, '', location.href); } catch (e) {}
   window.addEventListener('popstate', function (e) {
     var step = (e.state && e.state.step) || 1;
+    // gh-1994 phase 2 (review 5703841330, non-blocking N1): a bfcache
+    // restore's pageshow handler (below) nulls leadId and resets to Step 1,
+    // but the tab's session history still holds the earlier same-document
+    // {step:2}/{step:'2a'} entries underneath that reset entry. A second
+    // Back after the restore popped straight into Step 2/2a with
+    // leadId === null -- clicking a role/industry button there hit the
+    // pre-existing "Something went wrong. Please refresh and start over."
+    // banner and stranded the visitor on the router instead of returning
+    // them to Step 1. If there is no lead id, Step 2/2a can never submit
+    // anyway, so land on Step 1 instead of a step that can only ever show
+    // that error.
+    if (!leadId && step !== 1) {
+      try { history.replaceState({ step: 1 }, '', location.pathname + location.search); } catch (e2) {}
+      step = 1;
+    }
     renderStep(step);
   });
   function goToStep(key) {
@@ -662,13 +677,22 @@
   // complete, final URL (e.g. the homeowner path's attribution-only URL
   // built by appendParams above) that must NOT have `?lead=<uuid>`
   // appended on top of it -- every other destination keeps the original
-  // behavior of appending ?lead=<uuid> ONLY, no email/phone/name in the
-  // query string (closes-on control (b)). ──
+  // behavior of appending ?lead=<uuid>, no email/phone/name in the query
+  // string (closes-on control (b)). gh-1994 phase 2: also carries
+  // utm_*/fbclid/gclid (never PII) onto the contractor/partner
+  // destinations, same allow-list as collectAttribution() above -- the
+  // homeowner path already gets these via appendParams(...,
+  // collectAttribution()) before it ever reaches here. The six static
+  // destination pages' head-first strip only ever deletes `lead`, so these
+  // survive the strip and reach the destination's own attribution capture
+  // (e.g. the oq_ft cookie / record_first_touch_attribution path), same as
+  // if the visitor had landed there directly with a tagged URL. ──
   function redirectTo(dest, preBuilt) {
     renderStep(3);
     if (!preBuilt) {
       var sep = dest.indexOf('?') === -1 ? '?' : '&';
       dest = dest + sep + 'lead=' + encodeURIComponent(leadId);
+      dest = appendParams(dest, collectAttribution());
     }
     window.location.href = dest;
   }

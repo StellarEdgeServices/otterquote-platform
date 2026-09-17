@@ -226,7 +226,7 @@ def generate_html(agent: dict, channel: str, channel_label: str, ref_page: str, 
     intro_esc = intro_paragraph(agent, channel_label)
 
     page_url = f"{SITE_BASE}/partners/{channel}/{slug}/"
-    cta_href = f"{ref_page}?ref={urllib.parse.quote(unique_code)}" if unique_code else "/get-started.html"
+    cta_href = f"{ref_page}?ref={urllib.parse.quote(unique_code)}" if unique_code else "/start.html"
 
     meta_desc = (
         f"{name} is a {channel_label.lower()} listed in the Otter Quotes partner directory."
@@ -360,7 +360,7 @@ def generate_html(agent: dict, channel: str, channel_label: str, ref_page: str, 
 
 <script>
 (function() {{
-  var navHtml = '<nav class="site-nav"><div class="nav-inner"><a class="nav-logo" href="/"><img src="/img/brand-assets/otter-logo-inline.svg" alt="Otter Quotes" height="32"></a><div class="nav-links"><a href="/how-it-works.html">How It Works</a><a href="/contractor-join.html">For Contractors</a><a href="/get-started.html" class="btn btn-primary btn-sm">Get Started</a></div></div></nav>';
+  var navHtml = '<nav class="site-nav"><div class="nav-inner"><a class="nav-logo" href="/"><img src="/img/brand-assets/otter-logo-inline.svg" alt="Otter Quotes" height="32"></a><div class="nav-links"><a href="/how-it-works.html">How It Works</a><a href="/contractor-join.html">For Contractors</a><a href="/start.html" class="btn btn-primary btn-sm">Get Started</a></div></div></nav>';
   document.write(navHtml);
 }})();
 </script>
@@ -466,7 +466,7 @@ def generate_directory_index(agents_with_paths: list, dry_run: bool) -> None:
 </head>
 <body>
 <script>
-(function(){{var navHtml='<nav class="site-nav"><div class="nav-inner"><a class="nav-logo" href="/"><img src="/img/brand-assets/otter-logo-inline.svg" alt="Otter Quotes" height="32"></a><div class="nav-links"><a href="/how-it-works.html">How It Works</a><a href="/contractor-join.html">For Contractors</a><a href="/get-started.html" class="btn btn-primary btn-sm">Get Started</a></div></div></nav>';document.write(navHtml);}})();
+(function(){{var navHtml='<nav class="site-nav"><div class="nav-inner"><a class="nav-logo" href="/"><img src="/img/brand-assets/otter-logo-inline.svg" alt="Otter Quotes" height="32"></a><div class="nav-links"><a href="/how-it-works.html">How It Works</a><a href="/contractor-join.html">For Contractors</a><a href="/start.html" class="btn btn-primary btn-sm">Get Started</a></div></div></nav>';document.write(navHtml);}})();
 </script>
 <main>
 <div class="dir-hero">

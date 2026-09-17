@@ -698,7 +698,7 @@ def build_page(county: str, trade: str, coverage: dict, generated_on: str) -> st
 
 <script>
 (function() {{
-  var navHtml = '<nav class="site-nav"><div class="nav-inner"><a class="nav-logo" href="/"><img src="/img/brand-assets/otter-logo-inline.svg" alt="Otter Quotes" height="32"></a><div class="nav-links"><a href="/how-it-works.html">How It Works</a><a href="/contractor-join.html">For Contractors</a><a href="/get-started.html" class="btn btn-primary btn-sm">Get Started</a></div></div></nav>';
+  var navHtml = '<nav class="site-nav"><div class="nav-inner"><a class="nav-logo" href="/"><img src="/img/brand-assets/otter-logo-inline.svg" alt="Otter Quotes" height="32"></a><div class="nav-links"><a href="/how-it-works.html">How It Works</a><a href="/contractor-join.html">For Contractors</a><a href="/start.html" class="btn btn-primary btn-sm">Get Started</a></div></div></nav>';
   document.write(navHtml);
 }})();
 </script>
@@ -748,7 +748,7 @@ def build_page(county: str, trade: str, coverage: dict, generated_on: str) -> st
 
     <div class="cta-bar">
       <p>Ready to compare bids from contractors serving {county_esc} County?</p>
-      <a href="/get-started.html" class="btn btn-primary btn-lg">Start Your Project with Otter Quotes</a>
+      <a href="/start.html" class="btn btn-primary btn-lg">Start Your Project with Otter Quotes</a>
     </div>
 
     <p class="disclosure">
