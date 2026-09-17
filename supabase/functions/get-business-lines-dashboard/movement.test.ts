@@ -12,14 +12,16 @@
 // the new homeownerBucket override that stops the admin CRM "stuck-first"
 // table from painting a zero-real-activity homeowner claim green just
 // because an unrelated system write bumped updated_at.
-import { assert, assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
+import { assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import {
   claimHasMilestoneProgress,
+  claimUpdatedAtIsAdminTainted,
   type ClaimMilestones,
   computeMovement,
   bucketFor,
   homeownerBucket,
   isRealActivityRow,
+  PROGRESS_CLAIM_STATUSES,
 } from "./movement.ts";
 
 // A ClaimMilestones fixture with every signal false/null — callers override
@@ -205,23 +207,77 @@ Deno.test("isRealActivityRow NEGATIVE CONTROL: auto_bid_submitted (contractor-ke
 // ── CEO RUN 48 fix-round — index.ts wiring (gh-1570 non-blocking 3) ───────
 // CTO32 (5688879077) and CEO48 (5703958709) both found a mutant pointing
 // index.ts's homeowner row back at bare `movement.bucket` survives
-// `deno test` unchanged (99 passed either way) because nothing exercises
-// index.ts's own composition of the pieces movement.ts exports — only the
-// pieces themselves. This is a cheap source-level regression lock: it reads
-// index.ts's own text and fails if the homeowner row's bucket assignment no
-// longer calls the override, i.e. if someone reverts exactly the mutant
-// both reviews tried.
-Deno.test("index.ts wiring: the homeowner row's bucket assignment calls the override, not bare movement.bucket", () => {
-  const src = Deno.readTextFileSync(new URL("./index.ts", import.meta.url));
-  assert(
-    src.includes('bucket: isComplete ? "complete" : zeroActivityBucket,'),
-    "index.ts no longer assigns the homeowner row's movement.bucket from the " +
-      "zero-activity override (zeroActivityBucket) — this is the exact " +
-      "mutant CTO32/CEO48 both applied by hand and found undetected.",
+// `deno test` unchanged because nothing exercised index.ts's own
+// composition of the pieces movement.ts exports — only the pieces
+// themselves. FIX ROUND 2 (review 5705734203, finding 3) correctly called
+// the round-1 version of this test ("a string match on two lines") too weak
+// to catch real regressions. It has been replaced by
+// homeowner-row.test.ts, which extracts and actually EXECUTES the real
+// buildHomeownerRow function against synthetic fixtures (same source-
+// extraction technique as marketing-series.test.ts) rather than grepping
+// index.ts's text for two substrings.
+
+// ── FIX ROUND 2 (review 5705734203, finding 5) — status allowlist ────────
+
+Deno.test("PROGRESS_CLAIM_STATUSES: unrecognized/garbage status -> not in the allowlist (unknown defaults to NOT progress)", () => {
+  assertEquals(PROGRESS_CLAIM_STATUSES.has("cancelled"), false);
+  assertEquals(PROGRESS_CLAIM_STATUSES.has("some_future_status"), false);
+  assertEquals(PROGRESS_CLAIM_STATUSES.has(""), false);
+});
+
+Deno.test("claimHasMilestoneProgress: unrecognized status, zero other signals -> false (this is the allowlist regression test — a denylist would wrongly return true here)", () => {
+  assertEquals(claimHasMilestoneProgress(noProgress({ status: "some_future_or_cancelled_status" })), false);
+});
+
+Deno.test("claimHasMilestoneProgress: every live PROGRESS_CLAIM_STATUSES value, zero other signals -> true", () => {
+  for (const status of PROGRESS_CLAIM_STATUSES) {
+    assertEquals(claimHasMilestoneProgress(noProgress({ status })), true, `status=${status}`);
+  }
+});
+
+// ── FIX ROUND 2 (review 5705734203, finding 4) — system-notification rows ─
+
+Deno.test("isRealActivityRow: notification_failed (swallowed send failure) -> false", () => {
+  assertEquals(isRealActivityRow({ event_type: "notification_failed", metadata: { claim_id: "c1" } }), false);
+});
+
+Deno.test("isRealActivityRow: bid_confirmation_email_sent (contractor-keyed email-sent record) -> false", () => {
+  assertEquals(isRealActivityRow({ event_type: "bid_confirmation_email_sent", metadata: { claim_id: "c1" } }), false);
+});
+
+Deno.test("isRealActivityRow: measurement_order_fulfilled (admin-gated endpoint writing under the homeowner's own user_id) -> false", () => {
+  assertEquals(isRealActivityRow({ event_type: "measurement_order_fulfilled", metadata: { claim_id: "c1" } }), false);
+});
+
+Deno.test("isRealActivityRow: homeowner_contract_signed_email_sent -> false", () => {
+  assertEquals(isRealActivityRow({ event_type: "homeowner_contract_signed_email_sent", metadata: { claim_id: "c1" } }), false);
+});
+
+Deno.test("isRealActivityRow: dispute.auto_evidence_submitted / dispute.routed_to_manual_queue -> false", () => {
+  assertEquals(isRealActivityRow({ event_type: "dispute.auto_evidence_submitted", metadata: { claim_id: "c1" } }), false);
+  assertEquals(isRealActivityRow({ event_type: "dispute.routed_to_manual_queue", metadata: { claim_id: "c1" } }), false);
+});
+
+// ── FIX ROUND 2 (review 5705734203, finding 1/B1) — admin-tainted updated_at
+
+Deno.test("claimUpdatedAtIsAdminTainted: updated_at within 5s of loss_sheet_reviewed_at -> true (same shape as live 4595b6f0: 0.237s apart)", () => {
+  assertEquals(
+    claimUpdatedAtIsAdminTainted("2026-09-09T11:21:03.079Z", "2026-09-09T11:21:02.842Z"),
+    true,
   );
-  assert(
-    src.includes("const zeroActivityBucket = homeownerBucket(movement, !!claim, hasRealActivity);"),
-    "index.ts no longer computes zeroActivityBucket via homeownerBucket(movement, !!claim, hasRealActivity) " +
-      "— the wiring between movement.ts's pure functions and the homeowner row changed shape.",
+});
+
+Deno.test("claimUpdatedAtIsAdminTainted NEGATIVE CONTROL: no loss_sheet_reviewed_at at all (73208937 shape) -> false, updated_at is a real signal", () => {
+  assertEquals(claimUpdatedAtIsAdminTainted("2026-09-14T00:00:00Z", null), false);
+});
+
+Deno.test("claimUpdatedAtIsAdminTainted NEGATIVE CONTROL: updated_at days after loss_sheet_reviewed_at (a genuine later event, not the admin write itself) -> false", () => {
+  assertEquals(
+    claimUpdatedAtIsAdminTainted("2026-09-14T00:00:00Z", "2026-09-01T00:00:00Z"),
+    false,
   );
+});
+
+Deno.test("claimUpdatedAtIsAdminTainted: null updated_at -> false (nothing to taint)", () => {
+  assertEquals(claimUpdatedAtIsAdminTainted(null, "2026-09-01T00:00:00Z"), false);
 });
