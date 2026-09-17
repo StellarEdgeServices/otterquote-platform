@@ -1,11 +1,12 @@
 # Pre-flight — gh-1961 `is_test` at creation (profiles + contractors)
 
-Drafted on PR #2002 (branch `gh-1961-is-test-at-creation`), fix round after
-REVIEW: FAIL comment 5706433778 (fresh-context Opus refuter, dispatched by
-Ben, CEO RUN 48, claim `ceo-2026-09-16T13:09:26Z`). Governing instruction:
+Drafted on PR #2002 (branch `gh-1961-is-test-at-creation`), now through two
+fix rounds: REVIEW: FAIL comment 5706433778, then REVIEW: FAIL comment
+5707827031 (both a fresh-context Opus refuter, dispatched by Ben, CEO RUN
+48, claim `ceo-2026-09-16T13:09:26Z`). Governing instruction:
 issuecomment-5698032041 ("the next concrete step is a DB default or trigger
-keyed on that domain, as a Tier 3A migration") plus the review's B1 fix
-instruction. **Not applied.**
+keyed on that domain, as a Tier 3A migration") plus both reviews' fix
+instructions. **Not applied.**
 
 ## What it does
 
@@ -16,8 +17,12 @@ existing object:
    sets `NEW.is_test := true` when `NEW.email` ends with
    `@otterquote-internal.test` (case-insensitive). Never sets it false.
 2. `contractors_zz_inherit_profile_is_test` on `public.contractors` --
-   sets `NEW.is_test := true` when the owning profile
-   (`profiles.id = NEW.user_id`) has `is_test = true`. Never sets it false.
+   on an END-USER (authenticated) insert only, sets `NEW.is_test := true`
+   when the owning profile (`profiles.id = NEW.user_id`) has
+   `is_test = true`. Never sets it false, and never touches a service-role
+   or system insert's explicit value (round 2: round 1 had no role check
+   and overrode an explicit service-role `is_test=false`, breaking the
+   `#564` `test-world-symmetry` spec's S2 fixture -- see "Round 2" below).
    Named to sort alphabetically after the existing
    `contractors_freeze_privileged_columns` trigger so it fires second on
    the same `INSERT`, per Postgres's documented same-event trigger firing
@@ -59,6 +64,61 @@ the contractor row at the same `INSERT`, without touching the freeze
 trigger itself (constitution entry 30 posture: additive fix, not a rewrite
 of an existing gate).
 
+## Round 2 (review comment 5707827031)
+
+**Finding B1 (blocking).** Round 1's `contractors_zz_inherit_profile_is_test`
+had no caller-role check, so it fired for every inserting role. That broke
+the existing `#564` regression spec's S2 fixture
+(`tests/e2e/flows/test-world-symmetry.spec.ts`): S2 creates an
+internal-domain user (`profiles.is_test = true`) and has the service-role
+admin client `INSERT` a contractor row with an explicit `is_test = false`,
+to prove RLS treats that contractor as real and hides seeded test claims
+from it. Round 1's trigger silently flipped that explicit `false` to
+`true`. **Checked directly against the spec file, not just the review's
+description of it** -- confirmed the fixture is exactly as described
+(lines ~160/175/186).
+
+**Cure applied (reviewer-tested):** scope the override to end-user inserts
+only, via `coalesce(auth.jwt() ->> 'role', '') = 'authenticated'`.
+Deliberately not `current_user` -- the function is `SECURITY DEFINER`, so
+`current_user` inside it is always the function's owner, never the calling
+role; keying on it would have silently disabled the round-1 fix for every
+caller, not narrowed it correctly. `auth.jwt()`'s real body (pulled live via
+`pg_get_functiondef` against `yeszghaspzwwstvsrioa`) reads the
+request-scoped GUC PostgREST actually sets per caller, and is now installed
+in the companion `.test.sql` in place of the round-1 static `'{}'` stub, so
+both the authenticated and non-authenticated branches are actually
+exercised.
+
+**Two explicit decisions this draft does NOT make, recorded here so Dustin
+sees them before approving the apply (per the review's own ask):**
+
+- **The one pre-existing live disagreement row is left as-is.** Read again
+  2026-09-17 against `yeszghaspzwwstvsrioa`: still exactly 1 row where
+  `profiles.is_test` disagrees with `contractors.is_test` for an
+  already-live internal contractor. This migration is INSERT-only by
+  design -- it does not repair existing rows. Backfilling that one row
+  would be a data `UPDATE` against an existing identity row, which is the
+  same shape of change that moved gh-1763 to Tier 3B; it is not bundled
+  into this Tier 3A DDL change. The daily `#1763` guard's current-state
+  reading is unaffected by applying this migration either way.
+- **Applying this migration to the CI-test project
+  (`zsdvaqilfdclwosmiheh`) is a separate explicit decision from applying it
+  to prod (`yeszghaspzwwstvsrioa`), not bundled into this Tier 3A
+  approval.** CI-test carries the same `contractors_freeze_privileged_columns`
+  / `trg_contractors_privileged_guard` / `trg_sync_contractor_profile_role`
+  triggers as prod (checked via `SELECT`), and the nightly E2E suite
+  (`e2e-nightly.yml`) that exercises the S2 fixture runs against it -- so
+  whoever approves the prod apply should decide CI-test on its own merits
+  at the same time, not assume it follows automatically.
+
+**The S2 spec itself was checked, not just cited.** Confirmed
+`tests/e2e/flows/test-world-symmetry.spec.ts` S2 does exactly what the
+review says (service-role insert, explicit `is_test: false`, asserts the
+seeded test claim is not visible) and that the round-2 fix's local
+reproduction (`.test.sql` section 8.5) matches it: PRE (round-1 function)
+flips the fixture to `true`; POST (round-2 function) leaves it `false`.
+
 ## Acceptance test (can FAIL)
 
 `supabase/migrations_drafts/gh1961_profiles_is_test_at_creation.test.sql`,
@@ -82,11 +142,20 @@ and `sync_contractor_profile_role` function/trigger bodies (pulled live via
    rows after the internal contractor insert.
 3. **Idempotency**: the migration is applied a second time; exit 0, exactly
    one copy of each new trigger survives, and behavior is unchanged.
+4. **Round 2 (section 8.5 of `.test.sql`)**: the round-1 function body is
+   temporarily reinstalled to reproduce the S2-fixture bug (service-role
+   explicit `is_test=false` -> flipped `true`, labeled PRE), then the real
+   migration file is re-sourced to restore the round-2 fixed body, and the
+   same S2 fixture, the authenticated true/true case, the real-domain
+   false/false case, and the `#1763` count are all re-asserted (labeled
+   POST) -- so the fix and the no-regression claim are both demonstrated
+   in one run, not just described.
 
 This is exactly the "acceptance test that can FAIL" shape gh-1763's own
 pre-flight used: the test is built to demonstrate the disagreement (RED) if
-Part 2 is left out, and to demonstrate 0 disagreements (GREEN) with both
-parts applied -- not merely asserted to already pass.
+Part 2 is left out, or the S2 regression (RED) if the round-2 role check is
+left out, and to demonstrate the GREEN state with the shipped code --
+not merely asserted to already pass.
 
 ## Explicitly out of scope for this draft (see PR body QUESTIONS)
 
@@ -94,7 +163,9 @@ parts applied -- not merely asserted to already pass.
   measured live, no such trigger exists today (`claims_copy_first_touch`
   copies only UTM/first-touch columns). Not built here.
 - Revoking `authenticated`'s column-level `UPDATE` on `profiles.is_test`
-  (review non-blocking item 3: any user can currently flip their own
-  `is_test` flag either way via RLS + column grant, which undermines the
-  flag's trustworthiness more than the domain-matching rule does).
-  Recommended as a follow-up issue, not built here.
+  (review non-blocking item 3, carried forward again as review round 2's
+  non-blocking item 6: any user can currently flip their own `is_test` flag
+  either way via RLS + column grant, which undermines the flag's
+  trustworthiness more than the domain-matching rule does). Recommended as
+  a follow-up issue twice now across both reviews; still not filed as an
+  issue and not built here -- Tier C (security-policy change) on its own.

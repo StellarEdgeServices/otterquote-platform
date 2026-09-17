@@ -97,14 +97,59 @@
 -- test file proves the ordering by observing the freeze trigger's false
 -- actually get overwritten to true by this trigger on the same INSERT.
 --
--- Behavior: on INSERT into public.contractors, if NEW.is_test is not already
--- true, look up the owning profile (public.profiles.id = NEW.user_id); if
--- that profile's is_test is true, set NEW.is_test := true. Never sets
--- is_test to false. SECURITY DEFINER (matching handle_new_user() and
--- sync_contractor_profile_role()'s own convention) so the profile lookup
--- does not depend on the inserting role's SELECT grants/RLS on profiles --
--- an authenticated caller only ever supplies their own user_id in practice,
--- but the lookup does not rely on that being enforced.
+-- Behavior: on an END-USER (authenticated) INSERT into public.contractors
+-- only, if NEW.is_test is not already true, look up the owning profile
+-- (public.profiles.id = NEW.user_id); if that profile's is_test is true,
+-- set NEW.is_test := true. Never sets is_test to false. SECURITY DEFINER
+-- (matching handle_new_user() and sync_contractor_profile_role()'s own
+-- convention) so the profile lookup does not depend on the inserting
+-- role's SELECT grants/RLS on profiles -- an authenticated caller only
+-- ever supplies their own user_id in practice, but the lookup does not
+-- rely on that being enforced.
+--
+-- === Round 2 (review comment 5707827031) ===================================
+--
+-- Finding B1 (blocking): the first version of this trigger (no role check)
+-- fired for EVERY inserting role, so a service-role INSERT that explicitly
+-- set is_test=false got silently overridden to true whenever the owning
+-- profile was true. That is exactly the fixture the #564 regression spec
+-- uses: tests/e2e/flows/test-world-symmetry.spec.ts scenario S2 creates an
+-- internal-domain user (profiles.is_test=true) and then has the
+-- service-role admin client INSERT a contractor row with is_test=false, to
+-- prove RLS treats that contractor as real and hides seeded test claims
+-- from it. The round-1 trigger broke that -- checked against the spec file
+-- directly, not just against the reviewer's description of it.
+--
+-- Cure applied (reviewer-tested, comment 5707827031): scope the override to
+-- end-user inserts only, using coalesce(auth.jwt() ->> 'role', '') =
+-- 'authenticated'. Deliberately NOT current_user: this function is
+-- SECURITY DEFINER, so current_user inside it is always the function's
+-- owner, never the calling role -- current_user would never equal
+-- 'authenticated' here regardless of who actually made the request, which
+-- would have silently disabled the B1 (round 1) fix entirely rather than
+-- narrowing it correctly. auth.jwt() reads the request-scoped GUC PostgREST
+-- actually sets for the caller's real role. Verified with the real
+-- auth.jwt() body (pulled live via pg_get_functiondef against
+-- yeszghaspzwwstvsrioa) installed in the companion .test.sql, which now
+-- drives it via the request.jwt.claims GUC instead of a static stub, so
+-- both the authenticated and non-authenticated branches are actually
+-- exercised, not just documented.
+--
+-- Explicitly out of scope for this round, recorded here so Dustin sees it
+-- before approving the apply (per the review's own ask):
+--   - The one pre-existing live disagreement row (profiles.is_test=true /
+--     contractors.is_test=false for one already-live internal contractor,
+--     count read 2026-09-17 against yeszghaspzwwstvsrioa) is left AS-IS.
+--     This migration only changes what future INSERTs do; it does not
+--     repair existing rows, and doing so would be a data UPDATE (Tier 3B
+--     territory per the gh-1763 precedent), not this Tier 3A DDL change.
+--   - Whether to also apply this migration to the CI-test project
+--     (zsdvaqilfdclwosmiheh, which carries the same
+--     contractors_freeze_privileged_columns / trg_contractors_privileged_guard
+--     / trg_sync_contractor_profile_role triggers as prod, checked via
+--     SELECT) is a SEPARATE explicit decision from applying it to prod --
+--     not bundled into this Tier 3A approval. The nightly E2E suite
+--     (e2e-nightly.yml) that exercises S2 runs against that project.
 --
 -- UPDATE-path check (review ask): does contractors_freeze_privileged_columns
 -- reset is_test on UPDATE too? Read live via pg_get_functiondef -- no. Its
@@ -169,13 +214,24 @@ as $fn$
 declare
   v_profile_is_test boolean;
 begin
-  if NEW.is_test is not true then
-    select p.is_test into v_profile_is_test
-    from public.profiles p
-    where p.id = NEW.user_id;
+  -- Round-2 fix (review comment 5707827031, finding B1): only inherit the
+  -- flag on an end-user (authenticated) insert. NOT current_user -- this
+  -- function is SECURITY DEFINER, so current_user here is always the
+  -- function's owner, never the calling role. auth.jwt() ->> 'role' reads
+  -- the request-scoped claim PostgREST actually sets for the caller: it is
+  -- 'authenticated' for a real end-user request and absent (so this
+  -- resolves to '') for a service-role call. Round 1 skipped this check
+  -- entirely and so overrode an explicit service-role is_test=false,
+  -- breaking #564 test-world-symmetry spec S2.
+  if coalesce(auth.jwt() ->> 'role', '') = 'authenticated' then
+    if NEW.is_test is not true then
+      select p.is_test into v_profile_is_test
+      from public.profiles p
+      where p.id = NEW.user_id;
 
-    if v_profile_is_test is true then
-      NEW.is_test := true;
+      if v_profile_is_test is true then
+        NEW.is_test := true;
+      end if;
     end if;
   end if;
 
@@ -184,14 +240,20 @@ end;
 $fn$;
 
 comment on function public.contractors_inherit_profile_is_test() is
-  'gh-1961 (review fix, comment 5706433778): BEFORE INSERT trigger fn on '
-  'public.contractors, named to fire after contractors_freeze_privileged_columns '
-  'in Postgres''s alphabetical same-event trigger order. Sets NEW.is_test '
-  'true when the owning profile (profiles.id = NEW.user_id) is_test is true. '
-  'Never sets is_test false. Purely additive -- does not read or modify '
-  'contractors_freeze_privileged_columns() or any other object. Closes the '
-  '#1763 cross-table disagreement that Part 1 alone would otherwise open on '
-  'every UI-created internal test contractor.';
+  'gh-1961 (review fixes, comments 5706433778 and 5707827031): BEFORE INSERT '
+  'trigger fn on public.contractors, named to fire after '
+  'contractors_freeze_privileged_columns in Postgres''s alphabetical '
+  'same-event trigger order. On an end-user authenticated insert only (per '
+  'the caller''s JWT role claim, read via auth.jwt(), not current_user, '
+  'since this function is SECURITY DEFINER), sets NEW.is_test true when the '
+  'owning profile (profiles.id = NEW.user_id) is_test is true. Never sets '
+  'is_test false, and never touches a service-role or system insert''s '
+  'explicit value (round-2 fix: round 1 overrode an explicit service-role '
+  'is_test=false, breaking #564 test-world-symmetry spec S2). Purely '
+  'additive -- does not read or modify contractors_freeze_privileged_columns() '
+  'or any other object. Closes the #1763 cross-table disagreement that '
+  'Part 1 alone would otherwise open on every UI-created internal test '
+  'contractor.';
 
 drop trigger if exists contractors_zz_inherit_profile_is_test on public.contractors;
 

@@ -71,7 +71,7 @@ do $$
 begin
   if current_database() <> 'gh1961_test' then
     raise exception
-      'gh1961 test harness: refusing to run against database %I -- this '
+      'gh1961 test harness: refusing to run against database % -- this '
       'script DROPs and rebuilds the auth/public schemas and must only ever '
       'run against a scratch database literally named gh1961_test. Create '
       'one (createdb -p 5433 gh1961_test) and reconnect.', current_database();
@@ -88,13 +88,26 @@ create table auth.users (
   raw_user_meta_data  jsonb not null default '{}'::jsonb
 );
 
--- Minimal stand-in for GoTrue's auth.jwt() -- contractors_freeze_privileged_columns
--- calls `auth.jwt() ->> 'email'` to exempt the admin account. Returns an
--- empty object here (no email claim), which is exactly the "authenticated,
--- non-admin" caller shape this harness needs to exercise.
+-- The REAL auth.jwt(), verbatim from pg_get_functiondef() against
+-- yeszghaspzwwstvsrioa (2026-09-16) -- review round 2 finding 4: the
+-- previous version of this file stubbed auth.jwt() as a hardcoded '{}',
+-- which meant the JWT-role branch the round-2 B1 cure depends on
+-- (coalesce(auth.jwt()->>'role','') = 'authenticated') was never exercised.
+-- This is the actual function body, not a paraphrase -- it reads whichever
+-- of request.jwt.claim / request.jwt.claims PostgREST has set as a GUC for
+-- the current request, exactly like production. With neither GUC set (the
+-- service-role / no-JWT case), this correctly returns NULL, so
+-- auth.jwt() ->> 'role' is NULL and coalesce(...,'') = '' -- never
+-- 'authenticated'.
 create or replace function auth.jwt() returns jsonb
 language sql stable
-as $$ select '{}'::jsonb $$;
+as $$
+  select
+    coalesce(
+        nullif(current_setting('request.jwt.claim', true), ''),
+        nullif(current_setting('request.jwt.claims', true), '')
+    )::jsonb
+$$;
 
 drop schema if exists public cascade;
 create schema public;
@@ -416,8 +429,14 @@ begin
     raise exception 'FAIL (contractor path, profile half): expected profiles.is_test=true, got %', v_p_is_test;
   end if;
 
+  -- Round-2 note: PostgREST sets BOTH the Postgres role AND the
+  -- request.jwt.claims GUC together for every real request; this harness
+  -- now mirrors that (previously only switched role), because the round-2
+  -- B1 cure keys off auth.jwt() ->> 'role', not current_user.
   set role authenticated;
+  set request.jwt.claims = '{"role":"authenticated"}';
   insert into public.contractors (user_id, company_name) values (v_user_id, 'ctr-probe Test Roofing LLC');
+  reset request.jwt.claims;
   reset role;
 
   select is_test into v_c_is_test from public.contractors where user_id = v_user_id;
@@ -435,7 +454,9 @@ begin
   -- 7. Real-domain contractor signup stays false on both tables (negative control).
   insert into auth.users (email) values ('real.contractor@gmail.com') returning id into v_user_id;
   set role authenticated;
+  set request.jwt.claims = '{"role":"authenticated"}';
   insert into public.contractors (user_id, company_name) values (v_user_id, 'Real Roofing Co');
+  reset request.jwt.claims;
   reset role;
   select p.is_test, c.is_test into v_p_is_test, v_c_is_test
   from public.profiles p join public.contractors c on c.user_id = p.id where p.id = v_user_id;
@@ -461,6 +482,180 @@ begin
   raise notice 'PASS (never-unsets, contractors): service-role-supplied is_test=true survives -> is_test = %', v_c_is_test;
 
   raise notice 'ALL ASSERTIONS PASSED';
+end $$;
+
+-- === 8.5. Review round 2 (comment 5707827031): B1 must not override an =====
+--          explicit service-role is_test=false (#564 test-world-symmetry S2)
+--
+-- Finding B1 (blocking, round 2): the round-1 contractors_inherit_profile_is_test
+-- fired for EVERY inserting role, so a service-role INSERT that explicitly
+-- set is_test=false -- exactly the #564 regression spec's S2 fixture
+-- (tests/e2e/flows/test-world-symmetry.spec.ts: an internal-domain user with
+-- profiles.is_test=true, lines ~160, whose contractor row the service-role
+-- admin client inserts with is_test=false, lines ~175/186, so RLS treats
+-- that contractor as real) -- got silently overridden to true, because the
+-- owning profile was true. That breaks S2: the contractor would then see
+-- seeded test claims it must not see.
+--
+-- Cure (reviewer-tested, comment 5707827031): scope the override to
+-- end-user inserts only, via coalesce(auth.jwt() ->> 'role', '') =
+-- 'authenticated'. NOT current_user -- the function is SECURITY DEFINER, so
+-- current_user inside it is always the function's owner, never the calling
+-- role; auth.jwt() reads the request-scoped GUC PostgREST actually sets,
+-- which does carry the caller's real role.
+--
+-- This block first reinstalls, byte-for-byte, the round-1 function body
+-- from PR #2002 head 03916c200a98811c8ea86b12e38043ec2c58b6e0 -- for this
+-- comparison ONLY, not the shipped function -- reproduces the bug against
+-- it (labeled PRE), then re-sources the real migration file (restoring the
+-- round-2 fixed version -- this also doubles as an extra idempotency
+-- exercise beyond section 9 below) and re-proves the S2 fixture, the
+-- authenticated true/true case, and the real-domain false/false case all
+-- still hold (labeled POST). Sections 5-8 above already run under the
+-- round-2 fixed function (applied in section 2) and are unaffected by this
+-- round's change -- their PASS results are unchanged from round 1, because
+-- round 2 only narrows an ELSE branch that round 1 didn't have; POST here
+-- repeats the two role-authenticated ones anyway so every scenario the
+-- coordinator asked for is visible side by side in one run.
+
+create or replace function public.contractors_inherit_profile_is_test()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $fn$
+declare
+  v_profile_is_test boolean;
+begin
+  if NEW.is_test is not true then
+    select p.is_test into v_profile_is_test
+    from public.profiles p
+    where p.id = NEW.user_id;
+
+    if v_profile_is_test is true then
+      NEW.is_test := true;
+    end if;
+  end if;
+
+  return NEW;
+end;
+$fn$;
+
+do $$
+declare
+  v_s2_user_id uuid;
+  v_c_is_test boolean;
+begin
+  insert into auth.users (email) values ('real-side-564-r2@otterquote-internal.test')
+    returning id into v_s2_user_id;
+
+  -- Service-role admin-client insert: no role switch, no request.jwt.claims
+  -- -- current_user stays this script's superuser and auth.jwt() returns
+  -- NULL, exactly mirroring a service-role key in production -- with an
+  -- EXPLICIT is_test=false, matching S2's own insert.
+  reset request.jwt.claims;
+  insert into public.contractors (user_id, company_name, is_test)
+    values (v_s2_user_id, 'S2 Real Side Co (round-2 repro, pre)', false);
+  select is_test into v_c_is_test from public.contractors where user_id = v_s2_user_id;
+  if v_c_is_test is distinct from true then
+    raise exception 'EXPECTED the round-1 bug to reproduce here (service-role explicit false should have been flipped true by the round-1 function body) -- got %. If this changed, the round-1 body pasted into this test file no longer matches PR #2002 head 03916c20, and the PRE/POST comparison below would be dishonest.', v_c_is_test;
+  end if;
+  raise notice 'PRE (current head 03916c200a98811c8ea86b12e38043ec2c58b6e0, round-1 function): S2 fixture, service-role explicit is_test=false -> contractors.is_test = % -- BUG: flipped true, breaks #564 test-world-symmetry S2', v_c_is_test;
+
+  delete from public.contractors where user_id = v_s2_user_id;
+  delete from public.profiles where id = v_s2_user_id;
+  delete from auth.users where id = v_s2_user_id;
+end $$;
+
+-- Restore the fixed function by re-sourcing the real (round-2) migration
+-- file -- idempotent by construction (create or replace + drop trigger if
+-- exists / create trigger), so this also re-exercises idempotency an extra
+-- time beyond section 9 below.
+\ir gh1961_profiles_is_test_at_creation.sql
+
+do $$
+declare
+  v_s2_user_id uuid;
+  v_ctr_user_id uuid;
+  v_real_user_id uuid;
+  v_p_is_test boolean;
+  v_c_is_test boolean;
+  v_disagreements integer;
+begin
+  -- POST 1: S2 fixture again, round-2 fixed function installed -- must stay false.
+  insert into auth.users (email) values ('real-side-564-r2b@otterquote-internal.test')
+    returning id into v_s2_user_id;
+  reset request.jwt.claims;
+  insert into public.contractors (user_id, company_name, is_test)
+    values (v_s2_user_id, 'S2 Real Side Co (round-2 fixed, post)', false);
+  select is_test into v_c_is_test from public.contractors where user_id = v_s2_user_id;
+  if v_c_is_test is distinct from false then
+    raise exception 'FAIL (round-2 fix, S2 fixture): expected contractors.is_test to stay false on a service-role explicit-false insert, got %', v_c_is_test;
+  end if;
+  raise notice 'POST (round-2 fix): S2 fixture, service-role explicit is_test=false -> contractors.is_test = % -- fixed, #564 test-world-symmetry S2 no longer broken', v_c_is_test;
+
+  -- Clean up the S2 fixture row immediately: by DESIGN it is a permanent
+  -- profiles/contractors is_test disagreement (that is the whole point of
+  -- S2 -- RLS must treat this contractor as real despite its owner being an
+  -- internal-domain profile). Leaving it in place would make the #1763
+  -- DISAGREEMENT_SQL check below fail for a reason that has nothing to do
+  -- with this migration and everything to do with S2 existing on purpose --
+  -- exactly why the pre-flight documents this as a known, accepted
+  -- CI-test-only fixture rather than something this migration should ever
+  -- try to "fix".
+  delete from public.contractors where user_id = v_s2_user_id;
+  delete from public.profiles where id = v_s2_user_id;
+  delete from auth.users where id = v_s2_user_id;
+
+  -- POST 2: authenticated internal contractor still lands true/true.
+  insert into auth.users (email) values ('ctr-probe-r2@otterquote-internal.test') returning id into v_ctr_user_id;
+  select is_test into v_p_is_test from public.profiles where id = v_ctr_user_id;
+
+  set role authenticated;
+  set request.jwt.claims = '{"role":"authenticated"}';
+  insert into public.contractors (user_id, company_name) values (v_ctr_user_id, 'ctr-probe-r2 Test Roofing LLC');
+  reset request.jwt.claims;
+  reset role;
+
+  select is_test into v_c_is_test from public.contractors where user_id = v_ctr_user_id;
+  if v_p_is_test is distinct from true or v_c_is_test is distinct from true then
+    raise exception 'FAIL (round-2 fix, authenticated contractor): expected true/true, got profile=% contractor=%', v_p_is_test, v_c_is_test;
+  end if;
+  raise notice 'POST (round-2 fix): authenticated internal contractor -> profiles.is_test = %, contractors.is_test = % -- still true/true, same as current head', v_p_is_test, v_c_is_test;
+
+  -- POST 3: real-domain authenticated contractor still false/false.
+  insert into auth.users (email) values ('real-contractor-r2@gmail.com') returning id into v_real_user_id;
+  set role authenticated;
+  set request.jwt.claims = '{"role":"authenticated"}';
+  insert into public.contractors (user_id, company_name) values (v_real_user_id, 'Real Roofing Co R2');
+  reset request.jwt.claims;
+  reset role;
+  select p.is_test, c.is_test into v_p_is_test, v_c_is_test
+    from public.profiles p join public.contractors c on c.user_id = p.id where p.id = v_real_user_id;
+  if v_p_is_test is distinct from false or v_c_is_test is distinct from false then
+    raise exception 'FAIL (round-2 fix, real-domain authenticated contractor): expected both false, got profile=% contractor=%', v_p_is_test, v_c_is_test;
+  end if;
+  raise notice 'POST (round-2 fix): real-domain authenticated contractor -> profile.is_test = %, contractors.is_test = % -- still false/false, same as current head', v_p_is_test, v_c_is_test;
+
+  -- POST 4: #1763 DISAGREEMENT_SQL is 0 for the two rows this block just
+  -- created (the authenticated internal contractor and the real-domain
+  -- contractor). Scoped to those two contractor_ids rather than an
+  -- unscoped count(*) over the whole view, because section 8 above
+  -- (unchanged from round 1, "never-unsets, contractors") deliberately
+  -- leaves its own service-role-seeded is_test=true/profile=false row in
+  -- place with no cleanup and was never checked against the disagreement
+  -- view in round 1 either -- that pre-existing, intentional test artifact
+  -- is not this round's concern and scoping avoids a false failure from it.
+  -- (The S2 fixture just above was already deleted for the same reason:
+  -- it is BY DESIGN a permanent disagreement, not a bug.)
+  select count(*) into v_disagreements from public._gh1961_disagreements
+  where contractor_id in (
+    select id from public.contractors where user_id in (v_ctr_user_id, v_real_user_id)
+  );
+  if v_disagreements <> 0 then
+    raise exception 'FAIL (round-2 fix): #1763 DISAGREEMENT_SQL expected 0 rows for the authenticated + real-domain contractors created in this block, got %', v_disagreements;
+  end if;
+  raise notice 'POST (round-2 fix): #1763 DISAGREEMENT_SQL = 0 rows for the authenticated internal contractor and the real-domain contractor -- same as current head';
 end $$;
 
 -- === 9. Idempotency: re-apply the migration a second time ==================
