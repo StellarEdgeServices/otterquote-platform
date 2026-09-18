@@ -79,8 +79,8 @@
   .router-step { display: none; }
   .router-step.active { display: block; animation: fadeUp 0.25s ease both; }
   @keyframes fadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-  .router-step h1 { font-family: var(--font-heading, var(--font-body)); font-size: 1.5rem; color: var(--white); margin-bottom: var(--sp-2); line-height: 1.25; }
-  .router-step p.router-sub { color: var(--slate); font-size: 0.95rem; margin-bottom: var(--sp-5); }
+  .router-step h1, #routerCRoot h1 { font-family: var(--font-heading, var(--font-body)); font-size: 1.5rem; color: var(--white); margin-bottom: var(--sp-2); line-height: 1.25; }
+  .router-step p.router-sub, #routerCRoot p.router-sub { color: var(--slate); font-size: 0.95rem; margin-bottom: var(--sp-5); }
   .form-group { margin-bottom: var(--sp-4); }
   .form-label { display: block; font-weight: 600; color: var(--white); margin-bottom: var(--sp-1); font-size: 0.95rem; }
   .form-label.required::after { content: ' *'; color: var(--red); }
