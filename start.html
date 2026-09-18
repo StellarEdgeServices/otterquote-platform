@@ -574,10 +574,11 @@
   // partner-industry redirect) actually complete the router, bypassing
   // goToStep entirely, so router_step_complete has to fire from there too
   // or the majority of real conversions look like near-100% drop-off.
-  // history.state.step still holds the step being left at the moment this
-  // runs, whether called from goToStep (before its own pushState) or from
-  // redirectTo (which never touches history state itself) -- same value
-  // the popstate handler above reads back.
+  // The screen being left is still the one carrying `active` at the moment
+  // this runs, whether called from goToStep (before its own pushState AND
+  // before its renderStep) or from redirectTo (before its renderStep(3)).
+  // gh-2016: this used to read history.state.step instead -- see the block
+  // below for why that was wrong and why the DOM is now the source.
   // gh-2016 (#2016 comment 5732035538, Ben CEO): the `|| 1` fallback here
   // was arm A's DOM step key. On arm B, DOM step key 1 is the CONTACT
   // screen -- b-contact -- the LAST screen before the redirect, so a
@@ -980,8 +981,12 @@
     // the call that was missing. Safe against double-emission: every
     // redirectTo() call site (Step 2's two role branches, Step 2a's
     // industry branch) is reached directly from a button click, never
-    // after a goToStep() call in the same handler, so history.state.step
-    // has not yet been advanced past the step actually being left here.
+    // after a goToStep() call in the same handler, and this call runs
+    // BEFORE the renderStep(3) just below it -- so the section still
+    // carrying `active` is the step actually being left here.
+    // gh-2016: was "history.state.step has not yet been advanced"; the
+    // step is now read off the DOM, so the ordering that matters is this
+    // call's position ahead of renderStep(3), not ahead of a pushState.
     trackStepComplete();
     renderStep(3);
     if (!preBuilt) {
