@@ -226,14 +226,31 @@
 
   function renderStep(key) {
     Object.keys(steps).forEach(function (k) { steps[k].classList.toggle('active', k === String(key)); });
-    var doneCount = key === 1 ? 0 : (key === 2 || key === '2a') ? 1 : 2;
+    // gh-2016: the 3-segment progress bar is hardcoded to A's screen ORDER,
+    // not just its key names -- on arm B, contact (1) is the middle screen
+    // and role (2) is the first, so A's derivation reads exactly backwards.
+    // Same shape, B's order: first screen 0 done, the two middle screens 1,
+    // the redirect 2.
+    var doneCount = ARM_B
+      ? (key === 2 ? 0 : (key === '2a' || key === 1) ? 1 : 2)
+      : (key === 1 ? 0 : (key === 2 || key === '2a') ? 1 : 2);
+    // gh-2016: swap in B's delivery-framed contact heading as that screen
+    // renders -- it depends on bRole, which is not known at page load.
+    if (ARM_B && String(key) === '1') {
+      var bHeadingEl = steps[1].querySelector('h1');
+      if (bHeadingEl) {
+        bHeadingEl.textContent = (bRole === 'homeowner')
+          ? B_CONTACT_HEADINGS.homeowner
+          : B_CONTACT_HEADINGS.other;
+      }
+    }
     [1, 2, 3].forEach(function (n) { progressEls[n].classList.toggle('done', n <= doneCount); });
     routerError.classList.remove('show');
     window.scrollTo({ top: 0, behavior: 'instant' in window ? 'instant' : 'auto' });
     // gh-2014: fires here (not in goToStep) so a popstate/Back re-render
     // through this same function -- see the ── History: ── block below --
     // counts as a view too, matching back-then-forward funnel semantics.
-    trackRouter('router_step_view', { step: key });
+    trackRouter('router_step_view', { step: stepToken(key) });
   }
 
   function showError(msg) {
@@ -288,6 +305,54 @@
   // (Clarity is still behind its own host/consent gate upstream of the
   // path allowlist).
   try { if (variant && window.clarity) { clarity('set', 'variant', variant); } } catch (e) {}
+
+  // ── gh-2016: arm B (contact-last). B asks #2011's IDENTICAL questions in
+  // inverted order -- role, then industry if referral_partner, then
+  // name/email/phone on the LAST screen, framed as delivery. It is a
+  // REORDER of this same file's four screens, not a second page and not a
+  // second set of components: B renders the very same #step2 / #step2a /
+  // #step1 / #step3 sections A does, in a different sequence. That is
+  // deliberate -- this file's three "fix round" comment blocks record
+  // hard-won fixes (the double-submit guards, the pageshow/e.persisted
+  // bfcache reset, the stale-lead fallback) that a forked copy would drift
+  // away from on the next one. ──
+  var ARM_B = variant === 'b';
+
+  // B's step vocabulary, deliberately non-colliding with A's 1/2/2a/3
+  // (#2016 control 4). The arms ask DIFFERENT questions at the same
+  // ordinal, so a shared token would produce a funnel where arm A's step 2
+  // and arm B's step 2 are the same column -- unreadable for both arms, not
+  // just one. Keyed by the DOM step this file already uses, so the mapping
+  // stays in one place instead of at each emit site.
+  var B_STEP_TOKENS = { 2: 'b-role', '2a': 'b-industry', 1: 'b-contact', 3: 'b-redirect' };
+  function stepToken(key) {
+    return ARM_B ? (B_STEP_TOKENS[key] || key) : key;
+  }
+
+  // The screen a fresh session starts on, AND the screen every reset lands
+  // on (the popstate stranded-guard and the bfcache restore below both
+  // hardcoded 1). A enters on contact (1); B enters on role (2). A literal
+  // 1 in either of those places would, on arm B, throw the visitor FORWARD
+  // onto the contact screen rather than back to the start.
+  var ENTRY_STEP = ARM_B ? 2 : 1;
+
+  // gh-2016: arm B's contact screen is the last screen and is framed as
+  // delivery, so A's entry-screen heading ("Let's get you started") does
+  // not work in that position. Role-aware because by the time this renders
+  // the role is already known, and only a homeowner is receiving quotes --
+  // a contractor or referral partner is not. Both strings are APPROVED
+  // (Ben, CEO, exec:cro authority, Tier B -- #2016 comment 5729566117).
+  // Do not reword either without a fresh approval.
+  var B_CONTACT_HEADINGS = {
+    homeowner: 'Where should we send your quotes?',
+    other: 'Last step — how do we reach you?'
+  };
+
+  // gh-2016: on arm B the role and industry screens run BEFORE any lead row
+  // exists, so the answers are held here and written by the set_lead_role
+  // call that follows the contact-screen insert. Arm A never sets either.
+  var bRole = null;
+  var bIndustry = null;
 
   function cleanAttrValue(raw, max) {
     if (typeof raw !== 'string') return null;
@@ -416,13 +481,39 @@
     });
   }
 
+  // ── gh-2016: arm B's entry screen. Flipped in the DOM here rather than
+  // by calling renderStep() so that the History block just below still
+  // reads the entry screen off `.router-step.active` exactly as it does on
+  // arm A -- and so the load-time view event is emitted once, by that
+  // block, instead of twice. ──
+  if (ARM_B) {
+    Object.keys(steps).forEach(function (k) { steps[k].classList.toggle('active', k === String(ENTRY_STEP)); });
+    // A's step-2 "Back" walks to the contact screen, which on B is still
+    // AHEAD of the visitor. Nothing is behind B's entry screen, so hide it
+    // rather than let it push the visitor forward or out of the router.
+    var bBackTo1 = document.getElementById('backTo1');
+    if (bBackTo1) bBackTo1.style.display = 'none';
+    // B's contact screen is mid-flow, so it gets the same "Back" affordance
+    // every other mid-flow screen on this page already has -- same class,
+    // same handler, same string as the two in markup. Built in JS rather
+    // than added to markup so arm A's DOM stays byte-identical to main:
+    // #2015 requires /start?v=a to render exactly what /start renders.
+    var bBackToRole = document.createElement('button');
+    bBackToRole.type = 'button';
+    bBackToRole.className = 'router-back';
+    bBackToRole.id = 'backToRole';
+    bBackToRole.innerHTML = '&larr; Back';
+    bBackToRole.addEventListener('click', function () { history.back(); });
+    steps[1].insertBefore(bBackToRole, steps[1].firstChild);
+  }
+
   // ── History: Step 2 and Step 2a each get their own history entry (pushed
   // on the way forward) so the browser/hardware back button steps the
   // router backward one screen at a time instead of leaving the page
   // entirely (REVIEW finding: back button exits the router). The on-screen
   // "← Back" buttons call history.back() rather than rendering a step
   // directly, so both paths go through the same popstate handler. ──
-  try { history.replaceState({ step: 1 }, '', location.href); } catch (e) {}
+  try { history.replaceState({ step: ENTRY_STEP }, '', location.href); } catch (e) {}
   // gh-2014: the entry screen is `active` in static markup and renderStep()
   // is never called at load, so the entry view has to be emitted explicitly
   // or the funnel's denominator is missing. Back-navigation into the entry
@@ -447,9 +538,9 @@
   // which is what renderStep already emits for them.
   var initialStepNum = parseInt(initialStepRaw, 10);
   var initialStep = (String(initialStepNum) === String(initialStepRaw)) ? initialStepNum : initialStepRaw;
-  trackRouter('router_step_view', { step: initialStep });
+  trackRouter('router_step_view', { step: stepToken(initialStep) });
   window.addEventListener('popstate', function (e) {
-    var step = (e.state && e.state.step) || 1;
+    var step = (e.state && e.state.step) || ENTRY_STEP;
     // gh-1994 phase 2 (review 5703841330, non-blocking N1): a bfcache
     // restore's pageshow handler (below) nulls leadId and resets to Step 1,
     // but the tab's session history still holds the earlier same-document
@@ -461,9 +552,17 @@
     // them to Step 1. If there is no lead id, Step 2/2a can never submit
     // anyway, so land on Step 1 instead of a step that can only ever show
     // that error.
-    if (!leadId && step !== 1) {
-      try { history.replaceState({ step: 1 }, '', location.pathname + location.search); } catch (e2) {}
-      step = 1;
+    // gh-2016 (#2016 closes-on control 3): on arm B there is NO leadId
+    // until the last screen, so A's "any step but 1 without a lead id is
+    // unreachable" test is true for the whole of arm B -- as written it
+    // would slam every back-navigating B visitor onto the contact screen
+    // (B's step 1), which is forward, not back. On B the role, industry and
+    // contact screens are all designed to work with no lead id; only the
+    // redirect screen is genuinely unusable without one.
+    var strandedStep = ARM_B ? (step === 3) : (step !== 1);
+    if (!leadId && strandedStep) {
+      try { history.replaceState({ step: ENTRY_STEP }, '', location.pathname + location.search); } catch (e2) {}
+      step = ENTRY_STEP;
     }
     renderStep(step);
   });
@@ -478,7 +577,7 @@
   // the popstate handler above reads back.
   function trackStepComplete() {
     var leavingStep = (history.state && history.state.step) || 1;
-    trackRouter('router_step_complete', { step: leavingStep });
+    trackRouter('router_step_complete', { step: stepToken(leavingStep) });
   }
 
   function goToStep(key) {
@@ -512,6 +611,13 @@
 
     if (!sb) { showError('Something went wrong loading the form. Please refresh and try again.'); return; }
 
+    // gh-2016: on arm B this screen is LAST, and the role picked on b-role
+    // decides both the destination and the set_lead_role write that follows
+    // the insert. Only reachable without one by a forward-nav into a stale
+    // history entry -- send the visitor back to the role screen rather than
+    // insert a row whose role could never be set.
+    if (ARM_B && !bRole) { goToStep(2); return; }
+
     step1Submit.disabled = true;
     step1Submit.textContent = 'Please wait…';
 
@@ -540,6 +646,29 @@
       // Meta Lead — same bare call as contractor-join.html:376's precedent,
       // no PII payload.
       try { fbq('track', 'Lead'); } catch (e) {}
+      if (ARM_B) {
+        // gh-2016: the role and industry picked on the earlier screens are
+        // written HERE, immediately after the insert that created the row
+        // they belong to. This is not extra work that arm A avoids:
+        // leads_force_safe_insert_defaults() forces role/partner_industry to
+        // NULL on EVERY raw insert regardless of what the client sends, so
+        // role has to travel through set_lead_role on arm A too. The only
+        // change is that the RPC now runs seconds after the insert instead
+        // of screens later. setRoleWithFallback never rejects -- a failed
+        // role write must not strand a visitor on the router -- so both
+        // .then and .catch proceed to the destination.
+        var bIsPartner = bRole === 'referral_partner';
+        var bDest = bIsPartner ? PARTNER_INDUSTRY_DESTINATIONS[bIndustry] : ROLE_DESTINATIONS[bRole];
+        var bProceed = function () {
+          if (NO_LEAD_ID_DESTINATIONS[bRole]) {
+            redirectTo(appendParams(bDest, collectAttribution()), true);
+          } else {
+            redirectTo(bDest);
+          }
+        };
+        setRoleWithFallback(bRole, bIsPartner ? bIndustry : null).then(bProceed).catch(bProceed);
+        return;
+      }
       goToStep(2);
     }
 
@@ -702,7 +831,24 @@
     btn.addEventListener('click', function () {
       if (btn.disabled) return;
       var role = btn.getAttribute('data-router-role');
-      if (!sb || !leadId) { showError('Something went wrong. Please refresh and start over.'); return; }
+      if (!sb) { showError('Something went wrong. Please refresh and start over.'); return; }
+      // gh-2016: arm B has no lead row yet by design -- leads.email is NOT
+      // NULL at the column level (the CHECK constraint's `email IS NULL OR
+      // ...` is not the authority here), so a contact-NULL row cannot be
+      // inserted on the role screen at all. Hold the answer instead. A
+      // session abandoned here leaves NO row, which is correct: #2011 reads
+      // this test on session replays and gross drop-off, never a p-value,
+      // and drop-off comes from the router_step_view events and Clarity,
+      // neither of which needs a database row. Do NOT "fix" this with a
+      // placeholder email -- a synthetic address would corrupt the same
+      // table the real funnel reports from.
+      if (ARM_B) {
+        bRole = role;
+        trackRouter('router_role_selected', { role: role });
+        goToStep(role === 'referral_partner' ? '2a' : 1);
+        return;
+      }
+      if (!leadId) { showError('Something went wrong. Please refresh and start over.'); return; }
 
       setRoleButtonsDisabled(true);
 
@@ -766,7 +912,15 @@
 
   function selectPartnerIndustry(industry, btn) {
     if (btn && btn.disabled) return;
-    if (!sb || !leadId) { showError('Something went wrong. Please refresh and start over.'); return; }
+    if (!sb) { showError('Something went wrong. Please refresh and start over.'); return; }
+    // gh-2016: held, not written -- same reason as the role buttons above.
+    if (ARM_B) {
+      bIndustry = industry;
+      trackRouter('router_partner_industry', { industry: industry });
+      goToStep(1);
+      return;
+    }
+    if (!leadId) { showError('Something went wrong. Please refresh and start over.'); return; }
     setIndustryButtonsDisabled(true);
 
     function proceed() {
@@ -832,8 +986,8 @@
   // update_lead_contact round-trip and its fallback at all.
   window.addEventListener('pageshow', function (e) {
     if (e.persisted) {
-      try { history.replaceState({ step: 1 }, '', location.pathname + location.search); } catch (e2) {}
-      renderStep(1);
+      try { history.replaceState({ step: ENTRY_STEP }, '', location.pathname + location.search); } catch (e2) {}
+      renderStep(ENTRY_STEP);
       leadId = null;
       try { sessionStorage.removeItem(LEAD_ID_STORAGE_KEY); } catch (e3) {}
     }
