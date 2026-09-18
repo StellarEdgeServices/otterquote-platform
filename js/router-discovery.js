@@ -158,7 +158,156 @@
     // Shared verbatim across all four disqualifier screens (ruled on #2019,
     // Dustin verbatim: "A." -- reproduced, not reworded, on all four).
     dqOpt2: 'Yes, please send me their contact information.',
-    home8Text: 'From our stand point, it seems like you would be a good fit. You are a tech savvy homeowner who wants to save time and money. The next steps are: 1. We will get additional information about your job; 2. We will create a scope of work and submit it to multiple contractors for bids. 3. Their bids will appear here on the site. 4. If one of the bids suits your needs, you select your contractor on the site and schedule your job. There is no obligation to work with us or our contractors. They don\'t get your information unless you select them. Our service is free to homeowners. To get started we need the following information:'
+    home8Text: 'From our stand point, it seems like you would be a good fit. You are a tech savvy homeowner who wants to save time and money. The next steps are: 1. We will get additional information about your job; 2. We will create a scope of work and submit it to multiple contractors for bids. 3. Their bids will appear here on the site. 4. If one of the bids suits your needs, you select your contractor on the site and schedule your job. There is no obligation to work with us or our contractors. They don\'t get your information unless you select them. Our service is free to homeowners. To get started we need the following information:',
+
+    // ── gh-2018: Variant C professional tracks (realtor, insurance,
+    // contractor). Industry-picker heading/sub match start.html's own
+    // #step2a copy verbatim -- this screen is the SAME question asked by
+    // arm A/B's Step 2a, not a rewritten one, per the work order's "reuses
+    // what exists" instruction. Its options are sourced at render time from
+    // window.AgentTypes.CHOOSER_LABELS (js/agent-types.js), never
+    // hand-copied here -- a local label map anywhere in this repo is a CI
+    // failure (tools/agent_type_labels_check.py). ──
+    profEntryHeading: 'What industry are you in?',
+    profEntrySub: 'This tells us which partner program fits you.',
+
+    // ── REALTOR -- Dustin's copy, verbatim (#2011 body; confirmed byte-
+    // for-byte against #2018 comment 5731890771). Ships unaltered: D-1
+    // ("I'd like it to stay") means question 4 carries no fee sentence, no
+    // asterisk, no footnote -- that sentence lives on c-realtor-close only,
+    // where the program is actually described. ──
+    realtorQ1Heading: 'What would you like to get for your clients?',
+    realtorQ1Options: [
+      'Make buying / selling a home easier',
+      'Reduce the cost of items that fail inspection',
+      'Spend less time finding quality contractors',
+      'Get them into their new home quicker'
+    ],
+    realtorQ2Heading: 'What is your biggest concern when a roof fails inspection?',
+    realtorQ2Options: [
+      'The cost of the repair could kill the deal',
+      'It will delay closing',
+      'The amount of time I\'ll need to invest in helping the homeowner find a contractor'
+    ],
+    realtorQ3Heading: 'How much effort do you want to put in to finding contractors for your clients?',
+    realtorQ3Options: [
+      'None. They are on their own.',
+      'I would love to solve their problem with the push of a button',
+      'Calling contractors keeps me from getting bored at little league games'
+    ],
+    // D-1, settled (Dustin, verbatim, #2011): "The rule shouldn't apply to
+    // this. It's not describing or giving terms about our program. Just
+    // asking if they'd like to make $200. I'd like it to stay." No fee
+    // sentence, no asterisk, no footnote on this screen -- do not add one.
+    realtorQ4Heading: 'Would you like an extra $200 for solving your client\'s problems?',
+    realtorQ4Options: ['Yes.', 'Heck yes.', 'Duh.', 'I only use crypto.'],
+    // c-realtor-close: three paragraphs, all Dustin/exec:cro-approved,
+    // rendered as separate <p> elements (not one blob) so each is legible
+    // on its own on the mobile rail this arm targets. Do not reorder,
+    // trim, or merge these -- each paragraph's provenance is independent:
+    //   1. Dustin's close, verbatim INCLUDING the app sentence -- cleared by
+    //      Dustin himself (#2018 comment 5731946855: "Yes. You've built it.
+    //      I use it."). Ships intact, no cut, no hedge, no asterisk.
+    //   2. The one approved referral-fee sentence (D-286/D-301), verbatim,
+    //      character for character -- do not improve it.
+    //   3. The D-266 disclaimer, verbatim, 126 bytes, Dustin-dictated and
+    //      final -- typed out here (not shared via a variable with the
+    //      insurance close below) because both occurrences must be visible
+    //      as literal, human-checkable text on the surfaces where they are
+    //      actually displayed to a user.
+    realtorClose: [
+      'It sounds like you might be a great fit for our realtor referral program. We just need to collect some information from you so we can set up your referral link. After that, you just download the app and it will send your link to any client who needs our services. It costs nothing to join.',
+      '$200 when a homeowner you refer completes a project of $10,000 or more. $50 on the same terms for referrals from partners you recruit.',
+      'Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.'
+    ],
+
+    // ── INSURANCE -- Dustin's copy, verbatim (#2011 body; confirmed
+    // byte-for-byte against #2018 comment 5731890771). D-4 settled, Dustin
+    // verbatim: "I'm going to leave it in there. There are a shocking
+    // number of agents who think this practice is legal and even encourage
+    // it." Questions 5 and 6 ship exactly as supplied -- each option
+    // describes a practice the reader might choose, never a named company
+    // and never a claim that any identified party does it. Question 2's
+    // ranges and question 4's "$500-$1,500"-style dash are real Unicode EN
+    // DASHES (U+2013), copied here directly rather than retyped by hand --
+    // do not let an editor/linter normalize them to a hyphen-minus. The
+    // 2" in question 4 is a straight ASCII double-quote (inches), not a
+    // curly quote. ──
+    insQ1Heading: 'How do your clients feel about saving money?',
+    insQ1Options: ['They love it.', 'They don\'t care.'],
+    insQ2Heading: 'How much do your clients save if they have a hail resistant shingle?',
+    insQ2Options: ['0–10%', '10–20%', '20–30%', '30% or more.'],
+    insQ3Heading: 'How often do you want to replace your clients\' roofs?',
+    insQ3Options: [
+      'As many times as possible. I\'m not signing those checks.',
+      'Fewer claims save everyone money.'
+    ],
+    insQ4Heading: 'What type of shingle would you like on your clients\' roofs?',
+    insQ4Options: [
+      'Cheap contractor grade three tab. Stiff breeze, new roof, right?',
+      'Entry level architectural. Get a new roof every 10 to 15 years.',
+      'Hail resistant architectural. Wind rated to 135 mph and hail resistant up to 2".',
+      'Hail resistant architectural with a 25 year algae warranty. Bullet proof and always looks brand new.'
+    ],
+    insQ5Heading: 'What type of warranty should your clients get?',
+    insQ5Options: [
+      'A contractor backed warranty that is worthless as soon as that company folds.',
+      'Top of the line labor and material warranties backed by both the contractor and the billion dollar, publicly traded companies that made the shingles.'
+    ],
+    insQ6Heading: 'What process will get your clients the best outcome after a storm?',
+    insQ6Options: [
+      'Look for someone who waives deductibles and uses the cheapest materials.',
+      'Sign a contingency agreement with a door knocker and hope they throw in good materials and warranties for free.',
+      'Have multiple contractors compete for the work by offering the best materials and warranties.'
+    ],
+    insQ7Heading: 'What do you currently do to help your clients get the best outcomes from their claim?',
+    insQ7Options: [
+      'I refer my buddy who owns a roofing company',
+      'I tell them to get three bids',
+      'I proactively educate my clients on the discounts available and techniques for getting as much as they can from their insurance claim.'
+    ],
+    // c-ins-close: APPROVED STRING, #2018 comment 5731890771 § 1 -- four
+    // paragraphs, exact order, disclaimer in the BODY above the contact
+    // fields (not a footer, not a disclosure toggle). Deliberately absent
+    // and must STAY absent: the word "realtor" (#2011's original defect
+    // closed this path with "our realtor referral program"), and any app
+    // promise (that sentence belongs to the realtor close only, since
+    // whether an insurance-specific equivalent exists was never verified).
+    insClose: [
+      'It sounds like you could be a good fit for the Otter Quotes referral partner program. We just need a little information from you so we can set up your referral link. When you send it to a client, they get multiple contractors competing for their project instead of taking the first bid that knocks.',
+      '$200 when a homeowner you refer completes a project of $10,000 or more. $50 on the same terms for referrals from partners you recruit.',
+      'Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.',
+      'It costs nothing to join.'
+    ],
+
+    // ── CONTRACTOR -- exec:cro-approved (#2018 comment 5731890771 § 2).
+    // D-266 is NOT required here -- a contractor is not a referral
+    // partner. Screen 5 is the approved platform-fee sentence, verified
+    // true against contractor-bid-form.html's live #feeDollarDisplay +
+    // required acceptance checkbox (issue #2018 comment 5732288772) --
+    // ships whole, including "the exact dollar amount for that job is
+    // shown to you before you submit your bid". No hardcoded "5%" is
+    // added anywhere on this screen: the fee is variable by job type and
+    // value via platform_fee_config, and this sentence states the
+    // structure rather than a figure that would go stale on the first
+    // config change. ──
+    contractorQ1Heading: 'How do you get most of your work today?',
+    contractorQ1Options: [
+      'Door knocking / canvassing',
+      'Referrals and repeat customers',
+      'Leads I buy',
+      'Insurance restoration work'
+    ],
+    contractorQ2Heading: 'What does it cost you to win one job?',
+    contractorQ2Options: ['I don\'t track it', 'Under $500', '$500–$1,500', 'More than $1,500'],
+    contractorQ3Heading: 'How many appointments do you sit before you sign one?',
+    contractorQ3Options: ['1–2', '3–5', 'More than 5'],
+    contractorQ4Heading: 'What would you rather do with that time?',
+    contractorQ4Options: [
+      'Bid jobs that are already scoped and ready',
+      'Keep running appointments to qualify people'
+    ],
+    contractorQ5Text: 'Our jobs arrive pre-scoped: the homeowner is qualified, the measurements are done, and you bid against a known scope. It costs nothing to bid. A platform fee applies only when the homeowner signs your contract, and the exact dollar amount for that job is shown to you before you submit your bid. Does that fit how you want to grow?'
   };
 
   // ── Small DOM helpers. Reuse the CSS classes start.html's own <style>
@@ -514,19 +663,18 @@
       heading: COPY.entryIntro,
       options: [
         { label: COPY.entryOptions[0], disabled: false },
-        // gh-2017: options 2 (professional) and 3 (contractor) are shared
-        // entry-screen copy that #2018 and Draft 5 each consume for their
-        // own tracks -- neither track exists yet, so these two rows render
-        // (the entry screen is shared, per spec) but are inert rather than
-        // leading nowhere on click. Flagged as a QUESTION in this PR: best
-        // guess is that #2018/Draft 5 wire these in directly, since #2017
-        // has no destination to send them to.
-        { label: COPY.entryOptions[1], disabled: true },
-        { label: COPY.entryOptions[2], disabled: true }
+        // gh-2018: options 2 (professional) and 3 (contractor) are now
+        // wired -- the professional row leads to the industry picker
+        // (c-prof-entry), the contractor row leads straight into the
+        // contractor track, since it has exactly one destination and no
+        // industry branch.
+        { label: COPY.entryOptions[1], disabled: false },
+        { label: COPY.entryOptions[2], disabled: false }
       ],
       onSelect: function (idx) {
-        if (idx !== 1) return; // only the homeowner row is enabled/wired
-        go('c-home-1');
+        if (idx === 1) { go('c-home-1'); return; }
+        if (idx === 2) { go('c-prof-entry'); return; }
+        go('c-contractor-1');
       }
     });
   };
@@ -652,6 +800,309 @@
   };
 
   RENDERERS['c-home-8'] = renderContact;
+
+  // ── gh-2018: professional / contractor tracks ──
+
+  // Arm C never lets start.html's own module-level `leadId` get set (every
+  // call site above passes preBuilt=true to bridge.redirectTo for exactly
+  // this reason -- see renderContact's own comment), so the lead id these
+  // tracks obtain from their own insertFreshLead() call has to be appended
+  // by hand rather than relying on redirectTo's internal auto-append.
+  // Mirrors what that internal branch does for a role that is NOT in
+  // NO_LEAD_ID_DESTINATIONS (contractor/referral_partner both qualify --
+  // only homeowner is in that map): ?lead=<uuid> plus attribution.
+  function redirectWithLeadId(destBase, newLeadId) {
+    var sep = destBase.indexOf('?') === -1 ? '?' : '&';
+    var withLead = destBase + sep + 'lead=' + encodeURIComponent(newLeadId);
+    bridge.redirectTo(bridge.appendParams(withLead, bridge.collectAttribution()), true);
+  }
+
+  RENDERERS['c-prof-entry'] = function () {
+    // gh-2018: options sourced from window.AgentTypes.CHOOSER_LABELS
+    // (js/agent-types.js, already loaded by start.html before this module
+    // runs) -- never a local label map. Order matches start.html's own
+    // PARTNER_INDUSTRY_ORDER.
+    var order = ['re_agent', 'insurance_agent', 'home_inspector', 'adjuster', 'other'];
+    var labels = (window.AgentTypes && window.AgentTypes.CHOOSER_LABELS) || {};
+    renderSingleSelect({
+      heading: COPY.profEntryHeading,
+      sub: COPY.profEntrySub,
+      backTo: true,
+      options: order.map(function (code) { return labels[code] || code; }),
+      onSelect: function (idx) {
+        var industry = order[idx - 1];
+        answers.partnerIndustry = industry;
+        if (industry === 're_agent') { go('c-realtor-1'); return; }
+        if (industry === 'insurance_agent') { go('c-ins-1'); return; }
+        // home_inspector (DEFERRED -- #2018: "no copy exists... do not
+        // invent it"), adjuster and other (#2018: "no track is specified")
+        // all fall through here, so no professional is ever dead-ended.
+        // This module has not captured contact yet at this point (unlike
+        // arm A/B, where Step 2a is only reached after Step 1's contact
+        // capture already created the lead row) -- there is no lead id to
+        // attach a role to. Rather than guess a step token this issue does
+        // not define, or fabricate a placeholder email just to call
+        // set_lead_role early, this sends the visitor straight to the same
+        // destination page arm A/B would (attribution only, no lead id) --
+        // that page owns its own signup capture, same as a visitor who
+        // navigated there directly. Flagged as a QUESTION in this PR.
+        emitComplete('c-prof-entry');
+        var dest = bridge.PARTNER_INDUSTRY_DESTINATIONS[industry];
+        bridge.redirectTo(bridge.appendParams(dest, bridge.collectAttribution()), true);
+      }
+    });
+  };
+
+  // ── Shared contact-capture screen for the three tracks below. Same
+  // shape as renderContact (name/email/phone, insertFreshLead once, then
+  // set_lead_role, never strands the visitor if the role write fails) --
+  // its own DOM ids (rdp*) so it cannot collide with renderContact's rd*
+  // ids or the hidden #step1 form's ids elsewhere in the document. ──
+  function renderPartnerContact(cfg) {
+    cfg.introParagraphs.forEach(function (p) { root.appendChild(bodyText(p)); });
+
+    function field(id, labelText, type, extra) {
+      var group = el('div', 'form-group');
+      var label = el('label', 'form-label required', labelText);
+      label.setAttribute('for', id);
+      var input = el('input', 'form-input');
+      input.type = type;
+      input.id = id;
+      if (extra) {
+        Object.keys(extra).forEach(function (k) { input.setAttribute(k, extra[k]); });
+      }
+      var err = el('div', 'field-error');
+      err.id = id + 'Error';
+      group.appendChild(label);
+      group.appendChild(input);
+      group.appendChild(err);
+      root.appendChild(group);
+      return { input: input, err: err };
+    }
+
+    var nameF = field('rdpName', 'Full Name', 'text', { autocomplete: 'name', maxlength: '200' });
+    var emailF = field('rdpEmail', 'Email', 'email', { autocomplete: 'email', inputmode: 'email', maxlength: '320' });
+    var phoneF = field('rdpPhone', 'Phone Number', 'tel', { autocomplete: 'tel', inputmode: 'tel', maxlength: '20' });
+
+    var submitBtn = el('button', 'btn btn-primary router-btn', 'Continue');
+    submitBtn.type = 'button';
+    submitBtn.id = 'rdpContactSubmit';
+    root.appendChild(submitBtn);
+
+    submitBtn.addEventListener('click', function () {
+      nameF.err.textContent = '';
+      emailF.err.textContent = '';
+      phoneF.err.textContent = '';
+
+      var name = nameF.input.value.trim();
+      var email = emailF.input.value.trim();
+      var phoneRaw = phoneF.input.value.trim();
+
+      var hasError = false;
+      if (!name) { nameF.err.textContent = 'Please enter your name.'; hasError = true; }
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { emailF.err.textContent = 'Please enter a valid email address.'; hasError = true; }
+      if (!phoneRaw || !isValidUsPhone(phoneRaw)) { phoneF.err.textContent = 'Please enter a valid 10-digit US phone number.'; hasError = true; }
+      if (hasError) return;
+
+      if (!bridge.sb) { bridge.showError('Something went wrong loading the form. Please refresh and try again.'); return; }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Please wait…';
+
+      var phoneDigits = normalizePhone(phoneRaw);
+
+      bridge.insertFreshLead(name, email, phoneDigits).then(function (newId) {
+        var payload = { p_lead_id: newId, p_role: cfg.role };
+        if (cfg.partnerIndustry) payload.p_partner_industry = cfg.partnerIndustry;
+
+        function proceed() {
+          emitComplete(cfg.completeToken);
+          redirectWithLeadId(cfg.destination, newId);
+        }
+        bridge.sb.rpc('set_lead_role', payload).then(function (res) {
+          if (res && res.error) throw res.error;
+          proceed();
+        }).catch(function (roleErr) {
+          console.error('[router-discovery] set_lead_role failed -- proceeding to destination anyway:', roleErr);
+          proceed();
+        });
+      }).catch(function (err) {
+        console.error('[router-discovery] contact save failed:', err);
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Continue';
+        bridge.showError('Something went wrong saving your info. Please try again.');
+      });
+    });
+  }
+
+  // ── REALTOR track ──
+  RENDERERS['c-realtor-1'] = function () {
+    renderSingleSelect({
+      heading: COPY.realtorQ1Heading,
+      options: COPY.realtorQ1Options,
+      backTo: true,
+      onSelect: function (idx) { answers.realtorQ1 = COPY.realtorQ1Options[idx - 1]; go('c-realtor-2'); }
+    });
+  };
+  RENDERERS['c-realtor-2'] = function () {
+    renderSingleSelect({
+      heading: COPY.realtorQ2Heading,
+      options: COPY.realtorQ2Options,
+      backTo: true,
+      onSelect: function (idx) { answers.realtorQ2 = COPY.realtorQ2Options[idx - 1]; go('c-realtor-3'); }
+    });
+  };
+  RENDERERS['c-realtor-3'] = function () {
+    renderSingleSelect({
+      heading: COPY.realtorQ3Heading,
+      options: COPY.realtorQ3Options,
+      backTo: true,
+      onSelect: function (idx) { answers.realtorQ3 = COPY.realtorQ3Options[idx - 1]; go('c-realtor-4'); }
+    });
+  };
+  RENDERERS['c-realtor-4'] = function () {
+    renderSingleSelect({
+      heading: COPY.realtorQ4Heading,
+      options: COPY.realtorQ4Options,
+      backTo: true,
+      onSelect: function (idx) { answers.realtorQ4 = COPY.realtorQ4Options[idx - 1]; go('c-realtor-close'); }
+    });
+  };
+  RENDERERS['c-realtor-close'] = function () {
+    COPY.realtorClose.forEach(function (p) { root.appendChild(bodyText(p)); });
+    root.appendChild(continueButton('Continue', function () { go('c-realtor-contact'); }, true));
+  };
+  RENDERERS['c-realtor-contact'] = function () {
+    renderPartnerContact({
+      introParagraphs: [],
+      role: 'referral_partner',
+      partnerIndustry: 're_agent',
+      destination: bridge.PARTNER_INDUSTRY_DESTINATIONS.re_agent,
+      completeToken: 'c-realtor-contact'
+    });
+  };
+
+  // ── INSURANCE track ──
+  RENDERERS['c-ins-1'] = function () {
+    renderSingleSelect({
+      heading: COPY.insQ1Heading,
+      options: COPY.insQ1Options,
+      backTo: true,
+      onSelect: function (idx) { answers.insQ1 = COPY.insQ1Options[idx - 1]; go('c-ins-2'); }
+    });
+  };
+  RENDERERS['c-ins-2'] = function () {
+    renderSingleSelect({
+      heading: COPY.insQ2Heading,
+      options: COPY.insQ2Options,
+      backTo: true,
+      // D-5, ruled: this question only asks. No screen anywhere in this
+      // build confirms, corrects, scores or reveals the answer -- the flow
+      // simply advances.
+      onSelect: function (idx) { answers.insQ2 = COPY.insQ2Options[idx - 1]; go('c-ins-3'); }
+    });
+  };
+  RENDERERS['c-ins-3'] = function () {
+    renderSingleSelect({
+      heading: COPY.insQ3Heading,
+      options: COPY.insQ3Options,
+      backTo: true,
+      onSelect: function (idx) { answers.insQ3 = COPY.insQ3Options[idx - 1]; go('c-ins-4'); }
+    });
+  };
+  RENDERERS['c-ins-4'] = function () {
+    renderSingleSelect({
+      heading: COPY.insQ4Heading,
+      options: COPY.insQ4Options,
+      backTo: true,
+      onSelect: function (idx) { answers.insQ4 = COPY.insQ4Options[idx - 1]; go('c-ins-5'); }
+    });
+  };
+  RENDERERS['c-ins-5'] = function () {
+    renderSingleSelect({
+      heading: COPY.insQ5Heading,
+      options: COPY.insQ5Options,
+      backTo: true,
+      onSelect: function (idx) { answers.insQ5 = COPY.insQ5Options[idx - 1]; go('c-ins-6'); }
+    });
+  };
+  RENDERERS['c-ins-6'] = function () {
+    renderSingleSelect({
+      heading: COPY.insQ6Heading,
+      options: COPY.insQ6Options,
+      backTo: true,
+      onSelect: function (idx) { answers.insQ6 = COPY.insQ6Options[idx - 1]; go('c-ins-7'); }
+    });
+  };
+  RENDERERS['c-ins-7'] = function () {
+    renderSingleSelect({
+      heading: COPY.insQ7Heading,
+      options: COPY.insQ7Options,
+      backTo: true,
+      onSelect: function (idx) { answers.insQ7 = COPY.insQ7Options[idx - 1]; go('c-ins-close'); }
+    });
+  };
+  RENDERERS['c-ins-close'] = function () {
+    COPY.insClose.forEach(function (p) { root.appendChild(bodyText(p)); });
+    root.appendChild(continueButton('Continue', function () { go('c-ins-contact'); }, true));
+  };
+  RENDERERS['c-ins-contact'] = function () {
+    renderPartnerContact({
+      introParagraphs: [],
+      role: 'referral_partner',
+      partnerIndustry: 'insurance_agent',
+      destination: bridge.PARTNER_INDUSTRY_DESTINATIONS.insurance_agent,
+      completeToken: 'c-ins-contact'
+    });
+  };
+
+  // ── CONTRACTOR track. D-266 is NOT required -- a contractor is not a
+  // referral partner. ──
+  RENDERERS['c-contractor-1'] = function () {
+    renderSingleSelect({
+      heading: COPY.contractorQ1Heading,
+      options: COPY.contractorQ1Options,
+      backTo: true,
+      onSelect: function (idx) { answers.contractorQ1 = COPY.contractorQ1Options[idx - 1]; go('c-contractor-2'); }
+    });
+  };
+  RENDERERS['c-contractor-2'] = function () {
+    renderSingleSelect({
+      heading: COPY.contractorQ2Heading,
+      options: COPY.contractorQ2Options,
+      backTo: true,
+      onSelect: function (idx) { answers.contractorQ2 = COPY.contractorQ2Options[idx - 1]; go('c-contractor-3'); }
+    });
+  };
+  RENDERERS['c-contractor-3'] = function () {
+    renderSingleSelect({
+      heading: COPY.contractorQ3Heading,
+      options: COPY.contractorQ3Options,
+      backTo: true,
+      onSelect: function (idx) { answers.contractorQ3 = COPY.contractorQ3Options[idx - 1]; go('c-contractor-4'); }
+    });
+  };
+  RENDERERS['c-contractor-4'] = function () {
+    renderSingleSelect({
+      heading: COPY.contractorQ4Heading,
+      options: COPY.contractorQ4Options,
+      backTo: true,
+      onSelect: function (idx) { answers.contractorQ4 = COPY.contractorQ4Options[idx - 1]; go('c-contractor-5'); }
+    });
+  };
+  RENDERERS['c-contractor-5'] = function () {
+    root.appendChild(bodyText(COPY.contractorQ5Text));
+    root.appendChild(continueButton('Continue', function () { go('c-contractor-contact'); }, true));
+  };
+  RENDERERS['c-contractor-contact'] = function () {
+    renderPartnerContact({
+      introParagraphs: [],
+      role: 'contractor',
+      partnerIndustry: null,
+      destination: bridge.ROLE_DESTINATIONS.contractor,
+      completeToken: 'c-contractor-contact'
+    });
+  };
 
   function init(injectedBridge, mountEl) {
     bridge = injectedBridge;
