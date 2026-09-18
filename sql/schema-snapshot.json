@@ -583,7 +583,8 @@
     "utm_term",
     "fbclid",
     "gclid",
-    "converted_user_id"
+    "converted_user_id",
+    "variant"
   ],
   "material_catalog": [
     "id",
