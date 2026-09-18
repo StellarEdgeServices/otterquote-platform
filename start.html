@@ -39,13 +39,93 @@
 <meta property="og:site_name" content="Otter Quotes">
 <meta property="og:image" content="https://otterquote.com/img/otter-logo.svg">
 
+<!-- gh-2033: /start assigns the A/B/C variant itself, and must do it BEFORE
+     any analytics call that can carry `variant` -- js/ga-gate.js's own
+     gtag('js', ...) call and its Clarity vendor snippet are both downstream
+     of this tag, so this has to load first or an early GA4/Clarity hit is
+     unattributable for good (GA4's variant/step custom dimensions are not
+     retroactive). Precedence: an explicit, validated ?v= in the URL wins;
+     else a persisted per-visitor assignment (localStorage, cookie
+     fallback); else uniform-random 1/3 across a/b/c. Persists the result to
+     BOTH localStorage and a first-party cookie (oq_variant_v1, versioned so
+     a future re-randomisation is a key bump) and rewrites the URL via
+     history.replaceState -- never pushState -- preserving every existing
+     query parameter (UTMs above all). Every storage/URL touch is its own
+     try/catch: 39% of this traffic is the Facebook in-app webview, where
+     localStorage access throws, and one throwing step must never break the
+     page or block the others. window.__oqVariant is set before the
+     replaceState call so the main IIFE further down this file (see its
+     gh-2014/gh-2033 variant read) still has a source if replaceState itself
+     throws. Deliberately uses /^[abc]$/.test() everywhere, never an
+     object-literal lookup ({a:1,b:1,c:1}[raw]) -- that walks the prototype
+     chain and lets ?v=constructor / ?v=__proto__ through (see the
+     gh-2014 fix round 4 comment on the main IIFE's own variant read). -->
+<script>
+(function () {
+  var KEY = 'oq_variant_v1';
+  var ARM_RE = /^[abc]$/;
+
+  function validArm(v) {
+    var s = String(v == null ? '' : v).toLowerCase();
+    return ARM_RE.test(s) ? s : null;
+  }
+
+  function readCookie(name) {
+    var m = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+    return m ? decodeURIComponent(m[1]) : null;
+  }
+
+  // 1. Explicit ?v= wins over anything persisted.
+  var urlArm = null;
+  try {
+    urlArm = validArm(new URLSearchParams(window.location.search).get('v'));
+  } catch (e) {}
+  var arm = urlArm;
+
+  // 2. Else a persisted assignment -- localStorage first, cookie fallback,
+  //    each in its own try/catch so a throw on one still lets the other run.
+  if (!arm) {
+    var fromStorage = null;
+    try { fromStorage = validArm(window.localStorage.getItem(KEY)); } catch (e) {}
+    var fromCookie = null;
+    if (!fromStorage) {
+      try { fromCookie = validArm(readCookie(KEY)); } catch (e) {}
+    }
+    arm = fromStorage || fromCookie;
+  }
+
+  // 3. Else assign at random, uniform 1/3 across a/b/c.
+  if (!arm) {
+    arm = ['a', 'b', 'c'][Math.floor(Math.random() * 3)];
+  }
+
+  // Expose before replaceState so a downstream throw there still leaves a
+  // usable source for the main IIFE's own variant read.
+  window.__oqVariant = arm;
+
+  // 4. Persist to BOTH stores, each independently guarded.
+  try { window.localStorage.setItem(KEY, arm); } catch (e) {}
+  try {
+    var secure = window.location.protocol === 'https:' ? '; Secure' : '';
+    document.cookie = KEY + '=' + arm + '; path=/; max-age=' + (180 * 24 * 60 * 60) +
+      '; SameSite=Lax' + secure;
+  } catch (e) {}
+
+  // 5. Rewrite the URL, preserving every existing query parameter.
+  try {
+    var params = new URLSearchParams(window.location.search);
+    params.set('v', arm);
+    var newUrl = window.location.pathname + '?' + params.toString() + window.location.hash;
+    history.replaceState(history.state, '', newUrl);
+  } catch (e) {}
+})();
+</script>
 <!-- Google Analytics / Meta Pixel / Clarity — gh-1994 item 4: same two
      include files every public page loads, in the same order, no per-page
      loader (js/ga-gate.js's own module docstring: "the ONLY place gtag.js
      is requested"; js/meta-pixel-gate.js: "the ONLY place fbevents.js is
-     requested"). Clarity rides the GA4 gate's own host check; this page is
-     not on js/ga-gate.js's CLARITY_ALLOWED_PATHS default-deny list yet
-     (out of this PR's file grant -- flagged under QUESTIONS in the PR). -->
+     requested"). Clarity rides the GA4 gate's own host check; js/ga-gate.js's
+     CLARITY_ALLOWED_PATHS carries '/start' (gh-2014). -->
 <script src="/js/ga-gate.js"></script>
 <script src="/js/meta-pixel-gate.js"></script>
 <script>gtag('config', 'G-D1Y1TLGEFY');</script>
@@ -313,7 +393,14 @@
   // A regex test never consults the prototype chain, so this is not
   // vulnerable to the same class of bypass. ──
   var rawVariant = (new URLSearchParams(window.location.search).get('v') || '').toLowerCase();
-  var variant = /^[abc]$/.test(rawVariant) ? rawVariant : null;
+  // gh-2033: fall back to window.__oqVariant -- set by the head-inline
+  // assignment script (before js/ga-gate.js) -- when the URL's own ?v= comes
+  // back empty. Covers the case where that script's history.replaceState
+  // call itself threw and the URL was never rewritten to carry the arm it
+  // already persisted. Same /^[abc]$/ allowlist shape as above; never an
+  // object-literal lookup, for the reason in the fix-round-4 comment above.
+  var variant = /^[abc]$/.test(rawVariant) ? rawVariant
+              : (/^[abc]$/.test(String(window.__oqVariant || '')) ? String(window.__oqVariant) : null);
   // gh-2014: js/ga-gate.js's CLARITY_ALLOWED_PATHS now carries '/start', so
   // this call is live rather than a no-op against a closed gate. Guarded on
   // both a recognised variant and window.clarity actually having loaded
