@@ -245,6 +245,10 @@
     [1, 2, 3].forEach(function (n) { progressEls[n].classList.toggle('done', n <= doneCount); });
     routerError.classList.remove('show');
     window.scrollTo({ top: 0, behavior: 'instant' in window ? 'instant' : 'auto' });
+    // gh-2014: fires here (not in goToStep) so a popstate/Back re-render
+    // through this same function -- see the ── History: ── block below --
+    // counts as a view too, matching back-then-forward funnel semantics.
+    trackRouter('router_step_view', { step: key });
   }
 
   function showError(msg) {
@@ -272,8 +276,33 @@
   // with a clean URL). Mirrors attribution-core.ts's own sanitising
   // (printable-only, trimmed, length-capped) without importing that TS
   // module into a plain script tag. ──
-  var ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid'];
+  var ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid', 'v'];
   var CLICK_ID_KEYS = { fbclid: true, gclid: true };
+
+  // ── gh-2014: A/B/C front-door variant, read once at page load into a
+  // closed-over var. Sanitized against a fixed allowlist BEFORE any use --
+  // an unrecognised value becomes null rather than reaching a downstream
+  // write, since a future CHECK constraint on leads.variant would turn a
+  // bad value into a destroyed lead (anon has INSERT but no UPDATE policy
+  // on leads). Variants B/C route entirely client-side through
+  // renderStep/goToStep within this one document, so a single page-load
+  // read is sufficient for the whole session.
+  // gh-2014 fix round 4: deliberately NOT an object-literal lookup
+  // (`{a:1,b:1,c:1}[rawVariant]`) -- that walks the prototype chain, so
+  // ?v=constructor and ?v=__proto__ both read as truthy own-property-less
+  // hits and bypass the allowlist entirely (reproduced: VARIANT_VALUES
+  // ={a:1,b:1,c:1}; VARIANT_VALUES['constructor'] and
+  // VARIANT_VALUES['__proto__'] are both truthy Object.prototype members).
+  // A regex test never consults the prototype chain, so this is not
+  // vulnerable to the same class of bypass. ──
+  var rawVariant = (new URLSearchParams(window.location.search).get('v') || '').toLowerCase();
+  var variant = /^[abc]$/.test(rawVariant) ? rawVariant : null;
+  // gh-2014: js/ga-gate.js's CLARITY_ALLOWED_PATHS now carries '/start', so
+  // this call is live rather than a no-op against a closed gate. Guarded on
+  // both a recognised variant and window.clarity actually having loaded
+  // (Clarity is still behind its own host/consent gate upstream of the
+  // path allowlist).
+  try { if (variant && window.clarity) { clarity('set', 'variant', variant); } } catch (e) {}
 
   function cleanAttrValue(raw, max) {
     if (typeof raw !== 'string') return null;
@@ -300,7 +329,29 @@
       var fromCookie = cookieFt ? cleanAttrValue(cookieFt[k], max) : null;
       out[k] = fromUrl || fromCookie || null;
     });
+    // gh-2014 fix round 2: 'v' must carry the SANITIZED arm here, not the
+    // raw value the loop above just computed -- cleanAttrValue() only
+    // trims/strips/caps, it never runs the /^[abc]$/ allowlist check above,
+    // so out.v could otherwise be arbitrary printable garbage (from either the
+    // oq_ft cookie fallback) forwarded via appendParams() onto
+    // contractor-join.html / partner-*.html / the homeowner get-started
+    // URL. Overriding unconditionally here covers both source paths in
+    // one place: an unrecognised or absent arm forwards null (dropped by
+    // appendParams, which skips falsy values), never garbage.
+    out.v = variant;
     return out;
+  }
+
+  // ── gh-2014: local event helper -- start.html is a static root-level
+  // file outside react-app/ (PR #1960's track() helper lives at
+  // react-app/app/lib/track.ts and is unreachable from here), so every
+  // router event stamps `variant` itself via this wrapper instead. ──
+  function trackRouter(name, extra) {
+    try {
+      var p = extra || {};
+      if (variant) { p.variant = variant; }
+      gtag('event', name, p);
+    } catch (e) {}
   }
 
   // ── Phone validation: exactly 10 US digits after stripping formatting,
@@ -386,6 +437,31 @@
   // "← Back" buttons call history.back() rather than rendering a step
   // directly, so both paths go through the same popstate handler. ──
   try { history.replaceState({ step: 1 }, '', location.href); } catch (e) {}
+  // gh-2014: the entry screen is `active` in static markup and renderStep()
+  // is never called at load, so the entry view has to be emitted explicitly
+  // or the funnel's denominator is missing. Back-navigation into the entry
+  // step still emits a second view through renderStep, which is the
+  // intended semantic. Reads whichever .router-step carries `active` at
+  // load (fix round 2) instead of hardcoding {step: 1} -- arm A's entry is
+  // Step 1 today, but #2016 (arm B) and #2017 (arm C) each mark a
+  // different screen as their entry point, and a hardcoded 1 would
+  // fabricate a step-1 view for a screen nobody saw once those variants
+  // ship. Falls back to 1 if no active section is found.
+  var initialStepEl = document.querySelector('.router-step.active');
+  var initialStepRaw = initialStepEl ? initialStepEl.getAttribute('data-step') : 1;
+  // gh-2014 fix round 3: getAttribute() always returns a string, but
+  // renderStep()'s numeric steps (1, 2, 3 -- see history.replaceState({step:
+  // 1}) just above and the popstate handler's `|| 1` below) are JS numbers.
+  // GA4/BigQuery splits event_params.value across string_value and
+  // int_value by the param's JS type, so the same screen emitting a string
+  // here and a number from renderStep would split this event's denominator
+  // across two columns. Coerce numeric-looking tokens ("1", "2", "3") back
+  // to numbers to match renderStep's type for the same screen; leave
+  // non-numeric tokens ("2a", and future arm-B/C entry tokens) as strings,
+  // which is what renderStep already emits for them.
+  var initialStepNum = parseInt(initialStepRaw, 10);
+  var initialStep = (String(initialStepNum) === String(initialStepRaw)) ? initialStepNum : initialStepRaw;
+  trackRouter('router_step_view', { step: initialStep });
   window.addEventListener('popstate', function (e) {
     var step = (e.state && e.state.step) || 1;
     // gh-1994 phase 2 (review 5703841330, non-blocking N1): a bfcache
@@ -405,7 +481,22 @@
     }
     renderStep(step);
   });
+  // gh-2014 fix round 2: shared by goToStep AND redirectTo -- redirectTo()
+  // is how Step 2 (homeowner/contractor role redirects) and Step 2a (every
+  // partner-industry redirect) actually complete the router, bypassing
+  // goToStep entirely, so router_step_complete has to fire from there too
+  // or the majority of real conversions look like near-100% drop-off.
+  // history.state.step still holds the step being left at the moment this
+  // runs, whether called from goToStep (before its own pushState) or from
+  // redirectTo (which never touches history state itself) -- same value
+  // the popstate handler above reads back.
+  function trackStepComplete() {
+    var leavingStep = (history.state && history.state.step) || 1;
+    trackRouter('router_step_complete', { step: leavingStep });
+  }
+
   function goToStep(key) {
+    trackStepComplete();
     try { history.pushState({ step: key }, '', location.href); } catch (e) {}
     renderStep(key);
   }
@@ -459,7 +550,7 @@
         return;
       }
       // GA4 — no PII, per #1994 item 4.
-      try { gtag('event', 'router_contact_submitted'); } catch (e) {}
+      trackRouter('router_contact_submitted');
       // Meta Lead — same bare call as contractor-join.html:376's precedent,
       // no PII payload.
       try { fbq('track', 'Lead'); } catch (e) {}
@@ -631,7 +722,7 @@
 
       function proceed() {
         setRoleButtonsDisabled(false);
-        try { gtag('event', 'router_role_selected', { role: role }); } catch (e) {}
+        trackRouter('router_role_selected', { role: role });
         if (role === 'referral_partner') {
           goToStep('2a');
           return;
@@ -694,7 +785,7 @@
 
     function proceed() {
       setIndustryButtonsDisabled(false);
-      try { gtag('event', 'router_partner_industry', { industry: industry }); } catch (e) {}
+      trackRouter('router_partner_industry', { industry: industry });
       redirectTo(PARTNER_INDUSTRY_DESTINATIONS[industry]);
     }
 
@@ -716,6 +807,13 @@
   // (e.g. the oq_ft cookie / record_first_touch_attribution path), same as
   // if the visitor had landed there directly with a tagged URL. ──
   function redirectTo(dest, preBuilt) {
+    // gh-2014 fix round 2: see trackStepComplete's own comment -- this is
+    // the call that was missing. Safe against double-emission: every
+    // redirectTo() call site (Step 2's two role branches, Step 2a's
+    // industry branch) is reached directly from a button click, never
+    // after a goToStep() call in the same handler, so history.state.step
+    // has not yet been advanced past the step actually being left here.
+    trackStepComplete();
     renderStep(3);
     if (!preBuilt) {
       var sep = dest.indexOf('?') === -1 ? '?' : '&';
