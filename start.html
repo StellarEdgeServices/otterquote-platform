@@ -441,7 +441,19 @@
   // fabricate a step-1 view for a screen nobody saw once those variants
   // ship. Falls back to 1 if no active section is found.
   var initialStepEl = document.querySelector('.router-step.active');
-  var initialStep = initialStepEl ? initialStepEl.getAttribute('data-step') : 1;
+  var initialStepRaw = initialStepEl ? initialStepEl.getAttribute('data-step') : 1;
+  // gh-2014 fix round 3: getAttribute() always returns a string, but
+  // renderStep()'s numeric steps (1, 2, 3 -- see history.replaceState({step:
+  // 1}) just above and the popstate handler's `|| 1` below) are JS numbers.
+  // GA4/BigQuery splits event_params.value across string_value and
+  // int_value by the param's JS type, so the same screen emitting a string
+  // here and a number from renderStep would split this event's denominator
+  // across two columns. Coerce numeric-looking tokens ("1", "2", "3") back
+  // to numbers to match renderStep's type for the same screen; leave
+  // non-numeric tokens ("2a", and future arm-B/C entry tokens) as strings,
+  // which is what renderStep already emits for them.
+  var initialStepNum = parseInt(initialStepRaw, 10);
+  var initialStep = (String(initialStepNum) === String(initialStepRaw)) ? initialStepNum : initialStepRaw;
   trackRouter('router_step_view', { step: initialStep });
   window.addEventListener('popstate', function (e) {
     var step = (e.state && e.state.step) || 1;
