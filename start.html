@@ -286,10 +286,17 @@
   // bad value into a destroyed lead (anon has INSERT but no UPDATE policy
   // on leads). Variants B/C route entirely client-side through
   // renderStep/goToStep within this one document, so a single page-load
-  // read is sufficient for the whole session. ──
-  var VARIANT_VALUES = { a: 1, b: 1, c: 1 };
+  // read is sufficient for the whole session.
+  // gh-2014 fix round 4: deliberately NOT an object-literal lookup
+  // (`{a:1,b:1,c:1}[rawVariant]`) -- that walks the prototype chain, so
+  // ?v=constructor and ?v=__proto__ both read as truthy own-property-less
+  // hits and bypass the allowlist entirely (reproduced: VARIANT_VALUES
+  // ={a:1,b:1,c:1}; VARIANT_VALUES['constructor'] and
+  // VARIANT_VALUES['__proto__'] are both truthy Object.prototype members).
+  // A regex test never consults the prototype chain, so this is not
+  // vulnerable to the same class of bypass. ──
   var rawVariant = (new URLSearchParams(window.location.search).get('v') || '').toLowerCase();
-  var variant = VARIANT_VALUES[rawVariant] ? rawVariant : null;
+  var variant = /^[abc]$/.test(rawVariant) ? rawVariant : null;
   // gh-2014: js/ga-gate.js's CLARITY_ALLOWED_PATHS now carries '/start', so
   // this call is live rather than a no-op against a closed gate. Guarded on
   // both a recognised variant and window.clarity actually having loaded
@@ -324,8 +331,8 @@
     });
     // gh-2014 fix round 2: 'v' must carry the SANITIZED arm here, not the
     // raw value the loop above just computed -- cleanAttrValue() only
-    // trims/strips/caps, it never checks VARIANT_VALUES, so out.v could
-    // otherwise be arbitrary printable garbage (from either the URL or the
+    // trims/strips/caps, it never runs the /^[abc]$/ allowlist check above,
+    // so out.v could otherwise be arbitrary printable garbage (from either the
     // oq_ft cookie fallback) forwarded via appendParams() onto
     // contractor-join.html / partner-*.html / the homeowner get-started
     // URL. Overriding unconditionally here covers both source paths in
