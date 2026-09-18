@@ -407,7 +407,8 @@
       utm_content: attr.utm_content,
       utm_term: attr.utm_term,
       fbclid: attr.fbclid,
-      gclid: attr.gclid
+      gclid: attr.gclid,
+      variant: variant
     }).then(function (res) {
       if (res && res.error) throw res.error;
       setStoredLeadId(newId);
