@@ -185,6 +185,14 @@
         <p>Taking you to the right place&hellip;</p>
       </div>
     </section>
+
+    <!-- ═══════════ Variant C — discovery engine mount (gh-2017) ═══════════ -->
+    <!-- Empty by design: js/router-discovery.js owns all rendering inside
+         this element once loaded. Hidden by default so it has zero effect
+         on arms A/B; unhidden only inside this file's own variant === 'c'
+         branch below, at the same point that branch hides #step1/#step2/
+         #step2a/#step3. -->
+    <div id="routerCRoot" hidden></div>
   </div>
 </main>
 
@@ -225,6 +233,13 @@
   var routerError = document.getElementById('routerError');
 
   function renderStep(key) {
+    // gh-2017: arm C's own screen container is what renders for the whole
+    // of that session; this function's DOM toggling and view-tracking are
+    // for the shared #step1/#step2/#step2a/#step3 sections only, which
+    // stay hidden the entire time, including the one indirect path here --
+    // redirectTo() below calls renderStep(3), and the module calls
+    // redirectTo() by reference per the bridge contract.
+    if (ARM_C) return;
     Object.keys(steps).forEach(function (k) { steps[k].classList.toggle('active', k === String(key)); });
     // gh-2016: the 3-segment progress bar is hardcoded to A's screen ORDER,
     // not just its key names -- on arm B, contact (1) is the middle screen
@@ -317,6 +332,18 @@
   // bfcache reset, the stale-lead fallback) that a forked copy would drift
   // away from on the next one. ──
   var ARM_B = variant === 'b';
+
+  // gh-2017: arm C (the Sandler discovery engine) does not reuse this
+  // file's steps/renderStep/trackStepComplete machinery at all --
+  // js/router-discovery.js owns its own ordered-array sequencer and its
+  // own rendering, reached through the bridge assembled near the end of
+  // this IIFE. ARM_C exists so the few machinery functions this file still
+  // runs on every variant unconditionally -- the load-time view emission
+  // below, renderStep(), trackStepComplete() -- can no-op instead of
+  // emitting an arm-A-shaped event or showing an arm-A section on top of
+  // arm C's own screen. redirectTo() (below) is called BY the module
+  // itself, so its two calls into the now-guarded functions matter here.
+  var ARM_C = variant === 'c';
 
   // B's step vocabulary, deliberately non-colliding with A's 1/2/2a/3
   // (#2016 control 4). The arms ask DIFFERENT questions at the same
@@ -507,6 +534,24 @@
     steps[1].insertBefore(bBackToRole, steps[1].firstChild);
   }
 
+  // gh-2017: arm C hides the four shared sections and reveals this file's
+  // one new element (#routerCRoot, its only other markup change for this
+  // arm) BEFORE the History block just below reads `.router-step.active`
+  // from static markup -- #step1 carries that class in the raw HTML
+  // regardless of variant, so without this the History block's read still
+  // finds it and fires one stray router_step_view for arm A's token 1
+  // before js/router-discovery.js ever renders anything. The 3-dot
+  // progress bar is hidden too: it is hardcoded to arm A/B's 3-screen
+  // shape and would otherwise show three empty, meaningless dots above
+  // arm C's own 8-screen flow.
+  var routerCRoot = document.getElementById('routerCRoot');
+  if (ARM_C) {
+    Object.keys(steps).forEach(function (k) { steps[k].classList.remove('active'); });
+    var routerProgressEl = document.getElementById('routerProgress');
+    if (routerProgressEl) routerProgressEl.hidden = true;
+    if (routerCRoot) routerCRoot.hidden = false;
+  }
+
   // ── History: Step 2 and Step 2a each get their own history entry (pushed
   // on the way forward) so the browser/hardware back button steps the
   // router backward one screen at a time instead of leaving the page
@@ -526,6 +571,12 @@
   // ship. gh-2016: no active section found is genuinely indeterminate --
   // emit no view at all rather than guess (see trackStepComplete below).
   var initialStepEl = document.querySelector('.router-step.active');
+  // gh-2017: kept as the sibling PR (#2029, gh-2016) rewrote it -- its own
+  // `if (initialStepEl)` guard already covers arm C for free. The
+  // hide-block above removes `active` from every one of #step1/#step2/
+  // #step2a/#step3 for arm C before this line runs, so initialStepEl is
+  // null on an arm C session and this whole block already emits nothing,
+  // with no arm-C-specific check needed here.
   if (initialStepEl) {
     var initialStepRaw = initialStepEl.getAttribute('data-step');
     // gh-2014 fix round 3: getAttribute() always returns a string, but
@@ -599,6 +650,16 @@
   // arm-agnostic by construction (it reads the arm's own sequence, not an
   // assumed order) and needs no change for arm C (#2017).
   function trackStepComplete() {
+    // gh-2017: kept as the sibling PR (#2029, gh-2016) rewrote it -- its
+    // own DOM-active-count guard already covers arm C for free, same
+    // reasoning as the load-time view emit above. The hide-block removes
+    // `active` from all four shared sections for arm C, so `activeEls`
+    // here is always empty on an arm C session (reached indirectly via
+    // redirectTo(), which the module calls by reference) and this
+    // function already emits nothing, with no arm-C-specific check
+    // needed. js/router-discovery.js emits its own router_step_complete
+    // for every arm C screen it leaves, through the bridged trackRouter,
+    // using its own step tokens.
     var activeEls = document.querySelectorAll('.router-step.active');
     if (activeEls.length !== 1) return;
     var raw = activeEls[0].getAttribute('data-step');
@@ -1026,6 +1087,46 @@
       try { sessionStorage.removeItem(LEAD_ID_STORAGE_KEY); } catch (e3) {}
     }
   });
+
+  // gh-2017: arm C's bridge, assembled LAST -- every var it reads below
+  // (ROLE_DESTINATIONS, NO_LEAD_ID_DESTINATIONS, PARTNER_INDUSTRY_
+  // DESTINATIONS) is a `var X = {...}` assignment further up this same
+  // IIFE, not a hoisted `function` declaration, so building this object
+  // any earlier would capture `undefined` for each of them. sb,
+  // trackRouter, collectAttribution, insertFreshLead, appendParams,
+  // redirectTo and showError are all `function` declarations and would be
+  // safe earlier, but there is no reason to split the object in two.
+  // js/router-discovery.js is loaded by injecting a <script> element --
+  // never a static <script src> tag in this document -- so arms A and B
+  // never fetch or execute it at all (#2015: /start?v=a must render
+  // exactly what /start renders).
+  if (ARM_C) {
+    var routerCBridge = {
+      sb: sb,
+      trackRouter: trackRouter,
+      collectAttribution: collectAttribution,
+      insertFreshLead: insertFreshLead,
+      appendParams: appendParams,
+      redirectTo: redirectTo,
+      showError: showError,
+      ROLE_DESTINATIONS: ROLE_DESTINATIONS,
+      PARTNER_INDUSTRY_DESTINATIONS: PARTNER_INDUSTRY_DESTINATIONS,
+      NO_LEAD_ID_DESTINATIONS: NO_LEAD_ID_DESTINATIONS
+    };
+    var routerCScript = document.createElement('script');
+    routerCScript.src = 'js/router-discovery.js';
+    routerCScript.onload = function () {
+      if (window.RouterDiscovery && typeof window.RouterDiscovery.init === 'function') {
+        window.RouterDiscovery.init(routerCBridge, routerCRoot);
+      } else {
+        showError('Something went wrong loading this page. Please refresh and try again.');
+      }
+    };
+    routerCScript.onerror = function () {
+      showError('Something went wrong loading this page. Please refresh and try again.');
+    };
+    document.body.appendChild(routerCScript);
+  }
 })();
 </script>
 
