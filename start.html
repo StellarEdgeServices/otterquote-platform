@@ -420,6 +420,11 @@
   // "← Back" buttons call history.back() rather than rendering a step
   // directly, so both paths go through the same popstate handler. ──
   try { history.replaceState({ step: 1 }, '', location.href); } catch (e) {}
+  // gh-2014: Step 1 is `active` in static markup and renderStep() is never
+  // called at load, so the entry view has to be emitted explicitly or the
+  // funnel's denominator is missing. Back-navigation into Step 1 still emits
+  // a second view through renderStep, which is the intended semantic.
+  trackRouter('router_step_view', { step: 1 });
   window.addEventListener('popstate', function (e) {
     var step = (e.state && e.state.step) || 1;
     // gh-1994 phase 2 (review 5703841330, non-blocking N1): a bfcache
