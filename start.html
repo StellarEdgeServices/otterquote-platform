@@ -322,6 +322,16 @@
       var fromCookie = cookieFt ? cleanAttrValue(cookieFt[k], max) : null;
       out[k] = fromUrl || fromCookie || null;
     });
+    // gh-2014 fix round 2: 'v' must carry the SANITIZED arm here, not the
+    // raw value the loop above just computed -- cleanAttrValue() only
+    // trims/strips/caps, it never checks VARIANT_VALUES, so out.v could
+    // otherwise be arbitrary printable garbage (from either the URL or the
+    // oq_ft cookie fallback) forwarded via appendParams() onto
+    // contractor-join.html / partner-*.html / the homeowner get-started
+    // URL. Overriding unconditionally here covers both source paths in
+    // one place: an unrecognised or absent arm forwards null (dropped by
+    // appendParams, which skips falsy values), never garbage.
+    out.v = variant;
     return out;
   }
 
@@ -420,11 +430,19 @@
   // "← Back" buttons call history.back() rather than rendering a step
   // directly, so both paths go through the same popstate handler. ──
   try { history.replaceState({ step: 1 }, '', location.href); } catch (e) {}
-  // gh-2014: Step 1 is `active` in static markup and renderStep() is never
-  // called at load, so the entry view has to be emitted explicitly or the
-  // funnel's denominator is missing. Back-navigation into Step 1 still emits
-  // a second view through renderStep, which is the intended semantic.
-  trackRouter('router_step_view', { step: 1 });
+  // gh-2014: the entry screen is `active` in static markup and renderStep()
+  // is never called at load, so the entry view has to be emitted explicitly
+  // or the funnel's denominator is missing. Back-navigation into the entry
+  // step still emits a second view through renderStep, which is the
+  // intended semantic. Reads whichever .router-step carries `active` at
+  // load (fix round 2) instead of hardcoding {step: 1} -- arm A's entry is
+  // Step 1 today, but #2016 (arm B) and #2017 (arm C) each mark a
+  // different screen as their entry point, and a hardcoded 1 would
+  // fabricate a step-1 view for a screen nobody saw once those variants
+  // ship. Falls back to 1 if no active section is found.
+  var initialStepEl = document.querySelector('.router-step.active');
+  var initialStep = initialStepEl ? initialStepEl.getAttribute('data-step') : 1;
+  trackRouter('router_step_view', { step: initialStep });
   window.addEventListener('popstate', function (e) {
     var step = (e.state && e.state.step) || 1;
     // gh-1994 phase 2 (review 5703841330, non-blocking N1): a bfcache
@@ -444,12 +462,22 @@
     }
     renderStep(step);
   });
-  function goToStep(key) {
-    // gh-2014: capture the step being LEFT before pushState overwrites
-    // history.state -- the current state's step is still the prior screen
-    // at this point, same value the popstate handler above reads back.
+  // gh-2014 fix round 2: shared by goToStep AND redirectTo -- redirectTo()
+  // is how Step 2 (homeowner/contractor role redirects) and Step 2a (every
+  // partner-industry redirect) actually complete the router, bypassing
+  // goToStep entirely, so router_step_complete has to fire from there too
+  // or the majority of real conversions look like near-100% drop-off.
+  // history.state.step still holds the step being left at the moment this
+  // runs, whether called from goToStep (before its own pushState) or from
+  // redirectTo (which never touches history state itself) -- same value
+  // the popstate handler above reads back.
+  function trackStepComplete() {
     var leavingStep = (history.state && history.state.step) || 1;
     trackRouter('router_step_complete', { step: leavingStep });
+  }
+
+  function goToStep(key) {
+    trackStepComplete();
     try { history.pushState({ step: key }, '', location.href); } catch (e) {}
     renderStep(key);
   }
@@ -760,6 +788,13 @@
   // (e.g. the oq_ft cookie / record_first_touch_attribution path), same as
   // if the visitor had landed there directly with a tagged URL. ──
   function redirectTo(dest, preBuilt) {
+    // gh-2014 fix round 2: see trackStepComplete's own comment -- this is
+    // the call that was missing. Safe against double-emission: every
+    // redirectTo() call site (Step 2's two role branches, Step 2a's
+    // industry branch) is reached directly from a button click, never
+    // after a goToStep() call in the same handler, so history.state.step
+    // has not yet been advanced past the step actually being left here.
+    trackStepComplete();
     renderStep(3);
     if (!preBuilt) {
       var sep = dest.indexOf('?') === -1 ? '?' : '&';
