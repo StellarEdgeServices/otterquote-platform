@@ -175,9 +175,6 @@
     // option 1 (D-2, ruled) -- option 2 QUALIFIES and continues to c-home-8.
     dq7Text: 'Otter Quotes is an online service, so everything happens here on the site. If you would rather have a sales rep in your living room before you decide, we would be happy to send you the contact information for contractors who do business that way.',
     dq7Opt1: 'I\'ll give the online version a try - let\'s continue.',
-    // Shared verbatim across all four disqualifier screens (ruled on #2019,
-    // Dustin verbatim: "A." -- reproduced, not reworded, on all four).
-    dqOpt2: 'Yes, please send me their contact information.',
     home8Text: 'From our stand point, it seems like you would be a good fit. You are a tech savvy homeowner who wants to save time and money. The next steps are: 1. We will get additional information about your job; 2. We will create a scope of work and submit it to multiple contractors for bids. 3. Their bids will appear here on the site. 4. If one of the bids suits your needs, you select your contractor on the site and schedule your job. There is no obligation to work with us or our contractors. They don\'t get your information unless you select them. Our service is free to homeowners. To get started we need the following information:',
 
     // ── gh-2018: Variant C professional tracks (realtor, insurance,
@@ -497,74 +494,6 @@
     root.appendChild(wrap);
   }
 
-  // ── The carve-out (draft #2019 owns the outbound message; this module
-  // owns the capture + the router_disqualified wiring only). Renders IN
-  // PLACE inside the current disqualifier screen -- no second screen, no
-  // new tab, one field. ──
-  function renderCarveOutCapture(container) {
-    while (container.firstChild) container.removeChild(container.firstChild);
-    var group = el('div', 'form-group');
-    var label = el('label', 'form-label required', 'Email');
-    label.setAttribute('for', 'rdCarveOutEmail');
-    var input = el('input', 'form-input');
-    input.type = 'email';
-    input.id = 'rdCarveOutEmail';
-    input.setAttribute('autocomplete', 'email');
-    input.setAttribute('inputmode', 'email');
-    input.placeholder = 'jane@example.com';
-    input.maxLength = 320;
-    var err = el('div', 'field-error');
-    err.id = 'rdCarveOutEmailError';
-    group.appendChild(label);
-    group.appendChild(input);
-    group.appendChild(err);
-    var submitBtn = el('button', 'btn btn-primary router-btn', 'Send it to me');
-    submitBtn.type = 'button';
-    container.appendChild(group);
-    container.appendChild(submitBtn);
-
-    submitBtn.addEventListener('click', function () {
-      err.textContent = '';
-      var email = input.value.trim();
-      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        err.textContent = 'Please enter a valid email address.';
-        return;
-      }
-      submitBtn.disabled = true;
-      submitBtn.textContent = 'Please wait…';
-      if (!bridge.sb) {
-        bridge.showError('Something went wrong loading the form. Please refresh and try again.');
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Send it to me';
-        return;
-      }
-      // gh-2017: name and phone are both nullable on public.leads (verified
-      // live, 2026-09-18) -- only email is nullable=NO. insertFreshLead is
-      // called exactly as start.html's own call sites call it (name, email,
-      // phoneDigits), just with null for the two fields this screen never
-      // asks for. This does NOT call set_lead_role -- a disqualified
-      // visitor asking for a referral is not a qualified homeowner lead
-      // reaching a destination, and set_lead_role's OLD.role IS NULL ->
-      // NEW.role IS NOT NULL transition is what fires the EXISTING
-      // notify-admin-new-homeowner trigger (supabase/migrations/
-      // 20260917010217_gh1994_router_lead_alert.sql) -- a trigger built and
-      // worded for a qualified role destination, not this carve-out. A
-      // dedicated admin alert for this row shape is real, out-of-scope
-      // backend work (outside this issue's file whitelist of
-      // js/router-discovery.js + start.html) -- flagged as a QUESTION in
-      // this PR, not built here.
-      bridge.insertFreshLead(null, email, null).then(function () {
-        while (container.firstChild) container.removeChild(container.firstChild);
-        container.appendChild(bodyText('Thanks — we have your email on file.'));
-      }).catch(function (insertErr) {
-        console.error('[router-discovery] carve-out email insert failed:', insertErr);
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Send it to me';
-        bridge.showError('Something went wrong saving your info. Please try again.');
-      });
-    });
-  }
-
   // ── Disqualifier screens (4, 5, 6, 7's dq siblings): the same large
   // tappable rows as every qualifying screen -- never a modal, never
   // confirm(), which traps focus in the Facebook in-app webview (this
@@ -574,13 +503,7 @@
     root.appendChild(textEl);
     var wrap = optionsWrap();
     var opt1 = optionRow(cfg.opt1, 1, { onActivate: function () { cfg.onContinue(); } });
-    var opt2 = optionRow(COPY.dqOpt2, 2, {
-      onActivate: function () {
-        renderCarveOutCapture(wrap);
-      }
-    });
     wrap.appendChild(opt1);
-    wrap.appendChild(opt2);
     root.appendChild(wrap);
   }
 
