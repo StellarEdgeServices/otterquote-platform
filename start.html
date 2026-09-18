@@ -245,6 +245,10 @@
     [1, 2, 3].forEach(function (n) { progressEls[n].classList.toggle('done', n <= doneCount); });
     routerError.classList.remove('show');
     window.scrollTo({ top: 0, behavior: 'instant' in window ? 'instant' : 'auto' });
+    // gh-2014: fires here (not in goToStep) so a popstate/Back re-render
+    // through this same function -- see the ── History: ── block below --
+    // counts as a view too, matching back-then-forward funnel semantics.
+    trackRouter('router_step_view', { step: key });
   }
 
   function showError(msg) {
@@ -272,8 +276,26 @@
   // with a clean URL). Mirrors attribution-core.ts's own sanitising
   // (printable-only, trimmed, length-capped) without importing that TS
   // module into a plain script tag. ──
-  var ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid'];
+  var ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid', 'v'];
   var CLICK_ID_KEYS = { fbclid: true, gclid: true };
+
+  // ── gh-2014: A/B/C front-door variant, read once at page load into a
+  // closed-over var. Sanitized against a fixed allowlist BEFORE any use --
+  // an unrecognised value becomes null rather than reaching a downstream
+  // write, since a future CHECK constraint on leads.variant would turn a
+  // bad value into a destroyed lead (anon has INSERT but no UPDATE policy
+  // on leads). Variants B/C route entirely client-side through
+  // renderStep/goToStep within this one document, so a single page-load
+  // read is sufficient for the whole session. ──
+  var VARIANT_VALUES = { a: 1, b: 1, c: 1 };
+  var rawVariant = (new URLSearchParams(window.location.search).get('v') || '').toLowerCase();
+  var variant = VARIANT_VALUES[rawVariant] ? rawVariant : null;
+  // gh-2014: js/ga-gate.js's CLARITY_ALLOWED_PATHS now carries '/start', so
+  // this call is live rather than a no-op against a closed gate. Guarded on
+  // both a recognised variant and window.clarity actually having loaded
+  // (Clarity is still behind its own host/consent gate upstream of the
+  // path allowlist).
+  try { if (variant && window.clarity) { clarity('set', 'variant', variant); } } catch (e) {}
 
   function cleanAttrValue(raw, max) {
     if (typeof raw !== 'string') return null;
@@ -301,6 +323,18 @@
       out[k] = fromUrl || fromCookie || null;
     });
     return out;
+  }
+
+  // ── gh-2014: local event helper -- start.html is a static root-level
+  // file outside react-app/ (PR #1960's track() helper lives at
+  // react-app/app/lib/track.ts and is unreachable from here), so every
+  // router event stamps `variant` itself via this wrapper instead. ──
+  function trackRouter(name, extra) {
+    try {
+      var p = extra || {};
+      if (variant) { p.variant = variant; }
+      gtag('event', name, p);
+    } catch (e) {}
   }
 
   // ── Phone validation: exactly 10 US digits after stripping formatting,
@@ -406,6 +440,11 @@
     renderStep(step);
   });
   function goToStep(key) {
+    // gh-2014: capture the step being LEFT before pushState overwrites
+    // history.state -- the current state's step is still the prior screen
+    // at this point, same value the popstate handler above reads back.
+    var leavingStep = (history.state && history.state.step) || 1;
+    trackRouter('router_step_complete', { step: leavingStep });
     try { history.pushState({ step: key }, '', location.href); } catch (e) {}
     renderStep(key);
   }
@@ -459,7 +498,7 @@
         return;
       }
       // GA4 — no PII, per #1994 item 4.
-      try { gtag('event', 'router_contact_submitted'); } catch (e) {}
+      trackRouter('router_contact_submitted');
       // Meta Lead — same bare call as contractor-join.html:376's precedent,
       // no PII payload.
       try { fbq('track', 'Lead'); } catch (e) {}
@@ -631,7 +670,7 @@
 
       function proceed() {
         setRoleButtonsDisabled(false);
-        try { gtag('event', 'router_role_selected', { role: role }); } catch (e) {}
+        trackRouter('router_role_selected', { role: role });
         if (role === 'referral_partner') {
           goToStep('2a');
           return;
@@ -694,7 +733,7 @@
 
     function proceed() {
       setIndustryButtonsDisabled(false);
-      try { gtag('event', 'router_partner_industry', { industry: industry }); } catch (e) {}
+      trackRouter('router_partner_industry', { industry: industry });
       redirectTo(PARTNER_INDUSTRY_DESTINATIONS[industry]);
     }
 

@@ -184,6 +184,7 @@
     '/ref-insurance',
     '/ref-re',
     '/repair-intake',
+    '/start',
     '/stellar-edge',
     '/terms',
     '/tools',
