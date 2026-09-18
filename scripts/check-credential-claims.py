@@ -170,8 +170,30 @@ PATTERNS = [
     # not match this pair -- verified against the repo's actual usage
     # (scripts/check-credential-claims.test.py plants a "pre-approval"
     # negative alongside the positive control).
-    # adjective-before-noun, mirroring PATTERNS[1]'s shape
-    re.compile(r"\b(?:approved|endorsed|certified)\s+"
+    # adjective-before-noun, mirroring PATTERNS[1]'s shape.
+    #
+    # gh-2020 fix round 1 (Kevin, orchestrator verify pass): the leading \b
+    # that gh-2020's body specifies is NOT sufficient to exclude
+    # "pre-approved". A hyphen is a non-word character, so "pre-approved
+    # contractors" carries a word boundary immediately before "approved" and
+    # the \b form matches it. Measured, not assumed:
+    #
+    #   re.search(r"\b(?:approved|...)\s+(?:contractors?|...)",
+    #             "our pre-approved contractors")   ->   "approved contractors"
+    #
+    # That is the exact false positive this issue forbids in its own words --
+    # "pre-approval / pre-approved must not match -- verify that explicitly,
+    # because \bapproved\b matches inside pre-approved in many naive
+    # spellings" -- and it would have fired on D-210's real three-artifact
+    # pre-approval flow and on contractor-pre-approval.html. The planted
+    # negative in the sibling .test.py did not catch it because its fixture
+    # said "pre-approval process" and "pre-approved to bid", neither of which
+    # is followed by a contractor-class noun; the fixture now carries the
+    # real hazard phrase.
+    #
+    # (?<![\w-]) forbids a preceding word character OR hyphen, which keeps
+    # every genuine D-104 violation and drops the compound forms.
+    re.compile(r"(?<![\w-])(?:approved|endorsed|certified)\s+"
                r"(?:local\s+|roofing\s+)?(?:contractors?|professionals?|roofers?|bidders?)\b",
                re.IGNORECASE),
     # predicate form, mirroring PATTERNS[2]'s shape
