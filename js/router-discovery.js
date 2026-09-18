@@ -81,6 +81,26 @@
   var activeToken = null;
   var stack = [];
 
+  // Review fix (PR #2032, comment 5732876137): router_disqualified fires
+  // AT MOST ONCE per (session, disqualifying source screen), keyed here by
+  // that source token. router_step_view is NOT deduped -- a view is a view,
+  // and arm A/B deliberately re-emit views on back-then-forward (see
+  // start.html's renderStep comment: "counts as a view too, matching
+  // back-then-forward funnel semantics"). Only the disqualified signal is
+  // once-per-encounter, because it is the number the whole variant test is
+  // judged on (which question kills the session) -- a visitor who lands on
+  // a dq screen, goes Back, then re-enters the same dq screen did not
+  // disqualify twice, and counting it twice fabricates a result at this
+  // traffic volume (~3 real sessions/day). A dedupe set keyed on the
+  // source token was chosen over a forward/back flag threaded through
+  // show()/goBack(): it guarantees the once-per-encounter invariant for
+  // EVERY path that can re-enter a dq screen, not just the one Back button
+  // this file currently wires up -- including any future screen that adds
+  // a way back past a dq screen and forward through the same disqualifying
+  // answer again. A flag would only have covered today's one reachable
+  // path. Do not "fix" this back into an unconditional emit in show().
+  var disqualifiedFired = {};
+
   // Maps a disqualifier screen's own view token to the ORIGINAL screen
   // token that fired it -- the value router_disqualified's `step` carries
   // (D-2 control: option 1 on c-home-7 -> router_disqualified step=c-home-7,
@@ -395,9 +415,14 @@
   function show(token) {
     activeToken = token;
     clearRoot();
+    // Always re-emitted, including on a Back-then-forward re-entry -- see
+    // disqualifiedFired's own comment above for why this one is NOT deduped.
     emitView(token);
     var dqSource = DQ_SOURCE[token];
-    if (dqSource) emitDisqualified(dqSource);
+    if (dqSource && !disqualifiedFired[dqSource]) {
+      disqualifiedFired[dqSource] = true;
+      emitDisqualified(dqSource);
+    }
     RENDERERS[token]();
   }
 
