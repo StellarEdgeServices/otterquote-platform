@@ -523,22 +523,25 @@
   // Step 1 today, but #2016 (arm B) and #2017 (arm C) each mark a
   // different screen as their entry point, and a hardcoded 1 would
   // fabricate a step-1 view for a screen nobody saw once those variants
-  // ship. Falls back to 1 if no active section is found.
+  // ship. gh-2016: no active section found is genuinely indeterminate --
+  // emit no view at all rather than guess (see trackStepComplete below).
   var initialStepEl = document.querySelector('.router-step.active');
-  var initialStepRaw = initialStepEl ? initialStepEl.getAttribute('data-step') : 1;
-  // gh-2014 fix round 3: getAttribute() always returns a string, but
-  // renderStep()'s numeric steps (1, 2, 3 -- see history.replaceState({step:
-  // 1}) just above and the popstate handler's `|| 1` below) are JS numbers.
-  // GA4/BigQuery splits event_params.value across string_value and
-  // int_value by the param's JS type, so the same screen emitting a string
-  // here and a number from renderStep would split this event's denominator
-  // across two columns. Coerce numeric-looking tokens ("1", "2", "3") back
-  // to numbers to match renderStep's type for the same screen; leave
-  // non-numeric tokens ("2a", and future arm-B/C entry tokens) as strings,
-  // which is what renderStep already emits for them.
-  var initialStepNum = parseInt(initialStepRaw, 10);
-  var initialStep = (String(initialStepNum) === String(initialStepRaw)) ? initialStepNum : initialStepRaw;
-  trackRouter('router_step_view', { step: stepToken(initialStep) });
+  if (initialStepEl) {
+    var initialStepRaw = initialStepEl.getAttribute('data-step');
+    // gh-2014 fix round 3: getAttribute() always returns a string, but
+    // renderStep()'s numeric steps (1, 2, 3 -- see history.replaceState({step:
+    // 1}) just above and the popstate handler's `|| 1` below) are JS numbers.
+    // GA4/BigQuery splits event_params.value across string_value and
+    // int_value by the param's JS type, so the same screen emitting a string
+    // here and a number from renderStep would split this event's denominator
+    // across two columns. Coerce numeric-looking tokens ("1", "2", "3") back
+    // to numbers to match renderStep's type for the same screen; leave
+    // non-numeric tokens ("2a", and future arm-B/C entry tokens) as strings,
+    // which is what renderStep already emits for them.
+    var initialStepNum = parseInt(initialStepRaw, 10);
+    var initialStep = (String(initialStepNum) === String(initialStepRaw)) ? initialStepNum : initialStepRaw;
+    trackRouter('router_step_view', { step: stepToken(initialStep) });
+  }
   window.addEventListener('popstate', function (e) {
     var step = (e.state && e.state.step) || ENTRY_STEP;
     // gh-1994 phase 2 (review 5703841330, non-blocking N1): a bfcache
@@ -575,8 +578,34 @@
   // runs, whether called from goToStep (before its own pushState) or from
   // redirectTo (which never touches history state itself) -- same value
   // the popstate handler above reads back.
+  // gh-2016 (#2016 comment 5732035538, Ben CEO): the `|| 1` fallback here
+  // was arm A's DOM step key. On arm B, DOM step key 1 is the CONTACT
+  // screen -- b-contact -- the LAST screen before the redirect, so a
+  // completion with no history.state fired router_step_complete tagged
+  // b-contact: the screen the visitor did NOT leave. No control caught it,
+  // since stepToken() maps it to a valid arm-B token and no arm-A key
+  // leaks. That inflated arm B's measured completion and moved drop-off
+  // away from wherever it actually happens, in the instrument the whole
+  // three-arm Meta test is judged on.
+  // Ben's ruling: "Do not default to 1. Derive the leaving step from the
+  // arm's own ordered sequence -- the screen actually being left -- and
+  // when it genuinely cannot be determined, emit nothing rather than a
+  // guess. A missing event is a hole we can see; a wrong event is a hole
+  // we cannot."
+  // Both call sites (goToStep, redirectTo) run this while the leaving
+  // screen still carries `active`, and renderStep() keeps `active` on
+  // exactly one .router-step at a time -- reading it off the DOM is
+  // arm-agnostic by construction (it reads the arm's own sequence, not an
+  // assumed order) and needs no change for arm C (#2017).
   function trackStepComplete() {
-    var leavingStep = (history.state && history.state.step) || 1;
+    var activeEls = document.querySelectorAll('.router-step.active');
+    if (activeEls.length !== 1) return;
+    var raw = activeEls[0].getAttribute('data-step');
+    if (raw === null || raw === '') return;
+    // gh-2014 fix round 3's coercion (see the load-time view emit above):
+    // match renderStep's JS-number type for numeric steps, string for '2a'.
+    var n = parseInt(raw, 10);
+    var leavingStep = (String(n) === String(raw)) ? n : raw;
     trackRouter('router_step_complete', { step: stepToken(leavingStep) });
   }
 
