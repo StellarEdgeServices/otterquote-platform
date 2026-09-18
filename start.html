@@ -2,22 +2,7 @@
 <html lang="en">
 <head>
 <!-- Sentry Error Monitoring -->
-<!-- gh-2010: window.sentryOnLoad is predeclared BEFORE the loader <script>
-     tag below, instead of calling Sentry.onLoad(...) in a script block
-     placed AFTER it. Sentry's loader (js.sentry-cdn.com/<key>.min.js) calls
-     window.sentryOnLoad itself once the full SDK has finished loading, so
-     this ordering never references the `Sentry` global before it is
-     guaranteed to exist. The previous ordering -- loader tag, then
-     `Sentry.onLoad(...)` in the next script -- threw
-     "ReferenceError: Sentry is not defined" at /start:9 whenever the
-     loader's own network fetch was still in flight when that next script
-     ran (issue #2010): Sentry was never initialised, so no failure on this
-     page -- including the leads-insert RLS failure this issue is about --
-     ever reached it. This is Sentry's own documented pattern for exactly
-     this race, not an invented one; every other static page in this repo
-     (index.html, login.html, contractor-join.html, etc.) still uses the
-     older Sentry.onLoad(...) ordering carrying the same latent race -- out
-     of scope here per the issue's narrow authorization (this page only). -->
+<!-- gh-2010: predeclare sentryOnLoad before the loader tag; the loader invokes it once the SDK is ready. -->
 <script>
   window.sentryOnLoad = function () {
     Sentry.init({
