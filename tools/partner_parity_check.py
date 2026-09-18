@@ -102,6 +102,17 @@ REACT_TWINS = {
     "refer": "refer-a-friend.html",
 }
 
+# gh-2020 / D-266: js/router-discovery.js is a NON-html, non-React partner
+# surface (draft #2019's file, three partner/referral-fee funnels -- realtor,
+# insurance, inspector/PM -- inside one router module). A .js module matches
+# no ALL_PAGES entry and no partner-insurance*.html glob, so without this
+# registration it is invisible to every check in this file, exactly the way
+# /refer was invisible before REACT_TWINS existed. May not exist in this tree
+# yet (see check_js_d266_surfaces) -- its absence is tolerated, not a failure.
+D266_JS_SURFACES = [
+    "js/router-discovery.js",
+]
+
 # A react-app route that builds or displays a referral / recruit link is a
 # referral funnel surface. If one shows up that REACT_TWINS has no entry for,
 # say so instead of silently skipping it -- an unmapped funnel surface is
@@ -228,6 +239,140 @@ def find_unmapped_react_funnels() -> list[str]:
     return findings
 
 
+def check_js_d266_surfaces() -> tuple[list[str], list[str]]:
+    """D-266 disclaimer check for JS-module partner surfaces (gh-2020).
+
+    js/router-discovery.js is draft #2019's file and may not exist in this
+    tree yet -- its absence is TOLERATED (not a failure) so this guard can
+    land ahead of that draft, per gh-2020's build order. Once it exists, it
+    is held to the same verbatim-disclaimer bar as any HTML page via
+    check_d266_disclaimer (whitespace-normalized, so wrapped JS template
+    strings still pass).
+    """
+    failures: list[str] = []
+    notes: list[str] = []
+    for surface in D266_JS_SURFACES:
+        path = REPO_ROOT / surface
+        if not path.is_file():
+            notes.append(
+                f"{surface}: not present in this tree yet -- skipped, not failed "
+                f"(gh-2020 registers it ahead of draft #2019 landing it)"
+            )
+            continue
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        if not check_d266_disclaimer(text):
+            failures.append(
+                f"{surface}: missing D-266 disclaimer verbatim text (d266_js_surface)"
+            )
+    return failures, notes
+
+
+# gh-2020 / D-266: the static analogue of find_unmapped_react_funnels() above.
+# js/router-discovery.js was invisible to every check in this file -- not in
+# ALL_PAGES, not matched by the partner-insurance*.html glob, not a React
+# route -- because a .js module is not an .html page. This closes that CLASS
+# of gap, not just this one instance: any non-React, non-partner-* file
+# carrying referral-fee-shaped content with no entry anywhere in the checked
+# set is reported here, the same way an unmapped React funnel is reported
+# above.
+#
+# Scope is root-level *.html and top-level js/*.js, matching this file's
+# existing convention that "root-level *.html is only what main publishes
+# TODAY" (see the React-parity docstring above): blog/ and guides/ are
+# consumer-education content, never a funnel surface, and admin-*.html is
+# internal staff-only tooling that can never be partner-facing, so neither
+# is a source of D-266 risk worth scanning here.
+STATIC_FUNNEL_RE = re.compile(r"\$200\b|referral[\s-]?link|referral[\s-]?fee", re.IGNORECASE)
+
+# (relative path -> reason) -- files that match STATIC_FUNNEL_RE today but are
+# not themselves a partner/referral-fee enrollment funnel, so D-266
+# registration does not apply. Written-reason convention mirrors
+# scripts/check-credential-claims.py's ALLOWLIST -- never add an entry here
+# without one, and never add one to quiet a real gap.
+STATIC_FUNNEL_EXEMPT = {
+    "contractor-login.html": (
+        "Contractor-facing sales copy contrasting OtterQuote with buying ads "
+        "(\"no truck, gas, or referral fees needed\") -- addressed to "
+        "contractors, not a partner referral-fee enrollment funnel."
+    ),
+    "faq.html": (
+        "Homeowner-facing FAQ answer stating that a referral program exists "
+        "and how it is paid -- informational, not itself an enrollment "
+        "funnel a partner would go through."
+    ),
+    "privacy.html": (
+        "Privacy-policy disclosure describing what a referrer sees about "
+        "your project after they refer you -- legal data-sharing text, not "
+        "a partner funnel."
+    ),
+    "recruit.html": (
+        "Client-side redirect router (title: \"Recruit Router\") with no "
+        "visible referral-fee copy of its own; the match is a JS "
+        "implementation comment about recruit-code attribution plumbing, "
+        "not rendered funnel text."
+    ),
+    "ref.html": (
+        "Short-link redirect/resolver page; the match is its \"Referral link "
+        "not found\" error state, not fee content."
+    ),
+    "partners.html": (
+        "Finding surfaced by this build, not fixed by it (out of gh-2020's "
+        "two named items): this is the profession-picker hub the vertical "
+        "pages link out from, and it already carries the D-266 disclaimer "
+        "verbatim -- this file's own \"Note on matching\" above already "
+        "documents partners.html wrapping the sentence across lines -- but "
+        "it is in neither ALL_PAGES nor D266_PAGES, so nothing here actually "
+        "verifies that today. Structurally the same class of gap this build "
+        "closes for router-discovery.js; left open and reported rather than "
+        "folded in, since gh-2020 scopes this build to exactly two items."
+    ),
+    "js/auth.js": (
+        "Source-code comment describing referral-status tracking logic "
+        "(\"Advance referral status ... if homeowner arrived via referral "
+        "link\") -- not rendered funnel copy."
+    ),
+    "js/ga-gate.js": (
+        "Source-code comment using \"referral link\" as an example while "
+        "explaining analytics-gating behavior -- not rendered funnel copy."
+    ),
+}
+
+
+def _static_funnel_checked_set() -> set[str]:
+    """Every surface this script already verifies, by stem or relative path."""
+    checked = set(ALL_PAGES) | set(D266_PAGES) | set(D266_JS_SURFACES)
+    checked |= {Path(twin).stem for twin in REACT_TWINS.values()}
+    return checked
+
+
+def find_unmapped_static_funnels() -> list[str]:
+    """Non-React, non-partner-* files that look like a referral-fee funnel
+    but are registered nowhere in this script (gh-2020)."""
+    checked = _static_funnel_checked_set()
+    findings = []
+    candidates = sorted(REPO_ROOT.glob("*.html"))
+    js_dir = REPO_ROOT / "js"
+    if js_dir.is_dir():
+        candidates += sorted(js_dir.glob("*.js"))
+    for path in candidates:
+        rel_path = path.relative_to(REPO_ROOT).as_posix()
+        if path.stem in checked or rel_path in checked:
+            continue
+        if path.name.startswith("partner-") or path.name.startswith("admin-"):
+            continue
+        if rel_path in STATIC_FUNNEL_EXEMPT:
+            continue
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        if STATIC_FUNNEL_RE.search(text):
+            findings.append(
+                f"{rel_path}: looks like a referral-fee funnel surface but is "
+                f"registered nowhere in this script -- add it to D266_PAGES / "
+                f"D266_JS_SURFACES (with the disclaimer) or explain why D-266 "
+                f"does not apply (static_funnel_unmapped)"
+            )
+    return findings
+
+
 CHECKS = [
     {
         "key": "site_chrome",
@@ -302,7 +447,15 @@ def main() -> int:
         failures.extend(check_react_d266(route))
     failures.extend(find_unmapped_react_funnels())
 
+    # gh-2020: JS-module D-266 surfaces (currently just js/router-discovery.js)
+    # and the static-file analogue of find_unmapped_react_funnels().
+    js_failures, js_notes = check_js_d266_surfaces()
+    failures.extend(js_failures)
+    failures.extend(find_unmapped_static_funnels())
+
     checked_pages = sorted(set(ALL_PAGES) | set(D266_PAGES))
+    for note in js_notes:
+        print(f"  [NOTE] {note}")
     if failures:
         print("Partner parity check: FAIL\n")
         for f in failures:
