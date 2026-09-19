@@ -81,9 +81,19 @@ ALL_PAGES = VERTICAL_PAGES + ["partner-app", "partner-login", "partner-dashboard
 # at the repo root and unioning it with the other non-insurance, non-login pages
 # from ALL_PAGES. Only the discovery mechanism for this one check changes; the
 # other checks keep using ALL_PAGES/VERTICAL_PAGES unchanged.
+# gh-2020 comment 5737683786 (amended closes-on) (4): partners.html is the
+# profession-picker hub the vertical pages link out from. It carries
+# D266_TEXT verbatim (wrapped across partners.html:210-211 -- see the
+# whitespace-normalization note above) but was in neither ALL_PAGES nor
+# D266_PAGES, so nothing in this file verified it: the disclaimer could be
+# deleted from it and every check here stayed green. Registered directly in
+# D266_PAGES (not ALL_PAGES, since site-chrome/signed-in-redirect/
+# dashboard-access-block do not apply to this page) so it now gets the same
+# D-266 presence check as the other partner pages via the loop in main().
 D266_PAGES = sorted(
     {p.stem for p in REPO_ROOT.glob("partner-insurance*.html")}
     | {p for p in ALL_PAGES if p not in ("partner-insurance", "partner-login")}
+    | {"partners"}
 )
 
 D266_TEXT = (
@@ -113,6 +123,71 @@ D266_JS_SURFACES = [
     "js/router-discovery.js",
 ]
 
+# gh-2020 comment 5737683786 (amended closes-on): check_js_d266_surfaces()
+# below was a WHOLE-FILE presence test -- it passed if D266_TEXT appeared
+# anywhere in the module, so deleting the disclaimer from any ONE track
+# while a sibling track's occurrence survived left the check green and
+# named nothing. Reproduced live against js/router-discovery.js: deleting
+# only the insurance track's occurrence (leaving the realtor track's intact)
+# stayed exit 0; only deleting BOTH flipped it to exit 1. These regexes
+# derive the track list from the module's own step vocabulary instead of a
+# hand-maintained Python literal, so a track added later is picked up
+# without an edit here.
+#
+# A "track" is discovered from its own RENDERERS['c-<name>-close'] screen --
+# the step that actually displays the close-copy paragraphs -- and the
+# COPY.<name>Close array that screen's body renders via .forEach(). Both are
+# read structurally from the file text, not asserted by name.
+JS_D266_CLOSE_RENDERER_RE = re.compile(
+    r"RENDERERS\['c-([a-z0-9]+)-close'\]\s*=\s*function\s*\([^)]*\)\s*\{\n(.*?)\n  \};",
+    re.DOTALL,
+)
+# A track is a "referral/partner track" -- as opposed to the c-home-*
+# homeowner-quote flow, which is a different funnel entirely and reachable
+# through this same file's RENDERERS map -- when its own contact/completion
+# screen calls renderPartnerContact(...). That is the module's own signal
+# for "this track hands off to a partner enrollment," not a hand-picked
+# name list: the homeowner flow completes a different way and never calls
+# renderPartnerContact, so it is never swept in here.
+JS_D266_PARTNER_CONTACT_RE = re.compile(
+    r"RENDERERS\['c-([a-z0-9]+)-contact'\]\s*=\s*function\s*\([^)]*\)\s*\{\n(.*?)\n  \};",
+    re.DOTALL,
+)
+JS_D266_COPY_FOREACH_RE = re.compile(r"COPY\.(\w+)\.forEach")
+JS_D266_PARTNER_INDUSTRY_RE = re.compile(r"partnerIndustry:\s*'([a-zA-Z_]+)'")
+
+# Tracks this module defines that carry NO D-266 disclaimer BY DESIGN, with
+# the reason on record -- mirrors STATIC_FUNNEL_EXEMPT's written-reason
+# convention below. This dict is NOT how the checked-track list is derived
+# (that is structural, from JS_D266_CLOSE_RENDERER_RE above); it is only how
+# a track that has an entry screen but deliberately no close-disclaimer
+# screen gets DECLARED rather than silently skipped (gh-2020 (3c)). A track
+# with neither a close screen nor an entry here fails loudly instead of
+# passing green with nothing said (see check_js_d266_surfaces).
+JS_D266_EXEMPT_TRACKS = {
+    "contractor": (
+        "platform fee, not a referral fee -- a contractor is not a referral "
+        "partner (js/router-discovery.js:~1007)"
+    ),
+}
+
+
+def _js_track_industry_labels() -> dict[str, str]:
+    """Human labels for partnerIndustry codes, read from js/agent-types.js's
+    own AGENT_TYPE_CHOOSER_LABELS rather than hand-copied here, so a label
+    can't drift between the two files. Returns {} if that file or dict shape
+    is unavailable -- callers fall back to the raw track id in that case.
+    """
+    path = REPO_ROOT / "js" / "agent-types.js"
+    if not path.is_file():
+        return {}
+    text = path.read_text(encoding="utf-8", errors="ignore")
+    m = re.search(r"AGENT_TYPE_CHOOSER_LABELS\s*=\s*\{(.*?)\n\};", text, re.DOTALL)
+    if not m:
+        return {}
+    return dict(re.findall(r"(\w+):\s*'([^']*)'", m.group(1)))
+
+
 # A react-app route that builds or displays a referral / recruit link is a
 # referral funnel surface. If one shows up that REACT_TWINS has no entry for,
 # say so instead of silently skipping it -- an unmapped funnel surface is
@@ -127,7 +202,7 @@ REACT_CONST_RE = re.compile(r"export const ([A-Z0-9_]+)\s*=")
 SITE_HEADER_RE = re.compile(r'<header\b[^>]*\bid=["\']site-header["\']')
 SITE_FOOTER_RE = re.compile(r'<footer\b[^>]*\bid=["\']site-footer["\']')
 # Matches both `=== '1'` (partner-other.html-style opt-out check) and
-# `!== '1'` (partner-app.html-style inverted guard) — same escape, written
+# `!== '1'` (partner-app.html-style inverted guard) -- same escape, written
 # either direction depending on how the surrounding condition is phrased.
 STAY_ESCAPE_RE = re.compile(r'''get\(['"]stay['"]\)\s*[!=]==\s*['"]1['"]''')
 GO_TO_DASHBOARD_RE = re.compile(r'Go to\s+(Partner\s+)?Dashboard', re.IGNORECASE)
@@ -242,12 +317,36 @@ def find_unmapped_react_funnels() -> list[str]:
 def check_js_d266_surfaces() -> tuple[list[str], list[str]]:
     """D-266 disclaimer check for JS-module partner surfaces (gh-2020).
 
-    js/router-discovery.js is draft #2019's file and may not exist in this
-    tree yet -- its absence is TOLERATED (not a failure) so this guard can
-    land ahead of that draft, per gh-2020's build order. Once it exists, it
-    is held to the same verbatim-disclaimer bar as any HTML page via
-    check_d266_disclaimer (whitespace-normalized, so wrapped JS template
-    strings still pass).
+    js/router-discovery.js may not exist in this tree yet -- its absence is
+    TOLERATED (not a failure) so this guard can land ahead of the draft that
+    creates it. Once it exists, TWO layers apply, because either alone is
+    defeatable:
+
+      1. WHOLE-FILE FLOOR (kept from before gh-2020 comment 5737683786's
+         amendment): the disclaimer must appear SOMEWHERE in the file at
+         all. Catches "the sentence is gone entirely" and remains the
+         backstop if layer 2's structural parsing can't discover any
+         tracks (e.g. a rewrite this regex doesn't anticipate) -- a
+         different, still-real failure mode from layer 2 below.
+      2. PER-TRACK (the amendment itself): within EACH referral-fee track's
+         OWN close-copy scope, not just the file at large. A track passing
+         the whole-file floor while missing its own disclaimer -- because a
+         SIBLING track's copy still carries it -- is exactly the hole
+         layer 1 alone could not see; deleting only the insurance track's
+         occurrence left the pre-amendment check at exit 0, naming nothing.
+
+    Tracks are DISCOVERED, not hand-listed: JS_D266_CLOSE_RENDERER_RE finds
+    every RENDERERS['c-<name>-close'] screen and the COPY.<name>Close array
+    it renders. A track built later (a new c-<name>-close renderer plus its
+    own COPY array) is picked up automatically -- nothing here needs
+    editing. A partner track -- one whose own c-<name>-contact screen calls
+    renderPartnerContact(...), the module's own signal for "hands off to a
+    partner enrollment," distinct from the unrelated c-home-* homeowner
+    quote flow this same file also routes -- that has no close screen is
+    either a DECLARED exemption (JS_D266_EXEMPT_TRACKS, with a written
+    reason -- e.g. the contractor track's platform fee) or, if undeclared,
+    a failure: gh-2020 (3c) requires an exemption to be stated, not silently
+    skipped, so an undeclared no-close track cannot pass green either.
     """
     failures: list[str] = []
     notes: list[str] = []
@@ -260,10 +359,88 @@ def check_js_d266_surfaces() -> tuple[list[str], list[str]]:
             )
             continue
         text = path.read_text(encoding="utf-8", errors="ignore")
+
+        # Layer 1 -- whole-file floor.
         if not check_d266_disclaimer(text):
             failures.append(
                 f"{surface}: missing D-266 disclaimer verbatim text (d266_js_surface)"
             )
+
+        # Layer 2 -- per-track, discovered from the module's own vocabulary.
+        close_matches = list(JS_D266_CLOSE_RENDERER_RE.finditer(text))
+        if not close_matches:
+            notes.append(
+                f"{surface}: no c-<track>-close renderer discovered -- per-track "
+                f"D-266 check not applicable this run; relying on the whole-file "
+                f"floor above (d266_js_no_tracks_discovered)"
+            )
+
+        labels = _js_track_industry_labels()
+        close_track_ids: set[str] = set()
+        for m in close_matches:
+            track_id = m.group(1)
+            close_track_ids.add(track_id)
+            route = f"c-{track_id}-close"
+            body = m.group(2)
+
+            copy_match = JS_D266_COPY_FOREACH_RE.search(body)
+            if not copy_match:
+                failures.append(
+                    f"{surface}: {route} renders no discoverable COPY.<name>Close "
+                    f"array -- extend this parser or the renderer "
+                    f"(d266_js_track_unparseable)"
+                )
+                continue
+            copy_name = copy_match.group(1)
+            array_match = re.search(
+                r"\b" + re.escape(copy_name) + r"\s*:\s*\[(.*?)\]", text, re.DOTALL
+            )
+            if not array_match:
+                failures.append(
+                    f"{surface}: {route} references COPY.{copy_name} but its array "
+                    f"literal could not be located (d266_js_track_unparseable)"
+                )
+                continue
+
+            industry_match = JS_D266_PARTNER_INDUSTRY_RE.search(
+                text[m.start(): m.start() + 4000]
+            )
+            label = track_id
+            if industry_match:
+                raw_label = labels.get(industry_match.group(1))
+                if raw_label:
+                    label = (
+                        raw_label.replace(" Agent", "").replace(" agent", "").strip().lower()
+                        or track_id
+                    )
+
+            if not check_d266_disclaimer(array_match.group(1)):
+                failures.append(
+                    f"{surface}: {label} track ({route}) missing D-266 disclaimer "
+                    f"(d266_js_track)"
+                )
+
+        partner_track_ids = {
+            m.group(1)
+            for m in JS_D266_PARTNER_CONTACT_RE.finditer(text)
+            if "renderPartnerContact(" in m.group(2)
+        }
+        for track_id in sorted(partner_track_ids - close_track_ids):
+            reason = JS_D266_EXEMPT_TRACKS.get(track_id)
+            if reason is not None:
+                notes.append(
+                    f"{surface}: {track_id} track (c-{track_id}-*) exempt from "
+                    f"D-266 -- {reason}"
+                )
+            else:
+                failures.append(
+                    f"{surface}: {track_id} track (c-{track_id}-contact) hands "
+                    f"off to a partner but has no c-{track_id}-close disclaimer "
+                    f"screen, and is not a declared D-266 exemption -- add a "
+                    f"close screen with the disclaimer, or add it to "
+                    f"JS_D266_EXEMPT_TRACKS with a written reason "
+                    f"(d266_js_track_undeclared)"
+                )
     return failures, notes
 
 
@@ -315,17 +492,9 @@ STATIC_FUNNEL_EXEMPT = {
         "Short-link redirect/resolver page; the match is its \"Referral link "
         "not found\" error state, not fee content."
     ),
-    "partners.html": (
-        "Finding surfaced by this build, not fixed by it (out of gh-2020's "
-        "two named items): this is the profession-picker hub the vertical "
-        "pages link out from, and it already carries the D-266 disclaimer "
-        "verbatim -- this file's own \"Note on matching\" above already "
-        "documents partners.html wrapping the sentence across lines -- but "
-        "it is in neither ALL_PAGES nor D266_PAGES, so nothing here actually "
-        "verifies that today. Structurally the same class of gap this build "
-        "closes for router-discovery.js; left open and reported rather than "
-        "folded in, since gh-2020 scopes this build to exactly two items."
-    ),
+    # partners.html: no longer exempt -- gh-2020 comment 5737683786 (4)
+    # registers it directly in D266_PAGES (see that constant's comment
+    # above), so it is now checked there and no longer needs an entry here.
     "js/auth.js": (
         "Source-code comment describing referral-status tracking logic "
         "(\"Advance referral status ... if homeowner arrived via referral "
@@ -429,7 +598,7 @@ def main() -> int:
         if not check_d266_disclaimer(html):
             failures.append(f"{page}.html: missing D-266 disclaimer verbatim text (d266_disclaimer)")
 
-    # ── React parity half (D-266) ────────────────────────────────────────────
+    # ── React parity half (D-266) ───────────────────────────────────────────────────────────────
     # Root-level *.html is only what main publishes TODAY; react-app/ is what a
     # cutover publishes instead. A disclaimer that survives in one and not the
     # other is a gap this script previously could not see at all.
