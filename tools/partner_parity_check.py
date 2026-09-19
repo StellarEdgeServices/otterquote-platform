@@ -202,7 +202,7 @@ REACT_CONST_RE = re.compile(r"export const ([A-Z0-9_]+)\s*=")
 SITE_HEADER_RE = re.compile(r'<header\b[^>]*\bid=["\']site-header["\']')
 SITE_FOOTER_RE = re.compile(r'<footer\b[^>]*\bid=["\']site-footer["\']')
 # Matches both `=== '1'` (partner-other.html-style opt-out check) and
-# `!== '1'` (partner-app.html-style inverted guard) -- same escape, written
+# `!== '1'` (partner-app.html-style inverted guard) — same escape, written
 # either direction depending on how the surrounding condition is phrased.
 STAY_ESCAPE_RE = re.compile(r'''get\(['"]stay['"]\)\s*[!=]==\s*['"]1['"]''')
 GO_TO_DASHBOARD_RE = re.compile(r'Go to\s+(Partner\s+)?Dashboard', re.IGNORECASE)
@@ -598,7 +598,7 @@ def main() -> int:
         if not check_d266_disclaimer(html):
             failures.append(f"{page}.html: missing D-266 disclaimer verbatim text (d266_disclaimer)")
 
-    # ── React parity half (D-266) ───────────────────────────────────────────────────────────────
+    # ── React parity half (D-266) ────────────────────────────────────────────
     # Root-level *.html is only what main publishes TODAY; react-app/ is what a
     # cutover publishes instead. A disclaimer that survives in one and not the
     # other is a gap this script previously could not see at all.
