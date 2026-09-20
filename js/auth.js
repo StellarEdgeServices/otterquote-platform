@@ -1279,14 +1279,26 @@ Log in to the admin panel to review and approve this contractor.`;
       || sessionStorage.getItem('oq_referral_id');
     if (referralId && sb) {
       try {
-        const { error: advanceError } = await sb
+        const { data: advanced, error: advanceError } = await sb
           .rpc('advance_referral_registered', { p_referral_id: referralId });
         if (advanceError) {
           console.error('Error advancing referral status:', advanceError);
+        } else if (advanced === false) {
+          // gh-2051: the RPC ran fine but UPDATE ... WHERE status='clicked'
+          // matched nothing (FOUND=false) — the referral id doesn't exist,
+          // or it already moved past 'clicked' (registered/job_completed).
+          // Either way this is a definitive, non-retryable no-op, not an
+          // error — it still falls through to the clears below.
+          console.warn('advance_referral_registered found no clicked referral to advance for', referralId);
         }
         // #567: keep the id under a claim-scoped key so the claim writer
-        // (trade-selector) can stamp claims.referral_id, then clear the
-        // advance-scoped keys so this block never re-runs.
+        // (trade-selector) can stamp claims.referral_id.
+        // gh-2051: written UNCONDITIONALLY, even when advanceError fired
+        // above. The claim linkage (claims.referral_id) is a separate
+        // concern from the status advance — we already have a valid
+        // referralId in hand regardless of whether the status flip
+        // succeeded, and a homeowner can submit a claim before a later
+        // retry of the advance completes. Do not gate this on advanceError.
         localStorage.setItem('oq_referral_id_for_claim', referralId);
         // Keep the cookie alive under the claim-scoped name so the claim
         // writer can still see it after a cross-origin hop.
@@ -1298,9 +1310,24 @@ Log in to the admin panel to review and approve this contractor.`;
             oq_referral_code: kept.oq_referral_code
           });
         }
-        localStorage.removeItem('oq_referral_id');
-        sessionStorage.removeItem('oq_referral_id');
+        // gh-2051: only clear the advance-scoped keys on a DEFINITIVE
+        // outcome — success, or the confirmed no-op above (advanced ===
+        // false with no error, which retrying can never fix). On
+        // advanceError (a transient RPC failure — network, permissions,
+        // timeout) leave both keys in place so the NEXT page load retries
+        // the advance instead of silently and permanently dropping
+        // attribution with no trace beyond a console line. This guard is
+        // intentional — do not "tidy up" by hoisting the removes back out.
+        if (!advanceError) {
+          localStorage.removeItem('oq_referral_id');
+          sessionStorage.removeItem('oq_referral_id');
+        }
       } catch (err) {
+        // gh-2051: a thrown exception (as opposed to the returned {error}
+        // above) means the RPC call never completed at all — same
+        // reasoning as the advanceError branch: leave oq_referral_id /
+        // sessionStorage in place so a later load can retry. Do not add
+        // removes here.
         console.error('Error advancing referral status:', err);
       }
     }

@@ -178,7 +178,7 @@ export default function AuthCallbackPage() {
           readReferralIds().oq_referral_id ||
           null;
         if (referralId) {
-          const { error: advanceError } = await supabase.rpc(
+          const { data: advanced, error: advanceError } = await supabase.rpc(
             'advance_referral_registered',
             { p_referral_id: referralId }
           );
@@ -187,10 +187,27 @@ export default function AuthCallbackPage() {
               '[auth-callback] referral advance failed (non-fatal):',
               advanceError
             );
+          } else if (advanced === false) {
+            // gh-2051: the RPC ran fine but UPDATE ... WHERE status='clicked'
+            // matched nothing (FOUND=false) — the referral id doesn't exist,
+            // or it already moved past 'clicked' (registered/job_completed).
+            // Definitive, non-retryable no-op, not an error — still falls
+            // through to the clears below.
+            console.warn(
+              '[auth-callback] advance_referral_registered found no clicked referral to advance for',
+              referralId
+            );
           }
+          // #567: keep the id under a claim-scoped key so the claim writer
+          // (trade-selector) can stamp claims.referral_id.
+          // gh-2051: written UNCONDITIONALLY, even when advanceError fired
+          // above. The claim linkage (claims.referral_id) is a separate
+          // concern from the status advance — we already have a valid
+          // referralId regardless of whether the status flip succeeded, and
+          // a homeowner can submit a claim before a later retry completes.
+          // Do not gate this on advanceError.
           if (typeof localStorage !== 'undefined') {
             localStorage.setItem('oq_referral_id_for_claim', referralId);
-            localStorage.removeItem('oq_referral_id');
           }
           // Keep the cookie alive so the claim writer still sees it after a hop.
           {
@@ -201,12 +218,28 @@ export default function AuthCallbackPage() {
               oq_referral_code: kept.oq_referral_code,
             });
           }
-          if (typeof sessionStorage !== 'undefined') {
-            sessionStorage.removeItem('oq_referral_id');
+          // gh-2051: only clear the advance-scoped keys on a DEFINITIVE
+          // outcome — success, or the confirmed no-op above (advanced ===
+          // false with no error, which retrying can never fix). On
+          // advanceError (a transient RPC failure) leave both keys in place
+          // so the NEXT page load retries instead of silently and
+          // permanently dropping attribution. This guard is intentional —
+          // do not "tidy up" by hoisting the removes back out unconditionally.
+          if (!advanceError) {
+            if (typeof localStorage !== 'undefined') {
+              localStorage.removeItem('oq_referral_id');
+            }
+            if (typeof sessionStorage !== 'undefined') {
+              sessionStorage.removeItem('oq_referral_id');
+            }
           }
         }
       } catch {
-        // Non-fatal — see above
+        // Non-fatal — see above. A thrown exception means the RPC call
+        // never completed at all, so the removes above never ran and
+        // oq_referral_id / its sessionStorage copy are naturally preserved
+        // for a retry on the next load — same intent as the advanceError
+        // branch above (gh-2051).
       }
 
       // gh-1983: persist first-touch ad attribution (UTM / fbclid / gclid)
