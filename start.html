@@ -846,7 +846,12 @@
             redirectTo(bDest);
           }
         };
-        setRoleWithFallback(bRole, bIsPartner ? bIndustry : null).then(bProceed).catch(bProceed);
+        // gh-2016: this leadId was just written by this same request chain
+        // (insertFreshLead or a successful update_lead_contact, both above)
+        // -- it can never legitimately be stale, so a failure here must
+        // never fall back to inserting a second leads row. See
+        // setRoleWithFallback's skipFreshInsertOnFailure comment.
+        setRoleWithFallback(bRole, bIsPartner ? bIndustry : null, { skipFreshInsertOnFailure: true }).then(bProceed).catch(bProceed);
         return;
       }
       goToStep(2);
@@ -978,11 +983,41 @@
   // after the fallback still proceeds to the destination, per the
   // pre-existing "the role write failing must never strand a visitor on
   // the router" rule (closes-on control (c)); it is logged instead.
-  function setRoleWithFallback(role, industry) {
+  function setRoleWithFallback(role, industry, opts) {
     var payload = { p_lead_id: leadId, p_role: role };
     if (industry) payload.p_partner_industry = industry;
+    // gh-2016 (CEO RUN 56, comment 5751788737, "Third finding"): arm B's
+    // contact-last screen calls this function IMMEDIATELY after the same
+    // request chain either inserted this exact lead (insertFreshLead) or
+    // successfully updated it (update_lead_contact returning true) --
+    // prefill_used_at cannot already be set and the 30-minute window
+    // cannot have elapsed on a row this call chain just touched
+    // successfully. So a no-op/error on THIS call is a transient RPC
+    // failure, never a legitimate staleness case, and answering it with
+    // insertFreshLead()'s "abandon this row, make a new one" recovery
+    // would silently write a SECOND leads row with variant='b' for one
+    // visitor -- the exact defect the CEO's review caught (six variant='b'
+    // rows in production against an "exactly ONE row" requirement).
+    // Callers in that position pass skipFreshInsertOnFailure so the
+    // fallback below retries set_lead_role against the SAME row instead
+    // of ever inserting another one. Arm A's Step 2 / Step 2a role clicks
+    // (the pre-existing callers) do NOT pass this -- there, leadId can be
+    // a genuinely stale/prefilled/expired row from an earlier visit, and
+    // insertFreshLead's stale-lead-recovery fallback is still correct and
+    // is left unchanged.
+    var skipFreshInsert = !!(opts && opts.skipFreshInsertOnFailure);
 
     function fallback() {
+      if (skipFreshInsert) {
+        return sb.rpc('set_lead_role', payload).then(function (res) {
+          if (res && res.error) throw res.error;
+          if (!(res && res.data === true)) {
+            console.error('[router] set_lead_role retry still refused on the just-written lead (' + leadId + ') -- proceeding to the destination anyway, no duplicate row created');
+          }
+        }).catch(function (err) {
+          console.error('[router] set_lead_role retry failed -- proceeding to the destination anyway, no duplicate row created:', err);
+        });
+      }
       var freshName = document.getElementById('routerName').value.trim();
       var freshEmail = document.getElementById('routerEmail').value.trim();
       var freshPhoneRaw = document.getElementById('routerPhone').value.trim();
