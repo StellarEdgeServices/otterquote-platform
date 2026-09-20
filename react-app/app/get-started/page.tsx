@@ -2224,7 +2224,7 @@ export default function GetStartedPage() {
               <div className="benefit-icon">🔐</div>
               <div className="benefit-text">
                 <h4>Create your account</h4>
-                <p>Set a password. You stay on the site — no waiting on an email to get started.</p>
+                <p>Continue with Google or set a password. You stay on the site — no waiting on an email to get started.</p>
               </div>
             </div>
 
