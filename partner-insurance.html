@@ -1117,11 +1117,12 @@
                 content:  utmContext.content  || undefined,
             });
 
-            // gh-2006: Meta Lead — literal event name (not a custom event)
-            // so the ad set's Lead-optimized creatives get credit; same
-            // bare, guarded call as start.html's router_contact_submitted
-            // precedent.
-            try { fbq('track', 'Lead'); } catch (e) {}
+            // gh-2006: intentionally no Meta Lead call in this function.
+            // It only runs when window.CONFIG.DEMO_MODE is true, and
+            // js/config.js:116 sets DEMO_MODE: false — this branch is dead
+            // on production. A Lead call here would never fire live, and
+            // leaving it in place made the "0 -> 6 Lead calls" count in
+            // #2006 read as one higher than what is actually live (5).
         }
 
         // ---------------------------------------------------------------
@@ -1259,11 +1260,18 @@
                     content:  utm.content  || undefined,
                 });
 
-                // gh-2006: Meta Lead — literal event name (not a custom
-                // event) so the ad set's Lead-optimized creatives get
-                // credit; same bare, guarded call as start.html's
-                // router_contact_submitted precedent.
-                try { fbq('track', 'Lead'); } catch (e) {}
+                // gh-2006: intentionally no Meta Lead call on this path.
+                // This code runs on the page load that completes Google
+                // OAuth, whose URL fragment carries access_token/refresh_token/
+                // provider_token. js/meta-pixel-gate.js's urlHasAuthToken check
+                // (gh-1969) returns before fbevents.js ever loads on that load —
+                // a real security control (leaking a live Supabase token into
+                // Meta's `dl` param), not a bug, and out of scope to weaken. The
+                // gate's fbq stub still reports `loaded = true` (gh-2000 trap),
+                // so a call here would appear to work while silently never
+                // reaching Meta. Net effect: a partner who signs up via Google
+                // is deliberately unattributed to Meta. Recorded decision, not
+                // an oversight — see #2006 comment 5752218215.
 
                 window.location.replace('/partner-dashboard.html');
             } catch (err) {
