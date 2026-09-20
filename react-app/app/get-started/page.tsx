@@ -102,7 +102,7 @@ import { supabase } from '@/lib/supabase';
 import { readReferralIds, writeReferralIds } from '@/lib/cookie-storage';
 import { readFirstTouch } from '@/lib/attribution';
 import { withFirstTouchParam } from '@/lib/attribution-core';
-import { formatPhoneValue, isValidEmail, isValidZip, fullAddress } from './utils';
+import { formatPhoneValue, isValidEmail, isValidZip, fullAddress, splitLeadName } from './utils';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -715,6 +715,61 @@ export default function GetStartedPage() {
       window.location.href = DASHBOARD_URL;
     }
   }, [loading, user, role]);
+
+  /**
+   * gh-2046: prefill Step 2 (name/email/phone) from the router's lead row,
+   * via the EXISTING get_lead_prefill RPC (30-minute window,
+   * prefill_used_at single-use — both enforced server-side; this effect
+   * does not duplicate or relax either guard, it only calls the RPC and
+   * reacts to what comes back).
+   *
+   * window.__oqRouterLeadId is set by the beforeInteractive strip script in
+   * app/layout.tsx (see LEAD_STRIP_SCRIPT there) — by the time this effect
+   * runs, the URL itself no longer carries `lead` at all, so this reads the
+   * bridge variable rather than location.search. prefillAttemptedRef makes
+   * this a true once-guard: get_lead_prefill stamps prefill_used_at on its
+   * first successful call, so a second call for the same id (e.g. a
+   * StrictMode double-invoke in dev) would legitimately come back empty —
+   * guarding here avoids burning the single use on a call this page did not
+   * need to make twice.
+   *
+   * Fields stay fully editable after prefill (setFirstName/etc. are the same
+   * setters the form's own onChange handlers use) — this is prefill, not a
+   * lock, per the issue's own requirement. A visitor with no `?lead=` param
+   * (direct navigation, or a stripped id that already returned once) simply
+   * never populates window.__oqRouterLeadId or gets an empty RPC result, and
+   * the form renders exactly as it always has — this is additive, not a
+   * behavior change to the no-prefill path.
+   */
+  const prefillAttemptedRef = useRef(false);
+  useEffect(() => {
+    if (prefillAttemptedRef.current) return;
+    const leadId = typeof window !== 'undefined' ? window.__oqRouterLeadId : undefined;
+    if (!leadId) return;
+    prefillAttemptedRef.current = true;
+
+    supabase
+      .rpc('get_lead_prefill', { p_lead_id: leadId })
+      .then(({ data, error: rpcError }) => {
+        if (rpcError) {
+          console.warn('[get-started] get_lead_prefill failed (non-fatal):', rpcError);
+          return;
+        }
+        const row = Array.isArray(data) ? data[0] : data;
+        if (!row) return; // no prefill available: expired, already used, or unknown id
+        if (typeof row.name === 'string' && row.name.trim()) {
+          const { firstName: fn, lastName: ln } = splitLeadName(row.name);
+          if (fn) setFirstName(fn);
+          if (ln) setLastName(ln);
+        }
+        if (typeof row.email === 'string' && row.email.trim()) {
+          setEmail(row.email.trim());
+        }
+        if (typeof row.phone === 'string' && row.phone.trim()) {
+          setPhone(formatPhoneValue(row.phone));
+        }
+      });
+  }, []);
 
   // ── Phone formatting on autofill ──
   const handlePhoneChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
