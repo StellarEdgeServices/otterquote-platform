@@ -1327,6 +1327,11 @@ async function handleSignup(e) {
       });
     }
 
+    // gh-2006: Meta Lead — literal event name (not a custom event) so the
+    // ad set's Lead-optimized creatives get credit; same bare, guarded
+    // call as start.html's router_contact_submitted precedent.
+    try { fbq('track', 'Lead'); } catch (e) {}
+
   } catch (err) {
     console.error('Signup error:', err);
     alert(`Something went wrong: ${err.message}. Please try again or email us at support@otterquote.com`);
