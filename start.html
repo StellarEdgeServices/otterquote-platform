@@ -921,36 +921,22 @@
   };
 
   // gh-1994 fix round 2 (Ben, REVIEW 5700804646 / LEGAL-READ 5700654821):
-  // the homeowner destination was the React get-started page
-  // (react-app/app/get-started/page.tsx), which that PR was explicitly
-  // barred from touching -- it did not strip `lead` from the URL or use
-  // it for anything, so a ?lead=<uuid> sent there would have landed in
-  // that origin's GA4/Meta/Clarity/Sentry beacons AND stayed live for the
-  // full 30-minute prefill-read/overwrite window for anyone who captured
-  // the URL. DECIDED cure at the time (Ben): homeowners got NO lead param
-  // at all, only attribution (utm_*/fbclid/gclid, never PII) -- the lead
-  // row and role=homeowner were already saved server-side by that point
-  // in the flow, so nothing was lost by not round-tripping the id.
-  //
-  // gh-2046 (phase 2, SHIPPED): the React page now carries its own
-  // beforeInteractive strip+prefill, mirroring this file's own
-  // early-strip head script exactly (see app/layout.tsx's
-  // LEAD_STRIP_SCRIPT and app/get-started/page.tsx's prefill effect) --
-  // `lead` is captured into window.__oqRouterLeadId and removed from the
-  // visible URL via history.replaceState before hydration, which is
-  // before GA4Gate/MetaPixelGate/SentryInitializer's own effects can
-  // possibly run, so no beacon on that origin ever sees it. Prefill
-  // itself goes through the same get_lead_prefill RPC every other
-  // destination already uses -- unmodified 30-minute window and
-  // prefill_used_at single-use semantics, honored server-side. The cure
-  // above is no longer needed for the reason it existed: homeowners now
-  // get ?lead=<uuid> like every other destination, so
-  // NO_LEAD_ID_DESTINATIONS is empty. Contractor and referral-partner
-  // destinations are this repo's own static pages (contractor-join.html,
-  // partner-*.html), which strip+prefill via the early-strip head script
-  // added in fix round 1 -- unaffected, still get ?lead=<uuid>, same as
-  // before.
-  var NO_LEAD_ID_DESTINATIONS = {};
+  // the homeowner destination is the React get-started page
+  // (react-app/app/get-started/page.tsx), which this PR is explicitly
+  // barred from touching -- it does not strip `lead` from the URL or use
+  // it for anything, so a ?lead=<uuid> sent there would land in that
+  // origin's GA4/Meta/Clarity/Sentry beacons AND stay live for the full
+  // 30-minute prefill-read/overwrite window for anyone who captured the
+  // URL. DECIDED cure (Ben): homeowners get NO lead param at all, only
+  // attribution (utm_*/fbclid/gclid, never PII) -- the lead row and
+  // role=homeowner are already saved server-side by this point in the
+  // flow, so nothing is lost by not round-tripping the id. Contractor and
+  // referral-partner destinations are this repo's own static pages
+  // (contractor-join.html, partner-*.html), which DO strip+prefill via
+  // the early-strip head script added in fix round 1 -- unaffected, still
+  // get ?lead=<uuid>. Revisit once phase 2 adds strip+prefill support to
+  // the React page.
+  var NO_LEAD_ID_DESTINATIONS = { homeowner: true };
 
   function appendParams(baseUrl, obj) {
     var parts = [];
