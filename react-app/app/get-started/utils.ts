@@ -31,3 +31,25 @@ export function fullAddress(street: string, city: string, state: string, zip: st
     .join(', ');
   return [street.trim(), line2].filter(Boolean).join(', ');
 }
+
+/**
+ * gh-2046: split `leads.name` (a single free-text column — see the router's
+ * own lead insert on start.html) into the first/last name fields Step 2's
+ * form actually has. Splits on the FIRST space only, so a multi-word last
+ * name ("Mary Anne Smith") stays intact as one field rather than losing
+ * everything past the second word — the same trade-off a plain "first
+ * space" split always makes for a two-field name form, and there is no
+ * schema-level first/last split on `leads` to do better than a guess here.
+ * A single-word name (no space) becomes first name only, last name empty —
+ * both fields stay editable either way (this is prefill, not a lock).
+ */
+export function splitLeadName(name: string): { firstName: string; lastName: string } {
+  const trimmed = name.trim();
+  if (!trimmed) return { firstName: '', lastName: '' };
+  const spaceIndex = trimmed.indexOf(' ');
+  if (spaceIndex === -1) return { firstName: trimmed, lastName: '' };
+  return {
+    firstName: trimmed.slice(0, spaceIndex),
+    lastName: trimmed.slice(spaceIndex + 1).trim(),
+  };
+}
