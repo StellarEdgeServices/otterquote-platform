@@ -164,6 +164,8 @@
   .form-group { margin-bottom: var(--sp-4); }
   .form-label { display: block; font-weight: 600; color: var(--white); margin-bottom: var(--sp-1); font-size: 0.95rem; }
   .form-label.required::after { content: ' *'; color: var(--red); }
+  /* gh-2042: phone is optional (Dustin, 2026-09-20). Muted, same line as the label. */
+  .form-label-optional { font-weight: 400; color: var(--gray-400, #9ca3af); font-size: 0.85em; }
   .form-input { width: 100%; padding: var(--sp-3) var(--sp-4); border: 1px solid rgba(255,255,255,0.14); border-radius: var(--radius-md); font-family: var(--font-body); font-size: 1rem; background: rgba(255,255,255,0.06); color: var(--white); }
   .form-input::placeholder { color: rgba(255,255,255,0.35); }
   .form-input:focus { outline: none; border-color: var(--amber); box-shadow: 0 0 0 3px var(--amber-glow); }
@@ -227,8 +229,8 @@
         </div>
 
         <div class="form-group">
-          <label for="routerPhone" class="form-label required">Phone Number</label>
-          <input type="tel" id="routerPhone" name="phone" class="form-input" autocomplete="tel" inputmode="tel" placeholder="(555) 123-4567" required maxlength="20" aria-describedby="routerPhoneError">
+          <label for="routerPhone" class="form-label">Phone Number <span class="form-label-optional">(optional)</span></label>
+          <input type="tel" id="routerPhone" name="phone" class="form-input" autocomplete="tel" inputmode="tel" placeholder="(555) 123-4567" maxlength="20" aria-describedby="routerPhoneError">
           <div class="field-error" id="routerPhoneError"></div>
         </div>
 
@@ -784,7 +786,7 @@
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { fieldError('routerEmailError', 'Please enter a valid email address.'); hasError = true; }
     // Negative control (closes-on a): empty (or otherwise invalid) phone
     // blocks Step 1 -- no leads row is inserted and Step 2 never shows.
-    if (!phoneRaw || !isValidUsPhone(phoneRaw)) { fieldError('routerPhoneError', 'Please enter a valid 10-digit US phone number.'); hasError = true; }
+    if (phoneRaw && !isValidUsPhone(phoneRaw)) { fieldError('routerPhoneError', 'Please enter a valid 10-digit US phone number.'); hasError = true; }
     if (hasError) return;
 
     if (!sb) { showError('Something went wrong loading the form. Please refresh and try again.'); return; }
@@ -867,7 +869,10 @@
     // values instead of losing them -- this is the actual B1 fix; the
     // update path above it is unchanged and still the common case.
     var storedLeadId = getStoredLeadId();
-    var phoneDigits = normalizePhone(phoneRaw);
+    // gh-2042 (Dustin, 2026-09-20: "Make phone optional"): an empty phone is
+    // sent as NULL, not '' -- leads.phone is nullable and update_lead_contact
+    // accepts NULL after migration gh2042_update_lead_contact_optional_phone.
+    var phoneDigits = phoneRaw ? normalizePhone(phoneRaw) : null;
 
     if (storedLeadId) {
       leadId = storedLeadId;
@@ -966,7 +971,8 @@
     function fallback() {
       var freshName = document.getElementById('routerName').value.trim();
       var freshEmail = document.getElementById('routerEmail').value.trim();
-      var freshPhone = normalizePhone(document.getElementById('routerPhone').value.trim());
+      var freshPhoneRaw = document.getElementById('routerPhone').value.trim();
+      var freshPhone = freshPhoneRaw ? normalizePhone(freshPhoneRaw) : null; // gh-2042
       return insertFreshLead(freshName, freshEmail, freshPhone).then(function (newId) {
         leadId = newId;
         var retryPayload = { p_lead_id: newId, p_role: role };

@@ -548,7 +548,11 @@
 
     var nameF = field('rdName', 'Full Name', 'text', { autocomplete: 'name', maxlength: '200' });
     var emailF = field('rdEmail', 'Email', 'email', { autocomplete: 'email', inputmode: 'email', maxlength: '320' });
-    var phoneF = field('rdPhone', 'Phone Number', 'tel', { autocomplete: 'tel', inputmode: 'tel', maxlength: '20' });
+    var phoneF = field('rdPhone', 'Phone Number (optional)', 'tel', { autocomplete: 'tel', inputmode: 'tel', maxlength: '20' });
+      // gh-2042: phone is optional -- drop the `required` label marker the
+      // shared field() helper applies to every field.
+      phoneF.input.parentNode.querySelector('.form-label').classList.remove('required');
+
 
     var submitBtn = el('button', 'btn btn-primary router-btn', 'Continue');
     submitBtn.type = 'button';
@@ -567,7 +571,7 @@
       var hasError = false;
       if (!name) { nameF.err.textContent = 'Please enter your name.'; hasError = true; }
       if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { emailF.err.textContent = 'Please enter a valid email address.'; hasError = true; }
-      if (!phoneRaw || !isValidUsPhone(phoneRaw)) { phoneF.err.textContent = 'Please enter a valid 10-digit US phone number.'; hasError = true; }
+      if (phoneRaw && !isValidUsPhone(phoneRaw)) { phoneF.err.textContent = 'Please enter a valid 10-digit US phone number.'; hasError = true; }
       if (hasError) return;
 
       if (!bridge.sb) { bridge.showError('Something went wrong loading the form. Please refresh and try again.'); return; }
@@ -575,7 +579,7 @@
       submitBtn.disabled = true;
       submitBtn.textContent = 'Please wait…';
 
-      var phoneDigits = normalizePhone(phoneRaw);
+      var phoneDigits = phoneRaw ? normalizePhone(phoneRaw) : null; // gh-2042
 
       bridge.insertFreshLead(name, email, phoneDigits).then(function (newId) {
         // gh-2017: leads_force_safe_insert_defaults() forces role NULL on
@@ -830,7 +834,11 @@
 
     var nameF = field('rdpName', 'Full Name', 'text', { autocomplete: 'name', maxlength: '200' });
     var emailF = field('rdpEmail', 'Email', 'email', { autocomplete: 'email', inputmode: 'email', maxlength: '320' });
-    var phoneF = field('rdpPhone', 'Phone Number', 'tel', { autocomplete: 'tel', inputmode: 'tel', maxlength: '20' });
+    var phoneF = field('rdpPhone', 'Phone Number (optional)', 'tel', { autocomplete: 'tel', inputmode: 'tel', maxlength: '20' });
+      // gh-2042: phone is optional -- drop the `required` label marker the
+      // shared field() helper applies to every field.
+      phoneF.input.parentNode.querySelector('.form-label').classList.remove('required');
+
 
     var submitBtn = el('button', 'btn btn-primary router-btn', 'Continue');
     submitBtn.type = 'button';
@@ -849,7 +857,7 @@
       var hasError = false;
       if (!name) { nameF.err.textContent = 'Please enter your name.'; hasError = true; }
       if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { emailF.err.textContent = 'Please enter a valid email address.'; hasError = true; }
-      if (!phoneRaw || !isValidUsPhone(phoneRaw)) { phoneF.err.textContent = 'Please enter a valid 10-digit US phone number.'; hasError = true; }
+      if (phoneRaw && !isValidUsPhone(phoneRaw)) { phoneF.err.textContent = 'Please enter a valid 10-digit US phone number.'; hasError = true; }
       if (hasError) return;
 
       if (!bridge.sb) { bridge.showError('Something went wrong loading the form. Please refresh and try again.'); return; }
@@ -857,7 +865,7 @@
       submitBtn.disabled = true;
       submitBtn.textContent = 'Please wait…';
 
-      var phoneDigits = normalizePhone(phoneRaw);
+      var phoneDigits = phoneRaw ? normalizePhone(phoneRaw) : null; // gh-2042
 
       bridge.insertFreshLead(name, email, phoneDigits).then(function (newId) {
         var payload = { p_lead_id: newId, p_role: cfg.role };
