@@ -553,12 +553,45 @@ function isAlreadyRegisteredError(err: unknown): boolean {
 // Every read/write is wrapped in try/catch: private browsing and blocked
 // site data both throw on access, and the no-prefill path must render
 // exactly as it does today when that happens.
+//
+// gh-2054 (REVIEW: FAIL correction) — the first version of this fix read
+// `window.__oqRouterLeadId` on every mount, including a reload. That is
+// wrong: a reload tears down the JS context, so the window global is gone,
+// AND the `?lead=` param LEAD_STRIP_SCRIPT (app/layout.tsx) already removed
+// from the URL on the FIRST load is not there for a reload to re-capture it
+// from either. The id itself — not just the prefill payload — has to be
+// persisted at the one instant it still exists, which is inside that same
+// strip script. `readRouterLeadId` below reads the window global first (the
+// fast path on a first load, no storage round-trip needed) and falls back
+// to the `oq_lead_id` sessionStorage entry LEAD_STRIP_SCRIPT now also
+// writes — which is what actually survives a reload.
+const LEAD_ID_STORAGE_KEY = 'oq_lead_id';
 const PREFILL_CACHE_PREFIX = 'oq_prefill_';
 
 interface PrefillCachePayload {
   name?: string;
   email?: string;
   phone?: string;
+}
+
+function readRouterLeadId(): string | undefined {
+  if (typeof window === 'undefined') return undefined;
+  if (window.__oqRouterLeadId) return window.__oqRouterLeadId;
+  try {
+    return sessionStorage.getItem(LEAD_ID_STORAGE_KEY) || undefined;
+  } catch {
+    // Private mode / blocked site data — same posture as no id at all.
+    return undefined;
+  }
+}
+
+function clearLeadIdCache(): void {
+  try {
+    sessionStorage.removeItem(LEAD_ID_STORAGE_KEY);
+  } catch {
+    // Same reasoning as clearPrefillCache below — nothing to do, bounded by
+    // tab-close either way.
+  }
 }
 
 function readPrefillCache(leadId: string): PrefillCachePayload | null {
@@ -802,20 +835,23 @@ export default function GetStartedPage() {
    * setters the form's own onChange handlers use) — this is prefill, not a
    * lock, per the issue's own requirement. A visitor with no `?lead=` param
    * (direct navigation, or a stripped id that already returned once) simply
-   * never populates window.__oqRouterLeadId or gets an empty RPC result, and
-   * the form renders exactly as it always has — this is additive, not a
-   * behavior change to the no-prefill path.
+   * never populates window.__oqRouterLeadId or the oq_lead_id sessionStorage
+   * fallback, so readRouterLeadId() returns undefined and the form renders
+   * exactly as it always has — this is additive, not a behavior change to
+   * the no-prefill path.
    *
-   * gh-2054: a reload re-mounts this component with the SAME leadId still in
-   * window.__oqRouterLeadId (the strip already ran once and
-   * history.replaceState persists across a reload), but the RPC is now
-   * single-used and returns empty — so before this fix, a reload silently
-   * lost the prefill. Fixed by checking the sessionStorage cache (see the
-   * gh-2054 block above) FIRST: a cache hit applies the same cached payload
-   * and returns without touching the RPC at all, so it cannot burn the
-   * single use a second time for nothing. Only a genuine cache miss (first
-   * load in this tab) calls the RPC, and its result is cached for the next
-   * mount before being applied.
+   * gh-2054 (REVIEW: FAIL correction) — a reload tears down the JS context,
+   * so window.__oqRouterLeadId is gone, and the `?lead=` param is already
+   * stripped from the URL from the FIRST load — there is nothing left on a
+   * reload to re-capture the id from. `readRouterLeadId()` (see the gh-2054
+   * block above) resolves the window global first, falling back to the
+   * `oq_lead_id` sessionStorage entry LEAD_STRIP_SCRIPT now also writes at
+   * capture time — THAT is what actually survives the reload. Once the id
+   * is resolved (either way), the payload cache is checked FIRST: a cache
+   * hit applies the same cached payload and returns without touching the
+   * RPC at all, so it cannot burn the single use a second time for nothing.
+   * Only a genuine cache miss (first load in this tab) calls the RPC, and
+   * its result is cached for the next mount before being applied.
    */
   const prefillAttemptedRef = useRef(false);
   const prefillLeadIdRef = useRef<string | null>(null);
@@ -836,7 +872,7 @@ export default function GetStartedPage() {
 
   useEffect(() => {
     if (prefillAttemptedRef.current) return;
-    const leadId = typeof window !== 'undefined' ? window.__oqRouterLeadId : undefined;
+    const leadId = readRouterLeadId();
     if (!leadId) return;
     prefillAttemptedRef.current = true;
     prefillLeadIdRef.current = leadId;
@@ -1309,11 +1345,13 @@ export default function GetStartedPage() {
 
       // gh-2054: reaching here means signUp() genuinely created a new
       // account (not the already-registered branch above) — clear the
-      // cached prefill now so the PII does not outlive its purpose even
-      // within this tab. Safe to no-op: a visitor with no `?lead=` never
-      // populated prefillLeadIdRef.current in the first place.
+      // cached prefill AND the oq_lead_id entry now, so neither the PII nor
+      // the id used to look it up outlives its purpose even within this
+      // tab. Safe to no-op: a visitor with no `?lead=` never populated
+      // prefillLeadIdRef.current in the first place.
       if (prefillLeadIdRef.current) {
         clearPrefillCache(prefillLeadIdRef.current);
+        clearLeadIdCache();
       }
 
       fireSignupAnalytics('password');

@@ -49,6 +49,22 @@ export const metadata: Metadata = {
  * get-started/page.tsx's own prefill effect instead of re-parsing
  * location.search, since by the time that effect runs the URL no longer
  * carries `lead`.
+ *
+ * gh-2054 (REVIEW: FAIL correction) — the ORIGINAL gh-2054 fix assumed
+ * window.__oqRouterLeadId, set here, would still hold the lead id on a
+ * reload. It does not: a reload tears down the whole JS context, and the
+ * `?lead=` param this script strips on the FIRST load is gone from the URL
+ * by the time a reload re-requests it — so the reload has nothing to
+ * re-capture the id from at all. Fixed at the source: the one instant this
+ * id still exists is right here, so it is persisted to `sessionStorage`
+ * (`oq_lead_id`) in the SAME statement that sets the window global, inside
+ * the SAME try/catch as the rest of this script (private mode / blocked
+ * site data already no-ops the whole strip via that catch — this adds one
+ * more thing that no-ops with it, not a new failure mode).
+ * get-started/page.tsx's prefill effect reads window.__oqRouterLeadId
+ * first (the common, fast path on a first load) and falls back to
+ * sessionStorage.getItem('oq_lead_id') — which is what actually survives a
+ * reload — only when the window global is unset.
  */
 const LEAD_STRIP_SCRIPT = `(function () {
   try {
@@ -57,12 +73,13 @@ const LEAD_STRIP_SCRIPT = `(function () {
     var lead = params.get('lead');
     if (lead) {
       window.__oqRouterLeadId = lead;
+      sessionStorage.setItem('oq_lead_id', lead);
       params.delete('lead');
       var qs = params.toString();
       var newUrl = window.location.pathname + (qs ? '?' + qs : '') + window.location.hash;
       history.replaceState(history.state, '', newUrl);
     }
-  } catch (e) { /* URL API unavailable: prefill simply won't run this load */ }
+  } catch (e) { /* URL API/storage unavailable: prefill simply won't run this load */ }
 })();`;
 
 export default function RootLayout({
