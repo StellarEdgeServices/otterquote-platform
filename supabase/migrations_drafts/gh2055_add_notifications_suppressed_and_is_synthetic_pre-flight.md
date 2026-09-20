@@ -37,7 +37,7 @@ and `leads`' existing columns are untouched.
 
 ## Live Pre-Verification (captured fresh this session, 2026-09-20, against project `yeszghaspzwwstvsrioa`, pasted on #2055 BEFORE execution per R-147)
 
-1. `information_schema.columns` for `public.contractors` — 108 columns,
+1. `information_schema.columns` for `public.contractors` — 114 columns,
    `is_test boolean NOT NULL` present, `notifications_suppressed` absent.
 2. `information_schema.columns` for `public.leads` — 20 columns (issue
    text said 19; one more than stated at filing time — does not change

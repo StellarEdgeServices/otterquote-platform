@@ -18,7 +18,7 @@
 -- Pre-flight: supabase/migrations_drafts/gh2055_add_notifications_suppressed_and_is_synthetic_pre-flight.md
 --
 -- Pre-migration live enumeration (2026-09-20, this run, pasted on #2055
--- before execution per R-147): `contractors` had 108 columns, `is_test`
+-- before execution per R-147): `contractors` had 114 columns, `is_test`
 -- present, `notifications_suppressed` absent. `leads` had 20 columns
 -- (issue said 19 -- one more than stated, does not change scope), no
 -- `is_test` and no synthetic/test-marker equivalent at all.
