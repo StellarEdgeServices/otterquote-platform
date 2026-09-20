@@ -527,6 +527,71 @@ function isAlreadyRegisteredError(err: unknown): boolean {
   );
 }
 
+// ─── gh-2054: sessionStorage rehydration for the single-use prefill ───────────
+//
+// #2046 shipped `get_lead_prefill` as a single-use RPC (server-side guard:
+// `prefill_used_at` stamps on the first successful call, and every later call
+// for the same lead id comes back empty). That guard is correct and stays
+// exactly as it is — see the effect below, which still calls the RPC exactly
+// once per leadId. The bug #2054 found is that the payload the RPC returns
+// lived only in React state: a reload (or a back-then-forward, or a stalled
+// connection retry) re-mounts the component with nothing to read, so the
+// visitor re-types all 13 fields even though the prefill guard did its job
+// correctly the first time.
+//
+// The fix (RW-DESIGN, issue #2054 comment 5752255257): cache the payload
+// **already delivered to this visitor in this tab** in `sessionStorage`,
+// keyed by lead id, and check that cache BEFORE calling the RPC on every
+// mount. A cache hit never calls `get_lead_prefill` — that would burn the
+// single use a second time for nothing. This does not weaken the server-side
+// guard at all: a leaked/shared URL is still refused after its first use,
+// because the attacker's browser has no matching sessionStorage entry.
+//
+// `sessionStorage`, NEVER `localStorage` — per-tab, dies on tab close.
+// `localStorage` would leave a stranger's name/email/phone on a shared or
+// kiosk device indefinitely, which is a worse leak than the one being fixed.
+// Every read/write is wrapped in try/catch: private browsing and blocked
+// site data both throw on access, and the no-prefill path must render
+// exactly as it does today when that happens.
+const PREFILL_CACHE_PREFIX = 'oq_prefill_';
+
+interface PrefillCachePayload {
+  name?: string;
+  email?: string;
+  phone?: string;
+}
+
+function readPrefillCache(leadId: string): PrefillCachePayload | null {
+  try {
+    const raw = sessionStorage.getItem(PREFILL_CACHE_PREFIX + leadId);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? (parsed as PrefillCachePayload) : null;
+  } catch {
+    // Private mode / blocked site data — behave exactly as a cache miss.
+    return null;
+  }
+}
+
+function writePrefillCache(leadId: string, payload: PrefillCachePayload): void {
+  try {
+    sessionStorage.setItem(PREFILL_CACHE_PREFIX + leadId, JSON.stringify(payload));
+  } catch {
+    // Same as above: if we can't write it, the visitor just loses the
+    // rehydration convenience on a reload — no different from today.
+  }
+}
+
+function clearPrefillCache(leadId: string): void {
+  try {
+    sessionStorage.removeItem(PREFILL_CACHE_PREFIX + leadId);
+  } catch {
+    // Nothing to do — worst case a same-tab entry outlives the account it
+    // was for, which is still bounded by tab-close and is not a new failure
+    // mode (the try/catch above already tolerates a storage access failure).
+  }
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function GetStartedPage() {
@@ -740,13 +805,50 @@ export default function GetStartedPage() {
    * never populates window.__oqRouterLeadId or gets an empty RPC result, and
    * the form renders exactly as it always has — this is additive, not a
    * behavior change to the no-prefill path.
+   *
+   * gh-2054: a reload re-mounts this component with the SAME leadId still in
+   * window.__oqRouterLeadId (the strip already ran once and
+   * history.replaceState persists across a reload), but the RPC is now
+   * single-used and returns empty — so before this fix, a reload silently
+   * lost the prefill. Fixed by checking the sessionStorage cache (see the
+   * gh-2054 block above) FIRST: a cache hit applies the same cached payload
+   * and returns without touching the RPC at all, so it cannot burn the
+   * single use a second time for nothing. Only a genuine cache miss (first
+   * load in this tab) calls the RPC, and its result is cached for the next
+   * mount before being applied.
    */
   const prefillAttemptedRef = useRef(false);
+  const prefillLeadIdRef = useRef<string | null>(null);
+
+  const applyPrefillPayload = useCallback((row: PrefillCachePayload) => {
+    if (typeof row.name === 'string' && row.name.trim()) {
+      const { firstName: fn, lastName: ln } = splitLeadName(row.name);
+      if (fn) setFirstName(fn);
+      if (ln) setLastName(ln);
+    }
+    if (typeof row.email === 'string' && row.email.trim()) {
+      setEmail(row.email.trim());
+    }
+    if (typeof row.phone === 'string' && row.phone.trim()) {
+      setPhone(formatPhoneValue(row.phone));
+    }
+  }, []);
+
   useEffect(() => {
     if (prefillAttemptedRef.current) return;
     const leadId = typeof window !== 'undefined' ? window.__oqRouterLeadId : undefined;
     if (!leadId) return;
     prefillAttemptedRef.current = true;
+    prefillLeadIdRef.current = leadId;
+
+    // gh-2054: cache-first. A reload of this same tab already has the
+    // payload cached from the first successful RPC call — apply it and
+    // return WITHOUT calling get_lead_prefill again.
+    const cached = readPrefillCache(leadId);
+    if (cached) {
+      applyPrefillPayload(cached);
+      return;
+    }
 
     supabase
       .rpc('get_lead_prefill', { p_lead_id: leadId })
@@ -757,19 +859,17 @@ export default function GetStartedPage() {
         }
         const row = Array.isArray(data) ? data[0] : data;
         if (!row) return; // no prefill available: expired, already used, or unknown id
-        if (typeof row.name === 'string' && row.name.trim()) {
-          const { firstName: fn, lastName: ln } = splitLeadName(row.name);
-          if (fn) setFirstName(fn);
-          if (ln) setLastName(ln);
-        }
-        if (typeof row.email === 'string' && row.email.trim()) {
-          setEmail(row.email.trim());
-        }
-        if (typeof row.phone === 'string' && row.phone.trim()) {
-          setPhone(formatPhoneValue(row.phone));
-        }
+        const payload: PrefillCachePayload = {
+          name: typeof row.name === 'string' ? row.name : undefined,
+          email: typeof row.email === 'string' ? row.email : undefined,
+          phone: typeof row.phone === 'string' ? row.phone : undefined,
+        };
+        // gh-2054: cache BEFORE applying, so even a render that throws
+        // partway through has already banked the payload for a reload.
+        writePrefillCache(leadId, payload);
+        applyPrefillPayload(payload);
       });
-  }, []);
+  }, [applyPrefillPayload]);
 
   // ── Phone formatting on autofill ──
   const handlePhoneChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
@@ -1205,6 +1305,15 @@ export default function GetStartedPage() {
       if (Array.isArray(identities) && identities.length === 0) {
         setError(ALREADY_REGISTERED_MESSAGE);
         return;
+      }
+
+      // gh-2054: reaching here means signUp() genuinely created a new
+      // account (not the already-registered branch above) — clear the
+      // cached prefill now so the PII does not outlive its purpose even
+      // within this tab. Safe to no-op: a visitor with no `?lead=` never
+      // populated prefillLeadIdRef.current in the first place.
+      if (prefillLeadIdRef.current) {
+        clearPrefillCache(prefillLeadIdRef.current);
       }
 
       fireSignupAnalytics('password');
@@ -2115,7 +2224,7 @@ export default function GetStartedPage() {
               <div className="benefit-icon">🔐</div>
               <div className="benefit-text">
                 <h4>Create your account</h4>
-                <p>Continue with Google or set a password. You stay on the site — no waiting on an email to get started.</p>
+                <p>Set a password. You stay on the site — no waiting on an email to get started.</p>
               </div>
             </div>
 
