@@ -1116,6 +1116,12 @@
                 campaign: utmContext.campaign || undefined,
                 content:  utmContext.content  || undefined,
             });
+
+            // gh-2006: Meta Lead — literal event name (not a custom event)
+            // so the ad set's Lead-optimized creatives get credit; same
+            // bare, guarded call as start.html's router_contact_submitted
+            // precedent.
+            try { fbq('track', 'Lead'); } catch (e) {}
         }
 
         // ---------------------------------------------------------------
@@ -1252,6 +1258,12 @@
                     campaign: utm.campaign || undefined,
                     content:  utm.content  || undefined,
                 });
+
+                // gh-2006: Meta Lead — literal event name (not a custom
+                // event) so the ad set's Lead-optimized creatives get
+                // credit; same bare, guarded call as start.html's
+                // router_contact_submitted precedent.
+                try { fbq('track', 'Lead'); } catch (e) {}
 
                 window.location.replace('/partner-dashboard.html');
             } catch (err) {
@@ -1413,6 +1425,12 @@
                     campaign: utmContext.campaign || undefined,
                     content:  utmContext.content  || undefined,
                 });
+
+                // gh-2006: Meta Lead — literal event name (not a custom
+                // event) so the ad set's Lead-optimized creatives get
+                // credit; same bare, guarded call as start.html's
+                // router_contact_submitted precedent.
+                try { fbq('track', 'Lead'); } catch (e) {}
 
                 if (signUpResult && signUpResult.session) {
                     // Auto-confirmed session — go straight to the dashboard.
