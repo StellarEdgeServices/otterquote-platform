@@ -177,4 +177,55 @@ describe('auth-callback page — referral advance failure path (gh-2051)', () =>
     expect(localStorage.getItem('oq_referral_id_for_claim')).toBeNull();
     expect(sessionStorage.getItem('oq_referral_id')).toBeNull();
   });
+
+  it('PR review finding 2 — a preserved key older than the 24h retry TTL is ignored and removed, never retried', async () => {
+    const twentyFiveHoursAgo = Date.now() - 25 * 60 * 60 * 1000;
+    localStorage.setItem('oq_referral_id', 'ref-stale');
+    localStorage.setItem('oq_referral_id_saved_at', String(twentyFiveHoursAgo));
+    sessionStorage.setItem('oq_referral_id', 'ref-stale');
+
+    await mountAndSignIn();
+    await waitFor(() => expect(hrefSpy).toHaveBeenCalledWith('/trade-selector'));
+
+    // A retry that hasn't happened within a day never will — the stale id
+    // must never even reach the RPC (an assertion on RPC args, not just
+    // "rpc was called", since the RPC is also used for unrelated first-touch
+    // attribution).
+    expect(supabase.rpc as unknown as Fn).not.toHaveBeenCalledWith(
+      'advance_referral_registered',
+      expect.anything(),
+    );
+    expect(localStorage.getItem('oq_referral_id')).toBeNull();
+    expect(localStorage.getItem('oq_referral_id_saved_at')).toBeNull();
+    expect(sessionStorage.getItem('oq_referral_id')).toBeNull();
+  });
+
+  it('PR review finding 2 — a freshly-failed advance stamps the retry clock and the id is still honoured (not wiped)', async () => {
+    localStorage.setItem('oq_referral_id', 'ref-fresh');
+    sessionStorage.setItem('oq_referral_id', 'ref-fresh');
+    // No pre-existing oq_referral_id_saved_at — this simulates the FIRST failure.
+    (supabase.rpc as unknown as Fn).mockResolvedValue({
+      data: null,
+      error: { message: 'network error' },
+    });
+
+    const before = Date.now();
+    await mountAndSignIn();
+    await waitFor(() => expect(hrefSpy).toHaveBeenCalledWith('/trade-selector'));
+
+    // Still attempted — a brand-new failure must not be treated as stale.
+    expect(supabase.rpc).toHaveBeenCalledWith('advance_referral_registered', {
+      p_referral_id: 'ref-fresh',
+    });
+    // The retry clock starts now — this is the behavior finding 2 requires
+    // and the pre-fix code never wrote this key at all.
+    const savedAt = Number(localStorage.getItem('oq_referral_id_saved_at'));
+    expect(Number.isFinite(savedAt)).toBe(true);
+    expect(savedAt).toBeGreaterThanOrEqual(before);
+    expect(savedAt).toBeLessThanOrEqual(Date.now());
+    // The id itself is still honoured (preserved for retry), unaffected by
+    // adding the TTL stamp.
+    expect(localStorage.getItem('oq_referral_id')).toBe('ref-fresh');
+    expect(sessionStorage.getItem('oq_referral_id')).toBe('ref-fresh');
+  });
 });

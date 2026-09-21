@@ -167,6 +167,31 @@ export default function AuthCallbackPage() {
       // (trade-selector) can stamp claims.referral_id. Non-fatal: never
       // block sign-in routing on referral bookkeeping.
       try {
+        // gh-2051 PR review (finding 2): the localStorage oq_referral_id
+        // preserved below after a failed advance has no natural expiry
+        // (unlike the oq-ref cookie's pre-existing 90-day TTL, which is
+        // untouched and out of scope here). Bound the RETRY window to 24h
+        // via a sibling oq_referral_id_saved_at timestamp, stamped once on
+        // the first failure (see below) — a retry that hasn't happened
+        // within a day never will, and holding on longer just risks a
+        // LATER, DIFFERENT visitor on the same browser inheriting a stale
+        // referral id. If the stamp is present and past that window, drop
+        // the preserved state here, before it ever reaches the RPC.
+        const OQ_REFERRAL_RETRY_TTL_MS = 24 * 60 * 60 * 1000;
+        if (typeof localStorage !== 'undefined') {
+          const savedAt = localStorage.getItem('oq_referral_id_saved_at');
+          if (savedAt !== null) {
+            const age = Date.now() - Number(savedAt);
+            if (!Number.isFinite(age) || age > OQ_REFERRAL_RETRY_TTL_MS) {
+              localStorage.removeItem('oq_referral_id');
+              localStorage.removeItem('oq_referral_id_saved_at');
+              if (typeof sessionStorage !== 'undefined') {
+                sessionStorage.removeItem('oq_referral_id');
+              }
+            }
+          }
+        }
+
         const referralId =
           (typeof localStorage !== 'undefined' &&
             localStorage.getItem('oq_referral_id')) ||
@@ -218,20 +243,33 @@ export default function AuthCallbackPage() {
               oq_referral_code: kept.oq_referral_code,
             });
           }
-          // gh-2051: only clear the advance-scoped keys on a DEFINITIVE
-          // outcome — success, or the confirmed no-op above (advanced ===
-          // false with no error, which retrying can never fix). On
-          // advanceError (a transient RPC failure) leave both keys in place
-          // so the NEXT page load retries instead of silently and
-          // permanently dropping attribution. This guard is intentional —
-          // do not "tidy up" by hoisting the removes back out unconditionally.
+          // gh-2051 PR review (finding 1): whether preserving oq_referral_id
+          // on advanceError actually leads to a retry depends on the caller.
+          // This React route re-runs routeSession() from scratch on every
+          // fresh page load — a revisit with a still-live session re-fires
+          // INITIAL_SESSION with a session present (see the
+          // onAuthStateChange wiring below), and a brand-new sign-in fires
+          // SIGNED_IN — so a retry here is real, not hypothetical. (Contrast
+          // js/auth.js's contractor-dashboard.html entry point, where the
+          // equivalent retry is structurally impossible — see the comment
+          // there.) Only a DEFINITIVE outcome — success, or the confirmed
+          // no-op above — clears the keys; advanceError leaves them (bounded
+          // by the TTL stamped below) for that next load to retry.
           if (!advanceError) {
             if (typeof localStorage !== 'undefined') {
               localStorage.removeItem('oq_referral_id');
+              localStorage.removeItem('oq_referral_id_saved_at');
             }
             if (typeof sessionStorage !== 'undefined') {
               sessionStorage.removeItem('oq_referral_id');
             }
+          } else if (
+            typeof localStorage !== 'undefined' &&
+            localStorage.getItem('oq_referral_id_saved_at') === null
+          ) {
+            // Stamp the retry clock only on the FIRST failure, so repeated
+            // failed retries don't keep pushing the 24h window out.
+            localStorage.setItem('oq_referral_id_saved_at', String(Date.now()));
           }
         }
       } catch {
@@ -239,7 +277,17 @@ export default function AuthCallbackPage() {
         // never completed at all, so the removes above never ran and
         // oq_referral_id / its sessionStorage copy are naturally preserved
         // for a retry on the next load — same intent as the advanceError
-        // branch above (gh-2051).
+        // branch above (gh-2051). referralId itself is out of scope here
+        // (block-scoped to the try above), so stamp the retry clock off of
+        // oq_referral_id's mere presence instead — same first-failure-only
+        // guard, so this path can't leave the key unbounded either.
+        if (
+          typeof localStorage !== 'undefined' &&
+          localStorage.getItem('oq_referral_id') !== null &&
+          localStorage.getItem('oq_referral_id_saved_at') === null
+        ) {
+          localStorage.setItem('oq_referral_id_saved_at', String(Date.now()));
+        }
       }
 
       // gh-1983: persist first-touch ad attribution (UTM / fbclid / gclid)

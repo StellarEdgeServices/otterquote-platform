@@ -1272,6 +1272,27 @@ Log in to the admin panel to review and approve this contractor.`;
     // Bridge 2026-08-26 (P0): read the cross-subdomain cookie first. This code
     // also runs on app.otterquote.com, where the origin-scoped copies written
     // by ref.html on otterquote.com are simply not visible.
+    // gh-2051 PR review (finding 2): the localStorage oq_referral_id
+    // preserved below after a failed advance has no natural expiry (unlike
+    // the oq-ref cookie's pre-existing 90-day TTL, which is untouched and
+    // out of scope here). Bound the RETRY window to 24h via a sibling
+    // oq_referral_id_saved_at timestamp, stamped once on the first failure
+    // (see below) — a retry that hasn't happened within a day never will,
+    // and holding on longer just risks a LATER, DIFFERENT visitor on the
+    // same browser inheriting a stale referral id. If the stamp is present
+    // and past that window, drop the preserved state here, before it ever
+    // reaches the RPC.
+    const OQ_REFERRAL_RETRY_TTL_MS = 24 * 60 * 60 * 1000;
+    const oqReferralSavedAt = localStorage.getItem('oq_referral_id_saved_at');
+    if (oqReferralSavedAt !== null) {
+      const oqReferralAge = Date.now() - Number(oqReferralSavedAt);
+      if (!Number.isFinite(oqReferralAge) || oqReferralAge > OQ_REFERRAL_RETRY_TTL_MS) {
+        localStorage.removeItem('oq_referral_id');
+        localStorage.removeItem('oq_referral_id_saved_at');
+        sessionStorage.removeItem('oq_referral_id');
+      }
+    }
+
     const referralId = (window.OtterQuoteReferral
         ? window.OtterQuoteReferral.read().oq_referral_id
         : null)
@@ -1310,25 +1331,51 @@ Log in to the admin panel to review and approve this contractor.`;
             oq_referral_code: kept.oq_referral_code
           });
         }
-        // gh-2051: only clear the advance-scoped keys on a DEFINITIVE
-        // outcome — success, or the confirmed no-op above (advanced ===
-        // false with no error, which retrying can never fix). On
-        // advanceError (a transient RPC failure — network, permissions,
-        // timeout) leave both keys in place so the NEXT page load retries
-        // the advance instead of silently and permanently dropping
-        // attribution with no trace beyond a console line. This guard is
-        // intentional — do not "tidy up" by hoisting the removes back out.
+        // gh-2051 PR review (finding 1): the comment this replaces claimed
+        // "the NEXT page load retries the advance" unconditionally — that
+        // is FALSE for one of this function's two call sites and true for
+        // the other, so state each explicitly rather than generalize:
+        //   - contractor-dashboard.html calls handleAuthCallback() directly,
+        //     gated on localStorage.cs_contractor_signup being set (its
+        //     init(), ~line 1219). The finally block above (~line 1261)
+        //     unconditionally clears that flag on THIS SAME invocation,
+        //     before this block ever runs, and handleAuthCallback ends by
+        //     calling redirectToDashboard(), which reloads
+        //     contractor-dashboard.html — where the flag is now gone, so
+        //     init() will never call handleAuthCallback() again for this
+        //     contractor. No retry is structurally possible on this path;
+        //     preserving oq_referral_id here only avoids silently
+        //     destroying a signal, it does not create a retry.
+        //   - partner-dashboard.html wires this function via
+        //     onAuthStateChangeListener() on genuine SIGNED_IN events
+        //     (~line 1349). A later, distinct sign-in on that page DOES
+        //     re-run this block and can retry the advance — this is the
+        //     real, if rare, retry path for this file. (The React
+        //     /auth-callback route has its own, more reliable retry via
+        //     INITIAL_SESSION on a revisit — see that file's comment.)
+        // Only a DEFINITIVE outcome — success, or the confirmed no-op above
+        // — clears the keys; advanceError leaves them (bounded by the TTL
+        // stamped below) in case the partner-path retry above applies.
         if (!advanceError) {
           localStorage.removeItem('oq_referral_id');
+          localStorage.removeItem('oq_referral_id_saved_at');
           sessionStorage.removeItem('oq_referral_id');
+        } else if (localStorage.getItem('oq_referral_id_saved_at') === null) {
+          // Stamp the retry clock only on the FIRST failure, so repeated
+          // failed retries don't keep pushing the 24h window out.
+          localStorage.setItem('oq_referral_id_saved_at', String(Date.now()));
         }
       } catch (err) {
         // gh-2051: a thrown exception (as opposed to the returned {error}
         // above) means the RPC call never completed at all — same
         // reasoning as the advanceError branch: leave oq_referral_id /
-        // sessionStorage in place so a later load can retry. Do not add
-        // removes here.
+        // sessionStorage in place (bounded by the same TTL — stamp the
+        // clock here too if this is the first failure, since referralId
+        // is known valid at this point regardless of how the call failed).
         console.error('Error advancing referral status:', err);
+        if (localStorage.getItem('oq_referral_id_saved_at') === null) {
+          localStorage.setItem('oq_referral_id_saved_at', String(Date.now()));
+        }
       }
     }
 
