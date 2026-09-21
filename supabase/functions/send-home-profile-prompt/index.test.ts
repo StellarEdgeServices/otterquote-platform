@@ -154,5 +154,4 @@ Deno.test("insertNotification: a failed insert is swallowed (logged, not thrown)
     delivered: true,
     mailgun_id: null,
   });
-}
-);
+});
