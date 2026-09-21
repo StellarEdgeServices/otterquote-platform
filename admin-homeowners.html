@@ -133,6 +133,10 @@ main { max-width: 1400px; margin: 0 auto; padding: 1.25rem 1rem 6rem; }
 .ls-facts { display: flex; flex-wrap: wrap; gap: 0.35rem 1.1rem; margin-top: 0.55rem; font-size: 0.82rem; color: #475569; }
 .ls-facts b { color: var(--navy); font-weight: 600; }
 .ls-note { margin-top: 0.5rem; font-size: 0.8rem; color: #92400E; background: #FEF3C7; border-radius: 0.4rem; padding: 0.35rem 0.55rem; }
+
+/* ── gh-1570: ready, not submitted ── */
+.rns-badge { display: inline-block; padding: 0.2rem 0.55rem; border-radius: 1rem; font-size: 0.74rem; font-weight: 700; white-space: nowrap; background: #D1FAE5; color: #065F46; border: 1px solid #10B981; }
+.card.rns-row { border-left-color: var(--green); }
 .claim-id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.76rem; color: #64748B; overflow-wrap: anywhere; }
 .ls-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.7rem; align-items: center; }
 .btn-doc { display: inline-block; background: #F1F5F9; color: var(--navy); border: 1px solid #CBD5E1; padding: 0 0.85rem; min-height: 40px; line-height: 38px; border-radius: 0.5rem; font-weight: 600; font-size: 0.85rem; text-decoration: none; }
@@ -181,9 +185,12 @@ main { max-width: 1400px; margin: 0 auto; padding: 1.25rem 1rem 6rem; }
   </div>
 
   <div class="info-banner" id="bannerAll">
-    One row per claim, longest wait first. <strong>Days</strong> counts from the claim's
-    last change (<code>updated_at</code>) — the platform does not yet record when a status
-    was entered, so any edit to the claim resets it. Read it as "at least this long at this status".
+    One row per claim. <strong>Ready, not submitted</strong> claims (checklist complete, still
+    sitting at Waiting on documents) sort first, oldest first — those are waiting on the
+    homeowner clicking one more button, not on you. Everything else sorts longest wait first.
+    <strong>Days</strong> counts from the claim's last change (<code>updated_at</code>) — the
+    platform does not yet record when a status was entered, so any edit to the claim resets it.
+    Read it as "at least this long at this status".
   </div>
 
   <div class="info-banner" id="bannerLoss" style="display:none">
@@ -334,6 +341,11 @@ function chips(row) {
   return out.join('');
 }
 
+/** gh-1570 — badge for a documents_needed claim whose checklist is complete. */
+function rnsBadgeHtml(row) {
+  return row.ready_not_submitted ? '<span class="rns-badge">Ready, not submitted</span>' : '';
+}
+
 function whoHtml(row) {
   if (row.homeowner_name && row.homeowner_email) {
     return '<div class="who-name">' + esc(row.homeowner_name) + '</div><div class="who-email">' + esc(row.homeowner_email) + '</div>';
@@ -386,7 +398,7 @@ async function loadRows() {
   }
 }
 
-// ── gh-1796: view switching (pure display; never refetches) ────────────────
+// -- gh-1796: view switching (pure display; never refetches) --
 function setView(view) {
   state.view = view === 'loss' ? 'loss' : 'all';
   var tabs = document.querySelectorAll('#viewTabs .view-tab');
@@ -612,7 +624,7 @@ function render() {
   var shown = state.showTest ? all : all.filter(function (r) { return !r.is_test; });
   var hidden = all.length - shown.length;
 
-  // ── gh-1796: tab counts + the pending-migration notice ───────────────────
+  // -- gh-1796: tab counts + the pending-migration notice --
   // Counts are over the VISIBLE set, so they agree with what the tab opens onto
   // rather than with a server-side total that includes hidden test rows.
   document.getElementById('tabCountAll').textContent = shown.length;
@@ -632,8 +644,12 @@ function render() {
 
   if (state.view === 'loss') { renderLossView(shown, hidden); return; }
 
+  // gh-1570 — surfaced in the count line so it never depends on scrolling
+  // past the cards/table to notice.
+  var rnsCount = shown.filter(function (r) { return r.ready_not_submitted; }).length;
   document.getElementById('countLine').textContent =
     shown.length + ' claim' + (shown.length === 1 ? '' : 's') +
+    (rnsCount > 0 ? ' · ' + rnsCount + ' ready, not submitted' : '') +
     (hidden > 0 ? ' · ' + hidden + ' test hidden' : '');
 
   if (shown.length === 0) {
@@ -641,16 +657,17 @@ function render() {
     return;
   }
 
-  // Server already sorted longest-dwell first; the filter preserves order.
+  // Server already sorted ready-not-submitted first (oldest first), then
+  // longest-dwell first; the filter preserves order.
   var cards = shown.map(function (r) {
     return (
-      '<div class="card ' + dwellClass(r) + '">' +
+      '<div class="card ' + dwellClass(r) + (r.ready_not_submitted ? ' rns-row' : '') + '">' +
         '<div class="card-top">' +
           '<div class="who">' + whoHtml(r) + '</div>' +
           '<div class="dwell"><div class="dwell-n">' + dwellNum(r) + '</div><div class="dwell-lbl">days · since last change</div></div>' +
         '</div>' +
         '<div class="status-line">' + esc(r.status_label) + '</div>' +
-        '<div class="meta">' + chips(r) + lossStateChip(r) + '</div>' +
+        '<div class="meta">' + rnsBadgeHtml(r) + chips(r) + lossStateChip(r) + '</div>' +
         '<div class="created">Created ' + esc(fmtDate(r.created_at)) + '</div>' +
       '</div>'
     );
@@ -658,9 +675,9 @@ function render() {
 
   var trs = shown.map(function (r) {
     return (
-      '<tr class="' + dwellClass(r) + '">' +
+      '<tr class="' + dwellClass(r) + (r.ready_not_submitted ? ' rns-row' : '') + '">' +
         '<td>' + whoHtml(r) + '</td>' +
-        '<td>' + esc(r.status_label) + '</td>' +
+        '<td>' + esc(r.status_label) + ' ' + rnsBadgeHtml(r) + '</td>' +
         '<td class="num">' + dwellNum(r) + '</td>' +
         '<td>' + esc(fmtDate(r.status_since)) + '</td>' +
         '<td>' + esc(fmtDate(r.created_at)) + '</td>' +
