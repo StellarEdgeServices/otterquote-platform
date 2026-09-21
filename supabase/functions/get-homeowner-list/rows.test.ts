@@ -5,7 +5,7 @@ import { assertEquals, assertStrictEquals } from "https://deno.land/std@0.208.0/
 import {
   buildRows, daysSince, homeownerLabel, statusLabel, STATUS_LABELS,
   lossSheetNote, lossSheetPath, lossSheetStatus, lossSheetUploadedAt, signupAt,
-  isMigrationPendingError, PG_UNDEFINED_COLUMN,
+  isMigrationPendingError, PG_UNDEFINED_COLUMN, isReadyNotSubmitted,
   type ClaimIn,
 } from "./rows.ts";
 
@@ -122,9 +122,9 @@ Deno.test("buildRows: missing updated_at falls back to created_at; missing both 
 });
 
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────
 // gh-1796 — loss-sheet queue. Same rules: pure, no network, no env, no secrets.
-// ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────
 
 /** A loss-sheet-shaped claim fragment with everything empty by default. */
 function ls(over: Partial<ClaimIn> = {}) {
@@ -282,4 +282,81 @@ Deno.test("isMigrationPendingError: null/undefined error object does not crash a
   assertStrictEquals(isMigrationPendingError(null), false);
   assertStrictEquals(isMigrationPendingError(undefined), false);
   assertStrictEquals(isMigrationPendingError({}), false);
+});
+
+// ── gh-1570 — "ready, not submitted" ───────────────────────────────────────
+// A homeowner who finishes dashboard.html's checklist has ONE remaining exit
+// from documents_needed: a separate click on Submit for Bids. These pin the
+// gate that makes that state visible, and the null/real-data tolerance PR
+// #1976's review history called out as a hard requirement for anything
+// touching claim status/activity semantics.
+
+Deno.test("isReadyNotSubmitted: true only for documents_needed + a checklist_complete row", () => {
+  assertStrictEquals(isReadyNotSubmitted({ status: "documents_needed" }, false, "2026-09-01T00:00:00Z"), true);
+  assertStrictEquals(isReadyNotSubmitted({ status: "documents_needed" }, null, "2026-09-01T00:00:00Z"), true);
+  assertStrictEquals(isReadyNotSubmitted({ status: "documents_needed" }, undefined, "2026-09-01T00:00:00Z"), true);
+});
+
+Deno.test("isReadyNotSubmitted: false without a checklist_complete row, even at documents_needed", () => {
+  assertStrictEquals(isReadyNotSubmitted({ status: "documents_needed" }, false, null), false);
+});
+
+Deno.test("isReadyNotSubmitted: false at any other status, even with a checklist_complete row", () => {
+  for (const s of ["draft", "submitted", "active", "waitlisted", "bidding", "contract_signed", "awarded", null, undefined]) {
+    assertStrictEquals(isReadyNotSubmitted({ status: s as string | null }, false, "2026-09-01T00:00:00Z"), false, `status=${s}`);
+  }
+});
+
+Deno.test("isReadyNotSubmitted: defensive — ready_for_bids=true overrides documents_needed + a row (real data has disagreed with status before)", () => {
+  assertStrictEquals(isReadyNotSubmitted({ status: "documents_needed" }, true, "2026-09-01T00:00:00Z"), false);
+});
+
+Deno.test("buildRows: ready_not_submitted claims sort first, oldest checklist_complete_at first; everything else keeps longest-dwell-first order", () => {
+  const checklistIndex = new Map<string, string>([
+    ["c-rns-newer", "2026-09-03T00:00:00Z"],
+    ["c-rns-older", "2026-09-01T00:00:00Z"],
+  ]);
+  const rows = buildRows(
+    [
+      // Highest raw dwell of all, but NOT ready-not-submitted -> must not jump the queue.
+      claim({ id: "c-stuck", user_id: "u1", status: "draft", updated_at: "2026-01-01T00:00:00Z" }),
+      claim({ id: "c-rns-newer", user_id: "u2", status: "documents_needed", updated_at: "2026-09-03T00:00:00Z" }),
+      claim({ id: "c-rns-older", user_id: "u3", status: "documents_needed", updated_at: "2026-09-01T00:00:00Z" }),
+      // documents_needed but no checklist_complete row -> ordinary row, not surfaced.
+      claim({ id: "c-dn-incomplete", user_id: "u4", status: "documents_needed", updated_at: "2026-08-15T00:00:00Z" }),
+    ],
+    [],
+    NOW,
+    undefined,
+    checklistIndex,
+  );
+
+  assertEquals(rows.map((r) => r.claim_id), ["c-rns-older", "c-rns-newer", "c-stuck", "c-dn-incomplete"]);
+  assertEquals(rows.map((r) => r.ready_not_submitted), [true, true, false, false]);
+  assertStrictEquals(rows[0].checklist_complete_at, "2026-09-01T00:00:00Z");
+  assertStrictEquals(rows[1].checklist_complete_at, "2026-09-03T00:00:00Z");
+  assertStrictEquals(rows[2].checklist_complete_at, null);
+  assertStrictEquals(rows[3].checklist_complete_at, null);
+});
+
+Deno.test("buildRows: ready_for_bids=true on a documents_needed row with a checklist_complete entry never surfaces (defensive against disagreeing real data)", () => {
+  const checklistIndex = new Map<string, string>([["c1", "2026-09-01T00:00:00Z"]]);
+  const rows = buildRows(
+    [claim({ id: "c1", user_id: "u1", status: "documents_needed", ready_for_bids: true })],
+    [],
+    NOW,
+    undefined,
+    checklistIndex,
+  );
+  assertStrictEquals(rows[0].ready_not_submitted, false);
+});
+
+Deno.test("buildRows: no checklist_complete index at all (undefined) never throws and never surfaces anyone", () => {
+  const rows = buildRows(
+    [claim({ id: "c1", user_id: "u1", status: "documents_needed" })],
+    [],
+    NOW,
+  );
+  assertStrictEquals(rows[0].ready_not_submitted, false);
+  assertStrictEquals(rows[0].checklist_complete_at, null);
 });
