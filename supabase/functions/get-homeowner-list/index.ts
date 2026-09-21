@@ -103,6 +103,18 @@ const LOSS_SHEET_CONCURRENCY = 6;
 /** Signed-URL lifetime for a loss sheet the admin opens from the queue. */
 const LOSS_SHEET_URL_TTL_SECONDS = 3600;
 
+/**
+ * gh-1570 Part 3 REVIEW FIX — PostgREST caps rows server-side (db-max-rows)
+ * on ANY query, filtered or not; get-business-lines-dashboard/index.ts's
+ * fetchAllActivity() documents this for an unfiltered activity_log read, and
+ * an .eq("event_type", ...) filter does not exempt a query from the same
+ * cap. Page size and max pages are generous for what is, today, a small
+ * filtered slice — the point is correctness at any volume, not the current
+ * row count.
+ */
+const CHECKLIST_COMPLETE_PAGE = 1000;
+const CHECKLIST_COMPLETE_MAX_PAGES = 50;
+
 const ALLOWED_ORIGINS = [
   "https://otterquote.com",
   "https://app.otterquote.com",
@@ -149,6 +161,47 @@ async function mapLimited<T>(items: T[], limit: number, worker: (item: T) => Pro
     }
   });
   await Promise.all(runners);
+}
+
+interface ChecklistCompleteRow {
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+}
+
+/**
+ * gh-1570 Part 3 REVIEW FIX — read every `checklist_complete` activity_log
+ * row, paginated. Same idiom as get-business-lines-dashboard/index.ts's
+ * fetchAllActivity(): the cursor advances by `rows.length` (what the server
+ * actually returned), NOT by CHECKLIST_COMPLETE_PAGE — a short-page stop
+ * test breaks the moment the server's real cap is smaller than the page
+ * size requested, silently dropping every row past it (that file's own
+ * comment on why, verbatim-applicable here). Stops on an empty page;
+ * `truncated: true` if CHECKLIST_COMPLETE_MAX_PAGES is exhausted first,
+ * which the caller must surface rather than silently return a partial set.
+ * `order("created_at", { ascending: true })` also makes the FIRST row seen
+ * for a given claim id the earliest completion — the timestamp Part 3's
+ * "sorted oldest first" queue needs.
+ */
+async function fetchChecklistCompleteRows(
+  // deno-lint-ignore no-explicit-any
+  db: any,
+): Promise<{ rows: ChecklistCompleteRow[]; truncated: boolean; error: string | null }> {
+  const all: ChecklistCompleteRow[] = [];
+  let from = 0;
+  for (let page = 0; page < CHECKLIST_COMPLETE_MAX_PAGES; page++) {
+    const { data, error } = await db
+      .from("activity_log")
+      .select("metadata, created_at")
+      .eq("event_type", "checklist_complete")
+      .order("created_at", { ascending: true })
+      .range(from, from + CHECKLIST_COMPLETE_PAGE - 1);
+    if (error) return { rows: [], truncated: false, error: error.message };
+    const rows = (data ?? []) as ChecklistCompleteRow[];
+    if (rows.length === 0) return { rows: all, truncated: false, error: null };
+    all.push(...rows);
+    from += rows.length;
+  }
+  return { rows: all, truncated: true, error: null };
 }
 
 /**
@@ -348,25 +401,35 @@ serve(async (req: Request) => {
     const uploaded = await buildUploadedAtIndex(supabase, pathsNewestFirst);
 
     // ── gh-1570 Part 3: which claims have completed the checklist without
-    // submitting for bids. activity_log has no claim_id column (same
-    // constraint the loss-sheet code above works around, and the one
+    // submitting for bids, and WHEN. activity_log has no claim_id column
+    // (same constraint the loss-sheet code above works around, and the one
     // send-homeowner-next-steps/index.ts documents for this table), so this
     // is read and reduced in JS rather than filtered server-side on
-    // metadata->>'claim_id'. A read failure degrades to "nothing is
-    // complete yet" (empty set) rather than 500ing the whole list — this
-    // queue is a visibility aid, not a source of truth the rest of the page
-    // depends on. ──────────────────────────────────────────────────────────
-    const checklistCompleteClaimIds = new Set<string>();
-    const checklistRes = await supabase
-      .from("activity_log")
-      .select("metadata")
-      .eq("event_type", "checklist_complete");
-    if (checklistRes.error) {
-      console.warn(`[${FUNCTION_NAME}] checklist_complete read failed (queue will read empty):`, checklistRes.error.message);
+    // metadata->>'claim_id'. A read failure OR a truncated read degrades to
+    // "nothing (or not everything) is complete yet" — flagged in the
+    // response via checklist_complete_truncated — rather than 500ing the
+    // whole list: this queue is a visibility aid, not a source of truth the
+    // rest of the page depends on. ────────────────────────────────────────
+    const checklistCompleteAtByClaimId = new Map<string, string>();
+    let checklistCompleteTruncated = false;
+    const checklistFetch = await fetchChecklistCompleteRows(supabase);
+    if (checklistFetch.error) {
+      console.warn(`[${FUNCTION_NAME}] checklist_complete read failed (queue will read empty):`, checklistFetch.error);
     } else {
-      for (const row of checklistRes.data ?? []) {
-        const claimId = (row as { metadata?: { claim_id?: string } })?.metadata?.claim_id;
-        if (claimId) checklistCompleteClaimIds.add(claimId);
+      checklistCompleteTruncated = checklistFetch.truncated;
+      if (checklistCompleteTruncated) {
+        console.warn(`[${FUNCTION_NAME}] checklist_complete read truncated past ${CHECKLIST_COMPLETE_MAX_PAGES} pages — "Ready, not submitted" may be missing rows`);
+      }
+      for (const row of checklistFetch.rows) {
+        const claimId = (row.metadata as { claim_id?: string } | null)?.claim_id;
+        if (!claimId) continue;
+        // Rows arrive created_at ascending — the first one seen for a claim
+        // id is its earliest completion. Defensive against a duplicate (the
+        // dashboard's own write-side guard should prevent one, but this is
+        // a read path and must not assume the write side is bug-free).
+        if (!checklistCompleteAtByClaimId.has(claimId)) {
+          checklistCompleteAtByClaimId.set(claimId, row.created_at);
+        }
       }
     }
 
@@ -375,7 +438,7 @@ serve(async (req: Request) => {
       (profilesRes.data ?? []) as ProfileIn[],
       now,
       uploaded.index,
-      checklistCompleteClaimIds,
+      checklistCompleteAtByClaimId,
     );
 
     const signedUrlsAttached = await attachSignedUrls(supabase, rows);
@@ -397,6 +460,11 @@ serve(async (req: Request) => {
         "storage_object = storage.objects.created_at for claims.estimate_filename (authoritative); " +
         "loss_sheet_parsed_at = fallback, set by parse-loss-sheet just after upload; " +
         "unknown = no date this function can source. claims has no upload-timestamp column.",
+      // gh-1570 Part 3 — true only if the checklist_complete activity_log
+      // read ran past CHECKLIST_COMPLETE_MAX_PAGES; the "Ready, not
+      // submitted" tab may then be missing rows and must say so rather than
+      // showing a silently short list.
+      checklist_complete_truncated: checklistCompleteTruncated,
       rows,
     }, 200, corsHeaders);
 

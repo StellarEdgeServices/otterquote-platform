@@ -1619,12 +1619,23 @@
           renderClaimInfo();
           renderChecklist();
           updateSubmitButton();
-          await updateChecklistReadyBanner();
           updateProgressBar();
           await updateStatusBanner();
 
           // 3. Set up event listeners
           setupEventListeners();
+
+          // gh-1570 REVIEW FIX: updateChecklistReadyBanner() runs AFTER
+          // setupEventListeners(), not before. The banner (and its CTA
+          // button) stays hidden — .checklist-ready-banner has no .active
+          // class — until this call runs, and this call now happens only
+          // once #checklist-ready-submit-btn already has its click listener
+          // attached. Running it earlier (as updateStatusBanner() above
+          // still does, pre-existing and out of this PR's scope) would open
+          // a dead-click window: the banner visible and awaiting two
+          // network round trips (the read-check + insert in
+          // logChecklistCompleteOnce()) with nothing wired to its click yet.
+          await updateChecklistReadyBanner();
 
           // GA4 event
           gtag('event', 'page_view', {
@@ -3171,11 +3182,29 @@
         return path ? String(path).split('/').pop() : path;
       }
 
+      // gh-1570 REVIEW FIX: module-level re-entrancy guard, not tied to any
+      // one button's `disabled` attribute. The original guard lived only on
+      // #submit-btn — the new #checklist-ready-submit-btn (added by this
+      // same PR) called submitForBids() through a second, unguarded entry
+      // point, so a homeowner who clicked the top banner CTA (got no visible
+      // feedback — "Submitting…" landed on #submit-btn, off-screen ~2000
+      // lines down) and clicked again fired TWO claims.update + TWO
+      // notify-contractors invokes: duplicate new-opportunity email/SMS to
+      // every matched contractor. Guarding on `submitInFlight` instead of a
+      // DOM node means a third future entry point is covered automatically.
+      let submitInFlight = false;
       async function submitForBids() {
-        const btn = document.getElementById('submit-btn');
+        if (submitInFlight) return;
         if (!currentClaim) return;
-        btn.disabled = true;
-        btn.textContent = 'Submitting…';
+        submitInFlight = true;
+
+        const btn = document.getElementById('submit-btn');
+        const readyBtn = document.getElementById('checklist-ready-submit-btn');
+        // Synchronous, before any await: both possible entry points get
+        // visible in-flight feedback immediately, and neither can be
+        // clicked again while this call is still resolving.
+        if (btn) { btn.disabled = true; btn.textContent = 'Submitting…'; }
+        if (readyBtn) { readyBtn.disabled = true; readyBtn.textContent = 'Submitting…'; }
 
         try {
           // Fix (E2E walk 2026-07-07): the opportunities query + RLS both
@@ -3226,9 +3255,13 @@
 
         } catch (err) {
           console.error('[submitForBids] Error:', err);
-          btn.disabled = false;
-          btn.textContent = 'Submit for Bids';
+          if (btn) { btn.disabled = false; btn.textContent = 'Submit for Bids'; }
+          if (readyBtn) { readyBtn.disabled = false; readyBtn.textContent = 'Submit for Bids'; }
           showError('Failed to submit your project. Please try again.');
+        } finally {
+          // Always clears, success or failure — a failed submit must be
+          // retryable, and this is the ONE guard both entry points share.
+          submitInFlight = false;
         }
       }
 

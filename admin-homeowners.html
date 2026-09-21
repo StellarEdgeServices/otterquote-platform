@@ -379,11 +379,15 @@ async function loadRows() {
     var body = await res.json();
     if (!res.ok || !body.ok) throw new Error(body.error || ('EF returned ' + res.status));
     state.rows = body.rows || [];
-    // gh-1796 — response-level facts the banners need.
+    // gh-1796/gh-1570 — response-level facts the banners need.
     state.meta = {
       queue: body.loss_sheet_queue || null,
       reviewedColumnPresent: body.loss_sheet_reviewed_column_present === true,
-      dirLookupsCapped: body.loss_sheet_dir_lookups_capped === true
+      dirLookupsCapped: body.loss_sheet_dir_lookups_capped === true,
+      // gh-1570 Part 3 REVIEW FIX: true when the checklist_complete read hit
+      // its page cap — the "Ready, not submitted" tab may be missing rows
+      // and must say so, never show a silently short list.
+      checklistCompleteTruncated: body.checklist_complete_truncated === true
     };
     state.msg = {};
     render();
@@ -419,20 +423,29 @@ function lossQueueRows(rows) {
 
 /**
  * gh-1570 Part 3 — claims stalled exactly where #1570 says they go invisible:
- * checklist complete, still `documents_needed`, never submitted. Sorted
- * oldest claim first (created_at ascending) — the homeowners waiting longest
- * surface at the top, mirroring the "43 days" / "6 weeks" real cases the
- * issue was raised over.
+ * checklist complete, still `documents_needed`, never submitted. Sorted by
+ * `checklist_complete_at` ascending — REVIEW FIX: this was claim `created_at`
+ * until #2081's review pointed out that's the wrong clock for a
+ * stall-visibility surface (it answers "when did they sign up", not "how
+ * long have they been sitting ready"). `checklist_complete_at` is null only
+ * when `checklist_complete` is false, which the filter below already
+ * excludes, so every row here has a real timestamp to sort on.
  */
 function readyQueueRows(rows) {
   return rows
     .filter(function (r) { return r.status === 'documents_needed' && r.checklist_complete === true; })
     .slice()
     .sort(function (a, b) {
-      var ta = a.created_at ? new Date(a.created_at).getTime() : Number.MAX_SAFE_INTEGER;
-      var tb = b.created_at ? new Date(b.created_at).getTime() : Number.MAX_SAFE_INTEGER;
+      var ta = a.checklist_complete_at ? new Date(a.checklist_complete_at).getTime() : Number.MAX_SAFE_INTEGER;
+      var tb = b.checklist_complete_at ? new Date(b.checklist_complete_at).getTime() : Number.MAX_SAFE_INTEGER;
       return ta - tb;
     });
+}
+
+/** How long a row has been sitting ready, from checklist_complete_at. */
+function readyCell(r) {
+  if (!r.checklist_complete_at) return '—';
+  return fmtDate(r.checklist_complete_at);
 }
 
 function lossStateChip(r) {
@@ -661,8 +674,8 @@ function renderReadyView(shown, hidden) {
           '<div><span class="ls-state ls-ready">Ready, not submitted</span>' + (r.is_test ? ' <span class="chip chip-test">TEST</span>' : '') + '</div>' +
         '</div>' +
         '<div class="ls-facts">' +
+          '<span>Checklist done: <b>' + esc(readyCell(r)) + '</b></span>' +
           '<span>Signed up: <b>' + esc(signupCell(r)) + '</b> ago</span>' +
-          '<span>At this status: <b>' + dwellNum(r) + '</b> days</span>' +
           '<span>Created: <b>' + esc(fmtDate(r.created_at)) + '</b></span>' +
         '</div>' +
         '<div class="meta">' + chips(r) + '</div>' +
@@ -675,8 +688,8 @@ function renderReadyView(shown, hidden) {
       '<tr>' +
         '<td>' + whoHtml(r) + (r.is_test ? '<span class="chip chip-test">TEST</span>' : '') + '</td>' +
         '<td class="claim-id">' + esc(r.claim_id) + '</td>' +
+        '<td>' + esc(readyCell(r)) + '</td>' +
         '<td>' + esc(signupCell(r)) + '</td>' +
-        '<td class="num">' + dwellNum(r) + '</td>' +
         '<td>' + esc(fmtDate(r.created_at)) + '</td>' +
         '<td>' + chips(r) + '</td>' +
       '</tr>'
@@ -684,10 +697,14 @@ function renderReadyView(shown, hidden) {
   }).join('');
 
   root.innerHTML =
+    (state.meta && state.meta.checklistCompleteTruncated
+      ? '<div class="warn-banner">This list may be missing rows — the checklist-complete read hit its page ' +
+        'cap on the server. Not silently short: this notice IS the signal. Contact engineering if this persists.</div>'
+      : '') +
     '<div class="list">' + cards + '</div>' +
     '<div class="table-wrapper"><table class="h-table"><thead><tr>' +
-      '<th>Homeowner</th><th>Claim id</th><th>Signed up</th>' +
-      '<th style="text-align:right">Days at status</th><th>Created</th><th>Trade · Job · Funding</th>' +
+      '<th>Homeowner</th><th>Claim id</th><th>Checklist done</th>' +
+      '<th>Signed up</th><th>Created</th><th>Trade · Job · Funding</th>' +
     '</tr></thead><tbody>' + trs + '</tbody></table></div>';
 }
 
