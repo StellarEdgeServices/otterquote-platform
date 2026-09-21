@@ -10,9 +10,6 @@
   Sentry.onLoad(function() {
     Sentry.init({
       environment: window.location.hostname.includes('staging') ? 'staging' : 'production',
-      // gh-439: drop phantom events from non-http(s) preview contexts (data:/file:/blob:
-      // URLs -- e.g. Claude's HTML preview renders pages via data: URIs; relative scripts
-      // like js/auth.js then fail and report noise such as "Auth is not defined").
       denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
       beforeSend: function (event) {
         var proto = window.location.protocol;
@@ -32,7 +29,6 @@
 
   <script src="/js/ga-gate.js"></script>
   <script>gtag('config','G-D1Y1TLGEFY');</script>
-<!-- Microsoft Clarity (wwr7qlk8g5) is loaded by /js/ga-gate.js, behind the same production-host gate as GA4 (gh-1619). Do not add a per-page loader. -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js" integrity="sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz" crossorigin="anonymous"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -738,6 +734,7 @@
       padding: var(--sp-8);
       max-width: 520px;
       width: 100%;
+      animation: fadeUp 0.3s var(--ease);
     }
     .switch-modal-header {
       display: flex;
@@ -752,6 +749,27 @@
       font-size: 1.2rem;
       color: var(--white);
     }
+    .switch-modal-body p {
+      color: var(--slate);
+      margin-bottom: var(--sp-4);
+      line-height: 1.7;
+      font-size: 0.95rem;
+    }
+    .switch-modal-warning {
+      background: rgba(239, 68, 68, 0.08);
+      border: 1px solid rgba(239, 68, 68, 0.25);
+      border-radius: var(--radius-md);
+      padding: var(--sp-4);
+      margin-bottom: var(--sp-6);
+      color: #fca5a5;
+      font-size: 0.9rem;
+      line-height: 1.6;
+    }
+    .switch-modal-actions {
+      display: flex;
+      gap: var(--sp-3);
+      justify-content: flex-end;
+    }
     .btn-danger {
       background: #dc2626;
       color: #fff;
@@ -760,11 +778,182 @@
     .btn-danger:hover:not(:disabled) {
       background: #b91c1c;
     }
+    .btn-danger:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .switch-btn-wrapper {
+      position: relative;
+      display: inline-block;
+    }
+    .switch-btn-wrapper .switch-tooltip {
+      display: none;
+      position: absolute;
+      bottom: calc(100% + 8px);
+      right: 0;
+      background: var(--navy-1);
+      color: var(--slate);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: var(--radius-sm);
+      padding: var(--sp-2) var(--sp-3);
+      font-size: 0.8rem;
+      white-space: nowrap;
+      pointer-events: none;
+      z-index: 10;
+    }
+    .switch-btn-wrapper:hover .switch-tooltip {
+      display: block;
+    }
+    .switch-survey-step { display: block; }
+    .switch-success-step { display: none; }
+    .switch-survey-step.hidden { display: none; }
+    .switch-success-step.visible { display: block; }
+    .switch-reason-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--sp-2);
+      margin: var(--sp-3) 0 var(--sp-4);
+    }
+    .switch-reason-label {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-2);
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: var(--radius-md);
+      padding: var(--sp-2) var(--sp-3);
+      cursor: pointer;
+      font-size: 0.88rem;
+      color: var(--slate);
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+      user-select: none;
+    }
+    .switch-reason-label:hover {
+      background: rgba(255,255,255,0.08);
+      border-color: rgba(255,255,255,0.18);
+      color: var(--white);
+    }
+    .switch-reason-label input[type="checkbox"] {
+      accent-color: var(--teal);
+      width: 15px;
+      height: 15px;
+      flex-shrink: 0;
+    }
+    .switch-reason-label.checked {
+      background: rgba(20, 184, 166, 0.1);
+      border-color: rgba(20, 184, 166, 0.4);
+      color: var(--white);
+    }
+    .switch-notes-field {
+      width: 100%;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: var(--radius-md);
+      color: var(--white);
+      font-size: 0.9rem;
+      padding: var(--sp-3);
+      resize: vertical;
+      min-height: 72px;
+      font-family: inherit;
+      box-sizing: border-box;
+    }
+    .switch-notes-field::placeholder { color: var(--slate); opacity: 0.7; }
+    .switch-notes-field:focus { outline: none; border-color: var(--teal); }
+    .switch-success-panel {
+      text-align: center;
+      padding: var(--sp-5) var(--sp-4);
+    }
+    .switch-success-icon { font-size: 2.5rem; margin-bottom: var(--sp-3); }
+    .switch-success-panel h3 { color: var(--white); margin: 0 0 var(--sp-3); font-size: 1.1rem; }
+    .switch-success-panel p { color: var(--slate); font-size: 0.92rem; line-height: 1.7; margin: 0 0 var(--sp-3); }
+    .switch-consequence-note {
+      background: rgba(239, 68, 68, 0.07);
+      border: 1px solid rgba(239, 68, 68, 0.2);
+      border-radius: var(--radius-md);
+      padding: var(--sp-3) var(--sp-4);
+      margin-bottom: var(--sp-4);
+      font-size: 0.85rem;
+      color: var(--slate);
+      line-height: 1.6;
+    }
+    .switch-consequence-note strong { color: rgba(255,255,255,0.8); }
+
+    @media (max-width: 768px) {
+      .dashboard-main { padding: var(--sp-8) 0; }
+      .welcome-header { flex-direction: column; }
+      .welcome-progress { max-width: 100%; }
+      .claim-info-grid { grid-template-columns: 1fr; }
+      .claim-form { grid-template-columns: 1fr; }
+      .checklist-item { flex-direction: column; align-items: flex-start; }
+      .checklist-actions { width: 100%; flex-direction: column; }
+      .checklist-actions .btn { width: 100%; }
+      .status-banner { flex-direction: column; text-align: center; }
+      .status-banner-text { flex-direction: column; margin-bottom: var(--sp-3); }
+      .status-banner-actions { flex-direction: column; width: 100%; }
+      .ready-to-submit-banner.active { flex-direction: column; text-align: center; }
+      .ready-to-submit-text { flex-direction: column; margin-bottom: var(--sp-3); }
+      .ready-to-submit-banner .btn { width: 100%; }
+      .switch-modal-actions { flex-direction: column-reverse; }
+      .switch-reason-grid { grid-template-columns: 1fr; }
+      .switch-reason-label[id="reason-label-other"] { grid-column: span 1; }
+      .submit-section { padding: var(--sp-6); }
+      .job-type-selector { grid-template-columns: 1fr; }
+    }
+
+    .state-gate-overlay {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--navy);
+      padding: var(--sp-8) var(--sp-4);
+    }
+    .state-gate-card {
+      background: var(--navy-2, #1E3A5F);
+      border: 1px solid rgba(250,199,117,0.25);
+      border-radius: 16px;
+      padding: var(--sp-10, 2.5rem) var(--sp-8, 2rem);
+      max-width: 560px;
+      width: 100%;
+      text-align: center;
+    }
+    .state-gate-card .gate-logo { width: 72px; height: auto; margin-bottom: var(--sp-6, 1.5rem); }
+    .state-gate-card h2 { color: #FAC775; font-size: 1.5rem; font-weight: 700; margin-bottom: var(--sp-4, 1rem); line-height: 1.3; }
+    .state-gate-card .gate-body { color: rgba(255,255,255,0.82); font-size: 1rem; line-height: 1.65; margin-bottom: var(--sp-6, 1.5rem); }
+    .state-gate-optin { display: flex; align-items: flex-start; gap: var(--sp-3, 0.75rem); text-align: left; background: rgba(255,255,255,0.05); border: 1px solid rgba(250,199,117,0.18); border-radius: 10px; padding: var(--sp-4, 1rem); margin-bottom: var(--sp-5, 1.25rem); }
+    .state-gate-optin input[type="checkbox"] { flex-shrink: 0; width: 18px; height: 18px; margin-top: 2px; accent-color: #FAC775; cursor: pointer; }
+    .state-gate-optin label { color: rgba(255,255,255,0.85); font-size: 0.95rem; line-height: 1.5; cursor: pointer; }
+    .state-gate-optin .gate-email-note { font-size: 0.82rem; color: rgba(255,255,255,0.5); margin-top: 4px; }
+    .state-gate-btn { display: block; width: 100%; padding: var(--sp-4, 1rem) var(--sp-6, 1.5rem); background: #FAC775; color: var(--navy); font-weight: 700; font-size: 1rem; border: none; border-radius: 8px; cursor: pointer; margin-bottom: var(--sp-5, 1.25rem); transition: background 0.15s; }
+    .state-gate-btn:hover { background: #E8B660; }
+    .state-gate-btn:disabled { opacity: 0.6; cursor: default; }
+    .state-gate-confirm { color: #4ade80; font-size: 0.92rem; margin-bottom: var(--sp-4, 1rem); display: none; }
+    .state-gate-error { color: #fca5a5; font-size: 0.9rem; margin-bottom: var(--sp-4, 1rem); display: none; }
+    .state-gate-fine { color: rgba(255,255,255,0.38); font-size: 0.78rem; line-height: 1.5; }
   </style>
 </head>
 <body data-clarity-mask="true">
 
   <header id="site-header" data-active=""></header>
+
+  <div id="state-gate-overlay" class="state-gate-overlay" style="display:none;">
+    <div class="state-gate-card">
+      <img src="/img/brand-assets/otter-icon.png" alt="Otter Quotes" class="gate-logo">
+      <h2 id="gate-heading">Otter Quotes isn't available in your state yet &mdash; but it will be.</h2>
+      <p class="gate-body" id="gate-body">We're growing fast and your state is on the roadmap. In the meantime, your project information is saved.</p>
+      <div class="state-gate-optin">
+        <input type="checkbox" id="gate-optin-checkbox" checked>
+        <div>
+          <label for="gate-optin-checkbox">Notify me when Otter Quotes arrives in my state</label>
+          <div class="gate-email-note" id="gate-email-note"></div>
+        </div>
+      </div>
+      <div class="state-gate-confirm" id="gate-confirm">✓ You're on the list. We'll reach out when we arrive in your area.</div>
+      <div class="state-gate-error" id="gate-error" role="alert" aria-live="polite"></div>
+      <button class="state-gate-btn" id="gate-save-btn" onclick="saveWaitlistSpot()">Save My Spot</button>
+      <p class="state-gate-fine">Your information is kept private and used only to notify you of availability in your area. You may request account deletion at any time by emailing <a href="mailto:support@otterquote.com" style="color:rgba(255,255,255,0.55);">support@otterquote.com</a>.</p>
+    </div>
+  </div>
 
   <div class="dashboard-layout">
     <div class="dashboard-main">
@@ -821,28 +1010,108 @@
           </div>
         </div>
 
+        <div id="home-profile-prompt-card" role="complementary" aria-label="Home profile prompt">
+          <button class="hp-card-dismiss" aria-label="Dismiss home profile prompt" onclick="dismissHomeProfileCard()">✕</button>
+          <h4>🏠 Keep your home profile for next time</h4>
+          <p>Store your home's basics — year built, square footage, future projects of interest — so your next quote starts with everything already in place. Takes about 2 minutes.</p>
+          <button class="btn btn-sm" style="background:#16A34A;color:#fff;border:none;cursor:pointer;font-weight:600;" onclick="openHomeProfileModal()">Build My Home Profile →</button>
+        </div>
+
+        <style>
+          .payment-path-banner { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); justify-content: space-between; padding: var(--sp-3) var(--sp-4); margin-bottom: var(--sp-4); border: 1px solid rgba(224,123,0,0.35); border-left: 3px solid #E07B00; border-radius: 8px; background: rgba(224,123,0,0.08); }
+          .payment-path-text { font-size: 0.95rem; line-height: 1.4; }
+          .payment-path-text strong { color: #E07B00; }
+          .payment-path-change { background: none; border: 1px solid rgba(255,255,255,0.25); border-radius: 6px; color: inherit; cursor: pointer; font-size: 0.8rem; font-weight: 600; padding: 4px 10px; white-space: nowrap; }
+          .payment-path-change:hover { border-color: #E07B00; color: #E07B00; }
+        </style>
+
         <div class="dashboard-section">
           <div class="section-header">
             <h2>Project Information</h2>
             <button class="btn btn-sm btn-ghost" id="toggle-claim-edit">Edit</button>
           </div>
+
+          <div id="payment-path-banner" class="payment-path-banner" style="display:none;">
+            <span class="payment-path-text">This job is being paid for by <strong id="payment-path-value"></strong>.</span>
+            <button type="button" class="payment-path-change" id="payment-path-change">Not right? Change it</button>
+          </div>
+
           <div id="claim-display" class="claim-info-grid"></div>
           <form id="claim-edit-form" class="claim-form" style="display: none;"></form>
+
+          <div id="job-type-section" style="display: none; margin-top: var(--sp-6);">
+            <div class="form-group">
+              <label>How is this job being paid for? *</label>
+              <div class="job-type-selector" id="jobTypeSelector">
+                <button type="button" class="job-type-btn" data-type="insurance_rcv" onclick="selectJobType('insurance_rcv')"><strong>Insurance (RCV)</strong><span>Full replacement cost policy</span></button>
+                <button type="button" class="job-type-btn" data-type="insurance_acv" onclick="selectJobType('insurance_acv')"><strong>Insurance (ACV)</strong><span>Actual cash value / depreciated</span></button>
+                <button type="button" class="job-type-btn" data-type="retail" onclick="selectJobType('retail')"><strong>Retail / Cash</strong><span>No insurance involvement</span></button>
+                <button type="button" class="job-type-btn" data-type="repair" onclick="selectJobType('repair')"><strong>Repair Only</strong><span>Partial roof repair from estimate</span></button>
+              </div>
+              <div id="jobTypeHelp" class="help-link" style="display:none; margin-top: var(--sp-3);"><a href="#" onclick="showJobTypeHelp(); return false;">Not sure? Help me figure this out</a></div>
+            </div>
+
+            <div id="repairFields" class="conditional-section" style="display:none;">
+              <div class="callout callout-warning" style="margin-bottom: var(--sp-4);"><strong>Important:</strong> Repair jobs are significantly harder to diagnose and quote than full replacements. We cannot process your repair without knowing what shingle is currently on your roof. The more information you provide, the better pricing and faster service you'll receive.</div>
+              <div class="form-group"><label class="form-label">Squares Being Repaired (from estimate)</label><input type="number" step="0.1" name="repairSquares" class="form-input" placeholder="e.g. 1.5"></div>
+              <h4 style="margin: var(--sp-4) 0 var(--sp-2); color: var(--white);">Existing Shingle Information *</h4>
+              <p style="color: var(--slate); font-size: 0.9rem; margin-bottom: var(--sp-3);">Check your prior roofer's invoice or warranty paperwork, or look for leftover bundles in your garage or attic (read the label).</p>
+              <div class="form-row">
+                <div class="form-group"><label class="form-label">Shingle Brand</label><input type="text" name="existingShingleBrand" class="form-input" placeholder="e.g. GAF, Owens Corning"></div>
+                <div class="form-group"><label class="form-label">Shingle Product Line</label><input type="text" name="existingShingleProduct" class="form-input" placeholder="e.g. Timberline HDZ"></div>
+              </div>
+              <div class="form-group"><label class="form-label">Shingle Color</label><input type="text" name="existingShingleColor" class="form-input" placeholder="e.g. Charcoal, Weathered Wood"></div>
+              <div class="form-group"><label class="form-label">Photos of Damaged Area</label><div class="file-upload"><input type="file" id="repairPhotos" accept="image/*" capture="environment" multiple><label for="repairPhotos">Tap to take a photo or choose from gallery</label></div></div>
+              <div class="form-group"><label class="form-label">Photo of Existing Shingle (if you can't identify it)</label><div class="file-upload"><input type="file" id="shinglePhoto" accept="image/*" capture="environment"><label for="shinglePhoto">Tap to take a close-up photo for contractor identification</label></div></div>
+            </div>
+
+            <div id="acvFields" class="conditional-section" style="display:none;">
+              <div class="form-row">
+                <div class="form-group"><label class="form-label">ACV Payout Amount</label><input type="number" step="0.01" name="acvAmount" class="form-input" placeholder="Amount insurance is paying you"></div>
+                <div class="form-group"><label class="form-label">RCV Amount (from estimate)</label><input type="number" step="0.01" name="rcvAmount" class="form-input" placeholder="Full replacement cost on estimate"></div>
+              </div>
+            </div>
+
+            <div id="retailFields" class="conditional-section" style="display:none;"></div>
+
+            <div class="form-group">
+              <label class="form-label">When do you need this completed?</label>
+              <select name="urgency" class="form-input">
+                <option value="flexible">No rush &mdash; flexible timeline</option>
+                <option value="30_days">Within 30 days</option>
+                <option value="2_weeks">Within 2 weeks</option>
+                <option value="asap">ASAP &mdash; urgent</option>
+              </select>
+            </div>
+            <div id="urgencyDetails" class="conditional-section" style="display:none;">
+              <div class="form-row">
+                <div class="form-group"><label class="form-label">Deadline Date</label><input type="date" name="urgencyDeadline" class="form-input"></div>
+                <div class="form-group"><label class="form-label">Reason</label><input type="text" name="urgencyReason" class="form-input" placeholder="e.g. Real estate closing, temporary repairs failing"></div>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Notes for Contractors (optional)</label>
+              <textarea name="homeownerNotes" class="form-input" rows="3" maxlength="500" placeholder="Anything contractors should know &mdash; tree fell on north side, specific concerns, access instructions, etc."></textarea>
+              <span class="char-count">0 / 500</span>
+            </div>
+          </div>
+
+          <div id="claim-form-actions" class="claim-form-actions" style="display: none;">
+            <button type="button" class="btn btn-primary" id="claim-save-btn">Save Changes</button>
+            <button type="button" class="btn btn-ghost" id="claim-cancel-btn">Cancel</button>
+          </div>
         </div>
 
         <div class="dashboard-section" id="checklist-section">
-          <div class="section-header">
-            <h2>Complete Your Project Details</h2>
-          </div>
+          <div class="section-header"><h2>Complete Your Project Details</h2></div>
           <div class="checklist-section" id="checklist-container"></div>
         </div>
 
         <div id="submit-ready-section" class="submit-section">
           <h3>Ready to Get Bids?</h3>
           <p class="submit-section-hint" id="submit-hint">Complete the required items above to submit your project for bids.</p>
-          <div class="submit-cta">
-            <button class="btn btn-primary btn-lg" id="submit-btn" disabled>Submit for Bids</button>
-          </div>
+          <div class="submit-cta"><button class="btn btn-primary btn-lg" id="submit-btn" disabled>Submit for Bids</button></div>
         </div>
 
         <div id="submit-success" class="submit-success">
@@ -866,5 +1135,3 @@
       <div class="modal-content" id="help-modal-content"></div>
     </div>
   </div>
-</body>
-</html>
