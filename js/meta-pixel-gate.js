@@ -74,6 +74,16 @@
     fbqStub.queue = [];
   }
 
+  // gh-2064: internal-traffic opt-out (js/internal-traffic.js, loaded ahead
+  // of this file on every page). Placed after the fbq stub above so every
+  // page's existing fbq('track', ...) call sites keep working as harmless
+  // queued-but-never-sent pushes -- this just adds one more reason
+  // fbevents.js never actually loads: the current visit is our own
+  // walk/probe, not a visitor.
+  if (window.OQ_INTERNAL) {
+    return;
+  }
+
   if (!PIXEL_ID) {
     return; // no real pixel ID configured yet -- complete no-op, dark merge
   }

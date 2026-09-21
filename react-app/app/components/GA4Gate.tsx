@@ -3,6 +3,7 @@
 import Script from "next/script";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { isInternalTraffic } from "../lib/internal-traffic";
 
 /**
  * GA4 host gate — gh-1619
@@ -173,6 +174,10 @@ export function GA4Gate() {
   const clarityStopPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
+    // gh-2064: internal-traffic opt-out, checked first -- our own
+    // walks/probes must never load GA4 or Clarity, regardless of host or
+    // path allowlist below.
+    if (isInternalTraffic()) return;
     if (typeof window !== "undefined" && ALLOWED_HOSTS.includes(window.location.hostname)) {
       setAllowed(true);
 

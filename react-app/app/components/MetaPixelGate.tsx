@@ -3,6 +3,7 @@
 import Script from "next/script";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { isInternalTraffic } from "../lib/internal-traffic";
 
 /**
  * Meta Pixel host + route gate — gh-1817
@@ -79,6 +80,10 @@ export function MetaPixelGate() {
   const [allowed, setAllowed] = useState(false);
 
   useEffect(() => {
+    // gh-2064: internal-traffic opt-out, checked first -- our own
+    // walks/probes must never load the Meta Pixel, regardless of host or
+    // path allowlist below.
+    if (isInternalTraffic()) return;
     if (!PIXEL_ID) return; // dark merge: complete no-op until a real ID exists
     if (!isAllowedPath(pathname)) return; // REWORK: authenticated/non-marketing route -- never load
     if (typeof window !== "undefined" && ALLOWED_HOSTS.includes(window.location.hostname)) {

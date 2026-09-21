@@ -221,9 +221,37 @@
   // queued-but-never-sent pushes) even when the host is not allowed --
   // callers do not need host-awareness of their own.
   window.dataLayer = window.dataLayer || [];
-  function gtag() { window.dataLayer.push(arguments); }
+  // gh-2064: any gtag() call that still reaches this stub while
+  // window.OQ_INTERNAL is set (js/internal-traffic.js, loaded ahead of this
+  // file on every page) gets traffic_type: 'internal' merged into its
+  // params -- belt-and-suspenders for the case where this stub is somehow
+  // reached without going through the early return below. The early return
+  // itself is what actually stops the GA4 library and Clarity from ever
+  // loading; this only marks a config/event call that has an object of its
+  // own to carry the flag on.
+  function gtag() {
+    var args = arguments;
+    if (window.OQ_INTERNAL) {
+      if (args.length >= 3 && args[2] && typeof args[2] === 'object') {
+        args[2].traffic_type = 'internal';
+      } else if (args.length === 2 && (args[0] === 'config' || args[0] === 'event')) {
+        args = [args[0], args[1], { traffic_type: 'internal' }];
+      }
+    }
+    window.dataLayer.push(args);
+  }
   window.gtag = gtag;
   gtag('js', new Date());
+
+  // gh-2064: internal-traffic opt-out (js/internal-traffic.js). Placed after
+  // the dataLayer/gtag stub above so every page's existing gtag(...) call
+  // sites keep working as harmless queued-but-never-sent pushes (same
+  // reasoning as the ALLOWED_HOSTS/CLARITY_ALLOWED_PATHS returns below) --
+  // this just adds one more reason the library and Clarity never actually
+  // load: the current visit is our own walk/probe, not a visitor.
+  if (window.OQ_INTERNAL) {
+    return;
+  }
 
   if (ALLOWED_HOSTS.indexOf(window.location.hostname) === -1) {
     return; // not a recognised production host -- the GA4 library never loads
