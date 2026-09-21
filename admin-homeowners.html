@@ -128,8 +128,11 @@ main { max-width: 1400px; margin: 0 auto; padding: 1.25rem 1rem 6rem; }
 .ls-missing { background: #FEE2E2; color: #991B1B; }
 .ls-unreviewed { background: #FEF3C7; color: #92400E; }
 .ls-reviewed { background: #D1FAE5; color: #065F46; }
+/* gh-1570 Part 3: checklist-complete-but-unsubmitted queue */
+.ls-ready { background: #DBEAFE; color: #1E40AF; }
 .card.ls-row-missing { border-left-color: var(--red); }
 .card.ls-row-unreviewed { border-left-color: var(--yellow); }
+.card.ls-row-ready { border-left-color: #3B82F6; }
 .ls-facts { display: flex; flex-wrap: wrap; gap: 0.35rem 1.1rem; margin-top: 0.55rem; font-size: 0.82rem; color: #475569; }
 .ls-facts b { color: var(--navy); font-weight: 600; }
 .ls-note { margin-top: 0.5rem; font-size: 0.8rem; color: #92400E; background: #FEF3C7; border-radius: 0.4rem; padding: 0.35rem 0.55rem; }
@@ -174,10 +177,11 @@ main { max-width: 1400px; margin: 0 auto; padding: 1.25rem 1rem 6rem; }
     <a href="admin-measurements.html">Measurements</a>
   </nav>
 
-  <!-- gh-1796: two views over ONE fetch. Switching views never refetches. -->
+  <!-- gh-1796/gh-1570: views over ONE fetch. Switching views never refetches. -->
   <div class="view-tabs" id="viewTabs">
     <button type="button" class="view-tab active" data-view="all" onclick="setView('all')">All claims<span class="tab-count" id="tabCountAll">—</span></button>
     <button type="button" class="view-tab" data-view="loss" onclick="setView('loss')">Loss sheets<span class="tab-count" id="tabCountLoss">—</span></button>
+    <button type="button" class="view-tab" data-view="ready" onclick="setView('ready')">Ready, not submitted<span class="tab-count" id="tabCountReady">—</span></button>
   </div>
 
   <div class="info-banner" id="bannerAll">
@@ -192,6 +196,13 @@ main { max-width: 1400px; margin: 0 auto; padding: 1.25rem 1rem 6rem; }
     it read. <em>Mark reviewed</em> removes the row from this list — it changes nothing the homeowner
     or contractor sees, and sends no email. Upload date comes from the stored file itself; where that
     is unavailable it falls back to when the parser first read the file, and says so.
+  </div>
+
+  <!-- gh-1570 Part 3 -->
+  <div class="info-banner" id="bannerReady" style="display:none">
+    Homeowners who finished the checklist (estimate where required, measurements, material
+    selection) but have not clicked "Submit for Bids" — the exact gap #1570 exists to close.
+    Sorted oldest claim first. This is visibility only; nothing here writes anything.
   </div>
 
   <div class="warn-banner" id="bannerMigration" style="display:none"></div>
@@ -386,15 +397,16 @@ async function loadRows() {
   }
 }
 
-// ── gh-1796: view switching (pure display; never refetches) ────────────────
+// ── gh-1796/gh-1570: view switching (pure display; never refetches) ────────
 function setView(view) {
-  state.view = view === 'loss' ? 'loss' : 'all';
+  state.view = (view === 'loss' || view === 'ready') ? view : 'all';
   var tabs = document.querySelectorAll('#viewTabs .view-tab');
   for (var i = 0; i < tabs.length; i++) {
     tabs[i].classList.toggle('active', tabs[i].getAttribute('data-view') === state.view);
   }
   document.getElementById('bannerAll').style.display = state.view === 'all' ? 'block' : 'none';
   document.getElementById('bannerLoss').style.display = state.view === 'loss' ? 'block' : 'none';
+  document.getElementById('bannerReady').style.display = state.view === 'ready' ? 'block' : 'none';
   render();
 }
 
@@ -403,6 +415,24 @@ function lossQueueRows(rows) {
   return rows.filter(function (r) {
     return r.loss_sheet === 'missing' || r.loss_sheet === 'uploaded_unreviewed';
   });
+}
+
+/**
+ * gh-1570 Part 3 — claims stalled exactly where #1570 says they go invisible:
+ * checklist complete, still `documents_needed`, never submitted. Sorted
+ * oldest claim first (created_at ascending) — the homeowners waiting longest
+ * surface at the top, mirroring the "43 days" / "6 weeks" real cases the
+ * issue was raised over.
+ */
+function readyQueueRows(rows) {
+  return rows
+    .filter(function (r) { return r.status === 'documents_needed' && r.checklist_complete === true; })
+    .slice()
+    .sort(function (a, b) {
+      var ta = a.created_at ? new Date(a.created_at).getTime() : Number.MAX_SAFE_INTEGER;
+      var tb = b.created_at ? new Date(b.created_at).getTime() : Number.MAX_SAFE_INTEGER;
+      return ta - tb;
+    });
 }
 
 function lossStateChip(r) {
@@ -605,6 +635,62 @@ function renderLossView(shown, hidden) {
     doneHtml;
 }
 
+/**
+ * gh-1570 Part 3 — display-only queue, no action button (there is nothing to
+ * write here; Part 2's nudge email and admin digest, out of scope for this
+ * PR, are the follow-up actions). Same card/table shape as renderLossView().
+ */
+function renderReadyView(shown, hidden) {
+  var root = document.getElementById('viewRoot');
+  var queue = readyQueueRows(shown);
+
+  document.getElementById('countLine').textContent =
+    queue.length + ' homeowner' + (queue.length === 1 ? '' : 's') + ' ready but not submitted' +
+    (hidden > 0 ? ' · ' + hidden + ' test hidden' : '');
+
+  if (queue.length === 0) {
+    root.innerHTML = '<div class="empty">Nothing waiting here — every complete checklist has been submitted.</div>';
+    return;
+  }
+
+  var cards = queue.map(function (r) {
+    return (
+      '<div class="card ls-row-ready">' +
+        '<div class="card-top">' +
+          '<div class="who">' + whoHtml(r) + '<div class="claim-id">' + esc(r.claim_id) + '</div></div>' +
+          '<div><span class="ls-state ls-ready">Ready, not submitted</span>' + (r.is_test ? ' <span class="chip chip-test">TEST</span>' : '') + '</div>' +
+        '</div>' +
+        '<div class="ls-facts">' +
+          '<span>Signed up: <b>' + esc(signupCell(r)) + '</b> ago</span>' +
+          '<span>At this status: <b>' + dwellNum(r) + '</b> days</span>' +
+          '<span>Created: <b>' + esc(fmtDate(r.created_at)) + '</b></span>' +
+        '</div>' +
+        '<div class="meta">' + chips(r) + '</div>' +
+      '</div>'
+    );
+  }).join('');
+
+  var trs = queue.map(function (r) {
+    return (
+      '<tr>' +
+        '<td>' + whoHtml(r) + (r.is_test ? '<span class="chip chip-test">TEST</span>' : '') + '</td>' +
+        '<td class="claim-id">' + esc(r.claim_id) + '</td>' +
+        '<td>' + esc(signupCell(r)) + '</td>' +
+        '<td class="num">' + dwellNum(r) + '</td>' +
+        '<td>' + esc(fmtDate(r.created_at)) + '</td>' +
+        '<td>' + chips(r) + '</td>' +
+      '</tr>'
+    );
+  }).join('');
+
+  root.innerHTML =
+    '<div class="list">' + cards + '</div>' +
+    '<div class="table-wrapper"><table class="h-table"><thead><tr>' +
+      '<th>Homeowner</th><th>Claim id</th><th>Signed up</th>' +
+      '<th style="text-align:right">Days at status</th><th>Created</th><th>Trade · Job · Funding</th>' +
+    '</tr></thead><tbody>' + trs + '</tbody></table></div>';
+}
+
 function render() {
   if (!state.rows) return;
   var root = document.getElementById('viewRoot');
@@ -612,11 +698,12 @@ function render() {
   var shown = state.showTest ? all : all.filter(function (r) { return !r.is_test; });
   var hidden = all.length - shown.length;
 
-  // ── gh-1796: tab counts + the pending-migration notice ───────────────────
+  // ── gh-1796/gh-1570: tab counts + the pending-migration notice ───────────
   // Counts are over the VISIBLE set, so they agree with what the tab opens onto
   // rather than with a server-side total that includes hidden test rows.
   document.getElementById('tabCountAll').textContent = shown.length;
   document.getElementById('tabCountLoss').textContent = lossQueueRows(shown).length;
+  document.getElementById('tabCountReady').textContent = readyQueueRows(shown).length;
 
   var migBanner = document.getElementById('bannerMigration');
   if (state.meta && !state.meta.reviewedColumnPresent) {
@@ -631,6 +718,7 @@ function render() {
   }
 
   if (state.view === 'loss') { renderLossView(shown, hidden); return; }
+  if (state.view === 'ready') { renderReadyView(shown, hidden); return; }
 
   document.getElementById('countLine').textContent =
     shown.length + ' claim' + (shown.length === 1 ? '' : 's') +

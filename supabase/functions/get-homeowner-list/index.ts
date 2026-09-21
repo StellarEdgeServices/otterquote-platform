@@ -53,11 +53,21 @@
  * Still read-only: no writes, no schema change, no other EF touched. Setting
  * the reviewed marker is a separate function, mark-loss-sheet-reviewed.
  *
+ * ── gh-1570 Part 3 ─────────────────────────────────────────────────────────
+ * Each row also carries `checklist_complete`: true when that claim has
+ * written the `checklist_complete` activity_log event (dashboard.html, on
+ * the homeowner side of #1570). admin-homeowners.html uses it together with
+ * `status === 'documents_needed'` for a third view — homeowners who did
+ * everything asked of them and never clicked "Submit for Bids". Resolved the
+ * same way the loss-sheet upload dates are: one activity_log read here,
+ * reduced in JS (see the read-and-reduce note above its query), then handed
+ * to buildRows() alongside the existing uploadedAtByPath map.
+ *
  * Input:  POST {}  (body unused — reserved)
  * Output: { ok: true, generated_at, dwell_basis: "updated_at",
  *           loss_sheet_queue: { missing, uploaded_unreviewed, reviewed },
  *           loss_sheet_uploaded_at_basis_note, loss_sheet_dir_lookups,
- *           rows: HomeownerRow[] }
+ *           rows: HomeownerRow[] }  // each row also carries checklist_complete
  *         rows sorted longest-dwell first; is_test rows INCLUDED (the page
  *         hides them by default — a display filter, not a refetch).
  *
@@ -337,11 +347,35 @@ serve(async (req: Request) => {
 
     const uploaded = await buildUploadedAtIndex(supabase, pathsNewestFirst);
 
+    // ── gh-1570 Part 3: which claims have completed the checklist without
+    // submitting for bids. activity_log has no claim_id column (same
+    // constraint the loss-sheet code above works around, and the one
+    // send-homeowner-next-steps/index.ts documents for this table), so this
+    // is read and reduced in JS rather than filtered server-side on
+    // metadata->>'claim_id'. A read failure degrades to "nothing is
+    // complete yet" (empty set) rather than 500ing the whole list — this
+    // queue is a visibility aid, not a source of truth the rest of the page
+    // depends on. ──────────────────────────────────────────────────────────
+    const checklistCompleteClaimIds = new Set<string>();
+    const checklistRes = await supabase
+      .from("activity_log")
+      .select("metadata")
+      .eq("event_type", "checklist_complete");
+    if (checklistRes.error) {
+      console.warn(`[${FUNCTION_NAME}] checklist_complete read failed (queue will read empty):`, checklistRes.error.message);
+    } else {
+      for (const row of checklistRes.data ?? []) {
+        const claimId = (row as { metadata?: { claim_id?: string } })?.metadata?.claim_id;
+        if (claimId) checklistCompleteClaimIds.add(claimId);
+      }
+    }
+
     const rows = buildRows(
       claims,
       (profilesRes.data ?? []) as ProfileIn[],
       now,
       uploaded.index,
+      checklistCompleteClaimIds,
     );
 
     const signedUrlsAttached = await attachSignedUrls(supabase, rows);

@@ -121,6 +121,16 @@ export interface ClaimIn {
   loss_sheet_reviewed_at?: string | null;
 }
 
+/**
+ * gh-1570 Part 3 — claim ids that have written the `checklist_complete`
+ * activity_log event (see dashboard.html's logChecklistCompleteOnce()).
+ * activity_log has no claim_id column (same constraint the loss-sheet code
+ * above works around), so this is resolved impurely in index.ts — one read
+ * of activity_log reduced in JS to a Set — and handed in here, same shape as
+ * `uploadedAtByPath`.
+ */
+export type ChecklistCompleteIn = ReadonlySet<string>;
+
 export interface ProfileIn {
   id: string;
   full_name: string | null;
@@ -295,6 +305,15 @@ export interface HomeownerRow {
   signup_at: string | null;
   days_since_signup: number | null;
   signup_basis: SignupBasis;
+
+  /**
+   * gh-1570 Part 3 — true when this claim has written the `checklist_complete`
+   * activity_log event (dashboard.html: hasEstimate unless cash, hasMaterial,
+   * hasMeasurements if cash). Combined with `status === 'documents_needed'` on
+   * the page, this is the "complete but never clicked Submit for Bids" queue
+   * #1570 exists to surface.
+   */
+  checklist_complete: boolean;
 }
 
 /**
@@ -309,6 +328,8 @@ export function buildRows(
   nowMs: number,
   /** gh-1796 — storage path -> object created_at, built by index.ts. */
   uploadedAtByPath?: ReadonlyMap<string, string>,
+  /** gh-1570 Part 3 — claim ids with a `checklist_complete` activity_log row. */
+  checklistCompleteClaimIds?: ChecklistCompleteIn,
 ): HomeownerRow[] {
   const profileById = new Map<string, ProfileIn>();
   for (const p of profiles) profileById.set(p.id, p);
@@ -344,6 +365,8 @@ export function buildRows(
       signup_at: signup.at,
       days_since_signup: daysSince(signup.at, nowMs),
       signup_basis: signup.basis,
+
+      checklist_complete: checklistCompleteClaimIds?.has(c.id) ?? false,
     };
   });
 

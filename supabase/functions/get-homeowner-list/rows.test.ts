@@ -283,3 +283,41 @@ Deno.test("isMigrationPendingError: null/undefined error object does not crash a
   assertStrictEquals(isMigrationPendingError(undefined), false);
   assertStrictEquals(isMigrationPendingError({}), false);
 });
+
+// gh-1570 Part 3 — the admin queue's own field: true only for a claim id
+// present in the Set index.ts resolves from activity_log. buildRows() never
+// looks at claim.status here — it's a pure pass-through of the Set; the
+// status === 'documents_needed' AND checklist_complete AND combination is
+// admin-homeowners.html's filter (readyQueueRows()), tested by inspection
+// since that file has no deno test harness (see the PR report).
+
+Deno.test("buildRows: checklist_complete is true only for claim ids in the passed Set", () => {
+  const rows = buildRows(
+    [
+      claim({ id: "c-done-not-submitted", user_id: "u1", status: "documents_needed" }),
+      claim({ id: "c-not-done", user_id: "u1", status: "documents_needed" }),
+      claim({ id: "c-done-submitted", user_id: "u1", status: "active" }),
+    ],
+    [{ id: "u1", full_name: "Ada L", email: "ada@x.com" }],
+    NOW,
+    undefined,
+    new Set(["c-done-not-submitted", "c-done-submitted"]),
+  );
+  const by = new Map(rows.map((r) => [r.claim_id, r]));
+
+  assertStrictEquals(by.get("c-done-not-submitted")!.checklist_complete, true);
+  assertStrictEquals(by.get("c-not-done")!.checklist_complete, false);
+  // Set membership alone doesn't imply "in the admin queue" — a submitted
+  // claim can still have written the event; the page's own status filter
+  // (readyQueueRows) is what excludes it, not this field.
+  assertStrictEquals(by.get("c-done-submitted")!.checklist_complete, true);
+});
+
+Deno.test("buildRows: checklist_complete defaults to false when the Set is omitted (pre-gh1570 call shape)", () => {
+  const rows = buildRows(
+    [claim({ id: "c-1", user_id: "u1", status: "documents_needed" })],
+    [{ id: "u1", full_name: "Ada L", email: "ada@x.com" }],
+    NOW,
+  );
+  assertStrictEquals(rows[0].checklist_complete, false);
+});

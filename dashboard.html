@@ -138,6 +138,47 @@
       font-size: 1.5rem;
     }
 
+    /* gh-1570: unmissable top-of-page CTA — shown when the checklist is
+       complete but "Submit for Bids" has not yet been clicked. Distinct from
+       .submit-section below (which only enables a button at the bottom of
+       the checklist); this is the loud, can't-miss version at the top. */
+    .checklist-ready-banner {
+      display: none;
+      background: rgba(224,123,0,0.10);
+      color: var(--navy);
+      padding: var(--sp-6);
+      border-radius: var(--radius-lg);
+      border: 2px solid var(--amber);
+      margin-bottom: var(--sp-8);
+      animation: fadeUp 0.6s var(--ease);
+    }
+
+    .checklist-ready-banner.active {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--sp-4);
+      flex-wrap: wrap;
+    }
+
+    .checklist-ready-text {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-4);
+      flex: 1;
+      min-width: 240px;
+    }
+
+    .checklist-ready-icon {
+      font-size: 1.5rem;
+    }
+
+    .checklist-ready-text p {
+      margin: var(--sp-1, 0.25rem) 0 0;
+      font-size: 0.9rem;
+      color: var(--slate);
+    }
+
     /* Section layout */
     .dashboard-section {
       background: var(--navy-2);
@@ -1098,6 +1139,21 @@
           </div>
         </div>
 
+        <!-- gh-1570: unmissable "ready to submit" state. Shown when the
+             checklist is complete (hasEstimate unless cash, hasMaterial,
+             hasMeasurements if cash) but the claim has not been submitted for
+             bids yet — see isChecklistComplete()/updateChecklistReadyBanner(). -->
+        <div id="checklist-ready-banner" class="checklist-ready-banner">
+          <div class="checklist-ready-text">
+            <div class="checklist-ready-icon">🎉</div>
+            <div>
+              <strong>You're ready &mdash; submit for bids</strong>
+              <p>Your project details are complete. Contractors are waiting &mdash; submit now to start getting bids.</p>
+            </div>
+          </div>
+          <button class="btn btn-primary btn-lg btn-primary-pulse" id="checklist-ready-submit-btn">Submit for Bids</button>
+        </div>
+
         <!-- Status banner (shown when project is submitted) -->
         <div id="status-banner" class="status-banner">
           <div class="status-banner-text">
@@ -1563,6 +1619,7 @@
           renderClaimInfo();
           renderChecklist();
           updateSubmitButton();
+          await updateChecklistReadyBanner();
           updateProgressBar();
           await updateStatusBanner();
 
@@ -2528,6 +2585,27 @@
         if (banner) banner.classList.add('active');
       }
 
+      // gh-1570: the checklist-completeness predicate, factored out to a pure
+      // function of the claim row (no DOM) so both updateSubmitButton() (the
+      // lower, only-enables-a-button CTA) and updateChecklistReadyBanner()
+      // (the unmissable top-of-page CTA + one-time activity_log stamp) share
+      // one source of truth, and so it can be extracted and run standalone
+      // for verification without a browser.
+      function isChecklistComplete(claim) {
+        if (!claim) return false;
+        // BUG-3 fix: measurements are a hard gate ONLY for retail/cash claims.
+        // Insurance (RCV/ACV) and unknown/null funding_type do NOT require measurements.
+        const needsMeasurements = claim.funding_type === 'cash';
+        const measurementsOk    = !needsMeasurements || !!claim.has_measurements;
+        // E2E walk fix (2026-07-07): retail/cash claims have no insurance
+        // estimate — the estimate is a hard gate ONLY for insurance (and
+        // unknown) funding types. Requiring it unconditionally locked every
+        // retail homeowner out of Submit for Bids.
+        const needsEstimate = claim.funding_type !== 'cash';
+        const estimateOk    = !needsEstimate || !!claim.has_estimate;
+        return estimateOk && !!claim.has_material_selection && measurementsOk;
+      }
+
       function updateSubmitButton() {
         const btn = document.getElementById('submit-btn');
         const hint = document.getElementById('submit-hint');
@@ -2536,19 +2614,10 @@
         const hasMaterial     = currentClaim?.has_material_selection;
         const hasMeasurements = currentClaim?.has_measurements;
 
-        // BUG-3 fix: measurements are a hard gate ONLY for retail/cash claims.
-        // Insurance (RCV/ACV) and unknown/null funding_type do NOT require measurements.
         const needsMeasurements = currentClaim?.funding_type === 'cash';
-        const measurementsOk    = !needsMeasurements || hasMeasurements;
+        const needsEstimate     = currentClaim?.funding_type !== 'cash';
 
-        // E2E walk fix (2026-07-07): retail/cash claims have no insurance
-        // estimate — the estimate is a hard gate ONLY for insurance (and
-        // unknown) funding types. Requiring it unconditionally locked every
-        // retail homeowner out of Submit for Bids.
-        const needsEstimate = currentClaim?.funding_type !== 'cash';
-        const estimateOk    = !needsEstimate || hasEstimate;
-
-        const isReady = estimateOk && hasMaterial && measurementsOk;
+        const isReady = isChecklistComplete(currentClaim);
 
         btn.disabled = !isReady;
 
@@ -2560,6 +2629,79 @@
           hint.textContent = `Complete the required items: ${missing.join(', ')}.`;
         } else {
           hint.textContent = 'Your project details are complete. Submit them now to get competitive bids from contractors.';
+        }
+      }
+
+      // gh-1570 Part 1: the unmissable top-of-page CTA. Shown whenever the
+      // checklist is complete and the claim has not been submitted yet
+      // (status !== 'active' / ready_for_bids !== true — the same flip
+      // submitForBids() makes). Also fires the one-time `checklist_complete`
+      // activity_log event the whole point of this issue depends on: without
+      // it, the 48h admin digest keeps excluding this homeowner because
+      // uploading counts as "activity since creation" (see #1570 comment
+      // 5764786813).
+      let checklistCompleteLoggedForClaim = null; // in-memory guard: skip the read-check on every re-render within one page load once we know
+      async function updateChecklistReadyBanner() {
+        const banner = document.getElementById('checklist-ready-banner');
+        if (!banner || !currentClaim) return;
+
+        const alreadySubmitted = currentClaim.status === 'active' || currentClaim.ready_for_bids === true;
+        const ready = isChecklistComplete(currentClaim) && !alreadySubmitted;
+        banner.classList.toggle('active', ready);
+
+        if (ready) await logChecklistCompleteOnce();
+      }
+
+      // gh-1570: write `checklist_complete` to activity_log exactly once per
+      // claim. Guard chosen: read existing activity_log rows for this
+      // user_id + event_type and check in JS whether this claim_id is
+      // already present in `metadata`, before inserting — the same
+      // "read + reduce in JS" idiom send-homeowner-next-steps/index.ts uses
+      // for this table (activity_log has no claim_id column, so filtering on
+      // metadata->>'claim_id' server-side is avoided there for the same
+      // reason it's avoided here). A DB-side unique-index guard (the gh-1725
+      // activity_log_nudge_once_uniq idiom) would need a new migration,
+      // which is outside this PR's file whitelist — a client check-then-
+      // insert is adequate here because this event has exactly one call
+      // site, unlike the overlapping-cron race gh-1725 guards against.
+      async function logChecklistCompleteOnce() {
+        if (CONFIG.DEMO_MODE || !sb || !currentUser || !currentClaim?.id) return;
+        if (checklistCompleteLoggedForClaim === currentClaim.id) return;
+
+        try {
+          const { data: existing, error: readErr } = await sb
+            .from('activity_log')
+            .select('metadata')
+            .eq('user_id', currentUser.id)
+            .eq('event_type', 'checklist_complete');
+
+          if (readErr) {
+            console.error('[gh1570] checklist_complete read failed:', readErr);
+            return;
+          }
+
+          const alreadyLogged = (existing || []).some((row) => row?.metadata?.claim_id === currentClaim.id);
+          if (alreadyLogged) {
+            checklistCompleteLoggedForClaim = currentClaim.id;
+            return;
+          }
+
+          const { error: insertErr } = await sb.from('activity_log').insert({
+            user_id: currentUser.id,
+            event_type: 'checklist_complete',
+            title: 'checklist_complete',
+            is_test: Auth.isTestEmail(currentUser.email),
+            metadata: { claim_id: currentClaim.id },
+          });
+
+          if (insertErr) {
+            console.error('[gh1570] checklist_complete insert failed:', insertErr);
+            return;
+          }
+
+          checklistCompleteLoggedForClaim = currentClaim.id;
+        } catch (e) {
+          console.error('[gh1570] checklist_complete write threw:', e);
         }
       }
 
@@ -2646,6 +2788,15 @@
         document.getElementById('submit-btn').addEventListener('click', async () => {
           await submitForBids();
         });
+
+        // gh-1570: the top-of-page "You're ready" banner's own CTA — same
+        // submitForBids() the lower button uses.
+        const checklistReadyBtn = document.getElementById('checklist-ready-submit-btn');
+        if (checklistReadyBtn) {
+          checklistReadyBtn.addEventListener('click', async () => {
+            await submitForBids();
+          });
+        }
 
         // File input change
         document.getElementById('file-input').addEventListener('change', async (e) => {
@@ -2993,6 +3144,7 @@
           // Refresh UI
           renderChecklist();
           updateSubmitButton();
+          await updateChecklistReadyBanner();
           updateProgressBar();
 
           // Hide progress bar after a short delay
@@ -3064,8 +3216,10 @@
           // Show success state
           const submitSection = document.getElementById('submit-ready-section');
           const successSection = document.getElementById('submit-success');
+          const readyBanner = document.getElementById('checklist-ready-banner');
           if (submitSection) submitSection.style.display = 'none';
           if (successSection) successSection.classList.add('active');
+          if (readyBanner) readyBanner.classList.remove('active');
 
           // Update status banner
           await updateStatusBanner();
