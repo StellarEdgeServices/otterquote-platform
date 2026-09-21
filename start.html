@@ -65,9 +65,33 @@
   var KEY = 'oq_variant_v1';
   var ARM_RE = /^[abc]$/;
 
+  // gh-2074: the LIVE set. Today only 'c' -- a and b lose 90%+ of visitors
+  // at the first screen (GA4 router_step_view 7d: a 120->12, b 87->13,
+  // c 59->9). When d/e (gh-2075/gh-2076) ship, flip this single constant to
+  // ['c', 'd', 'e'] (equal weights) -- that is the whole switch. Arm a/b's
+  // code stays in this file, unreachable, for d/e to reuse.
+  var LIVE_VARIANTS = ['c'];
+
   function validArm(v) {
     var s = String(v == null ? '' : v).toLowerCase();
     return ARM_RE.test(s) ? s : null;
+  }
+
+  // gh-2074: is this (syntactically valid) arm one we're currently serving?
+  function isLive(arm) {
+    for (var i = 0; i < LIVE_VARIANTS.length; i++) {
+      if (LIVE_VARIANTS[i] === arm) return true;
+    }
+    return false;
+  }
+
+  // gh-2074: map any syntactically-valid arm onto a live one -- a no-op for
+  // an already-live arm, otherwise a uniform-random re-assignment across
+  // LIVE_VARIANTS. Applied to every source below (URL, localStorage,
+  // cookie, random) so a/b can never reach rendering.
+  function toLiveArm(arm) {
+    if (isLive(arm)) return arm;
+    return LIVE_VARIANTS[Math.floor(Math.random() * LIVE_VARIANTS.length)];
   }
 
   function readCookie(name) {
@@ -75,15 +99,19 @@
     return m ? decodeURIComponent(m[1]) : null;
   }
 
-  // 1. Explicit ?v= wins over anything persisted.
+  // 1. Explicit ?v= wins over anything persisted -- re-mapped to a live arm
+  //    if it names a or b (gh-2074: do not 404, do not blank).
   var urlArm = null;
   try {
     urlArm = validArm(new URLSearchParams(window.location.search).get('v'));
   } catch (e) {}
-  var arm = urlArm;
+  var arm = urlArm ? toLiveArm(urlArm) : null;
 
   // 2. Else a persisted assignment -- localStorage first, cookie fallback,
   //    each in its own try/catch so a throw on one still lets the other run.
+  //    Also re-mapped to a live arm (gh-2074): a stale persisted a/b is
+  //    reassigned here, and step 4 below overwrites both stores with the
+  //    reassigned value rather than leaving the stale one in place.
   if (!arm) {
     var fromStorage = null;
     try { fromStorage = validArm(window.localStorage.getItem(KEY)); } catch (e) {}
@@ -91,12 +119,14 @@
     if (!fromStorage) {
       try { fromCookie = validArm(readCookie(KEY)); } catch (e) {}
     }
-    arm = fromStorage || fromCookie;
+    var persistedArm = fromStorage || fromCookie;
+    arm = persistedArm ? toLiveArm(persistedArm) : null;
   }
 
-  // 3. Else assign at random, uniform 1/3 across a/b/c.
+  // 3. Else assign at random, uniform across the LIVE set only (gh-2074:
+  //    never the full a/b/c set -- LIVE_VARIANTS today is just ['c']).
   if (!arm) {
-    arm = ['a', 'b', 'c'][Math.floor(Math.random() * 3)];
+    arm = LIVE_VARIANTS[Math.floor(Math.random() * LIVE_VARIANTS.length)];
   }
 
   // Expose before replaceState so a downstream throw there still leaves a
