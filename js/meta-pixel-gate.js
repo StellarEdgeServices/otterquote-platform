@@ -113,10 +113,14 @@
     fbqStub.queue = [];
   }
 
+  if (!PIXEL_ID) {
+    return; // no real pixel ID configured yet -- complete no-op, dark merge
+  }
+
   // gh-2064 round 2: internal-traffic opt-out, checked via the
   // self-contained oqInternal() above -- not a dependency on
-  // js/internal-traffic.js being present on this page. Placed after the fbq
-  // stub above so every page's existing fbq('track', ...) call sites keep
+  // js/internal-traffic.js being present on this page. Placed after the PIXEL_ID check (the react-app stub test slices the
+  // source up to that check, gh-2000) and the fbq stub so every page's existing fbq('track', ...) call sites keep
   // working as harmless queued-but-never-sent pushes -- this just adds one
   // more reason fbevents.js never actually loads: the current visit is our
   // own walk/probe, not a visitor.
@@ -124,9 +128,6 @@
     return;
   }
 
-  if (!PIXEL_ID) {
-    return; // no real pixel ID configured yet -- complete no-op, dark merge
-  }
 
   if (ALLOWED_HOSTS.indexOf(window.location.hostname) === -1) {
     return; // not a recognised production host -- fbevents.js never loads
