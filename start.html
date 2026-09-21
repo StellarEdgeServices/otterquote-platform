@@ -148,12 +148,24 @@
 <!-- Microsoft Clarity (wwr7qlk8g5) is loaded by /js/ga-gate.js, behind the same production-host gate as GA4 (gh-1619). Do not add a per-page loader. -->
 
 <!-- Supabase -->
-<!-- gh-2063: `defer` -- js/config.js's _oqCreateSupabaseClient() already
-     retries on DOMContentLoaded and then polls for ~20s specifically to
-     tolerate this bundle loading late (see that file's own comment on the
-     11 pages that already do this); deferring it here removes a large
-     third-party fetch from the first-paint critical path with no new risk. -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js" integrity="sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz" crossorigin="anonymous" defer></script>
+<!-- gh-2063 fix round 2 (PR #2065 review, blocker 1): `defer` was removed
+     here after independent review found it broke every step-1 submit on
+     every arm. This page does NOT use js/config.js's page-level `sb` (that
+     comment about _oqCreateSupabaseClient()'s DOMContentLoaded retry/~20s
+     poll was about a DIFFERENT global, in a DIFFERENT file, that this
+     page's own IIFE below never reads) -- this file declares its own local
+     `var sb` a few lines into its inline router script and creates it ONCE,
+     synchronously, while the page is still parsing (`if (typeof supabase
+     !== 'undefined' ...) { sb = supabase.createClient(...) }`), with no
+     retry of its own. A deferred script always runs after parsing
+     finishes, so `typeof supabase` was always 'undefined' at that moment,
+     `sb` stayed null for the entire visit, and every "Continue" click on
+     every arm (A/B/C) hit a null-`sb` guard and showed "Something went
+     wrong loading the form." with no console error and no Sentry signal.
+     Kept synchronous (not deferred) again; it is a same-origin-cached CDN
+     script by then in most repeat visits and is not the file this issue's
+     item 1 was written for (the third-party analytics tags below are). -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js" integrity="sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz" crossorigin="anonymous"></script>
 
 <!-- Google Fonts -->
 <!-- gh-2063: non-blocking stylesheet load (preload + swap to `all` media on
@@ -450,7 +462,21 @@
   // both a recognised variant and window.clarity actually having loaded
   // (Clarity is still behind its own host/consent gate upstream of the
   // path allowlist).
-  try { if (variant && window.clarity) { clarity('set', 'variant', variant); } } catch (e) {}
+  // gh-2063 fix round 2 (PR #2065 review, blocker 3): this used to run here,
+  // at parse time, while the page's <script defer src="js/ga-gate.js"> --
+  // the only place window.clarity is created -- had not executed yet.
+  // window.clarity was always undefined at this point once ga-gate.js
+  // stopped being a synchronous head script, so the guard above was always
+  // false and the call silently never ran: every session on every /start
+  // variant recorded in Clarity with no 'variant' tag. Deferred scripts run
+  // in document order, strictly before DOMContentLoaded fires, so moving
+  // this call into a DOMContentLoaded listener guarantees ga-gate.js (and
+  // therefore window.clarity, when the host/path gates allow it) has
+  // already run by the time this fires -- with no change to the guard logic
+  // or to what gets sent.
+  document.addEventListener('DOMContentLoaded', function () {
+    try { if (variant && window.clarity) { clarity('set', 'variant', variant); } } catch (e) {}
+  });
 
   // ── gh-2016: arm B (contact-last). B asks #2011's IDENTICAL questions in
   // inverted order -- role, then industry if referral_partner, then
