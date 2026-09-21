@@ -119,6 +119,8 @@ export interface ClaimIn {
    * against the pre-migration schema.
    */
   loss_sheet_reviewed_at?: string | null;
+  /** gh-1570 — defensive check that a documents_needed claim hasn't actually been submitted. */
+  ready_for_bids?: boolean | null;
 }
 
 export interface ProfileIn {
@@ -127,6 +129,44 @@ export interface ProfileIn {
   email: string | null;
   /** gh-1796 — signup date, for "days since signup" on the loss-sheet queue. */
   created_at?: string | null;
+}
+
+/**
+ * gh-1570 — "A homeowner who stalls at documents_needed is invisible": the
+ * checklist can be fully complete (estimate/measurements/material, whichever
+ * apply) and the ONLY exit from documents_needed is a separate homeowner
+ * click on Submit for Bids. A homeowner who finishes the checklist and never
+ * clicks that button was, before this, invisible to the 48h admin digest
+ * (which excludes anyone with activity, and uploading IS activity) and to
+ * this list (nothing distinguished "still working on it" from "done,
+ * waiting on the homeowner to click one more button").
+ *
+ * dashboard.html now writes ONE activity_log row (event_type
+ * "checklist_complete", metadata.claim_id) the first time it observes the
+ * checklist complete for a claim — idempotent client-side (it checks for an
+ * existing row first) and read-only from this list's point of view: this
+ * module only ever reads that row, via the claimId -> earliest created_at
+ * map index.ts builds from a plain activity_log SELECT. Never trust
+ * claims.updated_at for this (see PR #1976's review history: admin/system
+ * writes bump it too) — the activity_log row is the only fact that means
+ * "the homeowner actually got the checklist done."
+ */
+export type ChecklistCompleteAtByClaimId = ReadonlyMap<string, string>;
+
+/**
+ * True only for a claim that is still sitting at documents_needed AND has a
+ * checklist_complete activity row. `ready_for_bids` is checked defensively
+ * even though documents_needed claims should never carry it — real
+ * production data has disagreed with what a status "should" imply before
+ * (see rows.ts header on has_estimate vs estimate_filename), so this does
+ * not assume the two columns agree.
+ */
+export function isReadyNotSubmitted(
+  claim: Pick<ClaimIn, "status">,
+  claimReadyForBids: boolean | null | undefined,
+  checklistCompleteAt: string | null,
+): boolean {
+  return claim.status === "documents_needed" && !!checklistCompleteAt && claimReadyForBids !== true;
 }
 
 /**
@@ -295,6 +335,12 @@ export interface HomeownerRow {
   signup_at: string | null;
   days_since_signup: number | null;
   signup_basis: SignupBasis;
+
+  // ── gh-1570 ready-not-submitted ─────────────────────────────────────────
+  /** True only for documents_needed claims with a checklist_complete activity row. */
+  ready_not_submitted: boolean;
+  /** When the checklist_complete activity row was written; null if none. */
+  checklist_complete_at: string | null;
 }
 
 /**
@@ -309,6 +355,8 @@ export function buildRows(
   nowMs: number,
   /** gh-1796 — storage path -> object created_at, built by index.ts. */
   uploadedAtByPath?: ReadonlyMap<string, string>,
+  /** gh-1570 — claim id -> earliest checklist_complete activity_log created_at, built by index.ts. */
+  checklistCompleteAtByClaimId?: ChecklistCompleteAtByClaimId,
 ): HomeownerRow[] {
   const profileById = new Map<string, ProfileIn>();
   for (const p of profiles) profileById.set(p.id, p);
@@ -319,6 +367,7 @@ export function buildRows(
     const statusSince = c.updated_at ?? c.created_at ?? null;
     const uploaded = lossSheetUploadedAt(c, uploadedAtByPath);
     const signup = signupAt(profile, c);
+    const checklistCompleteAt = checklistCompleteAtByClaimId?.get(c.id) ?? null;
     return {
       claim_id: c.id,
       homeowner_name: who.name,
@@ -344,10 +393,25 @@ export function buildRows(
       signup_at: signup.at,
       days_since_signup: daysSince(signup.at, nowMs),
       signup_basis: signup.basis,
+
+      ready_not_submitted: isReadyNotSubmitted(c, c.ready_for_bids, checklistCompleteAt),
+      checklist_complete_at: checklistCompleteAt,
     };
   });
 
+  // gh-1570: ready-not-submitted claims sort first, oldest checklist_complete_at
+  // first among themselves (Dustin should see whoever has been waiting on HIM,
+  // not the platform, longest). Every other row keeps the existing
+  // longest-dwell-first order, unchanged.
   rows.sort((a, b) => {
+    if (a.ready_not_submitted !== b.ready_not_submitted) {
+      return a.ready_not_submitted ? -1 : 1;
+    }
+    if (a.ready_not_submitted && b.ready_not_submitted) {
+      const ta = a.checklist_complete_at ? new Date(a.checklist_complete_at).getTime() : Number.MAX_SAFE_INTEGER;
+      const tb = b.checklist_complete_at ? new Date(b.checklist_complete_at).getTime() : Number.MAX_SAFE_INTEGER;
+      if (ta !== tb) return ta - tb;
+    }
     const da = a.days_at_status ?? -1;
     const db = b.days_at_status ?? -1;
     if (db !== da) return db - da;
