@@ -52,6 +52,27 @@
 # Intercepts /admin-* (with or without .html / trailing slash) before static HTML is served.
 # Unauthenticated or non-admin sessions redirect to /login.html?reason=admin_required.
 # Source: netlify/edge-functions/admin-auth-gate.ts
+# gh-2063: long-lived immutable caching for static binary assets. Scoped to
+# /img/* and /assets/* only -- deliberately NOT /js/* or /css/*, whose files
+# in this repo are NOT fingerprinted/hashed and are edited in place on
+# every deploy; the /js/auth.js and /js/nav.js no-cache rules further below
+# exist because a stale cached copy of exactly those un-hashed files caused
+# a real production incident (see their own comment). Images/binary assets
+# carry no such risk and are what this issue's "immutable cache headers for
+# static assets" ask targets. Placed ahead of the more specific PWA/auth/nav
+# rules below so those still win for their own paths (Netlify applies
+# matching header rules in file order; a later rule overrides an earlier
+# one for the same header key on the same path).
+[[headers]]
+  for = "/img/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
 # PWA — Partner App (2026-08-03)
 # Correct MIME for the web app manifest; keep the service worker uncached so
 # updates propagate on next load.
