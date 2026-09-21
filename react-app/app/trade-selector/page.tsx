@@ -40,6 +40,11 @@ const PROJECT_INFO_RCV_URL = 'https://otterquote.com/project-info-rcv.html';
 const PROJECT_INFO_ACV_URL = 'https://otterquote.com/project-info-acv.html';
 const PROJECT_INFO_CASH_URL = 'https://otterquote.com/project-info-cash.html';
 const GET_STARTED_URL = '/get-started';
+// gh-2070: single versioned sessionStorage key for a loss sheet staged before
+// a claim id exists — read by attachPendingLossSheetToClaim once
+// handleComplete knows savedClaimId. Distinct from the legacy
+// `oq_pending_loss_sheet` filename-only key used for the signed-out path.
+const PENDING_LOSS_SHEET_KEY = 'oq_pending_loss_sheet_v1';
 
 type FundingType = 'insurance' | 'cash' | null;
 type PolicyType = 'rcv' | 'acv' | 'idk' | null;
@@ -666,6 +671,20 @@ export default function TradeSelectorPage() {
           .from('claim-documents')
           .upload(filePath, file);
         if (uploadError) throw uploadError;
+        // gh-2070: the claim row may not exist yet at this step (the wizard
+        // hasn't reached handleComplete). Stage the reference so
+        // attachPendingLossSheetToClaim can move it onto the claim and write
+        // back has_estimate/estimate_filename once savedClaimId is known —
+        // mirrors dashboard.html's checklist upload, which already has a
+        // claim id at upload time and writes back immediately.
+        try {
+          sessionStorage.setItem(
+            PENDING_LOSS_SHEET_KEY,
+            JSON.stringify({ storagePath: filePath, filename: file.name, userId: user.id }),
+          );
+        } catch {
+          // storage blocked — attach step below simply finds nothing staged
+        }
         setLossSheetStatus(`"${file.name}" uploaded successfully. We'll review it and get back to you.`);
       } else {
         sessionStorage.setItem('oq_pending_loss_sheet', file.name);
@@ -676,6 +695,64 @@ export default function TradeSelectorPage() {
       setLossSheetStatus('Upload failed. Please try again or continue without uploading.');
     } finally {
       setLossSheetUploading(false);
+    }
+  };
+
+  // gh-2070: move a loss sheet staged by handleLossSheetUpload onto the claim
+  // once savedClaimId is known — called from BOTH handleComplete branches
+  // (the existing-claim update and the new-claim insert) right after each
+  // sets savedClaimId, so a homeowner who uploads before or after the claim
+  // row exists gets the same outcome. Order matters (move -> PATCH ->
+  // parse-loss-sheet invoke) — see the trade-selector attach vitest spec.
+  // parse-loss-sheet is best-effort (mirrors dashboard/actions.ts's
+  // uploadClaimDocument, #336) and must never block completion. A move/PATCH
+  // failure is surfaced via the same upload-status idiom the upload handler
+  // uses, and the staged reference is kept (not cleared) so a retry is
+  // possible.
+  const attachPendingLossSheetToClaim = async (claimId: string) => {
+    if (!user) return;
+    let staged: { storagePath: string; filename: string; userId: string } | null = null;
+    try {
+      const raw = sessionStorage.getItem(PENDING_LOSS_SHEET_KEY);
+      if (raw) staged = JSON.parse(raw);
+    } catch {
+      staged = null;
+    }
+    if (!staged) return;
+
+    const destPath = `${user.id}/${claimId}/${staged.filename}`;
+    try {
+      const { error: moveError } = await supabase.storage
+        .from('claim-documents')
+        .move(staged.storagePath, destPath);
+      if (moveError) throw moveError;
+
+      const { error: patchError } = await supabase
+        .from('claims')
+        .update({ has_estimate: true, estimate_filename: destPath })
+        .eq('id', claimId);
+      if (patchError) throw patchError;
+
+      try {
+        sessionStorage.removeItem(PENDING_LOSS_SHEET_KEY);
+      } catch {
+        // storage blocked — non-fatal, the attach itself already succeeded
+      }
+
+      // Parsing is non-blocking — a parse failure must not fail completion
+      // (mirrors dashboard/actions.ts's uploadClaimDocument, #336).
+      try {
+        await supabase.functions.invoke('parse-loss-sheet', {
+          body: { claim_id: claimId, storage_path: destPath },
+        });
+      } catch (parseErr) {
+        console.warn('[trade-selector] parse-loss-sheet failed (non-fatal):', parseErr);
+      }
+    } catch (attachErr) {
+      console.warn('[trade-selector] loss sheet attach failed:', attachErr);
+      setLossSheetStatus(
+        "We saved your loss sheet, but couldn't attach it to your claim yet. You can re-upload it from your dashboard.",
+      );
     }
   };
 
@@ -867,6 +944,7 @@ export default function TradeSelectorPage() {
               .update(claimPayload)
               .eq('id', existingClaim.id);
             savedClaimId = existingClaim.id;
+            await attachPendingLossSheetToClaim(existingClaim.id);
           } else {
             // gh-397/#689: stamp is_test on this React parity insert path —
             // PR #714 only fixed the COI-identity contractor insert, never
@@ -891,6 +969,7 @@ export default function TradeSelectorPage() {
             // (the actually-live) React surface.
             if (insertedClaim) {
               savedClaimId = insertedClaim.id;
+              await attachPendingLossSheetToClaim(insertedClaim.id);
               // gh-1940/gh-1984: "claim started" funnel step — fires once,
               // only on the first claim row for this user (the `else`
               // branch above is an update to an already-started claim, not
