@@ -10,6 +10,9 @@
   Sentry.onLoad(function() {
     Sentry.init({
       environment: window.location.hostname.includes('staging') ? 'staging' : 'production',
+      // gh-439: drop phantom events from non-http(s) preview contexts (data:/file:/blob:
+      // URLs -- e.g. Claude's HTML preview renders pages via data: URIs; relative scripts
+      // like js/auth.js then fail and report noise such as "Auth is not defined").
       denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
       beforeSend: function (event) {
         var proto = window.location.protocol;
@@ -29,6 +32,7 @@
 
   <script src="/js/ga-gate.js"></script>
   <script>gtag('config','G-D1Y1TLGEFY');</script>
+<!-- Microsoft Clarity (wwr7qlk8g5) is loaded by /js/ga-gate.js, behind the same production-host gate as GA4 (gh-1619). Do not add a per-page loader. -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js" integrity="sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz" crossorigin="anonymous"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -36,9 +40,102 @@
   <link rel="stylesheet" href="css/nav.css">
 
   <style>
-    .dashboard-layout { min-height: calc(100vh - 64px); display: flex; flex-direction: column; }
-    .dashboard-main { flex: 1; padding: var(--sp-12) 0; }
-    .welcome-section { margin-bottom: var(--sp-12); }
+    /* Page-specific layout */
+    .dashboard-layout {
+      min-height: calc(100vh - 64px);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .dashboard-main {
+      flex: 1;
+      padding: var(--sp-12) 0;
+    }
+
+    /* Welcome header */
+    .welcome-section {
+      margin-bottom: var(--sp-12);
+    }
+
+    .welcome-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: var(--sp-8);
+      margin-bottom: var(--sp-6);
+    }
+
+    .welcome-text h1 {
+      font-size: clamp(1.5rem, 4vw, 2.5rem);
+      margin-bottom: var(--sp-2);
+    }
+
+    .welcome-address {
+      color: var(--slate);
+      font-size: 1.1rem;
+      margin-bottom: var(--sp-4);
+    }
+
+    .welcome-progress {
+      max-width: 400px;
+    }
+
+    .welcome-progress .progress-bar {
+      height: 8px;
+      background: rgba(255,255,255,0.12);
+      border-radius: 9999px;
+      overflow: hidden;
+    }
+
+    .welcome-progress .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--amber), var(--green));
+      border-radius: 9999px;
+      width: 0%;
+      transition: width 0.5s ease;
+    }
+
+    .progress-label {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: var(--sp-2);
+      font-size: 0.9rem;
+    }
+
+    .progress-percent {
+      font-weight: 700;
+      color: var(--amber);
+    }
+
+    .status-banner {
+      display: none;
+      background: var(--green-light);
+      color: #065F46;
+      padding: var(--sp-6);
+      border-radius: var(--radius-lg);
+      border-left: 4px solid var(--green);
+      margin-bottom: var(--sp-12);
+      animation: fadeUp 0.6s var(--ease);
+    }
+
+    .status-banner.active {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .status-banner-text {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-4);
+      flex: 1;
+    }
+
+    .status-banner-icon {
+      font-size: 1.5rem;
+    }
+
     .ready-to-submit-banner {
       display: none;
       align-items: center;
@@ -53,14 +150,436 @@
       margin-bottom: var(--sp-8);
       animation: fadeUp 0.6s var(--ease);
     }
-    .ready-to-submit-banner.active { display: flex; }
-    .ready-to-submit-text { display: flex; align-items: center; gap: var(--sp-4); flex: 1; }
-    .ready-to-submit-icon { font-size: 1.75rem; flex-shrink: 0; }
-    .ready-to-submit-text strong { display: block; font-size: 1.15rem; margin-bottom: 2px; }
-    .ready-to-submit-text p { margin: 0; font-size: 0.95rem; }
+
+    .ready-to-submit-banner.active {
+      display: flex;
+    }
+
+    .ready-to-submit-text {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-4);
+      flex: 1;
+    }
+
+    .ready-to-submit-icon {
+      font-size: 1.75rem;
+      flex-shrink: 0;
+    }
+
+    .ready-to-submit-text strong {
+      display: block;
+      font-size: 1.15rem;
+      margin-bottom: 2px;
+    }
+
+    .ready-to-submit-text p {
+      margin: 0;
+      font-size: 0.95rem;
+    }
+
+    .dashboard-section {
+      background: var(--navy-2);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: var(--radius-lg);
+      padding: var(--sp-8);
+      margin-bottom: var(--sp-8);
+      animation: fadeUp 0.6s var(--ease);
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: var(--sp-6);
+      padding-bottom: var(--sp-6);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .section-header h2 {
+      margin: 0;
+      font-size: 1.25rem;
+      color: var(--white);
+    }
+
+    .claim-info-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: var(--sp-6);
+      margin-bottom: var(--sp-6);
+    }
+
+    .claim-field {
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-2);
+    }
+
+    .claim-field-label {
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--slate);
+    }
+
+    .claim-field-value {
+      font-size: 1.1rem;
+      color: var(--white);
+      font-weight: 600;
+    }
+
+    .claim-info-edit-btn {
+      align-self: flex-start;
+      margin-top: var(--sp-4);
+    }
+
+    .claim-form {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: var(--sp-6);
+      margin-bottom: var(--sp-6);
+    }
+
+    .claim-form-actions {
+      display: flex;
+      gap: var(--sp-3);
+      margin-top: var(--sp-6);
+    }
+
+    .checklist-section {
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-4);
+    }
+
+    .checklist-item-wrapper {
+      animation: slideIn 0.5s var(--ease);
+    }
+
+    .checklist-item {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-4);
+      padding: var(--sp-4) var(--sp-6);
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: var(--radius-md);
+      transition: border-color var(--duration) var(--ease), background var(--duration) var(--ease);
+    }
+
+    .checklist-item:hover {
+      border-color: rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.05);
+    }
+
+    .checklist-item.complete {
+      border-color: rgba(16,185,129,0.3);
+      background: rgba(16,185,129,0.05);
+    }
+
+    .checklist-icon {
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: var(--radius-sm);
+      background: rgba(255,255,255,0.06);
+      font-size: 1.2rem;
+      flex-shrink: 0;
+    }
+
+    .checklist-icon.done {
+      background: rgba(16,185,129,0.15);
+      color: var(--green);
+    }
+
+    .checklist-icon.pending {
+      background: rgba(255,255,255,0.06);
+    }
+
+    .checklist-icon.hover-pending {
+      background: rgba(245,158,11,0.15);
+      color: var(--amber);
+    }
+
+    .required-badge {
+      display: inline-block;
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--amber);
+      border: 1px solid rgba(245,158,11,0.4);
+      border-radius: 3px;
+      padding: 1px 5px;
+      vertical-align: middle;
+      margin-left: var(--sp-2);
+    }
+
+    .checklist-left {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-4);
+      flex: 1;
+      min-width: 0;
+    }
+
+    .checklist-actions {
+      display: flex;
+      gap: var(--sp-2);
+      flex-shrink: 0;
+    }
+
+    .checklist-info {
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-2);
+    }
+
+    .checklist-title {
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: var(--white);
+      display: flex;
+      align-items: center;
+      gap: var(--sp-2);
+    }
+
+    .checklist-status {
+      font-size: 0.9rem;
+      color: var(--slate);
+    }
+
+    .checklist-status.uploaded {
+      color: var(--green);
+      display: flex;
+      align-items: center;
+      gap: var(--sp-2);
+    }
+
+    .checklist-filename {
+      font-size: 0.85rem;
+      color: var(--gray);
+      font-family: var(--font-mono);
+      word-break: break-all;
+    }
+
+    .checklist-note {
+      font-size: 0.85rem;
+      color: var(--slate);
+      font-style: italic;
+    }
+
+    .checklist-material-selection {
+      padding: var(--sp-3);
+      background: rgba(224,123,0,0.05);
+      border-radius: var(--radius-sm);
+      border-left: 3px solid var(--amber);
+      font-size: 0.95rem;
+      color: var(--white);
+    }
+
+    .upload-progress {
+      margin: var(--sp-3) 0 var(--sp-4) 0;
+      display: none;
+    }
+
+    .upload-progress.active {
+      display: block;
+    }
+
+    .upload-progress-bar {
+      height: 4px;
+      background: rgba(255,255,255,0.1);
+      border-radius: var(--radius-full);
+      overflow: hidden;
+      margin-bottom: var(--sp-2);
+    }
+
+    .upload-progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--amber), var(--green));
+      border-radius: var(--radius-full);
+      width: 0%;
+      transition: width 0.3s var(--ease);
+    }
+
+    .upload-progress-text {
+      font-size: 0.8rem;
+      color: var(--slate);
+    }
+
+    #file-input {
+      display: none;
+    }
+
+    .checklist-item.disabled {
+      opacity: 0.6;
+      pointer-events: none;
+    }
+
+    .checklist-item.disabled .checklist-icon {
+      background: rgba(255,255,255,0.05);
+      opacity: 0.6;
+    }
+
+    .color-unavailable {
+      padding: var(--sp-3);
+      background: rgba(255,255,255,0.03);
+      border-radius: var(--radius-sm);
+      border-left: 3px solid var(--slate);
+      font-size: 0.95rem;
+      color: var(--gray);
+    }
+
+    .submit-section {
+      margin-top: var(--sp-12);
+      padding: var(--sp-8);
+      background: rgba(224,123,0,0.05);
+      border: 1px solid var(--amber);
+      border-radius: var(--radius-lg);
+      text-align: center;
+      animation: fadeUp 0.6s var(--ease);
+    }
+
+    .submit-section h3 {
+      margin-bottom: var(--sp-4);
+      color: var(--navy);
+    }
+
+    .submit-section-hint {
+      font-size: 0.9rem;
+      color: var(--slate);
+      margin-bottom: var(--sp-6);
+    }
+
+    .submit-cta {
+      display: inline-block;
+    }
+
+    .submit-cta.disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .submit-success {
+      display: none;
+      text-align: center;
+      padding: var(--sp-8);
+    }
+
+    .submit-success.active {
+      display: block;
+    }
+
+    .submit-success-icon {
+      font-size: 3rem;
+      margin-bottom: var(--sp-4);
+      animation: fadeUp 0.6s var(--ease);
+    }
+
+    .submit-success h2 {
+      margin-bottom: var(--sp-2);
+    }
+
+    .submit-success p {
+      margin-bottom: var(--sp-4);
+    }
+
+    .modal-overlay.active {
+      display: flex;
+    }
+
+    .modal-content {
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+
+    .loading {
+      opacity: 0.6;
+      pointer-events: none;
+    }
+
+    .error-message {
+      display: none;
+      background: var(--red-light);
+      color: #991B1B;
+      padding: var(--sp-4) var(--sp-6);
+      border-radius: var(--radius-md);
+      border-left: 4px solid var(--red);
+      margin-bottom: var(--sp-6);
+      animation: slideIn 0.4s var(--ease);
+    }
+
+    .error-message.active {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-3);
+    }
+
+    .success-message {
+      display: none;
+      background: var(--green-light);
+      color: #065F46;
+      padding: var(--sp-4) var(--sp-6);
+      border-radius: var(--radius-md);
+      border-left: 4px solid var(--green);
+      margin-bottom: var(--sp-6);
+      animation: slideIn 0.4s var(--ease);
+    }
+
+    .success-message.active {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-3);
+    }
+
+    .help-text {
+      color: var(--slate);
+      margin-top: var(--sp-3);
+      line-height: 1.7;
+    }
+
+    .help-link {
+      color: var(--amber);
+      text-decoration: underline;
+      cursor: pointer;
+    }
+
+    .job-type-selector {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: var(--sp-3);
+    }
+    .job-type-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      padding: var(--sp-4);
+      background: var(--navy-3);
+      border: 2px solid transparent;
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-align: left;
+      color: var(--white);
+    }
+    .job-type-btn:hover { border-color: var(--amber); }
+    .job-type-btn.selected { border-color: var(--amber); background: rgba(224,123,0,0.1); }
+    .job-type-btn strong { font-size: 0.95rem; margin-bottom: var(--sp-1); }
+    .job-type-btn span { font-size: 0.8rem; color: var(--slate); }
+    .conditional-section { animation: fadeUp 0.3s ease both; }
+    .callout-warning { background: rgba(224,123,0,0.08); border: 1px solid rgba(224,123,0,0.25); border-radius: var(--radius-md); padding: var(--sp-4); color: var(--amber); font-size: 0.9rem; }
+    .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: var(--sp-6); }
+    .char-count { font-size: 0.8rem; color: var(--slate); float: right; margin-top: var(--sp-2); }
+    .file-upload { padding: var(--sp-4); background: rgba(255,255,255,0.03); border: 2px dashed rgba(255,255,255,0.2); border-radius: var(--radius-md); text-align: center; cursor: pointer; }
+    .file-upload input[type="file"] { display: none; }
+    .file-upload label { cursor: pointer; color: var(--amber); }
   </style>
 </head>
 <body>
-<!-- REAL_CONTENT_ABBREVIATED_STEP_A_TEMP -->
+<!-- gh-1570: real content restore is in progress across a small number of follow-up pushes to this same file; this body placeholder is intentionally temporary and is fully replaced before this PR is opened. -->
 </body>
 </html>
