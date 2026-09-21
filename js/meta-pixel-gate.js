@@ -90,10 +90,49 @@
     return; // a live Supabase credential is in this URL; the pixel never loads.
   }
 
-  var s = document.createElement('script');
-  s.async = true;
-  s.src = 'https://connect.facebook.net/en_US/fbevents.js';
-  document.head.appendChild(s);
+  // gh-2063 fix round 2 (PR #2065 review, item 4): own copy of
+  // js/ga-gate.js's _oqLoadOnIdleOrInteraction (that file's comment on its
+  // copy explains why this is duplicated rather than shared). Only the
+  // fbevents.js <script> insertion is delayed to idle/interaction (capped
+  // at 1500ms) -- the fbq('init'...)/fbq('track','PageView') calls right
+  // below stay exactly where they were, synchronous, and keep queuing into
+  // fbqStub.queue exactly as before. gh-2000's callMethod drain fires that
+  // queued init+PageView the moment fbevents.js actually loads, so PageView
+  // still fires once per visit, just later.
+  function _oqLoadOnIdleOrInteraction(fn) {
+    var fired = false;
+    var idleHandle = null;
+    var timeoutHandle = null;
+    var EVENTS = ['pointerdown', 'keydown', 'scroll', 'touchstart'];
+    function teardown() {
+      for (var i = 0; i < EVENTS.length; i++) {
+        window.removeEventListener(EVENTS[i], run);
+      }
+      if (idleHandle !== null && window.cancelIdleCallback) { window.cancelIdleCallback(idleHandle); }
+      if (timeoutHandle !== null) { clearTimeout(timeoutHandle); }
+    }
+    function run() {
+      if (fired) return;
+      fired = true;
+      teardown();
+      fn();
+    }
+    for (var i = 0; i < EVENTS.length; i++) {
+      window.addEventListener(EVENTS[i], run, { passive: true, once: true });
+    }
+    if (window.requestIdleCallback) {
+      idleHandle = window.requestIdleCallback(run, { timeout: 1500 });
+    } else {
+      timeoutHandle = setTimeout(run, 1500);
+    }
+  }
+
+  _oqLoadOnIdleOrInteraction(function () {
+    var s = document.createElement('script');
+    s.async = true;
+    s.src = 'https://connect.facebook.net/en_US/fbevents.js';
+    document.head.appendChild(s);
+  });
 
   window.fbq('init', PIXEL_ID);
   window.fbq('track', 'PageView');
