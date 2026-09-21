@@ -40,6 +40,11 @@ const PROJECT_INFO_RCV_URL = 'https://otterquote.com/project-info-rcv.html';
 const PROJECT_INFO_ACV_URL = 'https://otterquote.com/project-info-acv.html';
 const PROJECT_INFO_CASH_URL = 'https://otterquote.com/project-info-cash.html';
 const GET_STARTED_URL = '/get-started';
+// gh-2070: single versioned sessionStorage key for a loss sheet staged before
+// a claim id exists — read by attachPendingLossSheetToClaim once
+// handleComplete knows savedClaimId. Distinct from the legacy
+// `oq_pending_loss_sheet` filename-only key used for the signed-out path.
+const PENDING_LOSS_SHEET_KEY = 'oq_pending_loss_sheet_v1';
 
 type FundingType = 'insurance' | 'cash' | null;
 type PolicyType = 'rcv' | 'acv' | 'idk' | null;
@@ -661,11 +666,30 @@ export default function TradeSelectorPage() {
 
     try {
       if (user) {
-        const filePath = `${user.id}/loss-sheets/${Date.now()}-${file.name}`;
+        const timestamp = Date.now();
+        const filePath = `${user.id}/loss-sheets/${timestamp}-${file.name}`;
         const { error: uploadError } = await supabase.storage
           .from('claim-documents')
           .upload(filePath, file);
         if (uploadError) throw uploadError;
+        // gh-2070: the claim row may not exist yet at this step (the wizard
+        // hasn't reached handleComplete). Stage the reference so
+        // attachPendingLossSheetToClaim can move it onto the claim and write
+        // back has_estimate/estimate_filename once savedClaimId is known —
+        // mirrors dashboard.html's checklist upload, which already has a
+        // claim id at upload time and writes back immediately. `timestamp`
+        // is carried through and reused (not regenerated) for the post-move
+        // destination path — see attachPendingLossSheetToClaim — so a
+        // second loss-sheet upload in the same session can't collide with
+        // the first's already-moved object under the same claim.
+        try {
+          sessionStorage.setItem(
+            PENDING_LOSS_SHEET_KEY,
+            JSON.stringify({ storagePath: filePath, filename: file.name, userId: user.id, timestamp }),
+          );
+        } catch {
+          // storage blocked — attach step below simply finds nothing staged
+        }
         setLossSheetStatus(`"${file.name}" uploaded successfully. We'll review it and get back to you.`);
       } else {
         sessionStorage.setItem('oq_pending_loss_sheet', file.name);
@@ -676,6 +700,97 @@ export default function TradeSelectorPage() {
       setLossSheetStatus('Upload failed. Please try again or continue without uploading.');
     } finally {
       setLossSheetUploading(false);
+    }
+  };
+
+  // gh-2070: move a loss sheet staged by handleLossSheetUpload onto the claim
+  // once savedClaimId is known — called from BOTH handleComplete branches
+  // (the existing-claim update and the new-claim insert) right after each
+  // sets savedClaimId, so a homeowner who uploads before or after the claim
+  // row exists gets the same outcome. Order matters for move + PATCH (move
+  // -> PATCH has_estimate/estimate_filename) — see the trade-selector attach
+  // vitest spec.
+  //
+  // Returns true when there was nothing to attach or the attach (move +
+  // PATCH) succeeded, false when it failed — the caller (handleComplete)
+  // uses this to surface a visible error, since this function has no render
+  // access of its own to a reachable one (see below).
+  //
+  // REVIEW gh-2070 PR #2080: this function is itself `await`ed from
+  // handleComplete, which is the homeowner's primary conversion path.
+  // parse-loss-sheet (supabase/functions/parse-loss-sheet/index.ts:337-400)
+  // synchronously downloads the PDF and makes a non-streaming Claude vision
+  // call — routinely 15-60s, bounded only by the EF's 150s wall clock. The
+  // first round of this fix `await`ed that invoke here, which meant a slow
+  // or hung parse-loss-sheet call stalled the homeowner's redirect for the
+  // same amount of time (worst case 150s+, or indefinitely on a
+  // never-settling promise). Fixed: the invoke below is fire-and-forget
+  // (`void ...catch(...)`, no `await`) — only the move and the PATCH, which
+  // are fast and whose success this function's return value depends on,
+  // are awaited.
+  const attachPendingLossSheetToClaim = async (claimId: string): Promise<boolean> => {
+    if (!user) return true;
+    let staged: { storagePath: string; filename: string; userId: string; timestamp: number } | null = null;
+    try {
+      const raw = sessionStorage.getItem(PENDING_LOSS_SHEET_KEY);
+      if (raw) staged = JSON.parse(raw);
+    } catch {
+      staged = null;
+    }
+    if (!staged) return true;
+    // REVIEW gh-2070 PR #2080: a staged entry from a different signed-in
+    // user (e.g. a shared machine) is discarded rather than attempted. Prod
+    // RLS (`Users can update own files`, `USING foldername[1] = auth.uid()`,
+    // no `WITH CHECK`) fails the move closed either way — no data leak —
+    // but attempting it produces a confusing silent failure instead of this
+    // explicit, understood no-op.
+    if (staged.userId !== user.id) return true;
+
+    const destPath = `${user.id}/${claimId}/${staged.timestamp}-${staged.filename}`;
+    try {
+      const { error: moveError } = await supabase.storage
+        .from('claim-documents')
+        .move(staged.storagePath, destPath);
+      if (moveError) throw moveError;
+
+      const { error: patchError } = await supabase
+        .from('claims')
+        .update({ has_estimate: true, estimate_filename: destPath })
+        .eq('id', claimId);
+      if (patchError) throw patchError;
+
+      // REVIEW gh-2070 PR #2080: kept (not cleared) on failure below, but
+      // that is not an active retry — nothing currently reads this key
+      // again once handleComplete redirects away from this component, and
+      // there is no path back to it for this claim. This just avoids
+      // silently discarding the reference in case a future surface (e.g.
+      // the dashboard) is built to read it.
+      try {
+        sessionStorage.removeItem(PENDING_LOSS_SHEET_KEY);
+      } catch {
+        // storage blocked — non-fatal, the attach itself already succeeded
+      }
+
+      // Parsing is fire-and-forget — see the REVIEW note above this
+      // function. A parse failure (or a slow/hung EF call) must never delay
+      // or fail completion (mirrors the INTENT, though not the `await`, of
+      // dashboard/actions.ts's uploadClaimDocument, #336).
+      void supabase.functions.invoke('parse-loss-sheet', {
+        body: { claim_id: claimId, storage_path: destPath },
+      }).catch((parseErr) => {
+        console.warn('[trade-selector] parse-loss-sheet failed (non-fatal):', parseErr);
+      });
+      return true;
+    } catch (attachErr) {
+      console.warn('[trade-selector] loss sheet attach failed:', attachErr);
+      // REVIEW gh-2070 PR #2080: setLossSheetStatus is NOT used here — that
+      // state only renders inside the policy step's "I'm Not Sure" panel,
+      // which is unmounted by the time handleComplete runs from a later
+      // step, making it silent dead code in practice. The caller surfaces
+      // this failure via the page-level error banner instead (rendered
+      // regardless of wizard step) and extends the pre-redirect delay so it
+      // is actually visible — see handleComplete.
+      return false;
     }
   };
 
@@ -702,6 +817,10 @@ export default function TradeSelectorPage() {
       // id) and passed through the redirect URL — see the redirect logic
       // near the end of this function.
       let savedClaimId: string | null = null;
+      // gh-2070: set by attachPendingLossSheetToClaim's return value when a
+      // staged loss sheet's move/PATCH failed — read below to surface the
+      // error banner and extend the pre-redirect delay.
+      let lossSheetAttachFailed = false;
       // gh-1984: analytics sends awaited (bounded) before the redirect below.
       const analyticsSends: Promise<void>[] = [];
 
@@ -867,6 +986,7 @@ export default function TradeSelectorPage() {
               .update(claimPayload)
               .eq('id', existingClaim.id);
             savedClaimId = existingClaim.id;
+            if (!(await attachPendingLossSheetToClaim(existingClaim.id))) lossSheetAttachFailed = true;
           } else {
             // gh-397/#689: stamp is_test on this React parity insert path —
             // PR #714 only fixed the COI-identity contractor insert, never
@@ -891,6 +1011,7 @@ export default function TradeSelectorPage() {
             // (the actually-live) React surface.
             if (insertedClaim) {
               savedClaimId = insertedClaim.id;
+              if (!(await attachPendingLossSheetToClaim(insertedClaim.id))) lossSheetAttachFailed = true;
               // gh-1940/gh-1984: "claim started" funnel step — fires once,
               // only on the first claim row for this user (the `else`
               // branch above is an update to an already-started claim, not
@@ -958,11 +1079,21 @@ export default function TradeSelectorPage() {
       if (savedClaimId) {
         redirectUrl += `?claim_id=${encodeURIComponent(savedClaimId)}`;
       }
+      // gh-2070: the claim itself saved fine — only the loss-sheet attach
+      // failed — so this does not throw into the catch block below (which
+      // would block the redirect entirely). It surfaces via the page-level
+      // error banner (rendered regardless of wizard step, unlike the "I'm
+      // Not Sure" panel's own status line) and gets a longer pre-redirect
+      // window than the default so the homeowner has a real chance to read
+      // it before the page navigates away.
+      if (lossSheetAttachFailed) {
+        setError("Your claim was saved, but we couldn't attach your loss sheet. You can upload it again from your dashboard.");
+      }
       // gh-1984: wait for the analytics sends (each bounded to 1 s), never less
       // than the original 300 ms.
       await Promise.all([
         Promise.all(analyticsSends),
-        new Promise((resolve) => setTimeout(resolve, 300)),
+        new Promise((resolve) => setTimeout(resolve, lossSheetAttachFailed ? 4000 : 300)),
       ]);
       window.location.href = redirectUrl;
     } catch (err) {
