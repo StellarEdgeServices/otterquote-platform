@@ -53,12 +53,29 @@
  * Still read-only: no writes, no schema change, no other EF touched. Setting
  * the reviewed marker is a separate function, mark-loss-sheet-reviewed.
  *
+ * ── gh-1570 — "ready, not submitted" (documents_needed is a dead end) ──────
+ * dashboard.html's checklist can be fully complete and the ONLY exit from
+ * documents_needed is a SEPARATE click on Submit for Bids — a homeowner who
+ * finishes the checklist and never clicks that button was invisible both to
+ * the 48h admin digest (activity excludes them) and to this list. dashboard
+ * now writes one activity_log row (event_type "checklist_complete",
+ * metadata.claim_id) the first time it sees the checklist complete for a
+ * claim; this function reads that row (buildChecklistCompleteIndex, a plain
+ * SELECT, no writes) and every row now carries `ready_not_submitted` +
+ * `checklist_complete_at`. Those rows sort FIRST, oldest checklist_complete_at
+ * first — Dustin should see whoever has been waiting on him, not the
+ * platform, longest. Every other row keeps the prior longest-dwell-first
+ * order. Never derived from claims.updated_at (see PR #1976's review
+ * history: admin/system writes bump that column too, so it cannot mean
+ * "the homeowner did something").
+ *
  * Input:  POST {}  (body unused — reserved)
  * Output: { ok: true, generated_at, dwell_basis: "updated_at",
  *           loss_sheet_queue: { missing, uploaded_unreviewed, reviewed },
  *           loss_sheet_uploaded_at_basis_note, loss_sheet_dir_lookups,
- *           rows: HomeownerRow[] }
- *         rows sorted longest-dwell first; is_test rows INCLUDED (the page
+ *           ready_not_submitted_count, rows: HomeownerRow[] }
+ *         rows sorted ready-not-submitted first (oldest checklist_complete_at
+ *         first), then longest-dwell first; is_test rows INCLUDED (the page
  *         hides them by default — a display filter, not a refetch).
  *
  * Auth: requires a valid Supabase JWT with email in the admin allow-list.
@@ -66,12 +83,19 @@
  * in-handler, same pattern as get-payout-completion-status /
  * get-business-lines-dashboard.
  *
- * GitHub: #1653, #1796
+ * GitHub: #1653, #1796, #1570
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
-import { buildRows, isMigrationPendingError, type ClaimIn, type HomeownerRow, type ProfileIn } from "./rows.ts";
+import {
+  buildRows,
+  isMigrationPendingError,
+  type ChecklistCompleteAtByClaimId,
+  type ClaimIn,
+  type HomeownerRow,
+  type ProfileIn,
+} from "./rows.ts";
 
 const FUNCTION_NAME = "get-homeowner-list";
 // gh-1534: kept in sync with supabase/functions/_shared/admin.ts ADMIN_EMAILS — do not
@@ -220,6 +244,49 @@ async function attachSignedUrls(
   }
 }
 
+/**
+ * gh-1570 — claim id -> earliest checklist_complete activity_log created_at.
+ * dashboard.html writes one such row (metadata.claim_id) the first time it
+ * observes the checklist complete for a claim. Never throws: a read failure
+ * here degrades to "no row found for any claim" (ready_not_submitted stays
+ * false everywhere) rather than failing the whole list, because this is
+ * strictly additive visibility, not a fact the rest of the page depends on.
+ */
+async function buildChecklistCompleteIndex(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+): Promise<ChecklistCompleteAtByClaimId> {
+  const index = new Map<string, string>();
+  try {
+    const { data, error } = await supabase
+      .from("activity_log")
+      .select("metadata, created_at")
+      .eq("event_type", "checklist_complete");
+
+    if (error) {
+      console.warn(`[${FUNCTION_NAME}] checklist_complete activity_log read failed (non-fatal):`, error.message);
+      return index;
+    }
+
+    for (const row of data ?? []) {
+      const claimId = row?.metadata && typeof row.metadata === "object" ? row.metadata.claim_id : null;
+      const createdAt = row?.created_at;
+      if (typeof claimId !== "string" || !claimId || typeof createdAt !== "string" || !createdAt) continue;
+      const existing = index.get(claimId);
+      // Earliest wins — there should only ever be one per claim (dashboard.html
+      // checks before writing), but real data has surprised this codebase
+      // before (see rows.ts header), so a duplicate degrades gracefully
+      // instead of picking an arbitrary one.
+      if (!existing || new Date(createdAt).getTime() < new Date(existing).getTime()) {
+        index.set(claimId, createdAt);
+      }
+    }
+  } catch (err) {
+    console.warn(`[${FUNCTION_NAME}] checklist_complete activity_log read threw (non-fatal):`, err);
+  }
+  return index;
+}
+
 serve(async (req: Request) => {
   const corsHeaders = buildCorsHeaders(req);
 
@@ -267,8 +334,10 @@ serve(async (req: Request) => {
       // requested separately and its absence degrades to "nothing is reviewed
       // yet", which is exactly true pre-migration. Deleting this fallback after
       // the migration is applied is a one-line follow-up, not a correctness fix.
+      // gh-1570 adds ready_for_bids — a defensive check that a documents_needed
+      // claim hasn't actually been submitted (see rows.ts isReadyNotSubmitted).
       supabase.from("claims").select(
-        "id, user_id, status, created_at, updated_at, trades, job_type, funding_type, is_test, homeowner_name, estimate_filename, has_estimate, loss_sheet_parsed_at"
+        "id, user_id, status, created_at, updated_at, trades, job_type, funding_type, is_test, homeowner_name, estimate_filename, has_estimate, loss_sheet_parsed_at, ready_for_bids"
       ),
       supabase.from("profiles").select("id, full_name, email, created_at"),
     ]);
@@ -335,19 +404,27 @@ serve(async (req: Request) => {
       })
       .map((c) => (c.estimate_filename as string).trim());
 
-    const uploaded = await buildUploadedAtIndex(supabase, pathsNewestFirst);
+    const [uploaded, checklistCompleteAtByClaimId] = await Promise.all([
+      buildUploadedAtIndex(supabase, pathsNewestFirst),
+      buildChecklistCompleteIndex(supabase),
+    ]);
 
     const rows = buildRows(
       claims,
       (profilesRes.data ?? []) as ProfileIn[],
       now,
       uploaded.index,
+      checklistCompleteAtByClaimId,
     );
 
     const signedUrlsAttached = await attachSignedUrls(supabase, rows);
 
     const queue = { missing: 0, uploaded_unreviewed: 0, reviewed: 0 };
     for (const r of rows) queue[r.loss_sheet]++;
+
+    // gh-1570 — count over ALL rows, is_test included, same convention as
+    // loss_sheet_queue above. The page filters.
+    const readyNotSubmittedCount = rows.reduce((n, r) => n + (r.ready_not_submitted ? 1 : 0), 0);
 
     return jsonResponse({
       ok: true,
@@ -359,6 +436,8 @@ serve(async (req: Request) => {
       loss_sheet_dir_lookups: uploaded.dirLookups,
       loss_sheet_dir_lookups_capped: uploaded.capped,
       loss_sheet_signed_urls: signedUrlsAttached,
+      // gh-1570 — see rows.ts isReadyNotSubmitted / buildChecklistCompleteIndex.
+      ready_not_submitted_count: readyNotSubmittedCount,
       loss_sheet_uploaded_at_basis_note:
         "storage_object = storage.objects.created_at for claims.estimate_filename (authoritative); " +
         "loss_sheet_parsed_at = fallback, set by parse-loss-sheet just after upload; " +
