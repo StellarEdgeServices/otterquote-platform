@@ -126,18 +126,47 @@
      is requested"; js/meta-pixel-gate.js: "the ONLY place fbevents.js is
      requested"). Clarity rides the GA4 gate's own host check; js/ga-gate.js's
      CLARITY_ALLOWED_PATHS carries '/start' (gh-2014). -->
-<script src="/js/ga-gate.js"></script>
-<script src="/js/meta-pixel-gate.js"></script>
-<script>gtag('config', 'G-D1Y1TLGEFY');</script>
+<!-- gh-2063: ga-gate.js/meta-pixel-gate.js are same-origin but were plain
+     blocking <script src> tags in <head> -- the network fetch of THESE two
+     files (not the third-party vendor bundles they inject, which were
+     already async) was itself on the critical path to first paint. `defer`
+     lets the parser keep going and lays out/paints the page while they
+     fetch, and (per spec) still runs them, in document order, before
+     DOMContentLoaded -- so gtag/fbq exist by the time any DOMContentLoaded
+     work below needs them. The gtag('config', ...) call right after them
+     is inline (defer has no effect on a script with no `src`), so it is
+     moved into a DOMContentLoaded listener for the same reason: it must not
+     run before the now-deferred ga-gate.js has defined `gtag`. Same call,
+     same id, only WHEN it fires has changed. -->
+<script src="/js/ga-gate.js" defer></script>
+<script src="/js/meta-pixel-gate.js" defer></script>
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    if (typeof gtag === 'function') { gtag('config', 'G-D1Y1TLGEFY'); }
+  });
+</script>
 <!-- Microsoft Clarity (wwr7qlk8g5) is loaded by /js/ga-gate.js, behind the same production-host gate as GA4 (gh-1619). Do not add a per-page loader. -->
 
 <!-- Supabase -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js" integrity="sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz" crossorigin="anonymous"></script>
+<!-- gh-2063: `defer` -- js/config.js's _oqCreateSupabaseClient() already
+     retries on DOMContentLoaded and then polls for ~20s specifically to
+     tolerate this bundle loading late (see that file's own comment on the
+     11 pages that already do this); deferring it here removes a large
+     third-party fetch from the first-paint critical path with no new risk. -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js" integrity="sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz" crossorigin="anonymous" defer></script>
 
 <!-- Google Fonts -->
+<!-- gh-2063: non-blocking stylesheet load (preload + swap to `all` media on
+     load, noscript fallback) so the Rubik CSS fetch never blocks first
+     paint; the request itself already carries &display=swap so text
+     renders in a fallback font immediately either way. -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet"></noscript>
 <!-- Shared Styles -->
+<link rel="preload" as="style" href="css/design-system.css">
 <link rel="stylesheet" href="css/design-system.css">
 <link rel="stylesheet" href="css/nav.css">
 
@@ -187,6 +216,19 @@
   .router-back { display: inline-flex; align-items: center; gap: var(--sp-1); color: var(--slate); font-size: 0.9rem; background: none; border: none; cursor: pointer; margin-bottom: var(--sp-4); padding: 0; }
   .router-back:hover { color: var(--white); }
   .router-spinner-wrap { text-align: center; padding: var(--sp-10) 0; color: var(--slate); }
+
+  /* gh-2063: on short mobile viewports (e.g. 390x844 in the Facebook
+     in-app browser, whose own chrome eats ~100px of that) the step-1 CTA
+     must stay above the fold. Tightens vertical spacing only below
+     700px tall -- no layout/copy change, same elements, same order. */
+  @media (max-height: 700px) {
+    main { padding-top: var(--sp-4); padding-bottom: var(--sp-8); }
+    .router-card { padding: var(--sp-4); }
+    .router-progress { margin-bottom: var(--sp-4); }
+    .router-step h1, #routerCRoot h1 { margin-bottom: var(--sp-1); }
+    .router-step p.router-sub, #routerCRoot p.router-sub { margin-bottom: var(--sp-3); }
+    .form-group { margin-bottom: var(--sp-2); }
+  }
 </style>
 </head>
 <body>
@@ -512,11 +554,36 @@
   // file outside react-app/ (PR #1960's track() helper lives at
   // react-app/app/lib/track.ts and is unreachable from here), so every
   // router event stamps `variant` itself via this wrapper instead. ──
+  //
+  // gh-2063: ga-gate.js now loads `defer` (moved out of the first-paint
+  // path), so `gtag` may not exist yet the moment this IIFE runs -- in
+  // particular the very first router_step_view fired a few lines below,
+  // which used to run after ga-gate.js's synchronous <script src> had
+  // already executed. Queueing here (instead of just letting the
+  // try/catch below swallow the call) means the timing change never drops
+  // an event: the same name/params are still sent, just as soon as gtag
+  // exists, which is guaranteed no later than DOMContentLoaded (deferred
+  // scripts always finish before that event fires).
+  var _oqTrackQueue = [];
+  function _oqFlushTrackQueue() {
+    if (typeof gtag !== 'function' || !_oqTrackQueue.length) return;
+    var q = _oqTrackQueue;
+    _oqTrackQueue = [];
+    for (var i = 0; i < q.length; i++) {
+      try { gtag('event', q[i].name, q[i].params); } catch (e) {}
+    }
+  }
+  document.addEventListener('DOMContentLoaded', _oqFlushTrackQueue);
+
   function trackRouter(name, extra) {
     try {
       var p = extra || {};
       if (variant) { p.variant = variant; }
-      gtag('event', name, p);
+      if (typeof gtag === 'function') {
+        gtag('event', name, p);
+      } else {
+        _oqTrackQueue.push({ name: name, params: p });
+      }
     } catch (e) {}
   }
 
