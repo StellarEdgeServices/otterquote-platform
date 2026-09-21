@@ -126,25 +126,29 @@
      is requested"; js/meta-pixel-gate.js: "the ONLY place fbevents.js is
      requested"). Clarity rides the GA4 gate's own host check; js/ga-gate.js's
      CLARITY_ALLOWED_PATHS carries '/start' (gh-2014). -->
-<!-- gh-2063: ga-gate.js/meta-pixel-gate.js are same-origin but were plain
-     blocking <script src> tags in <head> -- the network fetch of THESE two
-     files (not the third-party vendor bundles they inject, which were
-     already async) was itself on the critical path to first paint. `defer`
-     lets the parser keep going and lays out/paints the page while they
-     fetch, and (per spec) still runs them, in document order, before
-     DOMContentLoaded -- so gtag/fbq exist by the time any DOMContentLoaded
-     work below needs them. The gtag('config', ...) call right after them
-     is inline (defer has no effect on a script with no `src`), so it is
-     moved into a DOMContentLoaded listener for the same reason: it must not
-     run before the now-deferred ga-gate.js has defined `gtag`. Same call,
-     same id, only WHEN it fires has changed. -->
-<script src="/js/ga-gate.js" defer></script>
-<script src="/js/meta-pixel-gate.js" defer></script>
-<script>
-  document.addEventListener('DOMContentLoaded', function () {
-    if (typeof gtag === 'function') { gtag('config', 'G-D1Y1TLGEFY'); }
-  });
-</script>
+<!-- gh-2063 fix round 3 (PR #2065 review2, remaining FAIL point): round 2
+     put `defer` on these two same-origin gate files, reasoning that it
+     would move their network fetch off the first-paint critical path.
+     Independent review measured the opposite, one change at a time: `defer`
+     makes FIRST PAINT LATER than main (FCP +0.3-0.4s on slow-4G, +0.6-1.8s
+     on slow-3G), because the browser still has to fetch and run these two
+     small same-origin files before it can build the render tree either
+     way, and `defer` only changes WHEN in that sequence they run relative
+     to parsing -- it does not remove them from the critical path the way
+     it does for a large third-party bundle. Restored to plain synchronous
+     `<script src>` tags, matching main exactly. The actual fix for the
+     THIRD-PARTY vendor bundles these files inject (gtag.js, fbevents.js,
+     clarity.ms) is unchanged and still real: js/ga-gate.js's and
+     js/meta-pixel-gate.js's own _oqLoadOnIdleOrInteraction helper still
+     defers those to idle/first-interaction -- that is where the actual
+     third-party weight was and still is deferred. gtag/fbq are defined the
+     moment these two scripts run (synchronously again, before
+     DOMContentLoaded), so the gtag('config', ...) call below no longer
+     needs to wait for a DOMContentLoaded listener either -- restored to
+     main's plain inline call. -->
+<script src="/js/ga-gate.js"></script>
+<script src="/js/meta-pixel-gate.js"></script>
+<script>gtag('config', 'G-D1Y1TLGEFY');</script>
 <!-- Microsoft Clarity (wwr7qlk8g5) is loaded by /js/ga-gate.js, behind the same production-host gate as GA4 (gh-1619). Do not add a per-page loader. -->
 
 <!-- Supabase -->
