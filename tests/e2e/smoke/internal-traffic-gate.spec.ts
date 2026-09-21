@@ -28,8 +28,10 @@
  * this test pass even with a broken opt-out (it would prove nothing). This
  * config (internal-traffic-gate.config.ts) launches Chromium with
  * `--host-resolver-rules=MAP otterquote.com 127.0.0.1` and serves the site
- * on port 4173, then this spec navigates to `http://otterquote.com:4173/...`
- * — Chromium resolves that hostname to the local static server, and
+ * on port 4174 (playwright.smoke.config.ts already owns 4173, so this uses
+ * a different port to run alongside it without colliding), then this spec
+ * navigates to `http://otterquote.com:4174/...` — Chromium resolves that
+ * hostname to the local static server, and
  * `window.location.hostname` inside the page is genuinely `otterquote.com`,
  * so both gates' host allowlist passes and their real code path runs.
  */
@@ -101,10 +103,15 @@ test('/faq.html — zero tracking requests (opt-out via pre-set cookie, no query
   assertNoTrackingRequests(hits, '/faq.html (cookie-only)');
 });
 
-test('control: /index.html with no flag or cookie — gtag.js IS requested', async ({ page }) => {
+test('control: /index.html with no flag or cookie — gtag.js, fbevents.js and Clarity ARE requested', async ({ page }) => {
   const gtagRequests: string[] = [];
+  const fbevents: string[] = [];
+  const clarity: string[] = [];
   page.on('request', (req) => {
-    if (/googletagmanager\.com\/gtag\/js/.test(req.url())) gtagRequests.push(req.url());
+    const url = req.url();
+    if (/googletagmanager\.com\/gtag\/js/.test(url)) gtagRequests.push(url);
+    if (/connect\.facebook\.net\/.*fbevents\.js/.test(url)) fbevents.push(url);
+    if (/clarity\.ms/.test(url)) clarity.push(url);
   });
 
   await page.goto('/index.html', { waitUntil: 'networkidle' });
@@ -112,8 +119,22 @@ test('control: /index.html with no flag or cookie — gtag.js IS requested', asy
   const flag = await page.evaluate(() => (window as unknown as { OQ_INTERNAL?: boolean }).OQ_INTERNAL);
   expect(flag, 'control run: window.OQ_INTERNAL should be false/undefined with no param or cookie').toBeFalsy();
 
+  // All three vendor loaders come off the idle/interaction-deferred path
+  // (gh-2063 round 2, PR #2065) rather than firing at parse time, so this
+  // waits for Playwright's own idle/interaction simulation window
+  // (networkidle above already waits past the network settling point, and
+  // both gates' _oqLoadOnIdleOrInteraction fall back to a hard 1500ms timer
+  // when nothing else fires it first) before asserting.
   expect(
     gtagRequests.length,
     'control run: expected gtag.js to be requested on an un-flagged visit (a gate that never fires would falsely pass the opt-out tests above)'
+  ).toBeGreaterThan(0);
+  expect(
+    fbevents.length,
+    'control run: expected fbevents.js (Meta Pixel) to be requested on an un-flagged visit'
+  ).toBeGreaterThan(0);
+  expect(
+    clarity.length,
+    'control run: expected a clarity.ms request on an un-flagged visit (index.html is on CLARITY_ALLOWED_PATHS as "/")'
   ).toBeGreaterThan(0);
 });
