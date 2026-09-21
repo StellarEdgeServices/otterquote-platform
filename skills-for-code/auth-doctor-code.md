@@ -62,6 +62,11 @@ Ask Dustin (or default in scheduled/autonomous mode):
 
 Default in scheduled mode: production. Log environment in output header.
 
+gh-2064: when running against production, the FIRST page navigated in Step 1 below
+must carry `?oq_internal=1` (e.g. `https://otterquote.com/get-started?oq_internal=1`)
+so this run's traffic is never counted as a visitor in GA4, Meta or Clarity. Staging
+needs no such param — it is already outside every gate's host allowlist.
+
 ---
 
 ## Auth Matrix (9 Scenarios)
@@ -148,7 +153,7 @@ Cleanup: DELETE test user (same as M-1).
 
 ### Scenario 1: Magic-link signup → homeowner dashboard (UI flow check)
 
-Navigate to `/get-started` (or `app.otterquote.com/get-started`). Complete page 1 with a test email. Verify the magic-link-sent confirmation state renders without errors and no console errors fire.
+Navigate to `/get-started?oq_internal=1` (or `app.otterquote.com/get-started?oq_internal=1`; gh-2064 — sets the internal-traffic opt-out cookie before anything else on the page loads). Complete page 1 with a test email. Verify the magic-link-sent confirmation state renders without errors and no console errors fire.
 
 ---
 

@@ -45,6 +45,45 @@
   var ALLOWED_HOSTS = ['otterquote.com', 'www.otterquote.com', 'app.otterquote.com'];
   var PIXEL_ID = '800470107451795';
 
+  // gh-2064 round 2: same fix and same rationale as js/ga-gate.js's
+  // oqInternal() -- the opt-out used to live only in js/internal-traffic.js,
+  // included on 10 of the 62 pages that load this gate, so on the other 52
+  // `if (window.OQ_INTERNAL) return;` below never had anything to read.
+  // This gate now reads and writes the signal itself, kept in sync with
+  // js/ga-gate.js and js/internal-traffic.js (same cookie name, Max-Age,
+  // Domain rule), wrapped in try/catch so it can never break pixel loading
+  // for a real visitor.
+  function oqInternal() {
+    try {
+      var params = null;
+      try {
+        params = new URLSearchParams(window.location.search);
+      } catch (e) {
+        params = null;
+      }
+      var queryFlag = !!(params && params.get('oq_internal') === '1');
+
+      var cookieMatch = document.cookie.match(/(?:^|; )oq_internal=([^;]*)/);
+      var cookieFlag = !!(cookieMatch && decodeURIComponent(cookieMatch[1]) === '1');
+
+      if (queryFlag && !cookieFlag) {
+        var oneYear = 60 * 60 * 24 * 365;
+        var domainAttr = '';
+        if (/(^|\.)otterquote\.com$/.test(window.location.hostname)) {
+          domainAttr = '; Domain=.otterquote.com';
+        }
+        document.cookie = 'oq_internal=1; Max-Age=' + oneYear + '; Path=/' +
+          domainAttr + '; SameSite=Lax';
+      }
+
+      var isInternal = queryFlag || cookieFlag;
+      window.OQ_INTERNAL = isInternal;
+      return isInternal;
+    } catch (e) {
+      return !!window.OQ_INTERNAL;
+    }
+  }
+
   // fbq is defined unconditionally so every page's existing
   // fbq('track', ...) / fbq('trackCustom', ...) calls keep working (as
   // harmless queued-but-never-sent pushes) even when the pixel never loads
@@ -77,6 +116,18 @@
   if (!PIXEL_ID) {
     return; // no real pixel ID configured yet -- complete no-op, dark merge
   }
+
+  // gh-2064 round 2: internal-traffic opt-out, checked via the
+  // self-contained oqInternal() above -- not a dependency on
+  // js/internal-traffic.js being present on this page. Placed after the PIXEL_ID check (the react-app stub test slices the
+  // source up to that check, gh-2000) and the fbq stub so every page's existing fbq('track', ...) call sites keep
+  // working as harmless queued-but-never-sent pushes -- this just adds one
+  // more reason fbevents.js never actually loads: the current visit is our
+  // own walk/probe, not a visitor.
+  if (oqInternal()) {
+    return;
+  }
+
 
   if (ALLOWED_HOSTS.indexOf(window.location.hostname) === -1) {
     return; // not a recognised production host -- fbevents.js never loads
