@@ -1,0 +1,42 @@
+      // ── Data Loading ──
+      async function loadProfileData() {
+        if (CONFIG.DEMO_MODE) {
+          return; // Already loaded by loadDemoData()
+        }
+
+        currentProfile = await Auth.getProfile();
+        if (!currentProfile) {
+          // Create default profile if doesn't exist — use actual DB column names
+          // D-178 fix: read from localStorage first (persists after magic link redirect),
+          // fall back to sessionStorage (same-tab flows), then empty object.
+          const signupData = JSON.parse(localStorage.getItem('cs_signup') || sessionStorage.getItem('cs_signup') || '{}');
+          const firstName = signupData.first_name || currentUser.user_metadata?.full_name?.split(' ')[0] || '';
+          const lastName = signupData.last_name || currentUser.user_metadata?.full_name?.split(' ')[1] || '';
+          currentProfile = {
+            id: currentUser.id,
+            full_name: (firstName + ' ' + lastName).trim() || currentUser.email?.split('@')[0] || 'there',
+            phone: signupData.phone || null,
+            address_street: signupData.address_street || signupData.address || null,
+            address_city: signupData.address_city || null,
+            address_state: signupData.address_state || null,
+            address_zip: signupData.address_zip || null,
+            role: 'homeowner',
+          };
+          try {
+            await Auth.updateProfile(currentProfile);
+          } catch (err) {
+            console.error('[Dashboard] Error creating profile:', err);
+          }
+        } else if (!currentProfile.full_name) {
+          const signupData = JSON.parse(localStorage.getItem('cs_signup') || sessionStorage.getItem('cs_signup') || '{}');
+          const firstName = signupData.first_name || currentUser.user_metadata?.full_name?.split(' ')[0] || '';
+          const lastName  = signupData.last_name  || currentUser.user_metadata?.full_name?.split(' ')[1] || '';
+          const derivedName = (firstName + ' ' + lastName).trim() || currentUser.email?.split('@')[0] || '';
+          if (derivedName) {
+            currentProfile.full_name = derivedName;
+            try { await Auth.updateProfile({ full_name: derivedName }); } catch(e) {
+              console.warn('[Dashboard] Could not persist derived name:', e);
+            }
+          }
+        }
+      }
