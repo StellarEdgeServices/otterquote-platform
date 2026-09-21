@@ -46,9 +46,13 @@
      unattributable for good (GA4's variant/step custom dimensions are not
      retroactive). Precedence: an explicit, validated ?v= in the URL wins;
      else a persisted per-visitor assignment (localStorage, cookie
-     fallback); else uniform-random 1/3 across a/b/c. Persists the result to
-     BOTH localStorage and a first-party cookie (oq_variant_v1, versioned so
-     a future re-randomisation is a key bump) and rewrites the URL via
+     fallback); else uniform-random across the live set (gh-2074:
+     LIVE_VARIANTS below -- today just 'c'; a syntactically-valid but
+     non-live arm from ANY of those sources, e.g. a persisted 'a'/'b', is
+     re-mapped to a live arm on arrival, never served/blanked/404'd).
+     Persists the result to BOTH localStorage and a first-party cookie
+     (oq_variant_v1, versioned so a future re-randomisation is a key bump)
+     and rewrites the URL via
      history.replaceState -- never pushState -- preserving every existing
      query parameter (UTMs above all). Every storage/URL touch is its own
      try/catch: 39% of this traffic is the Facebook in-app webview, where
@@ -63,14 +67,56 @@
 <script>
 (function () {
   var KEY = 'oq_variant_v1';
-  var ARM_RE = /^[abc]$/;
+
+  // gh-2074 fix round 2 (PR #2079 review, item 2): KNOWN_ARMS is the
+  // single source of truth for which arm letters are syntactically
+  // recognised at all -- NOT which ones are currently served (see
+  // LIVE_VARIANTS below for that). It already lists 'd'/'e' so shipping
+  // gh-2075/gh-2076 never needs a second change here: a persisted or
+  // ?v=-carried d/e always PARSES, even while LIVE_VARIANTS still keeps
+  // them unreachable. Exposed as window.__oqKnownArms so the main IIFE's
+  // own variant read further down this file (gh-2014/gh-2033 -- a
+  // SEPARATE <script> block/closure) derives its allowlist from this
+  // same list instead of a second hardcoded regex that can silently
+  // drift out of sync: review caught exactly that on the first pass of
+  // this fix -- an unsynced /^[abc]$/ there would read a live 'd'
+  // session back as variant=null and silently render arm A, the one arm
+  // this issue exists to eliminate.
+  var KNOWN_ARMS = ['a', 'b', 'c', 'd', 'e'];
+  window.__oqKnownArms = KNOWN_ARMS;
+  var ARM_RE = new RegExp('^(' + KNOWN_ARMS.join('|') + ')$');
 
   // gh-2074: the LIVE set. Today only 'c' -- a and b lose 90%+ of visitors
   // at the first screen (GA4 router_step_view 7d: a 120->12, b 87->13,
-  // c 59->9). When d/e (gh-2075/gh-2076) ship, flip this single constant to
-  // ['c', 'd', 'e'] (equal weights) -- that is the whole switch. Arm a/b's
-  // code stays in this file, unreachable, for d/e to reuse.
+  // c 59->9). Arm a/b's code stays in this file, unreachable, for d/e to
+  // reuse -- nothing here is deleted.
+  //
+  // gh-2074 fix round 2 (PR #2079 review, item 3): flipping this constant
+  // to ['c', 'd', 'e'] when d/e ship is NOT "the whole switch" and does
+  // NOT give equal weights by itself -- the original comment here was
+  // wrong. Every visitor assigned 'c' during this single-arm period is
+  // persisted (KEY above, 180-day max-age -- see the gh-2033 comment
+  // block near the top of this file) and stays sticky to 'c' on return:
+  // isLive('c') is already true, so toLiveArm() is a no-op for every one
+  // of those returning sessions regardless of what this constant says
+  // later. Flipping it alone would therefore land roughly 80% of traffic
+  // on 'c' (every persisted single-arm-period visitor, plus 1/3 of
+  // brand-new ones) versus ~10% each for d/e -- not the even split
+  // "equal weights" implies. Shipping d/e as a real three-way test
+  // REQUIRES bumping KEY too (e.g. 'oq_variant_v2') alongside this flip,
+  // so every visitor -- persisted or not -- re-randomises across the new
+  // live set. Flip this constant WITHOUT the key bump only if a
+  // deliberately c-weighted d/e rollout is the actual intent.
   var LIVE_VARIANTS = ['c'];
+
+  // gh-2074 fix round 2 (PR #2079 review, item 4): guards a misconfigured
+  // empty LIVE_VARIANTS from indexing an empty array and writing a
+  // literal "v=undefined" into the URL, both stores, and every
+  // downstream analytics/lead write -- falls back to SAFE_DEFAULT_ARM.
+  var SAFE_DEFAULT_ARM = 'c';
+  function effectiveLiveVariants() {
+    return (LIVE_VARIANTS && LIVE_VARIANTS.length) ? LIVE_VARIANTS : [SAFE_DEFAULT_ARM];
+  }
 
   function validArm(v) {
     var s = String(v == null ? '' : v).toLowerCase();
@@ -79,20 +125,34 @@
 
   // gh-2074: is this (syntactically valid) arm one we're currently serving?
   function isLive(arm) {
-    for (var i = 0; i < LIVE_VARIANTS.length; i++) {
-      if (LIVE_VARIANTS[i] === arm) return true;
+    var live = effectiveLiveVariants();
+    for (var i = 0; i < live.length; i++) {
+      if (live[i] === arm) return true;
     }
     return false;
   }
 
   // gh-2074: map any syntactically-valid arm onto a live one -- a no-op for
   // an already-live arm, otherwise a uniform-random re-assignment across
-  // LIVE_VARIANTS. Applied to every source below (URL, localStorage,
-  // cookie, random) so a/b can never reach rendering.
+  // the live set. Applied to every source below (URL, localStorage,
+  // cookie, random) so a/b (or any non-live arm) can never reach
+  // rendering.
+  //
+  // gh-2074 fix round 2 (PR #2079 review, item 1 BLOCKER): exposed as
+  // window.__oqToLiveArm so the main IIFE's own variant read further
+  // down this file -- a separate <script> block, so it does NOT share
+  // this closure -- can apply this identical mapping to its own URL
+  // fallback path, instead of trusting a stale, pre-mapped ?v= that this
+  // script's own history.replaceState call (below) failed to rewrite
+  // because it threw (sandboxed iframes without allow-same-origin,
+  // Safari's history-mutation rate limit -- both real /start traffic).
   function toLiveArm(arm) {
     if (isLive(arm)) return arm;
-    return LIVE_VARIANTS[Math.floor(Math.random() * LIVE_VARIANTS.length)];
+    var live = effectiveLiveVariants();
+    return live[Math.floor(Math.random() * live.length)];
   }
+  window.__oqToLiveArm = toLiveArm;
+  window.__oqLiveVariants = effectiveLiveVariants();
 
   function readCookie(name) {
     var m = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
@@ -124,9 +184,13 @@
   }
 
   // 3. Else assign at random, uniform across the LIVE set only (gh-2074:
-  //    never the full a/b/c set -- LIVE_VARIANTS today is just ['c']).
+  //    never the full a-e set -- LIVE_VARIANTS today is just ['c']).
+  //    Uses effectiveLiveVariants() (fix round 2, item 4) so a
+  //    misconfigured empty LIVE_VARIANTS falls back to SAFE_DEFAULT_ARM
+  //    instead of indexing an empty array.
   if (!arm) {
-    arm = LIVE_VARIANTS[Math.floor(Math.random() * LIVE_VARIANTS.length)];
+    var liveForRandom = effectiveLiveVariants();
+    arm = liveForRandom[Math.floor(Math.random() * liveForRandom.length)];
   }
 
   // Expose before replaceState so a downstream throw there still leaves a
@@ -482,15 +546,47 @@
   // VARIANT_VALUES['__proto__'] are both truthy Object.prototype members).
   // A regex test never consults the prototype chain, so this is not
   // vulnerable to the same class of bypass. ──
+  // gh-2074 fix round 2 (PR #2079 review, item 1 BLOCKER): window.__oqVariant
+  // -- set by the head-inline assignment script above, already sanitised
+  // AND re-mapped to a live arm -- is now read FIRST, not as a fallback.
+  // Before this fix the URL's own ?v= was consulted first and
+  // window.__oqVariant only when the URL failed the allowlist; that order
+  // was correct pre-gh-2074 but became a live split-brain bug once a/b
+  // started being re-mapped to a live arm on arrival: the ONLY place that
+  // rewrites ?v= to the re-mapped arm is that same head script's
+  // history.replaceState call, which is wrapped in a swallowing try/catch
+  // and does throw in real /start traffic (sandboxed iframes without
+  // allow-same-origin -- ad-platform/CMS landing-page previews and
+  // embeds -- plus Safari's history-mutation rate limit). When it throws,
+  // the pre-mapped ?v=a/?v=b survives in the URL, and reading the URL
+  // first served arm a/b anyway with the correct, already-live
+  // window.__oqVariant sitting right there unused -- GA4/Clarity tagged
+  // variant=a/b and leads.variant written a/b, while both persisted
+  // stores already said 'c'. The URL is read here only as a fallback for
+  // the case window.__oqVariant is itself unset (the head script threw
+  // before reaching that assignment) -- and even then it is run through
+  // window.__oqToLiveArm, the SAME live-mapping function the head script
+  // itself uses, so a/b still cannot win from this path either.
+  //
+  // gh-2074 fix round 2 (PR #2079 review, item 2): the allowlist is no
+  // longer a second hardcoded /^[abc]$/ -- it is built from
+  // window.__oqKnownArms, the same KNOWN_ARMS constant the head script
+  // uses (falling back to a local literal only if that script somehow
+  // never ran). KNOWN_ARMS already includes 'd'/'e', so this read stays
+  // correct across the gh-2075/gh-2076 ship without a second edit here.
+  // Still a regex test, never an object-literal lookup, for the same
+  // prototype-chain-bypass reason as the fix-round-4 comment above.
+  var KNOWN_ARMS = window.__oqKnownArms || ['a', 'b', 'c', 'd', 'e'];
+  var KNOWN_ARM_RE = new RegExp('^(' + KNOWN_ARMS.join('|') + ')$');
+  var oqVariantArm = KNOWN_ARM_RE.test(String(window.__oqVariant || ''))
+    ? String(window.__oqVariant)
+    : null;
   var rawVariant = (new URLSearchParams(window.location.search).get('v') || '').toLowerCase();
-  // gh-2033: fall back to window.__oqVariant -- set by the head-inline
-  // assignment script (before js/ga-gate.js) -- when the URL's own ?v= comes
-  // back empty. Covers the case where that script's history.replaceState
-  // call itself threw and the URL was never rewritten to carry the arm it
-  // already persisted. Same /^[abc]$/ allowlist shape as above; never an
-  // object-literal lookup, for the reason in the fix-round-4 comment above.
-  var variant = /^[abc]$/.test(rawVariant) ? rawVariant
-              : (/^[abc]$/.test(String(window.__oqVariant || '')) ? String(window.__oqVariant) : null);
+  var toLiveArmFallback = window.__oqToLiveArm || function (a) { return a; };
+  var urlFallbackArm = (!oqVariantArm && KNOWN_ARM_RE.test(rawVariant))
+    ? toLiveArmFallback(rawVariant)
+    : null;
+  var variant = oqVariantArm || urlFallbackArm;
   // gh-2014: js/ga-gate.js's CLARITY_ALLOWED_PATHS now carries '/start', so
   // this call is live rather than a no-op against a closed gate. Guarded on
   // both a recognised variant and window.clarity actually having loaded
