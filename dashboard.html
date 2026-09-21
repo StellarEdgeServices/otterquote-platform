@@ -1,3 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js" crossorigin="anonymous"></script>
+<script>
+  Sentry.onLoad(function() {
+    Sentry.init({
+      environment: window.location.hostname.includes('staging') ? 'staging' : 'production',
+      denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+      beforeSend: function (event) {
+        var proto = window.location.protocol;
+        if (proto !== 'http:' && proto !== 'https:') return null;
+        var req = event.request && event.request.url;
+        if (req && /^(data|file|blob):/.test(req)) return null;
+        return event;
+      }
+    });
+  });
+</script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Project Dashboard &mdash; Otter Quotes</title>
+  <script src="/js/ga-gate.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js" crossorigin="anonymous"></script>
+  <link rel="stylesheet" href="css/design-system.css">
+  <link rel="stylesheet" href="css/nav.css">
+  <style>
+    .dashboard-layout { min-height: calc(100vh - 64px); display: flex; flex-direction: column; }
+    .dashboard-main { flex: 1; padding: var(--sp-12) 0; }
+    .ready-to-submit-banner {
+      display: none; align-items: center; justify-content: space-between; gap: var(--sp-4);
+      background: var(--green-light); color: #065F46; padding: var(--sp-6); border-radius: var(--radius-lg);
+      border: 2px solid var(--green); box-shadow: 0 0 0 4px rgba(16,185,129,0.15); margin-bottom: var(--sp-8);
+    }
+    .ready-to-submit-banner.active { display: flex; }
+    .ready-to-submit-text { display: flex; align-items: center; gap: var(--sp-4); flex: 1; }
+    .ready-to-submit-icon { font-size: 1.75rem; flex-shrink: 0; }
+    .status-banner { display:none; }
+    .status-banner.active { display:flex; align-items:center; justify-content:space-between; }
+    .error-message, .success-message { display:none; }
+    .error-message.active, .success-message.active { display:flex; align-items:center; gap:8px; }
+    .submit-success { display:none; }
+    .submit-success.active { display:block; }
+  </style>
+</head>
+<body data-clarity-mask="true">
+  <header id="site-header" data-active=""></header>
+  <div class="dashboard-layout">
+    <div class="dashboard-main">
+      <div class="container">
+        <div id="error-message" class="error-message"><span>⚠️</span><span id="error-text"></span></div>
+        <div id="success-message" class="success-message"><span>✓</span><span id="success-text"></span></div>
+
+        <!-- gh-1570: unmissable ready-to-submit banner. Shown the moment the
+             checklist is complete, above everything else on the page, so a
+             homeowner who never scrolls to the submit button still sees the CTA. -->
+        <div id="ready-to-submit-banner" class="ready-to-submit-banner">
+          <div class="ready-to-submit-text">
+            <div class="ready-to-submit-icon">✓</div>
+            <div>
+              <strong>You're ready — submit for bids</strong>
+              <p>Every required item on your checklist is complete. Submit now to start getting bids from contractors.</p>
+            </div>
+          </div>
+          <button class="btn btn-primary btn-lg" id="ready-to-submit-btn">Submit for Bids</button>
+        </div>
+
+        <div class="welcome-section">
+          <div class="welcome-header">
+            <div class="welcome-text">
+              <h1>Welcome back, <span id="user-first-name">there</span></h1>
+              <div class="welcome-address" id="user-address">Loading address...</div>
+            </div>
+            <div class="welcome-progress">
+              <div class="progress-label"><span>Project Details Complete</span><span class="progress-percent"><span id="progress-percent">0</span>%</span></div>
+              <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <div id="status-banner" class="status-banner">
+          <div class="status-banner-text">
+            <div class="status-banner-icon" id="status-banner-icon">✓</div>
+            <div>
+              <strong id="status-banner-title">Your project is live!</strong>
+              <p id="status-banner-text">Contractors are reviewing your details. You'll be notified of incoming bids.</p>
+            </div>
+          </div>
+          <div class="status-banner-actions" id="status-banner-actions">
+            <a href="bids.html" class="btn btn-sm btn-secondary" id="viewBidsLinkTop">View Bids</a>
+          </div>
+        </div>
+
+        <div class="dashboard-section">
+          <div class="section-header">
+            <h2>Project Information</h2>
+            <button class="btn btn-sm btn-ghost" id="toggle-claim-edit">Edit</button>
+          </div>
+          <div id="claim-display" class="claim-info-grid"></div>
+          <form id="claim-edit-form" class="claim-form" style="display: none;"></form>
+        </div>
+
+        <div class="dashboard-section" id="checklist-section">
+          <div class="section-header"><h2>Complete Your Project Details</h2></div>
+          <div class="checklist-section" id="checklist-container"></div>
+        </div>
+
+        <div id="submit-ready-section" class="submit-section">
+          <h3>Ready to Get Bids?</h3>
+          <p class="submit-section-hint" id="submit-hint">Complete the required items above to submit your project for bids.</p>
+          <div class="submit-cta"><button class="btn btn-primary btn-lg" id="submit-btn" disabled>Submit for Bids</button></div>
+        </div>
+
+        <div id="submit-success" class="submit-success">
+          <div class="submit-success-icon">✓</div>
+          <h2>Project Submitted Successfully!</h2>
+          <p>Your project details are now live. Contractors are reviewing your information and will send you bids.</p>
+          <a href="bids.html" class="btn btn-primary btn-lg" id="viewBidsLinkSubmit">View Bids</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script src="js/cookie-storage.js"></script>
   <script src="js/config.js"></script>
   <script src="js/supabase-client.js"></script>
@@ -12,7 +135,6 @@
       let currentProfile = null;
       let currentClaim = null;
       let carriers = [];
-      let isEditingClaim = false;
 
       async function init() {
         try {
@@ -24,8 +146,6 @@
           await loadClaimData();
 
           renderWelcome();
-          renderClaimInfo();
-          renderChecklist();
           updateSubmitButton();
           updateProgressBar();
           await updateStatusBanner();
@@ -47,12 +167,9 @@
       async function loadClaimData() {
         if (!currentUser) return;
         try {
-          const { data, error } = await sb.from('claims').select('*').eq('user_id', currentUser.id)
+          const { data } = await sb.from('claims').select('*').eq('user_id', currentUser.id)
             .order('created_at', { ascending: false }).limit(1).single();
-          if (data) {
-            currentClaim = data;
-            window.currentClaim = currentClaim;
-          }
+          if (data) { currentClaim = data; window.currentClaim = currentClaim; }
           if (!currentClaim) {
             const { data: newClaim } = await sb.from('claims').insert({
               user_id: currentUser.id, status: 'draft', damage_type: 'roof',
@@ -74,29 +191,15 @@
         }
       }
 
-      function escapeHtml(text) {
-        return String(text).replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"})[c]);
-      }
-
       function renderWelcome() {
         const firstName = currentProfile?.full_name?.split(' ')[0] || currentProfile?.first_name || 'there';
-        document.getElementById('user-first-name').textContent = firstName;
+        const nameEl = document.getElementById('user-first-name');
+        if (nameEl) nameEl.textContent = firstName;
         const address = currentProfile?.address_street
           ? [currentProfile.address_street, currentProfile.address_city, currentProfile.address_state, currentProfile.address_zip].filter(Boolean).join(', ')
           : currentProfile?.address || 'Address not set';
-        document.getElementById('user-address').textContent = address;
-      }
-
-      function renderClaimInfo() {
-        if (!currentClaim) return;
-        const display = document.getElementById('claim-display');
-        if (display) display.innerHTML = '';
-      }
-
-      function renderChecklist() {
-        if (!currentClaim) return;
-        const container = document.getElementById('checklist-container');
-        if (container) container.innerHTML = '';
+        const addrEl = document.getElementById('user-address');
+        if (addrEl) addrEl.textContent = address;
       }
 
       function updateProgressBar() {
@@ -304,4 +407,3 @@
   </script>
 </body>
 </html>
-</content_placeholder_never_use>
