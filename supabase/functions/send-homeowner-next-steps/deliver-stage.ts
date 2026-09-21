@@ -226,7 +226,12 @@ export async function deliverStage(deps: DeliverDeps, ctx: DeliverCtx): Promise<
 
   if (!sendResult.ok) {
     const error = sendResult.error ?? "unknown";
-    say("error", `FAILED ${ctx.stage} nudge for claim ${ctx.claimId} — will retry next run: ${error}`);
+    // gh-2069 REVIEW FIX: this stage is never retried automatically (this was
+    // true on main before this PR too — a failed nudge stage is simply
+    // skipped, not requeued). The log line previously said "will retry next
+    // run", which was wrong. Corrected here to avoid implying a retry
+    // mechanism that does not exist.
+    say("error", `FAILED ${ctx.stage} nudge for claim ${ctx.claimId} — not retried: ${error}`);
     const { error: stampError } = await deps.insertActivityLog({
       user_id: ctx.userId,
       event_type: NUDGE_EVENT_TYPE,

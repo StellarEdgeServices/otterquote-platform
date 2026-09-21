@@ -31,17 +31,29 @@
 //
 // WHO IS ELIGIBLE
 // ----------------
-// A homeowner profile (`profiles.role = 'homeowner'`) created less than 15
+// A homeowner profile (`profiles.role = 'homeowner'`) created less than 45
 // minutes ago (see isProfileFreshEnough), with no existing
 // `notifications` row of `notification_type = 'homeowner_welcome'` for that
 // user — checked by the caller (index.ts), the same is_test-population split
 // as the rest of this function (see dry-run.ts's candidateIsTestFlag): a dry
 // run scans is_test=true profiles and sends nothing regardless of the gate,
 // a real run scans is_test=false profiles and only sends when the gate is on.
+//
+// gh-2069 REVIEW FIX: this window was originally 15 minutes, but this cron
+// runs on a 30-minute tick — a straight 15-minute freshness window would
+// miss roughly half of all signups (any signup landing in the second half of
+// a 30-minute gap between ticks ages past 15 minutes before the next tick
+// ever sees it). Widened to 45 minutes so every signup is caught by at least
+// one tick within the window, with margin for tick jitter.
+//
+// TODO(pre-enable): add an opt-out footer/link to the welcome email before
+// `homeowner_welcome_enabled` is ever flipped to true. The +2h/+48h nudges
+// already carry a D-320 opt-out link; this first-touch email does not yet,
+// and it should before any real homeowner receives it.
 
 export const HOMEOWNER_WELCOME_TEMPLATE = "homeowner_welcome";
 export const HOMEOWNER_WELCOME_SETTING_KEY = "homeowner_welcome_enabled";
-export const HOMEOWNER_WELCOME_FRESHNESS_MS = 15 * 60 * 1000;
+export const HOMEOWNER_WELCOME_FRESHNESS_MS = 45 * 60 * 1000;
 
 /** True only for `{ value: true }` — the same strict-literal convention as
  * ./dry-run.ts's parseDryRun. A missing row, `null`, `"true"` (string), or

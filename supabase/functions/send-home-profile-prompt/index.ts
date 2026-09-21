@@ -443,8 +443,18 @@ export async function processClaim(
     .maybeSingle();
 
   if (profile?.email) {
-    homeownerEmail = profile.email;
-    homeownerName = profile.full_name || "there";
+    // gh-2069 REVIEW FIX (CI red on head d3637483): the real supabase-js
+    // client's `.select("email, full_name")` return type resolves to `{}`
+    // under this pinned esm.sh types / Deno 2.8.3 combination (the same
+    // pre-existing TS2589-class mismatch documented at this file's top),
+    // so `profile.email` / `profile.full_name` type-check as `{}`, not
+    // `string`. These two casts assert the shape the `select()` column list
+    // actually requests — they add no runtime behavior, only satisfy
+    // `deno check` under the CI command
+    // (`deno test --allow-read=... supabase/functions/`), which type-checks
+    // every test file's imports, including this one via index.test.ts.
+    homeownerEmail = profile.email as string;
+    homeownerName = (profile.full_name as string | null) || "there";
   } else {
     const { data: authUser } = await supabase.auth.admin.getUserById(claim.user_id);
     homeownerEmail = authUser?.user?.email || null;
@@ -652,7 +662,13 @@ serve(async (req: Request) => {
       return jsonResponse({ ok: true, result: "too_early" }, 200, corsHeaders);
     }
 
-    const result = await processClaim(supabase, claim as ClaimRow, mailgunApiKey, siteUrl);
+    // gh-2069 REVIEW FIX (CI red on head d3637483): the real SupabaseClient's
+    // PostgrestBuilder chain is thenable but not a structural match for
+    // ProcessClaimSupabase's PromiseLike<> methods under this Deno/TS
+    // version (TS2589, same pre-existing type-instantiation-depth class
+    // documented at this file's top) -- this cast is load-bearing for
+    // `deno check` only; at runtime `supabase` is unchanged.
+    const result = await processClaim(supabase as unknown as ProcessClaimSupabase, claim as ClaimRow, mailgunApiKey, siteUrl);
     return jsonResponse({ ok: true, ...result }, 200, corsHeaders);
   }
 
@@ -686,7 +702,7 @@ serve(async (req: Request) => {
 
   for (const claim of claims as ClaimRow[]) {
     try {
-      const result = await processClaim(supabase, claim, mailgunApiKey, siteUrl);
+      const result = await processClaim(supabase as unknown as ProcessClaimSupabase, claim, mailgunApiKey, siteUrl);
       results.push(result);
       if (result.result === "sent") processed++;
       else skipped++;

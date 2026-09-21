@@ -90,7 +90,7 @@ Deno.test("gated ON but MAILGUN_API_KEY unset: no send attempted, no notificatio
 
 // ── Freshness window ─────────────────────────────────────────────────────
 
-Deno.test("isProfileFreshEnough: true just under 15 minutes, false at/after, false for a future timestamp", () => {
+Deno.test("isProfileFreshEnough: true just under the freshness window, false at/after, false for a future timestamp", () => {
   const now = Date.parse("2026-09-21T18:00:00Z");
   assertEquals(isProfileFreshEnough(new Date(now - 1).toISOString(), now), true);
   assertEquals(isProfileFreshEnough(new Date(now - (HOMEOWNER_WELCOME_FRESHNESS_MS - 1000)).toISOString(), now), true);
