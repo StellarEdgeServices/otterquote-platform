@@ -122,9 +122,9 @@ Deno.test("buildRows: missing updated_at falls back to created_at; missing both 
 });
 
 
-// ─────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 // gh-1796 — loss-sheet queue. Same rules: pure, no network, no env, no secrets.
-// ─────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 
 /** A loss-sheet-shaped claim fragment with everything empty by default. */
 function ls(over: Partial<ClaimIn> = {}) {
@@ -284,7 +284,7 @@ Deno.test("isMigrationPendingError: null/undefined error object does not crash a
   assertStrictEquals(isMigrationPendingError({}), false);
 });
 
-// ── gh-1570 — "ready, not submitted" ───────────────────────────────────────
+// ── gh-1570 — "ready, not submitted" ────────────────────────────────────────
 // A homeowner who finishes dashboard.html's checklist has ONE remaining exit
 // from documents_needed: a separate click on Submit for Bids. These pin the
 // gate that makes that state visible, and the null/real-data tolerance PR
