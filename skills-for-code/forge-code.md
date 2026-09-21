@@ -510,7 +510,7 @@ Run Layer 8 only for entries with `Status = in-progress`.
 
 1. **Load static page.** Use web fetch on the static URL. Confirm HTTP 200. Extract: page `<title>`, all `<h1>/<h2>/<h3>` text, all `<button>/<a class="btn">` labels, GA4 event calls in inline `<script>` blocks, Supabase insert/update calls.
 
-2. **Load React page.** Use web fetch on the React URL. Confirm HTTP 200. Extract the same elements. Note: if Next.js client-only (no SSR), web fetch returns a shell — flag Yellow, visual verification via Claude in Chrome required.
+2. **Load React page.** Use web fetch on the React URL. Confirm HTTP 200. Extract the same elements. Note: if Next.js client-only (no SSR), web fetch returns a shell — flag Yellow, visual verification via Claude in Chrome required. gh-2064: that Chrome fallback navigation is a real browser load and must append `?oq_internal=1` (or `&oq_internal=1`) to the URL so it is never counted as a visitor in GA4, Meta or Clarity — the plain web-fetch calls in this step do not execute JS and need no such param.
 
 3. **Auth guard check:** Attempt to load the React URL without auth cookies. If page requires auth: confirm redirect to login. Mismatch between static and React auth behavior → flag Red.
 
@@ -962,4 +962,3 @@ Before terminating, every run of this skill MUST complete the following steps:
    - If any storage step failed, open a GitHub issue describing the failure instead.
 
 Never defer storage to the archive skill or any external process. Scheduled sessions have no archive pass.
-
