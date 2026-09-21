@@ -126,18 +126,63 @@
      is requested"; js/meta-pixel-gate.js: "the ONLY place fbevents.js is
      requested"). Clarity rides the GA4 gate's own host check; js/ga-gate.js's
      CLARITY_ALLOWED_PATHS carries '/start' (gh-2014). -->
+<!-- gh-2063 fix round 3 (PR #2065 review2, remaining FAIL point): round 2
+     put `defer` on these two same-origin gate files, reasoning that it
+     would move their network fetch off the first-paint critical path.
+     Independent review measured the opposite, one change at a time: `defer`
+     makes FIRST PAINT LATER than main (FCP +0.3-0.4s on slow-4G, +0.6-1.8s
+     on slow-3G), because the browser still has to fetch and run these two
+     small same-origin files before it can build the render tree either
+     way, and `defer` only changes WHEN in that sequence they run relative
+     to parsing -- it does not remove them from the critical path the way
+     it does for a large third-party bundle. Restored to plain synchronous
+     `<script src>` tags, matching main exactly. The actual fix for the
+     THIRD-PARTY vendor bundles these files inject (gtag.js, fbevents.js,
+     clarity.ms) is unchanged and still real: js/ga-gate.js's and
+     js/meta-pixel-gate.js's own _oqLoadOnIdleOrInteraction helper still
+     defers those to idle/first-interaction -- that is where the actual
+     third-party weight was and still is deferred. gtag/fbq are defined the
+     moment these two scripts run (synchronously again, before
+     DOMContentLoaded), so the gtag('config', ...) call below no longer
+     needs to wait for a DOMContentLoaded listener either -- restored to
+     main's plain inline call. -->
 <script src="/js/ga-gate.js"></script>
 <script src="/js/meta-pixel-gate.js"></script>
 <script>gtag('config', 'G-D1Y1TLGEFY');</script>
 <!-- Microsoft Clarity (wwr7qlk8g5) is loaded by /js/ga-gate.js, behind the same production-host gate as GA4 (gh-1619). Do not add a per-page loader. -->
 
 <!-- Supabase -->
+<!-- gh-2063 fix round 2 (PR #2065 review, blocker 1): `defer` was removed
+     here after independent review found it broke every step-1 submit on
+     every arm. This page does NOT use js/config.js's page-level `sb` (that
+     comment about _oqCreateSupabaseClient()'s DOMContentLoaded retry/~20s
+     poll was about a DIFFERENT global, in a DIFFERENT file, that this
+     page's own IIFE below never reads) -- this file declares its own local
+     `var sb` a few lines into its inline router script and creates it ONCE,
+     synchronously, while the page is still parsing (`if (typeof supabase
+     !== 'undefined' ...) { sb = supabase.createClient(...) }`), with no
+     retry of its own. A deferred script always runs after parsing
+     finishes, so `typeof supabase` was always 'undefined' at that moment,
+     `sb` stayed null for the entire visit, and every "Continue" click on
+     every arm (A/B/C) hit a null-`sb` guard and showed "Something went
+     wrong loading the form." with no console error and no Sentry signal.
+     Kept synchronous (not deferred) again; it is a same-origin-cached CDN
+     script by then in most repeat visits and is not the file this issue's
+     item 1 was written for (the third-party analytics tags below are). -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js" integrity="sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz" crossorigin="anonymous"></script>
 
 <!-- Google Fonts -->
+<!-- gh-2063: non-blocking stylesheet load (preload + swap to `all` media on
+     load, noscript fallback) so the Rubik CSS fetch never blocks first
+     paint; the request itself already carries &display=swap so text
+     renders in a fallback font immediately either way. -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet"></noscript>
 <!-- Shared Styles -->
+<link rel="preload" as="style" href="css/design-system.css">
 <link rel="stylesheet" href="css/design-system.css">
 <link rel="stylesheet" href="css/nav.css">
 
@@ -187,6 +232,19 @@
   .router-back { display: inline-flex; align-items: center; gap: var(--sp-1); color: var(--slate); font-size: 0.9rem; background: none; border: none; cursor: pointer; margin-bottom: var(--sp-4); padding: 0; }
   .router-back:hover { color: var(--white); }
   .router-spinner-wrap { text-align: center; padding: var(--sp-10) 0; color: var(--slate); }
+
+  /* gh-2063: on short mobile viewports (e.g. 390x844 in the Facebook
+     in-app browser, whose own chrome eats ~100px of that) the step-1 CTA
+     must stay above the fold. Tightens vertical spacing only below
+     700px tall -- no layout/copy change, same elements, same order. */
+  @media (max-height: 700px) {
+    main { padding-top: var(--sp-4); padding-bottom: var(--sp-8); }
+    .router-card { padding: var(--sp-4); }
+    .router-progress { margin-bottom: var(--sp-4); }
+    .router-step h1, #routerCRoot h1 { margin-bottom: var(--sp-1); }
+    .router-step p.router-sub, #routerCRoot p.router-sub { margin-bottom: var(--sp-3); }
+    .form-group { margin-bottom: var(--sp-2); }
+  }
 </style>
 </head>
 <body>
@@ -408,7 +466,21 @@
   // both a recognised variant and window.clarity actually having loaded
   // (Clarity is still behind its own host/consent gate upstream of the
   // path allowlist).
-  try { if (variant && window.clarity) { clarity('set', 'variant', variant); } } catch (e) {}
+  // gh-2063 fix round 2 (PR #2065 review, blocker 3): this used to run here,
+  // at parse time, while the page's <script defer src="js/ga-gate.js"> --
+  // the only place window.clarity is created -- had not executed yet.
+  // window.clarity was always undefined at this point once ga-gate.js
+  // stopped being a synchronous head script, so the guard above was always
+  // false and the call silently never ran: every session on every /start
+  // variant recorded in Clarity with no 'variant' tag. Deferred scripts run
+  // in document order, strictly before DOMContentLoaded fires, so moving
+  // this call into a DOMContentLoaded listener guarantees ga-gate.js (and
+  // therefore window.clarity, when the host/path gates allow it) has
+  // already run by the time this fires -- with no change to the guard logic
+  // or to what gets sent.
+  document.addEventListener('DOMContentLoaded', function () {
+    try { if (variant && window.clarity) { clarity('set', 'variant', variant); } } catch (e) {}
+  });
 
   // ── gh-2016: arm B (contact-last). B asks #2011's IDENTICAL questions in
   // inverted order -- role, then industry if referral_partner, then
@@ -512,11 +584,36 @@
   // file outside react-app/ (PR #1960's track() helper lives at
   // react-app/app/lib/track.ts and is unreachable from here), so every
   // router event stamps `variant` itself via this wrapper instead. ──
+  //
+  // gh-2063: ga-gate.js now loads `defer` (moved out of the first-paint
+  // path), so `gtag` may not exist yet the moment this IIFE runs -- in
+  // particular the very first router_step_view fired a few lines below,
+  // which used to run after ga-gate.js's synchronous <script src> had
+  // already executed. Queueing here (instead of just letting the
+  // try/catch below swallow the call) means the timing change never drops
+  // an event: the same name/params are still sent, just as soon as gtag
+  // exists, which is guaranteed no later than DOMContentLoaded (deferred
+  // scripts always finish before that event fires).
+  var _oqTrackQueue = [];
+  function _oqFlushTrackQueue() {
+    if (typeof gtag !== 'function' || !_oqTrackQueue.length) return;
+    var q = _oqTrackQueue;
+    _oqTrackQueue = [];
+    for (var i = 0; i < q.length; i++) {
+      try { gtag('event', q[i].name, q[i].params); } catch (e) {}
+    }
+  }
+  document.addEventListener('DOMContentLoaded', _oqFlushTrackQueue);
+
   function trackRouter(name, extra) {
     try {
       var p = extra || {};
       if (variant) { p.variant = variant; }
-      gtag('event', name, p);
+      if (typeof gtag === 'function') {
+        gtag('event', name, p);
+      } else {
+        _oqTrackQueue.push({ name: name, params: p });
+      }
     } catch (e) {}
   }
 

@@ -95,6 +95,44 @@
   var MEASUREMENT_ID = 'G-D1Y1TLGEFY';
   var CLARITY_PROJECT_ID = 'wwr7qlk8g5';
 
+  // gh-2063 fix round 2 (PR #2065 review, item 4): shared by the GA4 and
+  // Clarity vendor-script insertions below (js/meta-pixel-gate.js carries
+  // its own copy for fbevents.js -- these two files intentionally do not
+  // share a module today, see this file's own "single point" docstring
+  // above about not adding cross-file coupling lightly). Runs `fn` on
+  // whichever comes first: the browser going idle (capped at 1500ms via
+  // requestIdleCallback's own timeout option), a hard 1500ms timer where
+  // requestIdleCallback is unsupported, or the visitor's first
+  // pointerdown/keydown/scroll/touchstart. Exactly one of those wins; the
+  // rest are torn down immediately so `fn` never runs twice.
+  function _oqLoadOnIdleOrInteraction(fn) {
+    var fired = false;
+    var idleHandle = null;
+    var timeoutHandle = null;
+    var EVENTS = ['pointerdown', 'keydown', 'scroll', 'touchstart'];
+    function teardown() {
+      for (var i = 0; i < EVENTS.length; i++) {
+        window.removeEventListener(EVENTS[i], run);
+      }
+      if (idleHandle !== null && window.cancelIdleCallback) { window.cancelIdleCallback(idleHandle); }
+      if (timeoutHandle !== null) { clearTimeout(timeoutHandle); }
+    }
+    function run() {
+      if (fired) return;
+      fired = true;
+      teardown();
+      fn();
+    }
+    for (var i = 0; i < EVENTS.length; i++) {
+      window.addEventListener(EVENTS[i], run, { passive: true, once: true });
+    }
+    if (window.requestIdleCallback) {
+      idleHandle = window.requestIdleCallback(run, { timeout: 1500 });
+    } else {
+      timeoutHandle = setTimeout(run, 1500);
+    }
+  }
+
   // gh-1964: the public, unauthenticated pages Clarity is allowed to record.
   // Entries are normalised paths (see normalizeClarityPath below): no
   // trailing slash (except root), no .html extension, and directory-index
@@ -229,10 +267,31 @@
     return; // not a recognised production host -- the GA4 library never loads
   }
 
-  var s = document.createElement('script');
-  s.async = true;
-  s.src = 'https://www.googletagmanager.com/gtag/js?id=' + MEASUREMENT_ID;
-  document.head.appendChild(s);
+  // gh-2063 fix round 2 (PR #2065 review, item 4): gtag.js's own parse+
+  // execute cost (independently measured on this branch at ~384ms of main-
+  // thread time) was still landing at DOMContentLoaded, so deferring the
+  // *request* for this file did nothing for Total Blocking Time -- only
+  // for when the fetch started. _oqLoadOnIdleOrInteraction (below) delays
+  // creating this <script> tag itself until the browser is idle (or up to
+  // 1500ms, whichever first) or the visitor's first interaction, whichever
+  // happens first. Nothing else here changes: window.gtag/window.dataLayer
+  // are still defined unconditionally above, so gtag('js', ...) and every
+  // page's own gtag('config'/'event', ...) call keep queuing into
+  // dataLayer exactly as before and are drained -- in order, including the
+  // automatic page_view -- the moment gtag.js actually loads. A visit that
+  // never goes idle and never interacts still gets gtag.js within 1500ms
+  // via the requestIdleCallback timeout / setTimeout fallback, so page_view
+  // still fires once for every visit that reaches that point, same as
+  // before this change; only visitors who leave before ~1.5s (already
+  // recorded as 0-click bounces before this fix) would not have generated
+  // one previously fired at parse time either -- see the PR for the open
+  // question this raises for Sloane/D-322 on attribution completeness.
+  _oqLoadOnIdleOrInteraction(function () {
+    var s = document.createElement('script');
+    s.async = true;
+    s.src = 'https://www.googletagmanager.com/gtag/js?id=' + MEASUREMENT_ID;
+    document.head.appendChild(s);
+  });
 
   // gh-1964: default-deny page-set gate, Clarity only. GA4 above already
   // loaded unconditionally on any allowed host; Clarity additionally
@@ -370,12 +429,25 @@
   })();
 
   // Microsoft Clarity -- the vendor snippet, verbatim apart from living
-  // behind the allowlist checks above. Reached only on a production host,
-  // only on an allowlisted public page (gh-1964), and never on a URL
-  // carrying a live auth credential (see gh-1931 above).
+  // behind the allowlist checks above and (gh-2063 fix round 2, item 4)
+  // deferring only its own `<script src=clarity.ms/tag/...>` creation to
+  // idle/interaction via _oqLoadOnIdleOrInteraction, same as the GA4 script
+  // above. The queueing stub (`c[a] = c[a] || ...`) still runs synchronously,
+  // right here, so `window.clarity` exists the instant this allowlist gate
+  // is satisfied -- start.html's `clarity('set','variant',...)` call (moved
+  // to a DOMContentLoaded listener in the same fix round, see that file's
+  // own gh-2063 comment) depends on that. Any clarity(...) call made before
+  // the real library loads keeps queuing into c[a].q exactly as the stub
+  // always did, and is drained once it does. scripts/check-clarity-page-
+  // gate.py's structural check anchors on this IIFE's exact 7-argument
+  // signature (c, l, a, r, i, t, y) to confirm the allowlist gate above runs
+  // before it -- that signature is unchanged; only its body's script-
+  // insertion is now wrapped.
   (function (c, l, a, r, i, t, y) {
     c[a] = c[a] || function () { (c[a].q = c[a].q || []).push(arguments); };
-    t = l.createElement(r); t.async = 1; t.src = 'https://www.clarity.ms/tag/' + i;
-    y = l.getElementsByTagName(r)[0]; y.parentNode.insertBefore(t, y);
+    _oqLoadOnIdleOrInteraction(function () {
+      t = l.createElement(r); t.async = 1; t.src = 'https://www.clarity.ms/tag/' + i;
+      y = l.getElementsByTagName(r)[0]; y.parentNode.insertBefore(t, y);
+    });
   })(window, document, 'clarity', 'script', CLARITY_PROJECT_ID);
 })();

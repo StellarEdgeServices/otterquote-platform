@@ -52,6 +52,32 @@
 # Intercepts /admin-* (with or without .html / trailing slash) before static HTML is served.
 # Unauthenticated or non-admin sessions redirect to /login.html?reason=admin_required.
 # Source: netlify/edge-functions/admin-auth-gate.ts
+# gh-2063 fix round 2 (PR #2065 review, blocker 2): the original version of
+# this rule set /img/* AND /assets/* to a year-long `immutable` cache. That
+# was wrong for both paths, and independent review caught it before merge:
+# `immutable` tells a browser it never has to re-check the file for the
+# life of the cache, which is only safe for a content-hashed filename that
+# gets a NEW name every time its contents change. Nothing under /img/* or
+# /assets/* in this repo is content-hashed -- both are edited in place.
+# /assets/*, concretely: assets/partner-onepager-re.html and
+# assets/partner-onepager-insurance.html (8 commits each, most recently
+# gh-1965's Meta Pixel include 6 days before this fix) are linked from
+# partner-dashboard.html/partner-insurance.html/partner-re.html; a partner
+# who had opened either one would have kept a stale copy -- missing legal/
+# copy fixes (D-104) and tracking changes -- for a full year. That rule is
+# removed outright rather than narrowed: this repo has no /assets/* content
+# that is safe to cache immutably today. /img/* icons (otter-icon.png,
+# favicon.png, otter-quotes-icon-512.png, otter-icon-white.png) are also
+# replaced in place, not renamed, so `immutable` was equally wrong there;
+# kept, but downgraded to a short revalidating policy (some caching value,
+# no risk of a year-long stale asset) rather than dropped entirely. #2063's
+# item 5 is otherwise satisfied by confirming Netlify's own compression is
+# already on (no config change needed for that).
+[[headers]]
+  for = "/img/*"
+  [headers.values]
+    Cache-Control = "public, max-age=86400, must-revalidate"
+
 # PWA — Partner App (2026-08-03)
 # Correct MIME for the web app manifest; keep the service worker uncached so
 # updates propagate on next load.
