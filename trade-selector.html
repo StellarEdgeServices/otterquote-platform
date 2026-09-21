@@ -998,3 +998,608 @@
           const conn = document.createElement('div');
           conn.className = 'step-connector';
           conn.id = `conn-${index}`;
+          if (index < currentStepIndex) {
+            conn.classList.add('filled');
+          }
+          indicator.appendChild(conn);
+        }
+      });
+    }
+
+    function goToStep(index) {
+      const sequence = getStepSequence();
+      currentStepIndex = index;
+
+      // Hide all step containers
+      document.querySelectorAll('.step-container').forEach(c => c.classList.add('hidden'));
+
+      // Show the target step
+      const targetId = sequence[index];
+      document.getElementById(targetId).classList.remove('hidden');
+
+      // Rebuild step indicator
+      buildStepIndicator();
+
+      // Scroll to top
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // ── Step 1: Funding Type ──
+    document.getElementById('funding-insurance').addEventListener('click', () => {
+      selectFunding('insurance');
+    });
+
+    document.getElementById('funding-cash').addEventListener('click', () => {
+      selectFunding('cash');
+    });
+
+    function selectFunding(type) {
+      state.fundingType = type;
+      state.policyType = null; // Reset on funding change
+      document.querySelectorAll('.funding-card').forEach(card => {
+        card.classList.remove('selected');
+      });
+      document.getElementById(`funding-${type}`).classList.add('selected');
+
+      // Move to next step after brief delay
+      setTimeout(() => {
+        goToStep(1); // Step index 1 is policy (insurance) or trades (cash)
+      }, 300);
+    }
+
+    // ── Step 2 (Insurance only): Policy Type ──
+    const policyCards = ['rcv', 'acv', 'idk'];
+    const infoPanels = {
+      rcv: document.getElementById('info-rcv'),
+      acv: document.getElementById('info-acv'),
+      idk: document.getElementById('info-idk')
+    };
+
+    policyCards.forEach(type => {
+      document.getElementById(`policy-${type}`).addEventListener('click', () => {
+        selectPolicyType(type);
+      });
+    });
+
+    function selectPolicyType(type) {
+      state.policyType = type;
+
+      // Update card selection
+      policyCards.forEach(t => {
+        document.getElementById(`policy-${t}`).classList.remove('selected');
+      });
+      document.getElementById(`policy-${type}`).classList.add('selected');
+
+      // Show the appropriate info panel, hide others
+      Object.entries(infoPanels).forEach(([key, panel]) => {
+        if (key === type) {
+          panel.classList.add('visible');
+        } else {
+          panel.classList.remove('visible');
+        }
+      });
+
+      // Enable continue button (unless IDK — they can still continue, but the info is helpful)
+      document.getElementById('step-policy-continue').disabled = false;
+    }
+
+    document.getElementById('step-policy-back').addEventListener('click', () => {
+      goToStep(0);
+    });
+
+    document.getElementById('step-policy-continue').addEventListener('click', () => {
+      const sequence = getStepSequence();
+      const tradesIndex = sequence.indexOf('step-trades');
+      goToStep(tradesIndex);
+    });
+
+    // ── Loss sheet upload ──
+    // gh-2070: routes through the shared LossSheetUpload helper (js/loss-sheet-upload.js)
+    // so this upload writes back to the claim and triggers parse-loss-sheet exactly like
+    // dashboard.html's checklist upload does. This step runs before a claim row exists
+    // (completeSelection() creates/updates it later), so the file is staged and the
+    // reference is attached to the claim once it's created — see the
+    // LossSheetUpload.attachPendingLossSheet() call in completeSelection() below.
+    const lossSheetInput = document.getElementById('loss-sheet-upload');
+    const uploadStatus = document.getElementById('upload-status');
+
+    lossSheetInput.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      uploadStatus.style.display = 'block';
+      uploadStatus.textContent = `Uploading "${file.name}"...`;
+
+      try {
+        const user = await Auth.getUser();
+        if (user && sb) {
+          // No claim id yet at this step — LossSheetUpload stages the file and
+          // remembers it in sessionStorage; completeSelection() attaches it (and
+          // does the has_estimate/estimate_filename write-back + parse-loss-sheet
+          // invoke) once the claim row exists.
+          await LossSheetUpload.uploadLossSheet({ sb, user, claimId: null, file });
+
+          uploadStatus.textContent = `"${file.name}" uploaded successfully. We'll review it and get back to you.`;
+          uploadStatus.style.color = 'var(--amber)';
+        } else {
+          // Not authenticated yet — save reference in sessionStorage for later
+          uploadStatus.textContent = `"${file.name}" saved. We'll review it after you complete sign-up.`;
+          sessionStorage.setItem('oq_pending_loss_sheet', file.name);
+        }
+      } catch (err) {
+        console.error('Upload error:', err);
+        uploadStatus.textContent = 'Upload failed. Please try again or continue without uploading.';
+        uploadStatus.style.color = '#FCA5A5';
+      }
+    });
+
+    // ── Trade Selection ──
+    TRADES.forEach(trade => {
+      const card = document.getElementById(`trade-${trade}`);
+      card.addEventListener('click', () => {
+        toggleTrade(trade, card);
+      });
+    });
+
+    function toggleTrade(trade, card) {
+      if (state.trades.includes(trade)) {
+        state.trades = state.trades.filter(t => t !== trade);
+        card.classList.remove('selected');
+      } else {
+        state.trades.push(trade);
+        card.classList.add('selected');
+      }
+      updateTradesContinueButton();
+    }
+
+    function updateTradesContinueButton() {
+      document.getElementById('step-trades-continue').disabled = state.trades.length === 0;
+    }
+
+    document.getElementById('step-trades-back').addEventListener('click', () => {
+      const sequence = getStepSequence();
+      const tradesIndex = sequence.indexOf('step-trades');
+      goToStep(tradesIndex - 1);
+    });
+
+    document.getElementById('step-trades-continue').addEventListener('click', () => {
+      initializeRepairStep();
+      const sequence = getStepSequence();
+      const repairIndex = sequence.indexOf('step-repair');
+      goToStep(repairIndex);
+    });
+
+    // ── Repair or Replace ──
+    document.getElementById('step-repair-back').addEventListener('click', () => {
+      const sequence = getStepSequence();
+      const repairIndex = sequence.indexOf('step-repair');
+      goToStep(repairIndex - 1);
+    });
+
+    document.getElementById('step-repair-continue').addEventListener('click', () => {
+      completeSelection();
+    });
+
+    function initializeRepairStep() {
+      state.repairReplace = {};
+
+      // Initialize repair/replace for each selected trade
+      state.trades.forEach(trade => {
+        state.repairReplace[trade] = 'replace';
+      });
+
+      if (state.trades.length === 1) {
+        showSingleTradeVersion();
+      } else {
+        showMultiTradeVersion();
+      }
+    }
+
+    function showSingleTradeVersion() {
+      const trade = state.trades[0];
+      const tradeDisplay = trade.charAt(0).toUpperCase() + trade.slice(1);
+
+      document.getElementById('single-trade-version').style.display = 'block';
+      document.getElementById('multi-trade-version').style.display = 'none';
+      document.getElementById('replace-subtitle').textContent = `Full replacement of existing ${tradeDisplay.toLowerCase()}`;
+
+      // Clear previous selections
+      document.querySelectorAll('.repair-replace-card').forEach(card => {
+        card.classList.remove('selected');
+      });
+
+      // Set default to 'replace'
+      document.getElementById('replace-option').classList.add('selected');
+
+      // Remove old listeners by cloning
+      const repairBtn = document.getElementById('repair-option');
+      const replaceBtn = document.getElementById('replace-option');
+      const newRepairBtn = repairBtn.cloneNode(true);
+      const newReplaceBtn = replaceBtn.cloneNode(true);
+      repairBtn.parentNode.replaceChild(newRepairBtn, repairBtn);
+      replaceBtn.parentNode.replaceChild(newReplaceBtn, replaceBtn);
+
+      newRepairBtn.addEventListener('click', () => {
+        state.repairReplace[trade] = 'repair';
+        newRepairBtn.classList.add('selected');
+        newReplaceBtn.classList.remove('selected');
+      });
+
+      newReplaceBtn.addEventListener('click', () => {
+        state.repairReplace[trade] = 'replace';
+        newReplaceBtn.classList.add('selected');
+        newRepairBtn.classList.remove('selected');
+      });
+    }
+
+    function showMultiTradeVersion() {
+      document.getElementById('single-trade-version').style.display = 'none';
+      document.getElementById('multi-trade-version').style.display = 'block';
+
+      const tbody = document.getElementById('repair-replace-tbody');
+      tbody.innerHTML = '';
+
+      state.trades.forEach(trade => {
+        const row = document.createElement('tr');
+        const tradeDisplay = trade.charAt(0).toUpperCase() + trade.slice(1);
+
+        row.innerHTML = `
+          <td>${tradeDisplay}</td>
+          <td>
+            <div class="trade-toggle-wrapper">
+              <button class="toggle-btn active" data-trade="${trade}" data-type="repair">Repair</button>
+              <button class="toggle-btn" data-trade="${trade}" data-type="replace">Replace</button>
+            </div>
+          </td>
+        `;
+
+        tbody.appendChild(row);
+
+        // Attach toggle listeners
+        row.querySelectorAll('.toggle-btn').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const tradeId = btn.dataset.trade;
+            const type = btn.dataset.type;
+
+            state.repairReplace[tradeId] = type;
+
+            // Update button states
+            row.querySelectorAll('.toggle-btn').forEach(b => {
+              b.classList.remove('active');
+            });
+            btn.classList.add('active');
+          });
+        });
+      });
+    }
+
+    // ── Referral Attribution ──
+    // Capture ?ref= and ?partner_id= URL params at page load and persist to
+    // sessionStorage so they survive any in-page navigation. Values are written
+    // to the claim record (referral_source / referral_agent_id) on INSERT.
+    function captureReferralParams() {
+      const params = new URLSearchParams(window.location.search);
+      const ref = params.get('ref');
+      const partnerId = params.get('partner_id');
+      if (ref) sessionStorage.setItem('oq_referral_source', ref.trim().toLowerCase());
+      if (partnerId) sessionStorage.setItem('oq_partner_id', partnerId.trim());
+    }
+
+    // Look up a referral agent by unique_code or UUID and return their id.
+    // Returns null if not found or on any error.
+    async function resolveReferralAgentId(partnerIdParam) {
+      if (!partnerIdParam) return null;
+      try {
+        // Try unique_code match first (the value partners share in URLs)
+        let { data } = await sb
+          .rpc('get_referral_agents_public')
+          .select('id')
+          .eq('unique_code', partnerIdParam.toUpperCase())
+          .eq('status', 'active')
+          .limit(1)
+          .single();
+        if (data) return data.id;
+
+        // Fall back to direct UUID match
+        const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (uuidPattern.test(partnerIdParam)) {
+          const { data: byId } = await sb
+            .rpc('get_referral_agents_public')
+            .select('id')
+            .eq('id', partnerIdParam)
+            .eq('status', 'active')
+            .limit(1)
+            .single();
+          if (byId) return byId.id;
+        }
+      } catch (e) {
+        // No match — leave referral_agent_id null
+      }
+      return null;
+    }
+
+    // ── Completion ──
+    async function completeSelection() {
+      try {
+        const continueBtn = document.getElementById('step-repair-continue');
+        continueBtn.disabled = true;
+
+        // Prepare selection data
+        const selections = {
+          funding_type: state.fundingType,
+          policy_type: state.policyType,  // null for cash
+          trades: state.trades.map(trade => ({
+            trade: trade,
+            intent: state.repairReplace[trade] || 'replace'
+          }))
+        };
+
+        // Save to sessionStorage
+        // Build flat trade map matching repair-intake.html expected format { trade: true }
+        // repair-intake.html uses Object.keys(map).find(k => map[k]) to get selected trade.
+        // React trade-selector/page.tsx (commit c188c0be276c) already writes this format.
+        const tradeSelectionsMap = {};
+        selections.trades.forEach(t => { tradeSelectionsMap[t.trade] = true; });
+        sessionStorage.setItem('oq_trade_selections', JSON.stringify(tradeSelectionsMap));
+
+        // Try to save to Supabase if authenticated
+        const user = await Auth.getUser();
+        let savedClaimId = null;
+        if (user && sb) {
+          try {
+            // Determine job type
+            let jobType = null;
+            const hasRepair = selections.trades.some(t => t.intent === 'repair');
+            const hasReplace = selections.trades.some(t => t.intent === 'replace');
+
+            if (state.fundingType === 'insurance') {
+              if (hasRepair) {
+                jobType = 'repair';
+              } else if (state.policyType === 'acv') {
+                jobType = 'insurance_acv';
+              } else {
+                jobType = 'insurance_rcv';
+              }
+            } else {
+              jobType = 'retail';
+            }
+
+            // Fetch profile address for property_address
+            let propertyAddress = null;
+            const { data: profile } = await sb
+              .from('profiles')
+              .select('address_street, address_city, address_state, address_zip')
+              .eq('id', user.id)
+              .single();
+            if (profile) {
+              propertyAddress = [profile.address_street, profile.address_city, profile.address_state, profile.address_zip]
+                .filter(Boolean).join(', ');
+            }
+
+            // Update or create claim
+            const { data: existingClaim } = await sb
+              .from('claims')
+              .select('id')
+              .eq('user_id', user.id)
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .single();
+
+            // Build referral attribution fields from sessionStorage
+            const referralSource = sessionStorage.getItem('oq_referral_source') || null;
+            const partnerIdParam = sessionStorage.getItem('oq_partner_id') || null;
+            const referralAgentId = await resolveReferralAgentId(partnerIdParam);
+
+            // #567: ref.html click-chain carry-forward. localStorage survives the
+            // magic-link redirect (sessionStorage may not), and auth.js re-keys
+            // the id to oq_referral_id_for_claim after advancing the referral.
+            // Without these, nothing ever writes claims.referral_id and the
+            // commission trigger can never fire for real referrals.
+            // Bridge 2026-08-26 (P0): cookie FIRST. These keys are written on
+            // otterquote.com and read here; localStorage is origin-scoped, so
+            // whenever this page runs on app.otterquote.com the reads returned
+            // null and claims.referral_id was silently never written.
+            const refCookie = window.OtterQuoteReferral ? window.OtterQuoteReferral.read() : {};
+            const chainReferralId = refCookie.oq_referral_id
+              || sessionStorage.getItem('oq_referral_id')
+              || localStorage.getItem('oq_referral_id')
+              || localStorage.getItem('oq_referral_id_for_claim')
+              || null;
+            const chainReferralAgentId = refCookie.oq_referral_agent_id
+              || sessionStorage.getItem('oq_referral_agent_id')
+              || localStorage.getItem('oq_referral_agent_id')
+              || null;
+            const chainReferralCode = refCookie.oq_referral_code
+              || sessionStorage.getItem('oq_referral_code')
+              || localStorage.getItem('oq_referral_code')
+              || null;
+
+            const claimData = {
+              funding_type: state.fundingType,
+              policy_type: state.policyType,
+              trades: selections.trades.map(t => t.trade),
+              job_type: jobType,
+              property_address: propertyAddress,
+              property_state: profile?.address_state || null,
+              updated_at: new Date().toISOString(),
+              // Referral attribution — null if no ?ref= or ?partner_id= was present
+              ...(referralSource && { referral_source: referralSource }),
+              ...(referralAgentId && { referral_agent_id: referralAgentId }),
+              // #567: ref.html click-chain attribution — the only writer of
+              // claims.referral_id (the commission trigger's key column).
+              ...(chainReferralId && { referral_id: chainReferralId }),
+              ...(!referralAgentId && chainReferralAgentId && { referral_agent_id: chainReferralAgentId }),
+              ...(chainReferralCode && { referral_code: chainReferralCode })
+            };
+
+            if (existingClaim) {
+              await sb
+                .from('claims')
+                .update(claimData)
+                .eq('id', existingClaim.id);
+              savedClaimId = existingClaim.id;
+              // gh-2070: attach any loss sheet staged by the upload step above
+              // now that the claim id is known.
+              await LossSheetUpload.attachPendingLossSheet({ sb, user, claimId: savedClaimId });
+            } else {
+              // gh-397/#689: stamp is_test at the ONLY point in this flow that
+              // creates the claim row — PR #714 stamped the COI-identity
+              // contractor insert but never touched this claim-creation path,
+              // so an E2E run driving the live trade-selector UI as
+              // test-homeowner@otterquote-internal.test still wrote an
+              // unflagged "real" claim. Predicate matches the CEO-approved
+              // contractor check (#543 / test-exclusion.ts).
+              const { data: insertedClaim } = await sb
+                .from('claims')
+                .insert({
+                  user_id: user.id,
+                  ...claimData,
+                  is_test: Auth.isTestEmail(user.email),
+                  created_at: new Date().toISOString()
+                })
+                .select('id')
+                .single();
+              // gh-1276: capture the new row's id — previously never captured
+              // anywhere, so repair-intake.html's `params.get('claim_id') ||
+              // sessionStorage.getItem('oq_claim_id')` fallback always found
+              // neither and unconditionally inserted a SECOND claim row for
+              // every repair-path homeowner. Fixed here at the source: pass
+              // it through the redirect below instead.
+              if (insertedClaim) {
+                savedClaimId = insertedClaim.id;
+                // gh-2070: attach any loss sheet staged by the upload step above
+                // now that the claim id is known.
+                await LossSheetUpload.attachPendingLossSheet({ sb, user, claimId: savedClaimId });
+                // gh-1984: GA4 key event — new claims row only. No PII.
+                if (typeof gtag === 'function') {
+                  // Awaited (event_callback, <= 1 s) before the redirect below:
+                  // a send fired just before navigation was dropped (measured on the React twin).
+                  window.__oqClaimStartedSent = new Promise(function (resolve) {
+                    var done = false;
+                    function finish() { if (!done) { done = true; resolve(); } }
+                    setTimeout(finish, 1000);
+                    try {
+                      gtag('event', 'claim_started', {
+                        funding_type: claimData.funding_type || '',
+                        job_type: claimData.job_type || '',
+                        source: 'trade_selector_static',
+                        test_account: Auth.isTestEmail(user.email),
+                        event_callback: finish,
+                        event_timeout: 1000,
+                      });
+                    } catch (e) { finish(); }
+                  });
+                }
+              }
+            }
+
+            // #571: the claim_submitted advance now lives in the database —
+            // trg_claims_advance_referral fires on the claims.referral_id
+            // write above. The old client-side UPDATE always no-opped
+            // against RLS and has been removed.
+          } catch (supabaseError) {
+            console.warn('Supabase save failed:', supabaseError);
+            // Continue regardless of Supabase error
+          }
+        }
+
+        // gh-1276: route to the dedicated project-information page for this
+        // payment path (mirrors the pre-existing repair-intake.html split —
+        // RCV/ACV/Cash previously all landed on the generic dashboard.html
+        // edit form instead of a guided page of their own). Derived the same
+        // way process this flow already derives job_type above, just outside
+        // that try block's scope.
+        // Bridge 2026-08-26: repair routes to repair-intake for BOTH funding
+        // types. The previous shape gated repair-intake on insurance, so a CASH
+        // repair-only job landed on project-info-cash.html — which never asks
+        // for the existing shingle brand, product line, colour or the squares
+        // being repaired. Those are exactly the fields a repair quote is
+        // impossible without, and the page itself says so. Repair Only is one
+        // of the four payment paths Dustin named; it should behave like one
+        // regardless of who is paying.
+        const hasRepair = selections.trades.some(t => t.intent === 'repair');
+        // Bridge 2026-08-26: repair-intake's payment-path banner falls back to
+        // this when it has no claim row to read yet.
+        try { sessionStorage.setItem('oq_funding_type', state.fundingType || ''); } catch (_) {}
+        let redirectUrl;
+        if (hasRepair) {
+          redirectUrl = '/repair-intake.html';
+        } else if (state.fundingType === 'insurance') {
+          redirectUrl = state.policyType === 'acv' ? '/project-info-acv.html' : '/project-info-rcv.html';
+        } else {
+          redirectUrl = '/project-info-cash.html';
+        }
+        if (savedClaimId) {
+          redirectUrl += `?claim_id=${encodeURIComponent(savedClaimId)}`;
+        }
+
+        // Redirect — gh-1984: after max(claim_started send settled (<= 1 s), 500 ms).
+        try {
+          await Promise.all([
+            window.__oqClaimStartedSent || Promise.resolve(),
+            new Promise((resolve) => setTimeout(resolve, 500)),
+          ]);
+        } catch (_) {}
+        window.location.href = redirectUrl;
+      } catch (error) {
+        console.error('Error completing selection:', error);
+        showError('Something went wrong. Please try again.');
+        document.getElementById('step-repair-continue').disabled = false;
+      }
+    }
+
+    function showError(message) {
+      const errorEl = document.getElementById('error-message');
+      errorEl.textContent = message;
+      errorEl.style.display = 'block';
+      setTimeout(() => {
+        errorEl.style.display = 'none';
+      }, 5000);
+    }
+
+    // ── Init on page load ──
+    async function initPage() {
+      try {
+        // Capture referral params before any redirects can strip the URL
+        captureReferralParams();
+
+        // Build initial 3-step indicator (default to cash path)
+        buildStepIndicator();
+
+        // Require authentication
+        const user = await Auth.requireAuth('homeowner');
+        if (!user && !CONFIG?.DEMO_MODE) {
+          return; // Auth module will handle redirect
+        }
+
+        // Returning-user guard: if this user already has a claim, skip the intake
+        // wizard and go straight to their dashboard. This prevents a returning user
+        // who clicks a magic link (which lands here) from having to redo the intake.
+        if (user && !CONFIG?.DEMO_MODE && sb) {
+          try {
+            const { data: existingClaim } = await sb
+              .from('claims')
+              .select('id')
+              .eq('user_id', user.id)
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
+          if (existingClaim) {
+            window.location.href = '/dashboard.html';
+            return;
+          }
+        } catch (e) {
+          console.warn('[trade-selector] Returning-user guard failed:', e);
+        }
+      }
+    } catch (err) {
+      console.error('[trade-selector] initPage error:', err);
+    }
+  }
+
+document.addEventListener('DOMContentLoaded', initPage);
+</script>
+</body>
+</html>
