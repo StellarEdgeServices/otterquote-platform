@@ -15,7 +15,13 @@
  * do not hand-type these values anywhere else. (#757)
  */
 const NAP = Object.freeze({
-  name: CONFIG.SITE_NAME,                 // 'Otter Quotes' — canonical form used sitewide (footer, JSON-LD, legal copy)
+  // gh-2063: existence-guarded -- this is a top-level, parse-time reference
+  // (nav.js's own module load), so a config.js that is late, blocked, or
+  // ever reordered ahead of a page's own script list would otherwise throw
+  // `ReferenceError: CONFIG is not defined` here and take the whole file
+  // down (header/footer never render) instead of just this one label.
+  // Fallback matches CONFIG.SITE_NAME's own literal value exactly.
+  name: (typeof CONFIG !== 'undefined' && CONFIG.SITE_NAME) || 'Otter Quotes', // 'Otter Quotes' — canonical form used sitewide (footer, JSON-LD, legal copy)
   streetAddress: '3410 N High School Rd Ste G #102',
   addressLocality: 'Indianapolis',
   addressRegion: 'IN',

@@ -14,11 +14,18 @@
  * -> jobid 20 | "*(slash)30 * * * *" | send-homeowner-next-steps — the literal
  * cron string is written with "(slash)" in place of "/" only because a star
  * followed by a slash would close this block comment. Every THIRTY minutes,
- * twice as often as this comment claimed until gh-1786 corrected it. As of
- * 2026-09-07 that job is `active = false`: it was disabled deliberately (D-320's
- * own recommendation, Dustin's word) so nothing sends until the opt-out below is
- * DEPLOYED. Re-enabling it is `select cron.alter_job(20, active := true);` and
- * waits on that deploy. Invoked with an empty POST body.
+ * twice as often as this comment claimed until gh-1786 corrected it. From
+ * 2026-09-07 to 2026-09-16 that job was `active = false` — disabled
+ * deliberately (D-320's own recommendation, Dustin's word) so nothing sent
+ * until the opt-out below was DEPLOYED. gh-2069 CORRECTION: the opt-out
+ * shipped and `select cron.alter_job(20, active := true);` was run on
+ * 2026-09-16T11:41Z (CRO RUN 24, on Dustin's "Go" in #1944) — the job has
+ * been ACTIVE, and sending, ever since (confirmed 343/343 successful runs
+ * through 2026-09-21 in `In Flight/reports/ceo57-nudge-pipeline-20260921.md`).
+ * This comment previously kept claiming the job was off for nine days after
+ * it was turned back on; do not repeat that mistake — check
+ * `select active from cron.job where jobid = 20;` rather than trusting this
+ * paragraph's own memory of the date. Invoked with an empty POST body.
  * Batch-scans is_test=false claims where:
  *   - status           = 'documents_needed' (the column DEFAULT — the only
  *                        state a stalled post-signup claim sits in; `draft`
@@ -197,6 +204,16 @@ import {
   parseAdminDigestPreview,
   runAdminDigest,
 } from "./admin-digest-executor.ts";
+import {
+  buildWelcomeEmailContent,
+  deliverWelcome,
+  HOMEOWNER_WELCOME_FRESHNESS_MS,
+  HOMEOWNER_WELCOME_SETTING_KEY,
+  HOMEOWNER_WELCOME_TEMPLATE,
+  isProfileFreshEnough,
+  isWelcomeEnabled,
+  type WelcomeDeps,
+} from "./welcome-hook.ts";
 
 const FUNCTION_NAME = "send-homeowner-next-steps";
 const BATCH_LIMIT = 200;
@@ -297,7 +314,7 @@ async function sendMailgunEmail(
   measurementsUrl: string,
   colorUrl: string,
   optOutUrl: string
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; mailgunId?: string; error?: string }> {
   const { subject, textBody, htmlBody } = buildEmailContent(homeownerName, measurementsUrl, colorUrl, optOutUrl);
   const formData = new URLSearchParams();
   formData.append("from", "Otter Quotes <notifications@mail.otterquote.com>");
@@ -321,7 +338,12 @@ async function sendMailgunEmail(
       const errText = await res.text().catch(() => "(unreadable)");
       return { ok: false, error: `Mailgun ${res.status}: ${errText}` };
     }
-    return { ok: true };
+    // gh-2069: copy sendAdminDigestMail's own pattern (below) — parse the
+    // response body and return Mailgun's message id instead of discarding
+    // it. This was the whole first defect in #2069: the admin digest already
+    // did this; the homeowner path never did.
+    const data = await res.json().catch(() => ({}));
+    return { ok: true, mailgunId: (data as { id?: string })?.id };
   } catch (err) {
     return { ok: false, error: String(err) };
   }
@@ -340,6 +362,41 @@ async function sendAdminDigestMail(
   const formData = new URLSearchParams();
   formData.append("from", "Otter Quotes <notifications@mail.otterquote.com>");
   formData.append("to", ADMIN_DIGEST_EMAIL);
+  formData.append("subject", subject);
+  formData.append("text", textBody);
+  formData.append("html", htmlBody);
+  try {
+    const res = await fetch("https://api.mailgun.net/v3/mail.otterquote.com/messages", {
+      method: "POST",
+      headers: { Authorization: `Basic ${btoa(`api:${apiKey}`)}` },
+      body: formData,
+    });
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "(unreadable)");
+      return { ok: false, error: `Mailgun ${res.status}: ${errText}` };
+    }
+    const data = await res.json().catch(() => ({}));
+    return { ok: true, mailgunId: (data as { id?: string })?.id };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}
+
+// gh-2069 (e): sends the homeowner_welcome first-touch email. Same Mailgun
+// call shape as sendAdminDigestMail (parses `data.id`), different recipient
+// and content, and — unlike the D-320 homeowner nudge — no opt-out link:
+// this is a single transactional first-touch message, not part of the
+// recurring commercial series D-320's opt-out mechanism governs.
+async function sendWelcomeMailgunEmail(
+  apiKey: string,
+  to: string,
+  homeownerName: string,
+  dashboardUrl: string,
+): Promise<{ ok: boolean; mailgunId?: string; error?: string }> {
+  const { subject, textBody, htmlBody } = buildWelcomeEmailContent(homeownerName, dashboardUrl);
+  const formData = new URLSearchParams();
+  formData.append("from", "Otter Quotes <notifications@mail.otterquote.com>");
+  formData.append("to", to);
   formData.append("subject", subject);
   formData.append("text", textBody);
   formData.append("html", htmlBody);
@@ -504,6 +561,83 @@ serve(async (req: Request) => {
     now,
   };
 
+  // ── gh-2069 (e): homeowner_welcome first-touch hook ──────────────────────
+  // Runs on every real cron tick regardless of whether any claim matches the
+  // main nudge scan below — a brand-new signup has no claim yet in many
+  // funnels, so this must not be nested inside "candidates were found" the
+  // way the digest correctly is. Scans the SAME is_test population as the
+  // main scan (scanIsTest) so a dry run never touches a real homeowner and a
+  // real run never emails a fixture — same disjointness property as
+  // ./dry-run.ts's candidateIsTestFlag. A dry run does not call
+  // deliverWelcome at all: like the rest of this function's dry-run mode, it
+  // sends and writes nothing (see ./dry-run.ts's file header).
+  let welcomeSent = 0;
+  let welcomeFailed = 0;
+  let welcomeEnabled = false;
+  if (!dryRun) {
+    const { data: settingRow, error: settingErr } = await supabase
+      .from("platform_settings")
+      .select("value")
+      .eq("key", HOMEOWNER_WELCOME_SETTING_KEY)
+      .maybeSingle();
+    if (settingErr) {
+      console.error(`[${FUNCTION_NAME}] ${HOMEOWNER_WELCOME_SETTING_KEY} read failed — treating as disabled:`, settingErr.message);
+    }
+    // gh-2069: missing row (not inserted by this PR — see the PR description
+    // for the SQL to add it) or any value other than a literal `true` means
+    // disabled. Fails CLOSED, same convention as HOMEOWNER_OPTOUT_SECRET above.
+    welcomeEnabled = isWelcomeEnabled(settingRow?.value ?? null);
+
+    const freshCutoffIso = new Date(now - HOMEOWNER_WELCOME_FRESHNESS_MS).toISOString();
+    const { data: freshProfiles, error: freshErr } = await supabase
+      .from("profiles")
+      .select("id, email, full_name, created_at")
+      .eq("role", "homeowner")
+      .eq("is_test", scanIsTest)
+      .gte("created_at", freshCutoffIso);
+    if (freshErr) {
+      console.error(`[${FUNCTION_NAME}] welcome-hook profile scan failed:`, freshErr.message);
+    } else if (freshProfiles && freshProfiles.length > 0) {
+      const candidateIds = (freshProfiles as { id: string }[]).map((p) => p.id);
+      const { data: alreadyWelcomed, error: alreadyErr } = await supabase
+        .from("notifications")
+        .select("user_id")
+        .eq("notification_type", HOMEOWNER_WELCOME_TEMPLATE)
+        .in("user_id", candidateIds);
+      if (alreadyErr) {
+        console.error(`[${FUNCTION_NAME}] welcome-hook idempotency read failed — skipping this tick to avoid a duplicate send:`, alreadyErr.message);
+      } else {
+        const welcomedSet = new Set((alreadyWelcomed || []).map((r: { user_id: string }) => r.user_id));
+        const welcomeDeps: WelcomeDeps = {
+          enabled: welcomeEnabled,
+          mailgunConfigured: Boolean(mailgunApiKey),
+          sendEmail: (to, name, dashboardUrl) =>
+            sendWelcomeMailgunEmail(mailgunApiKey as string, to, name, dashboardUrl),
+          insertNotification: async (row) => {
+            const { error } = await supabase.from("notifications").insert(row);
+            return { error: error?.message ?? null };
+          },
+          log: (level, message) => console[level](`[${FUNCTION_NAME}] ${message}`),
+        };
+        const dashboardUrl = `${siteUrl}/dashboard.html`;
+        for (const p of freshProfiles as { id: string; email: string | null; full_name: string | null; created_at: string }[]) {
+          if (welcomedSet.has(p.id)) continue;
+          if (!p.email) continue;
+          // Re-check freshness against `now` (not just the query's cutoff)
+          // so a slow scan doesn't email a profile that aged out mid-run.
+          if (!isProfileFreshEnough(p.created_at, now)) continue;
+          const outcome = await deliverWelcome(
+            welcomeDeps,
+            { userId: p.id, email: p.email, name: p.full_name || "there" },
+            dashboardUrl,
+          );
+          if (outcome.kind === "sent") welcomeSent++;
+          else if (outcome.kind === "send_failed") welcomeFailed++;
+        }
+      }
+    }
+  }
+
   // ── Candidate scan: is_test=false, status='documents_needed' (and never
   // 'draft' — redundant with the equality but stated explicitly per CTO RUN
   // 22 defect 1), ready_for_bids=false, has_measurements=false, created at
@@ -547,6 +681,9 @@ serve(async (req: Request) => {
         ok: true,
         processed: 0,
         scanned_is_test: scanIsTest,
+        welcome_enabled: welcomeEnabled,
+        welcome_sent: welcomeSent,
+        welcome_failed: welcomeFailed,
         ...(dryRun ? { dry_run: true, would_send: [] } : {}),
         ...buildDigestResponseFields(emptyDigestOutcome, dryRun, adminDigestPreview),
         ...(adminDigestPreviewIgnored ? { admin_digest_preview_ignored: true } : {}),
@@ -718,6 +855,12 @@ serve(async (req: Request) => {
           },
           sendEmail: (to, name, mUrl, cUrl, oUrl) =>
             sendMailgunEmail(mailgunApiKey as string, to, name, mUrl, cUrl, oUrl),
+          // gh-2069: the durable per-send record — same `notifications` table
+          // the admin digest already writes to, via the same insert path.
+          insertNotification: async (row) => {
+            const { error } = await supabase.from("notifications").insert(row);
+            return { error: error?.message ?? null };
+          },
           log: (level, message) => console[level](`[${FUNCTION_NAME}] ${message}`),
         },
         {
@@ -781,6 +924,13 @@ serve(async (req: Request) => {
       processed,
       skipped_already_sent: skippedAlreadySent,
       scanned_is_test: scanIsTest,
+      // gh-2069 (e): homeowner_welcome hook stats for this tick.
+      // welcome_enabled reflects platform_settings.homeowner_welcome_enabled
+      // as read this run — false (including "row absent") on every run until
+      // Dustin flips it, per the PR's SQL note.
+      welcome_enabled: welcomeEnabled,
+      welcome_sent: welcomeSent,
+      welcome_failed: welcomeFailed,
       ...buildDigestResponseFields(digestOutcome, dryRun, adminDigestPreview),
       ...(adminDigestPreviewIgnored ? { admin_digest_preview_ignored: true } : {}),
       // gh-1570: on a dry run `processed` is 0 by construction (nothing is
