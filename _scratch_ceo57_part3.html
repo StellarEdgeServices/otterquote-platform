@@ -1,0 +1,700 @@
+              }
+            }
+            // Pre-populate homeowner notes
+            const notesField = document.querySelector('[name="homeownerNotes"]');
+            if (notesField) {
+              notesField.value = currentClaim.homeowner_notes || '';
+              notesField.nextElementSibling.textContent = (currentClaim.homeowner_notes || '').length + ' / 500';
+            }
+          }
+        });
+
+        // Save claim changes
+        document.getElementById('claim-save-btn').addEventListener('click', async () => {
+          await saveClaimInfo();
+        });
+
+        // Cancel edit
+        document.getElementById('claim-cancel-btn').addEventListener('click', () => {
+          isEditingClaim = false;
+          document.getElementById('claim-display').style.display = 'grid';
+          document.getElementById('claim-edit-form').style.display = 'none';
+          document.getElementById('job-type-section').style.display = 'none';
+          document.getElementById('claim-form-actions').style.display = 'none';
+          document.getElementById('toggle-claim-edit').textContent = 'Edit';
+          renderClaimInfo(); // Reset form values
+        });
+
+        // Submit for bids
+        document.getElementById('submit-btn').addEventListener('click', async () => {
+          await submitForBids();
+        });
+
+        // gh-1570: the top-of-page "You're ready" banner's own CTA — same action.
+        const readyBtn = document.getElementById('ready-to-submit-btn');
+        if (readyBtn) {
+          readyBtn.addEventListener('click', async () => {
+            await submitForBids();
+          });
+        }
+
+        // File input change
+        document.getElementById('file-input').addEventListener('change', async (e) => {
+          if (e.target.files.length > 0) {
+            const file = e.target.files[0];
+            const uploadType = e.target.dataset.uploadType;
+            await uploadFile(file, uploadType);
+            e.target.value = '';
+          }
+        });
+
+        // Urgency conditional display
+        const urgencySelect = document.querySelector('[name="urgency"]');
+        if (urgencySelect) {
+          urgencySelect.addEventListener('change', function() {
+            document.getElementById('urgencyDetails').style.display = this.value === 'asap' ? 'block' : 'none';
+          });
+        }
+
+        // Homeowner notes character count
+        const notesField = document.querySelector('[name="homeownerNotes"]');
+        if (notesField) {
+          notesField.addEventListener('input', function() {
+            this.nextElementSibling.textContent = this.value.length + ' / 500';
+          });
+        }
+      }
+
+      // ── Claim Editing ──
+      async function saveClaimInfo() {
+        if (!currentClaim) return;
+
+        try {
+          const form = document.getElementById('claim-edit-form');
+          const formData = new FormData(form);
+          const updates = {};
+
+          for (let [key, value] of formData.entries()) {
+            if (value) {
+              updates[key] = value;
+            }
+          }
+
+          // ── Collect fields from job-type-section (outside the <form> element) ──
+          // Job type buttons
+          const selectedType = window.selectedJobType
+            || document.querySelector('.job-type-btn.selected')?.dataset?.type;
+          if (selectedType) {
+            updates.job_type = selectedType;
+            if (selectedType === 'insurance_rcv') {
+              updates.funding_type = 'insurance';
+              updates.policy_type = 'rcv';
+            } else if (selectedType === 'insurance_acv') {
+              updates.funding_type = 'insurance';
+              updates.policy_type = 'acv';
+            } else if (selectedType === 'retail') {
+              updates.funding_type = 'cash';
+              updates.policy_type = null;
+            } else if (selectedType === 'repair') {
+              updates.funding_type = 'cash';
+              updates.policy_type = null;
+            }
+            // Conditional fields per job type
+            if (selectedType === 'repair') {
+              const repairSq = document.querySelector('[name="repairSquares"]')?.value;
+              const brand    = document.querySelector('[name="existingShingleBrand"]')?.value;
+              const product  = document.querySelector('[name="existingShingleProduct"]')?.value;
+              const color    = document.querySelector('[name="existingShingleColor"]')?.value;
+              if (repairSq) updates.repair_squares = parseFloat(repairSq);
+              if (brand)    updates.existing_shingle_brand   = brand;
+              if (product)  updates.existing_shingle_product = product;
+              if (color)    updates.existing_shingle_color   = color;
+            } else if (selectedType === 'insurance_acv') {
+              const acv = document.querySelector('[name="acvAmount"]')?.value;
+              const rcv = document.querySelector('[name="rcvAmount"]')?.value;
+              if (acv) updates.acv_amount = parseFloat(acv);
+              if (rcv) updates.rcv_amount = parseFloat(rcv);
+            }
+          }
+          // Urgency
+          const urgencyVal = document.querySelector('[name="urgency"]')?.value;
+          if (urgencyVal) {
+            updates.urgency = urgencyVal;
+            if (urgencyVal === 'asap') {
+              const deadline = document.querySelector('[name="urgencyDeadline"]')?.value;
+              const reason   = document.querySelector('[name="urgencyReason"]')?.value;
+              if (deadline) updates.urgency_deadline = deadline;
+              if (reason)   updates.urgency_reason   = reason;
+            }
+          }
+          // Homeowner notes (allow clearing — include even if empty)
+          const notesField = document.querySelector('[name="homeownerNotes"]');
+          if (notesField) updates.homeowner_notes = notesField.value || null;
+
+          if (CONFIG.DEMO_MODE) {
+            // Demo mode: update local object only
+            Object.assign(currentClaim, updates);
+          } else if (sb) {
+            // Live mode: update database
+            const { data, error } = await sb
+              .from('claims')
+              .update(updates)
+              .eq('id', currentClaim.id)
+              .select()
+              .single();
+
+            if (error) throw error;
+            currentClaim = data;
+            window.currentClaim = currentClaim;  // gh-1276 follow-up: Home Profile IIFE reads window.currentClaim
+
+            // ── Adjuster Knowledge Base: upsert adjuster record (D-046) ──
+            // Non-critical: fire and forget — a failure here must not block the save
+            const adjName  = updates.adjuster_name  || currentClaim.adjuster_name;
+            const adjEmail = updates.adjuster_email || currentClaim.adjuster_email;
+            const adjPhone = updates.adjuster_phone || currentClaim.adjuster_phone;
+            const adjCarrierId = updates.carrier_id || currentClaim.carrier_id || null;
+            if (adjName) {
+              try {
+                const { data: adjData } = await sb.rpc('upsert_adjuster_from_claim', {
+                  p_claim_id:       currentClaim.id, // gh-974: now required (ownership check)
+                  p_adjuster_name:  adjName,
+                  p_adjuster_email: adjEmail || null,
+                  p_adjuster_phone: adjPhone || null,
+                  p_carrier_id:     adjCarrierId,
+                });
+                if (adjData) {
+                  // Link adjuster_id back to the claim (silent update)
+                  await sb.from('claims').update({ adjuster_id: adjData }).eq('id', currentClaim.id);
+                  currentClaim.adjuster_id = adjData;
+                }
+              } catch (adjErr) {
+                console.warn('Adjuster KB upsert failed (non-critical):', adjErr);
+              }
+            }
+          }
+
+          renderClaimInfo();
+          updateProgressBar();
+
+          // Close edit mode
+          isEditingClaim = false;
+          window.selectedJobType = null;
+          document.getElementById('claim-display').style.display = 'grid';
+          document.getElementById('claim-edit-form').style.display = 'none';
+          document.getElementById('job-type-section').style.display = 'none';
+          document.getElementById('claim-form-actions').style.display = 'none';
+          document.getElementById('toggle-claim-edit').textContent = 'Edit';
+
+          showSuccess('Project information updated.');
+        } catch (err) {
+          console.error('Save error:', err);
+          showError('Failed to save changes. Please try again.');
+        }
+      }
+
+      // ── File Upload ──
+      window.handleUpload = function(type) {
+        const input = document.getElementById('file-input');
+        input.dataset.uploadType = type;
+        input.click();
+      };
+
+      // ── Resend Measurement Capture Link ──
+      window.resendHoverLink = async function(btn) {
+        if (!currentClaim?.id || CONFIG.DEMO_MODE) return;
+
+        btn.disabled = true;
+        const originalText = btn.textContent;
+        btn.textContent = 'Sending…';
+
+        try {
+          // resend-hover-link now requires an authenticated caller (D-211 P19
+          // Unit 7c): send the user's session JWT, not the public anon key.
+          const { data: { session } } = await sb.auth.getSession();
+          const accessToken = session?.access_token;
+          if (!accessToken) {
+            showError('Your session has expired. Please sign in again to resend the link.');
+            btn.disabled = false;
+            btn.textContent = originalText;
+            return;
+          }
+          const response = await fetch(
+            `${CONFIG.SUPABASE_URL}/functions/v1/resend-hover-link`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'apikey': CONFIG.SUPABASE_ANON,
+                'Authorization': `Bearer ${accessToken}`,
+              },
+              body: JSON.stringify({ claim_id: currentClaim.id }),
+            }
+          );
+
+          const result = await response.json();
+
+          if (!response.ok) {
+            if (response.status === 429) {
+              showError(result.reason || 'Daily resend limit reached. Try again tomorrow.');
+            } else {
+              showError(result.error || 'Failed to resend the link. Please try again.');
+            }
+            btn.disabled = false;
+            btn.textContent = originalText;
+            return;
+          }
+
+          showSuccess('Measurement link resent! Check your email inbox.');
+
+          // Update local hoverOrder state so the count reflects immediately
+          if (hoverOrder) {
+            hoverOrder.resend_count = result.resend_count;
+            hoverOrder.last_resend_at = new Date().toISOString();
+          }
+
+          // Re-render checklist to update resend count display
+          renderChecklist();
+
+          // If no resends remain, disable the button via re-render
+          if (result.resends_remaining_today <= 0) {
+            const resendBtn = document.getElementById('resend-hover-btn');
+            if (resendBtn) {
+              resendBtn.disabled = true;
+              resendBtn.textContent = 'Limit Reached';
+            }
+          } else {
+            // Keep button enabled (re-render already handled it)
+          }
+
+        } catch (err) {
+          console.error('[resendHoverLink] Error:', err);
+          showError('Could not resend the link. Please refresh the page and try again.');
+          btn.disabled = false;
+          btn.textContent = originalText;
+        }
+      };
+
+      async function uploadFile(file, type) {
+        if (!currentClaim) return;
+
+        // Guard: claim must have a DB-backed ID before we can persist anything
+        if (!CONFIG.DEMO_MODE && !currentClaim.id) {
+          showError('Your project record is not ready. Please refresh the page and try again.');
+          return;
+        }
+
+        // In DEMO_MODE, currentUser may be null, but we allow uploads for demo purposes
+        if (!CONFIG.DEMO_MODE && !currentUser) return;
+
+        const maxSize = 50 * 1024 * 1024; // 50MB
+        if (file.size > maxSize) {
+          showError('File is too large. Maximum size is 50MB.');
+          return;
+        }
+
+        const validTypes = ['image/jpeg', 'image/png', 'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+        if (!validTypes.includes(file.type)) {
+          showError('Invalid file type. Please upload PDF, images, or Word documents.');
+          return;
+        }
+
+        try {
+          uploadsInProgress[type] = true;
+          const progressEl = document.getElementById(`upload-progress-${type}`);
+          const fillEl = document.getElementById(`progress-fill-${type}`);
+          const textEl = document.getElementById(`progress-text-${type}`);
+
+          if (progressEl) progressEl.classList.add('active');
+
+          // Simulate progress
+          let progress = 0;
+          const progressInterval = setInterval(() => {
+            progress = Math.min(progress + Math.random() * 30, 90);
+            if (fillEl) fillEl.style.width = progress + '%';
+            if (textEl) textEl.textContent = Math.round(progress);
+          }, 200);
+
+          // Track the storage path so we can trigger parsing after upload
+          let uploadedStoragePath = null;
+
+          // Upload to Supabase Storage (or skip in DEMO_MODE)
+          if (!CONFIG.DEMO_MODE && sb && currentUser) {
+            const filename = `${currentUser.id}/${currentClaim.id}/${Date.now()}-${file.name}`;
+            const { error: uploadError } = await sb.storage
+              .from('claim-documents')
+              .upload(filename, file, { upsert: true });
+
+            if (uploadError) throw uploadError;
+            uploadedStoragePath = filename;
+          }
+
+          clearInterval(progressInterval);
+
+          // Update progress to 100%
+          progress = 100;
+          if (fillEl) fillEl.style.width = '100%';
+          if (textEl) textEl.textContent = '100';
+
+          // Update claim record
+          const updateField = type === 'estimate' ? 'has_estimate' : 'has_measurements';
+          const filenameField = type === 'estimate' ? 'estimate_filename' : 'measurements_filename';
+
+          if (CONFIG.DEMO_MODE) {
+            // Demo mode: update local object only
+            currentClaim[updateField] = true;
+            currentClaim[filenameField] = file.name;
+          } else if (sb) {
+            // Live mode: update database
+            const { data, error: updateError } = await sb
+              .from('claims')
+              .update({
+                [updateField]: true,
+                // Full storage path — contractor pages open this document via
+                // createSignedUrl(), which needs the object path; a bare
+                // display name 404s (E2E walk fix 2026-07-07).
+                [filenameField]: uploadedStoragePath || file.name,
+              })
+              .eq('id', currentClaim.id)
+                .select('id')
+              .single();
+
+            if (updateError) throw updateError;
+
+            // F-005 fix: trigger parse-loss-sheet for estimate uploads so
+            // RCV/ACV are written back to claims.rcv_amount / claims.acv_amount
+            if (type === 'estimate' && uploadedStoragePath) {
+              try {
+                await sb.functions.invoke('parse-loss-sheet', {
+                  body: {
+                    claim_id: currentClaim.id,
+                    storage_path: uploadedStoragePath,
+                  }
+                });
+              } catch (parseErr) {
+                // Non-fatal — parsing failure doesn't block the upload
+                console.warn('[uploadFile] parse-loss-sheet failed (non-fatal):', parseErr);
+              }
+            }
+          }
+
+          // Update local claim state
+          currentClaim[updateField] = true;
+          currentClaim[filenameField] = uploadedStoragePath || file.name;
+
+          // Refresh UI
+          renderChecklist();
+          updateSubmitButton();
+          updateProgressBar();
+
+          // Hide progress bar after a short delay
+          setTimeout(() => {
+            if (progressEl) progressEl.classList.remove('active');
+            uploadsInProgress[type] = false;
+          }, 1000);
+
+          const label = type === 'estimate' ? 'Estimate' : 'Measurements';
+          showSuccess(`${label} uploaded successfully!`);
+
+        } catch (err) {
+          console.error('[uploadFile] Error:', err);
+          uploadsInProgress[type] = false;
+          const progressEl = document.getElementById(`upload-progress-${type}`);
+          if (progressEl) progressEl.classList.remove('active');
+          showError('Upload failed. Please try again.');
+        }
+      }
+
+      // ── Submit for Bids ──
+      // Storage paths are stored in *_filename fields; show only the basename.
+      function fileDisplayName(path) {
+        return path ? String(path).split('/').pop() : path;
+      }
+
+      async function submitForBids() {
+        const btn = document.getElementById('submit-btn');
+        if (!currentClaim) return;
+        btn.disabled = true;
+        btn.textContent = 'Submitting…';
+
+        try {
+          // Fix (E2E walk 2026-07-07): the opportunities query + RLS both
+          // require ready_for_bids=true — without it a submitted claim is
+          // invisible to every contractor. D-165: release each non-siding
+          // trade at submit; siding stays gated on the D-164 property design
+          // completion webhook.
+          const submitUpdate = { status: 'active', ready_for_bids: true };
+          const releasableTrades = ['roofing', 'gutters', 'windows'];
+          (Array.isArray(currentClaim.trades) ? currentClaim.trades : []).forEach(function (t) {
+            const trade = String(t).toLowerCase();
+            if (releasableTrades.indexOf(trade) !== -1 && !currentClaim[trade + '_bid_released_at']) {
+              submitUpdate[trade + '_bid_released_at'] = new Date().toISOString();
+            }
+          });
+
+          if (!CONFIG.DEMO_MODE && sb && currentClaim.id) {
+            const { error } = await sb
+              .from('claims')
+              .update(submitUpdate)
+              .eq('id', currentClaim.id);
+
+            if (error) throw error;
+
+            // Notify contractors via Edge Function (non-fatal)
+            try {
+              await sb.functions.invoke('notify-contractors', {
+                body: { claim_id: currentClaim.id }
+              });
+            } catch (notifyErr) {
+              console.warn('[submitForBids] notify-contractors failed (non-fatal):', notifyErr);
+            }
+          }
+
+          // Update local state
+          if (currentClaim) Object.assign(currentClaim, submitUpdate);
+
+          // Show success state
+          const submitSection = document.getElementById('submit-ready-section');
+          const successSection = document.getElementById('submit-success');
+          if (submitSection) submitSection.style.display = 'none';
+          if (successSection) successSection.classList.add('active');
+
+          // gh-1570: the job's done — the top-of-page banner hands off to the
+          // status banner below.
+          const readyBanner = document.getElementById('ready-to-submit-banner');
+          if (readyBanner) readyBanner.classList.remove('active');
+
+          // Update status banner
+          await updateStatusBanner();
+
+        } catch (err) {
+          console.error('[submitForBids] Error:', err);
+          btn.disabled = false;
+          btn.textContent = 'Submit for Bids';
+          showError('Failed to submit your project. Please try again.');
+        }
+      }
+
+      // ── Notifications ──
+      function showError(message) {
+        const el = document.getElementById('error-message');
+        const textEl = document.getElementById('error-text');
+        if (!el || !textEl) return;
+        textEl.textContent = message;
+        el.classList.add('active');
+        setTimeout(() => el.classList.remove('active'), 5000);
+      }
+
+      function showSuccess(message) {
+        const el = document.getElementById('success-message');
+        const textEl = document.getElementById('success-text');
+        if (!el || !textEl) return;
+        textEl.textContent = message;
+        el.classList.add('active');
+        setTimeout(() => el.classList.remove('active'), 4000);
+      }
+
+
+      // ── Job Type Selection --
+      // gh-1276: window-exposed for the same reason as saveWaitlistSpot
+      // above (this and the next 4 functions are all called from an inline
+      // onclick="..." attribute, which needs global scope, not IIFE scope).
+      window.selectJobType = function(type) {
+        window.selectedJobType = type;
+        document.querySelectorAll('.job-type-btn').forEach(btn => {
+          btn.classList.toggle('selected', btn.dataset.type === type);
+        });
+        document.getElementById('repairFields').style.display  = type === 'repair'        ? 'block' : 'none';
+        document.getElementById('acvFields').style.display     = type === 'insurance_acv' ? 'block' : 'none';
+        document.getElementById('retailFields').style.display  = type === 'retail'        ? 'block' : 'none';
+        document.getElementById('jobTypeHelp').style.display   = 'block';
+      }
+
+      window.showJobTypeHelp = function() {
+        document.getElementById('help-modal-title').textContent = 'Which payment type applies?';
+        document.getElementById('help-modal-content').innerHTML = [
+          '<p style="margin-bottom:1rem;">Not sure which option to pick? Here\'s a quick guide:</p>',
+          '<ul style="padding-left:1.25rem; line-height:1.9; margin-bottom:1rem;">',
+          '<li><strong>Insurance (RCV)</strong> — Your policy covers full replacement cost. Most common for storm-damage claims.</li>',
+          '<li><strong>Insurance (ACV)</strong> — Your policy pays actual cash value (depreciated). There may be a gap you cover out of pocket.</li>',
+          '<li><strong>Retail / Cash</strong> — No insurance; you\'re paying for the project yourself.</li>',
+          '<li><strong>Repair Only</strong> — Partial repair from a specific estimate, not a full replacement.</li>',
+          '</ul>',
+          '<p style="color:var(--slate);font-size:0.9rem;">If you\'re still unsure, choose <strong>Insurance (RCV)</strong> — it\'s the most common and can be updated later.</p>'
+        ].join('');
+        document.getElementById('help-modal').classList.add('active');
+      }
+
+      window.showHelpModal = function(key) {
+        const helpContent = {
+          estimate: {
+            title: 'Your Insurance Estimate',
+            html: [
+              '<p>Your insurance estimate (also called a "scope of loss") is the document your adjuster creates after inspecting your property. It lists every item being repaired or replaced and the associated costs.</p>',
+              '<p style="margin-top:0.75rem;"><strong>How to get it:</strong></p>',
+              '<ul style="padding-left:1.25rem;line-height:1.8;margin-top:0.5rem;">',
+              '<li>Log in to your insurance carrier\'s portal and download it from your claim documents.</li>',
+              '<li>Call your adjuster and ask them to email it to you.</li>',
+              '<li>Upload a photo of the printed document — we accept PDF, Word, JPG, and PNG.</li>',
+              '</ul>',
+              '<p style="margin-top:0.75rem;color:var(--slate);font-size:0.9rem;">If you need help getting this document, use the "Help Me" option on the upload button.</p>'
+            ].join('')
+          }
+        };
+        const c = helpContent[key] || { title: 'Help', html: '<p>Please contact support for assistance.</p>' };
+        document.getElementById('help-modal-title').textContent = c.title;
+        document.getElementById('help-modal-content').innerHTML = c.html;
+        document.getElementById('help-modal').classList.add('active');
+      }
+
+      // ── Switch Contractor Modal (D-171) --
+      window.openSwitchContractorModal = function() {
+        document.getElementById('switch-survey-step').classList.remove('hidden');
+        document.getElementById('switch-success-step').classList.remove('visible');
+        document.querySelectorAll('input[name="switch_reason"]').forEach(cb => { cb.checked = false; });
+        document.querySelectorAll('.switch-reason-label').forEach(lbl => lbl.classList.remove('selected'));
+        document.getElementById('switch-notes').value = '';
+        document.getElementById('switch-contractor-modal').classList.add('active');
+      }
+
+      window.closeSwitchModal = function() {
+        document.getElementById('switch-contractor-modal').classList.remove('active');
+      }
+
+      // gh-1276 follow-up (Bridge 2026-08-26): this lives inside the page IIFE,
+      // so the inline onclick= on the confirm button could never resolve it —
+      // ReferenceError on every click. Same defect class as selectJobType.
+      window.submitSwitchSurvey = async function submitSwitchSurvey() {
+        const btn     = document.getElementById('submit-switch-btn');
+        const reasons = Array.from(document.querySelectorAll('input[name="switch_reason"]:checked')).map(cb => cb.value);
+        const notes   = document.getElementById('switch-notes').value.trim();
+
+        btn.disabled    = true;
+        btn.textContent = 'Submitting…';
+
+        try {
+          if (sb && currentClaim?.id) {
+            const reasonText = reasons.length > 0 ? reasons.join(', ') : 'No reason provided';
+            await fetch(`${window.location.origin}/functions/v1/send-support-email`, {
+              method:  'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                from_name:  currentProfile?.full_name || 'Homeowner',
+                from_email: currentUser?.email || '',
+                subject:    'Switch Contractor Request',
+                message:    `Job #${currentClaim.id.slice(-8).toUpperCase()}\nReasons: ${reasonText}\nNotes: ${notes || '(none)'}`
+              })
+            });
+          }
+
+          document.getElementById('switch-survey-step').classList.add('hidden');
+          document.getElementById('switch-success-step').classList.add('visible');
+        } catch (err) {
+          console.error('Switch survey error:', err);
+          btn.disabled    = false;
+          btn.textContent = 'Submit Switch Request';
+          alert('There was a problem submitting your request. Please try again or contact support.');
+        }
+      };
+
+      // gh-1276 follow-up (Bridge 2026-08-26): same IIFE-scoping defect —
+      // all five switch-reason checkboxes threw ReferenceError on change.
+      window.toggleReasonLabel = function toggleReasonLabel(checkbox) {
+        const label = checkbox.closest('.switch-reason-label');
+        if (label) label.classList.toggle('selected', checkbox.checked);
+      };
+
+      document.addEventListener('DOMContentLoaded', () => {
+          // D-211 Phase 0: Use Auth.ready() which handles magic link timing internally
+          // via onAuthStateChange subscription. Auth.ready() resolves with session when
+          // INITIAL_SESSION or SIGNED_IN fires (after magic link PKCE exchange if needed).
+          Auth.ready().then(async (authData) => {
+              await init();
+          }).catch(err => {
+              console.error('Auth.ready() failed:', err);
+              window.location.href = '/login.html';
+          });
+      });
+
+      // W3-P4 / gh-1276 follow-up (Bridge 2026-08-26): moved INSIDE the IIFE.
+      // It was window-exposed but declared outside, so its body's reference to
+      // the IIFE-scoped `currentWarrantyUrl` threw ReferenceError on every click.
+      // W3-P4: Opens a 7-day signed URL to the homeowner's warranty document
+      // gh-1276: window-exposed, same IIFE-scoping issue as the cluster above.
+      window.openWarrantyDocUrl = async function() {
+          if (!currentWarrantyUrl) return;
+          try {
+              const bucketPath = currentWarrantyUrl.replace(/^contractor-documents\//, '');
+              const { data: urlData, error: urlError } = await sb.storage
+                  .from('contractor-documents')
+                  .createSignedUrl(bucketPath, 60 * 60 * 24 * 7);
+              if (urlError || !urlData?.signedUrl) throw new Error(urlError?.message || 'Could not generate link');
+              window.open(urlData.signedUrl, '_blank', 'noopener,noreferrer');
+          } catch (err) {
+              console.error('[Dashboard] Warranty signed URL error:', err);
+              alert('Unable to open the warranty document. Please try again or contact support.');
+          }
+      }
+
+    })();
+
+    </script>
+
+<!-- Messaging Thread UI Section for dashboard.html -->
+<!-- Insert this after the "Claims" or "Bids" card section, before closing main -->
+
+<div class="card messages-section" style="margin-top: 32px;">
+  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
+    <h3 style="margin: 0; font-size: 18px; font-weight: 600; color: var(--navy);">Messages</h3>
+  </div>
+
+  <!-- Claim Selector -->
+  <div style="margin-bottom: 20px;">
+    <label style="display: block; font-size: 14px; font-weight: 500; color: var(--navy); margin-bottom: 8px;">Select a project:</label>
+    <select id="messagingClaimSelect" style="width: 100%; padding: 8px 12px; border: 1px solid #E2E8F0; border-radius: 6px; font-size: 14px; font-family: inherit;">
+      <option value="">-- No projects with messages yet --</option>
+    </select>
+  </div>
+
+  <!-- Message Thread Container -->
+  <div id="messagingThreadContainer" style="display: none;">
+    <!-- Contractor Info -->
+    <div id="contractorInfo" style="background: #F0F9FF; border-left: 4px solid var(--navy); padding: 12px; margin-bottom: 16px; border-radius: 4px;">
+      <div style="font-weight: 600; font-size: 14px; color: var(--navy);">Talking with <span id="contractorName">--</span></div>
+    </div>
+
+    <!-- Messages List -->
+    <div id="messagesList" style="border: 1px solid #E2E8F0; border-radius: 6px; padding: 16px; height: 300px; overflow-y: auto; margin-bottom: 16px; background: #FAFBFC;">
+      <p style="color: #94A3B8; text-align: center; margin: 0;">No messages yet.</p>
+    </div>
+
+    <!-- Message Input -->
+    <div style="display: flex; gap: 12px; margin-bottom: 16px;">
+      <textarea
+        id="messageBody"
+        placeholder="Type your message..."
+        style="flex: 1; padding: 12px; border: 1px solid #E2E8F0; border-radius: 6px; font-size: 14px; font-family: inherit; resize: vertical; min-height: 60px;"
+      ></textarea>
+      <button
+        id="messageSendBtn"
+        style="align-self: flex-end; padding: 12px 24px; background: var(--navy); color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 14px;"
+      >
+        Send
+      </button>
+    </div>
+
+    <!-- Status Message -->
+    <div id="messageStatus" style="font-size: 12px; color: #64748B; text-align: center;"></div>
+  </div>
+</div>
+
+<script>
+// Messaging functionality for dashboard.html
+(function() {
+  const POLLING_INTERVAL = 30000; // 30 seconds
+  const SEND_FUNCTION_URL = "https://otterquote.com/.netlify/functions/send-message-notification";
+
+  let currentClaimId = null;
+  let pollingInterval = null;
+  let homeownerId = null;
+
+  // Initialize messaging section
