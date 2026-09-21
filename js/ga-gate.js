@@ -95,6 +95,62 @@
   var MEASUREMENT_ID = 'G-D1Y1TLGEFY';
   var CLARITY_PROJECT_ID = 'wwr7qlk8g5';
 
+  // gh-2064 round 2: the opt-out used to live ONLY in js/internal-traffic.js,
+  // which was included on 10 of the 99 pages that load this gate -- on the
+  // other 89 (including start.html and index.html), window.OQ_INTERNAL was
+  // simply never set, so `if (window.OQ_INTERNAL) return;` below never
+  // fired and this gate could not be told to stand down. That is exactly
+  // what the round-1 review failed the PR for: internal-traffic.js is now
+  // a documentation/early-set convenience only, and every gate reads
+  // and writes the signal itself so nothing depends on that other file
+  // being present on the page at all. Same cookie/param contract as
+  // internal-traffic.js (kept in sync deliberately: same name, same
+  // Max-Age, same Domain rule), wrapped in try/catch so a hostile or
+  // unsupported document.cookie / URLSearchParams never breaks tag loading
+  // for a real visitor.
+  function oqInternal() {
+    try {
+      var params = null;
+      try {
+        params = new URLSearchParams(window.location.search);
+      } catch (e) {
+        params = null;
+      }
+      var queryFlag = !!(params && params.get('oq_internal') === '1');
+
+      var cookieMatch = document.cookie.match(/(?:^|; )oq_internal=([^;]*)/);
+      var cookieFlag = !!(cookieMatch && decodeURIComponent(cookieMatch[1]) === '1');
+
+      if (queryFlag && !cookieFlag) {
+        var oneYear = 60 * 60 * 24 * 365;
+        var domainAttr = '';
+        // Only a real otterquote.com host accepts a .otterquote.com-scoped
+        // cookie -- on localhost/preview/test hosts this attribute would be
+        // rejected outright and silently fail to set (see
+        // js/internal-traffic.js for the same rule).
+        if (/(^|\.)otterquote\.com$/.test(window.location.hostname)) {
+          domainAttr = '; Domain=.otterquote.com';
+        }
+        document.cookie = 'oq_internal=1; Max-Age=' + oneYear + '; Path=/' +
+          domainAttr + '; SameSite=Lax';
+      }
+
+      var isInternal = queryFlag || cookieFlag;
+      window.OQ_INTERNAL = isInternal;
+      return isInternal;
+    } catch (e) {
+      // Fail closed on "internal" detection, i.e. never let a thrown error
+      // here suppress it -- but if window.OQ_INTERNAL is already true
+      // (e.g. set earlier by js/internal-traffic.js), respect that.
+      return !!window.OQ_INTERNAL;
+    }
+  }
+
+  // Runs immediately, before the gtag stub below, so window.OQ_INTERNAL is
+  // already correct by the time any gtag('js'|'config'|'event', ...) call
+  // reaches the stub -- not just at the early-return check further down.
+  var OQ_INTERNAL_FLAG = oqInternal();
+
   // gh-1964: the public, unauthenticated pages Clarity is allowed to record.
   // Entries are normalised paths (see normalizeClarityPath below): no
   // trailing slash (except root), no .html extension, and directory-index
@@ -222,8 +278,8 @@
   // callers do not need host-awareness of their own.
   window.dataLayer = window.dataLayer || [];
   // gh-2064: any gtag() call that still reaches this stub while
-  // window.OQ_INTERNAL is set (js/internal-traffic.js, loaded ahead of this
-  // file on every page) gets traffic_type: 'internal' merged into its
+  // window.OQ_INTERNAL is set (oqInternal() above, run unconditionally by
+  // this file itself) gets traffic_type: 'internal' merged into its
   // params -- belt-and-suspenders for the case where this stub is somehow
   // reached without going through the early return below. The early return
   // itself is what actually stops the GA4 library and Clarity from ever
@@ -243,13 +299,15 @@
   window.gtag = gtag;
   gtag('js', new Date());
 
-  // gh-2064: internal-traffic opt-out (js/internal-traffic.js). Placed after
-  // the dataLayer/gtag stub above so every page's existing gtag(...) call
-  // sites keep working as harmless queued-but-never-sent pushes (same
-  // reasoning as the ALLOWED_HOSTS/CLARITY_ALLOWED_PATHS returns below) --
-  // this just adds one more reason the library and Clarity never actually
-  // load: the current visit is our own walk/probe, not a visitor.
-  if (window.OQ_INTERNAL) {
+  // gh-2064 round 2: internal-traffic opt-out, checked via the self-contained
+  // oqInternal() above -- not a dependency on js/internal-traffic.js being
+  // present on this page. Placed after the dataLayer/gtag stub above so
+  // every page's existing gtag(...) call sites keep working as harmless
+  // queued-but-never-sent pushes (same reasoning as the
+  // ALLOWED_HOSTS/CLARITY_ALLOWED_PATHS returns below) -- this just adds one
+  // more reason the library and Clarity never actually load: the current
+  // visit is our own walk/probe, not a visitor.
+  if (OQ_INTERNAL_FLAG) {
     return;
   }
 
