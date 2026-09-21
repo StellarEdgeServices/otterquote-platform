@@ -1,0 +1,691 @@
+          // Capitalize damage type (e.g. "roof" → "Roof")
+          if (field.key === 'damage_type' && value !== 'Not provided') {
+            value = value.charAt(0).toUpperCase() + value.slice(1);
+          }
+
+          // Format phone number (10-digit or 11-digit with leading 1)
+          if (field.key === 'adjuster_phone' && value !== 'Not provided') {
+            const digits = value.replace(/\D/g, '');
+            if (digits.length === 10) {
+              value = `(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6)}`;
+            } else if (digits.length === 11 && digits[0] === '1') {
+              value = `(${digits.slice(1,4)}) ${digits.slice(4,7)}-${digits.slice(7)}`;
+            }
+          }
+
+          // Hide field if showIf function returns false
+          if (field.showIf && !field.showIf()) return '';
+
+          return `
+            <div class="claim-field">
+              <div class="claim-field-label">${escapeHtml(field.label)}</div>
+              <div class="claim-field-value">${escapeHtml(value)}</div>
+            </div>
+          `;
+        }).join('');
+
+        // Prepend summary rows (property address, trades, funding).
+        // gh-1381 (CodeQL #8): build the full string first — never read
+        // innerHTML back and re-assign it (DOM text re-interpreted as HTML).
+        display.innerHTML = summaryHtml + fieldsHtml;
+
+        // Edit form
+        form.innerHTML = fields.map(field => {
+          const value = currentClaim[field.key] || '';
+          let input = '';
+
+          if (field.type === 'select' && field.key === 'carrier_id') {
+            input = `
+              <select class="form-select" name="${field.key}">
+                <option value="">Select carrier...</option>
+                ${carriers.map(c => `
+                  <option value="${escapeHtml(c.id)}" ${c.id === value ? 'selected' : ''}>${escapeHtml(c.name)}</option>
+                `).join('')}
+              </select>
+            `;
+          } else if (field.type === 'currency') {
+            input = `<input type="number" step="0.01" class="form-input" name="${field.key}" value="${escapeHtml(value)}" placeholder="0.00">`;
+          } else {
+            input = `<input type="${field.type}" class="form-input" name="${field.key}" value="${escapeHtml(value)}" placeholder="">`;
+          }
+
+          // Hide field if showIf function returns false
+          if (field.showIf && !field.showIf()) return '';
+
+          return `
+            <div class="form-group">
+              <label class="form-label">${escapeHtml(field.label)}</label>
+              ${input}
+            </div>
+          `;
+        }).join('');
+      }
+
+      function renderChecklist() {
+        if (!currentClaim) return;
+
+        // Retail / cash / repair claims require measurements; insurance claims do not.
+        // BUG-3 fix: null funding_type (job type not yet selected) must not require measurements.
+        const isInsurance      = currentClaim.funding_type === 'insurance';
+        const isExplicitlyCash = currentClaim.funding_type === 'cash';
+
+        // Measurement order state helpers
+        const hasHoverOrder = hoverOrder && (hoverOrder.status === 'link_sent' || hoverOrder.status === 'pending');
+        const todayResendCount = (() => {
+          if (!hoverOrder?.last_resend_at) return 0;
+          const lastDate = new Date(hoverOrder.last_resend_at).toISOString().slice(0, 10);
+          const today   = new Date().toISOString().slice(0, 10);
+          return lastDate === today ? (hoverOrder.resend_count || 0) : 0;
+        })();
+        const resendAvailable = hasHoverOrder && todayResendCount < 3;
+
+        // Build measurements description + buttons depending on context
+        let measurementsDesc, measurementsNote, measurementsBtns;
+        if (currentClaim.has_measurements) {
+          // Already done — handled by status logic below
+          measurementsDesc  = null;
+          measurementsNote  = null;
+          measurementsBtns  = [];
+        } else if (hasHoverOrder) {
+          measurementsDesc  = 'Your measurement link was sent. Awaiting your photos — check your email inbox.';
+          measurementsNote  = resendAvailable
+            ? `Link sent to ${hoverOrder.capturing_user_email || 'your email'}. Didn't receive it? Resend below.`
+            : 'Resend limit reached for today (3/3). Try again tomorrow or upload measurements manually.';
+          measurementsBtns  = [
+            { label: 'Upload Instead', action: 'upload',   data: 'measurements' },
+            ...(resendAvailable
+              ? [{ label: 'Resend Link', action: 'resend', data: '' }]
+              : [{ label: 'Help Me',     action: 'navigate', data: 'help-measurements.html' }]
+            ),
+          ];
+        } else if (isInsurance) {
+          measurementsDesc  = 'Optional but recommended. Upload photos, measurements, or inspection reports.';
+          measurementsNote  = 'Optional but recommended for more accurate bids.';
+          measurementsBtns  = [
+            { label: 'Upload', action: 'upload',   data: 'measurements' },
+            { label: 'Help Me', action: 'navigate', data: 'help-measurements.html' },
+          ];
+        } else if (isExplicitlyCash) {
+          // Retail / cash — required, no measurement order yet
+          measurementsDesc  = 'Required for retail projects. Upload measurement reports or use a professional aerial measurement.';
+          measurementsNote  = 'Required — contractors need measurements to price your project accurately.';
+          measurementsBtns  = [
+            { label: 'Upload', action: 'upload',   data: 'measurements' },
+            { label: 'Help Me', action: 'navigate', data: 'help-measurements.html' },
+          ];
+        } else {
+          // Job type not yet selected (funding_type = null) — treat as optional
+          measurementsDesc  = 'Optional — upload measurement reports or use a professional aerial measurement for more accurate bids.';
+          measurementsNote  = 'Optional but recommended. Contractors use measurements to price your project accurately.';
+          measurementsBtns  = [
+            { label: 'Upload', action: 'upload',   data: 'measurements' },
+            { label: 'Help Me', action: 'navigate', data: 'help-measurements.html' },
+          ];
+        }
+
+        const container = document.getElementById('checklist-container');
+        const items = [
+          {
+            id: 'estimate',
+            title: 'Insurance Estimate',
+            required: currentClaim.funding_type !== 'cash',
+            status: currentClaim.has_estimate ? 'uploaded' : 'pending',
+            filename: fileDisplayName(currentClaim.estimate_filename),
+            description: currentClaim.funding_type === 'cash'
+              ? 'Not required for retail projects. Optionally upload any existing estimates or documents you want bidders to see.'
+              : 'Upload your insurance adjuster\'s estimate or preliminary damage report.',
+            buttons: [
+              { label: 'Upload', action: 'upload', data: 'estimate' },
+              { label: 'Help Me', action: 'help', data: 'estimate' }
+            ],
+            icon: '📄'
+          },
+          {
+            id: 'measurements',
+            title: 'Measurements',
+            required: isExplicitlyCash, // Hard required only for retail/cash; optional for insurance and unknown
+            status: currentClaim.has_measurements ? 'uploaded' : (hasHoverOrder ? 'hover_pending' : 'pending'),
+            filename: fileDisplayName(currentClaim.measurements_filename),
+            description: measurementsDesc,
+            note: measurementsNote,
+            buttons: measurementsBtns,
+            icon: hasHoverOrder && !currentClaim.has_measurements ? '🔗' : '📏'
+          },
+          {
+            id: 'material',
+            title: 'Material Selection',
+            required: true,
+            status: currentClaim.has_material_selection ? 'selected' : 'pending',
+            filename: (() => {
+              // Build human-readable material label from actual DB columns
+              const cat = currentClaim.material_category;
+              const type = currentClaim.shingle_type;
+              if (cat === 'shingles' && type) return type.charAt(0).toUpperCase() + type.slice(1) + ' Shingles';
+              if (cat === 'metal' && currentClaim.metal_type) return currentClaim.metal_type.charAt(0).toUpperCase() + currentClaim.metal_type.slice(1) + ' Metal';
+              if (cat) return cat.charAt(0).toUpperCase() + cat.slice(1);
+              return null;
+            })(),
+            description: 'Choose the roofing material and specifications for your project.',
+            buttons: [
+              currentClaim.has_material_selection
+                ? { label: 'Change Material', action: 'navigate', data: 'help-materials.html' }
+                : { label: 'Choose Material', action: 'navigate', data: 'help-materials.html' }
+            ],
+            icon: '🎨'
+          },
+          {
+            id: 'project_confirmation',
+            title: 'Project Confirmation',
+            required: false,
+            status: currentClaim.project_confirmation
+              ? 'selected'
+              : (currentClaim.status === 'contract_signed' ? 'pending' : 'unavailable'),
+            filename: currentClaim.project_confirmation ? 'Roofing confirmation on file' : null,
+            description: 'Confirm project scope, materials, and details for your contractor.',
+            note: (!currentClaim.project_confirmation && currentClaim.status !== 'contract_signed')
+              ? 'Available after your contract is signed.'
+              : null,
+            buttons: currentClaim.project_confirmation
+              ? [{ label: 'Review Confirmation', action: 'navigate', data: `project-confirmation.html?claim_id=${currentClaim.id}` }]
+              : (currentClaim.status === 'contract_signed'
+                ? [{ label: 'Start Confirmation', action: 'navigate', data: `project-confirmation.html?claim_id=${currentClaim.id}` }]
+                : []),
+            icon: currentClaim.project_confirmation ? '✅' : '📋',
+            disabled: !currentClaim.project_confirmation && currentClaim.status !== 'contract_signed'
+          }
+        ];
+
+        container.innerHTML = items.map(item => {
+          const isDone    = item.status === 'uploaded' || item.status === 'selected';
+          const isHover   = item.status === 'hover_pending';
+          return `
+          <div class="checklist-item-wrapper">
+            <div class="checklist-item ${isDone ? 'complete' : ''} ${item.required ? 'required' : ''} ${item.disabled ? 'disabled' : ''}">
+              <div class="checklist-left">
+                <div class="checklist-icon ${isDone ? 'done' : isHover ? 'hover-pending' : 'pending'}">
+                  ${isDone ? '✓' : item.icon}
+                </div>
+                <div class="checklist-info">
+                  <div class="checklist-title">${item.title}${item.required ? ' <span class="required-badge">Required</span>' : ''}</div>
+                  ${isDone ? `
+                    <div class="checklist-status uploaded">
+                      ✓ ${item.status === 'uploaded' ? 'Uploaded' : 'Selected'}
+                      ${item.filename ? `<span class="checklist-filename">${item.filename}</span>` : ''}
+                    </div>
+                  ` : item.disabled ? `
+                    <div class="color-unavailable">${item.note}</div>
+                  ` : `
+                    <div class="checklist-status">${item.description || ''}</div>
+                    ${item.note ? `<div class="checklist-note">${item.note}</div>` : ''}
+                  `}
+                </div>
+              </div>
+              <div class="checklist-actions">
+                ${item.buttons.map(btn => {
+                  if (btn.action === 'upload') {
+                    return `<button type="button" class="btn btn-sm btn-secondary" onclick="handleUpload('${btn.data}')">Upload</button>`;
+                  } else if (btn.action === 'help') {
+                    return `<button type="button" class="btn btn-sm btn-ghost" onclick="showHelpModal('${btn.data}')">Help Me</button>`;
+                  } else if (btn.action === 'navigate') {
+                    return `<a href="${btn.data}" class="btn btn-sm btn-secondary">${btn.label}</a>`;
+                  } else if (btn.action === 'resend') {
+                    return `<button type="button" class="btn btn-sm btn-secondary" id="resend-hover-btn" onclick="resendHoverLink(this)">Resend Link</button>`;
+                  }
+                  return '';
+                }).join('')}
+              </div>
+              <div id="upload-progress-${item.id}" class="upload-progress">
+                <div class="upload-progress-bar">
+                  <div class="upload-progress-fill" id="progress-fill-${item.id}"></div>
+                </div>
+                <div class="upload-progress-text"><span id="progress-text-${item.id}">0</span>%</div>
+              </div>
+            </div>
+          </div>
+        `; // end template literal
+        }).join(''); // end items.map
+
+        // ── D-181: Measurement Payment + Rebate Status --
+        // Shown whenever the homeowner has paid the measurement fee. States:
+        //   1. Paid — rebate owed on project completion (rebate_due=true, no rebate_paid_at)
+        //   2. Rebated on [date] (rebate_paid_at populated)
+        //   3. Charge recorded but rebate flag cleared without timestamp — defensive display.
+        if (hoverRebateOrder && hoverRebateOrder.homeowner_stripe_payment_intent_id) {
+          const amt = Number(hoverRebateOrder.homeowner_charge_amount || 0) / 100;
+          const amtLabel = `$${amt.toFixed(0)}`;
+          const rebateCard = document.createElement('div');
+          rebateCard.style.cssText = 'margin-top:1.25rem;background:var(--navy-2,#0f2942);border:1px solid rgba(255,255,255,0.08);border-radius:0.875rem;padding:1.25rem 1.5rem;';
+
+          let headerLine = '';
+          let bodyLine = '';
+          let badgeColor = '';
+          if (hoverRebateOrder.rebate_paid_at) {
+            const d = new Date(hoverRebateOrder.rebate_paid_at);
+            const dateStr = d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+            headerLine = 'Measurement fee rebated';
+            bodyLine = `Your ${amtLabel} measurement fee was rebated to your original payment method on ${dateStr}. Refunds typically show on your statement within 5–10 business days.`;
+            badgeColor = '#10B981'; // green
+          } else if (hoverRebateOrder.rebate_due) {
+            headerLine = `Measurement fee paid — ${amtLabel} rebate pending`;
+            bodyLine = `You've paid ${amtLabel} for your measurement report. When your project is completed with an Otter Quotes contractor, the full ${amtLabel} is rebated to your original payment method automatically.`;
+            badgeColor = 'var(--amber,#E07B00)';
+          } else {
+            headerLine = `Measurement fee paid — ${amtLabel}`;
+            bodyLine = `Your ${amtLabel} measurement payment is on file.`;
+            badgeColor = '#64748B';
+          }
+
+          // DOM construction (XSS-safe per Deploy Review Checklist #34 / post-XSS remediation).
+          const wrap = document.createElement('div');
+          wrap.style.cssText = 'display:flex;align-items:flex-start;gap:1rem;';
+
+          const icon = document.createElement('div');
+          icon.textContent = '💳';
+          icon.style.cssText = 'font-size:1.75rem;flex-shrink:0;line-height:1;';
+
+          const content = document.createElement('div');
+          content.style.cssText = 'flex:1;';
+
+          const header = document.createElement('div');
+          header.textContent = headerLine;
+          header.style.cssText = `font-weight:700;color:${badgeColor};font-size:1rem;margin-bottom:0.5rem;`;
+
+          const body = document.createElement('div');
+          body.textContent = bodyLine;
+          body.style.cssText = 'font-size:0.875rem;color:rgba(255,255,255,0.85);line-height:1.55;';
+
+          content.appendChild(header);
+          content.appendChild(body);
+          wrap.appendChild(icon);
+          wrap.appendChild(content);
+          rebateCard.appendChild(wrap);
+
+          container.appendChild(rebateCard);
+        }
+      }
+
+      function updateProgressBar() {
+        let completed = 0;
+        const total = 3; // estimate, measurements, material
+
+        if (currentClaim?.has_estimate) completed++;
+        if (currentClaim?.has_measurements) completed++;
+        if (currentClaim?.has_material_selection) completed++;
+
+        const percent = Math.round((completed / total) * 100);
+        document.getElementById('progress-percent').textContent = percent;
+        document.getElementById('progress-fill').style.width = percent + '%';
+
+        // Update View Bids links to include claim_id so bids.html loads the right claim
+        if (currentClaim?.id) {
+          const bidsUrl = 'bids.html?claim_id=' + encodeURIComponent(currentClaim.id);
+          const topLink = document.getElementById('viewBidsLinkTop');
+          const submitLink = document.getElementById('viewBidsLinkSubmit');
+          if (topLink) topLink.href = bidsUrl;
+          if (submitLink) submitLink.href = bidsUrl;
+        }
+      }
+
+      /**
+       * Update the status banner with smart messaging based on claim status
+       * and actual bid count. Runs after loadClaimData() so currentClaim is set.
+       */
+      async function updateStatusBanner() {
+        if (!currentClaim?.ready_for_bids) return; // banner only shows when ready_for_bids=true
+
+        const banner = document.getElementById('status-banner');
+        const iconEl = document.getElementById('status-banner-icon');
+        const titleEl = document.getElementById('status-banner-title');
+        const textEl = document.getElementById('status-banner-text');
+
+        const status = currentClaim?.status;
+
+        // Contract already signed — highest priority message (always show banner regardless of ready_for_bids)
+        if (status === 'contract_signed') {
+          if (banner) banner.classList.add('active');
+          if (iconEl) iconEl.textContent = '🎉';
+          if (titleEl) titleEl.textContent = 'Contract signed!';
+          if (textEl) textEl.textContent = 'Your contract is signed. Your contractor will be in touch to schedule your project.';
+
+          // ── Switch Contractor button --
+          // Check 3-day cutoff on the frontend (Edge Function also enforces this server-side)
+          const installDate = currentClaim?.estimated_start_date
+            ? new Date(currentClaim.estimated_start_date)
+            : null;
+          const cutoffDate = new Date();
+          cutoffDate.setDate(cutoffDate.getDate() + 3);
+          const withinCutoff = installDate && installDate <= cutoffDate;
+
+          const actionsEl = document.getElementById('status-banner-actions');
+          if (actionsEl) {
+            // Keep the View Bids link and inject Switch Contractor button
+            let switchBtnHtml = '';
+            if (withinCutoff) {
+              switchBtnHtml = `
+                <div class="switch-btn-wrapper">
+                  <button class="btn btn-sm btn-ghost" disabled style="opacity:0.5; cursor:not-allowed;">
+                    Switch Contractor
+                  </button>
+                  <div class="switch-tooltip">Switching is no longer available — installation is within 3 days.</div>
+                </div>`;
+            } else {
+              switchBtnHtml = `
+                <button class="btn btn-sm btn-ghost" onclick="openSwitchContractorModal()">
+                  Switch Contractor
+                </button>`;
+            }
+            // Inject after existing content
+            const existing = actionsEl.querySelector('#viewBidsLinkTop');
+            if (!actionsEl.querySelector('#switch-contractor-trigger')) {
+              const wrapper = document.createElement('div');
+              wrapper.id = 'switch-contractor-trigger';
+              wrapper.innerHTML = switchBtnHtml;
+              actionsEl.appendChild(wrapper);
+            }
+          }
+          // W3-P4: Show warranty document button when job complete + warranty uploaded
+          if (currentClaim.completion_date && currentWarrantyUrl) {
+            const actionsEl2 = document.getElementById('status-banner-actions');
+            if (actionsEl2 && !actionsEl2.querySelector('#warranty-doc-btn')) {
+              const warrantyWrapper = document.createElement('div');
+              warrantyWrapper.id = 'warranty-doc-btn';
+              warrantyWrapper.style.cssText = 'margin-top:0.5rem;';
+              warrantyWrapper.innerHTML = `<button class="btn btn-sm" style="background:#0284C7; color:#fff; border:none; font-size:0.875rem; cursor:pointer;" onclick="openWarrantyDocUrl()">📄 Your warranty document</button>`;
+              actionsEl2.appendChild(warrantyWrapper);
+            }
+          }
+
+          // D-231: Home profile prompt — shown below status-banner when job is complete.
+          // Card appears below the warranty card (which is the last injected status-banner action).
+          // initHomeProfilePrompt handles all eligibility checks (no profile, not dismissed).
+          if (currentClaim.completion_date && currentProfile?.id) {
+            // Non-blocking — runs after current render cycle
+            setTimeout(() => {
+              if (typeof window.initHomeProfilePrompt === 'function') {
+                window.initHomeProfilePrompt(
+                  currentClaim.id,
+                  currentProfile.id,
+                  currentClaim.completion_date,
+                  currentClaim.trades || []
+                );
+              }
+            }, 0);
+          }
+
+          return;
+        }
+
+        // Try to get bid count — non-blocking, graceful fallback
+        let bidCount = 0;
+        try {
+          if (sb && currentClaim?.id && !CONFIG.DEMO_MODE) {
+            const { count } = await sb
+              .from('quotes')
+              .select('id', { count: 'exact', head: true })
+              .eq('claim_id', currentClaim.id)
+              .in('status', ['submitted', 'selected']);
+            bidCount = count || 0;
+          }
+        } catch (e) {
+          // Non-fatal — fall back to generic message
+        }
+
+        if (bidCount > 0) {
+          if (iconEl) iconEl.textContent = '🏆';
+          if (titleEl) titleEl.textContent = bidCount === 1
+            ? 'You have 1 bid!'
+            : `You have ${bidCount} bids!`;
+          if (textEl) textEl.textContent = 'Review the bids from contractors and select the best offer for your project.';
+        } else {
+          // Default: submitted, waiting for bids
+          if (iconEl) iconEl.textContent = '✓';
+          if (titleEl) titleEl.textContent = 'Your project is live!';
+          if (textEl) textEl.textContent = 'Contractors are reviewing your details. You\'ll be notified of incoming bids.';
+        }
+
+        // ── D-165: Per-trade status pills --
+        // Show a trade-by-trade breakdown for:
+        //   • any multi-trade claim (≥2 trades), OR
+        //   • any retail single-trade claim where the release is pending.
+        // Each pill is driven by the corresponding *_bid_released_at column
+        // added by D-165 (v45 migration).
+        const bannerTrades = Array.isArray(currentClaim?.trades) ? currentClaim.trades : [];
+        const isRetailClaim = currentClaim?.funding_type === 'cash';
+
+        // Build a release map for all four trades
+        const releaseMap = {
+          roofing: !!currentClaim?.roofing_bid_released_at,
+          gutters: !!currentClaim?.gutters_bid_released_at,
+          siding:  !!currentClaim?.siding_bid_released_at,
+          windows: !!currentClaim?.windows_bid_released_at,
+        };
+
+        // For insurance claims, all trades are implicitly released (backfilled by v45
+        // or set at transition). For retail, a trade is pending if its timestamp is null.
+        const hasAnyUnreleased = isRetailClaim && bannerTrades.some(t => {
+          const k = (t || '').toLowerCase();
+          return Object.prototype.hasOwnProperty.call(releaseMap, k) && !releaseMap[k];
+        });
+        const showPills = bannerTrades.length >= 2 || hasAnyUnreleased;
+
+        if (showPills && bannerTrades.length > 0) {
+          const tradeLabels = { roofing: 'Roofing', siding: 'Siding', gutters: 'Gutters', windows: 'Windows' };
+
+          const pills = bannerTrades.map(t => {
+            const key   = (t || '').toLowerCase();
+            const label = tradeLabels[key] || t;
+            // Insurance claims: all trades are released. Retail: check release timestamp.
+            const released = !isRetailClaim
+              ? true
+              : (Object.prototype.hasOwnProperty.call(releaseMap, key) ? releaseMap[key] : true);
+
+            if (!released) {
+              return `<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.5);color:#E07B00;font-size:0.75rem;font-weight:600;padding:2px 10px;border-radius:9999px;">🔒 ${label}: Waiting on design</span>`;
+            } else {
+              return `<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(224,123,0,0.12);border:1px solid rgba(224,123,0,0.4);color:#FAC775;font-size:0.75rem;font-weight:600;padding:2px 10px;border-radius:9999px;">✓ ${label}: Collecting bids</span>`;
+            }
+          }).join('');
+
+          // Inject below the status text, but only once per page load
+          if (!document.getElementById('trade-status-pills')) {
+            const pillsContainer = document.createElement('div');
+            pillsContainer.id = 'trade-status-pills';
+            pillsContainer.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;margin-top:0.5rem;';
+            pillsContainer.innerHTML = pills;
+            if (textEl?.parentNode) {
+              textEl.parentNode.insertBefore(pillsContainer, textEl.nextSibling);
+            }
+          }
+        }
+
+        if (banner) banner.classList.add('active');
+      }
+
+      /**
+       * gh-1570: the checklist-complete gate, factored out of updateSubmitButton()
+       * so the new top-of-page banner (updateReadyToSubmitBanner) and the
+       * activity_log write (logChecklistCompleteOnce) can share the exact same
+       * definition of "ready" instead of a second copy that could drift.
+       * Tolerant of a currentClaim that is null/undefined or missing any of
+       * these fields (a claim created before a field existed, or not yet loaded).
+       */
+      function isChecklistComplete() {
+        const hasEstimate     = !!currentClaim?.has_estimate;
+        const hasMaterial     = !!currentClaim?.has_material_selection;
+        const hasMeasurements = !!currentClaim?.has_measurements;
+
+        // BUG-3 fix: measurements are a hard gate ONLY for retail/cash claims.
+        // Insurance (RCV/ACV) and unknown/null funding_type do NOT require measurements.
+        const needsMeasurements = currentClaim?.funding_type === 'cash';
+        const measurementsOk    = !needsMeasurements || hasMeasurements;
+
+        // E2E walk fix (2026-07-07): retail/cash claims have no insurance
+        // estimate — the estimate is a hard gate ONLY for insurance (and
+        // unknown) funding types. Requiring it unconditionally locked every
+        // retail homeowner out of Submit for Bids.
+        const needsEstimate = currentClaim?.funding_type !== 'cash';
+        const estimateOk    = !needsEstimate || hasEstimate;
+
+        return { isReady: estimateOk && hasMaterial && measurementsOk, needsEstimate, needsMeasurements, hasEstimate, hasMaterial, hasMeasurements };
+      }
+
+      function updateSubmitButton() {
+        const btn = document.getElementById('submit-btn');
+        const hint = document.getElementById('submit-hint');
+
+        const { isReady, needsEstimate, needsMeasurements, hasEstimate, hasMaterial, hasMeasurements } = isChecklistComplete();
+
+        btn.disabled = !isReady;
+
+        if (!isReady) {
+          const missing = [];
+          if (needsEstimate && !hasEstimate) missing.push('Insurance Estimate');
+          if (!hasMaterial) missing.push('Material Selection');
+          if (needsMeasurements && !hasMeasurements) missing.push('Property Measurements (required for retail projects)');
+          hint.textContent = `Complete the required items: ${missing.join(', ')}.`;
+        } else {
+          hint.textContent = 'Your project details are complete. Submit them now to get competitive bids from contractors.';
+        }
+
+        // gh-1570: mirror the same ready/not-ready state in the unmissable
+        // top-of-page banner, and fire the (idempotent) checklist_complete
+        // activity_log write once the checklist is actually complete.
+        updateReadyToSubmitBanner(isReady);
+      }
+
+      /**
+       * gh-1570 — shows/hides the top-of-page "You're ready" banner and, on the
+       * transition into "ready", kicks off the one-time activity_log write.
+       * Purely a display/side-effect function — it never re-derives readiness
+       * itself, so it can never disagree with updateSubmitButton() about what
+       * "ready" means.
+       */
+      function updateReadyToSubmitBanner(isReady) {
+        const banner = document.getElementById('ready-to-submit-banner');
+        if (!banner) return;
+
+        // Once a claim has actually been submitted (ready_for_bids / status
+        // moved on), the "you're ready" banner has done its job — the
+        // status-banner above takes over. Guards against it reappearing if a
+        // submitted claim is ever re-rendered with stale checklist flags.
+        const alreadySubmitted = !!currentClaim?.ready_for_bids || currentClaim?.status === 'active'
+          || currentClaim?.status === 'bidding' || currentClaim?.status === 'awarded'
+          || currentClaim?.status === 'contract_signed';
+
+        const show = !!isReady && !alreadySubmitted;
+        banner.classList.toggle('active', show);
+
+        if (show) {
+          // Fire-and-forget; logs its own failures and never throws into the
+          // render path.
+          logChecklistCompleteOnce();
+        }
+      }
+
+      /**
+       * gh-1570 — writes ONE activity_log row (event_type: checklist_complete)
+       * per claim, the first time this dashboard observes the checklist as
+       * complete. Idempotent: reads existing activity for the claim first via a
+       * jsonb-containment filter on metadata.claim_id, so a reload (or this
+       * function firing twice in one session) never writes a second row.
+       *
+       * Defensive against real production data (see PR #1976 review history —
+       * activity_log rows and claims columns cannot be assumed present, and a
+       * write here must never break the dashboard for the homeowner if it
+       * fails): every branch is wrapped, nothing here throws outward, and a
+       * missing currentUser/currentClaim/window.sb is a silent no-op rather
+       * than an error.
+       */
+      let checklistCompleteLogInFlight = false;
+      async function logChecklistCompleteOnce() {
+        if (checklistCompleteLogInFlight) return;
+        if (CONFIG.DEMO_MODE) return;
+        if (!window.sb || !currentUser?.id || !currentClaim?.id) return;
+
+        checklistCompleteLogInFlight = true;
+        try {
+          const { data: existing, error: checkErr } = await window.sb
+            .from('activity_log')
+            .select('id')
+            .eq('user_id', currentUser.id)
+            .eq('event_type', 'checklist_complete')
+            .contains('metadata', { claim_id: currentClaim.id })
+            .limit(1);
+
+          if (checkErr) {
+            console.warn('[logChecklistCompleteOnce] existence check failed (non-fatal):', checkErr);
+            return;
+          }
+          if (existing && existing.length > 0) return; // already logged for this claim
+
+          const { error: insertErr } = await window.sb
+            .from('activity_log')
+            .insert({
+              user_id: currentUser.id,
+              event_type: 'checklist_complete',
+              title: 'Project checklist complete — ready to submit for bids',
+              metadata: { claim_id: currentClaim.id },
+            });
+
+          if (insertErr) {
+            console.warn('[logChecklistCompleteOnce] insert failed (non-fatal):', insertErr);
+          }
+        } catch (err) {
+          console.warn('[logChecklistCompleteOnce] unexpected error (non-fatal):', err);
+        } finally {
+          checklistCompleteLogInFlight = false;
+        }
+      }
+
+      // ── Event Handlers ──
+      function setupEventListeners() {
+        // Bridge 2026-08-26: the banner's own "Not right? Change it" control —
+        // opens edit mode (reusing the existing toggle so pre-population runs)
+        // and scrolls the payment-path selector into view.
+        const pathChangeBtn = document.getElementById('payment-path-change');
+        if (pathChangeBtn) {
+          pathChangeBtn.addEventListener('click', () => {
+            if (!isEditingClaim) document.getElementById('toggle-claim-edit').click();
+            const sel = document.getElementById('jobTypeSelector');
+            if (sel) sel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          });
+        }
+
+        // Claim edit toggle
+        document.getElementById('toggle-claim-edit').addEventListener('click', () => {
+          isEditingClaim = !isEditingClaim;
+          document.getElementById('claim-display').style.display = isEditingClaim ? 'none' : 'grid';
+          document.getElementById('claim-edit-form').style.display = isEditingClaim ? 'grid' : 'none';
+          document.getElementById('job-type-section').style.display = isEditingClaim ? 'block' : 'none';
+          document.getElementById('claim-form-actions').style.display = isEditingClaim ? 'flex' : 'none';
+          document.getElementById('toggle-claim-edit').textContent = isEditingClaim ? 'View' : 'Edit';
+
+          // Pre-populate job-type-section fields from currentClaim when opening edit mode
+          if (isEditingClaim && currentClaim) {
+            // Pre-select job type button
+            const jobType = currentClaim.job_type || (
+              currentClaim.funding_type === 'insurance'
+                ? (currentClaim.policy_type === 'acv' ? 'insurance_acv' : 'insurance_rcv')
+                : currentClaim.funding_type === 'cash' ? 'retail' : null
+            );
+            if (jobType) {
+              window.selectJobType(jobType);
+              // Pre-populate conditional fields
+              if (jobType === 'repair') {
+                if (currentClaim.repair_squares) document.querySelector('[name="repairSquares"]').value = currentClaim.repair_squares;
+                if (currentClaim.existing_shingle_brand) document.querySelector('[name="existingShingleBrand"]').value = currentClaim.existing_shingle_brand;
+                if (currentClaim.existing_shingle_product) document.querySelector('[name="existingShingleProduct"]').value = currentClaim.existing_shingle_product;
+                if (currentClaim.existing_shingle_color) document.querySelector('[name="existingShingleColor"]').value = currentClaim.existing_shingle_color;
+              } else if (jobType === 'insurance_acv') {
+                if (currentClaim.acv_amount) document.querySelector('[name="acvAmount"]').value = currentClaim.acv_amount;
+                if (currentClaim.rcv_amount) document.querySelector('[name="rcvAmount"]').value = currentClaim.rcv_amount;
+              }
+            }
+            // Pre-populate urgency
+            const urgencySel = document.querySelector('[name="urgency"]');
+            if (urgencySel && currentClaim.urgency) {
+              urgencySel.value = currentClaim.urgency;
+              if (currentClaim.urgency === 'asap') {
+                document.getElementById('urgencyDetails').style.display = 'block';
+                if (currentClaim.urgency_deadline) document.querySelector('[name="urgencyDeadline"]').value = currentClaim.urgency_deadline;
+                if (currentClaim.urgency_reason) document.querySelector('[name="urgencyReason"]').value = currentClaim.urgency_reason;
