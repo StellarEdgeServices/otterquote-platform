@@ -327,6 +327,13 @@ function findOptionButtons(root) {
 function findContinueButton(root) {
   return flatten(root).find((c) => c.tagName === 'BUTTON' && c.textContent === 'Continue');
 }
+// gh-2084 review round 1, item 4: the professional path's own exposition
+// screens (e-pro-2 and beyond) say "Next", not "Continue" -- the
+// homeowner path's own exposition screens this file otherwise drives
+// are unaffected and keep using findContinueButton above.
+function findNextButton(root) {
+  return flatten(root).find((c) => c.tagName === 'BUTTON' && c.textContent === 'Next');
+}
 function fillAndSubmit(root, inputId, value) {
   const input = flatten(root).find((ch) => ch.id === inputId);
   input.value = value;
@@ -670,58 +677,29 @@ function driveToP7_5(routerERoot, insertCalls) {
   }).catch((e) => { console.error('scenario10 error:', e); fail++; });
 })();
 
-// ═══ Scenario 11: professional tap -> e-prof-entry offers arm C's FULL
-// five-industry picker, unrestricted (unlike arm D's own two-industry tap) ═══
+// ═══ Scenario 11: professional tap -> e-pro-2 (gh-2084's own shared
+// exposition, inserted ahead of the industry picker) -> e-pro-3 offers
+// arm C's FULL five-industry picker, unrestricted (unlike arm D's own
+// two-industry tap). The realtor/insurance tracks' own full end-to-end
+// walk (formerly this file's own scenario 12, e-realtor-*/e-ins-*, now
+// e-pro-*) moved to tests/gh2084-variant-e-pro.mjs, which covers both
+// branches in far more depth (verbatim copy against the approved report,
+// fee-sentence placement, no-phone-reask, hand-off guard) than this
+// file's own harness -- see that suite instead. ═══
 (function scenario11() {
   const { routerERoot, bridge, RouterVariantE } = buildScenario();
   RouterVariantE.init(bridge, routerERoot);
   return settle().then(() => {
-    findOptionButtons(routerERoot)[1].dispatchClick(); // Professional
+    findOptionButtons(routerERoot)[1].dispatchClick(); // Professional -> e-pro-2
+    return settle();
+  }).then(() => {
+    findNextButton(routerERoot).dispatchClick(); // e-pro-2 -> e-pro-3
     return settle();
   }).then(() => {
     const opts = findOptionButtons(routerERoot);
-    ok(opts.length === 5, 'e-prof-entry offers all 5 industries (arm C\'s own PARTNER_INDUSTRY_ORDER), unlike arm D\'s own 2-option tap');
+    ok(opts.length === 5, 'e-pro-3 offers all 5 industries (arm C\'s own PARTNER_INDUSTRY_ORDER), unlike arm D\'s own 2-option tap');
     ok(opts[0].textContent.indexOf('Real Estate Agent') !== -1, 'option 1 is Real Estate Agent (via AgentTypes.CHOOSER_LABELS)');
   }).catch((e) => { console.error('scenario11 error:', e); fail++; });
-})();
-
-// ═══ Scenario 12: realtor track end to end -- 4 questions, close
-// paragraphs (verbatim), contact capture, redirect to partner-re.html ═══
-(function scenario12() {
-  const { routerERoot, bridge, RouterVariantE, insertCalls, rpcCalls, redirects } = buildScenario();
-  RouterVariantE.init(bridge, routerERoot);
-  return settle().then(() => {
-    findOptionButtons(routerERoot)[1].dispatchClick(); // Professional -> e-prof-entry
-    return settle();
-  }).then(() => {
-    findOptionButtons(routerERoot)[0].dispatchClick(); // Real Estate Agent -> e-realtor-1
-    return settle();
-  }).then(() => {
-    for (let i = 0; i < 4; i++) {
-      const opts = findOptionButtons(routerERoot);
-      opts[0].dispatchClick();
-    }
-    return settle();
-  }).then(() => {
-    const ps = flatten(routerERoot).filter((c) => c.tagName === 'P');
-    ok(ps.some((p) => p.textContent.indexOf('It sounds like you might be a great fit for our realtor referral program') !== -1),
-      'e-realtor-close renders arm C\'s realtorClose paragraphs verbatim');
-    findContinueButton(routerERoot).dispatchClick(); // -> e-realtor-contact
-    return settle();
-  }).then(() => {
-    const nameInput = flatten(routerERoot).find((c) => c.id === 'rdpName');
-    const emailInput = flatten(routerERoot).find((c) => c.id === 'rdpEmail');
-    nameInput.value = 'Pat Realtor';
-    emailInput.value = 'pat@realty.example.com';
-    findContinueButton(routerERoot).dispatchClick();
-    return settle();
-  }).then(() => {
-    ok(insertCalls.length === 1 && insertCalls[0].name === 'Pat Realtor', 'realtor contact screen inserts a fresh lead');
-    const roleCall = rpcCalls.find((c) => c.name === 'set_lead_role');
-    ok(!!roleCall && roleCall.args.p_role === 'referral_partner' && roleCall.args.p_partner_industry === 're_agent',
-      'set_lead_role is called with referral_partner / re_agent');
-    ok(redirects.length === 1 && redirects[0].dest.indexOf('partner-re.html') !== -1, 'redirects to partner-re.html');
-  }).catch((e) => { console.error('scenario12 error:', e); fail++; });
 })();
 
 // ═══ Scenario 13: home_inspector/adjuster/other fall straight through to
@@ -730,7 +708,10 @@ function driveToP7_5(routerERoot, insertCalls) {
   const { routerERoot, bridge, RouterVariantE, insertCalls, redirects } = buildScenario();
   RouterVariantE.init(bridge, routerERoot);
   return settle().then(() => {
-    findOptionButtons(routerERoot)[1].dispatchClick(); // Professional
+    findOptionButtons(routerERoot)[1].dispatchClick(); // Professional -> e-pro-2
+    return settle();
+  }).then(() => {
+    findNextButton(routerERoot).dispatchClick(); // e-pro-2 -> e-pro-3
     return settle();
   }).then(() => {
     findOptionButtons(routerERoot)[2].dispatchClick(); // Home Inspector

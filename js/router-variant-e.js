@@ -20,34 +20,49 @@
 // Dustin, verbatim (#2076): "It is variant (c) with exposition after
 // pages to explain OQs value. I didn't include the full language for the
 // existing variant C pages. those should stay the same as they are in
-// variant c." Screen 1 (role tap) and the ENTIRE professional/contractor
-// tracks are therefore arm C's own screens, unchanged, reused via
-// window.RouterDiscovery's exported COPY/renderMultiSelect/
-// renderSingleSelect/renderDisqualifier/renderPartnerContact and its
-// exported PARTNER_INDUSTRY_ORDER/REALTOR_TRACK/INSURANCE_TRACK/
-// CONTRACTOR_TRACK track definitions (PR #2088 round 1, item 6: these
-// track exports replaced this file's own earlier hand-forked copies of
-// arm C's professional/contractor screens -- see js/router-discovery.js's
-// own comment above those exports for why they are additive and change
-// no behaviour for arm C). This file adds NOT ONE WORD of new copy for
-// any of those reused screens.
+// variant c." Screen 1 (role tap) and the contractor track are therefore
+// arm C's own screens, unchanged, reused via window.RouterDiscovery's
+// exported COPY/renderMultiSelect/renderSingleSelect/renderDisqualifier/
+// renderPartnerContact and its exported PARTNER_INDUSTRY_ORDER/
+// REALTOR_TRACK/INSURANCE_TRACK/CONTRACTOR_TRACK track definitions
+// (PR #2088 round 1, item 6). This file adds NOT ONE WORD of new copy
+// for any reused C question/option screen.
 //
-// The homeowner path is Dustin's 13-page script, page by page. Pages 3,
-// 5, 6, 8, 10, 12 and 13 ARE arm C's own existing question/contact
-// screens (home3/home2/home4/home5/home6/home7/home8 -- mapped by
-// content, since the script's own page ORDER differs from arm C's
-// internal home-1..home-8 ordering: the script asks "who is paying"
-// (home3) before "what kind of work" (home2), which arm C does not) --
-// every one of those keeps arm C's own copy AND arm C's own qualify/
-// disqualify branching (D-2/D-4/D-5/D-6/D-7, all unchanged, all read
-// from window.RouterDiscovery.COPY, never re-typed here). Pages 2, 4(a),
-// 4(b), 7, 9 and 11 are new, Dustin-authored exposition screens (one
-// paragraph, one "Continue" tap) -- copied byte for byte from the issue
-// body's fenced script block. Pages 5.5 and 7.5 are new single-field
-// screens (name; email respectively), both with browser autofill
-// enabled via the same autocomplete attributes this router's other
-// contact fields already use, wrapped in a <form> so Enter/mobile "Go"
-// submits (PR #2088 round 1, item 7).
+// gh-2084 (this file's own professional-path build, Sloane's approved
+// script, #2077 close): the Professional -> Real Estate and Professional
+// -> Insurance branches now get the SAME exposition-before-question
+// treatment as the homeowner path above, using Sloane's approved copy
+// (ceo57-sloane-variant-e-pro-20260921.md, quoted verbatim in PRO_COPY
+// below). Every existing arm C professional question/option stays
+// verbatim, read from window.RouterDiscovery.COPY/REALTOR_TRACK/
+// INSURANCE_TRACK exactly as the contractor track already does -- only
+// the exposition screens between them are new. Locked defaults (Dustin,
+// #2077, "Approved. No edits."):
+//   1. Page 4(a) opener is Alt A ("kill a deal or delay closing").
+//   2. The fee sentence stays confined to the two close screens only
+//      (RD.COPY.realtorClose[1]/insClose[1]) -- never repeated, never
+//      paraphrased, never moved to an exposition screen.
+//   3. Page 14(b) is the safe default (competing-bids-vs-pitch); the
+//      "Nearly 40%" stat (E_COPY.p11, homeowner-only) is NOT approved
+//      for the professional surface and must never appear here.
+//   4. Hand-off skips the phone re-ask entirely and goes straight to
+//      partner-re.html/partner-insurance.html once name (captured at the
+//      *-5-5 screen) and email (captured at the *-9-5 screen) are known
+//      -- no phone field exists anywhere on this path.
+//   5. Home Inspector/Adjuster/Other stay on arm C's own flow (unchanged
+//      direct redirect) -- out of scope for #2084.
+// Unlike the homeowner path's split insert-then-PATCH (#2076), the
+// professional path holds name/email as client-side state only (proName/
+// proEmail below) and makes exactly ONE lead-row commitment, at the
+// close screen's own "Next" tap (e-pro-12a / e-pro-18b) -- there is no
+// earlier row to correct, so none of e-p7-5's/e-p13's resubmit/PATCH
+// machinery applies here.
+//
+// gh-2078 (gh-2011's sub-issue, NOT this issue): partner_signup_complete
+// is NOT emitted anywhere in this file yet. HOOK_partnerSignupComplete()
+// marks the exact point it will fire once #2078 defines its payload,
+// mirroring this file's own HOOK_measurementPurchase() for the homeowner
+// hand-off.
 //
 // Contact capture is SPLIT, deliberately, the same way #2075 (arm D)
 // split it -- Dustin: "the `leads` row is written at 7.5 (email) and
@@ -68,38 +83,12 @@
 // router_step_view/router_step_complete fire on every screen, INCLUDING
 // the exposition-only ones, with step tokens 'e-p1'..'e-p13' following
 // the issue's own page numbers ('e-p5-5'/'e-p7-5' for the two half-
-// numbered pages, 'e-p4a'/'e-p4b' for the payer-branch pair).
+// numbered pages, 'e-p4a'/'e-p4b' for the payer-branch pair). The
+// professional path (#2084) uses its own 'e-pro-<n>' tokens, matching
+// Sloane's script's own page numbers (e.g. 'e-pro-4a', 'e-pro-5-5a'),
+// on every page including exposition pages.
 // router_disqualified fires once per (session, source screen), identical
-// semantics to arms C/D's own dedupe (see DQ_SOURCE below). The
-// professional/contractor tracks (arm C's own screens, reused verbatim)
-// get their own 'e-'-prefixed tokens too (e-prof-entry, e-realtor-*,
-// e-ins-*, e-contractor-*) rather than reusing arm C's literal
-// 'c-*' token names -- same reasoning as #2075's own d-trades/d-payer/
-// etc. tokens: a shared token would collapse arm C's and arm E's funnels
-// into the same GA4/BigQuery column, unreadable for both arms, not just
-// one.
-//
-// gh-2078 (gh-2011's sub-issue, NOT this issue): the two conversion
-// events -- measurement_purchase (homeowner) and partner_signup_complete
-// (professional) -- are NOT emitted anywhere in this file. The homeowner
-// hand-off (page 13) marks its own point with a named no-op hook
-// (HOOK_measurementPurchase), mirroring js/router-variant-d.js's own
-// hook of the same name. The professional/contractor hand-off now runs
-// entirely through js/router-discovery.js's own exported
-// renderPartnerContact (PR #2088 round 1, item 6), which has no
-// equivalent hook of its own today -- same boundary arm C's own
-// production hand-off already has, out of scope for this file to add.
-//
-// #2076: "Professional path: separate sub-issue (Sloane drafts the copy
-// in the same style); until it lands, E's professional/contractor roles
-// route exactly as C does." This uses arm C's FULL five-industry picker
-// (re_agent/insurance_agent/home_inspector/adjuster/other, arm C's own
-// exported PARTNER_INDUSTRY_ORDER) rather than #2075's own two-industry-
-// only tap target, because this arm's own page-1 role screen is arm C's
-// unrestricted "I am a professional..." option, not #2075's narrower
-// one. When #2084 lands its own homeowner-style exposition copy for this
-// track, only the small wiring in this file's "Professional / contractor
-// tracks" section below is expected to change.
+// semantics to arms C/D's own dedupe (see DQ_SOURCE below).
 (function () {
   'use strict';
 
@@ -123,6 +112,30 @@
     p11: 'Nearly 40% of the cost of your roof is money companies spend to look like they do great work.  The amazing sales rep at your kitchen table won\'t be swinging a hammer on your roof.   Otter Quotes helps you make your decision based on the information that really matters.'
   };
 
+  // gh-2084 -- Professional-path exposition copy, Sloane's approved
+  // script (ceo57-sloane-variant-e-pro-20260921.md), quoted verbatim
+  // including punctuation/spacing, cleared via #2077's "Approved. No
+  // edits." close. Pages 12(a)/18(b) are NOT here -- they reuse
+  // RD.COPY.realtorClose/insClose verbatim (see proCloseRenderer below).
+  var PRO_COPY = {
+    p2: 'Otter Quotes helps your clients get better bids on repair work. We build the scope of work, send it to multiple contractors, and they bid right here on our site — so you\'re not the one chasing quotes for them.',
+    // Real Estate branch -- Alt A (locked default 1).
+    p4a: 'A home that fails inspection over a roof or repair issue can kill a deal or delay closing. When you can hand your client one place to get it fixed fast, the deal keeps moving instead of stalling.',
+    p6a: 'Finding a contractor your client can trust takes calls, research, and follow-up — time you don\'t have between showings and closings. Otter Quotes does that legwork for you.',
+    p8a: 'Who you send a client to reflects on you. If the job goes badly, your client remembers who referred them. When contractors compete for the work, no single name is riding on the outcome.',
+    p10a: 'You\'re already doing this for your clients — finding them a contractor after an inspection, a repair need, or a deal that\'s stuck. It costs you time. This next question is about getting something back for it.',
+    // Insurance branch.
+    p4b: 'Contractors often tell your policyholder their only cost is the deductible, then quietly upcharge for better materials or warranties. When contractors compete for the job, those upgrades stop costing your client extra.',
+    p6b: 'Explaining the claims process and vetting a contractor for every policyholder eats into your day. Sending one link lets Otter Quotes do that legwork instead of you.',
+    p8b: 'The contractor a client works with reflects on you too. If the job goes badly, your client remembers who they called first. Competition among contractors takes that risk off you.',
+    p10b: 'The shingle a contractor installs affects how long your client\'s roof lasts. Give them a reason to choose the option that holds up, not just the cheapest one.',
+    p12b: 'A warranty is only as good as the company standing behind it once the contractor is gone. Competing bids let your client see the warranty before they need it.',
+    // Locked default 3 -- Alt A (safe default). Alt B ("Nearly 40%") is
+    // NOT approved for this surface and must never be used here.
+    p14b: 'A contractor who wins the job on the pitch alone hasn\'t proven anything about the work. Competing bids let your client judge on materials and price instead.',
+    p16b: 'You\'re already trying to get your clients the best outcome after a claim — recommending contractors, suggesting they get bids. Otter Quotes gives you one link that does it automatically.'
+  };
+
   // -- State, held client-side only for the lifetime of this page load --
   // same convention as arms C/D. --
   var role = null;
@@ -138,6 +151,14 @@
     selectionCriteria: [],
     online: null
   };
+
+  // gh-2084 -- professional-path client-side state. Distinct from the
+  // homeowner path's own name/email/answers above so neither path can
+  // ever cross-contaminate the other's in-memory state, even though only
+  // one role's screens ever run in a given page load.
+  var proName = null;
+  var proEmail = null;
+  var proAnswers = {};
 
   var activeToken = null;
   var stack = [];
@@ -176,6 +197,22 @@
   // and on the `data:false` fallback path, insertFreshLead + finish()
   // (redirect) twice.
   var p13SubmitPromise = null;
+
+  // gh-2084 (review round 1, item 1): the professional path's lead row
+  // is now written at the EMAIL screen (e-pro-9-5a/e-pro-9-5b), the same
+  // point arm D/E's homeowner path commits its own first row -- ruling
+  // recorded on #2084: an early row means a drop-off after the email
+  // screen still leaves a lead. proEmailInsertPromise is that screen's
+  // own in-flight guard, same defensive shape as p75InsertPromise.
+  var proEmailInsertPromise = null;
+
+  // gh-2084 (review round 1, item 1): the close screen (e-pro-12a /
+  // e-pro-18b) no longer inserts -- leadId already exists by the time a
+  // visitor reaches it. Its own "Next" tap PATCHes via
+  // update_lead_contact (falling back to insertLeadAndSetRole on
+  // data:false, exactly as e-p13 does) and redirects with that same
+  // leadId. proCloseSubmitPromise is that screen's own in-flight guard.
+  var proCloseSubmitPromise = null;
 
   // gh-2088 (PR #2088 round 1, item 9): the click-debounce guard below
   // needs to know when the current screen was rendered. See show().
@@ -308,19 +345,20 @@
   }
 
   // gh-2088 (PR #2088 round 1, item 9): exposition screens (e-p2, e-p4a/
-  // e-p4b, e-p7, e-p9, e-p11) advance with a single synchronous go() call
-  // and no network round-trip, so a fast real double-tap can land its
-  // second tap on whatever the NEXT screen renders at the same on-screen
-  // position (round 1's repro: e-p11 -> e-p12, second tap lands on
-  // e-p12's own first, disqualifying option). A per-render `fired` flag
-  // alone does not stop this -- the second tap hits a DIFFERENT element
-  // (the next screen's), not the same button twice. The actual guard is
-  // the capturing-phase listener init() attaches to `root` (see below):
-  // it drops any click within a short window of the CURRENT screen
-  // having been shown, so the accidental second tap is swallowed before
-  // it ever reaches the newly-rendered screen's own handler, for every
-  // screen this file renders (its own exposition buttons AND arm C's own
-  // reused option rows), without needing any change to arm C's code.
+  // e-p4b, e-p7, e-p9, e-p11, and every gh-2084 'e-pro-*' exposition
+  // screen) advance with a single synchronous go() call and no network
+  // round-trip, so a fast real double-tap can land its second tap on
+  // whatever the NEXT screen renders at the same on-screen position
+  // (round 1's repro: e-p11 -> e-p12, second tap lands on e-p12's own
+  // first, disqualifying option). A per-render `fired` flag alone does
+  // not stop this -- the second tap hits a DIFFERENT element (the next
+  // screen's), not the same button twice. The actual guard is the
+  // capturing-phase listener init() attaches to `root` (see below): it
+  // drops any click within a short window of the CURRENT screen having
+  // been shown, so the accidental second tap is swallowed before it ever
+  // reaches the newly-rendered screen's own handler, for every screen
+  // this file renders (its own exposition buttons AND arm C's own reused
+  // option rows), without needing any change to arm C's code.
   var CLICK_GUARD_MS = 350;
 
   // ====== Page 1: role tap (arm C's own c-entry, unchanged) ======
@@ -335,7 +373,9 @@
       ],
       onSelect: function (idx) {
         if (idx === 1) { role = 'homeowner'; go('e-p2'); return; }
-        if (idx === 2) { go('e-prof-entry'); return; }
+        // gh-2084: Professional now leads with its own shared exposition
+        // (e-pro-2) before arm C's own industry picker (e-pro-3).
+        if (idx === 2) { go('e-pro-2'); return; }
         role = 'contractor';
         go('e-contractor-1');
       }
@@ -344,11 +384,11 @@
 
   // ====== Exposition screens (pages 2, 4a, 4b, 7, 9, 11) -- one
   // paragraph, one guarded Continue tap, nothing else. ======
-  function expositionRenderer(text, nextToken) {
+  function expositionRenderer(text, nextToken, label) {
     return function () {
       root.appendChild(bodyText(text));
       var fired = false;
-      root.appendChild(continueButton('Continue', function () {
+      root.appendChild(continueButton(label || 'Continue', function () {
         // Per-render guard: protects against the SAME button firing
         // twice (e.g. two synthetic events on one element); the
         // cross-screen fast-double-tap case is handled by the root-level
@@ -358,6 +398,13 @@
         go(nextToken);
       }, true));
     };
+  }
+  // gh-2084 review round 1, item 4: Sloane's script labels every
+  // professional-path exposition tap "Next", not "Continue" -- the
+  // homeowner path's own exposition screens (E_COPY.*, above) keep
+  // "Continue" unchanged.
+  function proExpositionRenderer(text, nextToken) {
+    return expositionRenderer(text, nextToken, 'Next');
   }
   RENDERERS['e-p2'] = expositionRenderer(E_COPY.p2, 'e-p3');
   RENDERERS['e-p4a'] = expositionRenderer(E_COPY.p4a, 'e-p5');
@@ -461,10 +508,20 @@
   // AND both `data:false` fallbacks share the exact same insert-then-
   // set-role sequence, with `is_synthetic` still threaded through every
   // one of them via bridge.oqInternalOverride.
-  function insertFreshLeadAndSetRole(nm, em, phoneDigits) {
+  //
+  // gh-2084: generalized (was insertFreshLeadAndSetRole(nm, em,
+  // phoneDigits), hardcoded to p_role:'homeowner') to accept the role/
+  // partnerIndustry to write, so the professional path's own single
+  // hand-off commitment (see proCloseRenderer below) can share this same
+  // insert-then-set-role sequence rather than duplicating it. Every
+  // existing homeowner call site below now passes ('homeowner', null)
+  // explicitly.
+  function insertLeadAndSetRole(nm, em, phoneDigits, roleForRpc, partnerIndustryForRpc) {
     return bridge.insertFreshLead(nm, em, phoneDigits, bridge.oqInternalOverride).then(function (newId) {
       return new Promise(function (resolve) {
-        bridge.sb.rpc('set_lead_role', { p_lead_id: newId, p_role: 'homeowner' }).then(function (res) {
+        var payload = { p_lead_id: newId, p_role: roleForRpc };
+        if (partnerIndustryForRpc) payload.p_partner_industry = partnerIndustryForRpc;
+        bridge.sb.rpc('set_lead_role', payload).then(function (res) {
           if (res && res.error) throw res.error;
           resolve(newId);
         }).catch(function (roleErr) {
@@ -540,7 +597,7 @@
           // a fresh insert (now via the shared helper, which ALSO calls
           // set_lead_role -- round 1's own fallback here did not) rather
           // than losing the correction.
-          return insertFreshLeadAndSetRole(name, email, null).then(function (newId) { leadId = newId; });
+          return insertLeadAndSetRole(name, email, null, 'homeowner', null).then(function (newId) { leadId = newId; });
         }, function () { /* thrown/rejected rpc -- proceed anyway, same "never strand" rule every RPC on this router follows */ }).then(function () {
           if (activeToken === 'e-p7-5') go('e-p8');
         }, function () {
@@ -557,9 +614,9 @@
       // sets leads.is_synthetic=true on the row in that case so a pre-
       // flip QA walk never creates an unflagged production lead / an
       // unflagged admin alert. False/undefined for every real visitor.
-      // (Threaded inside insertFreshLeadAndSetRole, shared with both
+      // (Threaded inside insertLeadAndSetRole, shared with both
       // `data:false` fallbacks above/below.)
-      var p = insertFreshLeadAndSetRole(name, value, null).then(function (newId) {
+      var p = insertLeadAndSetRole(name, value, null, 'homeowner', null).then(function (newId) {
         email = value;
         leadId = newId;
         return newId;
@@ -657,6 +714,12 @@
   // hook of the same name.
   function HOOK_measurementPurchase() { /* see gh-2078; intentionally not implemented in gh-2076 */ }
 
+  // gh-2078 HOOK POINT for the PROFESSIONAL hand-off (gh-2084) -- not
+  // implemented here, on purpose. #2078 defines partner_signup_complete's
+  // payload; this hook marks exactly where it will fire, mirroring
+  // HOOK_measurementPurchase above.
+  function HOOK_partnerSignupComplete() { /* see gh-2078; intentionally not implemented in gh-2084 */ }
+
   // ====== Page 13: "Tell us about your home" (arm C's home8 TEXT,
   // unchanged) -- but name/email are already on the lead row from page
   // 7.5, so this screen collects only the one remaining optional field,
@@ -707,7 +770,7 @@
         // #2088 round 1 item 4 / round 2 leftover: same data:false
         // fallback as e-p7-5, now via the shared helper so this ALSO
         // calls set_lead_role (round 1's own fallback here did not).
-        return insertFreshLeadAndSetRole(name, email, phoneDigits).then(function (newId) {
+        return insertLeadAndSetRole(name, email, phoneDigits, 'homeowner', null).then(function (newId) {
           leadId = newId;
           finish();
         });
@@ -729,13 +792,288 @@
     bridge.redirectTo(bridge.appendParams(withLead, bridge.collectAttribution()), true);
   }
 
-  // ====== Professional / contractor tracks -- arm C's own screens,
-  // unchanged, reused via js/router-discovery.js's exported
-  // renderPartnerContact and PARTNER_INDUSTRY_ORDER/REALTOR_TRACK/
-  // INSURANCE_TRACK/CONTRACTOR_TRACK (#2088 round 1, item 6). Registered
-  // once RD has loaded (registerReusedTracks(), called from init()'s own
-  // loadDiscoveryModule().then()) since they read those exports at
-  // REGISTRATION time, not at render time. Pending #2084. ======
+  // ====== gh-2084 -- Professional path: Real Estate / Insurance
+  // branches. Every existing arm C professional question/option below is
+  // read live from window.RouterDiscovery.COPY/REALTOR_TRACK/
+  // INSURANCE_TRACK at RENDER time (never retyped) -- only the
+  // exposition screens interspersed between them (PRO_COPY above) are
+  // new. Home Inspector/Adjuster/Other and the contractor track are
+  // OUT OF SCOPE for #2084 and stay exactly as arm C already handles
+  // them (see e-pro-3 and the "Professional / contractor tracks"
+  // registration below). ======
+
+  // One professional-track question screen, reading arm C's own
+  // REALTOR_TRACK/INSURANCE_TRACK entry `idx` at render time (RD is
+  // always loaded by the time any e-pro-* screen renders).
+  function proQuestionRenderer(trackName, idx, nextToken) {
+    return function () {
+      var RD = window.RouterDiscovery;
+      var q = RD[trackName][idx];
+      root.appendChild(backButton(goBack));
+      RD.renderSingleSelect(root, {
+        heading: RD.COPY[q.headingKey],
+        options: RD.COPY[q.optionsKey],
+        onSelect: function (choice) {
+          proAnswers[q.answerKey] = RD.COPY[q.optionsKey][choice - 1];
+          go(nextToken);
+        }
+      });
+    };
+  }
+
+  // New name-capture screen (gh-2084 pages 5.5a/5.5b) -- client-side
+  // only, no leads row yet, same reasoning as e-p5-5 above.
+  function proNameRenderer(nextToken) {
+    return function () {
+      root.appendChild(backButton(goBack));
+      root.appendChild(heading('What\'s your name?'));
+      var form = wrapInForm(onSubmit);
+      root.appendChild(form);
+      var nameF = field('eProName', 'Name', 'text', { autocomplete: 'name', maxlength: '200' }, false, form);
+      nameF.input.value = proName || '';
+      form.appendChild(continueButton('Continue', onSubmit, true));
+      function onSubmit() {
+        nameF.err.textContent = '';
+        var value = nameF.input.value.trim();
+        if (!value) { nameF.err.textContent = 'Please enter your name.'; return; }
+        proName = value;
+        go(nextToken);
+      }
+    };
+  }
+
+  // Email-capture screen (gh-2084 pages 9.5a/9.5b) -- gh-2084 review
+  // round 1, item 1: this is now the professional path's FIRST
+  // COMMITMENT, exactly the role e-p7-5 plays for the homeowner path --
+  // it writes the leads row (insert + set_lead_role, role=
+  // 'referral_partner', the given partnerIndustryKey) with the name
+  // already captured at the previous screen. Ruling recorded on #2084:
+  // an early row here means a visitor who drops off after this screen
+  // still leaves a lead, instead of only ever writing one at the close
+  // screen a drop-off would never reach. Same defensive shape as
+  // e-p7-5: a re-entry while a fresh insert is still pending renders a
+  // wait state and resolves forward once that SAME request settles;
+  // resubmit-after-Back (leadId already set) PATCHes via
+  // update_lead_contact, falling back to a fresh insertLeadAndSetRole on
+  // a `data:false` result, mirroring e-p7-5's own resubmit path exactly.
+  function proEmailRenderer(nextToken, partnerIndustryKey) {
+    return function () {
+      var myToken = activeToken;
+
+      if (proEmailInsertPromise) {
+        root.appendChild(heading('What\'s a good email address to reach you?'));
+        root.appendChild(continueButton('Please wait…', function () {}, false));
+        proEmailInsertPromise.then(function () {
+          if (activeToken === myToken) go(nextToken);
+        }, function () { /* the original submit's own handler already surfaced the error */ });
+        return;
+      }
+
+      var backBtn = backButton(goBack);
+      root.appendChild(backBtn);
+      root.appendChild(heading('What\'s a good email address to reach you?'));
+      var form = wrapInForm(onSubmit);
+      root.appendChild(form);
+      var emailF = field('eProEmail', 'Email', 'email', { autocomplete: 'email', inputmode: 'email', maxlength: '320' }, false, form);
+      emailF.input.value = proEmail || '';
+      var submitBtn = continueButton('Continue', onSubmit, true);
+      form.appendChild(submitBtn);
+
+      function onSubmit() {
+        if (proEmailInsertPromise) return;
+
+        emailF.err.textContent = '';
+        var value = emailF.input.value.trim();
+        if (!value || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+          emailF.err.textContent = 'Please enter a valid email address.';
+          return;
+        }
+        if (!bridge.sb) { bridge.showError('Something went wrong loading the form. Please refresh and try again.'); return; }
+
+        submitBtn.disabled = true;
+        backBtn.disabled = true;
+        submitBtn.textContent = 'Please wait…';
+        emailF.input.readOnly = true;
+
+        if (leadId) {
+          proEmail = value;
+          var patchP = bridge.sb.rpc('update_lead_contact', { p_lead_id: leadId, p_name: proName, p_email: proEmail, p_phone: null }).then(function (res) {
+            if (res && res.data === true) { return; }
+            return insertLeadAndSetRole(proName, proEmail, null, 'referral_partner', partnerIndustryKey).then(function (newId) { leadId = newId; });
+          }, function () { /* thrown/rejected rpc -- proceed anyway */ }).then(function () {
+            if (activeToken === myToken) go(nextToken);
+          }, function () {
+            if (activeToken === myToken) go(nextToken);
+          });
+          proEmailInsertPromise = patchP;
+          patchP.then(function () { proEmailInsertPromise = null; }, function () { proEmailInsertPromise = null; });
+          return;
+        }
+
+        var p = insertLeadAndSetRole(proName, value, null, 'referral_partner', partnerIndustryKey).then(function (newId) {
+          proEmail = value;
+          leadId = newId;
+          return newId;
+        });
+
+        proEmailInsertPromise = p;
+        p.then(function () {
+          proEmailInsertPromise = null;
+          if (activeToken === myToken) go(nextToken);
+        }, function (err) {
+          proEmailInsertPromise = null;
+          console.error('[router-variant-e] professional email save failed:', err);
+          if (activeToken === myToken) {
+            submitBtn.disabled = false;
+            backBtn.disabled = false;
+            submitBtn.textContent = 'Continue';
+            emailF.input.readOnly = false;
+            bridge.showError('Something went wrong saving your info. Please try again.');
+          }
+        });
+      }
+    };
+  }
+
+  // Hand-off / close screen (gh-2084 pages 12(a)/18(b)) -- renders arm
+  // C's own realtorClose/insClose paragraphs VERBATIM (fee sentence +
+  // D-266 disclaimer stay exactly where those arrays already show them,
+  // never repositioned). gh-2084 review round 1, item 1: the lead row
+  // already exists by the time a visitor reaches this screen (written
+  // at the email screen above), so "Next" no longer inserts -- it
+  // PATCHes via update_lead_contact (the same call e-p13 makes, and the
+  // same `data:false` -> insertLeadAndSetRole fallback e-p13 falls back
+  // to) and redirects with the existing leadId (or the fallback's new
+  // one). Same defensive in-flight guard (proCloseSubmitPromise) as
+  // every other submit on this router -- Back and Next are both
+  // disabled for the duration, and a second Enter/click while the
+  // request is in flight is a complete no-op. No phone field exists on
+  // this screen or anywhere else on the professional path (locked
+  // default 4).
+  function proCloseRenderer(copyKey, partnerIndustryKey, completeToken) {
+    return function () {
+      var myToken = activeToken;
+      var RD = window.RouterDiscovery;
+      RD.COPY[copyKey].forEach(function (p) { root.appendChild(bodyText(p)); });
+      var backBtn = backButton(goBack);
+      root.appendChild(backBtn);
+      var submitBtn = continueButton('Next', onSubmit, true);
+      root.appendChild(submitBtn);
+
+      function finish(newId) {
+        emitComplete(completeToken);
+        // gh-2078: partner_signup_complete is NOT emitted yet -- see
+        // HOOK_partnerSignupComplete's own comment above.
+        HOOK_partnerSignupComplete();
+        redirectWithLeadId(bridge.PARTNER_INDUSTRY_DESTINATIONS[partnerIndustryKey], newId);
+      }
+
+      function onSubmit() {
+        if (proCloseSubmitPromise) return;
+        if (!bridge.sb) { bridge.showError('Something went wrong loading the form. Please refresh and try again.'); return; }
+        partnerIndustry = partnerIndustryKey;
+        submitBtn.disabled = true;
+        backBtn.disabled = true;
+        submitBtn.textContent = 'Please wait…';
+        var p = bridge.sb.rpc('update_lead_contact', { p_lead_id: leadId, p_name: proName, p_email: proEmail, p_phone: null }).then(function (res) {
+          if (res && res.data === true) { return leadId; }
+          // Same data:false fallback as e-p13/e-p7-5: the guard (30-
+          // minute window, or prefill already used) refused the write --
+          // fall back to a fresh row via the shared helper (which also
+          // calls set_lead_role) rather than stranding this visitor.
+          return insertLeadAndSetRole(proName, proEmail, null, 'referral_partner', partnerIndustryKey).then(function (newId) {
+            leadId = newId;
+            return newId;
+          });
+        }, function (err) {
+          console.error('[router-variant-e] professional hand-off update_lead_contact threw -- proceeding anyway:', err);
+          return leadId;
+        });
+        proCloseSubmitPromise = p;
+        p.then(function (newId) {
+          proCloseSubmitPromise = null;
+          if (activeToken === myToken) finish(newId);
+        }, function (err) {
+          proCloseSubmitPromise = null;
+          console.error('[router-variant-e] professional hand-off save failed:', err);
+          if (activeToken === myToken) {
+            submitBtn.disabled = false;
+            backBtn.disabled = false;
+            submitBtn.textContent = 'Next';
+            bridge.showError('Something went wrong saving your info. Please try again.');
+          }
+        });
+      }
+    };
+  }
+
+  // -- Shared exposition + industry picker (gh-2084 pages 2 and 3) --
+  RENDERERS['e-pro-2'] = proExpositionRenderer(PRO_COPY.p2, 'e-pro-3');
+  RENDERERS['e-pro-3'] = function () {
+    var RD = window.RouterDiscovery;
+    var order = RD.PARTNER_INDUSTRY_ORDER;
+    var labels = (window.AgentTypes && window.AgentTypes.CHOOSER_LABELS) || {};
+    root.appendChild(backButton(goBack));
+    RD.renderSingleSelect(root, {
+      heading: RD.COPY.profEntryHeading,
+      sub: RD.COPY.profEntrySub,
+      options: order.map(function (code) { return labels[code] || code; }),
+      onSelect: function (idx) {
+        var industry = order[idx - 1];
+        partnerIndustry = industry;
+        if (industry === 're_agent') { go('e-pro-4a'); return; }
+        if (industry === 'insurance_agent') { go('e-pro-4b'); return; }
+        // home_inspector/adjuster/other -- locked default 5: stay on arm
+        // C's own flow, unchanged -- straight to their destination page
+        // with attribution only, no lead id, exactly as arm C's own
+        // c-prof-entry already does.
+        emitComplete('e-pro-3');
+        var dest = bridge.PARTNER_INDUSTRY_DESTINATIONS[industry];
+        bridge.redirectTo(bridge.appendParams(dest, bridge.collectAttribution()), true);
+      }
+    });
+  };
+
+  // -- Real Estate branch (gh-2084 pages 4(a)-12(a), 11 pages) --
+  RENDERERS['e-pro-4a'] = proExpositionRenderer(PRO_COPY.p4a, 'e-pro-5a');
+  RENDERERS['e-pro-5a'] = proQuestionRenderer('REALTOR_TRACK', 0, 'e-pro-5-5a');
+  RENDERERS['e-pro-5-5a'] = proNameRenderer('e-pro-6a');
+  RENDERERS['e-pro-6a'] = proExpositionRenderer(PRO_COPY.p6a, 'e-pro-7a');
+  RENDERERS['e-pro-7a'] = proQuestionRenderer('REALTOR_TRACK', 1, 'e-pro-8a');
+  RENDERERS['e-pro-8a'] = proExpositionRenderer(PRO_COPY.p8a, 'e-pro-9a');
+  RENDERERS['e-pro-9a'] = proQuestionRenderer('REALTOR_TRACK', 2, 'e-pro-9-5a');
+  RENDERERS['e-pro-9-5a'] = proEmailRenderer('e-pro-10a', 're_agent');
+  RENDERERS['e-pro-10a'] = proExpositionRenderer(PRO_COPY.p10a, 'e-pro-11a');
+  RENDERERS['e-pro-11a'] = proQuestionRenderer('REALTOR_TRACK', 3, 'e-pro-12a');
+  RENDERERS['e-pro-12a'] = proCloseRenderer('realtorClose', 're_agent', 'e-pro-12a');
+
+  // -- Insurance branch (gh-2084 pages 4(b)-18(b), 17 pages) --
+  RENDERERS['e-pro-4b'] = proExpositionRenderer(PRO_COPY.p4b, 'e-pro-5b');
+  RENDERERS['e-pro-5b'] = proQuestionRenderer('INSURANCE_TRACK', 0, 'e-pro-5-5b');
+  RENDERERS['e-pro-5-5b'] = proNameRenderer('e-pro-6b');
+  RENDERERS['e-pro-6b'] = proExpositionRenderer(PRO_COPY.p6b, 'e-pro-7b');
+  RENDERERS['e-pro-7b'] = proQuestionRenderer('INSURANCE_TRACK', 1, 'e-pro-8b');
+  RENDERERS['e-pro-8b'] = proExpositionRenderer(PRO_COPY.p8b, 'e-pro-9b');
+  RENDERERS['e-pro-9b'] = proQuestionRenderer('INSURANCE_TRACK', 2, 'e-pro-9-5b');
+  RENDERERS['e-pro-9-5b'] = proEmailRenderer('e-pro-10b', 'insurance_agent');
+  RENDERERS['e-pro-10b'] = proExpositionRenderer(PRO_COPY.p10b, 'e-pro-11b');
+  RENDERERS['e-pro-11b'] = proQuestionRenderer('INSURANCE_TRACK', 3, 'e-pro-12b');
+  RENDERERS['e-pro-12b'] = proExpositionRenderer(PRO_COPY.p12b, 'e-pro-13b');
+  RENDERERS['e-pro-13b'] = proQuestionRenderer('INSURANCE_TRACK', 4, 'e-pro-14b');
+  // Locked default 3: Alt A only (safe default) -- see PRO_COPY.p14b's
+  // own comment above. The "Nearly 40%" alternative is never wired here.
+  RENDERERS['e-pro-14b'] = proExpositionRenderer(PRO_COPY.p14b, 'e-pro-15b');
+  RENDERERS['e-pro-15b'] = proQuestionRenderer('INSURANCE_TRACK', 5, 'e-pro-16b');
+  RENDERERS['e-pro-16b'] = proExpositionRenderer(PRO_COPY.p16b, 'e-pro-17b');
+  RENDERERS['e-pro-17b'] = proQuestionRenderer('INSURANCE_TRACK', 6, 'e-pro-18b');
+  RENDERERS['e-pro-18b'] = proCloseRenderer('insClose', 'insurance_agent', 'e-pro-18b');
+
+  // ====== Contractor track -- arm C's own screens, unchanged, reused via
+  // js/router-discovery.js's exported renderPartnerContact and
+  // CONTRACTOR_TRACK (#2088 round 1, item 6). Registered once RD has
+  // loaded (registerReusedTracks(), called from init()'s own
+  // loadDiscoveryModule().then()) since it reads that export at
+  // REGISTRATION time, not at render time. Out of scope for #2084. ======
   function registerQuestionTrack(prefix, track, closeToken, RD) {
     track.forEach(function (q, i) {
       var token = prefix + '-' + (i + 1);
@@ -756,66 +1094,8 @@
   }
 
   function registerReusedTracks(RD) {
-    registerQuestionTrack('e-realtor', RD.REALTOR_TRACK, 'e-realtor-close', RD);
-    registerQuestionTrack('e-ins', RD.INSURANCE_TRACK, 'e-ins-close', RD);
     registerQuestionTrack('e-contractor', RD.CONTRACTOR_TRACK, 'e-contractor-5', RD);
   }
-
-  RENDERERS['e-prof-entry'] = function () {
-    var RD = window.RouterDiscovery;
-    var order = RD.PARTNER_INDUSTRY_ORDER;
-    var labels = (window.AgentTypes && window.AgentTypes.CHOOSER_LABELS) || {};
-    root.appendChild(backButton(goBack));
-    RD.renderSingleSelect(root, {
-      heading: RD.COPY.profEntryHeading,
-      sub: RD.COPY.profEntrySub,
-      options: order.map(function (code) { return labels[code] || code; }),
-      onSelect: function (idx) {
-        var industry = order[idx - 1];
-        partnerIndustry = industry;
-        if (industry === 're_agent') { go('e-realtor-1'); return; }
-        if (industry === 'insurance_agent') { go('e-ins-1'); return; }
-        // home_inspector/adjuster/other -- arm C's own c-prof-entry sends
-        // these straight to their destination page with attribution only,
-        // no lead id (no copy/track exists for them yet, same as arm C).
-        emitComplete('e-prof-entry');
-        var dest = bridge.PARTNER_INDUSTRY_DESTINATIONS[industry];
-        bridge.redirectTo(bridge.appendParams(dest, bridge.collectAttribution()), true);
-      }
-    });
-  };
-
-  RENDERERS['e-realtor-close'] = function () {
-    var RD = window.RouterDiscovery;
-    RD.COPY.realtorClose.forEach(function (p) { root.appendChild(bodyText(p)); });
-    root.appendChild(continueButton('Continue', function () { go('e-realtor-contact'); }, true));
-  };
-  RENDERERS['e-realtor-contact'] = function () {
-    var RD = window.RouterDiscovery;
-    RD.renderPartnerContact(root, {
-      introParagraphs: [],
-      role: 'referral_partner',
-      partnerIndustry: 're_agent',
-      destination: bridge.PARTNER_INDUSTRY_DESTINATIONS.re_agent,
-      completeToken: 'e-realtor-contact'
-    });
-  };
-
-  RENDERERS['e-ins-close'] = function () {
-    var RD = window.RouterDiscovery;
-    RD.COPY.insClose.forEach(function (p) { root.appendChild(bodyText(p)); });
-    root.appendChild(continueButton('Continue', function () { go('e-ins-contact'); }, true));
-  };
-  RENDERERS['e-ins-contact'] = function () {
-    var RD = window.RouterDiscovery;
-    RD.renderPartnerContact(root, {
-      introParagraphs: [],
-      role: 'referral_partner',
-      partnerIndustry: 'insurance_agent',
-      destination: bridge.PARTNER_INDUSTRY_DESTINATIONS.insurance_agent,
-      completeToken: 'e-ins-contact'
-    });
-  };
 
   RENDERERS['e-contractor-5'] = function () {
     var RD = window.RouterDiscovery;
@@ -888,8 +1168,17 @@
     // mid-submit, its Continue button and Back button are still disabled
     // and read "Please wait…". Re-rendering the current screen rebuilds
     // both fresh and enabled; this is a no-op for every other screen.
+    //
+    // gh-2084 (review round 1, item 2): the professional close screens
+    // (e-pro-12a / e-pro-18b) have the exact same in-flight-submit-then-
+    // bfcache-restore exposure as e-p13 -- add them to the same
+    // recovery list rather than a second listener. leadId is module
+    // state, unaffected by the restore, so the re-rendered screen's own
+    // "Next" tap still reuses it (via proCloseRenderer's own PATCH path)
+    // instead of ever inserting a second row.
+    var BFCACHE_RECOVERABLE = { 'e-p13': true, 'e-pro-12a': true, 'e-pro-18b': true };
     window.addEventListener('pageshow', function (e) {
-      if (e.persisted && activeToken === 'e-p13') { show('e-p13'); }
+      if (e.persisted && BFCACHE_RECOVERABLE[activeToken]) { show(activeToken); }
     });
 
     loadDiscoveryModule().then(function (RD) {
