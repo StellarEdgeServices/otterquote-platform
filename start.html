@@ -220,6 +220,9 @@
   // Until the flip, arm d's code below is shipped but unreachable:
   // toLiveArm() (below) remaps any non-live arm -- including an explicit
   // ?v=d -- onto the live set, so ?v=d does NOT render arm d pre-flip.
+  // tests/gh2033-variant-assignment.mjs reads BOTH constants out of this
+  // file itself (never a hardcoded copy) -- the flip above is genuinely
+  // the only edit needed; that test needs none.
   // ═════════════════════════════════════════════════════════════════
   var LIVE_VARIANTS = ['c'];
 

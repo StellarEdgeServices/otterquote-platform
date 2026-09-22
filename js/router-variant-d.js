@@ -292,19 +292,48 @@
       // correction) must PATCH it, not insert again. Arm A already solved
       // this exact problem with its own sessionStorage resubmit path; arm
       // C cannot hit it because its contact capture is its LAST screen.
-      // `role !== 'contractor'` guards a case that should not be
-      // reachable in practice (the contractor branch below is terminal --
-      // it redirects away rather than leaving this screen re-enterable --
-      // but the guard costs nothing). d-name's own update_lead_contact
-      // call (which always sends `p_email: email`) is what actually
-      // writes the corrected address -- this branch only updates the
-      // local `email` var and re-sends the role (which may have changed
-      // via Back all the way to d-role and a different tap), then
-      // advances -- go() below still emits d-email's own
-      // router_step_complete exactly once.
-      if (leadId && role !== 'contractor') {
+      //
+      // gh-2075 round 3, re-review report ceo57-review2-pr2086-20260921,
+      // additional finding (a): round 2 guarded this with
+      // `role !== 'contractor'`, on the theory that the contractor branch
+      // below is terminal and this screen would never be re-entered with
+      // role='contractor'. That theory was wrong: Back all the way to
+      // d-role, tapping Contractor, then Back to d-email and resubmitting
+      // reaches this exact function with `leadId` already set AND
+      // role==='contractor' -- round 2's guard excluded that case, so it
+      // fell through to the full insert path below and created a SECOND
+      // leads row and a second admin alert, the same bug this branch
+      // exists to prevent for every other role. The role guard is gone;
+      // this branch now handles every role, including contractor, and
+      // dispatches to the SAME next step a fresh submit would reach for
+      // whatever role is currently selected -- d-name's own
+      // update_lead_contact call (which always sends `p_email: email`)
+      // is what actually writes the corrected address for the
+      // homeowner/professional paths.
+      //
+      // gh-2075 round 3 BLOCKER fix (re-review finding, real-browser
+      // evidence: `.catch is not a function` thrown on this exact line,
+      // trapping the visitor on d-email with every further tap also
+      // throwing): supabase-js 2.112.4's `.rpc(...)` call returns a
+      // then-able with a `.then(onFulfilled, onRejected)` method but NO
+      // `.catch()` -- `.catch()` only exists once something has already
+      // called `.then()` on it and gotten back a real native Promise (see
+      // every OTHER `bridge.sb.rpc(...)` call site in this file, which
+      // all chain `.then(fn).catch(fn)` and are therefore safe -- this
+      // was the one call site in this file that skipped straight to
+      // `.catch()`). Two-argument `.then(onFulfilled, onRejected)` is the
+      // form every thenable, including this one, is required to support.
+      if (leadId) {
         email = value;
-        bridge.sb.rpc('set_lead_role', { p_lead_id: leadId, p_role: role }).catch(function () {});
+        bridge.sb.rpc('set_lead_role', { p_lead_id: leadId, p_role: role }).then(null, function () {});
+        if (role === 'contractor') {
+          if (!leadEventFired) {
+            leadEventFired = true;
+            try { fbq('track', 'Lead'); } catch (e) {}
+          }
+          redirectWithLeadId(bridge.ROLE_DESTINATIONS.contractor, leadId);
+          return;
+        }
         go('d-name');
         return;
       }
