@@ -505,7 +505,7 @@ end $$;
 -- which does carry the caller's real role.
 --
 -- This block first reinstalls, byte-for-byte, the round-1 function body
--- from PR #2002 head 03916c200a98811c8ea86b12e38043ec2c58b6e0 -- for this
+-- from PR #2002 head 03916c20 -- for this
 -- comparison ONLY, not the shipped function -- reproduces the bug against
 -- it (labeled PRE), then re-sources the real migration file (restoring the
 -- round-2 fixed version -- this also doubles as an extra idempotency
@@ -560,7 +560,7 @@ begin
   if v_c_is_test is distinct from true then
     raise exception 'EXPECTED the round-1 bug to reproduce here (service-role explicit false should have been flipped true by the round-1 function body) -- got %. If this changed, the round-1 body pasted into this test file no longer matches PR #2002 head 03916c20, and the PRE/POST comparison below would be dishonest.', v_c_is_test;
   end if;
-  raise notice 'PRE (current head 03916c200a98811c8ea86b12e38043ec2c58b6e0, round-1 function): S2 fixture, service-role explicit is_test=false -> contractors.is_test = % -- BUG: flipped true, breaks #564 test-world-symmetry S2', v_c_is_test;
+  raise notice 'PRE (current head 03916c20, round-1 function): S2 fixture, service-role explicit is_test=false -> contractors.is_test = % -- BUG: flipped true, breaks #564 test-world-symmetry S2', v_c_is_test;
 
   delete from public.contractors where user_id = v_s2_user_id;
   delete from public.profiles where id = v_s2_user_id;
