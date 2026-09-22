@@ -291,6 +291,205 @@ def main():
                 for f in failures
             ),
         )
+
+        print()
+        print("gh-2020 refuter bypass 1/(7): the disclaimer sentence is commented "
+              "out IN PLACE inside alpha's copy array (// DISABLED ...) -- the "
+              "sentence substring is still literally in the file, so a checker "
+              "that does not strip comments before comparing wrongly sees it as "
+              "present; must FAIL, naming alpha")
+        commented_js = build_fixture_js().replace(
+            f"'{D266}'",
+            f"// DISABLED pending legal re-review: '{D266}'",
+            1,
+        )
+        (tmp_root / "js" / "router-discovery.js").write_text(commented_js, encoding="utf-8")
+        failures, notes = run_js_check(tmp_root)
+        check_true(
+            "bypass 1: commented-out disclaimer is treated as ABSENT, alpha named",
+            any("alpha track (c-alpha-close) missing D-266 disclaimer" in f for f in failures),
+        )
+
+        print()
+        print("restore -- must return to PASS")
+        write_fixture(tmp_root)
+        failures, notes = run_js_check(tmp_root)
+        check("restored-after-bypass-1 failures", failures, [])
+
+        print()
+        print("gh-2020 refuter bypass 1b/(7): check_d266_disclaimer() directly on "
+              "an HTML page whose disclaimer is wrapped in <!-- --> -- must "
+              "return False, not True (a commented-out disclaimer never rendered "
+              "to a visitor is not '\"present\"')")
+        html_commented = (
+            "<p>Some intro copy.</p>\n"
+            f"<!-- <p class=\"gate-disclaimer\">{D266}</p> -->\n"
+            "<p>Some outro copy.</p>\n"
+        )
+        check_false(
+            "bypass 1b: HTML-commented disclaimer does not satisfy check_d266_disclaimer",
+            mod.check_d266_disclaimer(html_commented),
+        )
+        html_live = f"<p class=\"gate-disclaimer\">{D266}</p>"
+        check_true(
+            "sanity: an UN-commented disclaimer still satisfies check_d266_disclaimer",
+            mod.check_d266_disclaimer(html_live),
+        )
+
+        print()
+        print("gh-2020 refuter bypass 2/(7): a leftover dead COPY.alphaCloseV1 "
+              "array (itself real JS, not commented, still carrying the "
+              "sentence) plus a commented-out reference to it placed ahead of "
+              "the REAL forEach call inside c-alpha-close -- the real, live "
+              "alphaClose array's own disclaimer is removed; must FAIL naming "
+              "alpha, not be fooled by the dead array")
+        js = build_fixture_js(alpha_disclaimer=False)
+        js = js.replace(
+            "var COPY = {\n",
+            (
+                "var COPY = {\n"
+                "    alphaCloseV1: [\n"
+                f"      'Old v1 copy, no longer rendered by anything live.',\n"
+                f"      '{D266}'\n"
+                "    ],\n"
+            ),
+            1,
+        )
+        js = js.replace(
+            "    COPY.alphaClose.forEach(function (p) { root.appendChild(bodyText(p)); });",
+            (
+                "    // superseded, kept for reference: "
+                "COPY.alphaCloseV1.forEach(function (p) { root.appendChild(bodyText(p)); });\n"
+                "    COPY.alphaClose.forEach(function (p) { root.appendChild(bodyText(p)); });"
+            ),
+            1,
+        )
+        (tmp_root / "js" / "router-discovery.js").write_text(js, encoding="utf-8")
+        failures, notes = run_js_check(tmp_root)
+        check_true(
+            "bypass 2: dead decoy array does not satisfy the real alpha track, alpha named",
+            any("alpha track (c-alpha-close) missing D-266 disclaimer" in f for f in failures),
+        )
+
+        print()
+        print("restore -- must return to PASS")
+        write_fixture(tmp_root)
+        failures, notes = run_js_check(tmp_root)
+        check("restored-after-bypass-2 failures", failures, [])
+
+        print()
+        print("gh-2020 refuter bypass 3/(6): convert c-alpha-close AND "
+              "c-alpha-contact to arrow functions -- both structural regexes "
+              "(which require the literal 'function' keyword) miss the track "
+              "entirely; must FAIL CLOSED (not pass silently with nothing "
+              "printed)")
+        js = build_fixture_js()
+        js = js.replace(
+            "  RENDERERS['c-alpha-close'] = function () {\n"
+            "    COPY.alphaClose.forEach(function (p) { root.appendChild(bodyText(p)); });\n"
+            "    root.appendChild(continueButton('Continue', function () { go('c-alpha-contact'); }, true));\n"
+            "  };",
+            "  RENDERERS['c-alpha-close'] = () => {\n"
+            "    COPY.alphaClose.forEach((p) => { root.appendChild(bodyText(p)); });\n"
+            "    root.appendChild(continueButton('Continue', () => { go('c-alpha-contact'); }, true));\n"
+            "  };",
+            1,
+        )
+        js = js.replace(
+            "  RENDERERS['c-alpha-contact'] = function () {\n"
+            "    renderPartnerContact({\n"
+            "      role: 'referral_partner',\n"
+            "      partnerIndustry: 'alpha_agent',\n"
+            "      completeToken: 'c-alpha-contact'\n"
+            "    });\n"
+            "  };",
+            "  RENDERERS['c-alpha-contact'] = () => {\n"
+            "    renderPartnerContact({\n"
+            "      role: 'referral_partner',\n"
+            "      partnerIndustry: 'alpha_agent',\n"
+            "      completeToken: 'c-alpha-contact'\n"
+            "    });\n"
+            "  };",
+            1,
+        )
+        (tmp_root / "js" / "router-discovery.js").write_text(js, encoding="utf-8")
+        failures, notes = run_js_check(tmp_root)
+        check_true(
+            "bypass 3: arrow-converted alpha track fails closed (unrecognized), not silent",
+            any(
+                "COPY.alphaClose.forEach(" in f and "d266_js_track_unrecognized" in f
+                for f in failures
+            ),
+        )
+
+        print()
+        print("restore -- must return to PASS")
+        write_fixture(tmp_root)
+        failures, notes = run_js_check(tmp_root)
+        check("restored-after-bypass-3 failures", failures, [])
+
+        print()
+        print("gh-2020 refuter bypass 5/(6): reindent EVERY renderer closer "
+              "('\\n  };' -> '\\n};', simulating a whole-file formatter pass) "
+              "-- the non-greedy RENDERERS regex can no longer find any close "
+              "screen at all; must FAIL CLOSED for every discovered track, not "
+              "just print a NOTE and exit clean")
+        js = build_fixture_js().replace("\n  };", "\n};")
+        (tmp_root / "js" / "router-discovery.js").write_text(js, encoding="utf-8")
+        failures, notes = run_js_check(tmp_root)
+        check_true(
+            "bypass 5: reindented file fails closed naming alpha",
+            any(
+                "COPY.alphaClose.forEach(" in f and "d266_js_track_unrecognized" in f
+                for f in failures
+            ),
+        )
+        check_true(
+            "bypass 5: reindented file fails closed naming beta too",
+            any(
+                "COPY.betaClose.forEach(" in f and "d266_js_track_unrecognized" in f
+                for f in failures
+            ),
+        )
+
+        print()
+        print("restore -- must return to PASS")
+        write_fixture(tmp_root)
+        failures, notes = run_js_check(tmp_root)
+        check("restored-after-bypass-5 failures", failures, [])
+
+        print()
+        print("gh-2020 refuter bypass 6/(7): a decoy alphaClose: [ '<sentence>' "
+              "] duplicate COPY key placed EARLIER in the file -- JS itself "
+              "resolves the LATER key as authoritative (later key wins), and "
+              "that real, later, live array's own disclaimer is removed; the "
+              "scope lookup must be bound to the renderer's own (last) array, "
+              "not re-grep the whole file by name -- must FAIL naming alpha")
+        js = build_fixture_js(alpha_disclaimer=False)
+        js = js.replace(
+            "var COPY = {\n",
+            (
+                "var COPY = {\n"
+                "    alphaClose: [\n"
+                "      'DECOY: this is not the real alphaClose array.',\n"
+                f"      '{D266}'\n"
+                "    ],\n"
+            ),
+            1,
+        )
+        (tmp_root / "js" / "router-discovery.js").write_text(js, encoding="utf-8")
+        failures, notes = run_js_check(tmp_root)
+        check_true(
+            "bypass 6: an earlier decoy alphaClose array does not satisfy the real (later) one, alpha named",
+            any("alpha track (c-alpha-close) missing D-266 disclaimer" in f for f in failures),
+        )
+
+        print()
+        print("restore -- must return to PASS")
+        write_fixture(tmp_root)
+        failures, notes = run_js_check(tmp_root)
+        check("restored-after-bypass-6 failures", failures, [])
+
     finally:
         shutil.rmtree(tmp_root, ignore_errors=True)
 

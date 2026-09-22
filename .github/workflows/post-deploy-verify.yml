@@ -33,3 +33,17 @@ jobs:
 
       - name: Run file integrity checks
         run: python3 scripts/ci-file-integrity.py
+
+      # gh-2020 amended closes-on (5): tools/partner_parity_check.test.py
+      # (the per-track D-266 self-test, including its negative controls for
+      # the six refuter-found bypasses on PR #2038) existed as a file but ran
+      # in NO workflow -- "a self-test nothing runs is a file, not a gate"
+      # (issue comment 5738197105). This job already runs
+      # scripts/ci-file-integrity.py, which itself chains
+      # tools/partner_parity_check.py (the checker this self-test covers), so
+      # it is the natural existing job to extend rather than adding a new
+      # workflow. BUILD-FAILING: a regression in the checker's own detection
+      # logic (e.g. this self-test's bypass negative controls going green
+      # again) fails this job, the same posture as the step above.
+      - name: Self-test the partner-parity D-266 per-track guard (gh-2020)
+        run: python3 tools/partner_parity_check.test.py

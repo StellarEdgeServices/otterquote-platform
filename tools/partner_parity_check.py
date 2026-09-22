@@ -156,6 +156,154 @@ JS_D266_PARTNER_CONTACT_RE = re.compile(
 JS_D266_COPY_FOREACH_RE = re.compile(r"COPY\.(\w+)\.forEach")
 JS_D266_PARTNER_INDUSTRY_RE = re.compile(r"partnerIndustry:\s*'([a-zA-Z_]+)'")
 
+# gh-2020 refuter (PR #2038 return, comment 5738187596 / 5738197105) broke
+# the per-track guard six ways, three of them silent passes. The helpers
+# below close every one of them:
+#
+#   (1, 1b, 2) COMMENT-BLINDNESS. check_d266_disclaimer() and every JS
+#   regex below used to read raw file bytes, so a disclaimer commented out
+#   in place (`// 'Check your employment agreement ...'`), a partners.html
+#   disclaimer wrapped in `<!-- -->`, or a dead `COPY.insCloseV1.forEach`
+#   reference left commented out ahead of the real one, all satisfied the
+#   check. Every JS surface is now comment-stripped ONCE (_strip_js_comments)
+#   before any regex runs against it, and check_d266_disclaimer() itself
+#   strips HTML comments (_strip_html_comments) before comparing, so a
+#   commented-out disclaimer is absent text, not present text, on both the
+#   static-HTML and the JS side.
+#
+#   (6, plus a false positive) SCOPE. `array_match` used to re-grep the
+#   WHOLE file by array name with a non-greedy `\[(.*?)\]` and take the
+#   FIRST hit -- so a decoy `insClose: [ '<the sentence>' ]` planted ahead
+#   of the real (edited) array satisfied the check, and a `]` inside
+#   legitimate copy could truncate the scope early and produce a false
+#   FAIL. _extract_array_literal() below binds the search to the file's own
+#   `COPY = { ... }` object (a decoy planted outside it is never seen at
+#   all), uses balanced-bracket matching instead of a lazy regex (a `]`
+#   inside a string literal no longer ends the scope), and -- when the same
+#   key appears more than once inside COPY -- takes the LAST occurrence,
+#   which is also what the browser actually executes (a later duplicate key
+#   in a JS object literal overrides an earlier one), so a decoy duplicate
+#   placed *before* the real, edited entry is not the one that wins.
+#
+#   (3, 4, 5) FAIL-OPEN ON UNRECOGNIZED SYNTAX. JS_D266_CLOSE_RENDERER_RE
+#   only matches one exact shape: `RENDERERS['c-<name>-close'] = function
+#   (...) {` ... `\n  };`. An arrow-function conversion, a renamed screen id
+#   (`c-ins-close` -> `c-ins-final`), or a reindented closing brace
+#   (`\n  };` -> `\n};`) all make that regex miss the track entirely --
+#   and the pre-fix code treated "discovered zero tracks for this name"
+#   as nothing to report. But in every one of those three edits, the
+#   underlying `COPY.<name>Close.forEach(` call -- the module's OWN naming
+#   convention for a track's close-copy array, unaffected by any of those
+#   three edits since it is not the wrapping syntax being changed -- is
+#   still sitting in the file. JS_D266_CENSUS_RE below re-derives the set
+#   of tracks that MUST exist from that convention, independent of
+#   JS_D266_CLOSE_RENDERER_RE's stricter parse. Any name the census finds
+#   that the strict parse did not is now a FAILURE naming the surface,
+#   not silence: "the renderer's syntax changed and this checker can no
+#   longer verify its disclaimer" is a fail-closed statement, not a
+#   fail-open guess.
+HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
+JS_BLOCK_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
+JS_LINE_COMMENT_RE = re.compile(r"//[^\n]*")
+
+
+def _strip_js_comments(text: str) -> str:
+    """Strip // line comments and /* */ block comments from JS source text
+    (gh-2020 refuter bypasses 1, 2: a disclaimer or a forEach reference
+    commented out in place must read as ABSENT, not present).
+
+    js/router-discovery.js contains no "://" substring and no "/*" block
+    comment (verified against the real file when this was written), so a
+    regex-based strip -- rather than a full tokenizer -- cannot mistake a
+    URL for a line comment here. If that ever stops being true, this needs
+    a real tokenizer instead.
+    """
+    text = JS_BLOCK_COMMENT_RE.sub(" ", text)
+    text = JS_LINE_COMMENT_RE.sub(" ", text)
+    return text
+
+
+def _strip_html_comments(text: str) -> str:
+    return HTML_COMMENT_RE.sub(" ", text)
+
+
+def _find_matching_bracket(text: str, open_pos: int, open_ch: str, close_ch: str) -> int:
+    """Index of the bracket matching the one at open_pos, skipping bracket
+    characters that occur inside a quoted JS string literal (so a `]`
+    inside copy text can't end the scope early -- gh-2020 refuter's false
+    positive against the old `\[(.*?)\]` lazy regex)."""
+    depth = 0
+    i = open_pos
+    n = len(text)
+    in_str = None
+    while i < n:
+        ch = text[i]
+        if in_str:
+            if ch == "\\":
+                i += 2
+                continue
+            if ch == in_str:
+                in_str = None
+            i += 1
+            continue
+        if ch in ("'", '"', "`"):
+            in_str = ch
+            i += 1
+            continue
+        if ch == open_ch:
+            depth += 1
+        elif ch == close_ch:
+            depth -= 1
+            if depth == 0:
+                return i
+        i += 1
+    return -1
+
+
+COPY_OBJECT_OPEN_RE = re.compile(r"\b(?:var|const|let)\s+COPY\s*=\s*\{")
+
+
+def _copy_object_span(text: str):
+    """(open_pos, close_pos) of the file's own `COPY = { ... }` object
+    literal, via balanced-bracket matching, or None if not found."""
+    m = COPY_OBJECT_OPEN_RE.search(text)
+    if not m:
+        return None
+    open_pos = m.end() - 1
+    close_pos = _find_matching_bracket(text, open_pos, "{", "}")
+    if close_pos == -1:
+        return None
+    return open_pos, close_pos
+
+
+def _extract_array_literal(text: str, name: str):
+    """The array literal assigned to `name:` inside the file's own COPY
+    object (gh-2020 refuter bypass 6). Returns the LAST occurrence's inner
+    text if `name` appears more than once inside COPY (matching JS
+    duplicate-key runtime semantics), or None if not found at all. Falls
+    back to searching the whole file only if no COPY object could be
+    located structurally, so this never regresses to being MORE permissive
+    than the old whole-file re-grep it replaces.
+    """
+    span = _copy_object_span(text)
+    scope = text[span[0] : span[1] + 1] if span else text
+    last = None
+    for m in re.finditer(r"\b" + re.escape(name) + r"\s*:\s*\[", scope):
+        open_pos = m.end() - 1
+        close_pos = _find_matching_bracket(scope, open_pos, "[", "]")
+        if close_pos == -1:
+            continue
+        last = scope[open_pos + 1 : close_pos]
+    return last
+
+
+# Independent of JS_D266_CLOSE_RENDERER_RE's stricter RENDERERS-key parse:
+# re-derives the set of tracks that must exist from the module's own
+# `COPY.<name>Close.forEach(` naming convention alone, so a track whose
+# RENDERERS wrapper syntax changed (arrow function, renamed screen id,
+# reindented closing brace) is still counted as existing.
+JS_D266_CENSUS_RE = re.compile(r"COPY\.([a-z][a-zA-Z0-9_]*)Close\.forEach\(")
+
 # Tracks this module defines that carry NO D-266 disclaimer BY DESIGN, with
 # the reason on record -- mirrors STATIC_FUNNEL_EXEMPT's written-reason
 # convention below. This dict is NOT how the checked-track list is derived
@@ -228,7 +376,13 @@ def _norm(text: str) -> str:
 
 
 def check_d266_disclaimer(html: str) -> bool:
-    return _norm(D266_TEXT) in _norm(html)
+    # gh-2020 refuter bypass 1b: a disclaimer wrapped in `<!-- -->` still
+    # matched here because the comparison ran on raw bytes. A commented-out
+    # disclaimer is absent text, not present text -- strip HTML comments
+    # first, on every caller (static pages, React twins, and the JS
+    # whole-file floor below, where an HTML-style comment would be
+    # harmless noise anyway since JS comments are stripped separately).
+    return _norm(D266_TEXT) in _norm(_strip_html_comments(html))
 
 
 def check_signed_in_redirect(html: str) -> bool:
@@ -334,6 +488,22 @@ def check_js_d266_surfaces() -> tuple[list[str], list[str]]:
          SIBLING track's copy still carries it -- is exactly the hole
          layer 1 alone could not see; deleting only the insurance track's
          occurrence left the pre-amendment check at exit 0, naming nothing.
+      3. FAIL-CLOSED CENSUS (added after PR #2038's refuter, comment
+         5738197105 criterion (6)): layer 2's RENDERERS-key parse is exact
+         and therefore breakable -- an arrow-function conversion, a
+         renamed screen id, or a reindented closing brace all make it miss
+         a track that is still really there. JS_D266_CENSUS_RE re-derives
+         the same track set from the module's OWN `COPY.<name>Close.forEach(`
+         naming convention, which those three edits do not touch. Any name
+         the census finds that layer 2 did not discover is a FAILURE, not
+         a skipped note: a JS surface this checker cannot fully parse must
+         say so loudly, not pass quietly.
+
+    Every JS surface is comment-stripped once before any of the three
+    layers run (gh-2020 refuter bypasses 1 and 2): a disclaimer commented
+    out in place, or a dead commented-out COPY.<name>Close.forEach
+    reference left ahead of the real one, is absent text, not present
+    text.
 
     Tracks are DISCOVERED, not hand-listed: JS_D266_CLOSE_RENDERER_RE finds
     every RENDERERS['c-<name>-close'] screen and the COPY.<name>Close array
@@ -358,7 +528,9 @@ def check_js_d266_surfaces() -> tuple[list[str], list[str]]:
                 f"(gh-2020 registers it ahead of draft #2019 landing it)"
             )
             continue
-        text = path.read_text(encoding="utf-8", errors="ignore")
+        # Comment-stripped ONCE; every layer below reads this, not the raw
+        # bytes (gh-2020 refuter bypasses 1, 2).
+        text = _strip_js_comments(path.read_text(encoding="utf-8", errors="ignore"))
 
         # Layer 1 -- whole-file floor.
         if not check_d266_disclaimer(text):
@@ -368,7 +540,8 @@ def check_js_d266_surfaces() -> tuple[list[str], list[str]]:
 
         # Layer 2 -- per-track, discovered from the module's own vocabulary.
         close_matches = list(JS_D266_CLOSE_RENDERER_RE.finditer(text))
-        if not close_matches:
+        census_track_ids = {m.group(1) for m in JS_D266_CENSUS_RE.finditer(text)}
+        if not close_matches and not census_track_ids:
             notes.append(
                 f"{surface}: no c-<track>-close renderer discovered -- per-track "
                 f"D-266 check not applicable this run; relying on the whole-file "
@@ -392,10 +565,8 @@ def check_js_d266_surfaces() -> tuple[list[str], list[str]]:
                 )
                 continue
             copy_name = copy_match.group(1)
-            array_match = re.search(
-                r"\b" + re.escape(copy_name) + r"\s*:\s*\[(.*?)\]", text, re.DOTALL
-            )
-            if not array_match:
+            array_text = _extract_array_literal(text, copy_name)
+            if array_text is None:
                 failures.append(
                     f"{surface}: {route} references COPY.{copy_name} but its array "
                     f"literal could not be located (d266_js_track_unparseable)"
@@ -414,18 +585,33 @@ def check_js_d266_surfaces() -> tuple[list[str], list[str]]:
                         or track_id
                     )
 
-            if not check_d266_disclaimer(array_match.group(1)):
+            if not check_d266_disclaimer(array_text):
                 failures.append(
                     f"{surface}: {label} track ({route}) missing D-266 disclaimer "
                     f"(d266_js_track)"
                 )
+
+        # Layer 3 -- fail-closed census cross-check (gh-2020 refuter bypasses
+        # 3, 4, 5): a name the census found via COPY.<name>Close.forEach(
+        # that layer 2's stricter RENDERERS-key parse did not discover means
+        # the renderer's own syntax changed in a way this checker no longer
+        # recognizes -- reported as a failure, not silently skipped.
+        for track_id in sorted(census_track_ids - close_track_ids):
+            failures.append(
+                f"{surface}: found COPY.{track_id}Close.forEach( with no "
+                f"structurally recognizable RENDERERS['c-{track_id}-close'] = "
+                f"function (...) {{ ... }}; screen for it (renamed screen id, "
+                f"arrow-function conversion, or reindented closing brace) -- "
+                f"this checker can no longer verify its D-266 disclaimer and "
+                f"treats that as FAILED, not skipped (d266_js_track_unrecognized)"
+            )
 
         partner_track_ids = {
             m.group(1)
             for m in JS_D266_PARTNER_CONTACT_RE.finditer(text)
             if "renderPartnerContact(" in m.group(2)
         }
-        for track_id in sorted(partner_track_ids - close_track_ids):
+        for track_id in sorted(partner_track_ids - close_track_ids - census_track_ids):
             reason = JS_D266_EXEMPT_TRACKS.get(track_id)
             if reason is not None:
                 notes.append(
