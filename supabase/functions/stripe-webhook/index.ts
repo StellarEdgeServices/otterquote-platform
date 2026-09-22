@@ -9,6 +9,28 @@
 //   STRIPE_SECRET_KEY              — already set (do not use until prod approval)
 //   CLICKUP_API_KEY                — ClickUp personal API token (set before staging test)
 //
+// gh-2078b / D-330: server-side Meta Conversions API (CAPI) `Purchase` event,
+// sent when a measurement-order ($15 Hover report) PaymentIntent succeeds.
+// Additive and orthogonal to the gh-948 platform-fee handlers below -- scoped
+// by metadata.type, touches no platform_fee code path, isolated so a CAPI
+// failure/timeout can NEVER fail this webhook or block an order. See
+// meta-capi.ts for the payload/decision logic and its own header for the
+// dedupe / test-mode-isolation design. Requires the META_CAPI_ACCESS_TOKEN
+// Supabase secret (Doppler otterquote/prd, #2078 comment 5777717131); a safe
+// no-op when it is absent (tier:3b -- do not deploy until the R-097 window
+// closes; see PR body).
+//
+// gh-2078b / D-330: server-side Meta Conversions API (CAPI) `Purchase` event,
+// sent when a measurement-order ($15 Hover report) PaymentIntent succeeds.
+// Additive and orthogonal to the gh-948 platform-fee handlers below -- scoped
+// by metadata.type, touches no platform_fee code path, isolated so a CAPI
+// failure/timeout can NEVER fail this webhook or block an order. See
+// meta-capi.ts for the payload/decision logic and its own header for the
+// dedupe / test-mode-isolation design. Requires the META_CAPI_ACCESS_TOKEN
+// Supabase secret (Doppler otterquote/prd, #2078 comment 5777717131); a safe
+// no-op when it is absent (tier:3b -- do not deploy until the R-097 window
+// closes; see PR body).
+//
 // D-228 routing logic:
 //   dispute.amount < $500 AND reason != 'product_not_received'
 //     → auto-submit D-215 evidence stack via Stripe Disputes API
@@ -34,6 +56,24 @@ import {
   evaluateDisputeRouting,
   maySubmitFinalEvidence,
 } from "./dispute-routing.ts";
+import {
+  buildCapiEventId,
+  buildCapiPurchasePayload,
+  hashEmailSha256,
+  MEASUREMENT_ORDER_PI_TYPES,
+  MEASUREMENT_PURCHASE_VALUE_USD,
+  sanitizeCapiVariant,
+  shouldSendCapiEvent,
+} from "./meta-capi.ts";
+import {
+  buildCapiEventId,
+  buildCapiPurchasePayload,
+  hashEmailSha256,
+  MEASUREMENT_ORDER_PI_TYPES,
+  MEASUREMENT_PURCHASE_VALUE_USD,
+  sanitizeCapiVariant,
+  shouldSendCapiEvent,
+} from "./meta-capi.ts";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -976,6 +1016,171 @@ async function handlePlatformFeePaymentFailed(
 }
 
 // ---------------------------------------------------------------------------
+// gh-2078b / D-330 -- Meta CAPI Purchase from measurement-order payments
+// ---------------------------------------------------------------------------
+// Bounded fetch timeout (acceptance criterion 2: "an unbounded `await` on a
+// user-facing path is a named defect class in this codebase" -- this path is
+// not user-facing, but the Stripe webhook has its own delivery-timeout
+// contract with Stripe, so an unbounded outbound call here is the same class
+// of risk). 3s leaves ample headroom under Stripe's own webhook timeout
+// while still giving Meta a real chance to respond.
+const META_CAPI_TIMEOUT_MS = 3000;
+const META_CAPI_API_VERSION = "v21.0";
+const META_CAPI_PIXEL_ID = "800470107451795";
+
+/**
+ * Sends a Meta CAPI `Purchase` event for a measurement-order PaymentIntent
+ * that just succeeded. Entirely best-effort:
+ *   - acceptance criterion 3: no-ops safely if META_CAPI_ACCESS_TOKEN is unset.
+ *   - acceptance criterion 4: skips test traffic unless a real Meta
+ *     test_event_code is configured (see meta-capi.ts's shouldSendCapiEvent).
+ *   - acceptance criterion 2: every failure mode (missing claim, missing
+ *     email, Meta HTTP error, timeout, thrown exception) is caught here and
+ *     logged -- NONE of them propagate. This function's completion is never
+ *     awaited by anything that could turn its failure into a webhook failure
+ *     or a Stripe retry.
+ * Scoped by metadata.type (MEASUREMENT_ORDER_PI_TYPES) so it never touches
+ * the platform_fee code path above, and vice versa.
+ */
+async function handleMeasurementOrderCapiPurchase(
+  paymentIntent: StripePaymentIntent,
+  supabase: ReturnType<typeof createClient>,
+): Promise<void> {
+  const piType = paymentIntent.metadata?.type;
+  if (!piType || !MEASUREMENT_ORDER_PI_TYPES.has(piType)) return; // not a measurement-order purchase
+
+  try {
+    const capiToken = Deno.env.get("META_CAPI_ACCESS_TOKEN");
+    if (!capiToken) {
+      // Acceptance criterion 3 -- safe to deploy before the secret lands.
+      console.log(
+        `[${FN_NAME}] gh-2078b: META_CAPI_ACCESS_TOKEN not set -- CAPI Purchase skipped (safe no-op) for PI ${paymentIntent.id}`,
+      );
+      return;
+    }
+
+    const claimId = paymentIntent.metadata?.claim_id ?? null;
+    let claimIsTest = false;
+    let userId: string | null = null;
+
+    if (claimId) {
+      const { data: claim, error: claimErr } = await supabase
+        .from("claims")
+        .select("id, user_id, is_test")
+        .eq("id", claimId)
+        .maybeSingle();
+      if (claimErr) {
+        console.error(`[${FN_NAME}] gh-2078b: claim lookup failed for ${claimId}:`, claimErr);
+      } else if (claim) {
+        claimIsTest = (claim as { is_test: boolean | null }).is_test === true;
+        userId = (claim as { user_id: string | null }).user_id;
+      }
+    } else {
+      console.warn(`[${FN_NAME}] gh-2078b: measurement-order PI ${paymentIntent.id} carries no metadata.claim_id`);
+    }
+
+    // Acceptance criterion 4 -- decide BEFORE resolving PII whether this will
+    // send at all, so a skipped test-mode event never even looks up an email.
+    const testEventCode = Deno.env.get("META_CAPI_TEST_EVENT_CODE") ?? null;
+    if (
+      !shouldSendCapiEvent({
+        livemode: paymentIntent.livemode,
+        claimIsTest,
+        testEventCode,
+      })
+    ) {
+      console.log(
+        `[${FN_NAME}] gh-2078b: test-mode/is_test purchase with no META_CAPI_TEST_EVENT_CODE configured -- ` +
+          `CAPI Purchase skipped to avoid polluting Meta production data (PI ${paymentIntent.id}, livemode=${paymentIntent.livemode}, claimIsTest=${claimIsTest})`,
+      );
+      return;
+    }
+    const isTestTraffic = !paymentIntent.livemode || claimIsTest;
+
+    // -- Resolve + hash the homeowner's email (never send raw PII) --------
+    // profiles first, falling back to auth.admin -- same order mark-job-complete
+    // already uses for this exact lookup.
+    let hashedEmail: string | null = null;
+    if (userId) {
+      let rawEmail: string | null = null;
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("email")
+        .eq("id", userId)
+        .maybeSingle();
+      rawEmail = (profile as { email?: string | null } | null)?.email ?? null;
+      if (!rawEmail) {
+        const { data: authUser } = await supabase.auth.admin.getUserById(userId);
+        rawEmail = authUser?.user?.email ?? null;
+      }
+      if (rawEmail) hashedEmail = await hashEmailSha256(rawEmail);
+    }
+    if (!hashedEmail) {
+      console.warn(
+        `[${FN_NAME}] gh-2078b: no email resolvable for claim ${claimId ?? "unknown"} (PI ${paymentIntent.id}) -- ` +
+          `sending CAPI Purchase with no user_data (reduced Meta match quality, not blocked)`,
+      );
+    }
+
+    // `variant` is not currently threaded into PaymentIntent metadata (see
+    // meta-capi.ts's sanitizeCapiVariant doc) -- reads 'unknown' until a
+    // follow-up wires it through create-payment-intent. Flagged as a Q: on
+    // #2078, not silently faked here.
+    const variant = sanitizeCapiVariant(paymentIntent.metadata?.variant);
+
+    const payload = buildCapiPurchasePayload({
+      paymentIntentId: paymentIntent.id,
+      eventTimeSeconds: Math.floor(Date.now() / 1000),
+      valueUsd: MEASUREMENT_PURCHASE_VALUE_USD,
+      variant,
+      hashedEmail,
+      testEventCode: isTestTraffic ? testEventCode : null,
+    });
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), META_CAPI_TIMEOUT_MS);
+    try {
+      const res = await fetch(
+        `https://graph.facebook.com/${META_CAPI_API_VERSION}/${META_CAPI_PIXEL_ID}/events?access_token=${encodeURIComponent(capiToken)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        },
+      );
+      const resBody = await res.text();
+      if (!res.ok) {
+        console.error(
+          `[${FN_NAME}] gh-2078b: Meta CAPI Purchase failed (HTTP ${res.status}) for PI ${paymentIntent.id}: ${resBody}`,
+        );
+        await supabase.from("platform_alerts_log").insert({
+          alert_type: "meta_capi_purchase_failed",
+          function_name: FN_NAME,
+          message: `Meta CAPI Purchase send failed (HTTP ${res.status}) for payment_intent ${paymentIntent.id}: ${resBody}`,
+          sent_at: new Date().toISOString(),
+        });
+      } else {
+        console.log(
+          `[${FN_NAME}] gh-2078b: Meta CAPI Purchase sent for PI ${paymentIntent.id} (event_id=${buildCapiEventId(paymentIntent.id)}, test_event_code=${isTestTraffic ? testEventCode : "none"})`,
+        );
+      }
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch (err) {
+    // Acceptance criterion 2 -- CAPI failure/timeout/exception must NEVER
+    // fail the webhook, throw into Stripe's retry path, or block the order.
+    // Logged honestly; nothing here rethrows.
+    const isAbort = err instanceof Error && err.name === "AbortError";
+    console.error(
+      `[${FN_NAME}] gh-2078b: Meta CAPI Purchase ${isAbort ? "timed out" : "threw"} for PI ${paymentIntent.id}:`,
+      err,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
 Deno.serve(async (req: Request) => {
@@ -1072,6 +1277,9 @@ Deno.serve(async (req: Request) => {
     } else if (event.type === "payment_intent.succeeded") {
       const piEvent = event as unknown as StripePaymentIntentEvent;
       await handlePlatformFeePaymentSucceeded(piEvent.data.object, supabase);
+      // gh-2078b / D-330 -- independent of the platform_fee handler above
+      // (scoped by metadata.type, never throws -- see the function's own doc).
+      await handleMeasurementOrderCapiPurchase(piEvent.data.object, supabase);
     } else if (event.type === "payment_intent.payment_failed") {
       const piEvent = event as unknown as StripePaymentIntentEvent;
       await handlePlatformFeePaymentFailed(piEvent.data.object, supabase);
