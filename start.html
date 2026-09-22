@@ -149,7 +149,27 @@
      gh-2014 fix round 4 comment on the main IIFE's own variant read). -->
 <script>
 (function () {
-  var KEY = 'oq_variant_v1';
+  // gh-2075 (D-327), review comment 5768166723 (Kevin, Code lane,
+  // rw-f35-20260921T215236-k7vd) on issue #2075 -- BLOCKING finding, fixed
+  // here rather than deferred: flipping LIVE_VARIANTS alone does not
+  // re-randomise anyone, because every visitor assigned during the
+  // single-arm ('c'-only) period is persisted under this key for 180 days
+  // and isLive('c') is already true for all of them -- toLiveArm() is a
+  // no-op on return, regardless of what LIVE_VARIANTS says later. Bumping
+  // the key to v2 HERE, in the same PR that adds arm d's code (even
+  // though LIVE_VARIANTS below is not changing yet -- see that var's own
+  // comment), means every visitor re-randomises across effectiveLiveVariants()
+  // under the NEW key exactly once. Because LIVE_VARIANTS is still ['c']
+  // at this point, that one-time re-randomisation still always lands on
+  // 'c' -- this bump has ZERO effect on production traffic by itself.
+  // Its only purpose is to be already-shipped so that the orchestrator's
+  // later LIVE_VARIANTS flip to ['c','d','e'] does not ALSO need a key
+  // bump bundled into it -- the two changes are decoupled on purpose, so
+  // the flip itself stays the single-line change #2074's own comment
+  // always intended. tests/gh2033-variant-assignment.mjs asserts against
+  // this literal string, not a v1/v2 abstraction -- update it there too
+  // if this ever moves again.
+  var KEY = 'oq_variant_v2';
 
   // gh-2074 fix round 2 (PR #2079 review, item 2): KNOWN_ARMS is the
   // single source of truth for which arm letters are syntactically
@@ -191,6 +211,15 @@
   // live set. Flip this constant WITHOUT the key bump only if a
   // deliberately c-weighted d/e rollout is the actual intent.
   var LIVE_VARIANTS = ['c'];
+  // D-327: add 'd' here when #2075 merges (and 'e' when #2076 merges) --
+  // this PR intentionally does NOT flip this constant. The orchestrator
+  // flips it at merge time, per #2075's own instruction ("the PR must not
+  // change live assignment"). Until then arm d's code below is shipped
+  // but unreachable: toLiveArm() (below) remaps any non-live arm --
+  // including an explicit ?v=d -- onto the live set, so ?v=d does NOT
+  // render arm d pre-flip. See this PR's body for how it was tested
+  // instead (a local, uncommitted override of this one line -- never
+  // shipped).
 
   // gh-2074 fix round 2 (PR #2079 review, item 4): guards a misconfigured
   // empty LIVE_VARIANTS from indexing an empty array and writing a
@@ -405,8 +434,8 @@
   .router-step { display: none; }
   .router-step.active { display: block; animation: fadeUp 0.25s ease both; }
   @keyframes fadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-  .router-step h1, #routerCRoot h1 { font-family: var(--font-heading, var(--font-body)); font-size: 1.5rem; color: var(--white); margin-bottom: var(--sp-2); line-height: 1.25; }
-  .router-step p.router-sub, #routerCRoot p.router-sub { color: var(--slate); font-size: 0.95rem; margin-bottom: var(--sp-5); }
+  .router-step h1, #routerCRoot h1, #routerDRoot h1 { font-family: var(--font-heading, var(--font-body)); font-size: 1.5rem; color: var(--white); margin-bottom: var(--sp-2); line-height: 1.25; }
+  .router-step p.router-sub, #routerCRoot p.router-sub, #routerDRoot p.router-sub { color: var(--slate); font-size: 0.95rem; margin-bottom: var(--sp-5); }
   .form-group { margin-bottom: var(--sp-4); }
   .form-label { display: block; font-weight: 600; color: var(--white); margin-bottom: var(--sp-1); font-size: 0.95rem; }
   .form-label.required::after { content: ' *'; color: var(--red); }
@@ -442,8 +471,8 @@
     main { padding-top: var(--sp-4); padding-bottom: var(--sp-8); }
     .router-card { padding: var(--sp-4); }
     .router-progress { margin-bottom: var(--sp-4); }
-    .router-step h1, #routerCRoot h1 { margin-bottom: var(--sp-1); }
-    .router-step p.router-sub, #routerCRoot p.router-sub { margin-bottom: var(--sp-3); }
+    .router-step h1, #routerCRoot h1, #routerDRoot h1 { margin-bottom: var(--sp-1); }
+    .router-step p.router-sub, #routerCRoot p.router-sub, #routerDRoot p.router-sub { margin-bottom: var(--sp-3); }
     .form-group { margin-bottom: var(--sp-2); }
   }
 </style>
@@ -534,6 +563,15 @@
          branch below, at the same point that branch hides #step1/#step2/
          #step2a/#step3. -->
     <div id="routerCRoot" hidden></div>
+
+    <!-- ═══════════ Variant D — role tap / one email / everything else after
+         (gh-2075, D-327) ═══════════ -->
+    <!-- Empty by design, same convention as #routerCRoot above:
+         js/router-variant-d.js owns all rendering inside this element once
+         loaded. Hidden by default (zero effect on every other arm); unhidden
+         only inside this file's own variant === 'd' branch, same point that
+         branch hides #step1/#step2/#step2a/#step3/#routerProgress. -->
+    <div id="routerDRoot" hidden></div>
   </div>
 </main>
 
@@ -595,7 +633,7 @@
     // stay hidden the entire time, including the one indirect path here --
     // redirectTo() below calls renderStep(3), and the module calls
     // redirectTo() by reference per the bridge contract.
-    if (ARM_C) return;
+    if (ARM_C || ARM_D) return;
     Object.keys(steps).forEach(function (k) { steps[k].classList.toggle('active', k === String(key)); });
     // gh-2016: the 3-segment progress bar is hardcoded to A's screen ORDER,
     // not just its key names -- on arm B, contact (1) is the middle screen
@@ -753,6 +791,16 @@
   // arm C's own screen. redirectTo() (below) is called BY the module
   // itself, so its two calls into the now-guarded functions matter here.
   var ARM_C = variant === 'c';
+
+  // gh-2075 (D-327): arm D (role tap first, one email field, everything
+  // else after). Same reasoning as ARM_C immediately above -- js/router-
+  // variant-d.js owns its own sequencer/rendering entirely, reached
+  // through its own bridge assembled near the end of this IIFE. Also
+  // unreachable pre-flip: LIVE_VARIANTS above is still ['c'], and
+  // toLiveArm() remaps any non-live arm before `variant` is ever set, so
+  // `variant === 'd'` cannot be true today -- this flag and the file it
+  // gates ship dormant, exactly like arm A/B's own code already does.
+  var ARM_D = variant === 'd';
 
   // B's step vocabulary, deliberately non-colliding with A's 1/2/2a/3
   // (#2016 control 4). The arms ask DIFFERENT questions at the same
@@ -984,6 +1032,21 @@
     var routerProgressEl = document.getElementById('routerProgress');
     if (routerProgressEl) routerProgressEl.hidden = true;
     if (routerCRoot) routerCRoot.hidden = false;
+  }
+
+  // gh-2075 (D-327): same treatment as arm C immediately above -- hide the
+  // four shared A/B sections and the 3-dot progress bar (hardcoded to A/B's
+  // shape), reveal D's own mount element. Doing this before the History
+  // block below reads `.router-step.active` is what keeps that block's own
+  // `if (initialStepEl)` guard a no-op for D too, same as it already is for
+  // C (see that block's own comment) -- no stray router_step_view for a
+  // screen D never shows.
+  var routerDRoot = document.getElementById('routerDRoot');
+  if (ARM_D) {
+    Object.keys(steps).forEach(function (k) { steps[k].classList.remove('active'); });
+    var routerProgressElD = document.getElementById('routerProgress');
+    if (routerProgressElD) routerProgressElD.hidden = true;
+    if (routerDRoot) routerDRoot.hidden = false;
   }
 
   // ── History: Step 2 and Step 2a each get their own history entry (pushed
@@ -1615,6 +1678,46 @@
       showError('Something went wrong loading this page. Please refresh and try again.');
     };
     document.body.appendChild(routerCScript);
+  }
+
+  // gh-2075 (D-327): arm D's bridge -- same shape as arm C's immediately
+  // above, same reasoning (built last so every plain `var` it reads has
+  // already been assigned in this same IIFE; `sb` is a live getter so it
+  // is immune regardless). js/router-variant-d.js is loaded directly (not
+  // chained after router-discovery.js) so D's first screen -- the role
+  // tap, this arm's whole reason for existing -- paints and is tappable
+  // without waiting on a second file fetch; router-variant-d.js lazy-loads
+  // js/router-discovery.js itself, on demand, only once a visitor has
+  // cleared d-email/d-name/d-phone and is about to reach the first
+  // question screen it reuses copy/components from (see that file's own
+  // comment) -- matching this page's established lazy-load idiom
+  // (ensureSb() above, the deferred Supabase UMD script).
+  if (ARM_D) {
+    var routerDBridge = {
+      get sb() { return ensureSb(); },
+      trackRouter: trackRouter,
+      collectAttribution: collectAttribution,
+      insertFreshLead: insertFreshLead,
+      appendParams: appendParams,
+      redirectTo: redirectTo,
+      showError: showError,
+      ROLE_DESTINATIONS: ROLE_DESTINATIONS,
+      PARTNER_INDUSTRY_DESTINATIONS: PARTNER_INDUSTRY_DESTINATIONS,
+      NO_LEAD_ID_DESTINATIONS: NO_LEAD_ID_DESTINATIONS
+    };
+    var routerDScript = document.createElement('script');
+    routerDScript.src = 'js/router-variant-d.js';
+    routerDScript.onload = function () {
+      if (window.RouterVariantD && typeof window.RouterVariantD.init === 'function') {
+        window.RouterVariantD.init(routerDBridge, routerDRoot);
+      } else {
+        showError('Something went wrong loading this page. Please refresh and try again.');
+      }
+    };
+    routerDScript.onerror = function () {
+      showError('Something went wrong loading this page. Please refresh and try again.');
+    };
+    document.body.appendChild(routerDScript);
   }
 })();
 </script>

@@ -1068,5 +1068,39 @@
     show('c-entry');
   }
 
-  window.RouterDiscovery = { init: init };
+  // gh-2075 (D-327): Variant D reuses this module's exact copy and its
+  // exact multi-select/single-select/disqualifier rendering for the
+  // post-email question screens ("reuse C's step components and copy
+  // verbatim -- no new copy in D", issue #2075). js/router-variant-d.js
+  // is the only other file allowed to read these exports. renderMultiSelect/
+  // renderSingleSelect/renderDisqualifier below are thin wrappers around
+  // this module's own functions of the same name: those functions read
+  // and write the single module-level `root` closure variable, so each
+  // wrapper points `root` at the CALLER's mount element for the duration
+  // of the call (synchronous -- these functions never yield control before
+  // they finish building DOM) and restores this module's own `root`
+  // afterward. Safe because C and D never run in the same page load
+  // (`variant` is one value) and neither module's `init()` needs to have
+  // run for the other's exports to work. `cfg.backTo` is deliberately NOT
+  // forwarded by variant D -- that flag makes these functions call this
+  // module's OWN backButton()/goBack(), bound to c-entry's stack, not
+  // D's; D prepends its own back button before calling these wrappers
+  // instead. COPY/heading/bodyText/continueButton are pure (no `root`
+  // read) and exported directly.
+  function withRoot(targetRoot, fn) {
+    var savedRoot = root;
+    root = targetRoot;
+    try { fn(); } finally { root = savedRoot; }
+  }
+
+  window.RouterDiscovery = {
+    init: init,
+    COPY: COPY,
+    heading: heading,
+    bodyText: bodyText,
+    continueButton: continueButton,
+    renderMultiSelect: function (targetRoot, cfg) { withRoot(targetRoot, function () { renderMultiSelect(cfg); }); },
+    renderSingleSelect: function (targetRoot, cfg) { withRoot(targetRoot, function () { renderSingleSelect(cfg); }); },
+    renderDisqualifier: function (targetRoot, cfg) { withRoot(targetRoot, function () { renderDisqualifier(cfg); }); }
+  };
 })();
