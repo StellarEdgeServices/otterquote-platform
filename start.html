@@ -282,7 +282,22 @@
   try {
     urlArm = validArm(new URLSearchParams(window.location.search).get('v'));
   } catch (e) {}
-  var arm = urlArm ? toLiveArm(urlArm) : null;
+  // gh-2076 (D-327) QA override: an explicit ?v=e&oq_internal=1 renders
+  // that arm directly, bypassing toLiveArm()'s live-set remap, WITHOUT
+  // touching LIVE_VARIANTS/KEY above and WITHOUT changing what a normal
+  // visitor (no oq_internal param) ever sees -- #2076's own instruction
+  // that arm e must be reachable for manual/automated QA before the flip,
+  // the way arm d could not be (see PR #2086's own documented
+  // contradiction: an explicit ?v=d did NOT render arm d pre-flip,
+  // because toLiveArm() remaps every non-live arm unconditionally). Step
+  // 4 below still persists whatever `arm` ends up being to both stores,
+  // but that is harmless here: step 2's own read of a persisted arm on
+  // any LATER, non-oq_internal load still runs it through toLiveArm()
+  // unconditionally, so a stray persisted 'e' cannot leak into a normal
+  // visitor's assignment once this override is not present on the URL.
+  var oqInternalOverride = false;
+  try { oqInternalOverride = new URLSearchParams(window.location.search).get('oq_internal') === '1'; } catch (e) {}
+  var arm = urlArm ? (oqInternalOverride ? urlArm : toLiveArm(urlArm)) : null;
 
   // 2. Else a persisted assignment -- localStorage first, cookie fallback,
   //    each in its own try/catch so a throw on one still lets the other run.
@@ -577,6 +592,15 @@
          only inside this file's own variant === 'd' branch, same point that
          branch hides #step1/#step2/#step2a/#step3/#routerProgress. -->
     <div id="routerDRoot" hidden></div>
+
+    <!-- ═══════════ Variant E — role-first, homeowner path led by
+         exposition (gh-2076, D-327) ═══════════ -->
+    <!-- Empty by design, same convention as #routerCRoot/#routerDRoot
+         above: js/router-variant-e.js owns all rendering inside this
+         element once loaded. Hidden by default; unhidden only inside
+         this file's own variant === 'e' branch, same point that branch
+         hides #step1/#step2/#step2a/#step3/#routerProgress. -->
+    <div id="routerERoot" hidden></div>
   </div>
 </main>
 
@@ -638,7 +662,7 @@
     // stay hidden the entire time, including the one indirect path here --
     // redirectTo() below calls renderStep(3), and the module calls
     // redirectTo() by reference per the bridge contract.
-    if (ARM_C || ARM_D) return;
+    if (ARM_C || ARM_D || ARM_E) return;
     Object.keys(steps).forEach(function (k) { steps[k].classList.toggle('active', k === String(key)); });
     // gh-2016: the 3-segment progress bar is hardcoded to A's screen ORDER,
     // not just its key names -- on arm B, contact (1) is the middle screen
@@ -806,6 +830,18 @@
   // `variant === 'd'` cannot be true today -- this flag and the file it
   // gates ship dormant, exactly like arm A/B's own code already does.
   var ARM_D = variant === 'd';
+
+  // gh-2076 (D-327): arm E (role-first, arm C's own screens, with the
+  // homeowner path led by exposition -- see js/router-variant-e.js's own
+  // top-of-file comment). Same reasoning as ARM_C/ARM_D immediately
+  // above -- js/router-variant-e.js owns its own sequencer/rendering
+  // entirely, reached through its own bridge assembled near the end of
+  // this IIFE. Unreachable pre-flip the same way ARM_D is, EXCEPT
+  // through the ?v=e&oq_internal=1 QA override this file's own head
+  // script adds (see that script's own comment) -- LIVE_VARIANTS above
+  // is still ['c','d'], so `variant === 'e'` is false for every visitor
+  // who does not carry that override.
+  var ARM_E = variant === 'e';
 
   // B's step vocabulary, deliberately non-colliding with A's 1/2/2a/3
   // (#2016 control 4). The arms ask DIFFERENT questions at the same
@@ -1052,6 +1088,15 @@
     var routerProgressElD = document.getElementById('routerProgress');
     if (routerProgressElD) routerProgressElD.hidden = true;
     if (routerDRoot) routerDRoot.hidden = false;
+  }
+
+  // gh-2076 (D-327): same treatment as arms C/D immediately above.
+  var routerERoot = document.getElementById('routerERoot');
+  if (ARM_E) {
+    Object.keys(steps).forEach(function (k) { steps[k].classList.remove('active'); });
+    var routerProgressElE = document.getElementById('routerProgress');
+    if (routerProgressElE) routerProgressElE.hidden = true;
+    if (routerERoot) routerERoot.hidden = false;
   }
 
   // ── History: Step 2 and Step 2a each get their own history entry (pushed
@@ -1723,6 +1768,40 @@
       showError('Something went wrong loading this page. Please refresh and try again.');
     };
     document.body.appendChild(routerDScript);
+  }
+
+  // gh-2076 (D-327): arm E's bridge -- same shape/reasoning as arms C/D
+  // immediately above. js/router-variant-e.js is loaded directly (same
+  // wiring as js/router-variant-d.js) -- it lazy-loads js/router-
+  // discovery.js itself, on demand, at its own init() (see that file's
+  // own comment for why it cannot defer that fetch past its first screen
+  // the way arm D does: arm E's own first screen IS arm C's role screen).
+  if (ARM_E) {
+    var routerEBridge = {
+      get sb() { return ensureSb(); },
+      trackRouter: trackRouter,
+      collectAttribution: collectAttribution,
+      insertFreshLead: insertFreshLead,
+      appendParams: appendParams,
+      redirectTo: redirectTo,
+      showError: showError,
+      ROLE_DESTINATIONS: ROLE_DESTINATIONS,
+      PARTNER_INDUSTRY_DESTINATIONS: PARTNER_INDUSTRY_DESTINATIONS,
+      NO_LEAD_ID_DESTINATIONS: NO_LEAD_ID_DESTINATIONS
+    };
+    var routerEScript = document.createElement('script');
+    routerEScript.src = 'js/router-variant-e.js';
+    routerEScript.onload = function () {
+      if (window.RouterVariantE && typeof window.RouterVariantE.init === 'function') {
+        window.RouterVariantE.init(routerEBridge, routerERoot);
+      } else {
+        showError('Something went wrong loading this page. Please refresh and try again.');
+      }
+    };
+    routerEScript.onerror = function () {
+      showError('Something went wrong loading this page. Please refresh and try again.');
+    };
+    document.body.appendChild(routerEScript);
   }
 })();
 </script>
