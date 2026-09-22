@@ -80,6 +80,17 @@ This gate does NOT generically catch:
     job-ordering / fail-open-vs-fail-closed property of a workflow's step sequence,
     not a declared-input mismatch. CHECK 2's reconciliation logic does not model
     step ordering or step-to-step data flow within a job.
+  - gh-1884's residual shape: self_test_invokes_detector() (CHECK 1, registered
+    detectors only) proves a self-test's SOURCE structurally loads and touches
+    the detector module (or subprocess-invokes it and reads the result), which
+    closes the refuted bypass -- a stub that never references the detector at
+    all. It does NOT prove the printed PASS lines' negative-control tokens were
+    actually DERIVED from that call's return value, as opposed to a call made
+    and its result discarded while a hardcoded matching string is printed
+    alongside it. Closing that residual generically requires tracing data flow
+    from a call's return value to a print/check() argument -- semantic
+    analysis, out of reach for a static source check at this scope, same
+    category as the #1720/#1737 gaps above.
 Per gh-1738's own instruction: say this plainly rather than quietly narrowing scope
 to only what got built. Instances 1 and 3 need a different mechanism; this issue's
 mechanism is not a census of all five, only of shapes #2, #4, and (the harder half)
@@ -182,6 +193,7 @@ EXIT
        PASS on purpose (gh-1419 precedent) -- see ZERO_DISCOVERY_MESSAGE and the
        LIMITATIONS section below.
 """
+import ast
 import json
 import os
 import re
@@ -320,6 +332,117 @@ def count_assertions(output: str):
     return pass_n, fail_n
 
 
+def detect_inert_script(script_path: Path):
+    """Returns a violation-reason string if `script_path` has no executable
+    body -- 0 bytes, whitespace only, comments only, or a bare module
+    docstring with nothing after it -- or None if it has real executable
+    statements.
+
+    gh-1884: CLOSE-REVIEW: FAIL (2026-09-08T21:11:33Z) demonstrated that
+    truncating a REGISTERED detector script to 0 bytes IN PLACE leaves
+    Path.exists() == True, so the registry existence checks above never fire,
+    and the gate still reported GATE: PASS when paired with a self-test stub
+    that merely printed the expected tokens. A detector with no executable
+    body cannot have detected anything, independent of whatever its self-test
+    claims to have observed -- checked here on the script's own content, not
+    on any signal its self-test could be made to fake.
+    """
+    try:
+        text = script_path.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:  # noqa: BLE001
+        return "detector script could not be read: %s" % exc
+
+    if not text.strip():
+        return (
+            "detector script is empty (0 bytes, or whitespace/comments only) "
+            "-- an inert detector cannot detect anything"
+        )
+
+    try:
+        tree = ast.parse(text, filename=str(script_path))
+    except SyntaxError as exc:
+        return (
+            "detector script does not parse as valid Python (SyntaxError: %s) "
+            "-- it cannot execute" % exc
+        )
+
+    body = tree.body
+    if (
+        body
+        and isinstance(body[0], ast.Expr)
+        and isinstance(getattr(body[0], "value", None), ast.Constant)
+        and isinstance(body[0].value.value, str)
+    ):
+        body = body[1:]  # a lone module docstring is not executable behavior
+
+    if not body:
+        return (
+            "detector script has no executable statements beyond comments "
+            "and/or a docstring -- an inert detector cannot detect anything"
+        )
+    return None
+
+
+# gh-1884: structural, source-level proof that a registered detector's
+# self-test actually loads and touches the detector it claims to be testing,
+# rather than merely printing text that happens to match the negative-control
+# tokens CHECK 1 greps for below. Every registered self-test in this repo (as
+# of this writing) uses the same importlib pattern: spec_from_file_location(
+# ..., <basename>) -> module_from_spec -> exec_module -> <var>.<attr>(...).
+# That route is recognized structurally: a load site (the detector's own
+# filename appears in source) followed by exec_module(<var>) followed by a
+# later attribute reference on <var> (proving the load was not decorative). A
+# subprocess/os-invocation route is also accepted, gated on the same filename
+# mention plus the result (.returncode/.stdout/.stderr) being read afterward.
+IMPORTLIB_EXEC_MODULE_RE = re.compile(r"spec\.loader\.exec_module\(\s*(\w+)\s*\)")
+SUBPROCESS_INVOKE_RE = re.compile(
+    r"\b(?:subprocess\.(?:run|check_output|check_call|Popen)|os\.system|os\.popen)\s*\("
+)
+SUBPROCESS_RESULT_USE_RE = re.compile(r"\.(?:returncode|stdout|stderr)\b")
+
+
+def self_test_invokes_detector(test_text: str, detector_basename: str):
+    """Returns a violation-reason string (this self-test does not
+    demonstrably invoke its detector) or None if it does. See the module-level
+    comment above for the recognized routes and why this is a source-level,
+    not an output-level, check.
+    """
+    if detector_basename not in test_text:
+        return (
+            "never mentions the detector's own filename (%s) anywhere in its "
+            "source -- it cannot be executing a detector it does not "
+            "reference; printing text that merely resembles the expected "
+            "output is not a self-test" % detector_basename
+        )
+
+    exec_match = IMPORTLIB_EXEC_MODULE_RE.search(test_text)
+    if exec_match:
+        modvar = exec_match.group(1)
+        after = test_text[exec_match.end():]
+        if re.search(r"\b%s\.\w+" % re.escape(modvar), after):
+            return None
+        return (
+            "loads the detector via importlib (exec_module(%s)) but never "
+            "calls or reads any attribute of the loaded module afterward -- "
+            "the load is decorative" % modvar
+        )
+
+    if SUBPROCESS_INVOKE_RE.search(test_text):
+        if SUBPROCESS_RESULT_USE_RE.search(test_text):
+            return None
+        return (
+            "subprocess/os-invokes something but never reads its "
+            ".returncode/.stdout/.stderr afterward -- the invocation's "
+            "result is never checked"
+        )
+
+    return (
+        "mentions %s but shows neither an importlib exec_module(...) load "
+        "site nor a subprocess/os invocation of it -- a filename mention "
+        "alone does not prove the detector was ever executed" % detector_basename
+    )
+
+
 def check_firing_tests(root: Path):
     """CHECK 1. Returns (violations: list[str], info_lines: list[str], total_assertions: int)."""
     violations = []
@@ -362,6 +485,42 @@ def check_firing_tests(root: Path):
                 "%s is missing. A registered detector's self-test cannot be "
                 "silently deleted." % (rel, test_rel)
             )
+        else:
+            # gh-1884 CLOSE-REVIEW: FAIL (2026-09-08T21:11:33Z) -- both files
+            # "existing" on disk is not the same as either one being real.
+            # Check the two halves of the exact refuted bypass independently:
+            # the script's own body (never trust a self-test's claims about a
+            # neutered detector), then the self-test's own source (never trust
+            # printed output that could have been hardcoded).
+            inert_reason = detect_inert_script(script_path)
+            if inert_reason is not None:
+                violations.append(
+                    "FAIL  %s -- registered in DETECTOR_REGISTRY, script exists "
+                    "on disk, but %s. A registered detector cannot be silently "
+                    "neutered in place; restore its body or remove its "
+                    "DETECTOR_REGISTRY entry explicitly (with justification)."
+                    % (rel, inert_reason)
+                )
+            else:
+                try:
+                    test_text = test_path.read_text(encoding="utf-8", errors="replace")
+                except OSError as exc:  # noqa: BLE001
+                    violations.append(
+                        "FAIL  %s -- registered in DETECTOR_REGISTRY but its "
+                        "self-test %s could not be read: %s" % (rel, test_rel, exc)
+                    )
+                    test_text = None
+
+                if test_text is not None:
+                    invoke_reason = self_test_invokes_detector(test_text, Path(rel).name)
+                    if invoke_reason is not None:
+                        violations.append(
+                            "FAIL  %s -- registered in DETECTOR_REGISTRY, but its "
+                            "self-test %s %s. A self-test that never demonstrably "
+                            "executes its detector proves nothing about it, no "
+                            "matter what its stdout says."
+                            % (rel, test_rel, invoke_reason)
+                        )
 
     for rel in discover_detector_scripts(root):
         test_rel = rel[:-3] + ".test.py"
