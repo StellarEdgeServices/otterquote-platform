@@ -149,19 +149,33 @@
     'e-dq-p12': 'e-p12'
   };
 
-  // gh-2088 (PR #2088 round 1, BLOCKER item 1): the in-flight
-  // bridge.insertFreshLead() promise for e-p7-5's FIRST (fresh-insert)
-  // submission, held at MODULE level -- not inside that render's own
-  // closure. Round 1's repro: Back (still live during the in-flight
-  // insert) back to e-p7, forward to e-p7-5 again -- a fresh render has
-  // its own fresh local `busy = false` and `leadId` is still null (the
-  // first insert has not resolved yet), so the second render's own
-  // submit fired a SECOND insertFreshLead. Holding the promise here, and
-  // having e-p7-5's own renderer check it BEFORE building a fresh form,
-  // makes every re-entry while an insert is pending reuse the same
-  // pending request instead of collecting a second email. Cleared back
-  // to null once that request settles, success or failure.
+  // gh-2088 (PR #2088 round 1, BLOCKER item 1; round 2, BLOCKER N1): the
+  // in-flight request promise for e-p7-5's CURRENT submission -- fresh
+  // insert OR resubmit/PATCH -- held at MODULE level, not inside that
+  // render's own closure. Round 1's repro: Back (still live during the
+  // in-flight insert) back to e-p7, forward to e-p7-5 again -- a fresh
+  // render has its own fresh local `busy = false` and `leadId` is still
+  // null (the first insert has not resolved yet), so the second render's
+  // own submit fired a SECOND insertFreshLead. Round 2's repro: the SAME
+  // render's own onSubmit fired twice (Enter/Go pressed twice, or two
+  // 'submit' events in the same tick) -- round 1's fix only checked this
+  // promise in the top-level RENDERERS['e-p7-5']() function, which only
+  // runs at RENDER time, never inside onSubmit() itself, so two calls to
+  // onSubmit() on the SAME rendered form both slipped through (the
+  // resubmit/PATCH branch didn't set this promise at all, so it was
+  // unguarded even on a cross-render re-entry). onSubmit() now checks
+  // this at its own very first line, before touching validation, and
+  // both branches (fresh insert and resubmit/PATCH) set it before
+  // starting their request. Cleared back to null once that request
+  // settles, success or failure.
   var p75InsertPromise = null;
+
+  // gh-2088 (PR #2088 round 2, BLOCKER N1): same guard, for e-p13's own
+  // update_lead_contact (phone) submission -- a second Enter/Go/click
+  // while the PATCH is in flight used to fire update_lead_contact twice,
+  // and on the `data:false` fallback path, insertFreshLead + finish()
+  // (redirect) twice.
+  var p13SubmitPromise = null;
 
   // gh-2088 (PR #2088 round 1, item 9): the click-debounce guard below
   // needs to know when the current screen was rendered. See show().
@@ -438,6 +452,29 @@
   // prefill already used -- #2088 round 1 item 4) falls back to a fresh
   // insertFreshLead, mirroring arm A's own Step 1 resubmit fallback,
   // instead of silently losing the correction. ======
+  // gh-2088 (PR #2088 round 2 leftover, item 4): arm A calls set_lead_role
+  // right after EVERY fresh insert it falls back to, not only the very
+  // first one -- round 1's own `data:false` fallbacks (e-p7-5's resubmit,
+  // e-p13's phone patch) called bridge.insertFreshLead(...) directly and
+  // stopped there, leaving those rows with role=NULL (gh-2017's own
+  // insert-time default forces it). Factored out so the original submit
+  // AND both `data:false` fallbacks share the exact same insert-then-
+  // set-role sequence, with `is_synthetic` still threaded through every
+  // one of them via bridge.oqInternalOverride.
+  function insertFreshLeadAndSetRole(nm, em, phoneDigits) {
+    return bridge.insertFreshLead(nm, em, phoneDigits, bridge.oqInternalOverride).then(function (newId) {
+      return new Promise(function (resolve) {
+        bridge.sb.rpc('set_lead_role', { p_lead_id: newId, p_role: 'homeowner' }).then(function (res) {
+          if (res && res.error) throw res.error;
+          resolve(newId);
+        }).catch(function (roleErr) {
+          console.error('[router-variant-e] set_lead_role failed -- proceeding anyway:', roleErr);
+          resolve(newId);
+        });
+      });
+    });
+  }
+
   RENDERERS['e-p7-5'] = function () {
     if (p75InsertPromise) {
       root.appendChild(heading('What is a good email address to reach you?'));
@@ -459,6 +496,16 @@
     form.appendChild(submitBtn);
 
     function onSubmit() {
+      // gh-2088 (PR #2088 round 2, BLOCKER N1): the FIRST line of
+      // onSubmit, before any validation -- a second 'submit' (Enter/Go
+      // pressed twice) or a second click reaching this SAME rendered
+      // form while a request from the first is already in flight must be
+      // a complete no-op, on EITHER branch below (fresh insert or
+      // resubmit/PATCH). p75InsertPromise is set synchronously, before
+      // either branch's own request starts (see below), so by the time a
+      // second synchronous onSubmit() call can run, it is already set.
+      if (p75InsertPromise) return;
+
       emailF.err.textContent = '';
       var value = emailF.input.value.trim();
       if (!value || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
@@ -467,34 +514,42 @@
       }
       if (!bridge.sb) { bridge.showError('Something went wrong loading the form. Please refresh and try again.'); return; }
 
+      submitBtn.disabled = true;
+      backBtn.disabled = true;
+      submitBtn.textContent = 'Please wait…';
+      // gh-2088 (PR #2088 round 2, BLOCKER N1): readOnly, not just
+      // disabled -- a disabled INPUT still accepts focus/typing in some
+      // browsers; readOnly is the property that actually blocks edits
+      // during the in-flight request, matching the coordinator's ask.
+      emailF.input.readOnly = true;
+
       if (leadId) {
         // Resubmit path: a lead row already exists (Back from a later
         // screen, correct the email, Continue again) -- PATCH it, never
         // insert a second row/admin alert. Back is disabled for the
         // duration, so no re-entrant submit can reach this screen while
-        // the PATCH is in flight.
-        submitBtn.disabled = true;
-        backBtn.disabled = true;
-        submitBtn.textContent = 'Please wait…';
+        // the PATCH is in flight -- and p75InsertPromise (set just below,
+        // BEFORE this branch returns) now also guards a same-render
+        // double 'submit' event, which disabling Back does not.
         email = value;
-        bridge.sb.rpc('update_lead_contact', { p_lead_id: leadId, p_name: name, p_email: email, p_phone: null }).then(function (res) {
+        var patchP = bridge.sb.rpc('update_lead_contact', { p_lead_id: leadId, p_name: name, p_email: email, p_phone: null }).then(function (res) {
           if (res && res.data === true) { return; }
-          // #2088 round 1 item 4: `data:false` means the guard (30-minute
-          // window, or prefill already used) refused the write -- arm A's
-          // own resubmit path falls back to a fresh insert rather than
-          // losing the correction; mirrored here.
-          return bridge.insertFreshLead(name, email, null, bridge.oqInternalOverride).then(function (newId) { leadId = newId; });
+          // #2088 round 1 item 4 / round 2 leftover: `data:false` means
+          // the guard (30-minute window, or prefill already used)
+          // refused the write -- arm A's own resubmit path falls back to
+          // a fresh insert (now via the shared helper, which ALSO calls
+          // set_lead_role -- round 1's own fallback here did not) rather
+          // than losing the correction.
+          return insertFreshLeadAndSetRole(name, email, null).then(function (newId) { leadId = newId; });
         }, function () { /* thrown/rejected rpc -- proceed anyway, same "never strand" rule every RPC on this router follows */ }).then(function () {
           if (activeToken === 'e-p7-5') go('e-p8');
         }, function () {
           if (activeToken === 'e-p7-5') go('e-p8');
         });
+        p75InsertPromise = patchP;
+        patchP.then(function () { p75InsertPromise = null; }, function () { p75InsertPromise = null; });
         return;
       }
-
-      submitBtn.disabled = true;
-      backBtn.disabled = true;
-      submitBtn.textContent = 'Please wait…';
 
       // gh-2088 (PR #2088 round 1, item 3): `bridge.oqInternalOverride` is
       // true only while the ?v=e&oq_internal=1 QA override is active (see
@@ -502,18 +557,12 @@
       // sets leads.is_synthetic=true on the row in that case so a pre-
       // flip QA walk never creates an unflagged production lead / an
       // unflagged admin alert. False/undefined for every real visitor.
-      var p = bridge.insertFreshLead(name, value, null, bridge.oqInternalOverride).then(function (newId) {
+      // (Threaded inside insertFreshLeadAndSetRole, shared with both
+      // `data:false` fallbacks above/below.)
+      var p = insertFreshLeadAndSetRole(name, value, null).then(function (newId) {
         email = value;
         leadId = newId;
-        return new Promise(function (resolve) {
-          bridge.sb.rpc('set_lead_role', { p_lead_id: newId, p_role: 'homeowner' }).then(function (res) {
-            if (res && res.error) throw res.error;
-            resolve();
-          }).catch(function (roleErr) {
-            console.error('[router-variant-e] set_lead_role failed -- proceeding anyway:', roleErr);
-            resolve();
-          });
-        });
+        return newId;
       });
 
       p75InsertPromise = p;
@@ -527,6 +576,7 @@
           submitBtn.disabled = false;
           backBtn.disabled = false;
           submitBtn.textContent = 'Continue';
+          emailF.input.readOnly = false;
           bridge.showError('Something went wrong saving your info. Please try again.');
         }
       });
@@ -633,6 +683,13 @@
     }
 
     function onSubmit() {
+      // gh-2088 (PR #2088 round 2, BLOCKER N1): same guard as e-p7-5 --
+      // a second Enter/Go/click landing on this SAME rendered form while
+      // the PATCH is in flight used to fire update_lead_contact twice,
+      // and on the `data:false` fallback path, insertFreshLead + finish()
+      // (redirect) twice.
+      if (p13SubmitPromise) return;
+
       phoneF.err.textContent = '';
       var raw = phoneF.input.value.trim();
       if (raw && !isValidUsPhone(raw)) {
@@ -643,11 +700,14 @@
       submitBtn.disabled = true;
       backBtn.disabled = true;
       submitBtn.textContent = 'Please wait…';
+      phoneF.input.readOnly = true;
       var phoneDigits = raw ? normalizePhone(raw) : null;
-      bridge.sb.rpc('update_lead_contact', { p_lead_id: leadId, p_name: name, p_email: email, p_phone: phoneDigits }).then(function (res) {
+      var p = bridge.sb.rpc('update_lead_contact', { p_lead_id: leadId, p_name: name, p_email: email, p_phone: phoneDigits }).then(function (res) {
         if (res && res.data === true) { finish(); return; }
-        // #2088 round 1 item 4: same data:false fallback as e-p7-5.
-        return bridge.insertFreshLead(name, email, phoneDigits, bridge.oqInternalOverride).then(function (newId) {
+        // #2088 round 1 item 4 / round 2 leftover: same data:false
+        // fallback as e-p7-5, now via the shared helper so this ALSO
+        // calls set_lead_role (round 1's own fallback here did not).
+        return insertFreshLeadAndSetRole(name, email, phoneDigits).then(function (newId) {
           leadId = newId;
           finish();
         });
@@ -658,6 +718,8 @@
         console.error('[router-variant-e] update_lead_contact (phone) threw -- proceeding anyway:', err);
         finish();
       });
+      p13SubmitPromise = p;
+      p.then(function () { p13SubmitPromise = null; }, function () { p13SubmitPromise = null; });
     }
   };
 

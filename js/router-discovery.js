@@ -615,7 +615,14 @@
 
       var phoneDigits = phoneRaw ? normalizePhone(phoneRaw) : null; // gh-2042
 
-      bridge.insertFreshLead(name, email, phoneDigits).then(function (newId) {
+      // gh-2088 (PR #2088 round 2 leftover, item 9): thread
+      // bridge.oqInternalOverride the same way renderPartnerContact
+      // already does -- undefined/false on arm C's own normal bridge (no
+      // behavior change there), true only when arm E's own
+      // router-variant-e.js script failed to load and start.html fell
+      // back to running THIS module under the ?v=e&oq_internal=1 QA
+      // override, so that walk's homeowner lead is flagged synthetic too.
+      bridge.insertFreshLead(name, email, phoneDigits, bridge.oqInternalOverride).then(function (newId) {
         // gh-2017: leads_force_safe_insert_defaults() forces role NULL on
         // every raw insert regardless of arm, so this RPC is mandatory
         // here exactly as it is on arms A/B -- not extra work this arm

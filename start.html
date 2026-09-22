@@ -966,10 +966,19 @@
   }
   document.addEventListener('DOMContentLoaded', _oqFlushTrackQueue);
 
-  function trackRouter(name, extra) {
+  // #2088 round 2 leftover (item 9): `variantOverride` lets a caller tag
+  // an event with a DIFFERENT arm than this page's own `variant` closure
+  // var -- used ONLY by the arm-E-script-load-failure fallback bridge
+  // below, so a visitor who silently falls back from E to C's own
+  // experience gets C's own step tokens tagged variant='c', not 'e'
+  // (which would otherwise collapse arm C's real funnel and arm E's
+  // fallback-to-C funnel into the same GA4/BigQuery column). Every other
+  // caller omits it and gets the page's own `variant`, unchanged.
+  function trackRouter(name, extra, variantOverride) {
     try {
       var p = extra || {};
-      if (variant) { p.variant = variant; }
+      var v = variantOverride || variant;
+      if (v) { p.variant = v; }
       if (typeof gtag === 'function') {
         gtag('event', name, p);
       } else {
@@ -1039,7 +1048,10 @@
   // argument, so `isSynthetic` is undefined/false and the column is left
   // out of the payload entirely -- unchanged behaviour, unchanged default
   // (NULL) for every real lead.
-  function insertFreshLead(name, email, phoneDigits, isSynthetic) {
+  // #2088 round 2 leftover (item 9): `variantOverride`, same reasoning
+  // as trackRouter's own -- used only by the arm-E-load-failure
+  // fallback bridge so THAT insert's leads.variant is 'c', not 'e'.
+  function insertFreshLead(name, email, phoneDigits, isSynthetic, variantOverride) {
     var newId = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : (
       'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
         var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
@@ -1060,7 +1072,7 @@
       utm_term: attr.utm_term,
       fbclid: attr.fbclid,
       gclid: attr.gclid,
-      variant: variant
+      variant: variantOverride || variant
     };
     if (isSynthetic) { payload.is_synthetic = true; }
     return ensureSb().from('leads').insert(payload).then(function (res) {
@@ -1833,6 +1845,31 @@
       NO_LEAD_ID_DESTINATIONS: NO_LEAD_ID_DESTINATIONS,
       oqInternalOverride: oqInternalOverrideFlag
     };
+    // #2088 round 2 leftover (item 9): a SEPARATE bridge for the
+    // script-load-failure fallback below -- reusing routerEBridge there
+    // (round 1's own fix) ran arm C's own js/router-discovery.js with a
+    // bridge whose trackRouter/insertFreshLead both tag events/rows with
+    // THIS page's `variant` ('e'), so a visitor who silently fell back
+    // from E to C's real experience had C's own 'c-*' steps and leads
+    // row recorded as variant='e' -- indistinguishable from an actual
+    // arm-E run in analytics/the leads table. Every field is identical to
+    // routerEBridge except trackRouter/insertFreshLead, which pass 'c' as
+    // their own variant override (see those two functions' own comments)
+    // -- oqInternalOverride/is_synthetic threading is unaffected, since
+    // that argument is unrelated to which arm a row/event is tagged with.
+    var routerCFallbackBridge = {
+      get sb() { return ensureSb(); },
+      trackRouter: function (name, extra) { return trackRouter(name, extra, 'c'); },
+      collectAttribution: collectAttribution,
+      insertFreshLead: function (nm, em, ph, isSynthetic) { return insertFreshLead(nm, em, ph, isSynthetic, 'c'); },
+      appendParams: appendParams,
+      redirectTo: redirectTo,
+      showError: showError,
+      ROLE_DESTINATIONS: ROLE_DESTINATIONS,
+      PARTNER_INDUSTRY_DESTINATIONS: PARTNER_INDUSTRY_DESTINATIONS,
+      NO_LEAD_ID_DESTINATIONS: NO_LEAD_ID_DESTINATIONS,
+      oqInternalOverride: oqInternalOverrideFlag
+    };
     var routerEScript = document.createElement('script');
     routerEScript.src = 'js/router-variant-e.js';
     routerEScript.onload = function () {
@@ -1849,13 +1886,15 @@
     // tracks this arm reuses, so on a load failure this now falls all the
     // way back to arm C's own experience (its full role-first flow)
     // rather than an error message -- a visitor still completes a router,
-    // just not in E's homeowner-exposition variant.
+    // just not in E's homeowner-exposition variant. Runs with
+    // routerCFallbackBridge (item 9 above), NOT routerEBridge, so its
+    // rows/events are tagged variant='c'.
     routerEScript.onerror = function () {
       var fallbackScript = document.createElement('script');
       fallbackScript.src = 'js/router-discovery.js';
       fallbackScript.onload = function () {
         if (window.RouterDiscovery && typeof window.RouterDiscovery.init === 'function') {
-          window.RouterDiscovery.init(routerEBridge, routerERoot);
+          window.RouterDiscovery.init(routerCFallbackBridge, routerERoot);
         } else {
           showError('Something went wrong loading this page. Please refresh and try again.');
         }

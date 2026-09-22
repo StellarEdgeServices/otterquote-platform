@@ -39,7 +39,49 @@ function ok(cond, label) {
 // (same two files touch the same DOM surface). Not a general-purpose DOM. ──
 function makeDom(ctxCell) {
   const registry = {};
+  // #2088 round 2, item 10: a controllable fake clock, per scenario (each
+  // buildScenario() call gets its own makeDom(), hence its own
+  // clockState) -- wired to this context's own `Date.now` by buildScenario
+  // below. Every ordinary dispatchClick()/dispatchEvent() call advances it
+  // by a full second BEFORE firing, so two SEPARATE test actions (a
+  // legitimate first tap on a freshly-rendered screen, then a later,
+  // deliberate second action) always look >350ms apart to init()'s own
+  // root click-guard -- exactly like a real visitor, who needs at least
+  // that long to see the new screen and react, never mind two of THIS
+  // suite's chained .then()/settle() steps in between. The *Instant
+  // variants below skip that advance, for the one thing this fake clock
+  // exists to let a test actually simulate: two taps landing in the SAME
+  // instant.
+  const clockState = { now: 1000000 };
   function syncClassName(el) { el.className = el._classes.join(' '); }
+
+  // #2088 round 2, item 10: real DOM-style event propagation -- capturing
+  // phase (outermost ancestor to target's immediate parent, capture:true
+  // listeners only) runs FIRST; if any capturing listener calls
+  // event.stopPropagation(), dispatch stops there and the target's own
+  // listeners never run (this is what init()'s 350ms click guard, attached
+  // to routerERoot with capture:true, depends on). Otherwise the target's
+  // own bubble-registered (capture:false) listeners run. Bubbling past the
+  // target is not implemented -- nothing in these two files listens above
+  // the target except routerERoot's own capturing guard, which is already
+  // covered by the capturing phase above.
+  function dispatchDomEvent(target, type, opts) {
+    if (!opts || opts.advanceClock !== false) { clockState.now += 1000; }
+    const chain = [];
+    let cur = target;
+    while (cur) { chain.push(cur); cur = cur.parentNode; }
+    const event = { type: type, preventDefault() {}, stopPropagation() { event._stopped = true; } };
+    const capturePath = chain.slice(1).reverse(); // ancestors only, outermost first
+    for (const node of capturePath) {
+      const entries = (node._listeners[type] || []).filter((e) => e.capture);
+      for (const entry of entries) {
+        entry.fn(event);
+        if (event._stopped) return;
+      }
+    }
+    const targetEntries = (target._listeners[type] || []).filter((e) => !e.capture);
+    for (const entry of targetEntries) { entry.fn(event); }
+  }
 
   function createElement(tag) {
     const el = {
@@ -84,18 +126,32 @@ function makeDom(ctxCell) {
         }
         return null;
       },
-      addEventListener(evt, fn) { (this._listeners[evt] = this._listeners[evt] || []).push(fn); },
+      addEventListener(evt, fn, capture) { (this._listeners[evt] = this._listeners[evt] || []).push({ fn: fn, capture: !!capture }); },
       removeEventListener(evt, fn) {
         if (!this._listeners[evt]) return;
-        this._listeners[evt] = this._listeners[evt].filter((f) => f !== fn);
+        this._listeners[evt] = this._listeners[evt].filter((entry) => entry.fn !== fn);
       },
       // A disabled button fires no click listeners in a real browser --
       // matched here so a synchronous double-dispatchClick() on a button a
       // handler just disabled (e.g. RD.renderPartnerContact's own
       // submitBtn.disabled=true, or e-p7-5's onSubmit) exercises the SAME
       // guard a real double-tap would hit, instead of re-entering a
-      // handler no production browser would ever re-enter.
-      dispatchClick() { if (this.disabled) return; (this._listeners.click || []).forEach((fn) => fn({ type: 'click' })); },
+      // handler no production browser would ever re-enter. Routed through
+      // dispatchDomEvent (see below) for real capture-phase propagation.
+      dispatchClick() { if (this.disabled) return; dispatchDomEvent(this, 'click'); },
+      // #2088 round 2, item 10: fires a non-click DOM event (used for
+      // e-p7-5/e-p13's own <form> 'submit' listener) through the SAME
+      // capture/bubble propagation as dispatchClick, minus the `disabled`
+      // check (forms have no such concept).
+      dispatchEvent(type) { dispatchDomEvent(this, type); },
+      // #2088 round 2, item 10: the ONLY way this suite simulates two taps
+      // landing in the SAME instant -- skips the fake clock's usual
+      // per-dispatch advance, so init()'s own 350ms root click-guard sees
+      // (correctly) zero elapsed time since the target screen was shown
+      // and swallows this click before it reaches the target's own
+      // listener.
+      dispatchClickSameInstant() { if (this.disabled) return; dispatchDomEvent(this, 'click', { advanceClock: false }); },
+      dispatchEventSameInstant(type) { dispatchDomEvent(this, type, { advanceClock: false }); },
       classList: {
         add: function (c) {},
         remove: function (c) {},
@@ -123,9 +179,9 @@ function makeDom(ctxCell) {
               if (String(v).indexOf('router-discovery.js') !== -1) code = discoverySrc;
               if (code == null) throw new Error('unstubbed script src in test: ' + v);
               vm.runInContext(code, ctxAtSet, { filename: v });
-              if (el._listeners.load) el._listeners.load.forEach((fn) => fn());
+              if (el._listeners.load) el._listeners.load.forEach((entry) => entry.fn());
             } catch (e) {
-              if (el._listeners.error) el._listeners.error.forEach((fn) => fn(e));
+              if (el._listeners.error) el._listeners.error.forEach((entry) => entry.fn(e));
               else throw e;
             }
           });
@@ -150,13 +206,13 @@ function makeDom(ctxCell) {
     getElementById: (id) => registry[id] || null,
     body
   };
-  return { document, registry };
+  return { document, registry, clockState };
 }
 
 function buildScenario(opts) {
   const rpcResponder = opts && opts.rpcResponder;
   const ctxCell = {};
-  const { document } = makeDom(ctxCell);
+  const { document, clockState } = makeDom(ctxCell);
   const routerERoot = document.createElement('div');
   routerERoot.setAttribute('id', 'routerERoot');
 
@@ -232,7 +288,12 @@ function buildScenario(opts) {
     String,
     URLSearchParams,
     RegExp,
-    AgentTypes: undefined
+    AgentTypes: undefined,
+    // #2088 round 2, item 10: this scenario's own fake clock (see
+    // makeDom's clockState comment) -- router-variant-e.js's only two
+    // Date.now() call sites (show()'s own lastShowAt, and init()'s root
+    // click-guard) both read through here.
+    Date: { now: () => clockState.now }
   };
   sandbox.window.document = document;
   sandbox.window.AgentTypes = {
@@ -252,7 +313,7 @@ function buildScenario(opts) {
     throw new Error('window.RouterVariantE.init was not defined after loading js/router-variant-e.js');
   }
 
-  return { ctx, routerERoot, bridge, RouterVariantE, trackedEvents, rpcCalls, insertCalls, redirects, dispatchPageshow: (persisted) => ctx.window.dispatchPageshow(persisted) };
+  return { ctx, routerERoot, bridge, RouterVariantE, trackedEvents, rpcCalls, insertCalls, redirects, dispatchPageshow: (persisted) => ctx.window.dispatchPageshow(persisted), clockState };
 }
 
 function flatten(el) {
@@ -953,6 +1014,241 @@ function driveToP7_5(routerERoot, insertCalls) {
     'start.html\'s insertFreshLead sets leads.is_synthetic=true when isSynthetic is passed');
   ok(/routerEScript\.onerror = function \(\) \{[\s\S]{0,400}router-discovery\.js/.test(startHtmlSrc),
     'start.html\'s arm-E script-load failure falls back to loading js/router-discovery.js (arm C) rather than only showing an error');
+})();
+
+
+// ═══ Scenario 21 (#2088 round 2, item 10): the 350ms root click-guard,
+// ACTUALLY exercised via the harness's own capture-phase dispatch (see
+// makeDom's dispatchDomEvent) -- a legitimate click on e-p2's Continue,
+// immediately followed, in the SAME instant (dispatchClickSameInstant --
+// no fake-clock advance), by a stray click landing on e-p3's own
+// freshly-rendered first option (round 1's own repro shape: a real
+// double-tap where the second tap's target is whatever rendered
+// underneath the first tap's finger). The stray tap must be swallowed
+// before it ever reaches e-p3's own option handler. ═══
+(function scenario21() {
+  const { routerERoot, bridge, RouterVariantE, trackedEvents } = buildScenario();
+  RouterVariantE.init(bridge, routerERoot);
+  return settle().then(() => {
+    findOptionButtons(routerERoot)[0].dispatchClick(); // Homeowner -> e-p2 (clock advances)
+    return settle();
+  }).then(() => {
+    findContinueButton(routerERoot).dispatchClick(); // e-p2 -> e-p3 (legitimate click, clock advances)
+    const strayTarget = findOptionButtons(routerERoot)[0]; // e-p3's own first option, rendered synchronously by the click above
+    ok(!!strayTarget && strayTarget.textContent.indexOf('Me') !== -1, 'e-p3 has rendered its own first option ("Me") synchronously, in the same tick as the e-p2->e-p3 navigation');
+    strayTarget.dispatchClickSameInstant(); // the stray second tap -- SAME instant as the click above
+    return settle();
+  }).then(() => {
+    ok(trackedEvents.filter((e) => e.name === 'router_step_complete' && e.extra.step === 'e-p3').length === 0,
+      'the stray same-instant second tap on e-p3\'s first option is swallowed by the 350ms root click-guard -- it never completes e-p3');
+    const buttons = findOptionButtons(routerERoot);
+    ok(buttons.length === 2 && buttons[0].textContent.indexOf('Me') !== -1 && buttons[1].textContent.indexOf('Insurance') !== -1,
+      'e-p3 is still showing (Me/Insurance), not advanced to e-p4a/e-p4b by the swallowed stray tap');
+  }).catch((e) => { console.error('scenario21 error:', e); fail++; });
+})();
+
+// A genuinely SEPARATE tap (clock advances normally between the two,
+// exactly like every other click in this whole suite) must NOT be
+// swallowed -- the guard targets same-instant double-taps only.
+(function scenario21b() {
+  const { routerERoot, bridge, RouterVariantE, trackedEvents } = buildScenario();
+  RouterVariantE.init(bridge, routerERoot);
+  return settle().then(() => {
+    findOptionButtons(routerERoot)[0].dispatchClick(); // Homeowner -> e-p2
+    return settle();
+  }).then(() => {
+    findContinueButton(routerERoot).dispatchClick(); // e-p2 -> e-p3
+    return settle();
+  }).then(() => {
+    findOptionButtons(routerERoot)[0].dispatchClick(); // a real, separate tap on e-p3 -- clock has advanced since e-p3 rendered
+    return settle();
+  }).then(() => {
+    ok(trackedEvents.filter((e) => e.name === 'router_step_complete' && e.extra.step === 'e-p3').length === 1,
+      'a genuinely separate tap on e-p3 (clock advanced since it rendered) is NOT swallowed by the guard');
+  }).catch((e) => { console.error('scenario21b error:', e); fail++; });
+})();
+
+// ═══ Scenario 22 (#2088 round 2, BLOCKER N1): firing e-p7-5's own <form>
+// 'submit' event twice in a row (Enter/Go pressed twice) while the FIRST
+// submit's insert is still in flight must produce exactly ONE
+// insertFreshLead call, and the email input becomes readOnly for the
+// duration. ═══
+(function scenario22() {
+  const { routerERoot, bridge, RouterVariantE, insertCalls } = buildScenario();
+  RouterVariantE.init(bridge, routerERoot);
+  return driveToP7_5(routerERoot, insertCalls).then(() => {
+    const emailInput = flatten(routerERoot).find((c) => c.id === 'eEmail');
+    emailInput.value = 'jane@example.com';
+    const form = flatten(routerERoot).find((c) => c.tagName === 'FORM');
+    ok(!!form, 'e-p7-5 wraps its email field in a <form>');
+    form.dispatchEvent('submit'); // first Enter/Go
+    form.dispatchEvent('submit'); // second Enter/Go, SAME tick, insert still in flight (unresolved)
+    ok(emailInput.readOnly === true, 'the email input becomes readOnly once the first submit starts its request');
+    ok(insertCalls.length === 1, 'firing the form\'s own submit event twice in a row produces exactly ONE insertFreshLead call while the first is still in flight');
+    return settle();
+  }).then(() => {
+    ok(insertCalls.length === 1, 'still exactly ONE leads insert once the (single) in-flight insert has resolved');
+  }).catch((e) => { console.error('scenario22 error:', e); fail++; });
+})();
+
+// Same guard, on the RESUBMIT/PATCH branch (leadId already set) -- round
+// 1's own fix never set p75InsertPromise on this branch at all, so it was
+// completely unguarded against a same-render double submit.
+(function scenario22b() {
+  const { routerERoot, bridge, RouterVariantE, insertCalls, rpcCalls } = buildScenario();
+  RouterVariantE.init(bridge, routerERoot);
+  return driveToP7_5(routerERoot, insertCalls).then(() => {
+    fillAndSubmit(routerERoot, 'eEmail', 'typo@example.com'); // -> e-p8, leadId now set
+    return settle();
+  }).then(() => {
+    const backBtn = flatten(routerERoot).find((c) => c.tagName === 'BUTTON' && c.className.split(' ').includes('router-back'));
+    backBtn.dispatchClick(); // back to e-p7-5 (resubmit branch)
+    return settle();
+  }).then(() => {
+    const emailInput = flatten(routerERoot).find((c) => c.id === 'eEmail');
+    emailInput.value = 'corrected@example.com';
+    const form = flatten(routerERoot).find((c) => c.tagName === 'FORM');
+    form.dispatchEvent('submit');
+    form.dispatchEvent('submit'); // second Enter/Go, SAME tick, PATCH still in flight
+    return settle();
+  }).then(() => {
+    ok(insertCalls.length === 1, 'still exactly ONE leads insert total');
+    ok(rpcCalls.filter((c) => c.name === 'update_lead_contact').length === 1, 'the resubmit branch\'s own double-submit fires update_lead_contact exactly once, not twice');
+  }).catch((e) => { console.error('scenario22b error:', e); fail++; });
+})();
+
+// ═══ Scenario 23 (#2088 round 2, BLOCKER N1): same guard on e-p13's own
+// phone PATCH -- firing its <form>'s 'submit' event twice in a row must
+// produce exactly ONE update_lead_contact call and exactly ONE redirect
+// (not two finish() calls from the second submit). ═══
+function driveToP13(routerERoot, insertCalls) {
+  return driveToP7_5(routerERoot, insertCalls).then(() => {
+    fillAndSubmit(routerERoot, 'eEmail', 'jane@example.com'); // -> e-p8
+    return settle();
+  }).then(() => {
+    findOptionButtons(routerERoot)[1].dispatchClick(); // -> e-p9
+    return settle();
+  }).then(() => {
+    findContinueButton(routerERoot).dispatchClick(); // -> e-p10
+    return settle();
+  }).then(() => {
+    findOptionButtons(routerERoot)[8].dispatchClick();
+    findContinueButton(routerERoot).dispatchClick(); // -> e-p11
+    return settle();
+  }).then(() => {
+    findContinueButton(routerERoot).dispatchClick(); // -> e-p12
+    return settle();
+  }).then(() => {
+    findOptionButtons(routerERoot)[1].dispatchClick(); // -> e-p13
+    return settle();
+  });
+}
+(function scenario23() {
+  const { routerERoot, bridge, RouterVariantE, insertCalls, rpcCalls, redirects } = buildScenario();
+  RouterVariantE.init(bridge, routerERoot);
+  return driveToP13(routerERoot, insertCalls).then(() => {
+    const phoneInput = flatten(routerERoot).find((c) => c.id === 'ePhone');
+    phoneInput.value = '2025551234';
+    const form = flatten(routerERoot).find((c) => c.tagName === 'FORM');
+    ok(!!form, 'e-p13 wraps its phone field in a <form>');
+    form.dispatchEvent('submit');
+    form.dispatchEvent('submit'); // second Enter/Go, SAME tick, PATCH still in flight
+    ok(phoneInput.readOnly === true, 'the phone input becomes readOnly once the first submit starts its request');
+    return settle();
+  }).then(() => {
+    ok(rpcCalls.filter((c) => c.name === 'update_lead_contact').length === 1, 'firing e-p13\'s form submit event twice in a row produces exactly ONE update_lead_contact call');
+    ok(redirects.length === 1, 'and exactly one redirect -- no double-finish() from the second submit');
+  }).catch((e) => { console.error('scenario23 error:', e); fail++; });
+})();
+
+// Same double-submit, but on the data:false FALLBACK path -- round 2's
+// own coordinator flagged this as becoming TWO inserts and TWO redirects
+// under round 1's code; must now be exactly one of each.
+(function scenario23b() {
+  const { routerERoot, bridge, RouterVariantE, insertCalls, redirects, rpcCalls } = buildScenario({
+    rpcResponder: (name) => (name === 'update_lead_contact' ? { data: false, error: null } : { data: true, error: null })
+  });
+  RouterVariantE.init(bridge, routerERoot);
+  return driveToP13(routerERoot, insertCalls).then(() => {
+    const phoneInput = flatten(routerERoot).find((c) => c.id === 'ePhone');
+    phoneInput.value = '2025551234';
+    const form = flatten(routerERoot).find((c) => c.tagName === 'FORM');
+    form.dispatchEvent('submit');
+    form.dispatchEvent('submit'); // second Enter/Go, SAME tick, fallback insert still in flight
+    return settle();
+  }).then(() => {
+    ok(insertCalls.length === 2, 'e-p13\'s data:false fallback double-submit produces exactly TWO inserts total (the original e-p7-5 insert, plus ONE fallback insert -- not two fallback inserts)');
+    ok(redirects.length === 1, 'and exactly one redirect -- the double-submit does not produce two finish() calls');
+  }).catch((e) => { console.error('scenario23b error:', e); fail++; });
+})();
+
+// ═══ Scenario 24 (#2088 round 2 leftover, item 4): the data:false
+// fallback ALSO calls set_lead_role now (round 1's own fallback did not,
+// leaving the row with role=NULL) -- both at e-p7-5's resubmit path and
+// at e-p13's phone patch. ═══
+(function scenario24() {
+  const { routerERoot, bridge, RouterVariantE, insertCalls, rpcCalls } = buildScenario({
+    rpcResponder: (name) => (name === 'update_lead_contact' ? { data: false, error: null } : { data: true, error: null })
+  });
+  RouterVariantE.init(bridge, routerERoot);
+  return driveToP7_5(routerERoot, insertCalls).then(() => {
+    fillAndSubmit(routerERoot, 'eEmail', 'typo@example.com'); // insert #1 + its own set_lead_role
+    return settle();
+  }).then(() => {
+    const backBtn = flatten(routerERoot).find((c) => c.tagName === 'BUTTON' && c.className.split(' ').includes('router-back'));
+    backBtn.dispatchClick();
+    return settle();
+  }).then(() => {
+    fillAndSubmit(routerERoot, 'eEmail', 'corrected@example.com'); // resubmit -- data:false -> fallback insert #2
+    return settle();
+  }).then(() => {
+    const roleCalls = rpcCalls.filter((c) => c.name === 'set_lead_role');
+    ok(insertCalls.length === 2, 'the resubmit\'s data:false result triggers a fallback insert (2 total)');
+    ok(roleCalls.length === 2, 'set_lead_role is called for BOTH inserts -- the fallback insert is no longer left with role=NULL');
+  }).catch((e) => { console.error('scenario24 error:', e); fail++; });
+})();
+
+(function scenario24b() {
+  const { routerERoot, bridge, RouterVariantE, insertCalls, rpcCalls } = buildScenario({
+    rpcResponder: (name) => (name === 'update_lead_contact' ? { data: false, error: null } : { data: true, error: null })
+  });
+  RouterVariantE.init(bridge, routerERoot);
+  return driveToP13(routerERoot, insertCalls).then(() => {
+    fillAndSubmit(routerERoot, 'ePhone', '2025551234'); // e-p13's phone PATCH -- data:false -> fallback insert #2
+    return settle();
+  }).then(() => {
+    const roleCalls = rpcCalls.filter((c) => c.name === 'set_lead_role');
+    ok(insertCalls.length === 2, 'e-p13\'s data:false result triggers a fallback insert (2 total)');
+    ok(roleCalls.length === 2, 'set_lead_role is called for BOTH inserts from e-p13\'s own data:false fallback too');
+  }).catch((e) => { console.error('scenario24b error:', e); fail++; });
+})();
+
+// ═══ Scenario 25 (#2088 round 2 leftover, item 9): a router-variant-e.js
+// script-load failure must fall back to arm C tagged variant='c', not
+// 'e', and thread is_synthetic through C's own homeowner renderContact
+// too. Evaluated directly off start.html's own source (no DOM/vm harness
+// exists for start.html itself in this repo -- same approach as scenario
+// 20 above). ═══
+(function scenario25() {
+  const startHtmlSrc = fs.readFileSync(path.join(repoRoot, 'start.html'), 'utf8');
+  ok(/var routerCFallbackBridge = \{/.test(startHtmlSrc),
+    'start.html defines a SEPARATE fallback bridge for the arm-E-load-failure path, not reusing routerEBridge');
+  ok(/trackRouter: function \(name, extra\) \{ return trackRouter\(name, extra, 'c'\); \}/.test(startHtmlSrc),
+    'the fallback bridge\'s trackRouter tags every event with variant=\'c\', not \'e\'');
+  ok(/insertFreshLead: function \(nm, em, ph, isSynthetic\) \{ return insertFreshLead\(nm, em, ph, isSynthetic, 'c'\); \}/.test(startHtmlSrc),
+    'the fallback bridge\'s insertFreshLead tags every insert with variant=\'c\', not \'e\'');
+  ok(/window\.RouterDiscovery\.init\(routerCFallbackBridge, routerERoot\)/.test(startHtmlSrc),
+    'the onerror handler runs arm C\'s own module with routerCFallbackBridge, not routerEBridge');
+  ok(/function trackRouter\(name, extra, variantOverride\)/.test(startHtmlSrc),
+    'trackRouter accepts a variant override');
+  ok(/function insertFreshLead\(name, email, phoneDigits, isSynthetic, variantOverride\)/.test(startHtmlSrc),
+    'insertFreshLead accepts a variant override');
+  ok(/variant: variantOverride \|\| variant\n    \};/.test(startHtmlSrc),
+    'insertFreshLead\'s payload uses the override when given, falling back to the page\'s own variant otherwise');
+
+  const discoverySrc = fs.readFileSync(path.join(repoRoot, 'js', 'router-discovery.js'), 'utf8');
+  ok(/bridge\.insertFreshLead\(name, email, phoneDigits, bridge\.oqInternalOverride\)\.then\(function \(newId\) \{/.test(discoverySrc),
+    'router-discovery.js\'s own renderContact() (arm C\'s homeowner contact screen) now threads bridge.oqInternalOverride through insertFreshLead too');
 })();
 
 setTimeout(() => {
