@@ -454,18 +454,37 @@ export function readReferralIds(): ReferralIds {
   return out;
 }
 
-/** Persist referral ids to storage AND the .otterquote.com cookie. */
+/**
+ * Persist referral ids to storage AND the .otterquote.com cookie.
+ *
+ * gh-2060: a key ABSENT from `ids` must not leave a PRIOR write's value for
+ * that key sitting in localStorage/sessionStorage. The cookie already gets
+ * a full overwrite every call (`payload` only ever contains this call's
+ * keys), but until this fix local/sessionStorage were only ever added to,
+ * never pruned — so an agent id (or referral id/code) from an earlier,
+ * unrelated referral event could silently resurface via readReferralIds()'s
+ * per-key storage fallback on a later write that intentionally omitted it,
+ * attaching a stranger's attribution to the wrong referral. Every key not
+ * present in this call's `ids` is now explicitly cleared from both storages
+ * so post-write state always matches `ids` exactly, mirroring the cookie.
+ */
 export function writeReferralIds(ids: ReferralIds): void {
   if (typeof document === 'undefined' || !ids) return;
   const payload: Record<string, string> = {};
   for (const key of REFERRAL_KEYS) {
     const v = ids[key];
-    if (!v) continue;
-    payload[key] = String(v);
-    try { localStorage.setItem(key, String(v)); } catch { /* storage blocked */ }
-    try { sessionStorage.setItem(key, String(v)); } catch { /* storage blocked */ }
+    if (v) payload[key] = String(v);
   }
   if (!Object.keys(payload).length) return;
+  for (const key of REFERRAL_KEYS) {
+    if (payload[key]) {
+      try { localStorage.setItem(key, payload[key]); } catch { /* storage blocked */ }
+      try { sessionStorage.setItem(key, payload[key]); } catch { /* storage blocked */ }
+    } else {
+      try { localStorage.removeItem(key); } catch { /* storage blocked */ }
+      try { sessionStorage.removeItem(key); } catch { /* storage blocked */ }
+    }
+  }
   try { writeCookie(REFERRAL_COOKIE, JSON.stringify(payload), REFERRAL_MAX_AGE); } catch { /* cookie blocked */ }
 }
 
