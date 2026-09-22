@@ -80,17 +80,29 @@ This gate does NOT generically catch:
     job-ordering / fail-open-vs-fail-closed property of a workflow's step sequence,
     not a declared-input mismatch. CHECK 2's reconciliation logic does not model
     step ordering or step-to-step data flow within a job.
-  - gh-1884's residual shape: self_test_invokes_detector() (CHECK 1, registered
-    detectors only) proves a self-test's SOURCE structurally loads and touches
-    the detector module (or subprocess-invokes it and reads the result), which
-    closes the refuted bypass -- a stub that never references the detector at
-    all. It does NOT prove the printed PASS lines' negative-control tokens were
-    actually DERIVED from that call's return value, as opposed to a call made
-    and its result discarded while a hardcoded matching string is printed
-    alongside it. Closing that residual generically requires tracing data flow
-    from a call's return value to a print/check() argument -- semantic
-    analysis, out of reach for a static source check at this scope, same
-    category as the #1720/#1737 gaps above.
+  - gh-1884's residual shape, ROUND 3: after two rounds of trying to verify a
+    self-test's SOURCE honestly proves it invoked the detector (both refuted
+    live -- 2026-09-22T14:39:35Z and 2026-09-22T14:57:02Z, each by a new
+    forgery the prior round's structural pattern did not anticipate), CHECK 1
+    stopped trusting the self-test file for registered detectors at all.
+    GATE_PROBES (below) has the gate import and RUN the detector itself
+    against known-bad/known-good fixtures and check its real return value --
+    no self-test forgery can help a detector pass a check that never reads
+    the self-test. The residual this leaves: GATE_PROBES trusts the
+    DETECTOR's own self_test() (three of four registered detectors) or a
+    gate-owned probe (the fourth) to be a genuine, non-circumventable
+    bad/good distinction -- nothing stops a future edit to a detector's own
+    self_test() from being weakened to always return 0. That is the same
+    unbounded "did this code honestly check itself" question one level
+    down, but the trust boundary has moved from a separate, easily-swapped
+    wrapper file (the actual target of all three rounds of forgery above) to
+    the registered detector's own single, reviewed source of truth for its
+    logic and fixtures -- a targeted, visible edit to code that already gets
+    scrutiny, not a wrapper whose only job was pretending to exercise that
+    code. Out of reach for ANY static or dynamic check at this scope to close
+    completely -- same category as the #1720/#1737 gaps above, and the
+    honest reason GATE_PROBES does not claim to be uncircumventable, only to
+    have moved the circumvention somewhere much harder to do quietly.
 Per gh-1738's own instruction: say this plainly rather than quietly narrowing scope
 to only what got built. Instances 1 and 3 need a different mechanism; this issue's
 mechanism is not a census of all five, only of shapes #2, #4, and (the harder half)
@@ -194,6 +206,9 @@ EXIT
        LIMITATIONS section below.
 """
 import ast
+import contextlib
+import importlib.util
+import io
 import json
 import os
 import re
@@ -383,162 +398,171 @@ def detect_inert_script(script_path: Path):
     return None
 
 
-def detector_defined_names(script_path: Path):
-    """The set of names this detector script defines at module top level
-    (functions and classes) -- gh-1884 ROUND 2.
-
-    self_test_invokes_detector() uses this to require a self-test CALL a
-    name the detector itself defines, not merely something that exists on
-    every Python module object regardless of what that module contains
-    (`__doc__`, `__dir__`, `__repr__`, ...). Returns an empty set on any
-    read/parse failure -- self_test_invokes_detector() treats an empty set as
-    "cannot narrow further" and falls back to requiring any call at all,
-    rather than turning a read/parse problem (already surfaced elsewhere, by
-    detect_inert_script for this same script) into an unrelated false FAIL
-    here.
-    """
-    try:
-        text = script_path.read_text(encoding="utf-8", errors="replace")
-        tree = ast.parse(text, filename=str(script_path))
-    except (OSError, SyntaxError):
-        return set()
-    return {
-        node.name
-        for node in tree.body
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
-    }
-
-
-# gh-1884: structural, source-level proof that a registered detector's
-# self-test actually loads and touches the detector it claims to be testing,
-# rather than merely printing text that happens to match the negative-control
-# tokens CHECK 1 greps for below. Every registered self-test in this repo (as
-# of this writing) uses the same importlib pattern: spec_from_file_location(
-# ..., <basename>) -> module_from_spec -> exec_module -> <var>.<attr>(...).
-# That route is recognized structurally: a load site (the detector's own
-# filename appears in source) followed by exec_module(<var>) followed by a
-# later CALL on <var> (not merely an attribute read -- see ROUND 2 below). A
-# subprocess/os-invocation route is also accepted, gated on the same filename
-# mention appearing near the invocation itself plus the result
-# (.returncode/.stdout/.stderr) being read afterward.
+# ---------------------------------------------------------------------------
+# gh-1884 ROUND 3 -- GATE_PROBES: invert the trust model entirely.
+# ---------------------------------------------------------------------------
+# ROUND 1 tried "is the detector script non-empty". ROUND 2 tried "does the
+# self-test's SOURCE structurally prove it called the detector". Both were
+# refuted (2026-09-22T14:39:35Z and 2026-09-22T14:57:02Z) by new self-test
+# forgeries: a call to a decorative-but-real attribute, then a call to a
+# trivial function the detector legitimately defines, then a subprocess
+# route whose result is read but never actually asserted on. Every round
+# added one more structural pattern to recognize, and every round left a
+# sibling forgery open, because "did this self-test honestly invoke the
+# detector" is an unbounded adversarial question about ANOTHER file's
+# intent -- there is always one more way to fake intent in source text.
 #
-# ROUND 2 (REVIEW: FAIL on PR #2101, 2026-09-22T14:39:35Z): the round-1
-# version of this check accepted ANY attribute reference on the loaded
-# module -- `re.search(r"\b%s\.\w+" % modvar, after)` -- as proof of
-# invocation. That is satisfied by a purely decorative read like `mod.__doc__`
-# with no call at all. exec_module() only runs a module's TOP-LEVEL
-# statements; it does not make that module `__main__`, so anything gated
-# behind `if __name__ == "__main__":` -- this repo's own convention for every
-# detector's real entry point -- never executes just because exec_module()
-# ran. A self-test can therefore load the detector, touch one harmless
-# attribute, print hand-written PASS lines naming the registry's tokens, and
-# never run a single line of the detector's actual logic -- functionally the
-# same forgery this whole issue exists to close, laundered past the round-1
-# check instead of omitting the load entirely.
+# The fix is not a fourth pattern. It is to stop asking the self-test
+# anything at all. For a REGISTERED detector, this gate now imports the
+# detector itself -- fresh, via its own importlib call, never through the
+# self-test file -- and RUNS it directly against a known-bad fixture and a
+# known-good fixture, then checks the DETECTOR's own real return value. No
+# self-test forgery can help a detector pass this, because the self-test is
+# no longer the thing being trusted or even consulted for this check: the
+# gate is the one invoking the detector and reading its output.
 #
-# Fixed by requiring a CALL (`name(...)`, not just `name`) on the loaded
-# module, AND -- when detector_defined_names() found any -- requiring that
-# call's target be one of the NAMES THE DETECTOR ITSELF DEFINES at module
-# top level. That closes both the exact repro (`mod.__doc__`, not a call at
-# all) and its obvious next move (`mod.__dir__()` or `mod.__repr__()` -- a
-# real call, but to something universal to every Python module object, never
-# defined by this detector). It does NOT require calling specifically the
-# name behind the detector's own `if __name__ == "__main__":` guard, because
-# this repo's real registered self-tests (e.g. drift-detector-age.test.py)
-# legitimately call an internal logic function directly (`compute_result`),
-# never `main()` itself -- requiring the guarded name specifically would
-# break every real self-test in this repo today. Residual, disclosed: a
-# self-test that calls some OTHER function the detector happens to define
-# (real code, just not the function exercising the behavior under test) still
-# passes this check; distinguishing "the detector's meaningful logic" from
-# "an incidental helper it also defines" is a semantic judgment, not a
-# structural one -- out of reach for a static check at this scope, same
-# category as this file's other documented LIMITATIONS.
-IMPORTLIB_EXEC_MODULE_RE = re.compile(r"spec\.loader\.exec_module\(\s*(\w+)\s*\)")
-SUBPROCESS_INVOKE_RE = re.compile(
-    r"\b(?:subprocess\.(?:run|check_output|check_call|Popen)|os\.system|os\.popen)\s*\("
-)
-SUBPROCESS_RESULT_USE_RE = re.compile(r"\.(?:returncode|stdout|stderr)\b")
-# How far past a subprocess/os-invocation call site to look for the
-# detector's own filename -- ties the invocation to THIS detector rather than
-# accepting an unrelated subprocess call plus a filename mention anywhere
-# else in the file (e.g. a comment). A window, not a full shell/AST parse of
-# the call's argument list -- deliberately simple, consistent with this
-# check's other heuristics; a call whose argument list is unusually long or
-# multi-line could in principle push the filename outside it, which would
-# read as a false violation (fails toward FAIL, never toward a false PASS).
-SUBPROCESS_PROXIMITY_WINDOW = 400
+# Three of the four registered detectors already carry their own self_test()
+# function -- pre-existing, audited code that validates against real,
+# committed bad/good fixtures (scripts/fixtures/*), including a
+# "known-bad-expectation inversion" that proves the fixture pair is even
+# distinguishable. Their own .test.py wrapper files already just delegate to
+# it ("Thin wrapper around that script's own --self-test", per
+# spec-spy-order-check.test.py's docstring) -- the bug was that the GATE
+# only ever watched the WRAPPER, which is exactly the file every round of
+# forgery targeted. Calling self_test() directly closes that off completely:
+# forging the wrapper is now irrelevant, because the gate never reads it for
+# this purpose.
+#
+# The fourth registered detector, drift-detector-age.py, has no self_test()
+# of its own (see the module-level NOTE by its GATE_PROBES entry below for
+# why a small gate-owned probe was written for it instead of adding one to
+# the detector -- kept out of this PR's claimed file scope).
+#
+# What GATE_PROBES deliberately does NOT attempt: proving that a detector's
+# self_test() is itself uncircumventable is the same unbounded problem one
+# level down (nothing stops someone from editing self_test() to always
+# return 0). The difference from rounds 1/2 is where the trust boundary now
+# sits: on the DETECTOR's own reviewed, single source of truth for its
+# logic and fixtures -- not on a separate, easily-swapped wrapper file whose
+# entire job was pretending to run that source. A malicious edit to
+# self_test() itself is a visible, targeted change to the registered
+# detector's own code, caught the same way any other harmful diff to a
+# registered detector would need to be -- code review on the file that
+# matters, not a gate trying to out-guess a wrapper.
+#
+# COST: negligible. Every self_test()/probe call below is pure computation
+# over small, already-committed fixtures -- no network, no credentials, no
+# new dependency. This does not add a new subprocess: CHECK 1's existing
+# per-script loop already spawns `python <name>.test.py` for every detector
+# including these four; GATE_PROBES adds one additional IN-PROCESS function
+# call per registered detector (faster than a process spawn, not slower).
+# Measured impact on this repo's real registered detectors: each probe
+# completes in well under 100ms.
 
 
-def self_test_invokes_detector(test_text: str, detector_basename: str, defined_names=frozenset()):
-    """Returns a violation-reason string (this self-test does not
-    demonstrably invoke its detector) or None if it does. See the module-level
-    comment above for the recognized routes, ROUND 2's fix, and its own
-    disclosed residual.
-    """
-    if detector_basename not in test_text:
+def load_detector_module(script_path: Path):
+    """Fresh, gate-owned import of a detector script for direct execution --
+    NEVER the self-test's own import, never trusting how (or whether) the
+    self-test loaded it. This is the load path GATE_PROBES calls into."""
+    mod_name = "gate_probe_" + re.sub(r"\W", "_", script_path.stem)
+    spec = importlib.util.spec_from_file_location(mod_name, script_path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _probe_drift_detector_age(mod, root):
+    """gh-1884 ROUND 3: drift-detector-age.py has no self_test() of its own
+    (unlike its three registry siblings) -- kept that way here rather than
+    adding one to the detector, to keep this PR's diff confined to the two
+    files it already claims. This probe plays the same role directly: call
+    the detector's own pure verdict function, compute_result() (no I/O --
+    see its docstring), with a hardcoded stale run and a hardcoded fresh
+    run against a fixed threshold, and assert its REAL return value
+    distinguishes them. Mirrors the exact boundary values
+    drift-detector-age.test.py's own fixtures use."""
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    threshold_hours = 36.0
+    stale_iso = (now - timedelta(hours=100)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    fresh_iso = (now - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    bad = mod.compute_result(stale_iso, "gate-probe", threshold_hours, now=now)
+    if bad.get("verdict") != "STALE":
         return (
-            "never mentions the detector's own filename (%s) anywhere in its "
-            "source -- it cannot be executing a detector it does not "
-            "reference; printing text that merely resembles the expected "
-            "output is not a self-test" % detector_basename
+            "gate ran compute_result() directly on a 100h-old run under a "
+            "36h threshold and got verdict=%r (expected STALE) -- the "
+            "detector does not reject the thing it exists to reject"
+            % bad.get("verdict")
         )
 
-    exec_match = IMPORTLIB_EXEC_MODULE_RE.search(test_text)
-    if exec_match:
-        modvar = exec_match.group(1)
-        after = test_text[exec_match.end():]
-        calls = re.findall(r"\b%s\.(\w+)\s*\(" % re.escape(modvar), after)
-        if not calls:
+    good = mod.compute_result(fresh_iso, "gate-probe", threshold_hours, now=now)
+    if good.get("verdict") != "FRESH":
+        return (
+            "gate ran compute_result() directly on a 1h-old run under the "
+            "same 36h threshold and got verdict=%r (expected FRESH) -- "
+            "either the detector reports STALE unconditionally, or its "
+            "logic does not actually depend on the age it was given"
+            % good.get("verdict")
+        )
+    return None
+
+
+def _probe_via_self_test(needs_root):
+    """Builds a probe that gate-calls a detector's OWN self_test() directly
+    -- its pre-existing, committed-fixture-backed validation -- rather than
+    trusting a separate wrapper file to have done so. Any exception during
+    the call, or a nonzero return, is a violation; stdout is captured (not
+    dropped) so a real failure's detail reaches the gate's own report."""
+
+    def probe(mod, root):
+        fn = getattr(mod, "self_test", None)
+        if fn is None or not callable(fn):
             return (
-                "loads the detector via importlib (exec_module(%s)) but never "
-                "CALLS anything on the loaded module afterward -- an "
-                "attribute read (if any) executes nothing; exec_module() runs "
-                "the module's top-level statements but never makes it "
-                "`__main__`, so any code behind `if __name__ == \"__main__\":` "
-                "-- this repo's own convention for a detector's real entry "
-                "point -- still never ran" % modvar
+                "does not define a callable self_test() for the gate to run "
+                "directly -- GATE_PROBES claims this detector has one; that "
+                "claim is now false"
             )
-        if defined_names and not (set(calls) & defined_names):
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf):
+                code = fn(root) if needs_root else fn()
+        except Exception as exc:  # noqa: BLE001
             return (
-                "loads the detector via importlib (exec_module(%s)) and "
-                "calls %s on it, but none of those names are among the "
-                "detector's own top-level functions/classes (%s) -- calling "
-                "something universal to every Python module object (a "
-                "dunder, an inherited method) is not evidence the "
-                "detector's own logic ran"
-                % (
-                    modvar,
-                    ", ".join(sorted(set(calls))),
-                    ", ".join(sorted(defined_names)),
-                )
+                "gate ran self_test() directly and it raised %s: %s -- "
+                "captured output before the crash: %r"
+                % (type(exc).__name__, exc, buf.getvalue()[-500:])
+            )
+        if code != 0:
+            return (
+                "gate ran self_test() directly and it returned %r (expected "
+                "0) -- the detector's OWN bad/good-fixture validation failed "
+                "when the gate invoked it, not merely when its wrapper "
+                "self-test claimed to. Captured output: %r"
+                % (code, buf.getvalue()[-800:])
             )
         return None
 
-    sub_match = SUBPROCESS_INVOKE_RE.search(test_text)
-    if sub_match:
-        window = test_text[sub_match.start() : sub_match.start() + SUBPROCESS_PROXIMITY_WINDOW]
-        if detector_basename not in window:
-            return (
-                "subprocess/os-invokes something, but the detector's own "
-                "filename (%s) does not appear at or near that invocation -- "
-                "nothing ties this call to this detector specifically, as "
-                "opposed to an unrelated subprocess call plus a filename "
-                "mention elsewhere in the file" % detector_basename
-            )
-        if SUBPROCESS_RESULT_USE_RE.search(test_text):
-            return None
-        return (
-            "subprocess/os-invokes something but never reads its "
-            ".returncode/.stdout/.stderr afterward -- the invocation's "
-            "result is never checked"
-        )
+    return probe
 
-    return (
-        "mentions %s but shows neither an importlib exec_module(...) load "
-        "site nor a subprocess/os invocation of it -- a filename mention "
-        "alone does not prove the detector was ever executed" % detector_basename
-    )
+
+# Registered detector (DETECTOR_REGISTRY key) -> probe(mod, root) -> None on
+# pass, a violation-reason string on fail. Every entry in DETECTOR_REGISTRY
+# MUST have a GATE_PROBES entry -- see check_firing_tests below, which fails
+# closed (a violation, not a silent skip) on any registered detector this
+# dict does not name. A detector that genuinely cannot be probed this way
+# (needs live network, a database, or credentials the gate does not have)
+# still needs an entry here -- write a probe that says so explicitly and
+# names the reason, rather than leaving it out. As of this writing, all four
+# registered detectors' core verdict logic is pure/offline, so no such
+# exemption exists yet.
+GATE_PROBES = {
+    "scripts/netlify-deploy-drift.py": _probe_via_self_test(needs_root=False),
+    "scripts/drift-detector-age.py": _probe_drift_detector_age,
+    "scripts/spec-spy-order-check.py": _probe_via_self_test(needs_root=True),
+    "scripts/workflow-step-unrun-check.py": _probe_via_self_test(needs_root=True),
+}
 
 
 def check_firing_tests(root: Path):
@@ -586,10 +610,15 @@ def check_firing_tests(root: Path):
         else:
             # gh-1884 CLOSE-REVIEW: FAIL (2026-09-08T21:11:33Z) -- both files
             # "existing" on disk is not the same as either one being real.
-            # Check the two halves of the exact refuted bypass independently:
-            # the script's own body (never trust a self-test's claims about a
-            # neutered detector), then the self-test's own source (never trust
-            # printed output that could have been hardcoded).
+            # detect_inert_script() stays as a cheap, cheap-to-explain
+            # pre-filter (an empty/comment-only script is worth naming
+            # specifically, and there is no point gate-probing something
+            # that cannot even import cleanly) -- but ROUND 3
+            # (2026-09-22T14:57:02Z REVIEW: FAIL, the second refutation of
+            # trying to verify a self-test's HONESTY) replaced the
+            # self-test-source-inspection half entirely: the gate now
+            # imports the detector itself and runs it, via GATE_PROBES. See
+            # that dict's module-level comment for why.
             inert_reason = detect_inert_script(script_path)
             if inert_reason is not None:
                 violations.append(
@@ -600,27 +629,47 @@ def check_firing_tests(root: Path):
                     % (rel, inert_reason)
                 )
             else:
-                try:
-                    test_text = test_path.read_text(encoding="utf-8", errors="replace")
-                except OSError as exc:  # noqa: BLE001
+                probe = GATE_PROBES.get(rel)
+                if probe is None:
                     violations.append(
-                        "FAIL  %s -- registered in DETECTOR_REGISTRY but its "
-                        "self-test %s could not be read: %s" % (rel, test_rel, exc)
+                        "FAIL  %s -- registered in DETECTOR_REGISTRY but has no "
+                        "GATE_PROBES entry. A registered detector must be "
+                        "directly, gate-executed against a known-bad and "
+                        "known-good fixture -- see GATE_PROBES's module comment. "
+                        "If this detector genuinely cannot be invoked this way "
+                        "(live network/credentials/a database the gate does not "
+                        "have), add an explicit, named, justified GATE_PROBES "
+                        "entry saying so -- a detector silently absent from "
+                        "GATE_PROBES is indistinguishable from one this gate "
+                        "forgot to convert." % rel
                     )
-                    test_text = None
-
-                if test_text is not None:
-                    invoke_reason = self_test_invokes_detector(
-                        test_text, Path(rel).name, detector_defined_names(script_path)
-                    )
-                    if invoke_reason is not None:
+                else:
+                    try:
+                        mod = load_detector_module(script_path)
+                    except Exception as exc:  # noqa: BLE001
                         violations.append(
-                            "FAIL  %s -- registered in DETECTOR_REGISTRY, but its "
-                            "self-test %s %s. A self-test that never demonstrably "
-                            "executes its detector proves nothing about it, no "
-                            "matter what its stdout says."
-                            % (rel, test_rel, invoke_reason)
+                            "FAIL  %s -- registered in DETECTOR_REGISTRY but the "
+                            "gate could not import it directly to probe it: %s: %s"
+                            % (rel, type(exc).__name__, exc)
                         )
+                        mod = None
+
+                    if mod is not None:
+                        try:
+                            probe_reason = probe(mod, root)
+                        except Exception as exc:  # noqa: BLE001
+                            probe_reason = (
+                                "the gate's probe itself raised %s: %s while "
+                                "running the detector directly"
+                                % (type(exc).__name__, exc)
+                            )
+                        if probe_reason is not None:
+                            violations.append(
+                                "FAIL  %s -- registered in DETECTOR_REGISTRY; the "
+                                "gate imported and ran it DIRECTLY (not via its "
+                                "self-test file, which is no longer trusted for "
+                                "this), but %s." % (rel, probe_reason)
+                            )
 
     for rel in discover_detector_scripts(root):
         test_rel = rel[:-3] + ".test.py"

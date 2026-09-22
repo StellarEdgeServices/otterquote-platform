@@ -88,6 +88,39 @@ def registry_snapshot(entries=None):
         neg.DETECTOR_REGISTRY.update(saved)
 
 
+@contextlib.contextmanager
+def gate_probes_snapshot(entries=None):
+    """Temporarily replace neg.GATE_PROBES for a synthetic-root run_all() call
+    -- gh-1884 ROUND 3's analogue of registry_snapshot() above.
+
+    GATE_PROBES is keyed by this repo's REAL detector paths. A synthetic
+    DETECTOR_REGISTRY entry registered via registry_snapshot() above has no
+    matching GATE_PROBES entry unless this ALSO supplies one -- which, as of
+    ROUND 3, is correctly reported as its own violation ("no GATE_PROBES
+    entry"), not silently skipped. So every test block below that registers a
+    synthetic detector name and is NOT specifically exercising that missing-
+    entry violation must supply a probe here for each name it registers, the
+    same way registry_snapshot() requires a manifest entry.
+    """
+    saved = dict(neg.GATE_PROBES)
+    neg.GATE_PROBES.clear()
+    if entries:
+        neg.GATE_PROBES.update(entries)
+    try:
+        yield
+    finally:
+        neg.GATE_PROBES.clear()
+        neg.GATE_PROBES.update(saved)
+
+
+def _always_pass_probe(mod, root):
+    """A trivial GATE_PROBES probe for test blocks exercising something OTHER
+    than probe behavior itself (existence checks, negative-token matching in
+    the generic per-script loop, ...) that just need registration to not
+    itself produce a 'no GATE_PROBES entry' violation."""
+    return None
+
+
 DETECTOR_SOURCE = (
     "#!/usr/bin/env python3\n"
     "def main():\n"
@@ -233,6 +266,13 @@ def main():
                 "test": "scripts/clean-only-detector.test.py",
                 "negative_tokens": ["REJECTED"],
             }
+        }), gate_probes_snapshot({
+            # gh-1884 ROUND 3: this block tests the generic negative-token
+            # check in CHECK 1's per-script loop, not GATE_PROBES -- give it
+            # a passing probe so it doesn't ALSO produce an unrelated "no
+            # GATE_PROBES entry" violation and break "exactly three
+            # violations" below.
+            "scripts/clean-only-detector.py": _always_pass_probe,
         }):
             result = neg.run_all(root)
 
@@ -389,6 +429,12 @@ def main():
                 "test": "scripts/test-only-missing.test.py",
                 "negative_tokens": [],
             },
+        }), gate_probes_snapshot({
+            # gh-1884 ROUND 3: only present-detector.py ever reaches the
+            # GATE_PROBES lookup (the other three short-circuit on a missing
+            # script/self-test before that point) -- this block is testing
+            # existence checks, not probe behavior, so give it a passing probe.
+            "scripts/present-detector.py": _always_pass_probe,
         }):
             result5 = neg.run_all(root)
 
@@ -507,237 +553,246 @@ def main():
         ),
     )
 
-    print()
-    print("=" * 70)
-    print("NON-INVOKING SELF-TEST -- registered script is healthy, but its")
-    print("self-test never loads or executes it (gh-1884)")
-    print("=" * 70)
-
-    with tempfile.TemporaryDirectory() as tmp:
-        root = Path(tmp)
-        # Script is real and non-trivial this time; only the self-test is a
-        # forgery -- proof the two new checks are independent of each other.
-        write(root / "scripts" / "unfired-detector.py", DETECTOR_SOURCE)
-        write(
-            root / "scripts" / "unfired-detector.test.py",
-            "#!/usr/bin/env python3\n"
-            'print("  PASS  bad case -> STALE: STALE")\n',
-        )
-        with registry_snapshot({
-            "scripts/unfired-detector.py": {
-                "test": "scripts/unfired-detector.test.py",
-                "negative_tokens": ["STALE"],
-            }
-        }):
-            result8 = neg.run_all(root)
-
-    for line in result8["violations"]:
-        print(line)
-    print("GATE: %s  (exit %d)" % (result8["verdict"], result8["code"]))
-
-    check("NON-INVOKING SELF-TEST: gate verdict is FAIL, not PASS", result8["verdict"], "FAIL")
-    check("NON-INVOKING SELF-TEST: gate exit code is 1", result8["code"], 1)
-    check_true(
-        "NON-INVOKING SELF-TEST: flagged for never invoking the detector",
-        any(
-            "unfired-detector.py" in v
-            and ("never mentions" in v or "shows neither an importlib" in v)
-            for v in result8["violations"]
-        ),
+    # -------------------------------------------------------------------
+    # gh-1884 ROUND 3 -- REVIEW: FAIL, twice more (2026-09-22T14:39:35Z and
+    # 2026-09-22T14:57:02Z): rounds 1 and 2 both tried to verify a self-
+    # test's SOURCE honestly proves it invoked the detector, and both were
+    # refuted by a new forgery the prior structural pattern had not
+    # anticipated -- a decorative attribute read, then a call to a trivial
+    # function the detector legitimately defines, then a subprocess route
+    # whose result is read but never actually asserted on. "Did this code
+    # honestly exercise that code" is unbounded; no amount of pattern-
+    # matching a self-test's text closes it.
+    #
+    # ROUND 3 stops asking. GATE_PROBES has the gate import a registered
+    # detector itself and RUN it directly against known-bad/known-good
+    # fixtures, checking the detector's own real return value -- the self-
+    # test file is no longer read for this at all. These blocks prove that
+    # inversion two ways: a BROKEN detector is caught regardless of what its
+    # self-test forges (both of round 2's exact bypasses, replayed), and a
+    # HEALTHY detector passes regardless of what its self-test forges (the
+    # self-test's dishonesty is now simply irrelevant, in both directions).
+    # -------------------------------------------------------------------
+    SELF_TEST_DETECTOR_HEALTHY = (
+        "#!/usr/bin/env python3\n"
+        "def touch():\n"
+        "    \"\"\"Decorative-but-detector-defined trivial function -- not real logic.\"\"\"\n"
+        "    return 'noop'\n"
+        "def self_test():\n"
+        "    return 0\n"
+        "def main():\n"
+        "    pass\n"
+        "if __name__ == '__main__':\n"
+        "    main()\n"
+    )
+    SELF_TEST_DETECTOR_BROKEN = (
+        "#!/usr/bin/env python3\n"
+        "def touch():\n"
+        "    \"\"\"Decorative-but-detector-defined trivial function -- not real logic.\"\"\"\n"
+        "    return 'noop'\n"
+        "def self_test():\n"
+        "    return 1  # always fails when the gate calls it directly\n"
+        "def main():\n"
+        "    pass\n"
+        "if __name__ == '__main__':\n"
+        "    main()\n"
+    )
+    FORGED_TEST_DECORATIVE_CALL = (
+        "#!/usr/bin/env python3\n"
+        "import importlib.util\n"
+        "from pathlib import Path\n"
+        "HERE = Path(__file__).resolve().parent\n"
+        "spec = importlib.util.spec_from_file_location('mod', HERE / '%(name)s.py')\n"
+        "mod = importlib.util.module_from_spec(spec)\n"
+        "spec.loader.exec_module(mod)\n"
+        "mod.touch()  # a REAL call to a REAL function the detector defines -- not its logic\n"
+        "print(\"  PASS  clean case: OK\")\n"
+        "print(\"  PASS  bad case -> STALE: STALE\")\n"
+    )
+    FORGED_TEST_UNASSERTED_SUBPROCESS = (
+        "#!/usr/bin/env python3\n"
+        "import subprocess, sys\n"
+        "from pathlib import Path\n"
+        "HERE = Path(__file__).resolve().parent\n"
+        "result = subprocess.run(\n"
+        "    [sys.executable, str(HERE / '%(name)s.py')],\n"
+        "    capture_output=True, text=True,\n"
+        ")\n"
+        "_ = result.returncode  # read, but never asserted or branched on\n"
+        "print(\"  PASS  clean case: OK\")\n"
+        "print(\"  PASS  bad case -> STALE: STALE\")\n"
     )
 
+    def _self_test_probe(needs_root=False):
+        # Reuses the REAL production probe factory (not a re-implementation)
+        # so this test exercises the exact code path GATE_PROBES uses for
+        # netlify-deploy-drift.py / spec-spy-order-check.py /
+        # workflow-step-unrun-check.py in this repo today.
+        return neg._probe_via_self_test(needs_root)
+
     print()
     print("=" * 70)
-    print("INERT DETECTOR, positive control -- the SAME registered detector,")
-    print("healthy script + a self-test that genuinely invokes it, is silent")
+    print("ROUND 3 -- a BROKEN detector is caught by GATE_PROBES regardless of")
+    print("either of round 2's exact self-test forgeries")
+    print("=" * 70)
+
+    for label, forged_test_template, detector_name in [
+        ("decorative-call", FORGED_TEST_DECORATIVE_CALL, "broken-detector-a"),
+        ("unasserted-subprocess", FORGED_TEST_UNASSERTED_SUBPROCESS, "broken-detector-b"),
+    ]:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write(root / "scripts" / (detector_name + ".py"), SELF_TEST_DETECTOR_BROKEN)
+            write(
+                root / "scripts" / (detector_name + ".test.py"),
+                forged_test_template % {"name": detector_name},
+            )
+            rel = "scripts/%s.py" % detector_name
+            with registry_snapshot({
+                rel: {"test": "scripts/%s.test.py" % detector_name, "negative_tokens": ["STALE"]}
+            }), gate_probes_snapshot({rel: _self_test_probe(needs_root=False)}):
+                result = neg.run_all(root)
+
+        for line in result["violations"]:
+            print(line)
+        print("[%s] GATE: %s  (exit %d)" % (label, result["verdict"], result["code"]))
+
+        check("ROUND3 broken+%s: gate verdict is FAIL, not PASS" % label, result["verdict"], "FAIL")
+        check_true(
+            "ROUND3 broken+%s: gate-executed self_test() directly is what's named" % label,
+            any(
+                detector_name + ".py" in v and "gate ran self_test() directly" in v
+                for v in result["violations"]
+            ),
+        )
+
+    print()
+    print("=" * 70)
+    print("ROUND 3, positive control -- a HEALTHY detector passes regardless")
+    print("of either forgery: the self-test's dishonesty is now irrelevant")
+    print("=" * 70)
+
+    for label, forged_test_template, detector_name in [
+        ("decorative-call", FORGED_TEST_DECORATIVE_CALL, "healthy-detector-a"),
+        ("unasserted-subprocess", FORGED_TEST_UNASSERTED_SUBPROCESS, "healthy-detector-b"),
+    ]:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write(root / "scripts" / (detector_name + ".py"), SELF_TEST_DETECTOR_HEALTHY)
+            write(
+                root / "scripts" / (detector_name + ".test.py"),
+                forged_test_template % {"name": detector_name},
+            )
+            rel = "scripts/%s.py" % detector_name
+            with registry_snapshot({
+                rel: {"test": "scripts/%s.test.py" % detector_name, "negative_tokens": ["STALE"]}
+            }), gate_probes_snapshot({rel: _self_test_probe(needs_root=False)}):
+                result = neg.run_all(root)
+
+        print("[%s] GATE: %s  (exit %d)" % (label, result["verdict"], result["code"]))
+        check("ROUND3 healthy+%s: gate verdict is PASS" % label, result["verdict"], "PASS")
+        check_true(
+            "ROUND3 healthy+%s: no violation for this detector" % label,
+            not any(detector_name + ".py" in v for v in result["violations"]),
+        )
+
+    print()
+    print("=" * 70)
+    print("ROUND 3 -- no GATE_PROBES entry for a registered detector is its")
+    print("own explicit, named violation, never a silent pass")
     print("=" * 70)
 
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
-        write(root / "scripts" / "healthy-detector.py", DETECTOR_SOURCE)
-        write(
-            root / "scripts" / "healthy-detector.test.py",
-            good_test_file("healthy-detector.py"),
-        )
+        write(root / "scripts" / "unprobed-detector.py", DETECTOR_SOURCE)
+        write(root / "scripts" / "unprobed-detector.test.py", good_test_file("unprobed-detector.py"))
         with registry_snapshot({
-            "scripts/healthy-detector.py": {
-                "test": "scripts/healthy-detector.test.py",
+            "scripts/unprobed-detector.py": {
+                "test": "scripts/unprobed-detector.test.py",
                 "negative_tokens": ["REJECTED"],
             }
-        }):
-            result9 = neg.run_all(root)
+        }), gate_probes_snapshot():
+            result = neg.run_all(root)
 
-    print("GATE: %s  (exit %d)" % (result9["verdict"], result9["code"]))
-    check("INERT DETECTOR positive control: gate verdict is PASS", result9["verdict"], "PASS")
-    check_true(
-        "INERT DETECTOR positive control: the healthy detector raises no violation",
-        not any("healthy-detector.py" in v for v in result9["violations"]),
-    )
-
-    # -------------------------------------------------------------------
-    # gh-1884 ROUND 2 -- REVIEW: FAIL on PR #2101 (2026-09-22T14:39:35Z): the
-    # round-1 self_test_invokes_detector() accepted ANY attribute reference on
-    # the loaded module as proof of invocation, so a self-test could
-    # exec_module() the detector, touch one decorative attribute (mod.__doc__),
-    # print hand-written PASS lines, and never run a single line of the
-    # detector's real logic (gated behind if __name__ == "__main__":, which
-    # exec_module() never triggers). Reproduce the refuter's EXACT forgery,
-    # then its obvious next move (a real CALL, but to something universal to
-    # every module object rather than to anything this detector defines), and
-    # a positive control proving a genuine call to the detector's own function
-    # still passes.
-    # -------------------------------------------------------------------
-    print()
-    print("=" * 70)
-    print("ROUND 2 -- attribute-access-only forgery (the refuter's exact repro)")
-    print("=" * 70)
-
-    with tempfile.TemporaryDirectory() as tmp:
-        root = Path(tmp)
-        write(root / "scripts" / "decorated-detector.py", DETECTOR_SOURCE)
-        write(
-            root / "scripts" / "decorated-detector.test.py",
-            "#!/usr/bin/env python3\n"
-            "import importlib.util\n"
-            "from pathlib import Path\n"
-            "HERE = Path(__file__).resolve().parent\n"
-            "spec = importlib.util.spec_from_file_location('mod', HERE / 'decorated-detector.py')\n"
-            "mod = importlib.util.module_from_spec(spec)\n"
-            "spec.loader.exec_module(mod)\n"
-            "_ = mod.__doc__  # attribute access -- NOT a call, pure decoration\n"
-            'print("  PASS  clean case: OK")\n'
-            'print("  PASS  bad case -> STALE: STALE")\n',
-        )
-        with registry_snapshot({
-            "scripts/decorated-detector.py": {
-                "test": "scripts/decorated-detector.test.py",
-                "negative_tokens": ["STALE"],
-            }
-        }):
-            result10 = neg.run_all(root)
-
-    for line in result10["violations"]:
+    for line in result["violations"]:
         print(line)
-    print("GATE: %s  (exit %d)" % (result10["verdict"], result10["code"]))
-
-    check("ROUND2 attribute-only: gate verdict is FAIL, not PASS", result10["verdict"], "FAIL")
+    print("GATE: %s  (exit %d)" % (result["verdict"], result["code"]))
+    check("ROUND3 no-probe-entry: gate verdict is FAIL, not PASS", result["verdict"], "FAIL")
     check_true(
-        "ROUND2 attribute-only: flagged for never calling anything",
+        "ROUND3 no-probe-entry: names the missing GATE_PROBES entry explicitly",
         any(
-            "decorated-detector.py" in v and "never CALLS anything" in v
-            for v in result10["violations"]
+            "unprobed-detector.py" in v and "no GATE_PROBES entry" in v
+            for v in result["violations"]
         ),
     )
 
     print()
     print("=" * 70)
-    print("ROUND 2 -- real CALL, but to a universal module dunder, not the")
-    print("detector's own logic (the refuter's obvious next move)")
+    print("ROUND 3 -- a probe that raises is a violation, not a crash")
     print("=" * 70)
+
+    def _raising_probe(mod, root):
+        return mod.this_does_not_exist()  # AttributeError, deliberately
 
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
-        write(root / "scripts" / "dunder-called-detector.py", DETECTOR_SOURCE)
-        write(
-            root / "scripts" / "dunder-called-detector.test.py",
-            "#!/usr/bin/env python3\n"
-            "import importlib.util\n"
-            "from pathlib import Path\n"
-            "HERE = Path(__file__).resolve().parent\n"
-            "spec = importlib.util.spec_from_file_location('mod', HERE / 'dunder-called-detector.py')\n"
-            "mod = importlib.util.module_from_spec(spec)\n"
-            "spec.loader.exec_module(mod)\n"
-            "mod.__dir__()  # a REAL call -- but universal to every module, not this detector's logic\n"
-            'print("  PASS  clean case: OK")\n'
-            'print("  PASS  bad case -> STALE: STALE")\n',
-        )
+        write(root / "scripts" / "probe-crash-detector.py", DETECTOR_SOURCE)
+        write(root / "scripts" / "probe-crash-detector.test.py", good_test_file("probe-crash-detector.py"))
         with registry_snapshot({
-            "scripts/dunder-called-detector.py": {
-                "test": "scripts/dunder-called-detector.test.py",
-                "negative_tokens": ["STALE"],
-            }
-        }):
-            result11 = neg.run_all(root)
-
-    for line in result11["violations"]:
-        print(line)
-    print("GATE: %s  (exit %d)" % (result11["verdict"], result11["code"]))
-
-    check("ROUND2 dunder-call: gate verdict is FAIL, not PASS", result11["verdict"], "FAIL")
-    check_true(
-        "ROUND2 dunder-call: flagged as not among the detector's own defined names",
-        any(
-            "dunder-called-detector.py" in v and "universal to every Python module object" in v
-            for v in result11["violations"]
-        ),
-    )
-
-    print()
-    print("=" * 70)
-    print("ROUND 2, positive control -- a genuine call to the detector's OWN")
-    print("defined function still passes")
-    print("=" * 70)
-
-    with tempfile.TemporaryDirectory() as tmp:
-        root = Path(tmp)
-        write(root / "scripts" / "genuinely-called-detector.py", DETECTOR_SOURCE)
-        write(
-            root / "scripts" / "genuinely-called-detector.test.py",
-            good_test_file("genuinely-called-detector.py"),
-        )
-        with registry_snapshot({
-            "scripts/genuinely-called-detector.py": {
-                "test": "scripts/genuinely-called-detector.test.py",
+            "scripts/probe-crash-detector.py": {
+                "test": "scripts/probe-crash-detector.test.py",
                 "negative_tokens": ["REJECTED"],
             }
-        }):
-            result12 = neg.run_all(root)
+        }), gate_probes_snapshot({"scripts/probe-crash-detector.py": _raising_probe}):
+            result = neg.run_all(root)
 
-    print("GATE: %s  (exit %d)" % (result12["verdict"], result12["code"]))
-    check("ROUND2 positive control: gate verdict is PASS", result12["verdict"], "PASS")
+    for line in result["violations"]:
+        print(line)
+    print("GATE: %s  (exit %d)" % (result["verdict"], result["code"]))
+    check("ROUND3 probe-crash: gate verdict is FAIL, not an unhandled exception", result["verdict"], "FAIL")
     check_true(
-        "ROUND2 positive control: the genuinely-called detector raises no violation",
-        not any("genuinely-called-detector.py" in v for v in result12["violations"]),
+        "ROUND3 probe-crash: names the exception, not a bare traceback",
+        any(
+            "probe-crash-detector.py" in v and "AttributeError" in v
+            for v in result["violations"]
+        ),
     )
 
     print()
     print("=" * 70)
-    print("ROUND 2 -- subprocess route: result read, but detector's own name")
-    print("nowhere near the invocation (nothing ties the call to THIS detector)")
+    print("ROUND 3 -- the bespoke drift-detector-age.py probe itself: bad")
+    print("fixture must read STALE, good fixture must read FRESH")
     print("=" * 70)
 
-    with tempfile.TemporaryDirectory() as tmp:
-        root = Path(tmp)
-        write(root / "scripts" / "unrelated-subprocess-detector.py", DETECTOR_SOURCE)
-        write(
-            root / "scripts" / "unrelated-subprocess-detector.test.py",
-            "#!/usr/bin/env python3\n"
-            "import subprocess, sys\n"
-            "# unrelated-subprocess-detector.py is mentioned here, far from the call below\n"
-            "result = subprocess.run([sys.executable, '-c', 'print(1)'], capture_output=True, text=True)\n"
-            "assert result.returncode == 0\n"
-            'print("  PASS  clean case: OK")\n'
-            'print("  PASS  bad case -> STALE: STALE")\n',
-        )
-        with registry_snapshot({
-            "scripts/unrelated-subprocess-detector.py": {
-                "test": "scripts/unrelated-subprocess-detector.test.py",
-                "negative_tokens": ["STALE"],
-            }
-        }):
-            result13 = neg.run_all(root)
+    class _FakeAgeModule:
+        """Stands in for a real drift-detector-age.py module -- exercises
+        neg._probe_drift_detector_age() directly against a hand-built
+        compute_result() with known-broken and known-healthy behavior,
+        without needing this repo's real detector file."""
 
-    for line in result13["violations"]:
-        print(line)
-    print("GATE: %s  (exit %d)" % (result13["verdict"], result13["code"]))
+        def __init__(self, verdict_fn):
+            self._verdict_fn = verdict_fn
 
-    check("ROUND2 unrelated-subprocess: gate verdict is FAIL, not PASS", result13["verdict"], "FAIL")
+        def compute_result(self, iso, reason, threshold_hours, now=None):
+            return self._verdict_fn(iso, reason, threshold_hours, now)
+
+    def _honest_verdict(iso, reason, threshold_hours, now):
+        from datetime import datetime
+
+        age_hours = (now - datetime.strptime(iso, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=now.tzinfo)).total_seconds() / 3600.0
+        verdict = "FRESH" if age_hours <= threshold_hours else "STALE"
+        return {"verdict": verdict, "code": 0 if verdict == "FRESH" else 2, "age_hours": age_hours, "detail": reason}
+
+    def _always_fresh_verdict(iso, reason, threshold_hours, now):
+        return {"verdict": "FRESH", "code": 0, "age_hours": 0, "detail": reason}
+
+    honest_reason = neg._probe_drift_detector_age(_FakeAgeModule(_honest_verdict), None)
+    check("ROUND3 age-probe, honest module: probe passes (returns None)", honest_reason, None)
+
+    broken_reason = neg._probe_drift_detector_age(_FakeAgeModule(_always_fresh_verdict), None)
     check_true(
-        "ROUND2 unrelated-subprocess: flagged as not tied to this detector",
-        any(
-            "unrelated-subprocess-detector.py" in v and "does not appear at or near" in v
-            for v in result13["violations"]
-        ),
+        "ROUND3 age-probe, always-FRESH module: probe fails and names STALE as expected",
+        broken_reason is not None and "expected STALE" in broken_reason,
     )
 
     # Regression coverage for the other half of the same review comment: CHECK 3
