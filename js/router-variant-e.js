@@ -178,6 +178,61 @@
     'e-dq-p12': 'e-p12'
   };
 
+  // gh-2096 item 4: step_index (1-based), one lookup table for this arm,
+  // same depth-within-track convention as js/router-discovery.js and
+  // js/router-variant-d.js (see the former's own comment) -- e-p1 is the
+  // shared entry, then the homeowner/professional/contractor tracks each
+  // restart their own depth count from the screen right after it, so
+  // e.g. e-p2, e-pro-2 and e-contractor-1 (each track's own first screen)
+  // share index 2. Realtor/insurance run in lockstep through their
+  // shared question shape (e-pro-Na/e-pro-Nb) until insurance keeps
+  // going past the realtor track's own close. Disqualifier tokens are
+  // derived from DQ_SOURCE above, never hand-duplicated. Contractor's
+  // own e-contractor-1..4 are registered dynamically (registerReusedTracks
+  // below), not as literal RENDERERS[...] assignments, but their tokens
+  // are fixed (prefix 'e-contractor-' + 1-based question number) and
+  // listed here the same as every other token.
+  var STEP_INDEX = {
+    'e-p1': 1,
+    // Homeowner track.
+    'e-p2': 2, 'e-p3': 3, 'e-p4a': 4, 'e-p4b': 4, 'e-p5': 5, 'e-p5-5': 6,
+    'e-p6': 7, 'e-p7': 8, 'e-p7-5': 9, 'e-p8': 10, 'e-p9': 11, 'e-p10': 12,
+    'e-p11': 13, 'e-p12': 14, 'e-p13': 15,
+    // Professional entry (parallel to e-p2/e-contractor-1).
+    'e-pro-2': 2, 'e-pro-3': 3,
+    // Realtor branch.
+    'e-pro-4a': 4, 'e-pro-5a': 5, 'e-pro-5-5a': 6, 'e-pro-6a': 7,
+    'e-pro-7a': 8, 'e-pro-8a': 9, 'e-pro-9a': 10, 'e-pro-9-5a': 11,
+    'e-pro-10a': 12, 'e-pro-11a': 13, 'e-pro-12a': 14,
+    // Insurance branch (longer than realtor's).
+    'e-pro-4b': 4, 'e-pro-5b': 5, 'e-pro-5-5b': 6, 'e-pro-6b': 7,
+    'e-pro-7b': 8, 'e-pro-8b': 9, 'e-pro-9b': 10, 'e-pro-9-5b': 11,
+    'e-pro-10b': 12, 'e-pro-11b': 13, 'e-pro-12b': 14, 'e-pro-13b': 15,
+    'e-pro-14b': 16, 'e-pro-15b': 17, 'e-pro-16b': 18, 'e-pro-17b': 19,
+    'e-pro-18b': 20,
+    // Contractor track (parallel to e-p2/e-pro-2).
+    'e-contractor-1': 2, 'e-contractor-2': 3, 'e-contractor-3': 4,
+    'e-contractor-4': 5, 'e-contractor-5': 6, 'e-contractor-contact': 7
+  };
+  Object.keys(DQ_SOURCE).forEach(function (dqToken) { STEP_INDEX[dqToken] = STEP_INDEX[DQ_SOURCE[dqToken]]; });
+
+  // gh-2096 item 1: fires GA4 router_contact_submitted + Meta Lead
+  // exactly once per session, the first time ANY track's first
+  // commitment (e-p7-5's fresh insert for homeowner, proEmailRenderer's
+  // fresh insert for realtor/insurance, or router-discovery.js's shared
+  // renderPartnerContact for contractor) successfully creates the lead
+  // row -- mirroring js/router-variant-d.js's own `leadEventFired` guard,
+  // so a later resubmit/PATCH on the same screen (a typo correction) can
+  // never fire a second Lead event for the same person.
+  var leadEventFired = false;
+  function fireContactSubmitted(step) {
+    bridge.trackRouter('router_contact_submitted', { step: step, step_index: STEP_INDEX[step] });
+    if (!leadEventFired) {
+      leadEventFired = true;
+      try { fbq('track', 'Lead'); } catch (e) {}
+    }
+  }
+
   // gh-2088 (PR #2088 round 1, BLOCKER item 1; round 2, BLOCKER N1): the
   // in-flight request promise for e-p7-5's CURRENT submission -- fresh
   // insert OR resubmit/PATCH -- held at MODULE level, not inside that
@@ -258,9 +313,10 @@
     return btn;
   }
 
-  function emitView(token) { bridge.trackRouter('router_step_view', { step: token }); }
-  function emitComplete(token) { bridge.trackRouter('router_step_complete', { step: token }); }
-  function emitDisqualified(sourceToken) { bridge.trackRouter('router_disqualified', { step: sourceToken }); }
+  // gh-2096 item 4: step_index attached here, from STEP_INDEX above.
+  function emitView(token) { bridge.trackRouter('router_step_view', { step: token, step_index: STEP_INDEX[token] }); }
+  function emitComplete(token) { bridge.trackRouter('router_step_complete', { step: token, step_index: STEP_INDEX[token] }); }
+  function emitDisqualified(sourceToken) { bridge.trackRouter('router_disqualified', { step: sourceToken, step_index: STEP_INDEX[sourceToken] }); }
 
   var RENDERERS = {};
 
@@ -627,6 +683,10 @@
       var p = insertLeadAndSetRole(name, value, null, 'homeowner', null).then(function (newId) {
         email = value;
         leadId = newId;
+        // gh-2096 item 1: this is the homeowner track's own first
+        // commitment (this screen's own top-of-file comment) -- the same
+        // moment js/router-variant-d.js fires its own Lead event.
+        fireContactSubmitted('e-p7-5');
         return newId;
       });
 
@@ -922,6 +982,11 @@
         var p = insertLeadAndSetRole(proName, value, null, 'referral_partner', partnerIndustryKey).then(function (newId) {
           proEmail = value;
           leadId = newId;
+          // gh-2096 item 1: the professional path's own first commitment
+          // (this function's own top-of-file comment) -- `myToken` is
+          // whichever of e-pro-9-5a/e-pro-9-5b this screen actually is,
+          // captured at the top of this renderer.
+          fireContactSubmitted(myToken);
           return newId;
         });
 
@@ -1119,7 +1184,8 @@
       role: 'contractor',
       partnerIndustry: null,
       destination: bridge.ROLE_DESTINATIONS.contractor,
-      completeToken: 'e-contractor-contact'
+      completeToken: 'e-contractor-contact',
+      stepIndex: STEP_INDEX['e-contractor-contact']
     });
   };
 
