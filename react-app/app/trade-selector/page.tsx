@@ -23,7 +23,7 @@ import { useState, useEffect, useCallback } from 'react';
 import type { ReactNode, ChangeEvent } from 'react';
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import { supabase } from '@/lib/supabase';
-import { readReferralIds } from '@/lib/cookie-storage';
+import { readReferralIds, clearReferralIds } from '@/lib/cookie-storage';
 import { recordFirstTouch } from '@/lib/attribution';
 import { isTestEmail } from '@/lib/test-signal';
 import { parseAddress, fullAddress, isValidZip, hasFullAddress, type ParsedAddress } from './utils';
@@ -1036,6 +1036,20 @@ export default function TradeSelectorPage() {
           // trg_claims_advance_referral fires on the claims.referral_id
           // write above. The old client-side UPDATE always no-opped
           // against RLS and has been removed.
+
+          // gh-2062: the referral id has now been consumed — stamped onto
+          // claims.referral_id (or already resolved to referralAgentId, in
+          // which case there was nothing left for the raw cookie to do).
+          // Clear it so it cannot resurface on a later, unrelated signup on
+          // the same browser within its 90-day TTL. Only clear when this
+          // pass actually carried a referral forward — an unrelated claim
+          // save with no referral in play must leave a genuinely live,
+          // not-yet-claimed cookie untouched. Mirrors the static
+          // trade-selector.html claim writer.
+          if (chainReferralId || chainReferralAgentId) {
+            clearReferralIds();
+            localStorage.removeItem('oq_referral_id_for_claim');
+          }
         } catch (claimErr) {
           console.warn('[trade-selector] claim upsert failed:', claimErr);
         }

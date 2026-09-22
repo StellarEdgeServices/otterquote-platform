@@ -1486,6 +1486,19 @@
             // trg_claims_advance_referral fires on the claims.referral_id
             // write above. The old client-side UPDATE always no-opped
             // against RLS and has been removed.
+
+            // gh-2062: the referral id has now been consumed — stamped onto
+            // claims.referral_id (or already resolved to referralAgentId, in
+            // which case there was nothing left for the raw cookie to do).
+            // Clear it so it cannot resurface on a later, unrelated signup
+            // on the same browser within its 90-day TTL. Only clear when
+            // this pass actually carried a referral forward — an unrelated
+            // claim save with no referral in play must leave a genuinely
+            // live, not-yet-claimed cookie untouched.
+            if (chainReferralId || chainReferralAgentId) {
+              if (window.OtterQuoteReferral) window.OtterQuoteReferral.clear();
+              localStorage.removeItem('oq_referral_id_for_claim');
+            }
           } catch (supabaseError) {
             console.warn('Supabase save failed:', supabaseError);
             // Continue regardless of Supabase error
