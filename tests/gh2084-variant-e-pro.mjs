@@ -23,7 +23,6 @@
  */
 import vm from 'node:vm';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -39,11 +38,15 @@ function ok(cond, label) {
   else { console.log('FAIL: ' + label); fail++; }
 }
 
-// ── Authoritative source text: Sloane's approved script, read directly
-// off disk (never retyped as a parallel hardcoded copy this suite could
-// silently drift from). Page N's exposition text is every non-bracket
-// line between "PAGE N:" and the next blank line. ──
-const reportPath = path.join(os.homedir(), 'mnt', 'Claude Downloads', 'In Flight', 'reports', 'ceo57-sloane-variant-e-pro-20260921.md');
+// ── Authoritative source text: Sloane's approved script, committed
+// into the repo verbatim (gh-2084 review round 1, item 3) as
+// tests/fixtures/gh2084-variant-e-pro-script.md -- a byte-for-byte copy
+// of ceo57-sloane-variant-e-pro-20260921.md, so this suite runs in any
+// checkout instead of depending on a path under the author's own device
+// home directory. Never retyped as a second hardcoded copy this suite
+// could silently drift from. Page N's exposition text is every
+// non-bracket line between "PAGE N:" and the next blank line. ──
+const reportPath = path.join(repoRoot, 'tests', 'fixtures', 'gh2084-variant-e-pro-script.md');
 const reportSrc = fs.readFileSync(reportPath, 'utf8');
 function extractPage(label) {
   const lines = reportSrc.split('\n');
@@ -341,9 +344,10 @@ function driveToIndustry(routerERoot, industryCode, allBodyTexts) {
     roleButtons[1].dispatchClick();
     return settle();
   }).then(() => {
-    // e-pro-2: shared professional exposition.
+    // e-pro-2: shared professional exposition -- gh-2084 review round 1
+    // item 4: pro exposition screens say "Next", not "Continue".
     allBodyTexts.push(...bodyTexts(routerERoot));
-    findContinueButton(routerERoot).dispatchClick();
+    findNextButton(routerERoot).dispatchClick();
     return settle();
   }).then(() => {
     // e-pro-3: industry picker.
@@ -362,9 +366,12 @@ function pickOption(routerERoot, allBodyTexts) {
   findOptionButtons(routerERoot)[0].dispatchClick();
   return settle();
 }
+// gh-2084 review round 1, item 4: pro exposition screens use a "Next"
+// button, not "Continue" -- the homeowner path's own exposition screens
+// (not exercised by this suite) are unaffected.
 function passExposition(routerERoot, allBodyTexts) {
   allBodyTexts.push(...bodyTexts(routerERoot));
-  findContinueButton(routerERoot).dispatchClick();
+  findNextButton(routerERoot).dispatchClick();
   return settle();
 }
 
@@ -389,15 +396,25 @@ function passExposition(routerERoot, allBodyTexts) {
     .then(() => passExposition(routerERoot, allBodyTexts)) // e-pro-8a
     .then(() => pickOption(routerERoot, allBodyTexts)) // e-pro-9a
     .then(() => {
-      // e-pro-9-5a: email
+      // e-pro-9-5a: email -- gh-2084 review round 1, item 1: this is now
+      // the branch's FIRST COMMITMENT (insert + set_lead_role), the same
+      // point arm D/E's homeowner path writes its own first row.
       allBodyTexts.push(...bodyTexts(routerERoot));
       ok(inputTypes(routerERoot).indexOf('tel') === -1, 'e-pro-9-5a renders no phone input');
       fillAndSubmit(routerERoot, 'eProEmail', 'pat@example.com');
       return settle();
+    }).then(() => {
+      ok(insertCalls.length === 1, 'the lead insert happens at the EMAIL screen (e-pro-9-5a), not the close screen');
+      ok(insertCalls[0].name === 'Pat Realtor' && insertCalls[0].email === 'pat@example.com' && insertCalls[0].phone === null,
+        'the insert carries the name/email captured so far and no phone');
+      const roleCall = rpcCalls.find((c) => c.name === 'set_lead_role');
+      ok(!!roleCall && roleCall.args.p_role === 'referral_partner' && roleCall.args.p_partner_industry === 're_agent',
+        'set_lead_role is called with role=referral_partner, partner_industry=re_agent, right after the email-screen insert');
     }).then(() => passExposition(routerERoot, allBodyTexts)) // e-pro-10a
     .then(() => pickOption(routerERoot, allBodyTexts)) // e-pro-11a
     .then(() => {
-      // e-pro-12a: close/hand-off screen.
+      // e-pro-12a: close/hand-off screen -- leadId already exists; "Next"
+      // now PATCHes via update_lead_contact rather than inserting.
       const texts = bodyTexts(routerERoot);
       allBodyTexts.push(...texts);
       ok(inputTypes(routerERoot).indexOf('tel') === -1, 'e-pro-12a (hand-off) renders no phone input -- locked default 4, no phone re-ask');
@@ -409,23 +426,21 @@ function passExposition(routerERoot, allBodyTexts) {
       ok(!!nextBtn, 'e-pro-12a has a "Next" control (not "Continue") for the hand-off tap');
       nextBtn.dispatchClick();
       // Double-submit guard: a second click on the SAME button reference,
-      // landing while the insert is still in flight, must be a no-op --
+      // landing while the PATCH is still in flight, must be a no-op --
       // reusing the reference (not re-querying by its now-changed label)
       // mirrors what a real double-tap actually hits.
       nextBtn.dispatchClick();
       const backBtn = flatten(routerERoot).find((c) => c.tagName === 'BUTTON' && c.className.split(' ').includes('router-back'));
-      ok(!!backBtn && backBtn.disabled === true, 'Back is disabled while the hand-off insert is in flight');
-      ok(nextBtn.disabled === true, 'Next is disabled while the hand-off insert is in flight');
+      ok(!!backBtn && backBtn.disabled === true, 'Back is disabled while the hand-off PATCH is in flight');
+      ok(nextBtn.disabled === true, 'Next is disabled while the hand-off PATCH is in flight');
       return settle();
     }).then(() => {
-      ok(insertCalls.length === 1, 'exactly ONE lead insert happens for the whole RE branch, at the close screen (the double-tap above did not cause a second)');
-      ok(insertCalls[0].name === 'Pat Realtor' && insertCalls[0].email === 'pat@example.com' && insertCalls[0].phone === null,
-        'the single insert carries the name/email captured earlier and no phone');
-      const roleCall = rpcCalls.find((c) => c.name === 'set_lead_role');
-      ok(!!roleCall && roleCall.args.p_role === 'referral_partner' && roleCall.args.p_partner_industry === 're_agent',
-        'set_lead_role is called with role=referral_partner, partner_industry=re_agent');
+      ok(insertCalls.length === 1, 'still exactly ONE lead insert for the whole RE branch on the happy path -- the close screen never inserts a second row (the double-tap above did not either)');
+      const patchCalls = rpcCalls.filter((c) => c.name === 'update_lead_contact');
+      ok(patchCalls.length === 1 && patchCalls[0].args.p_lead_id === 'lead-1' && patchCalls[0].args.p_phone === null,
+        'the close screen PATCHes the existing lead row via update_lead_contact, exactly once, with no phone');
       ok(redirects.length === 1 && redirects[0].dest.indexOf('partner-re.html') === 0 && redirects[0].dest.indexOf('lead=lead-1') !== -1,
-        'hand-off redirects straight to partner-re.html with the lead id -- no phone screen in between');
+        'hand-off redirects straight to partner-re.html with the SAME lead id the email screen created -- no phone screen in between');
 
       const seq = stepNames(trackedEvents).filter((s) => s.indexOf('router_step_view:') === 0);
       const expected = ['e-p1', 'e-pro-2', 'e-pro-3', 'e-pro-4a', 'e-pro-5a', 'e-pro-5-5a', 'e-pro-6a', 'e-pro-7a', 'e-pro-8a', 'e-pro-9a', 'e-pro-9-5a', 'e-pro-10a', 'e-pro-11a', 'e-pro-12a']
@@ -466,7 +481,15 @@ function passExposition(routerERoot, allBodyTexts) {
       allBodyTexts.push(...bodyTexts(routerERoot));
       fillAndSubmit(routerERoot, 'eProEmail', 'jamie@example.com');
       return settle();
-    }) // e-pro-9-5b
+    }) // e-pro-9-5b -- gh-2084 review round 1, item 1: FIRST COMMITMENT
+    .then(() => {
+      ok(insertCalls.length === 1, 'the lead insert happens at the EMAIL screen (e-pro-9-5b), not the close screen');
+      ok(insertCalls[0].name === 'Jamie Adjuster' && insertCalls[0].email === 'jamie@example.com' && insertCalls[0].phone === null,
+        'the insert carries the name/email captured so far and no phone');
+      const roleCall = rpcCalls.find((c) => c.name === 'set_lead_role');
+      ok(!!roleCall && roleCall.args.p_role === 'referral_partner' && roleCall.args.p_partner_industry === 'insurance_agent',
+        'set_lead_role is called with role=referral_partner, partner_industry=insurance_agent, right after the email-screen insert');
+    })
     .then(() => passExposition(routerERoot, allBodyTexts)) // e-pro-10b
     .then(() => pickOption(routerERoot, allBodyTexts)) // e-pro-11b
     .then(() => passExposition(routerERoot, allBodyTexts)) // e-pro-12b
@@ -487,14 +510,12 @@ function passExposition(routerERoot, allBodyTexts) {
       findNextButton(routerERoot).dispatchClick();
       return settle();
     }).then(() => {
-      ok(insertCalls.length === 1, 'exactly ONE lead insert happens for the whole Insurance branch, at the close screen');
-      ok(insertCalls[0].name === 'Jamie Adjuster' && insertCalls[0].email === 'jamie@example.com' && insertCalls[0].phone === null,
-        'the single insert carries the name/email captured earlier and no phone');
-      const roleCall = rpcCalls.find((c) => c.name === 'set_lead_role');
-      ok(!!roleCall && roleCall.args.p_role === 'referral_partner' && roleCall.args.p_partner_industry === 'insurance_agent',
-        'set_lead_role is called with role=referral_partner, partner_industry=insurance_agent');
-      ok(redirects.length === 1 && redirects[0].dest.indexOf('partner-insurance.html') === 0,
-        'hand-off redirects straight to partner-insurance.html');
+      ok(insertCalls.length === 1, 'still exactly ONE lead insert for the whole Insurance branch on the happy path -- the close screen never inserts a second row');
+      const patchCalls = rpcCalls.filter((c) => c.name === 'update_lead_contact');
+      ok(patchCalls.length === 1 && patchCalls[0].args.p_lead_id === 'lead-1' && patchCalls[0].args.p_phone === null,
+        'the close screen PATCHes the existing lead row via update_lead_contact, exactly once, with no phone');
+      ok(redirects.length === 1 && redirects[0].dest.indexOf('partner-insurance.html') === 0 && redirects[0].dest.indexOf('lead=lead-1') !== -1,
+        'hand-off redirects straight to partner-insurance.html with the SAME lead id the email screen created');
 
       const seq = stepNames(trackedEvents).filter((s) => s.indexOf('router_step_view:') === 0);
       const expected = ['e-p1', 'e-pro-2', 'e-pro-3', 'e-pro-4b', 'e-pro-5b', 'e-pro-5-5b', 'e-pro-6b', 'e-pro-7b', 'e-pro-8b', 'e-pro-9b', 'e-pro-9-5b',
@@ -545,6 +566,79 @@ function passExposition(routerERoot, allBodyTexts) {
   ok(!/trackRouter\(\s*'partner_signup_complete'/.test(variantESrc), 'router-variant-e.js never CALLS trackRouter with partner_signup_complete -- #2078 has not landed yet (comments may still name the future event)');
   ok(/function HOOK_partnerSignupComplete\(\)/.test(variantESrc), 'a named HOOK_partnerSignupComplete() marks exactly where #2078\'s event will fire');
   ok(/HOOK_partnerSignupComplete\(\);/.test(variantESrc), 'the hook is actually called at the hand-off point (proCloseRenderer\'s own finish())');
+})();
+
+// Drives a full RE-branch walk up to and including a rendered e-pro-12a
+// close screen (does NOT click its Next button) -- shared by the two
+// scenarios below so neither duplicates the whole walk.
+function driveToRECloseScreen(routerERoot, allBodyTexts) {
+  return driveToIndustry(routerERoot, 're_agent', allBodyTexts)
+    .then(() => passExposition(routerERoot, allBodyTexts)) // e-pro-4a
+    .then(() => pickOption(routerERoot, allBodyTexts)) // e-pro-5a
+    .then(() => { fillAndSubmit(routerERoot, 'eProName', 'Pat Realtor'); return settle(); }) // e-pro-5-5a
+    .then(() => passExposition(routerERoot, allBodyTexts)) // e-pro-6a
+    .then(() => pickOption(routerERoot, allBodyTexts)) // e-pro-7a
+    .then(() => passExposition(routerERoot, allBodyTexts)) // e-pro-8a
+    .then(() => pickOption(routerERoot, allBodyTexts)) // e-pro-9a
+    .then(() => { fillAndSubmit(routerERoot, 'eProEmail', 'pat@example.com'); return settle(); }) // e-pro-9-5a (insert)
+    .then(() => passExposition(routerERoot, allBodyTexts)) // e-pro-10a
+    .then(() => pickOption(routerERoot, allBodyTexts)); // e-pro-11a -> lands on e-pro-12a
+}
+
+// ═══ Scenario 6 (#2084 review round 1, item 1): the close screen's own
+// update_lead_contact PATCH can come back data:false (30-minute window
+// expired, or the prefill was already used) -- same fallback e-p13/
+// e-p7-5 already have: fall back to a FRESH insertLeadAndSetRole (a
+// SECOND row, its own new lead id, its own set_lead_role call) and
+// redirect with THAT new id, rather than stranding the visitor. ═══
+(function scenario6() {
+  const { routerERoot, bridge, RouterVariantE, rpcCalls, insertCalls, redirects, allBodyTexts } = buildScenario({
+    rpcResponder: (name) => (name === 'update_lead_contact' ? { data: false, error: null } : { data: true, error: null })
+  });
+  RouterVariantE.init(bridge, routerERoot);
+  return driveToRECloseScreen(routerERoot, allBodyTexts).then(() => {
+    findNextButton(routerERoot).dispatchClick();
+    return settle();
+  }).then(() => {
+    ok(insertCalls.length === 2, 'a data:false PATCH result at the close screen falls back to a SECOND insert (the email screen\'s own insert, plus this fallback)');
+    const roleCalls = rpcCalls.filter((c) => c.name === 'set_lead_role');
+    ok(roleCalls.length === 2, 'set_lead_role is called for BOTH inserts -- the fallback insert is not left with role=NULL');
+    ok(redirects.length === 1 && redirects[0].dest.indexOf('lead=lead-2') !== -1,
+      'the hand-off redirects with the FALLBACK insert\'s new lead id, not the original (now-stale/consumed) one');
+  }).catch((e) => { console.error('scenario6 error:', e); fail++; });
+})();
+
+// ═══ Scenario 7 (#2084 review round 1, item 2): a bfcache restore
+// (browser Back-then-forward) while the close screen's own "Next" is
+// mid-submit must re-enable Next/Back on the re-rendered screen, and a
+// second Next tap after that restore must still reuse the SAME leadId
+// (PATCH, never a second insert) -- the exact e-p13 fix, extended to
+// e-pro-12a/e-pro-18b. ═══
+(function scenario7() {
+  const { routerERoot, bridge, RouterVariantE, rpcCalls, insertCalls, redirects, allBodyTexts, dispatchPageshow } = buildScenario({});
+  RouterVariantE.init(bridge, routerERoot);
+  return driveToRECloseScreen(routerERoot, allBodyTexts).then(() => {
+    const nextBtn = findNextButton(routerERoot);
+    const backBtn = flatten(routerERoot).find((c) => c.tagName === 'BUTTON' && c.className.split(' ').includes('router-back'));
+    nextBtn.dispatchClick(); // PATCH now in flight, both buttons disabled
+    ok(nextBtn.disabled === true && backBtn.disabled === true, 'Next/Back are disabled immediately after the tap, before the PATCH settles');
+    // Simulate the bfcache restore landing WHILE that PATCH is still
+    // in flight (its own .then() has not run yet -- dispatchPageshow is
+    // called synchronously, no settle() in between).
+    dispatchPageshow(true);
+    const freshNextBtn = findNextButton(routerERoot);
+    const freshBackBtn = flatten(routerERoot).find((c) => c.tagName === 'BUTTON' && c.className.split(' ').includes('router-back'));
+    ok(!!freshNextBtn && freshNextBtn.disabled === false, 'the bfcache restore re-renders e-pro-12a with an ENABLED Next button');
+    ok(!!freshBackBtn && !freshBackBtn.disabled, 'the bfcache restore re-renders e-pro-12a with an ENABLED Back button');
+    freshNextBtn.dispatchClick(); // the actual, post-restore submit
+    return settle();
+  }).then(() => {
+    ok(insertCalls.length === 1, 'only the original email-screen insert ever happened -- the restore + re-tap never inserted a second row');
+    const patchCalls = rpcCalls.filter((c) => c.name === 'update_lead_contact');
+    ok(patchCalls.length >= 1 && patchCalls.every((c) => c.args.p_lead_id === 'lead-1'),
+      'every update_lead_contact call (the original in-flight one, and/or the post-restore one) PATCHes the SAME lead id -- leadId survived the restore');
+    ok(redirects.length === 1 && redirects[0].dest.indexOf('lead=lead-1') !== -1, 'the eventual hand-off redirects with that same, original lead id');
+  }).catch((e) => { console.error('scenario7 error:', e); fail++; });
 })();
 
 setTimeout(() => {

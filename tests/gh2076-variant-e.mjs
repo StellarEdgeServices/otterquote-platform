@@ -327,6 +327,13 @@ function findOptionButtons(root) {
 function findContinueButton(root) {
   return flatten(root).find((c) => c.tagName === 'BUTTON' && c.textContent === 'Continue');
 }
+// gh-2084 review round 1, item 4: the professional path's own exposition
+// screens (e-pro-2 and beyond) say "Next", not "Continue" -- the
+// homeowner path's own exposition screens this file otherwise drives
+// are unaffected and keep using findContinueButton above.
+function findNextButton(root) {
+  return flatten(root).find((c) => c.tagName === 'BUTTON' && c.textContent === 'Next');
+}
 function fillAndSubmit(root, inputId, value) {
   const input = flatten(root).find((ch) => ch.id === inputId);
   input.value = value;
@@ -686,7 +693,7 @@ function driveToP7_5(routerERoot, insertCalls) {
     findOptionButtons(routerERoot)[1].dispatchClick(); // Professional -> e-pro-2
     return settle();
   }).then(() => {
-    findContinueButton(routerERoot).dispatchClick(); // e-pro-2 -> e-pro-3
+    findNextButton(routerERoot).dispatchClick(); // e-pro-2 -> e-pro-3
     return settle();
   }).then(() => {
     const opts = findOptionButtons(routerERoot);
@@ -704,7 +711,7 @@ function driveToP7_5(routerERoot, insertCalls) {
     findOptionButtons(routerERoot)[1].dispatchClick(); // Professional -> e-pro-2
     return settle();
   }).then(() => {
-    findContinueButton(routerERoot).dispatchClick(); // e-pro-2 -> e-pro-3
+    findNextButton(routerERoot).dispatchClick(); // e-pro-2 -> e-pro-3
     return settle();
   }).then(() => {
     findOptionButtons(routerERoot)[2].dispatchClick(); // Home Inspector

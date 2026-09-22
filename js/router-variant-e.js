@@ -198,11 +198,21 @@
   // (redirect) twice.
   var p13SubmitPromise = null;
 
-  // gh-2084 -- same defensive shape as p75InsertPromise/p13SubmitPromise
-  // above, for the professional path's own single hand-off commitment
-  // (e-pro-12a / e-pro-18b's "Next" tap): a second Enter/click while the
-  // insert+set_lead_role is in flight must be a complete no-op.
-  var proInsertPromise = null;
+  // gh-2084 (review round 1, item 1): the professional path's lead row
+  // is now written at the EMAIL screen (e-pro-9-5a/e-pro-9-5b), the same
+  // point arm D/E's homeowner path commits its own first row -- ruling
+  // recorded on #2084: an early row means a drop-off after the email
+  // screen still leaves a lead. proEmailInsertPromise is that screen's
+  // own in-flight guard, same defensive shape as p75InsertPromise.
+  var proEmailInsertPromise = null;
+
+  // gh-2084 (review round 1, item 1): the close screen (e-pro-12a /
+  // e-pro-18b) no longer inserts -- leadId already exists by the time a
+  // visitor reaches it. Its own "Next" tap PATCHes via
+  // update_lead_contact (falling back to insertLeadAndSetRole on
+  // data:false, exactly as e-p13 does) and redirects with that same
+  // leadId. proCloseSubmitPromise is that screen's own in-flight guard.
+  var proCloseSubmitPromise = null;
 
   // gh-2088 (PR #2088 round 1, item 9): the click-debounce guard below
   // needs to know when the current screen was rendered. See show().
@@ -365,7 +375,7 @@
         if (idx === 1) { role = 'homeowner'; go('e-p2'); return; }
         // gh-2084: Professional now leads with its own shared exposition
         // (e-pro-2) before arm C's own industry picker (e-pro-3).
-        if (idx === 2) { role = 'professional'; go('e-pro-2'); return; }
+        if (idx === 2) { go('e-pro-2'); return; }
         role = 'contractor';
         go('e-contractor-1');
       }
@@ -374,11 +384,11 @@
 
   // ====== Exposition screens (pages 2, 4a, 4b, 7, 9, 11) -- one
   // paragraph, one guarded Continue tap, nothing else. ======
-  function expositionRenderer(text, nextToken) {
+  function expositionRenderer(text, nextToken, label) {
     return function () {
       root.appendChild(bodyText(text));
       var fired = false;
-      root.appendChild(continueButton('Continue', function () {
+      root.appendChild(continueButton(label || 'Continue', function () {
         // Per-render guard: protects against the SAME button firing
         // twice (e.g. two synthetic events on one element); the
         // cross-screen fast-double-tap case is handled by the root-level
@@ -388,6 +398,13 @@
         go(nextToken);
       }, true));
     };
+  }
+  // gh-2084 review round 1, item 4: Sloane's script labels every
+  // professional-path exposition tap "Next", not "Continue" -- the
+  // homeowner path's own exposition screens (E_COPY.*, above) keep
+  // "Continue" unchanged.
+  function proExpositionRenderer(text, nextToken) {
+    return expositionRenderer(text, nextToken, 'Next');
   }
   RENDERERS['e-p2'] = expositionRenderer(E_COPY.p2, 'e-p3');
   RENDERERS['e-p4a'] = expositionRenderer(E_COPY.p4a, 'e-p5');
@@ -825,28 +842,95 @@
     };
   }
 
-  // New email-capture screen (gh-2084 pages 9.5a/9.5b) -- also client-
-  // side only (locked default 4: no lead row is written until the final
-  // hand-off "Next" tap, and there is no phone re-ask anywhere on this
-  // path).
-  function proEmailRenderer(nextToken) {
+  // Email-capture screen (gh-2084 pages 9.5a/9.5b) -- gh-2084 review
+  // round 1, item 1: this is now the professional path's FIRST
+  // COMMITMENT, exactly the role e-p7-5 plays for the homeowner path --
+  // it writes the leads row (insert + set_lead_role, role=
+  // 'referral_partner', the given partnerIndustryKey) with the name
+  // already captured at the previous screen. Ruling recorded on #2084:
+  // an early row here means a visitor who drops off after this screen
+  // still leaves a lead, instead of only ever writing one at the close
+  // screen a drop-off would never reach. Same defensive shape as
+  // e-p7-5: a re-entry while a fresh insert is still pending renders a
+  // wait state and resolves forward once that SAME request settles;
+  // resubmit-after-Back (leadId already set) PATCHes via
+  // update_lead_contact, falling back to a fresh insertLeadAndSetRole on
+  // a `data:false` result, mirroring e-p7-5's own resubmit path exactly.
+  function proEmailRenderer(nextToken, partnerIndustryKey) {
     return function () {
-      root.appendChild(backButton(goBack));
+      var myToken = activeToken;
+
+      if (proEmailInsertPromise) {
+        root.appendChild(heading('What\'s a good email address to reach you?'));
+        root.appendChild(continueButton('Please wait…', function () {}, false));
+        proEmailInsertPromise.then(function () {
+          if (activeToken === myToken) go(nextToken);
+        }, function () { /* the original submit's own handler already surfaced the error */ });
+        return;
+      }
+
+      var backBtn = backButton(goBack);
+      root.appendChild(backBtn);
       root.appendChild(heading('What\'s a good email address to reach you?'));
       var form = wrapInForm(onSubmit);
       root.appendChild(form);
       var emailF = field('eProEmail', 'Email', 'email', { autocomplete: 'email', inputmode: 'email', maxlength: '320' }, false, form);
       emailF.input.value = proEmail || '';
-      form.appendChild(continueButton('Continue', onSubmit, true));
+      var submitBtn = continueButton('Continue', onSubmit, true);
+      form.appendChild(submitBtn);
+
       function onSubmit() {
+        if (proEmailInsertPromise) return;
+
         emailF.err.textContent = '';
         var value = emailF.input.value.trim();
         if (!value || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
           emailF.err.textContent = 'Please enter a valid email address.';
           return;
         }
-        proEmail = value;
-        go(nextToken);
+        if (!bridge.sb) { bridge.showError('Something went wrong loading the form. Please refresh and try again.'); return; }
+
+        submitBtn.disabled = true;
+        backBtn.disabled = true;
+        submitBtn.textContent = 'Please wait…';
+        emailF.input.readOnly = true;
+
+        if (leadId) {
+          proEmail = value;
+          var patchP = bridge.sb.rpc('update_lead_contact', { p_lead_id: leadId, p_name: proName, p_email: proEmail, p_phone: null }).then(function (res) {
+            if (res && res.data === true) { return; }
+            return insertLeadAndSetRole(proName, proEmail, null, 'referral_partner', partnerIndustryKey).then(function (newId) { leadId = newId; });
+          }, function () { /* thrown/rejected rpc -- proceed anyway */ }).then(function () {
+            if (activeToken === myToken) go(nextToken);
+          }, function () {
+            if (activeToken === myToken) go(nextToken);
+          });
+          proEmailInsertPromise = patchP;
+          patchP.then(function () { proEmailInsertPromise = null; }, function () { proEmailInsertPromise = null; });
+          return;
+        }
+
+        var p = insertLeadAndSetRole(proName, value, null, 'referral_partner', partnerIndustryKey).then(function (newId) {
+          proEmail = value;
+          leadId = newId;
+          return newId;
+        });
+
+        proEmailInsertPromise = p;
+        p.then(function () {
+          proEmailInsertPromise = null;
+          if (activeToken === myToken) go(nextToken);
+        }, function (err) {
+          proEmailInsertPromise = null;
+          console.error('[router-variant-e] professional email save failed:', err);
+          if (activeToken === myToken) {
+            submitBtn.disabled = false;
+            backBtn.disabled = false;
+            submitBtn.textContent = 'Continue';
+            emailF.input.readOnly = false;
+            bridge.showError('Something went wrong saving your info. Please try again.');
+          }
+        });
       }
     };
   }
@@ -854,16 +938,21 @@
   // Hand-off / close screen (gh-2084 pages 12(a)/18(b)) -- renders arm
   // C's own realtorClose/insClose paragraphs VERBATIM (fee sentence +
   // D-266 disclaimer stay exactly where those arrays already show them,
-  // never repositioned), then makes the professional path's ONE lead-row
-  // commitment on "Next": insertLeadAndSetRole + redirect straight to
-  // the partner destination, with the same defensive in-flight guard
-  // (proInsertPromise) as every other submit on this router -- Back and
-  // Next are both disabled for the duration, and a second Enter/click
-  // while the request is in flight is a complete no-op. No phone field
-  // exists on this screen or anywhere else on the professional path
-  // (locked default 4).
+  // never repositioned). gh-2084 review round 1, item 1: the lead row
+  // already exists by the time a visitor reaches this screen (written
+  // at the email screen above), so "Next" no longer inserts -- it
+  // PATCHes via update_lead_contact (the same call e-p13 makes, and the
+  // same `data:false` -> insertLeadAndSetRole fallback e-p13 falls back
+  // to) and redirects with the existing leadId (or the fallback's new
+  // one). Same defensive in-flight guard (proCloseSubmitPromise) as
+  // every other submit on this router -- Back and Next are both
+  // disabled for the duration, and a second Enter/click while the
+  // request is in flight is a complete no-op. No phone field exists on
+  // this screen or anywhere else on the professional path (locked
+  // default 4).
   function proCloseRenderer(copyKey, partnerIndustryKey, completeToken) {
     return function () {
+      var myToken = activeToken;
       var RD = window.RouterDiscovery;
       RD.COPY[copyKey].forEach(function (p) { root.appendChild(bodyText(p)); });
       var backBtn = backButton(goBack);
@@ -880,24 +969,34 @@
       }
 
       function onSubmit() {
-        if (proInsertPromise) return;
+        if (proCloseSubmitPromise) return;
         if (!bridge.sb) { bridge.showError('Something went wrong loading the form. Please refresh and try again.'); return; }
         partnerIndustry = partnerIndustryKey;
         submitBtn.disabled = true;
         backBtn.disabled = true;
         submitBtn.textContent = 'Please wait…';
-        var p = insertLeadAndSetRole(proName, proEmail, null, 'referral_partner', partnerIndustryKey).then(function (newId) {
-          leadId = newId;
-          return newId;
-        });
-        proInsertPromise = p;
-        p.then(function (newId) {
-          proInsertPromise = null;
-          if (activeToken === completeToken) finish(newId);
+        var p = bridge.sb.rpc('update_lead_contact', { p_lead_id: leadId, p_name: proName, p_email: proEmail, p_phone: null }).then(function (res) {
+          if (res && res.data === true) { return leadId; }
+          // Same data:false fallback as e-p13/e-p7-5: the guard (30-
+          // minute window, or prefill already used) refused the write --
+          // fall back to a fresh row via the shared helper (which also
+          // calls set_lead_role) rather than stranding this visitor.
+          return insertLeadAndSetRole(proName, proEmail, null, 'referral_partner', partnerIndustryKey).then(function (newId) {
+            leadId = newId;
+            return newId;
+          });
         }, function (err) {
-          proInsertPromise = null;
+          console.error('[router-variant-e] professional hand-off update_lead_contact threw -- proceeding anyway:', err);
+          return leadId;
+        });
+        proCloseSubmitPromise = p;
+        p.then(function (newId) {
+          proCloseSubmitPromise = null;
+          if (activeToken === myToken) finish(newId);
+        }, function (err) {
+          proCloseSubmitPromise = null;
           console.error('[router-variant-e] professional hand-off save failed:', err);
-          if (activeToken === completeToken) {
+          if (activeToken === myToken) {
             submitBtn.disabled = false;
             backBtn.disabled = false;
             submitBtn.textContent = 'Next';
@@ -909,7 +1008,7 @@
   }
 
   // -- Shared exposition + industry picker (gh-2084 pages 2 and 3) --
-  RENDERERS['e-pro-2'] = expositionRenderer(PRO_COPY.p2, 'e-pro-3');
+  RENDERERS['e-pro-2'] = proExpositionRenderer(PRO_COPY.p2, 'e-pro-3');
   RENDERERS['e-pro-3'] = function () {
     var RD = window.RouterDiscovery;
     var order = RD.PARTNER_INDUSTRY_ORDER;
@@ -936,36 +1035,36 @@
   };
 
   // -- Real Estate branch (gh-2084 pages 4(a)-12(a), 11 pages) --
-  RENDERERS['e-pro-4a'] = expositionRenderer(PRO_COPY.p4a, 'e-pro-5a');
+  RENDERERS['e-pro-4a'] = proExpositionRenderer(PRO_COPY.p4a, 'e-pro-5a');
   RENDERERS['e-pro-5a'] = proQuestionRenderer('REALTOR_TRACK', 0, 'e-pro-5-5a');
   RENDERERS['e-pro-5-5a'] = proNameRenderer('e-pro-6a');
-  RENDERERS['e-pro-6a'] = expositionRenderer(PRO_COPY.p6a, 'e-pro-7a');
+  RENDERERS['e-pro-6a'] = proExpositionRenderer(PRO_COPY.p6a, 'e-pro-7a');
   RENDERERS['e-pro-7a'] = proQuestionRenderer('REALTOR_TRACK', 1, 'e-pro-8a');
-  RENDERERS['e-pro-8a'] = expositionRenderer(PRO_COPY.p8a, 'e-pro-9a');
+  RENDERERS['e-pro-8a'] = proExpositionRenderer(PRO_COPY.p8a, 'e-pro-9a');
   RENDERERS['e-pro-9a'] = proQuestionRenderer('REALTOR_TRACK', 2, 'e-pro-9-5a');
-  RENDERERS['e-pro-9-5a'] = proEmailRenderer('e-pro-10a');
-  RENDERERS['e-pro-10a'] = expositionRenderer(PRO_COPY.p10a, 'e-pro-11a');
+  RENDERERS['e-pro-9-5a'] = proEmailRenderer('e-pro-10a', 're_agent');
+  RENDERERS['e-pro-10a'] = proExpositionRenderer(PRO_COPY.p10a, 'e-pro-11a');
   RENDERERS['e-pro-11a'] = proQuestionRenderer('REALTOR_TRACK', 3, 'e-pro-12a');
   RENDERERS['e-pro-12a'] = proCloseRenderer('realtorClose', 're_agent', 'e-pro-12a');
 
   // -- Insurance branch (gh-2084 pages 4(b)-18(b), 17 pages) --
-  RENDERERS['e-pro-4b'] = expositionRenderer(PRO_COPY.p4b, 'e-pro-5b');
+  RENDERERS['e-pro-4b'] = proExpositionRenderer(PRO_COPY.p4b, 'e-pro-5b');
   RENDERERS['e-pro-5b'] = proQuestionRenderer('INSURANCE_TRACK', 0, 'e-pro-5-5b');
   RENDERERS['e-pro-5-5b'] = proNameRenderer('e-pro-6b');
-  RENDERERS['e-pro-6b'] = expositionRenderer(PRO_COPY.p6b, 'e-pro-7b');
+  RENDERERS['e-pro-6b'] = proExpositionRenderer(PRO_COPY.p6b, 'e-pro-7b');
   RENDERERS['e-pro-7b'] = proQuestionRenderer('INSURANCE_TRACK', 1, 'e-pro-8b');
-  RENDERERS['e-pro-8b'] = expositionRenderer(PRO_COPY.p8b, 'e-pro-9b');
+  RENDERERS['e-pro-8b'] = proExpositionRenderer(PRO_COPY.p8b, 'e-pro-9b');
   RENDERERS['e-pro-9b'] = proQuestionRenderer('INSURANCE_TRACK', 2, 'e-pro-9-5b');
-  RENDERERS['e-pro-9-5b'] = proEmailRenderer('e-pro-10b');
-  RENDERERS['e-pro-10b'] = expositionRenderer(PRO_COPY.p10b, 'e-pro-11b');
+  RENDERERS['e-pro-9-5b'] = proEmailRenderer('e-pro-10b', 'insurance_agent');
+  RENDERERS['e-pro-10b'] = proExpositionRenderer(PRO_COPY.p10b, 'e-pro-11b');
   RENDERERS['e-pro-11b'] = proQuestionRenderer('INSURANCE_TRACK', 3, 'e-pro-12b');
-  RENDERERS['e-pro-12b'] = expositionRenderer(PRO_COPY.p12b, 'e-pro-13b');
+  RENDERERS['e-pro-12b'] = proExpositionRenderer(PRO_COPY.p12b, 'e-pro-13b');
   RENDERERS['e-pro-13b'] = proQuestionRenderer('INSURANCE_TRACK', 4, 'e-pro-14b');
   // Locked default 3: Alt A only (safe default) -- see PRO_COPY.p14b's
   // own comment above. The "Nearly 40%" alternative is never wired here.
-  RENDERERS['e-pro-14b'] = expositionRenderer(PRO_COPY.p14b, 'e-pro-15b');
+  RENDERERS['e-pro-14b'] = proExpositionRenderer(PRO_COPY.p14b, 'e-pro-15b');
   RENDERERS['e-pro-15b'] = proQuestionRenderer('INSURANCE_TRACK', 5, 'e-pro-16b');
-  RENDERERS['e-pro-16b'] = expositionRenderer(PRO_COPY.p16b, 'e-pro-17b');
+  RENDERERS['e-pro-16b'] = proExpositionRenderer(PRO_COPY.p16b, 'e-pro-17b');
   RENDERERS['e-pro-17b'] = proQuestionRenderer('INSURANCE_TRACK', 6, 'e-pro-18b');
   RENDERERS['e-pro-18b'] = proCloseRenderer('insClose', 'insurance_agent', 'e-pro-18b');
 
@@ -1069,8 +1168,17 @@
     // mid-submit, its Continue button and Back button are still disabled
     // and read "Please wait…". Re-rendering the current screen rebuilds
     // both fresh and enabled; this is a no-op for every other screen.
+    //
+    // gh-2084 (review round 1, item 2): the professional close screens
+    // (e-pro-12a / e-pro-18b) have the exact same in-flight-submit-then-
+    // bfcache-restore exposure as e-p13 -- add them to the same
+    // recovery list rather than a second listener. leadId is module
+    // state, unaffected by the restore, so the re-rendered screen's own
+    // "Next" tap still reuses it (via proCloseRenderer's own PATCH path)
+    // instead of ever inserting a second row.
+    var BFCACHE_RECOVERABLE = { 'e-p13': true, 'e-pro-12a': true, 'e-pro-18b': true };
     window.addEventListener('pageshow', function (e) {
-      if (e.persisted && activeToken === 'e-p13') { show('e-p13'); }
+      if (e.persisted && BFCACHE_RECOVERABLE[activeToken]) { show(activeToken); }
     });
 
     loadDiscoveryModule().then(function (RD) {
