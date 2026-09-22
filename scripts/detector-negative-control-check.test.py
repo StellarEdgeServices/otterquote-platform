@@ -88,25 +88,6 @@ def registry_snapshot(entries=None):
         neg.DETECTOR_REGISTRY.update(saved)
 
 
-GOOD_TEST_FILE = (
-    "#!/usr/bin/env python3\n"
-    "print(\"  PASS  clean case: OK\")\n"
-    "print(\"  PASS  bad-input case -> REJECTED: REJECTED\")\n"
-    "import sys\n"
-    "sys.exit(0)\n"
-)
-
-NO_NEGATIVE_TEST_FILE = (
-    "#!/usr/bin/env python3\n"
-    "# Only clean-input fixtures -- the exact shape gh-1738 exists to catch: a\n"
-    "# detector that has never been observed rejecting the thing it exists to\n"
-    "# reject.\n"
-    "print(\"  PASS  clean case 1: OK\")\n"
-    "print(\"  PASS  clean case 2: OK\")\n"
-    "import sys\n"
-    "sys.exit(0)\n"
-)
-
 DETECTOR_SOURCE = (
     "#!/usr/bin/env python3\n"
     "def main():\n"
@@ -116,10 +97,66 @@ DETECTOR_SOURCE = (
 )
 
 
+def _importing_test_file(detector_filename: str, print_lines, modvar: str = "mod") -> str:
+    """A self-test source that genuinely loads `detector_filename` via this
+    repo's real importlib pattern (spec_from_file_location -> module_from_spec
+    -> exec_module -> call something on the loaded module -- see e.g.
+    scripts/drift-detector-age.test.py) and then emits `print_lines` verbatim.
+
+    gh-1884: this suite's fixtures previously (pre-gh-1884) just printed
+    PASS-shaped text with no reference to the detector file at all -- exactly
+    the forgery shape this issue exists to reject, just in a synthetic test
+    fixture instead of a real detector's self-test. Every registered-detector
+    fixture below now genuinely invokes its detector so it satisfies
+    self_test_invokes_detector(), matching what this fix now requires of a
+    real registered detector's self-test.
+    """
+    body = [
+        "#!/usr/bin/env python3",
+        "import importlib.util",
+        "from pathlib import Path",
+        "HERE = Path(__file__).resolve().parent",
+        "spec = importlib.util.spec_from_file_location(%r, HERE / %r)"
+        % (modvar, detector_filename),
+        "%s = importlib.util.module_from_spec(spec)" % modvar,
+        "spec.loader.exec_module(%s)" % modvar,
+        "%s.main()  # genuinely invoke the loaded detector -- not decorative" % modvar,
+    ]
+    body.extend(print_lines)
+    body.append("import sys")
+    body.append("sys.exit(0)")
+    return "\n".join(body) + "\n"
+
+
+def good_test_file(detector_filename: str) -> str:
+    return _importing_test_file(
+        detector_filename,
+        [
+            'print("  PASS  clean case: OK")',
+            'print("  PASS  bad-input case -> REJECTED: REJECTED")',
+        ],
+    )
+
+
+def no_negative_test_file(detector_filename: str) -> str:
+    """Only clean-input fixtures -- the exact shape gh-1738 exists to catch: a
+    detector that has never been observed rejecting the thing it exists to
+    reject. Genuinely invokes the detector (gh-1884) so the violation this
+    produces is isolated to the missing negative-control token, not muddied
+    by an unrelated invocation-proof violation."""
+    return _importing_test_file(
+        detector_filename,
+        [
+            'print("  PASS  clean case 1: OK")',
+            'print("  PASS  clean case 2: OK")',
+        ],
+    )
+
+
 def build_clean_tree(root: Path):
     """A properly self-tested detector + fully reconciled wiring."""
     write(root / "scripts" / "good-detector.py", DETECTOR_SOURCE + '\nSCAN_EXTENSIONS = {".txt"}\n')
-    write(root / "scripts" / "good-detector.test.py", GOOD_TEST_FILE)
+    write(root / "scripts" / "good-detector.test.py", good_test_file("good-detector.py"))
     write(root / "data" / "sample.txt", "hello\n")
     write(
         root / ".github" / "workflows" / "good.yml",
@@ -150,12 +187,12 @@ def build_broken_tree(root: Path):
     # way a real reviewer enriches DETECTOR_REGISTRY when they care enough about
     # a detector to demand a specific verdict token from its suite.
     write(root / "scripts" / "clean-only-detector.py", DETECTOR_SOURCE)
-    write(root / "scripts" / "clean-only-detector.test.py", NO_NEGATIVE_TEST_FILE)
+    write(root / "scripts" / "clean-only-detector.test.py", no_negative_test_file("clean-only-detector.py"))
 
     # Instance C: instance-5's own shape -- a scanner's declared extensions are
     # not reconciled against its workflow's push.paths filter.
     write(root / "scripts" / "bad-scanner.py", DETECTOR_SOURCE + '\nSCAN_EXTENSIONS = {".html", ".ts"}\n')
-    write(root / "scripts" / "bad-scanner.test.py", GOOD_TEST_FILE)
+    write(root / "scripts" / "bad-scanner.test.py", good_test_file("bad-scanner.py"))
     write(root / "site" / "index.html", "<html></html>\n")
     write(root / "app" / "widget.ts", "export const x = 1;\n")
     write(
@@ -326,12 +363,12 @@ def main():
         # cases below are each isolated, unambiguous signal -- not noise from
         # an unrelated already-broken entry.
         write(root / "scripts" / "present-detector.py", DETECTOR_SOURCE)
-        write(root / "scripts" / "present-detector.test.py", GOOD_TEST_FILE)
+        write(root / "scripts" / "present-detector.test.py", good_test_file("present-detector.py"))
         # scripts/deleted-both.py and its self-test: deliberately never
         # written -- simulating a PR that deletes both files outright.
         # scripts/script-only-missing.py: self-test present, script itself
         # deleted.
-        write(root / "scripts" / "script-only-missing.test.py", GOOD_TEST_FILE)
+        write(root / "scripts" / "script-only-missing.test.py", good_test_file("script-only-missing.py"))
         # scripts/test-only-missing.py: script present, self-test deleted.
         write(root / "scripts" / "test-only-missing.py", DETECTOR_SOURCE)
 
@@ -417,6 +454,125 @@ def main():
     )
     check("EMPTY WORKFLOWS DIR: gate verdict is UNMEASURED", result6["verdict"], "UNMEASURED")
     check("EMPTY WORKFLOWS DIR: gate exit code is 3", result6["code"], 3)
+
+    # -------------------------------------------------------------------
+    # gh-1884 CLOSE-REVIEW: FAIL (2026-09-08T21:11:33Z) -- the refuted bypass.
+    # A REGISTERED detector's script and self-test both "exist" per
+    # Path.exists() (so REGISTRY GUTTED's existence checks above never fire),
+    # but the script is truncated to 0 bytes in place and the self-test is a
+    # stub that merely PRINTS the expected negative-control tokens -- never
+    # importing, exec()'ing, or subprocess-invoking the detector at all. The
+    # refuter's own reproduction: pre-fix, this read GATE: PASS, affirming the
+    # forgery with a PASS line naming the detector and its tokens as if they
+    # had actually been observed. Reproduce that exact shape here and prove
+    # both halves of the fix independently.
+    # -------------------------------------------------------------------
+    print()
+    print("=" * 70)
+    print("INERT DETECTOR -- registered script truncated to 0 bytes + a")
+    print("token-printing self-test stub that never invokes it (gh-1884)")
+    print("=" * 70)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        # The exact refuted shape: 0-byte script, self-test that never
+        # mentions the detector's filename and just prints matching tokens.
+        write(root / "scripts" / "truncated-detector.py", "")
+        write(
+            root / "scripts" / "truncated-detector.test.py",
+            "#!/usr/bin/env python3\n"
+            "# Forgery: prints tokens that LOOK like a real run, never imports\n"
+            "# or executes the detector at all.\n"
+            'print("  PASS  bad case -> STALE: STALE")\n',
+        )
+        with registry_snapshot({
+            "scripts/truncated-detector.py": {
+                "test": "scripts/truncated-detector.test.py",
+                "negative_tokens": ["STALE"],
+            }
+        }):
+            result7 = neg.run_all(root)
+
+    for line in result7["violations"]:
+        print(line)
+    print("GATE: %s  (exit %d)" % (result7["verdict"], result7["code"]))
+
+    check("INERT DETECTOR: gate verdict is FAIL, not PASS", result7["verdict"], "FAIL")
+    check("INERT DETECTOR: gate exit code is 1", result7["code"], 1)
+    check_true(
+        "INERT DETECTOR: the 0-byte script itself is flagged inert",
+        any(
+            "truncated-detector.py" in v and "empty" in v
+            for v in result7["violations"]
+        ),
+    )
+
+    print()
+    print("=" * 70)
+    print("NON-INVOKING SELF-TEST -- registered script is healthy, but its")
+    print("self-test never loads or executes it (gh-1884)")
+    print("=" * 70)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        # Script is real and non-trivial this time; only the self-test is a
+        # forgery -- proof the two new checks are independent of each other.
+        write(root / "scripts" / "unfired-detector.py", DETECTOR_SOURCE)
+        write(
+            root / "scripts" / "unfired-detector.test.py",
+            "#!/usr/bin/env python3\n"
+            'print("  PASS  bad case -> STALE: STALE")\n',
+        )
+        with registry_snapshot({
+            "scripts/unfired-detector.py": {
+                "test": "scripts/unfired-detector.test.py",
+                "negative_tokens": ["STALE"],
+            }
+        }):
+            result8 = neg.run_all(root)
+
+    for line in result8["violations"]:
+        print(line)
+    print("GATE: %s  (exit %d)" % (result8["verdict"], result8["code"]))
+
+    check("NON-INVOKING SELF-TEST: gate verdict is FAIL, not PASS", result8["verdict"], "FAIL")
+    check("NON-INVOKING SELF-TEST: gate exit code is 1", result8["code"], 1)
+    check_true(
+        "NON-INVOKING SELF-TEST: flagged for never invoking the detector",
+        any(
+            "unfired-detector.py" in v
+            and ("never mentions" in v or "shows neither an importlib" in v)
+            for v in result8["violations"]
+        ),
+    )
+
+    print()
+    print("=" * 70)
+    print("INERT DETECTOR, positive control -- the SAME registered detector,")
+    print("healthy script + a self-test that genuinely invokes it, is silent")
+    print("=" * 70)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        write(root / "scripts" / "healthy-detector.py", DETECTOR_SOURCE)
+        write(
+            root / "scripts" / "healthy-detector.test.py",
+            good_test_file("healthy-detector.py"),
+        )
+        with registry_snapshot({
+            "scripts/healthy-detector.py": {
+                "test": "scripts/healthy-detector.test.py",
+                "negative_tokens": ["REJECTED"],
+            }
+        }):
+            result9 = neg.run_all(root)
+
+    print("GATE: %s  (exit %d)" % (result9["verdict"], result9["code"]))
+    check("INERT DETECTOR positive control: gate verdict is PASS", result9["verdict"], "PASS")
+    check_true(
+        "INERT DETECTOR positive control: the healthy detector raises no violation",
+        not any("healthy-detector.py" in v for v in result9["violations"]),
+    )
 
     # Regression coverage for the other half of the same review comment: CHECK 3
     # used to return completely bare (no info line at all) when
