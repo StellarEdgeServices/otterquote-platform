@@ -89,6 +89,21 @@ try {
   process.exit(1);
 }
 
+// gh-2075 round 3 (re-review finding (b)): STORAGE_KEY is read out of
+// start.html itself, same as LIVE_VARIANTS above, never hardcoded here --
+// the D-327 orchestrator flip block (start.html) bumps KEY and
+// LIVE_VARIANTS together in one edit, and this file must not need a
+// SECOND edit of its own just to keep matching that one change (round 2
+// hardcoded the literal string 'oq_variant_v1' in four places here and
+// had to be hand-edited back and forth across rounds 1-3 of this same PR
+// for exactly that reason).
+const storageKeyMatch = html.match(/var KEY = '([^']*)';/);
+if (!storageKeyMatch) {
+  console.log('FAIL: KEY constant not found in start.html — this suite\'s storage-key assertions cannot be evaluated against it.');
+  process.exit(1);
+}
+const STORAGE_KEY = storageKeyMatch[1];
+
 // gh-2074 fix round 2: extract the SECOND, independent variant read
 // verbatim (the "propagation channel" — a separate <script> block/closure
 // further down start.html, gh-2014/gh-2033/gh-2074) so Check 7 below can
@@ -217,10 +232,10 @@ function runAssignment(opts) {
     threw,
     arm: sandbox.window.__oqVariant,
     replacedUrl,
-    localStorageValue: (() => { try { return lsMap.get('oq_variant_v1') || null; } catch (e) { return null; } })(),
+    localStorageValue: (() => { try { return lsMap.get(STORAGE_KEY) || null; } catch (e) { return null; } })(),
     cookieJar: cookieState.jar,
     cookieValue: (() => {
-      const m = cookieState.jar.match(/(?:^|; )oq_variant_v1=([^;]*)/);
+      const m = cookieState.jar.match(new RegExp('(?:^|; )' + STORAGE_KEY + '=([^;]*)'));
       return m ? m[1] : null;
     })(),
     lsMap,
@@ -296,8 +311,8 @@ ok(reload2.arm === persistSeed.arm, 'reload #2 (localStorage-store read) returns
 
 // ── Check 3: explicit ?v=c overrides a persisted 'a'. ──
 console.log('\n=== Check 3: explicit override beats a persisted assignment ===');
-const persistedA = new Map([['oq_variant_v1', 'a']]);
-const overrideResult = runAssignment({ search: '?v=c', store: { localStorage: persistedA, cookieJar: 'oq_variant_v1=a' } });
+const persistedA = new Map([[STORAGE_KEY, 'a']]);
+const overrideResult = runAssignment({ search: '?v=c', store: { localStorage: persistedA, cookieJar: STORAGE_KEY + '=a' } });
 console.log('Persisted arm going in: a | URL: /start?v=c | resulting arm: ' + overrideResult.arm + ' | rewritten URL: ' + overrideResult.replacedUrl);
 ok(overrideResult.arm === 'c', '/start?v=c with a persisted "a" renders c');
 ok(overrideResult.localStorageValue === 'c', 'the override also re-persists to localStorage as c (future loads stay on c)');
