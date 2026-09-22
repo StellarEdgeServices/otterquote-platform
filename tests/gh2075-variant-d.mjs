@@ -49,6 +49,7 @@ function makeDom(ctxCell) {
       _classes: [],
       children: [],
       attributes: {},
+      style: {},
       _listeners: {},
       _text: '',
       _html: '',
@@ -79,6 +80,30 @@ function makeDom(ctxCell) {
         if (k === 'id') { this.id = v; registry[v] = this; }
       },
       getAttribute(k) { return Object.prototype.hasOwnProperty.call(this.attributes, k) ? this.attributes[k] : null; },
+      // gh-2075 round 3: js/router-discovery.js's setRowSelected() calls
+      // btn.querySelector('[data-rd-marker]') on a multi-select row's own
+      // checkmark span -- only the bracket-attribute-selector form is
+      // needed anywhere in either file this suite loads, so that is all
+      // this shim supports.
+      querySelector(sel) {
+        // gh-2075 round 3: two selector shapes are all either file this
+        // suite loads ever calls -- [data-rd-marker] (a bracket attribute
+        // selector, router-discovery.js's setRowSelected()) and
+        // .form-label (a class selector, router-discovery.js's own
+        // phone-field-is-optional tweak in renderContact()). Nothing else
+        // is supported; this is not a general selector engine.
+        const attrM = /^\[([a-zA-Z0-9_-]+)\]$/.exec(sel);
+        const classM = /^\.([a-zA-Z0-9_-]+)$/.exec(sel);
+        if (!attrM && !classM) return null;
+        const stack = this.children.slice();
+        while (stack.length) {
+          const node = stack.shift();
+          if (attrM && node.attributes && Object.prototype.hasOwnProperty.call(node.attributes, attrM[1])) return node;
+          if (classM && node._classes && node._classes.includes(classM[1])) return node;
+          if (node.children && node.children.length) stack.push(...node.children);
+        }
+        return null;
+      },
       addEventListener(evt, fn) { (this._listeners[evt] = this._listeners[evt] || []).push(fn); },
       removeEventListener(evt, fn) {
         if (!this._listeners[evt]) return;
@@ -168,7 +193,25 @@ function buildScenario() {
   let nextLeadId = 1;
 
   const bridge = {
-    get sb() { return { rpc: (name, args) => { rpcCalls.push({ name, args }); return Promise.resolve({ error: null }); } }; },
+    // gh-2075 round 3 (re-review finding, blocker): supabase-js
+    // 2.112.4's `.rpc(...)` returns a then-able with `.then(onFulfilled,
+    // onRejected)` but NO `.catch()` -- a bare `.catch()` called directly
+    // on it throws `.catch is not a function` in production. A real
+    // native Promise.resolve(...) here would NOT have caught that bug
+    // (native Promises support .catch everywhere), so this stub wraps it
+    // in a then-only object, matching supabase-js's own shape, so this
+    // suite fails loudly on any code path that calls `.catch()` directly
+    // on an `sb.rpc(...)` result instead of `.then(onFulfilled,
+    // onRejected)` or `.then(fn).catch(fn)`.
+    get sb() {
+      return {
+        rpc: (name, args) => {
+          rpcCalls.push({ name, args });
+          const p = Promise.resolve({ error: null });
+          return { then: (onFulfilled, onRejected) => p.then(onFulfilled, onRejected) };
+        }
+      };
+    },
     trackRouter: (name, extra) => { trackedEvents.push({ name, extra: Object.assign({}, extra) }); },
     collectAttribution: () => ({ v: 'd', utm_source: 'fb', fbclid: null }),
     insertFreshLead: (name, email, phone) => {
@@ -215,6 +258,102 @@ function buildScenario() {
   return { ctx, routerDRoot, bridge, RouterVariantD, trackedEvents, rpcCalls, insertCalls, redirects, leadEvents };
 }
 
+// gh-2075 round 2 re-review, finding (c): a regression test for the arm-C
+// homeowner hand-off fix (commit 3175041) -- loads js/router-discovery.js
+// DIRECTLY (never through router-variant-d.js: arm C runs standalone in
+// production, and D's own lazy-load already has its own coverage in
+// scenario 5 above) and drives it through its full c-entry..c-home-8
+// homeowner track. bridge.redirectTo below deliberately emulates
+// start.html's REAL non-preBuilt behavior (append `lead=<top-level leadId
+// var, which this module never sets -- null>` plus a SECOND, duplicate
+// round of attribution on top of whatever the caller already appended) --
+// exactly what production start.html's own redirectTo does -- so that
+// reverting 3175041 (back to `bridge.redirectTo(bridge.appendParams(...),
+// !!bridge.NO_LEAD_ID_DESTINATIONS.homeowner)`, which is always
+// preBuilt=false since that map is empty) is DETECTABLE here: it would
+// produce a dest with `lead=null` and doubled attribution instead of the
+// real lead id appended once. A stub that just recorded (dest, preBuilt)
+// without this emulation could not tell the fixed call from the reverted
+// one, since both pass SOME dest/preBuilt pair -- only reproducing the
+// real appending behavior for the non-preBuilt branch makes the two
+// distinguishable.
+function buildDiscoveryScenario() {
+  const ctxCell = {};
+  const { document } = makeDom(ctxCell);
+  const routerCRoot = document.createElement('div');
+  routerCRoot.setAttribute('id', 'routerCRoot');
+
+  const trackedEvents = [];
+  const rpcCalls = [];
+  const insertCalls = [];
+  const redirects = [];
+  let nextLeadId = 1;
+
+  const bridge = {
+    get sb() {
+      return {
+        rpc: (name, args) => {
+          rpcCalls.push({ name, args });
+          const p = Promise.resolve({ error: null });
+          return { then: (onFulfilled, onRejected) => p.then(onFulfilled, onRejected) };
+        }
+      };
+    },
+    trackRouter: (name, extra) => { trackedEvents.push({ name, extra: Object.assign({}, extra) }); },
+    collectAttribution: () => ({ v: 'c', utm_source: 'fb', fbclid: null }),
+    insertFreshLead: (name, email, phone) => {
+      insertCalls.push({ name, email, phone });
+      const id = 'lead-' + (nextLeadId++);
+      return Promise.resolve(id);
+    },
+    appendParams: (base, obj) => {
+      const parts = Object.keys(obj).filter((k) => obj[k]).map((k) => encodeURIComponent(k) + '=' + encodeURIComponent(obj[k]));
+      if (!parts.length) return base;
+      return base + (base.indexOf('?') === -1 ? '?' : '&') + parts.join('&');
+    },
+    // Emulates start.html's REAL redirectTo(dest, preBuilt) -- see this
+    // function's own comment block above for why the non-preBuilt branch
+    // must actually append `lead=null` + duplicate attribution rather than
+    // being a no-op, for this to be a real regression test.
+    redirectTo: (dest, preBuilt) => {
+      let finalDest = dest;
+      if (!preBuilt) {
+        finalDest = bridge.appendParams(finalDest, Object.assign({ lead: null }, bridge.collectAttribution()));
+      }
+      redirects.push({ dest: finalDest, preBuilt });
+    },
+    showError: (msg) => { throw new Error('bridge.showError called unexpectedly: ' + msg); },
+    ROLE_DESTINATIONS: { homeowner: 'https://app.otterquote.com/get-started', contractor: 'contractor-join.html' },
+    PARTNER_INDUSTRY_DESTINATIONS: { re_agent: 'partner-re.html', insurance_agent: 'partner-insurance.html' },
+    NO_LEAD_ID_DESTINATIONS: {}
+  };
+
+  const sandbox = {
+    document,
+    window: {},
+    console,
+    Promise,
+    setTimeout,
+    encodeURIComponent,
+    Object,
+    Array,
+    String,
+    URLSearchParams,
+    fbq: () => {},
+    RegExp
+  };
+  sandbox.window.document = document;
+  const ctx = vm.createContext(sandbox);
+  ctxCell.ctx = ctx;
+  vm.runInContext(discoverySrc, ctx, { filename: 'js/router-discovery.js' });
+  const RouterDiscovery = ctx.window.RouterDiscovery;
+  if (!RouterDiscovery || typeof RouterDiscovery.init !== 'function') {
+    throw new Error('window.RouterDiscovery.init was not defined after loading js/router-discovery.js');
+  }
+
+  return { ctx, routerCRoot, bridge, RouterDiscovery, trackedEvents, rpcCalls, insertCalls, redirects };
+}
+
 function flatten(el) {
   // Depth-first flatten -- these two files never nest more than 2-3 levels
   // deep (root -> wrap/group -> button/input), so a small recursive walk
@@ -236,8 +375,8 @@ function fillAndSubmit(root, inputId, value) {
   submitBtn.dispatchClick();
 }
 
-// ══════════════════════ Scenario 1: d-role renders 3 tap targets, correct
-// labels/order, no typing ══════════════════════
+// ═══════════════════════ Scenario 1: d-role renders 3 tap targets, correct
+// labels/order, no typing ═══════════════════════
 (function scenario1() {
   const { routerDRoot, bridge, RouterVariantD, trackedEvents } = buildScenario();
   RouterVariantD.init(bridge, routerDRoot);
@@ -252,8 +391,8 @@ function fillAndSubmit(root, inputId, value) {
     'router_step_view {step: "d-role"} fires on view, and nothing else fires yet');
 })();
 
-// ══════════════════════ Scenario 2: tapping a role advances to d-email,
-// emits router_role_selected + router_step_complete(d-role) + router_step_view(d-email) ══════════════════════
+// ═══════════════════════ Scenario 2: tapping a role advances to d-email,
+// emits router_role_selected + router_step_complete(d-role) + router_step_view(d-email) ═══════════════════════
 (function scenario2() {
   const { routerDRoot, bridge, RouterVariantD, trackedEvents } = buildScenario();
   RouterVariantD.init(bridge, routerDRoot);
@@ -269,8 +408,8 @@ function fillAndSubmit(root, inputId, value) {
   ok(otherInputs.length === 1, 'd-email has ONE input and nothing else (no name/phone on this screen)');
 })();
 
-// ══════════════════════ Scenario 3: email submit -> leads insert +
-// set_lead_role(homeowner) -> advances to d-name ══════════════════════
+// ═══════════════════════ Scenario 3: email submit -> leads insert +
+// set_lead_role(homeowner) -> advances to d-name ═══════════════════════
 (function scenario3() {
   const { routerDRoot, bridge, RouterVariantD, insertCalls, rpcCalls, trackedEvents } = buildScenario();
   RouterVariantD.init(bridge, routerDRoot);
@@ -288,8 +427,8 @@ function fillAndSubmit(root, inputId, value) {
   }).catch((e) => { console.error('scenario3 error:', e); fail++; });
 })();
 
-// ══════════════════════ Scenario 4: contractor branches straight to
-// contractor-join from d-email -- never reaches d-name ══════════════════════
+// ═══════════════════════ Scenario 4: contractor branches straight to
+// contractor-join from d-email -- never reaches d-name ═══════════════════════
 (function scenario4() {
   const { routerDRoot, bridge, RouterVariantD, redirects, trackedEvents } = buildScenario();
   RouterVariantD.init(bridge, routerDRoot);
@@ -306,9 +445,9 @@ function fillAndSubmit(root, inputId, value) {
   }).catch((e) => { console.error('scenario4 error:', e); fail++; });
 })();
 
-// ══════════════════════ Scenario 5: homeowner clears name (required) and
+// ═══════════════════════ Scenario 5: homeowner clears name (required) and
 // phone (optional/skippable), then reaches the lazy-loaded d-trades screen
-// with arm C's own COPY, verbatim ══════════════════════
+// with arm C's own COPY, verbatim ═══════════════════════
 (function scenario5() {
   const { routerDRoot, bridge, RouterVariantD, rpcCalls, trackedEvents } = buildScenario();
   RouterVariantD.init(bridge, routerDRoot);
@@ -354,7 +493,7 @@ function tick(n) {
   return p;
 }
 
-// ══════════════════════ Scenario 6 (gh-2075 round 2, review finding 2):
+// ═══════════════════════ Scenario 6 (gh-2075 round 2, review finding 2):
 // Back from d-name, then resubmitting a corrected email, must PATCH the
 // existing lead -- not insert a second row, not fire a second Meta Lead,
 // not fire set_lead_role's admin-alert trigger a second time ══════════════
@@ -393,10 +532,10 @@ function tick(n) {
   ok(nameRpc.args.p_email === 'fixed@example.com', 'the corrected email (not the typo) is what update_lead_contact PATCHes onto the single lead row');
 })().catch((e) => { console.error('scenario6 error:', e); fail++; });
 
-// ══════════════════════ Scenario 7 (gh-2075 round 2, review finding 3):
+// ═══════════════════════ Scenario 7 (gh-2075 round 2, review finding 3):
 // the d-phone Continue button must NOT re-enable while
 // js/router-discovery.js is still lazy-loading, or a second tap on slow
-// 4G double-emits and corrupts the back stack ══════════════════════
+// 4G double-emits and corrupts the back stack ═══════════════════════
 (async function scenario7() {
   const { routerDRoot, bridge, RouterVariantD } = buildScenario();
   RouterVariantD.init(bridge, routerDRoot);
@@ -418,13 +557,13 @@ function tick(n) {
   // is still what is rendered.
   await tick(1);
   ok(phoneSubmitBtn.disabled === true, 'Continue is STILL disabled one tick later, while the discovery module is still loading (round-2 fix: afterPhone() no longer re-enables it)');
-  ok(phoneSubmitBtn.textContent === 'Please wait\u2026', 'the button still reads "Please wait..." during the lazy-load window, not "Continue"');
+  ok(phoneSubmitBtn.textContent === 'Please wait…', 'the button still reads "Please wait..." during the lazy-load window, not "Continue"');
 })().catch((e) => { console.error('scenario7 error:', e); fail++; });
 
-// ══════════════════════ Scenario 8 (gh-2075 round 2, review finding 4):
+// ═══════════════════════ Scenario 8 (gh-2075 round 2, review finding 4):
 // double-tapping a d-professional-industry option must fire
 // set_lead_role exactly once and never render the first realtor
-// question twice ══════════════════════
+// question twice ═══════════════════════
 (async function scenario8() {
   const { routerDRoot, bridge, RouterVariantD, rpcCalls, trackedEvents } = buildScenario();
   RouterVariantD.init(bridge, routerDRoot);
@@ -449,6 +588,106 @@ function tick(n) {
   const realtor1Views = trackedEvents.filter((e) => e.name === 'router_step_view' && e.extra.step === 'd-realtor-1');
   ok(realtor1Views.length === 1, 'd-realtor-1 is entered exactly once -- no duplicate view from the second tap');
 })().catch((e) => { console.error('scenario8 error:', e); fail++; });
+
+// ═══════════════════════ Scenario 9 (gh-2075 round 2 re-review, finding
+// (c)): regression test for the arm-C homeowner hand-off fix (commit
+// 3175041, js/router-discovery.js). Drives arm C's OWN standalone module
+// (never through router-variant-d.js) through the full c-entry..c-home-8
+// homeowner track and asserts the real lead id is appended exactly once
+// with preBuilt=true and attribution NOT duplicated -- reverting 3175041
+// makes this scenario fail (see buildDiscoveryScenario's own comment for
+// how the bridge.redirectTo stub makes that detectable). ═══════════════════════
+(async function scenario9() {
+  const { routerCRoot, bridge, RouterDiscovery, redirects, insertCalls, rpcCalls } = buildDiscoveryScenario();
+  RouterDiscovery.init(bridge, routerCRoot);
+
+  function tapOption(idx) {
+    const opts = flatten(routerCRoot).filter((c) => c.tagName === 'BUTTON' && c.className.split(' ').includes('role-option'));
+    opts[idx].dispatchClick();
+  }
+  function tapContinue() {
+    const btn = flatten(routerCRoot).find((c) => c.tagName === 'BUTTON' && c.textContent === 'Continue');
+    btn.dispatchClick();
+  }
+
+  tapOption(0); // c-entry: "I am a homeowner..." -> c-home-1
+  tapContinue(); // c-home-1 -> c-home-2
+  tapOption(0); // c-home-2: Roofing
+  tapContinue(); // -> c-home-3
+  tapOption(0); // c-home-3: "Me" -> c-home-4
+  tapOption(4); // c-home-4: option 5, "None of the above" (index 4) -- ONLY this, to qualify
+  tapContinue(); // -> c-home-5 (not c-home-dq-4)
+  tapOption(0); // c-home-5: option 1 (not option 3) -> c-home-6, qualifies
+  tapOption(0); // c-home-6: "Great Reviews" only (not 6/7/8) -- qualifies
+  tapContinue(); // -> c-home-7 (not c-home-dq-6)
+  tapOption(1); // c-home-7: option 2 (idx===2, not the disqualifying idx===1) -> c-home-8
+
+  const stepViews0 = [];
+  ok(flatten(routerCRoot).some((c) => c.id === 'rdName'), 'reached c-home-8: the contact form (rdName) is rendered');
+
+  const nameInput = flatten(routerCRoot).find((c) => c.id === 'rdName');
+  const emailInput = flatten(routerCRoot).find((c) => c.id === 'rdEmail');
+  nameInput.value = 'Jane Homeowner';
+  emailInput.value = 'jane.homeowner@example.com';
+  // Phone left blank -- optional (gh-2042), not this test's concern.
+  const submitBtn = flatten(routerCRoot).find((c) => c.id === 'rdContactSubmit');
+  submitBtn.dispatchClick();
+
+  await tick(6);
+
+  ok(insertCalls.length === 1 && insertCalls[0].email === 'jane.homeowner@example.com', 'c-home-8 inserts exactly one lead with the entered email');
+  const realId = 'lead-' + 1; // buildDiscoveryScenario's own insertFreshLead stub: 'lead-' + nextLeadId++, starting at 1
+  ok(redirects.length === 1, 'exactly one redirect fires for the homeowner hand-off');
+  const dest = redirects[0] ? redirects[0].dest : '';
+  ok(redirects[0] && redirects[0].preBuilt === true,
+    'gh-2075 round 1 fix (commit 3175041): redirectTo is called with preBuilt=true, via redirectWithLeadId -- the SAME helper every other track in this file already uses, not the old direct bridge.redirectTo(...) call this screen used to make on its own');
+  ok(dest.indexOf('lead=' + realId) !== -1,
+    'the redirect carries the REAL freshly-inserted lead id (reverting 3175041 would instead produce preBuilt=false, and this suite\'s bridge.redirectTo stub would then append "lead=null" from start.html\'s own never-set top-level `leadId` var, which the next assertion below catches)');
+  ok(dest.indexOf('lead=null') === -1, 'the redirect never contains a literal "lead=null" (the exact bug 3175041 fixed)');
+  const utmCount = (dest.match(/utm_source=/g) || []).length;
+  ok(utmCount <= 1, 'attribution params are appended exactly once, not duplicated by a second, non-preBuilt round-trip through redirectTo');
+  const roleCall = rpcCalls.find((c) => c.name === 'set_lead_role' && c.args.p_role === 'homeowner');
+  ok(!!roleCall, 'set_lead_role(homeowner) is still called before the hand-off, unchanged by the fix');
+})().catch((e) => { console.error('scenario9 error:', e); fail++; });
+
+// ═══════════════════════ Scenario 10 (gh-2075 round 3 re-review, finding
+// (a)): Homeowner -> email -> name (advances straight to d-phone) -> Back
+// x3 (d-phone -> d-name -> d-email -> d-role) -> Contractor -> submit
+// must reuse the SAME lead id (one row, one admin alert), not insert a
+// second leads row -- round 2's fix guarded the reuse branch with
+// `role !== 'contractor'`, which this exact path defeats (see the long
+// comment on that branch in js/router-variant-d.js for why). ═══════════════════════
+(async function scenario10() {
+  const { routerDRoot, bridge, RouterVariantD, insertCalls, rpcCalls, redirects, leadEvents } = buildScenario();
+  RouterVariantD.init(bridge, routerDRoot);
+  findRoleButtons(routerDRoot)[0].dispatchClick(); // Homeowner
+  fillAndSubmit(routerDRoot, 'dEmail', 'first@example.com');
+  await tick(4);
+  fillAndSubmit(routerDRoot, 'dName', 'First Name');
+  await tick(4);
+
+  function tapBack() {
+    const backBtn = flatten(routerDRoot).find((c) => c.tagName === 'BUTTON' && c.className.split(' ').includes('router-back'));
+    backBtn.dispatchClick();
+  }
+  // Submitting the name screen advances straight to d-phone (not a
+  // pause on d-name) -- three Backs are needed to reach d-role: d-phone ->
+  // d-name -> d-email -> d-role.
+  tapBack(); // d-phone -> d-name
+  tapBack(); // d-name -> d-email
+  tapBack(); // d-email -> d-role
+  findRoleButtons(routerDRoot)[2].dispatchClick(); // Contractor
+  fillAndSubmit(routerDRoot, 'dEmail', 'first@example.com'); // resubmit -- leadId already set
+  await tick(4);
+
+  ok(insertCalls.length === 1, 'still exactly one leads INSERT total -- the Back->Back->Contractor->submit path reuses the existing lead, never inserts a second row');
+  const contractorRoleCalls = rpcCalls.filter((c) => c.name === 'set_lead_role' && c.args.p_role === 'contractor');
+  ok(contractorRoleCalls.length === 1 && contractorRoleCalls[0].args.p_lead_id === 'lead-1',
+    'set_lead_role(contractor) is sent against the SAME lead id the first insert created (lead-1), not a new one');
+  ok(redirects.length === 1 && redirects[0].dest.indexOf('lead=lead-1') !== -1,
+    'the contractor hand-off carries the ORIGINAL lead id');
+  ok(leadEvents.length === 1, 'still only one Meta Lead event fires total, across the whole Back->Back->role-change path');
+})().catch((e) => { console.error('scenario10 error:', e); fail++; });
 
 Promise.resolve().then(async () => {
   // Scenarios 3-8 are all async (submit flows / multi-tick regression
