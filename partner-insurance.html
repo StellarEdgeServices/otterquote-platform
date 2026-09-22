@@ -930,6 +930,51 @@
             try { fbq('track', 'CompleteRegistration'); } catch (e) {}
         }
 
+        // gh-2078 PR #2092 review fix 2: js/ga-gate.js's `gtag()` stub
+        // (window.gtag) always exists synchronously and pushes onto
+        // window.dataLayer immediately -- but the REAL gtag.js library that
+        // reads that queue and actually sends a hit loads deferred (idle,
+        // or a 1500ms fallback timer -- see ga-gate.js's own comment). The
+        // Google-link completion path below calls gtag(...) and then
+        // immediately navigates via window.location.replace() -- a full
+        // page teardown that can happen well inside that 1500ms window
+        // (nobody interacts on this load; there is no click to trigger
+        // "first interaction" early), which tears the page down before
+        // gtag.js has ever loaded to drain the queue at all. That is a
+        // real, measured loss, not a theoretical one -- unlike a normal
+        // gtag('event', ...) call on a page the visitor keeps browsing.
+        //
+        // Mirrors the React app's identical fix for the identical shape
+        // (react-app/app/lib/track.ts's fireSignUpAndWait, used by
+        // auth-callback's Google-landing sign_up before ITS
+        // window.location.href navigation): race gtag's own
+        // `event_callback` (fires once gtag.js has loaded and actually
+        // queued/sent the hit) against a bounded timeout, whichever comes
+        // first. By the time the timeout fires, dataLayer.push has already
+        // run (synchronous), so the event is durably queued for whenever
+        // gtag.js does load -- "queued" is treated as good enough once the
+        // bound is reached, same trade-off fireSignUpAndWait documents.
+        function gtagEventAndWait(eventName, params, timeoutMs) {
+            timeoutMs = timeoutMs || 1200;
+            return new Promise(function (resolve) {
+                var settled = false;
+                var timer = setTimeout(function () { finish(true); }, timeoutMs);
+                function finish(queued) {
+                    if (settled) return;
+                    settled = true;
+                    clearTimeout(timer);
+                    resolve(queued);
+                }
+                try {
+                    var payload = params ? Object.assign({}, params) : {};
+                    payload.event_callback = function () { finish(true); };
+                    gtag('event', eventName, payload);
+                } catch (e) {
+                    finish(false);
+                }
+            });
+        }
+
         /**
          * gh-865: the visitor must see and explicitly confirm their partner
          * type before the account is created — the page they landed on (and
@@ -1299,7 +1344,17 @@
                 localStorage.removeItem('cs_recruit_code');
                 localStorage.removeItem('cs_utm_context');
 
-                gtag('event', 'partner_signup', {
+                // gh-2078 PR #2092 review fix 2: both GA4 events below are
+                // now AWAITED (gtagEventAndWait) before the navigation a few
+                // lines down -- see that function's own comment for why an
+                // un-awaited gtag(...) call here was being lost. This changes
+                // partner_signup's behavior ONLY on this one call site (the
+                // Google-link path): it still fires with the exact same name/
+                // params as before, just with the navigation held back long
+                // enough to actually deliver it (or hit the bounded timeout).
+                // The password/demo paths' own partner_signup calls are
+                // untouched.
+                await gtagEventAndWait('partner_signup', {
                     partner_type: pending.agentType,
                     method: 'google',
                     source:   utm.source   || 'direct',
@@ -1313,7 +1368,9 @@
                 // claim_partner_account both succeeded above). GA4 only --
                 // see immediately below for why Meta CompleteRegistration
                 // is deliberately not called on this path.
-                try { gtag('event', 'partner_signup_complete', { variant: getOqVariant() }); } catch (e) {}
+                try {
+                    await gtagEventAndWait('partner_signup_complete', { variant: getOqVariant() });
+                } catch (e) {}
 
                 // gh-2006: intentionally no Meta Lead call on this path.
                 // This code runs on the page load that completes Google

@@ -176,6 +176,23 @@ function PageBody({
         // on the success screen).
         if (result?.capture_request_id) {
           clearHoverChargeRecord();
+          // gh-2078 PR #2092 review fix 1: this resume path is a SECOND
+          // route to a completed order (the first is handlePaid, above) --
+          // a paid order that completes here (tab reload/close between the
+          // charge and placeHoverOrder resolving, or a first attempt that
+          // threw and was retried via a fresh mount rather than
+          // HoverPaymentForm's in-mount "Retry Order") must fire
+          // measurement_purchase too, or every resumed purchase is
+          // silently uncounted. Same once-only guard, same paymentIntent
+          // id as handlePaid's own call -- if handlePaid somehow already
+          // fired for this id (e.g. a race between the two paths), this
+          // is a no-op, not a double-count.
+          if (!hasFiredMeasurementPurchase(pendingResume.paymentIntentId)) {
+            const variant = getVariant();
+            track('measurement_purchase', { value: 15.0, currency: 'USD', variant });
+            fbqTrack('Purchase', { value: 15.0, currency: 'USD', variant });
+            markMeasurementPurchaseFired(pendingResume.paymentIntentId);
+          }
           setHoverStage('success');
           setView('hover');
         } else {

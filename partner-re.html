@@ -1254,12 +1254,13 @@
     return 'unknown';
   }
 
-  // gh-2078: once-per-signup guard for partner_signup_complete, keyed by
-  // this device -- a single signup writes exactly one referral_agents row
-  // (register_partner throws partner_exists on a repeat), so a single
-  // sessionStorage flag for the lifetime of this page load is sufficient;
-  // localStorage would also survive a refresh of the (already-shown, static)
-  // success screen, which cannot resubmit the form anyway.
+  // gh-2078: once-per-signup guard for partner_signup_complete. A single
+  // signup writes exactly one referral_agents row (register_partner throws
+  // partner_exists on a repeat), so a plain in-memory boolean, scoped to
+  // this page load, is sufficient -- there is no reload-then-resubmit path
+  // on the (already-shown, static) success screen for it to need to
+  // survive, unlike hover-charge-storage.ts's persisted marker on the
+  // homeowner side.
   var partnerSignupCompleteFired = false;
   function firePartnerSignupComplete(variant) {
     if (partnerSignupCompleteFired) return;
