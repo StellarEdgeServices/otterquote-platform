@@ -61,10 +61,37 @@ function DashboardContent() {
   if (idLoading || (!!claimId && claimLoading)) return <Loading />;
 
   if (!claim) {
+    // gh-2004 REVIEW fix (PR #2109, finding 2): this branch is now also
+    // reached whenever useLatestClaim() deliberately skips auto-create
+    // because the profile has no full address (see that hook's own
+    // comment) — not only on a genuine load failure. Before this fix the
+    // text below said "start a claim from get-started" but was plain text,
+    // not a link, and nothing else on the page could get the homeowner to
+    // an address field: a dead end, on the highest-traffic surface this
+    // issue touches, for the (common — only 1 of 24 production claims has
+    // all four address fields populated) empty-profile case. `/trade-selector`
+    // is the real way out — an authenticated homeowner with no claim lands
+    // on its own hasFullAddress() gate (#2007/#2008) and gets asked for the
+    // address right there.
     return (
       <div style={{ maxWidth: 560, margin: '3rem auto', padding: '0 1.5rem', color: 'rgba(255,255,255,0.85)' }}>
         <h1>Welcome to Otter Quotes</h1>
-        <p>We couldn&apos;t load a project for your account yet. Please refresh, or start a claim from get-started.</p>
+        <p>We need your property address to get your project started — it only takes a minute.</p>
+        <a
+          href="/trade-selector"
+          style={{
+            display: 'inline-block',
+            marginTop: '0.75rem',
+            padding: '0.75rem 1.5rem',
+            background: 'var(--amber, #E07B00)',
+            color: 'var(--navy, #0B1730)',
+            borderRadius: 8,
+            fontWeight: 700,
+            textDecoration: 'none',
+          }}
+        >
+          Add My Address
+        </a>
       </div>
     );
   }

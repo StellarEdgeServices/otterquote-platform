@@ -1296,11 +1296,15 @@
                     const { data: profile } = await sb.from('profiles')
                         .select('full_name, address_street, address_city, address_state, address_zip')
                         .eq('id', user.id).maybeSingle();
+                    // REVIEW fix (PR #2109, finding 4): .trim() before the
+                    // || null fallback — matches trade-selector.html's own
+                    // gate so a whitespace-only profile field (" ", truthy
+                    // but not a real value) is rejected here too.
                     const profileAddress = {
-                        street: profile?.address_street || null,
-                        city: profile?.address_city || null,
-                        state: profile?.address_state || null,
-                        zip: profile?.address_zip || null,
+                        street: (profile?.address_street || '').trim() || null,
+                        city: (profile?.address_city || '').trim() || null,
+                        state: (profile?.address_state || '').trim() || null,
+                        zip: (profile?.address_zip || '').trim() || null,
                     };
                     const hasFullAddress = (a) => Boolean(a && a.street && a.city && a.state && a.zip);
 

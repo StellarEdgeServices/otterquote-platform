@@ -161,6 +161,47 @@
       flex-wrap: wrap;
     }
 
+    /* gh-2004 REVIEW fix (PR #2109, finding 2): shown when no claim exists
+       yet at all (e.g. the profile had no full address to auto-seed a draft
+       with — see loadClaimData()'s hasFullAddress() gate). Mirrors
+       .checklist-ready-banner's styling for visual consistency. */
+    .no-claim-banner {
+      display: none;
+      background: rgba(224,123,0,0.10);
+      color: var(--navy);
+      padding: var(--sp-6);
+      border-radius: var(--radius-lg);
+      border: 2px solid var(--amber);
+      margin-bottom: var(--sp-8);
+      animation: fadeUp 0.6s var(--ease);
+    }
+
+    .no-claim-banner.active {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--sp-4);
+      flex-wrap: wrap;
+    }
+
+    .no-claim-banner-text {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-4);
+      flex: 1;
+      min-width: 240px;
+    }
+
+    .no-claim-banner-icon {
+      font-size: 1.5rem;
+    }
+
+    .no-claim-banner-text p {
+      margin: var(--sp-1, 0.25rem) 0 0;
+      font-size: 0.9rem;
+      color: var(--slate);
+    }
+
     .checklist-ready-text {
       display: flex;
       align-items: center;
@@ -1139,6 +1180,23 @@
           </div>
         </div>
 
+        <!-- gh-2004 REVIEW fix (PR #2109, finding 2): shown when no claim
+             exists at all — before this fix, an empty-profile homeowner
+             landed on a fully-rendered dashboard with a null currentClaim.id
+             and no link anywhere on the page back to an address field. See
+             loadClaimData()'s hasFullAddress() gate and renderWelcome()
+             below, which toggles .active. -->
+        <div id="no-claim-banner" class="no-claim-banner">
+          <div class="no-claim-banner-text">
+            <div class="no-claim-banner-icon">🏠</div>
+            <div>
+              <strong>Let's get your project started</strong>
+              <p>We need your property address to match you with contractors. It only takes a minute.</p>
+            </div>
+          </div>
+          <a class="btn btn-primary btn-lg" id="no-claim-banner-cta" href="/trade-selector.html">Add My Address</a>
+        </div>
+
         <!-- gh-1570: unmissable "ready to submit" state. Shown when the
              checklist is complete (hasEstimate unless cash, hasMaterial,
              hasMeasurements if cash) but the claim has not been submitted for
@@ -1825,11 +1883,17 @@
                 .select('address_street, address_city, address_state, address_zip')
                 .eq('id', currentUser.id)
                 .maybeSingle();
+              // REVIEW fix (PR #2109, finding 4): .trim() before the ||
+              // null fallback — matches trade-selector.html's own gate
+              // (and the merged React trade-selector's) so a whitespace-only
+              // profile field (" ", truthy but not a real value) is treated
+              // the same everywhere: rejected by hasFullAddress(), not
+              // accepted as "complete".
               profileAddress = {
-                street: addrProfile?.address_street || null,
-                city: addrProfile?.address_city || null,
-                state: addrProfile?.address_state || null,
-                zip: addrProfile?.address_zip || null,
+                street: (addrProfile?.address_street || '').trim() || null,
+                city: (addrProfile?.address_city || '').trim() || null,
+                state: (addrProfile?.address_state || '').trim() || null,
+                zip: (addrProfile?.address_zip || '').trim() || null,
               };
             } catch (addrErr) {
               console.warn('[Dashboard] gh-2004 profile address lookup failed:', addrErr);
@@ -2059,6 +2123,16 @@
           ? [currentProfile.address_street, currentProfile.address_city, currentProfile.address_state, currentProfile.address_zip].filter(Boolean).join(', ')
           : currentProfile?.address || 'Address not set';
         document.getElementById('user-address').textContent = address;
+
+        // gh-2004 REVIEW fix (PR #2109, finding 2): no claim at all (id is
+        // null — either the "STILL don't have a claim" local-default
+        // fallback, or Supabase genuinely has none) means the homeowner has
+        // no way back to an address field anywhere else on this page. Show
+        // the banner instead of leaving them at a dead end.
+        const noClaimBanner = document.getElementById('no-claim-banner');
+        if (noClaimBanner) {
+          noClaimBanner.classList.toggle('active', !currentClaim?.id);
+        }
       }
 
       // gh-1381 (CodeQL #7/#8/#9): claim fields are homeowner-entered free text;

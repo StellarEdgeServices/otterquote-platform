@@ -105,11 +105,15 @@ export function useLatestClaim(userId: string | null | undefined): LatestClaimRe
           .select('address_street, address_city, address_state, address_zip')
           .eq('id', userId)
           .maybeSingle();
+        // REVIEW fix (PR #2109, finding 4): .trim() before the || null
+        // fallback — matches trade-selector's own gate so a whitespace-only
+        // profile field (" ", truthy but not a real value) is rejected by
+        // hasFullAddress() here too, not just there.
         const profileAddress = {
-          street: profileRow?.address_street || null,
-          city: profileRow?.address_city || null,
-          state: profileRow?.address_state || null,
-          zip: profileRow?.address_zip || null,
+          street: (profileRow?.address_street || '').trim() || null,
+          city: (profileRow?.address_city || '').trim() || null,
+          state: (profileRow?.address_state || '').trim() || null,
+          zip: (profileRow?.address_zip || '').trim() || null,
         };
 
         if (!hasFullAddress(profileAddress)) {

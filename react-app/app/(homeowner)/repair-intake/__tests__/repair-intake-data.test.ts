@@ -172,6 +172,19 @@ describe('(d) submitRepairIntake — claim write + photo upload', () => {
     expect(rec.inserts).toHaveLength(0);
   });
 
+  // REVIEW fix (PR #2109, finding 4): a whitespace-only field is truthy
+  // (`' ' || null` keeps the space) but not a real value — the gate must
+  // .trim() before deciding hasFullAddress(), matching trade-selector's own
+  // gate, or this profile would be silently accepted as "complete".
+  it('gh-2004 REVIEW fix: a whitespace-only profile field is NOT treated as a complete address', async () => {
+    const { rec } = setup({
+      newClaimId: 'c-new',
+      profileAddress: { address_street: '   ', address_city: 'Noblesville', address_state: 'IN', address_zip: '46060' },
+    });
+    await expect(submitRepairIntake(baseSub())).rejects.toBeInstanceOf(MissingAddressError);
+    expect(rec.inserts).toHaveLength(0);
+  });
+
   it('existing claim id → UPDATEs (no user_id/funding_type/status), then marks submitted', async () => {
     const { rec } = setup();
     const res = await submitRepairIntake(baseSub({ claimId: 'c-existing', notes: null }));
