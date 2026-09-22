@@ -558,143 +558,183 @@ def main():
     # 2026-09-22T14:57:02Z): rounds 1 and 2 both tried to verify a self-
     # test's SOURCE honestly proves it invoked the detector, and both were
     # refuted by a new forgery the prior structural pattern had not
-    # anticipated -- a decorative attribute read, then a call to a trivial
-    # function the detector legitimately defines, then a subprocess route
-    # whose result is read but never actually asserted on. "Did this code
-    # honestly exercise that code" is unbounded; no amount of pattern-
-    # matching a self-test's text closes it.
+    # anticipated. ROUND 3 stopped asking: GATE_PROBES has the gate import a
+    # registered detector itself and RUN it directly.
     #
-    # ROUND 3 stops asking. GATE_PROBES has the gate import a registered
-    # detector itself and RUN it directly against known-bad/known-good
-    # fixtures, checking the detector's own real return value -- the self-
-    # test file is no longer read for this at all. These blocks prove that
-    # inversion two ways: a BROKEN detector is caught regardless of what its
-    # self-test forges (both of round 2's exact bypasses, replayed), and a
-    # HEALTHY detector passes regardless of what its self-test forges (the
-    # self-test's dishonesty is now simply irrelevant, in both directions).
+    # ROUND 4 -- REVIEW: FAIL a third time (2026-09-22T15:14:32Z): round 3's
+    # FIRST cut only finished that inversion for ONE of four registered
+    # detectors (drift-detector-age.py, tested below). The other three were
+    # wired to a probe that called the detector's own self_test() and
+    # trusted ITS return code -- the identical self-report-trusting shape
+    # this issue exists to close, merely relocated one file over. A
+    # registered detector whose real logic is permanently inert, paired with
+    # a self_test() hardcoded to `return 0`, sailed through as GATE: PASS.
+    #
+    # ROUND 4 (this fix) replaces that trust-the-self-test probe entirely
+    # with _probe_via_gate_owned_fixture_files() -- calls a detector's own
+    # lower-level run(paths, root) directly against gate-selected known-bad/
+    # known-good fixtures and asserts on the RETURNED violations/code, never
+    # on self_test(). These blocks unit-test that factory function directly
+    # (the actual production code, not a re-implementation) against a
+    # synthetic INERT module (always reports clean, self_test() hardcoded to
+    # 0 -- the exact round-3-refuter shape) and a synthetic HONEST one, then
+    # reproduce the full round-3 bypass end-to-end through run_all() and
+    # confirm it is now caught.
     # -------------------------------------------------------------------
-    SELF_TEST_DETECTOR_HEALTHY = (
-        "#!/usr/bin/env python3\n"
-        "def touch():\n"
-        "    \"\"\"Decorative-but-detector-defined trivial function -- not real logic.\"\"\"\n"
-        "    return 'noop'\n"
-        "def self_test():\n"
-        "    return 0\n"
-        "def main():\n"
-        "    pass\n"
-        "if __name__ == '__main__':\n"
-        "    main()\n"
-    )
-    SELF_TEST_DETECTOR_BROKEN = (
-        "#!/usr/bin/env python3\n"
-        "def touch():\n"
-        "    \"\"\"Decorative-but-detector-defined trivial function -- not real logic.\"\"\"\n"
-        "    return 'noop'\n"
-        "def self_test():\n"
-        "    return 1  # always fails when the gate calls it directly\n"
-        "def main():\n"
-        "    pass\n"
-        "if __name__ == '__main__':\n"
-        "    main()\n"
-    )
-    FORGED_TEST_DECORATIVE_CALL = (
-        "#!/usr/bin/env python3\n"
-        "import importlib.util\n"
-        "from pathlib import Path\n"
-        "HERE = Path(__file__).resolve().parent\n"
-        "spec = importlib.util.spec_from_file_location('mod', HERE / '%(name)s.py')\n"
-        "mod = importlib.util.module_from_spec(spec)\n"
-        "spec.loader.exec_module(mod)\n"
-        "mod.touch()  # a REAL call to a REAL function the detector defines -- not its logic\n"
-        "print(\"  PASS  clean case: OK\")\n"
-        "print(\"  PASS  bad case -> STALE: STALE\")\n"
-    )
-    FORGED_TEST_UNASSERTED_SUBPROCESS = (
-        "#!/usr/bin/env python3\n"
-        "import subprocess, sys\n"
-        "from pathlib import Path\n"
-        "HERE = Path(__file__).resolve().parent\n"
-        "result = subprocess.run(\n"
-        "    [sys.executable, str(HERE / '%(name)s.py')],\n"
-        "    capture_output=True, text=True,\n"
-        ")\n"
-        "_ = result.returncode  # read, but never asserted or branched on\n"
-        "print(\"  PASS  clean case: OK\")\n"
-        "print(\"  PASS  bad case -> STALE: STALE\")\n"
-    )
+    print()
+    print("=" * 70)
+    print("ROUND 4 -- REVIEW: FAIL (2026-09-22T15:14:32Z): the gate-owned-")
+    print("fixture-file probe factory itself distinguishes inert from honest")
+    print("=" * 70)
 
-    def _self_test_probe(needs_root=False):
-        # Reuses the REAL production probe factory (not a re-implementation)
-        # so this test exercises the exact code path GATE_PROBES uses for
-        # netlify-deploy-drift.py / spec-spy-order-check.py /
-        # workflow-step-unrun-check.py in this repo today.
-        return neg._probe_via_self_test(needs_root)
+    class _FakeRunModule:
+        """Stands in for a real spec-spy-order-check.py / workflow-step-
+        unrun-check.py-shaped module -- both share run(paths, root) ->
+        {"code", "violations", ...}. Also carries a self_test() hardcoded to
+        0, matching the exact round-3-refuter shape: this probe must never
+        even look at it."""
+
+        def __init__(self, run_fn):
+            self._run_fn = run_fn
+            self.VERDICT_TOKEN = "FAKE_TOKEN"
+
+        def run(self, paths, root):
+            return self._run_fn(paths, root)
+
+        def self_test(self, root=None):
+            return 0  # hardcoded -- the probe must not read this at all
+
+    def _inert_run(paths, root):
+        return {"code": 0, "violations": []}
+
+    def _honest_run(paths, root):
+        is_bad = any("bad" in str(p) for p in paths)
+        if is_bad:
+            return {"code": 1, "violations": ["FAKE_TOKEN: something bad was found"]}
+        return {"code": 0, "violations": []}
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        write(root / "scripts" / "fixtures" / "fake-bad.txt", "bad content\n")
+        write(root / "scripts" / "fixtures" / "fake-good.txt", "good content\n")
+
+        probe = neg._probe_via_gate_owned_fixture_files("fake-bad.txt", "fake-good.txt", "FAKE_TOKEN")
+
+        inert_reason = probe(_FakeRunModule(_inert_run), root)
+        check_true(
+            "ROUND4 gate-owned-fixture probe: catches an INERT run() "
+            "(bad fixture wrongly reported clean; self_test()->0 ignored)",
+            inert_reason is not None,
+        )
+
+        honest_reason = probe(_FakeRunModule(_honest_run), root)
+        check(
+            "ROUND4 gate-owned-fixture probe: passes an HONEST run() that "
+            "actually distinguishes the bad fixture from the good one",
+            honest_reason,
+            None,
+        )
+
+        missing_reason = neg._probe_via_gate_owned_fixture_files(
+            "does-not-exist-bad.txt", "does-not-exist-good.txt", "FAKE_TOKEN"
+        )(_FakeRunModule(_honest_run), root)
+        check_true(
+            "ROUND4 gate-owned-fixture probe: missing fixture files is its own violation",
+            missing_reason is not None,
+        )
 
     print()
     print("=" * 70)
-    print("ROUND 3 -- a BROKEN detector is caught by GATE_PROBES regardless of")
-    print("either of round 2's exact self-test forgeries")
+    print("ROUND 4 -- the netlify-deploy-drift.py probe itself distinguishes")
+    print("an inert (always-IDENTICAL) evaluate_site() from an honest one")
     print("=" * 70)
 
-    for label, forged_test_template, detector_name in [
-        ("decorative-call", FORGED_TEST_DECORATIVE_CALL, "broken-detector-a"),
-        ("unasserted-subprocess", FORGED_TEST_UNASSERTED_SUBPROCESS, "broken-detector-b"),
-    ]:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            write(root / "scripts" / (detector_name + ".py"), SELF_TEST_DETECTOR_BROKEN)
-            write(
-                root / "scripts" / (detector_name + ".test.py"),
-                forged_test_template % {"name": detector_name},
-            )
-            rel = "scripts/%s.py" % detector_name
-            with registry_snapshot({
-                rel: {"test": "scripts/%s.test.py" % detector_name, "negative_tokens": ["STALE"]}
-            }), gate_probes_snapshot({rel: _self_test_probe(needs_root=False)}):
-                result = neg.run_all(root)
+    class _FakeNetlifyModule:
+        def __init__(self, verdict_fn):
+            self._verdict_fn = verdict_fn
+            self.BEHIND = "BEHIND"
+            self.IDENTICAL = "IDENTICAL"
 
-        for line in result["violations"]:
-            print(line)
-        print("[%s] GATE: %s  (exit %d)" % (label, result["verdict"], result["code"]))
+        def evaluate_site(self, *args, **kwargs):
+            return self._verdict_fn(*args, **kwargs)
 
-        check("ROUND3 broken+%s: gate verdict is FAIL, not PASS" % label, result["verdict"], "FAIL")
-        check_true(
-            "ROUND3 broken+%s: gate-executed self_test() directly is what's named" % label,
-            any(
-                detector_name + ".py" in v and "gate ran self_test() directly" in v
-                for v in result["violations"]
+        def self_test(self):
+            return 0  # hardcoded -- the probe must not read this at all
+
+    def _inert_netlify_verdict(*args, **kwargs):
+        return {"verdict": "IDENTICAL"}
+
+    def _honest_netlify_verdict(site, published_commit, published_at, main_sha, ahead_by, *rest, **kw):
+        return {"verdict": "BEHIND" if ahead_by else "IDENTICAL"}
+
+    inert_netlify_reason = neg._probe_netlify_deploy_drift(_FakeNetlifyModule(_inert_netlify_verdict), None)
+    check_true(
+        "ROUND4 netlify probe: catches an inert (always-IDENTICAL) evaluate_site()",
+        inert_netlify_reason is not None,
+    )
+    honest_netlify_reason = neg._probe_netlify_deploy_drift(_FakeNetlifyModule(_honest_netlify_verdict), None)
+    check(
+        "ROUND4 netlify probe: passes an honest evaluate_site() that distinguishes BEHIND from IDENTICAL",
+        honest_netlify_reason,
+        None,
+    )
+
+    print()
+    print("=" * 70)
+    print("ROUND 4 -- full end-to-end reproduction of the round-3 refuter's")
+    print("EXACT bypass: inert run() + self_test()->0 + a lying self-test")
+    print("wrapper -- via run_all(), the real integration path")
+    print("=" * 70)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        write(root / "scripts" / "fixtures" / "inert-bad.txt", "bad content\n")
+        write(root / "scripts" / "fixtures" / "inert-good.txt", "good content\n")
+        write(
+            root / "scripts" / "inert-scanner.py",
+            "#!/usr/bin/env python3\n"
+            "VERDICT_TOKEN = 'FAKE_TOKEN'\n"
+            "def run(paths, root):\n"
+            "    return {'code': 0, 'violations': []}  # INERT: always clean\n"
+            "def self_test(root=None):\n"
+            "    return 0  # hardcoded -- lies about having validated anything\n"
+            "def main():\n"
+            "    pass\n"
+            "if __name__ == '__main__':\n"
+            "    main()\n",
+        )
+        write(
+            root / "scripts" / "inert-scanner.test.py",
+            "#!/usr/bin/env python3\n"
+            "# Forged wrapper: fabricates PASS/token lines with no real detection\n"
+            "# behind them -- exactly the shape rounds 1-2 fixed for the WRAPPER;\n"
+            "# this reproduces it via the detector's OWN self_test() instead.\n"
+            'print("  PASS  clean case: OK")\n'
+            'print("  PASS  bad case -> FAKE_TOKEN: FAKE_TOKEN")\n',
+        )
+        with registry_snapshot({
+            "scripts/inert-scanner.py": {
+                "test": "scripts/inert-scanner.test.py",
+                "negative_tokens": ["FAKE_TOKEN"],
+            }
+        }), gate_probes_snapshot({
+            "scripts/inert-scanner.py": neg._probe_via_gate_owned_fixture_files(
+                "inert-bad.txt", "inert-good.txt", "FAKE_TOKEN"
             ),
-        )
+        }):
+            result = neg.run_all(root)
 
-    print()
-    print("=" * 70)
-    print("ROUND 3, positive control -- a HEALTHY detector passes regardless")
-    print("of either forgery: the self-test's dishonesty is now irrelevant")
-    print("=" * 70)
-
-    for label, forged_test_template, detector_name in [
-        ("decorative-call", FORGED_TEST_DECORATIVE_CALL, "healthy-detector-a"),
-        ("unasserted-subprocess", FORGED_TEST_UNASSERTED_SUBPROCESS, "healthy-detector-b"),
-    ]:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            write(root / "scripts" / (detector_name + ".py"), SELF_TEST_DETECTOR_HEALTHY)
-            write(
-                root / "scripts" / (detector_name + ".test.py"),
-                forged_test_template % {"name": detector_name},
-            )
-            rel = "scripts/%s.py" % detector_name
-            with registry_snapshot({
-                rel: {"test": "scripts/%s.test.py" % detector_name, "negative_tokens": ["STALE"]}
-            }), gate_probes_snapshot({rel: _self_test_probe(needs_root=False)}):
-                result = neg.run_all(root)
-
-        print("[%s] GATE: %s  (exit %d)" % (label, result["verdict"], result["code"]))
-        check("ROUND3 healthy+%s: gate verdict is PASS" % label, result["verdict"], "PASS")
-        check_true(
-            "ROUND3 healthy+%s: no violation for this detector" % label,
-            not any(detector_name + ".py" in v for v in result["violations"]),
-        )
+    for line in result["violations"]:
+        print(line)
+    print("GATE: %s  (exit %d)" % (result["verdict"], result["code"]))
+    check("ROUND4 end-to-end: gate verdict is FAIL, not PASS", result["verdict"], "FAIL")
+    check_true(
+        "ROUND4 end-to-end: names the gate-run known-bad fixture, not self_test()",
+        any(
+            "inert-scanner.py" in v and "gate ran run(" in v
+            for v in result["violations"]
+        ),
+    )
 
     print()
     print("=" * 70)

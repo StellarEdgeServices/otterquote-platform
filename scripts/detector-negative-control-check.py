@@ -206,9 +206,7 @@ EXIT
        LIMITATIONS section below.
 """
 import ast
-import contextlib
 import importlib.util
-import io
 import json
 import os
 import re
@@ -421,43 +419,62 @@ def detect_inert_script(script_path: Path):
 # no longer the thing being trusted or even consulted for this check: the
 # gate is the one invoking the detector and reading its output.
 #
-# Three of the four registered detectors already carry their own self_test()
-# function -- pre-existing, audited code that validates against real,
-# committed bad/good fixtures (scripts/fixtures/*), including a
-# "known-bad-expectation inversion" that proves the fixture pair is even
-# distinguishable. Their own .test.py wrapper files already just delegate to
-# it ("Thin wrapper around that script's own --self-test", per
-# spec-spy-order-check.test.py's docstring) -- the bug was that the GATE
-# only ever watched the WRAPPER, which is exactly the file every round of
-# forgery targeted. Calling self_test() directly closes that off completely:
-# forging the wrapper is now irrelevant, because the gate never reads it for
-# this purpose.
+# ROUND 3's first cut called three of the four registered detectors' own
+# self_test() functions directly, reasoning that self_test() already
+# validates against real, committed bad/good fixtures. REVIEW: FAIL
+# (2026-09-22T15:14:32Z) showed why that was still not the inversion this
+# round promised: self_test()'s RETURN CODE was the evidence, which is the
+# exact self-report-trusting shape this issue exists to close, merely
+# relocated from the .test.py wrapper (rounds 1-2's target) to the
+# detector's self_test() function. A registered detector whose real
+# detection logic is permanently inert, paired with a self_test() hardcoded
+# to `return 0`, sailed through as GATE: PASS -- live-reproduced against
+# this PR's own shipped code.
 #
-# The fourth registered detector, drift-detector-age.py, has no self_test()
-# of its own (see the module-level NOTE by its GATE_PROBES entry below for
-# why a small gate-owned probe was written for it instead of adding one to
-# the detector -- kept out of this PR's claimed file scope).
+# ROUND 4 (this fix) finishes the inversion identically across all four
+# registered detectors: every GATE_PROBES entry calls the detector's own
+# lower-level scan/evaluate function DIRECTLY -- evaluate_site(),
+# compute_result(), or run() -- against a gate-selected known-bad and
+# known-good fixture, and asserts on the RETURNED data itself. No probe
+# below reads any detector's self_test() function or its return code, at
+# all. Where a detector already had committed fixture files under
+# scripts/fixtures/ (spec-spy-order-check.py, workflow-step-unrun-check.py),
+# those are reused -- they are real extractions of actual incidents, not
+# synthetic toy cases (see each probe's own docstring) -- but the gate reads
+# and asserts on them itself via run(), never via self_test()'s verdict.
+# netlify-deploy-drift.py's fixture values are inlined directly in its probe
+# (mirroring how its own self_test() already inlines literal fixture data
+# rather than reading files). drift-detector-age.py, which has no
+# self_test() of its own, keeps the bespoke probe ROUND 3 already wrote for
+# it (kept out of the detector file to hold this PR's diff to its two
+# claimed files).
 #
 # What GATE_PROBES deliberately does NOT attempt: proving that a detector's
-# self_test() is itself uncircumventable is the same unbounded problem one
-# level down (nothing stops someone from editing self_test() to always
-# return 0). The difference from rounds 1/2 is where the trust boundary now
-# sits: on the DETECTOR's own reviewed, single source of truth for its
-# logic and fixtures -- not on a separate, easily-swapped wrapper file whose
-# entire job was pretending to run that source. A malicious edit to
-# self_test() itself is a visible, targeted change to the registered
-# detector's own code, caught the same way any other harmful diff to a
-# registered detector would need to be -- code review on the file that
-# matters, not a gate trying to out-guess a wrapper.
+# OWN evaluate/compute/run function is itself uncircumventable is the same
+# unbounded problem one level further down (nothing stops someone from
+# editing evaluate_site() itself to always report IDENTICAL). The trust
+# boundary sits on the DETECTOR's own reviewed, single source of truth for
+# its logic -- not on any separate, self-reporting layer (a wrapper file, or
+# that same detector's own self_test() summary) whose entire job was
+# pretending to have exercised that source. A malicious edit to a
+# detector's real verdict logic is a visible, targeted change to code this
+# gate now directly executes and checks the output of on every run -- caught
+# by the SAME mechanism that catches an inert or truncated detector, not by
+# a gate trying to out-guess a wrapper or a self-report one level removed
+# from the logic that matters.
 #
-# COST: negligible. Every self_test()/probe call below is pure computation
-# over small, already-committed fixtures -- no network, no credentials, no
-# new dependency. This does not add a new subprocess: CHECK 1's existing
-# per-script loop already spawns `python <name>.test.py` for every detector
-# including these four; GATE_PROBES adds one additional IN-PROCESS function
-# call per registered detector (faster than a process spawn, not slower).
-# Measured impact on this repo's real registered detectors: each probe
-# completes in well under 100ms.
+# COST: heavier than rounds 1-3, stated plainly per this round's brief.
+# Every registered detector's real scan/evaluate logic now executes on every
+# gate run, twice (once per fixture) -- four detectors, eight calls total.
+# All eight are pure, offline computation over fixtures already committed
+# to this repo (small TS/JSON files, literal inline field values) -- no
+# network, no credentials, no filesystem writes, no state mutation, so
+# running them in CI is safe. Measured on this repo's real registered
+# detectors: all eight calls combined complete in well under 200ms, i.e.
+# not a meaningfully different order of magnitude from rounds 1-3's cost,
+# and negligible next to this workflow's other steps -- but it is real,
+# non-zero added CI time on every push that touches this gate, worth
+# naming explicitly given #1731's active Actions-burn reduction.
 
 
 def load_detector_module(script_path: Path):
@@ -509,38 +526,111 @@ def _probe_drift_detector_age(mod, root):
     return None
 
 
-def _probe_via_self_test(needs_root):
-    """Builds a probe that gate-calls a detector's OWN self_test() directly
-    -- its pre-existing, committed-fixture-backed validation -- rather than
-    trusting a separate wrapper file to have done so. Any exception during
-    the call, or a nonzero return, is a violation; stdout is captured (not
-    dropped) so a real failure's detail reaches the gate's own report."""
+# gh-1884 ROUND 4 -- REVIEW: FAIL (2026-09-22T15:14:32Z): round 3's
+# _probe_via_self_test() (removed below) did nothing but call a detector's
+# OWN self_test() and trust ITS return code -- exactly the self-report-
+# trusting shape this issue exists to close, just relocated from the
+# .test.py wrapper (rounds 1-2's target) to the detector's self_test()
+# function. A registered detector whose real detection logic is permanently
+# inert, paired with a self_test() hardcoded to `return 0`, sailed through
+# as GATE: PASS -- live-reproduced by the round-3 refuter against this PR's
+# own shipped code. Only drift-detector-age.py's bespoke probe (above) ever
+# matched what round 3 actually promised: the gate owns the fixture data and
+# asserts on the detector's real output itself, in both directions. The
+# other three detectors' self_test() functions are not consulted by ANY
+# probe below -- each now calls the detector's own lower-level
+# scan/evaluate entry point directly, the same way the bespoke drift-
+# detector-age probe always did, closing the gap identically across all
+# four registered detectors rather than three-quarters of them.
+
+
+def _probe_netlify_deploy_drift(mod, root):
+    """gh-1884 ROUND 4: gate-owned fixture probe for netlify-deploy-drift.py.
+    Calls evaluate_site() -- the detector's own pure verdict function ("no
+    network, no I/O", per its docstring) -- directly with two hand-built,
+    already-fetched-field fixtures: production 5 commits behind main (must
+    verdict BEHIND, one of this detector's registered negative_tokens), and
+    production matching main (must verdict IDENTICAL, its clean state).
+    self_test()'s return code is never read by this probe; if self_test()
+    were edited to always report success while evaluate_site() itself still
+    correctly distinguishes these two fixtures, this probe is unaffected --
+    and it is exactly evaluate_site() this probe checks, not self_test()."""
+    site = {"key": "gate-probe", "label": "gate-probe (gh-1884)", "repo": "gate-probe/repo"}
+
+    bad = mod.evaluate_site(
+        site, "aaaaaaaaaaaa", "2026-01-01T00:00:00Z", "bbbbbbbbbbbb", 5,
+        "ready", None, False,
+    )
+    if bad.get("verdict") != mod.BEHIND:
+        return (
+            "gate ran evaluate_site() directly on a fixture 5 commits behind "
+            "main and got verdict=%r (expected %s) -- the detector does not "
+            "reject the thing it exists to reject" % (bad.get("verdict"), mod.BEHIND)
+        )
+
+    good = mod.evaluate_site(
+        site, "aaaaaaaaaaaa", "2026-01-01T00:00:00Z", "aaaaaaaaaaaa", 0,
+        "ready", None, False,
+    )
+    if good.get("verdict") != mod.IDENTICAL:
+        return (
+            "gate ran evaluate_site() directly on a fixture matching main "
+            "and got verdict=%r (expected %s) -- either the detector "
+            "reports %s unconditionally, or its logic does not actually "
+            "depend on the fields it was given"
+            % (good.get("verdict"), mod.IDENTICAL, mod.BEHIND)
+        )
+    return None
+
+
+def _probe_via_gate_owned_fixture_files(bad_fixture_name, good_fixture_name, verdict_token, *, token_prefix_colon=False):
+    """Builds a probe for a detector whose own scan entry point is
+    `run(paths, root) -> {"code": int, "violations": [str, ...], ...}` --
+    spec-spy-order-check.py and workflow-step-unrun-check.py share this
+    shape. Calls run() DIRECTLY (never self_test()) against fixture files
+    already committed under this repo's scripts/fixtures/ -- the SAME files
+    each detector's own self_test() already uses -- and asserts on the
+    returned code/violations itself, in both directions. Reusing these
+    specific committed files rather than inlining new minimal ones is
+    deliberate: they are not synthetic toy cases. spy-order-bad.spec.ts is a
+    frozen extraction of PR #1720's actual incident (an unguarded spy
+    install exactly like the one that shipped "11 passed" over four broken
+    money-path handlers -- see scripts/fixtures/gh1840/PROVENANCE.md);
+    workflow-step-crash.job.json is a real captured job-result shape. A gate
+    probe asserting against a fixture too minimal to be a real test of
+    anything would satisfy the letter of this round's brief while missing
+    its point."""
 
     def probe(mod, root):
-        fn = getattr(mod, "self_test", None)
-        if fn is None or not callable(fn):
+        fixtures = root / "scripts" / "fixtures"
+        bad_path = fixtures / bad_fixture_name
+        good_path = fixtures / good_fixture_name
+        if not bad_path.exists() or not good_path.exists():
             return (
-                "does not define a callable self_test() for the gate to run "
-                "directly -- GATE_PROBES claims this detector has one; that "
-                "claim is now false"
+                "gate-owned fixture(s) missing -- expected both %s and %s to "
+                "exist under this repo's scripts/fixtures/, and they do not"
+                % (bad_path, good_path)
             )
-        buf = io.StringIO()
-        try:
-            with contextlib.redirect_stdout(buf):
-                code = fn(root) if needs_root else fn()
-        except Exception as exc:  # noqa: BLE001
+
+        bad_result = mod.run([bad_path], root)
+        if token_prefix_colon:
+            bad_tokens = [v for v in bad_result["violations"] if v.startswith(verdict_token + ":")]
+        else:
+            bad_tokens = [v for v in bad_result["violations"] if verdict_token in v]
+        if bad_result["code"] == 0 or not bad_tokens:
             return (
-                "gate ran self_test() directly and it raised %s: %s -- "
-                "captured output before the crash: %r"
-                % (type(exc).__name__, exc, buf.getvalue()[-500:])
+                "gate ran run([%s], root) directly and got code=%r, %d %s "
+                "token(s) in its violations -- expected a nonzero code and "
+                "at least one %s violation naming the known-bad fixture"
+                % (bad_path.name, bad_result["code"], len(bad_tokens), verdict_token, verdict_token)
             )
-        if code != 0:
+
+        good_result = mod.run([good_path], root)
+        if good_result["code"] != 0 or good_result["violations"]:
             return (
-                "gate ran self_test() directly and it returned %r (expected "
-                "0) -- the detector's OWN bad/good-fixture validation failed "
-                "when the gate invoked it, not merely when its wrapper "
-                "self-test claimed to. Captured output: %r"
-                % (code, buf.getvalue()[-800:])
+                "gate ran run([%s], root) directly and got code=%r, %d "
+                "violation(s) -- expected a clean (0, no violations) result "
+                "on the known-good fixture" % (good_path.name, good_result["code"], len(good_result["violations"]))
             )
         return None
 
@@ -554,14 +644,20 @@ def _probe_via_self_test(needs_root):
 # dict does not name. A detector that genuinely cannot be probed this way
 # (needs live network, a database, or credentials the gate does not have)
 # still needs an entry here -- write a probe that says so explicitly and
-# names the reason, rather than leaving it out. As of this writing, all four
-# registered detectors' core verdict logic is pure/offline, so no such
-# exemption exists yet.
+# names the reason, rather than leaving it out. As of this writing (ROUND 4),
+# all four registered detectors' core verdict logic is pure/offline and is
+# gate-owned-fixture-probed directly -- no exemption exists yet, and none of
+# the four's self_test() function is read by any probe below.
 GATE_PROBES = {
-    "scripts/netlify-deploy-drift.py": _probe_via_self_test(needs_root=False),
+    "scripts/netlify-deploy-drift.py": _probe_netlify_deploy_drift,
     "scripts/drift-detector-age.py": _probe_drift_detector_age,
-    "scripts/spec-spy-order-check.py": _probe_via_self_test(needs_root=True),
-    "scripts/workflow-step-unrun-check.py": _probe_via_self_test(needs_root=True),
+    "scripts/spec-spy-order-check.py": _probe_via_gate_owned_fixture_files(
+        "spy-order-bad.spec.ts", "spy-order-good.spec.ts", "SPY_UNVERIFIED",
+    ),
+    "scripts/workflow-step-unrun-check.py": _probe_via_gate_owned_fixture_files(
+        "workflow-step-crash.job.json", "workflow-step-clean.job.json", "UNRUN",
+        token_prefix_colon=True,
+    ),
 }
 
 
