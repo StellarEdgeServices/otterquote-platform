@@ -984,7 +984,7 @@ window.Auth = {
                 // taken under (contractor-join.html sets this to match the copy
                 // it actually shows — see that file). NULL whenever sms_opt_in
                 // is not true, same as the sibling fields above.
-                sms_consent_text_version: data.sms_opt_in === true ? (data.sms_consent_text_version || 'contractor-v1-2026-09-14') : null,
+                sms_consent_text_version: data.sms_opt_in === true ? (data.sms_consent_text_version || 'contractor-v2-2026-09-15') : null,
                 // New contractors default to pending_approval status
                 status: 'pending_approval',
               })

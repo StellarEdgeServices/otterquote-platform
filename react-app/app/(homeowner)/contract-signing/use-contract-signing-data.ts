@@ -73,6 +73,7 @@ export interface ContractorInfo {
   user_id?: string | null;
   phone?: string | null;
   notification_phones?: string[] | null;
+  sms_opt_in?: boolean | null;
 }
 
 export interface SigningParams {
@@ -369,7 +370,16 @@ export async function sendContractorNudge(args: {
   const contractorMsg = `Otter Quotes: Hi ${contractorName} — your homeowner ${homeownerName} (${address}) signed their contract on ${signedDate} and hasn't heard from you yet. Please reach out as soon as possible. Questions? Call (844) 875-3412.`;
   const dustinMsg = `Otter Quotes Alert: ${homeownerName} (claim ${args.claimId || 'unknown'}) says they haven't heard from ${contractorName} since signing on ${signedDate}. Heads up.`;
 
-  const sends = phones.map((phone) =>
+  // gh-1916 R-134 gate: never text the contractor's phone without a stored opt-in.
+  let contractorPhones = phones;
+  if (c?.sms_opt_in !== true) {
+    console.warn(
+      `[use-contract-signing-data] SMS refused (gh-1916 R-134 gate) — sms_opt_in is not true for contractor ${c?.id ?? '(unknown)'} (value=${String(c?.sms_opt_in)}). ${phones.length} phone(s) suppressed. No Twilio call attempted.`,
+    );
+    contractorPhones = [];
+  }
+
+  const sends = contractorPhones.map((phone) =>
     supabase.functions.invoke('send-sms', { body: { to: phone, message: contractorMsg } }),
   );
   // Always notify Dustin (hardcoded number — byte-for-parity with the static).

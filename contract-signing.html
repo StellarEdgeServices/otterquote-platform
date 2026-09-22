@@ -2131,6 +2131,12 @@
       const contractorMsg = `Otter Quotes: Hi ${contractorName} — your homeowner ${homeownerName} (${address}) signed their contract on ${signedDate} and hasn't heard from you yet. Please reach out as soon as possible. Questions? Call (317) 501-9215.`;
       const dustinMsg = `Otter Quotes Alert: ${homeownerName} (claim ${state.claimId || 'unknown'}) says they haven't heard from ${contractorName} since signing on ${signedDate}. Heads up.`;
 
+      // gh-1916 R-134 gate: never text the contractor's phone without a stored opt-in.
+      if (c?.sms_opt_in !== true) {
+        console.warn(`[contract-signing] SMS refused (gh-1916 R-134 gate) — sms_opt_in is not true for contractor ${c?.id ?? '(unknown)'} (value=${String(c?.sms_opt_in)}). ${phones.length} phone(s) suppressed. No Twilio call attempted.`);
+        phones.length = 0;
+      }
+
       const sends = phones.map(phone =>
         sb.functions.invoke('send-sms', { body: { to: phone, message: contractorMsg } })
       );
