@@ -100,21 +100,28 @@
   // its own copy for fbevents.js -- these two files intentionally do not
   // share a module today, see this file's own "single point" docstring
   // above about not adding cross-file coupling lightly). Runs `fn` on
-  // whichever comes first: the browser going idle (capped at 3000ms via
-  // requestIdleCallback's own timeout option), a hard 3000ms timer where
+  // whichever comes first: the browser going idle (capped at 1500ms via
+  // requestIdleCallback's own timeout option), a hard 1500ms timer where
   // requestIdleCallback is unsupported, or the visitor's first
   // pointerdown/keydown/scroll/touchstart. Exactly one of those wins; the
   // rest are torn down immediately so `fn` never runs twice.
   //
-  // gh-2063 (Marty/CTO ruling, comment 5780493814, CEO RUN 60's narrowed
-  // scope -- the vendor bundle's own main-thread cost on /start in the FB
-  // in-app mobile browser): ceiling raised from 1500ms to 3000ms ("defer
-  // GTM, pixel and Clarity until after first input, or after
-  // requestIdleCallback with a 3s ceiling, whichever comes first"). No
-  // vendor is dropped (explicitly rejected in that ruling -- D-330's
-  // Purchase optimisation needs the pixel present) and every deferred
-  // fire still counts (fbq's queue+callMethod drain, gtag's dataLayer
-  // queue, and Clarity's own c[a].q queue are all unchanged by this).
+  // gh-2063 fix round 4 -- TRIED AND REVERTED (Marty/CTO ruling, comment
+  // 5780493814, tried raising this ceiling to 3000ms per that ruling's
+  // literal build; reverted on PR #2111 review, comment 5781473696, and
+  // by the orchestrator's own re-check): a same-harness A/B (devtools
+  // throttling, 3-run medians) measured NO benefit -- TBT 1017ms (1500ms
+  // ceiling) vs 1004ms (3000ms ceiling), a 13ms delta inside the ~300ms
+  // run-to-run noise on both sides, LCP if anything slightly worse
+  // (3680ms vs 3791ms). Meanwhile the wider ceiling doubles the window in
+  // which a visitor who bounces with no interaction and before genuine
+  // idle gets NO gtag.js/fbevents.js/clarity.js request at all -- an
+  // unmeasured-bounce blind spot landing on exactly the fast-bouncing FB
+  // in-app population this issue exists to fix. Cost with no benefit, so
+  // reverted to 1500ms pending a re-decision from Marty/Ben with these
+  // numbers in front of them (Q posted on #2063). See PR #2111 for the
+  // full measurement writeup; do not re-raise this ceiling without new
+  // evidence the same trade doesn't recur.
   function _oqLoadOnIdleOrInteraction(fn) {
     var fired = false;
     var idleHandle = null;
@@ -137,9 +144,9 @@
       window.addEventListener(EVENTS[i], run, { passive: true, once: true });
     }
     if (window.requestIdleCallback) {
-      idleHandle = window.requestIdleCallback(run, { timeout: 3000 });
+      idleHandle = window.requestIdleCallback(run, { timeout: 1500 });
     } else {
-      timeoutHandle = setTimeout(run, 3000);
+      timeoutHandle = setTimeout(run, 1500);
     }
   }
 
@@ -369,14 +376,13 @@
   // *request* for this file did nothing for Total Blocking Time -- only
   // for when the fetch started. _oqLoadOnIdleOrInteraction (below) delays
   // creating this <script> tag itself until the browser is idle (or up to
-  // 3000ms, whichever first -- gh-2063 CTO ruling 5780493814, up from
-  // 1500ms) or the visitor's first interaction, whichever happens first.
-  // Nothing else here changes: window.gtag/window.dataLayer
+  // 1500ms, whichever first) or the visitor's first interaction, whichever
+  // happens first. Nothing else here changes: window.gtag/window.dataLayer
   // are still defined unconditionally above, so gtag('js', ...) and every
   // page's own gtag('config'/'event', ...) call keep queuing into
   // dataLayer exactly as before and are drained -- in order, including the
   // automatic page_view -- the moment gtag.js actually loads. A visit that
-  // never goes idle and never interacts still gets gtag.js within 3000ms
+  // never goes idle and never interacts still gets gtag.js within 1500ms
   // via the requestIdleCallback timeout / setTimeout fallback, so page_view
   // still fires once for every visit that reaches that point, same as
   // before this change; only visitors who leave before ~1.5s (already

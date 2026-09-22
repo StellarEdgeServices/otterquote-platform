@@ -145,16 +145,21 @@
   // js/ga-gate.js's _oqLoadOnIdleOrInteraction (that file's comment on its
   // copy explains why this is duplicated rather than shared). Only the
   // fbevents.js <script> insertion is delayed to idle/interaction (capped
-  // at 3000ms, up from 1500ms -- gh-2063, Marty/CTO ruling comment
-  // 5780493814, CEO RUN 60's narrowed scope: "defer GTM, pixel and
-  // Clarity until after first input, or after requestIdleCallback with a
-  // 3s ceiling, whichever comes first") -- the fbq('init'...)/
-  // fbq('track','PageView') calls right
+  // at 1500ms) -- the fbq('init'...)/fbq('track','PageView') calls right
   // below stay exactly where they were, synchronous, and keep queuing into
   // fbqStub.queue exactly as before. gh-2000's callMethod drain fires that
   // queued init+PageView the moment fbevents.js actually loads, so PageView
-  // still fires once per visit, just later -- a deferred fire still counts
-  // (per that same CTO ruling).
+  // still fires once per visit, just later.
+  //
+  // gh-2063 fix round 4 -- TRIED AND REVERTED (Marty/CTO ruling, comment
+  // 5780493814, tried raising this ceiling to 3000ms; reverted on PR
+  // #2111 review, comment 5781473696): measured no benefit (same-harness
+  // A/B, devtools throttling, 3-run medians -- TBT 1017ms vs 1004ms,
+  // inside noise; LCP slightly worse) while doubling the no-tag-fired
+  // window for a visitor who bounces before interacting or before genuine
+  // idle -- exactly the fast-bouncing FB in-app population this issue
+  // targets. Reverted to 1500ms pending Marty/Ben re-deciding with these
+  // numbers in front of them (Q posted on #2063). See PR #2111.
   function _oqLoadOnIdleOrInteraction(fn) {
     var fired = false;
     var idleHandle = null;
@@ -177,9 +182,9 @@
       window.addEventListener(EVENTS[i], run, { passive: true, once: true });
     }
     if (window.requestIdleCallback) {
-      idleHandle = window.requestIdleCallback(run, { timeout: 3000 });
+      idleHandle = window.requestIdleCallback(run, { timeout: 1500 });
     } else {
-      timeoutHandle = setTimeout(run, 3000);
+      timeoutHandle = setTimeout(run, 1500);
     }
   }
 
