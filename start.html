@@ -3,7 +3,30 @@
 <head>
 <!-- Sentry Error Monitoring -->
 <!-- gh-2010: predeclare sentryOnLoad before the loader tag; the loader invokes it once the SDK is ready. -->
+<!-- gh-2063 (Ben, comment 5767975097, CEO RUN 57): Sentry's loader script
+     was requested via a synchronous <script src> tag, so its fetch+parse
+     cost landed at parse time on every visit. Loaded lazily instead, same
+     idle-or-first-interaction pattern js/ga-gate.js's and
+     js/meta-pixel-gate.js's own _oqLoadOnIdleOrInteraction already use for
+     gtag.js/fbevents.js (idle, capped at 1500ms via requestIdleCallback's
+     own timeout, or the visitor's first pointerdown/keydown/scroll/
+     touchstart, whichever comes first) -- this file keeps its own copy
+     below since no js/*.js include has run yet at this point in <head>.
+     No error is lost to the delay: window's error/unhandledrejection
+     listeners below push every pre-load error into window._oqErrorBuffer,
+     and sentryOnLoad() replays that buffer into Sentry.captureException /
+     captureMessage the instant Sentry.init() returns, before clearing it. -->
 <script>
+  window._oqErrorBuffer = [];
+  window._oqBufferError = function (e) {
+    window._oqErrorBuffer.push({ type: 'error', error: e.error, message: e.message, filename: e.filename, lineno: e.lineno, colno: e.colno });
+  };
+  window._oqBufferRejection = function (e) {
+    window._oqErrorBuffer.push({ type: 'unhandledrejection', reason: e.reason });
+  };
+  window.addEventListener('error', window._oqBufferError);
+  window.addEventListener('unhandledrejection', window._oqBufferRejection);
+
   window.sentryOnLoad = function () {
     Sentry.init({
       environment: window.location.hostname.includes("staging") ? "staging" : "production",
@@ -19,12 +42,72 @@
         return event;
       }
     });
+    // gh-2063: replay every error buffered before Sentry finished loading.
+    var buffered = window._oqErrorBuffer || [];
+    for (var i = 0; i < buffered.length; i++) {
+      var item = buffered[i];
+      try {
+        if (item.type === 'error' && item.error) {
+          Sentry.captureException(item.error);
+        } else if (item.type === 'error') {
+          Sentry.captureMessage(item.message || 'Unknown error (buffered pre-Sentry-load)');
+        } else if (item.type === 'unhandledrejection') {
+          if (item.reason instanceof Error) {
+            Sentry.captureException(item.reason);
+          } else {
+            Sentry.captureMessage('Unhandled rejection (buffered pre-Sentry-load): ' + String(item.reason));
+          }
+        }
+      } catch (replayErr) { /* replaying a buffered error must never itself throw */ }
+    }
+    window._oqErrorBuffer = [];
   };
+
+  // gh-2063: local copy of js/ga-gate.js's _oqLoadOnIdleOrInteraction,
+  // scoped to loading the Sentry loader script only.
+  (function () {
+    var fired = false;
+    var idleHandle = null;
+    var timeoutHandle = null;
+    var EVENTS = ['pointerdown', 'keydown', 'scroll', 'touchstart'];
+    function teardown() {
+      for (var i = 0; i < EVENTS.length; i++) {
+        window.removeEventListener(EVENTS[i], run);
+      }
+      if (idleHandle !== null && window.cancelIdleCallback) { window.cancelIdleCallback(idleHandle); }
+      if (timeoutHandle !== null) { clearTimeout(timeoutHandle); }
+    }
+    function loadSentryLoader() {
+      var s = document.createElement('script');
+      s.src = 'https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js';
+      s.crossOrigin = 'anonymous';
+      s.onload = function () {
+        // the loader's own listeners own capture from here on (no double-report)
+        window.removeEventListener('error', window._oqBufferError);
+        window.removeEventListener('unhandledrejection', window._oqBufferRejection);
+        // lazy loader: sentryOnLoad (and the replay) only runs once the SDK loads
+        if (window._oqErrorBuffer.length && window.Sentry && typeof window.Sentry.forceLoad === 'function') {
+          window.Sentry.forceLoad();
+        }
+      };
+      document.head.appendChild(s);
+    }
+    function run() {
+      if (fired) return;
+      fired = true;
+      teardown();
+      loadSentryLoader();
+    }
+    for (var i = 0; i < EVENTS.length; i++) {
+      window.addEventListener(EVENTS[i], run, { passive: true, once: true });
+    }
+    if (window.requestIdleCallback) {
+      idleHandle = window.requestIdleCallback(run, { timeout: 1500 });
+    } else {
+      timeoutHandle = setTimeout(run, 1500);
+    }
+  })();
 </script>
-<script
-  src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
-  crossorigin="anonymous"
-></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
@@ -246,24 +329,30 @@
 <!-- Microsoft Clarity (wwr7qlk8g5) is loaded by /js/ga-gate.js, behind the same production-host gate as GA4 (gh-1619). Do not add a per-page loader. -->
 
 <!-- Supabase -->
-<!-- gh-2063 fix round 2 (PR #2065 review, blocker 1): `defer` was removed
-     here after independent review found it broke every step-1 submit on
-     every arm. This page does NOT use js/config.js's page-level `sb` (that
-     comment about _oqCreateSupabaseClient()'s DOMContentLoaded retry/~20s
-     poll was about a DIFFERENT global, in a DIFFERENT file, that this
-     page's own IIFE below never reads) -- this file declares its own local
-     `var sb` a few lines into its inline router script and creates it ONCE,
-     synchronously, while the page is still parsing (`if (typeof supabase
-     !== 'undefined' ...) { sb = supabase.createClient(...) }`), with no
-     retry of its own. A deferred script always runs after parsing
-     finishes, so `typeof supabase` was always 'undefined' at that moment,
-     `sb` stayed null for the entire visit, and every "Continue" click on
-     every arm (A/B/C) hit a null-`sb` guard and showed "Something went
-     wrong loading the form." with no console error and no Sentry signal.
-     Kept synchronous (not deferred) again; it is a same-origin-cached CDN
-     script by then in most repeat visits and is not the file this issue's
-     item 1 was written for (the third-party analytics tags below are). -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js" integrity="sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz" crossorigin="anonymous"></script>
+<!-- gh-2063 fix round 2 (PR #2065 review, blocker 1) history: `defer` was
+     removed here after independent review found it broke every step-1
+     submit on every arm. This page does NOT use js/config.js's page-level
+     `sb` (that comment about _oqCreateSupabaseClient()'s DOMContentLoaded
+     retry/~20s poll was about a DIFFERENT global, in a DIFFERENT file,
+     that this page's own IIFE below never reads) -- this file declared
+     its own local `var sb` a few lines into its inline router script and,
+     at the time, created it ONCE, synchronously, while the page was still
+     parsing. A deferred script always runs after parsing finishes, so
+     `typeof supabase` was always 'undefined' at that moment, `sb` stayed
+     null for the entire visit, and every "Continue" click on every arm
+     (A/B/C) hit a null-`sb` guard and showed "Something went wrong
+     loading the form." with no console error and no Sentry signal. Round
+     2 fixed that by keeping the script synchronous instead of fixing the
+     creation timing.
+     gh-2063 (Ben, comment 5767975097, CEO RUN 57): `defer` is back, this
+     time paired with the actual fix -- the script tag below only
+     schedules the FETCH to happen without blocking the parser; the
+     client itself is created lazily on first use via `ensureSb()`
+     (declared a few lines into this page's inline router script, below),
+     never at parse time, so there is no window where `sb` can be read
+     before `supabase` exists on `window`. See that function's own comment
+     for the full reasoning. -->
+<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js" integrity="sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz" crossorigin="anonymous"></script>
 
 <!-- Google Fonts -->
 <!-- gh-2063: non-blocking stylesheet load (preload + swap to `all` media on
@@ -276,7 +365,25 @@
 <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
 <noscript><link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet"></noscript>
 <!-- Shared Styles -->
-<link rel="preload" as="style" href="css/design-system.css">
+<!-- gh-2063 item 4 (Ben, comment 5767975097, CEO RUN 57) -- TRIED AND
+     REVERTED, measured: the preload + swap-to-`all`-media-on-load pattern
+     (matching the Rubik stylesheet above) was applied here to
+     design-system.css/nav.css, paired with an inline critical-CSS subset
+     for the router card + button so the first screen wouldn't flash
+     unstyled during the async window. Lighthouse mobile/simulate/4x-CPU,
+     3-run medians, local main vs. that variant: FCP improved
+     (~3531ms -> ~3203ms) but TBT got WORSE (~15ms -> ~210ms) and CLS
+     regressed from ~0 to ~0.12 on every run. Mechanism: deferring a
+     stylesheet does not remove the cost of applying it, it MOVES that
+     cost from before FCP (where Lighthouse's TBT window does not start
+     counting yet) to after FCP (where it does), and the unstyled-then-
+     restyled swap itself is a layout shift. Same class of mistake as fix
+     round 3's ga-gate.js/meta-pixel-gate.js defer regression earlier on
+     this issue -- reverted for the same reason: measured, not assumed.
+     Back to plain blocking stylesheet links; item 4 needs a different
+     lever (actually reducing design-system.css's own size/specificity,
+     or a real above-the-fold-only critical-CSS extraction tool) that this
+     PR does not attempt. -->
 <link rel="stylesheet" href="css/design-system.css">
 <link rel="stylesheet" href="css/nav.css">
 
@@ -452,14 +559,29 @@
   // once `js/config.js` was confirmed to declare `sb` as a page-level
   // global; this file's own copy of that same claim was missed until the
   // fix round 3 REVIEW pass caught it.)
+  // gh-2063 (Ben, comment 5767975097): the Supabase UMD script above now
+  // loads `defer` so it no longer blocks parsing -- but a deferred script
+  // has NOT run yet at the moment this synchronous inline script executes
+  // (deferred scripts run after parsing completes, in document order,
+  // before DOMContentLoaded), so `typeof supabase` is 'undefined' right
+  // here every time, the same way it always is. Round 2 of this issue
+  // learned that the hard way: it added `defer` here without this change
+  // and left `sb` permanently null. The fix is this lazy accessor --
+  // `ensureSb()` creates the client on FIRST USE (step 1's submit
+  // handler, well after `defer` has had time to run) and caches it, never
+  // at parse time. Every `sb.*` call site below goes through it.
   var sb = null;
-  try {
-    if (typeof supabase !== 'undefined' && typeof CONFIG !== 'undefined') {
-      sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, {
-        auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' }
-      });
-    }
-  } catch (e) { /* handled by the null-check on every use below */ }
+  function ensureSb() {
+    if (sb) return sb;
+    try {
+      if (typeof supabase !== 'undefined' && typeof CONFIG !== 'undefined') {
+        sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, {
+          auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' }
+        });
+      }
+    } catch (e) { /* handled by the null-check on every use below */ }
+    return sb;
+  }
 
   // ── Elements ──
   var progressEls = { 1: document.getElementById('progressStep1'), 2: document.getElementById('progressStep2'), 3: document.getElementById('progressStep3') };
@@ -799,7 +921,7 @@
       })
     );
     var attr = collectAttribution();
-    return sb.from('leads').insert({
+    return ensureSb().from('leads').insert({
       id: newId,
       name: name,
       email: email,
@@ -1012,7 +1134,7 @@
     if (phoneRaw && !isValidUsPhone(phoneRaw)) { fieldError('routerPhoneError', 'Please enter a valid 10-digit US phone number.'); hasError = true; }
     if (hasError) return;
 
-    if (!sb) { showError('Something went wrong loading the form. Please refresh and try again.'); return; }
+    if (!ensureSb()) { showError('Something went wrong loading the form. Please refresh and try again.'); return; }
 
     // gh-2016: on arm B this screen is LAST, and the role picked on b-role
     // decides both the destination and the set_lead_role write that follows
@@ -1104,7 +1226,7 @@
 
     if (storedLeadId) {
       leadId = storedLeadId;
-      sb.rpc('update_lead_contact', {
+      ensureSb().rpc('update_lead_contact', {
         p_lead_id: leadId,
         p_name: name,
         p_email: email,
@@ -1232,7 +1354,7 @@
 
     function fallback() {
       if (skipFreshInsert) {
-        return sb.rpc('set_lead_role', payload).then(function (res) {
+        return ensureSb().rpc('set_lead_role', payload).then(function (res) {
           if (res && res.error) throw res.error;
           if (!(res && res.data === true)) {
             console.error('[router] set_lead_role retry still refused on the just-written lead (' + leadId + ') -- proceeding to the destination anyway, no duplicate row created');
@@ -1249,7 +1371,7 @@
         leadId = newId;
         var retryPayload = { p_lead_id: newId, p_role: role };
         if (industry) retryPayload.p_partner_industry = industry;
-        return sb.rpc('set_lead_role', retryPayload).then(function (res) {
+        return ensureSb().rpc('set_lead_role', retryPayload).then(function (res) {
           if (res && res.error) throw res.error;
           if (!(res && res.data === true)) {
             console.error('[router] set_lead_role still refused on a brand-new lead (' + newId + ') -- proceeding to the destination anyway');
@@ -1260,7 +1382,7 @@
       });
     }
 
-    return sb.rpc('set_lead_role', payload).then(function (res) {
+    return ensureSb().rpc('set_lead_role', payload).then(function (res) {
       if (res && res.error) throw res.error;
       if (res && res.data === true) return;
       console.warn('[router] set_lead_role no-op (stale/prefilled/expired lead) -- inserting a fresh lead and retrying');
@@ -1287,7 +1409,7 @@
     btn.addEventListener('click', function () {
       if (btn.disabled) return;
       var role = btn.getAttribute('data-router-role');
-      if (!sb) { showError('Something went wrong. Please refresh and start over.'); return; }
+      if (!ensureSb()) { showError('Something went wrong. Please refresh and start over.'); return; }
       // gh-2016: arm B has no lead row yet by design -- leads.email is NOT
       // NULL at the column level (the CHECK constraint's `email IS NULL OR
       // ...` is not the authority here), so a contact-NULL row cannot be
@@ -1368,7 +1490,7 @@
 
   function selectPartnerIndustry(industry, btn) {
     if (btn && btn.disabled) return;
-    if (!sb) { showError('Something went wrong. Please refresh and start over.'); return; }
+    if (!ensureSb()) { showError('Something went wrong. Please refresh and start over.'); return; }
     // gh-2016: held, not written -- same reason as the role buttons above.
     if (ARM_B) {
       bIndustry = industry;
@@ -1457,17 +1579,19 @@
   // (ROLE_DESTINATIONS, NO_LEAD_ID_DESTINATIONS, PARTNER_INDUSTRY_
   // DESTINATIONS) is a `var X = {...}` assignment further up this same
   // IIFE, not a hoisted `function` declaration, so building this object
-  // any earlier would capture `undefined` for each of them. sb,
-  // trackRouter, collectAttribution, insertFreshLead, appendParams,
-  // redirectTo and showError are all `function` declarations and would be
-  // safe earlier, but there is no reason to split the object in two.
+  // any earlier would capture `undefined` for each of them. trackRouter,
+  // collectAttribution, insertFreshLead, appendParams, redirectTo and
+  // showError are all `function` declarations and would be safe earlier,
+  // but there is no reason to split the object in two. `sb` below is a
+  // live getter (gh-2063), not a captured value, so it is immune to this
+  // problem regardless of where the object is built -- see ensureSb().
   // js/router-discovery.js is loaded by injecting a <script> element --
   // never a static <script src> tag in this document -- so arms A and B
   // never fetch or execute it at all (#2015: /start?v=a must render
   // exactly what /start renders).
   if (ARM_C) {
     var routerCBridge = {
-      sb: sb,
+      get sb() { return ensureSb(); },
       trackRouter: trackRouter,
       collectAttribution: collectAttribution,
       insertFreshLead: insertFreshLead,
