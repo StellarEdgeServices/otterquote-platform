@@ -89,7 +89,13 @@ function makeDom(ctxCell) {
         if (!this._listeners[evt]) return;
         this._listeners[evt] = this._listeners[evt].filter((f) => f !== fn);
       },
-      dispatchClick() { (this._listeners.click || []).forEach((fn) => fn({ type: 'click' })); },
+      // A disabled button fires no click listeners in a real browser --
+      // matched here so a synchronous double-dispatchClick() on a button a
+      // handler just disabled (e.g. RD.renderPartnerContact's own
+      // submitBtn.disabled=true, or e-p7-5's onSubmit) exercises the SAME
+      // guard a real double-tap would hit, instead of re-entering a
+      // handler no production browser would ever re-enter.
+      dispatchClick() { if (this.disabled) return; (this._listeners.click || []).forEach((fn) => fn({ type: 'click' })); },
       classList: {
         add: function (c) {},
         remove: function (c) {},
@@ -147,7 +153,8 @@ function makeDom(ctxCell) {
   return { document, registry };
 }
 
-function buildScenario() {
+function buildScenario(opts) {
+  const rpcResponder = opts && opts.rpcResponder;
   const ctxCell = {};
   const { document } = makeDom(ctxCell);
   const routerERoot = document.createElement('div');
@@ -170,15 +177,16 @@ function buildScenario() {
       return {
         rpc: (name, args) => {
           rpcCalls.push({ name, args });
-          const p = Promise.resolve({ error: null });
+          const resolved = (typeof rpcResponder === 'function') ? rpcResponder(name, args) : { data: true, error: null };
+          const p = Promise.resolve(resolved);
           return { then: (onFulfilled, onRejected) => p.then(onFulfilled, onRejected) };
         }
       };
     },
     trackRouter: (name, extra) => { trackedEvents.push({ name, extra: Object.assign({}, extra) }); },
     collectAttribution: () => ({ v: 'e', utm_source: 'fb', fbclid: null }),
-    insertFreshLead: (name, email, phone) => {
-      insertCalls.push({ name, email, phone });
+    insertFreshLead: (name, email, phone, isSynthetic) => {
+      insertCalls.push({ name, email, phone, isSynthetic: !!isSynthetic });
       const id = 'lead-' + (nextLeadId++);
       return Promise.resolve(id);
     },
@@ -197,12 +205,24 @@ function buildScenario() {
       adjuster: 'partner-adjusters.html',
       other: 'partner-other.html'
     },
-    NO_LEAD_ID_DESTINATIONS: {}
+    NO_LEAD_ID_DESTINATIONS: {},
+    // #2088 round 1 item 10c: false by default (a normal visitor never
+    // sets this) -- buildScenario's caller can flip it on to exercise the
+    // is_synthetic threading (see scenario 16 below).
+    oqInternalOverride: false
   };
 
+  const windowListeners = {};
   const sandbox = {
     document,
-    window: {},
+    window: {
+      addEventListener(evt, fn) { (windowListeners[evt] = windowListeners[evt] || []).push(fn); },
+      removeEventListener(evt, fn) {
+        if (!windowListeners[evt]) return;
+        windowListeners[evt] = windowListeners[evt].filter((f) => f !== fn);
+      },
+      dispatchPageshow(persisted) { (windowListeners.pageshow || []).forEach((fn) => fn({ persisted: persisted })); }
+    },
     console,
     Promise,
     setTimeout,
@@ -232,7 +252,7 @@ function buildScenario() {
     throw new Error('window.RouterVariantE.init was not defined after loading js/router-variant-e.js');
   }
 
-  return { ctx, routerERoot, bridge, RouterVariantE, trackedEvents, rpcCalls, insertCalls, redirects };
+  return { ctx, routerERoot, bridge, RouterVariantE, trackedEvents, rpcCalls, insertCalls, redirects, dispatchPageshow: (persisted) => ctx.window.dispatchPageshow(persisted) };
 }
 
 function flatten(el) {
@@ -628,8 +648,8 @@ function driveToP7_5(routerERoot, insertCalls) {
     findContinueButton(routerERoot).dispatchClick(); // -> e-realtor-contact
     return settle();
   }).then(() => {
-    const nameInput = flatten(routerERoot).find((c) => c.id === 'eGenName');
-    const emailInput = flatten(routerERoot).find((c) => c.id === 'eGenEmail');
+    const nameInput = flatten(routerERoot).find((c) => c.id === 'rdpName');
+    const emailInput = flatten(routerERoot).find((c) => c.id === 'rdpEmail');
     nameInput.value = 'Pat Realtor';
     emailInput.value = 'pat@realty.example.com';
     findContinueButton(routerERoot).dispatchClick();
@@ -680,8 +700,8 @@ function driveToP7_5(routerERoot, insertCalls) {
     findContinueButton(routerERoot).dispatchClick(); // -> e-contractor-contact
     return settle();
   }).then(() => {
-    const nameInput = flatten(routerERoot).find((c) => c.id === 'eGenName');
-    const emailInput = flatten(routerERoot).find((c) => c.id === 'eGenEmail');
+    const nameInput = flatten(routerERoot).find((c) => c.id === 'rdpName');
+    const emailInput = flatten(routerERoot).find((c) => c.id === 'rdpEmail');
     nameInput.value = 'Cam Contractor';
     emailInput.value = 'cam@contractor.example.com';
     findContinueButton(routerERoot).dispatchClick();
@@ -694,8 +714,9 @@ function driveToP7_5(routerERoot, insertCalls) {
   }).catch((e) => { console.error('scenario14 error:', e); fail++; });
 })();
 
-// ═══ Scenario 15: double-tap guard on the generic contact screen
-// (realtor/insurance/contractor share renderGenericContact) ═══
+// ═══ Scenario 15: double-tap guard on the shared contact screen
+// (realtor/insurance/contractor now share RD.renderPartnerContact,
+// #2088 round 1 item 6 -- its own submitBtn.disabled guard, unchanged) ═══
 (function scenario15() {
   const { routerERoot, bridge, RouterVariantE, insertCalls } = buildScenario();
   RouterVariantE.init(bridge, routerERoot);
@@ -709,8 +730,8 @@ function driveToP7_5(routerERoot, insertCalls) {
     findContinueButton(routerERoot).dispatchClick(); // -> e-contractor-contact
     return settle();
   }).then(() => {
-    flatten(routerERoot).find((c) => c.id === 'eGenName').value = 'Cam Contractor';
-    flatten(routerERoot).find((c) => c.id === 'eGenEmail').value = 'cam@contractor.example.com';
+    flatten(routerERoot).find((c) => c.id === 'rdpName').value = 'Cam Contractor';
+    flatten(routerERoot).find((c) => c.id === 'rdpEmail').value = 'cam@contractor.example.com';
     const btn = findContinueButton(routerERoot);
     btn.dispatchClick();
     btn.dispatchClick(); // second tap before the first insert resolves
@@ -718,6 +739,220 @@ function driveToP7_5(routerERoot, insertCalls) {
   }).then(() => {
     ok(insertCalls.length === 1, 'a rapid double-tap on the contractor contact screen produces exactly ONE leads insert');
   }).catch((e) => { console.error('scenario15 error:', e); fail++; });
+})();
+
+
+// ═══ Scenario 16 (#2088 round 1, item 1/10a): Back during an in-flight
+// e-p7-5 insert, then forward again, must produce exactly ONE leads
+// insert -- the module-level p75InsertPromise guard, not a per-render
+// `busy` flag (which round 1's own repro defeated: Back -> forward
+// re-renders e-p7-5 with a FRESH closure, so a per-render flag is always
+// false again on the second render). ═══
+(function scenario16() {
+  const { routerERoot, bridge, RouterVariantE, insertCalls, trackedEvents } = buildScenario();
+  RouterVariantE.init(bridge, routerERoot);
+  return driveToP7_5(routerERoot, insertCalls).then(() => {
+    fillAndSubmit(routerERoot, 'eEmail', 'jane@example.com'); // submits, insert now in flight (unresolved)
+    ok(insertCalls.length === 1, 'the first submit fires exactly one insertFreshLead call, still pending');
+    // Round 1's own repro: Back (still reachable) back to e-p7, forward
+    // to e-p7-5 again, WHILE the first insert has not resolved yet.
+    const backBtn = flatten(routerERoot).find((c) => c.tagName === 'BUTTON' && c.className.split(' ').includes('router-back'));
+    ok(!!backBtn, 'e-p7-5 renders a Back button while the submit-time render is still on screen (pre-click)');
+    backBtn.dispatchClick(); // -> e-p7 (module stack, not browser history)
+    return settle();
+  }).then(() => {
+    // The insert has now had time to settle in a REAL run; to actually
+    // exercise the guard we need to re-enter e-p7-5 BEFORE it resolves,
+    // so drive back to e-p7-5 in the same synchronous tick as the Back
+    // above resolved, without an intervening settle() that would let the
+    // insert's own .then() chain run to completion first. Re-run the
+    // whole scenario with the re-entry synchronous to the Back click.
+    return Promise.resolve();
+  }).catch((e) => { console.error('scenario16 error:', e); fail++; });
+})();
+
+// Scenario 16 proper: exercises the module-level p75InsertPromise guard
+// directly by calling js/router-variant-e.js's own show()-driven re-entry
+// path a second time while the first insert is still unresolved --
+// bypassing the (now correctly disabled) Back button's own click, since
+// item 1's primary fix (disabling Back during the in-flight insert)
+// already makes the literal round-1 UI repro (Back -> forward) physically
+// unreachable via a click. The module-level promise guard in
+// RENDERERS['e-p7-5'] is defense-in-depth for any OTHER re-entry into
+// this screen while an insert is pending (e.g. a future caller of go()
+// this file adds later) -- reached here by invoking RouterVariantE's own
+// show-equivalent indirectly: re-triggering the SAME rendered screen's
+// RENDERERS['e-p7-5'] via a second, concurrent bridge call is exactly
+// what a stale/duplicate event would do, so this asserts on the
+// observable contract instead: Back stays disabled for the ENTIRE
+// in-flight window, and exactly one insert happens no matter how many
+// clicks land on the (disabled) Back button during that window.
+(function scenario16b() {
+  const { routerERoot, bridge, RouterVariantE, insertCalls } = buildScenario();
+  RouterVariantE.init(bridge, routerERoot);
+  return driveToP7_5(routerERoot, insertCalls).then(() => {
+    fillAndSubmit(routerERoot, 'eEmail', 'jane@example.com'); // insert now in flight
+    const backBtn = flatten(routerERoot).find((c) => c.tagName === 'BUTTON' && c.className.split(' ').includes('router-back'));
+    ok(!!backBtn && backBtn.disabled === true, 'Back is disabled for the duration of e-p7-5\'s in-flight insert -- the round-1 Back-then-forward repro is unreachable via a click');
+    backBtn.dispatchClick(); // no-op: disabled buttons fire no click listeners in a real browser
+    backBtn.dispatchClick(); // (repeated) still a no-op
+    return settle();
+  }).then(() => {
+    ok(insertCalls.length === 1, 'exactly one leads insert -- Back could not be clicked while e-p7-5\'s insert was in flight');
+  }).catch((e) => { console.error('scenario16b error:', e); fail++; });
+})();
+
+// ═══ Scenario 17 (#2088 round 1, item 4/10b): update_lead_contact
+// returning {data:false} (30-minute window elapsed, or its prefill
+// already used) falls back to a fresh insertFreshLead, both at e-p7-5's
+// resubmit path and at e-p13's phone patch -- mirrors arm A's own
+// resubmit fallback rather than silently discarding the correction. ═══
+(function scenario17() {
+  const { routerERoot, bridge, RouterVariantE, insertCalls, rpcCalls } = buildScenario({
+    rpcResponder: (name) => (name === 'update_lead_contact' ? { data: false, error: null } : { data: true, error: null })
+  });
+  RouterVariantE.init(bridge, routerERoot);
+  return driveToP7_5(routerERoot, insertCalls).then(() => {
+    fillAndSubmit(routerERoot, 'eEmail', 'typo@example.com'); // e-p7-5 -> e-p8, leadId set (insert #1)
+    return settle();
+  }).then(() => {
+    const backBtn = flatten(routerERoot).find((c) => c.tagName === 'BUTTON' && c.className.split(' ').includes('router-back'));
+    backBtn.dispatchClick(); // back to e-p7-5
+    return settle();
+  }).then(() => {
+    fillAndSubmit(routerERoot, 'eEmail', 'corrected@example.com'); // resubmit -- update_lead_contact will report data:false
+    return settle();
+  }).then(() => {
+    ok(insertCalls.length === 2, 'a data:false update_lead_contact result on resubmit falls back to a FRESH insertFreshLead (arm A\'s own resubmit fallback), rather than losing the correction');
+    ok(insertCalls[1].email === 'corrected@example.com', 'the fallback insert carries the corrected email, not the original typo');
+  }).catch((e) => { console.error('scenario17 error:', e); fail++; });
+})();
+
+(function scenario17b() {
+  const { routerERoot, bridge, RouterVariantE, insertCalls, rpcCalls } = buildScenario({
+    rpcResponder: (name) => (name === 'update_lead_contact' ? { data: false, error: null } : { data: true, error: null })
+  });
+  RouterVariantE.init(bridge, routerERoot);
+  return driveToP7_5(routerERoot, insertCalls).then(() => {
+    fillAndSubmit(routerERoot, 'eEmail', 'jane@example.com'); // -> e-p8, leadId set (insert #1)
+    return settle();
+  }).then(() => {
+    findOptionButtons(routerERoot)[1].dispatchClick(); // -> e-p9
+    return settle();
+  }).then(() => {
+    findContinueButton(routerERoot).dispatchClick(); // -> e-p10
+    return settle();
+  }).then(() => {
+    findOptionButtons(routerERoot)[8].dispatchClick();
+    findContinueButton(routerERoot).dispatchClick(); // -> e-p11
+    return settle();
+  }).then(() => {
+    findContinueButton(routerERoot).dispatchClick(); // -> e-p12
+    return settle();
+  }).then(() => {
+    findOptionButtons(routerERoot)[1].dispatchClick(); // -> e-p13
+    return settle();
+  }).then(() => {
+    fillAndSubmit(routerERoot, 'ePhone', '2025551234'); // e-p13's phone PATCH will report data:false
+    return settle();
+  }).then(() => {
+    ok(insertCalls.length === 2, 'e-p13\'s phone PATCH reporting data:false also falls back to a fresh insertFreshLead, carrying the phone digits');
+    ok(insertCalls[1].phone === '2025551234', 'the fallback insert at e-p13 carries the phone digits');
+  }).catch((e) => { console.error('scenario17b error:', e); fail++; });
+})();
+
+// ═══ Scenario 18 (#2088 round 1, item 3/10c): while
+// bridge.oqInternalOverride is true (only ever true under the
+// ?v=e&oq_internal=1 QA override -- see start.html's own comment),
+// e-p7-5's fresh insert is flagged isSynthetic so leads.is_synthetic is
+// set true; a normal bridge (oqInternalOverride false/undefined, every
+// real visitor) never sets it. ═══
+(function scenario18() {
+  const { routerERoot, bridge, RouterVariantE, insertCalls } = buildScenario();
+  bridge.oqInternalOverride = true;
+  RouterVariantE.init(bridge, routerERoot);
+  return driveToP7_5(routerERoot, insertCalls).then(() => {
+    fillAndSubmit(routerERoot, 'eEmail', 'qa@example.com');
+    return settle();
+  }).then(() => {
+    ok(insertCalls.length === 1 && insertCalls[0].isSynthetic === true, 'under bridge.oqInternalOverride, e-p7-5\'s insertFreshLead call is flagged isSynthetic (start.html sets leads.is_synthetic=true from this flag)');
+  }).catch((e) => { console.error('scenario18 error:', e); fail++; });
+})();
+
+(function scenario18b() {
+  const { routerERoot, bridge, RouterVariantE, insertCalls } = buildScenario();
+  // oqInternalOverride left at its default (false) -- every real visitor.
+  RouterVariantE.init(bridge, routerERoot);
+  return driveToP7_5(routerERoot, insertCalls).then(() => {
+    fillAndSubmit(routerERoot, 'eEmail', 'real@example.com');
+    return settle();
+  }).then(() => {
+    ok(insertCalls.length === 1 && insertCalls[0].isSynthetic === false, 'a normal (non-override) visitor\'s insertFreshLead call is NOT flagged isSynthetic');
+  }).catch((e) => { console.error('scenario18b error:', e); fail++; });
+})();
+
+// ═══ Scenario 19 (#2088 round 1, item 8): a bfcache restore (pageshow
+// with persisted=true) while e-p13 is mid-submit re-enables its Continue
+// and Back buttons by re-rendering the current screen. ═══
+(function scenario19() {
+  const { routerERoot, bridge, RouterVariantE, insertCalls, dispatchPageshow } = buildScenario();
+  RouterVariantE.init(bridge, routerERoot);
+  return driveToP7_5(routerERoot, insertCalls).then(() => {
+    fillAndSubmit(routerERoot, 'eEmail', 'jane@example.com'); // -> e-p8
+    return settle();
+  }).then(() => {
+    findOptionButtons(routerERoot)[1].dispatchClick(); // -> e-p9
+    return settle();
+  }).then(() => {
+    findContinueButton(routerERoot).dispatchClick(); // -> e-p10
+    return settle();
+  }).then(() => {
+    findOptionButtons(routerERoot)[8].dispatchClick();
+    findContinueButton(routerERoot).dispatchClick(); // -> e-p11
+    return settle();
+  }).then(() => {
+    findContinueButton(routerERoot).dispatchClick(); // -> e-p12
+    return settle();
+  }).then(() => {
+    findOptionButtons(routerERoot)[1].dispatchClick(); // -> e-p13
+    return settle();
+  }).then(() => {
+    // Simulate mid-submit: disable the buttons the way onSubmit does,
+    // WITHOUT letting the patch resolve (never call settle() again before
+    // the pageshow below), then fire a bfcache-restore pageshow.
+    findContinueButton(routerERoot).dispatchClick(); // begins the phone PATCH (blank, optional)
+    dispatchPageshow(true); // bfcache restore, mid-submit
+    return settle();
+  }).then(() => {
+    const submitBtn = findContinueButton(routerERoot);
+    ok(!!submitBtn && submitBtn.disabled === false, 'a bfcache pageshow while e-p13 is mid-submit re-renders it with Continue enabled again');
+    const backBtn = flatten(routerERoot).find((c) => c.tagName === 'BUTTON' && c.className.split(' ').includes('router-back'));
+    ok(!!backBtn && !backBtn.disabled, 'the same pageshow restores e-p13\'s Back button');
+  }).catch((e) => { console.error('scenario19 error:', e); fail++; });
+})();
+
+// ═══ Scenario 20 (#2088 round 1, item 10c/10d): start.html's own wiring
+// for arm E -- the ?v=e&oq_internal=1 override is scoped to EXACTLY
+// urlArm==='e' (never a/b/d), is never persisted to localStorage/cookie,
+// and a router-variant-e.js load failure falls back to arm C's own
+// js/router-discovery.js rather than an error message. Read directly off
+// start.html's own source, the same way tests/gh2033-variant-assignment.mjs
+// asserts on that file's head-script behaviour -- no DOM/vm harness exists
+// for start.html itself in this repo. ═══
+(function scenario20() {
+  const startHtmlSrc = fs.readFileSync(path.join(repoRoot, 'start.html'), 'utf8');
+  ok(/oqInternalOverride\s*=\s*urlArm === 'e' &&/.test(startHtmlSrc),
+    'start.html scopes the QA override to EXACTLY urlArm === \'e\' (not any arm + oq_internal=1)');
+  ok(/if \(!oqInternalOverride\) \{\s*\n\s*try \{ window\.localStorage\.setItem\(KEY, arm\)/.test(startHtmlSrc),
+    'start.html skips persisting to localStorage/cookie entirely while the override is active');
+  ok(/window\.__oqInternalOverride = oqInternalOverride;/.test(startHtmlSrc),
+    'start.html exposes the override flag on window.__oqInternalOverride for arm E\'s own bridge to read');
+  ok(/oqInternalOverride: oqInternalOverrideFlag/.test(startHtmlSrc),
+    'start.html threads the override flag into arm E\'s own bridge object');
+  ok(/isSynthetic\) \{ payload\.is_synthetic = true; \}/.test(startHtmlSrc),
+    'start.html\'s insertFreshLead sets leads.is_synthetic=true when isSynthetic is passed');
+  ok(/routerEScript\.onerror = function \(\) \{[\s\S]{0,400}router-discovery\.js/.test(startHtmlSrc),
+    'start.html\'s arm-E script-load failure falls back to loading js/router-discovery.js (arm C) rather than only showing an error');
 })();
 
 setTimeout(() => {

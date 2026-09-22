@@ -296,7 +296,23 @@
   // unconditionally, so a stray persisted 'e' cannot leak into a normal
   // visitor's assignment once this override is not present on the URL.
   var oqInternalOverride = false;
-  try { oqInternalOverride = new URLSearchParams(window.location.search).get('oq_internal') === '1'; } catch (e) {}
+  try {
+    // #2088 round 1 item 2: the override is scoped to EXACTLY urlArm ===
+    // 'e' -- not "any urlArm while oq_internal=1" as fix round 1 had it,
+    // which let ?v=a&oq_internal=1 / ?v=b&oq_internal=1 also bypass
+    // toLiveArm() and briefly render A/B outside their own kill-switch,
+    // and which also changed ?v=d's own pre-flip behaviour (documented in
+    // PR #2086 as intentionally NOT bypassing toLiveArm()) whenever a
+    // visitor happened to also carry oq_internal=1. Only 'e' gets the
+    // bypass; every other urlArm (including 'd') still runs through
+    // toLiveArm() exactly as before this PR.
+    oqInternalOverride = urlArm === 'e' && new URLSearchParams(window.location.search).get('oq_internal') === '1';
+  } catch (e) {}
+  // #2088 round 1 item 3: read by insertFreshLead below (via
+  // window.__oqInternalOverride) and by arm E's own bridge, so a walk
+  // taken under this override is written to leads.is_synthetic = true
+  // instead of looking like a real visitor's lead.
+  window.__oqInternalOverride = oqInternalOverride;
   var arm = urlArm ? (oqInternalOverride ? urlArm : toLiveArm(urlArm)) : null;
 
   // 2. Else a persisted assignment -- localStorage first, cookie fallback,
@@ -329,13 +345,21 @@
   // usable source for the main IIFE's own variant read.
   window.__oqVariant = arm;
 
-  // 4. Persist to BOTH stores, each independently guarded.
-  try { window.localStorage.setItem(KEY, arm); } catch (e) {}
-  try {
-    var secure = window.location.protocol === 'https:' ? '; Secure' : '';
-    document.cookie = KEY + '=' + arm + '; path=/; max-age=' + (180 * 24 * 60 * 60) +
-      '; SameSite=Lax' + secure;
-  } catch (e) {}
+  // 4. Persist to BOTH stores, each independently guarded -- SKIPPED
+  //    entirely while the #2088 round-1-item-2 QA override is active, so
+  //    a ?v=e&oq_internal=1 walk can never leak arm 'e' into a normal,
+  //    non-override later visit to this same browser (a stale persisted
+  //    'e' would otherwise still be remapped by toLiveArm() on that later
+  //    visit, per step 2 above, but skipping the write is simpler and
+  //    leaves zero trace of the QA walk in either store).
+  if (!oqInternalOverride) {
+    try { window.localStorage.setItem(KEY, arm); } catch (e) {}
+    try {
+      var secure = window.location.protocol === 'https:' ? '; Secure' : '';
+      document.cookie = KEY + '=' + arm + '; path=/; max-age=' + (180 * 24 * 60 * 60) +
+        '; SameSite=Lax' + secure;
+    } catch (e) {}
+  }
 
   // 5. Rewrite the URL, preserving every existing query parameter.
   try {
@@ -1002,7 +1026,20 @@
   // is the same client-generated-id insert Step 1 already used for a
   // brand-new visitor, factored out so a stale/prefilled/expired lead id
   // can fall back to it instead of the visitor's data vanishing.
-  function insertFreshLead(name, email, phoneDigits) {
+  // #2088 round 1 item 3: `isSynthetic`, when true (arm E passes
+  // bridge.oqInternalOverride, which is only ever true while the
+  // ?v=e&oq_internal=1 QA override -- see that override's own comment
+  // above -- is active), sets leads.is_synthetic = true on the insert.
+  // The column already exists (migration
+  // 20260920195654_gh2055_add_notifications_suppressed_and_is_synthetic
+  // .sql) and the anon INSERT policy on `leads` is WITH CHECK (true), so
+  // no RPC or schema change is needed to set it client-side -- confirmed
+  // by reading that migration directly rather than assuming. Every other
+  // caller (arms A/B/C/D, and arm E outside the override) omits the 4th
+  // argument, so `isSynthetic` is undefined/false and the column is left
+  // out of the payload entirely -- unchanged behaviour, unchanged default
+  // (NULL) for every real lead.
+  function insertFreshLead(name, email, phoneDigits, isSynthetic) {
     var newId = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : (
       'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
         var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
@@ -1010,7 +1047,7 @@
       })
     );
     var attr = collectAttribution();
-    return ensureSb().from('leads').insert({
+    var payload = {
       id: newId,
       name: name,
       email: email,
@@ -1024,7 +1061,9 @@
       fbclid: attr.fbclid,
       gclid: attr.gclid,
       variant: variant
-    }).then(function (res) {
+    };
+    if (isSynthetic) { payload.is_synthetic = true; }
+    return ensureSb().from('leads').insert(payload).then(function (res) {
       if (res && res.error) throw res.error;
       setStoredLeadId(newId);
       return newId;
@@ -1777,6 +1816,10 @@
   // own comment for why it cannot defer that fetch past its first screen
   // the way arm D does: arm E's own first screen IS arm C's role screen).
   if (ARM_E) {
+    // #2088 round 1 item 3: read once here (not inside the bridge getter)
+    // since window.__oqInternalOverride is set once, synchronously, by
+    // the head script above and never changes for the life of this page.
+    var oqInternalOverrideFlag = !!window.__oqInternalOverride;
     var routerEBridge = {
       get sb() { return ensureSb(); },
       trackRouter: trackRouter,
@@ -1787,7 +1830,8 @@
       showError: showError,
       ROLE_DESTINATIONS: ROLE_DESTINATIONS,
       PARTNER_INDUSTRY_DESTINATIONS: PARTNER_INDUSTRY_DESTINATIONS,
-      NO_LEAD_ID_DESTINATIONS: NO_LEAD_ID_DESTINATIONS
+      NO_LEAD_ID_DESTINATIONS: NO_LEAD_ID_DESTINATIONS,
+      oqInternalOverride: oqInternalOverrideFlag
     };
     var routerEScript = document.createElement('script');
     routerEScript.src = 'js/router-variant-e.js';
@@ -1798,8 +1842,28 @@
         showError('Something went wrong loading this page. Please refresh and try again.');
       }
     };
+    // Nit (PR #2088 round 1): a script-load failure (network hiccup,
+    // ad-blocker, CDN outage on this same-origin file) used to strand the
+    // visitor on an empty panel. Arm C's own router-discovery.js is
+    // already the fallback module for the professional/contractor
+    // tracks this arm reuses, so on a load failure this now falls all the
+    // way back to arm C's own experience (its full role-first flow)
+    // rather than an error message -- a visitor still completes a router,
+    // just not in E's homeowner-exposition variant.
     routerEScript.onerror = function () {
-      showError('Something went wrong loading this page. Please refresh and try again.');
+      var fallbackScript = document.createElement('script');
+      fallbackScript.src = 'js/router-discovery.js';
+      fallbackScript.onload = function () {
+        if (window.RouterDiscovery && typeof window.RouterDiscovery.init === 'function') {
+          window.RouterDiscovery.init(routerEBridge, routerERoot);
+        } else {
+          showError('Something went wrong loading this page. Please refresh and try again.');
+        }
+      };
+      fallbackScript.onerror = function () {
+        showError('Something went wrong loading this page. Please refresh and try again.');
+      };
+      document.body.appendChild(fallbackScript);
     };
     document.body.appendChild(routerEScript);
   }
