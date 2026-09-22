@@ -62,9 +62,12 @@ import {
   readHoverChargeRecord,
   saveHoverChargeRecord,
   clearHoverChargeRecord,
+  hasFiredMeasurementPurchase,
+  markMeasurementPurchaseFired,
   type PendingHoverCharge,
 } from './hover-charge-storage';
-import { track } from '@/lib/track';
+import { track, fbqTrack } from '@/lib/track';
+import { getVariant } from '@/lib/variant';
 
 /**
  * NEW operational copy for the gh-951 resume flow — like gh-416's ORDER_RETRY_COPY
@@ -173,6 +176,23 @@ function PageBody({
         // on the success screen).
         if (result?.capture_request_id) {
           clearHoverChargeRecord();
+          // gh-2078 PR #2092 review fix 1: this resume path is a SECOND
+          // route to a completed order (the first is handlePaid, above) --
+          // a paid order that completes here (tab reload/close between the
+          // charge and placeHoverOrder resolving, or a first attempt that
+          // threw and was retried via a fresh mount rather than
+          // HoverPaymentForm's in-mount "Retry Order") must fire
+          // measurement_purchase too, or every resumed purchase is
+          // silently uncounted. Same once-only guard, same paymentIntent
+          // id as handlePaid's own call -- if handlePaid somehow already
+          // fired for this id (e.g. a race between the two paths), this
+          // is a no-op, not a double-count.
+          if (!hasFiredMeasurementPurchase(pendingResume.paymentIntentId)) {
+            const variant = getVariant();
+            track('measurement_purchase', { value: 15.0, currency: 'USD', variant });
+            fbqTrack('Purchase', { value: 15.0, currency: 'USD', variant });
+            markMeasurementPurchaseFired(pendingResume.paymentIntentId);
+          }
           setHoverStage('success');
           setView('hover');
         } else {
@@ -259,6 +279,29 @@ function PageBody({
       // order), not the CRO funnel's main job-payment step — see the
       // gh-1940 report for why GA4 `purchase` is not wired here instead.
       track('help_tool_used', { tool: 'help_measurements', method: 'hover_payment' });
+      // gh-2078: `measurement_purchase` -- the homeowner conversion event
+      // GA4/Meta optimise the D/E funnel toward. Guarded by
+      // hasFiredMeasurementPurchase/markMeasurementPurchaseFired (keyed on
+      // the CHARGED paymentIntent id, hover-charge-storage.ts) so a retry
+      // of the order step after a THROW here (this whole function can be
+      // re-invoked by HoverPaymentForm's "Retry Order" -- see that
+      // component's runOrder) never double-counts the same $15 charge as
+      // two purchases. Placed after the order-creation await above: this
+      // line is only reached once placeHoverOrder has actually resolved
+      // (a graceful EF-pending result counts as a completed order here,
+      // same as the resume-effect's own success criterion elsewhere in
+      // this file -- gh-951).
+      if (!hasFiredMeasurementPurchase(paymentIntentId)) {
+        const variant = getVariant();
+        track('measurement_purchase', { value: 15.0, currency: 'USD', variant });
+        // Meta Pixel: guarded no-op if fbevents.js was never loaded on this
+        // page -- see lib/track.ts's fbqTrack header for why (this is an
+        // authenticated route, outside MetaPixelGate.tsx's ALLOWED_PATHS
+        // today; see the gh-2078 PR description for the follow-up this
+        // leaves open).
+        fbqTrack('Purchase', { value: 15.0, currency: 'USD', variant });
+        markMeasurementPurchaseFired(paymentIntentId);
+      }
       setHoverStage('success');
     },
     [profile, claim, user],

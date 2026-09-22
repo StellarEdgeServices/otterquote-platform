@@ -77,6 +77,7 @@ import {
   saveHoverChargeRecord,
   readHoverChargeRecord,
   clearHoverChargeRecord,
+  hasFiredMeasurementPurchase,
 } from '../hover-charge-storage';
 
 type Fn = ReturnType<typeof vi.fn>;
@@ -125,6 +126,10 @@ beforeEach(() => {
 afterEach(() => {
   vi.clearAllMocks();
   clearHoverChargeRecord();
+  // PR #2092 review fix 1's test below marks this id fired in real
+  // localStorage — clean it up so a re-run of this file (watch mode)
+  // doesn't start from a pre-fired state.
+  localStorage.removeItem('oq_ga4_measurement_purchase_fired_v1:pi_resume_conversion_1');
 });
 
 // ── 1. Render: header + path selection ─────────────────────────────────────────
@@ -353,6 +358,22 @@ describe('help-measurements page — gh-951 resume after a full-page reload', ()
     // No path-selection flash left behind, and the pointer is gone either way.
     expect(screen.queryByText(M.pathIntroTitle)).toBeNull();
     expect(readHoverChargeRecord()).toBeNull();
+  });
+
+  it('PR #2092 review fix 1: fires measurement_purchase on a RESUMED order too (tab reload between charge and order), not just the handlePaid path', async () => {
+    saveHoverChargeRecord({ claimId: 'c1', paymentIntentId: 'pi_resume_conversion_1', ts: Date.now() });
+    (placeHoverOrder as unknown as Fn).mockResolvedValue({
+      order_id: 'o1',
+      capture_link: 'https://hover.example/capture/1',
+      capture_request_id: 'cap_1',
+    });
+
+    expect(hasFiredMeasurementPurchase('pi_resume_conversion_1')).toBe(false);
+
+    render(<HelpMeasurementsPage />);
+
+    await screen.findByText(M.hoverSuccessTitle);
+    expect(hasFiredMeasurementPurchase('pi_resume_conversion_1')).toBe(true);
   });
 
   it('shows the neutral resume-unresolved message (not a false success) when the order does not confirm', async () => {

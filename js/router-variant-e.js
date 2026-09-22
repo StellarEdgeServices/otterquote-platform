@@ -58,11 +58,19 @@
 // earlier row to correct, so none of e-p7-5's/e-p13's resubmit/PATCH
 // machinery applies here.
 //
-// gh-2078 (gh-2011's sub-issue, NOT this issue): partner_signup_complete
-// is NOT emitted anywhere in this file yet. HOOK_partnerSignupComplete()
-// marks the exact point it will fire once #2078 defines its payload,
-// mirroring this file's own HOOK_measurementPurchase() for the homeowner
-// hand-off.
+// gh-2078 (gh-2011's sub-issue, NOT this issue) -- SHIPPED, repointed:
+// partner_signup_complete does NOT fire from this router file. It fires
+// from the STATIC PARTNER PAGE this file hands off to
+// (partner-re.html / partner-insurance.html), immediately after that
+// page's own register_partner call succeeds and its confirmation UI
+// renders (GA4 partner_signup_complete + Meta CompleteRegistration; see
+// those files' own firePartnerSignupComplete()). The router never learns
+// whether signup actually completed -- proCloseRenderer's finish() below
+// only knows the HAND-OFF happened, not the outcome -- so it cannot be
+// the right place to emit this event. HOOK_partnerSignupComplete() below
+// is kept as a documented no-op (not removed) so anyone re-reading this
+// file sees a pointer to where the real event lives instead of a second,
+// competing implementation; do not add a real emit here.
 //
 // Contact capture is SPLIT, deliberately, the same way #2075 (arm D)
 // split it -- Dustin: "the `leads` row is written at 7.5 (email) and
@@ -714,11 +722,12 @@
   // hook of the same name.
   function HOOK_measurementPurchase() { /* see gh-2078; intentionally not implemented in gh-2076 */ }
 
-  // gh-2078 HOOK POINT for the PROFESSIONAL hand-off (gh-2084) -- not
-  // implemented here, on purpose. #2078 defines partner_signup_complete's
-  // payload; this hook marks exactly where it will fire, mirroring
-  // HOOK_measurementPurchase above.
-  function HOOK_partnerSignupComplete() { /* see gh-2078; intentionally not implemented in gh-2084 */ }
+  // gh-2078 -- SHIPPED, repointed (see this file's top-of-file comment):
+  // partner_signup_complete fires from partner-re.html/partner-insurance.html's
+  // own confirmation screen, not from this router. This stays a deliberate
+  // no-op -- do not implement the emit here, it would double-count
+  // alongside the static pages' own firePartnerSignupComplete().
+  function HOOK_partnerSignupComplete() { /* see gh-2078; the real event fires on the partner page's confirmation screen, not here */ }
 
   // ====== Page 13: "Tell us about your home" (arm C's home8 TEXT,
   // unchanged) -- but name/email are already on the lead row from page
@@ -962,7 +971,8 @@
 
       function finish(newId) {
         emitComplete(completeToken);
-        // gh-2078: partner_signup_complete is NOT emitted yet -- see
+        // gh-2078: partner_signup_complete fires on the destination
+        // page's own confirmation screen, not here -- see
         // HOOK_partnerSignupComplete's own comment above.
         HOOK_partnerSignupComplete();
         redirectWithLeadId(bridge.PARTNER_INDUSTRY_DESTINATIONS[partnerIndustryKey], newId);
