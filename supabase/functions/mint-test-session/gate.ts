@@ -23,6 +23,19 @@
 // email GoTrue itself reports for the resolved auth user id — never for a
 // caller-supplied or joined-table email column that might describe a
 // different identity than the one actually being minted for.
+//
+// CTO36-B1513 / gh-2047 (2026-09-22): the cross-table check above stopped
+// discriminating the three real companies gh-2047 identifies BY NAME
+// ("is_test means two different things" — synthetic data vs. "real
+// company, don't email yet") — a later, unrelated sync brought every
+// profiles.is_test row into agreement with its linked contractors.is_test
+// row, including these three (verified live, production, 2026-09-22: Indy
+// Rooftops and both Stohler Roofing rows now read contractors.is_test=true
+// AND profiles.is_test=true). Until gh-2047's own reclassification lands
+// (Tier C, pending Dustin), this gate also refuses the three specific rows
+// gh-2047 names, by id, regardless of what any is_test column reads — see
+// KNOWN_MISFLAGGED_REAL_ACCOUNTS below. That is a stopgap for the KNOWN
+// instances, not a structural fix for the general overload.
 
 export interface ContractorRow {
   id: string;
@@ -130,6 +143,72 @@ export function unexpectedErrorResponse(error: unknown): MintResult {
 }
 
 /**
+ * gh-2047 denylist (CTO36-B1513, 2026-09-22): `contractors.is_test` is
+ * overloaded — per #2047 ("is_test means two different things") it also
+ * marks a small number of REAL companies that were flagged `is_test = true`
+ * purely to suppress product-notification email, not because the row is
+ * synthetic data. The `profiles.is_test` cross-table check (gh-1513 cross-
+ * table fix, above) was built to catch exactly this kind of disagreement,
+ * but as of this fix it no longer does for these three rows — a later,
+ * unrelated sync brought every `profiles.is_test` row into agreement with
+ * its linked `contractors.is_test` row. Verified live, production,
+ * 2026-09-22 (SELECT only): all three below read `contractors.is_test =
+ * true` AND `profiles.is_test = true`.
+ *
+ * These are the exact three rows #2047 names by id/email:
+ *   - Indy Rooftops, LLC        (contractors.id 5ece9e69…, #2047 body)
+ *   - Stohler Roofing, LLC (#1) (contractors.id 8e90ff23…, #2047 body)
+ *   - Stohler Roofing, LLC (#2) (contractors.id ee452a12…; its user_id is
+ *     the PRIMARY ADMIN's own auth user — also named in #1773's forensics)
+ *
+ * Both the contractor row id and its linked auth-user id are listed, so
+ * this refuses on either the `contractor_id` path or a direct `user_id`
+ * path that happens to resolve to the same identity.
+ *
+ * This is a STOPGAP for the KNOWN instances of the #2047 overload, not a
+ * fix for its general cause: a new real signup flagged `is_test = true`
+ * tomorrow, for the same notification-suppression reason, would NOT be
+ * caught by this list. The durable fix is #2047's own reclassification
+ * (flip these — and only these, once verified — rows to `is_test = false`
+ * + `notifications_suppressed = true`, currently Tier C / pending Dustin);
+ * once that lands, `is_test` alone becomes trustworthy again and this list
+ * should be deleted rather than extended. Flagged as an open question on
+ * gh-1513's PR and issue comment rather than silently assumed.
+ */
+export const KNOWN_MISFLAGGED_REAL_ACCOUNTS: ReadonlySet<string> = new Set([
+  // Indy Rooftops, LLC — real contractor, #2047
+  "5ece9e69-91f8-48cd-b4fa-412dec4f8dee", // contractors.id
+  "edcbe10f-7efa-4945-be3b-5c3e4ef8f2e2", // contractors.user_id / profiles.id
+  // Stohler Roofing, LLC (row 1) — real contractor, #2047
+  "8e90ff23-3894-4f67-9ca7-58a044cd986b", // contractors.id
+  "e371c617-8a24-492e-9911-47c85705ebb4", // contractors.user_id / profiles.id
+  // Stohler Roofing, LLC (row 2) — real contractor; user_id is the PRIMARY
+  // ADMIN's own auth user (#2047, #1773 forensics)
+  "ee452a12-c16e-4d30-9d2c-df8128fbce52", // contractors.id
+  "3ea4d929-b916-4cc9-a285-d052df397992", // contractors.user_id / profiles.id
+]);
+
+function knownRealAccountRefusal(): MintResult {
+  return jsonError(
+    403,
+    "Forbidden: target is a known real account misflagged is_test (see #2047) — refused regardless of is_test",
+  );
+}
+
+/**
+ * Pure parse of the caller's Authorization header. Extracted from index.ts
+ * (CTO36-B1513) so the "missing/invalid Authorization header -> 401" path
+ * has a negative-control unit test that doesn't require a live
+ * serve()/fetch listener. Returns the bearer token, or null if the header
+ * is absent or not a well-formed "Bearer <token>" value.
+ */
+export function extractBearerToken(authHeader: string | null): string | null {
+  if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
+  const token = authHeader.slice("Bearer ".length).trim();
+  return token.length > 0 ? token : null;
+}
+
+/**
  * Cross-table agreement check (gh-1513 cross-table fix). A target's own
  * table saying is_test=true is necessary but not sufficient — the linked
  * profiles row must agree. A missing profiles row or a false/null
@@ -229,6 +308,19 @@ export async function resolveAndMint(
       return jsonError(403, "Forbidden: not every claim owned by user is is_test");
     }
     targetUserId = userId!;
+  }
+
+  // gh-2047 denylist (CTO36-B1513): refused on identity alone, before the
+  // cross-table check even runs — these three rows are known to pass BOTH
+  // is_test columns as of 2026-09-22 (see KNOWN_MISFLAGGED_REAL_ACCOUNTS'
+  // doc comment), so the cross-table check alone can no longer be trusted
+  // to stop them.
+  if (
+    KNOWN_MISFLAGGED_REAL_ACCOUNTS.has(targetUserId) ||
+    (resolvedContractorId !== null &&
+      KNOWN_MISFLAGGED_REAL_ACCOUNTS.has(resolvedContractorId))
+  ) {
+    return knownRealAccountRefusal();
   }
 
   // gh-1513 cross-table fix: the target's own table said is_test=true; the

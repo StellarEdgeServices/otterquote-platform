@@ -10,6 +10,7 @@ import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.177.
 import {
   type ActivityLogRow,
   type DbAdapter,
+  extractBearerToken,
   MAGIC_LINK_EXPIRES_IN,
   resolveAndMint,
   unexpectedErrorResponse,
@@ -407,4 +408,134 @@ Deno.test("gh-1513 cross-table C: 403 when the target has no profiles row at all
   const result = await resolveAndMint({ contractor_id: "c-orphan-profile" }, db, ACTOR_EMAIL);
   assertEquals(result.status, 403);
   assertStringIncludes(String(result.body.error), "no profiles row");
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// gh-2047 denylist (CTO36-B1513, 2026-09-22): contractors.is_test — and, as
+// of this run, the profiles.is_test cross-check too — no longer
+// discriminates the three real companies #2047 names by id. Verified live,
+// production, 2026-09-22: Indy Rooftops and both Stohler Roofing rows read
+// contractors.is_test=true AND profiles.is_test=true. Each fakeDb below
+// deliberately returns is_test=true on EVERY table, so a pass here proves
+// the id-based denylist is what refuses these rows, not the cross-table
+// check — run these first against gate.ts with the denylist check removed
+// to see them fail "actual 200, expected 403" before trusting that they
+// pass here.
+// ─────────────────────────────────────────────────────────────────────────
+
+Deno.test("gh-2047 A: 403 for Indy Rooftops by contractor_id even though every is_test column reads true", async () => {
+  const db = fakeDb({
+    getContractorById: async () => ({
+      data: {
+        id: "5ece9e69-91f8-48cd-b4fa-412dec4f8dee",
+        user_id: "edcbe10f-7efa-4945-be3b-5c3e4ef8f2e2",
+        email: "dustinstohler1+indyrooftops@gmail.com",
+        is_test: true,
+      },
+      error: null,
+    }),
+    getProfileById: async () => ({
+      data: { id: "edcbe10f-7efa-4945-be3b-5c3e4ef8f2e2", is_test: true },
+      error: null,
+    }),
+  });
+  const result = await resolveAndMint(
+    { contractor_id: "5ece9e69-91f8-48cd-b4fa-412dec4f8dee" },
+    db,
+    ACTOR_EMAIL,
+  );
+  assertEquals(result.status, 403);
+  assertStringIncludes(String(result.body.error), "#2047");
+});
+
+Deno.test("gh-2047 B: 403 for both Stohler Roofing rows, including the one linked to the primary admin's own auth user", async () => {
+  const rows: Array<{ contractorId: string; userId: string }> = [
+    {
+      contractorId: "8e90ff23-3894-4f67-9ca7-58a044cd986b",
+      userId: "e371c617-8a24-492e-9911-47c85705ebb4",
+    },
+    {
+      contractorId: "ee452a12-c16e-4d30-9d2c-df8128fbce52",
+      userId: "3ea4d929-b916-4cc9-a285-d052df397992",
+    },
+  ];
+  for (const { contractorId, userId } of rows) {
+    const db = fakeDb({
+      getContractorById: async () => ({
+        data: { id: contractorId, user_id: userId, email: "dustin@stohlerroof.com", is_test: true },
+        error: null,
+      }),
+      getProfileById: async () => ({ data: { id: userId, is_test: true }, error: null }),
+    });
+    const result = await resolveAndMint({ contractor_id: contractorId }, db, ACTOR_EMAIL);
+    assertEquals(result.status, 403, `expected 403 for ${contractorId}`);
+    assertStringIncludes(String(result.body.error), "#2047");
+  }
+});
+
+Deno.test("gh-2047 C: 403 via the homeowner user_id path too, when user_id resolves to a denylisted auth user", async () => {
+  const db = fakeDb({
+    getClaimsByUserId: async () => ({
+      data: [{ id: "claim1", is_test: true }],
+      error: null,
+    }),
+    getProfileById: async () => ({
+      data: { id: "edcbe10f-7efa-4945-be3b-5c3e4ef8f2e2", is_test: true },
+      error: null,
+    }),
+  });
+  const result = await resolveAndMint(
+    { user_id: "edcbe10f-7efa-4945-be3b-5c3e4ef8f2e2" },
+    db,
+    ACTOR_EMAIL,
+  );
+  assertEquals(result.status, 403);
+  assertStringIncludes(String(result.body.error), "#2047");
+});
+
+Deno.test("gh-2047 D: a test contractor NOT on the denylist still mints normally (denylist does not overreach)", async () => {
+  const db = fakeDb({
+    getContractorById: async () => ({
+      data: {
+        id: "bb07fc40-3607-4f3f-ac44-dffd4ca95111",
+        user_id: "189b85ad-0ab0-4e54-9083-c51c3ef42a1d",
+        email: "test-contractor@otterquote-internal.test",
+        is_test: true,
+      },
+      error: null,
+    }),
+  });
+  const result = await resolveAndMint(
+    { contractor_id: "bb07fc40-3607-4f3f-ac44-dffd4ca95111" },
+    db,
+    ACTOR_EMAIL,
+  );
+  assertEquals(result.status, 200);
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// CTO36-B1513: missing/invalid caller auth is refused (index.ts's 401
+// path). extractBearerToken is the pure function that path is built on —
+// unit-tested here so this negative control doesn't require a live
+// serve()/fetch listener.
+// ─────────────────────────────────────────────────────────────────────────
+
+Deno.test("extractBearerToken: missing header -> null (401 path)", () => {
+  assertEquals(extractBearerToken(null), null);
+});
+
+Deno.test("extractBearerToken: empty header -> null (401 path)", () => {
+  assertEquals(extractBearerToken(""), null);
+});
+
+Deno.test("extractBearerToken: non-Bearer scheme -> null (401 path)", () => {
+  assertEquals(extractBearerToken("Basic dXNlcjpwYXNz"), null);
+});
+
+Deno.test("extractBearerToken: 'Bearer' with no token -> null (401 path)", () => {
+  assertEquals(extractBearerToken("Bearer "), null);
+});
+
+Deno.test("extractBearerToken: well-formed header -> token", () => {
+  assertEquals(extractBearerToken("Bearer abc.def.ghi"), "abc.def.ghi");
 });
