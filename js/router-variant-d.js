@@ -96,6 +96,11 @@
   var leadId = null;
   var email = null;
   var name = null;
+  // gh-2075 round 2, review report ceo57-review-pr2086-20260921 finding 2:
+  // Back-from-d-name then resubmitting the email must not create a second
+  // leads row / second Meta Lead / second admin alert (leads insert fires
+  // trg_notify_admin_new_router_lead). Guards both.
+  var leadEventFired = false;
 
   // Same per-screen answer bag as arm C keeps (js/router-discovery.js),
   // for the same reason stated there: none of these fields has a column
@@ -279,6 +284,31 @@
       }
       if (!bridge.sb) { bridge.showError('Something went wrong loading the form. Please refresh and try again.'); return; }
 
+      // gh-2075 round 2, review report ceo57-review-pr2086-20260921
+      // finding 2 (blocking, real-browser evidence: role -> email -> Back
+      // -> corrected email produced TWO leads rows, TWO admin alerts, TWO
+      // Meta Lead events): a lead row already exists once `leadId` is
+      // set -- resubmitting here (the realistic trigger is a typo
+      // correction) must PATCH it, not insert again. Arm A already solved
+      // this exact problem with its own sessionStorage resubmit path; arm
+      // C cannot hit it because its contact capture is its LAST screen.
+      // `role !== 'contractor'` guards a case that should not be
+      // reachable in practice (the contractor branch below is terminal --
+      // it redirects away rather than leaving this screen re-enterable --
+      // but the guard costs nothing). d-name's own update_lead_contact
+      // call (which always sends `p_email: email`) is what actually
+      // writes the corrected address -- this branch only updates the
+      // local `email` var and re-sends the role (which may have changed
+      // via Back all the way to d-role and a different tap), then
+      // advances -- go() below still emits d-email's own
+      // router_step_complete exactly once.
+      if (leadId && role !== 'contractor') {
+        email = value;
+        bridge.sb.rpc('set_lead_role', { p_lead_id: leadId, p_role: role }).catch(function () {});
+        go('d-name');
+        return;
+      }
+
       submitBtn.disabled = true;
       submitBtn.textContent = 'Please wait…';
 
@@ -288,8 +318,15 @@
 
         function proceed() {
           // Meta Lead -- same bare call as start.html's own Step 1 and
-          // contractor-join.html:376's precedent, no PII payload.
-          try { fbq('track', 'Lead'); } catch (e) {}
+          // contractor-join.html:376's precedent, no PII payload. Guarded
+          // to fire AT MOST ONCE per page life (gh-2075 round 2 finding
+          // 2) -- the resubmit branch above already returns before
+          // reaching here, but this also covers a bfcache restore or any
+          // other path that could otherwise reach `proceed()` twice.
+          if (!leadEventFired) {
+            leadEventFired = true;
+            try { fbq('track', 'Lead'); } catch (e) {}
+          }
 
           if (role === 'contractor') {
             // #2075: "Contractor role routes to the existing
@@ -373,8 +410,21 @@
     root.appendChild(submitBtn);
 
     function afterPhone() {
-      submitBtn.disabled = false;
-      submitBtn.textContent = 'Continue';
+      // gh-2075 round 2, review report ceo57-review-pr2086-20260921
+      // finding 3 (blocking, real-browser evidence on a 2.5s-delayed
+      // fetch: the button read {disabled:false} 500ms after the first
+      // tap, a second tap produced a duplicate update_lead_contact call
+      // and a phantom d-trades view/complete/view, and corrupted the
+      // back stack): this is the one network wait inside the funnel --
+      // go() below triggers js/router-discovery.js's lazy fetch (see
+      // that file's own top-of-file comment) -- so the button must NOT
+      // re-enable here. It stays disabled/"Please wait..." for the
+      // remainder of this screen's life; on success the screen is
+      // replaced entirely by show(), and on a load failure the go()
+      // wrapper's own bridge.showError(...) already covers it (a fresh
+      // page load is then the recovery path, same as every other
+      // unrecoverable error on this page).
+      //
       // Not emitComplete()'d here -- go() below already emits it (same
       // pattern as d-email/d-name above, and d-professional-industry
       // further down).
@@ -575,12 +625,26 @@
     var RD = window.RouterDiscovery;
     var labels = (window.AgentTypes && window.AgentTypes.CHOOSER_LABELS) || {};
     var order = ['re_agent', 'insurance_agent'];
+    // gh-2075 round 2, review report ceo57-review-pr2086-20260921 finding
+    // 4 (blocking, real-browser evidence: a second tap 150ms after the
+    // first, with set_lead_role delayed 1.5s, produced set_lead_role
+    // {re_agent} twice and a duplicate d-realtor-1 view/complete/view):
+    // renderSingleSelect's rows advance on a single tap by design (see
+    // that function's own comment in js/router-discovery.js) with no
+    // built-in re-entrancy guard, and this is the one screen in this
+    // module with an RPC between the tap and the next screen -- same
+    // class of bug as start.html's own setIndustryButtonsDisabled()
+    // exists to prevent on its own industry picker. C's own c-prof-entry
+    // has no RPC at this point, so it is not exposed there.
+    var busy = false;
     root.appendChild(backButton(goBack));
     RD.renderSingleSelect(root, {
       heading: RD.COPY.profEntryHeading,
       sub: RD.COPY.profEntrySub,
       options: order.map(function (code) { return labels[code] || code; }),
       onSelect: function (idx) {
+        if (busy) return;
+        busy = true;
         partnerIndustry = order[idx - 1];
         // Not emitComplete()'d here -- the go() call inside
         // proceedToTrack() below already emits router_step_complete for

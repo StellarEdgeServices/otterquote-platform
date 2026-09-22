@@ -217,10 +217,10 @@ function runAssignment(opts) {
     threw,
     arm: sandbox.window.__oqVariant,
     replacedUrl,
-    localStorageValue: (() => { try { return lsMap.get('oq_variant_v2') || null; } catch (e) { return null; } })(),
+    localStorageValue: (() => { try { return lsMap.get('oq_variant_v1') || null; } catch (e) { return null; } })(),
     cookieJar: cookieState.jar,
     cookieValue: (() => {
-      const m = cookieState.jar.match(/(?:^|; )oq_variant_v2=([^;]*)/);
+      const m = cookieState.jar.match(/(?:^|; )oq_variant_v1=([^;]*)/);
       return m ? m[1] : null;
     })(),
     lsMap,
@@ -296,8 +296,8 @@ ok(reload2.arm === persistSeed.arm, 'reload #2 (localStorage-store read) returns
 
 // ── Check 3: explicit ?v=c overrides a persisted 'a'. ──
 console.log('\n=== Check 3: explicit override beats a persisted assignment ===');
-const persistedA = new Map([['oq_variant_v2', 'a']]);
-const overrideResult = runAssignment({ search: '?v=c', store: { localStorage: persistedA, cookieJar: 'oq_variant_v2=a' } });
+const persistedA = new Map([['oq_variant_v1', 'a']]);
+const overrideResult = runAssignment({ search: '?v=c', store: { localStorage: persistedA, cookieJar: 'oq_variant_v1=a' } });
 console.log('Persisted arm going in: a | URL: /start?v=c | resulting arm: ' + overrideResult.arm + ' | rewritten URL: ' + overrideResult.replacedUrl);
 ok(overrideResult.arm === 'c', '/start?v=c with a persisted "a" renders c');
 ok(overrideResult.localStorageValue === 'c', 'the override also re-persists to localStorage as c (future loads stay on c)');

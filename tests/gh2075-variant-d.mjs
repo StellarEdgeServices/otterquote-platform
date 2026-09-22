@@ -39,7 +39,7 @@ function ok(cond, label) {
 
 // ── Minimal DOM shim -- only what router-variant-d.js / router-discovery.js
 // actually call. Not a general-purpose DOM. ──
-function makeDom() {
+function makeDom(ctxCell) {
   const registry = {};
   function syncClassName(el) { el.className = el._classes.join(' '); }
 
@@ -108,7 +108,15 @@ function makeDom() {
           // ordering; running it synchronously here would fire the load
           // event before .onload is ever assigned, and the caller's
           // Promise would hang forever.
-          const ctxAtSet = activeCtx;
+          //
+          // ctxCell (not a shared module-level variable) is what makes
+          // this safe when several scenarios' async chains interleave:
+          // each buildScenario() call gets its OWN ctxCell, filled in
+          // once that scenario's vm context exists, so a deferred
+          // callback here always injects into the scenario that actually
+          // owns this <script> element -- never whichever scenario
+          // happened to build ITS OWN context most recently.
+          const ctxAtSet = ctxCell.ctx;
           Promise.resolve().then(() => {
             try {
               let code = null;
@@ -147,13 +155,9 @@ function makeDom() {
   return { document, registry };
 }
 
-// activeCtx is set per-scenario right before router-variant-d.js runs, so
-// the script-src setter above (defined once, used by every scenario) always
-// injects into the CURRENT scenario's context, never a stale one.
-let activeCtx = null;
-
 function buildScenario() {
-  const { document } = makeDom();
+  const ctxCell = {};
+  const { document } = makeDom(ctxCell);
   const routerDRoot = document.createElement('div');
   routerDRoot.setAttribute('id', 'routerDRoot');
 
@@ -184,6 +188,7 @@ function buildScenario() {
     NO_LEAD_ID_DESTINATIONS: {}
   };
 
+  const leadEvents = [];
   const sandbox = {
     document,
     window: {},
@@ -195,19 +200,19 @@ function buildScenario() {
     Array,
     String,
     URLSearchParams,
-    fbq: () => {},
+    fbq: (action, name) => { if (action === 'track' && name === 'Lead') leadEvents.push(true); },
     RegExp
   };
   sandbox.window.document = document;
   const ctx = vm.createContext(sandbox);
-  activeCtx = ctx;
+  ctxCell.ctx = ctx;
   vm.runInContext(variantDSrc, ctx, { filename: 'js/router-variant-d.js' });
   const RouterVariantD = ctx.window.RouterVariantD;
   if (!RouterVariantD || typeof RouterVariantD.init !== 'function') {
     throw new Error('window.RouterVariantD.init was not defined after loading js/router-variant-d.js');
   }
 
-  return { ctx, routerDRoot, bridge, RouterVariantD, trackedEvents, rpcCalls, insertCalls, redirects };
+  return { ctx, routerDRoot, bridge, RouterVariantD, trackedEvents, rpcCalls, insertCalls, redirects, leadEvents };
 }
 
 function flatten(el) {
@@ -339,15 +344,121 @@ function fillAndSubmit(root, inputId, value) {
   }).catch((e) => { console.error('scenario5 error:', e); fail++; });
 })();
 
+// A handful of microtask-queue turns without a real timer -- used by the
+// three round-2 regression scenarios below, which each need to inspect
+// state at a precise point mid-flight (before an in-progress async chain
+// finishes), not just after everything has settled.
+function tick(n) {
+  let p = Promise.resolve();
+  for (let i = 0; i < (n || 1); i++) { p = p.then(() => Promise.resolve()); }
+  return p;
+}
+
+// ══════════════════════ Scenario 6 (gh-2075 round 2, review finding 2):
+// Back from d-name, then resubmitting a corrected email, must PATCH the
+// existing lead -- not insert a second row, not fire a second Meta Lead,
+// not fire set_lead_role's admin-alert trigger a second time ══════════════
+(async function scenario6() {
+  const { routerDRoot, bridge, RouterVariantD, insertCalls, rpcCalls, leadEvents } = buildScenario();
+  RouterVariantD.init(bridge, routerDRoot);
+  findRoleButtons(routerDRoot)[0].dispatchClick(); // Homeowner
+  fillAndSubmit(routerDRoot, 'dEmail', 'typo@example.com');
+  await tick(4);
+  ok(insertCalls.length === 1, 'first email submit inserts exactly one leads row');
+  ok(leadEvents.length === 1, 'first email submit fires exactly one Meta Lead');
+
+  // Now on d-name. Click ITS OWN "<- Back" button (the real user path),
+  // which returns to d-email.
+  const backBtn = flatten(routerDRoot).find((c) => c.tagName === 'BUTTON' && c.className.split(' ').includes('router-back'));
+  ok(!!backBtn, 'd-name renders its own Back button');
+  backBtn.dispatchClick();
+  await tick(1);
+  const emailInputAgain = flatten(routerDRoot).find((c) => c.id === 'dEmail');
+  ok(!!emailInputAgain, 'Back from d-name returns to d-email, freshly rendered');
+
+  // Resubmit a CORRECTED email (the realistic trigger, per the review report).
+  fillAndSubmit(routerDRoot, 'dEmail', 'fixed@example.com');
+  await tick(4);
+
+  ok(insertCalls.length === 1, 'resubmitting a corrected email does NOT insert a second leads row (still 1 total)');
+  ok(leadEvents.length === 1, 'resubmitting does NOT fire a second Meta Lead (still 1 total)');
+  const roleCalls = rpcCalls.filter((c) => c.name === 'set_lead_role');
+  ok(roleCalls.length === 2, 'set_lead_role is called again on resubmit (role re-sent in case it changed), but reuses the SAME lead id');
+  ok(roleCalls.every((c) => c.args.p_lead_id === roleCalls[0].args.p_lead_id), 'both set_lead_role calls target the same lead id -- one row, not two');
+
+  // The corrected email should be the one d-name eventually PATCHes in.
+  fillAndSubmit(routerDRoot, 'dName', 'Jane Smith');
+  await tick(4);
+  const nameRpc = rpcCalls.filter((c) => c.name === 'update_lead_contact').pop();
+  ok(nameRpc.args.p_email === 'fixed@example.com', 'the corrected email (not the typo) is what update_lead_contact PATCHes onto the single lead row');
+})().catch((e) => { console.error('scenario6 error:', e); fail++; });
+
+// ══════════════════════ Scenario 7 (gh-2075 round 2, review finding 3):
+// the d-phone Continue button must NOT re-enable while
+// js/router-discovery.js is still lazy-loading, or a second tap on slow
+// 4G double-emits and corrupts the back stack ══════════════════════
+(async function scenario7() {
+  const { routerDRoot, bridge, RouterVariantD } = buildScenario();
+  RouterVariantD.init(bridge, routerDRoot);
+  findRoleButtons(routerDRoot)[0].dispatchClick(); // Homeowner
+  fillAndSubmit(routerDRoot, 'dEmail', 'jane@example.com');
+  await tick(4);
+  fillAndSubmit(routerDRoot, 'dName', 'Jane Smith');
+  await tick(4);
+
+  const phoneSubmitBtn = flatten(routerDRoot).find((c) => c.tagName === 'BUTTON' && c.textContent === 'Continue');
+  ok(!!phoneSubmitBtn && !phoneSubmitBtn.disabled, 'd-phone\'s Continue starts enabled');
+  phoneSubmitBtn.dispatchClick(); // blank phone -- must not block
+  ok(phoneSubmitBtn.disabled === true, 'Continue disables IMMEDIATELY on tap (synchronous, before any RPC/lazy-load settles)');
+  // One tick: update_lead_contact's stubbed RPC resolves and afterPhone()
+  // runs, which kicks off js/router-discovery.js's lazy load (itself
+  // deferred one more microtask turn by this test's own script-src shim --
+  // see makeDom() above) -- so at THIS exact point the module has not
+  // finished loading and d-phone's own screen (and this same submitBtn)
+  // is still what is rendered.
+  await tick(1);
+  ok(phoneSubmitBtn.disabled === true, 'Continue is STILL disabled one tick later, while the discovery module is still loading (round-2 fix: afterPhone() no longer re-enables it)');
+  ok(phoneSubmitBtn.textContent === 'Please wait\u2026', 'the button still reads "Please wait..." during the lazy-load window, not "Continue"');
+})().catch((e) => { console.error('scenario7 error:', e); fail++; });
+
+// ══════════════════════ Scenario 8 (gh-2075 round 2, review finding 4):
+// double-tapping a d-professional-industry option must fire
+// set_lead_role exactly once and never render the first realtor
+// question twice ══════════════════════
+(async function scenario8() {
+  const { routerDRoot, bridge, RouterVariantD, rpcCalls, trackedEvents } = buildScenario();
+  RouterVariantD.init(bridge, routerDRoot);
+  findRoleButtons(routerDRoot)[1].dispatchClick(); // Professional
+  fillAndSubmit(routerDRoot, 'dEmail', 'agent@example.com');
+  await tick(4);
+  fillAndSubmit(routerDRoot, 'dName', 'Pat Realtor');
+  await tick(4);
+  const phoneSubmitBtn = flatten(routerDRoot).find((c) => c.tagName === 'BUTTON' && c.textContent === 'Continue');
+  phoneSubmitBtn.dispatchClick(); // blank phone
+  await tick(4); // settle into d-professional-industry (discovery lazy-load)
+
+  const industryButtons = flatten(routerDRoot).filter((c) => c.tagName === 'BUTTON' && c.className.split(' ').includes('role-option'));
+  ok(industryButtons.length === 2, 'd-professional-industry renders exactly the 2 industries #2075 names');
+  // Double-tap the SAME option before its own set_lead_role RPC settles.
+  industryButtons[0].dispatchClick();
+  industryButtons[0].dispatchClick();
+  await tick(4);
+
+  const industryRoleCalls = rpcCalls.filter((c) => c.name === 'set_lead_role' && c.args.p_partner_industry);
+  ok(industryRoleCalls.length === 1, 'double-tapping the industry option fires set_lead_role exactly once, not twice (busy flag)');
+  const realtor1Views = trackedEvents.filter((e) => e.name === 'router_step_view' && e.extra.step === 'd-realtor-1');
+  ok(realtor1Views.length === 1, 'd-realtor-1 is entered exactly once -- no duplicate view from the second tap');
+})().catch((e) => { console.error('scenario8 error:', e); fail++; });
+
 Promise.resolve().then(async () => {
-  // Scenarios 3-5 return promises (async submit flows); scenario 5 in
-  // particular needs several microtask turns for the RouterDiscovery lazy
-  // load + render to settle before its own assertions run inline above --
-  // already awaited via the .then chains above. Nothing further to await
-  // here except letting the module-level IIFEs above finish executing,
-  // which they already have by this point (top-level scenario functions
-  // ran synchronously up to their first `await`-equivalent .then()).
-  await new Promise((r) => setTimeout(r, 10));
+  // Scenarios 3-8 are all async (submit flows / multi-tick regression
+  // scenarios); scenario 5 in particular needs several microtask turns
+  // for the RouterDiscovery lazy load + render to settle, and scenarios
+  // 6-8 are full `async function` IIFEs. Draining via a real timer (not
+  // just chained .then()s) guarantees every one of them has finished --
+  // including their own internal `tick()` awaits -- before the summary
+  // below counts pass/fail.
+  await new Promise((r) => setTimeout(r, 25));
 
   console.log('\n=== Summary ===');
   console.log(`${pass} passed, ${fail} failed`);

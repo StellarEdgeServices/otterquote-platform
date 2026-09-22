@@ -149,27 +149,20 @@
      gh-2014 fix round 4 comment on the main IIFE's own variant read). -->
 <script>
 (function () {
-  // gh-2075 (D-327), review comment 5768166723 (Kevin, Code lane,
-  // rw-f35-20260921T215236-k7vd) on issue #2075 -- BLOCKING finding, fixed
-  // here rather than deferred: flipping LIVE_VARIANTS alone does not
-  // re-randomise anyone, because every visitor assigned during the
-  // single-arm ('c'-only) period is persisted under this key for 180 days
-  // and isLive('c') is already true for all of them -- toLiveArm() is a
-  // no-op on return, regardless of what LIVE_VARIANTS says later. Bumping
-  // the key to v2 HERE, in the same PR that adds arm d's code (even
-  // though LIVE_VARIANTS below is not changing yet -- see that var's own
-  // comment), means every visitor re-randomises across effectiveLiveVariants()
-  // under the NEW key exactly once. Because LIVE_VARIANTS is still ['c']
-  // at this point, that one-time re-randomisation still always lands on
-  // 'c' -- this bump has ZERO effect on production traffic by itself.
-  // Its only purpose is to be already-shipped so that the orchestrator's
-  // later LIVE_VARIANTS flip to ['c','d','e'] does not ALSO need a key
-  // bump bundled into it -- the two changes are decoupled on purpose, so
-  // the flip itself stays the single-line change #2074's own comment
-  // always intended. tests/gh2033-variant-assignment.mjs asserts against
-  // this literal string, not a v1/v2 abstraction -- update it there too
-  // if this ever moves again.
-  var KEY = 'oq_variant_v2';
+  // gh-2075 (D-327) round 2, review report ceo57-review-pr2086-20260921
+  // finding 1 (blocking, real-browser evidence: a visitor carrying a
+  // pre-flip key persisted 'c' was served 'c' in 4/4 loads after a
+  // standalone key bump): a key bump on ITS OWN, ahead of the
+  // LIVE_VARIANTS flip, does NOT decouple anything -- every visitor who
+  // reaches /start between THIS merge and the flip gets re-persisted 'c'
+  // under the new key (since LIVE_VARIANTS is still ['c'] the moment they
+  // land), and stays sticky to 'c' after the flip for the same reason
+  // isLive('c') is a no-op that this file's own LIVE_VARIANTS comment
+  // below already documents -- round 1 of this fix produced exactly the
+  // 80/10/10 skew it claimed to prevent. KEY stays 'oq_variant_v1' here;
+  // see LIVE_VARIANTS below for the single block the orchestrator edits
+  // -- the key bump and the live-set flip are ONE change, not two.
+  var KEY = 'oq_variant_v1';
 
   // gh-2074 fix round 2 (PR #2079 review, item 2): KNOWN_ARMS is the
   // single source of truth for which arm letters are syntactically
@@ -210,16 +203,25 @@
   // so every visitor -- persisted or not -- re-randomises across the new
   // live set. Flip this constant WITHOUT the key bump only if a
   // deliberately c-weighted d/e rollout is the actual intent.
+  // ══════════════════ D-327 ORCHESTRATOR FLIP BLOCK ══════════════════
+  // Do NOT flip LIVE_VARIANTS without ALSO bumping KEY (above) in the
+  // SAME deploy -- they are one change, not two (round-2 review finding
+  // 1 on PR #2086: bumping the key early, alone, does nothing but stamp
+  // every pre-flip visitor 'c' under the new key, which then persists
+  // for 180 days regardless of what this constant says later). When
+  // #2075 merges, in ONE commit:
+  //   1. KEY becomes 'oq_variant_v2'            (start.html, above)
+  //   2. LIVE_VARIANTS becomes ['c','d']          (this line)
+  // and when #2076 (arm e) merges, bump again together:
+  //   1. KEY becomes 'oq_variant_v3'
+  //   2. LIVE_VARIANTS becomes ['c','d','e']
+  // This PR (gh-2075) intentionally leaves BOTH constants unflipped, per
+  // #2075's own instruction ("the PR must not change live assignment").
+  // Until the flip, arm d's code below is shipped but unreachable:
+  // toLiveArm() (below) remaps any non-live arm -- including an explicit
+  // ?v=d -- onto the live set, so ?v=d does NOT render arm d pre-flip.
+  // ═════════════════════════════════════════════════════════════════
   var LIVE_VARIANTS = ['c'];
-  // D-327: add 'd' here when #2075 merges (and 'e' when #2076 merges) --
-  // this PR intentionally does NOT flip this constant. The orchestrator
-  // flips it at merge time, per #2075's own instruction ("the PR must not
-  // change live assignment"). Until then arm d's code below is shipped
-  // but unreachable: toLiveArm() (below) remaps any non-live arm --
-  // including an explicit ?v=d -- onto the live set, so ?v=d does NOT
-  // render arm d pre-flip. See this PR's body for how it was tested
-  // instead (a local, uncommitted override of this one line -- never
-  // shipped).
 
   // gh-2074 fix round 2 (PR #2079 review, item 4): guards a misconfigured
   // empty LIVE_VARIANTS from indexing an empty array and writing a
