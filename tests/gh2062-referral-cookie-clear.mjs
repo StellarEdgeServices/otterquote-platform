@@ -5,8 +5,9 @@
  * refreshed unconditionally on every advance pass with a 90-day TTL and
  * never cleared after a claim consumed it (js/auth.js:1295,
  * trade-selector.html's claim writer). A referral id could therefore sit in
- * a browser for up to 90 days and misattribute commission to the wrong
- * partner on a later, unrelated signup — this is the money-path.
+ * a browser long after it should have expired and misattribute
+ * commission to the wrong partner on a later, unrelated signup — this is
+ * the money-path.
  *
  * This test loads the REAL js/cookie-storage.js source into a minimal vm
  * context (mirroring tests/cookie-max-age-400-days.mjs) with a working
