@@ -282,7 +282,38 @@
   try {
     urlArm = validArm(new URLSearchParams(window.location.search).get('v'));
   } catch (e) {}
-  var arm = urlArm ? toLiveArm(urlArm) : null;
+  // gh-2076 (D-327) QA override: an explicit ?v=e&oq_internal=1 renders
+  // that arm directly, bypassing toLiveArm()'s live-set remap, WITHOUT
+  // touching LIVE_VARIANTS/KEY above and WITHOUT changing what a normal
+  // visitor (no oq_internal param) ever sees -- #2076's own instruction
+  // that arm e must be reachable for manual/automated QA before the flip,
+  // the way arm d could not be (see PR #2086's own documented
+  // contradiction: an explicit ?v=d did NOT render arm d pre-flip,
+  // because toLiveArm() remaps every non-live arm unconditionally). Step
+  // 4 below still persists whatever `arm` ends up being to both stores,
+  // but that is harmless here: step 2's own read of a persisted arm on
+  // any LATER, non-oq_internal load still runs it through toLiveArm()
+  // unconditionally, so a stray persisted 'e' cannot leak into a normal
+  // visitor's assignment once this override is not present on the URL.
+  var oqInternalOverride = false;
+  try {
+    // #2088 round 1 item 2: the override is scoped to EXACTLY urlArm ===
+    // 'e' -- not "any urlArm while oq_internal=1" as fix round 1 had it,
+    // which let ?v=a&oq_internal=1 / ?v=b&oq_internal=1 also bypass
+    // toLiveArm() and briefly render A/B outside their own kill-switch,
+    // and which also changed ?v=d's own pre-flip behaviour (documented in
+    // PR #2086 as intentionally NOT bypassing toLiveArm()) whenever a
+    // visitor happened to also carry oq_internal=1. Only 'e' gets the
+    // bypass; every other urlArm (including 'd') still runs through
+    // toLiveArm() exactly as before this PR.
+    oqInternalOverride = urlArm === 'e' && new URLSearchParams(window.location.search).get('oq_internal') === '1';
+  } catch (e) {}
+  // #2088 round 1 item 3: read by insertFreshLead below (via
+  // window.__oqInternalOverride) and by arm E's own bridge, so a walk
+  // taken under this override is written to leads.is_synthetic = true
+  // instead of looking like a real visitor's lead.
+  window.__oqInternalOverride = oqInternalOverride;
+  var arm = urlArm ? (oqInternalOverride ? urlArm : toLiveArm(urlArm)) : null;
 
   // 2. Else a persisted assignment -- localStorage first, cookie fallback,
   //    each in its own try/catch so a throw on one still lets the other run.
@@ -314,13 +345,21 @@
   // usable source for the main IIFE's own variant read.
   window.__oqVariant = arm;
 
-  // 4. Persist to BOTH stores, each independently guarded.
-  try { window.localStorage.setItem(KEY, arm); } catch (e) {}
-  try {
-    var secure = window.location.protocol === 'https:' ? '; Secure' : '';
-    document.cookie = KEY + '=' + arm + '; path=/; max-age=' + (180 * 24 * 60 * 60) +
-      '; SameSite=Lax' + secure;
-  } catch (e) {}
+  // 4. Persist to BOTH stores, each independently guarded -- SKIPPED
+  //    entirely while the #2088 round-1-item-2 QA override is active, so
+  //    a ?v=e&oq_internal=1 walk can never leak arm 'e' into a normal,
+  //    non-override later visit to this same browser (a stale persisted
+  //    'e' would otherwise still be remapped by toLiveArm() on that later
+  //    visit, per step 2 above, but skipping the write is simpler and
+  //    leaves zero trace of the QA walk in either store).
+  if (!oqInternalOverride) {
+    try { window.localStorage.setItem(KEY, arm); } catch (e) {}
+    try {
+      var secure = window.location.protocol === 'https:' ? '; Secure' : '';
+      document.cookie = KEY + '=' + arm + '; path=/; max-age=' + (180 * 24 * 60 * 60) +
+        '; SameSite=Lax' + secure;
+    } catch (e) {}
+  }
 
   // 5. Rewrite the URL, preserving every existing query parameter.
   try {
@@ -577,6 +616,15 @@
          only inside this file's own variant === 'd' branch, same point that
          branch hides #step1/#step2/#step2a/#step3/#routerProgress. -->
     <div id="routerDRoot" hidden></div>
+
+    <!-- ═══════════ Variant E — role-first, homeowner path led by
+         exposition (gh-2076, D-327) ═══════════ -->
+    <!-- Empty by design, same convention as #routerCRoot/#routerDRoot
+         above: js/router-variant-e.js owns all rendering inside this
+         element once loaded. Hidden by default; unhidden only inside
+         this file's own variant === 'e' branch, same point that branch
+         hides #step1/#step2/#step2a/#step3/#routerProgress. -->
+    <div id="routerERoot" hidden></div>
   </div>
 </main>
 
@@ -638,7 +686,7 @@
     // stay hidden the entire time, including the one indirect path here --
     // redirectTo() below calls renderStep(3), and the module calls
     // redirectTo() by reference per the bridge contract.
-    if (ARM_C || ARM_D) return;
+    if (ARM_C || ARM_D || ARM_E) return;
     Object.keys(steps).forEach(function (k) { steps[k].classList.toggle('active', k === String(key)); });
     // gh-2016: the 3-segment progress bar is hardcoded to A's screen ORDER,
     // not just its key names -- on arm B, contact (1) is the middle screen
@@ -807,6 +855,18 @@
   // gates ship dormant, exactly like arm A/B's own code already does.
   var ARM_D = variant === 'd';
 
+  // gh-2076 (D-327): arm E (role-first, arm C's own screens, with the
+  // homeowner path led by exposition -- see js/router-variant-e.js's own
+  // top-of-file comment). Same reasoning as ARM_C/ARM_D immediately
+  // above -- js/router-variant-e.js owns its own sequencer/rendering
+  // entirely, reached through its own bridge assembled near the end of
+  // this IIFE. Unreachable pre-flip the same way ARM_D is, EXCEPT
+  // through the ?v=e&oq_internal=1 QA override this file's own head
+  // script adds (see that script's own comment) -- LIVE_VARIANTS above
+  // is still ['c','d'], so `variant === 'e'` is false for every visitor
+  // who does not carry that override.
+  var ARM_E = variant === 'e';
+
   // B's step vocabulary, deliberately non-colliding with A's 1/2/2a/3
   // (#2016 control 4). The arms ask DIFFERENT questions at the same
   // ordinal, so a shared token would produce a funnel where arm A's step 2
@@ -906,10 +966,19 @@
   }
   document.addEventListener('DOMContentLoaded', _oqFlushTrackQueue);
 
-  function trackRouter(name, extra) {
+  // #2088 round 2 leftover (item 9): `variantOverride` lets a caller tag
+  // an event with a DIFFERENT arm than this page's own `variant` closure
+  // var -- used ONLY by the arm-E-script-load-failure fallback bridge
+  // below, so a visitor who silently falls back from E to C's own
+  // experience gets C's own step tokens tagged variant='c', not 'e'
+  // (which would otherwise collapse arm C's real funnel and arm E's
+  // fallback-to-C funnel into the same GA4/BigQuery column). Every other
+  // caller omits it and gets the page's own `variant`, unchanged.
+  function trackRouter(name, extra, variantOverride) {
     try {
       var p = extra || {};
-      if (variant) { p.variant = variant; }
+      var v = variantOverride || variant;
+      if (v) { p.variant = v; }
       if (typeof gtag === 'function') {
         gtag('event', name, p);
       } else {
@@ -966,7 +1035,23 @@
   // is the same client-generated-id insert Step 1 already used for a
   // brand-new visitor, factored out so a stale/prefilled/expired lead id
   // can fall back to it instead of the visitor's data vanishing.
-  function insertFreshLead(name, email, phoneDigits) {
+  // #2088 round 1 item 3: `isSynthetic`, when true (arm E passes
+  // bridge.oqInternalOverride, which is only ever true while the
+  // ?v=e&oq_internal=1 QA override -- see that override's own comment
+  // above -- is active), sets leads.is_synthetic = true on the insert.
+  // The column already exists (migration
+  // 20260920195654_gh2055_add_notifications_suppressed_and_is_synthetic
+  // .sql) and the anon INSERT policy on `leads` is WITH CHECK (true), so
+  // no RPC or schema change is needed to set it client-side -- confirmed
+  // by reading that migration directly rather than assuming. Every other
+  // caller (arms A/B/C/D, and arm E outside the override) omits the 4th
+  // argument, so `isSynthetic` is undefined/false and the column is left
+  // out of the payload entirely -- unchanged behaviour, unchanged default
+  // (NULL) for every real lead.
+  // #2088 round 2 leftover (item 9): `variantOverride`, same reasoning
+  // as trackRouter's own -- used only by the arm-E-load-failure
+  // fallback bridge so THAT insert's leads.variant is 'c', not 'e'.
+  function insertFreshLead(name, email, phoneDigits, isSynthetic, variantOverride) {
     var newId = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : (
       'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
         var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
@@ -974,7 +1059,7 @@
       })
     );
     var attr = collectAttribution();
-    return ensureSb().from('leads').insert({
+    var payload = {
       id: newId,
       name: name,
       email: email,
@@ -987,8 +1072,10 @@
       utm_term: attr.utm_term,
       fbclid: attr.fbclid,
       gclid: attr.gclid,
-      variant: variant
-    }).then(function (res) {
+      variant: variantOverride || variant
+    };
+    if (isSynthetic) { payload.is_synthetic = true; }
+    return ensureSb().from('leads').insert(payload).then(function (res) {
       if (res && res.error) throw res.error;
       setStoredLeadId(newId);
       return newId;
@@ -1052,6 +1139,15 @@
     var routerProgressElD = document.getElementById('routerProgress');
     if (routerProgressElD) routerProgressElD.hidden = true;
     if (routerDRoot) routerDRoot.hidden = false;
+  }
+
+  // gh-2076 (D-327): same treatment as arms C/D immediately above.
+  var routerERoot = document.getElementById('routerERoot');
+  if (ARM_E) {
+    Object.keys(steps).forEach(function (k) { steps[k].classList.remove('active'); });
+    var routerProgressElE = document.getElementById('routerProgress');
+    if (routerProgressElE) routerProgressElE.hidden = true;
+    if (routerERoot) routerERoot.hidden = false;
   }
 
   // ── History: Step 2 and Step 2a each get their own history entry (pushed
@@ -1723,6 +1819,92 @@
       showError('Something went wrong loading this page. Please refresh and try again.');
     };
     document.body.appendChild(routerDScript);
+  }
+
+  // gh-2076 (D-327): arm E's bridge -- same shape/reasoning as arms C/D
+  // immediately above. js/router-variant-e.js is loaded directly (same
+  // wiring as js/router-variant-d.js) -- it lazy-loads js/router-
+  // discovery.js itself, on demand, at its own init() (see that file's
+  // own comment for why it cannot defer that fetch past its first screen
+  // the way arm D does: arm E's own first screen IS arm C's role screen).
+  if (ARM_E) {
+    // #2088 round 1 item 3: read once here (not inside the bridge getter)
+    // since window.__oqInternalOverride is set once, synchronously, by
+    // the head script above and never changes for the life of this page.
+    var oqInternalOverrideFlag = !!window.__oqInternalOverride;
+    var routerEBridge = {
+      get sb() { return ensureSb(); },
+      trackRouter: trackRouter,
+      collectAttribution: collectAttribution,
+      insertFreshLead: insertFreshLead,
+      appendParams: appendParams,
+      redirectTo: redirectTo,
+      showError: showError,
+      ROLE_DESTINATIONS: ROLE_DESTINATIONS,
+      PARTNER_INDUSTRY_DESTINATIONS: PARTNER_INDUSTRY_DESTINATIONS,
+      NO_LEAD_ID_DESTINATIONS: NO_LEAD_ID_DESTINATIONS,
+      oqInternalOverride: oqInternalOverrideFlag
+    };
+    // #2088 round 2 leftover (item 9): a SEPARATE bridge for the
+    // script-load-failure fallback below -- reusing routerEBridge there
+    // (round 1's own fix) ran arm C's own js/router-discovery.js with a
+    // bridge whose trackRouter/insertFreshLead both tag events/rows with
+    // THIS page's `variant` ('e'), so a visitor who silently fell back
+    // from E to C's real experience had C's own 'c-*' steps and leads
+    // row recorded as variant='e' -- indistinguishable from an actual
+    // arm-E run in analytics/the leads table. Every field is identical to
+    // routerEBridge except trackRouter/insertFreshLead, which pass 'c' as
+    // their own variant override (see those two functions' own comments)
+    // -- oqInternalOverride/is_synthetic threading is unaffected, since
+    // that argument is unrelated to which arm a row/event is tagged with.
+    var routerCFallbackBridge = {
+      get sb() { return ensureSb(); },
+      trackRouter: function (name, extra) { return trackRouter(name, extra, 'c'); },
+      collectAttribution: collectAttribution,
+      insertFreshLead: function (nm, em, ph, isSynthetic) { return insertFreshLead(nm, em, ph, isSynthetic, 'c'); },
+      appendParams: appendParams,
+      redirectTo: redirectTo,
+      showError: showError,
+      ROLE_DESTINATIONS: ROLE_DESTINATIONS,
+      PARTNER_INDUSTRY_DESTINATIONS: PARTNER_INDUSTRY_DESTINATIONS,
+      NO_LEAD_ID_DESTINATIONS: NO_LEAD_ID_DESTINATIONS,
+      oqInternalOverride: oqInternalOverrideFlag
+    };
+    var routerEScript = document.createElement('script');
+    routerEScript.src = 'js/router-variant-e.js';
+    routerEScript.onload = function () {
+      if (window.RouterVariantE && typeof window.RouterVariantE.init === 'function') {
+        window.RouterVariantE.init(routerEBridge, routerERoot);
+      } else {
+        showError('Something went wrong loading this page. Please refresh and try again.');
+      }
+    };
+    // Nit (PR #2088 round 1): a script-load failure (network hiccup,
+    // ad-blocker, CDN outage on this same-origin file) used to strand the
+    // visitor on an empty panel. Arm C's own router-discovery.js is
+    // already the fallback module for the professional/contractor
+    // tracks this arm reuses, so on a load failure this now falls all the
+    // way back to arm C's own experience (its full role-first flow)
+    // rather than an error message -- a visitor still completes a router,
+    // just not in E's homeowner-exposition variant. Runs with
+    // routerCFallbackBridge (item 9 above), NOT routerEBridge, so its
+    // rows/events are tagged variant='c'.
+    routerEScript.onerror = function () {
+      var fallbackScript = document.createElement('script');
+      fallbackScript.src = 'js/router-discovery.js';
+      fallbackScript.onload = function () {
+        if (window.RouterDiscovery && typeof window.RouterDiscovery.init === 'function') {
+          window.RouterDiscovery.init(routerCFallbackBridge, routerERoot);
+        } else {
+          showError('Something went wrong loading this page. Please refresh and try again.');
+        }
+      };
+      fallbackScript.onerror = function () {
+        showError('Something went wrong loading this page. Please refresh and try again.');
+      };
+      document.body.appendChild(fallbackScript);
+    };
+    document.body.appendChild(routerEScript);
   }
 })();
 </script>

@@ -327,6 +327,40 @@
     contractorQ5Text: 'Our jobs arrive pre-scoped: the homeowner is qualified, the measurements are done, and you bid against a known scope. It costs nothing to bid. A platform fee applies only when the homeowner signs your contract, and the exact dollar amount for that job is shown to you before you submit your bid. Does that fit how you want to grow?'
   };
 
+  // ── gh-2088 (PR #2088 round 1, item 6): export-only data describing arm
+  // C's own professional-track structure, so a caller (js/router-variant-e.js)
+  // can drive these exact questions generically instead of forking each one
+  // into its own hand-written renderer. Nothing here is read by arm C's own
+  // RENDERERS below -- they keep their existing hand-written form, byte for
+  // byte, so this is purely additive and changes no behaviour for arm C.
+  // PARTNER_INDUSTRY_ORDER duplicates RENDERERS['c-prof-entry']'s own local
+  // `order` array literal (kept separate, not refactored to share one
+  // variable, so this addition cannot alter that screen's existing,
+  // already-shipped behaviour) -- the two must be kept in sync by hand if
+  // arm C's own industry order ever changes.
+  var PARTNER_INDUSTRY_ORDER = ['re_agent', 'insurance_agent', 'home_inspector', 'adjuster', 'other'];
+  var REALTOR_TRACK = [
+    { headingKey: 'realtorQ1Heading', optionsKey: 'realtorQ1Options', answerKey: 'realtorQ1' },
+    { headingKey: 'realtorQ2Heading', optionsKey: 'realtorQ2Options', answerKey: 'realtorQ2' },
+    { headingKey: 'realtorQ3Heading', optionsKey: 'realtorQ3Options', answerKey: 'realtorQ3' },
+    { headingKey: 'realtorQ4Heading', optionsKey: 'realtorQ4Options', answerKey: 'realtorQ4' }
+  ];
+  var INSURANCE_TRACK = [
+    { headingKey: 'insQ1Heading', optionsKey: 'insQ1Options', answerKey: 'insQ1' },
+    { headingKey: 'insQ2Heading', optionsKey: 'insQ2Options', answerKey: 'insQ2' },
+    { headingKey: 'insQ3Heading', optionsKey: 'insQ3Options', answerKey: 'insQ3' },
+    { headingKey: 'insQ4Heading', optionsKey: 'insQ4Options', answerKey: 'insQ4' },
+    { headingKey: 'insQ5Heading', optionsKey: 'insQ5Options', answerKey: 'insQ5' },
+    { headingKey: 'insQ6Heading', optionsKey: 'insQ6Options', answerKey: 'insQ6' },
+    { headingKey: 'insQ7Heading', optionsKey: 'insQ7Options', answerKey: 'insQ7' }
+  ];
+  var CONTRACTOR_TRACK = [
+    { headingKey: 'contractorQ1Heading', optionsKey: 'contractorQ1Options', answerKey: 'contractorQ1' },
+    { headingKey: 'contractorQ2Heading', optionsKey: 'contractorQ2Options', answerKey: 'contractorQ2' },
+    { headingKey: 'contractorQ3Heading', optionsKey: 'contractorQ3Options', answerKey: 'contractorQ3' },
+    { headingKey: 'contractorQ4Heading', optionsKey: 'contractorQ4Options', answerKey: 'contractorQ4' }
+  ];
+
   // ── Small DOM helpers. Reuse the CSS classes start.html's own <style>
   // block already defines (.role-options/.role-option/.router-sub/
   // .form-group/.form-label/.form-input/.field-error/.router-btn/
@@ -581,7 +615,14 @@
 
       var phoneDigits = phoneRaw ? normalizePhone(phoneRaw) : null; // gh-2042
 
-      bridge.insertFreshLead(name, email, phoneDigits).then(function (newId) {
+      // gh-2088 (PR #2088 round 2 leftover, item 9): thread
+      // bridge.oqInternalOverride the same way renderPartnerContact
+      // already does -- undefined/false on arm C's own normal bridge (no
+      // behavior change there), true only when arm E's own
+      // router-variant-e.js script failed to load and start.html fell
+      // back to running THIS module under the ?v=e&oq_internal=1 QA
+      // override, so that walk's homeowner lead is flagged synthetic too.
+      bridge.insertFreshLead(name, email, phoneDigits, bridge.oqInternalOverride).then(function (newId) {
         // gh-2017: leads_force_safe_insert_defaults() forces role NULL on
         // every raw insert regardless of arm, so this RPC is mandatory
         // here exactly as it is on arms A/B -- not extra work this arm
@@ -882,7 +923,14 @@
 
       var phoneDigits = phoneRaw ? normalizePhone(phoneRaw) : null; // gh-2042
 
-      bridge.insertFreshLead(name, email, phoneDigits).then(function (newId) {
+      // gh-2088 (PR #2088 round 1, item 3): `bridge.oqInternalOverride` is
+      // undefined on arm C's own bridge (start.html never sets it there) --
+      // this trailing arg is a no-op for every existing arm C call site.
+      // It exists only so a bridge that DOES set it (js/router-variant-e.js's
+      // own bridge, only while the ?v=e&oq_internal=1 QA override is active)
+      // can flag a pre-flip QA walk's lead as synthetic without a schema/RPC
+      // change -- see insertFreshLead's own comment in start.html.
+      bridge.insertFreshLead(name, email, phoneDigits, bridge.oqInternalOverride).then(function (newId) {
         var payload = { p_lead_id: newId, p_role: cfg.role };
         if (cfg.partnerIndustry) payload.p_partner_industry = cfg.partnerIndustry;
 
@@ -1102,6 +1150,16 @@
   // D's; D prepends its own back button before calling these wrappers
   // instead. COPY/heading/bodyText/continueButton are pure (no `root`
   // read) and exported directly.
+  // gh-2088 (PR #2088 round 1, item 6): lets a caller module (js/router-
+  // variant-e.js) point this module's own `bridge` at ITS bridge object,
+  // so the exported renderPartnerContact/track renderers below -- which
+  // read `bridge` internally, the same as every one of arm C's own
+  // screens does -- work without that caller ever invoking this module's
+  // own init() (which would also call show('c-entry') and render arm C's
+  // own screens into whatever root was passed). Arm C itself never calls
+  // this -- its own init() sets `bridge` directly, unchanged.
+  function setBridge(injectedBridge) { bridge = injectedBridge; }
+
   function withRoot(targetRoot, fn) {
     var savedRoot = root;
     root = targetRoot;
@@ -1110,12 +1168,24 @@
 
   window.RouterDiscovery = {
     init: init,
+    setBridge: setBridge,
     COPY: COPY,
+    PARTNER_INDUSTRY_ORDER: PARTNER_INDUSTRY_ORDER,
+    REALTOR_TRACK: REALTOR_TRACK,
+    INSURANCE_TRACK: INSURANCE_TRACK,
+    CONTRACTOR_TRACK: CONTRACTOR_TRACK,
     heading: heading,
     bodyText: bodyText,
     continueButton: continueButton,
     renderMultiSelect: function (targetRoot, cfg) { withRoot(targetRoot, function () { renderMultiSelect(cfg); }); },
     renderSingleSelect: function (targetRoot, cfg) { withRoot(targetRoot, function () { renderSingleSelect(cfg); }); },
-    renderDisqualifier: function (targetRoot, cfg) { withRoot(targetRoot, function () { renderDisqualifier(cfg); }); }
+    renderDisqualifier: function (targetRoot, cfg) { withRoot(targetRoot, function () { renderDisqualifier(cfg); }); },
+    // gh-2088 (PR #2088 round 1, item 6): exports arm C's own
+    // renderPartnerContact (name/email/phone capture + insertFreshLead +
+    // set_lead_role + redirect) so js/router-variant-e.js's professional/
+    // contractor tracks consume this one implementation instead of a
+    // forked copy of it. Same withRoot wrapper as the three renderers
+    // above -- see that function's own comment for why it is safe.
+    renderPartnerContact: function (targetRoot, cfg) { withRoot(targetRoot, function () { renderPartnerContact(cfg); }); }
   };
 })();

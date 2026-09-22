@@ -400,6 +400,41 @@ if (LIVE_VARIANTS.length === 1) {
     '?v=b + replaceState throwing yields variant="' + LIVE_VARIANTS[0] + '" (today\'s single-live-arm LIVE_VARIANTS)');
 }
 
+// ── Check 8 (gh-2088 round 2, item 10): the ?v=e&oq_internal=1 QA
+// override (gh-2076/#2088) is scoped to EXACTLY urlArm==='e' and is NEVER
+// persisted to localStorage/cookie -- evaluated here by running the REAL,
+// extracted head script (the same `assignmentSrc` every other check in
+// this file runs), not a reimplementation of its logic. Any OTHER urlArm
+// paired with oq_internal=1 must behave exactly as if oq_internal were
+// absent (round 1's own bug let ?v=a&oq_internal=1 / ?v=b&oq_internal=1
+// also bypass toLiveArm() and briefly render a killed-off arm). ──
+console.log('\n=== Check 8: ?v=e&oq_internal=1 QA override -- scoped to arm e only, never persisted ===');
+{
+  const r = runAssignment({ search: '?v=e&oq_internal=1' });
+  ok(r.threw === null, '?v=e&oq_internal=1 -- the head script runs without throwing');
+  ok(r.arm === 'e', '?v=e&oq_internal=1 -- window.__oqVariant is exactly \'e\' (the override bypasses toLiveArm())');
+  ok(r.localStorageValue === null, '?v=e&oq_internal=1 -- the override is NEVER persisted to localStorage');
+  ok(r.cookieValue === null, '?v=e&oq_internal=1 -- the override is NEVER persisted to the cookie');
+}
+{
+  // ?v=a&oq_internal=1 -- must NOT bypass toLiveArm(); 'a' is not live, so
+  // it is re-mapped to a live arm exactly as a plain ?v=a would be, and
+  // (since this combination gets no override at all) persists normally.
+  const r = runAssignment({ search: '?v=a&oq_internal=1' });
+  ok(r.arm !== 'a', '?v=a&oq_internal=1 -- does NOT bypass toLiveArm() -- arm a is still remapped to a live arm');
+  ok(LIVE_VARIANTS.indexOf(r.arm) !== -1, '?v=a&oq_internal=1 -- remapped to a LIVE arm, same as plain ?v=a would be');
+  ok(r.localStorageValue === r.arm, '?v=a&oq_internal=1 -- persists normally to localStorage (no override branch taken)');
+}
+if (LIVE_VARIANTS.indexOf('d') !== -1) {
+  // ?v=d&oq_internal=1 -- 'd' is itself live today, so this must behave
+  // exactly like a plain ?v=d (persisted, no override branch taken) --
+  // PR #2086's own documented pre-flip ?v=d behavior stays untouched by
+  // this PR regardless of oq_internal.
+  const r = runAssignment({ search: '?v=d&oq_internal=1' });
+  ok(r.arm === 'd', '?v=d&oq_internal=1 -- behaves exactly like plain ?v=d (d is already live)');
+  ok(r.localStorageValue === 'd', '?v=d&oq_internal=1 -- persists normally, same as plain ?v=d');
+}
+
 console.log('\n=== Summary ===');
 console.log(pass + ' passed, ' + fail + ' failed');
 process.exit(fail === 0 ? 0 : 1);
