@@ -1860,6 +1860,18 @@
       renderStep(ENTRY_STEP);
       leadId = null;
       try { sessionStorage.removeItem(LEAD_ID_STORAGE_KEY); } catch (e3) {}
+      // gh-2096 REVIEW fix (PR #2114, comment 5782483911): abandonSuppressedByNav
+      // is set once, permanently, by redirectTo() the first time this
+      // visitor completes the funnel -- a bfcache restore (this handler's
+      // own comment above: Android/iOS back-gesture from
+      // app.otterquote.com/get-started or a partner-*.html page, back to
+      // this document) resurrects the SAME page instance with that flag
+      // still true, which silently suppressed router_step_abandoned for
+      // the rest of this page's life even after a genuine later
+      // abandonment. Reset it here alongside the other per-visit abandon
+      // state (abandonCurrentStep/abandonFiredForView, both cleared by
+      // renderStep(ENTRY_STEP) above via its own trackRouter call).
+      abandonSuppressedByNav = false;
     }
   });
 
