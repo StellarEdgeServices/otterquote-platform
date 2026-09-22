@@ -162,7 +162,7 @@
   // 80/10/10 skew it claimed to prevent. KEY stays 'oq_variant_v1' here;
   // see LIVE_VARIANTS below for the single block the orchestrator edits
   // -- the key bump and the live-set flip are ONE change, not two.
-  var KEY = 'oq_variant_v2'; // D-327 flip 1/2 (2026-09-22): D live
+  var KEY = 'oq_variant_v3'; // D-327 flip 1/2 (2026-09-22): D+E live
 
   // gh-2074 fix round 2 (PR #2079 review, item 2): KNOWN_ARMS is the
   // single source of truth for which arm letters are syntactically
@@ -224,7 +224,7 @@
   // file itself (never a hardcoded copy) -- the flip above is genuinely
   // the only edit needed; that test needs none.
   // ═════════════════════════════════════════════════════════════════
-  var LIVE_VARIANTS = ['c','d']; // D-327 flip 2/2 (2026-09-22): Variant D live beside C; E follows as v3
+  var LIVE_VARIANTS = ['c','d','e']; // D-327 flip 2/2 (2026-09-22): Variants D and E live beside C
 
   // gh-2074 fix round 2 (PR #2079 review, item 4): guards a misconfigured
   // empty LIVE_VARIANTS from indexing an empty array and writing a
