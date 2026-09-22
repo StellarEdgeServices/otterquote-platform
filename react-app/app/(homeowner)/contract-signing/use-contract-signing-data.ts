@@ -297,30 +297,49 @@ export async function createHomeownerEnvelope(args: {
  * (contract-signing.html:1645-1667): prefer the quote id, else key on the claim +
  * contractor. Errors are logged, not thrown — the redirect proceeds regardless,
  * exactly as the static did (the webhook is the source of truth).
+ *
+ * gh-1940 fix2 (cto32-review-pr1979-20260915.md, finding N4): now returns
+ * whether the write actually succeeded, so the caller (page.tsx) can skip
+ * firing the `contract_signed` funnel event on a failed write instead of
+ * counting a signature that was never durably recorded. Still never
+ * throws/rejects — a `false` return is the failure signal, not an
+ * exception — and the redirect still proceeds regardless, unchanged.
  */
 export async function recordHomeownerSigned(args: {
   claimId: string;
   quoteId: string | null;
   contractorId: string | null;
   signedAt: string;
-}): Promise<void> {
+}): Promise<boolean> {
   try {
     if (args.quoteId) {
       const { error } = await supabase
         .from('quotes')
         .update({ homeowner_signed_at: args.signedAt })
         .eq('id', args.quoteId);
-      if (error) console.error('Error updating homeowner_signed_at:', error);
+      if (error) {
+        console.error('Error updating homeowner_signed_at:', error);
+        return false;
+      }
+      return true;
     } else if (args.contractorId) {
       const { error } = await supabase
         .from('quotes')
         .update({ homeowner_signed_at: args.signedAt })
         .eq('claim_id', args.claimId)
         .eq('contractor_id', args.contractorId);
-      if (error) console.error('Error updating homeowner_signed_at:', error);
+      if (error) {
+        console.error('Error updating homeowner_signed_at:', error);
+        return false;
+      }
+      return true;
     }
+    // Neither id present — nothing to write, but that is not itself a
+    // write FAILURE (matches the pre-fix2 behavior of resolving cleanly).
+    return true;
   } catch (err) {
     console.error('Error updating claim:', err);
+    return false;
   }
 }
 

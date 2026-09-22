@@ -1,6 +1,37 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<!-- gh-1994 fix round 1 (REVIEW): capture ?lead=<uuid> and strip it from the
+     visible URL via history.replaceState BEFORE any analytics loader below
+     (js/ga-gate.js, js/meta-pixel-gate.js -- and any third-party script they
+     load, e.g. gtag.js/fbevents.js/clarity.js) executes, so no GA4, Meta
+     Pixel or Clarity beacon -- including each library's own automatic
+     page_view/pageview call, which reads the CURRENT URL at the moment that
+     library's script runs -- can ever record `lead=<uuid>`. This must stay
+     the first script in <head>, above Sentry and everything else -- if any
+     loader executes first and fires its own automatic page_view/pageview
+     call before this strip runs, that beacon would still capture
+     `?lead=<uuid>` even though every later beacon on the same page load
+     would not (fix round 3: fixed this comment's own garbled sentence,
+     which previously described neither of these things clearly). The
+     bottom-of-page prefill script below reads
+     window.__oqRouterLeadId instead of re-parsing location.search, since by
+     the time it runs the URL no longer carries `lead`. -->
+<script>
+(function () {
+  try {
+    var params = new URLSearchParams(window.location.search);
+    var lead = params.get('lead');
+    if (lead) {
+      window.__oqRouterLeadId = lead;
+      params.delete('lead');
+      var qs = params.toString();
+      var newUrl = window.location.pathname + (qs ? '?' + qs : '') + window.location.hash;
+      history.replaceState(history.state, '', newUrl);
+    }
+  } catch (e) { /* URL API unavailable: prefill simply won't run this load */ }
+})();
+</script>
 <!-- Sentry Error Monitoring -->
 <script
   src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
@@ -45,6 +76,7 @@
 
     <!-- Google Analytics -->
     <script src="/js/ga-gate.js"></script>
+<script src="/js/meta-pixel-gate.js"></script>
     <script>gtag('config', 'G-D1Y1TLGEFY');</script>
 <!-- Microsoft Clarity (wwr7qlk8g5) is loaded by /js/ga-gate.js, behind the same production-host gate as GA4 (gh-1619). Do not add a per-page loader. -->
 
@@ -1084,6 +1116,13 @@
                 campaign: utmContext.campaign || undefined,
                 content:  utmContext.content  || undefined,
             });
+
+            // gh-2006: intentionally no Meta Lead call in this function.
+            // It only runs when window.CONFIG.DEMO_MODE is true, and
+            // js/config.js:116 sets DEMO_MODE: false — this branch is dead
+            // on production. A Lead call here would never fire live, and
+            // leaving it in place made the "0 -> 6 Lead calls" count in
+            // #2006 read as one higher than what is actually live (5).
         }
 
         // ---------------------------------------------------------------
@@ -1220,6 +1259,19 @@
                     campaign: utm.campaign || undefined,
                     content:  utm.content  || undefined,
                 });
+
+                // gh-2006: intentionally no Meta Lead call on this path.
+                // This code runs on the page load that completes Google
+                // OAuth, whose URL fragment carries access_token/refresh_token/
+                // provider_token. js/meta-pixel-gate.js's urlHasAuthToken check
+                // (gh-1969) returns before fbevents.js ever loads on that load —
+                // a real security control (leaking a live Supabase token into
+                // Meta's `dl` param), not a bug, and out of scope to weaken. The
+                // gate's fbq stub still reports `loaded = true` (gh-2000 trap),
+                // so a call here would appear to work while silently never
+                // reaching Meta. Net effect: a partner who signs up via Google
+                // is deliberately unattributed to Meta. Recorded decision, not
+                // an oversight — see #2006 comment 5752218215.
 
                 window.location.replace('/partner-dashboard.html');
             } catch (err) {
@@ -1382,6 +1434,12 @@
                     content:  utmContext.content  || undefined,
                 });
 
+                // gh-2006: Meta Lead — literal event name (not a custom
+                // event) so the ad set's Lead-optimized creatives get
+                // credit; same bare, guarded call as start.html's
+                // router_contact_submitted precedent.
+                try { fbq('track', 'Lead'); } catch (e) {}
+
                 if (signUpResult && signUpResult.session) {
                     // Auto-confirmed session — go straight to the dashboard.
                     window.location.href = '/partner-dashboard.html';
@@ -1425,5 +1483,42 @@
 
 <!-- Referral landing page link for SEO crawlability -->
 <p style="text-align:center;font-size:0.85rem;color:var(--slate);padding:8px 0 16px;"><a href="/ref-insurance.html" id="seoRefLink" style="color:var(--amber);">Homeowner referral landing page</a></p>
+<!-- gh-1994: router prefill -- reads ?lead=<uuid> (no PII in the URL) set by
+     otterquote.com/start.html and fills name/email/phone via the
+     get_lead_prefill() SECURITY DEFINER RPC (see
+     supabase/migrations/20260916132127_gh1994_router_leads_columns.sql,
+     not applied by that PR). Prefers a page-level `window.sb` if one is already declared,
+     otherwise falls back to its own local anon client, since not every
+     destination page reliably has `window.sb` set by the time this script
+     runs (js/supabase-client.js is not included here). Silent no-op when
+     the param is absent, the migration is not yet applied, or the lookup
+     returns no row (expired >30 min -- fix round 3: corrected from a stale
+     >60 min, tightened in fix round 1 -- already redeemed once, or unknown
+     id) -- never blocks manual entry, per #1994 item 3 ("prefill without
+     PII in URLs"). -->
+<script>
+(function () {
+  try {
+    var leadId = window.__oqRouterLeadId;
+    if (!leadId) return;
+    if (typeof supabase === 'undefined' || typeof CONFIG === 'undefined' ||
+        !CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_ANON) return;
+    var _sb = window.sb || supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
+    _sb.rpc('get_lead_prefill', { p_lead_id: leadId }).then(function (res) {
+      var row = res && res.data && res.data[0];
+      if (!row) return; // expired, unknown id, or migration not applied yet
+      var setVal = function (id, val) {
+        if (!val) return;
+        var el = document.getElementById(id);
+        if (el && !el.value) el.value = val;
+      };
+      setVal('fullName', row.name);
+      setVal('email', row.email);
+      setVal('phone', row.phone);
+    }).catch(function () { /* gh-1994 prefill is a nicety, never block signup */ });
+  } catch (e) { /* gh-1994 prefill is a nicety, never block signup */ }
+})();
+</script>
+
 </body>
 </html>

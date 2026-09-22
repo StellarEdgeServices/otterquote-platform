@@ -14,11 +14,18 @@
  * -> jobid 20 | "*(slash)30 * * * *" | send-homeowner-next-steps — the literal
  * cron string is written with "(slash)" in place of "/" only because a star
  * followed by a slash would close this block comment. Every THIRTY minutes,
- * twice as often as this comment claimed until gh-1786 corrected it. As of
- * 2026-09-07 that job is `active = false`: it was disabled deliberately (D-320's
- * own recommendation, Dustin's word) so nothing sends until the opt-out below is
- * DEPLOYED. Re-enabling it is `select cron.alter_job(20, active := true);` and
- * waits on that deploy. Invoked with an empty POST body.
+ * twice as often as this comment claimed until gh-1786 corrected it. From
+ * 2026-09-07 to 2026-09-16 that job was `active = false` — disabled
+ * deliberately (D-320's own recommendation, Dustin's word) so nothing sent
+ * until the opt-out below was DEPLOYED. gh-2069 CORRECTION: the opt-out
+ * shipped and `select cron.alter_job(20, active := true);` was run on
+ * 2026-09-16T11:41Z (CRO RUN 24, on Dustin's "Go" in #1944) — the job has
+ * been ACTIVE, and sending, ever since (confirmed 343/343 successful runs
+ * through 2026-09-21 in `In Flight/reports/ceo57-nudge-pipeline-20260921.md`).
+ * This comment previously kept claiming the job was off for nine days after
+ * it was turned back on; do not repeat that mistake — check
+ * `select active from cron.job where jobid = 20;` rather than trusting this
+ * paragraph's own memory of the date. Invoked with an empty POST body.
  * Batch-scans is_test=false claims where:
  *   - status           = 'documents_needed' (the column DEFAULT — the only
  *                        state a stalled post-signup claim sits in; `draft`
@@ -125,6 +132,39 @@
  *   HOMEOWNER_OPTOUT_SECRET (gh-1786 / D-320 — REQUIRED to send; with it unset
  *   this function sends nothing rather than send without a working opt-out),
  *   HOMEOWNER_OPTOUT_SECRET_PREVIOUS (optional, verification only, for rotation)
+ *
+ * gh-1933 follow-up: whenever this scan finds a homeowner at the '48h' stage
+ * (documents_needed, no measurements, no hover order, the claim itself >= 48h
+ * old, AND no activity ever recorded on the homeowner's ACCOUNT since the
+ * claim was created — see ./select-stage.ts's real_activity_since_created;
+ * it is not a 48-hour activity window, the 48h figure is the claim's AGE —
+ * the exact condition selectStage already screens for), it also sends ONE
+ * admin digest email to Dustin listing every such homeowner found this run
+ * (masked email, claim id, days stalled, dashboard link), reusing this
+ * function's own screening rather than a second query. See
+ * ./admin-digest-executor.ts for the injected-dependency executor (gh-1933
+ * review fix D1) that decides what a dry run vs. a real run does with that
+ * list, and ./admin-digest.ts for the pure render/mask/day-bucket functions
+ * it calls. A plain dry run sends and writes nothing, same as the rest of
+ * this function; the opt-in `admin_digest_preview: true` request-body flag
+ * (honoured only alongside `dry_run: true` — gh-1933 D2) is the one way to
+ * preview the digest without a live cron invocation. The real digest is
+ * independent of cron.job 20's active state — it fires whenever this
+ * function is invoked and finds a match, same as the homeowner nudge it
+ * rides alongside.
+ *
+ * gh-1786 follow-up (this change): the Mailgun send now also carries the
+ * RFC 8058 `List-Unsubscribe` / `List-Unsubscribe-Post` headers, pointed at
+ * the SAME per-claim signed URL the footer link already uses (./optout-token.ts
+ * buildOptOutUrl). This is the mailbox-provider-facing one-click surface
+ * (the Gmail/Outlook "Unsubscribe" affordance next to the sender); the footer
+ * link already satisfied the in-body CAN-SPAM requirement, so this adds no
+ * new secret, no new endpoint and no new recipient-facing copy — same link,
+ * a second place it appears. `List-Unsubscribe-Post: List-Unsubscribe=One-Click`
+ * is what makes a mail client's one-click button call the URL with a bare
+ * POST instead of opening it in a browser; homeowner-email-optout/index.ts
+ * already accepts a POST with no body (reading `t` from the query string
+ * either way), so no endpoint change was needed for this to work.
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
@@ -156,6 +196,24 @@ import {
   OPTOUT_SECRET_ENV,
   signOptOutToken,
 } from "./optout-token.ts";
+import { ADMIN_DIGEST_EMAIL, ADMIN_DIGEST_NOTIFICATION_TYPE } from "./admin-digest.ts";
+import {
+  type AdminDigestDeps,
+  type AdminDigestResult,
+  type ScreenedCandidate,
+  parseAdminDigestPreview,
+  runAdminDigest,
+} from "./admin-digest-executor.ts";
+import {
+  buildWelcomeEmailContent,
+  deliverWelcome,
+  HOMEOWNER_WELCOME_FRESHNESS_MS,
+  HOMEOWNER_WELCOME_SETTING_KEY,
+  HOMEOWNER_WELCOME_TEMPLATE,
+  isProfileFreshEnough,
+  isWelcomeEnabled,
+  type WelcomeDeps,
+} from "./welcome-hook.ts";
 
 const FUNCTION_NAME = "send-homeowner-next-steps";
 const BATCH_LIMIT = 200;
@@ -215,6 +273,35 @@ function jsonResponse(data: unknown, status: number, corsHeaders: Record<string,
   });
 }
 
+// gh-1933 review fix (D2) — shared response-shaping for runAdminDigest's
+// result, used at both call sites (the "no candidates at all" early return
+// and the end-of-handler path) so the two can never drift into different
+// response shapes for the same (dryRun, previewSend) combination.
+function buildDigestResponseFields(
+  outcome: AdminDigestResult,
+  dryRun: boolean,
+  previewSend: boolean,
+): Record<string, unknown> {
+  const base: Record<string, unknown> = {
+    // gh-1933: count of homeowners newly included in a sent digest — real or
+    // preview. 0 is correct and expected on a plain dry run (nothing sends),
+    // whenever nobody is at the '48h' stage, or everyone found was already
+    // digested today.
+    admin_digest_sent: outcome.sent,
+    ...(outcome.error ? { admin_digest_error: outcome.error } : {}),
+  };
+  if (dryRun && previewSend) {
+    // gh-1933 D2 — this is the branch that produces #1933's closing artifact.
+    return { ...base, admin_digest_preview: true };
+  }
+  if (dryRun && !previewSend) {
+    // gh-1933 D2 — unchanged zero-send/zero-write dry run, plus a preview of
+    // what a real run would include (never a real recipient address).
+    return { ...base, would_digest: outcome.wouldDigest ?? [] };
+  }
+  return base;
+}
+
 // ─── Copy ──────────────────────────────────────────────────────────────────
 // MOVED to ./email-content.ts by gh-1786 / D-320 (verbatim, plus the required
 // opt-out footer) so the footer is testable without importing this file. See
@@ -227,7 +314,7 @@ async function sendMailgunEmail(
   measurementsUrl: string,
   colorUrl: string,
   optOutUrl: string
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; mailgunId?: string; error?: string }> {
   const { subject, textBody, htmlBody } = buildEmailContent(homeownerName, measurementsUrl, colorUrl, optOutUrl);
   const formData = new URLSearchParams();
   formData.append("from", "Otter Quotes <notifications@mail.otterquote.com>");
@@ -235,6 +322,11 @@ async function sendMailgunEmail(
   formData.append("subject", subject);
   formData.append("text", textBody);
   formData.append("html", htmlBody);
+  // gh-1786 follow-up: RFC 8058 mailbox-provider one-click unsubscribe, same
+  // signed link the footer already carries — see the file header. Mailgun
+  // passes any `h:<Header-Name>` form field through as a literal MIME header.
+  formData.append("h:List-Unsubscribe", `<${optOutUrl}>`);
+  formData.append("h:List-Unsubscribe-Post", "List-Unsubscribe=One-Click");
 
   try {
     const res = await fetch("https://api.mailgun.net/v3/mail.otterquote.com/messages", {
@@ -246,7 +338,80 @@ async function sendMailgunEmail(
       const errText = await res.text().catch(() => "(unreadable)");
       return { ok: false, error: `Mailgun ${res.status}: ${errText}` };
     }
-    return { ok: true };
+    // gh-2069: copy sendAdminDigestMail's own pattern (below) — parse the
+    // response body and return Mailgun's message id instead of discarding
+    // it. This was the whole first defect in #2069: the admin digest already
+    // did this; the homeowner path never did.
+    const data = await res.json().catch(() => ({}));
+    return { ok: true, mailgunId: (data as { id?: string })?.id };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}
+
+// gh-1933: sends the one stalled-homeowner digest email to Dustin. Separate
+// from sendMailgunEmail above — different recipient, different content, no
+// opt-out link (this is an internal admin notice, not a homeowner-facing
+// commercial email; D-320's opt-out mechanism does not apply to it).
+async function sendAdminDigestMail(
+  apiKey: string,
+  subject: string,
+  textBody: string,
+  htmlBody: string,
+): Promise<{ ok: boolean; mailgunId?: string; error?: string }> {
+  const formData = new URLSearchParams();
+  formData.append("from", "Otter Quotes <notifications@mail.otterquote.com>");
+  formData.append("to", ADMIN_DIGEST_EMAIL);
+  formData.append("subject", subject);
+  formData.append("text", textBody);
+  formData.append("html", htmlBody);
+  try {
+    const res = await fetch("https://api.mailgun.net/v3/mail.otterquote.com/messages", {
+      method: "POST",
+      headers: { Authorization: `Basic ${btoa(`api:${apiKey}`)}` },
+      body: formData,
+    });
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "(unreadable)");
+      return { ok: false, error: `Mailgun ${res.status}: ${errText}` };
+    }
+    const data = await res.json().catch(() => ({}));
+    return { ok: true, mailgunId: (data as { id?: string })?.id };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}
+
+// gh-2069 (e): sends the homeowner_welcome first-touch email. Same Mailgun
+// call shape as sendAdminDigestMail (parses `data.id`), different recipient
+// and content, and — unlike the D-320 homeowner nudge — no opt-out link:
+// this is a single transactional first-touch message, not part of the
+// recurring commercial series D-320's opt-out mechanism governs.
+async function sendWelcomeMailgunEmail(
+  apiKey: string,
+  to: string,
+  homeownerName: string,
+  dashboardUrl: string,
+): Promise<{ ok: boolean; mailgunId?: string; error?: string }> {
+  const { subject, textBody, htmlBody } = buildWelcomeEmailContent(homeownerName, dashboardUrl);
+  const formData = new URLSearchParams();
+  formData.append("from", "Otter Quotes <notifications@mail.otterquote.com>");
+  formData.append("to", to);
+  formData.append("subject", subject);
+  formData.append("text", textBody);
+  formData.append("html", htmlBody);
+  try {
+    const res = await fetch("https://api.mailgun.net/v3/mail.otterquote.com/messages", {
+      method: "POST",
+      headers: { Authorization: `Basic ${btoa(`api:${apiKey}`)}` },
+      body: formData,
+    });
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "(unreadable)");
+      return { ok: false, error: `Mailgun ${res.status}: ${errText}` };
+    }
+    const data = await res.json().catch(() => ({}));
+    return { ok: true, mailgunId: (data as { id?: string })?.id };
   } catch (err) {
     return { ok: false, error: String(err) };
   }
@@ -312,7 +477,8 @@ serve(async (req: Request) => {
   // See ./dry-run.ts for why it exists and what it deliberately does not do
   // (it writes no activity_log row and sends no email — it cannot manufacture
   // the artifact it is meant to help produce).
-  const dryRunRequested = parseDryRun(await req.clone().json().catch(() => ({})));
+  const requestBody = await req.clone().json().catch(() => ({}));
+  const dryRunRequested = parseDryRun(requestBody);
   // gh-1859 review fix: a dry run does NOT inherit the batch gate's permissive
   // `if (!cronSecret) authorized = true` branch. That branch fails OPEN, and a
   // dry run returns a list of claims, so it requires positive proof of
@@ -333,6 +499,15 @@ serve(async (req: Request) => {
   if (dryRun) {
     console.log(`[${FUNCTION_NAME}] DRY RUN — scanning is_test=true fixtures; nothing will be sent or written`);
   }
+  // gh-1933 D2 — the opt-in flag that makes #1933's closing artifact
+  // reachable: a dry invocation against an is_test homeowner seeded into the
+  // stalled ('48h') condition can now actually produce exactly one admin
+  // digest. Honoured ONLY when `dry_run: true` — see ./admin-digest-executor.ts
+  // for why (a real run ignores this flag entirely; that is asserted there,
+  // not just claimed here).
+  const adminDigestPreviewRequested = parseAdminDigestPreview(requestBody);
+  const adminDigestPreview = dryRun && adminDigestPreviewRequested;
+  const adminDigestPreviewIgnored = adminDigestPreviewRequested && !dryRun;
 
   // gh-1786 / D-320 — CAN-SPAM gate, ahead of any candidate scan. A commercial
   // email with no working opt-out is the violation this issue was filed on, so
@@ -353,6 +528,115 @@ serve(async (req: Request) => {
   const supabase = createClient(supabaseUrl, serviceRoleKey);
   const now = Date.now();
   const twoHoursAgoIso = new Date(now - TWO_HOURS_MS).toISOString();
+
+  // gh-1933 review fix (D1) — the digest's injected dependencies, wired here
+  // exactly once and passed into runAdminDigest at every call site below
+  // (the "no candidates found at all" early return, and the end-of-handler
+  // path). See ./admin-digest-executor.ts for what each function must do;
+  // this is the only place any of them touches Supabase or Mailgun.
+  const adminDigestDeps: AdminDigestDeps = {
+    fetchAlreadyDigestedToday: async (claimIds, todayStartIso) => {
+      const { data, error } = await supabase
+        .from("notifications")
+        .select("claim_id")
+        .eq("notification_type", ADMIN_DIGEST_NOTIFICATION_TYPE)
+        .in("claim_id", claimIds)
+        .gte("sent_at", todayStartIso);
+      if (error) {
+        console.error(`[${FUNCTION_NAME}] admin digest idempotency check failed:`, error.message);
+        return { claimIds: new Set<string>(), error: error.message };
+      }
+      return { claimIds: new Set((data || []).map((r: { claim_id: string }) => r.claim_id)) };
+    },
+    sendAdminDigestMail: (subject, textBody, htmlBody) =>
+      sendAdminDigestMail(mailgunApiKey as string, subject, textBody, htmlBody),
+    insertNotificationRows: async (rows) => {
+      const { error } = await supabase.from("notifications").insert(rows);
+      if (error) {
+        console.warn(`[${FUNCTION_NAME}] admin digest sent but failed to mark notifications:`, error.message);
+      }
+      return { error: error?.message ?? null };
+    },
+    mailgunConfigured: Boolean(mailgunApiKey),
+    now,
+  };
+
+  // ── gh-2069 (e): homeowner_welcome first-touch hook ──────────────────────
+  // Runs on every real cron tick regardless of whether any claim matches the
+  // main nudge scan below — a brand-new signup has no claim yet in many
+  // funnels, so this must not be nested inside "candidates were found" the
+  // way the digest correctly is. Scans the SAME is_test population as the
+  // main scan (scanIsTest) so a dry run never touches a real homeowner and a
+  // real run never emails a fixture — same disjointness property as
+  // ./dry-run.ts's candidateIsTestFlag. A dry run does not call
+  // deliverWelcome at all: like the rest of this function's dry-run mode, it
+  // sends and writes nothing (see ./dry-run.ts's file header).
+  let welcomeSent = 0;
+  let welcomeFailed = 0;
+  let welcomeEnabled = false;
+  if (!dryRun) {
+    const { data: settingRow, error: settingErr } = await supabase
+      .from("platform_settings")
+      .select("value")
+      .eq("key", HOMEOWNER_WELCOME_SETTING_KEY)
+      .maybeSingle();
+    if (settingErr) {
+      console.error(`[${FUNCTION_NAME}] ${HOMEOWNER_WELCOME_SETTING_KEY} read failed — treating as disabled:`, settingErr.message);
+    }
+    // gh-2069: missing row (not inserted by this PR — see the PR description
+    // for the SQL to add it) or any value other than a literal `true` means
+    // disabled. Fails CLOSED, same convention as HOMEOWNER_OPTOUT_SECRET above.
+    welcomeEnabled = isWelcomeEnabled(settingRow?.value ?? null);
+
+    const freshCutoffIso = new Date(now - HOMEOWNER_WELCOME_FRESHNESS_MS).toISOString();
+    const { data: freshProfiles, error: freshErr } = await supabase
+      .from("profiles")
+      .select("id, email, full_name, created_at")
+      .eq("role", "homeowner")
+      .eq("is_test", scanIsTest)
+      .gte("created_at", freshCutoffIso);
+    if (freshErr) {
+      console.error(`[${FUNCTION_NAME}] welcome-hook profile scan failed:`, freshErr.message);
+    } else if (freshProfiles && freshProfiles.length > 0) {
+      const candidateIds = (freshProfiles as { id: string }[]).map((p) => p.id);
+      const { data: alreadyWelcomed, error: alreadyErr } = await supabase
+        .from("notifications")
+        .select("user_id")
+        .eq("notification_type", HOMEOWNER_WELCOME_TEMPLATE)
+        .in("user_id", candidateIds);
+      if (alreadyErr) {
+        console.error(`[${FUNCTION_NAME}] welcome-hook idempotency read failed — skipping this tick to avoid a duplicate send:`, alreadyErr.message);
+      } else {
+        const welcomedSet = new Set((alreadyWelcomed || []).map((r: { user_id: string }) => r.user_id));
+        const welcomeDeps: WelcomeDeps = {
+          enabled: welcomeEnabled,
+          mailgunConfigured: Boolean(mailgunApiKey),
+          sendEmail: (to, name, dashboardUrl) =>
+            sendWelcomeMailgunEmail(mailgunApiKey as string, to, name, dashboardUrl),
+          insertNotification: async (row) => {
+            const { error } = await supabase.from("notifications").insert(row);
+            return { error: error?.message ?? null };
+          },
+          log: (level, message) => console[level](`[${FUNCTION_NAME}] ${message}`),
+        };
+        const dashboardUrl = `${siteUrl}/dashboard.html`;
+        for (const p of freshProfiles as { id: string; email: string | null; full_name: string | null; created_at: string }[]) {
+          if (welcomedSet.has(p.id)) continue;
+          if (!p.email) continue;
+          // Re-check freshness against `now` (not just the query's cutoff)
+          // so a slow scan doesn't email a profile that aged out mid-run.
+          if (!isProfileFreshEnough(p.created_at, now)) continue;
+          const outcome = await deliverWelcome(
+            welcomeDeps,
+            { userId: p.id, email: p.email, name: p.full_name || "there" },
+            dashboardUrl,
+          );
+          if (outcome.kind === "sent") welcomeSent++;
+          else if (outcome.kind === "send_failed") welcomeFailed++;
+        }
+      }
+    }
+  }
 
   // ── Candidate scan: is_test=false, status='documents_needed' (and never
   // 'draft' — redundant with the equality but stated explicitly per CTO RUN
@@ -381,8 +665,30 @@ serve(async (req: Request) => {
 
   if (!claims || claims.length === 0) {
     console.log(`[${FUNCTION_NAME}] Batch: no candidate claims found (is_test=${scanIsTest})`);
+    // gh-1933: no claims matched at all, so the digest candidate set is
+    // trivially empty too — still routed through runAdminDigest (a no-op
+    // I/O-wise for zero candidates, see its NEGATIVE CONTROLs) rather than
+    // hand-special-cased, so this response's digest fields never diverge in
+    // shape from the main path below.
+    const emptyDigestOutcome = await runAdminDigest(adminDigestDeps, {
+      dryRun,
+      previewSend: adminDigestPreview,
+      candidates: [],
+      siteUrl,
+    });
     return jsonResponse(
-      { ok: true, processed: 0, scanned_is_test: scanIsTest, ...(dryRun ? { dry_run: true, would_send: [] } : {}), results: [] },
+      {
+        ok: true,
+        processed: 0,
+        scanned_is_test: scanIsTest,
+        welcome_enabled: welcomeEnabled,
+        welcome_sent: welcomeSent,
+        welcome_failed: welcomeFailed,
+        ...(dryRun ? { dry_run: true, would_send: [] } : {}),
+        ...buildDigestResponseFields(emptyDigestOutcome, dryRun, adminDigestPreview),
+        ...(adminDigestPreviewIgnored ? { admin_digest_preview_ignored: true } : {}),
+        results: [],
+      },
       200,
       corsHeaders,
     );
@@ -441,6 +747,17 @@ serve(async (req: Request) => {
     OPTOUT_EVENT_TYPE,
   );
   const results: ScanResult[] = [];
+  // gh-1933 review fix round 2 — EVERY screened claim that reaches a
+  // resolved email, carrying whichever stage selectStage() picked
+  // ('2h' or '48h'), regardless of whether the homeowner email actually
+  // sends (previewed under dry run, sent, or already_sent). Unfiltered on
+  // purpose: the '48h'-only digest filter used to live here as a call-site
+  // `if`, which a mutant could silently defeat (index.ts has no tests of
+  // its own). It now lives inside the tested executor —
+  // selectDigestCandidates in ./admin-digest-executor.ts, called first
+  // thing by runAdminDigest — so this array is deliberately the raw,
+  // unfiltered input to that function.
+  const stalledForDigest: ScreenedCandidate[] = [];
 
   for (const claim of claims as ClaimRow[]) {
     // gh-1580: the whole screen — status, opt-out, hover_orders, real
@@ -489,6 +806,25 @@ serve(async (req: Request) => {
       continue;
     }
 
+    // gh-1933 review fix round 2 — push EVERY screened claim (with its
+    // stage) unconditionally, with NO filter here. The '48h'-only filter
+    // used to be `if (isDigestCandidate(stage))` at this exact call site,
+    // and a call-site mutant (`if (true)`) could silently defeat it with
+    // the full suite green, because index.ts itself has no tests. The
+    // filter now lives INSIDE the tested executor — selectDigestCandidates,
+    // called first thing by runAdminDigest in ./admin-digest-executor.ts —
+    // so every branch it reaches has already been proven to only ever see
+    // '48h' candidates. Reusing the screening, not duplicating it (issue
+    // body): this is still the same screenClaim()/selectStage() result,
+    // just handed over unfiltered instead of pre-filtered.
+    stalledForDigest.push({
+      claimId: claim.id,
+      userId: claim.user_id,
+      email: homeownerEmail,
+      createdAtIso: claim.created_at,
+      stage,
+    });
+
     const measurementsUrl = `${siteUrl}/help-measurements.html`;
     const colorUrl = `${siteUrl}/color-selection.html?claim_id=${claim.id}`;
     // gh-1786 / D-320: per-claim signed opt-out link. Payload is the claim UUID
@@ -519,6 +855,12 @@ serve(async (req: Request) => {
           },
           sendEmail: (to, name, mUrl, cUrl, oUrl) =>
             sendMailgunEmail(mailgunApiKey as string, to, name, mUrl, cUrl, oUrl),
+          // gh-2069: the durable per-send record — same `notifications` table
+          // the admin digest already writes to, via the same insert path.
+          insertNotification: async (row) => {
+            const { error } = await supabase.from("notifications").insert(row);
+            return { error: error?.message ?? null };
+          },
           log: (level, message) => console[level](`[${FUNCTION_NAME}] ${message}`),
         },
         {
@@ -553,6 +895,20 @@ serve(async (req: Request) => {
     });
   }
 
+  // ── gh-1933: admin stalled-homeowner digest ───────────────────────────────
+  // ONE email, listing every '48h'-stage claim this run found. Production
+  // behaviour is unchanged from before this review fix (gh-1933 review fix
+  // D1): the decision of what a dry run / real run / preview run does with
+  // `stalledForDigest` now lives in ./admin-digest-executor.ts's
+  // runAdminDigest, tested independently of this handler — see that file
+  // and admin-digest-executor.test.ts for the properties this rests on.
+  const digestOutcome = await runAdminDigest(adminDigestDeps, {
+    dryRun,
+    previewSend: adminDigestPreview,
+    candidates: stalledForDigest,
+    siteUrl,
+  });
+
   const processed = results.filter((r) => r.stages_sent.length > 0).length;
   // Counted output per condition 2 — never a silent return. Zero today is
   // expected and correct (no unique index yet => 23505 cannot fire); a
@@ -568,6 +924,15 @@ serve(async (req: Request) => {
       processed,
       skipped_already_sent: skippedAlreadySent,
       scanned_is_test: scanIsTest,
+      // gh-2069 (e): homeowner_welcome hook stats for this tick.
+      // welcome_enabled reflects platform_settings.homeowner_welcome_enabled
+      // as read this run — false (including "row absent") on every run until
+      // Dustin flips it, per the PR's SQL note.
+      welcome_enabled: welcomeEnabled,
+      welcome_sent: welcomeSent,
+      welcome_failed: welcomeFailed,
+      ...buildDigestResponseFields(digestOutcome, dryRun, adminDigestPreview),
+      ...(adminDigestPreviewIgnored ? { admin_digest_preview_ignored: true } : {}),
       // gh-1570: on a dry run `processed` is 0 by construction (nothing is
       // stamped), and `would_send` carries what a real run would have done.
       ...(dryRun

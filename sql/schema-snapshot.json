@@ -196,7 +196,9 @@
     "referrer_updates_opt_out",
     "measurement_shape",
     "live_charge_authorized_at",
-    "live_charge_authorized_by"
+    "live_charge_authorized_by",
+    "property_city",
+    "property_zip"
   ],
   "coming_soon_waitlist": [
     "id",
@@ -570,7 +572,19 @@
     "name",
     "zip",
     "source",
-    "created_at"
+    "created_at",
+    "phone",
+    "role",
+    "partner_industry",
+    "utm_source",
+    "utm_medium",
+    "utm_campaign",
+    "utm_content",
+    "utm_term",
+    "fbclid",
+    "gclid",
+    "converted_user_id",
+    "variant"
   ],
   "material_catalog": [
     "id",

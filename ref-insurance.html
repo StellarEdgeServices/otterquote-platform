@@ -37,6 +37,7 @@
 <link rel="canonical" href="https://otterquote.com/ref-insurance.html">
 
 <script src="/js/ga-gate.js"></script>
+<script src="/js/meta-pixel-gate.js"></script>
 <script>gtag('config','G-D1Y1TLGEFY');</script>
 <!-- Microsoft Clarity (wwr7qlk8g5) is loaded by /js/ga-gate.js, behind the same production-host gate as GA4 (gh-1619). Do not add a per-page loader. -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -291,10 +292,24 @@
   grid-template-columns: 1fr;
 }
 
+/* gh-1993: City / State / ZIP row — wider city column, narrower state/zip */
+.form-row.address-row {
+  grid-template-columns: 2fr 1fr 1fr;
+}
+
 .form-group {
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
+}
+
+select.form-input {
+  appearance: auto;
+}
+
+select.form-input option {
+  background: var(--navy, #0A1628);
+  color: var(--white);
 }
 
 .form-label {
@@ -484,6 +499,19 @@
     grid-template-columns: 1fr;
   }
 
+  /* FIX ROUND 2 (PR #1998 comment 5700692978, N1) — same B4 bug as
+     ref-re.html/ref-inspector.html: `.form-row.address-row` (2fr 1fr 1fr,
+     defined earlier in this file) has higher specificity (0,2,0) than the
+     plain `.form-row` rule above (0,1,0), so it kept winning inside this
+     mobile query regardless of source order, leaving City/State/ZIP as
+     three columns on phones and truncating typed values (measured ZIP
+     input clientWidth too narrow for 5 digits at 375px, e.g. "46060"
+     rendering as "4606"). Same selector specificity here, later in the
+     cascade, collapses it to one column like every other field. */
+  .form-row.address-row {
+    grid-template-columns: 1fr;
+  }
+
   .agent-badge {
     flex-direction: column;
     gap: var(--sp-2);
@@ -629,9 +657,79 @@
         <input type="tel" id="phone" class="form-input" required autocomplete="tel" placeholder="(555) 123-4567">
       </div>
 
+      <!-- Property Address — gh-1993: Street / City / State / ZIP, not one box -->
       <div class="form-group form-row full">
-        <label class="form-label" for="address">Property Address</label>
-        <input type="text" id="address" class="form-input" required placeholder="123 Main St, Springfield, IL 62701">
+        <label class="form-label" for="street">Street Address</label>
+        <input type="text" id="street" class="form-input" required autocomplete="address-line1" placeholder="123 Main St">
+      </div>
+
+      <div class="form-row address-row">
+        <div class="form-group">
+          <label class="form-label" for="city">City</label>
+          <input type="text" id="city" class="form-input" required autocomplete="address-level2" placeholder="Springfield">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="state">State</label>
+          <select id="state" class="form-input" required autocomplete="address-level1">
+                      <option value="">Select...</option>
+                      <option value="AL">Alabama</option>
+                      <option value="AK">Alaska</option>
+                      <option value="AZ">Arizona</option>
+                      <option value="AR">Arkansas</option>
+                      <option value="CA">California</option>
+                      <option value="CO">Colorado</option>
+                      <option value="CT">Connecticut</option>
+                      <option value="DE">Delaware</option>
+                      <option value="DC">District of Columbia</option>
+                      <option value="FL">Florida</option>
+                      <option value="GA">Georgia</option>
+                      <option value="HI">Hawaii</option>
+                      <option value="ID">Idaho</option>
+                      <option value="IL">Illinois</option>
+                      <option value="IN">Indiana</option>
+                      <option value="IA">Iowa</option>
+                      <option value="KS">Kansas</option>
+                      <option value="KY">Kentucky</option>
+                      <option value="LA">Louisiana</option>
+                      <option value="ME">Maine</option>
+                      <option value="MD">Maryland</option>
+                      <option value="MA">Massachusetts</option>
+                      <option value="MI">Michigan</option>
+                      <option value="MN">Minnesota</option>
+                      <option value="MS">Mississippi</option>
+                      <option value="MO">Missouri</option>
+                      <option value="MT">Montana</option>
+                      <option value="NE">Nebraska</option>
+                      <option value="NV">Nevada</option>
+                      <option value="NH">New Hampshire</option>
+                      <option value="NJ">New Jersey</option>
+                      <option value="NM">New Mexico</option>
+                      <option value="NY">New York</option>
+                      <option value="NC">North Carolina</option>
+                      <option value="ND">North Dakota</option>
+                      <option value="OH">Ohio</option>
+                      <option value="OK">Oklahoma</option>
+                      <option value="OR">Oregon</option>
+                      <option value="PA">Pennsylvania</option>
+                      <option value="PR">Puerto Rico</option>
+                      <option value="RI">Rhode Island</option>
+                      <option value="SC">South Carolina</option>
+                      <option value="SD">South Dakota</option>
+                      <option value="TN">Tennessee</option>
+                      <option value="TX">Texas</option>
+                      <option value="UT">Utah</option>
+                      <option value="VT">Vermont</option>
+                      <option value="VA">Virginia</option>
+                      <option value="WA">Washington</option>
+                      <option value="WV">West Virginia</option>
+                      <option value="WI">Wisconsin</option>
+                      <option value="WY">Wyoming</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="zip">ZIP Code</label>
+          <input type="text" id="zip" class="form-input" required inputmode="numeric" pattern="\d{5}" maxlength="5" autocomplete="postal-code" placeholder="62701">
+        </div>
       </div>
 
       <div id="form-error" class="form-error"></div>
@@ -817,7 +915,13 @@
     const lastName = document.getElementById('last-name').value.trim();
     const email = document.getElementById('email').value.trim();
     const phone = document.getElementById('phone').value.trim();
-    const address = document.getElementById('address').value.trim();
+    // gh-1993: street/city/state/zip collected as four separate fields.
+    const street = document.getElementById('street').value.trim();
+    const city = document.getElementById('city').value.trim();
+    const state = document.getElementById('state').value.trim();
+    const zip = document.getElementById('zip').value.trim();
+    const cityStateZip = [city, [state, zip].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+    const address = [street, cityStateZip].filter(Boolean).join(', ');
 
     // Validate
     if (!firstName || !lastName) {
@@ -838,8 +942,26 @@
       return;
     }
 
-    if (!address) {
-      errorEl.textContent = 'Please enter your property address.';
+    if (!street) {
+      errorEl.textContent = 'Please enter your street address.';
+      errorEl.classList.add('show');
+      return;
+    }
+
+    if (!city) {
+      errorEl.textContent = 'Please enter your city.';
+      errorEl.classList.add('show');
+      return;
+    }
+
+    if (!state) {
+      errorEl.textContent = 'Please select your state.';
+      errorEl.classList.add('show');
+      return;
+    }
+
+    if (!/^\d{5}$/.test(zip)) {
+      errorEl.textContent = 'Please enter a valid 5-digit ZIP code.';
       errorEl.classList.add('show');
       return;
     }
@@ -857,6 +979,10 @@
         email: email,
         phone: phone,
         address: address,
+        address_street: street,
+        address_city: city,
+        address_state: state,
+        address_zip: zip,
       }));
 
       // Send magic link as homeowner

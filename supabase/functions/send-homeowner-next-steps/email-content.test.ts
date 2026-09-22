@@ -3,6 +3,7 @@
 
 import { assert, assertEquals, assertThrows } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import { buildEmailContent, OPTOUT_LINK_TEXT, OPTOUT_TEXT_LINE } from "./email-content.ts";
+import { POSTAL_ADDRESS } from "./email-footer.ts";
 
 const OPTOUT = "https://abc.supabase.co/functions/v1/homeowner-email-optout?t=abc.def";
 const built = () =>
@@ -35,6 +36,12 @@ Deno.test("NEGATIVE CONTROL — a message cannot be built without an opt-out lin
     Error,
     "optOutUrl is required",
   );
+});
+
+Deno.test("gh-1944: the CAN-SPAM postal address appears in both bodies", () => {
+  const { textBody, htmlBody } = built();
+  assert(textBody.includes(POSTAL_ADDRESS), textBody);
+  assert(htmlBody.includes(POSTAL_ADDRESS), htmlBody.slice(-800));
 });
 
 Deno.test("D-312 — the copy names no price, contractor or third-party vendor", () => {

@@ -1,13 +1,41 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- Sentry Error Monitoring -->
-<script
-  src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
-  crossorigin="anonymous"
-></script>
+<!-- gh-1994 fix round 1 (REVIEW): capture ?lead=<uuid> and strip it from the
+     visible URL via history.replaceState BEFORE any analytics loader below
+     (js/ga-gate.js, js/meta-pixel-gate.js -- and any third-party script they
+     load, e.g. gtag.js/fbevents.js/clarity.js) executes, so no GA4, Meta
+     Pixel or Clarity beacon -- including each library's own automatic
+     page_view/pageview call, which reads the CURRENT URL at the moment that
+     library's script runs -- can ever record `lead=<uuid>`. This must stay
+     the first script in <head>, above Sentry and everything else -- if any
+     loader executes first and fires its own automatic page_view/pageview
+     call before this strip runs, that beacon would still capture
+     `?lead=<uuid>` even though every later beacon on the same page load
+     would not (fix round 3: fixed this comment's own garbled sentence,
+     which previously described neither of these things clearly). The
+     bottom-of-page prefill script below reads
+     window.__oqRouterLeadId instead of re-parsing location.search, since by
+     the time it runs the URL no longer carries `lead`. -->
 <script>
-  Sentry.onLoad(function() {
+(function () {
+  try {
+    var params = new URLSearchParams(window.location.search);
+    var lead = params.get('lead');
+    if (lead) {
+      window.__oqRouterLeadId = lead;
+      params.delete('lead');
+      var qs = params.toString();
+      var newUrl = window.location.pathname + (qs ? '?' + qs : '') + window.location.hash;
+      history.replaceState(history.state, '', newUrl);
+    }
+  } catch (e) { /* URL API unavailable: prefill simply won't run this load */ }
+})();
+</script>
+<!-- Sentry Error Monitoring -->
+<!-- gh-2010: predeclare sentryOnLoad before the loader tag; the loader invokes it once the SDK is ready. -->
+<script>
+  window.sentryOnLoad = function () {
     Sentry.init({
       environment: window.location.hostname.includes("staging") ? "staging" : "production",
       // gh-439: drop phantom events from non-http(s) preview contexts (data:/file:/blob:
@@ -22,8 +50,12 @@
         return event;
       }
     });
-  });
+  };
 </script>
+<script
+  src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
+  crossorigin="anonymous"
+></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
@@ -39,6 +71,7 @@
 
     <!-- Google Analytics -->
     <script src="/js/ga-gate.js"></script>
+    <script src="/js/meta-pixel-gate.js"></script>
     <script>gtag('config', 'G-D1Y1TLGEFY');</script>
 <!-- Microsoft Clarity (wwr7qlk8g5) is loaded by /js/ga-gate.js, behind the same production-host gate as GA4 (gh-1619). Do not add a per-page loader. -->
 
@@ -181,7 +214,7 @@
                     </p>
                     <!-- D-242: Cross-role sibling link — contractor signup ↔ homeowner signup -->
                     <p>
-                        Not a contractor? <a href="https://app.otterquote.com/get-started" style="color: var(--amber); font-weight: 600;">Get free quotes as a homeowner</a>
+                        Not a contractor? <a href="/start.html" style="color: var(--amber); font-weight: 600;">Get free quotes as a homeowner</a>
                     </p>
                     <!-- gh-1341: the give beside the ask — the free CRM is the one thing we offer a crew before there is a job -->
                     <p>
@@ -370,6 +403,11 @@
                     gtag('event', 'contractor_signup_step1', { event_category: 'contractor_funnel' });
                 }
 
+                // gh-1817: Meta Pixel Lead event — contractor sign-up form submit
+                if (typeof fbq === 'function') {
+                    fbq('track', 'Lead');
+                }
+
                 document.getElementById('successMessage').classList.add('show');
                 document.getElementById('contractorForm').style.display = 'none';
                 window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -422,5 +460,87 @@
         } catch (e) { /* ignore */ }
       })();
     </script>
+<!-- gh-1994: router prefill -- reads ?lead=<uuid> (no PII in the URL) set by
+     otterquote.com/start.html and fills name/email/phone via the
+     get_lead_prefill() SECURITY DEFINER RPC (see
+     supabase/migrations/20260916132127_gh1994_router_leads_columns.sql,
+     not applied by that PR). Prefers a page-level `window.sb` if one is already declared,
+     otherwise falls back to its own local anon client, since not every
+     destination page reliably has `window.sb` set by the time this script
+     runs (js/supabase-client.js is not included here). Silent no-op when
+     the param is absent, the migration is not yet applied, or the lookup
+     returns no row (expired >30 min -- fix round 3: corrected from a stale
+     >60 min, tightened in fix round 1 -- already redeemed once, or unknown
+     id) -- never blocks manual entry, per #1994 item 3 ("prefill without
+     PII in URLs"). -->
+<script>
+(function () {
+  try {
+    var leadId = window.__oqRouterLeadId;
+    if (!leadId) return;
+    if (typeof supabase === 'undefined' || typeof CONFIG === 'undefined' ||
+        !CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_ANON) return;
+    var _sb = window.sb || supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
+    _sb.rpc('get_lead_prefill', { p_lead_id: leadId }).then(function (res) {
+      var row = res && res.data && res.data[0];
+      if (!row) return; // expired, unknown id, or migration not applied yet
+      var setVal = function (id, val) {
+        if (!val) return;
+        var el = document.getElementById(id);
+        if (el && !el.value) el.value = val;
+      };
+      var full = (row.name || '').trim();
+      var sp = full.indexOf(' ');
+      var firstName = sp === -1 ? full : full.slice(0, sp);
+      var lastName = sp === -1 ? '' : full.slice(sp + 1);
+      setVal('ownerFirstName', firstName);
+      setVal('ownerLastName', lastName);
+      setVal('businessEmail', row.email);
+      setVal('phone', row.phone);
+    }).catch(function () { /* gh-1994 prefill is a nicety, never block signup */ });
+  } catch (e) { /* gh-1994 prefill is a nicety, never block signup */ }
+})();
+</script>
+
+<script>
+// gh-1994 phase 2 (round 2, review 5705874119 B1/N1): carry utm_*/fbclid/
+// gclid from this page's own URL onto every "Get started" CTA that points
+// at the router, on top of the oq_ft cookie fallback (gh-1983)
+// start.html's own collectAttribution() already reads -- belt and
+// suspenders for cookie-blocked browsers. No PII, same allow-list
+// start.html reads. Matches by normalized pathname, not an exact-string
+// selector, because Netlify's pretty-URL rewrite serves the on-disk
+// href="/start.html" as href="/start" (no ".html", no trailing slash) --
+// an exact-string selector never matches that served markup, only a local
+// static server without the rewrite. Also tolerates a trailing slash
+// ("/start/") and a login.html-style relative "start.html". Idempotent:
+// run once per page load, never runs twice on the same anchor.
+(function () {
+  'use strict';
+  var ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid'];
+  var params = new URLSearchParams(window.location.search);
+  var qs = '';
+  ATTR_KEYS.forEach(function (k) {
+    var v = params.get(k);
+    if (v) qs += (qs ? '&' : '?') + k + '=' + encodeURIComponent(v);
+  });
+  if (!qs) return;
+  function isStartHref(href) {
+    if (!href) return false;
+    try {
+      var p = new URL(href, window.location.href).pathname.replace(/\/+$/, '');
+      return p === '/start' || p === '/start.html';
+    } catch (e) {
+      return false;
+    }
+  }
+  document.querySelectorAll('a[href]').forEach(function (a) {
+    var href = a.getAttribute('href');
+    if (isStartHref(href)) {
+      a.setAttribute('href', href + qs);
+    }
+  });
+})();
+</script>
 </body>
 </html>

@@ -639,7 +639,7 @@
         }
     </style>
 </head>
-<body>
+<body data-clarity-mask="true"><!-- gh-1939: authenticated page on the Clarity allowlist (Dustin 2026-09-16, "Fields masked.") -- all text and inputs masked in replay; scripts/check-clarity-page-gate.py enforces this attribute -->
     <header id="site-header" data-active="dashboard" data-auth="true"></header>
 
     <main>
@@ -1309,6 +1309,14 @@
                     if (insertErr || !newClaim) throw new Error(insertErr?.message || 'Failed to create claim');
                     claimId = newClaim.id;
                     sessionStorage.setItem('oq_claim_id', claimId);
+                    // gh-1984: GA4 key event — this branch creates the claims row. No PII.
+                    if (typeof gtag === 'function') {
+                        gtag('event', 'claim_started', {
+                            job_type: 'repair',
+                            source: 'repair_intake',
+                            test_account: Auth.isTestEmail(user.email),
+                        });
+                    }
                 } else {
                     // Update existing claim with repair data
                     const { error: updateErr } = await sb
@@ -1347,8 +1355,10 @@
                 }).eq('id', claimId).eq('user_id', user.id);
 
                 // ── GA4 ─────────────────────────────────────────────────────
+                // fix4 (CEO ruling, PR #1979 comment 5698878146): claim_id
+                // removed — a per-homeowner database identifier must not
+                // reach GA4.
                 gtag('event', 'repair_submitted', {
-                    claim_id: claimId,
                     trade: selectedTrade,
                     repair_type: state.selectedRepairType,
                     has_material: !!(materialBrand || materialProduct)

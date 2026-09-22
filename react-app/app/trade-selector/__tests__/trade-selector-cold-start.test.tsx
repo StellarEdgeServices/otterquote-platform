@@ -20,19 +20,33 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 
 vi.mock('@/hooks/use-auth-ready', () => ({ useAuthReady: vi.fn() }));
+// gh-2004: profiles' address lookup uses a shorter .select().eq().maybeSingle()
+// chain (no .order()/.limit() — it's a single row by primary key) than the
+// claims existing-claim check below, so the generic mock supports both.
 vi.mock('@/lib/supabase', () => ({
   supabase: {
-    from: vi.fn(() => ({
-      select: () => ({
-        eq: () => ({
-          order: () => ({
-            limit: () => ({
+    from: vi.fn((table: string) => {
+      if (table === 'profiles') {
+        return {
+          select: () => ({
+            eq: () => ({
               maybeSingle: () => Promise.resolve({ data: null, error: null }),
             }),
           }),
+        };
+      }
+      return {
+        select: () => ({
+          eq: () => ({
+            order: () => ({
+              limit: () => ({
+                maybeSingle: () => Promise.resolve({ data: null, error: null }),
+              }),
+            }),
+          }),
         }),
-      }),
-    })),
+      };
+    }),
   },
 }));
 

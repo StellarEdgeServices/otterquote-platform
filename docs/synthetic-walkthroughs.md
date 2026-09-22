@@ -1,17 +1,34 @@
 # OtterQuote Synthetic UX Walkthroughs
 
 Nightly automated checks run via Claude in Chrome. Edit this file to update flow definitions.
-Last updated: 2026-05-06
+Last updated: 2026-09-21
+
+---
+
+## gh-2064 — internal-traffic opt-out
+
+Every URL these flows navigate to must carry `?oq_internal=1` (or `&oq_internal=1`
+if the URL already has a query string) on its first navigation of the run —
+e.g. `https://otterquote.com/get-started.html?oq_internal=1`. This sets an
+`oq_internal=1` cookie for one year on `.otterquote.com`, which every tag
+loader on the site (`js/ga-gate.js`, `js/meta-pixel-gate.js`, the Clarity
+snippet those files carry, and the React app's `GA4Gate`/`MetaPixelGate`)
+checks before loading anything — GA4, Meta Pixel and Clarity never load for
+the rest of that browser's session once the cookie is set, so this run is
+not counted as a visitor in any of the three tools. Do not remove the param
+from a flow's URL to "simplify" it; a walkthrough missed here shows up as a
+polluted conversion rate in GA4/Meta and an extra recorded session in
+Clarity, exactly the problem #2064 fixed.
 
 ---
 
 ## Flow 1 — Get-Started Homeowner Intake
 
-**URL:** https://otterquote.com/get-started.html  
+**URL:** https://otterquote.com/get-started.html?oq_internal=1  
 **Purpose:** Verify the homeowner intake form renders correctly and the first step is accessible.
 
 **Steps:**
-1. Navigate to https://otterquote.com/get-started.html
+1. Navigate to https://otterquote.com/get-started.html?oq_internal=1
 2. Wait for page to fully load (look for the multi-step form or intake UI)
 3. Verify at least one form step is visible (name/email/address fields or equivalent)
 4. Verify no JavaScript errors visible on page (check for error banners)
@@ -24,11 +41,11 @@ Last updated: 2026-05-06
 
 ## Flow 2 — Contractor Profile Page
 
-**URL:** https://otterquote.com/contractor-profile.html  
+**URL:** https://otterquote.com/contractor-profile.html?oq_internal=1  
 **Purpose:** Verify the contractor profile page loads and key sections are accessible.
 
 **Steps:**
-1. Navigate to https://otterquote.com/contractor-profile.html
+1. Navigate to https://otterquote.com/contractor-profile.html?oq_internal=1
 2. Wait for page to fully load
 3. Verify profile form section is visible (look for inputs, document upload area, or the auth redirect)
 4. Verify no crash-level errors (blank white screen = fail; auth redirect = pass)
@@ -41,11 +58,11 @@ Last updated: 2026-05-06
 
 ## Flow 3 — Contractor Login Page
 
-**URL:** https://otterquote.com/contractor-login.html  
+**URL:** https://otterquote.com/contractor-login.html?oq_internal=1  
 **Purpose:** Verify the login page renders with functional form elements.
 
 **Steps:**
-1. Navigate to https://otterquote.com/contractor-login.html
+1. Navigate to https://otterquote.com/contractor-login.html?oq_internal=1
 2. Wait for page to load
 3. Verify an email input field is present
 4. Verify a password input field is present
@@ -59,11 +76,11 @@ Last updated: 2026-05-06
 
 ## Flow 4 — Contract Signing Page
 
-**URL:** https://otterquote.com/contract-signing.html  
+**URL:** https://otterquote.com/contract-signing.html?oq_internal=1  
 **Purpose:** Verify the signing page loads without a hard crash. A "no envelope" or auth-redirect state is acceptable.
 
 **Steps:**
-1. Navigate to https://otterquote.com/contract-signing.html
+1. Navigate to https://otterquote.com/contract-signing.html?oq_internal=1
 2. Wait for page to load
 3. Verify page renders something meaningful — auth redirect, "no active contract" message, or the signing interface itself
 

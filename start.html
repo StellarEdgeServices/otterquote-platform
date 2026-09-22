@@ -1,0 +1,1499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Sentry Error Monitoring -->
+<!-- gh-2010: predeclare sentryOnLoad before the loader tag; the loader invokes it once the SDK is ready. -->
+<script>
+  window.sentryOnLoad = function () {
+    Sentry.init({
+      environment: window.location.hostname.includes("staging") ? "staging" : "production",
+      // gh-439: drop phantom events from non-http(s) preview contexts (data:/file:/blob:
+      // URLs -- e.g. Claude's HTML preview renders pages via data: URIs; relative scripts
+      // like js/auth.js then fail and report noise such as "Auth is not defined").
+      denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+      beforeSend: function (event) {
+        var proto = window.location.protocol;
+        if (proto !== "http:" && proto !== "https:") return null;
+        var req = event.request && event.request.url;
+        if (req && /^(data|file|blob):/.test(req)) return null;
+        return event;
+      }
+    });
+  };
+</script>
+<script
+  src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
+  crossorigin="anonymous"
+></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>Get Started | Otter Quotes</title>
+<meta name="description" content="Tell us who you are and we'll get you to the right place &mdash; homeowner, contractor, or referral partner.">
+<link rel="canonical" href="https://otterquote.com/start.html">
+<meta name="robots" content="noindex, follow">
+<meta property="og:title" content="Get Started &mdash; Otter Quotes">
+<meta property="og:description" content="Tell us who you are and we'll get you to the right place.">
+<meta property="og:url" content="https://otterquote.com/start.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Otter Quotes">
+<meta property="og:image" content="https://otterquote.com/img/otter-logo.svg">
+
+<!-- gh-2033: /start assigns the A/B/C variant itself, and must do it BEFORE
+     any analytics call that can carry `variant` -- js/ga-gate.js's own
+     gtag('js', ...) call and its Clarity vendor snippet are both downstream
+     of this tag, so this has to load first or an early GA4/Clarity hit is
+     unattributable for good (GA4's variant/step custom dimensions are not
+     retroactive). Precedence: an explicit, validated ?v= in the URL wins;
+     else a persisted per-visitor assignment (localStorage, cookie
+     fallback); else uniform-random across the live set (gh-2074:
+     LIVE_VARIANTS below -- today just 'c'; a syntactically-valid but
+     non-live arm from ANY of those sources, e.g. a persisted 'a'/'b', is
+     re-mapped to a live arm on arrival, never served/blanked/404'd).
+     Persists the result to BOTH localStorage and a first-party cookie
+     (oq_variant_v1, versioned so a future re-randomisation is a key bump)
+     and rewrites the URL via
+     history.replaceState -- never pushState -- preserving every existing
+     query parameter (UTMs above all). Every storage/URL touch is its own
+     try/catch: 39% of this traffic is the Facebook in-app webview, where
+     localStorage access throws, and one throwing step must never break the
+     page or block the others. window.__oqVariant is set before the
+     replaceState call so the main IIFE further down this file (see its
+     gh-2014/gh-2033 variant read) still has a source if replaceState itself
+     throws. Deliberately uses /^[abc]$/.test() everywhere, never an
+     object-literal lookup ({a:1,b:1,c:1}[raw]) -- that walks the prototype
+     chain and lets ?v=constructor / ?v=__proto__ through (see the
+     gh-2014 fix round 4 comment on the main IIFE's own variant read). -->
+<script>
+(function () {
+  var KEY = 'oq_variant_v1';
+
+  // gh-2074 fix round 2 (PR #2079 review, item 2): KNOWN_ARMS is the
+  // single source of truth for which arm letters are syntactically
+  // recognised at all -- NOT which ones are currently served (see
+  // LIVE_VARIANTS below for that). It already lists 'd'/'e' so shipping
+  // gh-2075/gh-2076 never needs a second change here: a persisted or
+  // ?v=-carried d/e always PARSES, even while LIVE_VARIANTS still keeps
+  // them unreachable. Exposed as window.__oqKnownArms so the main IIFE's
+  // own variant read further down this file (gh-2014/gh-2033 -- a
+  // SEPARATE <script> block/closure) derives its allowlist from this
+  // same list instead of a second hardcoded regex that can silently
+  // drift out of sync: review caught exactly that on the first pass of
+  // this fix -- an unsynced /^[abc]$/ there would read a live 'd'
+  // session back as variant=null and silently render arm A, the one arm
+  // this issue exists to eliminate.
+  var KNOWN_ARMS = ['a', 'b', 'c', 'd', 'e'];
+  window.__oqKnownArms = KNOWN_ARMS;
+  var ARM_RE = new RegExp('^(' + KNOWN_ARMS.join('|') + ')$');
+
+  // gh-2074: the LIVE set. Today only 'c' -- a and b lose 90%+ of visitors
+  // at the first screen (GA4 router_step_view 7d: a 120->12, b 87->13,
+  // c 59->9). Arm a/b's code stays in this file, unreachable, for d/e to
+  // reuse -- nothing here is deleted.
+  //
+  // gh-2074 fix round 2 (PR #2079 review, item 3): flipping this constant
+  // to ['c', 'd', 'e'] when d/e ship is NOT "the whole switch" and does
+  // NOT give equal weights by itself -- the original comment here was
+  // wrong. Every visitor assigned 'c' during this single-arm period is
+  // persisted (KEY above, 180-day max-age -- see the gh-2033 comment
+  // block near the top of this file) and stays sticky to 'c' on return:
+  // isLive('c') is already true, so toLiveArm() is a no-op for every one
+  // of those returning sessions regardless of what this constant says
+  // later. Flipping it alone would therefore land roughly 80% of traffic
+  // on 'c' (every persisted single-arm-period visitor, plus 1/3 of
+  // brand-new ones) versus ~10% each for d/e -- not the even split
+  // "equal weights" implies. Shipping d/e as a real three-way test
+  // REQUIRES bumping KEY too (e.g. 'oq_variant_v2') alongside this flip,
+  // so every visitor -- persisted or not -- re-randomises across the new
+  // live set. Flip this constant WITHOUT the key bump only if a
+  // deliberately c-weighted d/e rollout is the actual intent.
+  var LIVE_VARIANTS = ['c'];
+
+  // gh-2074 fix round 2 (PR #2079 review, item 4): guards a misconfigured
+  // empty LIVE_VARIANTS from indexing an empty array and writing a
+  // literal "v=undefined" into the URL, both stores, and every
+  // downstream analytics/lead write -- falls back to SAFE_DEFAULT_ARM.
+  var SAFE_DEFAULT_ARM = 'c';
+  function effectiveLiveVariants() {
+    return (LIVE_VARIANTS && LIVE_VARIANTS.length) ? LIVE_VARIANTS : [SAFE_DEFAULT_ARM];
+  }
+
+  function validArm(v) {
+    var s = String(v == null ? '' : v).toLowerCase();
+    return ARM_RE.test(s) ? s : null;
+  }
+
+  // gh-2074: is this (syntactically valid) arm one we're currently serving?
+  function isLive(arm) {
+    var live = effectiveLiveVariants();
+    for (var i = 0; i < live.length; i++) {
+      if (live[i] === arm) return true;
+    }
+    return false;
+  }
+
+  // gh-2074: map any syntactically-valid arm onto a live one -- a no-op for
+  // an already-live arm, otherwise a uniform-random re-assignment across
+  // the live set. Applied to every source below (URL, localStorage,
+  // cookie, random) so a/b (or any non-live arm) can never reach
+  // rendering.
+  //
+  // gh-2074 fix round 2 (PR #2079 review, item 1 BLOCKER): exposed as
+  // window.__oqToLiveArm so the main IIFE's own variant read further
+  // down this file -- a separate <script> block, so it does NOT share
+  // this closure -- can apply this identical mapping to its own URL
+  // fallback path, instead of trusting a stale, pre-mapped ?v= that this
+  // script's own history.replaceState call (below) failed to rewrite
+  // because it threw (sandboxed iframes without allow-same-origin,
+  // Safari's history-mutation rate limit -- both real /start traffic).
+  function toLiveArm(arm) {
+    if (isLive(arm)) return arm;
+    var live = effectiveLiveVariants();
+    return live[Math.floor(Math.random() * live.length)];
+  }
+  window.__oqToLiveArm = toLiveArm;
+  window.__oqLiveVariants = effectiveLiveVariants();
+
+  function readCookie(name) {
+    var m = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+    return m ? decodeURIComponent(m[1]) : null;
+  }
+
+  // 1. Explicit ?v= wins over anything persisted -- re-mapped to a live arm
+  //    if it names a or b (gh-2074: do not 404, do not blank).
+  var urlArm = null;
+  try {
+    urlArm = validArm(new URLSearchParams(window.location.search).get('v'));
+  } catch (e) {}
+  var arm = urlArm ? toLiveArm(urlArm) : null;
+
+  // 2. Else a persisted assignment -- localStorage first, cookie fallback,
+  //    each in its own try/catch so a throw on one still lets the other run.
+  //    Also re-mapped to a live arm (gh-2074): a stale persisted a/b is
+  //    reassigned here, and step 4 below overwrites both stores with the
+  //    reassigned value rather than leaving the stale one in place.
+  if (!arm) {
+    var fromStorage = null;
+    try { fromStorage = validArm(window.localStorage.getItem(KEY)); } catch (e) {}
+    var fromCookie = null;
+    if (!fromStorage) {
+      try { fromCookie = validArm(readCookie(KEY)); } catch (e) {}
+    }
+    var persistedArm = fromStorage || fromCookie;
+    arm = persistedArm ? toLiveArm(persistedArm) : null;
+  }
+
+  // 3. Else assign at random, uniform across the LIVE set only (gh-2074:
+  //    never the full a-e set -- LIVE_VARIANTS today is just ['c']).
+  //    Uses effectiveLiveVariants() (fix round 2, item 4) so a
+  //    misconfigured empty LIVE_VARIANTS falls back to SAFE_DEFAULT_ARM
+  //    instead of indexing an empty array.
+  if (!arm) {
+    var liveForRandom = effectiveLiveVariants();
+    arm = liveForRandom[Math.floor(Math.random() * liveForRandom.length)];
+  }
+
+  // Expose before replaceState so a downstream throw there still leaves a
+  // usable source for the main IIFE's own variant read.
+  window.__oqVariant = arm;
+
+  // 4. Persist to BOTH stores, each independently guarded.
+  try { window.localStorage.setItem(KEY, arm); } catch (e) {}
+  try {
+    var secure = window.location.protocol === 'https:' ? '; Secure' : '';
+    document.cookie = KEY + '=' + arm + '; path=/; max-age=' + (180 * 24 * 60 * 60) +
+      '; SameSite=Lax' + secure;
+  } catch (e) {}
+
+  // 5. Rewrite the URL, preserving every existing query parameter.
+  try {
+    var params = new URLSearchParams(window.location.search);
+    params.set('v', arm);
+    var newUrl = window.location.pathname + '?' + params.toString() + window.location.hash;
+    history.replaceState(history.state, '', newUrl);
+  } catch (e) {}
+})();
+</script>
+<!-- Google Analytics / Meta Pixel / Clarity — gh-1994 item 4: same two
+     include files every public page loads, in the same order, no per-page
+     loader (js/ga-gate.js's own module docstring: "the ONLY place gtag.js
+     is requested"; js/meta-pixel-gate.js: "the ONLY place fbevents.js is
+     requested"). Clarity rides the GA4 gate's own host check; js/ga-gate.js's
+     CLARITY_ALLOWED_PATHS carries '/start' (gh-2014). -->
+<!-- gh-2063 fix round 3 (PR #2065 review2, remaining FAIL point): round 2
+     put `defer` on these two same-origin gate files, reasoning that it
+     would move their network fetch off the first-paint critical path.
+     Independent review measured the opposite, one change at a time: `defer`
+     makes FIRST PAINT LATER than main (FCP +0.3-0.4s on slow-4G, +0.6-1.8s
+     on slow-3G), because the browser still has to fetch and run these two
+     small same-origin files before it can build the render tree either
+     way, and `defer` only changes WHEN in that sequence they run relative
+     to parsing -- it does not remove them from the critical path the way
+     it does for a large third-party bundle. Restored to plain synchronous
+     `<script src>` tags, matching main exactly. The actual fix for the
+     THIRD-PARTY vendor bundles these files inject (gtag.js, fbevents.js,
+     clarity.ms) is unchanged and still real: js/ga-gate.js's and
+     js/meta-pixel-gate.js's own _oqLoadOnIdleOrInteraction helper still
+     defers those to idle/first-interaction -- that is where the actual
+     third-party weight was and still is deferred. gtag/fbq are defined the
+     moment these two scripts run (synchronously again, before
+     DOMContentLoaded), so the gtag('config', ...) call below no longer
+     needs to wait for a DOMContentLoaded listener either -- restored to
+     main's plain inline call. -->
+<script src="/js/ga-gate.js"></script>
+<script src="/js/meta-pixel-gate.js"></script>
+<script>gtag('config', 'G-D1Y1TLGEFY');</script>
+<!-- Microsoft Clarity (wwr7qlk8g5) is loaded by /js/ga-gate.js, behind the same production-host gate as GA4 (gh-1619). Do not add a per-page loader. -->
+
+<!-- Supabase -->
+<!-- gh-2063 fix round 2 (PR #2065 review, blocker 1): `defer` was removed
+     here after independent review found it broke every step-1 submit on
+     every arm. This page does NOT use js/config.js's page-level `sb` (that
+     comment about _oqCreateSupabaseClient()'s DOMContentLoaded retry/~20s
+     poll was about a DIFFERENT global, in a DIFFERENT file, that this
+     page's own IIFE below never reads) -- this file declares its own local
+     `var sb` a few lines into its inline router script and creates it ONCE,
+     synchronously, while the page is still parsing (`if (typeof supabase
+     !== 'undefined' ...) { sb = supabase.createClient(...) }`), with no
+     retry of its own. A deferred script always runs after parsing
+     finishes, so `typeof supabase` was always 'undefined' at that moment,
+     `sb` stayed null for the entire visit, and every "Continue" click on
+     every arm (A/B/C) hit a null-`sb` guard and showed "Something went
+     wrong loading the form." with no console error and no Sentry signal.
+     Kept synchronous (not deferred) again; it is a same-origin-cached CDN
+     script by then in most repeat visits and is not the file this issue's
+     item 1 was written for (the third-party analytics tags below are). -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js" integrity="sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz" crossorigin="anonymous"></script>
+
+<!-- Google Fonts -->
+<!-- gh-2063: non-blocking stylesheet load (preload + swap to `all` media on
+     load, noscript fallback) so the Rubik CSS fetch never blocks first
+     paint; the request itself already carries &display=swap so text
+     renders in a fallback font immediately either way. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet"></noscript>
+<!-- Shared Styles -->
+<link rel="preload" as="style" href="css/design-system.css">
+<link rel="stylesheet" href="css/design-system.css">
+<link rel="stylesheet" href="css/nav.css">
+
+<style>
+  body { background-color: var(--navy); }
+  main { min-height: calc(100vh - 120px); display: flex; align-items: flex-start; justify-content: center; padding: var(--sp-8) var(--sp-4) var(--sp-16); }
+  .router-card {
+    width: 100%;
+    max-width: 480px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 8px 40px rgba(0,0,0,0.3);
+    padding: var(--sp-6);
+  }
+  .router-progress { display: flex; gap: var(--sp-2); margin-bottom: var(--sp-6); }
+  .router-progress span { flex: 1; height: 4px; border-radius: var(--radius-full); background: rgba(255,255,255,0.12); }
+  .router-progress span.done { background: var(--amber); }
+  .router-step { display: none; }
+  .router-step.active { display: block; animation: fadeUp 0.25s ease both; }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+  .router-step h1, #routerCRoot h1 { font-family: var(--font-heading, var(--font-body)); font-size: 1.5rem; color: var(--white); margin-bottom: var(--sp-2); line-height: 1.25; }
+  .router-step p.router-sub, #routerCRoot p.router-sub { color: var(--slate); font-size: 0.95rem; margin-bottom: var(--sp-5); }
+  .form-group { margin-bottom: var(--sp-4); }
+  .form-label { display: block; font-weight: 600; color: var(--white); margin-bottom: var(--sp-1); font-size: 0.95rem; }
+  .form-label.required::after { content: ' *'; color: var(--red); }
+  /* gh-2042: phone is optional (Dustin, 2026-09-20). Muted, same line as the label. */
+  .form-label-optional { font-weight: 400; color: var(--gray-400, #9ca3af); font-size: 0.85em; }
+  .form-input { width: 100%; padding: var(--sp-3) var(--sp-4); border: 1px solid rgba(255,255,255,0.14); border-radius: var(--radius-md); font-family: var(--font-body); font-size: 1rem; background: rgba(255,255,255,0.06); color: var(--white); }
+  .form-input::placeholder { color: rgba(255,255,255,0.35); }
+  .form-input:focus { outline: none; border-color: var(--amber); box-shadow: 0 0 0 3px var(--amber-glow); }
+  .field-error { color: #FCA5A5; font-size: 0.85rem; margin-top: var(--sp-1); min-height: 1.1em; }
+  .router-btn { width: 100%; padding: var(--sp-3) var(--sp-6); font-size: 1rem; margin-top: var(--sp-2); }
+  .router-error { display: none; background: var(--red-light); color: #7F1D1D; border-radius: var(--radius-md); padding: var(--sp-3); margin-bottom: var(--sp-4); font-size: 0.9rem; }
+  .router-error.show { display: block; }
+  .role-options { display: flex; flex-direction: column; gap: var(--sp-3); }
+  .role-option {
+    display: flex; align-items: center; justify-content: space-between;
+    width: 100%; text-align: left; cursor: pointer;
+    padding: var(--sp-4); border-radius: var(--radius-md);
+    border: 1px solid rgba(255,255,255,0.14); background: rgba(255,255,255,0.04);
+    color: var(--white); font-family: var(--font-body); font-size: 1.05rem; font-weight: 600;
+    transition: border-color 0.15s ease, background 0.15s ease;
+  }
+  .role-option:hover, .role-option:focus-visible { border-color: var(--amber); background: rgba(224,123,0,0.08); }
+  .role-option .role-arrow { color: var(--amber); font-size: 1.2rem; }
+  .router-back { display: inline-flex; align-items: center; gap: var(--sp-1); color: var(--slate); font-size: 0.9rem; background: none; border: none; cursor: pointer; margin-bottom: var(--sp-4); padding: 0; }
+  .router-back:hover { color: var(--white); }
+  .router-spinner-wrap { text-align: center; padding: var(--sp-10) 0; color: var(--slate); }
+
+  /* gh-2063: on short mobile viewports (e.g. 390x844 in the Facebook
+     in-app browser, whose own chrome eats ~100px of that) the step-1 CTA
+     must stay above the fold. Tightens vertical spacing only below
+     700px tall -- no layout/copy change, same elements, same order. */
+  @media (max-height: 700px) {
+    main { padding-top: var(--sp-4); padding-bottom: var(--sp-8); }
+    .router-card { padding: var(--sp-4); }
+    .router-progress { margin-bottom: var(--sp-4); }
+    .router-step h1, #routerCRoot h1 { margin-bottom: var(--sp-1); }
+    .router-step p.router-sub, #routerCRoot p.router-sub { margin-bottom: var(--sp-3); }
+    .form-group { margin-bottom: var(--sp-2); }
+  }
+</style>
+</head>
+<body>
+
+<header id="site-header"></header>
+
+<main>
+  <div class="router-card">
+    <div class="router-progress" id="routerProgress">
+      <span id="progressStep1"></span>
+      <span id="progressStep2"></span>
+      <span id="progressStep3"></span>
+    </div>
+
+    <div class="router-error" id="routerError" role="alert"></div>
+
+    <!-- ═══════════ Step 1 — contact info ═══════════ -->
+    <section class="router-step active" id="step1" data-step="1">
+      <h1>Let's get you started</h1>
+      <p class="router-sub">Tell us how to reach you. Takes about 30 seconds.</p>
+
+      <!-- gh-1994 fix round 3 (non-blocking N4): maxlength on each input
+           matches the DB-layer CHECK constraints (leads_name_length_check
+           /leads_email_length_check/leads_phone_length_check, migration
+           20260916132127_gh1994_router_leads_columns.sql) so a visitor who
+           pastes an over-length value is stopped by the browser before
+           submit rather than hitting a generic "something went wrong"
+           error from a server-side constraint violation on insert. -->
+      <form id="step1Form" novalidate>
+        <div class="form-group">
+          <label for="routerName" class="form-label required">Full Name</label>
+          <input type="text" id="routerName" name="name" class="form-input" autocomplete="name" placeholder="Jane Smith" required maxlength="200" aria-describedby="routerNameError">
+          <div class="field-error" id="routerNameError"></div>
+        </div>
+
+        <div class="form-group">
+          <label for="routerEmail" class="form-label required">Email</label>
+          <input type="email" id="routerEmail" name="email" class="form-input" autocomplete="email" inputmode="email" placeholder="jane@example.com" required maxlength="320" aria-describedby="routerEmailError">
+          <div class="field-error" id="routerEmailError"></div>
+        </div>
+
+        <div class="form-group">
+          <label for="routerPhone" class="form-label">Phone Number <span class="form-label-optional">(optional)</span></label>
+          <input type="tel" id="routerPhone" name="phone" class="form-input" autocomplete="tel" inputmode="tel" placeholder="(555) 123-4567" maxlength="20" aria-describedby="routerPhoneError">
+          <div class="field-error" id="routerPhoneError"></div>
+        </div>
+
+        <button type="submit" id="step1Submit" class="btn btn-primary router-btn">Continue</button>
+      </form>
+    </section>
+
+    <!-- ═══════════ Step 2 — "I am a" ═══════════ -->
+    <section class="router-step" id="step2" data-step="2">
+      <button type="button" class="router-back" id="backTo1">&larr; Back</button>
+      <h1>I am a&hellip;</h1>
+      <div class="role-options">
+        <button type="button" class="role-option" data-router-role="homeowner">Homeowner <span class="role-arrow">&rarr;</span></button>
+        <button type="button" class="role-option" data-router-role="contractor">Contractor <span class="role-arrow">&rarr;</span></button>
+        <button type="button" class="role-option" data-router-role="referral_partner">Referral Partner <span class="role-arrow">&rarr;</span></button>
+      </div>
+    </section>
+
+    <!-- ═══════════ Step 2a — partner industry ═══════════ -->
+    <!-- Industry set is loaded from js/agent-types.js (AgentTypes.CHOOSER_LABELS,
+         gh-914 single source for the partner-page industry set) at runtime by
+         renderPartnerIndustries() below -- never hand-copied here, per that
+         file's own CI check (tools/agent_type_labels_check.py). -->
+    <section class="router-step" id="step2a" data-step="2a">
+      <button type="button" class="router-back" id="backTo2">&larr; Back</button>
+      <h1>What industry are you in?</h1>
+      <p class="router-sub">This tells us which partner program fits you.</p>
+      <div class="role-options" id="partnerIndustryOptions"></div>
+    </section>
+
+    <!-- ═══════════ Step 3 — redirecting ═══════════ -->
+    <section class="router-step" id="step3" data-step="3">
+      <div class="router-spinner-wrap">
+        <p>Taking you to the right place&hellip;</p>
+      </div>
+    </section>
+
+    <!-- ═══════════ Variant C — discovery engine mount (gh-2017) ═══════════ -->
+    <!-- Empty by design: js/router-discovery.js owns all rendering inside
+         this element once loaded. Hidden by default so it has zero effect
+         on arms A/B; unhidden only inside this file's own variant === 'c'
+         branch below, at the same point that branch hides #step1/#step2/
+         #step2a/#step3. -->
+    <div id="routerCRoot" hidden></div>
+  </div>
+</main>
+
+<footer id="site-footer"></footer>
+
+<script src="js/cookie-storage.js"></script>
+<script src="js/config.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/nav.js"></script>
+<script src="js/agent-types.js"></script>
+
+<script>
+(function () {
+  'use strict';
+
+  // gh-1994: this page owns its own Supabase client rather than depending on
+  // js/supabase-client.js (not included on most static marketing pages
+  // today -- see js/auth.js:1443-1447's own count of "9 of 11" pages that
+  // lack it). Pattern below matches contractor-join.html's own working
+  // `const sb = supabase.createClient(...)` local-client declaration. (Fix
+  // round 3: removed this comment's own stale claim that partner-re.html
+  // reads an unbound bare `sb` -- withdrawn back in fix round 1's PR body
+  // once `js/config.js` was confirmed to declare `sb` as a page-level
+  // global; this file's own copy of that same claim was missed until the
+  // fix round 3 REVIEW pass caught it.)
+  var sb = null;
+  try {
+    if (typeof supabase !== 'undefined' && typeof CONFIG !== 'undefined') {
+      sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, {
+        auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' }
+      });
+    }
+  } catch (e) { /* handled by the null-check on every use below */ }
+
+  // ── Elements ──
+  var progressEls = { 1: document.getElementById('progressStep1'), 2: document.getElementById('progressStep2'), 3: document.getElementById('progressStep3') };
+  var steps = { 1: document.getElementById('step1'), 2: document.getElementById('step2'), '2a': document.getElementById('step2a'), 3: document.getElementById('step3') };
+  var routerError = document.getElementById('routerError');
+
+  function renderStep(key) {
+    // gh-2017: arm C's own screen container is what renders for the whole
+    // of that session; this function's DOM toggling and view-tracking are
+    // for the shared #step1/#step2/#step2a/#step3 sections only, which
+    // stay hidden the entire time, including the one indirect path here --
+    // redirectTo() below calls renderStep(3), and the module calls
+    // redirectTo() by reference per the bridge contract.
+    if (ARM_C) return;
+    Object.keys(steps).forEach(function (k) { steps[k].classList.toggle('active', k === String(key)); });
+    // gh-2016: the 3-segment progress bar is hardcoded to A's screen ORDER,
+    // not just its key names -- on arm B, contact (1) is the middle screen
+    // and role (2) is the first, so A's derivation reads exactly backwards.
+    // Same shape, B's order: first screen 0 done, the two middle screens 1,
+    // the redirect 2.
+    var doneCount = ARM_B
+      ? (key === 2 ? 0 : (key === '2a' || key === 1) ? 1 : 2)
+      : (key === 1 ? 0 : (key === 2 || key === '2a') ? 1 : 2);
+    // gh-2016: swap in B's delivery-framed contact heading as that screen
+    // renders -- it depends on bRole, which is not known at page load.
+    if (ARM_B && String(key) === '1') {
+      var bHeadingEl = steps[1].querySelector('h1');
+      if (bHeadingEl) {
+        bHeadingEl.textContent = (bRole === 'homeowner')
+          ? B_CONTACT_HEADINGS.homeowner
+          : B_CONTACT_HEADINGS.other;
+      }
+    }
+    [1, 2, 3].forEach(function (n) { progressEls[n].classList.toggle('done', n <= doneCount); });
+    routerError.classList.remove('show');
+    window.scrollTo({ top: 0, behavior: 'instant' in window ? 'instant' : 'auto' });
+    // gh-2014: fires here (not in goToStep) so a popstate/Back re-render
+    // through this same function -- see the ── History: ── block below --
+    // counts as a view too, matching back-then-forward funnel semantics.
+    trackRouter('router_step_view', { step: stepToken(key) });
+  }
+
+  function showError(msg) {
+    routerError.textContent = msg;
+    routerError.classList.add('show');
+  }
+
+  function fieldError(id, msg) {
+    var el = document.getElementById(id);
+    if (el) el.textContent = msg || '';
+    // gh-1994 fix round 1 (REVIEW): keep aria-invalid in sync with the
+    // visible error text on the input the error div describes (id minus
+    // its "Error" suffix -- routerNameError -> routerName, etc).
+    var inputId = id.replace(/Error$/, '');
+    var input = document.getElementById(inputId);
+    if (input) {
+      if (msg) input.setAttribute('aria-invalid', 'true');
+      else input.removeAttribute('aria-invalid');
+    }
+  }
+
+  // ── Attribution: current-URL params first, oq_ft cookie (gh-1983) as
+  // fallback for any key the current URL didn't carry (e.g. a visitor who
+  // arrived on an earlier tagged page and clicked through to /start.html
+  // with a clean URL). Mirrors attribution-core.ts's own sanitising
+  // (printable-only, trimmed, length-capped) without importing that TS
+  // module into a plain script tag. ──
+  var ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid', 'v'];
+  var CLICK_ID_KEYS = { fbclid: true, gclid: true };
+
+  // ── gh-2014: A/B/C front-door variant, read once at page load into a
+  // closed-over var. Sanitized against a fixed allowlist BEFORE any use --
+  // an unrecognised value becomes null rather than reaching a downstream
+  // write, since a future CHECK constraint on leads.variant would turn a
+  // bad value into a destroyed lead (anon has INSERT but no UPDATE policy
+  // on leads). Variants B/C route entirely client-side through
+  // renderStep/goToStep within this one document, so a single page-load
+  // read is sufficient for the whole session.
+  // gh-2014 fix round 4: deliberately NOT an object-literal lookup
+  // (`{a:1,b:1,c:1}[rawVariant]`) -- that walks the prototype chain, so
+  // ?v=constructor and ?v=__proto__ both read as truthy own-property-less
+  // hits and bypass the allowlist entirely (reproduced: VARIANT_VALUES
+  // ={a:1,b:1,c:1}; VARIANT_VALUES['constructor'] and
+  // VARIANT_VALUES['__proto__'] are both truthy Object.prototype members).
+  // A regex test never consults the prototype chain, so this is not
+  // vulnerable to the same class of bypass. ──
+  // gh-2074 fix round 2 (PR #2079 review, item 1 BLOCKER): window.__oqVariant
+  // -- set by the head-inline assignment script above, already sanitised
+  // AND re-mapped to a live arm -- is now read FIRST, not as a fallback.
+  // Before this fix the URL's own ?v= was consulted first and
+  // window.__oqVariant only when the URL failed the allowlist; that order
+  // was correct pre-gh-2074 but became a live split-brain bug once a/b
+  // started being re-mapped to a live arm on arrival: the ONLY place that
+  // rewrites ?v= to the re-mapped arm is that same head script's
+  // history.replaceState call, which is wrapped in a swallowing try/catch
+  // and does throw in real /start traffic (sandboxed iframes without
+  // allow-same-origin -- ad-platform/CMS landing-page previews and
+  // embeds -- plus Safari's history-mutation rate limit). When it throws,
+  // the pre-mapped ?v=a/?v=b survives in the URL, and reading the URL
+  // first served arm a/b anyway with the correct, already-live
+  // window.__oqVariant sitting right there unused -- GA4/Clarity tagged
+  // variant=a/b and leads.variant written a/b, while both persisted
+  // stores already said 'c'. The URL is read here only as a fallback for
+  // the case window.__oqVariant is itself unset (the head script threw
+  // before reaching that assignment) -- and even then it is run through
+  // window.__oqToLiveArm, the SAME live-mapping function the head script
+  // itself uses, so a/b still cannot win from this path either.
+  //
+  // gh-2074 fix round 2 (PR #2079 review, item 2): the allowlist is no
+  // longer a second hardcoded /^[abc]$/ -- it is built from
+  // window.__oqKnownArms, the same KNOWN_ARMS constant the head script
+  // uses (falling back to a local literal only if that script somehow
+  // never ran). KNOWN_ARMS already includes 'd'/'e', so this read stays
+  // correct across the gh-2075/gh-2076 ship without a second edit here.
+  // Still a regex test, never an object-literal lookup, for the same
+  // prototype-chain-bypass reason as the fix-round-4 comment above.
+  var KNOWN_ARMS = window.__oqKnownArms || ['a', 'b', 'c', 'd', 'e'];
+  var KNOWN_ARM_RE = new RegExp('^(' + KNOWN_ARMS.join('|') + ')$');
+  var oqVariantArm = KNOWN_ARM_RE.test(String(window.__oqVariant || ''))
+    ? String(window.__oqVariant)
+    : null;
+  var rawVariant = (new URLSearchParams(window.location.search).get('v') || '').toLowerCase();
+  var toLiveArmFallback = window.__oqToLiveArm || function (a) { return a; };
+  var urlFallbackArm = (!oqVariantArm && KNOWN_ARM_RE.test(rawVariant))
+    ? toLiveArmFallback(rawVariant)
+    : null;
+  var variant = oqVariantArm || urlFallbackArm;
+  // gh-2014: js/ga-gate.js's CLARITY_ALLOWED_PATHS now carries '/start', so
+  // this call is live rather than a no-op against a closed gate. Guarded on
+  // both a recognised variant and window.clarity actually having loaded
+  // (Clarity is still behind its own host/consent gate upstream of the
+  // path allowlist).
+  // gh-2063 fix round 2 (PR #2065 review, blocker 3): this used to run here,
+  // at parse time, while the page's <script defer src="js/ga-gate.js"> --
+  // the only place window.clarity is created -- had not executed yet.
+  // window.clarity was always undefined at this point once ga-gate.js
+  // stopped being a synchronous head script, so the guard above was always
+  // false and the call silently never ran: every session on every /start
+  // variant recorded in Clarity with no 'variant' tag. Deferred scripts run
+  // in document order, strictly before DOMContentLoaded fires, so moving
+  // this call into a DOMContentLoaded listener guarantees ga-gate.js (and
+  // therefore window.clarity, when the host/path gates allow it) has
+  // already run by the time this fires -- with no change to the guard logic
+  // or to what gets sent.
+  document.addEventListener('DOMContentLoaded', function () {
+    try { if (variant && window.clarity) { clarity('set', 'variant', variant); } } catch (e) {}
+  });
+
+  // ── gh-2016: arm B (contact-last). B asks #2011's IDENTICAL questions in
+  // inverted order -- role, then industry if referral_partner, then
+  // name/email/phone on the LAST screen, framed as delivery. It is a
+  // REORDER of this same file's four screens, not a second page and not a
+  // second set of components: B renders the very same #step2 / #step2a /
+  // #step1 / #step3 sections A does, in a different sequence. That is
+  // deliberate -- this file's three "fix round" comment blocks record
+  // hard-won fixes (the double-submit guards, the pageshow/e.persisted
+  // bfcache reset, the stale-lead fallback) that a forked copy would drift
+  // away from on the next one. ──
+  var ARM_B = variant === 'b';
+
+  // gh-2017: arm C (the Sandler discovery engine) does not reuse this
+  // file's steps/renderStep/trackStepComplete machinery at all --
+  // js/router-discovery.js owns its own ordered-array sequencer and its
+  // own rendering, reached through the bridge assembled near the end of
+  // this IIFE. ARM_C exists so the few machinery functions this file still
+  // runs on every variant unconditionally -- the load-time view emission
+  // below, renderStep(), trackStepComplete() -- can no-op instead of
+  // emitting an arm-A-shaped event or showing an arm-A section on top of
+  // arm C's own screen. redirectTo() (below) is called BY the module
+  // itself, so its two calls into the now-guarded functions matter here.
+  var ARM_C = variant === 'c';
+
+  // B's step vocabulary, deliberately non-colliding with A's 1/2/2a/3
+  // (#2016 control 4). The arms ask DIFFERENT questions at the same
+  // ordinal, so a shared token would produce a funnel where arm A's step 2
+  // and arm B's step 2 are the same column -- unreadable for both arms, not
+  // just one. Keyed by the DOM step this file already uses, so the mapping
+  // stays in one place instead of at each emit site.
+  var B_STEP_TOKENS = { 2: 'b-role', '2a': 'b-industry', 1: 'b-contact', 3: 'b-redirect' };
+  function stepToken(key) {
+    return ARM_B ? (B_STEP_TOKENS[key] || key) : key;
+  }
+
+  // The screen a fresh session starts on, AND the screen every reset lands
+  // on (the popstate stranded-guard and the bfcache restore below both
+  // hardcoded 1). A enters on contact (1); B enters on role (2). A literal
+  // 1 in either of those places would, on arm B, throw the visitor FORWARD
+  // onto the contact screen rather than back to the start.
+  var ENTRY_STEP = ARM_B ? 2 : 1;
+
+  // gh-2016: arm B's contact screen is the last screen and is framed as
+  // delivery, so A's entry-screen heading ("Let's get you started") does
+  // not work in that position. Role-aware because by the time this renders
+  // the role is already known, and only a homeowner is receiving quotes --
+  // a contractor or referral partner is not. Both strings are APPROVED
+  // (Ben, CEO, exec:cro authority, Tier B -- #2016 comment 5729566117).
+  // Do not reword either without a fresh approval.
+  var B_CONTACT_HEADINGS = {
+    homeowner: 'Where should we send your quotes?',
+    other: 'Last step — how do we reach you?'
+  };
+
+  // gh-2016: on arm B the role and industry screens run BEFORE any lead row
+  // exists, so the answers are held here and written by the set_lead_role
+  // call that follows the contact-screen insert. Arm A never sets either.
+  var bRole = null;
+  var bIndustry = null;
+
+  function cleanAttrValue(raw, max) {
+    if (typeof raw !== 'string') return null;
+    var v = raw.replace(/[^\x20-\x7E]/g, '').trim().slice(0, max || 200);
+    return v || null;
+  }
+
+  function readOqFtCookie() {
+    try {
+      var m = document.cookie.match(/(?:^|; )oq_ft=([^;]*)/);
+      if (!m) return null;
+      var obj = JSON.parse(decodeURIComponent(m[1]));
+      return obj && typeof obj === 'object' ? obj : null;
+    } catch (e) { return null; }
+  }
+
+  function collectAttribution() {
+    var params = new URLSearchParams(window.location.search);
+    var cookieFt = readOqFtCookie();
+    var out = {};
+    ATTR_KEYS.forEach(function (k) {
+      var max = CLICK_ID_KEYS[k] ? 1000 : 200;
+      var fromUrl = cleanAttrValue(params.get(k), max);
+      var fromCookie = cookieFt ? cleanAttrValue(cookieFt[k], max) : null;
+      out[k] = fromUrl || fromCookie || null;
+    });
+    // gh-2014 fix round 2: 'v' must carry the SANITIZED arm here, not the
+    // raw value the loop above just computed -- cleanAttrValue() only
+    // trims/strips/caps, it never runs the /^[abc]$/ allowlist check above,
+    // so out.v could otherwise be arbitrary printable garbage (from either the
+    // oq_ft cookie fallback) forwarded via appendParams() onto
+    // contractor-join.html / partner-*.html / the homeowner get-started
+    // URL. Overriding unconditionally here covers both source paths in
+    // one place: an unrecognised or absent arm forwards null (dropped by
+    // appendParams, which skips falsy values), never garbage.
+    out.v = variant;
+    return out;
+  }
+
+  // ── gh-2014: local event helper -- start.html is a static root-level
+  // file outside react-app/ (PR #1960's track() helper lives at
+  // react-app/app/lib/track.ts and is unreachable from here), so every
+  // router event stamps `variant` itself via this wrapper instead. ──
+  //
+  // gh-2063: ga-gate.js now loads `defer` (moved out of the first-paint
+  // path), so `gtag` may not exist yet the moment this IIFE runs -- in
+  // particular the very first router_step_view fired a few lines below,
+  // which used to run after ga-gate.js's synchronous <script src> had
+  // already executed. Queueing here (instead of just letting the
+  // try/catch below swallow the call) means the timing change never drops
+  // an event: the same name/params are still sent, just as soon as gtag
+  // exists, which is guaranteed no later than DOMContentLoaded (deferred
+  // scripts always finish before that event fires).
+  var _oqTrackQueue = [];
+  function _oqFlushTrackQueue() {
+    if (typeof gtag !== 'function' || !_oqTrackQueue.length) return;
+    var q = _oqTrackQueue;
+    _oqTrackQueue = [];
+    for (var i = 0; i < q.length; i++) {
+      try { gtag('event', q[i].name, q[i].params); } catch (e) {}
+    }
+  }
+  document.addEventListener('DOMContentLoaded', _oqFlushTrackQueue);
+
+  function trackRouter(name, extra) {
+    try {
+      var p = extra || {};
+      if (variant) { p.variant = variant; }
+      if (typeof gtag === 'function') {
+        gtag('event', name, p);
+      } else {
+        _oqTrackQueue.push({ name: name, params: p });
+      }
+    } catch (e) {}
+  }
+
+  // ── Phone validation: exactly 10 US digits after stripping formatting,
+  // optionally with a leading country code 1, NANP-shaped (area/exchange
+  // codes 2-9), and not all one repeated digit. Mirrors the server-side
+  // check in update_lead_contact() (fix round 1, migration
+  // 20260916132127_gh1994_router_leads_columns.sql) so a phone this client
+  // accepts is never rejected by a resubmit's server-side revalidation. ──
+  function normalizePhone(raw) {
+    var digits = (raw || '').replace(/\D/g, '');
+    if (digits.length === 11 && digits.charAt(0) === '1') digits = digits.slice(1);
+    return digits;
+  }
+  function isValidUsPhone(raw) {
+    var digits = normalizePhone(raw);
+    if (digits.length !== 10) return false;
+    if (/^(\d)\1{9}$/.test(digits)) return false; // all-same-digit (e.g. 5555555555)
+    if (!/^[2-9]\d{2}[2-9]\d{6}$/.test(digits)) return false; // area/exchange codes must start 2-9
+    return true;
+  }
+
+  // ── State ──
+  var leadId = null;
+  // gh-1994 fix round 1 (ruling item 7): a resubmit (browser/back-button
+  // return to Step 1, then Continue again) updates the existing lead via
+  // update_lead_contact() instead of start.html inserting a duplicate row.
+  // sessionStorage (per-tab, cleared when the tab closes) is enough to
+  // detect "this same browsing session already created a lead" -- it is
+  // never read as a source of truth for anything beyond that id.
+  var LEAD_ID_STORAGE_KEY = 'oq_router_lead_id';
+  function getStoredLeadId() {
+    try { return sessionStorage.getItem(LEAD_ID_STORAGE_KEY); } catch (e) { return null; }
+  }
+  function setStoredLeadId(id) {
+    try { sessionStorage.setItem(LEAD_ID_STORAGE_KEY, id); } catch (e) { /* private-mode / blocked storage: resubmit dedup best-effort only */ }
+  }
+
+  // gh-1994 fix round 3 (Ben, REVIEW 5702597120 finding B1, blocking):
+  // shared fresh-insert path. Both update_lead_contact (Step 1 resubmit)
+  // and set_lead_role (Step 2/2a) now RETURN boolean and can legitimately
+  // return false -- once prefill_used_at is set or the 30-minute window
+  // has passed, the RPC no-ops rather than erroring. Fix round 2 treated
+  // "no error" as "success" for both, which meant Back-from-a-destination
+  // (which stamps prefill_used_at via that page's own get_lead_prefill
+  // call) -> correct a typo -> pick a new role silently discarded both the
+  // correction and the new role: the DB kept the original values with no
+  // error anywhere in the chain (Ben's traced flow, B1). insertFreshLead
+  // is the same client-generated-id insert Step 1 already used for a
+  // brand-new visitor, factored out so a stale/prefilled/expired lead id
+  // can fall back to it instead of the visitor's data vanishing.
+  function insertFreshLead(name, email, phoneDigits) {
+    var newId = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : (
+      'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+        var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+      })
+    );
+    var attr = collectAttribution();
+    return sb.from('leads').insert({
+      id: newId,
+      name: name,
+      email: email,
+      phone: phoneDigits,
+      source: 'router',
+      utm_source: attr.utm_source,
+      utm_medium: attr.utm_medium,
+      utm_campaign: attr.utm_campaign,
+      utm_content: attr.utm_content,
+      utm_term: attr.utm_term,
+      fbclid: attr.fbclid,
+      gclid: attr.gclid,
+      variant: variant
+    }).then(function (res) {
+      if (res && res.error) throw res.error;
+      setStoredLeadId(newId);
+      return newId;
+    });
+  }
+
+  // ── gh-2016: arm B's entry screen. Flipped in the DOM here rather than
+  // by calling renderStep() so that the History block just below still
+  // reads the entry screen off `.router-step.active` exactly as it does on
+  // arm A -- and so the load-time view event is emitted once, by that
+  // block, instead of twice. ──
+  if (ARM_B) {
+    Object.keys(steps).forEach(function (k) { steps[k].classList.toggle('active', k === String(ENTRY_STEP)); });
+    // A's step-2 "Back" walks to the contact screen, which on B is still
+    // AHEAD of the visitor. Nothing is behind B's entry screen, so hide it
+    // rather than let it push the visitor forward or out of the router.
+    var bBackTo1 = document.getElementById('backTo1');
+    if (bBackTo1) bBackTo1.style.display = 'none';
+    // B's contact screen is mid-flow, so it gets the same "Back" affordance
+    // every other mid-flow screen on this page already has -- same class,
+    // same handler, same string as the two in markup. Built in JS rather
+    // than added to markup so arm A's DOM stays byte-identical to main:
+    // #2015 requires /start?v=a to render exactly what /start renders.
+    var bBackToRole = document.createElement('button');
+    bBackToRole.type = 'button';
+    bBackToRole.className = 'router-back';
+    bBackToRole.id = 'backToRole';
+    bBackToRole.innerHTML = '&larr; Back';
+    bBackToRole.addEventListener('click', function () { history.back(); });
+    steps[1].insertBefore(bBackToRole, steps[1].firstChild);
+  }
+
+  // gh-2017: arm C hides the four shared sections and reveals this file's
+  // one new element (#routerCRoot, its only other markup change for this
+  // arm) BEFORE the History block just below reads `.router-step.active`
+  // from static markup -- #step1 carries that class in the raw HTML
+  // regardless of variant, so without this the History block's read still
+  // finds it and fires one stray router_step_view for arm A's token 1
+  // before js/router-discovery.js ever renders anything. The 3-dot
+  // progress bar is hidden too: it is hardcoded to arm A/B's 3-screen
+  // shape and would otherwise show three empty, meaningless dots above
+  // arm C's own 8-screen flow.
+  var routerCRoot = document.getElementById('routerCRoot');
+  if (ARM_C) {
+    Object.keys(steps).forEach(function (k) { steps[k].classList.remove('active'); });
+    var routerProgressEl = document.getElementById('routerProgress');
+    if (routerProgressEl) routerProgressEl.hidden = true;
+    if (routerCRoot) routerCRoot.hidden = false;
+  }
+
+  // ── History: Step 2 and Step 2a each get their own history entry (pushed
+  // on the way forward) so the browser/hardware back button steps the
+  // router backward one screen at a time instead of leaving the page
+  // entirely (REVIEW finding: back button exits the router). The on-screen
+  // "← Back" buttons call history.back() rather than rendering a step
+  // directly, so both paths go through the same popstate handler. ──
+  try { history.replaceState({ step: ENTRY_STEP }, '', location.href); } catch (e) {}
+  // gh-2014: the entry screen is `active` in static markup and renderStep()
+  // is never called at load, so the entry view has to be emitted explicitly
+  // or the funnel's denominator is missing. Back-navigation into the entry
+  // step still emits a second view through renderStep, which is the
+  // intended semantic. Reads whichever .router-step carries `active` at
+  // load (fix round 2) instead of hardcoding {step: 1} -- arm A's entry is
+  // Step 1 today, but #2016 (arm B) and #2017 (arm C) each mark a
+  // different screen as their entry point, and a hardcoded 1 would
+  // fabricate a step-1 view for a screen nobody saw once those variants
+  // ship. gh-2016: no active section found is genuinely indeterminate --
+  // emit no view at all rather than guess (see trackStepComplete below).
+  var initialStepEl = document.querySelector('.router-step.active');
+  // gh-2017: kept as the sibling PR (#2029, gh-2016) rewrote it -- its own
+  // `if (initialStepEl)` guard already covers arm C for free. The
+  // hide-block above removes `active` from every one of #step1/#step2/
+  // #step2a/#step3 for arm C before this line runs, so initialStepEl is
+  // null on an arm C session and this whole block already emits nothing,
+  // with no arm-C-specific check needed here.
+  if (initialStepEl) {
+    var initialStepRaw = initialStepEl.getAttribute('data-step');
+    // gh-2014 fix round 3: getAttribute() always returns a string, but
+    // renderStep()'s numeric steps (1, 2, 3 -- see history.replaceState({step:
+    // 1}) just above and the popstate handler's `|| 1` below) are JS numbers.
+    // GA4/BigQuery splits event_params.value across string_value and
+    // int_value by the param's JS type, so the same screen emitting a string
+    // here and a number from renderStep would split this event's denominator
+    // across two columns. Coerce numeric-looking tokens ("1", "2", "3") back
+    // to numbers to match renderStep's type for the same screen; leave
+    // non-numeric tokens ("2a", and future arm-B/C entry tokens) as strings,
+    // which is what renderStep already emits for them.
+    var initialStepNum = parseInt(initialStepRaw, 10);
+    var initialStep = (String(initialStepNum) === String(initialStepRaw)) ? initialStepNum : initialStepRaw;
+    trackRouter('router_step_view', { step: stepToken(initialStep) });
+  }
+  window.addEventListener('popstate', function (e) {
+    var step = (e.state && e.state.step) || ENTRY_STEP;
+    // gh-1994 phase 2 (review 5703841330, non-blocking N1): a bfcache
+    // restore's pageshow handler (below) nulls leadId and resets to Step 1,
+    // but the tab's session history still holds the earlier same-document
+    // {step:2}/{step:'2a'} entries underneath that reset entry. A second
+    // Back after the restore popped straight into Step 2/2a with
+    // leadId === null -- clicking a role/industry button there hit the
+    // pre-existing "Something went wrong. Please refresh and start over."
+    // banner and stranded the visitor on the router instead of returning
+    // them to Step 1. If there is no lead id, Step 2/2a can never submit
+    // anyway, so land on Step 1 instead of a step that can only ever show
+    // that error.
+    // gh-2016 (#2016 closes-on control 3): on arm B there is NO leadId
+    // until the last screen, so A's "any step but 1 without a lead id is
+    // unreachable" test is true for the whole of arm B -- as written it
+    // would slam every back-navigating B visitor onto the contact screen
+    // (B's step 1), which is forward, not back. On B the role, industry and
+    // contact screens are all designed to work with no lead id; only the
+    // redirect screen is genuinely unusable without one.
+    var strandedStep = ARM_B ? (step === 3) : (step !== 1);
+    if (!leadId && strandedStep) {
+      try { history.replaceState({ step: ENTRY_STEP }, '', location.pathname + location.search); } catch (e2) {}
+      step = ENTRY_STEP;
+    }
+    renderStep(step);
+  });
+  // gh-2014 fix round 2: shared by goToStep AND redirectTo -- redirectTo()
+  // is how Step 2 (homeowner/contractor role redirects) and Step 2a (every
+  // partner-industry redirect) actually complete the router, bypassing
+  // goToStep entirely, so router_step_complete has to fire from there too
+  // or the majority of real conversions look like near-100% drop-off.
+  // The screen being left is still the one carrying `active` at the moment
+  // this runs, whether called from goToStep (before its own pushState AND
+  // before its renderStep) or from redirectTo (before its renderStep(3)).
+  // gh-2016: this used to read history.state.step instead -- see the block
+  // below for why that was wrong and why the DOM is now the source.
+  // gh-2016 (#2016 comment 5732035538, Ben CEO): the `|| 1` fallback here
+  // was arm A's DOM step key. On arm B, DOM step key 1 is the CONTACT
+  // screen -- b-contact -- the LAST screen before the redirect, so a
+  // completion with no history.state fired router_step_complete tagged
+  // b-contact: the screen the visitor did NOT leave. No control caught it,
+  // since stepToken() maps it to a valid arm-B token and no arm-A key
+  // leaks. That inflated arm B's measured completion and moved drop-off
+  // away from wherever it actually happens, in the instrument the whole
+  // three-arm Meta test is judged on.
+  // Ben's ruling: "Do not default to 1. Derive the leaving step from the
+  // arm's own ordered sequence -- the screen actually being left -- and
+  // when it genuinely cannot be determined, emit nothing rather than a
+  // guess. A missing event is a hole we can see; a wrong event is a hole
+  // we cannot."
+  // Both call sites (goToStep, redirectTo) run this while the leaving
+  // screen still carries `active`, and renderStep() keeps `active` on
+  // exactly one .router-step at a time -- reading it off the DOM is
+  // arm-agnostic by construction (it reads the arm's own sequence, not an
+  // assumed order) and needs no change for arm C (#2017).
+  function trackStepComplete() {
+    // gh-2017: kept as the sibling PR (#2029, gh-2016) rewrote it -- its
+    // own DOM-active-count guard already covers arm C for free, same
+    // reasoning as the load-time view emit above. The hide-block removes
+    // `active` from all four shared sections for arm C, so `activeEls`
+    // here is always empty on an arm C session (reached indirectly via
+    // redirectTo(), which the module calls by reference) and this
+    // function already emits nothing, with no arm-C-specific check
+    // needed. js/router-discovery.js emits its own router_step_complete
+    // for every arm C screen it leaves, through the bridged trackRouter,
+    // using its own step tokens.
+    var activeEls = document.querySelectorAll('.router-step.active');
+    if (activeEls.length !== 1) return;
+    var raw = activeEls[0].getAttribute('data-step');
+    if (raw === null || raw === '') return;
+    // gh-2014 fix round 3's coercion (see the load-time view emit above):
+    // match renderStep's JS-number type for numeric steps, string for '2a'.
+    var n = parseInt(raw, 10);
+    var leavingStep = (String(n) === String(raw)) ? n : raw;
+    trackRouter('router_step_complete', { step: stepToken(leavingStep) });
+  }
+
+  function goToStep(key) {
+    trackStepComplete();
+    try { history.pushState({ step: key }, '', location.href); } catch (e) {}
+    renderStep(key);
+  }
+
+  // ── Step 1: contact info -> immediate leads insert ──
+  var step1Form = document.getElementById('step1Form');
+  var step1Submit = document.getElementById('step1Submit');
+
+  step1Form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    fieldError('routerNameError', '');
+    fieldError('routerEmailError', '');
+    fieldError('routerPhoneError', '');
+    routerError.classList.remove('show');
+
+    var name = document.getElementById('routerName').value.trim();
+    var email = document.getElementById('routerEmail').value.trim();
+    var phoneRaw = document.getElementById('routerPhone').value.trim();
+
+    var hasError = false;
+    if (!name) { fieldError('routerNameError', 'Please enter your name.'); hasError = true; }
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { fieldError('routerEmailError', 'Please enter a valid email address.'); hasError = true; }
+    // Negative control (closes-on a): empty (or otherwise invalid) phone
+    // blocks Step 1 -- no leads row is inserted and Step 2 never shows.
+    if (phoneRaw && !isValidUsPhone(phoneRaw)) { fieldError('routerPhoneError', 'Please enter a valid 10-digit US phone number.'); hasError = true; }
+    if (hasError) return;
+
+    if (!sb) { showError('Something went wrong loading the form. Please refresh and try again.'); return; }
+
+    // gh-2016: on arm B this screen is LAST, and the role picked on b-role
+    // decides both the destination and the set_lead_role write that follows
+    // the insert. Only reachable without one by a forward-nav into a stale
+    // history entry -- send the visitor back to the role screen rather than
+    // insert a row whose role could never be set.
+    if (ARM_B && !bRole) { goToStep(2); return; }
+
+    step1Submit.disabled = true;
+    step1Submit.textContent = 'Please wait…';
+
+    function onStep1Settled(res, threw) {
+      step1Submit.disabled = false;
+      step1Submit.textContent = 'Continue';
+      if (threw || (res && res.error)) {
+        var err = threw || (res && res.error);
+        console.error('[router] Step 1 save failed:', err);
+        // gh-2010: this is the front-door failure the issue was filed over --
+        // a signed-in visitor's insert rejected by RLS (42501) landed nowhere
+        // but the console because nothing on this page ever called Sentry.
+        // captureException. Guarded so a Sentry SDK that never finished
+        // loading (see the window.sentryOnLoad predeclare in <head>) still
+        // leaves this handler working -- it just skips the report that run.
+        try {
+          if (typeof Sentry !== 'undefined' && Sentry.captureException) {
+            Sentry.captureException(err, { tags: { surface: 'router_step1_save' } });
+          }
+        } catch (e) { /* never let monitoring break the user-facing error path */ }
+        showError('Something went wrong saving your info. Please try again.');
+        return;
+      }
+      // GA4 — no PII, per #1994 item 4.
+      trackRouter('router_contact_submitted');
+      // Meta Lead — same bare call as contractor-join.html:376's precedent,
+      // no PII payload.
+      try { fbq('track', 'Lead'); } catch (e) {}
+      if (ARM_B) {
+        // gh-2016: the role and industry picked on the earlier screens are
+        // written HERE, immediately after the insert that created the row
+        // they belong to. This is not extra work that arm A avoids:
+        // leads_force_safe_insert_defaults() forces role/partner_industry to
+        // NULL on EVERY raw insert regardless of what the client sends, so
+        // role has to travel through set_lead_role on arm A too. The only
+        // change is that the RPC now runs seconds after the insert instead
+        // of screens later. setRoleWithFallback never rejects -- a failed
+        // role write must not strand a visitor on the router -- so both
+        // .then and .catch proceed to the destination.
+        var bIsPartner = bRole === 'referral_partner';
+        var bDest = bIsPartner ? PARTNER_INDUSTRY_DESTINATIONS[bIndustry] : ROLE_DESTINATIONS[bRole];
+        var bProceed = function () {
+          if (NO_LEAD_ID_DESTINATIONS[bRole]) {
+            redirectTo(appendParams(bDest, collectAttribution()), true);
+          } else {
+            redirectTo(bDest);
+          }
+        };
+        // gh-2016: this leadId was just written by this same request chain
+        // (insertFreshLead or a successful update_lead_contact, both above)
+        // -- it can never legitimately be stale, so a failure here must
+        // never fall back to inserting a second leads row. See
+        // setRoleWithFallback's skipFreshInsertOnFailure comment.
+        setRoleWithFallback(bRole, bIsPartner ? bIndustry : null, { skipFreshInsertOnFailure: true }).then(bProceed).catch(bProceed);
+        return;
+      }
+      goToStep(2);
+    }
+
+    // gh-1994 fix round 1 (ruling item 7): if this tab already created a
+    // lead (sessionStorage), a second Step 1 submit (e.g. browser back from
+    // Step 2, edit a field, Continue again) UPDATEs that same row through
+    // update_lead_contact() instead of inserting a new one -- the anon INSERT
+    // policy has no matching anon UPDATE policy, so a plain re-insert with
+    // the same id would hit the primary key and error, and a fresh insert
+    // would leave the abandoned original row behind as a duplicate.
+    //
+    // gh-1994 fix round 3 (Ben, B1 cure item b): update_lead_contact now
+    // RETURNS boolean and `false` is a real, non-error outcome (the guard
+    // -- 30-minute window or prefill_used_at already set -- refused the
+    // write). Fix round 2 checked only `res.error` here, so that refusal
+    // read as success and the correction was silently lost. A `false` (or
+    // a thrown error) now falls back to insertFreshLead with the corrected
+    // values instead of losing them -- this is the actual B1 fix; the
+    // update path above it is unchanged and still the common case.
+    var storedLeadId = getStoredLeadId();
+    // gh-2042 (Dustin, 2026-09-20: "Make phone optional"): an empty phone is
+    // sent as NULL, not '' -- leads.phone is nullable and update_lead_contact
+    // accepts NULL after migration gh2042_update_lead_contact_optional_phone.
+    var phoneDigits = phoneRaw ? normalizePhone(phoneRaw) : null;
+
+    if (storedLeadId) {
+      leadId = storedLeadId;
+      sb.rpc('update_lead_contact', {
+        p_lead_id: leadId,
+        p_name: name,
+        p_email: email,
+        p_phone: phoneDigits
+      }).then(function (res) {
+        if (res && res.error) throw res.error;
+        if (res && res.data === true) { onStep1Settled(null, null); return; }
+        console.warn('[router] update_lead_contact no-op (stale/prefilled/expired lead) -- inserting a fresh lead instead of losing the correction');
+        return insertFreshLead(name, email, phoneDigits).then(function (newId) {
+          leadId = newId;
+          onStep1Settled(null, null);
+        });
+      }).catch(function (err) {
+        console.warn('[router] update_lead_contact failed -- inserting a fresh lead instead:', err);
+        insertFreshLead(name, email, phoneDigits).then(function (newId) {
+          leadId = newId;
+          onStep1Settled(null, null);
+        }).catch(function (err2) { onStep1Settled(null, err2); });
+      });
+      return;
+    }
+
+    // Client-generated id (crypto.randomUUID): leads has no anon SELECT
+    // policy (confirmed live, 2026-09-16 -- only "Allow authenticated
+    // reads"), so `.insert().select()` could never read the DB-generated
+    // default back (same class of problem partner-re.html's own comment
+    // describes for referral_agents/register_partner). Generating the id
+    // client-side and passing it explicitly sidesteps that entirely: no
+    // RPC round-trip needed just to learn the row's own id. (Fix round 3:
+    // this is now insertFreshLead(), shared with the fallback above and
+    // with Step 2/2a's own fallback below.)
+    insertFreshLead(name, email, phoneDigits).then(function (newId) {
+      leadId = newId;
+      onStep1Settled(null, null);
+    }).catch(function (err) { onStep1Settled(null, err); });
+  });
+
+  // ── Step 2: "I am a" ──
+  var ROLE_DESTINATIONS = {
+    homeowner: 'https://app.otterquote.com/get-started',
+    contractor: 'contractor-join.html'
+  };
+
+  // gh-1994 fix round 2 (Ben, REVIEW 5700804646 / LEGAL-READ 5700654821):
+  // the homeowner destination was the React get-started page
+  // (react-app/app/get-started/page.tsx), which that PR was explicitly
+  // barred from touching -- it did not strip `lead` from the URL or use
+  // it for anything, so a ?lead=<uuid> sent there would have landed in
+  // that origin's GA4/Meta/Clarity/Sentry beacons AND stayed live for the
+  // full 30-minute prefill-read/overwrite window for anyone who captured
+  // the URL. DECIDED cure at the time (Ben): homeowners got NO lead param
+  // at all, only attribution (utm_*/fbclid/gclid, never PII) -- the lead
+  // row and role=homeowner were already saved server-side by that point
+  // in the flow, so nothing was lost by not round-tripping the id.
+  //
+  // gh-2046 (phase 2, SHIPPED): the React page now carries its own
+  // beforeInteractive strip+prefill, mirroring this file's own
+  // early-strip head script exactly (see app/layout.tsx's
+  // LEAD_STRIP_SCRIPT and app/get-started/page.tsx's prefill effect) --
+  // `lead` is captured into window.__oqRouterLeadId and removed from the
+  // visible URL via history.replaceState before hydration, which is
+  // before GA4Gate/MetaPixelGate/SentryInitializer's own effects can
+  // possibly run, so no beacon on that origin ever sees it. Prefill
+  // itself goes through the same get_lead_prefill RPC every other
+  // destination already uses -- unmodified 30-minute window and
+  // prefill_used_at single-use semantics, honored server-side. The cure
+  // above is no longer needed for the reason it existed: homeowners now
+  // get ?lead=<uuid> like every other destination, so
+  // NO_LEAD_ID_DESTINATIONS is empty. Contractor and referral-partner
+  // destinations are this repo's own static pages (contractor-join.html,
+  // partner-*.html), which strip+prefill via the early-strip head script
+  // added in fix round 1 -- unaffected, still get ?lead=<uuid>, same as
+  // before.
+  var NO_LEAD_ID_DESTINATIONS = {};
+
+  function appendParams(baseUrl, obj) {
+    var parts = [];
+    Object.keys(obj).forEach(function (k) {
+      if (obj[k]) parts.push(encodeURIComponent(k) + '=' + encodeURIComponent(obj[k]));
+    });
+    if (!parts.length) return baseUrl;
+    var sep = baseUrl.indexOf('?') === -1 ? '?' : '&';
+    return baseUrl + sep + parts.join('&');
+  }
+
+  // gh-1994 fix round 3 (Ben, REVIEW 5702597120 finding B1, blocking):
+  // shared fallback for both Step 2's role click and Step 2a's industry
+  // click. set_lead_role now RETURNS boolean and `false` is a real,
+  // non-error refusal (prefill_used_at already set, or past its 30-minute
+  // window) -- fix round 2 only checked `res.error` here, so that refusal
+  // was invisible and a Back-from-a-destination visitor's new role choice
+  // was silently discarded, leaving the original (now-stale) lead's role
+  // unchanged with no error anywhere in the chain (Ben's traced B1 flow).
+  // On `false` or a thrown error, this re-reads the CURRENT Step 1 field
+  // values (those inputs are hidden, not removed, once a later step is
+  // active, so `.value` still reflects whatever the visitor last typed),
+  // inserts a fresh lead with them via insertFreshLead, and retries
+  // set_lead_role against the new id. Never rejects -- even a failure
+  // after the fallback still proceeds to the destination, per the
+  // pre-existing "the role write failing must never strand a visitor on
+  // the router" rule (closes-on control (c)); it is logged instead.
+  function setRoleWithFallback(role, industry, opts) {
+    var payload = { p_lead_id: leadId, p_role: role };
+    if (industry) payload.p_partner_industry = industry;
+    // gh-2016 (CEO RUN 56, comment 5751788737, "Third finding"): arm B's
+    // contact-last screen calls this function IMMEDIATELY after the same
+    // request chain either inserted this exact lead (insertFreshLead) or
+    // successfully updated it (update_lead_contact returning true) --
+    // prefill_used_at cannot already be set and the 30-minute window
+    // cannot have elapsed on a row this call chain just touched
+    // successfully. So a no-op/error on THIS call is a transient RPC
+    // failure, never a legitimate staleness case, and answering it with
+    // insertFreshLead()'s "abandon this row, make a new one" recovery
+    // would silently write a SECOND leads row with variant='b' for one
+    // visitor -- the exact defect the CEO's review caught (six variant='b'
+    // rows in production against an "exactly ONE row" requirement).
+    // Callers in that position pass skipFreshInsertOnFailure so the
+    // fallback below retries set_lead_role against the SAME row instead
+    // of ever inserting another one. Arm A's Step 2 / Step 2a role clicks
+    // (the pre-existing callers) do NOT pass this -- there, leadId can be
+    // a genuinely stale/prefilled/expired row from an earlier visit, and
+    // insertFreshLead's stale-lead-recovery fallback is still correct and
+    // is left unchanged.
+    var skipFreshInsert = !!(opts && opts.skipFreshInsertOnFailure);
+
+    function fallback() {
+      if (skipFreshInsert) {
+        return sb.rpc('set_lead_role', payload).then(function (res) {
+          if (res && res.error) throw res.error;
+          if (!(res && res.data === true)) {
+            console.error('[router] set_lead_role retry still refused on the just-written lead (' + leadId + ') -- proceeding to the destination anyway, no duplicate row created');
+          }
+        }).catch(function (err) {
+          console.error('[router] set_lead_role retry failed -- proceeding to the destination anyway, no duplicate row created:', err);
+        });
+      }
+      var freshName = document.getElementById('routerName').value.trim();
+      var freshEmail = document.getElementById('routerEmail').value.trim();
+      var freshPhoneRaw = document.getElementById('routerPhone').value.trim();
+      var freshPhone = freshPhoneRaw ? normalizePhone(freshPhoneRaw) : null; // gh-2042
+      return insertFreshLead(freshName, freshEmail, freshPhone).then(function (newId) {
+        leadId = newId;
+        var retryPayload = { p_lead_id: newId, p_role: role };
+        if (industry) retryPayload.p_partner_industry = industry;
+        return sb.rpc('set_lead_role', retryPayload).then(function (res) {
+          if (res && res.error) throw res.error;
+          if (!(res && res.data === true)) {
+            console.error('[router] set_lead_role still refused on a brand-new lead (' + newId + ') -- proceeding to the destination anyway');
+          }
+        });
+      }).catch(function (err) {
+        console.error('[router] fresh-lead fallback failed -- proceeding to the destination anyway:', err);
+      });
+    }
+
+    return sb.rpc('set_lead_role', payload).then(function (res) {
+      if (res && res.error) throw res.error;
+      if (res && res.data === true) return;
+      console.warn('[router] set_lead_role no-op (stale/prefilled/expired lead) -- inserting a fresh lead and retrying');
+      return fallback();
+    }).catch(function (err) {
+      console.warn('[router] set_lead_role failed -- inserting a fresh lead and retrying:', err);
+      return fallback();
+    });
+  }
+
+  var roleButtons = document.querySelectorAll('#step2 .role-option');
+  // gh-1994 fix round 2 (Ben, non-blocking item): disable the role buttons
+  // while their set_lead_role request is in flight, so a fast double-click
+  // cannot fire two RPC calls (and, worse, race two different roles onto
+  // the same lead). Re-enabled once the request settles (success or
+  // error) rather than left disabled, because on error the visitor stays
+  // on Step 2 (see the catch handler below) and must be able to try again
+  // or pick a different role.
+  function setRoleButtonsDisabled(disabled) {
+    roleButtons.forEach(function (b) { b.disabled = disabled; });
+  }
+
+  roleButtons.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      if (btn.disabled) return;
+      var role = btn.getAttribute('data-router-role');
+      if (!sb) { showError('Something went wrong. Please refresh and start over.'); return; }
+      // gh-2016: arm B has no lead row yet by design -- leads.email is NOT
+      // NULL at the column level (the CHECK constraint's `email IS NULL OR
+      // ...` is not the authority here), so a contact-NULL row cannot be
+      // inserted on the role screen at all. Hold the answer instead. A
+      // session abandoned here leaves NO row, which is correct: #2011 reads
+      // this test on session replays and gross drop-off, never a p-value,
+      // and drop-off comes from the router_step_view events and Clarity,
+      // neither of which needs a database row. Do NOT "fix" this with a
+      // placeholder email -- a synthetic address would corrupt the same
+      // table the real funnel reports from.
+      if (ARM_B) {
+        bRole = role;
+        trackRouter('router_role_selected', { role: role });
+        goToStep(role === 'referral_partner' ? '2a' : 1);
+        return;
+      }
+      if (!leadId) { showError('Something went wrong. Please refresh and start over.'); return; }
+
+      setRoleButtonsDisabled(true);
+
+      function proceed() {
+        setRoleButtonsDisabled(false);
+        trackRouter('router_role_selected', { role: role });
+        if (role === 'referral_partner') {
+          goToStep('2a');
+          return;
+        }
+        if (NO_LEAD_ID_DESTINATIONS[role]) {
+          redirectTo(appendParams(ROLE_DESTINATIONS[role], collectAttribution()), true);
+        } else {
+          redirectTo(ROLE_DESTINATIONS[role]);
+        }
+      }
+
+      setRoleWithFallback(role, null).then(proceed).catch(proceed);
+    });
+  });
+
+  document.getElementById('backTo1').addEventListener('click', function () { history.back(); });
+  document.getElementById('backTo2').addEventListener('click', function () { history.back(); });
+
+  // ── Step 2a: partner industry — labels from js/agent-types.js
+  // (AgentTypes.CHOOSER_LABELS), destinations are this router's own map
+  // (not a duplicate label map, so tools/agent_type_labels_check.py's CI
+  // check is unaffected). ──
+  var PARTNER_INDUSTRY_DESTINATIONS = {
+    re_agent: 'partner-re.html',
+    insurance_agent: 'partner-insurance.html',
+    home_inspector: 'partner-inspectors.html',
+    adjuster: 'partner-adjusters.html',
+    other: 'partner-other.html'
+  };
+  var PARTNER_INDUSTRY_ORDER = ['re_agent', 'insurance_agent', 'home_inspector', 'adjuster', 'other'];
+
+  var industryButtons = []; // populated below once rendered
+
+  (function renderPartnerIndustries() {
+    var wrap = document.getElementById('partnerIndustryOptions');
+    var labels = (window.AgentTypes && window.AgentTypes.CHOOSER_LABELS) || {};
+    PARTNER_INDUSTRY_ORDER.forEach(function (code) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'role-option';
+      btn.setAttribute('data-industry', code);
+      btn.innerHTML = (labels[code] || code) + ' <span class="role-arrow">→</span>';
+      btn.addEventListener('click', function () { selectPartnerIndustry(code, btn); });
+      wrap.appendChild(btn);
+      industryButtons.push(btn);
+    });
+  })();
+
+  // gh-1994 fix round 2 (Ben, non-blocking item): same double-submit guard
+  // as the Step 2 role buttons -- disable every industry button while a
+  // click's set_lead_role request is in flight.
+  function setIndustryButtonsDisabled(disabled) {
+    industryButtons.forEach(function (b) { b.disabled = disabled; });
+  }
+
+  function selectPartnerIndustry(industry, btn) {
+    if (btn && btn.disabled) return;
+    if (!sb) { showError('Something went wrong. Please refresh and start over.'); return; }
+    // gh-2016: held, not written -- same reason as the role buttons above.
+    if (ARM_B) {
+      bIndustry = industry;
+      trackRouter('router_partner_industry', { industry: industry });
+      goToStep(1);
+      return;
+    }
+    if (!leadId) { showError('Something went wrong. Please refresh and start over.'); return; }
+    setIndustryButtonsDisabled(true);
+
+    function proceed() {
+      setIndustryButtonsDisabled(false);
+      trackRouter('router_partner_industry', { industry: industry });
+      redirectTo(PARTNER_INDUSTRY_DESTINATIONS[industry]);
+    }
+
+    setRoleWithFallback('referral_partner', industry).then(proceed).catch(proceed);
+  }
+
+  // ── Step 3: redirect. `preBuilt` (fix round 2) means `dest` is already a
+  // complete, final URL (e.g. the homeowner path's attribution-only URL
+  // built by appendParams above) that must NOT have `?lead=<uuid>`
+  // appended on top of it -- every other destination keeps the original
+  // behavior of appending ?lead=<uuid>, no email/phone/name in the query
+  // string (closes-on control (b)). gh-1994 phase 2: also carries
+  // utm_*/fbclid/gclid (never PII) onto the contractor/partner
+  // destinations, same allow-list as collectAttribution() above -- the
+  // homeowner path already gets these via appendParams(...,
+  // collectAttribution()) before it ever reaches here. The six static
+  // destination pages' head-first strip only ever deletes `lead`, so these
+  // survive the strip and reach the destination's own attribution capture
+  // (e.g. the oq_ft cookie / record_first_touch_attribution path), same as
+  // if the visitor had landed there directly with a tagged URL. ──
+  function redirectTo(dest, preBuilt) {
+    // gh-2014 fix round 2: see trackStepComplete's own comment -- this is
+    // the call that was missing. Safe against double-emission: every
+    // redirectTo() call site (Step 2's two role branches, Step 2a's
+    // industry branch) is reached directly from a button click, never
+    // after a goToStep() call in the same handler, and this call runs
+    // BEFORE the renderStep(3) just below it -- so the section still
+    // carrying `active` is the step actually being left here.
+    // gh-2016: was "history.state.step has not yet been advanced"; the
+    // step is now read off the DOM, so the ordering that matters is this
+    // call's position ahead of renderStep(3), not ahead of a pushState.
+    trackStepComplete();
+    renderStep(3);
+    if (!preBuilt) {
+      var sep = dest.indexOf('?') === -1 ? '?' : '&';
+      dest = dest + sep + 'lead=' + encodeURIComponent(leadId);
+      dest = appendParams(dest, collectAttribution());
+    }
+    window.location.href = dest;
+  }
+
+  // gh-1994 fix round 2 (Ben, non-blocking item), corrected in fix round 3
+  // (Ben, REVIEW 5702597120 finding B1, blocking -- this comment's own
+  // "safe regardless" claim was the CONTRADICTION the reviewer quoted
+  // verbatim: measured behavior was a silent no-op, not a safe update): a
+  // bfcache restore (e.g. Android/iOS back-gesture from
+  // app.otterquote.com/get-started or from contractor-join.html/
+  // partner-*.html back to this page) resurrects the router's in-memory JS
+  // exactly as it was mid-flow -- still on Step 2/2a/3 with a `leadId`
+  // that has, in the realistic case (the visitor actually reached a
+  // destination page, whose own prefill script already called
+  // get_lead_prefill on load), its prefill_used_at already stamped.
+  // Resetting to Step 1 alone was NOT sufficient fix round 2 believed it
+  // to be: a resubmit would still try update_lead_contact against that
+  // same now-prefilled id, get back `false` (fix round 3's new return
+  // value), and -- as of this same fix round -- fall back to
+  // insertFreshLead rather than silently discard the correction (see that
+  // fallback above). Clearing BOTH the in-memory `leadId` and the
+  // sessionStorage id here (B1 cure item c) is a cheap belt-and-suspenders
+  // on top of that fallback: it means a post-bfcache resubmit takes the
+  // plain fresh-insert branch directly, without needing the
+  // update_lead_contact round-trip and its fallback at all.
+  window.addEventListener('pageshow', function (e) {
+    if (e.persisted) {
+      try { history.replaceState({ step: ENTRY_STEP }, '', location.pathname + location.search); } catch (e2) {}
+      renderStep(ENTRY_STEP);
+      leadId = null;
+      try { sessionStorage.removeItem(LEAD_ID_STORAGE_KEY); } catch (e3) {}
+    }
+  });
+
+  // gh-2017: arm C's bridge, assembled LAST -- every var it reads below
+  // (ROLE_DESTINATIONS, NO_LEAD_ID_DESTINATIONS, PARTNER_INDUSTRY_
+  // DESTINATIONS) is a `var X = {...}` assignment further up this same
+  // IIFE, not a hoisted `function` declaration, so building this object
+  // any earlier would capture `undefined` for each of them. sb,
+  // trackRouter, collectAttribution, insertFreshLead, appendParams,
+  // redirectTo and showError are all `function` declarations and would be
+  // safe earlier, but there is no reason to split the object in two.
+  // js/router-discovery.js is loaded by injecting a <script> element --
+  // never a static <script src> tag in this document -- so arms A and B
+  // never fetch or execute it at all (#2015: /start?v=a must render
+  // exactly what /start renders).
+  if (ARM_C) {
+    var routerCBridge = {
+      sb: sb,
+      trackRouter: trackRouter,
+      collectAttribution: collectAttribution,
+      insertFreshLead: insertFreshLead,
+      appendParams: appendParams,
+      redirectTo: redirectTo,
+      showError: showError,
+      ROLE_DESTINATIONS: ROLE_DESTINATIONS,
+      PARTNER_INDUSTRY_DESTINATIONS: PARTNER_INDUSTRY_DESTINATIONS,
+      NO_LEAD_ID_DESTINATIONS: NO_LEAD_ID_DESTINATIONS
+    };
+    var routerCScript = document.createElement('script');
+    routerCScript.src = 'js/router-discovery.js';
+    routerCScript.onload = function () {
+      if (window.RouterDiscovery && typeof window.RouterDiscovery.init === 'function') {
+        window.RouterDiscovery.init(routerCBridge, routerCRoot);
+      } else {
+        showError('Something went wrong loading this page. Please refresh and try again.');
+      }
+    };
+    routerCScript.onerror = function () {
+      showError('Something went wrong loading this page. Please refresh and try again.');
+    };
+    document.body.appendChild(routerCScript);
+  }
+})();
+</script>
+
+</body>
+</html>

@@ -235,7 +235,8 @@ p.lead{
 .field input[type=text],
 .field input[type=tel],
 .field input[type=email],
-.field input[type=url]{
+.field input[type=url],
+.field select{
   width:100%;
   padding:14px 14px;
   font-size:1rem;
@@ -246,11 +247,21 @@ p.lead{
   transition:border-color .15s, box-shadow .15s;
   font-family:inherit;
 }
-.field input:focus{
+.field input:focus,
+.field select:focus{
   outline:none;
   border-color:var(--teal);
   box-shadow:0 0 0 3px rgba(14,156,151,0.15);
   background:#fff;
+}
+/* gh-1993: City / State / ZIP row — wider city column, narrower state/zip */
+.field-row{
+  display:grid;
+  grid-template-columns:2fr 1fr 1fr;
+  gap:12px;
+}
+@media (max-width:520px){
+  .field-row{ grid-template-columns:1fr; }
 }
 .not-sure-row{
   display:flex;
@@ -862,7 +873,13 @@ const state = {
     ownerName: "",
     mobile: "",
     email: "",
-    address: "",
+    // gh-1993: single free-text "address" box replaced with four fields —
+    // Dustin's ruling (see get-started/page.tsx header, same repo) applies
+    // to every single-box address input, not just the homeowner-facing one.
+    addressStreet: "",
+    addressCity: "",
+    addressState: "",
+    addressZip: "",
     website: "",
     googleEmail: "",
     googleEmailNotSure: false,
@@ -1026,9 +1043,25 @@ function renderBusinessInfo(){
       </div>
 
       <div class="field">
-        <label for="address">Business address</label>
+        <label for="addressStreet">Business address</label>
         <div class="helper">The address customers see on Google Maps and directories.</div>
-        <input type="text" id="address" placeholder="123 Main St, Springfield, IL" value="${escapeAttr(b.address)}">
+        <input type="text" id="addressStreet" autocomplete="address-line1" placeholder="123 Main St" value="${escapeAttr(b.addressStreet)}">
+      </div>
+      <div class="field">
+        <div class="field-row">
+          <div>
+            <label for="addressCity">City</label>
+            <input type="text" id="addressCity" autocomplete="address-level2" placeholder="Springfield" value="${escapeAttr(b.addressCity)}">
+          </div>
+          <div>
+            <label for="bizState">State</label>
+            <select id="bizState" autocomplete="address-level1">${stateOptionsHtml(b.addressState)}</select>
+          </div>
+          <div>
+            <label for="addressZip">ZIP</label>
+            <input type="text" id="addressZip" inputmode="numeric" pattern="\d{5}" maxlength="5" autocomplete="postal-code" placeholder="62701" value="${escapeAttr(b.addressZip)}">
+          </div>
+        </div>
       </div>
 
       <div class="field">
@@ -1081,10 +1114,15 @@ function choiceBtn(group, value, label, current){
 }
 
 function attachBusinessInfoListeners(){
-  ["businessName","ownerName","mobile","email","address","website","googleEmail","facebookName"].forEach(id => {
+  ["businessName","ownerName","mobile","email","addressStreet","addressCity","addressZip","website","googleEmail","facebookName"].forEach(id => {
     const el = document.getElementById(id);
     if(el) el.addEventListener("input", () => { state.business[id] = el.value; });
   });
+
+  // gh-1993: State <select> — "change" is the reliable cross-browser event
+  // for a <select> (unlike the text inputs above, which all fire "input").
+  const bizStateEl = document.getElementById("bizState");
+  if(bizStateEl) bizStateEl.addEventListener("change", () => { state.business.addressState = bizStateEl.value; });
 
   const notSure = document.getElementById("googleEmailNotSure");
   notSure.addEventListener("change", () => {
@@ -1293,6 +1331,16 @@ function renderSummary(){
   document.getElementById("btnSubmit").addEventListener("click", submitOnboarding);
 }
 
+// gh-1993: recombine the four split fields into the one line the internal
+// notification email (buildSubmitMessage) and payload.business.address
+// have always carried — no consumer needs them split, this is an internal
+// admin-onboarding email, not a claims/profiles DB write.
+function formatBusinessAddress(b){
+  const cityStateZip = [b.addressCity, [b.addressState, b.addressZip].filter(Boolean).join(" ")]
+    .filter(Boolean).join(", ");
+  return [b.addressStreet, cityStateZip].filter(Boolean).join(", ");
+}
+
 function buildPayload(){
   const b = state.business;
   return {
@@ -1303,7 +1351,7 @@ function buildPayload(){
       ownerName: b.ownerName,
       mobile: b.mobile,
       email: b.email,
-      address: b.address,
+      address: formatBusinessAddress(b),
       website: b.website || null,
       googleAccount: {
         email: b.googleEmailNotSure ? null : (b.googleEmail || null),
@@ -1443,14 +1491,26 @@ function validateBusinessInfo(){
     ["ownerName", "your name"],
     ["mobile", "a mobile number"],
     ["email", "an email address"],
-    ["address", "a business address"],
+    ["addressStreet", "a street address"],
+    ["addressCity", "a city"],
+    ["addressState", "a state"],
+    ["addressZip", "a 5-digit ZIP code"],
   ];
+  // gh-1993: state's DOM element is id="bizState" (not "addressState" — that
+  // name collides with nothing here, it's just kept distinct from the outer
+  // `state` wizard object other code in this file reads constantly).
+  const elIdFor = key => key === "addressState" ? "bizState" : key;
   for(const [key, label] of required){
     if(!b[key] || !b[key].trim()){
-      const el = document.getElementById(key);
+      const el = document.getElementById(elIdFor(key));
       if(el){ el.focus(); el.style.borderColor = "var(--orange)"; }
       return false;
     }
+  }
+  if(!/^\d{5}$/.test(b.addressZip.trim())){
+    const el = document.getElementById("addressZip");
+    if(el){ el.focus(); el.style.borderColor = "var(--orange)"; }
+    return false;
   }
   return true;
 }
@@ -1464,6 +1524,30 @@ function escapeHtml(str){
   }[m]));
 }
 function escapeAttr(str){ return escapeHtml(str || ""); }
+
+// gh-1993: 50 states + DC + Puerto Rico for the business-address State
+// select. selected is preserved across renderBusinessInfo() re-renders the
+// same way input value="" attrs already are.
+const US_STATE_OPTIONS = [
+  ["AL","Alabama"],["AK","Alaska"],["AZ","Arizona"],["AR","Arkansas"],["CA","California"],
+  ["CO","Colorado"],["CT","Connecticut"],["DE","Delaware"],["DC","District of Columbia"],["FL","Florida"],
+  ["GA","Georgia"],["HI","Hawaii"],["ID","Idaho"],["IL","Illinois"],["IN","Indiana"],
+  ["IA","Iowa"],["KS","Kansas"],["KY","Kentucky"],["LA","Louisiana"],["ME","Maine"],
+  ["MD","Maryland"],["MA","Massachusetts"],["MI","Michigan"],["MN","Minnesota"],["MS","Mississippi"],
+  ["MO","Missouri"],["MT","Montana"],["NE","Nebraska"],["NV","Nevada"],["NH","New Hampshire"],
+  ["NJ","New Jersey"],["NM","New Mexico"],["NY","New York"],["NC","North Carolina"],["ND","North Dakota"],
+  ["OH","Ohio"],["OK","Oklahoma"],["OR","Oregon"],["PA","Pennsylvania"],["PR","Puerto Rico"],
+  ["RI","Rhode Island"],["SC","South Carolina"],["SD","South Dakota"],["TN","Tennessee"],["TX","Texas"],
+  ["UT","Utah"],["VT","Vermont"],["VA","Virginia"],["WA","Washington"],["WV","West Virginia"],
+  ["WI","Wisconsin"],["WY","Wyoming"],
+];
+function stateOptionsHtml(selected){
+  const opts = ['<option value="">Select...</option>'].concat(
+    US_STATE_OPTIONS.map(([code, name]) =>
+      `<option value="${code}"${selected === code ? " selected" : ""}>${name}</option>`)
+  );
+  return opts.join("");
+}
 
 /* ==============================================================
    INIT

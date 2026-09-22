@@ -178,6 +178,46 @@ function isTrustworthyStateMatch(token: string, head: string): boolean {
  *    state and zip are themselves comma-separated and so never match the
  *    trailing-token regex to begin with.
  */
+/**
+ * gh-2004: exactly-5-digit ZIP check, mirrors get-started/utils.ts's
+ * isValidZip() byte-for-byte so the address fields this page shows a
+ * homeowner with no cs_signup/profile address validate identically to the
+ * ones get-started already ships (kept local, not imported, for the same
+ * no-cross-feature-dependency reason get-started's STATE_CODE_OPTIONS is
+ * local rather than imported from here).
+ */
+export function isValidZip(zip: string): boolean {
+  return /^\d{5}$/.test(zip.trim());
+}
+
+/**
+ * gh-2004: recombine four address fields into the single combined line
+ * `claims.property_address` must stay (CEO ruling, PR #1998 comment
+ * 5698876771) — mirrors get-started/utils.ts's fullAddress() byte-for-byte
+ * so a value built here from a profile fallback or a freshly-typed address
+ * is indistinguishable, downstream, from one get-started itself produced.
+ */
+export function fullAddress(street: string, city: string, state: string, zip: string): string {
+  const line2 = [city.trim(), [state.trim(), zip.trim()].filter(Boolean).join(' ')]
+    .filter(Boolean)
+    .join(', ');
+  return [street.trim(), line2].filter(Boolean).join(', ');
+}
+
+/** gh-2004: true only when every one of the four address fields is a
+ * non-empty string — used to decide whether a candidate address (from
+ * cs_signup, a legacy combined-string parse, or the user's saved profile)
+ * is complete enough to skip asking the homeowner again, and to guarantee
+ * this page never inserts a claim with a partially-NULL address. */
+export function hasFullAddress(a: {
+  street?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zip?: string | null;
+}): boolean {
+  return Boolean(a.street && a.city && a.state && a.zip);
+}
+
 export function parseAddress(raw: string | null | undefined): ParsedAddress {
   const address = (raw || '').trim();
   if (!address) {

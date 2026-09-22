@@ -52,6 +52,32 @@
 # Intercepts /admin-* (with or without .html / trailing slash) before static HTML is served.
 # Unauthenticated or non-admin sessions redirect to /login.html?reason=admin_required.
 # Source: netlify/edge-functions/admin-auth-gate.ts
+# gh-2063 fix round 2 (PR #2065 review, blocker 2): the original version of
+# this rule set /img/* AND /assets/* to a year-long `immutable` cache. That
+# was wrong for both paths, and independent review caught it before merge:
+# `immutable` tells a browser it never has to re-check the file for the
+# life of the cache, which is only safe for a content-hashed filename that
+# gets a NEW name every time its contents change. Nothing under /img/* or
+# /assets/* in this repo is content-hashed -- both are edited in place.
+# /assets/*, concretely: assets/partner-onepager-re.html and
+# assets/partner-onepager-insurance.html (8 commits each, most recently
+# gh-1965's Meta Pixel include 6 days before this fix) are linked from
+# partner-dashboard.html/partner-insurance.html/partner-re.html; a partner
+# who had opened either one would have kept a stale copy -- missing legal/
+# copy fixes (D-104) and tracking changes -- for a full year. That rule is
+# removed outright rather than narrowed: this repo has no /assets/* content
+# that is safe to cache immutably today. /img/* icons (otter-icon.png,
+# favicon.png, otter-quotes-icon-512.png, otter-icon-white.png) are also
+# replaced in place, not renamed, so `immutable` was equally wrong there;
+# kept, but downgraded to a short revalidating policy (some caching value,
+# no risk of a year-long stale asset) rather than dropped entirely. #2063's
+# item 5 is otherwise satisfied by confirming Netlify's own compression is
+# already on (no config change needed for that).
+[[headers]]
+  for = "/img/*"
+  [headers.values]
+    Cache-Control = "public, max-age=86400, must-revalidate"
+
 # PWA — Partner App (2026-08-03)
 # Correct MIME for the web app manifest; keep the service worker uncached so
 # updates propagate on next load.
@@ -100,6 +126,18 @@
   pattern = '^/[Aa][Dd][Mm][Ii][Nn]-.*$'
   excludedPattern = ['^/admin-sw\.js$', '^/admin-app\.webmanifest$']
   function = "admin-auth-gate"
+
+# First-touch ad attribution — gh-1983 (2026-09-16)
+# On a GET carrying utm_* / fbclid / gclid with no stored first touch, adds
+# Set-Cookie oq_ft (Domain=.otterquote.com, 90 d) to the normal response —
+# including the /get-started* 301 to app.otterquote.com — so the attribution
+# reaches the React signup before any JS runs. Untagged requests return
+# immediately. Static asset paths are excluded to keep invocations to pages.
+# Source: netlify/edge-functions/first-touch-attribution.ts
+[[edge_functions]]
+  path = "/*"
+  excludedPath = ["/js/*", "/css/*", "/img/*", "/assets/*", "/data/*", "/*.js", "/*.css", "/*.png", "/*.jpg", "/*.jpeg", "/*.svg", "/*.webp", "/*.ico", "/*.webmanifest", "/*.txt", "/*.xml", "/*.json", "/*.woff2"]
+  function = "first-touch-attribution"
 
 # Referral short-link query passthrough — #630 (2026-08-06)
 # /ref/:code must always redirect to /ref.html?code=:code, but Netlify's

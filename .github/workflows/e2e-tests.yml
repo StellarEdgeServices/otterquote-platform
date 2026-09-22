@@ -124,6 +124,30 @@ jobs:
       - name: Analytics loader single-source guard (gtag.js + clarity.ms behind the host gate, gh-1619)
         run: python3 scripts/check-gtag-single-source.py
 
+      # gh-1738 Detector Negative Control Gate coverage. check-gtag-single-source.py
+      # gained --self-test on PR #1977; if #1977 has not yet merged to main when this
+      # step first runs, the script has no argv parsing at all (verified: its main()
+      # never reads sys.argv), so an unrecognised --self-test flag is silently
+      # ignored and this step just re-runs the normal check -- it does not fail the
+      # build either way, and starts asserting real self-test coverage the moment
+      # #1977 lands.
+      - name: Analytics loader single-source guard, self-test (gh-1738 coverage, PR #1977)
+        run: python3 scripts/check-gtag-single-source.py --self-test
+
+      - name: Clarity page-set gate guard (default-deny, no authenticated page on the allowlist, gh-1964)
+        run: python3 scripts/check-clarity-page-gate.py
+
+      # gh-1738 Detector Negative Control Gate coverage (PR #1978 D2 fix): the
+      # negative-control gate's CHECK 1 requires a sibling
+      # scripts/check-clarity-page-gate.test.py, which simply invokes this
+      # script's own --self-test mode (planted-fixture suite: clean tree,
+      # auth page allowlisted, gate //- and /* */-commented, gate neutered
+      # (if (0 &&, if (false) wrapping, !1 &&, null &&), gate moved after the
+      # loader injection, normalizer returning a constant, session-touching
+      # page allowlisted -- see that script's module docstring).
+      - name: Clarity page-set gate guard, self-test (gh-1738 coverage, gh-1964 D2 fix)
+        run: python3 scripts/check-clarity-page-gate.py --self-test
+
       # gh-1339 item 6 / D-312: no third-party vendor named on a customer-facing
       # surface. A gate demanding ZERO would be red on arrival — the residue is
       # 373 client-side references whose removal needs the D-312 scope ruling
@@ -210,6 +234,9 @@ jobs:
 
       - name: auth.js partner-surface single-source-of-truth unit test (#807 regression)
         run: node tests/auth-partner-surface-single-source.mjs
+
+      - name: auth.js cs_redirect role-guard unit test (gh-1412/#1476 regression)
+        run: node tests/auth-cs-redirect-role-guard.mjs
 
       - name: tsc --noEmit type gate (gh-414)
         working-directory: react-app

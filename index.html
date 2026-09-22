@@ -83,12 +83,9 @@
 })();
 </script>
 <!-- Sentry Error Monitoring -->
-<script
-  src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
-  crossorigin="anonymous"
-></script>
+<!-- gh-2010: predeclare sentryOnLoad before the loader tag; the loader invokes it once the SDK is ready. -->
 <script>
-  Sentry.onLoad(function() {
+  window.sentryOnLoad = function () {
     Sentry.init({
       environment: window.location.hostname.includes("staging") ? "staging" : "production",
       // gh-439: drop phantom events from non-http(s) preview contexts (data:/file:/blob:
@@ -103,8 +100,12 @@
         return event;
       }
     });
-  });
+  };
 </script>
+<script
+  src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
+  crossorigin="anonymous"
+></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="p:domain_verify" content="4d64c6dc7e743357d1ff602e9727285e"/>
@@ -125,6 +126,7 @@
 
 <!-- GA4 -->
 <script src="/js/ga-gate.js"></script>
+<script src="/js/meta-pixel-gate.js"></script>
 <script>gtag('config', 'G-D1Y1TLGEFY');</script>
 <!-- Microsoft Clarity (wwr7qlk8g5) is loaded by /js/ga-gate.js, behind the same production-host gate as GA4 (gh-1619). Do not add a per-page loader. -->
 
@@ -696,6 +698,52 @@
   .trust-badges-row { gap: var(--sp-3); }
   .trust-badge { min-width: 120px; padding: var(--sp-4); }
 }
+
+/* gh-1990: on very small phones the hero's decorative stack (logo, 3-step
+   callout, subtitle) pushes "Get My Free Quotes" below the first screen.
+   Reflow order only (no copy added/removed, href unchanged, desktop
+   untouched by the 768px query above): shrink the illustration/callout and
+   move the CTA up to sit right under the headline. */
+@media (max-width: 480px) {
+  .hero { padding: var(--sp-8) 0 var(--sp-8); }
+  .hero .container {
+    display: flex;
+    flex-direction: column;
+  }
+  .hero-logo {
+    height: 44px;
+    margin: 0 auto var(--sp-2);
+    order: 1;
+  }
+  .hero h1 {
+    order: 2;
+    font-size: 1.375rem;
+    line-height: 1.2;
+    margin: 0 auto var(--sp-3);
+  }
+  .hero-cta {
+    order: 3;
+    margin: 0 auto var(--sp-3);
+    gap: var(--sp-2);
+  }
+  .hero-cta .btn-lg {
+    font-size: 0.95rem;
+    padding: var(--sp-3) var(--sp-4);
+  }
+  .hero-callout-block {
+    order: 4;
+    margin: 0 auto var(--sp-4);
+  }
+  .hero-subtitle {
+    order: 5;
+    margin: 0 auto var(--sp-4);
+    font-size: 0.95rem;
+  }
+  .hero-trust {
+    order: 6;
+    margin-top: var(--sp-4);
+  }
+}
 </style>
 </head>
 <body>
@@ -736,7 +784,7 @@
       Otter Quotes brings contractors to you. They compete, you win!
     </p>
     <div class="hero-cta">
-      <a href="https://app.otterquote.com/get-started" class="btn btn-primary btn-lg">Get My Free Quotes</a>
+      <a href="/start.html" class="btn btn-primary btn-lg">Get My Free Quotes</a>
       <a href="contractor-join.html" class="btn btn-secondary btn-lg">I'm a Contractor</a>
     </div>
     <div class="hero-trust">
@@ -764,12 +812,20 @@
   <div class="container">
     <p class="two-track-heading">Otter Quotes works for both types of homeowner:</p>
     <div class="two-track-grid">
-      <a href="https://app.otterquote.com/get-started?track=insurance" class="track-card">
+      <!-- gh-1994 phase 2 (round 2, Ben ruling on review 5705874119 finding
+           B2 -- "No role-preset / skip links. Every visitor answers 'I am
+           a'."): these two cards used to preset the ?track= param and skip
+           straight to app.otterquote.com/get-started, bypassing the role
+           router. Both now go through /start.html like every other
+           homeowner CTA; the track param is dropped rather than carried,
+           since nothing downstream (start.html, get-started/page.tsx) reads
+           it -- start.html's own role-selection step now does this job. -->
+      <a href="/start.html" class="track-card">
         <span class="track-card-icon"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="display:block;margin-bottom:12px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>
         <h3>I have an insurance claim</h3>
         <p>Your insurer has approved a repair &mdash; or you're in the process of filing. Otter Quotes helps you gather your insurance estimate and measurements, then gets multiple contractors competing on your job. You choose the one you trust most.</p>
       </a>
-      <a href="https://app.otterquote.com/get-started?track=retail" class="track-card">
+      <a href="/start.html" class="track-card">
         <span class="track-card-icon"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="display:block;margin-bottom:12px"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg></span>
         <h3>I'm paying out of pocket</h3>
         <p>No insurance involved &mdash; you just need the work done and you want a fair price. Otter Quotes handles the measurements and gets contractors to compete for your business, so you know what the market actually charges before you commit to anyone.</p>
@@ -855,7 +911,7 @@
 <section class="mid-cta">
   <div class="container">
     <p>Ready to see what contractors will offer?</p>
-    <a href="https://app.otterquote.com/get-started" class="btn btn-primary btn-lg">Tell Us About Your Home &mdash; It's Free</a>
+    <a href="/start.html" class="btn btn-primary btn-lg">Tell Us About Your Home &mdash; It's Free</a>
   </div>
 </section>
 
@@ -963,7 +1019,7 @@
   <div class="container">
     <h2>Get Your Best Deal on Home Repairs</h2>
     <p>It takes less than 2 minutes to describe your home and what needs to be done. We'll walk you through the rest &mdash; and it costs you nothing.</p>
-    <a href="https://app.otterquote.com/get-started" class="btn btn-primary btn-lg">Get Started Free</a>
+    <a href="/start.html" class="btn btn-primary btn-lg">Get Started Free</a>
     <div class="guarantee-banner">
       <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:2px"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
       <p>
@@ -1003,6 +1059,22 @@
 (function() {
   'use strict';
 
+  // gh-1994 phase 2 (round 2, review 5705874119 finding B1): true when href
+  // resolves to the router, whether served as /start.html (local/static),
+  // /start (Netlify pretty-URL rewrite), or /start/ (trailing slash) -- with
+  // or without a query string. Also true for the pre-router app.otterquote.
+  // com/get-started destination, which this same page may still carry.
+  function isRouterOrGetStartedHref(href) {
+    if (!href) return false;
+    if (href.indexOf('get-started') !== -1) return true;
+    try {
+      var p = new URL(href, window.location.href).pathname.replace(/\/+$/, '');
+      return p === '/start' || p === '/start.html';
+    } catch (e) {
+      return false;
+    }
+  }
+
   // ── CTA Click Tracking ──
   // Track every CTA button click with position context
   document.querySelectorAll('a.btn').forEach(function(btn) {
@@ -1013,8 +1085,16 @@
       var sectionClass = section ? (section.className.split(' ')[0] || 'unknown') : 'unknown';
 
       // Determine CTA type
+      // gh-1994 phase 2 (round 2, review 5705874119 finding B1): 'get-started'
+      // CTAs now point at /start.html (the router); still detected here so
+      // the funnel event below keeps firing. Matches by normalized pathname,
+      // not href.includes('start.html'), because Netlify's pretty-URL
+      // rewrite serves the on-disk href="/start.html" as href="/start" (no
+      // ".html") on this page's own deploy preview -- a substring check on
+      // 'start.html' never matches that served href, only a local static
+      // server without the rewrite (the bug this round's review caught).
       var ctaType = 'other';
-      if (href.includes('get-started')) ctaType = 'homeowner_cta';
+      if (isRouterOrGetStartedHref(href)) ctaType = 'homeowner_cta';
       else if (href.includes('contractor-join')) ctaType = 'contractor_apply_cta';
       else if (href.includes('contractor-login')) ctaType = 'contractor_login_cta';
 
@@ -1026,8 +1106,21 @@
       });
 
       // GA4 funnel step &mdash; homeowner intake begins when they click a homeowner CTA
+      //
+      // gh-1940 (round 3, REVIEW: FAIL on #1948 twice, finding 3) &mdash; this
+      // used to be 'form_start', which collides with GA4 Enhanced
+      // Measurement's own automatic 'form_start' (fires on any page with a
+      // <form>, elsewhere in this same funnel) and merges two populations
+      // with different parameter shapes into one event. Renamed to
+      // 'homeowner_cta_form_start' &mdash; deliberately NOT the same name as
+      // get-started/page.tsx's 'homeowner_form_start': a CTA click here and
+      // a first field touch there are two different, legitimately separate
+      // funnel steps (a visitor can land on /get-started directly, skipping
+      // this one), so giving them the same name would just move the
+      // ambiguity instead of removing it. Neither name collides with GA4's
+      // reserved 'form_start'.
       if (ctaType === 'homeowner_cta') {
-        gtag('event', 'form_start', {
+        gtag('event', 'homeowner_cta_form_start', {
           form_name: 'homeowner_intake',
           source_page: 'index',
         });
@@ -1096,6 +1189,46 @@
 })();
 </script>
 
+<script>
+// gh-1994 phase 2 (round 2, review 5705874119 B1/N1): carry utm_*/fbclid/
+// gclid from this page's own URL onto every "Get started" CTA that points
+// at the router, on top of the oq_ft cookie fallback (gh-1983)
+// start.html's own collectAttribution() already reads -- belt and
+// suspenders for cookie-blocked browsers. No PII, same allow-list
+// start.html reads. Matches by normalized pathname, not an exact-string
+// selector, because Netlify's pretty-URL rewrite serves the on-disk
+// href="/start.html" as href="/start" (no ".html", no trailing slash) --
+// an exact-string selector never matches that served markup, only a local
+// static server without the rewrite. Also tolerates a trailing slash
+// ("/start/") and a login.html-style relative "start.html". Idempotent:
+// run once per page load, never runs twice on the same anchor.
+(function () {
+  'use strict';
+  var ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid'];
+  var params = new URLSearchParams(window.location.search);
+  var qs = '';
+  ATTR_KEYS.forEach(function (k) {
+    var v = params.get(k);
+    if (v) qs += (qs ? '&' : '?') + k + '=' + encodeURIComponent(v);
+  });
+  if (!qs) return;
+  function isStartHref(href) {
+    if (!href) return false;
+    try {
+      var p = new URL(href, window.location.href).pathname.replace(/\/+$/, '');
+      return p === '/start' || p === '/start.html';
+    } catch (e) {
+      return false;
+    }
+  }
+  document.querySelectorAll('a[href]').forEach(function (a) {
+    var href = a.getAttribute('href');
+    if (isStartHref(href)) {
+      a.setAttribute('href', href + qs);
+    }
+  });
+})();
+</script>
 </body>
 </html>
 <!-- deploy: 20260421234910 -->

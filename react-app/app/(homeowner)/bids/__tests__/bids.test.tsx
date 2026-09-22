@@ -19,6 +19,7 @@ import {
   isLowestPrice,
   showCompareToggle,
   buildCompareModel,
+  shouldFireBidsViewed,
   EXPIRY_TOOLTIP,
   EMPTY_STATE,
   mapAwardError,
@@ -362,5 +363,99 @@ describe('(f) award-refusal copy (gh-1532)', () => {
       'permission denied for table claims',
     );
     expect(mapAwardError(null)).toBe('');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// gh-1940 fix2 (cto32-review-pr1979-20260915.md, finding N5/M9) — the
+// `bids_viewed` once-guard's decision function, extracted to `shouldFireBidsViewed`
+// in utils.ts so page.tsx's `bidsViewedFiredRef` guard is covered by a test
+// without mounting the full page (which needs every realtime/data hook live).
+// Removing the guard in page.tsx (mutant M9) means every render would call this
+// with `alreadyFired: false`, which the "does not fire again once already fired"
+// case below directly guards against.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('shouldFireBidsViewed — bids_viewed once-guard', () => {
+  it('fires on the first render with claim + bids loaded and >=1 bid', () => {
+    expect(
+      shouldFireBidsViewed({
+        alreadyFired: false,
+        claimLoading: false,
+        hasClaimId: true,
+        bidsLoading: false,
+        bidCount: 2,
+      }),
+    ).toBe(true);
+  });
+
+  it('does not fire again once already fired (the once-guard M9 removes)', () => {
+    expect(
+      shouldFireBidsViewed({
+        alreadyFired: true,
+        claimLoading: false,
+        hasClaimId: true,
+        bidsLoading: false,
+        bidCount: 2,
+      }),
+    ).toBe(false);
+  });
+
+  it('does not fire while the claim is still loading', () => {
+    expect(
+      shouldFireBidsViewed({
+        alreadyFired: false,
+        claimLoading: true,
+        hasClaimId: false,
+        bidsLoading: false,
+        bidCount: 0,
+      }),
+    ).toBe(false);
+  });
+
+  it('does not fire while bids are still loading for a known claim', () => {
+    expect(
+      shouldFireBidsViewed({
+        alreadyFired: false,
+        claimLoading: false,
+        hasClaimId: true,
+        bidsLoading: true,
+        bidCount: 0,
+      }),
+    ).toBe(false);
+  });
+
+  it('does not fire with zero bids loaded', () => {
+    expect(
+      shouldFireBidsViewed({
+        alreadyFired: false,
+        claimLoading: false,
+        hasClaimId: true,
+        bidsLoading: false,
+        bidCount: 0,
+      }),
+    ).toBe(false);
+  });
+
+  // Negative control: a subsequent poll/realtime update that changes bidCount
+  // (e.g. a new bid arriving) must NOT re-fire once alreadyFired is true --
+  // the guard is genuinely a once-guard, not a "re-evaluate every time bidCount
+  // changes" guard.
+  it('negative control — a later bid-count change does not re-fire once already fired', () => {
+    const first = shouldFireBidsViewed({
+      alreadyFired: false,
+      claimLoading: false,
+      hasClaimId: true,
+      bidsLoading: false,
+      bidCount: 1,
+    });
+    expect(first).toBe(true);
+    const second = shouldFireBidsViewed({
+      alreadyFired: true, // page.tsx sets bidsViewedFiredRef.current = true after `first`
+      claimLoading: false,
+      hasClaimId: true,
+      bidsLoading: false,
+      bidCount: 3,
+    });
+    expect(second).toBe(false);
   });
 });

@@ -71,6 +71,14 @@ If any required connector is missing, surface the gap to Dustin and abort.
 
 By default, the walk runs against production (`https://otterquote.com`). Under D-232, the walk may be targeted at a Netlify PR preview deploy instead:
 
+**gh-2064:** this walk is our own automated traffic and must never be counted as a
+visitor in GA4, Meta or Clarity. Append `?oq_internal=1` to the FIRST URL navigated
+in Stage 1 (the production `BASE_URL` case only — a Netlify PR preview host is
+already outside `js/ga-gate.js`'s/`GA4Gate`'s host allowlist and never loads any of
+the three anyway). That sets a 1-year `oq_internal=1` cookie on `.otterquote.com`,
+so every later stage's navigation is recognised as internal without needing the
+param again.
+
 **Usage:** append `--pr <pr-number>` to any trigger phrase. Example: `run pre-flight-walk --pr 48`
 
 **URL resolution at startup (before Stage 1):**
@@ -98,6 +106,10 @@ If `--pr <N>` is provided:
 
 If `--pr` is NOT provided:
 - `BASE_URL = https://otterquote.com`
+- gh-2064: Stage 1's first navigation must be `${BASE_URL}/?oq_internal=1` (or the
+  actual Stage 1 landing page with `&oq_internal=1` appended if it already has a
+  query string), not bare `BASE_URL`, so this run sets the internal-traffic cookie
+  before anything else loads.
 
 **Backward compatibility:** All existing trigger phrases without `--pr` behave exactly as before.
 

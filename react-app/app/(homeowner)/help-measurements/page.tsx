@@ -64,6 +64,7 @@ import {
   clearHoverChargeRecord,
   type PendingHoverCharge,
 } from './hover-charge-storage';
+import { track } from '@/lib/track';
 
 /**
  * NEW operational copy for the gh-951 resume flow — like gh-416's ORDER_RETRY_COPY
@@ -254,6 +255,10 @@ function PageBody({
       // gh-951: the order step reached (a graceful-degrade) completion — clear the resume
       // pointer so a later reload doesn't re-attempt an already-placed order.
       clearHoverChargeRecord();
+      // gh-1940: this is a real completed Stripe charge (the $15 RoofScope
+      // order), not the CRO funnel's main job-payment step — see the
+      // gh-1940 report for why GA4 `purchase` is not wired here instead.
+      track('help_tool_used', { tool: 'help_measurements', method: 'hover_payment' });
       setHoverStage('success');
     },
     [profile, claim, user],
@@ -291,6 +296,7 @@ function PageBody({
         adjusterEmail: email,
         adjusterPhone: phone,
       });
+      track('help_tool_used', { tool: 'help_measurements', method: 'email_request' });
       setAdjStage('success');
     } catch {
       setStatus({ text: M.statusEmailError, type: 'error' });

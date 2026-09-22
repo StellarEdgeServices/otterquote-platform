@@ -283,3 +283,55 @@ Deno.test("isMigrationPendingError: null/undefined error object does not crash a
   assertStrictEquals(isMigrationPendingError(undefined), false);
   assertStrictEquals(isMigrationPendingError({}), false);
 });
+
+// gh-1570 Part 3 — the admin queue's own fields: true/timestamped only for a
+// claim id present in the Map index.ts resolves from activity_log.
+// buildRows() never looks at claim.status here — it's a pure pass-through of
+// the Map; the status === 'documents_needed' AND checklist_complete
+// combination is admin-homeowners.html's filter (readyQueueRows()), tested
+// by inspection since that file has no deno test harness (see the PR report).
+// REVIEW FIX: the parameter was a bare ReadonlySet<string> (membership only)
+// until #2081's review found the admin queue had no honest clock to sort
+// "oldest first" on and was sorting by claim created_at instead — the wrong
+// timestamp for a stall-visibility surface. It is now a claim id -> ISO
+// timestamp Map, and checklist_complete_at is the field these tests add.
+
+Deno.test("buildRows: checklist_complete / checklist_complete_at come from the passed Map", () => {
+  const rows = buildRows(
+    [
+      claim({ id: "c-done-not-submitted", user_id: "u1", status: "documents_needed" }),
+      claim({ id: "c-not-done", user_id: "u1", status: "documents_needed" }),
+      claim({ id: "c-done-submitted", user_id: "u1", status: "active" }),
+    ],
+    [{ id: "u1", full_name: "Ada L", email: "ada@x.com" }],
+    NOW,
+    undefined,
+    new Map([
+      ["c-done-not-submitted", "2026-08-20T10:00:00Z"],
+      ["c-done-submitted", "2026-08-22T10:00:00Z"],
+    ]),
+  );
+  const by = new Map(rows.map((r) => [r.claim_id, r]));
+
+  assertStrictEquals(by.get("c-done-not-submitted")!.checklist_complete, true);
+  assertStrictEquals(by.get("c-done-not-submitted")!.checklist_complete_at, "2026-08-20T10:00:00Z");
+
+  assertStrictEquals(by.get("c-not-done")!.checklist_complete, false);
+  assertStrictEquals(by.get("c-not-done")!.checklist_complete_at, null);
+
+  // Map membership alone doesn't imply "in the admin queue" — a submitted
+  // claim can still have written the event; the page's own status filter
+  // (readyQueueRows) is what excludes it, not this field.
+  assertStrictEquals(by.get("c-done-submitted")!.checklist_complete, true);
+  assertStrictEquals(by.get("c-done-submitted")!.checklist_complete_at, "2026-08-22T10:00:00Z");
+});
+
+Deno.test("buildRows: checklist_complete / checklist_complete_at default to false/null when the Map is omitted (pre-gh1570 call shape)", () => {
+  const rows = buildRows(
+    [claim({ id: "c-1", user_id: "u1", status: "documents_needed" })],
+    [{ id: "u1", full_name: "Ada L", email: "ada@x.com" }],
+    NOW,
+  );
+  assertStrictEquals(rows[0].checklist_complete, false);
+  assertStrictEquals(rows[0].checklist_complete_at, null);
+});

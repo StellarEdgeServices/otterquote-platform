@@ -15,7 +15,13 @@
  * do not hand-type these values anywhere else. (#757)
  */
 const NAP = Object.freeze({
-  name: CONFIG.SITE_NAME,                 // 'Otter Quotes' — canonical form used sitewide (footer, JSON-LD, legal copy)
+  // gh-2063: existence-guarded -- this is a top-level, parse-time reference
+  // (nav.js's own module load), so a config.js that is late, blocked, or
+  // ever reordered ahead of a page's own script list would otherwise throw
+  // `ReferenceError: CONFIG is not defined` here and take the whole file
+  // down (header/footer never render) instead of just this one label.
+  // Fallback matches CONFIG.SITE_NAME's own literal value exactly.
+  name: (typeof CONFIG !== 'undefined' && CONFIG.SITE_NAME) || 'Otter Quotes', // 'Otter Quotes' — canonical form used sitewide (footer, JSON-LD, legal copy)
   streetAddress: '3410 N High School Rd Ste G #102',
   addressLocality: 'Indianapolis',
   addressRegion: 'IN',
@@ -516,6 +522,25 @@ const Nav = {
   },
 
   /**
+   * gh-1994 phase 2 (Ben, PR #2003 follow-up — "every ad and every site
+   * 'Get started' goes through it"): utm_ params, fbclid and gclid carry
+   * for any nav CTA pointed at /start.html, read off THIS page's own
+   * location.search. Same allow-list as the marketing-page inline script
+   * and start.html's own collectAttribution() (gh-1983 cookie fallback
+   * still applies server-side). No PII. Returns '' when nothing to carry.
+   */
+  _attributionQuery() {
+    const ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid'];
+    const params = new URLSearchParams(window.location.search);
+    let qs = '';
+    ATTR_KEYS.forEach((k) => {
+      const v = params.get(k);
+      if (v) qs += (qs ? '&' : '?') + k + '=' + encodeURIComponent(v);
+    });
+    return qs;
+  },
+
+  /**
    * Guest (signed-out) call-to-action pair, scoped to the active role.
    * Before the two-tier nav this was hardcoded to "Get Started /
    * Contractor Login" on every page, which meant a real-estate agent on a
@@ -525,8 +550,8 @@ const Nav = {
    */
   _GUEST_CTA: {
     homeowner: {
-      primary:   { href: 'https://app.otterquote.com/get-started', label: 'Get Started' },
-      secondary: { href: '/login.html',                            label: 'Log In' },
+      primary:   { href: '/start.html',         label: 'Get Started' },
+      secondary: { href: '/login.html',         label: 'Log In' },
     },
     contractor: {
       primary:   { href: '/contractor-join.html',  label: 'Join as a Contractor' },
@@ -540,13 +565,19 @@ const Nav = {
 
   _guestAuthHTML(role) {
     const cta = this._GUEST_CTA[role] || this._GUEST_CTA.homeowner;
+    // gh-1994 phase 2: carry utm_*/fbclid/gclid onto the /start.html primary
+    // CTA only — secondary links (Log In, Contractor Login, Partner Login,
+    // Join as a Contractor, Become a Partner) are untouched.
+    const primaryHref = cta.primary.href === '/start.html'
+      ? '/start.html' + this._attributionQuery()
+      : cta.primary.href;
     return {
       desktop: `
-        <a href="${cta.primary.href}" class="btn btn-sm btn-primary">${cta.primary.label}</a>
+        <a href="${primaryHref}" class="btn btn-sm btn-primary">${cta.primary.label}</a>
         <a href="${cta.secondary.href}" class="btn btn-sm btn-ghost">${cta.secondary.label}</a>
       `,
       mobile: `
-        <a href="${cta.primary.href}" class="nav-link nav-mobile-cta">${cta.primary.label}</a>
+        <a href="${primaryHref}" class="nav-link nav-mobile-cta">${cta.primary.label}</a>
         <a href="${cta.secondary.href}" class="nav-link nav-mobile-cta-secondary">${cta.secondary.label}</a>
       `,
     };
@@ -831,7 +862,7 @@ const Nav = {
             ` : `
               <a href="/how-it-works.html">How It Works</a>
               <a href="/faq.html">FAQ</a>
-              <a href="https://app.otterquote.com/get-started">Get Started</a>
+              <a href="/start.html${this._attributionQuery()}">Get Started</a>
               <a href="/blog/index.html">Blog</a>
               <a href="/guides/">Guides</a>
             `}

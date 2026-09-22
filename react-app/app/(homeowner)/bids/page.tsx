@@ -17,14 +17,15 @@
  * get-started.html.
  */
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import { useBidUpdates } from '@/hooks/use-bid-updates';
 import { HomeownerShell } from '../_shell/HomeownerShell';
 import { useBidContractors, useBidsClaim, useBidUpdatedNotifications, useContractorLicenses } from './use-bids-data';
 import { acknowledgeBidUpdatedNotifications, requestBidRenewal } from './actions';
-import { isAllExpired, showCompareToggle } from './utils';
+import { isAllExpired, showCompareToggle, shouldFireBidsViewed } from './utils';
 import { BIDS_STYLES } from './styles';
+import { track } from '@/lib/track';
 import { BidCard } from './components/BidCard';
 import { BidsCompareGrid } from './components/BidsCompareGrid';
 import { CredentialEducationModal } from './components/CredentialEducationModal';
@@ -63,6 +64,26 @@ function BidsContent() {
   const [pending, setPending] = useState<BidRow | null>(null);
   const [eduContractorId, setEduContractorId] = useState<string | null>(null);
   const [renewals, setRenewals] = useState<Record<string, RenewState>>({});
+
+  // gh-1940: "bids received/viewed" funnel step — fires once, the first
+  // time bids have actually finished loading with at least one bid to
+  // show (not on every render/poll from the realtime hook).
+  const bidsViewedFiredRef = useRef(false);
+  useEffect(() => {
+    if (
+      !shouldFireBidsViewed({
+        alreadyFired: bidsViewedFiredRef.current,
+        claimLoading,
+        hasClaimId: !!claimId,
+        bidsLoading,
+        bidCount: bids.length,
+      })
+    ) {
+      return;
+    }
+    bidsViewedFiredRef.current = true;
+    track('bids_viewed', { bid_count: bids.length });
+  }, [claimLoading, bidsLoading, claimId, bids.length]);
 
   const onSelect = useCallback((bid: BidRow) => setPending(bid), []);
   const onCredentials = useCallback((contractorId: string) => setEduContractorId(contractorId), []);

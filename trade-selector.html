@@ -1457,7 +1457,29 @@
               // neither and unconditionally inserted a SECOND claim row for
               // every repair-path homeowner. Fixed here at the source: pass
               // it through the redirect below instead.
-              if (insertedClaim) savedClaimId = insertedClaim.id;
+              if (insertedClaim) {
+                savedClaimId = insertedClaim.id;
+                // gh-1984: GA4 key event — new claims row only. No PII.
+                if (typeof gtag === 'function') {
+                  // Awaited (event_callback, <= 1 s) before the redirect below:
+                  // a send fired just before navigation was dropped (measured on the React twin).
+                  window.__oqClaimStartedSent = new Promise(function (resolve) {
+                    var done = false;
+                    function finish() { if (!done) { done = true; resolve(); } }
+                    setTimeout(finish, 1000);
+                    try {
+                      gtag('event', 'claim_started', {
+                        funding_type: claimData.funding_type || '',
+                        job_type: claimData.job_type || '',
+                        source: 'trade_selector_static',
+                        test_account: Auth.isTestEmail(user.email),
+                        event_callback: finish,
+                        event_timeout: 1000,
+                      });
+                    } catch (e) { finish(); }
+                  });
+                }
+              }
             }
 
             // #571: the claim_submitted advance now lives in the database —
@@ -1500,10 +1522,14 @@
           redirectUrl += `?claim_id=${encodeURIComponent(savedClaimId)}`;
         }
 
-        // Redirect
-        setTimeout(() => {
-          window.location.href = redirectUrl;
-        }, 500);
+        // Redirect — gh-1984: after max(claim_started send settled (<= 1 s), 500 ms).
+        try {
+          await Promise.all([
+            window.__oqClaimStartedSent || Promise.resolve(),
+            new Promise((resolve) => setTimeout(resolve, 500)),
+          ]);
+        } catch (_) {}
+        window.location.href = redirectUrl;
       } catch (error) {
         console.error('Error completing selection:', error);
         showError('Something went wrong. Please try again.');

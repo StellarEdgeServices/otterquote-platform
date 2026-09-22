@@ -71,6 +71,10 @@ jobs:
         working-directory: tests/e2e
         run: npx playwright test --config=smoke/playwright.smoke.config.ts
 
+      - name: Run internal-traffic opt-out gate check (gh-2064)
+        working-directory: tests/e2e
+        run: npx playwright test --config=smoke/internal-traffic-gate.config.ts
+
       - name: Upload report on failure
         if: failure()
         uses: actions/upload-artifact@v7

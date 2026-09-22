@@ -4,6 +4,7 @@ import { useState } from 'react';
 import type { HelpEstimateClaim } from '../types';
 import { buildEmailPreview, isEmailFormValid } from '../utils';
 import { sendEstimateRequest } from '../actions';
+import { track } from '@/lib/track';
 
 interface EmailFlowProps {
   claim: HelpEstimateClaim | null;
@@ -54,6 +55,9 @@ export function EmailFlow({ claim, homeownerName, homeownerPhone, onSent, onBack
         alsoMeasurements,
       });
       if (result.success) {
+        // gh-1940: "help tool used" — fired only after the estimate-request
+        // email is confirmed sent, not on button click.
+        track('help_tool_used', { tool: 'help_estimate' });
         onSent();
       } else {
         throw new Error('send failed');

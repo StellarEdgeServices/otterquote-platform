@@ -92,6 +92,83 @@ function _isPartnerSurfaceFile(pathname) {
 }
 
 /**
+ * The contractor-ROLE-GATED pages: those that call `Auth.requireAuth('contractor')`.
+ *
+ * REVIEW: FAIL (PR #1914) rejected the first version of this, which tested
+ * `pathname.indexOf('contractor') !== -1` on the theory that it mirrored
+ * requireAuth()'s own login-page choice. It does not mirror anything useful:
+ * requireAuth() uses that substring only to pick WHICH LOGIN PAGE to bounce to,
+ * never to assert a page is contractor-only. `contractor-about.html` calls bare
+ * `requireAuth()` (any role), so the substring test silently discarded a
+ * homeowner's legitimate deep link to it.
+ *
+ * This list is instead derived from the actual gate. Only a page that calls
+ * requireAuth() can ever write cs_redirect (js/auth.js:499 is the sole writer),
+ * and of the contractor-named pages exactly these seven require the contractor
+ * ROLE; `contractor-about.html` is any-role and the remaining six
+ * (agreement/faq/how-it-works/join/login/pre-approval) call requireAuth() not at
+ * all and so can never be stamped.
+ *
+ * Kept honest by `tests/auth-cs-redirect-role-guard.mjs`, which re-derives this
+ * set from the HTML on every CI run and fails if the two disagree. If you add a
+ * contractor-gated page, that test tells you to add it here. Erring toward
+ * omission is deliberate: a missing entry replays as before (the old behaviour),
+ * while a wrong entry would silently eat a legitimate link.
+ */
+var CONTRACTOR_GATED_FILES = [
+  'contractor-auto-bids.html',
+  'contractor-bid-form.html',
+  'contractor-dashboard.html',
+  'contractor-onboarding.html',
+  'contractor-opportunities.html',
+  'contractor-profile.html',
+  'contractor-settings.html'
+];
+
+/**
+ * REVIEW: FAIL rework (PR #1914, post-merge-of-revision-2 re-review). The list
+ * above is matched by exact `.html` filename, but Netlify's Pretty URLs serve
+ * every one of these pages extensionless too: `/contractor-dashboard` is a live
+ * 200 (`/contractor-dashboard.html` and `/contractor-dashboard/` both redirect
+ * to it), and requireAuth() stamps cs_redirect from whatever
+ * window.location.pathname actually was at the time — which, under Pretty
+ * URLs, is the extensionless form the user's browser bar shows. An exact-match
+ * comparison against '....html' therefore MISSES the extensionless case
+ * entirely: `_isContractorGatedFile()` returns false, the role-guard added by
+ * this PR never runs, and a homeowner with a stale
+ * cs_redirect='/contractor-dashboard' is replayed straight to the contractor
+ * surface — the exact defect this PR exists to close, reopened by a URL-form
+ * mismatch instead of a role-precedence one.
+ *
+ * Fix: normalize BOTH sides (the incoming saved path and each entry in
+ * CONTRACTOR_GATED_FILES) to the same lowercase, extension-stripped,
+ * trailing-slash-stripped, query/hash-stripped filename before comparing.
+ * CONTRACTOR_GATED_FILES itself stays '.html'-suffixed and unlowercased above
+ * — tests/auth-cs-redirect-role-guard.mjs Section B diffs it verbatim against
+ * the real .html filenames on disk, and changing its stored form would break
+ * that drift guard for no benefit. Normalization happens only at comparison
+ * time, in _normalizedGatedName().
+ */
+function _normalizedGatedName(pathOrFile) {
+  var s = String(pathOrFile || '');
+  s = s.split('?')[0].split('#')[0]; // strip query/hash
+  var file = s.substring(s.lastIndexOf('/') + 1); // last path segment
+  if (file.length > 5 && file.slice(-5).toLowerCase() === '.html') {
+    file = file.slice(0, -5);
+  }
+  return file.toLowerCase();
+}
+var _CONTRACTOR_GATED_NAMES = CONTRACTOR_GATED_FILES.map(_normalizedGatedName);
+function _isContractorGatedFile(pathname) {
+  // Strip a trailing slash before normalizing so '/contractor-dashboard/'
+  // (Netlify's redirect source for the Pretty URL) matches the same entry as
+  // '/contractor-dashboard' and '/contractor-dashboard.html'.
+  var p = String(pathname || '');
+  if (p.length > 1 && p.charAt(p.length - 1) === '/') p = p.slice(0, -1);
+  return _CONTRACTOR_GATED_NAMES.indexOf(_normalizedGatedName(p)) !== -1;
+}
+
+/**
  * gh-851: single source of truth for the partner agent_type values, mirroring
  * the gh-807 fix for _isPartnerSurfaceFile() above. Previously redeclared
  * identically at three call sites in this file (sendMagicLink, requireAuth,
@@ -697,12 +774,70 @@ window.Auth = {
     // is itself a partner surface (legitimate deep-link-while-logged-out case).
     // gh-807: both sides of this check now use the shared partner-surface
     // definition (was `indexOf('partner-') === 0` on the saved target only).
+    // gh-1412 / #1476: the gh-817 guard below only discards a stale cs_redirect
+    // when we are ALREADY on a partner surface. The identical failure for a
+    // homeowner was left unguarded, and it is the reported symptom:
+    // dustin@otterquote.com has no contractors row and resolved_user_role returns
+    // 'homeowner' cleanly, yet he lands on the contractor surface after a password
+    // login on login.html. That path never touches auth-callback.html -- it calls
+    // this function directly -- so this shortcut runs BEFORE any role check and a
+    // leftover cs_redirect='/contractor-dashboard.html', stamped by requireAuth()
+    // during an earlier logged-out visit in the same tab, is replayed verbatim for
+    // a user whose role says otherwise.
+    //
+    // CONTRACTOR ARM ONLY, deliberately. The first version of this also
+    // role-checked partner-surface targets and REVIEW: FAIL (PR #1914) caught it
+    // breaking tests/auth-partner-surface-single-source.mjs: getRole() resolves a
+    // single scalar and is contractor-first by design (see the comment at the
+    // contractors lookup below), so a DUAL-ROLE account (contractor record +
+    // referral_agents record, e.g. dustinstohler1@gmail.com) resolves to
+    // 'contractor' and `!PARTNER_ROLES.includes(role)` reads as "the role
+    // disagrees" when the truth is "this API cannot represent partner agreement
+    // for this user." That discarded a legitimate partner deep link and then hit
+    // the onPartnerPage early-return below, stranding the user with no navigation
+    // at all. 'contractor' is the ONE answer getRole() gives authoritatively --
+    // contractor-first precedence means a positive 'contractor' is trustworthy and
+    // a non-'contractor' answer positively excludes contractor identity -- so it is
+    // the only arm this guard is entitled to have. The partner case keeps the
+    // gh-817 staleCrossSurface guard and nothing more.
+    let _role = null, _roleFetched = false;
+    const roleOnce = async () => {
+      if (!_roleFetched) { _role = await this.getRole(); _roleFetched = true; }
+      return _role;
+    };
+
     const savedRedirect = sessionStorage.getItem('cs_redirect');
     if (savedRedirect) {
       sessionStorage.removeItem('cs_redirect');
       const staleCrossSurface = onPartnerPage && !_isPartnerSurfaceFile(savedRedirect);
+
+      // Belt, per PR #1914 review: cs_redirect's only writer is
+      // window.location.pathname, so it is same-origin today and a probe confirmed
+      // no off-site value is reachable in production (`//evil.example/...` and
+      // `/\evil.example/...` both 404 to Netlify's default page, which loads no
+      // auth.js). This block is the one that replays it, though, and the whole file
+      // is one path-normalising rewrite rule away from that stopping being true.
+      // Require a single leading slash before navigating anywhere.
+      const offSite = savedRedirect.charAt(0) !== '/' ||
+                      savedRedirect.charAt(1) === '/' ||
+                      savedRedirect.charAt(1) === '\\';
+
+      let roleDisagrees = false;
+      if (!staleCrossSurface && !offSite && _isContractorGatedFile(savedRedirect)) {
+        const actualRole = await roleOnce();
+        // Fail OPEN on an unresolved role (null): getRole() returning null is a
+        // known transient (gh-959), and treating it as disagreement would strand a
+        // legitimate deep link. Only a positively-resolved, non-contractor role
+        // discards a contractor-gated target.
+        if (actualRole) roleDisagrees = actualRole !== 'contractor';
+      }
+
       if (staleCrossSurface) {
         console.warn('[Auth] redirectToDashboard: discarding stale cs_redirect=' + savedRedirect + ' — already on partner surface (' + currentFile + ')');
+      } else if (offSite) {
+        console.warn('[Auth] redirectToDashboard: discarding non-same-origin cs_redirect=' + savedRedirect);
+      } else if (roleDisagrees) {
+        console.warn('[Auth] redirectToDashboard: discarding stale cs_redirect=' + savedRedirect + ' — contractor-gated target, resolved role is ' + _role);
       } else {
         window.location.href = savedRedirect;
         return;
@@ -732,8 +867,8 @@ window.Auth = {
       return;
     }
 
-    // Otherwise route by role
-    const role = await this.getRole();
+    // Otherwise route by role (reuses the role resolved above, if it was needed)
+    const role = await roleOnce();
     if (role === 'contractor') {
       window.location.href = '/contractor-dashboard.html';
     } else if (PARTNER_ROLES.includes(role)) {
@@ -788,9 +923,47 @@ window.Auth = {
    * Handle post-auth profile creation and routing.
    * Call this when user logs in via magic link to create their profile from signup data.
    */
+  /**
+   * gh-1983 — static-stack twin of react-app/app/lib/attribution.ts
+   * recordFirstTouch(). Reads the oq_ft cookie (then localStorage), sends it to
+   * record_first_touch_attribution, resolves within 2.5 s, never throws.
+   */
+  async recordFirstTouchAttribution() {
+    if (!sb) return null;
+    let attr = null;
+    try {
+      const pair = (document.cookie || '').split(';').map(s => s.trim()).find(s => s.indexOf('oq_ft=') === 0);
+      const raw = pair ? decodeURIComponent(pair.slice(6)) : (localStorage.getItem('oq_ft') || null);
+      const parsed = raw ? JSON.parse(raw) : null;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) attr = parsed;
+    } catch (e) {
+      attr = null; // malformed store — the RPC still tries user_metadata
+    }
+    let timer;
+    try {
+      const call = sb.rpc('record_first_touch_attribution', { p_attr: attr }).then(
+        (res) => { if (res && res.error) console.warn('[attribution] record failed (non-fatal):', res.error); return res ? res.data : null; },
+        (err) => { console.warn('[attribution] record failed (non-fatal):', err); return null; }
+      );
+      const timeout = new Promise((resolve) => { timer = setTimeout(() => resolve(null), 2500); });
+      return await Promise.race([call, timeout]);
+    } catch (e) {
+      return null;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  },
+
   async handleAuthCallback() {
     const user = await this.getUser();
     if (!user) return;
+
+    // gh-1983: persist first-touch ad attribution for the static-stack sign-in
+    // path too (the React /auth-callback does the same). The oq_ft cookie is
+    // set on .otterquote.com by the Netlify edge function / Next middleware /
+    // React client; the RPC is write-once, refuses post-signup touches, and
+    // falls back to user_metadata. Bounded and non-fatal.
+    await this.recordFirstTouchAttribution();
 
     // Determine role: stored value > contractor record check > default homeowner
     let role = localStorage.getItem('cs_auth_role') || sessionStorage.getItem('cs_auth_role');
