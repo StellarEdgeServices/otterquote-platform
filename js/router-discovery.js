@@ -591,10 +591,25 @@
         // same rule arms A/B already follow.
         function proceed() {
           emitComplete('c-home-8');
-          bridge.redirectTo(
-            bridge.appendParams(bridge.ROLE_DESTINATIONS.homeowner, bridge.collectAttribution()),
-            !!bridge.NO_LEAD_ID_DESTINATIONS.homeowner
-          );
+          // gh-2075 round 2, review report ceo57-review-pr2086-20260921
+          // finding 5 (non-blocking on #2075 itself, but biases any D-vs-C
+          // read): this used to call bridge.redirectTo(...) with
+          // preBuilt=!!NO_LEAD_ID_DESTINATIONS.homeowner -- that map is
+          // EMPTY (gh-2046 emptied it once homeowners started getting
+          // ?lead=<uuid> like every other destination), so preBuilt was
+          // always false, which made redirectTo() append `lead=` from
+          // start.html's own top-level `leadId` var -- a var this module
+          // NEVER sets (every other call site in this file passes
+          // preBuilt=true for exactly this reason; this was the one call
+          // site that did not) -- producing a literal `lead=null` AND a
+          // second, duplicate round of attribution params (redirectTo's
+          // own non-preBuilt branch re-appends collectAttribution() on
+          // top of the appendParams() call already made above). C
+          // homeowners got no #2046 prefill; D's own equivalent hand-off
+          // (js/router-variant-d.js) does not have this bug, which biases
+          // a D-vs-C comparison in D's favour. redirectWithLeadId is the
+          // same helper every other track in this file already uses.
+          redirectWithLeadId(bridge.ROLE_DESTINATIONS.homeowner, newId);
         }
         bridge.sb.rpc('set_lead_role', { p_lead_id: newId, p_role: 'homeowner' }).then(proceed).catch(function (roleErr) {
           console.error('[router-discovery] set_lead_role failed -- proceeding to destination anyway:', roleErr);
@@ -1068,5 +1083,39 @@
     show('c-entry');
   }
 
-  window.RouterDiscovery = { init: init };
+  // gh-2075 (D-327): Variant D reuses this module's exact copy and its
+  // exact multi-select/single-select/disqualifier rendering for the
+  // post-email question screens ("reuse C's step components and copy
+  // verbatim -- no new copy in D", issue #2075). js/router-variant-d.js
+  // is the only other file allowed to read these exports. renderMultiSelect/
+  // renderSingleSelect/renderDisqualifier below are thin wrappers around
+  // this module's own functions of the same name: those functions read
+  // and write the single module-level `root` closure variable, so each
+  // wrapper points `root` at the CALLER's mount element for the duration
+  // of the call (synchronous -- these functions never yield control before
+  // they finish building DOM) and restores this module's own `root`
+  // afterward. Safe because C and D never run in the same page load
+  // (`variant` is one value) and neither module's `init()` needs to have
+  // run for the other's exports to work. `cfg.backTo` is deliberately NOT
+  // forwarded by variant D -- that flag makes these functions call this
+  // module's OWN backButton()/goBack(), bound to c-entry's stack, not
+  // D's; D prepends its own back button before calling these wrappers
+  // instead. COPY/heading/bodyText/continueButton are pure (no `root`
+  // read) and exported directly.
+  function withRoot(targetRoot, fn) {
+    var savedRoot = root;
+    root = targetRoot;
+    try { fn(); } finally { root = savedRoot; }
+  }
+
+  window.RouterDiscovery = {
+    init: init,
+    COPY: COPY,
+    heading: heading,
+    bodyText: bodyText,
+    continueButton: continueButton,
+    renderMultiSelect: function (targetRoot, cfg) { withRoot(targetRoot, function () { renderMultiSelect(cfg); }); },
+    renderSingleSelect: function (targetRoot, cfg) { withRoot(targetRoot, function () { renderSingleSelect(cfg); }); },
+    renderDisqualifier: function (targetRoot, cfg) { withRoot(targetRoot, function () { renderDisqualifier(cfg); }); }
+  };
 })();
