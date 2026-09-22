@@ -13,10 +13,13 @@ import {
   otterquoteCookieStorage,
   OTTERQUOTE_AUTH_STORAGE_KEY,
   readValidCookieSession,
+  readReferralIds,
+  writeReferralIds,
   _COOKIE_ACCESS,
   _COOKIE_REFRESH,
   _getCookieMaxAge,
 } from '../cookie-storage';
+import { seedStaleStorage } from '../../test/storage-fixtures';
 
 // Build an unsigned JWT (header.payload.signature) with base64url segments.
 function b64url(obj: Record<string, unknown>): string {
@@ -235,5 +238,72 @@ describe('getCookieMaxAge — gh-867 400-day session lifetime', () => {
 
   it('never returns less than 400 days, even for an already-expired token', () => {
     expect(_getCookieMaxAge(NOW - 3600)).toBe(FOUR_HUNDRED_DAYS_SEC);
+  });
+});
+
+// ── gh-2060 NEGATIVE CONTROL — a stale referral key left by a DIFFERENT prior
+// visit/write must not survive into a write that does not carry it. Every
+// test file in this suite clears storage in beforeEach, which is correct
+// default isolation but means no test could previously express "storage
+// already has something in it before this test's write runs" — the exact
+// precondition this class of bug needs to be observable at all. Uses
+// seedStaleStorage (app/test/storage-fixtures.ts) to seed that precondition
+// deliberately, on top of (not instead of) the normal clean-slate
+// beforeEach below. ──────────────────────────────────────────────────────
+describe('writeReferralIds — gh-2060 stale-state contamination (negative control)', () => {
+  beforeEach(() => {
+    clearCookies();
+    try { window.localStorage.clear(); } catch { /* ignore */ }
+    try { window.sessionStorage.clear(); } catch { /* ignore */ }
+  });
+  afterEach(() => {
+    clearCookies();
+    try { window.localStorage.clear(); } catch { /* ignore */ }
+    try { window.sessionStorage.clear(); } catch { /* ignore */ }
+  });
+
+  it('does not let a PRIOR visit\'s agent id leak into a write that omits it', () => {
+    // A previous referral visit in this same browser/tab left an agent id
+    // behind — e.g. an earlier agent-linked referral click, or a partial
+    // write from another code path. Nothing in this test's own setup
+    // creates this; it models what an ACTUAL prior visitor already did,
+    // which is exactly what the suite-wide beforeEach clear makes
+    // unwritable without this fixture.
+    seedStaleStorage({
+      localStorage: { oq_referral_agent_id: 'AGENT-FROM-A-DIFFERENT-VISIT' },
+      sessionStorage: { oq_referral_agent_id: 'AGENT-FROM-A-DIFFERENT-VISIT' },
+    });
+
+    // A new, unrelated referral write happens — e.g. auth-callback.tsx
+    // "keep the cookie alive" write (app/auth-callback/page.tsx) or a
+    // fresh agent-less referral code — that legitimately carries an id
+    // and a code but NO agent id.
+    writeReferralIds({
+      oq_referral_id: 'REFERRAL-NEW',
+      oq_referral_code: 'CODE-NEW',
+    });
+
+    const ids = readReferralIds();
+    expect(ids.oq_referral_id).toBe('REFERRAL-NEW');
+    expect(ids.oq_referral_code).toBe('CODE-NEW');
+    // The bug: readReferralIds() falls back per-key to localStorage/
+    // sessionStorage when the cookie (fully overwritten by the new write,
+    // and so no longer carrying an agent id) doesn't have the key — so the
+    // OLD agent id, belonging to a different visit, resurfaces attached to
+    // this brand-new referral. That would attribute commission to the
+    // wrong partner.
+    expect(ids.oq_referral_agent_id).toBeUndefined();
+  });
+
+  it('a write that DOES carry an agent id is unaffected (control)', () => {
+    writeReferralIds({
+      oq_referral_id: 'REFERRAL-1',
+      oq_referral_agent_id: 'AGENT-1',
+      oq_referral_code: 'CODE-1',
+    });
+    const ids = readReferralIds();
+    expect(ids.oq_referral_id).toBe('REFERRAL-1');
+    expect(ids.oq_referral_agent_id).toBe('AGENT-1');
+    expect(ids.oq_referral_code).toBe('CODE-1');
   });
 });
