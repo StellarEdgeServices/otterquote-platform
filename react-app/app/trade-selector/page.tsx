@@ -986,17 +986,22 @@ export default function TradeSelectorPage() {
           // resolves normally as { data: null, error: {...} }. Round 1's
           // clear() below only checked whether a referral was PRESENT to
           // carry forward, not whether the write that was supposed to
-          // carry it actually succeeded. "Consumed" means the referral id
-          // is durably recorded against the claim: no error came back from
-          // the write that was supposed to record it. Track that
-          // per-branch and gate the clear on it.
+          // carry it actually succeeded.
+          //
+          // gh-2062 round 3 (REVIEW: FAIL): error === null is NOT success.
+          // An UPDATE without .select() that matches ZERO rows — e.g. RLS
+          // silently filtering the WHERE match — also resolves with
+          // error: null. "Consumed" means a row was actually WRITTEN, not
+          // merely that the call did not complain. .select('id') added so
+          // the affected row (if any) comes back and can be checked.
           let claimWriteSucceeded = false;
           if (existingClaim) {
-            const { error: updateError } = await supabase
+            const { data: updatedRows, error: updateError } = await supabase
               .from('claims')
               .update(claimPayload)
-              .eq('id', existingClaim.id);
-            claimWriteSucceeded = !updateError;
+              .eq('id', existingClaim.id)
+              .select('id');
+            claimWriteSucceeded = !updateError && Array.isArray(updatedRows) && updatedRows.length > 0;
             savedClaimId = existingClaim.id;
             if (!(await attachPendingLossSheetToClaim(existingClaim.id))) lossSheetAttachFailed = true;
           } else {
@@ -1014,6 +1019,15 @@ export default function TradeSelectorPage() {
               })
               .select('id')
               .single();
+            // gh-2062 round 3 audit: this insert branch does NOT have the
+            // round-2 zero-rows gap. .single() requires EXACTLY one row
+            // back from the .select('id') re-read — PostgREST/Supabase
+            // errors (PGRST116) if the insert produced zero or more than
+            // one row, so a silent zero-row success is not possible here
+            // the way it was on the update branch. !!insertedClaim is
+            // therefore redundant with !insertError in practice, but kept
+            // as an explicit belt-and-suspenders row check to match the
+            // update branch's shape.
             claimWriteSucceeded = !insertError && !!insertedClaim;
             // gh-1276: capture the new row's id — previously never captured
             // here either (same gap as the static trade-selector.html this

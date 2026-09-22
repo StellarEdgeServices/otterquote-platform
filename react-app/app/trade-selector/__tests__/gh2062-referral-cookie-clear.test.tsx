@@ -31,16 +31,46 @@
  * write, under-paying the partner who earned it. The fourth test below is
  * the one that would have caught it: a claim insert that resolves with
  * `error` set (not a thrown exception) must leave the cookie untouched.
+ *
+ * ROUND 3 (REVIEW: FAIL on PR #2103, again): `error === null` is NOT
+ * success. handleComplete's UPDATE branch (existingClaim truthy — a
+ * homeowner revisiting trade-selector after already starting a claim) had
+ * no `.select()`, and an UPDATE that matches ZERO rows (e.g. RLS silently
+ * filtering the WHERE match) still resolves with `error: null` in
+ * PostgREST/Supabase. Round 2's `claimWriteSucceeded = !updateError` was
+ * therefore true on a write that wrote nothing. Worse: every test in this
+ * file up through round 2 was structurally forced down the INSERT branch
+ * by `maybeSingle()` always resolving `{ data: null }` (never an
+ * `existingClaim`) — the update branch was untested, not merely
+ * under-tested. `claimsMaybeSingleMock` and `claimsUpdateSelectMock` below
+ * make the update branch reachable; the fifth test below is the one that
+ * would have caught this: an UPDATE that returns zero rows with no error
+ * must leave the cookie alone.
+ *
+ * Branch coverage, stated explicitly per the round-3 review's ask:
+ *   - Tests 1-4 (POSITIVE CONTROL, round-1 FIX, negative control, round-2
+ *     FIX) all drive the INSERT branch (existingClaim absent — the default
+ *     `claimsMaybeSingleMock` resolution).
+ *   - Test 5 (round-3 FIX) drives the UPDATE branch (existingClaim
+ *     present, via `claimsMaybeSingleMock.mockImplementation`).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 
-const { claimsInsertMock } = vi.hoisted(() => ({
+const { claimsInsertMock, claimsUpdateSelectMock, claimsMaybeSingleMock } = vi.hoisted(() => ({
   claimsInsertMock: vi.fn((_payload: Record<string, unknown>) => ({
     select: () => ({
       single: () => Promise.resolve({ data: { id: 'test-claim-id' }, error: null }),
     }),
   })),
+  // The terminal call of .update(...).eq('id', existingClaim.id).select('id')
+  // — defaults to "one row actually updated", matching the vast majority of
+  // real update passes (own-claim update, no RLS mismatch).
+  claimsUpdateSelectMock: vi.fn(() => Promise.resolve({ data: [{ id: 'existing-claim-id' }], error: null })),
+  // Drives which branch handleComplete takes: null/undefined -> INSERT
+  // (no existing claim found), a row -> UPDATE. Defaults to INSERT, as all
+  // rounds 1-2 tests implicitly assumed.
+  claimsMaybeSingleMock: vi.fn(() => Promise.resolve({ data: null, error: null })),
 }));
 
 vi.mock('@/hooks/use-auth-ready', () => ({ useAuthReady: vi.fn() }));
@@ -50,7 +80,7 @@ vi.mock('@/lib/supabase', () => {
     eq: () => claimsSelectChain,
     order: () => claimsSelectChain,
     limit: () => claimsSelectChain,
-    maybeSingle: () => Promise.resolve({ data: null, error: null }),
+    maybeSingle: claimsMaybeSingleMock,
   };
   return {
     supabase: {
@@ -62,7 +92,8 @@ vi.mock('@/lib/supabase', () => {
           return {
             select: () => claimsSelectChain,
             insert: claimsInsertMock,
-            update: () => ({ eq: () => Promise.resolve({ error: null }) }),
+            // Mirrors the real chain: .update(payload).eq('id', id).select('id')
+            update: () => ({ eq: () => ({ select: claimsUpdateSelectMock }) }),
           };
         }
         return { select: () => claimsSelectChain };
@@ -110,6 +141,23 @@ function clearAllCookies() {
 describe('TradeSelectorPage referral cookie — gh-2062 (money-path: both directions)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Explicit .mockReset() + re-arm of the default implementation for
+    // every mock a test might override with .mockImplementationOnce():
+    // clearAllMocks()/restoreAllMocks() clear call history but are not
+    // guaranteed across vitest versions to also drain a queued "once"
+    // implementation left over from a test that didn't end up calling it
+    // (e.g. one that exercises the other claims-write branch). A leaked
+    // once-queue entry would silently apply to the wrong test. Reset each
+    // to a known-good default explicitly rather than relying on that.
+    claimsMaybeSingleMock.mockReset().mockImplementation(() => Promise.resolve({ data: null, error: null }));
+    claimsUpdateSelectMock
+      .mockReset()
+      .mockImplementation(() => Promise.resolve({ data: [{ id: 'existing-claim-id' }], error: null }));
+    claimsInsertMock.mockReset().mockImplementation((_payload: Record<string, unknown>) => ({
+      select: () => ({
+        single: () => Promise.resolve({ data: { id: 'test-claim-id' }, error: null }),
+      }),
+    }));
     localStorage.clear();
     sessionStorage.clear();
     clearAllCookies();
@@ -149,6 +197,29 @@ describe('TradeSelectorPage referral cookie — gh-2062 (money-path: both direct
 
     await waitFor(() => expect(claimsInsertMock).toHaveBeenCalledTimes(1));
     return claimsInsertMock.mock.calls[0][0] as Record<string, unknown>;
+  }
+
+  /** Same walk, but drives the UPDATE branch (a homeowner revisiting
+   *  trade-selector after already starting a claim) instead of INSERT —
+   *  reachable only because claimsMaybeSingleMock is overridden to resolve
+   *  an existing claim before calling this. */
+  async function completeCashSingleTradeWalkViaUpdate() {
+    localStorage.setItem('cs_signup', JSON.stringify(CS_SIGNUP));
+    render(<TradeSelectorPage />);
+
+    fireEvent.click(screen.getByText("I'm paying for this myself (retail/cash)"));
+    await waitFor(() => expect(screen.getByText('What do you need done?')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText('Roofing'));
+    fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+    await waitFor(() => expect(screen.getByText('Repair or Replace?')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+
+    await waitFor(() => expect(claimsUpdateSelectMock).toHaveBeenCalledTimes(1));
+    // The insert path must NOT have also fired — confirms this test is
+    // really exercising the update branch, not silently falling through.
+    expect(claimsInsertMock).not.toHaveBeenCalled();
   }
 
   it('POSITIVE CONTROL: a live, unconsumed referral still attributes correctly', async () => {
@@ -219,6 +290,48 @@ describe('TradeSelectorPage referral cookie — gh-2062 (money-path: both direct
     expect(afterFailedWrite.oq_referral_id).toBe(PARTNER_A_REFERRAL.oq_referral_id);
     expect(afterFailedWrite.oq_referral_agent_id).toBe(PARTNER_A_REFERRAL.oq_referral_agent_id);
     expect(afterFailedWrite.oq_referral_code).toBe(PARTNER_A_REFERRAL.oq_referral_code);
+    expect(document.cookie).toContain('oq-ref=');
+  });
+
+  it('ROUND 3 sanity: a real (row-affecting) UPDATE still clears a consumed referral (update branch, positive)', async () => {
+    writeReferralIds(PARTNER_A_REFERRAL);
+    // .mockImplementation (not Once): the component's own mount-time
+    // "returning user already has a claim" guard (a separate maybeSingle()
+    // call, harmless no-op redirect under our window.location mock) AND
+    // handleComplete's own existing-claim check both need to see the same
+    // existing claim for this to be internally consistent and reach the
+    // update branch.
+    claimsMaybeSingleMock.mockImplementation(() =>
+      Promise.resolve({ data: { id: 'existing-claim-id' }, error: null }),
+    );
+    // claimsUpdateSelectMock default already resolves one row — this test
+    // just confirms the update branch behaves like the insert branch's
+    // positive control once round 3's row-count check is satisfied.
+
+    await completeCashSingleTradeWalkViaUpdate();
+
+    expect(readReferralIds()).toEqual({});
+    expect(document.cookie).not.toContain('oq-ref=');
+  });
+
+  it('ROUND 3 FIX: an UPDATE that matches ZERO rows (RLS-filtered, error: null) does NOT clear a live referral', async () => {
+    writeReferralIds(PARTNER_A_REFERRAL);
+    claimsMaybeSingleMock.mockImplementation(() =>
+      Promise.resolve({ data: { id: 'existing-claim-id' }, error: null }),
+    );
+    // THE round-3 BUG'S EXACT SHAPE: no error, but the WHERE match found
+    // zero rows — e.g. RLS silently filtered it out. PostgREST/Supabase do
+    // not treat "zero rows updated" as an error by default.
+    claimsUpdateSelectMock.mockImplementationOnce(() => Promise.resolve({ data: [], error: null }));
+
+    await completeCashSingleTradeWalkViaUpdate();
+
+    // THE FIX: nothing was actually written, so the referral was never
+    // durably recorded against the claim — it must still be live.
+    const afterZeroRowUpdate = readReferralIds();
+    expect(afterZeroRowUpdate.oq_referral_id).toBe(PARTNER_A_REFERRAL.oq_referral_id);
+    expect(afterZeroRowUpdate.oq_referral_agent_id).toBe(PARTNER_A_REFERRAL.oq_referral_agent_id);
+    expect(afterZeroRowUpdate.oq_referral_code).toBe(PARTNER_A_REFERRAL.oq_referral_code);
     expect(document.cookie).toContain('oq-ref=');
   });
 });
