@@ -12,6 +12,7 @@ import {
   type DbAdapter,
   extractBearerToken,
   MAGIC_LINK_EXPIRES_IN,
+  normalizeCanonicalUuid,
   resolveAndMint,
   unexpectedErrorResponse,
 } from "./gate.ts";
@@ -64,13 +65,21 @@ Deno.test("403 on a homeowner with a non-test claim", async () => {
       error: null,
     }),
   });
-  const result = await resolveAndMint({ user_id: "u2" }, db, ACTOR_EMAIL);
+  const result = await resolveAndMint(
+    { user_id: "00000000-0000-0000-0000-000000000002" },
+    db,
+    ACTOR_EMAIL,
+  );
   assertEquals(result.status, 403);
 });
 
 Deno.test("403 on a homeowner who owns no claims", async () => {
   const db = fakeDb({ getClaimsByUserId: async () => ({ data: [], error: null }) });
-  const result = await resolveAndMint({ user_id: "u3" }, db, ACTOR_EMAIL);
+  const result = await resolveAndMint(
+    { user_id: "00000000-0000-0000-0000-000000000003" },
+    db,
+    ACTOR_EMAIL,
+  );
   assertEquals(result.status, 403);
 });
 
@@ -202,7 +211,11 @@ Deno.test("getClaimsByUserId error: generic body, adapter detail not leaked", as
       error: { message: SENSITIVE_DB_DETAIL },
     }),
   });
-  const result = await resolveAndMint({ user_id: "u7" }, db, ACTOR_EMAIL);
+  const result = await resolveAndMint(
+    { user_id: "00000000-0000-0000-0000-000000000007" },
+    db,
+    ACTOR_EMAIL,
+  );
   assertEquals(result.status, 500);
   assertEquals(result.body, { error: "Internal server error" });
   assertEquals(JSON.stringify(result.body).includes(SENSITIVE_DB_DETAIL), false);
@@ -219,7 +232,11 @@ Deno.test("getAuthUserById error: generic body, adapter detail not leaked", asyn
       error: { message: SENSITIVE_DB_DETAIL },
     }),
   });
-  const result = await resolveAndMint({ user_id: "u8" }, db, ACTOR_EMAIL);
+  const result = await resolveAndMint(
+    { user_id: "00000000-0000-0000-0000-000000000008" },
+    db,
+    ACTOR_EMAIL,
+  );
   assertEquals(result.status, 500);
   assertEquals(result.body, { error: "Internal server error" });
   assertEquals(JSON.stringify(result.body).includes(SENSITIVE_DB_DETAIL), false);
@@ -538,4 +555,152 @@ Deno.test("extractBearerToken: 'Bearer' with no token -> null (401 path)", () =>
 
 Deno.test("extractBearerToken: well-formed header -> token", () => {
   assertEquals(extractBearerToken("Bearer abc.def.ghi"), "abc.def.ghi");
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// F1 (CTO36 fix-review of PR #2097, 2026-09-22): the user_id path used to
+// compare the caller's raw request string against
+// KNOWN_MISFLAGGED_REAL_ACCOUNTS with plain string equality, so another
+// spelling of the same UUID (different case, no hyphens, {braced}) bypassed
+// it even though every DB-level lookup treats it as the same identity.
+// normalizeCanonicalUuid + the resolveAndMint changes close that. Run these
+// against gate.ts with the F1 fix reverted (normalizeCanonicalUuid removed
+// / not applied to the user_id path) to see A fail "actual 200, expected
+// 403" and B/C fail "actual 403 [wrong reason] / 200, expected 400" before
+// trusting that they pass here.
+// ─────────────────────────────────────────────────────────────────────────
+
+const DENYLISTED_USER_ID_LOWER = "edcbe10f-7efa-4945-be3b-5c3e4ef8f2e2";
+
+Deno.test("gh-2047-F1 A: UPPERCASE spelling of a denylisted user_id is normalized and refused (403)", async () => {
+  const db = fakeDb({
+    getClaimsByUserId: async () => ({ data: [{ id: "claim1", is_test: true }], error: null }),
+  });
+  const result = await resolveAndMint(
+    { user_id: DENYLISTED_USER_ID_LOWER.toUpperCase() },
+    db,
+    ACTOR_EMAIL,
+  );
+  assertEquals(result.status, 403);
+  assertStringIncludes(String(result.body.error), "#2047");
+});
+
+Deno.test("gh-2047-F1 B: no-hyphen spelling of a user_id is rejected as malformed (400), never silently reinterpreted", async () => {
+  const db = fakeDb();
+  const noHyphen = DENYLISTED_USER_ID_LOWER.replace(/-/g, "");
+  const result = await resolveAndMint({ user_id: noHyphen }, db, ACTOR_EMAIL);
+  assertEquals(result.status, 400);
+});
+
+Deno.test("gh-2047-F1 C: {braced} spelling of a user_id is rejected as malformed (400), never silently reinterpreted", async () => {
+  const db = fakeDb();
+  const braced = `{${DENYLISTED_USER_ID_LOWER}}`;
+  const result = await resolveAndMint({ user_id: braced }, db, ACTOR_EMAIL);
+  assertEquals(result.status, 400);
+});
+
+Deno.test("gh-2047-F1 D: denylist is re-checked against the resolved auth user's own id, immediately before minting", async () => {
+  // Neither the contractor id nor the (fake) linked user_id is on the
+  // denylist -- only the id GoTrue itself resolves to is. Only the
+  // pre-mint re-check (F1's second, independent check) can catch this.
+  const db = fakeDb({
+    getContractorById: async () => ({
+      data: {
+        id: "c-drift-not-on-list",
+        user_id: "u-drift-not-on-list",
+        email: "x@example.com",
+        is_test: true,
+      },
+      error: null,
+    }),
+    getProfileById: async () => ({ data: { id: "u-drift-not-on-list", is_test: true }, error: null }),
+    getAuthUserById: async () => ({
+      data: { id: "a3a6444c-512c-4d6b-bcb2-a0b4f9e1bdf9", email: "resolved@otterquote-internal.test" },
+      error: null,
+    }),
+  });
+  const result = await resolveAndMint({ contractor_id: "c-drift-not-on-list" }, db, ACTOR_EMAIL);
+  assertEquals(result.status, 403);
+  assertStringIncludes(String(result.body.error), "#2047");
+});
+
+Deno.test("normalizeCanonicalUuid: accepts hyphenated form in any case, lowercases it; rejects no-hyphen and {braced}", () => {
+  assertEquals(normalizeCanonicalUuid("edcbe10f-7efa-4945-be3b-5c3e4ef8f2e2"), "edcbe10f-7efa-4945-be3b-5c3e4ef8f2e2");
+  assertEquals(normalizeCanonicalUuid("EDCBE10F-7EFA-4945-BE3B-5C3E4EF8F2E2"), "edcbe10f-7efa-4945-be3b-5c3e4ef8f2e2");
+  assertEquals(normalizeCanonicalUuid("edcbe10f7efa4945be3b5c3e4ef8f2e2"), null);
+  assertEquals(normalizeCanonicalUuid("{edcbe10f-7efa-4945-be3b-5c3e4ef8f2e2}"), null);
+  assertEquals(normalizeCanonicalUuid("not-a-uuid"), null);
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// F2 (CTO36 fix-review of PR #2097, 2026-09-22): two more real homeowners,
+// found live on the user_id (claims) path during that review, are added to
+// KNOWN_MISFLAGGED_REAL_ACCOUNTS. Both fakeDbs below return is_test=true on
+// every table, same pattern as the gh-2047 A/B/C tests above, so a pass
+// here proves the denylist entry is what refuses them.
+// ─────────────────────────────────────────────────────────────────────────
+
+Deno.test("gh-2047 F2 A: 403 for the first newly-added real homeowner via the user_id path", async () => {
+  const db = fakeDb({
+    getClaimsByUserId: async () => ({ data: [{ id: "claim1", is_test: true }], error: null }),
+  });
+  const result = await resolveAndMint(
+    { user_id: "a3a6444c-512c-4d6b-bcb2-a0b4f9e1bdf9" },
+    db,
+    ACTOR_EMAIL,
+  );
+  assertEquals(result.status, 403);
+  assertStringIncludes(String(result.body.error), "#2047");
+});
+
+Deno.test("gh-2047 F2 B: 403 for the second newly-added real homeowner via the user_id path", async () => {
+  const db = fakeDb({
+    getClaimsByUserId: async () => ({ data: [{ id: "claim1", is_test: true }], error: null }),
+  });
+  const result = await resolveAndMint(
+    { user_id: "eca661ca-e038-4e39-bf27-0353ddc5b38f" },
+    db,
+    ACTOR_EMAIL,
+  );
+  assertEquals(result.status, 403);
+  assertStringIncludes(String(result.body.error), "#2047");
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// F3 (review's non-blocking coverage gap): every existing contractor_id
+// test also happens to list a user_id that is itself on the denylist, so
+// the `resolvedContractorId !== null && KNOWN_MISFLAGGED_REAL_ACCOUNTS.has
+// (resolvedContractorId)` half of the OR was never exercised on its own --
+// removing it left all other tests passing. This uses a denylisted
+// contractor id (Indy Rooftops) with a deliberately NOT-denylisted linked
+// user_id/auth id, isolating that half of the check.
+// ─────────────────────────────────────────────────────────────────────────
+
+Deno.test("gh-2047 F3: 403 via contractor_id alone even when its linked user_id is not on the denylist", async () => {
+  const db = fakeDb({
+    getContractorById: async () => ({
+      data: {
+        id: "5ece9e69-91f8-48cd-b4fa-412dec4f8dee", // Indy Rooftops -- on the denylist
+        user_id: "99999999-9999-9999-9999-999999999999", // deliberately NOT on the denylist
+        email: "dustinstohler1+indyrooftops@gmail.com",
+        is_test: true,
+      },
+      error: null,
+    }),
+    getProfileById: async () => ({
+      data: { id: "99999999-9999-9999-9999-999999999999", is_test: true },
+      error: null,
+    }),
+    getAuthUserById: async () => ({
+      data: { id: "99999999-9999-9999-9999-999999999999", email: "not-denylisted@otterquote-internal.test" },
+      error: null,
+    }),
+  });
+  const result = await resolveAndMint(
+    { contractor_id: "5ece9e69-91f8-48cd-b4fa-412dec4f8dee" },
+    db,
+    ACTOR_EMAIL,
+  );
+  assertEquals(result.status, 403);
+  assertStringIncludes(String(result.body.error), "#2047");
 });

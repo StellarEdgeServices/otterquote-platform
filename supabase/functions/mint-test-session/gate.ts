@@ -186,6 +186,14 @@ export const KNOWN_MISFLAGGED_REAL_ACCOUNTS: ReadonlySet<string> = new Set([
   // ADMIN's own auth user (#2047, #1773 forensics)
   "ee452a12-c16e-4d30-9d2c-df8128fbce52", // contractors.id
   "3ea4d929-b916-4cc9-a285-d052df397992", // contractors.user_id / profiles.id
+  // Two real homeowners on the user_id (claims) path, found during the
+  // CTO36 fix-review of this PR (#2047 review comment, 2026-09-22): both
+  // rows read is_test = true on claims/profiles but belong to real people,
+  // not synthetic test fixtures. Deliberately no name or email in this
+  // file — see #2047 for identity detail. Neither has a contractors row
+  // entry here since neither is reachable via the contractor_id path.
+  "a3a6444c-512c-4d6b-bcb2-a0b4f9e1bdf9", // profiles.id / auth user_id
+  "eca661ca-e038-4e39-bf27-0353ddc5b38f", // profiles.id / auth user_id
 ]);
 
 function knownRealAccountRefusal(): MintResult {
@@ -193,6 +201,35 @@ function knownRealAccountRefusal(): MintResult {
     403,
     "Forbidden: target is a known real account misflagged is_test (see #2047) — refused regardless of is_test",
   );
+}
+
+/**
+ * F1 fix (CTO36 fix-review of this PR, 2026-09-22): the user_id path used
+ * to compare the caller's raw request string against
+ * KNOWN_MISFLAGGED_REAL_ACCOUNTS with plain string equality. Postgres's own
+ * uuid type accepts other spellings of the same id (different case, no
+ * hyphens, {braced}) and canonicalizes them before every .eq() this gate's
+ * DbAdapter performs — so a caller could send an UPPERCASE, no-hyphen or
+ * {braced} spelling of a denylisted user_id, sail through every DB-level
+ * lookup exactly as if it were the canonical form, and never hit this
+ * denylist's exact string match. Verified live: Postgres treats
+ * 'EDCBE10F-…'::uuid = 'edcbe10f-…'::uuid as true, and the no-hyphen and
+ * {braced} forms both cast to the same canonical id.
+ *
+ * Fix: any id used in a denylist check must already be in canonical
+ * 8-4-4-4-12, hyphenated form (case-insensitive on the hex digits) —
+ * anything else is rejected outright with 400, never silently
+ * reinterpreted — and is then lowercased before comparison. Applied to the
+ * user_id path's own input (see resolveAndMint's else branch) and, as a
+ * second, independent check, to the auth user id GoTrue itself resolves,
+ * immediately before minting (see resolveAndMint, just before
+ * generateMagicLink).
+ */
+const CANONICAL_UUID_RE =
+  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
+export function normalizeCanonicalUuid(raw: string): string | null {
+  return CANONICAL_UUID_RE.test(raw) ? raw.toLowerCase() : null;
 }
 
 /**
@@ -298,7 +335,13 @@ export async function resolveAndMint(
     targetUserId = contractor.user_id;
     resolvedContractorId = contractor.id;
   } else {
-    const { data: claims, error } = await db.getClaimsByUserId(userId!);
+    // F1 fix: canonicalize before this id is used anywhere, including the
+    // denylist check below — see normalizeCanonicalUuid's doc comment.
+    const normalizedUserId = normalizeCanonicalUuid(userId!);
+    if (normalizedUserId === null) {
+      return jsonError(400, "user_id must be a canonical UUID");
+    }
+    const { data: claims, error } = await db.getClaimsByUserId(normalizedUserId);
     // gh-1562 fixup: same leak class as getContractorById above.
     if (error) return unexpectedErrorResponse(error);
     if (!claims || claims.length === 0) {
@@ -307,7 +350,7 @@ export async function resolveAndMint(
     if (!claims.every((c) => c.is_test === true)) {
       return jsonError(403, "Forbidden: not every claim owned by user is is_test");
     }
-    targetUserId = userId!;
+    targetUserId = normalizedUserId;
   }
 
   // gh-2047 denylist (CTO36-B1513): refused on identity alone, before the
@@ -340,6 +383,23 @@ export async function resolveAndMint(
   if (!authUser || !authUser.email) {
     return jsonError(404, "Auth user not found");
   }
+
+  // F1 fix, second independent check: re-check the denylist against the
+  // AUTH USER'S OWN id exactly as GoTrue resolved it, immediately before
+  // minting — not just the caller-supplied / DB-joined id checked above.
+  // Catches any drift between the id spelling used earlier in this
+  // function and the canonical id GoTrue itself reports for the same
+  // identity. A non-canonical authUser.id (should not happen — GoTrue's
+  // own ids are always canonical) is not treated as a match; it simply
+  // skips this extra check rather than throwing.
+  const canonicalAuthUserId = normalizeCanonicalUuid(authUser.id);
+  if (
+    canonicalAuthUserId !== null &&
+    KNOWN_MISFLAGGED_REAL_ACCOUNTS.has(canonicalAuthUserId)
+  ) {
+    return knownRealAccountRefusal();
+  }
+
   const targetEmail = authUser.email;
 
   const { data: link, error: linkError } = await db.generateMagicLink(targetEmail);
