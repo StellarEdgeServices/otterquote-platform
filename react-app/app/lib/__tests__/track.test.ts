@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { track, fireSignUpAndWait, fbqTrack } from '../track';
+import { track, fireSignUpAndWait, fbqTrack, buildMeasurementPurchaseEventId } from '../track';
 
 describe('track()', () => {
   let gtagSpy: ReturnType<typeof vi.fn>;
@@ -309,5 +309,56 @@ describe('fbqTrack() (gh-2078)', () => {
       throw new Error('boom');
     };
     expect(() => fbqTrack('Purchase', { value: 15 })).not.toThrow();
+  });
+
+  // gh-2078c / D-330 reconciliation (Q: on #2078, comment 5780969290): a
+  // third `eventId` argument is forwarded to fbq as its 4th call argument
+  // so Meta can dedup this client pixel event against the server-side CAPI
+  // event (PR #2107) computed for the SAME paymentIntent id.
+  it('forwards a 4th {eventID} argument to fbq when eventId is passed', () => {
+    const fbqSpy = vi.fn();
+    (window as unknown as { fbq: unknown }).fbq = fbqSpy;
+    fbqTrack('Purchase', { value: 15, currency: 'USD', variant: 'e' }, 'measurement_purchase:pi_abc123');
+    expect(fbqSpy).toHaveBeenCalledWith(
+      'track',
+      'Purchase',
+      { value: 15, currency: 'USD', variant: 'e' },
+      { eventID: 'measurement_purchase:pi_abc123' },
+    );
+  });
+
+  it('does not add a 4th argument when eventId is omitted (pre-existing call sites unchanged)', () => {
+    const fbqSpy = vi.fn();
+    (window as unknown as { fbq: unknown }).fbq = fbqSpy;
+    fbqTrack('Purchase', { value: 15, currency: 'USD', variant: 'e' });
+    expect(fbqSpy).toHaveBeenCalledWith('track', 'Purchase', { value: 15, currency: 'USD', variant: 'e' });
+    expect(fbqSpy.mock.calls[0]).toHaveLength(3);
+  });
+});
+
+describe('buildMeasurementPurchaseEventId() (gh-2078c / D-330 dedup reconciliation)', () => {
+  it('is measurement_purchase:<paymentIntentId>', () => {
+    expect(buildMeasurementPurchaseEventId('pi_abc123')).toBe('measurement_purchase:pi_abc123');
+  });
+
+  // Pins the exact equivalence the Q: on #2078 (comment 5780969290) exists to
+  // close: PR #2107's server-side `buildCapiEventId` in
+  // supabase/functions/stripe-webhook/meta-capi.ts computes
+  //   `measurement_purchase:${paymentIntentId}`
+  // independently, with no coordination at request time. Meta dedupes a
+  // client pixel event against a server CAPI event ONLY when both carry the
+  // identical event_id — a value that "almost" matches does not dedupe at
+  // all, so this test asserts the two derivations produce the SAME string
+  // for the same paymentIntentId, not merely that each looks reasonable on
+  // its own.
+  it('matches meta-capi.ts\'s buildCapiEventId derivation for the same paymentIntentId', () => {
+    const paymentIntentId = 'pi_3QzReconcile2078c';
+    const clientEventId = buildMeasurementPurchaseEventId(paymentIntentId);
+    // Literal copy of supabase/functions/stripe-webhook/meta-capi.ts's
+    // buildCapiEventId body (Deno module — not importable from this Vitest
+    // suite) — kept in sync deliberately, not by import, so drift shows up
+    // as a failing assertion rather than a silent divergence.
+    const serverEventId = `measurement_purchase:${paymentIntentId}`;
+    expect(clientEventId).toBe(serverEventId);
   });
 });

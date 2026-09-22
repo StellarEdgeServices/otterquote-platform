@@ -646,6 +646,23 @@ serve(async (req) => {
       form.append("description", chargeDescription);
       form.append("metadata[claim_id]", metadata.claim_id);
       form.append("metadata[type]", metadata.type);
+      if (metadata.type === "hover_measurement") {
+        // gh-2078c / D-330 reconciliation (Q: on #2078, comment 5780969290):
+        // the persisted router arm, forwarded from the client
+        // (react-app's buildHoverPaymentIntentParams). Always present
+        // (never omitted) so the server-side Meta CAPI Purchase event
+        // (PR #2107's stripe-webhook handler, meta-capi.ts's
+        // sanitizeCapiVariant) can read a real value off
+        // paymentIntent.metadata.variant instead of defaulting to
+        // 'unknown' at every call. Same 'unknown' fallback the client
+        // itself uses when no arm was ever captured — mirrors the
+        // metadata.claim_id/metadata.type pattern immediately above,
+        // not a new mechanism.
+        form.append(
+          "metadata[variant]",
+          typeof metadata.variant === "string" && metadata.variant ? metadata.variant : "unknown",
+        );
+      }
       if (metadata.type === "measurement_upgrade") {
         form.append("metadata[contractor_id]", contractor_id);
         // Bookkeeping only (Marty, #1411 cto-2026-09-02T13:45:25Z: "does not
