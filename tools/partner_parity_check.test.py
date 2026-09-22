@@ -50,6 +50,32 @@ prove nothing about the single-track hole this issue exists to close; runs
 2-4 above are the negative controls that could not have passed before this
 file's companion fix to tools/partner_parity_check.py.
 
+UPDATE (PR #2038 second refuter, comment 5779401001, head 3ca3f207): nine
+more silent passes were found and closed, each with its own fixture below:
+  - N8/N9: an HTML disclaimer inside `hidden` or inline
+    display:none/visibility:hidden no longer counts as present.
+  - N13: a step upstream of a close screen repointed straight at the
+    contact screen (skipping the close screen) is now unreachable-flagged.
+  - N15: a close screen's forEach given a filter/index parameter (so it
+    silently drops the disclaimer paragraph while the array text still has
+    it) is now flagged as unverifiable.
+  - N19: a registered JS surface (js/router-discovery.js) going missing is
+    now a FAILURE, not a NOTE; and js/** subfolders (not just top-level
+    js/*.js) are scanned for unmapped fee-bearing surfaces.
+  - N20/N21/N22: D266_PAGES now globs every partner-*.html page (was
+    partner-insurance*.html only), explicitly registers refer-a-friend.html,
+    and falls back to a content-driven census (any *.html page whose own
+    text carries a referral-fee sentence) as a fail-closed backstop
+    independent of filename.
+  - N23: a track that renders its fee sentence in some screen OTHER than a
+    c-<name>-close renderer, with its own contact function instead of
+    renderPartnerContact(...), is now discovered and flagged.
+Every fixture below was also run against the checker at the previous PR
+head (3ca3f207, the version this update starts from) as a negative
+control: each one passes there (proving the gap was real) and fails here
+(proving the fix closes it) -- see the PR comment for the reproduction
+table.
+
 Run: python tools/partner_parity_check.test.py
 """
 import importlib.util
@@ -87,7 +113,14 @@ D266 = (
 )
 
 
-def build_fixture_js(alpha_disclaimer=True, beta_disclaimer=True, with_gamma=False):
+def build_fixture_js(
+    alpha_disclaimer=True,
+    beta_disclaimer=True,
+    with_gamma=False,
+    alpha_entry_target="c-alpha-close",
+    alpha_foreach_filtered=False,
+    with_lender=False,
+):
     """N=2 real referral-fee tracks (alpha, beta) + a declared-exempt
     'contractor' track (same key gh-2020's own JS_D266_EXEMPT_TRACKS uses,
     so this fixture exercises the real exemption entry, not a stand-in) +
@@ -95,6 +128,22 @@ def build_fixture_js(alpha_disclaimer=True, beta_disclaimer=True, with_gamma=Fal
     off to a partner -- structurally identical to js/router-discovery.js's
     own RENDERERS['c-<name>-close'] / COPY.<name>Close / renderPartnerContact
     conventions, so the same regexes that parse the real file parse this.
+
+    alpha_entry_target: the id 'c-alpha-entry' navigates to on Continue.
+    Defaults to alpha's own close screen (the honest shape, matching
+    js/router-discovery.js's real c-ins-7 -> go('c-ins-close') pattern);
+    the refuter's N13 bypass (comment 5779401001) is reproduced by pointing
+    it at 'c-alpha-contact' instead, skipping the close screen entirely.
+
+    alpha_foreach_filtered: when True, alpha's close screen forEach takes a
+    (p, i) callback and skips index 1 (the disclaimer paragraph) --
+    reproduces the refuter's N15 bypass.
+
+    with_lender: adds an undiscoverable 'lender' track (N23) -- a fee
+    sentence rendered directly in a screen body, with its own contact
+    function instead of renderPartnerContact(...), so it has no close
+    screen, no COPY.<name>Close.forEach( convention, and no
+    renderPartnerContact(...) call for layers 2/3 to find it by.
     """
     alpha_close = (
         f"'{D266}'" if alpha_disclaimer else "'Some other closing paragraph.'"
@@ -116,6 +165,29 @@ def build_fixture_js(alpha_disclaimer=True, beta_disclaimer=True, with_gamma=Fal
     });
   };
 """
+    lender_block = ""
+    if with_lender:
+        lender_block = """
+  RENDERERS['c-lender-1'] = function () {
+    root.appendChild(bodyText('You will earn $200 for every referral you send us.'));
+    root.appendChild(continueButton('Continue', function () { go('c-lender-contact'); }, true));
+  };
+  RENDERERS['c-lender-contact'] = function () {
+    renderLenderContact({
+      partnerIndustry: 'lender_agent',
+      completeToken: 'c-lender-contact'
+    });
+  };
+"""
+    if alpha_foreach_filtered:
+        alpha_foreach = (
+            "COPY.alphaClose.forEach(function (p, i) { "
+            "if (i !== 1) { root.appendChild(bodyText(p)); } });"
+        )
+    else:
+        alpha_foreach = (
+            "COPY.alphaClose.forEach(function (p) { root.appendChild(bodyText(p)); });"
+        )
     return f"""// fixture -- structurally mirrors js/router-discovery.js's own conventions
 var COPY = {{
     alphaClose: [
@@ -138,8 +210,20 @@ var COPY = {{
     root.appendChild(continueButton('Continue', function () {{ go('c-home-8'); }}, true));
   }};
 
+  // Entry screens -- exist so the close screens below are actually
+  // reachable via a go(...) call, matching js/router-discovery.js's own
+  // c-ins-7 -> go('c-ins-close') / c-realtor-4 -> go('c-realtor-close')
+  // shape. alpha_entry_target lets a test point this at 'c-alpha-contact'
+  // instead, reproducing the N13 close-screen-skip bypass.
+  RENDERERS['c-alpha-entry'] = function () {{
+    root.appendChild(continueButton('Continue', function () {{ go('{alpha_entry_target}'); }}, true));
+  }};
+  RENDERERS['c-beta-entry'] = function () {{
+    root.appendChild(continueButton('Continue', function () {{ go('c-beta-close'); }}, true));
+  }};
+
   RENDERERS['c-alpha-close'] = function () {{
-    COPY.alphaClose.forEach(function (p) {{ root.appendChild(bodyText(p)); }});
+    {alpha_foreach}
     root.appendChild(continueButton('Continue', function () {{ go('c-alpha-contact'); }}, true));
   }};
   RENDERERS['c-alpha-contact'] = function () {{
@@ -172,7 +256,7 @@ var COPY = {{
       completeToken: 'c-contractor-contact'
     }});
   }};
-{gamma_block}"""
+{gamma_block}{lender_block}"""
 
 
 def write_fixture(tmp_root, **kwargs):
@@ -490,6 +574,231 @@ def main():
         failures, notes = run_js_check(tmp_root)
         check("restored-after-bypass-6 failures", failures, [])
 
+        # ── PR #2038 second refuter (comment 5779401001), nine more bypasses ──
+
+        print()
+        print("gh-2020 refuter N13: 'c-alpha-entry' repointed straight at "
+              "'c-alpha-contact', skipping 'c-alpha-close' entirely -- the "
+              "close screen and its disclaimer array are untouched and pass "
+              "every check above, but nothing in the file navigates to them; "
+              "must FAIL as unreachable")
+        write_fixture(tmp_root, alpha_entry_target="c-alpha-contact")
+        failures, notes = run_js_check(tmp_root)
+        check_true(
+            "N13: alpha close screen flagged unreachable when entry skips it",
+            any("c-alpha-close" in f and "d266_js_close_unreachable" in f for f in failures),
+        )
+        check_false(
+            "N13: beta (unaffected) is not flagged unreachable",
+            any("c-beta-close" in f and "d266_js_close_unreachable" in f for f in failures),
+        )
+
+        print()
+        print("restore -- must return to PASS")
+        write_fixture(tmp_root)
+        failures, notes = run_js_check(tmp_root)
+        check("restored-after-N13 failures", failures, [])
+
+        print()
+        print("gh-2020 refuter N15: 'c-alpha-close' forEach given an index "
+              "parameter and a filter that skips the disclaimer paragraph "
+              "(function (p, i) { if (i !== 1) ... }) -- the array text "
+              "still carries the disclaimer, so the content check alone "
+              "would pass; must FAIL as an unverified/filtered forEach")
+        write_fixture(tmp_root, alpha_foreach_filtered=True)
+        failures, notes = run_js_check(tmp_root)
+        check_true(
+            "N15: filtered alpha forEach flagged as unverifiable",
+            any(
+                "c-alpha-close" in f and "d266_js_close_foreach_filtered" in f
+                for f in failures
+            ),
+        )
+
+        print()
+        print("restore -- must return to PASS")
+        write_fixture(tmp_root)
+        failures, notes = run_js_check(tmp_root)
+        check("restored-after-N15 failures", failures, [])
+
+        print()
+        print("gh-2020 refuter N23: a new 'lender' track renders its fee "
+              "sentence directly in 'c-lender-1' and hands off through its "
+              "own renderLenderContact(...) instead of "
+              "renderPartnerContact(...) -- invisible to layers 2 and 3; "
+              "must FAIL as an unrecognized fee-sentence track")
+        write_fixture(tmp_root, with_lender=True)
+        failures, notes = run_js_check(tmp_root)
+        check_true(
+            "N23: undeclared fee-sentence 'lender' track is reported as a failure",
+            any(
+                "c-lender-*" in f and "d266_js_fee_sentence_unrecognized_track" in f
+                for f in failures
+            ),
+        )
+
+        print()
+        print("restore -- must return to PASS")
+        write_fixture(tmp_root)
+        failures, notes = run_js_check(tmp_root)
+        check("restored-after-N23 failures", failures, [])
+
+        print()
+        print("gh-2020 refuter N19a: the registered surface "
+              "js/router-discovery.js is simply ABSENT from the tree (moved, "
+              "renamed, or deleted) -- must FAIL, not print a tolerant NOTE "
+              "and exit clean")
+        empty_root = pathlib.Path(tempfile.mkdtemp(prefix="partnerparity-test-empty-"))
+        try:
+            failures, notes = run_js_check(empty_root)
+            check_true(
+                "N19a: missing registered JS surface is a FAILURE",
+                any("d266_js_surface_missing" in f for f in failures),
+            )
+            check_false(
+                "N19a: missing registered JS surface is not merely a NOTE",
+                any("d266_js_surface_missing" in n for n in notes),
+            )
+        finally:
+            shutil.rmtree(empty_root, ignore_errors=True)
+
+        print()
+        print("gh-2020 refuter N19b: a fee-bearing JS file living in a js/ "
+              "SUBFOLDER (simulating js/router-discovery.js having been "
+              "moved to js/router/discovery.js) must be discovered by "
+              "find_unmapped_static_funnels(), which used to scan top-level "
+              "js/*.js only; js/vendor/ stays excluded")
+        subfolder_root = pathlib.Path(tempfile.mkdtemp(prefix="partnerparity-test-subjs-"))
+        try:
+            router_dir = subfolder_root / "js" / "router"
+            router_dir.mkdir(parents=True, exist_ok=True)
+            (router_dir / "discovery.js").write_text(
+                "// moved module\nvar msg = 'referral fee: $200 per completed job';\n",
+                encoding="utf-8",
+            )
+            vendor_dir = subfolder_root / "js" / "vendor"
+            vendor_dir.mkdir(parents=True, exist_ok=True)
+            (vendor_dir / "qrcode-generator.js").write_text(
+                "// third-party, no fee text, but harmless if it did\n",
+                encoding="utf-8",
+            )
+            findings = mod.find_unmapped_static_funnels(subfolder_root)
+            check_true(
+                "N19b: fee-bearing JS in a js/ subfolder is discovered as unmapped",
+                any("js/router/discovery.js" in f for f in findings),
+            )
+            check_false(
+                "N19b: js/vendor/ is not scanned",
+                any("vendor" in f for f in findings),
+            )
+        finally:
+            shutil.rmtree(subfolder_root, ignore_errors=True)
+
+        print()
+        print("gh-2020 refuter N8: check_d266_disclaimer() on an HTML page "
+              "whose disclaimer <p> carries the `hidden` attribute -- must "
+              "return False (hidden means never visible to a partner)")
+        html_hidden_attr = (
+            "<p>Some intro copy.</p>\n"
+            f'<p class="gate-disclaimer" hidden>{D266}</p>\n'
+            "<p>Some outro copy.</p>\n"
+        )
+        check_false(
+            "N8: hidden-attribute disclaimer does not satisfy check_d266_disclaimer",
+            mod.check_d266_disclaimer(html_hidden_attr),
+        )
+
+        print()
+        print("gh-2020 refuter N9: disclaimer <p> given an inline "
+              "style=\"display:none\" (and, independently, "
+              "visibility:hidden) -- must return False for both")
+        html_display_none = (
+            "<p>Some intro copy.</p>\n"
+            f'<p class="gate-disclaimer" style="display:none; color: red;">{D266}</p>\n'
+            "<p>Some outro copy.</p>\n"
+        )
+        check_false(
+            "N9: display:none disclaimer does not satisfy check_d266_disclaimer",
+            mod.check_d266_disclaimer(html_display_none),
+        )
+        html_visibility_hidden = f'<p class="gate-disclaimer" style="visibility:hidden">{D266}</p>\n'
+        check_false(
+            "N9: visibility:hidden disclaimer does not satisfy check_d266_disclaimer",
+            mod.check_d266_disclaimer(html_visibility_hidden),
+        )
+        html_styled_visible = f'<p class="gate-disclaimer" style="color: red;">{D266}</p>\n'
+        check_true(
+            "sanity: a visibly-styled (non-hidden) disclaimer still satisfies check_d266_disclaimer",
+            mod.check_d266_disclaimer(html_styled_visible),
+        )
+
+        print()
+        print("gh-2020 refuter N20/N21/N22: compute_d266_pages() census, "
+              "isolated fixture tree with module.REPO_ROOT NOT touched "
+              "(root is passed explicitly)")
+        census_root = pathlib.Path(tempfile.mkdtemp(prefix="partnerparity-test-census-"))
+        try:
+            def write_page(name, body, with_disclaimer):
+                disclaimer_html = f'<p class="gate-disclaimer">{D266}</p>' if with_disclaimer else ""
+                (census_root / name).write_text(
+                    f"<html><body>{body}{disclaimer_html}</body></html>", encoding="utf-8"
+                )
+
+            # N20: a brand-new vertical, partner-lenders.html, with a
+            # referral-fee sentence and NO disclaimer -- the old glob
+            # (partner-insurance*.html only) never saw it.
+            write_page(
+                "partner-lenders.html",
+                "<p>Earn a $200 referral fee for every qualified lender lead.</p>",
+                with_disclaimer=False,
+            )
+            # N22: an EXISTING, unlisted partner-*.html page (the real
+            # repo's own partner-agreement.html) with fee content and NO
+            # disclaimer.
+            write_page(
+                "partner-agreement.html",
+                "<p>Otter Quotes pays a $200 referral fee under this Agreement.</p>",
+                with_disclaimer=False,
+            )
+            # N21: refer-a-friend.html -- not a partner-*.html name at all
+            # -- with fee content and NO disclaimer.
+            write_page(
+                "refer-a-friend.html",
+                "<p>Earn $200 for every friend you refer.</p>",
+                with_disclaimer=False,
+            )
+            # Control: a partner-*.html page with no fee content at all
+            # (mirrors partner-login.html) -- must NOT be swept in.
+            write_page(
+                "partner-login.html", "<p>Sign in with a magic link.</p>", with_disclaimer=False
+            )
+
+            pages = mod.compute_d266_pages(census_root)
+            check_true(
+                "N20: partner-lenders (new vertical) is in the D-266 census",
+                "partner-lenders" in pages,
+            )
+            check_true(
+                "N22: partner-agreement (unlisted existing page) is in the D-266 census",
+                "partner-agreement" in pages,
+            )
+            check_true("N21: refer-a-friend is in the D-266 census", "refer-a-friend" in pages)
+            check_false(
+                "control: fee-free partner-login is NOT swept into the census",
+                "partner-login" in pages,
+            )
+
+            # Each swept page with no disclaimer must actually FAIL the
+            # disclaimer check too (fail-closed, not just "counted").
+            for name in ("partner-lenders", "partner-agreement", "refer-a-friend"):
+                html = (census_root / f"{name}.html").read_text(encoding="utf-8")
+                check_false(
+                    f"{name}: missing disclaimer fails check_d266_disclaimer",
+                    mod.check_d266_disclaimer(html),
+                )
+        finally:
+            shutil.rmtree(census_root, ignore_errors=True)
+
     finally:
         shutil.rmtree(tmp_root, ignore_errors=True)
 
@@ -501,7 +810,9 @@ def main():
         "partner_parity_check per-track D-266 self-test: all assertions passed "
         "(single-track negative control observed FAILING and NAMING the track; "
         "restored tree observed PASSING; whole-file floor observed FAILING when "
-        "both tracks are deleted; undeclared exemption observed FAILING)."
+        "both tracks are deleted; undeclared exemption observed FAILING; "
+        "N8/N9/N13/N15/N19/N20/N21/N22/N23 all observed FAILING on their "
+        "fixtures and PASSING once restored)."
     )
     return 0
 

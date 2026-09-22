@@ -90,11 +90,123 @@ ALL_PAGES = VERTICAL_PAGES + ["partner-app", "partner-login", "partner-dashboard
 # D266_PAGES (not ALL_PAGES, since site-chrome/signed-in-redirect/
 # dashboard-access-block do not apply to this page) so it now gets the same
 # D-266 presence check as the other partner pages via the loop in main().
-D266_PAGES = sorted(
-    {p.stem for p in REPO_ROOT.glob("partner-insurance*.html")}
-    | {p for p in ALL_PAGES if p not in ("partner-insurance", "partner-login")}
-    | {"partners"}
+# gh-2020 refuter (comment 5779401001) N20/N21/N22: the old glob above only
+# matched partner-insurance*.html, so a new vertical (partner-lenders.html)
+# or an existing, unlisted partner-*.html page (partner-agreement.html) was
+# invisible to this check, and refer-a-friend.html -- not a partner-*.html
+# name at all -- was never registered here even though its own React twin
+# loop (see main()) explicitly assumes it would be ("reported by the static
+# half above for pages in D266_PAGES"), which was false until now.
+#
+# Three layers, so a page can't go uncovered just by not matching a naming
+# convention:
+#   1. Every partner-*.html page, by glob (was partner-insurance*.html only).
+#   2. partners.html and refer-a-friend.html, named explicitly (neither
+#      matches the partner-*.html glob).
+#   3. FAIL-CLOSED CONTENT CENSUS: any *.html page anywhere at the repo
+#      root whose own text contains a referral-fee sentence (a dollar
+#      amount and the word "referral" in the same sentence) is swept in
+#      regardless of its filename -- so a page that follows neither naming
+#      convention still cannot carry real fee copy with no disclaimer
+#      requirement attached to it.
+# A small, written-reason exemption list (D266_PAGES_EXEMPT below) removes
+# the handful of partner-*.html pages that are known, by inspection, to
+# carry no referral-fee copy of their own (mirrors STATIC_FUNNEL_EXEMPT's
+# convention) -- never add to it to silence a real gap.
+FEE_SENTENCE_RE = re.compile(
+    r"\$\d[\d,]*\b[^.!?\n]{0,200}\breferral|"
+    r"\breferral[^.!?\n]{0,200}\$\d[\d,]*\b",
+    re.IGNORECASE,
 )
+
+D266_PAGES_EXEMPT = {
+    "partner-login": (
+        "bare magic-link sign-in form; mentions \"referral fee status\" as a "
+        "dashboard label, not a fee-sentence disclosure of its own (gh-737)."
+    ),
+    "partner-app-install-android": "app-store install instructions only, no fee copy.",
+    "partner-app-install-ios": "app-store install instructions only, no fee copy.",
+    "partner-profile": "signed-in partner's own account/profile settings page, no fee copy.",
+    # The three entries below are the fee-sentence census's real findings
+    # against the pre-existing tree (verified 2026-09-22 while closing
+    # gh-2020 refuter comment 5779401001): each carries a $-amount-plus-
+    # "referral" sentence, but it is an IRS 1099/W-9 tax-reporting notice
+    # or FAQ answer, not the D-266 employment/licensing-lawfulness
+    # disclaimer, and none of the three pages is itself a referral-partner
+    # enrollment funnel. contractor-agreement.html and recruit.html mirror
+    # this file's own existing STATIC_FUNNEL_EXEMPT reasoning for
+    # contractor-login.html and recruit.html respectively; faq.html mirrors
+    # its own existing STATIC_FUNNEL_EXEMPT entry directly. FLAGGED, not
+    # silently assumed: this PR already carries the R-177 legal-read /
+    # CEO-sign-off gate (constitution entry 6) pending on the underlying
+    # file, and these three are called out by name in the PR comment as a
+    # judgment call for that review, not a settled legal position.
+    "contractor-agreement": (
+        "Sec. 7.7 W-9/1099-MISC tax-withholding clause for the contractor "
+        "referral commission program; a tax notice, not the D-266 "
+        "licensing-lawfulness disclaimer, and this page is not itself a "
+        "referral-partner enrollment funnel (see contractor-login.html's "
+        "existing STATIC_FUNNEL_EXEMPT entry for the same reasoning)."
+    ),
+    "faq": (
+        "Homeowner-facing FAQ answer about the recruit bonus -- "
+        "informational, not an enrollment funnel (mirrors this file's own "
+        "STATIC_FUNNEL_EXEMPT entry for faq.html)."
+    ),
+    "recruit": (
+        "Client-side redirect router; a belt-and-suspenders IRS "
+        "tax-reporting notice on an interstitial page, not a "
+        "referral-fee enrollment funnel (mirrors this file's own "
+        "STATIC_FUNNEL_EXEMPT entry for recruit.html)."
+    ),
+}
+
+_FEE_CENSUS_SCRIPT_STYLE_RE = re.compile(
+    r"<(script|style)\b[^>]*>.*?</\1\s*>", re.DOTALL | re.IGNORECASE
+)
+_FEE_CENSUS_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _fee_sentence_pages(root: Path) -> set[str]:
+    """Stems of *.html pages at the repo root whose own VISIBLE text
+    contains a referral-fee sentence (dollar amount + "referral" in the
+    same sentence), regardless of filename. Content-driven fail-closed
+    backstop for D266_PAGES: a page does not have to follow the
+    partner-*.html naming convention to be required to carry the
+    disclaimer if it actually discloses a referral fee (gh-2020 refuter
+    N20/N22). <script>/<style> content and tag markup are stripped before
+    sentence-splitting, so CSS/JS punctuation and JSON-LD structure cannot
+    manufacture a false "$ ... referral" adjacency across unrelated text."""
+    found: set[str] = set()
+    for path in sorted(root.glob("*.html")):
+        try:
+            raw = path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        stripped = _strip_html_comments(raw)
+        stripped = _FEE_CENSUS_SCRIPT_STYLE_RE.sub(" ", stripped)
+        stripped = _FEE_CENSUS_TAG_RE.sub(" ", stripped)
+        for sentence in re.split(r"(?<=[.!?])\s+", stripped):
+            if FEE_SENTENCE_RE.search(sentence):
+                found.add(path.stem)
+                break
+    return found
+
+
+def compute_d266_pages(root: Path = None) -> list[str]:
+    """The full set of pages this run's D-266 disclaimer check applies to.
+    A function, not a module-level constant, so it can be evaluated against
+    an arbitrary root (a self-test fixture tree) as well as the real repo."""
+    root = root or REPO_ROOT
+    globbed = {p.stem for p in root.glob("partner-*.html")}
+    named = {p for p in ALL_PAGES if p not in ("partner-insurance", "partner-login")}
+    explicit = {"partners", "refer-a-friend"}
+    fee_pages = {
+        s for s in _fee_sentence_pages(root) if (root / f"{s}.html").is_file()
+    }
+    pages = (globbed | named | explicit | fee_pages) - set(D266_PAGES_EXEMPT)
+    return sorted(pages)
+
 
 D266_TEXT = (
     "Check your employment agreement and your governing licensing agency "
@@ -115,10 +227,13 @@ REACT_TWINS = {
 # gh-2020 / D-266: js/router-discovery.js is a NON-html, non-React partner
 # surface (draft #2019's file, three partner/referral-fee funnels -- realtor,
 # insurance, inspector/PM -- inside one router module). A .js module matches
-# no ALL_PAGES entry and no partner-insurance*.html glob, so without this
+# no ALL_PAGES entry and no partner-*.html glob, so without this
 # registration it is invisible to every check in this file, exactly the way
-# /refer was invisible before REACT_TWINS existed. May not exist in this tree
-# yet (see check_js_d266_surfaces) -- its absence is tolerated, not a failure.
+# /refer was invisible before REACT_TWINS existed. A registered surface that
+# goes MISSING (moved, renamed, deleted) is a FAILURE, not a tolerated note
+# (gh-2020 refuter, comment 5779401001, N19) -- see check_js_d266_surfaces.
+# If a surface is intentionally retired, remove it from this list with a
+# written reason instead of letting its disappearance pass silently.
 D266_JS_SURFACES = [
     "js/router-discovery.js",
 ]
@@ -155,6 +270,35 @@ JS_D266_PARTNER_CONTACT_RE = re.compile(
 )
 JS_D266_COPY_FOREACH_RE = re.compile(r"COPY\.(\w+)\.forEach")
 JS_D266_PARTNER_INDUSTRY_RE = re.compile(r"partnerIndustry:\s*'([a-zA-Z_]+)'")
+
+# gh-2020 refuter N15 (comment 5779401001): the whole-array disclaimer check
+# above (check_d266_disclaimer(array_text)) proves the disclaimer PARAGRAPH
+# is present in the source array; it does not prove the close screen's own
+# forEach actually renders every paragraph, unmodified, to the page. A
+# filtered or indexed callback (`function (p, i) { if (i !== 2) ... }`)
+# can silently drop exactly the disclaimer paragraph while the array text
+# -- and every check above -- stays green. This is the EXACT shape a
+# track's close renderer must match for this checker to trust that its
+# forEach renders the array as-is: no filter, no index parameter, no
+# extra statements.
+JS_D266_FOREACH_EXACT_TMPL = (
+    r"COPY\.{copy}\.forEach\(\s*function\s*\(\s*p\s*\)\s*\{{\s*"
+    r"root\.appendChild\(bodyText\(p\)\)\s*;?\s*\}}\s*\)"
+)
+
+# gh-2020 refuter N23 (comment 5779401001): layers 2/3 above only discover a
+# track through its own c-<name>-close screen or the COPY.<name>Close.forEach(
+# naming convention -- both assume a track follows this module's "close
+# screen full of paragraphs" shape. A track that instead shows its fee
+# sentence directly in some OTHER screen, and hands off through its own
+# contact function rather than renderPartnerContact(...), is invisible to
+# every layer above. This regex matches ANY RENDERERS['c-<id>-<suffix>']
+# screen (not just -close/-contact), so its body can be scanned for
+# fee-sentence-shaped text regardless of the screen's own naming.
+JS_D266_ANY_SCREEN_RE = re.compile(
+    r"RENDERERS\['c-([a-z0-9]+)-([a-z0-9-]+)'\]\s*=\s*function\s*\([^)]*\)\s*\{\n(.*?)\n  \};",
+    re.DOTALL,
+)
 
 # gh-2020 refuter (PR #2038 return, comment 5738187596 / 5738197105) broke
 # the per-track guard six ways, three of them silent passes. The helpers
@@ -225,6 +369,41 @@ def _strip_js_comments(text: str) -> str:
 
 def _strip_html_comments(text: str) -> str:
     return HTML_COMMENT_RE.sub(" ", text)
+
+
+# gh-2020 refuter N8/N9 (comment 5779401001): check_d266_disclaimer() used
+# to compare against the raw (comment-stripped) HTML text, so a disclaimer
+# <p> given `hidden` or an inline `style="display:none"` /
+# `style="visibility:hidden"` still satisfied the check even though no
+# visitor can ever see it. Strip the ENTIRE contents of any element whose
+# own opening tag carries one of those signals before comparing -- a
+# disclaimer inside such an element reads as ABSENT, not present. A bare
+# regex can't fully parse arbitrary nested HTML, but this repo's disclaimer
+# markup is always a single, non-nested <p>...</p> (verified against every
+# page this check runs against at the time this was written), so a
+# non-greedy same-tag-name match is sound for the real surfaces in scope.
+# <script>, <template> and <noscript> content is never visible rendered
+# text either (code, an inert template, or the no-JS fallback on a site
+# that requires JS) and is stripped unconditionally for the same reason.
+_HIDDEN_ATTR = r"\bhidden\b(?:\s*=\s*(?:\"[^\"]*\"|'[^']*'|\S+))?"
+_HIDDEN_STYLE = (
+    r"style\s*=\s*(?:\"[^\"]*(?:display\s*:\s*none|visibility\s*:\s*hidden)[^\"]*\"|"
+    r"'[^']*(?:display\s*:\s*none|visibility\s*:\s*hidden)[^']*')"
+)
+HTML_HIDDEN_ELEMENT_RE = re.compile(
+    r"<(\w+)\b(?:[^>\"']|\"[^\"]*\"|'[^']*')*?(?:" + _HIDDEN_ATTR + "|" + _HIDDEN_STYLE + r")"
+    r"(?:[^>\"']|\"[^\"]*\"|'[^']*')*>.*?</\1\s*>",
+    re.DOTALL | re.IGNORECASE,
+)
+HTML_ALWAYS_INVISIBLE_RE = re.compile(
+    r"<(script|template|noscript)\b[^>]*>.*?</\1\s*>", re.DOTALL | re.IGNORECASE
+)
+
+
+def _strip_invisible_html(text: str) -> str:
+    text = HTML_HIDDEN_ELEMENT_RE.sub(" ", text)
+    text = HTML_ALWAYS_INVISIBLE_RE.sub(" ", text)
+    return text
 
 
 def _find_matching_bracket(text: str, open_pos: int, open_ch: str, close_ch: str) -> int:
@@ -382,7 +561,11 @@ def check_d266_disclaimer(html: str) -> bool:
     # first, on every caller (static pages, React twins, and the JS
     # whole-file floor below, where an HTML-style comment would be
     # harmless noise anyway since JS comments are stripped separately).
-    return _norm(D266_TEXT) in _norm(_strip_html_comments(html))
+    # gh-2020 refuter N8/N9: also strip any element hidden via `hidden` or
+    # display:none/visibility:hidden (plus <script>/<template>/<noscript>)
+    # -- none of that is visible rendered text either.
+    visible = _strip_invisible_html(_strip_html_comments(html))
+    return _norm(D266_TEXT) in _norm(visible)
 
 
 def check_signed_in_redirect(html: str) -> bool:
@@ -471,10 +654,11 @@ def find_unmapped_react_funnels() -> list[str]:
 def check_js_d266_surfaces() -> tuple[list[str], list[str]]:
     """D-266 disclaimer check for JS-module partner surfaces (gh-2020).
 
-    js/router-discovery.js may not exist in this tree yet -- its absence is
-    TOLERATED (not a failure) so this guard can land ahead of the draft that
-    creates it. Once it exists, TWO layers apply, because either alone is
-    defeatable:
+    A registered surface (D266_JS_SURFACES) that is MISSING from this tree
+    is a FAILURE (gh-2020 refuter, comment 5779401001, N19) -- moved,
+    renamed or deleted, its D-266 coverage went with it, and a passing exit
+    code must not say otherwise. FOUR layers apply once a surface exists,
+    because any one alone is defeatable:
 
       1. WHOLE-FILE FLOOR (kept from before gh-2020 comment 5737683786's
          amendment): the disclaimer must appear SOMEWHERE in the file at
@@ -498,8 +682,18 @@ def check_js_d266_surfaces() -> tuple[list[str], list[str]]:
          the census finds that layer 2 did not discover is a FAILURE, not
          a skipped note: a JS surface this checker cannot fully parse must
          say so loudly, not pass quietly.
+      4. FEE-SENTENCE TRACK DISCOVERY (added after PR #2038's second refuter,
+         comment 5779401001, N23): layers 2/3 both assume a track follows
+         the "close screen full of paragraphs" shape. A track that shows
+         its fee sentence directly in some OTHER screen, with its own
+         contact function instead of renderPartnerContact(...), is
+         invisible to both. This layer scans EVERY RENDERERS['c-<id>-*']
+         screen's own body (and any scalar COPY property it references)
+         for fee-sentence-shaped text, and fails if that screen's track id
+         is not already accounted for by layers 2/3, a partner-contact
+         track, or a declared exemption.
 
-    Every JS surface is comment-stripped once before any of the three
+    Every JS surface is comment-stripped once before any of the four
     layers run (gh-2020 refuter bypasses 1 and 2): a disclaimer commented
     out in place, or a dead commented-out COPY.<name>Close.forEach
     reference left ahead of the real one, is absent text, not present
@@ -523,9 +717,13 @@ def check_js_d266_surfaces() -> tuple[list[str], list[str]]:
     for surface in D266_JS_SURFACES:
         path = REPO_ROOT / surface
         if not path.is_file():
-            notes.append(
-                f"{surface}: not present in this tree yet -- skipped, not failed "
-                f"(gh-2020 registers it ahead of draft #2019 landing it)"
+            failures.append(
+                f"{surface}: registered D-266 JS surface is MISSING from "
+                f"this tree (moved, renamed, or deleted) -- its D-266 "
+                f"coverage went with it; if it was intentionally retired, "
+                f"remove it from D266_JS_SURFACES with a written reason "
+                f"instead of letting the disappearance pass silently "
+                f"(d266_js_surface_missing)"
             )
             continue
         # Comment-stripped ONCE; every layer below reads this, not the raw
@@ -591,6 +789,41 @@ def check_js_d266_surfaces() -> tuple[list[str], list[str]]:
                     f"(d266_js_track)"
                 )
 
+            # gh-2020 refuter N13/N15 (comment 5779401001): the array-content
+            # check above proves the disclaimer PARAGRAPH exists in the
+            # source; it proves nothing about whether it ever RENDERS.
+            #   N13 -- a step upstream of the close screen is repointed
+            #   straight at the contact screen (go('c-<id>-contact')),
+            #   skipping the close screen entirely. The close renderer and
+            #   its array are untouched and pass every check above, but
+            #   nothing in the file ever navigates to them.
+            if not re.search(r"go\(\s*['\"]" + re.escape(route) + r"['\"]\s*\)", text):
+                failures.append(
+                    f"{surface}: {route} exists and its disclaimer array is "
+                    f"present, but no go('{route}') call anywhere else in the "
+                    f"file reaches it -- the close screen (and its "
+                    f"disclosure) may be unreachable from normal navigation "
+                    f"(d266_js_close_unreachable)"
+                )
+            #   N15 -- the close screen's own forEach is given a filter or an
+            #   index parameter (`function (p, i) { if (i !== 2) ... }`), so
+            #   some paragraphs render and others -- possibly the disclaimer
+            #   -- silently do not, even though the array text still
+            #   contains it. Require the forEach to match the module's own
+            #   unmodified shape exactly.
+            foreach_exact_re = re.compile(
+                JS_D266_FOREACH_EXACT_TMPL.format(copy=re.escape(copy_name))
+            )
+            if not foreach_exact_re.search(body):
+                failures.append(
+                    f"{surface}: {route} renders COPY.{copy_name} through a "
+                    f"forEach callback that is filtered, indexed, or "
+                    f"otherwise modified from `function (p) {{ "
+                    f"root.appendChild(bodyText(p)); }}` -- cannot verify "
+                    f"every paragraph (including the disclaimer) actually "
+                    f"renders unmodified (d266_js_close_foreach_filtered)"
+                )
+
         # Layer 3 -- fail-closed census cross-check (gh-2020 refuter bypasses
         # 3, 4, 5): a name the census found via COPY.<name>Close.forEach(
         # that layer 2's stricter RENDERERS-key parse did not discover means
@@ -627,6 +860,50 @@ def check_js_d266_surfaces() -> tuple[list[str], list[str]]:
                     f"JS_D266_EXEMPT_TRACKS with a written reason "
                     f"(d266_js_track_undeclared)"
                 )
+
+        # Layer 4 -- fee-sentence track discovery (gh-2020 refuter N23,
+        # comment 5779401001): layers 2/3 only discover a track through its
+        # own c-<name>-close screen or the COPY.<name>Close.forEach( naming
+        # convention. A track that instead renders its fee sentence in some
+        # OTHER screen, with its own contact function rather than
+        # renderPartnerContact(...), is invisible to both. Scan every
+        # RENDERERS['c-<id>-*'] screen's own body -- and any scalar COPY
+        # property (`key: '...'`, not an array) it references -- for
+        # fee-sentence-shaped text (a dollar amount and "referral" in the
+        # same sentence), and fail if that screen's track id is not already
+        # accounted for above.
+        known_track_ids = (
+            close_track_ids
+            | census_track_ids
+            | set(JS_D266_EXEMPT_TRACKS)
+            | partner_track_ids
+        )
+        copy_scalar_fee_keys = {
+            m.group(1)
+            for m in re.finditer(r"(\w+)\s*:\s*'((?:[^'\\]|\\.)*)'", text)
+            if FEE_SENTENCE_RE.search(m.group(2))
+        }
+        reported_fee_tracks: set[str] = set()
+        for sm in JS_D266_ANY_SCREEN_RE.finditer(text):
+            screen_track_id, screen_body = sm.group(1), sm.group(3)
+            if screen_track_id in known_track_ids or screen_track_id in reported_fee_tracks:
+                continue
+            has_inline_fee = bool(FEE_SENTENCE_RE.search(screen_body))
+            has_copy_ref_fee = any(
+                ref in copy_scalar_fee_keys
+                for ref in re.findall(r"COPY\.(\w+)\b", screen_body)
+            )
+            if has_inline_fee or has_copy_ref_fee:
+                reported_fee_tracks.add(screen_track_id)
+                failures.append(
+                    f"{surface}: c-{screen_track_id}-* renders a referral-fee "
+                    f"sentence but is not a discovered close/census track, a "
+                    f"renderPartnerContact(...) partner-contact track, or a "
+                    f"declared exemption -- add a c-{screen_track_id}-close "
+                    f"screen with the D-266 disclaimer, or extend "
+                    f"JS_D266_EXEMPT_TRACKS with a written reason "
+                    f"(d266_js_fee_sentence_unrecognized_track)"
+                )
     return failures, notes
 
 
@@ -639,12 +916,18 @@ def check_js_d266_surfaces() -> tuple[list[str], list[str]]:
 # set is reported here, the same way an unmapped React funnel is reported
 # above.
 #
-# Scope is root-level *.html and top-level js/*.js, matching this file's
-# existing convention that "root-level *.html is only what main publishes
-# TODAY" (see the React-parity docstring above): blog/ and guides/ are
-# consumer-education content, never a funnel surface, and admin-*.html is
-# internal staff-only tooling that can never be partner-facing, so neither
-# is a source of D-266 risk worth scanning here.
+# Scope is root-level *.html and ALL of js/** (was top-level js/*.js only --
+# gh-2020 refuter, comment 5779401001, N19: a registered JS surface moved to
+# a subfolder, e.g. js/router/discovery.js, was invisible to this scan, the
+# same class of gap this function exists to close), excluding js/vendor/
+# (third-party bundled library code, never our own funnel copy -- verified
+# against its one file, js/vendor/qrcode-generator.js, at the time this
+# exclusion was written). Matches this file's existing convention that
+# "root-level *.html is only what main publishes TODAY" (see the
+# React-parity docstring above): blog/ and guides/ are consumer-education
+# content, never a funnel surface, and admin-*.html is internal staff-only
+# tooling that can never be partner-facing, so neither is a source of
+# D-266 risk worth scanning here.
 STATIC_FUNNEL_RE = re.compile(r"\$200\b|referral[\s-]?link|referral[\s-]?fee", re.IGNORECASE)
 
 # (relative path -> reason) -- files that match STATIC_FUNNEL_RE today but are
@@ -693,24 +976,32 @@ STATIC_FUNNEL_EXEMPT = {
 }
 
 
-def _static_funnel_checked_set() -> set[str]:
+def _static_funnel_checked_set(root: Path = None) -> set[str]:
     """Every surface this script already verifies, by stem or relative path."""
-    checked = set(ALL_PAGES) | set(D266_PAGES) | set(D266_JS_SURFACES)
+    root = root or REPO_ROOT
+    checked = set(ALL_PAGES) | set(compute_d266_pages(root)) | set(D266_JS_SURFACES)
     checked |= {Path(twin).stem for twin in REACT_TWINS.values()}
     return checked
 
 
-def find_unmapped_static_funnels() -> list[str]:
+def find_unmapped_static_funnels(root: Path = None) -> list[str]:
     """Non-React, non-partner-* files that look like a referral-fee funnel
-    but are registered nowhere in this script (gh-2020)."""
-    checked = _static_funnel_checked_set()
+    but are registered nowhere in this script (gh-2020). root is
+    parameterized (defaults to REPO_ROOT) so a self-test fixture tree can
+    be scanned without touching the real repo."""
+    root = root or REPO_ROOT
+    checked = _static_funnel_checked_set(root)
     findings = []
-    candidates = sorted(REPO_ROOT.glob("*.html"))
-    js_dir = REPO_ROOT / "js"
+    candidates = sorted(root.glob("*.html"))
+    js_dir = root / "js"
     if js_dir.is_dir():
-        candidates += sorted(js_dir.glob("*.js"))
+        candidates += [
+            p
+            for p in sorted(js_dir.rglob("*.js"))
+            if "vendor" not in p.relative_to(js_dir).parts
+        ]
     for path in candidates:
-        rel_path = path.relative_to(REPO_ROOT).as_posix()
+        rel_path = path.relative_to(root).as_posix()
         if path.stem in checked or rel_path in checked:
             continue
         if path.name.startswith("partner-") or path.name.startswith("admin-"):
@@ -772,10 +1063,13 @@ def main() -> int:
             if not check["test"](html):
                 failures.append(f"{page}.html: missing {check['description']} ({check['key']})")
 
-    # D-266 disclaimer check uses its own glob-discovered page set (gh-1254)
-    # instead of the ALL_PAGES loop above, so newly-added partner-insurance
-    # siblings are visible without editing a hardcoded list.
-    for page in D266_PAGES:
+    # D-266 disclaimer check uses its own glob-discovered page set (gh-1254,
+    # broadened gh-2020 refuter N20/N21/N22) instead of the ALL_PAGES loop
+    # above, so a new partner-*.html page, refer-a-friend.html, or any page
+    # whose own text carries a referral-fee sentence is visible without
+    # editing a hardcoded list.
+    d266_pages = compute_d266_pages()
+    for page in d266_pages:
         path = REPO_ROOT / f"{page}.html"
         if not path.is_file():
             failures.append(f"{page}.html: MISSING FILE")
@@ -808,7 +1102,7 @@ def main() -> int:
     failures.extend(js_failures)
     failures.extend(find_unmapped_static_funnels())
 
-    checked_pages = sorted(set(ALL_PAGES) | set(D266_PAGES))
+    checked_pages = sorted(set(ALL_PAGES) | set(d266_pages))
     for note in js_notes:
         print(f"  [NOTE] {note}")
     if failures:
