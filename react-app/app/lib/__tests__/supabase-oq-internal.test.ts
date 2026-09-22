@@ -1,25 +1,39 @@
 /**
- * gh-2068 — unit test for the server-side connecting rule's client half:
- * react-app/app/lib/supabase.ts must pass an `X-OQ-Internal: 1` header on
- * the shared client's `global.headers` whenever isInternalTraffic() says
- * this page load is internal (oq_internal query param or cookie), and must
- * pass no such header otherwise. This is what
- * leads_force_safe_insert_defaults() (the BEFORE INSERT trigger on
- * public.leads, supabase/migrations/20260922140801_gh2068_*.sql) reads to
- * force is_synthetic=true at write time.
+ * gh-2068 — regression test for cto36 REVIEW: FAIL finding B2
+ * (github.com/StellarEdgeServices/otterquote-platform/pull/2099#issuecomment-5779410643):
+ *
+ * react-app/app/lib/supabase.ts must NEVER wire `X-OQ-Internal` into the
+ * shared client's `global.headers`. That option is passed to auth, rest,
+ * storage, realtime AND `supabase.functions.invoke(...)` alike (supabase-js
+ * 2.116.0, dist/index.cjs ~L658-693) — Edge Function CORS allow-lists
+ * (supabase/functions/*\/index.ts) do not list x-oq-internal, so a
+ * client-wide header would get every `functions.invoke` call for an
+ * internal/admin browser blocked by CORS (payments, DocuSign, admin
+ * actions, etc — the exact regression the review caught).
+ *
+ * The header is attached ONLY to the leads insert now, via postgrest-js's
+ * per-request `.setHeader('x-oq-internal', '1')` at the call site
+ * (react-app/app/get-started/page.tsx's persistSignupContext — see
+ * gh2068-leads-oq-internal-header.test.tsx for that half). This file is
+ * the negative control for every OTHER call this shared client makes:
+ * since `global.headers` is never set here, at all, for any oq_internal
+ * state, nothing but the explicit per-request call above can ever carry
+ * the header — there is no client-wide path left for it to leak through.
  *
  * `@supabase/supabase-js`'s createClient is mocked so this test asserts on
  * the exact options object supabase.ts builds, without making a network
  * call or depending on real Supabase credentials. supabase.ts's client is
  * a module-level singleton computed once at import time, so each case
  * resets modules and dynamically re-imports it after arranging
- * window.location / document.cookie — mirroring how a real page load
- * computes the header exactly once, at client-creation time.
+ * window.location / document.cookie.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const createClientMock = vi.fn((_url: string, _key: string, options: unknown) => ({
   __options: options,
+  auth: {},
+  from: vi.fn(),
+  functions: { invoke: vi.fn() },
 }));
 
 vi.mock('@supabase/supabase-js', () => ({
@@ -34,7 +48,7 @@ function clearOqInternalCookie() {
   document.cookie = 'oq_internal=; Max-Age=0; path=/';
 }
 
-describe('supabase.ts — gh-2068 oq_internal header', () => {
+describe('supabase.ts — gh-2068 B2 regression: no client-wide oq_internal header', () => {
   beforeEach(() => {
     vi.resetModules();
     createClientMock.mockClear();
@@ -50,37 +64,35 @@ describe('supabase.ts — gh-2068 oq_internal header', () => {
     setLocation('');
   });
 
-  it('sets X-OQ-Internal: 1 when ?oq_internal=1 is on the URL', async () => {
-    setLocation('?oq_internal=1');
+  it('negative control: no `global` key at all on an ordinary visit', async () => {
+    setLocation('');
     await import('../supabase');
 
     expect(createClientMock).toHaveBeenCalledTimes(1);
-    const options = createClientMock.mock.calls[0][2] as {
-      global?: { headers?: Record<string, string> };
-    };
-    expect(options.global?.headers).toEqual({ 'x-oq-internal': '1' });
+    const options = createClientMock.mock.calls[0][2] as Record<string, unknown>;
+    expect(options.global).toBeUndefined();
   });
 
-  it('sets X-OQ-Internal: 1 from a persisted oq_internal=1 cookie with no query param', async () => {
+  it('negative control: still no `global` key with ?oq_internal=1 on the URL — the marker must not become a client-wide header', async () => {
+    setLocation('?oq_internal=1');
+    await import('../supabase');
+
+    const options = createClientMock.mock.calls[0][2] as Record<string, unknown>;
+    expect(options.global).toBeUndefined();
+  });
+
+  it('negative control: still no `global` key with a persisted oq_internal=1 cookie', async () => {
     document.cookie = 'oq_internal=1; path=/';
     setLocation('');
     await import('../supabase');
 
-    const options = createClientMock.mock.calls[0][2] as {
-      global?: { headers?: Record<string, string> };
-    };
-    expect(options.global?.headers).toEqual({ 'x-oq-internal': '1' });
+    const options = createClientMock.mock.calls[0][2] as Record<string, unknown>;
+    expect(options.global).toBeUndefined();
   });
 
-  it('negative control: sends no X-OQ-Internal header for an ordinary visit', async () => {
-    setLocation('');
-    await import('../supabase');
-
-    expect(createClientMock).toHaveBeenCalledTimes(1);
-    const options = createClientMock.mock.calls[0][2] as {
-      global?: { headers?: Record<string, string> };
-    };
-    expect(options.global?.headers).toEqual({});
-    expect(options.global?.headers?.['x-oq-internal']).toBeUndefined();
+  it('does not import isInternalTraffic at all — the header decision moved to the leads-insert call site', async () => {
+    const mod = await import('../supabase');
+    // supabase.ts exports only the client (and nothing header-related) now.
+    expect(Object.keys(mod)).toEqual(['supabase']);
   });
 });

@@ -673,22 +673,25 @@
   //
   // gh-2068: leads_force_safe_insert_defaults() (the BEFORE INSERT trigger
   // on public.leads, see that migration) forces is_synthetic=true whenever
-  // the insert request carries an X-OQ-Internal: 1 header. Set it here via
-  // supabase-js's `global.headers` client option, computed once when this
-  // client is created, so EVERY insert this page makes carries it
-  // automatically -- not only the arm-E-override/same-page-load case this
-  // file's own insertFreshLead() already flags client-side (PR #2088;
-  // left unchanged by this PR, harmless where both fire). Deliberately a
-  // SELF-CONTAINED copy of js/ga-gate.js's oqInternal() (same name, same
-  // Max-Age, same Domain rule, kept in sync deliberately) rather than a
-  // read of window.OQ_INTERNAL alone -- gh-2064 round 2's review (comment
-  // 5766161796) found that exact "assume some other script already set
-  // the flag" assumption broken on 89 of 99 pages, and this page cannot
-  // assume js/internal-traffic.js ran first either. The cookie is read
-  // only to detect the flag; it is never itself sent to Supabase (a
-  // different origin -- supabase-js does not send credentials
-  // cross-origin), which is why this sets a header, not a cookie, on the
-  // request PostgREST sees.
+  // a leads insert request carries an X-OQ-Internal: 1 header. This helper
+  // computes that header for insertFreshLead() below to attach with
+  // sb.from('leads').insert(payload).setHeader(...) ON THAT INSERT ONLY --
+  // review fix (cto36 REVIEW: FAIL, comment 5779410643, B2): it must NOT
+  // be wired into ensureSb()'s client-wide `global.headers`, because that
+  // would attach it to every request this page's client makes, including
+  // any supabase.functions.invoke(...) call, and Edge Function CORS
+  // allow-lists don't list x-oq-internal -- the browser would block those
+  // preflights for exactly the internal/admin browsers the marker is for.
+  // Deliberately a SELF-CONTAINED copy of js/ga-gate.js's oqInternal()
+  // (same name, same Max-Age, same Domain rule, kept in sync deliberately)
+  // rather than a read of window.OQ_INTERNAL alone -- gh-2064 round 2's
+  // review (comment 5766161796) found that exact "assume some other
+  // script already set the flag" assumption broken on 89 of 99 pages, and
+  // this page cannot assume js/internal-traffic.js ran first either. The
+  // cookie is read only to detect the flag; it is never itself sent to
+  // Supabase (a different origin -- supabase-js does not send credentials
+  // cross-origin), which is why this computes a header, not a cookie, for
+  // the request PostgREST sees.
   function oqInternalHeader() {
     try {
       var params = null;
@@ -726,8 +729,7 @@
     try {
       if (typeof supabase !== 'undefined' && typeof CONFIG !== 'undefined') {
         sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, {
-          auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' },
-          global: { headers: oqInternalHeader() }
+          auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' }
         });
       }
     } catch (e) { /* handled by the null-check on every use below */ }
@@ -1135,7 +1137,17 @@
       variant: variantOverride || variant
     };
     if (isSynthetic || window.__oqInternalWalk) { payload.is_synthetic = true; }
-    return ensureSb().from('leads').insert(payload).then(function (res) {
+    // gh-2068 review fix (cto36 REVIEW: FAIL, comment 5779410643, B2): the
+    // X-OQ-Internal header is attached to THIS insert only, via
+    // postgrest-js's per-request setHeader(), not to ensureSb()'s client
+    // (see oqInternalHeader()'s comment above) -- so it never reaches any
+    // other request this page's client makes.
+    var leadInsert = ensureSb().from('leads').insert(payload);
+    var oqHeader = oqInternalHeader();
+    if (oqHeader['x-oq-internal']) {
+      leadInsert.setHeader('x-oq-internal', oqHeader['x-oq-internal']);
+    }
+    return leadInsert.then(function (res) {
       if (res && res.error) throw res.error;
       setStoredLeadId(newId);
       return newId;

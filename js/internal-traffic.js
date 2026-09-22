@@ -61,4 +61,29 @@
   }
 
   window.OQ_INTERNAL = queryFlag || cookieFlag;
+
+  // gh-2068 review follow-up (cto36 REVIEW: FAIL, comment 5779410643,
+  // recommended follow-up (a)): ?oq_internal=1 is a public, guessable,
+  // shareable URL parameter -- a real homeowner who opens a forwarded walk
+  // link gets this 1-year cookie too. Stripping the param from the address
+  // bar right after reading it (history.replaceState, no navigation, no
+  // reload) means a link this visitor then copies/shares/bookmarks FROM
+  // this page no longer carries it onward. It does not undo the cookie
+  // already set on THIS visit, and it does not run on the pages that use
+  // js/ga-gate.js's / js/meta-pixel-gate.js's own self-contained oqInternal()
+  // copies or start.html's oqInternalHeader() instead of this file (kept
+  // deliberately separate for page-load-order reasons -- see those files'
+  // own comments) -- universal stripping across all of them is a separate
+  // follow-up, not done here.
+  if (queryFlag && params) {
+    try {
+      params.delete('oq_internal');
+      var qs = params.toString();
+      var newUrl = window.location.pathname + (qs ? '?' + qs : '') + window.location.hash;
+      window.history.replaceState(null, '', newUrl);
+    } catch (e) {
+      // Never worth breaking the page for -- the cookie/flag above are
+      // already set regardless of whether this cleanup succeeds.
+    }
+  }
 })();
