@@ -512,6 +512,30 @@ function fbq(...args: unknown[]) {
   }
 }
 
+// ─── LinkedIn Insight Tag helper — gh-1926 (shipped dark/gated) ───────────
+// window.oqLinkedInTrackLead is only ever defined by LinkedInInsightGate
+// once its host+path gate has passed AND a real LINKEDIN_CONVERSION_ID has
+// been configured (currently an empty placeholder) -- this guard keeps the
+// call a silent no-op everywhere else, same posture as fbq() above.
+
+function linkedInTrackLead() {
+  if (typeof window !== 'undefined' && typeof (window as any).oqLinkedInTrackLead === 'function') {
+    (window as any).oqLinkedInTrackLead();
+  }
+}
+
+// ─── Reddit Pixel helper — gh-1926 (shipped dark/gated) ───────────────────
+// window.rdt is only ever defined by RedditPixelGate once its host+path
+// gate has passed (currently blocked: REDDIT_PIXEL_ID is an empty
+// placeholder, so the gate never mounts the pixel) -- this guard keeps the
+// call a silent no-op everywhere else, same posture as fbq() above.
+
+function rdt(...args: unknown[]) {
+  if (typeof window !== 'undefined' && (window as any).rdt) {
+    (window as any).rdt(...args);
+  }
+}
+
 /**
  * True when Supabase is telling us this email already has an account.
  * GoTrue reports this two different ways depending on project settings, and
@@ -1056,6 +1080,13 @@ export default function GetStartedPage() {
     // gh-1817: Meta Pixel Lead event — fires on both the Google OAuth and
     // password sign-up paths, matching the GA4 call sites above exactly.
     fbq('track', 'Lead');
+    // gh-1926: LinkedIn Insight Tag + Reddit Pixel Lead events — shipped
+    // dark/gated (LinkedInInsightGate/RedditPixelGate never mount their
+    // real loader until a follow-up config drop lands real IDs), same
+    // call-site placement as the Meta Lead call above so all three fire
+    // together once configured.
+    linkedInTrackLead();
+    rdt('track', 'Lead');
   };
 
   // ── Google OAuth sign-up (Dustin 2026-08-26; button sits below the form
