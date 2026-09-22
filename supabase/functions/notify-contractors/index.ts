@@ -619,14 +619,33 @@ async function sendMailgunEmail(
 // SMS HELPER
 // =============================================================================
 
-/** Send SMS via the send-sms Edge Function. Returns true on success. */
+/**
+ * Send SMS via the send-sms Edge Function. Returns true on success.
+ *
+ * gh-1916 / R-134 protective gate: refuse to even attempt a send unless the
+ * contractor has a real, stored opt-in (`contractors.sms_opt_in = true`).
+ * NULL (never asked — the pre-migration default for every existing row) and
+ * false (declined) both refuse. This closes the gap the CEO's 2026-09-14 FYI
+ * on #1916 flagged: this function previously gated only on the opt-OUT
+ * `notification_preferences` map (shouldNotify()), which defaults every
+ * contractor to "send" absent an explicit false — not the opt-IN TCPA
+ * consent this issue requires. Single choke point for both SMS-sending
+ * handlers that route through this helper (contract_signed, agreement_requested).
+ */
 async function sendSmsViaEdgeFunction(
   supabaseUrl: string,
   supabaseKey: string,
   to: string,
   message: string,
-  contractorId: string
+  contractorId: string,
+  smsOptIn: boolean | null | undefined
 ): Promise<boolean> {
+  if (smsOptIn !== true) {
+    console.warn(
+      `[notify-contractors] SMS refused (gh-1916 R-134 gate) — sms_opt_in is not true for contractor ${contractorId} (value=${String(smsOptIn)}). No Twilio call attempted.`
+    );
+    return false;
+  }
   const response = await fetch(`${supabaseUrl}/functions/v1/send-sms`, {
     method: "POST",
     headers: {
@@ -822,7 +841,7 @@ async function handleContractSigned(
 
   const { data: contractor, error: contractorErr } = await supabase
     .from("contractors")
-    .select("id, user_id, email, phone, contact_name, company_name, notification_emails, notification_phones, notification_preferences")
+    .select("id, user_id, email, phone, contact_name, company_name, notification_emails, notification_phones, notification_preferences, sms_opt_in")
     .eq("id", claim.selected_contractor_id)
     .single();
 
@@ -891,7 +910,7 @@ async function handleContractSigned(
 
   for (const phone of phoneRecipients) {
     try {
-      const ok = await sendSmsViaEdgeFunction(supabaseUrl, supabaseKey, phone, smsMessage, contractor.id);
+      const ok = await sendSmsViaEdgeFunction(supabaseUrl, supabaseKey, phone, smsMessage, contractor.id, contractor.sms_opt_in);
       if (ok) {
         smsSent = true;
         await supabase.from("notifications").insert({
@@ -1227,7 +1246,7 @@ async function notifyContractorsForSingleTrade(
   // Fetch all active contractors (no DB-level limit — we filter and cap below)
   const { data: contractors, error: contractorsError } = await supabase
     .from("contractors")
-    .select("id, user_id, email, phone, contact_name, notification_emails, notification_phones, notification_preferences, trades, service_counties, is_test")
+    .select("id, user_id, email, phone, contact_name, notification_emails, notification_phones, notification_preferences, sms_opt_in, trades, service_counties, is_test")
     .eq("status", "active");
 
   if (contractorsError) {
@@ -1337,6 +1356,15 @@ async function notifyContractorsForSingleTrade(
 
     for (const phone of phoneRecipients) {
       try {
+        // gh-1916 / R-134 protective gate — see sendSmsViaEdgeFunction's header
+        // comment. This handler calls send-sms directly (not via that helper),
+        // so the same gate is inlined here rather than routed through it.
+        if (contractor.sms_opt_in !== true) {
+          console.warn(
+            `[notify-contractors] SMS refused (gh-1916 R-134 gate) — sms_opt_in is not true for contractor ${contractor.id} [${tradeLower}] (value=${String(contractor.sms_opt_in)}). No Twilio call attempted.`
+          );
+          continue;
+        }
         const smsResponse = await fetch(`${supabaseUrl}/functions/v1/send-sms`, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${supabaseKey}` },
@@ -1599,7 +1627,7 @@ async function handleAgreementRequested(
 
   const { data: contractor, error: contractorErr } = await supabase
     .from("contractors")
-    .select("id, user_id, email, phone, contact_name, company_name, notification_emails, notification_phones, notification_preferences")
+    .select("id, user_id, email, phone, contact_name, company_name, notification_emails, notification_phones, notification_preferences, sms_opt_in")
     .eq("id", contractor_id)
     .single();
 
@@ -1675,7 +1703,7 @@ async function handleAgreementRequested(
 
   for (const phone of phoneRecipients) {
     try {
-      const ok = await sendSmsViaEdgeFunction(supabaseUrl, supabaseKey, phone, smsMessage, contractor.id);
+      const ok = await sendSmsViaEdgeFunction(supabaseUrl, supabaseKey, phone, smsMessage, contractor.id, contractor.sms_opt_in);
       if (ok) {
         smsSent = true;
         await supabase.from("notifications").insert({
