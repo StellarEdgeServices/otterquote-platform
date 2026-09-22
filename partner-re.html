@@ -1259,8 +1259,8 @@
   // partner_exists on a repeat), so a plain in-memory boolean, scoped to
   // this page load, is sufficient -- there is no reload-then-resubmit path
   // on the (already-shown, static) success screen for it to need to
-  // survive, unlike hover-charge-storage.ts's persisted marker on the
-  // homeowner side.
+  // survive, unlike the persisted paymentIntent-keyed marker on the
+  // homeowner measurement checkout.
   var partnerSignupCompleteFired = false;
   function firePartnerSignupComplete(variant) {
     if (partnerSignupCompleteFired) return;
