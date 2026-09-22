@@ -145,11 +145,16 @@
   // js/ga-gate.js's _oqLoadOnIdleOrInteraction (that file's comment on its
   // copy explains why this is duplicated rather than shared). Only the
   // fbevents.js <script> insertion is delayed to idle/interaction (capped
-  // at 1500ms) -- the fbq('init'...)/fbq('track','PageView') calls right
+  // at 3000ms, up from 1500ms -- gh-2063, Marty/CTO ruling comment
+  // 5780493814, CEO RUN 60's narrowed scope: "defer GTM, pixel and
+  // Clarity until after first input, or after requestIdleCallback with a
+  // 3s ceiling, whichever comes first") -- the fbq('init'...)/
+  // fbq('track','PageView') calls right
   // below stay exactly where they were, synchronous, and keep queuing into
   // fbqStub.queue exactly as before. gh-2000's callMethod drain fires that
   // queued init+PageView the moment fbevents.js actually loads, so PageView
-  // still fires once per visit, just later.
+  // still fires once per visit, just later -- a deferred fire still counts
+  // (per that same CTO ruling).
   function _oqLoadOnIdleOrInteraction(fn) {
     var fired = false;
     var idleHandle = null;
@@ -172,9 +177,9 @@
       window.addEventListener(EVENTS[i], run, { passive: true, once: true });
     }
     if (window.requestIdleCallback) {
-      idleHandle = window.requestIdleCallback(run, { timeout: 1500 });
+      idleHandle = window.requestIdleCallback(run, { timeout: 3000 });
     } else {
-      timeoutHandle = setTimeout(run, 1500);
+      timeoutHandle = setTimeout(run, 3000);
     }
   }
 
