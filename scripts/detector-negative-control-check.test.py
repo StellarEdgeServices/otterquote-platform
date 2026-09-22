@@ -88,24 +88,38 @@ def registry_snapshot(entries=None):
         neg.DETECTOR_REGISTRY.update(saved)
 
 
-GOOD_TEST_FILE = (
-    "#!/usr/bin/env python3\n"
-    "print(\"  PASS  clean case: OK\")\n"
-    "print(\"  PASS  bad-input case -> REJECTED: REJECTED\")\n"
-    "import sys\n"
-    "sys.exit(0)\n"
-)
+@contextlib.contextmanager
+def gate_probes_snapshot(entries=None):
+    """Temporarily replace neg.GATE_PROBES for a synthetic-root run_all() call
+    -- gh-1884 ROUND 3's analogue of registry_snapshot() above.
 
-NO_NEGATIVE_TEST_FILE = (
-    "#!/usr/bin/env python3\n"
-    "# Only clean-input fixtures -- the exact shape gh-1738 exists to catch: a\n"
-    "# detector that has never been observed rejecting the thing it exists to\n"
-    "# reject.\n"
-    "print(\"  PASS  clean case 1: OK\")\n"
-    "print(\"  PASS  clean case 2: OK\")\n"
-    "import sys\n"
-    "sys.exit(0)\n"
-)
+    GATE_PROBES is keyed by this repo's REAL detector paths. A synthetic
+    DETECTOR_REGISTRY entry registered via registry_snapshot() above has no
+    matching GATE_PROBES entry unless this ALSO supplies one -- which, as of
+    ROUND 3, is correctly reported as its own violation ("no GATE_PROBES
+    entry"), not silently skipped. So every test block below that registers a
+    synthetic detector name and is NOT specifically exercising that missing-
+    entry violation must supply a probe here for each name it registers, the
+    same way registry_snapshot() requires a manifest entry.
+    """
+    saved = dict(neg.GATE_PROBES)
+    neg.GATE_PROBES.clear()
+    if entries:
+        neg.GATE_PROBES.update(entries)
+    try:
+        yield
+    finally:
+        neg.GATE_PROBES.clear()
+        neg.GATE_PROBES.update(saved)
+
+
+def _always_pass_probe(mod, root):
+    """A trivial GATE_PROBES probe for test blocks exercising something OTHER
+    than probe behavior itself (existence checks, negative-token matching in
+    the generic per-script loop, ...) that just need registration to not
+    itself produce a 'no GATE_PROBES entry' violation."""
+    return None
+
 
 DETECTOR_SOURCE = (
     "#!/usr/bin/env python3\n"
@@ -116,10 +130,66 @@ DETECTOR_SOURCE = (
 )
 
 
+def _importing_test_file(detector_filename: str, print_lines, modvar: str = "mod") -> str:
+    """A self-test source that genuinely loads `detector_filename` via this
+    repo's real importlib pattern (spec_from_file_location -> module_from_spec
+    -> exec_module -> call something on the loaded module -- see e.g.
+    scripts/drift-detector-age.test.py) and then emits `print_lines` verbatim.
+
+    gh-1884: this suite's fixtures previously (pre-gh-1884) just printed
+    PASS-shaped text with no reference to the detector file at all -- exactly
+    the forgery shape this issue exists to reject, just in a synthetic test
+    fixture instead of a real detector's self-test. Every registered-detector
+    fixture below now genuinely invokes its detector so it satisfies
+    self_test_invokes_detector(), matching what this fix now requires of a
+    real registered detector's self-test.
+    """
+    body = [
+        "#!/usr/bin/env python3",
+        "import importlib.util",
+        "from pathlib import Path",
+        "HERE = Path(__file__).resolve().parent",
+        "spec = importlib.util.spec_from_file_location(%r, HERE / %r)"
+        % (modvar, detector_filename),
+        "%s = importlib.util.module_from_spec(spec)" % modvar,
+        "spec.loader.exec_module(%s)" % modvar,
+        "%s.main()  # genuinely invoke the loaded detector -- not decorative" % modvar,
+    ]
+    body.extend(print_lines)
+    body.append("import sys")
+    body.append("sys.exit(0)")
+    return "\n".join(body) + "\n"
+
+
+def good_test_file(detector_filename: str) -> str:
+    return _importing_test_file(
+        detector_filename,
+        [
+            'print("  PASS  clean case: OK")',
+            'print("  PASS  bad-input case -> REJECTED: REJECTED")',
+        ],
+    )
+
+
+def no_negative_test_file(detector_filename: str) -> str:
+    """Only clean-input fixtures -- the exact shape gh-1738 exists to catch: a
+    detector that has never been observed rejecting the thing it exists to
+    reject. Genuinely invokes the detector (gh-1884) so the violation this
+    produces is isolated to the missing negative-control token, not muddied
+    by an unrelated invocation-proof violation."""
+    return _importing_test_file(
+        detector_filename,
+        [
+            'print("  PASS  clean case 1: OK")',
+            'print("  PASS  clean case 2: OK")',
+        ],
+    )
+
+
 def build_clean_tree(root: Path):
     """A properly self-tested detector + fully reconciled wiring."""
     write(root / "scripts" / "good-detector.py", DETECTOR_SOURCE + '\nSCAN_EXTENSIONS = {".txt"}\n')
-    write(root / "scripts" / "good-detector.test.py", GOOD_TEST_FILE)
+    write(root / "scripts" / "good-detector.test.py", good_test_file("good-detector.py"))
     write(root / "data" / "sample.txt", "hello\n")
     write(
         root / ".github" / "workflows" / "good.yml",
@@ -150,12 +220,12 @@ def build_broken_tree(root: Path):
     # way a real reviewer enriches DETECTOR_REGISTRY when they care enough about
     # a detector to demand a specific verdict token from its suite.
     write(root / "scripts" / "clean-only-detector.py", DETECTOR_SOURCE)
-    write(root / "scripts" / "clean-only-detector.test.py", NO_NEGATIVE_TEST_FILE)
+    write(root / "scripts" / "clean-only-detector.test.py", no_negative_test_file("clean-only-detector.py"))
 
     # Instance C: instance-5's own shape -- a scanner's declared extensions are
     # not reconciled against its workflow's push.paths filter.
     write(root / "scripts" / "bad-scanner.py", DETECTOR_SOURCE + '\nSCAN_EXTENSIONS = {".html", ".ts"}\n')
-    write(root / "scripts" / "bad-scanner.test.py", GOOD_TEST_FILE)
+    write(root / "scripts" / "bad-scanner.test.py", good_test_file("bad-scanner.py"))
     write(root / "site" / "index.html", "<html></html>\n")
     write(root / "app" / "widget.ts", "export const x = 1;\n")
     write(
@@ -196,6 +266,13 @@ def main():
                 "test": "scripts/clean-only-detector.test.py",
                 "negative_tokens": ["REJECTED"],
             }
+        }), gate_probes_snapshot({
+            # gh-1884 ROUND 3: this block tests the generic negative-token
+            # check in CHECK 1's per-script loop, not GATE_PROBES -- give it
+            # a passing probe so it doesn't ALSO produce an unrelated "no
+            # GATE_PROBES entry" violation and break "exactly three
+            # violations" below.
+            "scripts/clean-only-detector.py": _always_pass_probe,
         }):
             result = neg.run_all(root)
 
@@ -326,12 +403,12 @@ def main():
         # cases below are each isolated, unambiguous signal -- not noise from
         # an unrelated already-broken entry.
         write(root / "scripts" / "present-detector.py", DETECTOR_SOURCE)
-        write(root / "scripts" / "present-detector.test.py", GOOD_TEST_FILE)
+        write(root / "scripts" / "present-detector.test.py", good_test_file("present-detector.py"))
         # scripts/deleted-both.py and its self-test: deliberately never
         # written -- simulating a PR that deletes both files outright.
         # scripts/script-only-missing.py: self-test present, script itself
         # deleted.
-        write(root / "scripts" / "script-only-missing.test.py", GOOD_TEST_FILE)
+        write(root / "scripts" / "script-only-missing.test.py", good_test_file("script-only-missing.py"))
         # scripts/test-only-missing.py: script present, self-test deleted.
         write(root / "scripts" / "test-only-missing.py", DETECTOR_SOURCE)
 
@@ -352,6 +429,12 @@ def main():
                 "test": "scripts/test-only-missing.test.py",
                 "negative_tokens": [],
             },
+        }), gate_probes_snapshot({
+            # gh-1884 ROUND 3: only present-detector.py ever reaches the
+            # GATE_PROBES lookup (the other three short-circuit on a missing
+            # script/self-test before that point) -- this block is testing
+            # existence checks, not probe behavior, so give it a passing probe.
+            "scripts/present-detector.py": _always_pass_probe,
         }):
             result5 = neg.run_all(root)
 
@@ -417,6 +500,340 @@ def main():
     )
     check("EMPTY WORKFLOWS DIR: gate verdict is UNMEASURED", result6["verdict"], "UNMEASURED")
     check("EMPTY WORKFLOWS DIR: gate exit code is 3", result6["code"], 3)
+
+    # -------------------------------------------------------------------
+    # gh-1884 CLOSE-REVIEW: FAIL (2026-09-08T21:11:33Z) -- the refuted bypass.
+    # A REGISTERED detector's script and self-test both "exist" per
+    # Path.exists() (so REGISTRY GUTTED's existence checks above never fire),
+    # but the script is truncated to 0 bytes in place and the self-test is a
+    # stub that merely PRINTS the expected negative-control tokens -- never
+    # importing, exec()'ing, or subprocess-invoking the detector at all. The
+    # refuter's own reproduction: pre-fix, this read GATE: PASS, affirming the
+    # forgery with a PASS line naming the detector and its tokens as if they
+    # had actually been observed. Reproduce that exact shape here and prove
+    # both halves of the fix independently.
+    # -------------------------------------------------------------------
+    print()
+    print("=" * 70)
+    print("INERT DETECTOR -- registered script truncated to 0 bytes + a")
+    print("token-printing self-test stub that never invokes it (gh-1884)")
+    print("=" * 70)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        # The exact refuted shape: 0-byte script, self-test that never
+        # mentions the detector's filename and just prints matching tokens.
+        write(root / "scripts" / "truncated-detector.py", "")
+        write(
+            root / "scripts" / "truncated-detector.test.py",
+            "#!/usr/bin/env python3\n"
+            "# Forgery: prints tokens that LOOK like a real run, never imports\n"
+            "# or executes the detector at all.\n"
+            'print("  PASS  bad case -> STALE: STALE")\n',
+        )
+        with registry_snapshot({
+            "scripts/truncated-detector.py": {
+                "test": "scripts/truncated-detector.test.py",
+                "negative_tokens": ["STALE"],
+            }
+        }):
+            result7 = neg.run_all(root)
+
+    for line in result7["violations"]:
+        print(line)
+    print("GATE: %s  (exit %d)" % (result7["verdict"], result7["code"]))
+
+    check("INERT DETECTOR: gate verdict is FAIL, not PASS", result7["verdict"], "FAIL")
+    check("INERT DETECTOR: gate exit code is 1", result7["code"], 1)
+    check_true(
+        "INERT DETECTOR: the 0-byte script itself is flagged inert",
+        any(
+            "truncated-detector.py" in v and "empty" in v
+            for v in result7["violations"]
+        ),
+    )
+
+    # -------------------------------------------------------------------
+    # gh-1884 ROUND 3 -- REVIEW: FAIL, twice more (2026-09-22T14:39:35Z and
+    # 2026-09-22T14:57:02Z): rounds 1 and 2 both tried to verify a self-
+    # test's SOURCE honestly proves it invoked the detector, and both were
+    # refuted by a new forgery the prior structural pattern had not
+    # anticipated. ROUND 3 stopped asking: GATE_PROBES has the gate import a
+    # registered detector itself and RUN it directly.
+    #
+    # ROUND 4 -- REVIEW: FAIL a third time (2026-09-22T15:14:32Z): round 3's
+    # FIRST cut only finished that inversion for ONE of four registered
+    # detectors (drift-detector-age.py, tested below). The other three were
+    # wired to a probe that called the detector's own self_test() and
+    # trusted ITS return code -- the identical self-report-trusting shape
+    # this issue exists to close, merely relocated one file over. A
+    # registered detector whose real logic is permanently inert, paired with
+    # a self_test() hardcoded to `return 0`, sailed through as GATE: PASS.
+    #
+    # ROUND 4 (this fix) replaces that trust-the-self-test probe entirely
+    # with _probe_via_gate_owned_fixture_files() -- calls a detector's own
+    # lower-level run(paths, root) directly against gate-selected known-bad/
+    # known-good fixtures and asserts on the RETURNED violations/code, never
+    # on self_test(). These blocks unit-test that factory function directly
+    # (the actual production code, not a re-implementation) against a
+    # synthetic INERT module (always reports clean, self_test() hardcoded to
+    # 0 -- the exact round-3-refuter shape) and a synthetic HONEST one, then
+    # reproduce the full round-3 bypass end-to-end through run_all() and
+    # confirm it is now caught.
+    # -------------------------------------------------------------------
+    print()
+    print("=" * 70)
+    print("ROUND 4 -- REVIEW: FAIL (2026-09-22T15:14:32Z): the gate-owned-")
+    print("fixture-file probe factory itself distinguishes inert from honest")
+    print("=" * 70)
+
+    class _FakeRunModule:
+        """Stands in for a real spec-spy-order-check.py / workflow-step-
+        unrun-check.py-shaped module -- both share run(paths, root) ->
+        {"code", "violations", ...}. Also carries a self_test() hardcoded to
+        0, matching the exact round-3-refuter shape: this probe must never
+        even look at it."""
+
+        def __init__(self, run_fn):
+            self._run_fn = run_fn
+            self.VERDICT_TOKEN = "FAKE_TOKEN"
+
+        def run(self, paths, root):
+            return self._run_fn(paths, root)
+
+        def self_test(self, root=None):
+            return 0  # hardcoded -- the probe must not read this at all
+
+    def _inert_run(paths, root):
+        return {"code": 0, "violations": []}
+
+    def _honest_run(paths, root):
+        is_bad = any("bad" in str(p) for p in paths)
+        if is_bad:
+            return {"code": 1, "violations": ["FAKE_TOKEN: something bad was found"]}
+        return {"code": 0, "violations": []}
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        write(root / "scripts" / "fixtures" / "fake-bad.txt", "bad content\n")
+        write(root / "scripts" / "fixtures" / "fake-good.txt", "good content\n")
+
+        probe = neg._probe_via_gate_owned_fixture_files("fake-bad.txt", "fake-good.txt", "FAKE_TOKEN")
+
+        inert_reason = probe(_FakeRunModule(_inert_run), root)
+        check_true(
+            "ROUND4 gate-owned-fixture probe: catches an INERT run() "
+            "(bad fixture wrongly reported clean; self_test()->0 ignored)",
+            inert_reason is not None,
+        )
+
+        honest_reason = probe(_FakeRunModule(_honest_run), root)
+        check(
+            "ROUND4 gate-owned-fixture probe: passes an HONEST run() that "
+            "actually distinguishes the bad fixture from the good one",
+            honest_reason,
+            None,
+        )
+
+        missing_reason = neg._probe_via_gate_owned_fixture_files(
+            "does-not-exist-bad.txt", "does-not-exist-good.txt", "FAKE_TOKEN"
+        )(_FakeRunModule(_honest_run), root)
+        check_true(
+            "ROUND4 gate-owned-fixture probe: missing fixture files is its own violation",
+            missing_reason is not None,
+        )
+
+    print()
+    print("=" * 70)
+    print("ROUND 4 -- the netlify-deploy-drift.py probe itself distinguishes")
+    print("an inert (always-IDENTICAL) evaluate_site() from an honest one")
+    print("=" * 70)
+
+    class _FakeNetlifyModule:
+        def __init__(self, verdict_fn):
+            self._verdict_fn = verdict_fn
+            self.BEHIND = "BEHIND"
+            self.IDENTICAL = "IDENTICAL"
+
+        def evaluate_site(self, *args, **kwargs):
+            return self._verdict_fn(*args, **kwargs)
+
+        def self_test(self):
+            return 0  # hardcoded -- the probe must not read this at all
+
+    def _inert_netlify_verdict(*args, **kwargs):
+        return {"verdict": "IDENTICAL"}
+
+    def _honest_netlify_verdict(site, published_commit, published_at, main_sha, ahead_by, *rest, **kw):
+        return {"verdict": "BEHIND" if ahead_by else "IDENTICAL"}
+
+    inert_netlify_reason = neg._probe_netlify_deploy_drift(_FakeNetlifyModule(_inert_netlify_verdict), None)
+    check_true(
+        "ROUND4 netlify probe: catches an inert (always-IDENTICAL) evaluate_site()",
+        inert_netlify_reason is not None,
+    )
+    honest_netlify_reason = neg._probe_netlify_deploy_drift(_FakeNetlifyModule(_honest_netlify_verdict), None)
+    check(
+        "ROUND4 netlify probe: passes an honest evaluate_site() that distinguishes BEHIND from IDENTICAL",
+        honest_netlify_reason,
+        None,
+    )
+
+    print()
+    print("=" * 70)
+    print("ROUND 4 -- full end-to-end reproduction of the round-3 refuter's")
+    print("EXACT bypass: inert run() + self_test()->0 + a lying self-test")
+    print("wrapper -- via run_all(), the real integration path")
+    print("=" * 70)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        write(root / "scripts" / "fixtures" / "inert-bad.txt", "bad content\n")
+        write(root / "scripts" / "fixtures" / "inert-good.txt", "good content\n")
+        write(
+            root / "scripts" / "inert-scanner.py",
+            "#!/usr/bin/env python3\n"
+            "VERDICT_TOKEN = 'FAKE_TOKEN'\n"
+            "def run(paths, root):\n"
+            "    return {'code': 0, 'violations': []}  # INERT: always clean\n"
+            "def self_test(root=None):\n"
+            "    return 0  # hardcoded -- lies about having validated anything\n"
+            "def main():\n"
+            "    pass\n"
+            "if __name__ == '__main__':\n"
+            "    main()\n",
+        )
+        write(
+            root / "scripts" / "inert-scanner.test.py",
+            "#!/usr/bin/env python3\n"
+            "# Forged wrapper: fabricates PASS/token lines with no real detection\n"
+            "# behind them -- exactly the shape rounds 1-2 fixed for the WRAPPER;\n"
+            "# this reproduces it via the detector's OWN self_test() instead.\n"
+            'print("  PASS  clean case: OK")\n'
+            'print("  PASS  bad case -> FAKE_TOKEN: FAKE_TOKEN")\n',
+        )
+        with registry_snapshot({
+            "scripts/inert-scanner.py": {
+                "test": "scripts/inert-scanner.test.py",
+                "negative_tokens": ["FAKE_TOKEN"],
+            }
+        }), gate_probes_snapshot({
+            "scripts/inert-scanner.py": neg._probe_via_gate_owned_fixture_files(
+                "inert-bad.txt", "inert-good.txt", "FAKE_TOKEN"
+            ),
+        }):
+            result = neg.run_all(root)
+
+    for line in result["violations"]:
+        print(line)
+    print("GATE: %s  (exit %d)" % (result["verdict"], result["code"]))
+    check("ROUND4 end-to-end: gate verdict is FAIL, not PASS", result["verdict"], "FAIL")
+    check_true(
+        "ROUND4 end-to-end: names the gate-run known-bad fixture, not self_test()",
+        any(
+            "inert-scanner.py" in v and "gate ran run(" in v
+            for v in result["violations"]
+        ),
+    )
+
+    print()
+    print("=" * 70)
+    print("ROUND 3 -- no GATE_PROBES entry for a registered detector is its")
+    print("own explicit, named violation, never a silent pass")
+    print("=" * 70)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        write(root / "scripts" / "unprobed-detector.py", DETECTOR_SOURCE)
+        write(root / "scripts" / "unprobed-detector.test.py", good_test_file("unprobed-detector.py"))
+        with registry_snapshot({
+            "scripts/unprobed-detector.py": {
+                "test": "scripts/unprobed-detector.test.py",
+                "negative_tokens": ["REJECTED"],
+            }
+        }), gate_probes_snapshot():
+            result = neg.run_all(root)
+
+    for line in result["violations"]:
+        print(line)
+    print("GATE: %s  (exit %d)" % (result["verdict"], result["code"]))
+    check("ROUND3 no-probe-entry: gate verdict is FAIL, not PASS", result["verdict"], "FAIL")
+    check_true(
+        "ROUND3 no-probe-entry: names the missing GATE_PROBES entry explicitly",
+        any(
+            "unprobed-detector.py" in v and "no GATE_PROBES entry" in v
+            for v in result["violations"]
+        ),
+    )
+
+    print()
+    print("=" * 70)
+    print("ROUND 3 -- a probe that raises is a violation, not a crash")
+    print("=" * 70)
+
+    def _raising_probe(mod, root):
+        return mod.this_does_not_exist()  # AttributeError, deliberately
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        write(root / "scripts" / "probe-crash-detector.py", DETECTOR_SOURCE)
+        write(root / "scripts" / "probe-crash-detector.test.py", good_test_file("probe-crash-detector.py"))
+        with registry_snapshot({
+            "scripts/probe-crash-detector.py": {
+                "test": "scripts/probe-crash-detector.test.py",
+                "negative_tokens": ["REJECTED"],
+            }
+        }), gate_probes_snapshot({"scripts/probe-crash-detector.py": _raising_probe}):
+            result = neg.run_all(root)
+
+    for line in result["violations"]:
+        print(line)
+    print("GATE: %s  (exit %d)" % (result["verdict"], result["code"]))
+    check("ROUND3 probe-crash: gate verdict is FAIL, not an unhandled exception", result["verdict"], "FAIL")
+    check_true(
+        "ROUND3 probe-crash: names the exception, not a bare traceback",
+        any(
+            "probe-crash-detector.py" in v and "AttributeError" in v
+            for v in result["violations"]
+        ),
+    )
+
+    print()
+    print("=" * 70)
+    print("ROUND 3 -- the bespoke drift-detector-age.py probe itself: bad")
+    print("fixture must read STALE, good fixture must read FRESH")
+    print("=" * 70)
+
+    class _FakeAgeModule:
+        """Stands in for a real drift-detector-age.py module -- exercises
+        neg._probe_drift_detector_age() directly against a hand-built
+        compute_result() with known-broken and known-healthy behavior,
+        without needing this repo's real detector file."""
+
+        def __init__(self, verdict_fn):
+            self._verdict_fn = verdict_fn
+
+        def compute_result(self, iso, reason, threshold_hours, now=None):
+            return self._verdict_fn(iso, reason, threshold_hours, now)
+
+    def _honest_verdict(iso, reason, threshold_hours, now):
+        from datetime import datetime
+
+        age_hours = (now - datetime.strptime(iso, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=now.tzinfo)).total_seconds() / 3600.0
+        verdict = "FRESH" if age_hours <= threshold_hours else "STALE"
+        return {"verdict": verdict, "code": 0 if verdict == "FRESH" else 2, "age_hours": age_hours, "detail": reason}
+
+    def _always_fresh_verdict(iso, reason, threshold_hours, now):
+        return {"verdict": "FRESH", "code": 0, "age_hours": 0, "detail": reason}
+
+    honest_reason = neg._probe_drift_detector_age(_FakeAgeModule(_honest_verdict), None)
+    check("ROUND3 age-probe, honest module: probe passes (returns None)", honest_reason, None)
+
+    broken_reason = neg._probe_drift_detector_age(_FakeAgeModule(_always_fresh_verdict), None)
+    check_true(
+        "ROUND3 age-probe, always-FRESH module: probe fails and names STALE as expected",
+        broken_reason is not None and "expected STALE" in broken_reason,
+    )
 
     # Regression coverage for the other half of the same review comment: CHECK 3
     # used to return completely bare (no info line at all) when
