@@ -383,6 +383,32 @@ def detect_inert_script(script_path: Path):
     return None
 
 
+def detector_defined_names(script_path: Path):
+    """The set of names this detector script defines at module top level
+    (functions and classes) -- gh-1884 ROUND 2.
+
+    self_test_invokes_detector() uses this to require a self-test CALL a
+    name the detector itself defines, not merely something that exists on
+    every Python module object regardless of what that module contains
+    (`__doc__`, `__dir__`, `__repr__`, ...). Returns an empty set on any
+    read/parse failure -- self_test_invokes_detector() treats an empty set as
+    "cannot narrow further" and falls back to requiring any call at all,
+    rather than turning a read/parse problem (already surfaced elsewhere, by
+    detect_inert_script for this same script) into an unrelated false FAIL
+    here.
+    """
+    try:
+        text = script_path.read_text(encoding="utf-8", errors="replace")
+        tree = ast.parse(text, filename=str(script_path))
+    except (OSError, SyntaxError):
+        return set()
+    return {
+        node.name
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+    }
+
+
 # gh-1884: structural, source-level proof that a registered detector's
 # self-test actually loads and touches the detector it claims to be testing,
 # rather than merely printing text that happens to match the negative-control
@@ -391,21 +417,64 @@ def detect_inert_script(script_path: Path):
 # ..., <basename>) -> module_from_spec -> exec_module -> <var>.<attr>(...).
 # That route is recognized structurally: a load site (the detector's own
 # filename appears in source) followed by exec_module(<var>) followed by a
-# later attribute reference on <var> (proving the load was not decorative). A
+# later CALL on <var> (not merely an attribute read -- see ROUND 2 below). A
 # subprocess/os-invocation route is also accepted, gated on the same filename
-# mention plus the result (.returncode/.stdout/.stderr) being read afterward.
+# mention appearing near the invocation itself plus the result
+# (.returncode/.stdout/.stderr) being read afterward.
+#
+# ROUND 2 (REVIEW: FAIL on PR #2101, 2026-09-22T14:39:35Z): the round-1
+# version of this check accepted ANY attribute reference on the loaded
+# module -- `re.search(r"\b%s\.\w+" % modvar, after)` -- as proof of
+# invocation. That is satisfied by a purely decorative read like `mod.__doc__`
+# with no call at all. exec_module() only runs a module's TOP-LEVEL
+# statements; it does not make that module `__main__`, so anything gated
+# behind `if __name__ == "__main__":` -- this repo's own convention for every
+# detector's real entry point -- never executes just because exec_module()
+# ran. A self-test can therefore load the detector, touch one harmless
+# attribute, print hand-written PASS lines naming the registry's tokens, and
+# never run a single line of the detector's actual logic -- functionally the
+# same forgery this whole issue exists to close, laundered past the round-1
+# check instead of omitting the load entirely.
+#
+# Fixed by requiring a CALL (`name(...)`, not just `name`) on the loaded
+# module, AND -- when detector_defined_names() found any -- requiring that
+# call's target be one of the NAMES THE DETECTOR ITSELF DEFINES at module
+# top level. That closes both the exact repro (`mod.__doc__`, not a call at
+# all) and its obvious next move (`mod.__dir__()` or `mod.__repr__()` -- a
+# real call, but to something universal to every Python module object, never
+# defined by this detector). It does NOT require calling specifically the
+# name behind the detector's own `if __name__ == "__main__":` guard, because
+# this repo's real registered self-tests (e.g. drift-detector-age.test.py)
+# legitimately call an internal logic function directly (`compute_result`),
+# never `main()` itself -- requiring the guarded name specifically would
+# break every real self-test in this repo today. Residual, disclosed: a
+# self-test that calls some OTHER function the detector happens to define
+# (real code, just not the function exercising the behavior under test) still
+# passes this check; distinguishing "the detector's meaningful logic" from
+# "an incidental helper it also defines" is a semantic judgment, not a
+# structural one -- out of reach for a static check at this scope, same
+# category as this file's other documented LIMITATIONS.
 IMPORTLIB_EXEC_MODULE_RE = re.compile(r"spec\.loader\.exec_module\(\s*(\w+)\s*\)")
 SUBPROCESS_INVOKE_RE = re.compile(
     r"\b(?:subprocess\.(?:run|check_output|check_call|Popen)|os\.system|os\.popen)\s*\("
 )
 SUBPROCESS_RESULT_USE_RE = re.compile(r"\.(?:returncode|stdout|stderr)\b")
+# How far past a subprocess/os-invocation call site to look for the
+# detector's own filename -- ties the invocation to THIS detector rather than
+# accepting an unrelated subprocess call plus a filename mention anywhere
+# else in the file (e.g. a comment). A window, not a full shell/AST parse of
+# the call's argument list -- deliberately simple, consistent with this
+# check's other heuristics; a call whose argument list is unusually long or
+# multi-line could in principle push the filename outside it, which would
+# read as a false violation (fails toward FAIL, never toward a false PASS).
+SUBPROCESS_PROXIMITY_WINDOW = 400
 
 
-def self_test_invokes_detector(test_text: str, detector_basename: str):
+def self_test_invokes_detector(test_text: str, detector_basename: str, defined_names=frozenset()):
     """Returns a violation-reason string (this self-test does not
     demonstrably invoke its detector) or None if it does. See the module-level
-    comment above for the recognized routes and why this is a source-level,
-    not an output-level, check.
+    comment above for the recognized routes, ROUND 2's fix, and its own
+    disclosed residual.
     """
     if detector_basename not in test_text:
         return (
@@ -419,15 +488,44 @@ def self_test_invokes_detector(test_text: str, detector_basename: str):
     if exec_match:
         modvar = exec_match.group(1)
         after = test_text[exec_match.end():]
-        if re.search(r"\b%s\.\w+" % re.escape(modvar), after):
-            return None
-        return (
-            "loads the detector via importlib (exec_module(%s)) but never "
-            "calls or reads any attribute of the loaded module afterward -- "
-            "the load is decorative" % modvar
-        )
+        calls = re.findall(r"\b%s\.(\w+)\s*\(" % re.escape(modvar), after)
+        if not calls:
+            return (
+                "loads the detector via importlib (exec_module(%s)) but never "
+                "CALLS anything on the loaded module afterward -- an "
+                "attribute read (if any) executes nothing; exec_module() runs "
+                "the module's top-level statements but never makes it "
+                "`__main__`, so any code behind `if __name__ == \"__main__\":` "
+                "-- this repo's own convention for a detector's real entry "
+                "point -- still never ran" % modvar
+            )
+        if defined_names and not (set(calls) & defined_names):
+            return (
+                "loads the detector via importlib (exec_module(%s)) and "
+                "calls %s on it, but none of those names are among the "
+                "detector's own top-level functions/classes (%s) -- calling "
+                "something universal to every Python module object (a "
+                "dunder, an inherited method) is not evidence the "
+                "detector's own logic ran"
+                % (
+                    modvar,
+                    ", ".join(sorted(set(calls))),
+                    ", ".join(sorted(defined_names)),
+                )
+            )
+        return None
 
-    if SUBPROCESS_INVOKE_RE.search(test_text):
+    sub_match = SUBPROCESS_INVOKE_RE.search(test_text)
+    if sub_match:
+        window = test_text[sub_match.start() : sub_match.start() + SUBPROCESS_PROXIMITY_WINDOW]
+        if detector_basename not in window:
+            return (
+                "subprocess/os-invokes something, but the detector's own "
+                "filename (%s) does not appear at or near that invocation -- "
+                "nothing ties this call to this detector specifically, as "
+                "opposed to an unrelated subprocess call plus a filename "
+                "mention elsewhere in the file" % detector_basename
+            )
         if SUBPROCESS_RESULT_USE_RE.search(test_text):
             return None
         return (
@@ -512,7 +610,9 @@ def check_firing_tests(root: Path):
                     test_text = None
 
                 if test_text is not None:
-                    invoke_reason = self_test_invokes_detector(test_text, Path(rel).name)
+                    invoke_reason = self_test_invokes_detector(
+                        test_text, Path(rel).name, detector_defined_names(script_path)
+                    )
                     if invoke_reason is not None:
                         violations.append(
                             "FAIL  %s -- registered in DETECTOR_REGISTRY, but its "

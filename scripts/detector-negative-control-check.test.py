@@ -574,6 +574,172 @@ def main():
         not any("healthy-detector.py" in v for v in result9["violations"]),
     )
 
+    # -------------------------------------------------------------------
+    # gh-1884 ROUND 2 -- REVIEW: FAIL on PR #2101 (2026-09-22T14:39:35Z): the
+    # round-1 self_test_invokes_detector() accepted ANY attribute reference on
+    # the loaded module as proof of invocation, so a self-test could
+    # exec_module() the detector, touch one decorative attribute (mod.__doc__),
+    # print hand-written PASS lines, and never run a single line of the
+    # detector's real logic (gated behind if __name__ == "__main__":, which
+    # exec_module() never triggers). Reproduce the refuter's EXACT forgery,
+    # then its obvious next move (a real CALL, but to something universal to
+    # every module object rather than to anything this detector defines), and
+    # a positive control proving a genuine call to the detector's own function
+    # still passes.
+    # -------------------------------------------------------------------
+    print()
+    print("=" * 70)
+    print("ROUND 2 -- attribute-access-only forgery (the refuter's exact repro)")
+    print("=" * 70)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        write(root / "scripts" / "decorated-detector.py", DETECTOR_SOURCE)
+        write(
+            root / "scripts" / "decorated-detector.test.py",
+            "#!/usr/bin/env python3\n"
+            "import importlib.util\n"
+            "from pathlib import Path\n"
+            "HERE = Path(__file__).resolve().parent\n"
+            "spec = importlib.util.spec_from_file_location('mod', HERE / 'decorated-detector.py')\n"
+            "mod = importlib.util.module_from_spec(spec)\n"
+            "spec.loader.exec_module(mod)\n"
+            "_ = mod.__doc__  # attribute access -- NOT a call, pure decoration\n"
+            'print("  PASS  clean case: OK")\n'
+            'print("  PASS  bad case -> STALE: STALE")\n',
+        )
+        with registry_snapshot({
+            "scripts/decorated-detector.py": {
+                "test": "scripts/decorated-detector.test.py",
+                "negative_tokens": ["STALE"],
+            }
+        }):
+            result10 = neg.run_all(root)
+
+    for line in result10["violations"]:
+        print(line)
+    print("GATE: %s  (exit %d)" % (result10["verdict"], result10["code"]))
+
+    check("ROUND2 attribute-only: gate verdict is FAIL, not PASS", result10["verdict"], "FAIL")
+    check_true(
+        "ROUND2 attribute-only: flagged for never calling anything",
+        any(
+            "decorated-detector.py" in v and "never CALLS anything" in v
+            for v in result10["violations"]
+        ),
+    )
+
+    print()
+    print("=" * 70)
+    print("ROUND 2 -- real CALL, but to a universal module dunder, not the")
+    print("detector's own logic (the refuter's obvious next move)")
+    print("=" * 70)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        write(root / "scripts" / "dunder-called-detector.py", DETECTOR_SOURCE)
+        write(
+            root / "scripts" / "dunder-called-detector.test.py",
+            "#!/usr/bin/env python3\n"
+            "import importlib.util\n"
+            "from pathlib import Path\n"
+            "HERE = Path(__file__).resolve().parent\n"
+            "spec = importlib.util.spec_from_file_location('mod', HERE / 'dunder-called-detector.py')\n"
+            "mod = importlib.util.module_from_spec(spec)\n"
+            "spec.loader.exec_module(mod)\n"
+            "mod.__dir__()  # a REAL call -- but universal to every module, not this detector's logic\n"
+            'print("  PASS  clean case: OK")\n'
+            'print("  PASS  bad case -> STALE: STALE")\n',
+        )
+        with registry_snapshot({
+            "scripts/dunder-called-detector.py": {
+                "test": "scripts/dunder-called-detector.test.py",
+                "negative_tokens": ["STALE"],
+            }
+        }):
+            result11 = neg.run_all(root)
+
+    for line in result11["violations"]:
+        print(line)
+    print("GATE: %s  (exit %d)" % (result11["verdict"], result11["code"]))
+
+    check("ROUND2 dunder-call: gate verdict is FAIL, not PASS", result11["verdict"], "FAIL")
+    check_true(
+        "ROUND2 dunder-call: flagged as not among the detector's own defined names",
+        any(
+            "dunder-called-detector.py" in v and "universal to every Python module object" in v
+            for v in result11["violations"]
+        ),
+    )
+
+    print()
+    print("=" * 70)
+    print("ROUND 2, positive control -- a genuine call to the detector's OWN")
+    print("defined function still passes")
+    print("=" * 70)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        write(root / "scripts" / "genuinely-called-detector.py", DETECTOR_SOURCE)
+        write(
+            root / "scripts" / "genuinely-called-detector.test.py",
+            good_test_file("genuinely-called-detector.py"),
+        )
+        with registry_snapshot({
+            "scripts/genuinely-called-detector.py": {
+                "test": "scripts/genuinely-called-detector.test.py",
+                "negative_tokens": ["REJECTED"],
+            }
+        }):
+            result12 = neg.run_all(root)
+
+    print("GATE: %s  (exit %d)" % (result12["verdict"], result12["code"]))
+    check("ROUND2 positive control: gate verdict is PASS", result12["verdict"], "PASS")
+    check_true(
+        "ROUND2 positive control: the genuinely-called detector raises no violation",
+        not any("genuinely-called-detector.py" in v for v in result12["violations"]),
+    )
+
+    print()
+    print("=" * 70)
+    print("ROUND 2 -- subprocess route: result read, but detector's own name")
+    print("nowhere near the invocation (nothing ties the call to THIS detector)")
+    print("=" * 70)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        write(root / "scripts" / "unrelated-subprocess-detector.py", DETECTOR_SOURCE)
+        write(
+            root / "scripts" / "unrelated-subprocess-detector.test.py",
+            "#!/usr/bin/env python3\n"
+            "import subprocess, sys\n"
+            "# unrelated-subprocess-detector.py is mentioned here, far from the call below\n"
+            "result = subprocess.run([sys.executable, '-c', 'print(1)'], capture_output=True, text=True)\n"
+            "assert result.returncode == 0\n"
+            'print("  PASS  clean case: OK")\n'
+            'print("  PASS  bad case -> STALE: STALE")\n',
+        )
+        with registry_snapshot({
+            "scripts/unrelated-subprocess-detector.py": {
+                "test": "scripts/unrelated-subprocess-detector.test.py",
+                "negative_tokens": ["STALE"],
+            }
+        }):
+            result13 = neg.run_all(root)
+
+    for line in result13["violations"]:
+        print(line)
+    print("GATE: %s  (exit %d)" % (result13["verdict"], result13["code"]))
+
+    check("ROUND2 unrelated-subprocess: gate verdict is FAIL, not PASS", result13["verdict"], "FAIL")
+    check_true(
+        "ROUND2 unrelated-subprocess: flagged as not tied to this detector",
+        any(
+            "unrelated-subprocess-detector.py" in v and "does not appear at or near" in v
+            for v in result13["violations"]
+        ),
+    )
+
     # Regression coverage for the other half of the same review comment: CHECK 3
     # used to return completely bare (no info line at all) when
     # .github/workflows/ does not exist, indistinguishable from "scanned every
