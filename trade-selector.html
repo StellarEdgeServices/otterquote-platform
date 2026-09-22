@@ -1427,11 +1427,23 @@
               ...(chainReferralCode && { referral_code: chainReferralCode })
             };
 
+            // gh-2062 round 2 (REVIEW: FAIL): Supabase does not throw on a
+            // failed write by default — there is no throwOnError() anywhere
+            // in this repo — so an RLS denial or constraint violation
+            // resolves normally as { data: null, error: {...} }. Round 1's
+            // clear() below only checked whether a referral was PRESENT to
+            // carry forward, not whether the write that was supposed to
+            // carry it actually succeeded. "Consumed" means the referral id
+            // is durably recorded against the claim: no error came back
+            // from the write that was supposed to record it. Track that
+            // per-branch and gate the clear on it.
+            let claimWriteSucceeded = false;
             if (existingClaim) {
-              await sb
+              const { error: updateError } = await sb
                 .from('claims')
                 .update(claimData)
                 .eq('id', existingClaim.id);
+              claimWriteSucceeded = !updateError;
               savedClaimId = existingClaim.id;
             } else {
               // gh-397/#689: stamp is_test at the ONLY point in this flow that
@@ -1441,7 +1453,7 @@
               // test-homeowner@otterquote-internal.test still wrote an
               // unflagged "real" claim. Predicate matches the CEO-approved
               // contractor check (#543 / test-exclusion.ts).
-              const { data: insertedClaim } = await sb
+              const { data: insertedClaim, error: insertError } = await sb
                 .from('claims')
                 .insert({
                   user_id: user.id,
@@ -1451,6 +1463,7 @@
                 })
                 .select('id')
                 .single();
+              claimWriteSucceeded = !insertError && !!insertedClaim;
               // gh-1276: capture the new row's id — previously never captured
               // anywhere, so repair-intake.html's `params.get('claim_id') ||
               // sessionStorage.getItem('oq_claim_id')` fallback always found
@@ -1492,10 +1505,13 @@
             // which case there was nothing left for the raw cookie to do).
             // Clear it so it cannot resurface on a later, unrelated signup
             // on the same browser within its 90-day TTL. Only clear when
-            // this pass actually carried a referral forward — an unrelated
-            // claim save with no referral in play must leave a genuinely
-            // live, not-yet-claimed cookie untouched.
-            if (chainReferralId || chainReferralAgentId) {
+            // this pass actually carried a referral forward AND the write
+            // that was supposed to record it actually succeeded — round 2
+            // (REVIEW: FAIL): an RLS denial or constraint violation on the
+            // claim write must leave a live, unconsumed referral cookie
+            // alone, not destroy it out from under a partner who is still
+            // owed the commission.
+            if ((chainReferralId || chainReferralAgentId) && claimWriteSucceeded) {
               if (window.OtterQuoteReferral) window.OtterQuoteReferral.clear();
               localStorage.removeItem('oq_referral_id_for_claim');
             }

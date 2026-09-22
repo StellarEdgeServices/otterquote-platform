@@ -980,11 +980,23 @@ export default function TradeSelectorPage() {
           // live now, so there is no pre-migration window to guard and no
           // dead retry path to carry.
 
+          // gh-2062 round 2 (REVIEW: FAIL): Supabase does not throw on a
+          // failed write by default — there is no throwOnError() anywhere
+          // in this repo — so an RLS denial or constraint violation
+          // resolves normally as { data: null, error: {...} }. Round 1's
+          // clear() below only checked whether a referral was PRESENT to
+          // carry forward, not whether the write that was supposed to
+          // carry it actually succeeded. "Consumed" means the referral id
+          // is durably recorded against the claim: no error came back from
+          // the write that was supposed to record it. Track that
+          // per-branch and gate the clear on it.
+          let claimWriteSucceeded = false;
           if (existingClaim) {
-            await supabase
+            const { error: updateError } = await supabase
               .from('claims')
               .update(claimPayload)
               .eq('id', existingClaim.id);
+            claimWriteSucceeded = !updateError;
             savedClaimId = existingClaim.id;
             if (!(await attachPendingLossSheetToClaim(existingClaim.id))) lossSheetAttachFailed = true;
           } else {
@@ -992,7 +1004,7 @@ export default function TradeSelectorPage() {
             // PR #714 only fixed the COI-identity contractor insert, never
             // any claims insert. Predicate mirrors the CEO-approved
             // contractor check (#543 / test-exclusion.ts).
-            const { data: insertedClaim } = await supabase
+            const { data: insertedClaim, error: insertError } = await supabase
               .from('claims')
               .insert({
                 user_id: user.id,
@@ -1002,6 +1014,7 @@ export default function TradeSelectorPage() {
               })
               .select('id')
               .single();
+            claimWriteSucceeded = !insertError && !!insertedClaim;
             // gh-1276: capture the new row's id — previously never captured
             // here either (same gap as the static trade-selector.html this
             // file keeps parity with), so repair-intake.html's
@@ -1042,11 +1055,13 @@ export default function TradeSelectorPage() {
           // which case there was nothing left for the raw cookie to do).
           // Clear it so it cannot resurface on a later, unrelated signup on
           // the same browser within its 90-day TTL. Only clear when this
-          // pass actually carried a referral forward — an unrelated claim
-          // save with no referral in play must leave a genuinely live,
-          // not-yet-claimed cookie untouched. Mirrors the static
-          // trade-selector.html claim writer.
-          if (chainReferralId || chainReferralAgentId) {
+          // pass actually carried a referral forward AND the write that was
+          // supposed to record it actually succeeded — round 2 (REVIEW:
+          // FAIL): an RLS denial or constraint violation on the claim write
+          // must leave a live, unconsumed referral cookie alone, not
+          // destroy it out from under a partner who is still owed the
+          // commission. Mirrors the static trade-selector.html claim writer.
+          if ((chainReferralId || chainReferralAgentId) && claimWriteSucceeded) {
             clearReferralIds();
             localStorage.removeItem('oq_referral_id_for_claim');
           }

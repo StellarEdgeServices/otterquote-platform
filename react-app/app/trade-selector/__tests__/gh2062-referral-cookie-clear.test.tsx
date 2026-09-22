@@ -21,6 +21,16 @@
  * writer (the static trade-selector.html twin gets the mirrored fix but is
  * not exercised by this test — see PR body / issue comment for why the
  * React surface is the one this evidence is built against).
+ *
+ * ROUND 2 (REVIEW: FAIL on PR #2103): round 1's clear() fired whenever a
+ * referral was PRESENT, not whenever the claim write that was supposed to
+ * record it actually SUCCEEDED. Supabase does not throw on a failed write
+ * by default (no throwOnError() anywhere in this repo) — an RLS denial or
+ * constraint violation resolves normally as { data: null, error: {...} }.
+ * That silently over-cleared a live, unconsumed referral on every failed
+ * write, under-paying the partner who earned it. The fourth test below is
+ * the one that would have caught it: a claim insert that resolves with
+ * `error` set (not a thrown exception) must leave the cookie untouched.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
@@ -106,7 +116,16 @@ describe('TradeSelectorPage referral cookie — gh-2062 (money-path: both direct
     Object.defineProperty(window, 'location', {
       configurable: true,
       writable: true,
-      value: { href: '', search: '' },
+      // hostname/protocol are required here (unlike the gh1993 harness this
+      // is otherwise copied from): getCookieDomain() in cookie-storage.ts
+      // reads window.location.hostname/protocol, and writeReferralIds()
+      // silently swallows a cookie-write failure (try/catch, "cookie
+      // blocked"). Without these, the real oq-ref cookie is NEVER actually
+      // written and every document.cookie assertion in this file passes or
+      // fails for the wrong reason — the storage-fallback in
+      // readReferralIds() was masking it. Matches jsdom's real default
+      // test origin (http://localhost/).
+      value: { href: '', search: '', hostname: 'localhost', protocol: 'http:' },
     });
     mockAuth({ user: { id: 'u1', email: 'jane@example.com' }, loading: false, settled: true });
   });
@@ -169,5 +188,37 @@ describe('TradeSelectorPage referral cookie — gh-2062 (money-path: both direct
     expect(payload.referral_id).toBeUndefined();
     expect(payload.referral_agent_id).toBeUndefined();
     expect(readReferralIds()).toEqual({});
+  });
+
+  it('ROUND 2 FIX: a claim write that returns an error (RLS/constraint shape, NOT a thrown exception) does NOT clear a live referral', async () => {
+    writeReferralIds(PARTNER_A_REFERRAL);
+
+    // Supabase's real failure shape for an RLS denial or constraint
+    // violation: the promise resolves normally, data is null, error is set.
+    // No throw — this repo has no throwOnError() anywhere, so a handler
+    // that only reacts to a thrown exception (or that ignores `error`
+    // entirely, as round 1 did) never sees this as a failure at all.
+    claimsInsertMock.mockImplementationOnce((_payload: Record<string, unknown>) => ({
+      select: () => ({
+        single: () =>
+          Promise.resolve({
+            data: null,
+            error: { message: 'new row violates row-level security policy', code: '42501' },
+          }),
+      }),
+    }));
+
+    await completeCashSingleTradeWalk();
+
+    // THE FIX: the write failed, so the referral was never durably
+    // recorded against a claim — it is still live and must still
+    // attribute correctly on the next, real attempt. Over-clearing here
+    // is the same money-path defect as not clearing at all, just in the
+    // opposite, under-pay-the-partner direction.
+    const afterFailedWrite = readReferralIds();
+    expect(afterFailedWrite.oq_referral_id).toBe(PARTNER_A_REFERRAL.oq_referral_id);
+    expect(afterFailedWrite.oq_referral_agent_id).toBe(PARTNER_A_REFERRAL.oq_referral_agent_id);
+    expect(afterFailedWrite.oq_referral_code).toBe(PARTNER_A_REFERRAL.oq_referral_code);
+    expect(document.cookie).toContain('oq-ref=');
   });
 });
