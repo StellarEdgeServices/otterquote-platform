@@ -139,6 +139,16 @@ type TrackEventParams = {
    * event does not lose the dimension the pre-redirect emit used to carry.
    */
   sign_up: { method: 'google'; referral_source: ReferralSource };
+  /**
+   * gh-2078 -- fires once, from the measurement ($15 Hover) checkout
+   * success path (help-measurements/page.tsx's handlePaid), immediately
+   * after placeHoverOrder resolves (a real, confirmed Stripe charge --
+   * see HoverPaymentForm.tsx's own gh-416 double-charge guard, which this
+   * reuses rather than re-deriving). `value`/`currency` are fixed
+   * (the $15 RoofScope price), `variant` is the persisted router arm
+   * (lib/variant.ts), `'unknown'` when none was ever captured.
+   */
+  measurement_purchase: { value: number; currency: 'USD'; variant: string };
 };
 
 /**
@@ -155,6 +165,7 @@ const TRACK_EVENT_KEYS: { [E in keyof TrackEventParams]: ReadonlyArray<keyof Tra
   bid_accepted: ['bid_id', 'contractor_id', 'bid_amount', 'source', 'test_account'],
   contract_signed: [],
   sign_up: ['method', 'referral_source'],
+  measurement_purchase: ['value', 'currency', 'variant'],
 };
 
 /**
@@ -228,6 +239,22 @@ function sanitizeSignUpMethod(value: unknown): 'google' | 'unknown' {
   return typeof value === 'string' && SIGN_UP_METHODS.has(value) ? (value as 'google') : 'unknown';
 }
 
+/** fix -- measurement_purchase.value: fixed $15 price, but never trust the caller's number as-is. */
+function sanitizeMeasurementValue(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0;
+}
+
+const USD_ONLY: ReadonlySet<string> = new Set(['USD']);
+function sanitizeCurrency(value: unknown): 'USD' {
+  return typeof value === 'string' && USD_ONLY.has(value) ? 'USD' : 'USD';
+}
+
+/** Bounded shape check, same posture as sanitizeIdLike above -- no fixed arm vocabulary here (see lib/variant.ts). */
+const VARIANT_SHAPE_RE = /^[a-z0-9]{1,8}$/;
+function sanitizeVariantParam(value: unknown): string {
+  return typeof value === 'string' && VARIANT_SHAPE_RE.test(value) ? value : 'unknown';
+}
+
 const REFERRAL_SOURCES: ReadonlySet<string> = new Set(['insurance_agent', 'realtor', 'friend', 'web', 'partner_link', '']);
 function sanitizeReferralSource(value: unknown): ReferralSource {
   return typeof value === 'string' && REFERRAL_SOURCES.has(value) ? (value as ReferralSource) : '';
@@ -246,6 +273,7 @@ const FIELD_SANITIZERS: { [E in keyof TrackEventParams]: { [K in keyof TrackEven
   },
   contract_signed: {},
   sign_up: { method: sanitizeSignUpMethod, referral_source: sanitizeReferralSource },
+  measurement_purchase: { value: sanitizeMeasurementValue, currency: sanitizeCurrency, variant: sanitizeVariantParam },
 };
 
 /**
@@ -284,6 +312,32 @@ export function track<E extends keyof TrackEventParams>(event: E, params: TrackE
     const gtag = getGtag();
     if (!gtag) return; // GA4Gate has not loaded (blocked host, ad blocker, SSR) — no-op, no queue.
     gtag('event', event, buildSafeParams(event, params));
+  } catch {
+    // Never throw — an analytics failure must never break a user-facing action.
+  }
+}
+
+/**
+ * gh-2078 -- guarded Meta Pixel emit, mirroring get-started/page.tsx's own
+ * local `fbq()` helper (that one is not exported / not shared, per this
+ * file's header -- get-started keeps its own call sites). Every call site
+ * outside get-started that needs fbq (this file's `measurement_purchase`
+ * callers, `partner_signup_complete`'s pages are static HTML and use their
+ * own `try { fbq(...) } catch {}` idiom instead) goes through here so
+ * there is exactly one `typeof window.fbq === 'function'` guard to keep in
+ * sync with MetaPixelGate.tsx's own contract. Never throws, never queues:
+ * if MetaPixelGate has not loaded fbq on this host+path (e.g. an
+ * authenticated route outside its ALLOWED_PATHS -- see that file), this is
+ * a silent no-op, exactly like `track()` above when GA4Gate has not
+ * loaded gtag.
+ */
+export function fbqTrack(eventName: string, params?: Record<string, unknown>): void {
+  try {
+    if (typeof window === 'undefined') return;
+    const w = window as unknown as { fbq?: (...args: unknown[]) => void };
+    if (typeof w.fbq !== 'function') return;
+    if (params) w.fbq('track', eventName, params);
+    else w.fbq('track', eventName);
   } catch {
     // Never throw — an analytics failure must never break a user-facing action.
   }

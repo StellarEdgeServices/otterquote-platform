@@ -1219,6 +1219,55 @@
   // signup — same pattern as cs_recruit_code above.
   let utmContext = { source: null, medium: null, campaign: null, content: null };
 
+  // gh-2078: read the router-arm variant start.html's redirectTo() forwards
+  // as `?v=<arm>` on the link to this page (collectAttribution/appendParams
+  // -- see start.html), so `partner_signup_complete` can attribute D/E/C.
+  // partner-re.html is same-origin as start.html (both on otterquote.com),
+  // so unlike the React app (app.otterquote.com -- see
+  // react-app/app/lib/variant.ts for why that origin needed a different
+  // mechanism), the SAME localStorage key/cookie start.html itself writes
+  // (KEY = 'oq_variant_v3') is directly readable here too -- used as a
+  // fallback for a visitor who bounced off this page and returned without
+  // the query param. Priority: URL param, then localStorage, then cookie,
+  // then 'unknown'.
+  function getOqVariant() {
+    var VARIANT_KEY = 'oq_variant_v3';
+    var VARIANT_RE = /^[a-z0-9]{1,8}$/;
+    function clean(v) {
+      if (typeof v !== 'string') return null;
+      v = v.trim().toLowerCase();
+      return VARIANT_RE.test(v) ? v : null;
+    }
+    try {
+      var fromUrl = clean(new URLSearchParams(window.location.search).get('v'));
+      if (fromUrl) return fromUrl;
+    } catch (e) {}
+    try {
+      var fromStorage = clean(window.localStorage.getItem(VARIANT_KEY));
+      if (fromStorage) return fromStorage;
+    } catch (e) {}
+    try {
+      var m = document.cookie.match(new RegExp('(?:^|; )' + VARIANT_KEY + '=([^;]*)'));
+      var fromCookie = m ? clean(decodeURIComponent(m[1])) : null;
+      if (fromCookie) return fromCookie;
+    } catch (e) {}
+    return 'unknown';
+  }
+
+  // gh-2078: once-per-signup guard for partner_signup_complete, keyed by
+  // this device -- a single signup writes exactly one referral_agents row
+  // (register_partner throws partner_exists on a repeat), so a single
+  // sessionStorage flag for the lifetime of this page load is sufficient;
+  // localStorage would also survive a refresh of the (already-shown, static)
+  // success screen, which cannot resubmit the form anyway.
+  var partnerSignupCompleteFired = false;
+  function firePartnerSignupComplete(variant) {
+    if (partnerSignupCompleteFired) return;
+    partnerSignupCompleteFired = true;
+    try { gtag('event', 'partner_signup_complete', { variant: variant }); } catch (e) {}
+    try { fbq('track', 'CompleteRegistration'); } catch (e) {}
+  }
+
   /**
    * gh-865: the visitor must see and explicitly confirm their partner type
    * before the account is created — the page they landed on (and therefore
@@ -1591,6 +1640,14 @@
       // ad set's Lead-optimized creatives get credit; same bare, guarded
       // call as start.html's router_contact_submitted precedent.
       try { fbq('track', 'Lead'); } catch (e) {}
+
+      // gh-2078: partner_signup_complete -- fires once the referral_agents
+      // row exists (register_partner above has already returned
+      // successfully) AND the confirmation screen has just been shown
+      // (successMsg.classList.add('active') a few lines up). GA4
+      // `partner_signup_complete` + Meta `CompleteRegistration`, both
+      // carrying/attributed to the persisted router arm.
+      firePartnerSignupComplete(getOqVariant());
 
     } catch (err) {
       console.error('Signup error:', err);

@@ -103,6 +103,7 @@ import { readReferralIds, writeReferralIds } from '@/lib/cookie-storage';
 import { readFirstTouch } from '@/lib/attribution';
 import { withFirstTouchParam } from '@/lib/attribution-core';
 import { formatPhoneValue, isValidEmail, isValidZip, fullAddress, splitLeadName } from './utils';
+import { captureVariantFromUrl } from '@/lib/variant';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -531,6 +532,15 @@ function isAlreadyRegisteredError(err: unknown): boolean {
 
 export default function GetStartedPage() {
   const { user, role, loading } = useAuthReady();
+
+  // gh-2078: capture ?v=<arm> (forwarded by start.html's redirectTo/
+  // collectAttribution) into this app's own localStorage on the very
+  // first /get-started load -- see lib/variant.ts for why the marketing
+  // site's own oq_variant_v3 cookie/localStorage cannot be read directly
+  // from this origin. Runs once per mount; best-effort, never throws.
+  useEffect(() => {
+    captureVariantFromUrl();
+  }, []);
 
   // Form state
   const [firstName, setFirstName] = useState('');

@@ -53,13 +53,16 @@
 //
 // gh-2078 (gh-2011's sub-issue, NOT this issue): the two conversion events
 // -- measurement_purchase (homeowner) and partner_signup_complete
-// (professional) -- are NOT emitted anywhere in this file. Both fire on
-// OTHER pages, downstream of every hand-off this file performs (the React
-// measurement-checkout success callback; the referral-agent signup
-// confirmation screen). This file marks where its own responsibility ends
-// with a named, no-op hook function at each hand-off point -- see
+// (professional) -- gh-2078 SHIPPED: neither is emitted anywhere in this
+// file. Both fire on OTHER pages, downstream of every hand-off this file
+// performs (measurement_purchase from the React measurement-checkout
+// success callback, help-measurements/page.tsx; partner_signup_complete
+// from the referral-agent signup confirmation screen, partner-re.html /
+// partner-insurance.html). This file marks where its own responsibility
+// ends with a named, no-op hook function at each hand-off point -- see
 // HOOK_measurementPurchase / HOOK_partnerSignupComplete below -- so the
-// boundary is visible in code, not just in an issue cross-reference.
+// boundary is visible in code, not just in an issue cross-reference. Do
+// not implement either event here; it would double-count.
 //
 // Performance (#2075's own budget, #2063/#2083's shared fix): the role
 // screen (d-role) must paint and be tappable before ANY third-party tag
@@ -630,7 +633,7 @@
   // variant='d' (via bridge.collectAttribution()), which is what lets that
   // downstream event attribute back to this arm. Do not implement the
   // actual event here -- #2078 owns it.
-  function HOOK_measurementPurchase() { /* see gh-2078; intentionally not implemented in gh-2075 */ }
+  function HOOK_measurementPurchase() { /* see gh-2078; the real event fires from help-measurements/page.tsx's checkout success, not here */ }
   RENDERERS['d-summary'] = function () {
     var RD = window.RouterDiscovery;
     root.appendChild(bodyText(RD.COPY.home8Text));
@@ -720,7 +723,7 @@
   // renders on partner-re.html/partner-insurance.html, once #2078 lands.
   // See HOOK_measurementPurchase's own comment above -- same boundary,
   // same reason it is a no-op here.
-  function HOOK_partnerSignupComplete() { /* see gh-2078; intentionally not implemented in gh-2075 */ }
+  function HOOK_partnerSignupComplete() { /* see gh-2078; the real event fires on the partner page's confirmation screen, not here */ }
   RENDERERS['d-realtor-close'] = function () {
     var RD = window.RouterDiscovery;
     RD.COPY.realtorClose.forEach(function (p) { root.appendChild(bodyText(p)); });

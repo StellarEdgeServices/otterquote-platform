@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { track, fireSignUpAndWait } from '../track';
+import { track, fireSignUpAndWait, fbqTrack } from '../track';
 
 describe('track()', () => {
   let gtagSpy: ReturnType<typeof vi.fn>;
@@ -235,5 +235,79 @@ describe('fireSignUpAndWait()', () => {
     expect(payload.method).toBe('google');
     expect(payload.referral_source).toBe('partner_link');
     expect(typeof payload.event_callback).toBe('function');
+  });
+});
+
+
+describe('measurement_purchase (gh-2078)', () => {
+  let gtagSpy: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    gtagSpy = vi.fn();
+    (window as unknown as { gtag?: unknown }).gtag = gtagSpy;
+  });
+
+  afterEach(() => {
+    delete (window as unknown as { gtag?: unknown }).gtag;
+  });
+
+  it('sends value/currency/variant exactly as given, when valid', () => {
+    track('measurement_purchase', { value: 15.0, currency: 'USD', variant: 'e' });
+    expect(gtagSpy).toHaveBeenCalledWith('event', 'measurement_purchase', {
+      value: 15.0,
+      currency: 'USD',
+      variant: 'e',
+    });
+  });
+
+  it('sanitizes a bad variant shape to "unknown" rather than forwarding it', () => {
+    track('measurement_purchase', {
+      value: 15.0,
+      currency: 'USD',
+      variant: 'not a real arm; DROP TABLE',
+    });
+    const payload = gtagSpy.mock.calls[0][2] as Record<string, unknown>;
+    expect(payload.variant).toBe('unknown');
+  });
+
+  it('sanitizes a negative/non-finite value to 0 rather than forwarding it', () => {
+    track('measurement_purchase', {
+      value: -999 as unknown as number,
+      currency: 'USD',
+      variant: 'd',
+    });
+    const payload = gtagSpy.mock.calls[0][2] as Record<string, unknown>;
+    expect(payload.value).toBe(0);
+  });
+});
+
+describe('fbqTrack() (gh-2078)', () => {
+  afterEach(() => {
+    delete (window as unknown as { fbq?: unknown }).fbq;
+  });
+
+  it('is a silent no-op when window.fbq is not a function (MetaPixelGate has not loaded here)', () => {
+    expect(() => fbqTrack('Purchase', { value: 15, currency: 'USD' })).not.toThrow();
+  });
+
+  it('calls window.fbq(\'track\', name, params) when fbq is present', () => {
+    const fbqSpy = vi.fn();
+    (window as unknown as { fbq: unknown }).fbq = fbqSpy;
+    fbqTrack('Purchase', { value: 15, currency: 'USD', variant: 'e' });
+    expect(fbqSpy).toHaveBeenCalledWith('track', 'Purchase', { value: 15, currency: 'USD', variant: 'e' });
+  });
+
+  it('calls window.fbq(\'track\', name) with no params object when none is given', () => {
+    const fbqSpy = vi.fn();
+    (window as unknown as { fbq: unknown }).fbq = fbqSpy;
+    fbqTrack('CompleteRegistration');
+    expect(fbqSpy).toHaveBeenCalledWith('track', 'CompleteRegistration');
+  });
+
+  it('never throws even if window.fbq itself throws', () => {
+    (window as unknown as { fbq: unknown }).fbq = () => {
+      throw new Error('boom');
+    };
+    expect(() => fbqTrack('Purchase', { value: 15 })).not.toThrow();
   });
 });
