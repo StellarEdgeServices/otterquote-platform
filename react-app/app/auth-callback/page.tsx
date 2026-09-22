@@ -254,8 +254,12 @@ export default function AuthCallbackPage() {
             localStorage.setItem('oq_referral_id_for_claim', referralId);
             localStorage.removeItem('oq_referral_id');
           }
-          // Keep the cookie alive so the claim writer still sees it after a hop.
-          {
+          // gh-2062: only re-arm the cookie's 90-day clock on a successful
+          // advance (mirrors js/auth.js). A failed RPC call is not a reason
+          // to extend the life of an id we were just told is not
+          // advanceable — the cookie keeps whatever TTL it already had
+          // instead of restarting the clock.
+          if (!advanceError) {
             const kept = readReferralIds();
             writeReferralIds({
               oq_referral_id: referralId,
