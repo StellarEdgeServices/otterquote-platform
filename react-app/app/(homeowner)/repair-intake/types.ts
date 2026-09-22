@@ -8,17 +8,22 @@
  * page does not touch.
  *
  * Column names verified against the LIVE database (project yeszghaspzwwstvsrioa,
- * 2026-06-23):
+ * 2026-06-23; property_* / profiles address columns re-verified for gh-2004,
+ * 2026-09-22 — see use-repair-intake-data.ts comment 5708138309's column check):
  *   • claims               — user_id, job_type, funding_type, status, trades,
  *                            existing_shingle_brand/_product/_color,
- *                            homeowner_notes, id, created_at  → ALL exist.
+ *                            homeowner_notes, id, created_at, and
+ *                            property_address/_city/_state/_zip (gh-2004)  →
+ *                            ALL exist.
  *   • contractors_public   — id, company_name, years_in_business, rating,
  *                            service_counties, repairs_accepted, trades exist;
  *                            `phone` DOES NOT EXIST. The static interpolated
  *                            `c.phone` (never selected), so its phone block was
  *                            always falsy → we OMIT phone entirely rather than
  *                            render undefined.
- *   • profiles             — full_name exists.
+ *   • profiles             — full_name exists; address_street/_city/_state/_zip
+ *                            also exist (gh-2004 — read for the hasFullAddress()
+ *                            gate on the create-a-new-claim branch).
  */
 
 /** The trade the homeowner picked upstream (sessionStorage `oq_trade_selections`). */
@@ -97,8 +102,22 @@ export interface ContractorPublicRow {
 }
 
 /**
+ * gh-2004: a fully-resolved property address — mirrors
+ * react-app/app/trade-selector/utils.ts's ParsedAddress shape (kept local,
+ * not imported — this codebase does not share helpers across features).
+ */
+export interface ResolvedAddress {
+  street: string | null;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
+}
+
+/**
  * The exact INSERT payload for a brand-new repair claim — faithful port of the
- * static submitForm() insert (repair-intake.html:1228-1242).
+ * static submitForm() insert (repair-intake.html:1228-1242), plus gh-2004's
+ * property_* fields. Every caller of buildClaimInsert() must have already
+ * confirmed hasFullAddress() on the address it passes — see utils.ts.
  */
 export interface ClaimRepairInsert {
   user_id: string;
@@ -110,6 +129,10 @@ export interface ClaimRepairInsert {
   existing_shingle_product: string | null;
   existing_shingle_color: string | null;
   homeowner_notes: string | null;
+  property_address: string | null;
+  property_city: string | null;
+  property_state: string | null;
+  property_zip: string | null;
 }
 
 /**

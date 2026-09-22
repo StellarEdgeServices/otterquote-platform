@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { isTestEmail } from '@/lib/test-signal';
+import { hasFullAddress } from './utils';
 import type {
   CarrierOption,
   HomeownerClaim,
@@ -33,9 +34,29 @@ export interface LatestClaimResult {
 /**
  * Resolve the homeowner's most-recent claim id. If none exists yet, create a
  * draft ({ status:'draft', damage_type:'roof' }) — exactly as the static page did
- * — so a brand-new homeowner still lands on a usable dashboard. Note (D-178/BUG-5):
- * property_state is deliberately NOT seeded on the draft, so the state gate does
- * not misfire before intake.
+ * — so a brand-new homeowner still lands on a usable dashboard.
+ *
+ * gh-2004: the auto-create now only fires when the homeowner's saved
+ * `profiles` row already has a complete address (hasFullAddress(), imported from utils.ts) —
+ * that address is written onto the draft (property_address/city/state/zip)
+ * so this path can no longer produce the NULL-address, unbid-able claims
+ * refuted on this issue (comment 5721477654, rows `16e18349…`/`4595b6f0…`).
+ * When the profile is incomplete, NO claim is created here — claimId stays
+ * null and DashboardPage's existing "couldn't load a project yet — start a
+ * claim" state (page.tsx, the `!claim` branch) is the honest state the
+ * issue's fix direction asks for, rather than a silent NULL-address insert.
+ * This also stops this path from "poisoning" the trade-selector fix: with
+ * no claim auto-created, a returning homeowner still reaches
+ * trade-selector's own existingClaim guard with none, so its address gate
+ * (#2007/#2008) is the one that actually asks them, instead of this page
+ * parking them on an address-less draft first.
+ *
+ * D-178/BUG-5 history: property_state was previously never seeded on this
+ * draft, specifically because it was seeded from unverified signup
+ * localStorage guesses and misfired the state gate before intake. That risk
+ * does not apply here — property_state is only ever written now from the
+ * homeowner's own saved profile, gated by hasFullAddress(), i.e. real
+ * confirmed data, not a guess.
  */
 export function useLatestClaim(userId: string | null | undefined): LatestClaimResult {
   const [claimId, setClaimId] = useState<string | null>(null);
@@ -77,7 +98,30 @@ export function useLatestClaim(userId: string | null | undefined): LatestClaimRe
           return;
         }
 
-        // No claim yet — create a draft (mirrors dashboard.html:1686-1694).
+        // gh-2004: resolve the profile's address BEFORE deciding whether to
+        // auto-create anything — see the imported hasFullAddress() gate (utils.ts).
+        const { data: profileRow } = await supabase
+          .from('profiles')
+          .select('address_street, address_city, address_state, address_zip')
+          .eq('id', userId)
+          .maybeSingle();
+        const profileAddress = {
+          street: profileRow?.address_street || null,
+          city: profileRow?.address_city || null,
+          state: profileRow?.address_state || null,
+          zip: profileRow?.address_zip || null,
+        };
+
+        if (!hasFullAddress(profileAddress)) {
+          // gh-2004: honest state — no claim, not a NULL-address one. See
+          // the JSDoc above for why this is deliberate.
+          if (mounted) setLoading(false);
+          return;
+        }
+
+        // No claim yet, and the profile has a full address — create a draft
+        // (mirrors dashboard.html:1686-1694) so a returning homeowner still
+        // lands on a usable dashboard.
         // gh-397/#689: stamp is_test on this auto-create path — PR #714 only
         // fixed the COI-identity contractor insert, never any claims insert.
         // Predicate mirrors the CEO-approved contractor check (#543 /
@@ -91,6 +135,18 @@ export function useLatestClaim(userId: string | null | undefined): LatestClaimRe
             user_id: userId,
             status: 'draft',
             damage_type: 'roof',
+            // gh-2004: never NULL — gated on hasFullAddress() just above.
+            property_address: [
+              profileAddress.street,
+              [profileAddress.city, [profileAddress.state, profileAddress.zip].filter(Boolean).join(' ')]
+                .filter(Boolean)
+                .join(', '),
+            ]
+              .filter(Boolean)
+              .join(', '),
+            property_city: profileAddress.city,
+            property_state: profileAddress.state,
+            property_zip: profileAddress.zip,
             is_test: isTestEmail(authUser?.email),
           })
           .select('id')

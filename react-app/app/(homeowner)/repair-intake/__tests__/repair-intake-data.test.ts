@@ -13,6 +13,7 @@ vi.mock('@/lib/supabase', () => ({
 
 import { supabase } from '@/lib/supabase';
 import {
+  MissingAddressError,
   SessionExpiredError,
   submitRepairIntake,
   useRepairContractors,
@@ -28,6 +29,17 @@ interface SetupOpts {
   insertError?: { message: string } | null;
   updateError?: { message: string } | null;
   uploadError?: { message: string } | null;
+  // gh-2004: the profiles row submitRepairIntake reads for its
+  // hasFullAddress() gate on the no-claim-id (create) branch. Defaults to a
+  // complete address so every pre-existing test in this file keeps
+  // exercising the insert path unchanged; pass nulls to exercise the
+  // MissingAddressError branch instead.
+  profileAddress?: {
+    address_street: string | null;
+    address_city: string | null;
+    address_state: string | null;
+    address_zip: string | null;
+  } | null;
 }
 
 function setup(opts: SetupOpts = {}) {
@@ -37,6 +49,12 @@ function setup(opts: SetupOpts = {}) {
     insertError = null,
     updateError = null,
     uploadError = null,
+    profileAddress = {
+      address_street: '1 Main St',
+      address_city: 'Noblesville',
+      address_state: 'IN',
+      address_zip: '46060',
+    },
   } = opts;
 
   const rec: {
@@ -54,7 +72,13 @@ function setup(opts: SetupOpts = {}) {
     if (table === 'profiles') {
       return {
         select: () => ({
-          eq: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: null }) }),
+          eq: () => ({
+            maybeSingle: () =>
+              Promise.resolve({
+                data: profileAddress ? { full_name: null, ...profileAddress } : null,
+                error: null,
+              }),
+          }),
         }),
       };
     }
@@ -110,7 +134,7 @@ describe('(d) submitRepairIntake — claim write + photo upload', () => {
     vi.clearAllMocks();
   });
 
-  it('no claim id → INSERTs the exact draft payload, then marks submitted', async () => {
+  it('no claim id → INSERTs the exact draft payload (incl. gh-2004 address from the profile), then marks submitted', async () => {
     const { rec } = setup({ newClaimId: 'c-new' });
     const res = await submitRepairIntake(baseSub());
 
@@ -125,6 +149,11 @@ describe('(d) submitRepairIntake — claim write + photo upload', () => {
       existing_shingle_product: 'Timberline',
       existing_shingle_color: 'Weathered Wood',
       homeowner_notes: 'ceiling drip',
+      // gh-2004: resolved from the (mocked, complete) profiles row.
+      property_address: '1 Main St, Noblesville, IN 46060',
+      property_city: 'Noblesville',
+      property_state: 'IN',
+      property_zip: '46060',
       // gh-397/#689 (PR #785): is_test is now stamped on every claims insert.
       // The mock user has no email, so isTestEmail(undefined) is false.
       is_test: false,
@@ -132,6 +161,15 @@ describe('(d) submitRepairIntake — claim write + photo upload', () => {
     // Final write marks the claim submitted.
     expect(rec.updates).toEqual([{ status: 'submitted' }]);
     expect(res.claimId).toBe('c-new');
+  });
+
+  it('gh-2004: no claim id + incomplete profile address → throws MissingAddressError, never inserts', async () => {
+    const { rec } = setup({
+      newClaimId: 'c-new',
+      profileAddress: { address_street: null, address_city: null, address_state: null, address_zip: null },
+    });
+    await expect(submitRepairIntake(baseSub())).rejects.toBeInstanceOf(MissingAddressError);
+    expect(rec.inserts).toHaveLength(0);
   });
 
   it('existing claim id → UPDATEs (no user_id/funding_type/status), then marks submitted', async () => {

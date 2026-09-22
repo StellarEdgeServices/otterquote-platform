@@ -1280,8 +1280,40 @@
                 let claimId = params.get('claim_id') || sessionStorage.getItem('oq_claim_id');
 
                 if (!claimId) {
-                    // Create a new repair claim if none exists
-                    const profile = await sb.from('profiles').select('full_name').eq('id', user.id).single();
+                    // Create a new repair claim if none exists.
+                    // gh-2004: also resolve the homeowner's saved address —
+                    // this insert previously named NO property_* column at
+                    // all (refuter comment 5721477654, "4c"). Only reachable
+                    // when the homeowner lands on repair-intake with no
+                    // claim_id at all (normally trade-selector already
+                    // created the claim, with an address, before redirecting
+                    // here) — but when it is reached, never create a claim
+                    // with no address on it. hasFullAddress() mirrors
+                    // react-app/app/trade-selector/utils.ts's gate (kept
+                    // local — this codebase does not share helpers across
+                    // stacks); a future reader confirms the two still agree
+                    // by diffing this one-line body against that file's.
+                    const { data: profile } = await sb.from('profiles')
+                        .select('full_name, address_street, address_city, address_state, address_zip')
+                        .eq('id', user.id).maybeSingle();
+                    const profileAddress = {
+                        street: profile?.address_street || null,
+                        city: profile?.address_city || null,
+                        state: profile?.address_state || null,
+                        zip: profile?.address_zip || null,
+                    };
+                    const hasFullAddress = (a) => Boolean(a && a.street && a.city && a.state && a.zip);
+
+                    if (!hasFullAddress(profileAddress)) {
+                        // gh-2004: honest state — send the homeowner to the
+                        // surface that can actually resolve/ask for an
+                        // address (trade-selector.html's own gh-2004 fix)
+                        // instead of inserting a claim with none at all.
+                        alert('We need your property address before we can start a repair claim. Taking you there now.');
+                        window.location.href = '/trade-selector.html';
+                        return;
+                    }
+
                     // gh-397/#689: stamp is_test on this insert path too — a
                     // second, independent claim-creation site PR #714 didn't
                     // cover (it only fixed the COI-identity contractor insert).
@@ -1301,6 +1333,15 @@
                             existing_shingle_product: materialProduct,
                             existing_shingle_color: materialColor,
                             homeowner_notes: repairNotes,
+                            // gh-2004: never NULL — gated on hasFullAddress() just above.
+                            property_address: [
+                                profileAddress.street,
+                                [profileAddress.city, [profileAddress.state, profileAddress.zip].filter(Boolean).join(' ')]
+                                    .filter(Boolean).join(', '),
+                            ].filter(Boolean).join(', '),
+                            property_city: profileAddress.city,
+                            property_state: profileAddress.state,
+                            property_zip: profileAddress.zip,
                             is_test: Auth.isTestEmail(user.email)
                         })
                         .select('id')

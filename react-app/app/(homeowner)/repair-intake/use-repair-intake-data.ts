@@ -20,11 +20,13 @@ import {
   buildClaimUpdate,
   buildStoragePath,
   fileExt,
+  hasFullAddress,
 } from './utils';
 import type {
   ContractorPublicRow,
   RepairSubmission,
   RepairSubmitResult,
+  ResolvedAddress,
   Trade,
 } from './types';
 
@@ -36,6 +38,21 @@ export class SessionExpiredError extends Error {
   constructor(message = 'Session expired') {
     super(message);
     this.name = 'SessionExpiredError';
+  }
+}
+
+/**
+ * gh-2004: thrown when repair-intake would otherwise create a brand-new
+ * claim with no address at all (no claim_id was handed to this page, and
+ * the homeowner's saved profile doesn't have a complete address either).
+ * The page redirects to trade-selector — the surface with the actual
+ * address-resolution gate (#2007/#2008) — instead of this page silently
+ * inserting a claim with every property_* column NULL.
+ */
+export class MissingAddressError extends Error {
+  constructor(message = 'No address on file') {
+    super(message);
+    this.name = 'MissingAddressError';
   }
 }
 
@@ -95,9 +112,18 @@ export function useRepairContractors(trade: Trade, enabled: boolean): Contractor
  * claim-documents bucket, then mark the claim submitted. Faithful port of the
  * static submitForm() (repair-intake.html:1195-1306):
  *   1. Re-verify auth (session-expiry guard) → SessionExpiredError on failure.
- *   2. Read profiles.full_name (defensive maybeSingle) — fetched as the static
- *      did; the value is intentionally unused (the static fetched-and-ignored).
- *   3. No claim id → INSERT a draft repair claim; else UPDATE the existing one.
+ *   2. Read profiles.full_name + gh-2004's address_street/city/state/zip
+ *      (defensive maybeSingle) — full_name stays intentionally unused (the
+ *      static fetched-and-ignored it); the address fields feed the
+ *      hasFullAddress() gate below.
+ *   3. No claim id → INSERT a draft repair claim, but ONLY once
+ *      hasFullAddress() holds on the profile (gh-2004: this is one of the
+ *      "no address column at all" call sites the issue's refuter found —
+ *      see utils.ts's buildClaimInsert()). No usable address →
+ *      MissingAddressError, never a NULL-address insert. Has a claim id
+ *      already → UPDATE the existing one (buildClaimUpdate doesn't touch
+ *      address at all — the claim's address was already resolved wherever
+ *      it was created, normally trade-selector).
  *   4. Upload each photo (UID-first RLS-compliant path; {upsert:false}). An
  *      individual upload error is logged, not thrown (static parity) — one bad
  *      file must not abort the submission.
@@ -114,20 +140,44 @@ export async function submitRepairIntake(
   } = await supabase.auth.getUser();
   if (authErr || !user) throw new SessionExpiredError();
 
-  // 2. Profile read (mirrors the static fetch; result intentionally unused).
-  await supabase.from('profiles').select('full_name').eq('id', user.id).maybeSingle();
+  // 2. Profile read (full_name mirrors the static fetch, intentionally
+  // unused; gh-2004 adds the address columns for the hasFullAddress() gate
+  // just below, used only on the create-a-new-claim branch).
+  const { data: profileRow } = await supabase
+    .from('profiles')
+    .select('full_name, address_street, address_city, address_state, address_zip')
+    .eq('id', user.id)
+    .maybeSingle();
 
   // 3. Create-or-update the claim.
   let claimId = sub.claimId;
   const submission: RepairSubmission = { ...sub, userId: user.id };
   if (!claimId) {
+    // gh-2004: this create-a-new-claim branch only runs when the homeowner
+    // reached repair-intake with no claim_id at all (URL param or
+    // sessionStorage) — normally trade-selector already created the claim
+    // with a resolved address before redirecting here. When it does run,
+    // never insert a claim with no address column named at all (the
+    // refuted defect, comment 5721477654, "4c"). Block with an honest
+    // error instead — the caller (page.tsx) redirects to trade-selector,
+    // which is the surface that can actually ask the homeowner for it.
+    const profileAddress: ResolvedAddress = {
+      street: profileRow?.address_street || null,
+      city: profileRow?.address_city || null,
+      state: profileRow?.address_state || null,
+      zip: profileRow?.address_zip || null,
+    };
+    if (!hasFullAddress(profileAddress)) {
+      throw new MissingAddressError();
+    }
+
     // gh-397/#689: stamp is_test on this insert path — PR #714 only fixed
     // the COI-identity contractor insert, never any claims insert.
     // Predicate mirrors the CEO-approved contractor check (#543 /
     // test-exclusion.ts) and the static repair-intake.html parity fix.
     const { data, error } = await supabase
       .from('claims')
-      .insert({ ...buildClaimInsert(submission), is_test: isTestEmail(user.email) })
+      .insert({ ...buildClaimInsert(submission, profileAddress), is_test: isTestEmail(user.email) })
       .select('id')
       .single();
     if (error || !data) throw new Error(error?.message || 'Failed to create claim');

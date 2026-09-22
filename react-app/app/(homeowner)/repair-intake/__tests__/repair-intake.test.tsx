@@ -28,6 +28,15 @@ vi.mock('../use-repair-intake-data', () => ({
       this.name = 'SessionExpiredError';
     }
   },
+  // gh-2004: page.tsx's handleSubmit catch block checks `instanceof
+  // MissingAddressError` — the mock module must export a real class too, or
+  // that instanceof check throws (vitest has no export to read).
+  MissingAddressError: class MissingAddressError extends Error {
+    constructor(message = 'No address on file') {
+      super(message);
+      this.name = 'MissingAddressError';
+    }
+  },
 }));
 
 import { useAuthReady } from '@/hooks/use-auth-ready';
@@ -36,6 +45,7 @@ import {
   submitRepairIntake,
   useRepairContractors,
   SessionExpiredError,
+  MissingAddressError,
 } from '../use-repair-intake-data';
 import { ContractorList } from '../components/ContractorList';
 import {
@@ -43,8 +53,10 @@ import {
   buildClaimUpdate,
   buildStoragePath,
   canSubmit,
+  fullAddress,
   getPhotoInstructions,
   getTradeFromSession,
+  hasFullAddress,
   hasMaterialIdentity,
   totalPhotoCount,
   trimToNull,
@@ -342,6 +354,28 @@ describe('(e) Submit flow', () => {
     });
   });
 
+  // gh-2004: no claim_id and an incomplete profile address → the data layer
+  // throws MissingAddressError rather than insert a claim with none — this
+  // asserts the page sends the homeowner to trade-selector (the surface
+  // with the actual address-resolution gate) instead of showing the generic
+  // "something went wrong" error.
+  it('on missing address (gh-2004): redirects to trade-selector', async () => {
+    (submitRepairIntake as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new MissingAddressError(),
+    );
+    const { container } = render(<RepairIntakePage />);
+    await addAValidPhoto(container);
+    fireEvent.click(screen.getByText('✓ Submit for Contractor Review'));
+
+    // Relative URL (matches the codebase's own same-app navigation
+    // convention, e.g. auth-callback/page.tsx's TRADE_SELECTOR_PATH) — this
+    // file's window.location mock (below) is a plain { href, search }
+    // object with no URL parsing, so href holds the raw assigned string.
+    await waitFor(() => {
+      expect(window.location.href).toBe('/trade-selector');
+    });
+  });
+
   it('Submit is disabled until a repair type AND a photo are present', () => {
     render(<RepairIntakePage />);
     // describe trade auto-selects type, but no photo yet → still disabled.
@@ -422,7 +456,7 @@ describe('(g) utils', () => {
     expect(validatePhotoFile(pdf, 'main').ok).toBe(false);
   });
 
-  it('buildClaimInsert produces the exact static insert payload (material trimmed to null)', () => {
+  it('buildClaimInsert produces the exact static insert payload (material trimmed to null), plus gh-2004 address fields', () => {
     const sub: RepairSubmission = {
       userId: 'u1',
       claimId: null,
@@ -432,7 +466,9 @@ describe('(g) utils', () => {
       notes: '  ceiling drip ',
       photos: [],
     };
-    expect(buildClaimInsert(sub)).toEqual({
+    expect(
+      buildClaimInsert(sub, { street: '1 Main St', city: 'Noblesville', state: 'IN', zip: '46060' }),
+    ).toEqual({
       user_id: 'u1',
       job_type: 'repair',
       funding_type: 'insurance',
@@ -442,7 +478,28 @@ describe('(g) utils', () => {
       existing_shingle_product: null,
       existing_shingle_color: null,
       homeowner_notes: 'ceiling drip',
+      property_address: '1 Main St, Noblesville, IN 46060',
+      property_city: 'Noblesville',
+      property_state: 'IN',
+      property_zip: '46060',
     });
+  });
+
+  // gh-2004: the gate buildClaimInsert's caller (use-repair-intake-data.ts)
+  // must clear before ever calling it — see hasFullAddress()'s own doc
+  // comment on staying in sync with trade-selector/utils.ts's copy.
+  it('hasFullAddress is true only when every field is non-empty (gh-2004)', () => {
+    expect(hasFullAddress({ street: '1 Main St', city: 'Noblesville', state: 'IN', zip: '46060' })).toBe(true);
+    expect(hasFullAddress({ street: null, city: null, state: null, zip: null })).toBe(false);
+    expect(hasFullAddress(null)).toBe(false);
+    expect(hasFullAddress({ street: '1 Main St', city: '', state: 'IN', zip: '46060' })).toBe(false);
+  });
+
+  it('fullAddress recombines the four fields into the combined line (gh-2004)', () => {
+    expect(fullAddress({ street: '1 Main St', city: 'Noblesville', state: 'IN', zip: '46060' })).toBe(
+      '1 Main St, Noblesville, IN 46060',
+    );
+    expect(fullAddress({ street: null, city: null, state: null, zip: null })).toBeNull();
   });
 
   it('buildClaimUpdate omits user_id/funding_type/status (static parity) and defaults trade', () => {

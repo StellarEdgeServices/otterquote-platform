@@ -21,6 +21,31 @@ export function isStateGated(claim: HomeownerClaim | null | undefined): boolean 
   return !!claim?.property_state && claim.property_state !== 'IN';
 }
 
+// ── gh-2004: address-completeness gate ──────────────────────────────────────
+
+/**
+ * gh-2004: true only when every one of the four address fields is a
+ * non-empty string. Used by use-dashboard-data.ts's useLatestClaim() to
+ * decide whether the profile has enough to seed the auto-created draft
+ * claim's address, or whether to skip auto-create entirely rather than
+ * insert a claim with a NULL/partial address.
+ *
+ * Kept local rather than imported from react-app/app/trade-selector/utils.ts
+ * — this codebase deliberately does not share helpers across features (see
+ * that file's own header comment making the same choice for
+ * get-started/trade-selector). A future reader confirms the two gates still
+ * agree by diffing this one-line body against that file's hasFullAddress(),
+ * not by trusting a shared import.
+ */
+export function hasFullAddress(a: {
+  street?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zip?: string | null;
+}): boolean {
+  return Boolean(a.street && a.city && a.state && a.zip);
+}
+
 // ── Progress checklist (estimate / measurements / material) ─────────────────
 
 export interface ProgressState {

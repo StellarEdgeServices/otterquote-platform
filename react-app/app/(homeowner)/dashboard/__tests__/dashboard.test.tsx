@@ -14,6 +14,7 @@ import {
   buildSwitchSurveyMessage,
   canSwitchContractor,
   deriveStatusBanner,
+  hasFullAddress,
   isStateGated,
   isSwitchWithinCutoff,
   shouldShowHomeProfilePrompt,
@@ -114,6 +115,29 @@ describe('D-178 state gate', () => {
   it('does not gate a null/absent property_state (pre-intake draft)', () => {
     expect(isStateGated(claim({ property_state: null }))).toBe(false);
     expect(isStateGated(undefined)).toBe(false);
+  });
+});
+
+// gh-2004: useLatestClaim's auto-create gate. The hook itself talks to the
+// live supabase singleton (no seam to inject a fake client in this test
+// file's style, which tests pure functions rather than mocking the query
+// builder — see the other describe blocks here) so this exercises the pure
+// predicate the hook is gated on directly, mirroring
+// react-app/app/trade-selector/utils.ts's own hasFullAddress() unit tests.
+describe('gh-2004 dashboard auto-create address gate', () => {
+  it('is true only when all four fields are non-empty', () => {
+    expect(
+      hasFullAddress({ street: '1 Main St', city: 'Noblesville', state: 'IN', zip: '46060' }),
+    ).toBe(true);
+  });
+  it('is false for an empty profile (the refuted bug shape)', () => {
+    expect(hasFullAddress({ street: null, city: null, state: null, zip: null })).toBe(false);
+    expect(hasFullAddress({})).toBe(false);
+  });
+  it('is false when any single field is missing', () => {
+    expect(hasFullAddress({ street: '1 Main St', city: 'Noblesville', state: 'IN', zip: '' })).toBe(false);
+    expect(hasFullAddress({ street: '1 Main St', city: '', state: 'IN', zip: '46060' })).toBe(false);
+    expect(hasFullAddress({ street: '1 Main St', city: 'Noblesville', state: null, zip: '46060' })).toBe(false);
   });
 });
 

@@ -30,6 +30,7 @@ import { PhotoUploader } from './components/PhotoUploader';
 import { MaterialTiers } from './components/MaterialTiers';
 import { ContractorList } from './components/ContractorList';
 import {
+  MissingAddressError,
   SessionExpiredError,
   submitRepairIntake,
   useRepairContractors,
@@ -58,6 +59,12 @@ import type {
 } from './types';
 
 const DESCRIBE_TRADES = ['siding', 'gutters', 'windows'];
+
+// gh-2004: where a MissingAddressError redirects (see use-repair-intake-data.ts).
+// Not imported from another feature's constants module — matches this
+// codebase's no-cross-feature-dependency convention (see trade-selector's
+// own utils.ts header comment).
+const TRADE_SELECTOR_URL = '/trade-selector';
 
 export default function RepairIntakePage() {
   return (
@@ -184,6 +191,13 @@ function RepairIntakeContent() {
     } catch (err) {
       if (err instanceof SessionExpiredError) {
         window.location.href = HOMEOWNER_GET_STARTED_URL;
+        return;
+      }
+      if (err instanceof MissingAddressError) {
+        // gh-2004: no claim, no address on file — send the homeowner to the
+        // surface that can actually resolve/ask for one (#2007/#2008)
+        // rather than let this page insert a claim with none at all.
+        window.location.href = TRADE_SELECTOR_URL;
         return;
       }
       setSubmitError('Something went wrong. Please try again.');

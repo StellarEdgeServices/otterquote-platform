@@ -960,6 +960,78 @@
 
     const TRADES = ['roofing', 'siding', 'gutters', 'windows'];
 
+    // gh-2004: true only when every one of the four address fields is a
+    // non-empty string. Kept local rather than shared via a <script src> —
+    // this codebase does not share helpers across features/stacks (see
+    // react-app/app/trade-selector/utils.ts's own header comment making the
+    // same choice for get-started/trade-selector). A future reader confirms
+    // this stays in sync with the React gate by diffing this one-line body
+    // against that file's hasFullAddress().
+    //
+    // NOTE (found while implementing this fix, not asked for but worth
+    // recording): this file's own <head> (line 4) already carries
+    // `<meta http-equiv="refresh" content="0;url=https://app.otterquote.com/trade-selector">`,
+    // added by commit 785660a8 (2026-09-08, "ceo37/closure-guard") — BEFORE
+    // this issue was filed (2026-09-16) and before both the refuter's
+    // sha256 comparison and the CEO's 2026-09-21 re-verification, both of
+    // which fetched raw bytes over HTTP and compared hashes rather than
+    // loading the page in a browser. Confirmed live in a real browser
+    // (2026-09-22): otterquote.com/trade-selector.html redirects to
+    // app.otterquote.com/trade-selector (the already-fixed React page)
+    // essentially immediately, before a human could ever click through this
+    // file's own wizard. Everything below is very likely dead code for any
+    // real visitor today. It is still hardened here — cheaply, and as
+    // insurance against a future redirect removal that would otherwise
+    // silently resurrect the exact NULL-address bug this issue is about —
+    // but this materially changes the risk picture the refuter and CEO
+    // reasoned from; see this task's final report.
+    function hasFullAddress(a) {
+      return Boolean(a && a.street && a.city && a.state && a.zip);
+    }
+
+    // gh-2004: resolve a property address the same way the React
+    // trade-selector's mount effect does — cs_signup's structured fields
+    // first (get-started, post-#1993), then the signed-in user's saved
+    // profile. Returns null when neither has a complete address (the
+    // caller must then block the insert rather than write partial/NULL
+    // fields — see completeSelection()).
+    async function resolveAddress(user) {
+      let csSignup = {};
+      try {
+        const raw = localStorage.getItem('cs_signup');
+        if (raw) csSignup = JSON.parse(raw);
+      } catch (e) {
+        // cs_signup missing/malformed — treated the same as absent below
+      }
+      const structured = {
+        street: (csSignup.address_street || '').trim() || null,
+        city: (csSignup.address_city || '').trim() || null,
+        state: (csSignup.address_state || '').trim() || null,
+        zip: (csSignup.address_zip || '').trim() || null,
+      };
+      if (hasFullAddress(structured)) return structured;
+
+      if (user) {
+        try {
+          const { data: profile } = await sb
+            .from('profiles')
+            .select('address_street, address_city, address_state, address_zip')
+            .eq('id', user.id)
+            .maybeSingle();
+          const fromProfile = {
+            street: (profile?.address_street || '').trim() || null,
+            city: (profile?.address_city || '').trim() || null,
+            state: (profile?.address_state || '').trim() || null,
+            zip: (profile?.address_zip || '').trim() || null,
+          };
+          if (hasFullAddress(fromProfile)) return fromProfile;
+        } catch (e) {
+          console.warn('[trade-selector] gh-2004 profile address lookup failed:', e);
+        }
+      }
+      return null;
+    }
+
     // ── Step sequence management ──
     // The step IDs in the DOM are: step-funding, step-policy, step-trades, step-repair
     // The active sequence depends on funding type.
@@ -1359,16 +1431,31 @@
               jobType = 'retail';
             }
 
-            // Fetch profile address for property_address
-            let propertyAddress = null;
-            const { data: profile } = await sb
-              .from('profiles')
-              .select('address_street, address_city, address_state, address_zip')
-              .eq('id', user.id)
-              .single();
-            if (profile) {
-              propertyAddress = [profile.address_street, profile.address_city, profile.address_state, profile.address_zip]
-                .filter(Boolean).join(', ');
+            // gh-2004: resolve a complete address (cs_signup, then profile —
+            // see resolveAddress() above) BEFORE writing anything. The old
+            // code here only ever read the profile, built property_address
+            // by joining possibly-empty fields with commas (producing ""
+            // rather than null when the profile had nothing), never set
+            // property_city/property_zip at all, and always wrote SOMETHING
+            // — this is the exact defect this issue is about (refuter
+            // comment 5721477654: "with an empty profile it writes
+            // property_address: '', property_state: null, and never names
+            // property_city or property_zip at all").
+            const resolvedAddress = await resolveAddress(user);
+            if (!resolvedAddress) {
+              // gh-2004: honest state — never write a claim with a
+              // NULL/partial address. This file has no address-collection
+              // step of its own (unlike the React fix, #2007/#2008), so
+              // rather than build one for a page that a live browser check
+              // (2026-09-22) shows is unreachable dead code behind this
+              // file's own meta-refresh (see the hasFullAddress() comment
+              // above), the honest behavior is to stop here and tell the
+              // homeowner what's missing instead of silently inserting the
+              // NULL-address row this issue is about.
+              console.warn('[trade-selector] gh-2004: no resolvable address (cs_signup/profile both incomplete) — not writing a claim.');
+              showError('We need your property address to continue. Please complete your profile, then try again.');
+              document.getElementById('step-repair-continue').disabled = false;
+              return;
             }
 
             // Update or create claim
@@ -1409,13 +1496,24 @@
               || localStorage.getItem('oq_referral_code')
               || null;
 
+            // gh-2004: never NULL — gated on resolvedAddress above, which
+            // is only ever hasFullAddress()-complete by construction.
+            // property_address stays the combined line (CEO ruling, PR
+            // #1998 comment 5698876771); property_city/property_zip are
+            // the two additive columns the old code here never named.
             const claimData = {
               funding_type: state.fundingType,
               policy_type: state.policyType,
               trades: selections.trades.map(t => t.trade),
               job_type: jobType,
-              property_address: propertyAddress,
-              property_state: profile?.address_state || null,
+              property_address: [
+                resolvedAddress.street,
+                [resolvedAddress.city, [resolvedAddress.state, resolvedAddress.zip].filter(Boolean).join(' ')]
+                  .filter(Boolean).join(', '),
+              ].filter(Boolean).join(', ') || null,
+              property_city: resolvedAddress.city,
+              property_state: resolvedAddress.state,
+              property_zip: resolvedAddress.zip,
               updated_at: new Date().toISOString(),
               // Referral attribution — null if no ?ref= or ?partner_id= was present
               ...(referralSource && { referral_source: referralSource }),
@@ -1428,10 +1526,22 @@
             };
 
             if (existingClaim) {
-              await sb
+              // gh-2105 trap: `.update()` without `.select()` returns
+              // `error: null` even when RLS filters the match to zero rows
+              // — PostgREST reports success and nothing was written.
+              // Asserting rows-affected here (not just `error === null`)
+              // means a silently-failed address write surfaces instead of
+              // being trusted as done.
+              const { data: updatedRows, error: updateErr } = await sb
                 .from('claims')
                 .update(claimData)
-                .eq('id', existingClaim.id);
+                .eq('id', existingClaim.id)
+                .select('id');
+              if (updateErr) {
+                console.warn('[trade-selector] claim update failed:', updateErr);
+              } else if (!updatedRows || updatedRows.length === 0) {
+                console.warn('[trade-selector] gh-2105: claim update matched 0 rows (RLS?) — address may not have been written:', existingClaim.id);
+              }
               savedClaimId = existingClaim.id;
             } else {
               // gh-397/#689: stamp is_test at the ONLY point in this flow that

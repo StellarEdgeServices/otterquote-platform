@@ -19,6 +19,7 @@ import type {
   RepairSubmission,
   RepairType,
   RepairTypeCard,
+  ResolvedAddress,
   Trade,
   UploadedPhotos,
 } from './types';
@@ -191,10 +192,45 @@ export function emptyMaterial(): MaterialIdentity {
 }
 
 /**
+ * gh-2004: true only when every one of the four address fields is a
+ * non-empty string. Kept local rather than imported — this codebase does
+ * not share helpers across features (see trade-selector/utils.ts's own
+ * header comment making the same choice for get-started/trade-selector). A
+ * future reader confirms the two gates still agree by diffing this
+ * one-line body against react-app/app/trade-selector/utils.ts's
+ * hasFullAddress(), not by trusting a shared import.
+ */
+export function hasFullAddress(a: ResolvedAddress | null | undefined): boolean {
+  return Boolean(a && a.street && a.city && a.state && a.zip);
+}
+
+/**
+ * gh-2004: recombine four address fields into the single combined line
+ * `claims.property_address` stays (CEO ruling, PR #1998 comment 5698876771)
+ * — byte-for-byte the same shape as
+ * react-app/app/trade-selector/utils.ts's fullAddress(), kept local for the
+ * same no-cross-feature-dependency reason.
+ */
+export function fullAddress(a: ResolvedAddress): string | null {
+  const street = (a.street || '').trim();
+  const city = (a.city || '').trim();
+  const state = (a.state || '').trim();
+  const zip = (a.zip || '').trim();
+  const line2 = [city, [state, zip].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+  return [street, line2].filter(Boolean).join(', ') || null;
+}
+
+/**
  * The INSERT payload for a new repair claim — exact field-set of the static
  * submitForm() insert. Material fields are trimmed-to-null.
+ *
+ * gh-2004: `address` must already satisfy hasFullAddress() — the caller
+ * (use-repair-intake-data.ts) is responsible for that gate and must not
+ * call this at all when it doesn't hold (throw MissingAddressError
+ * instead), exactly like trade-selector/page.tsx never reaches its own
+ * claims insert without a hasFullAddress()-complete resolvedAddress.
  */
-export function buildClaimInsert(sub: RepairSubmission): ClaimRepairInsert {
+export function buildClaimInsert(sub: RepairSubmission, address: ResolvedAddress): ClaimRepairInsert {
   return {
     user_id: sub.userId,
     job_type: 'repair',
@@ -205,6 +241,10 @@ export function buildClaimInsert(sub: RepairSubmission): ClaimRepairInsert {
     existing_shingle_product: trimToNull(sub.material.product),
     existing_shingle_color: trimToNull(sub.material.color),
     homeowner_notes: trimToNull(sub.notes),
+    property_address: fullAddress(address),
+    property_city: address.city,
+    property_state: address.state,
+    property_zip: address.zip,
   };
 }
 

@@ -1708,6 +1708,17 @@
         }
       }
 
+      // gh-2004: true only when every one of the four address fields is a
+      // non-empty string. Kept local rather than shared via a <script src>
+      // — this codebase does not share helpers across features/stacks (see
+      // react-app/app/trade-selector/utils.ts's own header comment making
+      // the same choice for get-started/trade-selector). A future reader
+      // confirms this stays in sync with the React gate by diffing this
+      // one-line body against that file's hasFullAddress().
+      function hasFullAddress(a) {
+        return Boolean(a && a.street && a.city && a.state && a.zip);
+      }
+
       async function loadClaimData() {
         if (CONFIG.DEMO_MODE || !currentUser) {
           console.log('[Dashboard] loadClaimData skipped:', { demo: CONFIG.DEMO_MODE, sb: !!sb, user: !!currentUser });
@@ -1797,49 +1808,101 @@
             // Create new claim if doesn't exist
             console.log('[Dashboard] No claim found, creating new draft...');
 
-            // D-178 / BUG-5 fix: Do NOT set property_state on auto-created draft claims.
-            // property_state is populated during the intake flow when the user explicitly enters
-            // their property address. Pre-seeding it from signup localStorage caused the state
-            // gate to fire on every non-IN user's first dashboard visit — before intake.
-            // gh-397/#689: stamp is_test on the auto-create-draft path — a
-            // third independent claim-creation site PR #714 didn't cover.
-            const { data: newClaim, error: createError } = await sb
-              .from('claims')
-              .insert({
-                user_id: currentUser.id,
-                status: 'draft',
-                damage_type: 'roof',
-                is_test: Auth.isTestEmail(currentUser.email),
-              })
-              .select()
-              .single();
-
-            if (createError) {
-              console.error('[Dashboard] Error creating claim:', createError);
+            // gh-2004: resolve the profile's address BEFORE deciding whether
+            // to auto-create anything at all. Refuted on this issue (comment
+            // 5721477654, "4b"): this insert previously named NO property_*
+            // column, ever — production held two real (is_test:false) rows
+            // with all four fields NULL because of it, and one of them
+            // permanently blocked its own homeowner from ever reaching
+            // trade-selector's address step (its existingClaim guard sees
+            // this draft and redirects straight here). hasFullAddress()
+            // (above) is the same gate trade-selector's React fix
+            // (#2007/#2008) uses.
+            let profileAddress = { street: null, city: null, state: null, zip: null };
+            try {
+              const { data: addrProfile } = await sb
+                .from('profiles')
+                .select('address_street, address_city, address_state, address_zip')
+                .eq('id', currentUser.id)
+                .maybeSingle();
+              profileAddress = {
+                street: addrProfile?.address_street || null,
+                city: addrProfile?.address_city || null,
+                state: addrProfile?.address_state || null,
+                zip: addrProfile?.address_zip || null,
+              };
+            } catch (addrErr) {
+              console.warn('[Dashboard] gh-2004 profile address lookup failed:', addrErr);
             }
 
-            if (!createError && newClaim) {
-              // gh-1984: GA4 key event — a claims row was created here (draft
-              // auto-create for a signed-in homeowner with none). `source` lets
-              // reports separate it from the trade-selector path. No PII.
-              if (typeof gtag === 'function') {
-                try {
-                  gtag('event', 'claim_started', {
-                    job_type: 'draft',
-                    source: 'dashboard_autocreate',
-                    test_account: Auth.isTestEmail(currentUser.email),
-                  });
-                } catch (e) { /* non-fatal */ }
+            if (hasFullAddress(profileAddress)) {
+              // D-178/BUG-5 history: property_state was never seeded here
+              // before, because it was seeded from unverified signup
+              // localStorage guesses and misfired the state gate before
+              // intake. That risk does not apply now — property_state is
+              // only ever written from the homeowner's own saved profile,
+              // gated by hasFullAddress() just above, i.e. real confirmed
+              // data, not a guess.
+              // gh-397/#689: stamp is_test on the auto-create-draft path — a
+              // third independent claim-creation site PR #714 didn't cover.
+              const { data: newClaim, error: createError } = await sb
+                .from('claims')
+                .insert({
+                  user_id: currentUser.id,
+                  status: 'draft',
+                  damage_type: 'roof',
+                  property_address: [
+                    profileAddress.street,
+                    [profileAddress.city, [profileAddress.state, profileAddress.zip].filter(Boolean).join(' ')]
+                      .filter(Boolean)
+                      .join(', '),
+                  ].filter(Boolean).join(', '),
+                  property_city: profileAddress.city,
+                  property_state: profileAddress.state,
+                  property_zip: profileAddress.zip,
+                  is_test: Auth.isTestEmail(currentUser.email),
+                })
+                .select()
+                .single();
+
+              if (createError) {
+                console.error('[Dashboard] Error creating claim:', createError);
               }
-              currentClaim = newClaim;
-              window.currentClaim = currentClaim;  // gh-1276 follow-up: Home Profile IIFE reads window.currentClaim
-              console.log('[Dashboard] Created new claim:', newClaim.id);
+
+              if (!createError && newClaim) {
+                // gh-1984: GA4 key event — a claims row was created here (draft
+                // auto-create for a signed-in homeowner with none). `source` lets
+                // reports separate it from the trade-selector path. No PII.
+                if (typeof gtag === 'function') {
+                  try {
+                    gtag('event', 'claim_started', {
+                      job_type: 'draft',
+                      source: 'dashboard_autocreate',
+                      test_account: Auth.isTestEmail(currentUser.email),
+                    });
+                  } catch (e) { /* non-fatal */ }
+                }
+                currentClaim = newClaim;
+                window.currentClaim = currentClaim;  // gh-1276 follow-up: Home Profile IIFE reads window.currentClaim
+                console.log('[Dashboard] Created new claim:', newClaim.id);
+              }
+            } else {
+              // gh-2004: honest state — no address to seed, so no claim is
+              // created here at all (never a NULL-address insert). The
+              // "STILL don't have a claim" local-default fallback just below
+              // (pre-existing) renders the UI; the homeowner reaches
+              // trade-selector's own address-resolution gate the next time
+              // they start/resume a claim.
+              console.log('[Dashboard] No full address on profile — skipping auto-create (gh-2004).');
             }
           }
 
-          // If we STILL don't have a claim, create a local default so the UI renders
+          // If we STILL don't have a claim, create a local default so the UI renders.
+          // gh-2004: also reached, deliberately, when the profile had no full
+          // address to seed the auto-create with (see the else-branch above) —
+          // not only on a Supabase query/insert failure.
           if (!currentClaim) {
-            console.warn('[Dashboard] Using local default claim — Supabase query/insert both failed');
+            console.warn('[Dashboard] Using local default claim — no claim in Supabase (query/insert failed, or gh-2004 skipped auto-create for a missing address)');
             currentClaim = {
               id: null,
               status: 'draft',
