@@ -313,6 +313,15 @@
   // taken under this override is written to leads.is_synthetic = true
   // instead of looking like a real visitor's lead.
   window.__oqInternalOverride = oqInternalOverride;
+  // CEO run 57 post-flip walk finding (2026-09-22): oq_internal=1 walks on
+  // arms C and D wrote UNFLAGGED production leads, because is_synthetic was
+  // only threaded through the arm-E assignment override above. This flag is
+  // separate from that override: it never changes assignment (toLiveArm()
+  // still runs for every arm), it only marks any lead written during an
+  // oq_internal=1 page load as synthetic. Read by insertFreshLead() below.
+  var oqInternalWalk = false;
+  try { oqInternalWalk = new URLSearchParams(window.location.search).get('oq_internal') === '1'; } catch (e) {}
+  window.__oqInternalWalk = oqInternalWalk;
   var arm = urlArm ? (oqInternalOverride ? urlArm : toLiveArm(urlArm)) : null;
 
   // 2. Else a persisted assignment -- localStorage first, cookie fallback,
@@ -1074,7 +1083,7 @@
       gclid: attr.gclid,
       variant: variantOverride || variant
     };
-    if (isSynthetic) { payload.is_synthetic = true; }
+    if (isSynthetic || window.__oqInternalWalk) { payload.is_synthetic = true; }
     return ensureSb().from('leads').insert(payload).then(function (res) {
       if (res && res.error) throw res.error;
       setStoredLeadId(newId);

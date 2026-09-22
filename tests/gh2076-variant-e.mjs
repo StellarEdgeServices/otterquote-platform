@@ -991,8 +991,10 @@ function driveToP7_5(routerERoot, insertCalls) {
     'start.html exposes the override flag on window.__oqInternalOverride for arm E\'s own bridge to read');
   ok(/oqInternalOverride: oqInternalOverrideFlag/.test(startHtmlSrc),
     'start.html threads the override flag into arm E\'s own bridge object');
-  ok(/isSynthetic\) \{ payload\.is_synthetic = true; \}/.test(startHtmlSrc),
-    'start.html\'s insertFreshLead sets leads.is_synthetic=true when isSynthetic is passed');
+  ok(/isSynthetic \|\| window\.__oqInternalWalk\) \{ payload\.is_synthetic = true; \}/.test(startHtmlSrc),
+    'start.html\'s insertFreshLead sets leads.is_synthetic=true when isSynthetic is passed OR the page loaded with oq_internal=1 (any arm)');
+  ok(/window\.__oqInternalWalk = oqInternalWalk;/.test(startHtmlSrc),
+    'start.html exposes window.__oqInternalWalk (oq_internal=1 on any arm) separately from the arm-E assignment override');
   ok(/routerEScript\.onerror = function \(\) \{[\s\S]{0,400}router-discovery\.js/.test(startHtmlSrc),
     'start.html\'s arm-E script-load failure falls back to loading js/router-discovery.js (arm C) rather than only showing an error');
 })();
