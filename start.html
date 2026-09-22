@@ -670,13 +670,64 @@
   // `ensureSb()` creates the client on FIRST USE (step 1's submit
   // handler, well after `defer` has had time to run) and caches it, never
   // at parse time. Every `sb.*` call site below goes through it.
+  //
+  // gh-2068: leads_force_safe_insert_defaults() (the BEFORE INSERT trigger
+  // on public.leads, see that migration) forces is_synthetic=true whenever
+  // the insert request carries an X-OQ-Internal: 1 header. Set it here via
+  // supabase-js's `global.headers` client option, computed once when this
+  // client is created, so EVERY insert this page makes carries it
+  // automatically -- not only the arm-E-override/same-page-load case this
+  // file's own insertFreshLead() already flags client-side (PR #2088;
+  // left unchanged by this PR, harmless where both fire). Deliberately a
+  // SELF-CONTAINED copy of js/ga-gate.js's oqInternal() (same name, same
+  // Max-Age, same Domain rule, kept in sync deliberately) rather than a
+  // read of window.OQ_INTERNAL alone -- gh-2064 round 2's review (comment
+  // 5766161796) found that exact "assume some other script already set
+  // the flag" assumption broken on 89 of 99 pages, and this page cannot
+  // assume js/internal-traffic.js ran first either. The cookie is read
+  // only to detect the flag; it is never itself sent to Supabase (a
+  // different origin -- supabase-js does not send credentials
+  // cross-origin), which is why this sets a header, not a cookie, on the
+  // request PostgREST sees.
+  function oqInternalHeader() {
+    try {
+      var params = null;
+      try {
+        params = new URLSearchParams(window.location.search);
+      } catch (e) {
+        params = null;
+      }
+      var queryFlag = !!(params && params.get('oq_internal') === '1');
+
+      var cookieMatch = document.cookie.match(/(?:^|; )oq_internal=([^;]*)/);
+      var cookieFlag = !!(cookieMatch && decodeURIComponent(cookieMatch[1]) === '1');
+
+      if (queryFlag && !cookieFlag) {
+        var oneYear = 60 * 60 * 24 * 365;
+        var domainAttr = '';
+        if (/(^|\.)otterquote\.com$/.test(window.location.hostname)) {
+          domainAttr = '; Domain=.otterquote.com';
+        }
+        document.cookie = 'oq_internal=1; Max-Age=' + oneYear + '; Path=/' +
+          domainAttr + '; SameSite=Lax';
+      }
+
+      var isInternal = queryFlag || cookieFlag || !!window.OQ_INTERNAL;
+      return isInternal ? { 'x-oq-internal': '1' } : {};
+    } catch (e) {
+      // A thrown error here must never block client creation -- fall back
+      // to whatever window.OQ_INTERNAL already says (possibly nothing).
+      return window.OQ_INTERNAL ? { 'x-oq-internal': '1' } : {};
+    }
+  }
   var sb = null;
   function ensureSb() {
     if (sb) return sb;
     try {
       if (typeof supabase !== 'undefined' && typeof CONFIG !== 'undefined') {
         sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, {
-          auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' }
+          auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' },
+          global: { headers: oqInternalHeader() }
         });
       }
     } catch (e) { /* handled by the null-check on every use below */ }

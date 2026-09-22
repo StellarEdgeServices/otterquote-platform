@@ -4,6 +4,7 @@ import {
   OTTERQUOTE_AUTH_STORAGE_KEY,
 } from './cookie-storage';
 import { nonDeadlockingLock } from './supabase-lock';
+import { isInternalTraffic } from './internal-traffic';
 
 /**
  * Singleton Supabase client for the browser.
@@ -34,6 +35,20 @@ if (!supabaseUrl || !supabaseAnonKey) {
   );
 }
 
+// gh-2068: leads_force_safe_insert_defaults() (the BEFORE INSERT trigger on
+// public.leads) forces is_synthetic=true whenever a leads insert request
+// carries an X-OQ-Internal: 1 header -- the server-side connecting rule
+// between gh-2064's client-side oq_internal opt-out and gh-2055's
+// is_synthetic column. Set it here via supabase-js's `global.headers`
+// client option so EVERY insert this singleton client makes (incl.
+// /get-started's leads insert in persistSignupContext()) carries it
+// automatically, computed once at client-creation time from the same
+// isInternalTraffic() check GA4Gate.tsx/MetaPixelGate.tsx already use
+// (gh-2064, react-app/app/lib/internal-traffic.ts) -- no separate
+// detection logic to keep in sync. isInternalTraffic() is safe to call at
+// module-eval time: it no-ops (returns false) outside a browser (SSR/build).
+const oqInternalHeaders = isInternalTraffic() ? { 'x-oq-internal': '1' } : {};
+
 export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
@@ -42,6 +57,9 @@ export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKe
     // Avoid the supabase-js navigator.locks deadlock that froze getSession() and
     // the contractor dashboard (D-211 2026-06-16, true root of Blocker 1).
     lock: nonDeadlockingLock,
+  },
+  global: {
+    headers: oqInternalHeaders,
   },
 });
 
