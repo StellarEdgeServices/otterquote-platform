@@ -19,6 +19,12 @@
  *     table 5801132485) is one constants block, and the consent and privacy
  *     lines are BYTE-IDENTICAL to the approved draft (pinned literally below;
  *     the R-177 LEGAL-READ checks the shipped text against that draft).
+ *   - Ben's ruling on #2122 (comment 5802853627): funding, address, fbc/fbp and consent
+ *     text NEVER reach GA4 or Meta (analytics carry variant / step / step_index /
+ *     ua_context / lead_id, plus event_id on generate_lead). The save order is
+ *     insert -> set_lead_role -> the record-lead-details Edge Function with the funding
+ *     answer, address, fbc/fbp and the exact consent record; one retry; Sentry (lead id
+ *     only) on final failure; the flow is never blocked.
  *   - After the lead is saved a pagehide is NOT an abandonment (real
  *     start.html abandon-beacon code, with a negative control that removes
  *     the suppression and watches the false abandon fire).
@@ -148,6 +154,7 @@ function makeFakeDate(fixedMs) {
   };
 }
 
+const PAGE_URL = 'https://otterquote.com/start?v=f&utm_source=fb&fbclid=IwAR123';
 const FB_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 [FBAN/FBIOS;FBAV/450.0]';
 const SAFARI_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile Safari/604.1';
 
@@ -164,15 +171,25 @@ function buildF(opts) {
   const rpcCalls = [];
   const redirects = [];
   const errors = [];
+  const order = [];
+  const detailsCalls = [];
+  const sentry = [];
+  let detailsAttempts = 0;
   let insertFailuresLeft = opts.insertFails || 0;
   let nextLead = 1;
 
-  const fakeWindow = { location: { href: '' }, addEventListener(evt, fn) { (windowListeners[evt] = windowListeners[evt] || []).push(fn); } };
+  const fakeWindow = { location: { href: PAGE_URL, search: '?v=f&utm_source=fb&fbclid=IwAR123' }, addEventListener(evt, fn) { (windowListeners[evt] = windowListeners[evt] || []).push(fn); } };
   const clarityFn = function () { clarityCalls.push([].slice.call(arguments)); };
   fakeWindow.clarity = clarityFn;
+  fakeWindow.Sentry = { captureMessage: function (msg, ctx) { sentry.push({ msg, ctx }); } };
+  document.cookie = opts.cookie === undefined ? '_fbc=fb.1.1700000000.cookieFbc; _fbp=fb.1.1700000000.cookieFbp' : opts.cookie;
   const fixed = Date.parse(opts.nowIso || '2026-09-23T15:00:00Z'); // 11:00 America/Indiana/Indianapolis
   const sandbox = {
-    window: fakeWindow, document, navigator: { userAgent: opts.ua || SAFARI_UA }, console, Promise, setTimeout, clearTimeout,
+    window: fakeWindow, document, navigator: { userAgent: opts.ua || SAFARI_UA }, console, Promise,
+    // Timers are scaled down 100x so the 3s / 6s guards and the 800ms retry delay run in milliseconds
+    // while keeping their ORDER (retry 8ms < role wait 30ms < flow guard 60ms).
+    setTimeout: (fn, ms) => setTimeout(fn, Math.ceil((ms || 0) / 100)), clearTimeout,
+    URLSearchParams, decodeURIComponent,
     Intl, Date: makeFakeDate(fixed), Math, String, Object, Array, RegExp, JSON, Number, parseInt, isNaN, encodeURIComponent,
     gtag: function (action, name, params) { gtagCalls.push({ action, name, params }); },
     fbq: function () { fbqCalls.push([].slice.call(arguments)); },
@@ -194,7 +211,23 @@ function buildF(opts) {
   const bridge = {
     get sb() {
       return {
+        functions: {
+          invoke: (name, args) => {
+            detailsAttempts++;
+            order.push('details');
+            detailsCalls.push({ name, body: args && args.body });
+            const mode = opts.detailsMode || 'ok';
+            const respond = (v) => { const p = Promise.resolve(v); return { then: (a, b) => p.then(a, b) }; };
+            if (mode === 'hang') return { then: () => {} };
+            if (mode === 'fail-always') return respond({ data: null, error: { name: 'FunctionsHttpError' } });
+            if (mode === 'fail-once' && detailsAttempts === 1) return respond({ data: null, error: { name: 'FunctionsHttpError' } });
+            if (mode === 'notok') return respond({ data: { ok: false, error: 'x' }, error: null });
+            if (mode === 'out-of-scope') return respond({ data: { ok: false, reason: 'lead_out_of_scope' }, error: null });
+            return respond({ data: { ok: true }, error: null });
+          }
+        },
         rpc: (name, args) => {
+          order.push(name);
           rpcCalls.push({ name, args });
           if (opts.roleMode === 'hang') return { then: () => {} };
           const result = opts.roleMode === 'error' ? { error: { message: 'boom' } } : { error: null };
@@ -211,6 +244,7 @@ function buildF(opts) {
     markLeadSaved: opts.noSuppress ? function () {} : T.markLeadSaved,
     showError: (msg) => { errors.push(msg); },
     insertFreshLead: function (name, email, phone, isSynthetic, variantOverride, extra) {
+      order.push('insert');
       insertCalls.push({ name, email, phone, isSynthetic, variantOverride, extra, eventsBefore: gtagCalls.length, fbqBefore: fbqCalls.length });
       if (insertFailuresLeft > 0) { insertFailuresLeft--; return Promise.reject(new Error('insert failed')); }
       const id = '00000000-0000-4000-8000-00000000000' + (nextLead++);
@@ -224,7 +258,7 @@ function buildF(opts) {
   if (!RVF || typeof RVF.init !== 'function') throw new Error('window.RouterVariantF.init was not defined after loading js/router-variant-f.js');
   RVF.init(bridge, root);
   return {
-    RVF, root, bridge, gtagCalls, fbqCalls, clarityCalls, insertCalls, rpcCalls, redirects, errors, fakeWindow, document,
+    RVF, root, bridge, gtagCalls, fbqCalls, clarityCalls, insertCalls, rpcCalls, redirects, errors, fakeWindow, document, order, detailsCalls, sentry,
     firePagehide: () => (windowListeners.pagehide || []).forEach((fn) => fn()),
     ev: (name) => gtagCalls.filter((c) => c.name === name),
     leadFbq: () => fbqCalls.filter((c) => c[0] === 'track' && c[1] === 'Lead')
@@ -283,9 +317,8 @@ async function main() {
   {
     const s = buildF();
     pickFunding(s, COPY.arm_f_s1_option_cash);
-    const sel = s.ev('router_funding_selected');
-    ok(sel.length === 1 && sel[0].params.funding_type === 'cash' && sel[0].params.step === 'f-funding' && sel[0].params.step_index === 1,
-      'the funding tap fires router_funding_selected {funding_type cash, step f-funding, step_index 1}');
+    ok(s.ev('router_funding_selected').length === 0 && s.gtagCalls.every((c) => JSON.stringify(c.params).indexOf('cash') === -1),
+      'the funding tap fires NO funding event and the funding value appears in no analytics call (Ben: no funding in GA4/Meta)');
     ok(byId(s.root, 'rfAddress') && byId(s.root, 'rfAddress').getAttribute('placeholder') === COPY.arm_f_s2_placeholder, 'screen 2 shows the address field with the approved placeholder');
     ok(flatten(s.root).filter((c) => c.tagName === 'INPUT').length === 1, 'screen 2 is a single text field (no autocomplete exists in /start)');
     buttonByText(s.root, COPY.arm_f_s2_button_continue).dispatchClick();
@@ -346,6 +379,7 @@ async function main() {
     ok(role.length === 1 && role[0].args.p_role === 'homeowner' && role[0].args.p_lead_id === '00000000-0000-4000-8000-000000000001',
       'set_lead_role(homeowner) fires once after the save, which is what trips the #1932 new-lead alert');
     ok(s.rpcCalls.every((c) => ['set_lead_role'].indexOf(c.name) !== -1), 'no other RPC (no update_lead_contact, no auth) is called');
+    ok(JSON.stringify(s.order) === JSON.stringify(['insert', 'set_lead_role', 'details']), "the save order is insert -> set_lead_role -> details (Ben's order): " + s.order.join(' > '));
   }
 
   // ═══ F5: phone-only and email-only both save; blank email is "" (leads.email is NOT NULL, never a fake address). ═══
@@ -389,7 +423,7 @@ async function main() {
     const idxGL = s.gtagCalls.findIndex((c) => c.name === 'generate_lead');
     const idxThanks = s.gtagCalls.findIndex((c) => c.name === 'router_step_view' && c.params.step === 'f-thanks');
     ok(idxGL >= 0 && idxThanks > idxGL, 'the conversion fires BEFORE the thank-you view (generate_lead at ' + idxGL + ', f-thanks view at ' + idxThanks + ')');
-    ok(s.redirects.length === 0 && s.fakeWindow.location.href === '', 'no redirect has happened yet when the conversion is counted');
+    ok(s.redirects.length === 0 && s.fakeWindow.location.href === PAGE_URL, 'no redirect has happened yet when the conversion is counted (location is still the /start page)');
     ok(s.ev('router_contact_submitted').length === 1 && s.ev('router_contact_submitted')[0].params.step === 'f-contact' && s.ev('router_contact_submitted')[0].params.step_index === 3,
       'router_contact_submitted fires once {f-contact, step_index 3}');
     const thanks = s.ev('router_step_view').filter((e) => e.params.step === 'f-thanks');
@@ -419,7 +453,8 @@ async function main() {
     ok(e.ev('router_step_view').some((v) => v.params.step === 'f-thanks') && e.leadFbq().length === 1, 'set_lead_role returning an error still reaches the thank-you screen with one Lead');
     const h = buildF({ roleMode: 'hang' }); drive(h, GOOD); submit(h); await settleN(3);
     ok(h.leadFbq().length === 1 && h.ev('generate_lead').length === 1, 'set_lead_role hanging does not delay the conversion count');
-    await new Promise((r) => setTimeout(r, 4500));
+    await new Promise((r) => setTimeout(r, 300));
+    ok(h.detailsCalls.length === 1, 'a hung set_lead_role does not stop the details/consent call: it starts after the role wait');
     ok(h.ev('router_step_view').some((v) => v.params.step === 'f-thanks'), 'a hung set_lead_role falls through to the thank-you screen after the guard timeout');
   }
 
@@ -464,6 +499,75 @@ async function main() {
     ctl.firePagehide();
     ok(ctl.ev('router_step_abandoned').length === 1 && ctl.ev('router_step_abandoned')[0].params.step === 'f-thanks',
       'NEGATIVE CONTROL: with markLeadSaved() removed the false router_step_abandoned{f-thanks} DOES fire, so the suppression above is what prevents it');
+  }
+
+  // ═══ F13: the details + consent call -- exact body, byte-identical consent, server-bound only. ═══
+  {
+    const s = buildF({ ua: FB_UA });
+    drive(s, { name: 'Jane', phone: '(317) 255-0142', email: 'jane@example.com', consent: true, address: '123 Main St, Indianapolis, IN 46204' }, COPY.arm_f_s1_option_insurance);
+    submit(s); await settleN(4);
+    ok(s.detailsCalls.length === 1 && s.detailsCalls[0].name === 'record-lead-details', 'exactly one call to the record-lead-details Edge Function on success');
+    const b = s.detailsCalls[0] && s.detailsCalls[0].body;
+    ok(!!b && b.lead_id === '00000000-0000-4000-8000-000000000001', 'the body carries the saved lead id');
+    ok(b.funding_type === 'insurance' && b.property_address === '123 Main St, Indianapolis, IN 46204', 'the body carries the funding answer and the address');
+    ok(b.fbc === 'fb.1.1700000000.cookieFbc' && b.fbp === 'fb.1.1700000000.cookieFbp', 'the body carries fbc and fbp from the Meta cookies');
+    ok(b.consent && b.consent.key === 'arm_f_s3_consent_checkbox' && b.consent.given === true && b.consent.text === APPROVED_CONSENT,
+      'the consent record is {key arm_f_s3_consent_checkbox, given true, text BYTE-IDENTICAL to the approved draft}');
+    ok(b.page_url === PAGE_URL, 'the body carries the page URL');
+    ok(JSON.stringify(b.submitted_fields) === JSON.stringify(['name', 'phone', 'email', 'address', 'funding']), 'the body lists which fields were submitted (no values)');
+    ok(!('ip' in b) && !('user_agent' in b), 'the client sends NO ip or user_agent: the Edge Function observes them itself');
+    ok(s.sentry.length === 0, 'no Sentry report on success');
+    const u = buildF({ ua: FB_UA }); drive(u, { name: 'Jane', phone: '(317) 255-0142', email: '', consent: false }); submit(u); await settleN(4);
+    ok(u.detailsCalls[0].body.consent.given === false && u.detailsCalls[0].body.consent.text === APPROVED_CONSENT, 'an UNTICKED box is recorded as given:false with the same exact text (evidence of what was displayed)');
+    ok(JSON.stringify(u.detailsCalls[0].body.submitted_fields) === JSON.stringify(['name', 'phone', 'address', 'funding']), 'phone-only: email is not listed as submitted');
+    const nocookie = buildF({ cookie: '' }); drive(nocookie, GOOD); submit(nocookie); await settleN(4);
+    ok(/^fb\.1\.\d+\.IwAR123$/.test(nocookie.detailsCalls[0].body.fbc) && nocookie.detailsCalls[0].body.fbp === null, 'with no _fbc cookie, fbc is derived from the fbclid in the URL; a missing _fbp is null');
+  }
+
+  // ═══ F14: ONE retry, then Sentry (lead id only); never blocks; never a second conversion. ═══
+  {
+    const once = buildF({ detailsMode: 'fail-once' }); drive(once, GOOD); submit(once); await settleN(4);
+    await new Promise((r) => setTimeout(r, 100));
+    ok(once.detailsCalls.length === 2 && once.sentry.length === 0, 'a first failure is retried once; the retry succeeds and nothing is reported');
+    const bad = buildF({ detailsMode: 'fail-always' }); drive(bad, GOOD); submit(bad); await settleN(4);
+    await new Promise((r) => setTimeout(r, 200));
+    ok(bad.detailsCalls.length === 2, 'a persistent failure makes exactly TWO calls (one retry, not a loop)');
+    ok(bad.sentry.length === 1 && /record-lead-details failed after 2 attempt/.test(bad.sentry[0].msg), 'the final failure is reported to Sentry once: "' + (bad.sentry[0] && bad.sentry[0].msg) + '"');
+    const rep = JSON.stringify(bad.sentry);
+    ok(rep.indexOf('Main St') === -1 && rep.indexOf('autodialer') === -1 && rep.indexOf('jane@example.com') === -1 && rep.indexOf('317') === -1 && rep.indexOf('insurance') === -1,
+      'the Sentry report carries NO address, consent text, email, phone or funding answer');
+    ok(bad.sentry[0].ctx.extra.lead_id === '00000000-0000-4000-8000-000000000001', 'the Sentry report carries the lead id');
+    ok(bad.ev('router_step_view').some((v) => v.params.step === 'f-thanks'), 'a failing details call does NOT block the thank-you screen');
+    ok(bad.ev('generate_lead').length === 1 && bad.leadFbq().length === 1, 'a failing details call does not count a second conversion or lose the first');
+    const oos = buildF({ detailsMode: 'out-of-scope' }); drive(oos, GOOD); submit(oos); await settleN(4);
+    await new Promise((r) => setTimeout(r, 100));
+    ok(oos.detailsCalls.length === 1 && oos.sentry.length === 1, 'lead_out_of_scope is NOT retried (it cannot succeed) but is reported');
+    const notok = buildF({ detailsMode: 'notok' }); drive(notok, GOOD); submit(notok); await settleN(4);
+    await new Promise((r) => setTimeout(r, 200));
+    ok(notok.detailsCalls.length === 2 && notok.sentry.length === 1, 'an ok:false response is treated as a failure: retried once, then reported');
+    const hang = buildF({ detailsMode: 'hang' }); drive(hang, GOOD); submit(hang); await settleN(4);
+    await new Promise((r) => setTimeout(r, 200));
+    ok(hang.ev('router_step_view').some((v) => v.params.step === 'f-thanks'), 'a HUNG details call falls through to the thank-you screen after the flow guard');
+    const failInsert = buildF({ insertFails: 1 }); drive(failInsert, GOOD); submit(failInsert); await settleN(4);
+    ok(failInsert.detailsCalls.length === 0, 'NEGATIVE CONTROL: a failed insert makes NO details call (there is no lead to attach it to)');
+  }
+
+  // ═══ F15: PII ban -- nothing personal or funding-related in ANY analytics call. ═══
+  {
+    const s = buildF({ ua: FB_UA });
+    drive(s, { name: 'Jane', phone: '(317) 255-0142', email: 'jane@example.com', consent: true, address: '123 Main St, Indianapolis, IN 46204' }, COPY.arm_f_s1_option_insurance);
+    submit(s); await settleN(4);
+    const everything = JSON.stringify([s.gtagCalls, s.fbqCalls, s.clarityCalls]);
+    const banned = ['Main St', '46204', 'Jane', 'jane@example.com', '2550142', 'autodialer', 'call or text', 'cookieFbc', 'cookieFbp', 'IwAR123'];
+    const leaked = banned.filter((t) => everything.indexOf(t) !== -1);
+    ok(leaked.length === 0, 'no address, name, email, phone, consent text, fbc/fbp or fbclid in any GA4, Meta or Clarity call (leaked: ' + leaked.join(',') + ')');
+    const keys = new Set(); s.gtagCalls.forEach((c) => Object.keys(c.params || {}).forEach((k) => keys.add(k)));
+    const allowed = new Set(['step', 'step_index', 'variant', 'ua_context', 'lead_id', 'event_id']);
+    const extra = [...keys].filter((k) => !allowed.has(k));
+    ok(extra.length === 0, 'every GA4 parameter is one of variant / step / step_index / ua_context / lead_id / event_id (unexpected: ' + extra.join(',') + ')');
+    ok(!keys.has('funding_type') && !keys.has('consent_given'), 'no funding_type and no consent_given parameter on any event');
+    ok(s.fbqCalls.every((c) => JSON.stringify(c).indexOf('insurance') === -1 && JSON.stringify(c.slice(2)) !== undefined) && s.leadFbq()[0].length === 4 && Object.keys(s.leadFbq()[0][2]).length === 0,
+      'the Meta Lead call carries an EMPTY parameter object and only an eventID option');
   }
 
   // ═══ F12: routing and reachability guards read out of the REAL start.html head script. ═══

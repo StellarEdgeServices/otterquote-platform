@@ -29,17 +29,27 @@
 // that is not in the approved table is BACK_LABEL, the "Back" affordance every
 // other router arm already shows (start.html markup / router-discovery.js).
 //
-// WHAT THIS DOES NOT DO YET (measured, see the Q on #2122): production
-// `leads` has no column for the funding answer, the address, fbc, or the
-// D-299 consent evidence (rendered text, timestamp, IP, user agent, page URL).
-// So this module writes ONLY existing columns -- name, email, phone, source,
-// variant, utm_*, fbclid/gclid, is_synthetic, and `zip` parsed from the
-// address -- and sends the funding answer and the consent checkbox state as
-// GA4 event parameters. It never sends a column that does not exist: an
-// unknown column makes PostgREST reject the whole insert and `leads` has no
-// UPDATE policy, so the lead would be destroyed with no retry. The consent
-// checkbox is shown and recorded in the event stream only until the companion
-// migration lands.
+// WHERE THE DETAILS GO (Ben's ruling on #2122, comment 5802853627). Production
+// `leads` has no column for the funding answer, the address, fbc/fbp, or the
+// D-299 consent evidence, and an anon client cannot write them (no UPDATE policy
+// on `leads`, and the client IP is not visible to page JS). The companion
+// migration PR (#2126) adds the columns, the lead_consents table and the
+// record_lead_details() RPC, and the record-lead-details Edge Function reads the
+// IP and user agent from the request. So this module does, in this order:
+//   1. insert the lead -- EXISTING columns only (name, email, phone, source,
+//      variant, utm_*, fbclid/gclid, is_synthetic, and `zip` parsed from the
+//      address). It never sends a column that does not exist: an unknown column
+//      makes PostgREST reject the whole insert and `leads` has no UPDATE
+//      policy, so the lead would be destroyed with no retry;
+//   2. set_lead_role(homeowner), which trips the #1932 new-lead alert;
+//   3. call the record-lead-details Edge Function with the funding answer, the
+//      address, fbc/fbp and the consent record. One retry; if it still fails
+//      it is reported to Sentry (lead_id only, no personal data) and the flow
+//      carries on -- the lead is saved and the visitor is never blocked.
+// PII DISCIPLINE: the address, the consent text and the funding answer go ONLY
+// to that Edge Function. They are never GA4 or Meta event parameters (GA4
+// prohibits PII). Analytics events carry variant / step / step_index /
+// ua_context / lead_id, plus event_id on generate_lead, and nothing else.
 (function () {
   'use strict';
 
@@ -103,10 +113,17 @@
   // one. If the zone cannot be resolved the AFTER-HOURS copy is used, because
   // that is the promise that is never wrong.
   var CALL_WINDOW = { timeZone: 'America/Indiana/Indianapolis', startHour: 8, endHour: 20 };
-  // set_lead_role is awaited so the #1932 alert (which fires on role NULL ->
-  // non-NULL) is not cut off by a fast navigation, but the thank-you screen
-  // never waits longer than this for it.
-  var ROLE_CALL_GUARD_MS = 4000;
+  // The details call (see the header) is made after set_lead_role settles, but it
+  // never waits longer than ROLE_WAIT_MS for it, and the thank-you screen never
+  // waits longer than FLOW_GUARD_MS for either -- a hung request must not strand
+  // a visitor whose lead is already saved. The details call keeps running in the
+  // background if the thank-you screen appears first.
+  var ROLE_WAIT_MS = 3000;
+  var FLOW_GUARD_MS = 6000;
+  var DETAILS_FUNCTION = 'record-lead-details';
+  var DETAILS_RETRIES = 1;
+  var DETAILS_RETRY_DELAY_MS = 800;
+  var CONSENT_KEY = 'arm_f_s3_consent_checkbox';
 
   var STEP_INDEX = { 'f-funding': 1, 'f-address': 2, 'f-contact': 3, 'f-thanks': 4 };
 
@@ -223,8 +240,7 @@
       var btn = el('button', 'role-option', COPY[opt.copyKey]);
       btn.type = 'button';
       btn.addEventListener('click', function () {
-        funding = opt.value;
-        bridge.trackRouter('router_funding_selected', stepParams('f-funding', { funding_type: funding }));
+        funding = opt.value; // held in memory; goes only to the details Edge Function
         go('f-address');
       });
       wrap.appendChild(btn);
@@ -327,8 +343,80 @@
   // ── The save. Order is the point: (1) the leads row, first, before anything
   // else; (2) only if that succeeded, the conversion -- GA4 generate_lead and
   // Meta Lead with ONE shared event_id, exactly once; (3) set_lead_role so the
-  // existing #1932 alert fires; (4) the thank-you screen. A failed insert
-  // counts NOTHING and leaves the form ready for a retry. ──
+  // existing #1932 alert fires; (4) the details + consent call; (5) the thank-you
+  // screen. A failed insert counts NOTHING and leaves the form ready for a retry. ──
+  function readCookie(name) {
+    try {
+      var m = String(document.cookie || '').match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+      return m ? decodeURIComponent(m[1]) : null;
+    } catch (e) { return null; }
+  }
+  // fbc: the _fbc cookie when Meta's pixel has set it, else built from the fbclid in
+  // the URL in Meta's documented format (fb.<subdomain index>.<creation ms>.<fbclid>).
+  function deriveFbc() {
+    var c = readCookie('_fbc');
+    if (c) return c;
+    try {
+      var id = new URLSearchParams(window.location.search).get('fbclid');
+      if (id) return 'fb.1.' + Date.now() + '.' + id;
+    } catch (e) { /* no fbclid */ }
+    return null;
+  }
+  function buildDetailsBody(v, newId) {
+    var fields = ['name'];
+    if (v.phone) fields.push('phone');
+    if (v.email) fields.push('email');
+    fields.push('address', 'funding');
+    var pageUrl = null;
+    try { pageUrl = window.location.href || null; } catch (e) { /* none */ }
+    return {
+      lead_id: newId,
+      funding_type: funding,
+      property_address: address,
+      fbc: deriveFbc(),
+      fbp: readCookie('_fbp'),
+      // The exact string rendered next to the checkbox, byte-identical to the approved copy.
+      consent: { key: CONSENT_KEY, given: v.consentGiven, text: COPY.arm_f_s3_consent_checkbox },
+      page_url: pageUrl,
+      submitted_fields: fields
+    };
+  }
+  // Surfaced to Sentry with the lead id only -- never the address, the consent text or the funding answer.
+  function reportDetailsFailure(newId, attempts, err) {
+    var msg = 'router-arm-f: record-lead-details failed after ' + attempts + ' attempt(s)';
+    try {
+      if (window.Sentry && typeof window.Sentry.captureMessage === 'function') {
+        window.Sentry.captureMessage(msg, { level: 'error', extra: { lead_id: newId, attempts: attempts, reason: err && err.name ? String(err.name) : 'unknown' } });
+      } else if (window._oqErrorBuffer) {
+        window._oqErrorBuffer.push({ type: 'error', message: msg + ' (lead_id ' + newId + ')' });
+      }
+    } catch (e) { /* reporting must never throw */ }
+  }
+  // One call plus DETAILS_RETRIES retries. Resolves true when the function says ok; a 200 with
+  // reason lead_out_of_scope (unknown / too old / already redeemed lead) is not retryable.
+  function sendDetails(body, newId) {
+    return new Promise(function (resolve) {
+      var attempts = 0;
+      function fail(err, notRetryable) {
+        if (!notRetryable && attempts <= DETAILS_RETRIES) { setTimeout(attempt, DETAILS_RETRY_DELAY_MS); return; }
+        reportDetailsFailure(newId, attempts, err);
+        resolve(false);
+      }
+      function attempt() {
+        attempts++;
+        var call = null;
+        try { call = bridge.sb.functions.invoke(DETAILS_FUNCTION, { body: body }); } catch (e) { call = null; }
+        if (!call || typeof call.then !== 'function') { fail({ name: 'NoFunctionsClient' }, true); return; }
+        call.then(function (res) {
+          if (res && !res.error && res.data && res.data.ok === true) { resolve(true); return; }
+          var notRetryable = !!(res && res.data && res.data.reason === 'lead_out_of_scope');
+          fail(res && res.error ? res.error : { name: notRetryable ? 'LeadOutOfScope' : 'NotOk' }, notRetryable);
+        }, function (err) { fail(err, false); });
+      }
+      attempt();
+    });
+  }
+
   function saveLead(v, submitBtn, formError) {
     submitting = true;
     submitBtn.disabled = true;
@@ -341,7 +429,7 @@
     // still alerts; NULL would not.
     bridge.insertFreshLead(v.name, v.email, v.phone, undefined, undefined, extra).then(function (newId) {
       leadId = newId;
-      fireConversion(v);
+      fireConversion();
       bridge.markLeadSaved();
       var finished = false;
       function finish() {
@@ -349,18 +437,25 @@
         finished = true;
         go('f-thanks');
       }
-      var guard = setTimeout(finish, ROLE_CALL_GUARD_MS);
+      setTimeout(finish, FLOW_GUARD_MS);
+      var detailsStarted = false;
+      function startDetails() {
+        if (detailsStarted) return;
+        detailsStarted = true;
+        sendDetails(buildDetailsBody(v, newId), newId).then(finish, finish);
+      }
+      setTimeout(startDetails, ROLE_WAIT_MS);
       var role;
       try { role = bridge.sb.rpc('set_lead_role', { p_lead_id: newId, p_role: 'homeowner' }); } catch (e) { role = null; }
       if (role && typeof role.then === 'function') {
         role.then(function (res) {
           if (res && res.error) console.error('[router-variant-f] set_lead_role failed -- proceeding anyway:', res.error);
-          clearTimeout(guard); finish();
+          startDetails();
         }, function (err) {
           console.error('[router-variant-f] set_lead_role threw -- proceeding anyway:', err);
-          clearTimeout(guard); finish();
+          startDetails();
         });
-      } else { clearTimeout(guard); finish(); }
+      } else { startDetails(); }
     }, function (err) {
       console.error('[router-variant-f] lead save failed:', err);
       submitting = false;
@@ -369,12 +464,15 @@
     });
   }
 
-  function fireConversion(v) {
+  // The conversion. Events carry step / step_index (and variant, ua_context, lead_id, added by
+  // start.html's trackRouter) -- and event_id on generate_lead so GA4 and Meta share one id. No
+  // funding, address, consent or fbc/fbp value ever goes into an analytics event.
+  function fireConversion() {
     if (leadEventFired) return;
     leadEventFired = true;
     var eventId = leadId;
-    bridge.trackRouter('router_contact_submitted', stepParams('f-contact', { funding_type: funding, consent_given: v.consentGiven }));
-    bridge.trackRouter('generate_lead', stepParams('f-contact', { event_id: eventId, funding_type: funding }));
+    bridge.trackRouter('router_contact_submitted', stepParams('f-contact'));
+    bridge.trackRouter('generate_lead', stepParams('f-contact', { event_id: eventId }));
     try { fbq('track', 'Lead', {}, { eventID: eventId }); } catch (e) {}
   }
 
