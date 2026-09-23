@@ -1012,7 +1012,11 @@
           // sites, unchanged), this keeps firing unconditionally exactly as
           // before.
           if (cfg.fireLead) { cfg.fireLead(); } else { try { fbq('track', 'Lead'); } catch (e) {} }
-          emitComplete(cfg.completeToken);
+          // gh-2096 CLOSE-REVIEW: FAIL (5801804139): emitComplete() looks the
+          // token up in C's own STEP_INDEX, which has no 'e-contractor-contact'
+          // key, so E's complete event shipped with step_index undefined. Pass
+          // the caller's index, exactly as router_contact_submitted does above.
+          bridge.trackRouter('router_step_complete', { step: cfg.completeToken, step_index: cfg.stepIndex });
           redirectWithLeadId(cfg.destination, newId);
         }
         bridge.sb.rpc('set_lead_role', payload).then(function (res) {

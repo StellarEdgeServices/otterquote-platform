@@ -43,6 +43,15 @@ function ok(cond, label) {
   else { console.log('FAIL: ' + label); fail++; }
 }
 
+// gh-2096 CLOSE-REVIEW: FAIL (comment 5801804139) regression guard: every
+// router_step_complete a walk emits must carry a numeric step_index. Returns
+// the offending step tokens so a failure names the screen, not just a count.
+function completesMissingStepIndex(trackedEvents) {
+  return trackedEvents
+    .filter((e) => e.name === 'router_step_complete' && typeof e.extra.step_index !== 'number')
+    .map((e) => e.extra.step);
+}
+
 // ── Minimal DOM shim -- copied from tests/gh2076-variant-e.mjs's own shim
 // (same files, same DOM surface). Not a general-purpose DOM. ──
 function makeDom(ctxCell) {
@@ -356,6 +365,8 @@ results.push((function scenarioC3() {
     const completeIdx = trackedEvents.findIndex((e) => e.name === 'router_step_complete' && e.extra.step === 'c-home-8');
     ok(submittedIdx < completeIdx, 'router_contact_submitted fires BEFORE router_step_complete:c-home-8, not after');
     ok(trackedEvents.filter((e) => e.name === 'router_contact_submitted').length === 1, 'router_contact_submitted fires exactly once, not once per RPC retry path');
+    ok(completesMissingStepIndex(trackedEvents).length === 0,
+      'every router_step_complete on the c-home-8 walk carries a numeric step_index (missing: ' + completesMissingStepIndex(trackedEvents).join(',') + ')');
   }).catch((e) => { console.error('scenarioC3 error:', e); fail++; });
 })());
 
@@ -380,6 +391,11 @@ results.push((function scenarioC4() {
     ok(leadEvents.length === 1, 'Meta Lead fires exactly once for the contractor track');
     const roleCall = rpcCalls.find((c) => c.name === 'set_lead_role');
     ok(!!roleCall && roleCall.args.p_role === 'contractor', 'set_lead_role still fires with p_role="contractor", unchanged by this PR');
+    const completeC = trackedEvents.find((e) => e.name === 'router_step_complete' && e.extra.step === 'c-contractor-contact');
+    ok(!!completeC && completeC.extra.step_index === 7,
+      'router_step_complete for c-contractor-contact carries step_index 7');
+    ok(completesMissingStepIndex(trackedEvents).length === 0,
+      'every router_step_complete on the C contractor walk carries a numeric step_index (missing: ' + completesMissingStepIndex(trackedEvents).join(',') + ')');
   }).catch((e) => { console.error('scenarioC4 error:', e); fail++; });
 })());
 
@@ -647,6 +663,14 @@ results.push((function scenarioE3() {
     const roleCall = rpcCalls.find((c) => c.name === 'set_lead_role');
     ok(!!roleCall && roleCall.args.p_role === 'contractor', 'set_lead_role still fires with p_role="contractor", unchanged');
     ok(redirects.length === 1 && redirects[0].dest.indexOf('contractor-join.html') !== -1, 'redirects to contractor-join.html, unchanged');
+    // gh-2096 CLOSE-REVIEW: FAIL (5801804139): E renders this screen through
+    // C's shared renderPartnerContact, whose emitComplete looked the token
+    // up in C's STEP_INDEX and dropped step_index for 'e-contractor-contact'.
+    const completeE = trackedEvents.find((e) => e.name === 'router_step_complete' && e.extra.step === 'e-contractor-contact');
+    ok(!!completeE && completeE.extra.step_index === 7,
+      'router_step_complete for e-contractor-contact carries step_index 7');
+    ok(completesMissingStepIndex(trackedEvents).length === 0,
+      'every router_step_complete on the E contractor walk carries a numeric step_index (missing: ' + completesMissingStepIndex(trackedEvents).join(',') + ')');
   }).catch((e) => { console.error('scenarioE3 error:', e); fail++; });
 })());
 
