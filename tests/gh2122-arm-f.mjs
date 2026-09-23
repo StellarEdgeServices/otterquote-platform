@@ -206,7 +206,7 @@ function buildF(opts) {
   };
   const fixed = Date.parse(opts.nowIso || '2026-09-23T15:00:00Z'); // 11:00 America/Indiana/Indianapolis
   const sandbox = {
-    window: fakeWindow, document, navigator: { userAgent: opts.ua || SAFARI_UA, sendBeacon: (url, blob) => { beacons.push({ url, blob }); return true; } }, Blob,
+    window: fakeWindow, document, navigator: { userAgent: opts.ua || SAFARI_UA, sendBeacon: (url, blob) => { beacons.push({ url, blob }); return !opts.beaconFails; } }, Blob,
     fetch: opts.noFetch ? undefined : fetchStub, console, Promise,
     // Timers are scaled down 100x so the 3s / 6s guards and the 800ms retry delay run in milliseconds
     // while keeping their ORDER (retry 8ms < role wait 30ms < flow guard 60ms).
@@ -691,6 +691,7 @@ async function main() {
     const a = buildF({ detailsMode: 'hang', roleMode: 'hang' }); drive(a, GOOD); submit(a); await settle(); await settle();
     ok(a.detailsCalls.length === 1 && a.order[0] === 'insert' && a.order[1] === 'details', 'the details request is sent in the same tick the insert resolves, with no wait and while set_lead_role is still pending: ' + a.order.join(' > '));
     ok(a.beacons.length === 0, 'no beacon while the page is still open');
+    ok(a.rpcCalls.filter((c) => c.name === 'set_lead_role').length === 1 && a.order.indexOf('set_lead_role') !== -1, 'set_lead_role starts IN PARALLEL with a hung details call (a chained implementation would silently drop the #1932 alert until the guard)');
     a.firePagehide();
     ok(a.beacons.length === 1, 'a pagehide right after the insert, with the write not yet confirmed, sends the details as a beacon');
     const bc = a.beacons[0];
@@ -720,6 +721,15 @@ async function main() {
     pre.firePagehide();
     ok(pre.beacons.length === 0 && pre.detailsCalls.length === 0, 'NEGATIVE CONTROL: a pagehide BEFORE the lead is saved sends nothing (there is no lead to attach a consent record to)');
 
+    const bf = buildF({ detailsMode: 'hang', beaconFails: true }); drive(bf, GOOD); submit(bf); await settle(); await settle();
+    bf.firePagehide(); bf.firePagehide();
+    ok(bf.beacons.length === 2, 'when sendBeacon returns FALSE (queue full) the beacon stays retryable: a second pagehide tries again');
+    const once = buildF({ detailsMode: 'ok' }); drive(once, GOOD); submit(once); await settleN(4);
+    await new Promise((r) => setTimeout(r, 120)); // well past the flow guard (6 s scaled to 60 ms)
+    ok(once.ev('router_step_view').filter((e) => e.params.step === 'f-thanks').length === 1, 'the thank-you screen is shown exactly ONCE even though both the settle path and the flow guard fire (finish is idempotent)');
+    const longUrl = buildF({ detailsMode: 'ok' }); longUrl.fakeWindow.location.href = 'https://otterquote.com/start?v=f&x=' + 'y'.repeat(5000);
+    drive(longUrl, GOOD); submit(longUrl); await settleN(4);
+    ok(longUrl.detailsCalls[0].body.page_url.length === 2000, 'page_url is capped at 2000 characters client-side (an over-long URL cannot push the keepalive body past its size limit)');
     const nf = buildF({ noFetch: true }); drive(nf, GOOD); submit(nf); await settleN(4);
     ok(nf.detailsCalls.length === 1 && nf.detailsCalls[0].name === 'record-lead-details' && nf.detailsCalls[0].init === undefined, 'with no fetch or no URL the module falls back to the supabase-js invoke path (and still sends the details)');
   }

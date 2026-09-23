@@ -384,7 +384,9 @@
     if (v.email) fields.push('email');
     fields.push('address', 'funding');
     var pageUrl = null;
-    try { pageUrl = window.location.href || null; } catch (e) { /* none */ }
+    // Capped client-side (the server caps it at 2000 too): an over-long URL must not push the body past the 64 KB keepalive limit,
+    // which would make both the fetch and the beacon fail and lose the consent record.
+    try { pageUrl = (window.location.href || '').slice(0, 2000) || null; } catch (e) { /* none */ }
     return {
       lead_id: newId,
       funding_type: funding,
