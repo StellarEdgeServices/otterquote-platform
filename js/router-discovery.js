@@ -112,6 +112,39 @@
     'c-home-dq-7': 'c-home-7'
   };
 
+  // gh-2096 item 4: step_index (1-based), one lookup table for this arm.
+  // Indexed by DEPTH within each of this module's four tracks (the
+  // homeowner track off c-entry, and the professional/realtor,
+  // professional/insurance and contractor tracks, which all branch off
+  // c-entry too) rather than flat registration order -- c-realtor-1 and
+  // c-ins-1 and c-contractor-1 are all "the first question after the
+  // entry screen" on their own track, so they share the same index, the
+  // same way c-prof-entry (professional's own entry sub-screen) shares
+  // its index with c-contractor-1. This is what lets index N mean
+  // roughly the same funnel depth across tracks AND across arms (D and E
+  // use the same depth convention in their own files), not just a
+  // meaningless enumeration order. Every c-home-dq-* / disqualifier
+  // token below is derived from DQ_SOURCE above, never hand-duplicated,
+  // so the two tables cannot drift apart.
+  var STEP_INDEX = {
+    'c-entry': 1,
+    // Homeowner track.
+    'c-home-1': 2, 'c-home-2': 3, 'c-home-3': 4, 'c-home-4': 5,
+    'c-home-5': 6, 'c-home-6': 7, 'c-home-7': 8, 'c-home-8': 9,
+    // Professional entry (parallel to c-home-1/c-contractor-1).
+    'c-prof-entry': 2,
+    // Realtor track.
+    'c-realtor-1': 3, 'c-realtor-2': 4, 'c-realtor-3': 5, 'c-realtor-4': 6,
+    'c-realtor-close': 7, 'c-realtor-contact': 8,
+    // Insurance track.
+    'c-ins-1': 3, 'c-ins-2': 4, 'c-ins-3': 5, 'c-ins-4': 6, 'c-ins-5': 7,
+    'c-ins-6': 8, 'c-ins-7': 9, 'c-ins-close': 10, 'c-ins-contact': 11,
+    // Contractor track (parallel to c-home-1/c-prof-entry).
+    'c-contractor-1': 2, 'c-contractor-2': 3, 'c-contractor-3': 4,
+    'c-contractor-4': 5, 'c-contractor-5': 6, 'c-contractor-contact': 7
+  };
+  Object.keys(DQ_SOURCE).forEach(function (dqToken) { STEP_INDEX[dqToken] = STEP_INDEX[DQ_SOURCE[dqToken]]; });
+
   // ── Approved copy -- ship verbatim, byte-exact. Dustin has declined
   // three times in his own voice to alter these words on this build
   // (#2011 D-1, D-4; #2019 "A."). Screen 4 option 3's EN DASH (U+2013,
@@ -437,9 +470,16 @@
   // trackStepComplete/renderStep (those two are no-ops for arm C anyway,
   // per start.html's own ARM_C guards, precisely so this module's calls
   // through bridge.redirectTo below cannot double-emit a wrong token). ──
-  function emitView(token) { bridge.trackRouter('router_step_view', { step: token }); }
-  function emitComplete(token) { bridge.trackRouter('router_step_complete', { step: token }); }
-  function emitDisqualified(sourceToken) { bridge.trackRouter('router_disqualified', { step: sourceToken }); }
+  // gh-2096 item 4: step_index attached here, from STEP_INDEX above --
+  // the one place every one of this module's view/complete/disqualified
+  // emits already funnels through, so no other call site needs to
+  // change. An unrecognized token (should never happen -- every RENDERERS
+  // key has an entry above) sends step_index: undefined rather than a
+  // guessed number, matching this file's own "a missing event is a hole
+  // we can see; a wrong one is not" rule for router_disqualified.
+  function emitView(token) { bridge.trackRouter('router_step_view', { step: token, step_index: STEP_INDEX[token] }); }
+  function emitComplete(token) { bridge.trackRouter('router_step_complete', { step: token, step_index: STEP_INDEX[token] }); }
+  function emitDisqualified(sourceToken) { bridge.trackRouter('router_disqualified', { step: sourceToken, step_index: STEP_INDEX[sourceToken] }); }
 
   var RENDERERS = {}; // populated below, keyed by token
 
@@ -631,6 +671,16 @@
         // a failed role write must not strand a visitor on the router,
         // same rule arms A/B already follow.
         function proceed() {
+          // gh-2096 item 1: GA4 contact-submit + Meta Lead, mirroring
+          // arms A/B's own step1Form handler in start.html. This
+          // `proceed()` runs exactly once per successful c-home-8 submit
+          // (the set_lead_role RPC chain above calls it from either
+          // `.then` or `.catch`, never both, and the submit button is
+          // disabled for the duration of the request that reaches here),
+          // so no extra per-session dedup guard is needed the way arm D's
+          // leadEventFired flag is for its own multi-screen capture.
+          bridge.trackRouter('router_contact_submitted', { step: 'c-home-8', step_index: STEP_INDEX['c-home-8'] });
+          try { fbq('track', 'Lead'); } catch (e) {}
           emitComplete('c-home-8');
           // gh-2075 round 2, review report ceo57-review-pr2086-20260921
           // finding 5 (non-blocking on #2075 itself, but biases any D-vs-C
@@ -935,6 +985,33 @@
         if (cfg.partnerIndustry) payload.p_partner_industry = cfg.partnerIndustry;
 
         function proceed() {
+          // gh-2096 item 1: GA4 contact-submit + Meta Lead. `cfg.stepIndex`
+          // is passed by each call site (this function is shared by C's
+          // own realtor/insurance/contractor tracks AND, via this
+          // module's exported renderPartnerContact, E's contractor track
+          // -- E's own 'e-contractor-contact' token has no entry in this
+          // file's own STEP_INDEX table, so the index has to come from
+          // the caller, not a lookup here). Fires exactly once per
+          // successful submit, same reasoning as renderContact's own
+          // proceed() above.
+          bridge.trackRouter('router_contact_submitted', { step: cfg.completeToken, step_index: cfg.stepIndex });
+          // gh-2096 REVIEW finding 2 (PR #2114, comment 5796844493, non-
+          // blocking): this function is shared by C's own three tracks
+          // (realtor/insurance/contractor), which have no OTHER place a
+          // Lead event can fire, so an unconditional fbq call has always
+          // been correct for them. E's contractor track reaches this same
+          // function through the exported renderPartnerContact -- but E's
+          // own session-level Lead dedupe (js/router-variant-e.js's
+          // `leadEventFired`, guarding e-p7-5 and the realtor/insurance
+          // contact screens) never saw this call site, so an E visitor who
+          // already fired Lead on one track and then also completes the
+          // contractor track via Back navigation got a second, undeduped
+          // Lead. `cfg.fireLead`, when the caller supplies it (E's
+          // e-contractor-contact renderer below), replaces the raw fbq
+          // call with that arm's own dedupe check; omitted (C's three call
+          // sites, unchanged), this keeps firing unconditionally exactly as
+          // before.
+          if (cfg.fireLead) { cfg.fireLead(); } else { try { fbq('track', 'Lead'); } catch (e) {} }
           emitComplete(cfg.completeToken);
           redirectWithLeadId(cfg.destination, newId);
         }
@@ -997,7 +1074,8 @@
       role: 'referral_partner',
       partnerIndustry: 're_agent',
       destination: bridge.PARTNER_INDUSTRY_DESTINATIONS.re_agent,
-      completeToken: 'c-realtor-contact'
+      completeToken: 'c-realtor-contact',
+      stepIndex: STEP_INDEX['c-realtor-contact']
     });
   };
 
@@ -1071,7 +1149,8 @@
       role: 'referral_partner',
       partnerIndustry: 'insurance_agent',
       destination: bridge.PARTNER_INDUSTRY_DESTINATIONS.insurance_agent,
-      completeToken: 'c-ins-contact'
+      completeToken: 'c-ins-contact',
+      stepIndex: STEP_INDEX['c-ins-contact']
     });
   };
 
@@ -1119,7 +1198,8 @@
       role: 'contractor',
       partnerIndustry: null,
       destination: bridge.ROLE_DESTINATIONS.contractor,
-      completeToken: 'c-contractor-contact'
+      completeToken: 'c-contractor-contact',
+      stepIndex: STEP_INDEX['c-contractor-contact']
     });
   };
 

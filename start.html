@@ -986,6 +986,50 @@
   }
   document.addEventListener('DOMContentLoaded', _oqFlushTrackQueue);
 
+  // gh-2096 item 4: step_index (1-based) for arm A's numeric/'2a' tokens
+  // and arm B's b-* tokens (via stepToken() above). One lookup table per
+  // arm is the pattern this issue asks for; C/D/E keep their OWN tables
+  // in their own files (js/router-discovery.js, js/router-variant-d.js,
+  // js/router-variant-e.js) and pass step_index through already computed
+  // -- trackRouter below never overwrites a step_index a caller already
+  // supplied, it only fills the gap for arm A/B's own bare step values.
+  var STEP_INDEX_AB = { 1: 1, 2: 2, '2a': 3, 3: 4, 'b-role': 1, 'b-industry': 2, 'b-contact': 3, 'b-redirect': 4 };
+
+  // gh-2096 item 6: ua_context separates the Facebook/Instagram in-app
+  // browser population from everyone else -- computed once (the UA string
+  // never changes mid-session) and stamped on every router event via
+  // trackRouter below, for every arm, with no per-arm change needed.
+  function computeUaContext() {
+    try {
+      var ua = navigator.userAgent || '';
+      if (/FBAN|FBAV|FB_IAB/.test(ua)) return 'fb_iab';
+      if (/Instagram/.test(ua)) return 'ig_iab';
+      return 'other';
+    } catch (e) { return 'other'; }
+  }
+  var UA_CONTEXT = computeUaContext();
+
+  // gh-2096 item 3: shared state for the abandon beacon (below, near
+  // redirectTo and the visibilitychange+pagehide listeners). Updated
+  // only from trackRouter's own router_step_view handling, which every
+  // arm already calls on every screen entry (renderStep here for A/B,
+  // emitView in each module for C/D/E) -- no parallel emitter, no
+  // per-arm change needed to keep this current.
+  var abandonCurrentStep = null;
+  var abandonCurrentStepIndex;
+  var abandonCurrentVariant = null;
+  var abandonStepEnteredAt = 0;
+  var abandonFiredForView = false;
+  // gh-2096 item 3: set to true just before redirectTo() below performs
+  // a real `window.location.href` navigation -- the one signal that
+  // distinguishes "this visitor completed/left the step on purpose" from
+  // a real abandonment. Every arm's terminal hand-off funnels through
+  // that one function (confirmed by reading redirectWithLeadId in both
+  // variant modules and the direct bridge.redirectTo calls in this file
+  // and js/router-discovery.js), so setting it there once covers all of
+  // them. Read by the pagehide handler below.
+  var abandonSuppressedByNav = false;
+
   // #2088 round 2 leftover (item 9): `variantOverride` lets a caller tag
   // an event with a DIFFERENT arm than this page's own `variant` closure
   // var -- used ONLY by the arm-E-script-load-failure fallback bridge
@@ -999,6 +1043,50 @@
       var p = extra || {};
       var v = variantOverride || variant;
       if (v) { p.variant = v; }
+      // gh-2096 item 4: fill step_index for arm A/B's own bare step
+      // tokens only -- never overwrite one a caller (C/D/E's own
+      // emitView/emitComplete/emitDisqualified) already computed from
+      // its own arm-specific table.
+      if (p.step_index === undefined && p.step !== undefined && p.step !== null && STEP_INDEX_AB.hasOwnProperty(p.step)) {
+        p.step_index = STEP_INDEX_AB[p.step];
+      }
+      // gh-2096 item 6: every router event, every arm.
+      p.ua_context = UA_CONTEXT;
+      // gh-2096 item 7 (client half): once a lead row exists for this
+      // session -- set by insertFreshLead below, itself shared by every
+      // arm via the bridge -- stamp it on every subsequent event so the
+      // step events are connectable to the leads row. Never sent before
+      // a lead exists (undefined stays out of the payload rather than
+      // sending null/empty).
+      if (leadId) { p.lead_id = leadId; }
+      // gh-2096 item 5: Clarity step tag + per-step event, same
+      // try/catch-guarded, window.clarity-gated pattern as the existing
+      // 'variant' tag below -- every arm's screens funnel their
+      // router_step_view through here, so this is the one place that
+      // needs it. oq_internal walks are tagged 'internal' instead of
+      // relying on suppression reaching Clarity (audit: only 11 of 36
+      // overnight recordings carrying oq_internal=1 were actually
+      // suppressed there).
+      if (p.step !== undefined && p.step !== null) {
+        try {
+          if (window.clarity) {
+            clarity('set', 'step', String(p.step));
+            clarity('event', 'router_' + p.step);
+            if (oqInternalWalk) { clarity('set', 'internal', '1'); }
+          }
+        } catch (e2) {}
+      }
+      // gh-2096 item 3: track the step currently on screen, and reset
+      // the once-per-view abandon guard, only on an actual view -- never
+      // on router_step_complete/router_contact_submitted/etc, which fire
+      // for the step being LEFT, not the one now showing.
+      if (name === 'router_step_view') {
+        abandonCurrentStep = p.step;
+        abandonCurrentStepIndex = p.step_index;
+        abandonCurrentVariant = v;
+        abandonStepEnteredAt = Date.now();
+        abandonFiredForView = false;
+      }
       if (typeof gtag === 'function') {
         gtag('event', name, p);
       } else {
@@ -1098,6 +1186,22 @@
     return ensureSb().from('leads').insert(payload).then(function (res) {
       if (res && res.error) throw res.error;
       setStoredLeadId(newId);
+      // gh-2096 item 7 (client half): stamp this page's own top-level
+      // `leadId` here too, regardless of which arm called this function
+      // -- trackRouter reads it to stitch every subsequent router event
+      // to this leads row. Safe for arms C/D/E: every one of their own
+      // redirectTo() call sites already passes preBuilt=true (confirmed
+      // by reading redirectWithLeadId in both variant modules and the
+      // direct bridge.redirectTo calls in js/router-discovery.js), so
+      // this file's own "!preBuilt" branch that reads `leadId` to build
+      // the redirect URL is never reached by them either way -- setting
+      // it here changes no existing redirect behavior, only adds
+      // lead_id to events from here forward. Arms A/B already set this
+      // same var themselves in their own .then() callbacks immediately
+      // after this call resolves; this makes it available one tick
+      // earlier and covers C/D/E, which never set it at all before now.
+      leadId = newId;
+      try { if (window.clarity) { clarity('identify', newId); } } catch (e2) {}
       return newId;
     });
   }
@@ -1351,7 +1455,8 @@
         return;
       }
       // GA4 — no PII, per #1994 item 4.
-      trackRouter('router_contact_submitted');
+      // gh-2096 item 2: step -- Step 1 is the contact screen this fires from.
+      trackRouter('router_contact_submitted', { step: stepToken(1) });
       // Meta Lead — same bare call as contractor-join.html:376's precedent,
       // no PII payload.
       try { fbq('track', 'Lead'); } catch (e) {}
@@ -1606,7 +1711,8 @@
       // table the real funnel reports from.
       if (ARM_B) {
         bRole = role;
-        trackRouter('router_role_selected', { role: role });
+        // gh-2096 item 2: step -- role is always picked on Step 2.
+        trackRouter('router_role_selected', { role: role, step: stepToken(2) });
         goToStep(role === 'referral_partner' ? '2a' : 1);
         return;
       }
@@ -1616,7 +1722,8 @@
 
       function proceed() {
         setRoleButtonsDisabled(false);
-        trackRouter('router_role_selected', { role: role });
+        // gh-2096 item 2: step -- role is always picked on Step 2.
+        trackRouter('router_role_selected', { role: role, step: stepToken(2) });
         if (role === 'referral_partner') {
           goToStep('2a');
           return;
@@ -1678,7 +1785,8 @@
     // gh-2016: held, not written -- same reason as the role buttons above.
     if (ARM_B) {
       bIndustry = industry;
-      trackRouter('router_partner_industry', { industry: industry });
+      // gh-2096 item 2: step -- partner industry is always picked on Step 2a.
+      trackRouter('router_partner_industry', { industry: industry, step: stepToken('2a') });
       goToStep(1);
       return;
     }
@@ -1687,7 +1795,8 @@
 
     function proceed() {
       setIndustryButtonsDisabled(false);
-      trackRouter('router_partner_industry', { industry: industry });
+      // gh-2096 item 2: step -- partner industry is always picked on Step 2a.
+      trackRouter('router_partner_industry', { industry: industry, step: stepToken('2a') });
       redirectTo(PARTNER_INDUSTRY_DESTINATIONS[industry]);
     }
 
@@ -1721,6 +1830,12 @@
     // call's position ahead of renderStep(3), not ahead of a pushState.
     trackStepComplete();
     renderStep(3);
+    // gh-2096 item 3: this is the ONE function every arm's terminal
+    // hand-off funnels through (see this function's own bridge wiring
+    // and each variant module's redirectWithLeadId) -- setting this here,
+    // before the real navigation below, is what tells the pagehide
+    // handler "this exit is a completion, not a drop-off."
+    abandonSuppressedByNav = true;
     if (!preBuilt) {
       var sep = dest.indexOf('?') === -1 ? '?' : '&';
       dest = dest + sep + 'lead=' + encodeURIComponent(leadId);
@@ -1753,9 +1868,121 @@
   window.addEventListener('pageshow', function (e) {
     if (e.persisted) {
       try { history.replaceState({ step: ENTRY_STEP }, '', location.pathname + location.search); } catch (e2) {}
-      renderStep(ENTRY_STEP);
       leadId = null;
       try { sessionStorage.removeItem(LEAD_ID_STORAGE_KEY); } catch (e3) {}
+      // gh-2096 REVIEW fix round 2 (PR #2114, comment 5796844493, superseding
+      // the round-1 fix at comment 5782483911): that round-1 fix reset
+      // abandonSuppressedByNav here but left the REST of the abandon state
+      // (abandonCurrentStep/abandonCurrentStepIndex/abandonCurrentVariant/
+      // abandonFiredForView/abandonHiddenTimer) to be cleared by
+      // renderStep(ENTRY_STEP) below, via that function's own trackRouter
+      // call. That is false for every LIVE arm: renderStep's own first line
+      // is `if (ARM_C || ARM_D || ARM_E) return;` (this file, ~line 709),
+      // and LIVE_VARIANTS above is ['c','d','e'] -- 100% of real traffic
+      // takes that early return, so renderStep(ENTRY_STEP) never reaches
+      // its trackRouter('router_step_view', ...) call on any live arm. The
+      // review reproduced the result on arm C directly: a visitor who
+      // completes the funnel (redirectTo sets abandonSuppressedByNav =
+      // true), swipes back, then leaves WITHOUT resubmitting still has
+      // abandonCurrentStep pointing at the step they already completed --
+      // so once this handler reset only the suppression flag, that later,
+      // genuine exit fired router_step_abandoned for a step the visitor had
+      // already finished: a false abandon on exactly the step this issue
+      // exists to measure, on live traffic. Reset the full abandon-beacon
+      // state directly here instead, for every arm, without going through
+      // renderStep/trackRouter at all -- so this never again depends on a
+      // side effect that only some arms actually reach. This block runs
+      // BEFORE renderStep(ENTRY_STEP) below (not after): on the non-live
+      // arm (A), that call still re-populates this same state correctly
+      // via its own trackRouter('router_step_view', ...) for the fresh
+      // entry screen, so ordering this reset first is what lets A's real
+      // post-restore view stand instead of being wiped out by this fix.
+      abandonSuppressedByNav = false;
+      // Nulling the tracked step (rather than only re-arming
+      // abandonFiredForView) is what makes sendAbandonBeacon's own
+      // `!abandonCurrentStep` guard block it below, on every arm, until a
+      // fresh router_step_view repopulates these from a real screen entry.
+      abandonCurrentStep = null;
+      abandonCurrentStepIndex = undefined;
+      abandonCurrentVariant = null;
+      abandonStepEnteredAt = 0;
+      // Second, independent guard on top of the null step above -- belt
+      // and suspenders, not load-bearing on its own.
+      abandonFiredForView = true;
+      // A visibilitychange grace timer armed before this restore (the
+      // visitor was backgrounded on the pre-restore page, still within its
+      // ABANDON_HIDDEN_GRACE_MS window) must not be left to fire later
+      // against this now-cleared state.
+      if (abandonHiddenTimer) { clearTimeout(abandonHiddenTimer); abandonHiddenTimer = null; }
+      // Non-live arm (A): re-renders Step 1 and, via its own trackRouter
+      // call, repopulates the abandon state just cleared above with the
+      // fresh post-restore view. Live arms (C/D/E): no-ops (see this
+      // function's own `if (ARM_C || ARM_D || ARM_E) return;` guard), and
+      // the cleared state above stands until a real screen entry occurs.
+      renderStep(ENTRY_STEP);
+    }
+  });
+
+  // gh-2096 item 3: the abandon beacon, shared by every arm (A/B render
+  // their own DOM here; C/D/E's screens live in #routerCRoot/#routerDRoot/
+  // #routerERoot, but every one of them fires router_step_view through
+  // this same trackRouter, which is what keeps abandonCurrentStep/
+  // abandonCurrentStepIndex/abandonCurrentVariant current -- no per-arm
+  // listener needed).
+  //
+  // Real exit vs. normal advance/back-navigation/tab-switch, stated:
+  // - Normal advance: every arm's terminal hand-off funnels through
+  //   redirectTo() above, which sets abandonSuppressedByNav BEFORE the
+  //   real navigation -- checked below, so a completed step never fires
+  //   this.
+  // - Back-navigation: the router's own Back controls (popstate here,
+  //   each module's own goBack()/stack) never unload this document --
+  //   they swap DOM/history state in place -- so neither pagehide nor a
+  //   sustained hidden visibilityState is ever reached by them. Nothing
+  //   extra needed to exclude this case; it is structurally excluded.
+  // - Tab-switch: `visibilitychange` fires identically for "switched
+  //   tabs, still here" and "actually left" -- sending on it directly
+  //   would resurrect #2042 (the Facebook in-app webview's own
+  //   backgrounding counted as a real exit). `pagehide` does NOT fire on
+  //   a same-window tab switch (the document is not being unloaded), so
+  //   it is the sole trigger that actually SENDS the beacon below.
+  //   `visibilitychange` is wired only as a fallback net for engines that
+  //   terminate a page without ever firing pagehide (some in-app
+  //   webviews): it starts a grace timer on going hidden and only fires
+  //   if the page is STILL hidden ABANDON_HIDDEN_GRACE_MS later with no
+  //   visibilitychange back to 'visible' in between -- a tab-switch-and-
+  //   return cancels the timer before it fires; a real close/background-
+  //   kill on an engine that skips pagehide does not.
+  var ABANDON_HIDDEN_GRACE_MS = 5000;
+  var abandonHiddenTimer = null;
+
+  function sendAbandonBeacon(visibilityState) {
+    if (abandonFiredForView || abandonSuppressedByNav || !abandonCurrentStep) return;
+    abandonFiredForView = true;
+    var seconds = Math.max(0, Math.round((Date.now() - abandonStepEnteredAt) / 1000));
+    trackRouter('router_step_abandoned', {
+      step: abandonCurrentStep,
+      step_index: abandonCurrentStepIndex,
+      seconds_on_step: seconds,
+      visibility_state: visibilityState,
+      // GA4's recommended transport for events fired during/near unload
+      // -- guarantees the beacon-safe navigator.sendBeacon transport
+      // rather than a regular (cancelable-on-unload) XHR/fetch.
+      transport_type: 'beacon'
+    }, abandonCurrentVariant);
+  }
+
+  window.addEventListener('pagehide', function () {
+    sendAbandonBeacon(document.visibilityState);
+  });
+
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'hidden') {
+      if (abandonHiddenTimer) clearTimeout(abandonHiddenTimer);
+      abandonHiddenTimer = setTimeout(function () { sendAbandonBeacon('hidden'); }, ABANDON_HIDDEN_GRACE_MS);
+    } else if (abandonHiddenTimer) {
+      clearTimeout(abandonHiddenTimer);
+      abandonHiddenTimer = null;
     }
   });
 

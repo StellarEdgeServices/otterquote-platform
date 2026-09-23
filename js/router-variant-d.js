@@ -132,6 +132,30 @@
     'd-dq-online': 'd-online'
   };
 
+  // gh-2096 item 4: step_index (1-based), one lookup table for this arm,
+  // same depth-within-track convention as js/router-discovery.js's own
+  // STEP_INDEX (see that file's comment) -- d-role/d-email/d-name/d-phone
+  // are shared by every role, then the homeowner/realtor/insurance
+  // tracks each restart their own count from the screen right after
+  // d-phone, so e.g. d-trades and d-professional-industry (the first
+  // screen of their own tracks) share an index. Disqualifier tokens are
+  // derived from DQ_SOURCE above, never hand-duplicated.
+  var STEP_INDEX = {
+    'd-role': 1, 'd-email': 2, 'd-name': 3, 'd-phone': 4,
+    // Homeowner track.
+    'd-trades': 5, 'd-payer': 6, 'd-hidden-costs': 7, 'd-time': 8,
+    'd-criteria': 9, 'd-online': 10, 'd-summary': 11,
+    // Professional entry (parallel to d-trades).
+    'd-professional-industry': 5,
+    // Realtor track.
+    'd-realtor-1': 6, 'd-realtor-2': 7, 'd-realtor-3': 8, 'd-realtor-4': 9,
+    'd-realtor-close': 10,
+    // Insurance track.
+    'd-ins-1': 6, 'd-ins-2': 7, 'd-ins-3': 8, 'd-ins-4': 9, 'd-ins-5': 10,
+    'd-ins-6': 11, 'd-ins-7': 12, 'd-ins-close': 13
+  };
+  Object.keys(DQ_SOURCE).forEach(function (dqToken) { STEP_INDEX[dqToken] = STEP_INDEX[DQ_SOURCE[dqToken]]; });
+
   // ── DOM helpers. Kept local (not imported from RouterDiscovery) because
   // d-role/d-email/d-name/d-phone render BEFORE that module is ever
   // fetched (see the lazy-load comment at the top of this file) -- this
@@ -164,9 +188,10 @@
     return btn;
   }
 
-  function emitView(token) { bridge.trackRouter('router_step_view', { step: token }); }
-  function emitComplete(token) { bridge.trackRouter('router_step_complete', { step: token }); }
-  function emitDisqualified(sourceToken) { bridge.trackRouter('router_disqualified', { step: sourceToken }); }
+  // gh-2096 item 4: step_index attached here, from STEP_INDEX above.
+  function emitView(token) { bridge.trackRouter('router_step_view', { step: token, step_index: STEP_INDEX[token] }); }
+  function emitComplete(token) { bridge.trackRouter('router_step_complete', { step: token, step_index: STEP_INDEX[token] }); }
+  function emitDisqualified(sourceToken) { bridge.trackRouter('router_disqualified', { step: sourceToken, step_index: STEP_INDEX[sourceToken] }); }
 
   var RENDERERS = {};
 
@@ -256,7 +281,8 @@
       btn.appendChild(el('span', 'role-arrow', '→'));
       btn.addEventListener('click', function () {
         role = opt.role;
-        bridge.trackRouter('router_role_selected', { role: role });
+        // gh-2096 item 2: step -- role is always picked on d-role.
+        bridge.trackRouter('router_role_selected', { role: role, step: 'd-role', step_index: STEP_INDEX['d-role'] });
         go('d-email');
       });
       wrap.appendChild(btn);
