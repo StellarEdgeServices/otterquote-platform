@@ -158,7 +158,7 @@ const PAGE_URL = 'https://otterquote.com/start?v=f&utm_source=fb&fbclid=IwAR123'
 const FB_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 [FBAN/FBIOS;FBAV/450.0]';
 const SAFARI_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile Safari/604.1';
 
-// opts: nowIso, ua, insertFails (n times), roleMode ('ok'|'error'|'hang'), noSuppress
+// opts: nowIso, ua, insertFails (n times), insertThrows (sync throw), roleMode ('ok'|'error'|'false'|'fail-once'|'hang'), detailsMode, noSuppress, Intl
 function buildF(opts) {
   opts = opts || {};
   const { document, windowListeners } = makeDom();
@@ -175,6 +175,7 @@ function buildF(opts) {
   const detailsCalls = [];
   const sentry = [];
   let detailsAttempts = 0;
+  let roleAttempts = 0;
   let insertFailuresLeft = opts.insertFails || 0;
   let nextLead = 1;
 
@@ -190,7 +191,7 @@ function buildF(opts) {
     // while keeping their ORDER (retry 8ms < role wait 30ms < flow guard 60ms).
     setTimeout: (fn, ms) => setTimeout(fn, Math.ceil((ms || 0) / 100)), clearTimeout,
     URLSearchParams, decodeURIComponent,
-    Intl, Date: makeFakeDate(fixed), Math, String, Object, Array, RegExp, JSON, Number, parseInt, isNaN, encodeURIComponent,
+    Intl: opts.Intl === undefined ? Intl : opts.Intl, Date: makeFakeDate(fixed), Math, String, Object, Array, RegExp, JSON, Number, parseInt, isNaN, encodeURIComponent,
     gtag: function (action, name, params) { gtagCalls.push({ action, name, params }); },
     fbq: function () { fbqCalls.push([].slice.call(arguments)); },
     clarity: clarityFn
@@ -230,7 +231,11 @@ function buildF(opts) {
           order.push(name);
           rpcCalls.push({ name, args });
           if (opts.roleMode === 'hang') return { then: () => {} };
-          const result = opts.roleMode === 'error' ? { error: { message: 'boom' } } : { error: null };
+          if (name === 'set_lead_role') roleAttempts++;
+          let result = { data: true, error: null };
+          if (opts.roleMode === 'error') result = { data: null, error: { name: 'PostgrestError' } };
+          if (opts.roleMode === 'false') result = { data: false, error: null };
+          if (opts.roleMode === 'fail-once' && roleAttempts === 1) result = { data: null, error: { name: 'PostgrestError' } };
           const p = Promise.resolve(result);
           return { then: (a, b) => p.then(a, b) };
         }
@@ -245,6 +250,7 @@ function buildF(opts) {
     showError: (msg) => { errors.push(msg); },
     insertFreshLead: function (name, email, phone, isSynthetic, variantOverride, extra) {
       order.push('insert');
+      if (opts.insertThrows) { throw new TypeError("Cannot read properties of null (reading 'from')"); }
       insertCalls.push({ name, email, phone, isSynthetic, variantOverride, extra, eventsBefore: gtagCalls.length, fbqBefore: fbqCalls.length });
       if (insertFailuresLeft > 0) { insertFailuresLeft--; return Promise.reject(new Error('insert failed')); }
       const id = '00000000-0000-4000-8000-00000000000' + (nextLead++);
@@ -450,6 +456,7 @@ async function main() {
   // ═══ F9: set_lead_role error / hang never blocks the thank-you screen or loses the count. ═══
   {
     const e = buildF({ roleMode: 'error' }); drive(e, GOOD); submit(e); await settleN(4);
+    await new Promise((r) => setTimeout(r, 200));
     ok(e.ev('router_step_view').some((v) => v.params.step === 'f-thanks') && e.leadFbq().length === 1, 'set_lead_role returning an error still reaches the thank-you screen with one Lead');
     const h = buildF({ roleMode: 'hang' }); drive(h, GOOD); submit(h); await settleN(3);
     ok(h.leadFbq().length === 1 && h.ev('generate_lead').length === 1, 'set_lead_role hanging does not delay the conversion count');
@@ -477,11 +484,17 @@ async function main() {
     const href = inWin.fakeWindow.location.href;
     ok(/^https:\/\/app\.otterquote\.com\/help-measurements\?lead=00000000-0000-4000-8000-000000000001/.test(href) && href.indexOf('v=f') !== -1, 'the $15 button deep-links to the existing /help-measurements with lead + attribution (' + href + ')');
     ok(inWin.leadFbq().length === before && inWin.ev('generate_lead').length === 1, 'clicking a deep link does NOT count a second conversion');
-    const cta = inWin.ev('router_f_cta_clicked');
-    ok(cta.length === 1 && cta[0].params.cta === 'measure' && cta[0].params.step === 'f-thanks' && cta[0].params.step_index === 4 && cta[0].params.variant === 'f', 'the click fires router_f_cta_clicked {cta measure, f-thanks, 4, variant f}');
+    const cta = inWin.ev('router_f_cta_measure');
+    ok(cta.length === 1 && cta[0].params.step === 'f-thanks' && cta[0].params.step_index === 4 && cta[0].params.variant === 'f' && !('cta' in cta[0].params),
+      'the click fires router_f_cta_measure {f-thanks, 4, variant f} -- the choice is in the event NAME, with no extra parameter');
     const ls = await thanks('2026-09-23T15:00:00Z');
     buttonByText(ls.root, COPY.arm_f_s4_button_losssheet).dispatchClick();
     ok(/^https:\/\/app\.otterquote\.com\/help-estimate\?lead=/.test(ls.fakeWindow.location.href), 'the loss-sheet button deep-links to the existing /help-estimate with the lead id');
+    ok(ls.ev('router_f_cta_loss_sheet').length === 1, 'the loss-sheet click fires router_f_cta_loss_sheet');
+    // The #2127 review found the F15 key allow-list ran BEFORE any CTA click, so it could not see these events.
+    const ctaKeys = new Set(); [...inWin.gtagCalls, ...ls.gtagCalls].forEach((c) => Object.keys(c.params || {}).forEach((k) => ctaKeys.add(k)));
+    const allowedAfterCta = new Set(['step', 'step_index', 'variant', 'ua_context', 'lead_id', 'event_id']);
+    ok([...ctaKeys].every((k) => allowedAfterCta.has(k)), 'AFTER the CTA clicks every GA4 parameter key is still one of variant / step / step_index / ua_context / lead_id / event_id (unexpected: ' + [...ctaKeys].filter((k) => !allowedAfterCta.has(k)).join(',') + ')');
   }
 
   // ═══ F11: abandonment. Before the save a pagehide IS an abandon; after the save it is NOT. Negative control removes the guard. ═══
@@ -568,6 +581,55 @@ async function main() {
     ok(!keys.has('funding_type') && !keys.has('consent_given'), 'no funding_type and no consent_given parameter on any event');
     ok(s.fbqCalls.every((c) => JSON.stringify(c).indexOf('insurance') === -1 && JSON.stringify(c.slice(2)) !== undefined) && s.leadFbq()[0].length === 4 && Object.keys(s.leadFbq()[0][2]).length === 0,
       'the Meta Lead call carries an EMPTY parameter object and only an eventID option');
+  }
+
+  // ═══ F16: set_lead_role is retried once and reported (the #1932 alert only fires when it succeeds). ═══
+  {
+    const once = buildF({ roleMode: 'fail-once' }); drive(once, GOOD); submit(once); await settleN(4);
+    await new Promise((r) => setTimeout(r, 200));
+    ok(once.rpcCalls.filter((c) => c.name === 'set_lead_role').length === 2 && once.sentry.length === 0, 'a failing set_lead_role is retried once; the retry succeeds and nothing is reported');
+    const bad = buildF({ roleMode: 'error' }); drive(bad, GOOD); submit(bad); await settleN(4);
+    await new Promise((r) => setTimeout(r, 300));
+    ok(bad.rpcCalls.filter((c) => c.name === 'set_lead_role').length === 2, 'a persistent set_lead_role failure makes exactly TWO calls (one retry, not a loop)');
+    const roleReport = bad.sentry.find((r) => /set_lead_role/.test(r.msg));
+    ok(!!roleReport && /failed after 2 attempt/.test(roleReport.msg) && /alert will not fire/.test(roleReport.msg), 'the final set_lead_role failure is reported to Sentry, naming the consequence: "' + (roleReport && roleReport.msg) + '"');
+    ok(roleReport.ctx.extra.lead_id === '00000000-0000-4000-8000-000000000001' && JSON.stringify(roleReport).indexOf('Main St') === -1 && JSON.stringify(roleReport).indexOf('jane@example.com') === -1, 'the role report carries the lead id and no personal data');
+    ok(bad.detailsCalls.length >= 1 && bad.ev('router_step_view').some((v) => v.params.step === 'f-thanks'), 'a failing set_lead_role does not stop the details call or block the thank-you screen');
+    ok(bad.ev('generate_lead').length === 1 && bad.leadFbq().length === 1, 'a failing set_lead_role does not lose or double the conversion');
+    const falseRes = buildF({ roleMode: 'false' }); drive(falseRes, GOOD); submit(falseRes); await settleN(4);
+    await new Promise((r) => setTimeout(r, 300));
+    ok(falseRes.rpcCalls.filter((c) => c.name === 'set_lead_role').length === 2 && falseRes.sentry.some((r) => /set_lead_role/.test(r.msg)),
+      'set_lead_role returning FALSE (the RPC no-op) is treated as a failure: retried once, then reported');
+  }
+
+  // ═══ F17: a SYNCHRONOUS throw from insertFreshLead must not strand the visitor. ═══
+  {
+    const t = buildF({ insertThrows: true }); drive(t, GOOD); submit(t); await settleN(4);
+    ok(flatten(t.root).some((c) => c.textContent === COPY.arm_f_error_generic), 'a synchronous throw from insertFreshLead shows the approved generic error');
+    ok(!buttonByText(t.root, COPY.arm_f_s3_button_submit).disabled, 'the submit button is re-enabled after a synchronous throw (it stayed disabled forever before this fix)');
+    ok(t.ev('generate_lead').length === 0 && t.leadFbq().length === 0 && t.detailsCalls.length === 0 && t.rpcCalls.length === 0, 'a synchronous throw counts no conversion and makes no details or role call');
+  }
+
+  // ═══ F18: Clarity masking, the CSS that makes the headlines visible, and the midnight / missing-Intl business-hours cases. ═══
+  {
+    const s = buildF();
+    ok(s.root.getAttribute('data-clarity-mask') === 'true', 'the arm root carries data-clarity-mask="true" (the funding answer is a button label; screens 2-3 hold an address and contact details)');
+    const css = startSrc.slice(startSrc.indexOf('<style'), startSrc.indexOf('</style>'));
+    const headRule = /([^{}]*#routerFRoot h1[^{}]*)\{([^}]*)\}/.exec(css);
+    ok(!!headRule && /color:\s*var\(--white\)/.test(headRule[2]), 'start.html has a rule for #routerFRoot h1 that sets color: var(--white) (the page h1 default is the navy page background: invisible headlines)');
+    const subRule = /([^{}]*#routerFRoot p\.router-sub[^{}]*)\{([^}]*)\}/.exec(css);
+    ok(!!subRule && /color:\s*var\(--slate\)/.test(subRule[2]), 'start.html styles #routerFRoot p.router-sub like C and D (readable subheads)');
+    ok((css.match(/#routerFRoot h1/g) || []).length >= 2, "the mobile (max-width) heading rule also covers #routerFRoot h1");
+    ok(/#routerFRoot p\.router-sub a\s*\{[^}]*color:/.test(css), 'the privacy / terms links have an explicit colour on the dark card');
+    ok(/#routerFRoot \.rf-consent\s*\{[^}]*display:\s*flex[^}]*flex-direction:\s*row/.test(css), 'the consent row is a flex ROW (flex-direction: row overrides the shared .form-group column): the checkbox sits beside its wrapped label');
+    ok(/#routerFRoot \.rf-consent label\s*\{[^}]*text-transform:\s*none/.test(css), 'the consent label is NOT uppercased (the design system .form-label uppercases; the legal sentence must render as written)');
+    const c3 = buildF(); drive(c3, GOOD);
+    ok(/(^| )rf-consent( |$)/.test(byId(c3.root, 'rfConsent').parentNode.className), 'the consent checkbox sits inside the .rf-consent flex row the CSS targets');
+    const mid = buildF({ Intl: { DateTimeFormat: function () { return { formatToParts: () => [{ type: 'hour', value: '24' }] }; } } });
+    drive(mid, GOOD); submit(mid); await settleN(4);
+    ok(flatten(mid.root).some((c) => c.textContent === COPY.arm_f_s4_body_after_hours), 'an engine that reports midnight as "24" gets the AFTER-HOURS copy');
+    const noIntl = buildF({ Intl: null }); drive(noIntl, GOOD); submit(noIntl); await settleN(4);
+    ok(flatten(noIntl.root).some((c) => c.textContent === COPY.arm_f_s4_body_after_hours), 'with NO Intl available the AFTER-HOURS copy is shown (the promise that is never wrong)');
   }
 
   // ═══ F12: routing and reachability guards read out of the REAL start.html head script. ═══

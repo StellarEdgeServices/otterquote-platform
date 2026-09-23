@@ -44,8 +44,11 @@
 //   2. set_lead_role(homeowner), which trips the #1932 new-lead alert;
 //   3. call the record-lead-details Edge Function with the funding answer, the
 //      address, fbc/fbp and the consent record. One retry; if it still fails
-//      it is reported to Sentry (lead_id only, no personal data) and the flow
-//      carries on -- the lead is saved and the visitor is never blocked.
+//      it is reported to Sentry (the lead id, the attempt count and the error
+//      class -- no personal data) and the flow carries on -- the lead is saved
+//      and the visitor is never blocked. set_lead_role gets the same one retry
+//      and the same report, because the #1932 new-lead alert only fires when it
+//      succeeds.
 // PII DISCIPLINE: the address, the consent text and the funding answer go ONLY
 // to that Edge Function. They are never GA4 or Meta event parameters (GA4
 // prohibits PII). Analytics events carry variant / step / step_index /
@@ -300,7 +303,7 @@
     var phoneF = field('rfPhone', COPY.arm_f_s3_label_phone, 'tel', { placeholder: COPY.arm_f_s3_placeholder_phone, autocomplete: 'tel', inputmode: 'tel', maxlength: '20' });
     var emailF = field('rfEmail', COPY.arm_f_s3_label_email, 'email', { placeholder: COPY.arm_f_s3_placeholder_email, autocomplete: 'email', inputmode: 'email', maxlength: '320' });
 
-    var consentGroup = el('div', 'form-group');
+    var consentGroup = el('div', 'form-group rf-consent');
     var consentInput = el('input', null);
     consentInput.type = 'checkbox';
     consentInput.setAttribute('type', 'checkbox');
@@ -381,9 +384,10 @@
       submitted_fields: fields
     };
   }
-  // Surfaced to Sentry with the lead id only -- never the address, the consent text or the funding answer.
-  function reportDetailsFailure(newId, attempts, err) {
-    var msg = 'router-arm-f: record-lead-details failed after ' + attempts + ' attempt(s)';
+  // Surfaced to Sentry with the lead id, the attempt count and the error class only -- never the address,
+  // the consent text, the funding answer or any contact detail.
+  function reportFailure(what, newId, attempts, err) {
+    var msg = 'router-arm-f: ' + what + ' failed after ' + attempts + ' attempt(s)';
     try {
       if (window.Sentry && typeof window.Sentry.captureMessage === 'function') {
         window.Sentry.captureMessage(msg, { level: 'error', extra: { lead_id: newId, attempts: attempts, reason: err && err.name ? String(err.name) : 'unknown' } });
@@ -392,34 +396,52 @@
       }
     } catch (e) { /* reporting must never throw */ }
   }
-  // One call plus DETAILS_RETRIES retries. Resolves true when the function says ok; a 200 with
-  // reason lead_out_of_scope (unknown / too old / already redeemed lead) is not retryable.
-  function sendDetails(body, newId) {
+  // One call plus DETAILS_RETRIES retries, shared by set_lead_role and the details call. `invoke` returns a
+  // thenable; `isOk(res)` says whether it worked; `notRetryable(res)` marks a result that cannot succeed on retry.
+  // Resolves true on success, false after the final failure (which is reported to Sentry).
+  function callWithRetry(what, newId, invoke, isOk, notRetryable) {
     return new Promise(function (resolve) {
       var attempts = 0;
-      function fail(err, notRetryable) {
-        if (!notRetryable && attempts <= DETAILS_RETRIES) { setTimeout(attempt, DETAILS_RETRY_DELAY_MS); return; }
-        reportDetailsFailure(newId, attempts, err);
+      function fail(err, stop) {
+        if (!stop && attempts <= DETAILS_RETRIES) { setTimeout(attempt, DETAILS_RETRY_DELAY_MS); return; }
+        reportFailure(what, newId, attempts, err);
         resolve(false);
       }
       function attempt() {
         attempts++;
         var call = null;
-        try { call = bridge.sb.functions.invoke(DETAILS_FUNCTION, { body: body }); } catch (e) { call = null; }
-        if (!call || typeof call.then !== 'function') { fail({ name: 'NoFunctionsClient' }, true); return; }
+        try { call = invoke(); } catch (e) { call = null; }
+        if (!call || typeof call.then !== 'function') { fail({ name: 'NoClient' }, true); return; }
         call.then(function (res) {
-          if (res && !res.error && res.data && res.data.ok === true) { resolve(true); return; }
-          var notRetryable = !!(res && res.data && res.data.reason === 'lead_out_of_scope');
-          fail(res && res.error ? res.error : { name: notRetryable ? 'LeadOutOfScope' : 'NotOk' }, notRetryable);
+          if (isOk(res)) { resolve(true); return; }
+          fail(res && res.error ? res.error : { name: 'NotOk' }, !!(notRetryable && notRetryable(res)));
         }, function (err) { fail(err, false); });
       }
       attempt();
     });
   }
+  function setRole(newId) {
+    return callWithRetry('set_lead_role (the new-lead alert will not fire)', newId,
+      function () { return bridge.sb.rpc('set_lead_role', { p_lead_id: newId, p_role: 'homeowner' }); },
+      function (res) { return !!res && !res.error && res.data !== false; });
+  }
+  function sendDetails(body, newId) {
+    return callWithRetry('record-lead-details', newId,
+      function () { return bridge.sb.functions.invoke(DETAILS_FUNCTION, { body: body }); },
+      function (res) { return !!res && !res.error && !!res.data && res.data.ok === true; },
+      // a 200 with reason lead_out_of_scope (unknown / too old / already redeemed lead) cannot succeed on retry
+      function (res) { return !!(res && res.data && res.data.reason === 'lead_out_of_scope'); });
+  }
 
   function saveLead(v, submitBtn, formError) {
     submitting = true;
     submitBtn.disabled = true;
+    function saveFailed(err) {
+      console.error('[router-variant-f] lead save failed:', err);
+      submitting = false;
+      submitBtn.disabled = false;
+      setError(formError, COPY.arm_f_error_generic);
+    }
     var extra = {};
     var zip = zipFromAddress(address);
     if (zip) extra.zip = zip;
@@ -427,7 +449,16 @@
     // with '' -- never a synthetic address (start.html's own arm-B comment
     // forbids one). The #1932 alert's claim query is NOT ILIKE-based, so ''
     // still alerts; NULL would not.
-    bridge.insertFreshLead(v.name, v.email, v.phone, undefined, undefined, extra).then(function (newId) {
+    var saving;
+    try {
+      saving = bridge.insertFreshLead(v.name, v.email, v.phone, undefined, undefined, extra);
+    } catch (e) {
+      // insertFreshLead can throw SYNCHRONOUSLY (its supabase client is null when the deferred CDN script did
+      // not load); without this the button would stay disabled with no message.
+      saveFailed(e);
+      return;
+    }
+    saving.then(function (newId) {
       leadId = newId;
       fireConversion();
       bridge.markLeadSaved();
@@ -445,23 +476,8 @@
         sendDetails(buildDetailsBody(v, newId), newId).then(finish, finish);
       }
       setTimeout(startDetails, ROLE_WAIT_MS);
-      var role;
-      try { role = bridge.sb.rpc('set_lead_role', { p_lead_id: newId, p_role: 'homeowner' }); } catch (e) { role = null; }
-      if (role && typeof role.then === 'function') {
-        role.then(function (res) {
-          if (res && res.error) console.error('[router-variant-f] set_lead_role failed -- proceeding anyway:', res.error);
-          startDetails();
-        }, function (err) {
-          console.error('[router-variant-f] set_lead_role threw -- proceeding anyway:', err);
-          startDetails();
-        });
-      } else { startDetails(); }
-    }, function (err) {
-      console.error('[router-variant-f] lead save failed:', err);
-      submitting = false;
-      submitBtn.disabled = false;
-      setError(formError, COPY.arm_f_error_generic);
-    });
+      setRole(newId).then(startDetails, startDetails);
+    }, saveFailed);
   }
 
   // The conversion. Events carry step / step_index (and variant, ua_context, lead_id, added by
@@ -480,10 +496,12 @@
   // buttons only navigate. ──
   function inCallWindow() {
     try {
-      var parts = new Intl.DateTimeFormat('en-US', { timeZone: CALL_WINDOW.timeZone, hour: '2-digit', hourCycle: 'h23' }).formatToParts(new Date());
+      // hour12:false (not hourCycle, which pre-2019 WebKit ignores, returning "09" for 21:00); some engines
+      // then report midnight as "24"; the hour is taken modulo 24 (24 is already outside the window, so this is belt and braces).
+      var parts = new Intl.DateTimeFormat('en-US', { timeZone: CALL_WINDOW.timeZone, hour: '2-digit', hour12: false }).formatToParts(new Date());
       for (var i = 0; i < parts.length; i++) {
         if (parts[i].type === 'hour') {
-          var h = parseInt(parts[i].value, 10);
+          var h = parseInt(parts[i].value, 10) % 24;
           return !isNaN(h) && h >= CALL_WINDOW.startHour && h < CALL_WINDOW.endHour;
         }
       }
@@ -499,11 +517,12 @@
     root.appendChild(heading(COPY.arm_f_s4_headline));
     root.appendChild(bodyText(inCallWindow() ? COPY.arm_f_s4_body_in_window : COPY.arm_f_s4_body_after_hours));
     root.appendChild(primaryButton(COPY.arm_f_s4_button_measure, function () {
-      bridge.trackRouter('router_f_cta_clicked', stepParams('f-thanks', { cta: 'measure' }));
+      // The choice is in the event NAME, not a parameter: analytics carries only the allow-listed keys.
+      bridge.trackRouter('router_f_cta_measure', stepParams('f-thanks'));
       redirectWithLeadId(CTA_DESTINATIONS.measure);
     }));
     root.appendChild(primaryButton(COPY.arm_f_s4_button_losssheet, function () {
-      bridge.trackRouter('router_f_cta_clicked', stepParams('f-thanks', { cta: 'loss_sheet' }));
+      bridge.trackRouter('router_f_cta_loss_sheet', stepParams('f-thanks'));
       redirectWithLeadId(CTA_DESTINATIONS.loss_sheet);
     }));
   };
@@ -513,6 +532,9 @@
     root = mountEl || document.getElementById('routerFRoot');
     if (!root) { return; }
     root.setAttribute('data-rd-root', '1');
+    // Clarity session replay records button text and click targets; the funding answer IS a button label, and
+    // screens 2-3 hold an address and contact details. Mask this whole arm (the same attribute auth pages use).
+    root.setAttribute('data-clarity-mask', 'true');
     show('f-funding');
   }
 

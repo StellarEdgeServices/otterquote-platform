@@ -499,8 +499,21 @@
   .router-step { display: none; }
   .router-step.active { display: block; animation: fadeUp 0.25s ease both; }
   @keyframes fadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-  .router-step h1, #routerCRoot h1, #routerDRoot h1 { font-family: var(--font-heading, var(--font-body)); font-size: 1.5rem; color: var(--white); margin-bottom: var(--sp-2); line-height: 1.25; }
-  .router-step p.router-sub, #routerCRoot p.router-sub, #routerDRoot p.router-sub { color: var(--slate); font-size: 0.95rem; margin-bottom: var(--sp-5); }
+  .router-step h1, #routerCRoot h1, #routerDRoot h1, #routerFRoot h1 { font-family: var(--font-heading, var(--font-body)); font-size: 1.5rem; color: var(--white); margin-bottom: var(--sp-2); line-height: 1.25; }
+  .router-step p.router-sub, #routerCRoot p.router-sub, #routerDRoot p.router-sub, #routerFRoot p.router-sub { color: var(--slate); font-size: 0.95rem; margin-bottom: var(--sp-5); }
+  /* gh-2122 (Arm F): css/design-system.css's global h1 is #0D1B2E -- exactly the page's navy
+     background -- so an Arm F headline with no rule of its own is invisible and oversized
+     (the same defect gh-2117 fixed for arm E). F joins the C/D heading and subhead rules above
+     (and the mobile pair below). Everything else here is F-scoped: the consent row is a
+     checkbox beside its wrapped label, and the privacy/terms links are legible on the dark card. */
+  /* flex-direction:row is required: the shared .form-group rule is display:flex + flex-direction:column, so without it the
+     label stacks UNDER the checkbox instead of beside it (measured in a real browser). */
+  #routerFRoot .rf-consent { display: flex; flex-direction: row; align-items: flex-start; gap: var(--sp-3); margin-bottom: var(--sp-3); }
+  #routerFRoot .rf-consent input[type="checkbox"] { flex: 0 0 auto; width: 1.25rem; height: 1.25rem; margin: 0.15rem 0 0; }
+  /* text-transform:none matters: the design system's .form-label is UPPERCASE, which would render the legal consent sentence in
+     all capitals -- byte-identical text, but harder to read and not how the approved draft was written. */
+  #routerFRoot .rf-consent label { margin: 0; font-weight: 400; font-size: 0.85rem; line-height: 1.4; color: var(--slate); text-transform: none; letter-spacing: normal; }
+  #routerFRoot p.router-sub a { color: var(--amber); text-decoration: underline; }
   /* gh-2117: arm E's headings inherited design-system.css's global h1 colour
      (#0D1B2E navy) on the dark router card -- effectively invisible. Colour
      only, matching arm C's white headline; no size/spacing/copy change. */
@@ -547,8 +560,8 @@
     main { padding-top: var(--sp-4); padding-bottom: var(--sp-8); }
     .router-card { padding: var(--sp-4); }
     .router-progress { margin-bottom: var(--sp-4); }
-    .router-step h1, #routerCRoot h1, #routerDRoot h1 { margin-bottom: var(--sp-1); }
-    .router-step p.router-sub, #routerCRoot p.router-sub, #routerDRoot p.router-sub { margin-bottom: var(--sp-3); }
+    .router-step h1, #routerCRoot h1, #routerDRoot h1, #routerFRoot h1 { margin-bottom: var(--sp-1); }
+    .router-step p.router-sub, #routerCRoot p.router-sub, #routerDRoot p.router-sub, #routerFRoot p.router-sub { margin-bottom: var(--sp-3); }
     .form-group { margin-bottom: var(--sp-2); }
   }
 </style>
