@@ -178,8 +178,20 @@
   // this fix -- an unsynced /^[abc]$/ there would read a live 'd'
   // session back as variant=null and silently render arm A, the one arm
   // this issue exists to eliminate.
-  var KNOWN_ARMS = ['a', 'b', 'c', 'd', 'e'];
+  var KNOWN_ARMS = ['a', 'b', 'c', 'd', 'e', 'f'];
   window.__oqKnownArms = KNOWN_ARMS;
+  // gh-2122 (Arm F, D-332): arms reachable ONLY by an explicit ?v= in the URL.
+  // They are recognised (KNOWN_ARMS) but are never in LIVE_VARIANTS, so they
+  // are not in the random split until Sloane says so on #2122 -- and unlike
+  // every other non-live arm, an explicit ?v=f is NOT remapped onto the live
+  // set by toLiveArm(), because a paid-ad landing on /start?v=f is the whole
+  // point of the arm. A direct-only arm is also never persisted to
+  // localStorage/cookie (step 4 below), so it cannot stick to a browser and a
+  // later visit without ?v= still gets a live arm. Exposed on window so the
+  // main IIFE's own variant read (a separate <script>) applies the same rule.
+  var DIRECT_ONLY_ARMS = ['f'];
+  window.__oqDirectOnlyArms = DIRECT_ONLY_ARMS;
+  function isDirectOnly(arm) { return DIRECT_ONLY_ARMS.indexOf(arm) !== -1; }
   var ARM_RE = new RegExp('^(' + KNOWN_ARMS.join('|') + ')$');
 
   // gh-2074: the LIVE set. Today only 'c' -- a and b lose 90%+ of visitors
@@ -322,7 +334,7 @@
   var oqInternalWalk = false;
   try { oqInternalWalk = new URLSearchParams(window.location.search).get('oq_internal') === '1'; } catch (e) {}
   window.__oqInternalWalk = oqInternalWalk;
-  var arm = urlArm ? (oqInternalOverride ? urlArm : toLiveArm(urlArm)) : null;
+  var arm = urlArm ? ((oqInternalOverride || isDirectOnly(urlArm)) ? urlArm : toLiveArm(urlArm)) : null;
 
   // 2. Else a persisted assignment -- localStorage first, cookie fallback,
   //    each in its own try/catch so a throw on one still lets the other run.
@@ -361,7 +373,7 @@
   //    'e' would otherwise still be remapped by toLiveArm() on that later
   //    visit, per step 2 above, but skipping the write is simpler and
   //    leaves zero trace of the QA walk in either store).
-  if (!oqInternalOverride) {
+  if (!oqInternalOverride && !isDirectOnly(arm)) {
     try { window.localStorage.setItem(KEY, arm); } catch (e) {}
     try {
       var secure = window.location.protocol === 'https:' ? '; Secure' : '';
@@ -645,6 +657,13 @@
          this file's own variant === 'e' branch, same point that branch
          hides #step1/#step2/#step2a/#step3/#routerProgress. -->
     <div id="routerERoot" hidden></div>
+
+    <!-- ═══════════ Variant F — homeowner short path (gh-2122, D-332) ═══════════ -->
+    <!-- Empty by design, same convention as #routerCRoot/#routerDRoot/
+         #routerERoot above: js/router-variant-f.js owns all rendering inside
+         this element once loaded. Hidden by default; unhidden only inside this
+         file's own variant === 'f' branch. -->
+    <div id="routerFRoot" hidden></div>
   </div>
 </main>
 
@@ -706,7 +725,7 @@
     // stay hidden the entire time, including the one indirect path here --
     // redirectTo() below calls renderStep(3), and the module calls
     // redirectTo() by reference per the bridge contract.
-    if (ARM_C || ARM_D || ARM_E) return;
+    if (ARM_C || ARM_D || ARM_E || ARM_F) return;
     Object.keys(steps).forEach(function (k) { steps[k].classList.toggle('active', k === String(key)); });
     // gh-2016: the 3-segment progress bar is hardcoded to A's screen ORDER,
     // not just its key names -- on arm B, contact (1) is the middle screen
@@ -809,15 +828,18 @@
   // correct across the gh-2075/gh-2076 ship without a second edit here.
   // Still a regex test, never an object-literal lookup, for the same
   // prototype-chain-bypass reason as the fix-round-4 comment above.
-  var KNOWN_ARMS = window.__oqKnownArms || ['a', 'b', 'c', 'd', 'e'];
+  var KNOWN_ARMS = window.__oqKnownArms || ['a', 'b', 'c', 'd', 'e', 'f'];
   var KNOWN_ARM_RE = new RegExp('^(' + KNOWN_ARMS.join('|') + ')$');
   var oqVariantArm = KNOWN_ARM_RE.test(String(window.__oqVariant || ''))
     ? String(window.__oqVariant)
     : null;
   var rawVariant = (new URLSearchParams(window.location.search).get('v') || '').toLowerCase();
   var toLiveArmFallback = window.__oqToLiveArm || function (a) { return a; };
+  // gh-2122: a direct-only arm (Arm F) is served as itself here too, matching
+  // the head script's own rule; every other arm is still remapped to a live one.
+  var directOnlyFallback = window.__oqDirectOnlyArms || [];
   var urlFallbackArm = (!oqVariantArm && KNOWN_ARM_RE.test(rawVariant))
-    ? toLiveArmFallback(rawVariant)
+    ? (directOnlyFallback.indexOf(rawVariant) !== -1 ? rawVariant : toLiveArmFallback(rawVariant))
     : null;
   var variant = oqVariantArm || urlFallbackArm;
   // gh-2014: js/ga-gate.js's CLARITY_ALLOWED_PATHS now carries '/start', so
@@ -886,6 +908,14 @@
   // is still ['c','d'], so `variant === 'e'` is false for every visitor
   // who does not carry that override.
   var ARM_E = variant === 'e';
+
+  // gh-2122 (D-332): arm F, the homeowner short path (funding tap, address,
+  // name + phone/email, thank-you; the lead is saved before any account).
+  // Same reasoning as ARM_C/ARM_D/ARM_E above -- js/router-variant-f.js owns
+  // its own sequencer/rendering entirely, reached through its own bridge
+  // assembled near the end of this IIFE. Reachable only by an explicit
+  // ?v=f (see the head script's DIRECT_ONLY_ARMS); not in LIVE_VARIANTS.
+  var ARM_F = variant === 'f';
 
   // B's step vocabulary, deliberately non-colliding with A's 1/2/2a/3
   // (#2016 control 4). The arms ask DIFFERENT questions at the same
@@ -1159,7 +1189,15 @@
   // #2088 round 2 leftover (item 9): `variantOverride`, same reasoning
   // as trackRouter's own -- used only by the arm-E-load-failure
   // fallback bridge so THAT insert's leads.variant is 'c', not 'e'.
-  function insertFreshLead(name, email, phoneDigits, isSynthetic, variantOverride) {
+  // gh-2122 (Arm F): `extraColumns`, when given, adds ONLY allow-listed
+  // columns that already exist on public.leads to the insert payload -- today
+  // just `zip`, parsed from Arm F's address. It is an allow-list on purpose: an
+  // unknown column makes PostgREST reject the WHOLE insert, and `leads` has no
+  // UPDATE policy, so a bad key here would destroy the lead with no retry (see
+  // the gh-2011 note in 20260918122231_gh2011_leads_variant.sql). Every other
+  // caller omits it and gets exactly the payload it always did.
+  var INSERT_EXTRA_COLUMNS = ['zip'];
+  function insertFreshLead(name, email, phoneDigits, isSynthetic, variantOverride, extraColumns) {
     var newId = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : (
       'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
         var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
@@ -1183,6 +1221,11 @@
       variant: variantOverride || variant
     };
     if (isSynthetic || window.__oqInternalWalk) { payload.is_synthetic = true; }
+    if (extraColumns) {
+      INSERT_EXTRA_COLUMNS.forEach(function (col) {
+        if (extraColumns[col] !== undefined && extraColumns[col] !== null) { payload[col] = extraColumns[col]; }
+      });
+    }
     return ensureSb().from('leads').insert(payload).then(function (res) {
       if (res && res.error) throw res.error;
       setStoredLeadId(newId);
@@ -1272,6 +1315,15 @@
     var routerProgressElE = document.getElementById('routerProgress');
     if (routerProgressElE) routerProgressElE.hidden = true;
     if (routerERoot) routerERoot.hidden = false;
+  }
+
+  // gh-2122 (D-332): same treatment as arms C/D/E immediately above.
+  var routerFRoot = document.getElementById('routerFRoot');
+  if (ARM_F) {
+    Object.keys(steps).forEach(function (k) { steps[k].classList.remove('active'); });
+    var routerProgressElF = document.getElementById('routerProgress');
+    if (routerProgressElF) routerProgressElF.hidden = true;
+    if (routerFRoot) routerFRoot.hidden = false;
   }
 
   // ── History: Step 2 and Step 2a each get their own history entry (pushed
@@ -1923,6 +1975,17 @@
     }
   });
 
+  // gh-2122 (Arm F): tells the shared abandon beacon below that the visitor
+  // has FINISHED. Arms C/D/E hand off with redirectTo() the instant the lead
+  // is saved, and redirectTo sets abandonSuppressedByNav; Arm F instead keeps
+  // the visitor on a thank-you screen after the save, so without this a
+  // tab-close there would fire router_step_abandoned for a screen nobody
+  // abandoned -- the false-abandon class #2096's review caught. Called by
+  // js/router-variant-f.js immediately after the lead is saved.
+  function markLeadSaved() {
+    abandonSuppressedByNav = true;
+  }
+
   // gh-2096 item 3: the abandon beacon, shared by every arm (A/B render
   // their own DOM here; C/D/E's screens live in #routerCRoot/#routerDRoot/
   // #routerERoot, but every one of them fires router_step_view through
@@ -2152,6 +2215,40 @@
       document.body.appendChild(fallbackScript);
     };
     document.body.appendChild(routerEScript);
+  }
+
+  // gh-2122 (D-332): arm F's bridge -- same shape and reasoning as arms C/D/E
+  // above (built last so every plain `var` it reads is already assigned; `sb`
+  // is a live getter). One addition: markLeadSaved (see that function). No
+  // fallback bridge: a load failure here shows the standard error, it does not
+  // silently fall back to another arm, because an F visitor arrived by an
+  // explicit ?v=f link and a silent swap would put them in an arm the ad never
+  // promised.
+  if (ARM_F) {
+    var routerFBridge = {
+      get sb() { return ensureSb(); },
+      trackRouter: trackRouter,
+      collectAttribution: collectAttribution,
+      insertFreshLead: insertFreshLead,
+      appendParams: appendParams,
+      redirectTo: redirectTo,
+      showError: showError,
+      markLeadSaved: markLeadSaved,
+      ROLE_DESTINATIONS: ROLE_DESTINATIONS
+    };
+    var routerFScript = document.createElement('script');
+    routerFScript.src = 'js/router-variant-f.js';
+    routerFScript.onload = function () {
+      if (window.RouterVariantF && typeof window.RouterVariantF.init === 'function') {
+        window.RouterVariantF.init(routerFBridge, routerFRoot);
+      } else {
+        showError('Something went wrong loading this page. Please refresh and try again.');
+      }
+    };
+    routerFScript.onerror = function () {
+      showError('Something went wrong loading this page. Please refresh and try again.');
+    };
+    document.body.appendChild(routerFScript);
   }
 })();
 </script>

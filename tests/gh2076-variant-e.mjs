@@ -985,7 +985,9 @@ function driveToP7_5(routerERoot, insertCalls) {
   const startHtmlSrc = fs.readFileSync(path.join(repoRoot, 'start.html'), 'utf8');
   ok(/oqInternalOverride\s*=\s*urlArm === 'e' &&/.test(startHtmlSrc),
     'start.html scopes the QA override to EXACTLY urlArm === \'e\' (not any arm + oq_internal=1)');
-  ok(/if \(!oqInternalOverride\) \{\s*\n\s*try \{ window\.localStorage\.setItem\(KEY, arm\)/.test(startHtmlSrc),
+  // gh-2122: the persist guard is now `!oqInternalOverride && !isDirectOnly(arm)` -- the override still skips
+  // persisting (this assertion's own subject); a direct-only arm (Arm F) additionally never persists.
+  ok(/if \(!oqInternalOverride && !isDirectOnly\(arm\)\) \{\s*\n\s*try \{ window\.localStorage\.setItem\(KEY, arm\)/.test(startHtmlSrc),
     'start.html skips persisting to localStorage/cookie entirely while the override is active');
   ok(/window\.__oqInternalOverride = oqInternalOverride;/.test(startHtmlSrc),
     'start.html exposes the override flag on window.__oqInternalOverride for arm E\'s own bridge to read');
@@ -1224,7 +1226,8 @@ function driveToP13(routerERoot, insertCalls) {
     'the onerror handler runs arm C\'s own module with routerCFallbackBridge, not routerEBridge');
   ok(/function trackRouter\(name, extra, variantOverride\)/.test(startHtmlSrc),
     'trackRouter accepts a variant override');
-  ok(/function insertFreshLead\(name, email, phoneDigits, isSynthetic, variantOverride\)/.test(startHtmlSrc),
+  // gh-2122: a sixth, optional `extraColumns` parameter was appended (allow-listed to `zip`).
+  ok(/function insertFreshLead\(name, email, phoneDigits, isSynthetic, variantOverride(, extraColumns)?\)/.test(startHtmlSrc),
     'insertFreshLead accepts a variant override');
   ok(/variant: variantOverride \|\| variant\n    \};/.test(startHtmlSrc),
     'insertFreshLead\'s payload uses the override when given, falling back to the page\'s own variant otherwise');
