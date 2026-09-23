@@ -995,7 +995,23 @@
           // successful submit, same reasoning as renderContact's own
           // proceed() above.
           bridge.trackRouter('router_contact_submitted', { step: cfg.completeToken, step_index: cfg.stepIndex });
-          try { fbq('track', 'Lead'); } catch (e) {}
+          // gh-2096 REVIEW finding 2 (PR #2114, comment 5796844493, non-
+          // blocking): this function is shared by C's own three tracks
+          // (realtor/insurance/contractor), which have no OTHER place a
+          // Lead event can fire, so an unconditional fbq call has always
+          // been correct for them. E's contractor track reaches this same
+          // function through the exported renderPartnerContact -- but E's
+          // own session-level Lead dedupe (js/router-variant-e.js's
+          // `leadEventFired`, guarding e-p7-5 and the realtor/insurance
+          // contact screens) never saw this call site, so an E visitor who
+          // already fired Lead on one track and then also completes the
+          // contractor track via Back navigation got a second, undeduped
+          // Lead. `cfg.fireLead`, when the caller supplies it (E's
+          // e-contractor-contact renderer below), replaces the raw fbq
+          // call with that arm's own dedupe check; omitted (C's three call
+          // sites, unchanged), this keeps firing unconditionally exactly as
+          // before.
+          if (cfg.fireLead) { cfg.fireLead(); } else { try { fbq('track', 'Lead'); } catch (e) {} }
           emitComplete(cfg.completeToken);
           redirectWithLeadId(cfg.destination, newId);
         }

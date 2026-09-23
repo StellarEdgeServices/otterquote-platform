@@ -1185,7 +1185,23 @@
       partnerIndustry: null,
       destination: bridge.ROLE_DESTINATIONS.contractor,
       completeToken: 'e-contractor-contact',
-      stepIndex: STEP_INDEX['e-contractor-contact']
+      stepIndex: STEP_INDEX['e-contractor-contact'],
+      // gh-2096 REVIEW finding 2 (PR #2114, comment 5796844493, non-
+      // blocking): router-discovery.js's shared renderPartnerContact fires
+      // Meta Lead unconditionally by default -- correct for C's own three
+      // tracks, which have no other Lead-firing path, but this track is
+      // reached from E, where e-p7-5/proEmailRenderer's own commitment may
+      // already have fired Lead for this session (leadEventFired above).
+      // Route this call site through that SAME guard instead of a second,
+      // undeduped fbq call, so a visitor who already fired Lead on one
+      // track and then also completes the contractor track (e.g. via Back
+      // navigation) does not get counted twice.
+      fireLead: function () {
+        if (!leadEventFired) {
+          leadEventFired = true;
+          try { fbq('track', 'Lead'); } catch (e) {}
+        }
+      }
     });
   };
 

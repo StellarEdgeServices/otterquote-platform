@@ -1868,21 +1868,58 @@
   window.addEventListener('pageshow', function (e) {
     if (e.persisted) {
       try { history.replaceState({ step: ENTRY_STEP }, '', location.pathname + location.search); } catch (e2) {}
-      renderStep(ENTRY_STEP);
       leadId = null;
       try { sessionStorage.removeItem(LEAD_ID_STORAGE_KEY); } catch (e3) {}
-      // gh-2096 REVIEW fix (PR #2114, comment 5782483911): abandonSuppressedByNav
-      // is set once, permanently, by redirectTo() the first time this
-      // visitor completes the funnel -- a bfcache restore (this handler's
-      // own comment above: Android/iOS back-gesture from
-      // app.otterquote.com/get-started or a partner-*.html page, back to
-      // this document) resurrects the SAME page instance with that flag
-      // still true, which silently suppressed router_step_abandoned for
-      // the rest of this page's life even after a genuine later
-      // abandonment. Reset it here alongside the other per-visit abandon
-      // state (abandonCurrentStep/abandonFiredForView, both cleared by
-      // renderStep(ENTRY_STEP) above via its own trackRouter call).
+      // gh-2096 REVIEW fix round 2 (PR #2114, comment 5796844493, superseding
+      // the round-1 fix at comment 5782483911): that round-1 fix reset
+      // abandonSuppressedByNav here but left the REST of the abandon state
+      // (abandonCurrentStep/abandonCurrentStepIndex/abandonCurrentVariant/
+      // abandonFiredForView/abandonHiddenTimer) to be cleared by
+      // renderStep(ENTRY_STEP) below, via that function's own trackRouter
+      // call. That is false for every LIVE arm: renderStep's own first line
+      // is `if (ARM_C || ARM_D || ARM_E) return;` (this file, ~line 709),
+      // and LIVE_VARIANTS above is ['c','d','e'] -- 100% of real traffic
+      // takes that early return, so renderStep(ENTRY_STEP) never reaches
+      // its trackRouter('router_step_view', ...) call on any live arm. The
+      // review reproduced the result on arm C directly: a visitor who
+      // completes the funnel (redirectTo sets abandonSuppressedByNav =
+      // true), swipes back, then leaves WITHOUT resubmitting still has
+      // abandonCurrentStep pointing at the step they already completed --
+      // so once this handler reset only the suppression flag, that later,
+      // genuine exit fired router_step_abandoned for a step the visitor had
+      // already finished: a false abandon on exactly the step this issue
+      // exists to measure, on live traffic. Reset the full abandon-beacon
+      // state directly here instead, for every arm, without going through
+      // renderStep/trackRouter at all -- so this never again depends on a
+      // side effect that only some arms actually reach. This block runs
+      // BEFORE renderStep(ENTRY_STEP) below (not after): on the non-live
+      // arm (A), that call still re-populates this same state correctly
+      // via its own trackRouter('router_step_view', ...) for the fresh
+      // entry screen, so ordering this reset first is what lets A's real
+      // post-restore view stand instead of being wiped out by this fix.
       abandonSuppressedByNav = false;
+      // Nulling the tracked step (rather than only re-arming
+      // abandonFiredForView) is what makes sendAbandonBeacon's own
+      // `!abandonCurrentStep` guard block it below, on every arm, until a
+      // fresh router_step_view repopulates these from a real screen entry.
+      abandonCurrentStep = null;
+      abandonCurrentStepIndex = undefined;
+      abandonCurrentVariant = null;
+      abandonStepEnteredAt = 0;
+      // Second, independent guard on top of the null step above -- belt
+      // and suspenders, not load-bearing on its own.
+      abandonFiredForView = true;
+      // A visibilitychange grace timer armed before this restore (the
+      // visitor was backgrounded on the pre-restore page, still within its
+      // ABANDON_HIDDEN_GRACE_MS window) must not be left to fire later
+      // against this now-cleared state.
+      if (abandonHiddenTimer) { clearTimeout(abandonHiddenTimer); abandonHiddenTimer = null; }
+      // Non-live arm (A): re-renders Step 1 and, via its own trackRouter
+      // call, repopulates the abandon state just cleared above with the
+      // fresh post-restore view. Live arms (C/D/E): no-ops (see this
+      // function's own `if (ARM_C || ARM_D || ARM_E) return;` guard), and
+      // the cleared state above stands until a real screen entry occurs.
+      renderStep(ENTRY_STEP);
     }
   });
 
