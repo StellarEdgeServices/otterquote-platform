@@ -24,7 +24,7 @@ Arm F saves a homeowner lead in four taps before any account exists. Production 
 | Triggers on `leads` | `trg_leads_force_safe_insert_defaults` (BEFORE INSERT), `trg_notify_admin_new_router_lead` (AFTER UPDATE, role NULL to non-NULL) |
 | Policies on `leads` | `Allow anonymous inserts` (INSERT, anon + authenticated, `WITH CHECK (true)`), `leads_admin_select` (SELECT, authenticated, `is_admin_email()`); **no UPDATE policy** |
 | Table grants on `leads` | anon: INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE (no UPDATE, no DELETE); authenticated: table-level UPDATE and DELETE but no policy to use them |
-| `leads_force_safe_insert_defaults()` | SECURITY DEFINER, `search_path = public, pg_temp`, owner `postgres`, ACL `{postgres=X/postgres,service_role=X/postgres}`, five assignments (`created_at`, `converted_user_id`, `role`, `partner_industry`, `alerted_at`); `md5(prosrc) = 61d154d12d28801c788825ef18199a2a` |
+| `leads_force_safe_insert_defaults()` | SECURITY DEFINER, `search_path = public, pg_temp`, owner `postgres`, ACL `{postgres=X/postgres,service_role=X/postgres}`, five assignments (`created_at`, `converted_user_id`, `role`, `partner_industry`, `alerted_at`); `md5(prosrc)` beginning `61d154d1` |
 | Anon INSERT policies naming a suitable evidence sink | none (`activity_log` is user-scoped) |
 
 ## Row count and lock estimate
@@ -63,7 +63,7 @@ Sequence run: stub schema, schema fingerprint captured, forward applied twice, f
 
 **Result: 120 PASS, 0 FAIL** (repeated after the independent review, which added a second rollback refusal, and again after Ben's guard ruling).
 
-**Fidelity of the stub.** The stub's guard function is byte-identical to production: `md5(prosrc)` of the stub equals the production value `61d154d12d28801c788825ef18199a2a`, asserted by the runner. Table policies and grants on `leads` mirror the production read above. The runner sends SQL to `psql` as **bytes**, because Windows text-mode pipes rewrite LF to CRLF and would otherwise make function bodies differ from production.
+**Fidelity of the stub.** The stub's guard function is byte-identical to production: `md5(prosrc)` of the stub equals the production value `61d154d1...`, asserted by the runner. Table policies and grants on `leads` mirror the production read above. The runner sends SQL to `psql` as **bytes**, because Windows text-mode pipes rewrite LF to CRLF and would otherwise make function bodies differ from production.
 
 Key lines:
 

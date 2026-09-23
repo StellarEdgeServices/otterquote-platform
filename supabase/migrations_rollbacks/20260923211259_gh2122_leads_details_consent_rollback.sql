@@ -10,7 +10,7 @@
 -- THE GUARD IS RESTORED FIRST, ON PURPOSE. The forward migration's guard body names the
 -- four new columns; if they were dropped while it was still installed, every INSERT into
 -- public.leads would fail. The original body below is the production definition read with
--- pg_get_functiondef on 2026-09-23 (md5 of prosrc 61d154d12d28801c788825ef18199a2a).
+-- pg_get_functiondef on 2026-09-23 (the md5 of prosrc begins 61d154d1).
 --
 -- ORDER MATTERS WITH THE EDGE FUNCTION. Roll back in this order:
 --   1. Stop the client writing: revert or disable js/router-variant-f.js's call to
