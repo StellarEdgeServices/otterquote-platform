@@ -6,6 +6,7 @@
 **Author**: Kevin, Code lane (`rw-f22-20260923T205250-a2f6`, under `ceo-2026-09-23T18:56:07Z`)
 **Authorised by**: Ben, CEO RUN 66, "A: MIGRATION: GO" on #2122 (comment 5802853627), answering Q 5802781694
 **Tier**: 3A (additive), D-261. No R-097 window, per that ruling.
+**Amended by (LEGAL-READ)**: Ben's decision on the `LEGAL-READ: FAIL` (#2126 comment 5803971865; ruling #2122 comment 5803979399): implement D-299 as written, so the evidence row also stores **the phone number as typed** and **the form payload (the submitted values)**. Option (B), ruling that the normalised `leads.phone` satisfies D-299, was rejected: it would re-interpret a locked legal decision. Nothing else changes.
 **Amended by**: Ben's ruling on Kevin's HANDOFF-LIVE, #2122 comment 5803524541: the insert guard `leads_force_safe_insert_defaults()` gains exactly four lines. Protective fix, constitution entry 4 / R-134, executed with a notice and no 24-hour wait (that comment is the notice).
 **Issue**: #2122 (Arm F, checklist row 1.1 on #2121)
 
@@ -55,13 +56,31 @@ Arm F saves a homeowner lead in four taps before any account exists. Production 
 
 **Not changed:** the trigger `trg_leads_force_safe_insert_defaults`, `trg_notify_admin_new_router_lead`, every RLS policy on `leads`, and no CHECK constraint is added to `leads` (see `20260918122231_gh2011_leads_variant.sql` for why). Proven below by trigger, policy and constraint counts before and after.
 
+## D-299 section 2, element by element
+
+D-299 section 2 requires retaining, per submission: *"the consent language as rendered, timestamp, IP, user agent, page URL, form payload, and the phone number as typed"*, and says this *"cannot be added retroactively to consents already collected."* The LEGAL-READ found the last two missing; every element now has a column:
+
+| D-299 element | Column on `lead_consents` | Where the value comes from | Proven by |
+|---|---|---|---|
+| Consent language as rendered | `consent_text` | The exact string the client rendered, sent verbatim (only NUL removed, capped at 2000) | round-trip probe; the client test pins it byte for byte against the approved table |
+| Timestamp | `created_at` | Server clock at write time (`DEFAULT now()`), never client-supplied | schema check |
+| IP | `ip` | Request header (`cf-connecting-ip`, else first `x-forwarded-for` hop), server-observed | Deno negative control: a body `ip` is ignored |
+| User agent | `user_agent` | Request header, server-observed | same |
+| Page URL | `page_url` | Client-sent, kept only if https on otterquote.com | Deno tests |
+| **Form payload** | **`form_payload` (jsonb)** | **The submitted VALUES: name, phone as typed, email as typed, address, funding answer. Allow-listed and capped by the Edge Function; a non-object is stored NULL** | SQL probe: values stored, first write wins, malformed stored NULL; Deno tests |
+| **Phone number as typed** | **`phone_as_typed` (text)** | **The raw string from the field, before any normalisation: not trimmed, not collapsed, only NUL removed; capped at 100** | SQL probe: `'  (317) 255-0142 '` stored exactly; capped at 100; the RPC leaves `leads.phone` alone |
+
+The separate `payload` column keeps the non-PII summary (source, funding, field names). Both new columns are personal data with the same access as the rest of the row: RLS on, no policy, anon and authenticated revoked, service role only. The RPC signature grows from 12 to 14 arguments (the two new ones default to NULL, so a legacy 12-argument call still works and stores NULL); the REVOKE, GRANT, COMMENT and the rollback's DROP all name the new signature. The rollback's evidence guard already covers the new columns, because they live on `lead_consents`.
+
+**Follow-ups the LEGAL-READ recorded, not part of this PR:** no D-number yet sets a retention period for consent evidence (the reviewer suggested 4 years, the TCPA limitations period), and the privacy policy's retention table has no row for pre-account leads; any future dialer or SMS sender must require `consent_given = true` and check the DNC list; revocation (D-299 section 4) needs its own store, since `ON CONFLICT DO NOTHING` here cannot record one.
+
 ## Test method, and why it is not a Supabase branch
 
 Ben asked for both halves to be proven on a Supabase branch. A Supabase branch is a paid resource whose creation needs a cost confirmation, and spending money is not this lane's to authorise. It also has a recorded failure mode (fresh branches replay the whole migration history and report MIGRATIONS_FAILED). The proof was run instead on a **throwaway PostgreSQL 15.19 in Docker**, against a stub schema that reproduces the parts of production this migration touches: `leads` exactly as measured above (21 columns, 7 constraints, both triggers, the anon insert policy), `rate_limit_config`, and **Supabase's default privileges for `anon`, `authenticated` and `service_role`** so the REVOKEs are genuinely needed. If a branch is still wanted, say so and it is a one-command re-run of the same scripts against that branch. The scripts and their full output are in the PR comment.
 
 Sequence run: stub schema, schema fingerprint captured, forward applied twice, forward checks, behaviour checks with role probes, rollback attempted while evidence rows exist (refused), forward state re-checked intact, evidence rows deleted, rollback attempted again with the `leads` columns still populated (refused), forward state re-checked intact, the columns NULLed, rollback applied, fingerprint compared, forward re-applied, forward checks again.
 
-**Result: 120 PASS, 0 FAIL** (repeated after the independent review, which added a second rollback refusal, and again after Ben's guard ruling).
+**Result: 132 PASS, 0 FAIL** (repeated after the independent review, which added a second rollback refusal, after Ben's guard ruling, and after the D-299 columns).
 
 **Fidelity of the stub.** The stub's guard function is byte-identical to production: `md5(prosrc)` of the stub equals the production value `61d154d1...`, asserted by the runner. Table policies and grants on `leads` mirror the production read above. The runner sends SQL to `psql` as **bytes**, because Windows text-mode pipes rewrite LF to CRLF and would otherwise make function bodies differ from production.
 
@@ -83,10 +102,11 @@ Key lines:
 **Negative controls for the proof itself (both observed).**
 1. The same migration with both `REVOKE` statements removed, run through the forward and behaviour checks: **8 FAIL** (`anon can EXECUTE`, `authenticated can EXECUTE`, table grants leaked, `proacl` carrying `=X`, `anon=X`, `authenticated=X`, and four behaviour probes where `anon` and `authenticated` succeeded in executing the function and reading the table). The REVOKEs are load-bearing.
 2. **The same migration with the four guard lines removed** (the migration as it stood before Ben's ruling), run through the guard checks: **7 FAIL** (`funding_type`, `property_address`, `fbc` and `fbp` each set by a direct insert, the multi-column insert setting a value, the RPC unable to populate a pre-set row because it is first-write-wins, and the stored address changed). The four lines are load-bearing and the probes detect their absence.
+3. **The same migration with the RPC not storing `phone_as_typed` or `form_payload`** (the migration as it stood before the LEGAL-READ), run through the behaviour checks: **4 FAIL** (`phone_as_typed` altered, `form_payload` values missing, the D-299 fields overwritten, `phone_as_typed` not capped). The new probes detect their absence.
 
 ## Repo gates run locally on this diff
 
-`scripts/permissions-ratchet.py --check-file`: GATE PASS (both `REVOKE` lines and both `GRANT ... TO service_role` lines pass). `scripts/migration-filename-lint.py`: PASS (147 files, 0 violations). `scripts/schema-column-lint.py`: PASS (0 violations). `scripts/migrations-reconciliation-check.py`: informational only, not gated. `deno test --allow-read=supabase/functions supabase/functions/record-lead-details/`: 22 passed, 0 failed, with 7 mutations each caught.
+`scripts/permissions-ratchet.py --check-file`: GATE PASS (both `REVOKE` lines and both `GRANT ... TO service_role` lines pass). `scripts/migration-filename-lint.py`: PASS (147 files, 0 violations). `scripts/schema-column-lint.py`: PASS (0 violations). `scripts/migrations-reconciliation-check.py`: informational only, not gated. `deno test --allow-read=supabase/functions supabase/functions/record-lead-details/`: 27 passed, 0 failed (the earlier 7 mutations each caught, plus new tests for the typed phone, the form payload and their absence from Sentry reports).
 
 ## Deploy notes (an executive or the CTO applies; this PR applies nothing)
 

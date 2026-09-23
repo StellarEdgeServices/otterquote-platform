@@ -130,6 +130,40 @@ export function cleanPageUrl(v: unknown): string | null {
   }
 }
 
+/**
+ * AS TYPED text (D-299 section 2: "the phone number as typed", "form payload"): NOT trimmed, NOT collapsed,
+ * NOT normalised. Only what PostgreSQL cannot store is removed (NUL characters) and the length is capped
+ * without splitting a surrogate pair. An empty result is null.
+ */
+export function rawText(v: unknown, max: number): string | null {
+  if (typeof v !== "string") return null;
+  // deno-lint-ignore no-control-regex
+  const cleaned = v.replace(/\u0000/g, "");
+  if (cleaned === "") return null;
+  return safeSlice(cleaned, max);
+}
+
+/** Per-key caps for the submitted form VALUES kept as the D-299 form payload. Keys not listed here are dropped. */
+const FORM_PAYLOAD_LIMITS: Record<string, number> = { name: 200, phone: 100, email: 320, address: 500 };
+
+/**
+ * The submitted form values, allow-listed: name, phone (as typed), email, address, funding_type. Every value is a
+ * string kept as typed; funding_type is one of the three allowed answers or dropped. Returns null when nothing
+ * usable was sent, so an absent payload is stored as NULL, never as an empty object.
+ */
+export function buildFormPayload(raw: unknown): Record<string, string> | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const r = raw as Record<string, unknown>;
+  const out: Record<string, string> = {};
+  for (const key of Object.keys(FORM_PAYLOAD_LIMITS)) {
+    const v = rawText(r[key], FORM_PAYLOAD_LIMITS[key]);
+    if (v !== null) out[key] = v;
+  }
+  const f = typeof r.funding_type === "string" ? r.funding_type.trim().toLowerCase() : "";
+  if (FUNDING_VALUES.includes(f)) out.funding_type = f;
+  return Object.keys(out).length ? out : null;
+}
+
 export interface ValidBody {
   leadId: string;
   fundingType: string | null;
@@ -141,6 +175,8 @@ export interface ValidBody {
   consentText: string;
   pageUrl: string | null;
   submittedFields: string[];
+  phoneAsTyped: string | null;
+  formPayload: Record<string, string> | null;
 }
 
 export type Validation = { ok: true; value: ValidBody } | { ok: false; error: string };
@@ -193,6 +229,9 @@ export function validateBody(raw: unknown): Validation {
       consentText,
       pageUrl: cleanPageUrl(b.page_url),
       submittedFields,
+      // D-299: the phone AS TYPED, falling back to the phone inside the form payload when only that was sent.
+      phoneAsTyped: rawText(b.phone_as_typed, 100) ?? (buildFormPayload(b.form_payload)?.phone ?? null),
+      formPayload: buildFormPayload(b.form_payload),
     },
   };
 }
@@ -217,6 +256,9 @@ export function buildRpcArgs(v: ValidBody, ip: string | null, userAgent: string 
       funding_type: v.fundingType,
       submitted_fields: v.submittedFields,
     },
+    // D-299 section 2: the phone as typed and the submitted form values (service-role RPC; never logged or reported).
+    p_phone_as_typed: v.phoneAsTyped,
+    p_form_payload: v.formPayload,
   };
 }
 

@@ -6,6 +6,13 @@
 -- (additive: nullable columns, one new table, one new function, one config row;
 -- nothing dropped, renamed, retyped or rewritten) under D-261, no R-097 window.
 --
+-- AMENDED AGAIN by Ben's decision on the LEGAL-READ: FAIL (#2126 comment 5803971865; ruling
+-- #2122 comment 5803979399). D-299 section 2 says to retain, per submission, "the consent language
+-- as rendered, timestamp, IP, user agent, page URL, form payload, and the phone number as typed",
+-- and that this "cannot be added retroactively". The evidence row therefore also carries
+-- `phone_as_typed` (the raw string from the field, before normalisation) and `form_payload` (the
+-- submitted VALUES, not only the field names). The RPC and the Edge Function accept and store both.
+--
 -- AMENDED by Ben's ruling on Kevin's HANDOFF-LIVE (#2122 comment 5803524541): the insert
 -- guard leads_force_safe_insert_defaults() is extended by EXACTLY FOUR LINES so a direct
 -- anon insert cannot pre-set the four new columns (section 1b). That is a protective fix
@@ -130,6 +137,8 @@ CREATE TABLE IF NOT EXISTS public.lead_consents (
   user_agent    text,
   ip            text,
   payload       jsonb,
+  phone_as_typed text,
+  form_payload  jsonb,
   created_at    timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT lead_consents_lead_key_uniq UNIQUE (lead_id, consent_key)
 );
@@ -138,6 +147,10 @@ COMMENT ON TABLE public.lead_consents IS
   'gh-2122 / D-299: per-submission TCPA consent evidence for router leads (exact rendered text, given/not given, page URL, server-observed IP and user agent, non-PII payload summary). Written only by record_lead_details() via the record-lead-details Edge Function (service role). RLS on with no policy: anon and authenticated cannot read or write it.';
 COMMENT ON COLUMN public.lead_consents.consent_text IS
   'The exact string rendered next to the checkbox at submit time, capped at 2000 characters.';
+COMMENT ON COLUMN public.lead_consents.phone_as_typed IS
+  'D-299 section 2: the phone number exactly as the visitor typed it, before any normalisation (leads.phone holds only the 10-digit normalised form). The approved consent line says "at the number above", so this is the number the consent covers. Personal data; service-role read only.';
+COMMENT ON COLUMN public.lead_consents.form_payload IS
+  'D-299 section 2: the submitted form VALUES (name, phone as typed, email, address, funding answer), an allow-listed object built by the record-lead-details Edge Function. Personal data; service-role read only. The separate `payload` column keeps the non-PII summary (source, funding, field names).';
 COMMENT ON COLUMN public.lead_consents.ip IS
   'Client IP as seen by the Edge Function (cf-connecting-ip, else the first x-forwarded-for hop). Server-observed, never client-supplied.';
 
@@ -172,7 +185,9 @@ CREATE OR REPLACE FUNCTION public.record_lead_details(
   p_page_url         text,
   p_user_agent       text,
   p_ip               text,
-  p_payload          jsonb DEFAULT NULL
+  p_payload          jsonb DEFAULT NULL,
+  p_phone_as_typed   text  DEFAULT NULL,
+  p_form_payload     jsonb DEFAULT NULL
 )
 RETURNS boolean
 LANGUAGE plpgsql
@@ -212,7 +227,7 @@ BEGIN
   END IF;
 
   INSERT INTO public.lead_consents
-    (lead_id, consent_key, consent_given, consent_text, page_url, user_agent, ip, payload)
+    (lead_id, consent_key, consent_given, consent_text, page_url, user_agent, ip, payload, phone_as_typed, form_payload)
   VALUES
     (p_lead_id,
      left(btrim(p_consent_key), 100),
@@ -221,22 +236,25 @@ BEGIN
      left(NULLIF(btrim(p_page_url), ''), 2000),
      left(NULLIF(btrim(p_user_agent), ''), 1000),
      left(NULLIF(btrim(p_ip), ''), 64),
-     p_payload)
+     p_payload,
+     -- AS TYPED: not trimmed, not normalised (only the length is capped, and an empty string is stored as NULL).
+     left(NULLIF(p_phone_as_typed, ''), 100),
+     CASE WHEN jsonb_typeof(p_form_payload) = 'object' THEN p_form_payload END)
   ON CONFLICT (lead_id, consent_key) DO NOTHING;
 
   RETURN true;
 END;
 $$;
 
-COMMENT ON FUNCTION public.record_lead_details(uuid, text, text, text, text, text, boolean, text, text, text, text, jsonb) IS
-  'gh-2122: the single write path for Arm F details + D-299 consent evidence (the four leads columns are nulled on every insert by leads_force_safe_insert_defaults(), so this is their only writer). SECURITY DEFINER; EXECUTE is granted to service_role ONLY (called by the record-lead-details Edge Function, which supplies the server-observed IP and user agent). First write wins; 30-minute / prefill_used_at guard as set_lead_role(). Returns false when the lead is out of scope, never raises for that.';
+COMMENT ON FUNCTION public.record_lead_details(uuid, text, text, text, text, text, boolean, text, text, text, text, jsonb, text, jsonb) IS
+  'gh-2122: the single write path for Arm F details + D-299 consent evidence (including the phone as typed and the form values) (the four leads columns are nulled on every insert by leads_force_safe_insert_defaults(), so this is their only writer). SECURITY DEFINER; EXECUTE is granted to service_role ONLY (called by the record-lead-details Edge Function, which supplies the server-observed IP and user agent). First write wins; 30-minute / prefill_used_at guard as set_lead_role(). Returns false when the lead is out of scope, never raises for that.';
 
 -- Supabase default privileges grant EXECUTE on every new public function to anon
 -- AND authenticated; REVOKE FROM PUBLIC alone does not remove them (v95/v95a
 -- lesson, GitHub #571). Name every role, then grant the one that needs it.
-REVOKE ALL ON FUNCTION public.record_lead_details(uuid, text, text, text, text, text, boolean, text, text, text, text, jsonb)
+REVOKE ALL ON FUNCTION public.record_lead_details(uuid, text, text, text, text, text, boolean, text, text, text, text, jsonb, text, jsonb)
   FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.record_lead_details(uuid, text, text, text, text, text, boolean, text, text, text, text, jsonb)
+GRANT EXECUTE ON FUNCTION public.record_lead_details(uuid, text, text, text, text, text, boolean, text, text, text, text, jsonb, text, jsonb)
   TO service_role;
 
 -- 4. rate_limit_config row, IN LOCKSTEP with the function that calls it ---------

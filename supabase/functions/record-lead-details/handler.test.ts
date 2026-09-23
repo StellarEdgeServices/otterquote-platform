@@ -12,6 +12,8 @@ import {
   getClientIp,
   handleRequest,
   ipToUuid,
+  rawText,
+  buildFormPayload,
   safeSlice,
   validateBody,
 } from "./handler.ts";
@@ -121,6 +123,30 @@ Deno.test("validateBody: consent text drops NUL characters but is otherwise verb
   if (emojiTail.ok) assertEquals(emojiTail.value.consentText, "x".repeat(1999));
 });
 
+Deno.test("rawText keeps text AS TYPED: not trimmed, not collapsed, only NUL removed, surrogate-safe cap", () => {
+  assertEquals(rawText("  (317) 255-0142 ", 100), "  (317) 255-0142 "); // spaces and punctuation exactly as typed
+  assertEquals(rawText("317  255\t0142", 100), "317  255\t0142"); // internal whitespace kept
+  assertEquals(rawText("31\u00007", 100), "317"); // NUL is the one thing PostgreSQL cannot store
+  assertEquals(rawText("", 100), null);
+  assertEquals(rawText(5, 100), null);
+  assertEquals(rawText("x".repeat(500), 100)?.length, 100);
+  assertEquals(rawText("a".repeat(99) + "\u{1F3E0}", 100), "a".repeat(99)); // never a lone surrogate
+  // Contrast with cleanText, which is for ordinary fields and DOES normalise.
+  assertEquals(cleanText("  (317) 255-0142 ", 100), "(317) 255-0142");
+});
+
+Deno.test("buildFormPayload: allow-listed submitted VALUES, as typed; junk dropped; null when empty", () => {
+  const p = buildFormPayload({ name: " Jane ", phone: "(317) 255-0142", email: "Jane@Example.com", address: "123 Main St, Indianapolis, IN 46204", funding_type: " CASH ", password: "x", ssn: "1", extra: { a: 1 } });
+  assertEquals(p, { name: " Jane ", phone: "(317) 255-0142", email: "Jane@Example.com", address: "123 Main St, Indianapolis, IN 46204", funding_type: "cash" });
+  assertEquals(buildFormPayload({ funding_type: "lottery" }), null); // an unknown funding answer is dropped, leaving nothing
+  assertEquals(buildFormPayload({ name: 5, phone: null, email: {}, address: [] }), null); // non-strings are dropped
+  assertEquals(buildFormPayload([]), null);
+  assertEquals(buildFormPayload("x"), null);
+  assertEquals(buildFormPayload(null), null);
+  assertEquals(buildFormPayload({ name: "n".repeat(999), address: "a".repeat(999) })?.name?.length, 200);
+  assertEquals(buildFormPayload({ name: "n", address: "a".repeat(999) })?.address?.length, 500);
+});
+
 Deno.test("cleanPageUrl: keeps https otterquote.com URLs, drops everything else", () => {
   assertEquals(cleanPageUrl("https://otterquote.com/start?v=f"), "https://otterquote.com/start?v=f");
   assertEquals(cleanPageUrl("https://app.otterquote.com/x"), "https://app.otterquote.com/x");
@@ -197,6 +223,43 @@ Deno.test("validateBody: address capped at 300, fbc/fbp at 200, consent text at 
 });
 
 // ── buildRpcArgs ──────────────────────────────────────────────────────────
+Deno.test("validateBody / buildRpcArgs / handleRequest carry the phone as typed and the form payload to the RPC (D-299)", async () => {
+  const body = goodBody({ phone_as_typed: " (317) 255-0142 ", form_payload: { name: "Jane", phone: " (317) 255-0142 ", email: "jane@example.com", address: "123 Main St, Indianapolis, IN 46204", funding_type: "insurance" } });
+  const v = validateBody(body);
+  assert(v.ok);
+  if (!v.ok) return;
+  assertEquals(v.value.phoneAsTyped, " (317) 255-0142 ");
+  assertEquals(v.value.formPayload?.email, "jane@example.com");
+  const args = buildRpcArgs(v.value, "203.0.113.9", "UA/1.0");
+  assertEquals(args.p_phone_as_typed, " (317) 255-0142 ");
+  assertEquals((args.p_form_payload as Record<string, string>).address, "123 Main St, Indianapolis, IN 46204");
+  const { deps, calls } = fakeDeps();
+  await handleRequest(req(body, { "cf-connecting-ip": "203.0.113.9" }), deps);
+  const rec = calls.rpc.find((c) => c.name === "record_lead_details")!;
+  assertEquals(rec.args.p_phone_as_typed, " (317) 255-0142 ");
+  assertEquals((rec.args.p_form_payload as Record<string, string>).name, "Jane");
+});
+
+Deno.test("phone_as_typed falls back to the phone inside form_payload; both absent -> NULL, never an empty object", () => {
+  const onlyPayload = validateBody(goodBody({ form_payload: { phone: "317.255.0142" } }));
+  assert(onlyPayload.ok);
+  if (onlyPayload.ok) assertEquals(onlyPayload.value.phoneAsTyped, "317.255.0142");
+  const neither = validateBody(goodBody());
+  assert(neither.ok);
+  if (neither.ok) { assertEquals(neither.value.phoneAsTyped, null); assertEquals(neither.value.formPayload, null); }
+  const junk = validateBody(goodBody({ form_payload: "not an object", phone_as_typed: 42 }));
+  assert(junk.ok);
+  if (junk.ok) { assertEquals(junk.value.phoneAsTyped, null); assertEquals(junk.value.formPayload, null); }
+});
+
+Deno.test("the typed phone and form values are never reported to Sentry or echoed in a response", async () => {
+  const { deps, calls } = fakeDeps({ recordError: true });
+  const res = await handleRequest(req(goodBody({ phone_as_typed: "(317) 255-0142", form_payload: { name: "Jane Q Public", email: "jane.q@example.com", phone: "(317) 255-0142" } })), deps);
+  assertEquals(res.status, 500);
+  const seen = JSON.stringify(calls.reports) + JSON.stringify(await res.json());
+  for (const secret of ["255-0142", "Jane Q Public", "jane.q@example.com"]) assert(!seen.includes(secret), "leaked: " + secret);
+});
+
 Deno.test("buildRpcArgs: payload summary carries no PII", () => {
   const v = validateBody(goodBody());
   assert(v.ok);

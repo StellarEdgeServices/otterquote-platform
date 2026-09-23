@@ -73,7 +73,7 @@ BEGIN
 END;
 $$;
 
-DROP FUNCTION IF EXISTS public.record_lead_details(uuid, text, text, text, text, text, boolean, text, text, text, text, jsonb);
+DROP FUNCTION IF EXISTS public.record_lead_details(uuid, text, text, text, text, text, boolean, text, text, text, text, jsonb, text, jsonb);
 
 DROP TABLE IF EXISTS public.lead_consents;
 
