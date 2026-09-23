@@ -2247,6 +2247,10 @@
       redirectTo: redirectTo,
       showError: showError,
       markLeadSaved: markLeadSaved,
+      // The record-lead-details Edge Function, called by js/router-variant-f.js as a keepalive fetch (with a sendBeacon
+      // fallback on pagehide), so it needs the URL and the public anon key. Both are already public in js/config.js.
+      detailsUrl: (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_URL) ? String(CONFIG.SUPABASE_URL).replace(/\/+$/, '') + '/functions/v1/record-lead-details' : null,
+      anonKey: (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_ANON) ? CONFIG.SUPABASE_ANON : null,
       ROLE_DESTINATIONS: ROLE_DESTINATIONS
     };
     var routerFScript = document.createElement('script');

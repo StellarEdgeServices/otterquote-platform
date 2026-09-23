@@ -41,8 +41,11 @@
 //      address). It never sends a column that does not exist: an unknown column
 //      makes PostgREST reject the whole insert and `leads` has no UPDATE
 //      policy, so the lead would be destroyed with no retry;
-//   2. set_lead_role(homeowner), which trips the #1932 new-lead alert;
-//   3. call the record-lead-details Edge Function with the funding answer, the
+//   2. AT THE SAME MOMENT (no wait, D-299: a consent record lost to a closed tab is a
+//      compliance failure, ruling #2122 comment 5803979399) start two calls in parallel:
+//      set_lead_role(homeowner), which trips the #1932 new-lead alert, and
+//   3. the record-lead-details Edge Function, sent as a keepalive fetch (a simple
+//      request, no CORS preflight) with a sendBeacon fallback on pagehide, carrying the funding answer, the
 //      address, fbc/fbp and the consent record. One retry; if it still fails
 //      it is reported to Sentry (the lead id, the attempt count and the error
 //      class -- no personal data) and the flow carries on -- the lead is saved
@@ -116,15 +119,12 @@
   // one. If the zone cannot be resolved the AFTER-HOURS copy is used, because
   // that is the promise that is never wrong.
   var CALL_WINDOW = { timeZone: 'America/Indiana/Indianapolis', startHour: 8, endHour: 20 };
-  // The details call (see the header) is made after set_lead_role settles, but it
-  // never waits longer than ROLE_WAIT_MS for it, and the thank-you screen never
-  // waits longer than FLOW_GUARD_MS for either -- a hung request must not strand
-  // a visitor whose lead is already saved. The details call keeps running in the
-  // background if the thank-you screen appears first.
-  var ROLE_WAIT_MS = 3000;
+  // The details call starts the moment the insert resolves and does NOT wait for set_lead_role (see the header). The
+  // thank-you screen appears when both calls have settled, and never later than FLOW_GUARD_MS: a hung request must
+  // not strand a visitor whose lead is already saved. Both calls keep running in the background if it appears first.
   var FLOW_GUARD_MS = 6000;
-  // A thank-you button that navigates away would abort a details call still in flight (no keepalive), losing the
-  // funding answer, address and consent record. The buttons therefore wait for it, but never longer than this.
+  // A thank-you button navigates the page. The details request is keepalive so the browser lets it finish, but a RETRY
+  // (after a failure) would not survive navigation, so the buttons wait for an in-flight call, capped at this.
   var CTA_WAIT_MS = 2500;
   var DETAILS_FUNCTION = 'record-lead-details';
   var DETAILS_RETRIES = 1;
@@ -137,9 +137,12 @@
   var root = null;
   var funding = null;
   var address = null;
+  var addressRaw = null; // the address exactly as typed (D-299 form payload); `address` is the trimmed value used for the zip
   var leadId = null;
   var submitting = false;
   var detailsInFlight = null; // a promise while the details call is running, else null
+  var pendingDetails = null; // { body } until the Edge Function has confirmed the write; the pagehide beacon re-sends it
+  var beaconSent = false;
   var leadEventFired = false;
   var activeToken = null;
   var stack = [];
@@ -270,6 +273,7 @@
       if (v.length < 5) { setError(f.err, COPY.arm_f_s2_error_required); return; }
       setError(f.err, '');
       address = v;
+      addressRaw = f.input.value || '';
       go('f-contact');
     });
     root.appendChild(btn);
@@ -342,7 +346,11 @@
         name: nm,
         email: em,
         phone: phoneRaw ? normalizePhone(phoneRaw) : null,
-        consentGiven: !!consentInput.checked
+        consentGiven: !!consentInput.checked,
+        // AS TYPED, before trimming or normalising: D-299 section 2 (the form payload and "the phone number as typed").
+        nameTyped: nameF.input.value || '',
+        phoneTyped: phoneF.input.value || '',
+        emailTyped: emailF.input.value || ''
       }, submitBtn, formError, backBtn3);
     });
     root.appendChild(submitBtn);
@@ -386,7 +394,11 @@
       // The exact string rendered next to the checkbox, byte-identical to the approved copy.
       consent: { key: CONSENT_KEY, given: v.consentGiven, text: COPY.arm_f_s3_consent_checkbox },
       page_url: pageUrl,
-      submitted_fields: fields
+      submitted_fields: fields,
+      // D-299 section 2, ruling #2122 comment 5803979399: the phone number AS TYPED and the submitted form VALUES. They go to
+      // the Edge Function only -- never into a GA4, Meta or Clarity call.
+      phone_as_typed: v.phoneTyped,
+      form_payload: { name: v.nameTyped, phone: v.phoneTyped, email: v.emailTyped, address: addressRaw, funding_type: funding }
     };
   }
   // Surfaced to Sentry with the lead id, the attempt count and the error class only -- never the address,
@@ -430,12 +442,54 @@
       function () { return bridge.sb.rpc('set_lead_role', { p_lead_id: newId, p_role: 'homeowner' }); },
       function (res) { return !!res && !res.error && res.data !== false; });
   }
+  // Where the details request goes, or null when the bridge does not supply it (then the supabase-js invoke path is used).
+  function detailsUrl() {
+    var base = bridge.detailsUrl;
+    if (!base) return null;
+    var key = bridge.anonKey;
+    return key ? base + (base.indexOf('?') === -1 ? '?' : '&') + 'apikey=' + encodeURIComponent(key) : base;
+  }
+  // A SIMPLE cross-origin request on purpose: Content-Type text/plain and no custom headers, so the browser sends it with no
+  // CORS preflight (the Edge Function parses the body as JSON whatever the content type says), and keepalive:true so it can
+  // finish after the page is gone. The anon key rides as a query parameter for the same reason (a header would force a
+  // preflight, which does not survive unload). Falls back to supabase-js when there is no fetch or no URL.
+  function postDetails(body) {
+    var url = detailsUrl();
+    if (url && typeof fetch === 'function') {
+      return fetch(url, { method: 'POST', keepalive: true, headers: { 'Content-Type': 'text/plain;charset=UTF-8' }, body: JSON.stringify(body) }).then(
+        function (r) {
+          return r.json().then(
+            function (d) { return { data: d, error: r.ok ? null : { name: 'HttpError', status: r.status } }; },
+            function () { return { data: null, error: { name: r.ok ? 'BadJson' : 'HttpError', status: r.status } }; });
+        },
+        function (e) { return { data: null, error: { name: e && e.name ? e.name : 'FetchError' } }; });
+    }
+    return bridge.sb.functions.invoke(DETAILS_FUNCTION, { body: body });
+  }
   function sendDetails(body, newId) {
+    pendingDetails = { body: body };
     return callWithRetry('record-lead-details', newId,
-      function () { return bridge.sb.functions.invoke(DETAILS_FUNCTION, { body: body }); },
-      function (res) { return !!res && !res.error && !!res.data && res.data.ok === true; },
+      function () { return postDetails(body); },
+      function (res) {
+        var ok = !!res && !res.error && !!res.data && res.data.ok === true;
+        if (ok) pendingDetails = null; // confirmed: nothing left for the unload beacon to re-send
+        return ok;
+      },
       // a 200 with reason lead_out_of_scope (unknown / too old / already redeemed lead) cannot succeed on retry
       function (res) { return !!(res && res.data && res.data.reason === 'lead_out_of_scope'); });
+  }
+  // The tab-close net (Ben, ruling #2122 comment 5803979399): if the page is going away (or has been hidden) while the details
+  // write is NOT yet confirmed, re-send the same body with navigator.sendBeacon. The body is text/plain for the same no-preflight
+  // reason as above. The server keeps the first write and ignores a duplicate, so a beacon that races the fetch is harmless.
+  function beaconDetails() {
+    if (!pendingDetails || beaconSent) return;
+    var url = detailsUrl();
+    if (!url) return;
+    try {
+      if (navigator.sendBeacon && navigator.sendBeacon(url, new Blob([JSON.stringify(pendingDetails.body)], { type: 'text/plain;charset=UTF-8' }))) {
+        beaconSent = true;
+      }
+    } catch (e) { /* the beacon is best-effort */ }
   }
 
   function saveLead(v, submitBtn, formError, backBtn) {
@@ -478,17 +532,14 @@
         go('f-thanks');
       }
       setTimeout(finish, FLOW_GUARD_MS);
-      var detailsStarted = false;
-      function startDetails() {
-        if (detailsStarted) return;
-        detailsStarted = true;
-        var running = sendDetails(buildDetailsBody(v, newId), newId);
-        detailsInFlight = running;
-        function settled() { if (detailsInFlight === running) detailsInFlight = null; finish(); }
-        running.then(settled, settled);
-      }
-      setTimeout(startDetails, ROLE_WAIT_MS);
-      setRole(newId).then(startDetails, startDetails);
+      // D-299: the consent record waits for NOTHING. Start it in the same tick the insert resolved, then run set_lead_role
+      // (the #1932 alert) in parallel; the thank-you screen follows when both have settled, or at the flow guard.
+      var running = sendDetails(buildDetailsBody(v, newId), newId);
+      detailsInFlight = running;
+      function detailsDone() { if (detailsInFlight === running) detailsInFlight = null; }
+      running.then(detailsDone, detailsDone);
+      var role = setRole(newId);
+      Promise.all([running, role]).then(finish, finish);
     }, saveFailed);
   }
 
@@ -555,6 +606,9 @@
     // Clarity session replay records button text and click targets; the funding answer IS a button label, and
     // screens 2-3 hold an address and contact details. Mask this whole arm (the same attribute auth pages use).
     root.setAttribute('data-clarity-mask', 'true');
+    // The unload net for the details write (see beaconDetails).
+    try { window.addEventListener('pagehide', beaconDetails); } catch (e) { /* none */ }
+    try { document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') beaconDetails(); }); } catch (e) { /* none */ }
     show('f-funding');
   }
 

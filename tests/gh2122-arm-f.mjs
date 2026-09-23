@@ -25,6 +25,12 @@
  *     insert -> set_lead_role -> the record-lead-details Edge Function with the funding
  *     answer, address, fbc/fbp and the exact consent record; one retry; Sentry (lead id
  *     only) on final failure; the flow is never blocked.
+ *   - D-299 (Ben, ruling #2122 comment 5803979399): the details call (funding, address, fbc/fbp, the
+ *     consent record, the PHONE AS TYPED and the submitted form VALUES) starts the moment the insert
+ *     resolves -- no wait, in parallel with set_lead_role -- as a keepalive fetch that is a simple request
+ *     (text/plain, no custom headers, no CORS preflight), with navigator.sendBeacon as the fallback on
+ *     pagehide / hidden if the write is not yet confirmed. A pagehide right after the insert must still
+ *     send the details request.
  *   - After the lead is saved a pagehide is NOT an abandonment (real
  *     start.html abandon-beacon code, with a negative control that removes
  *     the suppression and watches the false abandon fire).
@@ -184,9 +190,24 @@ function buildF(opts) {
   fakeWindow.clarity = clarityFn;
   fakeWindow.Sentry = { captureMessage: function (msg, ctx) { sentry.push({ msg, ctx }); } };
   document.cookie = opts.cookie === undefined ? '_fbc=fb.1.1700000000.cookieFbc; _fbp=fb.1.1700000000.cookieFbp' : opts.cookie;
+  const beacons = [];
+  const fetchStub = (url, init) => {
+    detailsAttempts++;
+    order.push('details');
+    detailsCalls.push({ name: 'record-lead-details', url, init, body: JSON.parse(init.body) });
+    const mode = opts.detailsMode || 'ok';
+    const reply = (ok, status, data) => { const p = Promise.resolve({ ok, status, json: () => Promise.resolve(data) }); return { then: (a, b) => p.then(a, b) }; };
+    if (mode === 'hang') return new Promise(() => {}); // a real never-settling request, so .then() chains behave as in a browser
+    if (mode === 'fail-always') return reply(false, 500, { ok: false });
+    if (mode === 'fail-once' && detailsAttempts === 1) return reply(false, 500, { ok: false });
+    if (mode === 'notok') return reply(true, 200, { ok: false, error: 'x' });
+    if (mode === 'out-of-scope') return reply(true, 200, { ok: false, reason: 'lead_out_of_scope' });
+    return reply(true, 200, { ok: true });
+  };
   const fixed = Date.parse(opts.nowIso || '2026-09-23T15:00:00Z'); // 11:00 America/Indiana/Indianapolis
   const sandbox = {
-    window: fakeWindow, document, navigator: { userAgent: opts.ua || SAFARI_UA }, console, Promise,
+    window: fakeWindow, document, navigator: { userAgent: opts.ua || SAFARI_UA, sendBeacon: (url, blob) => { beacons.push({ url, blob }); return true; } }, Blob,
+    fetch: opts.noFetch ? undefined : fetchStub, console, Promise,
     // Timers are scaled down 100x so the 3s / 6s guards and the 800ms retry delay run in milliseconds
     // while keeping their ORDER (retry 8ms < role wait 30ms < flow guard 60ms).
     setTimeout: (fn, ms) => setTimeout(fn, Math.ceil((ms || 0) / 100)), clearTimeout,
@@ -257,13 +278,16 @@ function buildF(opts) {
       T.setLeadId(id); // real insertFreshLead sets start.html's leadId before resolving
       return Promise.resolve(id);
     },
-    ROLE_DESTINATIONS: { homeowner: 'https://app.otterquote.com/get-started' }
+    ROLE_DESTINATIONS: { homeowner: 'https://app.otterquote.com/get-started' },
+    detailsUrl: opts.noFetch ? null : 'https://proj.supabase.co/functions/v1/record-lead-details',
+    anonKey: 'anon-key-123'
   };
   vm.runInContext(moduleSrc, ctx, { filename: 'js/router-variant-f.js' });
   const RVF = fakeWindow.RouterVariantF;
   if (!RVF || typeof RVF.init !== 'function') throw new Error('window.RouterVariantF.init was not defined after loading js/router-variant-f.js');
   RVF.init(bridge, root);
   return {
+    beacons, fireVisibilityHidden: () => { document.visibilityState = 'hidden'; (windowListeners.visibilitychange || []).forEach((fn) => fn()); },
     RVF, root, bridge, gtagCalls, fbqCalls, clarityCalls, insertCalls, rpcCalls, redirects, errors, fakeWindow, document, order, detailsCalls, sentry,
     firePagehide: () => (windowListeners.pagehide || []).forEach((fn) => fn()),
     ev: (name) => gtagCalls.filter((c) => c.name === name),
@@ -385,7 +409,7 @@ async function main() {
     ok(role.length === 1 && role[0].args.p_role === 'homeowner' && role[0].args.p_lead_id === '00000000-0000-4000-8000-000000000001',
       'set_lead_role(homeowner) fires once after the save, which is what trips the #1932 new-lead alert');
     ok(s.rpcCalls.every((c) => ['set_lead_role'].indexOf(c.name) !== -1), 'no other RPC (no update_lead_contact, no auth) is called');
-    ok(JSON.stringify(s.order) === JSON.stringify(['insert', 'set_lead_role', 'details']), "the save order is insert -> set_lead_role -> details (Ben's order): " + s.order.join(' > '));
+    ok(JSON.stringify(s.order) === JSON.stringify(['insert', 'details', 'set_lead_role']), "the insert is first; the details call and set_lead_role both follow immediately, details first (ruling 5803979399): " + s.order.join(' > '));
   }
 
   // ═══ F5: phone-only and email-only both save; blank email is "" (leads.email is NOT NULL, never a fake address). ═══
@@ -461,7 +485,7 @@ async function main() {
     const h = buildF({ roleMode: 'hang' }); drive(h, GOOD); submit(h); await settleN(3);
     ok(h.leadFbq().length === 1 && h.ev('generate_lead').length === 1, 'set_lead_role hanging does not delay the conversion count');
     await new Promise((r) => setTimeout(r, 300));
-    ok(h.detailsCalls.length === 1, 'a hung set_lead_role does not stop the details/consent call: it starts after the role wait');
+    ok(h.detailsCalls.length === 1, 'a hung set_lead_role does not delay the details/consent call at all: it started immediately');
     ok(h.ev('router_step_view').some((v) => v.params.step === 'f-thanks'), 'a hung set_lead_role falls through to the thank-you screen after the guard timeout');
   }
 
@@ -529,6 +553,14 @@ async function main() {
     ok(b.page_url === PAGE_URL, 'the body carries the page URL');
     ok(JSON.stringify(b.submitted_fields) === JSON.stringify(['name', 'phone', 'email', 'address', 'funding']), 'the body lists which fields were submitted (no values)');
     ok(!('ip' in b) && !('user_agent' in b), 'the client sends NO ip or user_agent: the Edge Function observes them itself');
+    ok(b.phone_as_typed === '(317) 255-0142', 'D-299: the body carries the phone AS TYPED, before normalisation (' + JSON.stringify(b.phone_as_typed) + ')');
+    ok(b.form_payload && b.form_payload.name === 'Jane' && b.form_payload.phone === '(317) 255-0142' && b.form_payload.email === 'jane@example.com' && b.form_payload.address === '123 Main St, Indianapolis, IN 46204' && b.form_payload.funding_type === 'insurance',
+      'D-299: the body carries the form payload -- the submitted VALUES (name, phone as typed, email, address, funding)');
+    const call = s.detailsCalls[0];
+    ok(call.init.keepalive === true && call.init.method === 'POST', 'the details request is a keepalive POST (the browser lets it finish after the page is gone)');
+    ok(Object.keys(call.init.headers).join() === 'Content-Type' && /^text\/plain/.test(call.init.headers['Content-Type']), 'it is a SIMPLE request: Content-Type text/plain and NO custom header, so there is no CORS preflight to fail during unload');
+    ok(/^https:\/\/proj\.supabase\.co\/functions\/v1\/record-lead-details\?apikey=anon-key-123$/.test(call.url), 'the anon key rides as a query parameter (a header would force a preflight): ' + call.url);
+    ok(!/Authorization|apikey/i.test(JSON.stringify(call.init.headers)), 'no Authorization or apikey header is sent');
     ok(s.sentry.length === 0, 'no Sentry report on success');
     const u = buildF({ ua: FB_UA }); drive(u, { name: 'Jane', phone: '(317) 255-0142', email: '', consent: false }); submit(u); await settleN(4);
     ok(u.detailsCalls[0].body.consent.given === false && u.detailsCalls[0].body.consent.text === APPROVED_CONSENT, 'an UNTICKED box is recorded as given:false with the same exact text (evidence of what was displayed)');
@@ -654,10 +686,49 @@ async function main() {
     ok(backOf(b).disabled === false, 'Back is re-enabled after a failed save (the visitor can still correct the address)');
   }
 
+  // ═══ F20: D-299 -- the details request starts immediately and survives a closed tab. ═══
+  {
+    const a = buildF({ detailsMode: 'hang', roleMode: 'hang' }); drive(a, GOOD); submit(a); await settle(); await settle();
+    ok(a.detailsCalls.length === 1 && a.order[0] === 'insert' && a.order[1] === 'details', 'the details request is sent in the same tick the insert resolves, with no wait and while set_lead_role is still pending: ' + a.order.join(' > '));
+    ok(a.beacons.length === 0, 'no beacon while the page is still open');
+    a.firePagehide();
+    ok(a.beacons.length === 1, 'a pagehide right after the insert, with the write not yet confirmed, sends the details as a beacon');
+    const bc = a.beacons[0];
+    const text = await bc.blob.text();
+    const parsed = JSON.parse(text);
+    ok(/^https:\/\/proj\.supabase\.co\/functions\/v1\/record-lead-details\?apikey=anon-key-123$/.test(bc.url) && /^text\/plain/.test(bc.blob.type), 'the beacon goes to the same URL as a text/plain body (a simple request: no preflight)');
+    ok(parsed.lead_id === '00000000-0000-4000-8000-000000000001' && parsed.consent.text === APPROVED_CONSENT && parsed.consent.key === 'arm_f_s3_consent_checkbox' && parsed.phone_as_typed === '(317) 255-0142' && parsed.form_payload.address === '123 Main St, Indianapolis, IN 46204',
+      'the beacon carries the SAME full body: lead id, the byte-identical consent record, the phone as typed and the form payload');
+    a.firePagehide();
+    ok(a.beacons.length === 1, 'a second pagehide does not send a second beacon');
+
+    const c = buildF({ detailsMode: 'ok' }); drive(c, GOOD); submit(c); await settleN(4);
+    await new Promise((r) => setTimeout(r, 50));
+    c.firePagehide();
+    ok(c.beacons.length === 0, 'once the write is CONFIRMED a pagehide sends no beacon');
+
+    const v = buildF({ detailsMode: 'hang' }); drive(v, GOOD); submit(v); await settle();
+    v.fireVisibilityHidden();
+    ok(v.beacons.length === 1, 'the page being hidden (mobile browsers that skip pagehide) also sends the beacon when the write is unconfirmed');
+
+    const f = buildF({ detailsMode: 'fail-always' }); drive(f, GOOD); submit(f); await settleN(4);
+    await new Promise((r) => setTimeout(r, 100));
+    f.firePagehide();
+    ok(f.detailsCalls.length === 2 && f.beacons.length === 1, 'after a failed write and its retry, a pagehide gets one last beacon attempt');
+
+    const pre = buildF({ detailsMode: 'hang' }); drive(pre, GOOD);
+    pre.firePagehide();
+    ok(pre.beacons.length === 0 && pre.detailsCalls.length === 0, 'NEGATIVE CONTROL: a pagehide BEFORE the lead is saved sends nothing (there is no lead to attach a consent record to)');
+
+    const nf = buildF({ noFetch: true }); drive(nf, GOOD); submit(nf); await settleN(4);
+    ok(nf.detailsCalls.length === 1 && nf.detailsCalls[0].name === 'record-lead-details' && nf.detailsCalls[0].init === undefined, 'with no fetch or no URL the module falls back to the supabase-js invoke path (and still sends the details)');
+  }
+
   // ═══ F12: routing and reachability guards read out of the REAL start.html head script. ═══
   ok(/var KNOWN_ARMS = \['a', 'b', 'c', 'd', 'e', 'f'\];/.test(startSrc), "start.html KNOWN_ARMS recognises 'f' so ?v=f parses");
   const live = /var LIVE_VARIANTS = (\[[^\]]*\]);/.exec(startSrc);
   ok(live && new Function('return ' + live[1])().indexOf('f') === -1, "'f' is NOT in LIVE_VARIANTS: it is not in the random split until Sloane says so on #2122");
+  ok(/detailsUrl: \(typeof CONFIG !== 'undefined' && CONFIG\.SUPABASE_URL\)/.test(startSrc) && /anonKey: \(typeof CONFIG/.test(startSrc), "start.html's F bridge supplies the Edge Function URL and the public anon key");
   ok(startSrc.indexOf('id="routerFRoot"') !== -1 && startSrc.indexOf("routerFScript.src = 'js/router-variant-f.js'") !== -1, 'start.html mounts #routerFRoot and loads js/router-variant-f.js only inside the ARM_F branch');
   ok(/if \(ARM_C \|\| ARM_D \|\| ARM_E \|\| ARM_F\) return;/.test(startSrc), 'renderStep early-returns for arm F like C/D/E (A/B shared-section code never runs over F)');
 
