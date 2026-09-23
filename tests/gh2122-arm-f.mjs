@@ -73,7 +73,7 @@ if (moduleSrc === null) { console.log('\n=== Summary ===\n' + pass + ' passed, '
 // file (and the LEGAL-READ) noticing. Source: comment 5801132485 table. ──
 const APPROVED_CONSENT = 'I agree that OtterQuote / Stellar Edge Services may call or text me at the number above about my roof assessment, including by autodialer or prerecorded/artificial voice. Consent is not a condition of purchase. Msg & data rates may apply.';
 const APPROVED_PRIVACY = 'By continuing, you agree to our Privacy Policy and Terms.';
-// The complete approved key list (32 keys). The block must contain exactly these.
+// The complete approved key list (32 table keys + the approved no-call line = 33). The block must contain exactly these.
 const APPROVED_KEYS = [
   'arm_f_s1_headline', 'arm_f_s1_subhead', 'arm_f_s1_question_label',
   'arm_f_s1_option_insurance', 'arm_f_s1_option_cash', 'arm_f_s1_option_unsure',
@@ -82,7 +82,7 @@ const APPROVED_KEYS = [
   'arm_f_s3_label_phone', 'arm_f_s3_placeholder_phone', 'arm_f_s3_label_email', 'arm_f_s3_placeholder_email',
   'arm_f_s3_consent_checkbox', 'arm_f_s3_privacy_line', 'arm_f_s3_button_submit',
   'arm_f_error_name', 'arm_f_error_contact_required', 'arm_f_error_phone_invalid', 'arm_f_error_email_invalid', 'arm_f_error_generic',
-  'arm_f_s4_headline', 'arm_f_s4_body_in_window', 'arm_f_s4_body_after_hours',
+  'arm_f_s4_headline', 'arm_f_s4_body_in_window', 'arm_f_s4_body_after_hours', 'arm_f_s4_confirm_email_only',
   'arm_f_s4_button_measure', 'arm_f_s4_button_losssheet'
 ];
 
@@ -296,7 +296,8 @@ function buildF(opts) {
 }
 
 const COPY = (function () { const s = buildF(); return s.RVF.COPY; })();
-const DRAFT_COPY = (function () { const s = buildF(); return s.RVF.DRAFT_COPY; })();
+// ARM F COPY -- APPROVED (no-call variant), #2122 comment 5804614805, Dustin's ruling: 'Change "DUSTIN" to "we"'. Straight apostrophe (0x27).
+const APPROVED_NOCALL = "Thanks. We've got your request. We will email you shortly with next steps.";
 
 function toAddress(s, addr) { byId(s.root, 'rfAddress').value = addr; buttonByText(s.root, COPY.arm_f_s2_button_continue).dispatchClick(); }
 function pickFunding(s, label) { buttonByText(s.root, label).dispatchClick(); }
@@ -320,7 +321,7 @@ async function main() {
   ok(COPY && typeof COPY === 'object', 'RouterVariantF.COPY is exposed as the one constants block');
   const keys = Object.keys(COPY).sort();
   ok(JSON.stringify(keys.filter((k) => k.indexOf('arm_f_') === 0)) === JSON.stringify(APPROVED_KEYS.slice().sort()),
-    'the constants block holds exactly the 32 approved arm_f_* keys (missing: ' +
+    'the constants block holds exactly the 33 approved arm_f_* keys (the 32 of the table plus the approved no-call line) (missing: ' +
     APPROVED_KEYS.filter((k) => keys.indexOf(k) === -1).join(',') + ' | extra: ' + keys.filter((k) => k.indexOf('arm_f_') === 0 && APPROVED_KEYS.indexOf(k) === -1).join(',') + ')');
   ok(COPY.arm_f_s3_consent_checkbox === APPROVED_CONSENT, 'consent line is BYTE-IDENTICAL to the approved draft (arm_f_s3_consent_checkbox)');
   ok(COPY.arm_f_s3_privacy_line === APPROVED_PRIVACY, 'privacy line is BYTE-IDENTICAL to the approved draft (arm_f_s3_privacy_line)');
@@ -523,33 +524,37 @@ async function main() {
     ok([...ctaKeys].every((k) => allowedAfterCta.has(k)), 'AFTER the CTA clicks every GA4 parameter key is still one of variant / step / step_index / ua_context / lead_id / event_id (unexpected: ' + [...ctaKeys].filter((k) => !allowedAfterCta.has(k)).join(',') + ')');
   }
 
-  // ═══ F10b (LEGAL-READ B1, D-299 / D-332): the thank-you screen promises a call ONLY to a lead that has a phone AND a ticked box. ═══
+  // ═══ F10b (LEGAL-READ B1, D-299 / D-332; Dustin's rulings 5804614805): a lead with NO phone gets the approved no-call
+  // line; a lead WITH a phone gets the call variants whether or not the box is ticked (a manual human call to an inbound
+  // lead is permitted; the box governs autodialer / prerecorded / text, which is the dialer's job, not this screen's). ═══
   {
-    const NOCALL = DRAFT_COPY.arm_f_s4_body_no_call;
+    const NOCALL = COPY.arm_f_s4_confirm_email_only;
     const promises = (s) => flatten(s.root).some((c) => c.textContent === COPY.arm_f_s4_body_in_window || c.textContent === COPY.arm_f_s4_body_after_hours);
     const says = (s, t) => flatten(s.root).some((c) => c.textContent === t);
     async function shown(lead, nowIso) { const s = buildF({ nowIso: nowIso || '2026-09-23T15:00:00Z' }); drive(s, lead); submit(s); await settleN(4); return s; }
-    ok(typeof NOCALL === 'string' && NOCALL.length > 0 && !/call|phone|minutes|hour|free|\$|save|cover|entitle/i.test(NOCALL), 'the no-call body exists and promises no call, timing, price or coverage');
+    ok(NOCALL === APPROVED_NOCALL, 'the no-call line is BYTE-IDENTICAL to the approved string (ARM F COPY -- APPROVED, no-call variant)');
+    ok(NOCALL !== COPY.arm_f_s4_body_in_window && NOCALL !== COPY.arm_f_s4_body_after_hours, 'the no-call line is a distinct string from both call variants');
     const emailOnly = await shown({ name: 'Jane', phone: '', email: 'jane@example.com', consent: false });
-    ok(!promises(emailOnly) && says(emailOnly, NOCALL), 'B1: email only, box unticked -> NO call promise; the no-call body shows');
+    ok(!promises(emailOnly) && says(emailOnly, NOCALL), 'B1: NO phone (email only, box unticked) -> NO call promise; the approved no-call line shows');
     const emailOnlyTicked = await shown({ name: 'Jane', phone: '', email: 'jane@example.com', consent: true });
-    ok(!promises(emailOnlyTicked) && says(emailOnlyTicked, NOCALL), 'B1: email only but the box ticked (nothing to call) -> NO call promise');
+    ok(!promises(emailOnlyTicked) && says(emailOnlyTicked, NOCALL), 'B1: NO phone but the box ticked (nothing to call) -> NO call promise');
     const phoneUnticked = await shown({ name: 'Jane', phone: '(317) 255-0142', email: 'jane@example.com', consent: false });
-    ok(!promises(phoneUnticked) && says(phoneUnticked, NOCALL), 'B1: phone typed, box UNTICKED -> NO call promise (D-299 standing position)');
+    ok(says(phoneUnticked, COPY.arm_f_s4_body_in_window) && !says(phoneUnticked, NOCALL), "phone typed, box UNTICKED -> the call variant (Dustin: a human call to an inbound lead who gave a number is permitted without the box)");
+    const phoneUntickedLate = await shown({ name: 'Jane', phone: '(317) 255-0142', email: 'jane@example.com', consent: false }, '2026-09-24T02:00:00Z');
+    ok(says(phoneUntickedLate, COPY.arm_f_s4_body_after_hours) && !says(phoneUntickedLate, NOCALL), 'phone typed, box unticked, after hours -> the after-hours call variant');
     const phoneOnlyUnticked = await shown({ name: 'Jane', phone: '(317) 255-0142', email: '', consent: false });
-    ok(!promises(phoneOnlyUnticked) && says(phoneOnlyUnticked, NOCALL), 'B1: phone only, box unticked -> NO call promise');
+    ok(says(phoneOnlyUnticked, COPY.arm_f_s4_body_in_window), 'phone only (no email), box unticked -> the call variant');
     const callable = await shown(CALLABLE);
-    ok(says(callable, COPY.arm_f_s4_body_in_window) && !says(callable, NOCALL), 'phone + ticked box, in the window -> the in-window call promise, not the no-call body');
+    ok(says(callable, COPY.arm_f_s4_body_in_window) && !says(callable, NOCALL), 'phone + ticked box, in the window -> the in-window call variant');
     const callableLate = await shown(CALLABLE, '2026-09-24T02:00:00Z');
-    ok(says(callableLate, COPY.arm_f_s4_body_after_hours) && !says(callableLate, NOCALL), 'phone + ticked box, after hours -> the after-hours promise, not the no-call body');
-    const phoneOnlyTicked = await shown({ name: 'Jane', phone: '(317) 255-0142', email: '', consent: true });
-    ok(says(phoneOnlyTicked, COPY.arm_f_s4_body_in_window), 'phone only + ticked box (no email) is callable: the promise shows');
-    // the no-call decision changes what is SHOWN, never what is stored or counted
-    ok(emailOnly.detailsCalls.length === 1 && emailOnly.detailsCalls[0].body.consent.given === false, 'the consent record is still written for a no-call lead (given:false)');
+    ok(says(callableLate, COPY.arm_f_s4_body_after_hours) && !says(callableLate, NOCALL), 'phone + ticked box, after hours -> the after-hours call variant');
+    // the screen choice changes what is SHOWN, never what is stored or counted, and the box is never presumed ticked
+    ok(emailOnly.detailsCalls.length === 1 && emailOnly.detailsCalls[0].body.consent.given === false, 'the consent record is still written for a no-phone lead (given:false)');
+    ok(phoneUnticked.detailsCalls[0].body.consent.given === false, 'an unticked box is STILL recorded given:false even though the screen shows the call variant (no dialer may ever treat this lead as consented)');
     ok(emailOnly.ev('generate_lead').length === 1, 'a no-call lead still counts exactly one conversion');
-    // the buttons are unchanged for every lead
     ok(JSON.stringify(buttons(emailOnly.root).map((b) => b.textContent)) === JSON.stringify([COPY.arm_f_s4_button_measure, COPY.arm_f_s4_button_losssheet]), 'the two CTA buttons still show for a no-call lead');
-    ok(Object.isFrozen(DRAFT_COPY) && Object.keys(DRAFT_COPY).join() === 'arm_f_s4_body_no_call', 'the draft string is a separate frozen block (not part of the 32 approved keys), so the approved-table comparison stays 32 of 32');
+    ok(RVF_NO_DRAFT(), 'no DRAFT_COPY block remains: the no-call line is in the one approved constants block');
+    function RVF_NO_DRAFT() { const s = buildF(); return s.RVF.DRAFT_COPY === undefined; }
   }
 
   // ═══ F11: abandonment. Before the save a pagehide IS an abandon; after the save it is NOT. Negative control removes the guard. ═══

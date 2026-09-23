@@ -91,15 +91,10 @@
     arm_f_s4_body_in_window: "Dustin will call you within 5 minutes to talk through next steps.",
     arm_f_s4_body_after_hours: "Dustin will call you first thing, between 8 a.m. and 8 p.m.",
     arm_f_s4_button_measure: "Get my roof measured, $15",
-    arm_f_s4_button_losssheet: "Upload my insurance loss sheet"
-  });
-
-  // DRAFT, NOT APPROVED. LEGAL-READ B1 on #2127 (D-299 / D-332): the two call-promise bodies above must not be shown to a
-  // lead the system cannot or may not call (no phone, or the consent box left unticked). No approved string covers those
-  // leads, so this one is a DRAFT proposed on #2122 (Q 5804527005) and awaits Sloane's approval or replacement. It is a
-  // separate block ON PURPOSE: COPY stays the 32 approved keys, byte for byte. It promises no call, timing, price or coverage.
-  var DRAFT_COPY = Object.freeze({
-    arm_f_s4_body_no_call: "Thanks. We have your information and will be in touch."
+    arm_f_s4_button_losssheet: "Upload my insurance loss sheet",
+    // ARM F COPY -- APPROVED (no-call variant), #2122 comment 5804614805 (Dustin's ruling). Shown instead of the two call
+    // variants above to a lead that gave NO phone number (LEGAL-READ B1: there is no number to call).
+    arm_f_s4_confirm_email_only: "Thanks. We've got your request. We will email you shortly with next steps."
   });
 
   // Not in the approved table: the shared "Back" affordance used by every
@@ -149,7 +144,7 @@
   var leadId = null;
   var submitting = false;
   var detailsInFlight = null; // a promise while the details call is running, else null
-  var callPromiseAllowed = false; // set at submit: a phone was typed AND the consent box is ticked (LEGAL-READ B1)
+  var callPromiseAllowed = false; // set at submit: a phone number was given (LEGAL-READ B1; the consent box does not gate this screen)
   var pendingDetails = null; // { body } until the Edge Function has confirmed the write; the pagehide beacon re-sends it
   var beaconSent = false;
   var leadEventFired = false;
@@ -351,8 +346,10 @@
       if (phoneRaw && !isValidUsPhone(phoneRaw)) { setError(phoneF.err, COPY.arm_f_error_phone_invalid); bad = true; }
       if (em && !isValidEmail(em)) { setError(emailF.err, COPY.arm_f_error_email_invalid); bad = true; }
       if (bad) return;
-      // The thank-you screen promises a call only to a lead that has a number AND said yes to being called (D-299).
-      callPromiseAllowed = !!phoneRaw && !!consentInput.checked;
+      // The thank-you screen promises a call only to a lead that gave a number. Dustin's ruling (#2122 5804614805): a human,
+      // manual call to an inbound lead who gave a number is permitted with the box unticked; autodialer, prerecorded or
+      // artificial-voice calls and texts still need consent_given = true, which is the dialer's rule, not this screen's.
+      callPromiseAllowed = !!phoneRaw;
       saveLead({
         name: nm,
         email: em,
@@ -599,7 +596,7 @@
   }
   RENDERERS['f-thanks'] = function () {
     root.appendChild(heading(COPY.arm_f_s4_headline));
-    root.appendChild(bodyText(!callPromiseAllowed ? DRAFT_COPY.arm_f_s4_body_no_call : inCallWindow() ? COPY.arm_f_s4_body_in_window : COPY.arm_f_s4_body_after_hours));
+    root.appendChild(bodyText(!callPromiseAllowed ? COPY.arm_f_s4_confirm_email_only : inCallWindow() ? COPY.arm_f_s4_body_in_window : COPY.arm_f_s4_body_after_hours));
     root.appendChild(primaryButton(COPY.arm_f_s4_button_measure, function () {
       // The choice is in the event NAME, not a parameter: analytics carries only the allow-listed keys.
       bridge.trackRouter('router_f_cta_measure', stepParams('f-thanks'));
@@ -625,5 +622,5 @@
     show('f-funding');
   }
 
-  window.RouterVariantF = { init: init, COPY: COPY, DRAFT_COPY: DRAFT_COPY, STEP_INDEX: STEP_INDEX };
+  window.RouterVariantF = { init: init, COPY: COPY, STEP_INDEX: STEP_INDEX };
 })();
