@@ -123,6 +123,9 @@
   // background if the thank-you screen appears first.
   var ROLE_WAIT_MS = 3000;
   var FLOW_GUARD_MS = 6000;
+  // A thank-you button that navigates away would abort a details call still in flight (no keepalive), losing the
+  // funding answer, address and consent record. The buttons therefore wait for it, but never longer than this.
+  var CTA_WAIT_MS = 2500;
   var DETAILS_FUNCTION = 'record-lead-details';
   var DETAILS_RETRIES = 1;
   var DETAILS_RETRY_DELAY_MS = 800;
@@ -136,6 +139,7 @@
   var address = null;
   var leadId = null;
   var submitting = false;
+  var detailsInFlight = null; // a promise while the details call is running, else null
   var leadEventFired = false;
   var activeToken = null;
   var stack = [];
@@ -296,7 +300,8 @@
   }
 
   RENDERERS['f-contact'] = function () {
-    root.appendChild(backButton(goBack));
+    var backBtn3 = backButton(goBack);
+    root.appendChild(backBtn3);
     root.appendChild(heading(COPY.arm_f_s3_headline));
     root.appendChild(bodyText(COPY.arm_f_s3_subhead));
     var nameF = field('rfName', COPY.arm_f_s3_label_name, 'text', { placeholder: COPY.arm_f_s3_placeholder_name, autocomplete: 'given-name', maxlength: '200' });
@@ -338,7 +343,7 @@
         email: em,
         phone: phoneRaw ? normalizePhone(phoneRaw) : null,
         consentGiven: !!consentInput.checked
-      }, submitBtn, formError);
+      }, submitBtn, formError, backBtn3);
     });
     root.appendChild(submitBtn);
   };
@@ -433,13 +438,17 @@
       function (res) { return !!(res && res.data && res.data.reason === 'lead_out_of_scope'); });
   }
 
-  function saveLead(v, submitBtn, formError) {
+  function saveLead(v, submitBtn, formError, backBtn) {
     submitting = true;
     submitBtn.disabled = true;
+    // Going Back while the save is in flight would let the visitor change the address or funding answer after the lead
+    // row was written, so the details call could disagree with the row.
+    if (backBtn) backBtn.disabled = true;
     function saveFailed(err) {
       console.error('[router-variant-f] lead save failed:', err);
       submitting = false;
       submitBtn.disabled = false;
+      if (backBtn) backBtn.disabled = false;
       setError(formError, COPY.arm_f_error_generic);
     }
     var extra = {};
@@ -473,7 +482,10 @@
       function startDetails() {
         if (detailsStarted) return;
         detailsStarted = true;
-        sendDetails(buildDetailsBody(v, newId), newId).then(finish, finish);
+        var running = sendDetails(buildDetailsBody(v, newId), newId);
+        detailsInFlight = running;
+        function settled() { if (detailsInFlight === running) detailsInFlight = null; finish(); }
+        running.then(settled, settled);
       }
       setTimeout(startDetails, ROLE_WAIT_MS);
       setRole(newId).then(startDetails, startDetails);
@@ -508,6 +520,14 @@
     } catch (e) { /* fall through */ }
     return false;
   }
+  // Runs `cb` once a details call that is still in flight has settled, or after CTA_WAIT_MS, whichever is first.
+  function afterDetails(cb) {
+    if (!detailsInFlight) { cb(); return; }
+    var done = false;
+    function run() { if (done) return; done = true; cb(); }
+    setTimeout(run, CTA_WAIT_MS);
+    detailsInFlight.then(run, run);
+  }
   function redirectWithLeadId(destBase) {
     var sep = destBase.indexOf('?') === -1 ? '?' : '&';
     var withLead = destBase + sep + 'lead=' + encodeURIComponent(leadId);
@@ -519,11 +539,11 @@
     root.appendChild(primaryButton(COPY.arm_f_s4_button_measure, function () {
       // The choice is in the event NAME, not a parameter: analytics carries only the allow-listed keys.
       bridge.trackRouter('router_f_cta_measure', stepParams('f-thanks'));
-      redirectWithLeadId(CTA_DESTINATIONS.measure);
+      afterDetails(function () { redirectWithLeadId(CTA_DESTINATIONS.measure); });
     }));
     root.appendChild(primaryButton(COPY.arm_f_s4_button_losssheet, function () {
       bridge.trackRouter('router_f_cta_loss_sheet', stepParams('f-thanks'));
-      redirectWithLeadId(CTA_DESTINATIONS.loss_sheet);
+      afterDetails(function () { redirectWithLeadId(CTA_DESTINATIONS.loss_sheet); });
     }));
   };
 

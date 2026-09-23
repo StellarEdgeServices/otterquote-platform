@@ -632,6 +632,28 @@ async function main() {
     ok(flatten(noIntl.root).some((c) => c.textContent === COPY.arm_f_s4_body_after_hours), 'with NO Intl available the AFTER-HOURS copy is shown (the promise that is never wrong)');
   }
 
+  // ═══ F19: a thank-you button must not abort a details call that is still in flight; Back is locked during the save. ═══
+  {
+    const h = buildF({ detailsMode: 'hang' }); drive(h, GOOD); submit(h); await settleN(3);
+    await new Promise((r) => setTimeout(r, 90)); // the flow guard (6s, scaled) shows the thank-you screen while details hang
+    ok(h.ev('router_step_view').some((v) => v.params.step === 'f-thanks') && h.detailsCalls.length >= 1, 'setup: the thank-you screen is showing while the details call is still in flight');
+    buttonByText(h.root, COPY.arm_f_s4_button_measure).dispatchClick();
+    ok(h.fakeWindow.location.href === PAGE_URL && h.ev('router_f_cta_measure').length === 1, 'a CTA tap does NOT navigate while details are in flight (it would abort the request), but the click is still counted');
+    await new Promise((r) => setTimeout(r, 80)); // CTA_WAIT_MS (2.5s, scaled) elapses
+    ok(/^https:\/\/app\.otterquote\.com\/help-measurements\?lead=/.test(h.fakeWindow.location.href), 'after the wait cap the CTA navigates anyway (a hung request never strands the visitor)');
+    const k = buildF({ detailsMode: 'ok' }); drive(k, GOOD); submit(k); await settleN(4);
+    await new Promise((r) => setTimeout(r, 60));
+    buttonByText(k.root, COPY.arm_f_s4_button_losssheet).dispatchClick();
+    ok(/help-estimate\?lead=/.test(k.fakeWindow.location.href), 'when the details call has already settled a CTA tap navigates immediately');
+    const b = buildF({ insertFails: 1 }); drive(b, GOOD);
+    const backOf = (x) => buttons(x.root).find((y) => y.textContent === '\u2190 Back');
+    ok(backOf(b) && backOf(b).disabled !== true, 'setup: Back is enabled on screen 3 before submit');
+    submit(b);
+    ok(backOf(b).disabled === true, 'Back is DISABLED as soon as the save starts');
+    await settleN(4);
+    ok(backOf(b).disabled === false, 'Back is re-enabled after a failed save (the visitor can still correct the address)');
+  }
+
   // ═══ F12: routing and reachability guards read out of the REAL start.html head script. ═══
   ok(/var KNOWN_ARMS = \['a', 'b', 'c', 'd', 'e', 'f'\];/.test(startSrc), "start.html KNOWN_ARMS recognises 'f' so ?v=f parses");
   const live = /var LIVE_VARIANTS = (\[[^\]]*\]);/.exec(startSrc);
