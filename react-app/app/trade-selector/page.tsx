@@ -23,7 +23,7 @@ import { useState, useEffect, useCallback } from 'react';
 import type { ReactNode, ChangeEvent } from 'react';
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import { supabase } from '@/lib/supabase';
-import { readReferralIds } from '@/lib/cookie-storage';
+import { readReferralIds, clearReferralIds } from '@/lib/cookie-storage';
 import { recordFirstTouch } from '@/lib/attribution';
 import { isTestEmail } from '@/lib/test-signal';
 import { parseAddress, fullAddress, isValidZip, hasFullAddress, type ParsedAddress } from './utils';
@@ -980,11 +980,28 @@ export default function TradeSelectorPage() {
           // live now, so there is no pre-migration window to guard and no
           // dead retry path to carry.
 
+          // gh-2062 round 2 (REVIEW: FAIL): Supabase does not throw on a
+          // failed write by default — there is no throwOnError() anywhere
+          // in this repo — so an RLS denial or constraint violation
+          // resolves normally as { data: null, error: {...} }. Round 1's
+          // clear() below only checked whether a referral was PRESENT to
+          // carry forward, not whether the write that was supposed to
+          // carry it actually succeeded.
+          //
+          // gh-2062 round 3 (REVIEW: FAIL): error === null is NOT success.
+          // An UPDATE without .select() that matches ZERO rows — e.g. RLS
+          // silently filtering the WHERE match — also resolves with
+          // error: null. "Consumed" means a row was actually WRITTEN, not
+          // merely that the call did not complain. .select('id') added so
+          // the affected row (if any) comes back and can be checked.
+          let claimWriteSucceeded = false;
           if (existingClaim) {
-            await supabase
+            const { data: updatedRows, error: updateError } = await supabase
               .from('claims')
               .update(claimPayload)
-              .eq('id', existingClaim.id);
+              .eq('id', existingClaim.id)
+              .select('id');
+            claimWriteSucceeded = !updateError && Array.isArray(updatedRows) && updatedRows.length > 0;
             savedClaimId = existingClaim.id;
             if (!(await attachPendingLossSheetToClaim(existingClaim.id))) lossSheetAttachFailed = true;
           } else {
@@ -992,7 +1009,7 @@ export default function TradeSelectorPage() {
             // PR #714 only fixed the COI-identity contractor insert, never
             // any claims insert. Predicate mirrors the CEO-approved
             // contractor check (#543 / test-exclusion.ts).
-            const { data: insertedClaim } = await supabase
+            const { data: insertedClaim, error: insertError } = await supabase
               .from('claims')
               .insert({
                 user_id: user.id,
@@ -1002,6 +1019,16 @@ export default function TradeSelectorPage() {
               })
               .select('id')
               .single();
+            // gh-2062 round 3 audit: this insert branch does NOT have the
+            // round-2 zero-rows gap. .single() requires EXACTLY one row
+            // back from the .select('id') re-read — PostgREST/Supabase
+            // errors (PGRST116) if the insert produced zero or more than
+            // one row, so a silent zero-row success is not possible here
+            // the way it was on the update branch. !!insertedClaim is
+            // therefore redundant with !insertError in practice, but kept
+            // as an explicit belt-and-suspenders row check to match the
+            // update branch's shape.
+            claimWriteSucceeded = !insertError && !!insertedClaim;
             // gh-1276: capture the new row's id — previously never captured
             // here either (same gap as the static trade-selector.html this
             // file keeps parity with), so repair-intake.html's
@@ -1036,6 +1063,22 @@ export default function TradeSelectorPage() {
           // trg_claims_advance_referral fires on the claims.referral_id
           // write above. The old client-side UPDATE always no-opped
           // against RLS and has been removed.
+
+          // gh-2062: the referral id has now been consumed — stamped onto
+          // claims.referral_id (or already resolved to referralAgentId, in
+          // which case there was nothing left for the raw cookie to do).
+          // Clear it so it cannot resurface on a later, unrelated signup on
+          // the same browser within its 90-day TTL. Only clear when this
+          // pass actually carried a referral forward AND the write that was
+          // supposed to record it actually succeeded — round 2 (REVIEW:
+          // FAIL): an RLS denial or constraint violation on the claim write
+          // must leave a live, unconsumed referral cookie alone, not
+          // destroy it out from under a partner who is still owed the
+          // commission. Mirrors the static trade-selector.html claim writer.
+          if ((chainReferralId || chainReferralAgentId) && claimWriteSucceeded) {
+            clearReferralIds();
+            localStorage.removeItem('oq_referral_id_for_claim');
+          }
         } catch (claimErr) {
           console.warn('[trade-selector] claim upsert failed:', claimErr);
         }
