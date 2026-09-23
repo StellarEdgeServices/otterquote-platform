@@ -489,6 +489,17 @@
   @keyframes fadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
   .router-step h1, #routerCRoot h1, #routerDRoot h1 { font-family: var(--font-heading, var(--font-body)); font-size: 1.5rem; color: var(--white); margin-bottom: var(--sp-2); line-height: 1.25; }
   .router-step p.router-sub, #routerCRoot p.router-sub, #routerDRoot p.router-sub { color: var(--slate); font-size: 0.95rem; margin-bottom: var(--sp-5); }
+  /* gh-2117: arm E's headings inherited design-system.css's global h1 colour
+     (#0D1B2E navy) on the dark router card -- effectively invisible. Colour
+     only, matching arm C's white headline; no size/spacing/copy change. */
+  #routerERoot h1 { color: var(--white); }
+  /* gh-2118 (Dustin, 2026-09-23: "Perfect.  Give me the prompt to have ben
+     implement 2117 and the top bar."): hide the top audience bar
+     (Homeowner / Contractor / Referral Partner) on /start ONLY -- tapping
+     its Homeowner pill sent visitors to /index.html and out of the router.
+     Logo and menu (row 2 + hamburger) stay. Page-scoped: nav.js and
+     css/nav.css are untouched, so every other page keeps the bar. */
+  #site-header .nav-roles { display: none; }
   .form-group { margin-bottom: var(--sp-4); }
   .form-label { display: block; font-weight: 600; color: var(--white); margin-bottom: var(--sp-1); font-size: 0.95rem; }
   .form-label.required::after { content: ' *'; color: var(--red); }
