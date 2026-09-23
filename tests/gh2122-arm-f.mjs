@@ -296,6 +296,7 @@ function buildF(opts) {
 }
 
 const COPY = (function () { const s = buildF(); return s.RVF.COPY; })();
+const DRAFT_COPY = (function () { const s = buildF(); return s.RVF.DRAFT_COPY; })();
 
 function toAddress(s, addr) { byId(s.root, 'rfAddress').value = addr; buttonByText(s.root, COPY.arm_f_s2_button_continue).dispatchClick(); }
 function pickFunding(s, label) { buttonByText(s.root, label).dispatchClick(); }
@@ -312,6 +313,7 @@ function drive(s, v, funding) {
   fillContact(s, v);
 }
 const GOOD = { name: 'Jane', phone: '(317) 255-0142', email: 'jane@example.com', consent: false };
+const CALLABLE = { name: 'Jane', phone: '(317) 255-0142', email: 'jane@example.com', consent: true }; // a phone AND a ticked box: the only lead the thank-you screen may promise a call to
 
 async function main() {
   // ═══ Copy: one constants block, exactly the approved keys, legal lines byte-identical. ═══
@@ -491,7 +493,7 @@ async function main() {
 
   // ═══ F10: thank-you screen -- copy, business-hours promise, two deep links, no second conversion. ═══
   {
-    function thanks(nowIso) { const s = buildF({ nowIso }); drive(s, GOOD); submit(s); return settleN(4).then(() => s); }
+    function thanks(nowIso, lead) { const s = buildF({ nowIso }); drive(s, lead || CALLABLE); submit(s); return settleN(4).then(() => s); }
     const inWin = await thanks('2026-09-23T15:00:00Z'); // 11:00 Indianapolis
     const t1 = flatten(inWin.root).map((c) => c.textContent);
     ok(t1.indexOf(COPY.arm_f_s4_headline) !== -1 && t1.indexOf(COPY.arm_f_s4_body_in_window) !== -1 && t1.indexOf(COPY.arm_f_s4_body_after_hours) === -1, 'inside 8am-8pm the in-window body shows and the after-hours body does not');
@@ -519,6 +521,35 @@ async function main() {
     const ctaKeys = new Set(); [...inWin.gtagCalls, ...ls.gtagCalls].forEach((c) => Object.keys(c.params || {}).forEach((k) => ctaKeys.add(k)));
     const allowedAfterCta = new Set(['step', 'step_index', 'variant', 'ua_context', 'lead_id', 'event_id']);
     ok([...ctaKeys].every((k) => allowedAfterCta.has(k)), 'AFTER the CTA clicks every GA4 parameter key is still one of variant / step / step_index / ua_context / lead_id / event_id (unexpected: ' + [...ctaKeys].filter((k) => !allowedAfterCta.has(k)).join(',') + ')');
+  }
+
+  // ═══ F10b (LEGAL-READ B1, D-299 / D-332): the thank-you screen promises a call ONLY to a lead that has a phone AND a ticked box. ═══
+  {
+    const NOCALL = DRAFT_COPY.arm_f_s4_body_no_call;
+    const promises = (s) => flatten(s.root).some((c) => c.textContent === COPY.arm_f_s4_body_in_window || c.textContent === COPY.arm_f_s4_body_after_hours);
+    const says = (s, t) => flatten(s.root).some((c) => c.textContent === t);
+    async function shown(lead, nowIso) { const s = buildF({ nowIso: nowIso || '2026-09-23T15:00:00Z' }); drive(s, lead); submit(s); await settleN(4); return s; }
+    ok(typeof NOCALL === 'string' && NOCALL.length > 0 && !/call|phone|minutes|hour|free|\$|save|cover|entitle/i.test(NOCALL), 'the no-call body exists and promises no call, timing, price or coverage');
+    const emailOnly = await shown({ name: 'Jane', phone: '', email: 'jane@example.com', consent: false });
+    ok(!promises(emailOnly) && says(emailOnly, NOCALL), 'B1: email only, box unticked -> NO call promise; the no-call body shows');
+    const emailOnlyTicked = await shown({ name: 'Jane', phone: '', email: 'jane@example.com', consent: true });
+    ok(!promises(emailOnlyTicked) && says(emailOnlyTicked, NOCALL), 'B1: email only but the box ticked (nothing to call) -> NO call promise');
+    const phoneUnticked = await shown({ name: 'Jane', phone: '(317) 255-0142', email: 'jane@example.com', consent: false });
+    ok(!promises(phoneUnticked) && says(phoneUnticked, NOCALL), 'B1: phone typed, box UNTICKED -> NO call promise (D-299 standing position)');
+    const phoneOnlyUnticked = await shown({ name: 'Jane', phone: '(317) 255-0142', email: '', consent: false });
+    ok(!promises(phoneOnlyUnticked) && says(phoneOnlyUnticked, NOCALL), 'B1: phone only, box unticked -> NO call promise');
+    const callable = await shown(CALLABLE);
+    ok(says(callable, COPY.arm_f_s4_body_in_window) && !says(callable, NOCALL), 'phone + ticked box, in the window -> the in-window call promise, not the no-call body');
+    const callableLate = await shown(CALLABLE, '2026-09-24T02:00:00Z');
+    ok(says(callableLate, COPY.arm_f_s4_body_after_hours) && !says(callableLate, NOCALL), 'phone + ticked box, after hours -> the after-hours promise, not the no-call body');
+    const phoneOnlyTicked = await shown({ name: 'Jane', phone: '(317) 255-0142', email: '', consent: true });
+    ok(says(phoneOnlyTicked, COPY.arm_f_s4_body_in_window), 'phone only + ticked box (no email) is callable: the promise shows');
+    // the no-call decision changes what is SHOWN, never what is stored or counted
+    ok(emailOnly.detailsCalls.length === 1 && emailOnly.detailsCalls[0].body.consent.given === false, 'the consent record is still written for a no-call lead (given:false)');
+    ok(emailOnly.ev('generate_lead').length === 1, 'a no-call lead still counts exactly one conversion');
+    // the buttons are unchanged for every lead
+    ok(JSON.stringify(buttons(emailOnly.root).map((b) => b.textContent)) === JSON.stringify([COPY.arm_f_s4_button_measure, COPY.arm_f_s4_button_losssheet]), 'the two CTA buttons still show for a no-call lead');
+    ok(Object.isFrozen(DRAFT_COPY) && Object.keys(DRAFT_COPY).join() === 'arm_f_s4_body_no_call', 'the draft string is a separate frozen block (not part of the 32 approved keys), so the approved-table comparison stays 32 of 32');
   }
 
   // ═══ F11: abandonment. Before the save a pagehide IS an abandon; after the save it is NOT. Negative control removes the guard. ═══
@@ -658,9 +689,9 @@ async function main() {
     const c3 = buildF(); drive(c3, GOOD);
     ok(/(^| )rf-consent( |$)/.test(byId(c3.root, 'rfConsent').parentNode.className), 'the consent checkbox sits inside the .rf-consent flex row the CSS targets');
     const mid = buildF({ Intl: { DateTimeFormat: function () { return { formatToParts: () => [{ type: 'hour', value: '24' }] }; } } });
-    drive(mid, GOOD); submit(mid); await settleN(4);
+    drive(mid, CALLABLE); submit(mid); await settleN(4);
     ok(flatten(mid.root).some((c) => c.textContent === COPY.arm_f_s4_body_after_hours), 'an engine that reports midnight as "24" gets the AFTER-HOURS copy');
-    const noIntl = buildF({ Intl: null }); drive(noIntl, GOOD); submit(noIntl); await settleN(4);
+    const noIntl = buildF({ Intl: null }); drive(noIntl, CALLABLE); submit(noIntl); await settleN(4);
     ok(flatten(noIntl.root).some((c) => c.textContent === COPY.arm_f_s4_body_after_hours), 'with NO Intl available the AFTER-HOURS copy is shown (the promise that is never wrong)');
   }
 
