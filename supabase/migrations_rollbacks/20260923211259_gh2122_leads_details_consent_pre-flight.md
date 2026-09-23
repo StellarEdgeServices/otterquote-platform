@@ -53,9 +53,9 @@ Arm F saves a homeowner lead in four taps before any account exists. Production 
 
 Ben asked for both halves to be proven on a Supabase branch. A Supabase branch is a paid resource whose creation needs a cost confirmation, and spending money is not this lane's to authorise. It also has a recorded failure mode (fresh branches replay the whole migration history and report MIGRATIONS_FAILED). The proof was run instead on a **throwaway PostgreSQL 15.19 in Docker**, against a stub schema that reproduces the parts of production this migration touches: `leads` exactly as measured above (21 columns, 7 constraints, both triggers, the anon insert policy), `rate_limit_config`, and **Supabase's default privileges for `anon`, `authenticated` and `service_role`** so the REVOKEs are genuinely needed. If a branch is still wanted, say so and it is a one-command re-run of the same scripts against that branch. The scripts and their full output are in the PR comment.
 
-Sequence run: stub schema, schema fingerprint captured, forward applied twice, forward checks, behaviour checks with role probes, rollback attempted while evidence rows exist (refused), forward state re-checked intact, evidence rows deleted, rollback applied, fingerprint compared, forward re-applied, forward checks again.
+Sequence run: stub schema, schema fingerprint captured, forward applied twice, forward checks, behaviour checks with role probes, rollback attempted while evidence rows exist (refused), forward state re-checked intact, evidence rows deleted, rollback attempted again with the `leads` columns still populated (refused), forward state re-checked intact, the columns NULLed, rollback applied, fingerprint compared, forward re-applied, forward checks again.
 
-**Result: 83 PASS, 0 FAIL.**
+**Result: 103 PASS, 0 FAIL** (the run was repeated after an independent review, which added a second rollback refusal; see below).
 
 Key lines:
 
@@ -68,13 +68,13 @@ Key lines:
 - A lead older than 30 minutes, a redeemed lead (`prefill_used_at` set) and an unknown lead id each return `false` and write nothing.
 - Unknown funding becomes NULL (no error); address, fbc, consent text, page URL, user agent and IP are capped.
 - A lead that has consent evidence cannot be deleted (`ON DELETE RESTRICT`).
-- Rollback was **refused** while `lead_consents` held rows; the forward state was fully intact afterwards. After the evidence rows were deleted the rollback applied, all fixture `leads` rows survived, and **the schema fingerprint was identical to the pre-migration fingerprint**. Re-applying forward afterwards passed every forward check again.
+- Rollback was **refused** while `lead_consents` held rows; the forward state was fully intact afterwards. With the evidence rows deleted but the new `leads` columns still populated it was **refused a second time**, and the forward state was again fully intact. After both were cleared deliberately (`DELETE FROM public.lead_consents`, then `UPDATE public.leads SET funding_type = NULL, property_address = NULL, fbc = NULL, fbp = NULL`) the rollback applied, all fixture `leads` rows survived, and **the schema fingerprint was identical to the pre-migration fingerprint**. Re-applying forward afterwards passed every forward check again.
 
 **Negative control for the proof itself.** The same migration with both `REVOKE` statements removed was run through the same checks: **8 FAIL** (`anon can EXECUTE`, `authenticated can EXECUTE`, table grants leaked, `proacl` carrying `=X`, `anon=X`, `authenticated=X`, and four behaviour probes where `anon` and `authenticated` succeeded in executing the function and reading the table). So the REVOKEs are load-bearing and the probes detect their absence.
 
 ## Repo gates run locally on this diff
 
-`scripts/permissions-ratchet.py --check-file`: GATE PASS (both `REVOKE` lines and both `GRANT ... TO service_role` lines pass). `scripts/migration-filename-lint.py`: PASS (147 files, 0 violations). `scripts/schema-column-lint.py`: PASS (0 violations). `scripts/migrations-reconciliation-check.py`: informational only, not gated. `deno test --allow-read=supabase/functions supabase/functions/record-lead-details/`: 20 passed, 0 failed, with 7 mutations each caught.
+`scripts/permissions-ratchet.py --check-file`: GATE PASS (both `REVOKE` lines and both `GRANT ... TO service_role` lines pass). `scripts/migration-filename-lint.py`: PASS (147 files, 0 violations). `scripts/schema-column-lint.py`: PASS (0 violations). `scripts/migrations-reconciliation-check.py`: informational only, not gated. `deno test --allow-read=supabase/functions supabase/functions/record-lead-details/`: 22 passed, 0 failed, with 7 mutations each caught.
 
 ## Deploy notes (an executive or the CTO applies; this PR applies nothing)
 
@@ -92,7 +92,16 @@ Key lines:
 3. **Rate limit 30/hour, 100/day, 1000/month per IP bucket.** A judgment call; a visitor makes one call, two with the single retry, and carrier or in-app-browser NAT can put many visitors behind one IP.
 4. **No admin read policy on `lead_consents`.** Ben's ruling said RLS on with no anon SELECT. Reads go through the service role or the dashboard. If Dustin needs to read it as an authenticated admin in the app, that is a follow-up policy (`is_admin_email()`, like `leads_admin_select`), not part of this migration.
 5. **A `consent_given = false` row is stored too.** It is evidence of what was displayed when the visitor did not tick the box. The checkbox is not a condition of submitting (the approved line itself says consent is not a condition of purchase).
-6. **The rollback deliberately refuses to run once evidence rows exist.**
+6. **The rollback deliberately refuses to run once evidence rows exist, or once any `leads` row holds a value in the four new columns.** It also takes a SHARE lock on `lead_consents` before counting, so an insert in flight cannot commit between the count and the DROP.
+7. **First recorded consent outcome wins** (`ON CONFLICT DO NOTHING`). Safe for Arm F because the client sends the consent record exactly once per submission and its retry re-sends the identical record; a later call with a different `consent_given` for the same lead and key would be dropped.
+
+## Finding for the CEO/CTO: the new `leads` columns are not write-protected (needs a Tier 3B decision, not made here)
+
+An independent review of this PR (fresh context, `MIGRATION-REVIEW: PASS`, no blocking finding) confirmed a consequence of the constraints this migration was given. The anon and authenticated INSERT policy on `public.leads` is unchanged, table-level INSERT is granted, and the BEFORE INSERT guard nulls only `created_at`, `converted_user_id`, `role`, `partner_industry` and `alerted_at`. So **a direct insert through the public API can still set `funding_type`, `property_address`, `fbc` and `fbp` to any value and any length**, and because `record_lead_details()` is first-write-wins, such a pre-set value is kept, not normalised. The consent evidence table is NOT exposed this way (RLS on, no policy, roles revoked). Mitigation in this PR: the column comments say the columns are untrusted input. **Recommended follow-up (Tier 3B, because it edits `leads_force_safe_insert_defaults()`, which the ruling put out of scope): extend that guard to null the four columns on insert**, so the RPC becomes their only writer. Until then, anything that reads `funding_type` or `property_address` must not trust it.
+
+## Independent review, and what changed because of it
+
+A fresh-context reviewer read the diff and ran the Deno tests (it could not run the SQL). It returned no blocking finding. Its should-fixes were adopted: the rollback lock, the second rollback guard (columns), the corrected column comments, the first-outcome-wins note, NUL stripping and surrogate-safe truncation in the Edge Function (2 more tests). Two nits are recorded, not changed: `getClientIp` falls back to the first `x-forwarded-for` hop exactly like `check-email-exists` (so the stored IP is spoofable only if `cf-connecting-ip` is ever absent), and the rate limit could 429 a visitor behind heavy NAT (the client retries once).
 
 ## Danger overrides
 

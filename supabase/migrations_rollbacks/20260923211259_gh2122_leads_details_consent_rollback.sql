@@ -16,23 +16,37 @@
 --      with its rate_limit_config row gone check_rate_limit() would fail CLOSED.
 --   3. Run this file.
 --
--- EVIDENCE GUARD. public.lead_consents holds TCPA consent evidence (D-299). This
--- rollback REFUSES to run once that table has any row: dropping it would destroy
--- legal records that cannot be reconstructed. If the rollback is genuinely needed
--- after Arm F has taken real submissions, export the table first, keep the export
--- under the retention rule, delete the rows by a deliberate, separate act, and
--- only then re-run this file.
+-- EVIDENCE GUARD. public.lead_consents holds TCPA consent evidence (D-299) and the
+-- four new leads columns hold what visitors typed (funding answer, property
+-- address, Meta ids). This rollback REFUSES to run once lead_consents has any row
+-- OR any leads row has a value in funding_type / property_address / fbc / fbp:
+-- dropping them would destroy records that cannot be reconstructed. If the
+-- rollback is genuinely needed after Arm F has taken real submissions, export
+-- both, keep the export under the retention rule, remove the rows/values by a
+-- deliberate, separate act (DELETE FROM public.lead_consents; UPDATE public.leads
+-- SET funding_type = NULL, property_address = NULL, fbc = NULL, fbp = NULL WHERE
+-- ...), and only then re-run this file. The guard takes a SHARE lock on
+-- lead_consents first, so an insert that is in flight cannot commit between the
+-- count and the DROP and be destroyed with the table.
 
 BEGIN;
 
 DO $$
 DECLARE
   v_rows bigint;
+  v_cols bigint;
 BEGIN
   IF to_regclass('public.lead_consents') IS NOT NULL THEN
+    LOCK TABLE public.lead_consents IN SHARE MODE;
     EXECUTE 'SELECT count(*) FROM public.lead_consents' INTO v_rows;
     IF v_rows > 0 THEN
       RAISE EXCEPTION 'gh2122 rollback REFUSED: public.lead_consents holds % consent-evidence row(s) (D-299). Export them, retain the export, delete the rows deliberately, then re-run.', v_rows;
+    END IF;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'leads' AND column_name = 'property_address') THEN
+    EXECUTE 'SELECT count(*) FROM public.leads WHERE funding_type IS NOT NULL OR property_address IS NOT NULL OR fbc IS NOT NULL OR fbp IS NOT NULL' INTO v_cols;
+    IF v_cols > 0 THEN
+      RAISE EXCEPTION 'gh2122 rollback REFUSED: % leads row(s) hold funding_type / property_address / fbc / fbp values that dropping the columns would destroy. Export them, retain the export, NULL the values deliberately, then re-run.', v_cols;
     END IF;
   END IF;
 END

@@ -42,7 +42,15 @@ BEGIN;
 -- 1. leads: four nullable columns ---------------------------------------------
 -- Additive and nullable with no default: no table rewrite, no backfill, and every
 -- existing row (and every non-Arm-F writer) reads NULL, which is the correct
--- "not collected" state. Written once, by record_lead_details() only.
+-- "not collected" state. record_lead_details() is the write path this migration
+-- provides and it writes each column once. It is NOT the only way in: the untouched
+-- anon/authenticated INSERT policy on `leads` and the untouched BEFORE INSERT guard
+-- (which nulls only created_at, converted_user_id, role, partner_industry and
+-- alerted_at) mean a direct insert can still set these four columns to any value
+-- and any length. Ben's ruling forbids changing that guard or any policy here, so
+-- readers must treat all four as UNTRUSTED input, and because the RPC is
+-- first-write-wins a pre-set value is kept, not normalised. Extending the guard to
+-- null them is a Tier 3B follow-up, recorded on the PR.
 ALTER TABLE public.leads
   ADD COLUMN IF NOT EXISTS funding_type     text,
   ADD COLUMN IF NOT EXISTS property_address text,
@@ -50,9 +58,9 @@ ALTER TABLE public.leads
   ADD COLUMN IF NOT EXISTS fbp              text;
 
 COMMENT ON COLUMN public.leads.funding_type IS
-  'gh-2122: Arm F screen-1 answer, normalised by record_lead_details() to insurance | cash | unsure (anything else is stored as NULL). Not constrained by a CHECK on purpose -- see the header of 20260923211259_gh2122_leads_details_consent.sql.';
+  'gh-2122: Arm F screen-1 answer. record_lead_details() normalises it to insurance | cash | unsure (anything else becomes NULL), but the column is NOT constrained (no CHECK, on purpose) and a direct anon INSERT can still set any value: treat as untrusted input. See the header of 20260923211259_gh2122_leads_details_consent.sql.';
 COMMENT ON COLUMN public.leads.property_address IS
-  'gh-2122: the property address as typed on Arm F screen 2, trimmed and capped at 300 characters by record_lead_details(). Personal data. Admin/service-role read only (leads_admin_select).';
+  'gh-2122: the property address as typed on Arm F screen 2. record_lead_details() trims it and caps it at 300 characters, but a direct anon INSERT is not capped: treat as untrusted input. Personal data. Admin/service-role read only (leads_admin_select).';
 COMMENT ON COLUMN public.leads.fbc IS
   'gh-2122: Meta click id cookie (_fbc), capped at 200 characters. Used for server-side Meta attribution.';
 COMMENT ON COLUMN public.leads.fbp IS
@@ -60,7 +68,11 @@ COMMENT ON COLUMN public.leads.fbp IS
 
 -- 2. lead_consents: the D-299 evidence store ----------------------------------
 -- One row per (lead, consent key) -- the unique constraint is what makes the
--- Edge Function safe to retry once without writing a second evidence row.
+-- Edge Function safe to retry once without writing a second evidence row. FIRST
+-- RECORDED OUTCOME WINS: ON CONFLICT DO NOTHING keeps the first row even if a later
+-- call carries a different consent_given. That is safe for Arm F because the client
+-- sends the consent record exactly once per submission (the checkbox and the submit
+-- button are on the same screen) and its retry re-sends the identical record.
 -- consent_given records BOTH outcomes: a row with consent_given = false is the
 -- evidence of what was displayed when the visitor did not tick the box.
 -- consent_text is the exact rendered string, so the record survives any later

@@ -93,13 +93,26 @@ export async function ipToUuid(ip: string): Promise<string> {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
+/**
+ * Truncate to at most `max` UTF-16 units WITHOUT leaving half of a surrogate pair at the
+ * end. A lone surrogate serialises to JSON as an escape that PostgreSQL rejects, which
+ * would turn one long emoji-bearing field into a 500 for the whole request.
+ */
+export function safeSlice(s: string, max: number): string {
+  if (s.length <= max) return s;
+  let out = s.slice(0, max);
+  const last = out.charCodeAt(out.length - 1);
+  if (last >= 0xd800 && last <= 0xdbff) out = out.slice(0, -1); // cut a dangling high surrogate
+  return out;
+}
+
 /** Trim, drop control characters, cap length. Non-string or empty -> null. */
 export function cleanText(v: unknown, max: number): string | null {
   if (typeof v !== "string") return null;
   // deno-lint-ignore no-control-regex
   const stripped = v.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim();
   if (!stripped) return null;
-  return stripped.length > max ? stripped.slice(0, max) : stripped;
+  return safeSlice(stripped, max);
 }
 
 /** Only an https URL on otterquote.com (or a subdomain) is kept; anything else is dropped, never trusted. */
@@ -152,8 +165,12 @@ export function validateBody(raw: unknown): Validation {
   const consentKey = cleanText(c.key, 100);
   if (!consentKey) return { ok: false, error: "consent.key is required" };
   if (typeof c.given !== "boolean") return { ok: false, error: "consent.given must be true or false" };
-  // Verbatim: only the length cap (matching the column's 2000-char cap in the RPC) is applied.
-  const consentText = typeof c.text === "string" && c.text.trim() ? c.text.slice(0, 2000) : "";
+  // Verbatim, with two exceptions that keep PostgreSQL from rejecting the row: NUL characters
+  // are removed (not valid in a text column) and the length cap (matching the RPC's 2000) never
+  // splits a surrogate pair. The approved consent string contains neither, so it is stored
+  // byte-for-byte.
+  // deno-lint-ignore no-control-regex
+  const consentText = typeof c.text === "string" && c.text.trim() ? safeSlice(c.text.replace(/\u0000/g, ""), 2000) : "";
   if (!consentText) return { ok: false, error: "consent.text (the exact rendered string) is required" };
 
   const fundingRaw = typeof b.funding_type === "string" ? b.funding_type.trim().toLowerCase() : "";

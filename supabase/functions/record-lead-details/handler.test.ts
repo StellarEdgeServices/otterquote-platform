@@ -12,6 +12,7 @@ import {
   getClientIp,
   handleRequest,
   ipToUuid,
+  safeSlice,
   validateBody,
 } from "./handler.ts";
 
@@ -93,6 +94,31 @@ Deno.test("cleanText: strips control chars, trims, caps, non-string -> null", ()
   assertEquals(cleanText("x".repeat(500), 300)?.length, 300);
   assertEquals(cleanText("   ", 10), null);
   assertEquals(cleanText(42, 10), null);
+});
+
+Deno.test("safeSlice / cleanText never leave a lone surrogate at the cut (PostgreSQL rejects it)", () => {
+  const emoji = "\u{1F3E0}"; // one code point, two UTF-16 units
+  const s = "a".repeat(299) + emoji + "tail";
+  const cut = safeSlice(s, 300); // would split the emoji between units 299 and 300
+  assertEquals(cut, "a".repeat(299));
+  assert(!/[\ud800-\udbff]$/.test(cut), "no dangling high surrogate");
+  assertEquals(cleanText(s, 300), "a".repeat(299));
+  assertEquals(safeSlice("short", 300), "short");
+  assertEquals(safeSlice("a".repeat(298) + emoji, 300), "a".repeat(298) + emoji); // fits exactly: kept whole
+  // The whole result must survive a JSON round trip unchanged (a lone surrogate would not).
+  assertEquals(JSON.parse(JSON.stringify(cleanText(s, 300))), "a".repeat(299));
+});
+
+Deno.test("validateBody: consent text drops NUL characters but is otherwise verbatim", () => {
+  const r = validateBody(goodBody({ consent: { key: "k", given: true, text: "A\u0000B " + CONSENT_TEXT } }));
+  assert(r.ok);
+  if (r.ok) assertEquals(r.value.consentText, "AB " + CONSENT_TEXT);
+  const clean = validateBody(goodBody());
+  assert(clean.ok);
+  if (clean.ok) assertEquals(clean.value.consentText, CONSENT_TEXT); // the approved string is untouched
+  const emojiTail = validateBody(goodBody({ consent: { key: "k", given: true, text: "x".repeat(1999) + "\u{1F3E0}" } }));
+  assert(emojiTail.ok);
+  if (emojiTail.ok) assertEquals(emojiTail.value.consentText, "x".repeat(1999));
 });
 
 Deno.test("cleanPageUrl: keeps https otterquote.com URLs, drops everything else", () => {
