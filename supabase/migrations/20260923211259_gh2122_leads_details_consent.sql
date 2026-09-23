@@ -6,6 +6,14 @@
 -- (additive: nullable columns, one new table, one new function, one config row;
 -- nothing dropped, renamed, retyped or rewritten) under D-261, no R-097 window.
 --
+-- AMENDED by Ben's ruling on Kevin's HANDOFF-LIVE (#2122 comment 5803524541): the insert
+-- guard leads_force_safe_insert_defaults() is extended by EXACTLY FOUR LINES so a direct
+-- anon insert cannot pre-set the four new columns (section 1b). That is a protective fix
+-- under constitution entry 4 / R-134 (it only removes an attacker's ability to set
+-- untrusted values in brand-new columns; no existing column's behaviour changes and no
+-- current client sends them), executed with a notice and no 24-hour wait. The comment
+-- above is that notice.
+--
 -- WHY THIS EXISTS. Measured on production yeszghaspzwwstvsrioa, 2026-09-23,
 -- read-only: public.leads has 21 columns and NONE of them holds a funding answer,
 -- a property address, fbc/fbp, or any consent evidence; and there is no consent
@@ -15,9 +23,10 @@
 -- IP, user agent, page URL and payload to be retained per submission.
 --
 -- WHAT IT DOES NOT TOUCH (Ben's ruling, stated so a reviewer can check the diff):
---   * leads_force_safe_insert_defaults() and trg_leads_force_safe_insert_defaults
---     -- untouched. The new columns are written by an UPDATE inside the RPC below,
---     never by an anon INSERT, so the BEFORE INSERT guard is irrelevant to them.
+--   * trg_leads_force_safe_insert_defaults (the TRIGGER) -- untouched. The guard FUNCTION it
+--     runs, leads_force_safe_insert_defaults(), gains exactly four assignment lines (section
+--     1b) and nothing else: its five existing assignments, its SECURITY DEFINER, its
+--     search_path and its ACL are byte-for-byte unchanged (proven in the PR).
 --   * trg_notify_admin_new_router_lead -- untouched. It fires only when role goes
 --     NULL -> non-NULL; the RPC below never writes role, so it cannot re-alert.
 --   * Every RLS policy on public.leads -- untouched. No policy is created, dropped
@@ -42,15 +51,10 @@ BEGIN;
 -- 1. leads: four nullable columns ---------------------------------------------
 -- Additive and nullable with no default: no table rewrite, no backfill, and every
 -- existing row (and every non-Arm-F writer) reads NULL, which is the correct
--- "not collected" state. record_lead_details() is the write path this migration
--- provides and it writes each column once. It is NOT the only way in: the untouched
--- anon/authenticated INSERT policy on `leads` and the untouched BEFORE INSERT guard
--- (which nulls only created_at, converted_user_id, role, partner_industry and
--- alerted_at) mean a direct insert can still set these four columns to any value
--- and any length. Ben's ruling forbids changing that guard or any policy here, so
--- readers must treat all four as UNTRUSTED input, and because the RPC is
--- first-write-wins a pre-set value is kept, not normalised. Extending the guard to
--- null them is a Tier 3B follow-up, recorded on the PR.
+-- "not collected" state. record_lead_details() is their ONLY writer: section 1b makes the
+-- BEFORE INSERT guard null all four on any insert, `leads` has no UPDATE policy for
+-- anon or authenticated (anon holds no UPDATE grant at all), so a value can only arrive
+-- through the RPC, which normalises it and writes each column once.
 ALTER TABLE public.leads
   ADD COLUMN IF NOT EXISTS funding_type     text,
   ADD COLUMN IF NOT EXISTS property_address text,
@@ -58,13 +62,47 @@ ALTER TABLE public.leads
   ADD COLUMN IF NOT EXISTS fbp              text;
 
 COMMENT ON COLUMN public.leads.funding_type IS
-  'gh-2122: Arm F screen-1 answer. record_lead_details() normalises it to insurance | cash | unsure (anything else becomes NULL), but the column is NOT constrained (no CHECK, on purpose) and a direct anon INSERT can still set any value: treat as untrusted input. See the header of 20260923211259_gh2122_leads_details_consent.sql.';
+  'gh-2122: Arm F screen-1 answer, insurance | cash | unsure or NULL. Written ONLY by record_lead_details(), which normalises it (anything else becomes NULL); the insert guard nulls it on every insert and there is no UPDATE path, so the value can be trusted. No CHECK, on purpose -- see the header of 20260923211259_gh2122_leads_details_consent.sql.';
 COMMENT ON COLUMN public.leads.property_address IS
-  'gh-2122: the property address as typed on Arm F screen 2. record_lead_details() trims it and caps it at 300 characters, but a direct anon INSERT is not capped: treat as untrusted input. Personal data. Admin/service-role read only (leads_admin_select).';
+  'gh-2122: the property address as typed on Arm F screen 2, trimmed and capped at 300 characters. Written ONLY by record_lead_details(); the insert guard nulls it on every insert and there is no UPDATE path. Still visitor-typed free text, so display it escaped. Personal data. Admin/service-role read only (leads_admin_select).';
 COMMENT ON COLUMN public.leads.fbc IS
-  'gh-2122: Meta click id cookie (_fbc), capped at 200 characters. Used for server-side Meta attribution.';
+  'gh-2122: Meta click id cookie (_fbc), capped at 200 characters. Written ONLY by record_lead_details() (the insert guard nulls it on every insert). Used for server-side Meta attribution.';
 COMMENT ON COLUMN public.leads.fbp IS
-  'gh-2122: Meta browser id cookie (_fbp), capped at 200 characters.';
+  'gh-2122: Meta browser id cookie (_fbp), capped at 200 characters. Written ONLY by record_lead_details() (the insert guard nulls it on every insert).';
+
+-- 1b. Insert guard: null the four new columns on every insert ---------------------
+-- PROTECTIVE FIX (Ben, #2122 comment 5803524541; constitution entry 4 / R-134). The anon and
+-- authenticated INSERT policy on `leads` is `WITH CHECK (true)`, so without this a direct
+-- public-API insert could set funding_type / property_address / fbc / fbp to any value and
+-- any length, and because record_lead_details() is first-write-wins that pre-set value would
+-- WIN over the RPC's normalisation. These four lines make the RPC the only writer.
+-- SCOPE: exactly these four assignments added to the function body. The five existing
+-- assignments (created_at, converted_user_id, role, partner_industry, alerted_at), the
+-- SECURITY DEFINER, the pinned search_path, the owner and the ACL are reproduced from
+-- production as read on 2026-09-23 (pg_get_functiondef) and are unchanged; CREATE OR
+-- REPLACE keeps the ACL and the function's existing COMMENT. The trigger is not touched.
+-- It must come AFTER the ADD COLUMNs above (the body names the new columns), and the
+-- rollback restores the original body BEFORE dropping them (a guard that still names a
+-- dropped column would fail every insert into `leads`).
+CREATE OR REPLACE FUNCTION public.leads_force_safe_insert_defaults()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+  NEW.created_at        := now();
+  NEW.converted_user_id := NULL;
+  NEW.role              := NULL;
+  NEW.partner_industry  := NULL;
+  NEW.alerted_at        := NULL;
+  NEW.funding_type      := NULL;
+  NEW.property_address  := NULL;
+  NEW.fbc               := NULL;
+  NEW.fbp               := NULL;
+  RETURN NEW;
+END;
+$$;
 
 -- 2. lead_consents: the D-299 evidence store ----------------------------------
 -- One row per (lead, consent key) -- the unique constraint is what makes the
@@ -191,7 +229,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.record_lead_details(uuid, text, text, text, text, text, boolean, text, text, text, text, jsonb) IS
-  'gh-2122: the single write path for Arm F details + D-299 consent evidence. SECURITY DEFINER; EXECUTE is granted to service_role ONLY (called by the record-lead-details Edge Function, which supplies the server-observed IP and user agent). First write wins; 30-minute / prefill_used_at guard as set_lead_role(). Returns false when the lead is out of scope, never raises for that.';
+  'gh-2122: the single write path for Arm F details + D-299 consent evidence (the four leads columns are nulled on every insert by leads_force_safe_insert_defaults(), so this is their only writer). SECURITY DEFINER; EXECUTE is granted to service_role ONLY (called by the record-lead-details Edge Function, which supplies the server-observed IP and user agent). First write wins; 30-minute / prefill_used_at guard as set_lead_role(). Returns false when the lead is out of scope, never raises for that.';
 
 -- Supabase default privileges grant EXECUTE on every new public function to anon
 -- AND authenticated; REVOKE FROM PUBLIC alone does not remove them (v95/v95a

@@ -1,12 +1,16 @@
 -- Rollback for: supabase/migrations/20260923211259_gh2122_leads_details_consent.sql
 -- GitHub: #2122
 --
--- Restores the schema to its pre-migration state: the record_lead_details()
--- function, the lead_consents table, the four leads columns and the
--- rate_limit_config row are removed. No other object is touched (in particular
--- leads_force_safe_insert_defaults, trg_notify_admin_new_router_lead and every
--- policy on public.leads were never changed by the forward migration, so there
--- is nothing to restore there).
+-- Restores the schema to its pre-migration state: the insert guard's body is put back
+-- to its original five assignments, then the record_lead_details() function, the
+-- lead_consents table, the four leads columns and the rate_limit_config row are removed.
+-- The trigger, trg_notify_admin_new_router_lead and every policy on public.leads were
+-- never changed by the forward migration, so there is nothing to restore there.
+--
+-- THE GUARD IS RESTORED FIRST, ON PURPOSE. The forward migration's guard body names the
+-- four new columns; if they were dropped while it was still installed, every INSERT into
+-- public.leads would fail. The original body below is the production definition read with
+-- pg_get_functiondef on 2026-09-23 (md5 of prosrc 61d154d12d28801c788825ef18199a2a).
 --
 -- ORDER MATTERS WITH THE EDGE FUNCTION. Roll back in this order:
 --   1. Stop the client writing: revert or disable js/router-variant-f.js's call to
@@ -50,6 +54,23 @@ BEGIN
     END IF;
   END IF;
 END
+$$;
+
+-- 1. Restore the original insert guard (must precede the column drops, see the header).
+CREATE OR REPLACE FUNCTION public.leads_force_safe_insert_defaults()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+  NEW.created_at        := now();
+  NEW.converted_user_id := NULL;
+  NEW.role              := NULL;
+  NEW.partner_industry  := NULL;
+  NEW.alerted_at        := NULL;
+  RETURN NEW;
+END;
 $$;
 
 DROP FUNCTION IF EXISTS public.record_lead_details(uuid, text, text, text, text, text, boolean, text, text, text, text, jsonb);

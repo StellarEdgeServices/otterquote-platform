@@ -6,6 +6,7 @@
 **Author**: Kevin, Code lane (`rw-f22-20260923T205250-a2f6`, under `ceo-2026-09-23T18:56:07Z`)
 **Authorised by**: Ben, CEO RUN 66, "A: MIGRATION: GO" on #2122 (comment 5802853627), answering Q 5802781694
 **Tier**: 3A (additive), D-261. No R-097 window, per that ruling.
+**Amended by**: Ben's ruling on Kevin's HANDOFF-LIVE, #2122 comment 5803524541: the insert guard `leads_force_safe_insert_defaults()` gains exactly four lines. Protective fix, constitution entry 4 / R-134, executed with a notice and no 24-hour wait (that comment is the notice).
 **Issue**: #2122 (Arm F, checklist row 1.1 on #2121)
 
 ## Change summary
@@ -21,6 +22,9 @@ Arm F saves a homeowner lead in four taps before any account exists. Production 
 | `pg_constraint` on `public.leads` | 7 (pkey, converted_user_id FK, 3 length CHECKs, role CHECK, partner_industry CHECK) |
 | `leads` row count | 88 (17 `is_synthetic`, 71 NULL) |
 | Triggers on `leads` | `trg_leads_force_safe_insert_defaults` (BEFORE INSERT), `trg_notify_admin_new_router_lead` (AFTER UPDATE, role NULL to non-NULL) |
+| Policies on `leads` | `Allow anonymous inserts` (INSERT, anon + authenticated, `WITH CHECK (true)`), `leads_admin_select` (SELECT, authenticated, `is_admin_email()`); **no UPDATE policy** |
+| Table grants on `leads` | anon: INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE (no UPDATE, no DELETE); authenticated: table-level UPDATE and DELETE but no policy to use them |
+| `leads_force_safe_insert_defaults()` | SECURITY DEFINER, `search_path = public, pg_temp`, owner `postgres`, ACL `{postgres=X/postgres,service_role=X/postgres}`, five assignments (`created_at`, `converted_user_id`, `role`, `partner_industry`, `alerted_at`); `md5(prosrc) = 61d154d12d28801c788825ef18199a2a` |
 | Anon INSERT policies naming a suitable evidence sink | none (`activity_log` is user-scoped) |
 
 ## Row count and lock estimate
@@ -45,9 +49,11 @@ Arm F saves a homeowner lead in four taps before any account exists. Production 
 | 8 | CASCADE DROP | No | no CASCADE anywhere; the FK is `ON DELETE RESTRICT` |
 | 9 | New public function | **Yes, handled** | `REVOKE ALL ... FROM PUBLIC, anon, authenticated` then `GRANT EXECUTE ... TO service_role` only; `has_function_privilege` probes and `proacl` read below. The same is done for the new table's grants. |
 
-## Explicit non-changes (Ben's ruling)
+## The one change to an existing object, and the non-changes (Ben's rulings)
 
-`leads_force_safe_insert_defaults` and its trigger, `trg_notify_admin_new_router_lead`, and every RLS policy on `leads` are untouched, and no CHECK constraint is added to `leads` (see `20260918122231_gh2011_leads_variant.sql` for why). Proven below by trigger, policy and constraint counts before and after.
+**Changed, by Ben's ruling 5803524541:** the guard function `leads_force_safe_insert_defaults()` gains exactly four assignment lines, `NEW.funding_type`, `NEW.property_address`, `NEW.fbc` and `NEW.fbp` set to NULL. Its five existing assignments, SECURITY DEFINER, pinned search_path, owner and ACL are unchanged. The proof diffs the function definition before and after: **4 lines added, 0 removed**, and compares the metadata field by field. `CREATE OR REPLACE` keeps the ACL and the function comment. The rollback restores the original body first.
+
+**Not changed:** the trigger `trg_leads_force_safe_insert_defaults`, `trg_notify_admin_new_router_lead`, every RLS policy on `leads`, and no CHECK constraint is added to `leads` (see `20260918122231_gh2011_leads_variant.sql` for why). Proven below by trigger, policy and constraint counts before and after.
 
 ## Test method, and why it is not a Supabase branch
 
@@ -55,7 +61,9 @@ Ben asked for both halves to be proven on a Supabase branch. A Supabase branch i
 
 Sequence run: stub schema, schema fingerprint captured, forward applied twice, forward checks, behaviour checks with role probes, rollback attempted while evidence rows exist (refused), forward state re-checked intact, evidence rows deleted, rollback attempted again with the `leads` columns still populated (refused), forward state re-checked intact, the columns NULLed, rollback applied, fingerprint compared, forward re-applied, forward checks again.
 
-**Result: 103 PASS, 0 FAIL** (the run was repeated after an independent review, which added a second rollback refusal; see below).
+**Result: 120 PASS, 0 FAIL** (repeated after the independent review, which added a second rollback refusal, and again after Ben's guard ruling).
+
+**Fidelity of the stub.** The stub's guard function is byte-identical to production: `md5(prosrc)` of the stub equals the production value `61d154d12d28801c788825ef18199a2a`, asserted by the runner. Table policies and grants on `leads` mirror the production read above. The runner sends SQL to `psql` as **bytes**, because Windows text-mode pipes rewrite LF to CRLF and would otherwise make function bodies differ from production.
 
 Key lines:
 
@@ -68,9 +76,13 @@ Key lines:
 - A lead older than 30 minutes, a redeemed lead (`prefill_used_at` set) and an unknown lead id each return `false` and write nothing.
 - Unknown funding becomes NULL (no error); address, fbc, consent text, page URL, user agent and IP are capped.
 - A lead that has consent evidence cannot be deleted (`ON DELETE RESTRICT`).
-- Rollback was **refused** while `lead_consents` held rows; the forward state was fully intact afterwards. With the evidence rows deleted but the new `leads` columns still populated it was **refused a second time**, and the forward state was again fully intact. After both were cleared deliberately (`DELETE FROM public.lead_consents`, then `UPDATE public.leads SET funding_type = NULL, property_address = NULL, fbc = NULL, fbp = NULL`) the rollback applied, all fixture `leads` rows survived, and **the schema fingerprint was identical to the pre-migration fingerprint**. Re-applying forward afterwards passed every forward check again.
+- **The guard extension:** a direct anon INSERT that sets `funding_type`, `property_address`, `fbc` or `fbp` lands NULL, one probe per column, and a single insert setting all four lands with all four NULL. The five existing forced columns behave as before (`role`, `alerted_at`, `converted_user_id`, `partner_industry` NULL and `created_at = now()` even when the insert supplies `'2001-01-01'`), and unrelated columns (`name`, `email`) are untouched. `record_lead_details()` still populates the four columns on a row that started NULL, so it is their only writer. There is no UPDATE path: as `anon`, `UPDATE` is `permission denied` (no grant), and as `authenticated` it touches 0 rows (RLS, no UPDATE policy), leaving the stored address unchanged.
+- The guard's SECURITY DEFINER, search_path, ACL and owner are identical before and after (`true|{"search_path=public, pg_temp"}|{postgres=X/postgres,service_role=X/postgres}|postgres`), and the trigger is still attached.
+- Rollback was **refused** while `lead_consents` held rows; the forward state was fully intact afterwards. With the evidence rows deleted but the new `leads` columns still populated it was **refused a second time**, and the forward state was again fully intact. After both were cleared deliberately (`DELETE FROM public.lead_consents`, then `UPDATE public.leads SET funding_type = NULL, property_address = NULL, fbc = NULL, fbp = NULL`) the rollback applied, all 9 fixture `leads` rows survived, **the guard body was back to the production original (md5 `61d154d1...`)**, an anon INSERT into `leads` still worked (the guard no longer names dropped columns), and **the schema fingerprint, which now includes the guard body md5 and ACL, was identical to the pre-migration fingerprint**. Re-applying forward afterwards passed every forward check again, and a direct anon insert of all four columns again landed NULL.
 
-**Negative control for the proof itself.** The same migration with both `REVOKE` statements removed was run through the same checks: **8 FAIL** (`anon can EXECUTE`, `authenticated can EXECUTE`, table grants leaked, `proacl` carrying `=X`, `anon=X`, `authenticated=X`, and four behaviour probes where `anon` and `authenticated` succeeded in executing the function and reading the table). So the REVOKEs are load-bearing and the probes detect their absence.
+**Negative controls for the proof itself (both observed).**
+1. The same migration with both `REVOKE` statements removed, run through the forward and behaviour checks: **8 FAIL** (`anon can EXECUTE`, `authenticated can EXECUTE`, table grants leaked, `proacl` carrying `=X`, `anon=X`, `authenticated=X`, and four behaviour probes where `anon` and `authenticated` succeeded in executing the function and reading the table). The REVOKEs are load-bearing.
+2. **The same migration with the four guard lines removed** (the migration as it stood before Ben's ruling), run through the guard checks: **7 FAIL** (`funding_type`, `property_address`, `fbc` and `fbp` each set by a direct insert, the multi-column insert setting a value, the RPC unable to populate a pre-set row because it is first-write-wins, and the stored address changed). The four lines are load-bearing and the probes detect their absence.
 
 ## Repo gates run locally on this diff
 
@@ -95,13 +107,13 @@ Key lines:
 6. **The rollback deliberately refuses to run once evidence rows exist, or once any `leads` row holds a value in the four new columns.** It also takes a SHARE lock on `lead_consents` before counting, so an insert in flight cannot commit between the count and the DROP.
 7. **First recorded consent outcome wins** (`ON CONFLICT DO NOTHING`). Safe for Arm F because the client sends the consent record exactly once per submission and its retry re-sends the identical record; a later call with a different `consent_given` for the same lead and key would be dropped.
 
-## Finding for the CEO/CTO: the new `leads` columns are not write-protected (needs a Tier 3B decision, not made here)
+## Resolved: the new `leads` columns are now write-protected (Ben's ruling 5803524541)
 
-An independent review of this PR (fresh context, `MIGRATION-REVIEW: PASS`, no blocking finding) confirmed a consequence of the constraints this migration was given. The anon and authenticated INSERT policy on `public.leads` is unchanged, table-level INSERT is granted, and the BEFORE INSERT guard nulls only `created_at`, `converted_user_id`, `role`, `partner_industry` and `alerted_at`. So **a direct insert through the public API can still set `funding_type`, `property_address`, `fbc` and `fbp` to any value and any length**, and because `record_lead_details()` is first-write-wins, such a pre-set value is kept, not normalised. The consent evidence table is NOT exposed this way (RLS on, no policy, roles revoked). Mitigation in this PR: the column comments say the columns are untrusted input. **Recommended follow-up (Tier 3B, because it edits `leads_force_safe_insert_defaults()`, which the ruling put out of scope): extend that guard to null the four columns on insert**, so the RPC becomes their only writer. Until then, anything that reads `funding_type` or `property_address` must not trust it.
+The independent review found that the untouched anon and authenticated INSERT policy (`WITH CHECK (true)`) plus table-level INSERT let a direct insert set the four new columns to any value and any length, and that the first-write-wins RPC would then keep the pre-set value. Ben ruled this a protective fix to be made in this PR (constitution entry 4 / R-134): the guard now nulls the four columns on every insert, which makes `record_lead_details()` their only writer. Proven above (direct-insert probes per column, no UPDATE path, RPC still populates, existing forced columns unchanged, guard diff exactly +4/-0, negative control with the lines removed). The column comments now say the values are written only by the RPC and can be trusted; `property_address` is still visitor-typed free text, so anything that displays it must escape it.
 
 ## Independent review, and what changed because of it
 
-A fresh-context reviewer read the diff and ran the Deno tests (it could not run the SQL). It returned no blocking finding. Its should-fixes were adopted: the rollback lock, the second rollback guard (columns), the corrected column comments, the first-outcome-wins note, NUL stripping and surrogate-safe truncation in the Edge Function (2 more tests). Two nits are recorded, not changed: `getClientIp` falls back to the first `x-forwarded-for` hop exactly like `check-email-exists` (so the stored IP is spoofable only if `cf-connecting-ip` is ever absent), and the rate limit could 429 a visitor behind heavy NAT (the client retries once).
+A fresh-context reviewer read the diff and ran the Deno tests (it could not run the SQL). It returned no blocking finding (`MIGRATION-REVIEW: PASS`). It reviewed the head before Ben's guard ruling; the four-line guard change is covered by the SQL proof above, not by that review. Its should-fixes were adopted: the rollback lock, the second rollback guard (columns), the corrected column comments, the first-outcome-wins note, NUL stripping and surrogate-safe truncation in the Edge Function (2 more tests). Two nits are recorded, not changed: `getClientIp` falls back to the first `x-forwarded-for` hop exactly like `check-email-exists` (so the stored IP is spoofable only if `cf-connecting-ip` is ever absent), and the rate limit could 429 a visitor behind heavy NAT (the client retries once).
 
 ## Danger overrides
 
