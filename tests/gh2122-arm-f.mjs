@@ -714,7 +714,7 @@ async function main() {
     buttonByText(k.root, COPY.arm_f_s4_button_losssheet).dispatchClick();
     ok(/help-estimate\?lead=/.test(k.fakeWindow.location.href), 'when the details call has already settled a CTA tap navigates immediately');
     const b = buildF({ insertFails: 1 }); drive(b, GOOD);
-    const backOf = (x) => buttons(x.root).find((y) => y.textContent === '\u2190 Back');
+    const backOf = (x) => buttons(x.root).find((y) => y.textContent === '← Back');
     ok(backOf(b) && backOf(b).disabled !== true, 'setup: Back is enabled on screen 3 before submit');
     submit(b);
     ok(backOf(b).disabled === true, 'Back is DISABLED as soon as the save starts');
@@ -774,7 +774,12 @@ async function main() {
   ok(/var KNOWN_ARMS = \['a', 'b', 'c', 'd', 'e', 'f'\];/.test(startSrc), "start.html KNOWN_ARMS recognises 'f' so ?v=f parses");
   const live = /var LIVE_VARIANTS = (\[[^\]]*\]);/.exec(startSrc);
   ok(live && new Function('return ' + live[1])().indexOf('f') === -1, "'f' is NOT in LIVE_VARIANTS: it is not in the random split until Sloane says so on #2122");
-  ok(/detailsUrl: \(typeof CONFIG !== 'undefined' && CONFIG\.SUPABASE_URL\)/.test(startSrc) && /anonKey: \(typeof CONFIG/.test(startSrc), "start.html's F bridge supplies the Edge Function URL and the public anon key");
+  // gh-2121 (LRS S05): converted from eager object-literal properties to getters
+  // so config.js can be `defer`red without a race -- js/router-variant-f.js's own
+  // detailsUrl()/anonKey reads (see F5 above) are already call-time, not
+  // init-time, so this is a syntax change only; same CONFIG.SUPABASE_URL /
+  // CONFIG.SUPABASE_ANON source, same fallback to null when CONFIG isn't ready.
+  ok(/get detailsUrl\(\) \{ return \(typeof CONFIG !== 'undefined' && CONFIG\.SUPABASE_URL\)/.test(startSrc) && /get anonKey\(\) \{ return \(typeof CONFIG/.test(startSrc), "start.html's F bridge supplies the Edge Function URL and the public anon key");
   ok(startSrc.indexOf('id="routerFRoot"') !== -1 && startSrc.indexOf("routerFScript.src = 'js/router-variant-f.js'") !== -1, 'start.html mounts #routerFRoot and loads js/router-variant-f.js only inside the ARM_F branch');
   ok(/if \(ARM_C \|\| ARM_D \|\| ARM_E \|\| ARM_F\) return;/.test(startSrc), 'renderStep early-returns for arm F like C/D/E (A/B shared-section code never runs over F)');
 
