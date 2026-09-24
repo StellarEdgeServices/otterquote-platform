@@ -49,9 +49,23 @@ const {
         single: () => Promise.resolve({ data: { id: 'test-claim-id' }, error: null }),
       }),
     })),
+    // gh-2062 round 3: the real claims.update() call site inside
+    // handleComplete's existing-claim branch now chains .select('id') (to
+    // check rows actually affected, not just that no error came back) —
+    // this mock's .eq() result must therefore be BOTH directly awaitable
+    // (attachPendingLossSheetToClaim's has_estimate/estimate_filename PATCH
+    // below, which does not chain .select()) AND chainable with .select()
+    // (the referral-consuming update). A thenable object satisfies both:
+    // `await update(...).eq(...)` resolves it directly, while
+    // `await update(...).eq(...).select('id')` calls the extra method.
     claimsUpdateMock: vi.fn((_payload: Record<string, unknown>) => {
       callOrder.push('patch');
-      return { eq: () => Promise.resolve({ error: null }) };
+      return {
+        eq: () => ({
+          then: (resolve: (v: { error: null }) => void) => resolve({ error: null }),
+          select: () => Promise.resolve({ data: [{ id: 'existing-claim-id' }], error: null }),
+        }),
+      };
     }),
     // Default: no existing claim for this user -> handleComplete's insert
     // branch. Individual tests override the NEXT call with

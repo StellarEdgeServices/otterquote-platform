@@ -37,6 +37,12 @@
  * page down before the hit has had a real chance to be queued/sent; the
  * referral_source dimension is carried through the `cs_signup` payload
  * get-started/page.tsx already wrote before the redirect.
+ *
+ * gh-1901 Option 2 (2026-09-22, CEO ruling 5780885632): get-started's
+ * Google button no longer requires first/last name before firing OAuth, so
+ * this file backfills a blank name from the Google identity's own metadata
+ * (given_name/family_name/full_name) before anything reads cs_signup — see
+ * backfillNameFromGoogleIdentity below.
  */
 
 'use client';
@@ -48,6 +54,62 @@ import { supabase } from '@/lib/supabase';
 import { readReferralIds, writeReferralIds } from '@/lib/cookie-storage';
 import { maybeFireGoogleSignUp, readReferralSourceFromCsSignup } from './signup-analytics';
 import { adoptFirstTouchFromParam, recordFirstTouch } from '@/lib/attribution';
+
+// ─── Name recovery for the Google path (gh-1901 Option 2) ────────────────────
+
+/**
+ * gh-1901 Option 2 (CEO ruling 5780885632): get-started/page.tsx's
+ * handleGoogle no longer requires first/last name before firing OAuth — the
+ * previous gate was a smaller version of the exact trap CRO reported, a
+ * button that silently refused until fields were typed. So cs_signup can
+ * reach here with first_name/last_name both blank. Google's OAuth identity
+ * carries the name Supabase would otherwise have made the visitor type
+ * twice; recover it here, once, before anything downstream reads cs_signup
+ * (fireHomeownerHubspotContact below, and trade-selector's profiles upsert
+ * after the redirect this file issues — both origin-scoped localStorage
+ * reads of the same key, so a write here reaches both).
+ *
+ * Never overwrites a name half the visitor actually typed — only a blank
+ * first_name or last_name is filled in, and only from this identity, not
+ * from the password path (guarded on app_metadata.provider === 'google').
+ * Supabase's Google provider is not guaranteed to populate every metadata
+ * field on every account (scope/consent variance) — this degrades to a
+ * no-op, same as before this change, when none of given_name/family_name/
+ * full_name/name are present.
+ */
+function backfillNameFromGoogleIdentity(user: Session['user'] | null | undefined): void {
+  if (!user || typeof localStorage === 'undefined') return;
+  if ((user.app_metadata as Record<string, unknown> | undefined)?.provider !== 'google') return;
+
+  let signup: Record<string, unknown>;
+  try {
+    const raw = localStorage.getItem('cs_signup');
+    if (!raw) return;
+    signup = JSON.parse(raw);
+  } catch {
+    return;
+  }
+
+  const firstName = ((signup.first_name as string | undefined) || '').trim();
+  const lastName = ((signup.last_name as string | undefined) || '').trim();
+  if (firstName && lastName) return; // visitor already typed both halves.
+
+  const meta = (user.user_metadata || {}) as Record<string, unknown>;
+  const given = ((meta.given_name as string | undefined) || '').trim();
+  const family = ((meta.family_name as string | undefined) || '').trim();
+  const full = ((meta.full_name as string | undefined) || (meta.name as string | undefined) || '').trim();
+  const fullParts = full ? full.split(/\s+/) : [];
+
+  const nextFirst = firstName || given || fullParts[0] || '';
+  const nextLast = lastName || family || fullParts.slice(1).join(' ');
+  if (nextFirst === firstName && nextLast === lastName) return; // Google gave us nothing usable.
+
+  try {
+    localStorage.setItem('cs_signup', JSON.stringify({ ...signup, first_name: nextFirst, last_name: nextLast }));
+  } catch {
+    // Non-fatal — HubSpot/trade-selector simply see the pre-existing (possibly blank) names.
+  }
+}
 
 // ─── HubSpot — D-189, fired post-auth (#405) ─────────────────────────────────
 
@@ -192,8 +254,12 @@ export default function AuthCallbackPage() {
             localStorage.setItem('oq_referral_id_for_claim', referralId);
             localStorage.removeItem('oq_referral_id');
           }
-          // Keep the cookie alive so the claim writer still sees it after a hop.
-          {
+          // gh-2062: only re-arm the cookie's 90-day clock on a successful
+          // advance (mirrors js/auth.js). A failed RPC call is not a reason
+          // to extend the life of an id we were just told is not
+          // advanceable — the cookie keeps whatever TTL it already had
+          // instead of restarting the clock.
+          if (!advanceError) {
             const kept = readReferralIds();
             writeReferralIds({
               oq_referral_id: referralId,
@@ -255,6 +321,12 @@ export default function AuthCallbackPage() {
         window.location.href = CONTRACTOR_SIGNUP_URL;
         return;
       }
+
+      // gh-1901 Option 2: recover any name Google's identity carries BEFORE
+      // anything below reads cs_signup — see backfillNameFromGoogleIdentity's
+      // header. No-op for the password path (guarded on provider === 'google')
+      // and for a Google sign-up that already has both name halves typed.
+      backfillNameFromGoogleIdentity(session.user);
 
       // Homeowner path confirmed (not a contractor record, no contractor intent) —
       // safe to fire the post-auth HubSpot sync now that a session JWT exists (#405).
