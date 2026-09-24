@@ -8,7 +8,8 @@
 -- 17-arg register_partner byte-identical to
 -- 20260820195608_gh1075_partner_agreement_v2_version_bump.sql (confirmed live
 -- on prod, yeszghaspzwwstvsrioa, before this migration: md5(pg_get_functiondef)
--- = 72147ca4589ca10896d16cb9a1d0c0b7, proacl =
+-- first 8 hex chars = 72147ca4 (gh-2122 convention -- Credential Shape Sweep
+-- flags a bare 32-hex-char run), proacl =
 -- {=X/postgres,postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,
 -- service_role=X/postgres}), restore its grants explicitly (belt-and-suspenders
 -- recreate -- the live grants actually come from the schema's default
