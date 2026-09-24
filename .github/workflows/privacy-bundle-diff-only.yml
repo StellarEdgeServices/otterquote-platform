@@ -1,0 +1,45 @@
+name: Privacy Bundle Diff-Only Guard
+
+# TEMPORARY, for the privacy.html HOLD bundle (Ben, #2078 5811351154: "add a diff-only test so no other policy text changes"). It fails a PR that
+# changes any line of privacy.html other than the reviewed DRAFT lines listed in tests/privacy-bundle-diff-only.mjs. Legal copy is Tier C
+# (Dustin's): once he rules, only the APPROVED block in that test and privacy.html change. DELETE this workflow and the test at ship time, or the
+# next unrelated privacy.html edit will (correctly, but unhelpfully) fail it.
+#
+# `pull_request` (never `pull_request_target`), no secrets, read-only token, path-filtered to the policy and its own files.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'privacy.html'
+      - 'tests/privacy-bundle-diff-only.mjs'
+      - '.github/workflows/privacy-bundle-diff-only.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: privacy-bundle-diff-only-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  privacy-bundle-diff-only:
+    name: privacy.html changes only the reviewed DRAFT lines
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code (full history, so the base ref exists)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Diff privacy.html against the base branch
+        env:
+          BASE_REF: origin/${{ github.base_ref }}
+        run: node tests/privacy-bundle-diff-only.mjs
