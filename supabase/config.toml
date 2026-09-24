@@ -440,3 +440,14 @@ verify_jwt = false
 # HMAC token in the URL is the authorization.
 [functions.partner-email-optout]
 verify_jwt = false
+
+# gh-2154 P-5: Meta cannot send a Supabase JWT (this is Meta's own webhook
+# delivery, GET handshake + POST event notification). Authentication is
+# entirely in-handler: the GET handshake checks hub.verify_token against
+# META_LEADGEN_VERIFY_TOKEN, and the POST checks X-Hub-Signature-256 (an
+# HMAC-SHA256 of the raw body, keyed with META_APP_SECRET, constant-time
+# compared) BEFORE any read or write — see signature.ts / handler.ts. Same
+# verify_jwt=false-but-in-handler-authenticated shape as check-email-exists,
+# just with a signature instead of a rate-limited open endpoint.
+[functions.meta-leadgen-webhook]
+verify_jwt = false
