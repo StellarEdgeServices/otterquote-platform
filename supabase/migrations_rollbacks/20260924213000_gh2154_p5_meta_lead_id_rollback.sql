@@ -7,9 +7,12 @@
 -- remove the rate_limit_config row THIRD, restore
 -- referral_agents_guard_payout_columns() to its exact pre-migration body
 -- (md5 first-8 = 81c6af22, i.e. the meta_lead_id clause removed) FOURTH,
--- and only THEN drop meta_lead_id LAST — dropping the column while either
--- the 21-arg register_partner or the meta_lead_id-referencing guard clause
--- still exists would break both.
+-- drop meta_lead_id FIFTH — dropping the column while either the 21-arg
+-- register_partner or the meta_lead_id-referencing guard clause still
+-- exists would break both — and only THEN drop public.is_test_email()
+-- LAST (the P-5 should-fix server-side is_test derivation helper; the
+-- restored 20-arg register_partner above no longer calls it, same as it
+-- never did pre-migration).
 
 DELETE FROM public.rate_limit_config WHERE function_name = 'meta-leadgen-webhook';
 
@@ -256,3 +259,5 @@ $function$;
 
 ALTER TABLE public.referral_agents
   DROP COLUMN IF EXISTS meta_lead_id;
+
+DROP FUNCTION IF EXISTS public.is_test_email(text);

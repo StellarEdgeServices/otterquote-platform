@@ -42,11 +42,38 @@
 -- config row or the RPC denies by default (fail-closed) on every call —
 -- see gh1724's own note about exactly this trap.
 --
+-- REVIEW SHOULD-FIX (PR #2162, comment 5821998080, folded into P-5 by
+-- Kevin): register_partner() took p_is_test straight from the caller, so
+-- any anon client (P-1's own browser signup form included) could pass
+-- p_is_test=true for a normal, real email and self-mark as a test account.
+-- is_test is now derived server-side inside register_partner() as:
+--   v_is_test := public.is_test_email(v_email)
+--                OR (COALESCE(p_is_test, false)
+--                    AND COALESCE(auth.role() = 'service_role', false))
+-- public.is_test_email() (created below, IMMUTABLE, search_path pinned,
+-- EXECUTE revoked from PUBLIC/anon/authenticated -- called only from
+-- inside this SECURITY DEFINER function, so no grant is needed) mirrors
+-- js/auth.js's isTestEmail() verbatim: trim, lowercase, suffix-match
+-- '@otterquote-internal.test'. A client-supplied p_is_test=true is honored
+-- ONLY when auth.role() actually is 'service_role' -- fail-closed: a NULL
+-- auth.role() (which happens on some backends, same three-valued-logic
+-- trap as the REVIEW FAIL 5819691427 note on the guard trigger below) is
+-- explicitly coalesced to false, i.e. counts as NOT service_role, never as
+-- an allow. Confirmed via supabase/functions/meta-leadgen-webhook/index.ts:
+-- its Supabase client is createClient(supabaseUrl, serviceRoleKey) --
+-- service_role -- so the webhook's allowlist-driven is_test still passes
+-- through untouched. The P-1 pages already send
+-- p_is_test: Auth.isTestEmail(email), which this reproduces server-side,
+-- so client behavior for real test emails (anon or otherwise) is
+-- unchanged; only a normal email + a lying anon p_is_test=true now
+-- resolves to false.
+--
 -- ROLLBACK: see
 -- supabase/migrations_rollbacks/20260924213000_gh2154_p5_meta_lead_id_rollback.sql
 -- — drops the 21-arg register_partner, recreates the pre-migration 20-arg
 -- definition byte-identical to P-2's migration, drops the rate_limit_config
--- row, then drops meta_lead_id (which also drops its unique constraint).
+-- row, restores the guard trigger, drops meta_lead_id (which also drops
+-- its unique constraint), and drops public.is_test_email().
 
 ALTER TABLE public.referral_agents
   ADD COLUMN IF NOT EXISTS meta_lead_id text UNIQUE;
@@ -57,6 +84,22 @@ DROP FUNCTION IF EXISTS public.register_partner(
   text, text, text, text, text, text, text, text, text, text, jsonb, text,
   text, text, text, text, boolean, text, text, text
 );
+
+-- Helper mirroring js/auth.js's isTestEmail() verbatim:
+--   (email || '').trim().toLowerCase().endsWith('@otterquote-internal.test')
+-- IMMUTABLE (pure function of its input), search_path pinned, and EXECUTE
+-- revoked from PUBLIC/anon/authenticated since it is only ever called
+-- inside register_partner() (SECURITY DEFINER) -- no grant needed for that.
+CREATE FUNCTION public.is_test_email(p_email text)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+SET search_path = public
+AS $$
+  SELECT lower(btrim(coalesce(p_email, ''))) LIKE '%@otterquote-internal.test';
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.is_test_email(text) FROM PUBLIC, anon, authenticated;
 
 CREATE FUNCTION public.register_partner(
   p_agent_type       text,
@@ -95,6 +138,7 @@ DECLARE
   v_headers      jsonb;
   v_ip           text;
   v_ua           text;
+  v_is_test      boolean;
   v_agreement_version CONSTANT text := 'v2-2026-08';
 BEGIN
   v_rate := public.check_rate_limit(
@@ -144,6 +188,18 @@ BEGIN
   );
   v_ua := v_headers->>'user-agent';
 
+  -- REVIEW SHOULD-FIX (PR #2162, comment 5821998080): is_test is derived
+  -- server-side, never taken verbatim from the caller. A real test email
+  -- (per public.is_test_email(), mirroring js/auth.js's isTestEmail())
+  -- always marks true regardless of caller/role. Otherwise, a caller-
+  -- supplied p_is_test=true is honored ONLY for the service_role webhook
+  -- caller (meta-leadgen-webhook's allowlist-driven is_test) -- fail
+  -- closed: a NULL auth.role() counts as NOT service_role, never as an
+  -- allow, via the explicit COALESCE(..., false).
+  v_is_test := public.is_test_email(v_email)
+               OR (COALESCE(p_is_test, false)
+                   AND COALESCE(auth.role() = 'service_role', false));
+
   INSERT INTO referral_agents (
     agent_type, first_name, last_name, email, phone, company, website,
     service_area, photo_url, referred_by_note, metadata,
@@ -170,7 +226,7 @@ BEGIN
     NULLIF(btrim(COALESCE(p_utm_medium,   '')), ''),
     NULLIF(btrim(COALESCE(p_utm_campaign, '')), ''),
     NULLIF(btrim(COALESCE(p_utm_content,  '')), ''),
-    COALESCE(p_is_test, false),
+    v_is_test,
     v_agreement_version,
     now(),
     jsonb_build_object(
