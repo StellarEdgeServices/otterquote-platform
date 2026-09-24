@@ -498,9 +498,11 @@
      see the diff -- only WHEN the browser is asked to fetch them changes:
      now via the same idle-or-first-interaction pattern
      _oqLoadOnIdleOrInteraction already uses for the vendor bundles inside
-     them, or the window 'load' event, whichever comes first, so neither
-     file's own fetch/parse/execute can land ahead of Arm F's LCP element
-     (or any other arm's first paint). The dataLayer/fbq stubs a few lines
+     them (a short, capped requestIdleCallback -- 300ms here, falling back
+     to a plain timer -- or the visitor's first pointerdown/keydown/scroll/
+     touchstart, whichever comes first; there is no window 'load' listener
+     in this trigger), so neither file's own fetch/parse/execute can land
+     ahead of Arm F's LCP element (or any other arm's first paint). The dataLayer/fbq stubs a few lines
      above already make every gtag()/fbq() call site on this page safe to
      call before these files have run -- exactly the situation those
      stubs' own "unconditional" comments (this file and
@@ -644,13 +646,22 @@
      tracked-event set is a GA4 property/stream Admin-UI setting, not
      something a per-page `gtag('config', ...)` call can toggle; see the
      PR/report for why a code-level opt-out for just this one event was
-     not available here). Restoring Arm F's real content height back to at
-     least one full viewport (the same effective height main always
-     reserved when the header/footer were actually there) removes the
-     trigger at its source instead of fighting the symptom. Arms A-E and a
-     bare /start keep the original calc -- their header/footer still
-     renders, so the -120px budget is still correct for them. */
-  html[data-oq-start-arm="f"] main { min-height: 100vh; }
+     not available here). Restoring Arm F's height to exactly one viewport
+     (min-height: 100vh) was tried first and measured as NOT a fix: GA4
+     Enhanced Measurement's automatic `scroll` event fires whenever a
+     page's scrollable distance is non-zero at rest, and a page that is
+     exactly 100vh tall still has effectively zero scroll headroom once
+     mobile browser chrome (address bar, etc.) shrinks the *visual*
+     viewport below the *layout* viewport 100vh is computed against --
+     GA4 re-review (comment 5819921097) measured this rule sending
+     `scroll` on 8/8 Arm F loads. min-height: 112vh (comfortably above the
+     ~90% visual/layout viewport ratio GA4's own Enhanced Measurement docs
+     use as the "still counts as no scroll" threshold) gives Arm F real,
+     deliberate scroll headroom so GA4 sees genuine at-rest scrollable
+     content and does not fire the event on load. Arms A-E and a bare
+     /start keep the original calc -- their header/footer still renders,
+     so the -120px budget is still correct for them. */
+  html[data-oq-start-arm="f"] main { min-height: 112vh; }
   .router-card {
     width: 100%;
     max-width: 480px;
@@ -714,6 +725,16 @@
      somehow still reaches it (a race, a future nav.js change) -- not the
      primary mechanism. */
   html[data-oq-start-arm="f"] #site-header, html[data-oq-start-arm="f"] #site-footer { display: none; }
+  /* gh-2160 review fix (optional hardening, reviewer suggestion on
+     comment 5819921097): #step1 is Arm A's static markup and ships with
+     class="active" (display:block) directly in the raw HTML below --
+     every arm's JS (variant-c/d/e/f branches) removes that class once it
+     runs, but for the instant between first paint and that JS executing,
+     Arm F would otherwise show the Arm-A role-picker before its own
+     #routerFRoot content replaces it. Pure CSS, scoped the same way as
+     every other Arm-F-only rule above -- arms A-E and a bare /start are
+     unaffected, since #step1 IS their intended first screen. */
+  html[data-oq-start-arm="f"] #step1 { display: none !important; }
   .form-group { margin-bottom: var(--sp-4); }
   .form-label { display: block; font-weight: 600; color: var(--white); margin-bottom: var(--sp-1); font-size: 0.95rem; }
   .form-label.required::after { content: ' *'; color: var(--red); }

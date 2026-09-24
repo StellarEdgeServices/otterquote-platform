@@ -714,7 +714,7 @@ async function main() {
     buttonByText(k.root, COPY.arm_f_s4_button_losssheet).dispatchClick();
     ok(/help-estimate\?lead=/.test(k.fakeWindow.location.href), 'when the details call has already settled a CTA tap navigates immediately');
     const b = buildF({ insertFails: 1 }); drive(b, GOOD);
-    const backOf = (x) => buttons(x.root).find((y) => y.textContent === '← Back');
+    const backOf = (x) => buttons(x.root).find((y) => y.textContent === '\u2190 Back');
     ok(backOf(b) && backOf(b).disabled !== true, 'setup: Back is enabled on screen 3 before submit');
     submit(b);
     ok(backOf(b).disabled === true, 'Back is DISABLED as soon as the save starts');
