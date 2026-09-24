@@ -101,6 +101,29 @@ function renderUnsubscribeLine(optOutUrl: string, template: string): string {
   return template.split(OPT_OUT_URL_TOKEN).join(optOutUrl);
 }
 
+// ── PR #2162 review 5822537570 (gh-2154 P-4): the same rule applied to P-3's
+// notify-admin-new-partner -- HTML-escape every dynamic value this module
+// interpolates into htmlBody, and never let raw CR/LF reach an email header
+// (the subject). Today the only such dynamic value is the signed opt-out
+// URL; this is still the correct place to escape, since composeFinalCopy is
+// the single boundary where a per-partner value reaches the HTML body (see
+// this file's header comment: Sloane's real copy may add further
+// {{token}}-shaped substitutions later, and they will flow through here
+// too). The plain-text body is exempt, per Ben's ruling.
+
+function escapeHtml(str: string): string {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function stripHeaderInjection(str: string): string {
+  return String(str).replace(/[\r\n]+/g, " ");
+}
+
 /**
  * The FINAL, sendable copy for one (partner, stage): the per-agent_type/day
  * body from getCopyForAgentType, the [TEST] prefix (is_test partners only),
@@ -120,10 +143,15 @@ export function composeFinalCopy(
   subjectPrefix: string,
   unsubLineTemplate: string = getUnsubscribeLineTemplate(),
 ): EmailCopy {
-  const unsubLine = renderUnsubscribeLine(optOutUrl, unsubLineTemplate);
+  // Text body: raw value, unescaped -- Ben's ruling exempts plain text.
+  const unsubLineText = renderUnsubscribeLine(optOutUrl, unsubLineTemplate);
+  // HTML body: the dynamic value (optOutUrl) is HTML-escaped before it lands
+  // in markup; the static template text around it is Sloane's own copy, not
+  // partner-supplied, so it is not re-escaped here.
+  const unsubLineHtml = renderUnsubscribeLine(escapeHtml(optOutUrl), unsubLineTemplate);
   return {
-    subject: `${subjectPrefix}${baseCopy.subject}`,
-    textBody: `${baseCopy.textBody}\n\n${unsubLine}`,
-    htmlBody: `${baseCopy.htmlBody}<p>${unsubLine}</p>`,
+    subject: stripHeaderInjection(`${subjectPrefix}${baseCopy.subject}`),
+    textBody: `${baseCopy.textBody}\n\n${unsubLineText}`,
+    htmlBody: `${baseCopy.htmlBody}<p>${unsubLineHtml}</p>`,
   };
 }

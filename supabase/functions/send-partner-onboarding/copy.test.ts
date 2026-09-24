@@ -78,3 +78,40 @@ Deno.test("once real (non-placeholder) unsubscribe copy is used, composeFinalCop
   assertEquals(final.htmlBody.includes(optOutUrl), true);
   assertEquals(hasPlaceholderCopy(final), false);
 });
+
+// ── PR #2162 review 5822537570: every partner-supplied/dynamic value that
+// composeFinalCopy interpolates into htmlBody must be HTML-escaped (the
+// plain-text body is exempt, per Ben's ruling), and the composed subject
+// must never carry raw CR/LF. composeFinalCopy is the single boundary where
+// a dynamic value (today: the signed opt-out URL; per this file's own header,
+// also the future {{firstName}}-shaped tokens Sloane's real copy may add)
+// reaches the HTML body -- so the escaping belongs here, not at the caller.
+Deno.test("(escape) composeFinalCopy HTML-escapes a hostile value substituted into the HTML body, not the text body", () => {
+  const base = { subject: "Welcome", textBody: "Hello", htmlBody: "<p>Hello</p>" };
+  // A malformed/attacker-influenced opt-out URL (e.g. a corrupted base64url
+  // decode, or a future token shape) shaped like an XSS payload -- proves
+  // the escaping boundary holds regardless of how the value got there.
+  const hostileOptOutUrl = 'https://x/optout?t=<img src=x onerror=alert(1)>&r="><script>alert(2)</script>';
+  const final = composeFinalCopy(base, hostileOptOutUrl, "");
+
+  assertEquals(final.htmlBody.includes("<img src=x onerror=alert(1)>"), false);
+  assertEquals(final.htmlBody.includes("<script>alert(2)</script>"), false);
+  assertEquals(final.htmlBody.includes("&lt;img"), true);
+  assertEquals(final.htmlBody.includes("&lt;script&gt;"), true);
+
+  // Plain-text body is exempt from escaping per Ben's ruling -- the raw URL
+  // (still click/copy-able) is expected there, unescaped.
+  assertEquals(final.textBody.includes(hostileOptOutUrl), true);
+});
+
+Deno.test("(escape) composeFinalCopy strips CR/LF from the composed subject (header injection)", () => {
+  const base = {
+    subject: "Welcome\r\nBcc: evil@example.com",
+    textBody: "Hello",
+    htmlBody: "<p>Hello</p>",
+  };
+  const final = composeFinalCopy(base, "https://x/optout?t=abc", "[TEST] \n");
+
+  assertEquals(final.subject.includes("\r"), false);
+  assertEquals(final.subject.includes("\n"), false);
+});
