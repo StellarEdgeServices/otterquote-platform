@@ -50,14 +50,13 @@ import {
   buildUpgradeOrderInsert,
   UPGRADE_PRODUCT_CODE,
 } from "./measurement-upgrade-order.ts";
+import { checkMeasurementPaymentIntent, checkUpgradePaymentIntent } from "./payment-intent-checks.ts";
 
 const FUNCTION_NAME = "create-measurement-order";
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
 
-/** PaymentIntent metadata.type this function will accept. */
-const PI_TYPE = "measurement_order";
-/** Legacy value still emitted by the older frontend payment path. */
-const PI_TYPE_LEGACY = "hover_measurement";
+// The PaymentIntent metadata.type values this function accepts (measurement_order, and the legacy hover_measurement) now live with
+// the checks that use them: payment-intent-checks.ts.
 
 const ALLOWED_ORIGINS = [
   "https://otterquote.com",
@@ -217,28 +216,8 @@ async function verifyPayment(
     };
   }
   const pi = await piRes.json();
-
-  if (pi.status !== "succeeded") {
-    return {
-      ok: false,
-      status: 402,
-      error: `Payment must complete before we can order your report. Current payment status: ${pi.status}.`,
-    };
-  }
-  if (pi.amount !== expectedAmount) {
-    console.error(`[${FUNCTION_NAME}] PI amount mismatch:`, { got: pi.amount, expected: expectedAmount, pi: pi.id });
-    return { ok: false, status: 402, error: "Payment amount does not match the report price. Please contact support." };
-  }
-  if (claimId && pi.metadata?.claim_id && pi.metadata.claim_id !== claimId) {
-    console.error(`[${FUNCTION_NAME}] PI claim mismatch:`, { pi_claim: pi.metadata.claim_id, supplied: claimId });
-    return { ok: false, status: 402, error: "Payment does not belong to this project. Please contact support." };
-  }
-  if (pi.metadata?.type && pi.metadata.type !== PI_TYPE && pi.metadata.type !== PI_TYPE_LEGACY) {
-    console.error(`[${FUNCTION_NAME}] PI type mismatch:`, { pi_type: pi.metadata.type });
-    return { ok: false, status: 402, error: "Payment is not a measurement charge. Please contact support." };
-  }
-
-  return { ok: true, amount: pi.amount, stripeChargeId: pi.latest_charge ?? null };
+  // gh-2107 (Ben's step 2 on #2078): the post-fetch checks live in payment-intent-checks.ts (verbatim, plus the USD guard).
+  return checkMeasurementPaymentIntent(pi, { expectedAmount, claimId });
 }
 
 /**
@@ -278,24 +257,8 @@ async function verifyUpgradePayment(
     };
   }
   const pi = await piRes.json();
-
-  if (pi.status !== "succeeded") {
-    return {
-      ok: false,
-      status: 402,
-      error: `Payment must complete before we can order your report. Current payment status: ${pi.status}.`,
-    };
-  }
-  if (pi.metadata?.claim_id && pi.metadata.claim_id !== claimId) {
-    console.error(`[${FUNCTION_NAME}] upgrade PI claim mismatch:`, { pi_claim: pi.metadata.claim_id, supplied: claimId });
-    return { ok: false, status: 402, error: "Payment does not belong to this project. Please contact support." };
-  }
-  if (pi.metadata?.type !== "measurement_upgrade") {
-    console.error(`[${FUNCTION_NAME}] upgrade PI type mismatch:`, { pi_type: pi.metadata?.type });
-    return { ok: false, status: 402, error: "Payment is not a measurement-upgrade charge. Please contact support." };
-  }
-
-  return { ok: true, amount: pi.amount, stripeChargeId: pi.latest_charge ?? null };
+  // gh-2107 (Ben's step 2 on #2078): same module, same USD guard.
+  return checkUpgradePaymentIntent(pi, { claimId });
 }
 
 /**
