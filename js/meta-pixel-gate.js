@@ -84,6 +84,29 @@
     }
   }
 
+  // gh-2107 / D-330 (Ben's ruling on #2078, 5805593465, item a; privacy policy Section 12 promises an opt-out of SHARING, not
+  // of one channel): a visitor who has opted out of advertising sharing never loads the Meta Pixel. Two signals, kept in
+  // sync with react-app/app/lib/ad-optout.ts: the browser's Global Privacy Control (navigator.globalPrivacyControl === true),
+  // and the `oq_ad_optout=1` cookie that GPC, the React app's read of profiles.ad_sharing_opt_out, and this function leave
+  // behind (1 year, Domain=.otterquote.com, same shape as oq_internal). Synchronous, wrapped so it can never break a page.
+  function oqAdOptOut() {
+    try {
+      var cookieMatch = document.cookie.match(/(?:^|; )oq_ad_optout=([^;]*)/);
+      var cookieFlag = !!(cookieMatch && decodeURIComponent(cookieMatch[1]) === '1');
+      var gpc = (typeof navigator !== 'undefined') && navigator.globalPrivacyControl === true;
+      if (gpc && !cookieFlag) {
+        var domainAttr = '';
+        if (/(^|\.)otterquote\.com$/.test(window.location.hostname)) {
+          domainAttr = '; Domain=.otterquote.com';
+        }
+        document.cookie = 'oq_ad_optout=1; Max-Age=' + (60 * 60 * 24 * 365) + '; Path=/' + domainAttr + '; SameSite=Lax';
+      }
+      return gpc || cookieFlag;
+    } catch (e) {
+      return false;
+    }
+  }
+
   // fbq is defined unconditionally so every page's existing
   // fbq('track', ...) / fbq('trackCustom', ...) calls keep working (as
   // harmless queued-but-never-sent pushes) even when the pixel never loads
@@ -125,6 +148,12 @@
   // more reason fbevents.js never actually loads: the current visit is our
   // own walk/probe, not a visitor.
   if (oqInternal()) {
+    return;
+  }
+
+  // gh-2107: an opted-out visitor never loads fbevents.js (see oqAdOptOut above). Checked after the fbq stub so every page's
+  // existing fbq(...) call sites stay harmless queued-but-never-sent pushes, exactly as for the other reasons not to load.
+  if (oqAdOptOut()) {
     return;
   }
 
