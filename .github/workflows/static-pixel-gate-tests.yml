@@ -23,6 +23,7 @@ on:
       - 'partner-insurance.html'
       - 'partner-inspectors.html'
       - 'tests/gh2154-p1-short-signup.mjs'
+      - 'tests/gh2154-p1-set-password.mjs'
       - '.github/workflows/static-pixel-gate-tests.yml'
   push:
     branches: [main]
@@ -39,6 +40,7 @@ on:
       - 'partner-insurance.html'
       - 'partner-inspectors.html'
       - 'tests/gh2154-p1-short-signup.mjs'
+      - 'tests/gh2154-p1-set-password.mjs'
       - '.github/workflows/static-pixel-gate-tests.yml'
 
 permissions:
@@ -73,3 +75,5 @@ jobs:
         run: node tests/gh2154-p2-app-activation.mjs
       - name: Short partner signup field set, attribution, D-333 (gh2154-p1-short-signup)
         run: node tests/gh2154-p1-short-signup.mjs
+      - name: Partner dashboard one-time set-password card (gh2154-p1-set-password)
+        run: node tests/gh2154-p1-set-password.mjs

@@ -907,6 +907,33 @@
             </div>
         </div>
         <div id="partnerDashboardContent">
+        <!-- gh-2154 P-1: one-time "Set your password" card. Shown when this
+             signed-in partner's account was created via the passwordless
+             short-signup flow and hasn't set a real password yet
+             (localStorage flag 'oq_partner_needs_password:<user id>', set by
+             the signup pages on successful signUp). No skip/dismiss control
+             by design (Ben's ruling, #2154 comment 5820448800) — it is
+             hidden only by a successful Auth.updatePassword() call below,
+             and reappears on every load until that succeeds. Placed above
+             the app-install prompt, at the same init() point P-2's
+             activation call runs. -->
+        <div class="referral-link-section" id="setPasswordCard" style="display: none;">
+            <div class="referral-link-label">Set your password</div>
+            <p class="link-hint" style="margin-top: 0;">Set a password so you can sign in to the app.</p>
+            <form id="setPasswordForm" novalidate>
+                <div class="form-group">
+                    <label class="form-label" for="setPasswordNew">New Password</label>
+                    <input type="password" class="form-input" id="setPasswordNew" required autocomplete="new-password" minlength="8" placeholder="At least 8 characters">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="setPasswordConfirm">Confirm New Password</label>
+                    <input type="password" class="form-input" id="setPasswordConfirm" required autocomplete="new-password" placeholder="Re-enter your new password">
+                </div>
+                <div id="setPasswordStatus" role="status" style="margin-top: var(--sp-2); font-size: 0.85rem;"></div>
+                <button type="submit" class="btn" id="setPasswordSubmit" style="margin-top: 8px;">Set Password</button>
+            </form>
+        </div>
+
         <!-- gh-fix: moved to the top of the dashboard (was buried at the bottom
              of the hero, under two other link sections). Hidden by default in
              markup; shown by refreshAppInstallBanner() (bottom script) once we
@@ -1371,6 +1398,82 @@ Let me know if you have any questions!
         // (default) is today's behavior unchanged. See loadW9GateFlag() below.
         let w9GateRetired = false;
 
+        // gh-2154 P-1: one-time "Set your password" card. The flag is set by
+        // the signup pages ('oq_partner_needs_password:<user id>') for a
+        // partner whose Auth credential was created with a hidden,
+        // never-shown password. No skip/dismiss control (Ben's ruling,
+        // #2154 comment 5820448800) — the card is re-shown on every load
+        // until Auth.updatePassword() succeeds below, which is the only
+        // thing that clears the flag. setPasswordUserId is a dedicated
+        // module variable (not currentUser directly) so this whole feature
+        // is self-contained and independently testable. Placed here (ahead
+        // of the P-2 activation block below) so its extraction span never
+        // overlaps tests/gh2154-p2-app-activation.mjs's anchor.
+        let setPasswordUserId = null;
+
+        function needsPasswordFlagKey(userId) {
+            return 'oq_partner_needs_password:' + userId;
+        }
+
+        function refreshSetPasswordCard(userId) {
+            setPasswordUserId = userId || null;
+            const card = document.getElementById('setPasswordCard');
+            if (!card || !setPasswordUserId) return;
+            let needsPassword = false;
+            try { needsPassword = window.localStorage.getItem(needsPasswordFlagKey(setPasswordUserId)) === '1'; } catch (e) { /* private mode / blocked storage */ }
+            card.style.display = needsPassword ? 'block' : 'none';
+        }
+
+        (function initSetPasswordForm() {
+            const form = document.getElementById('setPasswordForm');
+            if (!form) return;
+            const statusEl = document.getElementById('setPasswordStatus');
+
+            form.addEventListener('submit', async function (e) {
+                e.preventDefault();
+                statusEl.style.color = '';
+                statusEl.textContent = '';
+
+                const newPassword = document.getElementById('setPasswordNew').value;
+                const confirmPassword = document.getElementById('setPasswordConfirm').value;
+
+                // Same minimum length partner-login.html's reset flow enforces.
+                if (!newPassword || newPassword.length < 8) {
+                    statusEl.style.color = '#dc2626';
+                    statusEl.textContent = 'Password must be at least 8 characters.';
+                    return;
+                }
+                if (newPassword !== confirmPassword) {
+                    statusEl.style.color = '#dc2626';
+                    statusEl.textContent = 'Passwords do not match.';
+                    return;
+                }
+
+                const submitBtn = document.getElementById('setPasswordSubmit');
+                submitBtn.disabled = true;
+
+                try {
+                    await Auth.updatePassword(newPassword);
+
+                    // Success — clear the flag for this user and hide the card.
+                    if (setPasswordUserId) {
+                        try { window.localStorage.removeItem(needsPasswordFlagKey(setPasswordUserId)); } catch (e) { /* non-fatal */ }
+                    }
+                    const card = document.getElementById('setPasswordCard');
+                    if (card) card.style.display = 'none';
+                } catch (err) {
+                    console.error('Set password error:', err);
+                    // Flag is intentionally left set — the card reappears on
+                    // the next load until updatePassword() succeeds.
+                    statusEl.style.color = '#dc2626';
+                    statusEl.textContent = 'Could not set your password: ' +
+                        (err && err.message ? err.message : 'unknown error') + '. Please try again.';
+                } finally {
+                    submitBtn.disabled = false;
+                }
+            });
+        })();
+
         // D-319 (gh-1509 half A): reads platform_settings.w9_gate_retired —
         // same key/value config pattern as D204_HARD_FILTER in
         // contractor-bid-form.html. NOTE: platform_settings' client-readable
@@ -1522,6 +1625,10 @@ Let me know if you have any questions!
                     if (currentPartner && isStandaloneLaunch() && !currentPartner.app_first_signed_in_launch_at) {
                         recordAppActivationIfSignedIn(currentUser.id);
                     }
+
+                    // gh-2154 P-1: show the one-time "Set your password" card
+                    // now that currentUser/currentPartner are both resolved.
+                    refreshSetPasswordCard(currentUser.id);
 
                     updateUI();
                     await loadReferrals();

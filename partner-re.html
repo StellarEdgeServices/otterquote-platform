@@ -1233,6 +1233,28 @@
   }
 
   /**
+   * gh-2154 P-1 (CSPRNG fix): the hidden signup password must not be
+   * predictable — a previous build derived it from Date.now()/Math.random(),
+   * which is guessable. Uses crypto.getRandomValues (32 bytes),
+   * base64url-encoded, plus a fixed suffix so the generated string still
+   * satisfies any character-class password-policy rule. Refuses (throws)
+   * rather than ever falling back to Math.random when a CSPRNG isn't
+   * available — callers must run this before any register_partner /
+   * signUp call so a refusal here makes zero network calls.
+   */
+  function generateSecurePartnerPassword() {
+    if (!window.crypto || typeof window.crypto.getRandomValues !== 'function') {
+      throw new Error('Secure random number generator is unavailable.');
+    }
+    const bytes = new Uint8Array(32);
+    window.crypto.getRandomValues(bytes);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    const base64url = btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    return base64url + 'Aa1!';
+  }
+
+  /**
    * gh-865: the visitor must see and explicitly confirm their partner type
    * before the account is created — the page they landed on (and therefore
    * this page's default) may not silently decide agent_type. Recruiter
@@ -1460,6 +1482,12 @@
     submitBtn.disabled = true;
 
     try {
+      // gh-2154 P-1 (CSPRNG fix): generate the hidden signup password first,
+      // before any network call. If a CSPRNG isn't available, this throws
+      // and the catch block below shows the page's existing generic error
+      // with zero register_partner / signUp calls made.
+      const generatedPassword = generateSecurePartnerPassword();
+
       // Save lead to database
       const { error: leadError } = await sb
         .from('leads')
@@ -1542,9 +1570,17 @@
       // partner-login.html. signUpResult.session is null when the Supabase
       // project requires email confirmation before first sign-in — handled
       // the same way as before, just via an alert instead of a dedicated
-      // screen.
-      const generatedPassword = Date.now().toString(36) + Math.random().toString(36).slice(2) + 'Aa1!';
+      // screen. generatedPassword was already computed above (CSPRNG fix).
       const signUpResult = await Auth.signUpWithPassword(email, generatedPassword, agentType);
+
+      // gh-2154 P-1: this partner has no real password yet — flag it so
+      // partner-dashboard.html shows the one-time "Set your password" card
+      // on first landing. Scoped per user id so it never applies to anyone
+      // else's flag on a shared device/browser.
+      if (signUpResult && signUpResult.user && signUpResult.user.id) {
+        try { localStorage.setItem('oq_partner_needs_password:' + signUpResult.user.id, '1'); } catch (e) { /* non-fatal */ }
+      }
+
       if (!signUpResult || !signUpResult.session) {
         alert('Account created! Check your email to confirm your address, then sign in at the Partner Login page.');
       }

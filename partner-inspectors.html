@@ -1026,6 +1026,28 @@ async function detectRecruitCode() {
 }
 
 /**
+ * gh-2154 P-1 (CSPRNG fix): the hidden signup password must not be
+ * predictable — a previous build derived it from Date.now()/Math.random(),
+ * which is guessable. Uses crypto.getRandomValues (32 bytes),
+ * base64url-encoded, plus a fixed suffix so the generated string still
+ * satisfies any character-class password-policy rule. Refuses (throws)
+ * rather than ever falling back to Math.random when a CSPRNG isn't
+ * available — callers must run this before any register_partner / signUp
+ * call so a refusal here makes zero network calls.
+ */
+function generateSecurePartnerPassword() {
+  if (!window.crypto || typeof window.crypto.getRandomValues !== 'function') {
+    throw new Error('Secure random number generator is unavailable.');
+  }
+  const bytes = new Uint8Array(32);
+  window.crypto.getRandomValues(bytes);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  const base64url = btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return base64url + 'Aa1!';
+}
+
+/**
  * gh-865: the visitor must see and explicitly confirm their partner type
  * before the account is created — the page they landed on (and therefore
  * this page's default) may not silently decide agent_type. Recruiter
@@ -1107,6 +1129,12 @@ async function handleSignup(e) {
   submitBtn.textContent = 'Setting up your account...';
 
   try {
+    // gh-2154 P-1 (CSPRNG fix): generate the hidden signup password first,
+    // before any network call. If a CSPRNG isn't available, this throws
+    // and the catch block below shows the page's existing generic error
+    // with zero register_partner / signUp calls made.
+    const generatedPassword = generateSecurePartnerPassword();
+
     // #571 / v95: server-side register_partner RPC. referral_agents has no
     // anon SELECT policy, so a direct .insert().select() can never read the
     // trigger-generated code back. The SECURITY DEFINER RPC inserts (user_id
@@ -1178,8 +1206,17 @@ async function handleSignup(e) {
     // project requires email confirmation before first sign-in — handled
     // via an alert, same as the other partner_exists notices on this page.
     if (window.Auth) {
-      const generatedPassword = Date.now().toString(36) + Math.random().toString(36).slice(2) + 'Aa1!';
+      // generatedPassword was already computed above (CSPRNG fix).
       const signUpResult = await Auth.signUpWithPassword(email, generatedPassword, agentType);
+
+      // gh-2154 P-1: this partner has no real password yet — flag it so
+      // partner-dashboard.html shows the one-time "Set your password" card
+      // on first landing. Scoped per user id so it never applies to
+      // anyone else's flag on a shared device/browser.
+      if (signUpResult && signUpResult.user && signUpResult.user.id) {
+        try { localStorage.setItem('oq_partner_needs_password:' + signUpResult.user.id, '1'); } catch (e) { /* non-fatal */ }
+      }
+
       if (!signUpResult || !signUpResult.session) {
         alert('Account created! Check your email to confirm your address, then sign in at the Partner Login page.');
       }

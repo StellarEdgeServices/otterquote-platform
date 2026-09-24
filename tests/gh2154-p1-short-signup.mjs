@@ -308,7 +308,7 @@ function makeElementStore() {
   };
 }
 
-function runPageScript(page, { search }) {
+function runPageScript(page, { search, omitCrypto = false } = {}) {
   const html = fs.readFileSync(path.join(repoRoot, page.file), 'utf8');
   const script = extractInlineScripts(html);
   if (!script || script.indexOf('register_partner') === -1) {
@@ -322,6 +322,26 @@ function runPageScript(page, { search }) {
     getItem: (k) => (lsStore.has(k) ? lsStore.get(k) : null),
     setItem: (k, v) => { lsStore.set(k, String(v)); },
     removeItem: (k) => { lsStore.delete(k); },
+  };
+
+  // gh-2154 P-1 (CSPRNG fix, test (a)/(b)): instrument crypto.getRandomValues
+  // and Math.random so the test can assert the signup path uses the former
+  // exactly once per submit and never the latter. omitCrypto simulates a
+  // browser with no CSPRNG available at all.
+  const cryptoCounters = { getRandomValues: 0 };
+  const mathCounters = { random: 0 };
+  const realMathRandom = Math.random;
+  const instrumentedMath = Object.create(Math);
+  instrumentedMath.random = function (...args) {
+    mathCounters.random++;
+    return realMathRandom.apply(Math, args);
+  };
+  const cryptoStub = omitCrypto ? undefined : {
+    getRandomValues(arr) {
+      cryptoCounters.getRandomValues++;
+      for (let i = 0; i < arr.length; i++) arr[i] = i % 256;
+      return arr;
+    },
   };
   const domContentLoadedListeners = [];
   const doc = {
@@ -344,10 +364,12 @@ function runPageScript(page, { search }) {
     addEventListener() {}, removeEventListener() {},
     scrollTo() {},
     requestIdleCallback(fn) { fn(); return 1; },
+    crypto: cryptoStub,
   };
   win.window = win;
+  const authCounters = { signUpWithPassword: 0 };
   const AuthObj = {
-    signUpWithPassword: async () => ({ session: null }),
+    signUpWithPassword: async () => { authCounters.signUpWithPassword++; return { session: null, user: { id: 'gh2154-p1-test-user-id' } }; },
     hasPartnerSession: async () => false,
     getUser: async () => null,
   };
@@ -359,7 +381,9 @@ function runPageScript(page, { search }) {
     navigator: { clipboard: { writeText: () => Promise.resolve() } },
     console,
     URLSearchParams,
-    Promise, JSON, Date, Math, Array, Object, String, Number, Boolean, RegExp,
+    Promise, JSON, Date, Math: instrumentedMath, Array, Object, String, Number, Boolean, RegExp,
+    Uint8Array, btoa: (str) => Buffer.from(str, 'binary').toString('base64'),
+    crypto: cryptoStub,
     setTimeout, clearTimeout, setInterval, clearInterval,
     decodeURIComponent, encodeURIComponent,
     alert() {}, confirm() { return true; },
@@ -403,7 +427,7 @@ function runPageScript(page, { search }) {
   for (const fn of domContentLoadedListeners) {
     try { fn(); } catch (e) { /* ignore, surfaced via missing submit listener below */ }
   }
-  return { store, rpcCalls, ctx };
+  return { store, rpcCalls, ctx, cryptoCounters, mathCounters, authCounters, lsStore };
 }
 
 async function submitForm(runResult, formId, fill) {
@@ -502,6 +526,60 @@ for (const page of PAGES) {
         // exception, it's zero calls, which is exactly the passing shape.
         // Only report FAIL if we truly could not drive the page at all.
         failWithReason(page.label + ' (d) NEGATIVE CONTROL: submitting without the agreement checkbox makes zero register_partner calls', e.message);
+      }
+    }
+  }
+
+  // (g) gh-2154 P-1 CSPRNG fix: the signup path calls crypto.getRandomValues
+  // exactly once per submit and never Math.random.
+  {
+    const run = runPageScript(page, { search: QS });
+    if (run.setupError) {
+      failWithReason(page.label + ' (g): crypto.getRandomValues called exactly once per submit, never Math.random', run.setupError);
+    } else {
+      try {
+        await submitForm(run, page.formId, fullFill(page));
+        ok(run.cryptoCounters.getRandomValues === 1, page.label + ' (g): crypto.getRandomValues() called exactly once on submit -- got ' + run.cryptoCounters.getRandomValues);
+        ok(run.mathCounters.random === 0, page.label + ' (g): Math.random() is never called in the signup path -- got ' + run.mathCounters.random + ' call(s)');
+      } catch (e) {
+        failWithReason(page.label + ' (g): crypto.getRandomValues called exactly once per submit, never Math.random', e.message);
+      }
+    }
+  }
+
+  // (h) NEGATIVE CONTROL: no CSPRNG available -> the page refuses to sign up
+  // (zero Auth.signUpWithPassword calls, zero register_partner calls) and
+  // never falls back to Math.random.
+  {
+    const run = runPageScript(page, { search: QS, omitCrypto: true });
+    if (run.setupError) {
+      failWithReason(page.label + ' (h) NEGATIVE CONTROL: no crypto.getRandomValues -> zero signUp / register_partner calls', run.setupError);
+    } else {
+      try {
+        await submitForm(run, page.formId, fullFill(page));
+        const registerCalls = run.rpcCalls.filter((c) => c.name === 'register_partner');
+        ok(registerCalls.length === 0, page.label + ' (h) NEGATIVE CONTROL: no crypto.getRandomValues -> zero register_partner calls -- got ' + registerCalls.length);
+        ok(run.authCounters.signUpWithPassword === 0, page.label + ' (h) NEGATIVE CONTROL: no crypto.getRandomValues -> zero Auth.signUpWithPassword calls -- got ' + run.authCounters.signUpWithPassword);
+        ok(run.mathCounters.random === 0, page.label + ' (h) NEGATIVE CONTROL: no crypto.getRandomValues -> never falls back to Math.random -- got ' + run.mathCounters.random + ' call(s)');
+      } catch (e) {
+        failWithReason(page.label + ' (h) NEGATIVE CONTROL: no crypto.getRandomValues -> zero signUp / register_partner calls', e.message);
+      }
+    }
+  }
+
+  // (i) gh-2154 P-1: a successful signup sets the
+  // 'oq_partner_needs_password:<uid>' localStorage flag for the created user.
+  {
+    const run = runPageScript(page, { search: QS });
+    if (run.setupError) {
+      failWithReason(page.label + ' (i): a successful signup sets oq_partner_needs_password:<uid>', run.setupError);
+    } else {
+      try {
+        await submitForm(run, page.formId, fullFill(page));
+        const flagValue = run.lsStore.get('oq_partner_needs_password:gh2154-p1-test-user-id');
+        ok(flagValue === '1', page.label + ' (i): oq_partner_needs_password:<uid> is set to "1" after a successful signup -- got ' + JSON.stringify(flagValue));
+      } catch (e) {
+        failWithReason(page.label + ' (i): a successful signup sets oq_partner_needs_password:<uid>', e.message);
       }
     }
   }
