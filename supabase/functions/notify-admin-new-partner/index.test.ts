@@ -413,3 +413,93 @@ Deno.test("(f) handler makes exactly the expected external calls in order -- no 
   ]);
   assertEquals(inserted.length, 1);
 });
+
+// ---------------------------------------------------------------------------
+// (g)/(h)/(i) HTML-escaping of partner-supplied fields, per PR #2162 review
+// comment 5822537570: an explicit ?funnel_id= accepts any string up to 64
+// chars (e.g. `<img src=x onerror=alert(1)>`) and lands verbatim in
+// referral_agents.funnel_id. Every partner-supplied field interpolated into
+// the HTML body must be escaped; the subject header must never carry raw
+// CR/LF (header injection). The plain-text body is exempt from escaping.
+// ---------------------------------------------------------------------------
+Deno.test("(g) HTML body escapes an attacker-supplied funnel_id and name, no raw markup reaches the HTML", async () => {
+  const evilPartner: PartnerRow = {
+    ...PARTNER,
+    first_name: "<b>X</b>",
+    last_name: null,
+    funnel_id: "<img src=x onerror=alert(1)>",
+  };
+  const { deps, fetchCalls } = buildDeps({}, { partner: evilPartner });
+
+  const res = await handleNotifyAdminNewPartner(makeRequest({ partner_id: evilPartner.id }), deps);
+  assertEquals(res.status, 200);
+
+  const mailgunCalls = fetchCalls.filter((c) => c.url.includes("api.mailgun.net"));
+  assertEquals(mailgunCalls.length, 1);
+  const body = mailgunCalls[0].init?.body as FormData;
+  const html = body.get("html") as string;
+
+  assertMatch(html, /&lt;img/);
+  assertEquals(html.includes("<img src=x onerror=alert(1)>"), false);
+  assertMatch(html, /&lt;b&gt;X&lt;\/b&gt;/);
+  assertEquals(html.includes("<b>X</b>"), false);
+});
+
+Deno.test("(h) HTML body escapes attacker-supplied agent_type, email and company", async () => {
+  const evilPartner: PartnerRow = {
+    ...PARTNER,
+    agent_type: '"><script>alert(1)</script>',
+    email: "a\"b@example.invalid",
+    company: "Acme & <Sons> \"Co\"",
+  };
+  const { deps, fetchCalls } = buildDeps({}, { partner: evilPartner });
+
+  const res = await handleNotifyAdminNewPartner(makeRequest({ partner_id: evilPartner.id }), deps);
+  assertEquals(res.status, 200);
+
+  const mailgunCalls = fetchCalls.filter((c) => c.url.includes("api.mailgun.net"));
+  const body = mailgunCalls[0].init?.body as FormData;
+  const html = body.get("html") as string;
+
+  assertEquals(html.includes("<script>alert(1)</script>"), false);
+  assertMatch(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+  assertMatch(html, /Acme &amp; &lt;Sons&gt; &quot;Co&quot;/);
+  assertEquals(html.includes('a"b@example.invalid'), false);
+});
+
+Deno.test("(h2) HTML body escapes a single-quote/apostrophe in company (attribute-breakout)", async () => {
+  const evilPartner: PartnerRow = {
+    ...PARTNER,
+    company: "Roofing' onmouseover='alert(1)",
+  };
+  const { deps, fetchCalls } = buildDeps({}, { partner: evilPartner });
+
+  const res = await handleNotifyAdminNewPartner(makeRequest({ partner_id: evilPartner.id }), deps);
+  assertEquals(res.status, 200);
+
+  const mailgunCalls = fetchCalls.filter((c) => c.url.includes("api.mailgun.net"));
+  const body = mailgunCalls[0].init?.body as FormData;
+  const html = body.get("html") as string;
+
+  assertEquals(html.includes("Roofing' onmouseover='alert(1)"), false);
+  assertMatch(html, /Roofing&#39;/);
+});
+
+Deno.test("(i) subject header strips CR/LF from a partner-supplied name (header injection)", async () => {
+  const evilPartner: PartnerRow = {
+    ...PARTNER,
+    first_name: "Jamie\r\nBcc: evil@example.com",
+    last_name: "Partner\nX-Injected: true",
+  };
+  const { deps, fetchCalls } = buildDeps({}, { partner: evilPartner });
+
+  const res = await handleNotifyAdminNewPartner(makeRequest({ partner_id: evilPartner.id }), deps);
+  assertEquals(res.status, 200);
+
+  const mailgunCalls = fetchCalls.filter((c) => c.url.includes("api.mailgun.net"));
+  const body = mailgunCalls[0].init?.body as FormData;
+  const subject = body.get("subject") as string;
+
+  assertEquals(subject.includes("\r"), false);
+  assertEquals(subject.includes("\n"), false);
+});
