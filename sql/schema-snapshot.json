@@ -8,6 +8,11 @@
     "created_at",
     "is_test"
   ],
+  "ad_sharing_suppressions": [
+    "email_sha256",
+    "source",
+    "created_at"
+  ],
   "adjuster_email_requests": [
     "id",
     "claim_id",
@@ -748,7 +753,10 @@
     "referring_agent_email",
     "role",
     "sms_consent_ts",
-    "is_test"
+    "is_test",
+    "ad_sharing_opt_out",
+    "ad_sharing_opt_out_at",
+    "ad_sharing_opt_out_source"
   ],
   "quotes": [
     "id",
