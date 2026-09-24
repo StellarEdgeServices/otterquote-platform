@@ -22,7 +22,15 @@ vi.mock('@/hooks/use-notification-count', () => ({
   useNotificationCount: () => ({ count: 0, loading: false, error: null }),
 }));
 vi.mock('@/lib/supabase', () => ({
-  supabase: { from: vi.fn(), functions: { invoke: vi.fn() }, rpc: vi.fn(() => Promise.resolve({ error: null })) },
+  // status: 200 — linkPendingLeadOnce (gh-2121 M3, comment 5823511418) only
+  // clears the sessionStorage capture on a definitive 200-499 HTTP
+  // response; a mock resolving without `status` matches nothing supabase-js
+  // actually returns and would leave the capture stuck for this test.
+  supabase: {
+    from: vi.fn(),
+    functions: { invoke: vi.fn() },
+    rpc: vi.fn(() => Promise.resolve({ data: true, error: null, status: 200 })),
+  },
 }));
 
 // Mock the data layer — the page test drives its return values directly.

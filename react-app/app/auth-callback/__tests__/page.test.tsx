@@ -26,7 +26,7 @@ vi.mock('@/lib/supabase', () => {
   return {
     supabase: {
       auth: { onAuthStateChange: vi.fn() },
-      rpc: vi.fn(() => Promise.resolve({ error: null })),
+      rpc: vi.fn(() => Promise.resolve({ data: true, error: null, status: 200 })),
       from: vi.fn((table: string) => {
         if (table === 'resolved_user_role') {
           return chain({ data: { derived_role: 'homeowner' }, error: null });
@@ -235,6 +235,91 @@ describe('auth-callback page — gh-2121/M2: password-path lead link lands here,
       expect.anything(),
     );
   });
+});
+
+describe('auth-callback page — gh-2121/M3: slow link call is not cancelled by navigation', () => {
+  // PR #2163 REVIEW: FAIL (M3, comment 5823511418): linkPendingLeadOnce()
+  // used to be fire-and-forget here, started and then immediately raced by
+  // window.location.href once role resolution finished. This proves the
+  // fix: a link RPC slower than the rest of the page (1.5s, per the M3
+  // ask) is awaited to completion (in parallel with recordFirstTouch)
+  // BEFORE the redirect fires, so the lead ends up linked, not lost.
+  let hrefSpy: ReturnType<typeof vi.fn>;
+  let originalLocation: PropertyDescriptor | undefined;
+
+  function passwordSession() {
+    return {
+      user: { id: 'u1', email: 'jane@example.com', app_metadata: { provider: 'email' } },
+    };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    sessionStorage.clear();
+    (maybeFireGoogleSignUp as unknown as Fn).mockResolvedValue(true);
+    hrefSpy = vi.fn();
+    originalLocation = Object.getOwnPropertyDescriptor(window, 'location');
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...window.location, hash: '', search: '', set href(v: string) { hrefSpy(v); } },
+    });
+  });
+
+  afterEach(() => {
+    if (originalLocation) Object.defineProperty(window, 'location', originalLocation);
+    sessionStorage.clear();
+    // vi.clearAllMocks() (run in the next test's beforeEach) resets calls
+    // but NOT an implementation installed via mockImplementation — restore
+    // the fast default here so later describe blocks in this file (which
+    // also exercise supabase.rpc via recordFirstTouch) are not left waiting
+    // on this test's 1.5s delay.
+    (supabase.rpc as unknown as Fn).mockImplementation(() =>
+      Promise.resolve({ data: true, error: null, status: 200 }),
+    );
+  });
+
+  it(
+    'a 1.5s link RPC is awaited to completion before the redirect fires, and the lead ends up linked',
+    async () => {
+      sessionStorage.setItem(
+        LEAD_STORAGE_KEY,
+        JSON.stringify({ id: 'lead-slow', exp: Date.now() + LEAD_TTL_MS }),
+      );
+
+      (supabase.rpc as unknown as Fn).mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            setTimeout(() => resolve({ data: true, error: null, status: 200 }), 1500);
+          }),
+      );
+
+      let capturedCallback: ((event: string, session: unknown) => void) | undefined;
+      (supabase.auth.onAuthStateChange as unknown as Fn).mockImplementation((cb) => {
+        capturedCallback = cb;
+        return { data: { subscription: { unsubscribe: vi.fn() } } };
+      });
+
+      render(<AuthCallbackPage />);
+      await waitFor(() => expect(capturedCallback).toBeDefined());
+
+      capturedCallback?.('SIGNED_IN', passwordSession());
+
+      // The redirect must not fire before the 1.5s RPC has had a real
+      // chance to settle -- proves the navigation is not racing/cancelling
+      // the call the way it did pre-M3.
+      await new Promise((r) => setTimeout(r, 300));
+      expect(hrefSpy).not.toHaveBeenCalled();
+
+      await waitFor(() => expect(hrefSpy).toHaveBeenCalled(), { timeout: 3000 });
+      expect(supabase.rpc as unknown as Fn).toHaveBeenCalledWith('set_lead_converted', {
+        p_lead_id: 'lead-slow',
+      });
+      // Linked, not lost: the capture is consumed because a definitive
+      // (200) answer did arrive within linkPendingLeadOnce's bound.
+      expect(sessionStorage.getItem(LEAD_STORAGE_KEY)).toBeNull();
+    },
+    8000,
+  );
 });
 
 describe('auth-callback page — gh-1901 Option 2: Google name backfill', () => {

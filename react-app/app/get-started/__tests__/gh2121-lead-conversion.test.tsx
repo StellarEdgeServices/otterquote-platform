@@ -44,7 +44,9 @@ vi.mock('@/hooks/use-auth-ready', () => ({
   useAuthReady: () => ({ user: null, role: null, loading: false }),
 }));
 
-const rpcMock = vi.fn(() => Promise.resolve({ data: null, error: null }));
+// status: 200 — the real supabase-js shape; linkPendingLeadOnce (gh-2121 M3,
+// comment 5823511418) keys clearing the capture off `status`, not just `error`.
+const rpcMock = vi.fn(() => Promise.resolve({ data: null, error: null, status: 200 }));
 // Default mock: NO live session (email confirmation required) — the
 // branch where get-started still links in-page. Individual tests below
 // override this for the "session already live" (M2) scenario.

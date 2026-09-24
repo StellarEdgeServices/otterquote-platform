@@ -74,11 +74,13 @@ export function readPendingLeadId(): string | null {
 }
 
 /** Clear the captured lead. Callers (linkPendingLeadOnce below) call this
- * only once the RPC has produced a DEFINITIVE outcome — a resolved
- * response, success or a server-side rejection alike — never before the
- * call is even made and never on a network error or abort, so a capture
- * that never got a real answer survives to be retried by the next call
- * site (M2 fix, comment 5822978578). */
+ * only once the RPC has produced a DEFINITIVE outcome — an HTTP response
+ * in the ordinary 200–499 range, success or a real server-side rejection
+ * alike — never before the call is even made and never when no real HTTP
+ * response came back (status 0: network error / aborted fetch, or a 5xx
+ * server error), so a capture that never got a real answer survives to be
+ * retried by the next call site (M2 fix, comment 5822978578; M3 fix,
+ * comment 5823511418). */
 export function clearPendingLeadId(): void {
   try {
     if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(LEAD_STORAGE_KEY);
@@ -94,8 +96,14 @@ interface SupabaseRpcClient {
   // PromiseLike, not Promise: the real supabase-js client's rpc() returns a
   // thenable PostgrestFilterBuilder (awaitable, but not a Promise instance),
   // and the test doubles used across this repo return a plain Promise —
-  // both satisfy PromiseLike.
-  rpc: (fn: string, args?: Record<string, unknown>) => PromiseLike<{ data?: unknown; error: unknown }>;
+  // both satisfy PromiseLike. `status` is required (not optional): the real
+  // client always sets it, INCLUDING on a network error or an aborted
+  // fetch, where it resolves `{ data: null, error, status: 0 }` instead of
+  // throwing (M3 fix, comment 5823511418) — see linkPendingLeadOnce below.
+  rpc: (
+    fn: string,
+    args?: Record<string, unknown>,
+  ) => PromiseLike<{ data?: unknown; error: unknown; status: number }>;
 }
 
 /**
@@ -114,42 +122,93 @@ interface SupabaseRpcClient {
  * linkPendingLeadOnce() call had nothing left to retry — a real
  * `?lead=` link was silently dropped on ~3 in 10 real-browser trials.
  *
- * The fix: clear the capture only when the RPC call returns a resolved
- * response — success (`error` null, `data` true or false; false is not
- * an error, e.g. an already-converted or too-old lead) OR a server-side
- * rejection (`error` set, e.g. an anon caller or a permission error) —
- * because either way the server has already given its final answer and
- * retrying would just get the same one. A thrown exception (a network
- * failure, a timeout, or the request being aborted mid-flight by page
- * navigation) means no answer was ever received, so the capture is left
- * in place for the next call site to retry. Never throws either way —
- * this never blocks or fails whatever auth flow called it.
+ * M3 fix (comment 5823511418, PR #2163 REVIEW: FAIL against the M2 fix
+ * above): the M2 fix's premise was wrong for the REAL supabase-js client.
+ * supabase-js never throws on a network error or an aborted fetch — it
+ * resolves `{ data: null, error, status: 0 }` instead (see
+ * node_modules/@supabase/postgrest-js's fetch wrapper, which catches the
+ * rejection and turns it into a resolved response with `status: 0`
+ * whenever `throwOnError()` was not called, which this repo never does).
+ * So the M2 fix's `catch` branch — the one meant to "keep the capture for
+ * retry" — never ran on a real network failure or an aborted request; the
+ * `try` branch's unconditional `clearPendingLeadId()` ran instead and threw
+ * the lead id away with no answer ever received.
+ *
+ * The real fix: clear the capture only when the RPC's `status` is a real
+ * HTTP response in the ordinary 200–499 range — a success (`error` null,
+ * `data` true or false; false is not an error, e.g. an already-converted
+ * or too-old lead) OR a real server-side rejection (`error` set with a
+ * 4xx status, e.g. an anon caller or a permission error) — because either
+ * way the server has already given its final answer and retrying would
+ * just get the same one. `status === 0` (no HTTP response at all: a
+ * network failure or the request aborted mid-flight by page navigation —
+ * the M2/M3 failure mode) or a 5xx (the server errored, not our caller)
+ * means no definitive answer arrived, so the capture is left in place for
+ * the next call site to retry — first-write-wins on the server makes a
+ * retry harmless. A thrown exception is handled the same way, defensively,
+ * even though the real client does not throw here. Never throws either
+ * way — this never blocks or fails whatever auth flow called it.
+ *
+ * Bounded to `timeoutMs` (default 2.5 s, matching lib/attribution.ts's
+ * recordFirstTouch): the underlying RPC keeps running in the background,
+ * but this function stops waiting on it after the bound so a caller that
+ * awaits it (auth-callback/page.tsx, before navigating away — the M3
+ * fix's other half) is never blocked indefinitely by a hung request. A
+ * timeout is not a definitive answer either, so it does not clear the
+ * capture — the underlying call may still resolve and clear it later, or
+ * the capture survives for the next call site to retry.
  *
  * Called from: get-started/page.tsx (password sign-up, only when no
  * session exists yet — see that file's comment for why), auth-callback/
  * page.tsx (every path that lands there with a live session: Google
  * OAuth — S4 — AND the password path once a session exists, since
- * get-started defers to this call site precisely to dodge the M2 race),
- * and help-measurements/page.tsx + help-estimate/page.tsx (an already-
- * signed-in Arm F visitor reaching the help page directly with a live
- * `?lead=` — the third M1 scenario).
+ * get-started defers to this call site precisely to dodge the M2 race —
+ * AWAITED there, in parallel with recordFirstTouch, before any
+ * navigation), and help-measurements/page.tsx + help-estimate/page.tsx
+ * (an already-signed-in Arm F visitor reaching the help page directly
+ * with a live `?lead=` — the third M1 scenario).
  */
-export async function linkPendingLeadOnce(supabase: SupabaseRpcClient): Promise<void> {
+export async function linkPendingLeadOnce(
+  supabase: SupabaseRpcClient,
+  timeoutMs = 2500,
+): Promise<void> {
   const leadId = readPendingLeadId();
   if (!leadId) return;
-  try {
-    const { error } = await supabase.rpc('set_lead_converted', { p_lead_id: leadId });
-    // Resolved — a definitive answer, whether a success (true/false) or a
-    // server-side rejection. Consume the capture now; retrying would not
-    // change the outcome.
-    clearPendingLeadId();
-    if (error) {
-      console.warn('[lead-capture] set_lead_converted failed (non-fatal):', error);
+
+  const attempt = (async () => {
+    try {
+      const { error, status } = await supabase.rpc('set_lead_converted', { p_lead_id: leadId });
+      // A definitive answer is a real HTTP response in the ordinary
+      // 200–499 range. status 0 (network error / aborted fetch — no HTTP
+      // response was ever received) and 5xx (server error, not our
+      // caller) are NOT definitive — see the function header (M3 fix).
+      const isDefinitive = typeof status === 'number' && status >= 200 && status <= 499;
+      if (isDefinitive) {
+        clearPendingLeadId();
+        if (error) {
+          console.warn('[lead-capture] set_lead_converted failed (non-fatal):', error);
+        }
+      } else {
+        console.warn(
+          `[lead-capture] set_lead_converted got no definitive answer (status ${status}), keeping capture for retry:`,
+          error,
+        );
+      }
+    } catch (err) {
+      // Defensive only: the real supabase-js client resolves rather than
+      // throws here (see header). Treat a thrown error the same as
+      // status 0 — no answer, keep the capture.
+      console.warn('[lead-capture] set_lead_converted threw (non-fatal), keeping capture for retry:', err);
     }
-  } catch (err) {
-    // No resolved response — network error, timeout, or the fetch was
-    // aborted by a navigation racing this call (the M2 scenario). Leave
-    // the capture in place so a later call site can retry it.
-    console.warn('[lead-capture] set_lead_converted threw (non-fatal), keeping capture for retry:', err);
+  })();
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<void>((resolve) => {
+    timer = setTimeout(() => resolve(), timeoutMs);
+  });
+  try {
+    await Promise.race([attempt, timeout]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
   }
 }
