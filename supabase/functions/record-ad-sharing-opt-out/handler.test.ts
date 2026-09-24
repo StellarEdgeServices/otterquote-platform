@@ -165,6 +165,22 @@ Deno.test("the success log line carries the counts only, never the address or it
   assert(!logText.includes("private.person") && !logText.includes("HASH("), logText);
 });
 
+// REVIEW N1 on #2138: the audit trail says WHO acted. The acting admin's user id (never their address) is in the success log line.
+Deno.test("the success log line names the acting admin by user id, not by email address", async () => {
+  const { d, calls } = deps({}, { flag: { matched: 2, updated: 1 } });
+  await handleRequest(req({ email: "private.person@example.com" }), d);
+  const logText = calls.logs.join(" | ");
+  assert(logText.includes(`admin ${ADMIN.id}`), "the acting admin's id is logged: " + logText);
+  assert(!logText.includes(ADMIN.email) && !logText.includes("@"), "no email address of the admin or the subject: " + logText);
+  assert(logText.includes("matched 2") && logText.includes("updated 1"), "counts still logged");
+});
+
+Deno.test("a rejected call (403) does not log a success line", async () => {
+  const { d, calls } = deps();
+  await handleRequest(req({ email: "a@b.co" }, { token: "user-token" }), d);
+  assert(!calls.logs.join(" | ").includes("opt-out recorded"));
+});
+
 Deno.test("unknown origin still gets a response with the default allowed origin, never an echo", async () => {
   const { d } = deps();
   const res = await handleRequest(req({ email: "a@b.co" }, { origin: "https://evil.example" }), d);

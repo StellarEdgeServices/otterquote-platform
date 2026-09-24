@@ -414,6 +414,7 @@ verify_jwt = true
 
 # gh-2107 / D-330 half 2: an admin records an advertising-sharing opt-out that a person requested by email to
 # support@otterquote.com. Auth is enforced in-handler (Bearer JWT via auth.getUser, then the admin gate, same as
-# approve-warranty-drift); pin false so the admin page on app.otterquote.com works and a flagless deploy cannot flip it.
+# approve-warranty-drift); pin false so a flagless deploy cannot flip it (the gateway JWT check is unreliable for admin callers).
+# No admin page calls it yet; an admin invokes it directly with their own JWT. A page is a follow-up.
 [functions.record-ad-sharing-opt-out]
 verify_jwt = false

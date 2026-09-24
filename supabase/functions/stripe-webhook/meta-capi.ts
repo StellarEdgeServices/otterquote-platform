@@ -58,6 +58,8 @@ export const META_CAPI_PIXEL_ID = "800470107451795";
 
 /** The $15 RoofScope / Hover measurement report price (D-291). */
 export const MEASUREMENT_PURCHASE_VALUE_USD = 15.0;
+/** The measurement report price in US cents: the only charge reported to Meta (see shouldSkipForNonUsdMeasurement). */
+export const MEASUREMENT_PURCHASE_AMOUNT_CENTS = 1500;
 
 const VARIANT_SHAPE_RE = /^[a-z0-9]{1,8}$/;
 
@@ -245,6 +247,23 @@ export function safeMetaErrorSummary(body: string): string {
   } catch {
     return "unparsed";
   }
+}
+
+/**
+ * [gh-2107, Ben's DECIDED (a) on #2078, 5806894411] The CAPI Purchase is reported to Meta as 15 USD, so it is sent ONLY for a
+ * measurement PaymentIntent that is exactly 1500 cents in USD. The webhook sees the PaymentIntent independently of
+ * create-measurement-order's own USD guard, so it must not report a charge in another currency, or at another amount, as a USD
+ * Purchase. The amount is what was actually received (amount_received, else amount). FAILS CLOSED: a missing, non-object or
+ * malformed PaymentIntent, currency or amount is skipped. The reason is a fixed token: the currency and amount are never logged.
+ */
+export function shouldSkipForNonUsdMeasurement(
+  pi: { currency?: unknown; amount?: unknown; amount_received?: unknown } | null | undefined,
+): { skip: boolean; reason: "not_usd_1500" | null } {
+  if (pi && typeof pi === "object") {
+    const charged = pi.amount_received ?? pi.amount;
+    if (pi.currency === "usd" && charged === MEASUREMENT_PURCHASE_AMOUNT_CENTS) return { skip: false, reason: null };
+  }
+  return { skip: true, reason: "not_usd_1500" };
 }
 
 /**

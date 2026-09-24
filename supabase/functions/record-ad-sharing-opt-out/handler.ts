@@ -125,7 +125,7 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
     deps.log(`[${FUNCTION_NAME}] flagging the profiles failed${safeCode(result.errorCode)}`);
     return json({ error: "Could not record the opt-out" }, 500, cors);
   }
-  deps.log(`[${FUNCTION_NAME}] opt-out recorded by an admin: suppressed, matched ${result.matched}, updated ${result.updated}`);
+  deps.log(`[${FUNCTION_NAME}] opt-out recorded by admin ${user.id}: suppressed, matched ${result.matched}, updated ${result.updated}`);
   const note = result.matched === 0 ? "No account has this email address; the opt-out is recorded on the suppression list." : undefined;
   return json({ ok: true, suppressed: true, matched: result.matched, updated: result.updated, ...(note ? { note } : {}) }, 200, cors);
 }

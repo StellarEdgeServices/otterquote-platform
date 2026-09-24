@@ -57,6 +57,7 @@ import {
   sanitizeCapiVariant,
   shouldSendCapiEvent,
   shouldSkipForAdSharingOptOut,
+  shouldSkipForNonUsdMeasurement,
   shouldSkipForSuppression,
 } from "./meta-capi.ts";
 
@@ -1036,6 +1037,17 @@ async function handleMeasurementOrderCapiPurchase(
   if (!piType || !MEASUREMENT_ORDER_PI_TYPES.has(piType)) return; // not a measurement-order purchase
 
   try {
+    // gh-2107 (Ben's DECIDED (a) on #2078; REVIEW B1 / LEGAL-READ L1): the Purchase is reported as 15 USD, so it is sent only for a
+    // PaymentIntent that is exactly 1500 cents in USD. Decided first: before the token, any lookup, the hash or the send. The log
+    // carries the PaymentIntent id and a fixed reason only (not the currency or amount).
+    const nonUsd = shouldSkipForNonUsdMeasurement(paymentIntent);
+    if (nonUsd.skip) {
+      console.log(
+        `[${FN_NAME}] gh-2107: CAPI Purchase skipped for PI ${paymentIntent.id} (${nonUsd.reason})`,
+      );
+      return;
+    }
+
     const capiToken = Deno.env.get("META_CAPI_ACCESS_TOKEN");
     if (!capiToken) {
       // Acceptance criterion 3 -- safe to deploy before the secret lands.

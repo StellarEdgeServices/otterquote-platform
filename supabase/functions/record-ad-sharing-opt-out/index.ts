@@ -12,8 +12,10 @@
  *   Response: { ok: true, suppressed: true, matched, updated }   200  (matched 0 = no account has it; it is on the suppression list)
  *             { error }                                 400 / 401 / 403 / 405 / 500
  *
- * verify_jwt is pinned false in supabase/config.toml, like approve-warranty-drift: the admin page lives on app.otterquote.com
- * and the gate is in the handler (authenticate the Bearer token, then the admin check).
+ * verify_jwt is pinned false in supabase/config.toml, like approve-warranty-drift: the gate is in the handler (authenticate the
+ * Bearer token, then the admin check), because the project-wide ES256/HS256 gateway mismatch makes gateway verification unreliable
+ * for admin callers. NO admin page calls this function yet: an admin invokes it directly with their own JWT. A page for it is a
+ * follow-up (not built here).
  *
  * No `_shared/` imports: the deploy path does not resolve them, so the admin gate is inlined (PRIMARY_ADMIN_EMAIL kept in
  * sync with supabase/functions/_shared/admin.ts by eye, exactly as approve-warranty-drift does).
