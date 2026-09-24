@@ -51,6 +51,24 @@
 -- 20260820195608_gh1075_partner_agreement_v2_version_bump.sql, then drops the
 -- four additive columns. Safe because every new column is nullable and no
 -- other object references them yet (P-1/P-4, which will, are not built).
+-- The rollback also restores public.referral_agents_guard_payout_columns()
+-- to its exact pre-migration (live) body -- BEFORE dropping the four
+-- columns, since that pre-migration body references them.
+--
+-- DRIFT NOTE (Ben 17:10:10Z column-lock ruling): the live
+-- referral_agents_guard_payout_columns() on prod (md5(pg_get_functiondef)
+-- first 8 hex = b863cbc1) is NOT byte-identical to
+-- 20260818211118_gh886_referral_agents_payout_guard.sql, the only migration
+-- in this repo that defines it -- live has an entire TG_OP = 'INSERT'
+-- branch and pins three extra columns (w9_file_url, w9_submitted_at,
+-- total_commission_paid) that gh-886's file never mentions, meaning some
+-- change was applied to prod outside git history (git log --all -S found
+-- it on no branch). Live is a strict superset/hardening of gh-886, not a
+-- weakening, so per Ben's ruling this migration adopts the LIVE body
+-- verbatim as CREATE OR REPLACE (below), with one new block added before
+-- the existing payout check, so the repo returns to parity with prod. This
+-- migration is therefore the first place in version control that records
+-- the current production trigger logic.
 
 ALTER TABLE public.referral_agents
   ADD COLUMN IF NOT EXISTS fbclid text,
@@ -217,6 +235,110 @@ $function$;
 -- grants (PUBLIC/anon/authenticated/service_role, unchanged from before this
 -- migration) with no explicit line for the ratchet to have an opinion about.
 
+-- gh-2154 column lock (Ben, CEO, 17:10:10Z): before this, `authenticated`
+-- had table UPDATE on referral_agents and RLS policy "Agents can update own
+-- profile" was `user_id = auth.uid()`, so a signed-in partner could PATCH
+-- their OWN row's fbclid/li_fat_id/funnel_id (rewrite their own attribution)
+-- or app_first_signed_in_launch_at (null it out or backdate it), and P-4's
+-- onboarding-sequence stop condition (a later build item) will trust that
+-- timestamp. This CREATE OR REPLACE starts from the LIVE body (see DRIFT
+-- NOTE above) byte-for-byte and adds exactly one new block, before the
+-- existing payout-column check, pinning fbclid/li_fat_id/funnel_id (always)
+-- and app_first_signed_in_launch_at (except through the one sanctioned
+-- path below).
+--
+-- THE TRAP, and how this avoids it: record_partner_app_activation() below
+-- is itself SECURITY DEFINER, and this trigger function is SECURITY
+-- DEFINER too, so naively checking current_user or a role would see
+-- "postgres" either way and could never distinguish a legitimate RPC call
+-- from a direct partner UPDATE -- and auth.role() reads the JWT claim, so
+-- inside the RPC auth.role() is STILL 'authenticated', not something a
+-- service_role check could catch. So the pin does not key off role or
+-- current_user at all: record_partner_app_activation() sets a
+-- transaction-local GUC (`oq.gh2154_activation_write`) immediately before
+-- its UPDATE and clears it immediately after, and this trigger's allow
+-- clause requires BOTH that GUC AND old.app_first_signed_in_launch_at IS
+-- NULL AND new.app_first_signed_in_launch_at IS NOT NULL -- i.e. only a
+-- first-write-wins activation performed via the RPC is let through; the
+-- RPC calling itself a second time (already non-NULL old value) still
+-- gets caught by this same trigger, same as a direct UPDATE would. The GUC
+-- itself is not callable by a partner: set_config() lives in pg_catalog,
+-- which is not a PostgREST-exposed schema (confirmed live, see report),
+-- and no public wrapper function forwards a caller-controlled set_config
+-- call (confirmed live via a pg_proc/prosrc scan, see report).
+CREATE OR REPLACE FUNCTION public.referral_agents_guard_payout_columns()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+begin
+  if auth.role() = 'service_role' then
+    return new;
+  end if;
+  if is_admin_email() then
+    return new;
+  end if;
+
+  if TG_OP = 'INSERT' then
+    -- Defense in depth only: register_partner() (SECURITY DEFINER) never sets these on insert
+    -- and bypasses table grants/RLS entirely, so this branch only matters if some future path
+    -- inserts directly. recruited_at/recruited_by_id/status/is_test are deliberately NOT forced
+    -- here -- register_partner() legitimately sets recruited_at/recruited_by_id for the
+    -- recruiter-linking flow (always now(), never caller-backdated), and forcing them would
+    -- break that flow.
+    new.payments_blocked           := true;
+    new.w9_verified_at             := null;
+    new.w9_file_url                := null;
+    new.w9_submitted_at            := null;
+    new.total_commission_earned    := 0;
+    new.total_commission_paid      := 0;
+    new.recruit_earnings           := 0;
+    return new;
+  end if;
+
+  -- gh-2154 column lock: attribution can never change post-insert except by
+  -- service_role/admin (already returned above); activation timestamp can
+  -- only move NULL -> NOT NULL, and only through record_partner_app_activation().
+  if (new.fbclid    is distinct from old.fbclid)
+     or (new.li_fat_id is distinct from old.li_fat_id)
+     or (new.funnel_id is distinct from old.funnel_id)
+     or (
+       (new.app_first_signed_in_launch_at is distinct from old.app_first_signed_in_launch_at)
+       and not (
+         current_setting('oq.gh2154_activation_write', true) = '1'
+         and old.app_first_signed_in_launch_at is null
+         and new.app_first_signed_in_launch_at is not null
+       )
+     )
+  then
+    raise exception
+      'referral_agents: attribution/activation columns can only be changed by service_role, an admin, or record_partner_app_activation() (gh-2154)'
+      using errcode = '42501';
+  end if;
+
+  -- UPDATE: pin every payout-governing / compliance column to its stored value.
+  if (new.payments_blocked           is distinct from old.payments_blocked)
+     or (new.w9_verified_at          is distinct from old.w9_verified_at)
+     or (new.w9_file_url             is distinct from old.w9_file_url)
+     or (new.w9_submitted_at         is distinct from old.w9_submitted_at)
+     or (new.recruited_at            is distinct from old.recruited_at)
+     or (new.recruited_by_id         is distinct from old.recruited_by_id)
+     or (new.total_commission_earned is distinct from old.total_commission_earned)
+     or (new.total_commission_paid   is distinct from old.total_commission_paid)
+     or (new.recruit_earnings        is distinct from old.recruit_earnings)
+     or (new.status                  is distinct from old.status)
+     or (new.is_test                 is distinct from old.is_test)
+  then
+    raise exception
+      'referral_agents: payout-governing columns can only be changed by service_role or an admin (gh-886)'
+      using errcode = '42501';
+  end if;
+
+  return new;
+end;
+$function$;
+
 -- record_partner_app_activation(): first signed-in standalone launch of the
 -- installed partner app. Called from partner-dashboard.html once
 -- display-mode:standalone or navigator.standalone is detected, a session is
@@ -226,6 +348,18 @@ $function$;
 -- caller's own row via `user_id = auth.uid()` so no partner can ever write
 -- another partner's timestamp. Returns whether this call was the one that
 -- wrote it.
+--
+-- THE TRAP (see the guard function's comment above): this RPC is SECURITY
+-- DEFINER, so a naive role/current_user check in the trigger could never
+-- distinguish this legitimate write from a direct partner UPDATE -- both
+-- run as the function owner, and auth.role() still reads 'authenticated'
+-- from the JWT even inside a SECURITY DEFINER function. Instead, this RPC
+-- sets a transaction-local GUC immediately before its UPDATE and clears it
+-- immediately after, so the flag can never leak past this single
+-- statement (not even to a second call of this same RPC in the same
+-- transaction) and is never visible to, or settable by, the calling
+-- client -- set_config() is in pg_catalog, never exposed through
+-- PostgREST.
 CREATE FUNCTION public.record_partner_app_activation()
 RETURNS boolean
 LANGUAGE plpgsql
@@ -235,12 +369,17 @@ AS $function$
 DECLARE
   v_wrote boolean;
 BEGIN
+  PERFORM set_config('oq.gh2154_activation_write', '1', true);
+
   UPDATE public.referral_agents
   SET app_first_signed_in_launch_at = now()
   WHERE user_id = auth.uid()
     AND app_first_signed_in_launch_at IS NULL;
 
   v_wrote := FOUND;
+
+  PERFORM set_config('oq.gh2154_activation_write', '', true);
+
   RETURN v_wrote;
 END;
 $function$;

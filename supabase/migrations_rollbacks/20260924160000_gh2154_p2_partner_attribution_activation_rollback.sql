@@ -3,8 +3,12 @@
 -- REVIEW FAIL 5818340009 (must-fix 2): moved out of the migration's header
 -- comment into a runnable file, per the #2131/gh974/gh973 convention.
 --
--- Order matters: drop the new RPC, drop the 20-arg register_partner (so it
--- never coexists with the 17-arg recreate below), recreate the pre-migration
+-- Order matters: drop the new RPC, restore the guard trigger function to
+-- its exact pre-migration (LIVE) body BEFORE dropping the four new columns
+-- (the gh-2154 column-lock block just added to the guard references
+-- fbclid/li_fat_id/funnel_id/app_first_signed_in_launch_at, so the guard
+-- must be reverted first), drop the 20-arg register_partner (so it never
+-- coexists with the 17-arg recreate below), recreate the pre-migration
 -- 17-arg register_partner byte-identical to
 -- 20260820195608_gh1075_partner_agreement_v2_version_bump.sql (confirmed live
 -- on prod, yeszghaspzwwstvsrioa, before this migration: md5(pg_get_functiondef)
@@ -16,10 +20,71 @@
 -- privileges, unaffected by any of this), then drop the four additive
 -- columns. Safe: every new column is nullable and P-1/P-4 (the only planned
 -- consumers) are not built, so nothing else references them yet.
+--
+-- The restored guard body below is the pre-migration LIVE body (md5
+-- (pg_get_functiondef) first 8 hex chars = b863cbc1, confirmed live on prod
+-- immediately before this migration was authored -- see the DRIFT NOTE in
+-- the forward migration's header), NOT the repo's gh-886 file, which is
+-- already known to differ from what was live. CREATE OR REPLACE preserves
+-- the function's existing ACL/owner, so no explicit GRANT/owner statement
+-- is needed for it here (confirmed via proacl before/after in the report).
 
 BEGIN;
 
 DROP FUNCTION IF EXISTS public.record_partner_app_activation();
+
+CREATE OR REPLACE FUNCTION public.referral_agents_guard_payout_columns()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+begin
+  if auth.role() = 'service_role' then
+    return new;
+  end if;
+  if is_admin_email() then
+    return new;
+  end if;
+
+  if TG_OP = 'INSERT' then
+    -- Defense in depth only: register_partner() (SECURITY DEFINER) never sets these on insert
+    -- and bypasses table grants/RLS entirely, so this branch only matters if some future path
+    -- inserts directly. recruited_at/recruited_by_id/status/is_test are deliberately NOT forced
+    -- here -- register_partner() legitimately sets recruited_at/recruited_by_id for the
+    -- recruiter-linking flow (always now(), never caller-backdated), and forcing them would
+    -- break that flow.
+    new.payments_blocked           := true;
+    new.w9_verified_at             := null;
+    new.w9_file_url                := null;
+    new.w9_submitted_at            := null;
+    new.total_commission_earned    := 0;
+    new.total_commission_paid      := 0;
+    new.recruit_earnings           := 0;
+    return new;
+  end if;
+
+  -- UPDATE: pin every payout-governing / compliance column to its stored value.
+  if (new.payments_blocked           is distinct from old.payments_blocked)
+     or (new.w9_verified_at          is distinct from old.w9_verified_at)
+     or (new.w9_file_url             is distinct from old.w9_file_url)
+     or (new.w9_submitted_at         is distinct from old.w9_submitted_at)
+     or (new.recruited_at            is distinct from old.recruited_at)
+     or (new.recruited_by_id         is distinct from old.recruited_by_id)
+     or (new.total_commission_earned is distinct from old.total_commission_earned)
+     or (new.total_commission_paid   is distinct from old.total_commission_paid)
+     or (new.recruit_earnings        is distinct from old.recruit_earnings)
+     or (new.status                  is distinct from old.status)
+     or (new.is_test                 is distinct from old.is_test)
+  then
+    raise exception
+      'referral_agents: payout-governing columns can only be changed by service_role or an admin (gh-886)'
+      using errcode = '42501';
+  end if;
+
+  return new;
+end;
+$function$;
 
 DROP FUNCTION IF EXISTS public.register_partner(
   text, text, text, text, text, text, text, text, text, text, jsonb, text,

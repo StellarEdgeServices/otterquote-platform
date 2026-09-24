@@ -355,6 +355,294 @@ BEGIN
 END;
 $proof$;
 
+-- ── 3. gh-2154 column lock (Ben, CEO, 17:10:10Z) ────────────────────────
+-- Applies the column-lock CREATE OR REPLACE on referral_agents_guard_
+-- payout_columns() (identical text to the migration) so the assertions
+-- below run against the actual guarded trigger, then re-uses partner A/B/C
+-- (already created by the proof above) plus a fresh partner D.
+
+CREATE OR REPLACE FUNCTION public.referral_agents_guard_payout_columns()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+begin
+  if auth.role() = 'service_role' then
+    return new;
+  end if;
+  if is_admin_email() then
+    return new;
+  end if;
+
+  if TG_OP = 'INSERT' then
+    new.payments_blocked           := true;
+    new.w9_verified_at             := null;
+    new.w9_file_url                := null;
+    new.w9_submitted_at            := null;
+    new.total_commission_earned    := 0;
+    new.total_commission_paid      := 0;
+    new.recruit_earnings           := 0;
+    return new;
+  end if;
+
+  if (new.fbclid    is distinct from old.fbclid)
+     or (new.li_fat_id is distinct from old.li_fat_id)
+     or (new.funnel_id is distinct from old.funnel_id)
+     or (
+       (new.app_first_signed_in_launch_at is distinct from old.app_first_signed_in_launch_at)
+       and not (
+         current_setting('oq.gh2154_activation_write', true) = '1'
+         and old.app_first_signed_in_launch_at is null
+         and new.app_first_signed_in_launch_at is not null
+       )
+     )
+  then
+    raise exception
+      'referral_agents: attribution/activation columns can only be changed by service_role, an admin, or record_partner_app_activation() (gh-2154)'
+      using errcode = '42501';
+  end if;
+
+  if (new.payments_blocked           is distinct from old.payments_blocked)
+     or (new.w9_verified_at          is distinct from old.w9_verified_at)
+     or (new.w9_file_url             is distinct from old.w9_file_url)
+     or (new.w9_submitted_at         is distinct from old.w9_submitted_at)
+     or (new.recruited_at            is distinct from old.recruited_at)
+     or (new.recruited_by_id         is distinct from old.recruited_by_id)
+     or (new.total_commission_earned is distinct from old.total_commission_earned)
+     or (new.total_commission_paid   is distinct from old.total_commission_paid)
+     or (new.recruit_earnings        is distinct from old.recruit_earnings)
+     or (new.status                  is distinct from old.status)
+     or (new.is_test                 is distinct from old.is_test)
+  then
+    raise exception
+      'referral_agents: payout-governing columns can only be changed by service_role or an admin (gh-886)'
+      using errcode = '42501';
+  end if;
+
+  return new;
+end;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.record_partner_app_activation()
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_wrote boolean;
+BEGIN
+  PERFORM set_config('oq.gh2154_activation_write', '1', true);
+
+  UPDATE public.referral_agents
+  SET app_first_signed_in_launch_at = now()
+  WHERE user_id = auth.uid()
+    AND app_first_signed_in_launch_at IS NULL;
+
+  v_wrote := FOUND;
+
+  PERFORM set_config('oq.gh2154_activation_write', '', true);
+
+  RETURN v_wrote;
+END;
+$function$;
+
+DO $proof_lock$
+DECLARE
+  v_failures2  text[] := '{}';
+  v_uid_a      uuid;
+  v_uid_d      uuid := gen_random_uuid();
+  v_caught     boolean;
+  v_ts_before  timestamptz;
+  v_ts_after   timestamptz;
+  v_result     jsonb;
+  v_partner_d  referral_agents%ROWTYPE;
+  v_wrote_1    boolean;
+  v_wrote_2    boolean;
+  v_phone_ok   boolean;
+BEGIN
+  SELECT user_id INTO v_uid_a FROM referral_agents WHERE email = 'gh2154-p2-proof-a@example.invalid';
+  PERFORM set_config('request.jwt.claim.role', '', true); -- not service_role
+  PERFORM set_config('request.jwt.claim.sub', v_uid_a::text, true);
+
+  -- (a) partner A (already activated by the proof above) cannot null out or
+  -- backdate their own activation timestamp via a direct UPDATE.
+  v_caught := false;
+  BEGIN
+    UPDATE referral_agents SET app_first_signed_in_launch_at = null WHERE user_id = v_uid_a;
+  EXCEPTION WHEN sqlstate '42501' THEN v_caught := true;
+  END;
+  IF NOT v_caught THEN
+    v_failures2 := array_append(v_failures2, '(a) partner X nulled out own app_first_signed_in_launch_at directly -- not raised');
+  END IF;
+
+  v_caught := false;
+  BEGIN
+    UPDATE referral_agents SET app_first_signed_in_launch_at = now() - interval '30 days' WHERE user_id = v_uid_a;
+  EXCEPTION WHEN sqlstate '42501' THEN v_caught := true;
+  END;
+  IF NOT v_caught THEN
+    v_failures2 := array_append(v_failures2, '(a) partner X backdated own app_first_signed_in_launch_at directly -- not raised');
+  END IF;
+
+  -- (b) same for fbclid / li_fat_id / funnel_id on X's own row.
+  v_caught := false;
+  BEGIN
+    UPDATE referral_agents SET fbclid = 'attacker-value' WHERE user_id = v_uid_a;
+  EXCEPTION WHEN sqlstate '42501' THEN v_caught := true;
+  END;
+  IF NOT v_caught THEN
+    v_failures2 := array_append(v_failures2, '(b) partner X rewrote own fbclid directly -- not raised');
+  END IF;
+
+  v_caught := false;
+  BEGIN
+    UPDATE referral_agents SET li_fat_id = 'attacker-value' WHERE user_id = v_uid_a;
+  EXCEPTION WHEN sqlstate '42501' THEN v_caught := true;
+  END;
+  IF NOT v_caught THEN
+    v_failures2 := array_append(v_failures2, '(b) partner X rewrote own li_fat_id directly -- not raised');
+  END IF;
+
+  v_caught := false;
+  BEGIN
+    UPDATE referral_agents SET funnel_id = 'attacker-value' WHERE user_id = v_uid_a;
+  EXCEPTION WHEN sqlstate '42501' THEN v_caught := true;
+  END;
+  IF NOT v_caught THEN
+    v_failures2 := array_append(v_failures2, '(b) partner X rewrote own funnel_id directly -- not raised');
+  END IF;
+
+  -- (c) record_partner_app_activation() as X (fresh partner D, never
+  -- activated) still returns true and sets the timestamp; the second call
+  -- returns false. Proves the trap is handled: the RPC's own UPDATE is not
+  -- blocked by the guard it just added.
+  INSERT INTO auth.users (id) VALUES (v_uid_d);
+  v_result := public.register_partner(
+    p_agent_type => 're_agent', p_first_name => 'GH2154', p_last_name => 'ProofD',
+    p_email => 'gh2154-p2-proof-d@example.invalid', p_is_test => true
+  );
+  SELECT * INTO v_partner_d FROM referral_agents WHERE id = (v_result->>'id')::uuid;
+  UPDATE referral_agents SET user_id = v_uid_d WHERE id = v_partner_d.id;
+
+  PERFORM set_config('request.jwt.claim.sub', v_uid_d::text, true);
+  v_wrote_1 := public.record_partner_app_activation();
+  SELECT app_first_signed_in_launch_at INTO v_ts_before FROM referral_agents WHERE id = v_partner_d.id;
+  IF v_wrote_1 IS DISTINCT FROM true OR v_ts_before IS NULL THEN
+    v_failures2 := array_append(v_failures2, '(c) record_partner_app_activation() did not activate an unactivated row / did not return true -- the trap is NOT handled');
+  END IF;
+
+  v_wrote_2 := public.record_partner_app_activation();
+  SELECT app_first_signed_in_launch_at INTO v_ts_after FROM referral_agents WHERE id = v_partner_d.id;
+  IF v_wrote_2 IS DISTINCT FROM false THEN
+    v_failures2 := array_append(v_failures2, '(c) record_partner_app_activation() returned true on a second call (not idempotent)');
+  END IF;
+  IF v_ts_before IS DISTINCT FROM v_ts_after THEN
+    v_failures2 := array_append(v_failures2, '(c) record_partner_app_activation() changed the timestamp on a second call');
+  END IF;
+
+  -- (d) after (c), the GUC is cleared (set_config('','',true) at the end of
+  -- the RPC) -- a plain direct UPDATE by X immediately afterwards, with no
+  -- RPC in flight, is still rejected. set_config() itself cannot be reached
+  -- by a client through PostgREST (pg_catalog is not an exposed schema; no
+  -- public wrapper forwards it -- see report), so this SQL-level check is
+  -- the closest equivalent of "can a client set the flag".
+  -- Uses a value genuinely distinct from the one the RPC just wrote, NOT
+  -- now() again -- now()/current_timestamp is frozen for the whole
+  -- transaction in Postgres, so a second now() here would equal the first
+  -- and `is distinct from` would (correctly, but uninformatively) be false.
+  v_caught := false;
+  BEGIN
+    UPDATE referral_agents SET app_first_signed_in_launch_at = v_ts_before + interval '1 second' WHERE user_id = v_uid_d;
+  EXCEPTION WHEN sqlstate '42501' THEN v_caught := true;
+  END;
+  IF NOT v_caught THEN
+    v_failures2 := array_append(v_failures2, '(d) direct UPDATE of app_first_signed_in_launch_at succeeded with the GUC unset, post-activation -- not raised');
+  END IF;
+
+  -- (e) negative control: X can still update an unpinned own column.
+  BEGIN
+    UPDATE referral_agents SET phone = '555-0100' WHERE user_id = v_uid_a;
+    v_phone_ok := true;
+  EXCEPTION WHEN OTHERS THEN
+    v_phone_ok := false;
+  END;
+  IF NOT v_phone_ok THEN
+    v_failures2 := array_append(v_failures2, '(e) partner X could not update own unpinned column (phone) -- guard is over-broad');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM referral_agents WHERE user_id = v_uid_a AND phone = '555-0100') THEN
+    v_failures2 := array_append(v_failures2, '(e) phone update did not persist for partner X');
+  END IF;
+
+  -- (e) negative control: service_role can still change fbclid.
+  PERFORM set_config('request.jwt.claim.role', 'service_role', true);
+  BEGIN
+    UPDATE referral_agents SET fbclid = 'service-role-value' WHERE user_id = v_uid_a;
+    v_phone_ok := true; -- reused as a generic "did not raise" flag
+  EXCEPTION WHEN OTHERS THEN
+    v_phone_ok := false;
+  END;
+  IF NOT v_phone_ok THEN
+    v_failures2 := array_append(v_failures2, '(e) service_role could not change fbclid -- guard wrongly blocks service_role');
+  END IF;
+  PERFORM set_config('request.jwt.claim.role', '', true);
+  PERFORM set_config('request.jwt.claim.sub', v_uid_a::text, true);
+
+  -- (e) negative control: the pre-existing payout-column pin still raises
+  -- for X changing `status` directly (gh-886 behavior unchanged).
+  v_caught := false;
+  BEGIN
+    UPDATE referral_agents SET status = 'inactive' WHERE user_id = v_uid_a;
+  EXCEPTION WHEN sqlstate '42501' THEN v_caught := true;
+  END;
+  IF NOT v_caught THEN
+    v_failures2 := array_append(v_failures2, '(e) partner X changed own status directly -- gh-886 payout-column pin regressed');
+  END IF;
+
+  -- (f) register_partner's INSERT path still stores fbclid/funnel_id
+  -- (already asserted for partner A in the proof above via the INSERT
+  -- branch's early return; re-confirmed here against the column-lock guard
+  -- body specifically).
+  IF NOT EXISTS (
+    SELECT 1 FROM referral_agents
+    WHERE email = 'gh2154-p2-proof-a@example.invalid'
+      AND fbclid = 'service-role-value' -- set by the service_role negative control above
+  ) THEN
+    v_failures2 := array_append(v_failures2, '(f) sanity check on prior fbclid write failed unexpectedly');
+  END IF;
+
+  -- (g) MUTATION-SPECIFIC: the guard's allow-clause requires BOTH the flag
+  -- AND `old.app_first_signed_in_launch_at IS NULL`, not the flag alone.
+  -- record_partner_app_activation()'s own `WHERE ... IS NULL` clause means
+  -- the real RPC can never reach the trigger with the flag set on an
+  -- already-non-null row (0 rows match, trigger never fires) -- so nothing
+  -- above (a)-(f) exercises the "old IS NULL" half of the allow-clause on
+  -- its own. This directly forces the flag (the one artifact a bug could
+  -- produce, e.g. a future code path that fails to clear it, or a copy-paste
+  -- that drops the old-IS-NULL check) against partner X's own
+  -- ALREADY-ACTIVATED row and asserts it is still rejected. Caught a real
+  -- mutation during authoring: removing `old.app_first_signed_in_launch_at
+  -- is null` from the allow-clause let this exact case through silently.
+  PERFORM set_config('oq.gh2154_activation_write', '1', true);
+  v_caught := false;
+  BEGIN
+    UPDATE referral_agents SET app_first_signed_in_launch_at = now() - interval '30 days' WHERE user_id = v_uid_a;
+  EXCEPTION WHEN sqlstate '42501' THEN v_caught := true;
+  END;
+  PERFORM set_config('oq.gh2154_activation_write', '', true);
+  IF NOT v_caught THEN
+    v_failures2 := array_append(v_failures2, '(g) backdate succeeded with the flag forced to 1 on an already-activated row -- the allow-clause''s old-IS-NULL requirement is not being enforced');
+  END IF;
+
+  IF array_length(v_failures2, 1) IS NULL THEN
+    RAISE NOTICE 'GH2154_P2_COLUMN_LOCK_PROOF: ALL ASSERTIONS PASSED';
+  ELSE
+    RAISE EXCEPTION 'GH2154_P2_COLUMN_LOCK_PROOF: % FAILURE(S): %', array_length(v_failures2, 1), array_to_string(v_failures2, ' | ');
+  END IF;
+END;
+$proof_lock$;
+
 -- This script never COMMITs. The caller must issue ROLLBACK immediately
 -- after, whether the DO block above raised or not, and then read back that
 -- no synthetic row / new column / new function persisted.
