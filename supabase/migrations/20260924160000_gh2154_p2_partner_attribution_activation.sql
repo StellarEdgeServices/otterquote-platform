@@ -43,24 +43,14 @@
 -- are explicitly revoked since only a signed-in partner should ever call
 -- it and there is no server-side caller.
 --
--- ROLLBACK NOTE (kept in-comment, not a separate file, per this task's file
--- whitelist): to undo this migration, in this order --
---   1. DROP FUNCTION public.record_partner_app_activation();
---   2. DROP FUNCTION public.register_partner(text, text, text, text, text,
---      text, text, text, text, text, jsonb, text, text, text, text, text,
---      boolean, text, text, text);
---   3. Recreate the prior 17-arg register_partner: CREATE FUNCTION with the
---      exact signature and body from
---      20260820195608_gh1075_partner_agreement_v2_version_bump.sql (byte-
---      identical to what was live before this migration), then
---      GRANT EXECUTE ON FUNCTION public.register_partner(text, text, text,
---      text, text, text, text, text, text, text, jsonb, text, text, text,
---      text, text, boolean) TO anon, authenticated, service_role;
---   4. ALTER TABLE public.referral_agents DROP COLUMN IF EXISTS fbclid,
---      DROP COLUMN IF EXISTS li_fat_id, DROP COLUMN IF EXISTS funnel_id,
---      DROP COLUMN IF EXISTS app_first_signed_in_launch_at;
--- Safe because every new column is nullable and no other object references
--- them yet (P-1/P-4, which will, are not built).
+-- ROLLBACK: see
+-- supabase/migrations_rollbacks/20260924160000_gh2154_p2_partner_attribution_
+-- activation_rollback.sql (REVIEW FAIL 5818340009 must-fix 2) -- drops
+-- record_partner_app_activation() and the 20-arg register_partner, recreates
+-- the pre-migration 17-arg register_partner byte-identical to
+-- 20260820195608_gh1075_partner_agreement_v2_version_bump.sql, then drops the
+-- four additive columns. Safe because every new column is nullable and no
+-- other object references them yet (P-1/P-4, which will, are not built).
 
 ALTER TABLE public.referral_agents
   ADD COLUMN IF NOT EXISTS fbclid text,
@@ -228,12 +218,14 @@ $function$;
 -- migration) with no explicit line for the ratchet to have an opinion about.
 
 -- record_partner_app_activation(): first signed-in standalone launch of the
--- installed partner app. Called from partner-app.html / partner-dashboard.html
--- once display-mode:standalone (or ?source=pwa) is detected and a session is
--- signed in. First-write-wins via the `IS NULL` guard (idempotent — a second
--- call is a harmless no-op), and scoped to the caller's own row via
--- `user_id = auth.uid()` so no partner can ever write another partner's
--- timestamp. Returns whether this call was the one that wrote it.
+-- installed partner app. Called from partner-dashboard.html once
+-- display-mode:standalone or navigator.standalone is detected, a session is
+-- signed in, and the caller's referral_agents row is resolved (post-claim).
+-- `?source=pwa` is not used as a signal. First-write-wins via the `IS NULL`
+-- guard (idempotent — a second call is a harmless no-op), and scoped to the
+-- caller's own row via `user_id = auth.uid()` so no partner can ever write
+-- another partner's timestamp. Returns whether this call was the one that
+-- wrote it.
 CREATE FUNCTION public.record_partner_app_activation()
 RETURNS boolean
 LANGUAGE plpgsql

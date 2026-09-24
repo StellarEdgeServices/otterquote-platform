@@ -1,18 +1,32 @@
 /**
  * gh-2154 P-2 -- first signed-in standalone launch of the installed partner
- * app calls the new `record_partner_app_activation` RPC exactly once,
- * fails silently, and never fires when signed out or not running standalone.
+ * app calls the new `record_partner_app_activation` RPC exactly once (per
+ * user, per device), fails silently, never fires when signed out, not
+ * running standalone, or the partner row isn't resolved/linked yet, and
+ * never permanently loses the activation when the RPC returns `data:false`.
  *
- * Written FIRST, per #2121 rule 2: at the time this file was authored,
- * neither partner-app.html nor partner-dashboard.html called any such RPC,
- * so every "RPC called" assertion below fails against the unchanged files
- * (see the PR description for that failing run's raw output).
+ * REVIEW FAIL 5818340009 (2026-09-24): head `1a134b76` set the localStorage
+ * flag whenever `!res.error`, including when `record_partner_app_activation`
+ * returned `{data:false, error:null}` -- which happens both when the
+ * timestamp was already set AND when the caller's referral_agents row isn't
+ * linked yet (user_id IS NULL). Since the call fired right after
+ * requireAuth(), before claim_partner_account() ran, an unlinked first
+ * launch could set the flag and permanently skip the RPC on that device even
+ * after the row got linked. Fix: only set the flag on `res.data === true`,
+ * and only fire the call once currentPartner is resolved (post-claim),
+ * skipping it entirely if currentPartner.app_first_signed_in_launch_at is
+ * already set. This file's "record_partner_app_activation: {data:false}"
+ * case (below) is written to FAIL against head `1a134b76` and PASS after the
+ * fix -- see the report for both raw runs.
+ *
+ * partner-app.html's pre-redirect call was removed entirely in this round
+ * (the dashboard is the reliable path, as the PR itself said), so this file
+ * now only exercises partner-dashboard.html.
  *
  * Extracts the REAL source (never a hand-retyped copy) out of
- * partner-app.html and partner-dashboard.html by anchor text, at test-run
- * time, and runs it in a `vm` context behind minimal Auth/CONFIG/localStorage
- * stand-ins -- same technique as tests/gh2096-abandon-beacon-restore.mjs and
- * tests/gh2122-arm-f.mjs.
+ * partner-dashboard.html by anchor text, at test-run time, and runs it in a
+ * `vm` context behind minimal sb/localStorage stand-ins -- same technique as
+ * tests/gh2096-abandon-beacon-restore.mjs and tests/gh2122-arm-f.mjs.
  *
  * Run: node tests/gh2154-p2-app-activation.mjs
  * Exit code 0 = every scenario passed, 1 = at least one failed (or an
@@ -50,108 +64,7 @@ function makeLocalStorage() {
   };
 }
 
-// ── partner-app.html ────────────────────────────────────────────────────
-{
-  const src = fs.readFileSync(path.join(repoRoot, 'partner-app.html'), 'utf8');
-  const block = extractBetween(
-    src,
-    'function isStandalone() {',
-    '\n            // The two "How to install"',
-    'partner-app.html isStandalone()/recordAppActivationIfSignedIn()'
-  );
-
-  function run({ hasPartnerSession, userId, rpcImpl, preflaggedFor, ls: sharedLs } = {}) {
-    const ls = sharedLs || makeLocalStorage();
-    if (preflaggedFor) ls.setItem('oq_partner_app_activated:' + preflaggedFor, '1');
-    const rpcCalls = [];
-    const client = {
-      rpc: (name) => {
-        rpcCalls.push(name);
-        return (rpcImpl || (() => Promise.resolve({ data: true, error: null })))();
-      },
-    };
-    const Auth = {
-      hasPartnerSession: () => Promise.resolve(!!hasPartnerSession),
-      getUser: () => Promise.resolve(userId ? { id: userId } : null),
-    };
-    const CONFIG = {
-      whenReady: (cb) => cb(client),
-    };
-    const ctx = {
-      window: { localStorage: ls },
-      Auth,
-      CONFIG,
-      Promise,
-      console,
-    };
-    ctx.window.window = ctx.window;
-    vm.createContext(ctx);
-    vm.runInContext('function isStandalone() {}\n' + block, ctx); // isStandalone() itself is unused by recordAppActivationIfSignedIn
-    return { ctx, rpcCalls, ls };
-  }
-
-  async function settle() { await new Promise((r) => setTimeout(r, 0)); await new Promise((r) => setTimeout(r, 0)); }
-
-  {
-    const { ctx, rpcCalls, ls } = run({ hasPartnerSession: true, userId: 'user-1' });
-    ctx.recordAppActivationIfSignedIn();
-    await settle();
-    ok(rpcCalls.length === 1 && rpcCalls[0] === 'record_partner_app_activation', 'partner-app.html: standalone + signed-in calls record_partner_app_activation exactly once');
-    ok(ls.getItem('oq_partner_app_activated:user-1') === '1', 'partner-app.html: the per-user localStorage flag is set after a successful call');
-  }
-  {
-    const { ctx, rpcCalls } = run({ hasPartnerSession: false, userId: 'user-1' });
-    ctx.recordAppActivationIfSignedIn();
-    await settle();
-    ok(rpcCalls.length === 0, 'partner-app.html NEGATIVE CONTROL: standalone + signed-out never calls the RPC');
-  }
-  {
-    // RPC rejection must not throw, and must not mark the flag as recorded.
-    const { ctx, rpcCalls, ls } = run({ hasPartnerSession: true, userId: 'user-1', rpcImpl: () => Promise.reject(new Error('network down')) });
-    let threw = false;
-    try { ctx.recordAppActivationIfSignedIn(); } catch (e) { threw = true; }
-    await settle();
-    ok(!threw, 'partner-app.html: an RPC rejection does not throw synchronously');
-    ok(rpcCalls.length === 1, 'partner-app.html: the RPC was attempted despite the eventual rejection');
-    ok(ls.getItem('oq_partner_app_activated:user-1') !== '1', 'partner-app.html: a rejected call does not set the localStorage flag');
-  }
-  {
-    // localStorage guard: already recorded -> no RPC call at all.
-    const { ctx, rpcCalls } = run({ hasPartnerSession: true, userId: 'user-1', preflaggedFor: 'user-1' });
-    ctx.recordAppActivationIfSignedIn();
-    await settle();
-    ok(rpcCalls.length === 0, 'partner-app.html: the localStorage guard skips a redundant RPC call on a later launch');
-  }
-  {
-    // gh-2154-P2 fix-up: user A's flag is set, then user B signs in on the
-    // SAME device (shared localStorage). A device-wide key would make B's
-    // launch look "already activated" and skip the RPC entirely -- the
-    // fix scopes the flag per user id so B's own activation is still
-    // recorded server-side.
-    const sharedLs = makeLocalStorage();
-    const a = run({ hasPartnerSession: true, userId: 'user-A', ls: sharedLs });
-    a.ctx.recordAppActivationIfSignedIn();
-    await settle();
-    ok(a.rpcCalls.length === 1, 'partner-app.html: user A (first on this device) triggers the RPC');
-
-    const b = run({ hasPartnerSession: true, userId: 'user-B', ls: sharedLs });
-    b.ctx.recordAppActivationIfSignedIn();
-    await settle();
-    ok(b.rpcCalls.length === 1 && b.rpcCalls[0] === 'record_partner_app_activation',
-      'partner-app.html: user B signing in on the SAME device as already-activated user A still triggers the RPC for B');
-    ok(sharedLs.getItem('oq_partner_app_activated:user-B') === '1', 'partner-app.html: user B gets their own per-user flag, independent of user A\'s');
-  }
-  {
-    // No user id obtainable (Auth.getUser() resolves null) -> skip the
-    // localStorage shortcut entirely and just call the RPC (server-side is
-    // first-write-wins, so this is always safe).
-    const { ctx, rpcCalls, ls } = run({ hasPartnerSession: true, userId: null });
-    ctx.recordAppActivationIfSignedIn();
-    await settle();
-    ok(rpcCalls.length === 1, 'partner-app.html: no user id available -> the RPC is still called (localStorage shortcut skipped)');
-    ok(ls._store.size === 0, 'partner-app.html: no user id available -> nothing is written to localStorage');
-  }
-}
+async function settle() { await new Promise((r) => setTimeout(r, 0)); await new Promise((r) => setTimeout(r, 0)); }
 
 // ── partner-dashboard.html ──────────────────────────────────────────────
 {
@@ -162,12 +75,32 @@ function makeLocalStorage() {
     '\n        // Initialize',
     'partner-dashboard.html isStandaloneLaunch()/recordAppActivationIfSignedIn()'
   );
-  const gateBlock = extractBetween(
-    src,
-    'if (currentUser && isStandaloneLaunch()) {',
-    '\n            // gh-fix: reveal/hide',
-    'partner-dashboard.html init() activation gate'
-  );
+  // Pin the exact init() gating shape this test relies on (never called
+  // directly here -- init() has too many unrelated dependencies to run in
+  // this harness -- so the gate itself is exercised as extracted text below,
+  // and each scenario below reproduces its condition inline (fireGate())
+  // against the real extracted isStandaloneLaunch()/
+  // recordAppActivationIfSignedIn()). Wrapped in try/catch (rather than
+  // letting extractBetween throw) so that running this file against a
+  // pre-fix head (e.g. 1a134b76, where the gate lived elsewhere, before
+  // currentPartner was resolved) still reports these two as FAILs and lets
+  // every other scenario below run -- in particular the {data:false} case,
+  // which is the one this round's must-fix is about.
+  try {
+    const gateBlock = extractBetween(
+      src,
+      'if (currentPartner && isStandaloneLaunch()',
+      '\n\n                    updateUI();',
+      'partner-dashboard.html init() post-claim activation gate'
+    );
+    ok(gateBlock.indexOf('currentPartner && isStandaloneLaunch() && !currentPartner.app_first_signed_in_launch_at') !== -1,
+      'partner-dashboard.html: init() gates on currentPartner (post-claim) + isStandaloneLaunch() + app_first_signed_in_launch_at IS NULL');
+    ok(gateBlock.indexOf('recordAppActivationIfSignedIn(currentUser.id)') !== -1,
+      'partner-dashboard.html: init() calls recordAppActivationIfSignedIn(currentUser.id) inside that gate');
+  } catch (e) {
+    ok(false, 'partner-dashboard.html: init() gates on currentPartner (post-claim) + isStandaloneLaunch() + app_first_signed_in_launch_at IS NULL (' + e.message + ')');
+    ok(false, 'partner-dashboard.html: init() calls recordAppActivationIfSignedIn(currentUser.id) inside that gate (' + e.message + ')');
+  }
 
   function run({ standalone, userAgentStandalone = false, rpcImpl, ls: sharedLs } = {}) {
     const ls = sharedLs || makeLocalStorage();
@@ -196,42 +129,46 @@ function makeLocalStorage() {
     return { ctx, rpcCalls, ls };
   }
 
-  async function settle() { await new Promise((r) => setTimeout(r, 0)); await new Promise((r) => setTimeout(r, 0)); }
-
-  // Pin the exact init() gating shape this test relies on (never called
-  // directly here -- init() has too many unrelated dependencies to run in
-  // this harness -- so the gate itself is exercised as extracted text below).
-  ok(gateBlock.indexOf('recordAppActivationIfSignedIn(currentUser.id)') !== -1,
-    'partner-dashboard.html: init() calls recordAppActivationIfSignedIn(currentUser.id) inside the currentUser && isStandaloneLaunch() gate');
+  // Reproduces the real post-claim gate:
+  //   if (currentPartner && isStandaloneLaunch() && !currentPartner.app_first_signed_in_launch_at) {
+  //       recordAppActivationIfSignedIn(currentUser.id);
+  //   }
+  function fireGate(ctx, currentUser, currentPartner) {
+    if (currentPartner && ctx.isStandaloneLaunch() && !currentPartner.app_first_signed_in_launch_at) {
+      ctx.recordAppActivationIfSignedIn(currentUser.id);
+    }
+  }
 
   {
     const { ctx, rpcCalls, ls } = run({ standalone: true });
-    // Mirrors init()'s gate: `if (currentUser && isStandaloneLaunch())`.
     const currentUser = { id: 'user-1' };
-    if (currentUser && ctx.isStandaloneLaunch()) { ctx.recordAppActivationIfSignedIn(currentUser.id); }
+    const currentPartner = { id: 'p-1', app_first_signed_in_launch_at: null };
+    fireGate(ctx, currentUser, currentPartner);
     await settle();
-    ok(rpcCalls.length === 1 && rpcCalls[0] === 'record_partner_app_activation', 'partner-dashboard.html: standalone + signed-in calls record_partner_app_activation exactly once');
-    ok(ls.getItem('oq_partner_app_activated:user-1') === '1', 'partner-dashboard.html: the per-user localStorage flag is set after a successful call');
+    ok(rpcCalls.length === 1 && rpcCalls[0] === 'record_partner_app_activation', 'partner-dashboard.html: standalone + signed-in + linked partner calls record_partner_app_activation exactly once');
+    ok(ls.getItem('oq_partner_app_activated:user-1') === '1', 'partner-dashboard.html: the per-user localStorage flag is set after a res.data===true call');
   }
   {
     const { ctx, rpcCalls } = run({ standalone: true });
     const currentUser = null; // signed out (Auth.requireAuth() returned null, DEMO_MODE path)
-    if (currentUser && ctx.isStandaloneLaunch()) { ctx.recordAppActivationIfSignedIn(currentUser && currentUser.id); }
+    fireGate(ctx, currentUser, null);
     await settle();
     ok(rpcCalls.length === 0, 'partner-dashboard.html NEGATIVE CONTROL: standalone + signed-out never calls the RPC');
   }
   {
     const { ctx, rpcCalls } = run({ standalone: false });
     const currentUser = { id: 'user-2' };
-    if (currentUser && ctx.isStandaloneLaunch()) { ctx.recordAppActivationIfSignedIn(currentUser.id); }
+    const currentPartner = { id: 'p-2', app_first_signed_in_launch_at: null };
+    fireGate(ctx, currentUser, currentPartner);
     await settle();
     ok(rpcCalls.length === 0, 'partner-dashboard.html: non-standalone (regular browser tab) never calls the RPC');
   }
   {
     const { ctx, rpcCalls, ls } = run({ standalone: true, rpcImpl: () => Promise.reject(new Error('network down')) });
     const currentUser = { id: 'user-3' };
+    const currentPartner = { id: 'p-3', app_first_signed_in_launch_at: null };
     let threw = false;
-    try { if (currentUser && ctx.isStandaloneLaunch()) { ctx.recordAppActivationIfSignedIn(currentUser.id); } } catch (e) { threw = true; }
+    try { fireGate(ctx, currentUser, currentPartner); } catch (e) { threw = true; }
     await settle();
     ok(!threw, 'partner-dashboard.html: an RPC rejection does not throw synchronously');
     ok(rpcCalls.length === 1, 'partner-dashboard.html: the RPC was attempted despite the eventual rejection');
@@ -241,23 +178,26 @@ function makeLocalStorage() {
     // iOS standalone signal (navigator.standalone), not matchMedia.
     const { ctx, rpcCalls } = run({ standalone: false, userAgentStandalone: true });
     const currentUser = { id: 'user-4' };
-    if (currentUser && ctx.isStandaloneLaunch()) { ctx.recordAppActivationIfSignedIn(currentUser.id); }
+    const currentPartner = { id: 'p-4', app_first_signed_in_launch_at: null };
+    fireGate(ctx, currentUser, currentPartner);
     await settle();
     ok(rpcCalls.length === 1, 'partner-dashboard.html: iOS navigator.standalone alone also counts as standalone');
   }
   {
-    // gh-2154-P2 fix-up: user A's flag is set, then user B signs in on the
-    // SAME device (shared localStorage) -- assert the RPC IS called for B.
+    // gh-2154-P2 fix-up round: user A's flag is set, then user B signs in on
+    // the SAME device (shared localStorage) -- assert the RPC IS called for B.
     const sharedLs = makeLocalStorage();
     const a = run({ standalone: true, ls: sharedLs });
     const userA = { id: 'user-A' };
-    if (userA && a.ctx.isStandaloneLaunch()) { a.ctx.recordAppActivationIfSignedIn(userA.id); }
+    const partnerA = { id: 'p-A', app_first_signed_in_launch_at: null };
+    fireGate(a.ctx, userA, partnerA);
     await settle();
     ok(a.rpcCalls.length === 1, 'partner-dashboard.html: user A (first on this device) triggers the RPC');
 
     const b = run({ standalone: true, ls: sharedLs });
     const userB = { id: 'user-B' };
-    if (userB && b.ctx.isStandaloneLaunch()) { b.ctx.recordAppActivationIfSignedIn(userB.id); }
+    const partnerB = { id: 'p-B', app_first_signed_in_launch_at: null };
+    fireGate(b.ctx, userB, partnerB);
     await settle();
     ok(b.rpcCalls.length === 1 && b.rpcCalls[0] === 'record_partner_app_activation',
       'partner-dashboard.html: user B signing in on the SAME device as already-activated user A still triggers the RPC for B');
@@ -266,10 +206,77 @@ function makeLocalStorage() {
   {
     // No user id available -> skip the localStorage shortcut, just call the RPC.
     const { ctx, rpcCalls, ls } = run({ standalone: true });
-    if (ctx.isStandaloneLaunch()) { ctx.recordAppActivationIfSignedIn(null); }
+    const currentPartner = { id: 'p-5', app_first_signed_in_launch_at: null };
+    fireGate(ctx, { id: null }, currentPartner);
     await settle();
     ok(rpcCalls.length === 1, 'partner-dashboard.html: no user id available -> the RPC is still called (localStorage shortcut skipped)');
     ok(ls._store.size === 0, 'partner-dashboard.html: no user id available -> nothing is written to localStorage');
+  }
+
+  // ── REVIEW FAIL 5818340009 must-fix (i): {data:false} must not lose the
+  // activation -- the flag stays unset and the next launch retries the RPC.
+  {
+    const ls = makeLocalStorage();
+    const currentUser = { id: 'user-6' };
+
+    // Launch 1: RPC returns {data:false, error:null} -- e.g. the row wasn't
+    // linked yet at call time, or the timestamp was already set by another
+    // device. Either way, this call did NOT write the row.
+    const launch1 = run({ standalone: true, ls, rpcImpl: () => Promise.resolve({ data: false, error: null }) });
+    const partnerAtLaunch1 = { id: 'p-6', app_first_signed_in_launch_at: null };
+    fireGate(launch1.ctx, currentUser, partnerAtLaunch1);
+    await settle();
+    ok(launch1.rpcCalls.length === 1, 'partner-dashboard.html: {data:false} still attempts the RPC');
+    ok(ls.getItem('oq_partner_app_activated:user-6') !== '1', 'partner-dashboard.html: {data:false} leaves the localStorage flag UNSET (does not lose the activation)');
+
+    // Launch 2 (same device, same user): server-side column is still NULL
+    // (the {data:false} call above never wrote it), so the RPC must be
+    // retried -- not silently skipped because of a wrongly-set flag.
+    const launch2 = run({ standalone: true, ls, rpcImpl: () => Promise.resolve({ data: true, error: null }) });
+    const partnerAtLaunch2 = { id: 'p-6', app_first_signed_in_launch_at: null };
+    fireGate(launch2.ctx, currentUser, partnerAtLaunch2);
+    await settle();
+    ok(launch2.rpcCalls.length === 1, 'partner-dashboard.html: the next launch after a {data:false} response retries the RPC (flag did not block it)');
+    ok(ls.getItem('oq_partner_app_activated:user-6') === '1', 'partner-dashboard.html: the retried call, now data:true, finally sets the flag');
+  }
+
+  // ── REVIEW FAIL 5818340009 must-fix (d)(ii): an unlinked partner at init
+  // (claim pending) must not lose the activation -- once linked, the call
+  // happens and records.
+  {
+    const ls = makeLocalStorage();
+    const currentUser = { id: 'user-7' };
+
+    // Launch 1: currentPartner is still null (claim_partner_account() is
+    // pending / failed this round) -- the gate itself must not fire at all,
+    // since there is no linked row to write to yet.
+    const launch1 = run({ standalone: true, ls });
+    fireGate(launch1.ctx, currentUser, null);
+    await settle();
+    ok(launch1.rpcCalls.length === 0, 'partner-dashboard.html: an unlinked partner (currentPartner still null) makes no RPC call at all');
+    ok(ls._store.size === 0, 'partner-dashboard.html: an unlinked partner writes no localStorage flag');
+
+    // Launch 2: the row is now linked (currentPartner resolved, post-claim).
+    // The activation must still be recorded -- it must not have been lost
+    // by launch 1's no-op.
+    const launch2 = run({ standalone: true, ls });
+    const linkedPartner = { id: 'p-7', app_first_signed_in_launch_at: null };
+    fireGate(launch2.ctx, currentUser, linkedPartner);
+    await settle();
+    ok(launch2.rpcCalls.length === 1, 'partner-dashboard.html: once linked, the call happens and records the activation');
+    ok(ls.getItem('oq_partner_app_activated:user-7') === '1', 'partner-dashboard.html: the flag is set once the linked launch succeeds');
+  }
+
+  // ── REVIEW FAIL 5818340009 must-fix (d)(iii): currentPartner.
+  // app_first_signed_in_launch_at already set -> skip the call entirely
+  // (no RPC round-trip needed).
+  {
+    const { ctx, rpcCalls } = run({ standalone: true });
+    const currentUser = { id: 'user-8' };
+    const alreadyActivatedPartner = { id: 'p-8', app_first_signed_in_launch_at: '2026-09-01T00:00:00Z' };
+    fireGate(ctx, currentUser, alreadyActivatedPartner);
+    await settle();
+    ok(rpcCalls.length === 0, 'partner-dashboard.html: currentPartner.app_first_signed_in_launch_at already set -> no RPC call at all');
   }
 }
 
