@@ -72,6 +72,14 @@ export interface CreateHoverPaymentIntentParams {
   claim_id: string;
   amount: number; // cents
   description?: string;
+  /**
+   * gh-2078c / D-330 reconciliation (Q: on #2078, comment 5780969290): the
+   * persisted router arm (lib/variant.ts's `getVariant()`), threaded onto
+   * the PaymentIntent so the Stripe-webhook server-side Meta CAPI event
+   * (PR #2107's `sanitizeCapiVariant(paymentIntent.metadata?.variant)`) can
+   * attribute the purchase to D/E/C instead of always reading 'unknown'.
+   */
+  variant?: string;
 }
 
 export interface CreateDeductiblePaymentIntentParams {
@@ -349,7 +357,7 @@ async function sendAdjusterFollowup(
 async function createHoverPaymentIntent(
   params: CreateHoverPaymentIntentParams,
 ): Promise<PaymentIntentResult> {
-  const { claim_id, amount, description } = params;
+  const { claim_id, amount, description, variant } = params;
 
   try {
     const { data, error } = await supabase.functions.invoke('create-payment-intent', {
@@ -360,6 +368,10 @@ async function createHoverPaymentIntent(
         metadata: {
           claim_id,
           type: 'hover_measurement',
+          // gh-2078c: same 'unknown' fallback lib/variant.ts's getVariant()
+          // itself uses -- the key is always present, never omitted, even
+          // when no router arm was ever captured for this visitor.
+          variant: variant || 'unknown',
         },
       },
     });

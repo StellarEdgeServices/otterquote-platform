@@ -132,14 +132,27 @@ export function resolveAddressLine1(
  * Build the createHoverPaymentIntent params. amount is informational (the EF enforces the
  * $15 price server-side); kept at 1500 cents for parity. No charge is made here — this only
  * shapes the request the PR-2 page sends to create the PaymentIntent.
+ *
+ * gh-2078c / D-330 reconciliation (Q: on #2078, comment 5780969290): `variant`
+ * is an explicit parameter, not read here via `lib/variant.ts`'s
+ * `getVariant()` directly — this file's header states every function here is
+ * "pure, DOM-free, and network-free," and `getVariant()` touches
+ * `window`/`localStorage`. The caller (page.tsx, which already imports
+ * `getVariant` for the `measurement_purchase`/`Purchase` track calls) reads
+ * it once and passes the SAME value through, so the PaymentIntent metadata
+ * and the client analytics events carry the identical router-arm string.
+ * Defaults to 'unknown' when omitted, matching `getVariant()`'s own
+ * fallback — the key is always present, never silently dropped.
  */
 export function buildHoverPaymentIntentParams(
   claim: MeasurementsClaim,
+  variant: string = 'unknown',
 ): CreateHoverPaymentIntentParams {
   return {
     claim_id: claim.id,
     amount: HOVER_AMOUNT_CENTS,
     description: HOVER_PAYMENT_DESCRIPTION,
+    variant,
   };
 }
 
