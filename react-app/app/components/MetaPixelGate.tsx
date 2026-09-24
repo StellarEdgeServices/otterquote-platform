@@ -124,6 +124,20 @@ export function urlHasAuthToken(hash: string | null | undefined): boolean {
   return h.indexOf("access_token") !== -1 || h.indexOf("refresh_token") !== -1 || h.indexOf("provider_token") !== -1;
 }
 
+// REVIEW B1 on #2139: a credential in the QUERY STRING reaches Meta the same way (the pixel's server config strips no keys), so the
+// query is guarded too, by EXACT parameter name. Not by substring, and NOT `code`: `code` is this site's own referral parameter
+// (`?code=`, ga-gate.js gh-1931), and promocode / zipcode / mytoken must keep loading. Kept in sync with js/meta-pixel-gate.js.
+const AUTH_QUERY_KEYS = ["access_token", "refresh_token", "provider_token", "token_hash", "token"];
+
+export function queryHasAuthToken(search: string | null | undefined): boolean {
+  try {
+    const params = new URLSearchParams(search ?? "");
+    return AUTH_QUERY_KEYS.some((k) => params.has(k));
+  } catch {
+    return true; // an unparseable query string: fail closed
+  }
+}
+
 // gh-2107 / #2106 gap 2: D-330 allows only `Purchase` on /help-measurements, so no PageView is sent there. Every other allowed
 // route (/get-started, D-322) keeps its PageView.
 const PURCHASE_ONLY_PATHS = ["/help-measurements"];
@@ -156,8 +170,8 @@ export function MetaPixelGate() {
     if (!isAllowedPath(pathname)) return; // REWORK: authenticated/non-marketing route -- never load
     // gh-2107: an opted-out visitor (GPC, or the cookie either signal leaves) never loads the pixel, on any route.
     if (isAdSharingOptedOut()) return;
-    // gh-2107 / #2106 gap 1: a live credential in the URL fragment: the pixel never loads (any route).
-    if (typeof window !== "undefined" && urlHasAuthToken(window.location.hash)) return;
+    // gh-2107 / #2106 gap 1 + REVIEW B1: a live credential in the URL fragment OR query string: the pixel never loads (any route).
+    if (typeof window !== "undefined" && (urlHasAuthToken(window.location.hash) || queryHasAuthToken(window.location.search))) return;
     if (typeof window !== "undefined" && ALLOWED_HOSTS.includes(window.location.hostname)) {
       // gh-2107 (REVIEW: FAIL 5806828503 F1): the stored flag is read BEFORE loading anything, on every allowed route, whenever a
       // session exists. Only a definite `false` loads the pixel; `no_session` loads it too, but only on a marketing route.
@@ -197,6 +211,7 @@ export function MetaPixelGate() {
       */}
       <Script id="meta-pixel-init" strategy="afterInteractive">
         {`if (!window.fbq) { var n = function () { n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments); }; window.fbq = n; if (!window._fbq) { window._fbq = n; } n.push = n; n.loaded = true; n.version = '2.0'; n.queue = []; }
+window.fbq.disablePushState = true;
 fbq('init', '${PIXEL_ID}');${pageViewAllowed(pathname) ? "\nfbq('track', 'PageView');" : ""}`}
       </Script>
     </>

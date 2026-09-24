@@ -249,6 +249,24 @@
     return; // a live Supabase credential is in this URL; the pixel never loads.
   }
 
+  // gh-2107 / #2106 gaps (REVIEW B1 on #2139): a credential in the QUERY STRING reaches Meta the same way (fbevents.js reads
+  // location.href for `dl`; the pixel's server config strips no keys), so the query is guarded too -- by EXACT parameter name, not
+  // by substring, and NOT `code`: `code` is this site's own referral parameter (`?code=`, js/ga-gate.js gh-1931) and promocode /
+  // zipcode / mytoken must keep loading. Kept in sync with react-app/app/components/MetaPixelGate.tsx (queryHasAuthToken).
+  var authQueryKeys = ['access_token', 'refresh_token', 'provider_token', 'token_hash', 'token'];
+  var queryHasAuthToken = false;
+  try {
+    var queryParams = new URLSearchParams(window.location.search);
+    for (var qk = 0; qk < authQueryKeys.length; qk++) {
+      if (queryParams.has(authQueryKeys[qk])) { queryHasAuthToken = true; }
+    }
+  } catch (e) {
+    queryHasAuthToken = true; // an unparseable query string: fail closed
+  }
+  if (queryHasAuthToken) {
+    return; // a live credential is in the query string; the pixel never loads.
+  }
+
   // gh-2063 fix round 2 (PR #2065 review, item 4): own copy of
   // js/ga-gate.js's _oqLoadOnIdleOrInteraction (that file's comment on its
   // copy explains why this is duplicated rather than shared). Only the
@@ -295,6 +313,9 @@
     });
   });
 
+  // gh-2107 / #2106 gaps (REVIEW B2 on #2139): fbevents.js wraps pushState / replaceState / popstate and sends its OWN PageView on a
+  // client-side URL change once any event has fired. `disablePushState` stops that; it must be set before `init`.
+  window.fbq.disablePushState = true;
   window.fbq('init', PIXEL_ID);
   window.fbq('track', 'PageView');
 })();
