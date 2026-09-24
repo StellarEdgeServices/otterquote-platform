@@ -354,6 +354,20 @@ describe('buildMeasurementPurchaseEventId() (gh-2078c / D-330 dedup reconciliati
     expect(contract.examples.length).toBeGreaterThanOrEqual(2);
   });
 
+  // gh-2107 follow-up 6a (Ben, #2078 5806312169): the shared contract file is OUTSIDE react-app/, so a change to it alone did not
+  // trigger this workflow and the client half of the contract test could stay unrun while the server half changed. The
+  // workflow's path filter must therefore list the file, on BOTH triggers.
+  it('the React Vitest workflow runs when the shared contract file changes (it is in the paths filter of both triggers)', () => {
+    const wf = readFileSync(resolve(process.cwd(), '..', '.github', 'workflows', 'react-app-tests.yml'), 'utf8');
+    const needle = "'supabase/functions/_shared/capi-event-id.contract.json'";
+    const occurrences = wf.split(needle).length - 1;
+    expect(occurrences).toBe(2);
+    const pushPaths = wf.slice(wf.indexOf('push:'), wf.indexOf('pull_request:'));
+    const prPaths = wf.slice(wf.indexOf('pull_request:'), wf.indexOf('# gh-1731'));
+    expect(pushPaths).toContain(needle);
+    expect(prPaths).toContain(needle);
+  });
+
   it('derives the contract event_id (prefix + paymentIntentId) for every example in the shared file', () => {
     for (const e of contract.examples) {
       expect(buildMeasurementPurchaseEventId(e.paymentIntentId)).toBe(e.eventId);
