@@ -286,6 +286,20 @@
   // fbqStub.queue exactly as before. gh-2000's callMethod drain fires that
   // queued init+PageView the moment fbevents.js actually loads, so PageView
   // still fires once per visit, just later.
+  // gh-2121 S05 (CEO RUN 67): same override js/ga-gate.js's own copy of
+  // this function reads -- see that file's gh-2121 comment for why. Kept
+  // as its own copy deliberately, same as the rest of this function (this
+  // file's own header comment on not sharing a module with js/ga-gate.js).
+  function _oqAnalyticsDeferMs() {
+    return (typeof window.__OQ_ANALYTICS_DEFER_MS === 'number') ? window.__OQ_ANALYTICS_DEFER_MS : 1500;
+  }
+  // gh-2121 S05: same reasoning as js/ga-gate.js's own copy of this
+  // function -- requestIdleCallback fires early on a light page regardless
+  // of its timeout, so Arm F forces a plain timer instead (measured in
+  // tests/gh2121-s05-defer-analytics.mjs).
+  function _oqAnalyticsForceTimer() {
+    return window.__OQ_ANALYTICS_FORCE_TIMER === true;
+  }
   function _oqLoadOnIdleOrInteraction(fn) {
     var fired = false;
     var idleHandle = null;
@@ -307,10 +321,11 @@
     for (var i = 0; i < EVENTS.length; i++) {
       window.addEventListener(EVENTS[i], run, { passive: true, once: true });
     }
-    if (window.requestIdleCallback) {
-      idleHandle = window.requestIdleCallback(run, { timeout: 1500 });
+    var deferMs = _oqAnalyticsDeferMs();
+    if (window.requestIdleCallback && !_oqAnalyticsForceTimer()) {
+      idleHandle = window.requestIdleCallback(run, { timeout: deferMs });
     } else {
-      timeoutHandle = setTimeout(run, 1500);
+      timeoutHandle = setTimeout(run, deferMs);
     }
   }
 

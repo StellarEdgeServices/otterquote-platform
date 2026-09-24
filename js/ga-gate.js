@@ -105,6 +105,35 @@
   // requestIdleCallback is unsupported, or the visitor's first
   // pointerdown/keydown/scroll/touchstart. Exactly one of those wins; the
   // rest are torn down immediately so `fn` never runs twice.
+  // gh-2121 S05 (CEO RUN 67): the timeout below used to be a hard-coded
+  // 1500. It now reads window.__OQ_ANALYTICS_DEFER_MS when start.html (or
+  // any other including page) has set it, falling back to 1500 exactly as
+  // before when it has not -- every page/arm that never sets this global is
+  // byte-for-byte unaffected. start.html sets it to ~3500 for Arm F only
+  // (see that file's own gh-2121 comment above its gate-loader script),
+  // since Arm F is where all paid Meta traffic lands (#2121) and the
+  // 1500ms cap left gtag.js/fbevents.js/clarity.js executing well inside
+  // the window Lighthouse scores LCP/TTI against. This is a timing knob
+  // only -- ALLOWED_HOSTS, CLARITY_ALLOWED_PATHS, the oqInternal()
+  // fail-closed check and every other gate below are unchanged.
+  function _oqAnalyticsDeferMs() {
+    return (typeof window.__OQ_ANALYTICS_DEFER_MS === 'number') ? window.__OQ_ANALYTICS_DEFER_MS : 1500;
+  }
+  // gh-2121 S05: requestIdleCallback returns the instant the main thread
+  // goes idle, which on a light page can be well under a second regardless
+  // of the timeout passed -- measured directly (tests/gh2121-s05-defer-
+  // analytics.mjs) at ~0.3-0.7s even with the timeout raised to 3500. The
+  // brief's fix is a FIXED delay ("about 3-4s") racing first interaction,
+  // not "idle, capped at 3-4s" -- those are different triggers, and idle
+  // firing early is exactly what left gtag.js/fbevents.js/clarity.js still
+  // landing inside Lighthouse's LCP/TTI window in production. When
+  // start.html sets window.__OQ_ANALYTICS_FORCE_TIMER (Arm F only), this
+  // skips requestIdleCallback entirely and uses a plain timer for the
+  // non-interaction leg, same as the else branch below already does when
+  // requestIdleCallback is unsupported.
+  function _oqAnalyticsForceTimer() {
+    return window.__OQ_ANALYTICS_FORCE_TIMER === true;
+  }
   function _oqLoadOnIdleOrInteraction(fn) {
     var fired = false;
     var idleHandle = null;
@@ -126,10 +155,11 @@
     for (var i = 0; i < EVENTS.length; i++) {
       window.addEventListener(EVENTS[i], run, { passive: true, once: true });
     }
-    if (window.requestIdleCallback) {
-      idleHandle = window.requestIdleCallback(run, { timeout: 1500 });
+    var deferMs = _oqAnalyticsDeferMs();
+    if (window.requestIdleCallback && !_oqAnalyticsForceTimer()) {
+      idleHandle = window.requestIdleCallback(run, { timeout: deferMs });
     } else {
-      timeoutHandle = setTimeout(run, 1500);
+      timeoutHandle = setTimeout(run, deferMs);
     }
   }
 

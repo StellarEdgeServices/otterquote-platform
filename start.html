@@ -510,6 +510,43 @@
      loads is lost, only possibly delayed. -->
 <script>
   (function () {
+    // gh-2121 S05 (CEO RUN 67): Arm F is where ALL paid Meta traffic lands
+    // (#2121 comment 5820443836). The ceo67 production/re-review checks
+    // (In Flight/reports/ceo67-rereview2160-20260924.md,
+    // ceo67-prod2160-20260924.md) found gh-2160's defer-to-idle-or-300ms
+    // outer gate plus each gate file's own defer-to-idle-or-1500ms inner
+    // vendor-script insertion (js/ga-gate.js's/js/meta-pixel-gate.js's
+    // _oqLoadOnIdleOrInteraction) still leaves median LCP/TTI ~7.7s in
+    // production once gtag.js/fbevents.js/clarity.js actually execute --
+    // the two caps are small enough that on a page this light the browser
+    // is usually already idle within a few hundred ms, so the vendor
+    // bundles' own fetch+parse+execute still lands well inside the window
+    // Lighthouse scores LCP/TTI against. window.__OQ_ANALYTICS_DEFER_MS
+    // (read by both gate files' own _oqLoadOnIdleOrInteraction, default
+    // 1500 when unset -- every other arm and every other page is
+    // byte-for-byte unaffected) raises ONLY the inner vendor-script-insertion
+    // cap to ~3.5s for Arm F, so the three third-party bundles are pushed
+    // past first paint / LCP for a visitor who never interacts, while a
+    // visitor who taps, types or scrolls first (the common case -- Arm F is
+    // a one-tap-to-advance screen) still gets them immediately, same as
+    // before. Nothing here changes js/ga-gate.js's or
+    // js/meta-pixel-gate.js's ALLOWED_HOSTS / CLARITY_ALLOWED_PATHS
+    // allowlists, D-330 ad-opt-out gate, or oq_internal fail-closed check --
+    // only how long the already-existing idle-or-interaction race is allowed
+    // to run before its timeout fallback fires. Set here, before either gate
+    // file is even requested, so it is already in place by the time either
+    // file's own _oqLoadOnIdleOrInteraction call reads it.
+    try {
+      if (document.documentElement.getAttribute('data-oq-start-arm') === 'f') {
+        window.__OQ_ANALYTICS_DEFER_MS = 3500;
+        // requestIdleCallback returns as soon as the main thread is idle,
+        // which is well under a second on a light page regardless of the
+        // timeout above (see js/ga-gate.js's own gh-2121 comment on this) --
+        // force a plain timer so a visitor who never interacts gets the
+        // ~3.5s FIXED delay the brief asks for, not "idle, capped at 3.5s".
+        window.__OQ_ANALYTICS_FORCE_TIMER = true;
+      }
+    } catch (e) {}
     // gh-2160: the window 'load' event was tried first here and measured
     // worse -- 'load' waits for EVERY resource on the page (fonts, the
     // Supabase UMD bundle, images), so on a page this light it can end up
