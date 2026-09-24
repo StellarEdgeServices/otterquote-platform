@@ -241,12 +241,21 @@
     return; // not a recognised production host -- fbevents.js never loads
   }
 
-  var hash = String(window.location.hash).toLowerCase(); // case-insensitive (REVIEW N2 on #2139): a differently cased key is still a credential
+  var hash = window.location.hash;
   var urlHasAuthToken = hash.indexOf('access_token') !== -1 ||
     hash.indexOf('refresh_token') !== -1 ||
     hash.indexOf('provider_token') !== -1;
   if (urlHasAuthToken) {
     return; // a live Supabase credential is in this URL; the pixel never loads.
+  }
+
+  // REVIEW N2 on #2139: the key match is case-INSENSITIVE, so `#Access_Token=` is a credential too. The canonical block above is left
+  // byte-for-byte as scripts/check-gtag-single-source.py requires (CANONICAL_BLOCK_SRC, gh-1969); this is a second, lower-cased guard.
+  var hashLower = String(window.location.hash).toLowerCase();
+  if (hashLower.indexOf('access_token') !== -1 ||
+    hashLower.indexOf('refresh_token') !== -1 ||
+    hashLower.indexOf('provider_token') !== -1) {
+    return;
   }
 
   // gh-2107 / #2106 gaps (REVIEW B1 on #2139): a credential in the QUERY STRING reaches Meta the same way (fbevents.js reads
