@@ -4,21 +4,29 @@
 
 import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
+  canClaimStage,
   DAY_MS,
   isEligibleAgentType,
   type LedgerStatus,
   type OnboardingStage,
   selectStage,
+  STALE_PENDING_MINUTES,
 } from "./onboarding-stage.ts";
 
 const NOW = Date.parse("2026-09-24T12:00:00Z");
-const partnerAged = (ageMs: number, activatedAgo: number | null = null) => ({
+const partnerAged = (
+  ageMs: number,
+  activatedAgo: number | null = null,
+  optedOutAgo: number | null = null,
+) => ({
   created_at: new Date(NOW - ageMs).toISOString(),
   app_first_signed_in_launch_at: activatedAgo === null ? null : new Date(NOW - activatedAgo).toISOString(),
+  onboarding_opted_out_at: optedOutAgo === null ? null : new Date(NOW - optedOutAgo).toISOString(),
 });
 const ledger = (entries: [OnboardingStage, LedgerStatus][]) =>
   new Map<OnboardingStage, LedgerStatus>(entries);
 const none = new Map<OnboardingStage, LedgerStatus>();
+const MIN = 60 * 1000;
 
 // ── day boundaries ──────────────────────────────────────────────────────────
 
@@ -149,7 +157,11 @@ Deno.test("negative control: never activates — gets day0, day1, day3, day7 in 
 // ── invalid / defensive ──────────────────────────────────────────────────────
 
 Deno.test("malformed created_at fails closed (no stage, no crash)", () => {
-  const sel = selectStage({ created_at: "not-a-date", app_first_signed_in_launch_at: null }, none, NOW);
+  const sel = selectStage(
+    { created_at: "not-a-date", app_first_signed_in_launch_at: null, onboarding_opted_out_at: null },
+    none,
+    NOW,
+  );
   assertEquals(sel.stage, null);
   assertEquals(sel.reason, "invalid_created_at");
 });
@@ -173,4 +185,88 @@ Deno.test("customer / adjuster / other / unknown / null are NOT eligible", () =>
     // deno-lint-ignore no-explicit-any
     assertEquals(isEligibleAgentType(t as any), false, String(t));
   }
+});
+
+// ── Kevin correction Q1: opt-out stop condition (mirrors activation) ───────
+
+Deno.test("opted-out partner: nothing sends, even on day0, even with nothing else recorded", () => {
+  const sel = selectStage(partnerAged(0, null, 0), none, NOW);
+  assertEquals(sel.stage, null);
+  assertEquals(sel.reason, "opted_out");
+  assertEquals(sel.toMarkSkipped, []);
+});
+
+Deno.test("opted-out partner with backlog due: still nothing, no skip-marking either", () => {
+  const sel = selectStage(partnerAged(9 * DAY_MS, null, 1 * DAY_MS), none, NOW);
+  assertEquals(sel.stage, null);
+  assertEquals(sel.reason, "opted_out");
+  assertEquals(sel.toMarkSkipped, []);
+});
+
+Deno.test("opt-out wins even if activation is ALSO set (both permanent gates, either is sufficient)", () => {
+  const sel = selectStage(partnerAged(9 * DAY_MS, 2 * DAY_MS, 1 * DAY_MS), none, NOW);
+  assertEquals(sel.stage, null);
+  assertEquals(sel.reason, "opted_out");
+});
+
+// ── Kevin correction Q3: 'pending'/'failed' are NOT resolved ────────────────
+
+Deno.test("a 'failed' day0 with day1 also due: day1 is the latest and wins; day0 is marked skipped exactly like any other backlog stage (retried is not this ledger's job once superseded)", () => {
+  const sel = selectStage(partnerAged(1 * DAY_MS), ledger([["day0", "failed"]]), NOW);
+  assertEquals(sel.stage, "day1");
+  assertEquals(sel.toMarkSkipped, ["day0"]);
+});
+
+Deno.test("a 'failed' day0 with nothing else due yet: day0 itself is what's selected (retry, not skip)", () => {
+  const sel = selectStage(partnerAged(0), ledger([["day0", "failed"]]), NOW);
+  assertEquals(sel.stage, "day0");
+  assertEquals(sel.toMarkSkipped, []);
+});
+
+Deno.test("a fresh 'pending' day0 (in-flight from another run) is still 'due' from selectStage's view — the CLAIM step is what actually blocks a double-send, not selectStage", () => {
+  const sel = selectStage(partnerAged(0), ledger([["day0", "pending"]]), NOW);
+  assertEquals(sel.stage, "day0");
+});
+
+Deno.test("'sent' and 'skipped' remain terminal — never re-selected", () => {
+  assertEquals(selectStage(partnerAged(0), ledger([["day0", "sent"]]), NOW).stage, null);
+  assertEquals(
+    selectStage(partnerAged(4 * DAY_MS), ledger([["day0", "sent"], ["day1", "skipped"]]), NOW).stage,
+    "day3",
+  );
+});
+
+// ── canClaimStage (pure mirror of the DB-level conditional upsert) ─────────
+
+Deno.test("canClaimStage: no existing row -> claimable", () => {
+  assertEquals(canClaimStage(undefined, NOW), true);
+});
+
+Deno.test("canClaimStage: 'sent' -> never claimable", () => {
+  assertEquals(canClaimStage({ status: "sent", created_at: new Date(NOW).toISOString() }, NOW), false);
+});
+
+Deno.test("canClaimStage: 'skipped' -> never claimable", () => {
+  assertEquals(canClaimStage({ status: "skipped", created_at: new Date(NOW).toISOString() }, NOW), false);
+});
+
+Deno.test("canClaimStage: 'failed' -> always claimable regardless of age", () => {
+  assertEquals(canClaimStage({ status: "failed", created_at: new Date(NOW - 999 * DAY_MS).toISOString() }, NOW), true);
+  assertEquals(canClaimStage({ status: "failed", created_at: new Date(NOW).toISOString() }, NOW), true);
+});
+
+Deno.test("canClaimStage: fresh 'pending' (younger than the stale window) -> NOT claimable", () => {
+  const fresh = new Date(NOW - (STALE_PENDING_MINUTES * MIN - 1)).toISOString();
+  assertEquals(canClaimStage({ status: "pending", created_at: fresh }, NOW), false);
+});
+
+Deno.test("canClaimStage: stale 'pending' (at or past the stale window) -> claimable", () => {
+  const stale = new Date(NOW - STALE_PENDING_MINUTES * MIN).toISOString();
+  assertEquals(canClaimStage({ status: "pending", created_at: stale }, NOW), true);
+  const veryStale = new Date(NOW - 999 * MIN).toISOString();
+  assertEquals(canClaimStage({ status: "pending", created_at: veryStale }, NOW), true);
+});
+
+Deno.test("canClaimStage: malformed created_at on a 'pending' row fails closed (not claimable)", () => {
+  assertEquals(canClaimStage({ status: "pending", created_at: "not-a-date" }, NOW), false);
 });

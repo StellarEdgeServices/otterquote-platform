@@ -30,14 +30,29 @@
  * IS NOT NULL, nothing further ever sends for that partner — checked first,
  * before any stage math (see selectStage).
  *
- * Idempotency: a dedicated ledger table, public.partner_onboarding_sends,
- * unique on (partner_id, stage) — same general mechanism (stamp, catch
- * 23505, treat as already-sent) send-homeowner-next-steps uses against
- * activity_log, but its own purpose-built table rather than overloading
- * activity_log's untyped metadata (referral_agents partners are not
- * claims/homeowners, and reusing activity_log's user_id-keyed shape would
- * require a user_id every partner row may not have at recruit-code-linked
- * signup time). See supabase/migrations/*_gh2154_p4_partner_onboarding_sends.sql.
+ * Idempotency (KEVIN CORRECTION Q3 — overrules this file's original
+ * stamp-before-send design, which was the exact defect gh-2069 fixed in
+ * send-homeowner-next-steps): a dedicated ledger table,
+ * public.partner_onboarding_sends, unique on (partner_id, stage), with an
+ * atomic claim (public.claim_partner_onboarding_stage(), a conditional
+ * upsert) called BEFORE Mailgun, and a mark ('sent' with the Mailgun id, or
+ * 'failed' with the error) called AFTER. A 'failed' row is retried by a
+ * later run, never silently dropped. See ./run-sweep.ts's file header and
+ * supabase/migrations/*_gh2154_p4_partner_onboarding_ledger.sql. A separate
+ * table rather than overloading activity_log: referral_agents partners are
+ * not claims/homeowners, and reusing activity_log's user_id-keyed shape
+ * would require a user_id every partner row may not have at recruit-code-
+ * linked signup time.
+ *
+ * Opt-out (KEVIN CORRECTION Q1): every onboarding email carries a signed,
+ * per-partner unsubscribe link, mirroring D-320's homeowner mechanism
+ * exactly (see ./optout.ts and supabase/functions/partner-email-optout/).
+ * No configured signing secret (PARTNER_ONBOARDING_OPTOUT_SECRET unset) ->
+ * this function sends NOTHING, same CAN-SPAM posture as D-320's own
+ * canSendWithOptOut gate. Clicking the link sets
+ * referral_agents.onboarding_opted_out_at, a permanent stop condition
+ * selectStage checks first, same shape as P-2's activation gate. THIS
+ * MECHANISM IS FLAGGED FOR LEGAL-READ AT REVIEW.
  *
  * Email only. SMS is explicitly OUT OF SCOPE for this build: `git grep -n
  * "D-328" -- supabase js '*.html'` returns zero hits in this repo (no D-328
@@ -57,13 +72,15 @@
  * Bearer, or permissive when CRON_SECRET is unset (dev/staging).
  *
  * Environment variables:
- *   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, MAILGUN_API_KEY, CRON_SECRET
+ *   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, MAILGUN_API_KEY, CRON_SECRET,
+ *   PARTNER_ONBOARDING_OPTOUT_SECRET, PARTNER_ONBOARDING_OPTOUT_SECRET_PREVIOUS (optional)
  *
- * All actual guard logic (kill switch, stage selection, placeholder-copy
- * check, agent_type routing, bot-pattern/is_test, idempotent ledger writes)
- * lives in ./run-sweep.ts's runOnboardingSweep, which is exercised entirely
- * by run-sweep.test.ts with fake dependencies — this file only wires those
- * dependencies to real Supabase/Mailgun and shapes the HTTP response.
+ * All actual guard logic (kill switch, opt-out gate, stage selection,
+ * placeholder-copy check, agent_type routing, bot-pattern/is_test, the
+ * claim/send/mark idempotency sequence) lives in ./run-sweep.ts's
+ * runOnboardingSweep, which is exercised entirely by run-sweep.test.ts with
+ * fake dependencies — this file only wires those dependencies to real
+ * Supabase/Mailgun and shapes the HTTP response.
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
@@ -71,6 +88,13 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { runOnboardingSweep, type RunDeps } from "./run-sweep.ts";
 import { PARTNER_ONBOARDING_SETTING_KEY } from "./kill-switch.ts";
 import type { PartnerRow } from "./onboarding-stage.ts";
+import { STALE_PENDING_MINUTES } from "./onboarding-stage.ts";
+import {
+  buildPartnerOptOutUrl,
+  canSendWithOptOut,
+  PARTNER_OPTOUT_SECRET_ENV,
+  signPartnerOptOutToken,
+} from "./optout.ts";
 
 const FUNCTION_NAME = "send-partner-onboarding";
 const BATCH_LIMIT = 500;
@@ -155,6 +179,11 @@ serve(async (req: Request) => {
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const mailgunApiKey = Deno.env.get("MAILGUN_API_KEY");
   const cronSecret = Deno.env.get("CRON_SECRET");
+  // Kevin correction Q1 — the CURRENT signing secret only is ever used to
+  // SIGN a new link (rotation-safe verification, on the reader side, lives
+  // entirely in partner-email-optout; this function never verifies).
+  const optOutSecret = Deno.env.get(PARTNER_OPTOUT_SECRET_ENV);
+  const functionsBaseUrl = `${(supabaseUrl || "").replace(/\/$/, "")}/functions/v1`;
 
   if (!supabaseUrl || !serviceRoleKey) {
     return jsonResponse({ ok: false, error: "Server configuration error" }, 500, corsHeaders);
@@ -190,11 +219,18 @@ serve(async (req: Request) => {
       }
       return data ? { value: data.value } : null;
     },
+    // Kevin correction Q1 — computed ONCE, ahead of any candidate scan, same
+    // CAN-SPAM posture and position as D-320's canSendWithOptOut.
+    optOutSecretConfigured: canSendWithOptOut(optOutSecret),
     fetchCandidatePartners: async () => {
       const { data, error } = await supabase
         .from("referral_agents")
-        .select("id, created_at, agent_type, is_test, email, app_first_signed_in_launch_at")
+        .select("id, created_at, agent_type, is_test, email, app_first_signed_in_launch_at, onboarding_opted_out_at")
         .is("app_first_signed_in_launch_at", null)
+        // Kevin correction Q1: an opted-out partner is excluded from the scan
+        // entirely, same load-reduction reasoning as the activation filter —
+        // selectStage's own opt-out gate is the source of truth either way.
+        .is("onboarding_opted_out_at", null)
         .order("created_at", { ascending: true })
         .limit(BATCH_LIMIT);
       if (error) {
@@ -207,7 +243,7 @@ serve(async (req: Request) => {
       if (partnerIds.length === 0) return [];
       const { data, error } = await supabase
         .from("partner_onboarding_sends")
-        .select("partner_id, stage, status")
+        .select("partner_id, stage, status, created_at")
         .in("partner_id", partnerIds);
       if (error) {
         console.error(`[${FUNCTION_NAME}] ledger read failed:`, error.message);
@@ -216,15 +252,52 @@ serve(async (req: Request) => {
       // deno-lint-ignore no-explicit-any
       return (data || []) as any;
     },
-    insertLedgerRow: async (row) => {
+    // Kevin correction Q3 — the atomic claim, via the DB-level conditional
+    // upsert (see claim_partner_onboarding_stage() in the ledger migration).
+    // Called BEFORE Mailgun, never after.
+    claimStage: async (partnerId, stage) => {
+      const { data, error } = await supabase.rpc("claim_partner_onboarding_stage", {
+        p_partner_id: partnerId,
+        p_stage: stage,
+        p_stale_minutes: STALE_PENDING_MINUTES,
+      });
+      if (error) {
+        console.error(`[${FUNCTION_NAME}] claim RPC failed for partner ${partnerId} stage ${stage} — treating as NOT claimed (fail closed):`, error.message);
+        return { claimed: false };
+      }
+      return { claimed: data === true };
+    },
+    markSent: async (partnerId, stage, mailgunId) => {
+      const { error } = await supabase
+        .from("partner_onboarding_sends")
+        .update({ status: "sent", mailgun_id: mailgunId, error: null })
+        .eq("partner_id", partnerId)
+        .eq("stage", stage);
+      return { error: error ? { code: error.code, message: error.message } : null };
+    },
+    markFailed: async (partnerId, stage, errMessage) => {
+      const { error } = await supabase
+        .from("partner_onboarding_sends")
+        .update({ status: "failed", error: errMessage })
+        .eq("partner_id", partnerId)
+        .eq("stage", stage);
+      return { error: error ? { code: error.code, message: error.message } : null };
+    },
+    markSkipped: async (partnerId, stage, reason) => {
+      // Fresh INSERT (backlog-superseded stages are never claimed first —
+      // see run-sweep.ts) — a concurrent duplicate insert hits the unique
+      // index and is a harmless 23505, tolerated by the caller.
       const { error } = await supabase.from("partner_onboarding_sends").insert({
-        partner_id: row.partner_id,
-        stage: row.stage,
-        status: row.status,
-        skipped_reason: row.skipped_reason ?? null,
-        mailgun_id: row.mailgun_id ?? null,
+        partner_id: partnerId,
+        stage,
+        status: "skipped",
+        skipped_reason: reason,
       });
       return { error: error ? { code: error.code, message: error.message } : null };
+    },
+    buildOptOutUrl: async (partnerId) => {
+      const token = await signPartnerOptOutToken(partnerId, optOutSecret as string);
+      return buildPartnerOptOutUrl(functionsBaseUrl, token);
     },
     sendEmail: (to, subject, textBody, htmlBody) => {
       if (!mailgunApiKey) {

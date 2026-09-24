@@ -432,3 +432,11 @@ verify_jwt = false
 # no bearing on that — it only controls the API gateway's own JWT check.
 [functions.send-partner-onboarding]
 verify_jwt = false
+
+# gh-2154 P-4 (Kevin correction Q1): the unauthenticated unsubscribe endpoint
+# behind the D-320-mirrored opt-out link in send-partner-onboarding's emails
+# — same pattern and same reason as homeowner-email-optout's own pin: an
+# email recipient clicking an unsubscribe link has no JWT, and the signed
+# HMAC token in the URL is the authorization.
+[functions.partner-email-optout]
+verify_jwt = false
