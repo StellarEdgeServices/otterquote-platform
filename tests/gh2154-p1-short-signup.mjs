@@ -78,7 +78,7 @@ const PAGES = [
       name: { kind: 'full', fullId: 'fullName' },
       emailId: 'email',
       phoneId: 'phone',
-      companyId: null, // today's page has NO company/brokerage field at all
+      companyId: 'company', // gh-2154 P-1: added by the build worker (see report)
       checkboxId: 'agreeToTerms',
       passwordIds: ['password'],
     },
