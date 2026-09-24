@@ -33,11 +33,9 @@ import {
   REFUSAL_CODE,
 } from "./live-charge-guard.ts";
 import { PlatformSettingMissingError, resolveRequiredPriceCents } from "./price-setting.ts";
-import {
-  evaluateMeasurementUpgradeGate,
-  UPGRADE_CHARGE_DESCRIPTION,
-  VENDOR_CREDIT_EXPECTED_CENTS,
-} from "./measurement-upgrade-gate.ts";
+import { attachVariantMetadata } from "./variant-metadata.ts";
+import { buildStandardCreateForm, standardIdempotencyKey } from "./standard-create-form.ts";
+import { evaluateMeasurementUpgradeGate } from "./measurement-upgrade-gate.ts";
 import { type OptOutStore, recordGpcOptOut } from "./ad-sharing-opt-out.ts";
 
 const FUNCTION_NAME = "create-payment-intent";
@@ -651,27 +649,11 @@ serve(async (req) => {
       }
     } else {
       // ===== Standard flow (hover_measurement, deductible_escrow, measurement_upgrade) =====
-      const form = new URLSearchParams();
-      form.append("amount", String(amount));
-      form.append("currency", currency);
-      // measurement_upgrade: description is server-enforced, never the
-      // client-sent value — D-312/#1414 scrubbed vendor names from every
-      // customer-facing string and this must never regress that.
-      const chargeDescription = metadata.type === "measurement_upgrade"
-        ? UPGRADE_CHARGE_DESCRIPTION
-        : (description || "");
-      form.append("description", chargeDescription);
-      form.append("metadata[claim_id]", metadata.claim_id);
-      form.append("metadata[type]", metadata.type);
-      if (metadata.type === "measurement_upgrade") {
-        form.append("metadata[contractor_id]", contractor_id);
-        // Bookkeeping only (Marty, #1411 cto-2026-09-02T13:45:25Z: "does not
-        // net it against the charge") — the contractor is still charged the
-        // full tier amount above.
-        form.append("metadata[vendor_credit_expected_cents]", String(VENDOR_CREDIT_EXPECTED_CENTS));
-      }
-      form.append("automatic_payment_methods[enabled]", "true");
-      const idempotencyKey = `${metadata.type}-${metadata.claim_id}`;
+      // The create body and its idempotency key are functions of the claim and the request type ONLY (see
+      // standard-create-form.ts): Stripe refuses a reused key with a different body, so nothing per-request may ever be in
+      // this create. The router variant is attached AFTER it, below.
+      const form = buildStandardCreateForm({ amount, currency, description, metadata, contractor_id });
+      const idempotencyKey = standardIdempotencyKey(metadata);
       const r = await fetch(`${STRIPE_API_BASE}/payment_intents`, {
         method: "POST",
         headers: {
@@ -686,6 +668,22 @@ serve(async (req) => {
         throw new Error(`Stripe API error (HTTP ${r.status}): ${err}`);
       }
       paymentIntentData = await r.json();
+      if (metadata.type === "hover_measurement") {
+        // gh-2078c / D-330 (REVIEW: FAIL 5805531419, B1): the router variant is attached AFTER the create, in a separate
+        // best-effort update, NOT as a create parameter. The create above carries a per-claim Idempotency-Key, and Stripe
+        // refuses (HTTP 400) a reused key whose parameters differ, so a per-request value such as the browser's stored
+        // variant must never be part of it. The create form stays byte-identical to main. Awaited: the client confirms the
+        // card only after it has client_secret, so the metadata is in place before payment_intent.succeeded and the
+        // server-side Meta CAPI Purchase (PR #2107) reads it. Never fails the payment.
+        await attachVariantMetadata({
+          fetchFn: fetch,
+          apiBase: STRIPE_API_BASE,
+          basicAuth,
+          paymentIntentId: paymentIntentData.id,
+          status: paymentIntentData.status,
+          variant: metadata.variant,
+        });
+      }
     }
 
     // gh-948: 'processing' (ACH in flight) must NOT be reported as `succeeded` —
