@@ -241,7 +241,7 @@
     return; // not a recognised production host -- fbevents.js never loads
   }
 
-  var hash = window.location.hash;
+  var hash = String(window.location.hash).toLowerCase(); // case-insensitive (REVIEW N2 on #2139): a differently cased key is still a credential
   var urlHasAuthToken = hash.indexOf('access_token') !== -1 ||
     hash.indexOf('refresh_token') !== -1 ||
     hash.indexOf('provider_token') !== -1;
@@ -257,9 +257,10 @@
   var queryHasAuthToken = false;
   try {
     var queryParams = new URLSearchParams(window.location.search);
-    for (var qk = 0; qk < authQueryKeys.length; qk++) {
-      if (queryParams.has(authQueryKeys[qk])) { queryHasAuthToken = true; }
-    }
+    // case-INSENSITIVE on the key (`?Access_Token=` is still a credential), still exact: `code` / `mytoken` / `tokens` are not.
+    queryParams.forEach(function (value, key) {
+      if (authQueryKeys.indexOf(String(key).toLowerCase()) !== -1) { queryHasAuthToken = true; }
+    });
   } catch (e) {
     queryHasAuthToken = true; // an unparseable query string: fail closed
   }

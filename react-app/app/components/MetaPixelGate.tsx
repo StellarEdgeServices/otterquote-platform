@@ -120,7 +120,7 @@ export { ALLOWED_PATHS };
 // ("a path list can never be complete"). fbevents.js reads location.href for its `dl` value, so the pixel never loads while a
 // live Supabase implicit-flow credential is in the URL.
 export function urlHasAuthToken(hash: string | null | undefined): boolean {
-  const h = hash ?? "";
+  const h = (hash ?? "").toLowerCase(); // case-insensitive (REVIEW N2 on #2139): a differently cased key is still a credential
   return h.indexOf("access_token") !== -1 || h.indexOf("refresh_token") !== -1 || h.indexOf("provider_token") !== -1;
 }
 
@@ -132,10 +132,26 @@ const AUTH_QUERY_KEYS = ["access_token", "refresh_token", "provider_token", "tok
 export function queryHasAuthToken(search: string | null | undefined): boolean {
   try {
     const params = new URLSearchParams(search ?? "");
-    return AUTH_QUERY_KEYS.some((k) => params.has(k));
+    // case-INSENSITIVE on the key (`?Access_Token=` is still a credential), still exact: `code` / `mytoken` / `tokens` are not.
+    return Array.from(params.keys()).some((k) => AUTH_QUERY_KEYS.includes(k.toLowerCase()));
   } catch {
     return true; // an unparseable query string: fail closed
   }
+}
+
+// REVIEW B3 on #2139 (5808373334): fbevents.js registers its OWN `pageshow` listener that sends a PageView when the page is restored
+// from the back/forward cache (`event.persisted`), with no `disablePushState` check, so after a Purchase on /help-measurements a Back
+// navigation would send a PageView where D-330 allows only Purchase. This listener is registered BEFORE any pixel script is rendered
+// (listeners on `window` run in registration order), and stops a persisted pageshow only where PageView is not allowed. It looks at
+// the path when the event fires, so a restore onto /get-started (D-322) is untouched. One stable handler: re-adding it is a no-op.
+function stopPersistedPageshowOnPurchaseOnlyPaths(e: Event): void {
+  if ((e as PageTransitionEvent).persisted && !pageViewAllowed(window.location.pathname)) e.stopImmediatePropagation();
+}
+
+export function installPersistedPageshowGuard(): void {
+  if (typeof window === "undefined") return;
+  window.removeEventListener("pageshow", stopPersistedPageshowOnPurchaseOnlyPaths);
+  window.addEventListener("pageshow", stopPersistedPageshowOnPurchaseOnlyPaths);
 }
 
 // gh-2107 / #2106 gap 2: D-330 allows only `Purchase` on /help-measurements, so no PageView is sent there. Every other allowed
@@ -182,7 +198,10 @@ export function MetaPixelGate() {
         .catch(() => "unknown" as const)
         .then((stored) => {
           if (cancelled) return;
-          if (stored === false || (stored === "no_session" && !isAuthenticatedPath(pathname))) setAllowed(true);
+          if (stored === false || (stored === "no_session" && !isAuthenticatedPath(pathname))) {
+            installPersistedPageshowGuard(); // before the pixel <Script>s render (REVIEW B3 on #2139)
+            setAllowed(true);
+          }
         });
       return () => { cancelled = true; };
     }

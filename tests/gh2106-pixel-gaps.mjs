@@ -61,6 +61,17 @@ for (const [label, search] of [
 ]) {
   ok(run({ search }).loaded, 'CONTROL: ' + label + ' still loads the pixel (exact key names only)');
 }
+for (const [label, opts] of [
+  ['?Access_Token=', { search: '?Access_Token=abc' }],
+  ['?REFRESH_TOKEN=', { search: '?REFRESH_TOKEN=abc' }],
+  ['?Token_Hash=', { search: '?Token_Hash=abc' }],
+  ['?TOKEN=', { search: '?TOKEN=abc' }],
+  ['#Access_Token=', { hash: '#Access_Token=abc' }],
+  ['#PROVIDER_TOKEN=', { hash: '#PROVIDER_TOKEN=abc' }],
+]) {
+  ok(!run(opts).loaded, 'the credential key match is case-INSENSITIVE: ' + label + ' loads nothing');
+}
+ok(run({ search: '?CODE=ABC&Promocode=X' }).loaded, 'CONTROL: an upper-case key that is not a credential (?CODE=, ?Promocode=) still loads');
 class ThrowingParams { constructor() { throw new Error('unparseable'); } }
 ok(!run({ search: '?x=1', params: ThrowingParams }).loaded, 'B1: a query string that cannot be parsed fails CLOSED (the pixel does not load)');
 ok(!run({ host: 'staging--jade-alpaca-b82b5e.netlify.app', search: '?code=1' }).loaded, 'a non-production host still never loads, ?code= or not');

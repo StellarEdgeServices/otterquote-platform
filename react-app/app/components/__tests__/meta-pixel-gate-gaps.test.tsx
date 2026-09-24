@@ -11,10 +11,12 @@ let sessionGate: Promise<void> | null = null; // when set, getSession() waits fo
 
 vi.mock('next/navigation', () => ({ usePathname: () => mockPath }));
 vi.mock('next/script', () => ({
-  default: (props: { src?: string; id?: string; children?: React.ReactNode }) =>
-    props.src
+  default: (props: { src?: string; id?: string; children?: React.ReactNode }) => {
+    (globalThis as unknown as { __oqEvents?: string[] }).__oqEvents?.push('script'); // lets a test see WHEN the pixel scripts render
+    return props.src
       ? <span data-testid="pixel-src" data-src={props.src} />
-      : <span data-testid="pixel-init" data-id={props.id} data-body={String(props.children ?? '')} />,
+      : <span data-testid="pixel-init" data-id={props.id} data-body={String(props.children ?? '')} />;
+  },
 }));
 vi.mock('../../lib/internal-traffic', () => ({ isInternalTraffic: () => false }));
 vi.mock('../../lib/supabase', () => ({
@@ -27,7 +29,7 @@ vi.mock('../../lib/supabase', () => ({
 import { MetaPixelGate } from '../MetaPixelGate';
 
 function setLocation(host: string, hash = '', search = '') {
-  Object.defineProperty(window, 'location', { value: { ...window.location, hostname: host, hash, search }, writable: true, configurable: true });
+  Object.defineProperty(window, 'location', { value: { ...window.location, hostname: host, hash, search, pathname: mockPath }, writable: true, configurable: true });
 }
 const loaded = (c: HTMLElement) => c.querySelector('[data-testid="pixel-src"]') !== null;
 const initBody = (c: HTMLElement) => c.querySelector('[data-testid="pixel-init"]')?.getAttribute('data-body') ?? null;
@@ -93,6 +95,26 @@ describe('MetaPixelGate: token-in-URL guard and the PageView rule', () => {
       ['utm parameters', '?utm_source=facebook&utm_medium=cpc'],
     ])('CONTROL: %s still loads the pixel (exact key names only)', async (_label, search) => {
       setLocation('otterquote.com', '', search);
+      const { container } = render(<MetaPixelGate />);
+      await waitFor(() => expect(loaded(container)).toBe(true));
+    });
+
+    it.each([
+      ['?Access_Token=abc', '', '?Access_Token=abc'],
+      ['?REFRESH_TOKEN=abc', '', '?REFRESH_TOKEN=abc'],
+      ['?Token_Hash=abc', '', '?Token_Hash=abc'],
+      ['?TOKEN=abc', '', '?TOKEN=abc'],
+      ['#Access_Token=abc', '#Access_Token=abc', ''],
+      ['#PROVIDER_TOKEN=abc', '#PROVIDER_TOKEN=abc', ''],
+    ])('the credential key match is case-INSENSITIVE: %s loads nothing', async (_label, hash, search) => {
+      setLocation('otterquote.com', hash, search);
+      const { container } = render(<MetaPixelGate />);
+      await new Promise((r) => setTimeout(r, 30));
+      expect(loaded(container)).toBe(false);
+    });
+
+    it('CONTROL: an upper-case key that is not a credential (?CODE=, ?Promocode=) still loads', async () => {
+      setLocation('otterquote.com', '', '?CODE=ABC&Promocode=X');
       const { container } = render(<MetaPixelGate />);
       await waitFor(() => expect(loaded(container)).toBe(true));
     });
@@ -216,6 +238,77 @@ describe('MetaPixelGate: token-in-URL guard and the PageView rule', () => {
       const withoutFlag = initBody(container)!.replace('window.fbq.disablePushState = true;', '');
       const sent = runInitBodyThenPushState(withoutFlag, { pageviewRoute: false });
       expect(sent).toContain('PageView(auto:pushState)');
+    });
+
+    // REVIEW B3 on #2139 (5808373334): fbevents.js registers its OWN `pageshow` listener that sends a PageView when the page is restored from
+    // the back/forward cache (`event.persisted`), with no `disablePushState` check. After a Purchase, going Back to /help-measurements would
+    // send a PageView where D-330 allows only Purchase. The gate registers a stopper BEFORE any pixel script is rendered, so it runs first
+    // (listeners on `window` run in registration order) and stops a persisted pageshow on the Purchase-only path.
+    function pageshow(persisted: boolean): Event {
+      return Object.assign(new Event('pageshow'), { persisted });
+    }
+    /** Stands in for fbevents.js: registers its listener AFTER the gate's (a script loaded later) and records the PageView it would send. */
+    function installFakeFbeventsPageshow(): { sent: string[]; remove: () => void } {
+      const sent: string[] = [];
+      const fn = (e: Event) => { if ((e as unknown as { persisted?: boolean }).persisted) sent.push('PageView(auto:pageshow)'); };
+      window.addEventListener('pageshow', fn);
+      return { sent, remove: () => window.removeEventListener('pageshow', fn) };
+    }
+
+    it('B3: on /help-measurements a persisted pageshow (bfcache restore) never reaches the library: no PageView after a Purchase', async () => {
+      mockPath = '/help-measurements';
+      setLocation('app.otterquote.com');
+      const { container } = render(<MetaPixelGate />);
+      await waitFor(() => expect(loaded(container)).toBe(true));
+      const fake = installFakeFbeventsPageshow();
+      window.dispatchEvent(pageshow(true));
+      expect(fake.sent).toEqual([]);
+      fake.remove();
+    });
+
+    it('B3: a NON-persisted pageshow (an ordinary load) is not stopped', async () => {
+      mockPath = '/help-measurements';
+      setLocation('app.otterquote.com');
+      const { container } = render(<MetaPixelGate />);
+      await waitFor(() => expect(loaded(container)).toBe(true));
+      const seen: boolean[] = [];
+      const fn = () => { seen.push(true); };
+      window.addEventListener('pageshow', fn);
+      window.dispatchEvent(pageshow(false));
+      window.removeEventListener('pageshow', fn);
+      expect(seen).toEqual([true]);
+    });
+
+    it('B3: /get-started (PageView allowed, D-322) is NOT stopped: a persisted pageshow there still reaches the library', async () => {
+      mockPath = '/get-started';
+      setLocation('otterquote.com');
+      const { container } = render(<MetaPixelGate />);
+      await waitFor(() => expect(loaded(container)).toBe(true));
+      const fake = installFakeFbeventsPageshow();
+      window.dispatchEvent(pageshow(true));
+      expect(fake.sent).toEqual(['PageView(auto:pageshow)']);
+      fake.remove();
+    });
+
+    it('B3: the stopper is registered BEFORE the pixel <Script>s render (so it runs before the library\'s own listener)', async () => {
+      mockPath = '/help-measurements';
+      setLocation('app.otterquote.com');
+      const events: string[] = [];
+      (globalThis as unknown as { __oqEvents?: string[] }).__oqEvents = events;
+      const realAdd = window.addEventListener.bind(window);
+      const spy = vi.spyOn(window, 'addEventListener').mockImplementation(((type: string, ...rest: unknown[]) => {
+        if (type === 'pageshow') events.push('stopper');
+        return (realAdd as (t: string, ...r: unknown[]) => void)(type, ...rest);
+      }) as typeof window.addEventListener);
+      const { container } = render(<MetaPixelGate />);
+      await waitFor(() => expect(loaded(container)).toBe(true));
+      spy.mockRestore();
+      delete (globalThis as unknown as { __oqEvents?: string[] }).__oqEvents;
+      const stopperAt = events.indexOf('stopper');
+      const scriptAt = events.indexOf('script');
+      expect(scriptAt).toBeGreaterThan(-1);
+      expect(stopperAt).toBeGreaterThan(-1);
+      expect(stopperAt).toBeLessThan(scriptAt);
     });
 
     it('the meta-pixel-init stub is unchanged (gh-2000 callMethod forwarding)', async () => {
