@@ -33,6 +33,7 @@ import {
   REFUSAL_CODE,
 } from "./live-charge-guard.ts";
 import { PlatformSettingMissingError, resolveRequiredPriceCents } from "./price-setting.ts";
+import { attachVariantMetadata } from "./variant-metadata.ts";
 import {
   evaluateMeasurementUpgradeGate,
   UPGRADE_CHARGE_DESCRIPTION,
@@ -646,23 +647,6 @@ serve(async (req) => {
       form.append("description", chargeDescription);
       form.append("metadata[claim_id]", metadata.claim_id);
       form.append("metadata[type]", metadata.type);
-      if (metadata.type === "hover_measurement") {
-        // gh-2078c / D-330 reconciliation (Q: on #2078, comment 5780969290):
-        // the persisted router arm, forwarded from the client
-        // (react-app's buildHoverPaymentIntentParams). Always present
-        // (never omitted) so the server-side Meta CAPI Purchase event
-        // (PR #2107's stripe-webhook handler, meta-capi.ts's
-        // sanitizeCapiVariant) can read a real value off
-        // paymentIntent.metadata.variant instead of defaulting to
-        // 'unknown' at every call. Same 'unknown' fallback the client
-        // itself uses when no arm was ever captured — mirrors the
-        // metadata.claim_id/metadata.type pattern immediately above,
-        // not a new mechanism.
-        form.append(
-          "metadata[variant]",
-          typeof metadata.variant === "string" && metadata.variant ? metadata.variant : "unknown",
-        );
-      }
       if (metadata.type === "measurement_upgrade") {
         form.append("metadata[contractor_id]", contractor_id);
         // Bookkeeping only (Marty, #1411 cto-2026-09-02T13:45:25Z: "does not
@@ -686,6 +670,22 @@ serve(async (req) => {
         throw new Error(`Stripe API error (HTTP ${r.status}): ${err}`);
       }
       paymentIntentData = await r.json();
+      if (metadata.type === "hover_measurement") {
+        // gh-2078c / D-330 (REVIEW: FAIL 5805531419, B1): the router variant is attached AFTER the create, in a separate
+        // best-effort update, NOT as a create parameter. The create above carries a per-claim Idempotency-Key, and Stripe
+        // refuses (HTTP 400) a reused key whose parameters differ, so a per-request value such as the browser's stored
+        // variant must never be part of it. The create form stays byte-identical to main. Awaited: the client confirms the
+        // card only after it has client_secret, so the metadata is in place before payment_intent.succeeded and the
+        // server-side Meta CAPI Purchase (PR #2107) reads it. Never fails the payment.
+        await attachVariantMetadata({
+          fetchFn: fetch,
+          apiBase: STRIPE_API_BASE,
+          basicAuth,
+          paymentIntentId: paymentIntentData.id,
+          status: paymentIntentData.status,
+          variant: metadata.variant,
+        });
+      }
     }
 
     // gh-948: 'processing' (ACH in flight) must NOT be reported as `succeeded` —
