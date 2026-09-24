@@ -57,6 +57,7 @@ import {
   sanitizeCapiVariant,
   shouldSendCapiEvent,
   shouldSkipForAdSharingOptOut,
+  shouldSkipForSuppression,
 } from "./meta-capi.ts";
 
 // ---------------------------------------------------------------------------
@@ -1126,6 +1127,24 @@ async function handleMeasurementOrderCapiPurchase(
         rawEmail = authUser?.user?.email ?? null;
       }
       if (rawEmail) hashedEmail = await hashEmailSha256(rawEmail);
+    }
+    // gh-2107 (Ben's ruling c. on #2078): the hashed-email suppression list. Placed AFTER the address is hashed, from whichever
+    // source it came (profiles.email or the auth.admin fallback), because the digest looked up is exactly the digest about to be
+    // sent as user_data.em; BEFORE the payload is built or anything is sent. Fails CLOSED: a lookup error (including the table
+    // being absent) skips. The log carries the PaymentIntent id and a fixed reason only: no digest, no email, no database text.
+    if (hashedEmail) {
+      const { data: suppressedRow, error: suppErr } = await supabase
+        .from("ad_sharing_suppressions")
+        .select("email_sha256")
+        .eq("email_sha256", hashedEmail)
+        .maybeSingle();
+      const suppression = shouldSkipForSuppression(!!suppressedRow, !!suppErr);
+      if (suppression.skip) {
+        console.log(
+          `[${FN_NAME}] gh-2107: CAPI Purchase skipped for PI ${paymentIntent.id} (${suppression.reason})`,
+        );
+        return;
+      }
     }
     if (!hashedEmail) {
       console.warn(

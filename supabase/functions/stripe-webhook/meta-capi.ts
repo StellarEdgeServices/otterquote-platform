@@ -246,3 +246,21 @@ export function safeMetaErrorSummary(body: string): string {
     return "unparsed";
   }
 }
+
+/**
+ * [gh-2107, Ben's DECIDED ruling c. on #2078, 5805593465] The hashed-email suppression list.
+ *
+ * A person who opted out of advertising sharing by emailing support@otterquote.com may have no profile (or a profile the flag never
+ * reached), so the opt-out is also recorded as the SHA-256 of their address in public.ad_sharing_suppressions, the very digest this
+ * send is about to give Meta as `user_data.em`. If that digest is on the list the send is skipped. FAILS CLOSED: if the list could
+ * not be read (the lookup errored, including the table being absent), whether this person opted out is unknown, and an unknown
+ * opt-out is not sent to.
+ */
+export function shouldSkipForSuppression(
+  found: boolean,
+  lookupFailed: boolean,
+): { skip: boolean; reason: "suppression_lookup_failed" | "suppressed" | null } {
+  if (lookupFailed) return { skip: true, reason: "suppression_lookup_failed" };
+  if (found) return { skip: true, reason: "suppressed" };
+  return { skip: false, reason: null };
+}
