@@ -311,6 +311,77 @@ describe('MetaPixelGate: token-in-URL guard and the PageView rule', () => {
       expect(stopperAt).toBeLessThan(scriptAt);
     });
 
+    // REVIEW B4 on #2139 (5808897191): after a Purchase, fbevents.js's autoConfig / automatic-events plugin sends `SubscribedButtonClick`
+    // (es=automatic) on real clicks, carrying the button text, CSS classes, link target and page title. D-330 allows only Purchase.
+    // `fbq('set', 'autoConfig', false, PIXEL_ID)` before `init` turns it off; it must be on EVERY init (a pixel initialised on
+    // /get-started is kept when the visitor moves client-side to /help-measurements: the init <Script> is de-duplicated by id).
+    const PIXEL = '800470107451795';
+
+    /** Executes the init body, then models fbevents.js: drain the queue in order, honour `set autoConfig false <id>`, and send an automatic
+     *  SubscribedButtonClick on a click once any event has fired unless autoConfig was disabled for that pixel. */
+    function runInitBodyThenClick(body: string) {
+      const sent: string[] = [];
+      const win: Record<string, unknown> = {};
+      // eslint-disable-next-line no-new-func
+      new Function('window', 'with (window) {' + body + '}')(win);
+      const fbq = win.fbq as ((...a: unknown[]) => void) & { queue: unknown[][]; callMethod?: (...a: unknown[]) => void };
+      const autoConfigOff = new Set<string>();
+      let inited = false;
+      let fired = false;
+      fbq.callMethod = (...a: unknown[]) => {
+        if (a[0] === 'set' && a[1] === 'autoConfig' && a[2] === false) autoConfigOff.add(String(a[3]));
+        else if (a[0] === 'init') inited = true;
+        else if (a[0] === 'track') { fired = true; sent.push(String(a[1])); }
+      };
+      fbq.queue.forEach((q) => fbq.callMethod!(...Array.from(q)));
+      fbq('track', 'Purchase', { value: 15, currency: 'USD' });
+      // a real click on a button/link
+      if (inited && fired && !autoConfigOff.has(PIXEL)) sent.push('SubscribedButtonClick(auto)');
+      return sent;
+    }
+
+    it.each(['/help-measurements', '/get-started'])('B4: %s: the init body disables autoConfig for the pixel, BEFORE fbq(init)', async (path) => {
+      mockPath = path;
+      setLocation('app.otterquote.com');
+      const { container } = render(<MetaPixelGate />);
+      await waitFor(() => expect(initBody(container)).not.toBeNull());
+      const body = initBody(container)!;
+      const setAt = body.indexOf(`fbq('set', 'autoConfig', false, '${PIXEL}');`);
+      const initAt = body.indexOf("fbq('init',");
+      expect(setAt).toBeGreaterThan(-1);
+      expect(initAt).toBeGreaterThan(setAt);
+      expect(body.split("'autoConfig'").length - 1).toBe(1);
+    });
+
+    it('B4 BEHAVIOUR: on /help-measurements, a Purchase then a click sends NO automatic SubscribedButtonClick', async () => {
+      mockPath = '/help-measurements';
+      setLocation('app.otterquote.com');
+      const { container } = render(<MetaPixelGate />);
+      await waitFor(() => expect(initBody(container)).not.toBeNull());
+      expect(runInitBodyThenClick(initBody(container)!)).toEqual(['Purchase']);
+    });
+
+    it('B4 NEGATIVE CONTROL: with the autoConfig line removed, the same click DOES send SubscribedButtonClick (so the test above can fail)', async () => {
+      mockPath = '/help-measurements';
+      setLocation('app.otterquote.com');
+      const { container } = render(<MetaPixelGate />);
+      await waitFor(() => expect(initBody(container)).not.toBeNull());
+      const without = initBody(container)!.replace(`fbq('set', 'autoConfig', false, '${PIXEL}');`, '');
+      expect(without).not.toContain('autoConfig');
+      expect(runInitBodyThenClick(without)).toContain('SubscribedButtonClick(auto)');
+    });
+
+    it('B4 CONTROL: /get-started still sends exactly its one PageView (init body queues one PageView, after init)', async () => {
+      mockPath = '/get-started';
+      setLocation('otterquote.com');
+      const { container } = render(<MetaPixelGate />);
+      await waitFor(() => expect(initBody(container)).not.toBeNull());
+      const body = initBody(container)!;
+      expect(body.split("fbq('track', 'PageView');").length - 1).toBe(1);
+      expect(body.indexOf("fbq('track', 'PageView');")).toBeGreaterThan(body.indexOf("fbq('init',"));
+      expect(runInitBodyThenClick(body)).toEqual(['PageView', 'Purchase']);
+    });
+
     it('the meta-pixel-init stub is unchanged (gh-2000 callMethod forwarding)', async () => {
       mockPath = '/help-measurements';
       setLocation('app.otterquote.com');

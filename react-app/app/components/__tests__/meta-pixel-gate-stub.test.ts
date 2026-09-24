@@ -70,10 +70,13 @@ function readStaticGateStubSource(): string {
 
 function readReactGateStubSource(): string {
   const src = fs.readFileSync(REACT_GATE_PATH, "utf8");
-  // Anchors unchanged by the gh-2000 fix: the start of the inline
-  // <Script id="meta-pixel-init"> template literal, and the fbq('init', ...)
-  // call that always immediately follows the stub definition.
-  const block = extractBetween(src, "{`", "\nfbq('init'", "MetaPixelGate.tsx");
+  // Anchors: the start of the inline <Script id="meta-pixel-init"> template
+  // literal, and the line that follows the stub definition. That line was
+  // `fbq('init', ...)` at gh-2000; #2139 (B2, B4) put `window.fbq.disablePushState`
+  // and `fbq('set', 'autoConfig', ...)` between the stub and `init`, so the
+  // stub now ends at the `disablePushState` line (those calls need the fbq
+  // global a browser provides, which this sandbox does not).
+  const block = extractBetween(src, "{`", "\nwindow.fbq.disablePushState", "MetaPixelGate.tsx");
   return block.slice(2); // drop the leading "{`" (not JS source)
 }
 

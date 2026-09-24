@@ -109,5 +109,31 @@ ok(!run({ host: 'staging--jade-alpaca-b82b5e.netlify.app', search: '?code=1' }).
   ok(sent.includes('PageView(auto:pushState)'), 'MODEL CONTROL: with the flag off the same model DOES send an automatic PageView, so the assertion above can fail');
 }
 
+// -- B4 (REVIEW 5808897191): after an event has fired, fbevents.js's automatic-events plugin sends SubscribedButtonClick on real clicks unless
+//    `fbq('set', 'autoConfig', false, PIXEL_ID)` was queued before `init`. Runs the REAL gate and models the library draining the queue. ------
+{
+  const PIXEL = '800470107451795';
+  const r = run();
+  const q = (r.fbq.queue || []).map((a) => Array.from(a));
+  const setAt = q.findIndex((a) => a[0] === 'set' && a[1] === 'autoConfig' && a[2] === false && a[3] === PIXEL);
+  const initAt = q.findIndex((a) => a[0] === 'init');
+  ok(setAt > -1, "B4: the gate queues fbq('set','autoConfig',false,PIXEL_ID)");
+  ok(initAt > setAt, 'B4: it is queued BEFORE fbq(init)');
+  ok(q.filter((a) => a[0] === 'set' && a[1] === 'autoConfig').length === 1, 'B4: queued exactly once');
+  ok(q.filter((a) => a[0] === 'track' && a[1] === 'PageView').length === 1 && q.findIndex((a) => a[0] === 'track') > initAt, 'B4 CONTROL: exactly one PageView, after init (static pages keep their PageView)');
+  const clickSends = (queue) => {
+    const off = new Set(); let fired = false; let inited = false;
+    for (const a of queue) {
+      if (a[0] === 'set' && a[1] === 'autoConfig' && a[2] === false) off.add(String(a[3]));
+      else if (a[0] === 'init') inited = true;
+      else if (a[0] === 'track') fired = true;
+    }
+    fired = true; // a Lead / Purchase-style event has fired
+    return inited && fired && !off.has(PIXEL);
+  };
+  ok(clickSends(q) === false, 'B4: after an event, a real click sends NO automatic SubscribedButtonClick');
+  ok(clickSends(q.filter((a) => !(a[0] === 'set' && a[1] === 'autoConfig'))) === true, 'B4 NEGATIVE CONTROL: with the autoConfig call removed the same click DOES send one (so the assertion above can fail)');
+}
+
 console.log('\n' + passed + ' passed, ' + failed + ' failed');
 process.exit(failed ? 1 : 0);

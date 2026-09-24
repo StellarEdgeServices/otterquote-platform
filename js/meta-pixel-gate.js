@@ -326,6 +326,9 @@
   // gh-2107 / #2106 gaps (REVIEW B2 on #2139): fbevents.js wraps pushState / replaceState / popstate and sends its OWN PageView on a
   // client-side URL change once any event has fired. `disablePushState` stops that; it must be set before `init`.
   window.fbq.disablePushState = true;
+  // REVIEW B4 on #2139: fbevents.js's automatic-events plugin sends `SubscribedButtonClick` (button text, classes, link target, page
+  // title) on real clicks once any event has fired. autoConfig is turned off for this pixel before `init`, on every init.
+  window.fbq('set', 'autoConfig', false, PIXEL_ID);
   window.fbq('init', PIXEL_ID);
   window.fbq('track', 'PageView');
 })();

@@ -231,6 +231,7 @@ export function MetaPixelGate() {
       <Script id="meta-pixel-init" strategy="afterInteractive">
         {`if (!window.fbq) { var n = function () { n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments); }; window.fbq = n; if (!window._fbq) { window._fbq = n; } n.push = n; n.loaded = true; n.version = '2.0'; n.queue = []; }
 window.fbq.disablePushState = true;
+fbq('set', 'autoConfig', false, '${PIXEL_ID}');
 fbq('init', '${PIXEL_ID}');${pageViewAllowed(pathname) ? "\nfbq('track', 'PageView');" : ""}`}
       </Script>
     </>
