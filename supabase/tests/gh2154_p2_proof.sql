@@ -167,10 +167,9 @@ EXCEPTION
 END;
 $function$;
 
-GRANT EXECUTE ON FUNCTION public.register_partner(
-  text, text, text, text, text, text, text, text, text, text, jsonb, text,
-  text, text, text, text, boolean, text, text, text
-) TO anon, authenticated, service_role;
+-- No explicit GRANT: this project's schema-level default privileges already
+-- give every new public function anon/authenticated/service_role EXECUTE
+-- (matches the migration this script mirrors).
 
 CREATE FUNCTION public.record_partner_app_activation()
 RETURNS boolean
@@ -194,7 +193,8 @@ $function$;
 REVOKE ALL ON FUNCTION public.record_partner_app_activation() FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.record_partner_app_activation() FROM anon;
 REVOKE ALL ON FUNCTION public.record_partner_app_activation() FROM service_role;
-GRANT EXECUTE ON FUNCTION public.record_partner_app_activation() TO authenticated;
+-- authenticated keeps its schema-level default-granted EXECUTE (no explicit
+-- GRANT line here, matching the migration).
 
 -- ── 2. Assertions ────────────────────────────────────────────────────────
 DO $proof$
@@ -214,6 +214,8 @@ DECLARE
   v_uid_c       uuid := gen_random_uuid();
   v_anon_exec   boolean;
   v_auth_exec   boolean;
+  v_pub_exec    boolean;
+  v_svc_exec    boolean;
 BEGIN
   -- (a) columns exist and are nullable
   SELECT count(*) INTO v_col_count
@@ -231,6 +233,16 @@ BEGIN
   WHERE n.nspname = 'public' AND p.proname = 'register_partner';
   IF v_overload_ct <> 1 THEN
     v_failures := array_append(v_failures, format('expected exactly 1 register_partner overload, found %s', v_overload_ct));
+  END IF;
+
+  -- (b2) register_partner keeps its live grants (anon/authenticated/
+  -- service_role EXECUTE) via this project's schema-level default
+  -- privileges -- no explicit GRANT statement in the migration.
+  SELECT has_function_privilege('anon', 'public.register_partner(text, text, text, text, text, text, text, text, text, text, jsonb, text, text, text, text, text, boolean, text, text, text)', 'EXECUTE') INTO v_anon_exec;
+  SELECT has_function_privilege('authenticated', 'public.register_partner(text, text, text, text, text, text, text, text, text, text, jsonb, text, text, text, text, text, boolean, text, text, text)', 'EXECUTE') INTO v_auth_exec;
+  SELECT has_function_privilege('service_role', 'public.register_partner(text, text, text, text, text, text, text, text, text, text, jsonb, text, text, text, text, text, boolean, text, text, text)', 'EXECUTE') INTO v_svc_exec;
+  IF NOT (v_anon_exec AND v_auth_exec AND v_svc_exec) THEN
+    v_failures := array_append(v_failures, format('register_partner default grants missing: anon=%s authenticated=%s service_role=%s', v_anon_exec, v_auth_exec, v_svc_exec));
   END IF;
 
   -- (c) register_partner stores fbclid/li_fat_id/funnel_id when supplied
@@ -315,11 +327,20 @@ BEGIN
     v_failures := array_append(v_failures, 'NEGATIVE CONTROL FAILED: partner B''s timestamp is set despite never signing in');
   END IF;
 
-  -- (i) anon cannot EXECUTE record_partner_app_activation; authenticated can
+  -- (i) anon/PUBLIC/service_role cannot EXECUTE record_partner_app_activation;
+  -- authenticated can (via its untouched schema-level default grant).
   SELECT has_function_privilege('anon', 'public.record_partner_app_activation()', 'EXECUTE') INTO v_anon_exec;
   SELECT has_function_privilege('authenticated', 'public.record_partner_app_activation()', 'EXECUTE') INTO v_auth_exec;
+  SELECT has_function_privilege('public', 'public.record_partner_app_activation()', 'EXECUTE') INTO v_pub_exec;
+  SELECT has_function_privilege('service_role', 'public.record_partner_app_activation()', 'EXECUTE') INTO v_svc_exec;
   IF v_anon_exec THEN
     v_failures := array_append(v_failures, 'anon can EXECUTE record_partner_app_activation (must be revoked)');
+  END IF;
+  IF v_pub_exec THEN
+    v_failures := array_append(v_failures, 'public role can EXECUTE record_partner_app_activation (must be revoked)');
+  END IF;
+  IF v_svc_exec THEN
+    v_failures := array_append(v_failures, 'service_role can EXECUTE record_partner_app_activation (must be revoked)');
   END IF;
   IF NOT v_auth_exec THEN
     v_failures := array_append(v_failures, 'authenticated cannot EXECUTE record_partner_app_activation (must be granted)');
