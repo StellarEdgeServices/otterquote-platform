@@ -48,6 +48,8 @@ import {
 import {
   buildCapiEventId,
   buildCapiPurchasePayload,
+  CAPI_CLAIM_EVENT_TYPE,
+  capiClaimKey,
   capiPurchaseValueUsd,
   decideCapiPerson,
   hashEmailSha256,
@@ -55,6 +57,7 @@ import {
   MEASUREMENT_PURCHASE_VALUE_USD,
   safeMetaErrorSummary,
   sanitizeCapiVariant,
+  sendCapiPurchaseOnce,
   shouldSendCapiEvent,
   shouldSkipForAdSharingOptOut,
   shouldSkipForNonUsdMeasurement,
@@ -1191,40 +1194,67 @@ async function handleMeasurementOrderCapiPurchase(
       testEventCode: isTestTraffic ? testEventCode : null,
     });
 
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), META_CAPI_TIMEOUT_MS);
-    try {
-      // gh-2107 (REVIEW: FAIL B1): the access token goes in the JSON BODY, never the URL. A network-level fetch failure
-      // (DNS, TLS, connect) puts the full URL in the thrown error, and the token would be written to the function logs.
-      const res = await fetch(
-        `https://graph.facebook.com/${META_CAPI_API_VERSION}/${META_CAPI_PIXEL_ID}/events`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...payload, access_token: capiToken }),
-          signal: controller.signal,
-        },
-      );
-      const resBody = await res.text();
-      if (!res.ok) {
-        // Meta's error body can echo request data: log and store only a numeric code and a short type token.
-        const metaError = safeMetaErrorSummary(resBody);
-        console.error(
-          `[${FN_NAME}] gh-2078b: Meta CAPI Purchase failed (HTTP ${res.status}, ${metaError}) for PI ${paymentIntent.id}`,
-        );
-        await supabase.from("platform_alerts_log").insert({
-          alert_type: "meta_capi_purchase_failed",
-          function_name: FN_NAME,
-          message: `Meta CAPI Purchase send failed (HTTP ${res.status}, ${metaError}) for payment_intent ${paymentIntent.id}`,
-          sent_at: new Date().toISOString(),
-        });
-      } else {
-        console.log(
-          `[${FN_NAME}] gh-2078b: Meta CAPI Purchase sent for PI ${paymentIntent.id} (event_id=${buildCapiEventId(paymentIntent.id)}, test_event_code=${isTestTraffic ? testEventCode : "none"})`,
-        );
-      }
-    } finally {
-      clearTimeout(timer);
+    // gh-2107 (Ben's return on the Test Events walk, #2078 5815458523): deduplicate on the PAYMENT INTENT, not the event. The same PaymentIntent under a
+    // new Stripe event id used to send a second Purchase and Meta processed both. The send is now CLAIMED first (`measurement_purchase:<pi>` in the
+    // existing stripe_webhook_events ledger, whose primary key makes the insert atomic); an existing claim skips (`already_sent`), a claim that cannot
+    // be verified does not send (`claim_failed`, fail closed), and a failed send releases the claim so a retry can send. Taken here, AFTER every skip
+    // decision above, so a skipped purchase never consumes a claim.
+    const outcome = await sendCapiPurchaseOnce({
+      claim: async () => {
+        const { error } = await supabase
+          .from("stripe_webhook_events")
+          .insert({ event_id: capiClaimKey(paymentIntent.id), event_type: CAPI_CLAIM_EVENT_TYPE });
+        return error ? { code: (error as { code?: string }).code } : null;
+      },
+      send: async () => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), META_CAPI_TIMEOUT_MS);
+        try {
+          // gh-2107 (REVIEW: FAIL B1): the access token goes in the JSON BODY, never the URL. A network-level fetch failure
+          // (DNS, TLS, connect) puts the full URL in the thrown error, and the token would be written to the function logs.
+          const res = await fetch(
+            `https://graph.facebook.com/${META_CAPI_API_VERSION}/${META_CAPI_PIXEL_ID}/events`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ...payload, access_token: capiToken }),
+              signal: controller.signal,
+            },
+          );
+          const resBody = await res.text();
+          if (!res.ok) {
+            // Meta's error body can echo request data: log and store only a numeric code and a short type token.
+            const metaError = safeMetaErrorSummary(resBody);
+            console.error(
+              `[${FN_NAME}] gh-2078b: Meta CAPI Purchase failed (HTTP ${res.status}, ${metaError}) for PI ${paymentIntent.id}`,
+            );
+            await supabase.from("platform_alerts_log").insert({
+              alert_type: "meta_capi_purchase_failed",
+              function_name: FN_NAME,
+              message: `Meta CAPI Purchase send failed (HTTP ${res.status}, ${metaError}) for payment_intent ${paymentIntent.id}`,
+              sent_at: new Date().toISOString(),
+            });
+            return false;
+          }
+          console.log(
+            `[${FN_NAME}] gh-2078b: Meta CAPI Purchase sent for PI ${paymentIntent.id} (event_id=${buildCapiEventId(paymentIntent.id)}, test_event_code=${isTestTraffic ? testEventCode : "none"})`,
+          );
+          return true;
+        } finally {
+          clearTimeout(timer);
+        }
+      },
+      release: async () => {
+        const { error } = await supabase
+          .from("stripe_webhook_events")
+          .delete()
+          .eq("event_id", capiClaimKey(paymentIntent.id));
+        return !error;
+      },
+      log: (m) => console.error(`[${FN_NAME}] ${m}`),
+    });
+    if (outcome === "already_sent" || outcome === "claim_failed") {
+      console.log(`[${FN_NAME}] gh-2107: CAPI Purchase skipped for PI ${paymentIntent.id} (${outcome})`);
     }
   } catch (err) {
     // Acceptance criterion 2 -- CAPI failure/timeout/exception must NEVER
