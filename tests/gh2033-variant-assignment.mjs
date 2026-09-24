@@ -435,6 +435,46 @@ if (LIVE_VARIANTS.indexOf('d') !== -1) {
   ok(r.localStorageValue === 'd', '?v=d&oq_internal=1 -- persists normally, same as plain ?v=d');
 }
 
+// ── Check 9 (gh-2122, Arm F): ?v=f is DIRECT-ONLY. It parses (KNOWN_ARMS), it is
+// served as itself when -- and only when -- it is in the URL (a paid ad lands
+// on /start?v=f), it is never persisted, and it is never in the random split
+// until Sloane says so on #2122. Evaluated by running the REAL extracted head
+// script and second read, never a reimplementation. Negative controls sit
+// beside each positive: a non-direct-only non-live arm is still remapped, and
+// a persisted 'f' cannot stick. ──
+console.log('\n=== Check 9: ?v=f is direct-only -- reachable by URL, never persisted, never in the split ===');
+{
+  const r = runAssignment({ search: '?v=f&utm_source=fb&fbclid=abc123' });
+  ok(r.threw === null, '?v=f -- the head script runs without throwing');
+  ok(r.arm === 'f', "?v=f -- window.__oqVariant is exactly 'f' (NOT remapped onto the live set)");
+  ok(LIVE_VARIANTS.indexOf('f') === -1, "'f' is not in LIVE_VARIANTS, so it is not in the random split");
+  ok(r.localStorageValue === null && r.cookieValue === null, '?v=f -- never persisted to localStorage or the cookie');
+  const u = r.replacedUrl ? new URL('https://x' + r.replacedUrl) : null;
+  ok(!!u && u.searchParams.get('v') === 'f' && u.searchParams.get('utm_source') === 'fb' && u.searchParams.get('fbclid') === 'abc123',
+    '?v=f -- the rewritten URL keeps v=f AND every UTM/fbclid (a paid click stays attributable)');
+  const upper = runAssignment({ search: '?v=F' });
+  ok(upper.arm === 'f', '?v=F (upper case) resolves to f');
+  const full = runFullPipeline({ search: '?v=f' });
+  ok(full.arm === 'f' && full.variant === 'f', "?v=f -- the head script AND the second, independent read both say 'f' (no split-brain)");
+  const fullThrow = runFullPipeline({ search: '?v=f', throwReplaceState: true });
+  ok(fullThrow.arm === 'f' && fullThrow.variant === 'f', "?v=f with history.replaceState throwing -- head script and second read still both say 'f'");
+  const internal = runAssignment({ search: '?v=f&oq_internal=1' });
+  ok(internal.arm === 'f' && internal.sandbox.window.__oqInternalWalk === true, '?v=f&oq_internal=1 -- still f, and the walk is flagged so its lead is written is_synthetic');
+}
+{
+  // Negative controls.
+  const persistedF = new Map([[STORAGE_KEY, 'f']]);
+  const back = runAssignment({ search: '', store: { localStorage: persistedF, cookieJar: STORAGE_KEY + '=f' } });
+  ok(back.arm !== 'f' && LIVE_VARIANTS.indexOf(back.arm) !== -1, "NEGATIVE CONTROL: a persisted 'f' with no ?v= is remapped to a LIVE arm -- F cannot stick to a browser");
+  const fresh = [];
+  for (let i = 0; i < 60; i++) fresh.push(runAssignment({ search: '' }).arm);
+  ok(fresh.indexOf('f') === -1, "NEGATIVE CONTROL: 60 fresh loads with no ?v= never land on 'f'");
+  const a = runAssignment({ search: '?v=a' });
+  ok(a.arm !== 'a' && LIVE_VARIANTS.indexOf(a.arm) !== -1, "NEGATIVE CONTROL: ?v=a (non-live, NOT direct-only) is still remapped to a live arm -- the direct-only rule did not widen");
+  const e = runAssignment({ search: '?v=e' });
+  ok(LIVE_VARIANTS.indexOf('e') !== -1 ? e.arm === 'e' : e.arm !== 'e', '?v=e without oq_internal behaves exactly as before Arm F');
+}
+
 console.log('\n=== Summary ===');
 console.log(pass + ' passed, ' + fail + ' failed');
 process.exit(fail === 0 ? 0 : 1);

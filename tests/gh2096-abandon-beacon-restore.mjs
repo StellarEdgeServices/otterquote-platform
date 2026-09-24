@@ -122,7 +122,8 @@ ok(blockArms.indexOf("var ARM_C = variant === 'c';") !== -1, 'ARM extraction inc
 ok(blockArms.indexOf("var ARM_D = variant === 'd';") !== -1, 'ARM extraction includes ARM_D');
 ok(blockArms.indexOf("var ARM_E = variant === 'e';") !== -1, 'ARM extraction includes ARM_E');
 ok(blockArms.indexOf('var ENTRY_STEP = ARM_B ? 2 : 1;') !== -1, 'ARM extraction includes ENTRY_STEP');
-ok(blockRenderStep.indexOf('if (ARM_C || ARM_D || ARM_E) return;') !== -1, 'renderStep extraction includes the live-arm early-return guard -- the exact line round 1\'s hand-called stand-in bypassed');
+// gh-2122: Arm F joined the guard (`ARM_C || ARM_D || ARM_E || ARM_F`).
+ok(blockRenderStep.indexOf('if (ARM_C || ARM_D || ARM_E || ARM_F) return;') !== -1, 'renderStep extraction includes the live-arm early-return guard -- the exact line round 1\'s hand-called stand-in bypassed');
 ok(blockTrack.indexOf('function trackRouter(') !== -1, 'Block TRACK extraction includes trackRouter');
 ok(blockRedirect.indexOf('abandonSuppressedByNav = true;') !== -1, 'Block REDIRECT extraction includes the abandonSuppressedByNav = true line');
 ok(blockRestore.indexOf('abandonSuppressedByNav = false;') !== -1, 'Block RESTORE extraction includes the suppression-flag reset');
