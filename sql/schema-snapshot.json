@@ -570,6 +570,20 @@
     "imported_at",
     "created_at"
   ],
+  "lead_consents": [
+    "id",
+    "lead_id",
+    "consent_key",
+    "consent_given",
+    "consent_text",
+    "page_url",
+    "user_agent",
+    "ip",
+    "payload",
+    "phone_as_typed",
+    "form_payload",
+    "created_at"
+  ],
   "leads": [
     "id",
     "email",
@@ -588,7 +602,11 @@
     "fbclid",
     "gclid",
     "converted_user_id",
-    "variant"
+    "variant",
+    "funding_type",
+    "property_address",
+    "fbc",
+    "fbp"
   ],
   "material_catalog": [
     "id",
