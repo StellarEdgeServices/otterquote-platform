@@ -51,7 +51,13 @@ import {
   UPGRADE_PRODUCT_CODE,
 } from "./measurement-upgrade-order.ts";
 import { checkMeasurementPaymentIntent, checkUpgradePaymentIntent, type PaymentCheckResult } from "./payment-intent-checks.ts";
-import { NON_USD_ALERT_TYPE, raiseNonUsdPaymentAlert, type NonUsdAlertDeps } from "./non-usd-alert.ts";
+import {
+  NON_USD_ALERT_SEND_TIMEOUT_MS,
+  NON_USD_ALERT_TYPE,
+  postAdminAlertEmail,
+  raiseNonUsdPaymentAlert,
+  type NonUsdAlertDeps,
+} from "./non-usd-alert.ts";
 
 const FUNCTION_NAME = "create-measurement-order";
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
@@ -379,17 +385,15 @@ function nonUsdAlertDeps(supabase: any, supabaseUrl: string): NonUsdAlertDeps {
       return Array.isArray(data) && data.length > 0;
     },
     insertAlert: (row) => supabase.from("platform_alerts_log").insert(row),
-    async sendAdminEmail(body) {
-      const res = await fetch(`${supabaseUrl}/functions/v1/notify-measurement-order`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
-        },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) throw new Error(`notify-measurement-order returned ${res.status}`);
-    },
+    sendAdminEmail: (body) =>
+      // Bounded: aborted at ~5 s, so a hung mail call cannot hold the buyer's 402 open (Ben's follow-up on #2078, 5807572209).
+      postAdminAlertEmail({
+        fetchImpl: fetch,
+        supabaseUrl,
+        serviceKey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+        body,
+        timeoutMs: NON_USD_ALERT_SEND_TIMEOUT_MS,
+      }),
     log: (m) => console.error(m),
   };
 }
