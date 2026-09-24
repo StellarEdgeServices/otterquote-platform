@@ -19,6 +19,10 @@ on:
       - 'tests/gh2107-gpc-client.mjs'
       - 'partner-dashboard.html'
       - 'tests/gh2154-p2-app-activation.mjs'
+      - 'partner-re.html'
+      - 'partner-insurance.html'
+      - 'partner-inspectors.html'
+      - 'tests/gh2154-p1-short-signup.mjs'
       - '.github/workflows/static-pixel-gate-tests.yml'
   push:
     branches: [main]
@@ -31,6 +35,10 @@ on:
       - 'tests/gh2107-gpc-client.mjs'
       - 'partner-dashboard.html'
       - 'tests/gh2154-p2-app-activation.mjs'
+      - 'partner-re.html'
+      - 'partner-insurance.html'
+      - 'partner-inspectors.html'
+      - 'tests/gh2154-p1-short-signup.mjs'
       - '.github/workflows/static-pixel-gate-tests.yml'
 
 permissions:
@@ -63,3 +71,5 @@ jobs:
         run: node tests/gh2107-gpc-client.mjs
       - name: Partner dashboard activation RPC, per-user flag (gh2154-p2-app-activation)
         run: node tests/gh2154-p2-app-activation.mjs
+      - name: Short partner signup field set, attribution, D-333 (gh2154-p1-short-signup)
+        run: node tests/gh2154-p1-short-signup.mjs
