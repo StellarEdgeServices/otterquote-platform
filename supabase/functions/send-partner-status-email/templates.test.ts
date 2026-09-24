@@ -8,6 +8,7 @@ import {
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
   formatReferralDisplayName,
+  isStageBlockedForAgentType,
   renderStageEmail,
   STAGE_KEYS,
   type Stage,
@@ -107,4 +108,48 @@ Deno.test("stage 5 is the only stage that mentions payment, and states no interv
 Deno.test("each stage has distinct subject and headline copy", () => {
   const subjects = ALL_STAGES.map((s) => renderStageEmail(s, "Jane D.").subject);
   assertEquals(new Set(subjects).size, subjects.length);
+});
+
+// ── isStageBlockedForAgentType — D-333 gate (Ben's ruling, CEO RUN 67) ─────
+// PR #2158 re-review (comments 5818774175 / 5818776287): the SQL trigger's
+// own skip (v116) only covers the catch-up call it makes itself. The real
+// completion path is mark-job-complete calling send-partner-status-email
+// directly, which only ever skipped agent_type='customer' (D-303). D-333
+// says a home_inspector referrer earns no referral fee or recruit bonus, so
+// stage 5's "payment is on its way" copy is a false promise to them —
+// gating it inside this function is the one place every sender goes
+// through, per Ben's ruling.
+//
+// "Fail first" negative control (documents the pre-fix defect this test
+// guards against): before this gate existed, isStageBlockedForAgentType did
+// not exist at all, so nothing stopped stage 5 from being considered
+// eligible-and-unsent for a home_inspector and rendered/sent exactly like
+// any other agent_type — see REVIEW comments 5818774175 / 5818776287, which
+// reproduced that live behavior against production (email=1 for an
+// inspector referral pre-fix, in the "LIVE (control)" block).
+
+Deno.test("D-333: stage 5 is blocked for home_inspector", () => {
+  assertEquals(isStageBlockedForAgentType("home_inspector", 5), true);
+});
+
+Deno.test("D-333 control: stage 5 is NOT blocked for re_agent (still sends)", () => {
+  assertEquals(isStageBlockedForAgentType("re_agent", 5), false);
+});
+
+Deno.test("D-333 control: stage 3 is NOT blocked for home_inspector (still sends)", () => {
+  assertEquals(isStageBlockedForAgentType("home_inspector", 3), false);
+});
+
+Deno.test("D-333: stages 1, 2 and 4 are never blocked for home_inspector — no payment language there", () => {
+  for (const stage of [1, 2, 4] as Stage[]) {
+    assertEquals(isStageBlockedForAgentType("home_inspector", stage), false);
+  }
+});
+
+Deno.test("D-333: null/undefined/other agent_type never blocks any stage", () => {
+  for (const stage of ALL_STAGES) {
+    assertEquals(isStageBlockedForAgentType(null, stage), false);
+    assertEquals(isStageBlockedForAgentType(undefined, stage), false);
+    assertEquals(isStageBlockedForAgentType("customer", stage), false);
+  }
 });
