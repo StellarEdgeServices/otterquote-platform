@@ -113,7 +113,7 @@ try {
     };
   }
 
-  function run({ ls, updateUserImpl, currentUser } = {}) {
+  function run({ ls, updateUserImpl, refreshSessionImpl, currentUser } = {}) {
     const localStorage = ls || makeLocalStorage();
     const els = {
       setPasswordCard: makeEl('setPasswordCard'),
@@ -130,11 +130,22 @@ try {
     // Auth.updatePassword() -- a single round trip that clears the
     // server-visible flag at the same time it sets the real password.
     const updateUserCalls = [];
+    // gh-2162 review fix round 2 (5822537570): initSetPasswordForm() now
+    // calls sb.auth.refreshSession() right after a successful updateUser(),
+    // using this same page's client, so the stored JWT stops claiming
+    // needs_password:true. Tracked separately from updateUserCalls so tests
+    // can assert it fires exactly once on success and never on failure.
+    const refreshSessionCalls = [];
     const sb = {
       auth: {
         updateUser: async (payload) => {
           updateUserCalls.push(payload);
           if (updateUserImpl) return updateUserImpl(payload);
+          return { data: {}, error: null };
+        },
+        refreshSession: async () => {
+          refreshSessionCalls.push(true);
+          if (refreshSessionImpl) return refreshSessionImpl();
           return { data: {}, error: null };
         },
       },
@@ -160,7 +171,7 @@ try {
     ctx.window.window = ctx.window;
     vm.createContext(ctx);
     vm.runInContext(fnBlock, ctx);
-    return { ctx, els, localStorage, updateUserCalls };
+    return { ctx, els, localStorage, updateUserCalls, refreshSessionCalls };
   }
 
   async function submit(runResult, { newPassword, confirmPassword }) {
@@ -299,6 +310,67 @@ try {
     ok(r.updateUserCalls.length === 1 && r.updateUserCalls[0].data.needs_password === false, '(f) valid submit clears the server flag via sb.auth.updateUser even when there was no localStorage flag to begin with');
     ok(r.els.setPasswordCard.style.display === 'none', '(f) valid submit hides the card immediately');
     ok(cu.user_metadata.needs_password === false, '(f) valid submit also clears the in-memory currentUser.user_metadata.needs_password (no stale re-show within the same session)');
+  }
+
+  // (g) gh-2162 REVIEW FAIL round 2 (5822537570), DEFECT row 1: a successful
+  // set must refresh the session so the stored JWT stops claiming
+  // needs_password:true -- otherwise a same-browser/PWA reload before the
+  // token naturally rotates shows the card again right after it was just
+  // "fixed". FAILS against the pre-fix c74cedfc code, which never calls
+  // sb.auth.refreshSession() at all (refreshSessionCalls.length stays 0).
+  {
+    const ls = makeLocalStorage({ [needsPwKey('user-11')]: '1' });
+    const cu = { id: 'user-11', user_metadata: { needs_password: true } }; // stale JWT, pre-refresh
+    const r = run({ ls, currentUser: cu });
+    r.ctx.refreshSetPasswordCard('user-11');
+    await submit(r, { newPassword: 'a-valid-password1', confirmPassword: 'a-valid-password1' });
+    ok(r.refreshSessionCalls.length === 1, '(g) DEFECT 1: a successful set calls sb.auth.refreshSession() exactly once -- got ' + r.refreshSessionCalls.length);
+
+    // Simulate the NEXT dashboard load once that refresh has landed: a
+    // fresh script run whose currentUser now comes from the refreshed JWT
+    // (needs_password:false) and whose localStorage cache was already
+    // cleared by the set-password success path above.
+    const r2 = run({ ls, currentUser: { id: 'user-11', user_metadata: { needs_password: false } } });
+    r2.ctx.refreshSetPasswordCard('user-11');
+    ok(r2.els.setPasswordCard.style.display === 'none', '(g) DEFECT 1: reload after the refresh lands (JWT now false) -> no card');
+  }
+
+  // (g) a failed set must NEVER call refreshSession -- the password was not
+  // actually changed server-side, so there is nothing to refresh, and the
+  // flag/cache must stay exactly as the existing (d) "rejects" case asserts.
+  {
+    const ls = makeLocalStorage({ [needsPwKey('user-12')]: '1' });
+    const r = run({ ls, updateUserImpl: async () => { throw new Error('network down'); } });
+    r.ctx.refreshSetPasswordCard('user-12');
+    await submit(r, { newPassword: 'a-valid-password1', confirmPassword: 'a-valid-password1' });
+    ok(r.refreshSessionCalls.length === 0, '(g) a FAILED set never calls sb.auth.refreshSession()');
+  }
+
+  // (h) gh-2162 REVIEW FAIL round 2 (5822537570), DEFECT row 2: the signup
+  // browser's own localStorage cache is stale ('1', set at signup) but its
+  // JWT has since been refreshed elsewhere and now explicitly carries
+  // needs_password:false. The old OR-combine (cachedFlag OR serverFlag===
+  // true) never let a server false override a truthy cache, so the card
+  // stayed stuck on permanently in that browser. The server's false must
+  // win outright, AND the stale local key must be removed (not just
+  // ignored) so a later load in that same browser doesn't need the server
+  // claim to keep saving it.
+  {
+    const ls = makeLocalStorage({ [needsPwKey('user-13')]: '1' }); // stale signup-browser cache
+    const r = run({ ls, currentUser: { id: 'user-13', user_metadata: { needs_password: false } } });
+    r.ctx.refreshSetPasswordCard('user-13');
+    ok(r.els.setPasswordCard.style.display === 'none', '(h) DEFECT 2: stale localStorage=1 + server needs_password=false -> no card');
+    ok(ls.getItem(needsPwKey('user-13')) === null, '(h) DEFECT 2: the stale local key is removed once the server confirms false');
+  }
+
+  // (h) negative control: server explicitly true still shows the card even
+  // with no local cache at all (unchanged behavior from (f) above, kept
+  // here as a control alongside the new false-beats-cache rule).
+  {
+    const ls = makeLocalStorage();
+    const r = run({ ls, currentUser: { id: 'user-14', user_metadata: { needs_password: true } } });
+    r.ctx.refreshSetPasswordCard('user-14');
+    ok(r.els.setPasswordCard.style.display === 'block', '(h) NEGATIVE CONTROL: server needs_password=true, no local cache -> card still shown');
   }
 } catch (e) {
   failWithReason('partner-dashboard.html: setPasswordUserId/refreshSetPasswordCard/initSetPasswordForm dynamic behavior (b)-(e)', e.message);

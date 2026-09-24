@@ -1423,16 +1423,31 @@ Let me know if you have any questions!
             setPasswordUserId = userId || null;
             const card = document.getElementById('setPasswordCard');
             if (!card || !setPasswordUserId) return;
-            let needsPassword = false;
-            try { needsPassword = window.localStorage.getItem(needsPasswordFlagKey(setPasswordUserId)) === '1'; } catch (e) { /* private mode / blocked storage */ }
-            // gh-2162 review fix (3): the localStorage flag is browser-local
-            // only — a partner's first dashboard landing in a DIFFERENT
-            // browser, or the installed PWA, never set it there. Also show
-            // the card when the server-visible user_metadata.needs_password
-            // flag is true, so that landing still gets the card (reviewer's
-            // scenario). Either source showing true is sufficient.
-            if (!needsPassword && currentUser && currentUser.user_metadata && currentUser.user_metadata.needs_password === true) {
+            let cachedFlag = false;
+            try { cachedFlag = window.localStorage.getItem(needsPasswordFlagKey(setPasswordUserId)) === '1'; } catch (e) { /* private mode / blocked storage */ }
+            const serverFlag = (currentUser && currentUser.user_metadata) ? currentUser.user_metadata.needs_password : undefined;
+            // gh-2162 review fix round 2 (5822537570): currentUser is rebuilt
+            // from the access-token cookie's JWT claims (js/cookie-storage.js
+            // reconstructSession()), which only reflect user_metadata as of
+            // the last token mint/refresh -- NOT the live server value. An
+            // explicit server false means the password was already set
+            // (updateUser() below refreshes the session right after, so a
+            // same-browser reload sees it); that beats a stale cached '1'
+            // outright, which is the signup browser's stale-localStorage
+            // case. An explicit server true always shows the card. Only an
+            // ABSENT claim (undefined -- the signup browser's very first
+            // JWT, minted before the metadata write ever happened) falls
+            // back to the cache, the only signal available in that case.
+            let needsPassword;
+            if (serverFlag === false) {
+                needsPassword = false;
+                if (cachedFlag) {
+                    try { window.localStorage.removeItem(needsPasswordFlagKey(setPasswordUserId)); } catch (e) { /* non-fatal */ }
+                }
+            } else if (serverFlag === true) {
                 needsPassword = true;
+            } else {
+                needsPassword = cachedFlag;
             }
             card.style.display = needsPassword ? 'block' : 'none';
         }
@@ -1474,6 +1489,19 @@ Let me know if you have any questions!
                     // uses the page's own already-initialized `sb` client.
                     const { error: setPwError } = await sb.auth.updateUser({ password: newPassword, data: { needs_password: false } });
                     if (setPwError) throw setPwError;
+
+                    // gh-2162 review fix round 2 (5822537570): updateUser()
+                    // returns the updated user object, not a new access
+                    // token, so the stored JWT (and currentUser rebuilt from
+                    // it on a later load) still claims needs_password:true
+                    // until the session is refreshed. Refresh now, using
+                    // this same page's client, so a same-browser reload
+                    // sees the server's false immediately. A refresh
+                    // failure is non-fatal: the card is already hidden
+                    // below for this page load, and
+                    // refreshSetPasswordCard()'s fallback-to-cache rule
+                    // covers a later load if the JWT is still stale.
+                    try { await sb.auth.refreshSession(); } catch (e) { /* non-fatal, see above */ }
 
                     // Success — clear the localStorage cache for this user and hide the card.
                     if (setPasswordUserId) {
