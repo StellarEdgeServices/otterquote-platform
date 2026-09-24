@@ -262,6 +262,16 @@ export function buildRpcArgs(v: ValidBody, ip: string | null, userAgent: string 
   };
 }
 
+/**
+ * What may go to Sentry about a failed RPC: a fixed message plus the SQLSTATE-style `code` when it is a short
+ * alphanumeric token. Never the error's own `message`, `details` or `hint`, which can quote a column value.
+ */
+export function safeRpcError(err: unknown): Error {
+  const code = (err as { code?: unknown } | null)?.code;
+  const safe = typeof code === "string" && /^[A-Za-z0-9_]{1,20}$/.test(code) ? ` (code ${code})` : "";
+  return new Error(`record_lead_details rpc failed${safe}`);
+}
+
 export interface Deps {
   rpc: (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>;
   report: (error: unknown, ctx: { fn: string; op?: string; extra?: Record<string, unknown> }) => Promise<void>;
@@ -297,8 +307,9 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
   const args = buildRpcArgs(parsed.value, ip, req.headers.get("user-agent"));
   const res = await deps.rpc("record_lead_details", args);
   if (res.error) {
-    // Report WITHOUT the payload: the address and consent text are personal data.
-    await deps.report(res.error, { fn: FUNCTION_NAME, op: "record_lead_details", extra: { lead_id: parsed.value.leadId } });
+    // Report WITHOUT the payload (the address and consent text are personal data) and WITHOUT the
+    // database's own error text: a PostgREST message can quote the offending value or constraint.
+    await deps.report(safeRpcError(res.error), { fn: FUNCTION_NAME, op: "record_lead_details", extra: { lead_id: parsed.value.leadId } });
     return json({ ok: false, error: "Could not record details" }, 500, corsHeaders);
   }
   if (res.data !== true) {

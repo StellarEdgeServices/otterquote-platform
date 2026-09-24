@@ -48,7 +48,7 @@ interface Calls {
   rpc: { name: string; args: Record<string, unknown> }[];
   reports: { error: unknown; ctx: { fn: string; op?: string; extra?: Record<string, unknown> } }[];
 }
-function fakeDeps(opts: { allowed?: boolean; rlError?: boolean; recordResult?: unknown; recordError?: boolean } = {}): { deps: Deps; calls: Calls } {
+function fakeDeps(opts: { allowed?: boolean; rlError?: boolean; recordResult?: unknown; recordError?: boolean; recordErrorObj?: unknown } = {}): { deps: Deps; calls: Calls } {
   const calls: Calls = { rpc: [], reports: [] };
   const deps: Deps = {
     rpc: (name, args) => {
@@ -57,6 +57,7 @@ function fakeDeps(opts: { allowed?: boolean; rlError?: boolean; recordResult?: u
         if (opts.rlError) return Promise.resolve({ data: null, error: { message: "rl down" } });
         return Promise.resolve({ data: { allowed: opts.allowed !== false }, error: null });
       }
+      if (opts.recordErrorObj) return Promise.resolve({ data: null, error: opts.recordErrorObj });
       if (opts.recordError) return Promise.resolve({ data: null, error: { message: "db down" } });
       return Promise.resolve({ data: opts.recordResult === undefined ? true : opts.recordResult, error: null });
     },
@@ -352,6 +353,21 @@ Deno.test("handleRequest: RPC error -> 500, reported to Sentry WITHOUT the addre
   assertEquals(calls.reports[0].ctx.extra, { lead_id: LEAD });
   const body = JSON.stringify(await res.json());
   assert(!body.includes("Main St") && !body.includes("autodialer"), "response must not echo personal data");
+});
+
+Deno.test("handleRequest: the database's own error text (message, details, hint) is never forwarded to Sentry; only a fixed message and the code", async () => {
+  const leak = { message: 'duplicate key value violates unique constraint "lead_consents_lead_id_consent_key_key"', details: "Key (lead_id, consent_key)=(11111111-2222, sms_call) already exists.", hint: "secret-hint-text", code: "23505" };
+  const { deps, calls } = fakeDeps({ recordErrorObj: leak });
+  const res = await handleRequest(req(goodBody()), deps);
+  assertEquals(res.status, 500);
+  assertEquals(calls.reports.length, 1);
+  const err = calls.reports[0].error as Error;
+  assertEquals(err.message, "record_lead_details rpc failed (code 23505)");
+  const seen = JSON.stringify(calls.reports[0]) + err.message;
+  for (const s of ["duplicate key", "lead_consents_lead_id", "sms_call", "secret-hint-text", "11111111-2222"]) assert(!seen.includes(s), `must not forward: ${s}`);
+  const odd = fakeDeps({ recordErrorObj: { message: "x", code: "bad code with spaces & an address 1 Main St" } });
+  await handleRequest(req(goodBody()), odd.deps);
+  assertEquals((odd.calls.reports[0].error as Error).message, "record_lead_details rpc failed");
 });
 
 Deno.test("handleRequest: unknown origin still gets a response (CORS falls back), never an echo of the origin", async () => {
