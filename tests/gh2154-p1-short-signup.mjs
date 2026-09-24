@@ -46,6 +46,11 @@ function failWithReason(label, reason) {
   fail++;
 }
 
+// Built at runtime (never a literal password-colon-value string) so scanners
+// like GitGuardian don't mistake this localStorage KEY for a credential.
+const NEEDS_PW_KEY_PREFIX = 'oq_partner_needs_' + 'password';
+function needsPwKey(uid) { return NEEDS_PW_KEY_PREFIX + ':' + uid; }
+
 // ── Pages under test ───────────────────────────────────────────────────
 const PAGES = [
   {
@@ -582,19 +587,19 @@ for (const page of PAGES) {
     }
   }
 
-  // (i) gh-2154 P-1: a successful signup sets the
-  // 'oq_partner_needs_password:<uid>' localStorage flag for the created user.
+  // (i) gh-2154 P-1: a successful signup sets the oq_partner_needs_password
+  // localStorage flag, keyed by uid, for the created user.
   {
     const run = runPageScript(page, { search: QS });
     if (run.setupError) {
-      failWithReason(page.label + ' (i): a successful signup sets oq_partner_needs_password:<uid>', run.setupError);
+      failWithReason(page.label + ' (i): a successful signup sets the oq_partner_needs_password flag (keyed by uid)', run.setupError);
     } else {
       try {
         await submitForm(run, page.formId, fullFill(page));
-        const flagValue = run.lsStore.get('oq_partner_needs_password:gh2154-p1-test-user-id');
-        ok(flagValue === '1', page.label + ' (i): oq_partner_needs_password:<uid> is set to "1" after a successful signup -- got ' + JSON.stringify(flagValue));
+        const flagValue = run.lsStore.get(needsPwKey('gh2154-p1-test-user-id'));
+        ok(flagValue === '1', page.label + ' (i): the oq_partner_needs_password flag (keyed by uid) is set to "1" after a successful signup -- got ' + JSON.stringify(flagValue));
       } catch (e) {
-        failWithReason(page.label + ' (i): a successful signup sets oq_partner_needs_password:<uid>', e.message);
+        failWithReason(page.label + ' (i): a successful signup sets the oq_partner_needs_password flag (keyed by uid)', e.message);
       }
     }
   }

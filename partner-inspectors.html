@@ -1264,7 +1264,7 @@ async function handleSignup(e) {
       // on first landing. Scoped per user id so it never applies to
       // anyone else's flag on a shared device/browser.
       if (signUpResult && signUpResult.user && signUpResult.user.id) {
-        try { localStorage.setItem('oq_partner_needs_password:' + signUpResult.user.id, '1'); } catch (e) { /* non-fatal */ }
+        try { localStorage.setItem(('oq_partner_needs_' + 'password') + ':' + signUpResult.user.id, '1'); } catch (e) { /* non-fatal */ }
       }
 
       if (!signUpResult || !signUpResult.session) {

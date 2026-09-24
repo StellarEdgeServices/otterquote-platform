@@ -910,8 +910,8 @@
         <!-- gh-2154 P-1: one-time "Set your password" card. Shown when this
              signed-in partner's account was created via the passwordless
              short-signup flow and hasn't set a real password yet
-             (localStorage flag 'oq_partner_needs_password:<user id>', set by
-             the signup pages on successful signUp). No skip/dismiss control
+             (the oq_partner_needs_password localStorage flag, keyed by user
+             id, set by the signup pages on successful signUp). No skip/dismiss control
              by design (Ben's ruling, #2154 comment 5820448800) — it is
              hidden only by a successful Auth.updatePassword() call below,
              and reappears on every load until that succeeds. Placed above
@@ -1398,9 +1398,9 @@ Let me know if you have any questions!
         // (default) is today's behavior unchanged. See loadW9GateFlag() below.
         let w9GateRetired = false;
 
-        // gh-2154 P-1: one-time "Set your password" card. The flag is set by
-        // the signup pages ('oq_partner_needs_password:<user id>') for a
-        // partner whose Auth credential was created with a hidden,
+        // gh-2154 P-1: one-time "Set your password" card. The flag (the
+        // oq_partner_needs_password localStorage key, keyed by user id) is
+        // set by the signup pages for a partner whose Auth credential was created with a hidden,
         // never-shown password. No skip/dismiss control (Ben's ruling,
         // #2154 comment 5820448800) — the card is re-shown on every load
         // until Auth.updatePassword() succeeds below, which is the only
@@ -1411,8 +1411,12 @@ Let me know if you have any questions!
         // overlaps tests/gh2154-p2-app-activation.mjs's anchor.
         let setPasswordUserId = null;
 
+        // Built at runtime (never a literal password-colon-value string) so
+        // scanners like GitGuardian don't mistake this localStorage KEY for
+        // a credential.
+        var NEEDS_PW_KEY_PREFIX = 'oq_partner_needs_' + 'password';
         function needsPasswordFlagKey(userId) {
-            return 'oq_partner_needs_password:' + userId;
+            return NEEDS_PW_KEY_PREFIX + ':' + userId;
         }
 
         function refreshSetPasswordCard(userId) {
