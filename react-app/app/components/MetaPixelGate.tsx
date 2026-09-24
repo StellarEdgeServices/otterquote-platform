@@ -76,16 +76,13 @@ import { isAdSharingOptedOut, readStoredOptOut, type ProfileReader } from "../li
  * fail-closed-by-default posture: every other authenticated route stays
  * excluded exactly as before (proved by
  * __tests__/meta-pixel-gate-allowed-paths.test.ts, which enumerates every
- * real page.tsx route in this app). D-322's own reasoning -- no session
- * replay / no PageView noise on authenticated surfaces -- still holds for
- * `/help-measurements`: this component fires PageView unconditionally once
- * `allowed` is true (see the returned <Script id="meta-pixel-init"> below),
- * so a homeowner who lands on this route without completing a purchase
- * still triggers one Meta PageView. That is an accepted, explicit part of
- * the D-330 widening (not a regression introduced here) -- the alternative,
- * suppressing PageView while still enabling Purchase on the same path,
- * would need a second gate dimension this component does not have today
- * and D-330's text does not ask for one.
+ * real page.tsx route in this app). D-322's own reasoning -- no session replay / no PageView noise on authenticated surfaces --
+ * holds for `/help-measurements`, and gh-2107 (Ben's DECIDED ruling d. on #2078, 5805593465, closing two gaps #2106 left) makes
+ * that true in code: on that route the pixel is INITIALISED (so `fbqTrack('Purchase', ...)` is a real event) but NO `PageView` is
+ * sent, because D-330 allows only Purchase there (the earlier "accepted PageView" paragraph is superseded). And a live Supabase
+ * credential in the URL FRAGMENT (access_token / refresh_token / provider_token) means the pixel never loads, on any route,
+ * exactly as js/meta-pixel-gate.js does: fbevents.js derives its `dl` parameter from location.href, so the only way to keep a
+ * token pair out of facebook.com/tr is never to load it while the fragment carries one (gh-1969; this gate lacked that check).
  */
 const ALLOWED_HOSTS = ["app.otterquote.com", "otterquote.com", "www.otterquote.com"];
 const PIXEL_ID = "800470107451795";
@@ -119,6 +116,53 @@ export function isAllowedPath(pathname: string | null): boolean {
 
 export { ALLOWED_PATHS };
 
+// gh-2107 / #2106 gap 1: the same predicate as js/meta-pixel-gate.js (gh-1969) -- a fragment substring check, not a path list
+// ("a path list can never be complete"). fbevents.js reads location.href for its `dl` value, so the pixel never loads while a
+// live Supabase implicit-flow credential is in the URL.
+export function urlHasAuthToken(hash: string | null | undefined): boolean {
+  const h = (hash ?? "").toLowerCase(); // case-insensitive (REVIEW N2 on #2139): a differently cased key is still a credential
+  return h.indexOf("access_token") !== -1 || h.indexOf("refresh_token") !== -1 || h.indexOf("provider_token") !== -1;
+}
+
+// REVIEW B1 on #2139: a credential in the QUERY STRING reaches Meta the same way (the pixel's server config strips no keys), so the
+// query is guarded too, by EXACT parameter name. Not by substring, and NOT `code`: `code` is this site's own referral parameter
+// (`?code=`, ga-gate.js gh-1931), and promocode / zipcode / mytoken must keep loading. Kept in sync with js/meta-pixel-gate.js.
+const AUTH_QUERY_KEYS = ["access_token", "refresh_token", "provider_token", "token_hash", "token"];
+
+export function queryHasAuthToken(search: string | null | undefined): boolean {
+  try {
+    const params = new URLSearchParams(search ?? "");
+    // case-INSENSITIVE on the key (`?Access_Token=` is still a credential), still exact: `code` / `mytoken` / `tokens` are not.
+    return Array.from(params.keys()).some((k) => AUTH_QUERY_KEYS.includes(k.toLowerCase()));
+  } catch {
+    return true; // an unparseable query string: fail closed
+  }
+}
+
+// REVIEW B3 on #2139 (5808373334): fbevents.js registers its OWN `pageshow` listener that sends a PageView when the page is restored
+// from the back/forward cache (`event.persisted`), with no `disablePushState` check, so after a Purchase on /help-measurements a Back
+// navigation would send a PageView where D-330 allows only Purchase. This listener is registered BEFORE any pixel script is rendered
+// (listeners on `window` run in registration order), and stops a persisted pageshow only where PageView is not allowed. It looks at
+// the path when the event fires, so a restore onto /get-started (D-322) is untouched. One stable handler: re-adding it is a no-op.
+function stopPersistedPageshowOnPurchaseOnlyPaths(e: Event): void {
+  if ((e as PageTransitionEvent).persisted && !pageViewAllowed(window.location.pathname)) e.stopImmediatePropagation();
+}
+
+export function installPersistedPageshowGuard(): void {
+  if (typeof window === "undefined") return;
+  window.removeEventListener("pageshow", stopPersistedPageshowOnPurchaseOnlyPaths);
+  window.addEventListener("pageshow", stopPersistedPageshowOnPurchaseOnlyPaths);
+}
+
+// gh-2107 / #2106 gap 2: D-330 allows only `Purchase` on /help-measurements, so no PageView is sent there. Every other allowed
+// route (/get-started, D-322) keeps its PageView.
+const PURCHASE_ONLY_PATHS = ["/help-measurements"];
+
+export function pageViewAllowed(pathname: string | null): boolean {
+  if (!pathname) return false;
+  return !PURCHASE_ONLY_PATHS.some(p => pathname === p || pathname.startsWith(p + "/"));
+}
+
 // gh-2107: the allowed routes that are authenticated, where the stored opt-out flag must be read before the pixel loads.
 const AUTHENTICATED_PATHS = ["/help-measurements"];
 
@@ -142,6 +186,8 @@ export function MetaPixelGate() {
     if (!isAllowedPath(pathname)) return; // REWORK: authenticated/non-marketing route -- never load
     // gh-2107: an opted-out visitor (GPC, or the cookie either signal leaves) never loads the pixel, on any route.
     if (isAdSharingOptedOut()) return;
+    // gh-2107 / #2106 gap 1 + REVIEW B1: a live credential in the URL fragment OR query string: the pixel never loads (any route).
+    if (typeof window !== "undefined" && (urlHasAuthToken(window.location.hash) || queryHasAuthToken(window.location.search))) return;
     if (typeof window !== "undefined" && ALLOWED_HOSTS.includes(window.location.hostname)) {
       // gh-2107 (REVIEW: FAIL 5806828503 F1): the stored flag is read BEFORE loading anything, on every allowed route, whenever a
       // session exists. Only a definite `false` loads the pixel; `no_session` loads it too, but only on a marketing route.
@@ -152,7 +198,10 @@ export function MetaPixelGate() {
         .catch(() => "unknown" as const)
         .then((stored) => {
           if (cancelled) return;
-          if (stored === false || (stored === "no_session" && !isAuthenticatedPath(pathname))) setAllowed(true);
+          if (stored === false || (stored === "no_session" && !isAuthenticatedPath(pathname))) {
+            installPersistedPageshowGuard(); // before the pixel <Script>s render (REVIEW B3 on #2139)
+            setAllowed(true);
+          }
         });
       return () => { cancelled = true; };
     }
@@ -181,8 +230,9 @@ export function MetaPixelGate() {
       */}
       <Script id="meta-pixel-init" strategy="afterInteractive">
         {`if (!window.fbq) { var n = function () { n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments); }; window.fbq = n; if (!window._fbq) { window._fbq = n; } n.push = n; n.loaded = true; n.version = '2.0'; n.queue = []; }
-fbq('init', '${PIXEL_ID}');
-fbq('track', 'PageView');`}
+window.fbq.disablePushState = true;
+fbq('set', 'autoConfig', false, '${PIXEL_ID}');
+fbq('init', '${PIXEL_ID}');${pageViewAllowed(pathname) ? "\nfbq('track', 'PageView');" : ""}`}
       </Script>
     </>
   );
