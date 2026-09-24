@@ -424,3 +424,11 @@ verify_jwt = true
 # No admin page calls it yet; an admin invokes it directly with their own JWT. A page is a follow-up.
 [functions.record-ad-sharing-opt-out]
 verify_jwt = false
+
+# gh-2154 P-4: cron-exception, same pattern as send-homeowner-next-steps —
+# JWT verification disabled; access is gated by the CRON_SECRET / service-role
+# Bearer check inside the function (see index.ts's auth block). Kill switch
+# (platform_settings.partner_onboarding_enabled) defaults OFF; this pin has
+# no bearing on that — it only controls the API gateway's own JWT check.
+[functions.send-partner-onboarding]
+verify_jwt = false
