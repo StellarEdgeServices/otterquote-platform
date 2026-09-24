@@ -372,6 +372,45 @@ try {
     r.ctx.refreshSetPasswordCard('user-14');
     ok(r.els.setPasswordCard.style.display === 'block', '(h) NEGATIVE CONTROL: server needs_password=true, no local cache -> card still shown');
   }
+
+  // (i) gh-2162 review fix round 3 (5823633863 should-fix): the card and the
+  // localStorage cache must be hidden/cleared BEFORE awaiting
+  // refreshSession(), not after. A slow or retried refresh (supabase-js
+  // retries a 5xx up to 8 times with backoff) must not leave the card
+  // visible once the password write has already succeeded. This asserts
+  // the hidden/cleared state WHILE refreshSession() is still pending --
+  // the pre-fix code only hid the card after refreshSession() resolved.
+  {
+    const ls = makeLocalStorage({ [needsPwKey('user-15')]: '1' });
+    let resolveRefresh;
+    const refreshPending = new Promise((resolve) => { resolveRefresh = resolve; });
+    const r = run({
+      ls,
+      refreshSessionImpl: () => refreshPending.then(() => ({ data: {}, error: null })),
+    });
+    r.ctx.refreshSetPasswordCard('user-15');
+
+    r.els.setPasswordNew.value = 'a-valid-password1';
+    r.els.setPasswordConfirm.value = 'a-valid-password1';
+    const listeners = r.els.setPasswordForm._listeners.submit;
+    if (!listeners || !listeners.length) throw new Error('no submit listener was ever registered on #setPasswordForm');
+    const fakeEvent = { preventDefault() {} };
+    const submitPromise = Promise.all(listeners.map((fn) => fn(fakeEvent)));
+
+    // Let updateUser() resolve and the handler reach the refreshSession()
+    // await -- but refreshSession() itself is still pending (resolveRefresh
+    // has not been called yet).
+    await settle();
+    ok(r.updateUserCalls.length === 1, '(i) card-hidden-before-refresh: updateUser has resolved by now');
+    ok(r.refreshSessionCalls.length === 1, '(i) card-hidden-before-refresh: refreshSession has been called (and is still pending)');
+    ok(r.els.setPasswordCard.style.display === 'none', '(i) card-hidden-before-refresh: the card is ALREADY hidden while refreshSession is still pending');
+    ok(ls.getItem(needsPwKey('user-15')) === null, '(i) card-hidden-before-refresh: the localStorage cache is already cleared while refreshSession is still pending');
+
+    // Let refreshSession() resolve and the submit handler finish cleanly.
+    resolveRefresh();
+    await submitPromise;
+    await settle();
+  }
 } catch (e) {
   failWithReason('partner-dashboard.html: setPasswordUserId/refreshSetPasswordCard/initSetPasswordForm dynamic behavior (b)-(e)', e.message);
 }
