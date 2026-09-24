@@ -366,6 +366,31 @@
   // usable source for the main IIFE's own variant read.
   window.__oqVariant = arm;
 
+  // gh-2121 (LRS S05, ceo67 Lighthouse trace): Arm F's LCP element is the
+  // step-1 <h1>, which js/router-variant-f.js renders -- and that file was
+  // only ever requested at the very bottom of <body>, after design-system.css
+  // /nav.css, the Supabase UMD bundle and five same-origin scripts had all
+  // been given a chance to load first. lcp-breakdown-insight measured ~2.2s
+  // of "element render delay" (time after first byte spent waiting, not
+  // loading) almost entirely attributable to that late request. We already
+  // know by this point -- before the parser has reached a single one of
+  // those other resources -- whether this visit needs router-variant-f.js at
+  // all (arm is direct-only for 'f': isDirectOnly('f') is true, so an
+  // explicit ?v=f is never remapped away by toLiveArm() above). A preload
+  // hint here starts that fetch in parallel with everything else on the
+  // page; the actual <script> tag that runs it is unchanged, added later in
+  // this file exactly as before -- this is additive only, a fetch that was
+  // always going to happen, just requested early instead of last.
+  if (arm === 'f') {
+    try {
+      var rfPreload = document.createElement('link');
+      rfPreload.rel = 'preload';
+      rfPreload.as = 'script';
+      rfPreload.href = '/js/router-variant-f.js';
+      document.head.appendChild(rfPreload);
+    } catch (e) {}
+  }
+
   // 4. Persist to BOTH stores, each independently guarded -- SKIPPED
   //    entirely while the #2088 round-1-item-2 QA override is active, so
   //    a ?v=e&oq_internal=1 walk can never leak arm 'e' into a normal,
@@ -525,6 +550,22 @@
      Logo and menu (row 2 + hamburger) stay. Page-scoped: nav.js and
      css/nav.css are untouched, so every other page keeps the bar. */
   #site-header .nav-roles { display: none; }
+  /* gh-2121 (LRS S07, ceo67 audit row S07): #2118 above only closed the
+     role-pill class of "escape hatch before conversion" -- the header logo
+     (nav.js's logoHref, -> /index.html) and the entire footer nav (How It
+     Works / FAQ / Get Started / Blog) still rendered live on /start and
+     both exit the funnel before screen 4. Same page-scoped CSS-hide
+     pattern as #2118: nav.js and css/nav.css stay untouched, so every
+     other page keeps its logo and footer. #site-header/#site-footer also
+     carry data-skip-nav below, so nav.js never builds their contents at
+     all on this page (an escape-hatch element that is never in the DOM
+     can't be tabbed to either, and it drops the always-doubled 94.7KB
+     otter-icon.png fetch -- header copy + footer copy -- off Arm F's LCP
+     path; see js/nav.js's own DOMContentLoaded auto-init for the guard).
+     This is display:none belt-and-suspenders for anyone who somehow still
+     reaches it (a race, a future nav.js change) -- not the primary
+     mechanism. */
+  #site-header, #site-footer { display: none; }
   .form-group { margin-bottom: var(--sp-4); }
   .form-label { display: block; font-weight: 600; color: var(--white); margin-bottom: var(--sp-1); font-size: 0.95rem; }
   .form-label.required::after { content: ' *'; color: var(--red); }
@@ -568,7 +609,12 @@
 </head>
 <body>
 
-<header id="site-header"></header>
+<!-- gh-2121 (LRS S07): data-skip-nav tells js/nav.js's DOMContentLoaded
+     auto-init not to build this element's contents at all on /start -- see
+     that file's guard and the CSS comment above for the full reasoning.
+     Page-scoped attribute; every other page omits it and gets the header
+     exactly as before. -->
+<header id="site-header" data-skip-nav="true"></header>
 
 <main>
   <div class="router-card">
@@ -680,12 +726,55 @@
   </div>
 </main>
 
-<footer id="site-footer"></footer>
+<!-- gh-2121 (LRS S07): see the header's own data-skip-nav comment above. -->
+<footer id="site-footer" data-skip-nav="true"></footer>
 
-<script src="js/cookie-storage.js"></script>
-<script src="js/config.js"></script>
-<script src="js/auth.js"></script>
-<script src="js/nav.js"></script>
+<!-- gh-2121 (LRS S05, ceo67 Lighthouse trace): these five files exist ONLY
+     to (a) build the header/footer this page now skips (nav.js, and
+     auth.js/agent-types.js which nav.js alone reads -- confirmed by grep,
+     neither is referenced anywhere else in this file) or (b) back
+     ensureSb()'s lazy Supabase-client accessor and the ARM_F bridge's own
+     `get sb()`/`get detailsUrl()`/`get anonKey()` getters below, none of
+     which run until first user interaction (step-1 submit) at the
+     earliest -- config.js/cookie-storage.js were already read lazily
+     everywhere in this file before this change; the two ARM_F bridge
+     properties were the one remaining eager (parse-time) CONFIG read and
+     are now getters too (see that bridge, below), for exactly this reason.
+     `defer` lets the parser reach this file's own next script (the inline
+     IIFE that decides the arm and injects js/router-variant-f.js) without
+     first waiting on five serial same-origin fetch+parse+execute cycles --
+     that serial wait was most of the ~2.2s "element render delay"
+     lcp-breakdown-insight measured on the ceo67 Lighthouse trace, since
+     the LCP element (Arm F's step-1 <h1>) is rendered by router-variant-f.js
+     and that script was not even requested until this block had finished
+     running. `defer` scripts execute in this same order, before
+     DOMContentLoaded -- nav.js's own auto-init (which needs Auth/CONFIG)
+     runs on that event, so ordering is preserved. GA4/Meta/Clarity gating
+     (js/ga-gate.js, js/meta-pixel-gate.js) and the Supabase UMD bundle
+     above are untouched -- this list is exactly the five files whose only
+     synchronous-load reason was the header/footer this page no longer
+     builds. -->
+<script defer src="js/cookie-storage.js"></script>
+<script defer src="js/config.js"></script>
+<script defer src="js/auth.js"></script>
+<script defer src="js/nav.js"></script>
+<!-- gh-2121: agent-types.js stays synchronous, NOT deferred like the four
+     above -- this page's own inline script (immediately below) calls an
+     IIFE, renderPartnerIndustries(), at the top level of its own execution
+     (not inside a click handler or a RENDERERS['...'] callback like every
+     other AgentTypes.CHOOSER_LABELS read in this codebase), and reads
+     window.AgentTypes.CHOOSER_LABELS synchronously right there. A deferred
+     script here would still be queued behind cookie-storage/config/auth/
+     nav and would not have run yet at that call site (defer scripts run
+     after the WHOLE document parses, and that call happens mid-parse, from
+     a plain inline <script> reached immediately after this one) -- window.
+     AgentTypes would read undefined, and the fallback (`|| {}`) would
+     render every partner-industry button with its raw code
+     ("re_agent") instead of its label ("Real Estate Agent"), on every
+     /start visit regardless of arm, not just F. Confirmed no other
+     AgentTypes.CHOOSER_LABELS read in this codebase runs outside a
+     RENDERERS/click-handler callback. Small file (116 lines); the perf
+     cost of keeping it synchronous is not worth risking that regression. -->
 <script src="js/agent-types.js"></script>
 
 <script>
@@ -2249,8 +2338,17 @@
       markLeadSaved: markLeadSaved,
       // The record-lead-details Edge Function, called by js/router-variant-f.js as a keepalive fetch (with a sendBeacon
       // fallback on pagehide), so it needs the URL and the public anon key. Both are already public in js/config.js.
-      detailsUrl: (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_URL) ? String(CONFIG.SUPABASE_URL).replace(/\/+$/, '') + '/functions/v1/record-lead-details' : null,
-      anonKey: (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_ANON) ? CONFIG.SUPABASE_ANON : null,
+      // gh-2121: getters, not eager values -- config.js is now `defer`red (see
+      // its <script> tag's own comment), so CONFIG may not exist yet at the
+      // moment this bridge object literal is built. js/router-variant-f.js's
+      // own detailsUrl()/anonKey reads (grep confirms: both are read inside a
+      // function body, called at keepalive-fetch time, never cached at
+      // RouterVariantF.init()) already tolerate a getter exactly like `sb`
+      // above -- this changes WHEN CONFIG is read (call time, same as
+      // today's effective behavior once config.js finishes loading) not
+      // WHAT is returned once it has.
+      get detailsUrl() { return (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_URL) ? String(CONFIG.SUPABASE_URL).replace(/\/+$/, '') + '/functions/v1/record-lead-details' : null; },
+      get anonKey() { return (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_ANON) ? CONFIG.SUPABASE_ANON : null; },
       ROLE_DESTINATIONS: ROLE_DESTINATIONS
     };
     var routerFScript = document.createElement('script');
