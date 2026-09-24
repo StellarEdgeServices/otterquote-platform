@@ -283,3 +283,17 @@ export function shouldSkipForSuppression(
   if (found) return { skip: true, reason: "suppressed" };
   return { skip: false, reason: null };
 }
+
+/**
+ * [gh-2107, REVIEW: FAIL 5806828503 F2 on #2134] The Global Privacy Control signal carried ON the PaymentIntent.
+ *
+ * create-payment-intent writes profiles.ad_sharing_opt_out when a request carries `Sec-GPC: 1` (or `gpc: true`), but that write
+ * can fail, and a failed write must not fail toward sharing. So the same request also stamps the PaymentIntent with
+ * metadata[ad_sharing_opt_out]=1 (a non-keyed, best-effort update after the create). The webhook skips the send on EITHER the
+ * profile flag OR this metadata. Only the exact string "1" is a signal.
+ */
+export function shouldSkipForGpcMetadata(
+  metadata: Record<string, string> | null | undefined,
+): { skip: boolean; reason: "gpc_signal" | null } {
+  return metadata?.ad_sharing_opt_out === "1" ? { skip: true, reason: "gpc_signal" } : { skip: false, reason: null };
+}

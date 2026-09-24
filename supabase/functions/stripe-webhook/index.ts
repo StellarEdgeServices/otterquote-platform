@@ -59,6 +59,7 @@ import {
   shouldSkipForAdSharingOptOut,
   shouldSkipForNonUsdMeasurement,
   shouldSkipForSuppression,
+  shouldSkipForGpcMetadata,
 } from "./meta-capi.ts";
 
 // ---------------------------------------------------------------------------
@@ -1035,6 +1036,15 @@ async function handleMeasurementOrderCapiPurchase(
 ): Promise<void> {
   const piType = paymentIntent.metadata?.type;
   if (!piType || !MEASUREMENT_ORDER_PI_TYPES.has(piType)) return; // not a measurement-order purchase
+
+  // gh-2107 (REVIEW: FAIL 5806828503 F2 on #2134): a Global Privacy Control signal carried on the PaymentIntent itself (stamped by
+  // create-payment-intent's post-create update) opts the buyer out even if the profile write failed. Checked FIRST, before any
+  // lookup, the profile read, the hash or a send. The log carries the PaymentIntent id and a fixed reason only.
+  const gpcMeta = shouldSkipForGpcMetadata(paymentIntent.metadata);
+  if (gpcMeta.skip) {
+    console.log(`[${FN_NAME}] gh-2107: CAPI Purchase skipped for PI ${paymentIntent.id} (${gpcMeta.reason})`);
+    return;
+  }
 
   try {
     // gh-2107 (Ben's DECIDED (a) on #2078; REVIEW B1 / LEGAL-READ L1): the Purchase is reported as 15 USD, so it is sent only for a
