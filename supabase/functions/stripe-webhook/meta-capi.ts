@@ -297,3 +297,77 @@ export function shouldSkipForGpcMetadata(
 ): { skip: boolean; reason: "gpc_signal" | null } {
   return metadata?.ad_sharing_opt_out === "1" ? { skip: true, reason: "gpc_signal" } : { skip: false, reason: null };
 }
+
+/**
+ * [gh-2107, Ben's return on the Test Events walk, #2078 5815458523] Deduplicate the CAPI Purchase on the PAYMENT INTENT, not the event.
+ *
+ * The walk's case B: the same PaymentIntent under a NEW Stripe event id made the webhook send a second Purchase, and Meta received and processed both
+ * (two server rows in Test Events). The `stripe_webhook_events` ledger only dedupes the same `evt_` id, and Meta dedupes browser against server, not two
+ * server sends that share an event_id. So, before sending, the webhook atomically CLAIMS `measurement_purchase:<pi>` in a durable unique-keyed store (a row
+ * in that same ledger: its primary key is the text `event_id`, and a Stripe id starts with `evt_`, so the keys cannot collide):
+ *   - the claim is ours            -> send;
+ *   - the claim already exists     -> skip, reason `already_sent`;
+ *   - the claim cannot be verified -> do NOT send (fail closed), reason `claim_failed`;
+ *   - the send fails or throws     -> RELEASE the claim, so a retry can send.
+ */
+export const CAPI_CLAIM_EVENT_TYPE = "capi_purchase_claim";
+
+export function capiClaimKey(paymentIntentId: string): string {
+  return buildCapiEventId(paymentIntentId);
+}
+
+export type CapiClaimDecision = { send: true } | { send: false; reason: "already_sent" | "claim_failed" };
+
+/** `error` is what the claim insert returned: null means the row went in (the claim is ours); 23505 is the primary-key violation (already claimed). */
+export function decideCapiClaim(error: { code?: string } | null | undefined): CapiClaimDecision {
+  if (!error) return { send: true };
+  if (error.code === "23505") return { send: false, reason: "already_sent" };
+  return { send: false, reason: "claim_failed" };
+}
+
+export interface CapiOnceDeps {
+  /** Insert the claim row. null on success; the error (with its code) otherwise. May reject. */
+  claim(): Promise<{ code?: string } | null>;
+  /** Perform the Meta request. true if Meta accepted it, false if it refused; may reject (timeout, network). */
+  send(): Promise<boolean>;
+  /** Delete the claim row. true if it went. */
+  release(): Promise<boolean>;
+  /** Fixed-text log lines only. */
+  log(message: string): void;
+}
+
+export type CapiOnceOutcome = "sent" | "already_sent" | "claim_failed" | "send_failed";
+
+export async function sendCapiPurchaseOnce(deps: CapiOnceDeps): Promise<CapiOnceOutcome> {
+  let claimError: { code?: string } | null;
+  try {
+    claimError = await deps.claim();
+  } catch {
+    return "claim_failed"; // could not verify the claim: never send on a guess
+  }
+  const decision = decideCapiClaim(claimError);
+  if (!decision.send) return decision.reason;
+
+  const releaseSafely = async () => {
+    let released = false;
+    try {
+      released = await deps.release();
+    } catch {
+      released = false;
+    }
+    if (!released) deps.log("gh-2107: the CAPI claim could not be released after a failed send; a retry will not send until it is cleared");
+  };
+
+  let accepted: boolean;
+  try {
+    accepted = await deps.send();
+  } catch (err) {
+    await releaseSafely();
+    throw err; // the webhook's own catch logs it exactly as before; CAPI never fails the webhook
+  }
+  if (!accepted) {
+    await releaseSafely();
+    return "send_failed";
+  }
+  return "sent";
+}
