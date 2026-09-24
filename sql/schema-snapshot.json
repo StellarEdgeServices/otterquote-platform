@@ -748,7 +748,10 @@
     "referring_agent_email",
     "role",
     "sms_consent_ts",
-    "is_test"
+    "is_test",
+    "ad_sharing_opt_out",
+    "ad_sharing_opt_out_at",
+    "ad_sharing_opt_out_source"
   ],
   "quotes": [
     "id",
