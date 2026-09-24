@@ -64,10 +64,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
 <title>Become a Home Inspector Partner — Otter Quotes</title>
-<meta name="description" content="Give your clients a real answer when you find damage. Sign up as an Otter Quotes partner and earn $200 per completed job.">
+<meta name="description" content="Give your clients a real answer when you find damage. Sign up as an Otter Quotes partner.">
 <link rel="canonical" href="https://otterquote.com/partner-inspectors.html">
 <meta property="og:title" content="Become a Home Inspector Partner — Otter Quotes">
-<meta property="og:description" content="Give your clients a real answer when you find damage. Sign up as an Otter Quotes partner and earn $200 per completed job.">
+<meta property="og:description" content="Give your clients a real answer when you find damage. Sign up as an Otter Quotes partner.">
 <meta property="og:url" content="https://otterquote.com/partner-inspectors.html">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Otter Quotes">
@@ -697,11 +697,6 @@
         <h3>Otter Quotes Handles Everything</h3>
         <p>Otter Quotes puts your client's project in front of local contractors, who can bid competitively — you can compare their licensing, insurance, and reviews all in one place. They compare bids, choose their contractor, and sign a contract — all through the platform.</p>
       </div>
-      <div class="step-card">
-        <div class="step-number">4</div>
-        <h3>You Earn $200</h3>
-        <p>When a job of $10,000 or more completes, you get paid. No chasing checks — we track every referral and pay automatically. Bonus: if you recruit another inspector to Otter Quotes, you earn an extra $50 every time one of their referrals completes a $10K+ job.</p>
-      </div>
     </div>
   </section>
 
@@ -738,22 +733,6 @@
     </div>
   </section>
 
-  <!-- ── Commission Callout ── -->
-  <section class="commission-section">
-    <div class="commission-box">
-      <div class="commission-amount">$200</div>
-      <div class="commission-label">Per Completed Job of $10,000+</div>
-      <div class="commission-secondary" style="margin-top: var(--sp-6); padding-top: var(--sp-5); border-top: 1px solid rgba(224,123,0,0.25); font-size: 1.75rem; font-weight: 800; color: var(--amber); font-family: var(--font-heading); line-height: 1.1;">+ $50</div>
-      <div class="commission-label" style="margin-top: var(--sp-2);">For Every Job From a Partner You Recruit</div>
-      <p class="commission-note" style="margin-top: var(--sp-5);">
-        Know another inspector who'd benefit? Share your recruit link and earn $50 every time their referral completes a job of $10K or more. One level — simple, transparent, no MLM.
-      </p>
-      <p class="commission-note" style="margin-top: var(--sp-3); font-size: 0.8rem; opacity: 0.75;">Payouts are made through our payment processor; tax reporting is handled under its terms.</p>
-      <!-- D-180: Approval process disclosure -->
-      <p class="commission-note" style="margin-top: var(--sp-3); font-size: 0.8rem; opacity: 0.75;">Commissions are paid after job completion and approval.</p>
-    </div>
-  </section>
-
   <!-- ── Signup Form ── -->
   <section class="form-section" id="signup">
     <div class="form-container">
@@ -778,18 +757,6 @@
           <input type="email" id="email" name="email" required placeholder="john@inspectionco.com">
         </div>
 
-        <!-- Password — gh-880 Half A: partner accounts now sign up with a
-             real credential instead of the password-less account
-             magic-link used to create implicitly. -->
-        <div class="form-group">
-          <label for="password">Password</label>
-          <input type="password" id="password" name="password" required minlength="8" placeholder="At least 8 characters">
-        </div>
-        <div class="form-group">
-          <label for="confirmPassword">Confirm Password</label>
-          <input type="password" id="confirmPassword" name="confirmPassword" required placeholder="Re-enter your password">
-        </div>
-
         <div class="form-group">
           <label for="phone">Phone</label>
           <input type="tel" id="phone" name="phone" required placeholder="(555) 123-4567">
@@ -798,27 +765,6 @@
         <div class="form-group">
           <label for="company">Company Name</label>
           <input type="text" id="company" name="company" required placeholder="ABC Home Inspections">
-        </div>
-
-        <div class="form-group">
-          <label for="certification">
-            Certification <span class="optional-label">(optional)</span>
-          </label>
-          <select id="certification" name="certification">
-            <option value="">Select if applicable</option>
-            <option value="ashi">ASHI Member</option>
-            <option value="internachi">InterNACHI Member</option>
-            <option value="nahi">NAHI Member</option>
-            <option value="other">Other Certification</option>
-            <option value="none">Not Certified</option>
-          </select>
-        </div>
-
-        <div class="form-group">
-          <label for="referredBy">
-            Who Told You About Us? <span class="optional-label">(optional)</span>
-          </label>
-          <input type="text" id="referredBy" name="referredBy" placeholder="Name or company of the person who recommended Otter Quotes">
         </div>
 
         <div class="form-checkbox-group">
@@ -831,10 +777,6 @@
         <button type="submit" class="form-submit" id="submitBtn">
           Generate My Referral Link
         </button>
-
-        <p class="form-note">
-          Referral fee ($200) and recruit bonus ($50) paid on jobs of $10,000 or more that complete through the platform.
-        </p>
 
         <p class="form-note referral-fee-disclaimer">
           Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.
@@ -858,10 +800,6 @@
           <div class="stat-box">
             <div class="stat-number" id="statJobs">0</div>
             <div class="stat-label">Jobs Completed</div>
-          </div>
-          <div class="stat-box">
-            <div class="stat-number" id="statEarned">$0</div>
-            <div class="stat-label">Referral Fees Earned</div>
           </div>
         </div>
 
@@ -945,51 +883,11 @@
 
       <div class="faq-item">
         <button class="faq-header" onclick="toggleFaq(this)">
-          <span>When do I get paid?</span>
-          <span class="faq-toggle">▼</span>
-        </button>
-        <div class="faq-content">
-          Referral fees are paid when the job completes — not when your client signs a contract. A job "completes" when the contractor finishes the work and the final payment clears. If someone you recruited to Otter Quotes sends a referral that completes, you also earn a $50 recruit bonus — paid on the same schedule.
-        </div>
-      </div>
-
-      <div class="faq-item">
-        <button class="faq-header" onclick="toggleFaq(this)">
-          <span>What types of jobs qualify?</span>
-          <span class="faq-toggle">▼</span>
-        </button>
-        <div class="faq-content">
-          Any exterior repair or replacement job of $10,000 or more that completes through Otter Quotes — roofing, siding, gutters, windows. Insurance claims and out-of-pocket (retail) jobs both qualify. Jobs under $10,000 don't earn a cash referral fee, but we still handle your client professionally.
-        </div>
-      </div>
-
-      <div class="faq-item">
-        <button class="faq-header" onclick="toggleFaq(this)">
-          <span>Is this allowed under my professional guidelines?</span>
-          <span class="faq-toggle">▼</span>
-        </button>
-        <div class="faq-content">
-          This is a straightforward referral arrangement — you refer clients to a service, and you earn a referral fee when they complete a transaction. ASHI and InterNACHI both permit referral arrangements that don't compromise inspector independence or objectivity. You're referring clients to a contractor bidding platform, not influencing your inspection findings.
-        </div>
-      </div>
-
-      <div class="faq-item">
-        <button class="faq-header" onclick="toggleFaq(this)">
           <span>Does my client pay anything?</span>
           <span class="faq-toggle">▼</span>
         </button>
         <div class="faq-content">
           Otter Quotes is 100% free for Homeowners. Your clients get a better outcome (competing bids, a signed contract, deductible protection) at no cost to them.
-        </div>
-      </div>
-
-      <div class="faq-item">
-        <button class="faq-header" onclick="toggleFaq(this)">
-          <span>What's the recruit bonus?</span>
-          <span class="faq-toggle">▼</span>
-        </button>
-        <div class="faq-content">
-          When you bring another inspector to Otter Quotes using your recruit link, you earn $50 for every job of $10,000 or more that their referrals complete. It's one level only — you earn on the people you personally recruit, not on anyone they recruit. Your recruit link is on your partner dashboard.
         </div>
       </div>
 
@@ -1019,7 +917,9 @@ let recruitContext = { recruitCode: null, recruiterId: null };
 // gh-846: UTM context populated by captureUtmContext() and consumed by
 // handleSignup(). Persisted to localStorage so it survives a page bounce
 // mid signup — same pattern as cs_recruit_code above.
-let utmContext = { source: null, medium: null, campaign: null, content: null };
+// gh-2154 P-1: extended with fbclid/li_fat_id/funnel_id (P-2 added the
+// matching register_partner params) alongside the existing utm_* set.
+let utmContext = { source: null, medium: null, campaign: null, content: null, fbclid: null, liFatId: null, funnelId: null };
 
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('partnerForm').addEventListener('submit', handleSignup);
@@ -1045,8 +945,11 @@ function captureUtmContext() {
     medium:   params.get('utm_medium'),
     campaign: params.get('utm_campaign'),
     content:  params.get('utm_content'),
+    fbclid:   params.get('fbclid'),
+    liFatId:  params.get('li_fat_id'),
+    funnelId: params.get('funnel_id'),
   };
-  if (fresh.source || fresh.medium || fresh.campaign || fresh.content) {
+  if (fresh.source || fresh.medium || fresh.campaign || fresh.content || fresh.fbclid || fresh.liFatId || fresh.funnelId) {
     utmContext = fresh;
     localStorage.setItem('cs_utm_context', JSON.stringify(utmContext));
     return;
@@ -1187,20 +1090,15 @@ async function handleSignup(e) {
   const firstName    = document.getElementById('firstName').value.trim();
   const lastName     = document.getElementById('lastName').value.trim();
   const email        = document.getElementById('email').value.trim();
-  const password        = document.getElementById('password').value;
-  const confirmPassword = document.getElementById('confirmPassword').value;
   const phone        = document.getElementById('phone').value.trim();
   const company      = document.getElementById('company').value.trim();
-  const certification = document.getElementById('certification').value;
-  const referredBy    = document.getElementById('referredBy').value.trim();
+  const agreeToTerms = document.getElementById('agreeToTerms');
 
-  // gh-880 Half A: password replaces magic-link at signup.
-  if (!password || password.length < 8) {
-    alert('Password must be at least 8 characters.');
-    return;
-  }
-  if (password !== confirmPassword) {
-    alert('Passwords do not match.');
+  // gh-2154 P-1: the agreement checkbox is a hard gate — no register_partner
+  // call at all when it isn't ticked. (Pre-existing gap: this page never
+  // read the checkbox state at all before P-1.)
+  if (!agreeToTerms || !agreeToTerms.checked) {
+    alert('Please agree to the Partner Terms to continue.');
     return;
   }
 
@@ -1222,20 +1120,19 @@ async function handleSignup(e) {
         p_email:            email,
         p_phone:            phone,
         p_company:          company,         // schema column is 'company' (not 'company_name')
-        p_referred_by_note: referredBy || null,
         p_recruit_code:     recruitContext.recruitCode || null,
-        p_metadata:         { certification: certification || null },
         p_utm_source:       utmContext.source   || null,
         p_utm_medium:       utmContext.medium   || null,
         p_utm_campaign:     utmContext.campaign || null,
         p_utm_content:      utmContext.content  || null,
+        p_fbclid:           utmContext.fbclid   || null,
+        p_li_fat_id:        utmContext.liFatId  || null,
+        p_funnel_id:        utmContext.funnelId || null,
       });
 
     if (error) {
       if ((error.message || '').includes('partner_exists')) {
-        // Already registered. gh-880 Half A: do NOT attempt any sign-in
-        // with the password just typed on this signup form — it may not
-        // belong to whoever owns that account. Point them to login instead.
+        // Already registered. Point them to login instead.
         alert("You're already a partner — sign in at otterquote.com/partner-login.html.");
         submitBtn.disabled = false;
         submitBtn.textContent = 'Generate My Referral Link';
@@ -1271,13 +1168,18 @@ async function handleSignup(e) {
     localStorage.removeItem('cs_recruit_code');
     localStorage.removeItem('cs_utm_context');
 
-    // gh-880 Half A: sign up with the password just collected instead of
-    // sending a magic link. signUpResult.session is null when the
-    // Supabase project requires email confirmation before first sign-in —
-    // handled via an alert, same as the other partner_exists notices on
-    // this page.
+    // gh-2154 P-1: no password collected at signup — this still creates the
+    // exact same Auth credential Auth.signUpWithPassword() always has
+    // (js/auth.js unchanged), just with a random value the visitor never
+    // sees or types. Setting a password they'll actually use stays where it
+    // already lives: the existing "Forgot password?" /
+    // Auth.sendPasswordReset() + Auth.updatePassword() flow on
+    // partner-login.html. signUpResult.session is null when the Supabase
+    // project requires email confirmation before first sign-in — handled
+    // via an alert, same as the other partner_exists notices on this page.
     if (window.Auth) {
-      const signUpResult = await Auth.signUpWithPassword(email, password, agentType);
+      const generatedPassword = Date.now().toString(36) + Math.random().toString(36).slice(2) + 'Aa1!';
+      const signUpResult = await Auth.signUpWithPassword(email, generatedPassword, agentType);
       if (!signUpResult || !signUpResult.session) {
         alert('Account created! Check your email to confirm your address, then sign in at the Partner Login page.');
       }
