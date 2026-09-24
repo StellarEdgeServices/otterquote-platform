@@ -85,7 +85,18 @@ function escapeHtml(str: string): string {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+/**
+ * Strips CR/LF from a value bound for an email header (e.g. the subject).
+ * Partner-supplied fields (name, agent_type, etc.) can contain arbitrary
+ * bytes -- without this, a name like "Jamie\r\nBcc: evil@example.com" would
+ * inject an extra header into the outbound Mailgun message.
+ */
+function stripHeaderInjection(str: string): string {
+  return String(str).replace(/[\r\n]+/g, " ");
 }
 
 export interface PartnerRow {
@@ -311,7 +322,9 @@ export async function handleNotifyAdminNewPartner(req: Request, deps: PartnerDep
       : new Date().toLocaleString("en-US", { timeZone: "America/Chicago" });
 
     const subjectPrefix = isTest ? "[TEST] " : "";
-    const subject  = `${subjectPrefix}🦦 New Partner Signup — ${fullName} (${agentType})`;
+    const subject  = stripHeaderInjection(
+      `${subjectPrefix}🦦 New Partner Signup — ${fullName} (${agentType})`,
+    );
     const textBody = [
       isTest ? `TEST SIGNUP — not a real partner lead.` : null,
       isTest ? `` : null,
