@@ -12,21 +12,12 @@ Deno.test("contract: the fixture is well formed (a non-empty prefix, and every e
   for (const e of contract.examples) assertEquals(e.eventId, contract.prefix + e.paymentIntentId);
 });
 
-// stripe-webhook/meta-capi.ts arrives with PR #2107. Until then this half is reported as IGNORED (visible in the summary),
-// not silently passed; once that file exists on the branch under test it is enforced.
-let serverPresent = true;
-try {
-  await Deno.stat(new URL("../stripe-webhook/meta-capi.ts", import.meta.url));
-} catch {
-  serverPresent = false;
-}
+// The server half is UNCONDITIONAL (gh-2107 follow-up 6b, Ben on #2078 5806312169): stripe-webhook/meta-capi.ts is on main (PR #2107),
+// so this imports the real buildCapiEventId statically. If that export is renamed, moved or removed, this file fails to load and CI
+// goes red; nothing is skipped or ignored any more.
+import { buildCapiEventId } from "../stripe-webhook/meta-capi.ts";
 
-Deno.test({
-  name: "contract: the server's buildCapiEventId returns the contract's event_id for every example (enforced once meta-capi.ts exists)",
-  ignore: !serverPresent,
-  fn: async () => {
-    const { buildCapiEventId } = await import("../stripe-webhook/meta-capi.ts");
-    for (const e of contract.examples) assertEquals(buildCapiEventId(e.paymentIntentId), e.eventId, e.paymentIntentId);
-    assertEquals(buildCapiEventId("pi_x"), contract.prefix + "pi_x");
-  },
+Deno.test("contract: the server's buildCapiEventId returns the contract's event_id for every example in the shared file", () => {
+  for (const e of contract.examples) assertEquals(buildCapiEventId(e.paymentIntentId), e.eventId, e.paymentIntentId);
+  assertEquals(buildCapiEventId("pi_x"), contract.prefix + "pi_x");
 });
