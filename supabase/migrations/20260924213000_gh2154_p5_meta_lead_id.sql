@@ -22,13 +22,20 @@
 -- convention as the existing 'partner_exists' branch on the email unique
 -- index).
 --
--- PIN QUESTION (see this build's report): P-2's referral_agents_guard_
--- payout_columns() trigger pins fbclid/li_fat_id/funnel_id against partner
--- self-service UPDATE (RLS still allows an authenticated partner to UPDATE
--- their own row). meta_lead_id is attribution-shaped the same way, but this
--- migration does NOT touch that trigger — pinning it is left as an explicit
--- QUESTION for Kevin/Ben rather than an unreviewed change to a live guard
--- trigger bundled into this PR.
+-- PIN (Kevin, answering this build's original QUESTION: YES, pin it):
+-- referral_agents_guard_payout_columns() is CREATE OR REPLACEd below,
+-- starting from its CURRENT LIVE body (md5(pg_get_functiondef(...)) first
+-- 8 hex = 81c6af22, confirmed by a read-only probe immediately before
+-- writing this migration -- same live-body-adoption precedent as P-2's own
+-- DRIFT NOTE), with exactly one addition: `or (new.meta_lead_id is
+-- distinct from old.meta_lead_id)` inside the existing
+-- coalesce(..., true)-wrapped attribution/activation condition, alongside
+-- fbclid/li_fat_id/funnel_id. Same fail-closed shape: service_role and
+-- is_admin_email() still return NEW unconditionally (checked first, above
+-- this block, unchanged); the INSERT branch is untouched (register_partner()
+-- is SECURITY DEFINER and bypasses this trigger's UPDATE branch entirely on
+-- INSERT); only a non-admin, non-service_role UPDATE that changes
+-- meta_lead_id now raises 42501, same as the three existing pinned columns.
 --
 -- rate_limit_config: meta-leadgen-webhook calls check_rate_limit() (same
 -- convention as record-lead-details / check-email-exists), so it needs a
@@ -36,7 +43,7 @@
 -- see gh1724's own note about exactly this trap.
 --
 -- ROLLBACK: see
--- supabase/migrations_rollbacks/20260924210000_gh2154_p5_meta_lead_id_rollback.sql
+-- supabase/migrations_rollbacks/20260924213000_gh2154_p5_meta_lead_id_rollback.sql
 -- — drops the 21-arg register_partner, recreates the pre-migration 20-arg
 -- definition byte-identical to P-2's migration, drops the rate_limit_config
 -- row, then drops meta_lead_id (which also drops its unique constraint).
@@ -206,3 +213,106 @@ VALUES
   ('meta-leadgen-webhook', 120, 1000, 20000, true, 0.0000, 0.00,
    'gh2154 P-5: Meta Lead Ads webhook, partner path only. Keyed on a per-IP synthetic UUID (Meta''s own webhook delivery IPs, not an end user) since the caller is server-to-server with no real user_id. Rate-limits AFTER signature verification only, so a forged/unsigned request never reaches this check. Limits are a starting judgment call sized for webhook burst delivery, not human traffic -- raise if legitimate Meta delivery volume is ever throttled.')
 ON CONFLICT (function_name) DO NOTHING;
+
+-- Pin meta_lead_id the same way P-2 pinned fbclid/li_fat_id/funnel_id.
+-- Body below is the CURRENT LIVE body (md5 first-8 = 81c6af22) with exactly
+-- one addition inside the coalesce(...) allow-clause. See ROLLBACK for the
+-- exact pre-migration restore.
+CREATE OR REPLACE FUNCTION public.referral_agents_guard_payout_columns()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+begin
+  if auth.role() = 'service_role' then
+    return new;
+  end if;
+  if is_admin_email() then
+    return new;
+  end if;
+
+  if TG_OP = 'INSERT' then
+    -- Defense in depth only: register_partner() (SECURITY DEFINER) never sets these on insert
+    -- and bypasses table grants/RLS entirely, so this branch only matters if some future path
+    -- inserts directly. recruited_at/recruited_by_id/status/is_test are deliberately NOT forced
+    -- here -- register_partner() legitimately sets recruited_at/recruited_by_id for the
+    -- recruiter-linking flow (always now(), never caller-backdated), and forcing them would
+    -- break that flow.
+    new.payments_blocked           := true;
+    new.w9_verified_at             := null;
+    new.w9_file_url                := null;
+    new.w9_submitted_at            := null;
+    new.total_commission_earned    := 0;
+    new.total_commission_paid      := 0;
+    new.recruit_earnings           := 0;
+    return new;
+  end if;
+
+  -- gh-2154 column lock: attribution can never change post-insert except by
+  -- service_role/admin (already returned above); activation timestamp can
+  -- only move NULL -> NOT NULL, and only through record_partner_app_activation().
+  --
+  -- REVIEW FAIL 5819691427 (three-valued-logic fail-open): current_setting(x,
+  -- true) returns SQL NULL, not '', on any backend where this GUC has never
+  -- been set in that session/connection -- so `... = '1'` evaluates to NULL,
+  -- `not (NULL and ...)` is NULL, and the whole allow-clause's negation is
+  -- NULL. `if NULL then raise` never raises: plpgsql's IF only branches into
+  -- THEN on a true boolean, so a NULL condition silently falls through as if
+  -- it were false, and a partner on a fresh PostgREST/Supavisor backend
+  -- (which is most of them) could PATCH their own unactivated
+  -- app_first_signed_in_launch_at straight past this guard. Fixed two ways,
+  -- belt and braces, so a NULL here can never again mean "allowed": (1) the
+  -- GUC read itself is coalesced to '' so `= '1'` is always a real boolean,
+  -- never NULL; (2) the entire allow-clause is wrapped in
+  -- coalesce(..., true), so if any future edit reintroduces a NULL-producing
+  -- expression here, the guard fails CLOSED (raises) instead of failing
+  -- open. Proof: supabase/tests/gh2154_p2_proof.sql, top of the column-lock
+  -- section.
+  --
+  -- gh-2154 P-5: meta_lead_id added to this same coalesce(...)-wrapped
+  -- clause, alongside fbclid/li_fat_id/funnel_id -- it is the
+  -- meta-leadgen-webhook dedupe key and must not be partner-writable any
+  -- more than the other attribution columns are.
+  if coalesce(
+       (new.fbclid    is distinct from old.fbclid)
+       or (new.li_fat_id is distinct from old.li_fat_id)
+       or (new.funnel_id is distinct from old.funnel_id)
+       or (new.meta_lead_id is distinct from old.meta_lead_id)
+       or (
+         (new.app_first_signed_in_launch_at is distinct from old.app_first_signed_in_launch_at)
+         and not (
+           coalesce(current_setting('oq.gh2154_activation_write', true), '') = '1'
+           and old.app_first_signed_in_launch_at is null
+           and new.app_first_signed_in_launch_at is not null
+         )
+       ),
+       true
+     )
+  then
+    raise exception
+      'referral_agents: attribution/activation columns can only be changed by service_role, an admin, or record_partner_app_activation() (gh-2154)'
+      using errcode = '42501';
+  end if;
+
+  -- UPDATE: pin every payout-governing / compliance column to its stored value.
+  if (new.payments_blocked           is distinct from old.payments_blocked)
+     or (new.w9_verified_at          is distinct from old.w9_verified_at)
+     or (new.w9_file_url             is distinct from old.w9_file_url)
+     or (new.w9_submitted_at         is distinct from old.w9_submitted_at)
+     or (new.recruited_at            is distinct from old.recruited_at)
+     or (new.recruited_by_id         is distinct from old.recruited_by_id)
+     or (new.total_commission_earned is distinct from old.total_commission_earned)
+     or (new.total_commission_paid   is distinct from old.total_commission_paid)
+     or (new.recruit_earnings        is distinct from old.recruit_earnings)
+     or (new.status                  is distinct from old.status)
+     or (new.is_test                 is distinct from old.is_test)
+  then
+    raise exception
+      'referral_agents: payout-governing columns can only be changed by service_role or an admin (gh-886)'
+      using errcode = '42501';
+  end if;
+
+  return new;
+end;
+$function$;
