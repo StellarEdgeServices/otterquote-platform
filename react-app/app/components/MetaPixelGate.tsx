@@ -143,15 +143,17 @@ export function queryHasAuthToken(search: string | null | undefined): boolean {
 // from the back/forward cache (`event.persisted`), with no `disablePushState` check, so after a Purchase on /help-measurements a Back
 // navigation would send a PageView where D-330 allows only Purchase. This listener is registered BEFORE any pixel script is rendered
 // (listeners on `window` run in registration order), and stops a persisted pageshow only where PageView is not allowed. It looks at
-// the path when the event fires, so a restore onto /get-started (D-322) is untouched. One stable handler: re-adding it is a no-op.
+// the path when the event fires, so a restore onto /get-started (D-322) is untouched. Added ONCE and NEVER removed (N1 on #2139): an
+// earlier remove-and-re-add on every allowed evaluation moved it behind fbevents' own listener after an in-app navigation and reopened
+// B3. It is also registered with `capture`, so at the window target it runs before any non-capturing listener the library adds. One
+// stable handler and one capture flag: a repeat add is ignored by the browser and the guard keeps its first position.
 function stopPersistedPageshowOnPurchaseOnlyPaths(e: Event): void {
   if ((e as PageTransitionEvent).persisted && !pageViewAllowed(window.location.pathname)) e.stopImmediatePropagation();
 }
 
 export function installPersistedPageshowGuard(): void {
   if (typeof window === "undefined") return;
-  window.removeEventListener("pageshow", stopPersistedPageshowOnPurchaseOnlyPaths);
-  window.addEventListener("pageshow", stopPersistedPageshowOnPurchaseOnlyPaths);
+  window.addEventListener("pageshow", stopPersistedPageshowOnPurchaseOnlyPaths, { capture: true });
 }
 
 // gh-2107 / #2106 gap 2: D-330 allows only `Purchase` on /help-measurements, so no PageView is sent there. Every other allowed

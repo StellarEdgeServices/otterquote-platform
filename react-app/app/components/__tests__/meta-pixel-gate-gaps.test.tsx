@@ -1,6 +1,8 @@
 // gh-2107 / D-330 -- the two protective gaps #2106 left in the React Meta Pixel gate. Ben's DECIDED ruling d. on #2078
 // (5805593465): "The React pixel on /help-measurements lacks the check that keeps tokens in the URL away from Meta. The page also
 // sends a PageView where D-330 allows only Purchase. Both are protective fixes." Renders the REAL MetaPixelGate.
+import fs from 'node:fs';
+import path from 'node:path';
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, cleanup, waitFor } from '@testing-library/react';
@@ -264,6 +266,29 @@ describe('MetaPixelGate: token-in-URL guard and the PageView rule', () => {
       window.dispatchEvent(pageshow(true));
       expect(fake.sent).toEqual([]);
       fake.remove();
+    });
+
+    // N1 on #2139 (5809719461): the guard used to be removed and re-added on every allowed evaluation, so after an in-app (same-document)
+    // navigation it sat BEHIND fbevents' own listener and B3 reopened. It is now added once and never removed.
+    it('N1: after the pixel is loaded on /get-started and the visitor moves in-app to /help-measurements, a persisted pageshow STILL never reaches the library', async () => {
+      mockPath = '/get-started';
+      setLocation('otterquote.com');
+      const { container, rerender } = render(<MetaPixelGate />);
+      await waitFor(() => expect(loaded(container)).toBe(true));
+      const fake = installFakeFbeventsPageshow(); // the library's listener, registered after the gate's first install
+      mockPath = '/help-measurements';
+      setLocation('app.otterquote.com');
+      rerender(<MetaPixelGate />); // the gate re-evaluates for the new path
+      await waitFor(() => expect(loaded(container)).toBe(true));
+      window.dispatchEvent(pageshow(true));
+      expect(fake.sent).toEqual([]);
+      fake.remove();
+    });
+
+    it('N1: the guard is never removed (no removeEventListener for pageshow in the gate) and is registered with capture', () => {
+      const src = fs.readFileSync(path.join(process.cwd(), 'app/components/MetaPixelGate.tsx'), 'utf8');
+      expect(src).not.toMatch(/removeEventListener\(\s*["']pageshow["']/);
+      expect(src).toMatch(/addEventListener\(\s*["']pageshow["'],\s*stopPersistedPageshowOnPurchaseOnlyPaths,\s*\{\s*capture:\s*true\s*\}\s*\)/);
     });
 
     it('B3: a NON-persisted pageshow (an ordinary load) is not stopped', async () => {
