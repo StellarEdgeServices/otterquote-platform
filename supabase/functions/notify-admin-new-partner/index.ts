@@ -47,7 +47,7 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 
 export const ADMIN_EMAIL       = "dustinstohler1@gmail.com";
-export const ADMIN_PORTAL_URL  = "https://otterquote.com/admin-partners.html";
+export const ADMIN_PORTAL_URL  = "https://otterquote.com/admin-referrals.html";
 export const NOTIFICATION_TYPE = "admin_new_partner_alert";
 
 // CORS — origin-allowlisted per project standard (Session 254), matching
