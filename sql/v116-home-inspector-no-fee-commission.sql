@@ -38,6 +38,25 @@
 --
 -- Design: two additive guards on the existing function body. No schema
 --   change, no new columns, no change to the trigger definition itself.
+--
+-- FIXUP 2026-09-24 (review comments 5817579721 / 5817582215 on PR #2158):
+--   1. The inspector-referrer path (guard 1 ELSE branch) never sets
+--      referrals.commission_amount, so the function's only "already paid"
+--      check (`commission_amount > 0`) never trips for it. That left the
+--      $50 recruit-bonus path with NO idempotency guard of its own — a
+--      second claims.completion_date UPDATE on the same referral could
+--      accrue and pay the $50 recruit bonus a second time (confirmed).
+--      Fix: the recruit-bonus IF now also requires
+--      `COALESCE(v_referral.recruit_commission_amount, 0) = 0`, an
+--      independent idempotency check scoped to the recruit bonus itself,
+--      so it accrues at most once per referral regardless of what the
+--      referral's own (inspector-gated) commission_amount is doing.
+--   2. D-333 requires a home_inspector referrer receive no referral fee
+--      AND no recruit bonus — but said nothing about email copy. The v116
+--      head still fired send-partner-status-email (which reads "payment is
+--      on its way") for a completed inspector referral. Fix: that call is
+--      now skipped when the referrer's own agent_type = 'home_inspector';
+--      a non-inspector referral still fires it unchanged (control).
 -- ============================================================================
 
 BEGIN;
@@ -143,9 +162,17 @@ BEGIN
   -- Recruit bonus: gated on the RECRUITER's own agent_type (D-333), not the
   -- referrer's. A non-inspector who recruited a home_inspector still earns
   -- the $50 bonus on that inspector's completed referral — unchanged.
+  --
+  -- FIXUP (review 5817579721): the inspector-referrer branch above never
+  -- sets commission_amount, so the function's only other idempotency check
+  -- never trips for it. `recruit_commission_amount = 0` is an independent
+  -- idempotency check on the recruit bonus itself, so a second completion
+  -- on the same referral cannot pay the $50 bonus twice, no matter what
+  -- commission_amount is doing.
   IF v_referrer.recruited_by_id IS NOT NULL
      AND v_referrer.recruited_at IS NOT NULL
-     AND v_referral.created_at   >= v_referrer.recruited_at THEN
+     AND v_referral.created_at   >= v_referrer.recruited_at
+     AND COALESCE(v_referral.recruit_commission_amount, 0) = 0 THEN
 
     SELECT * INTO v_recruiter
       FROM public.referral_agents
@@ -209,30 +236,39 @@ BEGIN
         v_referral_approval, SQLSTATE, SQLERRM;
   END;
 
-  BEGIN
-    IF v_service_role_key IS NULL THEN
-      SELECT decrypted_secret INTO v_service_role_key
-        FROM vault.decrypted_secrets
-       WHERE name = 'cron_service_role_key';
-    END IF;
+  -- FIXUP (review 5817579721 item 2, D-333): a home_inspector referrer must
+  -- not trigger send-partner-status-email, which tells the partner "your
+  -- referral fee/payment is on its way" — an inspector accrues no fee and
+  -- gets no such message. A non-inspector referral is unaffected (control).
+  IF v_referrer.agent_type IS DISTINCT FROM 'home_inspector' THEN
+    BEGIN
+      IF v_service_role_key IS NULL THEN
+        SELECT decrypted_secret INTO v_service_role_key
+          FROM vault.decrypted_secrets
+         WHERE name = 'cron_service_role_key';
+      END IF;
 
-    IF v_service_role_key IS NULL THEN
-      RAISE LOG 'apply_referral_commission: vault secret cron_service_role_key not found — skipping send-partner-status-email for referral_id=%', v_referral.id;
-    ELSE
-      PERFORM net.http_post(
-        url     := 'https://yeszghaspzwwstvsrioa.supabase.co/functions/v1/send-partner-status-email',
-        headers := jsonb_build_object(
-          'Content-Type',  'application/json',
-          'Authorization', 'Bearer ' || v_service_role_key
-        ),
-        body    := jsonb_build_object('referral_id', v_referral.id)
-      );
-    END IF;
-  EXCEPTION
-    WHEN OTHERS THEN
-      RAISE LOG 'apply_referral_commission: pg_net call to send-partner-status-email failed (non-fatal) for referral_id=% sqlstate=% sqlerrm=%',
-        v_referral.id, SQLSTATE, SQLERRM;
-  END;
+      IF v_service_role_key IS NULL THEN
+        RAISE LOG 'apply_referral_commission: vault secret cron_service_role_key not found — skipping send-partner-status-email for referral_id=%', v_referral.id;
+      ELSE
+        PERFORM net.http_post(
+          url     := 'https://yeszghaspzwwstvsrioa.supabase.co/functions/v1/send-partner-status-email',
+          headers := jsonb_build_object(
+            'Content-Type',  'application/json',
+            'Authorization', 'Bearer ' || v_service_role_key
+          ),
+          body    := jsonb_build_object('referral_id', v_referral.id)
+        );
+      END IF;
+    EXCEPTION
+      WHEN OTHERS THEN
+        RAISE LOG 'apply_referral_commission: pg_net call to send-partner-status-email failed (non-fatal) for referral_id=% sqlstate=% sqlerrm=%',
+          v_referral.id, SQLSTATE, SQLERRM;
+    END;
+  ELSE
+    RAISE LOG 'apply_referral_commission: D-333 no-fee — referrer % is agent_type=home_inspector, skipping send-partner-status-email for referral_id=%',
+      v_referrer.id, v_referral.id;
+  END IF;
 
   RETURN NEW;
 
@@ -245,7 +281,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.apply_referral_commission() IS
-'Trigger function attached to claims AFTER UPDATE OF completion_date (after_claim_completed). On completion with a selected/awarded quote >= $10,000, inserts a pending_approval payout_approvals row for $200 to the referrer and, when forward-only recruit criteria pass, $50 to the recruiter. D-333 (gh-2155): a home_inspector referrer accrues NO referral fee; a home_inspector recruiter accrues NO recruit bonus (the referrer''s own type does not gate the recruit bonus). Idempotent via commission_amount > 0 guard. SECURITY DEFINER; all commission-side errors are swallowed and logged.';
+'Trigger function attached to claims AFTER UPDATE OF completion_date (after_claim_completed). On completion with a selected/awarded quote >= $10,000, inserts a pending_approval payout_approvals row for $200 to the referrer and, when forward-only recruit criteria pass, $50 to the recruiter. D-333 (gh-2155): a home_inspector referrer accrues NO referral fee and triggers no send-partner-status-email; a home_inspector recruiter accrues NO recruit bonus (the referrer''s own type does not gate the recruit bonus). Idempotent via commission_amount > 0 (referral fee) and recruit_commission_amount > 0 (recruit bonus), independently. SECURITY DEFINER; all commission-side errors are swallowed and logged.';
 
 COMMIT;
 
