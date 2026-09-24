@@ -287,6 +287,31 @@
                     window.navigator.standalone === true;
             }
 
+            // gh-2154 P-2: first signed-in standalone launch of the installed
+            // partner app. localStorage is only an optimisation (the RPC is
+            // first-write-wins server-side, so a redundant call is a
+            // harmless no-op) - it just skips the network round-trip on
+            // later launches. Fails silently: never blocks navigation, never
+            // throws. This page always redirects away when standalone (see
+            // below), so the call is fired best-effort before the redirect;
+            // partner-dashboard.html performs the same check once the page
+            // actually lands, which is the reliable path.
+            function recordAppActivationIfSignedIn() {
+                try {
+                    if (window.localStorage.getItem('oq_partner_app_activated') === '1') return;
+                } catch (e) { /* private mode / blocked storage - fall through */ }
+                Auth.hasPartnerSession().then(function (isPartner) {
+                    if (!isPartner || typeof CONFIG === 'undefined') return;
+                    CONFIG.whenReady(function (client) {
+                        if (!client) return;
+                        client.rpc('record_partner_app_activation').then(function (res) {
+                            if (!res || res.error) return;
+                            try { window.localStorage.setItem('oq_partner_app_activated', '1'); } catch (e) { /* non-fatal */ }
+                        }).catch(function () { /* non-fatal */ });
+                    });
+                }).catch(function () { /* non-fatal */ });
+            }
+
             // The two "How to install" QR codes link out to their own
             // walkthrough pages (partner-app-install-ios.html /
             // partner-app-install-android.html) - no in-page install button
@@ -297,6 +322,7 @@
             });
 
             if (isStandalone()) {
+                recordAppActivationIfSignedIn();
                 window.location.replace('/partner-dashboard.html?source=pwa');
                 return;
             }

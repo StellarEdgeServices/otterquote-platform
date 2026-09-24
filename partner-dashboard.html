@@ -1397,6 +1397,28 @@ Let me know if you have any questions!
             }
         }
 
+        // gh-2154 P-2: first signed-in standalone launch of the installed
+        // partner app. Fires the server-side RPC once per (user, browser) —
+        // the localStorage flag is only an optimisation, since the RPC
+        // itself is first-write-wins and a redundant call is a harmless
+        // no-op. Fails silently: never blocks the dashboard, never throws.
+        function isStandaloneLaunch() {
+            return window.matchMedia('(display-mode: standalone)').matches ||
+                window.navigator.standalone === true;
+        }
+
+        function recordAppActivationIfSignedIn(userId) {
+            var flagKey = 'oq_partner_app_activated_' + (userId || 'anon');
+            try {
+                if (window.localStorage.getItem(flagKey) === '1') return;
+            } catch (e) { /* private mode / blocked storage - fall through */ }
+            if (!sb) return;
+            sb.rpc('record_partner_app_activation').then(function (res) {
+                if (!res || res.error) return;
+                try { window.localStorage.setItem(flagKey, '1'); } catch (e) { /* non-fatal */ }
+            }).catch(function () { /* non-fatal */ });
+        }
+
         // Initialize
         async function init() {
             // Handle post-magic-link auth callback (links user_id to referral_agents record)
@@ -1409,6 +1431,10 @@ Let me know if you have any questions!
             }
 
             await loadW9GateFlag();
+
+            if (currentUser && isStandaloneLaunch()) {
+                recordAppActivationIfSignedIn(currentUser.id);
+            }
 
             // gh-fix: reveal/hide the app-install box now that we know who's
             // signed in (defined in the "Partner App v1" script below —
@@ -2777,13 +2803,17 @@ Let me know if you have any questions!`;
             }
 
             // Install banner (gh-fix: moved to top of dashboard + persisted
-            // dismissal). No referral_agents column exists yet for "app
-            // installed" (checked against sql/ — see
-            // handoffs/partner-dashboard-app-installed-FINDINGS.md for the
-            // migration to apply so this can move server-side); until then
-            // the dismissal is localStorage, keyed to the signed-in partner's
-            // user id so one browser can't silently suppress the reminder for
-            // a different partner who later signs in on the same device.
+            // dismissal). gh-2154 P-2 added referral_agents.
+            // app_first_signed_in_launch_at, but that column records the
+            // partner's first signed-in standalone app launch (attribution/
+            // onboarding-sequence signal, see recordAppActivationIfSignedIn()
+            // above) — it is not an "install" flag and this banner's
+            // dismissal state is a separate, purely cosmetic UI preference.
+            // There is still no referral_agents column for "user dismissed
+            // the install reminder," so that dismissal stays localStorage,
+            // keyed to the signed-in partner's user id so one browser can't
+            // silently suppress the reminder for a different partner who
+            // later signs in on the same device. Behavior unchanged.
             function isStandalone() {
                 return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
             }
