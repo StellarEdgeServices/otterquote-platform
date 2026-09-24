@@ -8,12 +8,20 @@
  * source-regex check -- nav.js builds the header/footer via client-side
  * innerHTML, so a static-HTML read would show neither element's content)
  * and asserts that, before the visitor reaches screen 4 (thank you), no
- * visible <a href> can carry them off /start -- with the one explicit,
+ * visible <a href> can carry them off Arm F -- with the one explicit,
  * required exception: the Privacy Policy / Terms links the approved
  * consent copy requires on screen 3 (arm_f_s3_privacy_line, js/router-
  * variant-f.js) must still exist, still point at privacy.html/terms.html,
  * and still open in the SAME tab (spec 8: no new tabs in the FB/IG
  * in-app browsers).
+ *
+ * gh-2160 review fix (comment 5818464392, must-fix 1): the original PR's
+ * header/footer skip was scoped to the WHOLE PAGE, not just Arm F -- C, D
+ * and E (the live random split) lost their footer Privacy Policy/Terms
+ * links along with the escape hatches. This file now also asserts arms
+ * c/d/e keep the header AND footer built exactly as before, including the
+ * footer's own Privacy Policy/Terms links -- see assertArmKeepsFooterLegal
+ * below.
  *
  * NEGATIVE CONTROL: the same check also runs against a second server
  * (PRIOR_BASE_URL) serving the pre-gh-2121 start.html/nav.js (git HEAD, the
@@ -96,6 +104,34 @@ async function findConsentLinks(page) {
   });
 }
 
+// gh-2160 review fix (must-fix 1): confirms arm `variant` keeps its header
+// AND footer built exactly as main -- in particular the footer's own
+// Privacy Policy / Terms links, which is the specific regression the
+// review caught (data-skip-nav / the display:none rule were page-wide, not
+// Arm-F-scoped, in the original PR).
+async function assertArmKeepsFooterLegal(page, variant, base) {
+  const url = `${base || BASE_URL}/start.html?v=${variant}`;
+  await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
+  await new Promise((r) => setTimeout(r, 500));
+  const result = await page.evaluate(() => {
+    const h = document.getElementById('site-header');
+    const f = document.getElementById('site-footer');
+    const footerLinks = f
+      ? Array.from(f.querySelectorAll('a[href]')).map((a) => (a.getAttribute('href') || ''))
+      : [];
+    return {
+      headerHTML: h ? h.innerHTML.trim() : null,
+      footerHTML: f ? f.innerHTML.trim() : null,
+      hasPrivacy: footerLinks.some((href) => /(^|\/)privacy\.html$/.test(href)),
+      hasTerms: footerLinks.some((href) => /(^|\/)terms\.html$/.test(href))
+    };
+  });
+  ok(!!result.headerHTML, 'arm ' + variant + ': #site-header was built (NOT skipped) -- matches main');
+  ok(!!result.footerHTML, 'arm ' + variant + ': #site-footer was built (NOT skipped) -- matches main');
+  ok(result.hasPrivacy, 'arm ' + variant + ': footer keeps its Privacy Policy link');
+  ok(result.hasTerms, 'arm ' + variant + ': footer keeps its Terms of Service link');
+}
+
 async function main() {
   const launchOpts = { headless: true, args: ['--no-sandbox', '--disable-gpu'] };
   if (CHROME_PATH) launchOpts.executablePath = CHROME_PATH;
@@ -120,11 +156,35 @@ async function main() {
       const f = document.getElementById('site-footer');
       return { headerHTML: h ? h.innerHTML.trim() : null, footerHTML: f ? f.innerHTML.trim() : null };
     });
-    ok(headerFooterEmpty.headerHTML === '', 'header #site-header was never populated on /start (data-skip-nav honored)');
-    ok(headerFooterEmpty.footerHTML === '', 'footer #site-footer was never populated on /start (data-skip-nav honored)');
+    ok(headerFooterEmpty.headerHTML === '', 'header #site-header was never populated on Arm F (data-skip-nav honored)');
+    ok(headerFooterEmpty.footerHTML === '', 'footer #site-footer was never populated on Arm F (data-skip-nav honored)');
+
+    // ─── gh-2160 review fix (must-fix 1): arms C, D, E (the live random
+    // split) and a bare /start (no ?v=) must keep the header/footer -- and
+    // specifically the footer's Privacy Policy/Terms links -- exactly as
+    // main. ───
+    await assertArmKeepsFooterLegal(page, 'c');
+    await assertArmKeepsFooterLegal(page, 'd');
+    await assertArmKeepsFooterLegal(page, 'e');
+    {
+      const url = `${BASE_URL}/start.html`;
+      await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
+      await new Promise((r) => setTimeout(r, 500));
+      const bare = await page.evaluate(() => {
+        const h = document.getElementById('site-header');
+        const f = document.getElementById('site-footer');
+        return { headerHTML: h ? h.innerHTML.trim() : null, footerHTML: f ? f.innerHTML.trim() : null };
+      });
+      ok(!!bare.headerHTML, 'bare /start (no live-arm hint): #site-header was built -- matches main');
+      ok(!!bare.footerHTML, 'bare /start (no live-arm hint): #site-footer was built -- matches main');
+    }
 
     // ─── Drive to screen 3 and confirm the required legal links survived,
     // same tab, correct hrefs -- the explicit exception, not an oversight. ───
+    // Re-navigate to Arm F: the arm c/d/e/bare checks just above left the
+    // page on a different arm entirely.
+    await page.goto(`${BASE_URL}/start.html?v=f`, { waitUntil: 'networkidle2', timeout: 30000 });
+    await new Promise((r) => setTimeout(r, 500));
     // Screen 1: tap the funding question (first role-option-style button).
     const advanced = await page.evaluate(() => {
       const root = document.getElementById('routerFRoot');
