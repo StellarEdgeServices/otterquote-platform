@@ -199,10 +199,25 @@ for (const page of PAGES) {
   }
   const bodyText = html; // whole-file check per the task's wording ("full rendered text, including meta ... and og:/twitter: descriptions")
   const hasDollarAmount = /\$\d/.test(bodyText);
-  const hasFeePhrase = /\bper (?:completed )?job\b|\breferral fee\b/i.test(bodyText);
+  // #2157 (D-333, LEGAL-READ: PASS) landed the approved home-inspector copy
+  // AFTER this test was written -- it reads "do not receive a referral fee
+  // or recruit bonus", which legitimately contains the words "referral fee"
+  // as a negation, not an offer, plus the pre-existing D-266 disclaimer
+  // ("...lawful for you to accept referral fees"), also not an offer.
+  // A bare \breferral fee\b match is therefore stale; check each sentence
+  // containing the phrase and only flag it if it's not one of those two
+  // known-safe patterns (i.e. it would be an actual fee-offering sentence).
+  const feeSentences = bodyText.match(/[^.]*\breferral fee[^.]*\./gi) || [];
+  const hasOfferingFeeSentence = feeSentences.some(
+    (s) =>
+      !/\b(?:do|does) not receive\b/i.test(s) &&
+      !/\baccept referral fees?\b/i.test(s) &&
+      !/\bno referral fee\b/i.test(s)
+  );
+  const hasFeePhrase = /\bper (?:completed )?job\b/i.test(bodyText) || hasOfferingFeeSentence;
   if (page.agentType === 'home_inspector') {
     ok(!hasDollarAmount, page.label + ' D-333: no "$" amount anywhere in the rendered page (meta/og/twitter included)');
-    ok(!hasFeePhrase, page.label + ' D-333: no "per job" / "per completed job" / "referral fee" phrasing anywhere in the rendered page');
+    ok(!hasFeePhrase, page.label + ' D-333: no "per job" / "per completed job" / fee-offering "referral fee" phrasing anywhere in the rendered page (negated "do not receive a referral fee" copy from #2157 is allowed)');
     ok(metaTexts.length > 0 && !metaTexts.some((t) => /\$\d/.test(t) || /per (?:completed )?job/i.test(t)), page.label + ' D-333: <meta name="description"> itself carries no fee/dollar copy');
   } else {
     console.log('RECORD (not asserted fee-free): ' + page.label + ' hasDollarAmount=' + hasDollarAmount + ' hasFeePhrase=' + hasFeePhrase + ' meta=' + JSON.stringify(metaTexts));
