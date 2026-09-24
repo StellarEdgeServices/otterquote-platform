@@ -200,3 +200,49 @@ export function shouldSkipForAdSharingOptOut(
   if (profile?.ad_sharing_opt_out === true) return { skip: true, reason: "opted_out" };
   return { skip: false, reason: null };
 }
+
+/**
+ * [gh-2107, REVIEW: FAIL B2 / LEGAL-READ: FAIL] The person a Purchase belongs to must be RESOLVABLE, or nothing is sent.
+ *
+ * The opt-out read (shouldSkipForAdSharingOptOut) needs a user id, and the user id comes from the claim. If the claim lookup
+ * errored, or the PaymentIntent carries no claim_id, or the claim has no user, the opt-out status of the person cannot be
+ * read, and "an unknown opt-out must not be sent to" applies exactly as it does to a failed profile read. (No email would go
+ * out on that path, but the event_id is the same key the browser pixel sends with the _fbp cookie, which makes it a linkable
+ * identifier for someone whose opt-out we could not read.)
+ */
+export function decideCapiPerson(input: {
+  claimId: string | null | undefined;
+  claimLookupFailed: boolean;
+  userId: string | null | undefined;
+}): { skip: boolean; reason: "claim_lookup_failed" | "no_claim_id" | "no_user_id" | null } {
+  if (input.claimLookupFailed) return { skip: true, reason: "claim_lookup_failed" };
+  if (!input.claimId) return { skip: true, reason: "no_claim_id" };
+  if (!input.userId) return { skip: true, reason: "no_user_id" };
+  return { skip: false, reason: null };
+}
+
+/**
+ * The Purchase value is what Stripe actually charged (D-181: the price lives server-side in platform_settings and can move),
+ * in dollars. Anything that is not a positive integer number of cents falls back to the constant rather than sending Meta a
+ * made-up value.
+ */
+export function capiPurchaseValueUsd(amountCents: unknown, fallbackUsd: number): number {
+  return typeof amountCents === "number" && Number.isInteger(amountCents) && amountCents > 0 ? amountCents / 100 : fallbackUsd;
+}
+
+/**
+ * What may be logged, or written to platform_alerts_log, about a failed Meta call: the numeric error code and a short type
+ * token, never the message (which can echo request data). Anything else is "unparsed".
+ */
+export function safeMetaErrorSummary(body: string): string {
+  try {
+    const e = (JSON.parse(body) as { error?: { code?: unknown; type?: unknown } } | null)?.error;
+    if (!e || typeof e !== "object") return "unparsed";
+    const parts: string[] = [];
+    if (typeof e.code === "number" && Number.isFinite(e.code)) parts.push(`code=${e.code}`);
+    if (typeof e.type === "string" && /^[A-Za-z0-9_]{1,40}$/.test(e.type)) parts.push(`type=${e.type}`);
+    return parts.length ? parts.join(" ") : "unparsed";
+  } catch {
+    return "unparsed";
+  }
+}

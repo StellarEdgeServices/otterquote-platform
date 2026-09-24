@@ -48,9 +48,12 @@ import {
 import {
   buildCapiEventId,
   buildCapiPurchasePayload,
+  capiPurchaseValueUsd,
+  decideCapiPerson,
   hashEmailSha256,
   MEASUREMENT_ORDER_PI_TYPES,
   MEASUREMENT_PURCHASE_VALUE_USD,
+  safeMetaErrorSummary,
   sanitizeCapiVariant,
   shouldSendCapiEvent,
   shouldSkipForAdSharingOptOut,
@@ -764,6 +767,7 @@ interface StripePaymentIntent {
   object: "payment_intent";
   status: string;
   amount: number;
+  amount_received?: number; // gh-2107: the charged amount, used for the CAPI Purchase value
   currency: string;
   livemode: boolean;
   metadata: Record<string, string>;
@@ -1044,6 +1048,8 @@ async function handleMeasurementOrderCapiPurchase(
     let claimIsTest = false;
     let userId: string | null = null;
 
+    let claimLookupFailed = false;
+
     if (claimId) {
       const { data: claim, error: claimErr } = await supabase
         .from("claims")
@@ -1051,13 +1057,24 @@ async function handleMeasurementOrderCapiPurchase(
         .eq("id", claimId)
         .maybeSingle();
       if (claimErr) {
-        console.error(`[${FN_NAME}] gh-2078b: claim lookup failed for ${claimId}:`, claimErr);
+        claimLookupFailed = true; // fixed message only: no raw database text in the log
+        console.error(`[${FN_NAME}] gh-2078b: claim lookup failed for PI ${paymentIntent.id}`);
       } else if (claim) {
         claimIsTest = (claim as { is_test: boolean | null }).is_test === true;
         userId = (claim as { user_id: string | null }).user_id;
       }
-    } else {
-      console.warn(`[${FN_NAME}] gh-2078b: measurement-order PI ${paymentIntent.id} carries no metadata.claim_id`);
+    }
+
+    // gh-2107 (REVIEW: FAIL B2 / LEGAL-READ: FAIL): fail CLOSED on the person, not only on the profile. If the claim lookup
+    // failed, or there is no claim_id, or the claim has no user, whether this person opted out of advertising sharing
+    // cannot be read, and an unknown opt-out is not sent to. Decided before the test-mode decision, the profile read, and
+    // any send. The log carries the PaymentIntent id and a fixed reason only.
+    const person = decideCapiPerson({ claimId, claimLookupFailed, userId });
+    if (person.skip) {
+      console.log(
+        `[${FN_NAME}] gh-2107: CAPI Purchase skipped for PI ${paymentIntent.id} (${person.reason})`,
+      );
+      return;
     }
 
     // Acceptance criterion 4 -- decide BEFORE resolving PII whether this will
@@ -1126,7 +1143,8 @@ async function handleMeasurementOrderCapiPurchase(
     const payload = buildCapiPurchasePayload({
       paymentIntentId: paymentIntent.id,
       eventTimeSeconds: Math.floor(Date.now() / 1000),
-      valueUsd: MEASUREMENT_PURCHASE_VALUE_USD,
+      // What Stripe charged (D-181 keeps the price server-side and it can move); the constant only if that is unusable.
+      valueUsd: capiPurchaseValueUsd(paymentIntent.amount_received ?? paymentIntent.amount, MEASUREMENT_PURCHASE_VALUE_USD),
       variant,
       hashedEmail,
       testEventCode: isTestTraffic ? testEventCode : null,
@@ -1135,24 +1153,28 @@ async function handleMeasurementOrderCapiPurchase(
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), META_CAPI_TIMEOUT_MS);
     try {
+      // gh-2107 (REVIEW: FAIL B1): the access token goes in the JSON BODY, never the URL. A network-level fetch failure
+      // (DNS, TLS, connect) puts the full URL in the thrown error, and the token would be written to the function logs.
       const res = await fetch(
-        `https://graph.facebook.com/${META_CAPI_API_VERSION}/${META_CAPI_PIXEL_ID}/events?access_token=${encodeURIComponent(capiToken)}`,
+        `https://graph.facebook.com/${META_CAPI_API_VERSION}/${META_CAPI_PIXEL_ID}/events`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
+          body: JSON.stringify({ ...payload, access_token: capiToken }),
           signal: controller.signal,
         },
       );
       const resBody = await res.text();
       if (!res.ok) {
+        // Meta's error body can echo request data: log and store only a numeric code and a short type token.
+        const metaError = safeMetaErrorSummary(resBody);
         console.error(
-          `[${FN_NAME}] gh-2078b: Meta CAPI Purchase failed (HTTP ${res.status}) for PI ${paymentIntent.id}: ${resBody}`,
+          `[${FN_NAME}] gh-2078b: Meta CAPI Purchase failed (HTTP ${res.status}, ${metaError}) for PI ${paymentIntent.id}`,
         );
         await supabase.from("platform_alerts_log").insert({
           alert_type: "meta_capi_purchase_failed",
           function_name: FN_NAME,
-          message: `Meta CAPI Purchase send failed (HTTP ${res.status}) for payment_intent ${paymentIntent.id}: ${resBody}`,
+          message: `Meta CAPI Purchase send failed (HTTP ${res.status}, ${metaError}) for payment_intent ${paymentIntent.id}`,
           sent_at: new Date().toISOString(),
         });
       } else {
@@ -1167,10 +1189,10 @@ async function handleMeasurementOrderCapiPurchase(
     // Acceptance criterion 2 -- CAPI failure/timeout/exception must NEVER
     // fail the webhook, throw into Stripe's retry path, or block the order.
     // Logged honestly; nothing here rethrows.
+    // The error NAME only, never the object: on a network failure its cause carries the request URL and message text.
     const isAbort = err instanceof Error && err.name === "AbortError";
     console.error(
-      `[${FN_NAME}] gh-2078b: Meta CAPI Purchase ${isAbort ? "timed out" : "threw"} for PI ${paymentIntent.id}:`,
-      err,
+      `[${FN_NAME}] gh-2078b: Meta CAPI Purchase ${isAbort ? "timed out" : "threw"} for PI ${paymentIntent.id} (${err instanceof Error ? err.name : "non-error"})`,
     );
   }
 }
