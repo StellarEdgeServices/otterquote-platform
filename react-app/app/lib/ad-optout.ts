@@ -66,22 +66,28 @@ export function isAdSharingOptedOut(): boolean {
 }
 
 export interface ProfileReader {
-  auth: { getUser(): PromiseLike<{ data: { user: { id: string } | null } }> };
+  auth: { getSession(): PromiseLike<{ data: { session: { user: { id: string } } | null }; error?: unknown }> };
   from(table: string): {
     select(cols: string): { eq(col: string, val: string): { maybeSingle(): PromiseLike<{ data: { ad_sharing_opt_out?: boolean | null } | null; error: unknown }> } };
   };
 }
 
 /**
- * The signed-in visitor's stored flag: `true` (opted out), `false` (not opted out, or no profile row and no error),
- * or `'unknown'` (no signed-in user, or the read failed). The caller treats 'unknown' as opted out on an authenticated route.
- * A `true` also records the cookie.
+ * The signed-in visitor's stored flag:
+ *   `true`          opted out (also leaves the cookie);
+ *   `false`         not opted out (a session exists and its profile is not flagged, or has no row and no error);
+ *   `'no_session'`  there is NO session: nothing is knowable about who this is;
+ *   `'unknown'`     there IS a session but the flag could not be read (read error, thrown error, session error).
+ * REVIEW: FAIL 5806828503 F1 on #2134: the gate must treat these differently. `no_session` on a marketing route loads the pixel as it
+ * always did; `unknown` never loads it (an unknown opt-out is not shared); on the authenticated route neither loads it.
  */
-export async function readStoredOptOut(sb: ProfileReader): Promise<boolean | 'unknown'> {
+export type StoredOptOut = boolean | 'no_session' | 'unknown';
+
+export async function readStoredOptOut(sb: ProfileReader): Promise<StoredOptOut> {
   try {
-    const { data } = await sb.auth.getUser();
-    const id = data?.user?.id;
-    if (!id) return 'unknown';
+    const { data, error } = await sb.auth.getSession();
+    const id = data?.session?.user?.id;
+    if (!id) return error ? 'unknown' : 'no_session';
     const res = await sb.from('profiles').select('ad_sharing_opt_out').eq('id', id).maybeSingle();
     if (res.error) return 'unknown';
     const optedOut = res.data?.ad_sharing_opt_out === true;

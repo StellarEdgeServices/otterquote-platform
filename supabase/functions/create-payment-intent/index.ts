@@ -36,7 +36,7 @@ import { PlatformSettingMissingError, resolveRequiredPriceCents } from "./price-
 import { attachVariantMetadata } from "./variant-metadata.ts";
 import { buildStandardCreateForm, standardIdempotencyKey } from "./standard-create-form.ts";
 import { evaluateMeasurementUpgradeGate } from "./measurement-upgrade-gate.ts";
-import { type OptOutStore, recordGpcOptOut } from "./ad-sharing-opt-out.ts";
+import { detectGpcSignal, type OptOutStore, recordGpcOptOut } from "./ad-sharing-opt-out.ts";
 
 const FUNCTION_NAME = "create-payment-intent";
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
@@ -125,6 +125,10 @@ serve(async (req) => {
       },
     };
     await recordGpcOptOut({ callerId, piType: metadata?.type, headers: req.headers, body: requestBody, store: gpcStore });
+    // gh-2107 (REVIEW: FAIL 5806828503 F2 on #2134): the signal is ALSO carried on the PaymentIntent (below, via the non-keyed
+    // post-create update), derived from the REQUEST ALONE and not from whether the profile write succeeded, so a failed write
+    // does not fail toward sharing: the Stripe webhook skips the CAPI Purchase on either the profile flag or this metadata.
+    const gpcSignalPresent = detectGpcSignal(req.headers, requestBody) !== null;
 
     // D-181: server-side price enforcement for hover_measurement.
     let amount: number = clientAmount;
@@ -682,6 +686,7 @@ serve(async (req) => {
           paymentIntentId: paymentIntentData.id,
           status: paymentIntentData.status,
           variant: metadata.variant,
+          optOut: gpcSignalPresent,
         });
       }
     }

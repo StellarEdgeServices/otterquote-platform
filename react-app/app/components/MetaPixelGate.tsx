@@ -58,9 +58,12 @@ import { isAdSharingOptedOut, readStoredOptOut, type ProfileReader } from "../li
  * gh-2107 / D-330 (Ben's ruling on #2078, 5805593465, item a; privacy policy Section 12 promises an opt-out of SHARING, not
  * of one channel): the pixel does not load for a visitor who has opted out of advertising sharing. Two inputs, see
  * lib/ad-optout.ts: the browser's Global Privacy Control signal (or the `oq_ad_optout` cookie it and the stored flag leave),
- * checked synchronously for every route, and, on the one authenticated route the pixel is allowed on, the signed-in
- * visitor's stored flag (profiles.ad_sharing_opt_out), read BEFORE anything loads. If that read fails or there is no
- * signed-in user the pixel does not load: an unknown opt-out is not shared. js/meta-pixel-gate.js applies the same rule.
+ * checked synchronously for every route, and the signed-in visitor's stored flag (profiles.ad_sharing_opt_out), read BEFORE
+ * anything loads on EVERY allowed route whenever a session exists (REVIEW: FAIL 5806828503 F1 on #2134: an opt-out recorded
+ * by GPC in another browser, or by an admin from a support email, must follow the known person to /get-started too).
+ * A session whose flag cannot be read never loads the pixel (an unknown opt-out is not shared). With NO session nothing is
+ * knowable and a marketing route loads as before; the authenticated route requires a definite `false`.
+ * js/meta-pixel-gate.js applies the same rule.
  *
  * D-330 (amends D-322 for exactly one path, 2026-09-22, gh-2078 comment
  * 5780257974; Dustin's ruling comment 5777193662 "Yes to both."): the
@@ -129,6 +132,8 @@ export function MetaPixelGate() {
   const [allowed, setAllowed] = useState(false);
 
   useEffect(() => {
+    // Every evaluation starts closed: `allowed` must not be sticky across client-side navigation (REVIEW N1 on #2134).
+    setAllowed(false);
     // gh-2064: internal-traffic opt-out, checked first -- our own
     // walks/probes must never load the Meta Pixel, regardless of host or
     // path allowlist below.
@@ -138,20 +143,18 @@ export function MetaPixelGate() {
     // gh-2107: an opted-out visitor (GPC, or the cookie either signal leaves) never loads the pixel, on any route.
     if (isAdSharingOptedOut()) return;
     if (typeof window !== "undefined" && ALLOWED_HOSTS.includes(window.location.hostname)) {
-      if (isAuthenticatedPath(pathname)) {
-        // The stored flag lives on the profile: read it BEFORE loading anything. Anything but a definite `false` (opted out,
-        // no signed-in user, or a failed read) means the pixel does not load.
-        let cancelled = false;
-        // Loaded lazily so the marketing routes never pull the auth client in for this check.
-        import("../lib/supabase")
-          .then((m) => readStoredOptOut(m.supabase as unknown as ProfileReader))
-          .catch(() => "unknown" as const)
-          .then((optedOut) => {
-            if (!cancelled && optedOut === false) setAllowed(true);
-          });
-        return () => { cancelled = true; };
-      }
-      setAllowed(true);
+      // gh-2107 (REVIEW: FAIL 5806828503 F1): the stored flag is read BEFORE loading anything, on every allowed route, whenever a
+      // session exists. Only a definite `false` loads the pixel; `no_session` loads it too, but only on a marketing route.
+      let cancelled = false;
+      // Loaded lazily so the marketing routes never pull the auth client in until this check runs.
+      import("../lib/supabase")
+        .then((m) => readStoredOptOut(m.supabase as unknown as ProfileReader))
+        .catch(() => "unknown" as const)
+        .then((stored) => {
+          if (cancelled) return;
+          if (stored === false || (stored === "no_session" && !isAuthenticatedPath(pathname))) setAllowed(true);
+        });
+      return () => { cancelled = true; };
     }
   }, [pathname]);
 

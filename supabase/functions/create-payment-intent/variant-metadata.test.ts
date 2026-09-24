@@ -113,3 +113,36 @@ Deno.test("B1: the attach is best-effort: not able to throw into the payment pat
   const stmt = standard.slice(Math.max(0, attachAt - 200), attachAt + 500);
   assert(stmt.includes("await attachVariantMetadata("), "awaited (the client confirms only after client_secret, so it must be in place first)");
 });
+
+// -- REVIEW: FAIL 5806828503 F2 on #2134: a failed profile write must not fail toward SHARING -------------------------------
+Deno.test("F2: with optOut the update carries metadata[ad_sharing_opt_out]=1 next to the variant, and nothing else", async () => {
+  const r = await attach({ optOut: true });
+  assertEquals(r.outcome, "attached");
+  const body = new URLSearchParams(String(r.calls[0].init.body));
+  assertEquals([...body.keys()].sort(), ["metadata[ad_sharing_opt_out]", "metadata[variant]"]);
+  assertEquals(body.get("metadata[ad_sharing_opt_out]"), "1");
+  assertEquals(body.get("metadata[variant]"), "e");
+});
+
+Deno.test("F2: without optOut (absent or false) the update carries ONLY metadata[variant], exactly as before", async () => {
+  for (const over of [{}, { optOut: false }, { optOut: undefined }]) {
+    const r = await attach(over);
+    assertEquals([...new URLSearchParams(String(r.calls[0].init.body)).keys()], ["metadata[variant]"], JSON.stringify(over));
+  }
+});
+
+Deno.test("F2: only the boolean true carries the signal (a truthy string never does)", async () => {
+  for (const v of ["1", "true", 1, "yes"]) {
+    const r = await attach({ optOut: v as unknown as boolean });
+    assert(!new URLSearchParams(String(r.calls[0].init.body)).has("metadata[ad_sharing_opt_out]"), String(v));
+  }
+});
+
+Deno.test("F2: the signal is attached even when the profile write is not involved at all (index.ts derives it from the request, not from the store outcome)", () => {
+  const callAt = standard.indexOf("attachVariantMetadata(");
+  const call = standard.slice(callAt, standard.indexOf("});", callAt) + 3);
+  assert(/optOut:\s*gpcSignalPresent/.test(call), "the attach call passes optOut: gpcSignalPresent: " + call);
+  const gpc = index.slice(index.indexOf("const gpcStore"), index.indexOf("// D-181: server-side price enforcement"));
+  assert(/const gpcSignalPresent = detectGpcSignal\(req\.headers, requestBody\) !== null;/.test(gpc), "computed from the request alone: " + gpc.slice(0, 300));
+  assert(!/gpcSignalPresent\s*=\s*[^;]*recordGpcOptOut/.test(gpc), "not derived from the store outcome");
+});

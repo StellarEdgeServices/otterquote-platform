@@ -18,7 +18,7 @@ vi.mock('next/script', () => ({
 vi.mock('../../lib/internal-traffic', () => ({ isInternalTraffic: () => false }));
 vi.mock('../../lib/supabase', () => ({
   supabase: {
-    auth: { getUser: () => (mockProfile.throws ? Promise.reject(new Error('down')) : Promise.resolve({ data: { user: mockProfile.user } })) },
+    auth: { getSession: () => (mockProfile.throws ? Promise.reject(new Error('down')) : Promise.resolve({ data: { session: mockProfile.user ? { user: mockProfile.user } : null }, error: null })) },
     from: (t: string) => ({
       select: () => ({ eq: () => { profileReads.push(t); return { maybeSingle: () => Promise.resolve({ data: mockProfile.row, error: mockProfile.error }) }; } }),
     }),
@@ -80,10 +80,61 @@ describe('MetaPixelGate: the advertising-sharing opt-out', () => {
     expect(loaded(container)).toBe(false);
   });
 
-  it('a marketing route makes NO profile read (only the authenticated route needs the stored flag)', async () => {
-    const { container } = render(<MetaPixelGate />);
+  // REVIEW: FAIL 5806828503 F1 on #2134: "when the stored flag is true and the browser has neither GPC nor the cookie, the pixel
+  // still loads on ... React /get-started". The stored flag is read on EVERY allowed route whenever a session exists.
+  describe('a marketing route (/get-started) with a signed-in session reads the stored flag BEFORE loading', () => {
+    it('signed in, ad_sharing_opt_out = true, NO GPC and NO cookie -> the pixel does NOT load, and the cookie is left', async () => {
+      mockProfile.row = { ad_sharing_opt_out: true };
+      const { container } = render(<MetaPixelGate />);
+      await waitFor(() => expect(profileReads).toEqual(['profiles']));
+      await new Promise((r) => setTimeout(r, 30));
+      expect(loaded(container)).toBe(false);
+      expect(container.querySelector('[data-testid="pixel-init"]')).toBeNull();
+      expect(wroteOptOutCookie()).toBe(true);
+    });
+
+    it('signed in, flag NULL or false -> the pixel loads (after the read)', async () => {
+      for (const v of [null, false]) {
+        cleanup();
+        mockProfile.row = { ad_sharing_opt_out: v };
+        const { container } = render(<MetaPixelGate />);
+        await waitFor(() => expect(loaded(container)).toBe(true));
+      }
+      expect(profileReads.length).toBe(2);
+    });
+
+    it('signed in but the flag could NOT be read (read error, thrown) -> the pixel does not load (unknown is not shared)', async () => {
+      mockProfile.error = { code: '42703' };
+      const a = render(<MetaPixelGate />);
+      await waitFor(() => expect(profileReads).toEqual(['profiles']));
+      await new Promise((r) => setTimeout(r, 30));
+      expect(loaded(a.container)).toBe(false);
+      cleanup();
+      mockProfile = { user: { id: 'u1' }, row: null, error: null, throws: true };
+      const b = render(<MetaPixelGate />);
+      await new Promise((r) => setTimeout(r, 30));
+      expect(loaded(b.container)).toBe(false);
+    });
+
+    it('NO session (an anonymous visitor): nothing is knowable, the pixel loads as before, and no profile is read', async () => {
+      mockProfile = { user: null, row: null, error: null, throws: false };
+      const { container } = render(<MetaPixelGate />);
+      await waitFor(() => expect(loaded(container)).toBe(true));
+      expect(profileReads).toEqual([]);
+    });
+  });
+
+  // REVIEW N1 on #2134: `allowed` must not be sticky across client-side navigation.
+  it('N1: fbevents.js loaded on /get-started; navigating to /help-measurements where the stored flag is TRUE takes the pixel scripts OFF the page', async () => {
+    const { container, rerender } = render(<MetaPixelGate />);
     await waitFor(() => expect(loaded(container)).toBe(true));
-    expect(profileReads).toEqual([]);
+    mockPath = '/help-measurements';
+    setHost('app.otterquote.com');
+    mockProfile.row = { ad_sharing_opt_out: true };
+    rerender(<MetaPixelGate />);
+    await waitFor(() => expect(loaded(container)).toBe(false));
+    expect(container.querySelector('[data-testid="pixel-init"]')).toBeNull();
+    expect(wroteOptOutCookie()).toBe(true);
   });
 
   describe('the authenticated /help-measurements route reads the stored flag BEFORE loading anything', () => {
@@ -112,7 +163,7 @@ describe('MetaPixelGate: the advertising-sharing opt-out', () => {
       expect(loaded(container)).toBe(false);
     });
 
-    it('a thrown read and no signed-in user both fail closed', async () => {
+    it('a thrown read and no signed-in user both fail closed (on the AUTHENTICATED route no session means not loaded)', async () => {
       mockProfile.throws = true;
       const a = render(<MetaPixelGate />);
       await new Promise((r) => setTimeout(r, 30));

@@ -82,15 +82,21 @@ describe('isAdSharingOptedOut (synchronous: GPC or the cookie)', () => {
   });
 });
 
-describe('readStoredOptOut (the signed-in visitor\'s stored flag)', () => {
+describe("readStoredOptOut (the signed-in visitor's stored flag)", () => {
   beforeEach(clearCookie);
   afterEach(() => { clearCookie(); });
 
-  function fakeSb(over: { user?: { id: string } | null; row?: { ad_sharing_opt_out?: boolean | null } | null; error?: unknown; throws?: boolean } = {}) {
+  // REVIEW: FAIL 5806828503 F1 on #2134: the gate must know the difference between "there is no session" (nothing knowable: load as
+  // before on a marketing route) and "there is a session but the flag could not be read" (unknown: never load).
+  function fakeSb(over: { session?: { user: { id: string } } | null; row?: { ad_sharing_opt_out?: boolean | null } | null; error?: unknown; sessionThrows?: boolean; sessionError?: unknown } = {}) {
     const selected: string[] = [];
     const eqs: [string, string][] = [];
     const sb: ProfileReader = {
-      auth: { getUser: () => (over.throws ? Promise.reject(new Error('down')) : Promise.resolve({ data: { user: over.user === undefined ? { id: 'u1' } : over.user } })) },
+      auth: {
+        getSession: () => (over.sessionThrows
+          ? Promise.reject(new Error('down'))
+          : Promise.resolve({ data: { session: over.session === undefined ? { user: { id: 'u1' } } : over.session }, error: over.sessionError ?? null })),
+      },
       from: (table: string) => {
         selected.push(table);
         return { select: (_c: string) => ({ eq: (c: string, v: string) => { eqs.push([c, v]); return { maybeSingle: () => Promise.resolve({ data: over.row === undefined ? { ad_sharing_opt_out: null } : over.row, error: over.error ?? null }) }; } }) };
@@ -99,7 +105,7 @@ describe('readStoredOptOut (the signed-in visitor\'s stored flag)', () => {
     return { sb, selected, eqs };
   }
 
-  it('a profile with ad_sharing_opt_out === true is opted out, reads only the signed-in user\'s own row, and leaves the cookie', async () => {
+  it("a profile with ad_sharing_opt_out === true is opted out, reads only the signed-in user's own row, and leaves the cookie", async () => {
     const { sb, selected, eqs } = fakeSb({ row: { ad_sharing_opt_out: true } });
     expect(await readStoredOptOut(sb)).toBe(true);
     expect(selected).toEqual(['profiles']);
@@ -120,10 +126,17 @@ describe('readStoredOptOut (the signed-in visitor\'s stored flag)', () => {
     }
   });
 
-  it("no signed-in user, a failed read, or a thrown error is 'unknown' (the caller treats it as opted out)", async () => {
-    expect(await readStoredOptOut(fakeSb({ user: null }).sb)).toBe('unknown');
+  it("NO session is 'no_session' (nothing knowable; no profile read is made)", async () => {
+    const { sb, selected } = fakeSb({ session: null });
+    expect(await readStoredOptOut(sb)).toBe('no_session');
+    expect(selected).toEqual([]);
+    expect(hasAdOptOutCookie()).toBe(false);
+  });
+
+  it("a session whose flag could not be read (read error, thrown error, session error) is 'unknown', never 'no_session'", async () => {
     expect(await readStoredOptOut(fakeSb({ error: { code: '42703' } }).sb)).toBe('unknown');
-    expect(await readStoredOptOut(fakeSb({ throws: true }).sb)).toBe('unknown');
+    expect(await readStoredOptOut(fakeSb({ sessionThrows: true }).sb)).toBe('unknown');
+    expect(await readStoredOptOut(fakeSb({ session: null, sessionError: { message: 'x' } }).sb)).toBe('unknown');
     expect(hasAdOptOutCookie()).toBe(false);
   });
 });

@@ -338,6 +338,40 @@ describe('fbqTrack() (gh-2078)', () => {
   });
 });
 
+// REVIEW: FAIL 5806828503 N1 on #2134: the pixel's `allowed` state can be sticky across client-side navigation (fbevents.js loaded on
+// /get-started, then a stored opt-out is read on /help-measurements). fbqTrack therefore re-checks the opt-out on every event.
+describe('fbqTrack honours the advertising-sharing opt-out on every event (gh-2107)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    delete (window as unknown as { fbq?: unknown }).fbq;
+    document.cookie = 'oq_ad_optout=; max-age=0; path=/';
+  });
+
+  it('CONTROL: with no opt-out, fbq is called', () => {
+    const fbqSpy = vi.fn();
+    (window as unknown as { fbq: unknown }).fbq = fbqSpy;
+    fbqTrack('Purchase', { value: 15 }, 'measurement_purchase:pi_1');
+    expect(fbqSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('GPC on: fbq is NOT called, even though the pixel is loaded', () => {
+    const fbqSpy = vi.fn();
+    (window as unknown as { fbq: unknown }).fbq = fbqSpy;
+    vi.stubGlobal('navigator', { globalPrivacyControl: true });
+    fbqTrack('Purchase', { value: 15 }, 'measurement_purchase:pi_1');
+    fbqTrack('Lead');
+    expect(fbqSpy).not.toHaveBeenCalled();
+  });
+
+  it('the oq_ad_optout cookie (left by a stored opt-out read mid-session): fbq is NOT called', () => {
+    const fbqSpy = vi.fn();
+    (window as unknown as { fbq: unknown }).fbq = fbqSpy;
+    document.cookie = 'oq_ad_optout=1; path=/';
+    fbqTrack('Purchase', { value: 15 });
+    expect(fbqSpy).not.toHaveBeenCalled();
+  });
+});
+
 describe('buildMeasurementPurchaseEventId() (gh-2078c / D-330 dedup reconciliation)', () => {
   // gh-2078c REVIEW: FAIL 5805870455 (F1): this test used to compare against a COPY of the server's template literal, so
   // editing either side left CI green while Meta silently stopped deduplicating (every purchase counted twice). Both

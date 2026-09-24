@@ -89,22 +89,101 @@
   // sync with react-app/app/lib/ad-optout.ts: the browser's Global Privacy Control (navigator.globalPrivacyControl === true),
   // and the `oq_ad_optout=1` cookie that GPC, the React app's read of profiles.ad_sharing_opt_out, and this function leave
   // behind (1 year, Domain=.otterquote.com, same shape as oq_internal). Synchronous, wrapped so it can never break a page.
+  function oqWriteAdOptOutCookie() {
+    try {
+      var domainAttr = '';
+      if (/(^|\.)otterquote\.com$/.test(window.location.hostname)) {
+        domainAttr = '; Domain=.otterquote.com';
+      }
+      document.cookie = 'oq_ad_optout=1; Max-Age=' + (60 * 60 * 24 * 365) + '; Path=/' + domainAttr + '; SameSite=Lax';
+    } catch (e) { /* never break a page over a cookie */ }
+  }
+
   function oqAdOptOut() {
     try {
       var cookieMatch = document.cookie.match(/(?:^|; )oq_ad_optout=([^;]*)/);
       var cookieFlag = !!(cookieMatch && decodeURIComponent(cookieMatch[1]) === '1');
       var gpc = (typeof navigator !== 'undefined') && navigator.globalPrivacyControl === true;
       if (gpc && !cookieFlag) {
-        var domainAttr = '';
-        if (/(^|\.)otterquote\.com$/.test(window.location.hostname)) {
-          domainAttr = '; Domain=.otterquote.com';
-        }
-        document.cookie = 'oq_ad_optout=1; Max-Age=' + (60 * 60 * 24 * 365) + '; Path=/' + domainAttr + '; SameSite=Lax';
+        oqWriteAdOptOutCookie();
       }
       return gpc || cookieFlag;
     } catch (e) {
       return false;
     }
+  }
+
+  // gh-2107 (REVIEW: FAIL 5806828503 F1 on #2134): the STORED opt-out (profiles.ad_sharing_opt_out = true) must follow the known person
+  // to every page, not only to /help-measurements: an opt-out recorded by GPC in another browser, or by an admin from a support email
+  // (privacy policy Section 12), never sets the cookie on this device. So whenever the SSO session cookie is present (the access token
+  // js/cookie-storage.js writes at Domain=.otterquote.com), the signed-in user's own profile flag is read BEFORE fbevents.js loads, and
+  // the pixel loads only on a definite `false`. With no session cookie nothing is knowable and the pixel loads as before. A session
+  // whose flag cannot be read (an expired token, an error, no config, an unreadable token) never loads the pixel: an unknown opt-out
+  // is not shared. The read is a plain REST GET with the user's own token, so row-level security limits it to their own row and it
+  // does not depend on supabase-js having loaded yet. Synchronous GPC / cookie checks above still win and make no read.
+  function oqSessionToken() {
+    try {
+      var m = document.cookie.match(/(?:^|; )sb-otterquote-at=([^;]*)/);
+      return m ? decodeURIComponent(m[1]) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function oqTokenUserId(token) {
+    try {
+      var parts = String(token).split('.');
+      if (parts.length !== 3) return null;
+      var payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+      // A plain UUID only: the id goes into a URL, so anything else is refused rather than interpolated.
+      return (payload && typeof payload.sub === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(payload.sub)) ? payload.sub : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Resolves true (opted out), false (definitely not), or 'unknown'. Waits up to 5 s for js/config.js (loaded later on the page).
+  function oqReadStoredOptOut(token) {
+    return new Promise(function (resolve) {
+      var uid = oqTokenUserId(token);
+      if (!uid || typeof fetch !== 'function') { resolve('unknown'); return; }
+      var waited = 0;
+      (function attempt() {
+        var cfg = null;
+        try { cfg = (typeof CONFIG !== 'undefined') ? CONFIG : null; } catch (e) { cfg = null; }
+        if (!cfg || !cfg.SUPABASE_URL || !cfg.SUPABASE_ANON) {
+          if (waited >= 5000) { resolve('unknown'); return; }
+          waited += 100;
+          setTimeout(attempt, 100);
+          return;
+        }
+        try {
+          fetch(String(cfg.SUPABASE_URL).replace(/\/+$/, '') + '/rest/v1/profiles?select=ad_sharing_opt_out&id=eq.' + encodeURIComponent(uid), {
+            method: 'GET',
+            headers: { apikey: cfg.SUPABASE_ANON, Authorization: 'Bearer ' + token, Accept: 'application/json' }
+          }).then(function (r) {
+            return r && r.ok ? r.json() : null;
+          }).then(function (rows) {
+            if (!Array.isArray(rows)) { resolve('unknown'); return; }
+            resolve(rows.length > 0 && rows[0] && rows[0].ad_sharing_opt_out === true);
+          }).catch(function () { resolve('unknown'); });
+        } catch (e) {
+          resolve('unknown');
+        }
+      })();
+    });
+  }
+
+  // Runs `insert` (the fbevents.js <script> insertion) only if it is allowed: no session cookie -> yes (as before); a session -> only
+  // when the stored flag reads as a definite `false`. A `true` also leaves the cookie for every later page.
+  function oqInsertUnlessStoredOptOut(insert) {
+    var token = oqSessionToken();
+    if (!token) { insert(); return; }
+    if (typeof Promise === 'undefined') { return; } // cannot read the flag: unknown is not shared
+    oqReadStoredOptOut(token).then(function (v) {
+      if (v === false) { insert(); }
+      else if (v === true) { oqWriteAdOptOutCookie(); }
+    });
   }
 
   // fbq is defined unconditionally so every page's existing
@@ -208,10 +287,12 @@
   }
 
   _oqLoadOnIdleOrInteraction(function () {
-    var s = document.createElement('script');
-    s.async = true;
-    s.src = 'https://connect.facebook.net/en_US/fbevents.js';
-    document.head.appendChild(s);
+    oqInsertUnlessStoredOptOut(function () {
+      var s = document.createElement('script');
+      s.async = true;
+      s.src = 'https://connect.facebook.net/en_US/fbevents.js';
+      document.head.appendChild(s);
+    });
   });
 
   window.fbq('init', PIXEL_ID);

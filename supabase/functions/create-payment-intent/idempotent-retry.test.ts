@@ -52,7 +52,7 @@ const API = "https://api.stripe.com/v1";
 const CLAIM = "c0ffee00-0000-4000-8000-000000000001";
 
 /** The sequence index.ts runs for a hover_measurement: build the create, send it under the per-claim key, then attach the variant. */
-async function createAndAttach(fetchFn: typeof fetch, variant: unknown, logs: string[] = []): Promise<{ status: number; piId: string | null; attach: string | null }> {
+async function createAndAttach(fetchFn: typeof fetch, variant: unknown, logs: string[] = [], optOut = false): Promise<{ status: number; piId: string | null; attach: string | null }> {
   const metadata = { claim_id: CLAIM, type: "hover_measurement", variant }; // the client sends its variant inside metadata
   const form = buildStandardCreateForm({ amount: 1500, currency: "usd", description: "Complete Property Report", metadata });
   const res = await fetchFn(`${API}/payment_intents`, {
@@ -62,7 +62,7 @@ async function createAndAttach(fetchFn: typeof fetch, variant: unknown, logs: st
   });
   if (!res.ok) return { status: res.status, piId: null, attach: null };
   const pi = await res.json();
-  const attach = await attachVariantMetadata({ fetchFn, apiBase: API, basicAuth: "QUJD", paymentIntentId: pi.id, status: pi.status, variant, log: (m) => logs.push(m) });
+  const attach = await attachVariantMetadata({ fetchFn, apiBase: API, basicAuth: "QUJD", paymentIntentId: pi.id, status: pi.status, variant, optOut, log: (m) => logs.push(m) });
   return { status: res.status, piId: pi.id, attach };
 }
 
@@ -148,4 +148,17 @@ Deno.test("N1: a STALLED update is cut off at its timeout, so it cannot hold the
 Deno.test("N1: the default timeout is a few seconds (bounded), not unbounded", async () => {
   const { ATTACH_TIMEOUT_MS } = await import("./variant-metadata.ts");
   assert(ATTACH_TIMEOUT_MS >= 1000 && ATTACH_TIMEOUT_MS <= 5000, String(ATTACH_TIMEOUT_MS));
+});
+
+Deno.test("F2 (#2134): retrying the same claim with the GPC signal on one attempt and off on another: still no 400, and the signal reaches Stripe only via the update", async () => {
+  const { fetchFn, calls, intents } = fakeStripe();
+  const a = await createAndAttach(fetchFn, "e", [], false); // first visit, GPC off
+  const b = await createAndAttach(fetchFn, "e", [], true); // retry from a GPC browser
+  const c = await createAndAttach(fetchFn, "unknown", [], false); // a later retry without the signal
+  for (const r of [a, b, c]) assertEquals(r.status, 200, "no 400");
+  assertEquals(a.piId, b.piId);
+  const creates = calls.filter((x) => x.url.endsWith("/payment_intents"));
+  assertEquals(new Set(creates.map((x) => x.body)).size, 1, "the create body is identical whatever the signal");
+  assert(!creates.some((x) => x.body.includes("ad_sharing_opt_out")), "the signal is never a create parameter");
+  assertEquals(intents.get(a.piId!)!["metadata[ad_sharing_opt_out]"], "1", "and once seen it is on the PaymentIntent (an update never removes it)");
 });
