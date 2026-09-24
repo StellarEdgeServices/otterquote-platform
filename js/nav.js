@@ -980,8 +980,16 @@ document.addEventListener('DOMContentLoaded', () => {
   _renderStagingBanner();
 
   // Look for data attributes on header/footer elements
+  // gh-2121 (LRS S07/S05): data-skip-nav="true" opts a page OUT of the
+  // header/footer entirely -- /start sets it on both elements so the
+  // header logo (-> /index.html) and the full footer nav (both real
+  // escape hatches out of the funnel before conversion, ceo67 audit row
+  // S07) are never built, and so the DOM work + the doubled
+  // otter-icon.png fetch (header copy + footer copy) never happen on that
+  // page's LCP path either. Every other page's header/footer element
+  // omits the attribute and renders exactly as before.
   const header = document.getElementById('site-header');
-  if (header) {
+  if (header && header.dataset.skipNav !== 'true') {
     Nav.renderHeader({
       active: header.dataset.active || '',
       showAuth: header.dataset.auth !== 'false'
@@ -989,7 +997,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   const footer = document.getElementById('site-footer');
-  if (footer) {
+  if (footer && footer.dataset.skipNav !== 'true') {
     Nav.renderFooter();
   }
 

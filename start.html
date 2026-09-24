@@ -366,6 +366,43 @@
   // usable source for the main IIFE's own variant read.
   window.__oqVariant = arm;
 
+  // gh-2160 review fix (comment 5818464392, must-fix 1): the header/footer
+  // skip was hard-coded for every arm this page can serve (A-E and no
+  // variant at all), not just F -- C/D/E's live random split lost their
+  // footer Privacy Policy/Terms links along with the escape hatches. Stamp
+  // the resolved arm onto <html> the instant it's known (still inside the
+  // synchronous head IIFE, well before the header/footer elements below are
+  // parsed) so both the CSS rule and the inline script right after the
+  // footer can scope themselves to arm === 'f' only. Every other arm (and a
+  // bare /start) gets no attribute here and keeps the header/footer exactly
+  // as main.
+  try { document.documentElement.setAttribute('data-oq-start-arm', arm || ''); } catch (e) {}
+
+  // gh-2121 (LRS S05, ceo67 Lighthouse trace): Arm F's LCP element is the
+  // step-1 <h1>, which js/router-variant-f.js renders -- and that file was
+  // only ever requested at the very bottom of <body>, after design-system.css
+  // /nav.css, the Supabase UMD bundle and five same-origin scripts had all
+  // been given a chance to load first. lcp-breakdown-insight measured ~2.2s
+  // of "element render delay" (time after first byte spent waiting, not
+  // loading) almost entirely attributable to that late request. We already
+  // know by this point -- before the parser has reached a single one of
+  // those other resources -- whether this visit needs router-variant-f.js at
+  // all (arm is direct-only for 'f': isDirectOnly('f') is true, so an
+  // explicit ?v=f is never remapped away by toLiveArm() above). A preload
+  // hint here starts that fetch in parallel with everything else on the
+  // page; the actual <script> tag that runs it is unchanged, added later in
+  // this file exactly as before -- this is additive only, a fetch that was
+  // always going to happen, just requested early instead of last.
+  if (arm === 'f') {
+    try {
+      var rfPreload = document.createElement('link');
+      rfPreload.rel = 'preload';
+      rfPreload.as = 'script';
+      rfPreload.href = '/js/router-variant-f.js';
+      document.head.appendChild(rfPreload);
+    } catch (e) {}
+  }
+
   // 4. Persist to BOTH stores, each independently guarded -- SKIPPED
   //    entirely while the #2088 round-1-item-2 QA override is active, so
   //    a ?v=e&oq_internal=1 walk can never leak arm 'e' into a normal,
@@ -397,29 +434,139 @@
      is requested"; js/meta-pixel-gate.js: "the ONLY place fbevents.js is
      requested"). Clarity rides the GA4 gate's own host check; js/ga-gate.js's
      CLARITY_ALLOWED_PATHS carries '/start' (gh-2014). -->
-<!-- gh-2063 fix round 3 (PR #2065 review2, remaining FAIL point): round 2
-     put `defer` on these two same-origin gate files, reasoning that it
-     would move their network fetch off the first-paint critical path.
-     Independent review measured the opposite, one change at a time: `defer`
-     makes FIRST PAINT LATER than main (FCP +0.3-0.4s on slow-4G, +0.6-1.8s
-     on slow-3G), because the browser still has to fetch and run these two
-     small same-origin files before it can build the render tree either
-     way, and `defer` only changes WHEN in that sequence they run relative
-     to parsing -- it does not remove them from the critical path the way
-     it does for a large third-party bundle. Restored to plain synchronous
-     `<script src>` tags, matching main exactly. The actual fix for the
-     THIRD-PARTY vendor bundles these files inject (gtag.js, fbevents.js,
-     clarity.ms) is unchanged and still real: js/ga-gate.js's and
-     js/meta-pixel-gate.js's own _oqLoadOnIdleOrInteraction helper still
-     defers those to idle/first-interaction -- that is where the actual
-     third-party weight was and still is deferred. gtag/fbq are defined the
-     moment these two scripts run (synchronously again, before
-     DOMContentLoaded), so the gtag('config', ...) call below no longer
-     needs to wait for a DOMContentLoaded listener either -- restored to
-     main's plain inline call. -->
-<script src="/js/ga-gate.js"></script>
-<script src="/js/meta-pixel-gate.js"></script>
-<script>gtag('config', 'G-D1Y1TLGEFY');</script>
+<!-- gh-2160 review fix (comment 5818464392, must-fix 2): standard
+     base-code queuing stubs, defined here -- synchronous, no network,
+     effectively free -- so every gtag()/fbq() call site on this page
+     (trackRouter below, the two fbq('track','Lead',...) sites in this
+     file and js/router-variant-f.js) keeps working immediately, even
+     though js/ga-gate.js and js/meta-pixel-gate.js themselves are now
+     requested later (see below). window.gtag mirrors js/ga-gate.js's own
+     stub shape exactly (push arguments onto dataLayer); window.fbq is
+     copied verbatim from js/meta-pixel-gate.js's fbqStub (same
+     callMethod/queue/push/loaded/version shape fbevents.js's own
+     callMethod hookup depends on, per that file's gh-2000 comment). Each
+     gate file's own `window.dataLayer = window.dataLayer || []` /
+     `if (!window.fbq)` guard is exactly what lets it ADOPT this
+     already-present stub instead of clobbering it once it actually runs,
+     so nothing queued here before then is lost -- only possibly delayed.
+     gtag('js', ...) / gtag('config', ...) fire here, immediately, for the
+     same reason: queuing them first, before any trackRouter() call can
+     queue a router_step_view, is what keeps GA4's own automatic page_view
+     (sent when the real library processes the queued 'config' command)
+     ordered ahead of the first step_view once that library actually
+     loads -- matching gtag('js', ...)'s existing unconditional call inside
+     js/ga-gate.js itself. Whether the real gtag.js/fbevents.js library
+     ever loads at all, and whether GA4/Meta ever actually SEE any of what
+     is queued here, is still decided entirely by each gate file's own
+     unchanged ALLOWED_HOSTS/oqInternal()/oqAdOptOut() checks the moment it
+     runs -- queuing a call here never bypasses them; it only makes the
+     call safe to make early. -->
+<script>
+  window.dataLayer = window.dataLayer || [];
+  window.gtag = window.gtag || function () { window.dataLayer.push(arguments); };
+  gtag('js', new Date());
+  gtag('config', 'G-D1Y1TLGEFY');
+  if (!window.fbq) {
+    var _oqFbqStub = function () {
+      _oqFbqStub.callMethod
+        ? _oqFbqStub.callMethod.apply(_oqFbqStub, arguments)
+        : _oqFbqStub.queue.push(arguments);
+    };
+    window.fbq = _oqFbqStub;
+    if (!window._fbq) { window._fbq = _oqFbqStub; }
+    _oqFbqStub.push = _oqFbqStub;
+    _oqFbqStub.loaded = true;
+    _oqFbqStub.version = '2.0';
+    _oqFbqStub.queue = [];
+  }
+</script>
+<!-- gh-2063 fix round 3 (PR #2065 review2, remaining FAIL point) history:
+     round 2 put `defer` on these two same-origin gate files; round 3
+     restored plain synchronous `<script src>` tags after independent
+     review measured `defer` regressing FCP on slow-4G/3G.
+     gh-2160 review fix (comment 5818464392, must-fix 2): the ceo67
+     WITH-ANALYTICS Lighthouse re-measurement (the Netlify deploy preview
+     used for gh-2121's own S05 numbers loads no analytics at all, since
+     js/ga-gate.js/js/meta-pixel-gate.js are host-gated to otterquote.com --
+     see that file's ALLOWED_HOSTS) found median LCP still ~7.7s on BOTH
+     main and this PR once analytics is actually loaded: these two
+     synchronous, render-blocking, parser-serialised requests -- not the
+     header/footer DOM -- are the real cost neither round 2's `defer` nor
+     this PR's original header/footer fix touched. Both files' own
+     internal logic (ALLOWED_HOSTS, CLARITY_ALLOWED_PATHS, the D-330
+     ad-opt-out gate, oq_internal fail-closed) is BYTE-IDENTICAL to main --
+     see the diff -- only WHEN the browser is asked to fetch them changes:
+     now via the same idle-or-first-interaction pattern
+     _oqLoadOnIdleOrInteraction already uses for the vendor bundles inside
+     them (a short, capped requestIdleCallback -- 300ms here, falling back
+     to a plain timer -- or the visitor's first pointerdown/keydown/scroll/
+     touchstart, whichever comes first; there is no window 'load' listener
+     in this trigger), so neither file's own fetch/parse/execute can land
+     ahead of Arm F's LCP element (or any other arm's first paint). The dataLayer/fbq stubs a few lines
+     above already make every gtag()/fbq() call site on this page safe to
+     call before these files have run -- exactly the situation those
+     stubs' own "unconditional" comments (this file and
+     js/meta-pixel-gate.js) describe: nothing queued before either gate
+     loads is lost, only possibly delayed. -->
+<script>
+  (function () {
+    // gh-2160: the window 'load' event was tried first here and measured
+    // worse -- 'load' waits for EVERY resource on the page (fonts, the
+    // Supabase UMD bundle, images), so on a page this light it can end up
+    // firing barely ahead of everything else finishing anyway, which then
+    // serialises both gate files' fetch + the third-party bundles they in
+    // turn schedule onto the END of the load timeline instead of letting
+    // them overlap it -- net negative for Time to Interactive. A short,
+    // capped requestIdleCallback (falling back to a plain timer) gets
+    // these two small same-origin files off the parser/paint critical path
+    // -- the actual gh-2160 finding -- without pushing their own fetch
+    // past the point where everything else has already gone quiet. First
+    // real interaction still wins immediately if it happens first.
+    var GATE_EVENTS = ['pointerdown', 'keydown', 'scroll', 'touchstart'];
+    var fired = false;
+    var idleHandle = null;
+    var timeoutHandle = null;
+    function teardown() {
+      for (var i = 0; i < GATE_EVENTS.length; i++) { window.removeEventListener(GATE_EVENTS[i], run); }
+      if (idleHandle !== null && window.cancelIdleCallback) { window.cancelIdleCallback(idleHandle); }
+      if (timeoutHandle !== null) { clearTimeout(timeoutHandle); }
+    }
+    function run() {
+      if (fired) return;
+      fired = true;
+      teardown();
+      var s1 = document.createElement('script');
+      s1.src = '/js/ga-gate.js';
+      // gh-2160: window.clarity (created synchronously inside js/ga-gate.js,
+      // when the host/path gates allow it) does not exist until this script
+      // has actually executed -- which, unlike gh-2063 round 2's fix, is no
+      // longer guaranteed by DOMContentLoaded now that the request itself is
+      // deferred. onload is the one point any other code on this page can
+      // reliably hook to run something "as soon as ga-gate.js has run,
+      // whenever that turns out to be" -- see window.__oqOnGateReady below,
+      // used by the clarity('set','variant',...) call further down this
+      // file for exactly that.
+      s1.onload = function () {
+        window.__oqGateReady = true;
+        var cbs = window.__oqOnGateReady || [];
+        window.__oqOnGateReady = [];
+        for (var i = 0; i < cbs.length; i++) { try { cbs[i](); } catch (e) {} }
+      };
+      document.head.appendChild(s1);
+      var s2 = document.createElement('script');
+      s2.src = '/js/meta-pixel-gate.js';
+      document.head.appendChild(s2);
+    }
+    for (var i = 0; i < GATE_EVENTS.length; i++) {
+      window.addEventListener(GATE_EVENTS[i], run, { passive: true, once: true });
+    }
+    if (window.requestIdleCallback) {
+      idleHandle = window.requestIdleCallback(run, { timeout: 300 });
+    } else {
+      timeoutHandle = setTimeout(run, 300);
+    }
+  })();
+</script>
 <!-- Microsoft Clarity (wwr7qlk8g5) is loaded by /js/ga-gate.js, behind the same production-host gate as GA4 (gh-1619). Do not add a per-page loader. -->
 
 <!-- Supabase -->
@@ -484,6 +631,37 @@
 <style>
   body { background-color: var(--navy); }
   main { min-height: calc(100vh - 120px); display: flex; align-items: flex-start; justify-content: center; padding: var(--sp-8) var(--sp-4) var(--sp-16); }
+  /* gh-2160 review fix (comment 5818464392, must-fix 3): the -120px here
+     budgets for the header+footer's own height, which Arm F no longer
+     renders at all (see html[data-oq-start-arm="f"] #site-header /
+     #site-footer above). Left as calc(100vh - 120px), Arm F's total
+     document height came out a little SHORTER than one viewport -- no
+     header, no footer, and main's own padding didn't make up the gap --
+     which is what triggered GA4 Enhanced Measurement's automatic `scroll`
+     event on load with no real scroll: that event fires once the page's
+     scrollable depth is already effectively 100% at rest, a well-known
+     GA4 behaviour for a page whose content is not taller than the
+     viewport, not a bug this PR could catch by testing on desktop or by
+     reading either gate file (both untouched -- Enhanced Measurement's
+     tracked-event set is a GA4 property/stream Admin-UI setting, not
+     something a per-page `gtag('config', ...)` call can toggle; see the
+     PR/report for why a code-level opt-out for just this one event was
+     not available here). Restoring Arm F's height to exactly one viewport
+     (min-height: 100vh) was tried first and measured as NOT a fix: GA4
+     Enhanced Measurement's automatic `scroll` event fires whenever a
+     page's scrollable distance is non-zero at rest, and a page that is
+     exactly 100vh tall still has effectively zero scroll headroom once
+     mobile browser chrome (address bar, etc.) shrinks the *visual*
+     viewport below the *layout* viewport 100vh is computed against --
+     GA4 re-review (comment 5819921097) measured this rule sending
+     `scroll` on 8/8 Arm F loads. min-height: 112vh (comfortably above the
+     ~90% visual/layout viewport ratio GA4's own Enhanced Measurement docs
+     use as the "still counts as no scroll" threshold) gives Arm F real,
+     deliberate scroll headroom so GA4 sees genuine at-rest scrollable
+     content and does not fire the event on load. Arms A-E and a bare
+     /start keep the original calc -- their header/footer still renders,
+     so the -120px budget is still correct for them. */
+  html[data-oq-start-arm="f"] main { min-height: 112vh; }
   .router-card {
     width: 100%;
     max-width: 480px;
@@ -525,6 +703,38 @@
      Logo and menu (row 2 + hamburger) stay. Page-scoped: nav.js and
      css/nav.css are untouched, so every other page keeps the bar. */
   #site-header .nav-roles { display: none; }
+  /* gh-2121 (LRS S07, ceo67 audit row S07): #2118 above only closed the
+     role-pill class of "escape hatch before conversion" -- the header logo
+     (nav.js's logoHref, -> /index.html) and the entire footer nav (How It
+     Works / FAQ / Get Started / Blog) still rendered live on Arm F and
+     exited the funnel before screen 4. Same page-scoped CSS-hide pattern
+     as #2118: nav.js and css/nav.css stay untouched, so every other page
+     keeps its logo and footer.
+     gh-2160 review fix (comment 5818464392, must-fix 1): scoped to
+     html[data-oq-start-arm="f"] -- the PR that introduced this rule hid
+     it for EVERY arm /start can serve (A-E and no variant), which also
+     dropped C/D/E's footer Privacy Policy/Terms links. Arms A-E and a
+     bare /start now render the header/footer exactly as on main; only
+     Arm F skips them. #site-header/#site-footer also carry data-skip-nav
+     below (set the same way, arm-scoped), so nav.js never builds their
+     contents at all on Arm F (an escape-hatch element that is never in
+     the DOM can't be tabbed to either, and it drops the always-doubled
+     94.7KB otter-icon.png fetch -- header copy + footer copy -- off Arm
+     F's LCP path; see js/nav.js's own DOMContentLoaded auto-init for the
+     guard). This is display:none belt-and-suspenders for anyone who
+     somehow still reaches it (a race, a future nav.js change) -- not the
+     primary mechanism. */
+  html[data-oq-start-arm="f"] #site-header, html[data-oq-start-arm="f"] #site-footer { display: none; }
+  /* gh-2160 review fix (optional hardening, reviewer suggestion on
+     comment 5819921097): #step1 is Arm A's static markup and ships with
+     class="active" (display:block) directly in the raw HTML below --
+     every arm's JS (variant-c/d/e/f branches) removes that class once it
+     runs, but for the instant between first paint and that JS executing,
+     Arm F would otherwise show the Arm-A role-picker before its own
+     #routerFRoot content replaces it. Pure CSS, scoped the same way as
+     every other Arm-F-only rule above -- arms A-E and a bare /start are
+     unaffected, since #step1 IS their intended first screen. */
+  html[data-oq-start-arm="f"] #step1 { display: none !important; }
   .form-group { margin-bottom: var(--sp-4); }
   .form-label { display: block; font-weight: 600; color: var(--white); margin-bottom: var(--sp-1); font-size: 0.95rem; }
   .form-label.required::after { content: ' *'; color: var(--red); }
@@ -568,6 +778,12 @@
 </head>
 <body>
 
+<!-- gh-2121 (LRS S07): data-skip-nav tells js/nav.js's DOMContentLoaded
+     auto-init not to build this element's contents at all. gh-2160 review
+     fix (must-fix 1): NOT hard-coded here any more -- the inline script
+     right after the footer below sets it only when the head IIFE resolved
+     arm === 'f' (data-oq-start-arm). Arms A-E and a bare /start leave this
+     attribute unset and get the header exactly as on main. -->
 <header id="site-header"></header>
 
 <main>
@@ -680,12 +896,76 @@
   </div>
 </main>
 
+<!-- gh-2121 (LRS S07): see the header's own data-skip-nav comment above. -->
 <footer id="site-footer"></footer>
 
-<script src="js/cookie-storage.js"></script>
-<script src="js/config.js"></script>
-<script src="js/auth.js"></script>
-<script src="js/nav.js"></script>
+<!-- gh-2160 review fix (comment 5818464392, must-fix 1): sets data-skip-nav
+     on the header/footer ONLY when the head IIFE resolved this load to Arm
+     F (data-oq-start-arm="f" on <html>, set synchronously above before a
+     single body tag was parsed). Runs during HTML parsing, so it always
+     completes before js/nav.js's DOMContentLoaded auto-init reads
+     dataset.skipNav, regardless of nav.js's own defer. Arms A-E and a bare
+     /start never set the attribute, so nav.js builds their header/footer
+     -- including the footer's Privacy Policy/Terms links -- exactly as it
+     does on every other page. -->
+<script>
+  (function () {
+    try {
+      if (document.documentElement.getAttribute('data-oq-start-arm') !== 'f') return;
+      var h = document.getElementById('site-header');
+      var f = document.getElementById('site-footer');
+      if (h) h.setAttribute('data-skip-nav', 'true');
+      if (f) f.setAttribute('data-skip-nav', 'true');
+    } catch (e) {}
+  })();
+</script>
+
+<!-- gh-2121 (LRS S05, ceo67 Lighthouse trace): these five files exist ONLY
+     to (a) build the header/footer this page now skips (nav.js, and
+     auth.js/agent-types.js which nav.js alone reads -- confirmed by grep,
+     neither is referenced anywhere else in this file) or (b) back
+     ensureSb()'s lazy Supabase-client accessor and the ARM_F bridge's own
+     `get sb()`/`get detailsUrl()`/`get anonKey()` getters below, none of
+     which run until first user interaction (step-1 submit) at the
+     earliest -- config.js/cookie-storage.js were already read lazily
+     everywhere in this file before this change; the two ARM_F bridge
+     properties were the one remaining eager (parse-time) CONFIG read and
+     are now getters too (see that bridge, below), for exactly this reason.
+     `defer` lets the parser reach this file's own next script (the inline
+     IIFE that decides the arm and injects js/router-variant-f.js) without
+     first waiting on five serial same-origin fetch+parse+execute cycles --
+     that serial wait was most of the ~2.2s "element render delay"
+     lcp-breakdown-insight measured on the ceo67 Lighthouse trace, since
+     the LCP element (Arm F's step-1 <h1>) is rendered by router-variant-f.js
+     and that script was not even requested until this block had finished
+     running. `defer` scripts execute in this same order, before
+     DOMContentLoaded -- nav.js's own auto-init (which needs Auth/CONFIG)
+     runs on that event, so ordering is preserved. GA4/Meta/Clarity gating
+     (js/ga-gate.js, js/meta-pixel-gate.js) and the Supabase UMD bundle
+     above are untouched -- this list is exactly the five files whose only
+     synchronous-load reason was the header/footer this page no longer
+     builds. -->
+<script defer src="js/cookie-storage.js"></script>
+<script defer src="js/config.js"></script>
+<script defer src="js/auth.js"></script>
+<script defer src="js/nav.js"></script>
+<!-- gh-2121: agent-types.js stays synchronous, NOT deferred like the four
+     above -- this page's own inline script (immediately below) calls an
+     IIFE, renderPartnerIndustries(), at the top level of its own execution
+     (not inside a click handler or a RENDERERS['...'] callback like every
+     other AgentTypes.CHOOSER_LABELS read in this codebase), and reads
+     window.AgentTypes.CHOOSER_LABELS synchronously right there. A deferred
+     script here would still be queued behind cookie-storage/config/auth/
+     nav and would not have run yet at that call site (defer scripts run
+     after the WHOLE document parses, and that call happens mid-parse, from
+     a plain inline <script> reached immediately after this one) -- window.
+     AgentTypes would read undefined, and the fallback (`|| {}`) would
+     render every partner-industry button with its raw code
+     ("re_agent") instead of its label ("Real Estate Agent"), on every
+     /start visit regardless of arm, not just F. Confirmed no other
+     AgentTypes.CHOOSER_LABELS read in this codebase runs outside a
+     RENDERERS/click-handler callback. Small file (116 lines); the perf
+     cost of keeping it synchronous is not worth risking that regression. -->
 <script src="js/agent-types.js"></script>
 
 <script>
@@ -862,19 +1142,29 @@
   // path allowlist).
   // gh-2063 fix round 2 (PR #2065 review, blocker 3): this used to run here,
   // at parse time, while the page's <script defer src="js/ga-gate.js"> --
-  // the only place window.clarity is created -- had not executed yet.
-  // window.clarity was always undefined at this point once ga-gate.js
-  // stopped being a synchronous head script, so the guard above was always
-  // false and the call silently never ran: every session on every /start
-  // variant recorded in Clarity with no 'variant' tag. Deferred scripts run
-  // in document order, strictly before DOMContentLoaded fires, so moving
-  // this call into a DOMContentLoaded listener guarantees ga-gate.js (and
-  // therefore window.clarity, when the host/path gates allow it) has
-  // already run by the time this fires -- with no change to the guard logic
-  // or to what gets sent.
-  document.addEventListener('DOMContentLoaded', function () {
+  // the only place window.clarity is created -- had not executed yet, so
+  // the guard above was always false and the call silently never ran.
+  // Round 2 fixed that by moving this into a DOMContentLoaded listener,
+  // back when js/ga-gate.js was still guaranteed to have run (deferred
+  // scripts finish strictly before DOMContentLoaded) by that point.
+  // gh-2160 review fix (comment 5818464392, must-fix 2): js/ga-gate.js is
+  // no longer requested until idle/first-interaction/load (see that
+  // script block, above the header/footer), so it can now run AFTER
+  // DOMContentLoaded too -- the same failure mode round 2 fixed would
+  // reopen if this stayed a one-shot DOMContentLoaded call. Hooked onto
+  // window.__oqOnGateReady instead (set up by that same script block's
+  // ga-gate.js onload handler): runs immediately if ga-gate.js has
+  // already executed by the time this line runs, or queues to run the
+  // instant it does otherwise -- either way exactly once, same guard
+  // logic, same payload.
+  function _oqSetClarityVariant() {
     try { if (variant && window.clarity) { clarity('set', 'variant', variant); } } catch (e) {}
-  });
+  }
+  if (window.__oqGateReady) {
+    _oqSetClarityVariant();
+  } else {
+    (window.__oqOnGateReady = window.__oqOnGateReady || []).push(_oqSetClarityVariant);
+  }
 
   // ── gh-2016: arm B (contact-last). B asks #2011's IDENTICAL questions in
   // inverted order -- role, then industry if referral_partner, then
@@ -1009,15 +1299,14 @@
   // react-app/app/lib/track.ts and is unreachable from here), so every
   // router event stamps `variant` itself via this wrapper instead. ──
   //
-  // gh-2063: ga-gate.js now loads `defer` (moved out of the first-paint
-  // path), so `gtag` may not exist yet the moment this IIFE runs -- in
-  // particular the very first router_step_view fired a few lines below,
-  // which used to run after ga-gate.js's synchronous <script src> had
-  // already executed. Queueing here (instead of just letting the
-  // try/catch below swallow the call) means the timing change never drops
-  // an event: the same name/params are still sent, just as soon as gtag
-  // exists, which is guaranteed no later than DOMContentLoaded (deferred
-  // scripts always finish before that event fires).
+  // gh-2063 / gh-2160: kept as a belt-and-suspenders fallback. `window.gtag`
+  // is now defined synchronously, near the top of <head> (see the
+  // gh-2160 stub comment above the deferred js/ga-gate.js load), so
+  // `typeof gtag === 'function'` below is true from the very first
+  // trackRouter() call onward and this queue no longer has anything to
+  // do in the normal case -- but it stays in place in case a future
+  // change removes that stub, so a timing regression there would degrade
+  // to "delayed" rather than "silently dropped".
   var _oqTrackQueue = [];
   function _oqFlushTrackQueue() {
     if (typeof gtag !== 'function' || !_oqTrackQueue.length) return;
@@ -2249,8 +2538,17 @@
       markLeadSaved: markLeadSaved,
       // The record-lead-details Edge Function, called by js/router-variant-f.js as a keepalive fetch (with a sendBeacon
       // fallback on pagehide), so it needs the URL and the public anon key. Both are already public in js/config.js.
-      detailsUrl: (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_URL) ? String(CONFIG.SUPABASE_URL).replace(/\/+$/, '') + '/functions/v1/record-lead-details' : null,
-      anonKey: (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_ANON) ? CONFIG.SUPABASE_ANON : null,
+      // gh-2121: getters, not eager values -- config.js is now `defer`red (see
+      // its <script> tag's own comment), so CONFIG may not exist yet at the
+      // moment this bridge object literal is built. js/router-variant-f.js's
+      // own detailsUrl()/anonKey reads (grep confirms: both are read inside a
+      // function body, called at keepalive-fetch time, never cached at
+      // RouterVariantF.init()) already tolerate a getter exactly like `sb`
+      // above -- this changes WHEN CONFIG is read (call time, same as
+      // today's effective behavior once config.js finishes loading) not
+      // WHAT is returned once it has.
+      get detailsUrl() { return (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_URL) ? String(CONFIG.SUPABASE_URL).replace(/\/+$/, '') + '/functions/v1/record-lead-details' : null; },
+      get anonKey() { return (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_ANON) ? CONFIG.SUPABASE_ANON : null; },
       ROLE_DESTINATIONS: ROLE_DESTINATIONS
     };
     var routerFScript = document.createElement('script');
