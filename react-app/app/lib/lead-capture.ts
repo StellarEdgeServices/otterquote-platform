@@ -1,6 +1,7 @@
 /**
  * Lead-capture bridge — gh-2121 (LRS HO-1 S16), fix for PR #2163 REVIEW: FAIL
- * (comment 5821864061, M1).
+ * (comment 5821864061, M1; and comment 5822978578, M2 — see
+ * linkPendingLeadOnce() below for M2).
  *
  * The gh-2046 strip script in app/layout.tsx captures `?lead=<uuid>` off the
  * URL on /get-started, /help-measurements and /help-estimate (Arm F's three
@@ -72,9 +73,12 @@ export function readPendingLeadId(): string | null {
   }
 }
 
-/** Clear the captured lead — called once it has been consumed (attempted),
- * successfully or not, so a given capture is only ever handed to
- * set_lead_converted once per module documented above. */
+/** Clear the captured lead. Callers (linkPendingLeadOnce below) call this
+ * only once the RPC has produced a DEFINITIVE outcome — a resolved
+ * response, success or a server-side rejection alike — never before the
+ * call is even made and never on a network error or abort, so a capture
+ * that never got a real answer survives to be retried by the next call
+ * site (M2 fix, comment 5822978578). */
 export function clearPendingLeadId(): void {
   try {
     if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(LEAD_STORAGE_KEY);
@@ -91,33 +95,61 @@ interface SupabaseRpcClient {
   // thenable PostgrestFilterBuilder (awaitable, but not a Promise instance),
   // and the test doubles used across this repo return a plain Promise —
   // both satisfy PromiseLike.
-  rpc: (fn: string, args?: Record<string, unknown>) => PromiseLike<{ error: unknown }>;
+  rpc: (fn: string, args?: Record<string, unknown>) => PromiseLike<{ data?: unknown; error: unknown }>;
 }
 
 /**
  * Fire-and-forget: if a pending lead is captured, link it to the now-
  * authenticated caller via the set_lead_converted RPC (this PR's
  * migration — auth.uid()-scoped server-side per S1, no user id is passed
- * from the client) and consume the capture so it is never retried. Never
- * throws; a failure (anon caller, expired lead, already-converted lead) is
- * logged and swallowed — this never blocks or fails whatever auth flow
- * called it.
+ * from the client) and consume the capture once — but ONLY once — the
+ * call has produced a definitive outcome.
  *
- * Called from: get-started/page.tsx (password sign-up), auth-callback/
- * page.tsx (Google OAuth landing — S4), and help-measurements/page.tsx +
- * help-estimate/page.tsx (an already-signed-in Arm F visitor reaching the
- * help page directly with a live `?lead=` — the third M1 scenario).
+ * M2 fix (comment 5822978578): the original version cleared the capture
+ * BEFORE awaiting the RPC. On the password path, get-started navigates to
+ * /auth-callback in the same tick as this call (email auto-confirm is on
+ * in production, so this is the common case, not an edge case), and that
+ * navigation cancels the in-flight fetch (`net::ERR_ABORTED`). The
+ * capture was already gone by then, so auth-callback's own
+ * linkPendingLeadOnce() call had nothing left to retry — a real
+ * `?lead=` link was silently dropped on ~3 in 10 real-browser trials.
+ *
+ * The fix: clear the capture only when the RPC call returns a resolved
+ * response — success (`error` null, `data` true or false; false is not
+ * an error, e.g. an already-converted or too-old lead) OR a server-side
+ * rejection (`error` set, e.g. an anon caller or a permission error) —
+ * because either way the server has already given its final answer and
+ * retrying would just get the same one. A thrown exception (a network
+ * failure, a timeout, or the request being aborted mid-flight by page
+ * navigation) means no answer was ever received, so the capture is left
+ * in place for the next call site to retry. Never throws either way —
+ * this never blocks or fails whatever auth flow called it.
+ *
+ * Called from: get-started/page.tsx (password sign-up, only when no
+ * session exists yet — see that file's comment for why), auth-callback/
+ * page.tsx (every path that lands there with a live session: Google
+ * OAuth — S4 — AND the password path once a session exists, since
+ * get-started defers to this call site precisely to dodge the M2 race),
+ * and help-measurements/page.tsx + help-estimate/page.tsx (an already-
+ * signed-in Arm F visitor reaching the help page directly with a live
+ * `?lead=` — the third M1 scenario).
  */
 export async function linkPendingLeadOnce(supabase: SupabaseRpcClient): Promise<void> {
   const leadId = readPendingLeadId();
   if (!leadId) return;
-  clearPendingLeadId();
   try {
     const { error } = await supabase.rpc('set_lead_converted', { p_lead_id: leadId });
+    // Resolved — a definitive answer, whether a success (true/false) or a
+    // server-side rejection. Consume the capture now; retrying would not
+    // change the outcome.
+    clearPendingLeadId();
     if (error) {
       console.warn('[lead-capture] set_lead_converted failed (non-fatal):', error);
     }
   } catch (err) {
-    console.warn('[lead-capture] set_lead_converted threw (non-fatal):', err);
+    // No resolved response — network error, timeout, or the fetch was
+    // aborted by a navigation racing this call (the M2 scenario). Leave
+    // the capture in place so a later call site can retry it.
+    console.warn('[lead-capture] set_lead_converted threw (non-fatal), keeping capture for retry:', err);
   }
 }

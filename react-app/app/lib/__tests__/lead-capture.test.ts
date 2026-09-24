@@ -19,6 +19,15 @@
  * sessionStorage value (simulating a forged or corrupted entry — the
  * "random lead" case from the client's point of view) is likewise
  * discarded, not passed to the RPC.
+ *
+ * M2 fix (comment 5822978578): linkPendingLeadOnce() used to clear the
+ * capture BEFORE awaiting the RPC, so a navigation that cancelled the
+ * in-flight call lost the lead for good — the retry at /auth-callback
+ * found nothing left to retry. Covered below: a resolved success clears
+ * the capture; a resolved-but-definitive `false` (not an error) also
+ * clears it; a thrown/rejected call (network error, timeout, or an
+ * aborted fetch — the actual M2 failure mode) leaves the capture in place
+ * so the next call site can retry it.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -96,9 +105,43 @@ describe('lib/lead-capture', () => {
     expect(rpc).not.toHaveBeenCalled();
   });
 
-  it('a rejected RPC call (e.g. anon caller or expired/already-converted lead, S1) does not throw', async () => {
+  it('M2: success (no error, data true) clears the capture', async () => {
+    setStored({ id: 'lead-success', exp: Date.now() + LEAD_TTL_MS });
+    const rpc = vi.fn(() => Promise.resolve({ data: true, error: null }));
+
+    await linkPendingLeadOnce({ rpc });
+
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(readPendingLeadId()).toBeNull();
+  });
+
+  it('M2: a definitive false (RPC resolved, not an error — e.g. already-converted or too-old) still clears the capture', async () => {
+    setStored({ id: 'lead-false', exp: Date.now() + LEAD_TTL_MS });
+    const rpc = vi.fn(() => Promise.resolve({ data: false, error: null }));
+
+    await linkPendingLeadOnce({ rpc });
+
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(readPendingLeadId()).toBeNull();
+  });
+
+  it('a rejected RPC call (e.g. anon caller or expired/already-converted lead, S1) does not throw, and clears the capture (a resolved response is still a definitive answer)', async () => {
     setStored({ id: 'lead-rejected', exp: Date.now() + LEAD_TTL_MS });
     const rpc = vi.fn(() => Promise.resolve({ error: { message: 'permission denied' } }));
+
     await expect(linkPendingLeadOnce({ rpc })).resolves.toBeUndefined();
+    expect(readPendingLeadId()).toBeNull();
+  });
+
+  it('M2 negative control: a network error / aborted call KEEPS the capture for the next call site to retry', async () => {
+    setStored({ id: 'lead-network-error', exp: Date.now() + LEAD_TTL_MS });
+    const rpc = vi.fn(() => Promise.reject(new DOMException('The user aborted a request.', 'AbortError')));
+
+    await expect(linkPendingLeadOnce({ rpc })).resolves.toBeUndefined();
+
+    expect(rpc).toHaveBeenCalledTimes(1);
+    // Unlike every "resolved" case above, the capture survives — the next
+    // call site (e.g. /auth-callback) gets a chance to link it.
+    expect(readPendingLeadId()).toBe('lead-network-error');
   });
 });

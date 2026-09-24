@@ -11,6 +11,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, waitFor } from '@testing-library/react';
+import { LEAD_STORAGE_KEY, LEAD_TTL_MS } from '@/lib/lead-capture';
 
 vi.mock('@/lib/supabase', () => {
   const chain = (result: { data: unknown; error: unknown }) => {
@@ -147,6 +148,92 @@ describe('auth-callback page — Google sign_up wiring', () => {
 
     await waitFor(() => expect(hrefSpy).toHaveBeenCalled());
     expect(maybeFireGoogleSignUp as unknown as Fn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('auth-callback page — gh-2121/M2: password-path lead link lands here, not get-started', () => {
+  // PR #2163 REVIEW: FAIL fix (comment 5822978578, M2): get-started skips
+  // its own in-page linkPendingLeadOnce() call whenever signUp() already
+  // returned a live session (auto-confirm, production's default), because
+  // the navigation to this page used to cancel that in-flight call. This
+  // is the "still links" half of that negative control — the capture
+  // (written to sessionStorage the same way for every Arm F path, per
+  // lib/lead-capture.ts) survives the navigation and gets linked here,
+  // with nothing racing it, on the very next page load.
+  let hrefSpy: ReturnType<typeof vi.fn>;
+  let originalLocation: PropertyDescriptor | undefined;
+
+  function passwordSession() {
+    return {
+      user: {
+        id: 'u1',
+        email: 'jane@example.com',
+        app_metadata: { provider: 'email' },
+      },
+    };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    sessionStorage.clear();
+    (maybeFireGoogleSignUp as unknown as Fn).mockResolvedValue(true);
+    hrefSpy = vi.fn();
+    originalLocation = Object.getOwnPropertyDescriptor(window, 'location');
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...window.location, hash: '', search: '', set href(v: string) { hrefSpy(v); } },
+    });
+  });
+
+  afterEach(() => {
+    if (originalLocation) Object.defineProperty(window, 'location', originalLocation);
+    sessionStorage.clear();
+  });
+
+  it('links the sessionStorage-captured lead (navigation-cancelled call at get-started notwithstanding) once a session lands here', async () => {
+    sessionStorage.setItem(
+      LEAD_STORAGE_KEY,
+      JSON.stringify({ id: 'lead-from-get-started', exp: Date.now() + LEAD_TTL_MS }),
+    );
+
+    let capturedCallback: ((event: string, session: unknown) => void) | undefined;
+    (supabase.auth.onAuthStateChange as unknown as Fn).mockImplementation((cb) => {
+      capturedCallback = cb;
+      return { data: { subscription: { unsubscribe: vi.fn() } } };
+    });
+
+    render(<AuthCallbackPage />);
+    await waitFor(() => expect(capturedCallback).toBeDefined());
+
+    capturedCallback?.('SIGNED_IN', passwordSession());
+
+    await waitFor(() =>
+      expect(supabase.rpc as unknown as Fn).toHaveBeenCalledWith('set_lead_converted', {
+        p_lead_id: 'lead-from-get-started',
+      }),
+    );
+    // Consumed: the capture is gone once the RPC has resolved, matching
+    // lib/lead-capture.ts's own "clear only on a definitive answer" test.
+    await waitFor(() => expect(sessionStorage.getItem(LEAD_STORAGE_KEY)).toBeNull());
+  });
+
+  it('negative control: no captured lead in sessionStorage -> set_lead_converted is never called', async () => {
+    let capturedCallback: ((event: string, session: unknown) => void) | undefined;
+    (supabase.auth.onAuthStateChange as unknown as Fn).mockImplementation((cb) => {
+      capturedCallback = cb;
+      return { data: { subscription: { unsubscribe: vi.fn() } } };
+    });
+
+    render(<AuthCallbackPage />);
+    await waitFor(() => expect(capturedCallback).toBeDefined());
+
+    capturedCallback?.('SIGNED_IN', passwordSession());
+
+    await waitFor(() => expect(hrefSpy).toHaveBeenCalled());
+    expect(supabase.rpc as unknown as Fn).not.toHaveBeenCalledWith(
+      'set_lead_converted',
+      expect.anything(),
+    );
   });
 });
 
