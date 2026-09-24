@@ -8,6 +8,11 @@
     "created_at",
     "is_test"
   ],
+  "ad_sharing_suppressions": [
+    "email_sha256",
+    "source",
+    "created_at"
+  ],
   "adjuster_email_requests": [
     "id",
     "claim_id",
