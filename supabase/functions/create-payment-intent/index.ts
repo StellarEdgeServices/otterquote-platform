@@ -38,6 +38,7 @@ import {
   UPGRADE_CHARGE_DESCRIPTION,
   VENDOR_CREDIT_EXPECTED_CENTS,
 } from "./measurement-upgrade-gate.ts";
+import { type OptOutStore, recordGpcOptOut } from "./ad-sharing-opt-out.ts";
 
 const FUNCTION_NAME = "create-payment-intent";
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
@@ -109,7 +110,23 @@ serve(async (req) => {
   }
 
   try {
-    const { amount: clientAmount, currency, description, metadata, contractor_id, off_session } = await req.json();
+    const requestBody = await req.json();
+    const { amount: clientAmount, currency, description, metadata, contractor_id, off_session } = requestBody;
+
+    // gh-2107 / D-330 half 2: honour a Global Privacy Control advertising-sharing opt-out (Sec-GPC: 1 on the request, or
+    // gpc: true from the page's navigator.globalPrivacyControl) by flagging the caller's profile BEFORE any Purchase exists;
+    // the Stripe webhook then skips the Meta CAPI send. Sets the flag only, never clears it; never blocks or fails the payment.
+    const gpcStore: OptOutStore = {
+      markOptedOut: async (userId, source, atIso) => {
+        const { error } = await supabase
+          .from("profiles")
+          .update({ ad_sharing_opt_out: true, ad_sharing_opt_out_at: atIso, ad_sharing_opt_out_source: source })
+          .eq("id", userId)
+          .or("ad_sharing_opt_out.is.null,ad_sharing_opt_out.eq.false");
+        return error ? { code: (error as { code?: string }).code } : null;
+      },
+    };
+    await recordGpcOptOut({ callerId, piType: metadata?.type, headers: req.headers, body: requestBody, store: gpcStore });
 
     // D-181: server-side price enforcement for hover_measurement.
     let amount: number = clientAmount;
