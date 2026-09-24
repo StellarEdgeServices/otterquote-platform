@@ -10,15 +10,16 @@ const USER = { id: "bbbbbbbb-0000-4000-8000-000000000002", email: "someone@examp
 const AT = new Date("2026-09-24T02:00:00.000Z");
 
 type Flag = { matched: number; updated: number } | { errorCode: string | null };
-interface Calls { order: string[]; suppressed: string[]; flagged: { email: string; at: string }[]; logs: string[]; adminChecks: string[]; hashed: string[] }
+interface Calls { order: string[]; suppressed: string[]; flagged: { email: string; at: string }[]; logs: string[]; adminChecks: string[]; hashed: string[]; audits: { adminId: string; entry: unknown }[] }
 function deps(over: Partial<Deps> = {}, opts: { flag?: Flag; suppressFail?: { errorCode: string | null } | null } = {}): { d: Deps; calls: Calls } {
-  const calls: Calls = { order: [], suppressed: [], flagged: [], logs: [], adminChecks: [], hashed: [] };
+  const calls: Calls = { order: [], suppressed: [], flagged: [], logs: [], adminChecks: [], hashed: [], audits: [] };
   const d: Deps = {
     authenticate: (token) => Promise.resolve(token === "admin-token" ? ADMIN : token === "user-token" ? USER : null),
     isAdmin: (id, email) => { calls.adminChecks.push(id); return Promise.resolve(email === ADMIN.email); },
     hashEmail: (email) => { calls.hashed.push(email); return Promise.resolve("HASH(" + email + ")"); },
     suppress: (h) => { calls.order.push("suppress"); calls.suppressed.push(h); return Promise.resolve(opts.suppressFail ?? null); },
     flagProfiles: (email, at) => { calls.order.push("flag"); calls.flagged.push({ email, at }); return Promise.resolve(opts.flag ?? { matched: 1, updated: 1 }); },
+    audit: (adminId, entry) => { calls.order.push("audit"); calls.audits.push({ adminId, entry }); return Promise.resolve(null); },
     now: () => AT,
     log: (m) => calls.logs.push(m),
     ...over,
@@ -101,8 +102,8 @@ Deno.test("an admin request writes the suppression row FIRST (for the digest of 
   const { d, calls } = deps({}, { flag: { matched: 2, updated: 1 } });
   const res = await handleRequest(req({ email: "  Jane@Example.com " }), d);
   assertEquals(res.status, 200);
-  assertEquals(await res.json(), { ok: true, suppressed: true, matched: 2, updated: 1 });
-  assertEquals(calls.order, ["suppress", "flag"]);
+  assertEquals(await res.json(), { ok: true, suppressed: true, matched: 2, updated: 1, audited: true });
+  assertEquals(calls.order, ["suppress", "flag", "audit"]);
   assertEquals(calls.hashed, ["jane@example.com"], "the digest is computed from the normalised address");
   assertEquals(calls.suppressed, ["HASH(jane@example.com)"]);
   assertEquals(calls.flagged, [{ email: "jane@example.com", at: "2026-09-24T02:00:00.000Z" }]);
@@ -165,6 +166,58 @@ Deno.test("the success log line carries the counts only, never the address or it
   assert(!logText.includes("private.person") && !logText.includes("HASH("), logText);
 });
 
+// Ben's ruling on #2138 (#2078 5807503386): "when the support-email path records an opt-out, write one activity_log row naming the acting
+// admin (by user id) and the source. The email itself goes in hashed form only." The handler hands the entry to deps.audit; index.ts
+// writes the activity_log row.
+Deno.test("audit: a successful opt-out writes exactly ONE audit entry, naming the acting admin by user id and the source, after both writes", async () => {
+  const { d, calls } = deps({}, { flag: { matched: 2, updated: 1 } });
+  const res = await handleRequest(req({ email: "private.person@example.com" }), d);
+  assertEquals(res.status, 200);
+  assertEquals(calls.order, ["suppress", "flag", "audit"]);
+  assertEquals(calls.audits, [{ adminId: ADMIN.id, entry: { source: "support_email", suppressed: true, matched: 2, updated: 1 } }]);
+  assertEquals((await res.json()).audited, true);
+});
+
+Deno.test("audit: the entry carries no email address, no digest and nothing from the request body", async () => {
+  const { d, calls } = deps({}, { flag: { matched: 1, updated: 1 } });
+  await handleRequest(req({ email: "private.person@example.com", note: "free text", user_id: USER.id }), d);
+  const text = JSON.stringify(calls.audits);
+  assert(!text.includes("private.person") && !text.includes("example.com") && !text.includes("HASH(") && !text.includes("free text") && !text.includes(USER.id), text);
+});
+
+Deno.test("audit: NEGATIVE CONTROL -- no audit entry on 401, 403, 400, or when either write fails", async () => {
+  for (const [request, opts] of [
+    [req({ email: "a@b.co" }, { token: null }), {}],
+    [req({ email: "a@b.co" }, { token: "garbage" }), {}],
+    [req({ email: "a@b.co" }, { token: "user-token" }), {}],
+    [req({ email: "not an email" }), {}],
+    [req("{not json"), {}],
+    [req({ email: "a@b.co" }), { suppressFail: { errorCode: "23514" } }],
+    [req({ email: "a@b.co" }), { flag: { errorCode: "42703" } }],
+  ] as [Request, Parameters<typeof deps>[1]][]) {
+    const { d, calls } = deps({}, opts);
+    await handleRequest(request, d);
+    assertEquals(calls.audits.length, 0);
+  }
+});
+
+Deno.test("audit: a failed or throwing audit write does NOT undo or fail the opt-out (200, audited:false), and leaks nothing", async () => {
+  for (const audit of [
+    () => Promise.resolve({ errorCode: "42501" }),
+    () => Promise.reject(new Error("SECRET audit failure text private.person@example.com")),
+  ] as Deps["audit"][]) {
+    const { d, calls } = deps({ audit }, { flag: { matched: 1, updated: 1 } });
+    const res = await handleRequest(req({ email: "private.person@example.com" }), d);
+    assertEquals(res.status, 200, "the opt-out itself is recorded");
+    const body = await res.json();
+    assertEquals(body.audited, false);
+    assertEquals(body.suppressed, true);
+    const text = JSON.stringify(body) + " | " + calls.logs.join(" | ");
+    assert(!text.includes("SECRET") && !text.includes("private.person") && !text.includes("example.com"), text);
+    assert(calls.logs.some((l) => l.includes("audit")), "the failure is logged (fixed text)");
+  }
+});
+
 // REVIEW N1 on #2138: the audit trail says WHO acted. The acting admin's user id (never their address) is in the success log line.
 Deno.test("the success log line names the acting admin by user id, not by email address", async () => {
   const { d, calls } = deps({}, { flag: { matched: 2, updated: 1 } });
@@ -215,4 +268,23 @@ Deno.test("index.ts: sets the flag TRUE with source support_email, only where it
 Deno.test("index.ts: the address is escaped before the case-insensitive match", () => {
   assert(index.includes("escapeLikePattern("));
   assert(index.includes(".ilike("));
+});
+
+// -- structure: index.ts writes the activity_log row --------------------------------------------------------
+const indexSrc = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+const auditAt = indexSrc.indexOf("audit: async (adminId, entry)");
+const auditBlock = indexSrc.slice(auditAt, indexSrc.indexOf("now: () => new Date()", auditAt));
+
+Deno.test("index.ts: audit inserts ONE activity_log row with the acting admin as user_id and the source, and nothing personal", () => {
+  assert(auditAt > 0, "index.ts defines deps.audit");
+  assertEquals(auditBlock.split('.from("activity_log")').length - 1, 1);
+  assert(/user_id:\s*adminId/.test(auditBlock), "user_id is the acting admin");
+  assert(/source:\s*entry\.source/.test(auditBlock), "the source is recorded");
+  assert(/event_type:\s*"ad_sharing_opt_out_recorded"/.test(auditBlock));
+  const code = auditBlock.split(/\r?\n/).filter((l) => !l.trim().startsWith("//")).join(" "); // comments may name what is NOT recorded
+  assert(!/email|sha256|digest|hash/i.test(code.replace(/errorCode/g, "")), "no address or digest in the row: " + code);
+});
+
+Deno.test("index.ts: a failed audit insert returns its error code (handled by the handler), never throws its text", () => {
+  assert(/return error \? \{ errorCode:/.test(auditBlock));
 });

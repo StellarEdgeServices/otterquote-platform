@@ -14,7 +14,7 @@
  * AUTHENTICATED user (never anything in the request body). Same in-handler gate as approve-warranty-drift.
  *
  * WHAT IT DOES NOT DO. It never clears a flag and never removes a suppression row. It never logs or echoes the address, its
- * digest, or any database text.
+ * digest, or any database text. Every successful call also writes ONE audit row naming the acting admin (see Deps.audit).
  *
  * No imports on purpose: unit-tested by handler.test.ts (no network), deployed beside index.ts as a local module.
  */
@@ -72,9 +72,16 @@ export interface Deps {
   suppress(emailSha256: string): Promise<null | { errorCode: string | null }>;
   /** Set the flag TRUE (never clear it) on every profile with this address. */
   flagProfiles(email: string, atIso: string): Promise<{ matched: number; updated: number } | { errorCode: string | null }>;
+  /**
+   * Record who did this: one audit row naming the ACTING ADMIN by user id and the source, with counts only (Ben's ruling on #2138,
+   * #2078 5807503386). No address, no digest, nothing from the request body. Null on success, an error code (or null) on failure.
+   */
+  audit(adminId: string, entry: AuditEntry): Promise<null | { errorCode: string | null }>;
   now(): Date;
   log(message: string): void;
 }
+
+export interface AuditEntry { source: "support_email"; suppressed: true; matched: number; updated: number }
 
 /** SQLSTATE-style codes only: short and alphanumeric. Anything else is dropped so a message cannot ride in the "code". */
 function safeCode(code: unknown): string {
@@ -126,6 +133,17 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
     return json({ error: "Could not record the opt-out" }, 500, cors);
   }
   deps.log(`[${FUNCTION_NAME}] opt-out recorded by admin ${user.id}: suppressed, matched ${result.matched}, updated ${result.updated}`);
+
+  // 3. The audit row. BEST-EFFORT: the opt-out is already recorded and must not be undone or reported as failed because the trail could not
+  // be written; the response says so (`audited: false`) and the failure is logged with fixed text only.
+  let audited = false;
+  try {
+    const failure = await deps.audit(user.id, { source: "support_email", suppressed: true, matched: result.matched, updated: result.updated });
+    audited = failure === null;
+    if (failure) deps.log(`[${FUNCTION_NAME}] the audit row could not be written${safeCode(failure.errorCode)}`);
+  } catch {
+    deps.log(`[${FUNCTION_NAME}] the audit row could not be written (threw)`);
+  }
   const note = result.matched === 0 ? "No account has this email address; the opt-out is recorded on the suppression list." : undefined;
-  return json({ ok: true, suppressed: true, matched: result.matched, updated: result.updated, ...(note ? { note } : {}) }, 200, cors);
+  return json({ ok: true, suppressed: true, matched: result.matched, updated: result.updated, audited, ...(note ? { note } : {}) }, 200, cors);
 }

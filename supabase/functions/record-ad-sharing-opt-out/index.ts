@@ -69,6 +69,17 @@ Deno.serve((req: Request) =>
       if (upd.error) return { errorCode: (upd.error as { code?: string }).code ?? null };
       return { matched: ids.length, updated: (upd.data ?? []).length };
     },
+    audit: async (adminId, entry) => {
+      // One row, the acting admin by user id and the source, counts only: no address, no digest, nothing from the request.
+      const { error } = await sb.from("activity_log").insert({
+        event_type: "ad_sharing_opt_out_recorded",
+        title: "ad_sharing_opt_out_recorded",
+        user_id: adminId,
+        is_test: false,
+        metadata: { source: entry.source, suppressed: entry.suppressed, matched: entry.matched, updated: entry.updated },
+      });
+      return error ? { errorCode: (error as { code?: string }).code ?? null } : null;
+    },
     now: () => new Date(),
     log: (m) => console.log(m),
   })
