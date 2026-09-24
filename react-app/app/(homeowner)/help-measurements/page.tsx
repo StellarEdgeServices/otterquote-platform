@@ -66,7 +66,7 @@ import {
   markMeasurementPurchaseFired,
   type PendingHoverCharge,
 } from './hover-charge-storage';
-import { track, fbqTrack } from '@/lib/track';
+import { track, fbqTrack, buildMeasurementPurchaseEventId } from '@/lib/track';
 import { getVariant } from '@/lib/variant';
 
 /**
@@ -190,7 +190,15 @@ function PageBody({
           if (!hasFiredMeasurementPurchase(pendingResume.paymentIntentId)) {
             const variant = getVariant();
             track('measurement_purchase', { value: 15.0, currency: 'USD', variant });
-            fbqTrack('Purchase', { value: 15.0, currency: 'USD', variant });
+            // gh-2078c: eventID lets Meta dedup this client pixel event
+            // against the server-side CAPI Purchase (PR #2107) sent from
+            // the SAME paymentIntent id -- see lib/track.ts's
+            // buildMeasurementPurchaseEventId header.
+            fbqTrack(
+              'Purchase',
+              { value: 15.0, currency: 'USD', variant },
+              buildMeasurementPurchaseEventId(pendingResume.paymentIntentId),
+            );
             markMeasurementPurchaseFired(pendingResume.paymentIntentId);
           }
           setHoverStage('success');
@@ -242,7 +250,11 @@ function PageBody({
     setHoverLoading(true);
     setStatus(null);
     try {
-      const res = await requestHoverPaymentIntent(claim);
+      // gh-2078c / D-330 reconciliation: thread the same persisted router arm
+      // the `measurement_purchase`/`Purchase` events below already read onto
+      // the PaymentIntent metadata, so the server-side Meta CAPI event
+      // (PR #2107) can attribute the purchase instead of reading 'unknown'.
+      const res = await requestHoverPaymentIntent(claim, getVariant());
       if (!res?.client_secret) {
         setStatus({ text: M.statusPaymentInitError, type: 'error' });
         return;
@@ -298,8 +310,15 @@ function PageBody({
         // page -- see lib/track.ts's fbqTrack header for why (this is an
         // authenticated route, outside MetaPixelGate.tsx's ALLOWED_PATHS
         // today; see the gh-2078 PR description for the follow-up this
-        // leaves open).
-        fbqTrack('Purchase', { value: 15.0, currency: 'USD', variant });
+        // leaves open). gh-2078c: eventID lets Meta dedup this client event
+        // against the server-side CAPI Purchase (PR #2107) sent from the
+        // SAME paymentIntent id -- see lib/track.ts's
+        // buildMeasurementPurchaseEventId header.
+        fbqTrack(
+          'Purchase',
+          { value: 15.0, currency: 'USD', variant },
+          buildMeasurementPurchaseEventId(paymentIntentId),
+        );
         markMeasurementPurchaseFired(paymentIntentId);
       }
       setHoverStage('success');
