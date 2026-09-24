@@ -119,6 +119,7 @@ import type { ChangeEvent, FormEvent } from 'react';
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import { supabase } from '@/lib/supabase';
 import { readReferralIds, writeReferralIds } from '@/lib/cookie-storage';
+import { linkPendingLeadOnce } from '@/lib/lead-capture';
 import { readFirstTouch } from '@/lib/attribution';
 import { withFirstTouchParam } from '@/lib/attribution-core';
 import { formatPhoneValue, isValidEmail, isValidZip, fullAddress, splitLeadName } from './utils';
@@ -1246,29 +1247,21 @@ export default function GetStartedPage() {
       }
 
       // gh-2121 (S16): close the loop from an Arm-F-style `?lead=<uuid>`
-      // deep link to the account it produced. window.__oqRouterLeadId is set
-      // ONLY by the beforeInteractive strip script in app/layout.tsx (see
-      // gh-2046 there) when this page was reached with a live `?lead=` param
-      // -- absent on a direct/organic visit, so this call is scoped to
-      // referred signups only (see the negative control in
-      // __tests__/gh2121-lead-conversion.test.tsx: no leadId -> no rpc call).
-      // Fire-and-forget: set_lead_converted (new migration, this PR) is a
-      // SECURITY DEFINER RPC mirroring the existing get_lead_prefill/
-      // set_lead_role pattern -- `leads` has no anon/authenticated UPDATE
-      // policy, so a direct client write is not possible. Never awaited
-      // inline and never allowed to block or fail the signup it rides on;
-      // a lost link here costs only attribution, never an account.
+      // deep link to the account it produced. PR #2163 REVIEW: FAIL fix
+      // (comment 5821864061, M1/S1), 2026-09-24: leadId now comes from
+      // lib/lead-capture.ts (window.__oqRouterLeadId OR the sessionStorage
+      // marker the multi-path strip script now also writes — see
+      // app/layout.tsx), not the window global alone, and the RPC no
+      // longer takes a p_user_id from the client (S1: set_lead_converted
+      // now derives the caller from auth.uid() server-side and rejects an
+      // anon caller — see the migration). Scoped to referred signups only:
+      // no captured lead -> linkPendingLeadOnce() is a no-op (see the
+      // negative control in __tests__/gh2121-lead-conversion.test.tsx).
+      // Fire-and-forget and never awaited inline — never blocks or fails
+      // the signup it rides on; a lost link here costs only attribution,
+      // never an account.
       if (data.user?.id) {
-        const leadId = typeof window !== 'undefined' ? window.__oqRouterLeadId : undefined;
-        if (leadId) {
-          void supabase
-            .rpc('set_lead_converted', { p_lead_id: leadId, p_user_id: data.user.id })
-            .then(({ error: rpcError }) => {
-              if (rpcError) {
-                console.warn('[get-started] set_lead_converted failed (non-fatal):', rpcError);
-              }
-            });
-        }
+        void linkPendingLeadOnce(supabase);
       }
 
       fireSignupAnalytics('password');

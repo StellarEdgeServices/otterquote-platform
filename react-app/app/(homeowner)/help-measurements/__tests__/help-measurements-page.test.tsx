@@ -22,7 +22,7 @@ vi.mock('@/hooks/use-notification-count', () => ({
   useNotificationCount: () => ({ count: 0, loading: false, error: null }),
 }));
 vi.mock('@/lib/supabase', () => ({
-  supabase: { from: vi.fn(), functions: { invoke: vi.fn() } },
+  supabase: { from: vi.fn(), functions: { invoke: vi.fn() }, rpc: vi.fn(() => Promise.resolve({ error: null })) },
 }));
 
 // Mock the data layer — the page test drives its return values directly.
@@ -422,5 +422,36 @@ describe('help-measurements page — gh-951 resume after a full-page reload', ()
 
     expect(await screen.findByText(M.pathIntroTitle)).toBeTruthy();
     expect(placeHoverOrder as unknown as Fn).not.toHaveBeenCalled();
+  });
+});
+
+// ── gh-2121 (S16) / PR #2163 REVIEW: FAIL fix (M1's third Arm F scenario) ──────
+// An ALREADY-signed-in visitor landing here directly with a live `?lead=`
+// never goes through get-started/page.tsx's signUp() — this page (rendered
+// only once HomeownerShell has resolved a real `user`) is where that case
+// is linked instead. See app/lib/lead-capture.ts.
+import { supabase } from '@/lib/supabase';
+
+describe('help-measurements page — gh-2121 already-signed-in lead link', () => {
+  afterEach(() => {
+    sessionStorage.removeItem('oq_pending_lead');
+  });
+
+  it('calls set_lead_converted once when a pending lead was captured for a signed-in visitor', async () => {
+    sessionStorage.setItem('oq_pending_lead', JSON.stringify({ id: 'lead-already-signed-in', exp: Date.now() + 60000 }));
+
+    render(<HelpMeasurementsPage />);
+
+    await waitFor(() =>
+      expect(supabase.rpc).toHaveBeenCalledWith('set_lead_converted', { p_lead_id: 'lead-already-signed-in' }),
+    );
+    expect(sessionStorage.getItem('oq_pending_lead')).toBeNull();
+  });
+
+  it('negative control: no pending lead -> set_lead_converted is never called', async () => {
+    render(<HelpMeasurementsPage />);
+
+    await screen.findByText(M.pathIntroTitle);
+    expect(supabase.rpc).not.toHaveBeenCalled();
   });
 });

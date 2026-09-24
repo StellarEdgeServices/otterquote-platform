@@ -14,10 +14,16 @@
  * `user_id` — can be traced back to the originating `leads` row via
  * `leads.converted_user_id = claims.user_id`.
  *
- * Positive: leadId present -> RPC called with the right ids.
+ * Positive: leadId present -> RPC called.
  * Negative control: no leadId (direct/organic visit, the pre-fix-identical
  * case) -> RPC never called. Proves this is additive, not a blind call on
  * every signup.
+ *
+ * Updated 2026-09-24 (PR #2163 REVIEW: FAIL fix, comment 5821864061, S1):
+ * set_lead_converted no longer takes a client-supplied p_user_id (an anon
+ * caller could previously link ANY lead to ANY guessed user id) — the RPC
+ * now derives the account from auth.uid() server-side, so the call here is
+ * `{ p_lead_id }` only. See lib/lead-capture.ts's linkPendingLeadOnce().
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
@@ -90,9 +96,11 @@ describe('gh-2121: get-started password sign-up writes lead conversion back', ()
     await waitFor(() =>
       expect(rpcMock).toHaveBeenCalledWith('set_lead_converted', {
         p_lead_id: 'lead-abc-123',
-        p_user_id: 'new-user-123',
       }),
     );
+    // S1: no p_user_id anywhere in the call — the server derives the
+    // account from auth.uid(), never a client-supplied id.
+    expect(rpcMock.mock.calls[0][1]).not.toHaveProperty('p_user_id');
   });
 
   it('negative control: no ?lead= captured -> set_lead_converted is never called', async () => {

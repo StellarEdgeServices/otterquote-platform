@@ -52,6 +52,7 @@ import type { Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 
 import { readReferralIds, writeReferralIds } from '@/lib/cookie-storage';
+import { linkPendingLeadOnce } from '@/lib/lead-capture';
 import { maybeFireGoogleSignUp, readReferralSourceFromCsSignup } from './signup-analytics';
 import { adoptFirstTouchFromParam, recordFirstTouch } from '@/lib/attribution';
 
@@ -274,6 +275,20 @@ export default function AuthCallbackPage() {
       } catch {
         // Non-fatal — see above
       }
+
+      // gh-2121 (S16) / PR #2163 REVIEW: FAIL fix (comment 5821864061, S4),
+      // 2026-09-24: the Google OAuth path never called set_lead_converted —
+      // handleGoogle (get-started/page.tsx) fires signInWithOAuth and the
+      // browser leaves for Google immediately, so there is no "after
+      // signUp" moment on that page to hang the call off like the password
+      // path has. This IS that moment for Google: a real session now exists
+      // (routeSession only reaches here once `session` is non-null), so any
+      // lead captured before the redirect (window.__oqRouterLeadId is gone
+      // after the round trip to Google — this reads the sessionStorage
+      // marker app/layout.tsx's strip script also wrote) can be linked here.
+      // Same fire-and-forget, once-only, non-fatal contract as the password
+      // path — see lib/lead-capture.ts.
+      void linkPendingLeadOnce(supabase);
 
       // gh-1983: persist first-touch ad attribution (UTM / fbclid / gclid)
       // onto the profile — write-once, server-guarded, bounded to 2.5 s and
