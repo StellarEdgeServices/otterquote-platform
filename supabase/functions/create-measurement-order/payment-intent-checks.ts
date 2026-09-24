@@ -22,9 +22,21 @@ export const PI_TYPE_LEGACY = "hover_measurement";
 /** Fixed text for the client: it names no amount, currency or PaymentIntent. */
 export const CURRENCY_REJECTION_MESSAGE = "This payment could not be accepted because it was not made in US dollars. Nothing further has been charged. Please contact support.";
 
+/**
+ * What an operator needs to know about a PaymentIntent refused for not being in USD (Ben's DECIDED (b) on #2078: the rejection
+ * raises an admin alert, not only a server log). Validated shapes only, never raw Stripe text: a value that does not match its shape
+ * is null. `paymentIntentId` is a Stripe id, `currency` a lowercase ISO 4217 code, `amountCents` a non-negative integer in that
+ * currency's minor unit.
+ */
+export interface NonUsdRejection {
+  paymentIntentId: string | null;
+  currency: string | null;
+  amountCents: number | null;
+}
+
 export type PaymentCheckResult =
   | { ok: true; amount: number; stripeChargeId: string | null }
-  | { ok: false; status: number; error: string };
+  | { ok: false; status: number; error: string; nonUsd?: NonUsdRejection };
 
 // deno-lint-ignore no-explicit-any
 type PaymentIntentLike = any;
@@ -32,12 +44,20 @@ type PaymentIntentLike = any;
 type Log = (message: string, detail?: unknown) => void;
 const defaultLog: Log = (m, d) => (d === undefined ? console.error(m) : console.error(m, d));
 
+function describeNonUsd(pi: PaymentIntentLike): NonUsdRejection {
+  return {
+    paymentIntentId: typeof pi.id === "string" && /^pi_[A-Za-z0-9_]{1,80}$/.test(pi.id) ? pi.id : null,
+    currency: typeof pi.currency === "string" && /^[a-z]{3}$/.test(pi.currency) ? pi.currency : null,
+    amountCents: Number.isInteger(pi.amount) && pi.amount >= 0 ? pi.amount : null,
+  };
+}
+
 /** Stripe reports a PaymentIntent's currency as a lowercase ISO code. Anything but exactly "usd" (absent included) is refused. */
 function usdOnly(pi: PaymentIntentLike, log: Log): PaymentCheckResult | null {
   if (pi.currency !== "usd") {
     // The code itself is a short ISO token from Stripe; it is logged for the operator, never returned to the client.
     log("[create-measurement-order] PI currency is not usd:", { currency: typeof pi.currency === "string" ? pi.currency.slice(0, 8) : typeof pi.currency, pi: pi.id });
-    return { ok: false, status: 402, error: CURRENCY_REJECTION_MESSAGE };
+    return { ok: false, status: 402, error: CURRENCY_REJECTION_MESSAGE, nonUsd: describeNonUsd(pi) };
   }
   return null;
 }

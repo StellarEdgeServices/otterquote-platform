@@ -50,7 +50,8 @@ import {
   buildUpgradeOrderInsert,
   UPGRADE_PRODUCT_CODE,
 } from "./measurement-upgrade-order.ts";
-import { checkMeasurementPaymentIntent, checkUpgradePaymentIntent } from "./payment-intent-checks.ts";
+import { checkMeasurementPaymentIntent, checkUpgradePaymentIntent, type PaymentCheckResult } from "./payment-intent-checks.ts";
+import { NON_USD_ALERT_TYPE, raiseNonUsdPaymentAlert, type NonUsdAlertDeps } from "./non-usd-alert.ts";
 
 const FUNCTION_NAME = "create-measurement-order";
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
@@ -188,7 +189,7 @@ async function verifyPayment(
   expectedAmount: number,
   claimId: string | null,
   requestOrigin: string,
-): Promise<{ ok: true; amount: number; stripeChargeId: string | null } | { ok: false; status: number; error: string }> {
+): Promise<PaymentCheckResult> {
   // gh-1536: exact-match, not substring — "app-staging." falsely matched
   // app-staging.otterquote.com, a Netlify DOMAIN ALIAS on the PRODUCTION app
   // site (not staging), which selected Stripe TEST-mode keys against real
@@ -233,7 +234,7 @@ async function verifyUpgradePayment(
   paymentIntentId: string,
   claimId: string,
   requestOrigin: string,
-): Promise<{ ok: true; amount: number; stripeChargeId: string | null } | { ok: false; status: number; error: string }> {
+): Promise<PaymentCheckResult> {
   const isStaging = requestOrigin === "https://jade-alpaca-b82b5e.netlify.app" ||
     requestOrigin === "https://staging--jade-alpaca-b82b5e.netlify.app";
   const stripeSecretKey = isStaging
@@ -361,6 +362,38 @@ async function recordOrderCreated(
   }
 }
 
+/**
+ * gh-2107 (Ben's DECIDED (b) on #2078): the real dependencies for the non-USD admin alert. The row goes to platform_alerts_log; the email
+ * goes through notify-measurement-order (service-role bearer, the existing admin email path) in its `alert` mode.
+ */
+function nonUsdAlertDeps(supabase: any, supabaseUrl: string): NonUsdAlertDeps {
+  return {
+    async alreadyAlerted(paymentIntentId) {
+      const { data, error } = await supabase
+        .from("platform_alerts_log")
+        .select("id")
+        .eq("alert_type", NON_USD_ALERT_TYPE)
+        .ilike("message", `%${paymentIntentId}%`)
+        .limit(1);
+      if (error) throw new Error("lookup failed");
+      return Array.isArray(data) && data.length > 0;
+    },
+    insertAlert: (row) => supabase.from("platform_alerts_log").insert(row),
+    async sendAdminEmail(body) {
+      const res = await fetch(`${supabaseUrl}/functions/v1/notify-measurement-order`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+        },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(`notify-measurement-order returned ${res.status}`);
+    },
+    log: (m) => console.error(m),
+  };
+}
+
 serve(async (req) => {
   const corsHeaders = buildCorsHeaders(req);
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -424,7 +457,12 @@ serve(async (req) => {
       const isFirstBuyer = !priorUpgrade;
 
       const paidUpgrade = await verifyUpgradePayment(paymentIntentId, claimId, req.headers.get("Origin") || "");
-      if (!paidUpgrade.ok) return json({ error: paidUpgrade.error }, paidUpgrade.status, corsHeaders);
+      if (!paidUpgrade.ok) {
+        // gh-2107 (Ben's DECIDED (b) on #2078): a non-USD rejection also alerts the admin. Awaited (an edge function can be stopped once
+        // it responds), contained (never throws), and the response below is unchanged.
+        if (paidUpgrade.nonUsd) await raiseNonUsdPaymentAlert(nonUsdAlertDeps(supabase, supabaseUrl), paidUpgrade.nonUsd, "upgrade");
+        return json({ error: paidUpgrade.error }, paidUpgrade.status, corsHeaders);
+      }
 
       const decision = buildUpgradeOrderInsert(
         paidUpgrade,
@@ -589,7 +627,11 @@ serve(async (req) => {
     if (drift) return json({ error: drift }, 409, corsHeaders);
 
     const paid = await verifyPayment(paymentIntentId, price!, claimId, req.headers.get("Origin") || "");
-    if (!paid.ok) return json({ error: paid.error }, paid.status, corsHeaders);
+    if (!paid.ok) {
+      // gh-2107 (Ben's DECIDED (b) on #2078): as above, for the report purchase.
+      if (paid.nonUsd) await raiseNonUsdPaymentAlert(nonUsdAlertDeps(supabase, supabaseUrl), paid.nonUsd, "report");
+      return json({ error: paid.error }, paid.status, corsHeaders);
+    }
 
     const { data: order, error: insErr } = await supabase
       .from("hover_orders")
