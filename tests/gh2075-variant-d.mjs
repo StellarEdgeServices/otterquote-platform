@@ -397,11 +397,21 @@ function fillAndSubmit(root, inputId, value) {
   const { routerDRoot, bridge, RouterVariantD, trackedEvents } = buildScenario();
   RouterVariantD.init(bridge, routerDRoot);
   findRoleButtons(routerDRoot)[0].dispatchClick(); // Homeowner
-  const names = trackedEvents.map((e) => e.name + ':' + (e.extra.step || e.extra.role || ''));
+  // gh-2096 item 2 added `step` alongside `role` on router_role_selected
+  // (d-role always) -- prefer `.role` here so this label still reads
+  // "router_role_selected:homeowner", not "router_role_selected:d-role";
+  // every other event in this scenario has no `.role` and falls through
+  // to `.step` unchanged.
+  const names = trackedEvents.map((e) => e.name + ':' + (e.extra.role || e.extra.step || ''));
   ok(names[0] === 'router_step_view:d-role', 'event 1 is router_step_view d-role');
   ok(names[1] === 'router_role_selected:homeowner', 'event 2 is router_role_selected role=homeowner');
   ok(names[2] === 'router_step_complete:d-role', 'event 3 is router_step_complete d-role (go() leaving d-role)');
   ok(names[3] === 'router_step_view:d-email', 'event 4 is router_step_view d-email');
+  // gh-2096 item 4/2: step_index on both d-role events, and role_selected
+  // carries the step it was picked on.
+  ok(trackedEvents[0].extra.step_index === 1, 'router_step_view:d-role carries step_index: 1');
+  ok(trackedEvents[1].extra.step === 'd-role' && trackedEvents[1].extra.step_index === 1, 'router_role_selected carries {step:"d-role", step_index:1}');
+  ok(trackedEvents[3].extra.step_index === 2, 'router_step_view:d-email carries step_index: 2');
   const emailInput = flatten(routerDRoot).find((c) => c.id === 'dEmail');
   ok(!!emailInput, 'd-email renders exactly one email input');
   const otherInputs = flatten(routerDRoot).filter((c) => c.tagName === 'INPUT');

@@ -149,3 +149,98 @@ describe('auth-callback page — Google sign_up wiring', () => {
     expect(maybeFireGoogleSignUp as unknown as Fn).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('auth-callback page — gh-1901 Option 2: Google name backfill', () => {
+  let hrefSpy: ReturnType<typeof vi.fn>;
+  let originalLocation: PropertyDescriptor | undefined;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    (maybeFireGoogleSignUp as unknown as Fn).mockResolvedValue(true);
+    hrefSpy = vi.fn();
+    originalLocation = Object.getOwnPropertyDescriptor(window, 'location');
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...window.location, hash: '', search: '', set href(v: string) { hrefSpy(v); } },
+    });
+  });
+
+  afterEach(() => {
+    if (originalLocation) Object.defineProperty(window, 'location', originalLocation);
+    localStorage.clear();
+  });
+
+  function sessionWithGoogleIdentity(userMetadata: Record<string, unknown>) {
+    return {
+      user: {
+        id: 'u1',
+        email: 'jane@example.com',
+        app_metadata: { provider: 'google' },
+        user_metadata: userMetadata,
+      },
+    };
+  }
+
+  async function fireAndWaitForRedirect(session: unknown) {
+    let capturedCallback: ((event: string, session: unknown) => void) | undefined;
+    (supabase.auth.onAuthStateChange as unknown as Fn).mockImplementation((cb) => {
+      capturedCallback = cb;
+      return { data: { subscription: { unsubscribe: vi.fn() } } };
+    });
+    render(<AuthCallbackPage />);
+    await waitFor(() => expect(capturedCallback).toBeDefined());
+    capturedCallback?.('SIGNED_IN', session);
+    await waitFor(() => expect(hrefSpy).toHaveBeenCalled());
+  }
+
+  it('fills blank cs_signup first/last name from given_name/family_name and forwards them to HubSpot', async () => {
+    localStorage.setItem('cs_signup', JSON.stringify({ first_name: '', last_name: '', role: 'homeowner' }));
+
+    await fireAndWaitForRedirect(
+      sessionWithGoogleIdentity({ given_name: 'Jane', family_name: 'Doe' }),
+    );
+
+    const csSignup = JSON.parse(localStorage.getItem('cs_signup') || '{}');
+    expect(csSignup.first_name).toBe('Jane');
+    expect(csSignup.last_name).toBe('Doe');
+
+    expect(supabase.functions.invoke as unknown as Fn).toHaveBeenCalledWith(
+      'create-hubspot-contact',
+      { body: expect.objectContaining({ firstname: 'Jane', lastname: 'Doe' }) },
+    );
+  });
+
+  it('falls back to splitting full_name when given_name/family_name are absent', async () => {
+    localStorage.setItem('cs_signup', JSON.stringify({ first_name: '', last_name: '', role: 'homeowner' }));
+
+    await fireAndWaitForRedirect(sessionWithGoogleIdentity({ full_name: 'Jane Q Doe' }));
+
+    const csSignup = JSON.parse(localStorage.getItem('cs_signup') || '{}');
+    expect(csSignup.first_name).toBe('Jane');
+    expect(csSignup.last_name).toBe('Q Doe');
+  });
+
+  it('never overwrites a name half the visitor already typed', async () => {
+    localStorage.setItem(
+      'cs_signup',
+      JSON.stringify({ first_name: 'Typed', last_name: 'Name', role: 'homeowner' }),
+    );
+
+    await fireAndWaitForRedirect(
+      sessionWithGoogleIdentity({ given_name: 'Jane', family_name: 'Doe' }),
+    );
+
+    const csSignup = JSON.parse(localStorage.getItem('cs_signup') || '{}');
+    expect(csSignup.first_name).toBe('Typed');
+    expect(csSignup.last_name).toBe('Name');
+  });
+
+  it('is a no-op when cs_signup is absent, same as before this change', async () => {
+    // No localStorage.setItem — cs_signup is absent.
+    await fireAndWaitForRedirect(
+      sessionWithGoogleIdentity({ given_name: 'Jane', family_name: 'Doe' }),
+    );
+    expect(localStorage.getItem('cs_signup')).toBeNull();
+  });
+});

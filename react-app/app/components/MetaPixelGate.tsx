@@ -53,13 +53,36 @@ import { isInternalTraffic } from "../lib/internal-traffic";
  * `typeof window.fbq === 'function'` (fbq is only ever defined once a real
  * PIXEL_ID is configured and the host+path check passes) -- see
  * get-started's fireSignupAnalytics for the pattern.
+ *
+ * D-330 (amends D-322 for exactly one path, 2026-09-22, gh-2078 comment
+ * 5780257974; Dustin's ruling comment 5777193662 "Yes to both."): the
+ * measurement-checkout success path (`/help-measurements`, the $15 Hover
+ * purchase -- see that page's handlePaid and its gh-951 resume effect) is
+ * added to ALLOWED_PATHS below despite being an authenticated route, so
+ * `fbqTrack('Purchase', ...)` (lib/track.ts) is a real event instead of the
+ * no-op it was under D-322's authenticated-surface-only scoping. This is a
+ * narrow, reviewed widening of ONE route, not a change to the
+ * fail-closed-by-default posture: every other authenticated route stays
+ * excluded exactly as before (proved by
+ * __tests__/meta-pixel-gate-allowed-paths.test.ts, which enumerates every
+ * real page.tsx route in this app). D-322's own reasoning -- no session
+ * replay / no PageView noise on authenticated surfaces -- still holds for
+ * `/help-measurements`: this component fires PageView unconditionally once
+ * `allowed` is true (see the returned <Script id="meta-pixel-init"> below),
+ * so a homeowner who lands on this route without completing a purchase
+ * still triggers one Meta PageView. That is an accepted, explicit part of
+ * the D-330 widening (not a regression introduced here) -- the alternative,
+ * suppressing PageView while still enabling Purchase on the same path,
+ * would need a second gate dimension this component does not have today
+ * and D-330's text does not ask for one.
  */
 const ALLOWED_HOSTS = ["app.otterquote.com", "otterquote.com", "www.otterquote.com"];
 const PIXEL_ID = "800470107451795";
 
-// REWORK: pre-auth marketing/conversion routes only. `/get-started` is the
-// homeowner sign-up funnel (Lead event fires here, see get-started/page.tsx)
-// and is unauthenticated by design. Every other top-level route under
+// REWORK: pre-auth marketing/conversion routes, PLUS the one D-330
+// authenticated exception below. `/get-started` is the homeowner sign-up
+// funnel (Lead event fires here, see get-started/page.tsx) and is
+// unauthenticated by design. Every other top-level route under
 // react-app/app was checked and excluded: `/` is an unauthenticated D-211
 // scaffold placeholder, not marketing copy, so it is left out rather than
 // assumed safe; `/login` is an unauthenticated auth-utility page (not
@@ -68,12 +91,22 @@ const PIXEL_ID = "800470107451795";
 // `/(homeowner)/*`, `/admin`, `/contractor/*`, `/partner/*` all require
 // auth; `/auth-callback` and `/trade-selector` are mid-flow/post-signup,
 // not marketing. `/docs` and `/test` carry no page.tsx (not real routes).
-const ALLOWED_PATHS = ["/get-started"];
+//
+// D-330 EXCEPTION (gh-2078): `/help-measurements` is authenticated (it
+// lives under the `(homeowner)` route group, gated by HomeownerShell) and
+// is added here ANYWAY, by explicit, reviewed decision -- see the class
+// docstring above. This is the ONLY authenticated route on this list;
+// every other authenticated route enumerated above remains excluded, which
+// __tests__/meta-pixel-gate-allowed-paths.test.ts asserts by walking every
+// real page.tsx this app serves.
+const ALLOWED_PATHS = ["/get-started", "/help-measurements"];
 
-function isAllowedPath(pathname: string | null): boolean {
+export function isAllowedPath(pathname: string | null): boolean {
   if (!pathname) return false;
   return ALLOWED_PATHS.some(p => pathname === p || pathname.startsWith(p + "/"));
 }
+
+export { ALLOWED_PATHS };
 
 export function MetaPixelGate() {
   const pathname = usePathname();

@@ -1305,9 +1305,11 @@ Log in to the admin panel to review and approve this contractor.`;
         // (trade-selector) can stamp claims.referral_id, then clear the
         // advance-scoped keys so this block never re-runs.
         localStorage.setItem('oq_referral_id_for_claim', referralId);
-        // Keep the cookie alive under the claim-scoped name so the claim
-        // writer can still see it after a cross-origin hop.
-        if (window.OtterQuoteReferral) {
+        // gh-2062: only re-arm the cookie's 90-day clock on a successful
+        // advance. A failed RPC call is not a reason to extend the life of
+        // an id we were just told is not advanceable — the cookie keeps
+        // whatever TTL it already had instead of restarting the clock.
+        if (!advanceError && window.OtterQuoteReferral) {
           const kept = window.OtterQuoteReferral.read();
           window.OtterQuoteReferral.write({
             oq_referral_id: referralId,

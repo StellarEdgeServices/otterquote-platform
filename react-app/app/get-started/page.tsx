@@ -91,6 +91,25 @@
  *   reach GA4 — is carried over byte-for-byte; only the two step names
  *   and the one new tracked field name changed. Not re-reviewed as part
  *   of this rebase; flagged for a fresh independent review before merge.
+ *
+ *   [gh-1901 Option 2, 2026-09-22, CEO ruling 5780885632] Option 1 (button
+ *   moved below the form, relabelled "Continue with Google") shipped the
+ *   visual-order fix but left the click itself gated on
+ *   validateAccountProfile() — a visitor with an empty Step 2 still saw an
+ *   error instead of an OAuth redirect, the same shape of trap CRO
+ *   reported, just smaller (2 fields instead of 7). handleGoogle no longer
+ *   calls validateAccountProfile(); Google fires immediately regardless of
+ *   Step 2 fill state. Name is recovered afterward instead of gated on
+ *   upfront: auth-callback/page.tsx's backfillNameFromGoogleIdentity reads
+ *   the OAuth identity's given_name/family_name (or full_name) and patches
+ *   cs_signup's first_name/last_name before HubSpot and trade-selector's
+ *   profile upsert read them, but only when this page left both blank —
+ *   a name a visitor actually typed is never overwritten. Phone and "How
+ *   did you hear about us" were already non-gating on this page (phone is
+ *   optional unless SMS-consent is checked, per validateSmsConsent above;
+ *   the referral chips have never had a required validator) — audited as
+ *   part of this same change, not modified. SMS-consent checkbox and its
+ *   wording: untouched, byte-for-byte (Tier C boundary, not crossed).
  */
 
 'use client';
@@ -1063,20 +1082,24 @@ export default function GetStartedPage() {
   const handleGoogle = async () => {
     setError('');
 
-    // gh-1901: Google button now lives in Step 2, so address is already
-    // guaranteed by the Step 1 → Step 2 transition below; only name remains
-    // to check here.
-    const problem = validateAccountProfile();
-    if (problem) {
-      setError(problem);
-      return;
-    }
+    // gh-1901 (2026-09-22, Option 2 — CEO ruling 5780885632): name is no
+    // longer required before this click fires OAuth. The previous
+    // validateAccountProfile() gate here required first/last name before
+    // Google would fire at all, which was itself a smaller version of the
+    // exact trap CRO reported (comment 5673014838): a button that silently
+    // refuses until other fields are typed. Google's own OAuth response
+    // supplies given_name/family_name (or full_name), and
+    // auth-callback/page.tsx's backfillNameFromGoogleIdentity fills
+    // cs_signup's first_name/last_name from that identity on return when
+    // this page left them blank — "collect what is still needed
+    // afterward," per the issue body, rather than gate on it here. The
+    // password path (handleSubmit) still calls validateAccountProfile(),
+    // since there is no OAuth identity to backfill from on that path.
     // gh-1940 (CEO RUN 47 fix, ceo47-review-pr1948 defect 2) — the
     // `[firstName, lastName, email, password, confirmPassword]` effect
     // above requires a valid email+password, so it never fires for a
-    // visitor who converts through Google (name only). This is the moment
-    // the visitor commits to the Google sign-in — right after the Step 2
-    // name validation it actually needs — so `account` fires here instead,
+    // visitor who converts through Google. This is the moment the visitor
+    // commits to the Google sign-in, so `account` fires here instead,
     // once-guarded on the SAME ref as the password path (whichever path
     // reaches its completion point first wins; the other is a no-op).
     // Deliberately no `method` param: `form_step_complete`'s
@@ -1087,7 +1110,12 @@ export default function GetStartedPage() {
       accountStepFiredRef.current = true;
       track('form_step_complete', { step_name: 'account' });
     }
-    // CEO RUN 43 review F2 — see validateSmsConsent().
+    // CEO RUN 43 review F2 — see validateSmsConsent(). Untouched by this
+    // change: the SMS-consent checkbox's default (unchecked) and wording
+    // are Tier C and are not part of this fix. This call only blocks a
+    // click where the visitor already ticked consent but left phone
+    // blank — not the reported trap, which reproduces on the untouched
+    // default (unchecked) state.
     const smsProblemGoogle = validateSmsConsent();
     if (smsProblemGoogle) {
       setError(smsProblemGoogle);
