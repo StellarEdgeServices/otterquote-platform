@@ -20,17 +20,6 @@
 // no-op when it is absent (tier:3b -- do not deploy until the R-097 window
 // closes; see PR body).
 //
-// gh-2078b / D-330: server-side Meta Conversions API (CAPI) `Purchase` event,
-// sent when a measurement-order ($15 Hover report) PaymentIntent succeeds.
-// Additive and orthogonal to the gh-948 platform-fee handlers below -- scoped
-// by metadata.type, touches no platform_fee code path, isolated so a CAPI
-// failure/timeout can NEVER fail this webhook or block an order. See
-// meta-capi.ts for the payload/decision logic and its own header for the
-// dedupe / test-mode-isolation design. Requires the META_CAPI_ACCESS_TOKEN
-// Supabase secret (Doppler otterquote/prd, #2078 comment 5777717131); a safe
-// no-op when it is absent (tier:3b -- do not deploy until the R-097 window
-// closes; see PR body).
-//
 // D-228 routing logic:
 //   dispute.amount < $500 AND reason != 'product_not_received'
 //     → auto-submit D-215 evidence stack via Stripe Disputes API
@@ -64,15 +53,7 @@ import {
   MEASUREMENT_PURCHASE_VALUE_USD,
   sanitizeCapiVariant,
   shouldSendCapiEvent,
-} from "./meta-capi.ts";
-import {
-  buildCapiEventId,
-  buildCapiPurchasePayload,
-  hashEmailSha256,
-  MEASUREMENT_ORDER_PI_TYPES,
-  MEASUREMENT_PURCHASE_VALUE_USD,
-  sanitizeCapiVariant,
-  shouldSendCapiEvent,
+  shouldSkipForAdSharingOptOut,
 } from "./meta-capi.ts";
 
 // ---------------------------------------------------------------------------
@@ -1103,11 +1084,25 @@ async function handleMeasurementOrderCapiPurchase(
     let hashedEmail: string | null = null;
     if (userId) {
       let rawEmail: string | null = null;
-      const { data: profile } = await supabase
+      const { data: profile, error: profileErr } = await supabase
         .from("profiles")
-        .select("email")
+        .select("email, ad_sharing_opt_out")
         .eq("id", userId)
         .maybeSingle();
+      // gh-2107 / D-330 half 2 (Dustin's ruling "b."): skip the CAPI Purchase for anyone who opted out of advertising
+      // sharing (privacy policy Section 12; recorded by a GPC signal or by an admin from a support email). Decided BEFORE
+      // the email is hashed or anything is built or sent. Fails closed if the profile could not be read. The log line
+      // carries the PaymentIntent id and a fixed reason only: no email, no raw database text.
+      const optOut = shouldSkipForAdSharingOptOut(
+        profile as { ad_sharing_opt_out?: boolean | null } | null,
+        !!profileErr,
+      );
+      if (optOut.skip) {
+        console.log(
+          `[${FN_NAME}] gh-2107: CAPI Purchase skipped for PI ${paymentIntent.id} (${optOut.reason})`,
+        );
+        return;
+      }
       rawEmail = (profile as { email?: string | null } | null)?.email ?? null;
       if (!rawEmail) {
         const { data: authUser } = await supabase.auth.admin.getUserById(userId);

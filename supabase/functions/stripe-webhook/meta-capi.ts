@@ -176,3 +176,27 @@ export const MEASUREMENT_ORDER_PI_TYPES: ReadonlySet<string> = new Set([
   "measurement_order",
   "hover_measurement", // legacy value, still emitted by the older frontend path (create-measurement-order.ts)
 ]);
+
+/**
+ * [gh-2107 / D-330 half 2] The advertising-sharing opt-out (privacy policy Section 12).
+ *
+ * Dustin's ruling "b." (#2078 comment 5801822166): a stored `profiles.ad_sharing_opt_out` flag, set by a browser's Global
+ * Privacy Control signal or by an admin recording a support email, and "the CAPI Purchase send skips any opted-out person".
+ *
+ * Only the boolean `true` opts a person out (NULL = never recorded; false = cleared). FAIL CLOSED on a failed lookup: if the
+ * profile could not be read, whether this person opted out is unknown, and sending to an opted-out person is the harm this
+ * exists to prevent, whereas a skipped Purchase is a lost signal that a later, healthy read does not repeat. A missing row
+ * with no error means there is no record of any opt-out and is not skipped.
+ */
+export interface AdSharingProfile {
+  ad_sharing_opt_out?: boolean | null;
+}
+
+export function shouldSkipForAdSharingOptOut(
+  profile: AdSharingProfile | null,
+  lookupFailed: boolean,
+): { skip: boolean; reason: "lookup_failed" | "opted_out" | null } {
+  if (lookupFailed) return { skip: true, reason: "lookup_failed" };
+  if (profile?.ad_sharing_opt_out === true) return { skip: true, reason: "opted_out" };
+  return { skip: false, reason: null };
+}
