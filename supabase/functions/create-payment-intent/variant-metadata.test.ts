@@ -87,19 +87,15 @@ const stdStart = index.indexOf("// ===== Standard flow (hover_measurement, deduc
 const stdEnd = index.indexOf("// gh-948: 'processing' (ACH in flight)", stdStart);
 const standard = index.slice(stdStart, stdEnd);
 
-Deno.test("B1: the standard-flow create form is EXACTLY main's parameter set: no variant, nothing that varies per request", () => {
+Deno.test("B1: the standard-flow create is built by the pure builder (whose parameter set standard-create-form.test.ts pins to main's), with no variant and no inline form", () => {
   assert(stdStart > 0 && stdEnd > stdStart);
-  const createForm = standard.slice(0, standard.indexOf("const idempotencyKey"));
-  const keys = [...createForm.matchAll(/form\.append\(\s*"([^"]+)"/g)].map((m) => m[1]);
-  assertEquals(keys, [
-    "amount", "currency", "description", "metadata[claim_id]", "metadata[type]",
-    "metadata[contractor_id]", "metadata[vendor_credit_expected_cents]", "automatic_payment_methods[enabled]",
-  ], "the create form's parameters are exactly what main sends");
-  assert(!createForm.includes("metadata[variant]"), "metadata[variant] is not in the keyed create");
+  assert(standard.includes("buildStandardCreateForm({ amount, currency, description, metadata, contractor_id })"));
+  assert(!standard.includes("form.append("), "no inline form parameters remain in the standard flow");
+  assert(!standard.includes("metadata[variant]"), "metadata[variant] is not in the keyed create");
 });
 
 Deno.test("B1: the create's idempotency key is still one key per claim and type", () => {
-  assert(standard.includes("const idempotencyKey = `${metadata.type}-${metadata.claim_id}`;"));
+  assert(standard.includes("const idempotencyKey = standardIdempotencyKey(metadata);"));
 });
 
 Deno.test("B1: the variant is attached AFTER the create returns, only for hover_measurement, via attachVariantMetadata", () => {

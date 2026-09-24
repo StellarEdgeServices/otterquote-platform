@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { track, fireSignUpAndWait, fbqTrack, buildMeasurementPurchaseEventId } from '../track';
 
 describe('track()', () => {
@@ -337,28 +339,25 @@ describe('fbqTrack() (gh-2078)', () => {
 });
 
 describe('buildMeasurementPurchaseEventId() (gh-2078c / D-330 dedup reconciliation)', () => {
-  it('is measurement_purchase:<paymentIntentId>', () => {
-    expect(buildMeasurementPurchaseEventId('pi_abc123')).toBe('measurement_purchase:pi_abc123');
+  // gh-2078c REVIEW: FAIL 5805870455 (F1): this test used to compare against a COPY of the server's template literal, so
+  // editing either side left CI green while Meta silently stopped deduplicating (every purchase counted twice). Both
+  // runtimes are now pinned to ONE file, supabase/functions/_shared/capi-event-id.contract.json: this test is the client's
+  // half, supabase/functions/_shared/capi-event-id-contract.test.ts is the server's half (buildCapiEventId in
+  // stripe-webhook/meta-capi.ts, PR #2107). Neither runtime can import the other's module, so the shared FILE is the source.
+  // Vitest runs with react-app as the working directory (jsdom, so import.meta.url is not a file URL); the repo root is one up.
+  const contract = JSON.parse(
+    readFileSync(resolve(process.cwd(), '..', 'supabase', 'functions', '_shared', 'capi-event-id.contract.json'), 'utf8'),
+  ) as { prefix: string; examples: { paymentIntentId: string; eventId: string }[] };
+
+  it('the contract file was found and is well formed', () => {
+    expect(contract.prefix.length).toBeGreaterThan(0);
+    expect(contract.examples.length).toBeGreaterThanOrEqual(2);
   });
 
-  // Pins the exact equivalence the Q: on #2078 (comment 5780969290) exists to
-  // close: PR #2107's server-side `buildCapiEventId` in
-  // supabase/functions/stripe-webhook/meta-capi.ts computes
-  //   `measurement_purchase:${paymentIntentId}`
-  // independently, with no coordination at request time. Meta dedupes a
-  // client pixel event against a server CAPI event ONLY when both carry the
-  // identical event_id — a value that "almost" matches does not dedupe at
-  // all, so this test asserts the two derivations produce the SAME string
-  // for the same paymentIntentId, not merely that each looks reasonable on
-  // its own.
-  it('matches meta-capi.ts\'s buildCapiEventId derivation for the same paymentIntentId', () => {
-    const paymentIntentId = 'pi_3QzReconcile2078c';
-    const clientEventId = buildMeasurementPurchaseEventId(paymentIntentId);
-    // Literal copy of supabase/functions/stripe-webhook/meta-capi.ts's
-    // buildCapiEventId body (Deno module — not importable from this Vitest
-    // suite) — kept in sync deliberately, not by import, so drift shows up
-    // as a failing assertion rather than a silent divergence.
-    const serverEventId = `measurement_purchase:${paymentIntentId}`;
-    expect(clientEventId).toBe(serverEventId);
+  it('derives the contract event_id (prefix + paymentIntentId) for every example in the shared file', () => {
+    for (const e of contract.examples) {
+      expect(buildMeasurementPurchaseEventId(e.paymentIntentId)).toBe(e.eventId);
+      expect(buildMeasurementPurchaseEventId(e.paymentIntentId)).toBe(contract.prefix + e.paymentIntentId);
+    }
   });
 });

@@ -32,11 +32,20 @@ export interface AttachArgs {
   /** Base64 of `<secret key>:` for HTTP Basic auth. */
   basicAuth: string;
   paymentIntentId: string;
-  /** The status the create returned; a finished PaymentIntent is left alone. */
+  /**
+   * The status the create returned; a finished PaymentIntent is left alone. This is a best-effort optimisation, NOT a
+   * guarantee: on a Stripe idempotent replay the create returns the FIRST response, so this can be a stale
+   * `requires_payment_method` for a PaymentIntent that has since succeeded or been canceled. That is harmless (Stripe accepts
+   * a metadata update on a succeeded PaymentIntent, and a canceled one answers a 4xx that is swallowed below).
+   */
   status: string;
   variant: unknown;
+  /** Upper bound on the update, in ms (default 4000). A stalled Stripe must never hold the buyer's client_secret. */
+  timeoutMs?: number;
   log?: (message: string) => void;
 }
+
+export const ATTACH_TIMEOUT_MS = 4000;
 
 export async function attachVariantMetadata(a: AttachArgs): Promise<AttachOutcome> {
   const log = a.log ?? ((m: string) => console.error(m));
@@ -48,6 +57,8 @@ export async function attachVariantMetadata(a: AttachArgs): Promise<AttachOutcom
       method: "POST",
       headers: { Authorization: `Basic ${a.basicAuth}`, "Content-Type": "application/x-www-form-urlencoded" },
       body: body.toString(),
+      // Best-effort means bounded: the buyer's client_secret is returned only after this settles.
+      signal: AbortSignal.timeout(a.timeoutMs ?? ATTACH_TIMEOUT_MS),
     });
     if (!res.ok) {
       log(`[create-payment-intent] gh-2078c: attaching the variant to the PaymentIntent failed (HTTP ${res.status}); payment unaffected`);
@@ -55,8 +66,8 @@ export async function attachVariantMetadata(a: AttachArgs): Promise<AttachOutcom
     }
     return "attached";
   } catch {
-    // Never forward the thrown error: its text can carry the request URL.
-    log("[create-payment-intent] gh-2078c: attaching the variant to the PaymentIntent threw; payment unaffected");
+    // Never forward the thrown error: its text can carry the request URL. A timeout lands here too.
+    log("[create-payment-intent] gh-2078c: attaching the variant to the PaymentIntent threw or timed out; payment unaffected");
     return "failed";
   }
 }

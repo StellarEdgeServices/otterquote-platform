@@ -34,11 +34,8 @@ import {
 } from "./live-charge-guard.ts";
 import { PlatformSettingMissingError, resolveRequiredPriceCents } from "./price-setting.ts";
 import { attachVariantMetadata } from "./variant-metadata.ts";
-import {
-  evaluateMeasurementUpgradeGate,
-  UPGRADE_CHARGE_DESCRIPTION,
-  VENDOR_CREDIT_EXPECTED_CENTS,
-} from "./measurement-upgrade-gate.ts";
+import { buildStandardCreateForm, standardIdempotencyKey } from "./standard-create-form.ts";
+import { evaluateMeasurementUpgradeGate } from "./measurement-upgrade-gate.ts";
 
 const FUNCTION_NAME = "create-payment-intent";
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
@@ -635,27 +632,11 @@ serve(async (req) => {
       }
     } else {
       // ===== Standard flow (hover_measurement, deductible_escrow, measurement_upgrade) =====
-      const form = new URLSearchParams();
-      form.append("amount", String(amount));
-      form.append("currency", currency);
-      // measurement_upgrade: description is server-enforced, never the
-      // client-sent value — D-312/#1414 scrubbed vendor names from every
-      // customer-facing string and this must never regress that.
-      const chargeDescription = metadata.type === "measurement_upgrade"
-        ? UPGRADE_CHARGE_DESCRIPTION
-        : (description || "");
-      form.append("description", chargeDescription);
-      form.append("metadata[claim_id]", metadata.claim_id);
-      form.append("metadata[type]", metadata.type);
-      if (metadata.type === "measurement_upgrade") {
-        form.append("metadata[contractor_id]", contractor_id);
-        // Bookkeeping only (Marty, #1411 cto-2026-09-02T13:45:25Z: "does not
-        // net it against the charge") — the contractor is still charged the
-        // full tier amount above.
-        form.append("metadata[vendor_credit_expected_cents]", String(VENDOR_CREDIT_EXPECTED_CENTS));
-      }
-      form.append("automatic_payment_methods[enabled]", "true");
-      const idempotencyKey = `${metadata.type}-${metadata.claim_id}`;
+      // The create body and its idempotency key are functions of the claim and the request type ONLY (see
+      // standard-create-form.ts): Stripe refuses a reused key with a different body, so nothing per-request may ever be in
+      // this create. The router variant is attached AFTER it, below.
+      const form = buildStandardCreateForm({ amount, currency, description, metadata, contractor_id });
+      const idempotencyKey = standardIdempotencyKey(metadata);
       const r = await fetch(`${STRIPE_API_BASE}/payment_intents`, {
         method: "POST",
         headers: {
