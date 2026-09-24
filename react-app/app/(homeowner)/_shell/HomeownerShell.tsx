@@ -97,7 +97,8 @@ export function HomeownerShell({ active, children }: HomeownerShellProps) {
     <>
       <style>{STYLES}</style>
       <HomeownerNav active={active} userId={user.id} onSignOut={signOut} />
-      <main className="oqh-main">{children}</main>
+      {/* gh-1939: the ruled Clarity routes (/dashboard, /bids, /repair-intake) all render here, so the mask lives here: page content is masked in any replay. */}
+      <main className="oqh-main" data-clarity-mask="true">{children}</main>
       <footer className="oqh-footer">© {new Date().getFullYear()} Otter Quotes</footer>
     </>
   );
@@ -116,7 +117,7 @@ function HomeownerNav({
   const badge = count > 99 ? '99+' : String(count);
 
   return (
-    <header className="oqh-nav">
+    <header className="oqh-nav" data-clarity-mask="true">
       <a className="oqh-brand" href="/dashboard">Otter Quotes</a>
 
       <nav className="oqh-links" aria-label="Homeowner navigation">
