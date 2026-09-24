@@ -1609,6 +1609,52 @@ Let me know if you have any questions!
             partnerBadgeEl.onclick = null;
             partnerBadgeEl.onkeydown = null;
 
+            // D-333 provision 7: home_inspector partners receive no referral
+            // fee and no recruit bonus. Unlike the marketing pages, this page
+            // knows agent_type at runtime (partnerType, above), so the fee
+            // copy can be swapped out exactly rather than left to a fail-safe
+            // default. Exposed on window so the separate "Partner App v1"
+            // share/SMS/email script (a different <script> block, no access
+            // to this closure's `partnerType`) can read it too.
+            window.currentPartnerAgentType = partnerType;
+            if (partnerType === 'home_inspector') {
+                var NO_FEE_TEXT = 'Home-inspector partners do not receive a referral fee or recruit bonus.';
+                var referClientSub = document.querySelector('[data-target="refer-client"] .task-tile-subtitle');
+                if (referClientSub) referClientSub.textContent = NO_FEE_TEXT;
+                var referPartnerSub = document.querySelector('[data-target="refer-partner"] .task-tile-subtitle');
+                if (referPartnerSub) referPartnerSub.textContent = NO_FEE_TEXT;
+                // Round-3 fix (ceo67, REVIEW #issuecomment-5818745365 must-fix 1):
+                // the old selector matched the FIRST .link-hint in the recruit
+                // section, which is the .destination-hint at :1002 ("Opens a
+                // page where..."), not the fee-promise hint below it. Exclude
+                // .destination-hint so this targets only the fee-promise hint.
+                var recruitHint = document.querySelector('.recruit-link-section .link-hint:not(.referral-fee-disclaimer):not(.destination-hint)');
+                if (recruitHint) recruitHint.textContent = NO_FEE_TEXT;
+                var referralFeeTh = Array.from(document.querySelectorAll('th')).find(function (el) { return el.textContent.trim() === 'Referral Fee'; });
+                if (referralFeeTh) referralFeeTh.textContent = 'No Fee';
+                var earningsTh = Array.from(document.querySelectorAll('th[title]')).find(function (el) { return /Your Earnings/.test(el.textContent); });
+                if (earningsTh) earningsTh.setAttribute('title', NO_FEE_TEXT);
+                // Round-3 fix (must-fix 2): the old selector grabbed the FIRST
+                // .empty-state-text on the page (the no-partner-record message
+                // at :893), so the guard never matched and the recruit
+                // section's own empty state (#recruitsEmptyState, :1225) was
+                // never rewritten. Scope the query to that section.
+                var emptyStateText = document.querySelector('#recruitsEmptyState .empty-state-text');
+                if (emptyStateText && /recruit bonus/i.test(emptyStateText.textContent)) {
+                    emptyStateText.textContent = "You haven't recruited any partners yet. Share your recruit link with other professionals.";
+                }
+                // Ben's ruling (CEO RUN 67, ceo-2026-09-24T14:52:16Z): hide
+                // earnings/recruit-bonus copy for inspectors rather than
+                // inventing new wording, since they receive no fee.
+                var getPaidTile = document.querySelector('[data-target="get-paid"]');
+                if (getPaidTile) getPaidTile.style.display = 'none';
+                var totalEarnedCard = document.getElementById('totalEarned');
+                if (totalEarnedCard && totalEarnedCard.closest('.stat-card')) totalEarnedCard.closest('.stat-card').style.display = 'none';
+                var recruitEarningsCard = document.getElementById('recruitEarnings');
+                if (recruitEarningsCard && recruitEarningsCard.closest('.stat-card')) recruitEarningsCard.closest('.stat-card').style.display = 'none';
+                if (earningsTh) earningsTh.style.display = 'none';
+            }
+
             // Update referral link (schema column: unique_code)
             const uniqueCode = currentPartner.unique_code || currentPartner.id;
             const referralLink = `https://otterquote.com/ref.html?code=${uniqueCode}`;
@@ -2021,10 +2067,18 @@ Let me know if you have any questions!
                         <td>${type}</td>
                         <td>${signedUp}</td>
                         <td>${theirReferrals}</td>
-                        <td>$${yourEarnings.toLocaleString('en-US')}</td>
+                        <td class="earnings-cell">$${yourEarnings.toLocaleString('en-US')}</td>
                     </tr>
                 `;
             }).join('');
+
+            // Ben's ruling (CEO RUN 67, ceo-2026-09-24T14:52:16Z), round-3
+            // fix: the Your Earnings <th> was hidden in updateUI() but its
+            // per-row <td> cells were not, leaving inspectors an unlabeled
+            // "$0" column. Hide the cells too, each time the table renders.
+            if (window.currentPartnerAgentType === 'home_inspector') {
+                document.querySelectorAll('#recruitsTableBody .earnings-cell').forEach(function (td) { td.style.display = 'none'; });
+            }
         }
 
         function formatRelativeDate(dateStr) {
@@ -2128,7 +2182,9 @@ Let me know if you have any questions!
                 referralLink,
                 nextdoorPost: nextdoorMsg,
                 badgeHtml,
-                smsText: `Hi! I'm a partner with Otter Quotes — I earn a referral fee when I connect people with them for home projects. If you know anyone who needs contractor bids, here's my link: ${referralLink}`,
+                smsText: (window.currentPartnerAgentType === 'home_inspector')
+                    ? `Hi! I'm a partner with Otter Quotes. If you know anyone who needs contractor bids, here's my link: ${referralLink}`
+                    : `Hi! I'm a partner with Otter Quotes — I earn a referral fee when I connect people with them for home projects. If you know anyone who needs contractor bids, here's my link: ${referralLink}`,
                 emailSubject: 'A referral program worth a look — Otter Quotes',
                 emailBody: `Hi,\n\nI wanted to share something I've been using: Otter Quotes. It's a free service that gets homeowners competing bids from contractors.\n\nIf you or anyone you know needs work done, here's my personal link:\n${referralLink}\n\nHappy to answer any questions.`
             };
@@ -2482,6 +2538,13 @@ Let me know if you have any questions!`;
                     return 'Hi! I recommend Otter Quotes — a quick, free way to get competing bids from contractors. Check it out: ' + link;
                 },
                 recruit: function (link) {
+                    // D-333 provision 7: home_inspector partners receive no
+                    // referral fee/recruit bonus, so this message must not
+                    // promise one. window.currentPartnerAgentType is set by
+                    // updateUI() in the script block above.
+                    if (window.currentPartnerAgentType === 'home_inspector') {
+                        return 'I wanted to recommend using Otter Quotes when your friends and clients need a contractor for roofing, siding, gutters or windows. Otter Quotes helps homeowners get measurements, develop a scope of work, pick out materials and submit their job to multiple contractors. They get competitive bids without sitting through multiple sales calls, and better prices and better materials. Use my link below to sign up: ' + link;
+                    }
                     return 'I wanted to recommend using Otter Quotes when your friends and clients need a contractor for roofing, siding, gutters or windows. Otter Quotes helps homeowners get measurements, develop a scope of work, pick out materials and submit their job to multiple contractors. They get competitive bids without sitting through multiple sales calls. They get better prices and better materials and you get $200 every time a homeowner you refer completes a project of $10,000 or more. I get $50 every time you get $200, so I hope you\'ll consider using this. Use my link below to sign up: ' + link;
                 }
             };
@@ -2523,10 +2586,14 @@ Let me know if you have any questions!`;
                 recruit: {
                     subject: 'A referral program worth a look — Otter Quotes',
                     body: function (link) {
+                        // D-333 provision 7: no fee/bonus promise for home_inspector.
+                        var feeParagraph = window.currentPartnerAgentType === 'home_inspector'
+                            ? ''
+                            : 'You get $200 every time a homeowner you refer completes a project of $10,000 or more. I get $50 every time you get $200, so I hope you\'ll consider using this.\r\n\r\n';
                         return 'Hi,\r\n\r\n' +
                             'I\'ve been referring clients to Otter Quotes, and I thought it was worth passing along.\r\n\r\n' +
                             'When a homeowner needs roofing, siding, gutters or windows, Otter Quotes walks them through getting measurements, building a scope of work and picking materials, then submits the job to multiple contractors for bid. They get competitive bids without sitting through multiple sales calls, and better prices and better materials.\r\n\r\n' +
-                            'You get $200 every time a homeowner you refer completes a project of $10,000 or more. I get $50 every time you get $200, so I hope you\'ll consider using this.\r\n\r\n' +
+                            feeParagraph +
                             'Here\'s my personal link to join — it\'s free and takes about a minute:\r\n' + link + '\r\n\r\n' +
                             'Happy to share how it\'s been working for me.\r\n\r\n';
                     }
@@ -2739,7 +2806,9 @@ Let me know if you have any questions!`;
                 var link = msgs ? msgs.referralLink : linkFrom('referralLink');
                 if (!link) { toast('Your link is still loading — try again in a moment.'); return; }
                 gaEvent('partner_share_click', { link_type: 'facebook_partner' });
-                var quote = "I'm an Otter Quotes partner and earn when I refer great contractors. Check them out:";
+                var quote = (window.currentPartnerAgentType === 'home_inspector')
+                    ? "I'm an Otter Quotes partner. Check them out:"
+                    : "I'm an Otter Quotes partner and earn when I refer great contractors. Check them out:";
                 window.open('https://www.facebook.com/sharer/sharer.php?u=' + encodeURIComponent(link) + '&quote=' + encodeURIComponent(quote), 'facebook-share', 'width=600,height=400');
             });
             bind('fbDownloadBtn', function () {
