@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { track, fireSignUpAndWait, fbqTrack } from '../track';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { track, fireSignUpAndWait, fbqTrack, buildMeasurementPurchaseEventId } from '../track';
 
 describe('track()', () => {
   let gtagSpy: ReturnType<typeof vi.fn>;
@@ -309,5 +311,53 @@ describe('fbqTrack() (gh-2078)', () => {
       throw new Error('boom');
     };
     expect(() => fbqTrack('Purchase', { value: 15 })).not.toThrow();
+  });
+
+  // gh-2078c / D-330 reconciliation (Q: on #2078, comment 5780969290): a
+  // third `eventId` argument is forwarded to fbq as its 4th call argument
+  // so Meta can dedup this client pixel event against the server-side CAPI
+  // event (PR #2107) computed for the SAME paymentIntent id.
+  it('forwards a 4th {eventID} argument to fbq when eventId is passed', () => {
+    const fbqSpy = vi.fn();
+    (window as unknown as { fbq: unknown }).fbq = fbqSpy;
+    fbqTrack('Purchase', { value: 15, currency: 'USD', variant: 'e' }, 'measurement_purchase:pi_abc123');
+    expect(fbqSpy).toHaveBeenCalledWith(
+      'track',
+      'Purchase',
+      { value: 15, currency: 'USD', variant: 'e' },
+      { eventID: 'measurement_purchase:pi_abc123' },
+    );
+  });
+
+  it('does not add a 4th argument when eventId is omitted (pre-existing call sites unchanged)', () => {
+    const fbqSpy = vi.fn();
+    (window as unknown as { fbq: unknown }).fbq = fbqSpy;
+    fbqTrack('Purchase', { value: 15, currency: 'USD', variant: 'e' });
+    expect(fbqSpy).toHaveBeenCalledWith('track', 'Purchase', { value: 15, currency: 'USD', variant: 'e' });
+    expect(fbqSpy.mock.calls[0]).toHaveLength(3);
+  });
+});
+
+describe('buildMeasurementPurchaseEventId() (gh-2078c / D-330 dedup reconciliation)', () => {
+  // gh-2078c REVIEW: FAIL 5805870455 (F1): this test used to compare against a COPY of the server's template literal, so
+  // editing either side left CI green while Meta silently stopped deduplicating (every purchase counted twice). Both
+  // runtimes are now pinned to ONE file, supabase/functions/_shared/capi-event-id.contract.json: this test is the client's
+  // half, supabase/functions/_shared/capi-event-id-contract.test.ts is the server's half (buildCapiEventId in
+  // stripe-webhook/meta-capi.ts, PR #2107). Neither runtime can import the other's module, so the shared FILE is the source.
+  // Vitest runs with react-app as the working directory (jsdom, so import.meta.url is not a file URL); the repo root is one up.
+  const contract = JSON.parse(
+    readFileSync(resolve(process.cwd(), '..', 'supabase', 'functions', '_shared', 'capi-event-id.contract.json'), 'utf8'),
+  ) as { prefix: string; examples: { paymentIntentId: string; eventId: string }[] };
+
+  it('the contract file was found and is well formed', () => {
+    expect(contract.prefix.length).toBeGreaterThan(0);
+    expect(contract.examples.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('derives the contract event_id (prefix + paymentIntentId) for every example in the shared file', () => {
+    for (const e of contract.examples) {
+      expect(buildMeasurementPurchaseEventId(e.paymentIntentId)).toBe(e.eventId);
+      expect(buildMeasurementPurchaseEventId(e.paymentIntentId)).toBe(contract.prefix + e.paymentIntentId);
+    }
   });
 });

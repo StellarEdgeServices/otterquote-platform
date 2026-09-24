@@ -155,11 +155,18 @@ export function useHelpMeasurementsData(
  * Calls create-payment-intent via Services with its contract UNCHANGED. Returns the
  * PaymentIntentResult ({ client_secret }); the page mounts the card form only when a
  * client_secret comes back (static purchaseHover 885-907).
+ *
+ * gh-2078c / D-330 reconciliation: `variant` (the caller's persisted router
+ * arm, `lib/variant.ts`'s `getVariant()`) is an optional pass-through onto
+ * the PaymentIntent metadata — see `buildHoverPaymentIntentParams`'s own
+ * header for why it is threaded as a parameter rather than read in this
+ * data layer directly.
  */
 export function requestHoverPaymentIntent(
   claim: MeasurementsClaim,
+  variant?: string,
 ): Promise<PaymentIntentResult> {
-  return createHoverPaymentIntent(buildHoverPaymentIntentParams(claim));
+  return createHoverPaymentIntent(buildHoverPaymentIntentParams(claim, variant));
 }
 
 /**
