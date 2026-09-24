@@ -91,6 +91,8 @@
  *     caller-supplied object's keys unfiltered.
  */
 
+import { isAdSharingOptedOut } from './ad-optout';
+
 type PhotoTier = 'main' | 'tier1' | 'tier2' | 'tier3' | 'tier4';
 type HelpTool = 'help_estimate' | 'help_materials' | 'help_measurements';
 type HelpMethod = 'hover_payment' | 'email_request';
@@ -344,6 +346,9 @@ export function fbqTrack(eventName: string, params?: Record<string, unknown>, ev
     if (typeof window === 'undefined') return;
     const w = window as unknown as { fbq?: (...args: unknown[]) => void };
     if (typeof w.fbq !== 'function') return;
+    // gh-2107 (REVIEW N1 on #2134): re-check the advertising-sharing opt-out on EVERY event. The pixel's `allowed` state can outlive a
+    // client-side navigation, and a stored opt-out may only be read after fbevents.js is already loaded (GPC or the cookie it leaves).
+    if (isAdSharingOptedOut()) return;
     if (eventId) w.fbq('track', eventName, params ?? {}, { eventID: eventId });
     else if (params) w.fbq('track', eventName, params);
     else w.fbq('track', eventName);

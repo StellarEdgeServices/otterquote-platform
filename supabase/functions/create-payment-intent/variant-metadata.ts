@@ -40,6 +40,13 @@ export interface AttachArgs {
    */
   status: string;
   variant: unknown;
+  /**
+   * gh-2107 (REVIEW: FAIL 5806828503 F2 on #2134): true when THIS request carried a Global Privacy Control signal. It is written to
+   * the PaymentIntent as metadata[ad_sharing_opt_out]=1 so the Stripe webhook can skip the Meta CAPI Purchase even if the profile
+   * write failed. It rides on the same non-keyed, best-effort update as the variant, never on the keyed create (Stripe refuses a
+   * reused idempotency key whose body differs), and only the boolean true sets it.
+   */
+  optOut?: boolean;
   /** Upper bound on the update, in ms (default 4000). A stalled Stripe must never hold the buyer's client_secret. */
   timeoutMs?: number;
   log?: (message: string) => void;
@@ -53,6 +60,7 @@ export async function attachVariantMetadata(a: AttachArgs): Promise<AttachOutcom
   try {
     const body = new URLSearchParams();
     body.append("metadata[variant]", sanitizeVariantForMetadata(a.variant));
+    if (a.optOut === true) body.append("metadata[ad_sharing_opt_out]", "1");
     const res = await a.fetchFn(`${a.apiBase}/payment_intents/${a.paymentIntentId}`, {
       method: "POST",
       headers: { Authorization: `Basic ${a.basicAuth}`, "Content-Type": "application/x-www-form-urlencoded" },

@@ -3,7 +3,7 @@
 // case." Also pins the TS2300 fix: PR #2107 committed its import block and header comment TWICE, which does not compile,
 // while every check stayed green (CI never type-checks this file), so a structural test now guards it.
 import { assert, assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
-import { shouldSkipForAdSharingOptOut } from "./meta-capi.ts";
+import { shouldSkipForAdSharingOptOut, shouldSkipForGpcMetadata } from "./meta-capi.ts";
 
 // -- the decision -------------------------------------------------------------
 Deno.test("opt-out: a profile with ad_sharing_opt_out === true is skipped, reason opted_out", () => {
@@ -85,4 +85,29 @@ Deno.test("index.ts: every meta-capi import specifier and the CAPI header commen
     assertEquals(importBlock.split(name).length - 1, 1, `${name} imported exactly once`);
   }
   assertEquals(index.split("gh-2078b / D-330: server-side Meta Conversions API (CAPI) `Purchase` event,").length - 1, 1, "header comment not duplicated");
+});
+
+// -- REVIEW: FAIL 5806828503 F2 on #2134: the GPC signal also rides on the PaymentIntent -----------------------------------------
+Deno.test("F2: a PaymentIntent whose metadata carries ad_sharing_opt_out=1 is skipped, reason gpc_signal, even when the profile flag was never written", () => {
+  assertEquals(shouldSkipForGpcMetadata({ ad_sharing_opt_out: "1", type: "hover_measurement" }), { skip: true, reason: "gpc_signal" });
+});
+
+Deno.test("F2: absent metadata, a missing key, or any other value is NOT a signal (only the exact string 1)", () => {
+  for (const m of [undefined, null, {}, { type: "hover_measurement" }, { ad_sharing_opt_out: "0" }, { ad_sharing_opt_out: "true" }, { ad_sharing_opt_out: "" }, { ad_sharing_opt_out: "11" }]) {
+    assertEquals(shouldSkipForGpcMetadata(m as Record<string, string> | undefined), { skip: false, reason: null }, JSON.stringify(m));
+  }
+});
+
+Deno.test("F2: the webhook checks the PaymentIntent's own signal FIRST (before any lookup, the profile read, the hash or a send), with a fixed log", () => {
+  const gpcAt = handler.indexOf("shouldSkipForGpcMetadata(");
+  assert(gpcAt > 0, "the handler calls shouldSkipForGpcMetadata");
+  assertEquals(handler.split("shouldSkipForGpcMetadata(").length - 1, 1);
+  for (const later of ['.from("claims")', '.from("profiles")', "hashEmailSha256(", "graph.facebook.com"]) {
+    assert(handler.indexOf(later) > gpcAt, `${later} comes after the metadata signal check`);
+  }
+  const after = handler.slice(gpcAt, gpcAt + 600);
+  const branch = after.slice(0, after.indexOf("return;") + 7);
+  assert(/if \(gpcMeta\.skip\)/.test(branch) && branch.includes("return;"), "returns when skipping");
+  const logStmt = branch.slice(branch.indexOf("console.log("), branch.indexOf("return;"));
+  assert(logStmt.includes("paymentIntent.id") && logStmt.includes("gpcMeta.reason") && !/email|metadata|\.message/i.test(logStmt), logStmt);
 });

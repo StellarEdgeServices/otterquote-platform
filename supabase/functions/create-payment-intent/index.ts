@@ -36,6 +36,7 @@ import { PlatformSettingMissingError, resolveRequiredPriceCents } from "./price-
 import { attachVariantMetadata } from "./variant-metadata.ts";
 import { buildStandardCreateForm, standardIdempotencyKey } from "./standard-create-form.ts";
 import { evaluateMeasurementUpgradeGate } from "./measurement-upgrade-gate.ts";
+import { detectGpcSignal, type OptOutStore, recordGpcOptOut } from "./ad-sharing-opt-out.ts";
 
 const FUNCTION_NAME = "create-payment-intent";
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
@@ -107,7 +108,27 @@ serve(async (req) => {
   }
 
   try {
-    const { amount: clientAmount, currency, description, metadata, contractor_id, off_session } = await req.json();
+    const requestBody = await req.json();
+    const { amount: clientAmount, currency, description, metadata, contractor_id, off_session } = requestBody;
+
+    // gh-2107 / D-330 half 2: honour a Global Privacy Control advertising-sharing opt-out (Sec-GPC: 1 on the request, or
+    // gpc: true from the page's navigator.globalPrivacyControl) by flagging the caller's profile BEFORE any Purchase exists;
+    // the Stripe webhook then skips the Meta CAPI send. Sets the flag only, never clears it; never blocks or fails the payment.
+    const gpcStore: OptOutStore = {
+      markOptedOut: async (userId, source, atIso) => {
+        const { error } = await supabase
+          .from("profiles")
+          .update({ ad_sharing_opt_out: true, ad_sharing_opt_out_at: atIso, ad_sharing_opt_out_source: source })
+          .eq("id", userId)
+          .or("ad_sharing_opt_out.is.null,ad_sharing_opt_out.eq.false");
+        return error ? { code: (error as { code?: string }).code } : null;
+      },
+    };
+    await recordGpcOptOut({ callerId, piType: metadata?.type, headers: req.headers, body: requestBody, store: gpcStore });
+    // gh-2107 (REVIEW: FAIL 5806828503 F2 on #2134): the signal is ALSO carried on the PaymentIntent (below, via the non-keyed
+    // post-create update), derived from the REQUEST ALONE and not from whether the profile write succeeded, so a failed write
+    // does not fail toward sharing: the Stripe webhook skips the CAPI Purchase on either the profile flag or this metadata.
+    const gpcSignalPresent = detectGpcSignal(req.headers, requestBody) !== null;
 
     // D-181: server-side price enforcement for hover_measurement.
     let amount: number = clientAmount;
@@ -665,6 +686,7 @@ serve(async (req) => {
           paymentIntentId: paymentIntentData.id,
           status: paymentIntentData.status,
           variant: metadata.variant,
+          optOut: gpcSignalPresent,
         });
       }
     }

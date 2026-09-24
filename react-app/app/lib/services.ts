@@ -17,6 +17,7 @@
  */
 
 import { supabase } from '@/lib/supabase';
+import { gpcField } from '@/lib/gpc';
 
 // gh-1135: INGEST_EMAIL_DOMAIN removed — claims.otterquote.com was NXDOMAIN
 // with zero inbound routes, so every generated docs-*@claims.otterquote.com
@@ -373,6 +374,7 @@ async function createHoverPaymentIntent(
           // when no router arm was ever captured for this visitor.
           variant: variant || 'unknown',
         },
+        ...gpcField(), // gh-2107: Global Privacy Control opt-out, recorded server-side; absent for everyone else
       },
     });
 
