@@ -60,9 +60,9 @@ function makeLocalStorage() {
     'partner-app.html isStandalone()/recordAppActivationIfSignedIn()'
   );
 
-  function run({ hasPartnerSession, rpcImpl, preflagged = false } = {}) {
-    const ls = makeLocalStorage();
-    if (preflagged) ls.setItem('oq_partner_app_activated', '1');
+  function run({ hasPartnerSession, userId, rpcImpl, preflaggedFor, ls: sharedLs } = {}) {
+    const ls = sharedLs || makeLocalStorage();
+    if (preflaggedFor) ls.setItem('oq_partner_app_activated:' + preflaggedFor, '1');
     const rpcCalls = [];
     const client = {
       rpc: (name) => {
@@ -72,6 +72,7 @@ function makeLocalStorage() {
     };
     const Auth = {
       hasPartnerSession: () => Promise.resolve(!!hasPartnerSession),
+      getUser: () => Promise.resolve(userId ? { id: userId } : null),
     };
     const CONFIG = {
       whenReady: (cb) => cb(client),
@@ -92,34 +93,63 @@ function makeLocalStorage() {
   async function settle() { await new Promise((r) => setTimeout(r, 0)); await new Promise((r) => setTimeout(r, 0)); }
 
   {
-    const { ctx, rpcCalls, ls } = run({ hasPartnerSession: true });
+    const { ctx, rpcCalls, ls } = run({ hasPartnerSession: true, userId: 'user-1' });
     ctx.recordAppActivationIfSignedIn();
     await settle();
     ok(rpcCalls.length === 1 && rpcCalls[0] === 'record_partner_app_activation', 'partner-app.html: standalone + signed-in calls record_partner_app_activation exactly once');
-    ok(ls.getItem('oq_partner_app_activated') === '1', 'partner-app.html: the localStorage flag is set after a successful call');
+    ok(ls.getItem('oq_partner_app_activated:user-1') === '1', 'partner-app.html: the per-user localStorage flag is set after a successful call');
   }
   {
-    const { ctx, rpcCalls } = run({ hasPartnerSession: false });
+    const { ctx, rpcCalls } = run({ hasPartnerSession: false, userId: 'user-1' });
     ctx.recordAppActivationIfSignedIn();
     await settle();
     ok(rpcCalls.length === 0, 'partner-app.html NEGATIVE CONTROL: standalone + signed-out never calls the RPC');
   }
   {
     // RPC rejection must not throw, and must not mark the flag as recorded.
-    const { ctx, rpcCalls, ls } = run({ hasPartnerSession: true, rpcImpl: () => Promise.reject(new Error('network down')) });
+    const { ctx, rpcCalls, ls } = run({ hasPartnerSession: true, userId: 'user-1', rpcImpl: () => Promise.reject(new Error('network down')) });
     let threw = false;
     try { ctx.recordAppActivationIfSignedIn(); } catch (e) { threw = true; }
     await settle();
     ok(!threw, 'partner-app.html: an RPC rejection does not throw synchronously');
     ok(rpcCalls.length === 1, 'partner-app.html: the RPC was attempted despite the eventual rejection');
-    ok(ls.getItem('oq_partner_app_activated') !== '1', 'partner-app.html: a rejected call does not set the localStorage flag');
+    ok(ls.getItem('oq_partner_app_activated:user-1') !== '1', 'partner-app.html: a rejected call does not set the localStorage flag');
   }
   {
     // localStorage guard: already recorded -> no RPC call at all.
-    const { ctx, rpcCalls } = run({ hasPartnerSession: true, preflagged: true });
+    const { ctx, rpcCalls } = run({ hasPartnerSession: true, userId: 'user-1', preflaggedFor: 'user-1' });
     ctx.recordAppActivationIfSignedIn();
     await settle();
     ok(rpcCalls.length === 0, 'partner-app.html: the localStorage guard skips a redundant RPC call on a later launch');
+  }
+  {
+    // gh-2154-P2 fix-up: user A's flag is set, then user B signs in on the
+    // SAME device (shared localStorage). A device-wide key would make B's
+    // launch look "already activated" and skip the RPC entirely -- the
+    // fix scopes the flag per user id so B's own activation is still
+    // recorded server-side.
+    const sharedLs = makeLocalStorage();
+    const a = run({ hasPartnerSession: true, userId: 'user-A', ls: sharedLs });
+    a.ctx.recordAppActivationIfSignedIn();
+    await settle();
+    ok(a.rpcCalls.length === 1, 'partner-app.html: user A (first on this device) triggers the RPC');
+
+    const b = run({ hasPartnerSession: true, userId: 'user-B', ls: sharedLs });
+    b.ctx.recordAppActivationIfSignedIn();
+    await settle();
+    ok(b.rpcCalls.length === 1 && b.rpcCalls[0] === 'record_partner_app_activation',
+      'partner-app.html: user B signing in on the SAME device as already-activated user A still triggers the RPC for B');
+    ok(sharedLs.getItem('oq_partner_app_activated:user-B') === '1', 'partner-app.html: user B gets their own per-user flag, independent of user A\'s');
+  }
+  {
+    // No user id obtainable (Auth.getUser() resolves null) -> skip the
+    // localStorage shortcut entirely and just call the RPC (server-side is
+    // first-write-wins, so this is always safe).
+    const { ctx, rpcCalls, ls } = run({ hasPartnerSession: true, userId: null });
+    ctx.recordAppActivationIfSignedIn();
+    await settle();
+    ok(rpcCalls.length === 1, 'partner-app.html: no user id available -> the RPC is still called (localStorage shortcut skipped)');
+    ok(ls._store.size === 0, 'partner-app.html: no user id available -> nothing is written to localStorage');
   }
 }
 
@@ -139,8 +169,8 @@ function makeLocalStorage() {
     'partner-dashboard.html init() activation gate'
   );
 
-  function run({ standalone, userAgentStandalone = false, rpcImpl } = {}) {
-    const ls = makeLocalStorage();
+  function run({ standalone, userAgentStandalone = false, rpcImpl, ls: sharedLs } = {}) {
+    const ls = sharedLs || makeLocalStorage();
     const rpcCalls = [];
     const sb = {
       rpc: (name) => {
@@ -181,7 +211,7 @@ function makeLocalStorage() {
     if (currentUser && ctx.isStandaloneLaunch()) { ctx.recordAppActivationIfSignedIn(currentUser.id); }
     await settle();
     ok(rpcCalls.length === 1 && rpcCalls[0] === 'record_partner_app_activation', 'partner-dashboard.html: standalone + signed-in calls record_partner_app_activation exactly once');
-    ok(ls.getItem('oq_partner_app_activated_user-1') === '1', 'partner-dashboard.html: the per-user localStorage flag is set after a successful call');
+    ok(ls.getItem('oq_partner_app_activated:user-1') === '1', 'partner-dashboard.html: the per-user localStorage flag is set after a successful call');
   }
   {
     const { ctx, rpcCalls } = run({ standalone: true });
@@ -205,7 +235,7 @@ function makeLocalStorage() {
     await settle();
     ok(!threw, 'partner-dashboard.html: an RPC rejection does not throw synchronously');
     ok(rpcCalls.length === 1, 'partner-dashboard.html: the RPC was attempted despite the eventual rejection');
-    ok(ls.getItem('oq_partner_app_activated_user-3') !== '1', 'partner-dashboard.html: a rejected call does not set the localStorage flag');
+    ok(ls.getItem('oq_partner_app_activated:user-3') !== '1', 'partner-dashboard.html: a rejected call does not set the localStorage flag');
   }
   {
     // iOS standalone signal (navigator.standalone), not matchMedia.
@@ -214,6 +244,32 @@ function makeLocalStorage() {
     if (currentUser && ctx.isStandaloneLaunch()) { ctx.recordAppActivationIfSignedIn(currentUser.id); }
     await settle();
     ok(rpcCalls.length === 1, 'partner-dashboard.html: iOS navigator.standalone alone also counts as standalone');
+  }
+  {
+    // gh-2154-P2 fix-up: user A's flag is set, then user B signs in on the
+    // SAME device (shared localStorage) -- assert the RPC IS called for B.
+    const sharedLs = makeLocalStorage();
+    const a = run({ standalone: true, ls: sharedLs });
+    const userA = { id: 'user-A' };
+    if (userA && a.ctx.isStandaloneLaunch()) { a.ctx.recordAppActivationIfSignedIn(userA.id); }
+    await settle();
+    ok(a.rpcCalls.length === 1, 'partner-dashboard.html: user A (first on this device) triggers the RPC');
+
+    const b = run({ standalone: true, ls: sharedLs });
+    const userB = { id: 'user-B' };
+    if (userB && b.ctx.isStandaloneLaunch()) { b.ctx.recordAppActivationIfSignedIn(userB.id); }
+    await settle();
+    ok(b.rpcCalls.length === 1 && b.rpcCalls[0] === 'record_partner_app_activation',
+      'partner-dashboard.html: user B signing in on the SAME device as already-activated user A still triggers the RPC for B');
+    ok(sharedLs.getItem('oq_partner_app_activated:user-B') === '1', 'partner-dashboard.html: user B gets their own per-user flag, independent of user A\'s');
+  }
+  {
+    // No user id available -> skip the localStorage shortcut, just call the RPC.
+    const { ctx, rpcCalls, ls } = run({ standalone: true });
+    if (ctx.isStandaloneLaunch()) { ctx.recordAppActivationIfSignedIn(null); }
+    await settle();
+    ok(rpcCalls.length === 1, 'partner-dashboard.html: no user id available -> the RPC is still called (localStorage shortcut skipped)');
+    ok(ls._store.size === 0, 'partner-dashboard.html: no user id available -> nothing is written to localStorage');
   }
 }
 

@@ -17,6 +17,9 @@ on:
       - 'tests/gh2106-pixel-gaps.mjs'
       - 'tests/gh2107-pixel-gate-optout.mjs'
       - 'tests/gh2107-gpc-client.mjs'
+      - 'partner-app.html'
+      - 'partner-dashboard.html'
+      - 'tests/gh2154-p2-app-activation.mjs'
       - '.github/workflows/static-pixel-gate-tests.yml'
   push:
     branches: [main]
@@ -27,6 +30,9 @@ on:
       - 'tests/gh2106-pixel-gaps.mjs'
       - 'tests/gh2107-pixel-gate-optout.mjs'
       - 'tests/gh2107-gpc-client.mjs'
+      - 'partner-app.html'
+      - 'partner-dashboard.html'
+      - 'tests/gh2154-p2-app-activation.mjs'
       - '.github/workflows/static-pixel-gate-tests.yml'
 
 permissions:
@@ -57,3 +63,5 @@ jobs:
         run: node tests/gh2107-pixel-gate-optout.mjs
       - name: GPC capture on the create-payment-intent call (gh2107-gpc-client)
         run: node tests/gh2107-gpc-client.mjs
+      - name: Partner app activation RPC, per-user flag (gh2154-p2-app-activation)
+        run: node tests/gh2154-p2-app-activation.mjs

@@ -24,21 +24,24 @@
 -- overload dropped explicitly so PostgREST never has to disambiguate two
 -- overlapping signatures. register_partner's function body is otherwise
 -- byte-identical to the live definition; only the INSERT column/value lists
--- and the parameter list change. PUBLIC keeps its existing default EXECUTE
--- (unchanged from every prior register_partner revision, none of which have
--- ever revoked it); anon/authenticated/service_role are re-granted
--- explicitly, matching the live grant this migration replaces.
+-- and the parameter list change. PUBLIC/anon/authenticated/service_role all
+-- keep their existing default EXECUTE (unchanged from every prior
+-- register_partner revision, none of which have ever revoked it); no
+-- explicit GRANT is added here, since the schema's default privileges
+-- already supply it (see the no-GRANT note below).
 --
 -- record_partner_app_activation() is new: SECURITY DEFINER, first-write-wins
 -- (only writes when the column is still NULL), scoped to the caller's own
 -- referral_agents row via auth.uid() = user_id, so no partner can write
 -- another partner's row and a signed-out caller (auth.uid() IS NULL) can
--- never match any row. EXECUTE is revoked from PUBLIC and anon and granted
--- only to authenticated, matching this project's "new function defaults to
+-- never match any row. EXECUTE is revoked from PUBLIC, anon, and
+-- service_role, matching this project's "new function defaults to
 -- anon/authenticated/service_role EXECUTE" trap (Claude's Memories
--- supabase-function-grant-defaults.md) — this one intentionally has no
--- anon or service_role access, since only a signed-in partner should ever
--- call it and there is no server-side caller.
+-- supabase-function-grant-defaults.md) — authenticated keeps its
+-- schema-level default-granted EXECUTE (no explicit GRANT line, so CI's
+-- permissions-ratchet has nothing new to flag); PUBLIC/anon/service_role
+-- are explicitly revoked since only a signed-in partner should ever call
+-- it and there is no server-side caller.
 --
 -- ROLLBACK NOTE (kept in-comment, not a separate file, per this task's file
 -- whitelist): to undo this migration, in this order --

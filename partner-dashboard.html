@@ -1401,21 +1401,31 @@ Let me know if you have any questions!
         // partner app. Fires the server-side RPC once per (user, browser) —
         // the localStorage flag is only an optimisation, since the RPC
         // itself is first-write-wins and a redundant call is a harmless
-        // no-op. Fails silently: never blocks the dashboard, never throws.
+        // no-op. The flag is scoped per signed-in user
+        // ('oq_partner_app_activated:<user id>'), since a device-wide key
+        // would make a second partner signing in on the same device skip
+        // its own activation call. When no user id is available the
+        // shortcut is skipped entirely and the RPC is always called (still
+        // safe: it is first-write-wins server-side). Fails silently: never
+        // blocks the dashboard, never throws.
         function isStandaloneLaunch() {
             return window.matchMedia('(display-mode: standalone)').matches ||
                 window.navigator.standalone === true;
         }
 
         function recordAppActivationIfSignedIn(userId) {
-            var flagKey = 'oq_partner_app_activated_' + (userId || 'anon');
-            try {
-                if (window.localStorage.getItem(flagKey) === '1') return;
-            } catch (e) { /* private mode / blocked storage - fall through */ }
+            var flagKey = userId ? ('oq_partner_app_activated:' + userId) : null;
+            if (flagKey) {
+                try {
+                    if (window.localStorage.getItem(flagKey) === '1') return;
+                } catch (e) { /* private mode / blocked storage - fall through */ }
+            }
             if (!sb) return;
             sb.rpc('record_partner_app_activation').then(function (res) {
                 if (!res || res.error) return;
-                try { window.localStorage.setItem(flagKey, '1'); } catch (e) { /* non-fatal */ }
+                if (flagKey) {
+                    try { window.localStorage.setItem(flagKey, '1'); } catch (e) { /* non-fatal */ }
+                }
             }).catch(function () { /* non-fatal */ });
         }
 
