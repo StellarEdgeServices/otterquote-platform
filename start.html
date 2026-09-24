@@ -1,1 +1,111 @@
-PLACEHOLDER
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Sentry Error Monitoring -->
+<!-- gh-2010: predeclare sentryOnLoad before the loader tag; the loader invokes it once the SDK is ready. -->
+<!-- gh-2063 (Ben, comment 5767975097, CEO RUN 57): Sentry's loader script
+     was requested via a synchronous <script src> tag, so its fetch+parse
+     cost landed at parse time on every visit. Loaded lazily instead, same
+     idle-or-first-interaction pattern js/ga-gate.js's and
+     js/meta-pixel-gate.js's own _oqLoadOnIdleOrInteraction already use for
+     gtag.js/fbevents.js (idle, capped at 1500ms via requestIdleCallback's
+     own timeout, or the visitor's first pointerdown/keydown/scroll/
+     touchstart, whichever comes first) -- this file keeps its own copy
+     below since no js/*.js include has run yet at this point in <head>.
+     No error is lost to the delay: window's error/unhandledrejection
+     listeners below push every pre-load error into window._oqErrorBuffer,
+     and sentryOnLoad() replays that buffer into Sentry.captureException /
+     captureMessage the instant Sentry.init() returns, before clearing it. -->
+<script>
+  window._oqErrorBuffer = [];
+  window._oqBufferError = function (e) {
+    window._oqErrorBuffer.push({ type: 'error', error: e.error, message: e.message, filename: e.filename, lineno: e.lineno, colno: e.colno });
+  };
+  window._oqBufferRejection = function (e) {
+    window._oqErrorBuffer.push({ type: 'unhandledrejection', reason: e.reason });
+  };
+  window.addEventListener('error', window._oqBufferError);
+  window.addEventListener('unhandledrejection', window._oqBufferRejection);
+
+  window.sentryOnLoad = function () {
+    Sentry.init({
+      environment: window.location.hostname.includes("staging") ? "staging" : "production",
+      // gh-439: drop phantom events from non-http(s) preview contexts (data:/file:/blob:
+      // URLs -- e.g. Claude's HTML preview renders pages via data: URIs; relative scripts
+      // like js/auth.js then fail and report noise such as "Auth is not defined").
+      denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+      beforeSend: function (event) {
+        var proto = window.location.protocol;
+        if (proto !== "http:" && proto !== "https:") return null;
+        var req = event.request && event.request.url;
+        if (req && /^(data|file|blob):/.test(req)) return null;
+        return event;
+      }
+    });
+    // gh-2063: replay every error buffered before Sentry finished loading.
+    var buffered = window._oqErrorBuffer || [];
+    for (var i = 0; i < buffered.length; i++) {
+      var item = buffered[i];
+      try {
+        if (item.type === 'error' && item.error) {
+          Sentry.captureException(item.error);
+        } else if (item.type === 'error') {
+          Sentry.captureMessage(item.message || 'Unknown error (buffered pre-Sentry-load)');
+        } else if (item.type === 'unhandledrejection') {
+          if (item.reason instanceof Error) {
+            Sentry.captureException(item.reason);
+          } else {
+            Sentry.captureMessage('Unhandled rejection (buffered pre-Sentry-load): ' + String(item.reason));
+          }
+        }
+      } catch (replayErr) { /* replaying a buffered error must never itself throw */ }
+    }
+    window._oqErrorBuffer = [];
+  };
+
+  // gh-2063: local copy of js/ga-gate.js's _oqLoadOnIdleOrInteraction,
+  // scoped to loading the Sentry loader script only.
+  (function () {
+    var fired = false;
+    var idleHandle = null;
+    var timeoutHandle = null;
+    var EVENTS = ['pointerdown', 'keydown', 'scroll', 'touchstart'];
+    function teardown() {
+      for (var i = 0; i < EVENTS.length; i++) {
+        window.removeEventListener(EVENTS[i], run);
+      }
+      if (idleHandle !== null && window.cancelIdleCallback) { window.cancelIdleCallback(idleHandle); }
+      if (timeoutHandle !== null) { clearTimeout(timeoutHandle); }
+    }
+    function loadSentryLoader() {
+      var s = document.createElement('script');
+      s.src = 'https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js';
+      s.crossOrigin = 'anonymous';
+      s.onload = function () {
+        // the loader's own listeners own capture from here on (no double-report)
+        window.removeEventListener('error', window._oqBufferError);
+        window.removeEventListener('unhandledrejection', window._oqBufferRejection);
+        // lazy loader: sentryOnLoad (and the replay) only runs once the SDK loads
+        if (window._oqErrorBuffer.length && window.Sentry && typeof window.Sentry.forceLoad === 'function') {
+          window.Sentry.forceLoad();
+        }
+      };
+      document.head.appendChild(s);
+    }
+    function run() {
+      if (fired) return;
+      fired = true;
+      teardown();
+      loadSentryLoader();
+    }
+    for (var i = 0; i < EVENTS.length; i++) {
+      window.addEventListener(EVENTS[i], run, { passive: true, once: true });
+    }
+    if (window.requestIdleCallback) {
+      idleHandle = window.requestIdleCallback(run, { timeout: 1500 });
+    } else {
+      timeoutHandle = setTimeout(run, 1500);
+    }
+  })();
+</script>
+PLACEHOLDER_TRUNCATED_WILL_NOT_USE
