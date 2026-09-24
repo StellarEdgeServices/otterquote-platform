@@ -233,17 +233,44 @@ Deno.test("(b) idempotency: a second call for the same partner id sends zero mor
 });
 
 // ---------------------------------------------------------------------------
-// (c) is_test=true partner: handled exactly like notify-admin-new-contractor
-// treats test accounts -- SKIPPED (no send, 200 success:true skipped:true,
-// reason "test_account"), not sent-with-a-[TEST]-tag. Confirmed by reading
-// notify-admin-new-contractor/index.ts's isTestAccount() + the early-return
-// branch at its "skipping test account" log line.
+// (c) UPDATED per Ben's decision (bus 19:58:00Z, DECIDED, gh-2154 P-3 build
+// session rw-f35-20260924T155307-pkau): is_test=true partners DO alert
+// (Dustin still wants to know about test signups he generates himself),
+// tagged with a "[TEST] " subject prefix so it's visually distinct from a
+// real lead. Pattern-matched internal bot accounts (isTestAccount():
+// otterquote-internal.test / pfw- / authdoctor) that are NOT is_test still
+// skip entirely -- those are automated bot traffic, not Dustin's own test
+// signups, and is_test does not gate that skip (a bot account marked
+// is_test=true still ALERTS, with the [TEST] prefix -- is_test is checked
+// first and wins). This supersedes the original (c), which (written before
+// P-3 existed) assumed is_test mirrored notify-admin-new-contractor's
+// silent-skip test-account behaviour; it does not -- contractors has no
+// is_test-vs-bot-pattern distinction to draw from, so P-3 is the first of
+// this trigger family to need it spelled out explicitly.
 // ---------------------------------------------------------------------------
-Deno.test("(c) is_test=true partner is skipped, matching notify-admin-new-contractor's test-account behaviour", async () => {
-  const testPartner: PartnerRow = { ...PARTNER, is_test: true, email: "pfw-test-partner@example.invalid" };
+Deno.test("(c1) is_test=true partner (real-looking email) alerts, with a [TEST] subject prefix", async () => {
+  const testPartner: PartnerRow = { ...PARTNER, is_test: true };
   const { deps, fetchCalls, inserted } = buildDeps({}, { partner: testPartner });
 
   const res = await handleNotifyAdminNewPartner(makeRequest({ partner_id: testPartner.id }), deps);
+  const json = await res.json();
+
+  assertEquals(res.status, 200);
+  assertEquals(json.success, true);
+  assertEquals(json.skipped, undefined);
+
+  const mailgunCalls = fetchCalls.filter((c) => c.url.includes("api.mailgun.net"));
+  assertEquals(mailgunCalls.length, 1);
+  const sentBody = formDataToText(mailgunCalls[0].init?.body);
+  assertMatch(sentBody, /subject=\[TEST\] /);
+  assertEquals(inserted.filter((i) => i.table === "notifications").length, 1);
+});
+
+Deno.test("(c2) bot-pattern email WITHOUT is_test is skipped (no send, no [TEST] alert)", async () => {
+  const botPartner: PartnerRow = { ...PARTNER, is_test: false, email: "pfw-test-partner@example.invalid" };
+  const { deps, fetchCalls, inserted } = buildDeps({}, { partner: botPartner });
+
+  const res = await handleNotifyAdminNewPartner(makeRequest({ partner_id: botPartner.id }), deps);
   const json = await res.json();
 
   assertEquals(res.status, 200);
@@ -252,6 +279,24 @@ Deno.test("(c) is_test=true partner is skipped, matching notify-admin-new-contra
   assertEquals(json.reason, "test_account");
   assertEquals(fetchCalls.filter((c) => c.url.includes("api.mailgun.net")).length, 0);
   assertEquals(inserted.length, 0);
+});
+
+Deno.test("(c3) bot-pattern email WITH is_test=true alerts, with a [TEST] subject prefix (is_test wins over the bot-pattern skip)", async () => {
+  const botTestPartner: PartnerRow = { ...PARTNER, is_test: true, email: "pfw-test-partner@example.invalid" };
+  const { deps, fetchCalls, inserted } = buildDeps({}, { partner: botTestPartner });
+
+  const res = await handleNotifyAdminNewPartner(makeRequest({ partner_id: botTestPartner.id }), deps);
+  const json = await res.json();
+
+  assertEquals(res.status, 200);
+  assertEquals(json.success, true);
+  assertEquals(json.skipped, undefined);
+
+  const mailgunCalls = fetchCalls.filter((c) => c.url.includes("api.mailgun.net"));
+  assertEquals(mailgunCalls.length, 1);
+  const sentBody = formDataToText(mailgunCalls[0].init?.body);
+  assertMatch(sentBody, /subject=\[TEST\] /);
+  assertEquals(inserted.filter((i) => i.table === "notifications").length, 1);
 });
 
 Deno.test("isTestAccount matches the same patterns notify-admin-new-contractor uses", () => {

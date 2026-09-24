@@ -1,42 +1,43 @@
 -- gh-2154 P-3 proof script.
 --
 -- Run the WHOLE file as one statement batch wrapped in BEGIN ... ROLLBACK
--- against production (yeszghaspzwwstvsrioa). NEVER COMMIT. NOT run in this
--- session (task order: "Do NOT run it against prod").
+-- against production (yeszghaspzwwstvsrioa). NEVER COMMIT.
 --
--- P-3 (new-partner alert to Dustin) has NOT been built yet at the time this
--- file is authored. Per Marty's sequence comment (issue #2154, comment
--- 5816579743, section (b) "P-3"), P-3 is a direct structural copy of
--- notify-admin-new-contractor's pg_net-trigger-on-INSERT pattern, pointed at
--- `referral_agents` instead of `contractors`, plus a migration adding that
--- trigger. Live confirmed this session (Supabase MCP, project
--- yeszghaspzwwstvsrioa, SELECT only):
---   * public.referral_agents has NO fbclid/li_fat_id/funnel_id columns yet
---     (P-2, PR #2159, is unmerged/unapplied as of this writing).
---   * public.contractors' own AFTER INSERT OR UPDATE OF status trigger is
---     `trg_notify_admin_new_contractor` -> notify_admin_new_contractor(),
---     confirmed via pg_get_triggerdef.
---   * public.notifications has no dedicated per-partner idempotency column
---     beyond the existing (user_id, notification_type, channel) shape the
---     contractor function already keys on.
+-- UPDATED at P-3 build time (session rw-f35-20260924T155307-pkau): P-2 is
+-- now live on prod (referral_agents.fbclid/li_fat_id/funnel_id/
+-- app_first_signed_in_launch_at confirmed present via information_schema
+-- this session), and P-3's migration
+-- (supabase/migrations/20260924200316_gh2154_p3_partner_new_alert_trigger.sql)
+-- is inlined verbatim below (section 2), replacing the earlier
+-- placeholder. Also confirmed this session: public.notifications.
+-- notification_type has NO CHECK constraint (pg_constraint, contype='c',
+-- zero rows), so no constraint change was needed for the new
+-- 'admin_new_partner_alert' value.
 --
--- This script therefore:
---   1. Inlines P-2's additive columns (idempotent, matches
---      supabase/tests/gh2154_p1_proof.sql's own convention of inlining P-2
---      so this file is runnable standalone against a database that has not
---      yet had P-2 applied).
---   2. Leaves a clearly marked placeholder for the P-3 migration itself
---      (the new pg_net trigger + trigger function on referral_agents),
---      to be inlined verbatim once P-3 is built, per this task's
---      instruction not to write non-test files.
+-- pg_net safety, verified before running: net.http_request_queue is an
+-- ordinary heap table (pg_class.relkind='r', confirmed live this session)
+-- in the same database, so an INSERT into it made by net.http_post() inside
+-- this BEGIN...ROLLBACK is undone by the ROLLBACK like any other write --
+-- pg_net's background worker only ever sees committed rows, so no real
+-- HTTP request (and therefore no real email to Dustin) can result from
+-- running section 4's INSERT below inside this transaction.
+--
+-- This script:
+--   1. Inlines P-2's additive columns (idempotent ADD COLUMN IF NOT
+--      EXISTS -- a no-op against current prod, kept for standalone
+--      runnability against a database that predates P-2).
+--   2. Inlines P-3's migration verbatim.
 --   3. Asserts, in an aborted transaction: a trigger exists on
 --      public.referral_agents, fires AFTER INSERT (not AFTER UPDATE), and
 --      its function body calls net.http_post against
---      '/functions/v1/notify-admin-new-partner'. An UPDATE on the same row
---      must not re-fire it.
+--      '/functions/v1/notify-admin-new-partner'.
+--   4. Inserts one synthetic is_test=true partner row and updates it,
+--      exercising the trigger's INSERT path (and confirming an UPDATE
+--      does not have a matching trigger to fire).
 --
--- Everything this script writes (test rows) is rolled back by the ROLLBACK
--- that must follow it -- no synthetic row may be left behind.
+-- Everything this script writes (test rows, the pg_net queue row) is rolled
+-- back by the ROLLBACK that must follow it -- no synthetic row, and no real
+-- outbound HTTP request, survives.
 
 BEGIN;
 
@@ -51,31 +52,51 @@ ALTER TABLE public.referral_agents
   ADD COLUMN IF NOT EXISTS funnel_id text,
   ADD COLUMN IF NOT EXISTS app_first_signed_in_launch_at timestamptz;
 
--- ── 2. P-3 migration goes here ──────────────────────────────────────────
--- TODO(P-3 build): inline migration here.
--- Expected shape (per Marty's spec + the notify_admin_new_contractor
--- precedent, supabase/migrations/20260817222018_gh752_move_notify_functions_to_vault.sql
--- section "1 of 2"): a SECURITY DEFINER plpgsql trigger function
--- (e.g. public.notify_admin_new_partner()) that:
---   * resolves the service-role key from vault.decrypted_secrets
---     (name='cron_service_role_key'), the same secret every other
---     notify_admin_* trigger function already uses;
---   * calls net.http_post(url => '<SUPABASE_URL>/functions/v1/notify-admin-new-partner',
---     body => jsonb_build_object('partner_id', NEW.id), headers => ...
---     with the resolved key as Bearer) -- passed as jsonb directly, NOT cast
---     to ::text::bytea (see gh-1932's migration header for why that cast is
---     a live, silently-swallowed bug in the contractor sibling -- P-3 must
---     not repeat it);
---   * is wrapped so pg_net failures are RAISE LOGged, never raised (an
---     alert failure must never fail a real partner signup);
--- and one trigger:
---   CREATE TRIGGER trg_notify_admin_new_partner
---     AFTER INSERT ON public.referral_agents
---     FOR EACH ROW EXECUTE FUNCTION public.notify_admin_new_partner();
--- (AFTER INSERT only -- unlike trg_notify_admin_new_contractor, which also
--- fires on UPDATE OF status because contractors alerts on entry into
--- pending_approval, a partner row has no equivalent status transition to
--- wait for; P-1's register_partner does the INSERT directly.)
+-- ── 2. P-3 migration inlined verbatim ────────────────────────────────────
+-- Byte-identical (comment header trimmed for brevity here; full rationale
+-- lives in the migration file itself) to
+-- supabase/migrations/20260924200316_gh2154_p3_partner_new_alert_trigger.sql.
+CREATE OR REPLACE FUNCTION public.notify_admin_new_partner()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public', 'net'
+AS $function$
+DECLARE
+  v_service_key TEXT;
+BEGIN
+  SELECT decrypted_secret INTO v_service_key
+    FROM vault.decrypted_secrets
+   WHERE name = 'cron_service_role_key';
+
+  IF v_service_key IS NULL THEN
+    RAISE LOG 'notify_admin_new_partner: vault secret cron_service_role_key not found — skipping for id=%', NEW.id;
+    RETURN NEW;
+  END IF;
+
+  PERFORM net.http_post(
+    url     := 'https://yeszghaspzwwstvsrioa.supabase.co/functions/v1/notify-admin-new-partner',
+    body    := jsonb_build_object('partner_id', NEW.id),
+    headers := jsonb_build_object(
+      'Content-Type',  'application/json',
+      'Authorization', 'Bearer ' || v_service_key
+    )
+  );
+
+  RETURN NEW;
+EXCEPTION WHEN OTHERS THEN
+  RAISE LOG 'notify_admin_new_partner: pg_net call failed for id=% sqlstate=% sqlerrm=%',
+    NEW.id, SQLSTATE, SQLERRM;
+  RETURN NEW;
+END;
+$function$;
+
+DROP TRIGGER IF EXISTS trg_notify_admin_new_partner ON public.referral_agents;
+
+CREATE TRIGGER trg_notify_admin_new_partner
+  AFTER INSERT ON public.referral_agents
+  FOR EACH ROW
+  EXECUTE FUNCTION public.notify_admin_new_partner();
 
 -- ── 3. Assertions (aborted transaction — nothing survives the ROLLBACK) ─
 
