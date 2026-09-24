@@ -138,7 +138,14 @@
     var fired = false;
     var idleHandle = null;
     var timeoutHandle = null;
-    var EVENTS = ['pointerdown', 'keydown', 'scroll', 'touchstart'];
+    // gh-2121 S05 review fix (comment 5822332958, must-fix 2): 'click' and
+    // 'input' added. A visitor who activates controls by click only (no
+    // pointerdown/keydown/scroll/touchstart -- e.g. some screen readers and
+    // other assistive tech that synthesize a bare click) previously never
+    // fired ANY of these events, so this branch waited out the full
+    // deferred timer even while the visitor was actively using the page,
+    // submitting and leaving with the Lead and everything before it lost.
+    var EVENTS = ['pointerdown', 'keydown', 'scroll', 'touchstart', 'click', 'input'];
     function teardown() {
       for (var i = 0; i < EVENTS.length; i++) {
         window.removeEventListener(EVENTS[i], run);

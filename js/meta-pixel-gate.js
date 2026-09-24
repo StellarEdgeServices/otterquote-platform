@@ -304,7 +304,9 @@
     var fired = false;
     var idleHandle = null;
     var timeoutHandle = null;
-    var EVENTS = ['pointerdown', 'keydown', 'scroll', 'touchstart'];
+    // gh-2121 S05 review fix (comment 5822332958, must-fix 2): same fix as
+    // js/ga-gate.js's own copy of this list -- see that file's comment.
+    var EVENTS = ['pointerdown', 'keydown', 'scroll', 'touchstart', 'click', 'input'];
     function teardown() {
       for (var i = 0; i < EVENTS.length; i++) {
         window.removeEventListener(EVENTS[i], run);

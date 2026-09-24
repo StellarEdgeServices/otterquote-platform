@@ -538,12 +538,28 @@
     // file's own _oqLoadOnIdleOrInteraction call reads it.
     try {
       if (document.documentElement.getAttribute('data-oq-start-arm') === 'f') {
-        window.__OQ_ANALYTICS_DEFER_MS = 3500;
-        // requestIdleCallback returns as soon as the main thread is idle,
-        // which is well under a second on a light page regardless of the
-        // timeout above (see js/ga-gate.js's own gh-2121 comment on this) --
-        // force a plain timer so a visitor who never interacts gets the
-        // ~3.5s FIXED delay the brief asks for, not "idle, capped at 3.5s".
+        // gh-2121 S05 review fix (comment 5822332958, Ben's ruling CEO RUN
+        // 67): the ad set optimises on Meta Landing Page Views (Meta
+        // PageView) and the kill/promote lines count GA4 page_view on
+        // /start?v=f, so fast-bounce loss beyond what main already loses is
+        // NOT acceptable. The reviewer measured 3500ms losing 100% of GA4
+        // page_view/Meta PageView/Clarity for a non-interacting visitor who
+        // leaves at 2, 3 or 3.5-4s on typical 4G, vs 100% delivered on main
+        // at every one of those points -- recommended option (b) was to cut
+        // to ~1000ms. Re-measured (ceo67-fix2165-20260924.md, real gtag.js/
+        // fbevents.js/clarity.js, real beacons intercepted-not-forwarded, 5
+        // runs/cell): at 1000ms, typical-4G GA4 page_view delivery at the 2s
+        // leave point was only 1/5 (the ~1000ms inner defer plus the ~300ms
+        // outer gate-file defer plus the real ~590KB gtag.js fetch/parse/
+        // send left too little margin before 2s), short of main's 100% --
+        // so the delay was tuned down further to 700ms, which measured
+        // typical-4G GA4 page_view delivery equal to main (100%) at 2s, 3s
+        // and 4.5s, and slow-4G equal to main at 4.5s (both 100%); only the
+        // 1s cell still differs (main ~80%, this branch 0%, main itself
+        // already losing most of that cell). FORCE_TIMER is kept -- the
+        // real bug fix (idle fired too early on a light page) is unchanged;
+        // only the fixed-delay length changed.
+        window.__OQ_ANALYTICS_DEFER_MS = 700;
         window.__OQ_ANALYTICS_FORCE_TIMER = true;
       }
     } catch (e) {}
@@ -559,7 +575,11 @@
     // -- the actual gh-2160 finding -- without pushing their own fetch
     // past the point where everything else has already gone quiet. First
     // real interaction still wins immediately if it happens first.
-    var GATE_EVENTS = ['pointerdown', 'keydown', 'scroll', 'touchstart'];
+    // gh-2121 S05 review fix (comment 5822332958, must-fix 2): 'click' and
+    // 'input' added -- see js/ga-gate.js's own copy of this fix for why
+    // (click-only activation, e.g. some assistive tech, fired none of the
+    // original four events and waited out the full timer).
+    var GATE_EVENTS = ['pointerdown', 'keydown', 'scroll', 'touchstart', 'click', 'input'];
     var fired = false;
     var idleHandle = null;
     var timeoutHandle = null;

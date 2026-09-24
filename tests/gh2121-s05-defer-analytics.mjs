@@ -12,8 +12,8 @@
  *
  * This test asserts the fix in this PR: on Arm F specifically, with NO
  * visitor interaction, gtag.js / fbevents.js / clarity.js are not
- * REQUESTED before ~2.8s (a visitor who never interacts) and ARE
- * requested by ~4.5s (the ~3.5s target plus scheduling slack) -- proving
+ * REQUESTED before ~500ms (a visitor who never interacts) and ARE
+ * requested by ~3s (the ~1s target, ceo67-fix2165, plus scheduling slack) -- proving
  * the analytics fetches are pushed past first paint / LCP instead of
  * racing it. It also asserts nothing gh-2121 requires is dropped:
  *   - GA4 page_view fires exactly once, carrying the original
@@ -27,7 +27,7 @@
  *   - Clarity starts (a request to www.clarity.ms/tag/<project>).
  *   - a NON-Arm-F page (v=c) is unaffected: its analytics still start on
  *     the pre-existing ~1.8s (300ms outer + up to 1500ms inner) cap, not
- *     the ~3.5s Arm-F-only cap.
+ *     the ~1s Arm-F-only cap (ceo67-fix2165, cut from an earlier 3.5s).
  *
  * Run against a tree root (defaults to the repo this file lives in):
  *   node tests/gh2121-s05-defer-analytics.mjs [path-to-tree-root]
@@ -273,17 +273,30 @@ async function run() {
     else { fail++; console.log('FAIL:', name, detail !== undefined ? ('-- ' + detail) : ''); }
   }
 
-  // --- 1. Arm F, no interaction: analytics deferred past ~2.8s, present by ~4.5s ---
+  // --- 1. Arm F, no interaction: analytics deferred past ~500ms, present by ~3s ---
   const noInt = await walkNoInteraction(browser, origin, '?v=f&utm_source=facebook&utm_medium=paid&utm_campaign=ho-1&fbclid=TESTFBCLID123', 15000);
   const gt = noInt.log.first('gtag_request');
   const fb = noInt.log.first('fbevents_request');
   const cl = noInt.log.first('clarity_request');
-  check('Arm F, no interaction: gtag.js not requested before 2800ms', gt === null || gt >= 2800, 'gtag_request at ' + gt + 'ms');
-  check('Arm F, no interaction: fbevents.js not requested before 2800ms', fb === null || fb >= 2800, 'fbevents_request at ' + fb + 'ms');
-  check('Arm F, no interaction: clarity.js not requested before 2800ms', cl === null || cl >= 2800, 'clarity_request at ' + cl + 'ms');
-  check('Arm F, no interaction: gtag.js requested by 4500ms', gt !== null && gt <= 4500, 'gtag_request at ' + gt + 'ms');
-  check('Arm F, no interaction: fbevents.js requested by 4500ms', fb !== null && fb <= 4500, 'fbevents_request at ' + fb + 'ms');
-  check('Arm F, no interaction: clarity.js requested by 4500ms', cl !== null && cl <= 4500, 'clarity_request at ' + cl + 'ms');
+  // gh-2121 S05 review fix (comment 5822332958, non-blocking): these six
+  // checks used to accept gt/fb/cl === null as a PASS for the lower bound
+  // ("not requested before Xms"), so a regression that never requests
+  // analytics at all for a non-interacting visitor -- e.g. a broken timer
+  // that never fires -- went undetected: it satisfied "not before Xms" and
+  // then failed only the separate upper-bound check, which read as one
+  // failure out of six rather than the true finding (analytics never
+  // loads). Each pair below is now ONE assertion that requires a real,
+  // non-null timestamp inside the window, so a null result fails outright
+  // instead of passing half the pair. Window updated for the ceo67-fix2165
+  // cut from a 3500ms to a 1000ms forced timer (window.__OQ_ANALYTICS_DEFER_MS
+  // in start.html): the outer same-origin gate file is requested at
+  // idle-or-300ms (unchanged by this fix), then the vendor script is
+  // inserted after a further ~1000ms fixed timer, so the expected requested
+  // time is ~1300ms; window widened to 500-3000ms for CI/local scheduling
+  // slack (was 2800-4500ms for the 3500ms timer this replaces).
+  check('Arm F, no interaction: gtag.js requested between 500ms and 3000ms (not null)', gt !== null && gt >= 500 && gt <= 3000, 'gtag_request at ' + gt + 'ms');
+  check('Arm F, no interaction: fbevents.js requested between 500ms and 3000ms (not null)', fb !== null && fb >= 500 && fb <= 3000, 'fbevents_request at ' + fb + 'ms');
+  check('Arm F, no interaction: clarity.js requested between 500ms and 3000ms (not null)', cl !== null && cl >= 500 && cl <= 3000, 'clarity_request at ' + cl + 'ms');
 
   // --- 2. GA4 page_view fires exactly once, with the original page_location/referrer/UTMs ---
   const pageViewHits = noInt.gaHits.filter(function (h) { return /(^|&)en=page_view(&|$)/.test(h.postData || '') || /(^|[?&])en=page_view(&|$)/.test(h.url); });
