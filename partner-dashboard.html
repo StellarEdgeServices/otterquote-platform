@@ -1425,6 +1425,15 @@ Let me know if you have any questions!
             if (!card || !setPasswordUserId) return;
             let needsPassword = false;
             try { needsPassword = window.localStorage.getItem(needsPasswordFlagKey(setPasswordUserId)) === '1'; } catch (e) { /* private mode / blocked storage */ }
+            // gh-2162 review fix (3): the localStorage flag is browser-local
+            // only — a partner's first dashboard landing in a DIFFERENT
+            // browser, or the installed PWA, never set it there. Also show
+            // the card when the server-visible user_metadata.needs_password
+            // flag is true, so that landing still gets the card (reviewer's
+            // scenario). Either source showing true is sufficient.
+            if (!needsPassword && currentUser && currentUser.user_metadata && currentUser.user_metadata.needs_password === true) {
+                needsPassword = true;
+            }
             card.style.display = needsPassword ? 'block' : 'none';
         }
 
@@ -1457,12 +1466,20 @@ Let me know if you have any questions!
                 submitBtn.disabled = true;
 
                 try {
-                    await Auth.updatePassword(newPassword);
+                    // gh-2162 review fix (3): a single call sets the real
+                    // password AND clears the server-visible
+                    // user_metadata.needs_password flag together, instead of
+                    // Auth.updatePassword() (password only) followed by a
+                    // second round trip. js/auth.js is unmodified — this
+                    // uses the page's own already-initialized `sb` client.
+                    const { error: setPwError } = await sb.auth.updateUser({ password: newPassword, data: { needs_password: false } });
+                    if (setPwError) throw setPwError;
 
-                    // Success — clear the flag for this user and hide the card.
+                    // Success — clear the localStorage cache for this user and hide the card.
                     if (setPasswordUserId) {
                         try { window.localStorage.removeItem(needsPasswordFlagKey(setPasswordUserId)); } catch (e) { /* non-fatal */ }
                     }
+                    if (currentUser && currentUser.user_metadata) currentUser.user_metadata.needs_password = false;
                     const card = document.getElementById('setPasswordCard');
                     if (card) card.style.display = 'none';
                 } catch (err) {

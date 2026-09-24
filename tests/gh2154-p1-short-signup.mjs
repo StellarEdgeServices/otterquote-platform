@@ -261,12 +261,19 @@ function makeChainable(result) {
   return proxy;
 }
 
-function makeSb(rpcCalls, registerResult) {
+function makeSb(rpcCalls, registerResult, authUpdateUserCalls) {
   return {
     rpc(name, params) {
       rpcCalls.push({ name, params });
       if (name === 'register_partner') {
         return Promise.resolve(registerResult || { data: { id: 'gh2154-p1-test-id', unique_code: 'TESTCODE123' }, error: null });
+      }
+      // gh-2162 review fix (1) test infra: insurance's Google-completion
+      // path calls claim_partner_account right after register_partner --
+      // give it a "claimed" result so that path doesn't early-return before
+      // its own localStorage/GA cleanup, same as a real successful link.
+      if (name === 'claim_partner_account') {
+        return Promise.resolve({ data: { claimed: true }, error: null });
       }
       return Promise.resolve({ data: null, error: null });
     },
@@ -279,7 +286,17 @@ function makeSb(rpcCalls, registerResult) {
         };
       },
     },
-    auth: { onAuthStateChange() {} },
+    auth: {
+      onAuthStateChange() {},
+      // gh-2162 review fix (3) test infra: records every
+      // sb.auth.updateUser(...) call so a test can assert the
+      // server-visible needs_password metadata write actually happened
+      // (not just the localStorage cache).
+      updateUser(payload) {
+        (authUpdateUserCalls || []).push(payload);
+        return Promise.resolve({ data: {}, error: null });
+      },
+    },
   };
 }
 
@@ -328,7 +345,7 @@ function makeElementStore() {
   };
 }
 
-function runPageScript(page, { search, omitCrypto = false } = {}) {
+function runPageScript(page, { search, omitCrypto = false, sessionOnSignup = false, authGetUserResult = null, preLocalStorage = null } = {}) {
   const html = fs.readFileSync(path.join(repoRoot, page.file), 'utf8');
   const script = extractInlineScripts(html);
   if (!script || script.indexOf('register_partner') === -1) {
@@ -336,8 +353,16 @@ function runPageScript(page, { search, omitCrypto = false } = {}) {
   }
   const store = makeElementStore();
   const rpcCalls = [];
-  const sb = makeSb(rpcCalls);
+  const authUpdateUserCalls = [];
+  const sb = makeSb(rpcCalls, undefined, authUpdateUserCalls);
   const lsStore = new Map();
+  // gh-2162 review fix (1) test infra: lets the Google-completion-path test
+  // seed a pending-signup payload before the page script runs (mirrors
+  // localStorage.setItem(PENDING_SIGNUP_KEY, ...) a real Google redirect
+  // would have already done on the previous page load).
+  if (preLocalStorage) {
+    for (const [k, v] of Object.entries(preLocalStorage)) lsStore.set(k, v);
+  }
   const localStorage = {
     getItem: (k) => (lsStore.has(k) ? lsStore.get(k) : null),
     setItem: (k, v) => { lsStore.set(k, String(v)); },
@@ -389,9 +414,19 @@ function runPageScript(page, { search, omitCrypto = false } = {}) {
   win.window = win;
   const authCounters = { signUpWithPassword: 0 };
   const AuthObj = {
-    signUpWithPassword: async () => { authCounters.signUpWithPassword++; return { session: null, user: { id: 'gh2154-p1-test-user-id' } }; },
+    signUpWithPassword: async () => {
+      authCounters.signUpWithPassword++;
+      // gh-2162 review fix (3) test infra: sessionOnSignup lets a test
+      // exercise the "signUp returned a session" branch that triggers the
+      // server-visible needs_password metadata write.
+      return { session: sessionOnSignup ? { access_token: 'gh2154-p1-test-token' } : null, user: { id: 'gh2154-p1-test-user-id' } };
+    },
     hasPartnerSession: async () => false,
-    getUser: async () => null,
+    getUser: async () => authGetUserResult,
+    // gh-2162 review fix (1) test infra: same predicate as the real
+    // js/auth.js Auth.isTestEmail (gh-397/#689) -- case-insensitive,
+    // null-safe, @otterquote-internal.test suffix match.
+    isTestEmail: (email) => (email || '').trim().toLowerCase().endsWith('@otterquote-internal.test'),
   };
   win.Auth = AuthObj; // some pages branch on window.Auth explicitly
   const ctx = {
@@ -447,7 +482,7 @@ function runPageScript(page, { search, omitCrypto = false } = {}) {
   for (const fn of domContentLoadedListeners) {
     try { fn(); } catch (e) { /* ignore, surfaced via missing submit listener below */ }
   }
-  return { store, rpcCalls, ctx, cryptoCounters, mathCounters, authCounters, lsStore };
+  return { store, rpcCalls, ctx, cryptoCounters, mathCounters, authCounters, lsStore, authUpdateUserCalls };
 }
 
 async function submitForm(runResult, formId, fill) {
@@ -601,6 +636,169 @@ for (const page of PAGES) {
       } catch (e) {
         failWithReason(page.label + ' (i): a successful signup sets the oq_partner_needs_password flag (keyed by uid)', e.message);
       }
+    }
+  }
+
+  // (j) gh-2162 REVIEW FAIL 1: register_partner is called with p_is_test --
+  // true for an @otterquote-internal.test address, false for a normal one.
+  // Same predicate as trade-selector.html:1466 / dashboard.html:1812.
+  {
+    const run = runPageScript(page, { search: QS });
+    if (run.setupError) {
+      failWithReason(page.label + ' (j): register_partner p_is_test=true for an @otterquote-internal.test email', run.setupError);
+    } else {
+      try {
+        await submitForm(run, page.formId, fullFill(page, { [page.fill.emailId]: 'pfw-p1@otterquote-internal.test' }));
+        const calls = run.rpcCalls.filter((c) => c.name === 'register_partner');
+        const params = calls[0] ? calls[0].params || {} : {};
+        ok('p_is_test' in params, page.label + ' (j): register_partner is called with a p_is_test key at all -- got keys ' + JSON.stringify(Object.keys(params)));
+        ok(params.p_is_test === true, page.label + ' (j): p_is_test=true for an @otterquote-internal.test email -- got ' + JSON.stringify(params.p_is_test));
+      } catch (e) {
+        failWithReason(page.label + ' (j): register_partner p_is_test=true for an @otterquote-internal.test email', e.message);
+      }
+    }
+  }
+  {
+    const run = runPageScript(page, { search: QS });
+    if (run.setupError) {
+      failWithReason(page.label + ' (j): register_partner p_is_test=false for a normal email', run.setupError);
+    } else {
+      try {
+        await submitForm(run, page.formId, fullFill(page)); // fullFill's default email is a normal (non-*.test) address
+        const calls = run.rpcCalls.filter((c) => c.name === 'register_partner');
+        const params = calls[0] ? calls[0].params || {} : {};
+        ok(params.p_is_test === false, page.label + ' (j): p_is_test=false for a normal email -- got ' + JSON.stringify(params.p_is_test));
+      } catch (e) {
+        failWithReason(page.label + ' (j): register_partner p_is_test=false for a normal email', e.message);
+      }
+    }
+  }
+
+  // (k) gh-2162 REVIEW FAIL 2: funnel_id falls back to utm_campaign when the
+  // URL has no funnel_id AND utm_campaign matches the <line>-<funnel>
+  // convention (S14); an explicit funnel_id always wins; a non-matching
+  // utm_campaign means no fallback (funnel_id stays null).
+  {
+    const run = runPageScript(page, { search: '?fbclid=X&utm_campaign=re-1' });
+    if (run.setupError) {
+      failWithReason(page.label + ' (k): p_funnel_id falls back to a matching utm_campaign ("re-1") when funnel_id is absent from the URL', run.setupError);
+    } else {
+      try {
+        await submitForm(run, page.formId, fullFill(page));
+        const calls = run.rpcCalls.filter((c) => c.name === 'register_partner');
+        const params = calls[0] ? calls[0].params || {} : {};
+        ok(params.p_funnel_id === 're-1', page.label + ' (k): p_funnel_id falls back to a matching utm_campaign ("re-1") when funnel_id is absent from the URL -- got ' + JSON.stringify(params.p_funnel_id));
+      } catch (e) {
+        failWithReason(page.label + ' (k): p_funnel_id falls back to a matching utm_campaign ("re-1") when funnel_id is absent from the URL', e.message);
+      }
+    }
+  }
+  {
+    const run = runPageScript(page, { search: '?utm_campaign=spring_sale' });
+    if (run.setupError) {
+      failWithReason(page.label + ' (k): p_funnel_id stays null when utm_campaign does not match the <line>-<funnel> convention', run.setupError);
+    } else {
+      try {
+        await submitForm(run, page.formId, fullFill(page));
+        const calls = run.rpcCalls.filter((c) => c.name === 'register_partner');
+        const params = calls[0] ? calls[0].params || {} : {};
+        ok(params.p_funnel_id === null, page.label + ' (k): p_funnel_id stays null for a non-matching utm_campaign ("spring_sale") -- got ' + JSON.stringify(params.p_funnel_id));
+      } catch (e) {
+        failWithReason(page.label + ' (k): p_funnel_id stays null when utm_campaign does not match the <line>-<funnel> convention', e.message);
+      }
+    }
+  }
+  {
+    const run = runPageScript(page, { search: '?funnel_id=re-2&utm_campaign=re-1' });
+    if (run.setupError) {
+      failWithReason(page.label + ' (k): an explicit funnel_id ("re-2") always wins over utm_campaign ("re-1")', run.setupError);
+    } else {
+      try {
+        await submitForm(run, page.formId, fullFill(page));
+        const calls = run.rpcCalls.filter((c) => c.name === 'register_partner');
+        const params = calls[0] ? calls[0].params || {} : {};
+        ok(params.p_funnel_id === 're-2', page.label + ' (k): an explicit funnel_id ("re-2") always wins over utm_campaign ("re-1") -- got ' + JSON.stringify(params.p_funnel_id));
+      } catch (e) {
+        failWithReason(page.label + ' (k): an explicit funnel_id ("re-2") always wins over utm_campaign ("re-1")', e.message);
+      }
+    }
+  }
+
+  // (l) gh-2162 REVIEW FAIL 3: a successful signup that returns a session
+  // mirrors the needs_password flag onto SERVER-VISIBLE user_metadata (via
+  // this page's own sb.auth.updateUser client), not just localStorage --
+  // this is the fix for a first dashboard landing in a DIFFERENT browser or
+  // the installed PWA, where the localStorage-only flag is invisible.
+  {
+    const run = runPageScript(page, { search: QS, sessionOnSignup: true });
+    if (run.setupError) {
+      failWithReason(page.label + ' (l): a successful signup (with a session) writes user_metadata.needs_password=true via sb.auth.updateUser', run.setupError);
+    } else {
+      try {
+        await submitForm(run, page.formId, fullFill(page));
+        const metaCalls = run.authUpdateUserCalls.filter((p) => p && p.data && p.data.needs_password === true);
+        ok(metaCalls.length >= 1, page.label + ' (l): sb.auth.updateUser({ data: { needs_password: true } }) is called after a successful signup that returns a session -- got calls ' + JSON.stringify(run.authUpdateUserCalls));
+      } catch (e) {
+        failWithReason(page.label + ' (l): a successful signup (with a session) writes user_metadata.needs_password=true via sb.auth.updateUser', e.message);
+      }
+    }
+  }
+}
+
+// (m) gh-2162 REVIEW FAIL 1 + 3, Google-completion path (partner-insurance.html
+// only -- the other two pages have no Google OAuth signup entry point, see
+// tests/gh2078-google-signup-gtag-wait.mjs's own regression check for that).
+// Seeds the pending-signup payload finishGoogleSignupIfPending() reads and a
+// resolved Auth.getUser() the same way a real post-redirect page load would
+// have both, then lets CONFIG.whenReady()'s own call to
+// finishGoogleSignupIfPending() run at parse time.
+{
+  const PENDING_SIGNUP_KEY = 'cs_pending_partner_signup';
+  const pendingPayload = JSON.stringify({
+    fullName: 'Jane Test',
+    phone: '3175551234',
+    company: 'Test Co',
+    agentType: 'insurance_agent',
+    recruitCode: null,
+    utm: { source: null, medium: null, campaign: 're-1', content: null, fbclid: 'TESTFBCLID', liFatId: 'TESTLI', funnelId: 're-1' },
+  });
+  const insurancePage = PAGES.find((p) => p.file === 'partner-insurance.html');
+
+  // (m1) test email -> p_is_test=true on the Google-completion register_partner call.
+  {
+    const run = runPageScript(insurancePage, {
+      search: '?g=1',
+      preLocalStorage: { [PENDING_SIGNUP_KEY]: pendingPayload },
+      authGetUserResult: { email: 'pfw-p1@otterquote-internal.test' },
+    });
+    if (run.setupError) {
+      failWithReason('partner-insurance.html (m): Google-completion register_partner call carries p_is_test=true for an @otterquote-internal.test email', run.setupError);
+    } else {
+      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((r) => setTimeout(r, 0));
+      const calls = run.rpcCalls.filter((c) => c.name === 'register_partner');
+      ok(calls.length === 1, 'partner-insurance.html (m): the Google-completion path calls register_partner exactly once -- got ' + calls.length);
+      const params = calls[0] ? calls[0].params || {} : {};
+      ok('p_is_test' in params, 'partner-insurance.html (m): the Google-completion register_partner call has a p_is_test key at all -- got keys ' + JSON.stringify(Object.keys(params)));
+      ok(params.p_is_test === true, 'partner-insurance.html (m): the Google-completion register_partner call has p_is_test=true for an @otterquote-internal.test email -- got ' + JSON.stringify(params.p_is_test));
+    }
+  }
+
+  // (m2) normal email -> p_is_test=false on the same call site.
+  {
+    const run = runPageScript(insurancePage, {
+      search: '?g=1',
+      preLocalStorage: { [PENDING_SIGNUP_KEY]: pendingPayload },
+      authGetUserResult: { email: 'gh2154-p1-google-test@example.invalid' },
+    });
+    if (run.setupError) {
+      failWithReason('partner-insurance.html (m): Google-completion register_partner call carries p_is_test=false for a normal email', run.setupError);
+    } else {
+      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((r) => setTimeout(r, 0));
+      const calls = run.rpcCalls.filter((c) => c.name === 'register_partner');
+      const params = calls[0] ? calls[0].params || {} : {};
+      ok(params.p_is_test === false, 'partner-insurance.html (m): the Google-completion register_partner call has p_is_test=false for a normal email -- got ' + JSON.stringify(params.p_is_test));
     }
   }
 }
