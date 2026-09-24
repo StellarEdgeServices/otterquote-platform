@@ -182,10 +182,12 @@ Deno.test("index.ts: the 402 status and message returned to the client are uncha
 });
 
 Deno.test("index.ts: the admin email goes through notify-measurement-order (service-role bearer), the existing admin email path", () => {
-  const at = index.indexOf("sendAdminEmail");
+  const at = index.indexOf("sendAdminEmail: (body) =>");
   assert(at > 0);
   const region = index.slice(at, at + 900);
-  assert(region.includes("/functions/v1/notify-measurement-order") && region.includes("SUPABASE_SERVICE_ROLE_KEY"));
+  assert(region.includes("postAdminAlertEmail(") && region.includes("SUPABASE_SERVICE_ROLE_KEY"), "uses the service-role key");
+  const alertSrc = Deno.readTextFileSync(new URL("./non-usd-alert.ts", import.meta.url));
+  assert(alertSrc.includes("/functions/v1/notify-measurement-order") && alertSrc.includes("Authorization: `Bearer ${opts.serviceKey}`"), "posts to notify-measurement-order with the bearer");
 });
 
 Deno.test("index.ts: the alert insert is platform_alerts_log, and the dedupe reads it by alert_type + PaymentIntent id", () => {

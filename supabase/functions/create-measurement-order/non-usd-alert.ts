@@ -19,6 +19,10 @@
  * DEDUPE. A client can retry the same PaymentIntent; one alert per PaymentIntent is enough, so a prior alert row for the same id skips
  * both artifacts. A failed dedupe lookup alerts anyway (fail toward telling the operator).
  *
+ * BOUNDED (Ben's follow-up on #2078, 5807572209): the alert is awaited BEFORE the 402 is returned, so it must never hold the response
+ * open. The mail call is aborted at ~5 s (postAdminAlertEmail's AbortController), and the WHOLE alert has a deadline just above that
+ * (a hung dedupe lookup or row insert is bounded too). Hitting the deadline logs fixed text and the 402 goes out.
+ *
  * NEVER THROWS. Each channel is contained on its own so one failing does not stop the other, and a failure is logged with fixed text only.
  * Everything here is injected (`NonUsdAlertDeps`) so it is testable without a database or a network.
  */
@@ -54,6 +58,40 @@ export interface NonUsdAlertDeps {
 
 const UNRECOGNIZED = "unrecognized";
 
+/** The mail call to notify-measurement-order is aborted after this long. */
+export const NON_USD_ALERT_SEND_TIMEOUT_MS = 5000;
+/** The whole alert (lookup, row, mail) gives up after this long, so the 402 is never held open by it. */
+export const NON_USD_ALERT_DEADLINE_MS = 6000;
+
+/**
+ * POST the alert body to notify-measurement-order (service-role bearer, the existing admin email path) with an AbortController.
+ * Rejects on a non-ok response or when the timeout aborts a hung call. The message is fixed text (no upstream text).
+ */
+export async function postAdminAlertEmail(opts: {
+  fetchImpl: typeof fetch;
+  supabaseUrl: string;
+  serviceKey: string;
+  body: NonUsdAlertEmailBody;
+  timeoutMs: number;
+}): Promise<void> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), opts.timeoutMs);
+  try {
+    const res = await opts.fetchImpl(`${opts.supabaseUrl}/functions/v1/notify-measurement-order`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${opts.serviceKey}` },
+      body: JSON.stringify(opts.body),
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(`notify-measurement-order returned ${res.status}`);
+  } catch (e) {
+    if (controller.signal.aborted) throw new Error("notify-measurement-order did not answer in time");
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export function buildNonUsdAlertRow(n: NonUsdRejection, flow: PaymentFlow, now: () => Date = () => new Date()): NonUsdAlertRow {
   return {
     alert_type: NON_USD_ALERT_TYPE,
@@ -71,6 +109,27 @@ export async function raiseNonUsdPaymentAlert(
   n: NonUsdRejection,
   flow: PaymentFlow,
   now: () => Date = () => new Date(),
+  deadlineMs: number = NON_USD_ALERT_DEADLINE_MS,
+): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<"deadline">((resolve) => { timer = setTimeout(() => resolve("deadline"), deadlineMs); });
+  try {
+    const outcome = await Promise.race([alertWork(deps, n, flow, now), deadline]);
+    if (outcome === "deadline") {
+      try { deps.log(`[create-measurement-order] non-usd alert hit its deadline; the response goes out without waiting`); } catch { /* never throw */ }
+    }
+  } catch {
+    // a logger that throws must not turn a 402 into a 500
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+async function alertWork(
+  deps: NonUsdAlertDeps,
+  n: NonUsdRejection,
+  flow: PaymentFlow,
+  now: () => Date,
 ): Promise<void> {
   try {
     if (n.paymentIntentId) {
