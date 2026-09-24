@@ -1,5 +1,7 @@
 // gh-2107 / D-330 half 2 -- the support-email opt-out path. Dustin's ruling "b." (#2078 comment 5801822166), scope item 4:
 // "The manual support-email opt-out path sets the same flag, so admins have a way to record it." An admin-only function.
+// Ben's ruling c. (#2078 5805593465): an opt-out from a person WITHOUT an account goes on a hashed-email suppression list, so
+// this function records the SHA-256 of every address it is given (first, and always), then flags any profiles.
 import { assert, assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import { type Deps, escapeLikePattern, handleRequest, normalizeEmail } from "./handler.ts";
 
@@ -7,13 +9,16 @@ const ADMIN = { id: "aaaaaaaa-0000-4000-8000-000000000001", email: "dustinstohle
 const USER = { id: "bbbbbbbb-0000-4000-8000-000000000002", email: "someone@example.com" };
 const AT = new Date("2026-09-24T02:00:00.000Z");
 
-interface Calls { recorded: { email: string; at: string }[]; logs: string[]; adminChecks: string[] }
-function deps(over: Partial<Deps> = {}, result: { matched: number; updated: number } | { errorCode: string | null } = { matched: 1, updated: 1 }): { d: Deps; calls: Calls } {
-  const calls: Calls = { recorded: [], logs: [], adminChecks: [] };
+type Flag = { matched: number; updated: number } | { errorCode: string | null };
+interface Calls { order: string[]; suppressed: string[]; flagged: { email: string; at: string }[]; logs: string[]; adminChecks: string[]; hashed: string[] }
+function deps(over: Partial<Deps> = {}, opts: { flag?: Flag; suppressFail?: { errorCode: string | null } | null } = {}): { d: Deps; calls: Calls } {
+  const calls: Calls = { order: [], suppressed: [], flagged: [], logs: [], adminChecks: [], hashed: [] };
   const d: Deps = {
     authenticate: (token) => Promise.resolve(token === "admin-token" ? ADMIN : token === "user-token" ? USER : null),
     isAdmin: (id, email) => { calls.adminChecks.push(id); return Promise.resolve(email === ADMIN.email); },
-    recordByEmail: (email, at) => { calls.recorded.push({ email, at }); return Promise.resolve(result); },
+    hashEmail: (email) => { calls.hashed.push(email); return Promise.resolve("HASH(" + email + ")"); },
+    suppress: (h) => { calls.order.push("suppress"); calls.suppressed.push(h); return Promise.resolve(opts.suppressFail ?? null); },
+    flagProfiles: (email, at) => { calls.order.push("flag"); calls.flagged.push({ email, at }); return Promise.resolve(opts.flag ?? { matched: 1, updated: 1 }); },
     now: () => AT,
     log: (m) => calls.logs.push(m),
     ...over,
@@ -41,26 +46,27 @@ Deno.test("escapeLikePattern: % _ and the escape character are escaped, so an ad
 });
 
 // -- auth: admin only --------------------------------------------------------------
-Deno.test("no Authorization header -> 401, nothing recorded", async () => {
+Deno.test("no Authorization header -> 401, nothing recorded anywhere", async () => {
   const { d, calls } = deps();
   const res = await handleRequest(req({ email: "a@b.co" }, { token: null }), d);
   assertEquals(res.status, 401);
-  assertEquals(calls.recorded.length, 0);
+  assertEquals(calls.order.length, 0);
 });
 
 Deno.test("an invalid token -> 401, nothing recorded, no admin lookup", async () => {
   const { d, calls } = deps();
   const res = await handleRequest(req({ email: "a@b.co" }, { token: "garbage" }), d);
   assertEquals(res.status, 401);
-  assertEquals(calls.recorded.length, 0);
+  assertEquals(calls.order.length, 0);
   assertEquals(calls.adminChecks.length, 0);
 });
 
-Deno.test("a signed-in NON-admin -> 403, nothing recorded", async () => {
+Deno.test("a signed-in NON-admin -> 403, nothing recorded (no suppression row, no flag)", async () => {
   const { d, calls } = deps();
   const res = await handleRequest(req({ email: "a@b.co" }, { token: "user-token" }), d);
   assertEquals(res.status, 403);
-  assertEquals(calls.recorded.length, 0);
+  assertEquals(calls.order.length, 0);
+  assertEquals(calls.hashed.length, 0);
 });
 
 Deno.test("the admin check is made with the AUTHENTICATED user, never with anything from the request body", async () => {
@@ -70,7 +76,7 @@ Deno.test("the admin check is made with the AUTHENTICATED user, never with anyth
   const { d: d2, calls: c2 } = deps();
   const res = await handleRequest(req({ email: "a@b.co", admin: true, is_admin: true }, { token: "user-token" }), d2);
   assertEquals(res.status, 403);
-  assertEquals(c2.recorded.length, 0);
+  assertEquals(c2.order.length, 0);
 });
 
 // -- request handling ----------------------------------------------------------------
@@ -86,54 +92,77 @@ Deno.test("a missing, malformed or non-string email -> 400, nothing recorded", a
     const { d, calls } = deps();
     const res = await handleRequest(req(body), d);
     assertEquals(res.status, 400, JSON.stringify(body));
-    assertEquals(calls.recorded.length, 0);
+    assertEquals(calls.order.length, 0);
   }
 });
 
-Deno.test("an admin request records the flag for the NORMALISED address, with the injected time, and reports how many rows matched and changed", async () => {
-  const { d, calls } = deps({}, { matched: 2, updated: 1 });
+// -- the suppression list (ruling c.) -------------------------------------------------
+Deno.test("an admin request writes the suppression row FIRST (for the digest of the NORMALISED address), then flags profiles with the injected time", async () => {
+  const { d, calls } = deps({}, { flag: { matched: 2, updated: 1 } });
   const res = await handleRequest(req({ email: "  Jane@Example.com " }), d);
   assertEquals(res.status, 200);
-  assertEquals(await res.json(), { ok: true, matched: 2, updated: 1 });
-  assertEquals(calls.recorded, [{ email: "jane@example.com", at: "2026-09-24T02:00:00.000Z" }]);
+  assertEquals(await res.json(), { ok: true, suppressed: true, matched: 2, updated: 1 });
+  assertEquals(calls.order, ["suppress", "flag"]);
+  assertEquals(calls.hashed, ["jane@example.com"], "the digest is computed from the normalised address");
+  assertEquals(calls.suppressed, ["HASH(jane@example.com)"]);
+  assertEquals(calls.flagged, [{ email: "jane@example.com", at: "2026-09-24T02:00:00.000Z" }]);
 });
 
-Deno.test("no account has that email -> 200 with matched 0 and a fixed note (the admin must know nothing was stored)", async () => {
-  const { d } = deps({}, { matched: 0, updated: 0 });
+Deno.test("NO account has that email: the opt-out is STILL recorded (on the suppression list), and the admin is told so", async () => {
+  const { d, calls } = deps({}, { flag: { matched: 0, updated: 0 } });
   const res = await handleRequest(req({ email: "nobody@example.com" }), d);
   assertEquals(res.status, 200);
   const j = await res.json();
   assertEquals(j.ok, true);
+  assertEquals(j.suppressed, true, "the gap: a person with no account is now stored");
   assertEquals(j.matched, 0);
-  assertEquals(j.updated, 0);
-  assert(typeof j.note === "string" && j.note.length > 0 && !j.note.includes("nobody@example.com"), "the note is fixed text and does not echo the address");
+  assert(typeof j.note === "string" && j.note.includes("suppression list") && !j.note.includes("nobody@example.com"), "fixed note, no address");
+  assertEquals(calls.suppressed.length, 1);
 });
 
-Deno.test("a store failure -> 500 with a FIXED message; the address and any database text never appear in the response or the log", async () => {
-  const { d, calls } = deps({}, { errorCode: "23514" });
+Deno.test("a suppression failure -> 500 with a FIXED message, profiles are NOT touched, and neither the address, its digest nor database text leaks", async () => {
+  const { d, calls } = deps({}, { suppressFail: { errorCode: "23514" } });
   const res = await handleRequest(req({ email: "secret.person@example.com" }), d);
   assertEquals(res.status, 500);
-  const text = JSON.stringify(await res.json()) + calls.logs.join("\n");
-  assert(!text.includes("secret.person") && !text.includes("example.com"), "no address in the response or log");
-  assert(calls.logs.join("\n").includes("(code 23514)"), "the safe code is logged");
-  const { d: d2, calls: c2 } = deps({ recordByEmail: () => Promise.reject(new Error('duplicate key "x" Key (email)=(secret.person@example.com)')) });
+  assertEquals(calls.order, ["suppress"], "no profile flag is set when the universal record could not be written");
+  const text = JSON.stringify(await res.json()) + " | " + calls.logs.join(" | ");
+  assert(!text.includes("secret.person") && !text.includes("example.com") && !text.includes("HASH("), "no address or digest in the response or log");
+  assert(calls.logs.join(" | ").includes("(code 23514)"), "the safe code is logged");
+  const { d: d2, calls: c2 } = deps({ suppress: () => Promise.reject(new Error('duplicate key "x" Key (email_sha256)=(HASH(secret.person@example.com))')) });
   const res2 = await handleRequest(req({ email: "secret.person@example.com" }), d2);
   assertEquals(res2.status, 500);
-  assert(!(JSON.stringify(await res2.json()) + c2.logs.join("\n")).includes("secret.person"), "a thrown error's text is never forwarded");
+  assert(!(JSON.stringify(await res2.json()) + c2.logs.join(" | ")).includes("secret.person"), "a thrown error's text is never forwarded");
 });
 
-Deno.test("a store error code that is not a short alphanumeric token is dropped (a message cannot ride in the code)", async () => {
-  const { d, calls } = deps({}, { errorCode: "bad code with spaces and secret.person@example.com" });
+Deno.test("a profile-flag failure -> 500 with a FIXED message (a retry is safe: every write is idempotent) and nothing leaks", async () => {
+  const { d, calls } = deps({}, { flag: { errorCode: "42703" } });
   const res = await handleRequest(req({ email: "secret.person@example.com" }), d);
   assertEquals(res.status, 500);
-  const logText = calls.logs.join(" | ");
-  assert(!logText.includes("secret.person") && !logText.includes("bad code"), logText);
+  assertEquals(calls.order, ["suppress", "flag"], "the suppression row was already written");
+  const text = JSON.stringify(await res.json()) + " | " + calls.logs.join(" | ");
+  assert(!text.includes("secret.person") && !text.includes("HASH("), text);
+  assert(calls.logs.join(" | ").includes("(code 42703)"));
+  const { d: d2, calls: c2 } = deps({ flagProfiles: () => Promise.reject(new Error("boom with secret.person@example.com")) });
+  const res2 = await handleRequest(req({ email: "secret.person@example.com" }), d2);
+  assertEquals(res2.status, 500);
+  assert(!(JSON.stringify(await res2.json()) + c2.logs.join(" | ")).includes("secret.person"));
 });
 
-Deno.test("the success log line carries the counts only, never the address", async () => {
-  const { d, calls } = deps({}, { matched: 1, updated: 1 });
+Deno.test("a store error code that is not a short alphanumeric token is dropped (a message cannot ride in the code), on both writes", async () => {
+  for (const [o, opts] of [[{}, { suppressFail: { errorCode: "bad code with spaces and secret.person@example.com" } }], [{}, { flag: { errorCode: "bad code with spaces and secret.person@example.com" } }]] as const) {
+    const { d, calls } = deps(o, opts);
+    const res = await handleRequest(req({ email: "secret.person@example.com" }), d);
+    assertEquals(res.status, 500);
+    const logText = calls.logs.join(" | ");
+    assert(!logText.includes("secret.person") && !logText.includes("bad code"), logText);
+  }
+});
+
+Deno.test("the success log line carries the counts only, never the address or its digest", async () => {
+  const { d, calls } = deps({}, { flag: { matched: 1, updated: 1 } });
   await handleRequest(req({ email: "private.person@example.com" }), d);
-  assert(!calls.logs.join("\n").includes("private.person"));
+  const logText = calls.logs.join(" | ");
+  assert(!logText.includes("private.person") && !logText.includes("HASH("), logText);
 });
 
 Deno.test("unknown origin still gets a response with the default allowed origin, never an echo", async () => {
@@ -144,6 +173,21 @@ Deno.test("unknown origin still gets a response with the default allowed origin,
 
 // -- structure -------------------------------------------------------------------------
 const index = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+
+Deno.test("index.ts: the suppression row is an idempotent upsert (never overwritten), source support_email, and the table is never updated or deleted from", () => {
+  assert(index.includes('.from("ad_sharing_suppressions")'));
+  assert(index.includes(".upsert("));
+  assert(index.includes("ignoreDuplicates: true"));
+  const supp = index.slice(index.indexOf('.from("ad_sharing_suppressions")'), index.indexOf("flagProfiles:"));
+  assert(supp.includes('source: "support_email"'), "the suppression row's own source is support_email");
+  assert(!/\.(update|delete)\(/.test(supp), "the suppression list is only ever inserted into");
+});
+
+Deno.test("index.ts: hashes with the inlined email-hash.ts (the CAPI send's digest), not a second implementation", () => {
+  assert(index.includes('from "./email-hash.ts"'));
+  assert(index.includes("hashEmail: (email) => hashEmailSha256(email)"));
+  assert(!index.includes("crypto.subtle"), "no second hash implementation in index.ts");
+});
 
 Deno.test("index.ts: sets the flag TRUE with source support_email, only where it is not already true, and never writes false or null", () => {
   assert(/ad_sharing_opt_out:\s*true/.test(index));

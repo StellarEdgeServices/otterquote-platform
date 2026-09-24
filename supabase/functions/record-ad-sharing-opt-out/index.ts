@@ -9,7 +9,7 @@
  * Usage:
  *   POST /functions/v1/record-ad-sharing-opt-out       Authorization: Bearer <admin JWT>
  *   Body:     { "email": "person@example.com" }
- *   Response: { ok: true, matched, updated }            200  (matched 0 = no account has that address; nothing stored)
+ *   Response: { ok: true, suppressed: true, matched, updated }   200  (matched 0 = no account has it; it is on the suppression list)
  *             { error }                                 400 / 401 / 403 / 405 / 500
  *
  * verify_jwt is pinned false in supabase/config.toml, like approve-warranty-drift: the admin page lives on app.otterquote.com
@@ -20,6 +20,7 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { hashEmailSha256 } from "./email-hash.ts";
 import { escapeLikePattern, handleRequest } from "./handler.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
@@ -43,7 +44,15 @@ Deno.serve((req: Request) =>
       const { data } = await sb.from("contractors").select("template_review_role").eq("user_id", userId).maybeSingle();
       return (data as { template_review_role?: string } | null)?.template_review_role === "admin";
     },
-    recordByEmail: async (email, atIso) => {
+    hashEmail: (email) => hashEmailSha256(email),
+    suppress: async (emailSha256) => {
+      // Idempotent: a repeat request for the same address is not an error and never rewrites the original row.
+      const { error } = await sb
+        .from("ad_sharing_suppressions")
+        .upsert({ email_sha256: emailSha256, source: "support_email" }, { onConflict: "email_sha256", ignoreDuplicates: true });
+      return error ? { errorCode: (error as { code?: string }).code ?? null } : null;
+    },
+    flagProfiles: async (email, atIso) => {
       const found = await sb.from("profiles").select("id").ilike("email", escapeLikePattern(email));
       if (found.error) return { errorCode: (found.error as { code?: string }).code ?? null };
       const ids = ((found.data ?? []) as { id: string }[]).map((r) => r.id);
