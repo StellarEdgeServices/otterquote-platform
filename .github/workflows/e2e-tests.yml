@@ -118,6 +118,9 @@ jobs:
       - name: Contractor credential/screening claim guard (D-104, gh-1617)
         run: python3 scripts/check-credential-claims.py
 
+      - name: Mailgun-sender postal-address footer coverage guard (D-237, gh-1824)
+        run: python3 scripts/check-mailgun-footer-coverage.py
+
       - name: Partner-signup consent checkbox link guard (D-278, gh-943)
         run: python3 scripts/check-partner-consent-link.py
 

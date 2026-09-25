@@ -35,6 +35,11 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 
+import {
+  footerPostalAddressHtml,
+  footerPostalAddressText,
+} from "./email-footer.ts"; // gh-1824
+
 const FUNCTION_NAME = "send-home-profile-prompt";
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
 const BATCH_LIMIT = 50;
@@ -228,6 +233,8 @@ function buildEmailContent(
     "─────────────────────────────────────────",
     "You're receiving this email because a project on your Otter Quotes account was recently marked complete.",
     "Manage your preferences at: https://otterquote.com/dashboard.html",
+    "",
+    footerPostalAddressText(), // gh-1824
   ].join("\n");
 
   const roofYearNote = roofYear
@@ -360,6 +367,7 @@ function buildEmailContent(
                 &nbsp;·&nbsp;
                 <a href="https://otterquote.com" style="color:#9CA3AF;">otterquote.com</a>
               </p>
+              ${footerPostalAddressHtml()}  <!-- gh-1824 -->
             </td>
           </tr>
 
