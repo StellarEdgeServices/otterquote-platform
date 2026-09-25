@@ -40,6 +40,10 @@ on:
       - 'tests/gh2150-re1-page.mjs'
       - 'ins-1.html'
       - 'tests/gh2151-ins1-page.mjs'
+      - 'hi-1.html'
+      - 'tests/gh2152-hi1-page.mjs'
+      - 'tests/gh2150-gh2151-s05-perf-structure.mjs'
+      - 'tests/gh2192-s05-must-fix.mjs'
       - '.github/workflows/static-pixel-gate-tests.yml'
   push:
     branches: [main]
@@ -73,6 +77,10 @@ on:
       - 'tests/gh2150-re1-page.mjs'
       - 'ins-1.html'
       - 'tests/gh2151-ins1-page.mjs'
+      - 'hi-1.html'
+      - 'tests/gh2152-hi1-page.mjs'
+      - 'tests/gh2150-gh2151-s05-perf-structure.mjs'
+      - 'tests/gh2192-s05-must-fix.mjs'
       - '.github/workflows/static-pixel-gate-tests.yml'
 
 permissions:
@@ -123,3 +131,9 @@ jobs:
         run: node tests/gh2150-re1-page.mjs
       - name: INS-1 dedicated landing page -- approved copy, field set, funnel-id attribution (gh2151-ins1-page)
         run: node tests/gh2151-ins1-page.mjs
+      - name: HI-1 dedicated landing page -- approved copy, field set, no-fee disclosure, HI-0.5 track links (gh2152-hi1-page)
+        run: node tests/gh2152-hi1-page.mjs
+      - name: S05 perf structure -- no render-blocking scripts/styles, lazy Supabase bundle on re-1/ins-1/hi-1 (gh2150-gh2151-s05-perf-structure)
+        run: node tests/gh2150-gh2151-s05-perf-structure.mjs
+      - name: S05 perf must-fixes -- recruit-code attribution race, pre-hydration submit queue/no-GET (gh2192-s05-must-fix)
+        run: node tests/gh2192-s05-must-fix.mjs

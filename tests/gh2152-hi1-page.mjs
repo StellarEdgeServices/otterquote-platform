@@ -613,6 +613,25 @@ ok(!html.includes('Please enter your company name.'), 'hi-1.html (6): the unappr
   }
 }
 
+// ── HI-0.5 fix (1) (CLOSE-REVIEW FAIL on #2152 comment 5838422299, Ben
+// DECIDED 19:36:37Z, href only): every hi-1.html link to a partner page
+// (partner-app / partner-login / partner-dashboard / partner-inspectors)
+// carries ?track=home_inspector so the app lands on the inspector track.
+// The agreement links (partner-agreement-inspector.html) are exempt --
+// they already point at the inspector-specific agreement. Fails on the
+// pre-fix page, where "Install the App" linked a bare /partner-app.html.
+{
+  const noComments = html.replace(/<!--[\s\S]*?-->/g, '');
+  const partnerHrefs = [...noComments.matchAll(/<a\b[^>]*href="([^"]*partner-(?:app|login|dashboard|inspectors)[^"]*)"/g)].map((m) => m[1]);
+  ok(partnerHrefs.length >= 1, 'hi-1.html HI-0.5 fix (1): at least one partner-page link exists (the Install the App action) -- got ' + JSON.stringify(partnerHrefs));
+  const missing = partnerHrefs.filter((h) => !/[?&]track=home_inspector(&|$)/.test(h));
+  ok(missing.length === 0, 'hi-1.html HI-0.5 fix (1): every partner-page link carries ?track=home_inspector -- missing on ' + JSON.stringify(missing));
+  const installHrefs = [...noComments.matchAll(/<a\b[^>]*href="([^"]+)"[^>]*>\s*Install the App\s*<\/a>/g)].map((m) => m[1]);
+  ok(installHrefs.length >= 1 && installHrefs.every((h) => h === '/partner-app.html?track=home_inspector'), 'hi-1.html HI-0.5 fix (1): every "Install the App" link is /partner-app.html?track=home_inspector -- got ' + JSON.stringify(installHrefs));
+  const agreementHrefs = [...noComments.matchAll(/<a\b[^>]*href="([^"]*partner-agreement[^"]*)"/g)].map((m) => m[1]);
+  ok(agreementHrefs.length >= 1 && agreementHrefs.every((h) => /partner-agreement-inspector\.html$/.test(h)), 'hi-1.html HI-0.5 fix (1): agreement links still point at partner-agreement-inspector.html, unchanged -- got ' + JSON.stringify(agreementHrefs));
+}
+
 console.log('');
 console.log('TOTAL: ' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail === 0 ? 0 : 1);
