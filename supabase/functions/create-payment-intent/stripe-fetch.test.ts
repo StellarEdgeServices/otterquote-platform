@@ -67,7 +67,7 @@ Deno.test("NEGATIVE CONTROL: a bare fetch call with no signal never settles with
   );
 });
 
-// -- gh-1886 B1 (independent review on #2198, 2026-09-25): fetchStripeCreateWithRetry --------------------
+// -- gh-1886 B1 (independent review on #2198, 2026-09-25, head ba263c4e): fetchStripeCreateWithRetry -----
 function keyOf(init: RequestInit): string | null {
   return (init.headers as Record<string, string> | undefined)?.["Idempotency-Key"] ?? null;
 }
@@ -90,9 +90,8 @@ Deno.test("fetchStripeCreateWithRetry: a first timeout retries the SAME request 
   }) as unknown as typeof fetch;
 
   const init: RequestInit = { method: "POST", headers: { "Idempotency-Key": "plat-fee-claim1-ctr1-pm_A" }, body: "amount=1000" };
-  const r = await fetchStripeCreateWithRetry(fetchFn, "https://api.stripe.com/v1/payment_intents", init, 30);
+  const { response: r, body } = await fetchStripeCreateWithRetry(fetchFn, "https://api.stripe.com/v1/payment_intents", init, 30);
   assertEquals(r.status, 200);
-  const body = await r.json();
   assertEquals(body.id, "pi_A", "the retry recovers the ORIGINAL PaymentIntent, not a new one");
   assertEquals(calls.length, 2, "exactly two attempts: the timed-out one and its retry");
   assertEquals(keyOf(calls[0]), keyOf(calls[1]), "both attempts carry the identical Idempotency-Key");
@@ -110,27 +109,119 @@ Deno.test("fetchStripeCreateWithRetry: two timeouts in a row throw AmbiguousChar
   );
 });
 
-Deno.test("fetchStripeCreateWithRetry: a genuine Stripe decline (no timeout at all) is returned unchanged, with no retry", async () => {
+Deno.test("fetchStripeCreateWithRetry: a genuine Stripe decline (402 card_error, no timeout at all) is returned unchanged, with no retry", async () => {
   const calls: string[] = [];
   const declineFetch = ((url: string, _init?: RequestInit) => {
     calls.push(url);
-    return Promise.resolve(new Response(JSON.stringify({ error: { message: "Your card was declined." } }), { status: 402 }));
+    return Promise.resolve(new Response(JSON.stringify({ error: { type: "card_error", message: "Your card was declined." } }), { status: 402 }));
   }) as unknown as typeof fetch;
-  const r = await fetchStripeCreateWithRetry(declineFetch, "https://api.stripe.com/v1/payment_intents", { method: "POST" }, 30);
+  const { response: r, body } = await fetchStripeCreateWithRetry(declineFetch, "https://api.stripe.com/v1/payment_intents", { method: "POST" }, 30);
   assertEquals(r.status, 402);
-  assertEquals(calls.length, 1, "a genuine decline is not a timeout: no retry is attempted");
+  assertEquals(body.error.type, "card_error");
+  assertEquals(calls.length, 1, "a genuine decline is not ambiguous: no retry is attempted");
 });
 
-Deno.test("fetchStripeCreateWithRetry: a non-timeout exception (e.g. DNS failure) propagates as-is, with no retry", async () => {
-  const calls: string[] = [];
-  const throwingFetch = ((url: string, _init?: RequestInit) => {
-    calls.push(url);
-    return Promise.reject(new Error("getaddrinfo ENOTFOUND api.stripe.com"));
+// -- gh-1886 re-review #2 (independent review on #2198, 2026-09-25T22:02:35Z): B1-a/B1-b -------------------
+// "Treat EVERY non-definitive outcome after the create request may have reached Stripe as AMBIGUOUS, not
+// as a decline: a timeout, 409 idempotency_error / in-progress, 429, any 5xx, and a network error after
+// send." These four tests are the negative controls at the fetchStripeCreateWithRetry level: on head
+// ba263c4e (the FIRST rework), none of 409/429/5xx/a-thrown-non-timeout-error retried or stopped anything
+// -- a 409/429/5xx response was just returned as a normal (non-ok) Response, and any non-timeout thrown
+// error propagated immediately -- so off-session-charge.ts's `!r.ok -> continue` / `catch -> continue`
+// moved straight to the next payment method in every one of these cases. off-session-charge.test.ts proves
+// the resulting double charge at the loop level; these four prove the underlying misclassification is
+// fixed at its source.
+
+Deno.test("gh-1886 re-review #2 (B1-a): a 409 (idempotency_error -- Stripe still processing an earlier attempt) is ambiguous, not a decline -- it retries, and a second 409 throws AmbiguousChargeOutcomeError", async () => {
+  const calls: number[] = [];
+  const fetchFn = ((_url: string, _init?: RequestInit) => {
+    calls.push(1);
+    return Promise.resolve(
+      new Response(JSON.stringify({ error: { type: "idempotency_error", message: "another request in progress" } }), { status: 409 }),
+    );
   }) as unknown as typeof fetch;
   await assertRejects(
-    () => fetchStripeCreateWithRetry(throwingFetch, "https://api.stripe.com/v1/payment_intents", { method: "POST" }, 30),
-    Error,
-    "ENOTFOUND",
+    () => fetchStripeCreateWithRetry(fetchFn, "https://api.stripe.com/v1/payment_intents", { method: "POST", headers: { "Idempotency-Key": "k" } }, 30),
+    AmbiguousChargeOutcomeError,
   );
-  assertEquals(calls.length, 1);
+  assertEquals(calls.length, 2, "a 409 is retried once (same key) before giving up, exactly like a timeout");
+});
+
+Deno.test("gh-1886 re-review #2 (B1-a): a 409 on the FIRST attempt that resolves decisively on retry is NOT ambiguous overall -- the retry's real answer is returned", async () => {
+  let attempt = 0;
+  const fetchFn = ((_url: string, _init?: RequestInit) => {
+    attempt++;
+    if (attempt === 1) {
+      return Promise.resolve(new Response(JSON.stringify({ error: { type: "idempotency_error" } }), { status: 409 }));
+    }
+    return Promise.resolve(new Response(JSON.stringify({ id: "pi_A", status: "succeeded" }), { status: 200 }));
+  }) as unknown as typeof fetch;
+  const { response: r, body } = await fetchStripeCreateWithRetry(fetchFn, "https://api.stripe.com/v1/payment_intents", { method: "POST" }, 30);
+  assertEquals(r.status, 200);
+  assertEquals(body.id, "pi_A");
+});
+
+Deno.test("gh-1886 re-review #2 (B1-b): a 429 (rate limited) is ambiguous, not a decline", async () => {
+  const fetchFn = ((_url: string, _init?: RequestInit) =>
+    Promise.resolve(new Response(JSON.stringify({ error: { message: "rate limited" } }), { status: 429 }))) as unknown as typeof fetch;
+  await assertRejects(
+    () => fetchStripeCreateWithRetry(fetchFn, "https://api.stripe.com/v1/payment_intents", { method: "POST" }, 30),
+    AmbiguousChargeOutcomeError,
+  );
+});
+
+Deno.test("gh-1886 re-review #2 (B1-b): any 5xx is ambiguous, not a decline", async () => {
+  const fetchFn = ((_url: string, _init?: RequestInit) =>
+    Promise.resolve(new Response(JSON.stringify({ error: { message: "internal error" } }), { status: 500 }))) as unknown as typeof fetch;
+  await assertRejects(
+    () => fetchStripeCreateWithRetry(fetchFn, "https://api.stripe.com/v1/payment_intents", { method: "POST" }, 30),
+    AmbiguousChargeOutcomeError,
+  );
+});
+
+Deno.test("gh-1886 re-review #2 (B1-b): a thrown network error after fetchFn was called (e.g. ECONNRESET) is ambiguous -- it retries, and a second one throws AmbiguousChargeOutcomeError", async () => {
+  const calls: number[] = [];
+  const fetchFn = ((_url: string, _init?: RequestInit) => {
+    calls.push(1);
+    return Promise.reject(new Error("read ECONNRESET"));
+  }) as unknown as typeof fetch;
+  await assertRejects(
+    () => fetchStripeCreateWithRetry(fetchFn, "https://api.stripe.com/v1/payment_intents", { method: "POST" }, 30),
+    AmbiguousChargeOutcomeError,
+  );
+  assertEquals(calls.length, 2, "a thrown network error is retried once before giving up, exactly like a timeout -- this is a deliberate behaviour change from the very first gh-1886 patch, which propagated a non-timeout exception immediately with no retry");
+});
+
+// -- gh-1886 re-review #2 (N1): the hard deadline is enforced INSIDE fetchStripeCreateWithRetry too -------
+
+Deno.test("gh-1886 re-review #2 (N1): getRemainingMs caps each attempt's own timeout, and a second attempt with nothing left is never even sent", async () => {
+  const calls: number[] = [];
+  const alwaysHangs = ((_url: string, init?: RequestInit) => {
+    calls.push(1);
+    return new Promise<Response>((_resolve, reject) => {
+      const signal = init?.signal as AbortSignal | undefined;
+      signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+    });
+  }) as unknown as typeof fetch;
+
+  // Simulates the overall deadline being consumed by the first (capped) attempt: 50ms remains when the
+  // first attempt starts, 0ms remains by the time a retry would start.
+  let remainingCalls = 0;
+  const getRemainingMs = () => (remainingCalls++ === 0 ? 50 : 0);
+
+  const start = performance.now();
+  await assertRejects(
+    () =>
+      fetchStripeCreateWithRetry(
+        alwaysHangs,
+        "https://api.stripe.com/v1/payment_intents",
+        { method: "POST" },
+        1000, // nominal per-call timeout is large...
+        getRemainingMs, // ...but the overall deadline leaves far less, and nothing at all for the retry
+      ),
+    AmbiguousChargeOutcomeError,
+  );
+  const elapsed = performance.now() - start;
+  assertEquals(calls.length, 1, "the first attempt is capped to the 50ms remaining budget and sent once; the retry has nothing left and must not be sent at all");
+  assert(elapsed < 500, `expected the capped attempt to abort near 50ms, not run anywhere near the nominal 1000ms timeout, took ${elapsed}ms`);
 });
