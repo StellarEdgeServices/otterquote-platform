@@ -438,7 +438,7 @@
       <!-- Name -->
       <div class="form-group">
         <label class="form-label" for="name">Name</label>
-        <input type="text" id="name" class="form-input" required autocomplete="name" placeholder="Jane Smith" aria-describedby="nameError">
+        <input type="text" id="name" class="form-input" required autocomplete="name" aria-describedby="nameError">
         <div class="field-error" id="nameError"></div>
       </div>
 
@@ -660,18 +660,26 @@
       var fromCookie = m ? clean(decodeURIComponent(m[1])) : null;
       if (fromCookie) return fromCookie;
     } catch (e) {}
-    return 'unknown';
+    // gh-2150 round 3 (REVIEW PASS 5836698881, should-fix 3): no partner
+    // page ever sets the oq_variant_v3 cookie, so this always fell through
+    // to 'unknown' on RE-1. This page has exactly one variant of itself
+    // (it isn't an Arm-style router test), so the page's own funnel id is
+    // the correct fixed value here, not 'unknown'.
+    return 're-1';
   }
 
   var partnerSignupCompleteFired = false;
-  function firePartnerSignupComplete(variant) {
+  function firePartnerSignupComplete(variant, funnelId) {
     if (partnerSignupCompleteFired) return;
     partnerSignupCompleteFired = true;
     // gh-2150 round 2 (REVIEW FAIL 5836233175, Ben ruling (4), S11): every
     // GA4 event on this page carries variant + step, mirroring HO-1 Arm F's
     // event shape (start.html's trackRouter(), :1373-1427, stamps
     // variant/step on every router_* event). This is the conversion event.
-    try { gtag('event', 'partner_signup_complete', { variant: variant, step: 'signup' }); } catch (e) {}
+    // gh-2150 round 3 (REVIEW PASS 5836698881, should-fix 2): funnel_id
+    // added so this event is sliceable by funnel without joining to
+    // partner_signup.
+    try { gtag('event', 'partner_signup_complete', { variant: variant, step: 'signup', funnel_id: funnelId }); } catch (e) {}
     try { fbq('track', 'CompleteRegistration'); } catch (e) {}
   }
 
@@ -786,11 +794,11 @@
       hasError = true;
     }
     if (!phone) {
-      fieldError('phoneError', 'Please enter your phone number.');
+      fieldError('phoneError', 'Please enter a valid phone number.');
       hasError = true;
     }
     if (!brokerage) {
-      fieldError('brokerageError', 'Please enter your brokerage.');
+      fieldError('brokerageError', 'Please enter your brokerage or agency name.');
       hasError = true;
     }
     // gh-2154 P-1: the agreement checkbox is a hard gate — no
@@ -907,7 +915,7 @@
 
       try { fbq('track', 'Lead'); } catch (e) {}
 
-      firePartnerSignupComplete(getOqVariant());
+      firePartnerSignupComplete(getOqVariant(), utmContext.funnelId || 're-1');
 
     } catch (err) {
       console.error('Signup error:', err);

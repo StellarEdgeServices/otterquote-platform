@@ -218,6 +218,7 @@ function runPageScript({ search } = {}) {
     crypto: cryptoStub,
   };
   win.window = win;
+  const gtagCalls = [];
   const authCounters = { signUpWithPassword: 0 };
   const AuthObj = {
     signUpWithPassword: async () => {
@@ -241,7 +242,7 @@ function runPageScript({ search } = {}) {
     setTimeout, clearTimeout, setInterval, clearInterval,
     decodeURIComponent, encodeURIComponent,
     alert() {}, confirm() { return true; },
-    fbq() {}, gtag() {},
+    fbq() {}, gtag(name, eventName, params) { gtagCalls.push({ name: name, eventName: eventName, params: params }); },
     Sentry: new Proxy({}, {
       get: () => (...args) => { const cb = args.find((a) => typeof a === 'function'); if (cb) cb({ setTag() {}, setContext() {}, setLevel() {}, setUser() {} }); },
     }),
@@ -272,7 +273,7 @@ function runPageScript({ search } = {}) {
   for (const fn of domContentLoadedListeners) {
     try { fn(); } catch (e) { /* ignore */ }
   }
-  return { store, rpcCalls, cryptoCounters, mathCounters, authCounters, lsStore };
+  return { store, rpcCalls, cryptoCounters, mathCounters, authCounters, lsStore, gtagCalls };
 }
 
 async function submitForm(runResult, fill) {
@@ -684,6 +685,51 @@ const gaGateSrc = fs.readFileSync(path.join(repoRoot, 'js', 'ga-gate.js'), 'utf8
       ok(calls.length === 0, '(8) S08: an all-empty submit makes zero register_partner calls');
     } catch (e) {
       failWithReason('(8) S08: an empty submit shows inline per-field errors, not a pop-up or a single form-level box', e.message);
+    }
+  }
+}
+
+// ── ROUND 4 (LEGAL-READ FAIL 5836683995 + REVIEW PASS 5836698881
+// should-fixes 2/3, Ben ruling on run-work bus 2026-09-25T17:33:44Z):
+// two unapproved error strings swapped for main's verbatim equivalents,
+// the "Jane Smith" placeholder dropped, partner_signup_complete carries
+// funnel_id, and variant defaults to "re-1" instead of "unknown". These
+// assertions FAIL on the round-3 head (5dcd1ca3) and PASS once fixed.
+{
+  ok(!/placeholder="Jane Smith"/.test(html), '(9) LEGAL-READ FAIL 5836683995: no "Jane Smith" placeholder anywhere on re-1.html');
+  const run = runPageScript({ search: '?utm_campaign=re-1' });
+  if (run.setupError) {
+    failWithReason('(9) LEGAL-READ FAIL 5836683995: phone/brokerage inline errors match main\'s verbatim strings', run.setupError);
+  } else {
+    try {
+      await submitForm(run, fullFill({ phone: '', brokerage: '' }));
+      const phoneErr = run.store.byId.get('phoneError');
+      const brokerageErr = run.store.byId.get('brokerageError');
+      ok(!!phoneErr && phoneErr.textContent === 'Please enter a valid phone number.', '(9) #phoneError matches main\'s partner-insurance.html verbatim -- got ' + JSON.stringify(phoneErr && phoneErr.textContent));
+      ok(!!brokerageErr && brokerageErr.textContent === 'Please enter your brokerage or agency name.', '(9) #brokerageError matches main\'s partner-insurance.html verbatim -- got ' + JSON.stringify(brokerageErr && brokerageErr.textContent));
+    } catch (e) {
+      failWithReason('(9) LEGAL-READ FAIL 5836683995: phone/brokerage inline errors match main\'s verbatim strings', e.message);
+    }
+  }
+}
+{
+  // No oq_variant_v3 cookie/localStorage/URL param at all (the normal case
+  // on every real visit, since no partner page ever sets that key) -- the
+  // conversion event must carry variant:"re-1" and its own funnel_id, not
+  // "unknown" and not a missing field.
+  const run = runPageScript({ search: '' });
+  if (run.setupError) {
+    failWithReason('(10) partner_signup_complete carries funnel_id and variant defaults to "re-1"', run.setupError);
+  } else {
+    try {
+      await submitForm(run, fullFill());
+      const completeEvent = run.gtagCalls.find((c) => c.name === 'event' && c.eventName === 'partner_signup_complete');
+      ok(!!completeEvent, '(10) partner_signup_complete fires -- got ' + JSON.stringify(run.gtagCalls.map((c) => c.eventName)));
+      const p = (completeEvent && completeEvent.params) || {};
+      ok(p.funnel_id === 're-1', '(10) partner_signup_complete carries funnel_id="re-1" -- got ' + JSON.stringify(p.funnel_id));
+      ok(p.variant === 're-1', '(10) with no variant signal at all, variant defaults to "re-1", not "unknown" -- got ' + JSON.stringify(p.variant));
+    } catch (e) {
+      failWithReason('(10) partner_signup_complete carries funnel_id and variant defaults to "re-1"', e.message);
     }
   }
 }
