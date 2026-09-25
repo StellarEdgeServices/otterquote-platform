@@ -287,6 +287,12 @@ verify_jwt = false
 [functions.notify-admin-new-contractor]
 verify_jwt = false
 
+# gh-2154 P-3: same auth model as notify-admin-new-contractor -- accepts
+# only the service-role key as bearer, called by the trg_notify_admin_new_partner
+# pg_net trigger, never by browser clients.
+[functions.notify-admin-new-partner]
+verify_jwt = false
+
 [functions.notify-feature-request]
 verify_jwt = false
 

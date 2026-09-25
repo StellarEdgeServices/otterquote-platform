@@ -23,5 +23,8 @@
     "alerted_at": { "migration": "supabase/migrations/20260917010217_gh1994_router_lead_alert.sql", "issue": "#1994", "note": "router-lead admin-alert dedupe stamp -- notify-admin-new-homeowner's handleRouterLead() claims a lead atomically via UPDATE ... WHERE alerted_at IS NULL before sending" },
     "next_step_reminder_sent_at": { "migration": "supabase/migrations/20260925020000_gh2121_lead_next_step_reminder.sql", "issue": "#2121", "note": "LRS HO-1 S21 next-step reminder idempotency stamp -- send-lead-next-step-reminder claims a lead atomically via UPDATE ... WHERE next_step_reminder_sent_at IS NULL before sending; migration not yet applied (kill switch inserted OFF pending PR merge)" },
     "next_step_reminder_opted_out_at": { "migration": "supabase/migrations/20260925020000_gh2121_lead_next_step_reminder.sql", "issue": "#2121", "note": "LRS HO-1 S21 D-320-style opt-out stamp, written by the lead-next-step-optout Edge Function; migration not yet applied" }
+  },
+  "notifications": {
+    "referral_agent_id": { "migration": "supabase/migrations/20260925131429_gh2154_p3_notifications_referral_agent_id.sql", "issue": "#2154", "note": "gh-2154 P-3 review round 2 (REVIEW FAIL 5832785581, corrected per REVIEW FAIL 5833567534 must-fix 1): notify-admin-new-partner dedupes on the partner's own id, not user_id (NULL at signup). Migration is committed but not yet applied to prod -- correct go-live order per PR #2170: apply 131429 first and read it back (column + partial index + FK present), then deploy the EF with a byte read-back, then apply the trigger migration 20260924200316 (which now guards on this column's presence) and read it back with one synthetic is_test insert producing a notifications row." }
   }
 }
