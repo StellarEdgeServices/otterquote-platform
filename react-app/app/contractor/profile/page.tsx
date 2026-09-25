@@ -239,14 +239,31 @@ function IntroVideoCard({ record, userId, onUpdate }: { record: ContractorRecord
 
   useEffect(() => {
     let active = true;
+    let blobUrl: string | null = null;
     const path = str(record.intro_video_path);
     if (!path) { setVideoUrl(null); return; }
     (async () => {
       const storagePath = storagePathFromValue(path, 'contractor-documents');
       const { data } = await supabase.storage.from('contractor-documents').createSignedUrl(storagePath, 3600);
-      if (active && data?.signedUrl) setVideoUrl(data.signedUrl);
+      if (!active || !data?.signedUrl) return;
+      // gh-1964 artifact 5: never put the raw signed URL (a bearer
+      // credential) into the DOM via the <video src> attribute -- fetch the
+      // bytes ourselves and hand the element a same-origin blob: URL, which
+      // grants no access to anyone reading the DOM.
+      try {
+        const resp = await fetch(data.signedUrl);
+        if (!active || !resp.ok) return;
+        const blob = await resp.blob();
+        blobUrl = URL.createObjectURL(blob);
+        if (active) setVideoUrl(blobUrl);
+      } catch {
+        // leave videoUrl null; the help text renders instead
+      }
     })();
-    return () => { active = false; };
+    return () => {
+      active = false;
+      if (blobUrl) URL.revokeObjectURL(blobUrl);
+    };
   }, [record.intro_video_path]);
 
   const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {

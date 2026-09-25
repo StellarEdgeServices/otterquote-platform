@@ -148,6 +148,17 @@ jobs:
       - name: Clarity page-set gate guard, self-test (gh-1738 coverage, gh-1964 D2 fix)
         run: python3 scripts/check-clarity-page-gate.py --self-test
 
+      # gh-1964 artifact 3 (static-CI shape): executes js/ga-gate.js
+      # unmodified in a minimal same-process DOM/BOM stub and confirms it
+      # requests clarity.ms on public pages and does not on authenticated
+      # pages -- a negative control alongside the positive, per closes-on
+      # item 3's "a pass with no fail beside it does not close this". The
+      # deployed headless-browser probe against production that item 3 also
+      # asks for is a separate, still-open post-deploy step; this is what
+      # runs on every PR in the meantime.
+      - name: Clarity page-set gate guard, runtime negative control (gh-1964 artifact 3, static-CI shape)
+        run: node scripts/check-clarity-runtime-negative-control.mjs
+
       # gh-1339 item 6 / D-312: no third-party vendor named on a customer-facing
       # surface. A gate demanding ZERO would be red on arrival — the residue is
       # 373 client-side references whose removal needs the D-312 scope ruling

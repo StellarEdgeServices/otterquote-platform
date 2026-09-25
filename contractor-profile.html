@@ -1805,9 +1805,34 @@
                 if (signErr || !signedData || !signedData.signedUrl) return;
                 const previewEl = document.getElementById('introVideoPreviewView');
                 if (!previewEl) return;
+                // gh-1964 artifact 5: the signed URL is a bearer credential --
+                // it must never be written into the DOM (not as a src
+                // attribute, not via innerHTML), or anything reading the DOM
+                // (a session recorder, an extension, a screen share) can read
+                // it out. Fetch the bytes ourselves and hand the <video> a
+                // same-origin blob: URL instead; the token itself never
+                // touches the DOM and lives only in memory for this fetch.
+                let blobUrl;
+                try {
+                    const videoResp = await fetch(signedData.signedUrl);
+                    if (!videoResp.ok) return;
+                    const videoBlob = await videoResp.blob();
+                    blobUrl = URL.createObjectURL(videoBlob);
+                } catch (fetchErr) {
+                    console.warn('renderIntroVideoCard blob fetch failed:', fetchErr);
+                    return;
+                }
                 previewEl.style.padding = '0';
                 previewEl.style.background = '#000';
-                previewEl.innerHTML = '<video src="' + signedData.signedUrl + '" controls preload="metadata" playsinline style="width:100%;max-width:480px;aspect-ratio:16/9;border-radius:var(--radius-md);display:block;margin:0 auto;"></video>';
+                previewEl.innerHTML = '';
+                const videoEl = document.createElement('video');
+                videoEl.controls = true;
+                videoEl.preload = 'metadata';
+                videoEl.playsInline = true;
+                videoEl.style.cssText = 'width:100%;max-width:480px;aspect-ratio:16/9;border-radius:var(--radius-md);display:block;margin:0 auto;';
+                videoEl.src = blobUrl;
+                previewEl.appendChild(videoEl);
+                window.addEventListener('beforeunload', function () { URL.revokeObjectURL(blobUrl); }, { once: true });
             } catch (e) {
                 console.warn('renderIntroVideoCard signed URL failed:', e);
             }
