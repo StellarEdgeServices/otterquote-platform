@@ -49,16 +49,34 @@ CONSENT_LINK_RE = re.compile(
 
 REQUIRED_TARGET = "partner-agreement"
 
+# gh-2155 HI-0c (Ben ruling, #2152 comment 5836510515, item 1): the ONE
+# documented, ruling-authorized exception to D-278. partner-agreement-
+# inspector.html is a static build (tools/build_inspector_agreement.py)
+# with the SAME legal document minus the fee content the D-333 no-fee
+# provision (already an amendment to D-266 for this partner type) forbids
+# showing home-inspector partners -- Ben's ruling explicitly requires the
+# inspector-signup consent checkbox to point at it instead of the
+# fee-bearing partner-agreement.html. D-278's own purpose (every
+# partner-signup surface's consent link resolves to A real partner
+# agreement, not silently to /terms or elsewhere) is still met; this is
+# the inspector-track equivalent of the same document, not a divergence
+# from it. Kept as a single named constant, not a path/filename allowlist,
+# so this guard still catches a genuinely wrong href on ANY surface,
+# including partner-inspectors.html itself if it ever pointed anywhere
+# else.
+INSPECTOR_TARGET = "partner-agreement-inspector"
+
 
 def href_is_compliant(href: str) -> bool:
-    # Accept any relative/absolute form that resolves to partner-agreement:
+    # Accept any relative/absolute form that resolves to partner-agreement
+    # (or, per the documented exception above, partner-agreement-inspector):
     # "partner-agreement.html", "/partner-agreement", "/partner-agreement.html",
     # "partner-agreement" (extensionless routing), with or without a leading
     # "./" or trailing query/hash.
     target = href.split("?")[0].split("#")[0]
     target = target.lstrip("./").lstrip("/")
     target = re.sub(r"\.html$", "", target)
-    return target == REQUIRED_TARGET
+    return target in (REQUIRED_TARGET, INSPECTOR_TARGET)
 
 
 def iter_candidate_files():
