@@ -611,8 +611,16 @@
         }
     </style>
 </head>
-<body>
-    <header id="site-header" data-active=""></header>
+<body data-clarity-mask="true">
+    <!-- HI-1 ruling (1), CEO RUN 70 bus 17:03:44Z (rulings applied
+         pre-emptively, same defects as RE-1/INS-1): data-skip-nav="true"
+         (start.html/gh-2121 pattern) suppresses the full site nav (js/
+         nav.js:1004-1021) so no header link farm, footer link farm, or
+         support-chat bubble ever renders before the conversion. The only
+         footer links on this page are the three legally required ones in
+         the hand-coded paragraph below the form (Privacy, Terms, Partner
+         Agreement). -->
+    <header id="site-header" data-active="" data-skip-nav="true"></header>
 
     <main>
         <!-- Hero Section — HI-1 (gh-2152), approved copy verbatim (issue
@@ -633,55 +641,43 @@
              hatches before the conversion). -->
         <section class="form-section" id="signup">
             <div class="container">
-                <h2>Join the Otter Quotes Partner Network</h2>
-
+                <!-- HI-1 ruling (5): the "Join the Otter Quotes Partner
+                     Network" heading is not in the approved copy -- removed. -->
                 <div class="form-wrapper">
                     <!-- Form -->
                     <div>
                         <div class="form-container">
-                            <!-- HI-1 approved post-submit confirmation (comment
-                                 5821414324): "You're in! Install the Otter
-                                 Quotes partner app, sign in with the account
-                                 you just created, and your link will be
-                                 waiting inside to add to your reports."
-                                 Shown verbatim in both the auto-confirmed
-                                 (successMessage) and check-your-email
-                                 (checkEmailMessage) states. -->
+                            <!-- HI-1 ruling (5), CEO RUN 70 bus 17:03:44Z: ONLY the
+                                 Dustin-approved confirmation text (#2152 comment
+                                 5821414324) + its install-the-app action -- no
+                                 separate "You're in!" heading (the phrase is part
+                                 of the approved sentence itself, not a duplicate
+                                 heading), no on-page referral link, no Copy/
+                                 Dashboard buttons, no alert(). /partner-app.html
+                                 is the site's existing "install the app" page
+                                 (linked the same way from partner-login.html /
+                                 partner-dashboard.html). -->
                             <div id="successMessage" class="success-message">
-                                <h3>You're in!</h3>
-                                <p>Install the Otter Quotes partner app, sign in with the account you just created, and your link will be waiting inside to add to your reports.</p>
-                                <div class="referral-link-box">
-                                    <div class="referral-link-label">Your Referral Link:</div>
-                                    <div class="referral-link-text" id="referralLink">Loading...</div>
-                                    <button class="copy-btn" id="copyBtn">Copy Link</button>
-                                </div>
+                                <p>You're in! Install the Otter Quotes partner app, sign in with the account you just created, and your link will be waiting inside to add to your reports.</p>
                                 <div style="margin-top: 20px;">
-                                    <a href="/partner-dashboard.html" class="btn btn-primary">Go to Partner Dashboard</a>
+                                    <a href="/partner-app.html" class="btn btn-primary">Install the Partner App</a>
                                 </div>
                             </div>
 
+                            <!-- checkEmailMessage: main's P-1 check-email copy
+                                 (partner-insurance.html:698-699), reused verbatim
+                                 per ruling (5)'s "use NO new words", followed by
+                                 the HI-1 approved confirmation sentence verbatim. -->
                             <div id="checkEmailMessage" class="success-message">
-                                <h3>You're in! Almost there — check your email</h3>
-                                <p>We sent a confirmation link to <strong id="checkEmailAddress"></strong>. Click it to verify your address, then install the Otter Quotes partner app and sign in with the account you just created — your link will be waiting inside to add to your reports.</p>
+                                <h3>Almost there — check your email</h3>
+                                <p>We sent a confirmation link to <strong id="checkEmailAddress"></strong>. Click it to verify your address, then sign in to your new partner account.</p>
+                                <p>You're in! Install the Otter Quotes partner app, sign in with the account you just created, and your link will be waiting inside to add to your reports.</p>
                                 <div style="margin-top: 20px;">
-                                    <a href="/partner-login.html" class="btn btn-primary">Go to Partner Login</a>
+                                    <a href="/partner-app.html" class="btn btn-primary">Install the Partner App</a>
                                 </div>
                             </div>
 
                             <div id="formAlert" class="form-alert" role="alert"></div>
-
-                            <!-- Google OAuth — same signInWithGoogle() path
-                                 partner-login.html / ins-1.html / re-1.html use. -->
-                            <button type="button" class="btn-google" id="google-btn">
-                                <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
-                                    <path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z" fill="#34A853"/>
-                                    <path d="M3.964 10.706A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.706V4.962H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.038l3.007-2.332z" fill="#FBBC05"/>
-                                    <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.962L3.964 7.294C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
-                                </svg>
-                                Continue with Google
-                            </button>
-                            <div class="oauth-divider"><span>or</span></div>
 
                             <!-- HI-1 field labels (approved copy: "Name ·
                                  Email · Phone · Company"). Same
@@ -697,37 +693,43 @@
                             <form id="homeInspectorForm" novalidate>
                                 <div class="form-group">
                                     <label for="fullName" class="form-label required">Name</label>
-                                    <input type="text" id="fullName" name="fullName" class="form-input" autocomplete="name" required>
+                                    <input type="text" id="fullName" name="fullName" class="form-input" autocomplete="name" required data-clarity-mask="true">
                                     <div class="field-error" id="fullNameError"></div>
                                 </div>
 
                                 <div class="form-group">
                                     <label for="email" class="form-label required">Email</label>
-                                    <input type="email" id="email" name="email" class="form-input" autocomplete="email" required>
+                                    <input type="email" id="email" name="email" class="form-input" autocomplete="email" required data-clarity-mask="true">
                                     <div class="field-error" id="emailError"></div>
                                 </div>
 
                                 <div class="form-group">
                                     <label for="phone" class="form-label required">Phone</label>
-                                    <input type="tel" id="phone" name="phone" class="form-input" autocomplete="tel" required>
+                                    <input type="tel" id="phone" name="phone" class="form-input" autocomplete="tel" required data-clarity-mask="true">
                                     <div class="field-error" id="phoneError"></div>
                                 </div>
 
                                 <div class="form-group">
                                     <label for="company" class="form-label required">Company</label>
-                                    <input type="text" id="company" name="company" class="form-input" required>
+                                    <input type="text" id="company" name="company" class="form-input" required data-clarity-mask="true">
                                     <div class="field-error" id="companyError"></div>
                                 </div>
 
                                 <div class="checkbox-group align-top">
                                     <input type="checkbox" id="agreeToTerms" name="agreeToTerms" required>
-                                    <!-- D-333: link carries the same
-                                         ?track=home_inspector#track-home-inspector
-                                         form partner-inspectors.html's
-                                         agreement link uses, so the fee
-                                         sections stay hidden for whoever
-                                         follows it from here (HI-0.5). -->
-                                    <label for="agreeToTerms">I agree to <a href="partner-agreement.html?track=home_inspector#track-home-inspector">Otter Quotes's Partner Terms</a>.</label>
+                                    <!-- Ben's bus ruling 2026-09-25T17:19:38Z
+                                         (HI-0.2/HI-0.5 CLOSE-REVIEW FAIL,
+                                         #2152 comment 5836510515): the
+                                         ?track=home_inspector JS-off fee
+                                         hide fails closed only in JS. Every
+                                         inspector path, including this
+                                         checkbox link, now points at the
+                                         static partner-agreement-
+                                         inspector.html (fee sections
+                                         removed at build time, built in a
+                                         separate PR under #2155 -- #2186
+                                         depends on that PR merging first). -->
+                                    <label for="agreeToTerms">I agree to <a href="partner-agreement-inspector.html">Otter Quotes's Partner Terms</a>.</label>
                                 </div>
                                 <div class="field-error" id="agreeError">You must agree to Otter Quotes's Partner Terms.</div>
 
@@ -775,23 +777,23 @@
     </main>
 
     <!-- Legal/disclaimer links — page-level link keeps the Partner Agreement
-         reachable from here, tracked the same way as the checkbox link
-         above so HI-0.5's hide holds no matter which link an inspector
-         clicks. -->
+         reachable from here. Same partner-agreement-inspector.html as the
+         checkbox link above (Ben's bus ruling 2026-09-25T17:19:38Z), so no
+         inspector path on this page can ever reach the realtor/agent
+         agreement's fee table, JS on or off. -->
     <p style="text-align:center;font-size:0.85rem;color:var(--slate);padding:32px 24px 8px;">
-        <a href="/partner-agreement.html?track=home_inspector#track-home-inspector" style="color:var(--amber);">Partner Agreement</a>
+        <a href="/partner-agreement-inspector.html" style="color:var(--amber);">Partner Agreement</a>
         &nbsp;&middot;&nbsp;
         <a href="/terms.html" style="color:var(--amber);">Terms of Service</a>
         &nbsp;&middot;&nbsp;
         <a href="/privacy.html" style="color:var(--amber);">Privacy Policy</a>
     </p>
 
-<footer id="site-footer"></footer>
+<footer id="site-footer" data-skip-nav="true"></footer>
 
     <!-- Scripts -->
     <script src="js/auth.js"></script>
     <script src="js/nav.js"></script>
-    <script src="js/agent-types.js"></script>
 
     <script>
         // Smooth scroll to signup
@@ -841,8 +843,20 @@
         function firePartnerSignupComplete(variant) {
             if (partnerSignupCompleteFired) return;
             partnerSignupCompleteFired = true;
-            try { gtag('event', 'partner_signup_complete', { variant: variant }); } catch (e) {}
+            // HI-1 ruling (4): every GA4 event on this page carries step
+            // alongside variant, mirroring HO-1 Arm F's trackRouter shape
+            // (start.html) where every router_* event carries variant.
+            try { gtag('event', 'partner_signup_complete', { variant: variant, step: 'complete' }); } catch (e) {}
             try { fbq('track', 'CompleteRegistration'); } catch (e) {}
+        }
+
+        // HI-1 ruling (5): a signed-in partner who opens this funnel page
+        // lands on the approved confirmation, not the dashboard.
+        function showApprovedConfirmation() {
+            var formEl = document.getElementById('homeInspectorForm');
+            if (formEl) formEl.style.display = 'none';
+            document.getElementById('successMessage').classList.add('show');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
         // Races gtag's own event_callback against a bounded timeout — same
@@ -887,54 +901,20 @@
             return base64url + 'Aa1!';
         }
 
-        /**
-         * gh-865: the visitor must see and explicitly confirm their partner
-         * type before the account is created — the page they landed on may
-         * not silently decide agent_type. Same as every other partner
-         * signup page.
-         */
-        function confirmAgentType(defaultType) {
-            return new Promise((resolve) => {
-                const AGENT_TYPE_LABELS = AgentTypes.CHOOSER_LABELS; // gh-914 single source (js/agent-types.js)
-                const overlay = document.createElement('div');
-                overlay.setAttribute('role', 'dialog');
-                overlay.setAttribute('aria-modal', 'true');
-                overlay.style.cssText = 'position:fixed;inset:0;background:rgba(13,27,46,0.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
-                const box = document.createElement('div');
-                box.style.cssText = 'background:#0D1B2E;border:1px solid rgba(224,123,0,0.4);border-radius:12px;padding:28px;max-width:380px;width:100%;text-align:left;font-family:inherit;';
-                const heading = document.createElement('p');
-                heading.textContent = 'Confirm your partner type';
-                heading.style.cssText = 'color:#FFFFFF;font-size:17px;font-weight:600;margin:0 0 8px;';
-                const sub = document.createElement('p');
-                sub.textContent = "This determines what you can do on Otter Quotes. Change it if it isn't right.";
-                sub.style.cssText = 'color:#94A3B8;font-size:14px;margin:0 0 16px;line-height:1.5;';
-                const select = document.createElement('select');
-                select.id = 'gh865AgentTypeConfirm';
-                select.style.cssText = 'width:100%;padding:10px;border-radius:8px;border:1px solid rgba(148,163,184,0.35);font-size:15px;margin-bottom:16px;background:#0D1B2E;color:#FFFFFF;';
-                Object.keys(AGENT_TYPE_LABELS).forEach((value) => {
-                    const o = document.createElement('option');
-                    o.value = value;
-                    o.textContent = AGENT_TYPE_LABELS[value];
-                    if (value === defaultType) o.selected = true;
-                    select.appendChild(o);
-                });
-                const confirmBtn = document.createElement('button');
-                confirmBtn.type = 'button';
-                confirmBtn.textContent = 'Confirm & Continue';
-                confirmBtn.className = 'btn btn-primary';
-                confirmBtn.style.cssText = 'width:100%;cursor:pointer;';
-                confirmBtn.addEventListener('click', () => {
-                    document.body.removeChild(overlay);
-                    resolve(select.value);
-                });
-                box.appendChild(heading);
-                box.appendChild(sub);
-                box.appendChild(select);
-                box.appendChild(confirmBtn);
-                overlay.appendChild(box);
-                document.body.appendChild(overlay);
-                select.focus();
-            });
+        // HI-1 ruling (8): partner type is fixed by the page -- no
+        // gh-865-style "confirm your partner type" pop-up. This dedicated
+        // funnel page only ever registers home_inspector.
+        const HI1_AGENT_TYPE = 'home_inspector';
+
+        // HI-1 ruling (7): founder addresses are flagged is_test the same
+        // as @otterquote-internal.test. Page-level only — js/auth.js's
+        // isTestEmail is a shared file out of this worker's scope (see PR
+        // body); this stays local to hi-1.html.
+        const HI1_FOUNDER_TEST_EMAILS = ['dustinstohler1@gmail.com'];
+        function isTestOrFounderEmail(email) {
+            const e = (email || '').trim().toLowerCase();
+            if (window.Auth && typeof Auth.isTestEmail === 'function' && Auth.isTestEmail(e)) return true;
+            return HI1_FOUNDER_TEST_EMAILS.indexOf(e) !== -1;
         }
 
         /**
@@ -962,15 +942,30 @@
             if (fresh.fbclid)   fresh.fbclid   = fresh.fbclid.slice(0, 500);
             if (fresh.liFatId)  fresh.liFatId  = fresh.liFatId.slice(0, 500);
             if (fresh.funnelId) fresh.funnelId = fresh.funnelId.slice(0, 64);
+
+            // HI-1 ruling (6): remember whether THIS load's URL supplied a
+            // funnel-identifying param before we let a stored value (fresh
+            // or from a previous visit) fill utmContext below.
+            const urlSuppliedFunnelId = !!fresh.funnelId;
+
             if (fresh.source || fresh.medium || fresh.campaign || fresh.content || fresh.fbclid || fresh.liFatId || fresh.funnelId) {
                 utmContext = fresh;
-                localStorage.setItem('cs_utm_context', JSON.stringify(utmContext));
-                return;
+            } else {
+                try {
+                    const stored = JSON.parse(localStorage.getItem('cs_utm_context') || 'null');
+                    if (stored) utmContext = stored;
+                } catch (e) { /* malformed stored value — ignore, keep default */ }
             }
-            try {
-                const stored = JSON.parse(localStorage.getItem('cs_utm_context') || 'null');
-                if (stored) utmContext = stored;
-            } catch (e) { /* malformed stored value — ignore, keep default */ }
+
+            // HI-1 ruling (6): funnel_id must default to this page's own id
+            // when this load carried no funnel-identifying param of its
+            // own — never fall through to a stale stored value left by an
+            // earlier visit to a DIFFERENT funnel page (e.g. re-1, ins-1).
+            if (!urlSuppliedFunnelId) {
+                utmContext.funnelId = 'hi-1';
+            }
+
+            localStorage.setItem('cs_utm_context', JSON.stringify(utmContext));
         }
 
         /**
@@ -1008,14 +1003,52 @@
         });
         captureUtmContext();
 
-        // Signed-in partners land straight on their dashboard instead of
-        // re-seeing the signup form — same loop-guard shape as
-        // partner-login.html/ins-1.html/re-1.html. ?stay=1 opts out.
+        // HI-1 ruling (3) + (4): a GA4 view event and a Clarity funnel tag,
+        // both fired once on load. Every event on this page carries
+        // variant + step, mirroring HO-1 Arm F's trackRouter shape
+        // (start.html's router_* events). js/ga-gate.js's Clarity
+        // allowlist entry for /hi-1 lands via a separate PR (#2185's
+        // worker) -- this call is a no-op until that allowlist entry
+        // exists.
+        var HI1_FUNNEL_ID = 'hi-1';
+        try {
+            gtag('event', 'partner_funnel_view', {
+                funnel_id: HI1_FUNNEL_ID,
+                variant: getOqVariant(),
+                step: 'view',
+            });
+        } catch (e) {}
+        try {
+            if (typeof clarity === 'function') clarity('set', 'funnel_id', HI1_FUNNEL_ID);
+        } catch (e) {}
+
+        // S11 step event: fires once, on the visitor's first interaction
+        // with any signup field.
+        var hi1StepFired = false;
+        function fireFormStartStep() {
+            if (hi1StepFired) return;
+            hi1StepFired = true;
+            try {
+                gtag('event', 'partner_funnel_step', {
+                    funnel_id: HI1_FUNNEL_ID,
+                    variant: getOqVariant(),
+                    step: 'form_start',
+                });
+            } catch (e) {}
+        }
+        ['fullName', 'email', 'phone', 'company'].forEach(function (id) {
+            var el = document.getElementById(id);
+            if (el) el.addEventListener('focus', fireFormStartStep);
+        });
+
+        // Signed-in partners land on the approved confirmation instead of
+        // re-seeing the signup form — HI-1 ruling (5): not the dashboard.
+        // ?stay=1 opts out.
         (async function redirectSignedInPartner() {
             if (new URLSearchParams(window.location.search).get('stay') === '1') return;
             if ((document.referrer || '').includes('/partner-dashboard.html')) return;
             if (await Auth.hasPartnerSession()) {
-                window.location.replace('/partner-dashboard.html');
+                showApprovedConfirmation();
             }
         })();
 
@@ -1096,20 +1129,17 @@
             return { firstName, lastName };
         }
 
+        // HI-1 ruling (5): DEMO_MODE (dead on production — js/config.js
+        // sets DEMO_MODE: false) shows the same approved confirmation as
+        // the real signup path, with no referral link / Copy button.
         function fireDemoSuccess(agentType, method) {
-            const referralCode = Math.random().toString(36).substring(2, 9).toUpperCase();
-            const referralLink = `${window.location.origin}/claims?ref=${referralCode}`;
-
-            document.getElementById('referralLink').textContent = referralLink;
-            document.getElementById('successMessage').classList.add('show');
-            document.getElementById('homeInspectorForm').style.display = 'none';
-            document.getElementById('google-btn').style.display = 'none';
-            document.querySelector('.oauth-divider').style.display = 'none';
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            showApprovedConfirmation();
 
             gtag('event', 'partner_signup', {
                 partner_type: agentType,
                 method: method,
+                variant: getOqVariant(),
+                step: 'submit',
                 source:   utmContext.source   || 'direct',
                 medium:   utmContext.medium   || undefined,
                 campaign: utmContext.campaign || undefined,
@@ -1122,163 +1152,8 @@
             // DEMO_MODE: false — this branch is dead on production.
         }
 
-        // ---------------------------------------------------------------
-        // Google OAuth signup
-        // ---------------------------------------------------------------
-        const googleBtn = document.getElementById('google-btn');
-        const GOOGLE_BTN_DEFAULT_HTML = googleBtn.innerHTML;
-        const PENDING_SIGNUP_KEY = 'cs_pending_partner_signup';
-
-        googleBtn.addEventListener('click', async () => {
-            clearFormAlert();
-            clearAllFieldErrors();
-
-            const fullName = fullNameInput.value.trim();
-            const phone = phoneInput.value.trim();
-            const company = companyInput.value.trim();
-            const agreed = agreeInput.checked;
-
-            let firstInvalid = null;
-            if (!isValidFullName(fullName)) {
-                showFieldError(fullNameInput, document.getElementById('fullNameError'), 'Please enter your first and last name.');
-                firstInvalid = firstInvalid || fullNameInput;
-            }
-            if (!isValidPhone(phone)) {
-                showFieldError(phoneInput, document.getElementById('phoneError'), 'Please enter a valid phone number.');
-                firstInvalid = firstInvalid || phoneInput;
-            }
-            if (!isValidCompany(company)) {
-                showFieldError(companyInput, document.getElementById('companyError'), 'Please enter your company name.');
-                firstInvalid = firstInvalid || companyInput;
-            }
-            if (!agreed) {
-                document.getElementById('agreeError').classList.add('show');
-                firstInvalid = firstInvalid || agreeInput;
-            }
-            if (firstInvalid) { firstInvalid.focus(); return; }
-
-            const agentType = await confirmAgentType('home_inspector');
-
-            if (window.CONFIG && window.CONFIG.DEMO_MODE) {
-                fireDemoSuccess(agentType, 'google');
-                return;
-            }
-
-            googleBtn.disabled = true;
-            googleBtn.textContent = 'Redirecting to Google…';
-
-            try {
-                localStorage.setItem(PENDING_SIGNUP_KEY, JSON.stringify({
-                    fullName, phone, company, agentType,
-                    recruitCode: recruitContext.recruitCode || null,
-                    utm: utmContext,
-                }));
-                localStorage.setItem('cs_auth_role', agentType);
-                await Auth.signInWithGoogle('/hi-1.html?g=1');
-            } catch (err) {
-                console.error('Google sign-in error:', err);
-                localStorage.removeItem(PENDING_SIGNUP_KEY);
-                googleBtn.disabled = false;
-                googleBtn.innerHTML = GOOGLE_BTN_DEFAULT_HTML;
-                showFormAlert('Google sign-in failed. Please try again or use the form below.');
-            }
-        });
-
-        // Completes a Google-initiated signup once this page reloads with
-        // an authenticated session. Same pattern as ins-1.html/re-1.html.
-        let finishingGoogleSignup = false;
-        async function finishGoogleSignupIfPending() {
-            if (finishingGoogleSignup) return;
-            let pending;
-            try { pending = JSON.parse(localStorage.getItem(PENDING_SIGNUP_KEY) || 'null'); } catch (e) { pending = null; }
-            if (!pending) return;
-
-            let user = null;
-            try { user = await Auth.getUser(); } catch (e) { user = null; }
-            if (!user || !user.email) return; // OAuth exchange not finished yet; onAuthStateChange below will retry.
-
-            finishingGoogleSignup = true;
-            localStorage.removeItem(PENDING_SIGNUP_KEY);
-
-            const { firstName, lastName } = splitFullName(pending.fullName);
-            const utm = pending.utm || {};
-
-            try {
-                const { error: agentError } = await sb.rpc('register_partner', {
-                    p_agent_type:   pending.agentType,
-                    p_first_name:   firstName,
-                    p_last_name:    lastName,
-                    p_email:        user.email,
-                    p_phone:        pending.phone,
-                    p_company:      pending.company || null,
-                    p_recruit_code: pending.recruitCode || null,
-                    p_utm_source:   utm.source   || null,
-                    p_utm_medium:   utm.medium   || null,
-                    p_utm_campaign: utm.campaign || null,
-                    p_utm_content:  utm.content  || null,
-                    p_fbclid:       utm.fbclid   || null,
-                    p_li_fat_id:    utm.liFatId  || null,
-                    p_funnel_id:    utm.funnelId || null,
-                    p_is_test:      (window.Auth && typeof Auth.isTestEmail === 'function') ? Auth.isTestEmail(user.email) : false,
-                });
-
-                // partner_exists is expected/harmless here — see
-                // ins-1.html/re-1.html's identical comment.
-                if (agentError && !(agentError.message || '').includes('partner_exists')) {
-                    throw agentError;
-                }
-
-                const { data: claim, error: claimError } = await sb.rpc('claim_partner_account');
-                if (claimError) throw claimError;
-
-                const claimed = claim && (claim.claimed || claim.reason === 'already_linked');
-                if (!claimed) {
-                    showFormAlert("We couldn't finish linking your Google account to a partner profile. If you already have a partner account under a different sign-in method, use Partner Login instead.");
-                    googleBtn.disabled = false;
-                    googleBtn.innerHTML = GOOGLE_BTN_DEFAULT_HTML;
-                    return;
-                }
-
-                localStorage.removeItem('cs_recruit_code');
-                localStorage.removeItem('cs_utm_context');
-
-                await gtagEventAndWait('partner_signup', {
-                    partner_type: pending.agentType,
-                    method: 'google',
-                    source:   utm.source   || 'direct',
-                    medium:   utm.medium   || undefined,
-                    campaign: utm.campaign || undefined,
-                    content:  utm.content  || undefined,
-                });
-
-                try {
-                    await gtagEventAndWait('partner_signup_complete', { variant: getOqVariant() });
-                } catch (e) {}
-
-                // gh-2006/gh-2078 pattern: intentionally no Meta Lead /
-                // CompleteRegistration call on this path — same reasoning
-                // as ins-1.html/re-1.html (a live Supabase token in the
-                // URL fragment on this exact load makes meta-pixel-gate.js
-                // hold fbevents.js back).
-
-                window.location.replace('/partner-dashboard.html');
-            } catch (err) {
-                console.error('Google partner signup failed:', err);
-                showFormAlert('Something went wrong finishing your Google sign-up. Please try again or use the email form below, or email us at ' + (window.CONFIG ? CONFIG.SUPPORT_EMAIL : 'support') + '.');
-                googleBtn.disabled = false;
-                googleBtn.innerHTML = GOOGLE_BTN_DEFAULT_HTML;
-            } finally {
-                finishingGoogleSignup = false;
-            }
-        }
-
-        CONFIG.whenReady(function (sb) {
-            if (!sb) return;
-            finishGoogleSignupIfPending();
-            sb.auth.onAuthStateChange((event) => {
-                if (event === 'SIGNED_IN') finishGoogleSignupIfPending();
-            });
-        });
+        // HI-1 ruling (5): no Google sign-in button on this funnel page
+        // (email/password signup only).
 
         // ---------------------------------------------------------------
         // Email signup (no password collected at this step)
@@ -1317,9 +1192,9 @@
             }
             if (firstInvalid) { firstInvalid.focus(); return; }
 
-            // gh-865: explicit user confirmation — this, not the page
-            // default, is what gets written to referral_agents.agent_type.
-            const agentType = await confirmAgentType('home_inspector');
+            // HI-1 ruling (8): partner type is fixed by the page — no
+            // confirm-your-type pop-up.
+            const agentType = HI1_AGENT_TYPE;
             const { firstName, lastName } = splitFullName(fullName);
 
             const submitBtn = document.querySelector('#homeInspectorForm button[type="submit"]');
@@ -1354,7 +1229,7 @@
                         p_fbclid:           utmContext.fbclid   || null,
                         p_li_fat_id:        utmContext.liFatId  || null,
                         p_funnel_id:        utmContext.funnelId || null,
-                        p_is_test:          (window.Auth && typeof Auth.isTestEmail === 'function') ? Auth.isTestEmail(email) : false,
+                        p_is_test:          isTestOrFounderEmail(email),
                     });
 
                 if (agentError) {
@@ -1366,7 +1241,6 @@
                 }
 
                 const finalCode = agentData?.unique_code;
-                const finalLink = `https://otterquote.com/ref-inspector.html?code=${finalCode}`;
 
                 // The SEO footer link is bare by default (no code — nothing
                 // to attribute for a first-time visitor). Once we have this
@@ -1399,6 +1273,8 @@
                 gtag('event', 'partner_signup', {
                     partner_type: agentType,
                     method: 'password',
+                    variant: getOqVariant(),
+                    step: 'submit',
                     source:   utmContext.source   || 'direct',
                     medium:   utmContext.medium   || undefined,
                     campaign: utmContext.campaign || undefined,
@@ -1412,17 +1288,15 @@
 
                 firePartnerSignupComplete(getOqVariant());
 
+                // HI-1 ruling (5): a session at signup also lands on the
+                // approved confirmation, not the dashboard.
                 if (signUpResult && signUpResult.session) {
-                    window.location.href = '/partner-dashboard.html';
+                    showApprovedConfirmation();
                     return;
                 }
 
-                const referralLinkEl = document.getElementById('referralLink');
-                if (referralLinkEl) referralLinkEl.textContent = finalLink;
                 document.getElementById('checkEmailAddress').textContent = email;
                 document.getElementById('homeInspectorForm').style.display = 'none';
-                document.getElementById('google-btn').style.display = 'none';
-                document.querySelector('.oauth-divider').style.display = 'none';
                 document.getElementById('checkEmailMessage').classList.add('show');
                 window.scrollTo({ top: 0, behavior: 'smooth' });
 
@@ -1435,20 +1309,8 @@
             }
         });
 
-        // Copy referral link
-        document.getElementById('copyBtn').addEventListener('click', function() {
-            const referralLink = document.getElementById('referralLink').textContent;
-            navigator.clipboard.writeText(referralLink).then(() => {
-                const btn = this;
-                const originalText = btn.textContent;
-                btn.textContent = '✓ Copied!';
-                btn.classList.add('copied');
-                setTimeout(() => {
-                    btn.textContent = originalText;
-                    btn.classList.remove('copied');
-                }, 2000);
-            });
-        });
+        // HI-1 ruling (5): no on-page referral link / Copy button on this
+        // funnel page, so there is nothing to wire up here.
     </script>
 
 <!-- Referral landing page link for SEO crawlability -->

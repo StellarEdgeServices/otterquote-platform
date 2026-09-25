@@ -120,7 +120,16 @@ ok(/<label for="company"[^>]*>Company<\/label>/.test(html), 'hi-1.html (b): fiel
 ok(!/\$\d/.test(html), 'hi-1.html (c): no dollar-amount fee language anywhere in the served HTML');
 ok(!normalizedHtml.includes(normalize('Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.')), 'hi-1.html (c): NO D-266 disclaimer (waived for home_inspector, D-333)');
 ok(!normalizedHtml.includes(normalize('Recruit Bonus')) || normalizedHtml.includes(normalize('do not receive a referral fee or recruit bonus')), 'hi-1.html (c): any "Recruit Bonus" mention is only inside the no-fee statement, never a fee amount');
-ok(/track=home_inspector/.test(html), 'hi-1.html (c): Partner Agreement links carry ?track=home_inspector so HI-0.5\'s hide holds for a visitor who clicks through from this page');
+// Ben's bus ruling 2026-09-25T17:19:38Z (HI-0.2/HI-0.5 CLOSE-REVIEW FAIL,
+// #2152 comment 5836510515): the ?track=home_inspector query-param hide is
+// JS-only and fails open with JS off, so every inspector path -- including
+// this page's checkbox and footer links -- now points at the static
+// partner-agreement-inspector.html (fee sections removed at build time,
+// built in a separate PR under #2155; #2186 depends on that PR).
+const AGREEMENT_LINK_RE = /href="\/?partner-agreement-inspector\.html"/g;
+ok((html.match(AGREEMENT_LINK_RE) || []).length === 2, 'hi-1.html (c)/ruling: exactly 2 links (checkbox + footer) point at partner-agreement-inspector.html -- got ' + (html.match(AGREEMENT_LINK_RE) || []).length);
+ok(!/partner-agreement\.html/.test(html), 'hi-1.html (c)/ruling: no link on this page points at the realtor/agent partner-agreement.html (fee table) any more, tracked or not');
+ok(!/href="\/?partners\.html"/.test(html), 'hi-1.html ruling(bus 17:19:38Z item 3): no link to partners.html anywhere on this page');
 
 // ── (f) dark-launch gate ─────────────────────────────────────────────
 ok(/<meta name="robots" content="noindex, nofollow">/.test(html), 'hi-1.html (f): noindex/nofollow present (dark launch -- not linked/indexed until S24 CLOSE-REVIEW + Dustin publishes)');
@@ -144,11 +153,17 @@ function makeElementStore() {
   const byId = new Map();
   const created = [];
   function makeEl(id, tag) {
+    const classes = new Set();
     const el = {
       id, tag, value: '', checked: false, disabled: false, files: [],
       textContent: '', innerHTML: '', href: '', className: '', selected: false,
-      style: {}, children: [], _listeners: {},
-      classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } },
+      style: {}, children: [], _listeners: {}, _classes: classes,
+      classList: {
+        add(c) { classes.add(c); },
+        remove(c) { classes.delete(c); },
+        toggle(c) { classes.has(c) ? classes.delete(c) : classes.add(c); },
+        contains(c) { return classes.has(c); },
+      },
       addEventListener(type, fn) { (el._listeners[type] = el._listeners[type] || []).push(fn); },
       removeEventListener() {},
       appendChild(child) {
@@ -173,13 +188,17 @@ function makeElementStore() {
   };
 }
 
-function runPageScript(search) {
+function runPageScript(search, opts) {
+  opts = opts || {};
   const script = extractInlineScripts(html);
   if (!script || script.indexOf('register_partner') === -1) {
     return { setupError: 'no inline script containing register_partner was found on the page' };
   }
   const store = makeElementStore();
   const rpcCalls = [];
+  const gtagCalls = [];
+  const clarityCalls = [];
+  const replaceCalls = [];
   const sb = {
     rpc(name, params) {
       rpcCalls.push({ name, params });
@@ -218,7 +237,7 @@ function runPageScript(search) {
     body: store.createElement('body'),
   };
   const win = {
-    location: { search: search || '', hostname: 'otterquote.com', href: '', replace() {} },
+    location: { search: search || '', hostname: 'otterquote.com', href: '', replace(url) { replaceCalls.push(url); } },
     localStorage,
     addEventListener() {}, removeEventListener() {},
     scrollTo() {},
@@ -227,8 +246,8 @@ function runPageScript(search) {
   };
   win.window = win;
   const AuthObj = {
-    signUpWithPassword: async () => ({ session: null, user: { id: 'gh2152-hi1-test-user-id' } }),
-    hasPartnerSession: async () => false,
+    signUpWithPassword: opts.signUpWithPassword || (async () => ({ session: null, user: { id: 'gh2152-hi1-test-user-id' } })),
+    hasPartnerSession: opts.hasPartnerSession || (async () => false),
     getUser: async () => null,
     isTestEmail: (email) => (email || '').trim().toLowerCase().endsWith('@otterquote-internal.test'),
   };
@@ -244,7 +263,8 @@ function runPageScript(search) {
     decodeURIComponent, encodeURIComponent,
     alert() {}, confirm() { return true; },
     fetch: () => Promise.resolve({ ok: true, json: async () => ({}) }),
-    fbq() {}, gtag() {},
+    fbq() {}, gtag(...args) { gtagCalls.push(args); },
+    clarity(...args) { clarityCalls.push(args); },
     Sentry: new Proxy({}, { get: () => (...args) => { const cb = args.find((a) => typeof a === 'function'); if (cb) cb({ setTag() {}, setContext() {}, setLevel() {}, setUser() {} }); } }),
     sb, Auth: AuthObj,
     CONFIG: { whenReady(cb) { cb(sb); }, SUPPORT_EMAIL: 'support@otterquote.com', SITE_URL: 'https://otterquote.com', DEMO_MODE: false },
@@ -257,7 +277,7 @@ function runPageScript(search) {
     return { setupError: 'script execution error while loading the page: ' + e.message };
   }
   for (const fn of domContentLoadedListeners) { try { fn(); } catch (e) {} }
-  return { store, rpcCalls };
+  return { store, rpcCalls, gtagCalls, clarityCalls, replaceCalls };
 }
 
 async function submitForm(runResult, formId, fill) {
@@ -315,6 +335,182 @@ const AD_QS = '?utm_source=meta&utm_medium=paid_social&utm_campaign=hi-1&utm_con
     } catch (e) {
       failWithReason('hi-1.html (e): submitting calls register_partner with p_funnel_id="hi-1" and p_agent_type="home_inspector"', e.message);
     }
+  }
+}
+
+// ── CEO RUN 70 bus (17:03:44Z) rulings (1)-(8), applied pre-emptively to
+// HI-1 (same defects reviewed on RE-1 #2185 / INS-1 #2184) ─────────────
+
+// (1) S07: header/footer opt out of the full site nav via data-skip-nav.
+ok(/<header id="site-header"[^>]*\bdata-skip-nav="true"/.test(html), 'hi-1.html ruling(1): #site-header carries data-skip-nav="true" (no header link farm before the conversion)');
+ok(/<footer id="site-footer"[^>]*\bdata-skip-nav="true"/.test(html), 'hi-1.html ruling(1): #site-footer carries data-skip-nav="true" (no footer link farm before the conversion)');
+{
+  // The only footer links on the page are the 3 legally required ones.
+  const legalLinksBlock = (html.match(/<p style="text-align:center;font-size:0\.85rem;color:var\(--slate\);padding:32px[\s\S]*?<\/p>/) || [''])[0];
+  const hrefs = [...legalLinksBlock.matchAll(/<a\s+href="([^"]+)"/g)].map((m) => m[1]);
+  ok(hrefs.length === 3, 'hi-1.html ruling(1): exactly 3 legally required footer links (Privacy, Terms, Partner Agreement) -- got ' + hrefs.length + ': ' + JSON.stringify(hrefs));
+  ok(hrefs.some((h) => h.includes('partner-agreement-inspector.html')), 'hi-1.html ruling(1): the Partner Agreement footer link points at partner-agreement-inspector.html');
+  ok(hrefs.some((h) => h.includes('/terms.html')), 'hi-1.html ruling(1): Terms of Service footer link present');
+  ok(hrefs.some((h) => h.includes('/privacy.html')), 'hi-1.html ruling(1): Privacy Policy footer link present');
+}
+
+// (2) Hero/bullet contrast, WCAG AA 4.5:1 -- HI-1 has no in-hero bullet
+// list (the RE-1/INS-1 defect target); the analogous bullet-style copy on
+// this page is the benefits-sidebar text. Verify it meets AA against its
+// own background, and that no copy changed.
+function srgbToLinear(c) {
+  c = c / 255;
+  return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+}
+function relLuminance(hex) {
+  const n = parseInt(hex.replace('#', ''), 16);
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  return 0.2126 * srgbToLinear(r) + 0.7152 * srgbToLinear(g) + 0.0722 * srgbToLinear(b);
+}
+function contrastRatio(hexA, hexB) {
+  const la = relLuminance(hexA), lb = relLuminance(hexB);
+  const lighter = Math.max(la, lb), darker = Math.min(la, lb);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+ok(!/class="hero-bullets"/.test(html) && !/\.hero-bullets/.test(html), 'hi-1.html ruling(2): no in-hero bullet list exists on this page (N/A for HI-1 -- bullets live in the benefits sidebar instead)');
+{
+  const ratio = contrastRatio('#94A3B8', '#12354A'); // .benefit-item p (--slate) on .benefits-sidebar (--navy-3)
+  ok(ratio >= 4.5, 'hi-1.html ruling(2): benefits-sidebar bullet text meets WCAG AA 4.5:1 against its background -- computed ratio ' + ratio.toFixed(2));
+}
+ok(normalizedHtml.includes(normalize('Your client gets multiple contractor bids without hunting for one.')), 'hi-1.html ruling(2): bullet copy unchanged (no copy change per ruling)');
+
+// (3) S12: Clarity funnel_id tag + PII fields masked. js/ga-gate.js's
+// CLARITY_ALLOWED_PATHS entry for /hi-1 is out of scope (RE-1 worker's
+// PR #2185) -- not asserted here.
+ok(/clarity\(\s*['"]set['"]\s*,\s*['"]funnel_id['"]\s*,\s*\w+\s*\)/.test(html) && /HI1_FUNNEL_ID\s*=\s*['"]hi-1['"]/.test(html), 'hi-1.html ruling(3): a clarity(\'set\',\'funnel_id\',<hi-1 id>) tag call is present');
+ok(/<body[^>]*\bdata-clarity-mask="true"/.test(html), 'hi-1.html ruling(3): <body data-clarity-mask="true"> masks all text/inputs in Clarity replay, covering name/email/phone/company (repo convention: scripts/check-clarity-page-gate.py body_mask_problem)');
+for (const fid of ['fullName', 'email', 'phone', 'company']) {
+  const tagMatch = new RegExp('<input\\b[^>]*\\bid="' + fid + '"[^>]*>').exec(html);
+  ok(!!(tagMatch && /data-clarity-mask="true"/.test(tagMatch[0])), 'hi-1.html ruling(3): #' + fid + ' input carries data-clarity-mask="true"');
+}
+{
+  const run = runPageScript(AD_QS);
+  if (!run.setupError) {
+    ok(run.clarityCalls.some((a) => a[0] === 'set' && a[1] === 'funnel_id' && a[2] === 'hi-1'), 'hi-1.html ruling(3): at runtime, clarity(\'set\',\'funnel_id\',\'hi-1\') is actually called -- got ' + JSON.stringify(run.clarityCalls));
+  }
+}
+
+// (4) S11: GA4 view + step + conversion events all carry variant + step.
+{
+  const run = runPageScript(AD_QS);
+  if (run.setupError) {
+    failWithReason('hi-1.html ruling(4): view/step events carry variant+step', run.setupError);
+  } else {
+    const viewCalls = run.gtagCalls.filter((a) => a[0] === 'event' && a[1] === 'partner_funnel_view');
+    ok(viewCalls.length >= 1, 'hi-1.html ruling(4): a partner_funnel_view event fires on load -- got ' + viewCalls.length);
+    if (viewCalls.length) {
+      const p = viewCalls[0][2] || {};
+      ok(p.step === 'view' && typeof p.variant !== 'undefined', 'hi-1.html ruling(4): partner_funnel_view carries step="view" and a variant -- got ' + JSON.stringify(p));
+    }
+    // Simulate the visitor focusing a field -- fires the step event.
+    const nameEl = run.store.getElementById('fullName');
+    (nameEl._listeners.focus || []).forEach((fn) => fn({}));
+    const stepCalls = run.gtagCalls.filter((a) => a[0] === 'event' && a[1] === 'partner_funnel_step');
+    ok(stepCalls.length === 1, 'hi-1.html ruling(4): a partner_funnel_step(step=form_start) event fires once on first field focus -- got ' + stepCalls.length);
+    if (stepCalls.length) {
+      ok(stepCalls[0][2] && stepCalls[0][2].step === 'form_start', 'hi-1.html ruling(4): the step event carries step="form_start" -- got ' + JSON.stringify(stepCalls[0][2]));
+    }
+  }
+}
+{
+  const run = runPageScript(AD_QS);
+  if (!run.setupError) {
+    await submitForm(run, 'homeInspectorForm', {
+      fullName: 'Jane Test', email: 'gh2152-hi1-test2@example.invalid', phone: '3175551234', company: 'Test Inspections', agreeToTerms: true,
+    });
+    const signupCalls = run.gtagCalls.filter((a) => a[0] === 'event' && a[1] === 'partner_signup');
+    const completeCalls = run.gtagCalls.filter((a) => a[0] === 'event' && a[1] === 'partner_signup_complete');
+    ok(signupCalls.length === 1 && signupCalls[0][2] && signupCalls[0][2].step === 'submit' && typeof signupCalls[0][2].variant !== 'undefined', 'hi-1.html ruling(4): partner_signup carries step="submit" and a variant -- got ' + JSON.stringify(signupCalls[0] && signupCalls[0][2]));
+    ok(completeCalls.length === 1 && completeCalls[0][2] && completeCalls[0][2].step === 'complete', 'hi-1.html ruling(4): partner_signup_complete carries step="complete" -- got ' + JSON.stringify(completeCalls[0] && completeCalls[0][2]));
+  }
+}
+
+// (5) S20: ONLY the approved confirmation text + install-the-app action.
+ok(!/<h[1-6][^>]*>\s*You're [Ii]n!?\s*<\/h[1-6]>/.test(html), 'hi-1.html ruling(5): no separate "You\'re in!"-style heading (approved sentence rendered as plain text, not a duplicated heading)');
+ok(!/id="referralLink"|class="referral-link-box"|id="copyBtn"/.test(html), 'hi-1.html ruling(5): no on-page referral link box / Copy button');
+ok(!/Go to Partner Dashboard/.test(html), 'hi-1.html ruling(5): no "Go to Partner Dashboard" button in the confirmation');
+ok(!/id="google-btn"|Continue with Google/.test(html), 'hi-1.html ruling(5): no Google sign-in button');
+ok(!normalizedHtml.includes(normalize('Join the Otter Quotes Partner Network')), 'hi-1.html ruling(5): no "Join the Otter Quotes Partner Network" heading');
+{
+  const scriptOnly = extractInlineScripts(html);
+  ok(!/\balert\s*\(/.test(scriptOnly), 'hi-1.html ruling(5): no browser alert() anywhere in the page script');
+}
+ok(normalizedHtml.includes(normalize('Almost there — check your email')) && normalizedHtml.includes(normalize('We sent a confirmation link to')) && normalizedHtml.includes(normalize('then sign in to your new partner account.')), 'hi-1.html ruling(5): checkEmailMessage reuses main P-1\'s check-email string verbatim (partner-insurance.html)');
+ok(normalizedHtml.includes(normalize("You're in! Install the Otter Quotes partner app, sign in with the account you just created, and your link will be waiting inside to add to your reports.")), 'hi-1.html ruling(5): the approved confirmation sentence still appears verbatim (in both states)');
+{
+  // Signed-in visitor lands on the approved confirmation, not the dashboard.
+  const run = runPageScript('', { hasPartnerSession: async () => true });
+  if (run.setupError) {
+    failWithReason('hi-1.html ruling(5): a signed-in visitor sees the approved confirmation, not the dashboard', run.setupError);
+  } else {
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    ok(!run.replaceCalls.includes('/partner-dashboard.html'), 'hi-1.html ruling(5): a signed-in visitor is never redirected to /partner-dashboard.html -- replace() calls: ' + JSON.stringify(run.replaceCalls));
+    const successEl = run.store.byId.get('successMessage');
+    ok(!!(successEl && successEl.classList.contains('show')), 'hi-1.html ruling(5): a signed-in visitor is shown the approved confirmation (#successMessage gets .show)');
+  }
+}
+{
+  // A session established AT signup time also lands on the confirmation.
+  const run = runPageScript(AD_QS, { signUpWithPassword: async () => ({ session: { access_token: 'x' }, user: { id: 'gh2152-hi1-session-user' } }) });
+  if (!run.setupError) {
+    await submitForm(run, 'homeInspectorForm', {
+      fullName: 'Jane Test', email: 'gh2152-hi1-test3@example.invalid', phone: '3175551234', company: 'Test Inspections', agreeToTerms: true,
+    });
+    ok(!run.replaceCalls.includes('/partner-dashboard.html') && run.store.byId.get('successMessage') && run.store.byId.get('successMessage').classList.contains('show'), 'hi-1.html ruling(5): a session created at signup lands on the approved confirmation, not the dashboard');
+  }
+}
+
+// (6) funnel_id defaults to hi-1 on a bare load; never a stale stored value
+// left by a visit to a DIFFERENT funnel page. Each runPageScript() call gets
+// its own fresh localStorage, so the fallback is asserted directly: a bare
+// load (no URL params at all, i.e. nothing to inherit from a prior funnel)
+// must still submit funnelId "hi-1", never null/undefined.
+{
+  const run2 = runPageScript('');
+  if (!run2.setupError) {
+    await submitForm(run2, 'homeInspectorForm', {
+      fullName: 'Jane Test', email: 'gh2152-hi1-test4@example.invalid', phone: '3175551234', company: 'Test Inspections', agreeToTerms: true,
+    });
+    const calls = run2.rpcCalls.filter((c) => c.name === 'register_partner');
+    const params = calls[0] ? calls[0].params || {} : {};
+    ok(params.p_funnel_id === 'hi-1', 'hi-1.html ruling(6): a bare load with no URL params still submits p_funnel_id="hi-1" -- got ' + JSON.stringify(params.p_funnel_id));
+  }
+}
+
+// (7) S15: founder addresses (dustinstohler1@gmail.com) are flagged is_test.
+{
+  const run = runPageScript(AD_QS);
+  if (!run.setupError) {
+    await submitForm(run, 'homeInspectorForm', {
+      fullName: 'Dustin Founder', email: 'dustinstohler1@gmail.com', phone: '3175551234', company: 'Founder Test Co',
+      agreeToTerms: true,
+    });
+    const calls = run.rpcCalls.filter((c) => c.name === 'register_partner');
+    const params = calls[0] ? calls[0].params || {} : {};
+    ok(params.p_is_test === true, 'hi-1.html ruling(7): a founder address (dustinstohler1@gmail.com) is flagged p_is_test=true -- got ' + JSON.stringify(params.p_is_test));
+  }
+}
+
+// (8) S08 (already-met) inline per-field errors + partner type fixed, no pop-up.
+ok(/id="fullNameError"/.test(html) && /id="emailError"/.test(html) && /id="phoneError"/.test(html) && /id="companyError"/.test(html), 'hi-1.html ruling(8): already-met -- inline per-field error elements exist for every field');
+ok(!/Confirm your partner type/.test(html), 'hi-1.html ruling(8): no "Confirm your partner type" pop-up (partner type is fixed by the page)');
+{
+  const run = runPageScript(AD_QS);
+  if (!run.setupError) {
+    await submitForm(run, 'homeInspectorForm', {
+      fullName: 'Jane Test', email: 'gh2152-hi1-test5@example.invalid', phone: '3175551234', company: 'Test Inspections', agreeToTerms: true,
+    });
+    const created = run.store.created;
+    ok(!created.some((e) => e.textContent === 'Confirm your partner type' || e.textContent === 'Confirm & Continue'), 'hi-1.html ruling(8): submitting never creates a partner-type confirmation modal');
+    const calls = run.rpcCalls.filter((c) => c.name === 'register_partner');
+    const params = calls[0] ? calls[0].params || {} : {};
+    ok(params.p_agent_type === 'home_inspector', 'hi-1.html ruling(8): p_agent_type is always "home_inspector" with no user choice -- got ' + JSON.stringify(params.p_agent_type));
   }
 }
 
