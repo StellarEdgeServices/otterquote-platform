@@ -30,6 +30,8 @@ on:
       - 'tests/gh2154-p1-set-password.mjs'
       - 'tests/gh2154-p1-login-reset.mjs'
       - 'tests/gh2154-p1-cookie-storage-updateuser.mjs'
+      - 're-1.html'
+      - 'tests/gh2150-re1-page.mjs'
       - '.github/workflows/static-pixel-gate-tests.yml'
   push:
     branches: [main]
@@ -53,6 +55,8 @@ on:
       - 'tests/gh2154-p1-set-password.mjs'
       - 'tests/gh2154-p1-login-reset.mjs'
       - 'tests/gh2154-p1-cookie-storage-updateuser.mjs'
+      - 're-1.html'
+      - 'tests/gh2150-re1-page.mjs'
       - '.github/workflows/static-pixel-gate-tests.yml'
 
 permissions:
@@ -95,3 +99,5 @@ jobs:
         run: node tests/gh2154-p1-login-reset.mjs
       - name: Real supabase-js -- rejected updateUser() must not sign the partner out (gh2154-p1-cookie-storage-updateuser)
         run: node tests/gh2154-p1-cookie-storage-updateuser.mjs
+      - name: RE-1 dedicated landing page -- approved copy, funnel_id attribution (gh2150-re1-page)
+        run: node tests/gh2150-re1-page.mjs

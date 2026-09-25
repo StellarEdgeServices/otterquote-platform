@@ -372,6 +372,22 @@ SESSION_AWARE_PUBLIC: dict[str, str] = {
     "/ref-insurance": "Auth.getUser()/hasPartnerSession() only bounces an "
                       "ALREADY-signed-in partner away from the anonymous "
                       "referral-code lookup flow (ref-insurance.html:864-902).",
+    # gh-2150 round 2 (REVIEW FAIL 5836233175/5836199486, Ben ruling (3),
+    # S12 -- js/ga-gate.js CLARITY_ALLOWED_PATHS change made in the same
+    # commit): RE-1/INS-1/HI-1 (D-333) are dedicated single-purpose funnel
+    # landing pages, same PUBLIC pattern as partner-re/-inspectors/-other
+    # above -- hasPartnerSession() only redirects an ALREADY-signed-in
+    # partner to partner-dashboard.html; renders no session-scoped data to
+    # an anonymous visitor.
+    "/re-1": "hasPartnerSession() only redirects an ALREADY-signed-in partner "
+             "to partner-dashboard.html; same pattern as "
+             "partner-adjusters.html (re-1.html).",
+    "/ins-1": "hasPartnerSession() only redirects an ALREADY-signed-in "
+              "partner to partner-dashboard.html; same pattern as "
+              "partner-adjusters.html (ins-1.html).",
+    "/hi-1": "hasPartnerSession() only redirects an ALREADY-signed-in "
+             "partner to partner-dashboard.html; same pattern as "
+             "partner-adjusters.html (hi-1.html).",
 }
 
 # Reviewed, one-line-reasoned override for the OTHER direction: a page that
