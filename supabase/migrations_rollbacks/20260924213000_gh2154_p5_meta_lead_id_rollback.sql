@@ -1,18 +1,47 @@
 -- Rollback for 20260924213000_gh2154_p5_meta_lead_id.sql
 --
+-- P-5b CORRECTION (Kevin): this rollback restores the POST-#2166 (gh-2155
+-- HI-0b) 20-arg register_partner() -- the one stamping v_agreement_version
+-- = 'v3-2026-09' -- NOT the pre-#2166 body (md5 first-8 6b44199b,
+-- v2-2026-08) that the original version of this file targeted. Per the
+-- forward migration's ORDERING note, #2166 is required to apply BEFORE
+-- 20260924213000_gh2154_p5_meta_lead_id.sql ever applies, so "restore the
+-- function to its state immediately before this migration ran" now means
+-- the v3-2026-09 body, not the older v2-2026-08 one. The CREATE FUNCTION
+-- body below is copied verbatim from #2166's CREATE OR REPLACE (PR #2166,
+-- supabase/migrations/20260925012956_gh2155_hi0b_agreement_v3.sql) --
+-- same 20-arg signature, only the v_agreement_version literal differs from
+-- the original pre-#2166 rollback target.
+--
+-- MD5 NOTE: the pre-#2166 live md5 (first-8 6b44199b) was confirmed by a
+-- read-only probe against prod on 2026-09-25 (see PR #2182 body). The
+-- POST-#2166 md5 this rollback now restores to CANNOT be known until #2166
+-- actually applies to prod -- it depends on the exact catalog-stored
+-- function definition Postgres produces from #2166's CREATE OR REPLACE,
+-- which this worker has only read from GitHub (PR #2166 HEAD
+-- 6669b219a09deec06121ae75410fab9217bbdce6), not executed against prod.
+-- **Before this rollback is ever run for real, whoever applies it must
+-- first capture the live value via**
+-- `select substr(md5(pg_get_functiondef('public.register_partner(text,text,text,text,text,text,text,text,text,text,jsonb,text,text,text,text,text,boolean,text,text,text)'::regprocedure)),1,8)`
+-- **immediately after #2166 applies, and confirm it matches the function
+-- this rollback recreates** (byte-for-byte, since CREATE OR REPLACE and a
+-- fresh CREATE of the identical body produce identical pg_get_functiondef
+-- output) before trusting this rollback as a byte-exact restore. This note
+-- replaces the original rollback's "byte-identical, md5 first-8 = 6b44199b"
+-- claim, which was correct for the pre-#2166 target only.
+--
 -- Order matters: drop the 21-arg register_partner FIRST, recreate the
--- pre-migration 20-arg definition (byte-identical to
--- 20260924160000_gh2154_p2_partner_attribution_activation.sql, md5 first-8
--- = 6b44199b, confirmed live before this migration was authored) SECOND,
--- remove the rate_limit_config row THIRD, restore
--- referral_agents_guard_payout_columns() to its exact pre-migration body
--- (md5 first-8 = 81c6af22, i.e. the meta_lead_id clause removed) FOURTH,
--- drop meta_lead_id FIFTH — dropping the column while either the 21-arg
--- register_partner or the meta_lead_id-referencing guard clause still
--- exists would break both — and only THEN drop public.is_test_email()
--- LAST (the P-5 should-fix server-side is_test derivation helper; the
--- restored 20-arg register_partner above no longer calls it, same as it
--- never did pre-migration).
+-- restore-target 20-arg definition (v3-2026-09, see above) SECOND, remove
+-- the rate_limit_config row THIRD, restore
+-- referral_agents_guard_payout_columns() to its exact pre-P5 body (md5
+-- first-8 = 81c6af22, i.e. the meta_lead_id clause removed -- #2166 never
+-- touches this trigger, so this target is unaffected by the P-5b
+-- correction) FOURTH, drop meta_lead_id FIFTH — dropping the column while
+-- either the 21-arg register_partner or the meta_lead_id-referencing guard
+-- clause still exists would break both — and only THEN drop
+-- public.is_test_email() LAST (the P-5 should-fix server-side is_test
+-- derivation helper; the restored 20-arg register_partner above no longer
+-- calls it, same as it never did pre-P5).
 
 DELETE FROM public.rate_limit_config WHERE function_name = 'meta-leadgen-webhook';
 
@@ -21,32 +50,11 @@ DROP FUNCTION IF EXISTS public.register_partner(
   text, text, text, text, boolean, text, text, text, text
 );
 
-CREATE FUNCTION public.register_partner(
-  p_agent_type       text,
-  p_first_name       text,
-  p_last_name        text,
-  p_email            text,
-  p_phone            text DEFAULT NULL,
-  p_company          text DEFAULT NULL,
-  p_website          text DEFAULT NULL,
-  p_service_area     text DEFAULT NULL,
-  p_referred_by_note text DEFAULT NULL,
-  p_recruit_code     text DEFAULT NULL,
-  p_metadata         jsonb DEFAULT '{}'::jsonb,
-  p_photo_url        text DEFAULT NULL,
-  p_utm_source       text DEFAULT NULL,
-  p_utm_medium       text DEFAULT NULL,
-  p_utm_campaign     text DEFAULT NULL,
-  p_utm_content      text DEFAULT NULL,
-  p_is_test          boolean DEFAULT false,
-  p_fbclid           text DEFAULT NULL,
-  p_li_fat_id        text DEFAULT NULL,
-  p_funnel_id        text DEFAULT NULL
-)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public', 'pg_temp'
+CREATE FUNCTION public.register_partner(p_agent_type text, p_first_name text, p_last_name text, p_email text, p_phone text DEFAULT NULL::text, p_company text DEFAULT NULL::text, p_website text DEFAULT NULL::text, p_service_area text DEFAULT NULL::text, p_referred_by_note text DEFAULT NULL::text, p_recruit_code text DEFAULT NULL::text, p_metadata jsonb DEFAULT '{}'::jsonb, p_photo_url text DEFAULT NULL::text, p_utm_source text DEFAULT NULL::text, p_utm_medium text DEFAULT NULL::text, p_utm_campaign text DEFAULT NULL::text, p_utm_content text DEFAULT NULL::text, p_is_test boolean DEFAULT false, p_fbclid text DEFAULT NULL::text, p_li_fat_id text DEFAULT NULL::text, p_funnel_id text DEFAULT NULL::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
 AS $function$
 DECLARE
   v_email        text;
@@ -57,7 +65,7 @@ DECLARE
   v_headers      jsonb;
   v_ip           text;
   v_ua           text;
-  v_agreement_version CONSTANT text := 'v2-2026-08';
+  v_agreement_version CONSTANT text := 'v3-2026-09';
 BEGIN
   v_rate := public.check_rate_limit(
     p_function_name => 'register_partner',
@@ -160,10 +168,10 @@ EXCEPTION
 END;
 $function$;
 
--- Restore the guard trigger to its exact pre-P-5 (post-P-2 live) body --
--- md5(pg_get_functiondef(...)) first 8 hex = 81c6af22 -- BEFORE dropping
--- meta_lead_id below, same ordering reasoning P-2's own rollback used for
--- this same function.
+-- Restore the guard trigger to its exact pre-P-5 body (md5 first-8 hex =
+-- 81c6af22, unaffected by the P-5b correction above since #2166 never
+-- touches this function) BEFORE dropping meta_lead_id below, same
+-- ordering reasoning P-2's own rollback used for this same function.
 CREATE OR REPLACE FUNCTION public.referral_agents_guard_payout_columns()
  RETURNS trigger
  LANGUAGE plpgsql

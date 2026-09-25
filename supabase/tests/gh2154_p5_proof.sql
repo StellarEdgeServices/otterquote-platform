@@ -1,8 +1,20 @@
 -- gh-2154 P-5 proof script: server-side is_test derivation
 -- (review should-fix, PR #2162 comment 5821998080, folded into P-5 by Kevin).
 --
+-- P-5b NOTE (Kevin): this script now also inlines the migration's
+-- PRECONDITION guard (step 2) and the corrected v3-2026-09 rollback target
+-- (step 4) — see the ORDERING note in
+-- supabase/migrations/20260924213000_gh2154_p5_meta_lead_id.sql. That
+-- guard means this script can ONLY be run for real (or line up cleanly)
+-- once #2166 (gh-2155 HI-0b) has actually applied to the target database
+-- and its 20-arg register_partner() stamps v3-2026-09 — running it against
+-- today's prod (still v2-2026-08, #2166 unapplied) will hit the guard's
+-- RAISE EXCEPTION at step 2 by design, proving the guard works, but
+-- aborting before steps 3-4 run. This is expected, not a script bug.
+--
 -- Run the WHOLE file as one statement batch wrapped in BEGIN ... ROLLBACK
--- against production (yeszghaspzwwstvsrioa). NEVER COMMIT.
+-- against production (yeszghaspzwwstvsrioa), AFTER #2166 has applied.
+-- NEVER COMMIT.
 --
 -- This script:
 --   0. Applies the columns register_partner() needs (idempotent ADD COLUMN
@@ -15,13 +27,18 @@
 --      the rest of the script.
 --   2. Applies this build's actual fix — inlined verbatim from
 --      supabase/migrations/20260924213000_gh2154_p5_meta_lead_id.sql —
---      public.is_test_email(), the fixed register_partner(), and the
---      CREATE OR REPLACEd guard trigger.
+--      the PRECONDITION guard, public.is_test_email(), the fixed
+--      register_partner() (v3-2026-09), and the CREATE OR REPLACEd guard
+--      trigger.
 --   3. Asserts (a)-(d) from the build brief against the FIXED function.
---   4. Applies this migration's own rollback (verbatim from
+--   4. Applies this migration's own (P-5b-corrected) rollback (verbatim
+--      from
 --      supabase/migrations_rollbacks/20260924213000_gh2154_p5_meta_lead_id_rollback.sql)
---      and asserts register_partner/guard are back to their pre-migration
---      md5s and that public.is_test_email() and meta_lead_id are gone.
+--      and asserts register_partner is restored to the v3-2026-09 20-arg
+--      shape (arg count + agreement-version literal, NOT a hardcoded
+--      pre-#2166 md5 — see the rollback file's MD5 NOTE for why), the
+--      guard trigger is back to md5 81c6af22, and that
+--      public.is_test_email() and meta_lead_id are gone.
 --
 -- Everything this script writes (test rows, functions, columns) is rolled
 -- back by the ROLLBACK that must follow it — no synthetic row, column, or
@@ -223,6 +240,28 @@ ROLLBACK TO SAVEPOINT sp_old_vulnerable;
 
 -- ── 2. Apply this build's actual fix, inlined verbatim from ─────────────
 -- supabase/migrations/20260924213000_gh2154_p5_meta_lead_id.sql
+
+-- PRECONDITION (inlined verbatim from the migration): fails loudly if
+-- #2166 (gh-2155 HI-0b, v3-2026-09) has not already applied to this
+-- database. See the migration's ORDERING note.
+DO $gh2154_p5_precondition$
+DECLARE
+  v_def text;
+BEGIN
+  BEGIN
+    SELECT pg_get_functiondef(
+      'public.register_partner(text,text,text,text,text,text,text,text,text,text,jsonb,text,text,text,text,text,boolean,text,text,text)'::regprocedure
+    ) INTO v_def;
+  EXCEPTION WHEN undefined_function THEN
+    RAISE EXCEPTION 'gh2154_p5 PRECONDITION FAILED: public.register_partner (20-arg, pre-P5 signature) was not found on this database. This migration cannot verify #2166 (gh-2155 HI-0b, v3-2026-09 agreement-version bump) has applied. Apply supabase/migrations/20260925012956_gh2155_hi0b_agreement_v3.sql BEFORE this migration.';
+  END;
+
+  IF v_def IS NULL OR v_def NOT LIKE '%v3-2026-09%' THEN
+    RAISE EXCEPTION 'gh2154_p5 PRECONDITION FAILED: #2166 (gh-2155 HI-0b) has not applied yet -- the live public.register_partner() (20-arg) does not stamp v3-2026-09. This migration (gh-2154 P-5) DROPs and replaces register_partner() and MUST apply AFTER #2166, or the v3-2026-09 legal fix is silently regressed to v2-2026-08. Apply supabase/migrations/20260925012956_gh2155_hi0b_agreement_v3.sql first, then re-run this migration.';
+  END IF;
+END;
+$gh2154_p5_precondition$;
+
 DROP FUNCTION IF EXISTS public.register_partner(
   text, text, text, text, text, text, text, text, text, text, jsonb, text,
   text, text, text, text, boolean, text, text, text
@@ -277,7 +316,9 @@ DECLARE
   v_ip           text;
   v_ua           text;
   v_is_test      boolean;
-  v_agreement_version CONSTANT text := 'v2-2026-08';
+  -- v3-2026-09 (gh-2155 HI-0b / #2166), matches the migration's own
+  -- ORDERING-note correction.
+  v_agreement_version CONSTANT text := 'v3-2026-09';
 BEGIN
   v_rate := public.check_rate_limit(
     p_function_name => 'register_partner',
@@ -643,7 +684,9 @@ DECLARE
   v_headers      jsonb;
   v_ip           text;
   v_ua           text;
-  v_agreement_version CONSTANT text := 'v2-2026-08';
+  -- v3-2026-09 -- P-5b rollback correction: restores the POST-#2166 body,
+  -- not the pre-#2166 v2-2026-08 one. See the rollback file's MD5 NOTE.
+  v_agreement_version CONSTANT text := 'v3-2026-09';
 BEGIN
   v_rate := public.check_rate_limit(
     p_function_name => 'register_partner',
@@ -844,20 +887,46 @@ ALTER TABLE public.referral_agents
 
 DROP FUNCTION IF EXISTS public.is_test_email(text);
 
--- Assert everything is back to its pre-migration shape.
+-- Assert everything is back to its pre-P5 (post-#2166) shape.
+--
+-- P-5b NOTE: register_partner()'s restored md5 is intentionally NOT
+-- asserted against a hardcoded literal here. Pre-#2166 it was a known
+-- constant (6b44199b), but this rollback now restores the POST-#2166
+-- (v3-2026-09) body, whose exact catalog md5 cannot be known until #2166
+-- has actually applied to the target database (see the rollback file's
+-- MD5 NOTE). Instead this asserts the two properties that must hold
+-- regardless of environment: the restored function has the pre-P5 20-arg
+-- signature (proves the regprocedure cast below resolves at all -- an
+-- undefined_function error means the DROP/CREATE left the wrong
+-- signature live), and its body stamps v3-2026-09, not v2-2026-08 (proves
+-- the P-5b correction actually took -- this is the part the original,
+-- uncorrected rollback got wrong). Whoever runs this for real should ALSO
+-- manually confirm the printed md5 matches a value captured immediately
+-- after #2166 applied (see the rollback file's MD5 NOTE) before trusting
+-- the restore as byte-exact.
 DO $$
 DECLARE
-  v_rp_md5    text;
+  v_rp_md5 text;
+  v_rp_def text;
   v_guard_md5 text;
   v_helper_exists boolean;
   v_column_exists boolean;
 BEGIN
-  SELECT substr(md5(pg_get_functiondef(
+  SELECT pg_get_functiondef(
     'public.register_partner(text,text,text,text,text,text,text,text,text,text,jsonb,text,text,text,text,text,boolean,text,text,text)'::regprocedure
-  )), 1, 8) INTO v_rp_md5;
+  ) INTO v_rp_def;
+  v_rp_md5 := substr(md5(v_rp_def), 1, 8);
 
-  IF v_rp_md5 IS DISTINCT FROM '6b44199b' THEN
-    RAISE EXCEPTION 'gh2154_p5_proof ROLLBACK FAILED: register_partner() md5 first-8 = % (expected 6b44199b).', v_rp_md5;
+  IF v_rp_def IS NULL THEN
+    RAISE EXCEPTION 'gh2154_p5_proof ROLLBACK FAILED: register_partner() 20-arg signature not found after rollback -- the P-5 rollback did not correctly restore it.';
+  END IF;
+
+  IF v_rp_def NOT LIKE '%v3-2026-09%' THEN
+    RAISE EXCEPTION 'gh2154_p5_proof ROLLBACK FAILED: restored register_partner() does not stamp v3-2026-09 (P-5b correction did not take -- got md5 first-8 %).', v_rp_md5;
+  END IF;
+
+  IF v_rp_def LIKE '%v2-2026-08%' THEN
+    RAISE EXCEPTION 'gh2154_p5_proof ROLLBACK FAILED: restored register_partner() still contains v2-2026-08 -- the rollback regressed the HI-0b/#2166 fix (md5 first-8 %).', v_rp_md5;
   END IF;
 
   SELECT substr(md5(pg_get_functiondef(
@@ -865,7 +934,7 @@ BEGIN
   )), 1, 8) INTO v_guard_md5;
 
   IF v_guard_md5 IS DISTINCT FROM '81c6af22' THEN
-    RAISE EXCEPTION 'gh2154_p5_proof ROLLBACK FAILED: referral_agents_guard_payout_columns() md5 first-8 = % (expected 81c6af22).', v_guard_md5;
+    RAISE EXCEPTION 'gh2154_p5_proof ROLLBACK FAILED: referral_agents_guard_payout_columns() md5 first-8 = % (expected 81c6af22, unaffected by #2166).', v_guard_md5;
   END IF;
 
   SELECT EXISTS (
@@ -883,7 +952,7 @@ BEGIN
     RAISE EXCEPTION 'gh2154_p5_proof ROLLBACK FAILED: referral_agents.meta_lead_id still exists after rollback.';
   END IF;
 
-  RAISE NOTICE 'gh2154_p5_proof ROLLBACK: register_partner() md5=% (expected 6b44199b), guard md5=% (expected 81c6af22), is_test_email() gone, meta_lead_id gone. PASS.', v_rp_md5, v_guard_md5;
+  RAISE NOTICE 'gh2154_p5_proof ROLLBACK: register_partner() restored to v3-2026-09 20-arg shape, md5 first-8=% (record this and cross-check against the value captured right after #2166 applied), guard md5=% (expected 81c6af22), is_test_email() gone, meta_lead_id gone. PASS.', v_rp_md5, v_guard_md5;
 END $$;
 
 ROLLBACK;

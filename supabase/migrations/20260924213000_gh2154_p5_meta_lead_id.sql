@@ -70,10 +70,62 @@
 --
 -- ROLLBACK: see
 -- supabase/migrations_rollbacks/20260924213000_gh2154_p5_meta_lead_id_rollback.sql
--- — drops the 21-arg register_partner, recreates the pre-migration 20-arg
--- definition byte-identical to P-2's migration, drops the rate_limit_config
--- row, restores the guard trigger, drops meta_lead_id (which also drops
--- its unique constraint), and drops public.is_test_email().
+-- — drops the 21-arg register_partner, recreates the POST-#2166 20-arg
+-- definition (v3-2026-09 stamped -- see the ORDERING note below, NOT the
+-- pre-#2166 md5 6b44199b body), drops the rate_limit_config row, restores
+-- the guard trigger, drops meta_lead_id (which also drops its unique
+-- constraint), and drops public.is_test_email().
+--
+-- ORDERING (P-5b correction, Kevin): this migration DROPs the live 20-arg
+-- register_partner() and CREATEs a fresh 21-arg one, so it can only ever
+-- carry forward whatever v_agreement_version literal was live on the 20-arg
+-- function the instant before this migration ran. #2166 (gh-2155 HI-0b, PR
+-- #2166) independently CREATE OR REPLACEs that same 20-arg function to bump
+-- v_agreement_version from 'v2-2026-08' to 'v3-2026-09' -- same signature,
+-- one literal changed, nothing else. The two migrations are safe in exactly
+-- one order: #2166 applies FIRST (so its CREATE OR REPLACE lands on the
+-- signature that still exists), THEN this migration applies (so its
+-- DROP+CREATE correctly matches and replaces the v3-stamped function,
+-- carrying v3-2026-09 forward instead of reintroducing v2-2026-08). The
+-- reverse order either regresses the HI-0b legal fix or -- if #2166 lands
+-- after this migration has already dropped the signature #2166's CREATE OR
+-- REPLACE targets -- creates a second, overloaded register_partner instead
+-- of replacing anything. This migration's own v_agreement_version literal
+-- below is therefore 'v3-2026-09' (copied verbatim from #2166's
+-- CREATE OR REPLACE body, not invented), and the PRECONDITION guard
+-- immediately below makes the wrong order impossible to apply silently:
+-- it inspects the LIVE 20-arg register_partner() before this migration
+-- touches anything and RAISE EXCEPTIONs if #2166's v3-2026-09 stamp is not
+-- already present. See PR #2182 body ("#2166 applies first (guarded); P-5
+-- carries v3") and #2154 comment thread for the full ordering discussion.
+
+-- PRECONDITION (P-5b, Kevin): fail loudly, before touching any object,
+-- if #2166 (gh-2155 HI-0b) has not already applied to this database. #2166
+-- CREATE OR REPLACEs the live 20-arg public.register_partner(), changing
+-- only v_agreement_version from 'v2-2026-08' to 'v3-2026-09'; that stamp is
+-- the unique marker #2166 introduces on this function. This migration's own
+-- DROP FUNCTION below only matches (and only correctly replaces) that same
+-- 20-arg signature -- if it doesn't exist yet, or exists but was never
+-- bumped to v3-2026-09, applying this migration would either error on the
+-- DROP or silently re-stamp v2-2026-08 and regress the HI-0b legal fix. See
+-- the ORDERING note above.
+DO $gh2154_p5_precondition$
+DECLARE
+  v_def text;
+BEGIN
+  BEGIN
+    SELECT pg_get_functiondef(
+      'public.register_partner(text,text,text,text,text,text,text,text,text,text,jsonb,text,text,text,text,text,boolean,text,text,text)'::regprocedure
+    ) INTO v_def;
+  EXCEPTION WHEN undefined_function THEN
+    RAISE EXCEPTION 'gh2154_p5 PRECONDITION FAILED: public.register_partner (20-arg, pre-P5 signature) was not found on this database. This migration cannot verify #2166 (gh-2155 HI-0b, v3-2026-09 agreement-version bump) has applied. Apply supabase/migrations/20260925012956_gh2155_hi0b_agreement_v3.sql BEFORE this migration.';
+  END;
+
+  IF v_def IS NULL OR v_def NOT LIKE '%v3-2026-09%' THEN
+    RAISE EXCEPTION 'gh2154_p5 PRECONDITION FAILED: #2166 (gh-2155 HI-0b) has not applied yet -- the live public.register_partner() (20-arg) does not stamp v3-2026-09. This migration (gh-2154 P-5) DROPs and replaces register_partner() and MUST apply AFTER #2166, or the v3-2026-09 legal fix is silently regressed to v2-2026-08. Apply supabase/migrations/20260925012956_gh2155_hi0b_agreement_v3.sql first, then re-run this migration.';
+  END IF;
+END;
+$gh2154_p5_precondition$;
 
 ALTER TABLE public.referral_agents
   ADD COLUMN IF NOT EXISTS meta_lead_id text UNIQUE;
@@ -139,7 +191,9 @@ DECLARE
   v_ip           text;
   v_ua           text;
   v_is_test      boolean;
-  v_agreement_version CONSTANT text := 'v2-2026-08';
+  -- v3-2026-09 (gh-2155 HI-0b / #2166), copied verbatim from #2166's
+  -- CREATE OR REPLACE -- see the ORDERING note above the PRECONDITION guard.
+  v_agreement_version CONSTANT text := 'v3-2026-09';
 BEGIN
   v_rate := public.check_rate_limit(
     p_function_name => 'register_partner',

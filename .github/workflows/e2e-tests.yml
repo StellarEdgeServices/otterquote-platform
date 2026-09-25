@@ -370,5 +370,14 @@ jobs:
       # secrets, and no --allow-net/--allow-env/--allow-sys is granted here — so the
       # gh-422 guarantee is unchanged in substance: these tests still cannot reach the
       # network, the environment, or anything outside two source directories.
+      #
+      # gh-2154 P-5b (Kevin): supabase/migrations and supabase/migrations_rollbacks
+      # added for the same narrow reason. migration-ordering-guard.test.ts asserts
+      # gh-2154 P-5's live migration file both stamps v_agreement_version =
+      # 'v3-2026-09' (not the stale 'v2-2026-08' it briefly regressed to at head
+      # 8d783fef) and carries a PRECONDITION guard proving #2166 (gh-2155 HI-0b) has
+      # applied before the migration runs -- the exact apply-order landmine PR #2182's
+      # body flags. Same source-only, read-only posture as gh-1314's addition: two
+      # more sibling source directories, still no --allow-net/--allow-env/--allow-sys.
       - name: Edge Function unit tests (pure-unit, no secrets)
-        run: deno test --allow-read=supabase/functions,supabase/migrations_drafts supabase/functions/
+        run: deno test --allow-read=supabase/functions,supabase/migrations_drafts,supabase/migrations,supabase/migrations_rollbacks supabase/functions/
