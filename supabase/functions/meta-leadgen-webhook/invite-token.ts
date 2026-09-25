@@ -118,9 +118,13 @@ export async function verifyPartnerInviteToken(
   return ok ? referralAgentId : null;
 }
 
-/** The unauthenticated invite/accept URL an invite email links to. */
+/** The unauthenticated invite/accept URL an invite email links to. gh-2154
+ * P-5 frontend round: pageBaseUrl is always partner-invite.html (the one
+ * dedicated accept page for every track) and the query param is named
+ * `token` -- that page's own inline script reads `?token=`, independent of
+ * this Edge Function's own `t` query param name. */
 export function buildPartnerInviteUrl(pageBaseUrl: string, token: string): string {
-  return `${pageBaseUrl.replace(/\/$/, "")}?invite=${encodeURIComponent(token)}`;
+  return `${pageBaseUrl.replace(/\/$/, "")}?token=${encodeURIComponent(token)}`;
 }
 
 /** Whether a signing secret is configured -- mirrors D-320's

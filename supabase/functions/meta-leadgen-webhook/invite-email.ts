@@ -21,17 +21,20 @@ export function isInviteEmailEnabled(value: string | undefined): boolean {
   return value === "true";
 }
 
-const AGENT_TYPE_PAGE: Record<string, string> = {
-  re_agent: "partner-re.html",
-  insurance_agent: "partner-insurance.html",
-  home_inspector: "partner-inspectors.html",
-  adjuster: "partner-adjusters.html",
-  other: "partner-other.html",
-};
+// gh-2154 P-5 frontend round: every invite links to the ONE dedicated
+// partner-invite.html accept page (GET-prefilled from this row's own
+// agent_type via partner-invite-accept), not to any of the five live
+// partner-*.html signup pages -- those collect a fresh signup, they do not
+// know how to accept an existing pending row. inviteTargetPage() is kept
+// (rather than inlining the literal) so callers/tests have one named seam,
+// and because it still encodes "this is a per-agent_type routing decision"
+// even though every branch currently resolves the same way.
+const INVITE_TARGET_PAGE = "partner-invite.html";
 
-/** Which partner-*.html page this agent_type's invite link should prefill. */
-export function inviteTargetPage(agentType: string): string {
-  return AGENT_TYPE_PAGE[agentType] ?? AGENT_TYPE_PAGE.other;
+/** Which page this agent_type's invite link should prefill and accept
+ * through. Always partner-invite.html -- see comment above. */
+export function inviteTargetPage(_agentType: string): string {
+  return INVITE_TARGET_PAGE;
 }
 
 export interface InviteEmail {

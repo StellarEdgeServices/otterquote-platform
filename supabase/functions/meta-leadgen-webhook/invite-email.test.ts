@@ -15,16 +15,16 @@ Deno.test("isInviteEmailEnabled: only the exact string 'true' enables sending", 
   assertEquals(isInviteEmailEnabled(""), false);
 });
 
-Deno.test("inviteTargetPage: routes each allowlist agent_type to its own partner page", () => {
-  assertEquals(inviteTargetPage("re_agent"), "partner-re.html");
-  assertEquals(inviteTargetPage("insurance_agent"), "partner-insurance.html");
-  assertEquals(inviteTargetPage("home_inspector"), "partner-inspectors.html");
-  assertEquals(inviteTargetPage("adjuster"), "partner-adjusters.html");
-  assertEquals(inviteTargetPage("other"), "partner-other.html");
+Deno.test("inviteTargetPage: every agent_type routes to the one dedicated partner-invite.html accept page", () => {
+  assertEquals(inviteTargetPage("re_agent"), "partner-invite.html");
+  assertEquals(inviteTargetPage("insurance_agent"), "partner-invite.html");
+  assertEquals(inviteTargetPage("home_inspector"), "partner-invite.html");
+  assertEquals(inviteTargetPage("adjuster"), "partner-invite.html");
+  assertEquals(inviteTargetPage("other"), "partner-invite.html");
 });
 
-Deno.test("inviteTargetPage: unknown agent_type falls back to partner-other.html", () => {
-  assertEquals(inviteTargetPage("something_unexpected"), "partner-other.html");
+Deno.test("inviteTargetPage: unknown agent_type also routes to partner-invite.html", () => {
+  assertEquals(inviteTargetPage("something_unexpected"), "partner-invite.html");
 });
 
 Deno.test("buildInviteEmail: copy is clearly marked as an unapproved placeholder", () => {
@@ -34,9 +34,9 @@ Deno.test("buildInviteEmail: copy is clearly marked as an unapproved placeholder
   assert(email.html.includes("PLACEHOLDER"));
 });
 
-Deno.test("buildInviteEmail: links to the agent-type-specific partner page with the invite token", () => {
+Deno.test("buildInviteEmail: links to the dedicated partner-invite.html accept page with ?token=", () => {
   const email = buildInviteEmail("Jamie", "home_inspector", "https://otterquote.com", "tok.sig");
-  assert(email.text.includes("https://otterquote.com/partner-inspectors.html?invite=tok.sig"));
+  assert(email.text.includes("https://otterquote.com/partner-invite.html?token=tok.sig"));
 });
 
 Deno.test("buildInviteEmail: the D-237 postal address is present in both text and html", () => {
