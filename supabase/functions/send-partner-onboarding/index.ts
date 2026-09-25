@@ -125,6 +125,13 @@ function jsonResponse(data: unknown, status: number, corsHeaders: Record<string,
   });
 }
 
+// Orchestrator review of 50a59e50 (fix round 3): a Mailgun request that
+// never resolves would hang this invocation indefinitely; 10s matches
+// #2167's own send-lead-next-step-reminder sender (MAILGUN_TIMEOUT_MS) and
+// this repo's other outbound Mailgun calls' tolerance for a slow-provider
+// incident.
+const MAILGUN_TIMEOUT_MS = 10_000;
+
 async function sendMailgunEmail(
   apiKey: string,
   to: string,
@@ -132,7 +139,7 @@ async function sendMailgunEmail(
   textBody: string,
   htmlBody: string,
   optOutUrl: string,
-): Promise<{ ok: boolean; mailgunId?: string; error?: string }> {
+): Promise<{ ok: boolean; mailgunId?: string; error?: string; uncertain?: boolean }> {
   const formData = new URLSearchParams();
   formData.append("from", "Otter Quotes <notifications@mail.otterquote.com>");
   formData.append("to", to);
@@ -152,7 +159,11 @@ async function sendMailgunEmail(
       method: "POST",
       headers: { Authorization: `Basic ${btoa(`api:${apiKey}`)}` },
       body: formData,
+      signal: AbortSignal.timeout(MAILGUN_TIMEOUT_MS),
     });
+    // A response WAS received — Mailgun definitely rejected this specific
+    // request. That is a DEFINITE non-send: retrying it is safe and correct
+    // (run-sweep.ts routes this to markFailed, which is reclaimable).
     if (!res.ok) {
       const errText = await res.text().catch(() => "(unreadable)");
       return { ok: false, error: `Mailgun ${res.status}: ${errText}` };
@@ -160,7 +171,19 @@ async function sendMailgunEmail(
     const data = await res.json().catch(() => ({}));
     return { ok: true, mailgunId: (data as { id?: string })?.id };
   } catch (err) {
-    return { ok: false, error: String(err) };
+    // Orchestrator review of 50a59e50 (fix round 3): NO response was ever
+    // received here — a thrown fetch (connection reset, DNS failure, or
+    // this function's own AbortSignal.timeout firing) means Mailgun's
+    // ACTUAL decision is UNKNOWN. It may have accepted the request right
+    // before the connection dropped. This is NOT the same as a definite
+    // rejection: routing it to markFailed (as this function used to) makes
+    // the row 'failed', which IS reclaimable — exactly the outcome-unknown
+    // double-send risk ruling (c) exists to close, just one layer up (at
+    // the HTTP call instead of the DB claim). `uncertain: true` tells
+    // run-sweep.ts to leave the ledger row 'pending' (never markFailed,
+    // never markSent) and surface it in the sweep's `uncertain` list
+    // immediately — never auto-retried, same as a stale claim.
+    return { ok: false, uncertain: true, error: String(err) };
   }
 }
 

@@ -304,12 +304,18 @@ Deno.test("9-day backlog, real copy: only day7 sends, day0/1/3 marked skipped in
 
 // ── Kevin correction Q3: claim -> send -> mark (not stamp-before-send) ─────
 
-Deno.test("Mailgun failure: the row is marked 'failed', NOT 'sent' — and the next tick retries it", async () => {
+Deno.test("Mailgun DEFINITE rejection (a 500 response WAS received): the row is marked 'failed', NOT 'sent' — and the next tick retries it (still retryable)", async () => {
+  // opts.sendOk: false models the DEFINITE-rejection shape — a response WAS
+  // received (error: "Mailgun 500") and `uncertain` is left unset/false by
+  // buildDeps's fake. This is item (4b) from the orchestrator's fix-round-3
+  // review: a non-2xx HTTP response must remain retryable, unlike a thrown
+  // fetch (see the "uncertain" test below).
   const { deps, rec, store } = buildDeps({ settingValue: ON, partners: [partner()], sendOk: false });
   withRealCopy(deps);
   const outcome = await runOnboardingSweep(deps);
   if (outcome.ok && "results" in outcome) {
     assertEquals(outcome.results[0].skipped_reason, "send_failed");
+    assertEquals(outcome.uncertain ?? [], [], "a definite rejection must NOT appear in the uncertain list");
   }
   assertEquals(rec.sent.length, 0, "markSent must never be called on a failed send");
   assertEquals(rec.failed.length, 1);
@@ -322,6 +328,41 @@ Deno.test("Mailgun failure: the row is marked 'failed', NOT 'sent' — and the n
   await runOnboardingSweep(deps2);
   assertEquals(rec2.sends.length, 1, "a later tick must retry a 'failed' stage");
   assertEquals(store.rows.get("p1::day0")?.status, "sent");
+});
+
+// Orchestrator review of 50a59e50 (fix round 3): a THROWN sendEmail (no
+// HTTP response ever received — connection reset, DNS failure, timeout)
+// must NOT be treated the same as a definite rejection. Fail-first proof
+// for item 4: this test FAILS on head 50a59e50, where SendEmailResult has
+// no `uncertain` field at all and run-sweep.ts's sendResult handling always
+// routes !ok to markFailed — a throwing sender there would mark the row
+// 'failed' (reclaimable), and the "next run does NOT resend" assertion
+// below would fail (it WOULD resend, since 'failed' is retryable there).
+Deno.test("sendEmail throwing / uncertain outcome: the row is left 'pending' (NOT 'failed', NOT 'sent'), surfaced immediately, and a later run does NOT resend it", async () => {
+  const store = new FakeLedgerStore();
+  const { deps, rec } = buildDeps({ settingValue: ON, partners: [partner()], store });
+  withRealCopy(deps);
+  deps.sendEmail = async () => ({ ok: false, uncertain: true, error: "TypeError: error sending request: connection reset" });
+  const outcome = await runOnboardingSweep(deps);
+  if (outcome.ok && "results" in outcome) {
+    assertEquals(outcome.results[0].skipped_reason, "uncertain");
+    assertEquals(outcome.uncertain, [{ partner_id: "p1", stage: "day0" }], "surfaced immediately, not deferred to a later run's staleness check");
+  }
+  assertEquals(rec.sent.length, 0, "markSent must never be called");
+  assertEquals(rec.failed.length, 0, "markFailed must never be called for an uncertain outcome — that would make it reclaimable");
+  assertEquals(store.rows.get("p1::day0")?.status, "pending", "the row stays exactly as claimStage left it");
+
+  // Next run: the stage is NOT claimable (canClaimStage never reclaims
+  // 'pending'), so no second send is ever attempted — the whole point.
+  const { deps: deps2, rec: rec2 } = buildDeps({ settingValue: ON, partners: [partner()], store, now: NOW + 1000 });
+  withRealCopy(deps2);
+  const outcome2 = await runOnboardingSweep(deps2);
+  if (outcome2.ok && "results" in outcome2) {
+    // Still fresh (only 1 second later) -- reported as already_sent, not
+    // uncertain yet; either way, the load-bearing assertion is zero sends.
+    assertEquals(["already_sent", "uncertain"].includes(outcome2.results[0].skipped_reason ?? ""), true);
+  }
+  assertEquals(rec2.sends.length, 0, "no second send — the outcome-unknown row is never auto-retried");
 });
 
 Deno.test("a concurrent double claim: two overlapping attempts on the SAME (partner, stage) — only the first succeeds, the second is refused, before either has sent anything", () => {

@@ -126,6 +126,17 @@ export interface SendEmailResult {
   ok: boolean;
   mailgunId?: string;
   error?: string;
+  /** Orchestrator review of 50a59e50 (fix round 3): true when `ok` is false
+   * because NO response was ever received (a thrown fetch — connection
+   * reset, DNS failure, timeout) rather than because a response WAS
+   * received and it was a non-2xx rejection. Only meaningful when
+   * ok === false. A definite rejection (uncertain unset/false) is safe to
+   * retry (markFailed, reclaimable). An uncertain one is NOT — Mailgun may
+   * have already accepted the message right before the connection dropped
+   * — see the per-partner loop below, which leaves the ledger row
+   * 'pending' (never markFailed) and surfaces it in the sweep's own
+   * `uncertain` list immediately, rather than waiting for it to go stale. */
+  uncertain?: boolean;
 }
 
 type CopyLookup = (agentType: EligibleAgentType, stage: OnboardingStage) => { subject: string; textBody: string; htmlBody: string } | null;
@@ -362,6 +373,30 @@ export async function runOnboardingSweep(deps: RunDeps): Promise<SweepOutcome> {
     const sendResult = await deps.sendEmail(email, finalCopy.subject, finalCopy.textBody, finalCopy.htmlBody, optOutUrl);
     if (!sendResult.ok) {
       const error = sendResult.error ?? "unknown";
+
+      // Orchestrator review of 50a59e50 (fix round 3): a sendEmail failure
+      // with NO response ever received (uncertain: true — a thrown fetch,
+      // connection reset, or timeout) means Mailgun's actual decision is
+      // UNKNOWN, not a definite rejection. markFailed would make this row
+      // 'failed', which IS reclaimable (canClaimStage) — retrying it risks
+      // a real double-send if Mailgun in fact accepted the message right
+      // before the connection dropped. The row stays exactly as claimStage
+      // left it — 'pending' — which is now NEVER reclaimed (ruling c); this
+      // run surfaces it in `uncertain` immediately, rather than waiting for
+      // a LATER run to notice it went stale.
+      if (sendResult.uncertain) {
+        say(
+          "error",
+          `stage ${stage} for partner ${partner.id} has an UNCERTAIN send outcome — no response was received from Mailgun (${error}), so whether it actually accepted the message is unknown. Row left 'pending' (never marked 'failed' — that would make it reclaimable and risk a double-send). NOT auto-retried this run or any later one. Needs human review: check Mailgun's logs for this partner/stage.`,
+        );
+        uncertain.push({ partner_id: partner.id, stage });
+        results.push(withSkips("uncertain"));
+        continue;
+      }
+
+      // A response WAS received and it was a non-2xx rejection — a
+      // DEFINITE non-send. Safe and correct to retry: markFailed, which IS
+      // reclaimable (canClaimStage's 'failed' branch).
       say("error", `FAILED ${stage} onboarding email for partner ${partner.id} — not retried this run, eligible again next tick: ${error}`);
       const { error: markError } = await deps.markFailed(partner.id, stage, error);
       if (markError) {
