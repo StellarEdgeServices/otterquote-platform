@@ -73,7 +73,8 @@ export interface WebhookDeps {
    * EMAIL_ENABLED switch is not "true"), no invite is sent and the row
    * simply waits as 'pending' for some other outreach. See
    * supabase/functions/meta-leadgen-webhook/invite-email.ts (OFF by
-   * default, PLACEHOLDER copy -- see that file's header).
+   * default; Dustin-approved copy, see that file's header for what is/
+   * isn't wired yet).
    */
   sendInvite?: (args: { referralAgentId: string; email: string; firstName: string; agentType: string }) => Promise<void>;
   /**
