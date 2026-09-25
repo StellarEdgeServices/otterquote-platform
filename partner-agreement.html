@@ -497,7 +497,10 @@
       try {
         var params = new URLSearchParams(window.location.search);
         var track = params.get('track') || params.get('agent_type');
-        if (track !== 'home_inspector') { return; }
+        // gh-2155 HI-0b round 6 (REVIEW FAIL 5832774895 should-fix 3):
+        // case-insensitive match -- ?track=HOME_INSPECTOR (or any other
+        // casing) now hides the same way ?track=home_inspector does.
+        if (!track || track.toLowerCase() !== 'home_inspector') { return; }
         var hidden = document.querySelectorAll('.inspector-hide');
         for (var i = 0; i < hidden.length; i++) { hidden[i].style.display = 'none'; }
       } catch (e) { /* URLSearchParams/querySelectorAll unavailable: the CSS

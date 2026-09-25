@@ -179,7 +179,15 @@ function runHidingScript(hrefSearch) {
   ok(agreementSrc.indexOf('id="feeStructureBlock"') !== -1 && agreementSrc.indexOf('id="d266DisclaimerBox"') !== -1,
     'partner-agreement.html: fee table and D-266 box are individually addressable for track-based hiding');
   ok((stripComments(agreementSrc).match(/class="[^"]*\binspector-hide\b[^"]*"/g) || []).length === 4,
-    'partner-agreement.html: exactly 4 elements carry the inspector-hide class (fee block, Section 4.1, D-266 box, Section 7 warranty paragraph)');
+    // Label updated round 6 (REVIEW FAIL 5832774895 should-fix 2 -- stale
+    // since round 3): the D-266 box and the Section 7 warranty paragraph
+    // are no longer their own inspector-hide elements -- both are nested
+    // inside the whole-Section-7 inspector-hide <section> added in round 3.
+    // The 4 elements are now: the fee block, Section 4.1, all of Section 7
+    // (D-266 box and warranty paragraph included), and the Section 14(a)
+    // cross-reference span. The assertion (count === 4) was already right;
+    // only this label was wrong.
+    'partner-agreement.html: exactly 4 elements carry the inspector-hide class (fee block, Section 4.1, all of Section 7, Section 14(a) cross-reference span)');
   ok(!/class="[^"]*\binspector-hide\b/.test(
       stripComments(extractBetween(agreementSrc, '<h3>4.3 Home Inspector Partners</h3>', '</section>', 'Section 4.3'))
     ),
@@ -190,6 +198,26 @@ function runHidingScript(hrefSearch) {
     for (const key of INSPECTOR_HIDE_KEYS) {
       ok(els[key].style.display === 'none', 'home_inspector (?' + paramName + '=): ' + key + ' hidden (JS belt-and-braces path)');
     }
+  }
+}
+
+// ── (b1) round 6 (REVIEW FAIL 5832774895 should-fix 3): ?track= match is
+//        case-insensitive -- ?track=HOME_INSPECTOR (or any other casing)
+//        hides the same set of elements as ?track=home_inspector. No real
+//        link emits an uppercase value today, but the match should not
+//        depend on that. Negative control below (mixed case still hides;
+//        an unrelated value still does not). ───────────────────────────────
+{
+  for (const hrefSearch of ['?track=HOME_INSPECTOR', '?track=Home_Inspector', '?agent_type=HOME_INSPECTOR']) {
+    const els = runHidingScript(hrefSearch);
+    for (const key of INSPECTOR_HIDE_KEYS) {
+      ok(els[key].style.display === 'none', hrefSearch + ': ' + key + ' hidden (case-insensitive track match)');
+    }
+  }
+  // Negative control: an unrelated value, differently cased, must not hide.
+  const untouchedEls = runHidingScript('?track=RE_AGENT');
+  for (const key of INSPECTOR_HIDE_KEYS) {
+    ok(untouchedEls[key].style.display !== 'none', '?track=RE_AGENT: ' + key + ' NOT hidden (unrelated value, case-insensitive match does not over-match)');
   }
 }
 
@@ -421,6 +449,76 @@ function runHidingScript(hrefSearch) {
     'js/nav.js footer link: an unrelated page with no inspector signal is untouched');
   ok(computeHref('/index.html', undefined) === '/partner-agreement.html',
     'js/nav.js footer link: the homepage (no inspector signal at all) is untouched');
+}
+
+// ── (b5) round 6 (REVIEW FAIL 5832774895 must-fix 1 / LEGAL-READ FAIL
+//        5832784187 item 2b): js/nav.js renders the footer once, at
+//        DOMContentLoaded (nav.js:1020-1022) -- BEFORE
+//        partner-dashboard.html's init() has resolved the signed-in
+//        partner's type. init() is registered on DOMContentLoaded too, but
+//        it does not set window.currentPartnerAgentType until line ~1789,
+//        after awaiting Auth.requireAuth(), loadW9GateFlag() and the
+//        partner fetch -- all after nav.js's own DOMContentLoaded listener
+//        has already rendered the footer once with the global still
+//        undefined. (b4) above presets the global before computing the
+//        href, which is what let this bug through review round 5: it does
+//        not model that load order. This test does: it asserts (i) that
+//        partner-dashboard.html itself re-renders the footer right after
+//        setting the global (so the SOURCE actually fixes the race, not
+//        just nav.js's per-call logic), and (ii) end-to-end, using the
+//        same real href-computation snippet as (b4), that a render taken
+//        BEFORE the global is set is untracked and a render taken AFTER is
+//        tracked -- i.e. exactly the two renders that happen in
+//        production once the source fix is in place.
+//        Negative control / fail-first: on 5ede2b19 (this test's base),
+//        partner-dashboard.html never calls Nav.renderFooter() a second
+//        time, so assertion (i) fails there. ─────────────────────────────
+{
+  const dashSrc = fs.readFileSync(path.join(repoRoot, 'partner-dashboard.html'), 'utf8');
+  const setIdx = dashSrc.indexOf('window.currentPartnerAgentType = partnerType;');
+  ok(setIdx !== -1, 'partner-dashboard.html: sets window.currentPartnerAgentType = partnerType');
+
+  // The re-render call must appear shortly AFTER the assignment (so the
+  // global it reads back is already the real partner type, not the
+  // DOMContentLoaded-time undefined) -- bound the search window so an
+  // unrelated Nav.renderFooter() call elsewhere in this 3000+ line file
+  // cannot accidentally satisfy this.
+  const afterAssignment = setIdx === -1 ? '' : dashSrc.slice(setIdx, setIdx + 900);
+  ok(/Nav\.renderFooter\s*\(\s*\)/.test(afterAssignment),
+    'partner-dashboard.html: re-renders the footer (Nav.renderFooter()) immediately after window.currentPartnerAgentType is set, so the footer picks up the real partner type instead of staying stuck on the DOMContentLoaded-time undefined -- FAILS on 5ede2b19, where no such re-render call exists');
+
+  // End-to-end: model the two renders using nav.js's real href logic
+  // (the same extraction technique as (b4), reproduced here so this block
+  // stands alone).
+  const navSrc = fs.readFileSync(path.join(repoRoot, 'js', 'nav.js'), 'utf8');
+  const hrefSnippet = extractBetween(
+    navSrc,
+    'const isInspectorTrack = window.location.pathname',
+    "'/partner-agreement.html';",
+    'js/nav.js renderFooter() inspector-track href logic (b5)'
+  ) + "'/partner-agreement.html';";
+
+  function computeHrefAt(agentType) {
+    const fakeWindow = { location: { pathname: '/partner-dashboard.html' }, currentPartnerAgentType: agentType };
+    fakeWindow.window = fakeWindow;
+    const context = vm.createContext(fakeWindow);
+    vm.runInContext(hrefSnippet + '\npartnerAgreementHref;', context);
+    return vm.runInContext('partnerAgreementHref', context);
+  }
+
+  // Render #1: nav.js's DOMContentLoaded-time footer render, before
+  // partner-dashboard.html's init() has run at all.
+  const firstRenderHref = computeHrefAt(undefined);
+  ok(firstRenderHref === '/partner-agreement.html',
+    'partner-dashboard.html footer, render #1 (DOMContentLoaded, before init resolves the partner type): untracked, as it always was');
+
+  // Render #2: the fix's re-render, taken right after
+  // window.currentPartnerAgentType is set for a home_inspector partner --
+  // this is the href a real inspector's SECOND (fixed) footer render
+  // produces, and what the re-render call asserted above must trigger.
+  const secondRenderHref = computeHrefAt('home_inspector');
+  ok(secondRenderHref === '/partner-agreement.html?track=home_inspector#track-home-inspector',
+    'partner-dashboard.html footer, render #2 (after window.currentPartnerAgentType = "home_inspector"): tracked -- what the re-render call must produce for a real inspector, closing the gap REVIEW FAIL 5832774895 / LEGAL-READ FAIL 5832784187 flagged');
 }
 
 // ── (d) CI legal-surface check (tools/partner_parity_check.py): still
