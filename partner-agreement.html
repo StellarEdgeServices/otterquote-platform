@@ -210,7 +210,13 @@
         </section>
 
         <div class="legal-content">
-            <p><strong>Effective Date:</strong> August 20, 2026</p>
+            <p><strong>Effective Date:</strong> September 25, 2026</p>
+            <p><strong>Version:</strong> v3-2026-09</p>
+            <!-- gh-2155 HI-0b: publish date above is a PLACEHOLDER matching this
+                 file's existing concrete-date pattern (v2-2026-08 read "August 20,
+                 2026"); confirm the actual publish date before this ships and
+                 update this line and the register_partner migration's comment
+                 accordingly if it slips. -->
 
             <div class="disclaimer-box">
                 <h3>Legal Disclaimer</h3>
@@ -251,6 +257,21 @@
 
             <section>
                 <h2>4. Referral Fee Structure</h2>
+                <!-- gh-2155 HI-0b: this block (intro paragraph, fee table, and
+                     the $10,000-Floor paragraph) is hidden entirely from the
+                     home_inspector track by the track-detection script at the
+                     bottom of this page. Section 4.3 already states, in plain
+                     language, that Home Inspector Partners receive no fee --
+                     showing the $200/$50 table to that track alongside it was
+                     the close-review defect (Ben, comment 5824245098). Least-
+                     invasive mechanism chosen: a ?track=home_inspector /
+                     ?agent_type=home_inspector query param (set by
+                     partner-inspectors.html's agreement link) toggles
+                     display:none on this id via plain JS -- this page had no
+                     existing track-awareness to extend, and a param is the
+                     smallest change that doesn't touch the fee amounts, the
+                     legal text, or any other track's rendering. -->
+                <div id="feeStructureBlock">
                 <p>Otter Quotes pays Partner a referral fee under a two-tier structure:</p>
                 <table class="commission-table">
                     <thead>
@@ -270,6 +291,7 @@
                     </tbody>
                 </table>
                 <p>No referral fee or bonus is earned on jobs with a total project value under $10,000. The $10,000 Floor is measured against the completed job&rsquo;s total project value, not against the Otter Quotes platform fee charged to the contractor for that job.</p>
+                </div>
 
                 <h3>4.1 Single-Level Recruiting (D-140) and Forward-Only Accrual (D-142)</h3>
                 <p>The Recruit Bonus is <strong>single-level</strong>: Partner earns a Recruit Bonus only on referrals made by agents Partner personally, directly recruited into the Program. Partner does not earn any referral fee or bonus on referrals made by agents recruited by Partner&rsquo;s recruits, or on any further downstream recruiting chain. The Program is not a multi-level marketing structure, and no referral fee of any kind flows more than one level from the recruiting Partner to a directly-recruited agent.</p>
@@ -296,11 +318,16 @@
 
             <section>
                 <h2>7. Licensing and Employment Compliance Disclaimer</h2>
-                <div class="disclaimer-box">
+                <!-- gh-2155 HI-0b: D-266's mandatory-disclaimer sentence is not
+                     shown to the home_inspector track (D-333: home inspectors
+                     receive no referral fee under Section 4.3, so the
+                     lawful-to-accept-fees warning does not apply to them). Same
+                     track-detection script as the fee-table block above. -->
+                <div class="disclaimer-box" id="d266DisclaimerBox">
                     <h3>Mandatory Disclaimer</h3>
                     <p>Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.</p>
                 </div>
-                <p>The Program is open to Partners in any industry, including individuals who hold a professional license or are subject to an employer&rsquo;s outside-activity or referral-fee policy — for example, real estate agents, insurance agents and adjusters, home inspectors, attorneys, and other regulated professionals. <strong>Otter Quotes does not evaluate, gate, or vouch for any individual Partner&rsquo;s eligibility to accept referral compensation.</strong> Before accepting any commission under this Agreement, Partner represents and warrants that Partner has independently confirmed, by reviewing Partner&rsquo;s own employment agreement, brokerage or firm policies, and the rules of any licensing board, bar, or regulatory body with authority over Partner, that accepting referral fees of the kind described in this Agreement is lawful and permitted for Partner. Licensed professionals are solely responsible for their own regulatory compliance, including any disclosure, consent, or reporting obligations their license or employer imposes in connection with referral compensation. Nothing in this Agreement, and no act by Otter Quotes in accepting Partner into the Program, is a representation by Otter Quotes that Partner&rsquo;s participation is lawful for Partner&rsquo;s particular profession, employer, or state.</p>
+                <p>The Program is open to Partners in any industry, including individuals who hold a professional license or are subject to an employer&rsquo;s outside-activity or referral-fee policy — for example, real estate agents, insurance agents and adjusters, attorneys, and other regulated professionals. <strong>Otter Quotes does not evaluate, gate, or vouch for any individual Partner&rsquo;s eligibility to accept referral compensation.</strong> Before accepting any commission under this Agreement, Partner represents and warrants that Partner has independently confirmed, by reviewing Partner&rsquo;s own employment agreement, brokerage or firm policies, and the rules of any licensing board, bar, or regulatory body with authority over Partner, that accepting referral fees of the kind described in this Agreement is lawful and permitted for Partner. Licensed professionals are solely responsible for their own regulatory compliance, including any disclosure, consent, or reporting obligations their license or employer imposes in connection with referral compensation. Nothing in this Agreement, and no act by Otter Quotes in accepting Partner into the Program, is a representation by Otter Quotes that Partner&rsquo;s participation is lawful for Partner&rsquo;s particular profession, employer, or state.</p>
             </section>
 
             <section>
@@ -392,5 +419,26 @@
 <script src="js/config.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/nav.js"></script>
+    <!-- gh-2155 HI-0b: home_inspector track never sees the fee table, the
+         $10,000-Floor paragraph, or the D-266 lawful-to-accept-fees sentence
+         (D-333 -- inspectors receive no referral fee at all under Section
+         4.3, so neither applies to them). Accepts ?track=home_inspector or
+         ?agent_type=home_inspector so it also works if a future page links
+         here with the same param partner-inspectors.html's signup form
+         posts as (`agent_type`). Any other/absent value renders the page
+         unchanged -- realtor/insurance visible text and DOM are untouched. -->
+    <script>
+    (function () {
+      try {
+        var params = new URLSearchParams(window.location.search);
+        var track = params.get('track') || params.get('agent_type');
+        if (track !== 'home_inspector') { return; }
+        ['feeStructureBlock', 'd266DisclaimerBox'].forEach(function (id) {
+          var el = document.getElementById(id);
+          if (el) { el.style.display = 'none'; }
+        });
+      } catch (e) { /* URLSearchParams unavailable: page renders unchanged */ }
+    })();
+    </script>
 </body>
 </html>

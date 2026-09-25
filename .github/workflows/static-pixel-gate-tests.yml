@@ -19,6 +19,11 @@ on:
       - 'tests/gh2107-gpc-client.mjs'
       - 'partner-dashboard.html'
       - 'tests/gh2154-p2-app-activation.mjs'
+      - 'partner-agreement.html'
+      - 'partner-inspectors.html'
+      - 'partner-re.html'
+      - 'tools/partner_parity_check.py'
+      - 'tests/gh2155-hi0b-inspector-agreement.mjs'
       - '.github/workflows/static-pixel-gate-tests.yml'
   push:
     branches: [main]
@@ -31,6 +36,11 @@ on:
       - 'tests/gh2107-gpc-client.mjs'
       - 'partner-dashboard.html'
       - 'tests/gh2154-p2-app-activation.mjs'
+      - 'partner-agreement.html'
+      - 'partner-inspectors.html'
+      - 'partner-re.html'
+      - 'tools/partner_parity_check.py'
+      - 'tests/gh2155-hi0b-inspector-agreement.mjs'
       - '.github/workflows/static-pixel-gate-tests.yml'
 
 permissions:
@@ -63,3 +73,5 @@ jobs:
         run: node tests/gh2107-gpc-client.mjs
       - name: Partner dashboard activation RPC, per-user flag (gh2154-p2-app-activation)
         run: node tests/gh2154-p2-app-activation.mjs
+      - name: Home-inspector agreement v3-2026-09, no fee/D-266 for inspectors (gh2155-hi0b)
+        run: node tests/gh2155-hi0b-inspector-agreement.mjs

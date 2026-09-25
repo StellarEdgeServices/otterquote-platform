@@ -809,7 +809,11 @@
         <div class="form-checkbox-group">
           <input type="checkbox" id="agreeToTerms" class="form-checkbox" required>
           <label for="agreeToTerms" class="checkbox-label">
-            I agree to Otter Quotes's <a href="partner-agreement.html">Partner Terms</a>
+            <!-- gh-2155 HI-0b: ?track=home_inspector tells partner-agreement.html
+                 to hide the $200/$50 fee table and the D-266 lawful-to-accept-fees
+                 sentence, and it shows v3-2026-09 -- home inspectors receive no
+                 referral fee under Section 4.3, so neither applies to them. -->
+            I agree to Otter Quotes's <a href="partner-agreement.html?track=home_inspector">Partner Terms</a>
           </label>
         </div>
 
@@ -819,10 +823,6 @@
 
         <p class="form-note">
           Home-inspector partners do not receive a referral fee or recruit bonus.
-        </p>
-
-        <p class="form-note referral-fee-disclaimer">
-          Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.
         </p>
       </form>
 
