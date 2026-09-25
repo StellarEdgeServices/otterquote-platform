@@ -210,9 +210,10 @@ for (const file of JS_OFF_PAGES) {
   }
 
   if (navBody) {
-    function makeNavCtx({ pathname, currentPartnerAgentType }) {
+    function makeNavCtx({ pathname, currentPartnerAgentType, search = '' }) {
       const ctx = {
-        window: { location: { pathname, search: '' }, currentPartnerAgentType, localStorage: { getItem: () => null, setItem: () => {}, removeItem: () => {} } },
+        window: { location: { pathname, search }, currentPartnerAgentType, localStorage: { getItem: () => null, setItem: () => {}, removeItem: () => {} }, URLSearchParams },
+        URLSearchParams,
         console,
       };
       ctx.window.window = ctx.window;
@@ -274,6 +275,68 @@ for (const file of JS_OFF_PAGES) {
       "JS-ON nav.js: footer Partner Agreement link on an inspector's dashboard points at the static inspector page");
     ok(footerHref(realtor) === '/partner-agreement.html',
       'NEGATIVE CONTROL, JS-ON nav.js: footer Partner Agreement link for a realtor is unaffected (/partner-agreement.html)');
+
+    // REVIEW FAIL 5836957364 fix-first coverage: row-1 "Referral Partner"
+    // header tab -- the literal defect named in the review ("the header
+    // tab still hardcodes /partners.html"). _roleTabHref() is what
+    // _roleBarHTML() (initial render) and _applyRoleLinks() (post-auth
+    // re-render) both call for every row-1 tab.
+    const PARTNER_TAB = { role: 'partner', label: 'Referral Partner', href: '/partners.html' };
+    ok(inspByUrl.Nav._roleTabHref(PARTNER_TAB) === '/partner-inspectors.html',
+      'JS-ON nav.js: row-1 "Referral Partner" header tab on partner-inspectors.html points at /partner-inspectors.html, not /partners.html');
+    ok(inspOnAgreement.Nav._roleTabHref(PARTNER_TAB) === '/partner-inspectors.html',
+      'JS-ON nav.js: row-1 "Referral Partner" header tab on partner-agreement-inspector.html points at /partner-inspectors.html, not /partners.html');
+    ok(inspByType.Nav._roleTabHref(PARTNER_TAB) === '/partner-inspectors.html',
+      "JS-ON nav.js: row-1 \"Referral Partner\" header tab on a signed-in inspector's dashboard points at /partner-inspectors.html, not /partners.html");
+    ok(realtor.Nav._roleTabHref(PARTNER_TAB) === '/partners.html',
+      'NEGATIVE CONTROL, JS-ON nav.js: row-1 "Referral Partner" header tab for a realtor is unaffected (/partners.html)');
+    // The Homeowner/Contractor tabs are never affected by inspector-track
+    // gating -- only the 'partner' role tab's href is conditional.
+    ok(inspByType.Nav._roleTabHref({ role: 'homeowner', href: '/index.html' }) === '/index.html'
+      && inspByType.Nav._roleTabHref({ role: 'contractor', href: '/contractor-join.html' }) === '/contractor-join.html',
+      "NEGATIVE CONTROL, JS-ON nav.js: Homeowner/Contractor row-1 tabs are unaffected by inspector-track gating on a signed-in inspector's page");
+
+    // REVIEW FAIL 5836957364 fix-first coverage, item (c): the signed-in
+    // partner's own type from the session/profile read now works on EVERY
+    // page (not only partner-dashboard.html) via _syncPartnerAgentType(),
+    // called from both _renderAuthSlot() and _applyAuthRole(). Exercise it
+    // directly on a page that is NOT one of the two inspector-specific
+    // URLs (partner-app.html) to prove detection is page-independent.
+    const genericPage = makeNavCtx({ pathname: '/partner-app.html', currentPartnerAgentType: undefined });
+    ok(genericPage.Nav._isInspectorTrack() === false,
+      'JS-ON nav.js: _isInspectorTrack() is false on a generic partner page (partner-app.html) before any role resolves (fail closed = no assumption either way, and PARTNER_TAB stays safe default here since it is not yet known to be an inspector)');
+    genericPage.Nav._syncPartnerAgentType('home_inspector');
+    ok(genericPage.window.currentPartnerAgentType === 'home_inspector' && genericPage.Nav._isInspectorTrack() === true,
+      'JS-ON nav.js: _syncPartnerAgentType("home_inspector") on partner-app.html (a generic, non-inspector-URL partner page) makes _isInspectorTrack() true -- signal (c), the session/profile read, working page-independently');
+    ok(genericPage.Nav._roleTabHref(PARTNER_TAB) === '/partner-inspectors.html',
+      'JS-ON nav.js: once _syncPartnerAgentType resolves home_inspector on partner-app.html, the row-1 tab href is corrected off /partners.html too');
+
+    // NEGATIVE CONTROL + fail-closed: a confirmed NON-inspector partner role
+    // positively clears the cached flag (does not just leave it alone), and
+    // an UNRESOLVED role (null/undefined -- auth error, no session, RLS
+    // failure) leaves whatever was already cached untouched rather than
+    // asserting "safe".
+    const genericPage2 = makeNavCtx({ pathname: '/partner-app.html', currentPartnerAgentType: 'home_inspector' });
+    genericPage2.Nav._syncPartnerAgentType('re_agent');
+    ok(genericPage2.window.currentPartnerAgentType === null && genericPage2.Nav._isInspectorTrack() === false,
+      'NEGATIVE CONTROL, JS-ON nav.js: _syncPartnerAgentType("re_agent") positively clears a previously-cached home_inspector flag on the same page');
+    const genericPage3 = makeNavCtx({ pathname: '/partner-app.html', currentPartnerAgentType: 'home_inspector' });
+    genericPage3.Nav._syncPartnerAgentType(null);
+    ok(genericPage3.window.currentPartnerAgentType === 'home_inspector' && genericPage3.Nav._isInspectorTrack() === true,
+      'JS-ON nav.js: _syncPartnerAgentType(null) (unresolved role -- fail closed) leaves a previously-cached home_inspector flag untouched, does not clear it to "safe"');
+
+    // REVIEW FAIL 5836957364 fix-first coverage, item (a): the ?track= /
+    // ?agent_type= query param signal now works on any page, matching the
+    // exact param names partner-agreement.html's own inline script reads.
+    const byTrackParam = makeNavCtx({ pathname: '/partner-app.html', currentPartnerAgentType: undefined, search: '?track=home_inspector' });
+    ok(byTrackParam.Nav._isInspectorTrack() === true,
+      'JS-ON nav.js: _isInspectorTrack() is true on any page carrying ?track=home_inspector, matching partner-agreement.html\'s own inline-script param name');
+    const byAgentTypeParam = makeNavCtx({ pathname: '/partner-app.html', currentPartnerAgentType: undefined, search: '?agent_type=home_inspector' });
+    ok(byAgentTypeParam.Nav._isInspectorTrack() === true,
+      'JS-ON nav.js: _isInspectorTrack() is true on any page carrying ?agent_type=home_inspector (partner-agreement.html\'s legacy-casing param name)');
+    const byUnrelatedParam = makeNavCtx({ pathname: '/partner-app.html', currentPartnerAgentType: undefined, search: '?track=re_agent' });
+    ok(byUnrelatedParam.Nav._isInspectorTrack() === false,
+      'NEGATIVE CONTROL, JS-ON nav.js: ?track=re_agent does not trip _isInspectorTrack()');
   }
 }
 
