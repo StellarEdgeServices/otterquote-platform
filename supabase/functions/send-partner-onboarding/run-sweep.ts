@@ -82,6 +82,14 @@ export interface LedgerRow {
    * missing value on a 'pending' row fails TOWARD surfacing it, never
    * toward silently ignoring it (see that function's own comment). */
   created_at: string;
+  /** gh-2154 P-4 switch-on hardening (item (2), admin-alert dedupe): NULL
+   * until this row has already been included in an uncertain-outcome admin
+   * alert. Only meaningful on a 'pending' row that isUncertainPending finds
+   * stale — used below to decide whether THIS run needs to (re-)alert for
+   * it, so a still-pending uncertain row is not re-alerted every 15-minute
+   * tick forever. Optional so every pre-existing test/fake in this file
+   * that has no opinion on alert history keeps compiling unchanged. */
+  uncertain_alerted_at?: string | null;
 }
 
 /** Surfaced by the sweep for a human to act on — never auto-retried. See
@@ -137,6 +145,17 @@ export interface SendEmailResult {
    * 'pending' (never markFailed) and surfaces it in the sweep's own
    * `uncertain` list immediately, rather than waiting for it to go stale. */
   uncertain?: boolean;
+  /** gh-2154 P-4 switch-on hardening (item (3) retry cap): true only when
+   * `ok` is false because a response WAS received (a definite rejection,
+   * uncertain is falsy) AND it was a PERMANENT failure — a 4xx status
+   * OTHER than 429 (which is a rate limit and is retried like a 5xx).
+   * Meaningful only when ok === false && !uncertain. A permanent failure
+   * is routed to markFailed(..., terminal: true), which sets
+   * terminal_failure on the ledger row so it is never retried again,
+   * regardless of attempt_count. Undefined/false means "retry as usual,
+   * subject to the MAX_SEND_ATTEMPTS cap" (a 5xx, a 429, or any other
+   * non-2xx this function doesn't recognize as permanent). */
+  permanent?: boolean;
 }
 
 type CopyLookup = (agentType: EligibleAgentType, stage: OnboardingStage) => { subject: string; textBody: string; htmlBody: string } | null;
@@ -161,8 +180,29 @@ export interface RunDeps {
    * "concurrent double claim" test). */
   claimStage: (partnerId: string, stage: OnboardingStage) => Promise<{ claimed: boolean }>;
   markSent: (partnerId: string, stage: OnboardingStage, mailgunId: string | null) => Promise<MarkResult>;
-  markFailed: (partnerId: string, stage: OnboardingStage, error: string) => Promise<MarkResult>;
+  /** gh-2154 P-4 switch-on hardening (item (3)): `terminal` true means a
+   * PERMANENT rejection (a 4xx other than 429) — the real implementation
+   * sets partner_onboarding_sends.terminal_failure = true, which
+   * claim_partner_onboarding_stage() then refuses to ever reclaim, no
+   * matter how low attempt_count is. `terminal` false/omitted means an
+   * ordinary retryable failure (5xx, 429, or a fetch that threw and was
+   * NOT classified as `uncertain`) — retried on a later run same as
+   * before, up to the MAX_SEND_ATTEMPTS cap enforced by the claim
+   * function itself. */
+  markFailed: (partnerId: string, stage: OnboardingStage, error: string, terminal?: boolean) => Promise<MarkResult>;
   markSkipped: (partnerId: string, stage: OnboardingStage, reason: string) => Promise<MarkResult>;
+  /** gh-2154 P-4 switch-on hardening (item (2)): sends ONE summary admin
+   * alert email for every row in `stages`, reusing
+   * notify-admin-new-partner's Mailgun/ADMIN_EMAIL pattern (see
+   * ./admin-alert.ts). Called at most once per sweep run, only when there
+   * is at least one row that has not already been alerted for (see
+   * markUncertainAlerted below) — never per-partner, so a run with many
+   * uncertain rows pages Dustin once, not N times. */
+  alertAdminUncertain: (stages: readonly UncertainStage[]) => Promise<{ ok: boolean; error?: string }>;
+  /** Marks every row in `stages` as alerted (uncertain_alerted_at = now()),
+   * so a still-pending uncertain row is not re-alerted on the next tick.
+   * Called only after alertAdminUncertain succeeds. */
+  markUncertainAlerted: (stages: readonly UncertainStage[]) => Promise<MarkResult>;
   /** Builds this partner's real, signed, per-partner unsubscribe URL. Only
    * called when optOutSecretConfigured is true. */
   buildOptOutUrl: (partnerId: string) => Promise<string>;
@@ -249,6 +289,15 @@ export async function runOnboardingSweep(deps: RunDeps): Promise<SweepOutcome> {
 
   const results: PartnerResult[] = [];
   const uncertain: UncertainStage[] = [];
+  // gh-2154 P-4 switch-on hardening (item (2)): the SUBSET of `uncertain`
+  // that still needs an admin alert THIS run — a pre-existing stale
+  // 'pending' row already alerted on a prior run (existingRow.
+  // uncertain_alerted_at set) is reported in `uncertain` (so the JSON
+  // response and console.error keep listing every currently-uncertain
+  // row) but NOT re-added here, so it is not re-alerted every tick. A row
+  // that just became uncertain THIS run (either branch below) always goes
+  // in both.
+  const toAlert: UncertainStage[] = [];
 
   for (const partner of partners) {
     const prior = ledgerByPartner.get(partner.id) ?? new Map<OnboardingStage, LedgerStatus>();
@@ -358,6 +407,12 @@ export async function runOnboardingSweep(deps: RunDeps): Promise<SweepOutcome> {
         `stage ${stage} for partner ${partner.id} has an UNCERTAIN outcome — a 'pending' claim from a previous run older than ${STALE_PENDING_MINUTES}m that was never resolved to 'sent' or 'failed'. NOT auto-retried (a crash right after Mailgun accepted would double-send). Needs human review: check Mailgun's logs for this partner/stage, then manually mark the row 'failed' to allow a retry, or leave it if it did in fact send.`,
       );
       uncertain.push({ partner_id: partner.id, stage });
+      // gh-2154 P-4 switch-on hardening (item (2)): only queue an alert if
+      // this exact row hasn't already been alerted for (dedupe across
+      // ticks — see LedgerRow.uncertain_alerted_at's doc comment).
+      if (existingRow?.uncertain_alerted_at == null) {
+        toAlert.push({ partner_id: partner.id, stage });
+      }
       results.push(withSkips("uncertain"));
       continue;
     }
@@ -390,15 +445,29 @@ export async function runOnboardingSweep(deps: RunDeps): Promise<SweepOutcome> {
           `stage ${stage} for partner ${partner.id} has an UNCERTAIN send outcome — no response was received from Mailgun (${error}), so whether it actually accepted the message is unknown. Row left 'pending' (never marked 'failed' — that would make it reclaimable and risk a double-send). NOT auto-retried this run or any later one. Needs human review: check Mailgun's logs for this partner/stage.`,
         );
         uncertain.push({ partner_id: partner.id, stage });
+        // This row just went 'pending' via THIS run's own claim above — it
+        // cannot possibly have a prior uncertain_alerted_at, so it always
+        // needs an alert.
+        toAlert.push({ partner_id: partner.id, stage });
         results.push(withSkips("uncertain"));
         continue;
       }
 
       // A response WAS received and it was a non-2xx rejection — a
-      // DEFINITE non-send. Safe and correct to retry: markFailed, which IS
-      // reclaimable (canClaimStage's 'failed' branch).
-      say("error", `FAILED ${stage} onboarding email for partner ${partner.id} — not retried this run, eligible again next tick: ${error}`);
-      const { error: markError } = await deps.markFailed(partner.id, stage, error);
+      // DEFINITE non-send. gh-2154 P-4 switch-on hardening (item (3)): a
+      // PERMANENT rejection (4xx other than 429) is terminal immediately —
+      // retrying a message Mailgun has permanently refused (bad address,
+      // etc.) never succeeds and only burns the attempt cap. A retryable
+      // rejection (5xx, 429, or anything sendEmail didn't classify as
+      // permanent) is safe and correct to retry: markFailed(terminal:
+      // false), reclaimable (canClaimStage's 'failed' branch) up to
+      // MAX_SEND_ATTEMPTS.
+      const terminal = sendResult.permanent === true;
+      say(
+        "error",
+        `FAILED ${stage} onboarding email for partner ${partner.id} — ${terminal ? "PERMANENT rejection, not retried again" : "not retried this run, eligible again next tick (subject to the retry cap)"}: ${error}`,
+      );
+      const { error: markError } = await deps.markFailed(partner.id, stage, error, terminal);
       if (markError) {
         say("error", `send for partner ${partner.id} stage ${stage} ALSO failed to record as 'failed': ${markError.message ?? ""}`);
       }
@@ -416,6 +485,34 @@ export async function runOnboardingSweep(deps: RunDeps): Promise<SweepOutcome> {
       sent: stage,
       ...(selection.toMarkSkipped.length ? { skipped_stages: selection.toMarkSkipped } : {}),
     });
+  }
+
+  // gh-2154 P-4 switch-on hardening (item (2)): ONE summary admin alert per
+  // run, only for rows this run has not already alerted for (see toAlert's
+  // doc comment above). Never per-partner — a backlog run with many
+  // uncertain rows pages Dustin once. Best-effort: an alert-send or
+  // mark-alerted failure is logged, never thrown, and never blocks or
+  // reverses the sweep's own results — the uncertain list is already
+  // returned in the JSON response either way (below), so a failed alert
+  // does not hide the underlying problem, it only means this specific
+  // paging step needs a human to notice via the response/log instead.
+  if (toAlert.length > 0) {
+    try {
+      const alertResult = await deps.alertAdminUncertain(toAlert);
+      if (!alertResult.ok) {
+        say("error", `uncertain-outcome admin alert FAILED to send for ${toAlert.length} row(s): ${alertResult.error ?? "unknown"}`);
+      } else {
+        const { error: markAlertError } = await deps.markUncertainAlerted(toAlert);
+        if (markAlertError) {
+          say(
+            "error",
+            `uncertain-outcome admin alert sent for ${toAlert.length} row(s) but failed to record uncertain_alerted_at (may re-alert next tick): ${markAlertError.message ?? ""}`,
+          );
+        }
+      }
+    } catch (err) {
+      say("error", `uncertain-outcome admin alert threw: ${String(err)}`);
+    }
   }
 
   return { ok: true, results, ...(uncertain.length ? { uncertain } : {}) };
