@@ -237,6 +237,26 @@
         go('f-address');
       });
     });
+    // gh-2121 round 3 (M2, review 5834623268): replay a tap that landed in
+    // the SSR-paint-to-hydrate dead window. start.html's own early listener
+    // on these same buttons (added synchronously right after the SSR
+    // markup, long before this file even loads) recorded the FIRST such
+    // tap's button index into window.__oqEarlyTap. Read-and-clear it here
+    // so it can only ever be replayed once -- this function itself only
+    // runs once per page load (see show()'s ssrHydrateAttempted guard), and
+    // goBack() back to 'f-funding' takes the normal rebuild path (clearRoot()
+    // has already thrown the SSR root away by then), so there is no second
+    // chance to read a stale value. buttons[early.index].click() re-enters
+    // the exact click handler wired two lines above -- one funding value
+    // set, one go('f-address'), one router_step_complete -- not a separate
+    // "replay" code path that could double-fire against a real second tap.
+    try {
+      var early = window.__oqEarlyTap;
+      window.__oqEarlyTap = null;
+      if (early && typeof early.index === 'number' && buttons[early.index]) {
+        buttons[early.index].click();
+      }
+    } catch (e) { /* no early tap recorded, or window unavailable -- fine */ }
   }
   function show(token) {
     activeToken = token;
