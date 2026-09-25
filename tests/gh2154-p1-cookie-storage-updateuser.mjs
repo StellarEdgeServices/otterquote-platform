@@ -221,6 +221,17 @@ const STORAGE_KEY = 'sb-otterquote-auth';
 const COOKIE_ACCESS = 'sb-otterquote-at';
 const COOKIE_REFRESH = 'sb-otterquote-rt';
 
+// GitGuardian incidents 37588523 and 37590685 ("Generic Password"): a
+// concatenated literal assigned to a *PASSWORD-named constant still matches
+// the scanner's "variable named *PASSWORD assigned a string" rule, so this
+// generates a fresh value at runtime instead -- no password-shaped literal
+// anywhere in source, and no *PASSWORD/*CREDENTIAL-named assignment of a
+// fixed string. makeFetchStub()'s updatePutResponses is a canned-response
+// QUEUE keyed to call order, not to the password value sent (see
+// successUpdateResponse below) -- it does not inspect this string at all,
+// so any value here exercises the same "retry succeeds" path.
+function freshRetryCredential() { return 'T' + crypto.randomUUID().replace(/-/g, '') + '!a1'; }
+
 function sessionCookiesPresent(cookieDoc) {
   return cookieDoc.has(COOKIE_ACCESS) && cookieDoc.has(COOKIE_REFRESH);
 }
@@ -318,7 +329,7 @@ async function main() {
       ok(!!weakErr, '(1) weak-password updateUser() call returns an error (HIBP 422)');
       ok(sessionCookiesPresent(cookieDoc), '(1) MUST-FIX: session cookies SURVIVE a rejected updateUser()');
 
-      const { error: retryErr } = await client.auth.updateUser({ password: 'Str0ng!Passw0rd-2162', data: { needs_password: false } });
+      const { error: retryErr } = await client.auth.updateUser({ password: freshRetryCredential(), data: { needs_password: false } });
       ok(!retryErr, '(1) retry with a strong password succeeds -- got ' + (retryErr && retryErr.message));
       ok(sessionCookiesPresent(cookieDoc), '(1) session cookies still present after the successful retry');
     } catch (e) {
@@ -463,7 +474,7 @@ async function main() {
       ok(!!weakErr, '(7) config.js-style client: weak-password updateUser() returns an error');
       ok(sessionCookiesPresent(cookieDoc), '(7) config.js-style client: session cookies SURVIVE a rejected updateUser() (round-4 regression check)');
 
-      const { error: retryErr } = await client.auth.updateUser({ password: 'Str0ng!Passw0rd-2162', data: { needs_password: false } });
+      const { error: retryErr } = await client.auth.updateUser({ password: freshRetryCredential(), data: { needs_password: false } });
       ok(!retryErr, '(7) config.js-style client: retry with a strong password succeeds -- got ' + (retryErr && retryErr.message));
       ok(sessionCookiesPresent(cookieDoc), '(7) config.js-style client: session cookies still present after the successful retry');
     } catch (e) {

@@ -235,14 +235,46 @@
   // tests/gh2033-variant-assignment.mjs reads BOTH constants out of this
   // file itself (never a hardcoded copy) -- the flip above is genuinely
   // the only edit needed; that test needs none.
+  //
+  // gh-2121 (Ben, CEO, Tier B, 2026-09-25): Arm C KILLED. Sloane's
+  // cro-daily scoreboard (this issue's own Scoreboard table, row "C
+  // (current)") measured ~1 of 86 paid step-1 advances since 09-20 --
+  // below the plan's early-kill line (<25% at 60) that was already
+  // written into this issue before Arm F shipped. Kept alive only until
+  // Arm F had somewhere to send traffic (comment 5798... / issue body);
+  // Arm F is live and proven (#2122) as of 09-24, so that reason is gone.
+  // Removed from LIVE_VARIANTS exactly the way arm a/b were killed
+  // earlier on this same line (NOT made direct-only like arm F -- 'c' is
+  // not a QA/paid-ad target, it is a dead arm whose code stays in the
+  // file, unreachable, same as a/b): isLive('c') is now false, so
+  // toLiveArm() remaps every source (fresh, persisted, explicit ?v=c) to
+  // a live arm -- a visitor already bucketed to 'c' is re-routed to d/e
+  // on their next load/reload, never a 404.
+  //
+  // KEY IS NOT BUMPED FOR THIS FLIP (review finding M1, PR #2181 comment
+  // 5833636471; Ben's call, 2026-09-25T14:01:57Z: do not reset D/E). The
+  // flip-block rule above ("do NOT flip LIVE_VARIANTS without ALSO
+  // bumping KEY") protects arm ADDITIONS, where an already-live persisted
+  // arm would otherwise stay sticky and skew the new split away from an
+  // even random assignment (that is exactly what the gh-2074/gh-2075
+  // reasoning above walks through for 'c'). It protects nothing on a
+  // REMOVAL: toLiveArm() already remaps a persisted 'c' onto a live arm
+  // no matter which key it was read under, so a bump here would do
+  // nothing but re-randomise every returning D/E visitor across the new
+  // two-arm split -- flipping roughly half of them to the other arm and
+  // overwriting the arm recorded on their original lead row, which
+  // contaminates the D-vs-E comparison #2121 exists to protect. KEY
+  // therefore stays 'oq_variant_v3', unchanged from main.
   // ═════════════════════════════════════════════════════════════════
-  var LIVE_VARIANTS = ['c','d','e']; // D-327 flip 2/2 (2026-09-22): Variants D and E live beside C
+  var LIVE_VARIANTS = ['d','e']; // gh-2121 (2026-09-25): Arm C killed -- D and E live; KEY unchanged (removal, not addition -- see block above)
 
   // gh-2074 fix round 2 (PR #2079 review, item 4): guards a misconfigured
   // empty LIVE_VARIANTS from indexing an empty array and writing a
   // literal "v=undefined" into the URL, both stores, and every
   // downstream analytics/lead write -- falls back to SAFE_DEFAULT_ARM.
-  var SAFE_DEFAULT_ARM = 'c';
+  // gh-2121 (2026-09-25, review S3): 'c' is dead (removed from
+  // LIVE_VARIANTS above), so the fallback must name a live arm -- 'd'.
+  var SAFE_DEFAULT_ARM = 'd';
   function effectiveLiveVariants() {
     return (LIVE_VARIANTS && LIVE_VARIANTS.length) ? LIVE_VARIANTS : [SAFE_DEFAULT_ARM];
   }

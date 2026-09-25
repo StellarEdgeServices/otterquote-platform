@@ -776,7 +776,19 @@
         <div class="form-checkbox-group">
           <input type="checkbox" id="agreeToTerms" class="form-checkbox" required>
           <label for="agreeToTerms" class="checkbox-label">
-            I agree to Otter Quotes's <a href="partner-agreement.html">Partner Terms</a>
+            <!-- gh-2155 HI-0b round 2 (Ben ruling, comment 5825652208 item 1,
+                 FAIL CLOSED): the #track-home-inspector anchor is what makes
+                 the hide work with JavaScript disabled -- partner-agreement.html
+                 has a CSS ":target" rule keyed to this exact fragment, applied
+                 by the browser's own anchor navigation with no script
+                 execution required. ?track=home_inspector on the query string
+                 is kept too, for the belt-and-braces JS path and any other
+                 consumer of the param. Hides the fee-amounts table, Section
+                 4.1, the D-266 sentence, and the Section 7 "represents and
+                 warrants" paragraph, and shows v3-2026-09 -- home inspectors
+                 receive no referral fee or recruit bonus under Section 4.3,
+                 so none of that applies to them. -->
+            I agree to Otter Quotes's <a href="partner-agreement.html?track=home_inspector#track-home-inspector">Partner Terms</a>
           </label>
         </div>
 
@@ -786,10 +798,6 @@
 
         <p class="form-note">
           Home-inspector partners do not receive a referral fee or recruit bonus.
-        </p>
-
-        <p class="form-note referral-fee-disclaimer">
-          Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.
         </p>
       </form>
 

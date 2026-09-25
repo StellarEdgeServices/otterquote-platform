@@ -228,8 +228,22 @@ for (const page of PAGES) {
     console.log('RECORD (not asserted fee-free): ' + page.label + ' hasDollarAmount=' + hasDollarAmount + ' hasFeePhrase=' + hasFeePhrase + ' meta=' + JSON.stringify(metaTexts));
   }
 
-  // (f) D-266 disclaimer present near the checkbox.
-  ok(html.includes(D266_TEXT), page.label + ' (f): the D-266 disclaimer text is present verbatim on the page');
+  // (f) D-266 disclaimer, per track (gh-2155 HI-0b / D-333, Ben ruling
+  // 5824245098 -- this check predates that decision and originally asserted
+  // the sentence on EVERY page including home_inspector). Real estate and
+  // insurance agents still accept a fee, so D-266's lawful-to-accept warning
+  // still applies to them and must still render verbatim. Home inspectors
+  // accept no fee at all (Section 4.3 / D-333), so the warning does not
+  // apply to them -- HI-0b removed it, and this must NOT regress back to a
+  // page-wide assertion. Both directions are real, failing assertions, not
+  // a skip: the inspector page must carry the plain no-fee sentence instead.
+  const NO_FEE_TEXT = 'Home-inspector partners do not receive a referral fee or recruit bonus.';
+  if (page.agentType === 'home_inspector') {
+    ok(!html.includes(D266_TEXT), page.label + ' (f) D-333: the D-266 disclaimer text is NOT present (home inspectors accept no fee, so it does not apply)');
+    ok(html.includes(NO_FEE_TEXT), page.label + ' (f) D-333: the plain no-fee sentence is present verbatim');
+  } else {
+    ok(html.includes(D266_TEXT), page.label + ' (f): the D-266 disclaimer text is present verbatim on the page');
+  }
 }
 
 // ── (b)/(c)/(d): dynamic checks -- run the REAL page script in a vm ─────

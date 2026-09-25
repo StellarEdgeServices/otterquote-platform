@@ -901,6 +901,20 @@ async function main() {
     const css = startSrc.slice(startSrc.indexOf('<style'), startSrc.indexOf('</style>'));
     ok(/(^|[\s;{}])p\s*\{[^}]*line-height:\s*1\.7/m.test(css), 'the inline critical-CSS block sets p { line-height: 1.7 }, matching css/design-system.css:99');
   }
+  // ═══ F13 (gh-2121, HO-1 S13): pixel conversion event fires + is tested. ═══
+  // The behavioral half (the Meta Lead pixel fires exactly once, shares
+  // event_id with GA4 generate_lead, carries no PII) is already proven above
+  // by F4/F17/the negative controls (see 'Meta Lead fires exactly ONCE',
+  // 'GA4 generate_lead and Meta Lead share the SAME event_id', 'the Meta Lead
+  // call carries an EMPTY parameter object'). These are the dedicated S13
+  // checkpoints cited as this row's evidence. (S14/utm_campaign router-URL
+  // work was dropped from this PR's scope, per Ben's 2026-09-25 scope
+  // change: utm_campaign=ho-1 is already on all 3 live ad URLs.)
+  console.log('\n=== F13 (gh-2121): S13 pixel conversion ===');
+  ok(/fbq\('track', 'Lead', \{\}, \{ eventID: eventId \}\)/.test(moduleSrc),
+    "S13: js/router-variant-f.js's fireConversion() fires Meta pixel 'Lead' with the shared event_id (behavioral proof above, F4/F17)");
+  ok(!/li_fat_id|linkedin|LinkedIn Insight|_linkedin_data_partner_id/i.test(moduleSrc) && !/li_fat_id|linkedin partner|_linkedin_data_partner_id/i.test(startSrc),
+    'S13: LinkedIn Insight is N/A -- no LinkedIn tracking call exists anywhere in the Arm F path (no LinkedIn traffic, per this checklist\'s own N/A convention)');
 
   console.log('\n=== Summary ===\n' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail === 0 ? 0 : 1);
