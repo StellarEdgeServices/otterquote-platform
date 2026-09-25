@@ -1,0 +1,1484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- gh-1994 fix round 1 (REVIEW): capture ?lead=<uuid> and strip it from the
+     visible URL via history.replaceState BEFORE any analytics loader below
+     (js/ga-gate.js, js/meta-pixel-gate.js -- and any third-party script they
+     load, e.g. gtag.js/fbevents.js/clarity.js) executes, so no GA4, Meta
+     Pixel or Clarity beacon -- including each library's own automatic
+     page_view/pageview call, which reads the CURRENT URL at the moment that
+     library's script runs -- can ever record `lead=<uuid>`. This must stay
+     the first script in <head>, above Sentry and everything else -- if any
+     loader executes first and fires its own automatic page_view/pageview
+     call before this strip runs, that beacon would still capture
+     `?lead=<uuid>` even though every later beacon on the same page load
+     would not. The bottom-of-page prefill script below reads
+     window.__oqRouterLeadId instead of re-parsing location.search, since by
+     the time it runs the URL no longer carries `lead`. Same pattern as
+     ins-1.html / re-1.html. -->
+<script>
+(function () {
+  try {
+    var params = new URLSearchParams(window.location.search);
+    var lead = params.get('lead');
+    if (lead) {
+      window.__oqRouterLeadId = lead;
+      params.delete('lead');
+      var qs = params.toString();
+      var newUrl = window.location.pathname + (qs ? '?' + qs : '') + window.location.hash;
+      history.replaceState(history.state, '', newUrl);
+    }
+  } catch (e) { /* URL API unavailable: prefill simply won't run this load */ }
+})();
+</script>
+<!-- Sentry Error Monitoring -->
+<script
+  src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
+  crossorigin="anonymous"
+></script>
+<script>
+  Sentry.onLoad(function() {
+    Sentry.init({
+      environment: window.location.hostname.includes("staging") ? "staging" : "production",
+      // gh-439: drop phantom events from non-http(s) preview contexts (data:/file:/blob:
+      // URLs -- e.g. Claude's HTML preview renders pages via data: URIs; relative scripts
+      // like js/auth.js then fail and report noise such as "Auth is not defined").
+      denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+      beforeSend: function (event) {
+        var proto = window.location.protocol;
+        if (proto !== "http:" && proto !== "https:") return null;
+        var req = event.request && event.request.url;
+        if (req && /^(data|file|blob):/.test(req)) return null;
+        return event;
+      }
+    });
+  });
+</script>
+<!-- Coming-soon gate — flip CONFIG.HOMEOWNER_LAUNCH_ENABLED=true in js/config.js to remove -->
+<script src="js/cookie-storage.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js" integrity="sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz" crossorigin="anonymous"></script>
+<script src="js/config.js"></script>
+<script>(function(){if(typeof CONFIG!=='undefined'&&!CONFIG.HOMEOWNER_LAUNCH_ENABLED){window.location.replace('/coming-soon.html?from=hi-1&persona=partner');}})()</script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+    <title>A Real Next Step When You Find Damage | Otter Quotes</title>
+    <meta name="description" content="Give your clients a real next step when you find damage. Sign up as an Otter Quotes partner — no referral fee.">
+    <!-- Dark-launch (HI-1 not yet CLOSE-REVIEWed / published, matches
+         ins-1.html / re-1.html): noindex/nofollow + no nav/internal link
+         anywhere on the site points here yet. Reachable only by direct
+         URL or a not-yet-launched ad's destination URL. Remove only when
+         HI-1.S24 (CLOSE-REVIEW PASS, Dustin published) is ticked. -->
+    <meta name="robots" content="noindex, nofollow">
+    <link rel="canonical" href="https://otterquote.com/hi-1.html">
+    <meta property="og:title" content="A Real Next Step When You Find Damage · Otter Quotes">
+    <meta property="og:description" content="Give your clients a real next step when you find damage. Sign up as an Otter Quotes partner — no referral fee.">
+    <meta property="og:url" content="https://otterquote.com/hi-1.html">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Otter Quotes">
+    <meta property="og:image" content="https://otterquote.com/img/otter-logo.svg">
+
+    <!-- Google Analytics -->
+    <script src="/js/ga-gate.js"></script>
+<script src="/js/meta-pixel-gate.js"></script>
+    <script>gtag('config', 'G-D1Y1TLGEFY');</script>
+<!-- Microsoft Clarity (wwr7qlk8g5) is loaded by /js/ga-gate.js, behind the same production-host gate as GA4 (gh-1619). Do not add a per-page loader. -->
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Stylesheets -->
+    <link rel="stylesheet" href="css/design-system.css">
+    <link rel="stylesheet" href="css/nav.css">
+
+    <style>
+        /* Override with design system colors */
+        :root {
+            --navy:       #0D1B2E;
+            --navy-2:     #0E2A3B;
+            --navy-3:     #12354A;
+            --amber:      #E07B00;
+            --white:      #FFFFFF;
+            --offwhite:   #F8FAFC;
+            --light:      #E2E8F0;
+            --slate:      #94A3B8;
+            --gray:       #64748B;
+            --green:      #10B981;
+            --green-light:#D1FAE5;
+            --red:        #EF4444;
+        }
+
+        /* Base */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--font-body);
+            background: var(--navy);
+            color: var(--white);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        main {
+            min-height: calc(100vh - 120px);
+        }
+
+        /* Hero Section */
+        .hero {
+            background: linear-gradient(135deg, var(--navy) 0%, var(--navy-2) 100%);
+            color: var(--white);
+            padding: 96px 24px;
+            text-align: center;
+        }
+
+        .hero h1 {
+            font-family: var(--font-heading);
+            font-size: clamp(2rem, 5vw, 3.5rem);
+            font-weight: 700;
+            margin-bottom: 24px;
+            line-height: 1.2;
+            /* Explicit color, matching ins-1.html/re-1.html: design-system.css
+               sets a global "h1,h2,...{color:#0D1B2E}" rule (dark navy, meant
+               for light backgrounds) which otherwise wins over the parent
+               .hero's white color on this dark gradient hero. */
+            color: var(--white);
+        }
+
+        .hero p {
+            font-size: 1.25rem;
+            max-width: 700px;
+            margin: 0 auto 40px;
+            color: rgba(255, 255, 255, 0.85);
+            line-height: 1.7;
+        }
+
+        /* Container */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+
+        .section {
+            padding: 96px 24px;
+        }
+
+        /* Features Section */
+        .features-section {
+            background: var(--navy);
+        }
+
+        .features-section h2 {
+            font-family: var(--font-heading);
+            font-size: clamp(1.5rem, 3.5vw, 2.5rem);
+            text-align: center;
+            margin-bottom: 60px;
+            color: var(--white);
+        }
+
+        .features-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 24px;
+        }
+
+        .feature-item {
+            display: flex;
+            gap: 16px;
+            align-items: flex-start;
+        }
+
+        .feature-icon {
+            display: inline-flex;
+            width: 28px;
+            height: 28px;
+            background: rgba(224, 123, 0, 0.2);
+            border-radius: 8px;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            margin-top: 2px;
+            color: var(--amber);
+            font-weight: 700;
+        }
+
+        .feature-item h4 {
+            font-family: var(--font-heading);
+            font-size: 1.1rem;
+            color: var(--white);
+            margin-bottom: 4px;
+        }
+
+        .feature-item p {
+            color: var(--slate);
+            font-size: 0.95rem;
+            line-height: 1.6;
+        }
+
+        /* Form Section */
+        .form-section {
+            background: var(--navy);
+            padding: 96px 24px 64px;
+        }
+
+        .form-section h2 {
+            font-family: var(--font-heading);
+            font-size: clamp(1.5rem, 3.5vw, 2.5rem);
+            text-align: center;
+            margin-bottom: 60px;
+            color: var(--white);
+        }
+
+        .form-wrapper {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 60px;
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        .form-container {
+            background: var(--navy-2);
+            border: 1px solid rgba(224, 123, 0, 0.15);
+            padding: 40px;
+            border-radius: 12px;
+        }
+
+        .form-group {
+            margin-bottom: 24px;
+        }
+
+        .form-label {
+            display: block;
+            font-weight: 600;
+            color: var(--white);
+            margin-bottom: 8px;
+            font-size: 0.95rem;
+        }
+
+        .form-label.required::after {
+            content: ' *';
+            color: var(--red);
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 10px;
+            font-family: var(--font-body);
+            font-size: 1rem;
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--white);
+            transition: all 0.3s ease;
+        }
+
+        .form-input::placeholder {
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: var(--amber);
+            background: rgba(255, 255, 255, 0.08);
+            box-shadow: 0 0 0 3px rgba(224, 123, 0, 0.15);
+        }
+
+        .form-input.error {
+            border-color: var(--red);
+        }
+
+        .form-input::-webkit-autofill {
+            -webkit-box-shadow: 0 0 0 1000px rgba(10, 30, 44, 0.8) inset;
+            -webkit-text-fill-color: var(--white);
+        }
+
+        .form-hint {
+            font-size: 0.85rem;
+            color: var(--slate);
+            margin-top: 6px;
+        }
+
+        /* Inline field-level validation errors */
+        .field-error {
+            display: none;
+            font-size: 0.8rem;
+            color: var(--red);
+            margin-top: 6px;
+        }
+
+        .field-error.show { display: block; }
+
+        /* Submission-level error banner (network/RPC failures, distinct from
+           a single field being wrong). */
+        .form-alert {
+            display: none;
+            background: rgba(239, 68, 68, 0.12);
+            border: 1px solid rgba(239, 68, 68, 0.35);
+            border-radius: 10px;
+            padding: 14px 16px;
+            color: #FECACA;
+            font-size: 0.9rem;
+            margin-bottom: 20px;
+            line-height: 1.5;
+        }
+
+        .form-alert.show { display: block; }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 8px;
+        }
+
+        .checkbox-group.align-top {
+            align-items: flex-start;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            flex-shrink: 0;
+            cursor: pointer;
+            accent-color: var(--amber);
+        }
+
+        .checkbox-group label {
+            cursor: pointer;
+            color: var(--slate);
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }
+
+        .checkbox-group label a {
+            font-weight: 600;
+        }
+
+        .btn:not(.btn-ghost):not(.btn-secondary):not(.btn-outline) {
+            border: none;
+        }
+        .btn {
+            display: inline-block;
+            border-radius: 10px;
+            font-family: var(--font-body);
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            text-align: center;
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        /* Google OAuth — matches partner-login.html's button, adapted for
+           this page's dark card. */
+        .btn-google {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            width: 100%;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 10px;
+            background: #fff;
+            color: #3c4043;
+            font-family: var(--font-body);
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.15s, box-shadow 0.15s;
+        }
+
+        .btn-google:hover { background: #f8f9fa; box-shadow: 0 1px 3px rgba(0,0,0,0.25); }
+        .btn-google:disabled { opacity: 0.6; cursor: not-allowed; }
+        .btn-google svg { flex-shrink: 0; }
+
+        .oauth-divider {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin: 20px 0;
+            color: var(--slate);
+            font-size: 0.85rem;
+        }
+
+        .oauth-divider::before, .oauth-divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: rgba(255, 255, 255, 0.12);
+        }
+
+        .btn-loading {
+            position: relative;
+            color: transparent !important;
+        }
+
+        .btn-loading::after {
+            content: '';
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(13, 27, 46, 0.3);
+            border-top-color: var(--navy);
+            border-radius: 50%;
+            animation: btnSpin 0.6s linear infinite;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        @keyframes btnSpin { to { transform: translate(-50%, -50%) rotate(360deg); } }
+
+        /* Benefits Sidebar */
+        .benefits-sidebar {
+            background: var(--navy-3);
+            border: 1px solid rgba(224, 123, 0, 0.2);
+            border-radius: 12px;
+            padding: 40px 32px;
+            height: fit-content;
+            position: sticky;
+            top: 20px;
+        }
+
+        .benefits-sidebar h3 {
+            font-family: var(--font-heading);
+            font-size: 1.3rem;
+            color: var(--white);
+            margin-bottom: 24px;
+        }
+
+        .benefit-item {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 20px;
+            align-items: flex-start;
+        }
+
+        .benefit-check {
+            display: inline-flex;
+            width: 24px;
+            height: 24px;
+            background: var(--amber);
+            border-radius: 50%;
+            align-items: center;
+            justify-content: center;
+            color: var(--navy);
+            font-weight: 700;
+            font-size: 0.9rem;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+
+        .benefit-item p {
+            color: var(--slate);
+            line-height: 1.6;
+            font-size: 0.95rem;
+        }
+
+        /* Success / Check-your-email Messages */
+        .success-message {
+            display: none;
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid var(--green);
+            border-radius: 12px;
+            padding: 32px;
+            margin-bottom: 32px;
+            text-align: center;
+            color: var(--green-light);
+        }
+
+        .success-message.show {
+            display: block;
+        }
+
+        .success-message h3 {
+            font-family: var(--font-heading);
+            font-size: 1.5rem;
+            color: var(--green);
+            margin-bottom: 16px;
+        }
+
+        .referral-link-box {
+            background: rgba(224, 123, 0, 0.1);
+            border: 1px solid var(--amber);
+            border-radius: 10px;
+            padding: 24px;
+            margin-top: 24px;
+            text-align: center;
+        }
+
+        .referral-link-label {
+            color: var(--slate);
+            font-size: 0.9rem;
+            margin-bottom: 12px;
+        }
+
+        .referral-link-text {
+            background: rgba(10, 30, 44, 0.5);
+            border: 1px solid rgba(224, 123, 0, 0.3);
+            border-radius: 8px;
+            padding: 12px 16px;
+            color: var(--white);
+            font-family: var(--font-mono);
+            font-size: 0.9rem;
+            word-break: break-all;
+            margin-bottom: 12px;
+        }
+
+        .copy-btn {
+            background: var(--amber);
+            color: var(--navy);
+            padding: 10px 24px;
+            border-radius: 8px;
+            border: none;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .copy-btn:hover {
+            background: var(--amber-2);
+            transform: translateY(-2px);
+        }
+
+        .copy-btn.copied {
+            background: var(--green);
+            color: var(--white);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .hero {
+                padding: 60px 20px;
+            }
+
+            .hero h1 {
+                margin-bottom: 20px;
+            }
+
+            .hero p {
+                font-size: 1rem;
+                margin-bottom: 30px;
+            }
+
+            .section {
+                padding: 60px 20px;
+            }
+
+            .features-section,
+            .form-section {
+                padding: 60px 20px;
+            }
+
+            .features-list {
+                gap: 20px;
+            }
+
+            .form-wrapper {
+                grid-template-columns: 1fr;
+                gap: 40px;
+            }
+
+            .benefits-sidebar {
+                position: static;
+                top: auto;
+            }
+
+            .form-container {
+                padding: 24px;
+            }
+
+            h2 {
+                margin-bottom: 40px;
+            }
+        }
+
+        /* Never let the hero/header CTA pair wrap or crowd at very narrow
+           widths (down to 360px). */
+        @media (max-width: 400px) {
+            .hero .btn { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <header id="site-header" data-active=""></header>
+
+    <main>
+        <!-- Hero Section — HI-1 (gh-2152), approved copy verbatim (issue
+             #2152 comment 5821414324, Dustin ruling comment 5832300782:
+             "APPROVED. Approved as posted, including the slug hi-1.html,
+             no fee language, and no D-266 disclaimer (inspectors take no
+             fee, D-333)."). -->
+        <section class="hero">
+            <div class="container">
+                <h1>A Real Next Step When You Find Damage</h1>
+                <p>Give your clients a co-branded link to competing repair bids when your report flags damage — a better next step than a business card.</p>
+                <a href="#signup" class="btn btn-primary btn-lg">Get My Link</a>
+            </div>
+        </section>
+
+        <!-- Signup Form — same placement as ins-1.html/re-1.html: directly
+             below the hero, above every other section (S07: no escape
+             hatches before the conversion). -->
+        <section class="form-section" id="signup">
+            <div class="container">
+                <h2>Join the Otter Quotes Partner Network</h2>
+
+                <div class="form-wrapper">
+                    <!-- Form -->
+                    <div>
+                        <div class="form-container">
+                            <!-- HI-1 approved post-submit confirmation (comment
+                                 5821414324): "You're in! Install the Otter
+                                 Quotes partner app, sign in with the account
+                                 you just created, and your link will be
+                                 waiting inside to add to your reports."
+                                 Shown verbatim in both the auto-confirmed
+                                 (successMessage) and check-your-email
+                                 (checkEmailMessage) states. -->
+                            <div id="successMessage" class="success-message">
+                                <h3>You're in!</h3>
+                                <p>Install the Otter Quotes partner app, sign in with the account you just created, and your link will be waiting inside to add to your reports.</p>
+                                <div class="referral-link-box">
+                                    <div class="referral-link-label">Your Referral Link:</div>
+                                    <div class="referral-link-text" id="referralLink">Loading...</div>
+                                    <button class="copy-btn" id="copyBtn">Copy Link</button>
+                                </div>
+                                <div style="margin-top: 20px;">
+                                    <a href="/partner-dashboard.html" class="btn btn-primary">Go to Partner Dashboard</a>
+                                </div>
+                            </div>
+
+                            <div id="checkEmailMessage" class="success-message">
+                                <h3>You're in! Almost there — check your email</h3>
+                                <p>We sent a confirmation link to <strong id="checkEmailAddress"></strong>. Click it to verify your address, then install the Otter Quotes partner app and sign in with the account you just created — your link will be waiting inside to add to your reports.</p>
+                                <div style="margin-top: 20px;">
+                                    <a href="/partner-login.html" class="btn btn-primary">Go to Partner Login</a>
+                                </div>
+                            </div>
+
+                            <div id="formAlert" class="form-alert" role="alert"></div>
+
+                            <!-- Google OAuth — same signInWithGoogle() path
+                                 partner-login.html / ins-1.html / re-1.html use. -->
+                            <button type="button" class="btn-google" id="google-btn">
+                                <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
+                                    <path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z" fill="#34A853"/>
+                                    <path d="M3.964 10.706A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.706V4.962H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.038l3.007-2.332z" fill="#FBBC05"/>
+                                    <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.962L3.964 7.294C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
+                                </svg>
+                                Continue with Google
+                            </button>
+                            <div class="oauth-divider"><span>or</span></div>
+
+                            <!-- HI-1 field labels (approved copy: "Name ·
+                                 Email · Phone · Company"). Same
+                                 fullName/phone/email/company field ids and
+                                 JS/attribution wiring as
+                                 partner-inspectors.html / ins-1.html — only
+                                 the visible labels, CTA, checkbox and
+                                 confirmation text differ, and there is NO
+                                 fee sentence / NO D-266 disclaimer (D-333:
+                                 home inspectors receive no referral fee or
+                                 recruit bonus; Dustin ruling 5832300782
+                                 explicitly waives D-266 for this page). -->
+                            <form id="homeInspectorForm" novalidate>
+                                <div class="form-group">
+                                    <label for="fullName" class="form-label required">Name</label>
+                                    <input type="text" id="fullName" name="fullName" class="form-input" autocomplete="name" required>
+                                    <div class="field-error" id="fullNameError"></div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="email" class="form-label required">Email</label>
+                                    <input type="email" id="email" name="email" class="form-input" autocomplete="email" required>
+                                    <div class="field-error" id="emailError"></div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="phone" class="form-label required">Phone</label>
+                                    <input type="tel" id="phone" name="phone" class="form-input" autocomplete="tel" required>
+                                    <div class="field-error" id="phoneError"></div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="company" class="form-label required">Company</label>
+                                    <input type="text" id="company" name="company" class="form-input" required>
+                                    <div class="field-error" id="companyError"></div>
+                                </div>
+
+                                <div class="checkbox-group align-top">
+                                    <input type="checkbox" id="agreeToTerms" name="agreeToTerms" required>
+                                    <!-- D-333: link carries the same
+                                         ?track=home_inspector#track-home-inspector
+                                         form partner-inspectors.html's
+                                         agreement link uses, so the fee
+                                         sections stay hidden for whoever
+                                         follows it from here (HI-0.5). -->
+                                    <label for="agreeToTerms">I agree to <a href="partner-agreement.html?track=home_inspector#track-home-inspector">Otter Quotes's Partner Terms</a>.</label>
+                                </div>
+                                <div class="field-error" id="agreeError">You must agree to Otter Quotes's Partner Terms.</div>
+
+                                <button type="submit" class="btn btn-primary btn-lg btn-full" style="margin-top: 24px;">Get My Link</button>
+                                <!-- HI-1 no-fee statement (D-333, verbatim, no
+                                     paraphrase, per issue #2152 comment
+                                     5821414324's "No-fee statement (use only
+                                     if needed, exact wording, no
+                                     paraphrase)"): included in place of the
+                                     fee sentence + D-266 disclaimer other
+                                     partner-type pages show, since this page
+                                     is home_inspector-only and D-266 does
+                                     not apply here. -->
+                                <p style="color: var(--slate, #94A3B8); font-size: 0.85rem; text-align: center; margin-top: 0.75rem; line-height: 1.5;">
+                                    Home-inspector partners do not receive a referral fee or recruit bonus.
+                                </p>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Benefits Sidebar — HI-1 approved proof/benefit bullets
+                         (comment 5821414324), verbatim. -->
+                    <div class="benefits-sidebar">
+                        <h3>What You Get</h3>
+                        <div class="benefit-item">
+                            <div class="benefit-check">✓</div>
+                            <p>Your client gets multiple contractor bids without hunting for one.</p>
+                        </div>
+                        <div class="benefit-item">
+                            <div class="benefit-check">✓</div>
+                            <p>Share your link right in the report — no extra step for you.</p>
+                        </div>
+                        <div class="benefit-item">
+                            <div class="benefit-check">✓</div>
+                            <p>Track shares and outcomes from your phone.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+        <!-- HI-1 is a single-purpose ad landing page (S07 "no escape
+             hatches before the conversion") — intentionally no quick-links
+             row or features section here; those belong to the general
+             partner-inspectors.html marketing page, not this funnel. -->
+    </main>
+
+    <!-- Legal/disclaimer links — page-level link keeps the Partner Agreement
+         reachable from here, tracked the same way as the checkbox link
+         above so HI-0.5's hide holds no matter which link an inspector
+         clicks. -->
+    <p style="text-align:center;font-size:0.85rem;color:var(--slate);padding:32px 24px 8px;">
+        <a href="/partner-agreement.html?track=home_inspector#track-home-inspector" style="color:var(--amber);">Partner Agreement</a>
+        &nbsp;&middot;&nbsp;
+        <a href="/terms.html" style="color:var(--amber);">Terms of Service</a>
+        &nbsp;&middot;&nbsp;
+        <a href="/privacy.html" style="color:var(--amber);">Privacy Policy</a>
+    </p>
+
+<footer id="site-footer"></footer>
+
+    <!-- Scripts -->
+    <script src="js/auth.js"></script>
+    <script src="js/nav.js"></script>
+    <script src="js/agent-types.js"></script>
+
+    <script>
+        // Smooth scroll to signup
+        document.querySelectorAll('a[href="#signup"]').forEach(link => {
+            link.addEventListener('click', function(e) {
+                e.preventDefault();
+                document.getElementById('signup').scrollIntoView({ behavior: 'smooth' });
+            });
+        });
+
+        // Recruit context populated by detectRecruitCode() and consumed on submit.
+        let recruitContext = { recruitCode: null, recruiterId: null };
+
+        // UTM context populated by captureUtmContext() and consumed on
+        // submit. Persisted to localStorage so it survives a page bounce
+        // mid signup — same pattern as ins-1.html/re-1.html.
+        let utmContext = { source: null, medium: null, campaign: null, content: null, fbclid: null, liFatId: null, funnelId: null };
+
+        // Router-arm variant start.html forwards as `?v=<arm>` (same
+        // helper as ins-1.html/re-1.html/partner-re.html).
+        function getOqVariant() {
+            var VARIANT_KEY = 'oq_variant_v3';
+            var VARIANT_RE = /^[a-z0-9]{1,8}$/;
+            function clean(v) {
+                if (typeof v !== 'string') return null;
+                v = v.trim().toLowerCase();
+                return VARIANT_RE.test(v) ? v : null;
+            }
+            try {
+                var fromUrl = clean(new URLSearchParams(window.location.search).get('v'));
+                if (fromUrl) return fromUrl;
+            } catch (e) {}
+            try {
+                var fromStorage = clean(window.localStorage.getItem(VARIANT_KEY));
+                if (fromStorage) return fromStorage;
+            } catch (e) {}
+            try {
+                var m = document.cookie.match(new RegExp('(?:^|; )' + VARIANT_KEY + '=([^;]*)'));
+                var fromCookie = m ? clean(decodeURIComponent(m[1])) : null;
+                if (fromCookie) return fromCookie;
+            } catch (e) {}
+            return 'unknown';
+        }
+
+        // Once-per-signup guard — same as ins-1.html/re-1.html.
+        var partnerSignupCompleteFired = false;
+        function firePartnerSignupComplete(variant) {
+            if (partnerSignupCompleteFired) return;
+            partnerSignupCompleteFired = true;
+            try { gtag('event', 'partner_signup_complete', { variant: variant }); } catch (e) {}
+            try { fbq('track', 'CompleteRegistration'); } catch (e) {}
+        }
+
+        // Races gtag's own event_callback against a bounded timeout — same
+        // as ins-1.html/re-1.html (see those pages' comments for why an
+        // un-awaited gtag(...) call on the Google-link path can be lost).
+        function gtagEventAndWait(eventName, params, timeoutMs) {
+            timeoutMs = timeoutMs || 1200;
+            return new Promise(function (resolve) {
+                var settled = false;
+                var timer = setTimeout(function () { finish(true); }, timeoutMs);
+                function finish(queued) {
+                    if (settled) return;
+                    settled = true;
+                    clearTimeout(timer);
+                    resolve(queued);
+                }
+                try {
+                    var payload = params ? Object.assign({}, params) : {};
+                    payload.event_callback = function () { finish(true); };
+                    gtag('event', eventName, payload);
+                } catch (e) {
+                    finish(false);
+                }
+            });
+        }
+
+        /**
+         * CSPRNG-generated hidden signup password — same as
+         * ins-1.html/re-1.html (gh-2154 P-1 fix). Refuses (throws) rather
+         * than ever falling back to Math.random when a CSPRNG isn't
+         * available.
+         */
+        function generateSecurePartnerPassword() {
+            if (!window.crypto || typeof window.crypto.getRandomValues !== 'function') {
+                throw new Error('Secure random number generator is unavailable.');
+            }
+            const bytes = new Uint8Array(32);
+            window.crypto.getRandomValues(bytes);
+            let binary = '';
+            for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+            const base64url = btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+            return base64url + 'Aa1!';
+        }
+
+        /**
+         * gh-865: the visitor must see and explicitly confirm their partner
+         * type before the account is created — the page they landed on may
+         * not silently decide agent_type. Same as every other partner
+         * signup page.
+         */
+        function confirmAgentType(defaultType) {
+            return new Promise((resolve) => {
+                const AGENT_TYPE_LABELS = AgentTypes.CHOOSER_LABELS; // gh-914 single source (js/agent-types.js)
+                const overlay = document.createElement('div');
+                overlay.setAttribute('role', 'dialog');
+                overlay.setAttribute('aria-modal', 'true');
+                overlay.style.cssText = 'position:fixed;inset:0;background:rgba(13,27,46,0.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+                const box = document.createElement('div');
+                box.style.cssText = 'background:#0D1B2E;border:1px solid rgba(224,123,0,0.4);border-radius:12px;padding:28px;max-width:380px;width:100%;text-align:left;font-family:inherit;';
+                const heading = document.createElement('p');
+                heading.textContent = 'Confirm your partner type';
+                heading.style.cssText = 'color:#FFFFFF;font-size:17px;font-weight:600;margin:0 0 8px;';
+                const sub = document.createElement('p');
+                sub.textContent = "This determines what you can do on Otter Quotes. Change it if it isn't right.";
+                sub.style.cssText = 'color:#94A3B8;font-size:14px;margin:0 0 16px;line-height:1.5;';
+                const select = document.createElement('select');
+                select.id = 'gh865AgentTypeConfirm';
+                select.style.cssText = 'width:100%;padding:10px;border-radius:8px;border:1px solid rgba(148,163,184,0.35);font-size:15px;margin-bottom:16px;background:#0D1B2E;color:#FFFFFF;';
+                Object.keys(AGENT_TYPE_LABELS).forEach((value) => {
+                    const o = document.createElement('option');
+                    o.value = value;
+                    o.textContent = AGENT_TYPE_LABELS[value];
+                    if (value === defaultType) o.selected = true;
+                    select.appendChild(o);
+                });
+                const confirmBtn = document.createElement('button');
+                confirmBtn.type = 'button';
+                confirmBtn.textContent = 'Confirm & Continue';
+                confirmBtn.className = 'btn btn-primary';
+                confirmBtn.style.cssText = 'width:100%;cursor:pointer;';
+                confirmBtn.addEventListener('click', () => {
+                    document.body.removeChild(overlay);
+                    resolve(select.value);
+                });
+                box.appendChild(heading);
+                box.appendChild(sub);
+                box.appendChild(select);
+                box.appendChild(confirmBtn);
+                overlay.appendChild(box);
+                document.body.appendChild(overlay);
+                select.focus();
+            });
+        }
+
+        /**
+         * Capture utm_source/medium/campaign/content from the URL on first
+         * landing and persist them so they survive a bounce before the form
+         * is submitted. Same fallback logic as ins-1.html/re-1.html.
+         */
+        function captureUtmContext() {
+            const params = new URLSearchParams(window.location.search);
+            const fresh = {
+                source:   params.get('utm_source'),
+                medium:   params.get('utm_medium'),
+                campaign: params.get('utm_campaign'),
+                content:  params.get('utm_content'),
+                fbclid:   params.get('fbclid'),
+                liFatId:  params.get('li_fat_id'),
+                funnelId: params.get('funnel_id'),
+            };
+            // An explicit ?funnel_id= always wins. Absent that, fall back to
+            // utm_campaign ONLY when it matches the S14 <line>-<funnel>
+            // convention (e.g. "re-1", "ins-3", "hi-1").
+            if (!fresh.funnelId && fresh.campaign && /^[a-z]{2,4}-\d{1,3}$/.test(fresh.campaign)) {
+                fresh.funnelId = fresh.campaign;
+            }
+            if (fresh.fbclid)   fresh.fbclid   = fresh.fbclid.slice(0, 500);
+            if (fresh.liFatId)  fresh.liFatId  = fresh.liFatId.slice(0, 500);
+            if (fresh.funnelId) fresh.funnelId = fresh.funnelId.slice(0, 64);
+            if (fresh.source || fresh.medium || fresh.campaign || fresh.content || fresh.fbclid || fresh.liFatId || fresh.funnelId) {
+                utmContext = fresh;
+                localStorage.setItem('cs_utm_context', JSON.stringify(utmContext));
+                return;
+            }
+            try {
+                const stored = JSON.parse(localStorage.getItem('cs_utm_context') || 'null');
+                if (stored) utmContext = stored;
+            } catch (e) { /* malformed stored value — ignore, keep default */ }
+        }
+
+        /**
+         * Detect whether this visitor arrived via a recruit link. Same as
+         * ins-1.html/re-1.html.
+         */
+        async function detectRecruitCode() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const recruitCode = localStorage.getItem('cs_recruit_code') || urlParams.get('recruit');
+            if (!recruitCode) return;
+
+            try {
+                const { data: recruiter, error } = await sb
+                    .rpc('get_referral_agents_public')
+                    .select('id, first_name, last_name, company')
+                    .eq('recruit_code', recruitCode)
+                    .eq('status', 'active')
+                    .maybeSingle();
+
+                if (error) {
+                    console.warn('Recruit code lookup failed:', error.message);
+                    return;
+                }
+                if (!recruiter) return;
+
+                recruitContext = { recruitCode, recruiterId: recruiter.id };
+            } catch (err) {
+                console.warn('Recruit code lookup threw:', err);
+            }
+        }
+
+        // Kick off recruit detection on load
+        CONFIG.whenReady(function (sb) {
+            if (sb) detectRecruitCode();
+        });
+        captureUtmContext();
+
+        // Signed-in partners land straight on their dashboard instead of
+        // re-seeing the signup form — same loop-guard shape as
+        // partner-login.html/ins-1.html/re-1.html. ?stay=1 opts out.
+        (async function redirectSignedInPartner() {
+            if (new URLSearchParams(window.location.search).get('stay') === '1') return;
+            if ((document.referrer || '').includes('/partner-dashboard.html')) return;
+            if (await Auth.hasPartnerSession()) {
+                window.location.replace('/partner-dashboard.html');
+            }
+        })();
+
+        // ---------------------------------------------------------------
+        // Field-level validation helpers
+        // ---------------------------------------------------------------
+        const fullNameInput  = document.getElementById('fullName');
+        const phoneInput     = document.getElementById('phone');
+        const emailInput     = document.getElementById('email');
+        const companyInput   = document.getElementById('company');
+        const agreeInput     = document.getElementById('agreeToTerms');
+        const formAlertEl    = document.getElementById('formAlert');
+
+        function isValidFullName(v) {
+            return v.trim().split(/\s+/).filter(Boolean).length >= 2;
+        }
+        function isValidPhone(v) {
+            return v.replace(/\D/g, '').length >= 7;
+        }
+        function isValidEmail(v) {
+            return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+        }
+        function isValidCompany(v) {
+            return v.trim().length > 0;
+        }
+
+        function showFieldError(input, errorEl, message) {
+            if (input) input.classList.add('error');
+            if (errorEl) { errorEl.textContent = message; errorEl.classList.add('show'); }
+        }
+        function clearFieldError(input, errorEl) {
+            if (input) input.classList.remove('error');
+            if (errorEl) { errorEl.classList.remove('show'); }
+        }
+        function clearAllFieldErrors() {
+            clearFieldError(fullNameInput, document.getElementById('fullNameError'));
+            clearFieldError(phoneInput, document.getElementById('phoneError'));
+            clearFieldError(emailInput, document.getElementById('emailError'));
+            clearFieldError(companyInput, document.getElementById('companyError'));
+            document.getElementById('agreeError').classList.remove('show');
+        }
+        function showFormAlert(message) {
+            formAlertEl.textContent = message;
+            formAlertEl.classList.add('show');
+        }
+        function clearFormAlert() {
+            formAlertEl.textContent = '';
+            formAlertEl.classList.remove('show');
+        }
+
+        // Live validation: clear a field's error as soon as it becomes
+        // valid; only *show* an error on blur.
+        function wireLiveValidation(input, errorEl, validator, message) {
+            if (!input) return;
+            input.addEventListener('blur', () => {
+                const v = input.type === 'checkbox' ? input.checked : input.value;
+                if (!validator(v)) showFieldError(input, errorEl, message);
+                else clearFieldError(input, errorEl);
+            });
+            input.addEventListener('input', () => {
+                const v = input.value;
+                if (validator(v)) clearFieldError(input, errorEl);
+            });
+        }
+        wireLiveValidation(fullNameInput, document.getElementById('fullNameError'), isValidFullName, 'Please enter your first and last name.');
+        wireLiveValidation(phoneInput, document.getElementById('phoneError'), isValidPhone, 'Please enter a valid phone number.');
+        wireLiveValidation(emailInput, document.getElementById('emailError'), isValidEmail, 'Please enter a valid email address.');
+        wireLiveValidation(companyInput, document.getElementById('companyError'), isValidCompany, 'Please enter your company name.');
+        agreeInput.addEventListener('change', () => {
+            const errorEl = document.getElementById('agreeError');
+            if (agreeInput.checked) errorEl.classList.remove('show');
+        });
+
+        function splitFullName(fullName) {
+            const parts = fullName.trim().split(/\s+/).filter(Boolean);
+            const firstName = parts[0] || fullName.trim();
+            const lastName = parts.slice(1).join(' ') || firstName;
+            return { firstName, lastName };
+        }
+
+        function fireDemoSuccess(agentType, method) {
+            const referralCode = Math.random().toString(36).substring(2, 9).toUpperCase();
+            const referralLink = `${window.location.origin}/claims?ref=${referralCode}`;
+
+            document.getElementById('referralLink').textContent = referralLink;
+            document.getElementById('successMessage').classList.add('show');
+            document.getElementById('homeInspectorForm').style.display = 'none';
+            document.getElementById('google-btn').style.display = 'none';
+            document.querySelector('.oauth-divider').style.display = 'none';
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+
+            gtag('event', 'partner_signup', {
+                partner_type: agentType,
+                method: method,
+                source:   utmContext.source   || 'direct',
+                medium:   utmContext.medium   || undefined,
+                campaign: utmContext.campaign || undefined,
+                content:  utmContext.content  || undefined,
+            });
+
+            // gh-2006 / gh-2078 pattern: intentionally no Meta Lead /
+            // CompleteRegistration call in this function. It only runs
+            // when window.CONFIG.DEMO_MODE is true, and js/config.js sets
+            // DEMO_MODE: false — this branch is dead on production.
+        }
+
+        // ---------------------------------------------------------------
+        // Google OAuth signup
+        // ---------------------------------------------------------------
+        const googleBtn = document.getElementById('google-btn');
+        const GOOGLE_BTN_DEFAULT_HTML = googleBtn.innerHTML;
+        const PENDING_SIGNUP_KEY = 'cs_pending_partner_signup';
+
+        googleBtn.addEventListener('click', async () => {
+            clearFormAlert();
+            clearAllFieldErrors();
+
+            const fullName = fullNameInput.value.trim();
+            const phone = phoneInput.value.trim();
+            const company = companyInput.value.trim();
+            const agreed = agreeInput.checked;
+
+            let firstInvalid = null;
+            if (!isValidFullName(fullName)) {
+                showFieldError(fullNameInput, document.getElementById('fullNameError'), 'Please enter your first and last name.');
+                firstInvalid = firstInvalid || fullNameInput;
+            }
+            if (!isValidPhone(phone)) {
+                showFieldError(phoneInput, document.getElementById('phoneError'), 'Please enter a valid phone number.');
+                firstInvalid = firstInvalid || phoneInput;
+            }
+            if (!isValidCompany(company)) {
+                showFieldError(companyInput, document.getElementById('companyError'), 'Please enter your company name.');
+                firstInvalid = firstInvalid || companyInput;
+            }
+            if (!agreed) {
+                document.getElementById('agreeError').classList.add('show');
+                firstInvalid = firstInvalid || agreeInput;
+            }
+            if (firstInvalid) { firstInvalid.focus(); return; }
+
+            const agentType = await confirmAgentType('home_inspector');
+
+            if (window.CONFIG && window.CONFIG.DEMO_MODE) {
+                fireDemoSuccess(agentType, 'google');
+                return;
+            }
+
+            googleBtn.disabled = true;
+            googleBtn.textContent = 'Redirecting to Google…';
+
+            try {
+                localStorage.setItem(PENDING_SIGNUP_KEY, JSON.stringify({
+                    fullName, phone, company, agentType,
+                    recruitCode: recruitContext.recruitCode || null,
+                    utm: utmContext,
+                }));
+                localStorage.setItem('cs_auth_role', agentType);
+                await Auth.signInWithGoogle('/hi-1.html?g=1');
+            } catch (err) {
+                console.error('Google sign-in error:', err);
+                localStorage.removeItem(PENDING_SIGNUP_KEY);
+                googleBtn.disabled = false;
+                googleBtn.innerHTML = GOOGLE_BTN_DEFAULT_HTML;
+                showFormAlert('Google sign-in failed. Please try again or use the form below.');
+            }
+        });
+
+        // Completes a Google-initiated signup once this page reloads with
+        // an authenticated session. Same pattern as ins-1.html/re-1.html.
+        let finishingGoogleSignup = false;
+        async function finishGoogleSignupIfPending() {
+            if (finishingGoogleSignup) return;
+            let pending;
+            try { pending = JSON.parse(localStorage.getItem(PENDING_SIGNUP_KEY) || 'null'); } catch (e) { pending = null; }
+            if (!pending) return;
+
+            let user = null;
+            try { user = await Auth.getUser(); } catch (e) { user = null; }
+            if (!user || !user.email) return; // OAuth exchange not finished yet; onAuthStateChange below will retry.
+
+            finishingGoogleSignup = true;
+            localStorage.removeItem(PENDING_SIGNUP_KEY);
+
+            const { firstName, lastName } = splitFullName(pending.fullName);
+            const utm = pending.utm || {};
+
+            try {
+                const { error: agentError } = await sb.rpc('register_partner', {
+                    p_agent_type:   pending.agentType,
+                    p_first_name:   firstName,
+                    p_last_name:    lastName,
+                    p_email:        user.email,
+                    p_phone:        pending.phone,
+                    p_company:      pending.company || null,
+                    p_recruit_code: pending.recruitCode || null,
+                    p_utm_source:   utm.source   || null,
+                    p_utm_medium:   utm.medium   || null,
+                    p_utm_campaign: utm.campaign || null,
+                    p_utm_content:  utm.content  || null,
+                    p_fbclid:       utm.fbclid   || null,
+                    p_li_fat_id:    utm.liFatId  || null,
+                    p_funnel_id:    utm.funnelId || null,
+                    p_is_test:      (window.Auth && typeof Auth.isTestEmail === 'function') ? Auth.isTestEmail(user.email) : false,
+                });
+
+                // partner_exists is expected/harmless here — see
+                // ins-1.html/re-1.html's identical comment.
+                if (agentError && !(agentError.message || '').includes('partner_exists')) {
+                    throw agentError;
+                }
+
+                const { data: claim, error: claimError } = await sb.rpc('claim_partner_account');
+                if (claimError) throw claimError;
+
+                const claimed = claim && (claim.claimed || claim.reason === 'already_linked');
+                if (!claimed) {
+                    showFormAlert("We couldn't finish linking your Google account to a partner profile. If you already have a partner account under a different sign-in method, use Partner Login instead.");
+                    googleBtn.disabled = false;
+                    googleBtn.innerHTML = GOOGLE_BTN_DEFAULT_HTML;
+                    return;
+                }
+
+                localStorage.removeItem('cs_recruit_code');
+                localStorage.removeItem('cs_utm_context');
+
+                await gtagEventAndWait('partner_signup', {
+                    partner_type: pending.agentType,
+                    method: 'google',
+                    source:   utm.source   || 'direct',
+                    medium:   utm.medium   || undefined,
+                    campaign: utm.campaign || undefined,
+                    content:  utm.content  || undefined,
+                });
+
+                try {
+                    await gtagEventAndWait('partner_signup_complete', { variant: getOqVariant() });
+                } catch (e) {}
+
+                // gh-2006/gh-2078 pattern: intentionally no Meta Lead /
+                // CompleteRegistration call on this path — same reasoning
+                // as ins-1.html/re-1.html (a live Supabase token in the
+                // URL fragment on this exact load makes meta-pixel-gate.js
+                // hold fbevents.js back).
+
+                window.location.replace('/partner-dashboard.html');
+            } catch (err) {
+                console.error('Google partner signup failed:', err);
+                showFormAlert('Something went wrong finishing your Google sign-up. Please try again or use the email form below, or email us at ' + (window.CONFIG ? CONFIG.SUPPORT_EMAIL : 'support') + '.');
+                googleBtn.disabled = false;
+                googleBtn.innerHTML = GOOGLE_BTN_DEFAULT_HTML;
+            } finally {
+                finishingGoogleSignup = false;
+            }
+        }
+
+        CONFIG.whenReady(function (sb) {
+            if (!sb) return;
+            finishGoogleSignupIfPending();
+            sb.auth.onAuthStateChange((event) => {
+                if (event === 'SIGNED_IN') finishGoogleSignupIfPending();
+            });
+        });
+
+        // ---------------------------------------------------------------
+        // Email signup (no password collected at this step)
+        // ---------------------------------------------------------------
+        document.getElementById('homeInspectorForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            clearFormAlert();
+            clearAllFieldErrors();
+
+            const fullName = fullNameInput.value.trim();
+            const phone    = phoneInput.value.trim();
+            const email    = emailInput.value.trim();
+            const company  = companyInput.value.trim();
+            const agreed   = agreeInput.checked;
+
+            let firstInvalid = null;
+            if (!isValidFullName(fullName)) {
+                showFieldError(fullNameInput, document.getElementById('fullNameError'), 'Please enter your first and last name.');
+                firstInvalid = firstInvalid || fullNameInput;
+            }
+            if (!isValidPhone(phone)) {
+                showFieldError(phoneInput, document.getElementById('phoneError'), 'Please enter a valid phone number.');
+                firstInvalid = firstInvalid || phoneInput;
+            }
+            if (!isValidEmail(email)) {
+                showFieldError(emailInput, document.getElementById('emailError'), 'Please enter a valid email address.');
+                firstInvalid = firstInvalid || emailInput;
+            }
+            if (!isValidCompany(company)) {
+                showFieldError(companyInput, document.getElementById('companyError'), 'Please enter your company name.');
+                firstInvalid = firstInvalid || companyInput;
+            }
+            if (!agreed) {
+                document.getElementById('agreeError').classList.add('show');
+                firstInvalid = firstInvalid || agreeInput;
+            }
+            if (firstInvalid) { firstInvalid.focus(); return; }
+
+            // gh-865: explicit user confirmation — this, not the page
+            // default, is what gets written to referral_agents.agent_type.
+            const agentType = await confirmAgentType('home_inspector');
+            const { firstName, lastName } = splitFullName(fullName);
+
+            const submitBtn = document.querySelector('#homeInspectorForm button[type="submit"]');
+            submitBtn.disabled = true;
+            submitBtn.classList.add('btn-loading');
+
+            try {
+                if (window.CONFIG && window.CONFIG.DEMO_MODE) {
+                    fireDemoSuccess(agentType, 'password');
+                    return;
+                }
+
+                if (!window.Auth) {
+                    throw new Error('Auth module not loaded');
+                }
+
+                const generatedPassword = generateSecurePartnerPassword();
+
+                const { data: agentData, error: agentError } = await sb
+                    .rpc('register_partner', {
+                        p_agent_type:       agentType,
+                        p_first_name:       firstName,
+                        p_last_name:        lastName,
+                        p_email:            email,
+                        p_phone:            phone,
+                        p_company:          company,
+                        p_recruit_code:     recruitContext.recruitCode || null,
+                        p_utm_source:       utmContext.source   || null,
+                        p_utm_medium:       utmContext.medium   || null,
+                        p_utm_campaign:     utmContext.campaign || null,
+                        p_utm_content:      utmContext.content  || null,
+                        p_fbclid:           utmContext.fbclid   || null,
+                        p_li_fat_id:        utmContext.liFatId  || null,
+                        p_funnel_id:        utmContext.funnelId || null,
+                        p_is_test:          (window.Auth && typeof Auth.isTestEmail === 'function') ? Auth.isTestEmail(email) : false,
+                    });
+
+                if (agentError) {
+                    if ((agentError.message || '').includes('partner_exists')) {
+                        showFormAlert("You're already a partner — sign in at the Partner Login page.");
+                        return;
+                    }
+                    throw agentError;
+                }
+
+                const finalCode = agentData?.unique_code;
+                const finalLink = `https://otterquote.com/ref-inspector.html?code=${finalCode}`;
+
+                // The SEO footer link is bare by default (no code — nothing
+                // to attribute for a first-time visitor). Once we have this
+                // partner's own code, carry it so a copied footer link
+                // still attributes correctly.
+                const seoRefLink = document.getElementById('seoRefLink');
+                if (seoRefLink && finalCode) {
+                    seoRefLink.href = `/ref-inspector.html?code=${finalCode}`;
+                }
+
+                localStorage.setItem('cs_partner_signup', JSON.stringify({
+                    email: email,
+                    unique_code: finalCode,
+                }));
+                localStorage.setItem('cs_auth_role', agentType);
+
+                localStorage.removeItem('cs_recruit_code');
+                localStorage.removeItem('cs_utm_context');
+
+                const signUpResult = await Auth.signUpWithPassword(email, generatedPassword, agentType);
+
+                if (signUpResult && signUpResult.user && signUpResult.user.id) {
+                    try { localStorage.setItem(('oq_partner_needs_' + 'password') + ':' + signUpResult.user.id, '1'); } catch (e) { /* non-fatal */ }
+                }
+
+                if (signUpResult && signUpResult.session) {
+                    try { await sb.auth.updateUser({ data: { needs_password: true } }); } catch (e) { console.warn('needs_password metadata write failed:', e); }
+                }
+
+                gtag('event', 'partner_signup', {
+                    partner_type: agentType,
+                    method: 'password',
+                    source:   utmContext.source   || 'direct',
+                    medium:   utmContext.medium   || undefined,
+                    campaign: utmContext.campaign || undefined,
+                    content:  utmContext.content  || undefined,
+                });
+
+                // Meta Lead — literal event name so the ad set's
+                // Lead-optimized creatives get credit; same as
+                // ins-1.html/re-1.html.
+                try { fbq('track', 'Lead'); } catch (e) {}
+
+                firePartnerSignupComplete(getOqVariant());
+
+                if (signUpResult && signUpResult.session) {
+                    window.location.href = '/partner-dashboard.html';
+                    return;
+                }
+
+                const referralLinkEl = document.getElementById('referralLink');
+                if (referralLinkEl) referralLinkEl.textContent = finalLink;
+                document.getElementById('checkEmailAddress').textContent = email;
+                document.getElementById('homeInspectorForm').style.display = 'none';
+                document.getElementById('google-btn').style.display = 'none';
+                document.querySelector('.oauth-divider').style.display = 'none';
+                document.getElementById('checkEmailMessage').classList.add('show');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+
+            } catch (error) {
+                console.error('Error submitting application:', error);
+                showFormAlert('An error occurred. Please try again or email us at ' + CONFIG.SUPPORT_EMAIL + ': ' + (error.message || 'Unknown error'));
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.classList.remove('btn-loading');
+            }
+        });
+
+        // Copy referral link
+        document.getElementById('copyBtn').addEventListener('click', function() {
+            const referralLink = document.getElementById('referralLink').textContent;
+            navigator.clipboard.writeText(referralLink).then(() => {
+                const btn = this;
+                const originalText = btn.textContent;
+                btn.textContent = '✓ Copied!';
+                btn.classList.add('copied');
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.classList.remove('copied');
+                }, 2000);
+            });
+        });
+    </script>
+
+<!-- Referral landing page link for SEO crawlability -->
+<p style="text-align:center;font-size:0.85rem;color:var(--slate);padding:8px 0 16px;"><a href="/ref-inspector.html" id="seoRefLink" style="color:var(--amber);">Homeowner referral landing page</a></p>
+<!-- gh-1994: router prefill -- reads ?lead=<uuid> (no PII in the URL) set by
+     otterquote.com/start.html and fills name/email/phone via the
+     get_lead_prefill() SECURITY DEFINER RPC. Same as ins-1.html/re-1.html. -->
+<script>
+(function () {
+  try {
+    var leadId = window.__oqRouterLeadId;
+    if (!leadId) return;
+    if (typeof supabase === 'undefined' || typeof CONFIG === 'undefined' ||
+        !CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_ANON) return;
+    var _sb = window.sb || supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
+    _sb.rpc('get_lead_prefill', { p_lead_id: leadId }).then(function (res) {
+      var row = res && res.data && res.data[0];
+      if (!row) return; // expired, unknown id, or migration not applied yet
+      var setVal = function (id, val) {
+        if (!val) return;
+        var el = document.getElementById(id);
+        if (el && !el.value) el.value = val;
+      };
+      setVal('fullName', row.name);
+      setVal('email', row.email);
+      setVal('phone', row.phone);
+    }).catch(function () { /* gh-1994 prefill is a nicety, never block signup */ });
+  } catch (e) { /* gh-1994 prefill is a nicety, never block signup */ }
+})();
+</script>
+
+</body>
+</html>
