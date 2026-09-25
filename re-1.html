@@ -80,9 +80,22 @@
 
 <style>
 /* ── Hero / bullets ── */
+/* gh-2150 round 2 (REVIEW FAIL 5836233175 must-fix 2): the original rule
+   here was `background: linear-gradient(...); background-image:
+   radial-gradient(...)` -- two declarations, not one. The `background`
+   shorthand resets background-color to transparent when given only a
+   gradient value, and the very next `background-image` declaration then
+   REPLACES that gradient with just the (mostly transparent) radial glow,
+   so the hero rendered near-white in practice, not navy. Both gradients
+   are layered in ONE background-image list below so the real navy
+   gradient actually paints, with h1/subtitle recolored for AA contrast
+   against that real navy background (bullets' existing #E5EDF5 was
+   already >14:1 against navy -- it only looked broken because the
+   background behind it wasn't actually navy). No copy changed. */
 .hero {
   padding: var(--sp-20) var(--sp-8) var(--sp-12);
-  background: linear-gradient(135deg, var(--navy) 0%, var(--navy-2) 100%); background-image: radial-gradient(ellipse at 30% 50%, rgba(224,123,0,0.08) 0%, transparent 60%);
+  background-color: var(--navy);
+  background-image: linear-gradient(135deg, var(--navy) 0%, var(--navy-2) 100%), radial-gradient(ellipse at 30% 50%, rgba(224,123,0,0.08) 0%, transparent 60%);
   text-align: center;
   border-bottom: 1px solid rgba(255,255,255,0.06);
 }
@@ -95,12 +108,12 @@
 .hero h1 {
   font-size: clamp(2.2rem, 5vw, 3.5rem);
   margin-bottom: var(--sp-4);
-  color: var(--navy);
+  color: var(--white);
 }
 
 .hero .subtitle {
   font-size: 1.1rem;
-  color: #5A6B7B;
+  color: var(--slate);
   line-height: 1.8;
   margin-bottom: var(--sp-8);
   max-width: 640px;
@@ -223,6 +236,17 @@
   color: #FECACA;
   font-size: 0.9rem;
   margin: var(--sp-3) 0;
+}
+
+/* gh-2150 round 2 (REVIEW FAIL 5836233175 should-fix S08): inline per-field
+   errors, same convention/color as start.html's .field-error (:746). The
+   generic .form-error box above is kept for server/RPC-level errors only
+   (e.g. "you're already a partner", the catch-all network error). */
+.field-error {
+  color: #FCA5A5;
+  font-size: 0.85rem;
+  margin-top: var(--sp-1);
+  min-height: 1.1em;
 }
 
 /* ── Button styles ── */
@@ -378,7 +402,15 @@
 </head>
 <body>
 
-<header id="site-header" data-active=""></header>
+<!-- gh-2150 round 2 (REVIEW FAIL 5836233175 must-fix 1; Ben ruling (1), #2150
+     comment 5836233175 / run-work bus 2026-09-25T17:03:44Z): a dedicated
+     funnel page must not offer the 13 header links, 21 footer links and the
+     floating support-chat bubble the shared js/nav.js render normally adds
+     -- all real escape hatches out of the funnel before the conversion.
+     data-skip-nav="true" is the existing convention (js/nav.js ~1004,
+     start.html's Arm F) that opts an element OUT of js/nav.js's
+     DOMContentLoaded render entirely. -->
+<header id="site-header" data-active="" data-skip-nav="true"></header>
 
 <!-- Hero Section — H1/subhead/bullets APPROVED VERBATIM (#2150 comment 5821403227) -->
 <section class="hero">
@@ -396,39 +428,54 @@
 <!-- Signup Form -->
 <section class="signup-section" id="signup-section">
   <div class="signup-form-wrap">
-    <form class="partner-form" id="partner-form" novalidate>
+    <!-- gh-2150 round 2 (REVIEW FAIL 5836233175, Ben ruling (3), S12): the
+         PII fields collected here (name/email/phone/brokerage) are masked
+         in Clarity session replay via data-clarity-mask="true" -- same
+         attribute js/router-variant-f.js:618 uses for a subtree, applied
+         here to just the form rather than the whole page so the marketing
+         copy above/below stays inspectable. -->
+    <form class="partner-form" id="partner-form" novalidate data-clarity-mask="true">
       <!-- Name -->
       <div class="form-group">
         <label class="form-label" for="name">Name</label>
-        <input type="text" id="name" class="form-input" required autocomplete="name" placeholder="Jane Smith">
+        <input type="text" id="name" class="form-input" required autocomplete="name" placeholder="Jane Smith" aria-describedby="nameError">
+        <div class="field-error" id="nameError"></div>
       </div>
 
       <!-- Email -->
       <div class="form-group">
         <label class="form-label" for="email">Email</label>
-        <input type="email" id="email" class="form-input" required autocomplete="email" placeholder="jane@example.com">
+        <input type="email" id="email" class="form-input" required autocomplete="email" placeholder="jane@example.com" aria-describedby="emailError">
+        <div class="field-error" id="emailError"></div>
       </div>
 
       <!-- Phone -->
       <div class="form-group">
         <label class="form-label" for="phone">Phone</label>
-        <input type="tel" id="phone" class="form-input" required autocomplete="tel" placeholder="(317) 555-1234">
+        <input type="tel" id="phone" class="form-input" required autocomplete="tel" placeholder="(317) 555-1234" aria-describedby="phoneError">
+        <div class="field-error" id="phoneError"></div>
       </div>
 
       <!-- Brokerage -->
       <div class="form-group">
         <label class="form-label" for="brokerage">Brokerage</label>
-        <input type="text" id="brokerage" class="form-input" required placeholder="Your Real Estate Company">
+        <input type="text" id="brokerage" class="form-input" required placeholder="Your Real Estate Company" aria-describedby="brokerageError">
+        <div class="field-error" id="brokerageError"></div>
       </div>
 
       <!-- Agreement Checkbox — text APPROVED VERBATIM -->
       <div class="form-checkbox-group">
-        <input type="checkbox" id="terms" class="form-checkbox" required>
+        <input type="checkbox" id="terms" class="form-checkbox" required aria-describedby="termsError">
         <label for="terms" class="checkbox-label">
           I agree to Otter Quotes's <a href="partner-agreement.html">Partner Terms</a>.
         </label>
       </div>
+      <div class="field-error" id="termsError"></div>
 
+      <!-- gh-2150 round 2 (Ben ruling (8), S08): server/RPC-level errors
+           only (e.g. "you're already a partner", the catch-all network
+           error) -- per-field validation errors go in the .field-error
+           divs above instead of here. -->
       <div id="form-error" class="form-error" style="display:none;"></div>
 
       <button type="submit" class="btn btn-primary btn-lg btn-full" id="submit-btn">
@@ -446,30 +493,49 @@
       </p>
     </form>
 
-    <!-- Success State — confirmation text APPROVED VERBATIM -->
+    <!-- Success State — gh-2150 round 2 (REVIEW FAIL 5836233175 must-fix 5;
+         Ben ruling (5), S20): ONLY the Dustin-approved confirmation text +
+         its install-the-app action. No duplicate "You're In!" heading, no
+         on-page referral link, no Copy/Dashboard buttons. The
+         email-confirmation-required state (no session back from signup)
+         adds NO new words -- it reuses the check-email sentence already
+         live on main's P-1 partner pages verbatim (partner-re.html's
+         the alert call, gh2154 P-1), followed by the approved confirmation
+         sentence verbatim; a signed-in-immediately signup skips straight
+         to the approved sentence. Neither path ever calls a browser alert dialog. -->
     <div class="success-message" id="success-message">
       <div class="success-icon">🎉</div>
-      <h2>You're In!</h2>
+      <p id="check-email-message" style="display:none;">Account created! Check your email to confirm your address, then sign in at the Partner Login page.</p>
       <p>You're in! Install the Otter Quotes partner app, sign in with the account you just created, and your referral link will be waiting inside.</p>
 
-      <div class="referral-link-box">
-        <p style="color: var(--slate); margin: 0 0 var(--sp-2) 0;">Your Referral Link:</p>
-        <div class="referral-code" id="referral-code"></div>
-        <button type="button" class="copy-btn" id="copy-btn">Copy Link</button>
-      </div>
-
       <div style="margin-top: var(--sp-6);">
-        <button class="btn btn-primary" id="dashboard-btn">Go to Partner Dashboard</button>
+        <button type="button" class="btn btn-primary btn-lg" id="install-app-btn">Install the App</button>
       </div>
     </div>
   </div>
 </section>
 
-<footer id="site-footer"></footer>
+<!-- gh-2150 round 2 (REVIEW FAIL 5836233175 must-fix 1; Ben ruling (1)):
+     data-skip-nav="true" keeps js/nav.js's DOMContentLoaded init from
+     building the full footer -- and, since Nav.renderFooter() (js/nav.js
+     ~938) is the only call site for Nav._renderSupportModal(), the floating
+     support-chat FAB too. This static markup replaces it with ONLY the
+     three legally-required links (Privacy, Terms, Partner Agreement),
+     regardless of funnel. -->
+<footer id="site-footer" data-skip-nav="true">
+  <div style="padding: var(--sp-6) var(--sp-8); text-align: center; background: var(--navy); border-top: 1px solid rgba(255,255,255,0.06);">
+    <p style="font-size: 0.8rem; margin: 0;">
+      <a href="/privacy.html">Privacy Policy</a>
+      &nbsp;&middot;&nbsp;
+      <a href="/terms.html">Terms of Service</a>
+      &nbsp;&middot;&nbsp;
+      <a href="/partner-agreement.html">Partner Agreement</a>
+    </p>
+  </div>
+</footer>
 
 <script src="js/auth.js"></script>
 <script src="js/nav.js"></script>
-<script src="js/agent-types.js"></script>
 
 <script>
 (function() {
@@ -477,9 +543,55 @@
   const submitBtn = document.getElementById('submit-btn');
   const errorEl = document.getElementById('form-error');
   const successMsg = document.getElementById('success-message');
-  const referralCode = document.getElementById('referral-code');
-  const copyBtn = document.getElementById('copy-btn');
-  const dashboardBtn = document.getElementById('dashboard-btn');
+  const checkEmailMessage = document.getElementById('check-email-message');
+  const installAppBtn = document.getElementById('install-app-btn');
+
+  // gh-2150 round 2 (REVIEW FAIL 5836233175, Ben ruling (8), S08): inline
+  // per-field errors instead of one form-level box, same convention as
+  // start.html's fieldError() (:1055). errorEl/#form-error above stays for
+  // server/RPC-level errors only.
+  function fieldError(id, msg) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = msg || '';
+    const inputId = id.replace(/Error$/, '');
+    const input = document.getElementById(inputId);
+    if (input) {
+      if (msg) input.setAttribute('aria-invalid', 'true');
+      else input.removeAttribute('aria-invalid');
+    }
+  }
+
+  // Same one known founder address js/auth.js:1360 hardcodes for the admin
+  // check. gh-2150 round 2 (REVIEW FAIL 5836233175, Ben ruling (7), S15):
+  // founder addresses are flagged is_test, same as an
+  // @otterquote-internal.test address -- no shared referral_agents-signup
+  // helper for this exists yet (P-3/P-4/P-5 are still building that
+  // convention per the run-work bus), so this is a page-local predicate
+  // reusing the one literal that convention already established.
+  function isFounderEmail(email) {
+    return (email || '').trim().toLowerCase() === 'dustinstohler1@gmail.com';
+  }
+
+  // gh-2150 round 2 (Ben ruling (5), S20): "Install the App" action, same
+  // beforeinstallprompt-or-fallback pattern as partner-dashboard.html's
+  // #installAppBtn (~3136) -- PWA install prompt where available, else the
+  // partner-app.html walkthrough (QR-code iOS/Android install
+  // instructions).
+  let deferredInstallPrompt = null;
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredInstallPrompt = e;
+  });
+  if (installAppBtn) {
+    installAppBtn.addEventListener('click', () => {
+      if (deferredInstallPrompt) {
+        deferredInstallPrompt.prompt();
+        deferredInstallPrompt.userChoice.then(() => { deferredInstallPrompt = null; });
+      } else {
+        window.location.href = '/partner-app.html';
+      }
+    });
+  }
 
   // gh-2150: RE-1 is a dedicated single-funnel page (Meta + YouTube, per
   // S14 destination URLs on #2150), reusing the shared P-1 attribution
@@ -522,8 +634,20 @@
     }
     // gh-2150: this page IS the re-1 funnel — a dedicated funnel id
     // fallback that runs after the shared capture logic above, only when
-    // nothing (URL or stored) supplied one.
+    // nothing (URL or stored) supplied one. Ben ruling (6): this default is
+    // the PAGE's own id, never a stale value some other funnel stored --
+    // it applies whenever the current visit itself carried no funnel_id/
+    // matching utm_campaign, overriding whatever "stored" resolved to above.
     if (!utmContext.funnelId) utmContext.funnelId = 're-1';
+  }
+
+  // gh-2150 round 2 (REVIEW FAIL 5836233175, Ben ruling (3), S12): Clarity
+  // funnel_id tag, same window.clarity-guarded try/catch convention as
+  // start.html's `clarity('set','variant',...)` (:1161). js/ga-gate.js
+  // gates whether Clarity ever loads on this path at all (CLARITY_ALLOWED_
+  // PATHS now includes '/re-1'); this call is a no-op until it does.
+  function tagClarityFunnelId(funnelId) {
+    try { if (window.clarity) { clarity('set', 'funnel_id', funnelId); } } catch (e) {}
   }
 
   function getOqVariant() {
@@ -554,7 +678,11 @@
   function firePartnerSignupComplete(variant) {
     if (partnerSignupCompleteFired) return;
     partnerSignupCompleteFired = true;
-    try { gtag('event', 'partner_signup_complete', { variant: variant }); } catch (e) {}
+    // gh-2150 round 2 (REVIEW FAIL 5836233175, Ben ruling (4), S11): every
+    // GA4 event on this page carries variant + step, mirroring HO-1 Arm F's
+    // event shape (start.html's trackRouter(), :1373-1427, stamps
+    // variant/step on every router_* event). This is the conversion event.
+    try { gtag('event', 'partner_signup_complete', { variant: variant, step: 'signup' }); } catch (e) {}
     try { fbq('track', 'CompleteRegistration'); } catch (e) {}
   }
 
@@ -592,56 +720,27 @@
     return (v || '').trim().split(/\s+/).filter(Boolean).length >= 2;
   }
 
-  /**
-   * gh-865: the visitor must see and explicitly confirm their partner type
-   * before the account is created. RE-1's copy is realtor-specific, so the
-   * default is 're_agent', same as partner-re.html.
-   */
-  function confirmAgentType(defaultType) {
-    return new Promise((resolve) => {
-      const AGENT_TYPE_LABELS = AgentTypes.CHOOSER_LABELS;
-      const overlay = document.createElement('div');
-      overlay.setAttribute('role', 'dialog');
-      overlay.setAttribute('aria-modal', 'true');
-      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(13,27,46,0.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
-      const box = document.createElement('div');
-      box.style.cssText = 'background:#0D1B2E;border:1px solid rgba(224,123,0,0.4);border-radius:12px;padding:28px;max-width:380px;width:100%;text-align:left;font-family:inherit;';
-      const heading = document.createElement('p');
-      heading.textContent = 'Confirm your partner type';
-      heading.style.cssText = 'color:#FFFFFF;font-size:17px;font-weight:600;margin:0 0 8px;';
-      const sub = document.createElement('p');
-      sub.textContent = "This determines what you can do on Otter Quotes. Change it if it isn't right.";
-      sub.style.cssText = 'color:#94A3B8;font-size:14px;margin:0 0 16px;line-height:1.5;';
-      const select = document.createElement('select');
-      select.id = 'gh865AgentTypeConfirm';
-      select.style.cssText = 'width:100%;padding:10px;border-radius:8px;border:1px solid rgba(148,163,184,0.35);font-size:15px;margin-bottom:16px;background:#0D1B2E;color:#FFFFFF;';
-      Object.keys(AGENT_TYPE_LABELS).forEach((value) => {
-        const o = document.createElement('option');
-        o.value = value;
-        o.textContent = AGENT_TYPE_LABELS[value];
-        if (value === defaultType) o.selected = true;
-        select.appendChild(o);
-      });
-      const confirmBtn = document.createElement('button');
-      confirmBtn.type = 'button';
-      confirmBtn.textContent = 'Confirm & Continue';
-      confirmBtn.className = 'btn btn-primary';
-      confirmBtn.style.cssText = 'width:100%;cursor:pointer;';
-      confirmBtn.addEventListener('click', () => {
-        document.body.removeChild(overlay);
-        resolve(select.value);
-      });
-      box.appendChild(heading);
-      box.appendChild(sub);
-      box.appendChild(select);
-      box.appendChild(confirmBtn);
-      overlay.appendChild(box);
-      document.body.appendChild(overlay);
-      select.focus();
-    });
-  }
+  // gh-2150 round 2 (REVIEW FAIL 5836233175, Ben ruling (8), S08): partner
+  // type is fixed by this page -- no gh-865-style type pop-up (RE-1's copy
+  // is realtor-specific end to end; the pop-up was also flagged as an
+  // unapproved escape hatch on the funnel pages generally). agent_type is
+  // always 're_agent' for every RE-1 signup.
+  const FIXED_AGENT_TYPE = 're_agent';
 
   captureUtmContext();
+  tagClarityFunnelId(utmContext.funnelId);
+
+  // gh-2150 round 2 (REVIEW FAIL 5836233175, Ben ruling (4), S11): a GA4
+  // view event on load, carrying variant + step -- mirrors HO-1 Arm F's
+  // router_step_view (start.html :1047/:1670), which fires once per screen
+  // shown. RE-1 has one screen (the signup form itself).
+  try {
+    gtag('event', 'partner_signup_view', {
+      variant: getOqVariant(),
+      step: 'signup',
+      funnel_id: utmContext.funnelId,
+    });
+  } catch (e) {}
 
   // #632: signed-in partners land straight on their dashboard instead of
   // re-seeing the signup form. ?stay=1 opts out.
@@ -669,10 +768,13 @@
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     errorEl.style.display = 'none';
+    fieldError('nameError', '');
+    fieldError('emailError', '');
+    fieldError('phoneError', '');
+    fieldError('brokerageError', '');
+    fieldError('termsError', '');
 
-    // gh-865: explicit user confirmation — this, not the page default, is
-    // what gets written to referral_agents.agent_type.
-    const agentType = await confirmAgentType('re_agent');
+    const agentType = FIXED_AGENT_TYPE;
 
     const nameVal = document.getElementById('name').value.trim();
     const email = document.getElementById('email').value.trim();
@@ -680,34 +782,48 @@
     const brokerage = document.getElementById('brokerage').value.trim();
     const termsChecked = document.getElementById('terms').checked;
 
-    // Validation
-    if (!nameVal || !email || !phone || !brokerage) {
-      errorEl.textContent = 'Please fill in all required fields.';
-      errorEl.style.display = 'block';
-      return;
+    // gh-2150 round 2 (REVIEW FAIL 5836233175, Ben ruling (8), S08): inline
+    // per-field validation errors instead of one form-level box.
+    let hasError = false;
+    if (!nameVal) {
+      fieldError('nameError', 'Please enter your name.');
+      hasError = true;
+    } else if (!isValidFullName(nameVal)) {
+      fieldError('nameError', 'Please enter your first and last name.');
+      hasError = true;
     }
-
-    if (!isValidFullName(nameVal)) {
-      errorEl.textContent = 'Please enter your first and last name.';
-      errorEl.style.display = 'block';
-      return;
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      fieldError('emailError', 'Please enter a valid email address.');
+      hasError = true;
     }
-
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      errorEl.textContent = 'Please enter a valid email address.';
-      errorEl.style.display = 'block';
-      return;
+    if (!phone) {
+      fieldError('phoneError', 'Please enter your phone number.');
+      hasError = true;
     }
-
+    if (!brokerage) {
+      fieldError('brokerageError', 'Please enter your brokerage.');
+      hasError = true;
+    }
     // gh-2154 P-1: the agreement checkbox is a hard gate — no
     // register_partner call at all when it isn't ticked.
     if (!termsChecked) {
-      errorEl.textContent = 'Please agree to the Partner Terms to continue.';
-      errorEl.style.display = 'block';
-      return;
+      fieldError('termsError', 'Please agree to the Partner Terms to continue.');
+      hasError = true;
     }
+    if (hasError) return;
 
     const { firstName, lastName } = splitFullName(nameVal);
+
+    // gh-2150 round 2 (REVIEW FAIL 5836233175, Ben ruling (4), S11): the
+    // form-step-complete GA4 event, carrying variant + step, fired once
+    // client-side validation passes and before the RPC call.
+    try {
+      gtag('event', 'partner_signup_step', {
+        variant: getOqVariant(),
+        step: 'signup',
+        funnel_id: utmContext.funnelId,
+      });
+    } catch (err) {}
 
     // Loading state
     submitBtn.classList.add('btn-loading');
@@ -715,6 +831,11 @@
 
     try {
       const generatedPassword = generateSecurePartnerPassword();
+
+      // gh-2150 round 2 (REVIEW FAIL 5836233175, Ben ruling (7), S15):
+      // founder addresses are flagged is_test, same as an
+      // @otterquote-internal.test address.
+      const isTest = ((window.Auth && typeof Auth.isTestEmail === 'function') ? Auth.isTestEmail(email) : false) || isFounderEmail(email);
 
       // #571 / v95: server-side register_partner RPC. Same call shape as
       // partner-re.html (gh-2154 P-1/P-2).
@@ -734,7 +855,7 @@
           p_fbclid:           utmContext.fbclid   || null,
           p_li_fat_id:        utmContext.liFatId  || null,
           p_funnel_id:        utmContext.funnelId || null,
-          p_is_test:          (window.Auth && typeof Auth.isTestEmail === 'function') ? Auth.isTestEmail(email) : false,
+          p_is_test:          isTest,
         });
 
       if (agentError) {
@@ -766,18 +887,28 @@
         try { await sb.auth.updateUser({ data: { needs_password: true } }); } catch (e) { console.warn('needs_password metadata write failed:', e); }
       }
 
+      // gh-2150 round 2 (REVIEW FAIL 5836233175 must-fix 5; Ben ruling (5),
+      // S20): NEVER a browser alert dialog -- it blocks in in-app browsers and
+      // contradicts the approved next step. The email-confirmation-required
+      // state (no session came back) shows the live P-1 check-email
+      // sentence verbatim, immediately above the approved confirmation
+      // sentence (already static in the markup) -- no new words either
+      // way. A signed-in-immediately signup lands on the same approved
+      // confirmation, never the dashboard.
       if (!signUpResult || !signUpResult.session) {
-        alert('Account created! Check your email to confirm your address, then sign in at the Partner Login page.');
+        checkEmailMessage.style.display = 'block';
       }
 
-      // Show success state with real referral link
+      // Show success state (approved confirmation text + install action —
+      // no on-page referral link, no Copy/Dashboard buttons).
       form.classList.add('hidden');
-      referralCode.textContent = finalLink;
       successMsg.classList.add('active');
 
       gtag('event', 'partner_signup', {
         partner_type: agentType,
         funnel_id: utmContext.funnelId || 're-1',
+        variant:  getOqVariant(),
+        step:     'signup',
         source:   utmContext.source   || 'direct',
         medium:   utmContext.medium   || undefined,
         campaign: utmContext.campaign || undefined,
@@ -797,21 +928,6 @@
       submitBtn.disabled = false;
     }
   });
-
-  // Copy referral link
-  copyBtn.addEventListener('click', () => {
-    const link = referralCode.textContent;
-    navigator.clipboard.writeText(link).then(() => {
-      const originalText = copyBtn.textContent;
-      copyBtn.textContent = '✓ Copied!';
-      setTimeout(() => { copyBtn.textContent = originalText; }, 2000);
-    }).catch(() => {});
-  });
-
-  // Go to Partner Dashboard (post-signup)
-  if (dashboardBtn) {
-    dashboardBtn.addEventListener('click', () => { window.location.href = '/partner-dashboard.html'; });
-  }
 })();
 </script>
 
