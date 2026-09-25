@@ -1172,6 +1172,53 @@
   const heroCta = document.getElementById('hero-cta');
   const signupSection = document.getElementById('signup-section');
 
+  // gh-2068 (cto38-b2068r fix pass): leads_force_safe_insert_defaults()
+  // (the BEFORE INSERT trigger on public.leads, see that migration) forces
+  // is_synthetic=true whenever a leads insert request carries an
+  // X-OQ-Internal: 1 header. This page's leads insert (below) previously
+  // sent no such header at all -- fresh-context review Must-fix 2, comment
+  // 5824273357 -- so internal/QA traffic through this page's signup flow
+  // was never flagged synthetic server-side. Computes the header from the
+  // same query-param/cookie contract js/ga-gate.js's oqInternal() uses
+  // (self-contained, same convention as start.html's oqInternalHeader() --
+  // this page cannot assume ga-gate.js's own window.OQ_INTERNAL ran first
+  // either). Attached to THIS insert only via postgrest-js's per-request
+  // `.setHeader('x-oq-internal', '1')`, never to `sb`'s client-wide
+  // `global.headers` -- `sb` here is js/config.js's shared global client,
+  // used by many other pages, and a client-wide header would attach
+  // x-oq-internal to every request any of them makes, including any
+  // supabase.functions.invoke(...) call whose Edge Function CORS
+  // allow-list doesn't list x-oq-internal.
+  function oqInternalHeader() {
+    try {
+      let params = null;
+      try {
+        params = new URLSearchParams(window.location.search);
+      } catch (e) {
+        params = null;
+      }
+      const queryFlag = !!(params && params.get('oq_internal') === '1');
+
+      const cookieMatch = document.cookie.match(/(?:^|; )oq_internal=([^;]*)/);
+      const cookieFlag = !!(cookieMatch && decodeURIComponent(cookieMatch[1]) === '1');
+
+      if (queryFlag && !cookieFlag) {
+        const oneYear = 60 * 60 * 24 * 365;
+        let domainAttr = '';
+        if (/(^|\.)otterquote\.com$/.test(window.location.hostname)) {
+          domainAttr = '; Domain=.otterquote.com';
+        }
+        document.cookie = 'oq_internal=1; Max-Age=' + oneYear + '; Path=/' +
+          domainAttr + '; SameSite=Lax';
+      }
+
+      const isInternal = queryFlag || cookieFlag || !!window.OQ_INTERNAL;
+      return isInternal ? { 'x-oq-internal': '1' } : {};
+    } catch (e) {
+      return window.OQ_INTERNAL ? { 'x-oq-internal': '1' } : {};
+    }
+  }
+
   // Recruit context populated by detectRecruitCode() and consumed on submit.
   let recruitContext = { recruitCode: null, recruiterId: null };
 
@@ -1502,7 +1549,9 @@
       const generatedPassword = generateSecurePartnerPassword();
 
       // Save lead to database
-      const { error: leadError } = await sb
+      // gh-2068 (cto38-b2068r fix pass): X-OQ-Internal header attached to
+      // THIS insert only -- see oqInternalHeader() above.
+      const leadInsert = sb
         .from('leads')
         .insert({
           name: `${firstName} ${lastName}`,
@@ -1510,6 +1559,11 @@
           source: 're_agent',
           created_at: new Date().toISOString(),
         });
+      const oqHeader = oqInternalHeader();
+      if (oqHeader['x-oq-internal']) {
+        leadInsert.setHeader('x-oq-internal', oqHeader['x-oq-internal']);
+      }
+      const { error: leadError } = await leadInsert;
 
       // #571 / v95: server-side register_partner RPC. referral_agents has no
       // anon SELECT policy, so a direct .insert().select() can never read the

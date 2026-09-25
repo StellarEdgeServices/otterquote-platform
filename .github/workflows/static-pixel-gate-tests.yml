@@ -22,6 +22,9 @@ on:
       - 'partner-agreement.html'
       - 'partner-inspectors.html'
       - 'partner-re.html'
+      - 'start.html'
+      - 'tests/gh2068-start-html-oq-internal-header.mjs'
+      - 'tests/gh2068-partner-re-html-oq-internal-header.mjs'
       - 'tools/partner_parity_check.py'
       - 'tests/gh2155-hi0b-inspector-agreement.mjs'
       - 'partner-insurance.html'
@@ -45,6 +48,9 @@ on:
       - 'partner-agreement.html'
       - 'partner-inspectors.html'
       - 'partner-re.html'
+      - 'start.html'
+      - 'tests/gh2068-start-html-oq-internal-header.mjs'
+      - 'tests/gh2068-partner-re-html-oq-internal-header.mjs'
       - 'tools/partner_parity_check.py'
       - 'tests/gh2155-hi0b-inspector-agreement.mjs'
       - 'partner-insurance.html'
@@ -87,6 +93,10 @@ jobs:
         run: node tests/gh2154-p2-app-activation.mjs
       - name: Home-inspector agreement v3-2026-09, no fee/D-266 for inspectors (gh2155-hi0b)
         run: node tests/gh2155-hi0b-inspector-agreement.mjs
+      - name: leads_force_safe_insert_defaults() X-OQ-Internal header, start.html half (gh2068)
+        run: node tests/gh2068-start-html-oq-internal-header.mjs
+      - name: leads_force_safe_insert_defaults() X-OQ-Internal header, partner-re.html half (gh2068, cto38-b2068r)
+        run: node tests/gh2068-partner-re-html-oq-internal-header.mjs
       - name: Short partner signup field set, attribution, D-333 (gh2154-p1-short-signup)
         run: node tests/gh2154-p1-short-signup.mjs
       - name: Partner dashboard one-time set-password card (gh2154-p1-set-password)

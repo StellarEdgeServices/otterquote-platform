@@ -60,23 +60,32 @@
 -- fallback only, for any future same-origin proxy path that would
 -- actually forward it.
 --
--- Client-side wiring (this PR's sibling diff, not this file): start.html's
--- ensureSb() and react-app/app/lib/supabase.ts both now pass this header
--- via supabase-js's `global.headers` client option, computed once at
--- client-creation time from the exact same query-param/cookie contract
--- js/ga-gate.js's oqInternal() and react-app/app/lib/internal-traffic.ts's
--- isInternalTraffic() already use -- so it is set consistently for every
--- insert either client makes, present or future, without a per-call-site
--- opt-in. Verified (grep, this session): these two files are the ONLY
--- places in the repo that call `.from('leads').insert(...)` today
--- (start.html's insertFreshLead(), called by every router variant via the
--- bridge object, and react-app/app/get-started/page.tsx's
--- persistSignupContext()) -- js/config.js's and js/supabase-client.js's
--- own client factories are not currently in this table's insert path, so
--- they are not touched here; a future leads-insert call site built on
--- either of them would need the same header wired in separately for this
--- trigger to see it, since the trigger can only act on what the request
--- actually carries.
+-- Client-side wiring (this PR's sibling diff, not this file): each leads-
+-- insert call site attaches this header to THAT INSERT ONLY, via
+-- postgrest-js's per-request `.setHeader('x-oq-internal', '1')` -- never
+-- via supabase-js's client-wide `global.headers` option, because that
+-- would attach the header to every request the same client makes
+-- (including any supabase.functions.invoke(...) call), and Edge Function
+-- CORS allow-lists don't list x-oq-internal, which would break those
+-- preflights for exactly the internal/admin browsers the marker is for
+-- (cto36 REVIEW: FAIL, comment 5779410643, B2). Each call site computes
+-- the flag itself from the exact same query-param/cookie contract
+-- js/ga-gate.js's oqInternal() uses, self-contained rather than trusting
+-- another script to have run first. CORRECTION (this rebase, cto38-b2068r):
+-- the original text here named only two call sites and described
+-- `global.headers`, both wrong. Verified (grep, this session) there are
+-- THREE current `.from('leads').insert(...)` call sites in the repo:
+-- start.html's insertFreshLead() (every router variant, via the bridge
+-- object), react-app/app/get-started/page.tsx's persistSignupContext()
+-- (react-app/app/lib/supabase.ts's client), and partner-re.html's signup
+-- handler -- the third was missed by the original grep and, until this
+-- rebase's sibling diff, sent no header at all (fresh-context review
+-- Must-fix 2, comment 5824273357). All three now set it the same way.
+-- js/config.js's and js/supabase-client.js's own client factories are
+-- not otherwise in this table's insert path; a future leads-insert call
+-- site built on either of them would need the same per-request header
+-- wired in separately for this trigger to see it, since the trigger can
+-- only act on what the request actually carries.
 --
 -- Interaction with start.html's existing client-side is_synthetic write
 -- (PR #2088, merged ahead of this issue): start.html's insertFreshLead()
@@ -125,6 +134,35 @@
 -- context review comment 5824273357 Must-fix 3: the old stamp sorted before
 -- the already-applied 20260923211259_gh2122_leads_details_consent.sql, which
 -- would read wrong in "latest definition wins" migration ordering.
+--
+-- RE-STAMPED AGAIN (cto38-b2068r, this fix pass): 20260925175431 ->
+-- 20260925190131 (stamp.py), because five more migrations applied to
+-- production between that stamp and this pass -- 20260925180145,
+-- 20260925180241, 20260925180541, 20260925180647 (gh2154 P-3/P-4) and
+-- 20260925185056 (gh2154 P-4 retry-cap) -- and 20260925175431 sorted
+-- before all five (list_migrations, Supabase MCP, verified immediately
+-- before this restamp). This fix pass also: (a) corrected the forward
+-- COMMENT ON FUNCTION to name the four gh-2122 columns it nulls
+-- (funding_type/property_address/fbc/fbp), which the original comment
+-- omitted even though the forward function body already nulled them
+-- (Must-fix 1a); (b) corrected the forward COMMENT ON COLUMN
+-- leads.is_synthetic, which claimed the header is "set by every current
+-- client factory" -- it is set by exactly the three leads-insert call
+-- sites (start.html, react-app, partner-re.html), each via its own
+-- per-request setHeader(), not by a client-wide option (Must-fix 1b);
+-- (c) corrected this file's own "Client-side wiring" header paragraph,
+-- which named only two call sites and wrongly described `global.headers`
+-- (Should-fix 1); (d) replaced the rollback COMMENT ON FUNCTION text below
+-- with the LIVE production comment, verified via
+-- `SELECT obj_description('public.leads_force_safe_insert_defaults'::regproc)`
+-- immediately before this edit -- the previous rollback comment text
+-- (the gh-2122/Ben-ruling wording) does not match what production
+-- actually carries today, because 20260923211259_gh2122_leads_details_consent.sql
+-- extended the function body but never updated its COMMENT ON FUNCTION
+-- (Should-fix 2). None of (a)-(d) changes the forward or rollback
+-- function BODY -- both are still byte-identical to what fresh-context
+-- review verified (prosrc md5 2b25e098...0af live/rollback,
+-- a0df7a0d... forward-applied).
 --
 -- Tier: 3B (reviewer ruling, comment 5779410643 finding 4, PR body first
 -- line) -- CREATE OR REPLACE on a live SECURITY DEFINER BEFORE INSERT trigger
@@ -178,10 +216,10 @@ $$;
 REVOKE ALL ON FUNCTION public.leads_force_safe_insert_defaults() FROM PUBLIC, anon, authenticated;
 
 COMMENT ON FUNCTION public.leads_force_safe_insert_defaults() IS
-  'gh-1994 fix round 1, extended gh-1994/router-lead-alert and gh-2068: BEFORE INSERT guard on public.leads -- forces created_at=now() and nulls converted_user_id/role/partner_industry/alerted_at so an anon insert (with_check=true) cannot forge them, and (gh-2068) forces is_synthetic=true whenever the request carries an X-OQ-Internal: 1 header (or, belt-and-suspenders, an oq_internal=1 cookie header) -- the server-side connecting rule between gh-2064''s client-side opt-out and gh-2055''s synthetic-data column. SECURITY DEFINER only so the function itself cannot be re-pointed by a non-owner; it grants no privilege an ordinary trigger would lack.';
+  'gh-1994 fix round 1, extended gh-1994/router-lead-alert, gh-2122 and gh-2068: BEFORE INSERT guard on public.leads -- forces created_at=now() and nulls converted_user_id/role/partner_industry/alerted_at so an anon insert (with_check=true) cannot forge them, (gh-2122 / Ben ruling, comment 5803524541, D-299 evidence guard) nulls funding_type/property_address/fbc/fbp so an anon insert cannot pre-set those four Arm F / TCPA-evidence columns either (record_lead_details() is their only writer), and (gh-2068) forces is_synthetic=true whenever the request carries an X-OQ-Internal: 1 header (or, belt-and-suspenders, an oq_internal=1 cookie header) -- the server-side connecting rule between gh-2064''s client-side opt-out and gh-2055''s synthetic-data column. SECURITY DEFINER only so the function itself cannot be re-pointed by a non-owner; it grants no privilege an ordinary trigger would lack.';
 
 COMMENT ON COLUMN public.leads.is_synthetic IS
-  'gh-2055: synthetic-vs-real marker, distinct from contractors.notifications_suppressed (see that migration). NULL/false = real. Set true by two paths: (a) gh-2068''s leads_force_safe_insert_defaults() BEFORE INSERT trigger, whenever the insert request carries the oq_internal marker (X-OQ-Internal: 1 header, set by every current client factory in this repo''s own leads-insert path from the same query-param/cookie contract js/ga-gate.js''s oqInternal() uses) -- the authoritative, unconditional write-time path; (b) start.html''s insertFreshLead() also sets it directly in the insert payload for its own narrower same-page-load detection (PR #2088) -- redundant with (a) where both fire, and harmless. Rows written before either path existed (this migration, or #2088) are NOT backfilled by this change -- see #2068''s CTO RUN 36 comment for the pre-existing unmarked-row count.';
+  'gh-2055: synthetic-vs-real marker, distinct from contractors.notifications_suppressed (see that migration). NULL/false = real. Set true by two paths: (a) gh-2068''s leads_force_safe_insert_defaults() BEFORE INSERT trigger, whenever the insert request carries the oq_internal marker (X-OQ-Internal: 1 header, set per-request by this repo''s three leads-insert call sites -- start.html''s insertFreshLead(), react-app/app/get-started/page.tsx''s persistSignupContext(), and partner-re.html''s signup handler -- each computing the flag itself from the same query-param/cookie contract js/ga-gate.js''s oqInternal() uses; NOT set by every client factory in the repo, e.g. js/config.js''s and js/supabase-client.js''s own client factories are not otherwise in this table''s insert path) -- the authoritative, unconditional write-time path; (b) start.html''s insertFreshLead() also sets it directly in the insert payload for its own narrower same-page-load detection (PR #2088) -- redundant with (a) where both fire, and harmless. Rows written before either path existed (this migration, or #2088) are NOT backfilled by this change -- see #2068''s CTO RUN 36 comment for the pre-existing unmarked-row count.';
 
 COMMIT;
 
@@ -211,6 +249,6 @@ COMMIT;
 -- END;
 -- $$;
 -- COMMENT ON FUNCTION public.leads_force_safe_insert_defaults() IS
---   'gh-2122 (Ben ruling, comment 5803524541): the insert guard is extended by exactly four lines (funding_type, property_address, fbc, fbp := NULL) so a direct anon insert cannot pre-set the four Arm F / D-299 columns -- record_lead_details() is their only writer. SECURITY DEFINER only so the function itself cannot be re-pointed by a non-owner; it grants no privilege an ordinary trigger would lack.';
+--   'gh-1994 fix round 1 (REVIEW N2): BEFORE INSERT guard on public.leads -- forces created_at=now() and nulls converted_user_id/role/partner_industry/alerted_at so an anon insert (with_check=true) cannot forge them or suppress its own alert. SECURITY DEFINER only so the function itself cannot be re-pointed by a non-owner; it grants no privilege an ordinary trigger would lack.';
 -- COMMENT ON COLUMN public.leads.is_synthetic IS NULL;
 -- COMMIT;
