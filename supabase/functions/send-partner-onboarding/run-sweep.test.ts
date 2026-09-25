@@ -5,7 +5,7 @@
 // Run: deno test supabase/functions/send-partner-onboarding/run-sweep.test.ts
 
 import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
-import { runOnboardingSweep, type LedgerRow, type RunDeps } from "./run-sweep.ts";
+import { runOnboardingSweep, type LedgerRow, type RunDeps, type UncertainStage } from "./run-sweep.ts";
 import { canClaimStage, DAY_MS, type LedgerStatus, type OnboardingStage, type PartnerRow, STALE_PENDING_MINUTES } from "./onboarding-stage.ts";
 
 const NOW = Date.parse("2026-09-24T12:00:00Z");
@@ -48,16 +48,31 @@ function agedIso(ageMs: number): string {
 interface Recorder {
   claims: { partner_id: string; stage: string }[];
   sent: { partner_id: string; stage: string; mailgun_id: string | null }[];
-  failed: { partner_id: string; stage: string; error: string }[];
+  failed: { partner_id: string; stage: string; error: string; terminal: boolean }[];
   skipped: { partner_id: string; stage: string; reason: string }[];
   sends: { to: string; subject: string; textBody: string; htmlBody: string; optOutUrl: string }[];
+  alerts: UncertainStage[][];
+  markedAlerted: UncertainStage[][];
 }
 
 /** A shared in-memory ledger store, so two `deps` objects built from the
  * SAME store can model two overlapping runs racing for the same
  * (partner, stage) claim — see the "concurrent double claim" test below. */
+interface FakeRow {
+  status: LedgerStatus;
+  created_at: string;
+  // Optional so every pre-existing test in this file that seeds a row
+  // directly via `store.rows.set(k, { status, created_at })` (no opinion on
+  // retry-cap/alert-dedupe fields) keeps compiling unchanged; all three
+  // read sites below default a missing value the same way canClaimStage
+  // and the sweep itself do.
+  attempt_count?: number;
+  terminal_failure?: boolean;
+  uncertain_alerted_at?: string | null;
+}
+
 class FakeLedgerStore {
-  rows = new Map<string, { status: LedgerStatus; created_at: string }>();
+  rows = new Map<string, FakeRow>();
   key(partnerId: string, stage: string) {
     return `${partnerId}::${stage}`;
   }
@@ -65,24 +80,41 @@ class FakeLedgerStore {
     const k = this.key(partnerId, stage);
     const existing = this.rows.get(k);
     if (!canClaimStage(existing, now)) return false;
-    this.rows.set(k, { status: "pending", created_at: new Date(now).toISOString() });
+    const attempt_count = (existing?.attempt_count ?? 0) + 1;
+    this.rows.set(k, { status: "pending", created_at: new Date(now).toISOString(), attempt_count, terminal_failure: false, uncertain_alerted_at: null });
     return true;
   }
   markSent(partnerId: string, stage: string, now: number) {
-    this.rows.set(this.key(partnerId, stage), { status: "sent", created_at: new Date(now).toISOString() });
+    const k = this.key(partnerId, stage);
+    const existing = this.rows.get(k);
+    this.rows.set(k, { status: "sent", created_at: new Date(now).toISOString(), attempt_count: existing?.attempt_count ?? 1, terminal_failure: false, uncertain_alerted_at: null });
   }
-  markFailed(partnerId: string, stage: string, now: number) {
-    this.rows.set(this.key(partnerId, stage), { status: "failed", created_at: new Date(now).toISOString() });
+  markFailed(partnerId: string, stage: string, now: number, terminal: boolean) {
+    const k = this.key(partnerId, stage);
+    const existing = this.rows.get(k);
+    this.rows.set(k, {
+      status: "failed",
+      created_at: new Date(now).toISOString(),
+      attempt_count: existing?.attempt_count ?? 1,
+      terminal_failure: terminal,
+      uncertain_alerted_at: existing?.uncertain_alerted_at ?? null,
+    });
   }
   markSkipped(partnerId: string, stage: string, now: number) {
     const k = this.key(partnerId, stage);
     if (this.rows.has(k)) return; // 23505-equivalent no-op
-    this.rows.set(k, { status: "skipped", created_at: new Date(now).toISOString() });
+    this.rows.set(k, { status: "skipped", created_at: new Date(now).toISOString(), attempt_count: 0, terminal_failure: false, uncertain_alerted_at: null });
+  }
+  markUncertainAlerted(partnerId: string, stage: string, now: number) {
+    const k = this.key(partnerId, stage);
+    const existing = this.rows.get(k);
+    if (!existing) return;
+    this.rows.set(k, { ...existing, uncertain_alerted_at: new Date(now).toISOString() });
   }
   asLedgerRows(): LedgerRow[] {
     return [...this.rows.entries()].map(([k, v]) => {
       const [partner_id, stage] = k.split("::");
-      return { partner_id, stage: stage as OnboardingStage, status: v.status, created_at: v.created_at };
+      return { partner_id, stage: stage as OnboardingStage, status: v.status, created_at: v.created_at, uncertain_alerted_at: v.uncertain_alerted_at };
     });
   }
 }
@@ -94,9 +126,16 @@ function buildDeps(opts: {
   partners?: PartnerRow[];
   store?: FakeLedgerStore;
   sendOk?: boolean;
+  /** gh-2154 P-4 switch-on hardening (item (3)): when sendOk is false, mark
+   * the fake rejection as permanent (4xx-other-than-429-shaped) instead of
+   * the default ordinary/retryable rejection. */
+  sendPermanent?: boolean;
+  /** gh-2154 P-4 switch-on hardening (item (2)): defaults to a successful
+   * alert send, mirroring a healthy MAILGUN_API_KEY. */
+  alertOk?: boolean;
   now?: number;
 }): { deps: RunDeps; rec: Recorder; store: FakeLedgerStore } {
-  const rec: Recorder = { claims: [], sent: [], failed: [], skipped: [], sends: [] };
+  const rec: Recorder = { claims: [], sent: [], failed: [], skipped: [], sends: [], alerts: [], markedAlerted: [] };
   const store = opts.store ?? new FakeLedgerStore();
   const now = opts.now ?? NOW;
   const deps: RunDeps = {
@@ -116,9 +155,9 @@ function buildDeps(opts: {
       store.markSent(partnerId, stage, now);
       return { error: null };
     },
-    markFailed: async (partnerId, stage, error) => {
-      rec.failed.push({ partner_id: partnerId, stage, error });
-      store.markFailed(partnerId, stage, now);
+    markFailed: async (partnerId, stage, error, terminal) => {
+      rec.failed.push({ partner_id: partnerId, stage, error, terminal: terminal === true });
+      store.markFailed(partnerId, stage, now, terminal === true);
       return { error: null };
     },
     markSkipped: async (partnerId, stage, reason) => {
@@ -129,7 +168,21 @@ function buildDeps(opts: {
     buildOptOutUrl: async (partnerId) => `https://otterquote.com/functions/v1/partner-email-optout?t=fake.${partnerId}`,
     sendEmail: async (to, subject, textBody, htmlBody, optOutUrl) => {
       rec.sends.push({ to, subject, textBody, htmlBody, optOutUrl });
-      return { ok: opts.sendOk !== false, mailgunId: opts.sendOk !== false ? "mg-123" : undefined, error: opts.sendOk === false ? "Mailgun 500" : undefined };
+      return {
+        ok: opts.sendOk !== false,
+        mailgunId: opts.sendOk !== false ? "mg-123" : undefined,
+        error: opts.sendOk === false ? "Mailgun 500" : undefined,
+        permanent: opts.sendOk === false ? opts.sendPermanent === true : undefined,
+      };
+    },
+    alertAdminUncertain: async (stages) => {
+      rec.alerts.push([...stages]);
+      return { ok: opts.alertOk !== false, error: opts.alertOk === false ? "Mailgun 500" : undefined };
+    },
+    markUncertainAlerted: async (stages) => {
+      rec.markedAlerted.push([...stages]);
+      for (const s of stages) store.markUncertainAlerted(s.partner_id, s.stage, now);
+      return { error: null };
     },
     now,
   };
@@ -424,9 +477,16 @@ Deno.test("a STALE pending claim (past the stale window) is UNCERTAIN — surfac
   }
   assertEquals(rec.sends.length, 0, "an uncertain-outcome stage must NEVER be auto-retried — that is exactly the double-send risk being closed");
   assertEquals(rec.claims.length, 0, "claimStage must never even be called for an uncertain row");
-  // The row itself is untouched — still 'pending', same created_at, exactly
-  // as a human investigating it later would need to find it.
-  assertEquals(store.rows.get("p1::day0"), { status: "pending", created_at: staleCreatedAt });
+  // The row's status/created_at are untouched — still 'pending', same
+  // created_at, exactly as a human investigating it later would need to
+  // find it. gh-2154 P-4 switch-on hardening (item (2)): the row's
+  // uncertain_alerted_at IS now expected to be set — this run is the FIRST
+  // time this row was seen as uncertain, so it must have been alerted (see
+  // the dedicated "uncertain ... admin alert" tests below for that
+  // behavior in isolation); this assertion only re-confirms status/
+  // created_at specifically stayed put.
+  assertEquals(store.rows.get("p1::day0")?.status, "pending");
+  assertEquals(store.rows.get("p1::day0")?.created_at, staleCreatedAt);
 });
 
 Deno.test("a STALE pending claim on one stage does not block a DIFFERENT stage for the same partner from being surfaced independently", async () => {
@@ -710,4 +770,130 @@ Deno.test("P-5 ruling: an active, accepted partner (real P-1 signup) still sends
     assertEquals(outcome.results[0].sent, "day0");
   }
   assertEquals(rec.sends.length, 1);
+});
+
+// ── gh-2154 P-4 switch-on hardening, item (3): retry cap on failed sends ──
+// These fail on the pre-hardening head (merged in #2180, b6ea0ecb) — that
+// version's fake claim()/canClaimStage has no attempt_count/terminal_failure
+// concept at all, so a 'failed' row is ALWAYS reclaimable and none of the
+// assertions below (which expect a 6th attempt to be refused, or a single
+// permanent-4xx attempt to be refused on its very next tick) would hold.
+
+Deno.test("retry cap: a transient (5xx-shaped) failure is retried across ticks, but the 6th attempt is refused (MAX_SEND_ATTEMPTS=5)", async () => {
+  const store = new FakeLedgerStore();
+  let tick = 0;
+  for (; tick < 5; tick++) {
+    const { deps, rec } = buildDeps({ settingValue: ON, partners: [partner()], store, sendOk: false, now: NOW + tick * 1000 });
+    withRealCopy(deps);
+    await runOnboardingSweep(deps);
+    assertEquals(rec.sends.length, 1, `attempt ${tick + 1} must still be sent`);
+  }
+  assertEquals(store.rows.get("p1::day0")?.attempt_count, 5);
+  assertEquals(store.rows.get("p1::day0")?.status, "failed");
+
+  const { deps: deps6, rec: rec6 } = buildDeps({ settingValue: ON, partners: [partner()], store, sendOk: false, now: NOW + 5000 });
+  withRealCopy(deps6);
+  const outcome6 = await runOnboardingSweep(deps6);
+  if (outcome6.ok && "results" in outcome6) {
+    assertEquals(outcome6.results[0].skipped_reason, "already_sent");
+  }
+  assertEquals(rec6.sends.length, 0, "the 6th attempt must never be sent -- the retry cap is exhausted");
+  assertEquals(store.rows.get("p1::day0")?.attempt_count, 5, "attempt_count must not climb past the cap");
+});
+
+Deno.test("retry cap: a PERMANENT (4xx-other-than-429-shaped) failure is terminal on its VERY FIRST attempt, never retried at all", async () => {
+  const store = new FakeLedgerStore();
+  const { deps, rec } = buildDeps({ settingValue: ON, partners: [partner()], store, sendOk: false, sendPermanent: true });
+  withRealCopy(deps);
+  const outcome = await runOnboardingSweep(deps);
+  if (outcome.ok && "results" in outcome) {
+    assertEquals(outcome.results[0].skipped_reason, "send_failed");
+  }
+  assertEquals(rec.failed.length, 1);
+  assertEquals(rec.failed[0].terminal, true);
+  assertEquals(store.rows.get("p1::day0")?.terminal_failure, true);
+  assertEquals(store.rows.get("p1::day0")?.attempt_count, 1, "only ONE attempt was ever made -- terminal, not cap-exhausted");
+
+  const { deps: deps2, rec: rec2 } = buildDeps({ settingValue: ON, partners: [partner()], store, sendOk: true, now: NOW + 1000 });
+  withRealCopy(deps2);
+  const outcome2 = await runOnboardingSweep(deps2);
+  if (outcome2.ok && "results" in outcome2) {
+    assertEquals(outcome2.results[0].skipped_reason, "already_sent");
+  }
+  assertEquals(rec2.sends.length, 0, "a terminal permanent failure must never be retried, regardless of attempt_count");
+});
+
+Deno.test("retry cap: a 429 (rate limit) is treated as transient, NOT permanent, and is retried", async () => {
+  const store = new FakeLedgerStore();
+  const { deps, rec } = buildDeps({ settingValue: ON, partners: [partner()], store, sendOk: false, sendPermanent: false });
+  withRealCopy(deps);
+  await runOnboardingSweep(deps);
+  assertEquals(store.rows.get("p1::day0")?.terminal_failure, false);
+
+  const { deps: deps2, rec: rec2 } = buildDeps({ settingValue: ON, partners: [partner()], store, sendOk: true, now: NOW + 1000 });
+  withRealCopy(deps2);
+  await runOnboardingSweep(deps2);
+  assertEquals(rec2.sends.length, 1, "a non-permanent failure (e.g. 429) must still be retried on a later tick");
+});
+
+// ── gh-2154 P-4 switch-on hardening, item (2): uncertain -> admin alert ───
+// These fail on the pre-hardening head (merged in #2180, b6ea0ecb) -- that
+// version's RunDeps has no alertAdminUncertain/markUncertainAlerted fields
+// at all, so buildDeps (and this test file itself) would fail to compile
+// against it, let alone assert an alert was ever sent.
+
+Deno.test("uncertain (freshly this run, via a thrown sendEmail): one admin alert is sent immediately, and the row is marked alerted", async () => {
+  const store = new FakeLedgerStore();
+  const { deps, rec } = buildDeps({ settingValue: ON, partners: [partner()], store });
+  withRealCopy(deps);
+  deps.sendEmail = async () => ({ ok: false, uncertain: true, error: "TypeError: connection reset" });
+  const outcome = await runOnboardingSweep(deps);
+  if (outcome.ok && "results" in outcome) {
+    assertEquals(outcome.uncertain, [{ partner_id: "p1", stage: "day0" }]);
+  }
+  assertEquals(rec.alerts.length, 1, "exactly one alert call for this run");
+  assertEquals(rec.alerts[0], [{ partner_id: "p1", stage: "day0" }]);
+  assertEquals(rec.markedAlerted.length, 1);
+  assertEquals(store.rows.get("p1::day0")?.uncertain_alerted_at != null, true);
+});
+
+Deno.test("uncertain (a pre-existing STALE pending row, not yet alerted): the alert fires once, and a SUBSEQUENT run does not re-alert the same row", async () => {
+  const store = new FakeLedgerStore();
+  const staleCreatedAt = new Date(NOW - (STALE_PENDING_MINUTES + 1) * MIN).toISOString();
+  store.rows.set("p1::day0", { status: "pending", created_at: staleCreatedAt, uncertain_alerted_at: null });
+
+  const { deps, rec } = buildDeps({ settingValue: ON, partners: [partner()], store });
+  withRealCopy(deps);
+  const outcome = await runOnboardingSweep(deps);
+  if (outcome.ok && "results" in outcome) {
+    assertEquals(outcome.uncertain, [{ partner_id: "p1", stage: "day0" }]);
+  }
+  assertEquals(rec.alerts, [[{ partner_id: "p1", stage: "day0" }]], "the still-stale row must be alerted on this, its first-seen-uncertain run");
+
+  const { deps: deps2, rec: rec2 } = buildDeps({ settingValue: ON, partners: [partner()], store, now: NOW + 20 * MIN });
+  withRealCopy(deps2);
+  const outcome2 = await runOnboardingSweep(deps2);
+  if (outcome2.ok && "results" in outcome2) {
+    assertEquals(outcome2.uncertain, [{ partner_id: "p1", stage: "day0" }], "still reported as currently uncertain");
+  }
+  assertEquals(rec2.alerts.length, 0, "must NOT re-alert an already-alerted stale row");
+});
+
+Deno.test("no uncertain rows this run: alertAdminUncertain is never called", async () => {
+  const { deps, rec } = buildDeps({ settingValue: ON, partners: [partner()] });
+  withRealCopy(deps);
+  await runOnboardingSweep(deps);
+  assertEquals(rec.alerts.length, 0);
+});
+
+Deno.test("alertAdminUncertain failing (e.g. MAILGUN_API_KEY unset) does not throw, does not mark alerted, and does not remove the row from the JSON uncertain list", async () => {
+  const store = new FakeLedgerStore();
+  const { deps, rec } = buildDeps({ settingValue: ON, partners: [partner()], store, alertOk: false });
+  withRealCopy(deps);
+  deps.sendEmail = async () => ({ ok: false, uncertain: true, error: "connection reset" });
+  const outcome = await runOnboardingSweep(deps);
+  if (outcome.ok && "results" in outcome) {
+    assertEquals(outcome.uncertain, [{ partner_id: "p1", stage: "day0" }], "the sweep's own JSON response still lists it even if the alert failed to send");
+  }
+  assertEquals(rec.markedAlerted.length, 0, "must not mark alerted when the alert send itself failed");
 });

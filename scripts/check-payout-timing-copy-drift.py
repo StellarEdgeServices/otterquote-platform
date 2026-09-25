@@ -94,6 +94,17 @@ ALLOWLIST = [
         "constrains nothing about money at all.",
     ),
     (
+        "partner-agreement-inspector.html",
+        "notify Partner of material changes by email or through Partner",
+        "agreement-modification notice period",
+        "gh-2155 HI-0c: partner-agreement-inspector.html is generated from "
+        "partner-agreement.html by tools/build_inspector_agreement.py, which "
+        "removes the fee table/Section 4.1/Section 7/Section 14(a) cross-ref "
+        "only -- Section 17 is untouched, so this is the identical sentence "
+        "as the partner-agreement.html entry immediately above, for the same "
+        "reason: a 30-day notice-of-change period, not a disbursement claim.",
+    ),
+    (
         "contractor-agreement.html",
         "typically approved and processed within five (5) business days",
         "approval-step timing",

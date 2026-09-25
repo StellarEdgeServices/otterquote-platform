@@ -776,7 +776,19 @@
         <div class="form-checkbox-group">
           <input type="checkbox" id="agreeToTerms" class="form-checkbox" required>
           <label for="agreeToTerms" class="checkbox-label">
-            I agree to Otter Quotes's <a href="partner-agreement.html">Partner Terms</a>
+            <!-- gh-2155 HI-0c (Ben ruling, #2152 comment 5836510515, item 1):
+                 supersedes the HI-0b query-string/hash-tracked link -- that
+                 mechanism was found to fail closed only when the hash
+                 survived (a footer re-click, or JS-off with no hash, both
+                 landed on the fee-bearing page). partner-agreement-inspector.html
+                 is a static build (tools/build_inspector_agreement.py) with
+                 the fee table, Section 4.1, all of Section 7, and the
+                 Section 14(a) cross-reference removed at build time -- no
+                 query param, hash, CSS, or JS is needed for it to fail
+                 closed, because the fee content simply is not in the file.
+                 Home inspectors receive no referral fee or recruit bonus
+                 under Section 4.3, which this build keeps unchanged. -->
+            I agree to Otter Quotes's <a href="partner-agreement-inspector.html">Partner Terms</a>
           </label>
         </div>
 
@@ -786,10 +798,6 @@
 
         <p class="form-note">
           Home-inspector partners do not receive a referral fee or recruit bonus.
-        </p>
-
-        <p class="form-note referral-fee-disclaimer">
-          Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.
         </p>
       </form>
 
@@ -859,7 +867,7 @@
 
         <!-- Go to Dashboard -->
         <div class="toolkit-card" style="text-align:center;">
-          <a href="/partner-dashboard.html" class="btn btn-primary">Go to Partner Dashboard</a>
+          <a href="/partner-dashboard.html?track=home_inspector" class="btn btn-primary">Go to Partner Dashboard</a>
         </div>
 
       </div>

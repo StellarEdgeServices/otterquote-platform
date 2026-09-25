@@ -230,14 +230,26 @@ export function selectStage(
 // neither is consulted for the 'pending' branch any more. Staleness is
 // still meaningful — see isUncertainPending below — but it now means
 // "surface this for a human," never "safe to claim again."
+// gh-2154 P-4 switch-on hardening (Ben, bus 18:23:17Z item (3) retry cap):
+// mirrors claim_partner_onboarding_stage()'s NEW WHERE clause exactly (see
+// supabase/migrations/20260925183000_gh2154_p4_switchon_retry_cap_uncertain_alert.sql
+// and ./claim-stage-sql-proof.ts's byte-exact quoted copy). A 'failed' row
+// is reclaimable ONLY while attempt_count is still under the cap AND it was
+// never marked terminal_failure (a permanent 4xx Mailgun rejection ends
+// retries immediately, before the count cap is even reached). 'pending'
+// (any age), 'sent', and 'skipped' remain never-reclaimable, unchanged.
+export const MAX_SEND_ATTEMPTS = 5;
+
 export function canClaimStage(
-  existing: { status: LedgerStatus; created_at: string } | undefined,
+  existing: { status: LedgerStatus; created_at: string; attempt_count?: number; terminal_failure?: boolean } | undefined,
   _now: number,
   _staleMinutes: number = STALE_PENDING_MINUTES,
 ): boolean {
   if (!existing) return true;
-  if (existing.status === "failed") return true;
-  return false; // 'pending' (any age), 'sent', or 'skipped' — never reclaimable
+  if (existing.status !== "failed") return false; // 'pending' (any age), 'sent', or 'skipped' — never reclaimable
+  if (existing.terminal_failure) return false; // permanent 4xx rejection — never retried, regardless of attempt_count
+  const attempts = existing.attempt_count ?? 0;
+  return attempts < MAX_SEND_ATTEMPTS;
 }
 
 /**

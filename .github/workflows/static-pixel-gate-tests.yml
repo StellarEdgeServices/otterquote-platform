@@ -14,21 +14,38 @@ on:
       - 'js/meta-pixel-gate.js'
       - 'js/services.js'
       - 'js/cookie-storage.js'
+      - 'js/nav.js'
       - 'tests/gh2106-pixel-gaps.mjs'
       - 'tests/gh2107-pixel-gate-optout.mjs'
       - 'tests/gh2107-gpc-client.mjs'
       - 'partner-dashboard.html'
+      - 'partner-app.html'
       - 'tests/gh2154-p2-app-activation.mjs'
-      - 'partner-re.html'
-      - 'partner-insurance.html'
+      - 'partner-agreement.html'
+      - 'partner-agreement-inspector.html'
+      - 'tools/build_inspector_agreement.py'
       - 'partner-inspectors.html'
+      - 'partner-re.html'
+      - 'tools/partner_parity_check.py'
+      - 'tests/gh2155-hi0b-inspector-agreement.mjs'
+      - 'tests/gh2155-hi0c-inspector-agreement-parity.mjs'
+      - 'tests/gh2155-hi0c-inspector-sweep.mjs'
+      - 'partner-insurance.html'
+      - 'partner-login.html'
       - 'tests/gh2154-p1-short-signup.mjs'
       - 'tests/gh2154-p1-set-password.mjs'
       - 'partner-invite.html'
       - 'tests/gh2154-p5-invite-page.mjs'
-      - 'partner-login.html'
       - 'tests/gh2154-p1-login-reset.mjs'
       - 'tests/gh2154-p1-cookie-storage-updateuser.mjs'
+      - 're-1.html'
+      - 'tests/gh2150-re1-page.mjs'
+      - 'ins-1.html'
+      - 'tests/gh2151-ins1-page.mjs'
+      - 'hi-1.html'
+      - 'tests/gh2152-hi1-page.mjs'
+      - 'tests/gh2150-gh2151-s05-perf-structure.mjs'
+      - 'tests/gh2192-s05-must-fix.mjs'
       - '.github/workflows/static-pixel-gate-tests.yml'
   push:
     branches: [main]
@@ -36,21 +53,38 @@ on:
       - 'js/meta-pixel-gate.js'
       - 'js/services.js'
       - 'js/cookie-storage.js'
+      - 'js/nav.js'
       - 'tests/gh2106-pixel-gaps.mjs'
       - 'tests/gh2107-pixel-gate-optout.mjs'
       - 'tests/gh2107-gpc-client.mjs'
       - 'partner-dashboard.html'
+      - 'partner-app.html'
       - 'tests/gh2154-p2-app-activation.mjs'
-      - 'partner-re.html'
-      - 'partner-insurance.html'
+      - 'partner-agreement.html'
+      - 'partner-agreement-inspector.html'
+      - 'tools/build_inspector_agreement.py'
       - 'partner-inspectors.html'
+      - 'partner-re.html'
+      - 'tools/partner_parity_check.py'
+      - 'tests/gh2155-hi0b-inspector-agreement.mjs'
+      - 'tests/gh2155-hi0c-inspector-agreement-parity.mjs'
+      - 'tests/gh2155-hi0c-inspector-sweep.mjs'
+      - 'partner-insurance.html'
+      - 'partner-login.html'
       - 'tests/gh2154-p1-short-signup.mjs'
       - 'tests/gh2154-p1-set-password.mjs'
       - 'partner-invite.html'
       - 'tests/gh2154-p5-invite-page.mjs'
-      - 'partner-login.html'
       - 'tests/gh2154-p1-login-reset.mjs'
       - 'tests/gh2154-p1-cookie-storage-updateuser.mjs'
+      - 're-1.html'
+      - 'tests/gh2150-re1-page.mjs'
+      - 'ins-1.html'
+      - 'tests/gh2151-ins1-page.mjs'
+      - 'hi-1.html'
+      - 'tests/gh2152-hi1-page.mjs'
+      - 'tests/gh2150-gh2151-s05-perf-structure.mjs'
+      - 'tests/gh2192-s05-must-fix.mjs'
       - '.github/workflows/static-pixel-gate-tests.yml'
 
 permissions:
@@ -83,6 +117,12 @@ jobs:
         run: node tests/gh2107-gpc-client.mjs
       - name: Partner dashboard activation RPC, per-user flag (gh2154-p2-app-activation)
         run: node tests/gh2154-p2-app-activation.mjs
+      - name: Home-inspector agreement v3-2026-09, no fee/D-266 for inspectors (gh2155-hi0b)
+        run: node tests/gh2155-hi0b-inspector-agreement.mjs
+      - name: Static inspector agreement build parity, no drift vs source (gh2155-hi0c-parity)
+        run: node tests/gh2155-hi0c-inspector-agreement-parity.mjs
+      - name: No fee wording reachable on the inspector track, JS on/off + negative controls (gh2155-hi0c-sweep)
+        run: node tests/gh2155-hi0c-inspector-sweep.mjs
       - name: Short partner signup field set, attribution, D-333 (gh2154-p1-short-signup)
         run: node tests/gh2154-p1-short-signup.mjs
       - name: Partner dashboard one-time set-password card (gh2154-p1-set-password)
@@ -93,3 +133,13 @@ jobs:
         run: node tests/gh2154-p1-login-reset.mjs
       - name: Real supabase-js -- rejected updateUser() must not sign the partner out (gh2154-p1-cookie-storage-updateuser)
         run: node tests/gh2154-p1-cookie-storage-updateuser.mjs
+      - name: RE-1 dedicated landing page -- approved copy, funnel_id attribution (gh2150-re1-page)
+        run: node tests/gh2150-re1-page.mjs
+      - name: INS-1 dedicated landing page -- approved copy, field set, funnel-id attribution (gh2151-ins1-page)
+        run: node tests/gh2151-ins1-page.mjs
+      - name: HI-1 dedicated landing page -- approved copy, field set, no-fee disclosure, HI-0.5 track links (gh2152-hi1-page)
+        run: node tests/gh2152-hi1-page.mjs
+      - name: S05 perf structure -- no render-blocking scripts/styles, lazy Supabase bundle on re-1/ins-1/hi-1 (gh2150-gh2151-s05-perf-structure)
+        run: node tests/gh2150-gh2151-s05-perf-structure.mjs
+      - name: S05 perf must-fixes -- recruit-code attribution race, pre-hydration submit queue/no-GET (gh2192-s05-must-fix)
+        run: node tests/gh2192-s05-must-fix.mjs

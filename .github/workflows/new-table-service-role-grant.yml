@@ -1,0 +1,66 @@
+name: New-Table Service-Role Grant
+
+# gh-2145 -- Supabase vendor notice (2026-09-23): on 2026-10-30 Supabase
+# stops auto-granting Data API access to any NEW table created in `public`.
+# Existing tables keep their current grants; this is diff-scoped exactly
+# like permissions-ratchet.yml (gh-1767) and migrations-reconciliation-
+# ratchet.yml (gh-1438) -- it only inspects what a PR's OWN diff adds to
+# supabase/migrations/**/*.sql, never the repo's pre-existing 150+ files.
+#
+# Scope: requires an explicit `GRANT ... TO service_role` (or a schema-wide
+# `ALL TABLES IN SCHEMA public` grant) covering any brand-new public table a
+# PR creates. It does NOT require anon/authenticated grants -- those are a
+# per-table product decision already gated by permissions-ratchet.yml's own
+# allowlist/bypass-label rule, and duplicating that here would let the two
+# gates disagree about the same statement. See scripts/new-table-service-
+# role-grant-check.py's module docstring for the full reasoning, including
+# the read-only prod grant enumeration that corrected gh-2145's own issue-
+# body premise about partner_onboarding_sends.
+#
+# BUILD-FAILING, not advisory -- same posture as permissions-ratchet.yml,
+# for the same reason: diff-scoped checks start clean on every PR that
+# doesn't touch supabase/migrations/**, so there is no "can never go green"
+# problem to justify an advisory posture.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/**'
+      - 'scripts/permissions-ratchet.py'
+      - 'scripts/new-table-service-role-grant-check.py'
+      - 'scripts/new-table-service-role-grant-check.test.py'
+      - '.github/workflows/new-table-service-role-grant.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  new-table-service-role-grant:
+    name: New public tables must GRANT service_role explicitly
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history -- the script diffs base...head itself
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      # BUILD-FAILING. Proves the detector's own rule logic (fixture-driven,
+      # with a real negative control -- see new-table-service-role-grant-
+      # fixtures/new_table_no_grant_bad.sql) before trusting its verdict on
+      # this PR's actual diff below.
+      - name: Self-test the detector's own rules
+        run: python scripts/new-table-service-role-grant-check.py --self-test
+
+      - name: Run the check against this PR's diff
+        run: |
+          python scripts/new-table-service-role-grant-check.py \
+            --root . \
+            --base "${{ github.event.pull_request.base.sha }}" \
+            --head "${{ github.event.pull_request.head.sha }}"

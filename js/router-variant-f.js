@@ -206,8 +206,66 @@
   function emitComplete(token) { bridge.trackRouter('router_step_complete', stepParams(token)); }
 
   var RENDERERS = {};
+  // gh-2121 (LRS S05, ceo69, HO-1 S05 LCP fix): true once the SSR-hydrate
+  // path below has run (or been attempted) once. start.html now ships the
+  // f-funding screen's markup statically inside #routerFRoot (byte-identical
+  // to what RENDERERS['f-funding'] builds -- see that div's own comment)
+  // precisely so the <h1>, Arm F's LCP element, can paint before this file
+  // even loads. The very first call to show() is always show('f-funding')
+  // from init() below -- when that SSR markup is present this ONE call
+  // hydrates it (wires the funding buttons' click handlers onto the
+  // existing DOM) instead of clearRoot()+RENDERERS['f-funding']() throwing
+  // it away and rebuilding an identical copy. Every later call to show()
+  // (address/contact/thanks, or f-funding again via goBack -- goBack can
+  // only be reached after clearRoot() has already run once, so the SSR
+  // markup is gone by then) takes the normal rebuild path unchanged.
+  // router_step_view still fires at exactly the same call site either way.
+  var ssrHydrateAttempted = false;
+  function hydrateSsrFunding() {
+    var buttons = root.querySelectorAll('.role-option');
+    if (buttons.length !== FUNDING_OPTIONS.length) {
+      // Markup drifted from FUNDING_OPTIONS (see the SSR div's own comment)
+      // -- degrade safely to the normal rebuild rather than wiring up the
+      // wrong buttons or leaving some of them dead.
+      clearRoot();
+      RENDERERS['f-funding']();
+      return;
+    }
+    FUNDING_OPTIONS.forEach(function (opt, i) {
+      buttons[i].addEventListener('click', function () {
+        funding = opt.value; // held in memory; goes only to the details Edge Function
+        go('f-address');
+      });
+    });
+    // gh-2121 round 3 (M2, review 5834623268): replay a tap that landed in
+    // the SSR-paint-to-hydrate dead window. start.html's own early listener
+    // on these same buttons (added synchronously right after the SSR
+    // markup, long before this file even loads) recorded the FIRST such
+    // tap's button index into window.__oqEarlyTap. Read-and-clear it here
+    // so it can only ever be replayed once -- this function itself only
+    // runs once per page load (see show()'s ssrHydrateAttempted guard), and
+    // goBack() back to 'f-funding' takes the normal rebuild path (clearRoot()
+    // has already thrown the SSR root away by then), so there is no second
+    // chance to read a stale value. buttons[early.index].click() re-enters
+    // the exact click handler wired two lines above -- one funding value
+    // set, one go('f-address'), one router_step_complete -- not a separate
+    // "replay" code path that could double-fire against a real second tap.
+    try {
+      var early = window.__oqEarlyTap;
+      window.__oqEarlyTap = null;
+      if (early && typeof early.index === 'number' && buttons[early.index]) {
+        buttons[early.index].click();
+      }
+    } catch (e) { /* no early tap recorded, or window unavailable -- fine */ }
+  }
   function show(token) {
     activeToken = token;
+    if (token === 'f-funding' && !ssrHydrateAttempted && root.getAttribute('data-ssr-step') === 'f-funding') {
+      ssrHydrateAttempted = true;
+      emitView(token);
+      hydrateSsrFunding();
+      return;
+    }
     clearRoot();
     emitView(token);
     RENDERERS[token]();

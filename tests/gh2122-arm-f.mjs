@@ -100,20 +100,47 @@ const blockRedirect = extractBetween(startSrc, 'function redirectTo(dest, preBui
 const blockAbandonListeners = extractBetween(startSrc, 'var ABANDON_HIDDEN_GRACE_MS = 5000;', "\n\n  // gh-2017: arm C's bridge, assembled LAST", 'abandon beacon');
 const blockMarkSaved = extractBetween(startSrc, 'function markLeadSaved() {', '\n\n', 'markLeadSaved');
 ok(blockMarkSaved.indexOf('abandonSuppressedByNav = true;') !== -1, 'start.html markLeadSaved() sets abandonSuppressedByNav = true');
+// gh-2121 round 3 (M2, review 5834623268): the real early-tap capture IIFE,
+// extracted whole (opening "(function () {" through its own closing
+// "})();") so it is a complete, directly-runnable statement -- not
+// hand-retyped, so a future edit to this block in start.html either stays
+// in sync with this test or breaks the extraction loudly.
+const blockEarlyTap = extractBetween(startSrc,
+  "(function () {\n    if (document.documentElement.getAttribute('data-oq-start-arm') !== 'f') return;\n    var root = document.getElementById('routerFRoot');",
+  '\n</script>\n\n<!-- gh-2121 (LRS S07)', 'early-tap capture (M2)');
+ok(blockEarlyTap.indexOf('window.__oqEarlyTap') !== -1, 'start.html has the early-tap capture IIFE (window.__oqEarlyTap)');
 
 // ── Minimal DOM shim, same surface as tests/gh2096-dropoff-layer.mjs, plus
 // checkbox `checked`, `disabled` propagation and a document that can hold
-// listeners (the abandon beacon registers visibilitychange on it). ──
+// listeners (the abandon beacon registers visibilitychange on it). Also
+// (gh-2121 round 3, M2 test) `querySelectorAll('.cls')` -- flat descendant
+// class-selector search, the one selector shape js/router-variant-f.js's
+// hydrateSsrFunding() actually issues -- and `.click()` as a real alias for
+// the pre-existing `.dispatchClick()`, so a test can drive the SSR-hydrate +
+// early-tap path the same way start.html's own early listener does: calling
+// `.click()` on an element, not reaching into the harness. ──
 function makeDom() {
   const registry = {};
   function dispatchDomEvent(target, type) {
     const event = { type, preventDefault() {}, stopPropagation() {} };
     (target._listeners[type] || []).forEach((entry) => entry.fn(event));
   }
+  function matchesClass(el, cls) { return (el._classes || []).indexOf(cls) !== -1; }
+  function descendants(el) {
+    const out = [];
+    (el.children || []).forEach((c) => { out.push(c); out.push(...descendants(c)); });
+    return out;
+  }
   function createElement(tag) {
     const el = {
       tagName: String(tag).toUpperCase(), _classes: [], children: [], attributes: {}, style: {}, _listeners: {},
       _text: '', parentNode: null,
+      querySelectorAll(sel) {
+        const s = String(sel || '').trim();
+        if (s.charAt(0) !== '.') throw new Error('test DOM shim querySelectorAll only supports a class selector, got: ' + sel);
+        return descendants(this).filter((d) => matchesClass(d, s.slice(1)));
+      },
+      click() { this.dispatchClick(); },
       get className() { return this._classes.join(' '); },
       set className(v) { this._classes = v ? String(v).split(/\s+/).filter(Boolean) : []; },
       get textContent() {
@@ -136,11 +163,16 @@ function makeDom() {
     return el;
   }
   const windowListeners = {};
+  // gh-2121 round 3 (M2 test): a real documentElement, so the extracted
+  // early-tap IIFE's own `document.documentElement.getAttribute(...)` read
+  // works exactly as it does in a real browser -- not stubbed out.
+  const documentElement = createElement('html');
   const document = {
     createElement,
     createTextNode: (text) => ({ nodeType: 3, textContent: String(text) }),
     getElementById: (id) => registry[id] || null,
     visibilityState: 'visible',
+    documentElement,
     addEventListener(evt, fn) { (windowListeners[evt] = windowListeners[evt] || []).push(fn); },
     body: { appendChild: (el) => el }
   };
@@ -229,6 +261,29 @@ function buildF(opts) {
     'window.__t = { trackRouter: trackRouter, redirectTo: redirectTo, markLeadSaved: markLeadSaved, appendParams: appendParams, collectAttribution: collectAttribution,' +
     ' setLeadId: function (v) { leadId = v; } };\n})();', ctx, { filename: 'start.html (extracted blocks)' });
   const T = fakeWindow.__t;
+
+  // gh-2121 round 3 (M2 test, opts.ssrHydrate): reproduce start.html's own
+  // #routerFRoot SSR markup (3 .role-option buttons, data-ssr-step
+  // "f-funding") and run the REAL extracted early-tap IIFE against it --
+  // same order as production: markup + early listener exist first, taps
+  // (if any) happen next, js/router-variant-f.js loads and calls init()
+  // last. opts.earlyTapIndex, if set, dispatches a click on that button
+  // BEFORE RVF.init() ever runs, simulating a tap that lands in the SSR
+  // paint-to-hydrate dead window this fix targets.
+  if (opts.ssrHydrate) {
+    document.documentElement.setAttribute('data-oq-start-arm', 'f');
+    root.setAttribute('data-ssr-step', 'f-funding');
+    ['Insurance claim', 'Paying cash', 'Not sure yet'].forEach((label) => {
+      const btn = document.createElement('button');
+      btn.setAttribute('type', 'button');
+      btn.className = 'role-option';
+      btn.textContent = label;
+      root.appendChild(btn);
+    });
+    vm.runInContext(blockEarlyTap, ctx, { filename: 'start.html (early-tap IIFE)' });
+    const earlyTaps = typeof opts.earlyTapIndex === 'number' ? [opts.earlyTapIndex] : (opts.earlyTapIndexes || []);
+    earlyTaps.forEach((idx) => { buttons(root)[idx].dispatchClick(); });
+  }
 
   const bridge = {
     get sb() {
@@ -344,6 +399,48 @@ async function main() {
     const v = s.ev('router_step_view');
     ok(v.length === 1 && v[0].params.step === 'f-funding' && v[0].params.step_index === 1 && v[0].params.variant === 'f' && v[0].params.ua_context === 'fb_iab',
       'screen 1 fires router_step_view {f-funding, step_index 1, variant f, ua_context fb_iab} (real trackRouter payload)');
+  }
+
+  // ═══ F1b: SSR-hydrate + early-tap replay (gh-2121 round 3, M2, review
+  // 5834623268). The SSR #routerFRoot buttons paint before hydrateSsrFunding()
+  // wires their real click handlers; a tap in that window was previously
+  // lost silently (9/10 measured first-tap runs). ═══
+  {
+    // No early tap: hydrate normally, a real POST-hydrate tap still works.
+    const s0 = buildF({ ua: FB_UA, ssrHydrate: true });
+    ok(s0.fakeWindow.__oqEarlyTap == null, 'no early tap: window.__oqEarlyTap stays unset through hydrate');
+    pickFunding(s0, 'Paying cash');
+    const v0 = s0.ev('router_step_view').map((e) => e.params.step);
+    ok(JSON.stringify(v0) === JSON.stringify(['f-funding', 'f-address']),
+      'SSR-hydrated screen 1, no early tap: a normal post-hydrate tap still advances f-funding -> f-address (' + v0.join(',') + ')');
+
+    // A tap on "Paying cash" (index 1) BEFORE js/router-variant-f.js's
+    // hydrateSsrFunding() ever runs -- the exact dead-window scenario.
+    const s1 = buildF({ ua: FB_UA, ssrHydrate: true, earlyTapIndex: 1 });
+    ok(s1.fakeWindow.__oqEarlyTap == null, 'the early tap is consumed and cleared by hydrateSsrFunding (not left set)');
+    const v1 = s1.ev('router_step_view').map((e) => e.params.step);
+    const c1 = s1.ev('router_step_complete').map((e) => e.params.step);
+    ok(JSON.stringify(v1) === JSON.stringify(['f-funding', 'f-address']),
+      'a tap in the SSR-to-hydrate dead window is replayed on hydrate, not lost: router_step_view f-funding then f-address (' + v1.join(',') + ')');
+    ok(JSON.stringify(c1) === JSON.stringify(['f-funding']), 'exactly ONE router_step_complete (f-funding) from the replay -- no double-fire');
+    ok(s1.insertCalls.length === 0, 'the replay only advances the step; screen 1 still writes nothing, same as a normal tap');
+    ok(flatten(s1.root).map((c) => c.textContent).join('|').indexOf(COPY.arm_f_s1_headline) === -1,
+      'the screen actually advanced off f-funding (its headline is gone), not just an event fired while the funding screen still shows');
+    // Finish the flow (screen 1 is already behind us) and confirm the
+    // replayed tap chose the RIGHT button (index 1, "Paying cash" ->
+    // funding 'cash'), not just some advance.
+    toAddress(s1, '123 Main St, Indianapolis, IN 46204');
+    fillContact(s1, GOOD);
+    submit(s1); await settleN(4);
+    ok(s1.detailsCalls.length === 1 && s1.detailsCalls[0].body.funding_type === 'cash',
+      'the replayed early tap on index 1 carried through as funding_type "cash" (not lost, not a different option)');
+
+    // Two early taps before hydrate (index 1 then index 2): only the FIRST
+    // is remembered and replayed -- one advance, not two, not the second
+    // tap's choice.
+    const s2 = buildF({ ua: FB_UA, ssrHydrate: true, earlyTapIndexes: [1, 2] });
+    const c2 = s2.ev('router_step_complete').map((e) => e.params.step);
+    ok(JSON.stringify(c2) === JSON.stringify(['f-funding']), 'two early taps before hydrate still replay only once (first tap wins, second is ignored)');
   }
 
   // ═══ F2: funding -> address -> contact; validation; step events. ═══
@@ -714,7 +811,7 @@ async function main() {
     buttonByText(k.root, COPY.arm_f_s4_button_losssheet).dispatchClick();
     ok(/help-estimate\?lead=/.test(k.fakeWindow.location.href), 'when the details call has already settled a CTA tap navigates immediately');
     const b = buildF({ insertFails: 1 }); drive(b, GOOD);
-    const backOf = (x) => buttons(x.root).find((y) => y.textContent === '\u2190 Back');
+    const backOf = (x) => buttons(x.root).find((y) => y.textContent === '← Back');
     ok(backOf(b) && backOf(b).disabled !== true, 'setup: Back is enabled on screen 3 before submit');
     submit(b);
     ok(backOf(b).disabled === true, 'Back is DISABLED as soon as the save starts');
@@ -782,6 +879,42 @@ async function main() {
   ok(/get detailsUrl\(\) \{ return \(typeof CONFIG !== 'undefined' && CONFIG\.SUPABASE_URL\)/.test(startSrc) && /get anonKey\(\) \{ return \(typeof CONFIG/.test(startSrc), "start.html's F bridge supplies the Edge Function URL and the public anon key");
   ok(startSrc.indexOf('id="routerFRoot"') !== -1 && startSrc.indexOf("routerFScript.src = 'js/router-variant-f.js'") !== -1, 'start.html mounts #routerFRoot and loads js/router-variant-f.js only inside the ARM_F branch');
   ok(/if \(ARM_C \|\| ARM_D \|\| ARM_E \|\| ARM_F\) return;/.test(startSrc), 'renderStep early-returns for arm F like C/D/E (A/B shared-section code never runs over F)');
+
+  // ═══ F14: M1 (review 5834623268) -- the design-system.css/nav.css noscript
+  // fallback is LITERAL markup, not inside document.write(), so it works
+  // with JS off on every arm, not just Arm F. ═══
+  {
+    const noscriptIdx = startSrc.indexOf('<noscript><link rel="stylesheet" href="css/design-system.css"><link rel="stylesheet" href="css/nav.css"></noscript>');
+    ok(noscriptIdx !== -1, 'start.html has a literal (not document.write-generated) <noscript> fallback for design-system.css + nav.css');
+    const scriptIdx = startSrc.indexOf("document.documentElement.getAttribute('data-oq-start-arm') === 'f') {\n      document.write('<link rel=\"preload\"");
+    ok(scriptIdx !== -1, "the Arm F branch's document.write only writes the preload <link>s now (M1 fix)");
+    ok(noscriptIdx !== -1 && scriptIdx !== -1 && noscriptIdx < scriptIdx, 'the literal <noscript> fallback sits BEFORE the <script> that document.writes the blocking/preload links, so a no-JS browser reaches it unconditionally');
+    // The old, broken shape (noscript built via document.write, reachable
+    // only with JS on) must be gone, not just duplicated alongside the fix.
+    ok(!/document\.write\('<noscript>/.test(startSrc), 'no document.write(...) call builds a <noscript> tag anywhere (the old M1 bug is actually removed, not just supplemented)');
+  }
+
+  // ═══ F15: should-fix (review 5834623268) -- the critical-CSS block carries
+  // design-system.css's `p { line-height: 1.7; }` so Arm F's <p> tags don't
+  // shift ~4.6px when the async stylesheet lands. ═══
+  {
+    const css = startSrc.slice(startSrc.indexOf('<style'), startSrc.indexOf('</style>'));
+    ok(/(^|[\s;{}])p\s*\{[^}]*line-height:\s*1\.7/m.test(css), 'the inline critical-CSS block sets p { line-height: 1.7 }, matching css/design-system.css:99');
+  }
+  // ═══ F13 (gh-2121, HO-1 S13): pixel conversion event fires + is tested. ═══
+  // The behavioral half (the Meta Lead pixel fires exactly once, shares
+  // event_id with GA4 generate_lead, carries no PII) is already proven above
+  // by F4/F17/the negative controls (see 'Meta Lead fires exactly ONCE',
+  // 'GA4 generate_lead and Meta Lead share the SAME event_id', 'the Meta Lead
+  // call carries an EMPTY parameter object'). These are the dedicated S13
+  // checkpoints cited as this row's evidence. (S14/utm_campaign router-URL
+  // work was dropped from this PR's scope, per Ben's 2026-09-25 scope
+  // change: utm_campaign=ho-1 is already on all 3 live ad URLs.)
+  console.log('\n=== F13 (gh-2121): S13 pixel conversion ===');
+  ok(/fbq\('track', 'Lead', \{\}, \{ eventID: eventId \}\)/.test(moduleSrc),
+    "S13: js/router-variant-f.js's fireConversion() fires Meta pixel 'Lead' with the shared event_id (behavioral proof above, F4/F17)");
+  ok(!/li_fat_id|linkedin|LinkedIn Insight|_linkedin_data_partner_id/i.test(moduleSrc) && !/li_fat_id|linkedin partner|_linkedin_data_partner_id/i.test(startSrc),
+    'S13: LinkedIn Insight is N/A -- no LinkedIn tracking call exists anywhere in the Arm F path (no LinkedIn traffic, per this checklist\'s own N/A convention)');
 
   console.log('\n=== Summary ===\n' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail === 0 ? 0 : 1);
