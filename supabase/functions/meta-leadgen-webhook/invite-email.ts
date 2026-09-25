@@ -7,19 +7,16 @@
 // 5837072371), from the draft at
 // In-Flight/reports/ceo69-p5-invite-copy-20260925.md (Sloane, CEO RUN 69).
 // Subject/body/CTA below for RE-2/INS-2/HI-2 are that draft's "Email 1"
-// text verbatim, per agent_type. Two things NOT done here, both explicit
-// in that approval:
-//   1. The 48h reminder email (draft's "Reminder" block) -- a separate,
-//      "recommended" follow-up, not built this round; only Email 1 exists.
-//   2. The footer's unsubscribe LINK -- the approved footer text below is
-//      used verbatim, but no opt-out token/URL is wired to it yet. The
-//      natural fit is reusing the SAME already-deployed mechanism
-//      send-partner-onboarding uses (PARTNER_ONBOARDING_OPTOUT_SECRET ->
-//      partner-email-optout), not a new one -- flagged as an owed item in
-//      this PR's evidence, not silently shipped as either a dead link or
-//      a missing legally-required element. PARTNER_INVITE_EMAIL_ENABLED
-//      defaults OFF regardless (see index.ts), so this is inert either way
-//      until that link is wired AND the switch is flipped at go-live.
+// text verbatim, per agent_type. The 48h reminder email (draft's
+// "Reminder" block) is a separate function, buildReminderEmail below.
+//
+// gh-2154 P-5 go-live (Ben, bus 2026-09-25T22:17:42Z): the footer's
+// unsubscribe link is now wired to a real, verifiable opt-out URL --
+// buildInviteEmail (and buildReminderEmail) both take an already-signed
+// optOutUrl string from the caller (index.ts), built via optout.ts's
+// SAME mechanism/secret/endpoint send-partner-onboarding uses. Never
+// built here from a raw secret -- see optout.ts's own header for why this
+// is deliberately not a new invite-specific opt-out.
 //
 // Ben's own open flag on the approval (not Dustin's to fix without asking,
 // per that same comment): the footer line "you signed up as an Otter
@@ -27,18 +24,30 @@
 // join" via a Meta lead form. Left exactly as Dustin approved it --
 // unchanged pending his call, per Ben's note.
 
+// ─── BEGIN PARITY REGION — edit both copies together ────────────────────────
+// gh-2154 P-5 go-live: this region (everything the 48h reminder needs, plus
+// the shared footer/switch/routing helpers) is duplicated byte-for-byte
+// into send-partner-invite-reminder/invite-email-copy.ts (that directory's
+// own cron-triggered sender), held in parity by that file's own
+// invite-email-copy.parity.test.ts. buildInviteEmail/benefitSentence/
+// openingLine/stepThree are the INITIAL invite's own text and are included
+// here too (simpler than splitting the region) even though the reminder
+// sender never calls them.
+
 import { buildPartnerInviteUrl } from "./invite-token.ts";
 
 /** Dustin-approved footer (#2154 comment 5837072371), verbatim from the
- * P-4 sequence per D-237. UNSUBSCRIBE_URL has no real link wired yet (see
- * header comment) -- left as an explicit, clearly-marked placeholder
- * rather than a dead/fake URL. */
+ * P-4 sequence per D-237, now with a real, signed unsubscribe link
+ * (caller-supplied, already HMAC-verifiable -- see header comment). The
+ * anchor pattern matches send-partner-onboarding/copy.ts's
+ * renderUnsubscribeLineHtml exactly (a plain, already-safe URL wrapped in
+ * an <a>, not re-escaped). */
 const POSTAL_ADDRESS_ONLY = "3410 N High School Rd, Ste G #102, Indianapolis, IN 46224";
 
-function buildFooter(escapeForHtml: boolean): string {
+function buildFooter(optOutUrl: string, escapeForHtml: boolean): string {
   const unsubText = escapeForHtml
-    ? `<a href="#" style="color:inherit;">[UNSUBSCRIBE_URL -- opt-out link not yet wired]</a>`
-    : `[UNSUBSCRIBE_URL -- opt-out link not yet wired]`;
+    ? `<a href="${optOutUrl}" style="color:inherit;">${optOutUrl}</a>`
+    : optOutUrl;
   return (
     `Otter Quotes is a service of Stellar Edge Services LLC. You're receiving this because you signed up as an Otter Quotes referral partner. ` +
     `${POSTAL_ADDRESS_ONLY} · ` +
@@ -109,9 +118,11 @@ export interface InviteEmail {
 }
 
 /** siteBaseUrl e.g. "https://otterquote.com" (no trailing slash needed).
- * Copy is Dustin-approved (#2154 5837072371) -- see the header comment for
- * exactly what is/isn't covered by that approval. */
-export function buildInviteEmail(firstName: string, agentType: string, siteBaseUrl: string, token: string): InviteEmail {
+ * optOutUrl must already be a real, signed unsubscribe URL (see optout.ts
+ * -- index.ts builds it and refuses to send at all without one). Copy is
+ * Dustin-approved (#2154 5837072371) -- see the header comment for exactly
+ * what is/isn't covered by that approval. */
+export function buildInviteEmail(firstName: string, agentType: string, siteBaseUrl: string, token: string, optOutUrl: string): InviteEmail {
   const page = inviteTargetPage(agentType);
   const url = buildPartnerInviteUrl(`${siteBaseUrl.replace(/\/$/, "")}/${page}`, token);
   const name = firstName || "there";
@@ -120,8 +131,8 @@ export function buildInviteEmail(firstName: string, agentType: string, siteBaseU
   const opening = openingLine(agentType);
   const benefit = benefitSentence(agentType);
   const step3 = stepThree(agentType);
-  const footerText = buildFooter(false);
-  const footerHtml = buildFooter(true);
+  const footerText = buildFooter(optOutUrl, false);
+  const footerHtml = buildFooter(optOutUrl, true);
 
   const text =
     `Hi ${name},\n\n` +
@@ -149,3 +160,61 @@ export function buildInviteEmail(firstName: string, agentType: string, siteBaseU
 
   return { subject, text, html };
 }
+
+// (buildInviteEmail above and buildReminderEmail below both stay inside
+// the parity region — see the BEGIN comment.)
+
+/** Dustin-approved (5837072371) 48h reminder subject -- HI-2's own draft
+ * differs from RE-2/INS-2 ("your Otter Quotes account is waiting" vs
+ * "your Otter Quotes referral link is waiting", no fee-bearing referral
+ * link for inspectors, D-333). */
+function reminderSubject(agentType: string): string {
+  return agentType === "home_inspector"
+    ? "Reminder: your Otter Quotes account is waiting"
+    : "Reminder: your Otter Quotes referral link is waiting";
+}
+
+/** Dustin-approved (5837072371) 48h reminder body sentence -- same
+ * "as a referral partner" omission for HI-2 as the initial invite email. */
+function reminderBodySentence(agentType: string, name: string): string {
+  return agentType === "home_inspector"
+    ? `Hi ${name}, you started joining Otter Quotes but haven't finished yet. Your signup details are still filled in and waiting — accept the Partner Agreement, set a password, and you're in.`
+    : `Hi ${name}, you started joining Otter Quotes as a referral partner but haven't finished yet. Your signup details are still filled in and waiting — accept the Partner Agreement, set a password, and you're in.`;
+}
+
+/**
+ * gh-2154 P-5 go-live (Ben, bus 22:17:42Z item 2) -- the 48h reminder,
+ * Dustin-approved (#2154 5837072371) verbatim from the same draft as
+ * buildInviteEmail's "Reminder (recommended, send at 48h -- skip if the
+ * agreement has already been accepted)" block. Skipping an already-
+ * accepted partner is the CALLER's job (index.ts / the reminder sweep),
+ * same as send-partner-onboarding's own selectStage stop conditions --
+ * this function only composes the message, same separation of concerns
+ * as buildInviteEmail.
+ */
+export function buildReminderEmail(firstName: string, agentType: string, siteBaseUrl: string, token: string, optOutUrl: string): InviteEmail {
+  const page = inviteTargetPage(agentType);
+  const url = buildPartnerInviteUrl(`${siteBaseUrl.replace(/\/$/, "")}/${page}`, token);
+  const name = firstName || "there";
+
+  const subject = reminderSubject(agentType);
+  const bodySentence = reminderBodySentence(agentType, name);
+  const footerText = buildFooter(optOutUrl, false);
+  const footerHtml = buildFooter(optOutUrl, true);
+
+  const text =
+    `${bodySentence}\n\n` +
+    `Finish My Signup: ${url}\n\n` +
+    `${footerText}`;
+
+  const html =
+    `<div style="font-family:Arial,Helvetica,sans-serif;color:#1F2937;">` +
+    `<p>${bodySentence}</p>` +
+    `<p><a href="${url}">Finish My Signup</a></p>` +
+    `<p style="font-size:12px;color:#64748B;">${footerHtml}</p>` +
+    `</div>`;
+
+  return { subject, text, html };
+}
+
+// ─── END PARITY REGION ──────────────────────────────────────────────────────

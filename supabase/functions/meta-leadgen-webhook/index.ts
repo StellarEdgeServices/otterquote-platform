@@ -49,19 +49,23 @@ import {
 } from "./handler.ts";
 import { buildInviteEmail, isInviteEmailEnabled, PARTNER_INVITE_EMAIL_ENABLED_ENV } from "./invite-email.ts";
 import { PARTNER_INVITE_SECRET_ENV, signPartnerInviteToken } from "./invite-token.ts";
+import { buildPartnerOptOutUrl, canSendWithOptOut, PARTNER_OPTOUT_SECRET_ENV, signPartnerOptOutToken } from "./optout.ts";
 
 const GRAPH_API_VERSION = "v21.0";
 const SITE_BASE_URL = "https://otterquote.com";
 
 /**
  * gh-2154 P-5r (LEGAL-READ FAIL 5833717530) — sends the invite email for a
- * newly-created 'pending' Meta-lead partner. Guarded twice, both OFF by
+ * newly-created 'pending' Meta-lead partner. Guarded three ways, all OFF by
  * default: PARTNER_INVITE_EMAIL_ENABLED must be exactly "true" (the brief's
- * required send switch, defaulting OFF -- the copy is a placeholder Sloane
- * has not finished), AND PARTNER_INVITE_SECRET must be set (no verifiable
- * link can be built without it -- same canSignInvite posture as D-320's
- * canSendWithOptOut). Best-effort: any failure here is caught by the
- * caller in handler.ts and only logged, never turned into a webhook retry.
+ * required send switch, defaulting OFF), PARTNER_INVITE_SECRET must be set
+ * (no verifiable accept link can be built without it -- same canSignInvite
+ * posture as D-320's canSendWithOptOut), and (gh-2154 P-5 go-live, item 1)
+ * PARTNER_ONBOARDING_OPTOUT_SECRET must ALSO be set -- "the sender refuses
+ * to send without it" (this task's own brief): no verifiable unsubscribe
+ * link, no send at all, same CAN-SPAM posture P-4's own sender already has.
+ * Best-effort: any failure here is caught by the caller in handler.ts and
+ * only logged, never turned into a webhook retry.
  */
 async function sendPartnerInvite(
   supabaseUrl: string,
@@ -73,12 +77,16 @@ async function sendPartnerInvite(
   }
   const secret = Deno.env.get(PARTNER_INVITE_SECRET_ENV) || "";
   const mailgunApiKey = Deno.env.get("MAILGUN_API_KEY") || "";
-  if (!secret || !mailgunApiKey) {
-    console.warn(`${FUNCTION_NAME}: PARTNER_INVITE_EMAIL_ENABLED=true but secret or Mailgun key unset — no invite sent`);
+  const optOutSecret = Deno.env.get(PARTNER_OPTOUT_SECRET_ENV) || "";
+  if (!secret || !mailgunApiKey || !canSendWithOptOut(optOutSecret)) {
+    console.warn(`${FUNCTION_NAME}: PARTNER_INVITE_EMAIL_ENABLED=true but a required secret or Mailgun key is unset — no invite sent`);
     return;
   }
   const token = await signPartnerInviteToken(args.referralAgentId, secret);
-  const email = buildInviteEmail(args.firstName, args.agentType, SITE_BASE_URL, token);
+  const optOutToken = await signPartnerOptOutToken(args.referralAgentId, optOutSecret);
+  const functionsBaseUrl = `${supabaseUrl.replace(/\/$/, "")}/functions/v1`;
+  const optOutUrl = buildPartnerOptOutUrl(functionsBaseUrl, optOutToken);
+  const email = buildInviteEmail(args.firstName, args.agentType, SITE_BASE_URL, token, optOutUrl);
 
   const formData = new URLSearchParams();
   formData.append("from", "Otter Quotes <notifications@mail.otterquote.com>");
@@ -86,6 +94,11 @@ async function sendPartnerInvite(
   formData.append("subject", email.subject);
   formData.append("text", email.text);
   formData.append("html", email.html);
+  // gh-2154 P-5 go-live item 1: RFC 8058 mailbox-provider one-click surface,
+  // same pattern send-partner-onboarding/index.ts's own sendMailgunEmail
+  // already uses.
+  formData.append("h:List-Unsubscribe", `<${optOutUrl}>`);
+  formData.append("h:List-Unsubscribe-Post", "List-Unsubscribe=One-Click");
   const res = await fetch("https://api.mailgun.net/v3/mail.otterquote.com/messages", {
     method: "POST",
     headers: { Authorization: `Basic ${btoa(`api:${mailgunApiKey}`)}` },
