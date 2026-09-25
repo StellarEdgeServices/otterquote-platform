@@ -621,12 +621,79 @@
      restyled swap itself is a layout shift. Same class of mistake as fix
      round 3's ga-gate.js/meta-pixel-gate.js defer regression earlier on
      this issue -- reverted for the same reason: measured, not assumed.
-     Back to plain blocking stylesheet links; item 4 needs a different
-     lever (actually reducing design-system.css's own size/specificity,
-     or a real above-the-fold-only critical-CSS extraction tool) that this
-     PR does not attempt. -->
-<link rel="stylesheet" href="css/design-system.css">
-<link rel="stylesheet" href="css/nav.css">
+     Arms A-E and a bare /start keep the plain blocking links below,
+     UNCHANGED from that revert.
+
+     gh-2121 (LRS S05 round 2, Ben, deploy-preview measurement
+     ceo69-lcp-measure-20260925.md): render-blocking-insight on PR #2183's
+     own preview still showed css/nav.css (~658ms) and css/design-system.css
+     (~276ms) as the dominant remaining cost gating Arm F's LCP, now that
+     js/agent-types.js is off the critical path. Item 4's 2026 revert above
+     is why this is NOT the same blanket swap-on-load change repeated: (a)
+     it is scoped to Arm F ONLY via the same synchronous data-oq-start-arm
+     read used everywhere else on this page -- arms A-E and a bare /start
+     get byte-identical blocking <link> tags to before, so item 4's
+     measured TBT/CLS regression cannot recur for them; (b) unlike item 4's
+     attempt, Arm F's own step-1 screen is now FULLY statically rendered
+     (the #routerFRoot SSR markup a few hundred lines below) using ONLY
+     rules already living in this page's own inline <style> block below,
+     never a design-system.css/nav.css class -- the one gap was the CSS
+     custom properties those rules read (--navy/--white/--slate/--amber/
+     --sp-*/--radius-*/--font-body) and the box-model reset design-system.css
+     normally supplies (without it, browser-default h1/p margins would
+     shift the step-1 screen down until the swap completes -- exactly item
+     4's "unstyled-then-restyled" CLS mechanism). The inline critical-CSS
+     block immediately below supplies just those two things (:root tokens +
+     a universal box-sizing/margin/padding reset, verbatim values copied
+     from css/design-system.css, so there is nothing for the async swap to
+     visibly change once it lands) -- not the router-card/button subset
+     item 4 tried and which still left gaps. #site-header/#site-footer stay
+     display:none for Arm F regardless of nav.css's load state (that rule
+     already lives in this same inline <style> block, unconditionally, see
+     below), so nav.css contributes nothing to Arm F's visible first screen
+     either way. Measured before/after in the PR body (screenshot diff +
+     Lighthouse + CLS), not assumed. -->
+<style>
+  /* gh-2121 round 2: verbatim subset of css/design-system.css's :root
+     tokens + universal reset. Always present (all arms), not just Arm F --
+     identical values to the full stylesheet, so arms A-E (which still load
+     design-system.css/nav.css blocking, immediately below) render exactly
+     as before; this only matters for Arm F's async window. See the comment
+     above for why each piece is here. */
+  :root {
+    --navy: #0D1B2E; --navy-2: #162338; --navy-3: #1C2E45; --mid: #2A3F5C;
+    --amber: #E07B00; --amber-2: #A85C00; --amber-light: #FAC775; --amber-glow: rgba(224,123,0,0.15);
+    --white: #FFFFFF; --offwhite: #F8F9FC; --light: #E2E8F0; --slate: #8A9BAB; --gray: #64748B; --dark-gray: #3D4F60;
+    --green: #10B981; --green-light: #D1FAE5; --red: #EF4444; --red-light: #FEE2E2; --blue: #3B82F6; --blue-light: #DBEAFE;
+    --font-body: 'Rubik', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-heading: 'Rubik', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-mono: 'Fira Code', 'Consolas', 'Courier New', monospace;
+    --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 20px; --sp-6: 24px; --sp-8: 32px; --sp-10: 40px; --sp-12: 48px; --sp-16: 64px; --sp-20: 80px; --sp-24: 96px;
+    --radius-sm: 6px; --radius-md: 10px; --radius-lg: 16px; --radius-xl: 24px; --radius-full: 9999px;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.2); --shadow-md: 0 4px 12px rgba(0,0,0,0.25); --shadow-lg: 0 8px 32px rgba(0,0,0,0.3); --shadow-glow: 0 0 24px rgba(245,158,11,0.2);
+    --ease: cubic-bezier(0.4, 0, 0.2, 1); --duration: 0.2s;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; -webkit-font-smoothing: antialiased; }
+  body { font-family: var(--font-body); line-height: 1.6; font-size: 16px; }
+</style>
+<script>
+  // gh-2121 round 2: Arm F only gets the non-blocking preload+swap pattern;
+  // every other arm (and a bare /start) gets the exact same blocking
+  // <link> tags as before, via document.write in the same synchronous
+  // position they always occupied -- byte-identical DOM/request order for
+  // A-E, so item 4's measured regression above cannot recur for them.
+  (function () {
+    if (document.documentElement.getAttribute('data-oq-start-arm') === 'f') {
+      document.write('<link rel="preload" as="style" href="css/design-system.css" onload="this.onload=null;this.rel=\'stylesheet\'">');
+      document.write('<link rel="preload" as="style" href="css/nav.css" onload="this.onload=null;this.rel=\'stylesheet\'">');
+      document.write('<noscript><link rel="stylesheet" href="css/design-system.css"><link rel="stylesheet" href="css/nav.css"></noscript>');
+    } else {
+      document.write('<link rel="stylesheet" href="css/design-system.css">');
+      document.write('<link rel="stylesheet" href="css/nav.css">');
+    }
+  })();
+</script>
 
 <style>
   body { background-color: var(--navy); }
