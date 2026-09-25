@@ -1427,11 +1427,28 @@
               ...(chainReferralCode && { referral_code: chainReferralCode })
             };
 
+            // gh-2062 round 2 (REVIEW: FAIL): Supabase does not throw on a
+            // failed write by default — there is no throwOnError() anywhere
+            // in this repo — so an RLS denial or constraint violation
+            // resolves normally as { data: null, error: {...} }. Round 1's
+            // clear() below only checked whether a referral was PRESENT to
+            // carry forward, not whether the write that was supposed to
+            // carry it actually succeeded.
+            //
+            // gh-2062 round 3 (REVIEW: FAIL): error === null is NOT success.
+            // An UPDATE without .select() that matches ZERO rows — e.g. RLS
+            // silently filtering the WHERE match — also resolves with
+            // error: null. "Consumed" means a row was actually WRITTEN, not
+            // merely that the call did not complain. .select('id') added so
+            // the affected row (if any) comes back and can be checked.
+            let claimWriteSucceeded = false;
             if (existingClaim) {
-              await sb
+              const { data: updatedRows, error: updateError } = await sb
                 .from('claims')
                 .update(claimData)
-                .eq('id', existingClaim.id);
+                .eq('id', existingClaim.id)
+                .select('id');
+              claimWriteSucceeded = !updateError && Array.isArray(updatedRows) && updatedRows.length > 0;
               savedClaimId = existingClaim.id;
             } else {
               // gh-397/#689: stamp is_test at the ONLY point in this flow that
@@ -1441,7 +1458,7 @@
               // test-homeowner@otterquote-internal.test still wrote an
               // unflagged "real" claim. Predicate matches the CEO-approved
               // contractor check (#543 / test-exclusion.ts).
-              const { data: insertedClaim } = await sb
+              const { data: insertedClaim, error: insertError } = await sb
                 .from('claims')
                 .insert({
                   user_id: user.id,
@@ -1451,6 +1468,16 @@
                 })
                 .select('id')
                 .single();
+              // gh-2062 round 3 audit: this insert branch does NOT have the
+              // round-2 zero-rows gap. .single() requires EXACTLY one row
+              // back from the .select('id') re-read — PostgREST/Supabase
+              // errors (PGRST116) if the insert produced zero or more than
+              // one row, so a silent zero-row success is not possible here
+              // the way it was on the update branch. !!insertedClaim is
+              // therefore redundant with !insertError in practice, but kept
+              // as an explicit belt-and-suspenders row check to match the
+              // update branch's shape.
+              claimWriteSucceeded = !insertError && !!insertedClaim;
               // gh-1276: capture the new row's id — previously never captured
               // anywhere, so repair-intake.html's `params.get('claim_id') ||
               // sessionStorage.getItem('oq_claim_id')` fallback always found
@@ -1486,6 +1513,22 @@
             // trg_claims_advance_referral fires on the claims.referral_id
             // write above. The old client-side UPDATE always no-opped
             // against RLS and has been removed.
+
+            // gh-2062: the referral id has now been consumed — stamped onto
+            // claims.referral_id (or already resolved to referralAgentId, in
+            // which case there was nothing left for the raw cookie to do).
+            // Clear it so it cannot resurface on a later, unrelated signup
+            // on the same browser within its 90-day TTL. Only clear when
+            // this pass actually carried a referral forward AND the write
+            // that was supposed to record it actually succeeded — round 2
+            // (REVIEW: FAIL): an RLS denial or constraint violation on the
+            // claim write must leave a live, unconsumed referral cookie
+            // alone, not destroy it out from under a partner who is still
+            // owed the commission.
+            if ((chainReferralId || chainReferralAgentId) && claimWriteSucceeded) {
+              if (window.OtterQuoteReferral) window.OtterQuoteReferral.clear();
+              localStorage.removeItem('oq_referral_id_for_claim');
+            }
           } catch (supabaseError) {
             console.warn('Supabase save failed:', supabaseError);
             // Continue regardless of Supabase error

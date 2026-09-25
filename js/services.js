@@ -15,6 +15,18 @@
  *   - create-docusign-envelope (DocuSign)
  */
 
+// gh-2107 / D-330 half 2 (Dustin's ruling "b.", #2078 comment 5801822166, scope item 2): a visitor whose browser sends the
+// Global Privacy Control signal has opted out of advertising sharing. Report it to create-payment-intent, which records it
+// on the buyer's profile so the server-side Meta CAPI Purchase is skipped. Only ever adds `gpc: true`; absent otherwise,
+// so the request for every other visitor is byte-for-byte what it was. Never throws.
+function oqGpcField() {
+  try {
+    return (typeof navigator !== 'undefined' && navigator.globalPrivacyControl === true) ? { gpc: true } : {};
+  } catch (e) {
+    return {};
+  }
+}
+
 const Services = {
 
   // ================================================================
@@ -242,6 +254,7 @@ const Services = {
             claim_id,
             type: 'hover_measurement',
           },
+          ...oqGpcField(),
         }
       });
 

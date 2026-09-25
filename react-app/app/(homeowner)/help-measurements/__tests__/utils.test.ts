@@ -88,7 +88,25 @@ describe('buildHoverPaymentIntentParams', () => {
       claim_id: 'claim-1',
       amount: 1500,
       description: 'Complete Property Report',
+      variant: 'unknown',
     });
+  });
+
+  // gh-2078c / D-330 reconciliation (Q: on #2078, comment 5780969290):
+  // `variant` is an explicit pass-through parameter (see the function's own
+  // header for why) so the PaymentIntent metadata can carry the caller's
+  // persisted router arm instead of always defaulting to 'unknown'.
+  it('threads a caller-supplied variant through to the params', () => {
+    expect(buildHoverPaymentIntentParams({ id: 'claim-1' }, 'e')).toEqual({
+      claim_id: 'claim-1',
+      amount: 1500,
+      description: 'Complete Property Report',
+      variant: 'e',
+    });
+  });
+
+  it('defaults to \'unknown\' when no variant argument is supplied at all', () => {
+    expect(buildHoverPaymentIntentParams({ id: 'claim-1' }).variant).toBe('unknown');
   });
 });
 

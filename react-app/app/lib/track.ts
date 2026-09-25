@@ -91,6 +91,8 @@
  *     caller-supplied object's keys unfiltered.
  */
 
+import { isAdSharingOptedOut } from './ad-optout';
+
 type PhotoTier = 'main' | 'tier1' | 'tier2' | 'tier3' | 'tier4';
 type HelpTool = 'help_estimate' | 'help_materials' | 'help_measurements';
 type HelpMethod = 'hover_payment' | 'email_request';
@@ -330,17 +332,49 @@ export function track<E extends keyof TrackEventParams>(event: E, params: TrackE
  * authenticated route outside its ALLOWED_PATHS -- see that file), this is
  * a silent no-op, exactly like `track()` above when GA4Gate has not
  * loaded gtag.
+ *
+ * gh-2078c: an optional third argument, `eventId`, is forwarded to fbq as
+ * its 4th call argument (`fbq('track', name, params, {eventID: eventId})`)
+ * -- Meta's own client-side dedup mechanism. Omitted entirely (not just
+ * `undefined`) when `eventId` is not passed, so every pre-existing call
+ * site and test that does not pass one is byte-identical to before this
+ * change. See `buildMeasurementPurchaseEventId` below for the one id this
+ * file currently computes.
  */
-export function fbqTrack(eventName: string, params?: Record<string, unknown>): void {
+export function fbqTrack(eventName: string, params?: Record<string, unknown>, eventId?: string): void {
   try {
     if (typeof window === 'undefined') return;
     const w = window as unknown as { fbq?: (...args: unknown[]) => void };
     if (typeof w.fbq !== 'function') return;
-    if (params) w.fbq('track', eventName, params);
+    // gh-2107 (REVIEW N1 on #2134): re-check the advertising-sharing opt-out on EVERY event. The pixel's `allowed` state can outlive a
+    // client-side navigation, and a stored opt-out may only be read after fbevents.js is already loaded (GPC or the cookie it leaves).
+    if (isAdSharingOptedOut()) return;
+    if (eventId) w.fbq('track', eventName, params ?? {}, { eventID: eventId });
+    else if (params) w.fbq('track', eventName, params);
     else w.fbq('track', eventName);
   } catch {
     // Never throw — an analytics failure must never break a user-facing action.
   }
+}
+
+/**
+ * gh-2078c / D-330 reconciliation (Q: on #2078, comment 5780969290):
+ * deterministic Meta dedup id for a measurement-order `Purchase` event.
+ *
+ * MUST match `supabase/functions/stripe-webhook/meta-capi.ts`'s
+ * `buildCapiEventId` EXACTLY -- same `measurement_purchase:<paymentIntentId>`
+ * format, same `paymentIntentId` string already in scope at both of
+ * help-measurements/page.tsx's `fbqTrack('Purchase', ...)` call sites (the
+ * PR #2107 server-side CAPI event computes the identical string from the
+ * SAME PaymentIntent id, independently, with no coordination needed at
+ * request time). Meta dedupes a client pixel event against a server CAPI
+ * event ONLY when both carry the identical `event_name` + `event_id`; a
+ * value that "almost" matches (different prefix, different casing, a
+ * hash instead of the raw id) does not dedupe at all -- see
+ * `__tests__/track.test.ts`'s pinned-equivalence test.
+ */
+export function buildMeasurementPurchaseEventId(paymentIntentId: string): string {
+  return `measurement_purchase:${paymentIntentId}`;
 }
 
 /**

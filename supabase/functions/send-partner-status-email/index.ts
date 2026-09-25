@@ -107,6 +107,7 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import {
   formatReferralDisplayName,
+  isStageBlockedForAgentType,
   renderStageEmail,
   type Stage,
 } from "./templates.ts";
@@ -423,6 +424,17 @@ serve(async (req: Request) => {
     for (const stage of stagesToConsider) {
       if (!eligible.has(stage)) {
         skipped.push({ stage, reason: "not eligible yet" });
+        continue;
+      }
+
+      // ── D-333 gate (Ben's ruling, CEO RUN 67): a home_inspector referrer
+      // earns no referral fee or recruit bonus, so stage 5's "payment is on
+      // its way" copy would be a false promise to them. Every sender of
+      // this series (the DB trigger's catch-up call and mark-job-complete's
+      // direct call) goes through this function, so gating it here covers
+      // both. Stages 1-4 carry no payment language and are unaffected. ────
+      if (isStageBlockedForAgentType(agent.agent_type, stage)) {
+        skipped.push({ stage, reason: "home_inspector — no referral fee/recruit bonus (D-333); stage 5 payment email suppressed" });
         continue;
       }
 

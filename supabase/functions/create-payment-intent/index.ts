@@ -33,11 +33,10 @@ import {
   REFUSAL_CODE,
 } from "./live-charge-guard.ts";
 import { PlatformSettingMissingError, resolveRequiredPriceCents } from "./price-setting.ts";
-import {
-  evaluateMeasurementUpgradeGate,
-  UPGRADE_CHARGE_DESCRIPTION,
-  VENDOR_CREDIT_EXPECTED_CENTS,
-} from "./measurement-upgrade-gate.ts";
+import { attachVariantMetadata } from "./variant-metadata.ts";
+import { buildStandardCreateForm, standardIdempotencyKey } from "./standard-create-form.ts";
+import { evaluateMeasurementUpgradeGate } from "./measurement-upgrade-gate.ts";
+import { detectGpcSignal, type OptOutStore, recordGpcOptOut } from "./ad-sharing-opt-out.ts";
 
 const FUNCTION_NAME = "create-payment-intent";
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
@@ -109,7 +108,27 @@ serve(async (req) => {
   }
 
   try {
-    const { amount: clientAmount, currency, description, metadata, contractor_id, off_session } = await req.json();
+    const requestBody = await req.json();
+    const { amount: clientAmount, currency, description, metadata, contractor_id, off_session } = requestBody;
+
+    // gh-2107 / D-330 half 2: honour a Global Privacy Control advertising-sharing opt-out (Sec-GPC: 1 on the request, or
+    // gpc: true from the page's navigator.globalPrivacyControl) by flagging the caller's profile BEFORE any Purchase exists;
+    // the Stripe webhook then skips the Meta CAPI send. Sets the flag only, never clears it; never blocks or fails the payment.
+    const gpcStore: OptOutStore = {
+      markOptedOut: async (userId, source, atIso) => {
+        const { error } = await supabase
+          .from("profiles")
+          .update({ ad_sharing_opt_out: true, ad_sharing_opt_out_at: atIso, ad_sharing_opt_out_source: source })
+          .eq("id", userId)
+          .or("ad_sharing_opt_out.is.null,ad_sharing_opt_out.eq.false");
+        return error ? { code: (error as { code?: string }).code } : null;
+      },
+    };
+    await recordGpcOptOut({ callerId, piType: metadata?.type, headers: req.headers, body: requestBody, store: gpcStore });
+    // gh-2107 (REVIEW: FAIL 5806828503 F2 on #2134): the signal is ALSO carried on the PaymentIntent (below, via the non-keyed
+    // post-create update), derived from the REQUEST ALONE and not from whether the profile write succeeded, so a failed write
+    // does not fail toward sharing: the Stripe webhook skips the CAPI Purchase on either the profile flag or this metadata.
+    const gpcSignalPresent = detectGpcSignal(req.headers, requestBody) !== null;
 
     // D-181: server-side price enforcement for hover_measurement.
     let amount: number = clientAmount;
@@ -634,27 +653,11 @@ serve(async (req) => {
       }
     } else {
       // ===== Standard flow (hover_measurement, deductible_escrow, measurement_upgrade) =====
-      const form = new URLSearchParams();
-      form.append("amount", String(amount));
-      form.append("currency", currency);
-      // measurement_upgrade: description is server-enforced, never the
-      // client-sent value — D-312/#1414 scrubbed vendor names from every
-      // customer-facing string and this must never regress that.
-      const chargeDescription = metadata.type === "measurement_upgrade"
-        ? UPGRADE_CHARGE_DESCRIPTION
-        : (description || "");
-      form.append("description", chargeDescription);
-      form.append("metadata[claim_id]", metadata.claim_id);
-      form.append("metadata[type]", metadata.type);
-      if (metadata.type === "measurement_upgrade") {
-        form.append("metadata[contractor_id]", contractor_id);
-        // Bookkeeping only (Marty, #1411 cto-2026-09-02T13:45:25Z: "does not
-        // net it against the charge") — the contractor is still charged the
-        // full tier amount above.
-        form.append("metadata[vendor_credit_expected_cents]", String(VENDOR_CREDIT_EXPECTED_CENTS));
-      }
-      form.append("automatic_payment_methods[enabled]", "true");
-      const idempotencyKey = `${metadata.type}-${metadata.claim_id}`;
+      // The create body and its idempotency key are functions of the claim and the request type ONLY (see
+      // standard-create-form.ts): Stripe refuses a reused key with a different body, so nothing per-request may ever be in
+      // this create. The router variant is attached AFTER it, below.
+      const form = buildStandardCreateForm({ amount, currency, description, metadata, contractor_id });
+      const idempotencyKey = standardIdempotencyKey(metadata);
       const r = await fetch(`${STRIPE_API_BASE}/payment_intents`, {
         method: "POST",
         headers: {
@@ -669,6 +672,23 @@ serve(async (req) => {
         throw new Error(`Stripe API error (HTTP ${r.status}): ${err}`);
       }
       paymentIntentData = await r.json();
+      if (metadata.type === "hover_measurement") {
+        // gh-2078c / D-330 (REVIEW: FAIL 5805531419, B1): the router variant is attached AFTER the create, in a separate
+        // best-effort update, NOT as a create parameter. The create above carries a per-claim Idempotency-Key, and Stripe
+        // refuses (HTTP 400) a reused key whose parameters differ, so a per-request value such as the browser's stored
+        // variant must never be part of it. The create form stays byte-identical to main. Awaited: the client confirms the
+        // card only after it has client_secret, so the metadata is in place before payment_intent.succeeded and the
+        // server-side Meta CAPI Purchase (PR #2107) reads it. Never fails the payment.
+        await attachVariantMetadata({
+          fetchFn: fetch,
+          apiBase: STRIPE_API_BASE,
+          basicAuth,
+          paymentIntentId: paymentIntentData.id,
+          status: paymentIntentData.status,
+          variant: metadata.variant,
+          optOut: gpcSignalPresent,
+        });
+      }
     }
 
     // gh-948: 'processing' (ACH in flight) must NOT be reported as `succeeded` —
