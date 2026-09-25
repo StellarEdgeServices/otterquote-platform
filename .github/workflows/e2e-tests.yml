@@ -112,6 +112,9 @@ jobs:
       - name: cookie-storage.js/config.js load-order check (Stage 5 prevention, #601)
         run: python3 scripts/check-script-load-order.py
 
+      - name: unselected .update() ratchet guard (gh-2105, #2103 pattern)
+        run: python3 scripts/check-unselected-update-ratchet.py
+
       - name: $10,000 commission-floor phrasing guard (D-286, gh-920)
         run: python3 scripts/check-10k-floor-phrasing.py
 
