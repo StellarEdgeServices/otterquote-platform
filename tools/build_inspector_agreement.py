@@ -90,7 +90,10 @@ def main() -> int:
     # source's EOL exactly; never normalize (memory: otterquote-ef-crlf /
     # code-edit-tool-crlf-flip).
     args = sys.argv[1:]
-    source_text = SOURCE_PATH.read_text(encoding="utf-8", newline="")
+    # Path.read_text()'s `newline` kwarg is Python 3.13+ only; CI runs 3.11,
+    # so open() directly instead (it has always accepted `newline`).
+    with SOURCE_PATH.open("r", encoding="utf-8", newline="") as f:
+        source_text = f.read()
     output_text = build_inspector_agreement(source_text)
 
     if "--stdout" in args:
@@ -101,7 +104,8 @@ def main() -> int:
         if not OUTPUT_PATH.exists():
             print(f"MISSING: {OUTPUT_PATH} does not exist", file=sys.stderr)
             return 1
-        committed = OUTPUT_PATH.read_text(encoding="utf-8", newline="")
+        with OUTPUT_PATH.open("r", encoding="utf-8", newline="") as f:
+            committed = f.read()
         if committed != output_text:
             print(f"DRIFT: {OUTPUT_PATH} does not match a fresh build from {SOURCE_PATH}", file=sys.stderr)
             return 1
