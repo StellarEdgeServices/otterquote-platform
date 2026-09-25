@@ -783,7 +783,7 @@
     // per-field validation errors instead of one form-level box.
     let hasError = false;
     if (!nameVal) {
-      fieldError('nameError', 'Please enter your name.');
+      fieldError('nameError', 'Please enter your first and last name.');
       hasError = true;
     } else if (!isValidFullName(nameVal)) {
       fieldError('nameError', 'Please enter your first and last name.');

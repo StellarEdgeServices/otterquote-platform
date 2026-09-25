@@ -734,6 +734,27 @@ const gaGateSrc = fs.readFileSync(path.join(repoRoot, 'js', 'ga-gate.js'), 'utf8
   }
 }
 
+// ── ROUND 5 (LEGAL-READ FAIL 5836902019, Ben ruling on run-work bus
+// 2026-09-25T17:49:48Z): the empty-name error is homeowner-flow only --
+// swapped for partner-insurance.html's verbatim "Please enter your first
+// and last name." This assertion FAILS on the round-4 head (3dca4d00) and
+// PASSES once fixed.
+{
+  ok(!/Please enter your name\./.test(html), '(11) LEGAL-READ FAIL 5836902019: "Please enter your name." is absent from re-1.html source');
+  const run = runPageScript({ search: '?utm_campaign=re-1' });
+  if (run.setupError) {
+    failWithReason('(11) #nameError on an empty submit matches main\'s partner-insurance.html verbatim', run.setupError);
+  } else {
+    try {
+      await submitForm(run, fullFill({ name: '' }));
+      const nameErr = run.store.byId.get('nameError');
+      ok(!!nameErr && nameErr.textContent === 'Please enter your first and last name.', '(11) #nameError matches main\'s partner-insurance.html verbatim -- got ' + JSON.stringify(nameErr && nameErr.textContent));
+    } catch (e) {
+      failWithReason('(11) #nameError on an empty submit matches main\'s partner-insurance.html verbatim', e.message);
+    }
+  }
+}
+
 console.log('');
 console.log(pass + ' passed, ' + fail + ' failed');
 process.exit(fail > 0 ? 1 : 0);
