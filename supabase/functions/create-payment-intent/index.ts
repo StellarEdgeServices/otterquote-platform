@@ -38,6 +38,7 @@ import { buildStandardCreateForm, standardIdempotencyKey } from "./standard-crea
 import { evaluateMeasurementUpgradeGate } from "./measurement-upgrade-gate.ts";
 import { detectGpcSignal, type OptOutStore, recordGpcOptOut } from "./ad-sharing-opt-out.ts";
 import { fetchStripeWithTimeout } from "./stripe-fetch.ts";
+import { runOffSessionPlatformFeeCharge } from "./off-session-charge.ts";
 
 const FUNCTION_NAME = "create-payment-intent";
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
@@ -568,76 +569,25 @@ serve(async (req) => {
         throw new Error("Contractor does not have any payment methods on file. Charge cannot proceed.");
       }
 
-      let lastError = "";
-      let usedMethod: PaymentMethodAttempt | null = null;
-      let chargedAmount = amount;
-      let cardFeeCents = 0;
-      for (const method of methodsToTry) {
-        let thisChargeAmount = amount;
-        let thisCardFee = 0;
-        if (method.payment_type === "card") {
-          thisChargeAmount = calculateCardChargeAmount(amount);
-          thisCardFee = thisChargeAmount - amount;
-        }
-        const form = new URLSearchParams();
-        form.append("amount", String(thisChargeAmount));
-        form.append("currency", currency);
-        form.append("customer", contractorData.stripe_customer_id);
-        form.append("payment_method", method.stripe_payment_method_id);
-        form.append("off_session", "true");
-        form.append("confirm", "true");
-        form.append("description", description || "");
-        form.append("metadata[claim_id]", metadata.claim_id);
-        form.append("metadata[type]", metadata.type);
-        form.append("metadata[contractor_id]", contractor_id);
-        form.append("metadata[payment_type]", method.payment_type);
-        form.append("metadata[platform_fee_cents]", String(amount));
-        if (thisCardFee > 0) form.append("metadata[card_fee_cents]", String(thisCardFee));
-        form.append("payment_method_types[]", method.payment_type === "us_bank_account" ? "us_bank_account" : "card");
-        try {
-          const offSessionKey = `plat-fee-${metadata.claim_id}-${contractor_id}-${method.stripe_payment_method_id}`;
-          // gh-1886: bounded timeout (was an unbounded fetch()) -- an abort here is caught by the
-          // surrounding try/catch below exactly like any other network failure, so a hung Stripe
-          // connection now falls through to "try the next payment method" instead of holding the
-          // Edge Function open indefinitely. Idempotency-Key is per-method (offSessionKey above), so
-          // retrying a DIFFERENT method after a timeout never collides with this attempt's key.
-          const r = await fetchStripeWithTimeout(fetch, `${STRIPE_API_BASE}/payment_intents`, {
-            method: "POST",
-            headers: {
-              Authorization: `Basic ${basicAuth}`,
-              "Content-Type": "application/x-www-form-urlencoded",
-              "Idempotency-Key": offSessionKey,
-            },
-            body: form.toString(),
-          });
-          const rd = await r.json();
-          if (!r.ok) { lastError = rd?.error?.message || `HTTP ${r.status}`; continue; }
-          if (rd.status === "requires_action" || rd.status === "requires_payment_method") {
-            lastError = `Payment ${rd.status} for method ${method.stripe_payment_method_id}`;
-            try {
-              // gh-1886: same bounded timeout on the best-effort cancel. Already inside a try/catch
-              // that swallows every error (this call was always best-effort), so a timeout here is
-              // caught and ignored exactly like before -- no behaviour change beyond the bound itself.
-              await fetchStripeWithTimeout(fetch, `${STRIPE_API_BASE}/payment_intents/${rd.id}/cancel`, {
-                method: "POST",
-                headers: { Authorization: `Basic ${basicAuth}`, "Content-Type": "application/x-www-form-urlencoded" },
-              });
-            } catch {}
-            continue;
-          }
-          paymentIntentData = rd;
-          usedMethod = method;
-          chargedAmount = thisChargeAmount;
-          cardFeeCents = thisCardFee;
-          break;
-        } catch (e) {
-          lastError = e instanceof Error ? e.message : String(e);
-          continue;
-        }
-      }
-      if (!paymentIntentData) {
-        throw new Error(`All ${methodsToTry.length} payment methods failed. Last error: ${lastError}`);
-      }
+      // gh-1886 B1/B2 (independent review on #2198, 2026-09-25): the per-method attempt loop -- including
+      // the timeout-retry-then-stop logic that prevents a double charge across two payment methods -- now
+      // lives in off-session-charge.ts, where it can be driven with a fake Stripe in a test. See that
+      // module's header for why a create timeout must not fall through to a different payment method.
+      const { paymentIntentData: offSessionPaymentIntent, usedMethod, cardFeeCents } =
+        await runOffSessionPlatformFeeCharge({
+          fetchFn: fetch,
+          apiBase: STRIPE_API_BASE,
+          basicAuth,
+          claimId: metadata.claim_id,
+          contractorId: contractor_id,
+          stripeCustomerId: contractorData.stripe_customer_id,
+          currency,
+          description,
+          amount,
+          methodsToTry,
+          calculateCardChargeAmount,
+        });
+      paymentIntentData = offSessionPaymentIntent;
       if (metadata.quote_id) {
         // gh-948: 'processing' (ACH in flight) is NOT success. Map it to the
         // existing 'pending' quotes.payment_status value (allowed by
@@ -652,11 +602,11 @@ serve(async (req) => {
             ? "pending"
             : "failed";
         const quoteUpdate: Record<string, any> = {
-          payment_method_type: usedMethod!.payment_type,
+          payment_method_type: usedMethod.payment_type,
           payment_status: dbPaymentStatus,
           payment_intent_id: paymentIntentData.id,
         };
-        if (usedMethod!.id) quoteUpdate.payment_method_id = usedMethod!.id;
+        if (usedMethod.id) quoteUpdate.payment_method_id = usedMethod.id;
         if (cardFeeCents > 0) quoteUpdate.card_fee_cents = cardFeeCents;
         await supabase.from("quotes").update(quoteUpdate).eq("id", metadata.quote_id);
       }
