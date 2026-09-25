@@ -61,6 +61,16 @@ function loadHelpers(fileName) {
   }
   const combinedSrc = src.slice(fnStart, i + 1);
 
+  // gh-2121: read VARIANT_KEY out of the extracted source itself -- never a
+  // hardcoded copy here -- so a future start.html KEY bump (this file's own
+  // getOqVariant comment: "the SAME localStorage key/cookie start.html
+  // itself writes") does not silently desync this test from the two pages'
+  // own VARIANT_KEY the way a literal 'oq_variant_v3' string did across the
+  // gh-2121 Arm C kill (v3 -> v4).
+  const keyMatch = combinedSrc.match(/var VARIANT_KEY = '([^']*)';/);
+  if (!keyMatch) throw new Error(`${fileName}: VARIANT_KEY not found in getOqVariant`);
+  const variantKey = keyMatch[1];
+
   const sandbox = {
     window: {
       location: { search: '', hostname: 'otterquote.com' },
@@ -84,7 +94,7 @@ function loadHelpers(fileName) {
   vm.runInContext(combinedSrc + '\nthis.__getOqVariant = getOqVariant; this.__fire = firePartnerSignupComplete;', sandbox, {
     filename: fileName,
   });
-  return { sandbox, gtagCalls, fbqCalls, combinedSrc };
+  return { sandbox, gtagCalls, fbqCalls, combinedSrc, variantKey };
 }
 
 function makeStorage() {
@@ -109,12 +119,12 @@ function main() {
 
   // Check 3: falls back to persisted localStorage when no ?v=
   re.sandbox.window.location.search = '';
-  re.sandbox.window.localStorage.setItem('oq_variant_v3', 'd');
+  re.sandbox.window.localStorage.setItem(re.variantKey, 'd');
   ok(re.sandbox.__getOqVariant() === 'd', 'partner-re: persisted localStorage "d" used when URL carries no ?v=');
 
   // Check 4: falls back to cookie when neither URL nor localStorage has it
-  re.sandbox.window.localStorage.removeItem('oq_variant_v3');
-  re.sandbox.document.cookie = 'oq_variant_v3=c';
+  re.sandbox.window.localStorage.removeItem(re.variantKey);
+  re.sandbox.document.cookie = re.variantKey + '=c';
   ok(re.sandbox.__getOqVariant() === 'c', 'partner-re: cookie "c" used as last resort');
 
   // Check 5: malformed ?v= never forwarded — falls through to storage/cookie/unknown

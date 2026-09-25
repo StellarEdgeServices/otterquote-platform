@@ -309,13 +309,36 @@ console.log('First-session arm: ' + persistSeed.arm + ' | reload #1 arm: ' + rel
 ok(reload1.arm === persistSeed.arm, 'reload #1 returns the same arm as the original session');
 ok(reload2.arm === persistSeed.arm, 'reload #2 (localStorage-store read) returns the same arm again');
 
-// ── Check 3: explicit ?v=c overrides a persisted 'a'. ──
+// ── Check 3: explicit ?v=<live arm> overrides a persisted 'a'. gh-2121:
+// this used to pin '?v=c' literally -- 'c' is no longer live (Arm C
+// killed), so this now uses the first entry of LIVE_VARIANTS itself
+// (today 'd'), same as every other LIVE_VARIANTS-driven check in this
+// file, so it keeps working unchanged across a future flip too. ──
 console.log('\n=== Check 3: explicit override beats a persisted assignment ===');
+const overrideTargetArm = LIVE_VARIANTS[0];
 const persistedA = new Map([[STORAGE_KEY, 'a']]);
-const overrideResult = runAssignment({ search: '?v=c', store: { localStorage: persistedA, cookieJar: STORAGE_KEY + '=a' } });
-console.log('Persisted arm going in: a | URL: /start?v=c | resulting arm: ' + overrideResult.arm + ' | rewritten URL: ' + overrideResult.replacedUrl);
-ok(overrideResult.arm === 'c', '/start?v=c with a persisted "a" renders c');
-ok(overrideResult.localStorageValue === 'c', 'the override also re-persists to localStorage as c (future loads stay on c)');
+const overrideResult = runAssignment({ search: '?v=' + overrideTargetArm, store: { localStorage: persistedA, cookieJar: STORAGE_KEY + '=a' } });
+console.log('Persisted arm going in: a | URL: /start?v=' + overrideTargetArm + ' | resulting arm: ' + overrideResult.arm + ' | rewritten URL: ' + overrideResult.replacedUrl);
+ok(overrideResult.arm === overrideTargetArm, '/start?v=' + overrideTargetArm + ' with a persisted "a" renders ' + overrideTargetArm);
+ok(overrideResult.localStorageValue === overrideTargetArm, 'the override also re-persists to localStorage as ' + overrideTargetArm + ' (future loads stay on it)');
+
+// ── Check 3b (gh-2121): Arm C is OFF the router. Fresh loads never draw
+// it, a persisted 'c' is re-routed to a live arm (not a 404), and an
+// explicit ?v=c is remapped exactly like ?v=a/?v=b already are -- 'c' is
+// killed the same way, not made direct-only like arm F. ──
+console.log('\n=== Check 3b (gh-2121): Arm C removed from the router -- negative controls ===');
+ok(LIVE_VARIANTS.indexOf('c') === -1, "LIVE_VARIANTS no longer contains 'c'");
+const freshNoC = [];
+for (let i = 0; i < 60; i++) freshNoC.push(runAssignment({ search: '' }).arm);
+ok(freshNoC.indexOf('c') === -1, "NEGATIVE CONTROL: 60 fresh loads with no ?v= never land on 'c'");
+const persistedC = new Map([[STORAGE_KEY, 'c']]);
+const cReroute = runAssignment({ search: '', store: { localStorage: persistedC, cookieJar: STORAGE_KEY + '=c' } });
+ok(cReroute.arm !== 'c' && LIVE_VARIANTS.indexOf(cReroute.arm) !== -1,
+  "a visitor previously bucketed to 'c' (persisted, no ?v=) is re-routed to a LIVE arm on their next load -- not a 404, not stuck on 'c'");
+ok(cReroute.localStorageValue === cReroute.arm, 'the re-route also re-persists the NEW live arm (future loads stay off c)');
+const explicitC = runAssignment({ search: '?v=c' });
+ok(explicitC.arm !== 'c' && LIVE_VARIANTS.indexOf(explicitC.arm) !== -1,
+  "NEGATIVE CONTROL: an explicit ?v=c is remapped to a live arm, same as ?v=a/?v=b -- 'c' is killed, not direct-only");
 
 // ── Check 4: UTMs survive the rewrite, every other existing param intact. ──
 console.log('\n=== Check 4: UTM / arbitrary params survive the URL rewrite ===');
