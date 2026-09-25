@@ -50,6 +50,63 @@ describe('redactLeadParam (string-level)', () => {
   });
 });
 
+describe('redactLeadParam — S3: case-insensitive fast path', () => {
+  it('redacts ?Lead= (mixed case)', () => {
+    const s = `https://app.otterquote.com/get-started?Lead=${LEAD_ID}&utm_source=facebook`;
+    const out = redactLeadParam(s);
+    expect(out).not.toContain(LEAD_ID);
+    expect(out).toBe(`https://app.otterquote.com/get-started?Lead=${LEAD_REDACTED_TOKEN}&utm_source=facebook`);
+  });
+
+  it('redacts ?LEAD= (upper case)', () => {
+    const s = `https://app.otterquote.com/get-started?LEAD=${LEAD_ID}`;
+    const out = redactLeadParam(s);
+    expect(out).not.toContain(LEAD_ID);
+    expect(out).toBe(`https://app.otterquote.com/get-started?LEAD=${LEAD_REDACTED_TOKEN}`);
+  });
+
+  it('redacts &Lead= mid-string', () => {
+    const s = `https://app.otterquote.com/x?utm_source=facebook&Lead=${LEAD_ID}`;
+    const out = redactLeadParam(s);
+    expect(out).not.toContain(LEAD_ID);
+    expect(out).toContain(LEAD_REDACTED_TOKEN);
+  });
+});
+
+describe('redactLeadParam — S4: URL-encoded boundary forms', () => {
+  it('redacts %3Flead%3D (encoded "?lead=")', () => {
+    const s = `https://app.otterquote.com/redirect?target=%2Fget-started%3Flead%3D${LEAD_ID}`;
+    const out = redactLeadParam(s);
+    expect(out).not.toContain(LEAD_ID);
+    expect(out).toBe(`https://app.otterquote.com/redirect?target=%2Fget-started%3Flead%3D${LEAD_REDACTED_TOKEN}`);
+  });
+
+  it('redacts %26lead%3D (encoded "&lead=")', () => {
+    const s = `https://app.otterquote.com/redirect?target=%2Fget-started%3Futm_source%3Dfb%26lead%3D${LEAD_ID}`;
+    const out = redactLeadParam(s);
+    expect(out).not.toContain(LEAD_ID);
+    expect(out).toContain(LEAD_REDACTED_TOKEN);
+  });
+
+  it('redacts the encoded form case-insensitively (%3FLEAD%3D)', () => {
+    const s = `x?target=%2Fget-started%3FLEAD%3D${LEAD_ID}`;
+    const out = redactLeadParam(s);
+    expect(out).not.toContain(LEAD_ID);
+  });
+
+  it('stops the encoded value at the next %26 separator, not consuming past it', () => {
+    const s = `x?target=%2Fget-started%3Flead%3D${LEAD_ID}%26utm_source%3Dfb`;
+    const out = redactLeadParam(s);
+    expect(out).not.toContain(LEAD_ID);
+    expect(out).toContain('%26utm_source%3Dfb');
+  });
+
+  it('leaves a plain string with no encoded lead param untouched (same reference)', () => {
+    const clean = 'https://app.otterquote.com/redirect?target=%2Fget-started%3Futm_source%3Dfb';
+    expect(redactLeadParam(clean)).toBe(clean);
+  });
+});
+
 /**
  * Reproduces the shape of the real leaking envelope: a pageload
  * transaction event whose 8 browser.* spans each carry the lead id in
