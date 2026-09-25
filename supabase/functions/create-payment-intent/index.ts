@@ -37,6 +37,7 @@ import { attachVariantMetadata } from "./variant-metadata.ts";
 import { buildStandardCreateForm, standardIdempotencyKey } from "./standard-create-form.ts";
 import { evaluateMeasurementUpgradeGate } from "./measurement-upgrade-gate.ts";
 import { detectGpcSignal, type OptOutStore, recordGpcOptOut } from "./ad-sharing-opt-out.ts";
+import { fetchStripeWithTimeout } from "./stripe-fetch.ts";
 
 const FUNCTION_NAME = "create-payment-intent";
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
@@ -595,7 +596,12 @@ serve(async (req) => {
         form.append("payment_method_types[]", method.payment_type === "us_bank_account" ? "us_bank_account" : "card");
         try {
           const offSessionKey = `plat-fee-${metadata.claim_id}-${contractor_id}-${method.stripe_payment_method_id}`;
-          const r = await fetch(`${STRIPE_API_BASE}/payment_intents`, {
+          // gh-1886: bounded timeout (was an unbounded fetch()) -- an abort here is caught by the
+          // surrounding try/catch below exactly like any other network failure, so a hung Stripe
+          // connection now falls through to "try the next payment method" instead of holding the
+          // Edge Function open indefinitely. Idempotency-Key is per-method (offSessionKey above), so
+          // retrying a DIFFERENT method after a timeout never collides with this attempt's key.
+          const r = await fetchStripeWithTimeout(fetch, `${STRIPE_API_BASE}/payment_intents`, {
             method: "POST",
             headers: {
               Authorization: `Basic ${basicAuth}`,
@@ -609,7 +615,10 @@ serve(async (req) => {
           if (rd.status === "requires_action" || rd.status === "requires_payment_method") {
             lastError = `Payment ${rd.status} for method ${method.stripe_payment_method_id}`;
             try {
-              await fetch(`${STRIPE_API_BASE}/payment_intents/${rd.id}/cancel`, {
+              // gh-1886: same bounded timeout on the best-effort cancel. Already inside a try/catch
+              // that swallows every error (this call was always best-effort), so a timeout here is
+              // caught and ignored exactly like before -- no behaviour change beyond the bound itself.
+              await fetchStripeWithTimeout(fetch, `${STRIPE_API_BASE}/payment_intents/${rd.id}/cancel`, {
                 method: "POST",
                 headers: { Authorization: `Basic ${basicAuth}`, "Content-Type": "application/x-www-form-urlencoded" },
               });
@@ -658,7 +667,11 @@ serve(async (req) => {
       // this create. The router variant is attached AFTER it, below.
       const form = buildStandardCreateForm({ amount, currency, description, metadata, contractor_id });
       const idempotencyKey = standardIdempotencyKey(metadata);
-      const r = await fetch(`${STRIPE_API_BASE}/payment_intents`, {
+      // gh-1886: bounded timeout. This call has no surrounding try/catch, so a timeout (like any
+      // other thrown error here) propagates to the handler's outer catch(error) below, which already
+      // maps it to the existing 500 JSON error-response path -- no new response shape, no change to
+      // the success path. The per-claim Idempotency-Key above is unchanged by this.
+      const r = await fetchStripeWithTimeout(fetch, `${STRIPE_API_BASE}/payment_intents`, {
         method: "POST",
         headers: {
           Authorization: `Basic ${basicAuth}`,
