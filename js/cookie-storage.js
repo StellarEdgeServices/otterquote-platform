@@ -255,20 +255,45 @@
   }
 
   /**
+   * gh-2162 review round 5: the round-4 fix guarded getItem/setItem/
+   * removeItem with `key !== STORAGE_KEY` ('sb-otterquote-auth'), an
+   * ALLOWLIST of exactly one key. That broke every page whose Supabase
+   * client is js/config.js's own `_oqCreateSupabaseClient()`
+   * (partner-login.html, the signup pages, and any page that doesn't also
+   * load js/supabase-client.js) -- that call passes NO `storageKey`, so
+   * supabase-js falls back to ITS OWN default, `sb-<project-ref>-auth-token`,
+   * not the canonical key. Under the round-4 guard every session
+   * getItem/setItem/removeItem from that client silently became
+   * localStorage-only: no cross-subdomain cookies, and signOut no longer
+   * cleared them either.
+   *
+   * Fixed as a DENYLIST instead: only the small, known set of AUXILIARY
+   * keys supabase-js 2.112.4 derives from whatever storageKey a client
+   * actually uses -- `${storageKey}-code-verifier`,
+   * `${storageKey}-flow-<id>-code-verifier`, `${storageKey}-flows-code-verifier`
+   * (all end in `-code-verifier`), and `${storageKey}-user` -- are ever
+   * diverted to plain localStorage. Every other key, whether it's the
+   * canonical `sb-otterquote-auth`, supabase-js's own default
+   * `sb-<ref>-auth-token`, or anything else, keeps the exact pre-round-4
+   * cookie-touching behavior. This does not require knowing what
+   * storageKey a given client actually used.
+   */
+  function isAuxiliaryStorageKey(key) {
+    return typeof key === 'string' &&
+      (key.endsWith('-code-verifier') || key.endsWith('-user'));
+  }
+
+  /**
    * Storage adapter implementing the localStorage-compatible interface
    * expected by Supabase JS v2's `storage` option.
    */
   window.OtterQuoteCookieStorage = {
     getItem: function (key) {
-      // gh-2162 review round 4: this adapter only owns the canonical session
-      // key. Supabase JS also calls getItem for other keys under the same
-      // storage instance — e.g. the PKCE `<key>-code-verifier` key written
-      // by sb.auth.signInWithOAuth / exchangeCodeForSession. Before this
-      // guard, any such non-canonical read still hit the cookie branch below
-      // and returned the CURRENT SESSION instead of the verifier, which is
-      // the same bug class as the removeItem defect fixed alongside it.
-      // Every other key is plain localStorage, no cookie involvement.
-      if (key !== STORAGE_KEY) {
+      // gh-2162 review round 5: an auxiliary key (PKCE code-verifier, or the
+      // separate `-user` cache key) is plain localStorage, never cookies --
+      // see isAuxiliaryStorageKey() above for why this is a denylist, not an
+      // allowlist keyed to one canonical STORAGE_KEY value.
+      if (isAuxiliaryStorageKey(key)) {
         try { return window.localStorage.getItem(key); } catch (e) { return null; }
       }
 
@@ -303,9 +328,9 @@
     },
 
     setItem: function (key, value) {
-      // gh-2162 review round 4: non-canonical keys (e.g. the PKCE
-      // `<key>-code-verifier` key) are plain localStorage, never cookies.
-      if (key !== STORAGE_KEY) {
+      // gh-2162 review round 5: auxiliary keys are plain localStorage, never
+      // cookies -- see isAuxiliaryStorageKey() above.
+      if (isAuxiliaryStorageKey(key)) {
         try { window.localStorage.setItem(key, value); } catch (e) {}
         return;
       }
@@ -341,9 +366,13 @@
       // its PKCE cleanup — that is not a sign-out, but it wiped the whole
       // session anyway, leaving a P-1 partner (who has no known password)
       // permanently locked out of the only screen that lets them set one.
-      // Only the canonical session key may touch the auth cookies / legacy
-      // keys; every other key is a plain localStorage removeItem.
-      if (key !== STORAGE_KEY) {
+      // gh-2162 review round 5: only an AUXILIARY key (see
+      // isAuxiliaryStorageKey() above) is a plain localStorage removeItem;
+      // every other key -- the canonical session key OR whatever storageKey
+      // a given client actually resolved to (e.g. supabase-js's own default
+      // `sb-<ref>-auth-token` on js/config.js's client, which passes no
+      // storageKey at all) -- keeps the pre-round-4 cookie-clearing behavior.
+      if (isAuxiliaryStorageKey(key)) {
         try { window.localStorage.removeItem(key); } catch (e) {}
         return;
       }

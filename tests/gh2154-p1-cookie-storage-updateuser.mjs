@@ -154,7 +154,7 @@ function makeFakeAccessToken(sub) {
  *  a fresh cookie jar / localStorage, and a fresh Supabase client already
  *  signed in (session cookies present) -- via setSession(), so no signup or
  *  password-grant network call is needed. */
-async function freshSignedInEnv(supabaseSrc, cookieStorageSrc, { userId, fetchImpl }) {
+async function freshSignedInEnv(supabaseSrc, cookieStorageSrc, { userId, fetchImpl, configStyle }) {
   const localStorage = makeLocalStorage();
   const cookieDoc = makeCookieJar();
   const windowObj = {
@@ -188,18 +188,23 @@ async function freshSignedInEnv(supabaseSrc, cookieStorageSrc, { userId, fetchIm
   vm.runInContext(cookieStorageSrc, ctx, { filename: 'js/cookie-storage.js (real)' });
   vm.runInContext(supabaseSrc, ctx, { filename: 'supabase-js 2.112.4 UMD (real, jsdelivr, SRI-verified)' });
 
+  // gh-2162 review round 5: `configStyle` builds the client EXACTLY the way
+  // js/config.js's `_oqCreateSupabaseClient()` does (js/config.js:146) --
+  // `{ auth: { storage: window.OtterQuoteCookieStorage } }`, no `storageKey`
+  // at all. supabase-js then falls back to ITS OWN default,
+  // `sb-<project-ref>-auth-token`, derived from the URL host's first label
+  // -- never the canonical `sb-otterquote-auth` js/supabase-client.js passes
+  // explicitly. Most partner pages (partner-login.html, the signup pages)
+  // use exactly this config.js client, so this is the effective storageKey
+  // in production far more often than the explicit one below.
+  const authOptions = configStyle
+    ? { storage: ctx.window.OtterQuoteCookieStorage, persistSession: true, autoRefreshToken: false, detectSessionInUrl: false }
+    : { storage: ctx.window.OtterQuoteCookieStorage, storageKey: 'sb-otterquote-auth', persistSession: true, autoRefreshToken: false, detectSessionInUrl: false };
+
   const client = ctx.supabase.createClient(
     'https://fake-project.supabase.co',
     'fake-anon-key',
-    {
-      auth: {
-        storage: ctx.window.OtterQuoteCookieStorage,
-        storageKey: 'sb-otterquote-auth',
-        persistSession: true,
-        autoRefreshToken: false,
-        detectSessionInUrl: false,
-      },
-    }
+    { auth: authOptions }
   );
 
   const accessToken = makeFakeAccessToken(userId);
@@ -406,6 +411,63 @@ async function main() {
       ok(sessionCookiesPresent(cookieDoc), '(5) writing a non-canonical key does not disturb the session cookies');
     } catch (e) {
       failWithReason('(5) getItem/setItem non-canonical key scenario', e.message);
+    }
+  }
+
+  // ── (6) gh-2162 review round 5: a client built EXACTLY like js/config.js's
+  // own `_oqCreateSupabaseClient()` -- no storageKey, so supabase-js falls
+  // back to its own default (`sb-<ref>-auth-token`, never
+  // 'sb-otterquote-auth'). This is the client partner-login.html and the
+  // signup pages actually use. Sign-in must still write the session cookies,
+  // getItem must still reconstruct the session from them, and signOut must
+  // still delete them -- the round-4 allowlist-by-exact-key fix broke all
+  // three because it only recognized the canonical key. ──
+  {
+    let logoutCalled = false;
+    const stub = makeFetchStub({
+      userId: 'user-6', updatePutResponses: [], onLogout: () => { logoutCalled = true; },
+    });
+    try {
+      const { client, cookieDoc } = await freshSignedInEnv(supabaseSrc, cookieStorageSrc, {
+        userId: 'user-6', fetchImpl: stub.fetch, configStyle: true,
+      });
+      ok(sessionCookiesPresent(cookieDoc), '(6) config.js-style client (no storageKey): sign-in writes the session cookies');
+
+      const { data: sessionData, error: getSessionErr } = await client.auth.getSession();
+      ok(!getSessionErr && !!(sessionData && sessionData.session), '(6) config.js-style client: getItem() reconstructs the session from the cookies -- got error=' + (getSessionErr && getSessionErr.message));
+
+      const { error: signOutErr } = await client.auth.signOut();
+      ok(!signOutErr, '(6) config.js-style client: signOut() itself does not error -- got ' + (signOutErr && signOutErr.message));
+      ok(logoutCalled, '(6) config.js-style client: signOut() actually called POST /logout');
+      ok(!sessionCookiesPresent(cookieDoc), '(6) config.js-style client: signOut() DOES clear the session cookies (round-4 regression check)');
+    } catch (e) {
+      failWithReason('(6) config.js-style client (no storageKey) scenario', e.message);
+    }
+  }
+
+  // ── (7) the same weak-password-survives case as (1), but on the
+  // config.js-style client -- the exact client partner-dashboard.html's
+  // set-password card and the signup pages actually run under. ──
+  {
+    const stub = makeFetchStub({
+      userId: 'user-7',
+      updatePutResponses: [weakPasswordResponse, () => successUpdateResponse('user-7', { needs_password: false })],
+    });
+    try {
+      const { client, cookieDoc } = await freshSignedInEnv(supabaseSrc, cookieStorageSrc, {
+        userId: 'user-7', fetchImpl: stub.fetch, configStyle: true,
+      });
+      ok(sessionCookiesPresent(cookieDoc), '(7) config.js-style client: setup, session cookies present');
+
+      const { error: weakErr } = await client.auth.updateUser({ password: 'password123' });
+      ok(!!weakErr, '(7) config.js-style client: weak-password updateUser() returns an error');
+      ok(sessionCookiesPresent(cookieDoc), '(7) config.js-style client: session cookies SURVIVE a rejected updateUser() (round-4 regression check)');
+
+      const { error: retryErr } = await client.auth.updateUser({ password: 'Str0ng!Passw0rd-2162', data: { needs_password: false } });
+      ok(!retryErr, '(7) config.js-style client: retry with a strong password succeeds -- got ' + (retryErr && retryErr.message));
+      ok(sessionCookiesPresent(cookieDoc), '(7) config.js-style client: session cookies still present after the successful retry');
+    } catch (e) {
+      failWithReason('(7) config.js-style client weak-password scenario', e.message);
     }
   }
 
