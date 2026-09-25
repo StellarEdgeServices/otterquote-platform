@@ -29,5 +29,10 @@
   },
   "referral_agents": {
     "onboarding_opted_out_at": { "migration": "supabase/migrations/20260924210000_gh2154_p4_partner_onboarding_ledger.sql", "issue": "#2154", "note": "gh-2154 P-4 (Kevin correction Q1): permanent partner-level opt-out gate, written by partner-email-optout/index.ts and read by send-partner-onboarding's selectStage. Migration is committed (stacked with the rest of P-4's ledger table + claim function) but not yet applied to prod -- this entry was missing from schema-pending.json until the P-4 fix round (REVIEW FAIL 5833587935) caught it via schema-column-lint.py's FAIL on partner-email-optout/index.ts:209." }
+  },
+  "partner_onboarding_sends": {
+    "attempt_count": { "migration": "supabase/migrations/20260925183000_gh2154_p4_switchon_retry_cap_uncertain_alert.sql", "issue": "#2154", "note": "gh-2154 P-4 switch-on hardening item (3) retry cap: total claim attempts for this (partner_id, stage) row; written by claim_partner_onboarding_stage(), read by send-partner-onboarding's markFailed wiring. APPLY-BEFORE-MERGE for this PR -- see its body's go-live order." },
+    "terminal_failure": { "migration": "supabase/migrations/20260925183000_gh2154_p4_switchon_retry_cap_uncertain_alert.sql", "issue": "#2154", "note": "gh-2154 P-4 switch-on hardening item (3): set true on a permanent (4xx-other-than-429) Mailgun rejection; blocks all further reclaim regardless of attempt_count. APPLY-BEFORE-MERGE for this PR." },
+    "uncertain_alerted_at": { "migration": "supabase/migrations/20260925183000_gh2154_p4_switchon_retry_cap_uncertain_alert.sql", "issue": "#2154", "note": "gh-2154 P-4 switch-on hardening item (2): admin-alert dedupe marker for an uncertain-outcome row; written by send-partner-onboarding's markUncertainAlerted. APPLY-BEFORE-MERGE for this PR. NOTE: schema-column-lint.py currently reports the whole partner_onboarding_sends table as 'not found in schema snapshot' (a WARN, not a FAIL) rather than flagging each column individually -- this entry exists for the same greppable-declaration reason as this file's other entries, ahead of the table itself being added to sql/schema-snapshot.json." }
   }
 }

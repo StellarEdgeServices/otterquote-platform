@@ -264,7 +264,13 @@
 
         <p class="signup-cta">Not a partner yet? <a href="/partner-other.html">Join the referral program</a> &mdash; it takes about 60 seconds, and it&rsquo;s free.</p>
 
-        <p class="referral-fee-disclaimer">Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.</p>
+        <!-- gh-2155 HI-0c (Ben ruling, #2152 comment 5836510515, item 2):
+             default-hidden, fail closed -- this page has no per-visitor
+             type information at load, so with JavaScript disabled, or
+             before the script below resolves a role, no fee text renders.
+             The script reveals it only once Auth.getRole() resolves to a
+             confirmed non-home_inspector partner type. -->
+        <p class="referral-fee-disclaimer" id="referralFeeDisclaimer" style="display:none;">Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.</p>
     </main>
 
     <footer id="site-footer"></footer>
@@ -314,6 +320,22 @@
                     if (isPartner) window.location.replace('/partner-dashboard.html');
                 });
             }
+
+            // gh-2155 HI-0c (Ben ruling, #2152 comment 5836510515, item 2):
+            // reveal the referral-fee disclaimer only for a confirmed
+            // non-home_inspector partner type. Stays hidden (fail closed)
+            // if getRole() resolves to home_inspector, a non-partner role,
+            // null, or never resolves.
+            Auth.getRole().then(function (role) {
+                var isNonInspectorPartner = typeof Nav !== 'undefined' &&
+                    Array.isArray(Nav.PARTNER_AUTH_ROLES) &&
+                    Nav.PARTNER_AUTH_ROLES.indexOf(role) !== -1 &&
+                    role !== 'home_inspector';
+                if (isNonInspectorPartner) {
+                    var disclaimer = document.getElementById('referralFeeDisclaimer');
+                    if (disclaimer) disclaimer.style.display = '';
+                }
+            }).catch(function () { /* non-fatal: stays hidden */ });
 
             // QR code — renders once the deferred vendor lib is ready.
             function renderQr() {

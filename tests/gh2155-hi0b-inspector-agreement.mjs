@@ -43,6 +43,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.join(__dirname, '..');
@@ -122,8 +123,13 @@ function stripComments(html) {
   }
   ok(totalFeeMentions > 0 && negativeFeeMentions === totalFeeMentions,
     'partner-inspectors.html: every "referral fee" mention is a negative statement ("no referral fee" / "do not receive a referral fee")');
-  ok(rawSrc.indexOf('href="partner-agreement.html?track=home_inspector#track-home-inspector"') !== -1,
-    'partner-inspectors.html: agreement link carries ?track=home_inspector AND the #track-home-inspector fail-closed anchor');
+  // gh-2155 HI-0c (Ben ruling, #2152 comment 5836510515, item 1): the
+  // query-string/hash-tracked link was superseded by the static,
+  // fee-content-free partner-agreement-inspector.html -- see
+  // tests/gh2155-hi0c-inspector-agreement-parity.mjs for that page's own
+  // drift/parity coverage.
+  ok(rawSrc.indexOf('href="partner-agreement-inspector.html"') !== -1,
+    'partner-inspectors.html: agreement link points at the static partner-agreement-inspector.html (gh-2155 HI-0c)');
 }
 
 // ── Load partner-agreement.html and the extracted hiding script once. ───
@@ -295,7 +301,8 @@ function runHidingScript(hrefSearch) {
 
 // ── (c) realtor/insurance (no track param, or a non-inspector value):
 //        nothing hidden, and the page's visible text is unchanged apart
-//        from the version/effective-date label, vs. origin/main. ───────
+//        from the version/effective-date label, vs. a fixed merge-base
+//        baseline hash (see tests/fixtures/, below). ───────
 {
   for (const search of ['', '?track=re_agent', '?agent_type=insurance_agent']) {
     const els = runHidingScript(search);
@@ -304,13 +311,47 @@ function runHidingScript(hrefSearch) {
     }
   }
 
-  let mainSrc = null;
+  // gh-2155 HI-0c REVIEW FAIL (5837784831) should-fix: this used to run
+  // `git show origin/main:partner-agreement.html` live -- whatever main
+  // happens to be at CI run time. By the time of this fix, main had already
+  // absorbed this very file's v3-2026-09 version bump, its "home
+  // inspectors," removal from Section 7, AND a new Section 4.3 (Home
+  // Inspector Partners, a realtor/insurance-visible disclosure, not
+  // inspector-track-hidden content) through an earlier merged round (HI-0b,
+  // PR #2166) -- none of which this test's hardcoded 'Effective Date:
+  // August 20, 2026' strip and single "home inspectors," removal accounted
+  // for, so it was failing on every run by comparing against a moving,
+  // no-longer-accurate idea of what the "before" state was, regardless of
+  // any real regression.
+  //
+  // Round 3 fixed this by committing a byte-for-byte HTML snapshot of the
+  // file at a FIXED commit (275ba875, `git merge-base HEAD origin/main`) as
+  // tests/fixtures/gh2155-partner-agreement-baseline.html. Round 4
+  // (dispatch re-review): netlify.toml publishes the repo root
+  // (`publish = "."`) with nothing excluding tests/, so that fixture would
+  // have been served publicly at otterquote.com/tests/fixtures/...html --
+  // an indexable, STALE duplicate of the live legal Partner Agreement, fee
+  // table included, and main has no .html under tests/ today. Replaced with
+  // a hash-only fixture instead:
+  // tests/fixtures/gh2155-partner-agreement-baseline-hash.json stores only
+  // the sha256 of the SAME normalized-visible-text transform this file
+  // already applies to both sides (visibleText() + stripVersionLabel(),
+  // below) run over partner-agreement.html at that same fixed commit --
+  // nothing that resembles a servable legal document, but an equally strict
+  // check: any single-character change to the realtor/insurance-visible
+  // text changes the hash. The fixture's own `regenerate` field is the
+  // exact command to recompute it if a future round legitimately changes
+  // this text. Still anchored to a fixed ref rather than a live `git show
+  // origin/main:...`, so the comparison never depends on git history, a
+  // remote, or where main's pointer sits at run time.
+  const baselinePath = path.join(__dirname, 'fixtures', 'gh2155-partner-agreement-baseline-hash.json');
+  let baseline = null;
   try {
-    mainSrc = execFileSync('git', ['show', 'origin/main:partner-agreement.html'], { cwd: repoRoot, encoding: 'utf8' });
+    baseline = JSON.parse(fs.readFileSync(baselinePath, 'utf8'));
   } catch (e) {
-    console.log('SKIP: byte-identical-vs-origin/main check (git show failed: ' + e.message + ')');
+    console.log('SKIP: hash-vs-fixed-baseline check (fixture read/parse failed: ' + e.message + ')');
   }
-  if (mainSrc !== null) {
+  if (baseline !== null) {
     // Strip the two lines this change is allowed to touch (Effective Date,
     // Version) plus the new HTML-comment/id/script additions, then compare
     // the remaining legal *text* (tags stripped, whitespace normalized) --
@@ -337,18 +378,22 @@ function runHidingScript(hrefSearch) {
         .replace(/\s+([,;.:!?])/g, '$1')
         .trim();
     }
-    const mainText = visibleText(mainSrc)
-      .replace('Effective Date: August 20, 2026', '')
-      .replace(/home inspectors,\s*/, '')
-      .replace(/\s+/g, ' ')
-      .trim();
-    const newText = visibleText(agreementSrc)
-      .replace('Effective Date: September 25, 2026', '')
-      .replace('Version: v3-2026-09', '')
-      .replace(/\s+/g, ' ')
-      .trim();
-    ok(mainText === newText,
-      'partner-agreement.html: visible text for realtor/insurance is unchanged vs origin/main apart from the version/date label and the Section 7 "home inspectors," removal');
+    // The SAME date/version strip the baseline hash was generated with (see
+    // the fixture's own `normalization` field) -- the baseline and the
+    // current file carry the identical v3-2026-09 / September 25, 2026
+    // label today, and this stays correct if a future round bumps both
+    // again in lockstep (regenerate the fixture's hash at that point).
+    function stripVersionLabel(text) {
+      return text
+        .replace(/Effective Date:\s*[A-Za-z]+ \d{1,2}, \d{4}/, '')
+        .replace(/Version:\s*v\d+-\d{4}-\d{2}/, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+    const newText = stripVersionLabel(visibleText(agreementSrc));
+    const newHash = createHash(baseline.algorithm || 'sha256').update(newText, 'utf8').digest('hex');
+    ok(newHash === baseline.normalizedTextHash,
+      'partner-agreement.html: sha256 of visible text for realtor/insurance matches the fixed merge-base baseline hash (unchanged apart from the version/date label)');
   }
 }
 
@@ -406,7 +451,8 @@ function runHidingScript(hrefSearch) {
   // insurance_agent and a no-param visitor actually receive, since the hide
   // is display:none/CSS :target, never a literal text deletion -- still
   // carries all three phrases. This is what (c) already proved is
-  // byte-for-byte unchanged from origin/main for those tracks.
+  // unchanged (apart from the version/date label) from the fixed
+  // merge-base baseline fixture for those tracks.
   const fullText = toText(agreementSrc);
   for (const phrase of PHRASES) {
     ok(fullText.indexOf(phrase) !== -1, 'negative control: "' + phrase + '" is PRESENT in the raw document (re_agent/insurance_agent/no-param never hide it)');
@@ -423,26 +469,33 @@ function runHidingScript(hrefSearch) {
 //        behind a minimal document/window stand-in, same technique as the
 //        rest of this file. ────────────────────────────────────────────────
 {
+  // gh-2155 HI-0c (Ben ruling, #2152 comment 5836510515, item 1): the
+  // query-string/hash-tracked link this block used to verify was found to
+  // leak the fee table from partner-agreement.html's OWN footer, and with
+  // JS off + no hash. Superseded by a static, fee-content-free
+  // partner-agreement-inspector.html -- the footer now points there
+  // whenever Nav._isInspectorTrack() is true. That check (and the row-2
+  // nav / CTA / logo href changes alongside it) has its own dedicated,
+  // more thorough vm-harness coverage in
+  // tests/gh2155-hi0c-inspector-sweep.mjs; this block is kept, updated to
+  // the new expected href, so it still stands as this file's own
+  // regression guard on the footer link specifically.
   const navSrc = fs.readFileSync(path.join(repoRoot, 'js', 'nav.js'), 'utf8');
-  const snippet = extractBetween(
-    navSrc,
-    'const isInspectorTrack = window.location.pathname',
-    "'/partner-agreement.html';",
-    'js/nav.js renderFooter() inspector-track href logic'
-  ) + "'/partner-agreement.html';";
+  const navBody = extractBetween(navSrc, 'const Nav = {', '\n};', 'js/nav.js Nav object literal (b4)')
+    .replace('const Nav = {', 'var Nav = {') + '\n};\n';
 
   function computeHref(pathname, agentType) {
-    const fakeWindow = { location: { pathname }, currentPartnerAgentType: agentType };
+    const fakeWindow = { location: { pathname, search: '' }, currentPartnerAgentType: agentType };
     fakeWindow.window = fakeWindow;
     const context = vm.createContext(fakeWindow);
-    vm.runInContext(snippet + '\npartnerAgreementHref;', context);
-    return vm.runInContext('partnerAgreementHref', context);
+    vm.runInContext(navBody, context);
+    return context.Nav._isInspectorTrack() ? '/partner-agreement-inspector.html' : '/partner-agreement.html';
   }
 
-  ok(computeHref('/partner-inspectors.html', undefined) === '/partner-agreement.html?track=home_inspector#track-home-inspector',
-    'js/nav.js footer link: partner-inspectors.html carries ?track=home_inspector#track-home-inspector');
-  ok(computeHref('/partner-dashboard.html', 'home_inspector') === '/partner-agreement.html?track=home_inspector#track-home-inspector',
-    'js/nav.js footer link: partner-dashboard.html with window.currentPartnerAgentType=home_inspector carries the tracked link');
+  ok(computeHref('/partner-inspectors.html', undefined) === '/partner-agreement-inspector.html',
+    'js/nav.js footer link: partner-inspectors.html points at the static partner-agreement-inspector.html');
+  ok(computeHref('/partner-dashboard.html', 'home_inspector') === '/partner-agreement-inspector.html',
+    'js/nav.js footer link: partner-dashboard.html with window.currentPartnerAgentType=home_inspector points at partner-agreement-inspector.html');
   ok(computeHref('/partner-dashboard.html', 're_agent') === '/partner-agreement.html',
     'js/nav.js footer link: partner-dashboard.html with a non-inspector agent_type is untouched');
   ok(computeHref('/partner-re.html', undefined) === '/partner-agreement.html',
@@ -487,23 +540,20 @@ function runHidingScript(hrefSearch) {
   ok(/Nav\.renderFooter\s*\(\s*\)/.test(afterAssignment),
     'partner-dashboard.html: re-renders the footer (Nav.renderFooter()) immediately after window.currentPartnerAgentType is set, so the footer picks up the real partner type instead of staying stuck on the DOMContentLoaded-time undefined -- FAILS on 5ede2b19, where no such re-render call exists');
 
-  // End-to-end: model the two renders using nav.js's real href logic
-  // (the same extraction technique as (b4), reproduced here so this block
+  // End-to-end: model the two renders using nav.js's real
+  // _isInspectorTrack() logic (gh-2155 HI-0c updated the href it feeds;
+  // same extraction technique as (b4), reproduced here so this block
   // stands alone).
   const navSrc = fs.readFileSync(path.join(repoRoot, 'js', 'nav.js'), 'utf8');
-  const hrefSnippet = extractBetween(
-    navSrc,
-    'const isInspectorTrack = window.location.pathname',
-    "'/partner-agreement.html';",
-    'js/nav.js renderFooter() inspector-track href logic (b5)'
-  ) + "'/partner-agreement.html';";
+  const navBody = extractBetween(navSrc, 'const Nav = {', '\n};', 'js/nav.js Nav object literal (b5)')
+    .replace('const Nav = {', 'var Nav = {') + '\n};\n';
 
   function computeHrefAt(agentType) {
-    const fakeWindow = { location: { pathname: '/partner-dashboard.html' }, currentPartnerAgentType: agentType };
+    const fakeWindow = { location: { pathname: '/partner-dashboard.html', search: '' }, currentPartnerAgentType: agentType };
     fakeWindow.window = fakeWindow;
     const context = vm.createContext(fakeWindow);
-    vm.runInContext(hrefSnippet + '\npartnerAgreementHref;', context);
-    return vm.runInContext('partnerAgreementHref', context);
+    vm.runInContext(navBody, context);
+    return context.Nav._isInspectorTrack() ? '/partner-agreement-inspector.html' : '/partner-agreement.html';
   }
 
   // Render #1: nav.js's DOMContentLoaded-time footer render, before
@@ -517,8 +567,8 @@ function runHidingScript(hrefSearch) {
   // this is the href a real inspector's SECOND (fixed) footer render
   // produces, and what the re-render call asserted above must trigger.
   const secondRenderHref = computeHrefAt('home_inspector');
-  ok(secondRenderHref === '/partner-agreement.html?track=home_inspector#track-home-inspector',
-    'partner-dashboard.html footer, render #2 (after window.currentPartnerAgentType = "home_inspector"): tracked -- what the re-render call must produce for a real inspector, closing the gap REVIEW FAIL 5832774895 / LEGAL-READ FAIL 5832784187 flagged');
+  ok(secondRenderHref === '/partner-agreement-inspector.html',
+    'partner-dashboard.html footer, render #2 (after window.currentPartnerAgentType = "home_inspector"): points at the static partner-agreement-inspector.html -- what the re-render call must produce for a real inspector, closing the gap REVIEW FAIL 5832774895 / LEGAL-READ FAIL 5832784187 flagged (superseded href per gh-2155 HI-0c)');
 }
 
 // ── (d) CI legal-surface check (tools/partner_parity_check.py): still

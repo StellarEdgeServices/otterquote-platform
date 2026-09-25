@@ -67,9 +67,11 @@
  * with a "[TEST] " subject prefix, and wins over a bot-pattern email match;
  * a bot-pattern email WITHOUT is_test=true is skipped entirely (no send).
  *
- * Auth: same three-way CRON_SECRET gate as send-homeowner-next-steps /
- * send-home-profile-prompt — X-Cron-Secret header, or a service-role
- * Bearer, or permissive when CRON_SECRET is unset (dev/staging).
+ * Auth (gh-2154 P-4 switch-on hardening, Ben bus 18:23:17Z item (1)):
+ * FAIL CLOSED — an X-Cron-Secret header matching a CONFIGURED CRON_SECRET,
+ * or a service-role Bearer (constant-time compares, either way). There is
+ * no permissive branch: an unset CRON_SECRET never widens what is accepted.
+ * See ./cron-auth.ts for the full gate and rationale.
  *
  * Environment variables:
  *   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, MAILGUN_API_KEY, CRON_SECRET,
@@ -96,6 +98,8 @@ import {
   signPartnerOptOutToken,
 } from "./optout.ts";
 import { isCronAuthorized } from "./cron-auth.ts";
+import { ADMIN_EMAIL, buildUncertainAlertEmail } from "./admin-alert.ts";
+import type { UncertainStage } from "./run-sweep.ts";
 
 const FUNCTION_NAME = "send-partner-onboarding";
 const BATCH_LIMIT = 500;
@@ -139,7 +143,7 @@ async function sendMailgunEmail(
   textBody: string,
   htmlBody: string,
   optOutUrl: string,
-): Promise<{ ok: boolean; mailgunId?: string; error?: string; uncertain?: boolean }> {
+): Promise<{ ok: boolean; mailgunId?: string; error?: string; uncertain?: boolean; permanent?: boolean }> {
   const formData = new URLSearchParams();
   formData.append("from", "Otter Quotes <notifications@mail.otterquote.com>");
   formData.append("to", to);
@@ -166,7 +170,15 @@ async function sendMailgunEmail(
     // (run-sweep.ts routes this to markFailed, which is reclaimable).
     if (!res.ok) {
       const errText = await res.text().catch(() => "(unreadable)");
-      return { ok: false, error: `Mailgun ${res.status}: ${errText}` };
+      // gh-2154 P-4 switch-on hardening (item (3) retry cap): a 4xx status
+      // OTHER than 429 is Mailgun permanently refusing this specific
+      // request (bad/invalid recipient, malformed request, auth problem,
+      // etc.) — retrying it on a later tick can never succeed and only
+      // burns the attempt cap that a genuinely transient failure needs.
+      // 429 (rate limit) and every 5xx are transient by nature and stay
+      // retryable, same as before.
+      const permanent = res.status >= 400 && res.status < 500 && res.status !== 429;
+      return { ok: false, error: `Mailgun ${res.status}: ${errText}`, permanent };
     }
     const data = await res.json().catch(() => ({}));
     return { ok: true, mailgunId: (data as { id?: string })?.id };
@@ -286,7 +298,7 @@ serve(async (req: Request) => {
       if (partnerIds.length === 0) return [];
       const { data, error } = await supabase
         .from("partner_onboarding_sends")
-        .select("partner_id, stage, status, created_at")
+        .select("partner_id, stage, status, created_at, uncertain_alerted_at")
         .in("partner_id", partnerIds);
       if (error) {
         console.error(`[${FUNCTION_NAME}] ledger read failed:`, error.message);
@@ -318,13 +330,66 @@ serve(async (req: Request) => {
         .eq("stage", stage);
       return { error: error ? { code: error.code, message: error.message } : null };
     },
-    markFailed: async (partnerId, stage, errMessage) => {
+    markFailed: async (partnerId, stage, errMessage, terminal) => {
       const { error } = await supabase
         .from("partner_onboarding_sends")
-        .update({ status: "failed", error: errMessage })
+        // gh-2154 P-4 switch-on hardening (item (3)): terminal_failure=true
+        // for a permanent 4xx rejection makes this row permanently
+        // unreclaimable in claim_partner_onboarding_stage(), independent of
+        // attempt_count. Omitted/false leaves the existing value alone via
+        // an explicit `false` write (never reverts a PRIOR terminal mark —
+        // once true it can only be set by this exact call, and this call
+        // only ever passes true, never explicitly clears a true back to
+        // false).
+        .update({ status: "failed", error: errMessage, terminal_failure: terminal === true })
         .eq("partner_id", partnerId)
         .eq("stage", stage);
       return { error: error ? { code: error.code, message: error.message } : null };
+    },
+    alertAdminUncertain: async (stages) => {
+      if (!mailgunApiKey) {
+        return { ok: false, error: "MAILGUN_API_KEY not configured" };
+      }
+      const { subject, textBody, htmlBody } = buildUncertainAlertEmail(stages as UncertainStage[]);
+      const formData = new URLSearchParams();
+      formData.append("from", "Otter Quotes <notifications@mail.otterquote.com>");
+      formData.append("to", ADMIN_EMAIL);
+      formData.append("subject", subject);
+      formData.append("text", textBody);
+      formData.append("html", htmlBody);
+      try {
+        const res = await fetch("https://api.mailgun.net/v3/mail.otterquote.com/messages", {
+          method: "POST",
+          headers: { Authorization: `Basic ${btoa(`api:${mailgunApiKey}`)}` },
+          body: formData,
+          signal: AbortSignal.timeout(MAILGUN_TIMEOUT_MS),
+        });
+        if (!res.ok) {
+          const errText = await res.text().catch(() => "(unreadable)");
+          return { ok: false, error: `Mailgun ${res.status}: ${errText}` };
+        }
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, error: String(err) };
+      }
+    },
+    markUncertainAlerted: async (stages) => {
+      const nowIso = new Date().toISOString();
+      // Batched, not per-row: at most BATCH_LIMIT rows per sweep, and this
+      // is best-effort bookkeeping (see run-sweep.ts's caller) — a failure
+      // here is logged, never thrown, and does not affect what was already
+      // alerted.
+      const results = await Promise.all(
+        (stages as UncertainStage[]).map((s) =>
+          supabase
+            .from("partner_onboarding_sends")
+            .update({ uncertain_alerted_at: nowIso })
+            .eq("partner_id", s.partner_id)
+            .eq("stage", s.stage),
+        ),
+      );
+      const firstError = results.find((r) => r.error)?.error;
+      return { error: firstError ? { code: firstError.code, message: firstError.message } : null };
     },
     markSkipped: async (partnerId, stage, reason) => {
       // Fresh INSERT (backlog-superseded stages are never claimed first —
@@ -375,6 +440,11 @@ serve(async (req: Request) => {
       ok: true,
       processed: sent,
       results: outcome.results,
+      // gh-2154 P-4 switch-on hardening (item (2)): every currently-
+      // uncertain (partner, stage) this run, whether or not it has already
+      // been alerted — omitted entirely when there are none, matching
+      // SweepOutcome's own optional shape.
+      ...(outcome.uncertain ? { uncertain: outcome.uncertain } : {}),
     },
     200,
     corsHeaders,
