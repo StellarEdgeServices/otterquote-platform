@@ -511,23 +511,35 @@ const Nav = {
     // Dashboard" link already does, so it fails closed on first paint
     // rather than waiting on an auth round trip.
     if (role === 'partner' && this._isInspectorTrack()) {
-      return links.map(l => {
-        if (l.href === '/partners.html') return Object.assign({}, l, { href: '/partner-inspectors.html' });
-        if (l.href === '/partner-app.html') return Object.assign({}, l, { href: '/partner-app.html?track=home_inspector' });
-        return l;
-      });
+      return links
+        .map(l => {
+          if (l.href === '/partners.html') return Object.assign({}, l, { href: '/partner-inspectors.html' });
+          if (l.href === '/partner-app.html') return Object.assign({}, l, { href: '/partner-app.html?track=home_inspector' });
+          return l;
+        })
+        // gh-2155 HI-05c (Ben, prod CLOSE-REVIEW FAIL 5840391259): the
+        // partner role's own row-2 "FAQ" link -- one click from EVERY
+        // inspector page (partner-inspectors.html, partner-app.html,
+        // partner-dashboard.html, partner-agreement-inspector.html, all
+        // resolve to the 'partner' role) -- points at faq.html, which
+        // answers "What's the recruit bonus?" and "When do I get paid?"
+        // with dollar figures for every OTHER partner type. No
+        // inspector-safe variant of faq.html exists, so removal, not an
+        // href swap, same as the footer's identical link below.
+        .filter(l => l.href !== '/faq.html');
     }
-    // gh-2155 HI-05b REVIEW FAIL (5840063832) must-fix 1: the homeowner
-    // role's own "Refer a Friend" row-2 link (a homeowner cash-referral
-    // program, unrelated to D-333) is reachable from ANY partner page via the
-    // row-1 role tab -- the session-scoped inspector-context flag stays
-    // set across that switch (a deliberate role browse, not a fresh
-    // session), so this removes it the same way the footer's identical
-    // link is removed, everywhere the flag is set. Removal only -- every
-    // other homeowner link (Home, How It Works, Measurements, FAQ) is
-    // unaffected.
+    // gh-2155 HI-05b REVIEW FAIL (5840063832) must-fix 1 / HI-05c: the
+    // homeowner role's own "Refer a Friend" row-2 link (a homeowner
+    // cash-referral program, unrelated to D-333) and its own "FAQ" link
+    // (same faq.html as the partner role's, same fee content) are both
+    // reachable from ANY partner page via the row-1 role tab -- the
+    // session-scoped inspector-context flag stays set across that switch
+    // (a deliberate role browse, not a fresh session), so both are
+    // removed the same way the footer's identical links are removed,
+    // everywhere the flag is set. Removal only -- every other homeowner
+    // link (Home, How It Works, Measurements) is unaffected.
     if (role === 'homeowner' && this._isInspectorTrack()) {
-      return links.filter(l => l.href !== '/refer-a-friend.html');
+      return links.filter(l => l.href !== '/refer-a-friend.html' && l.href !== '/faq.html');
     }
     return links;
   },
@@ -1148,12 +1160,25 @@ const Nav = {
               <a href="/guides/">Guides</a>
             ` : `
               <a href="/how-it-works.html">How It Works</a>
-              <a href="/faq.html">FAQ</a>
+              ${!this._isInspectorTrack() ? '<a href="/faq.html">FAQ</a>' : ''}
               <a href="/start.html${this._attributionQuery()}">Get Started</a>
               <a href="/blog/index.html">Blog</a>
               <a href="/guides/">Guides</a>
             `}
           </div>
+          <!-- gh-2155 HI-05c (Ben, prod CLOSE-REVIEW FAIL 5840391259):
+               this "Contractors" recruitment column renders unconditionally
+               on EVERY non-contractor page -- including every inspector
+               page -- and its links (contractor-login.html, tools.html,
+               contractor-agreement.html) are a DIRECT, one-hop path to
+               contractor-agreement.html's real dollar figures ($1,000,000
+               liability minimums, a $250 nonpayment fee, referral
+               commissions). Unlike the "Your Account" column a signed-in
+               contractor sees (isContractor branch, unaffected), this is
+               pure recruitment marketing an inspector-context visitor has
+               no reason to see -- hidden the same removal-only way as the
+               Partners column below. -->
+          ${isContractor || !this._isInspectorTrack() ? `
           <div class="footer-col">
             <h4 class="footer-heading">${isContractor ? 'Your Account' : 'Contractors'}</h4>
             ${isContractor ? `
@@ -1168,6 +1193,7 @@ const Nav = {
               <a href="/contractor-agreement.html">Partner Agreement</a>
             `}
           </div>
+          ` : ''}
           ${!isContractor ? `
           <div class="footer-col">
             <h4 class="footer-heading">Partners</h4>

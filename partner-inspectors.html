@@ -1407,8 +1407,17 @@ function toggleFaq(btn) {
 }
     </script>
 
-<!-- Referral landing page link for SEO crawlability -->
-<p style="text-align:center;font-size:0.85rem;color:var(--slate);padding:8px 0 16px;"><a href="/ref-inspector.html" id="seoRefLink" style="color:var(--amber-2);">Homeowner referral landing page</a></p>
+<!-- Referral landing page link for SEO crawlability. gh-2155 HI-05c (Ben,
+     prod CLOSE-REVIEW FAIL 5840391259, must-fix 2): ref-inspector.html's
+     own $15 homeowner-measurement-fee mention is unrelated to a partner
+     referral fee, but Ben's ruling this round restricts text-exemption to
+     terms.html/privacy.html only -- every other reachable page carrying
+     ANY dollar figure goes on the crawler's exclusion list instead, so
+     this page must not be linked to from here. This IS the only page on
+     the whole site partner-inspectors.html is always inspector context
+     (it is one of the three pages that SETS the flag), so the link is
+     hidden unconditionally rather than gated -- removal only. -->
+<p style="text-align:center;font-size:0.85rem;color:var(--slate);padding:8px 0 16px;" data-hide-when-inspector="true"><a href="/ref-inspector.html" id="seoRefLink" style="color:var(--amber-2);">Homeowner referral landing page</a></p>
 <!-- gh-1994: router prefill -- reads ?lead=<uuid> (no PII in the URL) set by
      otterquote.com/start.html and fills name/email/phone via the
      get_lead_prefill() SECURITY DEFINER RPC (see

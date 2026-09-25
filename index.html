@@ -988,7 +988,15 @@
       </div>
 
     </div>
-    <p class="text-center" style="margin-top: var(--sp-8);"><a href="faq.html" style="color:var(--amber);font-weight:600;">See all frequently asked questions &rarr;</a></p>
+    <!-- gh-2155 HI-05c (Ben, prod CLOSE-REVIEW FAIL 5840391259): faq.html
+         is one click from every inspector page (this is the SAME faq.html
+         js/nav.js's partner-role nav and footer now remove) and answers
+         "What's the recruit bonus?" with fee figures for every OTHER
+         partner type. This static "See all frequently asked questions"
+         link is a second, independent path to the same page, reachable
+         from index.html via the row-1 Homeowner tab -- hidden the same
+         way, same session-scoped signal. -->
+    <p class="text-center" style="margin-top: var(--sp-8);"><a href="faq.html" style="color:var(--amber);font-weight:600;" data-hide-when-inspector="true">See all frequently asked questions &rarr;</a></p>
   </div>
 </section>
 

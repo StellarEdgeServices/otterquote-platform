@@ -172,65 +172,54 @@ const EXCLUSION_PAGES = {
   'partners.html': 'the fee-program profession picker named explicitly in Ben\'s ruling',
   'refer-a-friend.html': 'homeowner-referral cash program ("Earn $200 for every friend you refer") -- a per-referral offer, same leak class as the partner programs',
   'partner-agreement.html': 'the UNTRACKED, fee-bearing legal agreement -- partner-agreement-inspector.html (fee-content-free) is the only agreement inspector context may ever link to',
+  // gh-2155 HI-05c (Ben, prod CLOSE-REVIEW FAIL 5840391259): the leak that
+  // triggered this round -- faq.html is one click from EVERY inspector
+  // page via the partner role's own row-2 nav (_ROLE_NAV.partner.guest/
+  // authed) and the footer's Platform column, and answers "What's the
+  // recruit bonus?" / "When do I get paid?" with "$50 for every job of
+  // $10,000 or more" and "Referral fees are paid for completed jobs" --
+  // fee promises for every OTHER partner type, none of them inspector-
+  // safe. No inspector-specific FAQ variant exists (unlike
+  // partner-agreement-inspector.html), so the link is removed outright.
+  'faq.html': 'general FAQ answers "What\'s the recruit bonus?" / "When do I get paid?" with "$50 for every job of $10,000 or more" and "Referral fees are paid for completed jobs" -- fee promises for other partner types, the literal leak this round fixes',
+  // gh-2155 HI-05c must-fix 2: NOT a referral-fee leak (its one dollar
+  // mention -- the $15 homeowner measurement fee -- is unrelated
+  // boilerplate, same class as terms.html/privacy.html's). Excluded
+  // anyway because Ben's ruling this round limits text-EXEMPTION to
+  // terms.html/privacy.html specifically; every other reachable
+  // dollar-bearing page goes here instead. partner-inspectors.html's own
+  // SEO link to it is now hidden (data-hide-when-inspector) as the actual
+  // fix; this entry is the safety net.
+  'ref-inspector.html': 'the $15 homeowner measurement-fee mention is unrelated to a referral fee, but only terms.html/privacy.html keep a text exemption this round -- excluded rather than exempted',
 };
 
 /**
- * Pages that ARE crawled and traversed normally (their own further links
- * still count), but whose fee-regex hits are ignored -- ONLY because those
- * hits are independently verified to be unrelated to a partner referral
- * fee (a homeowner-facing $ figure on sitewide boilerplate that every
- * partner type's footer links to identically, regardless of D-333). A page
- * here is never exempt from the EXCLUSION check above -- it can still
- * fail if IT links onward to an excluded page.
+ * gh-2155 HI-05c (Ben, prod CLOSE-REVIEW FAIL 5840391259): must-fix 2
+ * REMOVES the previous round's mechanically-derived "not on the partner
+ * track" text exemption entirely -- it is exactly what let faq.html (one
+ * click from every inspector page via the partner role's own row-2 nav)
+ * pass silently: faq.html is role-neutral by js/nav.js's _roleFromUrl(),
+ * so the old isPartnerTrackFile() rule exempted its text from scanning
+ * even though it was directly, unconditionally reachable. EVERY page the
+ * crawler reaches is now text-scanned, full stop, with exactly ONE escape
+ * hatch: this explicit TEXT_EXEMPT_PAGES map, limited to the two
+ * role-neutral SITE-WIDE LEGAL pages Ben named by name, each with its own
+ * stated reason for why its dollar mentions are unrelated boilerplate
+ * (never a referral fee or recruit bonus, to anyone, on either page). A
+ * page here is never exempt from the EXCLUSION check above -- it still
+ * fails if IT links onward to an excluded page. Every other page that
+ * remains reachable and turns out to carry forbidden fee/$ text now goes
+ * into EXCLUSION_PAGES above instead (see the entries added for
+ * gh-2155 HI-05c) -- traversal-blocking, not merely text-exempt, since an
+ * inspector-context page must not link there AT ALL, per Ben's ruling.
  */
 const TEXT_EXEMPT_PAGES = {
-  'terms.html': 'sitewide Terms of Service, linked from every footer regardless of partner type; its only dollar mentions are the unrelated $15 homeowner measurement-fee clause and a $100 liability-cap clause -- no referral fee or recruit bonus of any kind',
-  'privacy.html': 'sitewide Privacy Policy, same footer link as terms.html; its only dollar mention is the same unrelated $15 homeowner measurement-fee clause',
-  'ref-inspector.html': 'the homeowner-facing referral LANDING page an inspector\'s own referral link points a homeowner to; its only dollar mention is the $15 homeowner measurement-fee rebate, never a payment TO the inspector',
-  'help-measurements.html': 'homeowner measurement help page; any dollar mention there is the same unrelated $15 measurement fee',
+  'terms.html': 'sitewide Terms of Service, linked from every footer regardless of partner type; its only dollar mentions are the unrelated $15 homeowner measurement-fee clause and a $100 liability-cap clause -- no referral fee or recruit bonus of any kind, to any partner type',
+  'privacy.html': 'sitewide Privacy Policy, same footer link as terms.html; its only dollar mention is the same unrelated $15 homeowner measurement-fee clause -- no referral fee or recruit bonus of any kind',
 };
 
-/**
- * True for the pages this PR's mechanism actually gates -- the inspector's
- * own track through the referral-partner surface. Mechanically derived
- * (same normalization js/nav.js's own _isInspectorTrack() uses), not a
- * hand-typed enumeration: any "partner-*"/"partners.html" filename, plus
- * hi-1.html itself (role-neutral by nav.js's own _roleFromUrl(), but the
- * inspector funnel's own dedicated landing page).
- */
-function isPartnerTrackFile(file) {
-  const token = file.replace(/\.html$/i, '').toLowerCase();
-  return token === 'hi-1' || token === 'partners' || token.startsWith('partner-');
-}
-
-/**
- * gh-2155 HI-05b REVIEW FAIL (5840063832) must-fix 1(b), second half: "Site
- * -wide boilerplate that genuinely can't be avoided... may be crawled-but
- * -text-exempt only if their fee mentions are unrelated... and the
- * homeowner/contractor role-tab subtrees belong on it." The unscoped
- * crawl now reaches dozens of pages under index.html's/contractor-
- * join.html's own role subtree once a visitor deliberately switches role
- * (blog articles, buyer's guides, contractor bonding/insurance minimums,
- * tools pricing, the homeowner $15 measurement fee) -- none of it a
- * partner referral fee, all of it unrelated to D-333, and enumerating
- * every guide/blog/tools page by hand would need updating every time one
- * is added (this site does not have a bounded set of them). Rather than a
- * hand-typed list, the SAME rule js/nav.js's own mechanism uses --
- * "partner-track" vs. everything else -- decides text-exemption here:
- * every page THIS PR's mechanism does not gate (i.e. not on the inspector/
- * partner track per isPartnerTrackFile() above) is text-exempt with this
- * one shared, mechanically-derived reason, UNLESS it has its own specific
- * entry in TEXT_EXEMPT_PAGES above (kept for the two role-neutral legal
- * pages named explicitly in review, which are not part of any role
- * subtree at all). A text-exempt page is NEVER exempt from the EXCLUSION
- * check -- it still fails if IT links onward to an excluded page.
- */
 function textExemptReason(file) {
-  if (file in TEXT_EXEMPT_PAGES) return TEXT_EXEMPT_PAGES[file];
-  if (!isPartnerTrackFile(file)) {
-    return 'not on the inspector/partner track (js/nav.js\'s own mechanism never gates this page) -- reached only via a deliberate role-tab switch to Homeowner/Contractor or a site-wide link; any dollar figure here is that OTHER role\'s own content (insurance/bonding minimums, tool pricing, homeowner fees, guide/blog copy), never a partner referral fee';
-  }
-  return null; // on the partner track -- strictly scanned, no exemption
+  return file in TEXT_EXEMPT_PAGES ? TEXT_EXEMPT_PAGES[file] : null;
 }
 
 function extractSameSiteLinks(html) {
@@ -274,6 +263,21 @@ function makeNoopEl() {
     addEventListener() {}, appendChild() {}, setAttribute() {}, removeAttribute() {},
     classList: { add() {}, remove() {}, toggle() {} }, querySelector: () => null, reset() {},
   };
+}
+
+/**
+ * gh-2155 HI-05c: the REAL js/nav.js's own _roleFromUrl(), not a
+ * reimplementation -- 'homeowner' or 'contractor' means this page belongs
+ * to a DIFFERENT top-level role than the inspector's own (partner/
+ * role-neutral). Used by the BFS below to decide where crawl EXPANSION
+ * stops (see the comment at that call site for why).
+ */
+function pageRole(file) {
+  const ctx = { window: { location: { pathname: '/' + file }, URLSearchParams }, URLSearchParams };
+  ctx.window.window = ctx.window;
+  vm.createContext(ctx);
+  vm.runInContext(navBody, ctx);
+  return ctx.Nav._roleFromUrl();
 }
 
 /**
@@ -342,7 +346,18 @@ async function navInjectedLinks(pathname, inspectorContext = true) {
     if (!file.toLowerCase().endsWith('.html')) file += '.html';
     hrefs.push(file);
   }
-  return hrefs;
+  // gh-2155 HI-05c: the role nav.js ACTUALLY rendered -- _resolveRole(),
+  // not _roleFromUrl() -- is what the BFS boundary rule below needs.
+  // They differ for role-neutral pages (start.html, terms.html,
+  // privacy.html): _roleFromUrl() returns null for them, but
+  // _resolveRole() falls through to 'homeowner' (its own documented
+  // default), so nav.js renders the FULL homeowner row-2 nav -- including
+  // "Measurements" -> help-measurements.html -- on pages a URL-only check
+  // would have missed entirely. Exposed the bug this round: help-
+  // measurements.html was reached via start.html's rendered nav, not any
+  // static link, and the URL-only boundary check let it through.
+  const resolvedRole = ctx.Nav._resolveRole();
+  return { hrefs, resolvedRole };
 }
 
 /** Does `file` render its header/footer through js/nav.js at all? Both
@@ -401,16 +416,48 @@ async function crawl({ starts, maxDepth, jsOn, respectInspectorHiding, inspector
 
     // JS-ON only: also the links js/nav.js's header/footer inject, unless
     // this specific page opts out of nav.js entirely (data-skip-nav).
+    // gh-2155 HI-05c: also returns the role nav.js ACTUALLY rendered
+    // (_resolveRole(), see navInjectedLinks()'s own comment) -- needed for
+    // the boundary decision below, since it can differ from the URL-only
+    // classification for role-neutral pages.
+    let renderedRole = null;
     if (jsOn && rendersNav(html)) {
-      edges = edges.concat(await navInjectedLinks('/' + file, inspectorContext));
+      const injected = await navInjectedLinks('/' + file, inspectorContext);
+      edges = edges.concat(injected.hrefs);
+      renderedRole = injected.resolvedRole;
     }
+
+    // gh-2155 HI-05c: clicking the row-1 Homeowner/Contractor role tab is a
+    // deliberate exit from the inspector's own track into a DIFFERENT
+    // top-level role's entire world -- index.html, contractor-join.html,
+    // and everything each links to in turn (blog, guides, contractor
+    // bonding/insurance minimums, tools pricing -- none of it a partner
+    // referral fee, and unlike faq.html, none of it is "one click from
+    // every inspector page"; it is one click AWAY from the inspector's
+    // track altogether). This is a graph-EXPANSION boundary, not a text
+    // exemption -- must-fix 2 removed the OLD exemption specifically for
+    // hiding fee text on the inspector-relevant surface (faq.html);
+    // ANY page reached (the boundary page itself, or a start page) is
+    // still fully text-scanned above, and ANY excluded-page edge found on
+    // a boundary page (like index.html's static faq.html link, this
+    // round's second faq.html leak) still fails via EXCLUSION_PAGES below
+    // -- only expansion PAST the boundary into that other role's own
+    // subtree stops, the same way maxDepth stops expansion at the crawl's
+    // outer edge. Uses the ACTUALLY-RENDERED role (renderedRole) when
+    // nav.js ran -- _resolveRole()'s own default of 'homeowner' for a
+    // role-neutral URL (start.html, terms.html, privacy.html) is real
+    // rendered behavior, not a false positive -- falling back to the
+    // URL-only classification only when nav.js never ran at all (JS-off,
+    // or a data-skip-nav page).
+    const effectiveRole = renderedRole !== null ? renderedRole : pageRole(file);
+    const isRoleBoundary = depth > 0 && ['homeowner', 'contractor'].includes(effectiveRole);
 
     for (const next of edges) {
       if (next in EXCLUSION_PAGES) {
         exclusionHits.push({ fromFile: file, toFile: next, reason: EXCLUSION_PAGES[next] });
         continue; // definitively a violation already -- do not traverse into it
       }
-      if (depth >= maxDepth) continue;
+      if (depth >= maxDepth || isRoleBoundary) continue;
       const nextDepth = depth + 1;
       if (visited.has(next) && visited.get(next) <= nextDepth) continue;
       visited.set(next, nextDepth);
