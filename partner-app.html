@@ -270,7 +270,29 @@
             <div id="appQr"></div>
         </div>
 
-        <p class="signup-cta">Not a partner yet? <a href="/partner-other.html">Join the referral program</a> &mdash; it takes about 60 seconds, and it&rsquo;s free.</p>
+        <!-- gh-2155 HI-05b REVIEW FAIL (5840063832) must-fix 2: this is a
+             fee-program entry point ("Join the referral program" ->
+             partner-other.html), but guests -- who cannot yet have any
+             partner type, resolved or not -- are its ONLY intended
+             audience (a signed-in partner is redirected to their own
+             dashboard above, before this ever renders); hiding it by
+             default hid it from the exact visitors it exists for. Visible
+             by default now, matching partner-login.html's identical CTA
+             (id="pl-signup-cta") exactly: the ONLY gate is js/nav.js's
+             _applyInspectorContextVisibility() (via
+             data-hide-when-inspector), which hides it the instant an
+             immediate inspector signal (inspector-context URL, ?track=/
+             ?agent_type=home_inspector, or the session flag from an
+             earlier inspector-context page) fires -- no auth round trip
+             needed, so it fails closed for a JS-off or pre-auth inspector
+             exactly like partner-login.html's already-accepted version.
+             No longer tied to the referralFeeDisclaimer/payoutsPhrase
+             reveal-on-confirmed-role mechanism below (that mechanism's own
+             fail-closed-for-everyone-including-guests default was correct
+             for THOSE two elements, whose audience is signed-in partners
+             checking their own terms -- it was wrong for this one, whose
+             audience is guests). -->
+        <p class="signup-cta" id="joinReferralProgramCta" data-hide-when-inspector="true">Not a partner yet? <a href="/partner-other.html">Join the referral program</a> &mdash; it takes about 60 seconds, and it&rsquo;s free.</p>
 
         <!-- gh-2155 HI-0c (Ben ruling, #2152 comment 5836510515, item 2):
              default-hidden, fail closed -- this page has no per-visitor
@@ -346,6 +368,13 @@
                     // non-inspector mechanism as the disclaimer above.
                     var payoutsPhrase = document.getElementById('payoutsPhrase');
                     if (payoutsPhrase) payoutsPhrase.style.display = '';
+                    // gh-2155 HI-05b REVIEW FAIL (5840063832) must-fix 2:
+                    // "Join the referral program" (#joinReferralProgramCta)
+                    // used to be reveal-gated here too, but is now visible
+                    // by default (guests are its only real audience) and
+                    // hidden ONLY by js/nav.js's
+                    // _applyInspectorContextVisibility() -- no reveal call
+                    // needed at this call site any more.
                 }
             }).catch(function () { /* non-fatal: stays hidden */ });
 
