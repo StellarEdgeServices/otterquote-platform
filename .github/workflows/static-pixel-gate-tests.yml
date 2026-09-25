@@ -24,6 +24,12 @@ on:
       - 'partner-re.html'
       - 'tools/partner_parity_check.py'
       - 'tests/gh2155-hi0b-inspector-agreement.mjs'
+      - 'partner-insurance.html'
+      - 'partner-login.html'
+      - 'tests/gh2154-p1-short-signup.mjs'
+      - 'tests/gh2154-p1-set-password.mjs'
+      - 'tests/gh2154-p1-login-reset.mjs'
+      - 'tests/gh2154-p1-cookie-storage-updateuser.mjs'
       - '.github/workflows/static-pixel-gate-tests.yml'
   push:
     branches: [main]
@@ -41,6 +47,12 @@ on:
       - 'partner-re.html'
       - 'tools/partner_parity_check.py'
       - 'tests/gh2155-hi0b-inspector-agreement.mjs'
+      - 'partner-insurance.html'
+      - 'partner-login.html'
+      - 'tests/gh2154-p1-short-signup.mjs'
+      - 'tests/gh2154-p1-set-password.mjs'
+      - 'tests/gh2154-p1-login-reset.mjs'
+      - 'tests/gh2154-p1-cookie-storage-updateuser.mjs'
       - '.github/workflows/static-pixel-gate-tests.yml'
 
 permissions:
@@ -75,3 +87,11 @@ jobs:
         run: node tests/gh2154-p2-app-activation.mjs
       - name: Home-inspector agreement v3-2026-09, no fee/D-266 for inspectors (gh2155-hi0b)
         run: node tests/gh2155-hi0b-inspector-agreement.mjs
+      - name: Short partner signup field set, attribution, D-333 (gh2154-p1-short-signup)
+        run: node tests/gh2154-p1-short-signup.mjs
+      - name: Partner dashboard one-time set-password card (gh2154-p1-set-password)
+        run: node tests/gh2154-p1-set-password.mjs
+      - name: Partner login forgot-password reset clears needs_password (gh2154-p1-login-reset)
+        run: node tests/gh2154-p1-login-reset.mjs
+      - name: Real supabase-js -- rejected updateUser() must not sign the partner out (gh2154-p1-cookie-storage-updateuser)
+        run: node tests/gh2154-p1-cookie-storage-updateuser.mjs
