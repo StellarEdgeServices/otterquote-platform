@@ -37,12 +37,21 @@
  *   agreement_accepted missing/false -> 400, no write (the checkbox is a
  *   hard gate here too, same as P-1's own forms).
  *
- * This function does NOT create a Supabase Auth account or sign the partner
- * in — it only flips the referral_agents row. Setting a password / signing
- * in still goes through partner-login.html's existing "Forgot password?"
- * flow, same as any P-1-created partner whose first visit is via magic
- * link. That is an explicit scope cut for this build, not an oversight —
- * see this build's report.
+ * gh-2154 P-5 go-live ruling (Ben, bus 2026-09-25T16:11:42Z, A to "does
+ * invite acceptance create the login account?"): YES. On a successful
+ * accept, this function creates the Supabase Auth account the exact same
+ * way P-1's own short-signup forms do (partner-re.html /
+ * generateSecurePartnerPassword() + Auth.signUpWithPassword(), see
+ * ensurePartnerAuthAccount() below) — a CSPRNG-generated password the
+ * partner never sees, stamped with user_metadata.needs_password:true so
+ * partner-dashboard.html's existing one-time "Set your password" card
+ * (gh-2154 P-1, #2162) shows on first landing. No new client-side
+ * mechanism: the card, claim_partner_account() (links referral_agents.
+ * user_id to auth.uid() by matching email on first real sign-in), and the
+ * "Forgot password?" recovery path on partner-login.html are all P-1's
+ * existing, unmodified code — this just calls the admin-API equivalent of
+ * signUp() from a server context, since there is no browser session here
+ * to sign up from directly.
  *
  * verify_jwt = false in config.toml: an invited partner has no Supabase JWT
  * yet. The signed token IS the authorization.
@@ -93,6 +102,80 @@ export function isInviteEligible(row: { status?: string | null; meta_lead_id?: s
  * truthy-string, no missing-field-defaults-to-accepted). */
 export function isValidAcceptBody(body: { agreement_accepted?: unknown } | null | undefined): boolean {
   return !!body && body.agreement_accepted === true;
+}
+
+/**
+ * gh-2154 P-5 (Ben ruling, bus 16:11:42Z): byte-identical algorithm to
+ * partner-re.html's generateSecurePartnerPassword() (P-1, gh-2154 CSPRNG
+ * fix) — 32 bytes from the platform's CSPRNG, base64url-encoded, with the
+ * same fixed 'Aa1!' suffix so the result satisfies any character-class
+ * password-policy rule. Deno's global `crypto` is the same Web Crypto API
+ * partner-re.html's `window.crypto` is; this is not a second, divergent
+ * mechanism, just the same one run server-side. Throws rather than ever
+ * falling back to a weaker source, same as the browser version.
+ */
+export function generateSecurePartnerPassword(): string {
+  if (!globalThis.crypto || typeof globalThis.crypto.getRandomValues !== "function") {
+    throw new Error("Secure random number generator is unavailable.");
+  }
+  const bytes = new Uint8Array(32);
+  globalThis.crypto.getRandomValues(bytes);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  const base64url = btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return base64url + "Aa1!";
+}
+
+/** Minimal shape of the supabase-js admin auth client this needs — lets
+ * tests inject a fake without a real network call or project. */
+export interface PartnerAuthAdminClient {
+  auth: {
+    admin: {
+      createUser(attrs: {
+        email: string;
+        password: string;
+        email_confirm: boolean;
+        user_metadata: Record<string, unknown>;
+      }): Promise<{ data: { user: { id: string } | null } | null; error: { message: string; code?: string; status?: number } | null }>;
+    };
+  };
+}
+
+/**
+ * Creates the Supabase Auth account for an invite-accepted partner, the
+ * admin-API equivalent of P-1's browser-side
+ * Auth.signUpWithPassword(email, generatedPassword, agentType) call —
+ * same CSPRNG password, same needs_password:true metadata so the existing
+ * "Set your password" card fires on first dashboard landing.
+ * email_confirm:true mirrors prod's mailer_autoconfirm:true setting (P-1's
+ * signUp() already returns a live session under that config; there is no
+ * browser session to return here, but the account must be equally usable
+ * immediately via partner-login.html's "Forgot password?" flow).
+ *
+ * Non-fatal on "this email already has an account" (e.g. a P-1 signup or
+ * a prior invite-accept race already created one under the same email) —
+ * that existing account already covers sign-in, so this reports success
+ * without treating it as an error. Any OTHER failure is fatal: an invite
+ * accepted with no way to log in defeats the point of this ruling, so the
+ * caller must not activate the referral_agents row in that case.
+ */
+export async function ensurePartnerAuthAccount(
+  supabase: PartnerAuthAdminClient,
+  email: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const password = generateSecurePartnerPassword();
+  const { error } = await supabase.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+    user_metadata: { needs_password: true },
+  });
+  if (!error) return { ok: true };
+  const alreadyExists = error.code === "email_exists" ||
+    error.status === 422 ||
+    /already.*registered|already.*exists/i.test(error.message || "");
+  if (alreadyExists) return { ok: true };
+  return { ok: false, error: error.message || "auth_account_creation_failed" };
 }
 
 async function readToken(req: Request): Promise<string | null> {
@@ -184,6 +267,33 @@ serve(async (req: Request) => {
     }
     if (!isValidAcceptBody(body)) {
       return jsonResponse({ ok: false, error: "agreement_not_accepted" }, 400);
+    }
+
+    // gh-2154 P-5 go-live ruling: re-fetch the row's email under the
+    // service-role client (the token only proved the id; the GET path
+    // above already returned it once, but POST must not trust a
+    // client-supplied email) and create the login account BEFORE
+    // activating — an activated row with no way to sign in defeats the
+    // ruling, so a hard account-creation failure aborts before any write.
+    const { data: preRow, error: preRowErr } = await supabase
+      .from("referral_agents")
+      .select("email, status, meta_lead_id")
+      .eq("id", referralAgentId)
+      .limit(1)
+      .maybeSingle();
+    if (preRowErr || !preRow) {
+      return notFound();
+    }
+    if (!isInviteEligible(preRow)) {
+      // Already accepted (idempotent second click) or otherwise
+      // ineligible — no new account needed either way.
+      return jsonResponse({ ok: true }, 200);
+    }
+
+    const accountResult = await ensurePartnerAuthAccount(supabase, preRow.email as string);
+    if (!accountResult.ok) {
+      console.error(`[${FUNCTION_NAME}] auth account creation failed for ${referralAgentId}: ${accountResult.error}`);
+      return jsonResponse({ ok: false, error: "server_error" }, 500);
     }
 
     const headers = req.headers;
