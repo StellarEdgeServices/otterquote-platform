@@ -64,6 +64,89 @@ const Nav = {
     return file === 'partners.html' || file.startsWith('partner-');
   },
 
+  /**
+   * gh-2155 HI-0c REVIEW FAIL (5836957364) fix: true when the current
+   * visitor is on the inspector track, resolved three ways, first match
+   * wins, so the check works on EVERY page rather than only the two static
+   * inspector URLs and partner-dashboard.html:
+   *   (a) an explicit ?track=home_inspector / ?agent_type=home_inspector
+   *       query param -- the same signal partner-agreement.html's own
+   *       inline script reads (see its ~line 499), so a deep link carrying
+   *       either name is honored identically everywhere.
+   *   (b) the page itself being an inspector-specific URL
+   *       (partner-inspectors.html, the generated
+   *       partner-agreement-inspector.html) -- immediate, no auth
+   *       resolution needed.
+   *   (c) the signed-in partner's own type, read from the session/profile
+   *       via Auth.getRole() (which resolves the `referral_agents.agent_type`
+   *       -- 'home_inspector' is one of its values) and cached on
+   *       window.currentPartnerAgentType by _syncPartnerAgentType(), called
+   *       from BOTH _renderAuthSlot() and _applyAuthRole() so every page
+   *       that runs either (i.e. every page with the standard header,
+   *       regardless of data-auth) gets the signed-in type, not just
+   *       partner-dashboard.html.
+   * FAIL CLOSED while unknown: window.currentPartnerAgentType starts
+   * undefined, and _syncPartnerAgentType() only ever sets it to a
+   * POSITIVELY resolved value ('home_inspector' or null for a confirmed
+   * non-inspector partner role) -- never to a guess -- so an unresolved or
+   * errored role reso leaves it untouched rather than asserting "safe".
+   * Reused by renderFooter() (#2166) and by every nav.js link that must not
+   * point an inspector at partners.html (D-333 -- that page shows
+   * dollar-figure commission copy no inspector should be one click from).
+   */
+  _isInspectorTrack() {
+    const file = this._currentFile();
+    if (file === 'partner-inspectors.html' || file === 'partner-agreement-inspector.html') {
+      return true;
+    }
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const track = params.get('track') || params.get('agent_type');
+      if (track && track.toLowerCase() === 'home_inspector') return true;
+    } catch (_) { /* malformed query string -- fall through to the auth signal */ }
+    return window.currentPartnerAgentType === 'home_inspector';
+  },
+
+  /**
+   * gh-2155 HI-0c REVIEW FAIL fix: cache a resolved account role's partner
+   * agent type on window.currentPartnerAgentType so _isInspectorTrack()'s
+   * signal (c) works on every page, not just partner-dashboard.html (which
+   * used to set this itself, inline, around its ~line 1814). Called from
+   * both _renderAuthSlot() (pages with visible auth buttons) and
+   * _applyAuthRole() (data-auth="false" pages, e.g. partner-agreement.html)
+   * so no page depends on the other for this signal. Only ever writes a
+   * POSITIVELY resolved value: 'home_inspector' for a confirmed inspector,
+   * null for any other confirmed PARTNER_AUTH_ROLES member or a confirmed
+   * non-partner role. A null/undefined `role` (unresolved auth, RLS error,
+   * no session) leaves whatever is already cached untouched -- fail closed,
+   * never asserts "not an inspector" on a guess.
+   *
+   * gh-2155 HI-0c REVIEW FAIL (5837784831) fix: renderFooter() runs once at
+   * DOMContentLoaded, before Auth.getUser()/Auth.getRole() (both awaited by
+   * _applyAuthRole() and _renderAuthSlot()) have resolved, so a signed-in
+   * inspector's footer "Partner Agreement" link was built from the
+   * not-yet-known _isInspectorTrack() state and stayed pointed at the
+   * fee-bearing /partner-agreement.html on every page except
+   * partner-dashboard.html, which re-renders its footer itself once its own
+   * (separately-sourced) partnerType is in hand. This is the ONE place that
+   * signal (c) of _isInspectorTrack() changes, so re-rendering here --
+   * exactly once, only when the resolved value actually differs from what
+   * is already cached -- re-points the footer link on every page that
+   * reaches this function, with no duplicate footer render on pages whose
+   * role/type does not change between renders (e.g. two guest page-loads,
+   * or a re-run of an already-resolved role).
+   */
+  _syncPartnerAgentType(role) {
+    if (role === null || role === undefined) return; // unresolved -- leave cached value untouched
+    const resolved = (role === 'home_inspector') ? 'home_inspector' : null;
+    if (resolved === window.currentPartnerAgentType) return; // no change -- nothing to re-render
+    window.currentPartnerAgentType = resolved;
+    if (typeof this.renderFooter === 'function') {
+      const footer = document.getElementById('site-footer');
+      if (footer && footer.dataset.skipNav !== 'true') this.renderFooter();
+    }
+  },
+
   /* ══════════════════════════════════════════════════════════════════════
      TWO-TIER NAVIGATION
      Row 1 — role switcher: Homeowner · Contractor · Referral Partner.
@@ -264,6 +347,17 @@ const Nav = {
     return this._readStoredRole() || 'homeowner';
   },
 
+  /**
+   * gh-2155 HI-0c REVIEW FAIL (5836957364) fix: the row-1 "Referral Partner"
+   * tab hardcoded `t.href` (/partners.html) regardless of track -- the
+   * literal defect named in the review. Href swap only, same rule as
+   * _roleLinks()/_roleLogoHref() below.
+   */
+  _roleTabHref(t) {
+    if (t.role === 'partner' && this._isInspectorTrack()) return '/partner-inspectors.html';
+    return t.href;
+  },
+
   /** Row 1 — the role switcher. Present on every page, for every visitor. */
   _roleBarHTML(activeRole) {
     return `
@@ -272,7 +366,7 @@ const Nav = {
           <span class="nav-roles-label">I'm a</span>
           <nav class="nav-roles-tabs" aria-label="Choose your role">
             ${this._ROLE_TABS.map(t => `
-              <a href="${t.href}" class="nav-role-tab ${t.role === activeRole ? 'active' : ''}"
+              <a href="${this._roleTabHref(t)}" class="nav-role-tab ${t.role === activeRole ? 'active' : ''}"
                  data-role="${t.role}"${t.role === activeRole ? ' aria-current="true"' : ''}>${t.label}</a>
             `).join('')}
           </nav>
@@ -297,12 +391,28 @@ const Nav = {
   /** Row 2 — the inner links for one role. */
   _roleLinks(role, isAuthed) {
     const cfg = this._ROLE_NAV[role] || this._ROLE_NAV.homeowner;
-    return isAuthed ? cfg.authed : cfg.guest;
+    const links = isAuthed ? cfg.authed : cfg.guest;
+    // gh-2155 HI-0c (Ben ruling, #2152 comment 5836510515, item 3): on the
+    // inspector track, the partner role's own "Partner Programs"/"Programs"
+    // row-2 link must not point at partners.html (fee wording). Href swap
+    // only -- label and id are unchanged.
+    if (role === 'partner' && this._isInspectorTrack()) {
+      return links.map(l => l.href === '/partners.html'
+        ? Object.assign({}, l, { href: '/partner-inspectors.html' })
+        : l);
+    }
+    return links;
   },
 
   _roleLogoHref(role, isAuthed) {
     const cfg = this._ROLE_NAV[role] || this._ROLE_NAV.homeowner;
-    return (isAuthed && cfg.logoHrefAuthed) ? cfg.logoHrefAuthed : cfg.logoHref;
+    const href = (isAuthed && cfg.logoHrefAuthed) ? cfg.logoHrefAuthed : cfg.logoHref;
+    // gh-2155 HI-0c: same rule as _roleLinks -- the partner logo link must
+    // not send an inspector to partners.html either.
+    if (role === 'partner' && href === '/partners.html' && this._isInspectorTrack()) {
+      return '/partner-inspectors.html';
+    }
+    return href;
   },
 
   /** Render the site header (role bar + role-scoped nav) */
@@ -409,6 +519,10 @@ const Nav = {
       const user = await Auth.getUser();
       if (!user) return;
       const role = await Auth.getRole();
+      // gh-2155 HI-0c REVIEW FAIL fix: cache the resolved type for
+      // _isInspectorTrack() on every page that runs this (including
+      // data-auth="false" pages), not only partner-dashboard.html.
+      this._syncPartnerAgentType(role);
 
       // Correct row 2 only when the account role AGREES with the page's own
       // URL role, or the page claims no role at all.
@@ -504,6 +618,17 @@ const Nav = {
       else container.insertAdjacentHTML('afterbegin', linksHTML);
     }
 
+    // gh-2155 HI-0c REVIEW FAIL fix: re-sync every role tab's href on each
+    // call, not only when the active role changes -- the partner tab's
+    // href must flip to /partner-inspectors.html the moment auth resolves
+    // a signed-in home_inspector, even on a page whose active role was
+    // already 'partner' before that resolution (the `role !== this._activeRole`
+    // branch below would otherwise skip it).
+    document.querySelectorAll('.nav-role-tab').forEach(tab => {
+      const tabDef = this._ROLE_TABS.find(t => t.role === tab.dataset.role);
+      if (tabDef) tab.href = this._roleTabHref(tabDef);
+    });
+
     // Re-mark the active role tab.
     if (role !== this._activeRole) {
       this._activeRole = role;
@@ -568,9 +693,15 @@ const Nav = {
     // gh-1994 phase 2: carry utm_*/fbclid/gclid onto the /start.html primary
     // CTA only — secondary links (Log In, Contractor Login, Partner Login,
     // Join as a Contractor, Become a Partner) are untouched.
-    const primaryHref = cta.primary.href === '/start.html'
+    let primaryHref = cta.primary.href === '/start.html'
       ? '/start.html' + this._attributionQuery()
       : cta.primary.href;
+    // gh-2155 HI-0c (Ben ruling, #2152 comment 5836510515, item 3): the
+    // signed-out "Become a Partner" CTA must not send an inspector-track
+    // visitor to partners.html. Href swap only, label unchanged.
+    if (role === 'partner' && primaryHref === '/partners.html' && this._isInspectorTrack()) {
+      primaryHref = '/partner-inspectors.html';
+    }
     return {
       desktop: `
         <a href="${primaryHref}" class="btn btn-sm btn-primary">${cta.primary.label}</a>
@@ -604,6 +735,9 @@ const Nav = {
     if (user) {
       // Determine which dashboard to link to based on role
       const role = await Auth.getRole();
+      // gh-2155 HI-0c REVIEW FAIL fix: see _applyAuthRole()'s identical call
+      // -- this is the other of the two paths every page runs one of.
+      this._syncPartnerAgentType(role);
 
       // Correct nav links if URL detection disagrees with actual role
       // (e.g. homeowner on contractor-about.html, or contractor on a homeowner page)
@@ -831,26 +965,21 @@ const Nav = {
     if (!footer) return;
 
     const isContractor = this._isContractorPage();
-    // gh-2155 HI-0b round 3 (Ben ruling, comment 5825785741 item 2(b), per
-    // LEGAL-READ FAIL 5825690233 / REVIEW FAIL 5825693018 must-fix 2): the
-    // footer's Partner Agreement link must carry ?track=home_inspector on
-    // partner-inspectors.html and on an inspector's partner-dashboard.html,
-    // so it hides the fee terms the same way the tracked link on the signup
-    // form does. Path check covers partner-inspectors.html unconditionally
-    // (safe and immediate -- no dependency on auth having resolved yet).
-    // window.currentPartnerAgentType is a global partner-dashboard.html
-    // already sets for its OWN home_inspector-specific copy (see e.g. its
-    // ~line 2079); reusing it here is the "simpler and safer" option Ben
-    // named over adding a new Supabase fetch inside nav.js. This footer
-    // renders once, at DOMContentLoaded, which can run before that async
-    // global is set — a real but pre-existing race in the dashboard's own
-    // partner-type-dependent copy, not one this fix introduces or can
-    // safely close without a broader change; the path check is the
-    // guaranteed fix for the flagged partner-inspectors.html case.
-    const isInspectorTrack = window.location.pathname.indexOf('partner-inspectors') !== -1
-      || window.currentPartnerAgentType === 'home_inspector';
-    const partnerAgreementHref = isInspectorTrack
-      ? '/partner-agreement.html?track=home_inspector#track-home-inspector'
+    // gh-2155 HI-0c (Ben ruling, #2152 comment 5836510515, item 1 -- FAILS
+    // round of HI-0b's own fix): the query-string/hash-tracked link below
+    // was found to leak the full fee table both from partner-agreement.html's
+    // OWN footer (an inspector who followed the tracked link, then clicked
+    // "Partner Agreement" again in that page's footer, landed on the plain
+    // untracked URL) and with JavaScript disabled and no hash. The static,
+    // fee-content-free partner-agreement-inspector.html (built by
+    // tools/build_inspector_agreement.py) removes both failure modes: there
+    // is no query param or hash to drop, and no fee content to reveal even
+    // if there were. `_isInspectorTrack()` now also matches
+    // partner-agreement-inspector.html's own filename, so THIS footer link,
+    // rendered again on that page, points at itself rather than bouncing
+    // back to the fee-bearing partner-agreement.html.
+    const partnerAgreementHref = this._isInspectorTrack()
+      ? '/partner-agreement-inspector.html'
       : '/partner-agreement.html';
 
     footer.innerHTML = `
