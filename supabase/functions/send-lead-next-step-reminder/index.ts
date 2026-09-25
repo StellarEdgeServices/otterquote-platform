@@ -52,17 +52,34 @@
  *   MAILGUN_API_KEY,
  *   HOMEOWNER_OPTOUT_SECRET, HOMEOWNER_OPTOUT_SECRET_PREVIOUS (optional)
  *
- * Invoked on a schedule (Supabase cron / pg_cron -> HTTP, matching this
- * repo's existing scheduled Edge Functions such as process-payout-reminders
- * and send-homeowner-next-steps) — NOT wired up by this PR (no cron
- * schedule config is added here; see the PR body's "not applied" note,
- * matching the migration itself).
+ * Invoked hourly by pg_cron (see
+ * supabase/migrations/20260925090000_gh2121_lead_next_step_reminder_cron.sql,
+ * added in fix round 1) -> net.http_post, matching this repo's existing
+ * scheduled Edge Functions such as process-payout-reminders and
+ * send-homeowner-next-steps. That schedule is disabled-SAFE: this
+ * function's own kill-switch read (below) still gates every actual send
+ * regardless of how often the schedule fires.
+ *
+ * Fix round 1 (CEO RUN 68 REVIEW: FAIL / LEGAL-READ: FAIL, comments
+ * 5825698253 / 5825694840) added: an auth gate (cron-auth.ts,
+ * CRON_SECRET / service-role Bearer, mirrored from
+ * send-homeowner-next-steps/index.ts); the schema-contract CI declaration
+ * (sql/schema-pending.json); verify_jwt=false pins for both this function
+ * and lead-next-step-optout (supabase/config.toml); a role='homeowner' AND
+ * variant='f' (Arm F) scope filter; Ben's D-332 no-call-promise fix for a
+ * phone-less lead; a HTML footer fix (the "Stop these updates" phrase no
+ * longer doubles); per-normalized-email de-dup in-batch plus a DB-level
+ * partial unique index for cross-run atomicity; strict single-address email
+ * validation; and the should-fix items (opt-out re-check at stamp time,
+ * first-name sanitization, Mailgun failure recording + a request timeout,
+ * a founder-subdomain fix, and a SUPABASE_URL-derived functions base URL).
  *
  * Refs #2121
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { isCronAuthorized } from "./cron-auth.ts";
 import { buildLeadReminderEmail } from "./email-content.ts";
 import {
   LEAD_OPTOUT_SECRET_ENV,
@@ -72,6 +89,7 @@ import {
 } from "./lead-optout-token.ts";
 import {
   type CandidateLead,
+  dedupeByNormalizedEmail,
   REMINDER_MAX_AGE_MS,
   REMINDER_MIN_AGE_MS,
   selectLeadForReminder,
@@ -79,7 +97,17 @@ import {
 
 const FUNCTION_NAME = "send-lead-next-step-reminder";
 const BATCH_LIMIT = 200;
-const FUNCTIONS_BASE_URL = "https://yeszghaspzwwstvsrioa.supabase.co/functions/v1";
+// Fix round 1 (should-fix): derived from SUPABASE_URL rather than
+// hardcoded, so this file works unmodified against any project (including a
+// Supabase branch / preview environment used for testing).
+function functionsBaseUrl(supabaseUrl: string): string {
+  return `${supabaseUrl.replace(/\/$/, "")}/functions/v1`;
+}
+
+// Fix round 1 (should-fix): a Mailgun request that never resolves would
+// hang this batch indefinitely; 10s matches this repo's other outbound
+// Mailgun calls' tolerance for a slow-provider incident.
+const MAILGUN_TIMEOUT_MS = 10_000;
 
 async function sendMailgunEmail(
   apiKey: string,
@@ -104,6 +132,7 @@ async function sendMailgunEmail(
       method: "POST",
       headers: { Authorization: `Basic ${btoa(`api:${apiKey}`)}` },
       body: formData,
+      signal: AbortSignal.timeout(MAILGUN_TIMEOUT_MS),
     });
     if (!res.ok) {
       const errText = await res.text().catch(() => "(unreadable)");
@@ -120,11 +149,41 @@ interface LeadRow {
   id: string;
   email: string | null;
   name: string | null;
+  phone: string | null;
+  role: string | null;
+  variant: string | null;
   created_at: string;
   is_synthetic: boolean | null;
   converted_user_id: string | null;
   next_step_reminder_sent_at: string | null;
   next_step_reminder_opted_out_at: string | null;
+}
+
+/** "Has a phone on file" for Ben's D-332 no-call-promise ruling — a blank
+ * string (leads.phone is NOT constrained NOT NULL but router inserts '' for
+ * a phone-less lead, same convention leads.email uses) reads as no phone. */
+function hasPhoneOnFile(phone: string | null): boolean {
+  return typeof phone === "string" && phone.trim().length > 0;
+}
+
+// deno-lint-ignore no-explicit-any
+async function recordMailgunFailure(supabase: any, leadId: string, error: string): Promise<void> {
+  // Fix round 1 (should-fix): durably record a send failure instead of only
+  // console.error (which is not queryable after the fact). Reuses the
+  // existing `rate_limits` table (function_name + metadata) rather than
+  // adding a new column/table — same shape check_rate_limit() already
+  // writes for a blocked call, just with blocked:true and a reason.
+  try {
+    await supabase.from("rate_limits").insert({
+      function_name: FUNCTION_NAME,
+      blocked: true,
+      metadata: { reason: "mailgun_send_failed", lead_id: leadId, error },
+    });
+  } catch (_) {
+    // Best-effort only — a failure to RECORD the failure must never block
+    // the run or mask the original error, which is already console.error'd
+    // by the caller.
+  }
 }
 
 // deno-lint-ignore no-explicit-any
@@ -166,7 +225,21 @@ serve(async (req: Request) => {
         { status: 500, headers: { "Content-Type": "application/json" } },
       );
     }
+
+    // ── Authorization (fix round 1, must-fix 3) — checked before ANY other
+    // work, same three-way gate send-homeowner-next-steps/index.ts uses. ──
+    const cronSecret = Deno.env.get("CRON_SECRET");
+    const incomingCronSecret = req.headers.get("X-Cron-Secret");
+    const authHeader = req.headers.get("Authorization") || "";
+    if (!isCronAuthorized({ cronSecret, incomingCronSecret, authHeader, serviceRoleKey })) {
+      return new Response(JSON.stringify({ ok: false, error: "Unauthorized" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
     const supabase = createClient(supabaseUrl, serviceRoleKey);
+    const baseUrl = functionsBaseUrl(supabaseUrl);
 
     // ── Kill switch — checked first, unconditionally ───────────────────────
     const { data: configRow } = await supabase
@@ -190,13 +263,18 @@ serve(async (req: Request) => {
     const { data: candidates, error: candErr } = await supabase
       .from("leads")
       .select(
-        "id, email, name, created_at, is_synthetic, converted_user_id, next_step_reminder_sent_at, next_step_reminder_opted_out_at",
+        "id, email, name, phone, role, variant, created_at, is_synthetic, converted_user_id, next_step_reminder_sent_at, next_step_reminder_opted_out_at",
       )
       .gte("created_at", minCreatedAt)
       .lte("created_at", maxCreatedAt)
       .is("next_step_reminder_sent_at", null)
       .is("next_step_reminder_opted_out_at", null)
       .not("email", "is", null)
+      // Fix round 1, must-fix 6: HO-1 / Arm F scope at the query level too
+      // (defense in depth — selectLeadForReminder() re-checks the same
+      // fields on every row regardless of this filter).
+      .eq("role", "homeowner")
+      .eq("variant", "f")
       .order("created_at", { ascending: true })
       .limit(BATCH_LIMIT);
 
@@ -238,7 +316,16 @@ serve(async (req: Request) => {
     let sent = 0;
     const skipped: Record<string, number> = {};
 
-    for (const row of rows) {
+    // Fix round 1, must-fix 4 (in-memory half — see the migration's partial
+    // unique index for the cross-process half): rows are already ordered
+    // oldest-created-first by the query above, so "first occurrence wins"
+    // keeps the oldest lead for a repeated address.
+    const { toSend, duplicates } = dedupeByNormalizedEmail(rows);
+    if (duplicates.length > 0) {
+      skipped["duplicate_email_in_batch"] = duplicates.length;
+    }
+
+    for (const row of toSend) {
       const candidate: CandidateLead = {
         id: row.id,
         email: row.email,
@@ -247,6 +334,8 @@ serve(async (req: Request) => {
         next_step_reminder_sent_at: row.next_step_reminder_sent_at,
         next_step_reminder_opted_out_at: row.next_step_reminder_opted_out_at,
         has_goal_event: row.converted_user_id ? goalRecordedLeadIds.has(row.id) : false,
+        role: row.role,
+        variant: row.variant,
       };
       const decision = selectLeadForReminder(candidate, enabled, now);
       if (!decision.send) {
@@ -258,25 +347,38 @@ serve(async (req: Request) => {
       // Atomic check-and-stamp — same UPDATE...RETURNING shape as
       // get_lead_prefill(): if another run already claimed this row between
       // the SELECT above and here, this UPDATE touches zero rows and we skip
-      // sending rather than double-send.
+      // sending rather than double-send. Fix round 1 (should-fix): also
+      // re-checks next_step_reminder_opted_out_at IS NULL here, so an
+      // opt-out recorded in the gap between the candidate SELECT and this
+      // UPDATE is still honored. Fix round 1 (must-fix 4, cross-lead half):
+      // a second row sharing this address that was ALREADY stamped by a
+      // concurrent invocation makes this UPDATE violate the migration's
+      // partial unique index on lower(email) — caught as skip_reason
+      // "already_sent" below, same as the single-row race.
       const { data: stamped, error: stampErr } = await supabase
         .from("leads")
         .update({ next_step_reminder_sent_at: new Date().toISOString() })
         .eq("id", row.id)
         .is("next_step_reminder_sent_at", null)
+        .is("next_step_reminder_opted_out_at", null)
         .select("id")
         .maybeSingle();
       if (stampErr || !stamped) {
+        if (stampErr && stampErr.code !== "23505") {
+          console.error(`[${FUNCTION_NAME}] stamp UPDATE failed for lead ${row.id}: ${stampErr.message}`);
+        }
         skipped["already_sent"] = (skipped["already_sent"] || 0) + 1;
         continue;
       }
 
       const token = await signLeadOptOutToken(row.id, optOutSecrets[0]);
-      const optOutUrl = buildLeadOptOutUrl(FUNCTIONS_BASE_URL, token);
-      const { subject, textBody, htmlBody } = buildLeadReminderEmail(row.id, row.name, optOutUrl);
+      const optOutUrl = buildLeadOptOutUrl(baseUrl, token);
+      const hasPhone = hasPhoneOnFile(row.phone);
+      const { subject, textBody, htmlBody } = buildLeadReminderEmail(row.id, row.name, optOutUrl, hasPhone);
       const result = await sendMailgunEmail(mailgunApiKey, row.email as string, subject, textBody, htmlBody, optOutUrl);
       if (!result.ok) {
         console.error(`[${FUNCTION_NAME}] Mailgun send failed for lead ${row.id}: ${result.error}`);
+        await recordMailgunFailure(supabase, row.id, result.error || "unknown error");
         // Row stays stamped (sent_at already set) — "at most once" holds even
         // on a Mailgun failure; a retry storm on a bad address is worse than
         // one missed reminder.

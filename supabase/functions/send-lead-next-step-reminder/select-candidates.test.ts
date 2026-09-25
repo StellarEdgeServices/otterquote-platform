@@ -8,6 +8,8 @@
 import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
   type CandidateLead,
+  dedupeByNormalizedEmail,
+  normalizeEmailKey,
   REMINDER_MIN_AGE_MS,
   selectLeadForReminder,
 } from "./select-candidates.ts";
@@ -24,6 +26,8 @@ function baseLead(overrides: Partial<CandidateLead> = {}): CandidateLead {
     next_step_reminder_sent_at: null,
     next_step_reminder_opted_out_at: null,
     has_goal_event: false,
+    role: "homeowner",
+    variant: "f",
     ...overrides,
   };
 }
@@ -139,4 +143,92 @@ Deno.test("skips a lead that has opted out (D-320-style)", () => {
 Deno.test("malformed created_at fails closed (too_young, never a crash)", () => {
   const lead = baseLead({ created_at: "not-a-date" });
   assertEquals(selectLeadForReminder(lead, true, NOW), { send: false, skip_reason: "too_young" });
+});
+
+// ── Fix round 1 (CEO RUN 68 REVIEW: FAIL / LEGAL-READ: FAIL) ────────────────
+// These fail against head 0a4988fe: `role`/`variant` did not exist on
+// CandidateLead, `invalid_email_format` was not a SkipReason, and
+// dedupeByNormalizedEmail / normalizeEmailKey did not exist at all.
+
+// -- must-fix 6: HO-1 / Arm F scope only --
+
+Deno.test("skips a contractor-role lead (adversarial test A5 scope)", () => {
+  const lead = baseLead({ role: "contractor" });
+  assertEquals(selectLeadForReminder(lead, true, NOW), { send: false, skip_reason: "not_homeowner_arm_f" });
+});
+
+Deno.test("skips a referral_partner-role lead", () => {
+  const lead = baseLead({ role: "referral_partner" });
+  assertEquals(selectLeadForReminder(lead, true, NOW), { send: false, skip_reason: "not_homeowner_arm_f" });
+});
+
+Deno.test("skips a homeowner lead from a different arm (variant != 'f')", () => {
+  const lead = baseLead({ variant: "a" });
+  assertEquals(selectLeadForReminder(lead, true, NOW), { send: false, skip_reason: "not_homeowner_arm_f" });
+});
+
+Deno.test("skips a homeowner Arm F lead whose variant is NULL (unset arm, not yet Arm F)", () => {
+  const lead = baseLead({ variant: null });
+  assertEquals(selectLeadForReminder(lead, true, NOW), { send: false, skip_reason: "not_homeowner_arm_f" });
+});
+
+Deno.test("sends for role='homeowner' AND variant='f' (in-scope)", () => {
+  const lead = baseLead({ role: "homeowner", variant: "f" });
+  assertEquals(selectLeadForReminder(lead, true, NOW).send, true);
+});
+
+// -- must-fix 5: strict single-address validation (adversarial test A6) --
+
+Deno.test("skips a comma-separated email list", () => {
+  const lead = baseLead({ email: "victim@gmail.com,attacker@evil.example" });
+  assertEquals(selectLeadForReminder(lead, true, NOW), { send: false, skip_reason: "invalid_email_format" });
+});
+
+Deno.test("skips a semicolon-separated email list", () => {
+  const lead = baseLead({ email: "victim@gmail.com;attacker@evil.example" });
+  assertEquals(selectLeadForReminder(lead, true, NOW), { send: false, skip_reason: "invalid_email_format" });
+});
+
+Deno.test("skips a display-name email form", () => {
+  const lead = baseLead({ email: "Jane Doe <jane@gmail.com>" });
+  assertEquals(selectLeadForReminder(lead, true, NOW), { send: false, skip_reason: "invalid_email_format" });
+});
+
+Deno.test("skips an email containing embedded whitespace", () => {
+  const lead = baseLead({ email: "jane doe@gmail.com" });
+  assertEquals(selectLeadForReminder(lead, true, NOW), { send: false, skip_reason: "invalid_email_format" });
+});
+
+Deno.test("does not flag a normal single address as invalid format", () => {
+  const lead = baseLead({ email: "jane.doe+home@gmail.com" });
+  assertEquals(selectLeadForReminder(lead, true, NOW).send, true);
+});
+
+// -- must-fix 4: normalizeEmailKey / dedupeByNormalizedEmail --
+
+Deno.test("normalizeEmailKey lowercases and trims", () => {
+  assertEquals(normalizeEmailKey("  Jane@Gmail.com  "), "jane@gmail.com");
+});
+
+Deno.test("dedupeByNormalizedEmail keeps the first occurrence per address (adversarial test A7)", () => {
+  const rows = [
+    { id: "a", email: "victim@gmail.com" },
+    { id: "b", email: "Victim@Gmail.com" }, // same address, different case
+    { id: "c", email: "other@gmail.com" },
+    { id: "d", email: " victim@gmail.com " }, // same address, whitespace
+  ];
+  const { toSend, duplicates } = dedupeByNormalizedEmail(rows);
+  assertEquals(toSend.map((r) => r.id), ["a", "c"]);
+  assertEquals(duplicates.map((r) => r.id), ["b", "d"]);
+});
+
+Deno.test("dedupeByNormalizedEmail lets a null/blank email through untouched (not its concern)", () => {
+  const rows = [
+    { id: "a", email: null },
+    { id: "b", email: "" },
+    { id: "c", email: "real@gmail.com" },
+  ];
+  const { toSend, duplicates } = dedupeByNormalizedEmail(rows);
+  assertEquals(toSend.map((r) => r.id), ["a", "b", "c"]);
+  assertEquals(duplicates.length, 0);
 });

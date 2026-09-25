@@ -99,4 +99,26 @@ VALUES (
 )
 ON CONFLICT (function_name) DO NOTHING;
 
+-- 4. Fix round 1 (CEO RUN 68 REVIEW: FAIL, comment 5825698253, must-fix 4):
+--    "at most ONE reminder per normalized email address ever" cannot be
+--    guaranteed by the per-row idempotency stamp alone -- two different
+--    `leads` rows can share the same email (a homeowner who submits the
+--    router form twice), and the Edge Function's own per-row UPDATE ...
+--    WHERE next_step_reminder_sent_at IS NULL ... RETURNING only claims ONE
+--    row atomically, not one row PER EMAIL. A partial unique index on
+--    lower(email) makes the second row's claiming UPDATE fail at the
+--    database level (23505 unique_violation) the instant a first row for
+--    that same address is stamped sent -- true cross-row, cross-process
+--    atomicity, the same guarantee a unique index gives any other
+--    at-most-once constraint, instead of relying on the Edge Function's own
+--    in-memory batch de-dup (select-candidates.ts's dedupeByNormalizedEmail,
+--    added in this same fix round) to catch a race between two concurrent
+--    invocations. The index is partial (WHERE next_step_reminder_sent_at IS
+--    NOT NULL) so it costs nothing on the many rows that are never sent and
+--    never blocks two different UN-sent rows sharing an address from both
+--    existing.
+CREATE UNIQUE INDEX IF NOT EXISTS leads_next_step_reminder_sent_email_uidx
+  ON public.leads (lower(email))
+  WHERE next_step_reminder_sent_at IS NOT NULL;
+
 COMMIT;

@@ -41,16 +41,44 @@ export function isFounderOrTestEmail(email: unknown): boolean {
   if (/^test[0-9+._-]/.test(local)) return true;
   if (local.includes("+test")) return true;
   if (["example.com", "example.org", "test.local"].includes(domain)) return true;
-  if (
-    domain === "otterquote.com" ||
-    domain === "tryotterquote.com" ||
-    domain === "stellaredgeservices.com"
-  ) {
+  // Fix round 1 (CEO RUN 68 should-fix, comment 5825698253): exact-match
+  // only let a subdomain of a founder domain (e.g. "internal.otterquote.com")
+  // through unexcluded. `endsWith('.' + domain)` catches any subdomain
+  // without also matching a look-alike domain that merely ends with the
+  // same characters (e.g. "nototterquote.com").
+  const FOUNDER_DOMAINS = ["otterquote.com", "tryotterquote.com", "stellaredgeservices.com"];
+  if (FOUNDER_DOMAINS.some((d) => domain === d || domain.endsWith("." + d))) {
     return true;
   }
   if (lower.includes("stohler")) return true;
 
   return false;
+}
+
+// Fix round 1 (CEO RUN 68 REVIEW: FAIL, comment 5825698253, must-fix 5 /
+// adversarial test A6): Mailgun's `to` field must receive EXACTLY one
+// recipient. A comma- or semicolon-separated list, any embedded whitespace
+// (which can hide a second address or a header-injection attempt), or a
+// display-name form ("Name <addr@x.com>") are all rejected here rather than
+// forwarded to Mailgun as-is. Deliberately stricter than RFC 5322 (which
+// permits display names and quoted locals) -- this is a send-eligibility
+// gate, not a general validator, and a lead whose stored email does not
+// look like a single plain address is skipped, never "cleaned up" and sent
+// anyway.
+const SINGLE_EMAIL_RE = /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+$/;
+
+export function isSingleValidEmail(email: unknown): boolean {
+  if (typeof email !== "string") return false;
+  const trimmed = email.trim();
+  if (!trimmed) return false;
+  // Any whitespace, comma, semicolon, or angle bracket inside the trimmed
+  // value means this is not a single bare address -- reject before even
+  // trying the shape regex, so a value like "a@x.com, b@y.com" or
+  // "Jane <a@x.com>" never reaches Mailgun. Leading/trailing whitespace on
+  // the raw column value is only formatting and is handled by trim(), not
+  // treated as a second recipient.
+  if (/[\s,;<>]/.test(trimmed)) return false;
+  return SINGLE_EMAIL_RE.test(trimmed);
 }
 
 /** True when `email` is present and non-blank ("only to leads with an email"). */

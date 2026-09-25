@@ -14,6 +14,8 @@
 
 BEGIN;
 
+DROP INDEX IF EXISTS public.leads_next_step_reminder_sent_email_uidx;
+
 DELETE FROM public.rate_limit_config WHERE function_name = 'send-lead-next-step-reminder';
 
 ALTER TABLE public.leads DROP COLUMN IF EXISTS next_step_reminder_opted_out_at;

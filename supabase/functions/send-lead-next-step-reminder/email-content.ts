@@ -51,6 +51,30 @@ nothing to photograph.
 
 Either one keeps your project moving.`;
 
+// Fix round 1 (CEO RUN 68 LEGAL-READ: FAIL, comment 5825694840, must-fix 6,
+// Ben's D-332 conservative ruling): for a lead with NO phone number on
+// file, the sentence promising a call from Dustin ("Dustin will still call
+// you directly -- this is just a faster way to move things along while you
+// wait.") must be omitted -- there is no number to call. Removal only, no
+// new words added; every other word in BODY_TEMPLATE is unchanged and in
+// the same order (diff the two constants to confirm). Leads WITH a phone
+// keep getting BODY_TEMPLATE unchanged, verbatim, per the approved copy.
+export const BODY_TEMPLATE_NO_PHONE =
+  `Hi {first_name},
+
+We've got your roof assessment request.
+
+Two quick options:
+
+Already have your insurance loss sheet? Upload it now and we'll start
+matching you with a contractor.
+
+Want bids ready sooner? Get a $15 measurement report ($15, rebated if
+you use an Otter Quotes contractor) -- no ladder, no appointment,
+nothing to photograph.
+
+Either one keeps your project moving.`;
+
 export const LOSS_SHEET_CTA_LABEL = "Upload your loss sheet";
 export const MEASUREMENT_CTA_LABEL = "Get the $15 measurement report";
 
@@ -63,7 +87,15 @@ export const POSTAL_ADDRESS =
 export const FROM_ADDRESS = "Otter Quotes <notifications@mail.otterquote.com>";
 
 export const OPTOUT_LINK_TEXT = "Stop these updates";
-export const OPTOUT_TEXT_LINE = "Don't want these emails? Stop these updates:";
+// Fix round 1 (CEO RUN 68 LEGAL-READ: FAIL, comment 5825694840, must-fix 7 /
+// adversarial test A3): OPTOUT_TEXT_LINE previously already ended in
+// "Stop these updates:", and buildLeadReminderEmail's HTML footer appended
+// an <a> whose text was ALSO "Stop these updates" right after it, rendering
+// "Don't want these emails? Stop these updates: Stop these updates". The
+// phrase now appears exactly once in each of textBody and htmlBody: this
+// line asks the question only, and the link (OPTOUT_LINK_TEXT) supplies
+// "Stop these updates" itself, in both bodies.
+export const OPTOUT_TEXT_LINE = "Don't want these emails?";
 
 function escapeHtml(str: string): string {
   return String(str ?? "")
@@ -81,12 +113,27 @@ export function lossSheetCtaUrl(leadId: string): string {
   return `${APP_BASE_URL}${LOSS_SHEET_CTA_PATH}?lead=${encodeURIComponent(leadId)}`;
 }
 
-/** first_name falls back to "there" for a lead with no name on file, same
- * fallback convention send-homeowner-next-steps/email-content.ts uses. */
+// Fix round 1 (CEO RUN 68 REVIEW: FAIL, comment 5825698253, should-fix /
+// adversarial tests A10-A11): `leads.name` is free-text, untrusted user
+// input. Before this fix, firstNameOf() only took the first whitespace
+// token, so a name like "http://evil.example/x" landed RAW in textBody (no
+// HTML there to escape it) and a name containing "$&" broke
+// `String.prototype.replace`'s special replacement-pattern handling,
+// corrupting the greeting. This restricts the first name to letters,
+// apostrophes and hyphens only (a superset of any real first name this
+// form should ever collect), capped at 40 characters, falling back to
+// "there" for anything else -- including anything that looks like it
+// contains a URL scheme or an "@".
+const SAFE_NAME_RE = /^[A-Za-z][A-Za-z'-]{0,39}$/;
+
+/** first_name falls back to "there" for a lead with no name on file (same
+ * fallback convention send-homeowner-next-steps/email-content.ts uses), or
+ * for any name that does not look like a plain first name once sanitized. */
 export function firstNameOf(name: string | null | undefined): string {
   const trimmed = (name ?? "").trim();
   if (!trimmed) return "there";
-  return trimmed.split(/\s+/)[0];
+  const firstToken = trimmed.split(/\s+/)[0].slice(0, 40);
+  return SAFE_NAME_RE.test(firstToken) ? firstToken : "there";
 }
 
 export interface LeadReminderEmail {
@@ -100,9 +147,24 @@ export function buildLeadReminderEmail(
   leadId: string,
   name: string | null | undefined,
   optOutUrl: string,
+  // Fix round 1 (must-fix 6, Ben's D-332 ruling): defaults to true so any
+  // existing caller that has not been updated yet keeps sending the
+  // call-promise sentence (the safe default is the APPROVED copy, unchanged)
+  // -- index.ts is the one caller in this repo and always passes the real
+  // value explicitly.
+  hasPhone = true,
 ): LeadReminderEmail {
   const firstName = firstNameOf(name);
-  const body = BODY_TEMPLATE.replace("{first_name}", firstName);
+  const template = hasPhone ? BODY_TEMPLATE : BODY_TEMPLATE_NO_PHONE;
+  // Fix round 1 (should-fix, adversarial test A11): a function replacer
+  // (`() => firstName`) is used instead of `template.replace("{first_name}",
+  // firstName)` — the string form of replace() treats "$&", "$1", "$$" etc.
+  // in the REPLACEMENT as special patterns, so a firstName of "$&" would
+  // duplicate the match instead of inserting literally. A function
+  // replacer's return value is always inserted verbatim. firstNameOf()
+  // already restricts firstName to [A-Za-z'-], which cannot contain "$"
+  // anyway — this is defense in depth, not the only fix for that case.
+  const body = template.replace("{first_name}", () => firstName);
   const lossSheetUrl = lossSheetCtaUrl(leadId);
   const measurementUrl = measurementCtaUrl(leadId);
 
@@ -112,7 +174,7 @@ export function buildLeadReminderEmail(
     `${MEASUREMENT_CTA_LABEL}: ${measurementUrl}\n\n` +
     `${FROM_ADDRESS}\n\n` +
     `${POSTAL_ADDRESS}\n\n` +
-    `${OPTOUT_TEXT_LINE} ${optOutUrl}`;
+    `${OPTOUT_TEXT_LINE} ${OPTOUT_LINK_TEXT}: ${optOutUrl}`;
 
   const htmlBody =
     `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.5;color:#1a1a1a;">` +
@@ -128,7 +190,7 @@ export function buildLeadReminderEmail(
     `<hr style="border:none;border-top:1px solid #ddd;margin:24px 0;">` +
     `<p style="font-size:12px;color:#666;">${escapeHtml(FROM_ADDRESS)}<br>` +
     `${escapeHtml(POSTAL_ADDRESS)}<br>` +
-    `${OPTOUT_TEXT_LINE} <a href="${optOutUrl}" style="color:#666;">${escapeHtml(OPTOUT_LINK_TEXT)}</a>` +
+    `${escapeHtml(OPTOUT_TEXT_LINE)} <a href="${optOutUrl}" style="color:#666;">${escapeHtml(OPTOUT_LINK_TEXT)}</a>` +
     `</p>` +
     `</div>`;
 
