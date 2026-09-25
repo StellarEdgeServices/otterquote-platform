@@ -122,8 +122,13 @@ function stripComments(html) {
   }
   ok(totalFeeMentions > 0 && negativeFeeMentions === totalFeeMentions,
     'partner-inspectors.html: every "referral fee" mention is a negative statement ("no referral fee" / "do not receive a referral fee")');
-  ok(rawSrc.indexOf('href="partner-agreement.html?track=home_inspector#track-home-inspector"') !== -1,
-    'partner-inspectors.html: agreement link carries ?track=home_inspector AND the #track-home-inspector fail-closed anchor');
+  // gh-2155 HI-0c (Ben ruling, #2152 comment 5836510515, item 1): the
+  // query-string/hash-tracked link was superseded by the static,
+  // fee-content-free partner-agreement-inspector.html -- see
+  // tests/gh2155-hi0c-inspector-agreement-parity.mjs for that page's own
+  // drift/parity coverage.
+  ok(rawSrc.indexOf('href="partner-agreement-inspector.html"') !== -1,
+    'partner-inspectors.html: agreement link points at the static partner-agreement-inspector.html (gh-2155 HI-0c)');
 }
 
 // ── Load partner-agreement.html and the extracted hiding script once. ───
@@ -423,26 +428,33 @@ function runHidingScript(hrefSearch) {
 //        behind a minimal document/window stand-in, same technique as the
 //        rest of this file. ────────────────────────────────────────────────
 {
+  // gh-2155 HI-0c (Ben ruling, #2152 comment 5836510515, item 1): the
+  // query-string/hash-tracked link this block used to verify was found to
+  // leak the fee table from partner-agreement.html's OWN footer, and with
+  // JS off + no hash. Superseded by a static, fee-content-free
+  // partner-agreement-inspector.html -- the footer now points there
+  // whenever Nav._isInspectorTrack() is true. That check (and the row-2
+  // nav / CTA / logo href changes alongside it) has its own dedicated,
+  // more thorough vm-harness coverage in
+  // tests/gh2155-hi0c-inspector-sweep.mjs; this block is kept, updated to
+  // the new expected href, so it still stands as this file's own
+  // regression guard on the footer link specifically.
   const navSrc = fs.readFileSync(path.join(repoRoot, 'js', 'nav.js'), 'utf8');
-  const snippet = extractBetween(
-    navSrc,
-    'const isInspectorTrack = window.location.pathname',
-    "'/partner-agreement.html';",
-    'js/nav.js renderFooter() inspector-track href logic'
-  ) + "'/partner-agreement.html';";
+  const navBody = extractBetween(navSrc, 'const Nav = {', '\n};', 'js/nav.js Nav object literal (b4)')
+    .replace('const Nav = {', 'var Nav = {') + '\n};\n';
 
   function computeHref(pathname, agentType) {
-    const fakeWindow = { location: { pathname }, currentPartnerAgentType: agentType };
+    const fakeWindow = { location: { pathname, search: '' }, currentPartnerAgentType: agentType };
     fakeWindow.window = fakeWindow;
     const context = vm.createContext(fakeWindow);
-    vm.runInContext(snippet + '\npartnerAgreementHref;', context);
-    return vm.runInContext('partnerAgreementHref', context);
+    vm.runInContext(navBody, context);
+    return context.Nav._isInspectorTrack() ? '/partner-agreement-inspector.html' : '/partner-agreement.html';
   }
 
-  ok(computeHref('/partner-inspectors.html', undefined) === '/partner-agreement.html?track=home_inspector#track-home-inspector',
-    'js/nav.js footer link: partner-inspectors.html carries ?track=home_inspector#track-home-inspector');
-  ok(computeHref('/partner-dashboard.html', 'home_inspector') === '/partner-agreement.html?track=home_inspector#track-home-inspector',
-    'js/nav.js footer link: partner-dashboard.html with window.currentPartnerAgentType=home_inspector carries the tracked link');
+  ok(computeHref('/partner-inspectors.html', undefined) === '/partner-agreement-inspector.html',
+    'js/nav.js footer link: partner-inspectors.html points at the static partner-agreement-inspector.html');
+  ok(computeHref('/partner-dashboard.html', 'home_inspector') === '/partner-agreement-inspector.html',
+    'js/nav.js footer link: partner-dashboard.html with window.currentPartnerAgentType=home_inspector points at partner-agreement-inspector.html');
   ok(computeHref('/partner-dashboard.html', 're_agent') === '/partner-agreement.html',
     'js/nav.js footer link: partner-dashboard.html with a non-inspector agent_type is untouched');
   ok(computeHref('/partner-re.html', undefined) === '/partner-agreement.html',
@@ -487,23 +499,20 @@ function runHidingScript(hrefSearch) {
   ok(/Nav\.renderFooter\s*\(\s*\)/.test(afterAssignment),
     'partner-dashboard.html: re-renders the footer (Nav.renderFooter()) immediately after window.currentPartnerAgentType is set, so the footer picks up the real partner type instead of staying stuck on the DOMContentLoaded-time undefined -- FAILS on 5ede2b19, where no such re-render call exists');
 
-  // End-to-end: model the two renders using nav.js's real href logic
-  // (the same extraction technique as (b4), reproduced here so this block
+  // End-to-end: model the two renders using nav.js's real
+  // _isInspectorTrack() logic (gh-2155 HI-0c updated the href it feeds;
+  // same extraction technique as (b4), reproduced here so this block
   // stands alone).
   const navSrc = fs.readFileSync(path.join(repoRoot, 'js', 'nav.js'), 'utf8');
-  const hrefSnippet = extractBetween(
-    navSrc,
-    'const isInspectorTrack = window.location.pathname',
-    "'/partner-agreement.html';",
-    'js/nav.js renderFooter() inspector-track href logic (b5)'
-  ) + "'/partner-agreement.html';";
+  const navBody = extractBetween(navSrc, 'const Nav = {', '\n};', 'js/nav.js Nav object literal (b5)')
+    .replace('const Nav = {', 'var Nav = {') + '\n};\n';
 
   function computeHrefAt(agentType) {
-    const fakeWindow = { location: { pathname: '/partner-dashboard.html' }, currentPartnerAgentType: agentType };
+    const fakeWindow = { location: { pathname: '/partner-dashboard.html', search: '' }, currentPartnerAgentType: agentType };
     fakeWindow.window = fakeWindow;
     const context = vm.createContext(fakeWindow);
-    vm.runInContext(hrefSnippet + '\npartnerAgreementHref;', context);
-    return vm.runInContext('partnerAgreementHref', context);
+    vm.runInContext(navBody, context);
+    return context.Nav._isInspectorTrack() ? '/partner-agreement-inspector.html' : '/partner-agreement.html';
   }
 
   // Render #1: nav.js's DOMContentLoaded-time footer render, before
@@ -517,8 +526,8 @@ function runHidingScript(hrefSearch) {
   // this is the href a real inspector's SECOND (fixed) footer render
   // produces, and what the re-render call asserted above must trigger.
   const secondRenderHref = computeHrefAt('home_inspector');
-  ok(secondRenderHref === '/partner-agreement.html?track=home_inspector#track-home-inspector',
-    'partner-dashboard.html footer, render #2 (after window.currentPartnerAgentType = "home_inspector"): tracked -- what the re-render call must produce for a real inspector, closing the gap REVIEW FAIL 5832774895 / LEGAL-READ FAIL 5832784187 flagged');
+  ok(secondRenderHref === '/partner-agreement-inspector.html',
+    'partner-dashboard.html footer, render #2 (after window.currentPartnerAgentType = "home_inspector"): points at the static partner-agreement-inspector.html -- what the re-render call must produce for a real inspector, closing the gap REVIEW FAIL 5832774895 / LEGAL-READ FAIL 5832784187 flagged (superseded href per gh-2155 HI-0c)');
 }
 
 // ── (d) CI legal-surface check (tools/partner_parity_check.py): still

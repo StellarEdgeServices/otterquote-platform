@@ -64,6 +64,27 @@ const Nav = {
     return file === 'partners.html' || file.startsWith('partner-');
   },
 
+  /**
+   * gh-2155 HI-0c (Ben ruling, #2152 comment 5836510515, item 3): true when
+   * the current visitor is on the inspector track -- either on a page whose
+   * URL is inspector-specific (partner-inspectors.html, the generated
+   * partner-agreement-inspector.html), or on a shared partner page after
+   * partner-dashboard.html has resolved a signed-in home_inspector's type
+   * (window.currentPartnerAgentType, set by that page around its ~line
+   * 2079). Reused by renderFooter() (already shipped, #2166) and by every
+   * nav.js link that must not point an inspector at partners.html (D-333 --
+   * that page shows dollar-figure commission copy no inspector should be
+   * one click from). Path check is immediate and needs no auth resolution;
+   * the currentPartnerAgentType check covers the dashboard once auth
+   * resolves.
+   */
+  _isInspectorTrack() {
+    const file = this._currentFile();
+    return file === 'partner-inspectors.html'
+      || file === 'partner-agreement-inspector.html'
+      || window.currentPartnerAgentType === 'home_inspector';
+  },
+
   /* ══════════════════════════════════════════════════════════════════════
      TWO-TIER NAVIGATION
      Row 1 — role switcher: Homeowner · Contractor · Referral Partner.
@@ -297,12 +318,28 @@ const Nav = {
   /** Row 2 — the inner links for one role. */
   _roleLinks(role, isAuthed) {
     const cfg = this._ROLE_NAV[role] || this._ROLE_NAV.homeowner;
-    return isAuthed ? cfg.authed : cfg.guest;
+    const links = isAuthed ? cfg.authed : cfg.guest;
+    // gh-2155 HI-0c (Ben ruling, #2152 comment 5836510515, item 3): on the
+    // inspector track, the partner role's own "Partner Programs"/"Programs"
+    // row-2 link must not point at partners.html (fee wording). Href swap
+    // only -- label and id are unchanged.
+    if (role === 'partner' && this._isInspectorTrack()) {
+      return links.map(l => l.href === '/partners.html'
+        ? Object.assign({}, l, { href: '/partner-inspectors.html' })
+        : l);
+    }
+    return links;
   },
 
   _roleLogoHref(role, isAuthed) {
     const cfg = this._ROLE_NAV[role] || this._ROLE_NAV.homeowner;
-    return (isAuthed && cfg.logoHrefAuthed) ? cfg.logoHrefAuthed : cfg.logoHref;
+    const href = (isAuthed && cfg.logoHrefAuthed) ? cfg.logoHrefAuthed : cfg.logoHref;
+    // gh-2155 HI-0c: same rule as _roleLinks -- the partner logo link must
+    // not send an inspector to partners.html either.
+    if (role === 'partner' && href === '/partners.html' && this._isInspectorTrack()) {
+      return '/partner-inspectors.html';
+    }
+    return href;
   },
 
   /** Render the site header (role bar + role-scoped nav) */
@@ -568,9 +605,15 @@ const Nav = {
     // gh-1994 phase 2: carry utm_*/fbclid/gclid onto the /start.html primary
     // CTA only — secondary links (Log In, Contractor Login, Partner Login,
     // Join as a Contractor, Become a Partner) are untouched.
-    const primaryHref = cta.primary.href === '/start.html'
+    let primaryHref = cta.primary.href === '/start.html'
       ? '/start.html' + this._attributionQuery()
       : cta.primary.href;
+    // gh-2155 HI-0c (Ben ruling, #2152 comment 5836510515, item 3): the
+    // signed-out "Become a Partner" CTA must not send an inspector-track
+    // visitor to partners.html. Href swap only, label unchanged.
+    if (role === 'partner' && primaryHref === '/partners.html' && this._isInspectorTrack()) {
+      primaryHref = '/partner-inspectors.html';
+    }
     return {
       desktop: `
         <a href="${primaryHref}" class="btn btn-sm btn-primary">${cta.primary.label}</a>
@@ -831,26 +874,21 @@ const Nav = {
     if (!footer) return;
 
     const isContractor = this._isContractorPage();
-    // gh-2155 HI-0b round 3 (Ben ruling, comment 5825785741 item 2(b), per
-    // LEGAL-READ FAIL 5825690233 / REVIEW FAIL 5825693018 must-fix 2): the
-    // footer's Partner Agreement link must carry ?track=home_inspector on
-    // partner-inspectors.html and on an inspector's partner-dashboard.html,
-    // so it hides the fee terms the same way the tracked link on the signup
-    // form does. Path check covers partner-inspectors.html unconditionally
-    // (safe and immediate -- no dependency on auth having resolved yet).
-    // window.currentPartnerAgentType is a global partner-dashboard.html
-    // already sets for its OWN home_inspector-specific copy (see e.g. its
-    // ~line 2079); reusing it here is the "simpler and safer" option Ben
-    // named over adding a new Supabase fetch inside nav.js. This footer
-    // renders once, at DOMContentLoaded, which can run before that async
-    // global is set — a real but pre-existing race in the dashboard's own
-    // partner-type-dependent copy, not one this fix introduces or can
-    // safely close without a broader change; the path check is the
-    // guaranteed fix for the flagged partner-inspectors.html case.
-    const isInspectorTrack = window.location.pathname.indexOf('partner-inspectors') !== -1
-      || window.currentPartnerAgentType === 'home_inspector';
-    const partnerAgreementHref = isInspectorTrack
-      ? '/partner-agreement.html?track=home_inspector#track-home-inspector'
+    // gh-2155 HI-0c (Ben ruling, #2152 comment 5836510515, item 1 -- FAILS
+    // round of HI-0b's own fix): the query-string/hash-tracked link below
+    // was found to leak the full fee table both from partner-agreement.html's
+    // OWN footer (an inspector who followed the tracked link, then clicked
+    // "Partner Agreement" again in that page's footer, landed on the plain
+    // untracked URL) and with JavaScript disabled and no hash. The static,
+    // fee-content-free partner-agreement-inspector.html (built by
+    // tools/build_inspector_agreement.py) removes both failure modes: there
+    // is no query param or hash to drop, and no fee content to reveal even
+    // if there were. `_isInspectorTrack()` now also matches
+    // partner-agreement-inspector.html's own filename, so THIS footer link,
+    // rendered again on that page, points at itself rather than bouncing
+    // back to the fee-bearing partner-agreement.html.
+    const partnerAgreementHref = this._isInspectorTrack()
+      ? '/partner-agreement-inspector.html'
       : '/partner-agreement.html';
 
     footer.innerHTML = `
