@@ -104,6 +104,18 @@ if (!storageKeyMatch) {
 }
 const STORAGE_KEY = storageKeyMatch[1];
 
+// gh-2121 (review S3/M1 verification): SAFE_DEFAULT_ARM is read out of
+// start.html itself too, same reasoning as LIVE_VARIANTS/STORAGE_KEY above
+// -- so Check 3d below (SAFE_DEFAULT_ARM must be a live arm) tracks
+// whatever this file's fallback constant currently says instead of a
+// second hardcoded copy that could drift.
+const safeDefaultArmMatch = html.match(/var SAFE_DEFAULT_ARM = '([^']*)';/);
+if (!safeDefaultArmMatch) {
+  console.log('FAIL: SAFE_DEFAULT_ARM constant not found in start.html — this suite\'s fallback-arm assertion cannot be evaluated against it.');
+  process.exit(1);
+}
+const SAFE_DEFAULT_ARM = safeDefaultArmMatch[1];
+
 // gh-2074 fix round 2: extract the SECOND, independent variant read
 // verbatim (the "propagation channel" — a separate <script> block/closure
 // further down start.html, gh-2014/gh-2033/gh-2074) so Check 7 below can
@@ -339,6 +351,39 @@ ok(cReroute.localStorageValue === cReroute.arm, 'the re-route also re-persists t
 const explicitC = runAssignment({ search: '?v=c' });
 ok(explicitC.arm !== 'c' && LIVE_VARIANTS.indexOf(explicitC.arm) !== -1,
   "NEGATIVE CONTROL: an explicit ?v=c is remapped to a live arm, same as ?v=a/?v=b -- 'c' is killed, not direct-only");
+
+// ── Check 3c (M1 fix, review PR #2181 comment 5833636471 / Ben's decision
+// on the bus 2026-09-25T14:01:57Z): removing an arm must NOT bump KEY --
+// a visitor already persisted under the literal 'oq_variant_v3' key (real
+// returning D/E traffic from before this PR) keeps the SAME arm on their
+// next load. The literal string is intentional here, not STORAGE_KEY --
+// this is what a real returning browser's storage already contains,
+// independent of whatever key start.html currently reads under. THIS
+// CHECK FAILS on c43df8fb (the pre-fix head, which bumped KEY to
+// 'oq_variant_v4'): storage written under 'oq_variant_v3' silently misses
+// there and the visitor is re-randomised across LIVE_VARIANTS, flipping
+// roughly half of returning D/E visitors to the other arm. Runs 20 fresh
+// sessions per arm so a coincidental 50/50 match on a single run can't
+// hide a real bug (P(all 20 land on the same arm by chance) < 1e-6). ──
+console.log('\n=== Check 3c (M1): a persisted D/E under literal "oq_variant_v3" survives unchanged (no key bump on arm removal) ===');
+['d', 'e'].forEach((persistedArm) => {
+  let matches = 0;
+  for (let i = 0; i < 20; i++) {
+    const store = new Map([['oq_variant_v3', persistedArm]]);
+    const r = runAssignment({ search: '', store: { localStorage: store, cookieJar: 'oq_variant_v3=' + persistedArm } });
+    if (r.arm === persistedArm) matches++;
+  }
+  ok(matches === 20,
+    `persisted '${persistedArm}' under literal oq_variant_v3 stays '${persistedArm}' across 20/20 fresh reads (got ${matches}/20 -- KEY must not be bumped when only removing an arm)`);
+});
+
+// ── Check 3d (review S3): SAFE_DEFAULT_ARM must itself be a live arm --
+// it is the fallback effectiveLiveVariants() uses if LIVE_VARIANTS is
+// ever misconfigured empty, so naming a dead arm ('c', post-gh-2121)
+// there would silently resurrect Arm C traffic through that one guard. ──
+console.log('\n=== Check 3d (review S3): SAFE_DEFAULT_ARM is a live arm ===');
+ok(LIVE_VARIANTS.indexOf(SAFE_DEFAULT_ARM) !== -1,
+  `SAFE_DEFAULT_ARM ('${SAFE_DEFAULT_ARM}') is in LIVE_VARIANTS (${JSON.stringify(LIVE_VARIANTS)})`);
 
 // ── Check 4: UTMs survive the rewrite, every other existing param intact. ──
 console.log('\n=== Check 4: UTM / arbitrary params survive the URL rewrite ===');

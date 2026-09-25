@@ -1189,12 +1189,12 @@
   // so unlike the React app (app.otterquote.com -- see
   // react-app/app/lib/variant.ts for why that origin needed a different
   // mechanism), the SAME localStorage key/cookie start.html itself writes
-  // (KEY = 'oq_variant_v4', gh-2121) is directly readable here too -- used as a
+  // (KEY = 'oq_variant_v3') is directly readable here too -- used as a
   // fallback for a visitor who bounced off this page and returned without
   // the query param. Priority: URL param, then localStorage, then cookie,
   // then 'unknown'.
   function getOqVariant() {
-    var VARIANT_KEY = 'oq_variant_v4'; // gh-2121 (2026-09-25): bumped v3->v4 when Arm C left LIVE_VARIANTS (start.html's own KEY)
+    var VARIANT_KEY = 'oq_variant_v3';
     var VARIANT_RE = /^[a-z0-9]{1,8}$/;
     function clean(v) {
       if (typeof v !== 'string') return null;

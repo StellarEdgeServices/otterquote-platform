@@ -894,10 +894,10 @@
         // `?v=<arm>` (collectAttribution/redirectTo) so
         // `partner_signup_complete` can attribute D/E/C. Same-origin as
         // start.html, so the persisted localStorage/cookie fallback (KEY =
-        // 'oq_variant_v4', gh-2121) is directly readable here too -- see
+        // 'oq_variant_v3') is directly readable here too -- see
         // partner-re.html's identical helper for the full writeup.
         function getOqVariant() {
-            var VARIANT_KEY = 'oq_variant_v4'; // gh-2121 (2026-09-25): bumped v3->v4 when Arm C left LIVE_VARIANTS (start.html's own KEY)
+            var VARIANT_KEY = 'oq_variant_v3';
             var VARIANT_RE = /^[a-z0-9]{1,8}$/;
             function clean(v) {
                 if (typeof v !== 'string') return null;
