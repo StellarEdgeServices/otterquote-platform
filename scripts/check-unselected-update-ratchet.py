@@ -48,6 +48,18 @@ ANNOTATION = "update-no-select-ok"
 # 39) immediately after fixing react-app/app/(homeowner)/bids/actions.ts
 # (bid award/decline -- claims.status='awarded', quotes.status='selected'/
 # 'declined'). Paths are relative to the repo root, POSIX-separated.
+#
+# RE-CAPTURED 2026-09-25 (REVIEW: FAIL on PR #2199, finding B2): the scan
+# window's terminator was `";" in lines[j] and j > i`, so a `;` on the
+# `.update(` trigger line itself (j == i -- a complete one-line statement)
+# did not end the scan. The window then ran on into whatever followed, and
+# an unrelated `.select(` on a later statement hid the violation. Fixed in
+# find_violations() below (the `j > i` guard removed). Re-running the fixed
+# scanner against this same tree reproduces the IDENTICAL 217-site/98-file
+# total as the original capture -- no real site in this repo currently has
+# the one-line-update-then-unrelated-select shape the bug could hide, so
+# BASELINE's numbers below are unchanged; only the scanner's correctness on
+# a case the repo does not yet contain has changed.
 BASELINE: dict[str, int] = {
     "admin-contractors.html": 1,
     "admin-cpa.html": 2,
@@ -176,7 +188,13 @@ def find_violations(path: pathlib.Path) -> list[int]:
         j = i
         while j < len(lines) and j < i + 25:
             window.append(lines[j])
-            if ";" in lines[j] and j > i:
+            # gh-2105 REVIEW FAIL (B2): this used to be `";" in lines[j] and j > i`,
+            # which let a `;` on the .update( trigger line itself (j == i) fail to
+            # end the scan. A one-line `.update(...).eq(...);` statement then kept
+            # extending the window into WHATEVER FOLLOWED, and a `.select(` on a
+            # later, unrelated statement hid the violation. The statement's own
+            # terminator ends its own scan regardless of which line it is on.
+            if ";" in lines[j]:
                 break
             if j > i and lines[j].strip() == "":
                 break
