@@ -252,9 +252,33 @@ Deno.test("canClaimStage: 'skipped' -> never claimable", () => {
   assertEquals(canClaimStage({ status: "skipped", created_at: new Date(NOW).toISOString() }, NOW), false);
 });
 
-Deno.test("canClaimStage: 'failed' -> always claimable regardless of age", () => {
+Deno.test("canClaimStage: 'failed' -> claimable regardless of age, as long as under the retry cap and not terminal", () => {
   assertEquals(canClaimStage({ status: "failed", created_at: new Date(NOW - 999 * DAY_MS).toISOString() }, NOW), true);
   assertEquals(canClaimStage({ status: "failed", created_at: new Date(NOW).toISOString() }, NOW), true);
+});
+
+Deno.test("canClaimStage: 'failed' with no attempt_count recorded defaults to 0 attempts -> claimable (fail-first: this is the pre-switch-on-hardening head's only shape)", () => {
+  assertEquals(canClaimStage({ status: "failed", created_at: new Date(NOW).toISOString() }, NOW), true);
+});
+
+// gh-2154 P-4 switch-on hardening (item (3) retry cap). Fails on the
+// pre-hardening head (merged in #2180) — that version's canClaimStage
+// signature has no attempt_count/terminal_failure fields at all, so a
+// 'failed' row was ALWAYS claimable no matter how many times it had
+// already been retried.
+Deno.test("canClaimStage: 'failed' below MAX_SEND_ATTEMPTS (5) -> claimable", () => {
+  assertEquals(canClaimStage({ status: "failed", created_at: new Date(NOW).toISOString(), attempt_count: 0 }, NOW), true);
+  assertEquals(canClaimStage({ status: "failed", created_at: new Date(NOW).toISOString(), attempt_count: 4 }, NOW), true);
+});
+
+Deno.test("canClaimStage: 'failed' at or above MAX_SEND_ATTEMPTS (5) -> NEVER claimable (retry cap exhausted)", () => {
+  assertEquals(canClaimStage({ status: "failed", created_at: new Date(NOW).toISOString(), attempt_count: 5 }, NOW), false);
+  assertEquals(canClaimStage({ status: "failed", created_at: new Date(NOW - 999 * DAY_MS).toISOString(), attempt_count: 99 }, NOW), false);
+});
+
+Deno.test("canClaimStage: 'failed' with terminal_failure=true -> NEVER claimable, even with attempt_count well under the cap", () => {
+  assertEquals(canClaimStage({ status: "failed", created_at: new Date(NOW).toISOString(), attempt_count: 0, terminal_failure: true }, NOW), false);
+  assertEquals(canClaimStage({ status: "failed", created_at: new Date(NOW).toISOString(), attempt_count: 1, terminal_failure: true }, NOW), false);
 });
 
 Deno.test("canClaimStage: fresh 'pending' (younger than the stale window) -> NOT claimable", () => {

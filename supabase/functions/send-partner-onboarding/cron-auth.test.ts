@@ -1,8 +1,9 @@
-// Deno unit tests for gh-2154 P-4 fix round (Ben SHOULD, REVIEW FAIL
-// 5833587935): extracted, independently-testable auth gate. These fail
-// against head aae3acfc with a module-not-found error (cron-auth.ts does
-// not exist there yet — the check was inlined in index.ts, untestable in
-// isolation).
+// Deno unit tests for gh-2154 P-4 switch-on hardening round (Ben, bus
+// 18:23:17Z item (1)): "cron-auth fails CLOSED when CRON_SECRET unset".
+// The first test below flips the old permissive assertion (isCronAuthorized
+// with cronSecret unset used to return true for an anonymous caller; it now
+// must return false). These fail against the pre-hardening head (merged in
+// #2180, PR base b6ea0ecb) where the permissive branch still exists.
 // Run: deno test supabase/functions/send-partner-onboarding/cron-auth.test.ts
 
 import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
@@ -10,7 +11,9 @@ import { isCronAuthorized } from "./cron-auth.ts";
 
 const SERVICE_ROLE_KEY = "srv-role-key-abc123";
 
-Deno.test("no CRON_SECRET configured — permissive (dev/staging), matches send-homeowner-next-steps", () => {
+// --- CRON_SECRET unset (was permissive pre-hardening; now fail-closed) ---
+
+Deno.test("CRON_SECRET unset + no header at all -> REJECTED (was permissive pre-hardening)", () => {
   assertEquals(
     isCronAuthorized({
       cronSecret: undefined,
@@ -18,11 +21,85 @@ Deno.test("no CRON_SECRET configured — permissive (dev/staging), matches send-
       authHeader: "",
       serviceRoleKey: SERVICE_ROLE_KEY,
     }),
+    false,
+  );
+});
+
+Deno.test("CRON_SECRET unset + anon-shaped Authorization header -> REJECTED", () => {
+  assertEquals(
+    isCronAuthorized({
+      cronSecret: undefined,
+      incomingCronSecret: null,
+      authHeader: "Bearer anon-or-random-caller-token",
+      serviceRoleKey: SERVICE_ROLE_KEY,
+    }),
+    false,
+  );
+});
+
+Deno.test("CRON_SECRET unset + wrong Bearer -> REJECTED", () => {
+  assertEquals(
+    isCronAuthorized({
+      cronSecret: undefined,
+      incomingCronSecret: null,
+      authHeader: "Bearer not-the-service-role-key",
+      serviceRoleKey: SERVICE_ROLE_KEY,
+    }),
+    false,
+  );
+});
+
+Deno.test("CRON_SECRET unset + X-Cron-Secret header sent anyway -> REJECTED (no secret to match)", () => {
+  assertEquals(
+    isCronAuthorized({
+      cronSecret: undefined,
+      incomingCronSecret: "whatever",
+      authHeader: "",
+      serviceRoleKey: SERVICE_ROLE_KEY,
+    }),
+    false,
+  );
+});
+
+Deno.test("CRON_SECRET unset + correct service-role Bearer -> AUTHORIZED (prod cron path always works)", () => {
+  assertEquals(
+    isCronAuthorized({
+      cronSecret: undefined,
+      incomingCronSecret: null,
+      authHeader: `Bearer ${SERVICE_ROLE_KEY}`,
+      serviceRoleKey: SERVICE_ROLE_KEY,
+    }),
     true,
   );
 });
 
-Deno.test("correct X-Cron-Secret header authorizes", () => {
+// --- CRON_SECRET set (unchanged behavior, re-asserted) ---
+
+Deno.test("CRON_SECRET set + no header at all -> REJECTED", () => {
+  assertEquals(
+    isCronAuthorized({
+      cronSecret: "shh",
+      incomingCronSecret: null,
+      authHeader: "",
+      serviceRoleKey: SERVICE_ROLE_KEY,
+    }),
+    false,
+  );
+});
+
+Deno.test("CRON_SECRET set + anon-shaped Authorization header (no X-Cron-Secret) -> REJECTED", () => {
+  assertEquals(
+    isCronAuthorized({
+      cronSecret: "shh",
+      incomingCronSecret: null,
+      authHeader: "Bearer some-anon-jwt-or-random-string",
+      serviceRoleKey: SERVICE_ROLE_KEY,
+    }),
+    false,
+  );
+});
+
+Deno.test("CRON_SECRET set + correct X-Cron-Secret header -> AUTHORIZED", () => {
   assertEquals(
     isCronAuthorized({
       cronSecret: "shh",
@@ -34,7 +111,7 @@ Deno.test("correct X-Cron-Secret header authorizes", () => {
   );
 });
 
-Deno.test("correct service-role Bearer token authorizes", () => {
+Deno.test("CRON_SECRET set + correct service-role Bearer -> AUTHORIZED", () => {
   assertEquals(
     isCronAuthorized({
       cronSecret: "shh",
@@ -46,7 +123,7 @@ Deno.test("correct service-role Bearer token authorizes", () => {
   );
 });
 
-Deno.test("wrong X-Cron-Secret is rejected (401)", () => {
+Deno.test("CRON_SECRET set + wrong X-Cron-Secret -> REJECTED (401)", () => {
   assertEquals(
     isCronAuthorized({
       cronSecret: "shh",
@@ -58,7 +135,7 @@ Deno.test("wrong X-Cron-Secret is rejected (401)", () => {
   );
 });
 
-Deno.test("wrong Bearer token is rejected (401)", () => {
+Deno.test("CRON_SECRET set + wrong Bearer token -> REJECTED (401)", () => {
   assertEquals(
     isCronAuthorized({
       cronSecret: "shh",
@@ -70,25 +147,25 @@ Deno.test("wrong Bearer token is rejected (401)", () => {
   );
 });
 
-Deno.test("no auth header at all is rejected when CRON_SECRET is configured", () => {
-  assertEquals(
-    isCronAuthorized({
-      cronSecret: "shh",
-      incomingCronSecret: null,
-      authHeader: "",
-      serviceRoleKey: SERVICE_ROLE_KEY,
-    }),
-    false,
-  );
-});
-
-Deno.test("a non-Bearer Authorization header is rejected", () => {
+Deno.test("CRON_SECRET set + non-Bearer Authorization header -> REJECTED", () => {
   assertEquals(
     isCronAuthorized({
       cronSecret: "shh",
       incomingCronSecret: null,
       authHeader: "Basic dXNlcjpwYXNz",
       serviceRoleKey: SERVICE_ROLE_KEY,
+    }),
+    false,
+  );
+});
+
+Deno.test("empty serviceRoleKey never authorizes via Bearer, even if authHeader is 'Bearer ' (empty token)", () => {
+  assertEquals(
+    isCronAuthorized({
+      cronSecret: undefined,
+      incomingCronSecret: null,
+      authHeader: "Bearer ",
+      serviceRoleKey: "",
     }),
     false,
   );
