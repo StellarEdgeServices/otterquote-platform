@@ -43,7 +43,11 @@
 -- derivation helper; the restored 20-arg register_partner above no longer
 -- calls it, same as it never did pre-P5).
 
-DELETE FROM public.rate_limit_config WHERE function_name = 'meta-leadgen-webhook';
+-- gh-2154 P-5r: also removes the 'register_partner_service_role' bucket
+-- added by REVIEW FAIL 5833742114 must-fix 1's fix (register_partner()'s
+-- internal rate limit for the service_role caller, separated from the
+-- shared 'register_partner' bucket every anon P-1 signup also draws from).
+DELETE FROM public.rate_limit_config WHERE function_name IN ('meta-leadgen-webhook', 'register_partner_service_role');
 
 DROP FUNCTION IF EXISTS public.register_partner(
   text, text, text, text, text, text, text, text, text, text, jsonb, text,

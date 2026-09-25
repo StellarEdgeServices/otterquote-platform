@@ -86,3 +86,26 @@ Deno.test("computeHmacSha256Hex: matches a known HMAC-SHA256 test vector (key='k
   assertEquals(hex.length, 64);
   assertEquals(hex, "f7bc83f430538424b13298e6aa6fb143ef4d59a14946175997479dbc2d1a3cd8");
 });
+
+// gh-2154 P-5r (REVIEW SHOULD-FIX, taken): computeHmacSha256Hex/
+// verifyMetaSignature now accept raw bytes directly, not just a string --
+// index.ts hashes new Uint8Array(await req.arrayBuffer()) instead of
+// req.text() so the HMAC is byte-exact against what Meta actually sent.
+Deno.test("computeHmacSha256Hex: string and equivalent Uint8Array input produce the same hex", async () => {
+  const message = "The quick brown fox jumps over the lazy dog";
+  const bytes = new TextEncoder().encode(message);
+  const fromString = await computeHmacSha256Hex("key", message);
+  const fromBytes = await computeHmacSha256Hex("key", bytes);
+  assertEquals(fromString, fromBytes);
+});
+
+Deno.test("verifyMetaSignature: accepts raw Uint8Array body, same result as the equivalent string", async () => {
+  const secret = "byte-secret-fixture";
+  const message = '{"entry":[{"id":"1"}]}';
+  const hex = await computeHmacSha256Hex(secret, message);
+  const header = `${SIGNATURE_PREFIX}${hex}`;
+  const okFromString = await verifyMetaSignature(message, header, secret);
+  const okFromBytes = await verifyMetaSignature(new TextEncoder().encode(message), header, secret);
+  assert(okFromString);
+  assert(okFromBytes);
+});

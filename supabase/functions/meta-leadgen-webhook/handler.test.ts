@@ -45,11 +45,11 @@ function makeDeps(overrides: Partial<WebhookDeps> = {}, counters: Counters = {
     },
     isDuplicate: async () => {
       counters.duplicateCalls++;
-      return false;
+      return { duplicate: false, errored: false };
     },
     registerPartner: async () => {
       counters.registerCalls++;
-      return { error: null };
+      return { data: { id: "agent-fixture-id" }, error: null };
     },
     checkRateLimit: async () => {
       counters.rateLimitCalls++;
@@ -169,7 +169,7 @@ Deno.test("POST: dedupe on leadgen_id -- already-seen id is skipped, no register
   const body = leadgenBody({ leadgenId: "leadgen_dup" });
   const sig = await sign(body);
   const counters: Counters = { fetchCalls: 0, registerCalls: 0, duplicateCalls: 0, rateLimitCalls: 0 };
-  const { outcomes } = await handlePost(body, sig, "1.2.3.4", makeDeps({ isDuplicate: async () => { counters.duplicateCalls++; return true; } }, counters));
+  const { outcomes } = await handlePost(body, sig, "1.2.3.4", makeDeps({ isDuplicate: async () => { counters.duplicateCalls++; return { duplicate: true, errored: false }; } }, counters));
   assertEquals(outcomes[0].outcome, "skipped_duplicate");
   assertEquals(counters.registerCalls, 0);
   assertEquals(counters.fetchCalls, 0);
@@ -206,7 +206,7 @@ Deno.test("POST: a Testing Tool form (is_test:true in the allowlist) registers w
     registerPartner: async (args) => {
       counters.registerCalls++;
       capturedIsTest = args.isTest;
-      return { error: null };
+      return { data: { id: "agent-fixture-id" }, error: null };
     },
   }, counters);
   const { outcomes } = await handlePost(body, sig, "1.2.3.4", deps);
@@ -221,14 +221,18 @@ Deno.test("POST: a duplicate at the register_partner layer (race) is reported as
   const deps = makeDeps({
     registerPartner: async () => {
       counters.registerCalls++;
-      return { error: { message: "duplicate_meta_lead" } };
+      return { data: null, error: { message: "duplicate_meta_lead" } };
     },
   }, counters);
   const { outcomes } = await handlePost(body, sig, "1.2.3.4", deps);
   assertEquals(outcomes[0].outcome, "skipped_already_registered");
 });
 
-Deno.test("POST: fetch failure skips with 200, no register call", async () => {
+// gh-2154 P-5r (REVIEW FAIL 5833742114 must-fix 1, fail-first on 6fde3eac):
+// a Graph fetch failure used to ack 200, so Meta never redelivered it and
+// the lead was lost for good. FAILS on 6fde3eac (asserted 200 there); PASSES
+// here (503 -- Meta retries).
+Deno.test("POST (must-fix 1): Graph fetch failure returns non-2xx (503) so Meta retries, not 200", async () => {
   const body = leadgenBody();
   const sig = await sign(body);
   const counters: Counters = { fetchCalls: 0, registerCalls: 0, duplicateCalls: 0, rateLimitCalls: 0 };
@@ -239,9 +243,85 @@ Deno.test("POST: fetch failure skips with 200, no register call", async () => {
     },
   }, counters);
   const { response, outcomes } = await handlePost(body, sig, "1.2.3.4", deps);
-  assertEquals(response.status, 200);
+  assertEquals(response.status, 503);
   assertEquals(outcomes[0].outcome, "skipped_fetch_failed");
   assertEquals(counters.registerCalls, 0);
+});
+
+// gh-2154 P-5r (REVIEW FAIL 5833742114 must-fix 1, fail-first on 6fde3eac):
+// a non-duplicate register_partner() error (e.g. rate_limited from the
+// shared-bucket bug, or any other DB error) used to ack 200 and drop the
+// lead forever. FAILS on 6fde3eac (200 there); PASSES here (503).
+Deno.test("POST (must-fix 1): register_partner error other than duplicate/partner_exists returns 503, not 200", async () => {
+  const body = leadgenBody();
+  const sig = await sign(body);
+  const counters: Counters = { fetchCalls: 0, registerCalls: 0, duplicateCalls: 0, rateLimitCalls: 0 };
+  const deps = makeDeps({
+    registerPartner: async () => {
+      counters.registerCalls++;
+      return { data: null, error: { message: "rate_limited: register_partner rate limit exceeded" } };
+    },
+  }, counters);
+  const { response, outcomes } = await handlePost(body, sig, "1.2.3.4", deps);
+  assertEquals(response.status, 503);
+  assertEquals(outcomes[0].outcome, "error_register_failed");
+});
+
+// gh-2154 P-5r (REVIEW FAIL 5833742114 must-fix 1, fail-first on 6fde3eac):
+// a dedupe-READ error used to be silently collapsed into "yes, duplicate" --
+// a permanent 200 drop indistinguishable from a real duplicate. FAILS on
+// 6fde3eac (outcome was skipped_duplicate/200 there); PASSES here (503,
+// distinct outcome, and no register call was skipped based on a guess).
+Deno.test("POST (must-fix 1): dedupe-read DB error returns 503, distinct from a real duplicate", async () => {
+  const body = leadgenBody();
+  const sig = await sign(body);
+  const counters: Counters = { fetchCalls: 0, registerCalls: 0, duplicateCalls: 0, rateLimitCalls: 0 };
+  const deps = makeDeps({
+    isDuplicate: async () => {
+      counters.duplicateCalls++;
+      return { duplicate: false, errored: true };
+    },
+  }, counters);
+  const { response, outcomes } = await handlePost(body, sig, "1.2.3.4", deps);
+  assertEquals(response.status, 503);
+  assertEquals(outcomes[0].outcome, "error_dedupe_check_failed");
+  assertEquals(counters.registerCalls, 0);
+  assertEquals(counters.fetchCalls, 0);
+});
+
+// gh-2154 P-5r SHOULD-FIX (taken): a lead with a first name but no last name
+// (e.g. the Meta form only asks "full name" as a single word, or asks for
+// first/last separately and the visitor left last name blank) used to be
+// dropped as skipped_incomplete_fields. It now registers with a clearly
+// marked placeholder last name instead of being lost.
+Deno.test("POST: first name with no last name registers with a placeholder last name, not dropped", async () => {
+  const body = leadgenBody();
+  const sig = await sign(body);
+  const captured: { firstName: string; lastName: string }[] = [];
+  const counters: Counters = { fetchCalls: 0, registerCalls: 0, duplicateCalls: 0, rateLimitCalls: 0 };
+  const deps = makeDeps({
+    fetchLead: async () => {
+      counters.fetchCalls++;
+      return {
+        data: {
+          field_data: [
+            { name: "first_name", values: ["Cher"] },
+            { name: "email", values: ["cher@example.com"] },
+          ],
+        },
+        error: null,
+      };
+    },
+    registerPartner: async (args) => {
+      counters.registerCalls++;
+      captured.push({ firstName: args.firstName, lastName: args.lastName });
+      return { data: { id: "agent-fixture-id" }, error: null };
+    },
+  }, counters);
+  const { outcomes } = await handlePost(body, sig, "1.2.3.4", deps);
+  assertEquals(outcomes[0].outcome, "registered");
+  assertEquals(captured[0]?.firstName, "Cher");
+  assert(!!captured[0]?.lastName && captured[0].lastName.length > 0);
 });
 
 Deno.test("POST: rate-limited request (allowed:false) returns 429, no register call", async () => {

@@ -68,11 +68,34 @@
 -- unchanged; only a normal email + a lying anon p_is_test=true now
 -- resolves to false.
 --
+-- gh-2154 P-5r (LEGAL-READ FAIL 5833717530 + REVIEW FAIL 5833742114, Kevin
+-- correction round): three fixes to register_partner(), all gated on
+-- v_is_service_role (the ONLY caller: meta-leadgen-webhook's service_role
+-- Supabase client; every P-1 browser form calls as anon/authenticated and
+-- is unaffected) --
+--   1. p_meta_lead_id is honored ONLY for service_role, same pattern
+--      p_is_test already uses -- an anon client can no longer forge
+--      arbitrary Meta-lead attribution on its own row.
+--   2. register_partner()'s internal check_rate_limit() call now draws from
+--      its own 'register_partner_service_role' bucket for service_role,
+--      never the 'register_partner' bucket anon P-1 signups share -- the
+--      two used to be the SAME global auth.uid()=NULL bucket.
+--   3. A service_role INSERT no longer stamps partner_agreement_version /
+--      _accepted_at / _attestation (the Meta lead never saw OtterQuote's
+--      Partner Terms checkbox -- only Meta's own consent, a different
+--      thing) and inserts with status='pending', not the table's 'active'
+--      default. Activation + the real v3-2026-09 acceptance happen later,
+--      when the invited partner completes the P-1 form via a signed invite
+--      link -- see supabase/functions/partner-invite-accept/.
+-- See also handler.ts/index.ts changes in this same commit (transient vs.
+-- terminal webhook outcomes, Authorization-header Graph token, raw-byte
+-- HMAC, single-name-lead placeholder).
+--
 -- ROLLBACK: see
 -- supabase/migrations_rollbacks/20260924213000_gh2154_p5_meta_lead_id_rollback.sql
 -- — drops the 21-arg register_partner, recreates the POST-#2166 20-arg
 -- definition (v3-2026-09 stamped -- see the ORDERING note below, NOT the
--- pre-#2166 md5 6b44199b body), drops the rate_limit_config row, restores
+-- pre-#2166 md5 6b44199b body), drops both rate_limit_config rows, restores
 -- the guard trigger, drops meta_lead_id (which also drops its unique
 -- constraint), and drops public.is_test_email().
 --
@@ -191,12 +214,41 @@ DECLARE
   v_ip           text;
   v_ua           text;
   v_is_test      boolean;
+  v_is_service_role boolean;
+  v_meta_lead_id text;
+  v_status       text;
+  v_agreement_version_to_write text;
+  v_agreement_accepted_at      timestamptz;
+  v_agreement_attestation      jsonb;
   -- v3-2026-09 (gh-2155 HI-0b / #2166), copied verbatim from #2166's
   -- CREATE OR REPLACE -- see the ORDERING note above the PRECONDITION guard.
   v_agreement_version CONSTANT text := 'v3-2026-09';
 BEGIN
+  -- gh-2154 P-5r (LEGAL-READ FAIL 5833717530 + REVIEW FAIL 5833742114):
+  -- computed once, used for three separate gates below -- (1) which
+  -- rate_limit_config bucket this call draws from, (2) whether
+  -- p_meta_lead_id is honored, (3) whether this INSERT stamps a v3-2026-09
+  -- agreement acceptance the caller has no actual consent behind.
+  -- meta-leadgen-webhook/index.ts's Supabase client is
+  -- createClient(supabaseUrl, serviceRoleKey) -- service_role -- so it is
+  -- the only caller this ever affects; P-1's browser signup forms
+  -- (partner-re/insurance/inspectors/adjusters/other.html) call this RPC as
+  -- anon/authenticated and are completely unaffected. Fail-closed: a NULL
+  -- auth.role() (same three-valued-logic trap noted throughout this
+  -- migration) counts as NOT service_role, never as an allow.
+  v_is_service_role := COALESCE(auth.role() = 'service_role', false);
+
+  -- LEGAL-READ FAIL 5833717530 / REVIEW FAIL 5833742114 (webhook rate
+  -- limit): register_partner() used to rate-limit every caller on the SAME
+  -- 'register_partner' bucket keyed by auth.uid() -- which is NULL for both
+  -- an anonymous P-1 browser signup AND the service_role webhook, so the
+  -- two shared one global bucket. Anyone could drain it with anon calls and
+  -- black-hole all Meta intake. The webhook now draws from its own
+  -- 'register_partner_service_role' bucket (config row added below),
+  -- keyed the same way (auth.uid(), which is NULL for service_role too, but
+  -- no longer shared with anon traffic since the function_name differs).
   v_rate := public.check_rate_limit(
-    p_function_name => 'register_partner',
+    p_function_name => CASE WHEN v_is_service_role THEN 'register_partner_service_role' ELSE 'register_partner' END,
     p_user_id       => auth.uid()
   );
   IF NOT COALESCE((v_rate->>'allowed')::boolean, false) THEN
@@ -254,11 +306,53 @@ BEGIN
                OR (COALESCE(p_is_test, false)
                    AND COALESCE(auth.role() = 'service_role', false));
 
+  -- REVIEW FAIL 5833742114 must-fix 2: p_meta_lead_id is honored (like
+  -- p_is_test above) ONLY for the service_role caller -- otherwise ANY anon
+  -- browser client could stamp an arbitrary meta_lead_id on its own row,
+  -- forging Meta-lead attribution and pre-occupying a real leadgen_id so the
+  -- genuine webhook delivery later hits duplicate_meta_lead and is silently
+  -- skipped. An anon/authenticated caller's p_meta_lead_id is discarded
+  -- (NULL), same fail-closed COALESCE shape as v_is_test above.
+  v_meta_lead_id := CASE WHEN v_is_service_role
+                         THEN NULLIF(btrim(COALESCE(p_meta_lead_id, '')), '')
+                         ELSE NULL
+                    END;
+
+  -- LEGAL-READ FAIL 5833717530 (blocking finding): the webhook path (Meta
+  -- Lead Ads) never collected the partner's agreement acceptance -- the
+  -- lead only ticked Meta's own lead-ad consent, never OtterQuote's Partner
+  -- Terms checkbox. Stamping partner_agreement_version/accepted_at/
+  -- attestation and defaulting status to 'active' (the table's own DEFAULT)
+  -- for that row would fabricate a consent record for a click that never
+  -- happened. For a service_role caller (webhook only -- see
+  -- v_is_service_role above) this INSERT now writes NO agreement stamp
+  -- (version NULL, accepted_at NULL, attestation the column's own
+  -- NOT NULL DEFAULT '{}'::jsonb, never a fabricated IP/UA/timestamp) and
+  -- an explicit status of 'pending' (already a valid value of
+  -- referral_agents_status_check -- ALTER TABLE ... ADD COLUMN wired to
+  -- baseline schema line 3072, no CHECK-constraint migration needed).
+  -- 'pending' -> 'active' only happens when the partner actually accepts
+  -- v3-2026-09 through the P-1 form, reached via a signed invite link --
+  -- see supabase/functions/partner-invite-accept/ and js/partner-invite.js
+  -- in this same PR. Every OTHER caller (P-1's own browser signup forms,
+  -- anon/authenticated) is completely unaffected: they still stamp the
+  -- agreement and insert as 'active', exactly as before this migration.
+  v_status := CASE WHEN v_is_service_role THEN 'pending' ELSE 'active' END;
+  v_agreement_version_to_write := CASE WHEN v_is_service_role THEN NULL ELSE v_agreement_version END;
+  v_agreement_accepted_at      := CASE WHEN v_is_service_role THEN NULL ELSE now() END;
+  v_agreement_attestation      := CASE WHEN v_is_service_role THEN '{}'::jsonb ELSE
+    jsonb_build_object(
+      v_agreement_version,
+      jsonb_build_object('accepted_ip', v_ip, 'accepted_ua', v_ua, 'accepted_at', now())
+    )
+  END;
+
   INSERT INTO referral_agents (
     agent_type, first_name, last_name, email, phone, company, website,
     service_area, photo_url, referred_by_note, metadata,
     recruited_by_id, recruited_at,
     utm_source, utm_medium, utm_campaign, utm_content, is_test,
+    status,
     partner_agreement_version, partner_agreement_accepted_at,
     partner_agreement_attestation,
     fbclid, li_fat_id, funnel_id, meta_lead_id
@@ -281,16 +375,14 @@ BEGIN
     NULLIF(btrim(COALESCE(p_utm_campaign, '')), ''),
     NULLIF(btrim(COALESCE(p_utm_content,  '')), ''),
     v_is_test,
-    v_agreement_version,
-    now(),
-    jsonb_build_object(
-      v_agreement_version,
-      jsonb_build_object('accepted_ip', v_ip, 'accepted_ua', v_ua, 'accepted_at', now())
-    ),
+    v_status,
+    v_agreement_version_to_write,
+    v_agreement_accepted_at,
+    v_agreement_attestation,
     NULLIF(btrim(COALESCE(p_fbclid,    '')), ''),
     NULLIF(btrim(COALESCE(p_li_fat_id, '')), ''),
     NULLIF(btrim(COALESCE(p_funnel_id, '')), ''),
-    NULLIF(btrim(COALESCE(p_meta_lead_id, '')), '')
+    v_meta_lead_id
   )
   RETURNING * INTO v_row;
 
@@ -321,7 +413,9 @@ INSERT INTO public.rate_limit_config
   (function_name, max_per_hour, max_per_day, max_per_month, enabled, monthly_cost_estimate, monthly_budget_cap, notes)
 VALUES
   ('meta-leadgen-webhook', 120, 1000, 20000, true, 0.0000, 0.00,
-   'gh2154 P-5: Meta Lead Ads webhook, partner path only. Keyed on a per-IP synthetic UUID (Meta''s own webhook delivery IPs, not an end user) since the caller is server-to-server with no real user_id. Rate-limits AFTER signature verification only, so a forged/unsigned request never reaches this check. Limits are a starting judgment call sized for webhook burst delivery, not human traffic -- raise if legitimate Meta delivery volume is ever throttled.')
+   'gh2154 P-5: Meta Lead Ads webhook, partner path only. Keyed on a per-IP synthetic UUID (Meta''s own webhook delivery IPs, not an end user) since the caller is server-to-server with no real user_id. Rate-limits AFTER signature verification only, so a forged/unsigned request never reaches this check. Limits are a starting judgment call sized for webhook burst delivery, not human traffic -- raise if legitimate Meta delivery volume is ever throttled.'),
+  ('register_partner_service_role', 120, 1000, 20000, true, 0.0000, 0.00,
+   'gh2154 P-5r (REVIEW FAIL 5833742114 must-fix 1): register_partner()''s OWN internal check_rate_limit() call now draws from this bucket for the service_role caller (meta-leadgen-webhook only), never the shared ''register_partner'' bucket every anon P-1 browser signup also uses. Before this row existed, the webhook''s service_role calls and every anon signup shared one global auth.uid()=NULL bucket -- 10/hour, 30/day live -- so anyone could drain it with anon register_partner calls and black-hole all Meta lead intake. Limits mirror the outer meta-leadgen-webhook bucket above (same delivery volume, one extra RPC hop per lead).')
 ON CONFLICT (function_name) DO NOTHING;
 
 -- Pin meta_lead_id the same way P-2 pinned fbclid/li_fat_id/funnel_id.

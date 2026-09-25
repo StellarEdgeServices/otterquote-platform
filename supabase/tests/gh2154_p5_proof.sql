@@ -28,9 +28,15 @@
 --   2. Applies this build's actual fix — inlined verbatim from
 --      supabase/migrations/20260924213000_gh2154_p5_meta_lead_id.sql —
 --      the PRECONDITION guard, public.is_test_email(), the fixed
---      register_partner() (v3-2026-09), and the CREATE OR REPLACEd guard
---      trigger.
---   3. Asserts (a)-(d) from the build brief against the FIXED function.
+--      register_partner() (v3-2026-09, service_role-only p_meta_lead_id,
+--      service_role-only agreement/status gating, split rate-limit
+--      bucket), and the CREATE OR REPLACEd guard trigger.
+--   3. Asserts (a)-(d) from the build brief (is_test derivation) against
+--      the FIXED function, plus (e)-(g) added for the P-5r correction:
+--      (e) anon p_meta_lead_id is ignored: (f) LEGAL-READ FAIL 5833717530
+--      -- service_role p_meta_lead_id is honored AND the row is created
+--      'pending' with NO agreement stamp; (g) negative control -- a normal
+--      anon P-1 signup is unaffected (active, v3-2026-09 stamped).
 --   4. Applies this migration's own (P-5b-corrected) rollback (verbatim
 --      from
 --      supabase/migrations_rollbacks/20260924213000_gh2154_p5_meta_lead_id_rollback.sql)
@@ -316,12 +322,22 @@ DECLARE
   v_ip           text;
   v_ua           text;
   v_is_test      boolean;
+  v_is_service_role boolean;
+  v_meta_lead_id text;
+  v_status       text;
+  v_agreement_version_to_write text;
+  v_agreement_accepted_at      timestamptz;
+  v_agreement_attestation      jsonb;
   -- v3-2026-09 (gh-2155 HI-0b / #2166), matches the migration's own
   -- ORDERING-note correction.
   v_agreement_version CONSTANT text := 'v3-2026-09';
 BEGIN
+  -- gh-2154 P-5r (LEGAL-READ FAIL 5833717530 + REVIEW FAIL 5833742114),
+  -- inlined verbatim from the migration.
+  v_is_service_role := COALESCE(auth.role() = 'service_role', false);
+
   v_rate := public.check_rate_limit(
-    p_function_name => 'register_partner',
+    p_function_name => CASE WHEN v_is_service_role THEN 'register_partner_service_role' ELSE 'register_partner' END,
     p_user_id       => auth.uid()
   );
   IF NOT COALESCE((v_rate->>'allowed')::boolean, false) THEN
@@ -371,11 +387,29 @@ BEGIN
                OR (COALESCE(p_is_test, false)
                    AND COALESCE(auth.role() = 'service_role', false));
 
+  -- REVIEW FAIL 5833742114 must-fix 2 (inlined verbatim from the migration).
+  v_meta_lead_id := CASE WHEN v_is_service_role
+                         THEN NULLIF(btrim(COALESCE(p_meta_lead_id, '')), '')
+                         ELSE NULL
+                    END;
+
+  -- LEGAL-READ FAIL 5833717530 (inlined verbatim from the migration).
+  v_status := CASE WHEN v_is_service_role THEN 'pending' ELSE 'active' END;
+  v_agreement_version_to_write := CASE WHEN v_is_service_role THEN NULL ELSE v_agreement_version END;
+  v_agreement_accepted_at      := CASE WHEN v_is_service_role THEN NULL ELSE now() END;
+  v_agreement_attestation      := CASE WHEN v_is_service_role THEN '{}'::jsonb ELSE
+    jsonb_build_object(
+      v_agreement_version,
+      jsonb_build_object('accepted_ip', v_ip, 'accepted_ua', v_ua, 'accepted_at', now())
+    )
+  END;
+
   INSERT INTO referral_agents (
     agent_type, first_name, last_name, email, phone, company, website,
     service_area, photo_url, referred_by_note, metadata,
     recruited_by_id, recruited_at,
     utm_source, utm_medium, utm_campaign, utm_content, is_test,
+    status,
     partner_agreement_version, partner_agreement_accepted_at,
     partner_agreement_attestation,
     fbclid, li_fat_id, funnel_id, meta_lead_id
@@ -398,16 +432,14 @@ BEGIN
     NULLIF(btrim(COALESCE(p_utm_campaign, '')), ''),
     NULLIF(btrim(COALESCE(p_utm_content,  '')), ''),
     v_is_test,
-    v_agreement_version,
-    now(),
-    jsonb_build_object(
-      v_agreement_version,
-      jsonb_build_object('accepted_ip', v_ip, 'accepted_ua', v_ua, 'accepted_at', now())
-    ),
+    v_status,
+    v_agreement_version_to_write,
+    v_agreement_accepted_at,
+    v_agreement_attestation,
     NULLIF(btrim(COALESCE(p_fbclid,    '')), ''),
     NULLIF(btrim(COALESCE(p_li_fat_id, '')), ''),
     NULLIF(btrim(COALESCE(p_funnel_id, '')), ''),
-    NULLIF(btrim(COALESCE(p_meta_lead_id, '')), '')
+    v_meta_lead_id
   )
   RETURNING * INTO v_row;
 
@@ -432,7 +464,9 @@ INSERT INTO public.rate_limit_config
   (function_name, max_per_hour, max_per_day, max_per_month, enabled, monthly_cost_estimate, monthly_budget_cap, notes)
 VALUES
   ('meta-leadgen-webhook', 120, 1000, 20000, true, 0.0000, 0.00,
-   'gh2154 P-5: Meta Lead Ads webhook, partner path only.')
+   'gh2154 P-5: Meta Lead Ads webhook, partner path only.'),
+  ('register_partner_service_role', 120, 1000, 20000, true, 0.0000, 0.00,
+   'gh2154 P-5r (REVIEW FAIL 5833742114 must-fix 1): register_partner()''s own bucket for the service_role caller, separate from the shared anon bucket.')
 ON CONFLICT (function_name) DO NOTHING;
 
 CREATE OR REPLACE FUNCTION public.referral_agents_guard_payout_columns()
@@ -639,9 +673,104 @@ BEGIN
   RAISE NOTICE 'gh2154_p5_proof (d) PASS (negative control): anon + real3@example.com + p_is_test=false -> is_test=false.';
 END $$;
 
+-- (e) REVIEW FAIL 5833742114 must-fix 2: anon + p_meta_lead_id -> ignored (NULL), row still 'active'/stamped normally.
+DO $$
+DECLARE
+  v_result jsonb;
+  v_meta_lead_id_col text;
+  v_status text;
+BEGIN
+  PERFORM set_config('request.jwt.claim.role', '', true);
+  PERFORM set_config('request.jwt.claims', '', true);
+
+  v_result := public.register_partner(
+    p_agent_type   => 're_agent',
+    p_first_name   => 'GH2154P5',
+    p_last_name    => 'CaseE',
+    p_email        => 'real-e@example.com',
+    p_meta_lead_id => 'forged_leadgen_id_e'
+  );
+
+  SELECT meta_lead_id, status INTO v_meta_lead_id_col, v_status FROM referral_agents WHERE id = (v_result->>'id')::uuid;
+
+  IF v_meta_lead_id_col IS NOT NULL THEN
+    RAISE EXCEPTION 'gh2154_p5_proof (e) FAILED: anon p_meta_lead_id must be ignored (NULL), got %.', v_meta_lead_id_col;
+  END IF;
+  IF v_status IS DISTINCT FROM 'active' THEN
+    RAISE EXCEPTION 'gh2154_p5_proof (e) FAILED: anon signup expected status=active, got %.', v_status;
+  END IF;
+  RAISE NOTICE 'gh2154_p5_proof (e) PASS: anon p_meta_lead_id is ignored (NULL), row is active.';
+END $$;
+
+-- (f) LEGAL-READ FAIL 5833717530: service_role + p_meta_lead_id -> honored, row 'pending', NO agreement stamp.
+DO $$
+DECLARE
+  v_result jsonb;
+  v_meta_lead_id_col text;
+  v_status text;
+  v_agreement_version_col text;
+  v_agreement_accepted_at_col timestamptz;
+  v_agreement_attestation_col jsonb;
+BEGIN
+  PERFORM set_config('request.jwt.claim.role', 'service_role', true);
+  PERFORM set_config('request.jwt.claims', '', true);
+
+  v_result := public.register_partner(
+    p_agent_type   => 're_agent',
+    p_first_name   => 'GH2154P5',
+    p_last_name    => 'CaseF',
+    p_email        => 'real-f@example.com',
+    p_meta_lead_id => 'leadgen_case_f'
+  );
+
+  SELECT meta_lead_id, status, partner_agreement_version, partner_agreement_accepted_at, partner_agreement_attestation
+    INTO v_meta_lead_id_col, v_status, v_agreement_version_col, v_agreement_accepted_at_col, v_agreement_attestation_col
+    FROM referral_agents WHERE id = (v_result->>'id')::uuid;
+
+  IF v_meta_lead_id_col IS DISTINCT FROM 'leadgen_case_f' THEN
+    RAISE EXCEPTION 'gh2154_p5_proof (f) FAILED: service_role p_meta_lead_id expected leadgen_case_f, got %.', v_meta_lead_id_col;
+  END IF;
+  IF v_status IS DISTINCT FROM 'pending' THEN
+    RAISE EXCEPTION 'gh2154_p5_proof (f) FAILED: webhook-sourced row expected status=pending, got %.', v_status;
+  END IF;
+  IF v_agreement_version_col IS NOT NULL OR v_agreement_accepted_at_col IS NOT NULL OR v_agreement_attestation_col <> '{}'::jsonb THEN
+    RAISE EXCEPTION 'gh2154_p5_proof (f) FAILED: webhook-sourced row must NOT stamp an agreement acceptance -- version=%, accepted_at=%, attestation=%.',
+      v_agreement_version_col, v_agreement_accepted_at_col, v_agreement_attestation_col;
+  END IF;
+  RAISE NOTICE 'gh2154_p5_proof (f) PASS: service_role p_meta_lead_id honored, row is pending with NO agreement stamp.';
+
+  -- Reset role for subsequent tests.
+  PERFORM set_config('request.jwt.claim.role', '', true);
+END $$;
+
+-- (g) negative control confirming (a)-(d)'s anon path still stamps the real agreement acceptance normally (unaffected by (e)/(f)).
+DO $$
+DECLARE
+  v_result jsonb;
+  v_status text;
+  v_agreement_version_col text;
+BEGIN
+  PERFORM set_config('request.jwt.claim.role', '', true);
+  PERFORM set_config('request.jwt.claims', '', true);
+
+  v_result := public.register_partner(
+    p_agent_type => 're_agent',
+    p_first_name => 'GH2154P5',
+    p_last_name  => 'CaseG',
+    p_email      => 'real-g@example.com'
+  );
+
+  SELECT status, partner_agreement_version INTO v_status, v_agreement_version_col FROM referral_agents WHERE id = (v_result->>'id')::uuid;
+
+  IF v_status IS DISTINCT FROM 'active' OR v_agreement_version_col IS DISTINCT FROM 'v3-2026-09' THEN
+    RAISE EXCEPTION 'gh2154_p5_proof (g) FAILED: normal P-1 signup expected status=active + agreement v3-2026-09, got status=%, version=%.', v_status, v_agreement_version_col;
+  END IF;
+  RAISE NOTICE 'gh2154_p5_proof (g) PASS (negative control): P-1 anon signup is unaffected -- active, v3-2026-09 stamped.';
+END $$;
+
 -- ── 4. Rollback proof: apply this migration's own rollback and confirm ──
 -- everything is restored to its exact pre-migration shape.
-DELETE FROM public.rate_limit_config WHERE function_name = 'meta-leadgen-webhook';
+DELETE FROM public.rate_limit_config WHERE function_name IN ('meta-leadgen-webhook', 'register_partner_service_role');
 
 DROP FUNCTION IF EXISTS public.register_partner(
   text, text, text, text, text, text, text, text, text, text, jsonb, text,

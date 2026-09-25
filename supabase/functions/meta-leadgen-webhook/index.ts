@@ -47,8 +47,54 @@ import {
   type RegisterPartnerArgs,
   type WebhookDeps,
 } from "./handler.ts";
+import { buildInviteEmail, isInviteEmailEnabled, PARTNER_INVITE_EMAIL_ENABLED_ENV } from "./invite-email.ts";
+import { PARTNER_INVITE_SECRET_ENV, signPartnerInviteToken } from "./invite-token.ts";
 
 const GRAPH_API_VERSION = "v21.0";
+const SITE_BASE_URL = "https://otterquote.com";
+
+/**
+ * gh-2154 P-5r (LEGAL-READ FAIL 5833717530) — sends the invite email for a
+ * newly-created 'pending' Meta-lead partner. Guarded twice, both OFF by
+ * default: PARTNER_INVITE_EMAIL_ENABLED must be exactly "true" (the brief's
+ * required send switch, defaulting OFF -- the copy is a placeholder Sloane
+ * has not finished), AND PARTNER_INVITE_SECRET must be set (no verifiable
+ * link can be built without it -- same canSignInvite posture as D-320's
+ * canSendWithOptOut). Best-effort: any failure here is caught by the
+ * caller in handler.ts and only logged, never turned into a webhook retry.
+ */
+async function sendPartnerInvite(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  args: { referralAgentId: string; email: string; firstName: string; agentType: string },
+): Promise<void> {
+  if (!isInviteEmailEnabled(Deno.env.get(PARTNER_INVITE_EMAIL_ENABLED_ENV))) {
+    return;
+  }
+  const secret = Deno.env.get(PARTNER_INVITE_SECRET_ENV) || "";
+  const mailgunApiKey = Deno.env.get("MAILGUN_API_KEY") || "";
+  if (!secret || !mailgunApiKey) {
+    console.warn(`${FUNCTION_NAME}: PARTNER_INVITE_EMAIL_ENABLED=true but secret or Mailgun key unset — no invite sent`);
+    return;
+  }
+  const token = await signPartnerInviteToken(args.referralAgentId, secret);
+  const email = buildInviteEmail(args.firstName, args.agentType, SITE_BASE_URL, token);
+
+  const formData = new URLSearchParams();
+  formData.append("from", "Otter Quotes <notifications@mail.otterquote.com>");
+  formData.append("to", args.email);
+  formData.append("subject", email.subject);
+  formData.append("text", email.text);
+  formData.append("html", email.html);
+  const res = await fetch("https://api.mailgun.net/v3/mail.otterquote.com/messages", {
+    method: "POST",
+    headers: { Authorization: `Basic ${btoa(`api:${mailgunApiKey}`)}` },
+    body: formData,
+  });
+  if (!res.ok) {
+    console.error(`${FUNCTION_NAME}: invite email send failed, Mailgun status ${res.status}`);
+  }
+}
 
 async function fetchLeadFromGraph(
   leadgenId: string,
@@ -56,11 +102,17 @@ async function fetchLeadFromGraph(
   fetchImpl: typeof fetch,
 ): Promise<{ data: FetchedLead | null; error: string | null }> {
   try {
-    const url = `https://graph.facebook.com/${GRAPH_API_VERSION}/${encodeURIComponent(leadgenId)}` +
-      `?fields=field_data&access_token=${encodeURIComponent(token)}`;
-    const res = await fetchImpl(url);
+    // gh-2154 P-5r (REVIEW SHOULD-FIX, taken): the page access token now
+    // rides in the Authorization header, not the query string. The query
+    // string is the one part of a URL that routinely ends up in access
+    // logs, proxy logs, and (per the prior header's note) any future
+    // `fetched.error`-adjacent log line that includes the request URL --
+    // moving the token out of it removes that class of leak outright rather
+    // than relying on "nothing logs it today" staying true forever.
+    const url = `https://graph.facebook.com/${GRAPH_API_VERSION}/${encodeURIComponent(leadgenId)}?fields=field_data`;
+    const res = await fetchImpl(url, { headers: { Authorization: `Bearer ${token}` } });
     if (!res.ok) {
-      // Never logs the response body — it can echo back the access_token query param.
+      // Never logs the response body — Graph error bodies can echo request context back.
       return { data: null, error: `graph_api_${res.status}` };
     }
     const data = (await res.json()) as FetchedLead;
@@ -101,7 +153,12 @@ if (import.meta.main) {
       return new Response("Method Not Allowed", { status: 405 });
     }
 
-    const rawBody = await req.text();
+    // gh-2154 P-5r (REVIEW SHOULD-FIX, taken): raw bytes, not req.text(), go
+    // into signature verification (handler.ts/signature.ts now accept
+    // either) -- byte-exact against what Meta signed. The decoded text is
+    // still what gets JSON.parse'd downstream (handler.ts decodes it once,
+    // internally).
+    const rawBytes = new Uint8Array(await req.arrayBuffer());
     const signatureHeader = req.headers.get("X-Hub-Signature-256");
     const clientIp = getClientIp(req);
 
@@ -111,6 +168,10 @@ if (import.meta.main) {
       pageAccessToken,
       allowlistRaw,
       fetchLead: (leadgenId, token) => fetchLeadFromGraph(leadgenId, token, fetch),
+      // gh-2154 P-5r (REVIEW FAIL 5833742114 must-fix 1): a dedupe-read DB
+      // error is no longer collapsed into "yes, duplicate" -- that silently
+      // and permanently dropped the lead. `errored: true` tells handler.ts
+      // to fail this delivery non-2xx so Meta retries instead.
       isDuplicate: async (leadgenId) => {
         const { data, error } = await supabase
           .from("referral_agents")
@@ -118,13 +179,13 @@ if (import.meta.main) {
           .eq("meta_lead_id", leadgenId)
           .limit(1);
         if (error) {
-          console.error(`${FUNCTION_NAME}: duplicate check failed — treating as duplicate (fail closed, no double-write)`);
-          return true;
+          console.error(`${FUNCTION_NAME}: duplicate check failed`);
+          return { duplicate: false, errored: true };
         }
-        return Boolean(data && data.length > 0);
+        return { duplicate: Boolean(data && data.length > 0), errored: false };
       },
       registerPartner: async (args: RegisterPartnerArgs) => {
-        const { error } = await supabase.rpc("register_partner", {
+        const { data, error } = await supabase.rpc("register_partner", {
           p_agent_type: args.agentType,
           p_first_name: args.firstName,
           p_last_name: args.lastName,
@@ -135,7 +196,13 @@ if (import.meta.main) {
           p_funnel_id: args.funnelId,
           p_meta_lead_id: args.metaLeadId,
         });
-        return { error: error ? { message: error.message } : null };
+        return {
+          data: data && typeof data === "object" ? (data as { id?: string }) : null,
+          error: error ? { message: error.message } : null,
+        };
+      },
+      sendInvite: async ({ referralAgentId, email, firstName, agentType }) => {
+        await sendPartnerInvite(supabaseUrl, serviceRoleKey, { referralAgentId, email, firstName, agentType });
       },
       checkRateLimit: async (bucket) => {
         const { data, error } = await supabase.rpc("check_rate_limit", {
@@ -151,7 +218,7 @@ if (import.meta.main) {
       log: (level, message) => console[level](message),
     };
 
-    const { response } = await handlePost(rawBody, signatureHeader, clientIp, deps);
+    const { response } = await handlePost(rawBytes, signatureHeader, clientIp, deps);
     return response;
   });
 }

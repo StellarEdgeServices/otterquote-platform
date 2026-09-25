@@ -9,8 +9,16 @@
 // unavoidable async crypto.subtle calls), no network, no database. Exercised
 // by signature.test.ts under `deno test`.
 
-/** HMAC-SHA256(secret, rawBody), hex-encoded, lowercase. */
-export async function computeHmacSha256Hex(secret: string, rawBody: string): Promise<string> {
+/**
+ * HMAC-SHA256(secret, rawBody), hex-encoded, lowercase. `rawBody` accepts
+ * either a string (tests, or a caller that only has text) or the raw
+ * request bytes directly -- gh-2154 P-5r (REVIEW SHOULD-FIX, taken):
+ * hashing `req.text()` decodes then re-encodes as UTF-8, which is only
+ * byte-identical to what Meta actually signed for a well-formed UTF-8 body.
+ * index.ts now passes `new Uint8Array(await req.arrayBuffer())` so this is
+ * byte-exact regardless.
+ */
+export async function computeHmacSha256Hex(secret: string, rawBody: string | Uint8Array): Promise<string> {
   const key = await crypto.subtle.importKey(
     "raw",
     new TextEncoder().encode(secret),
@@ -18,7 +26,11 @@ export async function computeHmacSha256Hex(secret: string, rawBody: string): Pro
     false,
     ["sign"],
   );
-  const sigBuf = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(rawBody));
+  const bodyBytes = typeof rawBody === "string" ? new TextEncoder().encode(rawBody) : rawBody;
+  // crypto.subtle.sign's BufferSource type wants an ArrayBuffer-backed view;
+  // a Uint8Array is always a valid BufferSource at runtime (the stricter
+  // TS lib.dom typing over-narrows to a non-shared ArrayBuffer specifically).
+  const sigBuf = await crypto.subtle.sign("HMAC", key, bodyBytes as unknown as BufferSource);
   return Array.from(new Uint8Array(sigBuf), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
@@ -53,7 +65,7 @@ export const SIGNATURE_PREFIX = "sha256=";
  * value would accept a body Meta never actually sent.
  */
 export async function verifyMetaSignature(
-  rawBody: string,
+  rawBody: string | Uint8Array,
   headerValue: string | null,
   appSecret: string | undefined,
 ): Promise<boolean> {
