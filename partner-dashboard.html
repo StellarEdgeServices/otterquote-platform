@@ -992,7 +992,13 @@
                     <span class="task-tile-title">See my pipeline</span>
                     <span class="task-tile-subtitle">Find out where your clients are in the process.</span>
                 </button>
-                <button type="button" class="task-tile" data-target="get-paid">
+                <!-- gh-2155 HI-05 (Ben, review 5838422299, item 3): the tile
+                     itself -- not just its subtitle -- now starts
+                     display:none, fail closed for JS-off and for any
+                     partner type not yet known. Revealed below only once
+                     partnerType resolves to something other than
+                     home_inspector. -->
+                <button type="button" class="task-tile" data-target="get-paid" id="getPaidTile" style="display:none;">
                     <span class="task-tile-icon" aria-hidden="true">💰</span>
                     <span class="task-tile-title">Get paid</span>
                     <span class="task-tile-subtitle" id="feeSubtitleGetPaid" style="display:none;">Payout approvals and earnings.</span>
@@ -1869,7 +1875,7 @@ Let me know if you have any questions!
                 // home_inspector -- every other partner type keeps exactly
                 // the fee copy it has always had. No text is changed here,
                 // only visibility.
-                var feeIds = ['feeSubtitleReferClient', 'feeSubtitleReferPartner', 'feeSubtitleGetPaid', 'referralFeeDisclaimer', 'recruitFeeHint', 'totalEarnedCard', 'recruitEarningsCard', 'referralFeeThLabel'];
+                var feeIds = ['feeSubtitleReferClient', 'feeSubtitleReferPartner', 'feeSubtitleGetPaid', 'referralFeeDisclaimer', 'recruitFeeHint', 'totalEarnedCard', 'recruitEarningsCard', 'referralFeeThLabel', 'getPaidTile'];
                 feeIds.forEach(function (id) {
                     var el = document.getElementById(id);
                     if (el) el.style.display = '';
