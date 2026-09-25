@@ -561,17 +561,6 @@
     }
   }
 
-  // Same one known founder address js/auth.js:1360 hardcodes for the admin
-  // check. gh-2150 round 2 (REVIEW FAIL 5836233175, Ben ruling (7), S15):
-  // founder addresses are flagged is_test, same as an
-  // @otterquote-internal.test address -- no shared referral_agents-signup
-  // helper for this exists yet (P-3/P-4/P-5 are still building that
-  // convention per the run-work bus), so this is a page-local predicate
-  // reusing the one literal that convention already established.
-  function isFounderEmail(email) {
-    return (email || '').trim().toLowerCase() === 'dustinstohler1@gmail.com';
-  }
-
   // gh-2150 round 2 (Ben ruling (5), S20): "Install the App" action, same
   // beforeinstallprompt-or-fallback pattern as partner-dashboard.html's
   // #installAppBtn (~3136) -- PWA install prompt where available, else the
@@ -832,10 +821,11 @@
     try {
       const generatedPassword = generateSecurePartnerPassword();
 
-      // gh-2150 round 2 (REVIEW FAIL 5836233175, Ben ruling (7), S15):
-      // founder addresses are flagged is_test, same as an
-      // @otterquote-internal.test address.
-      const isTest = ((window.Auth && typeof Auth.isTestEmail === 'function') ? Auth.isTestEmail(email) : false) || isFounderEmail(email);
+      // #2151 17:24:58Z ruling: no client-side founder mechanism. is_test
+      // is set exactly as main's P-1 pages do (partner-re.html) --
+      // Auth.isTestEmail() only. Founder-address exclusion happens at the
+      // reporting layer (cro-daily / scoreboard), not on this page.
+      const isTest = (window.Auth && typeof Auth.isTestEmail === 'function') ? Auth.isTestEmail(email) : false;
 
       // #571 / v95: server-side register_partner RPC. Same call shape as
       // partner-re.html (gh-2154 P-1/P-2).

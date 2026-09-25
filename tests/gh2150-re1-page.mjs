@@ -616,22 +616,51 @@ const gaGateSrc = fs.readFileSync(path.join(repoRoot, 'js', 'ga-gate.js'), 'utf8
   }
 }
 
-// (7) S15: founder addresses are flagged is_test, same as
-// @otterquote-internal.test (js/auth.js:1360 hardcodes the one known
-// founder address for the admin check; no shared referral_agents-signup
-// helper exists yet, so this page reuses that literal).
+// (7) S15 (revised per bus 2026-09-25T17:24:58Z, DECIDED Ben): NO
+// client-side founder mechanism. is_test is set exactly as main's P-1
+// pages / js/auth.js isTestEmail() do -- @otterquote-internal.test only
+// -- and nothing else. Founder-address exclusion happens at the
+// reporting layer (cro-daily / scoreboard), not on this page. These
+// assertions FAIL on the round-2 head (5b3294f6, which hardcoded
+// dustinstohler1@gmail.com as is_test via a page-local isFounderEmail()
+// helper) and PASS once that mechanism is removed.
 {
+  // No personal/founder email literal may remain anywhere in the page
+  // source.
+  ok(!/dustinstohler1@gmail\.com/i.test(html), '(7) S15: no founder email literal (dustinstohler1@gmail.com) anywhere in re-1.html source');
+  ok(!/@gmail\.com/i.test(html), '(7) S15: no @gmail.com literal anywhere in re-1.html source');
+  ok(!/isFounderEmail/.test(html), '(7) S15: no isFounderEmail (or similarly named) client-side founder-check function in re-1.html source');
+}
+{
+  // A founder-looking address is NOT flagged is_test by the page.
   const run = runPageScript({ search: '?utm_campaign=re-1' });
   if (run.setupError) {
-    failWithReason('(7) S15: a founder address (dustinstohler1@gmail.com) is flagged p_is_test=true', run.setupError);
+    failWithReason('(7) S15: a founder-looking address (dustinstohler1@gmail.com) is NOT flagged p_is_test', run.setupError);
   } else {
     try {
       await submitForm(run, fullFill({ email: 'dustinstohler1@gmail.com' }));
       const calls = run.rpcCalls.filter((c) => c.name === 'register_partner');
       const params = calls[0] ? calls[0].params || {} : {};
-      ok(params.p_is_test === true, '(7) S15: dustinstohler1@gmail.com is flagged p_is_test=true -- got ' + JSON.stringify(params.p_is_test));
+      ok(params.p_is_test !== true, '(7) S15: dustinstohler1@gmail.com is NOT flagged p_is_test=true -- got ' + JSON.stringify(params.p_is_test));
     } catch (e) {
-      failWithReason('(7) S15: a founder address (dustinstohler1@gmail.com) is flagged p_is_test=true', e.message);
+      failWithReason('(7) S15: a founder-looking address (dustinstohler1@gmail.com) is NOT flagged p_is_test', e.message);
+    }
+  }
+}
+{
+  // @otterquote-internal.test still IS flagged is_test (js/auth.js
+  // isTestEmail(), unchanged).
+  const run = runPageScript({ search: '?utm_campaign=re-1' });
+  if (run.setupError) {
+    failWithReason('(7) S15: an @otterquote-internal.test address is flagged p_is_test=true', run.setupError);
+  } else {
+    try {
+      await submitForm(run, fullFill({ email: 'walk-agent@otterquote-internal.test' }));
+      const calls = run.rpcCalls.filter((c) => c.name === 'register_partner');
+      const params = calls[0] ? calls[0].params || {} : {};
+      ok(params.p_is_test === true, '(7) S15: walk-agent@otterquote-internal.test is flagged p_is_test=true -- got ' + JSON.stringify(params.p_is_test));
+    } catch (e) {
+      failWithReason('(7) S15: an @otterquote-internal.test address is flagged p_is_test=true', e.message);
     }
   }
 }
