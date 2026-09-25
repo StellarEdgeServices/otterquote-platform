@@ -476,6 +476,15 @@ verify_jwt = false
 [functions.meta-leadgen-webhook]
 verify_jwt = false
 
+# gh-2154 P-5 go-live (item 2): the 48h invite-reminder sweep — same
+# cron-exception pattern as send-partner-onboarding above; access is gated
+# by the CRON_SECRET / service-role Bearer check inside the function (see
+# cron-auth.ts, duplicated). Its own switch (PARTNER_INVITE_EMAIL_ENABLED,
+# the SAME one the initial invite email uses) defaults OFF; this pin has no
+# bearing on that — it only controls the API gateway's own JWT check.
+[functions.send-partner-invite-reminder]
+verify_jwt = false
+
 # gh-2154 P-5r (LEGAL-READ FAIL 5833717530) — an invited Meta-lead partner
 # has no Supabase JWT yet (they are not signed in). Same
 # verify_jwt=false-but-in-handler-authenticated shape as partner-email-
