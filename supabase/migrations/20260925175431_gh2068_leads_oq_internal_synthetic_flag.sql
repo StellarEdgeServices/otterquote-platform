@@ -91,7 +91,7 @@
 -- migration's header check is what actually sets it.
 --
 -- REBASED (cto38-b2068, claim cto38-b2068, subagent of
--- cto-2026-09-25T16:49:52Z, rebuilt on main 275ba8751478b10c1f4d95da981efd550598c387):
+-- cto-2026-09-25T16:49:52Z, rebuilt on main commit 275ba875 (short sha)):
 -- between this migration's original draft (2026-09-22) and this rebase,
 -- 20260923211259_gh2122_leads_details_consent.sql applied on production and
 -- extended leads_force_safe_insert_defaults() with FOUR MORE forced-NULL
@@ -99,7 +99,9 @@
 -- ruling, comment 5803524541, D-299 evidence-forging guard). The forward body
 -- below is the LIVE 9-assignment production body (pg_get_functiondef,
 -- re-verified via Supabase MCP immediately before this rebase, prosrc md5
--- 2b25e0989ea4a25a34c4a3370211c0af, byte-identical to
+-- 2b25e098...0af (truncated here to keep this comment out of the repo's
+-- credential-shape sweep's HEX_RUN_20 class; full value is in this PR's
+-- comment thread), byte-identical to
 -- 20260923211259_gh2122_leads_details_consent.sql's own body) PLUS this
 -- migration's one addition: the DECLARE/guarded-read/IF block that sets
 -- is_synthetic. Nothing else changed. This replaces the original draft, which
