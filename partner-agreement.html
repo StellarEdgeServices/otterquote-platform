@@ -198,6 +198,22 @@
             border-radius: var(--radius-sm);
             margin: var(--sp-6) 0;
         }
+
+        /* gh-2155 HI-0b round 2 (Ben ruling, comment 5825652208 item 1):
+           CSS-only, fail-closed hide -- works with JavaScript disabled.
+           #track-home-inspector is the first child of .legal-content;
+           partner-inspectors.html's agreement link ends in
+           #track-home-inspector, so the browser's own anchor-navigation
+           makes it :target with zero script execution. ~ * reaches every
+           later sibling SECTION, and the descendant combinator then reaches
+           .inspector-hide wherever it is nested inside that section (the fee
+           table, the D-266 box, and the Section 4.1 / Section 7 blocks are
+           each one level deeper than a direct sibling). The second selector
+           covers a .inspector-hide element placed directly as a sibling. */
+        #track-home-inspector:target ~ * .inspector-hide,
+        #track-home-inspector:target ~ .inspector-hide {
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -210,6 +226,19 @@
         </section>
 
         <div class="legal-content">
+            <!-- gh-2155 HI-0b round 2 (Ben ruling, comment 5825652208 item 1):
+                 fail-closed hide. This empty span is the FIRST child of
+                 .legal-content so the CSS ":target ~ *" sibling selector below
+                 covers every later section, including the ones nested two
+                 levels down (fee table, D-266 box, Section 4.1, the Section 7
+                 warranty paragraph). partner-inspectors.html's agreement link
+                 carries #track-home-inspector so an inspector who follows the
+                 real signup link never sees hidden content, even with
+                 JavaScript disabled -- no script execution is required for
+                 this to work. The ?agent_type=home_inspector JS path below is
+                 kept as a second, belt-and-braces mechanism for any caller
+                 that sets the query param without the anchor. -->
+            <span id="track-home-inspector"></span>
             <p><strong>Effective Date:</strong> September 25, 2026</p>
             <p><strong>Version:</strong> v3-2026-09</p>
             <!-- gh-2155 HI-0b: publish date above is a PLACEHOLDER matching this
@@ -271,7 +300,7 @@
                      existing track-awareness to extend, and a param is the
                      smallest change that doesn't touch the fee amounts, the
                      legal text, or any other track's rendering. -->
-                <div id="feeStructureBlock">
+                <div id="feeStructureBlock" class="inspector-hide">
                 <p>Otter Quotes pays Partner a referral fee under a two-tier structure:</p>
                 <table class="commission-table">
                     <thead>
@@ -293,10 +322,20 @@
                 <p>No referral fee or bonus is earned on jobs with a total project value under $10,000. The $10,000 Floor is measured against the completed job&rsquo;s total project value, not against the Otter Quotes platform fee charged to the contractor for that job.</p>
                 </div>
 
+                <!-- gh-2155 HI-0b round 2 (Ben ruling, comment 5825652208 item
+                     2a): hidden for home_inspector -- removal only, no new
+                     words. This subsection exists only to describe the
+                     Recruit Bonus's single-level/forward-only accrual rules,
+                     which conflict with D-333 and Section 4.3 for a track
+                     that earns no Recruit Bonus at all. Section 4.2 (Payment
+                     Timing) is unaffected -- it describes commissions and
+                     bonuses generally, not the Recruit Bonus specifically. -->
+                <div class="inspector-hide">
                 <h3>4.1 Single-Level Recruiting (D-140) and Forward-Only Accrual (D-142)</h3>
                 <p>The Recruit Bonus is <strong>single-level</strong>: Partner earns a Recruit Bonus only on referrals made by agents Partner personally, directly recruited into the Program. Partner does not earn any referral fee or bonus on referrals made by agents recruited by Partner&rsquo;s recruits, or on any further downstream recruiting chain. The Program is not a multi-level marketing structure, and no referral fee of any kind flows more than one level from the recruiting Partner to a directly-recruited agent.</p>
 
                 <p>The Recruit Bonus is also <strong>forward-only</strong>: it accrues only on referrals an agent submits after that agent&rsquo;s recruitment relationship with Partner is formally established in Otter Quotes&rsquo; records. There is no retroactive credit. If an agent was already submitting referrals through the Program before being formally linked to Partner as the agent&rsquo;s recruiter, Partner does not earn a Recruit Bonus on any of that agent&rsquo;s referrals made before the recruitment link was established — only on referrals the agent makes afterward.</p>
+                </div>
 
                 <h3>4.2 Payment Timing</h3>
                 <p>Commissions and bonuses are paid after the underlying job is complete and the payout has been approved through Otter Quotes&rsquo; internal review process, and are always subject to the W-9 condition in Section 5. Otter Quotes may adjust the commission-approval process from time to time; doing so does not change the commission amounts or triggers stated in this Section 4 without a modification under Section 17.</p>
@@ -323,11 +362,25 @@
                      receive no referral fee under Section 4.3, so the
                      lawful-to-accept-fees warning does not apply to them). Same
                      track-detection script as the fee-table block above. -->
-                <div class="disclaimer-box" id="d266DisclaimerBox">
+                <div class="disclaimer-box inspector-hide" id="d266DisclaimerBox">
                     <h3>Mandatory Disclaimer</h3>
                     <p>Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.</p>
                 </div>
-                <p>The Program is open to Partners in any industry, including individuals who hold a professional license or are subject to an employer&rsquo;s outside-activity or referral-fee policy — for example, real estate agents, insurance agents and adjusters, attorneys, and other regulated professionals. <strong>Otter Quotes does not evaluate, gate, or vouch for any individual Partner&rsquo;s eligibility to accept referral compensation.</strong> Before accepting any commission under this Agreement, Partner represents and warrants that Partner has independently confirmed, by reviewing Partner&rsquo;s own employment agreement, brokerage or firm policies, and the rules of any licensing board, bar, or regulatory body with authority over Partner, that accepting referral fees of the kind described in this Agreement is lawful and permitted for Partner. Licensed professionals are solely responsible for their own regulatory compliance, including any disclosure, consent, or reporting obligations their license or employer imposes in connection with referral compensation. Nothing in this Agreement, and no act by Otter Quotes in accepting Partner into the Program, is a representation by Otter Quotes that Partner&rsquo;s participation is lawful for Partner&rsquo;s particular profession, employer, or state.</p>
+                <!-- gh-2155 HI-0b round 2 (Ben ruling, comment 5825652208 item
+                     2b): hidden for home_inspector -- removal only, no new
+                     words. D-333: home inspectors accept no referral fee, so
+                     the "represents and warrants ... lawful" representation
+                     (conditioned on accepting a fee) does not apply to them.
+                     NOTE for reviewers: Section 14 (Indemnification) still
+                     references "the representation in Section 7" in its own
+                     unhidden text. That clause remains grammatically complete
+                     and legally accurate on its own -- it is not shown as
+                     hidden-and-dangling to the inspector reader -- but the
+                     cross-reference itself is now moot for that track. Not
+                     treated as a stop-and-propose-words case since fixing it
+                     would mean editing Section 14, which is out of this
+                     round's two named items; flagging for Ben/legal review. -->
+                <p class="inspector-hide">The Program is open to Partners in any industry, including individuals who hold a professional license or are subject to an employer&rsquo;s outside-activity or referral-fee policy — for example, real estate agents, insurance agents and adjusters, attorneys, and other regulated professionals. <strong>Otter Quotes does not evaluate, gate, or vouch for any individual Partner&rsquo;s eligibility to accept referral compensation.</strong> Before accepting any commission under this Agreement, Partner represents and warrants that Partner has independently confirmed, by reviewing Partner&rsquo;s own employment agreement, brokerage or firm policies, and the rules of any licensing board, bar, or regulatory body with authority over Partner, that accepting referral fees of the kind described in this Agreement is lawful and permitted for Partner. Licensed professionals are solely responsible for their own regulatory compliance, including any disclosure, consent, or reporting obligations their license or employer imposes in connection with referral compensation. Nothing in this Agreement, and no act by Otter Quotes in accepting Partner into the Program, is a representation by Otter Quotes that Partner&rsquo;s participation is lawful for Partner&rsquo;s particular profession, employer, or state.</p>
             </section>
 
             <section>
@@ -419,25 +472,32 @@
 <script src="js/config.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/nav.js"></script>
-    <!-- gh-2155 HI-0b: home_inspector track never sees the fee table, the
-         $10,000-Floor paragraph, or the D-266 lawful-to-accept-fees sentence
-         (D-333 -- inspectors receive no referral fee at all under Section
-         4.3, so neither applies to them). Accepts ?track=home_inspector or
-         ?agent_type=home_inspector so it also works if a future page links
-         here with the same param partner-inspectors.html's signup form
-         posts as (`agent_type`). Any other/absent value renders the page
-         unchanged -- realtor/insurance visible text and DOM are untouched. -->
+    <!-- gh-2155 HI-0b round 2 (Ben ruling, comment 5825652208 item 1):
+         home_inspector track never sees the fee table, the $10,000-Floor
+         paragraph, Section 4.1 (Recruit Bonus accrual rules), the D-266
+         lawful-to-accept-fees sentence, or the Section 7 "represents and
+         warrants ... lawful" paragraph (D-333 -- inspectors receive no
+         referral fee or recruit bonus at all, so none of that applies to
+         them). The CSS #track-home-inspector:target rule above is the
+         FAIL-CLOSED path: it works with JavaScript disabled, as long as the
+         referring page's link carries the #track-home-inspector anchor
+         (partner-inspectors.html's does). This script is a second,
+         belt-and-braces mechanism for ?agent_type=home_inspector (or
+         ?track=home_inspector) WITHOUT the anchor -- it hides every
+         .inspector-hide element directly, the same set the CSS rule covers.
+         Any other/absent value renders the page unchanged -- realtor/
+         insurance visible text and DOM are untouched either way. -->
     <script>
     (function () {
       try {
         var params = new URLSearchParams(window.location.search);
         var track = params.get('track') || params.get('agent_type');
         if (track !== 'home_inspector') { return; }
-        ['feeStructureBlock', 'd266DisclaimerBox'].forEach(function (id) {
-          var el = document.getElementById(id);
-          if (el) { el.style.display = 'none'; }
-        });
-      } catch (e) { /* URLSearchParams unavailable: page renders unchanged */ }
+        var hidden = document.querySelectorAll('.inspector-hide');
+        for (var i = 0; i < hidden.length; i++) { hidden[i].style.display = 'none'; }
+      } catch (e) { /* URLSearchParams/querySelectorAll unavailable: the CSS
+                       :target rule (if the anchor is present) still applies;
+                       otherwise the page renders unchanged. */ }
     })();
     </script>
 </body>

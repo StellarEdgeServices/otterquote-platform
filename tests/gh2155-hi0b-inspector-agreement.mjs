@@ -1,22 +1,39 @@
 /**
- * gh-2155 HI-0b (D-333, Ben close-review comment 5824245098): home
- * inspectors receive no referral fee (Section 4.3), so the agreement
- * version bumps to v3-2026-09 and, for the home_inspector track only:
- *   - the $200/$50 fee table and "home inspectors" in the Section 7
- *     lawful-to-accept-fees list must not be shown;
- *   - the D-266 "Check your employment agreement..." sentence must not be
- *     shown, on either partner-inspectors.html or partner-agreement.html;
+ * gh-2155 HI-0b (D-333, Ben close-review comment 5824245098, round 2 ruling
+ * comment 5825652208): home inspectors receive no referral fee or recruit
+ * bonus (Section 4.3), so the agreement version bumps to v3-2026-09 and, for
+ * the home_inspector track only:
+ *   - the $200/$50 fee table, Section 4.1 (Recruit Bonus accrual rules), the
+ *     D-266 "Check your employment agreement..." sentence, and the Section 7
+ *     "represents and warrants ... lawful" paragraph must not be shown;
+ *   - "home inspectors" must not appear in the Section 7 lawful-to-accept-fees
+ *     list (all tracks);
+ *   - the hide must FAIL CLOSED: an inspector following the real signup link
+ *     (partner-agreement.html?track=home_inspector#track-home-inspector)
+ *     must not see the hidden content even with JavaScript disabled, via a
+ *     CSS ":target" rule keyed to an anchor span that is the first child of
+ *     .legal-content. The ?agent_type=home_inspector JS path is kept as a
+ *     second, belt-and-braces mechanism;
  *   - realtor/insurance/adjuster/other visible text and DOM must be
- *     unaffected apart from the version/date label.
+ *     unaffected apart from the version/date label and the "home inspectors"
+ *     removal.
  *
- * Written FIRST (repo rule #2121 rule 2) and run against origin/main before
- * the HI-0b fix landed -- see the PR body for the fail-first raw output.
- * This file has no hand-retyped copies of production markup: the
- * home_inspector-track hiding script is extracted VERBATIM out of
- * partner-agreement.html by anchor text and executed in a `vm` context
- * behind a minimal getElementById/URLSearchParams-shaped stand-in, same
- * technique as tests/gh2096-abandon-beacon-restore.mjs and
- * tests/gh2154-p2-app-activation.mjs.
+ * Written FIRST (repo rule #2121 rule 2) and run against head 17a22b13
+ * (round 1's head, pre-round-2) before this round's fix landed -- see the PR
+ * body for the fail-first raw output. This file has no hand-retyped copies
+ * of production markup: the home_inspector-track hiding script is extracted
+ * VERBATIM out of partner-agreement.html by anchor text and executed in a
+ * `vm` context behind a minimal document/URLSearchParams-shaped stand-in,
+ * same technique as tests/gh2096-abandon-beacon-restore.mjs and
+ * tests/gh2154-p2-app-activation.mjs. Round 2's fail-closed (no-JS) proof is
+ * a structural/CSS assertion over the raw markup -- this repo has no
+ * Playwright or jsdom dependency at its root (only react-app/ has its own
+ * package.json), so there is no real browser or DOM available to render the
+ * page with JavaScript disabled; the structural proof instead verifies the
+ * exact properties that make the CSS ":target ~ *" sibling-selector
+ * mechanism work: the anchor span's position as .legal-content's first
+ * child, and that every hidden block is nested inside a later sibling
+ * <section>.
  *
  * Run: node tests/gh2155-hi0b-inspector-agreement.mjs
  * Exit code 0 = every scenario passed, 1 = at least one failed.
@@ -105,23 +122,28 @@ function stripComments(html) {
   }
   ok(totalFeeMentions > 0 && negativeFeeMentions === totalFeeMentions,
     'partner-inspectors.html: every "referral fee" mention is a negative statement ("no referral fee" / "do not receive a referral fee")');
-  ok(rawSrc.indexOf('href="partner-agreement.html?track=home_inspector"') !== -1,
-    'partner-inspectors.html: agreement link carries ?track=home_inspector');
+  ok(rawSrc.indexOf('href="partner-agreement.html?track=home_inspector#track-home-inspector"') !== -1,
+    'partner-inspectors.html: agreement link carries ?track=home_inspector AND the #track-home-inspector fail-closed anchor');
 }
 
 // ── Load partner-agreement.html and the extracted hiding script once. ───
 const agreementSrc = fs.readFileSync(path.join(repoRoot, 'partner-agreement.html'), 'utf8');
 
+// The round-2 script hides by class (`.inspector-hide`), not by id -- four
+// elements carry that class: the fee table block, the Section 4.1 wrapper,
+// the D-266 box, and the Section 7 warranty paragraph. The fake DOM's
+// querySelectorAll('.inspector-hide') returns all four so the extracted
+// script's real `for` loop (not a hand-rewritten equivalent) exercises the
+// exact same iteration production runs.
+const INSPECTOR_HIDE_KEYS = ['feeStructureBlock', 'recruitBonusSection', 'd266DisclaimerBox', 'warrantsParagraph'];
+
 function makeFakeDom(hrefSearch) {
-  const hidden = new Set();
-  const elements = {
-    feeStructureBlock: { style: {} },
-    d266DisclaimerBox: { style: {} },
-  };
+  const elements = {};
+  for (const key of INSPECTOR_HIDE_KEYS) { elements[key] = { style: {} }; }
   const fakeWindow = {
     location: { search: hrefSearch },
     document: {
-      getElementById: (id) => elements[id] || null,
+      querySelectorAll: (selector) => (selector === '.inspector-hide' ? INSPECTOR_HIDE_KEYS.map((k) => elements[k]) : []),
     },
     URLSearchParams,
   };
@@ -143,8 +165,11 @@ function runHidingScript(hrefSearch) {
   return elements;
 }
 
-// ── (b) home_inspector track: fee table + D-266 box hidden, and the
-//        version literal is present on the page (v3-2026-09). ──────────
+// ── (b) home_inspector track, JS-enabled belt-and-braces path: fee table,
+//        Section 4.1, D-266 box, and the Section 7 warranty paragraph are
+//        all hidden via .inspector-hide, and the version literal is present
+//        on the page (v3-2026-09). Section 4.3 (the inspector clause) is
+//        NEVER hidden -- it stays visible on every track. ─────────────────
 {
   ok(agreementSrc.indexOf('v3-2026-09') !== -1, 'partner-agreement.html: shows v3-2026-09 on the page');
   ok(!/home inspectors/i.test(
@@ -153,12 +178,74 @@ function runHidingScript(hrefSearch) {
     'partner-agreement.html: "home inspectors" removed from the Section 7 lawful-to-accept-fees list (rendered content)');
   ok(agreementSrc.indexOf('id="feeStructureBlock"') !== -1 && agreementSrc.indexOf('id="d266DisclaimerBox"') !== -1,
     'partner-agreement.html: fee table and D-266 box are individually addressable for track-based hiding');
+  ok((stripComments(agreementSrc).match(/class="[^"]*\binspector-hide\b[^"]*"/g) || []).length === 4,
+    'partner-agreement.html: exactly 4 elements carry the inspector-hide class (fee block, Section 4.1, D-266 box, Section 7 warranty paragraph)');
+  ok(!/class="[^"]*\binspector-hide\b/.test(
+      stripComments(extractBetween(agreementSrc, '<h3>4.3 Home Inspector Partners</h3>', '</section>', 'Section 4.3'))
+    ),
+    'partner-agreement.html: Section 4.3 (the inspector no-fee clause) is never inspector-hide -- stays visible to inspectors');
 
   for (const paramName of ['track', 'agent_type']) {
     const els = runHidingScript('?' + paramName + '=home_inspector');
-    ok(els.feeStructureBlock.style.display === 'none', 'home_inspector (?' + paramName + '=): fee table hidden');
-    ok(els.d266DisclaimerBox.style.display === 'none', 'home_inspector (?' + paramName + '=): D-266 box hidden');
+    for (const key of INSPECTOR_HIDE_KEYS) {
+      ok(els[key].style.display === 'none', 'home_inspector (?' + paramName + '=): ' + key + ' hidden (JS belt-and-braces path)');
+    }
   }
+}
+
+// ── (b2) FAIL-CLOSED structural proof (no real browser/jsdom/Playwright at
+//        this repo's root -- see file header). Verifies the exact structural
+//        properties the CSS "#track-home-inspector:target ~ * .inspector-hide"
+//        rule depends on, so the hide works with JavaScript disabled: the
+//        anchor span is .legal-content's FIRST child (so it precedes every
+//        section as an earlier sibling, which ~ requires), the CSS rule
+//        text matches verbatim, and every .inspector-hide element sits
+//        inside a <section> that is itself a later sibling of the span
+//        (this file's sections never nest, verified separately below). ────
+{
+  // extractBetween's slice INCLUDES the start anchor itself, which would
+  // wrongly count '<div class="legal-content">' as "content before the
+  // span" -- strip it back off so legalContent is the wrapper's actual
+  // children only.
+  const legalContentWithTag = extractBetween(agreementSrc, '<div class="legal-content">', '</div><!-- /.legal-content -->', 'legal-content wrapper');
+  const legalContent = legalContentWithTag.slice('<div class="legal-content">'.length);
+  const spanIdx = legalContent.indexOf('<span id="track-home-inspector"></span>');
+  ok(spanIdx !== -1, 'partner-agreement.html: #track-home-inspector anchor span exists inside .legal-content');
+
+  // "First child" allowing only whitespace before it -- HTML comments ARE
+  // real nodes (though not elements), so a comment before the span would
+  // still make it the first *element* child, which is all the sibling
+  // selector needs; only non-whitespace, non-comment text/markup before it
+  // would break the "first child" property this CSS rule relies on.
+  const beforeSpan = stripComments(legalContent.slice(0, spanIdx));
+  ok(spanIdx !== -1 && beforeSpan.trim() === '',
+    'partner-agreement.html: #track-home-inspector span is the FIRST (element) child of .legal-content -- required for the ~ sibling selector to reach every later section');
+
+  const cssRule = stripComments(agreementSrc).replace(/\s+/g, ' ');
+  ok(cssRule.indexOf('#track-home-inspector:target ~ * .inspector-hide, #track-home-inspector:target ~ .inspector-hide { display: none; }') !== -1,
+    'partner-agreement.html: the CSS :target fail-closed rule is present verbatim (whitespace-normalized)');
+
+  // Every top-level <section>...</section> block within .legal-content (this
+  // file's sections do not nest -- verified by an equal open/close count).
+  const openCount = (legalContent.match(/<section>/g) || []).length;
+  const closeCount = (legalContent.match(/<\/section>/g) || []).length;
+  ok(openCount === closeCount && openCount > 0, 'sanity: <section> tags are not nested in partner-agreement.html (equal open/close count, both > 0)');
+  const sectionBlocks = legalContent.match(/<section>[\s\S]*?<\/section>/g) || [];
+
+  ok((stripComments(legalContent).match(/class="[^"]*\binspector-hide\b[^"]*"/g) || []).length === 4,
+    'sanity: 4 inspector-hide elements found inside .legal-content');
+  let allNestedInASection = true;
+  let allSectionsAfterSpan = true;
+  for (const block of sectionBlocks) {
+    const blockStart = legalContent.indexOf(block);
+    if (/class="[^"]*\binspector-hide\b/.test(block) && blockStart <= spanIdx) {
+      allSectionsAfterSpan = false;
+    }
+  }
+  const inspectorHideOutsideAnySection = stripComments(legalContent).replace(/<section>[\s\S]*?<\/section>/g, '');
+  if (/class="[^"]*\binspector-hide\b/.test(inspectorHideOutsideAnySection)) { allNestedInASection = false; }
+  ok(allNestedInASection, 'partner-agreement.html: every .inspector-hide element is nested inside a <section> (required for the descendant half of the CSS selector)');
+  ok(allSectionsAfterSpan, 'partner-agreement.html: every <section> containing a .inspector-hide element comes AFTER the anchor span in document order (required for the ~ general-sibling combinator)');
 }
 
 // ── (c) realtor/insurance (no track param, or a non-inspector value):
@@ -167,8 +254,9 @@ function runHidingScript(hrefSearch) {
 {
   for (const search of ['', '?track=re_agent', '?agent_type=insurance_agent']) {
     const els = runHidingScript(search);
-    ok(els.feeStructureBlock.style.display !== 'none', 'non-inspector (' + JSON.stringify(search) + '): fee table NOT hidden');
-    ok(els.d266DisclaimerBox.style.display !== 'none', 'non-inspector (' + JSON.stringify(search) + '): D-266 box NOT hidden');
+    for (const key of INSPECTOR_HIDE_KEYS) {
+      ok(els[key].style.display !== 'none', 'non-inspector (' + JSON.stringify(search) + '): ' + key + ' NOT hidden');
+    }
   }
 
   let mainSrc = null;
@@ -187,6 +275,7 @@ function runHidingScript(hrefSearch) {
       return html
         .replace(/<!--[\s\S]*?-->/g, ' ')
         .replace(/<script[\s\S]*?<\/script>/g, ' ')
+        .replace(/<style[\s\S]*?<\/style>/g, ' ')
         .replace(/<[^>]+>/g, ' ')
         .replace(/&rsquo;/g, '’')
         .replace(/&quot;/g, '"')
