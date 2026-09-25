@@ -1,0 +1,1338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- gh-1994 fix round 1 (REVIEW): capture ?lead=<uuid> and strip it from the
+     visible URL via history.replaceState BEFORE any analytics loader below
+     (js/ga-gate.js, js/meta-pixel-gate.js -- and any third-party script they
+     load, e.g. gtag.js/fbevents.js/clarity.js) executes, so no GA4, Meta
+     Pixel or Clarity beacon -- including each library's own automatic
+     page_view/pageview call, which reads the CURRENT URL at the moment that
+     library's script runs -- can ever record `lead=<uuid>`. This must stay
+     the first script in <head>, above Sentry and everything else -- if any
+     loader executes first and fires its own automatic page_view/pageview
+     call before this strip runs, that beacon would still capture
+     `?lead=<uuid>` even though every later beacon on the same page load
+     would not (fix round 3: fixed this comment's own garbled sentence,
+     which previously described neither of these things clearly). The
+     bottom-of-page prefill script below reads
+     window.__oqRouterLeadId instead of re-parsing location.search, since by
+     the time it runs the URL no longer carries `lead`. -->
+<script>
+(function () {
+  try {
+    var params = new URLSearchParams(window.location.search);
+    var lead = params.get('lead');
+    if (lead) {
+      window.__oqRouterLeadId = lead;
+      params.delete('lead');
+      var qs = params.toString();
+      var newUrl = window.location.pathname + (qs ? '?' + qs : '') + window.location.hash;
+      history.replaceState(history.state, '', newUrl);
+    }
+  } catch (e) { /* URL API unavailable: prefill simply won't run this load */ }
+})();
+</script>
+<!-- Sentry Error Monitoring -->
+<script
+  src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
+  crossorigin="anonymous"
+></script>
+<script>
+  Sentry.onLoad(function() {
+    Sentry.init({
+      environment: window.location.hostname.includes("staging") ? "staging" : "production",
+      // gh-439: drop phantom events from non-http(s) preview contexts (data:/file:/blob:
+      // URLs -- e.g. Claude's HTML preview renders pages via data: URIs; relative scripts
+      // like js/auth.js then fail and report noise such as "Auth is not defined").
+      denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+      beforeSend: function (event) {
+        var proto = window.location.protocol;
+        if (proto !== "http:" && proto !== "https:") return null;
+        var req = event.request && event.request.url;
+        if (req && /^(data|file|blob):/.test(req)) return null;
+        return event;
+      }
+    });
+  });
+</script>
+<!-- Coming-soon gate — flip CONFIG.HOMEOWNER_LAUNCH_ENABLED=true in js/config.js to remove -->
+<script src="js/cookie-storage.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js" integrity="sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz" crossorigin="anonymous"></script>
+<script src="js/config.js"></script>
+<script>(function(){if(typeof CONFIG!=='undefined'&&!CONFIG.HOMEOWNER_LAUNCH_ENABLED){window.location.replace('/coming-soon.html?from=ins-1&persona=partner');}})()</script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+    <title>Keep Your Client After a Storm Claim | Otter Quotes</title>
+    <meta name="description" content="No door-knockers. Just your client, in good hands.">
+    <meta name="robots" content="noindex, nofollow">
+    <link rel="canonical" href="https://otterquote.com/ins-1.html">
+    <meta property="og:title" content="Keep Your Client After a Storm Claim · Otter Quotes">
+    <meta property="og:description" content="No door-knockers. Just your client, in good hands.">
+    <meta property="og:url" content="https://otterquote.com/ins-1.html">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Otter Quotes">
+    <meta property="og:image" content="https://otterquote.com/img/otter-logo.svg">
+
+    <!-- Google Analytics -->
+    <script src="/js/ga-gate.js"></script>
+<script src="/js/meta-pixel-gate.js"></script>
+    <script>gtag('config', 'G-D1Y1TLGEFY');</script>
+<!-- Microsoft Clarity (wwr7qlk8g5) is loaded by /js/ga-gate.js, behind the same production-host gate as GA4 (gh-1619). Do not add a per-page loader. -->
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Stylesheets -->
+    <link rel="stylesheet" href="css/design-system.css">
+    <link rel="stylesheet" href="css/nav.css">
+
+    <style>
+        /* Override with design system colors */
+        :root {
+            --navy:       #0D1B2E;
+            --navy-2:     #0E2A3B;
+            --navy-3:     #12354A;
+            --amber:      #E07B00;
+            --white:      #FFFFFF;
+            --offwhite:   #F8FAFC;
+            --light:      #E2E8F0;
+            --slate:      #94A3B8;
+            --gray:       #64748B;
+            --green:      #10B981;
+            --green-light:#D1FAE5;
+            --red:        #EF4444;
+        }
+
+        /* Base */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--font-body);
+            background: var(--navy);
+            color: var(--white);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        main {
+            min-height: calc(100vh - 120px);
+        }
+
+        /* Hero Section */
+        .hero {
+            background: linear-gradient(135deg, var(--navy) 0%, var(--navy-2) 100%);
+            color: var(--white);
+            padding: 96px 24px;
+            text-align: center;
+        }
+
+        .hero h1 {
+            font-family: var(--font-heading);
+            font-size: clamp(2rem, 5vw, 3.5rem);
+            font-weight: 700;
+            margin-bottom: 24px;
+            line-height: 1.2;
+            /* #2026-08-05: design-system.css sets a global "h1,h2,...{color:#0D1B2E}"
+               rule (dark navy, meant for light backgrounds). An explicit rule on the
+               element always wins over an inherited value, so relying on the parent
+               .hero's `color: var(--white)` to cascade down here silently lost —
+               the heading rendered navy-on-navy against the dark hero gradient below
+               and was effectively invisible. Set explicitly to match every other
+               heading on this page's dark sections. */
+            color: var(--white);
+        }
+
+        .hero p {
+            font-size: 1.25rem;
+            max-width: 700px;
+            margin: 0 auto 40px;
+            color: rgba(255, 255, 255, 0.85);
+            line-height: 1.7;
+        }
+
+        /* Container */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+
+        .section {
+            padding: 96px 24px;
+        }
+
+        /* Quick links to the split-out detail pages (How It Works / Why /
+           Referral Fee Details) — those sections used to live inline here;
+           they're now standalone pages, linked from this compact row. */
+        .quick-links-row {
+            background: var(--navy);
+            padding: 8px 24px 96px;
+        }
+
+        .quick-links-row .container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: center;
+            gap: 16px 40px;
+            padding: 32px 24px;
+            border-top: 1px solid rgba(224, 123, 0, 0.15);
+            border-bottom: 1px solid rgba(224, 123, 0, 0.15);
+        }
+
+        .quick-links-row a {
+            color: var(--amber);
+            font-weight: 600;
+            font-size: 1rem;
+            text-decoration: none;
+        }
+
+        .quick-links-row a:hover {
+            color: var(--amber-2);
+            text-decoration: underline;
+        }
+
+        /* Features Section */
+        .features-section {
+            background: var(--navy);
+        }
+
+        .features-section h2 {
+            font-family: var(--font-heading);
+            font-size: clamp(1.5rem, 3.5vw, 2.5rem);
+            text-align: center;
+            margin-bottom: 60px;
+            color: var(--white);
+        }
+
+        .features-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 24px;
+        }
+
+        .feature-item {
+            display: flex;
+            gap: 16px;
+            align-items: flex-start;
+        }
+
+        .feature-icon {
+            display: inline-flex;
+            width: 28px;
+            height: 28px;
+            background: rgba(224, 123, 0, 0.2);
+            border-radius: 8px;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            margin-top: 2px;
+            color: var(--amber);
+            font-weight: 700;
+        }
+
+        .feature-item h4 {
+            font-family: var(--font-heading);
+            font-size: 1.1rem;
+            color: var(--white);
+            margin-bottom: 4px;
+        }
+
+        .feature-item p {
+            color: var(--slate);
+            font-size: 0.95rem;
+            line-height: 1.6;
+        }
+
+        /* Form Section */
+        .form-section {
+            background: var(--navy);
+            padding: 96px 24px 64px;
+        }
+
+        .form-section h2 {
+            font-family: var(--font-heading);
+            font-size: clamp(1.5rem, 3.5vw, 2.5rem);
+            text-align: center;
+            margin-bottom: 60px;
+            color: var(--white);
+        }
+
+        .form-wrapper {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 60px;
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        .form-container {
+            background: var(--navy-2);
+            border: 1px solid rgba(224, 123, 0, 0.15);
+            padding: 40px;
+            border-radius: 12px;
+        }
+
+        .form-group {
+            margin-bottom: 24px;
+        }
+
+        .form-label {
+            display: block;
+            font-weight: 600;
+            color: var(--white);
+            margin-bottom: 8px;
+            font-size: 0.95rem;
+        }
+
+        .form-label.required::after {
+            content: ' *';
+            color: var(--red);
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 10px;
+            font-family: var(--font-body);
+            font-size: 1rem;
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--white);
+            transition: all 0.3s ease;
+        }
+
+        .form-input::placeholder {
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: var(--amber);
+            background: rgba(255, 255, 255, 0.08);
+            box-shadow: 0 0 0 3px rgba(224, 123, 0, 0.15);
+        }
+
+        .form-input.error {
+            border-color: var(--red);
+        }
+
+        .form-input::-webkit-autofill {
+            -webkit-box-shadow: 0 0 0 1000px rgba(10, 30, 44, 0.8) inset;
+            -webkit-text-fill-color: var(--white);
+        }
+
+        .form-hint {
+            font-size: 0.85rem;
+            color: var(--slate);
+            margin-top: 6px;
+        }
+
+        /* Inline field-level validation errors — gh: this page previously
+           relied on alert()/hard failures with no per-field feedback. */
+        .field-error {
+            display: none;
+            font-size: 0.8rem;
+            color: var(--red);
+            margin-top: 6px;
+        }
+
+        .field-error.show { display: block; }
+
+        /* Submission-level error banner (network/RPC failures, distinct from
+           a single field being wrong). */
+        .form-alert {
+            display: none;
+            background: rgba(239, 68, 68, 0.12);
+            border: 1px solid rgba(239, 68, 68, 0.35);
+            border-radius: 10px;
+            padding: 14px 16px;
+            color: #FECACA;
+            font-size: 0.9rem;
+            margin-bottom: 20px;
+            line-height: 1.5;
+        }
+
+        .form-alert.show { display: block; }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 8px;
+        }
+
+        /* Used when the label text is long enough to wrap onto a second
+           line (e.g. two legal links) — keeps the checkbox pinned to the
+           first line instead of drifting to a vertical center. */
+        .checkbox-group.align-top {
+            align-items: flex-start;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            flex-shrink: 0;
+            cursor: pointer;
+            accent-color: var(--amber);
+        }
+
+        .checkbox-group label {
+            cursor: pointer;
+            color: var(--slate);
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }
+
+        .checkbox-group label a {
+            font-weight: 600;
+        }
+
+        /* Bridge 2026-08-26: `border: none` here loaded after
+           css/design-system.css at equal specificity and silently stripped
+           .btn-ghost's 1px border — which is what js/nav.js renders the
+           header "Partner Login" button as. It came out as a borderless
+           5%-white chip next to a solid amber button. Scoped off the
+           bordered variants. */
+        .btn:not(.btn-ghost):not(.btn-secondary):not(.btn-outline) {
+            border: none;
+        }
+        .btn {
+            display: inline-block;
+            border-radius: 10px;
+            font-family: var(--font-body);
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            text-align: center;
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .btn-loading {
+            position: relative;
+            color: transparent !important;
+        }
+
+        .btn-loading::after {
+            content: '';
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(13, 27, 46, 0.3);
+            border-top-color: var(--navy);
+            border-radius: 50%;
+            animation: btnSpin 0.6s linear infinite;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        @keyframes btnSpin { to { transform: translate(-50%, -50%) rotate(360deg); } }
+
+        /* Benefits Sidebar */
+        .benefits-sidebar {
+            background: var(--navy-3);
+            border: 1px solid rgba(224, 123, 0, 0.2);
+            border-radius: 12px;
+            padding: 40px 32px;
+            height: fit-content;
+            position: sticky;
+            top: 20px;
+        }
+
+        .benefits-sidebar h3 {
+            font-family: var(--font-heading);
+            font-size: 1.3rem;
+            color: var(--white);
+            margin-bottom: 24px;
+        }
+
+        .benefit-item {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 20px;
+            align-items: flex-start;
+        }
+
+        .benefit-check {
+            display: inline-flex;
+            width: 24px;
+            height: 24px;
+            background: var(--amber);
+            border-radius: 50%;
+            align-items: center;
+            justify-content: center;
+            color: var(--navy);
+            font-weight: 700;
+            font-size: 0.9rem;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+
+        .benefit-item p {
+            /* gh-2151 REVIEW FAIL 5836199486 (hero bullets, DECIDED Ben):
+               var(--slate) #94A3B8 on this card's --navy-3 #12354A
+               background fell short of WCAG AA 4.5:1. No copy change --
+               contrast only. */
+            color: rgba(255, 255, 255, 0.88);
+            line-height: 1.6;
+            font-size: 0.95rem;
+        }
+
+        /* Success / Check-your-email Messages */
+        .success-message {
+            display: none;
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid var(--green);
+            border-radius: 12px;
+            padding: 32px;
+            margin-bottom: 32px;
+            text-align: center;
+            color: var(--green-light);
+        }
+
+        .success-message.show {
+            display: block;
+        }
+
+        .success-message h3 {
+            font-family: var(--font-heading);
+            font-size: 1.5rem;
+            color: var(--green);
+            margin-bottom: 16px;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .hero {
+                padding: 60px 20px;
+            }
+
+            .hero h1 {
+                margin-bottom: 20px;
+            }
+
+            .hero p {
+                font-size: 1rem;
+                margin-bottom: 30px;
+            }
+
+            .section {
+                padding: 60px 20px;
+            }
+
+            .features-section,
+            .form-section {
+                padding: 60px 20px;
+            }
+
+            .quick-links-row {
+                padding: 8px 20px 60px;
+            }
+
+            .features-list {
+                gap: 20px;
+            }
+
+            .form-wrapper {
+                grid-template-columns: 1fr;
+                gap: 40px;
+            }
+
+            .benefits-sidebar {
+                position: static;
+                top: auto;
+            }
+
+            .form-container {
+                padding: 24px;
+            }
+
+            h2 {
+                margin-bottom: 40px;
+            }
+        }
+
+        /* Never let the hero/header CTA pair wrap or crowd at very narrow
+           widths (down to 360px) — both buttons share height/padding via
+           the shared .btn system, so this only needs to manage layout. */
+        @media (max-width: 400px) {
+            .hero .btn { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <!-- gh-2151 REVIEW FAIL 5836199486 (S07): data-skip-nav="true" opts this
+         page out of js/nav.js's header/footer build entirely (same
+         mechanism as start.html Arm F, gh-2121) -- no site header, footer
+         link farm, or escape hatch renders before the conversion. The
+         legally required Privacy/Terms/Partner Agreement links live in the
+         static paragraph below the footer element instead. -->
+    <header id="site-header" data-active="" data-skip-nav="true"></header>
+
+    <main>
+        <!-- Hero Section — INS-1 (gh-2151), approved copy verbatim (issue
+             #2151 comment 5821408557, Dustin ruling comment 5832300528). -->
+        <section class="hero">
+            <div class="container">
+                <h1>Keep Your Client After a Storm Claim</h1>
+                <p>Send your policyholders to Otter Quotes for fast, competing repair bids — you stay their trusted agent, not a canvassing contractor.</p>
+                <a href="#signup" class="btn btn-primary btn-lg">Get My Referral Link</a>
+            </div>
+        </section>
+
+        <!-- Signup Form — moved directly below the hero paragraph so it's
+             the first thing after the pitch, above every other section. -->
+        <section class="form-section" id="signup">
+            <div class="container">
+                <div class="form-wrapper">
+                    <!-- Form -->
+                    <div>
+                        <div class="form-container">
+                            <!-- gh-2151 REVIEW FAIL 5836199486 / LEGAL-READ FAIL 5836215427
+                                 (S20, DECIDED Ben): successMessage carries ONLY the
+                                 Dustin-approved confirmation sentence (comment 5821408557,
+                                 approved 5832300528) plus its install-the-app action
+                                 (partner-app.html, the same "Get the Partner App" page
+                                 linked from partner-login.html/partners.html) — no "You're
+                                 In!" heading, no on-page referral link, no Copy/Dashboard
+                                 buttons. checkEmailMessage reuses main's live P-1 check-email
+                                 string verbatim (partner-insurance.html:697-699) followed by
+                                 the same approved sentence verbatim — no new words. -->
+                            <div id="successMessage" class="success-message">
+                                <p>You're in! Install the Otter Quotes partner app, sign in with the account you just created, and your referral link will be waiting inside.</p>
+                                <div style="margin-top: 20px;">
+                                    <a href="/partner-app.html" class="btn btn-primary">Get the Partner App</a>
+                                </div>
+                            </div>
+
+                            <div id="checkEmailMessage" class="success-message">
+                                <h3>Almost there — check your email</h3>
+                                <p>We sent a confirmation link to <strong id="checkEmailAddress"></strong>. Click it to verify your address, then sign in to your new partner account.</p>
+                                <p>Install the Otter Quotes partner app, sign in with the account you just created, and your referral link will be waiting inside.</p>
+                                <div style="margin-top: 20px;">
+                                    <a href="/partner-app.html" class="btn btn-primary">Get the Partner App</a>
+                                </div>
+                            </div>
+
+                            <div id="formAlert" class="form-alert" role="alert"></div>
+
+                            <!-- INS-1 field labels (approved copy: "Name · Email · Phone ·
+                                 Agency"). Same fullName/phone/email/company field ids and
+                                 JS/attribution wiring as partner-insurance.html — only the
+                                 visible labels and CTA/checkbox/fee text differ. -->
+                            <form id="insuranceAgentForm" novalidate>
+                                <div class="form-group">
+                                    <label for="fullName" class="form-label required">Name</label>
+                                    <!-- gh-2151 REVIEW FAIL 5836199486 (S12): mask this field in
+                                         Clarity replay (name/email/phone/company). -->
+                                    <input type="text" id="fullName" name="fullName" class="form-input" autocomplete="name" required data-clarity-mask="true">
+                                    <div class="field-error" id="fullNameError"></div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="email" class="form-label required">Email</label>
+                                    <input type="email" id="email" name="email" class="form-input" autocomplete="email" required data-clarity-mask="true">
+                                    <div class="field-error" id="emailError"></div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="phone" class="form-label required">Phone</label>
+                                    <input type="tel" id="phone" name="phone" class="form-input" autocomplete="tel" required data-clarity-mask="true">
+                                    <div class="field-error" id="phoneError"></div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="company" class="form-label required">Agency</label>
+                                    <input type="text" id="company" name="company" class="form-input" required data-clarity-mask="true">
+                                    <div class="field-error" id="companyError"></div>
+                                </div>
+
+                                <div class="checkbox-group align-top">
+                                    <input type="checkbox" id="agreeToTerms" name="agreeToTerms" required>
+                                    <label for="agreeToTerms">I agree to <a href="/partner-agreement.html">Otter Quotes's Partner Terms</a>.</label>
+                                </div>
+                                <div class="field-error" id="agreeError">You must agree to the Partner Agreement and Terms.</div>
+
+                                <button type="submit" class="btn btn-primary btn-lg btn-full" style="margin-top: 24px;">Get My Referral Link</button>
+                                <!-- D-301/D-305 standard referral-fee sentence, verbatim
+                                     (otterquote-ref-marketing.md, Dustin-approved "APPROVED.
+                                     DONE," not paraphrasable) + D-266 disclaimer, verbatim,
+                                     mandatory, no paraphrase — both per issue #2151 comment
+                                     5821408557, approved as posted (comment 5832300528). -->
+                                <p style="color: var(--slate, #94A3B8); font-size: 0.85rem; text-align: center; margin-top: 0.75rem; line-height: 1.5;">
+                                    $200 when a homeowner you refer completes a project of $10,000 or more. $50 on the same terms for referrals from partners you recruit.
+                                </p>
+                                <p class="referral-fee-disclaimer" style="color: var(--slate, #94A3B8); font-size: 0.85rem; text-align: center; margin-top: 0.75rem; line-height: 1.5;">
+                                    Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.
+                                </p>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Benefits Sidebar — INS-1 approved proof/benefit bullets
+                         (comment 5821408557), verbatim. -->
+                    <div class="benefits-sidebar">
+                        <h3>What You Get</h3>
+                        <div class="benefit-item">
+                            <div class="benefit-check">✓</div>
+                            <p>Your client gets multiple contractor bids without a door-knocker showing up first.</p>
+                        </div>
+                        <div class="benefit-item">
+                            <div class="benefit-check">✓</div>
+                            <p>Earn $200 when a referred job of $10,000+ completes.</p>
+                        </div>
+                        <div class="benefit-item">
+                            <div class="benefit-check">✓</div>
+                            <p>Track every referral from your phone, in real time.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+        <!-- INS-1 is a single-purpose ad landing page (S07 "no escape
+             hatches before the conversion") — intentionally no quick-links
+             row or features section here; those belong to the general
+             partner-insurance.html marketing page, not this funnel. -->
+    </main>
+
+    <!-- Legal/disclaimer links — gh: the header partner nav's "Agreement"
+         link (js/nav.js, owned separately) is slated for removal; this
+         page-level link keeps the Partner Agreement reachable from here
+         regardless, right alongside Terms/Privacy. -->
+    <p style="text-align:center;font-size:0.85rem;color:var(--slate);padding:32px 24px 8px;">
+        <a href="/partner-agreement.html" style="color:var(--amber);">Partner Agreement</a>
+        &nbsp;&middot;&nbsp;
+        <a href="/terms.html" style="color:var(--amber);">Terms of Service</a>
+        &nbsp;&middot;&nbsp;
+        <a href="/privacy.html" style="color:var(--amber);">Privacy Policy</a>
+    </p>
+
+<footer id="site-footer" data-skip-nav="true"></footer>
+
+    <!-- Scripts -->
+    <script src="js/auth.js"></script>
+    <script src="js/nav.js"></script>
+
+    <script>
+        // Smooth scroll to signup
+        document.querySelectorAll('a[href="#signup"]').forEach(link => {
+            link.addEventListener('click', function(e) {
+                e.preventDefault();
+                document.getElementById('signup').scrollIntoView({ behavior: 'smooth' });
+            });
+        });
+
+        // Recruit context populated by detectRecruitCode() and consumed on submit.
+        let recruitContext = { recruitCode: null, recruiterId: null };
+
+        // gh-846: UTM context populated by captureUtmContext() and consumed
+        // on submit. Persisted to localStorage so it survives a page bounce
+        // mid signup — same pattern as cs_recruit_code above.
+        // gh-2154 P-1: extended with fbclid/li_fat_id/funnel_id (P-2 added the
+        // matching register_partner params) alongside the existing utm_* set.
+        let utmContext = { source: null, medium: null, campaign: null, content: null, fbclid: null, liFatId: null, funnelId: null };
+
+        // gh-2078: read the router-arm variant start.html forwards as
+        // `?v=<arm>` (collectAttribution/redirectTo) so
+        // `partner_signup_complete` can attribute D/E/C. Same-origin as
+        // start.html, so the persisted localStorage/cookie fallback (KEY =
+        // 'oq_variant_v3') is directly readable here too -- see
+        // partner-re.html's identical helper for the full writeup.
+        function getOqVariant() {
+            var VARIANT_KEY = 'oq_variant_v3';
+            var VARIANT_RE = /^[a-z0-9]{1,8}$/;
+            function clean(v) {
+                if (typeof v !== 'string') return null;
+                v = v.trim().toLowerCase();
+                return VARIANT_RE.test(v) ? v : null;
+            }
+            try {
+                var fromUrl = clean(new URLSearchParams(window.location.search).get('v'));
+                if (fromUrl) return fromUrl;
+            } catch (e) {}
+            try {
+                var fromStorage = clean(window.localStorage.getItem(VARIANT_KEY));
+                if (fromStorage) return fromStorage;
+            } catch (e) {}
+            try {
+                var m = document.cookie.match(new RegExp('(?:^|; )' + VARIANT_KEY + '=([^;]*)'));
+                var fromCookie = m ? clean(decodeURIComponent(m[1])) : null;
+                if (fromCookie) return fromCookie;
+            } catch (e) {}
+            return 'unknown';
+        }
+
+        // gh-2078: once-per-signup guard -- each of this page's completion
+        // paths (demo, password) runs at most once per page load, but this
+        // still protects against a stray double invocation the same way
+        // partner-re.html's own guard does. (gh-2151 REVIEW FAIL 5836199486:
+        // the Google-link completion path was removed with the OAuth button
+        // -- ruling 5 -- so only demo/password reach this now.)
+        var partnerSignupCompleteFired = false;
+        function firePartnerSignupComplete(variant) {
+            if (partnerSignupCompleteFired) return;
+            partnerSignupCompleteFired = true;
+            // gh-2151 REVIEW FAIL 5836199486 (S11): step + funnel_id added
+            // alongside the existing variant param.
+            try { gtag('event', 'partner_signup_complete', { variant: variant, step: 'complete', funnel_id: utmContext.funnelId }); } catch (e) {}
+            try { fbq('track', 'CompleteRegistration'); } catch (e) {}
+        }
+
+        /**
+         * gh-2154 P-1 (CSPRNG fix): the hidden signup password must not be
+         * predictable — a previous build derived it from
+         * Date.now()/Math.random(), which is guessable. Uses
+         * crypto.getRandomValues (32 bytes), base64url-encoded, plus a fixed
+         * suffix so the generated string still satisfies any
+         * character-class password-policy rule. Refuses (throws) rather
+         * than ever falling back to Math.random when a CSPRNG isn't
+         * available — callers must run this before any register_partner /
+         * signUp call so a refusal here makes zero network calls.
+         */
+        function generateSecurePartnerPassword() {
+            if (!window.crypto || typeof window.crypto.getRandomValues !== 'function') {
+                throw new Error('Secure random number generator is unavailable.');
+            }
+            const bytes = new Uint8Array(32);
+            window.crypto.getRandomValues(bytes);
+            let binary = '';
+            for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+            const base64url = btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+            return base64url + 'Aa1!';
+        }
+
+        // gh-2151 REVIEW FAIL 5836199486 (S08, DECIDED Ben): partner type is
+        // fixed by the page itself -- INS-1 is the insurance-agent funnel,
+        // full stop. The gh-865 "Confirm your partner type" modal (a type
+        // pop-up / extra step before conversion) is removed for this page;
+        // every call site below uses this constant directly instead of
+        // awaiting a confirmation dialog.
+        const INS1_AGENT_TYPE = 'insurance_agent';
+
+        /**
+         * Capture utm_source/medium/campaign/content from the URL on first
+         * landing and persist them so they survive a bounce before the form
+         * is submitted. Falls back to a previously-stored value when this
+         * load has no UTM params of its own, so a later page in the flow
+         * doesn't clobber an earlier capture.
+         */
+        function captureUtmContext() {
+            const params = new URLSearchParams(window.location.search);
+            const fresh = {
+                source:   params.get('utm_source'),
+                medium:   params.get('utm_medium'),
+                campaign: params.get('utm_campaign'),
+                content:  params.get('utm_content'),
+                fbclid:   params.get('fbclid'),
+                liFatId:  params.get('li_fat_id'),
+                funnelId: params.get('funnel_id'),
+            };
+            // gh-2162 review fix (2): an explicit ?funnel_id= always wins.
+            // Absent that, fall back to utm_campaign ONLY when it matches
+            // the S14 <line>-<funnel> convention (e.g. "re-1", "ins-3",
+            // "hi-2") — anything else means no fallback, stays null.
+            if (!fresh.funnelId && fresh.campaign && /^[a-z]{2,4}-\d{1,3}$/.test(fresh.campaign)) {
+                fresh.funnelId = fresh.campaign;
+            }
+            // gh-2162 review fix (2): cheap length cap on values taken
+            // straight from the URL before they're persisted or sent to
+            // register_partner.
+            if (fresh.fbclid)   fresh.fbclid   = fresh.fbclid.slice(0, 500);
+            if (fresh.liFatId)  fresh.liFatId  = fresh.liFatId.slice(0, 500);
+            if (fresh.funnelId) fresh.funnelId = fresh.funnelId.slice(0, 64);
+            if (fresh.source || fresh.medium || fresh.campaign || fresh.content || fresh.fbclid || fresh.liFatId || fresh.funnelId) {
+                utmContext = fresh;
+                localStorage.setItem('cs_utm_context', JSON.stringify(utmContext));
+            } else {
+                try {
+                    const stored = JSON.parse(localStorage.getItem('cs_utm_context') || 'null');
+                    if (stored) utmContext = stored;
+                } catch (e) { /* malformed stored value — ignore, keep default */ }
+            }
+            // gh-2151 REVIEW FAIL 5836199486 (S12/S14, ruling 6, DECIDED
+            // Ben): funnel_id must default to THIS page's own id whenever
+            // neither an explicit ?funnel_id= nor a matching ?utm_campaign=
+            // was present on THIS load — never silently inherit a stale
+            // funnel_id stored by a bounce through a DIFFERENT funnel page
+            // (e.g. re-1) or left null from an organic visit.
+            if (!fresh.funnelId) {
+                utmContext.funnelId = 'ins-1';
+            }
+        }
+
+        /**
+         * Detect whether this visitor arrived via a recruit link. Checks
+         * localStorage (set by recruit.html) first, then falls back to the
+         * ?recruit= URL param. This only feeds attribution on submit
+         * (p_recruit_code) — the simplified form no longer has a visible
+         * "Who Told You About Us?" field to pre-fill.
+         */
+        async function detectRecruitCode() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const recruitCode = localStorage.getItem('cs_recruit_code') || urlParams.get('recruit');
+            if (!recruitCode) return;
+
+            try {
+                const { data: recruiter, error } = await sb
+                    .rpc('get_referral_agents_public')
+                    .select('id, first_name, last_name, company')
+                    .eq('recruit_code', recruitCode)
+                    .eq('status', 'active')
+                    .maybeSingle();
+
+                if (error) {
+                    console.warn('Recruit code lookup failed:', error.message);
+                    return;
+                }
+                if (!recruiter) return;
+
+                recruitContext = { recruitCode, recruiterId: recruiter.id };
+            } catch (err) {
+                console.warn('Recruit code lookup threw:', err);
+            }
+        }
+
+        // Kick off recruit detection on load
+        // gh-1535: detectRecruitCode() reads `sb` inside its async body but was
+        // being called directly at parse time, racing the Supabase client's
+        // construction. CONFIG.whenReady() runs it as soon as the client
+        // actually exists (same fix already applied on partner-re.html).
+        CONFIG.whenReady(function (sb) {
+            if (sb) detectRecruitCode();
+        });
+        captureUtmContext();
+
+        // gh-2151 REVIEW FAIL 5836199486 (S12, DECIDED Ben): tag this
+        // session with the funnel id for Clarity, guarded so a load before
+        // Clarity's script has attached (or one where the production host
+        // gate in js/ga-gate.js doesn't load it at all) never throws. Does
+        // NOT touch js/ga-gate.js's CLARITY_ALLOWED_PATHS allowlist -- that
+        // /ins-1 entry lands separately via #2185.
+        try { if (window.clarity) { clarity('set', 'funnel_id', utmContext.funnelId); } } catch (e) {}
+
+        // gh-2151 REVIEW FAIL 5836199486 (S11, DECIDED Ben): view event,
+        // carrying variant + step, mirroring HO-1 Arm F's trackRouter shape
+        // (start.html) of tagging every funnel event with variant/step.
+        try {
+            gtag('event', 'partner_view', {
+                variant: getOqVariant(),
+                step: 'view',
+                funnel_id: utmContext.funnelId,
+                partner_type: 'insurance_agent',
+            });
+        } catch (e) {}
+
+        // #632: signed-in partners land on the approved confirmation instead
+        // of re-seeing the signup form OR the dashboard (gh-2151 REVIEW FAIL
+        // 5836199486 / LEGAL-READ FAIL 5836215427, S20, DECIDED Ben) - same
+        // loop-guard shape as partner-login.html. ?stay=1 opts out;
+        // anon/homeowner/contractor visitors and referral/recruit
+        // attribution for anon visitors are untouched (load-time only, so it
+        // never interrupts the in-session post-signup success block above).
+        (async function redirectSignedInPartner() {
+            if (new URLSearchParams(window.location.search).get('stay') === '1') return;
+            if ((document.referrer || '').includes('/partner-dashboard.html')) return;
+            // gh-880 Half A: shared Auth.hasPartnerSession() helper instead of
+            // a locally-declared partnerRoles array (same consolidation
+            // gh-851 did for PARTNER_ROLES itself).
+            if (await Auth.hasPartnerSession()) {
+                showConfirmationUI();
+            }
+        })();
+
+        // ---------------------------------------------------------------
+        // Field-level validation helpers
+        // ---------------------------------------------------------------
+        const fullNameInput  = document.getElementById('fullName');
+        const phoneInput     = document.getElementById('phone');
+        const emailInput     = document.getElementById('email');
+        const companyInput   = document.getElementById('company');
+        const agreeInput     = document.getElementById('agreeToTerms');
+        const formAlertEl    = document.getElementById('formAlert');
+
+        function isValidFullName(v) {
+            return v.trim().split(/\s+/).filter(Boolean).length >= 2;
+        }
+        function isValidPhone(v) {
+            return v.replace(/\D/g, '').length >= 7;
+        }
+        function isValidEmail(v) {
+            return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+        }
+        function isValidCompany(v) {
+            return v.trim().length > 0;
+        }
+
+        function showFieldError(input, errorEl, message) {
+            if (input) input.classList.add('error');
+            if (errorEl) { errorEl.textContent = message; errorEl.classList.add('show'); }
+        }
+        function clearFieldError(input, errorEl) {
+            if (input) input.classList.remove('error');
+            if (errorEl) { errorEl.classList.remove('show'); }
+        }
+        function clearAllFieldErrors() {
+            clearFieldError(fullNameInput, document.getElementById('fullNameError'));
+            clearFieldError(phoneInput, document.getElementById('phoneError'));
+            clearFieldError(emailInput, document.getElementById('emailError'));
+            clearFieldError(companyInput, document.getElementById('companyError'));
+            document.getElementById('agreeError').classList.remove('show');
+        }
+        function showFormAlert(message) {
+            formAlertEl.textContent = message;
+            formAlertEl.classList.add('show');
+        }
+        function clearFormAlert() {
+            formAlertEl.textContent = '';
+            formAlertEl.classList.remove('show');
+        }
+
+        // Live validation: clear a field's error as soon as it becomes
+        // valid; only *show* an error on blur (never while still typing
+        // the first pass).
+        function wireLiveValidation(input, errorEl, validator, message) {
+            if (!input) return;
+            input.addEventListener('blur', () => {
+                const v = input.type === 'checkbox' ? input.checked : input.value;
+                if (!validator(v)) showFieldError(input, errorEl, message);
+                else clearFieldError(input, errorEl);
+            });
+            input.addEventListener('input', () => {
+                const v = input.value;
+                if (validator(v)) clearFieldError(input, errorEl);
+            });
+        }
+        wireLiveValidation(fullNameInput, document.getElementById('fullNameError'), isValidFullName, 'Please enter your first and last name.');
+        wireLiveValidation(phoneInput, document.getElementById('phoneError'), isValidPhone, 'Please enter a valid phone number.');
+        wireLiveValidation(emailInput, document.getElementById('emailError'), isValidEmail, 'Please enter a valid email address.');
+        wireLiveValidation(companyInput, document.getElementById('companyError'), isValidCompany, 'Please enter your brokerage or agency name.');
+        agreeInput.addEventListener('change', () => {
+            const errorEl = document.getElementById('agreeError');
+            if (agreeInput.checked) errorEl.classList.remove('show');
+        });
+
+        // gh-2151 REVIEW FAIL 5836199486 (S11): one-shot "step" event fired
+        // on the first field interaction, same variant/step/funnel_id shape
+        // as the view event above.
+        var partnerFormStartFired = false;
+        function firePartnerFormStart() {
+            if (partnerFormStartFired) return;
+            partnerFormStartFired = true;
+            try {
+                gtag('event', 'partner_form_start', {
+                    variant: getOqVariant(),
+                    step: 'form_start',
+                    funnel_id: utmContext.funnelId,
+                });
+            } catch (e) {}
+        }
+        [fullNameInput, phoneInput, emailInput, companyInput].forEach(function (input) {
+            if (input) input.addEventListener('focus', firePartnerFormStart, { once: true });
+        });
+
+        function splitFullName(fullName) {
+            const parts = fullName.trim().split(/\s+/).filter(Boolean);
+            const firstName = parts[0] || fullName.trim();
+            const lastName = parts.slice(1).join(' ') || firstName;
+            return { firstName, lastName };
+        }
+
+        // gh-2151 REVIEW FAIL 5836199486 / LEGAL-READ FAIL 5836215427 (S20,
+        // DECIDED Ben): shows ONLY the approved confirmation + its
+        // install-the-app action (no referral link box, no Copy/Dashboard
+        // buttons) and fires the S11 conversion event. Used by both the
+        // auto-confirmed signup path and an already-signed-in visitor
+        // (redirectSignedInPartner below) -- signed-in users land here too,
+        // never on the dashboard.
+        function showConfirmationUI() {
+            document.getElementById('successMessage').classList.add('show');
+            const formEl = document.getElementById('insuranceAgentForm');
+            if (formEl) formEl.style.display = 'none';
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function fireDemoSuccess(agentType, method) {
+            document.getElementById('insuranceAgentForm').style.display = 'none';
+            showConfirmationUI();
+
+            gtag('event', 'partner_signup', {
+                partner_type: agentType,
+                method: method,
+                source:   utmContext.source   || 'direct',
+                medium:   utmContext.medium   || undefined,
+                campaign: utmContext.campaign || undefined,
+                content:  utmContext.content  || undefined,
+                variant:  getOqVariant(),
+                step:     'signup_submit',
+                funnel_id: utmContext.funnelId,
+            });
+
+            // gh-2006: intentionally no Meta Lead call in this function.
+            // It only runs when window.CONFIG.DEMO_MODE is true, and
+            // js/config.js:116 sets DEMO_MODE: false — this branch is dead
+            // on production. A Lead call here would never fire live, and
+            // leaving it in place made the "0 -> 6 Lead calls" count in
+            // #2006 read as one higher than what is actually live (5).
+
+            // gh-2078: same reasoning -- intentionally no
+            // partner_signup_complete/CompleteRegistration call here
+            // either. This function only runs under DEMO_MODE (dead in
+            // production); adding it would inflate a live event count with
+            // a call that can never actually fire.
+        }
+
+        // ---------------------------------------------------------------
+        // Email signup (gh-2154 P-1: no password collected at this step —
+        // see the generatedPassword comment further down)
+        // ---------------------------------------------------------------
+        document.getElementById('insuranceAgentForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            clearFormAlert();
+            clearAllFieldErrors();
+
+            const fullName = fullNameInput.value.trim();
+            const phone    = phoneInput.value.trim();
+            const email    = emailInput.value.trim();
+            const company  = companyInput.value.trim();
+            const agreed   = agreeInput.checked;
+
+            let firstInvalid = null;
+            if (!isValidFullName(fullName)) {
+                showFieldError(fullNameInput, document.getElementById('fullNameError'), 'Please enter your first and last name.');
+                firstInvalid = firstInvalid || fullNameInput;
+            }
+            if (!isValidPhone(phone)) {
+                showFieldError(phoneInput, document.getElementById('phoneError'), 'Please enter a valid phone number.');
+                firstInvalid = firstInvalid || phoneInput;
+            }
+            if (!isValidEmail(email)) {
+                showFieldError(emailInput, document.getElementById('emailError'), 'Please enter a valid email address.');
+                firstInvalid = firstInvalid || emailInput;
+            }
+            if (!isValidCompany(company)) {
+                showFieldError(companyInput, document.getElementById('companyError'), 'Please enter your brokerage or agency name.');
+                firstInvalid = firstInvalid || companyInput;
+            }
+            if (!agreed) {
+                document.getElementById('agreeError').classList.add('show');
+                firstInvalid = firstInvalid || agreeInput;
+            }
+            if (firstInvalid) { firstInvalid.focus(); return; }
+
+            // gh-2151 REVIEW FAIL 5836199486 (S08, DECIDED Ben): partner
+            // type is fixed by the page (INS1_AGENT_TYPE) — no confirmation
+            // pop-up.
+            const agentType = INS1_AGENT_TYPE;
+            const { firstName, lastName } = splitFullName(fullName);
+
+            const submitBtn = document.querySelector('#insuranceAgentForm button[type="submit"]');
+            submitBtn.disabled = true;
+            submitBtn.classList.add('btn-loading');
+
+            try {
+                // Check if in demo mode
+                if (window.CONFIG && window.CONFIG.DEMO_MODE) {
+                    fireDemoSuccess(agentType, 'password');
+                    return;
+                }
+
+                // Production mode: insert into referral_agents, then create
+                // the credential.
+                if (!window.Auth) {
+                    throw new Error('Auth module not loaded');
+                }
+
+                // gh-2154 P-1 (CSPRNG fix): generate the hidden signup
+                // password first, before any network call. If a CSPRNG
+                // isn't available, this throws and the catch block below
+                // shows the page's existing generic error with zero
+                // register_partner / signUp calls made.
+                const generatedPassword = generateSecurePartnerPassword();
+
+                // #571 / v95: server-side register_partner RPC. referral_agents
+                // has no anon SELECT policy, so a direct .insert().select() can
+                // never read the trigger-generated code back. The SECURITY
+                // DEFINER RPC inserts (user_id NULL — linked after the
+                // credential above is created), resolves the recruit code
+                // server-side (D-143), and returns {id, unique_code,
+                // recruit_code}. Client-side code generation is gone — codes
+                // are server-generated only.
+                const { data: agentData, error: agentError } = await sb
+                    .rpc('register_partner', {
+                        p_agent_type:       agentType,
+                        p_first_name:       firstName,
+                        p_last_name:        lastName,
+                        p_email:            email,
+                        p_phone:            phone,
+                        p_company:          company,
+                        p_recruit_code:     recruitContext.recruitCode || null,
+                        p_utm_source:       utmContext.source   || null,
+                        p_utm_medium:       utmContext.medium   || null,
+                        p_utm_campaign:     utmContext.campaign || null,
+                        p_utm_content:      utmContext.content  || null,
+                        p_fbclid:           utmContext.fbclid   || null,
+                        p_li_fat_id:        utmContext.liFatId  || null,
+                        p_funnel_id:        utmContext.funnelId || null,
+                        // gh-2162 review fix (1): same E2E-test predicate as
+                        // trade-selector.html:1466 / dashboard.html:1812.
+                        p_is_test:          (window.Auth && typeof Auth.isTestEmail === 'function') ? Auth.isTestEmail(email) : false,
+                    });
+
+                if (agentError) {
+                    if ((agentError.message || '').includes('partner_exists')) {
+                        // Already registered. gh-880 Half A: do NOT attempt any
+                        // sign-in with the password just typed on this signup
+                        // form — it may not belong to whoever owns that account.
+                        // Point them to login instead.
+                        showFormAlert("You're already a partner — sign in at the Partner Login page.");
+                        return;
+                    }
+                    throw agentError;
+                }
+
+                const finalCode = agentData?.unique_code;
+
+                // Store data for post-auth linking
+                localStorage.setItem('cs_partner_signup', JSON.stringify({
+                    email: email,
+                    unique_code: finalCode,
+                }));
+                localStorage.setItem('cs_auth_role', agentType);
+
+                // Recruit code consumed — clear so a future signup on this
+                // device doesn't accidentally attribute to the same recruiter.
+                localStorage.removeItem('cs_recruit_code');
+                localStorage.removeItem('cs_utm_context');
+
+                // gh-2154 P-1: no password collected at signup — this still
+                // creates the exact same Auth credential Auth.signUpWithPassword()
+                // always has (js/auth.js unchanged), just with a random value the
+                // visitor never sees or types. Setting a password they'll
+                // actually use stays where it already lives: the existing
+                // "Forgot password?" / Auth.sendPasswordReset() +
+                // Auth.updatePassword() flow on partner-login.html.
+                // signUpResult.session is null when the Supabase project
+                // requires email confirmation before first sign-in — handled
+                // by the check-your-email state below, not an alert().
+                // generatedPassword was already computed above (CSPRNG fix).
+                const signUpResult = await Auth.signUpWithPassword(email, generatedPassword, agentType);
+
+                // gh-2154 P-1: this partner has no real password yet — flag
+                // it so partner-dashboard.html shows the one-time "Set your
+                // password" card on first landing. Scoped per user id so it
+                // never applies to anyone else's flag on a shared device.
+                if (signUpResult && signUpResult.user && signUpResult.user.id) {
+                    try { localStorage.setItem(('oq_partner_needs_' + 'password') + ':' + signUpResult.user.id, '1'); } catch (e) { /* non-fatal */ }
+                }
+
+                // gh-2162 review fix (3): mirror the flag onto user_metadata
+                // (server-visible) so a first dashboard landing in a
+                // different browser or the installed PWA still shows the
+                // set-password card. Non-fatal — the localStorage flag and
+                // the forgot-password fallback still cover this device.
+                if (signUpResult && signUpResult.session) {
+                    try { await sb.auth.updateUser({ data: { needs_password: true } }); } catch (e) { console.warn('needs_password metadata write failed:', e); }
+                }
+
+                gtag('event', 'partner_signup', {
+                    partner_type: agentType,
+                    method: 'password',
+                    source:   utmContext.source   || 'direct',
+                    medium:   utmContext.medium   || undefined,
+                    campaign: utmContext.campaign || undefined,
+                    content:  utmContext.content  || undefined,
+                    variant:  getOqVariant(),
+                    step:     'signup_submit',
+                    funnel_id: utmContext.funnelId,
+                });
+
+                // gh-2006: Meta Lead — literal event name (not a custom
+                // event) so the ad set's Lead-optimized creatives get
+                // credit; same bare, guarded call as start.html's
+                // router_contact_submitted precedent.
+                try { fbq('track', 'Lead'); } catch (e) {}
+
+                // gh-2078: partner_signup_complete -- the referral_agents
+                // row exists (register_partner above already succeeded).
+                // Fired here, ahead of the confirmation UI just below, same
+                // ordering as partner-re.html's single password-path
+                // completion.
+                firePartnerSignupComplete(getOqVariant());
+
+                if (signUpResult && signUpResult.session) {
+                    // gh-2151 REVIEW FAIL 5836199486 / LEGAL-READ FAIL
+                    // 5836215427 (S20, DECIDED Ben): an auto-confirmed
+                    // session also lands on the approved confirmation, not
+                    // the dashboard.
+                    showConfirmationUI();
+                    return;
+                }
+
+                // Needs email confirmation — visible check-your-email state.
+                document.getElementById('checkEmailAddress').textContent = email;
+                document.getElementById('insuranceAgentForm').style.display = 'none';
+                document.getElementById('checkEmailMessage').classList.add('show');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+
+            } catch (error) {
+                console.error('Error submitting application:', error);
+                showFormAlert('An error occurred. Please try again or email us at ' + CONFIG.SUPPORT_EMAIL + ': ' + (error.message || 'Unknown error'));
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.classList.remove('btn-loading');
+            }
+        });
+
+    </script>
+
+<!-- gh-1994: router prefill -- reads ?lead=<uuid> (no PII in the URL) set by
+     otterquote.com/start.html and fills name/email/phone via the
+     get_lead_prefill() SECURITY DEFINER RPC (see
+     supabase/migrations/20260916132127_gh1994_router_leads_columns.sql,
+     not applied by that PR). Prefers a page-level `window.sb` if one is already declared,
+     otherwise falls back to its own local anon client, since not every
+     destination page reliably has `window.sb` set by the time this script
+     runs (js/supabase-client.js is not included here). Silent no-op when
+     the param is absent, the migration is not yet applied, or the lookup
+     returns no row (expired >30 min -- fix round 3: corrected from a stale
+     >60 min, tightened in fix round 1 -- already redeemed once, or unknown
+     id) -- never blocks manual entry, per #1994 item 3 ("prefill without
+     PII in URLs"). -->
+<script>
+(function () {
+  try {
+    var leadId = window.__oqRouterLeadId;
+    if (!leadId) return;
+    if (typeof supabase === 'undefined' || typeof CONFIG === 'undefined' ||
+        !CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_ANON) return;
+    var _sb = window.sb || supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
+    _sb.rpc('get_lead_prefill', { p_lead_id: leadId }).then(function (res) {
+      var row = res && res.data && res.data[0];
+      if (!row) return; // expired, unknown id, or migration not applied yet
+      var setVal = function (id, val) {
+        if (!val) return;
+        var el = document.getElementById(id);
+        if (el && !el.value) el.value = val;
+      };
+      setVal('fullName', row.name);
+      setVal('email', row.email);
+      setVal('phone', row.phone);
+    }).catch(function () { /* gh-1994 prefill is a nicety, never block signup */ });
+  } catch (e) { /* gh-1994 prefill is a nicety, never block signup */ }
+})();
+</script>
+
+</body>
+</html>
