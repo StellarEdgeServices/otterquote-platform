@@ -43,23 +43,30 @@ const { ZERO_ROWS, ONE_ROW, makeSupabaseMock } = vi.hoisted(() => {
         };
       }
       if (table === 'quotes') {
-        // First quotes .update() in the function body is the winning-bid
-        // write (`.eq('id', bid.id)`); the second is the reject-others write
-        // (`.eq('claim_id', ...).neq('id', ...)`). Track call order.
-        let quotesUpdateCalls = 0;
+        // gh-2105 REVIEW FAIL nit (d): this used to track call ORDER via a
+        // counter (`quotesUpdateCalls`), with a comment claiming the first
+        // `.update()` call was the winning-bid write and the second was the
+        // reject-others write. That counter never actually counted across
+        // calls -- it was declared inside this `if (table === 'quotes')`
+        // block, which real code re-enters (a fresh `supabase.from('quotes')`
+        // call) for EACH of the two writes, so it always reset to 0 and
+        // incremented to 1: `isWin` was always true. The mock worked anyway,
+        // but for a different reason than the comment claimed: the two real
+        // call SHAPES are structurally distinct --
+        //   winning-bid write:   .update(...).eq('id', bid.id).select('id')
+        //   reject-others write: .update(...).eq('claim_id', ...).neq('id', ...).select('id')
+        // -- so `.eq().select()` and `.eq().neq().select()` are disambiguated
+        // by their own shape, not by which call happened first. Returning
+        // the fixed responses directly, keyed by that shape.
         return {
-          update: () => {
-            quotesUpdateCalls += 1;
-            const isWin = quotesUpdateCalls === 1;
-            return {
-              eq: () => ({
-                select: () => Promise.resolve(isWin ? winUpdate : undefined),
-                neq: () => ({
-                  select: () => Promise.resolve(rejectUpdate),
-                }),
+          update: () => ({
+            eq: () => ({
+              select: () => Promise.resolve(winUpdate),
+              neq: () => ({
+                select: () => Promise.resolve(rejectUpdate),
               }),
-            };
-          },
+            }),
+          }),
         };
       }
       throw new Error(`unexpected table: ${table}`);
