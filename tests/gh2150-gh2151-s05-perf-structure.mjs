@@ -1,8 +1,8 @@
 /**
- * gh-2150/gh-2151 S05 perf structure check (k70-w11-s05perf).
+ * gh-2150/gh-2151/gh-2152 S05 perf structure check (k70-w11-s05perf).
  *
- * Asserts the static-markup half of the LCP/TTI fix applied to re-1.html
- * and ins-1.html (the same technique PR #2183 shipped for start.html's
+ * Asserts the static-markup half of the LCP/TTI fix applied to re-1.html,
+ * ins-1.html and hi-1.html (the same technique PR #2183 shipped for start.html's
  * Arm F, gh-2121):
  *
  *   (1) no render-blocking <script> tag in <head> -- every <script> there
@@ -151,6 +151,7 @@ function runAll(html, label) {
 // ── Current head (this branch) -- must PASS every check. ──
 runAll(stripComments(fs.readFileSync(path.join(repoRoot, 're-1.html'), 'utf8')), 're-1.html');
 runAll(stripComments(fs.readFileSync(path.join(repoRoot, 'ins-1.html'), 'utf8')), 'ins-1.html');
+runAll(stripComments(fs.readFileSync(path.join(repoRoot, 'hi-1.html'), 'utf8')), 'hi-1.html');
 
 console.log('');
 console.log(pass + ' passed, ' + fail + ' failed');
