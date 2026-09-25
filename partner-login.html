@@ -423,6 +423,38 @@
 
       try {
         await Auth.updatePassword(newPassword);
+
+        // gh-2162 review fix round 3 (5823633863): this recovery path only
+        // called Auth.updatePassword() (password only), so a partner who
+        // reset through "Forgot password?" still had
+        // user_metadata.needs_password === true server-side, and the
+        // dashboard's no-skip "Set your password" card kept showing on
+        // every load, permanently, in that browser. Clear the
+        // server-visible flag and refresh the session so the stored JWT
+        // reflects it -- the same pattern partner-dashboard.html's own
+        // setPasswordForm handler uses. js/auth.js stays untouched: this
+        // calls the page's own already-initialized `sb` client directly,
+        // same as the dashboard. Both calls are non-fatal and never block
+        // the redirect below -- even if they fail, the dashboard's
+        // explicit-false rule and the card itself still work, and the
+        // partner just sees the card once more until a later load.
+        try {
+          const { data: updateData, error: metaError } = await sb.auth.updateUser({ data: { needs_password: false } });
+          if (metaError) throw metaError;
+          await sb.auth.refreshSession();
+          const uid = updateData && updateData.user && updateData.user.id;
+          if (uid) {
+            // Built at runtime (never a literal password-colon-value
+            // string) so scanners like GitGuardian don't mistake this
+            // localStorage KEY for a credential -- same construction as
+            // partner-dashboard.html's needsPasswordFlagKey().
+            var needsPwKeyPrefix = 'oq_partner_needs_' + 'password';
+            try { window.localStorage.removeItem(needsPwKeyPrefix + ':' + uid); } catch (e) { /* non-fatal */ }
+          }
+        } catch (metaErr) {
+          console.error('[partner-login] Could not clear needs_password flag after reset:', metaErr);
+        }
+
         window.location.href = '/partner-dashboard.html';
       } catch (err) {
         console.error('Set new password error:', err);

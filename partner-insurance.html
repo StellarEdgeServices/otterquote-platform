@@ -738,13 +738,13 @@
                                     <div class="field-error" id="emailError"></div>
                                 </div>
 
-                                <!-- Password — Auth.signUpWithPassword() (the partner signup
-                                     credential path already used sitewide) requires one; there
-                                     is no password-less signup RPC to fall back to. -->
+                                <!-- gh-2154 P-1: company/brokerage, added to bring this page
+                                     to the same short field set as partner-re.html /
+                                     partner-inspectors.html. -->
                                 <div class="form-group">
-                                    <label for="password" class="form-label required">Password</label>
-                                    <input type="password" id="password" name="password" class="form-input" autocomplete="new-password" required minlength="8" placeholder="At least 8 characters">
-                                    <div class="field-error" id="passwordError"></div>
+                                    <label for="company" class="form-label required">Brokerage / Agency Name</label>
+                                    <input type="text" id="company" name="company" class="form-input" required>
+                                    <div class="field-error" id="companyError"></div>
                                 </div>
 
                                 <div class="checkbox-group align-top">
@@ -886,7 +886,9 @@
         // gh-846: UTM context populated by captureUtmContext() and consumed
         // on submit. Persisted to localStorage so it survives a page bounce
         // mid signup — same pattern as cs_recruit_code above.
-        let utmContext = { source: null, medium: null, campaign: null, content: null };
+        // gh-2154 P-1: extended with fbclid/li_fat_id/funnel_id (P-2 added the
+        // matching register_partner params) alongside the existing utm_* set.
+        let utmContext = { source: null, medium: null, campaign: null, content: null, fbclid: null, liFatId: null, funnelId: null };
 
         // gh-2078: read the router-arm variant start.html forwards as
         // `?v=<arm>` (collectAttribution/redirectTo) so
@@ -976,6 +978,29 @@
         }
 
         /**
+         * gh-2154 P-1 (CSPRNG fix): the hidden signup password must not be
+         * predictable — a previous build derived it from
+         * Date.now()/Math.random(), which is guessable. Uses
+         * crypto.getRandomValues (32 bytes), base64url-encoded, plus a fixed
+         * suffix so the generated string still satisfies any
+         * character-class password-policy rule. Refuses (throws) rather
+         * than ever falling back to Math.random when a CSPRNG isn't
+         * available — callers must run this before any register_partner /
+         * signUp call so a refusal here makes zero network calls.
+         */
+        function generateSecurePartnerPassword() {
+            if (!window.crypto || typeof window.crypto.getRandomValues !== 'function') {
+                throw new Error('Secure random number generator is unavailable.');
+            }
+            const bytes = new Uint8Array(32);
+            window.crypto.getRandomValues(bytes);
+            let binary = '';
+            for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+            const base64url = btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+            return base64url + 'Aa1!';
+        }
+
+        /**
          * gh-865: the visitor must see and explicitly confirm their partner
          * type before the account is created — the page they landed on (and
          * therefore this page's default) may not silently decide agent_type.
@@ -1039,8 +1064,24 @@
                 medium:   params.get('utm_medium'),
                 campaign: params.get('utm_campaign'),
                 content:  params.get('utm_content'),
+                fbclid:   params.get('fbclid'),
+                liFatId:  params.get('li_fat_id'),
+                funnelId: params.get('funnel_id'),
             };
-            if (fresh.source || fresh.medium || fresh.campaign || fresh.content) {
+            // gh-2162 review fix (2): an explicit ?funnel_id= always wins.
+            // Absent that, fall back to utm_campaign ONLY when it matches
+            // the S14 <line>-<funnel> convention (e.g. "re-1", "ins-3",
+            // "hi-2") — anything else means no fallback, stays null.
+            if (!fresh.funnelId && fresh.campaign && /^[a-z]{2,4}-\d{1,3}$/.test(fresh.campaign)) {
+                fresh.funnelId = fresh.campaign;
+            }
+            // gh-2162 review fix (2): cheap length cap on values taken
+            // straight from the URL before they're persisted or sent to
+            // register_partner.
+            if (fresh.fbclid)   fresh.fbclid   = fresh.fbclid.slice(0, 500);
+            if (fresh.liFatId)  fresh.liFatId  = fresh.liFatId.slice(0, 500);
+            if (fresh.funnelId) fresh.funnelId = fresh.funnelId.slice(0, 64);
+            if (fresh.source || fresh.medium || fresh.campaign || fresh.content || fresh.fbclid || fresh.liFatId || fresh.funnelId) {
                 utmContext = fresh;
                 localStorage.setItem('cs_utm_context', JSON.stringify(utmContext));
                 return;
@@ -1115,7 +1156,7 @@
         const fullNameInput  = document.getElementById('fullName');
         const phoneInput     = document.getElementById('phone');
         const emailInput     = document.getElementById('email');
-        const passwordInput  = document.getElementById('password');
+        const companyInput   = document.getElementById('company');
         const agreeInput     = document.getElementById('agreeToTerms');
         const formAlertEl    = document.getElementById('formAlert');
 
@@ -1127,6 +1168,9 @@
         }
         function isValidEmail(v) {
             return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+        }
+        function isValidCompany(v) {
+            return v.trim().length > 0;
         }
 
         function showFieldError(input, errorEl, message) {
@@ -1141,7 +1185,7 @@
             clearFieldError(fullNameInput, document.getElementById('fullNameError'));
             clearFieldError(phoneInput, document.getElementById('phoneError'));
             clearFieldError(emailInput, document.getElementById('emailError'));
-            clearFieldError(passwordInput, document.getElementById('passwordError'));
+            clearFieldError(companyInput, document.getElementById('companyError'));
             document.getElementById('agreeError').classList.remove('show');
         }
         function showFormAlert(message) {
@@ -1171,7 +1215,7 @@
         wireLiveValidation(fullNameInput, document.getElementById('fullNameError'), isValidFullName, 'Please enter your first and last name.');
         wireLiveValidation(phoneInput, document.getElementById('phoneError'), isValidPhone, 'Please enter a valid phone number.');
         wireLiveValidation(emailInput, document.getElementById('emailError'), isValidEmail, 'Please enter a valid email address.');
-        wireLiveValidation(passwordInput, document.getElementById('passwordError'), (v) => v.length >= 8, 'Password must be at least 8 characters.');
+        wireLiveValidation(companyInput, document.getElementById('companyError'), isValidCompany, 'Please enter your brokerage or agency name.');
         agreeInput.addEventListener('change', () => {
             const errorEl = document.getElementById('agreeError');
             if (agreeInput.checked) errorEl.classList.remove('show');
@@ -1242,6 +1286,7 @@
 
             const fullName = fullNameInput.value.trim();
             const phone = phoneInput.value.trim();
+            const company = companyInput.value.trim();
             const agreed = agreeInput.checked;
 
             let firstInvalid = null;
@@ -1252,6 +1297,10 @@
             if (!isValidPhone(phone)) {
                 showFieldError(phoneInput, document.getElementById('phoneError'), 'Please enter a valid phone number.');
                 firstInvalid = firstInvalid || phoneInput;
+            }
+            if (!isValidCompany(company)) {
+                showFieldError(companyInput, document.getElementById('companyError'), 'Please enter your brokerage or agency name.');
+                firstInvalid = firstInvalid || companyInput;
             }
             if (!agreed) {
                 document.getElementById('agreeError').classList.add('show');
@@ -1271,7 +1320,7 @@
 
             try {
                 localStorage.setItem(PENDING_SIGNUP_KEY, JSON.stringify({
-                    fullName, phone, agentType,
+                    fullName, phone, company, agentType,
                     recruitCode: recruitContext.recruitCode || null,
                     utm: utmContext,
                 }));
@@ -1314,11 +1363,19 @@
                     p_last_name:    lastName,
                     p_email:        user.email,
                     p_phone:        pending.phone,
+                    p_company:      pending.company || null,
                     p_recruit_code: pending.recruitCode || null,
                     p_utm_source:   utm.source   || null,
                     p_utm_medium:   utm.medium   || null,
                     p_utm_campaign: utm.campaign || null,
                     p_utm_content:  utm.content  || null,
+                    p_fbclid:       utm.fbclid   || null,
+                    p_li_fat_id:    utm.liFatId  || null,
+                    p_funnel_id:    utm.funnelId || null,
+                    // gh-2162 review fix (1): same predicate as the
+                    // password-form call site below and
+                    // trade-selector.html:1466 / dashboard.html:1812.
+                    p_is_test:      (window.Auth && typeof Auth.isTestEmail === 'function') ? Auth.isTestEmail(user.email) : false,
                 });
 
                 // partner_exists is expected/harmless here: it just means a
@@ -1417,7 +1474,8 @@
         });
 
         // ---------------------------------------------------------------
-        // Email + password signup
+        // Email signup (gh-2154 P-1: no password collected at this step —
+        // see the generatedPassword comment further down)
         // ---------------------------------------------------------------
         document.getElementById('insuranceAgentForm').addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -1427,7 +1485,7 @@
             const fullName = fullNameInput.value.trim();
             const phone    = phoneInput.value.trim();
             const email    = emailInput.value.trim();
-            const password = passwordInput.value;
+            const company  = companyInput.value.trim();
             const agreed   = agreeInput.checked;
 
             let firstInvalid = null;
@@ -1443,9 +1501,9 @@
                 showFieldError(emailInput, document.getElementById('emailError'), 'Please enter a valid email address.');
                 firstInvalid = firstInvalid || emailInput;
             }
-            if (!password || password.length < 8) {
-                showFieldError(passwordInput, document.getElementById('passwordError'), 'Password must be at least 8 characters.');
-                firstInvalid = firstInvalid || passwordInput;
+            if (!isValidCompany(company)) {
+                showFieldError(companyInput, document.getElementById('companyError'), 'Please enter your brokerage or agency name.');
+                firstInvalid = firstInvalid || companyInput;
             }
             if (!agreed) {
                 document.getElementById('agreeError').classList.add('show');
@@ -1475,6 +1533,13 @@
                     throw new Error('Auth module not loaded');
                 }
 
+                // gh-2154 P-1 (CSPRNG fix): generate the hidden signup
+                // password first, before any network call. If a CSPRNG
+                // isn't available, this throws and the catch block below
+                // shows the page's existing generic error with zero
+                // register_partner / signUp calls made.
+                const generatedPassword = generateSecurePartnerPassword();
+
                 // #571 / v95: server-side register_partner RPC. referral_agents
                 // has no anon SELECT policy, so a direct .insert().select() can
                 // never read the trigger-generated code back. The SECURITY
@@ -1490,11 +1555,18 @@
                         p_last_name:        lastName,
                         p_email:            email,
                         p_phone:            phone,
+                        p_company:          company,
                         p_recruit_code:     recruitContext.recruitCode || null,
                         p_utm_source:       utmContext.source   || null,
                         p_utm_medium:       utmContext.medium   || null,
                         p_utm_campaign:     utmContext.campaign || null,
                         p_utm_content:      utmContext.content  || null,
+                        p_fbclid:           utmContext.fbclid   || null,
+                        p_li_fat_id:        utmContext.liFatId  || null,
+                        p_funnel_id:        utmContext.funnelId || null,
+                        // gh-2162 review fix (1): same E2E-test predicate as
+                        // trade-selector.html:1466 / dashboard.html:1812.
+                        p_is_test:          (window.Auth && typeof Auth.isTestEmail === 'function') ? Auth.isTestEmail(email) : false,
                     });
 
                 if (agentError) {
@@ -1533,12 +1605,35 @@
                 localStorage.removeItem('cs_recruit_code');
                 localStorage.removeItem('cs_utm_context');
 
-                // gh-880 Half A: sign up with the password just collected
-                // instead of sending a magic link. signUpResult.session is null
-                // when the Supabase project requires email confirmation before
-                // first sign-in — handled by the check-your-email state below,
-                // not an alert().
-                const signUpResult = await Auth.signUpWithPassword(email, password, agentType);
+                // gh-2154 P-1: no password collected at signup — this still
+                // creates the exact same Auth credential Auth.signUpWithPassword()
+                // always has (js/auth.js unchanged), just with a random value the
+                // visitor never sees or types. Setting a password they'll
+                // actually use stays where it already lives: the existing
+                // "Forgot password?" / Auth.sendPasswordReset() +
+                // Auth.updatePassword() flow on partner-login.html.
+                // signUpResult.session is null when the Supabase project
+                // requires email confirmation before first sign-in — handled
+                // by the check-your-email state below, not an alert().
+                // generatedPassword was already computed above (CSPRNG fix).
+                const signUpResult = await Auth.signUpWithPassword(email, generatedPassword, agentType);
+
+                // gh-2154 P-1: this partner has no real password yet — flag
+                // it so partner-dashboard.html shows the one-time "Set your
+                // password" card on first landing. Scoped per user id so it
+                // never applies to anyone else's flag on a shared device.
+                if (signUpResult && signUpResult.user && signUpResult.user.id) {
+                    try { localStorage.setItem(('oq_partner_needs_' + 'password') + ':' + signUpResult.user.id, '1'); } catch (e) { /* non-fatal */ }
+                }
+
+                // gh-2162 review fix (3): mirror the flag onto user_metadata
+                // (server-visible) so a first dashboard landing in a
+                // different browser or the installed PWA still shows the
+                // set-password card. Non-fatal — the localStorage flag and
+                // the forgot-password fallback still cover this device.
+                if (signUpResult && signUpResult.session) {
+                    try { await sb.auth.updateUser({ data: { needs_password: true } }); } catch (e) { console.warn('needs_password metadata write failed:', e); }
+                }
 
                 gtag('event', 'partner_signup', {
                     partner_type: agentType,

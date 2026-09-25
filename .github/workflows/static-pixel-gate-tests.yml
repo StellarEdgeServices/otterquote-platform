@@ -19,6 +19,14 @@ on:
       - 'tests/gh2107-gpc-client.mjs'
       - 'partner-dashboard.html'
       - 'tests/gh2154-p2-app-activation.mjs'
+      - 'partner-re.html'
+      - 'partner-insurance.html'
+      - 'partner-inspectors.html'
+      - 'tests/gh2154-p1-short-signup.mjs'
+      - 'tests/gh2154-p1-set-password.mjs'
+      - 'partner-login.html'
+      - 'tests/gh2154-p1-login-reset.mjs'
+      - 'tests/gh2154-p1-cookie-storage-updateuser.mjs'
       - '.github/workflows/static-pixel-gate-tests.yml'
   push:
     branches: [main]
@@ -31,6 +39,14 @@ on:
       - 'tests/gh2107-gpc-client.mjs'
       - 'partner-dashboard.html'
       - 'tests/gh2154-p2-app-activation.mjs'
+      - 'partner-re.html'
+      - 'partner-insurance.html'
+      - 'partner-inspectors.html'
+      - 'tests/gh2154-p1-short-signup.mjs'
+      - 'tests/gh2154-p1-set-password.mjs'
+      - 'partner-login.html'
+      - 'tests/gh2154-p1-login-reset.mjs'
+      - 'tests/gh2154-p1-cookie-storage-updateuser.mjs'
       - '.github/workflows/static-pixel-gate-tests.yml'
 
 permissions:
@@ -63,3 +79,11 @@ jobs:
         run: node tests/gh2107-gpc-client.mjs
       - name: Partner dashboard activation RPC, per-user flag (gh2154-p2-app-activation)
         run: node tests/gh2154-p2-app-activation.mjs
+      - name: Short partner signup field set, attribution, D-333 (gh2154-p1-short-signup)
+        run: node tests/gh2154-p1-short-signup.mjs
+      - name: Partner dashboard one-time set-password card (gh2154-p1-set-password)
+        run: node tests/gh2154-p1-set-password.mjs
+      - name: Partner login forgot-password reset clears needs_password (gh2154-p1-login-reset)
+        run: node tests/gh2154-p1-login-reset.mjs
+      - name: Real supabase-js -- rejected updateUser() must not sign the partner out (gh2154-p1-cookie-storage-updateuser)
+        run: node tests/gh2154-p1-cookie-storage-updateuser.mjs

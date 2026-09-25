@@ -987,18 +987,6 @@
           <input type="email" id="email" class="form-input" required autocomplete="email" placeholder="jane@example.com">
         </div>
 
-        <!-- Password — gh-880 Half A: partner accounts now sign up with a
-             real credential instead of the password-less account
-             magic-link used to create implicitly. -->
-        <div class="form-group">
-          <label class="form-label" for="password">Password</label>
-          <input type="password" id="password" class="form-input" required autocomplete="new-password" minlength="8" placeholder="At least 8 characters">
-        </div>
-        <div class="form-group">
-          <label class="form-label" for="confirm-password">Confirm Password</label>
-          <input type="password" id="confirm-password" class="form-input" required autocomplete="new-password" placeholder="Re-enter your password">
-        </div>
-
         <!-- Phone -->
         <div class="form-group">
           <label class="form-label" for="phone">Phone</label>
@@ -1010,33 +998,6 @@
         <div class="form-group">
           <label class="form-label" for="brokerage">Brokerage / Agency Name</label>
           <input type="text" id="brokerage" class="form-input" required placeholder="Your Real Estate Company">
-        </div>
-
-        <!-- Service Area -->
-        <div class="form-group">
-          <label class="form-label" for="service-area">Service Area</label>
-          <input type="text" id="service-area" class="form-input" required placeholder="e.g., Indianapolis, IN; Chicago Metro">
-          <span class="form-hint">Cities, counties, or regions where you work.</span>
-        </div>
-
-        <!-- Headshot (Optional) -->
-        <div class="form-group">
-          <label class="form-label" for="headshot">Headshot (Optional)</label>
-          <input type="file" id="headshot" class="form-input" accept="image/*">
-          <span class="form-hint">Used on your personalized referral landing page.</span>
-        </div>
-
-        <!-- Website URL (Optional) -->
-        <div class="form-group">
-          <label class="form-label" for="website">Your Website (Optional)</label>
-          <input type="url" id="website" class="form-input" autocomplete="url" placeholder="https://yourwebsite.com">
-          <span class="form-hint">For embedding the Otter Quotes widget on your site.</span>
-        </div>
-
-        <!-- Who Told You About Us? (Optional) -->
-        <div class="form-group">
-          <label class="form-label" for="referredBy">Who Told You About Us? (Optional)</label>
-          <input type="text" id="referredBy" name="referredBy" class="form-input" placeholder="Name or company of the person who recommended Otter Quotes">
         </div>
 
         <!-- Terms Checkbox -->
@@ -1217,7 +1178,9 @@
   // gh-846: UTM context populated by captureUtmContext() and consumed on
   // submit. Persisted to localStorage so it survives a page bounce mid
   // signup — same pattern as cs_recruit_code above.
-  let utmContext = { source: null, medium: null, campaign: null, content: null };
+  // gh-2154 P-1: extended with fbclid/li_fat_id/funnel_id (P-2 added the
+  // matching register_partner params) alongside the existing utm_* set.
+  let utmContext = { source: null, medium: null, campaign: null, content: null, fbclid: null, liFatId: null, funnelId: null };
 
   // gh-2078: read the router-arm variant start.html's redirectTo() forwards
   // as `?v=<arm>` on the link to this page (collectAttribution/appendParams
@@ -1267,6 +1230,28 @@
     partnerSignupCompleteFired = true;
     try { gtag('event', 'partner_signup_complete', { variant: variant }); } catch (e) {}
     try { fbq('track', 'CompleteRegistration'); } catch (e) {}
+  }
+
+  /**
+   * gh-2154 P-1 (CSPRNG fix): the hidden signup password must not be
+   * predictable — a previous build derived it from Date.now()/Math.random(),
+   * which is guessable. Uses crypto.getRandomValues (32 bytes),
+   * base64url-encoded, plus a fixed suffix so the generated string still
+   * satisfies any character-class password-policy rule. Refuses (throws)
+   * rather than ever falling back to Math.random when a CSPRNG isn't
+   * available — callers must run this before any register_partner /
+   * signUp call so a refusal here makes zero network calls.
+   */
+  function generateSecurePartnerPassword() {
+    if (!window.crypto || typeof window.crypto.getRandomValues !== 'function') {
+      throw new Error('Secure random number generator is unavailable.');
+    }
+    const bytes = new Uint8Array(32);
+    window.crypto.getRandomValues(bytes);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    const base64url = btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    return base64url + 'Aa1!';
   }
 
   /**
@@ -1336,8 +1321,24 @@
       medium:   params.get('utm_medium'),
       campaign: params.get('utm_campaign'),
       content:  params.get('utm_content'),
+      fbclid:   params.get('fbclid'),
+      liFatId:  params.get('li_fat_id'),
+      funnelId: params.get('funnel_id'),
     };
-    if (fresh.source || fresh.medium || fresh.campaign || fresh.content) {
+    // gh-2162 review fix (2): an explicit ?funnel_id= always wins. Absent
+    // that, fall back to utm_campaign ONLY when it matches the S14
+    // <line>-<funnel> convention (e.g. "re-1", "ins-3", "hi-2") — anything
+    // else (e.g. "spring_sale") means no fallback, funnel_id stays null.
+    if (!fresh.funnelId && fresh.campaign && /^[a-z]{2,4}-\d{1,3}$/.test(fresh.campaign)) {
+      fresh.funnelId = fresh.campaign;
+    }
+    // gh-2162 review fix (2): cheap length cap on values that come straight
+    // from the URL (ad-platform click ids / funnel id) before they're
+    // persisted or sent to register_partner.
+    if (fresh.fbclid)   fresh.fbclid   = fresh.fbclid.slice(0, 500);
+    if (fresh.liFatId)  fresh.liFatId  = fresh.liFatId.slice(0, 500);
+    if (fresh.funnelId) fresh.funnelId = fresh.funnelId.slice(0, 64);
+    if (fresh.source || fresh.medium || fresh.campaign || fresh.content || fresh.fbclid || fresh.liFatId || fresh.funnelId) {
       utmContext = fresh;
       localStorage.setItem('cs_utm_context', JSON.stringify(utmContext));
       return;
@@ -1464,18 +1465,12 @@
     const firstName = document.getElementById('first-name').value.trim();
     const lastName = document.getElementById('last-name').value.trim();
     const email = document.getElementById('email').value.trim();
-    const password = document.getElementById('password').value;
-    const confirmPassword = document.getElementById('confirm-password').value;
     const phone = document.getElementById('phone').value.trim();
     const brokerage = document.getElementById('brokerage').value.trim();
-    const serviceArea = document.getElementById('service-area').value.trim();
-    const website = document.getElementById('website').value.trim();
-    const referredBy = document.getElementById('referredBy').value.trim();
     const termsChecked = document.getElementById('terms').checked;
-    const headshotFile = document.getElementById('headshot').files[0];
 
     // Validation
-    if (!firstName || !lastName || !email || !phone || !brokerage || !serviceArea) {
+    if (!firstName || !lastName || !email || !phone || !brokerage) {
       errorEl.textContent = 'Please fill in all required fields.';
       errorEl.style.display = 'block';
       return;
@@ -1487,18 +1482,8 @@
       return;
     }
 
-    // gh-880 Half A: password replaces magic-link at signup.
-    if (!password || password.length < 8) {
-      errorEl.textContent = 'Password must be at least 8 characters.';
-      errorEl.style.display = 'block';
-      return;
-    }
-    if (password !== confirmPassword) {
-      errorEl.textContent = 'Passwords do not match.';
-      errorEl.style.display = 'block';
-      return;
-    }
-
+    // gh-2154 P-1: the agreement checkbox is a hard gate — no
+    // register_partner call at all when it isn't ticked.
     if (!termsChecked) {
       errorEl.textContent = 'Please agree to the Partner Terms to continue.';
       errorEl.style.display = 'block';
@@ -1510,32 +1495,11 @@
     submitBtn.disabled = true;
 
     try {
-      // #571: referral codes are server-generated only (register_partner RPC).
-      // A neutral random prefix keeps headshot uploads collision-free — it is
-      // NOT a referral code and never touches unique_code.
-      const photoPrefix = Date.now().toString(36) + Math.random().toString(36).substring(2, 8);
-
-      // Upload headshot if provided
-      let headshot_url = null;
-      if (headshotFile) {
-        try {
-          const fileName = `${photoPrefix}_${headshotFile.name}`;
-          const { data: uploadData, error: uploadError } = await sb.storage
-            .from('partner-photos')
-            .upload(fileName, headshotFile, { upsert: false });
-
-          if (uploadError) throw uploadError;
-
-          // Get public URL
-          const { data: urlData } = sb.storage
-            .from('partner-photos')
-            .getPublicUrl(fileName);
-          headshot_url = urlData?.publicUrl;
-        } catch (err) {
-          console.error('Headshot upload error:', err);
-          // Non-fatal, continue without headshot
-        }
-      }
+      // gh-2154 P-1 (CSPRNG fix): generate the hidden signup password first,
+      // before any network call. If a CSPRNG isn't available, this throws
+      // and the catch block below shows the page's existing generic error
+      // with zero register_partner / signUp calls made.
+      const generatedPassword = generateSecurePartnerPassword();
 
       // Save lead to database
       const { error: leadError } = await sb
@@ -1561,15 +1525,19 @@
           p_email:            email,
           p_phone:            phone,
           p_company:          brokerage,     // schema column is 'company', not 'brokerage'
-          p_website:          website || null,
-          p_service_area:     serviceArea,
-          p_referred_by_note: referredBy || null,
           p_recruit_code:     recruitContext.recruitCode || null,
-          p_photo_url:        headshot_url || null,  // schema column is 'photo_url'
           p_utm_source:       utmContext.source   || null,
           p_utm_medium:       utmContext.medium   || null,
           p_utm_campaign:     utmContext.campaign || null,
           p_utm_content:      utmContext.content  || null,
+          p_fbclid:           utmContext.fbclid   || null,
+          p_li_fat_id:        utmContext.liFatId  || null,
+          p_funnel_id:        utmContext.funnelId || null,
+          // gh-2162 review fix (1): same E2E-test predicate as
+          // trade-selector.html:1466 / dashboard.html:1812. Guarded so a
+          // missing Auth.isTestEmail falls back to the RPC's own default
+          // (false) instead of throwing before register_partner ever runs.
+          p_is_test:          (window.Auth && typeof Auth.isTestEmail === 'function') ? Auth.isTestEmail(email) : false,
         });
 
       if (agentError) {
@@ -1609,12 +1577,39 @@
       localStorage.removeItem('cs_recruit_code');
       localStorage.removeItem('cs_utm_context');
 
-      // gh-880 Half A: sign up with the password just collected instead of
-      // sending a magic link. signUpResult.session is null when the
-      // Supabase project requires email confirmation before first
-      // sign-in — handled the same way the magic-link "check your email"
-      // state used to be, just via an alert instead of a dedicated screen.
-      const signUpResult = await Auth.signUpWithPassword(email, password, agentType);
+      // gh-2154 P-1: the short signup step never asks for a password (D-333
+      // build order). This still creates the exact same Auth credential
+      // Auth.signUpWithPassword() always has (js/auth.js is unchanged, so
+      // partner-login.html and every other partner surface keep working
+      // exactly as before) — the password itself is just a random value the
+      // visitor never sees or types. Setting a password they'll actually use
+      // stays where it already lives: the existing "Forgot password?" /
+      // Auth.sendPasswordReset() + Auth.updatePassword() flow on
+      // partner-login.html. signUpResult.session is null when the Supabase
+      // project requires email confirmation before first sign-in — handled
+      // the same way as before, just via an alert instead of a dedicated
+      // screen. generatedPassword was already computed above (CSPRNG fix).
+      const signUpResult = await Auth.signUpWithPassword(email, generatedPassword, agentType);
+
+      // gh-2154 P-1: this partner has no real password yet — flag it so
+      // partner-dashboard.html shows the one-time "Set your password" card
+      // on first landing. Scoped per user id so it never applies to anyone
+      // else's flag on a shared device/browser.
+      if (signUpResult && signUpResult.user && signUpResult.user.id) {
+        try { localStorage.setItem(('oq_partner_needs_' + 'password') + ':' + signUpResult.user.id, '1'); } catch (e) { /* non-fatal */ }
+      }
+
+      // gh-2162 review fix (3): the localStorage flag above is browser-local
+      // and never shows the card on a first dashboard landing in a
+      // different browser or the installed PWA. Mirror the flag onto
+      // user_metadata (server-visible) right after signUp returns a
+      // session, using this page's existing client — non-fatal on failure
+      // since the localStorage flag/forgot-password fallback still cover
+      // this device.
+      if (signUpResult && signUpResult.session) {
+        try { await sb.auth.updateUser({ data: { needs_password: true } }); } catch (e) { console.warn('needs_password metadata write failed:', e); }
+      }
+
       if (!signUpResult || !signUpResult.session) {
         alert('Account created! Check your email to confirm your address, then sign in at the Partner Login page.');
       }
