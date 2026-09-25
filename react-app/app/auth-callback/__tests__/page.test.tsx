@@ -11,6 +11,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, waitFor } from '@testing-library/react';
+import { LEAD_STORAGE_KEY, LEAD_TTL_MS } from '@/lib/lead-capture';
 
 vi.mock('@/lib/supabase', () => {
   const chain = (result: { data: unknown; error: unknown }) => {
@@ -25,7 +26,7 @@ vi.mock('@/lib/supabase', () => {
   return {
     supabase: {
       auth: { onAuthStateChange: vi.fn() },
-      rpc: vi.fn(() => Promise.resolve({ error: null })),
+      rpc: vi.fn(() => Promise.resolve({ data: true, error: null, status: 200 })),
       from: vi.fn((table: string) => {
         if (table === 'resolved_user_role') {
           return chain({ data: { derived_role: 'homeowner' }, error: null });
@@ -148,6 +149,177 @@ describe('auth-callback page — Google sign_up wiring', () => {
     await waitFor(() => expect(hrefSpy).toHaveBeenCalled());
     expect(maybeFireGoogleSignUp as unknown as Fn).toHaveBeenCalledTimes(1);
   });
+});
+
+describe('auth-callback page — gh-2121/M2: password-path lead link lands here, not get-started', () => {
+  // PR #2163 REVIEW: FAIL fix (comment 5822978578, M2): get-started skips
+  // its own in-page linkPendingLeadOnce() call whenever signUp() already
+  // returned a live session (auto-confirm, production's default), because
+  // the navigation to this page used to cancel that in-flight call. This
+  // is the "still links" half of that negative control — the capture
+  // (written to sessionStorage the same way for every Arm F path, per
+  // lib/lead-capture.ts) survives the navigation and gets linked here,
+  // with nothing racing it, on the very next page load.
+  let hrefSpy: ReturnType<typeof vi.fn>;
+  let originalLocation: PropertyDescriptor | undefined;
+
+  function passwordSession() {
+    return {
+      user: {
+        id: 'u1',
+        email: 'jane@example.com',
+        app_metadata: { provider: 'email' },
+      },
+    };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    sessionStorage.clear();
+    (maybeFireGoogleSignUp as unknown as Fn).mockResolvedValue(true);
+    hrefSpy = vi.fn();
+    originalLocation = Object.getOwnPropertyDescriptor(window, 'location');
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...window.location, hash: '', search: '', set href(v: string) { hrefSpy(v); } },
+    });
+  });
+
+  afterEach(() => {
+    if (originalLocation) Object.defineProperty(window, 'location', originalLocation);
+    sessionStorage.clear();
+  });
+
+  it('links the sessionStorage-captured lead (navigation-cancelled call at get-started notwithstanding) once a session lands here', async () => {
+    sessionStorage.setItem(
+      LEAD_STORAGE_KEY,
+      JSON.stringify({ id: 'lead-from-get-started', exp: Date.now() + LEAD_TTL_MS }),
+    );
+
+    let capturedCallback: ((event: string, session: unknown) => void) | undefined;
+    (supabase.auth.onAuthStateChange as unknown as Fn).mockImplementation((cb) => {
+      capturedCallback = cb;
+      return { data: { subscription: { unsubscribe: vi.fn() } } };
+    });
+
+    render(<AuthCallbackPage />);
+    await waitFor(() => expect(capturedCallback).toBeDefined());
+
+    capturedCallback?.('SIGNED_IN', passwordSession());
+
+    await waitFor(() =>
+      expect(supabase.rpc as unknown as Fn).toHaveBeenCalledWith('set_lead_converted', {
+        p_lead_id: 'lead-from-get-started',
+      }),
+    );
+    // Consumed: the capture is gone once the RPC has resolved, matching
+    // lib/lead-capture.ts's own "clear only on a definitive answer" test.
+    await waitFor(() => expect(sessionStorage.getItem(LEAD_STORAGE_KEY)).toBeNull());
+  });
+
+  it('negative control: no captured lead in sessionStorage -> set_lead_converted is never called', async () => {
+    let capturedCallback: ((event: string, session: unknown) => void) | undefined;
+    (supabase.auth.onAuthStateChange as unknown as Fn).mockImplementation((cb) => {
+      capturedCallback = cb;
+      return { data: { subscription: { unsubscribe: vi.fn() } } };
+    });
+
+    render(<AuthCallbackPage />);
+    await waitFor(() => expect(capturedCallback).toBeDefined());
+
+    capturedCallback?.('SIGNED_IN', passwordSession());
+
+    await waitFor(() => expect(hrefSpy).toHaveBeenCalled());
+    expect(supabase.rpc as unknown as Fn).not.toHaveBeenCalledWith(
+      'set_lead_converted',
+      expect.anything(),
+    );
+  });
+});
+
+describe('auth-callback page — gh-2121/M3: slow link call is not cancelled by navigation', () => {
+  // PR #2163 REVIEW: FAIL (M3, comment 5823511418): linkPendingLeadOnce()
+  // used to be fire-and-forget here, started and then immediately raced by
+  // window.location.href once role resolution finished. This proves the
+  // fix: a link RPC slower than the rest of the page (1.5s, per the M3
+  // ask) is awaited to completion (in parallel with recordFirstTouch)
+  // BEFORE the redirect fires, so the lead ends up linked, not lost.
+  let hrefSpy: ReturnType<typeof vi.fn>;
+  let originalLocation: PropertyDescriptor | undefined;
+
+  function passwordSession() {
+    return {
+      user: { id: 'u1', email: 'jane@example.com', app_metadata: { provider: 'email' } },
+    };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    sessionStorage.clear();
+    (maybeFireGoogleSignUp as unknown as Fn).mockResolvedValue(true);
+    hrefSpy = vi.fn();
+    originalLocation = Object.getOwnPropertyDescriptor(window, 'location');
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...window.location, hash: '', search: '', set href(v: string) { hrefSpy(v); } },
+    });
+  });
+
+  afterEach(() => {
+    if (originalLocation) Object.defineProperty(window, 'location', originalLocation);
+    sessionStorage.clear();
+    // vi.clearAllMocks() (run in the next test's beforeEach) resets calls
+    // but NOT an implementation installed via mockImplementation — restore
+    // the fast default here so later describe blocks in this file (which
+    // also exercise supabase.rpc via recordFirstTouch) are not left waiting
+    // on this test's 1.5s delay.
+    (supabase.rpc as unknown as Fn).mockImplementation(() =>
+      Promise.resolve({ data: true, error: null, status: 200 }),
+    );
+  });
+
+  it(
+    'a 1.5s link RPC is awaited to completion before the redirect fires, and the lead ends up linked',
+    async () => {
+      sessionStorage.setItem(
+        LEAD_STORAGE_KEY,
+        JSON.stringify({ id: 'lead-slow', exp: Date.now() + LEAD_TTL_MS }),
+      );
+
+      (supabase.rpc as unknown as Fn).mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            setTimeout(() => resolve({ data: true, error: null, status: 200 }), 1500);
+          }),
+      );
+
+      let capturedCallback: ((event: string, session: unknown) => void) | undefined;
+      (supabase.auth.onAuthStateChange as unknown as Fn).mockImplementation((cb) => {
+        capturedCallback = cb;
+        return { data: { subscription: { unsubscribe: vi.fn() } } };
+      });
+
+      render(<AuthCallbackPage />);
+      await waitFor(() => expect(capturedCallback).toBeDefined());
+
+      capturedCallback?.('SIGNED_IN', passwordSession());
+
+      // The redirect must not fire before the 1.5s RPC has had a real
+      // chance to settle -- proves the navigation is not racing/cancelling
+      // the call the way it did pre-M3.
+      await new Promise((r) => setTimeout(r, 300));
+      expect(hrefSpy).not.toHaveBeenCalled();
+
+      await waitFor(() => expect(hrefSpy).toHaveBeenCalled(), { timeout: 3000 });
+      expect(supabase.rpc as unknown as Fn).toHaveBeenCalledWith('set_lead_converted', {
+        p_lead_id: 'lead-slow',
+      });
+      // Linked, not lost: the capture is consumed because a definitive
+      // (200) answer did arrive within linkPendingLeadOnce's bound.
+      expect(sessionStorage.getItem(LEAD_STORAGE_KEY)).toBeNull();
+    },
+    8000,
+  );
 });
 
 describe('auth-callback page — gh-1901 Option 2: Google name backfill', () => {
