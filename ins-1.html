@@ -32,34 +32,6 @@
   } catch (e) { /* URL API unavailable: prefill simply won't run this load */ }
 })();
 </script>
-<!-- Sentry Error Monitoring -->
-<script
-  src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
-  crossorigin="anonymous"
-></script>
-<script>
-  Sentry.onLoad(function() {
-    Sentry.init({
-      environment: window.location.hostname.includes("staging") ? "staging" : "production",
-      // gh-439: drop phantom events from non-http(s) preview contexts (data:/file:/blob:
-      // URLs -- e.g. Claude's HTML preview renders pages via data: URIs; relative scripts
-      // like js/auth.js then fail and report noise such as "Auth is not defined").
-      denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
-      beforeSend: function (event) {
-        var proto = window.location.protocol;
-        if (proto !== "http:" && proto !== "https:") return null;
-        var req = event.request && event.request.url;
-        if (req && /^(data|file|blob):/.test(req)) return null;
-        return event;
-      }
-    });
-  });
-</script>
-<!-- Coming-soon gate — flip CONFIG.HOMEOWNER_LAUNCH_ENABLED=true in js/config.js to remove -->
-<script src="js/cookie-storage.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js" integrity="sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz" crossorigin="anonymous"></script>
-<script src="js/config.js"></script>
-<script>(function(){if(typeof CONFIG!=='undefined'&&!CONFIG.HOMEOWNER_LAUNCH_ENABLED){window.location.replace('/coming-soon.html?from=ins-1&persona=partner');}})()</script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
@@ -73,21 +45,103 @@
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="Otter Quotes">
     <meta property="og:image" content="https://otterquote.com/img/otter-logo.svg">
+    <!-- Microsoft Clarity (wwr7qlk8g5) is loaded by /js/ga-gate.js, behind the same production-host gate as GA4 (gh-1619). Do not add a per-page loader. -->
 
-    <!-- Google Analytics -->
-    <script src="/js/ga-gate.js"></script>
-<script src="/js/meta-pixel-gate.js"></script>
-    <script>gtag('config', 'G-D1Y1TLGEFY');</script>
-<!-- Microsoft Clarity (wwr7qlk8g5) is loaded by /js/ga-gate.js, behind the same production-host gate as GA4 (gh-1619). Do not add a per-page loader. -->
+    <!-- gh-2150/gh-2151 (S05 perf, k70-w11-s05perf): Sentry, cookie-storage.js,
+         the Supabase UMD library, config.js, the coming-soon launch gate,
+         ga-gate.js, meta-pixel-gate.js and the gtag('config',...) call all
+         moved to the end of <body>, immediately before js/auth.js -- in the
+         SAME relative order they always ran in, so every dependency
+         (config.js reading window.OtterQuoteCookieStorage, the gate reading
+         CONFIG synchronously right after config.js, gtag('config',...)
+         reading window.gtag right after ga-gate.js) still executes in the
+         identical sequence it always has. The lead-param-strip script
+         above stays first, unmoved -- it must run before any analytics
+         loader per this file's own opening comment, and moving the
+         loaders even later only strengthens that, never weakens it. These
+         stop being render-blocking script tags in the head simply by no
+         longer being in the head at all: by the time the parser reaches
+         the end of the body, the hero/form content above has already been
+         parsed and can paint. The Supabase UMD library is changed further
+         still: it is not requested at all from this static markup any
+         more -- see loadSupabaseBundle() in this page's own script at the
+         bottom of the body for the lazy-load-on-interaction mechanism and
+         why. -->
 
-    <!-- Google Fonts -->
+    <!-- Google Fonts -- preload + swap-on-load, same pattern already
+         proven on start.html (gh-2121/PR #2183 round 2), instead of a
+         blocking <link rel="stylesheet">, plus a literal <noscript>
+         fallback for JS-off visitors. -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <!-- Stylesheets -->
-    <link rel="stylesheet" href="css/design-system.css">
-    <link rel="stylesheet" href="css/nav.css">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap">
+    <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+    <noscript><link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet"></noscript>
+
+    <!-- Stylesheets -- css/design-system.css + css/nav.css, the same
+         preload+swap-on-load pattern gh-2121 (PR #2183) proved out for
+         start.html's Arm F, as plain literal <link rel="preload"> markup:
+         this page has exactly one variant of itself, so there is no
+         per-arm branch to make, and a literal preload link is visible to
+         the browser's preload scanner from the start of the document
+         (PR #2183's own body text: a document.write-inserted resource is
+         not, until the parser physically reaches that call). The
+         <noscript> fallback is real, literal markup, so a JS-off browser
+         reaches it unconditionally -- PR #2183's M1 fix is exactly why a
+         document.write-built noscript block would be wrong (invisible
+         with JS off). -->
+    <link rel="preload" as="style" href="css/design-system.css" onload="this.onload=null;this.rel='stylesheet'">
+    <link rel="preload" as="style" href="css/nav.css" onload="this.onload=null;this.rel='stylesheet'">
+    <noscript><link rel="stylesheet" href="css/design-system.css"><link rel="stylesheet" href="css/nav.css"></noscript>
 
     <style>
+        /* gh-2150/gh-2151 (S05 perf, k70-w11-s05perf): verbatim subset of
+           css/design-system.css's :root tokens + reset + .btn family,
+           copied into this page's own (pre-existing) STYLE tag so it
+           renders correctly during the async window before design-
+           system.css/nav.css finish loading (see the comment above the
+           <link rel="preload"> tags in <head>). Same technique gh-2121
+           (PR #2183) used for start.html's Arm F -- identical values to
+           the real stylesheet, so the async swap is a no-op once it lands
+           instead of an unstyled-then-restyled flash. Unlike re-1.html,
+           this page's own .btn/.btn:disabled rule below does NOT define
+           .btn-primary/.btn-lg/.btn-full (background/padding/font-size) --
+           those come from design-system.css, so the hero CTA and submit
+           button need this subset too, not just the tokens. This page's
+           OWN :root override two rules below still wins for navy/amber/
+           slate/etc (later same-specificity rule), since those exact
+           property names are intentionally NOT repeated here; --font-body
+           and the rest of the token set below are genuinely missing from
+           that override and would otherwise be undefined until design-
+           system.css loads. */
+        :root {
+            --mid: #2A3F5C;
+            --amber-2: #A85C00; --amber-light: #FAC775; --amber-glow: rgba(224,123,0,0.15);
+            --dark-gray: #3D4F60; --blue: #3B82F6; --blue-light: #DBEAFE; --red-light: #FEE2E2;
+            --font-body: 'Rubik', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            --font-heading: 'Rubik', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            --font-mono: 'Fira Code', 'Consolas', 'Courier New', monospace;
+            --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 20px; --sp-6: 24px; --sp-8: 32px; --sp-10: 40px; --sp-12: 48px; --sp-16: 64px; --sp-20: 80px; --sp-24: 96px;
+            --radius-sm: 6px; --radius-md: 10px; --radius-lg: 16px; --radius-xl: 24px; --radius-full: 9999px;
+            --shadow-sm: 0 1px 2px rgba(0,0,0,0.2); --shadow-md: 0 4px 12px rgba(0,0,0,0.25); --shadow-lg: 0 8px 32px rgba(0,0,0,0.3); --shadow-glow: 0 0 24px rgba(245,158,11,0.2);
+            --ease: cubic-bezier(0.4, 0, 0.2, 1); --duration: 0.2s;
+        }
+        *, *::before, *::after { box-sizing: border-box; }
+        html { scroll-behavior: smooth; -webkit-font-smoothing: antialiased; }
+        h1, h2, h3, h4, h5, h6 { font-family: var(--font-heading); line-height: 1.2; font-weight: 700; color: #0D1B2E; }
+        h1 { font-size: clamp(2rem, 5vw, 3.5rem); font-weight: 700; }
+        p { line-height: 1.7; color: var(--slate); }
+        a { color: var(--amber); text-decoration: none; transition: color var(--duration) var(--ease); }
+        a:hover { color: var(--amber-2); }
+        .btn {
+            display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-2);
+            font-size: 1rem; padding: var(--sp-3) var(--sp-6); line-height: 1.4;
+        }
+        .btn-primary { background: #E07B00; color: #0D1B2E; }
+        .btn-primary:hover { background: #A85C00; color: #0D1B2E; transform: translateY(-1px); box-shadow: var(--shadow-glow); }
+        .btn-lg { font-size: 1.125rem; padding: var(--sp-4) var(--sp-8); }
+        .btn-full { width: 100%; }
+
         /* Override with design system colors */
         :root {
             --navy:       #0D1B2E;
@@ -721,6 +775,47 @@
 
 <footer id="site-footer" data-skip-nav="true"></footer>
 
+    <!-- gh-2150/gh-2151 (S05 perf, k70-w11-s05perf): relocated from <head>
+         -- see the comment above the <style> tag in <head> for why (render-
+         blocking scripts moved off the critical path, same relative order
+         preserved). The Supabase UMD script tag that used to sit between
+         cookie-storage.js and config.js is NOT relocated here -- it is not
+         requested at all until loadSupabaseBundle() below injects it on
+         first interaction with #insuranceAgentForm (focus/touch/submit).
+         config.js's own whenReady/poll mechanism (js/config.js) already
+         tolerates the Supabase library arriving late; that is what makes
+         the lazy-load safe here. -->
+    <!-- Sentry Error Monitoring -->
+    <script
+      src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
+      crossorigin="anonymous"
+    ></script>
+    <script>
+      Sentry.onLoad(function() {
+        Sentry.init({
+          environment: window.location.hostname.includes("staging") ? "staging" : "production",
+          // gh-439: drop phantom events from non-http(s) preview contexts (data:/file:/blob:
+          // URLs -- e.g. Claude's HTML preview renders pages via data: URIs; relative scripts
+          // like js/auth.js then fail and report noise such as "Auth is not defined").
+          denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+          beforeSend: function (event) {
+            var proto = window.location.protocol;
+            if (proto !== "http:" && proto !== "https:") return null;
+            var req = event.request && event.request.url;
+            if (req && /^(data|file|blob):/.test(req)) return null;
+            return event;
+          }
+        });
+      });
+    </script>
+    <!-- Coming-soon gate — flip CONFIG.HOMEOWNER_LAUNCH_ENABLED=true in js/config.js to remove -->
+    <script src="js/cookie-storage.js"></script>
+    <script src="js/config.js"></script>
+    <script>(function(){if(typeof CONFIG!=='undefined'&&!CONFIG.HOMEOWNER_LAUNCH_ENABLED){window.location.replace('/coming-soon.html?from=ins-1&persona=partner');}})()</script>
+    <script src="/js/ga-gate.js"></script>
+    <script src="/js/meta-pixel-gate.js"></script>
+    <script>gtag('config', 'G-D1Y1TLGEFY');</script>
+
     <!-- Scripts -->
     <script src="js/auth.js"></script>
     <script src="js/nav.js"></script>
@@ -743,6 +838,60 @@
         // gh-2154 P-1: extended with fbclid/li_fat_id/funnel_id (P-2 added the
         // matching register_partner params) alongside the existing utm_* set.
         let utmContext = { source: null, medium: null, campaign: null, content: null, fbclid: null, liFatId: null, funnelId: null };
+
+        // gh-2150/gh-2151 (S05 perf, k70-w11-s05perf): the Supabase UMD
+        // library is no longer requested by any script tag with a src
+        // attribute in the page's static markup -- it is fetched here, on
+        // demand, the first time the visitor interacts with
+        // #insuranceAgentForm (the SAME field-focus wiring that already
+        // fires partner_form_start below, plus touchstart), or immediately
+        // on submit if that's the very first interaction. Idempotent --
+        // every caller gets the SAME promise. config.js's own
+        // whenReady()/poll loop (js/config.js) already tolerates this
+        // library arriving late; that pre-existing resilience is what
+        // makes deferring the request itself safe. Either window.supabase
+        // already existing, or CONFIG.whenReady already resolving
+        // SYNCHRONOUSLY (config.js's real _oqCreateSupabaseClient() only
+        // calls its whenReady callback synchronously once `sb` already
+        // exists), means the client is already live and short-circuits to
+        // an immediately-resolved promise, never a duplicate request.
+        var __oqSupabaseLoadPromise = null;
+        function loadSupabaseBundle() {
+            if (__oqSupabaseLoadPromise) return __oqSupabaseLoadPromise;
+            __oqSupabaseLoadPromise = new Promise(function (resolve, reject) {
+                var alreadyReady = false;
+                try {
+                    if (typeof CONFIG !== 'undefined' && CONFIG.whenReady) {
+                        CONFIG.whenReady(function (readySb) { if (readySb) alreadyReady = true; });
+                    }
+                } catch (e) { /* CONFIG not ready yet -- fall through to a real load */ }
+                if (alreadyReady || window.supabase) { resolve(); return; }
+                var s = document.createElement('script');
+                s.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js';
+                s.integrity = 'sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz';
+                s.crossOrigin = 'anonymous';
+                s.onload = function () { resolve(); };
+                s.onerror = function () { reject(new Error('Supabase library failed to load')); };
+                document.head.appendChild(s);
+            });
+            return __oqSupabaseLoadPromise;
+        }
+        // Awaits the bundle AND config.js's own client construction
+        // (whenReady), so a caller gets back the real, ready-to-use
+        // client, never a raw "the script tag loaded" signal that races
+        // config.js's own poll.
+        function ensureSb() {
+            return loadSupabaseBundle().then(function () {
+                return new Promise(function (resolve) { CONFIG.whenReady(resolve); });
+            });
+        }
+        // gh-1994's own router-prefill script (bottom of body, after this
+        // one) needs to trigger this same lazy load when window.__oqRouterLeadId
+        // is set -- a real Supabase dependency that has nothing to do with
+        // #insuranceAgentForm focus/touch, so it can't just piggyback on
+        // firePartnerFormStart above. Exposed globally since that script is
+        // its own separate <script> tag, outside this IIFE's scope.
+        window.__oqLoadSupabaseBundle = loadSupabaseBundle;
 
         // gh-2078: read the router-arm variant start.html forwards as
         // `?v=<arm>` (collectAttribution/redirectTo) so
@@ -934,6 +1083,40 @@
             });
         } catch (e) {}
 
+        // gh-2150/gh-2151 (S05 perf, k70-w11-s05perf): a cheap, sb-free peek
+        // at whatever js/auth.js's own getSession() fast path
+        // (js/auth.js:207-279) would itself check first -- a stored auth
+        // token, or an auth callback still in the URL. Auth.hasPartnerSession()
+        // -> getUser() -> getSession() otherwise unconditionally awaits
+        // CONFIG.whenReady() BEFORE it ever looks at storage, and with the
+        // Supabase library no longer requested up front, that wait would
+        // only resolve once loadSupabaseBundle() actually runs -- so an
+        // anonymous visitor (the overwhelming majority, and every
+        // Lighthouse run) must never reach this call at all, or the "load
+        // the Supabase bundle only on interaction" budget above is
+        // defeated by this page-load-time check alone. When there IS local
+        // evidence of a session, this loads the bundle immediately and
+        // awaits it -- a returning signed-in partner is exactly the case
+        // worth paying for eagerly.
+        function hasStoredPartnerSessionEvidence() {
+            try {
+                if ((window.location.hash || '').includes('access_token')) return true;
+                if ((window.location.search || '').includes('code=')) return true;
+                var key = (typeof window.OTTERQUOTE_AUTH_STORAGE_KEY === 'string' && window.OTTERQUOTE_AUTH_STORAGE_KEY) || null;
+                if (!key) {
+                    var m = (CONFIG && CONFIG.SUPABASE_URL || '').match(/https:\/\/([^.]+)/);
+                    key = m ? ('sb-' + m[1] + '-auth-token') : null;
+                }
+                if (!key) return false;
+                var raw = window.OtterQuoteCookieStorage
+                    ? window.OtterQuoteCookieStorage.getItem(key)
+                    : window.localStorage.getItem(key);
+                if (!raw) return false;
+                var parsed = JSON.parse(raw);
+                return !!(parsed && (parsed.access_token || parsed.refresh_token));
+            } catch (e) { return false; }
+        }
+
         // #632: signed-in partners land on the approved confirmation instead
         // of re-seeing the signup form OR the dashboard (gh-2151 REVIEW FAIL
         // 5836199486 / LEGAL-READ FAIL 5836215427, S20, DECIDED Ben) - same
@@ -944,6 +1127,16 @@
         (async function redirectSignedInPartner() {
             if (new URLSearchParams(window.location.search).get('stay') === '1') return;
             if ((document.referrer || '').includes('/partner-dashboard.html')) return;
+            // Only pre-warm the Supabase bundle when there's real local
+            // evidence of a session -- Auth.hasPartnerSession() below is
+            // still always called (unconditionally, unchanged), so a
+            // session surfaced any other way (e.g. a test double, or a
+            // future non-cookie-based signal) still redirects correctly;
+            // this is purely an optimization so the COMMON case (an
+            // anonymous visitor, no evidence at all) never pays for the
+            // bundle load its own hasPartnerSession() call would otherwise
+            // just sit waiting on.
+            if (hasStoredPartnerSessionEvidence()) { await ensureSb(); }
             // gh-880 Half A: shared Auth.hasPartnerSession() helper instead of
             // a locally-declared partnerRoles array (same consolidation
             // gh-851 did for PARTNER_ROLES itself).
@@ -1037,9 +1230,15 @@
                     funnel_id: utmContext.funnelId,
                 });
             } catch (e) {}
+            // gh-2150/gh-2151 (S05 perf, k70-w11-s05perf): first real
+            // engagement with the form is exactly the signal
+            // loadSupabaseBundle() waits for too -- piggyback on the same
+            // one-shot field-focus wiring instead of a second listener set.
+            loadSupabaseBundle();
         }
         [fullNameInput, phoneInput, emailInput, companyInput].forEach(function (input) {
             if (input) input.addEventListener('focus', firePartnerFormStart, { once: true });
+            if (input) input.addEventListener('touchstart', firePartnerFormStart, { once: true, passive: true });
         });
 
         function splitFullName(fullName) {
@@ -1161,6 +1360,20 @@
                 // register_partner / signUp calls made.
                 const generatedPassword = generateSecurePartnerPassword();
 
+                // gh-2150/gh-2151 (S05 perf, k70-w11-s05perf): the Supabase
+                // bundle is only requested lazily (see loadSupabaseBundle()
+                // above) -- if this submit is the visitor's very first
+                // interaction with the form (e.g. autofill + Enter, no
+                // prior focus/touch), the library may not have even started
+                // loading yet. Awaiting ensureSb() here means the request
+                // below never fires against an undefined/half-initialized
+                // client -- the submission waits for the real thing rather
+                // than being lost. Once a focus/touch already triggered the
+                // load earlier, this resolves immediately (loadSupabaseBundle()'s
+                // promise is cached) and costs nothing.
+                const readySb = await ensureSb();
+                if (!readySb) throw new Error('Supabase failed to initialize');
+
                 // #571 / v95: server-side register_partner RPC. referral_agents
                 // has no anon SELECT policy, so a direct .insert().select() can
                 // never read the trigger-generated code back. The SECURITY
@@ -1169,7 +1382,7 @@
                 // server-side (D-143), and returns {id, unique_code,
                 // recruit_code}. Client-side code generation is gone — codes
                 // are server-generated only.
-                const { data: agentData, error: agentError } = await sb
+                const { data: agentData, error: agentError } = await readySb
                     .rpc('register_partner', {
                         p_agent_type:       agentType,
                         p_first_name:       firstName,
@@ -1243,7 +1456,7 @@
                 // set-password card. Non-fatal — the localStorage flag and
                 // the forgot-password fallback still cover this device.
                 if (signUpResult && signUpResult.session) {
-                    try { await sb.auth.updateUser({ data: { needs_password: true } }); } catch (e) { console.warn('needs_password metadata write failed:', e); }
+                    try { await readySb.auth.updateUser({ data: { needs_password: true } }); } catch (e) { console.warn('needs_password metadata write failed:', e); }
                 }
 
                 gtag('event', 'partner_signup', {
@@ -1315,20 +1528,35 @@
   try {
     var leadId = window.__oqRouterLeadId;
     if (!leadId) return;
-    if (typeof supabase === 'undefined' || typeof CONFIG === 'undefined' ||
-        !CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_ANON) return;
-    var _sb = window.sb || supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
-    _sb.rpc('get_lead_prefill', { p_lead_id: leadId }).then(function (res) {
-      var row = res && res.data && res.data[0];
-      if (!row) return; // expired, unknown id, or migration not applied yet
-      var setVal = function (id, val) {
-        if (!val) return;
-        var el = document.getElementById(id);
-        if (el && !el.value) el.value = val;
-      };
-      setVal('fullName', row.name);
-      setVal('email', row.email);
-      setVal('phone', row.phone);
+    // gh-2150/gh-2151 (S05 perf, k70-w11-s05perf): the Supabase UMD library
+    // is no longer requested up front (see loadSupabaseBundle() earlier in
+    // <body>), so `supabase` would otherwise always read 'undefined' here
+    // on a normal first load and this prefill would silently no-op every
+    // time, not just on the pre-existing failure modes the comment above
+    // already documents. A `?lead=` visit is exactly the case worth
+    // loading the bundle for eagerly, independent of any focus/touch on
+    // the form -- window.__oqLoadSupabaseBundle is the same loader
+    // #insuranceAgentForm's own focus/touch/submit handling uses, exposed
+    // globally for this separate script tag.
+    var loadPromise = (typeof window.__oqLoadSupabaseBundle === 'function')
+      ? window.__oqLoadSupabaseBundle()
+      : Promise.resolve();
+    loadPromise.then(function () {
+      if (typeof supabase === 'undefined' || typeof CONFIG === 'undefined' ||
+          !CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_ANON) return;
+      var _sb = window.sb || supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
+      _sb.rpc('get_lead_prefill', { p_lead_id: leadId }).then(function (res) {
+        var row = res && res.data && res.data[0];
+        if (!row) return; // expired, unknown id, or migration not applied yet
+        var setVal = function (id, val) {
+          if (!val) return;
+          var el = document.getElementById(id);
+          if (el && !el.value) el.value = val;
+        };
+        setVal('fullName', row.name);
+        setVal('email', row.email);
+        setVal('phone', row.phone);
+      }).catch(function () { /* gh-1994 prefill is a nicety, never block signup */ });
     }).catch(function () { /* gh-1994 prefill is a nicety, never block signup */ });
   } catch (e) { /* gh-1994 prefill is a nicety, never block signup */ }
 })();
