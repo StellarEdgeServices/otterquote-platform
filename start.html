@@ -653,14 +653,106 @@
      restyled swap itself is a layout shift. Same class of mistake as fix
      round 3's ga-gate.js/meta-pixel-gate.js defer regression earlier on
      this issue -- reverted for the same reason: measured, not assumed.
-     Back to plain blocking stylesheet links; item 4 needs a different
-     lever (actually reducing design-system.css's own size/specificity,
-     or a real above-the-fold-only critical-CSS extraction tool) that this
-     PR does not attempt. -->
-<link rel="stylesheet" href="css/design-system.css">
-<link rel="stylesheet" href="css/nav.css">
+     Arms A-E and a bare /start keep the plain blocking links below,
+     UNCHANGED from that revert.
+
+     gh-2121 (LRS S05 round 2, Ben, deploy-preview measurement
+     ceo69-lcp-measure-20260925.md): render-blocking-insight on PR #2183's
+     own preview still showed css/nav.css (~658ms) and css/design-system.css
+     (~276ms) as the dominant remaining cost gating Arm F's LCP, now that
+     js/agent-types.js is off the critical path. Item 4's 2026 revert above
+     is why this is NOT the same blanket swap-on-load change repeated: (a)
+     it is scoped to Arm F ONLY via the same synchronous data-oq-start-arm
+     read used everywhere else on this page -- arms A-E and a bare /start
+     get byte-identical blocking <link> tags to before, so item 4's
+     measured TBT/CLS regression cannot recur for them; (b) unlike item 4's
+     attempt, Arm F's own step-1 screen is now FULLY statically rendered
+     (the #routerFRoot SSR markup a few hundred lines below) using ONLY
+     rules already living in this page's own inline STYLE block below,
+     never a design-system.css/nav.css class -- the one gap was the CSS
+     custom properties those rules read (--navy/--white/--slate/--amber/
+     --sp-*/--radius-*/--font-body) and the box-model reset design-system.css
+     normally supplies (without it, browser-default h1/p margins would
+     shift the step-1 screen down until the swap completes -- exactly item
+     4's "unstyled-then-restyled" CLS mechanism). The inline critical-CSS
+     block immediately below supplies just those two things (:root tokens +
+     a universal box-sizing/margin/padding reset, verbatim values copied
+     from css/design-system.css, so there is nothing for the async swap to
+     visibly change once it lands) -- not the router-card/button subset
+     item 4 tried and which still left gaps. #site-header/#site-footer stay
+     display:none for Arm F regardless of nav.css's load state (that rule
+     already lives in this same inline STYLE block, unconditionally, see
+     below), so nav.css contributes nothing to Arm F's visible first screen
+     either way. Measured before/after in the PR body (screenshot diff +
+     Lighthouse + CLS), not assumed.
+
+     gh-2121 round 3 (M1, review 5834623268): round 2 put the JS-off
+     fallback <noscript> INSIDE the document.write() string below, which is
+     never reached without JS -- so with JS off, EVERY arm (Arm F, arms A-E,
+     and a bare /start alike) got no stylesheet at all, not just Arm F. Fix:
+     a real, literal <noscript> block right below, in the actual page
+     markup, unconditional for every arm -- the one thing a no-JS browser
+     always parses regardless of data-oq-start-arm. A JS-enabled browser
+     never applies a <noscript> block's contents as real elements while
+     scripting is enabled, so this does not create a second, duplicate
+     stylesheet request for any arm; the <script> block below still runs
+     and is still the ONLY stylesheet loader when JS is on. -->
+<noscript><link rel="stylesheet" href="css/design-system.css"><link rel="stylesheet" href="css/nav.css"></noscript>
+<script>
+  // gh-2121 round 2: Arm F only gets the non-blocking preload+swap pattern;
+  // every other arm (and a bare /start) gets the exact same blocking
+  // <link> tags as before, via document.write in the same synchronous
+  // position they always occupied -- byte-identical DOM/request order for
+  // A-E, so item 4's measured regression above cannot recur for them.
+  // gh-2121 round 3 (M1): the JS-off fallback is no longer written here --
+  // see the literal <noscript> block immediately above this <script> tag.
+  (function () {
+    if (document.documentElement.getAttribute('data-oq-start-arm') === 'f') {
+      document.write('<link rel="preload" as="style" href="css/design-system.css" onload="this.onload=null;this.rel=\'stylesheet\'">');
+      document.write('<link rel="preload" as="style" href="css/nav.css" onload="this.onload=null;this.rel=\'stylesheet\'">');
+    } else {
+      document.write('<link rel="stylesheet" href="css/design-system.css">');
+      document.write('<link rel="stylesheet" href="css/nav.css">');
+    }
+  })();
+</script>
 
 <style>
+  /* gh-2121 round 2: verbatim subset of css/design-system.css's :root
+     tokens + universal reset, moved into this same (pre-existing) STYLE tag
+     block rather than a separate earlier one -- tests/gh2122-arm-f.mjs and
+     other tooling extract this page's CSS as "first opening STYLE tag to
+     first closing STYLE tag", and a second, earlier STYLE tag would have
+     silently cut every rule below it (including every #routerFRoot rule) out of that
+     extraction. Always present (all arms), not just Arm F -- identical
+     values to the full stylesheet, so arms A-E (which still load
+     design-system.css/nav.css blocking, see the <script> above) render
+     exactly as before; this only matters for Arm F's async window. See
+     that <script> block's own comment for why each piece is here. */
+  :root {
+    --navy: #0D1B2E; --navy-2: #162338; --navy-3: #1C2E45; --mid: #2A3F5C;
+    --amber: #E07B00; --amber-2: #A85C00; --amber-light: #FAC775; --amber-glow: rgba(224,123,0,0.15);
+    --white: #FFFFFF; --offwhite: #F8F9FC; --light: #E2E8F0; --slate: #8A9BAB; --gray: #64748B; --dark-gray: #3D4F60;
+    --green: #10B981; --green-light: #D1FAE5; --red: #EF4444; --red-light: #FEE2E2; --blue: #3B82F6; --blue-light: #DBEAFE;
+    --font-body: 'Rubik', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-heading: 'Rubik', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-mono: 'Fira Code', 'Consolas', 'Courier New', monospace;
+    --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 20px; --sp-6: 24px; --sp-8: 32px; --sp-10: 40px; --sp-12: 48px; --sp-16: 64px; --sp-20: 80px; --sp-24: 96px;
+    --radius-sm: 6px; --radius-md: 10px; --radius-lg: 16px; --radius-xl: 24px; --radius-full: 9999px;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.2); --shadow-md: 0 4px 12px rgba(0,0,0,0.25); --shadow-lg: 0 8px 32px rgba(0,0,0,0.3); --shadow-glow: 0 0 24px rgba(245,158,11,0.2);
+    --ease: cubic-bezier(0.4, 0, 0.2, 1); --duration: 0.2s;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; -webkit-font-smoothing: antialiased; }
+  body { font-family: var(--font-body); line-height: 1.6; font-size: 16px; }
+  /* gh-2121 round 3 (should-fix, review 5834623268): css/design-system.css:99
+     sets a line-height on every paragraph element; the round-2 critical-CSS
+     subset copied that same rule's slate text colour, further below, via
+     Arm F's own paragraph styling, but missed this element-level line
+     height, so Arm F's paragraph tags measured 24.32px during the async
+     window vs 25.84px once design-system.css applied -- a ~4.6px
+     CLS-causing shift. Verbatim value, matches design-system.css. */
+  p { line-height: 1.7; }
   body { background-color: var(--navy); }
   main { min-height: calc(100vh - 120px); display: flex; align-items: flex-start; justify-content: center; padding: var(--sp-8) var(--sp-4) var(--sp-16); }
   /* gh-2160 review fix (comment 5818464392, must-fix 3): the -120px here
@@ -767,6 +859,29 @@
      every other Arm-F-only rule above -- arms A-E and a bare /start are
      unaffected, since #step1 IS their intended first screen. */
   html[data-oq-start-arm="f"] #step1 { display: none !important; }
+  /* gh-2121 (LRS S05, ceo69: analytics-blocked mobile LCP/TTI still failed
+     at 3.54s/3.54s median post-#2160 -- lcp-breakdown-insight showed the
+     remaining ~2.2s "element render delay" is the JS chain that has to
+     finish (CSS load -> the whole end-of-body bootstrap IIFE parses/runs
+     -> js/router-variant-f.js is appended -> fetches/executes -> init()
+     calls show('f-funding') -> RENDERERS['f-funding'] finally appends the
+     step-1 <h1> -- Arm F's LCP element) before that <h1> exists in the DOM
+     at all. #routerFRoot below now ships the step-1 markup (h1/subhead/
+     question label/3 funding buttons) statically, byte-identical to what
+     RENDERERS['f-funding'] in js/router-variant-f.js builds (COPY.arm_f_s1_*)
+     -- js/router-variant-f.js's own init() detects it (data-ssr-step) and
+     HYDRATES it (attaches the click handlers, does not rebuild the DOM or
+     change when router_step_view fires) instead of building it from
+     scratch. This CSS rule is what actually reveals it: same belt-and-
+     suspenders idiom as #step1's rule immediately above, keyed off the
+     same synchronously-set data-oq-start-arm attribute, so the h1 can
+     paint the instant design-system.css/nav.css finish loading -- it no
+     longer has to wait for the JS chain above at all. Overrides the
+     `hidden` attribute #routerFRoot ships with (same as #routerCRoot/D/E)
+     so every other arm is unaffected. No copy, layout, tracking-event or
+     consent-text change -- see js/router-variant-f.js's own comment on
+     init()/show() for the hydrate path. */
+  html[data-oq-start-arm="f"] #routerFRoot[hidden] { display: block; }
   .form-group { margin-bottom: var(--sp-4); }
   .form-label { display: block; font-weight: 600; color: var(--white); margin-bottom: var(--sp-1); font-size: 0.95rem; }
   .form-label.required::after { content: ' *'; color: var(--red); }
@@ -920,13 +1035,72 @@
     <div id="routerERoot" hidden></div>
 
     <!-- ═══════════ Variant F — homeowner short path (gh-2122, D-332) ═══════════ -->
-    <!-- Empty by design, same convention as #routerCRoot/#routerDRoot/
-         #routerERoot above: js/router-variant-f.js owns all rendering inside
-         this element once loaded. Hidden by default; unhidden only inside this
-         file's own variant === 'f' branch. -->
-    <div id="routerFRoot" hidden></div>
+    <!-- gh-2121 (LRS S05, ceo69, HO-1 S05 LCP fix): NOT empty any more, unlike
+         #routerCRoot/#routerDRoot/#routerERoot above. This is Arm F's step-1
+         screen (COPY.arm_f_s1_headline/s1_subhead/s1_question_label/the three
+         FUNDING_OPTIONS buttons in js/router-variant-f.js), shipped statically
+         so its <h1> -- Arm F's LCP element -- exists in the DOM and can paint
+         as soon as CSS applies, instead of waiting for js/router-variant-f.js
+         to fetch, execute and build it. `data-ssr-step="f-funding"` is the
+         marker js/router-variant-f.js's own init()/show() check for: it
+         HYDRATES this exact markup (attaches the funding-button click
+         handlers) instead of rebuilding it, and still fires router_step_view
+         at the same point it always did. If COPY.arm_f_s1_* in
+         js/router-variant-f.js ever changes, this markup must change with it
+         (js/router-variant-f.js's own hydrate path falls back to a full
+         rebuild if the option-button count here doesn't match FUNDING_OPTIONS,
+         so a mismatch degrades safely rather than breaking the screen -- but
+         it reintroduces the render-delay this fix removes, so keep them in
+         sync). Still `hidden` by default -- unaffected for every arm except F,
+         which reveals it via the CSS rule right above #step1's own identical
+         belt-and-suspenders rule, both keyed off the same synchronously-set
+         data-oq-start-arm attribute. -->
+    <div id="routerFRoot" hidden data-ssr-step="f-funding">
+      <h1>See if storm damage qualifies your roof for a free assessment.</h1>
+      <p class="router-sub">One quick question, then we'll get your info. Takes under a minute.</p>
+      <p class="router-sub">How will you pay for the repair?</p>
+      <div class="role-options">
+        <button type="button" class="role-option">Insurance claim</button>
+        <button type="button" class="role-option">Paying cash</button>
+        <button type="button" class="role-option">Not sure yet</button>
+      </div>
+    </div>
   </div>
 </main>
+
+<!-- gh-2121 round 3 (M2, review 5834623268): the #routerFRoot buttons just
+     above paint ~0.4s (SSR) but js/router-variant-f.js doesn't hydrate them
+     (attach the real click handlers) until ~1.3s -- 9 of 10 measured
+     first-tap runs landed in that ~0.9s dead window and were silently
+     lost. This runs synchronously right after the SSR markup above, so it
+     attaches BEFORE any user tap can possibly happen, and does exactly one
+     thing: remember the first funding button tapped, by index, in
+     window.__oqEarlyTap. js/router-variant-f.js's hydrateSsrFunding()
+     consumes it -- exactly once, clearing it immediately -- and replays it
+     as one real button.click() through the SAME per-button handler it just
+     wired, so it is one step advance and one router_step_complete, not a
+     separate code path (see that function's own comment). Arm-F-only,
+     no-op if the SSR buttons aren't there (every other arm, JS off, or a
+     COPY/markup mismatch that made router-variant-f.js fall back to a full
+     rebuild instead of hydrating). -->
+<script>
+  (function () {
+    if (document.documentElement.getAttribute('data-oq-start-arm') !== 'f') return;
+    var root = document.getElementById('routerFRoot');
+    if (!root) return;
+    var btns = root.querySelectorAll('.role-option');
+    var recorded = false;
+    for (var i = 0; i < btns.length; i++) {
+      (function (idx, btn) {
+        btn.addEventListener('click', function () {
+          if (recorded) return;
+          recorded = true;
+          window.__oqEarlyTap = { index: idx };
+        });
+      })(i, btns[i]);
+    }
+  })();
+</script>
 
 <!-- gh-2121 (LRS S07): see the header's own data-skip-nav comment above. -->
 <footer id="site-footer"></footer>
@@ -997,8 +1171,30 @@
      /start visit regardless of arm, not just F. Confirmed no other
      AgentTypes.CHOOSER_LABELS read in this codebase runs outside a
      RENDERERS/click-handler callback. Small file (116 lines); the perf
-     cost of keeping it synchronous is not worth risking that regression. -->
-<script src="js/agent-types.js"></script>
+     cost of keeping it synchronous is not worth risking that regression.
+
+     gh-2121 (LRS S05, ceo69 HO-1 S05 LCP fix): Arm F alone now skips this
+     request. js/router-variant-f.js is a self-contained 4-screen flow that
+     never reads window.AgentTypes and never shows #step2a (confirmed: no
+     AgentTypes reference anywhere in js/router-variant-f.js) -- so on Arm F
+     this file has only ever sat in the render-blocking critical path
+     (Lighthouse's render-blocking-insight flagged it, ~300ms, on the
+     analytics-blocked ceo69 trace) for a screen this arm can never reach.
+     renderPartnerIndustries() below already falls back to `{}` when
+     window.AgentTypes is undefined (`(window.AgentTypes && ...) || {}`),
+     so skipping the load changes nothing observable: it builds #step2a's
+     industry buttons with placeholder labels that no Arm F visitor's
+     browser ever paints, exactly as if the request were merely slow. Every
+     other arm gets the identical byte-for-byte request, same URL, no
+     async/defer, via document.write so it stays a parser-inserted
+     synchronous load in the same document position -- ordering relative to
+     the inline script right after (which reads window.AgentTypes at its
+     own top level) is unchanged for A-E. -->
+<script>
+  if (document.documentElement.getAttribute('data-oq-start-arm') !== 'f') {
+    document.write('<script src="js/agent-types.js"><\/script>');
+  }
+</script>
 
 <script>
 (function () {
