@@ -869,7 +869,11 @@
     "partner_agreement_version",
     "partner_agreement_accepted_at",
     "partner_agreement_attestation",
-    "needs_partner_reacceptance"
+    "needs_partner_reacceptance",
+    "fbclid",
+    "li_fat_id",
+    "funnel_id",
+    "app_first_signed_in_launch_at"
   ],
   "referral_network": [
     "id",

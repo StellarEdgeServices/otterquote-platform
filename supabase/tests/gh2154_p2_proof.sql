@@ -386,16 +386,23 @@ begin
     return new;
   end if;
 
-  if (new.fbclid    is distinct from old.fbclid)
-     or (new.li_fat_id is distinct from old.li_fat_id)
-     or (new.funnel_id is distinct from old.funnel_id)
-     or (
-       (new.app_first_signed_in_launch_at is distinct from old.app_first_signed_in_launch_at)
-       and not (
-         current_setting('oq.gh2154_activation_write', true) = '1'
-         and old.app_first_signed_in_launch_at is null
-         and new.app_first_signed_in_launch_at is not null
-       )
+  -- REVIEW FAIL 5819691427 fix (three-valued-logic fail-open): see the
+  -- matching comment in the migration. GUC read coalesced to '' so it is
+  -- never NULL, and the whole allow-clause wrapped in coalesce(..., true)
+  -- so an unexpected NULL fails CLOSED.
+  if coalesce(
+       (new.fbclid    is distinct from old.fbclid)
+       or (new.li_fat_id is distinct from old.li_fat_id)
+       or (new.funnel_id is distinct from old.funnel_id)
+       or (
+         (new.app_first_signed_in_launch_at is distinct from old.app_first_signed_in_launch_at)
+         and not (
+           coalesce(current_setting('oq.gh2154_activation_write', true), '') = '1'
+           and old.app_first_signed_in_launch_at is null
+           and new.app_first_signed_in_launch_at is not null
+         )
+       ),
+       true
      )
   then
     raise exception
@@ -453,15 +460,80 @@ DECLARE
   v_failures2  text[] := '{}';
   v_uid_a      uuid;
   v_uid_d      uuid := gen_random_uuid();
+  v_uid_p      uuid := gen_random_uuid();
   v_caught     boolean;
   v_ts_before  timestamptz;
   v_ts_after   timestamptz;
   v_result     jsonb;
   v_partner_d  referral_agents%ROWTYPE;
+  v_partner_p  referral_agents%ROWTYPE;
   v_wrote_1    boolean;
   v_wrote_2    boolean;
   v_phone_ok   boolean;
+  v_guc_start  text;
+  v_wrote_p    boolean;
+  v_ts_p       timestamptz;
 BEGIN
+  -- (0) REVIEW FAIL 5819691427: precondition + the missing fail-open case,
+  -- placed at the VERY TOP of this section, before any set_config('oq.…')
+  -- or record_partner_app_activation() RPC call in this transaction. The
+  -- guard+RPC just above were CREATE OR REPLACE'd but the RPC has not been
+  -- CALLED yet anywhere in this transaction, and the section-1/section-2
+  -- copy of record_partner_app_activation() (created before the column-lock
+  -- guard existed) never touches this GUC at all -- so this backend
+  -- genuinely has never set oq.gh2154_activation_write. If this assertion
+  -- ever fails, the case below proves nothing, and the run must stop here
+  -- rather than report a false pass.
+  v_guc_start := current_setting('oq.gh2154_activation_write', true);
+  IF v_guc_start IS NOT NULL THEN
+    RAISE EXCEPTION 'GH2154_P2 PRECONDITION FAILED: oq.gh2154_activation_write is already % (not NULL) before any set_config/RPC call in this transaction -- this backend is not fresh, the fail-open case below would prove nothing. Aborting.', quote_literal(v_guc_start);
+  END IF;
+  RAISE NOTICE 'GH2154_P2 PRECONDITION OK: current_setting(''oq.gh2154_activation_write'', true) IS NULL (fresh backend, GUC never touched in this transaction)';
+
+  -- Partner P: a fresh synthetic partner, linked to a real auth.users row,
+  -- on their own UNACTIVATED row (app_first_signed_in_launch_at still NULL).
+  -- register_partner() does not touch oq.gh2154_activation_write, so calling
+  -- it here does not disturb the precondition just proven above.
+  INSERT INTO auth.users (id) VALUES (v_uid_p);
+  v_result := public.register_partner(
+    p_agent_type => 're_agent', p_first_name => 'GH2154', p_last_name => 'ProofP',
+    p_email => 'gh2154-p2-proof-p@example.invalid', p_is_test => true
+  );
+  SELECT * INTO v_partner_p FROM referral_agents WHERE id = (v_result->>'id')::uuid;
+  UPDATE referral_agents SET user_id = v_uid_p WHERE id = v_partner_p.id;
+
+  PERFORM set_config('request.jwt.claim.role', '', true); -- not service_role
+  PERFORM set_config('request.jwt.claim.sub', v_uid_p::text, true);
+
+  -- (0a) direct PATCH, NULL -> a backdated timestamp. Must raise 42501.
+  v_caught := false;
+  BEGIN
+    UPDATE referral_agents SET app_first_signed_in_launch_at = '2024-06-01'::timestamptz WHERE user_id = v_uid_p;
+  EXCEPTION WHEN sqlstate '42501' THEN v_caught := true;
+  END;
+  IF NOT v_caught THEN
+    v_failures2 := array_append(v_failures2, '(0a) FAIL-OPEN HOLE: partner P direct-PATCHed own UNACTIVATED app_first_signed_in_launch_at NULL -> backdated value on a backend where the GUC was never set -- not raised (42501 expected)');
+  END IF;
+
+  -- (0b) direct PATCH, NULL -> a future timestamp. Must also raise 42501.
+  v_caught := false;
+  BEGIN
+    UPDATE referral_agents SET app_first_signed_in_launch_at = (now() + interval '30 days') WHERE user_id = v_uid_p;
+  EXCEPTION WHEN sqlstate '42501' THEN v_caught := true;
+  END;
+  IF NOT v_caught THEN
+    v_failures2 := array_append(v_failures2, '(0b) FAIL-OPEN HOLE: partner P direct-PATCHed own UNACTIVATED app_first_signed_in_launch_at NULL -> future value on a backend where the GUC was never set -- not raised (42501 expected)');
+  END IF;
+
+  -- (0c) after both attacks are blocked, the row is still genuinely
+  -- unactivated, and the legitimate RPC still works: returns true and
+  -- records the real timestamp.
+  v_wrote_p := public.record_partner_app_activation();
+  SELECT app_first_signed_in_launch_at INTO v_ts_p FROM referral_agents WHERE id = v_partner_p.id;
+  IF v_wrote_p IS DISTINCT FROM true OR v_ts_p IS NULL THEN
+    v_failures2 := array_append(v_failures2, '(0c) record_partner_app_activation() did not activate partner P / did not return true after the blocked-PATCH cases -- the legitimate path is broken');
+  END IF;
+
   SELECT user_id INTO v_uid_a FROM referral_agents WHERE email = 'gh2154-p2-proof-a@example.invalid';
   PERFORM set_config('request.jwt.claim.role', '', true); -- not service_role
   PERFORM set_config('request.jwt.claim.sub', v_uid_a::text, true);

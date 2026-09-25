@@ -300,16 +300,36 @@ begin
   -- gh-2154 column lock: attribution can never change post-insert except by
   -- service_role/admin (already returned above); activation timestamp can
   -- only move NULL -> NOT NULL, and only through record_partner_app_activation().
-  if (new.fbclid    is distinct from old.fbclid)
-     or (new.li_fat_id is distinct from old.li_fat_id)
-     or (new.funnel_id is distinct from old.funnel_id)
-     or (
-       (new.app_first_signed_in_launch_at is distinct from old.app_first_signed_in_launch_at)
-       and not (
-         current_setting('oq.gh2154_activation_write', true) = '1'
-         and old.app_first_signed_in_launch_at is null
-         and new.app_first_signed_in_launch_at is not null
-       )
+  --
+  -- REVIEW FAIL 5819691427 (three-valued-logic fail-open): current_setting(x,
+  -- true) returns SQL NULL, not '', on any backend where this GUC has never
+  -- been set in that session/connection -- so `... = '1'` evaluates to NULL,
+  -- `not (NULL and ...)` is NULL, and the whole allow-clause's negation is
+  -- NULL. `if NULL then raise` never raises: plpgsql's IF only branches into
+  -- THEN on a true boolean, so a NULL condition silently falls through as if
+  -- it were false, and a partner on a fresh PostgREST/Supavisor backend
+  -- (which is most of them) could PATCH their own unactivated
+  -- app_first_signed_in_launch_at straight past this guard. Fixed two ways,
+  -- belt and braces, so a NULL here can never again mean "allowed": (1) the
+  -- GUC read itself is coalesced to '' so `= '1'` is always a real boolean,
+  -- never NULL; (2) the entire allow-clause is wrapped in
+  -- coalesce(..., true), so if any future edit reintroduces a NULL-producing
+  -- expression here, the guard fails CLOSED (raises) instead of failing
+  -- open. Proof: supabase/tests/gh2154_p2_proof.sql, top of the column-lock
+  -- section.
+  if coalesce(
+       (new.fbclid    is distinct from old.fbclid)
+       or (new.li_fat_id is distinct from old.li_fat_id)
+       or (new.funnel_id is distinct from old.funnel_id)
+       or (
+         (new.app_first_signed_in_launch_at is distinct from old.app_first_signed_in_launch_at)
+         and not (
+           coalesce(current_setting('oq.gh2154_activation_write', true), '') = '1'
+           and old.app_first_signed_in_launch_at is null
+           and new.app_first_signed_in_launch_at is not null
+         )
+       ),
+       true
      )
   then
     raise exception

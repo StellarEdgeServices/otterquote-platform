@@ -41,28 +41,51 @@ export const metadata: Metadata = {
  * this file avoids by not doing that.
  *
  * Declared globally (root layout, not get-started/page.tsx — Next.js does
- * not support `beforeInteractive` in a non-root page) but scoped to
- * /get-started internally via a pathname check, so it is a no-op on every
- * other route, same posture as GA4Gate's/MetaPixelGate's own path
- * allowlists. window.__oqRouterLeadId (declared in
- * app/types/oq-lead-prefill.d.ts) is read exactly once by
- * get-started/page.tsx's own prefill effect instead of re-parsing
- * location.search, since by the time that effect runs the URL no longer
- * carries `lead`.
+ * not support `beforeInteractive` in a non-root page) but scoped internally
+ * via a pathname allowlist, so it is a no-op on every other route, same
+ * posture as GA4Gate's/MetaPixelGate's own path allowlists.
+ * window.__oqRouterLeadId (declared in app/types/oq-lead-prefill.d.ts)
+ * still carries the id for same-page-load reads (get-started/page.tsx's
+ * prefill effect).
+ *
+ * PR #2163 REVIEW: FAIL (comment 5821864061, M1) fix, 2026-09-24: this used
+ * to run on /get-started only, so it was a no-op on the two pages Arm F's
+ * thank-you CTAs actually deep-link to — app.otterquote.com/help-
+ * measurements?lead=<id> and .../help-estimate?lead=<id>
+ * (js/router-variant-f.js:115-116,592-595) — and `lead` stayed in the
+ * visible URL there while GA4Gate/MetaPixelGate/SentryInitializer mounted
+ * (the gh-2046 exposure again, on the two pages gh-2046 didn't cover). Now
+ * runs on all three landing paths (LEAD_CAPTURE_PATHS, shared with
+ * lib/lead-capture.ts's reader so the two stay in lockstep), and ALSO
+ * persists the id to sessionStorage (LEAD_STORAGE_KEY, with an expiry
+ * marker — LEAD_TTL_MS) so a later page load — after the help page's own
+ * React tree has mounted and window.__oqRouterLeadId from THIS load is
+ * long gone — can still read it (lib/lead-capture.ts's
+ * readPendingLeadId()). The key/TTL literals are duplicated here rather
+ * than imported: this string is emitted as a `beforeInteractive` inline
+ * script, outside the module graph, so it cannot `import` anything.
  */
+const LEAD_STORAGE_KEY = 'oq_pending_lead';
+const LEAD_CAPTURE_PATHS = ['/get-started', '/help-measurements', '/help-estimate'];
+const LEAD_TTL_MS = 30 * 60 * 1000;
+
 const LEAD_STRIP_SCRIPT = `(function () {
   try {
-    if (window.location.pathname !== '/get-started') return;
+    var paths = ${JSON.stringify(LEAD_CAPTURE_PATHS)};
+    if (paths.indexOf(window.location.pathname) === -1) return;
     var params = new URLSearchParams(window.location.search);
     var lead = params.get('lead');
     if (lead) {
       window.__oqRouterLeadId = lead;
+      try {
+        sessionStorage.setItem(${JSON.stringify(LEAD_STORAGE_KEY)}, JSON.stringify({ id: lead, exp: Date.now() + ${LEAD_TTL_MS} }));
+      } catch (e) { /* storage unavailable (private mode / quota) — window var still works this load */ }
       params.delete('lead');
       var qs = params.toString();
       var newUrl = window.location.pathname + (qs ? '?' + qs : '') + window.location.hash;
       history.replaceState(history.state, '', newUrl);
     }
-  } catch (e) { /* URL API unavailable: prefill simply won't run this load */ }
+  } catch (e) { /* URL API unavailable: capture simply won't run this load */ }
 })();`;
 
 export default function RootLayout({

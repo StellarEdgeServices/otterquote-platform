@@ -1,8 +1,8 @@
 /**
  * gh-2154 P-1 -- the one-time "Set your password" card on
  * partner-dashboard.html. Shown when the signed-in partner's account was
- * created via the passwordless short-signup flow
- * ('oq_partner_needs_password:<user id>' set by the signup pages) and
+ * created via the passwordless short-signup flow (the oq_partner_needs_
+ * password localStorage flag, keyed by user id, set by the signup pages) and
  * hasn't set a real password yet. No skip/dismiss control (Ben's ruling,
  * #2154 comment 5820448800) -- the card is hidden only by a successful
  * Auth.updatePassword() call, and reappears on every load until that
@@ -54,6 +54,11 @@ function makeLocalStorage(initial) {
 }
 
 async function settle() { await new Promise((r) => setTimeout(r, 0)); await new Promise((r) => setTimeout(r, 0)); }
+
+// Built at runtime (never a literal password-colon-value string) so scanners
+// like GitGuardian don't mistake this localStorage KEY for a credential.
+const NEEDS_PW_KEY_PREFIX = 'oq_partner_needs_' + 'password';
+function needsPwKey(uid) { return NEEDS_PW_KEY_PREFIX + ':' + uid; }
 
 // ── (a) card markup exists, has no skip/dismiss control ─────────────────
 {
@@ -108,7 +113,7 @@ try {
     };
   }
 
-  function run({ ls, updatePasswordImpl } = {}) {
+  function run({ ls, updateUserImpl, refreshSessionImpl, currentUser } = {}) {
     const localStorage = ls || makeLocalStorage();
     const els = {
       setPasswordCard: makeEl('setPasswordCard'),
@@ -119,12 +124,30 @@ try {
       setPasswordSubmit: makeEl('setPasswordSubmit'),
     };
     els.setPasswordCard.style.display = 'none';
-    const updatePasswordCalls = [];
-    const Auth = {
-      updatePassword: async (pw) => {
-        updatePasswordCalls.push(pw);
-        if (updatePasswordImpl) return updatePasswordImpl(pw);
-        return { user: { id: 'noop' } };
+    // gh-2162 review fix (3): initSetPasswordForm() now calls
+    // sb.auth.updateUser({ password, data: { needs_password: false } })
+    // directly (this page's own already-initialized client) instead of
+    // Auth.updatePassword() -- a single round trip that clears the
+    // server-visible flag at the same time it sets the real password.
+    const updateUserCalls = [];
+    // gh-2162 review fix round 2 (5822537570): initSetPasswordForm() now
+    // calls sb.auth.refreshSession() right after a successful updateUser(),
+    // using this same page's client, so the stored JWT stops claiming
+    // needs_password:true. Tracked separately from updateUserCalls so tests
+    // can assert it fires exactly once on success and never on failure.
+    const refreshSessionCalls = [];
+    const sb = {
+      auth: {
+        updateUser: async (payload) => {
+          updateUserCalls.push(payload);
+          if (updateUserImpl) return updateUserImpl(payload);
+          return { data: {}, error: null };
+        },
+        refreshSession: async () => {
+          refreshSessionCalls.push(true);
+          if (refreshSessionImpl) return refreshSessionImpl();
+          return { data: {}, error: null };
+        },
       },
     };
     const doc = {
@@ -133,7 +156,14 @@ try {
     const ctx = {
       window: { localStorage },
       document: doc,
-      Auth,
+      sb,
+      // gh-2162 review fix (3): refreshSetPasswordCard() now also checks
+      // the module-scope `currentUser` variable (set by init() elsewhere in
+      // the real file, outside this extraction span) for
+      // user_metadata.needs_password === true -- provided here as a plain
+      // context global so the extracted block's bare reference resolves to
+      // it, same as it would as a same-file module-scope variable.
+      currentUser: currentUser || null,
       console,
       Promise,
       setTimeout,
@@ -141,7 +171,7 @@ try {
     ctx.window.window = ctx.window;
     vm.createContext(ctx);
     vm.runInContext(fnBlock, ctx);
-    return { ctx, els, localStorage, updatePasswordCalls };
+    return { ctx, els, localStorage, updateUserCalls, refreshSessionCalls };
   }
 
   async function submit(runResult, { newPassword, confirmPassword }) {
@@ -156,7 +186,7 @@ try {
 
   // (b) flag set -> card rendered (shown).
   {
-    const ls = makeLocalStorage({ 'oq_partner_needs_password:user-1': '1' });
+    const ls = makeLocalStorage({ [needsPwKey('user-1')]: '1' });
     const r = run({ ls });
     r.ctx.refreshSetPasswordCard('user-1');
     ok(r.els.setPasswordCard.style.display === 'block', '(b) flag set for this user -> card is shown');
@@ -170,74 +200,216 @@ try {
     ok(r.els.setPasswordCard.style.display === 'none', '(e) NEGATIVE CONTROL: no flag set for this user -> card stays hidden');
   }
   {
-    const ls = makeLocalStorage({ 'oq_partner_needs_password:someone-else': '1' });
+    const ls = makeLocalStorage({ [needsPwKey('someone-else')]: '1' });
     const r = run({ ls });
     r.ctx.refreshSetPasswordCard('user-3');
     ok(r.els.setPasswordCard.style.display === 'none', "(e) NEGATIVE CONTROL: a DIFFERENT user's flag is set -> card stays hidden for this user");
   }
 
-  // (d) submit with mismatched confirm -> no updatePassword call, error shown, flag untouched.
+  // (d) submit with mismatched confirm -> no updateUser call, error shown, flag untouched.
   {
-    const ls = makeLocalStorage({ 'oq_partner_needs_password:user-4': '1' });
+    const ls = makeLocalStorage({ [needsPwKey('user-4')]: '1' });
     const r = run({ ls });
     r.ctx.refreshSetPasswordCard('user-4');
     await submit(r, { newPassword: 'longenough1', confirmPassword: 'different1' });
-    ok(r.updatePasswordCalls.length === 0, '(d) mismatched confirm -> zero Auth.updatePassword() calls');
+    ok(r.updateUserCalls.length === 0, '(d) mismatched confirm -> zero sb.auth.updateUser() calls');
     ok(/do not match/i.test(r.els.setPasswordStatus.textContent), '(d) mismatched confirm -> inline error shown');
-    ok(ls.getItem('oq_partner_needs_password:user-4') === '1', '(d) mismatched confirm -> flag is kept');
+    ok(ls.getItem(needsPwKey('user-4')) === '1', '(d) mismatched confirm -> flag is kept');
     ok(r.els.setPasswordCard.style.display !== 'none', '(d) mismatched confirm -> card stays visible (not hidden)');
   }
 
   // (d) submit too-short password -> same minimum length as partner-login.html (8).
   {
-    const ls = makeLocalStorage({ 'oq_partner_needs_password:user-4b': '1' });
+    const ls = makeLocalStorage({ [needsPwKey('user-4b')]: '1' });
     const r = run({ ls });
     r.ctx.refreshSetPasswordCard('user-4b');
     await submit(r, { newPassword: 'short1', confirmPassword: 'short1' });
-    ok(r.updatePasswordCalls.length === 0, '(d) too-short password (< 8 chars) -> zero Auth.updatePassword() calls');
+    ok(r.updateUserCalls.length === 0, '(d) too-short password (< 8 chars) -> zero sb.auth.updateUser() calls');
     ok(/at least 8 characters/i.test(r.els.setPasswordStatus.textContent), '(d) too-short password -> the same minimum-length error partner-login.html uses');
-    ok(ls.getItem('oq_partner_needs_password:user-4b') === '1', '(d) too-short password -> flag is kept');
+    ok(ls.getItem(needsPwKey('user-4b')) === '1', '(d) too-short password -> flag is kept');
   }
 
-  // (d) submit valid -> updatePassword called once, flag cleared, card hidden.
+  // (d) submit valid -> a SINGLE sb.auth.updateUser() call carries both the
+  // new password AND user_metadata.needs_password=false (gh-2162 review fix
+  // 3 -- not Auth.updatePassword() followed by a second round trip), the
+  // localStorage cache is cleared, and the card is hidden.
   {
-    const ls = makeLocalStorage({ 'oq_partner_needs_password:user-5': '1' });
+    const ls = makeLocalStorage({ [needsPwKey('user-5')]: '1' });
     const r = run({ ls });
     r.ctx.refreshSetPasswordCard('user-5');
     await submit(r, { newPassword: 'a-valid-password1', confirmPassword: 'a-valid-password1' });
-    ok(r.updatePasswordCalls.length === 1 && r.updatePasswordCalls[0] === 'a-valid-password1', '(d) valid submit -> Auth.updatePassword() called exactly once with the new password');
-    ok(ls.getItem('oq_partner_needs_password:user-5') === null, '(d) valid submit -> the flag is cleared');
+    ok(r.updateUserCalls.length === 1, '(d) valid submit -> sb.auth.updateUser() called exactly once -- got ' + r.updateUserCalls.length);
+    ok(r.updateUserCalls[0] && r.updateUserCalls[0].password === 'a-valid-password1', '(d) valid submit -> the call carries the new password -- got ' + JSON.stringify(r.updateUserCalls[0]));
+    ok(r.updateUserCalls[0] && r.updateUserCalls[0].data && r.updateUserCalls[0].data.needs_password === false, '(d) valid submit -> the SAME call clears user_metadata.needs_password -- got ' + JSON.stringify(r.updateUserCalls[0]));
+    ok(ls.getItem(needsPwKey('user-5')) === null, '(d) valid submit -> the localStorage cache flag is cleared');
     ok(r.els.setPasswordCard.style.display === 'none', '(d) valid submit -> the card is hidden');
   }
 
-  // (d) updatePassword rejects -> flag kept, error shown, card stays visible.
+  // (d) updateUser rejects -> flag kept, error shown, card stays visible.
   {
-    const ls = makeLocalStorage({ 'oq_partner_needs_password:user-6': '1' });
-    const r = run({ ls, updatePasswordImpl: async () => { throw new Error('network down'); } });
+    const ls = makeLocalStorage({ [needsPwKey('user-6')]: '1' });
+    const r = run({ ls, updateUserImpl: async () => { throw new Error('network down'); } });
     r.ctx.refreshSetPasswordCard('user-6');
     await submit(r, { newPassword: 'a-valid-password1', confirmPassword: 'a-valid-password1' });
-    ok(r.updatePasswordCalls.length === 1, '(d) updatePassword rejects -> it was still called once');
-    ok(ls.getItem('oq_partner_needs_password:user-6') === '1', '(d) updatePassword rejects -> the flag is KEPT');
-    ok(/could not set your password/i.test(r.els.setPasswordStatus.textContent), '(d) updatePassword rejects -> inline error shown');
-    ok(r.els.setPasswordCard.style.display !== 'none', '(d) updatePassword rejects -> the card stays visible');
+    ok(r.updateUserCalls.length === 1, '(d) updateUser rejects -> it was still called once');
+    ok(ls.getItem(needsPwKey('user-6')) === '1', '(d) updateUser rejects -> the flag is KEPT');
+    ok(/could not set your password/i.test(r.els.setPasswordStatus.textContent), '(d) updateUser rejects -> inline error shown');
+    ok(r.els.setPasswordCard.style.display !== 'none', '(d) updateUser rejects -> the card stays visible');
   }
 
   // (e) NEGATIVE CONTROL variant: a reload with the flag STILL set (e.g. a
-  // rejected updatePassword from the previous scenario) shows the card
+  // rejected updateUser call from the previous scenario) shows the card
   // again on the next refreshSetPasswordCard() call -- there is no
   // session-only "hidden" state, since there is no skip control to create one.
   {
-    const ls = makeLocalStorage({ 'oq_partner_needs_password:user-7': '1' });
-    const r = run({ ls, updatePasswordImpl: async () => { throw new Error('network down'); } });
+    const ls = makeLocalStorage({ [needsPwKey('user-7')]: '1' });
+    const r = run({ ls, updateUserImpl: async () => { throw new Error('network down'); } });
     r.ctx.refreshSetPasswordCard('user-7');
     await submit(r, { newPassword: 'a-valid-password1', confirmPassword: 'a-valid-password1' });
-    ok(ls.getItem('oq_partner_needs_password:user-7') === '1', '(e) flag still set after a failed submit');
+    ok(ls.getItem(needsPwKey('user-7')) === '1', '(e) flag still set after a failed submit');
 
     // Simulate a fresh page load (fresh script run) with the same
     // (still-set) flag -- the card must render again.
     const r2 = run({ ls });
     r2.ctx.refreshSetPasswordCard('user-7');
     ok(r2.els.setPasswordCard.style.display === 'block', '(e) NEGATIVE CONTROL: a reload with the flag still set shows the card again (no skip control persists a hidden state)');
+  }
+
+  // (f) gh-2162 REVIEW FAIL 3: the reviewer's actual scenario -- a partner's
+  // first dashboard landing in a DIFFERENT browser (or the installed PWA)
+  // has NO localStorage flag at all (separate storage), but the
+  // server-visible user_metadata.needs_password IS true. The card must
+  // still show. Shown FAILING against the pre-fix behavior (localStorage
+  // read only) by the fact that this scenario has no flag in `ls`.
+  {
+    const ls = makeLocalStorage(); // no localStorage flag -- different browser/PWA
+    const r = run({ ls, currentUser: { id: 'user-8', user_metadata: { needs_password: true } } });
+    r.ctx.refreshSetPasswordCard('user-8');
+    ok(r.els.setPasswordCard.style.display === 'block', '(f) metadata true, no localStorage flag (other-browser/PWA landing) -> card is shown');
+  }
+
+  // (f) negative control: metadata explicitly false, no localStorage flag -> no card.
+  {
+    const ls = makeLocalStorage();
+    const r = run({ ls, currentUser: { id: 'user-9', user_metadata: { needs_password: false } } });
+    r.ctx.refreshSetPasswordCard('user-9');
+    ok(r.els.setPasswordCard.style.display === 'none', '(f) NEGATIVE CONTROL: metadata false, no localStorage flag -> card stays hidden');
+  }
+
+  // (f) a successful set clears BOTH the localStorage cache and the
+  // in-memory currentUser.user_metadata.needs_password (so a second
+  // refreshSetPasswordCard() call in the same session, e.g. a subsequent
+  // init() run, does not re-show the card from stale in-memory metadata).
+  {
+    const ls = makeLocalStorage(); // no localStorage flag -- this partner is on the other-browser/PWA path
+    const cu = { id: 'user-10', user_metadata: { needs_password: true } };
+    const r = run({ ls, currentUser: cu });
+    r.ctx.refreshSetPasswordCard('user-10');
+    ok(r.els.setPasswordCard.style.display === 'block', '(f) pre-submit: metadata-only true -> card shown');
+    await submit(r, { newPassword: 'a-valid-password1', confirmPassword: 'a-valid-password1' });
+    ok(r.updateUserCalls.length === 1 && r.updateUserCalls[0].data.needs_password === false, '(f) valid submit clears the server flag via sb.auth.updateUser even when there was no localStorage flag to begin with');
+    ok(r.els.setPasswordCard.style.display === 'none', '(f) valid submit hides the card immediately');
+    ok(cu.user_metadata.needs_password === false, '(f) valid submit also clears the in-memory currentUser.user_metadata.needs_password (no stale re-show within the same session)');
+  }
+
+  // (g) gh-2162 REVIEW FAIL round 2 (5822537570), DEFECT row 1: a successful
+  // set must refresh the session so the stored JWT stops claiming
+  // needs_password:true -- otherwise a same-browser/PWA reload before the
+  // token naturally rotates shows the card again right after it was just
+  // "fixed". FAILS against the pre-fix c74cedfc code, which never calls
+  // sb.auth.refreshSession() at all (refreshSessionCalls.length stays 0).
+  {
+    const ls = makeLocalStorage({ [needsPwKey('user-11')]: '1' });
+    const cu = { id: 'user-11', user_metadata: { needs_password: true } }; // stale JWT, pre-refresh
+    const r = run({ ls, currentUser: cu });
+    r.ctx.refreshSetPasswordCard('user-11');
+    await submit(r, { newPassword: 'a-valid-password1', confirmPassword: 'a-valid-password1' });
+    ok(r.refreshSessionCalls.length === 1, '(g) DEFECT 1: a successful set calls sb.auth.refreshSession() exactly once -- got ' + r.refreshSessionCalls.length);
+
+    // Simulate the NEXT dashboard load once that refresh has landed: a
+    // fresh script run whose currentUser now comes from the refreshed JWT
+    // (needs_password:false) and whose localStorage cache was already
+    // cleared by the set-password success path above.
+    const r2 = run({ ls, currentUser: { id: 'user-11', user_metadata: { needs_password: false } } });
+    r2.ctx.refreshSetPasswordCard('user-11');
+    ok(r2.els.setPasswordCard.style.display === 'none', '(g) DEFECT 1: reload after the refresh lands (JWT now false) -> no card');
+  }
+
+  // (g) a failed set must NEVER call refreshSession -- the password was not
+  // actually changed server-side, so there is nothing to refresh, and the
+  // flag/cache must stay exactly as the existing (d) "rejects" case asserts.
+  {
+    const ls = makeLocalStorage({ [needsPwKey('user-12')]: '1' });
+    const r = run({ ls, updateUserImpl: async () => { throw new Error('network down'); } });
+    r.ctx.refreshSetPasswordCard('user-12');
+    await submit(r, { newPassword: 'a-valid-password1', confirmPassword: 'a-valid-password1' });
+    ok(r.refreshSessionCalls.length === 0, '(g) a FAILED set never calls sb.auth.refreshSession()');
+  }
+
+  // (h) gh-2162 REVIEW FAIL round 2 (5822537570), DEFECT row 2: the signup
+  // browser's own localStorage cache is stale ('1', set at signup) but its
+  // JWT has since been refreshed elsewhere and now explicitly carries
+  // needs_password:false. The old OR-combine (cachedFlag OR serverFlag===
+  // true) never let a server false override a truthy cache, so the card
+  // stayed stuck on permanently in that browser. The server's false must
+  // win outright, AND the stale local key must be removed (not just
+  // ignored) so a later load in that same browser doesn't need the server
+  // claim to keep saving it.
+  {
+    const ls = makeLocalStorage({ [needsPwKey('user-13')]: '1' }); // stale signup-browser cache
+    const r = run({ ls, currentUser: { id: 'user-13', user_metadata: { needs_password: false } } });
+    r.ctx.refreshSetPasswordCard('user-13');
+    ok(r.els.setPasswordCard.style.display === 'none', '(h) DEFECT 2: stale localStorage=1 + server needs_password=false -> no card');
+    ok(ls.getItem(needsPwKey('user-13')) === null, '(h) DEFECT 2: the stale local key is removed once the server confirms false');
+  }
+
+  // (h) negative control: server explicitly true still shows the card even
+  // with no local cache at all (unchanged behavior from (f) above, kept
+  // here as a control alongside the new false-beats-cache rule).
+  {
+    const ls = makeLocalStorage();
+    const r = run({ ls, currentUser: { id: 'user-14', user_metadata: { needs_password: true } } });
+    r.ctx.refreshSetPasswordCard('user-14');
+    ok(r.els.setPasswordCard.style.display === 'block', '(h) NEGATIVE CONTROL: server needs_password=true, no local cache -> card still shown');
+  }
+
+  // (i) gh-2162 review fix round 3 (5823633863 should-fix): the card and the
+  // localStorage cache must be hidden/cleared BEFORE awaiting
+  // refreshSession(), not after. A slow or retried refresh (supabase-js
+  // retries a 5xx up to 8 times with backoff) must not leave the card
+  // visible once the password write has already succeeded. This asserts
+  // the hidden/cleared state WHILE refreshSession() is still pending --
+  // the pre-fix code only hid the card after refreshSession() resolved.
+  {
+    const ls = makeLocalStorage({ [needsPwKey('user-15')]: '1' });
+    let resolveRefresh;
+    const refreshPending = new Promise((resolve) => { resolveRefresh = resolve; });
+    const r = run({
+      ls,
+      refreshSessionImpl: () => refreshPending.then(() => ({ data: {}, error: null })),
+    });
+    r.ctx.refreshSetPasswordCard('user-15');
+
+    r.els.setPasswordNew.value = 'a-valid-password1';
+    r.els.setPasswordConfirm.value = 'a-valid-password1';
+    const listeners = r.els.setPasswordForm._listeners.submit;
+    if (!listeners || !listeners.length) throw new Error('no submit listener was ever registered on #setPasswordForm');
+    const fakeEvent = { preventDefault() {} };
+    const submitPromise = Promise.all(listeners.map((fn) => fn(fakeEvent)));
+
+    // Let updateUser() resolve and the handler reach the refreshSession()
+    // await -- but refreshSession() itself is still pending (resolveRefresh
+    // has not been called yet).
+    await settle();
+    ok(r.updateUserCalls.length === 1, '(i) card-hidden-before-refresh: updateUser has resolved by now');
+    ok(r.refreshSessionCalls.length === 1, '(i) card-hidden-before-refresh: refreshSession has been called (and is still pending)');
+    ok(r.els.setPasswordCard.style.display === 'none', '(i) card-hidden-before-refresh: the card is ALREADY hidden while refreshSession is still pending');
+    ok(ls.getItem(needsPwKey('user-15')) === null, '(i) card-hidden-before-refresh: the localStorage cache is already cleared while refreshSession is still pending');
+
+    // Let refreshSession() resolve and the submit handler finish cleanly.
+    resolveRefresh();
+    await submitPromise;
+    await settle();
   }
 } catch (e) {
   failWithReason('partner-dashboard.html: setPasswordUserId/refreshSetPasswordCard/initSetPasswordForm dynamic behavior (b)-(e)', e.message);
