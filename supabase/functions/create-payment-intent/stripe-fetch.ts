@@ -44,3 +44,59 @@ export async function fetchStripeWithTimeout(
     clearTimeout(timer);
   }
 }
+
+// gh-1886 B1 (independent review on #2198, 2026-09-25): worst-case wall time across the off-session
+// multi-method loop. Bounds the WHOLE loop (not just each call) so a claim with several payment methods
+// on file cannot run past Supabase's ~150s Edge Function wall-clock limit and end in a raw 504 instead of
+// this function's own clean 500. 100s leaves headroom for the DB reads/writes around the loop.
+export const OFF_SESSION_LOOP_BUDGET_MS = 100_000;
+
+export class AmbiguousChargeOutcomeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AmbiguousChargeOutcomeError";
+  }
+}
+
+/**
+ * gh-1886 B1 (independent review on #2198, 2026-09-25): fetchStripeWithTimeout is safe for a call whose
+ * timing out changes nothing at Stripe (the standard-flow create, the best-effort cancel). It is NOT safe,
+ * on its own, for a CONFIRMED charge (off_session=true, confirm=true): a 20s abort here does not cancel
+ * anything at Stripe, it only stops this function waiting for the answer, so a "timeout" can mean Stripe
+ * already charged the card or bank account. Falling through to a DIFFERENT payment method after that
+ * (the pre-fix behaviour) can double-charge, because the two methods' Idempotency-Keys never collide.
+ *
+ * This wraps exactly one idempotent CREATE call: on a first timeout it retries the SAME request (same
+ * Idempotency-Key, same body, same headers) ONCE. Stripe's documented idempotent replay then returns the
+ * ORIGINAL response if the first attempt actually completed -- so a slow-but-successful create is
+ * recovered as a normal response, not lost. If the retry ALSO times out, the outcome is unknowable from
+ * here (charged once? twice? not at all?), and this throws AmbiguousChargeOutcomeError so the CALLER stops
+ * instead of trying another payment method. A genuine Stripe answer (an HTTP error response, a decline, a
+ * requires_action) is unambiguous -- Stripe DID respond -- and is returned exactly as fetchStripeWithTimeout
+ * would return it, so that path is byte-for-byte unchanged.
+ */
+export async function fetchStripeCreateWithRetry(
+  fetchFn: typeof fetch,
+  url: string,
+  init: RequestInit,
+  timeoutMs: number = STRIPE_FETCH_TIMEOUT_MS,
+): Promise<Response> {
+  try {
+    return await fetchStripeWithTimeout(fetchFn, url, init, timeoutMs);
+  } catch (e) {
+    if (!(e instanceof StripeFetchTimeoutError)) throw e;
+    try {
+      // Same Idempotency-Key, same body: a documented Stripe idempotent replay, not a second charge attempt.
+      return await fetchStripeWithTimeout(fetchFn, url, init, timeoutMs);
+    } catch (e2) {
+      if (e2 instanceof StripeFetchTimeoutError) {
+        throw new AmbiguousChargeOutcomeError(
+          "Stripe request timed out twice in a row for the same payment method (the Idempotency-Key retry " +
+            "also timed out). The charge outcome for this method is unknown, so no other payment method will " +
+            "be attempted.",
+        );
+      }
+      throw e2;
+    }
+  }
+}
