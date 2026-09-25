@@ -260,6 +260,18 @@
    */
   window.OtterQuoteCookieStorage = {
     getItem: function (key) {
+      // gh-2162 review round 4: this adapter only owns the canonical session
+      // key. Supabase JS also calls getItem for other keys under the same
+      // storage instance — e.g. the PKCE `<key>-code-verifier` key written
+      // by sb.auth.signInWithOAuth / exchangeCodeForSession. Before this
+      // guard, any such non-canonical read still hit the cookie branch below
+      // and returned the CURRENT SESSION instead of the verifier, which is
+      // the same bug class as the removeItem defect fixed alongside it.
+      // Every other key is plain localStorage, no cookie involvement.
+      if (key !== STORAGE_KEY) {
+        try { return window.localStorage.getItem(key); } catch (e) { return null; }
+      }
+
       // 1. Try canonical two-cookie format — cross-subdomain mechanism
       var at = readCookie(COOKIE_ACCESS);
       var rt = readCookie(COOKIE_REFRESH);
@@ -291,6 +303,12 @@
     },
 
     setItem: function (key, value) {
+      // gh-2162 review round 4: non-canonical keys (e.g. the PKCE
+      // `<key>-code-verifier` key) are plain localStorage, never cookies.
+      if (key !== STORAGE_KEY) {
+        try { window.localStorage.setItem(key, value); } catch (e) {}
+        return;
+      }
       // Treat empty/null as a clear (Supabase normally uses removeItem,
       // but defensive against future SDK shifts).
       if (value === null || value === undefined || value === '') {
@@ -316,6 +334,19 @@
     },
 
     removeItem: function (key) {
+      // gh-2162 review round 4 (comment 5825170286): this used to delete the
+      // session cookies + legacy keys for ANY key, canonical or not. Supabase
+      // JS 2.112.4's `_updateUser` calls removeItem('<key>-code-verifier') on
+      // an update-user error (e.g. a HIBP-rejected weak password) as part of
+      // its PKCE cleanup — that is not a sign-out, but it wiped the whole
+      // session anyway, leaving a P-1 partner (who has no known password)
+      // permanently locked out of the only screen that lets them set one.
+      // Only the canonical session key may touch the auth cookies / legacy
+      // keys; every other key is a plain localStorage removeItem.
+      if (key !== STORAGE_KEY) {
+        try { window.localStorage.removeItem(key); } catch (e) {}
+        return;
+      }
       deleteCookie(COOKIE_ACCESS);
       deleteCookie(COOKIE_REFRESH);
       try { window.localStorage.removeItem(key); } catch (e) {}

@@ -26,6 +26,7 @@ on:
       - 'tests/gh2154-p1-set-password.mjs'
       - 'partner-login.html'
       - 'tests/gh2154-p1-login-reset.mjs'
+      - 'tests/gh2154-p1-cookie-storage-updateuser.mjs'
       - '.github/workflows/static-pixel-gate-tests.yml'
   push:
     branches: [main]
@@ -45,6 +46,7 @@ on:
       - 'tests/gh2154-p1-set-password.mjs'
       - 'partner-login.html'
       - 'tests/gh2154-p1-login-reset.mjs'
+      - 'tests/gh2154-p1-cookie-storage-updateuser.mjs'
       - '.github/workflows/static-pixel-gate-tests.yml'
 
 permissions:
@@ -83,3 +85,5 @@ jobs:
         run: node tests/gh2154-p1-set-password.mjs
       - name: Partner login forgot-password reset clears needs_password (gh2154-p1-login-reset)
         run: node tests/gh2154-p1-login-reset.mjs
+      - name: Real supabase-js -- rejected updateUser() must not sign the partner out (gh2154-p1-cookie-storage-updateuser)
+        run: node tests/gh2154-p1-cookie-storage-updateuser.mjs
