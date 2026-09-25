@@ -517,6 +517,18 @@ const Nav = {
         return l;
       });
     }
+    // gh-2155 HI-05b REVIEW FAIL (5840063832) must-fix 1: the homeowner
+    // role's own "Refer a Friend" row-2 link (a homeowner cash-referral
+    // program, unrelated to D-333) is reachable from ANY partner page via the
+    // row-1 role tab -- the session-scoped inspector-context flag stays
+    // set across that switch (a deliberate role browse, not a fresh
+    // session), so this removes it the same way the footer's identical
+    // link is removed, everywhere the flag is set. Removal only -- every
+    // other homeowner link (Home, How It Works, Measurements, FAQ) is
+    // unaffected.
+    if (role === 'homeowner' && this._isInspectorTrack()) {
+      return links.filter(l => l.href !== '/refer-a-friend.html');
+    }
     return links;
   },
 
@@ -1159,13 +1171,13 @@ const Nav = {
           ${!isContractor ? `
           <div class="footer-col">
             <h4 class="footer-heading">Partners</h4>
-            <a href="/partner-re.html">Real Estate Agents</a>
-            <a href="/partner-insurance.html">Insurance Agents</a>
+            ${!this._isInspectorTrack() ? '<a href="/partner-re.html">Real Estate Agents</a>' : ''}
+            ${!this._isInspectorTrack() ? '<a href="/partner-insurance.html">Insurance Agents</a>' : ''}
             <a href="/partner-inspectors.html">Home Inspectors</a>
-            <a href="/partner-adjusters.html">Adjusters</a>
+            ${!this._isInspectorTrack() ? '<a href="/partner-adjusters.html">Adjusters</a>' : ''}
             ${!this._isInspectorTrack() ? '<a href="/partner-other.html">Other Industries</a>' : ''}
             <a href="/partner-dashboard.html">Partner Dashboard</a>
-            <a href="/refer-a-friend.html">Refer a Friend</a>
+            ${!this._isInspectorTrack() ? '<a href="/refer-a-friend.html">Refer a Friend</a>' : ''}
           </div>
           ` : ''}
           <div class="footer-col">

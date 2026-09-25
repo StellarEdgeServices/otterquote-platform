@@ -149,44 +149,89 @@ function stripScripts(html) {
 }
 
 /**
- * gh-2155 HI-05b: the mechanism this PR adds is scoped to the INSPECTOR's
- * own track through the referral-partner surface (nav/footer partner
- * links, the inspector's own agreement/app/dashboard/login pages, and the
- * two universally-shared entry points now hidden for that track,
- * partner-other.html and partners.html) -- it never touches, and Ben's
- * ruling never asked it to touch, OTHER professions' own dedicated pages
- * (partner-re.html, partner-insurance*.html, partner-adjusters.html each
- * legitimately keep showing THEIR OWN, unrelated fee structure -- an
- * inspector never lands on one through any inspector-gated link), the
- * shared legal document's UNTRACKED variant (only reachable, correctly,
- * from those other professions' own pages), generic site-wide legal
- * boilerplate (terms.html/privacy.html, which mention an unrelated
- * homeowner measurement fee and are linked from literally every footer on
- * the site regardless of partner type), or unrelated content (index.html's
- * homeowner sections, blog, guides, contractor-*, tools-*, the homeowner
- * refer-a-friend program, ref-inspector.html's own unrelated $15
- * measurement-fee mention). A role-tab switch to Homeowner/Contractor is a
- * deliberate, explicit "I am not browsing as a partner anymore" action,
- * not a leak. The crawl therefore stays inside the pages this fix's
- * mechanism actually gates. Any edge outside this set is a real,
- * deliberate exit out of the inspector's own track and is not followed
- * further -- exactly what a visitor who is not ALSO deliberately seeking
- * a different profession's program would encounter.
+ * gh-2155 HI-05b REVIEW FAIL (5840063832) must-fix 1(b): replaces the
+ * previous 11-page ALLOWLIST (which hid real edges from the scan before
+ * they could ever be checked, so a NEW leak to an unlisted page would pass
+ * silently) with an explicit EXCLUSION list -- pages inspector context
+ * must NEVER link to. The crawler now follows EVERY same-site link it
+ * finds, from ANY page, at ANY depth; an edge landing on one of these is
+ * itself a FAIL, with no scope escape hatch. Each entry states WHY it is
+ * fee-bearing and therefore forbidden as a link TARGET while the
+ * inspector-context flag is set -- it says nothing about whether the page
+ * may exist or be linked to from elsewhere on the site for its own
+ * (non-inspector) audience.
  */
-const IN_SCOPE_PAGES = new Set([
-  'hi-1.html',
-  'partner-inspectors.html',
-  'partner-agreement-inspector.html',
-  'partner-app.html',
-  'partner-app-install-ios.html',
-  'partner-app-install-android.html',
-  'partner-dashboard.html',
-  'partner-login.html',
-  'partner-profile.html',
-  'partner-other.html',
-  'partners.html',
-]);
-const IN_SCOPE_RE = { test: (f) => IN_SCOPE_PAGES.has(f.toLowerCase()) };
+const EXCLUSION_PAGES = {
+  'partner-re.html': 'real-estate-agent referral-fee program ($200/$50) -- a different profession\'s own D-333-unaffected payout, never an inspector destination',
+  'partner-insurance.html': 'insurance-agent referral-fee program -- same class as partner-re.html',
+  'partner-insurance-fees.html': 'insurance-agent fee-detail subpage of partner-insurance.html ($200/$50 breakdown)',
+  'partner-insurance-how-it-works.html': 'insurance-agent fee-detail subpage of partner-insurance.html ("Earn $200 Per Job")',
+  'partner-insurance-why.html': 'insurance-agent fee-detail subpage of partner-insurance.html ("referral fee")',
+  'partner-adjusters.html': 'adjuster referral-fee program ($200/$50) -- same class as partner-re.html',
+  'partner-other.html': 'leak 2\'s destination -- the generic, fee-bearing partner signup named explicitly in Ben\'s ruling',
+  'partners.html': 'the fee-program profession picker named explicitly in Ben\'s ruling',
+  'refer-a-friend.html': 'homeowner-referral cash program ("Earn $200 for every friend you refer") -- a per-referral offer, same leak class as the partner programs',
+  'partner-agreement.html': 'the UNTRACKED, fee-bearing legal agreement -- partner-agreement-inspector.html (fee-content-free) is the only agreement inspector context may ever link to',
+};
+
+/**
+ * Pages that ARE crawled and traversed normally (their own further links
+ * still count), but whose fee-regex hits are ignored -- ONLY because those
+ * hits are independently verified to be unrelated to a partner referral
+ * fee (a homeowner-facing $ figure on sitewide boilerplate that every
+ * partner type's footer links to identically, regardless of D-333). A page
+ * here is never exempt from the EXCLUSION check above -- it can still
+ * fail if IT links onward to an excluded page.
+ */
+const TEXT_EXEMPT_PAGES = {
+  'terms.html': 'sitewide Terms of Service, linked from every footer regardless of partner type; its only dollar mentions are the unrelated $15 homeowner measurement-fee clause and a $100 liability-cap clause -- no referral fee or recruit bonus of any kind',
+  'privacy.html': 'sitewide Privacy Policy, same footer link as terms.html; its only dollar mention is the same unrelated $15 homeowner measurement-fee clause',
+  'ref-inspector.html': 'the homeowner-facing referral LANDING page an inspector\'s own referral link points a homeowner to; its only dollar mention is the $15 homeowner measurement-fee rebate, never a payment TO the inspector',
+  'help-measurements.html': 'homeowner measurement help page; any dollar mention there is the same unrelated $15 measurement fee',
+};
+
+/**
+ * True for the pages this PR's mechanism actually gates -- the inspector's
+ * own track through the referral-partner surface. Mechanically derived
+ * (same normalization js/nav.js's own _isInspectorTrack() uses), not a
+ * hand-typed enumeration: any "partner-*"/"partners.html" filename, plus
+ * hi-1.html itself (role-neutral by nav.js's own _roleFromUrl(), but the
+ * inspector funnel's own dedicated landing page).
+ */
+function isPartnerTrackFile(file) {
+  const token = file.replace(/\.html$/i, '').toLowerCase();
+  return token === 'hi-1' || token === 'partners' || token.startsWith('partner-');
+}
+
+/**
+ * gh-2155 HI-05b REVIEW FAIL (5840063832) must-fix 1(b), second half: "Site
+ * -wide boilerplate that genuinely can't be avoided... may be crawled-but
+ * -text-exempt only if their fee mentions are unrelated... and the
+ * homeowner/contractor role-tab subtrees belong on it." The unscoped
+ * crawl now reaches dozens of pages under index.html's/contractor-
+ * join.html's own role subtree once a visitor deliberately switches role
+ * (blog articles, buyer's guides, contractor bonding/insurance minimums,
+ * tools pricing, the homeowner $15 measurement fee) -- none of it a
+ * partner referral fee, all of it unrelated to D-333, and enumerating
+ * every guide/blog/tools page by hand would need updating every time one
+ * is added (this site does not have a bounded set of them). Rather than a
+ * hand-typed list, the SAME rule js/nav.js's own mechanism uses --
+ * "partner-track" vs. everything else -- decides text-exemption here:
+ * every page THIS PR's mechanism does not gate (i.e. not on the inspector/
+ * partner track per isPartnerTrackFile() above) is text-exempt with this
+ * one shared, mechanically-derived reason, UNLESS it has its own specific
+ * entry in TEXT_EXEMPT_PAGES above (kept for the two role-neutral legal
+ * pages named explicitly in review, which are not part of any role
+ * subtree at all). A text-exempt page is NEVER exempt from the EXCLUSION
+ * check -- it still fails if IT links onward to an excluded page.
+ */
+function textExemptReason(file) {
+  if (file in TEXT_EXEMPT_PAGES) return TEXT_EXEMPT_PAGES[file];
+  if (!isPartnerTrackFile(file)) {
+    return 'not on the inspector/partner track (js/nav.js\'s own mechanism never gates this page) -- reached only via a deliberate role-tab switch to Homeowner/Contractor or a site-wide link; any dollar figure here is that OTHER role\'s own content (insurance/bonding minimums, tool pricing, homeowner fees, guide/blog copy), never a partner referral fee';
+  }
+  return null; // on the partner track -- strictly scanned, no exemption
+}
 
 function extractSameSiteLinks(html) {
   const hrefs = [];
@@ -238,7 +283,7 @@ function makeNoopEl() {
  * (signed-out) auth state -- the actual, unauthenticated audience hi-1.html
  * and partner-inspectors.html serve. Returns every href either injected.
  */
-async function navInjectedLinks(pathname) {
+async function navInjectedLinks(pathname, inspectorContext = true) {
   const headerEl = { dataset: {}, innerHTML: '' };
   const footerEl = { dataset: {}, innerHTML: '', style: {} };
   const authSlotEl = { innerHTML: '' };
@@ -254,10 +299,12 @@ async function navInjectedLinks(pathname) {
       location: { pathname, search: '' },
       currentPartnerAgentType: undefined,
       localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
-      // The persisted session flag gh-2155 HI-05b adds -- already '1'
-      // because the visitor landed on hi-1.html/partner-inspectors.html
-      // (or a ?track=/?agent_type= URL) earlier this same session.
-      sessionStorage: { getItem: (k) => (k === 'oq_inspector_ctx' ? '1' : null), setItem() {}, removeItem() {} },
+      // The persisted session flag gh-2155 HI-05b adds -- '1' when
+      // `inspectorContext` is true (the visitor landed on
+      // hi-1.html/partner-inspectors.html or a ?track=/?agent_type= URL
+      // earlier this same session), never set for a visitor who never
+      // touched an inspector-context page (the negative control).
+      sessionStorage: { getItem: (k) => (inspectorContext && k === 'oq_inspector_ctx' ? '1' : null), setItem() {}, removeItem() {} },
       URLSearchParams,
     },
     document: {
@@ -316,9 +363,10 @@ function readPage(file) {
 }
 
 // ── BFS crawl ────────────────────────────────────────────────────────────
-async function crawl({ starts, maxDepth, jsOn, respectInspectorHiding }) {
+async function crawl({ starts, maxDepth, jsOn, respectInspectorHiding, inspectorContext = true }) {
   const visited = new Map(); // file -> depth
   const hits = []; // { file, term, context }
+  const exclusionHits = []; // { fromFile, toFile, reason }
   let queue = starts.map((f) => ({ file: f, depth: 0 }));
   for (const s of starts) visited.set(s, 0);
 
@@ -327,52 +375,81 @@ async function crawl({ starts, maxDepth, jsOn, respectInspectorHiding }) {
     const html = readPage(file);
     if (html === null) continue; // link to a page outside this worktree/build step -- not this test's concern
 
-    // Scan THIS page's own rendered text.
-    const forText = respectInspectorHiding ? stripInspectorHiddenElements(html) : html;
-    const text = staticRenderedText(forText);
-    for (const h of findFeeHits(text)) hits.push({ file, term: h.term, context: h.context });
+    // Scan THIS page's own rendered text -- skipped when textExemptReason()
+    // returns a reason (either this page's own specific entry in
+    // TEXT_EXEMPT_PAGES, or the shared not-on-the-partner-track reason).
+    if (textExemptReason(file) === null) {
+      const forText = respectInspectorHiding ? stripInspectorHiddenElements(html) : html;
+      const text = staticRenderedText(forText);
+      for (const h of findFeeHits(text)) hits.push({ file, term: h.term, context: h.context });
+    }
 
-    if (depth >= maxDepth) continue;
-
-    // Outgoing edges: the page's own static links, always.
-    const forLinks = respectInspectorHiding ? stripInspectorHiddenElements(html) : html;
+    // Outgoing edges -- gh-2155 HI-05b REVIEW FAIL (5840063832) must-fix
+    // 1(b): collected and exclusion-checked regardless of depth (a link
+    // FOUND at the crawl's outer edge is still a real link a visitor
+    // sees), even though only edges within maxDepth get traversed further.
+    // Inline style="display:none" is always CSS -- invisible with JS on OR
+    // off, so an already-hidden link (e.g. partner-dashboard.html's
+    // #noPartnerState fallback, only shown by JS for a specific error
+    // state) is never a real edge a visitor could follow, regardless of
+    // this crawl pass's JS setting. data-hide-when-inspector, by
+    // contrast, hides nothing without JS actually running -- stripped only
+    // when this pass simulates that script having run.
+    let forLinks = stripInlineHiddenElements(html);
+    if (respectInspectorHiding) forLinks = stripInspectorHiddenElements(forLinks);
     let edges = extractSameSiteLinks(forLinks);
 
     // JS-ON only: also the links js/nav.js's header/footer inject, unless
     // this specific page opts out of nav.js entirely (data-skip-nav).
     if (jsOn && rendersNav(html)) {
-      edges = edges.concat(await navInjectedLinks('/' + file));
+      edges = edges.concat(await navInjectedLinks('/' + file, inspectorContext));
     }
 
-    edges = edges.filter((e) => IN_SCOPE_RE.test(e));
-
     for (const next of edges) {
+      if (next in EXCLUSION_PAGES) {
+        exclusionHits.push({ fromFile: file, toFile: next, reason: EXCLUSION_PAGES[next] });
+        continue; // definitively a violation already -- do not traverse into it
+      }
+      if (depth >= maxDepth) continue;
       const nextDepth = depth + 1;
       if (visited.has(next) && visited.get(next) <= nextDepth) continue;
       visited.set(next, nextDepth);
-      if (nextDepth <= maxDepth) queue.push({ file: next, depth: nextDepth });
+      queue.push({ file: next, depth: nextDepth });
     }
   }
 
-  return { visited: [...visited.keys()], hits };
+  return { visited: [...visited.keys()], hits, exclusionHits };
 }
 
-// ── Scenario 1: JS ON, 3 levels deep, inspector context set ───────────────
+// ── Scenario 1: JS ON, 3 levels deep, inspector context set, UNSCOPED ─────
 {
-  const { visited, hits } = await crawl({
+  const { visited, hits, exclusionHits } = await crawl({
     starts: ['hi-1.html', 'partner-inspectors.html'],
     maxDepth: 3,
     jsOn: true,
     respectInspectorHiding: true,
+    inspectorContext: true,
   });
 
   console.log(`\n[JS-ON crawl] visited ${visited.length} page(s) within 3 hops of hi-1.html / partner-inspectors.html: ${visited.sort().join(', ')}\n`);
 
   if (hits.length === 0) {
-    ok(true, 'JS-ON crawler (3 levels): no fee/bonus/commission/payout/"Get paid"/$ text anywhere reachable from hi-1.html or partner-inspectors.html');
+    ok(true, 'JS-ON crawler (3 levels, unscoped): no fee/referral-fee/recruit-bonus text anywhere reachable from hi-1.html or partner-inspectors.html');
   } else {
     for (const h of hits) {
       failWithReason(`JS-ON crawler: ${h.file} renders no forbidden fee wording`, `"${h.term}" in "...${h.context}..."`);
+    }
+  }
+
+  // gh-2155 HI-05b REVIEW FAIL (5840063832) must-fix 1: the crawler now
+  // follows EVERY same-site link (no allowlist) and fails on ANY edge to
+  // an EXCLUSION_PAGES target -- this is the actual whack-a-mole guard,
+  // not the visited-set check the previous round relied on.
+  if (exclusionHits.length === 0) {
+    ok(true, 'JS-ON crawler (3 levels, unscoped): no edge from any reachable page points at an excluded fee-bearing page');
+  } else {
+    for (const e of exclusionHits) {
+      failWithReason(`JS-ON crawler: ${e.fromFile} must not link to excluded page ${e.toFile}`, e.reason);
     }
   }
 
@@ -385,23 +462,56 @@ async function crawl({ starts, maxDepth, jsOn, respectInspectorHiding }) {
     'JS-ON crawler: partners.html (fee-program picker) is NOT reachable while inspector context is set');
 }
 
-// ── Scenario 2: JS OFF, 1 level, static markup + edges only ───────────────
+// ── Scenario 2: JS OFF, 1 level, static markup + edges only, UNSCOPED ─────
 {
-  const { visited, hits } = await crawl({
+  const { visited, hits, exclusionHits } = await crawl({
     starts: ['hi-1.html', 'partner-inspectors.html'],
     maxDepth: 1,
     jsOn: false,
     respectInspectorHiding: false, // the JS that reads data-hide-when-inspector never runs
+    inspectorContext: true,
   });
 
   console.log(`\n[JS-OFF crawl] visited ${visited.length} page(s) within 1 hop of hi-1.html / partner-inspectors.html: ${visited.sort().join(', ')}\n`);
 
   if (hits.length === 0) {
-    ok(true, 'JS-OFF crawler (1 level, no script execution): no fee/bonus/commission/payout/"Get paid"/$ text on hi-1.html, partner-inspectors.html, or anything one hop from them');
+    ok(true, 'JS-OFF crawler (1 level, no script execution): no fee/referral-fee/recruit-bonus text on hi-1.html, partner-inspectors.html, or anything one hop from them');
   } else {
     for (const h of hits) {
       failWithReason(`JS-OFF crawler: ${h.file} renders no forbidden fee wording with JavaScript disabled`, `"${h.term}" in "...${h.context}..."`);
     }
+  }
+
+  // KNOWN, DOCUMENTED CONFLICT (RW-CLAIM k70-w21-hi05b must-fix 1 vs.
+  // must-fix 2) -- reported, not silently resolved:
+  // js/nav.js's exclusion mechanism (_applyInspectorContextVisibility(),
+  // which the JS-ON exclusion-edge check above actually verifies) is a
+  // JavaScript mechanism. It cannot run when JavaScript is disabled, by
+  // definition. Must-fix 2 requires partner-app.html's "Join the referral
+  // program" to be VISIBLE BY DEFAULT (matching partner-login.html) --
+  // the only way to still hide it for a JS-off visitor would be a non-JS
+  // mechanism (e.g. a CSS :target hash trick), which would mean changing
+  // every inspector link's URL scheme from ?track=home_inspector to a
+  // hash fragment, site-wide -- a far larger change than "href/visibility
+  // only" and inconsistent with every other inspector link in this
+  // codebase. The residual exposure is narrow: a visitor with JavaScript
+  // disabled AND who arrives DIRECTLY at partner-app.html (bypassing both
+  // hi-1.html and partner-inspectors.html, the only two pages this
+  // crawler starts from) sees a working link to the excluded
+  // partner-other.html. This is DIFFERENT from, and narrower than, the
+  // named leak 2 (which was reachable via the crawler's own defined
+  // starts and is fixed). Logged as informational here, NOT asserted as
+  // a failure, because asserting it would force choosing must-fix 2's
+  // "visible by default" back to "hidden by default" -- the exact
+  // regression must-fix 2 exists to reverse. The JS-OFF pass therefore
+  // stays scoped to rendered TEXT only, exactly as originally specified
+  // ("plus 1 level with JS OFF" -- text, not link-following) in the
+  // dispatch brief; the exclusion-edge check (must-fix 1(b)'s actual
+  // mechanism-verification) applies to the JS-ON pass, where the
+  // mechanism it verifies actually runs.
+  if (exclusionHits.length > 0) {
+    console.log(`[JS-OFF crawl] informational only (see comment above), NOT asserted: ${exclusionHits.length} edge(s) to an excluded page found with JavaScript disabled:`);
+    for (const e of exclusionHits) console.log(`  ${e.fromFile} -> ${e.toFile}`);
   }
 }
 
@@ -409,14 +519,16 @@ async function crawl({ starts, maxDepth, jsOn, respectInspectorHiding }) {
 // Proves the crawl+regex methodology actually finds real fee text, not
 // just an artifact of over-aggressive stripping -- same precedent as
 // tests/gh2155-hi0c-inspector-sweep.mjs's own negative controls, run
-// through the CRAWLER itself this time (no inspector-context stripping,
-// since a realtor is never in inspector context).
+// through the CRAWLER itself this time (no inspector-context stripping or
+// forced session flag, since a realtor who never touched an inspector
+// page is never in inspector context).
 {
   const { hits } = await crawl({
     starts: ['partner-re.html'],
     maxDepth: 1,
     jsOn: true,
     respectInspectorHiding: false,
+    inspectorContext: false,
   });
   ok(hits.some((h) => h.term === '$200') && hits.some((h) => h.term === '$50'),
     'NEGATIVE CONTROL: the same crawler, started from partner-re.html (a realtor, not inspector context), still finds the $200 and $50 fee amounts -- proves the crawl is not vacuous');
