@@ -348,6 +348,21 @@ STATIC_FUNNEL_EXEMPT = {
         "Source-code comment using \"referral link\" as an example while "
         "explaining analytics-gating behavior -- not rendered funnel copy."
     ),
+    "hi-1.html": (
+        "gh-2152 HI-1: is a partner-enrollment funnel (the match is real "
+        "\"referral link\"/\"referral fee\" copy, not a stray comment), but "
+        "D-266 does not apply to it -- same per-track exemption already "
+        "recorded above for partner-inspectors.html (gh-2155 HI-0b / D-333, "
+        "comment 5824245098): home inspectors receive no referral fee or "
+        "recruit bonus at all (partner-agreement.html Section 4.3), so "
+        "D-266's \"make sure it is lawful for you to accept referral fees\" "
+        "warning has nothing to attach to. Dustin's ruling on #2152 (comment "
+        "5832300782, approving this page's copy) says so explicitly: \"no "
+        "D-266 disclaimer (inspectors take no fee, D-333)\". hi-1.html isn't "
+        "folded into D266_PAGES's glob/ALL_PAGES mechanism because it is a "
+        "single-purpose ad landing page, not a partner-*.html marketing "
+        "page -- same shape as the other STATIC_FUNNEL_EXEMPT entries above."
+    ),
 }
 
 
