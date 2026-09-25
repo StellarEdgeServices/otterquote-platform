@@ -99,6 +99,16 @@ ALL_PAGES = VERTICAL_PAGES + ["partner-app", "partner-login", "partner-dashboard
 # explicitly rather than left for find_unmapped_static_funnels() to flag as
 # static_funnel_unmapped -- the same convention D266_JS_SURFACES uses for
 # js/router-discovery.js below.
+#
+# gh-2151 INS-1 / D-333: ins-1.html is a dedicated single-funnel landing page
+# outside the partner-*.html naming convention, so it is invisible to the
+# ALL_PAGES/partner-insurance* discovery above. It carries the D-266
+# disclaimer (approved copy, #2151 comment 5821408557) and is a referral-fee
+# funnel surface exactly like partner-insurance.html, so it is registered
+# here explicitly rather than left for find_unmapped_static_funnels() to flag
+# as static_funnel_unmapped -- the same convention D266_JS_SURFACES uses for
+# js/router-discovery.js below (see also re-1's identical registration,
+# gh-2150, commit 524f85c6).
 D266_PAGES = sorted(
     {p.stem for p in REPO_ROOT.glob("partner-insurance*.html")}
     | {
@@ -107,6 +117,7 @@ D266_PAGES = sorted(
         if p not in ("partner-insurance", "partner-login", "partner-inspectors")
     }
     | {"re-1"}
+    | {"ins-1"}
 )
 
 D266_TEXT = (
