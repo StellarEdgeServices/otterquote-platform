@@ -239,8 +239,8 @@ export async function runOnboardingSweep(deps: RunDeps): Promise<SweepOutcome> {
     const subjectPrefix = isTest ? "[TEST] " : "";
     const optOutUrl = await deps.buildOptOutUrl(partner.id);
     const finalCopy = deps.getUnsubLineTemplate
-      ? composeFinalCopy(baseCopy, optOutUrl, subjectPrefix, deps.getUnsubLineTemplate())
-      : composeFinalCopy(baseCopy, optOutUrl, subjectPrefix);
+      ? composeFinalCopy(baseCopy, optOutUrl, subjectPrefix, deps.getUnsubLineTemplate(), partner.first_name)
+      : composeFinalCopy(baseCopy, optOutUrl, subjectPrefix, undefined, partner.first_name);
 
     // Checked on the FINAL composed copy (stage body + [TEST] prefix + the
     // unsubscribe line) — a bug in any earlier step can never mask a

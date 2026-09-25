@@ -76,6 +76,10 @@ export interface PartnerRow {
   agent_type: string;
   is_test: boolean;
   email: string | null;
+  /** Used for the {{first_name}} merge field in the copy (gh-2154 P-4
+   * approved copy, comment 5821400303). Falls back to "there" when null,
+   * same convention as send-homeowner-next-steps' buildEmailContent. */
+  first_name: string | null;
   /** NULL until the partner first signs in to the standalone app (P-2). */
   app_first_signed_in_launch_at: string | null;
   /** NULL until the partner clicks the D-320-style unsubscribe link (Kevin
