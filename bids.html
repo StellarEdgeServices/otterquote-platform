@@ -1190,15 +1190,21 @@
     // Pre-resolve signed URLs for all loaded contractors into c._resolvedPhotoUrl.
     // Called before render() so the synchronous map can use the resolved value.
     async function resolveContractorPhotos() {
-      // gh-1964 must-fix 2: revoke the previous batch of owner-photo blob:
-      // URLs before creating a new one -- this runs again every time
-      // pollForBids() finds new bids, not just once.
-      revokeOwnerPhotoBlobUrls();
+      // gh-1964 must-fix 2 / S4 review fix: build the new batch of
+      // owner-photo blob: URLs first, then revoke the previous batch only
+      // once every contractor has been swapped over to its new
+      // _resolvedPhotoUrl -- this runs again every time pollForBids()
+      // finds new bids, not just once, and revoking the old URLs up front
+      // could blank out photos still on screen before the new ones are
+      // ready to replace them.
+      const previousBlobUrls = ownerPhotoBlobUrls;
+      ownerPhotoBlobUrls = [];
       await Promise.all(Object.values(contractors).map(async (c) => {
         if (c.owner_photo_url) {
           c._resolvedPhotoUrl = await getSignedOwnerPhotoUrl(c.owner_photo_url);
         }
       }));
+      previousBlobUrls.forEach(function (u) { URL.revokeObjectURL(u); });
     }
 
     // ── scope_summary parser — cached per bid ─────────────────────────

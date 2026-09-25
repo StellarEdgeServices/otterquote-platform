@@ -1263,6 +1263,12 @@
         // (initial load, and again after a new video is saved) can
         // revoke the previous one instead of leaking it.
         let introVideoBlobUrl = null;
+        // S2 review fix: bumped on every intro-video card render (initial
+        // load, and again after a new video is saved) so an in-flight
+        // loadAndPlayIntroVideo() from a stale render can detect it has
+        // been superseded and not clobber the newer play button/video
+        // with the old video it was fetching.
+        let introVideoRenderGen = 0;
         function revokeIntroVideoBlobUrl() {
             if (introVideoBlobUrl) {
                 URL.revokeObjectURL(introVideoBlobUrl);
@@ -1812,6 +1818,9 @@
             // over from a previous render (this function runs again after
             // a new video is saved) before rebuilding the card.
             revokeIntroVideoBlobUrl();
+            // S2 review fix: a new render means any in-flight
+            // loadAndPlayIntroVideo() for a previous video is now stale.
+            introVideoRenderGen++;
 
             const previewEl = document.getElementById('introVideoPreviewView');
             if (!previewEl) return;
@@ -1852,6 +1861,11 @@
         async function loadAndPlayIntroVideo(videoPath) {
             const previewEl = document.getElementById('introVideoPreviewView');
             if (!previewEl || !contractorRecord || !sb) return;
+            // S2 review fix: snapshot the render generation this play
+            // click belongs to, so a slow download that finishes after a
+            // new video was uploaded (and the card re-rendered) doesn't
+            // overwrite the new video's play button with the old video.
+            const myRenderGen = introVideoRenderGen;
             previewEl.innerHTML = '';
             const loadingEl = document.createElement('div');
             loadingEl.style.cssText = 'color:#fff;padding:var(--sp-6);text-align:center;';
@@ -1867,6 +1881,11 @@
                 const videoResp = await fetch(signedData.signedUrl);
                 if (!videoResp.ok) throw new Error('video fetch failed: ' + videoResp.status);
                 const videoBlob = await videoResp.blob();
+                // S2 review fix: if the card re-rendered (e.g. a new video
+                // was uploaded and saved) while this fetch was in flight,
+                // this download is for a superseded video — drop it instead
+                // of overwriting the current play button/video.
+                if (myRenderGen !== introVideoRenderGen) return;
                 // gh-1964 review fix (must-fix 2): revoke the just-superseded
                 // blob (e.g. a second click) before creating the new one.
                 revokeIntroVideoBlobUrl();

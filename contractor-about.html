@@ -544,7 +544,7 @@
       let videoPath;
       try {
         const { data, error } = await sb
-          .from('contractors')
+          .rpc('get_contractors_public')
           .select('intro_video_path')
           .eq('id', contractorId)
           .maybeSingle();

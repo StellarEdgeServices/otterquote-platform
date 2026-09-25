@@ -127,6 +127,13 @@ const cases = [
   // branch is a no-op here, so this exercises the allowlist match on the
   // path exactly as CLARITY_ALLOWED_PATHS stores it.
   { name: 'AUTH-RULED /bids (extensionless)', hostname: 'otterquote.com', pathname: '/bids', expectClarity: true },
+  // S5 review fix (test coverage): an extensionless AUTH page that is NOT
+  // ruled onto CLARITY_ALLOWED_PATHS (unlike /bids above) -- proves the
+  // extensionless-path handling doesn't accidentally fall through to the
+  // "not recognised -> no request" branch for the wrong reason (a real
+  // gh-1964 must-fix, contractor-profile.html, but requested here without
+  // the '.html' suffix).
+  { name: 'AUTH    /contractor-profile (extensionless)', hostname: 'otterquote.com', pathname: '/contractor-profile', expectClarity: false },
   // gh-1964 should-fix (test coverage): a masked AUTH-RULED page --
   // contractor-about.html carries data-clarity-mask="true" (gh-1939 scope
   // extension) and IS on CLARITY_ALLOWED_PATHS, unlike the plain AUTH
