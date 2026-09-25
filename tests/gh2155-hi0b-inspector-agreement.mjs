@@ -300,7 +300,8 @@ function runHidingScript(hrefSearch) {
 
 // ── (c) realtor/insurance (no track param, or a non-inspector value):
 //        nothing hidden, and the page's visible text is unchanged apart
-//        from the version/effective-date label, vs. origin/main. ───────
+//        from the version/effective-date label, vs. a fixed merge-base
+//        baseline fixture (see tests/fixtures/, below). ───────
 {
   for (const search of ['', '?track=re_agent', '?agent_type=insurance_agent']) {
     const els = runHidingScript(search);
@@ -309,11 +310,41 @@ function runHidingScript(hrefSearch) {
     }
   }
 
+  // gh-2155 HI-0c REVIEW FAIL (5837784831) should-fix: this used to run
+  // `git show origin/main:partner-agreement.html` live -- whatever main
+  // happens to be at CI run time. By the time of this fix, main had already
+  // absorbed this very file's v3-2026-09 version bump, its "home
+  // inspectors," removal from Section 7, AND a new Section 4.3 (Home
+  // Inspector Partners, a realtor/insurance-visible disclosure, not
+  // inspector-track-hidden content) through an earlier merged round (HI-0b,
+  // PR #2166) -- none of which this test's hardcoded 'Effective Date:
+  // August 20, 2026' strip and single "home inspectors," removal accounted
+  // for, so it was failing on every run by comparing against a moving,
+  // no-longer-accurate idea of what the "before" state was, regardless of
+  // any real regression.
+  //
+  // Fixed by comparing against a byte-for-byte snapshot of the file at a
+  // FIXED commit instead of a moving branch pointer: 275ba875, the merge
+  // base of this branch and main (`git merge-base HEAD origin/main`) --
+  // i.e. the last point the two histories agree on, which by construction
+  // already carries every prior round's legitimate change (version, date,
+  // Section 4.3, the Section 7 removal) and nothing this PR touches, since
+  // this PR does not modify partner-agreement.html at all. Committed
+  // alongside this test as
+  // tests/fixtures/gh2155-partner-agreement-baseline.html so the comparison
+  // never depends on git history, a remote, or where main's pointer sits
+  // at run time -- a merge-base commit's content cannot change
+  // retroactively. The version/date-label exception is kept (as a
+  // now-normally-no-op replace) rather than dropped, so a future round that
+  // legitimately re-bumps the date/version again does not have to touch
+  // this test to stay green -- exactly what this check has always allowed,
+  // just anchored to a fixed ref instead of a live one.
+  const baselinePath = path.join(__dirname, 'fixtures', 'gh2155-partner-agreement-baseline.html');
   let mainSrc = null;
   try {
-    mainSrc = execFileSync('git', ['show', 'origin/main:partner-agreement.html'], { cwd: repoRoot, encoding: 'utf8' });
+    mainSrc = fs.readFileSync(baselinePath, 'utf8');
   } catch (e) {
-    console.log('SKIP: byte-identical-vs-origin/main check (git show failed: ' + e.message + ')');
+    console.log('SKIP: byte-identical-vs-fixed-baseline check (fixture read failed: ' + e.message + ')');
   }
   if (mainSrc !== null) {
     // Strip the two lines this change is allowed to touch (Effective Date,
@@ -342,18 +373,21 @@ function runHidingScript(hrefSearch) {
         .replace(/\s+([,;.:!?])/g, '$1')
         .trim();
     }
-    const mainText = visibleText(mainSrc)
-      .replace('Effective Date: August 20, 2026', '')
-      .replace(/home inspectors,\s*/, '')
-      .replace(/\s+/g, ' ')
-      .trim();
-    const newText = visibleText(agreementSrc)
-      .replace('Effective Date: September 25, 2026', '')
-      .replace('Version: v3-2026-09', '')
-      .replace(/\s+/g, ' ')
-      .trim();
+    // Both sides get the SAME date/version strip (rather than two different
+    // hardcoded literals) -- the baseline fixture and the current file
+    // carry the identical v3-2026-09 / September 25, 2026 label today, and
+    // this stays correct if a future round bumps both again in lockstep.
+    function stripVersionLabel(text) {
+      return text
+        .replace(/Effective Date:\s*[A-Za-z]+ \d{1,2}, \d{4}/, '')
+        .replace(/Version:\s*v\d+-\d{4}-\d{2}/, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+    const mainText = stripVersionLabel(visibleText(mainSrc));
+    const newText = stripVersionLabel(visibleText(agreementSrc));
     ok(mainText === newText,
-      'partner-agreement.html: visible text for realtor/insurance is unchanged vs origin/main apart from the version/date label and the Section 7 "home inspectors," removal');
+      'partner-agreement.html: visible text for realtor/insurance is unchanged vs the fixed merge-base baseline fixture apart from the version/date label');
   }
 }
 
@@ -411,7 +445,8 @@ function runHidingScript(hrefSearch) {
   // insurance_agent and a no-param visitor actually receive, since the hide
   // is display:none/CSS :target, never a literal text deletion -- still
   // carries all three phrases. This is what (c) already proved is
-  // byte-for-byte unchanged from origin/main for those tracks.
+  // unchanged (apart from the version/date label) from the fixed
+  // merge-base baseline fixture for those tracks.
   const fullText = toText(agreementSrc);
   for (const phrase of PHRASES) {
     ok(fullText.indexOf(phrase) !== -1, 'negative control: "' + phrase + '" is PRESENT in the raw document (re_agent/insurance_agent/no-param never hide it)');

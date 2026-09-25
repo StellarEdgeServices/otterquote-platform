@@ -210,9 +210,18 @@ for (const file of JS_OFF_PAGES) {
   }
 
   if (navBody) {
+    // gh-2155 HI-0c REVIEW FAIL (5837784831) fix: _syncPartnerAgentType() now
+    // touches `document` (to find #site-footer and re-render it). Every
+    // pre-existing call site below only exercises pure link-logic and never
+    // provided a `document` global at all -- give them a harmless stub
+    // (no footer element => the guard in _syncPartnerAgentType() no-ops)
+    // so none of them starts reaching into a real renderFooter() call by
+    // accident. The footer-re-render behavior itself gets its own fuller
+    // stub in makeFooterCtx() below.
     function makeNavCtx({ pathname, currentPartnerAgentType, search = '' }) {
       const ctx = {
         window: { location: { pathname, search }, currentPartnerAgentType, localStorage: { getItem: () => null, setItem: () => {}, removeItem: () => {} }, URLSearchParams },
+        document: { getElementById: () => null },
         URLSearchParams,
         console,
       };
@@ -337,6 +346,136 @@ for (const file of JS_OFF_PAGES) {
     const byUnrelatedParam = makeNavCtx({ pathname: '/partner-app.html', currentPartnerAgentType: undefined, search: '?track=re_agent' });
     ok(byUnrelatedParam.Nav._isInspectorTrack() === false,
       'NEGATIVE CONTROL, JS-ON nav.js: ?track=re_agent does not trip _isInspectorTrack()');
+  }
+}
+
+// ── JS-ON: js/nav.js -- footer re-render on late type resolution ──────────
+// REVIEW FAIL 5837784831 (round 3) must-fix: renderFooter() runs at
+// DOMContentLoaded, before Auth.getUser()/Auth.getRole() resolve, so a
+// signed-in inspector's footer "Partner Agreement" link was built from the
+// not-yet-known _isInspectorTrack() state and never got corrected on any
+// page except partner-dashboard.html (which re-renders its own footer once
+// its separately-sourced partnerType lands). This block proves the actual
+// fix: _syncPartnerAgentType() re-renders the REAL footer DOM once the
+// type is known, on partner-app.html (named in the review) plus one more
+// of partner-profile/index/partners, with a negative control (realtor
+// keeps /partner-agreement.html) and a page-unchanged check (an
+// already-hidden footer, or an already-resolved value, does not re-render).
+{
+  const navSrc = fs.readFileSync(path.join(repoRoot, 'js', 'nav.js'), 'utf8');
+  const navBody = extractBetween(navSrc, 'const Nav = {', '\n};', 'js/nav.js Nav object literal (footer re-render block)')
+    .replace('const Nav = {', 'var Nav = {') + '\n};\n';
+
+  /** A footer element whose innerHTML is a real string, like the DOM's. */
+  function makeFooterEl() {
+    return { dataset: {}, innerHTML: '', style: {} };
+  }
+
+  /** Everything else renderFooter()/_renderSupportModal() touch, as
+   *  harmless no-ops -- this block cares only about the footer's own
+   *  innerHTML string, already exercised element-by-element elsewhere in
+   *  this file and in tests/gh2155-hi0b-inspector-agreement.mjs. */
+  function makeNoopEl() {
+    return {
+      style: {}, dataset: {}, innerHTML: '', textContent: '', value: '', checked: false,
+      addEventListener() {}, appendChild() {}, setAttribute() {}, removeAttribute() {},
+      classList: { add() {}, remove() {}, toggle() {} },
+      reset() {},
+    };
+  }
+
+  function makeFooterCtx({ pathname, search = '' }) {
+    const footerEl = makeFooterEl();
+    const docStore = new Map([['site-footer', footerEl]]);
+    const ctx = {
+      window: { location: { pathname, search }, currentPartnerAgentType: undefined, localStorage: { getItem: () => null, setItem: () => {}, removeItem: () => {} }, URLSearchParams },
+      document: {
+        getElementById: (id) => (docStore.has(id) ? docStore.get(id) : (id === 'support-modal-overlay' ? null : makeNoopEl())),
+        createElement: () => makeNoopEl(),
+        body: { appendChild() {}, insertBefore() {}, firstChild: null },
+        querySelectorAll: () => [],
+      },
+      CONFIG: { SITE_NAME: 'Otter Quotes' },
+      NAP: { streetAddress: '', addressLocality: '', addressRegion: '', postalCode: '', phoneTelHref: '', phoneDisplay: '', email: '' },
+      URLSearchParams,
+      Date,
+      console,
+    };
+    ctx.window.window = ctx.window;
+    vm.createContext(ctx);
+    vm.runInContext(navBody, ctx);
+    return { ctx, footerEl };
+  }
+
+  /** The href the footer's "Partner Agreement" anchor was actually
+   *  rendered with, read out of the real innerHTML string renderFooter()
+   *  built -- not a reimplementation of the ternary. */
+  function footerRenderedHref(footerEl) {
+    // NOT a generic "Partner Agreement" text match: the same footer also
+    // has a distinct, unrelated contractor-column link
+    // (/contractor-agreement.html) with the identical link text, which a
+    // loose match would find first and report as this test's target.
+    // partnerAgreementHref (renderFooter()'s own variable) only ever holds
+    // one of these two literal paths, so anchor on that.
+    const m = footerEl.innerHTML.match(/href="(\/partner-agreement(?:-inspector)?\.html)">Partner Agreement<\/a>/);
+    return m && m[1];
+  }
+
+  for (const pathname of ['/partner-app.html', '/partner-profile.html', '/index.html', '/partners.html']) {
+    // Initial render, exactly as DOMContentLoaded does it, before auth
+    // resolves -- currentPartnerAgentType is still undefined, so the
+    // footer starts out pointed at the fee-bearing agreement, same as any
+    // guest visitor.
+    const { ctx, footerEl } = makeFooterCtx({ pathname });
+    ctx.Nav.renderFooter();
+    ok(footerRenderedHref(footerEl) === '/partner-agreement.html',
+      `JS-ON nav.js footer (${pathname}): initial pre-auth render links Partner Agreement to /partner-agreement.html`);
+
+    // Auth resolves late (mocked): the signed-in visitor is a home_inspector.
+    // This is the exact call _applyAuthRole()/_renderAuthSlot() make once
+    // Auth.getRole() settles.
+    ctx.Nav._syncPartnerAgentType('home_inspector');
+    ok(footerRenderedHref(footerEl) === '/partner-agreement-inspector.html',
+      `MUST-FIX 5837784831: JS-ON nav.js footer (${pathname}) for a mocked signed-in inspector re-points Partner Agreement to /partner-agreement-inspector.html after type resolution`);
+  }
+
+  // NEGATIVE CONTROL: a signed-in realtor's footer link is untouched --
+  // stays on /partner-agreement.html both before and after role resolution.
+  {
+    const { ctx, footerEl } = makeFooterCtx({ pathname: '/partner-app.html' });
+    ctx.Nav.renderFooter();
+    ctx.Nav._syncPartnerAgentType('re_agent');
+    ok(footerRenderedHref(footerEl) === '/partner-agreement.html',
+      'NEGATIVE CONTROL: JS-ON nav.js footer (/partner-app.html) for a mocked signed-in realtor keeps Partner Agreement at /partner-agreement.html after type resolution');
+  }
+
+  // No spurious re-render: an unresolved role (null/undefined) leaves the
+  // already-rendered footer's markup exactly as it was (fail closed -- see
+  // _syncPartnerAgentType()'s own early return).
+  {
+    const { ctx, footerEl } = makeFooterCtx({ pathname: '/partner-app.html' });
+    ctx.Nav.renderFooter();
+    const before = footerEl.innerHTML;
+    ctx.Nav._syncPartnerAgentType(null);
+    ok(footerEl.innerHTML === before,
+      'JS-ON nav.js footer (/partner-app.html): an unresolved role (null) does not re-render the footer at all');
+  }
+
+  // No duplicate re-render: once the type is known and the footer already
+  // reflects it, resolving to the SAME value again (e.g. _renderAuthSlot()
+  // and _applyAuthRole() both calling _syncPartnerAgentType() on one page
+  // load) does not re-render the footer a second time -- exactly the "no
+  // duplicate footers" constraint from the dispatch brief. Detected by
+  // clobbering the already-correct DOM string and confirming the second
+  // call leaves it clobbered (a real second render would restore it).
+  {
+    const { ctx, footerEl } = makeFooterCtx({ pathname: '/partner-app.html' });
+    ctx.Nav.renderFooter();
+    ctx.Nav._syncPartnerAgentType('home_inspector');
+    footerEl.innerHTML = '__SENTINEL__';
+    ctx.Nav._syncPartnerAgentType('home_inspector');
+    ok(footerEl.innerHTML === '__SENTINEL__',
+      'JS-ON nav.js footer (/partner-app.html): resolving the SAME already-cached type again does not re-render the footer a second time (no duplicate footer renders)');
   }
 }
 

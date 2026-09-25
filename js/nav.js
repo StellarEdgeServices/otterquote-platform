@@ -120,10 +120,31 @@ const Nav = {
    * non-partner role. A null/undefined `role` (unresolved auth, RLS error,
    * no session) leaves whatever is already cached untouched -- fail closed,
    * never asserts "not an inspector" on a guess.
+   *
+   * gh-2155 HI-0c REVIEW FAIL (5837784831) fix: renderFooter() runs once at
+   * DOMContentLoaded, before Auth.getUser()/Auth.getRole() (both awaited by
+   * _applyAuthRole() and _renderAuthSlot()) have resolved, so a signed-in
+   * inspector's footer "Partner Agreement" link was built from the
+   * not-yet-known _isInspectorTrack() state and stayed pointed at the
+   * fee-bearing /partner-agreement.html on every page except
+   * partner-dashboard.html, which re-renders its footer itself once its own
+   * (separately-sourced) partnerType is in hand. This is the ONE place that
+   * signal (c) of _isInspectorTrack() changes, so re-rendering here --
+   * exactly once, only when the resolved value actually differs from what
+   * is already cached -- re-points the footer link on every page that
+   * reaches this function, with no duplicate footer render on pages whose
+   * role/type does not change between renders (e.g. two guest page-loads,
+   * or a re-run of an already-resolved role).
    */
   _syncPartnerAgentType(role) {
     if (role === null || role === undefined) return; // unresolved -- leave cached value untouched
-    window.currentPartnerAgentType = (role === 'home_inspector') ? 'home_inspector' : null;
+    const resolved = (role === 'home_inspector') ? 'home_inspector' : null;
+    if (resolved === window.currentPartnerAgentType) return; // no change -- nothing to re-render
+    window.currentPartnerAgentType = resolved;
+    if (typeof this.renderFooter === 'function') {
+      const footer = document.getElementById('site-footer');
+      if (footer && footer.dataset.skipNav !== 'true') this.renderFooter();
+    }
   },
 
   /* ══════════════════════════════════════════════════════════════════════
