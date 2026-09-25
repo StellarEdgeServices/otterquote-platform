@@ -80,6 +80,21 @@ export function isTestAccount(email: string): boolean {
   );
 }
 
+/**
+ * Ben, DECIDED (gh-2154 P-3 review round 2, REVIEW FAIL 5832785581
+ * should-fix 1): the repo's pfw-/authdoctor walk bots all sign up under the
+ * `@otterquote-internal.test` domain (Auth.isTestEmail sets is_test=true for
+ * that whole domain, P-1 / REVIEW 5822537570). That made the original
+ * "is_test wins" ordering alert Dustin on every walk run, defeating the
+ * point of the bot-pattern skip. An `@otterquote-internal.test` address now
+ * skips the alert unconditionally, even when is_test=true. A human test
+ * signup (is_test=true on any OTHER domain -- Dustin testing the funnel
+ * himself) still alerts, with the "[TEST] " subject prefix.
+ */
+export function isInternalTestDomain(email: string): boolean {
+  return (email || "").toLowerCase().endsWith("@otterquote-internal.test");
+}
+
 function escapeHtml(str: string): string {
   return String(str)
     .replace(/&/g, "&amp;")
@@ -90,13 +105,19 @@ function escapeHtml(str: string): string {
 }
 
 /**
- * Strips CR/LF from a value bound for an email header (e.g. the subject).
- * Partner-supplied fields (name, agent_type, etc.) can contain arbitrary
- * bytes -- without this, a name like "Jamie\r\nBcc: evil@example.com" would
- * inject an extra header into the outbound Mailgun message.
+ * Strips CR/LF, and other line-separator / control characters, from a value
+ * bound for an email header (e.g. the subject). Partner-supplied fields
+ * (name, agent_type, etc.) can contain arbitrary bytes -- without this, a
+ * name like "Jamie\r\nBcc: evil@example.com" would inject an extra header
+ * into the outbound Mailgun message. CR/LF alone isn't the full threat
+ * surface: U+2028 (LINE SEPARATOR), U+2029 (PARAGRAPH SEPARATOR) and U+0085
+ * (NEL) are treated as line breaks by some header parsers, and other C0
+ * control characters have no legitimate place in a subject line either
+ * (gh-2154 P-3 review round 2, REVIEW FAIL 5832785581 should-fix 4).
  */
 function stripHeaderInjection(str: string): string {
-  return String(str).replace(/[\r\n]+/g, " ");
+  // deno-lint-ignore no-control-regex
+  return String(str).replace(/[\u0000-\u0008\u000A-\u001F\u007F\u0085\u2028\u2029]+/g, " ");
 }
 
 export interface PartnerRow {
@@ -285,24 +306,57 @@ export async function handleNotifyAdminNewPartner(req: Request, deps: PartnerDep
     const email  = partner.email || "";
     const isTest = partner.is_test === true;
 
-    // is_test is checked FIRST and wins: an is_test=true row always alerts
-    // (with the [TEST] prefix below), even if its email also matches a bot
-    // pattern. Only a NON-is_test row matching a bot pattern is skipped.
+    // Ben, DECIDED (review round 2, should-fix 1): an @otterquote-internal.test
+    // address (the repo's pfw-/authdoctor walk bots) skips unconditionally --
+    // checked FIRST, before is_test -- even when is_test=true, so walk runs
+    // never page Dustin. Logs the partner id, never the raw email
+    // (should-fix 3: PII in logs).
+    if (isInternalTestDomain(email)) {
+      console.log(`notify-admin-new-partner: skipping internal-test-domain partner_id=${partnerId}`);
+      return new Response(
+        JSON.stringify({ success: true, skipped: true, reason: "internal_test_domain" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    // is_test is checked next and wins over the (non-internal-test-domain)
+    // bot-pattern skip: an is_test=true row on any other domain always
+    // alerts (with the [TEST] prefix below) -- Dustin's own test signups.
+    // Only a NON-is_test row matching a bot pattern is skipped.
     if (!isTest && isTestAccount(email)) {
-      console.log(`notify-admin-new-partner: skipping test account ${email}`);
+      console.log(`notify-admin-new-partner: skipping test account partner_id=${partnerId}`);
       return new Response(
         JSON.stringify({ success: true, skipped: true, reason: "test_account" }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    const { data: existing } = await deps.supabase
+    // Dedupe keyed on the partner's OWN id, not user_id (must-fix 1,
+    // review round 2, REVIEW FAIL 5832785581): user_id is NULL on every
+    // referral_agents row at signup time (register_partner never sets it --
+    // it's linked later by claim_partner_account), and P-5's Meta leads have
+    // no auth user at all. A `.eq("user_id", null)` dedupe query is
+    // rewritten by supabase-js into `user_id=eq.null`, which live prod REST
+    // answers with HTTP 400 (22P02 invalid input syntax for type uuid:
+    // "null") -- and that error was being silently discarded, so every
+    // retry (or re-POST) for the same partner sent another email. Fails
+    // CLOSED on any dedupe-query error: no email is sent if we can't prove
+    // one hasn't already gone out.
+    const { data: existing, error: dedupeErr } = await deps.supabase
       .from("notifications")
       .select("id")
-      .eq("user_id", partner.user_id)
+      .eq("referral_agent_id", partner.id)
       .eq("notification_type", NOTIFICATION_TYPE)
       .eq("channel", "email")
       .limit(1);
+
+    if (dedupeErr) {
+      console.error(`notify-admin-new-partner: dedupe query failed for partner_id=${partnerId}:`, dedupeErr);
+      return new Response(
+        JSON.stringify({ error: "Dedupe check failed" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
 
     if (existing && existing.length > 0) {
       console.log(`notify-admin-new-partner: already sent for partner_id=${partnerId}`);
@@ -374,6 +428,7 @@ export async function handleNotifyAdminNewPartner(req: Request, deps: PartnerDep
 
     const { error: insertErr } = await deps.supabase.from("notifications").insert({
       user_id:          partner.user_id,
+      referral_agent_id: partner.id,
       claim_id:         null,
       channel:          "email",
       notification_type: NOTIFICATION_TYPE,
