@@ -14,16 +14,22 @@ on:
       - 'js/meta-pixel-gate.js'
       - 'js/services.js'
       - 'js/cookie-storage.js'
+      - 'js/nav.js'
       - 'tests/gh2106-pixel-gaps.mjs'
       - 'tests/gh2107-pixel-gate-optout.mjs'
       - 'tests/gh2107-gpc-client.mjs'
       - 'partner-dashboard.html'
+      - 'partner-app.html'
       - 'tests/gh2154-p2-app-activation.mjs'
       - 'partner-agreement.html'
+      - 'partner-agreement-inspector.html'
+      - 'tools/build_inspector_agreement.py'
       - 'partner-inspectors.html'
       - 'partner-re.html'
       - 'tools/partner_parity_check.py'
       - 'tests/gh2155-hi0b-inspector-agreement.mjs'
+      - 'tests/gh2155-hi0c-inspector-agreement-parity.mjs'
+      - 'tests/gh2155-hi0c-inspector-sweep.mjs'
       - 'partner-insurance.html'
       - 'partner-login.html'
       - 'tests/gh2154-p1-short-signup.mjs'
@@ -37,16 +43,22 @@ on:
       - 'js/meta-pixel-gate.js'
       - 'js/services.js'
       - 'js/cookie-storage.js'
+      - 'js/nav.js'
       - 'tests/gh2106-pixel-gaps.mjs'
       - 'tests/gh2107-pixel-gate-optout.mjs'
       - 'tests/gh2107-gpc-client.mjs'
       - 'partner-dashboard.html'
+      - 'partner-app.html'
       - 'tests/gh2154-p2-app-activation.mjs'
       - 'partner-agreement.html'
+      - 'partner-agreement-inspector.html'
+      - 'tools/build_inspector_agreement.py'
       - 'partner-inspectors.html'
       - 'partner-re.html'
       - 'tools/partner_parity_check.py'
       - 'tests/gh2155-hi0b-inspector-agreement.mjs'
+      - 'tests/gh2155-hi0c-inspector-agreement-parity.mjs'
+      - 'tests/gh2155-hi0c-inspector-sweep.mjs'
       - 'partner-insurance.html'
       - 'partner-login.html'
       - 'tests/gh2154-p1-short-signup.mjs'
@@ -87,6 +99,10 @@ jobs:
         run: node tests/gh2154-p2-app-activation.mjs
       - name: Home-inspector agreement v3-2026-09, no fee/D-266 for inspectors (gh2155-hi0b)
         run: node tests/gh2155-hi0b-inspector-agreement.mjs
+      - name: Static inspector agreement build parity, no drift vs source (gh2155-hi0c-parity)
+        run: node tests/gh2155-hi0c-inspector-agreement-parity.mjs
+      - name: No fee wording reachable on the inspector track, JS on/off + negative controls (gh2155-hi0c-sweep)
+        run: node tests/gh2155-hi0c-inspector-sweep.mjs
       - name: Short partner signup field set, attribution, D-333 (gh2154-p1-short-signup)
         run: node tests/gh2154-p1-short-signup.mjs
       - name: Partner dashboard one-time set-password card (gh2154-p1-set-password)
