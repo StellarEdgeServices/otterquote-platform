@@ -53,8 +53,38 @@
 -- trigger): a partner row has no status-transition analogous to
 -- contractors.status entering 'pending_approval' to gate on -- P-1's
 -- register_partner always does a direct INSERT.
+--
+-- ORDER GUARD (REVIEW FAIL 5833567534, must-fix 1): this migration's own
+-- timestamp (20260924200316) sorts BEFORE
+-- 20260925131429_gh2154_p3_notifications_referral_agent_id.sql, which adds
+-- notifications.referral_agent_id -- the column the Edge Function's dedupe
+-- query filters on. Nothing structural stopped the trigger from going live
+-- before that column exists; if it did, every partner INSERT would call
+-- the Edge Function, its `.eq("referral_agent_id", ...)` dedupe query would
+-- error 42703 (undefined_column), the Edge Function would fail closed
+-- (500, no send -- see notify-admin-new-partner/index.ts), and pg_net does
+-- not retry, so the alert would be silently lost with nothing reporting
+-- it. The correct go-live order is: apply 20260925131429 first, read it
+-- back, deploy the Edge Function with a byte read-back, THEN apply this
+-- migration (see sql/schema-pending.json "notifications" entry and PR
+-- #2170's Deploy order section). This guard makes applying it out of that
+-- order fail loudly at migration time instead of failing silently at
+-- runtime.
 
 BEGIN;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+      FROM information_schema.columns
+     WHERE table_schema = 'public'
+       AND table_name   = 'notifications'
+       AND column_name  = 'referral_agent_id'
+  ) THEN
+    RAISE EXCEPTION 'gh2154_p3_partner_new_alert_trigger: public.notifications.referral_agent_id does not exist yet -- apply supabase/migrations/20260925131429_gh2154_p3_notifications_referral_agent_id.sql BEFORE this migration. Applying this trigger first would make every partner-signup alert fail silently (see REVIEW FAIL 5833567534, must-fix 1).';
+  END IF;
+END $$;
 
 CREATE OR REPLACE FUNCTION public.notify_admin_new_partner()
 RETURNS trigger

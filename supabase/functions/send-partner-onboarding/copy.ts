@@ -45,15 +45,18 @@ export const PLACEHOLDER_MARKER = "[[";
 // /partner-app.html)" -- partner-dashboard.html's own installAppBtn/"How to
 // install" link both point at /partner-app.html.
 export const INSTALL_APP_URL = "https://otterquote.com/partner-app.html";
-// [PARTNER_APP_SIGNIN_URL] -> "the tokenised start_url/?source=pwa sign-in
-// entry point (P-2)". No per-partner tokenized sign-in URL exists anywhere
-// in this codebase today (grepped; none found) -- P-2 built activation
-// detection (app_first_signed_in_launch_at), not a personalized deep link.
-// partner-app.html IS the installed app's start_url, and it already
-// redirects into partner-dashboard.html?source=pwa once signed in, so this
-// reuses that existing, live ?source=pwa convention rather than inventing a
-// new token scheme. Flagged as an open question in the PR/report.
-export const PARTNER_APP_SIGNIN_URL = "https://otterquote.com/partner-app.html?source=pwa";
+// [PARTNER_APP_SIGNIN_URL] -> "the tokenised start_url sign-in entry point
+// (P-2)". No per-partner tokenized sign-in URL exists anywhere in this
+// codebase today (grepped; none found) -- P-2 built activation detection
+// (app_first_signed_in_launch_at), not a personalized deep link.
+// partner-app.html IS the installed app's start_url, so this points there
+// directly. Ben SHOULD (bus 14:01:57Z, REVIEW FAIL 5833587935): the
+// ?source=pwa query param this URL used to carry is unused -- nothing in
+// partner-app.html or partner-dashboard.html reads a `source` param (grepped;
+// no match) -- so it is dropped. This is a URL-mechanics change, not a copy
+// change: no visible word a recipient reads (the CTA button text, the
+// subject, the body) is affected, only the href target's query string.
+export const PARTNER_APP_SIGNIN_URL = "https://otterquote.com/partner-app.html";
 
 /** `{{first_name}}` merge field, substituted by composeFinalCopy. */
 export const FIRST_NAME_TOKEN = "{{first_name}}";
@@ -260,7 +263,11 @@ const HOME_INSPECTOR_DAY7: StageCopySource = {
 
 type CopySourceTable = Record<EligibleAgentType, Record<OnboardingStage, StageCopySource>>;
 
-const COPY_SOURCE: CopySourceTable = {
+// Exported READ-ONLY for copy.test.ts's regression guard only (Ben SHOULD,
+// bus 14:01:57Z: "add a test asserting the copy constants are unchanged vs
+// aae3acfc"). Not used by index.ts/run-sweep.ts — those only ever go through
+// getCopyForAgentType/ONBOARDING_COPY.
+export const COPY_SOURCE: CopySourceTable = {
   re_agent: { day0: RE_AGENT_DAY0, day1: RE_AGENT_DAY1, day3: RE_AGENT_DAY3, day7: RE_AGENT_DAY7 },
   insurance_agent: { day0: INSURANCE_AGENT_DAY0, day1: INSURANCE_AGENT_DAY1, day3: INSURANCE_AGENT_DAY3, day7: INSURANCE_AGENT_DAY7 },
   home_inspector: { day0: HOME_INSPECTOR_DAY0, day1: HOME_INSPECTOR_DAY1, day3: HOME_INSPECTOR_DAY3, day7: HOME_INSPECTOR_DAY7 },
@@ -337,6 +344,19 @@ function renderUnsubscribeLine(optOutUrl: string, template: string): string {
   return template.split(OPT_OUT_URL_TOKEN).join(optOutUrl);
 }
 
+/** Ben SHOULD (bus 14:01:57Z, REVIEW FAIL 5833587935): "a clickable
+ * unsubscribe <a> in the HTML body" — the footer line previously rendered
+ * the opt-out URL as plain escaped text in the HTML body (clickable only via
+ * the RFC 8058 List-Unsubscribe mailbox-provider header, added separately in
+ * index.ts/run-sweep.ts). This wraps the SAME already-escaped URL in an
+ * anchor instead of changing what URL is used or any surrounding word of
+ * the approved copy. `optOutUrlEscaped` must already be HTML-escaped by the
+ * caller (composeFinalCopy) — this function does not escape it again. */
+function renderUnsubscribeLineHtml(optOutUrlEscaped: string, template: string): string {
+  const anchor = `<a href="${optOutUrlEscaped}" style="color:inherit;">${optOutUrlEscaped}</a>`;
+  return template.split(OPT_OUT_URL_TOKEN).join(anchor);
+}
+
 // ── PR #2162 review 5822537570 (gh-2154 P-4): the same rule applied to P-3's
 // notify-admin-new-partner -- HTML-escape every dynamic value this module
 // interpolates into htmlBody, and never let raw CR/LF reach an email header
@@ -389,7 +409,7 @@ export function composeFinalCopy(
   // HTML body: every dynamic value (optOutUrl, first_name) is HTML-escaped
   // before it lands in markup; the static template text around it is
   // Sloane's own copy, not partner-supplied, so it is not re-escaped here.
-  const unsubLineHtml = renderUnsubscribeLine(escapeHtml(optOutUrl), unsubLineTemplate);
+  const unsubLineHtml = renderUnsubscribeLineHtml(escapeHtml(optOutUrl), unsubLineTemplate);
   const htmlBodyWithName = renderFirstName(baseCopy.htmlBody, escapeHtml(resolvedFirstName));
 
   return {

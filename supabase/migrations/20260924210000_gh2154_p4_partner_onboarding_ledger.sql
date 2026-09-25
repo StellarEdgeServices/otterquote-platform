@@ -23,17 +23,24 @@
 --   Q3 -- stamp-before-send was a defect, not a trade-off (same defect
 --   gh-2069 fixed in send-homeowner-next-steps: "stops claiming 'sent'
 --   before it has sent"). The ledger now has FOUR states instead of two --
---   'pending' (claimed, in flight), 'sent' (Mailgun accepted -- terminal),
---   'failed' (Mailgun rejected or the send threw -- NOT terminal, retried
---   by a later run), 'skipped' (superseded by backlog -- terminal, RUN 22
---   lesson, unchanged). claim_partner_onboarding_stage() below is the
---   atomic, DB-level conditional upsert that can only move a row into
---   'pending' if no 'sent'/'skipped' row exists and no 'pending' claim
---   younger than STALE_PENDING_MINUTES (20; see onboarding-stage.ts) is
---   already there -- this is what actually prevents two overlapping runs
---   from both emailing the same partner the same stage; the send/mark
---   steps are what the Edge Function calls before/after Mailgun, in
---   ./send-partner-onboarding/run-sweep.ts.
+--   'pending' (claimed, in flight -- outcome UNKNOWN until resolved),
+--   'sent' (Mailgun accepted -- terminal), 'failed' (Mailgun rejected or the
+--   send threw -- NOT terminal, retried by a later run), 'skipped'
+--   (superseded by backlog -- terminal, RUN 22 lesson, unchanged).
+--   claim_partner_onboarding_stage() below is the atomic, DB-level
+--   conditional upsert that can only move a row into 'pending' if no row
+--   exists yet, or the existing row is 'failed' -- this is what actually
+--   prevents two overlapping runs from both emailing the same partner the
+--   same stage; the send/mark steps are what the Edge Function calls
+--   before/after Mailgun, in ./send-partner-onboarding/run-sweep.ts.
+--   REOPENED (Ben, orchestrator review): a 'pending' row is NEVER
+--   reclaimable by this function, however old -- the original version's
+--   "stale pending is reclaimable after STALE_PENDING_MINUTES" branch was
+--   itself a double-send risk (a crash right after Mailgun accepted the
+--   message leaves a 'pending' row whose true outcome is unknown; reclaiming
+--   it sends again). A stale 'pending' row is instead SURFACED by
+--   run-sweep.ts's isUncertainPending() as an 'uncertain' skip reason --
+--   never auto-retried; a human resolves it manually.
 --
 --   Q1 -- add the D-320-style unsubscribe now, off the same mechanism
 --   the homeowner nudge uses (signed per-recipient token, verified by a
@@ -99,12 +106,34 @@ CREATE INDEX IF NOT EXISTS partner_onboarding_sends_partner_id_idx
 COMMENT ON TABLE public.partner_onboarding_sends IS
 'gh-2154 P-4: idempotency ledger for send-partner-onboarding — at most one row per (partner_id, stage). status: pending (claimed, in flight) / sent (terminal) / failed (retried by a later run) / skipped (terminal, superseded by backlog per the CTO RUN 22 lesson).';
 
--- Kevin correction Q3: the atomic claim. Mirrors canClaimStage() in
--- onboarding-stage.ts EXACTLY (see that function's own comment for why a
--- pure JS mirror of this WHERE clause exists) -- a claim succeeds if no row
--- exists yet, OR the existing row is 'failed', OR the existing row is
--- 'pending' and older than p_stale_minutes. 'sent' and 'skipped' rows are
--- never reclaimable. Returns true iff THIS call's claim won.
+-- Kevin correction Q3, REOPENED by Ben (orchestrator review of the P-4 fix
+-- round, unapplied migration edited in place -- no ALTER, this IS the
+-- original CREATE). Mirrors canClaimStage() in onboarding-stage.ts EXACTLY
+-- (see that function's own comment for why a pure JS mirror of this WHERE
+-- clause exists).
+--
+-- The ORIGINAL version of this function let a claim succeed if the existing
+-- row was 'failed', OR 'pending' AND older than p_stale_minutes -- i.e. it
+-- silently RECLAIMED a stale in-flight claim and let a later run send again.
+-- That is exactly the risk this whole ledger exists to prevent: a 'pending'
+-- row with no 'sent'/'failed' resolution means the send OUTCOME IS UNKNOWN
+-- (the invocation may have crashed AFTER Mailgun accepted the message, right
+-- before the mark-sent write) -- reclaiming it risks a real double-send to a
+-- real partner. Ben, DECIDED: "mark the stage sent-or-uncertain BEFORE
+-- calling Mailgun, never auto-reclaim a row whose send outcome is unknown
+-- (surface it instead)."
+--
+-- A claim now succeeds ONLY if no row exists yet, OR the existing row is
+-- 'failed'. A 'pending' row -- of ANY age -- is NEVER reclaimable by this
+-- function; a stale one is instead SURFACED by the Edge Function
+-- (send-partner-onboarding/run-sweep.ts's isUncertainPending check, run
+-- BEFORE it ever calls this RPC) as an 'uncertain' skip reason, in both the
+-- per-partner result and the sweep's own `uncertain` list in its JSON
+-- response -- never auto-retried; a human decides (check Mailgun's logs for
+-- that partner/stage, then manually UPDATE the row's status to 'failed' to
+-- allow a retry, or leave it if it did in fact send). p_stale_minutes is
+-- kept on the signature (unused by this function now) purely so the RPC
+-- call site (index.ts) does not need to change shape.
 CREATE OR REPLACE FUNCTION public.claim_partner_onboarding_stage(
   p_partner_id     uuid,
   p_stage          text,
@@ -121,18 +150,14 @@ BEGIN
   VALUES (p_partner_id, p_stage, 'pending', now())
   ON CONFLICT (partner_id, stage) DO UPDATE
     SET status = 'pending', created_at = now(), error = NULL, mailgun_id = NULL
-    WHERE partner_onboarding_sends.status = 'failed'
-       OR (
-         partner_onboarding_sends.status = 'pending'
-         AND partner_onboarding_sends.created_at < now() - make_interval(mins => p_stale_minutes)
-       );
+    WHERE partner_onboarding_sends.status = 'failed';
   GET DIAGNOSTICS v_rows = ROW_COUNT;
   RETURN v_rows > 0;
 END;
 $function$;
 
 COMMENT ON FUNCTION public.claim_partner_onboarding_stage(uuid, text, integer) IS
-'gh-2154 P-4 (Kevin correction Q3): atomic claim for one (partner_id, stage) — the DB-level enforcement of at-most-one-sender. Called by send-partner-onboarding BEFORE Mailgun, never after.';
+'gh-2154 P-4 (Kevin correction Q3, REOPENED): atomic claim for one (partner_id, stage) — the DB-level enforcement of at-most-one-sender. Called by send-partner-onboarding BEFORE Mailgun, never after. A pending row is never reclaimable, however old — only a failed row is retried automatically; a stale pending row is surfaced (uncertain), never auto-retried.';
 
 -- Only the service-role Edge Function calls this — no client ever should.
 -- Same default-privilege posture as gh-2154 P-2's record_partner_app_

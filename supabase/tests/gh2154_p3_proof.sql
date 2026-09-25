@@ -22,18 +22,37 @@
 -- HTTP request (and therefore no real email to Dustin) can result from
 -- running section 4's INSERT below inside this transaction.
 --
+-- UPDATED at P-3 review round 3 (REVIEW FAIL 5833567534, must-fix 1 + c,
+-- should-fix 4): the go-live order is column-migration (20260925131429)
+-- FIRST, then the trigger migration -- the trigger migration now RAISEs an
+-- EXCEPTION if the column is missing, so this script applies 131429 before
+-- inlining the trigger migration, matching the corrected real-world order
+-- in PR #2170's Deploy order section and sql/schema-pending.json. Also
+-- inlines 131429's RLS policy tightening (should-fix 2) and asserts the
+-- dedupe path (referral_agent_id set on the synthetic insert) end to end.
+--
 -- This script:
 --   1. Inlines P-2's additive columns (idempotent ADD COLUMN IF NOT
 --      EXISTS -- a no-op against current prod, kept for standalone
 --      runnability against a database that predates P-2).
---   2. Inlines P-3's migration verbatim.
---   3. Asserts, in an aborted transaction: a trigger exists on
+--   2. Inlines 131429's migration (notifications.referral_agent_id column,
+--      partial unique index, RLS policy tightening) verbatim.
+--   3. Inlines P-3's trigger migration verbatim (its own column-exists
+--      guard now passes, because step 2 ran first in this same
+--      transaction).
+--   4. Asserts, in an aborted transaction: the column, its partial unique
+--      index and its FK exist; the two notifications RLS policies' WITH
+--      CHECK include "referral_agent_id IS NULL"; a trigger exists on
 --      public.referral_agents, fires AFTER INSERT (not AFTER UPDATE), and
 --      its function body calls net.http_post against
 --      '/functions/v1/notify-admin-new-partner'.
---   4. Inserts one synthetic is_test=true partner row and updates it,
---      exercising the trigger's INSERT path (and confirming an UPDATE
---      does not have a matching trigger to fire).
+--   5. Inserts one synthetic is_test=true partner row, then inserts a
+--      matching notifications row with referral_agent_id set (the shape
+--      the Edge Function's own INSERT after a real send would use) to
+--      prove the column, FK and index all accept the real dedupe write,
+--      and updates the partner row, exercising the trigger's INSERT path
+--      (and confirming an UPDATE does not have a matching trigger to
+--      fire).
 --
 -- Everything this script writes (test rows, the pg_net queue row) is rolled
 -- back by the ROLLBACK that must follow it -- no synthetic row, and no real
@@ -52,10 +71,48 @@ ALTER TABLE public.referral_agents
   ADD COLUMN IF NOT EXISTS funnel_id text,
   ADD COLUMN IF NOT EXISTS app_first_signed_in_launch_at timestamptz;
 
--- ── 2. P-3 migration inlined verbatim ────────────────────────────────────
+-- ── 2. 131429 migration inlined verbatim (MUST run before the trigger
+--      migration -- see the corrected go-live order above) ───────────────
+-- Byte-identical in effect (comment header trimmed for brevity here; full
+-- rationale lives in the migration file itself) to
+-- supabase/migrations/20260925131429_gh2154_p3_notifications_referral_agent_id.sql.
+ALTER TABLE public.notifications
+  ADD COLUMN IF NOT EXISTS referral_agent_id UUID
+    REFERENCES public.referral_agents(id) ON DELETE SET NULL;
+
+DROP INDEX IF EXISTS public.notifications_partner_alert_dedupe_idx;
+
+CREATE UNIQUE INDEX IF NOT EXISTS notifications_partner_alert_dedupe_idx
+  ON public.notifications (referral_agent_id)
+  WHERE referral_agent_id IS NOT NULL
+    AND notification_type = 'admin_new_partner_alert';
+
+ALTER POLICY "Authenticated can insert notifications" ON public.notifications
+  WITH CHECK (user_id = (select auth.uid()) AND referral_agent_id IS NULL);
+
+ALTER POLICY "Users can update own notifications" ON public.notifications
+  WITH CHECK (user_id = (select auth.uid()) AND referral_agent_id IS NULL);
+
+-- ── 3. P-3 trigger migration inlined verbatim ────────────────────────────
 -- Byte-identical (comment header trimmed for brevity here; full rationale
 -- lives in the migration file itself) to
 -- supabase/migrations/20260924200316_gh2154_p3_partner_new_alert_trigger.sql.
+-- Its own column-exists guard (must-fix 1, REVIEW FAIL 5833567534) runs
+-- here too and passes, because step 2 above already ran in this same
+-- transaction.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+      FROM information_schema.columns
+     WHERE table_schema = 'public'
+       AND table_name   = 'notifications'
+       AND column_name  = 'referral_agent_id'
+  ) THEN
+    RAISE EXCEPTION 'gh2154_p3_proof FAILED: referral_agent_id guard did not see the column added in step 2.';
+  END IF;
+END $$;
+
 CREATE OR REPLACE FUNCTION public.notify_admin_new_partner()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -98,7 +155,65 @@ CREATE TRIGGER trg_notify_admin_new_partner
   FOR EACH ROW
   EXECUTE FUNCTION public.notify_admin_new_partner();
 
--- ── 3. Assertions (aborted transaction — nothing survives the ROLLBACK) ─
+-- ── 4. Assertions (aborted transaction — nothing survives the ROLLBACK) ─
+
+DO $$
+DECLARE
+  v_col_exists   boolean;
+  v_fk_exists    boolean;
+  v_idx_def      text;
+  v_insert_check text;
+  v_update_check text;
+BEGIN
+  SELECT EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_schema = 'public' AND table_name = 'notifications'
+       AND column_name = 'referral_agent_id' AND is_nullable = 'YES'
+  ) INTO v_col_exists;
+  IF NOT v_col_exists THEN
+    RAISE EXCEPTION 'gh2154_p3_proof FAILED: notifications.referral_agent_id (nullable) not found after step 2.';
+  END IF;
+
+  SELECT EXISTS (
+    SELECT 1
+      FROM information_schema.table_constraints tc
+      JOIN information_schema.key_column_usage kcu
+        ON kcu.constraint_name = tc.constraint_name AND kcu.table_schema = tc.table_schema
+     WHERE tc.table_schema = 'public' AND tc.table_name = 'notifications'
+       AND tc.constraint_type = 'FOREIGN KEY' AND kcu.column_name = 'referral_agent_id'
+  ) INTO v_fk_exists;
+  IF NOT v_fk_exists THEN
+    RAISE EXCEPTION 'gh2154_p3_proof FAILED: no FK on notifications.referral_agent_id.';
+  END IF;
+
+  SELECT indexdef INTO v_idx_def
+    FROM pg_indexes
+   WHERE schemaname = 'public' AND indexname = 'notifications_partner_alert_dedupe_idx';
+  IF v_idx_def IS NULL THEN
+    RAISE EXCEPTION 'gh2154_p3_proof FAILED: notifications_partner_alert_dedupe_idx not found.';
+  END IF;
+  IF v_idx_def NOT ILIKE '%UNIQUE%' OR v_idx_def NOT ILIKE '%admin_new_partner_alert%' THEN
+    RAISE EXCEPTION 'gh2154_p3_proof FAILED: dedupe index is not a unique index partial on notification_type=admin_new_partner_alert. Definition: %', v_idx_def;
+  END IF;
+
+  SELECT pg_get_expr(pol.polwithcheck, pol.polrelid) INTO v_insert_check
+    FROM pg_policy pol
+   WHERE pol.polrelid = 'public.notifications'::regclass
+     AND pol.polname = 'Authenticated can insert notifications';
+  IF v_insert_check NOT ILIKE '%referral_agent_id IS NULL%' THEN
+    RAISE EXCEPTION 'gh2154_p3_proof FAILED: insert policy WITH CHECK does not require referral_agent_id IS NULL. Definition: %', v_insert_check;
+  END IF;
+
+  SELECT pg_get_expr(pol.polwithcheck, pol.polrelid) INTO v_update_check
+    FROM pg_policy pol
+   WHERE pol.polrelid = 'public.notifications'::regclass
+     AND pol.polname = 'Users can update own notifications';
+  IF v_update_check NOT ILIKE '%referral_agent_id IS NULL%' THEN
+    RAISE EXCEPTION 'gh2154_p3_proof FAILED: update policy WITH CHECK does not require referral_agent_id IS NULL. Definition: %', v_update_check;
+  END IF;
+
+  RAISE NOTICE 'gh2154_p3_proof: notifications.referral_agent_id column + FK + partial unique index + RLS WITH CHECK tightening all present. PASS.';
+END $$;
 
 DO $$
 DECLARE
@@ -143,7 +258,9 @@ BEGIN
   RAISE NOTICE 'gh2154_p3_proof: trigger % on referral_agents (AFTER INSERT only) calls % which posts to notify-admin-new-partner. PASS.', v_funcname, v_funcname;
 END $$;
 
--- ── 4. Behavioural check: an UPDATE does not fire the alert ─────────────
+-- ── 5. Behavioural check: an UPDATE does not fire the alert, and the ────
+--      dedupe write path (what the Edge Function's own INSERT does after a
+--      real send) round-trips through the column/FK/index/RLS added above.
 -- Insert a synthetic partner row (is_test=true so it can never be mistaken
 -- for a real signup even if this script were ever mis-run against prod
 -- outside its intended aborted transaction), then UPDATE it, and confirm
@@ -156,7 +273,9 @@ END $$;
 -- proving pg_net side effects inside a rolled-back transaction.
 DO $$
 DECLARE
-  v_partner_id uuid;
+  v_partner_id      uuid;
+  v_notification_id uuid;
+  v_row_count       int;
 BEGIN
   INSERT INTO public.referral_agents (
     agent_type, first_name, last_name, email, is_test, funnel_id, fbclid
@@ -170,13 +289,36 @@ BEGIN
      SET company = 'Updated Co'
    WHERE id = v_partner_id;
 
-  -- No assertion possible here beyond "the UPDATE succeeded and the
-  -- INSERT-only trigger definition (section 3) makes an UPDATE-triggered
-  -- re-alert structurally impossible" -- see comment above. This block
-  -- exists so the synthetic row's full lifecycle (insert + update) is
-  -- exercised in the same aborted transaction P-3's build will run this
-  -- proof against.
-  RAISE NOTICE 'gh2154_p3_proof: synthetic partner % inserted and updated inside the aborted transaction; no row survives the ROLLBACK.', v_partner_id;
+  -- Mirrors the INSERT the Edge Function makes after a successful send
+  -- (notify-admin-new-partner/index.ts): channel='email',
+  -- notification_type='admin_new_partner_alert', referral_agent_id set.
+  -- This is the "one synthetic is_test insert producing a row" the go-live
+  -- read-back requires -- proves the column, FK and partial unique index
+  -- all accept the real write shape, not just that they exist.
+  INSERT INTO public.notifications (
+    user_id, channel, notification_type, referral_agent_id, recipient, message_preview
+  ) VALUES (
+    NULL, 'email', 'admin_new_partner_alert', v_partner_id,
+    'dustinstohler1@gmail.com', '[TEST] New Partner Signup — GH2154P3 ProofSynthetic'
+  )
+  RETURNING id INTO v_notification_id;
+
+  SELECT count(*) INTO v_row_count
+    FROM public.notifications
+   WHERE referral_agent_id = v_partner_id
+     AND notification_type = 'admin_new_partner_alert';
+
+  IF v_notification_id IS NULL OR v_row_count <> 1 THEN
+    RAISE EXCEPTION 'gh2154_p3_proof FAILED: synthetic admin_new_partner_alert notification row was not produced for partner %.', v_partner_id;
+  END IF;
+
+  -- No assertion possible for the trigger's own net.http_post call beyond
+  -- "the UPDATE succeeded and the INSERT-only trigger definition (section
+  -- 4) makes an UPDATE-triggered re-alert structurally impossible" -- see
+  -- comment above. This block exists so the synthetic row's full lifecycle
+  -- (partner insert + update, notification insert) is exercised in the
+  -- same aborted transaction P-3's build will run this proof against.
+  RAISE NOTICE 'gh2154_p3_proof: synthetic partner % inserted and updated, synthetic notification % (referral_agent_id set) produced 1 row, all inside the aborted transaction; nothing survives the ROLLBACK. PASS.', v_partner_id, v_notification_id;
 END $$;
 
 ROLLBACK;
