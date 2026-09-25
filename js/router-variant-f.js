@@ -206,8 +206,46 @@
   function emitComplete(token) { bridge.trackRouter('router_step_complete', stepParams(token)); }
 
   var RENDERERS = {};
+  // gh-2121 (LRS S05, ceo69, HO-1 S05 LCP fix): true once the SSR-hydrate
+  // path below has run (or been attempted) once. start.html now ships the
+  // f-funding screen's markup statically inside #routerFRoot (byte-identical
+  // to what RENDERERS['f-funding'] builds -- see that div's own comment)
+  // precisely so the <h1>, Arm F's LCP element, can paint before this file
+  // even loads. The very first call to show() is always show('f-funding')
+  // from init() below -- when that SSR markup is present this ONE call
+  // hydrates it (wires the funding buttons' click handlers onto the
+  // existing DOM) instead of clearRoot()+RENDERERS['f-funding']() throwing
+  // it away and rebuilding an identical copy. Every later call to show()
+  // (address/contact/thanks, or f-funding again via goBack -- goBack can
+  // only be reached after clearRoot() has already run once, so the SSR
+  // markup is gone by then) takes the normal rebuild path unchanged.
+  // router_step_view still fires at exactly the same call site either way.
+  var ssrHydrateAttempted = false;
+  function hydrateSsrFunding() {
+    var buttons = root.querySelectorAll('.role-option');
+    if (buttons.length !== FUNDING_OPTIONS.length) {
+      // Markup drifted from FUNDING_OPTIONS (see the SSR div's own comment)
+      // -- degrade safely to the normal rebuild rather than wiring up the
+      // wrong buttons or leaving some of them dead.
+      clearRoot();
+      RENDERERS['f-funding']();
+      return;
+    }
+    FUNDING_OPTIONS.forEach(function (opt, i) {
+      buttons[i].addEventListener('click', function () {
+        funding = opt.value; // held in memory; goes only to the details Edge Function
+        go('f-address');
+      });
+    });
+  }
   function show(token) {
     activeToken = token;
+    if (token === 'f-funding' && !ssrHydrateAttempted && root.getAttribute('data-ssr-step') === 'f-funding') {
+      ssrHydrateAttempted = true;
+      emitView(token);
+      hydrateSsrFunding();
+      return;
+    }
     clearRoot();
     emitView(token);
     RENDERERS[token]();
