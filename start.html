@@ -735,6 +735,29 @@
      every other Arm-F-only rule above -- arms A-E and a bare /start are
      unaffected, since #step1 IS their intended first screen. */
   html[data-oq-start-arm="f"] #step1 { display: none !important; }
+  /* gh-2121 (LRS S05, ceo69: analytics-blocked mobile LCP/TTI still failed
+     at 3.54s/3.54s median post-#2160 -- lcp-breakdown-insight showed the
+     remaining ~2.2s "element render delay" is the JS chain that has to
+     finish (CSS load -> the whole end-of-body bootstrap IIFE parses/runs
+     -> js/router-variant-f.js is appended -> fetches/executes -> init()
+     calls show('f-funding') -> RENDERERS['f-funding'] finally appends the
+     step-1 <h1> -- Arm F's LCP element) before that <h1> exists in the DOM
+     at all. #routerFRoot below now ships the step-1 markup (h1/subhead/
+     question label/3 funding buttons) statically, byte-identical to what
+     RENDERERS['f-funding'] in js/router-variant-f.js builds (COPY.arm_f_s1_*)
+     -- js/router-variant-f.js's own init() detects it (data-ssr-step) and
+     HYDRATES it (attaches the click handlers, does not rebuild the DOM or
+     change when router_step_view fires) instead of building it from
+     scratch. This CSS rule is what actually reveals it: same belt-and-
+     suspenders idiom as #step1's rule immediately above, keyed off the
+     same synchronously-set data-oq-start-arm attribute, so the h1 can
+     paint the instant design-system.css/nav.css finish loading -- it no
+     longer has to wait for the JS chain above at all. Overrides the
+     `hidden` attribute #routerFRoot ships with (same as #routerCRoot/D/E)
+     so every other arm is unaffected. No copy, layout, tracking-event or
+     consent-text change -- see js/router-variant-f.js's own comment on
+     init()/show() for the hydrate path. */
+  html[data-oq-start-arm="f"] #routerFRoot[hidden] { display: block; }
   .form-group { margin-bottom: var(--sp-4); }
   .form-label { display: block; font-weight: 600; color: var(--white); margin-bottom: var(--sp-1); font-size: 0.95rem; }
   .form-label.required::after { content: ' *'; color: var(--red); }
@@ -888,11 +911,36 @@
     <div id="routerERoot" hidden></div>
 
     <!-- ═══════════ Variant F — homeowner short path (gh-2122, D-332) ═══════════ -->
-    <!-- Empty by design, same convention as #routerCRoot/#routerDRoot/
-         #routerERoot above: js/router-variant-f.js owns all rendering inside
-         this element once loaded. Hidden by default; unhidden only inside this
-         file's own variant === 'f' branch. -->
-    <div id="routerFRoot" hidden></div>
+    <!-- gh-2121 (LRS S05, ceo69, HO-1 S05 LCP fix): NOT empty any more, unlike
+         #routerCRoot/#routerDRoot/#routerERoot above. This is Arm F's step-1
+         screen (COPY.arm_f_s1_headline/s1_subhead/s1_question_label/the three
+         FUNDING_OPTIONS buttons in js/router-variant-f.js), shipped statically
+         so its <h1> -- Arm F's LCP element -- exists in the DOM and can paint
+         as soon as CSS applies, instead of waiting for js/router-variant-f.js
+         to fetch, execute and build it. `data-ssr-step="f-funding"` is the
+         marker js/router-variant-f.js's own init()/show() check for: it
+         HYDRATES this exact markup (attaches the funding-button click
+         handlers) instead of rebuilding it, and still fires router_step_view
+         at the same point it always did. If COPY.arm_f_s1_* in
+         js/router-variant-f.js ever changes, this markup must change with it
+         (js/router-variant-f.js's own hydrate path falls back to a full
+         rebuild if the option-button count here doesn't match FUNDING_OPTIONS,
+         so a mismatch degrades safely rather than breaking the screen -- but
+         it reintroduces the render-delay this fix removes, so keep them in
+         sync). Still `hidden` by default -- unaffected for every arm except F,
+         which reveals it via the CSS rule right above #step1's own identical
+         belt-and-suspenders rule, both keyed off the same synchronously-set
+         data-oq-start-arm attribute. -->
+    <div id="routerFRoot" hidden data-ssr-step="f-funding">
+      <h1>See if storm damage qualifies your roof for a free assessment.</h1>
+      <p class="router-sub">One quick question, then we'll get your info. Takes under a minute.</p>
+      <p class="router-sub">How will you pay for the repair?</p>
+      <div class="role-options">
+        <button type="button" class="role-option">Insurance claim</button>
+        <button type="button" class="role-option">Paying cash</button>
+        <button type="button" class="role-option">Not sure yet</button>
+      </div>
+    </div>
   </div>
 </main>
 
@@ -965,8 +1013,30 @@
      /start visit regardless of arm, not just F. Confirmed no other
      AgentTypes.CHOOSER_LABELS read in this codebase runs outside a
      RENDERERS/click-handler callback. Small file (116 lines); the perf
-     cost of keeping it synchronous is not worth risking that regression. -->
-<script src="js/agent-types.js"></script>
+     cost of keeping it synchronous is not worth risking that regression.
+
+     gh-2121 (LRS S05, ceo69 HO-1 S05 LCP fix): Arm F alone now skips this
+     request. js/router-variant-f.js is a self-contained 4-screen flow that
+     never reads window.AgentTypes and never shows #step2a (confirmed: no
+     AgentTypes reference anywhere in js/router-variant-f.js) -- so on Arm F
+     this file has only ever sat in the render-blocking critical path
+     (Lighthouse's render-blocking-insight flagged it, ~300ms, on the
+     analytics-blocked ceo69 trace) for a screen this arm can never reach.
+     renderPartnerIndustries() below already falls back to `{}` when
+     window.AgentTypes is undefined (`(window.AgentTypes && ...) || {}`),
+     so skipping the load changes nothing observable: it builds #step2a's
+     industry buttons with placeholder labels that no Arm F visitor's
+     browser ever paints, exactly as if the request were merely slow. Every
+     other arm gets the identical byte-for-byte request, same URL, no
+     async/defer, via document.write so it stays a parser-inserted
+     synchronous load in the same document position -- ordering relative to
+     the inline script right after (which reads window.AgentTypes at its
+     own top level) is unchanged for A-E. -->
+<script>
+  if (document.documentElement.getAttribute('data-oq-start-arm') !== 'f') {
+    document.write('<script src="js/agent-types.js"><\/script>');
+  }
+</script>
 
 <script>
 (function () {
