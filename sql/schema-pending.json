@@ -20,6 +20,8 @@
     "signed_price_checked_at": { "migration": "supabase/migrations_drafts/gh1314_persist_signed_price.sql", "issue": "#1314", "note": "when the reconciliation last ran for this claim" }
   },
   "leads": {
-    "alerted_at": { "migration": "supabase/migrations/20260917010217_gh1994_router_lead_alert.sql", "issue": "#1994", "note": "router-lead admin-alert dedupe stamp -- notify-admin-new-homeowner's handleRouterLead() claims a lead atomically via UPDATE ... WHERE alerted_at IS NULL before sending" }
+    "alerted_at": { "migration": "supabase/migrations/20260917010217_gh1994_router_lead_alert.sql", "issue": "#1994", "note": "router-lead admin-alert dedupe stamp -- notify-admin-new-homeowner's handleRouterLead() claims a lead atomically via UPDATE ... WHERE alerted_at IS NULL before sending" },
+    "next_step_reminder_sent_at": { "migration": "supabase/migrations/20260925020000_gh2121_lead_next_step_reminder.sql", "issue": "#2121", "note": "LRS HO-1 S21 next-step reminder idempotency stamp -- send-lead-next-step-reminder claims a lead atomically via UPDATE ... WHERE next_step_reminder_sent_at IS NULL before sending; migration not yet applied (kill switch inserted OFF pending PR merge)" },
+    "next_step_reminder_opted_out_at": { "migration": "supabase/migrations/20260925020000_gh2121_lead_next_step_reminder.sql", "issue": "#2121", "note": "LRS HO-1 S21 D-320-style opt-out stamp, written by the lead-next-step-optout Edge Function; migration not yet applied" }
   }
 }
