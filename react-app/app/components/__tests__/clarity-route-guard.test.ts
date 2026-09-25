@@ -119,7 +119,10 @@ function findNavHits(files: string[]): NavHit[] {
 
     const segments = rel.split(path.sep);
     const allowed = extractClarityAllowedPaths(readGA4GateSource());
-    const isUnderAllowedRoute = allowed.some(p => segments.includes(p.slice(1)));
+    // The file's URL route: its directory with route groups "(x)" dropped. Matching by FULL route (not by a bare segment name) matters now
+    // that "/dashboard" is allowed: contractor/dashboard and partner/dashboard also contain a "dashboard" segment but are different routes.
+    const fileRoute = "/" + segments.slice(0, -1).filter(s => !/^\(.*\)$/.test(s)).join("/");
+    const isUnderAllowedRoute = allowed.some(p => fileRoute === p || fileRoute.startsWith(p + "/"));
 
     for (const [re, kind, targetGroup] of [
       [NAV_CALL_RE, "router-nav", 2] as const,
@@ -153,7 +156,8 @@ function findNavHits(files: string[]): NavHit[] {
 describe("gh-1939 R-1: Clarity route-guard regression", () => {
   it("CLARITY_ALLOWED_PATHS is exactly the ruled set (Dustin 2026-09-16, #1939 comment 5691693161)", () => {
     const paths = extractClarityAllowedPaths(readGA4GateSource());
-    expect(paths).toEqual(["/get-started", "/trade-selector"]);
+    // #1939 row 0.4 (Ben's ruling 5810533784, on Dustin's scope ruling): the React funnel routes /dashboard, /bids, /repair-intake join.
+    expect(paths).toEqual(["/get-started", "/trade-selector", "/dashboard", "/bids", "/repair-intake"]);
   });
 
   it("every AUTHENTICATED allowlisted route masks its page root (data-clarity-mask=\"true\")", () => {
@@ -162,6 +166,10 @@ describe("gh-1939 R-1: Clarity route-guard regression", () => {
     // path -> [page file, regex the MASKED ROOT element itself must match]
     const AUTHENTICATED_ALLOWED: Record<string, [string, RegExp]> = {
       "/trade-selector": ["trade-selector/page.tsx", /<div className="ts-page"[^>]*\sdata-clarity-mask="true"/],
+      // the three homeowner routes render inside HomeownerShell, whose <main> carries the mask (the page file must use the shell)
+      "/dashboard": ["(homeowner)/_shell/HomeownerShell.tsx", /<main className="oqh-main"[^>]*\sdata-clarity-mask="true"/],
+      "/bids": ["(homeowner)/_shell/HomeownerShell.tsx", /<main className="oqh-main"[^>]*\sdata-clarity-mask="true"/],
+      "/repair-intake": ["(homeowner)/_shell/HomeownerShell.tsx", /<main className="oqh-main"[^>]*\sdata-clarity-mask="true"/],
     };
     const paths = extractClarityAllowedPaths(readGA4GateSource());
     for (const p of paths) {
@@ -172,7 +180,8 @@ describe("gh-1939 R-1: Clarity route-guard regression", () => {
       const src = fs.readFileSync(path.join(APP_ROOT, rel), "utf8");
       expect(src).toMatch(rootRe);
       // an unmask anywhere under the route would re-expose a subtree
-      const routeDir = path.join(APP_ROOT, p.slice(1));
+      // (the three homeowner routes live under the "(homeowner)" route group; trade-selector at the app root)
+      const routeDir = path.join(APP_ROOT, ["/dashboard", "/bids", "/repair-intake"].includes(p) ? "(homeowner)/" + p.slice(1) : p.slice(1));
       for (const f of walkTsxFiles(routeDir)) {
         expect(fs.readFileSync(f, "utf8"), `${f} unmasks a subtree`).not.toMatch(/data-clarity-unmask/);
       }

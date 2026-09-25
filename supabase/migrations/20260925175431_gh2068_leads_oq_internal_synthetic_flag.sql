@@ -90,19 +90,46 @@
 -- carried the cookie but not the query param this page load), this
 -- migration's header check is what actually sets it.
 --
--- Rollback: restore leads_force_safe_insert_defaults() to its pre-gh2068
--- body (the exact body live in production as of 2026-09-22, re-verified
--- against pg_proc.prosrc immediately before drafting this file). Rollback
--- block at the bottom of this file, same inline convention as
+-- REBASED (cto38-b2068, claim cto38-b2068, subagent of
+-- cto-2026-09-25T16:49:52Z, rebuilt on main 275ba8751478b10c1f4d95da981efd550598c387):
+-- between this migration's original draft (2026-09-22) and this rebase,
+-- 20260923211259_gh2122_leads_details_consent.sql applied on production and
+-- extended leads_force_safe_insert_defaults() with FOUR MORE forced-NULL
+-- assignments (funding_type, property_address, fbc, fbp -- Ben's protective-fix
+-- ruling, comment 5803524541, D-299 evidence-forging guard). The forward body
+-- below is the LIVE 9-assignment production body (pg_get_functiondef,
+-- re-verified via Supabase MCP immediately before this rebase, prosrc md5
+-- 2b25e0989ea4a25a34c4a3370211c0af, byte-identical to
+-- 20260923211259_gh2122_leads_details_consent.sql's own body) PLUS this
+-- migration's one addition: the DECLARE/guarded-read/IF block that sets
+-- is_synthetic. Nothing else changed. This replaces the original draft, which
+-- was built from the pre-#2126 5-assignment body and would have silently
+-- reverted the funding_type/property_address/fbc/fbp guard on apply -- caught
+-- by fresh-context review (comment 5824273357, Must-fix 1) and independently
+-- confirmed by a rebase attempt (comment 5836439758) before this rebase.
+--
+-- Rollback: restores that same live 9-assignment body EXACTLY (no
+-- is_synthetic IF block, no v_headers), i.e. current production behaviour --
+-- not the original 5-assignment pre-gh2068/pre-gh2122 body, which would break
+-- every insert into `leads` by no longer nulling funding_type/property_address/
+-- fbc/fbp (those columns exist on production now; a guard that doesn't null
+-- them reopens the anon-forgeable window #2126 closed). Rollback block at the
+-- bottom of this file, same inline convention as
 -- 20260917010217_gh1994_router_lead_alert.sql and
 -- 20260916132127_gh1994_router_leads_columns.sql (this table has not been
 -- granted a separate supabase/migrations_rollbacks/ file).
 --
--- Tier: additive-only in effect (CREATE OR REPLACE on an existing
--- function; no new column, no existing column's meaning changed for any
--- row that does not carry the new header) -- classification left to the
--- claim-holder's own tier judgement per this repo's process; not
--- self-applied here.
+-- Filename re-stamped 20260922140801 -> 20260925175431 (stamp.py) per fresh-
+-- context review comment 5824273357 Must-fix 3: the old stamp sorted before
+-- the already-applied 20260923211259_gh2122_leads_details_consent.sql, which
+-- would read wrong in "latest definition wins" migration ordering.
+--
+-- Tier: 3B (reviewer ruling, comment 5779410643 finding 4, PR body first
+-- line) -- CREATE OR REPLACE on a live SECURITY DEFINER BEFORE INSERT trigger
+-- function on `topic:money-path` public.leads; additive-only in effect for
+-- header-less rows, not additive in kind. Needs the CTO's 24h R-097 notice
+-- before apply; not applied by this session (no merge/deploy/DB-write
+-- permission here).
 
 BEGIN;
 
@@ -120,6 +147,10 @@ BEGIN
   NEW.role              := NULL;
   NEW.partner_industry  := NULL;
   NEW.alerted_at        := NULL;
+  NEW.funding_type      := NULL;
+  NEW.property_address  := NULL;
+  NEW.fbc               := NULL;
+  NEW.fbp               := NULL;
 
   -- gh-2068: server-side half of gh-2064's oq_internal opt-out -- see this
   -- migration's header comment for the full mechanism and why a header
@@ -170,10 +201,14 @@ COMMIT;
 --   NEW.role              := NULL;
 --   NEW.partner_industry  := NULL;
 --   NEW.alerted_at        := NULL;
+--   NEW.funding_type      := NULL;
+--   NEW.property_address  := NULL;
+--   NEW.fbc               := NULL;
+--   NEW.fbp               := NULL;
 --   RETURN NEW;
 -- END;
 -- $$;
 -- COMMENT ON FUNCTION public.leads_force_safe_insert_defaults() IS
---   'gh-1994 fix round 1: BEFORE INSERT guard on public.leads -- forces created_at=now() and nulls converted_user_id/role/partner_industry/alerted_at so an anon insert (with_check=true) cannot forge them or suppress its own alert. SECURITY DEFINER only so the function itself cannot be re-pointed by a non-owner; it grants no privilege an ordinary trigger would lack.';
+--   'gh-2122 (Ben ruling, comment 5803524541): the insert guard is extended by exactly four lines (funding_type, property_address, fbc, fbp := NULL) so a direct anon insert cannot pre-set the four Arm F / D-299 columns -- record_lead_details() is their only writer. SECURITY DEFINER only so the function itself cannot be re-pointed by a non-owner; it grants no privilege an ordinary trigger would lack.';
 -- COMMENT ON COLUMN public.leads.is_synthetic IS NULL;
 -- COMMIT;

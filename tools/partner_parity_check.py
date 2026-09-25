@@ -81,9 +81,22 @@ ALL_PAGES = VERTICAL_PAGES + ["partner-app", "partner-login", "partner-dashboard
 # at the repo root and unioning it with the other non-insurance, non-login pages
 # from ALL_PAGES. Only the discovery mechanism for this one check changes; the
 # other checks keep using ALL_PAGES/VERTICAL_PAGES unchanged.
+#
+# gh-2155 HI-0b / D-333 (Ben, comment 5824245098): home inspectors receive no
+# referral fee at all (partner-agreement.html Section 4.3), so the D-266
+# "make sure it is lawful for you to accept referral fees" warning does not
+# apply to that track and partner-inspectors.html no longer carries it -- this
+# is a per-track exemption for the INSPECTOR track ONLY, not a general
+# loosening of the D-266 gate. Every other page in D266_PAGES (realtor,
+# insurance and its siblings, adjusters, other, app, dashboard) is unaffected
+# and still fails this check if the sentence goes missing.
 D266_PAGES = sorted(
     {p.stem for p in REPO_ROOT.glob("partner-insurance*.html")}
-    | {p for p in ALL_PAGES if p not in ("partner-insurance", "partner-login")}
+    | {
+        p
+        for p in ALL_PAGES
+        if p not in ("partner-insurance", "partner-login", "partner-inspectors")
+    }
 )
 
 D266_TEXT = (

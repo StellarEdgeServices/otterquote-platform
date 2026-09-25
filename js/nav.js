@@ -831,6 +831,27 @@ const Nav = {
     if (!footer) return;
 
     const isContractor = this._isContractorPage();
+    // gh-2155 HI-0b round 3 (Ben ruling, comment 5825785741 item 2(b), per
+    // LEGAL-READ FAIL 5825690233 / REVIEW FAIL 5825693018 must-fix 2): the
+    // footer's Partner Agreement link must carry ?track=home_inspector on
+    // partner-inspectors.html and on an inspector's partner-dashboard.html,
+    // so it hides the fee terms the same way the tracked link on the signup
+    // form does. Path check covers partner-inspectors.html unconditionally
+    // (safe and immediate -- no dependency on auth having resolved yet).
+    // window.currentPartnerAgentType is a global partner-dashboard.html
+    // already sets for its OWN home_inspector-specific copy (see e.g. its
+    // ~line 2079); reusing it here is the "simpler and safer" option Ben
+    // named over adding a new Supabase fetch inside nav.js. This footer
+    // renders once, at DOMContentLoaded, which can run before that async
+    // global is set — a real but pre-existing race in the dashboard's own
+    // partner-type-dependent copy, not one this fix introduces or can
+    // safely close without a broader change; the path check is the
+    // guaranteed fix for the flagged partner-inspectors.html case.
+    const isInspectorTrack = window.location.pathname.indexOf('partner-inspectors') !== -1
+      || window.currentPartnerAgentType === 'home_inspector';
+    const partnerAgreementHref = isInspectorTrack
+      ? '/partner-agreement.html?track=home_inspector#track-home-inspector'
+      : '/partner-agreement.html';
 
     footer.innerHTML = `
       <div class="footer-inner container">
@@ -904,7 +925,7 @@ const Nav = {
                  actual account surfaces needed. Reachable from every page here,
                  and linked again inline at the point of acceptance on the
                  partner signup form, which is where it legally matters. -->
-            <a href="/partner-agreement.html">Partner Agreement</a>
+            <a href="${partnerAgreementHref}">Partner Agreement</a>
           </div>
         </div>
         <div class="footer-bottom">
@@ -980,8 +1001,16 @@ document.addEventListener('DOMContentLoaded', () => {
   _renderStagingBanner();
 
   // Look for data attributes on header/footer elements
+  // gh-2121 (LRS S07/S05): data-skip-nav="true" opts a page OUT of the
+  // header/footer entirely -- /start sets it on both elements so the
+  // header logo (-> /index.html) and the full footer nav (both real
+  // escape hatches out of the funnel before conversion, ceo67 audit row
+  // S07) are never built, and so the DOM work + the doubled
+  // otter-icon.png fetch (header copy + footer copy) never happen on that
+  // page's LCP path either. Every other page's header/footer element
+  // omits the attribute and renders exactly as before.
   const header = document.getElementById('site-header');
-  if (header) {
+  if (header && header.dataset.skipNav !== 'true') {
     Nav.renderHeader({
       active: header.dataset.active || '',
       showAuth: header.dataset.auth !== 'false'
@@ -989,7 +1018,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   const footer = document.getElementById('site-footer');
-  if (footer) {
+  if (footer && footer.dataset.skipNav !== 'true') {
     Nav.renderFooter();
   }
 

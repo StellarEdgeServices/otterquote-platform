@@ -40,6 +40,7 @@ import {
   footerPostalAddressHtml,
   footerPostalAddressText,
 } from "./email-footer.ts";
+import { buildNonUsdAlertEmail } from "./non-usd-alert-email.ts";
 
 const FUNCTION_NAME = "notify-measurement-order";
 const ADMIN_EMAIL = "dustinstohler1@gmail.com";
@@ -230,6 +231,43 @@ serve(async (req: Request) => {
     }
 
     const body = await req.json().catch(() => null);
+
+    // gh-2107 / D-330 (Ben's DECIDED (b) on #2078): `alert` mode. A rejected non-USD payment has no order, so it is dispatched here, after
+    // the service-role bearer check above and before the order_id requirement below. It reuses this function's Mailgun call and admin
+    // address; the body is re-validated and never echoed verbatim (see non-usd-alert-email.ts).
+    const alertEmail = buildNonUsdAlertEmail(body);
+    if (alertEmail) {
+      const alertForm = new FormData();
+      alertForm.append("from", `Otter Quotes <notifications@${mailgunDomain}>`);
+      alertForm.append("to", ADMIN_EMAIL);
+      alertForm.append("subject", alertEmail.subject);
+      alertForm.append("text", alertEmail.text);
+      alertForm.append("html", alertEmail.html);
+      try {
+        const mgRes = await fetch(`https://api.mailgun.net/v3/${mailgunDomain}/messages`, {
+          method: "POST",
+          headers: { Authorization: `Basic ${btoa(`api:${mailgunKey}`)}` },
+          body: alertForm,
+        });
+        if (!mgRes.ok) throw new Error(`Mailgun status ${mgRes.status}`);
+      } catch (_alertSendErr) {
+        // Fixed text only (the error can echo request data). A failed alert email must still leave a trace an operator watches.
+        console.error(`[${FUNCTION_NAME}] non-usd alert email send failed`);
+        try {
+          await createClient(supabaseUrl, serviceRoleKey).from("platform_alerts_log").insert({
+            alert_type: "notification_failed",
+            function_name: FUNCTION_NAME,
+            message: "non-USD payment alert email could not be sent; see the non_usd_payment_rejected alert row",
+            sent_at: new Date().toISOString(),
+          });
+        } catch {
+          console.error(`[${FUNCTION_NAME}] non-usd alert failure row could not be written`);
+        }
+        return json({ error: "Failed to send notification" }, 502, corsHeaders);
+      }
+      return json({ success: true, alert: true }, 200, corsHeaders);
+    }
+
     const orderId = body?.order_id as string | undefined;
     if (!orderId) {
       return json({ error: "Missing required field: order_id" }, 400, corsHeaders);
