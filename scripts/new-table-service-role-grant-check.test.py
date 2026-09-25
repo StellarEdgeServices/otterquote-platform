@@ -65,6 +65,74 @@ def test_bare_diff_with_grant_passes():
     return ok
 
 
+def test_quoted_cli_style_no_grant_fails():
+    # PR #2201 review 5839752411, finding 1, exact repro shape: `supabase
+    # db diff` emits CREATE TABLE with each identifier quoted separately,
+    # "public"."foo", not one quoted span across the dot; a SEPARATE,
+    # unrelated table's grant (`GRANT ALL ON public.bar TO service_role`)
+    # is also present. At 9b32febd this false-PASSed: the schema-then-dot
+    # group failed to match as a whole, the regex fell through to
+    # capturing "public" itself as the table name, and the unrelated
+    # grant's schema-qualified target (`public.bar`) word-matched "public"
+    # -- so the real new table `foo`, which has no grant of its own, read
+    # as covered.
+    old_text = ""
+    new_text = (
+        'BEGIN;\n\n'
+        'CREATE TABLE "public"."foo" (\n'
+        '  "id" uuid NOT NULL DEFAULT gen_random_uuid()\n'
+        ');\n\n'
+        'grant select, insert, update, delete on public.bar to service_role;\n\n'
+        'COMMIT;\n'
+    )
+    findings, _pass_notes = check.evaluate_file("v999-quoted-foo.sql", old_text, new_text)
+    ok = len(findings) == 1 and "new-table-missing-service-role-grant" in findings[0] and "TABLE foo " in findings[0]
+    print("PASS  diff-mode: CLI-quoted \"public\".\"foo\" plus an unrelated public.bar "
+          "grant -> 1 finding naming foo (not credited by bar's grant)"
+          if ok else "FAIL  quoted-no-grant case: findings=%r" % findings)
+    return ok
+
+
+def test_quoted_cli_style_with_grant_passes():
+    old_text = ""
+    new_text = (
+        'BEGIN;\n\n'
+        'CREATE TABLE "public"."foo" (\n'
+        '  "id" uuid NOT NULL DEFAULT gen_random_uuid()\n'
+        ');\n\n'
+        'grant select, insert, update, delete on "public"."foo" to service_role;\n\n'
+        'COMMIT;\n'
+    )
+    findings, pass_notes = check.evaluate_file("v999-quoted-foo.sql", old_text, new_text)
+    ok = len(findings) == 0 and len(pass_notes) == 1
+    print("PASS  diff-mode: CLI-quoted \"public\".\"foo\" with matching service_role grant -> 0 findings"
+          if ok else "FAIL  quoted-with-grant case: findings=%r pass_notes=%r" % (findings, pass_notes))
+    return ok
+
+
+def test_name_collision_suffix_grant_fails():
+    # PR #2201 review 5839752411, finding 2: grant matching must be
+    # anchored to the exact identifier. At 9b32febd, `GRANT ... ON
+    # public.foo_bar TO service_role` false-satisfied a check for a new
+    # table literally named `bar`, because `_target_matches_table` did a
+    # plain substring/word search instead of matching the full target name.
+    old_text = ""
+    new_text = (
+        "BEGIN;\n\n"
+        "CREATE TABLE IF NOT EXISTS public.bar (\n"
+        "  id UUID PRIMARY KEY DEFAULT gen_random_uuid()\n"
+        ");\n\n"
+        "grant select, insert, update, delete on public.foo_bar to service_role;\n\n"
+        "COMMIT;\n"
+    )
+    findings, _pass_notes = check.evaluate_file("v999-bar.sql", old_text, new_text)
+    ok = len(findings) == 1 and "TABLE bar " in findings[0]
+    print("PASS  diff-mode: new table `bar` credited only by a `bar`-exact grant, "
+          "not by unrelated `foo_bar` -> 1 finding"
+          if ok else "FAIL  suffix-collision case: findings=%r" % findings)
+    return ok
+
+
 def test_existing_table_untouched_never_flagged():
     # A pre-existing CREATE TABLE line that is NOT part of the diff's added
     # lines (old_text already contains it identically) must never surface a
@@ -88,6 +156,9 @@ def main():
         test_self_test_passes(),
         test_bare_diff_missing_grant_fails(),
         test_bare_diff_with_grant_passes(),
+        test_quoted_cli_style_no_grant_fails(),
+        test_quoted_cli_style_with_grant_passes(),
+        test_name_collision_suffix_grant_fails(),
         test_existing_table_untouched_never_flagged(),
     ]
     ok = all(results)

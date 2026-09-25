@@ -211,24 +211,109 @@ grant select, insert, update, delete on public.your_table to service_role;
   ratchet's job, so the two gates can never disagree about the same
   statement.
 
-**Premise correction (read-only prod check, 2026-09-25):** gh-2145's own
-issue body cites `partner_onboarding_sends` as an example of a table that
-is "RLS on and no policies, so it is service-role only anyway." Enumerating
-this project's actual grants (`aclexplode(pg_class.relacl)` against prod,
-`yeszghaspzwwstvsrioa` — `information_schema.role_table_grants` returns
-nothing useful here, it only shows grants visible to the querying role)
+**Premise correction (read-only prod check, 2026-09-25; re-verified 2026-09-25
+against PR #2201 review 5839752411, exact queries + raw counts below):**
+gh-2145's own issue body cites `partner_onboarding_sends` as an example of a
+table that is "RLS on and no policies, so it is service-role only anyway."
+Enumerating this project's actual grants against prod (`yeszghaspzwwstvsrioa`)
 shows that table in fact holds the **full, unrestricted default grant** to
 `anon`, `authenticated`, and `service_role` alike; it is locked down by its
-RLS policies (or lack thereof), not by its grants. Of the 48 public tables
-with any explicit anon/authenticated/service_role ACL entry today, 44 carry
-this same "wide-open grant, RLS does the real work" shape and only 2
-(`ad_sharing_suppressions`, `lead_consents`) are narrow at the grant level.
-Practically: today's status quo is that **every** new table gets full
-anon+authenticated+service_role access at the Postgres grant layer, and RLS
-is the only real fence. After 2026-10-30, that default disappears — a net
-security improvement on the anon/authenticated side, but a net availability
-regression for `service_role` unless the new table's migration says so
-explicitly. That is what this gate exists to catch.
+RLS policies (or lack thereof), not by its grants. That correction holds.
+
+The follow-on claim in the original PR write-up — "44 of 48 tables share
+this wide-open shape, only 2 are narrow at the grant level" — was **wrong**,
+conflating "has SELECT" with "has every DML privilege." Re-measured via the
+Supabase Management API (`POST
+https://api.supabase.com/v1/projects/yeszghaspzwwstvsrioa/database/query`,
+`read_only: true`, `Authorization: Bearer $SUPABASE_CRM_PAT`) using
+`aclexplode(pg_class.relacl)` — which, unlike `information_schema.role_table_
+grants`, is not restricted to grants visible to the querying role — the
+per-role breakdown across the 48 public tables with any explicit
+anon/authenticated/service_role ACL entry is:
+
+```sql
+with acl as (
+  select c.relname as table_name,
+         (aclexplode(c.relacl)).grantee::regrole::text as grantee,
+         (aclexplode(c.relacl)).privilege_type as priv
+  from pg_class c
+  join pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'public' and c.relkind = 'r'
+),
+per_role as (
+  select table_name, grantee,
+         bool_or(priv = 'SELECT') as has_select,
+         bool_or(priv = 'INSERT') as has_insert,
+         bool_or(priv = 'UPDATE') as has_update,
+         bool_or(priv = 'DELETE') as has_delete
+  from acl where grantee in ('anon', 'authenticated', 'service_role')
+  group by table_name, grantee
+)
+select grantee,
+       count(*) as tables_with_any_explicit_grant,
+       count(*) filter (where has_select and has_insert and has_update and has_delete)
+         as tables_with_full_dml
+from per_role group by grantee order by grantee;
+```
+
+Raw result (2026-09-25):
+
+| grantee | tables with any explicit grant | tables with full SELECT+INSERT+UPDATE+DELETE |
+|---|---|---|
+| anon | 44 | **16** |
+| authenticated | 46 | 44 |
+| service_role | 48 | 47 |
+
+So: **anon has SELECT on 44 tables but full DML on only 16** — not "44 of
+48 wide-open," as the original write-up said. `authenticated` is closer to
+the original claim (44 with full DML) but not identical (46, not 48, carry
+any grant at all). Roughly 30 tables are already narrowed for anon at the
+grant level (e.g. `activity_log` and `platform_alerts_log` carry no anon
+grant; several others are SELECT-only) — RLS is not the only fence on the
+anon/authenticated side for most of this project's tables, contrary to the
+original "only 2 are narrow" claim.
+
+Second query — `information_schema.role_table_grants` row count for the
+three roles, exactly as the review re-ran it:
+
+```sql
+select count(*) as n from information_schema.role_table_grants
+where table_schema = 'public'
+  and grantee in ('anon', 'authenticated', 'service_role');
+```
+
+Run through the Management API's read-only query role
+(`supabase_read_only_user`), this returns **0** — confirming the original
+write-up's observation that `role_table_grants` shows nothing useful to
+*that* querying role (it is restricted to grants visible to the role
+issuing the query, per Postgres's information_schema semantics — the
+Management API's read-only path is not a superuser). The review's own
+re-run reported **1032** rows for the identical query, which means it ran
+under a role with full catalog visibility (e.g. `postgres`/`service_role`
+directly against the database rather than through this read-only API
+path) — this write-up cannot reproduce that exact figure through the
+read-only Management API and is not claiming it is wrong, only that it
+depends on which role executes the query. The `aclexplode`-based
+equivalent above (`aclexplode(pg_class.relacl)`, `relkind = 'r'`, the same
+three grantees, one row per table×grantee×privilege) counts to **1016**
+regular-table privilege entries; widening the relation kinds to include
+views/materialized views/foreign tables (`relkind in ('r','p','v','m','f')`)
+brings it to 1192. Neither exactly matches 1032, most likely because
+`role_table_grants` also enumerates partitioned-table (`relkind = 'p'`)
+entries and/or grantor-distinct rows that this aclexplode query collapses
+differently; the takeaway that matters for this gate is unchanged either
+way — the number of *rows* in a privilege-grant enumeration is not the
+number of *tables*, and citing it as if it were is what produced the
+original 44/48 error.
+
+Practically: today's status quo is uneven, not uniform. Roughly two-thirds
+of public tables already have anon/authenticated grants narrower than
+"full DML," and RLS is the primary fence only for a subset. After
+2026-10-30, the *default* grant for brand-new tables disappears entirely —
+a net security improvement on the anon/authenticated side for tables that
+would otherwise have inherited the old wide-open default, but a net
+availability regression for `service_role` unless the new table's
+migration says so explicitly. That is what this gate exists to catch.
 
 **New-table template (forward migration):**
 ```sql

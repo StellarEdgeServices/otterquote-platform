@@ -17,20 +17,27 @@ reach is:
     grant select, insert, update, delete on public.your_table to authenticated;
     grant select, insert, update, delete on public.your_table to service_role;
 
-PREMISE CHECK, READ-ONLY, PROD (yeszghaspzwwstvsrioa), 2026-09-25 -- this
-repo's actual current grant shape, enumerated via
-`aclexplode(pg_class.relacl)` (information_schema.role_table_grants returned
-zero rows for the same query -- it only shows grants visible to the querying
-role, whereas aclexplode over pg_class sees everything):
+PREMISE CHECK, READ-ONLY, PROD (yeszghaspzwwstvsrioa) -- re-verified
+2026-09-25 against PR #2201 review 5839752411, which correctly flagged the
+first version of this docstring's "44 of 48, only 2 narrow" claim as false
+(it conflated "has SELECT" with "has every DML privilege"). Re-measured via
+the Management API (`POST
+https://api.supabase.com/v1/projects/yeszghaspzwwstvsrioa/database/query`,
+`read_only: true`) using `aclexplode(pg_class.relacl)` grouped per
+table/grantee/privilege (query and full raw counts, plus the
+information_schema.role_table_grants discrepancy, are in
+Docs/sql-migration-conventions.md's "Premise correction" section --
+summary here):
 
   - 48 public tables currently carry an explicit anon/authenticated/
     service_role ACL entry at all (most tables get the full default grant
     silently and never show up as "explicit" in this sense).
-  - Of those, 44 have BOTH anon and authenticated holding every DML
-    privilege (SELECT/INSERT/UPDATE/DELETE/...) -- the Postgres-level
-    default grant, unrestricted -- with RLS policies doing 100% of the real
-    access control. Only 2 (ad_sharing_suppressions, lead_consents) are
-    service_role-only at the grant level.
+  - anon: SELECT on 44 of those, but full SELECT/INSERT/UPDATE/DELETE on
+    only 16. authenticated: full DML on 44, at least SELECT on 46.
+    service_role: an explicit grant on all 48, full DML on 47. So roughly
+    two-thirds of tables with any explicit anon grant are ALREADY narrowed
+    below full DML -- RLS is not the only fence for most tables, contrary
+    to this docstring's original claim.
   - `partner_onboarding_sends` -- named in this issue's own body as an
     example of a table "RLS on and no policies, so it is service-role only
     anyway" -- was checked directly and does NOT match that description: it
@@ -39,22 +46,24 @@ role, whereas aclexplode over pg_class sees everything):
     policies (or lack thereof) currently deny everything at the RLS layer,
     not because its grants are narrow. That premise in the issue body is
     corrected here rather than carried forward uncorrected into this
-    detector's design.
+    detector's design. (This part of the original write-up was and remains
+    correct -- only the 44/2 tally above was wrong.)
 
-The practical implication: TODAY, every new table's default-granted anon/
-authenticated access is real at the GRANT layer and is only ever narrowed by
-RLS. Come 2026-10-30, that default disappears for tables created after the
-cutover -- which is a NET SECURITY IMPROVEMENT for the anon/authenticated
-side (no more accidental full-table grant sitting behind RLS as the only
-line of defense) but is a NET AVAILABILITY REGRESSION for `service_role`:
-Edge Functions and any other server-side caller that reaches Postgres
-through the Data API (PostgREST) with the service-role key depend on
-`service_role` holding real table privileges, and after the cutover a new
-table simply will not have them unless a migration says so explicitly.
-`service_role` is also the one role every single one of this repo's tables
-needs in practice (backend writes, cron jobs, admin tooling), unlike anon/
-authenticated which are genuinely optional per table and already gated by
-RLS design decisions this detector has no business second-guessing.
+The practical implication: TODAY, a new table's default grant to
+anon/authenticated is real at the GRANT layer only until narrowed, and many
+tables already ARE narrowed by an explicit grant rather than by relying on
+RLS alone. Come 2026-10-30, the default itself disappears for tables created
+after the cutover -- a net security improvement for any new table that
+would otherwise have inherited the old wide-open default -- but is a NET
+AVAILABILITY REGRESSION for `service_role`: Edge Functions and any other
+server-side caller that reaches Postgres through the Data API (PostgREST)
+with the service-role key depend on `service_role` holding real table
+privileges, and after the cutover a new table simply will not have them
+unless a migration says so explicitly. `service_role` is also the one role
+every single one of this repo's tables needs in practice (backend writes,
+cron jobs, admin tooling), unlike anon/authenticated which are genuinely
+optional per table and already gated by RLS/grant design decisions this
+detector has no business second-guessing.
 
 SCOPE OF THIS DETECTOR (deliberately narrower than the vendor's 3-role
 template)
@@ -143,9 +152,31 @@ MIGRATIONS_PATH_RE = pr.MIGRATIONS_PATH_RE
 # ---------------------------------------------------------------------------
 # Detector-specific regexes
 # ---------------------------------------------------------------------------
+DELIM_RE = r'[A-Za-z_][A-Za-z0-9_]*'
 CREATE_TABLE_RE = re.compile(
     r'^\s*CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?'
-    r'"?(?:public\s*\.\s*)?"?([A-Za-z_][A-Za-z0-9_]*)"?',
+    # Optional schema qualifier: quoted or bare identifier, then a dot.
+    # The closing quote (if any) on the schema part must land BEFORE the
+    # dot -- "public"."foo" quotes each identifier separately, it is not
+    # one quoted span covering "public"."foo". Matching the quote and the
+    # dot as one contiguous group (the old regex's bug) let a CLI-quoted
+    # `"public"."foo"` skip the whole schema group as a non-match and then
+    # capture "public" itself as the table name.
+    r'(?:"?(?P<schema>%s)"?\s*\.\s*)?'
+    r'"?(?P<table>%s)"?' % (DELIM_RE, DELIM_RE),
+    re.I,
+)
+# A GRANT target list can hold multiple comma-separated objects
+# (`GRANT ... ON foo, bar TO service_role`); each one is matched against
+# this per-target regex, never as one big substring search, so a name that
+# merely contains the table name as a substring (foo_bar vs bar) or lives
+# in a different schema/object-kind never counts as a match.
+TARGET_NAME_RE = re.compile(
+    r'^\s*(?:"?(?P<schema>%s)"?\s*\.\s*)?"?(?P<name>%s)"?\s*$' % (DELIM_RE, DELIM_RE),
+    re.I,
+)
+NON_TABLE_TARGET_PREFIX_RE = re.compile(
+    r'^\s*(SEQUENCE|FUNCTION|PROCEDURE|SCHEMA|DATABASE|VIEW|MATERIALIZED\s+VIEW)\b',
     re.I,
 )
 GRANT_TARGET_RE = re.compile(
@@ -159,11 +190,24 @@ ALL_TABLES_SCHEMA_RE = re.compile(
 def _target_matches_table(target_text: str, table: str) -> bool:
     if ALL_TABLES_SCHEMA_RE.search(target_text):
         return True
-    # Bare or schema-qualified, quoted or not: public.table / "table" / table
-    name_re = re.compile(
-        r'(?:\bpublic\s*\.\s*)?"?%s"?\b' % re.escape(table), re.I
-    )
-    return bool(name_re.search(target_text))
+    if NON_TABLE_TARGET_PREFIX_RE.match(target_text):
+        # `GRANT ... ON SEQUENCE public.foo_id_seq TO service_role` (or a
+        # FUNCTION/SCHEMA/etc. grant) is not a table grant at all, even if
+        # the sequence/function happens to be named after the table.
+        return False
+    # A target list is comma-separated objects, each matched exactly --
+    # never a substring search, so `foo_bar` never satisfies `bar` and a
+    # bare name is only accepted when its schema (if any) is public/absent.
+    for raw in target_text.split(","):
+        m = TARGET_NAME_RE.match(raw)
+        if not m:
+            continue
+        schema = m.group("schema")
+        if schema is not None and schema.strip('"').lower() != "public":
+            continue
+        if m.group("name").strip('"').lower() == table.strip('"').lower():
+            return True
+    return False
 
 
 def find_new_tables_missing_service_role_grant(file_rel: str, old_text: str, new_text: str):
@@ -180,8 +224,16 @@ def find_new_tables_missing_service_role_grant(file_rel: str, old_text: str, new
     new_tables = []
     for stmt in touched:
         m = CREATE_TABLE_RE.match(stmt.stripped)
-        if m:
-            new_tables.append((m.group(1), stmt.line_no))
+        if not m:
+            continue
+        schema = m.group("schema")
+        if schema is not None and schema.strip('"').lower() != "public":
+            # Out of scope: this detector only ever asserted the public
+            # schema (see module docstring); a schema-qualified
+            # CREATE TABLE naming some other schema is not this gate's
+            # business and must never be checked under its own name.
+            continue
+        new_tables.append((m.group("table"), stmt.line_no))
 
     if not new_tables:
         return findings, pass_notes
