@@ -30,6 +30,7 @@ on:
       - 'scripts/permissions-ratchet.py'
       - 'scripts/new-table-service-role-grant-check.py'
       - 'scripts/new-table-service-role-grant-check.test.py'
+      - 'scripts/new-table-service-role-grant-fixtures/**'
       - '.github/workflows/new-table-service-role-grant.yml'
 
 permissions:
@@ -57,6 +58,15 @@ jobs:
       # this PR's actual diff below.
       - name: Self-test the detector's own rules
         run: python scripts/new-table-service-role-grant-check.py --self-test
+
+      # BUILD-FAILING. gh-2145 follow-up: this repo's detector convention
+      # (scripts/detector-negative-control-check.py CHECK 1) requires a
+      # sibling <name>.test.py per detector-shaped script -- until now it
+      # existed but was never actually run in this workflow. Exercises the
+      # diff-mode path directly (ordering, UNLOGGED, TEMP, PARTITION OF
+      # cases) rather than relying solely on the fixtures directory.
+      - name: Run the detector's own test.py
+        run: python scripts/new-table-service-role-grant-check.test.py
 
       - name: Run the check against this PR's diff
         run: |

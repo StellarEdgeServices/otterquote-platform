@@ -111,10 +111,49 @@ difflib-computed added range for formatting reasons) whose:
     includes `service_role`, AND
   - target (the text between GRANT ... ON [TABLE] and TO) either names the
     new table directly (schema-qualified or bare, quoted or not) or is a
-    schema-wide `ALL TABLES IN SCHEMA public` grant.
+    schema-wide `ALL TABLES IN SCHEMA public` grant, AND
+  - the GRANT statement's own line is AFTER the CREATE TABLE statement's
+    line in the same file (see "ORDERING MATTERS" below).
 REVOKE statements are never treated as satisfying this (a REVOKE FROM
 service_role would be a bug this detector has no opinion on beyond "still
 not a satisfying GRANT").
+
+ORDERING MATTERS (gh-2145 follow-up, Ben's REVIEW PASS 5839898750)
+-------------------------------------------------------------------------
+`GRANT ... ON ALL TABLES IN SCHEMA public TO service_role;` only ever
+applies, per Postgres semantics, to tables that ALREADY EXIST at the
+moment that statement runs. A schema-wide grant placed BEFORE a
+`CREATE TABLE` in the same file therefore does NOT cover that table --
+Postgres does not retroactively apply it, and the statement does not
+error either, so this is a silent gap, not something the migration itself
+would fail on. A grant that names the new table directly has the same
+requirement in principle (`GRANT ... ON public.foo` errors outright if
+`foo` does not exist yet, so in practice this case would already surface
+as a broken migration) -- ordering is still checked for both forms, for
+one uniform rule and because a fixed migration file is not a place to
+special-case "this GRANT shape errors first, this one fails silently".
+Concretely: a covering GRANT's own statement line number must be strictly
+greater than the CREATE TABLE statement's line number, in the same file.
+
+UNLOGGED / TEMP / PARTITION OF (gh-2145 follow-up)
+-------------------------------------------------------------------------
+  - `CREATE UNLOGGED TABLE ...` is treated exactly like a normal
+    `CREATE TABLE` -- UNLOGGED only changes WAL durability, not the
+    Data-API grant story, so it still needs an explicit service_role
+    grant (or schema-wide coverage) like any other new table.
+  - `CREATE [GLOBAL|LOCAL] {TEMP|TEMPORARY} TABLE ...` is EXEMPT --
+    temp tables live in a per-session `pg_temp` schema, are invisible to
+    other sessions/roles including the Data API, and are gone at
+    session/transaction end, so a Data-API grant on one is meaningless.
+    These are never added to `new_tables` and never produce a finding.
+  - `CREATE TABLE foo PARTITION OF parent ...` is NOT exempt, and a grant
+    that names only the PARENT table does NOT cover the partition:
+    Postgres privileges are per-relation, and a partition is its own
+    relation with its own ACL, distinct from its parent's. A partition
+    needs its own explicit `GRANT ... ON <partition> TO service_role` (a
+    schema-wide `ALL TABLES IN SCHEMA public` grant still covers it, same
+    as any other table in that schema, since that form names no specific
+    relation at all).
 
 USAGE
     python scripts/new-table-service-role-grant-check.py --self-test
@@ -154,7 +193,16 @@ MIGRATIONS_PATH_RE = pr.MIGRATIONS_PATH_RE
 # ---------------------------------------------------------------------------
 DELIM_RE = r'[A-Za-z_][A-Za-z0-9_]*'
 CREATE_TABLE_RE = re.compile(
-    r'^\s*CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?'
+    r'^\s*CREATE\s+'
+    # Optional TEMP/TEMPORARY (with an optional GLOBAL/LOCAL prefix, both
+    # no-ops in modern Postgres but still legal syntax) or UNLOGGED --
+    # mutually exclusive modifiers between CREATE and TABLE. `temp` is
+    # checked by the caller to exempt session-local tables entirely;
+    # `unlogged` is captured only so callers can see it was present, since
+    # UNLOGGED tables are otherwise treated exactly like a normal table.
+    r'(?:(?:GLOBAL|LOCAL)\s+)?'
+    r'(?:(?P<temp>TEMP(?:ORARY)?)\s+|(?P<unlogged>UNLOGGED)\s+)?'
+    r'TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?'
     # Optional schema qualifier: quoted or bare identifier, then a dot.
     # The closing quote (if any) on the schema part must land BEFORE the
     # dot -- "public"."foo" quotes each identifier separately, it is not
@@ -163,7 +211,15 @@ CREATE_TABLE_RE = re.compile(
     # `"public"."foo"` skip the whole schema group as a non-match and then
     # capture "public" itself as the table name.
     r'(?:"?(?P<schema>%s)"?\s*\.\s*)?'
-    r'"?(?P<table>%s)"?' % (DELIM_RE, DELIM_RE),
+    r'"?(?P<table>%s)"?'
+    # `CREATE TABLE foo PARTITION OF parent ...` -- captured so the caller
+    # can tell a partition from a plain table; the parent's own name is
+    # captured too, purely for diagnostics/pass-note text (a parent's
+    # grant does NOT cover the partition -- see module docstring -- so
+    # this detector never uses parent_table to satisfy coverage).
+    r'(?:\s+PARTITION\s+OF\s+'
+    r'(?:"?(?P<parent_schema>%s)"?\s*\.\s*)?"?(?P<parent_table>%s)"?)?'
+    % (DELIM_RE, DELIM_RE, DELIM_RE, DELIM_RE),
     re.I,
 )
 # A GRANT target list can hold multiple comma-separated objects
@@ -226,6 +282,12 @@ def find_new_tables_missing_service_role_grant(file_rel: str, old_text: str, new
         m = CREATE_TABLE_RE.match(stmt.stripped)
         if not m:
             continue
+        if m.group("temp"):
+            # Session-local temp tables are invisible outside the creating
+            # session (including to the Data API), so a service_role grant
+            # on one is meaningless. Exempt entirely -- never added to
+            # new_tables, never produces a finding or a pass note.
+            continue
         schema = m.group("schema")
         if schema is not None and schema.strip('"').lower() != "public":
             # Out of scope: this detector only ever asserted the public
@@ -233,7 +295,8 @@ def find_new_tables_missing_service_role_grant(file_rel: str, old_text: str, new
             # CREATE TABLE naming some other schema is not this gate's
             # business and must never be checked under its own name.
             continue
-        new_tables.append((m.group("table"), stmt.line_no))
+        is_partition = m.group("parent_table") is not None
+        new_tables.append((m.group("table"), stmt.line_no, is_partition))
 
     if not new_tables:
         return findings, pass_notes
@@ -243,6 +306,11 @@ def find_new_tables_missing_service_role_grant(file_rel: str, old_text: str, new
     # migration is irrelevant here since the table itself is brand-new in
     # THIS file by definition; scanning the whole file just means a GRANT
     # placed slightly outside difflib's computed added-range still counts).
+    # Each grant's own line_no is kept alongside its target so coverage can
+    # be denied when the GRANT sits BEFORE the CREATE TABLE it would need
+    # to cover (see "ORDERING MATTERS" in the module docstring) -- this
+    # matters most for `ALL TABLES IN SCHEMA public`, which only reaches
+    # tables that already exist when it runs.
     stripped_full = pr.strip_noise(new_text)
     all_statements = pr.split_statements(new_text, stripped_full)
 
@@ -258,29 +326,48 @@ def find_new_tables_missing_service_role_grant(file_rel: str, old_text: str, new
         tm = GRANT_TARGET_RE.search(stmt.stripped)
         if not tm:
             continue
-        granted_service_role_targets.append(tm.group("target"))
+        granted_service_role_targets.append((tm.group("target"), stmt.line_no))
 
-    for table, line_no in new_tables:
+    for table, line_no, is_partition in new_tables:
+        # A partition is its own relation with its own ACL -- a grant that
+        # names only the parent table does NOT satisfy this. Since
+        # `_target_matches_table` matches the partition's own name (never
+        # the parent's), a parent-only grant simply never matches here;
+        # nothing extra is needed to enforce that beyond capturing the
+        # partition's own name as `table` above.
         covered = any(
-            _target_matches_table(target, table)
-            for target in granted_service_role_targets
+            grant_line_no > line_no and _target_matches_table(target, table)
+            for target, grant_line_no in granted_service_role_targets
         )
         if covered:
             pass_notes.append(
                 "PASS  [new-table-service-role-grant] %s:%d -- CREATE TABLE %s "
-                "has an explicit service_role grant in this file"
-                % (file_rel, line_no, table)
+                "%shas an explicit service_role grant in this file (after "
+                "the CREATE, per Postgres ordering)"
+                % (file_rel, line_no, table, "(partition) " if is_partition else "")
             )
         else:
+            reason = (
+                "no explicit `GRANT ... TO service_role` (or `ALL TABLES IN "
+                "SCHEMA public`) AFTER this CREATE in this migration -- a "
+                "GRANT before the CREATE, or one naming only a parent table "
+                "for this partition, does not cover it"
+                if is_partition
+                else
+                "no explicit `GRANT ... TO service_role` (or `ALL TABLES IN "
+                "SCHEMA public`) AFTER this CREATE in this migration -- a "
+                "schema-wide grant placed BEFORE the CREATE does not cover "
+                "a table that does not exist yet"
+            )
             findings.append(
                 "FAIL  [new-table-missing-service-role-grant] %s:%d -- CREATE "
-                "TABLE %s has no explicit `GRANT ... TO service_role` (or "
-                "`ALL TABLES IN SCHEMA public`) in this migration. Starting "
-                "2026-10-30 Supabase stops auto-granting Data API access to "
-                "new public tables (gh-2145) -- service_role needs an "
-                "explicit grant in this same file or Edge Functions/backend "
+                "TABLE %s%s has %s. Starting 2026-10-30 Supabase stops "
+                "auto-granting Data API access to new public tables "
+                "(gh-2145) -- service_role needs an explicit grant in this "
+                "same file, after the CREATE, or Edge Functions/backend "
                 "callers reaching this table via the Data API will get "
-                "permission-denied." % (file_rel, line_no, table)
+                "permission-denied."
+                % (file_rel, line_no, table, " (partition)" if is_partition else "", reason)
             )
 
     return findings, pass_notes
