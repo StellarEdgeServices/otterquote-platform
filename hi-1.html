@@ -906,17 +906,6 @@
         // funnel page only ever registers home_inspector.
         const HI1_AGENT_TYPE = 'home_inspector';
 
-        // HI-1 ruling (7): founder addresses are flagged is_test the same
-        // as @otterquote-internal.test. Page-level only — js/auth.js's
-        // isTestEmail is a shared file out of this worker's scope (see PR
-        // body); this stays local to hi-1.html.
-        const HI1_FOUNDER_TEST_EMAILS = ['dustinstohler1@gmail.com'];
-        function isTestOrFounderEmail(email) {
-            const e = (email || '').trim().toLowerCase();
-            if (window.Auth && typeof Auth.isTestEmail === 'function' && Auth.isTestEmail(e)) return true;
-            return HI1_FOUNDER_TEST_EMAILS.indexOf(e) !== -1;
-        }
-
         /**
          * Capture utm_source/medium/campaign/content from the URL on first
          * landing and persist them so they survive a bounce before the form
@@ -1229,7 +1218,7 @@
                         p_fbclid:           utmContext.fbclid   || null,
                         p_li_fat_id:        utmContext.liFatId  || null,
                         p_funnel_id:        utmContext.funnelId || null,
-                        p_is_test:          isTestOrFounderEmail(email),
+                        p_is_test:          (window.Auth && typeof Auth.isTestEmail === 'function') ? Auth.isTestEmail(email) : false,
                     });
 
                 if (agentError) {

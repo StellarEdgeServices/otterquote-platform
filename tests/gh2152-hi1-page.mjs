@@ -483,7 +483,13 @@ ok(normalizedHtml.includes(normalize("You're in! Install the Otter Quotes partne
   }
 }
 
-// (7) S15: founder addresses (dustinstohler1@gmail.com) are flagged is_test.
+// (7) S15 per Ben's ruling (bus 2026-09-25T17:24:58Z): "no client-side
+// founder mechanism needed ... Do not add founder emails to page JS."
+// is_test is set exactly as main's P-1 pages / js/auth.js isTestEmail() do
+// (@otterquote-internal.test) and nothing else -- no founder address may be
+// hardcoded or specially flagged in hi-1.html.
+ok(!/@gmail\.com/i.test(html), 'hi-1.html ruling(7): no personal/founder email literal (e.g. "@gmail.com") appears in the page source');
+ok(!/dustinstohler1/i.test(html), 'hi-1.html ruling(7): no founder email literal ("dustinstohler1") appears in the page source');
 {
   const run = runPageScript(AD_QS);
   if (!run.setupError) {
@@ -493,7 +499,19 @@ ok(normalizedHtml.includes(normalize("You're in! Install the Otter Quotes partne
     });
     const calls = run.rpcCalls.filter((c) => c.name === 'register_partner');
     const params = calls[0] ? calls[0].params || {} : {};
-    ok(params.p_is_test === true, 'hi-1.html ruling(7): a founder address (dustinstohler1@gmail.com) is flagged p_is_test=true -- got ' + JSON.stringify(params.p_is_test));
+    ok(params.p_is_test !== true, 'hi-1.html ruling(7): a founder-looking address (dustinstohler1@gmail.com) is NOT flagged p_is_test by the page -- got ' + JSON.stringify(params.p_is_test));
+  }
+}
+{
+  const run = runPageScript(AD_QS);
+  if (!run.setupError) {
+    await submitForm(run, 'homeInspectorForm', {
+      fullName: 'Test Row', email: 'gh2152-hi1-founder-check@otterquote-internal.test', phone: '3175551234', company: 'Test Inspections',
+      agreeToTerms: true,
+    });
+    const calls = run.rpcCalls.filter((c) => c.name === 'register_partner');
+    const params = calls[0] ? calls[0].params || {} : {};
+    ok(params.p_is_test === true, 'hi-1.html ruling(7): an @otterquote-internal.test address IS still flagged p_is_test=true (same as main P-1 pages / js/auth.js isTestEmail()) -- got ' + JSON.stringify(params.p_is_test));
   }
 }
 
