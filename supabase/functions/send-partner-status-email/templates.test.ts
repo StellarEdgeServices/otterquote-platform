@@ -13,6 +13,7 @@ import {
   STAGE_KEYS,
   type Stage,
 } from "./templates.ts";
+import { POSTAL_ADDRESS } from "./email-footer.ts";
 
 const ALL_STAGES: Stage[] = [1, 2, 3, 4, 5];
 const DASHBOARD_URL = "https://otterquote.com/partner-dashboard.html";
@@ -151,5 +152,40 @@ Deno.test("D-333: null/undefined/other agent_type never blocks any stage", () =>
     assertEquals(isStageBlockedForAgentType(null, stage), false);
     assertEquals(isStageBlockedForAgentType(undefined, stage), false);
     assertEquals(isStageBlockedForAgentType("customer", stage), false);
+  }
+});
+
+// ── gh-1824: D-237 postal-address footer, actually rendered ──────────────
+// PR #2197's independent review (comment 5839071861, finding 2) proved a
+// prior version of this fix could have its footer call silently deleted
+// from the email builder with nothing here catching it -- these two
+// functions only asserted the *constant's* value, never what
+// renderStageEmail() actually produces. These assertions render every
+// stage and check the address is genuinely present in BOTH bodies.
+
+Deno.test("gh-1824: every stage's HTML carries the D-237 postal address", () => {
+  for (const stage of ALL_STAGES) {
+    const { html } = renderStageEmail(stage, "Jane D.");
+    assertStringIncludes(html, POSTAL_ADDRESS);
+  }
+});
+
+Deno.test("gh-1824: every stage's plain text carries the D-237 postal address", () => {
+  for (const stage of ALL_STAGES) {
+    const { text } = renderStageEmail(stage, "Jane D.");
+    assertStringIncludes(text, POSTAL_ADDRESS);
+  }
+});
+
+Deno.test("gh-1824 negative control: renderStageEmail's text is NOT merely the un-suffixed body -- the address must be a real suffix, not incidentally present", () => {
+  // If a future edit stops appending the address, this assertion is what
+  // catches it: text.length strictly grows by the address (+ separator)
+  // versus what the internal, unexported body-only renderer would produce
+  // alone. We can't import renderStageEmailBody (not exported, by design --
+  // see templates.ts), so instead assert structurally: text must END with
+  // the exact address string, which only the gh-1824 suffix step can do.
+  for (const stage of ALL_STAGES) {
+    const { text } = renderStageEmail(stage, "Jane D.");
+    assertEquals(text.endsWith(POSTAL_ADDRESS), true);
   }
 });
