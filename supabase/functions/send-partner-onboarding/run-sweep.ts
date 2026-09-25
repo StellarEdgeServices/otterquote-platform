@@ -55,8 +55,8 @@ import {
   selectStage,
 } from "./onboarding-stage.ts";
 import { composeFinalCopy, getCopyForAgentType, hasPlaceholderCopy } from "./copy.ts";
-import { isOnboardingEnabled } from "./kill-switch.ts";
-import { isTestAccount } from "./bot-pattern.ts";
+import { parseOnboardingSwitch } from "./kill-switch.ts";
+import { isAlwaysExcludedAddress, isTestAccount } from "./bot-pattern.ts";
 
 export interface LedgerRow {
   partner_id: string;
@@ -70,9 +70,11 @@ export type SkipReason =
   | "opted_out"
   | "not_due"
   | "invalid_created_at"
+  | "before_switch_enabled" // ruling (a): created before the switch's enabled_since
   | "ineligible_agent_type"
   | "placeholder_copy"
   | "bot_pattern"
+  | "internal_test_domain" // ruling (b): unconditional, even if is_test=true
   | "no_email"
   | "send_failed"
   | "already_sent"; // lost the atomic claim race
@@ -123,7 +125,12 @@ export interface RunDeps {
   /** Builds this partner's real, signed, per-partner unsubscribe URL. Only
    * called when optOutSecretConfigured is true. */
   buildOptOutUrl: (partnerId: string) => Promise<string>;
-  sendEmail: (to: string, subject: string, textBody: string, htmlBody: string) => Promise<SendEmailResult>;
+  /** `optOutUrl` (Ben SHOULD, mirroring gh-1786/D-320's own
+   * send-homeowner-next-steps sendMailgunEmail): the real Mailgun-backed
+   * implementation attaches it as the RFC 8058 `List-Unsubscribe` /
+   * `List-Unsubscribe-Post` headers, same link the footer already carries.
+   * Tests that don't care about that header simply ignore the argument. */
+  sendEmail: (to: string, subject: string, textBody: string, htmlBody: string, optOutUrl: string) => Promise<SendEmailResult>;
   log?: (level: "log" | "warn" | "error", message: string) => void;
   now: number;
   /** Copy lookup, defaulting to ./copy.ts's real (placeholder) table.
@@ -143,7 +150,12 @@ export type SweepOutcome =
 export async function runOnboardingSweep(deps: RunDeps): Promise<SweepOutcome> {
   const say = deps.log ?? (() => {});
 
-  // ── Guard 1: kill switch — fails closed on OFF, unset, or a read error ────
+  // ── Guard 1: kill switch — fails closed on OFF, unset, malformed, or a
+  // read error. Ruling (a): "on" now REQUIRES an enabled_since timestamp
+  // (see kill-switch.ts's parseOnboardingSwitch) — a bare `true` no longer
+  // counts, and the parsed enabledSinceMs is threaded into every partner's
+  // selectStage call below so a partner who signed up before this moment
+  // never enters the sequence. ─────────────────────────────────────────────
   let settingValue: unknown = null;
   try {
     const row = await deps.readSetting();
@@ -152,9 +164,11 @@ export async function runOnboardingSweep(deps: RunDeps): Promise<SweepOutcome> {
     say("warn", `partner_onboarding_enabled read failed — treating as disabled: ${String(err)}`);
     settingValue = null;
   }
-  if (!isOnboardingEnabled(settingValue)) {
+  const switchState = parseOnboardingSwitch(settingValue);
+  if (!switchState.enabled) {
     return { ok: true, skipped: "disabled" };
   }
+  const switchEnabledSinceMs = switchState.enabledSinceMs;
 
   // ── Guard 2 (Kevin correction Q1): CAN-SPAM opt-out gate, ahead of any
   // candidate scan — same position and posture as D-320's canSendWithOptOut
@@ -184,7 +198,7 @@ export async function runOnboardingSweep(deps: RunDeps): Promise<SweepOutcome> {
 
   for (const partner of partners) {
     const prior = ledgerByPartner.get(partner.id) ?? new Map<OnboardingStage, LedgerStatus>();
-    const selection = selectStage(partner, prior, deps.now);
+    const selection = selectStage(partner, prior, deps.now, switchEnabledSinceMs);
 
     // Backlog-superseded stages: persisted as 'skipped' regardless of
     // whether the winning stage itself ends up sending — RUN 22's lesson is
@@ -225,10 +239,21 @@ export async function runOnboardingSweep(deps: RunDeps): Promise<SweepOutcome> {
       continue;
     }
 
-    // is_test wins over the bot-pattern skip (P-3 convention, verbatim):
-    // only a NON-is_test row matching a bot pattern is skipped. Checked
-    // before any copy is built — a bot account should never even reach the
-    // placeholder-copy gate, let alone the claim step.
+    // Ruling (b): @otterquote-internal.test / founder ("stohler") / any
+    // .invalid or .test domain is excluded UNCONDITIONALLY — checked BEFORE
+    // is_test, and wins even when is_test=true (P-3's own precedent for the
+    // otterquote-internal.test half of this: REVIEW FAIL 5832785581
+    // should-fix 1 — walk-bot runs must never alert/send at all).
+    if (isAlwaysExcludedAddress(email)) {
+      results.push(withSkips("internal_test_domain"));
+      continue;
+    }
+
+    // is_test wins over the (non-internal-test-domain) bot-pattern skip
+    // (P-3 convention, verbatim): only a NON-is_test row matching a bot
+    // pattern is skipped. Checked before any copy is built — a bot account
+    // should never even reach the placeholder-copy gate, let alone the
+    // claim step.
     if (!isTest && isTestAccount(email)) {
       results.push(withSkips("bot_pattern"));
       continue;
@@ -260,7 +285,7 @@ export async function runOnboardingSweep(deps: RunDeps): Promise<SweepOutcome> {
       continue;
     }
 
-    const sendResult = await deps.sendEmail(email, finalCopy.subject, finalCopy.textBody, finalCopy.htmlBody);
+    const sendResult = await deps.sendEmail(email, finalCopy.subject, finalCopy.textBody, finalCopy.htmlBody, optOutUrl);
     if (!sendResult.ok) {
       const error = sendResult.error ?? "unknown";
       say("error", `FAILED ${stage} onboarding email for partner ${partner.id} — not retried this run, eligible again next tick: ${error}`);

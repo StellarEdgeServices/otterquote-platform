@@ -95,6 +95,7 @@ import {
   PARTNER_OPTOUT_SECRET_ENV,
   signPartnerOptOutToken,
 } from "./optout.ts";
+import { isCronAuthorized } from "./cron-auth.ts";
 
 const FUNCTION_NAME = "send-partner-onboarding";
 const BATCH_LIMIT = 500;
@@ -130,6 +131,7 @@ async function sendMailgunEmail(
   subject: string,
   textBody: string,
   htmlBody: string,
+  optOutUrl: string,
 ): Promise<{ ok: boolean; mailgunId?: string; error?: string }> {
   const formData = new URLSearchParams();
   formData.append("from", "Otter Quotes <notifications@mail.otterquote.com>");
@@ -137,6 +139,14 @@ async function sendMailgunEmail(
   formData.append("subject", subject);
   formData.append("text", textBody);
   formData.append("html", htmlBody);
+  // Ben SHOULD (bus 14:01:57Z, REVIEW FAIL 5833587935): "List-Unsubscribe +
+  // List-Unsubscribe-Post headers like the homeowner emails" — mirrors
+  // send-homeowner-next-steps/index.ts's gh-1786 follow-up exactly: the same
+  // signed per-recipient link the footer already carries, added as the RFC
+  // 8058 mailbox-provider one-click surface. Mailgun passes any `h:<Header-
+  // Name>` form field through as a literal MIME header.
+  formData.append("h:List-Unsubscribe", `<${optOutUrl}>`);
+  formData.append("h:List-Unsubscribe-Post", "List-Unsubscribe=One-Click");
   try {
     const res = await fetch("https://api.mailgun.net/v3/mail.otterquote.com/messages", {
       method: "POST",
@@ -189,17 +199,12 @@ serve(async (req: Request) => {
     return jsonResponse({ ok: false, error: "Server configuration error" }, 500, corsHeaders);
   }
 
-  // ── Authorization (same three-way gate as send-homeowner-next-steps) ─────
+  // ── Authorization (same three-way gate as send-homeowner-next-steps,
+  // extracted to ./cron-auth.ts so it is independently unit-testable — Ben
+  // SHOULD, bus 14:01:57Z, mirrors #2167's cron-auth.ts extraction). ───────
   const incomingCronSecret = req.headers.get("X-Cron-Secret");
   const authHeader = req.headers.get("Authorization") || "";
-  let authorized = false;
-  if (!cronSecret) {
-    authorized = true;
-  } else if (incomingCronSecret && incomingCronSecret === cronSecret) {
-    authorized = true;
-  } else if (authHeader.startsWith("Bearer ")) {
-    authorized = authHeader.slice(7) === serviceRoleKey;
-  }
+  const authorized = isCronAuthorized({ cronSecret, incomingCronSecret, authHeader, serviceRoleKey });
   if (!authorized) {
     return jsonResponse({ ok: false, error: "Unauthorized" }, 401, corsHeaders);
   }
@@ -223,6 +228,21 @@ serve(async (req: Request) => {
     // CAN-SPAM posture and position as D-320's canSendWithOptOut.
     optOutSecretConfigured: canSendWithOptOut(optOutSecret),
     fetchCandidatePartners: async () => {
+      // Ben SHOULD (bus 14:01:57Z, REVIEW FAIL 5833587935): "scan newest-
+      // first and unbounded-by-age so new signups are never starved." A
+      // batch this size (BATCH_LIMIT) with an oldest-first scan means a
+      // large-enough backlog of old, still-unresolved rows (e.g. every
+      // ineligible-agent_type or not-yet-due row that never resolves) fills
+      // the batch every run and a brand-new signup can wait indefinitely
+      // for a scan slot. Newest-first inverts that risk in the direction
+      // that matters more: day0 (the highest-value, first-touch email) is
+      // never starved by backlog, at the cost of a genuinely old backlog
+      // partner waiting longer — the correct trade-off, since a partner
+      // more than BATCH_LIMIT-deep in backlog is already well past every
+      // stage's due threshold and losing nothing by waiting one more tick.
+      // No age filter is added (`.is(...)` clauses aside) — deliberately
+      // unbounded, so a partner is never silently excluded from ever being
+      // scanned once they age out of some window.
       const { data, error } = await supabase
         .from("referral_agents")
         .select("id, created_at, agent_type, is_test, email, first_name, app_first_signed_in_launch_at, onboarding_opted_out_at")
@@ -231,7 +251,7 @@ serve(async (req: Request) => {
         // entirely, same load-reduction reasoning as the activation filter —
         // selectStage's own opt-out gate is the source of truth either way.
         .is("onboarding_opted_out_at", null)
-        .order("created_at", { ascending: true })
+        .order("created_at", { ascending: false })
         .limit(BATCH_LIMIT);
       if (error) {
         console.error(`[${FUNCTION_NAME}] candidate scan failed:`, error.message);
@@ -299,12 +319,22 @@ serve(async (req: Request) => {
       const token = await signPartnerOptOutToken(partnerId, optOutSecret as string);
       return buildPartnerOptOutUrl(functionsBaseUrl, token);
     },
-    sendEmail: (to, subject, textBody, htmlBody) => {
+    sendEmail: (to, subject, textBody, htmlBody, optOutUrl) => {
       if (!mailgunApiKey) {
-        console.warn(`[${FUNCTION_NAME}] MAILGUN_API_KEY not set — no email sent (dev/staging)`);
-        return Promise.resolve({ ok: true });
+        // Ben SHOULD (bus 14:01:57Z, REVIEW FAIL 5833587935): "a missing
+        // MAILGUN_API_KEY must NOT record sent." This used to return
+        // {ok: true}, which run-sweep.ts's caller treats as a successful
+        // send — claimStage would have already succeeded, and markSent
+        // would then permanently stamp a stage as delivered when nothing
+        // was ever sent to Mailgun. {ok: false} routes through markFailed
+        // instead — NOT terminal (see onboarding-stage.ts's selectStage),
+        // so the stage is retried once MAILGUN_API_KEY is actually
+        // configured, same recovery shape as a real transient Mailgun
+        // rejection.
+        console.warn(`[${FUNCTION_NAME}] MAILGUN_API_KEY not set — refusing to record as sent`);
+        return Promise.resolve({ ok: false, error: "MAILGUN_API_KEY not configured" });
       }
-      return sendMailgunEmail(mailgunApiKey, to, subject, textBody, htmlBody);
+      return sendMailgunEmail(mailgunApiKey, to, subject, textBody, htmlBody, optOutUrl);
     },
     log: (level, message) => console[level](`[${FUNCTION_NAME}] ${message}`),
     now: Date.now(),

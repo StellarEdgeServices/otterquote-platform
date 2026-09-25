@@ -270,3 +270,45 @@ Deno.test("canClaimStage: stale 'pending' (at or past the stale window) -> claim
 Deno.test("canClaimStage: malformed created_at on a 'pending' row fails closed (not claimable)", () => {
   assertEquals(canClaimStage({ status: "pending", created_at: "not-a-date" }, NOW), false);
 });
+
+// ── Ben, DECIDED (bus 14:01:57Z, ruling a - REVIEW FAIL 5833587935):
+// switchEnabledSinceMs. These fail on head aae3acfc, where selectStage has
+// only three parameters and no switch-timing concept at all - a 9-day-old
+// partner reaches day7 the instant the switch flips on, regardless of when
+// it flipped, which is exactly the day-7-blast defect this closes. --------
+
+Deno.test("ruling (a): default (no switchEnabledSinceMs passed) behaves exactly as before - no gating", () => {
+  const sel = selectStage(partnerAged(9 * DAY_MS), none, NOW);
+  assertEquals(sel.stage, "day7");
+});
+
+Deno.test("ruling (a): partner created before switchEnabledSinceMs never enters, however old", () => {
+  const switchOnMs = NOW; // switch flips on exactly now
+  const sel = selectStage(partnerAged(9 * DAY_MS), none, NOW, switchOnMs);
+  assertEquals(sel.stage, null);
+  assertEquals(sel.toMarkSkipped, []);
+  assertEquals(sel.reason, "before_switch_enabled");
+});
+
+Deno.test("ruling (a): partner created exactly AT switchEnabledSinceMs enters normally (boundary is inclusive)", () => {
+  const switchOnMs = NOW - 9 * DAY_MS; // switch flipped on at this partner's exact created_at
+  const sel = selectStage(partnerAged(9 * DAY_MS), none, NOW, switchOnMs);
+  assertEquals(sel.stage, "day7");
+});
+
+Deno.test("ruling (a): partner created one millisecond before switchEnabledSinceMs is gated out", () => {
+  const switchOnMs = NOW - 9 * DAY_MS + 1; // switch flipped on 1ms after this partner signed up
+  const sel = selectStage(partnerAged(9 * DAY_MS), none, NOW, switchOnMs);
+  assertEquals(sel.stage, null);
+  assertEquals(sel.reason, "before_switch_enabled");
+});
+
+Deno.test("ruling (a): switch-timing gate checked ahead of opted_out/activated — but those permanent gates still win when set (order never matters in practice)", () => {
+  const switchOnMs = NOW; // would gate out a 9-day-old partner
+  const sel = selectStage(partnerAged(9 * DAY_MS, 1 * DAY_MS), none, NOW, switchOnMs);
+  // activated 1 day ago -- activation is checked FIRST, before created_at
+  // parsing or the switch-timing gate, so "activated" wins the reason, not
+  // "before_switch_enabled" (both would say "nothing sends" either way).
+  assertEquals(sel.stage, null);
+  assertEquals(sel.reason, "activated");
+});

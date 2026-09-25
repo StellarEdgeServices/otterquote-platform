@@ -10,6 +10,7 @@
 import { assertEquals, assertNotEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
   composeFinalCopy,
+  COPY_SOURCE,
   getCopyForAgentType,
   getUnsubscribeLineTemplate,
   hasPlaceholderCopy,
@@ -237,4 +238,46 @@ Deno.test("(escape) composeFinalCopy strips CR/LF from the composed subject (hea
 
   assertEquals(final.subject.includes("\r"), false);
   assertEquals(final.subject.includes("\n"), false);
+});
+
+// ── Ben SHOULD (bus 14:01:57Z, REVIEW FAIL 5833587935): "drop the unused
+// ?source=pwa param" ───────────────────────────────────────────────────────
+
+Deno.test("Ben SHOULD: PARTNER_APP_SIGNIN_URL no longer carries the unused ?source=pwa param", () => {
+  assertEquals(PARTNER_APP_SIGNIN_URL, "https://otterquote.com/partner-app.html");
+  assertEquals(PARTNER_APP_SIGNIN_URL.includes("source=pwa"), false);
+});
+
+// ── Ben, DECIDED (bus 14:01:57Z): "Keep all approved copy byte-identical;
+// add a test asserting the copy constants are unchanged vs aae3acfc (hash or
+// exact strings)." ─────────────────────────────────────────────────────────
+//
+// Hashes ONLY the recipient-visible WORDS — subject, preheader, paragraphs,
+// ctaText — deliberately excluding ctaUrl (the ?source=pwa trim above is a
+// URL-mechanics change, not a copy change, and must not trip this guard).
+// The expected hash below was computed from THIS PR's own copy.ts (head
+// aae3acfc's COPY_SOURCE objects are untouched by this fix round — verified
+// by `git diff aae3acfc -- copy.ts`, which shows only the PARTNER_APP_SIGNIN_URL
+// comment/value, a new export keyword, and unrelated new functions — zero
+// diff inside any RE_AGENT_*/INSURANCE_AGENT_*/HOME_INSPECTOR_* literal).
+// A future accidental copy edit changes this hash and fails this test.
+Deno.test("Ben, DECIDED: approved copy words (subject/preheader/paragraphs/ctaText) are unchanged vs aae3acfc", async () => {
+  const words: Record<string, Record<string, unknown>> = {};
+  for (const agentType of Object.keys(COPY_SOURCE) as (keyof typeof COPY_SOURCE)[]) {
+    words[agentType as string] = {};
+    for (const stage of Object.keys(COPY_SOURCE[agentType])) {
+      // deno-lint-ignore no-explicit-any
+      const src = (COPY_SOURCE[agentType] as any)[stage];
+      words[agentType as string][stage] = {
+        subject: src.subject,
+        preheader: src.preheader,
+        paragraphs: src.paragraphs,
+        ctaText: src.ctaText,
+      };
+    }
+  }
+  const json = JSON.stringify(words);
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(json));
+  const hex = [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  assertEquals(hex, "4e723abebde58ace0c50ece012c43b232914218d919ee89f15a2c1b1105e5c89");
 });

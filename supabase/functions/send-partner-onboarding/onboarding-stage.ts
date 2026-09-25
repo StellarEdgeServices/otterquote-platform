@@ -97,7 +97,7 @@ export interface StageSelection {
   toMarkSkipped: OnboardingStage[];
   /** Set only when `stage` is null because of the stop condition — lets the
    * caller report a specific reason instead of a bare "nothing to do". */
-  reason?: "activated" | "opted_out" | "not_due" | "invalid_created_at";
+  reason?: "activated" | "opted_out" | "not_due" | "invalid_created_at" | "before_switch_enabled";
 }
 
 const EMPTY_SKIP: OnboardingStage[] = [];
@@ -111,6 +111,16 @@ export function selectStage(
   partner: Pick<PartnerRow, "created_at" | "app_first_signed_in_launch_at" | "onboarding_opted_out_at">,
   priorRecords: ReadonlyMap<OnboardingStage, LedgerStatus>,
   now: number,
+  // Ben, DECIDED (bus 14:01:57Z, ruling a — REVIEW FAIL 5833587935): the
+  // moment the kill switch was turned on (see kill-switch.ts's
+  // parseOnboardingSwitch). A partner created BEFORE this moment never
+  // enters the sequence, at any stage, ever — this is what stops turning
+  // the switch on from blasting day0-through-day7 at every partner who
+  // signed up while it was off. Optional and defaulting to -Infinity ("the
+  // switch has effectively always been on") purely so every pre-existing
+  // test in this file that has no opinion on switch timing keeps passing
+  // unchanged; run-sweep.ts's real caller always passes the real value.
+  switchEnabledSinceMs: number = -Infinity,
 ): StageSelection {
   // Stop conditions FIRST — checked before stage math, before the
   // created_at parse, before anything. Once either is set, this partner is
@@ -128,6 +138,13 @@ export function selectStage(
   if (Number.isNaN(createdMs)) {
     // Fail closed on malformed data — never guess a stage from a NaN age.
     return { stage: null, toMarkSkipped: EMPTY_SKIP, reason: "invalid_created_at" };
+  }
+
+  // Ruling (a): a partner who signed up before the switch was ever turned
+  // on never enters, permanently — same "checked before stage math, no
+  // ledger writes at all" shape as the activated/opted_out gates above.
+  if (createdMs < switchEnabledSinceMs) {
+    return { stage: null, toMarkSkipped: EMPTY_SKIP, reason: "before_switch_enabled" };
   }
 
   const ageMs = now - createdMs;

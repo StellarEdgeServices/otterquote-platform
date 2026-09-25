@@ -11,6 +11,15 @@ import { canClaimStage, DAY_MS, type LedgerStatus, type OnboardingStage, type Pa
 const NOW = Date.parse("2026-09-24T12:00:00Z");
 const MIN = 60 * 1000;
 
+// gh-2154 P-4 fix round (ruling a, REVIEW FAIL 5833587935): the switch's
+// ONLY "on" shape now requires enabled_since (see kill-switch.ts's
+// parseOnboardingSwitch) — a bare `true` no longer means enabled. `ON` here
+// is "on since the epoch," i.e. no partner is ever gated out by switch
+// timing, matching every pre-existing test's actual intent (none of them
+// are testing switch-timing behavior) — see the dedicated
+// "ruling (a): switch enabled_since" tests below for the gate itself.
+const ON = { enabled: true, enabled_since: new Date(0).toISOString() };
+
 function partner(overrides: Partial<PartnerRow> = {}): PartnerRow {
   return {
     id: "p1",
@@ -34,7 +43,7 @@ interface Recorder {
   sent: { partner_id: string; stage: string; mailgun_id: string | null }[];
   failed: { partner_id: string; stage: string; error: string }[];
   skipped: { partner_id: string; stage: string; reason: string }[];
-  sends: { to: string; subject: string; textBody: string; htmlBody: string }[];
+  sends: { to: string; subject: string; textBody: string; htmlBody: string; optOutUrl: string }[];
 }
 
 /** A shared in-memory ledger store, so two `deps` objects built from the
@@ -111,8 +120,8 @@ function buildDeps(opts: {
       return { error: null };
     },
     buildOptOutUrl: async (partnerId) => `https://otterquote.com/functions/v1/partner-email-optout?t=fake.${partnerId}`,
-    sendEmail: async (to, subject, textBody, htmlBody) => {
-      rec.sends.push({ to, subject, textBody, htmlBody });
+    sendEmail: async (to, subject, textBody, htmlBody, optOutUrl) => {
+      rec.sends.push({ to, subject, textBody, htmlBody, optOutUrl });
       return { ok: opts.sendOk !== false, mailgunId: opts.sendOk !== false ? "mg-123" : undefined, error: opts.sendOk === false ? "Mailgun 500" : undefined };
     },
     now,
@@ -156,7 +165,7 @@ Deno.test("kill switch UNREADABLE (throws): 0 sends, fails closed", async () => 
 // ── Kevin correction Q1: opt-out secret gate (CAN-SPAM, D-320 mirror) ──────
 
 Deno.test("opt-out secret NOT configured: 0 sends, even with the switch ON and real copy", async () => {
-  const { deps, rec } = buildDeps({ settingValue: true, optOutSecretConfigured: false, partners: [partner()] });
+  const { deps, rec } = buildDeps({ settingValue: ON, optOutSecretConfigured: false, partners: [partner()] });
   withRealCopy(deps);
   const outcome = await runOnboardingSweep(deps);
   assertEquals(outcome, { ok: true, skipped: "no_optout_secret" });
@@ -166,7 +175,7 @@ Deno.test("opt-out secret NOT configured: 0 sends, even with the switch ON and r
 
 Deno.test("opted-out partner: 0 sends, no claim even attempted (permanent gate, same shape as activation)", async () => {
   const { deps, rec } = buildDeps({
-    settingValue: true,
+    settingValue: ON,
     partners: [partner({ onboarding_opted_out_at: agedIso(1 * DAY_MS) })],
   });
   withRealCopy(deps);
@@ -179,7 +188,7 @@ Deno.test("opted-out partner: 0 sends, no claim even attempted (permanent gate, 
 });
 
 Deno.test("the unsubscribe link is present in BOTH bodies of every rendered stage (real copy)", async () => {
-  const { deps, rec } = buildDeps({ settingValue: true, partners: [partner()] });
+  const { deps, rec } = buildDeps({ settingValue: ON, partners: [partner()] });
   withRealCopy(deps);
   await runOnboardingSweep(deps);
   assertEquals(rec.sends.length, 1);
@@ -199,7 +208,7 @@ Deno.test("the unsubscribe link is present in BOTH bodies of every rendered stag
 // copy module — i.e. runOnboardingSweep's default `getCopy` really is
 // wired to the approved copy, not left on a fake in some code path.
 Deno.test("real (approved) copy in place: switch ON, opt-out configured — sends using the default (non-faked) copy module", async () => {
-  const { deps, rec } = buildDeps({ settingValue: true, partners: [partner()] });
+  const { deps, rec } = buildDeps({ settingValue: ON, partners: [partner()] });
   const outcome = await runOnboardingSweep(deps);
   if (outcome.ok && "results" in outcome) {
     assertEquals(outcome.results, [{ partner_id: "p1", sent: "day0" }]);
@@ -216,7 +225,7 @@ Deno.test("real (approved) copy in place: switch ON, opt-out configured — send
 // independent of whatever real copy currently ships — proven with a faked
 // getCopy that deliberately still returns a `[[...]]`-marked message.
 Deno.test("placeholder-copy guard mechanism: a still-placeholder message (faked) blocks send and claim", async () => {
-  const { deps, rec } = buildDeps({ settingValue: true, partners: [partner()] });
+  const { deps, rec } = buildDeps({ settingValue: ON, partners: [partner()] });
   deps.getCopy = () => ({ subject: "[[placeholder subject]]", textBody: "x", htmlBody: "<p>x</p>" });
   const outcome = await runOnboardingSweep(deps);
   if (outcome.ok && "results" in outcome) {
@@ -229,7 +238,7 @@ Deno.test("placeholder-copy guard mechanism: a still-placeholder message (faked)
 // ── agent_type routing ───────────────────────────────────────────────────
 
 Deno.test("ineligible agent_type (customer): no claim, no send", async () => {
-  const { deps, rec } = buildDeps({ settingValue: true, partners: [partner({ agent_type: "customer" })] });
+  const { deps, rec } = buildDeps({ settingValue: ON, partners: [partner({ agent_type: "customer" })] });
   withRealCopy(deps);
   const outcome = await runOnboardingSweep(deps);
   if (outcome.ok && "results" in outcome) {
@@ -242,8 +251,8 @@ Deno.test("ineligible agent_type (customer): no claim, no send", async () => {
 
 Deno.test("bot-pattern email WITHOUT is_test is skipped as bot_pattern, before any claim", async () => {
   const { deps, rec } = buildDeps({
-    settingValue: true,
-    partners: [partner({ is_test: false, email: "pfw-test-partner@example.invalid" })],
+    settingValue: ON,
+    partners: [partner({ is_test: false, email: "pfw-test-partner@example.com" })],
   });
   withRealCopy(deps);
   const outcome = await runOnboardingSweep(deps);
@@ -254,14 +263,18 @@ Deno.test("bot-pattern email WITHOUT is_test is skipped as bot_pattern, before a
 });
 
 Deno.test("[TEST] prefix: is_test=true partner's subject is prefixed and it still sends", async () => {
-  const { deps, rec } = buildDeps({ settingValue: true, partners: [partner({ is_test: true })] });
+  const { deps, rec } = buildDeps({ settingValue: ON, partners: [partner({ is_test: true })] });
   withRealCopy(deps);
   await runOnboardingSweep(deps);
+  const optOutUrl = "https://otterquote.com/functions/v1/partner-email-optout?t=fake.p1";
   assertEquals(rec.sends, [{
     to: "partner@example.com",
     subject: "[TEST] Welcome aboard",
-    textBody: `Hi there.\n\nStop these emails any time: https://otterquote.com/functions/v1/partner-email-optout?t=fake.p1`,
-    htmlBody: `<p>Hi there.</p><p>Stop these emails any time: https://otterquote.com/functions/v1/partner-email-optout?t=fake.p1</p>`,
+    textBody: `Hi there.\n\nStop these emails any time: ${optOutUrl}`,
+    // Ben SHOULD (clickable unsubscribe <a>): the HTML body wraps the URL
+    // in an anchor now, instead of rendering it as bare text.
+    htmlBody: `<p>Hi there.</p><p>Stop these emails any time: <a href="${optOutUrl}" style="color:inherit;">${optOutUrl}</a></p>`,
+    optOutUrl,
   }]);
 });
 
@@ -269,7 +282,7 @@ Deno.test("[TEST] prefix: is_test=true partner's subject is prefixed and it stil
 
 Deno.test("9-day backlog, real copy: only day7 sends, day0/1/3 marked skipped in one call each", async () => {
   const { deps, rec } = buildDeps({
-    settingValue: true,
+    settingValue: ON,
     partners: [partner({ created_at: agedIso(9 * DAY_MS) })],
   });
   withRealCopy(deps);
@@ -285,7 +298,7 @@ Deno.test("9-day backlog, real copy: only day7 sends, day0/1/3 marked skipped in
 // ── Kevin correction Q3: claim -> send -> mark (not stamp-before-send) ─────
 
 Deno.test("Mailgun failure: the row is marked 'failed', NOT 'sent' — and the next tick retries it", async () => {
-  const { deps, rec, store } = buildDeps({ settingValue: true, partners: [partner()], sendOk: false });
+  const { deps, rec, store } = buildDeps({ settingValue: ON, partners: [partner()], sendOk: false });
   withRealCopy(deps);
   const outcome = await runOnboardingSweep(deps);
   if (outcome.ok && "results" in outcome) {
@@ -297,7 +310,7 @@ Deno.test("Mailgun failure: the row is marked 'failed', NOT 'sent' — and the n
 
   // Next tick (same partner, same age, ledger now shows 'failed' for day0):
   // the retry actually resends, since 'failed' is not resolved.
-  const { deps: deps2, rec: rec2 } = buildDeps({ settingValue: true, partners: [partner()], store, sendOk: true, now: NOW + 1000 });
+  const { deps: deps2, rec: rec2 } = buildDeps({ settingValue: ON, partners: [partner()], store, sendOk: true, now: NOW + 1000 });
   withRealCopy(deps2);
   await runOnboardingSweep(deps2);
   assertEquals(rec2.sends.length, 1, "a later tick must retry a 'failed' stage");
@@ -321,7 +334,7 @@ Deno.test("a concurrent double claim, exercised through the full sweep: seeding 
   // caller — seeded directly so this test exercises the SECOND caller's
   // full runOnboardingSweep path against that state.
   store.claim("p1", "day0", NOW);
-  const { deps, rec } = buildDeps({ settingValue: true, partners: [partner()], store, now: NOW + 1000 });
+  const { deps, rec } = buildDeps({ settingValue: ON, partners: [partner()], store, now: NOW + 1000 });
   withRealCopy(deps);
   const outcome = await runOnboardingSweep(deps);
   if (outcome.ok && "results" in outcome) {
@@ -333,7 +346,7 @@ Deno.test("a concurrent double claim, exercised through the full sweep: seeding 
 Deno.test("a fresh pending claim (within the stale window) is NOT reclaimable by a second run", async () => {
   const store = new FakeLedgerStore();
   store.rows.set("p1::day0", { status: "pending", created_at: new Date(NOW - 1 * MIN).toISOString() });
-  const { deps, rec } = buildDeps({ settingValue: true, partners: [partner()], store });
+  const { deps, rec } = buildDeps({ settingValue: ON, partners: [partner()], store });
   withRealCopy(deps);
   const outcome = await runOnboardingSweep(deps);
   if (outcome.ok && "results" in outcome) {
@@ -345,7 +358,7 @@ Deno.test("a fresh pending claim (within the stale window) is NOT reclaimable by
 Deno.test("a STALE pending claim (past the stale window) IS reclaimable — a crashed run's stage is retried", async () => {
   const store = new FakeLedgerStore();
   store.rows.set("p1::day0", { status: "pending", created_at: new Date(NOW - (STALE_PENDING_MINUTES + 1) * MIN).toISOString() });
-  const { deps, rec } = buildDeps({ settingValue: true, partners: [partner()], store });
+  const { deps, rec } = buildDeps({ settingValue: ON, partners: [partner()], store });
   withRealCopy(deps);
   const outcome = await runOnboardingSweep(deps);
   if (outcome.ok && "results" in outcome) {
@@ -359,7 +372,7 @@ Deno.test("negative control: partner who never activates reaches day7 eligibilit
   store.rows.set("p1::day0", { status: "sent", created_at: agedIso(29 * DAY_MS) });
   store.rows.set("p1::day1", { status: "sent", created_at: agedIso(28 * DAY_MS) });
   store.rows.set("p1::day3", { status: "sent", created_at: agedIso(26 * DAY_MS) });
-  const { deps, rec } = buildDeps({ settingValue: true, partners: [partner({ created_at: agedIso(30 * DAY_MS) })], store });
+  const { deps, rec } = buildDeps({ settingValue: ON, partners: [partner({ created_at: agedIso(30 * DAY_MS) })], store });
   withRealCopy(deps);
   const outcome = await runOnboardingSweep(deps);
   if (outcome.ok && "results" in outcome) {
@@ -375,11 +388,182 @@ Deno.test("negative control: partner activates right after day0 gets nothing fur
     created_at: agedIso(30 * DAY_MS),
     app_first_signed_in_launch_at: agedIso(29 * DAY_MS),
   });
-  const { deps, rec } = buildDeps({ settingValue: true, partners: [p], store });
+  const { deps, rec } = buildDeps({ settingValue: ON, partners: [p], store });
   withRealCopy(deps);
   const outcome = await runOnboardingSweep(deps);
   if (outcome.ok && "results" in outcome) {
     assertEquals(outcome.results[0].skipped_reason, "activated");
   }
   assertEquals(rec.sends.length, 0);
+});
+
+// ── Ben, DECIDED (bus 14:01:57Z, ruling a - REVIEW FAIL 5833587935):
+// switch enabled_since gates partners created before the switch was turned
+// on. These fail on head aae3acfc - buildDeps's ON constant there is a bare
+// `true`, and selectStage has no fourth parameter at all, so turning the
+// switch on sends the FULL day0-through-day7 backlog to every pre-existing
+// partner (the exact defect this fix closes). ------------------------------
+
+Deno.test("ruling (a): bare true settingValue no longer means enabled - fails closed", async () => {
+  // deno-lint-ignore no-explicit-any
+  const { deps, rec } = buildDeps({ settingValue: true as any, partners: [partner()] });
+  withRealCopy(deps);
+  const outcome = await runOnboardingSweep(deps);
+  assertEquals(outcome, { ok: true, skipped: "disabled" });
+  assertEquals(rec.sends.length, 0);
+});
+
+Deno.test("ruling (a): switch enabled_since AFTER a partner created_at - that partner never enters, even 9 days old (no day-7 blast)", async () => {
+  const switchOn = { enabled: true, enabled_since: new Date(NOW).toISOString() };
+  const { deps, rec } = buildDeps({
+    settingValue: switchOn,
+    partners: [partner({ created_at: agedIso(9 * DAY_MS) })], // signed up 9 days before the switch flipped on
+  });
+  withRealCopy(deps);
+  const outcome = await runOnboardingSweep(deps);
+  if (outcome.ok && "results" in outcome) {
+    assertEquals(outcome.results[0].skipped_reason, "before_switch_enabled");
+  }
+  assertEquals(rec.sends.length, 0, "no day0/day1/day3/day7 blast for a partner who predates the switch");
+  assertEquals(rec.claims.length, 0);
+  assertEquals(rec.skipped.length, 0, "a gated-out-by-switch-timing partner gets NO ledger writes at all, same shape as activated/opted_out");
+});
+
+Deno.test("ruling (a): a partner created AFTER enabled_since enters normally", async () => {
+  const switchOn = { enabled: true, enabled_since: new Date(NOW - 1 * DAY_MS).toISOString() };
+  const { deps, rec } = buildDeps({
+    settingValue: switchOn,
+    partners: [partner({ created_at: agedIso(0) })], // signed up after the switch was already on
+  });
+  withRealCopy(deps);
+  const outcome = await runOnboardingSweep(deps);
+  if (outcome.ok && "results" in outcome) {
+    assertEquals(outcome.results[0].sent, "day0");
+  }
+  assertEquals(rec.sends.length, 1);
+});
+
+Deno.test("ruling (a): malformed enabled_since (unparsable date) fails closed as disabled", async () => {
+  const { deps, rec } = buildDeps({
+    settingValue: { enabled: true, enabled_since: "not-a-date" },
+    partners: [partner()],
+  });
+  withRealCopy(deps);
+  const outcome = await runOnboardingSweep(deps);
+  assertEquals(outcome, { ok: true, skipped: "disabled" });
+  assertEquals(rec.sends.length, 0);
+});
+
+Deno.test("ruling (a): enabled true with NO enabled_since fails closed as disabled", async () => {
+  const { deps, rec } = buildDeps({ settingValue: { enabled: true }, partners: [partner()] });
+  withRealCopy(deps);
+  const outcome = await runOnboardingSweep(deps);
+  assertEquals(outcome, { ok: true, skipped: "disabled" });
+  assertEquals(rec.sends.length, 0);
+});
+
+// ── Ben, DECIDED (ruling b): otterquote-internal.test / founder / .invalid
+// / .test addresses are excluded UNCONDITIONALLY, even when is_test=true -
+// these fail on head aae3acfc, which has no isAlwaysExcludedAddress check at
+// all (only the non-is_test-only bot-pattern check), so an is_test=true row
+// on otterquote-internal.test would send (with the [TEST] prefix) instead
+// of being skipped. -----------------------------------------------------
+
+Deno.test("ruling (b): otterquote-internal.test address is skipped even when is_test=true", async () => {
+  const { deps, rec } = buildDeps({
+    settingValue: ON,
+    partners: [partner({ is_test: true, email: "pfw-walker-7@otterquote-internal.test" })],
+  });
+  withRealCopy(deps);
+  const outcome = await runOnboardingSweep(deps);
+  if (outcome.ok && "results" in outcome) {
+    assertEquals(outcome.results[0].skipped_reason, "internal_test_domain");
+  }
+  assertEquals(rec.sends.length, 0);
+  assertEquals(rec.claims.length, 0);
+});
+
+Deno.test("ruling (b): a founder (stohler) address is skipped even when is_test=false", async () => {
+  const { deps, rec } = buildDeps({
+    settingValue: ON,
+    partners: [partner({ is_test: false, email: "dustinstohler1@gmail.com" })],
+  });
+  withRealCopy(deps);
+  const outcome = await runOnboardingSweep(deps);
+  if (outcome.ok && "results" in outcome) {
+    assertEquals(outcome.results[0].skipped_reason, "internal_test_domain");
+  }
+  assertEquals(rec.sends.length, 0);
+});
+
+Deno.test("ruling (b): a generic .invalid domain is skipped unconditionally", async () => {
+  const { deps, rec } = buildDeps({
+    settingValue: ON,
+    partners: [partner({ is_test: false, email: "someone@example.invalid" })],
+  });
+  withRealCopy(deps);
+  const outcome = await runOnboardingSweep(deps);
+  if (outcome.ok && "results" in outcome) {
+    assertEquals(outcome.results[0].skipped_reason, "internal_test_domain");
+  }
+  assertEquals(rec.sends.length, 0);
+});
+
+Deno.test("ruling (b): a REAL human partner (not matching any excluded pattern) still sends normally", async () => {
+  const { deps, rec } = buildDeps({
+    settingValue: ON,
+    partners: [partner({ is_test: false, email: "realtor@remax.com" })],
+  });
+  withRealCopy(deps);
+  const outcome = await runOnboardingSweep(deps);
+  if (outcome.ok && "results" in outcome) {
+    assertEquals(outcome.results[0].sent, "day0");
+  }
+  assertEquals(rec.sends.length, 1);
+});
+
+// ── Ben SHOULD: a missing MAILGUN_API_KEY must NOT record sent -----------
+// index.ts's own sendEmail wiring is what changed (this test proves the
+// CONTRACT run-sweep.ts depends on: a sendEmail that reports ok:false
+// routes to markFailed, never markSent) - see the build report for why
+// there is no dedicated index.ts test harness in this directory (index.ts
+// is exercised only by wiring, per this function's own file header); the
+// contract is proven here at the run-sweep level, which is what actually
+// decides sent-vs-failed.
+
+Deno.test("Ben SHOULD: sendEmail reporting ok:false (mirrors a missing MAILGUN_API_KEY) records failed, never sent", async () => {
+  const { deps, rec, store } = buildDeps({ settingValue: ON, partners: [partner()] });
+  withRealCopy(deps);
+  deps.sendEmail = async () => ({ ok: false, error: "MAILGUN_API_KEY not configured" });
+  const outcome = await runOnboardingSweep(deps);
+  if (outcome.ok && "results" in outcome) {
+    assertEquals(outcome.results[0].skipped_reason, "send_failed");
+  }
+  assertEquals(rec.sent.length, 0, "markSent must never be called when sendEmail reports ok:false");
+  assertEquals(store.rows.get("p1::day0")?.status, "failed");
+});
+
+// ── Ben SHOULD: List-Unsubscribe headers / clickable HTML anchor ---------
+// (the header-append mechanics live in index.ts's real sendMailgunEmail,
+// exercised there only by wiring - see that file; this proves run-sweep.ts
+// actually PASSES optOutUrl through to sendEmail, which is the prerequisite
+// for index.ts being able to attach the header at all.)
+
+Deno.test("Ben SHOULD: runOnboardingSweep passes optOutUrl to sendEmail (prerequisite for List-Unsubscribe headers)", async () => {
+  const { deps, rec } = buildDeps({ settingValue: ON, partners: [partner()] });
+  withRealCopy(deps);
+  await runOnboardingSweep(deps);
+  assertEquals(rec.sends[0].optOutUrl, "https://otterquote.com/functions/v1/partner-email-optout?t=fake.p1");
+});
+
+Deno.test("Ben SHOULD: the rendered HTML unsubscribe line is a clickable a-href anchor, not bare text", async () => {
+  const { deps, rec } = buildDeps({ settingValue: ON, partners: [partner()] });
+  withRealCopy(deps);
+  await runOnboardingSweep(deps);
+  const [send] = rec.sends;
+  assertEquals(
+    send.htmlBody.includes(`<a href="${send.optOutUrl}"`),
+    true,
+    `expected a clickable anchor for ${send.optOutUrl} in: ${send.htmlBody}`,
+  );
 });
