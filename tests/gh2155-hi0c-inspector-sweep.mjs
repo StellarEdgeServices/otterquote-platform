@@ -479,6 +479,103 @@ for (const file of JS_OFF_PAGES) {
   }
 }
 
+// ── JS-ON: js/nav.js -- footer link hidden for a SIGNED-IN visitor until
+//    the partner type resolves; guests keep it unconditionally ───────────
+// gh-2155 HI-05 (Ben, review 5838422299, item 4): renderFooter() runs at
+// DOMContentLoaded, before any auth call resolves, so the footer link a
+// SIGNED-IN visitor sees for that brief window defaults to the
+// guest-safe /partner-agreement.html -- which is exactly the fee-bearing
+// page a signed-in inspector must not be shown as a guess. Extends the
+// existing _syncPartnerAgentType() / renderFooter() mechanism with
+// _hidePartnerAgreementLinkPendingType(), called from both
+// _renderAuthSlot() and _applyAuthRole() the instant Auth.getUser()
+// confirms a real session, before Auth.getRole() is even awaited.
+{
+  const navSrc = fs.readFileSync(path.join(repoRoot, 'js', 'nav.js'), 'utf8');
+  const navBody = extractBetween(navSrc, 'const Nav = {', '\n};', 'js/nav.js Nav object literal (signed-in footer hide block)')
+    .replace('const Nav = {', 'var Nav = {') + '\n};\n';
+
+  /** A fake footer-link element, distinct from the footer's own innerHTML
+   *  string -- _hidePartnerAgreementLinkPendingType() reaches it directly
+   *  by id, the same way the real DOM would after renderFooter() parses
+   *  the anchor markup into a live node. */
+  function makeLinkEl() {
+    return { style: {} };
+  }
+
+  function makeCtx({ pathname, getUserResult, getRoleResult, getRoleRejects }) {
+    const linkEl = makeLinkEl();
+    const footerEl = { dataset: {}, innerHTML: '', style: {} };
+    const docStore = new Map([
+      ['site-footer', footerEl],
+      ['footer-partner-agreement-link', linkEl],
+    ]);
+    const noopEl = { style: {}, dataset: {}, innerHTML: '', textContent: '', setAttribute() {}, removeAttribute() {}, classList: { add() {}, remove() {}, toggle() {} } };
+    const ctx = {
+      window: { location: { pathname, search: '' }, currentPartnerAgentType: undefined, localStorage: { getItem: () => null, setItem: () => {}, removeItem: () => {} }, URLSearchParams },
+      document: {
+        getElementById: (id) => (docStore.has(id) ? docStore.get(id) : noopEl),
+        querySelectorAll: () => [],
+      },
+      Auth: {
+        getUser: () => Promise.resolve(getUserResult),
+        getRole: () => (getRoleRejects ? Promise.reject(new Error('boom')) : Promise.resolve(getRoleResult)),
+      },
+      CONFIG: { SITE_NAME: 'Otter Quotes' },
+      NAP: { streetAddress: '', addressLocality: '', addressRegion: '', postalCode: '', phoneTelHref: '', phoneDisplay: '', email: '' },
+      URLSearchParams,
+      console,
+    };
+    ctx.window.window = ctx.window;
+    vm.createContext(ctx);
+    vm.runInContext(navBody, ctx);
+    return { ctx, linkEl, footerEl };
+  }
+
+  // Unit-level: the guard itself.
+  {
+    const { ctx, linkEl } = makeCtx({ pathname: '/partner-app.html', getUserResult: null, getRoleResult: null });
+    ctx.Nav._hidePartnerAgreementLinkPendingType();
+    ok(linkEl.style.display === 'none',
+      'JS-ON nav.js: _hidePartnerAgreementLinkPendingType() hides #footer-partner-agreement-link while the type is unresolved');
+  }
+  {
+    const { ctx, linkEl } = makeCtx({ pathname: '/partner-app.html', getUserResult: null, getRoleResult: null });
+    ctx.window.currentPartnerAgentType = 'home_inspector'; // already resolved this page load
+    ctx.Nav._hidePartnerAgreementLinkPendingType();
+    ok(linkEl.style.display === undefined,
+      'JS-ON nav.js: _hidePartnerAgreementLinkPendingType() is a no-op once the type is already resolved (does not clobber an already-correct render)');
+  }
+
+  // Integration, via the real _applyAuthRole() (data-auth="false" pages,
+  // e.g. partner-agreement.html) -- role resolution deferred to the next
+  // microtask so the hidden state can be observed in between.
+  {
+    let resolveRole;
+    const rolePromise = new Promise((r) => { resolveRole = r; });
+    const { ctx, linkEl } = makeCtx({ pathname: '/partner-agreement.html', getUserResult: { id: 'u1' }, getRoleResult: null });
+    ctx.Auth.getRole = () => rolePromise;
+    const applyPromise = ctx.Nav._applyAuthRole();
+    // Let Auth.getUser()'s microtask resolve; getRole() is still pending.
+    await new Promise((r) => setTimeout(r, 0));
+    ok(linkEl.style.display === 'none',
+      'JS-ON nav.js _applyAuthRole(): footer link is hidden as soon as a signed-in user is confirmed, before Auth.getRole() resolves');
+    resolveRole('home_inspector');
+    await applyPromise;
+    ok(ctx.window.currentPartnerAgentType === 'home_inspector',
+      "JS-ON nav.js _applyAuthRole(): once Auth.getRole() resolves, the real type is cached (renderFooter()'s own re-render then rebuilds the link with the correct href and no display:none, per the existing _syncPartnerAgentType() coverage above)");
+  }
+
+  // NEGATIVE CONTROL: a GUEST (Auth.getUser() resolves null) never reaches
+  // the hide call at all -- the normal link stays visible unconditionally.
+  {
+    const { ctx, linkEl } = makeCtx({ pathname: '/partner-agreement.html', getUserResult: null, getRoleResult: null });
+    await ctx.Nav._applyAuthRole();
+    ok(linkEl.style.display === undefined,
+      'NEGATIVE CONTROL, JS-ON nav.js _applyAuthRole(): a guest (Auth.getUser() resolves null) never hides the footer link -- it keeps the normal link unconditionally');
+  }
+}
+
 // ── JS-ON: partner-dashboard.html -- default-hidden fee elements ──────────
 {
   const src = fs.readFileSync(path.join(repoRoot, 'partner-dashboard.html'), 'utf8');
@@ -495,7 +592,11 @@ for (const file of JS_OFF_PAGES) {
     block = null;
   }
 
-  const FEE_IDS = ['feeSubtitleReferClient', 'feeSubtitleReferPartner', 'feeSubtitleGetPaid', 'referralFeeDisclaimer', 'recruitFeeHint', 'totalEarnedCard', 'recruitEarningsCard', 'referralFeeThLabel'];
+  // gh-2155 HI-05 (Ben, review 5838422299, item 3): 'getPaidTile' added --
+  // the "Get paid" TILE itself (not just its subtitle) now starts
+  // display:none in the static HTML too and is revealed by the same
+  // else-if branch this block extracts.
+  const FEE_IDS = ['feeSubtitleReferClient', 'feeSubtitleReferPartner', 'feeSubtitleGetPaid', 'referralFeeDisclaimer', 'recruitFeeHint', 'totalEarnedCard', 'recruitEarningsCard', 'referralFeeThLabel', 'getPaidTile'];
 
   function makeFakeDom() {
     const elements = new Map();
@@ -573,8 +674,15 @@ for (const file of JS_OFF_PAGES) {
 
   async function run(role, roleRejects) {
     const disclaimer = { style: { display: 'none' } };
+    // gh-2155 HI-05 (item 2): 'payoutsPhrase' -- the "and payouts" span --
+    // is revealed by the exact same Auth.getRole().then() block this test
+    // extracts, so the fake DOM needs to serve it alongside the
+    // pre-existing disclaimer element rather than a second extraction.
+    const payoutsPhrase = { style: { display: 'none' } };
     const ctx = {
-      document: { getElementById: (id) => (id === 'referralFeeDisclaimer' ? disclaimer : null) },
+      document: {
+        getElementById: (id) => (id === 'referralFeeDisclaimer' ? disclaimer : id === 'payoutsPhrase' ? payoutsPhrase : null),
+      },
       Auth: { getRole: () => (roleRejects ? Promise.reject(new Error('boom')) : Promise.resolve(role)) },
       Nav: { PARTNER_AUTH_ROLES: ['re_agent', 'insurance_agent', 'home_inspector', 'adjuster', 'other'] },
       Array,
@@ -587,26 +695,79 @@ for (const file of JS_OFF_PAGES) {
     await p;
     // Let the .then chain's microtask settle.
     await new Promise((r) => setTimeout(r, 0));
-    return disclaimer;
+    return { disclaimer, payoutsPhrase };
   }
 
   if (block) {
     const inspector = await run('home_inspector', false);
-    ok(inspector.style.display === 'none',
+    ok(inspector.disclaimer.style.display === 'none',
       'JS-ON partner-app.html: referral-fee disclaimer stays hidden when Auth.getRole() resolves home_inspector');
+    ok(inspector.payoutsPhrase.style.display === 'none',
+      'JS-ON partner-app.html: "and payouts" phrase stays hidden when Auth.getRole() resolves home_inspector');
 
     const unresolved = await run(null, false);
-    ok(unresolved.style.display === 'none',
+    ok(unresolved.disclaimer.style.display === 'none',
       'JS-ON partner-app.html: referral-fee disclaimer stays hidden when Auth.getRole() resolves null (signed out / fail closed)');
+    ok(unresolved.payoutsPhrase.style.display === 'none',
+      'JS-ON partner-app.html: "and payouts" phrase stays hidden when Auth.getRole() resolves null (signed out / fail closed)');
 
     const rejected = await run(null, true);
-    ok(rejected.style.display === 'none',
+    ok(rejected.disclaimer.style.display === 'none',
       'JS-ON partner-app.html: referral-fee disclaimer stays hidden if Auth.getRole() rejects (fail closed)');
+    ok(rejected.payoutsPhrase.style.display === 'none',
+      'JS-ON partner-app.html: "and payouts" phrase stays hidden if Auth.getRole() rejects (fail closed)');
 
     const realtor = await run('re_agent', false);
-    ok(realtor.style.display === '',
+    ok(realtor.disclaimer.style.display === '',
       'NEGATIVE CONTROL, JS-ON partner-app.html: referral-fee disclaimer is revealed when Auth.getRole() resolves re_agent');
+    ok(realtor.payoutsPhrase.style.display === '',
+      'NEGATIVE CONTROL, JS-ON partner-app.html: "and payouts" phrase is revealed when Auth.getRole() resolves re_agent (fixes gh-2155 HI-05 item 2)');
   }
+}
+
+// ── JS-OFF: partner-app.html -- "and payouts" absent from static text ─────
+// gh-2155 HI-05 item 2: with JS disabled (or before Auth.getRole()
+// resolves), the phrase must read "track your referrals" with no "and
+// payouts" for EVERY visitor, including realtors -- the fail-closed
+// default has to be the same text realtors already see by default, per
+// Ben's ruling, not an inspector-only special case.
+{
+  const html = fs.readFileSync(path.join(repoRoot, 'partner-app.html'), 'utf8');
+  const text = staticRenderedText(html);
+  ok(!/and payouts/i.test(text),
+    'JS-OFF: partner-app.html renders no "and payouts" wording (gh-2155 HI-05 item 2, fail-closed default for every visitor)');
+  ok(/track your referrals/i.test(text),
+    'JS-OFF: partner-app.html still renders "track your referrals" (no new words -- only "and payouts" removed)');
+}
+
+// ── JS-OFF: partner-dashboard.html -- "Get paid" tile absent by default ───
+// gh-2155 HI-05 item 3: the TILE (not just its subtitle) must start
+// display:none in the static markup, fail closed for JS-off and for any
+// partner type not yet known.
+{
+  const html = fs.readFileSync(path.join(repoRoot, 'partner-dashboard.html'), 'utf8');
+  const m = html.match(/<button[^>]*id="getPaidTile"[^>]*>/);
+  ok(!!m && /display:\s*none/i.test(m[0]),
+    'JS-OFF: partner-dashboard.html "Get paid" tile (#getPaidTile) starts display:none in the static markup (gh-2155 HI-05 item 3)');
+}
+
+// ── (1-partial): partner-inspectors.html -- partner-page links carry
+//    ?track=home_inspector ─────────────────────────────────────────────
+// gh-2155 HI-05 item 1 (partial -- hi-1.html is explicitly out of scope,
+// owned by a separate perf PR): every link FROM partner-inspectors.html
+// TO another partner page whose rendering can vary by resolved partner
+// type must carry the query-string signal js/nav.js's _isInspectorTrack()
+// already reads (signal (a)), so the destination page fails closed on
+// the very first paint instead of waiting on an auth round trip.
+// partner-agreement-inspector.html is deliberately excluded: it is a
+// separate static, fee-content-free build (tools/build_inspector_agreement.py)
+// that does not vary its content by query param at all, and HI-0c's own
+// test (tests/gh2155-hi0b-inspector-agreement.mjs) already pins that link
+// at the exact untracked string.
+{
+  const html = fs.readFileSync(path.join(repoRoot, 'partner-inspectors.html'), 'utf8');
+  ok(html.indexOf('href="/partner-dashboard.html?track=home_inspector"') !== -1,
+    'partner-inspectors.html: the "Go to Partner Dashboard" link carries ?track=home_inspector (gh-2155 HI-05 item 1-partial)');
 }
 
 console.log(`\n${pass} passed, ${fail} failed.`);

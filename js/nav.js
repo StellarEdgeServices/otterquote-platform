@@ -147,6 +147,29 @@ const Nav = {
     }
   },
 
+  /**
+   * gh-2155 HI-05 (Ben, review 5838422299, item 4): a SIGNED-IN visitor's
+   * footer "Partner Agreement" link must not show either target as a
+   * guess while their partner type is still unknown -- renderFooter()
+   * already ran once at DOMContentLoaded, before any auth call resolves,
+   * so the link on screen right now defaults to the guest-safe
+   * /partner-agreement.html even for a signed-in inspector whose type
+   * just hasn't loaded yet. Called from both _renderAuthSlot() and
+   * _applyAuthRole() (the same two call sites _syncPartnerAgentType()
+   * already documents) the instant a real session is confirmed, BEFORE
+   * Auth.getRole() is even awaited. _syncPartnerAgentType() -- called
+   * right after, once the role resolves -- re-renders the real footer
+   * with the correct target and this hidden state is gone; if the role
+   * never resolves (RLS error, network failure), the link stays hidden
+   * rather than ever asserting a guess. Guests never reach this function
+   * at all, so they keep the normal, always-visible link unconditionally.
+   */
+  _hidePartnerAgreementLinkPendingType() {
+    if (window.currentPartnerAgentType !== undefined) return; // already resolved this page load
+    const link = document.getElementById('footer-partner-agreement-link');
+    if (link) link.style.display = 'none';
+  },
+
   /* ══════════════════════════════════════════════════════════════════════
      TWO-TIER NAVIGATION
      Row 1 — role switcher: Homeowner · Contractor · Referral Partner.
@@ -518,6 +541,9 @@ const Nav = {
     try {
       const user = await Auth.getUser();
       if (!user) return;
+      // gh-2155 HI-05 (item 4): signed in, type not yet known -- hide the
+      // footer link rather than show either target as a guess.
+      this._hidePartnerAgreementLinkPendingType();
       const role = await Auth.getRole();
       // gh-2155 HI-0c REVIEW FAIL fix: cache the resolved type for
       // _isInspectorTrack() on every page that runs this (including
@@ -733,6 +759,8 @@ const Nav = {
     let desktopHTML, mobileHTML;
 
     if (user) {
+      // gh-2155 HI-05 (item 4): same as _applyAuthRole()'s identical call.
+      this._hidePartnerAgreementLinkPendingType();
       // Determine which dashboard to link to based on role
       const role = await Auth.getRole();
       // gh-2155 HI-0c REVIEW FAIL fix: see _applyAuthRole()'s identical call
@@ -1054,7 +1082,7 @@ const Nav = {
                  actual account surfaces needed. Reachable from every page here,
                  and linked again inline at the point of acceptance on the
                  partner signup form, which is where it legally matters. -->
-            <a href="${partnerAgreementHref}">Partner Agreement</a>
+            <a id="footer-partner-agreement-link" href="${partnerAgreementHref}">Partner Agreement</a>
           </div>
         </div>
         <div class="footer-bottom">

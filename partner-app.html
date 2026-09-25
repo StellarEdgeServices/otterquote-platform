@@ -225,7 +225,15 @@
             <img src="/img/app/partner-icon-192.png" alt="Otter Quotes Partner App icon" class="app-hero-icon" width="108" height="108">
             <div class="hero-body">
                 <h1>The Otter Quotes Partner App</h1>
-                <p>Refer homeowners, grow your partner network, and track your referrals and payouts &mdash; right from your phone. Free, no app store needed, installs in seconds.</p>
+                <!-- gh-2155 HI-05 (Ben, review 5838422299, item 2): "and
+                     payouts" starts display:none, fail closed -- this page
+                     has no per-visitor type information at load, so with
+                     JavaScript disabled, or before Auth.getRole() resolves,
+                     the safe (payouts-free) text renders for everyone,
+                     including realtors. Revealed below only once a
+                     confirmed non-home_inspector partner type resolves,
+                     same mechanism/call site as referralFeeDisclaimer. -->
+                <p>Refer homeowners, grow your partner network, and track your referrals<span id="payoutsPhrase" style="display:none;"> and payouts</span> &mdash; right from your phone. Free, no app store needed, installs in seconds.</p>
             </div>
         </div>
 
@@ -334,6 +342,10 @@
                 if (isNonInspectorPartner) {
                     var disclaimer = document.getElementById('referralFeeDisclaimer');
                     if (disclaimer) disclaimer.style.display = '';
+                    // gh-2155 HI-05 (item 2): same reveal-on-confirmed-
+                    // non-inspector mechanism as the disclaimer above.
+                    var payoutsPhrase = document.getElementById('payoutsPhrase');
+                    if (payoutsPhrase) payoutsPhrase.style.display = '';
                 }
             }).catch(function () { /* non-fatal: stays hidden */ });
 
