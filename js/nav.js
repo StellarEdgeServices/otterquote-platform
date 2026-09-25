@@ -65,24 +65,65 @@ const Nav = {
   },
 
   /**
-   * gh-2155 HI-0c (Ben ruling, #2152 comment 5836510515, item 3): true when
-   * the current visitor is on the inspector track -- either on a page whose
-   * URL is inspector-specific (partner-inspectors.html, the generated
-   * partner-agreement-inspector.html), or on a shared partner page after
-   * partner-dashboard.html has resolved a signed-in home_inspector's type
-   * (window.currentPartnerAgentType, set by that page around its ~line
-   * 2079). Reused by renderFooter() (already shipped, #2166) and by every
-   * nav.js link that must not point an inspector at partners.html (D-333 --
-   * that page shows dollar-figure commission copy no inspector should be
-   * one click from). Path check is immediate and needs no auth resolution;
-   * the currentPartnerAgentType check covers the dashboard once auth
-   * resolves.
+   * gh-2155 HI-0c REVIEW FAIL (5836957364) fix: true when the current
+   * visitor is on the inspector track, resolved three ways, first match
+   * wins, so the check works on EVERY page rather than only the two static
+   * inspector URLs and partner-dashboard.html:
+   *   (a) an explicit ?track=home_inspector / ?agent_type=home_inspector
+   *       query param -- the same signal partner-agreement.html's own
+   *       inline script reads (see its ~line 499), so a deep link carrying
+   *       either name is honored identically everywhere.
+   *   (b) the page itself being an inspector-specific URL
+   *       (partner-inspectors.html, the generated
+   *       partner-agreement-inspector.html) -- immediate, no auth
+   *       resolution needed.
+   *   (c) the signed-in partner's own type, read from the session/profile
+   *       via Auth.getRole() (which resolves the `referral_agents.agent_type`
+   *       -- 'home_inspector' is one of its values) and cached on
+   *       window.currentPartnerAgentType by _syncPartnerAgentType(), called
+   *       from BOTH _renderAuthSlot() and _applyAuthRole() so every page
+   *       that runs either (i.e. every page with the standard header,
+   *       regardless of data-auth) gets the signed-in type, not just
+   *       partner-dashboard.html.
+   * FAIL CLOSED while unknown: window.currentPartnerAgentType starts
+   * undefined, and _syncPartnerAgentType() only ever sets it to a
+   * POSITIVELY resolved value ('home_inspector' or null for a confirmed
+   * non-inspector partner role) -- never to a guess -- so an unresolved or
+   * errored role reso leaves it untouched rather than asserting "safe".
+   * Reused by renderFooter() (#2166) and by every nav.js link that must not
+   * point an inspector at partners.html (D-333 -- that page shows
+   * dollar-figure commission copy no inspector should be one click from).
    */
   _isInspectorTrack() {
     const file = this._currentFile();
-    return file === 'partner-inspectors.html'
-      || file === 'partner-agreement-inspector.html'
-      || window.currentPartnerAgentType === 'home_inspector';
+    if (file === 'partner-inspectors.html' || file === 'partner-agreement-inspector.html') {
+      return true;
+    }
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const track = params.get('track') || params.get('agent_type');
+      if (track && track.toLowerCase() === 'home_inspector') return true;
+    } catch (_) { /* malformed query string -- fall through to the auth signal */ }
+    return window.currentPartnerAgentType === 'home_inspector';
+  },
+
+  /**
+   * gh-2155 HI-0c REVIEW FAIL fix: cache a resolved account role's partner
+   * agent type on window.currentPartnerAgentType so _isInspectorTrack()'s
+   * signal (c) works on every page, not just partner-dashboard.html (which
+   * used to set this itself, inline, around its ~line 1814). Called from
+   * both _renderAuthSlot() (pages with visible auth buttons) and
+   * _applyAuthRole() (data-auth="false" pages, e.g. partner-agreement.html)
+   * so no page depends on the other for this signal. Only ever writes a
+   * POSITIVELY resolved value: 'home_inspector' for a confirmed inspector,
+   * null for any other confirmed PARTNER_AUTH_ROLES member or a confirmed
+   * non-partner role. A null/undefined `role` (unresolved auth, RLS error,
+   * no session) leaves whatever is already cached untouched -- fail closed,
+   * never asserts "not an inspector" on a guess.
+   */
+  _syncPartnerAgentType(role) {
+    if (role === null || role === undefined) return; // unresolved -- leave cached value untouched
+    window.currentPartnerAgentType = (role === 'home_inspector') ? 'home_inspector' : null;
   },
 
   /* ══════════════════════════════════════════════════════════════════════
@@ -285,6 +326,17 @@ const Nav = {
     return this._readStoredRole() || 'homeowner';
   },
 
+  /**
+   * gh-2155 HI-0c REVIEW FAIL (5836957364) fix: the row-1 "Referral Partner"
+   * tab hardcoded `t.href` (/partners.html) regardless of track -- the
+   * literal defect named in the review. Href swap only, same rule as
+   * _roleLinks()/_roleLogoHref() below.
+   */
+  _roleTabHref(t) {
+    if (t.role === 'partner' && this._isInspectorTrack()) return '/partner-inspectors.html';
+    return t.href;
+  },
+
   /** Row 1 — the role switcher. Present on every page, for every visitor. */
   _roleBarHTML(activeRole) {
     return `
@@ -293,7 +345,7 @@ const Nav = {
           <span class="nav-roles-label">I'm a</span>
           <nav class="nav-roles-tabs" aria-label="Choose your role">
             ${this._ROLE_TABS.map(t => `
-              <a href="${t.href}" class="nav-role-tab ${t.role === activeRole ? 'active' : ''}"
+              <a href="${this._roleTabHref(t)}" class="nav-role-tab ${t.role === activeRole ? 'active' : ''}"
                  data-role="${t.role}"${t.role === activeRole ? ' aria-current="true"' : ''}>${t.label}</a>
             `).join('')}
           </nav>
@@ -446,6 +498,10 @@ const Nav = {
       const user = await Auth.getUser();
       if (!user) return;
       const role = await Auth.getRole();
+      // gh-2155 HI-0c REVIEW FAIL fix: cache the resolved type for
+      // _isInspectorTrack() on every page that runs this (including
+      // data-auth="false" pages), not only partner-dashboard.html.
+      this._syncPartnerAgentType(role);
 
       // Correct row 2 only when the account role AGREES with the page's own
       // URL role, or the page claims no role at all.
@@ -540,6 +596,17 @@ const Nav = {
       if (mobileAuthSlot) mobileAuthSlot.insertAdjacentHTML('beforebegin', linksHTML);
       else container.insertAdjacentHTML('afterbegin', linksHTML);
     }
+
+    // gh-2155 HI-0c REVIEW FAIL fix: re-sync every role tab's href on each
+    // call, not only when the active role changes -- the partner tab's
+    // href must flip to /partner-inspectors.html the moment auth resolves
+    // a signed-in home_inspector, even on a page whose active role was
+    // already 'partner' before that resolution (the `role !== this._activeRole`
+    // branch below would otherwise skip it).
+    document.querySelectorAll('.nav-role-tab').forEach(tab => {
+      const tabDef = this._ROLE_TABS.find(t => t.role === tab.dataset.role);
+      if (tabDef) tab.href = this._roleTabHref(tabDef);
+    });
 
     // Re-mark the active role tab.
     if (role !== this._activeRole) {
@@ -647,6 +714,9 @@ const Nav = {
     if (user) {
       // Determine which dashboard to link to based on role
       const role = await Auth.getRole();
+      // gh-2155 HI-0c REVIEW FAIL fix: see _applyAuthRole()'s identical call
+      // -- this is the other of the two paths every page runs one of.
+      this._syncPartnerAgentType(role);
 
       // Correct nav links if URL detection disagrees with actual role
       // (e.g. homeowner on contractor-about.html, or contractor on a homeowner page)
