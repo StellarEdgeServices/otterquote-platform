@@ -18,6 +18,8 @@
 //   3. Stop conditions (selectStage's activation AND opt-out gates) — per
 //      partner.
 //   4. agent_type routing — per partner.
+//   4a. Agreement-acceptance + active-status gate (P-5 LEGAL ruling) — per
+//      partner; see hasAcceptedAgreementAndIsActive.
 //   5. Bot-pattern skip — only for non-is_test partners (is_test wins,
 //      matching notify-admin-new-partner's P-3 convention exactly).
 //   6. Placeholder-copy gate — per partner, on the FINAL composed copy
@@ -25,34 +27,47 @@
 //      line with this partner's real link substituted in), so a bug in any
 //      earlier transform step can never accidentally hide a placeholder
 //      marker from this check.
+//   6a. Uncertain-pending check (ruling c, REOPENED) — a stale 'pending' row
+//      for this exact (partner, stage) is an UNKNOWN outcome, surfaced and
+//      skipped, never auto-retried. See isUncertainPending.
 //   7. Atomic claim (Kevin correction Q3) — only after every skip gate above
 //      has passed does this run attempt to claim the (partner, stage) row.
 //
-// KEVIN CORRECTION (Q3): the original version of this file stamped a ledger
-// row 'sent' BEFORE calling Mailgun — exactly the defect gh-2069 fixed in
+// KEVIN CORRECTION (Q3), REOPENED by Ben (orchestrator review of the P-4 fix
+// round): the original version of this file stamped a ledger row 'sent'
+// BEFORE calling Mailgun — exactly the defect gh-2069 fixed in
 // send-homeowner-next-steps ("stops claiming 'sent' before it has sent").
-// The corrected shape, in order:
+// The FIRST correction round still let a stale 'pending' claim be silently
+// RECLAIMED by a later run — which is itself a double-send risk: a crash
+// right after Mailgun accepted the message leaves a 'pending' row whose
+// TRUE outcome is unknown, and reclaiming it sends again. The current shape:
 //   (a) claimStage(partnerId, stage) — an ATOMIC claim, enforced at the
 //       database level by a conditional upsert (see
 //       claim_partner_onboarding_stage() in the ledger migration) that can
-//       only transition a row into 'pending' if it doesn't already hold a
-//       'sent'/'skipped' row or a fresh 'pending' one. Only one concurrent
-//       caller's claim can succeed for a given (partner, stage) — this is
-//       what actually prevents a double send, NOT anything in this file.
+//       only transition a row into 'pending' if no row exists yet, or the
+//       existing row is 'failed'. A 'pending' row — of ANY age — is NEVER
+//       reclaimable; only 'failed' is retried automatically.
 //   (b) sendEmail — only after the claim succeeds.
 //   (c) markSent(partnerId, stage, mailgunId) on acceptance, or
 //       markFailed(partnerId, stage, error) on rejection/throw. A 'failed'
 //       row is NOT terminal (see onboarding-stage.ts's selectStage) — a
 //       later run retries it exactly like a stage that was never attempted.
-// A losing claim (claimed:false) means another run already owns this
-// (partner, stage) — reported as 'already_sent' and Mailgun is NEVER called.
+// A losing claim (claimed:false) on a NON-stale row means another run
+// currently owns this (partner, stage) — reported as 'already_sent', Mailgun
+// never called. A stale 'pending' row (guard 6a, checked BEFORE the claim
+// attempt) is reported as 'uncertain' instead, in both the per-partner
+// result and the sweep's own `uncertain` list — surfaced for a human, never
+// auto-retried.
 
 import {
   type EligibleAgentType,
+  hasAcceptedAgreementAndIsActive,
+  isUncertainPending,
   type LedgerStatus,
   type OnboardingStage,
   type PartnerRow,
   selectStage,
+  STALE_PENDING_MINUTES,
 } from "./onboarding-stage.ts";
 import { composeFinalCopy, getCopyForAgentType, hasPlaceholderCopy } from "./copy.ts";
 import { parseOnboardingSwitch } from "./kill-switch.ts";
@@ -62,7 +77,20 @@ export interface LedgerRow {
   partner_id: string;
   stage: OnboardingStage;
   status: LedgerStatus;
-  created_at?: string;
+  /** Required, not optional — every real row has one (DB `DEFAULT now()
+   * NOT NULL`); isUncertainPending needs it to judge staleness, and a
+   * missing value on a 'pending' row fails TOWARD surfacing it, never
+   * toward silently ignoring it (see that function's own comment). */
+  created_at: string;
+}
+
+/** Surfaced by the sweep for a human to act on — never auto-retried. See
+ * onboarding-stage.ts's isUncertainPending for what "uncertain" means and
+ * why (Ben, DECIDED: "mark the stage sent-or-uncertain BEFORE calling
+ * Mailgun, never auto-reclaim a row whose send outcome is unknown"). */
+export interface UncertainStage {
+  partner_id: string;
+  stage: OnboardingStage;
 }
 
 export type SkipReason =
@@ -72,12 +100,14 @@ export type SkipReason =
   | "invalid_created_at"
   | "before_switch_enabled" // ruling (a): created before the switch's enabled_since
   | "ineligible_agent_type"
+  | "agreement_not_accepted" // P-5 LEGAL ruling (bus 14:11:18Z): no recorded acceptance, or status != 'active'
   | "placeholder_copy"
   | "bot_pattern"
   | "internal_test_domain" // ruling (b): unconditional, even if is_test=true
   | "no_email"
   | "send_failed"
-  | "already_sent"; // lost the atomic claim race
+  | "already_sent" // lost the atomic claim race
+  | "uncertain"; // ruling (c) reopened: a stale 'pending' row — outcome unknown, surfaced, never auto-retried
 
 export interface PartnerResult {
   partner_id: string;
@@ -145,7 +175,7 @@ export interface RunDeps {
 
 export type SweepOutcome =
   | { ok: true; skipped: "disabled" | "no_optout_secret" }
-  | { ok: true; results: PartnerResult[] };
+  | { ok: true; results: PartnerResult[]; uncertain?: UncertainStage[] };
 
 export async function runOnboardingSweep(deps: RunDeps): Promise<SweepOutcome> {
   const say = deps.log ?? (() => {});
@@ -185,6 +215,11 @@ export async function runOnboardingSweep(deps: RunDeps): Promise<SweepOutcome> {
 
   const ledgerRows = await deps.fetchLedgerForPartners(partners.map((p) => p.id));
   const ledgerByPartner = new Map<string, Map<OnboardingStage, LedgerStatus>>();
+  // Ruling (c) reopened: a second index, keyed the same way, but holding the
+  // FULL row (status + created_at) — selectStage only ever needs status
+  // (RESOLVED_STATUSES), but isUncertainPending below needs created_at too,
+  // to judge staleness for the SPECIFIC stage this run is about to attempt.
+  const ledgerRowByPartner = new Map<string, Map<OnboardingStage, LedgerRow>>();
   for (const row of ledgerRows) {
     let m = ledgerByPartner.get(row.partner_id);
     if (!m) {
@@ -192,9 +227,17 @@ export async function runOnboardingSweep(deps: RunDeps): Promise<SweepOutcome> {
       ledgerByPartner.set(row.partner_id, m);
     }
     m.set(row.stage, row.status);
+
+    let rm = ledgerRowByPartner.get(row.partner_id);
+    if (!rm) {
+      rm = new Map();
+      ledgerRowByPartner.set(row.partner_id, rm);
+    }
+    rm.set(row.stage, row);
   }
 
   const results: PartnerResult[] = [];
+  const uncertain: UncertainStage[] = [];
 
   for (const partner of partners) {
     const prior = ledgerByPartner.get(partner.id) ?? new Map<OnboardingStage, LedgerStatus>();
@@ -232,6 +275,17 @@ export async function runOnboardingSweep(deps: RunDeps): Promise<SweepOutcome> {
     }
     const agentType = partner.agent_type as EligibleAgentType;
     const isTest = partner.is_test === true;
+
+    // Ben, DECIDED (bus 14:11:18Z, P-5 LEGAL ruling): P-5's Meta webhook
+    // will create partner rows that are NOT active and have NO recorded
+    // agreement acceptance until the real signup/accept step completes.
+    // "Your account is ready" is false for such a row — checked ahead of
+    // email/bot-pattern/copy, same "never even builds copy for an
+    // out-of-scope partner" posture as the agent_type check above.
+    if (!hasAcceptedAgreementAndIsActive(partner)) {
+      results.push(withSkips("agreement_not_accepted"));
+      continue;
+    }
 
     const email = partner.email ?? null;
     if (!email) {
@@ -277,6 +331,26 @@ export async function runOnboardingSweep(deps: RunDeps): Promise<SweepOutcome> {
       continue;
     }
 
+    // Ruling (c) REOPENED: a stale 'pending' row is an UNKNOWN outcome, not
+    // a safe-to-reclaim one (see onboarding-stage.ts's canClaimStage /
+    // isUncertainPending comments). Checked BEFORE attempting the claim —
+    // claimStage would return claimed:false for it either way now (pending
+    // is never claimable), but this branch is what tells "still actively
+    // in-flight elsewhere" (already_sent, unremarkable) apart from "a
+    // previous run crashed or timed out with this partner's outcome
+    // unknown" (uncertain, needs a human) — the two cases look identical to
+    // claimStage's boolean return but must NOT be reported the same way.
+    const existingRow = ledgerRowByPartner.get(partner.id)?.get(stage);
+    if (isUncertainPending(existingRow, deps.now)) {
+      say(
+        "error",
+        `stage ${stage} for partner ${partner.id} has an UNCERTAIN outcome — a 'pending' claim from a previous run older than ${STALE_PENDING_MINUTES}m that was never resolved to 'sent' or 'failed'. NOT auto-retried (a crash right after Mailgun accepted would double-send). Needs human review: check Mailgun's logs for this partner/stage, then manually mark the row 'failed' to allow a retry, or leave it if it did in fact send.`,
+      );
+      uncertain.push({ partner_id: partner.id, stage });
+      results.push(withSkips("uncertain"));
+      continue;
+    }
+
     // ── Kevin correction Q3: claim BEFORE send, mark AFTER. ────────────────
     const { claimed } = await deps.claimStage(partner.id, stage);
     if (!claimed) {
@@ -309,5 +383,5 @@ export async function runOnboardingSweep(deps: RunDeps): Promise<SweepOutcome> {
     });
   }
 
-  return { ok: true, results };
+  return { ok: true, results, ...(uncertain.length ? { uncertain } : {}) };
 }

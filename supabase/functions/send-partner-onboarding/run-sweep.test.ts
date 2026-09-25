@@ -30,6 +30,13 @@ function partner(overrides: Partial<PartnerRow> = {}): PartnerRow {
     first_name: "Pat",
     app_first_signed_in_launch_at: null,
     onboarding_opted_out_at: null,
+    // Ben, DECIDED (bus 14:11:18Z, P-5 LEGAL ruling): the default fixture is
+    // a REAL, accepted, active P-1-style signup — every pre-existing test in
+    // this file exercises OTHER guards and doesn't care about this one, so
+    // it must not gate them out. See the dedicated
+    // "hasAcceptedAgreementAndIsActive" tests below for the gate itself.
+    status: "active",
+    partner_agreement_accepted_at: new Date(NOW - 1000).toISOString(),
     ...overrides,
   };
 }
@@ -355,16 +362,48 @@ Deno.test("a fresh pending claim (within the stale window) is NOT reclaimable by
   assertEquals(rec.sends.length, 0);
 });
 
-Deno.test("a STALE pending claim (past the stale window) IS reclaimable — a crashed run's stage is retried", async () => {
+// Ben, DECIDED (orchestrator review, ruling c REOPENED): this test used to
+// assert the stale row WAS reclaimed and resent — that assertion WAS the
+// defect. "mark the stage sent-or-uncertain BEFORE calling Mailgun, never
+// auto-reclaim a row whose send outcome is unknown (surface it instead)."
+// This is the fail-first proof for item (iii): FAILS on head 1cbf2f8e
+// (`outcome.results[0].sent` would be `undefined`, not `"day0"`, and
+// `outcome.uncertain` would be `undefined` since that field doesn't exist
+// on 1cbf2f8e's SweepOutcome type/runtime value at all).
+Deno.test("a STALE pending claim (past the stale window) is UNCERTAIN — surfaced, NEVER auto-retried (a crash right after Mailgun accepted must not double-send)", async () => {
   const store = new FakeLedgerStore();
-  store.rows.set("p1::day0", { status: "pending", created_at: new Date(NOW - (STALE_PENDING_MINUTES + 1) * MIN).toISOString() });
+  const staleCreatedAt = new Date(NOW - (STALE_PENDING_MINUTES + 1) * MIN).toISOString();
+  store.rows.set("p1::day0", { status: "pending", created_at: staleCreatedAt });
   const { deps, rec } = buildDeps({ settingValue: ON, partners: [partner()], store });
   withRealCopy(deps);
   const outcome = await runOnboardingSweep(deps);
   if (outcome.ok && "results" in outcome) {
-    assertEquals(outcome.results[0].sent, "day0");
+    assertEquals(outcome.results[0].skipped_reason, "uncertain");
+    assertEquals(outcome.uncertain, [{ partner_id: "p1", stage: "day0" }]);
   }
-  assertEquals(rec.sends.length, 1);
+  assertEquals(rec.sends.length, 0, "an uncertain-outcome stage must NEVER be auto-retried — that is exactly the double-send risk being closed");
+  assertEquals(rec.claims.length, 0, "claimStage must never even be called for an uncertain row");
+  // The row itself is untouched — still 'pending', same created_at, exactly
+  // as a human investigating it later would need to find it.
+  assertEquals(store.rows.get("p1::day0"), { status: "pending", created_at: staleCreatedAt });
+});
+
+Deno.test("a STALE pending claim on one stage does not block a DIFFERENT stage for the same partner from being surfaced independently", async () => {
+  // Sanity check that the uncertain lookup is keyed on (partner, stage), not
+  // partner alone — a 9-day-old partner with a stale day0 pending row still
+  // gets day0 reported uncertain (the LATEST unresolved stage from
+  // selectStage's own view is day7 territory only once day0/1/3 resolve;
+  // here day0 itself is what's selected since nothing else is due yet at
+  // day0's own threshold — this test pins that shape).
+  const store = new FakeLedgerStore();
+  store.rows.set("p1::day0", { status: "pending", created_at: new Date(NOW - (STALE_PENDING_MINUTES + 5) * MIN).toISOString() });
+  const { deps, rec } = buildDeps({ settingValue: ON, partners: [partner()], store });
+  withRealCopy(deps);
+  const outcome = await runOnboardingSweep(deps);
+  if (outcome.ok && "results" in outcome) {
+    assertEquals(outcome.results[0].skipped_reason, "uncertain");
+  }
+  assertEquals(rec.sends.length, 0);
 });
 
 Deno.test("negative control: partner who never activates reaches day7 eligibility and sends (real copy)", async () => {
@@ -566,4 +605,68 @@ Deno.test("Ben SHOULD: the rendered HTML unsubscribe line is a clickable a-href 
     true,
     `expected a clickable anchor for ${send.optOutUrl} in: ${send.htmlBody}`,
   );
+});
+
+// -- Ben, DECIDED (bus 14:11:18Z, P-5 LEGAL ruling): P-5's Meta webhook will
+// create partner rows NOT active / with no recorded agreement acceptance
+// until the real signup/accept step completes -- those rows must NEVER
+// enter the onboarding sequence. These fail on head 1cbf2f8e, where
+// PartnerRow has no status/partner_agreement_accepted_at fields and
+// run-sweep.ts has no gate for either at all -- a P-5 webhook-created row
+// would reach day0 and send "your account is ready" to a partner who never
+// agreed to anything. --------------------------------------------------
+
+Deno.test("P-5 ruling: a partner with NO recorded agreement acceptance (what the Meta webhook creates) is skipped with a clear reason, never sent", async () => {
+  const { deps, rec } = buildDeps({
+    settingValue: ON,
+    partners: [partner({ status: "active", partner_agreement_accepted_at: null })],
+  });
+  withRealCopy(deps);
+  const outcome = await runOnboardingSweep(deps);
+  if (outcome.ok && "results" in outcome) {
+    assertEquals(outcome.results[0].skipped_reason, "agreement_not_accepted");
+  }
+  assertEquals(rec.sends.length, 0);
+  assertEquals(rec.claims.length, 0, "an unaccepted partner must never even reach the claim step");
+});
+
+Deno.test("P-5 ruling: a partner with an acceptance recorded but a non-'active' status (e.g. still 'pending') is also skipped", async () => {
+  const { deps, rec } = buildDeps({
+    settingValue: ON,
+    partners: [partner({ status: "pending", partner_agreement_accepted_at: new Date(NOW - 1000).toISOString() })],
+  });
+  withRealCopy(deps);
+  const outcome = await runOnboardingSweep(deps);
+  if (outcome.ok && "results" in outcome) {
+    assertEquals(outcome.results[0].skipped_reason, "agreement_not_accepted");
+  }
+  assertEquals(rec.sends.length, 0);
+});
+
+Deno.test("P-5 ruling: this gate is robust to whatever exact status string P-5 uses -- any non-'active' value with no acceptance is skipped the same way", async () => {
+  for (const status of ["invited", "meta_lead", "unverified", "awaiting_acceptance"]) {
+    const { deps, rec } = buildDeps({
+      settingValue: ON,
+      partners: [partner({ status, partner_agreement_accepted_at: null })],
+    });
+    withRealCopy(deps);
+    const outcome = await runOnboardingSweep(deps);
+    if (outcome.ok && "results" in outcome) {
+      assertEquals(outcome.results[0].skipped_reason, "agreement_not_accepted", `status=${status} should be skipped`);
+    }
+    assertEquals(rec.sends.length, 0, `status=${status} must not send`);
+  }
+});
+
+Deno.test("P-5 ruling: an active, accepted partner (real P-1 signup) still sends normally -- the gate isn't overbroad", async () => {
+  const { deps, rec } = buildDeps({
+    settingValue: ON,
+    partners: [partner({ status: "active", partner_agreement_accepted_at: new Date(NOW - 1000).toISOString() })],
+  });
+  withRealCopy(deps);
+  const outcome = await runOnboardingSweep(deps);
+  if (outcome.ok && "results" in outcome) {
+    assertEquals(outcome.results[0].sent, "day0");
+  }
+  assertEquals(rec.sends.length, 1);
 });

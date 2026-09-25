@@ -85,6 +85,35 @@ export interface PartnerRow {
   /** NULL until the partner clicks the D-320-style unsubscribe link (Kevin
    * correction, Q1). Once set, permanent — same shape as activation. */
   onboarding_opted_out_at: string | null;
+  /** referral_agents.status — CHECK-constrained to 'pending' | 'active' |
+   * 'suspended' (see the baseline schema). Ben, DECIDED (bus 14:11:18Z, P-5
+   * LEGAL ruling): only 'active' partners enter the onboarding sequence —
+   * see hasAcceptedAgreementAndIsActive below. */
+  status: string;
+  /** gh-1059's referral_agents.partner_agreement_accepted_at — NULL until a
+   * real acceptance of partner-agreement.html is recorded (register_partner
+   * sets this at signup time for every P-1 partner). Ben, DECIDED (bus
+   * 14:11:18Z, P-5 LEGAL ruling): P-5's Meta webhook will create partner
+   * rows BEFORE this is set (invited/pending, no acceptance) — those rows
+   * must never enter the onboarding sequence ("your account is ready" is a
+   * lie for a partner who hasn't agreed to anything yet). Checking for the
+   * PRESENCE of a real acceptance record, rather than the ABSENCE of one
+   * specific non-'active' status string, is what makes this robust to
+   * whatever exact status P-5 actually uses. */
+  partner_agreement_accepted_at: string | null;
+}
+
+/** Ben, DECIDED (bus 14:11:18Z, P-5 LEGAL ruling): the entry gate for the
+ * whole sequence. Both conditions independently necessary — a partner could
+ * in principle have one without the other (e.g. a future admin-reactivated
+ * 'active' row that predates gh-1059 and has no acceptance timestamp at
+ * all: 13 such pre-gh1059 rows exist per that migration's own column
+ * comment). See the PartnerRow.partner_agreement_accepted_at doc comment
+ * for why this checks for acceptance PRESENCE, not P-5's status ABSENCE. */
+export function hasAcceptedAgreementAndIsActive(
+  partner: Pick<PartnerRow, "status" | "partner_agreement_accepted_at">,
+): boolean {
+  return partner.status === "active" && partner.partner_agreement_accepted_at != null;
 }
 
 export interface StageSelection {
@@ -186,19 +215,50 @@ export function selectStage(
  * SQL function's WHERE clause can be reviewed against it for a literal
  * match.
  */
+// Ben, DECIDED (orchestrator review of the P-4 fix round, ruling c
+// REOPENED): the original "stale pending is reclaimable" branch below was
+// itself the defect Kevin's Q3 correction was supposed to have eliminated.
+// A 'pending' row with no recorded 'sent'/'failed' outcome means the send
+// OUTCOME IS UNKNOWN — Mailgun may have accepted it right before the
+// invocation crashed. Silently reclaiming it and sending again risks a real
+// double-send to a real partner, which is strictly worse than a stage that
+// waits for a human. Per Ben's words: "mark the stage sent-or-uncertain
+// BEFORE calling Mailgun, never auto-reclaim a row whose send outcome is
+// unknown (surface it instead)." A 'pending' row is now NEVER reclaimable
+// by this function, however old — `now`/`staleMinutes` are kept in the
+// signature only so existing/future callers don't need to change shape, but
+// neither is consulted for the 'pending' branch any more. Staleness is
+// still meaningful — see isUncertainPending below — but it now means
+// "surface this for a human," never "safe to claim again."
 export function canClaimStage(
+  existing: { status: LedgerStatus; created_at: string } | undefined,
+  _now: number,
+  _staleMinutes: number = STALE_PENDING_MINUTES,
+): boolean {
+  if (!existing) return true;
+  if (existing.status === "failed") return true;
+  return false; // 'pending' (any age), 'sent', or 'skipped' — never reclaimable
+}
+
+/**
+ * A 'pending' row older than staleMinutes is one whose send OUTCOME IS
+ * UNKNOWN (see canClaimStage's comment above) — never auto-retried, but a
+ * later run must still be able to find and report it so a human can decide
+ * (check Mailgun's own logs for that message-id-less window, or just
+ * manually mark it 'failed' to allow a retry). Ben, DECIDED: "surface it
+ * instead" — run-sweep.ts calls this per (partner, stage) BEFORE attempting
+ * a claim, and reports every true result in the sweep's own JSON output and
+ * console.error, never silently.
+ */
+export function isUncertainPending(
   existing: { status: LedgerStatus; created_at: string } | undefined,
   now: number,
   staleMinutes: number = STALE_PENDING_MINUTES,
 ): boolean {
-  if (!existing) return true;
-  if (existing.status === "failed") return true;
-  if (existing.status === "pending") {
-    const claimedMs = new Date(existing.created_at).getTime();
-    if (Number.isNaN(claimedMs)) return false; // fail closed on bad data
-    return now - claimedMs >= staleMinutes * 60 * 1000;
-  }
-  return false; // 'sent' or 'skipped' — never reclaimable
+  if (!existing || existing.status !== "pending") return false;
+  const claimedMs = new Date(existing.created_at).getTime();
+  if (Number.isNaN(claimedMs)) return true; // fail toward surfacing, never toward silently ignoring bad data
+  return now - claimedMs >= staleMinutes * 60 * 1000;
 }
 
 // ─── agent_type routing ─────────────────────────────────────────────────────

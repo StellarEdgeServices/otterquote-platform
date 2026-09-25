@@ -6,7 +6,9 @@ import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
   canClaimStage,
   DAY_MS,
+  hasAcceptedAgreementAndIsActive,
   isEligibleAgentType,
+  isUncertainPending,
   type LedgerStatus,
   type OnboardingStage,
   selectStage,
@@ -260,15 +262,57 @@ Deno.test("canClaimStage: fresh 'pending' (younger than the stale window) -> NOT
   assertEquals(canClaimStage({ status: "pending", created_at: fresh }, NOW), false);
 });
 
-Deno.test("canClaimStage: stale 'pending' (at or past the stale window) -> claimable", () => {
+// Ben, DECIDED (orchestrator review, ruling c REOPENED): a stale 'pending'
+// row used to be reclaimable here — that was itself the defect ("mark the
+// stage sent-or-uncertain BEFORE calling Mailgun, never auto-reclaim a row
+// whose send outcome is unknown"). This test used to assert `true`
+// ("claimable"); it now asserts the opposite and is the fail-first proof
+// for item (i) — it FAILS on head 1cbf2f8e, where canClaimStage's 'pending'
+// branch still returns `now - claimedMs >= staleMinutes * 60 * 1000`
+// (i.e. `true` for anything past the stale window).
+Deno.test("canClaimStage: stale 'pending' (10x past the stale window) is STILL NOT claimable — never reclaimed, however old", () => {
   const stale = new Date(NOW - STALE_PENDING_MINUTES * MIN).toISOString();
-  assertEquals(canClaimStage({ status: "pending", created_at: stale }, NOW), true);
-  const veryStale = new Date(NOW - 999 * MIN).toISOString();
-  assertEquals(canClaimStage({ status: "pending", created_at: veryStale }, NOW), true);
+  assertEquals(canClaimStage({ status: "pending", created_at: stale }, NOW), false);
+  const veryStale = new Date(NOW - 10 * STALE_PENDING_MINUTES * MIN).toISOString();
+  assertEquals(canClaimStage({ status: "pending", created_at: veryStale }, NOW), false);
+  const yearsStale = new Date(NOW - 999 * MIN).toISOString();
+  assertEquals(canClaimStage({ status: "pending", created_at: yearsStale }, NOW), false);
 });
 
 Deno.test("canClaimStage: malformed created_at on a 'pending' row fails closed (not claimable)", () => {
   assertEquals(canClaimStage({ status: "pending", created_at: "not-a-date" }, NOW), false);
+});
+
+// ── isUncertainPending: the replacement for what stale 'pending' used to
+// mean — never claimable (see canClaimStage above), but MUST still be
+// distinguishable from a fresh, actively-in-flight 'pending' row, so
+// run-sweep.ts can surface it instead of silently lumping it in with
+// "already claimed by someone else." ────────────────────────────────────────
+
+Deno.test("isUncertainPending: no existing row -> not uncertain (nothing to surface)", () => {
+  assertEquals(isUncertainPending(undefined, NOW), false);
+});
+
+Deno.test("isUncertainPending: 'sent' / 'skipped' / 'failed' -> never uncertain (resolved or safely retryable)", () => {
+  assertEquals(isUncertainPending({ status: "sent", created_at: new Date(NOW).toISOString() }, NOW), false);
+  assertEquals(isUncertainPending({ status: "skipped", created_at: new Date(NOW).toISOString() }, NOW), false);
+  assertEquals(isUncertainPending({ status: "failed", created_at: new Date(NOW - 999 * MIN).toISOString() }, NOW), false);
+});
+
+Deno.test("isUncertainPending: fresh 'pending' (younger than the stale window) -> NOT uncertain yet (still actively in flight)", () => {
+  const fresh = new Date(NOW - (STALE_PENDING_MINUTES * MIN - 1)).toISOString();
+  assertEquals(isUncertainPending({ status: "pending", created_at: fresh }, NOW), false);
+});
+
+Deno.test("isUncertainPending: 'pending' at or past the stale window -> uncertain, must be surfaced", () => {
+  const stale = new Date(NOW - STALE_PENDING_MINUTES * MIN).toISOString();
+  assertEquals(isUncertainPending({ status: "pending", created_at: stale }, NOW), true);
+  const veryStale = new Date(NOW - 10 * STALE_PENDING_MINUTES * MIN).toISOString();
+  assertEquals(isUncertainPending({ status: "pending", created_at: veryStale }, NOW), true);
+});
+
+Deno.test("isUncertainPending: malformed created_at on a 'pending' row fails TOWARD surfacing (uncertain), never toward silently ignoring it", () => {
+  assertEquals(isUncertainPending({ status: "pending", created_at: "not-a-date" }, NOW), true);
 });
 
 // ── Ben, DECIDED (bus 14:01:57Z, ruling a - REVIEW FAIL 5833587935):
@@ -311,4 +355,41 @@ Deno.test("ruling (a): switch-timing gate checked ahead of opted_out/activated �
   // "before_switch_enabled" (both would say "nothing sends" either way).
   assertEquals(sel.stage, null);
   assertEquals(sel.reason, "activated");
+});
+
+// -- Ben, DECIDED (bus 14:11:18Z, P-5 LEGAL ruling): hasAcceptedAgreementAndIsActive
+// -- These fail on head 1cbf2f8e, where this function does not exist at all
+// (module-not-found on the import above) and PartnerRow has no status /
+// partner_agreement_accepted_at fields. ------------------------------------
+
+Deno.test("hasAcceptedAgreementAndIsActive: active + accepted -> true (a real P-1 signup)", () => {
+  assertEquals(
+    hasAcceptedAgreementAndIsActive({ status: "active", partner_agreement_accepted_at: "2026-09-01T00:00:00Z" }),
+    true,
+  );
+});
+
+Deno.test("hasAcceptedAgreementAndIsActive: no acceptance record at all -> false, whatever the status (this IS what P-5's Meta webhook will create)", () => {
+  assertEquals(
+    hasAcceptedAgreementAndIsActive({ status: "active", partner_agreement_accepted_at: null }),
+    false,
+  );
+  assertEquals(
+    hasAcceptedAgreementAndIsActive({ status: "pending", partner_agreement_accepted_at: null }),
+    false,
+  );
+});
+
+Deno.test("hasAcceptedAgreementAndIsActive: accepted but status is not 'active' -> false (e.g. suspended)", () => {
+  assertEquals(
+    hasAcceptedAgreementAndIsActive({ status: "suspended", partner_agreement_accepted_at: "2026-09-01T00:00:00Z" }),
+    false,
+  );
+});
+
+Deno.test("hasAcceptedAgreementAndIsActive: 'pending' status with acceptance recorded is still false (both conditions required)", () => {
+  assertEquals(
+    hasAcceptedAgreementAndIsActive({ status: "pending", partner_agreement_accepted_at: "2026-09-01T00:00:00Z" }),
+    false,
+  );
 });

@@ -245,7 +245,7 @@ serve(async (req: Request) => {
       // scanned once they age out of some window.
       const { data, error } = await supabase
         .from("referral_agents")
-        .select("id, created_at, agent_type, is_test, email, first_name, app_first_signed_in_launch_at, onboarding_opted_out_at")
+        .select("id, created_at, agent_type, is_test, email, first_name, app_first_signed_in_launch_at, onboarding_opted_out_at, status, partner_agreement_accepted_at")
         .is("app_first_signed_in_launch_at", null)
         // Kevin correction Q1: an opted-out partner is excluded from the scan
         // entirely, same load-reduction reasoning as the activation filter —
