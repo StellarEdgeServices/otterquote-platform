@@ -732,6 +732,43 @@
                                     Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.
                                 </p>
                             </form>
+
+                            <!-- gh-2192 REVIEW FAIL 5838866942 must-fix (2): force POST
+                                 with an inert action, and attach a capture-phase submit
+                                 listener HERE -- before this page's own deferred scripts
+                                 (relocated for S05 perf) even start loading -- so a tap
+                                 that beats them to the punch can never fall through to a
+                                 native GET, which would put name/email/phone/company in
+                                 the URL, reload the page, and lose the signup. Same
+                                 principle as start.html's window.__oqEarlyTap (gh-2121
+                                 round 3): a submit that lands before the real handler
+                                 exists is QUEUED, not lost or double-fired, and is
+                                 replayed exactly once through that same handler once it
+                                 registers itself below via window.__oqRegisterFormSubmit. -->
+                            <script>
+                              (function () {
+                                var form = document.getElementById('insuranceAgentForm');
+                                if (!form) return;
+                                form.setAttribute('method', 'post');
+                                form.setAttribute('action', '#');
+                                var queued = null;
+                                var handler = null;
+                                form.addEventListener('submit', function (e) {
+                                  e.preventDefault();
+                                  if (handler) { handler(e); return; }
+                                  if (queued) return; // one already queued -- never double-queue/double-submit
+                                  queued = e;
+                                }, { capture: true });
+                                window.__oqRegisterFormSubmit = function (fn) {
+                                  handler = fn;
+                                  if (queued) {
+                                    var qe = queued;
+                                    queued = null;
+                                    handler(qe);
+                                  }
+                                };
+                              })();
+                            </script>
                         </div>
                     </div>
 
@@ -1028,29 +1065,39 @@
          * (p_recruit_code) — the simplified form no longer has a visible
          * "Who Told You About Us?" field to pre-fill.
          */
-        async function detectRecruitCode() {
-            const urlParams = new URLSearchParams(window.location.search);
-            const recruitCode = localStorage.getItem('cs_recruit_code') || urlParams.get('recruit');
-            if (!recruitCode) return;
+        // gh-2192 REVIEW FAIL 5838866942 must-fix (1): cache the in-flight/
+        // resolved lookup on this promise so calling detectRecruitCode()
+        // more than once (once from CONFIG.whenReady below, once explicitly
+        // awaited on submit, further down) never re-queries -- the second
+        // caller just awaits the same result.
+        let __oqRecruitDetectPromise = null;
+        function detectRecruitCode() {
+            if (__oqRecruitDetectPromise) return __oqRecruitDetectPromise;
+            __oqRecruitDetectPromise = (async () => {
+                const urlParams = new URLSearchParams(window.location.search);
+                const recruitCode = localStorage.getItem('cs_recruit_code') || urlParams.get('recruit');
+                if (!recruitCode) return;
 
-            try {
-                const { data: recruiter, error } = await sb
-                    .rpc('get_referral_agents_public')
-                    .select('id, first_name, last_name, company')
-                    .eq('recruit_code', recruitCode)
-                    .eq('status', 'active')
-                    .maybeSingle();
+                try {
+                    const { data: recruiter, error } = await sb
+                        .rpc('get_referral_agents_public')
+                        .select('id, first_name, last_name, company')
+                        .eq('recruit_code', recruitCode)
+                        .eq('status', 'active')
+                        .maybeSingle();
 
-                if (error) {
-                    console.warn('Recruit code lookup failed:', error.message);
-                    return;
+                    if (error) {
+                        console.warn('Recruit code lookup failed:', error.message);
+                        return;
+                    }
+                    if (!recruiter) return;
+
+                    recruitContext = { recruitCode, recruiterId: recruiter.id };
+                } catch (err) {
+                    console.warn('Recruit code lookup threw:', err);
                 }
-                if (!recruiter) return;
-
-                recruitContext = { recruitCode, recruiterId: recruiter.id };
-            } catch (err) {
-                console.warn('Recruit code lookup threw:', err);
-            }
+            })();
+            return __oqRecruitDetectPromise;
         }
 
         // Kick off recruit detection on load
@@ -1296,7 +1343,14 @@
         // Email signup (gh-2154 P-1: no password collected at this step —
         // see the generatedPassword comment further down)
         // ---------------------------------------------------------------
-        document.getElementById('insuranceAgentForm').addEventListener('submit', async (e) => {
+        // gh-2192 REVIEW FAIL 5838866942 must-fix (2): register through the
+        // early-tap guard's window.__oqRegisterFormSubmit (see the <script>
+        // right after </form> above) instead of addEventListener directly --
+        // that guard is the form's ONLY submit listener, attached long
+        // before this script even starts loading, so a pre-hydration tap is
+        // queued and replayed here exactly once, never lost to a native
+        // submit.
+        window.__oqRegisterFormSubmit(async (e) => {
             e.preventDefault();
             clearFormAlert();
             clearAllFieldErrors();
@@ -1373,6 +1427,20 @@
                 // promise is cached) and costs nothing.
                 const readySb = await ensureSb();
                 if (!readySb) throw new Error('Supabase failed to initialize');
+
+                // gh-2192 REVIEW FAIL 5838866942 must-fix (1): detectRecruitCode()
+                // previously only ran via the CONFIG.whenReady(sb => ...) callback
+                // below, which now only fires once the Supabase bundle has loaded --
+                // lazily, on first form focus/touch (see loadSupabaseBundle() above).
+                // A submit that is the visitor's very first interaction (autofill +
+                // Enter, or this file's own queued pre-hydration replay) raced that
+                // callback and could reach register_partner before recruitContext was
+                // populated, silently dropping the recruiter's attribution. Awaiting
+                // it explicitly here -- idempotent via its own cached promise, so this
+                // never re-queries once the load-time attempt already resolved it --
+                // guarantees the code is read before the RPC call fires, regardless
+                // of interaction order.
+                await detectRecruitCode();
 
                 // #571 / v95: server-side register_partner RPC. referral_agents
                 // has no anon SELECT policy, so a direct .insert().select() can

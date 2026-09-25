@@ -544,6 +544,44 @@ a:hover { color: var(--amber-2); }
       </p>
     </form>
 
+    <!-- gh-2192 REVIEW FAIL 5838866942 must-fix (2): force POST with an
+         inert action, and attach a capture-phase submit listener HERE --
+         before the six relocated script tags below (real network
+         requests: Sentry, cookie-storage.js, config.js, ga-gate.js,
+         meta-pixel-gate.js, auth.js, nav.js) even start loading -- so a tap
+         that beats them to the punch can never fall through to the
+         browser's default action (a native GET that would put this form's
+         name/email/phone/brokerage in the URL, reload the page, and lose
+         the signup). Same principle as start.html's window.__oqEarlyTap
+         (gh-2121 round 3): a submit that lands before the real handler
+         exists is QUEUED, not lost or double-fired, and is replayed exactly
+         once through that same handler once it registers itself below via
+         window.__oqRegisterFormSubmit. -->
+    <script>
+      (function () {
+        var form = document.getElementById('partner-form');
+        if (!form) return;
+        form.setAttribute('method', 'post');
+        form.setAttribute('action', '#');
+        var queued = null;
+        var handler = null;
+        form.addEventListener('submit', function (e) {
+          e.preventDefault();
+          if (handler) { handler(e); return; }
+          if (queued) return; // one already queued -- never double-queue/double-submit
+          queued = e;
+        }, { capture: true });
+        window.__oqRegisterFormSubmit = function (fn) {
+          handler = fn;
+          if (queued) {
+            var qe = queued;
+            queued = null;
+            handler(qe);
+          }
+        };
+      })();
+    </script>
+
     <!-- Success State — gh-2150 round 2 (REVIEW FAIL 5836233175 must-fix 5;
          Ben ruling (5), S20): ONLY the Dustin-approved confirmation text +
          its install-the-app action. No duplicate "You're In!" heading, no
@@ -949,7 +987,13 @@ a:hover { color: var(--amber-2); }
   });
 
   // Form submission
-  form.addEventListener('submit', async (e) => {
+  // gh-2192 REVIEW FAIL 5838866942 must-fix (2): register through the
+  // early-tap guard's window.__oqRegisterFormSubmit (see the <script> right
+  // after </form> above) instead of addEventListener directly -- that guard
+  // is the form's ONLY submit listener, attached long before this script
+  // even starts loading, so a pre-hydration tap is queued and replayed here
+  // exactly once, never lost to a native submit.
+  window.__oqRegisterFormSubmit(async (e) => {
     e.preventDefault();
     errorEl.style.display = 'none';
     fieldError('nameError', '');
