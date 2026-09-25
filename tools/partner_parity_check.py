@@ -90,6 +90,15 @@ ALL_PAGES = VERTICAL_PAGES + ["partner-app", "partner-login", "partner-dashboard
 # loosening of the D-266 gate. Every other page in D266_PAGES (realtor,
 # insurance and its siblings, adjusters, other, app, dashboard) is unaffected
 # and still fails this check if the sentence goes missing.
+#
+# gh-2150 RE-1 / D-333: re-1.html is a dedicated single-funnel landing page
+# outside the partner-*.html naming convention, so it is invisible to the
+# ALL_PAGES/partner-insurance* discovery above. It carries the D-266
+# disclaimer (approved copy, #2150 comment 5821403227) and is a referral-fee
+# funnel surface exactly like partner-re.html, so it is registered here
+# explicitly rather than left for find_unmapped_static_funnels() to flag as
+# static_funnel_unmapped -- the same convention D266_JS_SURFACES uses for
+# js/router-discovery.js below.
 D266_PAGES = sorted(
     {p.stem for p in REPO_ROOT.glob("partner-insurance*.html")}
     | {
@@ -97,6 +106,7 @@ D266_PAGES = sorted(
         for p in ALL_PAGES
         if p not in ("partner-insurance", "partner-login", "partner-inspectors")
     }
+    | {"re-1"}
 )
 
 D266_TEXT = (
