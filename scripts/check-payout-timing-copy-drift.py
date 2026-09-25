@@ -105,18 +105,6 @@ ALLOWLIST = [
         "reason: a 30-day notice-of-change period, not a disbursement claim.",
     ),
     (
-        "tests/fixtures/gh2155-partner-agreement-baseline.html",
-        "notify Partner of material changes by email or through Partner",
-        "agreement-modification notice period",
-        "gh-2155 HI-0c round 3: a byte-for-byte committed snapshot of "
-        "partner-agreement.html at a fixed commit (275ba875), used by "
-        "tests/gh2155-hi0b-inspector-agreement.mjs as a deterministic "
-        "baseline instead of a live `git show origin/main:...` (REVIEW FAIL "
-        "5837784831 should-fix). Identical sentence, identical reason, as "
-        "the partner-agreement.html entry above -- this is test fixture "
-        "data, never served, not a new copy claim.",
-    ),
-    (
         "contractor-agreement.html",
         "typically approved and processed within five (5) business days",
         "approval-step timing",

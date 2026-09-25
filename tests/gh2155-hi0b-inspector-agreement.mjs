@@ -43,6 +43,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.join(__dirname, '..');
@@ -301,7 +302,7 @@ function runHidingScript(hrefSearch) {
 // ── (c) realtor/insurance (no track param, or a non-inspector value):
 //        nothing hidden, and the page's visible text is unchanged apart
 //        from the version/effective-date label, vs. a fixed merge-base
-//        baseline fixture (see tests/fixtures/, below). ───────
+//        baseline hash (see tests/fixtures/, below). ───────
 {
   for (const search of ['', '?track=re_agent', '?agent_type=insurance_agent']) {
     const els = runHidingScript(search);
@@ -323,30 +324,34 @@ function runHidingScript(hrefSearch) {
   // no-longer-accurate idea of what the "before" state was, regardless of
   // any real regression.
   //
-  // Fixed by comparing against a byte-for-byte snapshot of the file at a
-  // FIXED commit instead of a moving branch pointer: 275ba875, the merge
-  // base of this branch and main (`git merge-base HEAD origin/main`) --
-  // i.e. the last point the two histories agree on, which by construction
-  // already carries every prior round's legitimate change (version, date,
-  // Section 4.3, the Section 7 removal) and nothing this PR touches, since
-  // this PR does not modify partner-agreement.html at all. Committed
-  // alongside this test as
-  // tests/fixtures/gh2155-partner-agreement-baseline.html so the comparison
-  // never depends on git history, a remote, or where main's pointer sits
-  // at run time -- a merge-base commit's content cannot change
-  // retroactively. The version/date-label exception is kept (as a
-  // now-normally-no-op replace) rather than dropped, so a future round that
-  // legitimately re-bumps the date/version again does not have to touch
-  // this test to stay green -- exactly what this check has always allowed,
-  // just anchored to a fixed ref instead of a live one.
-  const baselinePath = path.join(__dirname, 'fixtures', 'gh2155-partner-agreement-baseline.html');
-  let mainSrc = null;
+  // Round 3 fixed this by committing a byte-for-byte HTML snapshot of the
+  // file at a FIXED commit (275ba875, `git merge-base HEAD origin/main`) as
+  // tests/fixtures/gh2155-partner-agreement-baseline.html. Round 4
+  // (dispatch re-review): netlify.toml publishes the repo root
+  // (`publish = "."`) with nothing excluding tests/, so that fixture would
+  // have been served publicly at otterquote.com/tests/fixtures/...html --
+  // an indexable, STALE duplicate of the live legal Partner Agreement, fee
+  // table included, and main has no .html under tests/ today. Replaced with
+  // a hash-only fixture instead:
+  // tests/fixtures/gh2155-partner-agreement-baseline-hash.json stores only
+  // the sha256 of the SAME normalized-visible-text transform this file
+  // already applies to both sides (visibleText() + stripVersionLabel(),
+  // below) run over partner-agreement.html at that same fixed commit --
+  // nothing that resembles a servable legal document, but an equally strict
+  // check: any single-character change to the realtor/insurance-visible
+  // text changes the hash. The fixture's own `regenerate` field is the
+  // exact command to recompute it if a future round legitimately changes
+  // this text. Still anchored to a fixed ref rather than a live `git show
+  // origin/main:...`, so the comparison never depends on git history, a
+  // remote, or where main's pointer sits at run time.
+  const baselinePath = path.join(__dirname, 'fixtures', 'gh2155-partner-agreement-baseline-hash.json');
+  let baseline = null;
   try {
-    mainSrc = fs.readFileSync(baselinePath, 'utf8');
+    baseline = JSON.parse(fs.readFileSync(baselinePath, 'utf8'));
   } catch (e) {
-    console.log('SKIP: byte-identical-vs-fixed-baseline check (fixture read failed: ' + e.message + ')');
+    console.log('SKIP: hash-vs-fixed-baseline check (fixture read/parse failed: ' + e.message + ')');
   }
-  if (mainSrc !== null) {
+  if (baseline !== null) {
     // Strip the two lines this change is allowed to touch (Effective Date,
     // Version) plus the new HTML-comment/id/script additions, then compare
     // the remaining legal *text* (tags stripped, whitespace normalized) --
@@ -373,10 +378,11 @@ function runHidingScript(hrefSearch) {
         .replace(/\s+([,;.:!?])/g, '$1')
         .trim();
     }
-    // Both sides get the SAME date/version strip (rather than two different
-    // hardcoded literals) -- the baseline fixture and the current file
-    // carry the identical v3-2026-09 / September 25, 2026 label today, and
-    // this stays correct if a future round bumps both again in lockstep.
+    // The SAME date/version strip the baseline hash was generated with (see
+    // the fixture's own `normalization` field) -- the baseline and the
+    // current file carry the identical v3-2026-09 / September 25, 2026
+    // label today, and this stays correct if a future round bumps both
+    // again in lockstep (regenerate the fixture's hash at that point).
     function stripVersionLabel(text) {
       return text
         .replace(/Effective Date:\s*[A-Za-z]+ \d{1,2}, \d{4}/, '')
@@ -384,10 +390,10 @@ function runHidingScript(hrefSearch) {
         .replace(/\s+/g, ' ')
         .trim();
     }
-    const mainText = stripVersionLabel(visibleText(mainSrc));
     const newText = stripVersionLabel(visibleText(agreementSrc));
-    ok(mainText === newText,
-      'partner-agreement.html: visible text for realtor/insurance is unchanged vs the fixed merge-base baseline fixture apart from the version/date label');
+    const newHash = createHash(baseline.algorithm || 'sha256').update(newText, 'utf8').digest('hex');
+    ok(newHash === baseline.normalizedTextHash,
+      'partner-agreement.html: sha256 of visible text for realtor/insurance matches the fixed merge-base baseline hash (unchanged apart from the version/date label)');
   }
 }
 
