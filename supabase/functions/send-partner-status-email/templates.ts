@@ -158,6 +158,24 @@ export interface RenderedEmail {
   text: string;
 }
 
+// ── D-333 gate: home inspectors get no stage-5 "payment is on its way"
+// email ──────────────────────────────────────────────────────────────────
+// Ben's ruling, CEO RUN 67 (PR #2158 re-review, comments 5818774175 /
+// 5818776287): every path that queues this series — the DB trigger's
+// catch-up call from apply_referral_commission() AND mark-job-complete's
+// direct call — funnels through this one function, so gating it HERE is
+// the single place that covers both senders. Only stage 5 carries payment
+// language ("Payment for this referral is on its way."); stages 1-4 are
+// plain progress updates with no payment language and are sent to a
+// home_inspector exactly as they are to anyone else. No wording changes
+// anywhere — this only decides whether stage 5 is sent at all.
+export function isStageBlockedForAgentType(
+  agentType: string | null | undefined,
+  stage: Stage,
+): boolean {
+  return agentType === "home_inspector" && stage === 5;
+}
+
 /**
  * Renders one of the 5 stage emails. `displayName` should already be run
  * through formatReferralDisplayName (kept as a separate step so tests can

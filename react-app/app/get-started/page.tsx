@@ -119,6 +119,7 @@ import type { ChangeEvent, FormEvent } from 'react';
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import { supabase } from '@/lib/supabase';
 import { readReferralIds, writeReferralIds } from '@/lib/cookie-storage';
+import { linkPendingLeadOnce } from '@/lib/lead-capture';
 import { readFirstTouch } from '@/lib/attribution';
 import { withFirstTouchParam } from '@/lib/attribution-core';
 import { formatPhoneValue, isValidEmail, isValidZip, fullAddress, splitLeadName } from './utils';
@@ -1245,6 +1246,41 @@ export default function GetStartedPage() {
         return;
       }
 
+      // gh-2121 (S16): close the loop from an Arm-F-style `?lead=<uuid>`
+      // deep link to the account it produced. PR #2163 REVIEW: FAIL fix
+      // (comment 5821864061, M1/S1), 2026-09-24: leadId comes from
+      // lib/lead-capture.ts (window.__oqRouterLeadId OR the sessionStorage
+      // marker the multi-path strip script also writes — see
+      // app/layout.tsx), not the window global alone, and the RPC no
+      // longer takes a p_user_id from the client (S1: set_lead_converted
+      // now derives the caller from auth.uid() server-side and rejects an
+      // anon caller — see the migration). Scoped to referred signups only:
+      // no captured lead -> linkPendingLeadOnce() is a no-op (see the
+      // negative control in __tests__/gh2121-lead-conversion.test.tsx).
+      //
+      // M2 fix (comment 5822978578), 2026-09-24: this used to fire the
+      // link call unconditionally right here, then navigate to
+      // /auth-callback a few lines below when a session was already live
+      // (the auto-confirm case, which is the production default — see
+      // that branch below). That navigation cancels the in-flight fetch
+      // before it resolves, and the old lead-capture.ts cleared the
+      // capture before awaiting the RPC, so the link was lost on a real
+      // share of password signups (3 aborted, plus more silently
+      // cancelled, in 10 real-browser trials). Fix: when a session is
+      // already live, SKIP the call here entirely and let /auth-callback
+      // link it instead — auth-callback's own routeSession() calls
+      // linkPendingLeadOnce() once it has that live session in hand, on
+      // the very next page load, with nothing racing it. It reads the
+      // same sessionStorage marker (this window's in-memory bridge does
+      // not survive the navigation, sessionStorage does, same-origin).
+      // When there is NO session yet (email confirmation required — see
+      // the branch below), nothing navigates away on this tick, so
+      // calling it here directly is safe and there's no reason to defer
+      // it to a callback page the user may not open for a while.
+      if (data.user?.id && !data.session) {
+        void linkPendingLeadOnce(supabase);
+      }
+
       fireSignupAnalytics('password');
       // gh-1940 (REVIEW: FAIL finding 2) — unlike the Google path, reaching
       // this line means supabase.auth.signUp already returned successfully
@@ -1257,7 +1293,10 @@ export default function GetStartedPage() {
       if (data.session) {
         // Project auto-confirms email — session is live, so hand off to
         // /auth-callback for the normal post-auth routing (HubSpot sync,
-        // referral advance, trade-selector vs dashboard).
+        // referral advance, trade-selector vs dashboard). The lead link
+        // (if any) is deliberately NOT fired above in this branch — see
+        // the M2 comment above; auth-callback links it instead, once this
+        // navigation has landed and nothing can cancel the call.
         signupNavigation.current = true;
         window.location.href = AUTH_CALLBACK_URL;
         return;

@@ -52,6 +52,7 @@ import type { Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 
 import { readReferralIds, writeReferralIds } from '@/lib/cookie-storage';
+import { linkPendingLeadOnce } from '@/lib/lead-capture';
 import { maybeFireGoogleSignUp, readReferralSourceFromCsSignup } from './signup-analytics';
 import { adoptFirstTouchFromParam, recordFirstTouch } from '@/lib/attribution';
 
@@ -275,11 +276,45 @@ export default function AuthCallbackPage() {
         // Non-fatal — see above
       }
 
+      // gh-2121 (S16) / PR #2163 REVIEW: FAIL fix (comment 5821864061, S4;
+      // comment 5822978578, M2; comment 5823511418, M3), 2026-09-24: this
+      // is the ONE place the password path links its lead too now, not
+      // just Google's. Two reasons land here:
+      //   - Google: handleGoogle (get-started/page.tsx) fires
+      //     signInWithOAuth and the browser leaves for Google immediately,
+      //     so there is no "after signUp" moment on that page to hang the
+      //     call off like the password path has.
+      //   - Password, with a live session (production's default — email
+      //     auto-confirm is on): get-started deliberately SKIPS calling
+      //     this itself (see that file's M2 comment) because it navigates
+      //     here in the same tick, and that navigation used to cancel the
+      //     in-flight RPC before it resolved. Nothing races this call site.
+      // Either way, a real session now exists (routeSession only reaches
+      // here once `session` is non-null), so any lead captured earlier
+      // (window.__oqRouterLeadId does not survive a full navigation — this
+      // reads the sessionStorage marker app/layout.tsx's strip script also
+      // wrote) can be linked here.
+      //
+      // M3 fix (comment 5823511418): this call used to be fire-and-forget
+      // (`void linkPendingLeadOnce(supabase)`), started here and then
+      // immediately raced by `window.location.href` further down this same
+      // function once role resolution finished — the exact M2 failure this
+      // file's own comment claimed did not apply here ("nothing races this
+      // call site"), which the reviewer's real-browser harness showed was
+      // false: the RPC losing that race hit the M3 bug in lib/lead-capture.ts
+      // (a lost race there now KEEPS the capture instead of clearing it, but
+      // the lead is still not linked on this page load). Now AWAITED, in
+      // parallel with recordFirstTouch below (both are independently bounded
+      // to ~2.5 s and non-fatal — see lib/lead-capture.ts and
+      // lib/attribution.ts), so neither the RPC nor the redirect below can
+      // outrace the other: every trial either ends linked, or keeps the
+      // capture for retry.
+      //
       // gh-1983: persist first-touch ad attribution (UTM / fbclid / gclid)
       // onto the profile — write-once, server-guarded, bounded to 2.5 s and
       // non-fatal. Awaited because every branch below navigates away.
       adoptFirstTouchFromParam(ftParam);
-      await recordFirstTouch(supabase);
+      await Promise.all([linkPendingLeadOnce(supabase), recordFirstTouch(supabase)]);
 
       const intent =
         typeof localStorage !== 'undefined'

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { HomeownerShell } from '../_shell/HomeownerShell';
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import { useHelpEstimateClaim, useHelpEstimateProfile, useCarrierHelp } from './use-help-estimate-data';
@@ -9,6 +9,8 @@ import { HELP_ESTIMATE_CSS } from './styles';
 import { CarrierTipsBlock } from './components/CarrierTipsBlock';
 import { EmailFlow } from './components/EmailFlow';
 import type { TriageSection } from './types';
+import { supabase } from '@/lib/supabase';
+import { linkPendingLeadOnce } from '@/lib/lead-capture';
 
 export default function HelpEstimatePage() {
   return (
@@ -32,6 +34,16 @@ function HelpEstimateContent() {
   const homeownerPhone = profile?.phone ?? '';
 
   const [section, setSection] = useState<TriageSection>('triage');
+
+  // gh-2121 (S16) / PR #2163 REVIEW: FAIL fix (comment 5821864061, M1's
+  // third Arm F scenario), 2026-09-24: see the matching effect in
+  // help-measurements/page.tsx — an already-signed-in Arm F visitor
+  // landing on this page directly with a live `?lead=` is linked here,
+  // since HomeownerShell only renders this content for a resolved user.
+  useEffect(() => {
+    if (!user?.id) return;
+    void linkPendingLeadOnce(supabase);
+  }, [user?.id]);
 
   if (claimLoading || profileLoading) {
     return (

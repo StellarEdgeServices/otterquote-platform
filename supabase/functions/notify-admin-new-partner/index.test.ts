@@ -32,6 +32,7 @@ import { assertEquals, assertMatch } from "https://deno.land/std@0.177.0/testing
 import {
   ADMIN_EMAIL,
   handleNotifyAdminNewPartner,
+  isInternalTestDomain,
   isTestAccount,
   NOTIFICATION_TYPE,
   type PartnerDeps,
@@ -59,6 +60,19 @@ function fakeSupabase(opts: {
   partner?: PartnerRow | null;
   existingNotifications?: number;
   onCall?: (event: string) => void;
+  // Forces the notifications SELECT to return this error unconditionally --
+  // simulates a dedupe-query failure regardless of which column it filtered
+  // on (must-fix 1, review round 2: fail-closed coverage).
+  notificationsError?: { message: string; code?: string } | null;
+  // Simulates the REAL prod behavior (measured live, REVIEW FAIL 5832785581)
+  // of a `.eq("user_id", null)` dedupe query: supabase-js 2.114 rewrites it
+  // to `user_id=eq.null`, which prod REST answers with HTTP 400
+  // (22P02 invalid input syntax for type uuid: "null"). Only fires when the
+  // notifications query actually filters on user_id === null -- i.e. it
+  // reproduces the bug for the UNFIXED code path and stays silent (falls
+  // through to the normal existingNotifications behavior) once the fix
+  // keys the dedupe on referral_agent_id instead.
+  simulateNullUserIdBug?: boolean;
 }): {
   supabase: PartnerDeps["supabase"];
   inserted: Record<string, unknown>[];
@@ -69,6 +83,8 @@ function fakeSupabase(opts: {
   const partner = opts.partner === undefined ? PARTNER : opts.partner;
   const existingCount = opts.existingNotifications ?? 0;
   const onCall = opts.onCall ?? (() => {});
+  const notificationsError = opts.notificationsError ?? null;
+  const simulateNullUserIdBug = opts.simulateNullUserIdBug ?? false;
 
   const supabase: PartnerDeps["supabase"] = {
     from(table: string) {
@@ -85,6 +101,15 @@ function fakeSupabase(opts: {
           selects.push({ table, filters: { ...filters } });
           if (table === "notifications") {
             onCall("read:notifications");
+            if (notificationsError) {
+              return Promise.resolve({ data: null, error: notificationsError });
+            }
+            if (simulateNullUserIdBug && "user_id" in filters && filters.user_id === null) {
+              return Promise.resolve({
+                data: null,
+                error: { message: 'invalid input syntax for type uuid: "null"', code: "22P02" },
+              });
+            }
             const rows = existingCount > 0 ? [{ id: "n-1" }] : [];
             return Promise.resolve({ data: rows, error: null });
           }
@@ -137,7 +162,12 @@ function fakeFetch(
   return { fetchImpl, calls };
 }
 
-function buildDeps(overrides: Partial<PartnerDeps> = {}, opts: { partner?: PartnerRow | null; existingNotifications?: number } = {}): {
+function buildDeps(overrides: Partial<PartnerDeps> = {}, opts: {
+  partner?: PartnerRow | null;
+  existingNotifications?: number;
+  notificationsError?: { message: string; code?: string } | null;
+  simulateNullUserIdBug?: boolean;
+} = {}): {
   deps: PartnerDeps;
   inserted: Record<string, unknown>[];
   selects: { table: string; filters: Record<string, unknown> }[];
@@ -502,4 +532,160 @@ Deno.test("(i) subject header strips CR/LF from a partner-supplied name (header 
 
   assertEquals(subject.includes("\r"), false);
   assertEquals(subject.includes("\n"), false);
+});
+
+// ---------------------------------------------------------------------------
+// (j)/(k)/(l) gh-2154 P-3 review round 2 (REVIEW FAIL 5832785581, must-fix 1):
+// dedupe must be keyed on the partner's own id, not user_id (NULL at signup
+// time for every referral_agents row), and must fail CLOSED (no send) on a
+// dedupe-query error instead of silently sending. These fail on the base
+// (edadb7de), which keyed the dedupe on user_id and ignored query errors.
+// ---------------------------------------------------------------------------
+Deno.test("(j) partner with NULL user_id (real signup shape) and a prior alert for THIS partner id sends zero more emails", async () => {
+  // register_partner never sets user_id -- claim_partner_account links it
+  // later. This is the actual live shape of a referral_agents row at the
+  // moment the AFTER INSERT trigger fires.
+  const freshPartner: PartnerRow = { ...PARTNER, user_id: null };
+  const { deps, fetchCalls, inserted } = buildDeps({}, {
+    partner: freshPartner,
+    simulateNullUserIdBug: true,
+    existingNotifications: 1, // an admin_new_partner_alert row already exists, keyed on referral_agent_id
+  });
+
+  const res = await handleNotifyAdminNewPartner(makeRequest({ partner_id: freshPartner.id }), deps);
+  const json = await res.json();
+
+  assertEquals(res.status, 200);
+  assertEquals(json.skipped, true);
+  assertEquals(json.reason, "already_notified");
+  assertEquals(fetchCalls.filter((c) => c.url.includes("api.mailgun.net")).length, 0);
+  assertEquals(inserted.length, 0);
+});
+
+Deno.test("(k) a dedupe-query error fails CLOSED: zero sends, non-2xx, nothing recorded", async () => {
+  const { deps, fetchCalls, inserted } = buildDeps({}, {
+    notificationsError: { message: "connection reset", code: "08006" },
+  });
+
+  const res = await handleNotifyAdminNewPartner(makeRequest({ partner_id: PARTNER.id }), deps);
+
+  assertEquals(res.status >= 400, true);
+  assertEquals(fetchCalls.filter((c) => c.url.includes("api.mailgun.net")).length, 0);
+  assertEquals(inserted.length, 0);
+});
+
+Deno.test("(l) the dedupe query filters notifications by the partner's own id (referral_agent_id), not user_id", async () => {
+  const { deps, selects } = buildDeps();
+
+  await handleNotifyAdminNewPartner(makeRequest({ partner_id: PARTNER.id }), deps);
+
+  const notifSelect = selects.find((s) => s.table === "notifications");
+  assertEquals(notifSelect !== undefined, true);
+  assertEquals(notifSelect!.filters.referral_agent_id, PARTNER.id);
+  assertEquals("user_id" in notifSelect!.filters, false);
+});
+
+// ---------------------------------------------------------------------------
+// (m) Ben, DECIDED (review round 2, should-fix 1): an @otterquote-internal.test
+// address -- the repo's pfw-/authdoctor walk-bot domain -- skips the alert
+// unconditionally, even when is_test=true. This corrects (c1)/(c3)'s prior
+// "is_test always wins" behavior, which paged Dustin on every walk run
+// because P-1 sets is_test=true for that whole domain. A human test signup
+// (is_test=true, any OTHER domain -- Dustin testing the funnel himself)
+// still alerts with the [TEST] prefix; see (c1) above for that branch.
+// ---------------------------------------------------------------------------
+Deno.test("(m) @otterquote-internal.test address skips entirely even when is_test=true (walk bots never page Dustin)", async () => {
+  const walkBot: PartnerRow = {
+    ...PARTNER,
+    is_test: true,
+    email: "pfw-p1@otterquote-internal.test",
+  };
+  const { deps, fetchCalls, inserted } = buildDeps({}, { partner: walkBot });
+
+  const res = await handleNotifyAdminNewPartner(makeRequest({ partner_id: walkBot.id }), deps);
+  const json = await res.json();
+
+  assertEquals(res.status, 200);
+  assertEquals(json.skipped, true);
+  assertEquals(json.reason, "internal_test_domain");
+  assertEquals(fetchCalls.filter((c) => c.url.includes("api.mailgun.net")).length, 0);
+  assertEquals(inserted.length, 0);
+});
+
+Deno.test("(m2) @otterquote-internal.test address skips even when NOT marked is_test", async () => {
+  const walkBot: PartnerRow = {
+    ...PARTNER,
+    is_test: false,
+    email: "authdoctor-m1@otterquote-internal.test",
+  };
+  const { deps, fetchCalls } = buildDeps({}, { partner: walkBot });
+
+  const res = await handleNotifyAdminNewPartner(makeRequest({ partner_id: walkBot.id }), deps);
+  const json = await res.json();
+
+  assertEquals(json.skipped, true);
+  assertEquals(json.reason, "internal_test_domain");
+  assertEquals(fetchCalls.filter((c) => c.url.includes("api.mailgun.net")).length, 0);
+});
+
+Deno.test("isInternalTestDomain matches only the @otterquote-internal.test domain", () => {
+  assertEquals(isInternalTestDomain("pfw-p1@otterquote-internal.test"), true);
+  assertEquals(isInternalTestDomain("authdoctor-run@otterquote-internal.test"), true);
+  assertEquals(isInternalTestDomain("real.partner@example.invalid"), false);
+  // pfw-/authdoctor patterns on a DIFFERENT domain are not the internal-test
+  // domain -- they're still caught by isTestAccount()'s broader pattern
+  // match, just via the separate (non-domain-scoped) bot-pattern skip.
+  assertEquals(isInternalTestDomain("pfw-jamie@example.invalid"), false);
+});
+
+// ---------------------------------------------------------------------------
+// (n) should-fix 3 (PII in logs): a skip decision must log the partner id,
+// never the partner's raw email address.
+// ---------------------------------------------------------------------------
+Deno.test("(n) a bot-pattern skip logs the partner id, never the partner's raw email", async () => {
+  const botPartner: PartnerRow = { ...PARTNER, is_test: false, email: "pfw-test-partner@example.invalid" };
+  const { deps } = buildDeps({}, { partner: botPartner });
+
+  const logs: string[] = [];
+  // deno-lint-ignore no-explicit-any
+  const origLog = console.log;
+  // deno-lint-ignore no-explicit-any
+  console.log = (...args: any[]) => {
+    logs.push(args.map((a) => String(a)).join(" "));
+  };
+  try {
+    await handleNotifyAdminNewPartner(makeRequest({ partner_id: botPartner.id }), deps);
+  } finally {
+    console.log = origLog;
+  }
+
+  const joined = logs.join("\n");
+  assertEquals(joined.includes(botPartner.email), false);
+  assertMatch(joined, new RegExp(botPartner.id));
+});
+
+// ---------------------------------------------------------------------------
+// (o) should-fix 4: header-injection stripping must also cover U+2028 (LINE
+// SEPARATOR), U+2029 (PARAGRAPH SEPARATOR), U+0085 (NEL) and other C0
+// control characters, not just CR/LF.
+// ---------------------------------------------------------------------------
+Deno.test("(o) subject header strips U+2028/U+2029/U+0085 and other control chars from a partner-supplied name", async () => {
+  const evilPartner: PartnerRow = {
+    ...PARTNER,
+    first_name: "Jamie Bcc: evil@example.com",
+    last_name: "Partner\u0085X-Injected:\u000btrue",
+  };
+  const { deps, fetchCalls } = buildDeps({}, { partner: evilPartner });
+
+  const res = await handleNotifyAdminNewPartner(makeRequest({ partner_id: evilPartner.id }), deps);
+  assertEquals(res.status, 200);
+
+  const mailgunCalls = fetchCalls.filter((c) => c.url.includes("api.mailgun.net"));
+  const body = mailgunCalls[0].init?.body as FormData;
+  const subject = body.get("subject") as string;
+
+  assertEquals(subject.includes(" "), false);
+  assertEquals(subject.includes(" "), false);
+  assertEquals(subject.includes("\u0085"), false);
+  assertEquals(subject.includes("\u000b"), false);
 });

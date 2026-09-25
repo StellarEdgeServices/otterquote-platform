@@ -255,11 +255,48 @@
   }
 
   /**
+   * gh-2162 review round 5: the round-4 fix guarded getItem/setItem/
+   * removeItem with `key !== STORAGE_KEY` ('sb-otterquote-auth'), an
+   * ALLOWLIST of exactly one key. That broke every page whose Supabase
+   * client is js/config.js's own `_oqCreateSupabaseClient()`
+   * (partner-login.html, the signup pages, and any page that doesn't also
+   * load js/supabase-client.js) -- that call passes NO `storageKey`, so
+   * supabase-js falls back to ITS OWN default, `sb-<project-ref>-auth-token`,
+   * not the canonical key. Under the round-4 guard every session
+   * getItem/setItem/removeItem from that client silently became
+   * localStorage-only: no cross-subdomain cookies, and signOut no longer
+   * cleared them either.
+   *
+   * Fixed as a DENYLIST instead: only the small, known set of AUXILIARY
+   * keys supabase-js 2.112.4 derives from whatever storageKey a client
+   * actually uses -- `${storageKey}-code-verifier`,
+   * `${storageKey}-flow-<id>-code-verifier`, `${storageKey}-flows-code-verifier`
+   * (all end in `-code-verifier`), and `${storageKey}-user` -- are ever
+   * diverted to plain localStorage. Every other key, whether it's the
+   * canonical `sb-otterquote-auth`, supabase-js's own default
+   * `sb-<ref>-auth-token`, or anything else, keeps the exact pre-round-4
+   * cookie-touching behavior. This does not require knowing what
+   * storageKey a given client actually used.
+   */
+  function isAuxiliaryStorageKey(key) {
+    return typeof key === 'string' &&
+      (key.endsWith('-code-verifier') || key.endsWith('-user'));
+  }
+
+  /**
    * Storage adapter implementing the localStorage-compatible interface
    * expected by Supabase JS v2's `storage` option.
    */
   window.OtterQuoteCookieStorage = {
     getItem: function (key) {
+      // gh-2162 review round 5: an auxiliary key (PKCE code-verifier, or the
+      // separate `-user` cache key) is plain localStorage, never cookies --
+      // see isAuxiliaryStorageKey() above for why this is a denylist, not an
+      // allowlist keyed to one canonical STORAGE_KEY value.
+      if (isAuxiliaryStorageKey(key)) {
+        try { return window.localStorage.getItem(key); } catch (e) { return null; }
+      }
+
       // 1. Try canonical two-cookie format — cross-subdomain mechanism
       var at = readCookie(COOKIE_ACCESS);
       var rt = readCookie(COOKIE_REFRESH);
@@ -291,6 +328,12 @@
     },
 
     setItem: function (key, value) {
+      // gh-2162 review round 5: auxiliary keys are plain localStorage, never
+      // cookies -- see isAuxiliaryStorageKey() above.
+      if (isAuxiliaryStorageKey(key)) {
+        try { window.localStorage.setItem(key, value); } catch (e) {}
+        return;
+      }
       // Treat empty/null as a clear (Supabase normally uses removeItem,
       // but defensive against future SDK shifts).
       if (value === null || value === undefined || value === '') {
@@ -316,6 +359,23 @@
     },
 
     removeItem: function (key) {
+      // gh-2162 review round 4 (comment 5825170286): this used to delete the
+      // session cookies + legacy keys for ANY key, canonical or not. Supabase
+      // JS 2.112.4's `_updateUser` calls removeItem('<key>-code-verifier') on
+      // an update-user error (e.g. a HIBP-rejected weak password) as part of
+      // its PKCE cleanup — that is not a sign-out, but it wiped the whole
+      // session anyway, leaving a P-1 partner (who has no known password)
+      // permanently locked out of the only screen that lets them set one.
+      // gh-2162 review round 5: only an AUXILIARY key (see
+      // isAuxiliaryStorageKey() above) is a plain localStorage removeItem;
+      // every other key -- the canonical session key OR whatever storageKey
+      // a given client actually resolved to (e.g. supabase-js's own default
+      // `sb-<ref>-auth-token` on js/config.js's client, which passes no
+      // storageKey at all) -- keeps the pre-round-4 cookie-clearing behavior.
+      if (isAuxiliaryStorageKey(key)) {
+        try { window.localStorage.removeItem(key); } catch (e) {}
+        return;
+      }
       deleteCookie(COOKIE_ACCESS);
       deleteCookie(COOKIE_REFRESH);
       try { window.localStorage.removeItem(key); } catch (e) {}
