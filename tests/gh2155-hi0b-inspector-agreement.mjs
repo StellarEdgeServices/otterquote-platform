@@ -225,27 +225,44 @@ function runHidingScript(hrefSearch) {
   ok(cssRule.indexOf('#track-home-inspector:target ~ * .inspector-hide, #track-home-inspector:target ~ .inspector-hide { display: none; }') !== -1,
     'partner-agreement.html: the CSS :target fail-closed rule is present verbatim (whitespace-normalized)');
 
-  // Every top-level <section>...</section> block within .legal-content (this
-  // file's sections do not nest -- verified by an equal open/close count).
-  const openCount = (legalContent.match(/<section>/g) || []).length;
+  // Every top-level <section ...>...</section> block within .legal-content
+  // (round 3: Section 7's own <section> tag now carries the inspector-hide
+  // class directly -- "<section class=...>", not bare "<section>" -- so
+  // every section-tag regex below must allow an opening-tag attribute list.
+  // This file's sections do not nest -- verified by an equal open/close
+  // count).
+  const SECTION_OPEN_RE = /<section\b[^>]*>/g;
+  const SECTION_BLOCK_RE = /<section\b[^>]*>[\s\S]*?<\/section>/g;
+  const openCount = (legalContent.match(SECTION_OPEN_RE) || []).length;
   const closeCount = (legalContent.match(/<\/section>/g) || []).length;
   ok(openCount === closeCount && openCount > 0, 'sanity: <section> tags are not nested in partner-agreement.html (equal open/close count, both > 0)');
-  const sectionBlocks = legalContent.match(/<section>[\s\S]*?<\/section>/g) || [];
+  const sectionBlocks = legalContent.match(SECTION_BLOCK_RE) || [];
 
   ok((stripComments(legalContent).match(/class="[^"]*\binspector-hide\b[^"]*"/g) || []).length === 4,
-    'sanity: 4 inspector-hide elements found inside .legal-content');
-  let allNestedInASection = true;
+    'sanity: 4 inspector-hide elements found inside .legal-content (fee block, Section 4.1, Section 7 itself, Section 14(a) span)');
+
+  // Each .inspector-hide element must be reachable by ONE of the CSS rule's
+  // two selector branches: "~ * .inspector-hide" (a DESCENDANT of a later
+  // sibling section -- the fee block, the 4.1 wrapper, and the Section 14(a)
+  // span all qualify) or "~ .inspector-hide" (the class is directly ON a
+  // later sibling itself -- Section 7's own <section class="inspector-hide">
+  // qualifies here). Both require the containing/matching section to START
+  // after the anchor span.
+  let allCovered = true;
   let allSectionsAfterSpan = true;
   for (const block of sectionBlocks) {
     const blockStart = legalContent.indexOf(block);
-    if (/class="[^"]*\binspector-hide\b/.test(block) && blockStart <= spanIdx) {
-      allSectionsAfterSpan = false;
-    }
+    const ownOpenTag = block.match(SECTION_OPEN_RE)[0];
+    const hasOwnClass = /class="[^"]*\binspector-hide\b/.test(ownOpenTag);
+    const hasDescendantClass = /class="[^"]*\binspector-hide\b/.test(stripComments(block.slice(ownOpenTag.length)));
+    if ((hasOwnClass || hasDescendantClass) && blockStart <= spanIdx) { allSectionsAfterSpan = false; }
   }
-  const inspectorHideOutsideAnySection = stripComments(legalContent).replace(/<section>[\s\S]*?<\/section>/g, '');
-  if (/class="[^"]*\binspector-hide\b/.test(inspectorHideOutsideAnySection)) { allNestedInASection = false; }
-  ok(allNestedInASection, 'partner-agreement.html: every .inspector-hide element is nested inside a <section> (required for the descendant half of the CSS selector)');
-  ok(allSectionsAfterSpan, 'partner-agreement.html: every <section> containing a .inspector-hide element comes AFTER the anchor span in document order (required for the ~ general-sibling combinator)');
+  // Nothing carrying the class should exist OUTSIDE every section block
+  // entirely (that would be reachable by neither selector branch).
+  const outsideAnySection = stripComments(legalContent).replace(SECTION_BLOCK_RE, '');
+  if (/class="[^"]*\binspector-hide\b/.test(outsideAnySection)) { allCovered = false; }
+  ok(allCovered, 'partner-agreement.html: every .inspector-hide element (or the section carrying the class itself) is inside/is a <section> -- required for one of the two CSS selector branches to reach it');
+  ok(allSectionsAfterSpan, 'partner-agreement.html: every <section> containing (or carrying) an .inspector-hide comes AFTER the anchor span in document order (required for the ~ general-sibling combinator)');
 }
 
 // ── (c) realtor/insurance (no track param, or a non-inspector value):
@@ -281,6 +298,15 @@ function runHidingScript(hrefSearch) {
         .replace(/&quot;/g, '"')
         .replace(/&#39;/g, '’')
         .replace(/\s+/g, ' ')
+        // Round 3 wraps an inline <span> around a mid-sentence phrase (no
+        // surrounding whitespace in the source) purely so it is addressable
+        // for hiding -- real browsers render an inline tag boundary with no
+        // extra space, but this crude regex tag-stripper replaces every tag
+        // with a literal space to avoid accidentally concatenating adjacent
+        // BLOCK-level content. That is correct for block boundaries and a
+        // false diff for this one inline one; collapse " ," / " ;" etc. back
+        // together the same way on both sides of the comparison below.
+        .replace(/\s+([,;.:!?])/g, '$1')
         .trim();
     }
     const mainText = visibleText(mainSrc)
@@ -296,6 +322,105 @@ function runHidingScript(hrefSearch) {
     ok(mainText === newText,
       'partner-agreement.html: visible text for realtor/insurance is unchanged vs origin/main apart from the version/date label and the Section 7 "home inspectors," removal');
   }
+}
+
+// ── (b3) round 3 (Ben rulings 5825652208 item 2 / 5825785741 item 1, per
+//        REVIEW FAIL 5825693018 must-fix 1): the inspector-track rendered
+//        text must have NONE of "Partner earns a Recruit Bonus" (Section
+//        4.1), "represents and warrants" (Section 7), or "representation in
+//        Section 7" (the Section 14(a) cross-reference) -- and re_agent /
+//        insurance_agent / no-param renders must still have all three
+//        (negative control: hiding is per-track, not a text deletion). No
+//        real DOM is available (see file header), so "the inspector-track
+//        rendered text" is simulated by literally removing each known
+//        .inspector-hide block's markup from the source (not just setting
+//        display:none, which a string-based text check can't observe) and
+//        re-running the same visibleText() extraction used in (c). ────────
+{
+  function stripInspectorHideElements(html) {
+    return html
+      .replace(/<section\b[^>]*\bclass="[^"]*\binspector-hide\b[^"]*"[^>]*>[\s\S]*?<\/section>/g, ' ')
+      .replace(/<div\b[^>]*\bclass="[^"]*\binspector-hide\b[^"]*"[^>]*>[\s\S]*?<\/div>/g, ' ')
+      .replace(/<p\b[^>]*\bclass="[^"]*\binspector-hide\b[^"]*"[^>]*>[\s\S]*?<\/p>/g, ' ')
+      .replace(/<span\b[^>]*\bclass="[^"]*\binspector-hide\b[^"]*"[^>]*>[\s\S]*?<\/span>/g, ' ');
+  }
+  function toText(html) {
+    return html
+      .replace(/<!--[\s\S]*?-->/g, ' ')
+      .replace(/<script[\s\S]*?<\/script>/g, ' ')
+      .replace(/<style[\s\S]*?<\/style>/g, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&rsquo;/g, '’')
+      .replace(/\s+/g, ' ')
+      // Same inline-tag-boundary artifact as visibleText() above (an
+      // adjacent <span>/removed-block boundary with no real source
+      // whitespace becomes a spurious space before punctuation).
+      .replace(/\s+([,;.:!?])/g, '$1')
+      .trim();
+  }
+
+  const PHRASES = ['Partner earns a Recruit Bonus', 'represents and warrants', 'representation in Section 7'];
+
+  const removedCount = (stripInspectorHideElements(agreementSrc).match(/class="[^"]*\binspector-hide\b/g) || []).length;
+  ok(removedCount === 0, 'sanity: stripInspectorHideElements() removes all 4 inspector-hide blocks (fee table, Section 4.1, Section 7, Section 14(a) span) with no leftovers');
+
+  const inspectorText = toText(stripInspectorHideElements(agreementSrc));
+  for (const phrase of PHRASES) {
+    ok(inspectorText.indexOf(phrase) === -1, 'inspector-track rendered text: "' + phrase + '" is ABSENT (round 3 hide)');
+  }
+
+  // Section 14(a) reads cleanly once its hidden span is gone -- no dangling
+  // connector, no leftover comma before the semicolon.
+  ok(inspectorText.indexOf("Partner’s breach of this Agreement; (b) any violation") !== -1,
+    'inspector-track rendered text: Section 14(a) reads "Partner’s breach of this Agreement; (b) any violation..." with no dangling words');
+
+  // Negative control: the raw (un-stripped) document -- what re_agent,
+  // insurance_agent and a no-param visitor actually receive, since the hide
+  // is display:none/CSS :target, never a literal text deletion -- still
+  // carries all three phrases. This is what (c) already proved is
+  // byte-for-byte unchanged from origin/main for those tracks.
+  const fullText = toText(agreementSrc);
+  for (const phrase of PHRASES) {
+    ok(fullText.indexOf(phrase) !== -1, 'negative control: "' + phrase + '" is PRESENT in the raw document (re_agent/insurance_agent/no-param never hide it)');
+  }
+}
+
+// ── (b4) round 3 must-fix 3 (5825785741 item 2(b) / 5825693018 must-fix 2):
+//        js/nav.js's footer "Partner Agreement" link must carry
+//        ?track=home_inspector#track-home-inspector when the page is
+//        partner-inspectors.html, or when window.currentPartnerAgentType is
+//        'home_inspector' (the global partner-dashboard.html already sets
+//        for its own inspector-specific copy) -- and must NOT for any other
+//        page/track. Extracted verbatim by anchor and run in a `vm` context
+//        behind a minimal document/window stand-in, same technique as the
+//        rest of this file. ────────────────────────────────────────────────
+{
+  const navSrc = fs.readFileSync(path.join(repoRoot, 'js', 'nav.js'), 'utf8');
+  const snippet = extractBetween(
+    navSrc,
+    'const isInspectorTrack = window.location.pathname',
+    "'/partner-agreement.html';",
+    'js/nav.js renderFooter() inspector-track href logic'
+  ) + "'/partner-agreement.html';";
+
+  function computeHref(pathname, agentType) {
+    const fakeWindow = { location: { pathname }, currentPartnerAgentType: agentType };
+    fakeWindow.window = fakeWindow;
+    const context = vm.createContext(fakeWindow);
+    vm.runInContext(snippet + '\npartnerAgreementHref;', context);
+    return vm.runInContext('partnerAgreementHref', context);
+  }
+
+  ok(computeHref('/partner-inspectors.html', undefined) === '/partner-agreement.html?track=home_inspector#track-home-inspector',
+    'js/nav.js footer link: partner-inspectors.html carries ?track=home_inspector#track-home-inspector');
+  ok(computeHref('/partner-dashboard.html', 'home_inspector') === '/partner-agreement.html?track=home_inspector#track-home-inspector',
+    'js/nav.js footer link: partner-dashboard.html with window.currentPartnerAgentType=home_inspector carries the tracked link');
+  ok(computeHref('/partner-dashboard.html', 're_agent') === '/partner-agreement.html',
+    'js/nav.js footer link: partner-dashboard.html with a non-inspector agent_type is untouched');
+  ok(computeHref('/partner-re.html', undefined) === '/partner-agreement.html',
+    'js/nav.js footer link: an unrelated page with no inspector signal is untouched');
+  ok(computeHref('/index.html', undefined) === '/partner-agreement.html',
+    'js/nav.js footer link: the homepage (no inspector signal at all) is untouched');
 }
 
 // ── (d) CI legal-surface check (tools/partner_parity_check.py): still

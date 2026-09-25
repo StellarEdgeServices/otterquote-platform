@@ -355,32 +355,24 @@
                 <p>Partner is solely responsible for all federal, state, and local taxes arising from amounts paid under this Agreement. Otter Quotes does not withhold income tax, Social Security, Medicare, or any other tax from payments to Partner. Payments made through a third-party payment service may be reported to the Internal Revenue Service by that service as required by law (for example, on Form 1099-K); Otter Quotes does not issue Form 1099-NEC for payments made through such a service. If Otter Quotes ever pays Partner by any method other than a third-party payment service, Otter Quotes may require a completed IRS Form W-9 before making that payment and will report the payment as required by law. Partner should consult Partner&#39;s own tax advisor regarding the treatment of Program income.</p>
             </section>
 
-            <section>
+            <!-- gh-2155 HI-0b round 3 (Ben ruling, comment 5825785741 item 1,
+                 per REVIEW FAIL 5825693018 / LEGAL-READ FAIL 5825690233):
+                 ALL of Section 7 is hidden for home_inspector, heading
+                 included -- not just the D-266 box and the warranty
+                 paragraph. D-333: home inspectors accept no referral fee, so
+                 neither the D-266 lawful-to-accept warning nor the
+                 represents-and-warrants representation (both conditioned on
+                 accepting a fee) applies to them, and a heading with nothing
+                 under it is not new words. Removal only. The Section 14(a)
+                 cross-reference to "the representation in Section 7" is
+                 handled at its own location below (also removal only). -->
+            <section class="inspector-hide">
                 <h2>7. Licensing and Employment Compliance Disclaimer</h2>
-                <!-- gh-2155 HI-0b: D-266's mandatory-disclaimer sentence is not
-                     shown to the home_inspector track (D-333: home inspectors
-                     receive no referral fee under Section 4.3, so the
-                     lawful-to-accept-fees warning does not apply to them). Same
-                     track-detection script as the fee-table block above. -->
-                <div class="disclaimer-box inspector-hide" id="d266DisclaimerBox">
+                <div class="disclaimer-box" id="d266DisclaimerBox">
                     <h3>Mandatory Disclaimer</h3>
                     <p>Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.</p>
                 </div>
-                <!-- gh-2155 HI-0b round 2 (Ben ruling, comment 5825652208 item
-                     2b): hidden for home_inspector -- removal only, no new
-                     words. D-333: home inspectors accept no referral fee, so
-                     the "represents and warrants ... lawful" representation
-                     (conditioned on accepting a fee) does not apply to them.
-                     NOTE for reviewers: Section 14 (Indemnification) still
-                     references "the representation in Section 7" in its own
-                     unhidden text. That clause remains grammatically complete
-                     and legally accurate on its own -- it is not shown as
-                     hidden-and-dangling to the inspector reader -- but the
-                     cross-reference itself is now moot for that track. Not
-                     treated as a stop-and-propose-words case since fixing it
-                     would mean editing Section 14, which is out of this
-                     round's two named items; flagging for Ben/legal review. -->
-                <p class="inspector-hide">The Program is open to Partners in any industry, including individuals who hold a professional license or are subject to an employer&rsquo;s outside-activity or referral-fee policy — for example, real estate agents, insurance agents and adjusters, attorneys, and other regulated professionals. <strong>Otter Quotes does not evaluate, gate, or vouch for any individual Partner&rsquo;s eligibility to accept referral compensation.</strong> Before accepting any commission under this Agreement, Partner represents and warrants that Partner has independently confirmed, by reviewing Partner&rsquo;s own employment agreement, brokerage or firm policies, and the rules of any licensing board, bar, or regulatory body with authority over Partner, that accepting referral fees of the kind described in this Agreement is lawful and permitted for Partner. Licensed professionals are solely responsible for their own regulatory compliance, including any disclosure, consent, or reporting obligations their license or employer imposes in connection with referral compensation. Nothing in this Agreement, and no act by Otter Quotes in accepting Partner into the Program, is a representation by Otter Quotes that Partner&rsquo;s participation is lawful for Partner&rsquo;s particular profession, employer, or state.</p>
+                <p>The Program is open to Partners in any industry, including individuals who hold a professional license or are subject to an employer&rsquo;s outside-activity or referral-fee policy — for example, real estate agents, insurance agents and adjusters, attorneys, and other regulated professionals. <strong>Otter Quotes does not evaluate, gate, or vouch for any individual Partner&rsquo;s eligibility to accept referral compensation.</strong> Before accepting any commission under this Agreement, Partner represents and warrants that Partner has independently confirmed, by reviewing Partner&rsquo;s own employment agreement, brokerage or firm policies, and the rules of any licensing board, bar, or regulatory body with authority over Partner, that accepting referral fees of the kind described in this Agreement is lawful and permitted for Partner. Licensed professionals are solely responsible for their own regulatory compliance, including any disclosure, consent, or reporting obligations their license or employer imposes in connection with referral compensation. Nothing in this Agreement, and no act by Otter Quotes in accepting Partner into the Program, is a representation by Otter Quotes that Partner&rsquo;s participation is lawful for Partner&rsquo;s particular profession, employer, or state.</p>
             </section>
 
             <section>
@@ -424,7 +416,15 @@
 
             <section>
                 <h2>14. Indemnification</h2>
-                <p>Partner agrees to indemnify, defend, and hold harmless Otter Quotes, its officers, directors, employees, and agents from any claim, damage, liability, cost, or expense (including reasonable attorneys&rsquo; fees) arising from or related to: (a) Partner&rsquo;s breach of this Agreement, including the representation in Section 7 that Partner has confirmed Partner&rsquo;s own eligibility to accept referral fees; (b) any violation by Partner of Section 8 (Prohibited Conduct); or (c) any claim by a third party (including a licensing or regulatory body, or Partner&rsquo;s employer) that Partner&rsquo;s acceptance of compensation under this Agreement violated Partner&rsquo;s own legal, professional, or contractual obligations.</p>
+                <!-- gh-2155 HI-0b round 3 (Ben ruling, comment 5825785741 item
+                     1, per LEGAL-READ FAIL 5825690233 must-fix 2): the
+                     cross-reference to "the representation in Section 7" is
+                     moot for home_inspector once Section 7 is hidden for that
+                     track (round 3 above), so this span is hidden too --
+                     removal only, no new words. Hidden result for inspectors
+                     reads "(a) Partner's breach of this Agreement; (b) any
+                     violation..." -- clean, no connecting words needed. -->
+                <p>Partner agrees to indemnify, defend, and hold harmless Otter Quotes, its officers, directors, employees, and agents from any claim, damage, liability, cost, or expense (including reasonable attorneys&rsquo; fees) arising from or related to: (a) Partner&rsquo;s breach of this Agreement<span class="inspector-hide">, including the representation in Section 7 that Partner has confirmed Partner&rsquo;s own eligibility to accept referral fees</span>; (b) any violation by Partner of Section 8 (Prohibited Conduct); or (c) any claim by a third party (including a licensing or regulatory body, or Partner&rsquo;s employer) that Partner&rsquo;s acceptance of compensation under this Agreement violated Partner&rsquo;s own legal, professional, or contractual obligations.</p>
             </section>
 
             <section>
@@ -472,21 +472,26 @@
 <script src="js/config.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/nav.js"></script>
-    <!-- gh-2155 HI-0b round 2 (Ben ruling, comment 5825652208 item 1):
-         home_inspector track never sees the fee table, the $10,000-Floor
-         paragraph, Section 4.1 (Recruit Bonus accrual rules), the D-266
-         lawful-to-accept-fees sentence, or the Section 7 "represents and
-         warrants ... lawful" paragraph (D-333 -- inspectors receive no
-         referral fee or recruit bonus at all, so none of that applies to
-         them). The CSS #track-home-inspector:target rule above is the
-         FAIL-CLOSED path: it works with JavaScript disabled, as long as the
-         referring page's link carries the #track-home-inspector anchor
-         (partner-inspectors.html's does). This script is a second,
-         belt-and-braces mechanism for ?agent_type=home_inspector (or
+    <!-- gh-2155 HI-0b round 3 (Ben rulings, comments 5825652208 item 1 and
+         5825785741 item 1): home_inspector track never sees the fee table,
+         the $10,000-Floor paragraph, ALL of Section 4.1 (Recruit Bonus
+         accrual rules), ALL of Section 7 (heading included -- the D-266
+         lawful-to-accept-fees sentence and the "represents and warrants ...
+         lawful" paragraph), or the Section 14(a) cross-reference phrase to
+         Section 7 (D-333 -- inspectors receive no referral fee or recruit
+         bonus at all, so none of that applies to them). The CSS
+         #track-home-inspector:target rule above is the FAIL-CLOSED path: it
+         works with JavaScript disabled, as long as the referring page's link
+         carries the #track-home-inspector anchor (partner-inspectors.html's
+         does; per Ben's re-ruling 5825785741 item 2(a), JS-off is otherwise
+         accepted because signup cannot submit without JS). This script is a
+         second, belt-and-braces mechanism for ?agent_type=home_inspector (or
          ?track=home_inspector) WITHOUT the anchor -- it hides every
-         .inspector-hide element directly, the same set the CSS rule covers.
-         Any other/absent value renders the page unchanged -- realtor/
-         insurance visible text and DOM are untouched either way. -->
+         .inspector-hide element directly, the same set the CSS rule covers,
+         however deeply nested or however large (a whole <section>, or one
+         inline <span> inside Section 14). Any other/absent value renders the
+         page unchanged -- realtor/insurance visible text and DOM are
+         untouched either way. -->
     <script>
     (function () {
       try {
