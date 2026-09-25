@@ -46,6 +46,11 @@ on:
       - 'tests/gh2152-hi1-page.mjs'
       - 'tests/gh2150-gh2151-s05-perf-structure.mjs'
       - 'tests/gh2192-s05-must-fix.mjs'
+      - 'index.html'
+      - 'partner-other.html'
+      - 'partners.html'
+      - 'partner-profile.html'
+      - 'tests/gh2155-hi05b-inspector-crawler.mjs'
       - '.github/workflows/static-pixel-gate-tests.yml'
   push:
     branches: [main]
@@ -85,6 +90,11 @@ on:
       - 'tests/gh2152-hi1-page.mjs'
       - 'tests/gh2150-gh2151-s05-perf-structure.mjs'
       - 'tests/gh2192-s05-must-fix.mjs'
+      - 'index.html'
+      - 'partner-other.html'
+      - 'partners.html'
+      - 'partner-profile.html'
+      - 'tests/gh2155-hi05b-inspector-crawler.mjs'
       - '.github/workflows/static-pixel-gate-tests.yml'
 
 permissions:
@@ -143,3 +153,5 @@ jobs:
         run: node tests/gh2150-gh2151-s05-perf-structure.mjs
       - name: S05 perf must-fixes -- recruit-code attribution race, pre-hydration submit queue/no-GET (gh2192-s05-must-fix)
         run: node tests/gh2192-s05-must-fix.mjs
+      - name: Inspector-context crawler -- no fee text within 3 hops (JS on) / 1 hop (JS off) of hi-1/partner-inspectors, negative control (gh2155-hi05b-crawler)
+        run: node tests/gh2155-hi05b-inspector-crawler.mjs
