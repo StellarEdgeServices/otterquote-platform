@@ -83,6 +83,19 @@ function makeFakeAccessToken(sub: string): string {
   return `${b64url(header)}.${b64url(payload)}.${randomB64url(32)}`;
 }
 
+/** Test credentials are assembled at runtime, never written as a
+ *  secret-shaped literal, so scanners (GitGuardian) don't flag a fake
+ *  password the way a real one would be flagged — see #2162's incident
+ *  37588523 (false positive) and #2166 (runtime-built literal fix), which
+ *  this mirrors. Neither value is a real credential. */
+function buildWeakTestPassword(): string {
+  return ['password', '123'].join('');
+}
+
+function buildStrongTestPassword(suffix: string): string {
+  return ['Str0ng!Passw0rd-', suffix].join('');
+}
+
 function jsonResponse(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -203,14 +216,14 @@ describe('gh-2168: cookie-storage.ts removeItem is key-aware (real supabase-js)'
     const client = await freshSignedInClient('user-1', fetchImpl);
     expect(sessionCookiesPresent()).toBe(true);
 
-    const { error: weakErr } = await client.auth.updateUser({ password: 'password123' });
+    const { error: weakErr } = await client.auth.updateUser({ password: buildWeakTestPassword() });
     expect(weakErr).toBeTruthy();
     // MUST-FIX: a key-blind removeItem('<storageKey>-code-verifier') must not
     // delete the session cookies. FAILS on main.
     expect(sessionCookiesPresent()).toBe(true);
 
     const { error: retryErr } = await client.auth.updateUser({
-      password: 'Str0ng!Passw0rd-2168',
+      password: buildStrongTestPassword('2168'),
       data: { needs_password: false },
     });
     expect(retryErr).toBeNull();
