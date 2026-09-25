@@ -249,7 +249,16 @@
     </div>
   </div>
 
-  <div class="pl-signup-cta" id="pl-signup-cta">
+  <!-- gh-2155 HI-05b (Ben, #2152 comment 5839667108): fee-program entry
+       point ("Join the referral program" -> partner-other.html). Unlike
+       partner-app.html's identical CTA, this pre-login page has no
+       confirmed-role reveal available at all (visitor is not yet signed
+       in) -- js/nav.js's _applyInspectorContextVisibility() hides it using
+       ONLY the immediate, no-auth signals (?track=/?agent_type= or the
+       session flag from an earlier inspector-context page), which is
+       exactly the information this page has to work with. Visible by
+       default -- every other partner type keeps seeing it unchanged. -->
+  <div class="pl-signup-cta" id="pl-signup-cta" data-hide-when-inspector="true">
     Not a partner yet? <a href="/partner-other.html">Join the referral program</a>
   </div>
 

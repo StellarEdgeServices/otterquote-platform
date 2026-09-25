@@ -65,45 +65,101 @@ const Nav = {
   },
 
   /**
-   * gh-2155 HI-0c REVIEW FAIL (5836957364) fix: true when the current
-   * visitor is on the inspector track, resolved three ways, first match
-   * wins, so the check works on EVERY page rather than only the two static
-   * inspector URLs and partner-dashboard.html:
+   * gh-2155 HI-05b (Ben, #2152 comment 5839667108): ONE inspector-context
+   * mechanism, replacing the page-name-only check that produced three
+   * leaks, all sharing the same root cause (detection was per-page and
+   * filename-based):
+   *   (1) hi-1.html's own "Partner Agreement" link opens the Netlify
+   *       PRETTY URL /partner-agreement-inspector (no .html) -- the old
+   *       filename match compared against the literal string
+   *       'partner-agreement-inspector.html' and missed it, so the
+   *       untracked footer and nav "Referral Partner" tab rendered there.
+   *   (2) partner-app.html?track=home_inspector's "Join the referral
+   *       program" link was a static, ungated anchor to partner-other.html.
+   *   (3) partner-inspectors.html's nav "Partner App" link pointed at a
+   *       plain, untracked partner-app.html.
+   * Fix: (i) normalize the current path before comparing it to an
+   * inspector-context page name, so a pretty URL and the literal filename
+   * match identically (_normalizePageToken()); (ii) the moment ANY
+   * no-auth signal says "inspector" (page name or query param), PERSIST
+   * that to a session-scoped flag (sessionStorage) so every LATER page
+   * navigated to during the same session -- even one with neither signal
+   * of its own -- is still recognized; (iii) every nav-rendered link that
+   * must not send an inspector to a fee-bearing page or a generic
+   * "join the referral program" entry point reads this same function
+   * (_roleLinks(), _guestAuthHTML(), renderFooter(), plus
+   * _applyInspectorContextVisibility() for static, page-authored entry
+   * points marked data-hide-when-inspector).
+   *
+   * Resolved three ways, first match wins:
    *   (a) an explicit ?track=home_inspector / ?agent_type=home_inspector
    *       query param -- the same signal partner-agreement.html's own
-   *       inline script reads (see its ~line 499), so a deep link carrying
-   *       either name is honored identically everywhere.
-   *   (b) the page itself being an inspector-specific URL
-   *       (partner-inspectors.html, the generated
-   *       partner-agreement-inspector.html) -- immediate, no auth
-   *       resolution needed.
-   *   (c) the signed-in partner's own type, read from the session/profile
-   *       via Auth.getRole() (which resolves the `referral_agents.agent_type`
-   *       -- 'home_inspector' is one of its values) and cached on
-   *       window.currentPartnerAgentType by _syncPartnerAgentType(), called
-   *       from BOTH _renderAuthSlot() and _applyAuthRole() so every page
-   *       that runs either (i.e. every page with the standard header,
-   *       regardless of data-auth) gets the signed-in type, not just
-   *       partner-dashboard.html.
+   *       inline script reads (see its ~line 499).
+   *   (b) the page itself being an inspector-context URL (hi-1.html,
+   *       partner-inspectors.html, the generated
+   *       partner-agreement-inspector.html), matched with or without the
+   *       .html extension and with or without a trailing slash.
+   *   (c) the session flag set by (a)/(b) on an earlier page THIS
+   *       session, or the signed-in partner's own type, read from the
+   *       session/profile via Auth.getRole() (resolves
+   *       `referral_agents.agent_type` -- 'home_inspector' is one of its
+   *       values) and cached on window.currentPartnerAgentType by
+   *       _syncPartnerAgentType(), called from BOTH _renderAuthSlot() and
+   *       _applyAuthRole() so every page that runs either gets the
+   *       signed-in type, not just partner-dashboard.html.
    * FAIL CLOSED while unknown: window.currentPartnerAgentType starts
    * undefined, and _syncPartnerAgentType() only ever sets it to a
    * POSITIVELY resolved value ('home_inspector' or null for a confirmed
    * non-inspector partner role) -- never to a guess -- so an unresolved or
    * errored role reso leaves it untouched rather than asserting "safe".
+   * sessionStorage is read/written defensively (try/catch): private mode
+   * or blocked storage simply falls back to signals (a)/(b)/(c) evaluated
+   * fresh on every page, exactly as before this session-flag addition.
    * Reused by renderFooter() (#2166) and by every nav.js link that must not
    * point an inspector at partners.html (D-333 -- that page shows
    * dollar-figure commission copy no inspector should be one click from).
    */
-  _isInspectorTrack() {
-    const file = this._currentFile();
-    if (file === 'partner-inspectors.html' || file === 'partner-agreement-inspector.html') {
-      return true;
-    }
+  _INSPECTOR_CONTEXT_KEY: 'oq_inspector_ctx',
+
+  _INSPECTOR_PAGES: ['hi-1', 'partner-inspectors', 'partner-agreement-inspector'],
+
+  /** Strip a trailing "/" and a trailing ".html" so a Netlify pretty URL
+   *  (no extension) and the literal filename both normalize to the same
+   *  token before comparison -- the fix for leak (1) above. */
+  _normalizePageToken(name) {
+    let n = String(name || '');
+    if (n.endsWith('/')) n = n.slice(0, -1);
+    if (n.toLowerCase().endsWith('.html')) n = n.slice(0, -5);
+    return n.toLowerCase();
+  },
+
+  _readInspectorContextFlag() {
+    try { return window.sessionStorage.getItem(this._INSPECTOR_CONTEXT_KEY) === '1'; }
+    catch (_) { return false; } // private mode / blocked storage -- signals (a)/(b)/(c) still work per-page
+  },
+
+  _writeInspectorContextFlag() {
+    try { window.sessionStorage.setItem(this._INSPECTOR_CONTEXT_KEY, '1'); }
+    catch (_) { /* non-fatal -- see _readInspectorContextFlag() */ }
+  },
+
+  /** Signals (a) and (b): resolvable with no auth round trip, on any page. */
+  _isInspectorTrackImmediate() {
+    if (this._INSPECTOR_PAGES.indexOf(this._normalizePageToken(this._currentFile())) !== -1) return true;
     try {
       const params = new URLSearchParams(window.location.search);
       const track = params.get('track') || params.get('agent_type');
       if (track && track.toLowerCase() === 'home_inspector') return true;
-    } catch (_) { /* malformed query string -- fall through to the auth signal */ }
+    } catch (_) { /* malformed query string -- fall through */ }
+    return false;
+  },
+
+  _isInspectorTrack() {
+    if (this._isInspectorTrackImmediate()) {
+      this._writeInspectorContextFlag(); // persist for every later page this session
+      return true;
+    }
+    if (this._readInspectorContextFlag()) return true;
     return window.currentPartnerAgentType === 'home_inspector';
   },
 
@@ -141,9 +197,17 @@ const Nav = {
     const resolved = (role === 'home_inspector') ? 'home_inspector' : null;
     if (resolved === window.currentPartnerAgentType) return; // no change -- nothing to re-render
     window.currentPartnerAgentType = resolved;
+    // gh-2155 HI-05b: a signed-in partner's OWN resolved type is signal (c)
+    // -- persist it to the same session flag signals (a)/(b) write, so a
+    // page navigated to later, with neither an inspector URL nor a
+    // ?track= param of its own, still recognizes the context.
+    if (resolved === 'home_inspector') this._writeInspectorContextFlag();
     if (typeof this.renderFooter === 'function') {
       const footer = document.getElementById('site-footer');
       if (footer && footer.dataset.skipNav !== 'true') this.renderFooter();
+    }
+    if (typeof this._applyInspectorContextVisibility === 'function') {
+      this._applyInspectorContextVisibility();
     }
   },
 
@@ -168,6 +232,28 @@ const Nav = {
     if (window.currentPartnerAgentType !== undefined) return; // already resolved this page load
     const link = document.getElementById('footer-partner-agreement-link');
     if (link) link.style.display = 'none';
+  },
+
+  /**
+   * gh-2155 HI-05b: hides every STATIC, page-authored fee-program entry
+   * point on the current page the instant _isInspectorTrack() says so --
+   * "Join the referral program" CTAs and direct links to partner-other.html
+   * / partners.html that a page authors as plain markup rather than
+   * through nav.js's own dynamic link sets (which are already gated
+   * individually -- _roleLinks(), _guestAuthHTML(), _roleTabHref(),
+   * renderFooter()). A page opts an element in with
+   * data-hide-when-inspector="true"; this is the ONE place that attribute
+   * is read, so no page carries its own inspector-detection logic.
+   * Removal/visibility only -- no element's text changes.
+   * Called from the DOMContentLoaded bootstrap (every page, immediate
+   * signals) and again from _syncPartnerAgentType() (signal (c), which
+   * can resolve after first paint).
+   */
+  _applyInspectorContextVisibility() {
+    if (!this._isInspectorTrack()) return;
+    if (typeof document === 'undefined' || typeof document.querySelectorAll !== 'function') return;
+    const nodes = document.querySelectorAll('[data-hide-when-inspector="true"]');
+    for (let i = 0; i < nodes.length; i++) nodes[i].style.display = 'none';
   },
 
   /* ══════════════════════════════════════════════════════════════════════
@@ -419,10 +505,17 @@ const Nav = {
     // inspector track, the partner role's own "Partner Programs"/"Programs"
     // row-2 link must not point at partners.html (fee wording). Href swap
     // only -- label and id are unchanged.
+    // gh-2155 HI-05b (item 3 -- partner-inspectors.html's nav "Partner App"
+    // link pointed at an untracked partner-app.html): partner-app.html
+    // carries ?track=home_inspector too, same as the "Go to Partner
+    // Dashboard" link already does, so it fails closed on first paint
+    // rather than waiting on an auth round trip.
     if (role === 'partner' && this._isInspectorTrack()) {
-      return links.map(l => l.href === '/partners.html'
-        ? Object.assign({}, l, { href: '/partner-inspectors.html' })
-        : l);
+      return links.map(l => {
+        if (l.href === '/partners.html') return Object.assign({}, l, { href: '/partner-inspectors.html' });
+        if (l.href === '/partner-app.html') return Object.assign({}, l, { href: '/partner-app.html?track=home_inspector' });
+        return l;
+      });
     }
     return links;
   },
@@ -722,20 +815,24 @@ const Nav = {
     let primaryHref = cta.primary.href === '/start.html'
       ? '/start.html' + this._attributionQuery()
       : cta.primary.href;
+    let secondaryHref = cta.secondary.href;
     // gh-2155 HI-0c (Ben ruling, #2152 comment 5836510515, item 3): the
     // signed-out "Become a Partner" CTA must not send an inspector-track
     // visitor to partners.html. Href swap only, label unchanged.
-    if (role === 'partner' && primaryHref === '/partners.html' && this._isInspectorTrack()) {
-      primaryHref = '/partner-inspectors.html';
+    // gh-2155 HI-05b: "Partner Login" carries ?track=home_inspector too,
+    // same rule as the nav "Partner App" link in _roleLinks() above.
+    if (role === 'partner' && this._isInspectorTrack()) {
+      if (primaryHref === '/partners.html') primaryHref = '/partner-inspectors.html';
+      if (secondaryHref === '/partner-login.html') secondaryHref = '/partner-login.html?track=home_inspector';
     }
     return {
       desktop: `
         <a href="${primaryHref}" class="btn btn-sm btn-primary">${cta.primary.label}</a>
-        <a href="${cta.secondary.href}" class="btn btn-sm btn-ghost">${cta.secondary.label}</a>
+        <a href="${secondaryHref}" class="btn btn-sm btn-ghost">${cta.secondary.label}</a>
       `,
       mobile: `
         <a href="${primaryHref}" class="nav-link nav-mobile-cta">${cta.primary.label}</a>
-        <a href="${cta.secondary.href}" class="nav-link nav-mobile-cta-secondary">${cta.secondary.label}</a>
+        <a href="${secondaryHref}" class="nav-link nav-mobile-cta-secondary">${cta.secondary.label}</a>
       `,
     };
   },
@@ -1066,7 +1163,7 @@ const Nav = {
             <a href="/partner-insurance.html">Insurance Agents</a>
             <a href="/partner-inspectors.html">Home Inspectors</a>
             <a href="/partner-adjusters.html">Adjusters</a>
-            <a href="/partner-other.html">Other Industries</a>
+            ${!this._isInspectorTrack() ? '<a href="/partner-other.html">Other Industries</a>' : ''}
             <a href="/partner-dashboard.html">Partner Dashboard</a>
             <a href="/refer-a-friend.html">Refer a Friend</a>
           </div>
@@ -1180,4 +1277,13 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   Nav.renderLocalBusinessSchema();
+
+  // gh-2155 HI-05b: hides page-authored fee-program entry points
+  // (data-hide-when-inspector="true") the instant an immediate signal
+  // (inspector-context URL or ?track=/?agent_type=home_inspector) says so.
+  // Runs on every page -- including hi-1.html and partner-agreement-
+  // inspector.html, which set data-skip-nav="true" and so never reach
+  // renderHeader()/renderFooter() above -- and again from
+  // _syncPartnerAgentType() once a signed-in visitor's type resolves.
+  Nav._applyInspectorContextVisibility();
 });

@@ -1004,10 +1004,19 @@
       <a href="partner-insurance.html" class="btn btn-secondary">Insurance Agents</a>
       <a href="partner-adjusters.html" class="btn btn-secondary">Adjusters</a>
       <a href="partner-inspectors.html" class="btn btn-secondary">Home Inspectors</a>
-      <a href="partner-other.html" class="btn btn-secondary">Other Industries</a>
+      <!-- gh-2155 HI-05b (Ben, #2152 comment 5839667108): index.html is
+           reachable from an inspector-context page via the row-1
+           "Homeowner" role tab, and this SEO link list is a direct,
+           unconditional path to two named fee-program entry points
+           (partner-other.html, partners.html). js/nav.js's
+           _applyInspectorContextVisibility() hides both, using the same
+           session-scoped signal used everywhere else -- neither the
+           Real Estate Agents / Insurance Agents / Adjusters links, nor
+           this page's other content, are touched. -->
+      <a href="partner-other.html" class="btn btn-secondary" data-hide-when-inspector="true">Other Industries</a>
     </div>
     <p class="text-center" style="margin-top:var(--sp-6);">
-      <a href="partners.html" style="color:var(--amber);font-weight:600;">Not sure which one you are? Start here &rarr;</a>
+      <a href="partners.html" style="color:var(--amber);font-weight:600;" data-hide-when-inspector="true">Not sure which one you are? Start here &rarr;</a>
     </p>
   </div>
 </section>

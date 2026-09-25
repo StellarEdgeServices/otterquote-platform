@@ -270,7 +270,21 @@
             <div id="appQr"></div>
         </div>
 
-        <p class="signup-cta">Not a partner yet? <a href="/partner-other.html">Join the referral program</a> &mdash; it takes about 60 seconds, and it&rsquo;s free.</p>
+        <!-- gh-2155 HI-05b (Ben, #2152 comment 5839667108, leak 2): this
+             static CTA is a fee-program entry point ("Join the referral
+             program" -> partner-other.html). Two independent gates, same
+             fail-closed shape as referralFeeDisclaimer/payoutsPhrase just
+             below: (1) starts display:none in the markup itself, so JS-off
+             and pre-auth renders never show it; (2) js/nav.js's
+             _applyInspectorContextVisibility() also hides it (via
+             data-hide-when-inspector) the instant an immediate inspector
+             signal (URL or ?track=) fires, independent of (1)'s reveal
+             script ever running. Revealed ONLY by the existing
+             Auth.getRole() block below, for the same confirmed
+             non-home_inspector partner role that reveals the disclaimer --
+             never for inspector, never for an unresolved/guest visitor,
+             matching this page's already-accepted fail-closed default. -->
+        <p class="signup-cta" id="joinReferralProgramCta" data-hide-when-inspector="true" style="display:none;">Not a partner yet? <a href="/partner-other.html">Join the referral program</a> &mdash; it takes about 60 seconds, and it&rsquo;s free.</p>
 
         <!-- gh-2155 HI-0c (Ben ruling, #2152 comment 5836510515, item 2):
              default-hidden, fail closed -- this page has no per-visitor
@@ -346,6 +360,11 @@
                     // non-inspector mechanism as the disclaimer above.
                     var payoutsPhrase = document.getElementById('payoutsPhrase');
                     if (payoutsPhrase) payoutsPhrase.style.display = '';
+                    // gh-2155 HI-05b (leak 2): same mechanism, same call
+                    // site -- "Join the referral program" only for a
+                    // confirmed non-inspector partner.
+                    var joinCta = document.getElementById('joinReferralProgramCta');
+                    if (joinCta) joinCta.style.display = '';
                 }
             }).catch(function () { /* non-fatal: stays hidden */ });
 
