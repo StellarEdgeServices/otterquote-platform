@@ -133,6 +133,139 @@ def test_name_collision_suffix_grant_fails():
     return ok
 
 
+def test_schema_wide_grant_before_create_fails():
+    # gh-2145 follow-up (Ben's REVIEW PASS 5839898750): `ALL TABLES IN
+    # SCHEMA public` only reaches tables that already exist when it runs.
+    # Placed BEFORE the CREATE, it does not cover this table -- and does
+    # not error either, so a detector that ignores statement order would
+    # false-PASS this silently-broken shape.
+    old_text = ""
+    new_text = (
+        "BEGIN;\n\n"
+        "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO service_role;\n\n"
+        "CREATE TABLE IF NOT EXISTS public.foo_bar (\n"
+        "  id UUID PRIMARY KEY DEFAULT gen_random_uuid()\n"
+        ");\n\n"
+        "COMMIT;\n"
+    )
+    findings, _pass_notes = check.evaluate_file("v999-order.sql", old_text, new_text)
+    ok = len(findings) == 1 and "new-table-missing-service-role-grant" in findings[0]
+    print("PASS  diff-mode: schema-wide grant BEFORE the CREATE -> 1 finding "
+          "(grant does not retroactively cover it)"
+          if ok else "FAIL  grant-before-create case: findings=%r" % findings)
+    return ok
+
+
+def test_schema_wide_grant_after_create_passes():
+    old_text = ""
+    new_text = (
+        "BEGIN;\n\n"
+        "CREATE TABLE IF NOT EXISTS public.foo_bar (\n"
+        "  id UUID PRIMARY KEY DEFAULT gen_random_uuid()\n"
+        ");\n\n"
+        "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO service_role;\n\n"
+        "COMMIT;\n"
+    )
+    findings, pass_notes = check.evaluate_file("v999-order.sql", old_text, new_text)
+    ok = len(findings) == 0 and len(pass_notes) == 1
+    print("PASS  diff-mode: schema-wide grant AFTER the CREATE -> 0 findings"
+          if ok else "FAIL  grant-after-create case: findings=%r pass_notes=%r" % (findings, pass_notes))
+    return ok
+
+
+def test_unlogged_table_needs_grant_like_any_other():
+    old_text = ""
+    new_text = (
+        "BEGIN;\n\n"
+        "CREATE UNLOGGED TABLE IF NOT EXISTS public.scratch_pad (\n"
+        "  id UUID PRIMARY KEY DEFAULT gen_random_uuid()\n"
+        ");\n\n"
+        "COMMIT;\n"
+    )
+    findings, _pass_notes = check.evaluate_file("v999-unlogged.sql", old_text, new_text)
+    ok = len(findings) == 1 and "new-table-missing-service-role-grant" in findings[0]
+    print("PASS  diff-mode: UNLOGGED table with no grant -> 1 finding (UNLOGGED "
+          "does not exempt it)"
+          if ok else "FAIL  unlogged-no-grant case: findings=%r" % findings)
+    return ok
+
+
+def test_unlogged_table_with_grant_passes():
+    old_text = ""
+    new_text = (
+        "BEGIN;\n\n"
+        "CREATE UNLOGGED TABLE IF NOT EXISTS public.scratch_pad (\n"
+        "  id UUID PRIMARY KEY DEFAULT gen_random_uuid()\n"
+        ");\n\n"
+        "GRANT SELECT, INSERT, UPDATE, DELETE ON public.scratch_pad TO service_role;\n\n"
+        "COMMIT;\n"
+    )
+    findings, pass_notes = check.evaluate_file("v999-unlogged.sql", old_text, new_text)
+    ok = len(findings) == 0 and len(pass_notes) == 1
+    print("PASS  diff-mode: UNLOGGED table with its own service_role grant -> 0 findings"
+          if ok else "FAIL  unlogged-with-grant case: findings=%r pass_notes=%r" % (findings, pass_notes))
+    return ok
+
+
+def test_temp_table_exempt_even_with_no_grant():
+    old_text = ""
+    new_text = (
+        "BEGIN;\n\n"
+        "CREATE TEMP TABLE staging_scratch (\n"
+        "  id UUID PRIMARY KEY DEFAULT gen_random_uuid()\n"
+        ");\n\n"
+        "COMMIT;\n"
+    )
+    findings, pass_notes = check.evaluate_file("v999-temp.sql", old_text, new_text)
+    ok = len(findings) == 0 and len(pass_notes) == 0
+    print("PASS  diff-mode: TEMP table, zero grants -> 0 findings, 0 pass_notes "
+          "(exempt, never evaluated at all)"
+          if ok else "FAIL  temp-exempt case: findings=%r pass_notes=%r" % (findings, pass_notes))
+    return ok
+
+
+def test_partition_parent_only_grant_fails():
+    # gh-2145 follow-up: Postgres privileges are per-relation -- a grant
+    # naming only the PARENT table does not cover a new partition, which
+    # is its own distinct relation with its own ACL.
+    old_text = ""
+    new_text = (
+        "BEGIN;\n\n"
+        "CREATE TABLE IF NOT EXISTS public.events_2027_01\n"
+        "  PARTITION OF public.events\n"
+        "  FOR VALUES FROM ('2027-01-01') TO ('2027-02-01');\n\n"
+        "GRANT SELECT, INSERT, UPDATE, DELETE ON public.events TO service_role;\n\n"
+        "COMMIT;\n"
+    )
+    findings, _pass_notes = check.evaluate_file("v999-partition.sql", old_text, new_text)
+    ok = (
+        len(findings) == 1
+        and "new-table-missing-service-role-grant" in findings[0]
+        and "events_2027_01" in findings[0]
+    )
+    print("PASS  diff-mode: partition, grant on parent only -> 1 finding naming "
+          "the partition (parent's grant does not cover it)"
+          if ok else "FAIL  partition-parent-only-grant case: findings=%r" % findings)
+    return ok
+
+
+def test_partition_own_grant_passes():
+    old_text = ""
+    new_text = (
+        "BEGIN;\n\n"
+        "CREATE TABLE IF NOT EXISTS public.events_2027_01\n"
+        "  PARTITION OF public.events\n"
+        "  FOR VALUES FROM ('2027-01-01') TO ('2027-02-01');\n\n"
+        "GRANT SELECT, INSERT, UPDATE, DELETE ON public.events_2027_01 TO service_role;\n\n"
+        "COMMIT;\n"
+    )
+    findings, pass_notes = check.evaluate_file("v999-partition.sql", old_text, new_text)
+    ok = len(findings) == 0 and len(pass_notes) == 1
+    print("PASS  diff-mode: partition with its own service_role grant -> 0 findings"
+          if ok else "FAIL  partition-own-grant case: findings=%r pass_notes=%r" % (findings, pass_notes))
+    return ok
+
+
 def test_existing_table_untouched_never_flagged():
     # A pre-existing CREATE TABLE line that is NOT part of the diff's added
     # lines (old_text already contains it identically) must never surface a
@@ -159,6 +292,13 @@ def main():
         test_quoted_cli_style_no_grant_fails(),
         test_quoted_cli_style_with_grant_passes(),
         test_name_collision_suffix_grant_fails(),
+        test_schema_wide_grant_before_create_fails(),
+        test_schema_wide_grant_after_create_passes(),
+        test_unlogged_table_needs_grant_like_any_other(),
+        test_unlogged_table_with_grant_passes(),
+        test_temp_table_exempt_even_with_no_grant(),
+        test_partition_parent_only_grant_fails(),
+        test_partition_own_grant_passes(),
         test_existing_table_untouched_never_flagged(),
     ]
     ok = all(results)
