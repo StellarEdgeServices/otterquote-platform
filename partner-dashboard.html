@@ -1787,6 +1787,18 @@ Let me know if you have any questions!
             // share/SMS/email script (a different <script> block, no access
             // to this closure's `partnerType`) can read it too.
             window.currentPartnerAgentType = partnerType;
+            // gh-2155 HI-0b round 6 (REVIEW FAIL 5832774895 must-fix 1 /
+            // LEGAL-READ FAIL 5832784187 item 2b): js/nav.js renders the
+            // footer at DOMContentLoaded, before this init() has resolved
+            // partnerType (it awaits Auth.requireAuth(), loadW9GateFlag(),
+            // and the partner fetch first), so an inspector's footer
+            // "Partner Agreement" link never carried ?track=home_inspector.
+            // Re-render the footer now that the global above is set, so
+            // Nav.renderFooter()'s existing isInspectorTrack check picks it
+            // up. Link only -- no new words.
+            if (typeof Nav !== 'undefined' && typeof Nav.renderFooter === 'function') {
+                Nav.renderFooter();
+            }
             if (partnerType === 'home_inspector') {
                 var NO_FEE_TEXT = 'Home-inspector partners do not receive a referral fee or recruit bonus.';
                 var referClientSub = document.querySelector('[data-target="refer-client"] .task-tile-subtitle');
