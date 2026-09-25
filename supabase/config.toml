@@ -398,6 +398,30 @@ verify_jwt = false
 [functions.homeowner-email-optout]
 verify_jwt = false
 
+# gh-2121 (LRS HO-1 S21) fix round 1 (CEO RUN 68 LEGAL-READ: FAIL, comment
+# 5825694840, must-fix 1): the unauthenticated opt-out endpoint behind the
+# "Stop these updates" footer link in send-lead-next-step-reminder's one
+# reminder email. Same reasoning as homeowner-email-optout immediately
+# above, word for word: a pre-signup lead clicking an unsubscribe link has
+# no JWT and no session at all, and CAN-SPAM/D-320 requires the mechanism to
+# work without one. verify_jwt=false is required, not a convenience -- the
+# signed HMAC token in the URL (lead-optout-token.ts) is the authorization,
+# and the handler is write-only with one invariant response (see the
+# function's own header comment). Missing this entry meant the Supabase
+# gateway defaulted to verify_jwt=true and 401'd the link before this fix.
+[functions.lead-next-step-optout]
+verify_jwt = false
+
+# gh-2121 (LRS HO-1 S21) fix round 1 (CEO RUN 68 REVIEW: FAIL, comment
+# 5825698253, must-fix 3): cron-exception, same pattern as
+# send-homeowner-next-steps and send-incomplete-onboarding-reminders -- JWT
+# verification disabled; access is gated by the CRON_SECRET header /
+# service-role Bearer check inside the function (cron-auth.ts's
+# isCronAuthorized(), mirrored from send-homeowner-next-steps/index.ts).
+# Pinned so a flagless `functions deploy` cannot flip it.
+[functions.send-lead-next-step-reminder]
+verify_jwt = false
+
 # gh-1313: Cron-exception, same pattern as send-homeowner-next-steps — JWT
 # verification disabled; access is gated by the CRON_SECRET / service-role
 # Bearer check inside the function. Read-only on contractor_templates; writes
