@@ -63,7 +63,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
     <title>A Real Next Step When You Find Damage | Otter Quotes</title>
-    <meta name="description" content="Give your clients a real next step when you find damage. Sign up as an Otter Quotes partner — no referral fee.">
+    <meta name="description" content="Give your clients a co-branded link to competing repair bids when your report flags damage — a better next step than a business card.">
     <!-- Dark-launch (HI-1 not yet CLOSE-REVIEWed / published, matches
          ins-1.html / re-1.html): noindex/nofollow + no nav/internal link
          anywhere on the site points here yet. Reachable only by direct
@@ -72,7 +72,7 @@
     <meta name="robots" content="noindex, nofollow">
     <link rel="canonical" href="https://otterquote.com/hi-1.html">
     <meta property="og:title" content="A Real Next Step When You Find Damage · Otter Quotes">
-    <meta property="og:description" content="Give your clients a real next step when you find damage. Sign up as an Otter Quotes partner — no referral fee.">
+    <meta property="og:description" content="Give your clients a co-branded link to competing repair bids when your report flags damage — a better next step than a business card.">
     <meta property="og:url" content="https://otterquote.com/hi-1.html">
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="Otter Quotes">
@@ -105,7 +105,11 @@
             --gray:       #64748B;
             --green:      #10B981;
             --green-light:#D1FAE5;
-            --red:        #EF4444;
+            --red:        #F87171; /* HI-1 ruling (5) REVIEW FAIL 5836700203: #EF4444 on
+                               --navy-2 (#0E2A3B) computes to 3.95:1, below WCAG AA
+                               4.5:1 for the inline field-error text and the required-
+                               field asterisk. #F87171 computes to 5.37:1 (relative-
+                               luminance formula, verified). */
         }
 
         /* Base */
@@ -379,45 +383,10 @@
             transform: none !important;
         }
 
-        /* Google OAuth — matches partner-login.html's button, adapted for
-           this page's dark card. */
-        .btn-google {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-            width: 100%;
-            padding: 12px 20px;
-            border: none;
-            border-radius: 10px;
-            background: #fff;
-            color: #3c4043;
-            font-family: var(--font-body);
-            font-size: 1rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: background 0.15s, box-shadow 0.15s;
-        }
-
-        .btn-google:hover { background: #f8f9fa; box-shadow: 0 1px 3px rgba(0,0,0,0.25); }
-        .btn-google:disabled { opacity: 0.6; cursor: not-allowed; }
-        .btn-google svg { flex-shrink: 0; }
-
-        .oauth-divider {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            margin: 20px 0;
-            color: var(--slate);
-            font-size: 0.85rem;
-        }
-
-        .oauth-divider::before, .oauth-divider::after {
-            content: '';
-            flex: 1;
-            height: 1px;
-            background: rgba(255, 255, 255, 0.12);
-        }
+        /* HI-1 ruling (5), REVIEW FAIL 5836700203 should-fix: .btn-google
+           and .oauth-divider (Google sign-in button, removed per ruling 5)
+           dead CSS deleted so a later edit cannot quietly bring the
+           feature back. */
 
         .btn-loading {
             position: relative;
@@ -509,32 +478,10 @@
             margin-bottom: 16px;
         }
 
-        .referral-link-box {
-            background: rgba(224, 123, 0, 0.1);
-            border: 1px solid var(--amber);
-            border-radius: 10px;
-            padding: 24px;
-            margin-top: 24px;
-            text-align: center;
-        }
-
-        .referral-link-label {
-            color: var(--slate);
-            font-size: 0.9rem;
-            margin-bottom: 12px;
-        }
-
-        .referral-link-text {
-            background: rgba(10, 30, 44, 0.5);
-            border: 1px solid rgba(224, 123, 0, 0.3);
-            border-radius: 8px;
-            padding: 12px 16px;
-            color: var(--white);
-            font-family: var(--font-mono);
-            font-size: 0.9rem;
-            word-break: break-all;
-            margin-bottom: 12px;
-        }
+        /* HI-1 ruling (5), REVIEW FAIL 5836700203 should-fix: .referral-
+           link-box/-label/-text (on-page referral-link box, removed per
+           ruling 5) dead CSS deleted so a later edit cannot quietly bring
+           the feature back. */
 
         .copy-btn {
             background: var(--amber);
@@ -660,7 +607,7 @@
                             <div id="successMessage" class="success-message">
                                 <p>You're in! Install the Otter Quotes partner app, sign in with the account you just created, and your link will be waiting inside to add to your reports.</p>
                                 <div style="margin-top: 20px;">
-                                    <a href="/partner-app.html" class="btn btn-primary">Install the Partner App</a>
+                                    <a href="/partner-app.html" class="btn btn-primary">Install the App</a>
                                 </div>
                             </div>
 
@@ -673,7 +620,7 @@
                                 <p>We sent a confirmation link to <strong id="checkEmailAddress"></strong>. Click it to verify your address, then sign in to your new partner account.</p>
                                 <p>You're in! Install the Otter Quotes partner app, sign in with the account you just created, and your link will be waiting inside to add to your reports.</p>
                                 <div style="margin-top: 20px;">
-                                    <a href="/partner-app.html" class="btn btn-primary">Install the Partner App</a>
+                                    <a href="/partner-app.html" class="btn btn-primary">Install the App</a>
                                 </div>
                             </div>
 
@@ -731,7 +678,9 @@
                                          depends on that PR merging first). -->
                                     <label for="agreeToTerms">I agree to <a href="partner-agreement-inspector.html">Otter Quotes's Partner Terms</a>.</label>
                                 </div>
-                                <div class="field-error" id="agreeError">You must agree to Otter Quotes's Partner Terms.</div>
+                                <!-- HI-1 ruling (6), LEGAL-READ FAIL 5836690876: swapped
+                                     for main's verbatim string (partner-insurance.html:754). -->
+                                <div class="field-error" id="agreeError">You must agree to the Partner Agreement and Terms.</div>
 
                                 <button type="submit" class="btn btn-primary btn-lg btn-full" style="margin-top: 24px;">Get My Link</button>
                                 <!-- HI-1 no-fee statement (D-333, verbatim, no
@@ -753,7 +702,9 @@
                     <!-- Benefits Sidebar — HI-1 approved proof/benefit bullets
                          (comment 5821414324), verbatim. -->
                     <div class="benefits-sidebar">
-                        <h3>What You Get</h3>
+                        <!-- HI-1 ruling (2), REVIEW FAIL 5836700203: "What You Get"
+                             is not in the approved copy (#2152 comment 5821414324)
+                             -- heading removed, bullets unchanged. -->
                         <div class="benefit-item">
                             <div class="benefit-check">✓</div>
                             <p>Your client gets multiple contractor bids without hunting for one.</p>
@@ -1105,7 +1056,7 @@
         wireLiveValidation(fullNameInput, document.getElementById('fullNameError'), isValidFullName, 'Please enter your first and last name.');
         wireLiveValidation(phoneInput, document.getElementById('phoneError'), isValidPhone, 'Please enter a valid phone number.');
         wireLiveValidation(emailInput, document.getElementById('emailError'), isValidEmail, 'Please enter a valid email address.');
-        wireLiveValidation(companyInput, document.getElementById('companyError'), isValidCompany, 'Please enter your company name.');
+        wireLiveValidation(companyInput, document.getElementById('companyError'), isValidCompany, 'Please fill in all required fields.');
         agreeInput.addEventListener('change', () => {
             const errorEl = document.getElementById('agreeError');
             if (agreeInput.checked) errorEl.classList.remove('show');
@@ -1172,7 +1123,7 @@
                 firstInvalid = firstInvalid || emailInput;
             }
             if (!isValidCompany(company)) {
-                showFieldError(companyInput, document.getElementById('companyError'), 'Please enter your company name.');
+                showFieldError(companyInput, document.getElementById('companyError'), 'Please fill in all required fields.');
                 firstInvalid = firstInvalid || companyInput;
             }
             if (!agreed) {
@@ -1230,15 +1181,6 @@
                 }
 
                 const finalCode = agentData?.unique_code;
-
-                // The SEO footer link is bare by default (no code — nothing
-                // to attribute for a first-time visitor). Once we have this
-                // partner's own code, carry it so a copied footer link
-                // still attributes correctly.
-                const seoRefLink = document.getElementById('seoRefLink');
-                if (seoRefLink && finalCode) {
-                    seoRefLink.href = `/ref-inspector.html?code=${finalCode}`;
-                }
 
                 localStorage.setItem('cs_partner_signup', JSON.stringify({
                     email: email,
@@ -1302,8 +1244,12 @@
         // funnel page, so there is nothing to wire up here.
     </script>
 
-<!-- Referral landing page link for SEO crawlability -->
-<p style="text-align:center;font-size:0.85rem;color:var(--slate);padding:8px 0 16px;"><a href="/ref-inspector.html" id="seoRefLink" style="color:var(--amber);">Homeowner referral landing page</a></p>
+<!-- HI-1 ruling (1), REVIEW FAIL 5836700203: the "Homeowner referral landing
+     page" link (an escape hatch before conversion; its target carries a
+     homeowner-facing measurement-service price figure, irrelevant to
+     inspector pay) and its JS-built href assignment have been removed.
+     Only the three legally required footer links (Privacy, Terms, Partner
+     Agreement) remain on this page, above. -->
 <!-- gh-1994: router prefill -- reads ?lead=<uuid> (no PII in the URL) set by
      otterquote.com/start.html and fills name/email/phone via the
      get_lead_prefill() SECURITY DEFINER RPC. Same as ins-1.html/re-1.html. -->

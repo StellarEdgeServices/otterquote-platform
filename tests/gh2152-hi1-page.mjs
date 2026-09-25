@@ -345,14 +345,42 @@ const AD_QS = '?utm_source=meta&utm_medium=paid_social&utm_campaign=hi-1&utm_con
 ok(/<header id="site-header"[^>]*\bdata-skip-nav="true"/.test(html), 'hi-1.html ruling(1): #site-header carries data-skip-nav="true" (no header link farm before the conversion)');
 ok(/<footer id="site-footer"[^>]*\bdata-skip-nav="true"/.test(html), 'hi-1.html ruling(1): #site-footer carries data-skip-nav="true" (no footer link farm before the conversion)');
 {
-  // The only footer links on the page are the 3 legally required ones.
+  // HI-1 ruling (1) EXTENDED (REVIEW FAIL 5836700203): the original
+  // assertion only scanned the hand-coded legal paragraph, so it missed
+  // the "Homeowner referral landing page" -> /ref-inspector.html escape
+  // hatch that rendered elsewhere on the page (an unapproved off-page
+  // link whose target shows a $15 figure). Now count EVERY <a href> that
+  // leaves the page anywhere before conversion, plus any JS-built link
+  // assignment (a `.href = ` write to an element other than the
+  // post-conversion install-the-app buttons), not just the legal
+  // paragraph. Same-page anchors (href="#...") never leave the page and
+  // are excluded. The post-conversion successMessage/checkEmailMessage
+  // blocks (the approved "Install the App" action) are stripped out
+  // first -- they render only AFTER conversion, which is exactly what
+  // "before conversion" means, and their target is the approved
+  // confirmation action, not an escape hatch.
+  let preConversionHtml = html
+    .replace(/<div id="successMessage"[\s\S]*?<\/div>\s*<\/div>/, '')
+    .replace(/<div id="checkEmailMessage"[\s\S]*?<\/div>\s*<\/div>/, '');
+  const allHrefs = [...preConversionHtml.matchAll(/<a\s+[^>]*\bhref="([^"]+)"/g)]
+    .map((m) => m[1])
+    .filter((h) => !h.startsWith('#'));
+  const ALLOWED = ['/partner-agreement-inspector.html', 'partner-agreement-inspector.html', '/terms.html', '/privacy.html'];
+  ok(allHrefs.length === 4, 'hi-1.html ruling(1) EXTENDED: exactly 4 off-page links leave the page before conversion (checkbox Partner Agreement link + the 3 legally required footer links) -- got ' + allHrefs.length + ': ' + JSON.stringify(allHrefs));
+  ok(allHrefs.every((h) => ALLOWED.includes(h)), 'hi-1.html ruling(1) EXTENDED: every off-page link before conversion is one of the legally required links (Privacy, Terms, Partner Agreement -> partner-agreement-inspector.html) -- got ' + JSON.stringify(allHrefs));
+  ok(!/\.href\s*=\s*[`'"]\/?ref-inspector\.html/.test(html), 'hi-1.html ruling(1): no JS-built link assigns a /ref-inspector.html href anywhere on the page (the removed seoRefLink escape hatch does not come back)');
+  ok(!html.includes('ref-inspector.html'), 'hi-1.html ruling(1): the string "ref-inspector.html" does not appear anywhere on the page (link and JS both removed)');
+  ok(!/Homeowner referral landing page/.test(html), 'hi-1.html ruling(1): the "Homeowner referral landing page" link text does not appear anywhere on the page');
   const legalLinksBlock = (html.match(/<p style="text-align:center;font-size:0\.85rem;color:var\(--slate\);padding:32px[\s\S]*?<\/p>/) || [''])[0];
-  const hrefs = [...legalLinksBlock.matchAll(/<a\s+href="([^"]+)"/g)].map((m) => m[1]);
-  ok(hrefs.length === 3, 'hi-1.html ruling(1): exactly 3 legally required footer links (Privacy, Terms, Partner Agreement) -- got ' + hrefs.length + ': ' + JSON.stringify(hrefs));
-  ok(hrefs.some((h) => h.includes('partner-agreement-inspector.html')), 'hi-1.html ruling(1): the Partner Agreement footer link points at partner-agreement-inspector.html');
-  ok(hrefs.some((h) => h.includes('/terms.html')), 'hi-1.html ruling(1): Terms of Service footer link present');
-  ok(hrefs.some((h) => h.includes('/privacy.html')), 'hi-1.html ruling(1): Privacy Policy footer link present');
+  const legalHrefs = [...legalLinksBlock.matchAll(/<a\s+href="([^"]+)"/g)].map((m) => m[1]);
+  ok(legalHrefs.length === 3, 'hi-1.html ruling(1): exactly 3 legally required footer links (Privacy, Terms, Partner Agreement) -- got ' + legalHrefs.length + ': ' + JSON.stringify(legalHrefs));
+  ok(legalHrefs.some((h) => h.includes('partner-agreement-inspector.html')), 'hi-1.html ruling(1): the Partner Agreement footer link points at partner-agreement-inspector.html');
+  ok(legalHrefs.some((h) => h.includes('/terms.html')), 'hi-1.html ruling(1): Terms of Service footer link present');
+  ok(legalHrefs.some((h) => h.includes('/privacy.html')), 'hi-1.html ruling(1): Privacy Policy footer link present');
 }
+// HI-1 ruling (1) MUST-FIX (REVIEW FAIL 5836700203): the "What You Get"
+// heading is not in the approved copy and has been removed.
+ok(!/<h3>\s*What You Get\s*<\/h3>/.test(html), 'hi-1.html ruling(1): the unapproved "What You Get" heading has been removed from the benefits sidebar');
 
 // (2) Hero/bullet contrast, WCAG AA 4.5:1 -- HI-1 has no in-hero bullet
 // list (the RE-1/INS-1 defect target); the analogous bullet-style copy on
@@ -529,6 +557,59 @@ ok(!/Confirm your partner type/.test(html), 'hi-1.html ruling(8): no "Confirm yo
     const calls = run.rpcCalls.filter((c) => c.name === 'register_partner');
     const params = calls[0] ? calls[0].params || {} : {};
     ok(params.p_agent_type === 'home_inspector', 'hi-1.html ruling(8): p_agent_type is always "home_inspector" with no user choice -- got ' + JSON.stringify(params.p_agent_type));
+  }
+}
+
+// ── REVIEW FAIL 5836700203 + LEGAL-READ FAIL 5836690876 fixes (bus
+// 2026-09-25T17:33:44Z, Ben's DECIDED rulings on #2186) ────────────────
+
+// (3) meta description + og:description must be an approved HI-1 sentence
+// verbatim (LEGAL-READ FAIL: the previous copy -- "...Sign up as an Otter
+// Quotes partner — no referral fee." -- was both a paraphrase and fee
+// language). Now the approved subhead (#2152 comment 5821414324),
+// verbatim, no paraphrase.
+{
+  const APPROVED_SUBHEAD = 'Give your clients a co-branded link to competing repair bids when your report flags damage — a better next step than a business card.';
+  const descMatch = /<meta name="description" content="([^"]+)">/.exec(html);
+  const ogDescMatch = /<meta property="og:description" content="([^"]+)">/.exec(html);
+  ok(!!descMatch && descMatch[1] === APPROVED_SUBHEAD, 'hi-1.html (3): meta description is the approved HI-1 subhead verbatim -- got ' + JSON.stringify(descMatch && descMatch[1]));
+  ok(!!ogDescMatch && ogDescMatch[1] === APPROVED_SUBHEAD, 'hi-1.html (3): og:description is the approved HI-1 subhead verbatim -- got ' + JSON.stringify(ogDescMatch && ogDescMatch[1]));
+  ok(!/no referral fee/i.test(descMatch ? descMatch[1] : ''), 'hi-1.html (3): meta description carries no fee language');
+  ok(!/no referral fee/i.test(ogDescMatch ? ogDescMatch[1] : ''), 'hi-1.html (3): og:description carries no fee language');
+}
+
+// (4) DECIDED Ben: the visible approved no-fee sentence STAYS -- it is a
+// disclosure, not a fee offer (Tier B, Dustin approved it "if needed").
+// Do not remove it.
+ok(normalizedHtml.includes(normalize('Home-inspector partners do not receive a referral fee or recruit bonus.')), 'hi-1.html (4): the DECIDED-to-stay visible no-fee disclosure sentence is present verbatim');
+
+// (5) Inline error text contrast >= 4.5:1 (WCAG AA). --red was #EF4444
+// (3.95:1 on --navy-2, FAIL); now #F87171 (5.37:1, PASS).
+{
+  const redMatch = /--red:\s*(#[0-9A-Fa-f]{6})/.exec(html);
+  ok(!!redMatch, 'hi-1.html (5): --red custom property is defined');
+  const ratio = redMatch ? contrastRatio(redMatch[1], '#0E2A3B') : 0; // .field-error color on --navy-2 background
+  ok(ratio >= 4.5, 'hi-1.html (5): inline field-error text (--red ' + (redMatch && redMatch[1]) + ' on --navy-2 #0E2A3B) meets WCAG AA 4.5:1 -- computed ratio ' + ratio.toFixed(2));
+  // Fail-first control: the pre-fix color (#EF4444) computes below AA.
+  const oldRatio = contrastRatio('#EF4444', '#0E2A3B');
+  ok(oldRatio < 4.5, 'hi-1.html (5) fail-first control: the pre-fix --red (#EF4444) computed ' + oldRatio.toFixed(2) + ', confirming it failed AA before this fix');
+}
+
+// (6) Strings -> main's verbatim (LEGAL-READ FAIL 5836690876 breaks 1-3).
+ok(normalizedHtml.includes(normalize('Install the App')), 'hi-1.html (6): "Install the App" (main: partner-dashboard.html:950) appears verbatim');
+ok(!html.includes('Install the Partner App'), 'hi-1.html (6): the unapproved "Install the Partner App" string is gone');
+ok(normalizedHtml.includes(normalize("You must agree to the Partner Agreement and Terms.")), 'hi-1.html (6): "You must agree to the Partner Agreement and Terms." (main: partner-insurance.html:754) appears verbatim');
+ok(!html.includes("You must agree to Otter Quotes's Partner Terms."), 'hi-1.html (6): the unapproved agreement-checkbox error string is gone');
+ok(normalizedHtml.includes(normalize('Please fill in all required fields.')), 'hi-1.html (6): "Please fill in all required fields." (main: partner-re.html:1474) appears verbatim');
+ok(!html.includes('Please enter your company name.'), 'hi-1.html (6): the unapproved "Please enter your company name." string is gone');
+{
+  const run = runPageScript(AD_QS);
+  if (!run.setupError) {
+    await submitForm(run, 'homeInspectorForm', {
+      fullName: 'Jane Test', email: 'gh2152-hi1-test6@example.invalid', phone: '3175551234', company: '', agreeToTerms: true,
+    });
+    const companyErrorEl = run.store.getElementById('companyError');
+    ok(!!companyErrorEl && (companyErrorEl.textContent || '').includes('Please fill in all required fields.'), 'hi-1.html (6): submitting with a blank Company field shows "Please fill in all required fields." live (not the old per-field string) -- got ' + JSON.stringify(companyErrorEl && companyErrorEl.textContent));
   }
 }
 
