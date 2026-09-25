@@ -22,6 +22,30 @@
  *       URL (no explicit ?funnel_id= needed -- same P-2 fallback
  *       regex partner-insurance.html already uses).
  *
+ * Round 2 (gh-2151 REVIEW FAIL 5836199486 / LEGAL-READ FAIL 5836215427,
+ * DECIDED Ben rulings (1)-(8)):
+ *   (e) S07: header/footer carry data-skip-nav="true"; no header/footer
+ *       nav farm, no /ref-insurance.html escape-hatch link; footer keeps
+ *       only Privacy/Terms/Partner Agreement.
+ *   (f) S08: no gh-865 "Confirm your partner type" pop-up (no
+ *       confirmAgentType); no Google sign-in button/divider; no
+ *       "Join the Otter Quotes Partner Network" heading.
+ *   (g) S11: partner_view (load), partner_form_start (first field focus)
+ *       and partner_signup/partner_signup_complete (submit) all carry
+ *       variant + step.
+ *   (h) S12: name/email/phone/company inputs carry data-clarity-mask, and
+ *       the page tags the Clarity session with funnel_id (never touches
+ *       js/ga-gate.js).
+ *   (i) ruling 6: with NO utm/funnel_id params at all, p_funnel_id
+ *       defaults to "ins-1" (the page's own id), never a stale stored
+ *       value from a different funnel.
+ *   (j) S20: successMessage has no "You're in!" heading, no referral-link
+ *       box, no Copy/Dashboard buttons -- only the approved sentence +
+ *       install-the-app action; checkEmailMessage reuses main's live
+ *       P-1 check-email string verbatim, followed by the approved
+ *       sentence; an already-signed-in visitor lands on the confirmation,
+ *       not the dashboard.
+ *
  * Technique: extract the REAL inline <script> source (never a
  * hand-retyped copy) and run it in a `vm` context behind a minimal DOM/
  * Auth/Supabase/CONFIG shim, then drive the real submit handler exactly
@@ -130,11 +154,17 @@ function makeElementStore() {
   const byId = new Map();
   const created = [];
   function makeEl(id, tag) {
+    const classes = new Set();
     const el = {
       id, tag, value: '', checked: false, disabled: false, files: [],
       textContent: '', innerHTML: '', href: '', className: '', selected: false,
-      style: {}, children: [], _listeners: {},
-      classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } },
+      style: {}, children: [], _listeners: {}, _attrs: {},
+      classList: {
+        add(...names) { names.forEach((n) => classes.add(n)); },
+        remove(...names) { names.forEach((n) => classes.delete(n)); },
+        toggle() {},
+        contains(n) { return classes.has(n); },
+      },
       addEventListener(type, fn) { (el._listeners[type] = el._listeners[type] || []).push(fn); },
       removeEventListener() {},
       appendChild(child) {
@@ -143,12 +173,12 @@ function makeElementStore() {
         return child;
       },
       removeChild() {},
-      focus() {},
+      focus() { (el._listeners.focus || []).forEach((fn) => fn({})); },
       click() { (el._listeners.click || []).forEach((fn) => fn({})); },
       scrollIntoView() {},
       querySelector() { return makeEl('__anon__', 'div'); },
       querySelectorAll() { return []; },
-      setAttribute() {}, getAttribute() { return null; },
+      setAttribute(k, v) { el._attrs[k] = v; }, getAttribute(k) { return Object.prototype.hasOwnProperty.call(el._attrs, k) ? el._attrs[k] : null; },
     };
     return el;
   }
@@ -166,6 +196,7 @@ function runPageScript(search) {
   }
   const store = makeElementStore();
   const rpcCalls = [];
+  const gtagCalls = [];
   const sb = {
     rpc(name, params) {
       rpcCalls.push({ name, params });
@@ -230,7 +261,7 @@ function runPageScript(search) {
     decodeURIComponent, encodeURIComponent,
     alert() {}, confirm() { return true; },
     fetch: () => Promise.resolve({ ok: true, json: async () => ({}) }),
-    fbq() {}, gtag() {},
+    fbq() {}, gtag(cmd, name, params) { gtagCalls.push({ cmd, name, params }); },
     Sentry: new Proxy({}, { get: () => (...args) => { const cb = args.find((a) => typeof a === 'function'); if (cb) cb({ setTag() {}, setContext() {}, setLevel() {}, setUser() {} }); } }),
     sb, Auth: AuthObj,
     CONFIG: { whenReady(cb) { cb(sb); }, SUPPORT_EMAIL: 'support@otterquote.com', SITE_URL: 'https://otterquote.com', DEMO_MODE: false },
@@ -243,7 +274,7 @@ function runPageScript(search) {
     return { setupError: 'script execution error while loading the page: ' + e.message };
   }
   for (const fn of domContentLoadedListeners) { try { fn(); } catch (e) {} }
-  return { store, rpcCalls };
+  return { store, rpcCalls, gtagCalls };
 }
 
 async function submitForm(runResult, formId, fill) {
@@ -301,6 +332,161 @@ const AD_QS = '?utm_source=meta&utm_medium=paid_social&utm_campaign=ins-1&utm_co
     } catch (e) {
       failWithReason('ins-1.html (d): submitting calls register_partner with p_funnel_id="ins-1" and p_agent_type="insurance_agent"', e.message);
     }
+  }
+}
+
+// ── (e) S07: no escape hatches before the conversion ─────────────────────
+{
+  ok(/<header id="site-header"[^>]*data-skip-nav="true"/.test(html), 'ins-1.html (e) S07: header carries data-skip-nav="true"');
+  ok(/<footer id="site-footer"[^>]*data-skip-nav="true"/.test(html), 'ins-1.html (e) S07: footer carries data-skip-nav="true"');
+  ok(!/ref-insurance\.html/.test(html), 'ins-1.html (e) S07: no /ref-insurance.html escape-hatch link');
+  const footerStart = html.indexOf('<footer id="site-footer"');
+  const scriptStart = html.indexOf('<script', footerStart);
+  const footerLinksBlock = html.slice(footerStart, scriptStart === -1 ? undefined : scriptStart);
+  const hrefs = [...footerLinksBlock.matchAll(/href="([^"]+)"/g)].map((m) => m[1]).filter((h) => !/fonts\.googleapis|^https:\/\/app\.netlify/.test(h));
+  const allowed = new Set(['/partner-agreement.html', '/terms.html', '/privacy.html']);
+  const disallowed = hrefs.filter((h) => !allowed.has(h));
+  ok(disallowed.length === 0, 'ins-1.html (e) S07: only Privacy/Terms/Partner Agreement links after the footer -- extra: ' + JSON.stringify(disallowed));
+}
+
+// ── (f) S08: no type pop-up, no Google escape hatch ───────────────────────
+{
+  ok(!/confirmAgentType/.test(html), 'ins-1.html (f) S08: no confirmAgentType (gh-865 type pop-up) reference');
+  ok(!/id="google-btn"/.test(html), 'ins-1.html (f) S08: no Google sign-in button');
+  ok(!/Join the Otter Quotes Partner Network/.test(html), 'ins-1.html (f) S08: no "Join the Otter Quotes Partner Network" heading');
+}
+
+// ── (g) S11: view/step/conversion events carry variant + step ────────────
+{
+  const run = runPageScript(AD_QS);
+  if (run.setupError) {
+    failWithReason('ins-1.html (g) S11: partner_view fires on load with variant+step', run.setupError);
+  } else {
+    const view = run.gtagCalls.find((c) => c.cmd === 'event' && c.name === 'partner_view');
+    ok(!!view && view.params && view.params.step === 'view' && !!view.params.variant, 'ins-1.html (g) S11: partner_view fires on load with variant+step -- got ' + JSON.stringify(view && view.params));
+
+    const fullNameEl = run.store.getElementById('fullName');
+    fullNameEl.focus();
+    const formStart = run.gtagCalls.find((c) => c.cmd === 'event' && c.name === 'partner_form_start');
+    ok(!!formStart && formStart.params && formStart.params.step === 'form_start' && !!formStart.params.variant, 'ins-1.html (g) S11: partner_form_start fires on first field focus with variant+step -- got ' + JSON.stringify(formStart && formStart.params));
+
+    try {
+      await submitForm(run, 'insuranceAgentForm', {
+        fullName: 'Jane Test', email: 'gh2151-ins1-test2@example.invalid', phone: '3175551234', company: 'Test Agency', agreeToTerms: true,
+      });
+      const signup = run.gtagCalls.find((c) => c.cmd === 'event' && c.name === 'partner_signup');
+      ok(!!signup && signup.params && signup.params.step === 'signup_submit' && !!signup.params.variant, 'ins-1.html (g) S11: partner_signup carries variant+step -- got ' + JSON.stringify(signup && signup.params));
+      const complete = run.gtagCalls.find((c) => c.cmd === 'event' && c.name === 'partner_signup_complete');
+      ok(!!complete && complete.params && complete.params.step === 'complete' && !!complete.params.variant, 'ins-1.html (g) S11: partner_signup_complete carries variant+step -- got ' + JSON.stringify(complete && complete.params));
+    } catch (e) {
+      failWithReason('ins-1.html (g) S11: partner_signup/partner_signup_complete carry variant+step', e.message);
+    }
+  }
+}
+
+// ── (h) S12: Clarity field masking + funnel_id tag (no ga-gate.js touch) ──
+{
+  ok(!/CLARITY_ALLOWED_PATHS\s*[:=\[]/.test(html), 'ins-1.html (h) S12: does not inline-copy/modify js/ga-gate.js\'s CLARITY_ALLOWED_PATHS allowlist definition');
+  for (const id of ['fullName', 'email', 'phone', 'company']) {
+    const inputRe = new RegExp('<input\\b[^>]*id="' + id + '"[^>]*>', 'i');
+    const m = inputRe.exec(html);
+    ok(!!m && /data-clarity-mask="true"/.test(m[0]), 'ins-1.html (h) S12: #' + id + ' carries data-clarity-mask="true"');
+  }
+  ok(/clarity\(\s*['"]set['"]\s*,\s*['"]funnel_id['"]/.test(html), 'ins-1.html (h) S12: page tags the Clarity session with funnel_id');
+}
+
+// ── (i) ruling 6: funnel_id defaults to "ins-1", never a stale stored value ──
+{
+  const run = runPageScript(''); // no query params at all -- organic visit
+  if (run.setupError) {
+    failWithReason('ins-1.html (i): funnel_id defaults to "ins-1" with no URL params', run.setupError);
+  } else {
+    try {
+      await submitForm(run, 'insuranceAgentForm', {
+        fullName: 'Jane Organic', email: 'gh2151-ins1-organic@example.invalid', phone: '3175551234', company: 'Test Agency', agreeToTerms: true,
+      });
+      const calls = run.rpcCalls.filter((c) => c.name === 'register_partner');
+      const params = calls[0] ? calls[0].params || {} : {};
+      ok(params.p_funnel_id === 'ins-1', 'ins-1.html (i): p_funnel_id defaults to "ins-1" with no URL params at all -- got ' + JSON.stringify(params.p_funnel_id));
+    } catch (e) {
+      failWithReason('ins-1.html (i): funnel_id defaults to "ins-1" with no URL params', e.message);
+    }
+  }
+}
+
+// ── (j) S20: approved-only confirmation content ───────────────────────────
+{
+  const successBlock = (() => {
+    const start = html.indexOf('id="successMessage"');
+    const end = html.indexOf('id="checkEmailMessage"', start);
+    return html.slice(start, end);
+  })();
+  ok(!/You’re in!|You're in!/.test(successBlock), 'ins-1.html (j) S20: successMessage has no "You\'re in!" heading');
+  ok(!/referral-link-box|Copy Link|Go to Partner Dashboard/.test(successBlock), 'ins-1.html (j) S20: successMessage has no referral-link box or Copy/Dashboard buttons');
+  ok(/partner-app\.html/.test(successBlock), 'ins-1.html (j) S20: successMessage links to the install-the-app action (partner-app.html)');
+
+  const checkEmailBlock = (() => {
+    const start = html.indexOf('id="checkEmailMessage"');
+    const end = html.indexOf('id="formAlert"', start);
+    return html.slice(start, end);
+  })();
+  ok(/Almost there — check your email/.test(checkEmailBlock), 'ins-1.html (j) S20: checkEmailMessage reuses main\'s live check-email heading verbatim');
+  ok(/Click it to verify your address, then sign in to your new partner account\./.test(checkEmailBlock), 'ins-1.html (j) S20: checkEmailMessage reuses main\'s live check-email body verbatim');
+  ok(/Install the Otter Quotes partner app, sign in with the account you just created, and your referral link will be waiting inside\./.test(checkEmailBlock), 'ins-1.html (j) S20: checkEmailMessage also carries the approved confirmation sentence verbatim');
+
+  const run = runPageScript(AD_QS);
+  if (run.setupError) {
+    failWithReason('ins-1.html (j) S20: an already-signed-in visitor lands on the confirmation, not the dashboard', run.setupError);
+  } else {
+    // Re-run with an already-signed-in session (hasPartnerSession -> true).
+  }
+}
+{
+  const script = extractInlineScripts(html);
+  const store = makeElementStore();
+  const win = {
+    location: { search: AD_QS, hostname: 'otterquote.com', href: '', replace() { this._replaced = true; } },
+    localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+    addEventListener() {}, removeEventListener() {}, scrollTo() {},
+    requestIdleCallback(fn) { fn(); return 1; },
+    crypto: { getRandomValues(arr) { return arr; } },
+  };
+  win.window = win;
+  let redirectedToDashboard = false;
+  win.location.replace = (url) => { if (String(url).includes('partner-dashboard.html')) redirectedToDashboard = true; };
+  const doc = {
+    referrer: '',
+    getElementById: store.getElementById, createElement: store.createElement,
+    querySelector(sel) { const m = /^#([\w-]+)/.exec(sel || ''); if (m) return store.getElementById(m[1]); return store.createElement('div'); },
+    querySelectorAll() { return []; },
+    addEventListener() {}, removeEventListener() {}, body: store.createElement('body'),
+  };
+  const AuthObj = { signUpWithPassword: async () => ({ session: null, user: {} }), hasPartnerSession: async () => true, getUser: async () => null, isTestEmail: () => false };
+  const ctx = {
+    window: win, document: doc, localStorage: win.localStorage,
+    navigator: { clipboard: { writeText: () => Promise.resolve() } },
+    console, URLSearchParams, Promise, JSON, Date, Math, Array, Object, String, Number, Boolean, RegExp,
+    Uint8Array, btoa: (str) => Buffer.from(str, 'binary').toString('base64'),
+    crypto: win.crypto, setTimeout, clearTimeout, setInterval, clearInterval,
+    decodeURIComponent, encodeURIComponent, alert() {}, confirm() { return true; },
+    fetch: () => Promise.resolve({ ok: true, json: async () => ({}) }),
+    fbq() {}, gtag() {},
+    Sentry: new Proxy({}, { get: () => (...args) => { const cb = args.find((a) => typeof a === 'function'); if (cb) cb({ setTag() {}, setContext() {}, setLevel() {}, setUser() {} }); } }),
+    sb: { rpc: () => Promise.resolve({ data: null, error: null }), from() { return new Proxy(function () {}, { get: () => () => new Proxy(function () {}, { get: () => () => Promise.resolve({ data: null, error: null }) }) }); }, auth: { onAuthStateChange() {}, updateUser() { return Promise.resolve({ data: {}, error: null }); } } },
+    Auth: AuthObj,
+    CONFIG: { whenReady(cb) { cb({ rpc: () => Promise.resolve({ data: null, error: null }) }); }, SUPPORT_EMAIL: 'support@otterquote.com', SITE_URL: 'https://otterquote.com', DEMO_MODE: false },
+    AgentTypes: { CHOOSER_LABELS: { insurance_agent: 'Insurance Agent' } },
+  };
+  vm.createContext(ctx);
+  try {
+    vm.runInContext(script, ctx, { timeout: 5000 });
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    const successEl = store.byId.get('successMessage');
+    ok(!redirectedToDashboard, 'ins-1.html (j) S20: an already-signed-in visitor is NOT redirected to partner-dashboard.html');
+    ok(!!successEl && successEl.classList.contains('show'), 'ins-1.html (j) S20: an already-signed-in visitor lands on the successMessage confirmation');
+  } catch (e) {
+    failWithReason('ins-1.html (j) S20: an already-signed-in visitor lands on the confirmation, not the dashboard', e.message);
   }
 }
 

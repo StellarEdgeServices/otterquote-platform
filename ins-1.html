@@ -419,47 +419,6 @@
             transform: none !important;
         }
 
-        /* Google OAuth — matches partner-login.html's button, adapted for
-           this page's dark card (Google's mark is always shown on a white
-           surface regardless of surrounding theme). */
-        .btn-google {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-            width: 100%;
-            padding: 12px 20px;
-            border: none;
-            border-radius: 10px;
-            background: #fff;
-            color: #3c4043;
-            font-family: var(--font-body);
-            font-size: 1rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: background 0.15s, box-shadow 0.15s;
-        }
-
-        .btn-google:hover { background: #f8f9fa; box-shadow: 0 1px 3px rgba(0,0,0,0.25); }
-        .btn-google:disabled { opacity: 0.6; cursor: not-allowed; }
-        .btn-google svg { flex-shrink: 0; }
-
-        .oauth-divider {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            margin: 20px 0;
-            color: var(--slate);
-            font-size: 0.85rem;
-        }
-
-        .oauth-divider::before, .oauth-divider::after {
-            content: '';
-            flex: 1;
-            height: 1px;
-            background: rgba(255, 255, 255, 0.12);
-        }
-
         .btn-loading {
             position: relative;
             color: transparent !important;
@@ -522,7 +481,11 @@
         }
 
         .benefit-item p {
-            color: var(--slate);
+            /* gh-2151 REVIEW FAIL 5836199486 (hero bullets, DECIDED Ben):
+               var(--slate) #94A3B8 on this card's --navy-3 #12354A
+               background fell short of WCAG AA 4.5:1. No copy change --
+               contrast only. */
+            color: rgba(255, 255, 255, 0.88);
             line-height: 1.6;
             font-size: 0.95rem;
         }
@@ -548,54 +511,6 @@
             font-size: 1.5rem;
             color: var(--green);
             margin-bottom: 16px;
-        }
-
-        .referral-link-box {
-            background: rgba(224, 123, 0, 0.1);
-            border: 1px solid var(--amber);
-            border-radius: 10px;
-            padding: 24px;
-            margin-top: 24px;
-            text-align: center;
-        }
-
-        .referral-link-label {
-            color: var(--slate);
-            font-size: 0.9rem;
-            margin-bottom: 12px;
-        }
-
-        .referral-link-text {
-            background: rgba(10, 30, 44, 0.5);
-            border: 1px solid rgba(224, 123, 0, 0.3);
-            border-radius: 8px;
-            padding: 12px 16px;
-            color: var(--white);
-            font-family: var(--font-mono);
-            font-size: 0.9rem;
-            word-break: break-all;
-            margin-bottom: 12px;
-        }
-
-        .copy-btn {
-            background: var(--amber);
-            color: var(--navy);
-            padding: 10px 24px;
-            border-radius: 8px;
-            border: none;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .copy-btn:hover {
-            background: var(--amber-2);
-            transform: translateY(-2px);
-        }
-
-        .copy-btn.copied {
-            background: var(--green);
-            color: var(--white);
         }
 
         /* Responsive */
@@ -658,7 +573,13 @@
     </style>
 </head>
 <body>
-    <header id="site-header" data-active=""></header>
+    <!-- gh-2151 REVIEW FAIL 5836199486 (S07): data-skip-nav="true" opts this
+         page out of js/nav.js's header/footer build entirely (same
+         mechanism as start.html Arm F, gh-2121) -- no site header, footer
+         link farm, or escape hatch renders before the conversion. The
+         legally required Privacy/Terms/Partner Agreement links live in the
+         static paragraph below the footer element instead. -->
+    <header id="site-header" data-active="" data-skip-nav="true"></header>
 
     <main>
         <!-- Hero Section — INS-1 (gh-2151), approved copy verbatim (issue
@@ -675,56 +596,37 @@
              the first thing after the pitch, above every other section. -->
         <section class="form-section" id="signup">
             <div class="container">
-                <h2>Join the Otter Quotes Partner Network</h2>
-
                 <div class="form-wrapper">
                     <!-- Form -->
                     <div>
                         <div class="form-container">
-                            <!-- INS-1 approved post-submit confirmation (comment 5821408557):
-                                 "You're in! Install the Otter Quotes partner app, sign in with
-                                 the account you just created, and your referral link will be
-                                 waiting inside." Shown verbatim in both the auto-confirmed
-                                 (successMessage) and check-your-email (checkEmailMessage)
-                                 states — the only difference between them is whether email
-                                 confirmation is still pending. -->
+                            <!-- gh-2151 REVIEW FAIL 5836199486 / LEGAL-READ FAIL 5836215427
+                                 (S20, DECIDED Ben): successMessage carries ONLY the
+                                 Dustin-approved confirmation sentence (comment 5821408557,
+                                 approved 5832300528) plus its install-the-app action
+                                 (partner-app.html, the same "Get the Partner App" page
+                                 linked from partner-login.html/partners.html) — no "You're
+                                 In!" heading, no on-page referral link, no Copy/Dashboard
+                                 buttons. checkEmailMessage reuses main's live P-1 check-email
+                                 string verbatim (partner-insurance.html:697-699) followed by
+                                 the same approved sentence verbatim — no new words. -->
                             <div id="successMessage" class="success-message">
-                                <h3>You're in!</h3>
                                 <p>Install the Otter Quotes partner app, sign in with the account you just created, and your referral link will be waiting inside.</p>
-                                <div class="referral-link-box">
-                                    <div class="referral-link-label">Your Referral Link:</div>
-                                    <div class="referral-link-text" id="referralLink">Loading...</div>
-                                    <button class="copy-btn" id="copyBtn">Copy Link</button>
-                                </div>
                                 <div style="margin-top: 20px;">
-                                    <a href="/partner-dashboard.html" class="btn btn-primary">Go to Partner Dashboard</a>
+                                    <a href="/partner-app.html" class="btn btn-primary">Get the Partner App</a>
                                 </div>
                             </div>
 
                             <div id="checkEmailMessage" class="success-message">
-                                <h3>You're in! Almost there — check your email</h3>
-                                <p>We sent a confirmation link to <strong id="checkEmailAddress"></strong>. Click it to verify your address, then install the Otter Quotes partner app and sign in with the account you just created — your referral link will be waiting inside.</p>
+                                <h3>Almost there — check your email</h3>
+                                <p>We sent a confirmation link to <strong id="checkEmailAddress"></strong>. Click it to verify your address, then sign in to your new partner account.</p>
+                                <p>Install the Otter Quotes partner app, sign in with the account you just created, and your referral link will be waiting inside.</p>
                                 <div style="margin-top: 20px;">
-                                    <a href="/partner-login.html" class="btn btn-primary">Go to Partner Login</a>
+                                    <a href="/partner-app.html" class="btn btn-primary">Get the Partner App</a>
                                 </div>
                             </div>
 
                             <div id="formAlert" class="form-alert" role="alert"></div>
-
-                            <!-- Google OAuth — same signInWithGoogle() path partner-login.html
-                                 uses (D-207/gh-866); see the script block below for how a
-                                 brand-new signup completes the referral_agents record once
-                                 Google hands the session back to this page. -->
-                            <button type="button" class="btn-google" id="google-btn">
-                                <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
-                                    <path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z" fill="#34A853"/>
-                                    <path d="M3.964 10.706A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.706V4.962H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.038l3.007-2.332z" fill="#FBBC05"/>
-                                    <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.962L3.964 7.294C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
-                                </svg>
-                                Continue with Google
-                            </button>
-                            <div class="oauth-divider"><span>or</span></div>
 
                             <!-- INS-1 field labels (approved copy: "Name · Email · Phone ·
                                  Agency"). Same fullName/phone/email/company field ids and
@@ -733,25 +635,27 @@
                             <form id="insuranceAgentForm" novalidate>
                                 <div class="form-group">
                                     <label for="fullName" class="form-label required">Name</label>
-                                    <input type="text" id="fullName" name="fullName" class="form-input" autocomplete="name" required>
+                                    <!-- gh-2151 REVIEW FAIL 5836199486 (S12): mask this field in
+                                         Clarity replay (name/email/phone/company). -->
+                                    <input type="text" id="fullName" name="fullName" class="form-input" autocomplete="name" required data-clarity-mask="true">
                                     <div class="field-error" id="fullNameError"></div>
                                 </div>
 
                                 <div class="form-group">
                                     <label for="email" class="form-label required">Email</label>
-                                    <input type="email" id="email" name="email" class="form-input" autocomplete="email" required>
+                                    <input type="email" id="email" name="email" class="form-input" autocomplete="email" required data-clarity-mask="true">
                                     <div class="field-error" id="emailError"></div>
                                 </div>
 
                                 <div class="form-group">
                                     <label for="phone" class="form-label required">Phone</label>
-                                    <input type="tel" id="phone" name="phone" class="form-input" autocomplete="tel" required>
+                                    <input type="tel" id="phone" name="phone" class="form-input" autocomplete="tel" required data-clarity-mask="true">
                                     <div class="field-error" id="phoneError"></div>
                                 </div>
 
                                 <div class="form-group">
                                     <label for="company" class="form-label required">Agency</label>
-                                    <input type="text" id="company" name="company" class="form-input" required>
+                                    <input type="text" id="company" name="company" class="form-input" required data-clarity-mask="true">
                                     <div class="field-error" id="companyError"></div>
                                 </div>
 
@@ -815,12 +719,11 @@
         <a href="/privacy.html" style="color:var(--amber);">Privacy Policy</a>
     </p>
 
-<footer id="site-footer"></footer>
+<footer id="site-footer" data-skip-nav="true"></footer>
 
     <!-- Scripts -->
     <script src="js/auth.js"></script>
     <script src="js/nav.js"></script>
-    <script src="js/agent-types.js"></script>
 
     <script>
         // Smooth scroll to signup
@@ -871,61 +774,20 @@
             return 'unknown';
         }
 
-        // gh-2078: once-per-signup guard -- each of this page's three
-        // completion paths (demo, Google-link, password) runs at most once
-        // per page load, but this still protects against a stray double
-        // invocation the same way partner-re.html's own guard does.
+        // gh-2078: once-per-signup guard -- each of this page's completion
+        // paths (demo, password) runs at most once per page load, but this
+        // still protects against a stray double invocation the same way
+        // partner-re.html's own guard does. (gh-2151 REVIEW FAIL 5836199486:
+        // the Google-link completion path was removed with the OAuth button
+        // -- ruling 5 -- so only demo/password reach this now.)
         var partnerSignupCompleteFired = false;
         function firePartnerSignupComplete(variant) {
             if (partnerSignupCompleteFired) return;
             partnerSignupCompleteFired = true;
-            try { gtag('event', 'partner_signup_complete', { variant: variant }); } catch (e) {}
+            // gh-2151 REVIEW FAIL 5836199486 (S11): step + funnel_id added
+            // alongside the existing variant param.
+            try { gtag('event', 'partner_signup_complete', { variant: variant, step: 'complete', funnel_id: utmContext.funnelId }); } catch (e) {}
             try { fbq('track', 'CompleteRegistration'); } catch (e) {}
-        }
-
-        // gh-2078 PR #2092 review fix 2: js/ga-gate.js's `gtag()` stub
-        // (window.gtag) always exists synchronously and pushes onto
-        // window.dataLayer immediately -- but the REAL gtag.js library that
-        // reads that queue and actually sends a hit loads deferred (idle,
-        // or a 1500ms fallback timer -- see ga-gate.js's own comment). The
-        // Google-link completion path below calls gtag(...) and then
-        // immediately navigates via window.location.replace() -- a full
-        // page teardown that can happen well inside that 1500ms window
-        // (nobody interacts on this load; there is no click to trigger
-        // "first interaction" early), which tears the page down before
-        // gtag.js has ever loaded to drain the queue at all. That is a
-        // real, measured loss, not a theoretical one -- unlike a normal
-        // gtag('event', ...) call on a page the visitor keeps browsing.
-        //
-        // Mirrors the React app's identical fix for the identical shape
-        // (react-app/app/lib/track.ts's fireSignUpAndWait, used by
-        // auth-callback's Google-landing sign_up before ITS
-        // window.location.href navigation): race gtag's own
-        // `event_callback` (fires once gtag.js has loaded and actually
-        // queued/sent the hit) against a bounded timeout, whichever comes
-        // first. By the time the timeout fires, dataLayer.push has already
-        // run (synchronous), so the event is durably queued for whenever
-        // gtag.js does load -- "queued" is treated as good enough once the
-        // bound is reached, same trade-off fireSignUpAndWait documents.
-        function gtagEventAndWait(eventName, params, timeoutMs) {
-            timeoutMs = timeoutMs || 1200;
-            return new Promise(function (resolve) {
-                var settled = false;
-                var timer = setTimeout(function () { finish(true); }, timeoutMs);
-                function finish(queued) {
-                    if (settled) return;
-                    settled = true;
-                    clearTimeout(timer);
-                    resolve(queued);
-                }
-                try {
-                    var payload = params ? Object.assign({}, params) : {};
-                    payload.event_callback = function () { finish(true); };
-                    gtag('event', eventName, payload);
-                } catch (e) {
-                    finish(false);
-                }
-            });
         }
 
         /**
@@ -951,55 +813,13 @@
             return base64url + 'Aa1!';
         }
 
-        /**
-         * gh-865: the visitor must see and explicitly confirm their partner
-         * type before the account is created — the page they landed on (and
-         * therefore this page's default) may not silently decide agent_type.
-         * Recruiter attribution (recruit code) stays separate from this value.
-         */
-        function confirmAgentType(defaultType) {
-            return new Promise((resolve) => {
-                const AGENT_TYPE_LABELS = AgentTypes.CHOOSER_LABELS; // gh-914 single source (js/agent-types.js)
-                const overlay = document.createElement('div');
-                overlay.setAttribute('role', 'dialog');
-                overlay.setAttribute('aria-modal', 'true');
-                overlay.style.cssText = 'position:fixed;inset:0;background:rgba(13,27,46,0.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
-                const box = document.createElement('div');
-                box.style.cssText = 'background:#0D1B2E;border:1px solid rgba(224,123,0,0.4);border-radius:12px;padding:28px;max-width:380px;width:100%;text-align:left;font-family:inherit;';
-                const heading = document.createElement('p');
-                heading.textContent = 'Confirm your partner type';
-                heading.style.cssText = 'color:#FFFFFF;font-size:17px;font-weight:600;margin:0 0 8px;';
-                const sub = document.createElement('p');
-                sub.textContent = "This determines what you can do on Otter Quotes. Change it if it isn't right.";
-                sub.style.cssText = 'color:#94A3B8;font-size:14px;margin:0 0 16px;line-height:1.5;';
-                const select = document.createElement('select');
-                select.id = 'gh865AgentTypeConfirm';
-                select.style.cssText = 'width:100%;padding:10px;border-radius:8px;border:1px solid rgba(148,163,184,0.35);font-size:15px;margin-bottom:16px;background:#0D1B2E;color:#FFFFFF;';
-                Object.keys(AGENT_TYPE_LABELS).forEach((value) => {
-                    const o = document.createElement('option');
-                    o.value = value;
-                    o.textContent = AGENT_TYPE_LABELS[value];
-                    if (value === defaultType) o.selected = true;
-                    select.appendChild(o);
-                });
-                const confirmBtn = document.createElement('button');
-                confirmBtn.type = 'button';
-                confirmBtn.textContent = 'Confirm & Continue';
-                confirmBtn.className = 'btn btn-primary';
-                confirmBtn.style.cssText = 'width:100%;cursor:pointer;';
-                confirmBtn.addEventListener('click', () => {
-                    document.body.removeChild(overlay);
-                    resolve(select.value);
-                });
-                box.appendChild(heading);
-                box.appendChild(sub);
-                box.appendChild(select);
-                box.appendChild(confirmBtn);
-                overlay.appendChild(box);
-                document.body.appendChild(overlay);
-                select.focus();
-            });
-        }
+        // gh-2151 REVIEW FAIL 5836199486 (S08, DECIDED Ben): partner type is
+        // fixed by the page itself -- INS-1 is the insurance-agent funnel,
+        // full stop. The gh-865 "Confirm your partner type" modal (a type
+        // pop-up / extra step before conversion) is removed for this page;
+        // every call site below uses this constant directly instead of
+        // awaiting a confirmation dialog.
+        const INS1_AGENT_TYPE = 'insurance_agent';
 
         /**
          * Capture utm_source/medium/campaign/content from the URL on first
@@ -1035,12 +855,21 @@
             if (fresh.source || fresh.medium || fresh.campaign || fresh.content || fresh.fbclid || fresh.liFatId || fresh.funnelId) {
                 utmContext = fresh;
                 localStorage.setItem('cs_utm_context', JSON.stringify(utmContext));
-                return;
+            } else {
+                try {
+                    const stored = JSON.parse(localStorage.getItem('cs_utm_context') || 'null');
+                    if (stored) utmContext = stored;
+                } catch (e) { /* malformed stored value — ignore, keep default */ }
             }
-            try {
-                const stored = JSON.parse(localStorage.getItem('cs_utm_context') || 'null');
-                if (stored) utmContext = stored;
-            } catch (e) { /* malformed stored value — ignore, keep default */ }
+            // gh-2151 REVIEW FAIL 5836199486 (S12/S14, ruling 6, DECIDED
+            // Ben): funnel_id must default to THIS page's own id whenever
+            // neither an explicit ?funnel_id= nor a matching ?utm_campaign=
+            // was present on THIS load — never silently inherit a stale
+            // funnel_id stored by a bounce through a DIFFERENT funnel page
+            // (e.g. re-1) or left null from an organic visit.
+            if (!fresh.funnelId) {
+                utmContext.funnelId = 'ins-1';
+            }
         }
 
         /**
@@ -1085,11 +914,33 @@
         });
         captureUtmContext();
 
-        // #632: signed-in partners land straight on their dashboard instead of
-        // re-seeing the signup form - same loop-guard shape as partner-login.html.
-        // ?stay=1 opts out; anon/homeowner/contractor visitors and referral/recruit
-        // attribution for anon visitors are untouched (load-time only, so it never
-        // interrupts the in-session post-signup success block above).
+        // gh-2151 REVIEW FAIL 5836199486 (S12, DECIDED Ben): tag this
+        // session with the funnel id for Clarity, guarded so a load before
+        // Clarity's script has attached (or one where the production host
+        // gate in js/ga-gate.js doesn't load it at all) never throws. Does
+        // NOT touch js/ga-gate.js's CLARITY_ALLOWED_PATHS allowlist -- that
+        // /ins-1 entry lands separately via #2185.
+        try { if (window.clarity) { clarity('set', 'funnel_id', utmContext.funnelId); } } catch (e) {}
+
+        // gh-2151 REVIEW FAIL 5836199486 (S11, DECIDED Ben): view event,
+        // carrying variant + step, mirroring HO-1 Arm F's trackRouter shape
+        // (start.html) of tagging every funnel event with variant/step.
+        try {
+            gtag('event', 'partner_view', {
+                variant: getOqVariant(),
+                step: 'view',
+                funnel_id: utmContext.funnelId,
+                partner_type: 'insurance_agent',
+            });
+        } catch (e) {}
+
+        // #632: signed-in partners land on the approved confirmation instead
+        // of re-seeing the signup form OR the dashboard (gh-2151 REVIEW FAIL
+        // 5836199486 / LEGAL-READ FAIL 5836215427, S20, DECIDED Ben) - same
+        // loop-guard shape as partner-login.html. ?stay=1 opts out;
+        // anon/homeowner/contractor visitors and referral/recruit
+        // attribution for anon visitors are untouched (load-time only, so it
+        // never interrupts the in-session post-signup success block above).
         (async function redirectSignedInPartner() {
             if (new URLSearchParams(window.location.search).get('stay') === '1') return;
             if ((document.referrer || '').includes('/partner-dashboard.html')) return;
@@ -1097,7 +948,7 @@
             // a locally-declared partnerRoles array (same consolidation
             // gh-851 did for PARTNER_ROLES itself).
             if (await Auth.hasPartnerSession()) {
-                window.location.replace('/partner-dashboard.html');
+                showConfirmationUI();
             }
         })();
 
@@ -1172,6 +1023,25 @@
             if (agreeInput.checked) errorEl.classList.remove('show');
         });
 
+        // gh-2151 REVIEW FAIL 5836199486 (S11): one-shot "step" event fired
+        // on the first field interaction, same variant/step/funnel_id shape
+        // as the view event above.
+        var partnerFormStartFired = false;
+        function firePartnerFormStart() {
+            if (partnerFormStartFired) return;
+            partnerFormStartFired = true;
+            try {
+                gtag('event', 'partner_form_start', {
+                    variant: getOqVariant(),
+                    step: 'form_start',
+                    funnel_id: utmContext.funnelId,
+                });
+            } catch (e) {}
+        }
+        [fullNameInput, phoneInput, emailInput, companyInput].forEach(function (input) {
+            if (input) input.addEventListener('focus', firePartnerFormStart, { once: true });
+        });
+
         function splitFullName(fullName) {
             const parts = fullName.trim().split(/\s+/).filter(Boolean);
             const firstName = parts[0] || fullName.trim();
@@ -1179,16 +1049,23 @@
             return { firstName, lastName };
         }
 
-        function fireDemoSuccess(agentType, method) {
-            const referralCode = Math.random().toString(36).substring(2, 9).toUpperCase();
-            const referralLink = `${window.location.origin}/claims?ref=${referralCode}`;
-
-            document.getElementById('referralLink').textContent = referralLink;
+        // gh-2151 REVIEW FAIL 5836199486 / LEGAL-READ FAIL 5836215427 (S20,
+        // DECIDED Ben): shows ONLY the approved confirmation + its
+        // install-the-app action (no referral link box, no Copy/Dashboard
+        // buttons) and fires the S11 conversion event. Used by both the
+        // auto-confirmed signup path and an already-signed-in visitor
+        // (redirectSignedInPartner below) -- signed-in users land here too,
+        // never on the dashboard.
+        function showConfirmationUI() {
             document.getElementById('successMessage').classList.add('show');
-            document.getElementById('insuranceAgentForm').style.display = 'none';
-            document.getElementById('google-btn').style.display = 'none';
-            document.querySelector('.oauth-divider').style.display = 'none';
+            const formEl = document.getElementById('insuranceAgentForm');
+            if (formEl) formEl.style.display = 'none';
             window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function fireDemoSuccess(agentType, method) {
+            document.getElementById('insuranceAgentForm').style.display = 'none';
+            showConfirmationUI();
 
             gtag('event', 'partner_signup', {
                 partner_type: agentType,
@@ -1197,6 +1074,9 @@
                 medium:   utmContext.medium   || undefined,
                 campaign: utmContext.campaign || undefined,
                 content:  utmContext.content  || undefined,
+                variant:  getOqVariant(),
+                step:     'signup_submit',
+                funnel_id: utmContext.funnelId,
             });
 
             // gh-2006: intentionally no Meta Lead call in this function.
@@ -1212,217 +1092,6 @@
             // production); adding it would inflate a live event count with
             // a call that can never actually fire.
         }
-
-        // ---------------------------------------------------------------
-        // Google OAuth signup
-        // ---------------------------------------------------------------
-        // register_partner() (v95/v97 RPCs) requires a first/last name and
-        // email up front — Google only hands us the email, and only *after*
-        // the OAuth redirect completes. So: validate + stash name/phone
-        // now, send the visitor to Google with the redirect pointed back at
-        // THIS page (not auth-callback.html), then finish registering once
-        // Supabase's client-side SDK parses the returned session on load
-        // (see finishGoogleSignupIfPending() below). This reuses the exact
-        // same register_partner + claim_partner_account (v97) pairing the
-        // magic-link/password paths already rely on to link a credential
-        // created after the fact to an unclaimed referral_agents row — it
-        // does not invent a second linking mechanism.
-        const googleBtn = document.getElementById('google-btn');
-        const GOOGLE_BTN_DEFAULT_HTML = googleBtn.innerHTML;
-        const PENDING_SIGNUP_KEY = 'cs_pending_partner_signup';
-
-        googleBtn.addEventListener('click', async () => {
-            clearFormAlert();
-            clearAllFieldErrors();
-
-            const fullName = fullNameInput.value.trim();
-            const phone = phoneInput.value.trim();
-            const company = companyInput.value.trim();
-            const agreed = agreeInput.checked;
-
-            let firstInvalid = null;
-            if (!isValidFullName(fullName)) {
-                showFieldError(fullNameInput, document.getElementById('fullNameError'), 'Please enter your first and last name.');
-                firstInvalid = firstInvalid || fullNameInput;
-            }
-            if (!isValidPhone(phone)) {
-                showFieldError(phoneInput, document.getElementById('phoneError'), 'Please enter a valid phone number.');
-                firstInvalid = firstInvalid || phoneInput;
-            }
-            if (!isValidCompany(company)) {
-                showFieldError(companyInput, document.getElementById('companyError'), 'Please enter your brokerage or agency name.');
-                firstInvalid = firstInvalid || companyInput;
-            }
-            if (!agreed) {
-                document.getElementById('agreeError').classList.add('show');
-                firstInvalid = firstInvalid || agreeInput;
-            }
-            if (firstInvalid) { firstInvalid.focus(); return; }
-
-            const agentType = await confirmAgentType('insurance_agent');
-
-            if (window.CONFIG && window.CONFIG.DEMO_MODE) {
-                fireDemoSuccess(agentType, 'google');
-                return;
-            }
-
-            googleBtn.disabled = true;
-            googleBtn.textContent = 'Redirecting to Google…';
-
-            try {
-                localStorage.setItem(PENDING_SIGNUP_KEY, JSON.stringify({
-                    fullName, phone, company, agentType,
-                    recruitCode: recruitContext.recruitCode || null,
-                    utm: utmContext,
-                }));
-                localStorage.setItem('cs_auth_role', agentType);
-                await Auth.signInWithGoogle('/ins-1.html?g=1');
-            } catch (err) {
-                console.error('Google sign-in error:', err);
-                localStorage.removeItem(PENDING_SIGNUP_KEY);
-                googleBtn.disabled = false;
-                googleBtn.innerHTML = GOOGLE_BTN_DEFAULT_HTML;
-                showFormAlert('Google sign-in failed. Please try again or use the form below.');
-            }
-        });
-
-        // Completes a Google-initiated signup once this page reloads with
-        // an authenticated session (Supabase's client parses the returned
-        // token on page load because detectSessionInUrl defaults to true —
-        // no dependency on auth-callback.html).
-        let finishingGoogleSignup = false;
-        async function finishGoogleSignupIfPending() {
-            if (finishingGoogleSignup) return;
-            let pending;
-            try { pending = JSON.parse(localStorage.getItem(PENDING_SIGNUP_KEY) || 'null'); } catch (e) { pending = null; }
-            if (!pending) return;
-
-            let user = null;
-            try { user = await Auth.getUser(); } catch (e) { user = null; }
-            if (!user || !user.email) return; // OAuth exchange not finished yet; onAuthStateChange below will retry.
-
-            finishingGoogleSignup = true;
-            localStorage.removeItem(PENDING_SIGNUP_KEY);
-
-            const { firstName, lastName } = splitFullName(pending.fullName);
-            const utm = pending.utm || {};
-
-            try {
-                const { error: agentError } = await sb.rpc('register_partner', {
-                    p_agent_type:   pending.agentType,
-                    p_first_name:   firstName,
-                    p_last_name:    lastName,
-                    p_email:        user.email,
-                    p_phone:        pending.phone,
-                    p_company:      pending.company || null,
-                    p_recruit_code: pending.recruitCode || null,
-                    p_utm_source:   utm.source   || null,
-                    p_utm_medium:   utm.medium   || null,
-                    p_utm_campaign: utm.campaign || null,
-                    p_utm_content:  utm.content  || null,
-                    p_fbclid:       utm.fbclid   || null,
-                    p_li_fat_id:    utm.liFatId  || null,
-                    p_funnel_id:    utm.funnelId || null,
-                    // gh-2162 review fix (1): same predicate as the
-                    // password-form call site below and
-                    // trade-selector.html:1466 / dashboard.html:1812.
-                    p_is_test:      (window.Auth && typeof Auth.isTestEmail === 'function') ? Auth.isTestEmail(user.email) : false,
-                });
-
-                // partner_exists is expected/harmless here: it just means a
-                // row for this email already exists (e.g. the visitor
-                // clicked Google twice, or already has an unclaimed row
-                // from a prior attempt) — claim_partner_account below links
-                // this session to it regardless of which branch created it.
-                if (agentError && !(agentError.message || '').includes('partner_exists')) {
-                    throw agentError;
-                }
-
-                const { data: claim, error: claimError } = await sb.rpc('claim_partner_account');
-                if (claimError) throw claimError;
-
-                const claimed = claim && (claim.claimed || claim.reason === 'already_linked');
-                if (!claimed) {
-                    showFormAlert("We couldn't finish linking your Google account to a partner profile. If you already have a partner account under a different sign-in method, use Partner Login instead.");
-                    googleBtn.disabled = false;
-                    googleBtn.innerHTML = GOOGLE_BTN_DEFAULT_HTML;
-                    return;
-                }
-
-                localStorage.removeItem('cs_recruit_code');
-                localStorage.removeItem('cs_utm_context');
-
-                // gh-2078 PR #2092 review fix 2: both GA4 events below are
-                // now AWAITED (gtagEventAndWait) before the navigation a few
-                // lines down -- see that function's own comment for why an
-                // un-awaited gtag(...) call here was being lost. This changes
-                // partner_signup's behavior ONLY on this one call site (the
-                // Google-link path): it still fires with the exact same name/
-                // params as before, just with the navigation held back long
-                // enough to actually deliver it (or hit the bounded timeout).
-                // The password/demo paths' own partner_signup calls are
-                // untouched.
-                await gtagEventAndWait('partner_signup', {
-                    partner_type: pending.agentType,
-                    method: 'google',
-                    source:   utm.source   || 'direct',
-                    medium:   utm.medium   || undefined,
-                    campaign: utm.campaign || undefined,
-                    content:  utm.content  || undefined,
-                });
-
-                // gh-2078: GA4 partner_signup_complete for the real,
-                // production Google-link completion (register_partner +
-                // claim_partner_account both succeeded above). GA4 only --
-                // see immediately below for why Meta CompleteRegistration
-                // is deliberately not called on this path.
-                try {
-                    await gtagEventAndWait('partner_signup_complete', { variant: getOqVariant() });
-                } catch (e) {}
-
-                // gh-2006: intentionally no Meta Lead call on this path.
-                // This code runs on the page load that completes Google
-                // OAuth, whose URL fragment carries access_token/refresh_token/
-                // provider_token. js/meta-pixel-gate.js's urlHasAuthToken check
-                // (gh-1969) returns before fbevents.js ever loads on that load —
-                // a real security control (leaking a live Supabase token into
-                // Meta's `dl` param), not a bug, and out of scope to weaken. The
-                // gate's fbq stub still reports `loaded = true` (gh-2000 trap),
-                // so a call here would appear to work while silently never
-                // reaching Meta. Net effect: a partner who signs up via Google
-                // is deliberately unattributed to Meta. Recorded decision, not
-                // an oversight — see #2006 comment 5752218215.
-                //
-                // gh-2078: same predicate applies to CompleteRegistration --
-                // not called here either, for the identical reason.
-
-                window.location.replace('/partner-dashboard.html');
-            } catch (err) {
-                console.error('Google partner signup failed:', err);
-                showFormAlert('Something went wrong finishing your Google sign-up. Please try again or use the email form below, or email us at ' + (window.CONFIG ? CONFIG.SUPPORT_EMAIL : 'support') + '.');
-                googleBtn.disabled = false;
-                googleBtn.innerHTML = GOOGLE_BTN_DEFAULT_HTML;
-            } finally {
-                finishingGoogleSignup = false;
-            }
-        }
-
-        // gh-1292: both of these ran at PARSE TIME. js/config.js defers client
-        // creation to DOMContentLoaded (or later, via polling) and this page
-        // has zero DOMContentLoaded listeners of its own — the old
-        // `if (typeof sb === 'undefined') return;` guard just returned
-        // immediately, so the SIGNED_IN retry listener never registered and
-        // sb.rpc('register_partner') / sb.rpc('claim_partner_account') were
-        // unreachable. A Google partner signup could never complete.
-        // CONFIG.whenReady() runs this as soon as the client exists, whether
-        // that's now (post-DOMContentLoaded pages) or later.
-        CONFIG.whenReady(function (sb) {
-            if (!sb) return;
-            finishGoogleSignupIfPending();
-            sb.auth.onAuthStateChange((event) => {
-                if (event === 'SIGNED_IN') finishGoogleSignupIfPending();
-            });
-        });
 
         // ---------------------------------------------------------------
         // Email signup (gh-2154 P-1: no password collected at this step —
@@ -1462,9 +1131,10 @@
             }
             if (firstInvalid) { firstInvalid.focus(); return; }
 
-            // gh-865: explicit user confirmation — this, not the page
-            // default, is what gets written to referral_agents.agent_type.
-            const agentType = await confirmAgentType('insurance_agent');
+            // gh-2151 REVIEW FAIL 5836199486 (S08, DECIDED Ben): partner
+            // type is fixed by the page (INS1_AGENT_TYPE) — no confirmation
+            // pop-up.
+            const agentType = INS1_AGENT_TYPE;
             const { firstName, lastName } = splitFullName(fullName);
 
             const submitBtn = document.querySelector('#insuranceAgentForm button[type="submit"]');
@@ -1533,16 +1203,6 @@
                 }
 
                 const finalCode = agentData?.unique_code;
-                const finalLink = `https://otterquote.com/ref.html?code=${finalCode}`;
-
-                // #801: the SEO footer link is bare by default (no code —
-                // nothing to attribute for a first-time visitor). Once we
-                // have this partner's own code, carry it so a copied footer
-                // link still attributes correctly.
-                const seoRefLink = document.getElementById('seoRefLink');
-                if (seoRefLink && finalCode) {
-                    seoRefLink.href = `/ref-insurance.html?code=${finalCode}`;
-                }
 
                 // Store data for post-auth linking
                 localStorage.setItem('cs_partner_signup', JSON.stringify({
@@ -1593,6 +1253,9 @@
                     medium:   utmContext.medium   || undefined,
                     campaign: utmContext.campaign || undefined,
                     content:  utmContext.content  || undefined,
+                    variant:  getOqVariant(),
+                    step:     'signup_submit',
+                    funnel_id: utmContext.funnelId,
                 });
 
                 // gh-2006: Meta Lead — literal event name (not a custom
@@ -1603,24 +1266,23 @@
 
                 // gh-2078: partner_signup_complete -- the referral_agents
                 // row exists (register_partner above already succeeded).
-                // Fired here, ahead of the confirmation UI just below
-                // (checkEmailMessage / dashboard redirect), same ordering
-                // as partner-re.html's single password-path completion.
+                // Fired here, ahead of the confirmation UI just below, same
+                // ordering as partner-re.html's single password-path
+                // completion.
                 firePartnerSignupComplete(getOqVariant());
 
                 if (signUpResult && signUpResult.session) {
-                    // Auto-confirmed session — go straight to the dashboard.
-                    window.location.href = '/partner-dashboard.html';
+                    // gh-2151 REVIEW FAIL 5836199486 / LEGAL-READ FAIL
+                    // 5836215427 (S20, DECIDED Ben): an auto-confirmed
+                    // session also lands on the approved confirmation, not
+                    // the dashboard.
+                    showConfirmationUI();
                     return;
                 }
 
                 // Needs email confirmation — visible check-your-email state.
-                const referralLinkEl = document.getElementById('referralLink');
-                if (referralLinkEl) referralLinkEl.textContent = finalLink;
                 document.getElementById('checkEmailAddress').textContent = email;
                 document.getElementById('insuranceAgentForm').style.display = 'none';
-                document.getElementById('google-btn').style.display = 'none';
-                document.querySelector('.oauth-divider').style.display = 'none';
                 document.getElementById('checkEmailMessage').classList.add('show');
                 window.scrollTo({ top: 0, behavior: 'smooth' });
 
@@ -1633,24 +1295,8 @@
             }
         });
 
-        // Copy referral link
-        document.getElementById('copyBtn').addEventListener('click', function() {
-            const referralLink = document.getElementById('referralLink').textContent;
-            navigator.clipboard.writeText(referralLink).then(() => {
-                const btn = this;
-                const originalText = btn.textContent;
-                btn.textContent = '✓ Copied!';
-                btn.classList.add('copied');
-                setTimeout(() => {
-                    btn.textContent = originalText;
-                    btn.classList.remove('copied');
-                }, 2000);
-            });
-        });
     </script>
 
-<!-- Referral landing page link for SEO crawlability -->
-<p style="text-align:center;font-size:0.85rem;color:var(--slate);padding:8px 0 16px;"><a href="/ref-insurance.html" id="seoRefLink" style="color:var(--amber);">Homeowner referral landing page</a></p>
 <!-- gh-1994: router prefill -- reads ?lead=<uuid> (no PII in the URL) set by
      otterquote.com/start.html and fills name/email/phone via the
      get_lead_prefill() SECURITY DEFINER RPC (see
