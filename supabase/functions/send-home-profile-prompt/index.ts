@@ -24,16 +24,71 @@
  *
  * Environment variables:
  *   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, MAILGUN_API_KEY, SITE_URL
+ *   HOMEOWNER_OPTOUT_SECRET (gh-2013 / D-320 — REQUIRED to send; with it
+ *   unset this function sends nothing rather than send a commercial email
+ *   with no working opt-out. Same env var, same fail-closed contract as
+ *   send-homeowner-next-steps.)
+ *   HOMEOWNER_OPTOUT_SECRET_PREVIOUS (optional, verification only, rotation)
  *
  * Authorization:
  *   Accepts requests with no Authorization header (cron invocation via pg_net).
  *   Validates X-Cron-Secret header when called from cron to prevent open invocation.
  *   mark-job-complete passes its own service-role bearer to authorize.
  *   External (unauthenticated) calls with no secret header → 401.
+ *
+ * gh-2013 (this change) — CAN-SPAM footer + opt-out (fail-closed)
+ * ─────────────────────────────────────────────────────────────────────────
+ * This function's email previously had no physical postal address and no
+ * working opt-out mechanism — a commercial/promotional nudge (D-231), not a
+ * transactional receipt, so CAN-SPAM's address + opt-out requirements apply
+ * to it. gh-1786 / D-320 already built and shipped this exact fix for the
+ * sibling function send-homeowner-next-steps; this change imports the SAME
+ * three modules (colocated per this repo's no-`_shared/`-imports deploy
+ * constraint, same as the rest of this file) rather than writing a second
+ * implementation:
+ *   - ./email-footer.ts       — the resolved D-237 postal address (verbatim
+ *                                reuse of the string already ruled on for
+ *                                #1824 / #1944; not a new legal decision).
+ *   - ./optout-token.ts       — signed per-claim opt-out token + URL builder,
+ *                                same HOMEOWNER_OPTOUT_SECRET, same endpoint
+ *                                (homeowner-email-optout) and same
+ *                                activity_log event type
+ *                                (homeowner_nudge_opt_out) send-homeowner-
+ *                                next-steps already uses — one opt-out click
+ *                                stops BOTH nudge series for that claim.
+ *   - ./optout-filter.ts      — canSendWithOptOut() (fail-closed gate) and
+ *                                fetchOptedOutClaimIds() (bounded, filtered
+ *                                suppression read — see that file for why an
+ *                                unfiltered read is a truncation hazard).
+ * No new customer-facing copy is introduced: the postal address, the
+ * "Stop these updates" link text, and the opt-out confirmation page are all
+ * already-shipped, already-approved strings from #1786/#1944/#1824. The
+ * RFC 8058 `List-Unsubscribe` / `List-Unsubscribe-Post` headers on the
+ * Mailgun send point at the SAME per-claim signed URL the footer link uses
+ * — same link, a second place it appears, no new secret or endpoint.
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import {
+  footerPostalAddressHtml,
+  footerPostalAddressText,
+} from "./email-footer.ts";
+import {
+  canSendWithOptOut,
+  fetchOptedOutClaimIds,
+  type OptOutQueryClient,
+} from "./optout-filter.ts";
+import {
+  buildOptOutUrl,
+  OPTOUT_SECRET_ENV,
+  signOptOutToken,
+} from "./optout-token.ts";
+
+// gh-2013: verbatim reuse of D-320's already-approved footer copy (same
+// strings send-homeowner-next-steps/email-content.ts already ships).
+const OPTOUT_LINK_TEXT = "Stop these updates";
+const OPTOUT_TEXT_LINE = "Don't want these emails? Stop these updates:";
 
 const FUNCTION_NAME = "send-home-profile-prompt";
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
@@ -89,7 +144,15 @@ interface ClaimRow {
 
 interface ScanResult {
   claim_id: string;
-  result: "sent" | "too_early" | "already_sent" | "already_has_profile" | "no_email" | "error";
+  result:
+    | "sent"
+    | "too_early"
+    | "already_sent"
+    | "already_has_profile"
+    | "no_email"
+    | "error"
+    // gh-2013 / D-320: this homeowner asked for the series to stop.
+    | "opted_out";
   error?: string;
 }
 
@@ -187,8 +250,15 @@ function buildEmailContent(
   tradeLabel: string,
   address: string | null,
   profileUrl: string,
-  roofYear: number | null
+  roofYear: number | null,
+  optOutUrl: string
 ): { subject: string; textBody: string; htmlBody: string } {
+  if (!optOutUrl) {
+    // gh-2013: fail closed rather than emit a commercial email with no
+    // opt-out — same contract send-homeowner-next-steps/email-content.ts's
+    // buildEmailContent already enforces for D-320.
+    throw new Error("buildEmailContent: optOutUrl is required (gh-2013 / D-320)");
+  }
   const displayAddress = address || "your property";
   const firstName = homeownerName.split(" ")[0] || homeownerName;
 
@@ -228,6 +298,10 @@ function buildEmailContent(
     "─────────────────────────────────────────",
     "You're receiving this email because a project on your Otter Quotes account was recently marked complete.",
     "Manage your preferences at: https://otterquote.com/dashboard.html",
+    "",
+    `${OPTOUT_TEXT_LINE} ${optOutUrl}`,
+    "",
+    footerPostalAddressText(),
   ].join("\n");
 
   const roofYearNote = roofYear
@@ -359,6 +433,9 @@ function buildEmailContent(
                 <a href="https://otterquote.com/dashboard.html" style="color:#9CA3AF;">Manage your preferences</a>
                 &nbsp;·&nbsp;
                 <a href="https://otterquote.com" style="color:#9CA3AF;">otterquote.com</a>
+                &nbsp;·&nbsp;
+                <a href="${optOutUrl}" style="color:#9CA3AF;">${OPTOUT_LINK_TEXT}</a>
+                ${footerPostalAddressHtml()}
               </p>
             </td>
           </tr>
@@ -401,13 +478,28 @@ export async function processClaim(
   supabase: ProcessClaimSupabase,
   claim: ClaimRow,
   mailgunApiKey: string | undefined,
-  siteUrl: string
+  siteUrl: string,
+  // gh-2013 / D-320: the per-claim signed opt-out URL (built by the caller,
+  // which holds HOMEOWNER_OPTOUT_SECRET) and whether this claim's homeowner
+  // has already asked for the series to stop (resolved by the caller via
+  // ./optout-filter.ts's fetchOptedOutClaimIds, BEFORE any send is
+  // attempted — same ordering send-homeowner-next-steps' screenClaim uses).
+  optOutUrl: string,
+  isOptedOut: boolean
 ): Promise<ScanResult> {
   const claimId = claim.id;
 
   // Idempotency: already sent
   if (claim.profile_prompt_sent_at) {
     return { claim_id: claimId, result: "already_sent" };
+  }
+
+  // gh-2013 / D-320: opted-out claims are never emailed. Deliberately NOT
+  // stamped profile_prompt_sent_at — an opt-out is not a send, and leaving
+  // the stamp null costs nothing (the opt-out check itself is cheap and
+  // runs before any send attempt on every future cron tick too).
+  if (isOptedOut) {
+    return { claim_id: claimId, result: "opted_out" };
   }
 
   // 24-hour gate
@@ -475,7 +567,8 @@ export async function processClaim(
     tradeLabel,
     claim.property_address,
     profileUrl,
-    roofYear
+    roofYear,
+    optOutUrl
   );
 
   // Send via Mailgun
@@ -505,6 +598,12 @@ export async function processClaim(
     formData.append("subject", subject);
     formData.append("text", textBody);
     formData.append("html", htmlBody);
+    // gh-2013: RFC 8058 mailbox-provider one-click unsubscribe, same signed
+    // link the footer already carries — see this file's header comment.
+    // Mailgun passes any `h:<Header-Name>` form field through as a literal
+    // MIME header.
+    formData.append("h:List-Unsubscribe", `<${optOutUrl}>`);
+    formData.append("h:List-Unsubscribe-Post", "List-Unsubscribe=One-Click");
 
     try {
       const mgResponse = await fetch(
@@ -603,6 +702,13 @@ serve(async (req: Request) => {
   const mailgunApiKey   = Deno.env.get("MAILGUN_API_KEY");
   const siteUrl         = Deno.env.get("SITE_URL") || "https://otterquote.com";
   const cronSecret      = Deno.env.get("CRON_SECRET");  // optional — set to secure cron calls
+  // gh-2013 / D-320: the opt-out signing secret. No secret -> no verifiable
+  // "stop these updates" link -> no send at all. Fails CLOSED (see
+  // canSendWithOptOut in ./optout-filter.ts).
+  const optOutSecret    = Deno.env.get(OPTOUT_SECRET_ENV);
+  // Functions base URL for the opt-out endpoint: same project, sibling
+  // function (homeowner-email-optout).
+  const functionsBaseUrl = `${(supabaseUrl || "").replace(/\/$/, "")}/functions/v1`;
 
   if (!supabaseUrl || !serviceRoleKey) {
     return jsonResponse({ ok: false, error: "Server configuration error" }, 500, corsHeaders);
@@ -634,6 +740,23 @@ serve(async (req: Request) => {
     return jsonResponse({ ok: false, error: "Unauthorized" }, 401, corsHeaders);
   }
 
+  // gh-2013 / D-320 — CAN-SPAM gate, ahead of any claim scan. A commercial
+  // email with no working opt-out is the violation this issue was filed on,
+  // so an unset HOMEOWNER_OPTOUT_SECRET stops the whole run rather than
+  // degrading to the pre-fix behaviour. 200 with a named reason, not 500:
+  // nothing is broken, the function is correctly refusing. Same contract as
+  // send-homeowner-next-steps/index.ts's identical gate.
+  if (!canSendWithOptOut(optOutSecret)) {
+    console.error(
+      `[${FUNCTION_NAME}] ${OPTOUT_SECRET_ENV} is not set — refusing to send: D-320 requires a working opt-out link in every message`,
+    );
+    return jsonResponse(
+      { ok: true, processed: 0, skipped: 0, skipped_no_optout_secret: true, results: [] },
+      200,
+      corsHeaders,
+    );
+  }
+
   // ── Parse body ───────────────────────────────────────────────────────────────
   let body: Record<string, unknown> = {};
   try {
@@ -662,13 +785,37 @@ serve(async (req: Request) => {
       return jsonResponse({ ok: true, result: "too_early" }, 200, corsHeaders);
     }
 
+    // gh-2013 / D-320: this claim's own bounded opt-out read, and its
+    // per-claim signed opt-out URL. optOutSecret is guaranteed non-empty
+    // here — canSendWithOptOut() already gated the whole handler above.
+    const { optedOut: targetedOptedOut, error: targetedOptOutErr } = await fetchOptedOutClaimIds(
+      supabase as unknown as OptOutQueryClient,
+      [(claim as ClaimRow).user_id],
+      [targetClaimId],
+    );
+    if (targetedOptOutErr) {
+      console.error(`[${FUNCTION_NAME}] opt-out read failed for claim ${targetClaimId}:`, targetedOptOutErr.message);
+      return jsonResponse({ ok: false, error: "opt-out read failed" }, 500, corsHeaders);
+    }
+    const targetedOptOutUrl = buildOptOutUrl(
+      functionsBaseUrl,
+      await signOptOutToken(targetClaimId, optOutSecret as string),
+    );
+
     // gh-2069 REVIEW FIX (CI red on head d3637483): the real SupabaseClient's
     // PostgrestBuilder chain is thenable but not a structural match for
     // ProcessClaimSupabase's PromiseLike<> methods under this Deno/TS
     // version (TS2589, same pre-existing type-instantiation-depth class
     // documented at this file's top) -- this cast is load-bearing for
     // `deno check` only; at runtime `supabase` is unchanged.
-    const result = await processClaim(supabase as unknown as ProcessClaimSupabase, claim as ClaimRow, mailgunApiKey, siteUrl);
+    const result = await processClaim(
+      supabase as unknown as ProcessClaimSupabase,
+      claim as ClaimRow,
+      mailgunApiKey,
+      siteUrl,
+      targetedOptOutUrl,
+      targetedOptedOut.has(targetClaimId),
+    );
     return jsonResponse({ ok: true, ...result }, 200, corsHeaders);
   }
 
@@ -696,13 +843,42 @@ serve(async (req: Request) => {
 
   console.log(`[${FUNCTION_NAME}] Batch: processing ${claims.length} eligible claims`);
 
+  // gh-2013 / D-320: ONE bounded, filtered opt-out read for the whole batch
+  // (not per-claim) — same shape as send-homeowner-next-steps/index.ts's
+  // fetchOptedOutClaimIds call. optOutSecret is guaranteed non-empty here;
+  // canSendWithOptOut() already gated the whole handler above.
+  const batchUserIds = [...new Set((claims as ClaimRow[]).map((c) => c.user_id))];
+  const batchClaimIds = (claims as ClaimRow[]).map((c) => c.id);
+  const { optedOut: batchOptedOutClaimIds, error: batchOptOutErr } = await fetchOptedOutClaimIds(
+    supabase as unknown as OptOutQueryClient,
+    batchUserIds,
+    batchClaimIds,
+  );
+  if (batchOptOutErr) {
+    console.error(`[${FUNCTION_NAME}] opt-out read failed:`, batchOptOutErr.message);
+    return jsonResponse({ ok: false, error: "opt-out read failed" }, 500, corsHeaders);
+  }
+
   const results: ScanResult[] = [];
   let processed = 0;
   let skipped = 0;
 
   for (const claim of claims as ClaimRow[]) {
     try {
-      const result = await processClaim(supabase as unknown as ProcessClaimSupabase, claim, mailgunApiKey, siteUrl);
+      // gh-2013 / D-320: per-claim signed opt-out URL, built fresh for every
+      // claim (the token payload is the claim id — see ./optout-token.ts).
+      const optOutUrl = buildOptOutUrl(
+        functionsBaseUrl,
+        await signOptOutToken(claim.id, optOutSecret as string),
+      );
+      const result = await processClaim(
+        supabase as unknown as ProcessClaimSupabase,
+        claim,
+        mailgunApiKey,
+        siteUrl,
+        optOutUrl,
+        batchOptedOutClaimIds.has(claim.id),
+      );
       results.push(result);
       if (result.result === "sent") processed++;
       else skipped++;
