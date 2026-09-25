@@ -18,6 +18,7 @@ function partner(overrides: Partial<PartnerRow> = {}): PartnerRow {
     agent_type: "re_agent",
     is_test: false,
     email: "partner@example.com",
+    first_name: "Pat",
     app_first_signed_in_launch_at: null,
     onboarding_opted_out_at: null,
     ...overrides,
@@ -187,10 +188,36 @@ Deno.test("the unsubscribe link is present in BOTH bodies of every rendered stag
   assertEquals(send.htmlBody.includes("partner-email-optout"), true);
 });
 
-// ── placeholder copy (still blocks — unchanged property, re-verified here) ─
-
-Deno.test("placeholder copy still in place: switch ON, opt-out configured, still 0 sends, 0 claims", async () => {
+// ── placeholder-copy guard ───────────────────────────────────────────────
+//
+// gh-2154 P-4: the real (Dustin-approved) copy has landed in ./copy.ts —
+// this used to be a test that switch-ON + real opt-out secret STILL sent
+// nothing because the shipped copy was an obvious `[[...]]` placeholder.
+// That is no longer true (see copy.test.ts's fail-first-on-792acb33 tests
+// for the approved-text assertions), so this test now asserts the inverse:
+// with the switch ON, a real send happens using the DEFAULT (real, un-faked)
+// copy module — i.e. runOnboardingSweep's default `getCopy` really is
+// wired to the approved copy, not left on a fake in some code path.
+Deno.test("real (approved) copy in place: switch ON, opt-out configured — sends using the default (non-faked) copy module", async () => {
   const { deps, rec } = buildDeps({ settingValue: true, partners: [partner()] });
+  const outcome = await runOnboardingSweep(deps);
+  if (outcome.ok && "results" in outcome) {
+    assertEquals(outcome.results, [{ partner_id: "p1", sent: "day0" }]);
+  }
+  assertEquals(rec.sends.length, 1);
+  assertEquals(rec.claims.length, 1);
+  const [send] = rec.sends;
+  // Real subject (day0, re_agent — see copy.test.ts), not a bracket marker.
+  assertEquals(send.subject, "Your Otter Quotes partner account is ready");
+  assertEquals(send.subject.includes("[["), false);
+});
+
+// The mechanical placeholder-copy safety net itself must still work,
+// independent of whatever real copy currently ships — proven with a faked
+// getCopy that deliberately still returns a `[[...]]`-marked message.
+Deno.test("placeholder-copy guard mechanism: a still-placeholder message (faked) blocks send and claim", async () => {
+  const { deps, rec } = buildDeps({ settingValue: true, partners: [partner()] });
+  deps.getCopy = () => ({ subject: "[[placeholder subject]]", textBody: "x", htmlBody: "<p>x</p>" });
   const outcome = await runOnboardingSweep(deps);
   if (outcome.ok && "results" in outcome) {
     assertEquals(outcome.results, [{ partner_id: "p1", skipped_reason: "placeholder_copy" }]);
