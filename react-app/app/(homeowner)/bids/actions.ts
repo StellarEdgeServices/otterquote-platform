@@ -140,7 +140,12 @@ export async function awardClaimToContractor(params: {
   // gh-2105 (decision a): same zero-row-silent-success gap as the claim
   // write above -- the winning bid must actually flip to 'selected'.
   if (!Array.isArray(winRows) || winRows.length === 0) {
-    return { ok: false, error: 'winning_bid_zero_rows: no matching quote row was updated' };
+    // gh-2105 REVIEW FAIL nit: route through mapAwardError for the same
+    // reason :122/:131 do, even though today's only mapped sentinel
+    // (NO_PAYMENT_METHOD) can't appear here -- mapAwardError is a no-op
+    // passthrough for any other string, so this costs nothing and keeps
+    // every error this function returns on one consistent path.
+    return { ok: false, error: mapAwardError('winning_bid_zero_rows: no matching quote row was updated') };
   }
 
   const { data: rejectRows, error: rejectErr } = await supabase
