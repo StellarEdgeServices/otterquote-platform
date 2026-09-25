@@ -562,6 +562,18 @@
     let bids = [];
     let contractors = {};  // keyed by contractor_id
     let licensesByContractor = {};  // #534: contractor_licenses_public rows keyed by contractor_id (D-218)
+
+    // gh-1964 should-fix: owner-photo blob: URLs created by
+    // resolveContractorPhotos(), tracked so a later call (this page polls
+    // for new bids every 30s and re-resolves) can revoke the previous set
+    // instead of leaking them, and so page hide can revoke them too. This
+    // page is Clarity-recorded, masked (data-clarity-mask="true" above).
+    let ownerPhotoBlobUrls = [];
+    function revokeOwnerPhotoBlobUrls() {
+        ownerPhotoBlobUrls.forEach(function (u) { URL.revokeObjectURL(u); });
+        ownerPhotoBlobUrls = [];
+    }
+    window.addEventListener('pagehide', revokeOwnerPhotoBlobUrls);
     let currentView = 'grid';
 
     // ── Init ──
@@ -1159,7 +1171,17 @@
         const { data, error } = await sb.storage
           .from('contractor-documents')
           .createSignedUrl(storagePath, 3600);
-        return (!error && data?.signedUrl) ? data.signedUrl : null;
+        if (error || !data?.signedUrl) return null;
+        // gh-1964 should-fix: fetch the photo ourselves and hand back a
+        // same-origin blob: URL instead of the raw signed URL -- the
+        // caller writes this straight into an <img src>, and the signed
+        // URL must never be the thing that lands there.
+        const photoResp = await fetch(data.signedUrl);
+        if (!photoResp.ok) return null;
+        const photoBlob = await photoResp.blob();
+        const blobUrl = URL.createObjectURL(photoBlob);
+        ownerPhotoBlobUrls.push(blobUrl);
+        return blobUrl;
       } catch (e) {
         return null;
       }
@@ -1168,6 +1190,10 @@
     // Pre-resolve signed URLs for all loaded contractors into c._resolvedPhotoUrl.
     // Called before render() so the synchronous map can use the resolved value.
     async function resolveContractorPhotos() {
+      // gh-1964 must-fix 2: revoke the previous batch of owner-photo blob:
+      // URLs before creating a new one -- this runs again every time
+      // pollForBids() finds new bids, not just once.
+      revokeOwnerPhotoBlobUrls();
       await Promise.all(Object.values(contractors).map(async (c) => {
         if (c.owner_photo_url) {
           c._resolvedPhotoUrl = await getSignedOwnerPhotoUrl(c.owner_photo_url);

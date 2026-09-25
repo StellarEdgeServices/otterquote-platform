@@ -1258,6 +1258,22 @@
         // Companion ticket: 86e169f1y (complete)
         const INTRO_VIDEO_ENABLED = true;
 
+        // gh-1964 review fix (must-fix 2): the intro-video blob: URL
+        // created for playback, tracked at module scope so a re-render
+        // (initial load, and again after a new video is saved) can
+        // revoke the previous one instead of leaking it.
+        let introVideoBlobUrl = null;
+        function revokeIntroVideoBlobUrl() {
+            if (introVideoBlobUrl) {
+                URL.revokeObjectURL(introVideoBlobUrl);
+                introVideoBlobUrl = null;
+            }
+        }
+        // gh-1964 review fix (must-fix 2): revoke on page hide, not just
+        // on the next re-render -- pagehide covers navigation/tab-close
+        // (and fires reliably for bfcache, unlike beforeunload).
+        window.addEventListener('pagehide', revokeIntroVideoBlobUrl);
+
         // Project Confirmation Templates feature flag — turned OFF 2026-08-25.
         // Business decision: OtterQuote now only signs contracts where the roof is
         // already approved, so bidding is a one-step process (contract only) — the
@@ -1792,49 +1808,85 @@
             if (!card) return;
             card.style.display = '';
 
+            // gh-1964 review fix (must-fix 2): revoke any blob: URL left
+            // over from a previous render (this function runs again after
+            // a new video is saved) before rebuilding the card.
+            revokeIntroVideoBlobUrl();
+
+            const previewEl = document.getElementById('introVideoPreviewView');
+            if (!previewEl) return;
+
             if (!contractorRecord || !sb) return;
             const videoPath = contractorRecord.intro_video_path;
-            if (!videoPath) return;
+            if (!videoPath) {
+                previewEl.style.padding = 'var(--sp-6)';
+                previewEl.style.background = '';
+                previewEl.textContent = 'No intro video uploaded yet';
+                return;
+            }
 
+            // gh-1964 review fix (must-fix 1): a signed video URL used to be
+            // fetched (up to 200 MB) on every page load, before the player
+            // even showed. Only the lightweight signed-URL creation happens
+            // here; the actual video bytes are fetched in
+            // loadAndPlayIntroVideo(), on explicit user click. This is also
+            // the simplest way to keep the signed URL out of any *persistent*
+            // DOM attribute: nothing about the video is written into the DOM
+            // until the fetched bytes are already a same-origin blob: URL.
+            previewEl.style.padding = '0';
+            previewEl.style.background = '#000';
+            previewEl.innerHTML = '';
+            const playBtn = document.createElement('button');
+            playBtn.type = 'button';
+            playBtn.className = 'btn btn-secondary';
+            playBtn.textContent = '\u25B6 Play intro video';
+            playBtn.style.cssText = 'width:100%;max-width:480px;aspect-ratio:16/9;display:block;margin:0 auto;';
+            playBtn.onclick = function () { loadAndPlayIntroVideo(videoPath); };
+            previewEl.appendChild(playBtn);
+        }
+
+        // gh-1964 review fix (must-fix 1): fetches and plays the intro video
+        // only when the contractor explicitly clicks the play control. Keeps
+        // the signed URL itself out of the DOM the same way the eager path
+        // used to: fetch the bytes, hand the <video> a same-origin blob: URL.
+        async function loadAndPlayIntroVideo(videoPath) {
+            const previewEl = document.getElementById('introVideoPreviewView');
+            if (!previewEl || !contractorRecord || !sb) return;
+            previewEl.innerHTML = '';
+            const loadingEl = document.createElement('div');
+            loadingEl.style.cssText = 'color:#fff;padding:var(--sp-6);text-align:center;';
+            loadingEl.textContent = 'Loading video\u2026';
+            previewEl.appendChild(loadingEl);
             try {
                 const pathMatch = videoPath.match(/contractor-documents\/(.+?)(\?|$)/);
                 const storagePath = pathMatch ? decodeURIComponent(pathMatch[1]) : videoPath;
                 const { data: signedData, error: signErr } = await sb.storage
                     .from('contractor-documents')
                     .createSignedUrl(storagePath, 3600);
-                if (signErr || !signedData || !signedData.signedUrl) return;
-                const previewEl = document.getElementById('introVideoPreviewView');
-                if (!previewEl) return;
-                // gh-1964 artifact 5: the signed URL is a bearer credential --
-                // it must never be written into the DOM (not as a src
-                // attribute, not via innerHTML), or anything reading the DOM
-                // (a session recorder, an extension, a screen share) can read
-                // it out. Fetch the bytes ourselves and hand the <video> a
-                // same-origin blob: URL instead; the token itself never
-                // touches the DOM and lives only in memory for this fetch.
-                let blobUrl;
-                try {
-                    const videoResp = await fetch(signedData.signedUrl);
-                    if (!videoResp.ok) return;
-                    const videoBlob = await videoResp.blob();
-                    blobUrl = URL.createObjectURL(videoBlob);
-                } catch (fetchErr) {
-                    console.warn('renderIntroVideoCard blob fetch failed:', fetchErr);
-                    return;
-                }
-                previewEl.style.padding = '0';
-                previewEl.style.background = '#000';
+                if (signErr || !signedData || !signedData.signedUrl) throw (signErr || new Error('no signed url'));
+                const videoResp = await fetch(signedData.signedUrl);
+                if (!videoResp.ok) throw new Error('video fetch failed: ' + videoResp.status);
+                const videoBlob = await videoResp.blob();
+                // gh-1964 review fix (must-fix 2): revoke the just-superseded
+                // blob (e.g. a second click) before creating the new one.
+                revokeIntroVideoBlobUrl();
+                introVideoBlobUrl = URL.createObjectURL(videoBlob);
+                if (document.getElementById('introVideoPreviewView') !== previewEl) return;
                 previewEl.innerHTML = '';
                 const videoEl = document.createElement('video');
                 videoEl.controls = true;
-                videoEl.preload = 'metadata';
+                videoEl.autoplay = true;
                 videoEl.playsInline = true;
                 videoEl.style.cssText = 'width:100%;max-width:480px;aspect-ratio:16/9;border-radius:var(--radius-md);display:block;margin:0 auto;';
-                videoEl.src = blobUrl;
+                videoEl.src = introVideoBlobUrl;
                 previewEl.appendChild(videoEl);
-                window.addEventListener('beforeunload', function () { URL.revokeObjectURL(blobUrl); }, { once: true });
             } catch (e) {
-                console.warn('renderIntroVideoCard signed URL failed:', e);
+                console.warn('loadAndPlayIntroVideo failed:', e);
+                previewEl.innerHTML = '';
+                const errEl = document.createElement('div');
+                errEl.style.cssText = 'color:#fff;padding:var(--sp-6);text-align:center;';
+                errEl.textContent = 'Unable to load video. Please try again.';
+                previewEl.appendChild(errEl);
             }
         }
 

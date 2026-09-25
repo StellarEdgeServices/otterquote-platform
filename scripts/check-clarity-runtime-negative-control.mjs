@@ -122,6 +122,19 @@ const cases = [
   { name: 'AUTH    /contractor-profile.html', hostname: 'otterquote.com', pathname: '/contractor-profile.html', expectClarity: false },
   { name: 'AUTH    /admin-payouts.html', hostname: 'otterquote.com', pathname: '/admin-payouts.html', expectClarity: false },
   { name: 'AUTH    /partner-dashboard.html', hostname: 'otterquote.com', pathname: '/partner-dashboard.html', expectClarity: false },
+  // gh-1964 should-fix (test coverage): an extensionless pathname, not
+  // just a '.html'-stripped one -- normalizeClarityPath's slice(-5)==='.html'
+  // branch is a no-op here, so this exercises the allowlist match on the
+  // path exactly as CLARITY_ALLOWED_PATHS stores it.
+  { name: 'AUTH-RULED /bids (extensionless)', hostname: 'otterquote.com', pathname: '/bids', expectClarity: true },
+  // gh-1964 should-fix (test coverage): a masked AUTH-RULED page --
+  // contractor-about.html carries data-clarity-mask="true" (gh-1939 scope
+  // extension) and IS on CLARITY_ALLOWED_PATHS, unlike the plain AUTH
+  // cases above. This confirms the gate lets Clarity load there (the
+  // masking itself is enforced by check-clarity-page-gate.py's
+  // RULED_AUTHENTICATED_ALLOWED check on the page's own markup, not by
+  // this runtime control).
+  { name: 'AUTH-RULED /contractor-about.html (masked)', hostname: 'otterquote.com', pathname: '/contractor-about.html', expectClarity: true },
 ];
 
 let failures = 0;

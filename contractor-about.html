@@ -450,6 +450,17 @@
     let bid = null;
     let claim = null;
 
+    // gh-1964 should-fix: blob: URLs created for the intro video / owner
+    // photo (this page is Clarity-recorded, masked -- data-clarity-mask=
+    // "true" above), tracked so a re-render or page hide can revoke them.
+    let introVideoBlobUrl = null;
+    let heroAvatarBlobUrl = null;
+    function revokeAboutPageBlobUrls() {
+        if (introVideoBlobUrl) { URL.revokeObjectURL(introVideoBlobUrl); introVideoBlobUrl = null; }
+        if (heroAvatarBlobUrl) { URL.revokeObjectURL(heroAvatarBlobUrl); heroAvatarBlobUrl = null; }
+    }
+    window.addEventListener('pagehide', revokeAboutPageBlobUrls);
+
     // ── Init ──
     async function init() {
       try {
@@ -530,10 +541,10 @@
     // (pre-v67 migration). Once column exists, surfaces video naturally.
     async function loadAndRenderIntroVideo() {
       if (!contractorId) return;
-      let videoPath = null;
+      let videoPath;
       try {
         const { data, error } = await sb
-          .rpc('get_contractors_public')
+          .from('contractors')
           .select('intro_video_path')
           .eq('id', contractorId)
           .maybeSingle();
@@ -544,22 +555,51 @@
       }
       if (!videoPath) return;
 
-      try {
-        const pathMatch = videoPath.match(/contractor-documents\/(.+?)(\?|$)/);
-        const storagePath = pathMatch ? decodeURIComponent(pathMatch[1]) : videoPath;
-        const { data: signedData, error: signErr } = await sb.storage
-          .from('contractor-documents')
-          .createSignedUrl(storagePath, 3600);
-        if (signErr || !signedData || !signedData.signedUrl) return;
+      const cardEl = document.getElementById('introVideoCard');
+      const playerEl = document.getElementById('introVideoPlayer');
+      if (!cardEl || !playerEl) return;
 
-        const playerEl = document.getElementById('introVideoPlayer');
-        const cardEl = document.getElementById('introVideoCard');
-        if (!playerEl || !cardEl) return;
-        playerEl.src = signedData.signedUrl;
-        cardEl.style.display = '';
-      } catch (_) {
-        // Storage failure — leave card hidden
-      }
+      // gh-1964 review fix (must-fix 1/5, applied here like-for-like with
+      // contractor-profile.html): don't fetch the video, or even the signed
+      // URL, until the homeowner explicitly clicks play. Show a play button
+      // in place of the <video> until then.
+      const playerParent = playerEl.parentNode;
+      playerEl.style.display = 'none';
+      const playBtn = document.createElement('button');
+      playBtn.type = 'button';
+      playBtn.className = 'intro-video-play-btn';
+      playBtn.setAttribute('aria-label', 'Play intro video');
+      playBtn.style.cssText = 'width:100%;aspect-ratio:16/9;background:#000;color:#fff;border:none;border-radius:inherit;cursor:pointer;font-size:1rem;';
+      playBtn.textContent = '\u25B6 Play intro video';
+      playBtn.onclick = async function () {
+        playBtn.disabled = true;
+        playBtn.textContent = 'Loading\u2026';
+        try {
+          const pathMatch = videoPath.match(/contractor-documents\/(.+?)(\?|$)/);
+          const storagePath = pathMatch ? decodeURIComponent(pathMatch[1]) : videoPath;
+          const { data: signedData, error: signErr } = await sb.storage
+            .from('contractor-documents')
+            .createSignedUrl(storagePath, 3600);
+          if (signErr || !signedData || !signedData.signedUrl) throw (signErr || new Error('no signed url'));
+          const videoResp = await fetch(signedData.signedUrl);
+          if (!videoResp.ok) throw new Error('video fetch failed: ' + videoResp.status);
+          const videoBlob = await videoResp.blob();
+          // gh-1964 must-fix 2: revoke any previous intro-video blob before
+          // creating this one (re-render / repeat click).
+          if (introVideoBlobUrl) { URL.revokeObjectURL(introVideoBlobUrl); introVideoBlobUrl = null; }
+          introVideoBlobUrl = URL.createObjectURL(videoBlob);
+          playerEl.src = introVideoBlobUrl;
+          playerEl.style.display = '';
+          if (playerParent && playBtn.parentNode === playerParent) playerParent.removeChild(playBtn);
+          playerEl.play().catch(function () { /* autoplay may be blocked; controls remain */ });
+        } catch (e) {
+          console.warn('loadAndRenderIntroVideo play failed:', e);
+          playBtn.disabled = false;
+          playBtn.textContent = 'Unable to load video. Try again.';
+        }
+      };
+      if (playerParent) playerParent.insertBefore(playBtn, playerEl);
+      cardEl.style.display = '';
     }
 
     async function loadCertifications() {
@@ -610,7 +650,16 @@
             .from('contractor-documents')
             .createSignedUrl(storagePath, 3600);
           if (!signErr && signedData?.signedUrl) {
-            heroAvatarHtml = `<img src="${signedData.signedUrl}" alt="${esc(c.company_name)}">`;
+            // gh-1964 should-fix: fetch the photo ourselves and use a
+            // same-origin blob: URL rather than writing the signed URL
+            // straight into the DOM as an <img src>.
+            const photoResp = await fetch(signedData.signedUrl);
+            if (photoResp.ok) {
+              const photoBlob = await photoResp.blob();
+              if (heroAvatarBlobUrl) { URL.revokeObjectURL(heroAvatarBlobUrl); heroAvatarBlobUrl = null; }
+              heroAvatarBlobUrl = URL.createObjectURL(photoBlob);
+              heroAvatarHtml = `<img src="${heroAvatarBlobUrl}" alt="${esc(c.company_name)}">`;
+            }
           }
         } catch (_) { /* fall through to initials */ }
       }
