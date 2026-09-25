@@ -109,6 +109,23 @@ ALL_PAGES = VERTICAL_PAGES + ["partner-app", "partner-login", "partner-dashboard
 # as static_funnel_unmapped -- the same convention D266_JS_SURFACES uses for
 # js/router-discovery.js below (see also re-1's identical registration,
 # gh-2150, commit 524f85c6).
+#
+# gh-2031 (CEO57 triage, comment 5768832182): partners.html is the
+# profession-picker hub every vertical partner page links out from, and
+# already carries the D-266 disclaimer verbatim (wrapped across four source
+# lines -- see the "Note on matching" / _norm() above). It matches neither
+# the partner-insurance* glob nor any ALL_PAGES entry (the hyphen in
+# "partner-*" is load-bearing; "partners" is not "partner-*"), so it was
+# unguarded: the disclaimer could be deleted and this whole script would
+# stay green. Registered explicitly, same convention as re-1/ins-1 above,
+# rather than folded into the ALL_PAGES-derived glob, since it is a hub
+# page, not a vertical (the other ALL_PAGES-driven checks in this file --
+# signed_in_redirect, dashboard_access_block -- assume a vertical-page
+# shape that partners.html does not have; it is added to D266_PAGES only).
+# This also retires the STATIC_FUNNEL_EXEMPT["partners.html"] entry above:
+# once partners.html is enumerated in D266_PAGES it is in the checked set
+# find_unmapped_static_funnels() consults, so that exemption entry would
+# never fire again -- removed rather than left as dead documentation.
 D266_PAGES = sorted(
     {p.stem for p in REPO_ROOT.glob("partner-insurance*.html")}
     | {
@@ -118,6 +135,7 @@ D266_PAGES = sorted(
     }
     | {"re-1"}
     | {"ins-1"}
+    | {"partners"}
 )
 
 D266_TEXT = (
@@ -348,17 +366,6 @@ STATIC_FUNNEL_EXEMPT = {
     "ref.html": (
         "Short-link redirect/resolver page; the match is its \"Referral link "
         "not found\" error state, not fee content."
-    ),
-    "partners.html": (
-        "Finding surfaced by this build, not fixed by it (out of gh-2020's "
-        "two named items): this is the profession-picker hub the vertical "
-        "pages link out from, and it already carries the D-266 disclaimer "
-        "verbatim -- this file's own \"Note on matching\" above already "
-        "documents partners.html wrapping the sentence across lines -- but "
-        "it is in neither ALL_PAGES nor D266_PAGES, so nothing here actually "
-        "verifies that today. Structurally the same class of gap this build "
-        "closes for router-discovery.js; left open and reported rather than "
-        "folded in, since gh-2020 scopes this build to exactly two items."
     ),
     "js/auth.js": (
         "Source-code comment describing referral-status tracking logic "
