@@ -3,7 +3,7 @@
 // deno test --allow-read=supabase/functions supabase/functions/meta-leadgen-webhook/
 import { assert, assertEquals, assertFalse } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import { computeHmacSha256Hex, SIGNATURE_PREFIX } from "./signature.ts";
-import { handlePost, handleVerification, type WebhookDeps } from "./handler.ts";
+import { handlePost, handleVerification, interpretRateLimitResult, type WebhookDeps } from "./handler.ts";
 
 const APP_SECRET = "meta-app-secret-fixture-not-real-000";
 const VERIFY_TOKEN = "meta-leadgen-verify-token-fixture-not-real";
@@ -255,14 +255,45 @@ Deno.test("POST: rate-limited request (allowed:false) returns 429, no register c
   assertEquals(counters.registerCalls, 0);
 });
 
-Deno.test("POST: rate-limit RPC error fails OPEN (processing continues)", async () => {
+// gh-2154 P-5 R-097 (issue comment 5825166960): checkRateLimit() used to
+// fail OPEN on an RPC error, an inconsistency flagged in the risk brief
+// relative to every other fail-closed guard in this branch. It now fails
+// CLOSED: an RPC error or a malformed/unexpected RPC response both stop the
+// request before any dedupe check, Graph API fetch, or register_partner()
+// write. This is safe for Meta specifically because Meta retries webhook
+// deliveries on any non-2xx response, and the re-delivered lead is made
+// idempotent downstream by the meta_lead_id UNIQUE constraint plus the
+// isDuplicate() check -- so a transient rate-limit RPC blip costs a retry,
+// never a lost or duplicated partner.
+Deno.test("POST: rate-limit RPC error fails CLOSED -- 503, zero dedupe/fetch/register calls", async () => {
   const body = leadgenBody();
   const sig = await sign(body);
   const counters: Counters = { fetchCalls: 0, registerCalls: 0, duplicateCalls: 0, rateLimitCalls: 0 };
   const deps = makeDeps({ checkRateLimit: async () => { counters.rateLimitCalls++; return { allowed: false, errored: true }; } }, counters);
   const { response, outcomes } = await handlePost(body, sig, "1.2.3.4", deps);
-  assertEquals(response.status, 200);
-  assertEquals(outcomes[0].outcome, "registered");
+  assertEquals(response.status, 503);
+  assertEquals(outcomes.length, 0);
+  assertEquals(counters.registerCalls, 0);
+  assertEquals(counters.fetchCalls, 0);
+  assertEquals(counters.duplicateCalls, 0);
+});
+
+Deno.test("POST: rate-limit RPC malformed response (errored flag set by the caller) fails CLOSED -- 503, zero dedupe/fetch/register calls", async () => {
+  // The malformed-shape detection itself lives in index.ts's interpretation
+  // of the raw RPC result (see interpretRateLimitResult in handler.ts) --
+  // this exercises handlePost's side of the contract: any deps.checkRateLimit
+  // call that reports errored:true, for whatever reason, must fail closed
+  // identically to an outright RPC throw.
+  const body = leadgenBody();
+  const sig = await sign(body);
+  const counters: Counters = { fetchCalls: 0, registerCalls: 0, duplicateCalls: 0, rateLimitCalls: 0 };
+  const deps = makeDeps({ checkRateLimit: async () => { counters.rateLimitCalls++; return { allowed: true, errored: true }; } }, counters);
+  const { response, outcomes } = await handlePost(body, sig, "1.2.3.4", deps);
+  assertEquals(response.status, 503);
+  assertEquals(outcomes.length, 0);
+  assertEquals(counters.registerCalls, 0);
+  assertEquals(counters.fetchCalls, 0);
+  assertEquals(counters.duplicateCalls, 0);
 });
 
 Deno.test("POST: incomplete fields (no email) skips, no register call", async () => {
@@ -278,4 +309,39 @@ Deno.test("POST: incomplete fields (no email) skips, no register call", async ()
   const { outcomes } = await handlePost(body, sig, "1.2.3.4", deps);
   assertEquals(outcomes[0].outcome, "skipped_incomplete_fields");
   assertEquals(counters.registerCalls, 0);
+});
+
+// ── interpretRateLimitResult — index.ts's check_rate_limit() RPC result ──
+// interpretation, extracted as a pure function so the malformed-shape case
+// (the RPC succeeding but returning something that isn't `{ allowed: bool }`)
+// is unit-testable without a real Supabase client or network access.
+
+Deno.test("interpretRateLimitResult: RPC error -> errored:true, allowed:false", () => {
+  const result = interpretRateLimitResult(null, { message: "connection reset" });
+  assertEquals(result, { allowed: false, errored: true });
+});
+
+Deno.test("interpretRateLimitResult: well-formed { allowed: true } -> errored:false, allowed:true", () => {
+  const result = interpretRateLimitResult({ allowed: true }, null);
+  assertEquals(result, { allowed: true, errored: false });
+});
+
+Deno.test("interpretRateLimitResult: well-formed { allowed: false } -> errored:false, allowed:false", () => {
+  const result = interpretRateLimitResult({ allowed: false }, null);
+  assertEquals(result, { allowed: false, errored: false });
+});
+
+Deno.test("interpretRateLimitResult: null data (no error) -> malformed, fails closed", () => {
+  const result = interpretRateLimitResult(null, null);
+  assertEquals(result, { allowed: false, errored: true });
+});
+
+Deno.test("interpretRateLimitResult: data missing the allowed field -> malformed, fails closed", () => {
+  const result = interpretRateLimitResult({ reason: "burst_limit" }, null);
+  assertEquals(result, { allowed: false, errored: true });
+});
+
+Deno.test("interpretRateLimitResult: allowed is a non-boolean (e.g. string) -> malformed, fails closed", () => {
+  const result = interpretRateLimitResult({ allowed: "true" }, null);
+  assertEquals(result, { allowed: false, errored: true });
 });

@@ -84,6 +84,31 @@ function jsonResponse(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 }
 
+/**
+ * Interprets a check_rate_limit() RPC result. Fails CLOSED (errored: true)
+ * on an RPC error OR an unexpected/malformed response shape (null data, or
+ * a missing/non-boolean `allowed`) -- unlike this codebase's usual fail-OPEN
+ * posture for rate-limit RPC errors elsewhere (check-email-exists,
+ * record-lead-details), this webhook fails closed on both cases. That is
+ * safe here specifically because Meta retries webhook deliveries on any
+ * non-2xx response: a transient rate-limit RPC blip just delays the lead,
+ * and the meta_lead_id UNIQUE constraint plus isDuplicate() make the
+ * eventual retry a no-op rather than a duplicate partner. See gh-2154 P-5
+ * R-097 risk brief, issue #2154 comment 5825166960.
+ *
+ * Extracted as a pure function (no supabase-js import) so the malformed-
+ * shape case is unit-testable without a real client or network access.
+ */
+export function interpretRateLimitResult(
+  data: unknown,
+  error: { message?: string } | null,
+): { allowed: boolean; errored: boolean } {
+  if (error) return { allowed: false, errored: true };
+  const allowed = (data as { allowed?: unknown } | null)?.allowed;
+  if (typeof allowed !== "boolean") return { allowed: false, errored: true };
+  return { allowed, errored: false };
+}
+
 /** GET — the subscribe handshake. Unset secret -> always 403 (never echoes a challenge). */
 export function handleVerification(url: URL, deps: Pick<WebhookDeps, "verifyToken" | "log">): Response {
   const result = verifyHandshake(url.searchParams, deps.verifyToken);
@@ -115,13 +140,21 @@ export async function handlePost(
   }
 
   // Rate limit AFTER signature verification only — never gates/short-circuits
-  // a forged request into doing extra work, and fails OPEN on its own error
-  // (an infra hiccup on our side must not let Meta silently stop delivering:
-  // it will just retry later on a non-2xx, which check_rate_limit's own 429
-  // already produces intentionally).
+  // a forged request into doing extra work. Fails CLOSED on its own error or
+  // an unexpected RPC shape (see interpretRateLimitResult above): no dedupe
+  // read, no Graph API fetch, no register_partner() write happens. This is
+  // safe because Meta retries webhook deliveries on any non-2xx response --
+  // the lead is simply re-delivered later, and the meta_lead_id UNIQUE
+  // constraint plus isDuplicate() keep that retry idempotent, never a
+  // duplicate partner. gh-2154 P-5 R-097 risk brief, issue #2154 comment
+  // 5825166960.
   const bucket = await ipToUuid(clientIp ?? "unknown");
   const rl = await deps.checkRateLimit(bucket);
-  if (!rl.errored && !rl.allowed) {
+  if (rl.errored) {
+    deps.log("error", `${FUNCTION_NAME}: rate limit check failed or malformed, failing CLOSED`);
+    return { response: jsonResponse({ ok: false, error: "rate_limit_check_failed" }, 503), outcomes: [] };
+  }
+  if (!rl.allowed) {
     return { response: jsonResponse({ ok: false, error: "rate_limited" }, 429), outcomes: [] };
   }
 

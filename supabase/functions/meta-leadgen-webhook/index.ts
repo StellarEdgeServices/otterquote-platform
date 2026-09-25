@@ -42,6 +42,7 @@ import {
   getClientIp,
   handlePost,
   handleVerification,
+  interpretRateLimitResult,
   type FetchedLead,
   type RegisterPartnerArgs,
   type WebhookDeps,
@@ -141,11 +142,11 @@ if (import.meta.main) {
           p_function_name: FUNCTION_NAME,
           p_user_id: bucket,
         });
-        if (error) {
-          console.error(`${FUNCTION_NAME}: rate limit check failed, failing open`);
-          return { allowed: true, errored: true };
-        }
-        return { allowed: Boolean((data as { allowed?: boolean } | null)?.allowed), errored: false };
+        // Fails CLOSED on an RPC error or an unexpected response shape — see
+        // interpretRateLimitResult's doc comment in handler.ts for why this
+        // is safe for a Meta webhook specifically (non-2xx -> Meta retries;
+        // meta_lead_id UNIQUE + isDuplicate() keep the retry idempotent).
+        return interpretRateLimitResult(data, error ? { message: error.message } : null);
       },
       log: (level, message) => console[level](message),
     };
