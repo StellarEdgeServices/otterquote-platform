@@ -60,23 +60,34 @@ REQUIRED_TARGET = "partner-agreement"
 # partner-signup surface's consent link resolves to A real partner
 # agreement, not silently to /terms or elsewhere) is still met; this is
 # the inspector-track equivalent of the same document, not a divergence
-# from it. Kept as a single named constant, not a path/filename allowlist,
-# so this guard still catches a genuinely wrong href on ANY surface,
-# including partner-inspectors.html itself if it ever pointed anywhere
-# else.
+# from it.
 INSPECTOR_TARGET = "partner-agreement-inspector"
 
+# REVIEW FAIL 5836957364 fix: a global acceptance of INSPECTOR_TARGET let
+# ANY surface link the inspector doc and still pass -- not what D-278 means
+# by "resolves to A real partner agreement", which is the ONE agreement
+# matching that surface's own track, not just any real agreement. Explicit
+# per-page map instead: INSPECTOR_TARGET is compliant ONLY on the surfaces
+# named here. hi-1.html does not exist on main yet -- its entry is
+# deliberate and inert (iter_candidate_files() only yields files that
+# exist) until it lands.
+INSPECTOR_TARGET_ALLOWED_ON = {"partner-inspectors.html", "hi-1.html"}
 
-def href_is_compliant(href: str) -> bool:
+
+def href_is_compliant(href: str, surface: str) -> bool:
     # Accept any relative/absolute form that resolves to partner-agreement
-    # (or, per the documented exception above, partner-agreement-inspector):
+    # (or, on an allowlisted surface, partner-agreement-inspector):
     # "partner-agreement.html", "/partner-agreement", "/partner-agreement.html",
     # "partner-agreement" (extensionless routing), with or without a leading
     # "./" or trailing query/hash.
     target = href.split("?")[0].split("#")[0]
     target = target.lstrip("./").lstrip("/")
     target = re.sub(r"\.html$", "", target)
-    return target in (REQUIRED_TARGET, INSPECTOR_TARGET)
+    if target == REQUIRED_TARGET:
+        return True
+    if target == INSPECTOR_TARGET:
+        return surface in INSPECTOR_TARGET_ALLOWED_ON
+    return False
 
 
 def iter_candidate_files():
@@ -105,7 +116,7 @@ def main() -> int:
 
         for m in matches:
             href = m.group(1)
-            if not href_is_compliant(href):
+            if not href_is_compliant(href, rel_path):
                 lineno = text.count("\n", 0, m.start()) + 1
                 violations.append(
                     f"{rel_path}:{lineno}: Partner Terms link resolves to \"{href}\", "
