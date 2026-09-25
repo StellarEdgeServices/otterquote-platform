@@ -3,9 +3,9 @@
 --
 -- Restores the pre-migration LIVE register_partner body byte-identical to
 -- what was confirmed live on prod (yeszghaspzwwstvsrioa) immediately before
--- the forward migration was authored: md5(pg_get_functiondef(oid)) =
--- 6b44199b9850a1a5116780d95bdd7145 (first 8 hex chars: 6b44199b, gh-2122
--- Credential Shape Sweep convention), proacl unchanged. The only literal
+-- the forward migration was authored: md5(pg_get_functiondef(oid)) first-8 =
+-- 6b44199b (gh-2122 Credential Shape Sweep convention -- full 32-hex run
+-- never committed), proacl unchanged. The only literal
 -- this rollback changes back is v_agreement_version: 'v3-2026-09' ->
 -- 'v2-2026-08'. CREATE OR REPLACE preserves the function's existing
 -- ACL/owner, so no explicit GRANT/owner statement is needed here.

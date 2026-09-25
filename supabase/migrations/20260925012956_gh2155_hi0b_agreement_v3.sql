@@ -11,8 +11,8 @@
 -- prior 17-arg copy at 20260820195608_..., which P-2/#2159 (PR #2159,
 -- 20260924160000_gh2154_p2_partner_attribution_activation.sql) already
 -- extended on prod to 20 args: + p_fbclid, p_li_fat_id, p_funnel_id).
--- Pre-flight live md5(pg_get_functiondef(oid)) = 6b44199b9850a1a5116780d95bdd7145
--- (first 8 hex chars, gh-2122 Credential Shape Sweep convention: 6b44199b),
+-- Pre-flight live md5(pg_get_functiondef(oid)) first-8 = 6b44199b (gh-2122
+-- Credential Shape Sweep convention -- full 32-hex run never committed),
 -- proacl = {=X/postgres,postgres=X/postgres,anon=X/postgres,
 -- authenticated=X/postgres,service_role=X/postgres}. CREATE OR REPLACE
 -- preserves the function's existing ACL/owner, so no explicit GRANT/owner
