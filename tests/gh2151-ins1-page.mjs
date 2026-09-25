@@ -39,12 +39,18 @@
  *   (i) ruling 6: with NO utm/funnel_id params at all, p_funnel_id
  *       defaults to "ins-1" (the page's own id), never a stale stored
  *       value from a different funnel.
- *   (j) S20: successMessage has no "You're in!" heading, no referral-link
- *       box, no Copy/Dashboard buttons -- only the approved sentence +
+ *   (j) S20: successMessage has no separate "You're in!" HEADING, no
+ *       referral-link box, no Copy/Dashboard buttons -- only the approved
+ *       sentence (opening with its own "You're in!" words, restored per
+ *       ben-to-kevin.md 17:30:49Z / LEGAL-READ FAIL 5836612835) + the
  *       install-the-app action; checkEmailMessage reuses main's live
  *       P-1 check-email string verbatim, followed by the approved
  *       sentence; an already-signed-in visitor lands on the confirmation,
  *       not the dashboard.
+ *   (k) LEGAL-READ FAIL 5836612835: the agreement checkbox validation
+ *       error is main's byte-identical string ("You must agree to the
+ *       Partner Agreement and Terms."), not the unapproved round-2
+ *       paraphrase ("You must agree to Otter Quotes's Partner Terms.").
  *
  * Technique: extract the REAL inline <script> source (never a
  * hand-retyped copy) and run it in a `vm` context behind a minimal DOM/
@@ -84,8 +90,14 @@ const APPROVED_STRINGS = [
   ['Agreement checkbox text', "I agree to Otter Quotes's Partner Terms"],
   ['Fee sentence (D-301/D-305, verbatim)', '$200 when a homeowner you refer completes a project of $10,000 or more. $50 on the same terms for referrals from partners you recruit.'],
   ['D-266 disclaimer (verbatim)', 'Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.'],
-  ['Post-submit confirmation', "Install the Otter Quotes partner app, sign in with the account you just created, and your referral link will be waiting inside."],
+  ['Post-submit confirmation', "You're in! Install the Otter Quotes partner app, sign in with the account you just created, and your referral link will be waiting inside."],
 ];
+
+// ── LEGAL-READ FAIL 5836612835: agreement checkbox validation error must
+// be main's byte-identical live string (partner-insurance.html:754), not
+// a paraphrase -- "You must agree to Otter Quotes's Partner Terms." (the
+// round-2 string) is NOT approved and NOT on main.
+const AGREE_ERROR_STRING = 'You must agree to the Partner Agreement and Terms.';
 
 const html = fs.readFileSync(path.join(repoRoot, PAGE_FILE), 'utf8');
 
@@ -102,6 +114,9 @@ const normalizedHtml = normalize(html);
 for (const [label, text] of APPROVED_STRINGS) {
   ok(normalizedHtml.includes(normalize(text)), 'ins-1.html (a): approved copy present verbatim -- ' + label);
 }
+
+ok(html.includes(AGREE_ERROR_STRING), 'ins-1.html (a) LEGAL-READ FAIL 5836612835: agreement checkbox error is main\'s byte-identical string -- "' + AGREE_ERROR_STRING + '"');
+ok(!html.includes("You must agree to Otter Quotes's Partner Terms."), 'ins-1.html (a): the unapproved paraphrase error string is gone');
 
 // ── (b) short field set + labels ─────────────────────────────────────
 function extractForm(h) {
@@ -421,7 +436,13 @@ const AD_QS = '?utm_source=meta&utm_medium=paid_social&utm_campaign=ins-1&utm_co
     const end = html.indexOf('id="checkEmailMessage"', start);
     return html.slice(start, end);
   })();
-  ok(!/You’re in!|You're in!/.test(successBlock), 'ins-1.html (j) S20: successMessage has no "You\'re in!" heading');
+  // ben-to-kevin.md 17:30:49Z ruling: no separate "You're In!" HEADING, but
+  // the approved sentence's own opening words ("You're in!") belong in the
+  // sentence itself -- check no <h1-h6> contains it, and the sentence does.
+  const headingMatch = /<h[1-6][^>]*>[^<]*<\/h[1-6]>/gi;
+  const headings = successBlock.match(headingMatch) || [];
+  ok(!headings.some((h) => /You[’']re in/i.test(h)), 'ins-1.html (j) S20: successMessage has no separate "You\'re in!" HEADING');
+  ok(/You[’']re in! Install the Otter Quotes partner app/.test(successBlock), 'ins-1.html (j) S20: successMessage\'s approved sentence opens with "You\'re in!" verbatim (5821408557)');
   ok(!/referral-link-box|Copy Link|Go to Partner Dashboard/.test(successBlock), 'ins-1.html (j) S20: successMessage has no referral-link box or Copy/Dashboard buttons');
   ok(/partner-app\.html/.test(successBlock), 'ins-1.html (j) S20: successMessage links to the install-the-app action (partner-app.html)');
 
