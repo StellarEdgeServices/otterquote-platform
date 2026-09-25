@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import * as Sentry from "@sentry/nextjs";
+import { redactLeadDeep } from "../lib/sentry-scrub";
 
 export function SentryInitializer() {
   useEffect(() => {
@@ -24,7 +25,30 @@ export function SentryInitializer() {
           }
           const url = event.request?.url;
           if (url && /^(data|file|blob):/.test(url)) return null;
-          return event;
+          // gh-2046: redact `lead=<uuid>` from every string in the event —
+          // request.url, tags, extra, and any browser-timing span that
+          // slipped through outside beforeSendTransaction (e.g. an error
+          // event carries its own request/breadcrumb data).
+          return redactLeadDeep(event);
+        },
+        // gh-2046: the pageload transaction's browser.* spans
+        // (domContentLoadedEvent, loadEvent, connect, TLS/SSL, cache, DNS,
+        // request, response) copy their description/data from the
+        // Navigation Timing / Resource Timing entries, which still hold
+        // the *original* request URL — history.replaceState in the
+        // early-strip head script cannot touch them. Redact `lead=` out
+        // of every span's description and data (url, http.url, etc.),
+        // and out of the transaction's own request.url, before the
+        // envelope leaves the browser. Spans are kept, not dropped.
+        beforeSendTransaction(event) {
+          return redactLeadDeep(event);
+        },
+        // Defense in depth: a breadcrumb (e.g. an XHR/fetch breadcrumb
+        // recording its request URL) must not carry the lead id either,
+        // including on events beforeSend/beforeSendTransaction never see
+        // (breadcrumbs are attached to whatever event follows them).
+        beforeBreadcrumb(breadcrumb) {
+          return redactLeadDeep(breadcrumb);
         },
         debug: false,
       });
