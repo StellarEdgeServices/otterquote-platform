@@ -37,8 +37,8 @@ import { attachVariantMetadata } from "./variant-metadata.ts";
 import { buildStandardCreateForm, standardIdempotencyKey } from "./standard-create-form.ts";
 import { evaluateMeasurementUpgradeGate } from "./measurement-upgrade-gate.ts";
 import { detectGpcSignal, type OptOutStore, recordGpcOptOut } from "./ad-sharing-opt-out.ts";
-import { fetchStripeWithTimeout } from "./stripe-fetch.ts";
-import { runOffSessionPlatformFeeCharge } from "./off-session-charge.ts";
+import { AMBIGUOUS_OUTCOME_CODE, fetchStripeWithTimeout } from "./stripe-fetch.ts";
+import { AmbiguousChargeOutcomeError, runOffSessionPlatformFeeCharge } from "./off-session-charge.ts";
 
 const FUNCTION_NAME = "create-payment-intent";
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
@@ -573,8 +573,9 @@ serve(async (req) => {
       // the timeout-retry-then-stop logic that prevents a double charge across two payment methods -- now
       // lives in off-session-charge.ts, where it can be driven with a fake Stripe in a test. See that
       // module's header for why a create timeout must not fall through to a different payment method.
-      const { paymentIntentData: offSessionPaymentIntent, usedMethod, cardFeeCents } =
-        await runOffSessionPlatformFeeCharge({
+      let offSessionResult;
+      try {
+        offSessionResult = await runOffSessionPlatformFeeCharge({
           fetchFn: fetch,
           apiBase: STRIPE_API_BASE,
           basicAuth,
@@ -587,6 +588,33 @@ serve(async (req) => {
           methodsToTry,
           calculateCardChargeAmount,
         });
+      } catch (e) {
+        // gh-1886 re-review #2 (B1-c, independent review on #2198, 2026-09-25T22:02:35Z): an ambiguous
+        // charge outcome must NEVER surface as this function's ordinary 500 -- the outer catch(error)
+        // below would return a generic `{error}` body indistinguishable from a genuine, non-money-path
+        // bug, and docusign-webhook's caller (the only caller of this branch) treats every non-422,
+        // non-200 response as a hard_failure that goes straight into the dunning path, which charges the
+        // SAME contractor again under a DIFFERENT Idempotency-Key
+        // (`dunning-<quote_id>-<payment_method>`, which never collides with
+        // `plat-fee-<claim>-<contractor>-<payment_method>`). Mirrors the existing #1467 guard-refusal 422
+        // shape exactly (distinct `code`, same envelope) so a caller that already special-cases that one
+        // 422 can add this one the same way.
+        if (e instanceof AmbiguousChargeOutcomeError) {
+          console.error(`[${FUNCTION_NAME}] ${e.message}`);
+          return new Response(
+            JSON.stringify({
+              error: e.message,
+              code: AMBIGUOUS_OUTCOME_CODE,
+              idempotency_key: e.idempotencyKey,
+              claim_id: metadata.claim_id,
+              contractor_id,
+            }),
+            { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+        throw e;
+      }
+      const { paymentIntentData: offSessionPaymentIntent, usedMethod, cardFeeCents } = offSessionResult;
       paymentIntentData = offSessionPaymentIntent;
       if (metadata.quote_id) {
         // gh-948: 'processing' (ACH in flight) is NOT success. Map it to the
