@@ -60,6 +60,21 @@ import {
   evaluateLiveChargeGuard,
   REFUSAL_CODE as GUARD_REFUSAL_CODE,
 } from "./live-charge-guard.ts";
+// [gh-1886 re-review #2, independent review on #2198, 2026-09-25T22:02:35Z -- "B1-c"] Pure classification
+// of the platform-fee-charge function's error responses, extracted for testability (see the file header
+// for why: dunning must never run for an AMBIGUOUS charge outcome, only for a genuine decline).
+import {
+  classifyPlatformFeeErrorResponse,
+  extractIdempotencyKeyHint,
+  shouldTriggerDunning,
+} from "./payment-response-classify.ts";
+
+// [gh-1886 re-review #2, independent review on #2198, 2026-09-25T22:02:35Z] Mirrored VERBATIM as a literal
+// string constant in the platform-fee-charge function's own stripe-fetch.ts (Supabase Edge Functions
+// cannot import across function directories -- see live-charge-guard.ts's byte-identical-copies
+// precedent, and its tools/live_charge_guard_parity_check.py, for the same constraint on a different
+// file). MUST be changed in both places if it is ever changed.
+const AMBIGUOUS_OUTCOME_CODE = "PLATFORM_FEE_CHARGE_OUTCOME_UNKNOWN";
 
 // ── 86e1tz17j: best-effort Sentry reporter for swallowed audit-write failures ──
 // Inlined (not imported from _shared) because the EF body-deploy path does not
@@ -1328,16 +1343,20 @@ serve(async (req) => {
             let paymentResult: Record<string, unknown>;
             if (!paymentResponse.ok) {
               const paymentError = await paymentResponse.text();
-              // #1467: a 422 carrying the guard's refusal code is NOT a payment
-              // failure and must not enter dunning — dunning is a retry queue,
-              // it emails the contractor and the homeowner about a failed
-              // charge, and process-dunning charges Stripe DIRECTLY on retry.
-              // Routing a guard refusal there would recreate the defect this
-              // change exists to close, one hop downstream.
-              if (
-                paymentResponse.status === 422 &&
-                paymentError.includes(GUARD_REFUSAL_CODE)
-              ) {
+              // #1467 / gh-1886 B1-c: NEITHER a guard refusal NOR an ambiguous charge outcome is a payment
+              // failure, and neither may enter dunning — dunning is a retry queue, it emails the
+              // contractor and the homeowner about a failed charge, and process-dunning charges Stripe
+              // DIRECTLY on retry under a DIFFERENT Idempotency-Key. Routing either one there would
+              // recreate a defect this branch exists to close, one hop downstream: for the guard refusal,
+              // a charge that was never authorized; for an ambiguous outcome (gh-1886), a charge that may
+              // already have happened, charged a SECOND time seconds later with no human involved.
+              const paymentClassification = classifyPlatformFeeErrorResponse(
+                paymentResponse.status,
+                paymentError,
+                GUARD_REFUSAL_CODE,
+                AMBIGUOUS_OUTCOME_CODE,
+              );
+              if (paymentClassification === "guard_refused") {
                 console.error(
                   `[docusign-webhook] platform fee REFUSED by create-payment-intent guard for claim ${claim.id}: ${paymentError.slice(0, 300)}`
                 );
@@ -1375,6 +1394,67 @@ serve(async (req) => {
                     status: 200,
                     headers: { ...corsHeaders, "Content-Type": "application/json" },
                   }
+                );
+              }
+              if (paymentClassification === "ambiguous_outcome") {
+                // gh-1886 re-review #2 (B1-c, independent review on #2198, 2026-09-25T22:02:35Z):
+                // create-payment-intent could not determine whether Stripe actually charged this
+                // contractor (a timeout, a 409 idempotency_error, a 429, a 5xx, or a network error after
+                // the create request was sent — see off-session-charge.ts / stripe-fetch.ts). Record the
+                // signing (the signing itself is a fact regardless of payment outcome — same precedent as
+                // the guard-refusal branch above and as #480's dunning path), leave payment_status
+                // UNTOUCHED (specifically NOT "dunning"), do NOT call process-dunning (it would charge the
+                // SAME contractor again under a DIFFERENT Idempotency-Key, with no human involved), and
+                // raise a DEDICATED alert naming the quote and the idempotency key so a human reconciles
+                // directly against Stripe before any further collection action.
+                const idempotencyKeyHint = extractIdempotencyKeyHint(paymentError);
+                console.error(
+                  `[docusign-webhook] platform fee outcome AMBIGUOUS for claim ${claim.id}, quote ${quote.id} (idempotency key ${idempotencyKeyHint}): ${paymentError.slice(0, 300)}`
+                );
+                await supabase
+                  .from("claims")
+                  .update({
+                    contract_signed_at: completedDateTime || new Date().toISOString(),
+                    contract_signed_by: recipientEmail || null,
+                    status: "contract_signed",
+                  })
+                  .eq("id", claim.id);
+                try {
+                  await supabase.from("platform_alerts_log").insert({
+                    alert_type: "platform_fee_outcome_unknown",
+                    function_name: "docusign-webhook",
+                    message: `Claim ${claim.id}, quote ${quote.id}, contractor ${quote.contractor_id}: platform fee charge outcome is AMBIGUOUS (Idempotency-Key ${idempotencyKeyHint}) — Stripe may or may not have charged ${feeAmount} cents. Dunning deliberately NOT triggered (would risk a double charge). Reconcile against Stripe directly using the idempotency key before taking any further collection action.`,
+                    sent_at: new Date().toISOString(),
+                  });
+                } catch (alertErr) {
+                  console.error("platform_alerts_log insert failed:", alertErr);
+                }
+                return new Response(
+                  JSON.stringify({
+                    received: true,
+                    envelope_id: envelopeId,
+                    status,
+                    claim_id: claim.id,
+                    platform_fee_charged: false,
+                    fee_charge_refused: "ambiguous_outcome",
+                    message:
+                      "Contract signed. Platform fee charge outcome is AMBIGUOUS (Stripe may already " +
+                      "have charged this contractor): no further automatic charge attempt will be made. " +
+                      "Flagged for manual reconciliation.",
+                  }),
+                  {
+                    status: 200,
+                    headers: { ...corsHeaders, "Content-Type": "application/json" },
+                  }
+                );
+              }
+              // gh-1886 B1-c: only a genuine hard_failure classification may reach the dunning fallback
+              // below — both other classifications return early, above. shouldTriggerDunning is the same
+              // predicate payment-response-classify.test.ts pins directly; asserting it here too is
+              // defense-in-depth, not a case this can actually reach today.
+              if (!shouldTriggerDunning(paymentClassification)) {
+                throw new Error(
+                  `[docusign-webhook] gh-1886: classification '${paymentClassification}' must never reach the dunning fallback for claim ${claim.id} — refusing to proceed rather than risk a double charge`
                 );
               }
               console.error(
