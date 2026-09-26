@@ -60,6 +60,61 @@ export interface FetchedLead {
   field_data?: LeadFieldDatum[];
 }
 
+/**
+ * REVIEW FAIL 5849684429 fix 1 -- normalises a homeowner lead's phone the
+ * SAME WAY Arm F does (js/router-variant-f.js's own `normalizePhone`): strip
+ * every non-digit, drop a leading '1' when 11 digits remain, and keep the
+ * result only if it is then exactly 10 digits. Anything else (too short, too
+ * long, an international format, an extension) becomes `null` rather than
+ * being inserted as-is -- live `leads_phone_length_check` caps at 20 chars
+ * and Meta's `phone_number` field can exceed that or simply not be a US
+ * number. Nothing is lost: the raw, as-typed value still lands in
+ * `lead_consents.phone_as_typed`/`form_payload` untouched (see
+ * homeowner-consent.ts's buildHomeownerConsentArgs, which reads from the
+ * Graph fetch independently of this normalised value).
+ */
+export function normalizeHomeownerPhone(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  let digits = raw.replace(/\D/g, "");
+  if (digits.length === 11 && digits.charAt(0) === "1") digits = digits.slice(1);
+  return digits.length === 10 ? digits : null;
+}
+
+/**
+ * REVIEW FAIL 5849684429 fix 2 -- caps a homeowner lead's name at 200
+ * characters (live `leads_name_length_check` is `char_length(name) <= 200`),
+ * without splitting a UTF-16 surrogate pair at the cut point (same hazard
+ * record-lead-details/handler.ts's `safeSlice` guards against: a dangling
+ * high surrogate serialises to JSON as an escape Postgres rejects, which
+ * would turn one long name into a request failure instead of a clean cap).
+ */
+export function capHomeownerName(name: string): string {
+  const max = 200;
+  if (name.length <= max) return name;
+  let out = name.slice(0, max);
+  const last = out.charCodeAt(out.length - 1);
+  if (last >= 0xd800 && last <= 0xdbff) out = out.slice(0, -1);
+  return out;
+}
+
+/**
+ * REVIEW FAIL 5849684429 fix 3 -- true for a Postgres data-rejection error on
+ * an insert (a value the row itself will NEVER pass, no matter how many times
+ * it is retried): SQLSTATE class 22 (data exception, e.g. a value that fails
+ * a CHECK's implicit cast) or class 23 EXCEPT 23505 (unique_violation, which
+ * is handled separately as a terminal duplicate, not a data problem) --
+ * 23502 not_null_violation and 23514 check_violation are the two this task
+ * targets, but any other 22xxx/23xxx (excluding 23505) is the same kind of
+ * permanently-bad-data failure. A connection error, a timeout, or any other
+ * SQLSTATE is NOT covered here and stays a transient 503 retry.
+ */
+export function isDataRejectionError(code: string | null | undefined): boolean {
+  if (typeof code !== "string") return false;
+  if (code.startsWith("22")) return true;
+  if (code.startsWith("23") && code !== "23505") return true;
+  return false;
+}
+
 export interface RegisterPartnerArgs {
   agentType: string;
   firstName: string;
@@ -401,9 +456,18 @@ export async function handlePost(
             const recoveryConsent = buildHomeownerConsentArgs(recoveryFetch.data, homeownerConfig, formId);
             const fin = await deps.finalizeHomeownerLead(dup.existingId, leadgenId, recoveryConsent);
             if (fin.error) {
-              deps.log("error", `${FUNCTION_NAME}: homeowner finalize recovery failed leadgen_id=${leadgenId}`);
-              outcomes.push({ leadgenId, formId, outcome: "error_register_failed" });
-              hasTransientFailure = true;
+              const finMsg = fin.error.message ?? "";
+              if (finMsg.includes("rejected_invalid_data")) {
+                // REVIEW FAIL 5849684429 fix 3: same permanent-data-rejection
+                // handling as the fresh-insert path below, for the
+                // lead_consents insert on the recovery path.
+                deps.log("error", `${FUNCTION_NAME}: homeowner finalize recovery rejected invalid data leadgen_id=${leadgenId}`);
+                outcomes.push({ leadgenId, formId, outcome: "skipped_invalid_data" });
+              } else {
+                deps.log("error", `${FUNCTION_NAME}: homeowner finalize recovery failed leadgen_id=${leadgenId}`);
+                outcomes.push({ leadgenId, formId, outcome: "error_register_failed" });
+                hasTransientFailure = true;
+              }
               continue;
             }
             if (!fin.updated) {
@@ -434,7 +498,12 @@ export async function handlePost(
           }
 
           const mapped = mapFieldData(fetched.data.field_data);
-          const name = mapped.fullName ?? mapped.firstName;
+          const rawName = mapped.fullName ?? mapped.firstName;
+          // REVIEW FAIL 5849684429 fix 2: cap at 200 chars (live
+          // leads_name_length_check) BEFORE the incomplete-fields check, so a
+          // name that is only whitespace-after-cut is still handled the same
+          // as any other empty name.
+          const name = rawName ? capHomeownerName(rawName) : rawName;
           // REVIEW FAIL 5849223003 defect 1 (BLOCKER): live leads.email is
           // NOT NULL. A phone-only lead can never be inserted -- email is
           // now REQUIRED on this path too (the plan §2 "email OR phone"
@@ -448,9 +517,14 @@ export async function handlePost(
 
           const consentArgs = buildHomeownerConsentArgs(fetched.data, homeownerConfig, formId);
           // REVIEW FAIL item 7 (optional/cheap, taken): parity with Arm F --
-          // a founder/internal/QA address is marked synthetic even outside
-          // Meta's own Testing Tool flag, so it never pages the admin as a
-          // real lead.
+          // a founder/internal/QA address is ALSO marked synthetic even
+          // outside Meta's own Testing Tool flag. CORRECTED per REVIEW FAIL
+          // 5849684429 item 7: is_synthetic does NOT suppress the admin
+          // alert (neither trg_notify_admin_new_router_lead nor
+          // handleRouterLead reads it) -- a founder/internal/QA lead still
+          // pages the admin as a real lead, exactly matching Arm F's own
+          // parity. is_synthetic exists only to exclude the row from
+          // measurement/reporting.
           const isSynthetic = homeownerConfig.isTest || isFounderOrTestEmail(mapped.email);
           // REVIEW FAIL item 6 (SHOULD-FIX): the webhook's own signed
           // change.value carries ad_id/adgroup_id -- stored as utm_content/
@@ -462,7 +536,10 @@ export async function handlePost(
           const reg = await deps.registerHomeownerLead({
             name,
             email: mapped.email,
-            phone: mapped.phone,
+            // REVIEW FAIL 5849684429 fix 1: normalised 10-digit form, same as
+            // Arm F -- the raw, as-typed value is captured separately in
+            // consentArgs.phoneAsTyped/formPayload, never lost.
+            phone: normalizeHomeownerPhone(mapped.phone),
             funnelId: homeownerConfig.funnelId,
             isSynthetic,
             metaLeadId: leadgenId,
@@ -479,6 +556,13 @@ export async function handlePost(
               // redelivery via the recovery path above) owns it.
               deps.log("log", `${FUNCTION_NAME}: skip leadgen_id=${leadgenId} reason=already_registered`);
               outcomes.push({ leadgenId, formId, outcome: "skipped_already_registered" });
+            } else if (msg.includes("rejected_invalid_data")) {
+              // REVIEW FAIL 5849684429 fix 3: a permanent data-rejection
+              // error (23502/23514/other 22xxx-23xxx) is terminal -- no
+              // amount of Meta redelivery ever fixes bad data, so this must
+              // never be a 503 retry loop.
+              deps.log("error", `${FUNCTION_NAME}: registerHomeownerLead rejected invalid data leadgen_id=${leadgenId}`);
+              outcomes.push({ leadgenId, formId, outcome: "skipped_invalid_data" });
             } else {
               deps.log("error", `${FUNCTION_NAME}: registerHomeownerLead failed leadgen_id=${leadgenId}`);
               outcomes.push({ leadgenId, formId, outcome: "error_register_failed" });
@@ -499,9 +583,17 @@ export async function handlePost(
           // only THEN is role set -- see finalizeHomeownerLead's doc comment.
           const fin = await deps.finalizeHomeownerLead(newId, leadgenId, consentArgs);
           if (fin.error) {
-            deps.log("error", `${FUNCTION_NAME}: homeowner finalize failed leadgen_id=${leadgenId}`);
-            outcomes.push({ leadgenId, formId, outcome: "error_register_failed" });
-            hasTransientFailure = true;
+            const finMsg = fin.error.message ?? "";
+            if (finMsg.includes("rejected_invalid_data")) {
+              // REVIEW FAIL 5849684429 fix 3: the lead_consents insert hit a
+              // permanent data-rejection error -- terminal, never a retry.
+              deps.log("error", `${FUNCTION_NAME}: homeowner finalize rejected invalid data leadgen_id=${leadgenId}`);
+              outcomes.push({ leadgenId, formId, outcome: "skipped_invalid_data" });
+            } else {
+              deps.log("error", `${FUNCTION_NAME}: homeowner finalize failed leadgen_id=${leadgenId}`);
+              outcomes.push({ leadgenId, formId, outcome: "error_register_failed" });
+              hasTransientFailure = true;
+            }
             continue;
           }
           if (!fin.updated) {

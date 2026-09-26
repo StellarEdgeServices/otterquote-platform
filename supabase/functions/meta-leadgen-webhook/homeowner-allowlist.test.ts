@@ -101,3 +101,42 @@ Deno.test("lookupHomeownerForm: unknown/null/undefined form_id returns null", ()
   assertEquals(lookupHomeownerForm(list, null), null);
   assertEquals(lookupHomeownerForm(list, undefined), null);
 });
+
+// REVIEW FAIL 5849684429 nits (optional, taken): D-332 exact privacy_url,
+// and a 2,000-char consent_text cap matching Arm F's own cap.
+
+Deno.test("parseHomeownerAllowlist: privacy_url that is not exactly the otterquote.com privacy page is dropped and logged", () => {
+  const logs: string[] = [];
+  const out = parseHomeownerAllowlist(
+    JSON.stringify({ form_1: withConsent({ privacy_url: "https://otterquote.com/privacy" }) }),
+    (m) => logs.push(m),
+  );
+  assertEquals(out, {});
+  assertEquals(logs.length, 1);
+  assertEquals(logs[0].includes("form_1"), true);
+});
+
+Deno.test("parseHomeownerAllowlist: a different domain's privacy_url is dropped (D-332 fails closed)", () => {
+  const out = parseHomeownerAllowlist(
+    JSON.stringify({ form_1: withConsent({ privacy_url: "https://example.com/privacy.html" }) }),
+  );
+  assertEquals(out, {});
+});
+
+Deno.test("parseHomeownerAllowlist: the exact D-332 privacy_url is accepted", () => {
+  const out = parseHomeownerAllowlist(JSON.stringify({ form_1: withConsent() }));
+  assertEquals(out.form_1.privacyUrl, "https://otterquote.com/privacy.html");
+});
+
+Deno.test("parseHomeownerAllowlist: consent_text over 2,000 chars is capped to 2,000, matching Arm F's cap", () => {
+  const longText = "x".repeat(2500);
+  const out = parseHomeownerAllowlist(JSON.stringify({ form_1: withConsent({ consent_text: longText }) }));
+  assertEquals(out.form_1.consentText.length, 2000);
+  assertEquals(out.form_1.consentText, "x".repeat(2000));
+});
+
+Deno.test("parseHomeownerAllowlist: consent_text at exactly 2,000 chars is untouched", () => {
+  const exactText = "y".repeat(2000);
+  const out = parseHomeownerAllowlist(JSON.stringify({ form_1: withConsent({ consent_text: exactText }) }));
+  assertEquals(out.form_1.consentText, exactText);
+});

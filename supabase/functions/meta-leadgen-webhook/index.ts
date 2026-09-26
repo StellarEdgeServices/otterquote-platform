@@ -74,6 +74,7 @@ import {
   handlePost,
   handleVerification,
   interpretRateLimitResult,
+  isDataRejectionError,
   type FetchedLead,
   type HomeownerDuplicateResult,
   type RegisterHomeownerLeadArgs,
@@ -243,7 +244,15 @@ async function finalizeHomeownerLead(
     // failed on the role update below) hits 23505 here; that means the
     // evidence is ALREADY written, not an error -- same idempotent-retry
     // posture record_lead_details()'s own ON CONFLICT DO NOTHING gives Arm F.
-    if ((consentErr as { code?: string }).code !== "23505") {
+    const consentErrCode = (consentErr as { code?: string }).code;
+    if (consentErrCode !== "23505") {
+      // REVIEW FAIL 5849684429 fix 3: a permanent data-rejection error
+      // (23502/23514/any other 22xxx-23xxx except 23505) on the
+      // lead_consents insert is terminal, not transient -- see
+      // isDataRejectionError's doc comment in handler.ts.
+      if (isDataRejectionError(consentErrCode)) {
+        return { updated: false, error: { message: "rejected_invalid_data" } };
+      }
       return { updated: false, error: { message: consentErr.message } };
     }
   }
@@ -420,8 +429,17 @@ if (import.meta.main) {
           // build's migration) — mirrors register_partner()'s own
           // duplicate_meta_lead convention above so handler.ts's string
           // match handles both paths identically.
-          if ((insErr as { code?: string }).code === "23505") {
+          const insErrCode = (insErr as { code?: string }).code;
+          if (insErrCode === "23505") {
             return { data: null, error: { message: "duplicate_meta_lead" } };
+          }
+          // REVIEW FAIL 5849684429 fix 3: a permanent data-rejection error
+          // (23502 not_null_violation, 23514 check_violation, or any other
+          // 22xxx/23xxx except 23505) on the leads insert is terminal --
+          // never a 503 retry -- see isDataRejectionError's doc comment in
+          // handler.ts.
+          if (isDataRejectionError(insErrCode)) {
+            return { data: null, error: { message: "rejected_invalid_data" } };
           }
           return { data: null, error: { message: insErr.message } };
         }

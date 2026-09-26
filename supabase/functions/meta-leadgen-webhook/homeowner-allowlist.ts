@@ -79,12 +79,30 @@ export function parseHomeownerAllowlist(
     if (!funnelId) continue;
 
     const consentKey = typeof cfg.consent_key === "string" ? cfg.consent_key.trim() : "";
-    const consentText = typeof cfg.consent_text === "string" ? cfg.consent_text.trim() : "";
+    // REVIEW FAIL 5849684429 nit (optional, taken): capped at 2,000 chars,
+    // matching Arm F's own consent_text cap (record-lead-details/handler.ts's
+    // safeSlice(..., 2000)) -- config-supplied and already trusted, but this
+    // keeps the two consent-evidence writers to the same bound rather than
+    // relying on the DB column's own limit to catch an oversized value.
+    const consentTextRaw = typeof cfg.consent_text === "string" ? cfg.consent_text.trim() : "";
+    const consentText = consentTextRaw.length > 2000 ? consentTextRaw.slice(0, 2000) : consentTextRaw;
     const privacyUrl = typeof cfg.privacy_url === "string" ? cfg.privacy_url.trim() : "";
     if (!consentKey || !consentText || !privacyUrl) {
       log?.(
         `meta-leadgen-webhook: homeowner allowlist entry form_id=${formId} dropped -- ` +
           `missing required consent_key/consent_text/privacy_url (D-299/D-332 config error)`,
+      );
+      continue;
+    }
+    // REVIEW FAIL 5849684429 nit (optional, taken): D-332 requires the HO-2
+    // Meta form's Privacy Policy link to be https://otterquote.com/privacy.html
+    // -- enforced here in code (fail closed) rather than only at config
+    // review time, so a mistyped/wrong privacy_url can never allowlist a
+    // form.
+    if (privacyUrl !== "https://otterquote.com/privacy.html") {
+      log?.(
+        `meta-leadgen-webhook: homeowner allowlist entry form_id=${formId} dropped -- ` +
+          `privacy_url is not the otterquote.com privacy page (D-332 config error)`,
       );
       continue;
     }

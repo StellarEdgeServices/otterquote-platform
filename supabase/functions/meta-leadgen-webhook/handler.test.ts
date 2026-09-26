@@ -3,7 +3,15 @@
 // deno test --allow-read=supabase/functions supabase/functions/meta-leadgen-webhook/
 import { assert, assertEquals, assertFalse } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import { computeHmacSha256Hex, SIGNATURE_PREFIX } from "./signature.ts";
-import { handlePost, handleVerification, interpretRateLimitResult, type WebhookDeps } from "./handler.ts";
+import {
+  capHomeownerName,
+  handlePost,
+  handleVerification,
+  interpretRateLimitResult,
+  isDataRejectionError,
+  normalizeHomeownerPhone,
+  type WebhookDeps,
+} from "./handler.ts";
 
 const APP_SECRET = "meta-app-secret-fixture-not-real-000";
 const VERIFY_TOKEN = "meta-leadgen-verify-token-fixture-not-real";
@@ -948,4 +956,257 @@ Deno.test("interpretRateLimitResult: data missing the allowed field -> malformed
 Deno.test("interpretRateLimitResult: allowed is a non-boolean (e.g. string) -> malformed, fails closed", () => {
   const result = interpretRateLimitResult({ allowed: "true" }, null);
   assertEquals(result, { allowed: false, errored: true });
+});
+
+// ── REVIEW FAIL 5849684429 fix 1: normalizeHomeownerPhone (Arm F parity) ───
+
+Deno.test("normalizeHomeownerPhone: +13175551234 becomes 3175551234", () => {
+  assertEquals(normalizeHomeownerPhone("+13175551234"), "3175551234");
+});
+
+Deno.test("normalizeHomeownerPhone: 11 digits with a leading 1 drops the 1", () => {
+  assertEquals(normalizeHomeownerPhone("1-317-555-1234"), "3175551234");
+});
+
+Deno.test("normalizeHomeownerPhone: bare 10 digits pass through unchanged", () => {
+  assertEquals(normalizeHomeownerPhone("(317) 555-1234"), "3175551234");
+});
+
+Deno.test("normalizeHomeownerPhone: a 25-character international/extension value becomes null", () => {
+  assertEquals(normalizeHomeownerPhone("+44 20 7946 0958 ext 123"), null);
+});
+
+Deno.test("normalizeHomeownerPhone: too short becomes null", () => {
+  assertEquals(normalizeHomeownerPhone("5551234"), null);
+});
+
+Deno.test("normalizeHomeownerPhone: null/empty input becomes null", () => {
+  assertEquals(normalizeHomeownerPhone(null), null);
+  assertEquals(normalizeHomeownerPhone(""), null);
+});
+
+// ── REVIEW FAIL 5849684429 fix 2: capHomeownerName ──────────────────────────
+
+Deno.test("capHomeownerName: a name at or under 200 chars is unchanged", () => {
+  const name = "Pat Homeowner";
+  assertEquals(capHomeownerName(name), name);
+});
+
+Deno.test("capHomeownerName: a name over 200 chars is truncated to exactly 200", () => {
+  const name = "A".repeat(250);
+  const capped = capHomeownerName(name);
+  assertEquals(capped.length, 200);
+  assertEquals(capped, "A".repeat(200));
+});
+
+Deno.test("capHomeownerName: truncation never leaves a dangling high surrogate", () => {
+  // An emoji ("😀") is a surrogate pair; put its high half exactly at index 200.
+  const name = "B".repeat(199) + "😀" + "C".repeat(50);
+  const capped = capHomeownerName(name);
+  assert(capped.length <= 200);
+  const last = capped.charCodeAt(capped.length - 1);
+  assertFalse(last >= 0xd800 && last <= 0xdbff);
+});
+
+// ── REVIEW FAIL 5849684429 fix 3: isDataRejectionError classification ──────
+
+Deno.test("isDataRejectionError: 23502 (not_null_violation) is a data rejection", () => {
+  assert(isDataRejectionError("23502"));
+});
+
+Deno.test("isDataRejectionError: 23514 (check_violation) is a data rejection", () => {
+  assert(isDataRejectionError("23514"));
+});
+
+Deno.test("isDataRejectionError: a 22xxx data-exception class is a data rejection", () => {
+  assert(isDataRejectionError("22001"));
+});
+
+Deno.test("isDataRejectionError: 23505 (unique_violation) is NOT a data rejection -- handled as terminal duplicate separately", () => {
+  assertFalse(isDataRejectionError("23505"));
+});
+
+Deno.test("isDataRejectionError negative control: 08006 (connection failure) is NOT a data rejection -- stays transient", () => {
+  assertFalse(isDataRejectionError("08006"));
+});
+
+Deno.test("isDataRejectionError: undefined/null code is NOT a data rejection", () => {
+  assertFalse(isDataRejectionError(undefined));
+  assertFalse(isDataRejectionError(null));
+});
+
+// ── REVIEW FAIL 5849684429 -- handler-level wiring for phone/name/data-rejection ──
+
+Deno.test("POST: homeowner phone is normalised to 10 digits before registerHomeownerLead is called", async () => {
+  const body = leadgenBody({ formId: "form_ho2_789", leadgenId: "leadgen_ho2_phonefmt" });
+  const sig = await sign(body);
+  const counters: Counters = makeCounters();
+  let seenPhone: string | null | undefined;
+  const deps = makeDeps({
+    fetchHomeownerLead: async () => {
+      counters.homeownerFetchCalls++;
+      return {
+        data: {
+          field_data: [
+            { name: "full_name", values: ["Pat Homeowner"] },
+            { name: "email", values: ["pat@leadfixture.net"] },
+            { name: "phone_number", values: ["+1 (317) 555-1234"] },
+          ],
+          custom_disclaimer_responses: [{ id: CONSENT_KEY, is_checked: true }],
+        },
+        error: null,
+      };
+    },
+    registerHomeownerLead: async (args) => {
+      counters.homeownerRegisterCalls++;
+      seenPhone = args.phone;
+      return { data: { id: "lead-fixture-id" }, error: null };
+    },
+  }, counters);
+  const { outcomes } = await handlePost(body, sig, "1.2.3.4", deps);
+  assertEquals(outcomes[0].outcome, "registered");
+  assertEquals(seenPhone, "3175551234");
+});
+
+Deno.test("POST: a 25-character, non-US-shaped homeowner phone is stored as null and registration still succeeds", async () => {
+  const body = leadgenBody({ formId: "form_ho2_789", leadgenId: "leadgen_ho2_badphone" });
+  const sig = await sign(body);
+  const counters: Counters = makeCounters();
+  let seenPhone: string | null | undefined = "not set";
+  const deps = makeDeps({
+    fetchHomeownerLead: async () => {
+      counters.homeownerFetchCalls++;
+      return {
+        data: {
+          field_data: [
+            { name: "full_name", values: ["Pat Homeowner"] },
+            { name: "email", values: ["pat@leadfixture.net"] },
+            { name: "phone_number", values: ["+44 20 7946 0958 ext 12"] },
+          ],
+          custom_disclaimer_responses: [{ id: CONSENT_KEY, is_checked: true }],
+        },
+        error: null,
+      };
+    },
+    registerHomeownerLead: async (args) => {
+      counters.homeownerRegisterCalls++;
+      seenPhone = args.phone;
+      return { data: { id: "lead-fixture-id" }, error: null };
+    },
+  }, counters);
+  const { response, outcomes } = await handlePost(body, sig, "1.2.3.4", deps);
+  assertEquals(response.status, 200);
+  assertEquals(outcomes[0].outcome, "registered");
+  assertEquals(seenPhone, null);
+});
+
+Deno.test("POST: an over-200-char homeowner name is capped, not dropped, and registration still succeeds", async () => {
+  const body = leadgenBody({ formId: "form_ho2_789", leadgenId: "leadgen_ho2_longname" });
+  const sig = await sign(body);
+  const counters: Counters = makeCounters();
+  let seenName: string | undefined;
+  const longName = "Patricia " + "Middlename".repeat(25); // well over 200 chars
+  const deps = makeDeps({
+    fetchHomeownerLead: async () => {
+      counters.homeownerFetchCalls++;
+      return {
+        data: {
+          field_data: [
+            { name: "full_name", values: [longName] },
+            { name: "email", values: ["pat.longname@leadfixture.net"] },
+          ],
+          custom_disclaimer_responses: [{ id: CONSENT_KEY, is_checked: true }],
+        },
+        error: null,
+      };
+    },
+    registerHomeownerLead: async (args) => {
+      counters.homeownerRegisterCalls++;
+      seenName = args.name;
+      return { data: { id: "lead-fixture-id" }, error: null };
+    },
+  }, counters);
+  const { outcomes } = await handlePost(body, sig, "1.2.3.4", deps);
+  assertEquals(outcomes[0].outcome, "registered");
+  assert(seenName !== undefined && seenName.length === 200);
+  assertEquals(seenName, longName.slice(0, 200));
+});
+
+Deno.test("POST: registerHomeownerLead rejected_invalid_data (e.g. mocked 23514 check_violation) is a terminal 200 skip, not a 503 retry", async () => {
+  const body = leadgenBody({ formId: "form_ho2_789" });
+  const sig = await sign(body);
+  const counters: Counters = makeCounters();
+  const deps = makeDeps({
+    registerHomeownerLead: async () => {
+      counters.homeownerRegisterCalls++;
+      return { data: null, error: { message: "rejected_invalid_data" } };
+    },
+  }, counters);
+  const { response, outcomes } = await handlePost(body, sig, "1.2.3.4", deps);
+  assertEquals(response.status, 200);
+  assertEquals(outcomes[0].outcome, "skipped_invalid_data");
+});
+
+Deno.test("POST negative control: registerHomeownerLead's other (transient, e.g. mocked 08006 connection) errors still return 503, still retry", async () => {
+  const body = leadgenBody({ formId: "form_ho2_789" });
+  const sig = await sign(body);
+  const counters: Counters = makeCounters();
+  const deps = makeDeps({
+    registerHomeownerLead: async () => {
+      counters.homeownerRegisterCalls++;
+      return { data: null, error: { message: "connection reset" } };
+    },
+  }, counters);
+  const { response, outcomes } = await handlePost(body, sig, "1.2.3.4", deps);
+  assertEquals(response.status, 503);
+  assertEquals(outcomes[0].outcome, "error_register_failed");
+});
+
+Deno.test("POST: finalizeHomeownerLead rejected_invalid_data (e.g. mocked lead_consents 23502) is a terminal 200 skip, not a 503 retry", async () => {
+  const body = leadgenBody({ formId: "form_ho2_789" });
+  const sig = await sign(body);
+  const counters: Counters = makeCounters();
+  const deps = makeDeps({
+    finalizeHomeownerLead: async () => {
+      counters.finalizeCalls++;
+      return { updated: false, error: { message: "rejected_invalid_data" } };
+    },
+  }, counters);
+  const { response, outcomes } = await handlePost(body, sig, "1.2.3.4", deps);
+  assertEquals(response.status, 200);
+  assertEquals(outcomes[0].outcome, "skipped_invalid_data");
+});
+
+Deno.test("POST negative control: finalizeHomeownerLead's other transient errors still return 503, still retry", async () => {
+  const body = leadgenBody({ formId: "form_ho2_789" });
+  const sig = await sign(body);
+  const counters: Counters = makeCounters();
+  const deps = makeDeps({
+    finalizeHomeownerLead: async () => {
+      counters.finalizeCalls++;
+      return { updated: false, error: { message: "consent_write_failed" } };
+    },
+  }, counters);
+  const { response, outcomes } = await handlePost(body, sig, "1.2.3.4", deps);
+  assertEquals(response.status, 503);
+  assertEquals(outcomes[0].outcome, "error_register_failed");
+});
+
+Deno.test("POST: homeowner recovery path's finalizeHomeownerLead rejected_invalid_data is also a terminal 200 skip, not a 503 retry", async () => {
+  const body = leadgenBody({ formId: "form_ho2_789", leadgenId: "leadgen_ho2_recover_baddata" });
+  const sig = await sign(body);
+  const counters: Counters = makeCounters();
+  const deps = makeDeps({
+    isDuplicateHomeownerLead: async () => {
+      counters.homeownerDuplicateCalls++;
+      return { existingId: "existing-lead-id", roleSet: false, errored: false };
+    },
+    finalizeHomeownerLead: async () => {
+      counters.finalizeCalls++;
+      return { updated: false, error: { message: "rejected_invalid_data" } };
+    },
+  }, counters);
+  const { response, outcomes } = await handlePost(body, sig, "1.2.3.4", deps);
+  assertEquals(response.status, 200);
+  assertEquals(outcomes[0].outcome, "skipped_invalid_data");
 });
