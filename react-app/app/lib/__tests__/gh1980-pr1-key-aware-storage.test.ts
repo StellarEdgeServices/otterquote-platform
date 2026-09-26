@@ -12,9 +12,12 @@
  * step 1 -- an auxiliary PKCE `-code-verifier` (or `-user`) key must never
  * read, write, or clear the shared session cookies, so a rejected
  * updateUser()'s PKCE cleanup can't silently sign a user out -- already
- * shipped on `main` via `isAuxiliaryStorageKey()` (gh-2154 P-1 review round
- * 5, commit 3ced057). This file's job is
- * now to prove THAT invariant holds for any factory-built instance,
+ * shipped on `main` for THIS (React) stack via `isAuxiliaryStorageKey()` at
+ * commit 88594f4 ("gh-2168: react-app cookie-storage adapter is key-aware
+ * (mirror of #2162)"). (Round 1's fix here mis-cited the static stack's
+ * commit, `3ced057` -- corrected per round 2, comment 5850607453.) This
+ * file's job is now to prove THAT invariant holds for any factory-built
+ * instance,
  * regardless of which `storageKey` it was built for -- the discriminating
  * assertions below fail against a mutant where `isAuxiliaryStorageKey`
  * always returns `false` (verified manually; see the PR comment for that
@@ -59,7 +62,7 @@ function makeJwt(payload: Record<string, unknown>): string {
 const NOW = Math.floor(Date.now() / 1000);
 const SUB = '99999999-8888-7777-6666-555555555555';
 
-describe('gh-1980 PR 1: storage adapters become key-aware (no behaviour change)', () => {
+describe('gh-1980 PR 1: storage-adapter factory refactor (no behaviour change; key-awareness itself already on main)', () => {
   beforeEach(() => {
     clearCookies();
     try { window.localStorage.clear(); } catch { /* ignore */ }
@@ -89,7 +92,7 @@ describe('gh-1980 PR 1: storage adapters become key-aware (no behaviour change)'
     expect(JSON.parse(viaFactory as string).user.id).toBe(SUB);
   });
 
-  it('a second, independently-keyed instance is a genuinely separate object (key-aware, not a global singleton reference)', () => {
+  it('a second, independently-keyed instance is a genuinely separate object (structurally distinct from the global singleton, not itself proof of key-aware behavior -- see the key-awareness tests below)', () => {
     const instanceA = cookieStorageModule.createOtterQuoteCookieStorage('sb-otterquote-auth');
     const instanceB = cookieStorageModule.createOtterQuoteCookieStorage('sb-some-other-project-auth-token');
     expect(instanceA).not.toBe(instanceB);

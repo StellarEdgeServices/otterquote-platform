@@ -322,14 +322,18 @@ function isAuxiliaryStorageKey(key: string): boolean {
  * artifact 3 / Marty's ruling on #1980) — preparatory factory refactor
  * ahead of PR 2 (storageKey convergence) and PR 3 (flowType: 'pkce' flip).
  *
- * REVIEW: FAIL (comment 5850347173, CTO RUN 42) on the first version of
- * this PR corrected the framing here: the key-awareness Marty's #1931
- * ruling actually required for PR 1 -- an auxiliary PKCE `-code-verifier`
- * (or `-user`) key must never read/write/clear the shared session cookies,
- * so a rejected updateUser()'s PKCE cleanup can't silently sign a user out
- * -- already shipped on `main` at commit 3ced057
- * ("gh-2154 P-1: review round 5 — invert cookie-storage guard to a denylist
- * of auxiliary keys"), via `isAuxiliaryStorageKey()` above. This PR does
+ * REVIEW: FAIL (comment 5850347173, round 1; corrected again per round 2,
+ * comment 5850607453 -- round 1's fix cited the wrong commit for THIS
+ * stack) on the first version of this PR corrected the framing here: the
+ * key-awareness Marty's #1931 ruling actually required for PR 1 -- an
+ * auxiliary PKCE `-code-verifier` (or `-user`) key must never
+ * read/write/clear the shared session cookies, so a rejected
+ * updateUser()'s PKCE cleanup can't silently sign a user out -- already
+ * shipped on `main` for THIS (React) stack at commit 88594f4 ("gh-2168:
+ * react-app cookie-storage adapter is key-aware (mirror of #2162)"), via
+ * `isAuxiliaryStorageKey()` above. (The static stack's equivalent fix is
+ * `3ced057`, "gh-2154 P-1: review round 5" -- a different commit, since the
+ * two stacks are separate files with separate fix histories.) This PR does
  * NOT add that; it is a pure structural refactor.
  *
  * `createOtterQuoteCookieStorage(storageKey)` builds a CookieStorage
