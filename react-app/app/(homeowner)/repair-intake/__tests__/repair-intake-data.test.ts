@@ -13,6 +13,7 @@ vi.mock('@/lib/supabase', () => ({
 
 import { supabase } from '@/lib/supabase';
 import {
+  MissingClaimError,
   SessionExpiredError,
   submitRepairIntake,
   useRepairContractors,
@@ -110,28 +111,15 @@ describe('(d) submitRepairIntake — claim write + photo upload', () => {
     vi.clearAllMocks();
   });
 
-  it('no claim id → INSERTs the exact draft payload, then marks submitted', async () => {
+  // gh-2004 negative control: on the pre-fix code, this insert had no
+  // address field at all (no property_address/city/state/zip in the
+  // payload), so calling submitRepairIntake with no claim id created a
+  // permanently unbid-able claim.
+  it('gh-2004: no claim id → throws MissingClaimError and NEVER inserts a claim', async () => {
     const { rec } = setup({ newClaimId: 'c-new' });
-    const res = await submitRepairIntake(baseSub());
-
-    expect(rec.inserts).toHaveLength(1);
-    expect(rec.inserts[0]).toEqual({
-      user_id: 'u1',
-      job_type: 'repair',
-      funding_type: 'insurance',
-      status: 'draft',
-      trades: ['roofing'],
-      existing_shingle_brand: 'GAF',
-      existing_shingle_product: 'Timberline',
-      existing_shingle_color: 'Weathered Wood',
-      homeowner_notes: 'ceiling drip',
-      // gh-397/#689 (PR #785): is_test is now stamped on every claims insert.
-      // The mock user has no email, so isTestEmail(undefined) is false.
-      is_test: false,
-    });
-    // Final write marks the claim submitted.
-    expect(rec.updates).toEqual([{ status: 'submitted' }]);
-    expect(res.claimId).toBe('c-new');
+    await expect(submitRepairIntake(baseSub())).rejects.toBeInstanceOf(MissingClaimError);
+    expect(rec.inserts).toHaveLength(0);
+    expect(rec.updates).toHaveLength(0);
   });
 
   it('existing claim id → UPDATEs (no user_id/funding_type/status), then marks submitted', async () => {
@@ -152,11 +140,12 @@ describe('(d) submitRepairIntake — claim write + photo upload', () => {
   });
 
   it('uploads each photo to the UID-first scoped path with {upsert:false}', async () => {
-    const { rec } = setup({ newClaimId: 'c-new' });
+    const { rec } = setup();
     const f1 = new File(['x'], 'roof.png', { type: 'image/png' });
     const f2 = new File(['y'], 'label.jpg', { type: 'image/jpeg' });
     await submitRepairIntake(
       baseSub({
+        claimId: 'c-existing',
         photos: [
           { tier: 'main', file: f1 },
           { tier: 'tier2', file: f2 },
@@ -166,8 +155,8 @@ describe('(d) submitRepairIntake — claim write + photo upload', () => {
 
     expect(rec.uploads).toHaveLength(2);
     // First folder segment MUST be the user id (RLS: foldername[1] = auth.uid()).
-    expect(rec.uploads[0].path).toMatch(/^u1\/c-new\/repair-main-\d+-[a-z0-9]+\.png$/);
-    expect(rec.uploads[1].path).toMatch(/^u1\/c-new\/repair-tier2-\d+-[a-z0-9]+\.jpg$/);
+    expect(rec.uploads[0].path).toMatch(/^u1\/c-existing\/repair-main-\d+-[a-z0-9]+\.png$/);
+    expect(rec.uploads[1].path).toMatch(/^u1\/c-existing\/repair-tier2-\d+-[a-z0-9]+\.jpg$/);
     rec.uploads.forEach((u) => {
       expect(u.opts).toEqual({ contentType: expect.any(String), upsert: false });
     });
@@ -178,22 +167,28 @@ describe('(d) submitRepairIntake — claim write + photo upload', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { rec } = setup({ uploadError: { message: 'denied' } });
     const f1 = new File(['x'], 'roof.png', { type: 'image/png' });
-    const res = await submitRepairIntake(baseSub({ photos: [{ tier: 'main', file: f1 }] }));
+    const res = await submitRepairIntake(
+      baseSub({ claimId: 'c-existing', photos: [{ tier: 'main', file: f1 }] }),
+    );
 
-    expect(res.claimId).toBe('new-claim');
-    expect(rec.updates).toEqual([{ status: 'submitted' }]); // still marked submitted
+    expect(res.claimId).toBe('c-existing');
+    expect(rec.updates[rec.updates.length - 1]).toEqual({ status: 'submitted' }); // still marked submitted
     expect(warn).toHaveBeenCalled();
     warn.mockRestore();
   });
 
   it('no live session → throws SessionExpiredError (caller redirects)', async () => {
     setup({ user: null });
-    await expect(submitRepairIntake(baseSub())).rejects.toBeInstanceOf(SessionExpiredError);
+    await expect(submitRepairIntake(baseSub({ claimId: 'c-existing' }))).rejects.toBeInstanceOf(
+      SessionExpiredError,
+    );
   });
 
-  it('claim insert failure → throws (caller re-enables Submit)', async () => {
-    setup({ insertError: { message: 'rls denied' } });
-    await expect(submitRepairIntake(baseSub())).rejects.toThrow(/rls denied/);
+  it('claim update failure → throws (caller re-enables Submit)', async () => {
+    setup({ updateError: { message: 'rls denied' } });
+    await expect(submitRepairIntake(baseSub({ claimId: 'c-existing' }))).rejects.toThrow(
+      /rls denied/,
+    );
   });
 });
 
