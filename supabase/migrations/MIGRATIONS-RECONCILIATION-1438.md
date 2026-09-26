@@ -210,3 +210,44 @@ idempotently, because `db push` will treat its file as pending.
   defect 2 documented. Belongs to the backfill/hygiene batches.
 - Batch 3 (PR #1604, 70 → 49) — check its merge state; the live count of 71 before
   this PR says it had not landed at measurement time.
+
+
+## 2026-09-26 addendum — k71-w-1438 (gh-1438 slice): the 7 sets added since 09-05
+
+`supabase/migrations_drafts/` grew 7 new sets between the 09-05 pass above and
+today, none previously measured on this issue: `gh1314_persist_signed_price`,
+`gh1339_quotes_section2_declarations`, `gh1763_is_test_repair`,
+`gh1961_profiles_is_test_at_creation` (+ `.test.sql`),
+`gh2010_leads_authenticated_insert`, `gh2042_update_lead_contact_optional_phone`,
+`gh2055_add_notifications_suppressed_and_is_synthetic`. Measured read-only this
+session against `yeszghaspzwwstvsrioa` (**zero SQL executed against any
+database** — every row below is a `SELECT` against `information_schema`,
+`pg_policy`, `pg_proc`/`pg_trigger`, or the tables themselves):
+
+| draft set | object tested | query | result | verdict | action taken |
+|---|---|---|---|---|---|
+| `gh1314_persist_signed_price` | `claims.signed_contract_price` (+ 4 sibling columns) | `select column_name from information_schema.columns where table_schema='public' and table_name='claims' and column_name like 'signed_%';` | `[]` (0 rows) | **NOT LIVE** | None. Draft's own header already says "DRAFT. NOT APPLIED" and explains why (superseded an earlier 2026-09-06 draft after PR #1798 changed the reason-union). Correctly marked, left untouched. |
+| `gh1339_quotes_section2_declarations` | `quotes.section2_declarations` | `select column_name from information_schema.columns where table_schema='public' and table_name='quotes' and column_name='section2_declarations';` | `[]` (0 rows) | **NOT LIVE** | None. Correctly marked, left untouched. |
+| `gh1763_is_test_repair` | the 7 named `profiles`/`contractors` id pairs' `is_test` agreement | `select p.id, p.is_test, c.id, c.is_test, c.company_name from public.profiles p join public.contractors c on c.user_id=p.id where p.id in (<7 ids>);` | all 7 rows: `profile_is_test=true`, `contractor_is_test=true` | **DATA ALREADY MATCHES THE MIGRATION'S POST-CONDITION**, but the file still reads "DRAFT. NOT APPLIED." See flag added directly to the file this session (comment-only, no SQL body change) and the note below. | **Not archived, not moved.** This is a data UPDATE guarded by a row-count assertion that fails on an empty branch (`v_count <> 7` raises) — filing it into `supabase/migrations/` as a forward-replay file would make every fresh-branch `db push` fail at this file. Flagged in-file for Dustin/CTO: confirm whether this exact file ran (then archive as an applied trace under its real timestamp, guard removed/neutralized first) or whether a different mechanism fixed these rows (then re-run the issue's own unscoped disagreement query before relying on this file for anything). |
+| `gh1961_profiles_is_test_at_creation` (+ `.test.sql`) | triggers `profiles_set_is_test_for_internal_domain`, `contractors_zz_inherit_profile_is_test` | `select tgname from pg_trigger where tgname ilike '%is_test%' and not tgisinternal;` | `[]` (0 rows) | **NOT LIVE** | None. Correctly marked; active review thread elsewhere (PR #2002, comments 5706433778 / 5707827031) — out of this dispatch's scope, not touched. |
+| `gh2010_leads_authenticated_insert` | `pg_policy` role list on `public.leads` "Allow anonymous inserts" | `select policyname, roles, cmd from pg_policies where schemaname='public' and tablename='leads';` | `{"Allow anonymous inserts", roles: {anon,authenticated}, cmd: INSERT}` | **LIVE** — already correctly filed as `supabase/migrations/20260917203831_gh2010_leads_authenticated_insert.sql` | Forward file needed no change. Its `_rollback.sql`/`_pre-flight.md` companions were still sitting in `migrations_drafts/` (contradicting `migrations/README.md`'s own convention) — moved to `supabase/migrations_rollbacks/20260917203831_gh2010_leads_authenticated_insert_{rollback.sql,pre-flight.md}` this session; forward file's header comment repointed to the new path. |
+| `gh2042_update_lead_contact_optional_phone` | `public.update_lead_contact()` function body | `select pg_get_functiondef(p.oid) like '%gh-2042%' from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='update_lead_contact';` | `true` | **LIVE** — already correctly filed as `supabase/migrations/20260920160133_gh2042_update_lead_contact_optional_phone.sql`. Note: this version is **absent from `supabase_migrations.schema_migrations`** (checked directly) — same ledger-bypass pattern as `gh1585_funnel_abandonment_facts` in the 09-05 addendum above; the file is idempotent (`CREATE OR REPLACE FUNCTION`), so replay-safe regardless. | Forward file needed no change. Its `_rollback.sql` companion (it never had a `_pre-flight.md`) was still sitting in `migrations_drafts/` — moved to `supabase/migrations_rollbacks/20260920160133_gh2042_update_lead_contact_optional_phone_rollback.sql` this session. |
+| `gh2055_add_notifications_suppressed_and_is_synthetic` | `contractors.notifications_suppressed`, `leads.is_synthetic` | ledger: `select version, name from supabase_migrations.schema_migrations where version='20260920195654';` → present, named `gh2055_add_notifications_suppressed_and_is_synthetic` | ledger row present | **LIVE** — already correctly filed as `supabase/migrations/20260920195654_gh2055_add_notifications_suppressed_and_is_synthetic.sql` | Forward file needed no change. Its `_rollback.sql`/`_pre-flight.md` companions were still sitting in `migrations_drafts/` — moved to `supabase/migrations_rollbacks/20260920195654_gh2055_add_notifications_suppressed_and_is_synthetic_{rollback.sql,pre-flight.md}` this session; forward file's header comment repointed to the new path. |
+
+**Summary: of the 7 newer sets, 3 are LIVE (gh2010, gh2042, gh2055) and were
+already correctly filed under their real applied timestamps in
+`supabase/migrations/` — only their rollback/pre-flight companions were
+misfiled in `migrations_drafts/`, now corrected. 3 are genuinely NOT LIVE and
+already carry accurate `DRAFT. NOT APPLIED.` headers explaining why
+(gh1314, gh1339, gh1961) — no `migrations_drafts/` lie for these. 1
+(gh1763) is the one open discrepancy this addendum flags rather than
+resolves unilaterally, for the reason stated in its row above.**
+
+This addendum does not build the scheduled, non-blocking live-drift alarm
+job the 2026-09-01 baseline manifest's `known_limitations` names as the real
+fix for the class of leak `gh1763` (and previously `gh1585`, `gh2042`)
+represent — a migration or data change reaching production outside any repo
+diff is invisible to `scripts/migrations-reconciliation-check.py` by
+construction, and stays invisible to any per-PR gate. That remains flagged
+as follow-up work, not silently dropped, consistent with every prior pass on
+this issue.
