@@ -124,6 +124,7 @@ import { readFirstTouch } from '@/lib/attribution';
 import { withFirstTouchParam } from '@/lib/attribution-core';
 import { formatPhoneValue, isValidEmail, isValidZip, fullAddress, splitLeadName } from './utils';
 import { captureVariantFromUrl } from '@/lib/variant';
+import { SMS_CONSENT_LABEL } from '../../constants/legal';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -2006,9 +2007,13 @@ export default function GetStartedPage() {
                       onFocus={() => markFieldTouched('sms_consent')}
                     />
                     <span style={{ fontSize: '0.9rem', lineHeight: 1.5, color: 'var(--slate, #94a3b8)' }}>
-                      {/* TWILIO MESSAGE_FLOW required language */}
-                      I agree to receive transactional SMS from Otter Quotes. Message frequency varies.
-                      Message and data rates may apply. Reply STOP to unsubscribe. See our{' '}
+                      {/* gh-1954 (Dustin: ALIGN, comment 5682310604): rendered from
+                          legal.ts's SMS_CONSENT_LABEL, not an inline copy, so the two
+                          cannot drift apart again. Privacy/Terms links below are
+                          additional disclosure, not part of the canonical TCPA
+                          sentence, and are unchanged by this fix. */}
+                      {SMS_CONSENT_LABEL}{' '}
+                      See our{' '}
                       <a href="https://otterquote.com/privacy.html" style={{ color: 'var(--amber, #E07B00)', textDecoration: 'underline' }}>
                         Privacy Policy
                       </a>{' '}
