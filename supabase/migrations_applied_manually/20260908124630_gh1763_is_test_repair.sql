@@ -3,10 +3,12 @@
 --
 -- >>> APPLIED MANUALLY (not a draft, not a db-push replay file) <<<
 -- DECIDED (Tier A) by Marty, CTO RUN 42, PR #2233 comment 5850353019,
--- 2026-09-26T22:12:20Z, quoted verbatim: "the gh1763 data-repair was
--- APPLIED on 2026-09-08 (CTO comment 5585368997 on #1763: run verbatim via
--- execute_sql, guard passed, disagreement count 7 -> 0). Move it UNCHANGED,
--- guard included, to supabase/migrations_applied_manually/20260908124630_gh1763_is_test_repair.sql
+-- 2026-09-26T22:12:20Z, paraphrased (arrows and quotation-mark style
+-- adapted for this SQL comment; substance unchanged): "the gh1763
+-- data-repair was APPLIED on 2026-09-08 (CTO comment 5585368997 on #1763:
+-- run verbatim via execute_sql, guard passed, disagreement count 7 -> 0).
+-- Move it UNCHANGED, guard included, to
+-- supabase/migrations_applied_manually/20260908124630_gh1763_is_test_repair.sql
 -- with a header: 'Applied manually 2026-09-08 via execute_sql (see #1763
 -- comment 5585368997). NEVER replay. No schema_migrations row by design.'
 -- Keep the guard -- on an accidental re-run it matches 0 rows and raises,
@@ -16,21 +18,23 @@
 -- guard (removes the only protection against a re-run)." This file's
 -- location, filename and guard already matched that ruling before it was
 -- posted (this branch moved it here per the independent reviewer's
--- recommendation, comment 5850286498); this header cites the ruling
--- verbatim per the coordinator's follow-up instruction so the file's own
--- text, not only the PR/issue comments, carries the DECIDED citation.
+-- recommendation, comment 5850286498); this header cites the ruling per
+-- the coordinator's follow-up instruction so the file's own text, not
+-- only the PR/issue comments, carries the DECIDED citation.
 --
--- This file ran, byte-identical to below (guard included), against
+-- This file ran, byte-identical below (guard included) to
+-- supabase/migrations_drafts/gh1763_is_test_repair.sql as it stood on
+-- 2026-09-08 (last changed 2026-09-08T01:09:38Z, before the apply), against
 -- production (yeszghaspzwwstvsrioa) on 2026-09-08 at approximately
 -- 12:46:30Z UTC, executed by Marty (CTO) via Supabase MCP execute_sql --
 -- NOT via `supabase db push` and NOT recorded in
 -- supabase_migrations.schema_migrations (that table has no row for this
--- file or for any statement naming the 7 ids below; execute_sql does not
--- write to it). Full evidence, before/after state and three negative
--- controls: issue #1763, comment 5585368997 ("## DONE (evidence) -- the
--- repair is APPLIED to production. Disagreement query returns 0 rows."),
--- section 5 ("THE APPLY"): guard passed (found exactly 7 matching rows,
--- did not raise), UPDATE ran, disagreement count went 7 -> 0.
+-- repair; execute_sql does not write to it). Full evidence, before/after
+-- state and negative controls: issue #1763, comment 5585368997 ("## DONE
+-- (evidence) -- the repair is APPLIED to production. Disagreement query
+-- returns 0 rows."), section 5 ("THE APPLY"): guard passed (found exactly
+-- 7 matching rows, did not raise), UPDATE ran, disagreement count went
+-- 7 -> 0.
 --
 -- THIS FILE MUST NEVER BE:
 --   - moved into supabase/migrations/ (the CLI replays that directory
@@ -49,23 +53,26 @@
 -- REVIEW FAIL 5850286498; confirmed by DECIDED ruling 5850353019) --
 -- that directory's own definition (supabase/migrations/README.md) is
 -- "SQL that was written but is NOT applied in production", which this
--- file has not been true of since 2026-09-08. Content below is unchanged
--- from what actually ran; only this header and the file's location
--- changed. Rollback and pre-flight docs, unmoved:
--- supabase/migrations_rollbacks/gh1763_is_test_repair_rollback.sql
--- and supabase/migrations_rollbacks/gh1763_is_test_repair_pre-flight.md
--- (if present).
+-- file has not been true of since 2026-09-08. Everything from "THE RULE
+-- AND THE EXCEPTION" below through the closing `commit;` is
+-- byte-identical to the base draft (verified this session against
+-- supabase/migrations_drafts/gh1763_is_test_repair.sql @ 442b5371698e);
+-- only this header above it, and the file's location, changed. Rollback
+-- and pre-flight docs, unmoved:
+-- supabase/migrations_rollbacks/gh1763_is_test_repair_rollback.sql and
+-- supabase/migrations_rollbacks/gh1763_is_test_repair_pre-flight.md.
 --
 -- Current unscoped state (re-checked 2026-09-26, read-only, this session):
 --   select p.id, p.is_test, c.id, c.is_test, c.company_name, c.created_at
 --   from public.profiles p join public.contractors c on c.user_id = p.id
 --   where p.role = 'contractor' and p.is_test is distinct from c.is_test;
---   -> 1 row: profile f70fe577-549d-47cc-88d0-dac90fc010b9 (is_test=true) /
---      contractor (is_test=false), "Ceo48 GH2000 Test Co", created
---      2026-09-16 -- the REVERSE direction from this file's 7 rows, a
---      different contractor entirely, created after this repair ran.
---      Issue #1763 is closed not_planned (comment 5763651883); this
---      row is not this file's concern and this file does not touch it.
+--   -> 1 row: profile c82f9d42-ceeb-4472-a01d-baa3a2f97c30 (is_test=true) /
+--      contractor f70fe577-549d-47cc-88d0-dac90fc010b9 (is_test=false),
+--      "Ceo48 GH2000 Test Co", created 2026-09-16 -- the REVERSE direction
+--      from this file's 7 rows, a different contractor entirely, created
+--      after this repair ran. Issue #1763 is closed not_planned (comment
+--      5763651883); this row is not this file's concern and this file
+--      does not touch it.
 --
 -- TIER NOTE (superseded -- kept for history): issue #1763 carried label
 -- tier:3a; a Kevin (Code lane) dispatch on this thread had recommended
@@ -131,8 +138,7 @@ begin;
 -- pre-flight's 7-row baseline (a row already repaired by another path, an
 -- id typo, or drift since 2026-09-08 would otherwise apply silently to the
 -- wrong set). This is the count-guard analogue, for a targeted data UPDATE,
--- of migration-author-code's Step 6.5 rollback hard gate. LEFT IN PLACE --
--- see "THIS FILE MUST NEVER BE" above -- this is what makes a re-run safe.
+-- of migration-author-code's Step 6.5 rollback hard gate.
 do $$
 declare
   v_count integer;
@@ -172,27 +178,24 @@ where id in (
 )
 and is_test = false;
 
--- Post-condition (verified 2026-09-08 -- see comment 5585368997 section 6
--- for the full before/after plus negative controls A-F):
+-- Post-condition (verify manually after apply -- not re-asserted here since
+-- the UPDATE above is itself the fix and a second guard would just repeat
+-- the pre-guard's logic against post-fix state):
 --
 --   select p.id as profile_id, p.is_test as profile_is_test,
 --          c.id as contractor_id, c.is_test as contractor_is_test, c.company_name
 --   from public.profiles p join public.contractors c on c.user_id = p.id
 --   where p.id in (<the 7 ids above>)
 --   order by c.created_at;
---   -- confirmed 2026-09-08: all 7 rows profile_is_test = true, contractor_is_test = true
---   -- re-confirmed read-only 2026-09-26 (this session): unchanged
+--   -- expect: all 7 rows profile_is_test = true, contractor_is_test = true
 --
--- And the issue's own disagreement query, scoped to these 7 (confirmed 0
--- rows 2026-09-08; the unscoped, full-table version is re-run and recorded
--- fresh above under "Current unscoped state" -- it returns 1 row today, and
--- that row is not these 7):
+-- And the issue's own disagreement query, scoped to these 7 (or run
+-- unscoped for the full-table closes-on check):
 --
 --   select p.id as profile_id, p.is_test as profile_is_test,
 --          c.id as contractor_id, c.is_test as contractor_is_test, c.company_name
 --   from public.profiles p join public.contractors c on c.user_id = p.id
 --   where p.role = 'contractor' and p.is_test is distinct from c.is_test
---     and p.id in (<the 7 ids above>)
 --   order by c.created_at;
 --   -- expect: 0 rows
 

@@ -6,7 +6,17 @@
 -- replays that directory forward onto every fresh branch. Promote this file
 -- (renamed to a 14-digit UTC timestamp prefix, moved into
 -- supabase/migrations/) only after Dustin approves the apply and it is
--- actually run. Same posture as supabase/migrations_drafts/gh1763_is_test_repair.sql.
+-- actually run. NOTE (corrected 2026-09-26, gh-1438): this file's original
+-- header compared its posture to "supabase/migrations_drafts/gh1763_is_test_repair.sql"
+-- -- that file has since been applied (2026-09-08, #1763 comment 5585368997)
+-- and is now filed at
+-- supabase/migrations_applied_manually/20260908124630_gh1763_is_test_repair.sql,
+-- not migrations_drafts/. This file (gh1961) remains a genuine, unapplied
+-- draft -- confirmed live 2026-09-26: no trigger named
+-- profiles_set_is_test_for_internal_domain or
+-- contractors_zz_inherit_profile_is_test exists in production. The two
+-- files' postures have diverged; do not treat gh1763 as a still-pending
+-- comparison point.
 -- Rollback and pre-flight docs: gh1961_profiles_is_test_at_creation_rollback.sql
 -- and gh1961_profiles_is_test_at_creation_pre-flight.md in
 -- supabase/migrations_rollbacks/.
