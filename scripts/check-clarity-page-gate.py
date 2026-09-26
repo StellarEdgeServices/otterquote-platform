@@ -388,6 +388,15 @@ SESSION_AWARE_PUBLIC: dict[str, str] = {
     "/hi-1": "hasPartnerSession() only redirects an ALREADY-signed-in "
              "partner to partner-dashboard.html; same pattern as "
              "partner-adjusters.html (hi-1.html).",
+    # gh-2151/gh-2152 INS-5/HI-4 (CEO RUN 71, wave 3): the two client-handout
+    # lead-magnet funnel pages, same PUBLIC pattern and same redirect-only
+    # session check as re-1/ins-1/hi-1 above.
+    "/ins-5": "hasPartnerSession() only redirects an ALREADY-signed-in "
+              "partner to partner-dashboard.html; same pattern as "
+              "partner-adjusters.html (ins-5.html).",
+    "/hi-4": "hasPartnerSession() only redirects an ALREADY-signed-in "
+             "partner to partner-dashboard.html; same pattern as "
+             "partner-adjusters.html (hi-4.html).",
 }
 
 # Reviewed, one-line-reasoned override for the OTHER direction: a page that
