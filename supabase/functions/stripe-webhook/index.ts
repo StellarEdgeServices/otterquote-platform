@@ -879,7 +879,7 @@ async function handlePlatformFeePaymentSucceeded(
     .eq("id", q.claim_id)
     .maybeSingle();
 
-  // ── gh-1759 THE WRITER, ACH HALF ──────────────────────────────────────────────
+  // ── gh-1759 THE WRITER, ACH HALF ───────────────────────────────────────────
   // docusign-webhook writes platform_fee_stripe_id on the SYNCHRONOUS success
   // path, where a card charge already has a charge id. An ACH charge does not:
   // create-payment-intent returns charge_id = null while the intent is
