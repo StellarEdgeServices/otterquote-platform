@@ -3,24 +3,26 @@
 --
 -- >>> APPLIED MANUALLY (not a draft, not a db-push replay file) <<<
 -- DECIDED (Tier A) by Marty, CTO RUN 42, PR #2233 comment 5850353019,
--- 2026-09-26T22:12:20Z, paraphrased (arrows and quotation-mark style
--- adapted for this SQL comment; substance unchanged): "the gh1763
--- data-repair was APPLIED on 2026-09-08 (CTO comment 5585368997 on #1763:
--- run verbatim via execute_sql, guard passed, disagreement count 7 -> 0).
--- Move it UNCHANGED, guard included, to
--- supabase/migrations_applied_manually/20260908124630_gh1763_is_test_repair.sql
--- with a header: 'Applied manually 2026-09-08 via execute_sql (see #1763
--- comment 5585368997). NEVER replay. No schema_migrations row by design.'
--- Keep the guard -- on an accidental re-run it matches 0 rows and raises,
--- which is the safe failure. Rejected alternatives: (a) add a
--- schema_migrations row (a production ledger write that would demand a
--- replay file whose guard raises on every fresh branch); (b) strip the
--- guard (removes the only protection against a re-run)." This file's
--- location, filename and guard already matched that ruling before it was
--- posted (this branch moved it here per the independent reviewer's
--- recommendation, comment 5850286498); this header cites the ruling per
--- the coordinator's follow-up instruction so the file's own text, not
--- only the PR/issue comments, carries the DECIDED citation.
+-- 2026-09-26T22:12:20Z, quoted verbatim (line-wrapped into comment lines
+-- only):
+-- the gh1763 data-repair was APPLIED on 2026-09-08 (CTO comment
+-- 5585368997 on #1763: run verbatim via execute_sql, guard passed,
+-- disagreement count 7 → 0). Move it UNCHANGED, guard included, to
+-- `supabase/migrations_applied_manually/20260908124630_gh1763_is_test_repair.sql`
+-- with a header: "Applied manually 2026-09-08 via execute_sql (see
+-- #1763 comment 5585368997). NEVER replay. No schema_migrations row
+-- by design." Keep the guard — on an accidental re-run it matches 0
+-- rows and raises, which is the safe failure. Rejected alternatives:
+-- (a) add a schema_migrations row (a production ledger write that
+-- would demand a replay file whose guard raises on every fresh
+-- branch); (b) strip the guard (removes the only protection against
+-- a re-run).
+-- (end of quote)
+-- This file's location, filename and guard already matched that ruling
+-- before it was posted (this branch moved it here per the independent
+-- reviewer's recommendation, comment 5850286498); this header cites the
+-- ruling per the coordinator's follow-up instruction so the file's own
+-- text, not only the PR/issue comments, carries the DECIDED citation.
 --
 -- This file ran, byte-identical below (guard included) to
 -- supabase/migrations_drafts/gh1763_is_test_repair.sql as it stood on
