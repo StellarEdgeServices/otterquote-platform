@@ -22,11 +22,10 @@
 --     AND has_function_privilege('anon', p.oid, 'EXECUTE') = true;
 --
 -- returned 12 rows (down from the issue's original 29 -- 23 already
--- revoked by PR #1634). Of the 12: 6 are the issue's own explicit
+-- revoked by PR #1634). Of the 12: 5 are the issue's own explicit
 -- allow-list (get_contractor_licenses_public, get_contractors_public,
--- get_referral_agents_public, register_partner, track_referral_click,
--- get_platform_fee_percentage no longer anon-exec at all) plus
--- contractor_can_bid (kept -- see PR #1634's header, RLS `with_check`
+-- get_referral_agents_public, register_partner, track_referral_click)
+-- plus contractor_can_bid (6) (kept -- see PR #1634's header, RLS `with_check`
 -- dependency on the {public}-role "Contractors can insert quotes" policy,
 -- unrelated to this migration and NOT touched here). The remaining 6 are
 -- new since the issue was filed: get_lead_prefill, set_lead_role,
@@ -50,18 +49,34 @@
 --   WHERE n.nspname='public' AND p.proname IN
 --     ('notify_admin_new_claim','notify_admin_new_partner','notify_admin_new_router_lead');
 --   -- all three: ret=trigger, is_trigger=true --
---   --   notify_admin_new_claim        -> trg_* AFTER INSERT ON claims
+--   --   notify_admin_new_claim        -> trg_notify_admin_new_claim AFTER INSERT ON claims
 --   --   notify_admin_new_partner      -> trg_notify_admin_new_partner AFTER INSERT ON referral_agents
 --   --   notify_admin_new_router_lead  -> trg_notify_admin_new_router_lead AFTER UPDATE ON leads
 --
 -- Same shape as the 15 trigger functions PR #1634 already revoked
 -- (notify_admin_new_contractor, handle_new_user, etc.): fired only by
 -- Postgres trigger machinery (which runs as the trigger owner, not the
--- invoking role), never invoked via `.rpc()` by any client, so a direct
--- EXECUTE grant to PUBLIC/anon serves no purpose and is pure attack
--- surface (an anon caller can invoke the trigger BODY directly via RPC,
--- outside the INSERT/UPDATE context it assumes -- same class of exposure
--- PR #1634's header describes).
+-- invoking role), never invoked via `.rpc()` by any client.
+--
+-- CORRECTION (REVIEW: FAIL 5850171730, CTO RUN 42, fresh-context Opus
+-- refuter): the exposure is NOT "an anon caller can invoke the trigger
+-- BODY directly via RPC, outside the INSERT/UPDATE context it assumes" --
+-- Postgres refuses to invoke a `RETURNS trigger` function outside trigger
+-- context for ANY role, whatever the grants (SQLSTATE 0A000, "trigger
+-- functions can only be called as triggers" -- verified live 2026-09-26
+-- in a transaction forced to abort before this correction, and already on
+-- record from the 2026-09-04 refuter on #1634, comment `5544978633`).
+-- Trigger firing itself does not check EXECUTE either (verified live
+-- 2026-09-26: an anon INSERT into `claims` still fires
+-- `trg_notify_admin_new_claim` with EXECUTE revoked from PUBLIC/anon), so
+-- the claims/referral_agents/leads write paths are unaffected by this
+-- revoke either way. The actual reason for this migration: these 3 anon
+-- EXECUTE grants are advisor-flagged `anon_security_definer_function_executable`
+-- drift (no callable hole, but out of the least-privilege posture #1529
+-- exists to establish) and closing them is required for #1529's own
+-- `closes-on` (0 anon rows for non-public SECURITY DEFINER functions).
+-- Revoking them is defense-in-depth cleanup, not a fix for a live
+-- callable exposure.
 --
 -- KEPT, not touched by this migration (confirmed real anon/pre-auth
 -- callers, R-147 grep evidence):
