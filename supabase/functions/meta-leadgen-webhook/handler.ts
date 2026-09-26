@@ -4,10 +4,13 @@
 // this file — index.ts wires the real Supabase client, Mailgun-free Graph
 // API fetch, and global fetch.
 //
-// PARTNER PATH ONLY. The homeowner `leads` path (#2123) is explicitly NOT
-// built — Dustin excluded it from this task. A form_id not in the allowlist
-// (which includes any homeowner form) is always a logged skip + 200, never
-// a write, never an error.
+// TWO PATHS: partner (original P-5 build, UNCHANGED below) and homeowner
+// (#2123 HO-2, added by this file's gh-2154/gh-2123 revision). A form_id is
+// checked against the PARTNER allowlist first (lookupForm, unchanged), then
+// the HOMEOWNER allowlist (lookupHomeownerForm, new); a form_id in neither
+// is always a logged skip + 200, never a write, never an error — this is
+// the fallback every unknown or future form_id still gets, exactly as
+// before this revision.
 //
 // Never logs raw lead PII (name/email/phone/company) or any token/secret —
 // only leadgen_id and an outcome string.
@@ -15,6 +18,11 @@
 import { verifyHandshake } from "./handshake.ts";
 import { verifyMetaSignature } from "./signature.ts";
 import { parseAllowlist, lookupForm, type Allowlist } from "./allowlist.ts";
+import {
+  parseHomeownerAllowlist,
+  lookupHomeownerForm,
+  type HomeownerAllowlist,
+} from "./homeowner-allowlist.ts";
 import { mapFieldData, type LeadFieldDatum } from "./field-mapping.ts";
 
 export const FUNCTION_NAME = "meta-leadgen-webhook";
@@ -58,11 +66,32 @@ export interface RegisterPartnerArgs {
   metaLeadId: string;
 }
 
+/** #2123 HO-2: the fields a homeowner `leads` row needs from a Meta lead. */
+export interface RegisterHomeownerLeadArgs {
+  name: string;
+  email: string | null;
+  phone: string | null;
+  funnelId: string;
+  isSynthetic: boolean;
+  metaLeadId: string;
+}
+
+/** #2123 HO-2: result of the meta_lead_id dedupe read on `leads`. */
+export interface HomeownerDuplicateResult {
+  /** id of the existing row, or null if none exists yet. */
+  existingId: string | null;
+  /** true once that existing row's role is already set (alert already fired). */
+  roleSet: boolean;
+  errored: boolean;
+}
+
 export interface WebhookDeps {
   verifyToken: string | undefined;
   appSecret: string | undefined;
   pageAccessToken: string | undefined;
   allowlistRaw: string | undefined;
+  /** #2123 HO-2: META_LEADGEN_HOMEOWNER_FORM_ALLOWLIST, separate from the partner allowlist above. */
+  homeownerAllowlistRaw: string | undefined;
   fetchLead: (leadgenId: string, token: string) => Promise<{ data: FetchedLead | null; error: string | null }>;
   /**
    * gh-2154 P-5r (LEGAL-READ FAIL 5833717530): fires (best-effort, never
@@ -89,6 +118,38 @@ export interface WebhookDeps {
   registerPartner: (
     args: RegisterPartnerArgs,
   ) => Promise<{ data: { id?: string } | null; error: { message?: string } | null }>;
+  /**
+   * #2123 HO-2: dedupe read on `leads.meta_lead_id`, keyed the same way
+   * isDuplicate() above keys on `referral_agents.meta_lead_id`. Also
+   * reports whether the existing row's role is already set, so a lead
+   * whose insert previously succeeded but whose set_lead_role() call
+   * failed transiently (network blip, rate limit) can be recovered on
+   * Meta's redelivery instead of being silently skipped forever once the
+   * meta_lead_id UNIQUE constraint makes a second insert impossible.
+   */
+  isDuplicateHomeownerLead: (metaLeadId: string) => Promise<HomeownerDuplicateResult>;
+  /**
+   * #2123 HO-2: inserts a NEW `leads` row (role is forced NULL by the
+   * table's existing BEFORE INSERT guard, trg_leads_force_safe_insert_
+   * defaults, regardless of caller — see this build's report) and then
+   * calls set_lead_role(id, 'homeowner') on it, the same RPC and the same
+   * role-set-fires-the-alert mechanism js/router-variant-f.js's Step 2
+   * already uses (gh-1994's trg_notify_admin_new_router_lead). Returns the
+   * new row's id on success. A unique_violation on meta_lead_id (a race
+   * with another delivery of the same leadgen_id) surfaces as
+   * error.message === "duplicate_meta_lead", mirroring registerPartner's
+   * own terminal-duplicate convention above.
+   */
+  registerHomeownerLead: (
+    args: RegisterHomeownerLeadArgs,
+  ) => Promise<{ data: { id?: string } | null; error: { message?: string } | null }>;
+  /**
+   * #2123 HO-2 recovery path: sets role='homeowner' on an EXISTING row
+   * (isDuplicateHomeownerLead found it, but roleSet was false) without
+   * re-inserting. Same set_lead_role() RPC as registerHomeownerLead's
+   * second step.
+   */
+  setHomeownerLeadRole: (leadId: string) => Promise<{ error: { message?: string } | null }>;
   checkRateLimit: (bucket: string) => Promise<{ allowed: boolean; errored: boolean }>;
   log: (level: "log" | "warn" | "error", message: string) => void;
 }
@@ -199,6 +260,12 @@ export async function handlePost(
   }
 
   const allowlist: Allowlist = parseAllowlist(deps.allowlistRaw);
+  // #2123 HO-2: parsed unconditionally, alongside the partner allowlist,
+  // whether or not any homeowner form is configured yet — an unset/empty
+  // META_LEADGEN_HOMEOWNER_FORM_ALLOWLIST parses to {} (parseHomeownerAllowlist
+  // never throws), so this is a no-op for every delivery until a homeowner
+  // form_id is actually added to it.
+  const homeownerAllowlist: HomeownerAllowlist = parseHomeownerAllowlist(deps.homeownerAllowlistRaw);
   const outcomes: LeadOutcome[] = [];
   // gh-2154 P-5r (REVIEW FAIL 5833742114 must-fix 1): a Graph fetch error, a
   // register_partner() error other than a terminal duplicate, or a dedupe
@@ -227,7 +294,106 @@ export async function handlePost(
 
       const config = lookupForm(allowlist, formId);
       if (!config) {
-        // Includes any homeowner (#2123) form — that path is not built.
+        // #2123 HO-2: a form_id absent from the PARTNER allowlist is now
+        // checked against the HOMEOWNER allowlist before falling back to
+        // skipped_not_allowlisted — entirely self-contained below (its own
+        // dedupe/fetch/validate/write and its own `continue`s), so nothing
+        // in the partner branch below this `if` block is reachable or
+        // altered for a homeowner form_id, and nothing here runs for a
+        // partner form_id (config would be non-null and this whole `if`
+        // body is skipped).
+        const homeownerConfig = lookupHomeownerForm(homeownerAllowlist, formId);
+        if (homeownerConfig) {
+          const dup = await deps.isDuplicateHomeownerLead(leadgenId);
+          if (dup.errored) {
+            deps.log("error", `${FUNCTION_NAME}: homeowner dedupe check failed leadgen_id=${leadgenId}`);
+            outcomes.push({ leadgenId, formId, outcome: "error_dedupe_check_failed" });
+            hasTransientFailure = true;
+            continue;
+          }
+
+          if (dup.existingId) {
+            if (dup.roleSet) {
+              // Terminal: this leadgen_id already produced a homeowner lead
+              // with its role set (alert already fired) — redelivery can
+              // never change that.
+              deps.log("log", `${FUNCTION_NAME}: skip leadgen_id=${leadgenId} reason=already_registered`);
+              outcomes.push({ leadgenId, formId, outcome: "skipped_already_registered" });
+              continue;
+            }
+            // Recovery: a PRIOR delivery already inserted this row (its
+            // meta_lead_id UNIQUE constraint means a second insert is
+            // impossible) but set_lead_role() never landed — a transient
+            // failure on that earlier attempt, not a terminal one. Finish
+            // the job on the existing row rather than skipping it forever.
+            const roleResult = await deps.setHomeownerLeadRole(dup.existingId);
+            if (roleResult.error) {
+              deps.log("error", `${FUNCTION_NAME}: homeowner set_lead_role recovery failed leadgen_id=${leadgenId}`);
+              outcomes.push({ leadgenId, formId, outcome: "error_register_failed" });
+              hasTransientFailure = true;
+              continue;
+            }
+            deps.log("log", `${FUNCTION_NAME}: registered (role recovered) leadgen_id=${leadgenId}`);
+            outcomes.push({ leadgenId, formId, outcome: "registered" });
+            continue;
+          }
+
+          if (!deps.pageAccessToken) {
+            deps.log("warn", `${FUNCTION_NAME}: skip leadgen_id=${leadgenId} reason=page_token_unset`);
+            outcomes.push({ leadgenId, formId, outcome: "skipped_page_token_unset" });
+            continue;
+          }
+
+          const fetched = await deps.fetchLead(leadgenId, deps.pageAccessToken);
+          if (fetched.error || !fetched.data) {
+            deps.log("warn", `${FUNCTION_NAME}: skip leadgen_id=${leadgenId} reason=fetch_failed`);
+            outcomes.push({ leadgenId, formId, outcome: "skipped_fetch_failed" });
+            hasTransientFailure = true;
+            continue;
+          }
+
+          const mapped = mapFieldData(fetched.data.field_data);
+          const name = mapped.fullName ?? mapped.firstName;
+          // #2123 HO-2 (plan §2): "a real, contactable lead (name + email OR
+          // phone...)" — unlike the partner path, phone alone is enough;
+          // email is not required.
+          if (!name || (!mapped.email && !mapped.phone)) {
+            deps.log("warn", `${FUNCTION_NAME}: skip leadgen_id=${leadgenId} reason=incomplete_fields`);
+            outcomes.push({ leadgenId, formId, outcome: "skipped_incomplete_fields" });
+            continue;
+          }
+
+          const reg = await deps.registerHomeownerLead({
+            name,
+            email: mapped.email,
+            phone: mapped.phone,
+            funnelId: homeownerConfig.funnelId,
+            isSynthetic: homeownerConfig.isTest,
+            metaLeadId: leadgenId,
+          });
+
+          if (reg.error) {
+            const msg = reg.error.message ?? "";
+            if (msg.includes("duplicate_meta_lead")) {
+              // Terminal: a race with another delivery of the same
+              // leadgen_id already inserted the row; that delivery's own
+              // set_lead_role() call (or, if that failed too, its own
+              // future redelivery via the recovery path above) owns it.
+              deps.log("log", `${FUNCTION_NAME}: skip leadgen_id=${leadgenId} reason=already_registered`);
+              outcomes.push({ leadgenId, formId, outcome: "skipped_already_registered" });
+            } else {
+              deps.log("error", `${FUNCTION_NAME}: registerHomeownerLead failed leadgen_id=${leadgenId}`);
+              outcomes.push({ leadgenId, formId, outcome: "error_register_failed" });
+              hasTransientFailure = true;
+            }
+            continue;
+          }
+
+          deps.log("log", `${FUNCTION_NAME}: registered leadgen_id=${leadgenId}`);
+          outcomes.push({ leadgenId, formId, outcome: "registered" });
+          continue;
+        }
+
         deps.log("log", `${FUNCTION_NAME}: skip leadgen_id=${leadgenId} reason=not_allowlisted`);
         outcomes.push({ leadgenId, formId, outcome: "skipped_not_allowlisted" });
         continue;
