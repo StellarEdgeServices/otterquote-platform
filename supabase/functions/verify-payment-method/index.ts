@@ -105,7 +105,7 @@ serve(async (req) => {
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
 
   try {
-    // ── Caller identity ─────────────────────────────────────────
+    // ── Caller identity ──────────────────────────────────────────────────
     // The contractor may only verify their own payment method. Reading the
     // caller from the JWT (not from the request body) is what makes that
     // unforgeable.
@@ -147,7 +147,7 @@ serve(async (req) => {
       return json({ error: "Forbidden" }, 403, corsHeaders);
     }
 
-    // ── Stripe key selection ───────────────────────────────────
+    // ── Stripe key selection ─────────────────────────────────────────────
     // Identical rule to create-setup-intent, so both halves of one card-add
     // always run against the same Stripe account and mode.
     // gh-1536: exact-match, not substring — "app-staging." falsely matched
@@ -166,7 +166,7 @@ serve(async (req) => {
     }
     const basicAuth = btoa(`${stripeSecretKey}:`);
 
-    // ── Retrieve the SetupIntent with the charging key ─────────────
+    // ── Retrieve the SetupIntent with the charging key ───────────────────
     // expand[]=payment_method gets the card/bank details in the same round
     // trip, which is the whole reason the browser never needs to (and never
     // could correctly) look them up itself.
@@ -217,7 +217,7 @@ serve(async (req) => {
       return json({ error: "Forbidden" }, 403, corsHeaders);
     }
 
-    // ── Mode gate (gh-1425 path 2 interim mitigation) ──────────────
+    // ── Mode gate (gh-1425 path 2 interim mitigation) ────────────────────
     // Staging shares this database, so a test-mode SetupIntent is only ever
     // legitimate for a seeded test contractor. The Origin header that selects
     // the test key is attacker-supplied; si.livemode is not. Fail closed
@@ -280,7 +280,7 @@ serve(async (req) => {
         `for contractor ${contractor_id}`,
     );
 
-    // ── Persist, service role ────────────────────────────
+    // ── Persist, service role ────────────────────────────────────────────
     // Upsert so a retry after a partial failure converges instead of
     // duplicating. idx_cpm_stripe_pm_id is UNIQUE on stripe_payment_method_id
     // alone, which is what makes the retry idempotent.
