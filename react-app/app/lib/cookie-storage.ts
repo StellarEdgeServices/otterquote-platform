@@ -317,8 +317,33 @@ function isAuxiliaryStorageKey(key: string): boolean {
   return typeof key === 'string' && (key.endsWith('-code-verifier') || key.endsWith('-user'));
 }
 
-export const otterquoteCookieStorage: CookieStorage = {
-  getItem(key: string): string | null {
+/**
+ * gh-1980 PR 1/3 ("[SECURITY, PKCE] Move Supabase auth to PKCE", #1931
+ * artifact 3 / Marty's ruling on #1980) — step 1: "Make both storage
+ * adapters key-aware. No behaviour change, fully testable, no user impact."
+ *
+ * Factory that builds a CookieStorage instance explicitly bound to the
+ * `storageKey` its caller's Supabase client will use. `storageKey` is not
+ * currently consulted by the auxiliary-key check (that check stays the
+ * generic suffix match `isAuxiliaryStorageKey` above -- see gh-2168's round
+ * 4/5 history for why an exact-key allowlist regresses the config.js-style
+ * clients that pass no storageKey at all and fall back to supabase-js's own
+ * default `sb-<ref>-auth-token`). Threading `storageKey` through explicitly
+ * here, rather than only ever building one implicit singleton, is what lets
+ * PR 2 converge every construction site onto one storageKey (and PR 3 flip
+ * `flowType: 'pkce'`) without each call site reaching back into this
+ * module's internals. `otterquoteCookieStorage` below is this factory
+ * called once, for the canonical key -- so today's behavior is unchanged
+ * byte-for-byte; the parameterization is purely additive.
+ */
+export function createOtterQuoteCookieStorage(storageKey: string): CookieStorage {
+  // Reserved for PR 2 (storageKey convergence): validated eagerly so a
+  // misconfigured call site fails at construction time, not on first use.
+  if (typeof storageKey !== 'string' || !storageKey) {
+    throw new Error('createOtterQuoteCookieStorage: storageKey must be a non-empty string');
+  }
+  return {
+    getItem(key: string): string | null {
     if (!isBrowser()) return null;
 
     // gh-2168: an auxiliary key (PKCE code-verifier, or the separate `-user`
@@ -419,7 +444,13 @@ export const otterquoteCookieStorage: CookieStorage = {
       for (const k of LEGACY_KEYS) window.localStorage.removeItem(k);
     } catch { /* ignore */ }
   },
-};
+  };
+}
+
+// The canonical, module-level instance every existing call site imports.
+// Built from the factory above for OTTERQUOTE_AUTH_STORAGE_KEY -- identical
+// object shape and behavior to the pre-PR-1 hand-written singleton.
+export const otterquoteCookieStorage: CookieStorage = createOtterQuoteCookieStorage(OTTERQUOTE_AUTH_STORAGE_KEY);
 
 /**
  * The minimal session shape reconstructed from the two cross-subdomain cookies.

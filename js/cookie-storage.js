@@ -284,10 +284,33 @@
   }
 
   /**
-   * Storage adapter implementing the localStorage-compatible interface
-   * expected by Supabase JS v2's `storage` option.
+   * gh-1980 PR 1/3 ("[SECURITY, PKCE] Move Supabase auth to PKCE", #1931
+   * artifact 3 / Marty's ruling on #1980) — step 1: "Make both storage
+   * adapters key-aware. No behaviour change, fully testable, no user
+   * impact."
+   *
+   * Factory that builds a storage-adapter instance explicitly bound to the
+   * `storageKey` its caller's Supabase client will use. `storageKey` is not
+   * currently consulted by isAuxiliaryStorageKey() above (that check stays
+   * the generic suffix match -- see its own docstring for why an exact-key
+   * allowlist regresses the config.js-style clients that pass no
+   * storageKey at all and fall back to supabase-js's own default
+   * `sb-<ref>-auth-token`). Threading `storageKey` through explicitly here,
+   * rather than only ever building one implicit singleton, is what lets PR
+   * 2 converge every construction site onto one storageKey (and PR 3 flip
+   * `flowType: 'pkce'`) without each call site reaching back into this
+   * file's internals. `window.OtterQuoteCookieStorage` below is this
+   * factory called once, for the canonical STORAGE_KEY -- so today's
+   * behavior is unchanged byte-for-byte; the parameterization is purely
+   * additive.
    */
-  window.OtterQuoteCookieStorage = {
+  function createOtterQuoteCookieStorage(storageKey) {
+    // Reserved for PR 2 (storageKey convergence): validated eagerly so a
+    // misconfigured call site fails at construction time, not on first use.
+    if (typeof storageKey !== 'string' || !storageKey) {
+      throw new Error('createOtterQuoteCookieStorage: storageKey must be a non-empty string');
+    }
+    return {
     getItem: function (key) {
       // gh-2162 review round 5: an auxiliary key (PKCE code-verifier, or the
       // separate `-user` cache key) is plain localStorage, never cookies --
@@ -387,7 +410,19 @@
         }
       } catch (e) {}
     }
-  };
+    };
+  }
+
+  // Exposed so future call sites (PR 2's storageKey convergence) and tests
+  // can build additional, independently-keyed instances without reaching
+  // into this file's private helpers.
+  window.createOtterQuoteCookieStorage = createOtterQuoteCookieStorage;
+
+  // The canonical, page-global instance every existing <script> load order
+  // still reads as window.OtterQuoteCookieStorage. Built from the factory
+  // above for STORAGE_KEY -- identical object shape and behavior to the
+  // pre-PR-1 hand-written singleton.
+  window.OtterQuoteCookieStorage = createOtterQuoteCookieStorage(STORAGE_KEY);
 
   /* ─────────────────────────────────────────────────────────────────────
    * Referral attribution bridge — Bridge 2026-08-26 (P0)
