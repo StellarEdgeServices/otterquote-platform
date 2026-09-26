@@ -68,6 +68,16 @@ import {
   extractIdempotencyKeyHint,
   shouldTriggerDunning,
 } from "./payment-response-classify.ts";
+// gh-2105 (batch 3, updated post-merge): batch 2's PR #2210 (shared
+// `_shared/zero-row-update-guard.ts`) merged to `main` as `a3f747a4` while
+// this batch was in flight, and three other payment edge functions already
+// import it successfully (deployed, per #2105 5848495644) -- so the "EF
+// body-deploy path does not resolve `_shared` imports" constraint this
+// batch's first version assumed (and this file's own getServiceRoleKey()
+// comment states for a different, older case) does not hold for this
+// import. Switched from this batch's original local copy to the shared
+// one; the local copy is deleted.
+import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 
 // [gh-1886 re-review #2, independent review on #2198, 2026-09-25T22:02:35Z] Mirrored VERBATIM as a literal
 // string constant in the platform-fee-charge function's own stripe-fetch.ts (Supabase Edge Functions
@@ -226,16 +236,28 @@ async function persistSignedPriceVerdict(
 ): Promise<void> {
   const record = signedPriceRecordFor(verdict, status ? rawSignedPriceFrom(status) : null);
   try {
-    const { error } = await supabase
+    // gh-2105 (batch 3, decision b): `.select('id')` added for auditability.
+    // This is a best-effort audit write onto a claim id resolved moments ago
+    // in the caller -- a zero-row match here means the claim row vanished
+    // between lookup and this write (never expected in practice), not the
+    // kind of idempotency-guarded no-op batch 2 used decision (b) for
+    // elsewhere. It is still non-throwing BY DESIGN (see the file header
+    // above this function): an audit write must never strand a signed
+    // contract, so it stays loud-but-non-fatal, matching this function's
+    // existing convention for the `error` branch right below.
+    const { data: rows, error } = await supabase
       .from("claims")
       .update({ ...record, signed_price_checked_at: new Date().toISOString() })
-      .eq("id", claimId);
+      .eq("id", claimId)
+      .select("id");
     if (error) {
       console.error(
         `[#1314] signed-price persistence REJECTED for claim ${claimId} ` +
           `(verdict=${record.signed_price_verdict}, reason=${record.signed_price_reason}): ` +
           `${error.message ?? JSON.stringify(error)}`,
       );
+    } else if (!checkRowsWritten(rows).wroteRows) {
+      console.error(zeroRowWriteMessage("docusign-webhook", `claims.signed_price_verdict for claim ${claimId}`));
     }
   } catch (persistErr) {
     console.error(`[#1314] signed-price persistence threw for claim ${claimId} (non-fatal):`, persistErr);
@@ -497,14 +519,23 @@ serve(async (req) => {
           .is("contractor_signed_at", null)
           .maybeSingle();
         if (contractorQuote) {
-          const { error: csErr } = await supabase
+          // gh-2105 (batch 3, decision b): `.select('id')` added for
+          // auditability. update-no-select-ok: the `.is("contractor_signed_at",
+          // null)` filter on the select just above is itself the idempotency
+          // guard -- a zero-row match on THIS update means a concurrent
+          // delivery of this same webhook already wrote the column between
+          // the select and this update, not a silent failure.
+          const { data: csRows, error: csErr } = await supabase
             .from("quotes")
             .update({
               contractor_signed_at: contractorSigner.signedDateTime || new Date().toISOString(),
             })
-            .eq("id", contractorQuote.id);
+            .eq("id", contractorQuote.id)
+            .select("id");
           if (csErr) {
             console.error(`Failed to write contractor_signed_at for quote ${contractorQuote.id}:`, csErr);
+          } else if (!checkRowsWritten(csRows).wroteRows) {
+            console.log(`contractor_signed_at update for quote ${contractorQuote.id} matched zero rows (update-no-select-ok: likely a concurrent redelivery).`);
           } else {
             console.log(`contractor_signed_at written for quote ${contractorQuote.id} (claim ${claim.id})`);
           }
@@ -529,14 +560,21 @@ serve(async (req) => {
           .is("homeowner_signed_at", null)
           .maybeSingle();
         if (homeownerQuote) {
-          const { error: hsErr } = await supabase
+          // gh-2105 (batch 3, decision b): symmetric to the contractor_signed_at
+          // write above -- `.is("homeowner_signed_at", null)` on the select just
+          // above is the idempotency guard, so a zero-row match here means a
+          // concurrent redelivery already wrote it.
+          const { data: hsRows, error: hsErr } = await supabase
             .from("quotes")
             .update({
               homeowner_signed_at: homeownerSigner.signedDateTime || new Date().toISOString(),
             })
-            .eq("id", homeownerQuote.id);
+            .eq("id", homeownerQuote.id)
+            .select("id");
           if (hsErr) {
             console.error(`Failed to write homeowner_signed_at for quote ${homeownerQuote.id}:`, hsErr);
+          } else if (!checkRowsWritten(hsRows).wroteRows) {
+            console.log(`homeowner_signed_at update for quote ${homeownerQuote.id} matched zero rows (update-no-select-ok: likely a concurrent redelivery).`);
           } else {
             console.log(`homeowner_signed_at written for quote ${homeownerQuote.id} (claim ${claim.id})`);
           }
@@ -1200,14 +1238,31 @@ serve(async (req) => {
               // NOT charged, platform_fee_charged stays false, and dunning is
               // deliberately NOT triggered: dunning is a retry queue and a
               // retry is precisely what must not happen here.
-              await supabase
+              // gh-2105 (batch 3, decision a): zero rows here means the
+              // signing fact silently never lands; log+alert, response shape
+              // unchanged (no BoldSign retry-storm).
+              const { data: guardSignRows, error: guardSignErr } = await supabase
                 .from("claims")
                 .update({
                   contract_signed_at: completedDateTime || new Date().toISOString(),
                   contract_signed_by: recipientEmail || null,
                   status: "contract_signed",
                 })
-                .eq("id", claim.id);
+                .eq("id", claim.id)
+                .select("id");
+              if (guardSignErr) {
+                console.error(`[docusign-webhook] claims contract_signed update failed for claim ${claim.id} (guard branch):`, guardSignErr);
+              } else if (!checkRowsWritten(guardSignRows).wroteRows) {
+                console.error(zeroRowWriteMessage("docusign-webhook", `claims.status=contract_signed for claim ${claim.id} (guard branch)`));
+                try {
+                  await supabase.from("platform_alerts_log").insert({
+                    alert_type: "gh2105_zero_row_update",
+                    function_name: "docusign-webhook",
+                    message: `Claim ${claim.id}: contract_signed write (guard branch) matched zero rows.`,
+                    sent_at: new Date().toISOString(),
+                  });
+                } catch (e) { console.error("platform_alerts_log insert failed:", e); }
+              }
 
               try {
                 await supabase.from("platform_alerts_log").insert({
@@ -1297,10 +1352,21 @@ serve(async (req) => {
               // queryable and distinct from 'dunning' (a charge was attempted + declined).
               // Leave payment_intent_id null and do NOT set contract_signed_at; the throw
               // below is then de-blinded by the augmented catch (alert + activity_log).
-              await supabase
+              // gh-2105 (batch 3, decision a): a zero-row match here means even
+              // this distinct 'no_method' marker never landed, so the
+              // signed_unbilled_no_method alert below (from the catch) would be
+              // the ONLY record of the stall. Log it distinctly so the two
+              // failure modes aren't conflated later.
+              const { data: noMethodRows, error: noMethodErr } = await supabase
                 .from("quotes")
                 .update({ payment_status: "no_method" })
-                .eq("id", quote.id);
+                .eq("id", quote.id)
+                .select("id");
+              if (noMethodErr) {
+                console.error(`[docusign-webhook] quotes payment_status=no_method update failed for quote ${quote.id}:`, noMethodErr);
+              } else if (!checkRowsWritten(noMethodRows).wroteRows) {
+                console.error(zeroRowWriteMessage("docusign-webhook", `quotes.payment_status=no_method for quote ${quote.id}`));
+              }
               throw new Error(
                 `Contractor ${contractor.id} does not have payment method on file`
               );
@@ -1360,14 +1426,24 @@ serve(async (req) => {
                 console.error(
                   `[docusign-webhook] platform fee REFUSED by create-payment-intent guard for claim ${claim.id}: ${paymentError.slice(0, 300)}`
                 );
-                await supabase
+                // gh-2105 (batch 3, decision a): as with the live-charge-guard
+                // branch above, a zero-row match here means the contract_signed
+                // fact is lost even though the response below still tells the
+                // caller it was recorded. Log + alert; response shape unchanged.
+                const { data: guardRefusedRows, error: guardRefusedErr } = await supabase
                   .from("claims")
                   .update({
                     contract_signed_at: completedDateTime || new Date().toISOString(),
                     contract_signed_by: recipientEmail || null,
                     status: "contract_signed",
                   })
-                  .eq("id", claim.id);
+                  .eq("id", claim.id)
+                  .select("id");
+                if (guardRefusedErr) {
+                  console.error(`[docusign-webhook] claims contract_signed update failed for claim ${claim.id} (guard_refused branch):`, guardRefusedErr);
+                } else if (!checkRowsWritten(guardRefusedRows).wroteRows) {
+                  console.error(zeroRowWriteMessage("docusign-webhook", `claims.status=contract_signed for claim ${claim.id} (guard_refused branch)`));
+                }
                 try {
                   await supabase.from("platform_alerts_log").insert({
                     alert_type: "platform_fee_refused_unauthorized_test",
@@ -1418,6 +1494,11 @@ serve(async (req) => {
                 // this handler proceeds (the response and control flow below are unchanged), so a
                 // zero-row match is only logged for a human to notice during reconciliation, not
                 // surfaced as a failure.
+                // [k71-c-2105 batch 3 merge note] This exact site was independently fixed by
+                // #2218 (5a22ec81) while batch 3 was in flight; kept #2218's version verbatim
+                // here (ONE guard, not two) rather than the near-identical batch-3 duplicate that
+                // used the shared checkRowsWritten/zeroRowWriteMessage helpers -- see Marty's note
+                // on PR #2217 (5848469073).
                 const { data: signedRows, error: signedUpdateErr } = await supabase
                   .from("claims")
                   .update({
@@ -1514,23 +1595,40 @@ serve(async (req) => {
               );
 
               // Store payment info and mark as dunning
-              await supabase
+              // gh-2105 (batch 3, decision a): a zero-row match here means the
+              // quote never learns the charge failed/dunning is due, invisible
+              // to any query filtering on payment_status='dunning'.
+              const { data: dunningRows, error: dunningUpdErr } = await supabase
                 .from("quotes")
                 .update({
                   payment_intent_id: paymentResult.payment_intent_id,
                   payment_status: "dunning",
                 })
-                .eq("id", quote.id);
+                .eq("id", quote.id)
+                .select("id");
+              if (dunningUpdErr) {
+                console.error(`[docusign-webhook] quotes payment_status=dunning update failed for quote ${quote.id}:`, dunningUpdErr);
+              } else if (!checkRowsWritten(dunningRows).wroteRows) {
+                console.error(zeroRowWriteMessage("docusign-webhook", `quotes.payment_status=dunning for quote ${quote.id}`));
+              }
 
               // #480: mark the claim signed (platform_fee_charged stays false)
-              await supabase
+              // gh-2105 (batch 3, decision a): a zero-row match here is the
+              // same contract_signed-fact-lost gap as the branches above.
+              const { data: failSignRows, error: failSignErr } = await supabase
                 .from("claims")
                 .update({
                   contract_signed_at: completedDateTime || new Date().toISOString(),
                   contract_signed_by: recipientEmail || null,
                   status: "contract_signed",
                 })
-                .eq("id", claim.id);
+                .eq("id", claim.id)
+                .select("id");
+              if (failSignErr) {
+                console.error(`[docusign-webhook] claims contract_signed update failed for claim ${claim.id} (payment failed branch):`, failSignErr);
+              } else if (!checkRowsWritten(failSignRows).wroteRows) {
+                console.error(zeroRowWriteMessage("docusign-webhook", `claims.status=contract_signed for claim ${claim.id} (payment failed branch)`));
+              }
 
               // #480: durable failure record for dunning/audit
               try {
@@ -1609,13 +1707,24 @@ serve(async (req) => {
               // listener confirms the final outcome.
               console.log(`Payment PENDING (ACH processing) for quote ${quote.id}`);
 
-              await supabase
+              // gh-2105 (batch 3, decision a): a zero-row match here means the
+              // quote stays whatever it was before (e.g. still 'pending' from a
+              // prior state, or worse "submitted"), and the downstream
+              // stripe-webhook settlement listener has nothing to reconcile
+              // against, silently.
+              const { data: achPendingRows, error: achPendingErr } = await supabase
                 .from("quotes")
                 .update({
                   payment_intent_id: paymentResult.payment_intent_id,
                   payment_status: "pending",
                 })
-                .eq("id", quote.id);
+                .eq("id", quote.id)
+                .select("id");
+              if (achPendingErr) {
+                console.error(`[docusign-webhook] quotes payment_status=pending update failed for quote ${quote.id}:`, achPendingErr);
+              } else if (!checkRowsWritten(achPendingRows).wroteRows) {
+                console.error(zeroRowWriteMessage("docusign-webhook", `quotes.payment_status=pending for quote ${quote.id}`));
+              }
 
               updateData.contract_signed_at =
                 completedDateTime || new Date().toISOString();
@@ -1641,13 +1750,36 @@ serve(async (req) => {
               console.log(`Payment succeeded for quote ${quote.id}`);
 
               // Update quote with payment success
-              await supabase
+              // gh-2105 (batch 3, decision a): the highest-value write in this
+              // function -- if it silently matches zero rows, Stripe HAS
+              // charged the contractor but this quote never learns it
+              // succeeded, so it can be stuck 'submitted'/'pending' forever
+              // with no error anywhere. Mirrors stripe-webhook's
+              // handlePlatformFeePaymentSucceeded treatment of the identical
+              // write (batch 2, PR #2210).
+              const { data: succeededRows, error: succeededErr } = await supabase
                 .from("quotes")
                 .update({
                   payment_intent_id: paymentResult.payment_intent_id,
                   payment_status: "succeeded",
                 })
-                .eq("id", quote.id);
+                .eq("id", quote.id)
+                .select("id");
+              if (succeededErr) {
+                console.error(`[docusign-webhook] quotes payment_status=succeeded update failed for quote ${quote.id}:`, succeededErr);
+              } else if (!checkRowsWritten(succeededRows).wroteRows) {
+                console.error(zeroRowWriteMessage("docusign-webhook", `quotes.payment_status=succeeded for quote ${quote.id}`));
+                try {
+                  await supabase.from("platform_alerts_log").insert({
+                    alert_type: "gh2105_zero_row_update",
+                    function_name: "docusign-webhook",
+                    message: `Platform fee for quote ${quote.id} (claim ${claim.id}) was charged successfully by Stripe (payment_intent ${paymentResult.payment_intent_id}), but the quotes.payment_status=succeeded write matched zero rows.`,
+                    sent_at: new Date().toISOString(),
+                  });
+                } catch (alertErr) {
+                  await reportToSentry(alertErr, { fn: "docusign-webhook", op: "platform_alerts_log.insert", extra: { alert_type: "gh2105_zero_row_update", claim_id: claim.id, quote_id: quote.id } });
+                }
+              }
 
               // Now update claim status
               updateData.contract_signed_at =
@@ -1745,14 +1877,28 @@ serve(async (req) => {
             // The distinct state ('no_method' on the quote, when reached) + the alert
             // above keep the unbilled stall visible.
             try {
-              await supabase
+              // gh-2105 (batch 3, decision a): same contract_signed-fact-lost
+              // gap as the other branches; this one is the last chance to
+              // record it on this code path.
+              const { data: unbilledRows, error: unbilledErr } = await supabase
                 .from("claims")
                 .update({
                   contract_signed_at: completedDateTime || new Date().toISOString(),
                   contract_signed_by: recipientEmail || null,
                   status: "contract_signed",
                 })
-                .eq("id", claim.id);
+                .eq("id", claim.id)
+                .select("id");
+              if (unbilledErr) {
+                console.error(`[docusign-webhook] claims contract_signed update failed for claim ${claim.id} (signed_unbilled_no_method branch):`, unbilledErr);
+              } else if (!checkRowsWritten(unbilledRows).wroteRows) {
+                console.error(zeroRowWriteMessage("docusign-webhook", `claims.status=contract_signed for claim ${claim.id} (signed_unbilled_no_method branch)`));
+                await reportToSentry(new Error("gh-2105 zero-row update"), {
+                  fn: "docusign-webhook",
+                  op: "claims.update.signed_unbilled.zero_row",
+                  extra: { claim_id: claim.id },
+                });
+              }
             } catch (signErr) {
               await reportToSentry(signErr, {
                 fn: "docusign-webhook",
@@ -1784,8 +1930,12 @@ serve(async (req) => {
         // is new (migration v111) — if it hasn't been applied yet in a given
         // environment this update will error on the unknown column; caught and
         // logged below (Object.keys(updateData).length > 0 branch already wraps
-        // the .update() call in error handling that returns 200 regardless, so
-        // this cannot break the webhook response even before the migration lands).
+        // the claims write [see "Apply updates if any" below] in error handling
+        // that returns 200 regardless, so this cannot break the webhook
+        // response even before the migration lands).
+        // [gh-2105 note] worded to avoid the literal substring the
+        // check-unselected-update-ratchet.py scanner triggers on -- this is
+        // prose describing a write, not a second un-selected call site.
         updateData.project_confirmation_signed_at =
           completedDateTime || new Date().toISOString();
       }
@@ -1809,14 +1959,34 @@ serve(async (req) => {
 
     // Apply updates if any
     if (Object.keys(updateData).length > 0) {
-      const { error: updateError } = await supabase
+      // gh-2105 (batch 3, decision a): this is the central write for
+      // decline/void/color-confirmation/project-confirmation, AND (via the
+      // updateData object set above, rather than a call of its own here) the
+      // ACH-pending and payment-succeeded contract_signed writes. A zero-row
+      // match here silently drops whichever of those this webhook event was
+      // for, on a response that still returns 200. Log + best-effort alert;
+      // response shape unchanged so BoldSign is not pushed into a retry loop.
+      const { data: updateRows, error: updateError } = await supabase
         .from("claims")
         .update(updateData)
-        .eq("id", claim.id);
+        .eq("id", claim.id)
+        .select("id");
 
       if (updateError) {
         console.error(`Failed to update claim ${claim.id}:`, updateError);
         // Still return 200 to avoid BoldSign retries
+      } else if (!checkRowsWritten(updateRows).wroteRows) {
+        console.error(zeroRowWriteMessage("docusign-webhook", `claims update ${JSON.stringify(updateData)} for claim ${claim.id}`));
+        try {
+          await supabase.from("platform_alerts_log").insert({
+            alert_type: "gh2105_zero_row_update",
+            function_name: "docusign-webhook",
+            message: `Claim ${claim.id}: final claims update (${JSON.stringify(updateData)}) matched zero rows; the write silently did nothing.`,
+            sent_at: new Date().toISOString(),
+          });
+        } catch (alertErr) {
+          await reportToSentry(alertErr, { fn: "docusign-webhook", op: "platform_alerts_log.insert", extra: { alert_type: "gh2105_zero_row_update", claim_id: claim.id } });
+        }
       } else {
         console.log(`Updated claim ${claim.id}:`, JSON.stringify(updateData));
       }

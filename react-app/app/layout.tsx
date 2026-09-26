@@ -13,6 +13,8 @@ import './globals.css';
 import { AttributionCapture } from './components/AttributionCapture';
 import { GA4Gate } from './components/GA4Gate';
 import { MetaPixelGate } from './components/MetaPixelGate';
+import { LinkedInInsightGate } from './components/LinkedInInsightGate';
+import { RedditPixelGate } from './components/RedditPixelGate';
 import { SentryInitializer } from './components/SentryInitializer';
 import { AuthProvider } from './providers/auth-provider';
 import { QueryClientProvider } from './lib/query-client';
@@ -106,6 +108,10 @@ export default function RootLayout({
         <GA4Gate />
         {/* Meta Pixel — OtterQuote property; host-gated (gh-1817), see MetaPixelGate */}
         <MetaPixelGate />
+        {/* LinkedIn Insight Tag — shipped dark/gated (gh-1926), see LinkedInInsightGate */}
+        <LinkedInInsightGate />
+        {/* Reddit Pixel — shipped dark/gated (gh-1926), see RedditPixelGate */}
+        <RedditPixelGate />
         <SentryInitializer />
         {/* gh-1983 — first-touch ad attribution (client fallback to the server cookie) */}
         <AttributionCapture />
