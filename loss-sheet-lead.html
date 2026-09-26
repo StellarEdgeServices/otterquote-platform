@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Sentry Error Monitoring (same pattern as help-measurements.html) -->
+<script
+  src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
+  crossorigin="anonymous"
+></script>
+<script>
+  Sentry.onLoad(function() {
+    Sentry.init({
+      environment: window.location.hostname.includes("staging") ? "staging" : "production",
+      denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+      beforeSend: function (event) {
+        var proto = window.location.protocol;
+        if (proto !== "http:" && proto !== "https:") return null;
+        var req = event.request && event.request.url;
+        if (req && /^(data|file|blob):/.test(req)) return null;
+        return event;
+      }
+    });
+  });
+</script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+    <title>Upload Your Loss Sheet — Otter Quotes</title>
+    <meta name="description" content="Upload your insurance loss sheet — no account needed.">
+    <link rel="canonical" href="https://otterquote.com/loss-sheet-lead.html">
+    <meta name="robots" content="noindex">
+
+    <link rel="stylesheet" href="css/design-system.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="/js/ga-gate.js"></script>
+    <script>gtag('config', 'G-D1Y1TLGEFY');</script>
+
+    <style>
+        body { font-family: 'Rubik', sans-serif; color: #1a1a1a; background-color: #f8f8f8; line-height: 1.6; margin: 0; }
+
+        /* Ruling 5: minimal, mobile-first, no header/nav/footer, no escape hatch before the upload completes. */
+        .page-container { max-width: 560px; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
+        .brand-mark { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1.5rem; font-weight: 700; color: #0D1B2E; font-size: 1.1rem; }
+        h1 { font-family: 'Rubik', serif; font-size: 1.6rem; color: #0D1B2E; margin: 0 0 0.6rem; line-height: 1.3; }
+        .subhead { color: #444; font-size: 1rem; margin: 0 0 1.25rem; }
+
+        .card { background: white; border-radius: 12px; border: 1px solid #e0e0e0; padding: 1.5rem; margin-bottom: 1.5rem; }
+
+        .drop-zone {
+            border: 2px dashed #CBD5E1;
+            border-radius: 10px;
+            padding: 2rem 1rem;
+            text-align: center;
+            color: #64748B;
+            margin-bottom: 1rem;
+            cursor: pointer;
+        }
+        .drop-zone.has-file { border-color: #10B981; color: #065F46; }
+        .drop-zone input[type=file] { display: none; }
+
+        .action-btn {
+            display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+            width: 100%; background: #0D1B2E; color: white; border: none;
+            padding: 0.95rem; border-radius: 8px; font-weight: 600; font-size: 1.05rem;
+            cursor: pointer; transition: background 0.2s;
+        }
+        .action-btn:hover:not(:disabled) { background: #b8860b; }
+        .action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .status-message { padding: 1rem 1.25rem; border-radius: 8px; margin-bottom: 1.25rem; font-size: 0.95rem; display: none; }
+        .status-message.error { display: block; background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
+
+        .success-state { text-align: center; padding: 2rem 1rem; }
+        .success-icon {
+            width: 64px; height: 64px; border-radius: 50%;
+            background: linear-gradient(135deg, #10B981, #059669);
+            color: white; display: flex; align-items: center; justify-content: center;
+            font-size: 2rem; margin: 0 auto 1rem;
+        }
+
+        .spinner {
+            display: inline-block; width: 16px; height: 16px;
+            border: 2px solid rgba(255,255,255,0.3); border-top-color: white;
+            border-radius: 50%; animation: spin 0.6s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .privacy-line { font-size: 0.8rem; color: #666; text-align: center; margin-top: 1.5rem; }
+        .privacy-line a { color: #b8860b; }
+    </style>
+</head>
+<body>
+    <div class="page-container">
+        <div class="brand-mark">🦦 Otter Quotes</div>
+
+        <div id="statusMessage" class="status-message"></div>
+
+        <div id="offerSection">
+            <h1>Upload your insurance loss sheet — no account needed.</h1>
+            <p class="subhead">We'll attach it to your file. If you'd like a contractor bid based on it, we'll reach out.</p>
+
+            <div class="card">
+                <label class="drop-zone" id="dropZone" for="fileInput">
+                    <span id="dropZoneLabel">Tap to choose a file (PDF, JPEG, PNG or HEIC)</span>
+                    <input type="file" id="fileInput" accept="application/pdf,image/jpeg,image/png,image/heic">
+                </label>
+                <button class="action-btn" id="uploadBtn" onclick="upload()" disabled>Upload My Loss Sheet</button>
+            </div>
+        </div>
+
+        <div id="successSection" style="display:none;">
+            <div class="success-state">
+                <div class="success-icon">✓</div>
+                <h1 style="text-align:center;">Loss Sheet Received</h1>
+                <p class="subhead" style="text-align:center;">Thanks — we've attached it to your file. If a contractor bid based on it makes sense, we'll reach out.</p>
+            </div>
+        </div>
+
+        <p class="privacy-line">Otter Quotes / Stellar Edge Services. By continuing you agree to our <a href="privacy.html">Privacy Policy</a> and <a href="terms.html">Terms</a>.</p>
+    </div>
+
+    <script src="js/config.js"></script>
+    <script>
+        var FUNNEL_ID = 'ho-3';
+        function trackHo3(eventName, extra) {
+            try {
+                var params = Object.assign({ funnel_id: FUNNEL_ID }, extra || {});
+                if (typeof gtag !== 'undefined') gtag('event', eventName, params);
+            } catch (e) { /* analytics must never block the flow */ }
+        }
+
+        // Ruling 3: the URL carries an unguessable, expiring TOKEN, never a raw lead id.
+        var params = new URLSearchParams(window.location.search);
+        var LEAD_TOKEN = params.get('lead_token') || '';
+        var MAX_BYTES = 6 * 1024 * 1024;
+        var selectedFile = null;
+
+        document.addEventListener('DOMContentLoaded', function () {
+            trackHo3('ho3_view', { step: 'loss_sheet_offer' });
+            if (!LEAD_TOKEN) {
+                showError('This link is missing some information. Please go back and tap the button again.');
+                document.getElementById('fileInput').disabled = true;
+            }
+            document.getElementById('fileInput').addEventListener('change', onFileChosen);
+        });
+
+        function showError(text) {
+            var el = document.getElementById('statusMessage');
+            el.textContent = text;
+            el.className = 'status-message error';
+        }
+
+        function onFileChosen(e) {
+            var file = e.target.files && e.target.files[0];
+            if (!file) return;
+            if (file.size > MAX_BYTES) {
+                showError('That file is too large. Please choose a file under 6MB.');
+                e.target.value = '';
+                return;
+            }
+            selectedFile = file;
+            document.getElementById('dropZone').classList.add('has-file');
+            document.getElementById('dropZoneLabel').textContent = file.name;
+            document.getElementById('uploadBtn').disabled = false;
+        }
+
+        function fileToBase64(file) {
+            return new Promise(function (resolve, reject) {
+                var reader = new FileReader();
+                reader.onload = function () {
+                    var result = reader.result || '';
+                    var comma = result.indexOf(',');
+                    resolve(comma === -1 ? result : result.slice(comma + 1));
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function apiUrl(fn) { return CONFIG.SUPABASE_URL + '/functions/v1/' + fn; }
+
+        async function upload() {
+            if (!selectedFile) return;
+            var btn = document.getElementById('uploadBtn');
+            var original = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> Uploading...';
+            trackHo3('ho3_upload_submitted', { step: 'loss_sheet_offer' });
+
+            try {
+                var base64 = await fileToBase64(selectedFile);
+                var res = await fetch(apiUrl('record-lead-loss-sheet-upload'), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        apikey: CONFIG.SUPABASE_ANON,
+                        Authorization: 'Bearer ' + CONFIG.SUPABASE_ANON
+                    },
+                    body: JSON.stringify({
+                        lead_token: LEAD_TOKEN,
+                        content_type: selectedFile.type || 'application/pdf',
+                        filename: selectedFile.name,
+                        file_base64: base64
+                    })
+                });
+                var data = await res.json().catch(function () { return {}; });
+                if (!res.ok || data.ok !== true) throw new Error(data.error || 'Upload failed. Please try again.');
+
+                document.getElementById('offerSection').style.display = 'none';
+                document.getElementById('successSection').style.display = 'block';
+                trackHo3('ho3_success', { step: 'loss_sheet_success' });
+            } catch (err) {
+                console.error('loss-sheet-lead upload error:', err);
+                showError(err.message || 'Upload failed. Please try again.');
+                btn.disabled = false;
+                btn.innerHTML = original;
+            }
+        }
+    </script>
+</body>
+</html>
