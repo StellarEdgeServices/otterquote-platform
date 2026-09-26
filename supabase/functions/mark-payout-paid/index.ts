@@ -185,7 +185,7 @@ serve(async (req: Request) => {
     });
   }
 
-  // ── JWT verification — admin only ────────────────────────────────────────
+  // ── JWT verification — admin only ───────────────────────────────────────────
   const authHeader = req.headers.get("Authorization") || "";
   const userClient = createClient(supabaseUrl, supabaseAnon || serviceRoleKey, {
     global: { headers: { Authorization: authHeader } },
@@ -202,7 +202,7 @@ serve(async (req: Request) => {
   const supabase = createClient(supabaseUrl, serviceRoleKey);
 
   try {
-    // ── Rate limiting ────────────────────────────────────────────────────────
+    // ── Rate limiting ─────────────────────────────────────────
     const { data: rlData, error: rlError } = await supabase.rpc("check_rate_limit", {
       p_function_name: FUNCTION_NAME,
       p_user_id: null,
@@ -215,7 +215,7 @@ serve(async (req: Request) => {
       });
     }
 
-    // ── Parse input ──────────────────────────────────────────────────────────
+    // ── Parse input ──────────────────────────────────────────
     let body: Record<string, unknown> = {};
     try { body = await req.json(); } catch (_) {
       return new Response(JSON.stringify({ ok: false, error: "Invalid JSON body" }), {
@@ -230,7 +230,7 @@ serve(async (req: Request) => {
       });
     }
 
-    // ── Load the approval row ────────────────────────────────────────────────
+    // ── Load the approval row ──────────────────────────────────────
     const { data: approval, error: approvalError } = await supabase
       .from("payout_approvals")
       .select("*")
@@ -243,7 +243,7 @@ serve(async (req: Request) => {
       });
     }
 
-    // ── Idempotency: only act on approved rows ───────────────────────────────
+    // ── Idempotency: only act on approved rows ────────────────────────
     // Covers a repeated call after this row already reached 'paid' (or is in
     // any other non-'approved' state) — no action taken, no duplicate writes
     // or emails.
@@ -297,7 +297,7 @@ serve(async (req: Request) => {
 
     const now = new Date().toISOString();
 
-    // ── Update payout_approvals: approved -> paid ────────────────────────────
+    // ── Update payout_approvals: approved -> paid ──────────────────────
     // Atomic status guard (mirrors approve-payout's pending_approval guard):
     // the JS pre-check above is advisory only. Constrain the UPDATE itself to
     // status = 'approved' and treat 0 rows updated as a concurrent-processing
@@ -327,37 +327,52 @@ serve(async (req: Request) => {
       });
     }
 
-    // ── Set referrals.commission_paid_at ─────────────────────────────────────
+    // ── Set referrals.commission_paid_at ──────────────────────────
     // Moved here from approve-payout (gh-1155): this is now the only place
     // that advances a referral to commission_paid — one step later than
     // authorization, and only once the payout has actually reached 'paid'.
     if (approval.referral_id) {
-      const { error: referralError } = await supabase
+      // gh-2105 (batch 2, decision b): `.select(` added for auditability
+      // (update-no-select-ok: the `.is(commission_paid_at, null)` filter is
+      // itself the idempotency guard -- "only set if not already paid" -- so
+      // a zero-row match here just means the referral was already marked
+      // paid, which is the expected steady state, not a silent failure).
+      const { data: commissionRows, error: referralError } = await supabase
         .from("referrals")
         .update({ commission_paid_at: now })
         .eq("id", approval.referral_id)
-        .is("commission_paid_at", null); // Only set if not already paid
+        .is("commission_paid_at", null) // Only set if not already paid
+        .select("id");
 
       if (referralError) {
         console.error(`[${FUNCTION_NAME}] Failed to update referral commission_paid_at:`, referralError.message);
         // Non-fatal — approval row already updated; log and continue.
+      } else if (commissionRows && commissionRows.length === 0) {
+        console.log(`[${FUNCTION_NAME}] referral ${approval.referral_id} commission_paid_at already set — no-op.`);
       }
 
       // D-139 (#567): advance the referral to commission_paid so the
       // update_referral_stats trigger fires — nothing else ever sets it.
-      const { error: statusError } = await supabase
+      // gh-2105 (batch 2, decision b): `.select(` added for auditability
+      // (update-no-select-ok: the `.neq(status, commission_paid)` filter is
+      // the same idempotency guard -- a zero-row match means the referral's
+      // status was already 'commission_paid', not a silent failure).
+      const { data: statusRows, error: statusError } = await supabase
         .from("referrals")
         .update({ status: "commission_paid" })
         .eq("id", approval.referral_id)
-        .neq("status", "commission_paid");
+        .neq("status", "commission_paid")
+        .select("id");
 
       if (statusError) {
         console.error(`[${FUNCTION_NAME}] Failed to update referral status:`, statusError.message);
         // Non-fatal — approval row already updated; log and continue.
+      } else if (statusRows && statusRows.length === 0) {
+        console.log(`[${FUNCTION_NAME}] referral ${approval.referral_id} status already 'commission_paid' — no-op.`);
       }
     }
 
-    // ── Send "marked as paid" confirmation email to partner ─────────────────
+    // ── Send "marked as paid" confirmation email to partner ───────────
     // Reuse the agent row already loaded by the W-9 gate above (same columns).
     const partnerEmail: string | null = agent.email || null;
     if (!approval.partner_name) {

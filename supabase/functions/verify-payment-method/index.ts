@@ -55,6 +55,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 
 const FN_NAME = "verify-payment-method";
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
@@ -104,7 +105,7 @@ serve(async (req) => {
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
 
   try {
-    // ── Caller identity ──────────────────────────────────────────────────
+    // ── Caller identity ─────────────────────────────────────────
     // The contractor may only verify their own payment method. Reading the
     // caller from the JWT (not from the request body) is what makes that
     // unforgeable.
@@ -146,7 +147,7 @@ serve(async (req) => {
       return json({ error: "Forbidden" }, 403, corsHeaders);
     }
 
-    // ── Stripe key selection ─────────────────────────────────────────────
+    // ── Stripe key selection ───────────────────────────────────
     // Identical rule to create-setup-intent, so both halves of one card-add
     // always run against the same Stripe account and mode.
     // gh-1536: exact-match, not substring — "app-staging." falsely matched
@@ -165,7 +166,7 @@ serve(async (req) => {
     }
     const basicAuth = btoa(`${stripeSecretKey}:`);
 
-    // ── Retrieve the SetupIntent with the charging key ───────────────────
+    // ── Retrieve the SetupIntent with the charging key ─────────────
     // expand[]=payment_method gets the card/bank details in the same round
     // trip, which is the whole reason the browser never needs to (and never
     // could correctly) look them up itself.
@@ -216,7 +217,7 @@ serve(async (req) => {
       return json({ error: "Forbidden" }, 403, corsHeaders);
     }
 
-    // ── Mode gate (gh-1425 path 2 interim mitigation) ────────────────────
+    // ── Mode gate (gh-1425 path 2 interim mitigation) ──────────────
     // Staging shares this database, so a test-mode SetupIntent is only ever
     // legitimate for a seeded test contractor. The Origin header that selects
     // the test key is attacker-supplied; si.livemode is not. Fail closed
@@ -279,7 +280,7 @@ serve(async (req) => {
         `for contractor ${contractor_id}`,
     );
 
-    // ── Persist, service role ────────────────────────────────────────────
+    // ── Persist, service role ────────────────────────────
     // Upsert so a retry after a partial failure converges instead of
     // duplicating. idx_cpm_stripe_pm_id is UNIQUE on stripe_payment_method_id
     // alone, which is what makes the retry idempotent.
@@ -313,7 +314,12 @@ serve(async (req) => {
     // source of truth and it means exactly one thing: "Stripe confirmed this
     // method with the key we charge with."
     if (isFirstMethod) {
-      const { error: contractorUpdErr } = await sb
+      // gh-2105 (batch 2, decision a): `has_payment_method` is the single
+      // source of truth the payment gate reads (see comment above) -- a
+      // zero-row match here would leave a contractor Stripe-confirmed but
+      // still gated as "no payment method" with no error to explain why.
+      // Fails closed the same way the existing error branch already does.
+      const { data: contractorUpdRows, error: contractorUpdErr } = await sb
         .from("contractors")
         .update({
           has_payment_method: true,
@@ -322,11 +328,16 @@ serve(async (req) => {
           stripe_payment_method_brand: brand,
           updated_at: new Date().toISOString(),
         })
-        .eq("id", contractor_id);
+        .eq("id", contractor_id)
+        .select("id");
 
       if (contractorUpdErr) {
         console.error(`[${FN_NAME}] contractors update failed:`, contractorUpdErr);
         throw new Error(`Could not update contractor: ${contractorUpdErr.message}`);
+      }
+      if (!checkRowsWritten(contractorUpdRows).wroteRows) {
+        console.error(zeroRowWriteMessage(FN_NAME, `contractors.has_payment_method=true for contractor ${contractor_id}`));
+        throw new Error(`Could not update contractor: no matching contractor row (id ${contractor_id})`);
       }
     }
 
