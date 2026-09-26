@@ -68,7 +68,7 @@ verify_jwt = true
 # contractors.email — replaces the former send-support-email open-relay welcome path.
 verify_jwt = true
 
-# ── D-211 Phase 16: pin verify_jwt for every EF touched this phase ──────────────
+# ── D-211 Phase 16: pin verify_jwt for every EF touched this phase ──────────────────
 # These match the live deployed state. Pinned so a future flagless `functions deploy`
 # (CLI default verify_jwt=true) can't silently flip them. No behavior change.
 
@@ -237,7 +237,7 @@ verify_jwt = false
 [functions.send-partner-status-email]
 verify_jwt = false
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ────────────────────────────────────────────────────────────────────────────────
 # gh-1295: pin verify_jwt for the remaining 20 unpinned functions.
 #
 # Generalizes the gh-916 AC1 block above, which pinned exactly one function for
@@ -257,7 +257,7 @@ verify_jwt = false
 # in-handler (service-role caller, a shared-secret header, a provider signature,
 # or auth.getUser on a user-scoped client) — the same pattern documented on the
 # blocks above. Pinning records the existing contract; it does not weaken it.
-# ─────────────────────────────────────────────────────────────────────────────
+# ────────────────────────────────────────────────────────────────────────────────
 
 [functions.admin-contractor-action]
 verify_jwt = false
@@ -491,4 +491,23 @@ verify_jwt = false
 # optout just above: the signed "invite:" HMAC token in the URL/body IS the
 # authorization, checked before any read or write.
 [functions.partner-invite-accept]
+verify_jwt = false
+
+# gh-2121 (HO-3, #2121 row 3.2): the three new no-account, lead-token-scoped
+# Edge Functions and their token-minting companion. All four are called from
+# a browser with no session (an Arm F/HO-2 lead, pre-account) -- same
+# reasoning as record-lead-details/check-email-exists. None of them accept a
+# client-supplied lead_id: authorization is entirely the lead_token, resolved
+# server-side via resolve_lead_by_token() (Ben's Ruling 3), plus a per-IP rate
+# limit (rate_limit_config rows in this PR's migration).
+[functions.issue-lead-access-token]
+verify_jwt = false
+
+[functions.create-lead-payment-intent]
+verify_jwt = false
+
+[functions.create-lead-measurement-order]
+verify_jwt = false
+
+[functions.record-lead-loss-sheet-upload]
 verify_jwt = false
