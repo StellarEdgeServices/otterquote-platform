@@ -36,6 +36,15 @@ export interface StalledCandidate {
    * buildAdminDigestEmail below. Optional / defaults to falsy so every
    * existing '48h' caller and every existing test is unaffected. */
   isChecklistCompleteStage?: boolean;
+  /** gh-2219 REVIEW: FAIL 5849873052 M1 — for an `isChecklistCompleteStage`
+   * candidate, the ISO timestamp its checklist was completed at (already
+   * computed by checklist-complete-stage.ts's reduceChecklistCompleteActivity
+   * / index.ts's ccReduced.completedAtByClaim — carried through here rather
+   * than recomputed). The digest's "checklist complete Nd ago" age must be
+   * measured from THIS, not from `createdAtIso` (the claim's age): a claim
+   * can be 10 days old with its checklist finished 3 hours ago, and that row
+   * must say "0d ago", not "10d ago". Unused for a '48h' candidate. */
+  checklistCompletedAtIso?: string;
 }
 
 export interface DigestRow {
@@ -100,7 +109,17 @@ export function buildAdminDigestEmail(
   const rows: DigestRow[] = candidates.map((c) => ({
     claimId: c.claimId,
     maskedEmail: maskEmail(c.email),
-    daysStalled: daysStalled(c.createdAtIso, nowMs),
+    // gh-2219 REVIEW: FAIL 5849873052 M1 — a checklist-complete row's age is
+    // the time since ITS checklist was completed, not the claim's age. Only
+    // fall back to createdAtIso if checklistCompletedAtIso is somehow
+    // missing (fail closed to the old, at-least-not-crashing behaviour
+    // rather than throwing on a candidate this file did not itself produce).
+    daysStalled: daysStalled(
+      c.isChecklistCompleteStage && c.checklistCompletedAtIso
+        ? c.checklistCompletedAtIso
+        : c.createdAtIso,
+      nowMs,
+    ),
     isChecklistCompleteStage: Boolean(c.isChecklistCompleteStage),
   }));
   const plural = rows.length === 1 ? "" : "s";

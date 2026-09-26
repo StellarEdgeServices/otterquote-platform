@@ -186,6 +186,36 @@ Deno.test("buildAdminDigestEmail: all-checklist-complete digest omits the '48h' 
   assert(textBody.includes("1 homeowner has completed the checklist, not yet submitted for bids."), textBody);
 });
 
+Deno.test("buildAdminDigestEmail: a checklist-complete row's age is the time since CHECKLIST COMPLETION, not claim creation — REVIEW: FAIL 5849873052 M1", () => {
+  // The exact scenario the re-review's probe used: a claim opened 10 days
+  // ago whose checklist was completed only 3 hours ago. Before this fix,
+  // daysStalled was computed from createdAtIso (the claim's age) even for
+  // checklist-complete rows, so this row rendered "checklist complete 10d
+  // ago" — a homeowner who finished the checklist 3 hours ago is not "10
+  // days" anything.
+  const tenDaysAgoIso = new Date(NOW - 10 * 24 * 60 * 60 * 1000).toISOString();
+  const threeHoursAgoIso = new Date(NOW - 3 * 60 * 60 * 1000).toISOString();
+  const { textBody, rows } = buildAdminDigestEmail(
+    [
+      candidate({
+        claimId: "claim-cc",
+        email: "nick@example.com",
+        createdAtIso: tenDaysAgoIso,
+        isChecklistCompleteStage: true,
+        checklistCompletedAtIso: threeHoursAgoIso,
+      }),
+    ],
+    "https://otterquote.com/admin-homeowners.html",
+    NOW,
+  );
+  assertEquals(rows[0].daysStalled, 0);
+  assert(
+    textBody.includes("- n***@example.com | claim claim-cc | checklist complete 0d ago"),
+    textBody,
+  );
+  assert(!textBody.includes("checklist complete 10d ago"), textBody);
+});
+
 Deno.test("constants: recipient and notification_type match this repo's admin-digest conventions", () => {
   assertEquals(ADMIN_DIGEST_EMAIL, "dustinstohler1@gmail.com");
   assertEquals(ADMIN_DIGEST_NOTIFICATION_TYPE, "admin_stalled_homeowner_digest");

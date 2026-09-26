@@ -123,6 +123,14 @@ export function selectDigestCandidates(screened: ScreenedCandidate[]): StalledCa
       // line instead of the '48h' stalled/no-activity sentence, which is
       // false for it. See that file's StalledCandidate doc.
       isChecklistCompleteStage: c.stage === CHECKLIST_COMPLETE_STAGE,
+      // gh-2219 REVIEW: FAIL 5849873052 M1 — carried through (spread only
+      // when present) so the digest's "checklist complete Nd ago" age is
+      // measured from checklist completion, not claim creation. Conditional
+      // spread rather than an unconditional `checklistCompletedAtIso:
+      // c.checklistCompletedAtIso` so a '48h' candidate's output keeps the
+      // exact shape existing callers/tests assert (no key with an
+      // `undefined` value).
+      ...(c.checklistCompletedAtIso ? { checklistCompletedAtIso: c.checklistCompletedAtIso } : {}),
     }));
 }
 

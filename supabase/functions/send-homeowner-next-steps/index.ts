@@ -836,6 +836,13 @@ serve(async (req: Request) => {
             email: ccHomeownerEmail,
             createdAtIso: c.created_at,
             stage: CHECKLIST_COMPLETE_STAGE,
+            // gh-2219 REVIEW: FAIL 5849873052 M1 — already computed above by
+            // reduceChecklistCompleteActivity; carried through so the digest
+            // measures this row's age from checklist completion, not claim
+            // creation (decision.stage being truthy here means ccReduced
+            // .completedAtByClaim has this claim id — screenChecklistCompleteClaim
+            // returns "not_checklist_complete" otherwise).
+            checklistCompletedAtIso: ccReduced.completedAtByClaim.get(c.id),
           });
 
           const dashboardUrl = `${siteUrl}/dashboard.html`;
