@@ -1,6 +1,38 @@
 -- gh-1763: repair profiles.is_test on 7 rows where profiles.is_test and
 -- contractors.is_test disagree.
 --
+-- >>> STATUS UPDATE (gh-1438, 2026-09-26, read-only re-check) <<<
+-- Re-ran the disagreement query below against production
+-- (yeszghaspzwwstvsrioa) this session. All 7 named rows now read
+-- profile_is_test=true / contractor_is_test=true -- exactly this file's
+-- documented POST-CONDITION -- even though the header below still says
+-- "DRAFT. NOT APPLIED." This file's own SQL was NOT re-run to produce that
+-- (this dispatch executed zero SQL against any database); the match could
+-- mean this exact file already ran through some other path, or that the 7
+-- rows were corrected by an unrelated mechanism (e.g. the general
+-- profiles/contractors is_test hand-correction referenced in
+-- migrations_drafts/gh1961_profiles_is_test_at_creation.sql's header).
+-- NOT archived or moved by this dispatch: the row-count guard below RAISEs
+-- unless it finds exactly 7 matching rows, which a fresh/empty branch never
+-- will -- filing this as a forward-replay migration under
+-- supabase/migrations/ would make every `db push` on a new branch fail at
+-- this file and block the rest of the chain, which is the exact
+-- re-execution/replay hazard this dispatch was told never to create.
+-- CTO/Dustin: please confirm (a) whether this file is what actually ran
+-- (then file/archive it as an applied trace under its real applied
+-- timestamp, not as a forward-replay file, and remove or neutralize the
+-- guard first), or (b) that a different mechanism fixed these 7 rows (then
+-- re-run the full unscoped disagreement query below -- not just these 7
+-- ids -- before trusting this file's row list for anything else).
+--
+-- Verification query re-run 2026-09-26 (read-only, yeszghaspzwwstvsrioa):
+--   select p.id as profile_id, p.is_test as profile_is_test,
+--          c.id as contractor_id, c.is_test as contractor_is_test, c.company_name
+--   from public.profiles p join public.contractors c on c.user_id = p.id
+--   where p.id in (<the 7 ids in the table below>);
+--   -- => all 7 rows: profile_is_test=true, contractor_is_test=true
+-- <<< END STATUS UPDATE >>>
+--
 -- DRAFT. NOT APPLIED. Lives in migrations_drafts/ per this directory's
 -- contract: supabase/migrations/ holds only SQL already approved AND applied
 -- in production, because the Supabase CLI replays that directory forward
