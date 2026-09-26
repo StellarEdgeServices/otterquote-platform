@@ -9,12 +9,30 @@
 // member, and never should -- that set mirrors register_partner()'s
 // p_agent_type CHECK, a table this insert never touches).
 //
-// Format: JSON object, form_id -> { funnel_id, is_test? }, held in the
+// Format: JSON object, form_id -> { funnel_id, is_test?, consent_key,
+// consent_text, privacy_url }, held in the
 // META_LEADGEN_HOMEOWNER_FORM_ALLOWLIST env var (Supabase secret) -- same
 // "config in an env var, not a table" precedent as allowlist.ts's own
 // META_LEADGEN_FORM_ALLOWLIST, and the same is_test rationale (Meta
 // documents no reliable Testing-Tool flag on the webhook payload or the
 // Graph API lead object -- see allowlist.ts's header for the citation).
+//
+// consent_key/consent_text/privacy_url (REVIEW FAIL 5849223003 defects 4/5,
+// D-299/D-332) are REQUIRED per entry, not optional: an entry missing any of
+// them is dropped entirely (the form is treated as not allowlisted, logged
+// as a config error) rather than allowed through with unknown consent
+// evidence or no privacy link. This fails closed the same way a missing
+// funnel_id already did -- see parseHomeownerAllowlist below.
+//   - consent_key: identifies which of the Meta form's custom disclaimer
+//     checkboxes is the call/text consent one -- matched against Meta's
+//     custom_disclaimer_responses[].id or .name (see homeowner-consent.ts).
+//   - consent_text: the exact D-299-approved disclaimer text as rendered on
+//     that Meta form, versioned -- stored verbatim as the evidence row's
+//     consent_text.
+//   - privacy_url: the Meta form's configured Privacy Policy link, which
+//     D-332 requires to be https://otterquote.com/privacy.html (checked at
+//     config-review time, not enforceable in code beyond requiring the
+//     field be present -- see this build's PR body).
 //
 // A form_id present in BOTH allowlists is not possible in practice (Meta
 // form ids are unique per form), but if it ever happened, handler.ts checks
@@ -23,17 +41,27 @@
 export interface HomeownerFormConfig {
   funnelId: string;
   isTest: boolean;
+  consentKey: string;
+  consentText: string;
+  privacyUrl: string;
 }
 
 export type HomeownerAllowlist = Record<string, HomeownerFormConfig>;
 
 /**
  * Parses META_LEADGEN_HOMEOWNER_FORM_ALLOWLIST. Malformed JSON, a
- * non-object top level, or an entry missing a non-empty funnel_id is
- * dropped (fails closed to "not allowlisted" for that entry, never
- * throws) -- same posture as allowlist.ts's parseAllowlist.
+ * non-object top level, or an entry missing a non-empty funnel_id,
+ * consent_key, consent_text, or privacy_url is dropped (fails closed to
+ * "not allowlisted" for that entry, never throws) -- same posture as
+ * allowlist.ts's parseAllowlist. A dropped entry that had a funnel_id (i.e.
+ * looked like a real attempt, not just garbage) is reported through the
+ * optional `log` callback as a config error, per REVIEW FAIL 5849223003
+ * defect 4/5.
  */
-export function parseHomeownerAllowlist(raw: string | undefined): HomeownerAllowlist {
+export function parseHomeownerAllowlist(
+  raw: string | undefined,
+  log?: (message: string) => void,
+): HomeownerAllowlist {
   if (!raw) return {};
   let parsed: unknown;
   try {
@@ -49,7 +77,19 @@ export function parseHomeownerAllowlist(raw: string | undefined): HomeownerAllow
     const cfg = cfgRaw as Record<string, unknown>;
     const funnelId = typeof cfg.funnel_id === "string" ? cfg.funnel_id.trim() : "";
     if (!funnelId) continue;
-    out[formId] = { funnelId, isTest: cfg.is_test === true };
+
+    const consentKey = typeof cfg.consent_key === "string" ? cfg.consent_key.trim() : "";
+    const consentText = typeof cfg.consent_text === "string" ? cfg.consent_text.trim() : "";
+    const privacyUrl = typeof cfg.privacy_url === "string" ? cfg.privacy_url.trim() : "";
+    if (!consentKey || !consentText || !privacyUrl) {
+      log?.(
+        `meta-leadgen-webhook: homeowner allowlist entry form_id=${formId} dropped -- ` +
+          `missing required consent_key/consent_text/privacy_url (D-299/D-332 config error)`,
+      );
+      continue;
+    }
+
+    out[formId] = { funnelId, isTest: cfg.is_test === true, consentKey, consentText, privacyUrl };
   }
   return out;
 }

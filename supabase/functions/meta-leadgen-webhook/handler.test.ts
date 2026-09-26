@@ -15,10 +15,19 @@ const ALLOWLIST_RAW = JSON.stringify({
 });
 
 // #2123 HO-2: a form_id here is DISJOINT from ALLOWLIST_RAW above — a real
-// Meta form_id can only ever appear in one form's config.
+// Meta form_id can only ever appear in one form's config. consent_key/
+// consent_text/privacy_url are REQUIRED per entry (REVIEW FAIL 5849223003
+// defects 4/5) -- homeowner-allowlist.test.ts covers what happens when one
+// is missing; every fixture entry here is deliberately complete so these
+// handler-level tests exercise routing/registration, not allowlist parsing.
+const CONSENT_KEY = "ho2_call_consent";
+const CONSENT_TEXT = "By checking this box I agree Otter Quotes and a matched contractor may call/text me.";
+const PRIVACY_URL = "https://otterquote.com/privacy.html";
 const HOMEOWNER_ALLOWLIST_RAW = JSON.stringify({
-  "form_ho2_789": { funnel_id: "ho-2" },
-  "form_ho2_test_999": { funnel_id: "ho-2", is_test: true },
+  "form_ho2_789": { funnel_id: "ho-2", consent_key: CONSENT_KEY, consent_text: CONSENT_TEXT, privacy_url: PRIVACY_URL },
+  "form_ho2_test_999": {
+    funnel_id: "ho-2", is_test: true, consent_key: CONSENT_KEY, consent_text: CONSENT_TEXT, privacy_url: PRIVACY_URL,
+  },
 });
 
 interface Counters {
@@ -27,13 +36,14 @@ interface Counters {
   duplicateCalls: number;
   rateLimitCalls: number;
   homeownerDuplicateCalls: number;
+  homeownerFetchCalls: number;
   homeownerRegisterCalls: number;
-  homeownerRoleRecoveryCalls: number;
+  finalizeCalls: number;
 }
 
 function makeDeps(overrides: Partial<WebhookDeps> = {}, counters: Counters = {
   fetchCalls: 0, registerCalls: 0, duplicateCalls: 0, rateLimitCalls: 0,
-  homeownerDuplicateCalls: 0, homeownerRegisterCalls: 0, homeownerRoleRecoveryCalls: 0,
+  homeownerDuplicateCalls: 0, homeownerFetchCalls: 0, homeownerRegisterCalls: 0, finalizeCalls: 0,
 }): WebhookDeps {
   return {
     verifyToken: VERIFY_TOKEN,
@@ -67,13 +77,30 @@ function makeDeps(overrides: Partial<WebhookDeps> = {}, counters: Counters = {
       counters.homeownerDuplicateCalls++;
       return { existingId: null, roleSet: false, errored: false };
     },
+    fetchHomeownerLead: async (_leadgenId, _token) => {
+      counters.homeownerFetchCalls++;
+      return {
+        data: {
+          field_data: [
+            { name: "full_name", values: ["Pat Homeowner"] },
+            { name: "email", values: ["pat@leadfixture.net"] },
+            { name: "phone_number", values: ["+13175559999"] },
+          ],
+          custom_disclaimer_responses: [{ id: CONSENT_KEY, is_checked: true }],
+          created_time: "2026-09-26T12:00:00+0000",
+          ad_id: "ad_fixture_1",
+          campaign_id: "campaign_fixture_1",
+        },
+        error: null,
+      };
+    },
     registerHomeownerLead: async () => {
       counters.homeownerRegisterCalls++;
       return { data: { id: "lead-fixture-id" }, error: null };
     },
-    setHomeownerLeadRole: async () => {
-      counters.homeownerRoleRecoveryCalls++;
-      return { error: null };
+    finalizeHomeownerLead: async () => {
+      counters.finalizeCalls++;
+      return { updated: true, error: null };
     },
     checkRateLimit: async () => {
       counters.rateLimitCalls++;
@@ -87,11 +114,13 @@ function makeDeps(overrides: Partial<WebhookDeps> = {}, counters: Counters = {
 function makeCounters(): Counters {
   return {
     fetchCalls: 0, registerCalls: 0, duplicateCalls: 0, rateLimitCalls: 0,
-    homeownerDuplicateCalls: 0, homeownerRegisterCalls: 0, homeownerRoleRecoveryCalls: 0,
+    homeownerDuplicateCalls: 0, homeownerFetchCalls: 0, homeownerRegisterCalls: 0, finalizeCalls: 0,
   };
 }
 
-function leadgenBody(over: { leadgenId?: string; formId?: string } = {}): string {
+function leadgenBody(
+  over: { leadgenId?: string; formId?: string; adId?: string; adgroupId?: string } = {},
+): string {
   return JSON.stringify({
     entry: [
       {
@@ -104,6 +133,8 @@ function leadgenBody(over: { leadgenId?: string; formId?: string } = {}): string
               form_id: over.formId ?? "form_real_123",
               page_id: "page_1",
               created_time: 1732400000,
+              ...(over.adId ? { ad_id: over.adId } : {}),
+              ...(over.adgroupId ? { adgroup_id: over.adgroupId } : {}),
             },
           },
         ],
@@ -428,26 +459,37 @@ Deno.test("POST: incomplete fields (no email) skips, no register call", async ()
 // touched by this section. These exercise the NEW homeowner-form branch,
 // keyed on HOMEOWNER_ALLOWLIST_RAW's disjoint form ids.
 
-Deno.test("POST: a homeowner form_id (#2123 HO-2) writes to leads via registerHomeownerLead, not registerPartner", async () => {
+Deno.test("POST: a homeowner form_id (#2123 HO-2) writes to leads via registerHomeownerLead, not registerPartner, then finalizes", async () => {
   const body = leadgenBody({ formId: "form_ho2_789", leadgenId: "leadgen_ho2_001" });
   const sig = await sign(body);
   const counters: Counters = makeCounters();
   let captured: unknown = null;
+  let finalizeArgs: unknown = null;
   const deps = makeDeps({
     registerHomeownerLead: async (args) => {
       counters.homeownerRegisterCalls++;
       captured = args;
       return { data: { id: "lead-fixture-id" }, error: null };
     },
+    finalizeHomeownerLead: async (leadId, metaLeadId, consent) => {
+      counters.finalizeCalls++;
+      finalizeArgs = { leadId, metaLeadId, consent };
+      return { updated: true, error: null };
+    },
   }, counters);
   const { response, outcomes } = await handlePost(body, sig, "1.2.3.4", deps);
   assertEquals(response.status, 200);
   assertEquals(outcomes[0].outcome, "registered");
   assertEquals(counters.homeownerRegisterCalls, 1);
+  assertEquals(counters.finalizeCalls, 1);
   assertEquals(counters.registerCalls, 0); // never touches the partner path
   assertEquals((captured as { funnelId: string }).funnelId, "ho-2");
   assertEquals((captured as { metaLeadId: string }).metaLeadId, "leadgen_ho2_001");
   assertEquals((captured as { isSynthetic: boolean }).isSynthetic, false);
+  assertEquals((finalizeArgs as { leadId: string }).leadId, "lead-fixture-id");
+  assertEquals((finalizeArgs as { metaLeadId: string }).metaLeadId, "leadgen_ho2_001");
+  assertEquals((finalizeArgs as { consent: { consentGiven: boolean } }).consent.consentGiven, true);
+  assertEquals((finalizeArgs as { consent: { consentKey: string } }).consent.consentKey, CONSENT_KEY);
 });
 
 Deno.test("POST: a homeowner Testing Tool form (is_test:true) registers with isSynthetic true", async () => {
@@ -465,6 +507,58 @@ Deno.test("POST: a homeowner Testing Tool form (is_test:true) registers with isS
   const { outcomes } = await handlePost(body, sig, "1.2.3.4", deps);
   assertEquals(outcomes[0].outcome, "registered");
   assertEquals(capturedSynthetic, true);
+});
+
+// REVIEW FAIL 5849223003 item 7 (optional/cheap, taken) — parity with Arm F:
+// a founder/internal/QA email is synthetic even when the form itself is not
+// flagged is_test.
+Deno.test("POST: a homeowner lead with a founder/internal email registers with isSynthetic true (item 7 parity)", async () => {
+  const body = leadgenBody({ formId: "form_ho2_789", leadgenId: "leadgen_ho2_founder" });
+  const sig = await sign(body);
+  const counters: Counters = makeCounters();
+  let capturedSynthetic: boolean | null = null;
+  const deps = makeDeps({
+    fetchHomeownerLead: async () => {
+      counters.homeownerFetchCalls++;
+      return {
+        data: {
+          field_data: [
+            { name: "full_name", values: ["Founder Test"] },
+            { name: "email", values: ["dustin@otterquote.com"] },
+          ],
+          custom_disclaimer_responses: [{ id: CONSENT_KEY, is_checked: true }],
+        },
+        error: null,
+      };
+    },
+    registerHomeownerLead: async (args) => {
+      counters.homeownerRegisterCalls++;
+      capturedSynthetic = args.isSynthetic;
+      return { data: { id: "lead-fixture-id" }, error: null };
+    },
+  }, counters);
+  const { outcomes } = await handlePost(body, sig, "1.2.3.4", deps);
+  assertEquals(outcomes[0].outcome, "registered");
+  assertEquals(capturedSynthetic, true);
+});
+
+// REVIEW FAIL item 6 — the webhook's own ad_id/adgroup_id become
+// utm_content/utm_term.
+Deno.test("POST: a homeowner lead's ad_id/adgroup_id (webhook payload) become utm_content/utm_term", async () => {
+  const body = leadgenBody({ formId: "form_ho2_789", leadgenId: "leadgen_ho2_utm", adId: "ad_999", adgroupId: "adgroup_888" });
+  const sig = await sign(body);
+  const counters: Counters = makeCounters();
+  let captured: unknown = null;
+  const deps = makeDeps({
+    registerHomeownerLead: async (args) => {
+      counters.homeownerRegisterCalls++;
+      captured = args;
+      return { data: { id: "lead-fixture-id" }, error: null };
+    },
+  }, counters);
+  await handlePost(body, sig, "1.2.3.4", deps);
+  assertEquals((captured as { utmContent: string | null }).utmContent, "ad_999");
+  assertEquals((captured as { utmTerm: string | null }).utmTerm, "adgroup_888");
 });
 
 // Negative control: a PARTNER form_id must still route to registerPartner /
@@ -508,11 +602,43 @@ Deno.test("POST: homeowner dedupe on meta_lead_id -- already-registered (role al
   const { outcomes } = await handlePost(body, sig, "1.2.3.4", deps);
   assertEquals(outcomes[0].outcome, "skipped_already_registered");
   assertEquals(counters.homeownerRegisterCalls, 0);
-  assertEquals(counters.fetchCalls, 0);
+  assertEquals(counters.homeownerFetchCalls, 0);
 });
 
-Deno.test("POST: homeowner recovery -- existing row with role NOT yet set retries setHomeownerLeadRole instead of skipping", async () => {
+// REVIEW FAIL 5849223003 defect 4: the recovery path now re-fetches the
+// lead from Graph (read-only, idempotent) so consent evidence can be
+// written before role is set, even on a redelivery. This intentionally
+// changes the pre-fix invariant ("no re-fetch on recovery") -- see
+// finalizeHomeownerLead's doc comment in handler.ts.
+Deno.test("POST: homeowner recovery -- existing row with role NOT yet set re-fetches, writes consent, and finalizes instead of skipping", async () => {
   const body = leadgenBody({ formId: "form_ho2_789", leadgenId: "leadgen_ho2_recover" });
+  const sig = await sign(body);
+  const counters: Counters = makeCounters();
+  let finalizeArgs: unknown = null;
+  const deps = makeDeps({
+    isDuplicateHomeownerLead: async () => {
+      counters.homeownerDuplicateCalls++;
+      return { existingId: "lead-existing-id", roleSet: false, errored: false };
+    },
+    finalizeHomeownerLead: async (leadId, metaLeadId, consent) => {
+      counters.finalizeCalls++;
+      finalizeArgs = { leadId, metaLeadId, consent };
+      return { updated: true, error: null };
+    },
+  }, counters);
+  const { response, outcomes } = await handlePost(body, sig, "1.2.3.4", deps);
+  assertEquals(response.status, 200);
+  assertEquals(outcomes[0].outcome, "registered");
+  assertEquals(counters.finalizeCalls, 1);
+  assertEquals(counters.homeownerRegisterCalls, 0); // no re-insert
+  assertEquals(counters.homeownerFetchCalls, 1); // re-fetch IS expected now (consent evidence)
+  assertEquals((finalizeArgs as { leadId: string }).leadId, "lead-existing-id");
+});
+
+// REVIEW FAIL defect 3: 0 rows touched by the conditional role update is a
+// TERMINAL race (another delivery's finalize already won), never a 503 retry.
+Deno.test("POST: homeowner recovery -- a concurrent finalize already won (0 rows updated) is a terminal skip, not a retry", async () => {
+  const body = leadgenBody({ formId: "form_ho2_789", leadgenId: "leadgen_ho2_race" });
   const sig = await sign(body);
   const counters: Counters = makeCounters();
   const deps = makeDeps({
@@ -520,13 +646,66 @@ Deno.test("POST: homeowner recovery -- existing row with role NOT yet set retrie
       counters.homeownerDuplicateCalls++;
       return { existingId: "lead-existing-id", roleSet: false, errored: false };
     },
+    finalizeHomeownerLead: async () => {
+      counters.finalizeCalls++;
+      return { updated: false, error: null };
+    },
+  }, counters);
+  const { response, outcomes } = await handlePost(body, sig, "1.2.3.4", deps);
+  assertEquals(response.status, 200);
+  assertEquals(outcomes[0].outcome, "skipped_already_registered");
+});
+
+// REVIEW FAIL defect 3: this is the case that used to be permanently stuck --
+// a redelivery long after the old RPC's 30-minute window. The service-role
+// conditional update has no such window, so this now succeeds.
+Deno.test("POST: homeowner recovery -- redelivery arriving well past 30 minutes still finalizes (no RPC window any more)", async () => {
+  const body = leadgenBody({ formId: "form_ho2_789", leadgenId: "leadgen_ho2_late" });
+  const sig = await sign(body);
+  const counters: Counters = makeCounters();
+  const deps = makeDeps({
+    isDuplicateHomeownerLead: async () => {
+      counters.homeownerDuplicateCalls++;
+      return { existingId: "lead-existing-id", roleSet: false, errored: false };
+    },
+    // The fake never even models a time window -- the point is that
+    // finalizeHomeownerLead's contract (id + meta_lead_id + role IS NULL)
+    // carries no time component at all, unlike the old set_lead_role() RPC.
+    finalizeHomeownerLead: async () => {
+      counters.finalizeCalls++;
+      return { updated: true, error: null };
+    },
   }, counters);
   const { response, outcomes } = await handlePost(body, sig, "1.2.3.4", deps);
   assertEquals(response.status, 200);
   assertEquals(outcomes[0].outcome, "registered");
-  assertEquals(counters.homeownerRoleRecoveryCalls, 1);
-  assertEquals(counters.homeownerRegisterCalls, 0); // no re-insert
-  assertEquals(counters.fetchCalls, 0); // no re-fetch from Graph either
+});
+
+// Double-delivery: two redeliveries of the same recovery both land; the
+// first's finalize updates the row, the second's finalize (0 rows) is a
+// terminal skip -- the alert fires exactly once either way.
+Deno.test("POST: homeowner double-delivery -- second finalize call in a row sees 0 rows updated and is a terminal skip", async () => {
+  const body = leadgenBody({ formId: "form_ho2_789", leadgenId: "leadgen_ho2_double" });
+  const sig = await sign(body);
+  const counters: Counters = makeCounters();
+  let calls = 0;
+  const deps = makeDeps({
+    isDuplicateHomeownerLead: async () => {
+      counters.homeownerDuplicateCalls++;
+      return { existingId: "lead-existing-id", roleSet: false, errored: false };
+    },
+    finalizeHomeownerLead: async () => {
+      counters.finalizeCalls++;
+      calls++;
+      return { updated: calls === 1, error: null };
+    },
+  }, counters);
+  const first = await handlePost(body, sig, "1.2.3.4", deps);
+  const second = await handlePost(body, sig, "1.2.3.4", deps);
+  assertEquals(first.outcomes[0].outcome, "registered");
+  assertEquals(second.response.status, 200);
+  assertEquals(second.outcomes[0].outcome, "skipped_already_registered");
+  assertEquals(counters.finalizeCalls, 2);
 });
 
 Deno.test("POST: homeowner dedupe-read DB error returns 503, distinct from a real duplicate", async () => {
@@ -545,13 +724,17 @@ Deno.test("POST: homeowner dedupe-read DB error returns 503, distinct from a rea
   assertEquals(counters.homeownerRegisterCalls, 0);
 });
 
-Deno.test("POST: homeowner lead with phone but no email is NOT dropped (plan §2: name + email OR phone)", async () => {
+// REVIEW FAIL defect 1 (BLOCKER): live leads.email is NOT NULL. This test
+// used to assert "registered" against a MOCKED registerHomeownerLead, which
+// proved nothing about the real insert -- it now asserts the correct
+// rejection, with zero register calls, per the fix.
+Deno.test("POST: homeowner lead with phone but no email IS dropped (defect 1 fix -- email is required)", async () => {
   const body = leadgenBody({ formId: "form_ho2_789", leadgenId: "leadgen_ho2_phoneonly" });
   const sig = await sign(body);
   const counters: Counters = makeCounters();
   const deps = makeDeps({
-    fetchLead: async () => {
-      counters.fetchCalls++;
+    fetchHomeownerLead: async () => {
+      counters.homeownerFetchCalls++;
       return {
         data: {
           field_data: [
@@ -564,7 +747,8 @@ Deno.test("POST: homeowner lead with phone but no email is NOT dropped (plan §2
     },
   }, counters);
   const { outcomes } = await handlePost(body, sig, "1.2.3.4", deps);
-  assertEquals(outcomes[0].outcome, "registered");
+  assertEquals(outcomes[0].outcome, "skipped_incomplete_fields");
+  assertEquals(counters.homeownerRegisterCalls, 0);
 });
 
 Deno.test("POST: homeowner lead with no name is dropped (incomplete_fields), no register call", async () => {
@@ -572,14 +756,37 @@ Deno.test("POST: homeowner lead with no name is dropped (incomplete_fields), no 
   const sig = await sign(body);
   const counters: Counters = makeCounters();
   const deps = makeDeps({
-    fetchLead: async () => {
-      counters.fetchCalls++;
+    fetchHomeownerLead: async () => {
+      counters.homeownerFetchCalls++;
       return { data: { field_data: [{ name: "email", values: ["noname@example.com"] }] }, error: null };
     },
   }, counters);
   const { outcomes } = await handlePost(body, sig, "1.2.3.4", deps);
   assertEquals(outcomes[0].outcome, "skipped_incomplete_fields");
   assertEquals(counters.homeownerRegisterCalls, 0);
+});
+
+Deno.test("POST: homeowner lead with a name and email but no phone IS registered (phone is still optional)", async () => {
+  const body = leadgenBody({ formId: "form_ho2_789", leadgenId: "leadgen_ho2_noPhone" });
+  const sig = await sign(body);
+  const counters: Counters = makeCounters();
+  const deps = makeDeps({
+    fetchHomeownerLead: async () => {
+      counters.homeownerFetchCalls++;
+      return {
+        data: {
+          field_data: [
+            { name: "full_name", values: ["Pat NoPhone"] },
+            { name: "email", values: ["pat.nophone@example.com"] },
+          ],
+          custom_disclaimer_responses: [{ id: CONSENT_KEY, is_checked: true }],
+        },
+        error: null,
+      };
+    },
+  }, counters);
+  const { outcomes } = await handlePost(body, sig, "1.2.3.4", deps);
+  assertEquals(outcomes[0].outcome, "registered");
 });
 
 Deno.test("POST: a homeowner registerHomeownerLead unique-violation race is reported as a skip, not an error", async () => {
@@ -597,14 +804,14 @@ Deno.test("POST: a homeowner registerHomeownerLead unique-violation race is repo
   assertEquals(outcomes[0].outcome, "skipped_already_registered");
 });
 
-Deno.test("POST: a homeowner registerHomeownerLead transient error (e.g. set_lead_role failed) returns 503, not 200", async () => {
+Deno.test("POST: a homeowner finalizeHomeownerLead transient error (e.g. consent write failed) returns 503, not 200", async () => {
   const body = leadgenBody({ formId: "form_ho2_789" });
   const sig = await sign(body);
   const counters: Counters = makeCounters();
   const deps = makeDeps({
-    registerHomeownerLead: async () => {
-      counters.homeownerRegisterCalls++;
-      return { data: { id: "lead-fixture-id" }, error: { message: "set_lead_role_no_row_updated" } };
+    finalizeHomeownerLead: async () => {
+      counters.finalizeCalls++;
+      return { updated: false, error: { message: "consent_write_failed" } };
     },
   }, counters);
   const { response, outcomes } = await handlePost(body, sig, "1.2.3.4", deps);
@@ -619,8 +826,93 @@ Deno.test("POST: unset page access token skips homeowner lead with 200, no fetch
   const { response, outcomes } = await handlePost(body, sig, "1.2.3.4", makeDeps({ pageAccessToken: undefined }, counters));
   assertEquals(response.status, 200);
   assertEquals(outcomes[0].outcome, "skipped_page_token_unset");
-  assertEquals(counters.fetchCalls, 0);
+  assertEquals(counters.homeownerFetchCalls, 0);
   assertEquals(counters.homeownerRegisterCalls, 0);
+});
+
+// ── #2123 HO-2 D-299 consent evidence (defect 4) ────────────────────────
+
+Deno.test("POST: unticked consent checkbox still registers the lead, with consent_given=false (Arm F semantics: both outcomes are evidence)", async () => {
+  const body = leadgenBody({ formId: "form_ho2_789", leadgenId: "leadgen_ho2_unticked" });
+  const sig = await sign(body);
+  const counters: Counters = makeCounters();
+  let finalizeArgs: unknown = null;
+  const deps = makeDeps({
+    fetchHomeownerLead: async () => {
+      counters.homeownerFetchCalls++;
+      return {
+        data: {
+          field_data: [
+            { name: "full_name", values: ["Pat Unticked"] },
+            { name: "email", values: ["pat.unticked@example.com"] },
+          ],
+          custom_disclaimer_responses: [{ id: CONSENT_KEY, is_checked: false }],
+        },
+        error: null,
+      };
+    },
+    finalizeHomeownerLead: async (leadId, metaLeadId, consent) => {
+      counters.finalizeCalls++;
+      finalizeArgs = consent;
+      return { updated: true, error: null };
+    },
+  }, counters);
+  const { outcomes } = await handlePost(body, sig, "1.2.3.4", deps);
+  assertEquals(outcomes[0].outcome, "registered"); // NOT dropped -- the lead is still written
+  assertEquals((finalizeArgs as { consentGiven: boolean }).consentGiven, false);
+});
+
+Deno.test("POST: a missing checkbox answer (no custom_disclaimer_responses at all) still registers, with consent_given=false", async () => {
+  const body = leadgenBody({ formId: "form_ho2_789", leadgenId: "leadgen_ho2_nocheckbox" });
+  const sig = await sign(body);
+  const counters: Counters = makeCounters();
+  let finalizeArgs: unknown = null;
+  const deps = makeDeps({
+    fetchHomeownerLead: async () => {
+      counters.homeownerFetchCalls++;
+      return {
+        data: {
+          field_data: [
+            { name: "full_name", values: ["Pat NoCheckbox"] },
+            { name: "email", values: ["pat.nocheckbox@example.com"] },
+          ],
+          // no custom_disclaimer_responses field at all
+        },
+        error: null,
+      };
+    },
+    finalizeHomeownerLead: async (leadId, metaLeadId, consent) => {
+      counters.finalizeCalls++;
+      finalizeArgs = consent;
+      return { updated: true, error: null };
+    },
+  }, counters);
+  const { outcomes } = await handlePost(body, sig, "1.2.3.4", deps);
+  assertEquals(outcomes[0].outcome, "registered");
+  assertEquals((finalizeArgs as { consentGiven: boolean }).consentGiven, false);
+});
+
+// A missing consent config (allowlist entry missing consent_key/text/
+// privacy_url) is covered by homeowner-allowlist.test.ts's parse-level
+// tests -- the entry never reaches the allowlist handlePost sees, so the
+// form_id it would have keyed is simply not_allowlisted here.
+Deno.test("POST: a homeowner form_id whose allowlist entry has no consent config at all is not_allowlisted (config error)", async () => {
+  const rawWithBadEntry = JSON.stringify({
+    form_ho2_noconsent: { funnel_id: "ho-2" }, // missing consent_key/consent_text/privacy_url
+  });
+  const body = leadgenBody({ formId: "form_ho2_noconsent" });
+  const sig = await sign(body);
+  const counters: Counters = makeCounters();
+  const logs: string[] = [];
+  const deps = makeDeps({
+    homeownerAllowlistRaw: rawWithBadEntry,
+    log: (_level, message) => logs.push(message),
+  }, counters);
+  const { response, outcomes } = await handlePost(body, sig, "1.2.3.4", deps);
+  assertEquals(response.status, 200);
+  assertEquals(outcomes[0].outcome, "skipped_not_allowlisted");
+  assertEquals(counters.homeownerRegisterCalls, 0);
+  assert(logs.some((m) => m.includes("form_ho2_noconsent")));
 });
 
 // ── interpretRateLimitResult — index.ts's check_rate_limit() RPC result ──

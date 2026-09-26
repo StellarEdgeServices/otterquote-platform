@@ -24,6 +24,12 @@ import {
   type HomeownerAllowlist,
 } from "./homeowner-allowlist.ts";
 import { mapFieldData, type LeadFieldDatum } from "./field-mapping.ts";
+import {
+  buildHomeownerConsentArgs,
+  type FetchedHomeownerLead,
+  type HomeownerConsentArgs,
+} from "./homeowner-consent.ts";
+import { isFounderOrTestEmail } from "./founder-filter.ts";
 
 export const FUNCTION_NAME = "meta-leadgen-webhook";
 
@@ -66,14 +72,25 @@ export interface RegisterPartnerArgs {
   metaLeadId: string;
 }
 
-/** #2123 HO-2: the fields a homeowner `leads` row needs from a Meta lead. */
+/**
+ * #2123 HO-2: the fields a homeowner `leads` row needs from a Meta lead.
+ * `email` is now REQUIRED (REVIEW FAIL 5849223003 defect 1 -- live
+ * `leads.email` is NOT NULL; a phone-only lead can never be inserted, see
+ * handler.ts's `!mapped.email` check below). registerHomeownerLead does ONLY
+ * the insert now -- consent evidence + the role update are a separate
+ * finalizeHomeownerLead step (defect 3/4) shared with the recovery path.
+ */
 export interface RegisterHomeownerLeadArgs {
   name: string;
-  email: string | null;
+  email: string;
   phone: string | null;
   funnelId: string;
   isSynthetic: boolean;
   metaLeadId: string;
+  /** REVIEW FAIL defect 6: change.value.ad_id from the signed webhook payload. */
+  utmContent: string | null;
+  /** REVIEW FAIL defect 6: change.value.adgroup_id from the signed webhook payload. */
+  utmTerm: string | null;
 }
 
 /** #2123 HO-2: result of the meta_lead_id dedupe read on `leads`. */
@@ -93,6 +110,17 @@ export interface WebhookDeps {
   /** #2123 HO-2: META_LEADGEN_HOMEOWNER_FORM_ALLOWLIST, separate from the partner allowlist above. */
   homeownerAllowlistRaw: string | undefined;
   fetchLead: (leadgenId: string, token: string) => Promise<{ data: FetchedLead | null; error: string | null }>;
+  /**
+   * #2123 HO-2 fix round (defect 4(a)): a SEPARATE Graph fetch from the
+   * partner path's fetchLead above, so the partner fetch stays byte-
+   * identical. Requests the extra fields D-299 consent evidence and
+   * attribution need: custom_disclaimer_responses, created_time, form_id,
+   * ad_id, campaign_id, platform -- see homeowner-consent.ts.
+   */
+  fetchHomeownerLead: (
+    leadgenId: string,
+    token: string,
+  ) => Promise<{ data: FetchedHomeownerLead | null; error: string | null }>;
   /**
    * gh-2154 P-5r (LEGAL-READ FAIL 5833717530): fires (best-effort, never
    * blocks or fails the webhook response) after a successful registration
@@ -129,27 +157,48 @@ export interface WebhookDeps {
    */
   isDuplicateHomeownerLead: (metaLeadId: string) => Promise<HomeownerDuplicateResult>;
   /**
-   * #2123 HO-2: inserts a NEW `leads` row (role is forced NULL by the
+   * #2123 HO-2: inserts a NEW `leads` row ONLY (role is forced NULL by the
    * table's existing BEFORE INSERT guard, trg_leads_force_safe_insert_
-   * defaults, regardless of caller — see this build's report) and then
-   * calls set_lead_role(id, 'homeowner') on it, the same RPC and the same
-   * role-set-fires-the-alert mechanism js/router-variant-f.js's Step 2
-   * already uses (gh-1994's trg_notify_admin_new_router_lead). Returns the
-   * new row's id on success. A unique_violation on meta_lead_id (a race
-   * with another delivery of the same leadgen_id) surfaces as
-   * error.message === "duplicate_meta_lead", mirroring registerPartner's
-   * own terminal-duplicate convention above.
+   * defaults, regardless of caller — see this build's report). REVIEW FAIL
+   * 5849223003 fix round: no longer also sets role here -- consent evidence
+   * must be written BEFORE the role update (defect 4), and the same
+   * finalize step is shared with the recovery path below, so it is a
+   * separate `finalizeHomeownerLead` call. Returns the new row's id on
+   * success. A unique_violation on meta_lead_id (a race with another
+   * delivery of the same leadgen_id) surfaces as error.message ===
+   * "duplicate_meta_lead", mirroring registerPartner's own
+   * terminal-duplicate convention above.
    */
   registerHomeownerLead: (
     args: RegisterHomeownerLeadArgs,
   ) => Promise<{ data: { id?: string } | null; error: { message?: string } | null }>;
   /**
-   * #2123 HO-2 recovery path: sets role='homeowner' on an EXISTING row
-   * (isDuplicateHomeownerLead found it, but roleSet was false) without
-   * re-inserting. Same set_lead_role() RPC as registerHomeownerLead's
-   * second step.
+   * #2123 HO-2 fix round (REVIEW FAIL 5849223003 defects 3 + 4): the shared
+   * "finish the job" step for BOTH a freshly-inserted row and a recovered
+   * existing one (isDuplicateHomeownerLead found it with roleSet:false).
+   * Does, in order:
+   *   1. writes the D-299 `lead_consents` evidence row (idempotent -- a
+   *      unique_violation on (lead_id, consent_key), e.g. from a retry of
+   *      this same step, is treated as already-written, never an error);
+   *   2. a SERVICE-ROLE CONDITIONAL UPDATE -- `UPDATE leads SET role =
+   *      'homeowner' WHERE id = :leadId AND meta_lead_id = :metaLeadId AND
+   *      role IS NULL` -- replacing the old set_lead_role() RPC call
+   *      entirely. That RPC's own 30-minute / prefill_used_at window (meant
+   *      for an anon caller) made a Meta redelivery arriving more than 30
+   *      minutes after the first insert permanently un-recoverable (defect
+   *      3); a service-role update keyed on id + meta_lead_id has no such
+   *      window and cannot be steered by anything anon-reachable.
+   * `updated: false` (zero rows touched) means role was already set by a
+   * concurrent delivery -- a TERMINAL race, not a transient failure: the
+   * other delivery's own update is what fired (or will fire) the alert, and
+   * the same AFTER UPDATE NULL -> non-NULL trigger still fires exactly once
+   * across both.
    */
-  setHomeownerLeadRole: (leadId: string) => Promise<{ error: { message?: string } | null }>;
+  finalizeHomeownerLead: (
+    leadId: string,
+    metaLeadId: string,
+    consent: HomeownerConsentArgs,
+  ) => Promise<{ updated: boolean; error: { message?: string } | null }>;
   checkRateLimit: (bucket: string) => Promise<{ allowed: boolean; errored: boolean }>;
   log: (level: "log" | "warn" | "error", message: string) => void;
 }
@@ -265,7 +314,10 @@ export async function handlePost(
   // META_LEADGEN_HOMEOWNER_FORM_ALLOWLIST parses to {} (parseHomeownerAllowlist
   // never throws), so this is a no-op for every delivery until a homeowner
   // form_id is actually added to it.
-  const homeownerAllowlist: HomeownerAllowlist = parseHomeownerAllowlist(deps.homeownerAllowlistRaw);
+  const homeownerAllowlist: HomeownerAllowlist = parseHomeownerAllowlist(
+    deps.homeownerAllowlistRaw,
+    (m) => deps.log("error", m),
+  );
   const outcomes: LeadOutcome[] = [];
   // gh-2154 P-5r (REVIEW FAIL 5833742114 must-fix 1): a Graph fetch error, a
   // register_partner() error other than a terminal duplicate, or a dedupe
@@ -321,16 +373,45 @@ export async function handlePost(
               outcomes.push({ leadgenId, formId, outcome: "skipped_already_registered" });
               continue;
             }
+
             // Recovery: a PRIOR delivery already inserted this row (its
             // meta_lead_id UNIQUE constraint means a second insert is
-            // impossible) but set_lead_role() never landed — a transient
-            // failure on that earlier attempt, not a terminal one. Finish
-            // the job on the existing row rather than skipping it forever.
-            const roleResult = await deps.setHomeownerLeadRole(dup.existingId);
-            if (roleResult.error) {
-              deps.log("error", `${FUNCTION_NAME}: homeowner set_lead_role recovery failed leadgen_id=${leadgenId}`);
+            // impossible) but the finalize step (consent write + role
+            // update) never landed — a transient failure on that earlier
+            // attempt, not a terminal one. REVIEW FAIL 5849223003 defect 4:
+            // the D-299 consent evidence must exist before role is set even
+            // on this recovery path, and that evidence can only come from a
+            // fresh Graph fetch (this delivery does not carry the prior
+            // delivery's fetched data) — so, unlike before this fix round,
+            // a recovery DOES re-fetch. That fetch is safe to repeat: it is
+            // read-only against Meta and the lead's own answers/consent do
+            // not change between deliveries of the same leadgen_id.
+            if (!deps.pageAccessToken) {
+              deps.log("warn", `${FUNCTION_NAME}: skip leadgen_id=${leadgenId} reason=page_token_unset`);
+              outcomes.push({ leadgenId, formId, outcome: "skipped_page_token_unset" });
+              continue;
+            }
+            const recoveryFetch = await deps.fetchHomeownerLead(leadgenId, deps.pageAccessToken);
+            if (recoveryFetch.error || !recoveryFetch.data) {
+              deps.log("warn", `${FUNCTION_NAME}: skip leadgen_id=${leadgenId} reason=fetch_failed`);
+              outcomes.push({ leadgenId, formId, outcome: "skipped_fetch_failed" });
+              hasTransientFailure = true;
+              continue;
+            }
+            const recoveryConsent = buildHomeownerConsentArgs(recoveryFetch.data, homeownerConfig, formId);
+            const fin = await deps.finalizeHomeownerLead(dup.existingId, leadgenId, recoveryConsent);
+            if (fin.error) {
+              deps.log("error", `${FUNCTION_NAME}: homeowner finalize recovery failed leadgen_id=${leadgenId}`);
               outcomes.push({ leadgenId, formId, outcome: "error_register_failed" });
               hasTransientFailure = true;
+              continue;
+            }
+            if (!fin.updated) {
+              // Terminal (fix defect 3): a concurrent delivery's own
+              // finalize already flipped role NULL -> non-NULL first; that
+              // delivery's update is what fired (or will fire) the alert.
+              deps.log("log", `${FUNCTION_NAME}: skip leadgen_id=${leadgenId} reason=already_registered`);
+              outcomes.push({ leadgenId, formId, outcome: "skipped_already_registered" });
               continue;
             }
             deps.log("log", `${FUNCTION_NAME}: registered (role recovered) leadgen_id=${leadgenId}`);
@@ -344,7 +425,7 @@ export async function handlePost(
             continue;
           }
 
-          const fetched = await deps.fetchLead(leadgenId, deps.pageAccessToken);
+          const fetched = await deps.fetchHomeownerLead(leadgenId, deps.pageAccessToken);
           if (fetched.error || !fetched.data) {
             deps.log("warn", `${FUNCTION_NAME}: skip leadgen_id=${leadgenId} reason=fetch_failed`);
             outcomes.push({ leadgenId, formId, outcome: "skipped_fetch_failed" });
@@ -354,22 +435,39 @@ export async function handlePost(
 
           const mapped = mapFieldData(fetched.data.field_data);
           const name = mapped.fullName ?? mapped.firstName;
-          // #2123 HO-2 (plan §2): "a real, contactable lead (name + email OR
-          // phone...)" — unlike the partner path, phone alone is enough;
-          // email is not required.
-          if (!name || (!mapped.email && !mapped.phone)) {
+          // REVIEW FAIL 5849223003 defect 1 (BLOCKER): live leads.email is
+          // NOT NULL. A phone-only lead can never be inserted -- email is
+          // now REQUIRED on this path too (the plan §2 "email OR phone"
+          // reading is superseded; email must also become a required
+          // question on the HO-2 Meta form itself, see this PR's body).
+          if (!name || !mapped.email) {
             deps.log("warn", `${FUNCTION_NAME}: skip leadgen_id=${leadgenId} reason=incomplete_fields`);
             outcomes.push({ leadgenId, formId, outcome: "skipped_incomplete_fields" });
             continue;
           }
+
+          const consentArgs = buildHomeownerConsentArgs(fetched.data, homeownerConfig, formId);
+          // REVIEW FAIL item 7 (optional/cheap, taken): parity with Arm F --
+          // a founder/internal/QA address is marked synthetic even outside
+          // Meta's own Testing Tool flag, so it never pages the admin as a
+          // real lead.
+          const isSynthetic = homeownerConfig.isTest || isFounderOrTestEmail(mapped.email);
+          // REVIEW FAIL item 6 (SHOULD-FIX): the webhook's own signed
+          // change.value carries ad_id/adgroup_id -- stored as utm_content/
+          // utm_term so HO-2 leads can be attributed by ad, matching S14's
+          // utm_campaign=<line>-<funnel> convention already in place.
+          const utmContent = typeof value.ad_id === "string" ? value.ad_id : null;
+          const utmTerm = typeof value.adgroup_id === "string" ? value.adgroup_id : null;
 
           const reg = await deps.registerHomeownerLead({
             name,
             email: mapped.email,
             phone: mapped.phone,
             funnelId: homeownerConfig.funnelId,
-            isSynthetic: homeownerConfig.isTest,
+            isSynthetic,
             metaLeadId: leadgenId,
+            utmContent,
+            utmTerm,
           });
 
           if (reg.error) {
@@ -377,8 +475,8 @@ export async function handlePost(
             if (msg.includes("duplicate_meta_lead")) {
               // Terminal: a race with another delivery of the same
               // leadgen_id already inserted the row; that delivery's own
-              // set_lead_role() call (or, if that failed too, its own
-              // future redelivery via the recovery path above) owns it.
+              // finalize call (or, if that failed too, its own future
+              // redelivery via the recovery path above) owns it.
               deps.log("log", `${FUNCTION_NAME}: skip leadgen_id=${leadgenId} reason=already_registered`);
               outcomes.push({ leadgenId, formId, outcome: "skipped_already_registered" });
             } else {
@@ -386,6 +484,32 @@ export async function handlePost(
               outcomes.push({ leadgenId, formId, outcome: "error_register_failed" });
               hasTransientFailure = true;
             }
+            continue;
+          }
+
+          const newId = reg.data?.id;
+          if (!newId) {
+            deps.log("error", `${FUNCTION_NAME}: registerHomeownerLead returned no id leadgen_id=${leadgenId}`);
+            outcomes.push({ leadgenId, formId, outcome: "error_register_failed" });
+            hasTransientFailure = true;
+            continue;
+          }
+
+          // REVIEW FAIL defect 4: the consent evidence row is written, and
+          // only THEN is role set -- see finalizeHomeownerLead's doc comment.
+          const fin = await deps.finalizeHomeownerLead(newId, leadgenId, consentArgs);
+          if (fin.error) {
+            deps.log("error", `${FUNCTION_NAME}: homeowner finalize failed leadgen_id=${leadgenId}`);
+            outcomes.push({ leadgenId, formId, outcome: "error_register_failed" });
+            hasTransientFailure = true;
+            continue;
+          }
+          if (!fin.updated) {
+            // Terminal: an exceedingly unlikely race right after this same
+            // insert (another delivery's finalize won first) -- the alert
+            // still fires exactly once, via whichever finalize matched.
+            deps.log("log", `${FUNCTION_NAME}: skip leadgen_id=${leadgenId} reason=already_registered`);
+            outcomes.push({ leadgenId, formId, outcome: "skipped_already_registered" });
             continue;
           }
 
