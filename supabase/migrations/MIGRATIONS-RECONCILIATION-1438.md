@@ -391,9 +391,9 @@ base draft) and found four small, text-only defects, all fixed this pass:
   into a scoped one). Reverted every line from "THE RULE AND THE
   EXCEPTION" through the closing `commit;` to be byte-identical to
   `supabase/migrations_drafts/gh1763_is_test_repair.sql` as it stood at
-  base commit `442b5371698e17e087d0a83002abda3873a22792` (verified by
-  direct text comparison of both fetched contents). All annotations worth
-  keeping now live in the header above that unchanged body.
+  base commit `442b5371698e` (verified by direct text comparison of both
+  fetched contents). All annotations worth keeping now live in the header
+  above that unchanged body.
 - **F3** — `migrations_rollbacks/gh1763_is_test_repair_pre-flight.md` still
   told a reader to `\i supabase/migrations_drafts/gh1763_is_test_repair.sql`
   to apply the repair — a runnable pointer at a deleted path, inside a doc
