@@ -1955,17 +1955,32 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
         `gh-1842: BoldSign document ${resumedEnvelopeId} failed background creation permanently ` +
         `(discovered on resume); un-recording it from quotes/claims so the next attempt mints a new one.`
       );
-      const { quoteClearError, claimClearError } = await clearStrandedEnvelopePointer(supabase, {
+      // REVIEW FAIL (PR #2240, F1): resumedEnvelopeId came from
+      // findExistingEnvelopeId(), which can resolve via the (claim_id,
+      // contractor_id) fallback rather than this request's own quote_id --
+      // so quote_id is NOT trusted as the clear target here. Passing
+      // quote_id: null forces clearStrandedEnvelopePointer into its
+      // claim_id+contractor_id branch, which (as of the same fix) is
+      // additionally guarded on .eq("docusign_envelope_id", resumedEnvelopeId)
+      // so it can only ever clear the row that actually holds this exact
+      // dead pointer -- never a different quote that happens to share the
+      // claim/contractor pair, and never a pointer a concurrent mint just
+      // wrote (gh-1400 inverted).
+      const { quoteClearError, claimClearError, quoteRows, claimRows } = await clearStrandedEnvelopePointer(supabase, {
         claim_id,
-        quote_id,
+        quote_id: null,
         contractor_id,
         envelopeId: resumedEnvelopeId
       });
       if (quoteClearError) {
         console.error("gh-1842: failed to clear quotes.docusign_envelope_id:", quoteClearError);
+      } else if (quoteRows === 0) {
+        console.warn(`gh-1842: quotes clear matched zero rows for ${resumedEnvelopeId} (resume) - pointer already cleared or replaced`);
       }
       if (claimClearError) {
         console.error("gh-1842: failed to clear claims.docusign_envelope_id:", claimClearError);
+      } else if (claimRows === 0) {
+        console.warn(`gh-1842: claims clear matched zero rows for ${resumedEnvelopeId} (resume) - pointer already cleared or replaced`);
       }
       throw err;
     }
@@ -2315,7 +2330,7 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
       `gh-1842: BoldSign document ${envelopeId} failed background creation permanently; ` +
       `un-recording it from quotes/claims so the next attempt mints a new one.`
     );
-    const { quoteClearError, claimClearError } = await clearStrandedEnvelopePointer(supabase, {
+    const { quoteClearError, claimClearError, quoteRows, claimRows } = await clearStrandedEnvelopePointer(supabase, {
       claim_id,
       quote_id,
       contractor_id,
@@ -2323,9 +2338,13 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
     });
     if (quoteClearError) {
       console.error("gh-1842: failed to clear quotes.docusign_envelope_id:", quoteClearError);
+    } else if (quoteRows === 0) {
+      console.warn(`gh-1842: quotes clear matched zero rows for ${envelopeId} (mint) - pointer already cleared or replaced`);
     }
     if (claimClearError) {
       console.error("gh-1842: failed to clear claims.docusign_envelope_id:", claimClearError);
+    } else if (claimRows === 0) {
+      console.warn(`gh-1842: claims clear matched zero rows for ${envelopeId} (mint) - pointer already cleared or replaced`);
     }
     throw err;
   }

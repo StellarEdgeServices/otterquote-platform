@@ -212,15 +212,33 @@ Deno.test("isPermanentCreationFailure is narrow — an ambiguous error never un-
 // harness below reproduces each call site's exact try/catch shape --
 // including the isPermanentCreationFailure() gate -- against a fake supabase
 // client, so this is the same decision index.ts makes, not a looser stand-in.
+// resume-clear-wiring.test.ts (in this same directory) checks index.ts's
+// actual source text against these same anchors, so a change to the real
+// call site that drifts from this harness fails there, not silently here.
 //
 // FAIL-FIRST: on main, clearStrandedEnvelopePointer does not exist, so this
 // whole file fails to even import (a compile-time ReferenceError from the
 // missing export), which is a fail-first result at the file level -- the
 // resume path on main has no clear logic to test at all.
+//
+// REVIEW FAIL (PR #2240, F1): resumedEnvelopeId is NOT guaranteed to live on
+// the caller's own quote_id -- findExistingEnvelopeId() can resolve it via
+// the (claim_id, contractor_id) fallback instead. index.ts's real resume
+// call site therefore passes quote_id: null (see resume-clear-wiring.test.ts),
+// forcing clearStrandedEnvelopePointer's claim_id+contractor_id branch, which
+// is now ALSO guarded on .eq("docusign_envelope_id", envelopeId). The tests
+// below exercise that exact shape, not the untrusted quote_id.
 
-/** A minimal chainable fake mirroring supabase-js's from().update().eq()... */
+/**
+ * A minimal chainable fake mirroring supabase-js's
+ * from().update().eq()...select("id") shape that clearStrandedEnvelopePointer
+ * now uses. `rowsByTable` controls what `.select("id")` resolves with per
+ * table -- default is one matched row; pass `[]` to simulate a zero-row
+ * match (gh-2105 detection, not an `update-no-select-ok` annotation).
+ */
 function fakeSupabaseRecordingCalls(
   calls: Array<{ table: string; payload: unknown; filters: Array<[string, unknown]> }>,
+  rowsByTable: Record<string, Array<{ id: string }>> = {},
 ) {
   return {
     from(table: string) {
@@ -235,10 +253,10 @@ function fakeSupabaseRecordingCalls(
           filters.push([col, val]);
           return builder;
         },
-        // deno-lint-ignore no-explicit-any
-        then(resolve: (v: { error: null }) => any) {
+        select(_cols: string) {
           calls.push({ table, payload, filters: [...filters] });
-          return Promise.resolve(resolve({ error: null }));
+          const data = table in rowsByTable ? rowsByTable[table] : [{ id: "matched-row" }];
+          return Promise.resolve({ data, error: null });
         },
       };
       return builder;
@@ -248,26 +266,27 @@ function fakeSupabaseRecordingCalls(
 
 /**
  * Reproduces handleContractorSign's resume-branch try/catch exactly (index.ts
- * ~L1931-1959): attempt the sign-link call; on a PROVEN-permanent failure
- * only, clear via clearStrandedEnvelopePointer; anything else rethrows
- * uncleared. `attempt` stands in for issueContractorSignLink().
+ * ~L1932-1976): attempt the sign-link call; on a PROVEN-permanent failure
+ * only, clear via clearStrandedEnvelopePointer with quote_id forced to null
+ * (see the REVIEW FAIL note above); anything else rethrows uncleared.
+ * `attempt` stands in for issueContractorSignLink().
  */
 async function simulateResumeSignAttempt(
   // deno-lint-ignore no-explicit-any
   supabase: any,
-  target: { claim_id: string; quote_id: string | null; contractor_id: string; envelopeId: string },
+  target: { claim_id: string; contractor_id: string; envelopeId: string },
   attempt: () => Promise<unknown>,
 ) {
   try {
     return await attempt();
   } catch (err) {
     if (!isPermanentCreationFailure(err)) throw err;
-    await clearStrandedEnvelopePointer(supabase, target);
+    await clearStrandedEnvelopePointer(supabase, { ...target, quote_id: null });
     throw err;
   }
 }
 
-Deno.test("resume path: PERMANENT failure clears quotes+claims exactly like the mint path", async () => {
+Deno.test("resume path: PERMANENT failure clears quotes+claims, guarded on the envelope id (not the untrusted quote_id)", async () => {
   const calls: Array<{ table: string; payload: unknown; filters: Array<[string, unknown]> }> = [];
   const supabase = fakeSupabaseRecordingCalls(calls);
   const err = new BoldSignPermanentCreationFailure(DEAD, "resume-path fixture");
@@ -276,7 +295,7 @@ Deno.test("resume path: PERMANENT failure clears quotes+claims exactly like the 
   try {
     await simulateResumeSignAttempt(
       supabase,
-      { claim_id: "claim-1", quote_id: "quote-1", contractor_id: "contractor-1", envelopeId: DEAD },
+      { claim_id: "claim-1", contractor_id: "contractor-1", envelopeId: DEAD },
       () => { throw err; },
     );
   } catch (e) {
@@ -288,7 +307,11 @@ Deno.test("resume path: PERMANENT failure clears quotes+claims exactly like the 
 
   const quotesCall = calls.find((c) => c.table === "quotes")!;
   assertEquals(quotesCall.payload, { docusign_envelope_id: null });
-  assertEquals(quotesCall.filters, [["id", "quote-1"]]);
+  assertEquals(
+    quotesCall.filters,
+    [["claim_id", "claim-1"], ["contractor_id", "contractor-1"], ["docusign_envelope_id", DEAD]],
+    "the resume path must clear by claim_id+contractor_id+envelope guard, never by a quote_id it does not trust",
+  );
 
   const claimsCall = calls.find((c) => c.table === "claims")!;
   assertEquals(claimsCall.payload, { docusign_envelope_id: null, contract_sent_at: null });
@@ -308,7 +331,7 @@ Deno.test("resume path: TIMEOUT (transient) failure does NOT clear — negative 
   try {
     await simulateResumeSignAttempt(
       supabase,
-      { claim_id: "claim-1", quote_id: "quote-1", contractor_id: "contractor-1", envelopeId: SLOW },
+      { claim_id: "claim-1", contractor_id: "contractor-1", envelopeId: SLOW },
       () => { throw err; },
     );
   } catch (e) {
@@ -325,7 +348,7 @@ Deno.test("resume path: a successful resume (no error at all) does not touch quo
 
   const result = await simulateResumeSignAttempt(
     supabase,
-    { claim_id: "claim-1", quote_id: "quote-1", contractor_id: "contractor-1", envelopeId: SLOW },
+    { claim_id: "claim-1", contractor_id: "contractor-1", envelopeId: SLOW },
     () => Promise.resolve({ signingUrl: "https://example.test/sign" }),
   );
 
@@ -333,7 +356,26 @@ Deno.test("resume path: a successful resume (no error at all) does not touch quo
   assertEquals(calls.length, 0);
 });
 
-Deno.test("clearStrandedEnvelopePointer falls back to claim_id+contractor_id when quote_id is absent (same fallback as the mint path)", async () => {
+Deno.test("clearStrandedEnvelopePointer: quote_id branch is ALSO guarded on the envelope id (mint path, F1 fix)", async () => {
+  const calls: Array<{ table: string; payload: unknown; filters: Array<[string, unknown]> }> = [];
+  const supabase = fakeSupabaseRecordingCalls(calls);
+
+  await clearStrandedEnvelopePointer(supabase, {
+    claim_id: "claim-3",
+    quote_id: "quote-3",
+    contractor_id: "contractor-3",
+    envelopeId: DEAD,
+  });
+
+  const quotesCall = calls.find((c) => c.table === "quotes")!;
+  assertEquals(
+    quotesCall.filters,
+    [["id", "quote-3"], ["docusign_envelope_id", DEAD]],
+    "even the mint path's own quote_id must be guarded on the envelope id -- a concurrent mint could have already overwritten it",
+  );
+});
+
+Deno.test("clearStrandedEnvelopePointer falls back to claim_id+contractor_id+envelope-guard when quote_id is absent", async () => {
   const calls: Array<{ table: string; payload: unknown; filters: Array<[string, unknown]> }> = [];
   const supabase = fakeSupabaseRecordingCalls(calls);
 
@@ -345,5 +387,26 @@ Deno.test("clearStrandedEnvelopePointer falls back to claim_id+contractor_id whe
   });
 
   const quotesCall = calls.find((c) => c.table === "quotes")!;
-  assertEquals(quotesCall.filters, [["claim_id", "claim-2"], ["contractor_id", "contractor-2"]]);
+  assertEquals(quotesCall.filters, [["claim_id", "claim-2"], ["contractor_id", "contractor-2"], ["docusign_envelope_id", DEAD]]);
+});
+
+Deno.test("clearStrandedEnvelopePointer: a zero-row match is DETECTED (gh-2105), not silently annotated away", async () => {
+  const calls: Array<{ table: string; payload: unknown; filters: Array<[string, unknown]> }> = [];
+  // The quotes write matches nothing -- e.g. something else already cleared
+  // or replaced this exact pointer. checkRowsWritten() must report 0, and
+  // this must NOT surface as an error (it is a legitimate outcome, gh-2105
+  // decision b), only as a zero count the caller can log.
+  const supabase = fakeSupabaseRecordingCalls(calls, { quotes: [] });
+
+  const { quoteClearError, claimClearError, quoteRows, claimRows } = await clearStrandedEnvelopePointer(supabase, {
+    claim_id: "claim-4",
+    quote_id: "quote-4",
+    contractor_id: "contractor-4",
+    envelopeId: DEAD,
+  });
+
+  assertEquals(quoteClearError, null);
+  assertEquals(quoteRows, 0, "a zero-row quotes match must be reported, not swallowed");
+  assertEquals(claimClearError, null);
+  assertEquals(claimRows, 1, "the claims write in this fixture still matched its one row");
 });

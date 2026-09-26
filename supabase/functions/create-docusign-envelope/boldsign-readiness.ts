@@ -35,6 +35,13 @@
 // stranded document (09400a4b-6682-4ee5-b3bb-c73dfc854ad3) is unrevocable
 // through the API anyway -- POST /v1/document/revoke returns 403 for it.
 
+// gh-2105 (PR #2240 REVIEW FAIL, F3): the clearing writes in
+// clearStrandedEnvelopePointer() below must DETECT a zero-row match, not
+// annotate it away -- checkRowsWritten() is the same shared guard
+// docusign-webhook/index.ts and mark-payout-paid/index.ts already use for
+// this pattern.
+import { checkRowsWritten } from "../_shared/zero-row-update-guard.ts";
+
 export const BOLDSIGN_PERMANENT_MARKER = "BOLDSIGN_PERMANENT_CREATION_FAILURE";
 
 /** Thrown when BoldSign accepted the send but background creation will never finish. */
@@ -109,38 +116,64 @@ export interface StrandedEnvelopeClearTarget {
  * error must never reach here, or it would re-mint a second paid document
  * over a first one that was merely slow (gh-1400's failure, inverted).
  *
- * The `claims` clear is guarded on `.eq("docusign_envelope_id", envelopeId)`
- * so it cannot wipe a pointer something else has since replaced.
+ * REVIEW FAIL (PR #2240, F1): on the resume path the pointer was NOT written
+ * by this request -- findExistingEnvelopeId() may have found it via the
+ * (claim_id, contractor_id) fallback rather than the caller's own quote_id.
+ * Guarding the quotes clear on `.eq("id", quote_id)` alone (no envelope
+ * check) could therefore hit the WRONG quote (a zero-effect null on an
+ * already-null pointer while the real corpse row keeps its dead id) or, in a
+ * race with a concurrent mint, wipe a brand-new pointer a third request just
+ * wrote (gh-1400 inverted). So BOTH quotes branches are now additionally
+ * guarded on `.eq("docusign_envelope_id", envelopeId)`, exactly like the
+ * claims clear already was -- a zero-row match on any of the three writes
+ * below now can ONLY mean something else already cleared or replaced this
+ * exact pointer, never "matched a different row that happens to share an id
+ * or claim/contractor pair."
+ *
+ * Each write chains `.select("id")` and reports whether it matched a row via
+ * `checkRowsWritten()` (gh-2105's shared zero-row guard) instead of an
+ * `update-no-select-ok` comment -- a zero-row match on a money path is
+ * detected and logged, not merely asserted harmless.
  */
 export async function clearStrandedEnvelopePointer(
   // deno-lint-ignore no-explicit-any
   supabase: any,
   { claim_id, quote_id, contractor_id, envelopeId }: StrandedEnvelopeClearTarget,
-): Promise<{ quoteClearError: unknown; claimClearError: unknown }> {
-  // gh-2105 decision b applies to every write below: a zero-row match here
-  // means the pointer was already cleared or replaced by a concurrent
-  // request, which is success, not lost data -- the caller only logs the
-  // returned error and unconditionally rethrows the original
-  // permanent-failure error regardless of whether any row matched.
+): Promise<
+  { quoteClearError: unknown; claimClearError: unknown; quoteRows: number; claimRows: number }
+> {
   let quoteClearError: unknown;
+  let quoteData: unknown;
   if (quote_id) {
-    // update-no-select-ok: gh-2105 decision b, see comment above this block.
-    const { error } = await supabase.from("quotes").update({ docusign_envelope_id: null }).eq("id", quote_id);
+    // Guarded on the envelope id (not just the caller-supplied quote_id) --
+    // see the REVIEW FAIL note above this function. A zero-row match here is
+    // detected via checkRowsWritten() below, not annotated away.
+    const { data, error } = await supabase.from("quotes").update({ docusign_envelope_id: null })
+      .eq("id", quote_id).eq("docusign_envelope_id", envelopeId).select("id");
+    quoteData = data;
     quoteClearError = error;
   } else {
-    // update-no-select-ok: gh-2105 decision b, see comment above this block.
-    const { error } = await supabase.from("quotes").update({ docusign_envelope_id: null })
-      .eq("claim_id", claim_id).eq("contractor_id", contractor_id);
+    // Same guard, for the claim_id+contractor_id fallback this function's
+    // caller uses when it has no quote_id of its own (e.g. the resume path,
+    // which does not trust findExistingEnvelopeId()'s resolved quote_id).
+    const { data, error } = await supabase.from("quotes").update({ docusign_envelope_id: null })
+      .eq("claim_id", claim_id).eq("contractor_id", contractor_id).eq("docusign_envelope_id", envelopeId)
+      .select("id");
+    quoteData = data;
     quoteClearError = error;
   }
-  // Additionally guarded on .eq("docusign_envelope_id", envelopeId), so a
-  // zero-row match here specifically means something else already replaced
-  // the pointer. update-no-select-ok: gh-2105 decision b, see comment above.
-  const { error: claimClearError } = await supabase.from("claims").update({
+  // Already guarded on .eq("docusign_envelope_id", envelopeId) since #1868 --
+  // unchanged here except for the added .select("id").
+  const { data: claimData, error: claimClearError } = await supabase.from("claims").update({
     docusign_envelope_id: null,
     contract_sent_at: null,
-  }).eq("id", claim_id).eq("docusign_envelope_id", envelopeId);
-  return { quoteClearError, claimClearError };
+  }).eq("id", claim_id).eq("docusign_envelope_id", envelopeId).select("id");
+  return {
+    quoteClearError,
+    claimClearError,
+    quoteRows: checkRowsWritten(quoteData).rowCount,
+    claimRows: checkRowsWritten(claimData).rowCount,
+  };
 }
 
 const LIST_STATUSES = ["Draft", "InProgress", "Completed", "Declined", "Revoked", "Expired"];
