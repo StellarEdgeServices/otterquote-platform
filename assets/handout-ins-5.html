@@ -223,10 +223,25 @@
             // server log, browser history, or a pixel's page-URL payload.
             // Every field left blank stays the "[ ]" placeholder so a printed
             // page with a missing field never shows "null" or "undefined".
+            // gh2225 N4 (non-blocking, REVIEW 5850333585): `?code=` is
+            // scrubbed from the address bar below, so a reload (or a
+            // print-preview reload) had no code left to rebuild the link
+            // from, even though the contact fields survive in
+            // sessionStorage. `code` now also rides in the same
+            // sessionStorage payload (not PII) as a fallback source.
+            var storedContact = null;
+            try {
+                var raw = sessionStorage.getItem('oq_handout_ins5_contact');
+                if (raw) storedContact = JSON.parse(raw);
+            } catch (e) { /* no personalization data -- template stays generic/printable as-is */ }
+
             try {
                 var CODE_RE = /^[A-Za-z0-9_-]{1,64}$/;
                 var qp = new URLSearchParams(window.location.search);
                 var rawCode = qp.get('code');
+                if (!(rawCode && CODE_RE.test(rawCode)) && storedContact && storedContact.code && CODE_RE.test(storedContact.code)) {
+                    rawCode = storedContact.code;
+                }
                 if (rawCode && CODE_RE.test(rawCode)) {
                     var box = document.getElementById('refLinkBox');
                     box.textContent = 'https://otterquote.com/ref.html?code=' + encodeURIComponent(rawCode);
@@ -242,13 +257,11 @@
                     var el = document.getElementById(id);
                     if (el && val) el.textContent = val;
                 };
-                var raw = sessionStorage.getItem('oq_handout_ins5_contact');
-                if (raw) {
-                    var contact = JSON.parse(raw);
-                    setText('cbName', contact.name);
-                    setText('cbCompany', contact.company);
-                    setText('cbPhone', contact.phone);
-                    setText('cbEmail', contact.email);
+                if (storedContact) {
+                    setText('cbName', storedContact.name);
+                    setText('cbCompany', storedContact.company);
+                    setText('cbPhone', storedContact.phone);
+                    setText('cbEmail', storedContact.email);
                     // gh2225 re-review fix (B6 minor, REVIEW FAIL 5849956427):
                     // used to removeItem() right after reading, so a reload or
                     // a print-preview reload also lost the personalization.

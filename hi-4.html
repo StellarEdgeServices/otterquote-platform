@@ -864,12 +864,9 @@
          tolerates the Supabase library arriving late; that is what makes
          the lazy-load safe here. -->
     <!-- Sentry Error Monitoring -->
-    <script
-      src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
-      crossorigin="anonymous"
-    ></script>
+    <!-- gh-2043: predeclare sentryOnLoad before the loader tag; the loader invokes it once the SDK is ready (pattern from gh-2010, PR #2023). -->
     <script>
-      Sentry.onLoad(function() {
+      window.sentryOnLoad = function () {
         Sentry.init({
           environment: window.location.hostname.includes("staging") ? "staging" : "production",
           // gh-439: drop phantom events from non-http(s) preview contexts (data:/file:/blob:
@@ -884,8 +881,12 @@
             return event;
           }
         });
-      });
+      };
     </script>
+    <script
+      src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
+      crossorigin="anonymous"
+    ></script>
     <!-- Coming-soon gate — flip CONFIG.HOMEOWNER_LAUNCH_ENABLED=true in js/config.js to remove -->
     <script src="js/cookie-storage.js"></script>
     <script src="js/config.js"></script>
@@ -1026,9 +1027,16 @@
         // instead of relying on a second tab.
         function buildHandoutUrl(agentFirstName, agentCompany, agentPhone, agentEmail, uniqueCode) {
             try {
+                // gh2225 N4 (non-blocking, REVIEW 5850333585): `code` is not
+                // PII, so it also rides along in the sessionStorage payload
+                // as a fallback -- the handout scrubs `?code=` from the URL
+                // via replaceState, so a reload (or a print-preview reload)
+                // would otherwise lose the referral link even though the
+                // contact fields survive in sessionStorage.
                 sessionStorage.setItem('oq_handout_hi4_contact', JSON.stringify({
                     name: agentFirstName || '',
                     company: agentCompany || '',
+                    code: uniqueCode || '',
                 }));
             } catch (e) { /* sessionStorage unavailable -- handout falls back to placeholders */ }
             var qs = new URLSearchParams({ code: uniqueCode || '' });

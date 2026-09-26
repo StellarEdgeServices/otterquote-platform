@@ -110,6 +110,32 @@ function funnelUsesSessionStorageForContact(src) {
   return /sessionStorage\.setItem\(/.test(src);
 }
 
+// N4 (non-blocking, REVIEW 5850333585): `?code=` is scrubbed from the URL
+// via replaceState, so a reload lost the referral link even though the
+// contact fields survived in sessionStorage. `code` (not PII) must also
+// ride along in the same sessionStorage payload as a fallback, and the
+// handout must read that fallback when the URL has no valid code.
+
+function funnelPersistsCodeInSessionStorage(src) {
+  const body = extractFunctionBody(src, 'buildHandoutUrl');
+  if (!body) return false;
+  // Bound the match to the sessionStorage.setItem(...) call itself (up to
+  // its own closing `}));`) so a `code:` that only appears later, in the
+  // unrelated `qs = new URLSearchParams({ code: uniqueCode })` call that
+  // builds the handout URL, cannot make this pass.
+  const setItemMatch = body.match(/sessionStorage\.setItem\(\s*['"][\w]+['"]\s*,\s*JSON\.stringify\(\{([\s\S]*?)\}\)\s*\)/);
+  if (!setItemMatch) return false;
+  return /code:\s*uniqueCode/.test(setItemMatch[1]);
+}
+
+function handoutFallsBackToStoredCodeOnReload(src) {
+  // Must read the sessionStorage contact payload BEFORE deciding the
+  // referral code, and use its `code` field when the query string has none
+  // (or an invalid one).
+  return /storedContact\s*&&\s*storedContact\.code\s*&&\s*CODE_RE\.test\(storedContact\.code\)/.test(src)
+    && /rawCode\s*=\s*storedContact\.code/.test(src);
+}
+
 // ── Positive assertions against the real, fixed files ───────────────────────
 
 for (const f of HANDOUT_FILES) {
@@ -123,6 +149,12 @@ for (const f of FUNNEL_FILES) {
   const src = read(f);
   ok(funnelBuildsCodeOnlyUrl(src), `${f}: buildHandoutUrl() puts only 'code' in the handout query string`);
   ok(funnelUsesSessionStorageForContact(src), `${f}: buildHandoutUrl() hands off contact fields via sessionStorage, not the URL`);
+  ok(funnelPersistsCodeInSessionStorage(src), `${f}: buildHandoutUrl() N4 fix -- also persists 'code' in the sessionStorage payload as a reload fallback`);
+}
+
+for (const f of HANDOUT_FILES) {
+  const src = read(f);
+  ok(handoutFallsBackToStoredCodeOnReload(src), `${f}: N4 fix -- falls back to the sessionStorage 'code' when the URL has none (survives a reload)`);
 }
 
 // ── Negative control: the SAME checks against the pre-fix source, verbatim
@@ -163,6 +195,37 @@ ok(!handoutHasNoLinkParam(PRE_FIX_HANDOUT_SNIPPET), 'negative control: pre-fix h
 ok(!handoutValidatesCode(PRE_FIX_HANDOUT_SNIPPET), 'negative control: pre-fix handout snippet is correctly caught (no code validation)');
 ok(!funnelBuildsCodeOnlyUrl(PRE_FIX_BUILD_HANDOUT_URL), 'negative control: pre-fix buildHandoutUrl() is correctly caught (PII in query string)');
 ok(!funnelUsesSessionStorageForContact(PRE_FIX_BUILD_HANDOUT_URL), 'negative control: pre-fix buildHandoutUrl() is correctly caught (no sessionStorage handoff)');
+
+// N4 negative controls: the pre-N4 build (head 9da476cb) wrote contact
+// fields but not `code` to sessionStorage, and the pre-N4 handout had no
+// fallback path at all -- both must fail these checks.
+const PRE_N4_BUILD_HANDOUT_URL = `
+        function buildHandoutUrl(agentFirstName, agentCompany, agentPhone, agentEmail, uniqueCode) {
+            try {
+                sessionStorage.setItem('oq_handout_ins5_contact', JSON.stringify({
+                    name: agentFirstName || '',
+                    company: agentCompany || '',
+                    phone: agentPhone || '',
+                    email: agentEmail || '',
+                }));
+            } catch (e) {}
+            var qs = new URLSearchParams({ code: uniqueCode || '' });
+            return '/assets/handout-ins-5.html?' + qs.toString();
+        }
+`;
+const PRE_N4_HANDOUT_SNIPPET = `
+    try {
+        var CODE_RE = /^[A-Za-z0-9_-]{1,64}$/;
+        var qp = new URLSearchParams(window.location.search);
+        var rawCode = qp.get('code');
+        if (rawCode && CODE_RE.test(rawCode)) {
+            var box = document.getElementById('refLinkBox');
+            box.textContent = 'https://otterquote.com/ref.html?code=' + encodeURIComponent(rawCode);
+        }
+    } catch (e) {}
+`;
+ok(!funnelPersistsCodeInSessionStorage(PRE_N4_BUILD_HANDOUT_URL), 'negative control: pre-N4 buildHandoutUrl() is correctly caught (no code in sessionStorage payload)');
+ok(!handoutFallsBackToStoredCodeOnReload(PRE_N4_HANDOUT_SNIPPET), 'negative control: pre-N4 handout is correctly caught (no sessionStorage code fallback on reload)');
 
 // ── Bonus: the D-169 geographic claim must be gone too, with the same
 // negative-control shape (the pre-fix string, byte-identical to what
