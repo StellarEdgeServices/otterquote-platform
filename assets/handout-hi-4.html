@@ -114,8 +114,12 @@
 
             <div class="steps" id="stepsList"></div>
 
+            <!-- gh2225 fix (N2, REVIEW FAIL 5849558470): was framed under
+                 "Why is this free?", which implies the inspector's non-
+                 payment is why the service is free to the homeowner --
+                 confusing and not what D-333 says. Neutral label instead. -->
             <div class="nofee-box">
-                <div class="label" data-copy="noFeeLabel">Why is this free?</div>
+                <div class="label" data-copy="noFeeLabel">About Otter Quotes</div>
                 <p data-copy="noFee">Home-inspector partners do not receive a referral fee or recruit bonus.</p>
             </div>
 
@@ -138,7 +142,8 @@
 
             <div class="footer">
                 <p data-copy="noFee">Home-inspector partners do not receive a referral fee or recruit bonus.</p>
-                <p>Otter Quotes, Indiana &middot; otterquote.com &middot; <a href="mailto:support@otterquote.com" style="color:#E07B00;">support@otterquote.com</a></p>
+                <!-- gh2225 fix (B5, REVIEW FAIL 5849558470, D-169): dropped the geographic claim. -->
+                <p>Otter Quotes &middot; otterquote.com &middot; <a href="mailto:support@otterquote.com" style="color:#E07B00;">support@otterquote.com</a></p>
             </div>
         </div>
     </div>
@@ -155,7 +160,7 @@
         var HI4_HANDOUT_COPY = {
             title: "What Happens Next",
             intro: "Your inspector flagged something worth a closer look. Here's a simple next step if you'd like a repair estimate — no obligation to hire anyone.",
-            noFeeLabel: "Why is this free?",
+            noFeeLabel: "About Otter Quotes",
             noFee: "Home-inspector partners do not receive a referral fee or recruit bonus.",
             ctaLabel: "Get competing local contractor bids, free to use.",
             steps: [
@@ -196,28 +201,46 @@
                 stepsEl.appendChild(div);
             });
 
-            // Personalization: filled by hi-4.html's buildHandoutUrl() as
-            // ?name=&company=&link= once register_partner has returned this
-            // inspector's unique_code. A real QR image is a follow-up
-            // enhancement (needs an approved QR-generation dependency/CDN,
-            // out of scope for this draft-copy pass) -- the placeholder box
-            // keeps the layout correct today and is easy to swap for a real
-            // <img> once that's approved.
+            // Personalization (gh2225 fix, B1/B2, REVIEW FAIL 5849558470):
+            // hi-4.html now passes only ?code= in the URL -- validated below
+            // against the real unique_code alphabet before it is ever used to
+            // build a link, so nobody can hand this page an arbitrary
+            // redirect URL (the coming QR code would otherwise turn that into
+            // a scannable phishing redirect). name/company come from
+            // sessionStorage (written by hi-4.html's buildHandoutUrl() right
+            // before this page opens), never the query string. A real QR
+            // image is a follow-up enhancement (needs an approved
+            // QR-generation dependency/CDN, out of scope for this draft-copy
+            // pass) -- the placeholder box keeps the layout correct today and
+            // is easy to swap for a real <img> (generated from the same
+            // validated URL below) once that's approved.
             try {
+                var CODE_RE = /^[A-Za-z0-9_-]{1,64}$/;
                 var qp = new URLSearchParams(window.location.search);
+                var rawCode = qp.get('code');
+                if (rawCode && CODE_RE.test(rawCode)) {
+                    document.getElementById('refLinkBox').textContent =
+                        'https://otterquote.com/ref.html?code=' + encodeURIComponent(rawCode);
+                }
+                if (window.history && window.history.replaceState) {
+                    window.history.replaceState(null, '', '/assets/handout-hi-4.html');
+                }
+            } catch (e) { /* invalid/missing code -- template stays generic/printable as-is */ }
+
+            try {
                 var setText = function (id, val) {
                     var el = document.getElementById(id);
                     if (el && val) el.textContent = val;
                 };
-                setText('cbName', qp.get('name'));
-                setText('cbCompany', qp.get('company'));
-                var link = qp.get('link');
-                if (link) {
-                    document.getElementById('refLinkBox').textContent = link;
+                var raw = sessionStorage.getItem('oq_handout_hi4_contact');
+                if (raw) {
+                    var contact = JSON.parse(raw);
+                    setText('cbName', contact.name);
+                    setText('cbCompany', contact.company);
+                    sessionStorage.removeItem('oq_handout_hi4_contact');
                 }
             } catch (e) { /* no personalization data -- template stays generic/printable as-is */ }
         })();
     </script>
-    <script src="/js/meta-pixel-gate.js"></script>
 </body>
 </html>

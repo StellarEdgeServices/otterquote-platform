@@ -1006,15 +1006,24 @@
         // -- same ref.html?code= shape partner-dashboard.html already uses
         // (partner-dashboard.html:1889), so the link on the printed handout
         // is byte-identical to the one the dashboard shows later.
+        // gh2225 fix (B1/B2, REVIEW FAIL 5849558470): the handout URL used to
+        // carry name/company/phone/email/link in its query string, which
+        // Meta's pixel (loaded on the handout) would then send as `dl` on
+        // PageView -- hi-4's handout doesn't even display phone/email, so
+        // those never needed to leave this page at all -- and an
+        // unvalidated `link` param let anyone build a branded page pointing
+        // anywhere. Only the opaque referral `code` goes in the URL now; the
+        // handout builds the real referral URL itself from that code. name/
+        // company (the only fields the handout shows) go via sessionStorage
+        // instead of the query string.
         function buildHandoutUrl(agentFirstName, agentCompany, agentPhone, agentEmail, uniqueCode) {
-            var referralLink = 'https://otterquote.com/ref.html?code=' + encodeURIComponent(uniqueCode);
-            var qs = new URLSearchParams({
-                name: agentFirstName || '',
-                company: agentCompany || '',
-                phone: agentPhone || '',
-                email: agentEmail || '',
-                link: referralLink,
-            });
+            try {
+                sessionStorage.setItem('oq_handout_hi4_contact', JSON.stringify({
+                    name: agentFirstName || '',
+                    company: agentCompany || '',
+                }));
+            } catch (e) { /* sessionStorage unavailable -- handout falls back to placeholders */ }
+            var qs = new URLSearchParams({ code: uniqueCode || '' });
             return '/assets/handout-hi-4.html?' + qs.toString();
         }
         var handoutDownloadFired = false;

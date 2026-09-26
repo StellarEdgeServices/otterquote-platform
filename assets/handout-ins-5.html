@@ -146,8 +146,9 @@
             </div>
 
             <div class="footer">
-                <p data-copy="d326">This sheet is general information, not a coverage determination, a legal opinion, or a promise about how your claim will be decided. Only your insurance company can determine what is covered under your policy. Otter Quotes does not adjust claims, does not represent your insurance company, and does not guarantee any contractor's work. "Otter Quotes" service area: Indiana.</p>
-                <p>Otter Quotes, Indiana &middot; otterquote.com &middot; <a href="mailto:support@otterquote.com" style="color:#E07B00;">support@otterquote.com</a></p>
+                <p data-copy="d326">This sheet is general information, not a coverage determination, a legal opinion, or a promise about how your claim will be decided. Only your insurance company can determine what is covered under your policy. Otter Quotes does not adjust claims, does not represent your insurance company, and does not guarantee any contractor's work.</p>
+                <!-- gh2225 fix (B5, REVIEW FAIL 5849558470, D-169): dropped the geographic claim. -->
+                <p>Otter Quotes &middot; otterquote.com &middot; <a href="mailto:support@otterquote.com" style="color:#E07B00;">support@otterquote.com</a></p>
             </div>
         </div>
     </div>
@@ -165,12 +166,15 @@
             intro: "A hailstorm can leave damage you can't always see from the ground. Here's what to do in the days after the storm, whether or not you've filed a claim yet.",
             ctaLabel: "Want competing repair bids without the door-knocking?",
             ctaDesc: "Otter Quotes brings you multiple local contractor bids for your project in one place, free to use.",
-            d326: "This sheet is general information, not a coverage determination, a legal opinion, or a promise about how your claim will be decided. Only your insurance company can determine what is covered under your policy. Otter Quotes does not adjust claims, does not represent your insurance company, and does not guarantee any contractor's work. \"Otter Quotes\" service area: Indiana.",
+            // gh2225 fix (B5, REVIEW FAIL 5849558470, D-169): dropped the
+            // "'Otter Quotes' service area: Indiana." sentence -- no live
+            // page or one-pager carries a geographic claim like this.
+            d326: "This sheet is general information, not a coverage determination, a legal opinion, or a promise about how your claim will be decided. Only your insurance company can determine what is covered under your policy. Otter Quotes does not adjust claims, does not represent your insurance company, and does not guarantee any contractor's work.",
             steps: [
                 { h: "Document what you can see", p: "Photograph your roof, siding, gutters, screens and AC unit. Note the storm's date and time." },
                 { h: "Call your insurance agent first", p: "Your agent walks you through starting a claim. Coverage decisions are always made by your insurance company, not by your agent or by Otter Quotes." },
                 { h: "Be careful who you let on the roof", p: "Get a second opinion before signing anything, especially a contract that signs over your insurance payment." },
-                { h: "Get more than one written repair bid", p: "Compare scope, materials and price. A second bid is normal and expected — it does not slow down or change your claim." },
+                { h: "Get more than one written repair bid", p: "Compare scope, materials and price. Getting more than one bid is common." },
                 { h: "Keep everything in one place", p: "Your policy, the adjuster's report, photos, and every bid you collect." },
             ],
         };
@@ -205,29 +209,46 @@
                 stepsEl.appendChild(div);
             });
 
-            // Personalization: filled by ins-5.html's buildHandoutUrl() as
-            // ?name=&company=&phone=&email=&link= once register_partner has
-            // returned this agent's unique_code. Every field left blank
-            // stays the "[ ]" placeholder so a printed page with a missing
-            // field never shows the literal word "null" or "undefined".
+            // Personalization (gh2225 fix, B1/B2, REVIEW FAIL 5849558470):
+            // ins-5.html now passes only ?code= in the URL -- validated below
+            // against the real unique_code alphabet before it is ever used to
+            // build a link, so nobody can hand this page an arbitrary
+            // redirect URL. name/company/phone/email come from sessionStorage
+            // (written by ins-5.html's buildHandoutUrl() right before this
+            // page opens), never the query string, so they never appear in a
+            // server log, browser history, or a pixel's page-URL payload.
+            // Every field left blank stays the "[ ]" placeholder so a printed
+            // page with a missing field never shows "null" or "undefined".
             try {
+                var CODE_RE = /^[A-Za-z0-9_-]{1,64}$/;
                 var qp = new URLSearchParams(window.location.search);
+                var rawCode = qp.get('code');
+                if (rawCode && CODE_RE.test(rawCode)) {
+                    var box = document.getElementById('refLinkBox');
+                    box.textContent = 'https://otterquote.com/ref.html?code=' + encodeURIComponent(rawCode);
+                }
+                // Never leave the code sitting in the address bar / history.
+                if (window.history && window.history.replaceState) {
+                    window.history.replaceState(null, '', '/assets/handout-ins-5.html');
+                }
+            } catch (e) { /* invalid/missing code -- template stays generic/printable as-is */ }
+
+            try {
                 var setText = function (id, val) {
                     var el = document.getElementById(id);
                     if (el && val) el.textContent = val;
                 };
-                setText('cbName', qp.get('name'));
-                setText('cbCompany', qp.get('company'));
-                setText('cbPhone', qp.get('phone'));
-                setText('cbEmail', qp.get('email'));
-                var link = qp.get('link');
-                if (link) {
-                    var box = document.getElementById('refLinkBox');
-                    box.textContent = link;
+                var raw = sessionStorage.getItem('oq_handout_ins5_contact');
+                if (raw) {
+                    var contact = JSON.parse(raw);
+                    setText('cbName', contact.name);
+                    setText('cbCompany', contact.company);
+                    setText('cbPhone', contact.phone);
+                    setText('cbEmail', contact.email);
+                    sessionStorage.removeItem('oq_handout_ins5_contact');
                 }
             } catch (e) { /* no personalization data -- template stays generic/printable as-is */ }
         })();
     </script>
-    <script src="/js/meta-pixel-gate.js"></script>
 </body>
 </html>
