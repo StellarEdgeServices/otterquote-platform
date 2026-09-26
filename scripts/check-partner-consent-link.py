@@ -49,16 +49,45 @@ CONSENT_LINK_RE = re.compile(
 
 REQUIRED_TARGET = "partner-agreement"
 
+# gh-2155 HI-0c (Ben ruling, #2152 comment 5836510515, item 1): the ONE
+# documented, ruling-authorized exception to D-278. partner-agreement-
+# inspector.html is a static build (tools/build_inspector_agreement.py)
+# with the SAME legal document minus the fee content the D-333 no-fee
+# provision (already an amendment to D-266 for this partner type) forbids
+# showing home-inspector partners -- Ben's ruling explicitly requires the
+# inspector-signup consent checkbox to point at it instead of the
+# fee-bearing partner-agreement.html. D-278's own purpose (every
+# partner-signup surface's consent link resolves to A real partner
+# agreement, not silently to /terms or elsewhere) is still met; this is
+# the inspector-track equivalent of the same document, not a divergence
+# from it.
+INSPECTOR_TARGET = "partner-agreement-inspector"
 
-def href_is_compliant(href: str) -> bool:
-    # Accept any relative/absolute form that resolves to partner-agreement:
+# REVIEW FAIL 5836957364 fix: a global acceptance of INSPECTOR_TARGET let
+# ANY surface link the inspector doc and still pass -- not what D-278 means
+# by "resolves to A real partner agreement", which is the ONE agreement
+# matching that surface's own track, not just any real agreement. Explicit
+# per-page map instead: INSPECTOR_TARGET is compliant ONLY on the surfaces
+# named here. hi-1.html does not exist on main yet -- its entry is
+# deliberate and inert (iter_candidate_files() only yields files that
+# exist) until it lands.
+INSPECTOR_TARGET_ALLOWED_ON = {"partner-inspectors.html", "hi-1.html"}
+
+
+def href_is_compliant(href: str, surface: str) -> bool:
+    # Accept any relative/absolute form that resolves to partner-agreement
+    # (or, on an allowlisted surface, partner-agreement-inspector):
     # "partner-agreement.html", "/partner-agreement", "/partner-agreement.html",
     # "partner-agreement" (extensionless routing), with or without a leading
     # "./" or trailing query/hash.
     target = href.split("?")[0].split("#")[0]
     target = target.lstrip("./").lstrip("/")
     target = re.sub(r"\.html$", "", target)
-    return target == REQUIRED_TARGET
+    if target == REQUIRED_TARGET:
+        return True
+    if target == INSPECTOR_TARGET:
+        return surface in INSPECTOR_TARGET_ALLOWED_ON
+    return False
 
 
 def iter_candidate_files():
@@ -87,7 +116,7 @@ def main() -> int:
 
         for m in matches:
             href = m.group(1)
-            if not href_is_compliant(href):
+            if not href_is_compliant(href, rel_path):
                 lineno = text.count("\n", 0, m.start()) + 1
                 violations.append(
                     f"{rel_path}:{lineno}: Partner Terms link resolves to \"{href}\", "

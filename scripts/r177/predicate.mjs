@@ -105,6 +105,7 @@ export const COPY_GUARD_FILES = new Set([
   'scripts/credential-sweep.py',
   'scripts/find-legal-surface-links.py',
   'scripts/smoke-test.sh',
+  'tools/build_inspector_agreement.py',
   'tools/generate_contractor_pages.py',
   'tools/generate_location_pages.py',
   'tools/generate_partner_pages.py',

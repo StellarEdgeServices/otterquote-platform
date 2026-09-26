@@ -28,6 +28,12 @@ vi.mock('../use-repair-intake-data', () => ({
       this.name = 'SessionExpiredError';
     }
   },
+  MissingClaimError: class MissingClaimError extends Error {
+    constructor(message = 'No claim id') {
+      super(message);
+      this.name = 'MissingClaimError';
+    }
+  },
 }));
 
 import { useAuthReady } from '@/hooks/use-auth-ready';
@@ -36,6 +42,7 @@ import {
   submitRepairIntake,
   useRepairContractors,
   SessionExpiredError,
+  MissingClaimError,
 } from '../use-repair-intake-data';
 import { ContractorList } from '../components/ContractorList';
 import {
@@ -340,6 +347,23 @@ describe('(e) Submit flow', () => {
     await waitFor(() => {
       expect(window.location.href).toBe('https://otterquote.com/get-started.html');
     });
+  });
+
+  // gh-2004: no claim id in hand used to mean submitRepairIntake silently
+  // inserted an addressless claim. It now throws MissingClaimError instead,
+  // and the page must route to trade-selector rather than show a generic error.
+  it('gh-2004: on MissingClaimError: redirects to trade-selector, not a generic error', async () => {
+    (submitRepairIntake as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new MissingClaimError(),
+    );
+    const { container } = render(<RepairIntakePage />);
+    await addAValidPhoto(container);
+    fireEvent.click(screen.getByText('✓ Submit for Contractor Review'));
+
+    await waitFor(() => {
+      expect(window.location.href).toBe('/trade-selector');
+    });
+    expect(screen.queryByText('Something went wrong. Please try again.')).not.toBeInTheDocument();
   });
 
   it('Submit is disabled until a repair type AND a photo are present', () => {

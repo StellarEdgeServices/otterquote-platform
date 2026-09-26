@@ -98,12 +98,18 @@ export function formatReferralDisplayName(
 
 // ── Email shell (mirrors notify-partner-w9 / notify-payout-pending) ──────
 
+import {
+  footerPostalAddressHtml,
+  footerPostalAddressText,
+} from "./email-footer.ts";
+
 function emailFooter(): string {
   return `
 <table width="100%" cellpadding="0" cellspacing="0" border="0">
   <tr>
     <td align="center" style="background:#F8FAFC;border-top:1px solid #E2E8F0;padding:20px 32px;font-family:${FONT_STACK};font-size:13px;color:#64748B;">
       <a href="mailto:support@otterquote.com" style="color:#0EA5E9;text-decoration:none;">support@otterquote.com</a>
+      ${footerPostalAddressHtml()}
     </td>
   </tr>
 </table>`.trim();
@@ -177,11 +183,13 @@ export function isStageBlockedForAgentType(
 }
 
 /**
- * Renders one of the 5 stage emails. `displayName` should already be run
- * through formatReferralDisplayName (kept as a separate step so tests can
- * exercise both functions independently).
+ * Internal: builds one of the 5 stage emails before the gh-1824 postal-
+ * address suffix is appended by the exported renderStageEmail() below.
+ * `displayName` should already be run through formatReferralDisplayName
+ * (kept as a separate step so tests can exercise both functions
+ * independently).
  */
-export function renderStageEmail(stage: Stage, displayName: string): RenderedEmail {
+function renderStageEmailBody(stage: Stage, displayName: string): RenderedEmail {
   const cta = { href: PARTNER_DASHBOARD_URL, label: "View My Dashboard" };
   const htmlCta = emailButton(cta);
   const textCtaLine = textCta(cta);
@@ -285,4 +293,22 @@ export function renderStageEmail(stage: Stage, displayName: string): RenderedEma
         ].join("\n"),
       };
   }
+}
+
+/**
+ * Renders one of the 5 stage emails. `displayName` should already be run
+ * through formatReferralDisplayName (kept as a separate step so tests can
+ * exercise both functions independently).
+ *
+ * gh-1824: appends the D-237 postal address to the plain-text part (the
+ * html part already carries it via emailFooter() -> footerPostalAddressHtml()
+ * inside buildEmailShell()).
+ */
+export function renderStageEmail(stage: Stage, displayName: string): RenderedEmail {
+  const email = renderStageEmailBody(stage, displayName);
+  const addressLine = footerPostalAddressText();
+  return {
+    ...email,
+    text: addressLine ? `${email.text}\n\n${addressLine}` : email.text,
+  };
 }

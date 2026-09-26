@@ -54,6 +54,49 @@ function ok(cond, label) {
 // not allowlisted blind).
 const ALLOWED_HREFS = new Set(['privacy.html', 'terms.html', '/privacy.html', '/terms.html']);
 
+// gh-2178 CodeQL js/incomplete-url-scheme-check (#53): browsers strip
+// TAB/LF/CR wherever they occur in an href before resolving its scheme, so
+// "java\tscript:alert(1)" and "\n javascript:alert(1)" both execute as
+// javascript: URLs even though a naive `href.indexOf('javascript:') === 0`
+// check (anchored on the untouched string) misses both. This function
+// strips those characters first, then parses out the scheme (the part
+// before the first ":"), trims and lowercases it, and compares -- the
+// same normalization real URL parsers perform. Kept as a standalone,
+// closure-free function so it can be (a) unit-tested directly below with
+// no browser required, and (b) embedded verbatim into the page.evaluate()
+// callback in findEscapeHatches, which cannot import a module -- the two
+// copies must be kept byte-identical; the self-test below is the guard.
+function isDisallowedJsHref(href) {
+  if (!href) return false;
+  const stripped = href.replace(/[\t\n\r]/g, '');
+  const colonIdx = stripped.indexOf(':');
+  if (colonIdx === -1) return false;
+  const scheme = stripped.slice(0, colonIdx).trim().toLowerCase();
+  return scheme === 'javascript';
+}
+
+// ── Unit self-test for isDisallowedJsHref (no browser needed) ───────────
+// On origin/main (before this fix) the equivalent inline check was
+// `href.indexOf('javascript:') === 0`, which reports `false` (missed) for
+// every whitespace-obfuscated case below -- i.e. these assertions fail
+// against that old logic and pass only with the scheme-parsing fix.
+(function selfTestIsDisallowedJsHref() {
+  ok(isDisallowedJsHref('javascript:alert(1)') === true,
+    'isDisallowedJsHref: plain "javascript:alert(1)" is flagged');
+  ok(isDisallowedJsHref('\n  javascript:alert(1)') === true,
+    'isDisallowedJsHref: leading-newline "\\n  javascript:alert(1)" is flagged (old indexOf(0) check missed this)');
+  ok(isDisallowedJsHref('java\tscript:alert(1)') === true,
+    'isDisallowedJsHref: tab-split "java\\tscript:alert(1)" is flagged (old indexOf(0) check missed this)');
+  ok(isDisallowedJsHref('JavaScript:alert(1)') === true,
+    'isDisallowedJsHref: mixed-case "JavaScript:alert(1)" is flagged (old indexOf(0) check missed this)');
+  ok(isDisallowedJsHref('privacy.html') === false,
+    'isDisallowedJsHref: an ordinary relative href is NOT flagged');
+  ok(isDisallowedJsHref('#') === false,
+    'isDisallowedJsHref: the bare "#" no-op is NOT flagged');
+  ok(isDisallowedJsHref('') === false,
+    'isDisallowedJsHref: an empty href is NOT flagged');
+})();
+
 async function findEscapeHatches(page, variant, base) {
   const url = `${base || BASE_URL}/start.html?v=${variant}`;
   await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
@@ -63,6 +106,18 @@ async function findEscapeHatches(page, variant, base) {
 
   return page.evaluate((allowedArr) => {
     const allowed = new Set(allowedArr);
+    // gh-2178 (#53): must stay byte-identical to isDisallowedJsHref above --
+    // page.evaluate() cannot import a module, so this is a duplicate, not a
+    // reference. See that function's comment for why the naive
+    // indexOf('javascript:') === 0 check it replaces is insufficient.
+    function isDisallowedJsHref(href) {
+      if (!href) return false;
+      const stripped = href.replace(/[\t\n\r]/g, '');
+      const colonIdx = stripped.indexOf(':');
+      if (colonIdx === -1) return false;
+      const scheme = stripped.slice(0, colonIdx).trim().toLowerCase();
+      return scheme === 'javascript';
+    }
     function isVisible(el) {
       const cs = getComputedStyle(el);
       if (cs.display === 'none' || cs.visibility === 'hidden') return false;
@@ -80,7 +135,7 @@ async function findEscapeHatches(page, variant, base) {
     const escapes = [];
     for (const a of anchors) {
       const href = a.getAttribute('href') || '';
-      if (!href || href === '#' || href.indexOf('javascript:') === 0) continue;
+      if (!href || href === '#' || isDisallowedJsHref(href)) continue;
       if (allowed.has(href)) continue;
       if (!isVisible(a)) continue; // hidden (e.g. display:none header/footer) can't be tapped or tabbed to
       escapes.push({ href, text: (a.textContent || '').trim().slice(0, 40), id: a.id, cls: a.className });

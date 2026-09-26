@@ -251,7 +251,18 @@
     '/guides/how-to-file-property-damage-claim',
     '/guides/how-to-negotiate-with-insurer',
     '/guides/how-to-read-contractor-estimate',
+    // gh-2150 round 2 (REVIEW FAIL 5836233175/5836199486, Ben ruling (3),
+    // S12): the RE-1/INS-1/HI-1 dedicated single-purpose funnel landing
+    // pages (D-333), added together in this one change so none of the
+    // three funnel PRs needs to touch this shared file again. Each is
+    // PUBLIC by the same SESSION_AWARE_PUBLIC-reviewed pattern as
+    // partner-re/-inspectors/-adjusters/-other below: hasPartnerSession()
+    // only redirects an ALREADY-signed-in partner to partner-dashboard.html
+    // (see scripts/check-clarity-page-gate.py's SESSION_AWARE_PUBLIC for
+    // the per-page reason).
+    '/hi-1',
     '/how-it-works',
+    '/ins-1',
     '/landing',
     '/onboarding-demo',
     '/oq-voice-ai',
@@ -272,6 +283,7 @@
     '/project-info-acv',
     '/project-info-cash',
     '/project-info-rcv',
+    '/re-1',
     '/recruit',
     '/ref',
     '/ref-inspector',

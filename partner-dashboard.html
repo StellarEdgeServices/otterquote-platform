@@ -973,22 +973,35 @@
                 <button type="button" class="task-tile" data-target="refer-client">
                     <span class="task-tile-icon" aria-hidden="true">🔗</span>
                     <span class="task-tile-title">Refer a client</span>
-                    <span class="task-tile-subtitle">Get $200 for every job of $10,000 or more.</span>
+                    <!-- gh-2155 HI-0c (Ben ruling, #2152 comment 5836510515,
+                         item 2): default-hidden, fail closed -- with
+                         JavaScript disabled, or before updateUI() has
+                         resolved partnerType, no fee text renders at all.
+                         updateUI() reveals this for a confirmed non-inspector
+                         partnerType only; it stays hidden for home_inspector
+                         and for an unresolved/unknown type. -->
+                    <span class="task-tile-subtitle" id="feeSubtitleReferClient" style="display:none;">Get $200 for every job of $10,000 or more.</span>
                 </button>
                 <button type="button" class="task-tile" data-target="refer-partner">
                     <span class="task-tile-icon" aria-hidden="true">🤝</span>
                     <span class="task-tile-title">Refer a partner</span>
-                    <span class="task-tile-subtitle">Get $50 when they refer a qualifying job.</span>
+                    <span class="task-tile-subtitle" id="feeSubtitleReferPartner" style="display:none;">Get $50 when they refer a qualifying job.</span>
                 </button>
                 <button type="button" class="task-tile" data-target="pipeline">
                     <span class="task-tile-icon" aria-hidden="true">📊</span>
                     <span class="task-tile-title">See my pipeline</span>
                     <span class="task-tile-subtitle">Find out where your clients are in the process.</span>
                 </button>
-                <button type="button" class="task-tile" data-target="get-paid">
+                <!-- gh-2155 HI-05 (Ben, review 5838422299, item 3): the tile
+                     itself -- not just its subtitle -- now starts
+                     display:none, fail closed for JS-off and for any
+                     partner type not yet known. Revealed below only once
+                     partnerType resolves to something other than
+                     home_inspector. -->
+                <button type="button" class="task-tile" data-target="get-paid" id="getPaidTile" style="display:none;">
                     <span class="task-tile-icon" aria-hidden="true">💰</span>
                     <span class="task-tile-title">Get paid</span>
-                    <span class="task-tile-subtitle">Payout approvals and earnings.</span>
+                    <span class="task-tile-subtitle" id="feeSubtitleGetPaid" style="display:none;">Payout approvals and earnings.</span>
                 </button>
                 <button type="button" class="task-tile" data-target="add-to-website">
                     <span class="task-tile-icon" aria-hidden="true">🌐</span>
@@ -1019,7 +1032,10 @@
                     <button class="copy-btn" id="qrLinkBtn">QR</button>
                     <a href="#" class="copy-btn" id="previewLinkBtn" style="opacity: 0.5; pointer-events: none; text-decoration: none; display: inline-flex; align-items: center;" aria-disabled="true" target="_blank" rel="noopener">Preview</a>
                 </div>
-                <p class="link-hint referral-fee-disclaimer">Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.</p>
+                <!-- gh-2155 HI-0c (Ben ruling, #2152 comment 5836510515,
+                     item 2): default-hidden, fail closed -- see the tile
+                     subtitles above for the same mechanism. -->
+                <p class="link-hint referral-fee-disclaimer" id="referralFeeDisclaimer" style="display:none;">Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.</p>
             </div>
 
             <div class="referral-link-section recruit-link-section" data-section="refer-partner">
@@ -1035,7 +1051,9 @@
                     <button class="copy-btn" id="qrRecruitBtn">QR</button>
                     <a href="#" class="copy-btn" id="recruitPreviewBtn" style="opacity: 0.5; pointer-events: none; text-decoration: none; display: inline-flex; align-items: center;" aria-disabled="true" target="_blank" rel="noopener">Preview</a>
                 </div>
-                <p class="link-hint">Share this with other professionals. When they sign up and their referrals close jobs, you earn $50 per job.</p>
+                <!-- gh-2155 HI-0c: default-hidden, fail closed -- same
+                     mechanism as above. -->
+                <p class="link-hint" id="recruitFeeHint" style="display:none;">Share this with other professionals. When they sign up and their referrals close jobs, you earn $50 per job.</p>
             </div>
 
         </div>
@@ -1059,7 +1077,12 @@
                 <span class="stat-card-value" id="completedJobs">0</span>
                 <span class="stat-card-subtext" id="completedJobsSubtext">&mdash;</span>
             </div>
-            <div class="stat-card">
+            <!-- gh-2155 HI-0c (Ben ruling, #2152 comment 5836510515, item 2):
+                 default-hidden, fail closed -- same mechanism as the tile
+                 subtitles above. updateUI()'s existing home_inspector
+                 branch already hides this card's whole .stat-card via JS;
+                 this closes the JS-off gap the same way. -->
+            <div class="stat-card" id="totalEarnedCard" style="display:none;">
                 <span class="stat-card-label">Total Earned</span>
                 <span class="stat-card-value" id="totalEarned">$0</span>
                 <span class="stat-card-subtext" id="totalEarnedSubtext">&mdash;</span>
@@ -1069,7 +1092,7 @@
                 <span class="stat-card-value" id="partnersRecruited">0</span>
                 <span class="stat-card-subtext" id="partnersRecruitedSubtext">&mdash;</span>
             </div>
-            <div class="stat-card">
+            <div class="stat-card" id="recruitEarningsCard" style="display:none;">
                 <span class="stat-card-label">Recruit Earnings</span>
                 <span class="stat-card-value" id="recruitEarnings">$0</span>
                 <span class="stat-card-subtext" id="recruitEarningsSubtext">&mdash;</span>
@@ -1212,7 +1235,15 @@ Let me know if you have any questions!
                     <th>Date Referred</th>
                     <th>Status</th>
                     <th>Job Value</th>
-                    <th>Referral Fee</th>
+                    <!-- gh-2155 HI-0c (Ben ruling, #2152 comment 5836510515,
+                         item 2): default-hidden, fail closed. The existing
+                         `referralFeeTh` lookup below (Array.from(...).find on
+                         textContent === 'Referral Fee') still matches this
+                         <th> unchanged -- textContent aggregates a hidden
+                         child's text regardless of display:none -- so the
+                         home_inspector branch's textContent = 'No Fee'
+                         rewrite still fires exactly as before. -->
+                    <th><span id="referralFeeThLabel" style="display:none;">Referral Fee</span></th>
                 </tr>
             </thead>
             <tbody id="referralsTableBody">
@@ -1835,7 +1866,23 @@ Let me know if you have any questions!
                 var recruitEarningsCard = document.getElementById('recruitEarnings');
                 if (recruitEarningsCard && recruitEarningsCard.closest('.stat-card')) recruitEarningsCard.closest('.stat-card').style.display = 'none';
                 if (earningsTh) earningsTh.style.display = 'none';
+            } else if (partnerType) {
+                // gh-2155 HI-0c (Ben ruling, #2152 comment 5836510515, item
+                // 2): the fee-bearing elements above start display:none in
+                // the static HTML (fail closed for JS-off and for any
+                // partner type not yet known). Reveal them now that
+                // partnerType has resolved to something OTHER than
+                // home_inspector -- every other partner type keeps exactly
+                // the fee copy it has always had. No text is changed here,
+                // only visibility.
+                var feeIds = ['feeSubtitleReferClient', 'feeSubtitleReferPartner', 'feeSubtitleGetPaid', 'referralFeeDisclaimer', 'recruitFeeHint', 'totalEarnedCard', 'recruitEarningsCard', 'referralFeeThLabel', 'getPaidTile'];
+                feeIds.forEach(function (id) {
+                    var el = document.getElementById(id);
+                    if (el) el.style.display = '';
+                });
             }
+            // partnerType falsy (still loading / unresolved): every fee
+            // element stays at its default display:none -- fail closed.
 
             // Update referral link (schema column: unique_code)
             const uniqueCode = currentPartner.unique_code || currentPartner.id;
