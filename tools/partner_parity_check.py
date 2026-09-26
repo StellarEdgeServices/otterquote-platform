@@ -110,6 +110,23 @@ ALL_PAGES = VERTICAL_PAGES + ["partner-app", "partner-login", "partner-dashboard
 # js/router-discovery.js below (see also re-1's identical registration,
 # gh-2150, commit 524f85c6).
 #
+# gh-2151 INS-5 (CEO RUN 71, wave 3): ins-5.html is the "After the Hail"
+# co-branded client-handout lead magnet -- a dedicated single-funnel landing
+# page outside the partner-*.html naming convention, invisible to the
+# ALL_PAGES/partner-insurance* discovery above, exactly like ins-1.html. It
+# is an insurance-agent referral-fee funnel surface (same $200/$10,000+ terms,
+# D-301/D-305) and carries the D-266 disclaimer verbatim, so it is registered
+# here explicitly rather than left for find_unmapped_static_funnels() to flag.
+#
+# gh-2152 HI-4 (CEO RUN 71, wave 3): hi-4.html is the printable-handout
+# client lead magnet for the home-inspector track. D-333 (Dustin ruling on
+# #2152 comment 5832300782, "no D-266 disclaimer, inspectors take no fee")
+# applies to HI-4 exactly as it does to hi-1.html -- home inspectors receive
+# NO referral fee or recruit bonus under any name, so hi-4.html is NOT added
+# to D266_PAGES (same reasoning as hi-1's STATIC_FUNNEL_EXEMPT entry below),
+# and is instead added to STATIC_FUNNEL_EXEMPT so find_unmapped_static_funnels()
+# doesn't flag it as an unmapped referral-fee surface.
+#
 # gh-2031 (CEO57 triage, comment 5768832182): partners.html is the
 # profession-picker hub every vertical partner page links out from, and
 # already carries the D-266 disclaimer verbatim (wrapped across four source
@@ -135,6 +152,7 @@ D266_PAGES = sorted(
     }
     | {"re-1"}
     | {"ins-1"}
+    | {"ins-5"}
     | {"partners"}
 )
 
@@ -390,6 +408,17 @@ STATIC_FUNNEL_EXEMPT = {
         "folded into D266_PAGES's glob/ALL_PAGES mechanism because it is a "
         "single-purpose ad landing page, not a partner-*.html marketing "
         "page -- same shape as the other STATIC_FUNNEL_EXEMPT entries above."
+    ),
+    "hi-4.html": (
+        "gh-2152 HI-4 (CEO RUN 71, wave 3): the printable-handout client "
+        "lead magnet for the home-inspector track -- same underlying offer "
+        "and same D-333 exemption as hi-1.html above (Dustin ruling 5832300782: "
+        "\"no D-266 disclaimer, inspectors take no fee\"). The match is the "
+        "mandatory D-333 NO-fee statement itself (\"referral fee\" appears "
+        "inside \"do not receive a referral fee or recruit bonus\"), not an "
+        "actual fee offer. Not folded into D266_PAGES for the same reason "
+        "hi-1.html isn't: a single-purpose ad landing page, not a "
+        "partner-*.html marketing page."
     ),
 }
 
