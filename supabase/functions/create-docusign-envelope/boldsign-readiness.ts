@@ -117,11 +117,25 @@ export async function clearStrandedEnvelopePointer(
   supabase: any,
   { claim_id, quote_id, contractor_id, envelopeId }: StrandedEnvelopeClearTarget,
 ): Promise<{ quoteClearError: unknown; claimClearError: unknown }> {
-  const quoteClearFilter = quote_id
-    ? supabase.from("quotes").update({ docusign_envelope_id: null }).eq("id", quote_id)
-    : supabase.from("quotes").update({ docusign_envelope_id: null })
-        .eq("claim_id", claim_id).eq("contractor_id", contractor_id);
-  const { error: quoteClearError } = await quoteClearFilter;
+  // gh-2105 decision b applies to every write below: a zero-row match here
+  // means the pointer was already cleared or replaced by a concurrent
+  // request, which is success, not lost data -- the caller only logs the
+  // returned error and unconditionally rethrows the original
+  // permanent-failure error regardless of whether any row matched.
+  let quoteClearError: unknown;
+  if (quote_id) {
+    // update-no-select-ok: gh-2105 decision b, see comment above this block.
+    const { error } = await supabase.from("quotes").update({ docusign_envelope_id: null }).eq("id", quote_id);
+    quoteClearError = error;
+  } else {
+    // update-no-select-ok: gh-2105 decision b, see comment above this block.
+    const { error } = await supabase.from("quotes").update({ docusign_envelope_id: null })
+      .eq("claim_id", claim_id).eq("contractor_id", contractor_id);
+    quoteClearError = error;
+  }
+  // Additionally guarded on .eq("docusign_envelope_id", envelopeId), so a
+  // zero-row match here specifically means something else already replaced
+  // the pointer. update-no-select-ok: gh-2105 decision b, see comment above.
   const { error: claimClearError } = await supabase.from("claims").update({
     docusign_envelope_id: null,
     contract_sent_at: null,
