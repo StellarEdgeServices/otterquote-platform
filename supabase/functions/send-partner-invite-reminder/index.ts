@@ -202,16 +202,26 @@ serve(async (req: Request) => {
       return sendMailgunEmail(mailgunApiKey, to, email.subject, email.text, email.html, optOutUrl);
     },
     markSent: async (partnerId, mailgunId) => {
+      // update-no-select-ok: same shape/rationale as send-partner-onboarding/
+      // index.ts's own markSent (gh-2105 decision b) -- this row was just
+      // claimed by claim_partner_onboarding_stage() a moment earlier in this
+      // same request, so a zero-row match here would itself be the anomaly,
+      // not a silently-ignored write; the caller's own `error` check above
+      // (not a row-count check) is this function's actual failure signal.
       const { error } = await supabase
         .from("partner_onboarding_sends")
+        // update-no-select-ok: row was just claimed by claim_partner_onboarding_stage() above -- see comment above.
         .update({ status: "sent", mailgun_id: mailgunId, error: null })
         .eq("partner_id", partnerId)
         .eq("stage", "invite_reminder");
       return { error: error ? { message: error.message } : undefined };
     },
     markFailed: async (partnerId, errMessage, terminal) => {
+      // update-no-select-ok: same rationale as markSent above (gh-2105
+      // decision b).
       const { error } = await supabase
         .from("partner_onboarding_sends")
+        // update-no-select-ok: same rationale as markSent above.
         .update({ status: "failed", error: errMessage, terminal_failure: terminal === true })
         .eq("partner_id", partnerId)
         .eq("stage", "invite_reminder");
@@ -228,8 +238,12 @@ serve(async (req: Request) => {
       return data.uncertain_alerted_at != null;
     },
     markUncertainAlerted: async (partnerId) => {
+      // update-no-select-ok: same rationale as markSent above (gh-2105
+      // decision b) -- best-effort dedupe marker, same posture as
+      // send-partner-onboarding/index.ts's own markUncertainAlerted.
       await supabase
         .from("partner_onboarding_sends")
+        // update-no-select-ok: same rationale as markSent above.
         .update({ uncertain_alerted_at: new Date().toISOString() })
         .eq("partner_id", partnerId)
         .eq("stage", "invite_reminder");
