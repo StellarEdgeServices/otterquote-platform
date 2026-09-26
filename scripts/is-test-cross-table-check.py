@@ -50,12 +50,35 @@ SUPABASE_ACCESS_TOKEN + https://api.supabase.com/v1). The query this mode
 runs is a single SELECT — it can prove RED without ever writing to prod,
 which is the hard limit gh-1763's PR body already committed to.
 
+ROLE-AGNOSTIC FIX (2026-09-09, CLOSE-REVIEW FAIL on comment 5596021411 /
+adjudication 5590705970): the guard originally scoped both the PostgREST
+fetch and the Management-API SQL to `p.role = 'contractor'` — an exact copy
+of the issue body's own query predicate. That predicate is a bug, not a
+spec: it made the guard blind to a contractor identity whose `profiles` row
+carries any OTHER role. Production proved this the hard way — profile
+`edcbe10f-7efa-4945-be3b-5c3e4ef8f2e2` (`role = 'homeowner'`) disagreed with
+contractor `5ece9e69-91f8-48cd-b4fa-412dec4f8dee` ("Indy Rooftops, LLC") and
+was invisible to both the role-scoped `closes-on` query and this guard,
+because a seeding path had written `contractors.is_test = true` on an
+identity whose `profiles` row was never role='contractor' in the first
+place. The cross-table identity join (`contractors.user_id = profiles.id`)
+has no dependency on `profiles.role` at all — a contractor row's owning
+identity disagrees with it or it doesn't, regardless of what role that
+identity's profile carries. The fix removes the role predicate everywhere
+it appeared (the PostgREST filter, `DISAGREEMENT_SQL`, and this docstring)
+so the guard now compares `profiles.is_test` vs `contractors.is_test` by
+identity join alone, covering every role a contractor's profile could carry
+— homeowner, partner, whatever comes next — not just 'contractor'. See
+`RecurrenceGuardTests` in the test file for the reproduction: it fails
+against the pre-fix predicate and passes against this one.
+
 Method (plain PostgREST mode):
   1. Fetch every `contractors` row (id, user_id, is_test, company_name) via
      PostgREST.
   2. Fetch the matching `profiles` rows (id, is_test, role) for those
-     `user_id`s, filtered to role='contractor' — same predicate as the
-     issue's own disagreement query.
+     `user_id`s — role-agnostic: every contractor identity is in scope
+     regardless of what role its `profiles` row carries (see the
+     ROLE-AGNOSTIC FIX note above).
   3. Join client-side (PostgREST embedding needs a named FK relationship this
      script should not have to guess); report every pair where
      `profile.is_test != contractor.is_test`.
@@ -99,15 +122,22 @@ IDS_PER_BATCH = 200  # PostgREST `in.()` filters -- kept well under any URL-leng
 
 MANAGEMENT_API_BASE = "https://api.supabase.com/v1"
 
-# Identical to the issue body's own disagreement query -- same columns, same
-# predicate, same ORDER BY -- so the BEFORE evidence pasted on gh-1763/#1826
-# is reproducible byte-for-byte by this mode. Read-only: a single SELECT,
-# never a write, over any project it is pointed at including production.
+# Role-agnostic (2026-09-09 fix): the issue body's own query scoped this to
+# `p.role = 'contractor'`, which is exactly what let the edcbe10f/5ece9e69
+# ("Indy Rooftops, LLC") disagreement -- a homeowner-role profile on a
+# contractor identity -- go undetected. The cross-table identity join does
+# not depend on profiles.role, so the predicate is dropped: every
+# contractor identity is in scope regardless of what role its profiles row
+# carries. Columns, join and ORDER BY are otherwise unchanged from the
+# issue body's query, so the BEFORE evidence pasted on gh-1763/#1826 is
+# still reproducible byte-for-byte by this mode. Read-only: a single
+# SELECT, never a write, over any project it is pointed at including
+# production.
 DISAGREEMENT_SQL = (
     "select p.id as profile_id, p.is_test as profile_is_test, "
     "c.id as contractor_id, c.is_test as contractor_is_test, c.company_name "
     "from profiles p join contractors c on c.user_id = p.id "
-    "where p.role = 'contractor' and p.is_test is distinct from c.is_test "
+    "where p.is_test is distinct from c.is_test "
     "order by c.created_at;"
 )
 
@@ -170,15 +200,21 @@ def fetch_contractors(project_url: str, service_key: str, urlopen=urllib.request
 
 
 def fetch_profiles_by_ids(project_url: str, service_key: str, ids: list, urlopen=urllib.request.urlopen) -> list:
-    """profiles rows for the given ids, restricted to role='contractor' -- matches the
-    issue body's own disagreement query predicate exactly."""
+    """profiles rows for the given ids -- role-agnostic (2026-09-09 fix).
+
+    Deliberately does NOT filter by role=eq.contractor. The identity join is
+    contractors.user_id = profiles.id; a contractor identity disagrees with
+    its profile row or it doesn't, regardless of what role that profile
+    carries. Scoping this fetch to role='contractor' is exactly the bug that
+    let the edcbe10f (role=homeowner) / 5ece9e69 disagreement go undetected
+    -- see the ROLE-AGNOSTIC FIX note in the module docstring."""
     rows = []
     for i in range(0, len(ids), IDS_PER_BATCH):
         batch = ids[i:i + IDS_PER_BATCH]
         id_list = ",".join(batch)
         url = (
             f"{project_url}/rest/v1/profiles"
-            f"?select=id,is_test,role&role=eq.contractor&id=in.({id_list})&limit=10000"
+            f"?select=id,is_test,role&id=in.({id_list})&limit=10000"
         )
         payload = _request("GET", url, service_key, urlopen=urlopen)
         if not isinstance(payload, list):
@@ -190,10 +226,16 @@ def fetch_profiles_by_ids(project_url: str, service_key: str, ids: list, urlopen
 def find_disagreements(contractors: list, profiles: list) -> list:
     """Pure join+compare, no I/O -- unit-testable directly.
 
-    Mirrors the issue body's query: `where p.role = 'contractor' and
-    p.is_test is distinct from c.is_test`. A contractor whose user_id has no
-    matching profiles row (or whose profile isn't role='contractor') is not
-    in scope -- same as the SQL join, which would simply drop it.
+    Role-agnostic (2026-09-09 fix): compares profiles.is_test vs
+    contractors.is_test by identity join (contractors.user_id ==
+    profiles.id) alone, regardless of profiles.role -- a homeowner-role, or
+    any other role's, profile on a contractor identity is fully in scope.
+    This function itself never filtered by role; the bug was upstream, in
+    fetch_profiles_by_ids' PostgREST filter and DISAGREEMENT_SQL's
+    predicate, both of which restricted the input to role='contractor'
+    before it ever reached here. A contractor whose user_id has no matching
+    profiles row at all is not in scope -- same as the SQL join, which
+    would simply drop it.
     """
     profiles_by_id = {p["id"]: p for p in profiles}
     offenders = []
@@ -515,11 +557,11 @@ def _admin_delete_user(project_url: str, service_key: str, user_id: str, urlopen
     _request("DELETE", url, service_key, urlopen=urlopen)
 
 
-def _insert_profile(project_url: str, service_key: str, profile_id: str, is_test: bool, urlopen=urllib.request.urlopen):
+def _insert_profile(project_url: str, service_key: str, profile_id: str, is_test: bool, urlopen=urllib.request.urlopen, role: str = "contractor"):
     url = f"{project_url}/rest/v1/profiles"
     body = {
         "id": profile_id,
-        "role": "contractor",
+        "role": role,
         "is_test": is_test,
         "full_name": "IS-TEST GUARD SELFTEST (gh-1763) -- DO NOT USE",
     }
@@ -557,6 +599,19 @@ def _delete_profile(project_url: str, service_key: str, profile_id: str, urlopen
 
 
 def self_test(project_url: str, service_key: str, urlopen=urllib.request.urlopen) -> int:
+    """RED/GREEN self-test against a fixture project. Covers TWO bad shapes:
+
+    1. The original 7-row shape gh-1763 found: profile role='contractor',
+       profile_is_test=false, contractor_is_test=true.
+    2. The 8th-row recurrence (adjudication 5590705970 / CLOSE-REVIEW FAIL
+       5596021411): profile role='homeowner' on a contractor identity,
+       same is_test mismatch. This is the exact shape that recurred in
+       production (edcbe10f/5ece9e69, "Indy Rooftops, LLC") and was
+       invisible to the pre-fix role-scoped guard. Seeding both here in the
+       actual CI job that gates PRs ("is-test Cross-Table Guard (gh-1763)")
+       means a regression back to role-scoping fails this check directly,
+       not just the offline unit tests.
+    """
     if PRODUCTION_PROJECT_REF in project_url:
         print(
             f"REFUSING: --self-test writes a fixture row and must never run against "
@@ -571,35 +626,46 @@ def self_test(project_url: str, service_key: str, urlopen=urllib.request.urlopen
         print("UNMEASURED: SUPABASE_URL and/or SUPABASE_SERVICE_ROLE_KEY are not set.", file=sys.stderr)
         return 3
 
-    email = f"gh1763-selftest+{uuid.uuid4().hex}@otterquote-internal.test"
-    user_id = None
-    contractor_id = None
-    profile_inserted = False
+    fixtures = [
+        {"label": "original shape (gh-1763 body, role=contractor)", "role": "contractor"},
+        {"label": "recurrence shape (8th row, role=homeowner)", "role": "homeowner"},
+    ]
+    for f in fixtures:
+        f["email"] = f"gh1763-selftest+{uuid.uuid4().hex}@otterquote-internal.test"
+        f["user_id"] = None
+        f["contractor_id"] = None
+        f["profile_inserted"] = False
+
     overall_ok = True
 
     try:
         try:
             print(f"=== gh-1763 guard self-test against {project_url} ===")
-            user_id = _admin_create_user(project_url, service_key, email, urlopen=urlopen)
-            print(f"Created throwaway auth user {user_id} ({email})")
+            for f in fixtures:
+                f["user_id"] = _admin_create_user(project_url, service_key, f["email"], urlopen=urlopen)
+                print(f"Created throwaway auth user {f['user_id']} ({f['email']}) for {f['label']}")
 
-            # Exact bad shape gh-1763 found: profile says production, contractor says test.
-            _insert_profile(project_url, service_key, user_id, is_test=False, urlopen=urlopen)
-            profile_inserted = True
-            contractor_id = _insert_contractor(project_url, service_key, user_id, is_test=True, urlopen=urlopen)
-            print(f"Seeded bad-shape fixture: profile {user_id} is_test=false, contractor {contractor_id} is_test=true")
+                # Bad shape: profile says production, contractor says test.
+                _insert_profile(project_url, service_key, f["user_id"], is_test=False, urlopen=urlopen, role=f["role"])
+                f["profile_inserted"] = True
+                f["contractor_id"] = _insert_contractor(project_url, service_key, f["user_id"], is_test=True, urlopen=urlopen)
+                print(
+                    f"Seeded bad-shape fixture ({f['label']}): profile {f['user_id']} "
+                    f"role={f['role']} is_test=false, contractor {f['contractor_id']} is_test=true"
+                )
 
-            print("\n--- RED run (bad fixture present) ---")
+            print(f"\n--- RED run (both bad fixtures present, {len(fixtures)} rows expected) ---")
             red_code = run(project_url, service_key, urlopen=urlopen)
             red_ok = red_code == 1
             print(f"RED expectation (exit==1): {'PASS' if red_ok else 'FAIL'} (got exit {red_code})")
             overall_ok = overall_ok and red_ok
 
-            # Repair the fixture: contractors mirrors profiles per the CTO's ruling.
-            _update_contractor_is_test(project_url, service_key, contractor_id, is_test=False, urlopen=urlopen)
-            print(f"\nRepaired fixture: contractor {contractor_id} is_test set to false to match profile")
+            # Repair both fixtures: contractors mirrors profiles per the CTO's ruling.
+            for f in fixtures:
+                _update_contractor_is_test(project_url, service_key, f["contractor_id"], is_test=False, urlopen=urlopen)
+                print(f"\nRepaired fixture ({f['label']}): contractor {f['contractor_id']} is_test set to false to match profile")
 
-            print("\n--- GREEN run (clean fixture) ---")
+            print("\n--- GREEN run (clean fixtures) ---")
             green_code = run(project_url, service_key, urlopen=urlopen)
             green_ok = green_code == 0
             print(f"GREEN expectation (exit==0): {'PASS' if green_ok else 'FAIL'} (got exit {green_code})")
@@ -613,24 +679,25 @@ def self_test(project_url: str, service_key: str, urlopen=urllib.request.urlopen
             overall_ok = False
     finally:
         print("\n--- cleanup ---")
-        try:
-            if contractor_id:
-                _delete_contractor(project_url, service_key, contractor_id, urlopen=urlopen)
-                print(f"Deleted contractor {contractor_id}")
-        except FetchError as exc:
-            print(f"cleanup warning: could not delete contractor {contractor_id}: {exc}", file=sys.stderr)
-        try:
-            if profile_inserted:
-                _delete_profile(project_url, service_key, user_id, urlopen=urlopen)
-                print(f"Deleted profile {user_id}")
-        except FetchError as exc:
-            print(f"cleanup warning: could not delete profile {user_id}: {exc}", file=sys.stderr)
-        try:
-            if user_id:
-                _admin_delete_user(project_url, service_key, user_id, urlopen=urlopen)
-                print(f"Deleted auth user {user_id}")
-        except FetchError as exc:
-            print(f"cleanup warning: could not delete auth user {user_id}: {exc}", file=sys.stderr)
+        for f in fixtures:
+            try:
+                if f["contractor_id"]:
+                    _delete_contractor(project_url, service_key, f["contractor_id"], urlopen=urlopen)
+                    print(f"Deleted contractor {f['contractor_id']} ({f['label']})")
+            except FetchError as exc:
+                print(f"cleanup warning: could not delete contractor {f['contractor_id']}: {exc}", file=sys.stderr)
+            try:
+                if f["profile_inserted"]:
+                    _delete_profile(project_url, service_key, f["user_id"], urlopen=urlopen)
+                    print(f"Deleted profile {f['user_id']} ({f['label']})")
+            except FetchError as exc:
+                print(f"cleanup warning: could not delete profile {f['user_id']}: {exc}", file=sys.stderr)
+            try:
+                if f["user_id"]:
+                    _admin_delete_user(project_url, service_key, f["user_id"], urlopen=urlopen)
+                    print(f"Deleted auth user {f['user_id']} ({f['label']})")
+            except FetchError as exc:
+                print(f"cleanup warning: could not delete auth user {f['user_id']}: {exc}", file=sys.stderr)
 
     print(f"\n=== self-test {'PASS' if overall_ok else 'FAIL'} ===")
     return 0 if overall_ok else 1

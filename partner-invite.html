@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Sentry Error Monitoring -->
+<script
+  src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
+  crossorigin="anonymous"
+></script>
+<script>
+  Sentry.onLoad(function() {
+    Sentry.init({
+      environment: window.location.hostname.includes("staging") ? "staging" : "production",
+      // gh-439: drop phantom events from non-http(s) preview contexts (data:/file:/blob:
+      // URLs -- e.g. Claude's HTML preview renders pages via data: URIs; relative scripts
+      // like js/auth.js then fail and report noise such as "Auth is not defined").
+      denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+      beforeSend: function (event) {
+        var proto = window.location.protocol;
+        if (proto !== "http:" && proto !== "https:") return null;
+        var req = event.request && event.request.url;
+        if (req && /^(data|file|blob):/.test(req)) return null;
+        return event;
+      }
+    });
+  });
+</script>
+<script src="js/cookie-storage.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js" integrity="sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz" crossorigin="anonymous"></script>
+<script src="js/config.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>Finish My Signup &mdash; Otter Quotes</title>
+<!-- PLACEHOLDER tracking (LEGAL-READ FAIL 5841305700 fix): every visible
+     placeholder string this page previously carried (the loading/invalid/
+     form headline copy, and the "Placeholder copy" badge) was
+     de-placeholdered in this build -- see this build's report for why
+     each one was judged a non-marketing, non-legal-claim operational
+     string rather than copy needing Sloane/legal sign-off. This comment,
+     never rendered, is the one place the word PLACEHOLDER still appears,
+     so the next reviewer has a single anchor to check nothing slipped
+     back onto the visible page unmarked. -->
+<!-- gh-2154 P-5 (LEGAL, bus 2026-09-25T14:11:18Z): this page is reached
+     only through a signed, single-purpose invite link (?token=) mailed to
+     one specific Meta-lead partner -- there is nothing here for a search
+     engine to index. -->
+<meta name="robots" content="noindex,nofollow">
+
+<script src="/js/ga-gate.js"></script>
+<script src="/js/meta-pixel-gate.js"></script>
+<script>gtag('config','G-D1Y1TLGEFY');</script>
+<!-- Microsoft Clarity (wwr7qlk8g5) is loaded by /js/ga-gate.js, behind the same production-host gate as GA4 (gh-1619). Do not add a per-page loader. -->
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/design-system.css">
+<link rel="stylesheet" href="css/nav.css">
+
+<style>
+main.invite-main {
+  min-height: calc(100vh - 120px);
+  padding: var(--sp-16) var(--sp-6);
+}
+
+.invite-outer {
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.invite-card {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--radius-lg);
+  padding: var(--sp-12);
+  box-shadow: 0 8px 40px rgba(0,0,0,0.3);
+}
+
+.invite-card h1 {
+  font-family: var(--font-heading);
+  font-size: 1.75rem;
+  color: var(--white);
+  margin-bottom: var(--sp-2);
+}
+
+.invite-card .subtitle {
+  color: var(--slate);
+  font-size: 0.95rem;
+  margin-bottom: var(--sp-8);
+}
+
+.invite-placeholder-flag {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #EF4444;
+  border: 1px solid #EF4444;
+  border-radius: var(--radius-sm);
+  padding: 2px 6px;
+  margin-bottom: var(--sp-3);
+}
+
+.prefill-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.prefill-row .prefill-label {
+  color: var(--slate);
+  font-size: 0.85rem;
+}
+
+.prefill-row .prefill-value {
+  color: var(--white);
+  font-weight: 600;
+  text-align: right;
+}
+
+.form-checkbox-group {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  margin: var(--sp-6) 0 var(--sp-4);
+}
+
+.form-checkbox {
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  min-height: 20px;
+  margin-top: 2px;
+  accent-color: var(--amber);
+  cursor: pointer;
+}
+
+.checkbox-label {
+  font-size: 0.9rem;
+  color: var(--slate);
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.checkbox-label a {
+  color: var(--amber);
+  font-weight: 600;
+}
+
+.referral-link-section {
+  background: rgba(224, 123, 0, 0.1);
+  border: 1px solid var(--amber);
+  border-radius: var(--radius-md);
+  padding: var(--sp-4);
+  margin-top: var(--sp-6);
+}
+
+.referral-link-label {
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #5A6B7B;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: var(--sp-2);
+}
+
+.link-hint {
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  color: #5A6B7B;
+  margin-top: var(--sp-2);
+  line-height: 1.4;
+}
+
+.copy-btn {
+  background: var(--amber);
+  color: var(--navy);
+  border: none;
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--radius-md);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  text-decoration: none;
+  display: inline-block;
+}
+
+.copy-btn:hover {
+  background: #A85C00;
+  color: var(--white);
+}
+</style>
+</head>
+<body>
+
+<header id="site-header" data-active=""></header>
+
+<main class="invite-main">
+  <div class="invite-outer">
+    <div class="invite-card">
+
+      <!-- REVIEW FAIL 5841303507 must-fix 6 / LEGAL-READ FAIL 5841305700:
+           "nothing rendered without a valid token." All four states below
+           now default to display:none in the raw markup itself (a crawler,
+           a slow/disabled-JS load, or a plain view-source sees none of
+           them painted) -- the script at the bottom decides which ONE to
+           reveal, and only after it knows whether a token is even present
+           (see loadInvite()). This is a stricter gate than the previous
+           behavior, where inviteLoading (carrying placeholder copy) was
+           visible by default before any JS ran. -->
+
+      <!-- Loading state (LEGAL-READ FAIL 5841913888: the prior round's
+           loading headline and subtitle were both new, unapproved copy.
+           Ben's ruling: the loading state is BLANK, no heading, no
+           subtitle -- text intentionally omitted here, not just hidden. -->
+      <div id="inviteLoading" style="display:none;"></div>
+
+      <!-- Invalid / expired token state (LEGAL-READ FAIL 5841913888: the
+           de-placeholdered h1/subtitle from the prior round were still
+           unapproved new copy, not live anywhere on main. Ben's ruling:
+           every error/expired-link state uses main's live
+           "Something went wrong. Please try again." verbatim -- confirmed
+           byte-identical via `git grep -F` against main @3cda23ad in
+           project-info-acv.html / project-info-cash.html /
+           project-info-rcv.html / trade-selector.html / repair-intake.html.
+           The existing live "Become a Partner" button/link is unchanged. -->
+      <div id="inviteInvalid" style="display:none;">
+        <p class="subtitle">Something went wrong. Please try again.</p>
+        <a href="/partners.html" class="btn btn-primary" id="inviteInvalidSignupLink">Become a Partner</a>
+      </div>
+
+      <!-- Prefilled accept form (LEGAL-READ FAIL 5841913888: the form
+           heading is removed -- no live/approved replacement exists.
+           The agent-type field row is removed too -- no P-1 partner page on
+           main carries that label live; the type itself is still read from
+           the token-derived prefill (agreementLinkFor/#feeDisclaimer below
+           both still branch on prefill.agent_type), only the VISIBLE row
+           is gone, per Ben's "hide the field, pass the type from the
+           token" instruction. -->
+      <div id="inviteForm" style="display:none;" data-agent-type="">
+
+        <div class="prefill-row">
+          <span class="prefill-label">Name</span>
+          <span class="prefill-value" id="prefillName"></span>
+        </div>
+        <div class="prefill-row">
+          <span class="prefill-label">Email</span>
+          <span class="prefill-value" id="prefillEmail"></span>
+        </div>
+
+        <div class="form-checkbox-group">
+          <input type="checkbox" id="agreeToTerms" class="form-checkbox" required>
+          <label for="agreeToTerms" class="checkbox-label">
+            I agree to Otter Quotes's <a href="partner-agreement.html" id="agreementLink">Partner Terms</a>
+          </label>
+        </div>
+
+        <div id="inviteAcceptError" class="form-error" style="display:none;"></div>
+
+        <!-- LEGAL-READ FAIL 5841913888: the prior round's button label was
+             byte-identical to a live P-1 string but not to anything Dustin
+             actually approved for THIS page. The label below is the
+             Dustin-approved CTA text from the invite email copy draft
+             (In Flight/reports/ceo69-p5-invite-copy-20260925.md, #2154
+             comment 5837072371) -- used here verbatim per Ben's ruling. -->
+        <button type="button" class="btn btn-primary btn-lg btn-full" id="acceptBtn" disabled>
+          Finish My Signup
+        </button>
+
+        <!-- LEGAL-READ FAIL 5841305700 / D-333 (REVIEW FAIL 5841303507
+             must-fix 1): a home_inspector receives no referral fee at all
+             (partner-agreement.html Section 4.3, and partner-inspectors.html
+             on main never shows this sentence -- gh-2155 HI-0b precedent,
+             removal only). showForm() below hides this paragraph when
+             prefill.agent_type === 'home_inspector'. -->
+        <p id="feeDisclaimer" class="text-sm text-center referral-fee-disclaimer" style="color: var(--gray); margin-top: var(--sp-4); font-size: 0.85rem;">
+          Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.
+        </p>
+      </div>
+
+      <!-- Post-accept next steps (install app -> sign in -> link), reusing
+           partner-dashboard.html's own app-install card copy verbatim and
+           partner-re.html's own success-state copy verbatim -- see this
+           build's report for exactly which strings are reused vs. the
+           marked placeholders above. -->
+      <div id="inviteSuccess" style="display:none;">
+        <h1>Welcome to Otter Quotes!</h1>
+
+        <div class="referral-link-section">
+          <div class="referral-link-label">&#128241; Otter Quotes Partner App</div>
+          <p class="link-hint" style="margin-top: 0;">Put your referral tools one tap away &mdash; install the free partner app on your phone.</p>
+          <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 8px;">
+            <a href="/partner-app.html" class="copy-btn">Install the App</a>
+            <a href="/partner-app.html" style="font-size: 0.85rem; color: var(--amber);">How to install</a>
+          </div>
+        </div>
+
+        <!-- LEGAL-READ FAIL 5841913888 must-fix 8: "You can start sharing
+             this link with clients immediately…" was byte-identical to
+             partner-re.html's own success copy but untrue in THIS context
+             -- this page never shows a link, and the approved email says
+             the referral link comes only after signing in to the app.
+             Removed, removal-only (HI-0b precedent), no replacement. -->
+
+        <div style="margin-top: var(--sp-6);">
+          <a href="/partner-login.html" class="btn btn-primary">Sign in to your dashboard</a>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</main>
+
+<footer id="site-footer"></footer>
+
+<script src="js/auth.js"></script>
+<script src="js/nav.js"></script>
+<script src="js/agent-types.js"></script>
+
+<script>
+(function () {
+  'use strict';
+
+  // gh-914: agent-type display labels are single-sourced in
+  // js/agent-types.js -- AGENT_TYPE_CHOOSER_LABELS is the "confirm/pick
+  // your type" set, the same one partner-re/insurance/inspectors/
+  // adjusters/other.html use, and the right one here (this page is
+  // confirming, not admin-correcting, a partner's type).
+
+  // Reads the page-level ?token= param this page is reached with (the
+  // signed invite token). Independent of the Edge Function's own `t` query
+  // param name -- readToken() below is what maps one to the other.
+  function getInviteToken() {
+    try {
+      var params = new URLSearchParams(window.location.search);
+      return params.get('token');
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // gh-2166 (Ben ruling, comment 5824245098): a home_inspector must never
+  // see the fee-structure table on partner-agreement.html. That page hides
+  // it (CSS :target fail-closed, plus a belt-and-suspenders JS read of
+  // ?track=/?agent_type=) only when the link carries BOTH
+  // ?track=home_inspector and the #track-home-inspector fragment --
+  // partner-inspectors.html's own agreement link uses exactly this same
+  // pair. Reused here verbatim so an inspector who accepts through this
+  // invite page never sees fee terms either.
+  function agreementLinkFor(agentType) {
+    if (agentType === 'home_inspector') {
+      return 'partner-agreement.html?track=home_inspector#track-home-inspector';
+    }
+    return 'partner-agreement.html';
+  }
+
+  function showLoading() {
+    document.getElementById('inviteLoading').style.display = '';
+    document.getElementById('inviteInvalid').style.display = 'none';
+    document.getElementById('inviteForm').style.display = 'none';
+    document.getElementById('inviteSuccess').style.display = 'none';
+  }
+
+  function showInvalid() {
+    document.getElementById('inviteLoading').style.display = 'none';
+    document.getElementById('inviteInvalid').style.display = '';
+    document.getElementById('inviteForm').style.display = 'none';
+    document.getElementById('inviteSuccess').style.display = 'none';
+  }
+
+  function showForm(prefill) {
+    document.getElementById('inviteLoading').style.display = 'none';
+    document.getElementById('inviteInvalid').style.display = 'none';
+    document.getElementById('inviteSuccess').style.display = 'none';
+    var formEl = document.getElementById('inviteForm');
+    formEl.style.display = '';
+    formEl.setAttribute('data-agent-type', prefill.agent_type || '');
+
+    var name = [prefill.first_name, prefill.last_name].filter(Boolean).join(' ');
+    document.getElementById('prefillName').textContent = name || '—';
+    document.getElementById('prefillEmail').textContent = prefill.email || '—';
+    // LEGAL-READ FAIL 5841913888 must-fix 4: the agent-type field row is
+    // removed from the page (no live P-1 label to reuse) -- prefill.
+    // agent_type is still read and used below (agreementLinkFor,
+    // #feeDisclaimer), it is just never displayed to the user.
+    document.getElementById('agreementLink').setAttribute('href', agreementLinkFor(prefill.agent_type));
+
+    // D-333 / REVIEW FAIL 5841303507 must-fix 1 / LEGAL-READ FAIL
+    // 5841305700: a home_inspector receives no referral fee at all
+    // (partner-agreement.html Section 4.3) -- partner-inspectors.html on
+    // main never shows this sentence to that track, and this page must
+    // not either.
+    var feeDisclaimerEl = document.getElementById('feeDisclaimer');
+    if (feeDisclaimerEl) {
+      feeDisclaimerEl.style.display = (prefill.agent_type === 'home_inspector') ? 'none' : '';
+    }
+  }
+
+  function showSuccess() {
+    document.getElementById('inviteLoading').style.display = 'none';
+    document.getElementById('inviteInvalid').style.display = 'none';
+    document.getElementById('inviteForm').style.display = 'none';
+    document.getElementById('inviteSuccess').style.display = '';
+  }
+
+  function functionUrl(fnName) {
+    if (typeof CONFIG === 'undefined' || !CONFIG.SUPABASE_URL) return null;
+    return String(CONFIG.SUPABASE_URL).replace(/\/+$/, '') + '/functions/v1/' + fnName;
+  }
+
+  // Exposed on window so the invite-page test harness can drive the exact
+  // same functions a real page load runs, without re-implementing them.
+  window.__partnerInvite = {
+    getInviteToken: getInviteToken,
+    agreementLinkFor: agreementLinkFor,
+    loadInvite: loadInvite,
+    onAcceptClick: onAcceptClick
+  };
+
+  async function loadInvite() {
+    var token = getInviteToken();
+    if (!token) {
+      // REVIEW FAIL 5841303507 must-fix 6 / LEGAL-READ FAIL 5841305700:
+      // no token at all -> straight to the invalid panel. The loading
+      // state (see showLoading() below) is never shown in this case, so
+      // there is no window where a real visitor with no token sees any
+      // content at all before the invalid message.
+      showInvalid();
+      return;
+    }
+    // A token is present (not yet known to be VALID) -- show the loading
+    // state only now, never before this point.
+    showLoading();
+    var base = functionUrl('partner-invite-accept');
+    if (!base) {
+      showInvalid();
+      return;
+    }
+    try {
+      var resp = await fetch(base + '?t=' + encodeURIComponent(token), {
+        method: 'GET',
+        headers: { 'apikey': CONFIG.SUPABASE_ANON }
+      });
+      if (!resp.ok) {
+        showInvalid();
+        return;
+      }
+      var data = await resp.json();
+      if (!data || data.ok !== true) {
+        showInvalid();
+        return;
+      }
+      showForm(data);
+    } catch (e) {
+      showInvalid();
+    }
+  }
+
+  async function onAcceptClick() {
+    var checkbox = document.getElementById('agreeToTerms');
+    var errorEl = document.getElementById('inviteAcceptError');
+    var acceptBtn = document.getElementById('acceptBtn');
+    errorEl.style.display = 'none';
+
+    // Hard gate, same posture as P-1's own checkbox and the Edge
+    // Function's own isValidAcceptBody(): no POST is sent unless the
+    // checkbox is actually ticked.
+    if (!checkbox || !checkbox.checked) {
+      return;
+    }
+
+    var token = getInviteToken();
+    var base = functionUrl('partner-invite-accept');
+    if (!token || !base) {
+      showInvalid();
+      return;
+    }
+
+    acceptBtn.disabled = true;
+    try {
+      var resp = await fetch(base, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': CONFIG.SUPABASE_ANON
+        },
+        body: JSON.stringify({ t: token, agreement_accepted: true })
+      });
+      var data = null;
+      try { data = await resp.json(); } catch (e) { /* noop */ }
+      if (!resp.ok || !data || data.ok !== true) {
+        errorEl.textContent = 'Something went wrong. Please try again.';
+        errorEl.style.display = '';
+        acceptBtn.disabled = false;
+        return;
+      }
+      showSuccess();
+    } catch (e) {
+      errorEl.textContent = 'Something went wrong. Please try again.';
+      errorEl.style.display = '';
+      acceptBtn.disabled = false;
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    var checkbox = document.getElementById('agreeToTerms');
+    var acceptBtn = document.getElementById('acceptBtn');
+    if (checkbox && acceptBtn) {
+      checkbox.addEventListener('change', function () {
+        acceptBtn.disabled = !checkbox.checked;
+      });
+    }
+    if (acceptBtn) {
+      acceptBtn.addEventListener('click', onAcceptClick);
+    }
+    // REVIEW FAIL 5841303507 must-fix 6: loadInvite() itself decides
+    // whether to show the loading state (only once a token is present) or
+    // go straight to the invalid panel -- no longer an unconditional
+    // showLoading() here, which used to paint the loading state (and its
+    // placeholder copy, pre-fix) even for a visitor with no token at all.
+    loadInvite();
+  });
+})();
+</script>
+
+</body>
+</html>

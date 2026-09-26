@@ -34,6 +34,8 @@ on:
       - 'partner-login.html'
       - 'tests/gh2154-p1-short-signup.mjs'
       - 'tests/gh2154-p1-set-password.mjs'
+      - 'partner-invite.html'
+      - 'tests/gh2154-p5-invite-page.mjs'
       - 'tests/gh2154-p1-login-reset.mjs'
       - 'tests/gh2154-p1-cookie-storage-updateuser.mjs'
       - 're-1.html'
@@ -76,6 +78,8 @@ on:
       - 'partner-login.html'
       - 'tests/gh2154-p1-short-signup.mjs'
       - 'tests/gh2154-p1-set-password.mjs'
+      - 'partner-invite.html'
+      - 'tests/gh2154-p5-invite-page.mjs'
       - 'tests/gh2154-p1-login-reset.mjs'
       - 'tests/gh2154-p1-cookie-storage-updateuser.mjs'
       - 're-1.html'
@@ -133,6 +137,8 @@ jobs:
         run: node tests/gh2154-p1-short-signup.mjs
       - name: Partner dashboard one-time set-password card (gh2154-p1-set-password)
         run: node tests/gh2154-p1-set-password.mjs
+      - name: Partner invite accept page -- prefill, checkbox gate, inspector track (gh2154-p5-invite-page)
+        run: node tests/gh2154-p5-invite-page.mjs
       - name: Partner login forgot-password reset clears needs_password (gh2154-p1-login-reset)
         run: node tests/gh2154-p1-login-reset.mjs
       - name: Real supabase-js -- rejected updateUser() must not sign the partner out (gh2154-p1-cookie-storage-updateuser)

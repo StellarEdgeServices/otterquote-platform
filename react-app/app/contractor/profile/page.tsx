@@ -22,7 +22,7 @@
  * privilege column and does not depend on the permissive RLS.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import { supabase } from '@/lib/supabase';
@@ -231,23 +231,86 @@ function PhotosCard({ record, userId, onUpdate }: { record: ContractorRecord; us
   );
 }
 
-// ── Intro Video (MP4/MOV → contractor-documents; signed-URL <video> in view) ──
+// ── Intro Video (MP4/MOV → contractor-documents; click-to-play blob: <video>) ──
 function IntroVideoCard({ record, userId, onUpdate }: { record: ContractorRecord; userId: string; onUpdate: (u: Record<string, unknown>) => Promise<boolean> }) {
   const [editing, setEditing] = useState(false);
   const [status, setStatus] = useState<{ msg: string; color: string } | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [videoLoadState, setVideoLoadState] = useState<'idle' | 'loading' | 'error'>('idle');
+  const blobUrlRef = useRef<string | null>(null);
+  const pathRef = useRef<string>(str(record.intro_video_path));
+  const mountedRef = useRef(true);
 
+  const revokeVideoBlobUrl = () => {
+    if (blobUrlRef.current) {
+      URL.revokeObjectURL(blobUrlRef.current);
+      blobUrlRef.current = null;
+    }
+  };
+
+  const path = str(record.intro_video_path);
+  const hasVideo = !!path;
+
+  // gh-1964 review fix (must-fix 2): a previous render's blob: URL must be
+  // revoked when the card re-renders around a different (or removed) video
+  // -- not left for an unmount that may never come (this card stays
+  // mounted across edit/save cycles).
   useEffect(() => {
-    let active = true;
-    const path = str(record.intro_video_path);
-    if (!path) { setVideoUrl(null); return; }
-    (async () => {
-      const storagePath = storagePathFromValue(path, 'contractor-documents');
-      const { data } = await supabase.storage.from('contractor-documents').createSignedUrl(storagePath, 3600);
-      if (active && data?.signedUrl) setVideoUrl(data.signedUrl);
-    })();
-    return () => { active = false; };
-  }, [record.intro_video_path]);
+    pathRef.current = path;
+    revokeVideoBlobUrl();
+    setVideoUrl(null);
+    setVideoLoadState('idle');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [path]);
+
+  // gh-1964 review fix (must-fix 2): revoke on page hide too (navigation,
+  // tab close, bfcache) as well as on unmount, not only on the next
+  // re-render.
+  useEffect(() => {
+    mountedRef.current = true;
+    window.addEventListener('pagehide', revokeVideoBlobUrl);
+    return () => {
+      mountedRef.current = false;
+      window.removeEventListener('pagehide', revokeVideoBlobUrl);
+      revokeVideoBlobUrl();
+    };
+  }, []);
+
+  // gh-1964 review fix (must-fix 1): the video used to be fetched (up to
+  // 200MB) on every page load, before the player even showed. It is now
+  // fetched only on explicit user intent (the Play button below) -- fetch
+  // the bytes ourselves and hand the <video> a same-origin blob: URL, the
+  // simplest way to keep the signed URL itself out of any persistent DOM
+  // attribute.
+  const loadAndPlayVideo = async () => {
+    const loadPath = path;
+    if (!loadPath) return;
+    setVideoLoadState('loading');
+    try {
+      const storagePath = storagePathFromValue(loadPath, 'contractor-documents');
+      const { data, error: signErr } = await supabase.storage.from('contractor-documents').createSignedUrl(storagePath, 3600);
+      if (signErr || !data?.signedUrl) throw signErr || new Error('no signed url');
+      const resp = await fetch(data.signedUrl);
+      if (!resp.ok) throw new Error('video fetch failed: ' + resp.status);
+      const blob = await resp.blob();
+      // gh-1964 review fix (must-fix 2, cleanup timing gap): re-check
+      // liveness right before this LAST await's synchronous continuation
+      // creates the object URL, via refs rather than a closed-over flag --
+      // checking only after the FIRST await (as the previous version did)
+      // left a window between the second await and this point where a
+      // since-run cleanup had already revoked the (then-null) previous
+      // blob, and the one created here would leak forever.
+      if (!mountedRef.current || pathRef.current !== loadPath) return;
+      revokeVideoBlobUrl();
+      const blobUrl = URL.createObjectURL(blob);
+      blobUrlRef.current = blobUrl;
+      setVideoUrl(blobUrl);
+      setVideoLoadState('idle');
+    } catch (err) {
+      console.error('Error loading intro video:', err);
+      if (mountedRef.current) setVideoLoadState('error');
+    }
+  };
 
   const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -277,7 +340,17 @@ function IntroVideoCard({ record, userId, onUpdate }: { record: ContractorRecord
       {!editing ? (
         <>
           {videoUrl ? (
-            <video src={videoUrl} controls preload="metadata" playsInline className="oqp-video" />
+            <video src={videoUrl} controls autoPlay preload="metadata" playsInline className="oqp-video" />
+          ) : hasVideo ? (
+            <button
+              type="button"
+              className="oqp-btn oqp-btn-secondary"
+              style={{ width: '100%', maxWidth: 480, aspectRatio: '16/9', display: 'block', margin: '0 auto' }}
+              disabled={videoLoadState === 'loading'}
+              onClick={loadAndPlayVideo}
+            >
+              {videoLoadState === 'loading' ? T.introVideo.loadingVideo : videoLoadState === 'error' ? T.introVideo.loadFailed : `\u25B6 ${T.introVideo.play}`}
+            </button>
           ) : (
             <p className="oqp-help">{T.introVideo.help}</p>
           )}

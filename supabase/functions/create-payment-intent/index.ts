@@ -39,6 +39,7 @@ import { evaluateMeasurementUpgradeGate } from "./measurement-upgrade-gate.ts";
 import { detectGpcSignal, type OptOutStore, recordGpcOptOut } from "./ad-sharing-opt-out.ts";
 import { AMBIGUOUS_OUTCOME_CODE, fetchStripeWithTimeout } from "./stripe-fetch.ts";
 import { AmbiguousChargeOutcomeError, runOffSessionPlatformFeeCharge } from "./off-session-charge.ts";
+import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 
 const FUNCTION_NAME = "create-payment-intent";
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
@@ -636,7 +637,20 @@ serve(async (req) => {
         };
         if (usedMethod.id) quoteUpdate.payment_method_id = usedMethod.id;
         if (cardFeeCents > 0) quoteUpdate.card_fee_cents = cardFeeCents;
-        await supabase.from("quotes").update(quoteUpdate).eq("id", metadata.quote_id);
+        // gh-2105 (batch 2, decision a): this records whether the off-session
+        // (contractor-initiated) ACH/card charge succeeded, is pending, or
+        // failed -- a zero-row match here means Stripe was actually charged
+        // (or not) and the quote row never learns which, silently.
+        const { data: offSessionRows, error: offSessionUpdErr } = await supabase
+          .from("quotes")
+          .update(quoteUpdate)
+          .eq("id", metadata.quote_id)
+          .select("id");
+        if (offSessionUpdErr) {
+          console.error(`[${FUNCTION_NAME}] off-session quotes update failed for quote ${metadata.quote_id}:`, offSessionUpdErr);
+        } else if (!checkRowsWritten(offSessionRows).wroteRows) {
+          console.error(zeroRowWriteMessage(FUNCTION_NAME, `off-session quotes update (payment_status=${dbPaymentStatus}) for quote ${metadata.quote_id}`));
+        }
       }
     } else {
       // ===== Standard flow (hover_measurement, deductible_escrow, measurement_upgrade) =====

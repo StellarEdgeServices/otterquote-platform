@@ -37,6 +37,11 @@ export const PROFILE_COPY = {
     saved: 'Saved.',
     uploadFailed: 'Upload failed. Please try again.',
     disabled: "Intro video uploads aren't enabled yet. Check back soon.",
+    // gh-1964 review fix (must-fix 1): click-to-play control, so the
+    // (up to 200MB) video is only fetched on explicit user intent.
+    play: 'Play intro video',
+    loadingVideo: 'Loading video\u2026',
+    loadFailed: 'Unable to load video. Please try again.',
   },
 
   credentials: {
