@@ -1,0 +1,20 @@
+# CodeQL configuration — CTO RUN 41 (cto-2026-09-26T16:37:55Z), issues #2148 #2178 #2214.
+#
+# Test-only code is excluded from SAST. Measured 2026-09-26: 43 of 43 open alerts
+# in tests/**/*.mjs and supabase/functions/**/*.test.ts were false positives
+# (assertion strings like `logs[0].includes("api.stripe.com")`, HTML-stripping
+# regexes in page-structure checks, PASS/FAIL harness logging of fixture labels).
+# None of these files is in an Edge Function import graph (no index.ts imports a
+# *.test.ts), so none ships as runtime code. Alert count went 11 -> 44 in two days
+# of build work; per-alert dismissal would recur every build week.
+#
+# Production code (supabase/functions/**/index.ts and its non-test imports, js/,
+# react-app/ source, netlify/) stays fully scanned. Revisit if a test helper ever
+# becomes runtime code.
+name: "otterquote CodeQL config"
+paths-ignore:
+  - "tests/**"
+  - "**/*.test.ts"
+  - "**/*.test.tsx"
+  - "**/*.test.js"
+  - "**/*.test.mjs"
