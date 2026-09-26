@@ -14,21 +14,33 @@ const ALLOWLIST_RAW = JSON.stringify({
   "form_test_456": { agent_type: "insurance_agent", funnel_id: "meta-leadgen-test", is_test: true },
 });
 
+// #2123 HO-2: a form_id here is DISJOINT from ALLOWLIST_RAW above — a real
+// Meta form_id can only ever appear in one form's config.
+const HOMEOWNER_ALLOWLIST_RAW = JSON.stringify({
+  "form_ho2_789": { funnel_id: "ho-2" },
+  "form_ho2_test_999": { funnel_id: "ho-2", is_test: true },
+});
+
 interface Counters {
   fetchCalls: number;
   registerCalls: number;
   duplicateCalls: number;
   rateLimitCalls: number;
+  homeownerDuplicateCalls: number;
+  homeownerRegisterCalls: number;
+  homeownerRoleRecoveryCalls: number;
 }
 
 function makeDeps(overrides: Partial<WebhookDeps> = {}, counters: Counters = {
   fetchCalls: 0, registerCalls: 0, duplicateCalls: 0, rateLimitCalls: 0,
+  homeownerDuplicateCalls: 0, homeownerRegisterCalls: 0, homeownerRoleRecoveryCalls: 0,
 }): WebhookDeps {
   return {
     verifyToken: VERIFY_TOKEN,
     appSecret: APP_SECRET,
     pageAccessToken: PAGE_TOKEN,
     allowlistRaw: ALLOWLIST_RAW,
+    homeownerAllowlistRaw: HOMEOWNER_ALLOWLIST_RAW,
     fetchLead: async (_leadgenId, _token) => {
       counters.fetchCalls++;
       return {
@@ -51,12 +63,31 @@ function makeDeps(overrides: Partial<WebhookDeps> = {}, counters: Counters = {
       counters.registerCalls++;
       return { data: { id: "agent-fixture-id" }, error: null };
     },
+    isDuplicateHomeownerLead: async () => {
+      counters.homeownerDuplicateCalls++;
+      return { existingId: null, roleSet: false, errored: false };
+    },
+    registerHomeownerLead: async () => {
+      counters.homeownerRegisterCalls++;
+      return { data: { id: "lead-fixture-id" }, error: null };
+    },
+    setHomeownerLeadRole: async () => {
+      counters.homeownerRoleRecoveryCalls++;
+      return { error: null };
+    },
     checkRateLimit: async () => {
       counters.rateLimitCalls++;
       return { allowed: true, errored: false };
     },
     log: () => {},
     ...overrides,
+  };
+}
+
+function makeCounters(): Counters {
+  return {
+    fetchCalls: 0, registerCalls: 0, duplicateCalls: 0, rateLimitCalls: 0,
+    homeownerDuplicateCalls: 0, homeownerRegisterCalls: 0, homeownerRoleRecoveryCalls: 0,
   };
 }
 
@@ -111,7 +142,7 @@ Deno.test("GET handshake: unset secret returns 403", () => {
 Deno.test("POST: valid signature processes the lead and writes once", async () => {
   const body = leadgenBody();
   const sig = await sign(body);
-  const counters: Counters = { fetchCalls: 0, registerCalls: 0, duplicateCalls: 0, rateLimitCalls: 0 };
+  const counters: Counters = makeCounters();
   const { response, outcomes } = await handlePost(body, sig, "1.2.3.4", makeDeps({}, counters));
   assertEquals(response.status, 200);
   assertEquals(outcomes[0].outcome, "registered");
@@ -122,7 +153,7 @@ Deno.test("POST: valid signature processes the lead and writes once", async () =
 Deno.test("POST: forged signature -> 401 AND zero writes, zero fetches, zero duplicate checks, zero rate-limit calls", async () => {
   const body = leadgenBody();
   const forgedSig = await sign(body, "attacker-guessed-secret");
-  const counters: Counters = { fetchCalls: 0, registerCalls: 0, duplicateCalls: 0, rateLimitCalls: 0 };
+  const counters: Counters = makeCounters();
   const { response, outcomes } = await handlePost(body, forgedSig, "1.2.3.4", makeDeps({}, counters));
   assertEquals(response.status, 401);
   assertEquals(outcomes.length, 0);
@@ -136,7 +167,7 @@ Deno.test("POST: body tampered after signing -> 401 AND zero writes/fetches", as
   const original = leadgenBody({ leadgenId: "leadgen_original" });
   const tampered = leadgenBody({ leadgenId: "leadgen_swapped" });
   const sig = await sign(original);
-  const counters: Counters = { fetchCalls: 0, registerCalls: 0, duplicateCalls: 0, rateLimitCalls: 0 };
+  const counters: Counters = makeCounters();
   const { response, outcomes } = await handlePost(tampered, sig, "1.2.3.4", makeDeps({}, counters));
   assertEquals(response.status, 401);
   assertEquals(outcomes.length, 0);
@@ -146,7 +177,7 @@ Deno.test("POST: body tampered after signing -> 401 AND zero writes/fetches", as
 
 Deno.test("POST: missing X-Hub-Signature-256 header -> 401, zero writes", async () => {
   const body = leadgenBody();
-  const counters: Counters = { fetchCalls: 0, registerCalls: 0, duplicateCalls: 0, rateLimitCalls: 0 };
+  const counters: Counters = makeCounters();
   const { response, outcomes } = await handlePost(body, null, "1.2.3.4", makeDeps({}, counters));
   assertEquals(response.status, 401);
   assertEquals(outcomes.length, 0);
@@ -156,7 +187,7 @@ Deno.test("POST: missing X-Hub-Signature-256 header -> 401, zero writes", async 
 Deno.test("POST: unset META_APP_SECRET -> 401 even with a well-formed signature header, zero writes", async () => {
   const body = leadgenBody();
   const sig = await sign(body); // signed against APP_SECRET, but deps below has no secret configured
-  const counters: Counters = { fetchCalls: 0, registerCalls: 0, duplicateCalls: 0, rateLimitCalls: 0 };
+  const counters: Counters = makeCounters();
   const { response, outcomes } = await handlePost(body, sig, "1.2.3.4", makeDeps({ appSecret: undefined }, counters));
   assertEquals(response.status, 401);
   assertEquals(outcomes.length, 0);
@@ -168,7 +199,7 @@ Deno.test("POST: unset META_APP_SECRET -> 401 even with a well-formed signature 
 Deno.test("POST: dedupe on leadgen_id -- already-seen id is skipped, no register call", async () => {
   const body = leadgenBody({ leadgenId: "leadgen_dup" });
   const sig = await sign(body);
-  const counters: Counters = { fetchCalls: 0, registerCalls: 0, duplicateCalls: 0, rateLimitCalls: 0 };
+  const counters: Counters = makeCounters();
   const { outcomes } = await handlePost(body, sig, "1.2.3.4", makeDeps({ isDuplicate: async () => { counters.duplicateCalls++; return { duplicate: true, errored: false }; } }, counters));
   assertEquals(outcomes[0].outcome, "skipped_duplicate");
   assertEquals(counters.registerCalls, 0);
@@ -178,7 +209,7 @@ Deno.test("POST: dedupe on leadgen_id -- already-seen id is skipped, no register
 Deno.test("POST: non-allowlisted form_id (e.g. a homeowner #2123 form) is skipped with 200, no write", async () => {
   const body = leadgenBody({ formId: "some_homeowner_form_999" });
   const sig = await sign(body);
-  const counters: Counters = { fetchCalls: 0, registerCalls: 0, duplicateCalls: 0, rateLimitCalls: 0 };
+  const counters: Counters = makeCounters();
   const { response, outcomes } = await handlePost(body, sig, "1.2.3.4", makeDeps({}, counters));
   assertEquals(response.status, 200);
   assertEquals(outcomes[0].outcome, "skipped_not_allowlisted");
@@ -189,7 +220,7 @@ Deno.test("POST: non-allowlisted form_id (e.g. a homeowner #2123 form) is skippe
 Deno.test("POST: unset page access token skips with 200, no fetch attempted", async () => {
   const body = leadgenBody();
   const sig = await sign(body);
-  const counters: Counters = { fetchCalls: 0, registerCalls: 0, duplicateCalls: 0, rateLimitCalls: 0 };
+  const counters: Counters = makeCounters();
   const { response, outcomes } = await handlePost(body, sig, "1.2.3.4", makeDeps({ pageAccessToken: undefined }, counters));
   assertEquals(response.status, 200);
   assertEquals(outcomes[0].outcome, "skipped_page_token_unset");
@@ -201,7 +232,7 @@ Deno.test("POST: a Testing Tool form (is_test:true in the allowlist) registers w
   const body = leadgenBody({ formId: "form_test_456", leadgenId: "leadgen_test_lead" });
   const sig = await sign(body);
   let capturedIsTest: boolean | null = null;
-  const counters: Counters = { fetchCalls: 0, registerCalls: 0, duplicateCalls: 0, rateLimitCalls: 0 };
+  const counters: Counters = makeCounters();
   const deps = makeDeps({
     registerPartner: async (args) => {
       counters.registerCalls++;
@@ -217,7 +248,7 @@ Deno.test("POST: a Testing Tool form (is_test:true in the allowlist) registers w
 Deno.test("POST: a duplicate at the register_partner layer (race) is reported as a skip, not an error", async () => {
   const body = leadgenBody();
   const sig = await sign(body);
-  const counters: Counters = { fetchCalls: 0, registerCalls: 0, duplicateCalls: 0, rateLimitCalls: 0 };
+  const counters: Counters = makeCounters();
   const deps = makeDeps({
     registerPartner: async () => {
       counters.registerCalls++;
@@ -235,7 +266,7 @@ Deno.test("POST: a duplicate at the register_partner layer (race) is reported as
 Deno.test("POST (must-fix 1): Graph fetch failure returns non-2xx (503) so Meta retries, not 200", async () => {
   const body = leadgenBody();
   const sig = await sign(body);
-  const counters: Counters = { fetchCalls: 0, registerCalls: 0, duplicateCalls: 0, rateLimitCalls: 0 };
+  const counters: Counters = makeCounters();
   const deps = makeDeps({
     fetchLead: async () => {
       counters.fetchCalls++;
@@ -255,7 +286,7 @@ Deno.test("POST (must-fix 1): Graph fetch failure returns non-2xx (503) so Meta 
 Deno.test("POST (must-fix 1): register_partner error other than duplicate/partner_exists returns 503, not 200", async () => {
   const body = leadgenBody();
   const sig = await sign(body);
-  const counters: Counters = { fetchCalls: 0, registerCalls: 0, duplicateCalls: 0, rateLimitCalls: 0 };
+  const counters: Counters = makeCounters();
   const deps = makeDeps({
     registerPartner: async () => {
       counters.registerCalls++;
@@ -275,7 +306,7 @@ Deno.test("POST (must-fix 1): register_partner error other than duplicate/partne
 Deno.test("POST (must-fix 1): dedupe-read DB error returns 503, distinct from a real duplicate", async () => {
   const body = leadgenBody();
   const sig = await sign(body);
-  const counters: Counters = { fetchCalls: 0, registerCalls: 0, duplicateCalls: 0, rateLimitCalls: 0 };
+  const counters: Counters = makeCounters();
   const deps = makeDeps({
     isDuplicate: async () => {
       counters.duplicateCalls++;
@@ -298,7 +329,7 @@ Deno.test("POST: first name with no last name registers with a placeholder last 
   const body = leadgenBody();
   const sig = await sign(body);
   const captured: { firstName: string; lastName: string }[] = [];
-  const counters: Counters = { fetchCalls: 0, registerCalls: 0, duplicateCalls: 0, rateLimitCalls: 0 };
+  const counters: Counters = makeCounters();
   const deps = makeDeps({
     fetchLead: async () => {
       counters.fetchCalls++;
@@ -327,7 +358,7 @@ Deno.test("POST: first name with no last name registers with a placeholder last 
 Deno.test("POST: rate-limited request (allowed:false) returns 429, no register call", async () => {
   const body = leadgenBody();
   const sig = await sign(body);
-  const counters: Counters = { fetchCalls: 0, registerCalls: 0, duplicateCalls: 0, rateLimitCalls: 0 };
+  const counters: Counters = makeCounters();
   const deps = makeDeps({ checkRateLimit: async () => { counters.rateLimitCalls++; return { allowed: false, errored: false }; } }, counters);
   const { response, outcomes } = await handlePost(body, sig, "1.2.3.4", deps);
   assertEquals(response.status, 429);
@@ -348,7 +379,7 @@ Deno.test("POST: rate-limited request (allowed:false) returns 429, no register c
 Deno.test("POST: rate-limit RPC error fails CLOSED -- 503, zero dedupe/fetch/register calls", async () => {
   const body = leadgenBody();
   const sig = await sign(body);
-  const counters: Counters = { fetchCalls: 0, registerCalls: 0, duplicateCalls: 0, rateLimitCalls: 0 };
+  const counters: Counters = makeCounters();
   const deps = makeDeps({ checkRateLimit: async () => { counters.rateLimitCalls++; return { allowed: false, errored: true }; } }, counters);
   const { response, outcomes } = await handlePost(body, sig, "1.2.3.4", deps);
   assertEquals(response.status, 503);
@@ -366,7 +397,7 @@ Deno.test("POST: rate-limit RPC malformed response (errored flag set by the call
   // identically to an outright RPC throw.
   const body = leadgenBody();
   const sig = await sign(body);
-  const counters: Counters = { fetchCalls: 0, registerCalls: 0, duplicateCalls: 0, rateLimitCalls: 0 };
+  const counters: Counters = makeCounters();
   const deps = makeDeps({ checkRateLimit: async () => { counters.rateLimitCalls++; return { allowed: true, errored: true }; } }, counters);
   const { response, outcomes } = await handlePost(body, sig, "1.2.3.4", deps);
   assertEquals(response.status, 503);
@@ -379,7 +410,7 @@ Deno.test("POST: rate-limit RPC malformed response (errored flag set by the call
 Deno.test("POST: incomplete fields (no email) skips, no register call", async () => {
   const body = leadgenBody();
   const sig = await sign(body);
-  const counters: Counters = { fetchCalls: 0, registerCalls: 0, duplicateCalls: 0, rateLimitCalls: 0 };
+  const counters: Counters = makeCounters();
   const deps = makeDeps({
     fetchLead: async () => {
       counters.fetchCalls++;
@@ -389,6 +420,207 @@ Deno.test("POST: incomplete fields (no email) skips, no register call", async ()
   const { outcomes } = await handlePost(body, sig, "1.2.3.4", deps);
   assertEquals(outcomes[0].outcome, "skipped_incomplete_fields");
   assertEquals(counters.registerCalls, 0);
+});
+
+// ── #2123 HO-2: homeowner `leads` path ──────────────────────────────────
+// The partner tests above all use ALLOWLIST_RAW's form ids and must keep
+// passing UNCHANGED (byte-identical partner behaviour) — none of them are
+// touched by this section. These exercise the NEW homeowner-form branch,
+// keyed on HOMEOWNER_ALLOWLIST_RAW's disjoint form ids.
+
+Deno.test("POST: a homeowner form_id (#2123 HO-2) writes to leads via registerHomeownerLead, not registerPartner", async () => {
+  const body = leadgenBody({ formId: "form_ho2_789", leadgenId: "leadgen_ho2_001" });
+  const sig = await sign(body);
+  const counters: Counters = makeCounters();
+  let captured: unknown = null;
+  const deps = makeDeps({
+    registerHomeownerLead: async (args) => {
+      counters.homeownerRegisterCalls++;
+      captured = args;
+      return { data: { id: "lead-fixture-id" }, error: null };
+    },
+  }, counters);
+  const { response, outcomes } = await handlePost(body, sig, "1.2.3.4", deps);
+  assertEquals(response.status, 200);
+  assertEquals(outcomes[0].outcome, "registered");
+  assertEquals(counters.homeownerRegisterCalls, 1);
+  assertEquals(counters.registerCalls, 0); // never touches the partner path
+  assertEquals((captured as { funnelId: string }).funnelId, "ho-2");
+  assertEquals((captured as { metaLeadId: string }).metaLeadId, "leadgen_ho2_001");
+  assertEquals((captured as { isSynthetic: boolean }).isSynthetic, false);
+});
+
+Deno.test("POST: a homeowner Testing Tool form (is_test:true) registers with isSynthetic true", async () => {
+  const body = leadgenBody({ formId: "form_ho2_test_999", leadgenId: "leadgen_ho2_test" });
+  const sig = await sign(body);
+  const counters: Counters = makeCounters();
+  let capturedSynthetic: boolean | null = null;
+  const deps = makeDeps({
+    registerHomeownerLead: async (args) => {
+      counters.homeownerRegisterCalls++;
+      capturedSynthetic = args.isSynthetic;
+      return { data: { id: "lead-fixture-id" }, error: null };
+    },
+  }, counters);
+  const { outcomes } = await handlePost(body, sig, "1.2.3.4", deps);
+  assertEquals(outcomes[0].outcome, "registered");
+  assertEquals(capturedSynthetic, true);
+});
+
+// Negative control: a PARTNER form_id must still route to registerPartner /
+// referral_agents, never to the new homeowner path, even though both
+// allowlists are parsed on every request.
+Deno.test("POST negative control: a partner form_id still routes to registerPartner, never registerHomeownerLead", async () => {
+  const body = leadgenBody(); // defaults to form_real_123, the partner allowlist
+  const sig = await sign(body);
+  const counters: Counters = makeCounters();
+  const { outcomes } = await handlePost(body, sig, "1.2.3.4", makeDeps({}, counters));
+  assertEquals(outcomes[0].outcome, "registered");
+  assertEquals(counters.registerCalls, 1);
+  assertEquals(counters.homeownerRegisterCalls, 0);
+  assertEquals(counters.homeownerDuplicateCalls, 0);
+});
+
+// Negative control: a form_id in NEITHER allowlist is still rejected/logged,
+// never written to either table.
+Deno.test("POST negative control: an unknown form_id (in neither allowlist) is skipped, never written to leads or referral_agents", async () => {
+  const body = leadgenBody({ formId: "totally_unknown_form_id" });
+  const sig = await sign(body);
+  const counters: Counters = makeCounters();
+  const { response, outcomes } = await handlePost(body, sig, "1.2.3.4", makeDeps({}, counters));
+  assertEquals(response.status, 200);
+  assertEquals(outcomes[0].outcome, "skipped_not_allowlisted");
+  assertEquals(counters.registerCalls, 0);
+  assertEquals(counters.homeownerRegisterCalls, 0);
+  assertEquals(counters.fetchCalls, 0);
+});
+
+Deno.test("POST: homeowner dedupe on meta_lead_id -- already-registered (role already set) is skipped, no register call", async () => {
+  const body = leadgenBody({ formId: "form_ho2_789", leadgenId: "leadgen_ho2_dup" });
+  const sig = await sign(body);
+  const counters: Counters = makeCounters();
+  const deps = makeDeps({
+    isDuplicateHomeownerLead: async () => {
+      counters.homeownerDuplicateCalls++;
+      return { existingId: "lead-existing-id", roleSet: true, errored: false };
+    },
+  }, counters);
+  const { outcomes } = await handlePost(body, sig, "1.2.3.4", deps);
+  assertEquals(outcomes[0].outcome, "skipped_already_registered");
+  assertEquals(counters.homeownerRegisterCalls, 0);
+  assertEquals(counters.fetchCalls, 0);
+});
+
+Deno.test("POST: homeowner recovery -- existing row with role NOT yet set retries setHomeownerLeadRole instead of skipping", async () => {
+  const body = leadgenBody({ formId: "form_ho2_789", leadgenId: "leadgen_ho2_recover" });
+  const sig = await sign(body);
+  const counters: Counters = makeCounters();
+  const deps = makeDeps({
+    isDuplicateHomeownerLead: async () => {
+      counters.homeownerDuplicateCalls++;
+      return { existingId: "lead-existing-id", roleSet: false, errored: false };
+    },
+  }, counters);
+  const { response, outcomes } = await handlePost(body, sig, "1.2.3.4", deps);
+  assertEquals(response.status, 200);
+  assertEquals(outcomes[0].outcome, "registered");
+  assertEquals(counters.homeownerRoleRecoveryCalls, 1);
+  assertEquals(counters.homeownerRegisterCalls, 0); // no re-insert
+  assertEquals(counters.fetchCalls, 0); // no re-fetch from Graph either
+});
+
+Deno.test("POST: homeowner dedupe-read DB error returns 503, distinct from a real duplicate", async () => {
+  const body = leadgenBody({ formId: "form_ho2_789" });
+  const sig = await sign(body);
+  const counters: Counters = makeCounters();
+  const deps = makeDeps({
+    isDuplicateHomeownerLead: async () => {
+      counters.homeownerDuplicateCalls++;
+      return { existingId: null, roleSet: false, errored: true };
+    },
+  }, counters);
+  const { response, outcomes } = await handlePost(body, sig, "1.2.3.4", deps);
+  assertEquals(response.status, 503);
+  assertEquals(outcomes[0].outcome, "error_dedupe_check_failed");
+  assertEquals(counters.homeownerRegisterCalls, 0);
+});
+
+Deno.test("POST: homeowner lead with phone but no email is NOT dropped (plan §2: name + email OR phone)", async () => {
+  const body = leadgenBody({ formId: "form_ho2_789", leadgenId: "leadgen_ho2_phoneonly" });
+  const sig = await sign(body);
+  const counters: Counters = makeCounters();
+  const deps = makeDeps({
+    fetchLead: async () => {
+      counters.fetchCalls++;
+      return {
+        data: {
+          field_data: [
+            { name: "full_name", values: ["Pat Homeowner"] },
+            { name: "phone_number", values: ["+13175559999"] },
+          ],
+        },
+        error: null,
+      };
+    },
+  }, counters);
+  const { outcomes } = await handlePost(body, sig, "1.2.3.4", deps);
+  assertEquals(outcomes[0].outcome, "registered");
+});
+
+Deno.test("POST: homeowner lead with no name is dropped (incomplete_fields), no register call", async () => {
+  const body = leadgenBody({ formId: "form_ho2_789", leadgenId: "leadgen_ho2_noname" });
+  const sig = await sign(body);
+  const counters: Counters = makeCounters();
+  const deps = makeDeps({
+    fetchLead: async () => {
+      counters.fetchCalls++;
+      return { data: { field_data: [{ name: "email", values: ["noname@example.com"] }] }, error: null };
+    },
+  }, counters);
+  const { outcomes } = await handlePost(body, sig, "1.2.3.4", deps);
+  assertEquals(outcomes[0].outcome, "skipped_incomplete_fields");
+  assertEquals(counters.homeownerRegisterCalls, 0);
+});
+
+Deno.test("POST: a homeowner registerHomeownerLead unique-violation race is reported as a skip, not an error", async () => {
+  const body = leadgenBody({ formId: "form_ho2_789" });
+  const sig = await sign(body);
+  const counters: Counters = makeCounters();
+  const deps = makeDeps({
+    registerHomeownerLead: async () => {
+      counters.homeownerRegisterCalls++;
+      return { data: null, error: { message: "duplicate_meta_lead" } };
+    },
+  }, counters);
+  const { response, outcomes } = await handlePost(body, sig, "1.2.3.4", deps);
+  assertEquals(response.status, 200);
+  assertEquals(outcomes[0].outcome, "skipped_already_registered");
+});
+
+Deno.test("POST: a homeowner registerHomeownerLead transient error (e.g. set_lead_role failed) returns 503, not 200", async () => {
+  const body = leadgenBody({ formId: "form_ho2_789" });
+  const sig = await sign(body);
+  const counters: Counters = makeCounters();
+  const deps = makeDeps({
+    registerHomeownerLead: async () => {
+      counters.homeownerRegisterCalls++;
+      return { data: { id: "lead-fixture-id" }, error: { message: "set_lead_role_no_row_updated" } };
+    },
+  }, counters);
+  const { response, outcomes } = await handlePost(body, sig, "1.2.3.4", deps);
+  assertEquals(response.status, 503);
+  assertEquals(outcomes[0].outcome, "error_register_failed");
+});
+
+Deno.test("POST: unset page access token skips homeowner lead with 200, no fetch attempted", async () => {
+  const body = leadgenBody({ formId: "form_ho2_789" });
+  const sig = await sign(body);
+  const counters: Counters = makeCounters();
+  const { response, outcomes } = await handlePost(body, sig, "1.2.3.4", makeDeps({ pageAccessToken: undefined }, counters));
+  assertEquals(response.status, 200);
+  assertEquals(outcomes[0].outcome, "skipped_page_token_unset");
+  assertEquals(counters.fetchCalls, 0);
+  assertEquals(counters.homeownerRegisterCalls, 0);
 });
 
 // ── interpretRateLimitResult — index.ts's check_rate_limit() RPC result ──
