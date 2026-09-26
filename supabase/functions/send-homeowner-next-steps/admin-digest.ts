@@ -26,12 +26,23 @@ export interface StalledCandidate {
   userId: string;
   email: string;
   createdAtIso: string;
+  /** gh-2219 (PR #2219 REVIEW: FAIL M2) — true for gh-1570 Part 2's
+   * `checklist_complete_not_submitted` stage. A candidate flagged this way
+   * did NOT reach the digest via ./select-stage.ts's real-activity-screened
+   * '48h' stalled condition (no measurements, no Hover order, no activity
+   * since signup) — it has uploads on file and can be as little as 2 hours
+   * past checklist completion, so the digest's "stalled 48+ hours, no
+   * activity" sentence is false for it and it gets its own line instead. See
+   * buildAdminDigestEmail below. Optional / defaults to falsy so every
+   * existing '48h' caller and every existing test is unaffected. */
+  isChecklistCompleteStage?: boolean;
 }
 
 export interface DigestRow {
   claimId: string;
   maskedEmail: string;
   daysStalled: number;
+  isChecklistCompleteStage: boolean;
 }
 
 /** Same masking convention as notify-admin-new-homeowner / notify-admin-new-contractor. */
@@ -69,7 +80,18 @@ export function daysStalled(createdAtIso: string, nowMs: number): number {
   return Math.max(0, Math.floor((nowMs - createdMs) / (24 * 60 * 60 * 1000)));
 }
 
-/** Builds the one digest email's content. Pure — no I/O, no Mailgun, no DB. */
+/** Builds the one digest email's content. Pure — no I/O, no Mailgun, no DB.
+ *
+ * gh-2219 (PR #2219 REVIEW: FAIL M2) — `isDigestCandidate` in
+ * ./admin-digest-executor.ts now also lets gh-1570 Part 2's
+ * `checklist_complete_not_submitted` rows into the digest, but this file's
+ * one summary sentence described every row as "stalled at documents_needed
+ * for 48+ hours, with no measurements, no Hover order, and no activity" —
+ * false for a checklist-complete row, which has uploads on file, has
+ * activity, and can be as little as 2 hours old. Those rows now get their
+ * own line, built and rendered separately from the '48h' rows so the
+ * original sentence stays byte-identical for '48h' rows (see
+ * admin-digest.test.ts's "existing 48h-only output is unchanged" test). */
 export function buildAdminDigestEmail(
   candidates: StalledCandidate[],
   dashboardUrl: string,
@@ -79,36 +101,75 @@ export function buildAdminDigestEmail(
     claimId: c.claimId,
     maskedEmail: maskEmail(c.email),
     daysStalled: daysStalled(c.createdAtIso, nowMs),
+    isChecklistCompleteStage: Boolean(c.isChecklistCompleteStage),
   }));
   const plural = rows.length === 1 ? "" : "s";
   const subject = `[OtterQuote] ${rows.length} homeowner${plural} stalled at documents_needed`;
-  const verb = rows.length === 1 ? "is" : "are";
-  const textLines = rows.map((r) => `- ${r.maskedEmail} | claim ${r.claimId} | stalled ${r.daysStalled}d`);
+
+  const stalledRows = rows.filter((r) => !r.isChecklistCompleteStage);
+  const checklistRows = rows.filter((r) => r.isChecklistCompleteStage);
+
+  const stalledPlural = stalledRows.length === 1 ? "" : "s";
+  const stalledVerb = stalledRows.length === 1 ? "is" : "are";
+  // Unchanged from before this PR — same wording, same pluralization rule.
+  const stalledSentence =
+    `${stalledRows.length} homeowner${stalledPlural} ${stalledVerb} stuck at documents_needed for 48+ hours, with no measurements, no Hover order, and no activity recorded on their account since the claim was created.`;
+
+  const checklistPlural = checklistRows.length === 1 ? "" : "s";
+  const checklistVerb = checklistRows.length === 1 ? "has" : "have";
+  const checklistSentence =
+    `${checklistRows.length} homeowner${checklistPlural} ${checklistVerb} completed the checklist, not yet submitted for bids.`;
+
+  const stalledLine = (r: DigestRow) => `- ${r.maskedEmail} | claim ${r.claimId} | stalled ${r.daysStalled}d`;
+  const checklistLine = (r: DigestRow) => `- ${r.maskedEmail} | claim ${r.claimId} | checklist complete ${r.daysStalled}d ago`;
+
+  // When there are no checklist-complete rows (every '48h'-only caller, and
+  // every existing test), this array is EXACTLY the original
+  // [sentence, "", ...textLines] — nothing added, nothing reordered.
+  const textSections: string[] = [stalledSentence, "", ...stalledRows.map(stalledLine)];
+  if (checklistRows.length > 0) {
+    textSections.push("", checklistSentence, "", ...checklistRows.map(checklistLine));
+  }
   const textBody = [
-    `${rows.length} homeowner${plural} ${verb} stuck at documents_needed for 48+ hours, with no measurements, no Hover order, and no activity recorded on their account since the claim was created.`,
-    "",
-    ...textLines,
+    ...textSections,
     "",
     "Open the admin dashboard:",
     dashboardUrl,
   ].join("\n");
-  const rowsHtml = rows
-    .map(
-      (r) =>
-        `<tr><td style="padding:4px 8px;color:#64748B;">${escapeHtml(r.maskedEmail)}</td><td style="padding:4px 8px;">${escapeHtml(r.claimId)}</td><td style="padding:4px 8px;">${r.daysStalled}d</td></tr>`,
-    )
-    .join("");
+
+  const rowsHtml = (list: DigestRow[]) =>
+    list
+      .map(
+        (r) =>
+          `<tr><td style="padding:4px 8px;color:#64748B;">${escapeHtml(r.maskedEmail)}</td><td style="padding:4px 8px;">${escapeHtml(r.claimId)}</td><td style="padding:4px 8px;">${r.daysStalled}d</td></tr>`,
+      )
+      .join("");
+
+  // Same reasoning as textSections above: with zero checklist-complete rows
+  // this is exactly the original single paragraph + single table markup.
+  const htmlSections: string[] = [
+    `<p style="margin:0 0 16px;">${stalledSentence}</p>
+<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:13px;margin-bottom:20px;border:1px solid #E2E8F0;">
+<tr style="background:#F8FAFC;"><th align="left" style="padding:6px 8px;">Homeowner</th><th align="left" style="padding:6px 8px;">Claim</th><th align="left" style="padding:6px 8px;">Stalled</th></tr>
+${rowsHtml(stalledRows)}
+</table>`,
+  ];
+  if (checklistRows.length > 0) {
+    htmlSections.push(
+      `<p style="margin:0 0 16px;">${checklistSentence}</p>
+<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:13px;margin-bottom:20px;border:1px solid #E2E8F0;">
+<tr style="background:#F8FAFC;"><th align="left" style="padding:6px 8px;">Homeowner</th><th align="left" style="padding:6px 8px;">Claim</th><th align="left" style="padding:6px 8px;">Checklist Complete</th></tr>
+${rowsHtml(checklistRows)}
+</table>`,
+    );
+  }
   const htmlBody = `<!DOCTYPE html>
 <html><body style="margin:0;padding:0;background:#F1F5F9;font-family:sans-serif;">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#F1F5F9;"><tr><td align="center" style="padding:24px 16px;">
 <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;">
 <tr><td style="background:#0B1929;padding:20px 24px;"><h2 style="color:#F59E0B;margin:0;font-size:1.1rem;">Stalled Homeowners</h2></td></tr>
 <tr><td style="padding:24px;color:#0B1929;">
-<p style="margin:0 0 16px;">${rows.length} homeowner${plural} ${verb} stuck at documents_needed for 48+ hours, with no measurements, no Hover order, and no activity recorded on their account since the claim was created.</p>
-<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:13px;margin-bottom:20px;border:1px solid #E2E8F0;">
-<tr style="background:#F8FAFC;"><th align="left" style="padding:6px 8px;">Homeowner</th><th align="left" style="padding:6px 8px;">Claim</th><th align="left" style="padding:6px 8px;">Stalled</th></tr>
-${rowsHtml}
-</table>
+${htmlSections.join("\n")}
 <a href="${dashboardUrl}" style="display:inline-block;background:#F59E0B;color:#0B1929;font-weight:700;text-decoration:none;padding:12px 24px;border-radius:8px;">Open Admin Dashboard &rarr;</a>
 </td></tr>
 </table></td></tr></table>

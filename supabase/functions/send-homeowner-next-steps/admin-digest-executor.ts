@@ -118,6 +118,11 @@ export function selectDigestCandidates(screened: ScreenedCandidate[]): StalledCa
       userId: c.userId,
       email: c.email,
       createdAtIso: c.createdAtIso,
+      // gh-2219 (PR #2219 REVIEW: FAIL M2) — carried through so
+      // ./admin-digest.ts's buildAdminDigestEmail can give this row its own
+      // line instead of the '48h' stalled/no-activity sentence, which is
+      // false for it. See that file's StalledCandidate doc.
+      isChecklistCompleteStage: c.stage === CHECKLIST_COMPLETE_STAGE,
     }));
 }
 

@@ -43,11 +43,13 @@ const screen = (
   c: ReturnType<typeof claim>,
   rows: ReturnType<typeof completeRow>[],
   optedOut: string[] = [],
+  priorNudgeCount = 0,
 ) =>
   screenChecklistCompleteClaim(c, {
     optedOutClaimIds: new Set(optedOut),
     reduced: reduceChecklistCompleteActivity(rows),
     now: NOW,
+    priorNudgeCount,
   });
 
 // ── The delay: 2h, same as the '2h' age-ladder rung ─────────────────────────
@@ -105,6 +107,36 @@ Deno.test("uploading the checklist items (real homeowner activity) does NOT disq
   assertEquals(d.stage, CHECKLIST_COMPLETE_STAGE);
 });
 
+// ── D-320 two-nudge cap (gh-2219) ────────────────────────────────────────────
+// D-320 (Legal, Dustin-ratified 2026-09-07) caps the WHOLE next-steps nudge
+// series at two touches per claim: the '2h' and '48h' age-ladder stages from
+// ./select-stage.ts. This stage is a third, independent stage, so a claim
+// that already has 2 (or more, from a pre-unique-index race) prior
+// `next_steps_nudge_sent` records must never receive this stage's email
+// either, even though it is otherwise eligible.
+
+Deno.test("D-320: a claim with 2 prior next_steps_nudge_sent records is skipped, even though otherwise eligible — THE NEGATIVE CONTROL", () => {
+  const d = screen(claim(), [completeRow(3 * H)], [], 2);
+  assertEquals(d.stage, null);
+  assertEquals(d.skipped_reason, "d320_two_nudge_cap");
+});
+
+Deno.test("D-320: more than 2 prior nudge records (race duplicate) is still skipped", () => {
+  const d = screen(claim(), [completeRow(3 * H)], [], 3);
+  assertEquals(d.stage, null);
+  assertEquals(d.skipped_reason, "d320_two_nudge_cap");
+});
+
+Deno.test("D-320: 0 prior nudge records: selected as normal (cap does not apply)", () => {
+  const d = screen(claim(), [completeRow(3 * H)], [], 0);
+  assertEquals(d.stage, CHECKLIST_COMPLETE_STAGE);
+});
+
+Deno.test("D-320: 1 prior nudge record: still selected (cap is >= 2, not >= 1)", () => {
+  const d = screen(claim(), [completeRow(3 * H)], [], 1);
+  assertEquals(d.stage, CHECKLIST_COMPLETE_STAGE);
+});
+
 // ── Idempotence — one email, ever ───────────────────────────────────────────
 
 Deno.test("already sent once: never again, regardless of ready_for_bids or age", () => {
@@ -152,6 +184,7 @@ Deno.test("malformed checklist_complete timestamp fails closed", () => {
       alreadySent: new Set(),
     },
     now: NOW,
+    priorNudgeCount: 0,
   });
   assertEquals(d.skipped_reason, "not_checklist_complete");
 });
@@ -171,7 +204,7 @@ Deno.test("full lifecycle: silence -> checklist complete -> 2h later, nudged onc
 
     const d = screenChecklistCompleteClaim(
       claim({ ready_for_bids: readyForBids }),
-      { optedOutClaimIds: new Set(), reduced: reduceChecklistCompleteActivity(rows), now: t },
+      { optedOutClaimIds: new Set(), reduced: reduceChecklistCompleteActivity(rows), now: t, priorNudgeCount: 0 },
     );
     if (d.stage) {
       sent.push(h);
@@ -193,7 +226,7 @@ Deno.test("full lifecycle NEGATIVE CONTROL: if the ready_for_bids gate were remo
   const rows = [completeRow(3 * H)];
   const buggyDecision = screenChecklistCompleteClaim(
     claim({ ready_for_bids: true }),
-    { optedOutClaimIds: new Set(), reduced: reduceChecklistCompleteActivity(rows), now: NOW },
+    { optedOutClaimIds: new Set(), reduced: reduceChecklistCompleteActivity(rows), now: NOW, priorNudgeCount: 0 },
   );
   assertEquals(buggyDecision.stage, null, "a submitted claim must never be nudged");
 });

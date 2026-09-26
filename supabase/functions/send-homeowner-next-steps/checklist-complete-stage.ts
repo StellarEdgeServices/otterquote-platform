@@ -109,6 +109,7 @@ export interface ChecklistCompleteClaim {
 export type ChecklistCompleteSkipReason =
   | "ineligible_status"
   | "already_submitted"
+  | "d320_two_nudge_cap"
   | "not_checklist_complete"
   | "too_recent"
   | "opted_out"
@@ -134,6 +135,18 @@ export function screenChecklistCompleteClaim(
     optedOutClaimIds: ReadonlySet<string>;
     reduced: ReducedChecklistComplete;
     now: number;
+    /** D-320 (Legal, Dustin-ratified 2026-09-07) point (1) caps the WHOLE
+     * next-steps nudge series at two touches per claim: the '2h' and '48h'
+     * age-ladder stages from ./select-stage.ts. This stage is a third,
+     * independent stage in that same series, so it must never fire for a
+     * claim that already has 2 (or more, from a pre-unique-index race — see
+     * ./select-stage.ts:169's "earliest wins" comment) prior
+     * `next_steps_nudge_sent` records, however otherwise eligible it is. The
+     * count of distinct stages ('2h'/'48h') already sent for this claim —
+     * the caller derives it from the same `next_steps_nudge_sent` reduction
+     * ./select-stage.ts's reduceActivityRows already produces for the main
+     * scan (gh-2219 / PR #2219 REVIEW: FAIL M1). */
+    priorNudgeCount: number;
   },
 ): ChecklistCompleteDecision {
   if (claim.status !== NUDGE_ELIGIBLE_STATUS) {
@@ -141,6 +154,9 @@ export function screenChecklistCompleteClaim(
   }
   if (claim.ready_for_bids === true) {
     return { stage: null, skipped_reason: "already_submitted" };
+  }
+  if (ctx.priorNudgeCount >= 2) {
+    return { stage: null, skipped_reason: "d320_two_nudge_cap" };
   }
   if (ctx.optedOutClaimIds.has(claim.id)) {
     return { stage: null, skipped_reason: "opted_out" };

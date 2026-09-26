@@ -724,6 +724,7 @@ serve(async (req: Request) => {
       .select("id, user_id, status, ready_for_bids, created_at")
       .eq("is_test", scanIsTest)
       .eq("status", NUDGE_ELIGIBLE_STATUS)
+      .order("created_at", { ascending: true })
       .limit(BATCH_LIMIT);
 
     if (ccClaimsErr) {
@@ -735,11 +736,21 @@ serve(async (req: Request) => {
       const ccUserIds = [...new Set(ccClaimRows.map((c) => c.user_id))];
       const ccClaimIds = ccClaimRows.map((c) => c.id);
 
+      // D-320 two-nudge cap (gh-2219 / PR #2219 REVIEW: FAIL M1): this stage
+      // is a third, independent touch alongside the '2h'/'48h' age ladder, so
+      // the SAME `next_steps_nudge_sent` event type the main scan stamps
+      // (NUDGE_EVENT_TYPE, index.ts:230) is read here too, purely to count —
+      // never to re-derive — how many of the two capped stages a claim has
+      // already received.
       const { data: ccActivity, error: ccActivityErr } = await supabase
         .from("activity_log")
         .select("event_type, metadata, created_at")
         .in("user_id", ccUserIds)
-        .in("event_type", [CHECKLIST_COMPLETE_EVENT_TYPE, CHECKLIST_COMPLETE_NUDGE_EVENT_TYPE]);
+        .in("event_type", [
+          CHECKLIST_COMPLETE_EVENT_TYPE,
+          CHECKLIST_COMPLETE_NUDGE_EVENT_TYPE,
+          NUDGE_EVENT_TYPE,
+        ]);
 
       // gh-1786 / D-320: same dedicated, bounded opt-out read the main scan
       // uses below — not reduced from a generic activity_log read (see
@@ -757,10 +768,38 @@ serve(async (req: Request) => {
       } else {
         const ccReduced = reduceChecklistCompleteActivity((ccActivity || []) as ChecklistCompleteRow[]);
 
+        // D-320 two-nudge cap: claim_id -> distinct '2h'/'48h' stages already
+        // stamped by the main scan's own `next_steps_nudge_sent` rows (same
+        // convention as ./select-stage.ts's reduceActivityRows nudgeSentByClaim
+        // — a Set rather than a raw count so a pre-unique-index duplicate
+        // stamp of the SAME stage, see select-stage.ts:169, is not
+        // double-counted).
+        const ccPriorNudgeStagesByClaim = new Map<string, Set<string>>();
+        for (const row of (ccActivity || []) as {
+          event_type: string;
+          metadata?: { claim_id?: string; nudge_stage?: string } | null;
+        }[]) {
+          if (row.event_type !== NUDGE_EVENT_TYPE) continue;
+          const claimId = row.metadata?.claim_id;
+          const stage = row.metadata?.nudge_stage;
+          if (!claimId || (stage !== "2h" && stage !== "48h")) continue;
+          let stages = ccPriorNudgeStagesByClaim.get(claimId);
+          if (!stages) {
+            stages = new Set<string>();
+            ccPriorNudgeStagesByClaim.set(claimId, stages);
+          }
+          stages.add(stage);
+        }
+
         for (const c of ccClaimRows) {
           const decision = screenChecklistCompleteClaim(
             { id: c.id, status: c.status, ready_for_bids: c.ready_for_bids },
-            { optedOutClaimIds: ccOptedOut, reduced: ccReduced, now },
+            {
+              optedOutClaimIds: ccOptedOut,
+              reduced: ccReduced,
+              now,
+              priorNudgeCount: ccPriorNudgeStagesByClaim.get(c.id)?.size ?? 0,
+            },
           );
           if (!decision.stage) {
             checklistCompleteResults.push({ claim_id: c.id, sent: false, skipped_reason: decision.skipped_reason });
