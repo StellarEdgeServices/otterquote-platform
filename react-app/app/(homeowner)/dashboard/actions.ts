@@ -99,16 +99,18 @@ export async function uploadClaimDocument(params: {
     .eq('id', claimId);
   if (updErr) return { ok: false, error: updErr.message };
 
-  // Parsing is non-blocking — a parse failure must not fail the upload (#336).
-  // Estimates only (F-005): parse-loss-sheet writes RCV/ACV back to the claim.
+  // Parsing is fire-and-forget (gh-2070) — parse-loss-sheet makes a
+  // synchronous, non-streaming Claude vision call (routinely 15-60s, bounded
+  // only by the ~150s Edge Function wall clock), so `await`ing it here could
+  // stall the upload indefinitely on a slow or hung call. A parse failure (or
+  // a call that never settles) must never fail or delay the upload (#336).
+  // Mirrors the trade-selector attach fix in PR #2080.
   if (kind === 'estimate') {
-    try {
-      await supabase.functions.invoke('parse-loss-sheet', {
-        body: { claim_id: claimId, storage_path: storagePath },
-      });
-    } catch (err) {
+    void supabase.functions.invoke('parse-loss-sheet', {
+      body: { claim_id: claimId, storage_path: storagePath },
+    }).catch((err) => {
       console.warn('[dashboard] parse-loss-sheet failed (non-fatal):', err);
-    }
+    });
   }
   return { ok: true, storagePath };
 }
@@ -148,71 +150,4 @@ export async function openWarrantyDoc(warrantyUrl: string): Promise<ActionResult
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
-}
-
-/** D-231 — persist the home profile (upsert keyed on homeowner_user_id). */
-export async function saveHomeProfile(payload: {
-  homeowner_user_id: string;
-  year_built: number;
-  square_footage: number;
-  stories: string;
-  future_projects: string[];
-  roof_last_replaced?: number | null;
-  siding_material?: string | null;
-  hvac_age_years?: number | null;
-}): Promise<ActionResult> {
-  const { error } = await supabase
-    .from('home_profiles')
-    .upsert(payload, { onConflict: 'homeowner_user_id' });
-  return error ? { ok: false, error: error.message } : { ok: true };
-}
-
-/** Send a homeowner message on a claim thread, then fire the notification EF. */
-export async function sendClaimMessage(params: {
-  claimId: string;
-  senderId: string;
-  body: string;
-}): Promise<{ ok: boolean; error?: string }> {
-  const { claimId, senderId, body } = params;
-  const { data, error } = await supabase
-    .from('messages')
-    .insert({ claim_id: claimId, sender_id: senderId, sender_role: 'homeowner', body })
-    .select('id')
-    .single();
-  if (error) return { ok: false, error: error.message };
-
-  // Notification is non-fatal — the message is already persisted.
-  try {
-    await supabase.functions.invoke('send-message-notification', {
-      body: { message_id: data.id },
-    });
-  } catch (err) {
-    console.warn('[dashboard] send-message-notification failed (non-fatal):', err);
-  }
-  return { ok: true };
-}
-
-/** D-178 state gate — record an expansion-waitlist opt-in and waitlist the claim. */
-export async function joinExpansionWaitlist(params: {
-  userId: string;
-  claimId: string;
-  state: string;
-  optedIn: boolean;
-  optedInAt: string;
-}): Promise<ActionResult> {
-  const { userId, claimId, state, optedIn, optedInAt } = params;
-  const { error } = await supabase.from('expansion_waitlist').upsert(
-    {
-      user_id: userId,
-      claim_id: claimId,
-      state,
-      opted_in: optedIn,
-      opted_in_at: optedIn ? optedInAt : null,
-    },
-    { onConflict: 'user_id,state' },
-  );
-  if (error) return { ok: false, error: error.message };
-
-  await supabase.from('claims').update({ status: 'waitlisted' }).eq('id', claimId);
-  return { ok: true };
 }
