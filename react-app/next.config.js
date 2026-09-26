@@ -22,6 +22,10 @@ const securityHeaders = [
       "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "img-src 'self' data: blob: https:",
+      // gh-1964 review fix (should-fix): the contractor-profile page
+      // now plays the intro video from a same-origin blob: URL (fetched
+      // bytes, never the raw signed URL) -- media-src must allow blob:.
+      "media-src 'self' blob:",
       "font-src 'self' data: https://fonts.gstatic.com",
       "connect-src 'self' https://*.supabase.co https://*.sentry.io https://*.ingest.sentry.io https://*.ingest.us.sentry.io https://api.stripe.com https://accounts.google.com",
       "frame-src https://js.stripe.com https://accounts.google.com",
