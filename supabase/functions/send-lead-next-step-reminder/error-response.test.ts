@@ -1,23 +1,51 @@
 // gh-2213 (js/stack-trace-exposure, CodeQL alert #57) — working test,
 // written first (#2121 rule 2 / this repo's fail-first convention; see
 // mint-test-session/gate.test.ts's own unexpectedErrorResponse tests for
-// the pattern this copies). Before the fix, index.ts's catch block built
-// its 500 response from `JSON.stringify({ error: String(err) })` directly
-// — no such body-shape guarantee existed. Run against that old inline
-// construction (`{ status: 500, body: { error: String(err) } }` in place
-// of calling unexpectedErrorResponse), the assertions below fail because
-// the caught error's message leaks straight into the response body — see
-// the PR/issue evidence for the captured red run. Not kept as a permanent
-// negative-control test here since an always-failing test would poison
-// every future CI run of this suite; the fail-first proof lives in the
-// pasted command output instead (this repo's R-147 evidence convention).
+// the pattern this copies). Two sinks existed in index.ts before this fix:
+// the outer catch (`JSON.stringify({ error: String(err) })`) and the
+// candidate-query failure branch (`JSON.stringify({ error: candErr.message
+// })`, TRIAGE follow-up, Marty CTO RUN 41, #2213 comment 5848074328). Both
+// negative controls below are `ignore: true` so they document (and, run
+// manually with `ignore` deleted/flipped, PROVE) the old vulnerable shapes
+// fail these assertions, without leaving an always-red test in the default
+// `deno test` sweep — see PR #2215 for the captured red run pasted as
+// evidence per this repo's R-147 convention.
 import {
   assertEquals,
   assertStringIncludes,
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
-import { unexpectedErrorResponse } from "./error-response.ts";
+import { internalErrorResponse, unexpectedErrorResponse } from "./error-response.ts";
 
 const FUNCTION_NAME = "send-lead-next-step-reminder";
+
+Deno.test({
+  name: "NEGATIVE CONTROL (ignored): pre-fix outer-catch shape leaks the message",
+  ignore: true,
+  fn() {
+    const secretDetail = new Error("Supabase credentials not configured at /internal/path.ts:42");
+    // The exact old (pre-fix) construction from index.ts's outer catch.
+    const oldResult = { status: 500, body: { error: String(secretDetail) } };
+    assertEquals(
+      JSON.stringify(oldResult.body).includes("Supabase credentials not configured"),
+      false,
+    );
+  },
+});
+
+Deno.test({
+  name: "NEGATIVE CONTROL (ignored): pre-fix candErr shape leaks the message",
+  ignore: true,
+  fn() {
+    const candErr = { message: "relation \"leads\" does not exist on schema internal_v3" };
+    // The exact old (pre-fix) construction from index.ts's candidate-query
+    // failure branch.
+    const oldResult = { status: 500, body: { error: candErr.message } };
+    assertEquals(
+      JSON.stringify(oldResult.body).includes("internal_v3"),
+      false,
+    );
+  },
+});
 
 Deno.test("unexpectedErrorResponse: generic body, real detail still logged (Error input)", () => {
   const loggedCalls: unknown[][] = [];
@@ -63,4 +91,20 @@ Deno.test("unexpectedErrorResponse: non-Error throw still yields the generic bod
   } finally {
     console.error = originalConsoleError;
   }
+});
+
+// gh-2213 follow-up (Marty, CTO RUN 41, #2213 comment 5848074328): the
+// candidate-query failure branch in index.ts calls internalErrorResponse()
+// after its OWN console.error(...candErr.message) line, rather than
+// unexpectedErrorResponse — so this helper takes no `err` argument and
+// must never be able to carry a Postgrest error's message into the body,
+// no matter what that message says.
+Deno.test("internalErrorResponse: fixed generic body regardless of caller-side detail", () => {
+  const candErrLike = { message: "relation \"leads\" does not exist on schema internal_v3" };
+  const result = internalErrorResponse();
+
+  assertEquals(result.status, 500);
+  assertEquals(result.body, { error: "Internal server error" });
+  assertEquals(JSON.stringify(result.body).includes(candErrLike.message), false);
+  assertEquals(JSON.stringify(result.body).includes("internal_v3"), false);
 });

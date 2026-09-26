@@ -81,7 +81,7 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { isCronAuthorized } from "./cron-auth.ts";
 import { buildLeadReminderEmail } from "./email-content.ts";
-import { unexpectedErrorResponse } from "./error-response.ts";
+import { internalErrorResponse, unexpectedErrorResponse } from "./error-response.ts";
 import {
   LEAD_OPTOUT_SECRET_ENV,
   LEAD_OPTOUT_SECRET_PREVIOUS_ENV,
@@ -280,9 +280,14 @@ serve(async (req: Request) => {
       .limit(BATCH_LIMIT);
 
     if (candErr) {
+      // gh-2213 follow-up (Marty, CTO RUN 41, #2213 comment 5848074328):
+      // this branch used to put candErr.message straight into the response
+      // body — same js/stack-trace-exposure sink as the outer catch below,
+      // one query earlier. Detail stays in this console.error line only.
       console.error(`[${FUNCTION_NAME}] candidate query failed: ${candErr.message}`);
-      return new Response(JSON.stringify({ error: candErr.message }), {
-        status: 500,
+      const { status, body } = internalErrorResponse();
+      return new Response(JSON.stringify(body), {
+        status,
         headers: { "Content-Type": "application/json" },
       });
     }

@@ -12,15 +12,33 @@
 // throws) still reaches console.error, matching this repo's established
 // "Internal server error" client-facing pattern (fix(gh-1381) Batch A,
 // send-incomplete-onboarding-reminders/index.ts and 12 other EFs).
+//
+// TRIAGE follow-up (Marty, CTO RUN 41, issue #2213 comment 5848074328):
+// the candidate-query failure branch had the SAME sink one path over —
+// `JSON.stringify({ error: candErr.message })` — which this file's own
+// existing `console.error(...candErr.message)` call already logs, so that
+// call site keeps its own logging and only needs the generic body below
+// (`internalErrorResponse`), not a second console.error via
+// `unexpectedErrorResponse`.
 export interface UnexpectedErrorResult {
   status: number;
   body: { error: string };
 }
+
+const INTERNAL_SERVER_ERROR_BODY = { error: "Internal server error" } as const;
 
 export function unexpectedErrorResponse(
   functionName: string,
   err: unknown,
 ): UnexpectedErrorResult {
   console.error(`[${functionName}] unexpected failure: ${String(err)}`);
-  return { status: 500, body: { error: "Internal server error" } };
+  return { status: 500, body: INTERNAL_SERVER_ERROR_BODY };
+}
+
+// For sinks that already log their own detail (e.g. a Postgrest error's
+// `.message`) immediately before returning — same generic body and status,
+// no second console.error here so the caller's own, more specific log line
+// isn't duplicated or shadowed.
+export function internalErrorResponse(): UnexpectedErrorResult {
+  return { status: 500, body: INTERNAL_SERVER_ERROR_BODY };
 }
