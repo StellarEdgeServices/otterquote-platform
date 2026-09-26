@@ -4,6 +4,7 @@ import Script from "next/script";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { isInternalTraffic } from "../lib/internal-traffic";
+import { isAdSharingOptedOut } from "../lib/ad-optout";
 
 /**
  * GA4 host gate — gh-1619
@@ -187,7 +188,12 @@ export function GA4Gate() {
     // path allowlist below.
     if (isInternalTraffic()) return;
     if (typeof window !== "undefined" && ALLOWED_HOSTS.includes(window.location.hostname)) {
-      setAllowed(true);
+      // gh-1925: an opted-out visitor (GPC, or the oq_ad_optout cookie GPC and js/ga-gate.js/MetaPixelGate.tsx
+      // leave -- see lib/ad-optout.ts) never loads the GA4 library, which carries Google Ads/Signals once linked.
+      // Clarity below is a separate vendor and is NOT gated by this flag -- #1925 asks only about the
+      // "ad-tech tags" (Meta Pixel, Google Ads/Signals); whether Clarity's session-replay data also counts as a
+      // CPRA "share" is an open legal question this change does not decide.
+      if (!isAdSharingOptedOut()) setAllowed(true);
 
       // gh-1931/gh-1939: Clarity must never see a live Supabase
       // credential in the URL fragment. Ported from js/ga-gate.js's
