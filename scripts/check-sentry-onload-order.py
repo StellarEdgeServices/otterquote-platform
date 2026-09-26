@@ -58,8 +58,12 @@ NO_INIT_AT_ALL_ALLOWLIST = {
 }
 
 
-def check_file(path: pathlib.Path) -> list[str]:
-    text = path.read_text(encoding="utf-8", errors="replace")
+def check_text(text: str, filename: str = "") -> list[str]:
+    """Pure logic, no filesystem access -- exercised directly by
+    check-sentry-onload-order.test.py so the negative-control fixtures need
+    no files on disk. `filename` is only consulted for the
+    NO_INIT_AT_ALL_ALLOWLIST carve-out; pass "" (the default) to always get
+    the strict, un-allowlisted verdict."""
     lines = text.splitlines()
 
     onload_call_lines = [i + 1 for i, l in enumerate(lines) if ONLOAD_CALL_RE.search(l)]
@@ -79,7 +83,7 @@ def check_file(path: pathlib.Path) -> list[str]:
         return errors  # page doesn't load the Sentry SDK at all
 
     if not predeclare_lines:
-        if path.name in NO_INIT_AT_ALL_ALLOWLIST and not onload_call_lines:
+        if filename in NO_INIT_AT_ALL_ALLOWLIST and not onload_call_lines:
             return errors
         errors.append(
             f"loads the Sentry SDK (line {loader_lines[0]}) but never predeclares "
@@ -101,6 +105,11 @@ def check_file(path: pathlib.Path) -> list[str]:
         )
 
     return errors
+
+
+def check_file(path: pathlib.Path) -> list[str]:
+    text = path.read_text(encoding="utf-8", errors="replace")
+    return check_text(text, path.name)
 
 
 def main() -> int:
