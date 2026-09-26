@@ -14,8 +14,11 @@
 -- Applied to production (yeszghaspzwwstvsrioa) 2026-09-20 via
 --   supabase_migrations.schema_migrations version 20260920195654
 --   (this file's on-disk timestamp prefix matches that applied version).
--- Rollback:   supabase/migrations_drafts/gh2055_add_notifications_suppressed_and_is_synthetic_rollback.sql
--- Pre-flight: supabase/migrations_drafts/gh2055_add_notifications_suppressed_and_is_synthetic_pre-flight.md
+-- Rollback:   supabase/migrations_rollbacks/20260920195654_gh2055_add_notifications_suppressed_and_is_synthetic_rollback.sql
+-- Pre-flight: supabase/migrations_rollbacks/20260920195654_gh2055_add_notifications_suppressed_and_is_synthetic_pre-flight.md
+-- (gh-1438, 2026-09-26: rollback/pre-flight relocated from migrations_drafts/
+-- to migrations_rollbacks/ per supabase/migrations/README.md's own
+-- convention -- these document an applied migration, they are not drafts.)
 --
 -- Pre-migration live enumeration (2026-09-20, this run, pasted on #2055
 -- before execution per R-147): `contractors` had 114 columns, `is_test`

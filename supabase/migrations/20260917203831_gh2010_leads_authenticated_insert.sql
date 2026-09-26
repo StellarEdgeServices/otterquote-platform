@@ -11,8 +11,11 @@
 -- Applied to production (yeszghaspzwwstvsrioa) 2026-09-17 via
 --   supabase_migrations.schema_migrations version 20260917203831
 --   (this file's on-disk timestamp prefix matches that applied version).
--- Rollback:  supabase/migrations_drafts/gh2010_leads_authenticated_insert_rollback.sql
--- Pre-flight: supabase/migrations_drafts/gh2010_leads_authenticated_insert_pre-flight.md
+-- Rollback:  supabase/migrations_rollbacks/20260917203831_gh2010_leads_authenticated_insert_rollback.sql
+-- Pre-flight: supabase/migrations_rollbacks/20260917203831_gh2010_leads_authenticated_insert_pre-flight.md
+-- (gh-1438, 2026-09-26: rollback/pre-flight relocated from migrations_drafts/
+-- to migrations_rollbacks/ per supabase/migrations/README.md's own
+-- convention -- these document an applied migration, they are not drafts.)
 --
 -- Root cause (measured live against production, 2026-09-17, this run --
 -- pg_policy for public.leads before this migration):

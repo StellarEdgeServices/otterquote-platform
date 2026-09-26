@@ -2,7 +2,19 @@
 
 Drafted by run-work Code lane executor, claim `rw-f22-20260908T001648-zqab`
 (issue comment 5577431477). Governing ruling: CTO comment 5572645535 on
-#1763 (2026-09-07T15:14:04Z). **Not applied.**
+#1763 (2026-09-07T15:14:04Z).
+
+**STATUS (2026-09-26): APPLIED.** This repair ran against production
+(`yeszghaspzwwstvsrioa`) on 2026-09-08 at approximately 12:46:30Z UTC via
+Supabase MCP `execute_sql` (issue #1763 comment 5585368997 -- "THE APPLY",
+guard passed, disagreement count 7 -> 0). It is now filed, unchanged, at
+`supabase/migrations_applied_manually/20260908124630_gh1763_is_test_repair.sql`
+(gh-1438, REVIEW FAIL 5850286498 / DECIDED ruling 5850353019 on PR #2233).
+The `\i supabase/migrations_drafts/gh1763_is_test_repair.sql` apply step
+below is historical only -- that path no longer exists, the repair has
+already run, and this file (with its row-count guard) must never be run
+again; a re-run against current production finds 0 of the 7 target rows
+still `is_test = false` and raises, doing nothing.
 
 ## What it does
 
@@ -23,7 +35,10 @@ identity rows, not an additive schema change, so per D-261/R-097
 lightweight 2-hour Tier 3A window. This draft asks `@exec:cto` on the PR to
 confirm the move and post the R-097 notice — the draft itself does not
 decide its own tier, and it does not apply itself either way (D-182 Tier 3,
-Dustin's call regardless of the 3A/3B line).
+Dustin's call regardless of the 3A/3B line). **Superseded 2026-09-08:** CTO
+ruling on comment 5585368997 decided it stays Tier 3A (R-097's 24-hour
+window applies only where rollback is impossible, and this UPDATE's
+rollback is merged, count-guarded and byte-readable).
 
 ## Why it is needed
 
@@ -105,8 +120,8 @@ order by c.created_at;
 | `eb7dace0-d26b-4a2f-adc3-7762459772c1` | false | `8f2ecbf8-8f41-4b05-a559-f1ed1f4ca746` | true | PFW Test Contractor |
 | `d4def812-aebc-444c-bdee-f68bccc19b61` | false | `986ce2b6-39fd-4a2c-aba4-a806c618c8c0` | true | PFW Roofing 1787836001 |
 
-**Expected AFTER state (post-apply, Dustin's step — not run by this
-draft):** the same query returns **0 rows**.
+**AFTER state (confirmed 2026-09-08 per comment 5585368997):** the same
+query returns **0 rows**.
 
 ## R-173 re-read — claim `82f5dff4-5867-4b7a-88ca-942ce9bfe867`
 
@@ -129,9 +144,9 @@ where c.id = '82f5dff4-5867-4b7a-88ca-942ce9bfe867';
 claim_is_test=true | contractor_is_test=true | quote_is_test=true | profile_is_test=FALSE | role=contractor
 ```
 
-**Expected AFTER (post-apply):** `profile_is_test=true`, the other three
-flags unchanged — all four tables agreeing `true`, and the R-173 gate
-usable again for this claim.
+**AFTER (confirmed 2026-09-08 per comment 5585368997):** `profile_is_test=true`,
+the other three flags unchanged — all four tables agreeing `true`, and the
+R-173 gate usable again for this claim.
 
 ## The 8 danger patterns (migration-author-code Step 1)
 
@@ -166,12 +181,14 @@ Per constitution entry 30, quoted in the CTO's work order item 4: only the
 `is_test` flag is repaired on `profiles`. No row is deleted, no row is
 inserted, `contractors` is not touched.
 
-## Apply / verify / roll back
+## Apply / verify / roll back (historical -- already applied, see STATUS above)
 
 ```sql
--- apply (Dustin's approval required, D-182 Tier 3 -- expected Tier 3B per
--- the tier note above)
-\i supabase/migrations_drafts/gh1763_is_test_repair.sql
+-- APPLIED 2026-09-08 via Supabase MCP execute_sql (#1763 comment 5585368997).
+-- Now filed at supabase/migrations_applied_manually/20260908124630_gh1763_is_test_repair.sql.
+-- NEVER re-run this file or that one -- the guard is a safe no-op today
+-- (0 of 7 target rows remain is_test=false), but this step is not a
+-- live apply instruction any more.
 
 -- verify: the issue's own disagreement query, scoped to these 7 ids
 select p.id as profile_id, p.is_test as profile_is_test,
@@ -184,7 +201,7 @@ where p.id in (
   'd4def812-aebc-444c-bdee-f68bccc19b61'
 )
 order by c.created_at;
--- expect: all 7 rows profile_is_test = true, contractor_is_test = true
+-- confirmed 2026-09-08: all 7 rows profile_is_test = true, contractor_is_test = true
 
 -- roll back (only if the repair is found to be wrong on further review)
 \i supabase/migrations_rollbacks/gh1763_is_test_repair_rollback.sql

@@ -3,6 +3,16 @@
 -- "Make phone optional". The client gate is removed in start.html and
 -- js/router-discovery.js; this is the server half.
 --
+-- Applied to production (yeszghaspzwwstvsrioa) 2026-09-20 via
+--   supabase_migrations.schema_migrations version 20260920161339
+--   (this file's on-disk timestamp prefix matches that applied version --
+--   corrected 2026-09-26, gh-1438 REVIEW FAIL 5850286498: this file was
+--   previously misfiled under 20260920160133, which is not the applied
+--   version. Body diffed against schema_migrations.statements for
+--   20260920161339 this session -- identical apart from this repo's own
+--   BEGIN/COMMIT wrapper.)
+-- Rollback: supabase/migrations_rollbacks/20260920161339_gh2042_update_lead_contact_optional_phone_rollback.sql
+--
 -- update_lead_contact() is the Step 1 RESUBMIT path (back-button return to
 -- the contact screen, then Continue again). It RAISED on a NULL or empty
 -- phone, so without this migration the client change would ship a front door

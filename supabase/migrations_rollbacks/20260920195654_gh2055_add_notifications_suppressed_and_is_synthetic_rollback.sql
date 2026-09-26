@@ -1,6 +1,10 @@
 -- Rollback for supabase/migrations/20260920195654_gh2055_add_notifications_suppressed_and_is_synthetic.sql
 -- Issue #2055.
 --
+-- (Moved from supabase/migrations_drafts/ to supabase/migrations_rollbacks/
+-- by gh-1438, 2026-09-26 -- content unchanged, location corrected per
+-- supabase/migrations/README.md's own convention.)
+--
 -- Purely additive forward migration (two new nullable columns, no backfill,
 -- no other column touched), so rollback is a plain DROP COLUMN on each.
 -- No guard needed: neither column is referenced by any FK, view, RLS

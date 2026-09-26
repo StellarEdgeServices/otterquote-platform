@@ -1,25 +1,87 @@
 -- gh-1763: repair profiles.is_test on 7 rows where profiles.is_test and
 -- contractors.is_test disagree.
 --
--- DRAFT. NOT APPLIED. Lives in migrations_drafts/ per this directory's
--- contract: supabase/migrations/ holds only SQL already approved AND applied
--- in production, because the Supabase CLI replays that directory forward
--- onto every fresh branch. Promote this file (renamed to a 14-digit UTC
--- timestamp prefix, moved into supabase/migrations/) only after Dustin
--- approves the apply and it is actually run.
+-- >>> APPLIED MANUALLY (not a draft, not a db-push replay file) <<<
+-- DECIDED (Tier A) by Marty, CTO RUN 42, PR #2233 comment 5850353019,
+-- 2026-09-26T22:12:20Z, quoted verbatim (line-wrapped into comment lines
+-- only):
+-- the gh1763 data-repair was APPLIED on 2026-09-08 (CTO comment
+-- 5585368997 on #1763: run verbatim via execute_sql, guard passed,
+-- disagreement count 7 → 0). Move it UNCHANGED, guard included, to
+-- `supabase/migrations_applied_manually/20260908124630_gh1763_is_test_repair.sql`
+-- with a header: "Applied manually 2026-09-08 via execute_sql (see
+-- #1763 comment 5585368997). NEVER replay. No schema_migrations row
+-- by design." Keep the guard — on an accidental re-run it matches 0
+-- rows and raises, which is the safe failure. Rejected alternatives:
+-- (a) add a schema_migrations row (a production ledger write that
+-- would demand a replay file whose guard raises on every fresh
+-- branch); (b) strip the guard (removes the only protection against
+-- a re-run).
+-- (end of quote)
+-- This file's location, filename and guard already matched that ruling
+-- before it was posted (this branch moved it here per the independent
+-- reviewer's recommendation, comment 5850286498); this header cites the
+-- ruling per the coordinator's follow-up instruction so the file's own
+-- text, not only the PR/issue comments, carries the DECIDED citation.
 --
--- APPLYING is D-182 Tier 3 and is Dustin's call, full stop -- this file does
--- not run itself and nothing in this repo auto-applies it.
+-- This file ran, byte-identical below (guard included) to
+-- supabase/migrations_drafts/gh1763_is_test_repair.sql as it stood on
+-- 2026-09-08 (last changed 2026-09-08T01:09:38Z, before the apply), against
+-- production (yeszghaspzwwstvsrioa) on 2026-09-08 at approximately
+-- 12:46:30Z UTC, executed by Marty (CTO) via Supabase MCP execute_sql --
+-- NOT via `supabase db push` and NOT recorded in
+-- supabase_migrations.schema_migrations (that table has no row for this
+-- repair; execute_sql does not write to it). Full evidence, before/after
+-- state and negative controls: issue #1763, comment 5585368997 ("## DONE
+-- (evidence) -- the repair is APPLIED to production. Disagreement query
+-- returns 0 rows."), section 5 ("THE APPLY"): guard passed (found exactly
+-- 7 matching rows, did not raise), UPDATE ran, disagreement count went
+-- 7 -> 0.
 --
--- TIER NOTE: issue #1763 carries label tier:3a, but per the CTO's own flag
--- on comment 5572645535 ("the migration writes production rows and is
--- tiered by what its pipeline executes, not by its diff... Expect the tier
--- to move and say so in the PR"), this is a data UPDATE against 7 existing
--- production identity rows -- not an additive schema change -- so per
--- D-261/R-097 (migration-author-code Step 8) it is expected to move to Tier
--- 3B (24-hour risk brief) rather than ship under the lightweight Tier 3A
--- 2-hour window. The PR opened from this branch asks @exec:cto to confirm
--- the move and post the R-097 notice; this file does not decide its own tier.
+-- THIS FILE MUST NEVER BE:
+--   - moved into supabase/migrations/ (the CLI replays that directory
+--     forward onto every fresh branch; the guard below finds 0 of 7
+--     matching rows on an empty database and RAISEs, blocking every
+--     migration after it in the chain);
+--   - given a supabase_migrations.schema_migrations row (that would tell
+--     the replay chain a file is expected here, recreating the same
+--     hazard from the other direction);
+--   - stripped of its row-count guard (the guard is what makes an
+--     accidental future re-run of this file a safe no-op instead of a
+--     silent second UPDATE -- on current production it finds 0 of 7 rows
+--     with is_test=false and raises, doing nothing).
+--
+-- Relocated here 2026-09-26 from supabase/migrations_drafts/ (gh-1438,
+-- REVIEW FAIL 5850286498; confirmed by DECIDED ruling 5850353019) --
+-- that directory's own definition (supabase/migrations/README.md) is
+-- "SQL that was written but is NOT applied in production", which this
+-- file has not been true of since 2026-09-08. Everything from "THE RULE
+-- AND THE EXCEPTION" below through the closing `commit;` is
+-- byte-identical to the base draft (verified this session against
+-- supabase/migrations_drafts/gh1763_is_test_repair.sql @ 442b5371698e);
+-- only this header above it, and the file's location, changed. Rollback
+-- and pre-flight docs, unmoved:
+-- supabase/migrations_rollbacks/gh1763_is_test_repair_rollback.sql and
+-- supabase/migrations_rollbacks/gh1763_is_test_repair_pre-flight.md.
+--
+-- Current unscoped state (re-checked 2026-09-26, read-only, this session):
+--   select p.id, p.is_test, c.id, c.is_test, c.company_name, c.created_at
+--   from public.profiles p join public.contractors c on c.user_id = p.id
+--   where p.role = 'contractor' and p.is_test is distinct from c.is_test;
+--   -> 1 row: profile c82f9d42-ceeb-4472-a01d-baa3a2f97c30 (is_test=true) /
+--      contractor f70fe577-549d-47cc-88d0-dac90fc010b9 (is_test=false),
+--      "Ceo48 GH2000 Test Co", created 2026-09-16 -- the REVERSE direction
+--      from this file's 7 rows, a different contractor entirely, created
+--      after this repair ran. Issue #1763 is closed not_planned (comment
+--      5763651883); this row is not this file's concern and this file
+--      does not touch it.
+--
+-- TIER NOTE (superseded -- kept for history): issue #1763 carried label
+-- tier:3a; a Kevin (Code lane) dispatch on this thread had recommended
+-- moving it to Tier 3B. Marty (CTO) ruling, comment 5585368997
+-- (2026-09-08T12:46:30Z): stays Tier 3A -- R-097's 24-hour window applies
+-- only where rollback is impossible, and this UPDATE's rollback is
+-- "merged, count-guarded and byte-readable" (the sibling rollback file).
 --
 -- THE RULE AND THE EXCEPTION (both required in this header per the CTO's
 -- own instruction on comment 5572645535 -- "or the next reader will 'fix'

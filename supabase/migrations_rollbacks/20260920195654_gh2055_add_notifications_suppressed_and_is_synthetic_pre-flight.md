@@ -1,5 +1,11 @@
 # Pre-Flight: gh2055_add_notifications_suppressed_and_is_synthetic
 
+(Moved from `supabase/migrations_drafts/` to `supabase/migrations_rollbacks/`
+by gh-1438, 2026-09-26 -- content unchanged, location corrected per
+`supabase/migrations/README.md`'s own convention: this documents an already-
+applied migration, so it belongs beside its rollback, not in the drafts
+directory.)
+
 **Migration**: 20260920195654_gh2055_add_notifications_suppressed_and_is_synthetic.sql
 **Date**: 2026-09-20
 **Author**: Code lane sub-agent (automated), run-work orchestration (`rw-f22-20260920T195229-m3xq`)

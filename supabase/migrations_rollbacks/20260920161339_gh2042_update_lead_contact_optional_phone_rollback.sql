@@ -1,4 +1,8 @@
--- ROLLBACK for 20260920160133_gh2042_update_lead_contact_optional_phone.sql
+-- ROLLBACK for supabase/migrations/20260920161339_gh2042_update_lead_contact_optional_phone.sql
+-- (Corrected 2026-09-26, gh-1438 REVIEW FAIL 5850286498: this file's version
+-- was previously 20260920160133, which does not match the ledger's applied
+-- version 20260920161339. Content unchanged, filename/reference corrected.)
+--
 -- Restores the pre-gh-2042 body verbatim: phone REQUIRED and validated.
 -- NOT APPLIED. Documentation/safety only. Applying this while the client
 -- change is live will make the Step 1 RESUBMIT path throw for any visitor

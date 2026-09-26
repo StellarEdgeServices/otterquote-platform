@@ -49,7 +49,11 @@ touched.
 
 ## Rollback
 
-`supabase/migrations_drafts/gh2010_leads_authenticated_insert_rollback.sql`
+`supabase/migrations_rollbacks/20260917203831_gh2010_leads_authenticated_insert_rollback.sql`
+(moved here from `supabase/migrations_drafts/` by gh-1438, 2026-09-26 —
+same content, corrected location per `supabase/migrations/README.md`'s own
+convention: rollback/pre-flight companions of an applied migration live in
+`migrations_rollbacks/`, not `migrations_drafts/`)
 — a single `ALTER POLICY ... TO anon` restoring the pre-migration role
 list. Verified to be the exact inverse: same policy name, same `WITH
 CHECK`, only the role list reverts. Running it re-introduces the 42501

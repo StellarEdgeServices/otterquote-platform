@@ -29,6 +29,19 @@ Sibling directories (added 2026-08-07, issue #385):
   applied in production (Tier 3 approval pending or abandoned). Kept for
   history; must not be added to this directory until it is actually
   applied and its filename carries the real applied timestamp.
+- `supabase/migrations_applied_manually/` (added 2026-09-26, issue #1438) —
+  SQL that IS applied to production, but was run directly (Supabase MCP
+  `execute_sql`, the dashboard, or equivalent) rather than through
+  `supabase db push`, and therefore carries no
+  `supabase_migrations.schema_migrations` row for the CLI to reconcile
+  against. Never move a file from here into `supabase/migrations/` or add
+  it a ledger row on that basis alone — check first whether it is safe to
+  replay on an empty database (a schema-only additive change usually is; a
+  targeted data repair with a row-count guard usually is NOT, because the
+  guard will raise on a fresh branch that has none of the target rows).
+  Filenames here use the real applied timestamp exactly like
+  `supabase/migrations/`, so "when did this actually run" stays readable
+  directory-wide, without implying CLI replay.
 
 See `MIGRATIONS-RECONCILIATION-385.md` in this directory for the full
 audit of what is and is not reconciled as of 2026-08-07, and why a fresh

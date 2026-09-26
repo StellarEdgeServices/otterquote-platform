@@ -1,6 +1,10 @@
 -- Rollback for supabase/migrations/20260917203831_gh2010_leads_authenticated_insert.sql
 -- Issue #2010.
 --
+-- (Moved from supabase/migrations_drafts/ to supabase/migrations_rollbacks/
+-- by gh-1438, 2026-09-26 -- content unchanged, location corrected per
+-- supabase/migrations/README.md's own convention.)
+--
 -- Restores "Allow anonymous inserts" on public.leads to TO anon only,
 -- undoing the authenticated-role widening. WITH CHECK (true) is unchanged
 -- throughout -- this migration only ever touches the policy's role list.
