@@ -215,34 +215,35 @@ main.invite-main {
            behavior, where inviteLoading (carrying placeholder copy) was
            visible by default before any JS ran. -->
 
-      <!-- Loading state -->
-      <div id="inviteLoading" style="display:none;">
-        <h1>Loading your invite&hellip;</h1>
-        <p class="subtitle">Just a moment while we verify your invite.</p>
-      </div>
+      <!-- Loading state (LEGAL-READ FAIL 5841913888: the prior round's
+           loading headline and subtitle were both new, unapproved copy.
+           Ben's ruling: the loading state is BLANK, no heading, no
+           subtitle -- text intentionally omitted here, not just hidden. -->
+      <div id="inviteLoading" style="display:none;"></div>
 
-      <!-- Invalid / expired token state. Ben's ruling (LEGAL-READ FAIL
-           5841305700 fix, this task's brief item 4): reuse a live,
-           verbatim, non-marketing error string rather than new copy. No
-           exact "P-1" token-invalid string exists anywhere on main (P-1's
-           own ?lead= prefill silently no-ops instead of erroring -- see
-           this build's report) -- the closest live, shipped, non-marketing
-           analog is auth-callback.html's own invalid/expired-link copy, so
-           the two placeholder lines below are de-placeholdered (the
-           bracketed "Sloane copy pending" tag removed) rather than
-           replaced with invented text, since the underlying sentences make
-           no fee/earnings/endorsement/geographic claim and were never
-           actually the thing LEGAL-READ objected to -- the tag +
-           reachability were. -->
+      <!-- Invalid / expired token state (LEGAL-READ FAIL 5841913888: the
+           de-placeholdered h1/subtitle from the prior round were still
+           unapproved new copy, not live anywhere on main. Ben's ruling:
+           every error/expired-link state uses main's live
+           "Something went wrong. Please try again." verbatim -- confirmed
+           byte-identical via `git grep -F` against main @3cda23ad in
+           project-info-acv.html / project-info-cash.html /
+           project-info-rcv.html / trade-selector.html / repair-intake.html.
+           The existing live "Become a Partner" button/link is unchanged. -->
       <div id="inviteInvalid" style="display:none;">
-        <h1>This invite link is no longer valid</h1>
-        <p class="subtitle">It may have already been used, or it may have expired.</p>
+        <p class="subtitle">Something went wrong. Please try again.</p>
         <a href="/partners.html" class="btn btn-primary" id="inviteInvalidSignupLink">Become a Partner</a>
       </div>
 
-      <!-- Prefilled accept form -->
+      <!-- Prefilled accept form (LEGAL-READ FAIL 5841913888: the form
+           heading is removed -- no live/approved replacement exists.
+           The agent-type field row is removed too -- no P-1 partner page on
+           main carries that label live; the type itself is still read from
+           the token-derived prefill (agreementLinkFor/#feeDisclaimer below
+           both still branch on prefill.agent_type), only the VISIBLE row
+           is gone, per Ben's "hide the field, pass the type from the
+           token" instruction. -->
       <div id="inviteForm" style="display:none;" data-agent-type="">
-        <h1>Finish setting up your Otter Quotes partner account</h1>
 
         <div class="prefill-row">
           <span class="prefill-label">Name</span>
@@ -251,10 +252,6 @@ main.invite-main {
         <div class="prefill-row">
           <span class="prefill-label">Email</span>
           <span class="prefill-value" id="prefillEmail"></span>
-        </div>
-        <div class="prefill-row">
-          <span class="prefill-label">Partner Type</span>
-          <span class="prefill-value" id="prefillAgentType"></span>
         </div>
 
         <div class="form-checkbox-group">
@@ -266,8 +263,14 @@ main.invite-main {
 
         <div id="inviteAcceptError" class="form-error" style="display:none;"></div>
 
+        <!-- LEGAL-READ FAIL 5841913888: the prior round's button label was
+             byte-identical to a live P-1 string but not to anything Dustin
+             actually approved for THIS page. The label below is the
+             Dustin-approved CTA text from the invite email copy draft
+             (In Flight/reports/ceo69-p5-invite-copy-20260925.md, #2154
+             comment 5837072371) -- used here verbatim per Ben's ruling. -->
         <button type="button" class="btn btn-primary btn-lg btn-full" id="acceptBtn" disabled>
-          Create My Partner Account
+          Finish My Signup
         </button>
 
         <!-- LEGAL-READ FAIL 5841305700 / D-333 (REVIEW FAIL 5841303507
@@ -298,9 +301,12 @@ main.invite-main {
           </div>
         </div>
 
-        <p style="margin-top: var(--sp-6); color: var(--slate);">
-          You can start sharing this link with clients immediately. Visit your partner dashboard to customize your settings and track referrals.
-        </p>
+        <!-- LEGAL-READ FAIL 5841913888 must-fix 8: "You can start sharing
+             this link with clients immediately…" was byte-identical to
+             partner-re.html's own success copy but untrue in THIS context
+             -- this page never shows a link, and the approved email says
+             the referral link comes only after signing in to the app.
+             Removed, removal-only (HI-0b precedent), no replacement. -->
 
         <div style="margin-top: var(--sp-6);">
           <a href="/partner-login.html" class="btn btn-primary">Sign in to your dashboard</a>
@@ -379,9 +385,10 @@ main.invite-main {
     var name = [prefill.first_name, prefill.last_name].filter(Boolean).join(' ');
     document.getElementById('prefillName').textContent = name || '—';
     document.getElementById('prefillEmail').textContent = prefill.email || '—';
-    document.getElementById('prefillAgentType').textContent =
-      (typeof AGENT_TYPE_CHOOSER_LABELS !== 'undefined' && AGENT_TYPE_CHOOSER_LABELS[prefill.agent_type]) ||
-      prefill.agent_type || '—';
+    // LEGAL-READ FAIL 5841913888 must-fix 4: the agent-type field row is
+    // removed from the page (no live P-1 label to reuse) -- prefill.
+    // agent_type is still read and used below (agreementLinkFor,
+    // #feeDisclaimer), it is just never displayed to the user.
     document.getElementById('agreementLink').setAttribute('href', agreementLinkFor(prefill.agent_type));
 
     // D-333 / REVIEW FAIL 5841303507 must-fix 1 / LEGAL-READ FAIL
@@ -488,14 +495,14 @@ main.invite-main {
       var data = null;
       try { data = await resp.json(); } catch (e) { /* noop */ }
       if (!resp.ok || !data || data.ok !== true) {
-        errorEl.textContent = 'Something went wrong activating your account. Please try again.';
+        errorEl.textContent = 'Something went wrong. Please try again.';
         errorEl.style.display = '';
         acceptBtn.disabled = false;
         return;
       }
       showSuccess();
     } catch (e) {
-      errorEl.textContent = 'Something went wrong activating your account. Please try again.';
+      errorEl.textContent = 'Something went wrong. Please try again.';
       errorEl.style.display = '';
       acceptBtn.disabled = false;
     }

@@ -174,7 +174,15 @@ serve(async (req: Request) => {
         .eq("partner_id", partnerId)
         .eq("stage", "invite_reminder")
         .maybeSingle();
-      if (error || !data) return undefined;
+      // REVIEW PASS 5841912094 SHOULD-FIX: a real DB read error must throw
+      // (reminder-sweep.ts's runReminderSweep treats a thrown lookup as
+      // uncertain, fail-toward-surfacing) -- it must NEVER resolve to
+      // undefined the same way "no row yet" does, which used to make a
+      // genuinely stuck row look like a fresh one and skip quietly.
+      if (error) {
+        throw new Error(`existingLedgerRow read failed for ${partnerId}: ${error.message}`);
+      }
+      if (!data) return undefined;
       return { status: data.status as string, created_at: data.created_at as string };
     },
     claim: async (partnerId) => {

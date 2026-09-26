@@ -104,7 +104,14 @@ export interface RunDeps {
    * same ordering as send-partner-onboarding/run-sweep.ts's own
    * fetchLedgerForPartners, needed to tell a stale 'pending' claim (truly
    * uncertain) apart from a terminal 'sent'/'skipped' row (already
-   * finished, not uncertain -- REVIEW FAIL 5841303507 must-fix 4). */
+   * finished, not uncertain -- REVIEW FAIL 5841303507 must-fix 4).
+   *
+   * REVIEW PASS 5841912094 SHOULD-FIX: resolves to `undefined` ONLY for a
+   * genuine "no row yet" state -- a DB read error MUST reject (throw),
+   * never resolve to undefined, so runReminderSweep below can tell "no
+   * row" (quiet skip is correct) apart from "couldn't find out" (fail
+   * toward surfacing, same posture isUncertainPending already uses for a
+   * malformed date). */
   existingLedgerRow: (partnerId: string) => Promise<{ status: string; created_at: string } | undefined>;
   /** RPC wrapper for claim_partner_onboarding_stage(id, 'invite_reminder'). */
   claim: (partnerId: string) => Promise<boolean>;
@@ -161,8 +168,19 @@ export async function runReminderSweep(deps: RunDeps): Promise<SweepOutcome> {
     // claim that never resolved) apart from a terminal 'sent'/'skipped'
     // row or a fresh 'pending' another run currently owns (neither is
     // uncertain; the claim below will simply fail and that is expected).
-    const existing = await deps.existingLedgerRow(row.id);
-    const stalePendingBeforeClaim = isUncertainPending(existing, deps.now);
+    //
+    // REVIEW PASS 5841912094 SHOULD-FIX: a DB read error here must fail
+    // toward surfacing, not toward a silent skip -- a row that really is
+    // stuck must not be waved through as "not stale" just because this
+    // one lookup failed to answer the question.
+    let existingLedgerReadFailed = false;
+    let existing: { status: string; created_at: string } | undefined;
+    try {
+      existing = await deps.existingLedgerRow(row.id);
+    } catch (_err) {
+      existingLedgerReadFailed = true;
+    }
+    const stalePendingBeforeClaim = existingLedgerReadFailed || isUncertainPending(existing, deps.now);
 
     const claimed = await deps.claim(row.id);
     if (!claimed) {

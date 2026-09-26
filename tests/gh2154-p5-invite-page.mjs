@@ -87,8 +87,52 @@ ok(!/Review your details below and accept the Partner Terms to activate your acc
   "(7b) NEGATIVE CONTROL: the unapproved 'Review your details below...' sentence must not appear anywhere in the page source");
 ok(!/Accept &amp; Activate My Account/.test(pageSrc),
   "(7c) NEGATIVE CONTROL: the unapproved 'Accept & Activate My Account' button copy must not appear anywhere in the page source");
-ok(/Create My Partner Account/.test(pageSrc),
-  '(7d) the accept button reuses P-1\'s byte-identical live "Create My Partner Account" label (partner-re.html:1013 / partner-insurance.html:756)');
+
+// ── LEGAL-READ FAIL 5841913888 (delta review at b9099dd0): "Create My
+// Partner Account" was byte-identical to a live P-1 string but not to
+// anything Dustin actually approved for THIS page. "Finish My Signup" is
+// the Dustin-approved CTA text (ceo69-p5-invite-copy-20260925.md, #2154
+// comment 5837072371) -- confirmed present in that approved-copy file. ──
+ok(!/Create My Partner Account/.test(pageSrc),
+  '(7d) NEGATIVE CONTROL: "Create My Partner Account" (LEGAL-READ FAIL 5841913888 -- not Dustin-approved for this page) must not appear');
+ok(/Finish My Signup/.test(pageSrc),
+  '(7f) the accept button uses the Dustin-approved CTA text "Finish My Signup" (ceo69-p5-invite-copy-20260925.md)');
+
+// ── LEGAL-READ FAIL 5841913888: every error/expired-link state uses main's
+// live "Something went wrong. Please try again." verbatim (confirmed via
+// `git grep -F` against main @3cda23ad: project-info-acv.html,
+// project-info-cash.html, project-info-rcv.html, trade-selector.html,
+// repair-intake.html all carry this exact sentence). ──
+{
+  const liveErrorMatches = pageSrc.match(/Something went wrong\. Please try again\./g) || [];
+  ok(liveErrorMatches.length >= 3,
+    '(7g) "Something went wrong. Please try again." (verbatim, live on main) appears at least 3 times (invalid-link state + both accept-error branches) -- got ' + liveErrorMatches.length);
+  ok(!/Something went wrong activating your account/.test(pageSrc),
+    '(7h) NEGATIVE CONTROL: the old unapproved "Something went wrong activating your account..." string must not appear');
+  ok(!/This invite link is no longer valid/.test(pageSrc) && !/It may have already been used, or it may have expired\./.test(pageSrc),
+    '(7i) NEGATIVE CONTROL: the prior round\'s de-placeholdered (but still unapproved) invalid-link h1/subtitle must not appear');
+}
+
+// ── LEGAL-READ FAIL 5841913888: loading state is BLANK (no heading, no subtitle) ──
+{
+  const loadingMatch = pageSrc.match(/<div id="inviteLoading"[^>]*>([\s\S]*?)<\/div>/);
+  ok(!!loadingMatch, '(7j) #inviteLoading div found');
+  if (loadingMatch) {
+    ok(loadingMatch[1].trim() === '', '(7k) #inviteLoading has no text content at all (blank, per Ben\'s ruling) -- got ' + JSON.stringify(loadingMatch[1]));
+  }
+  ok(!/Loading your invite/.test(pageSrc) && !/Just a moment while we verify your invite\./.test(pageSrc),
+    '(7l) NEGATIVE CONTROL: the prior round\'s unapproved loading copy must not appear anywhere');
+}
+
+// ── LEGAL-READ FAIL 5841913888: form heading + "Partner Type" row removed ──
+ok(!/Finish setting up your Otter Quotes partner account/.test(pageSrc),
+  '(7m) NEGATIVE CONTROL: the form heading (never approved) must not appear');
+ok(!/Partner Type/.test(pageSrc),
+  '(7n) NEGATIVE CONTROL: the "Partner Type" field label (not live on any P-1 page) must not appear -- the field is hidden, the type is still read from the token-derived prefill');
+
+// ── LEGAL-READ FAIL 5841913888 must-fix 8: the untrue success-page sentence is removed ──
+ok(!/You can start sharing this link with clients immediately/.test(pageSrc),
+  '(7o) NEGATIVE CONTROL: the untrue-in-context "You can start sharing this link..." sentence must not appear');
 
 // ── REVIEW FAIL 5841303507 must-fix 6 / LEGAL-READ FAIL 5841305700: token-gate ──
 // All four states must default to display:none in the RAW markup -- a

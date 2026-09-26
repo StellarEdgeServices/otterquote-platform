@@ -186,6 +186,45 @@ Deno.test("isUncertainPending: a stale (20m+) 'pending' row IS uncertain", () =>
   assertEquals(isUncertainPending({ status: "pending", created_at: new Date(NOW - 21 * 60 * 1000).toISOString() }, NOW), true);
 });
 
+// ── REVIEW PASS 5841912094 SHOULD-FIX: a DB read error surfaces as
+// uncertain (fail toward surfacing), never as a silent quiet skip ───────────
+
+Deno.test("REVIEW PASS 5841912094 SHOULD-FIX: existingLedgerRow throwing (a real DB read error) is treated as uncertain and alerts, NEGATIVE CONTROL against the old silent-skip behavior", async () => {
+  const claimed = new Set<string>(["p1"]); // claim() also fails, as it would for a genuinely stuck row
+  const { deps, alerts } = buildDeps({
+    claim: async (id) => !claimed.has(id),
+    existingLedgerRow: async () => {
+      throw new Error("connection reset");
+    },
+  });
+  const outcome = await runReminderSweep(deps);
+  if (outcome.ok) {
+    // NEGATIVE CONTROL: pre-fix, a read error resolved to `undefined`,
+    // which is indistinguishable from "no row yet" -- isUncertainPending
+    // returns false for that, so this would have been a quiet
+    // "already_sent" skip with zero alerts. Fail-toward-surfacing means it
+    // must instead behave exactly like a stale pending row.
+    assertEquals(outcome.results[0].skipped_reason, "not_claimed");
+    assertEquals(outcome.uncertain, [{ partner_id: "p1" }]);
+  }
+  assertEquals(alerts.length, 1, "a DB read error on the ledger lookup must alert, not skip silently");
+});
+
+Deno.test("existingLedgerRow resolving to undefined (genuinely no row yet, not an error) still behaves as before -- not uncertain by itself", async () => {
+  const claimed = new Set<string>(); // claim() succeeds -- there really is no existing row
+  const { deps, sent } = buildDeps({
+    claim: async (id) => {
+      if (claimed.has(id)) return false;
+      claimed.add(id);
+      return true;
+    },
+    existingLedgerRow: async () => undefined,
+  });
+  const outcome = await runReminderSweep(deps);
+  if (outcome.ok) assertEquals(outcome.results[0].sent, true);
+  assertEquals(sent.length, 1, "a genuine no-row-yet lookup must not be treated as an error");
+});
+
 Deno.test("a thrown/timeout send (uncertain outcome) is NEVER marked failed or sent, and triggers exactly one admin alert -- P-4/#2191 posture", async () => {
   const { deps, sent, failed, alerts, alerted } = buildDeps({
     sendEmail: async () => {
