@@ -19,6 +19,34 @@ Deno.test("D7: STRIPE_MODE is live unless it is exactly 'test' (case/space-insen
   assertEquals(resolveStripeMode(" TEST "), "test");
 });
 
+Deno.test("N1: the production project ref is ALWAYS live, even if STRIPE_MODE=test", () => {
+  assertEquals(
+    resolveStripeMode("test", "https://yeszghaspzwwstvsrioa.supabase.co"),
+    "live",
+  );
+  assertEquals(
+    resolveStripeMode(" TEST ", "https://yeszghaspzwwstvsrioa.supabase.co/"),
+    "live",
+  );
+});
+
+Deno.test("N1: a non-production Supabase URL with STRIPE_MODE=test still resolves to test", () => {
+  assertEquals(
+    resolveStripeMode("test", "https://some-other-project-ref.supabase.co"),
+    "test",
+  );
+  assertEquals(resolveStripeMode("test", undefined), "test");
+  assertEquals(resolveStripeMode("test", null), "test");
+});
+
+Deno.test("N1: on prod, a test-mode PI is rejected 402 livemode_mismatch even with STRIPE_MODE=test", () => {
+  const stripeMode = resolveStripeMode("test", "https://yeszghaspzwwstvsrioa.supabase.co");
+  const testModePI = { ...good, livemode: false };
+  const result = checkLeadPaymentIntent(testModePI, { expectedAmount: 1500, leadId: null, stripeMode });
+  assertEquals(result.ok, false);
+  if (!result.ok) assertEquals(result.reason, "livemode_mismatch");
+});
+
 Deno.test("D7: live mode reads ONLY STRIPE_SECRET_KEY; test mode ONLY STRIPE_SECRET_KEY_TEST (no cross-fallback)", () => {
   const env = (k: string) => ({ STRIPE_SECRET_KEY: "sk_live_x", STRIPE_SECRET_KEY_TEST: "sk_test_x" } as Record<string, string>)[k];
   assertEquals(stripeSecretKeyForMode("live", env), "sk_live_x");

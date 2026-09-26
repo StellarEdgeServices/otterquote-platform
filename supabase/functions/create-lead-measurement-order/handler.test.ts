@@ -117,6 +117,28 @@ Deno.test("D11: a synthetic lead's order row carries is_test=true", async () => 
   assertEquals(table.rows[0].is_test, true);
 });
 
+Deno.test("N8: the response echoes is_test so the page can suppress the GA4 purchase event for a synthetic lead", async () => {
+  const table = fakeTable();
+  const syntheticDeps = baseDeps(table, { resolveLead: () => Promise.resolve({ leadId: LEAD_ID, isSynthetic: true }) });
+  const res = await handleRequest(req({ lead_token: GOOD_TOKEN, payment_intent_id: PI_ID }), syntheticDeps);
+  assertEquals((await res.json()).is_test, true);
+
+  const table2 = fakeTable();
+  const realDeps = baseDeps(table2, { resolveLead: () => Promise.resolve({ leadId: LEAD_ID, isSynthetic: false }) });
+  const res2 = await handleRequest(req({ lead_token: GOOD_TOKEN, payment_intent_id: PI_ID }), realDeps);
+  assertEquals((await res2.json()).is_test, false);
+});
+
+Deno.test("N8: the idempotent (already-recorded) response also echoes is_test", async () => {
+  const table = fakeTable();
+  await table.record({ leadId: LEAD_ID, paymentIntentId: PI_ID, amountCents: 1500, stripeChargeId: "ch_123", isTest: true, recordedBy: "webhook" });
+  const deps = baseDeps(table, { resolveLead: () => Promise.resolve({ leadId: LEAD_ID, isSynthetic: true }) });
+  const res = await handleRequest(req({ lead_token: GOOD_TOKEN, payment_intent_id: PI_ID }), deps);
+  const body = await res.json();
+  assertEquals(body.idempotent, true);
+  assertEquals(body.is_test, true);
+});
+
 Deno.test("negative control: a bad/expired token is rejected with 401, the PI is never fetched, nothing is recorded", async () => {
   let fetched = false;
   const table = fakeTable();

@@ -41,7 +41,7 @@ import {
   footerPostalAddressText,
 } from "./email-footer.ts";
 import { buildNonUsdAlertEmail } from "./non-usd-alert-email.ts";
-import { handleLeadNotification, parseLeadNotifyBody, type LeadNotifyKind } from "./lead-notify.ts";
+import { handleLeadNotification, parseLeadNotifyBody, type LeadNotifyKind, type LeadRecord } from "./lead-notify.ts";
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 
 const FUNCTION_NAME = "notify-measurement-order";
@@ -282,12 +282,25 @@ serve(async (req: Request) => {
       const table = (k: LeadNotifyKind) => (k === "order" ? "lead_measurement_orders" : "lead_loss_sheet_uploads");
       const result = await handleLeadNotification(leadReq, {
         verifySend: isVerifySendRequested(req.headers),
+        // PR #2226 REVIEW N2: two literal `.select(...)` calls, one per table,
+        // instead of a ternary-built column list -- a ternary string makes
+        // supabase-js infer a ParserError type (TS2322 at this call site under
+        // Deno 2.8.3, the CI pin), even though nothing breaks at runtime.
         loadRecord: async (kind, id) => {
-          const cols = kind === "order"
-            ? "id, lead_id, is_test, admin_notified_at, created_at, homeowner_charge_amount, stripe_payment_intent_id"
-            : "id, lead_id, is_test, admin_notified_at, created_at, content_type, byte_size, storage_path";
-          const { data } = await sbLead.from(table(kind)).select(cols).eq("id", id).maybeSingle();
-          return data ?? null;
+          if (kind === "order") {
+            const { data } = await sbLead
+              .from("lead_measurement_orders")
+              .select("id, lead_id, is_test, admin_notified_at, created_at, homeowner_charge_amount, stripe_payment_intent_id")
+              .eq("id", id)
+              .maybeSingle();
+            return (data as LeadRecord | null) ?? null;
+          }
+          const { data } = await sbLead
+            .from("lead_loss_sheet_uploads")
+            .select("id, lead_id, is_test, admin_notified_at, created_at, content_type, byte_size, storage_path")
+            .eq("id", id)
+            .maybeSingle();
+          return (data as LeadRecord | null) ?? null;
         },
         loadLead: async (leadId) => {
           const { data } = await sbLead

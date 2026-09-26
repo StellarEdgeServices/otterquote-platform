@@ -11,9 +11,10 @@
  *
  * Environment variables:
  *   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
- *   STRIPE_MODE          -- "test" ONLY on a non-production project; anything
- *                           else (or unset) means live. Never derived from the
- *                           request (PR #2226 REVIEW D7).
+ *   STRIPE_MODE          -- ignored on the production project (yeszghaspzwwstvsrioa),
+ *                           which is always live; "test" elsewhere, anything else
+ *                           (or unset) means live. Never derived from the request
+ *                           (PR #2226 REVIEW D7, N1).
  *   STRIPE_SECRET_KEY    -- live mode
  *   STRIPE_SECRET_KEY_TEST -- test mode only
  */
@@ -26,7 +27,7 @@ import { FUNCTION_NAME, handleRequest, type ResolvedLead } from "./handler.ts";
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
 
 const sb = createClient(Deno.env.get("SUPABASE_URL") || "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "");
-const stripeMode = resolveStripeMode(Deno.env.get("STRIPE_MODE"));
+const stripeMode = resolveStripeMode(Deno.env.get("STRIPE_MODE"), Deno.env.get("SUPABASE_URL"));
 const stripeSecretKey = stripeSecretKeyForMode(stripeMode, (k) => Deno.env.get(k));
 
 serve((req: Request) =>

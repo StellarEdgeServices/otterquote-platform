@@ -155,7 +155,7 @@ export async function recordLeadOrderFromWebhook(
     const check = checkLeadPaymentIntent(paymentIntent, {
       expectedAmount,
       leadId: null,
-      stripeMode: resolveStripeMode(env.get("STRIPE_MODE")),
+      stripeMode: resolveStripeMode(env.get("STRIPE_MODE"), env.get("SUPABASE_URL")),
     });
     if (!check.ok) {
       // A succeeded charge of our type that fails verification (wrong mode,

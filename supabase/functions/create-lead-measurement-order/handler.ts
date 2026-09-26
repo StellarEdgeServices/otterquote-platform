@@ -138,7 +138,8 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
     if (existing.lead_id && existing.lead_id !== lead.leadId) {
       return json({ error: "Payment does not belong to this request. Please contact support." }, 402, corsHeaders);
     }
-    return json({ order_id: existing.id, status: existing.status, idempotent: true }, 200, corsHeaders);
+    // N8: is_test lets the page suppress the GA4 purchase event for a synthetic lead.
+    return json({ order_id: existing.id, status: existing.status, idempotent: true, is_test: lead.isSynthetic }, 200, corsHeaders);
   }
 
   let expectedAmount: number;
@@ -146,7 +147,9 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
     const { row, error } = await deps.readPriceCents();
     expectedAmount = resolveRequiredPriceCents(HOVER_PRICE_SETTING_KEY, row, error);
   } catch {
-    return json({ error: "We could not confirm your order just now. Your payment is safe -- we will finish it and email you. Do not pay again." }, 500, corsHeaders);
+    // PR #2226 REVIEW N4: no email-delivery promise here -- the page ignores
+    // this body today, but it must never say anything not backed by a D-number.
+    return json({ error: "We could not confirm your order just now. Do not pay again. Please contact support." }, 500, corsHeaders);
   }
 
   const pi = await deps.fetchPaymentIntent(parsed.paymentIntentId);
@@ -181,5 +184,10 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
     console.error(`[${FUNCTION_NAME}] notifyOrderCreated failed (order already recorded)`);
   });
 
-  return json({ order_id: recorded.order.id, status: recorded.order.status, product_code: LEAD_PRODUCT_CODE }, 200, corsHeaders);
+  // N8: is_test lets the page suppress the GA4 purchase event for a synthetic lead.
+  return json(
+    { order_id: recorded.order.id, status: recorded.order.status, product_code: LEAD_PRODUCT_CODE, is_test: lead.isSynthetic },
+    200,
+    corsHeaders,
+  );
 }

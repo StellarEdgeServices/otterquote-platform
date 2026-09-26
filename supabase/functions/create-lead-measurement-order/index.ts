@@ -30,7 +30,7 @@ const STRIPE_API_BASE = "https://api.stripe.com/v1";
 const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
 const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 const sb = createClient(supabaseUrl, serviceRoleKey);
-const stripeMode = resolveStripeMode(Deno.env.get("STRIPE_MODE"));
+const stripeMode = resolveStripeMode(Deno.env.get("STRIPE_MODE"), supabaseUrl);
 const stripeSecretKey = stripeSecretKeyForMode(stripeMode, (k) => Deno.env.get(k));
 
 async function ipToUuid(seed: string): Promise<string> {

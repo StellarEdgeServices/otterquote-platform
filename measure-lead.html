@@ -411,8 +411,9 @@
             // again: the server also records this order from Stripe's webhook
             // (PR #2226 REVIEW D5), so this call is for the confirmation screen only.
             btn.innerHTML = '<span class="spinner"></span> Ordering your report...';
+            var orderResult = null;
             try {
-                await callFunction('create-lead-measurement-order', {
+                orderResult = await callFunction('create-lead-measurement-order', {
                     lead_token: LEAD_TOKEN,
                     payment_intent_id: paymentIntent.id
                 });
@@ -422,7 +423,10 @@
             document.getElementById('offerSection').style.display = 'none';
             document.getElementById('successSection').style.display = 'block';
             trackHo3('ho3_success', { step: 'measure_success' });
-            if (typeof gtag !== 'undefined') {
+            // N8: never fire the GA4 purchase event for a synthetic (test) lead.
+            // A failed/absent orderResult is not treated as synthetic -- it fires,
+            // same as before this fix, rather than silently losing real events.
+            if (typeof gtag !== 'undefined' && !(orderResult && orderResult.is_test)) {
                 // L3: GA4 value is the charged amount, never a typed number.
                 gtag('event', 'purchase', { funnel_id: FUNNEL_ID, value: paymentIntent.amount / 100, currency: String(paymentIntent.currency || priceCurrency).toUpperCase(), transaction_id: paymentIntent.id });
             }

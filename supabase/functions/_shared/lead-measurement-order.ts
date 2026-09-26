@@ -19,15 +19,26 @@ export const LEAD_ORDER_UNRECORDED_ALERT = "lead_order_payment_captured_unrecord
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// ── Stripe mode (D7) ──────────────────────────────────────────────────────────
+// ── Stripe mode (D7, PR #2226 REVIEW N1) ──────────────────────────────────────
 // The Stripe key and the accepted PaymentIntent mode come from SERVER config
 // (the STRIPE_MODE secret), never from the request's Origin header. Anything
-// other than the exact string "test" means live -- the safe default for the
-// production project. Only a deliberately non-production project sets
-// STRIPE_MODE=test.
+// other than the exact string "test" means live -- the safe default.
+//
+// Supabase Edge Function secrets are project-wide, and production and staging
+// share ONE project (yeszghaspzwwstvsrioa). STRIPE_MODE cannot be scoped per
+// environment there, so the production project ref is hard-pinned to live
+// regardless of what STRIPE_MODE is set to. Never set STRIPE_MODE on
+// yeszghaspzwwstvsrioa; it is ignored there.
 export type StripeMode = "live" | "test";
 
-export function resolveStripeMode(raw: string | null | undefined): StripeMode {
+/** The one Supabase project that must never accept test-mode PaymentIntents. */
+export const PROD_PROJECT_REF = "yeszghaspzwwstvsrioa";
+
+export function resolveStripeMode(
+  raw: string | null | undefined,
+  supabaseUrl?: string | null,
+): StripeMode {
+  if (typeof supabaseUrl === "string" && supabaseUrl.includes(PROD_PROJECT_REF)) return "live";
   return typeof raw === "string" && raw.trim().toLowerCase() === "test" ? "test" : "live";
 }
 
