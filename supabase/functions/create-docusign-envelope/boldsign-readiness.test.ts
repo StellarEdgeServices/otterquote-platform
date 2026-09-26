@@ -17,6 +17,7 @@ import {
   BOLDSIGN_PERMANENT_MARKER,
   BoldSignPermanentCreationFailure,
   BoldSignReadinessTimeout,
+  clearStrandedEnvelopePointer,
   isPermanentCreationFailure,
   waitForBoldSignDocumentReady,
 } from "./boldsign-readiness.ts";
@@ -196,4 +197,153 @@ Deno.test("isPermanentCreationFailure is narrow — an ambiguous error never un-
   assertEquals(isPermanentCreationFailure(new BoldSignReadinessTimeout("x", 15000, "")), false);
   assertEquals(isPermanentCreationFailure(null), false);
   assertEquals(isPermanentCreationFailure(new BoldSignPermanentCreationFailure("x", "")), true);
+});
+
+// ---------------------------------------------------------------------------
+// gh-1842 (resume-path follow-up, per Marty CTO RUN 42 comment 5850771831 on
+// #1842): the RESUME path (requestBody.resolved_envelope_id in
+// handleContractorSign) discovers the SAME permanent-failure class as the
+// mint path, but on a later retry rather than at mint time -- so it must
+// clear the stranded pointer with the same fields and the same guard. index.ts
+// is a single-file EF with a serve() at the bottom and cannot be imported by
+// a test (same constraint noted in the original #1868 PR body), so the shared
+// clear logic lives in this module, exported as clearStrandedEnvelopePointer,
+// and BOTH the mint-path and resume-path call sites in index.ts call it. The
+// harness below reproduces each call site's exact try/catch shape --
+// including the isPermanentCreationFailure() gate -- against a fake supabase
+// client, so this is the same decision index.ts makes, not a looser stand-in.
+//
+// FAIL-FIRST: on main, clearStrandedEnvelopePointer does not exist, so this
+// whole file fails to even import (a compile-time ReferenceError from the
+// missing export), which is a fail-first result at the file level -- the
+// resume path on main has no clear logic to test at all.
+
+/** A minimal chainable fake mirroring supabase-js's from().update().eq()... */
+function fakeSupabaseRecordingCalls(
+  calls: Array<{ table: string; payload: unknown; filters: Array<[string, unknown]> }>,
+) {
+  return {
+    from(table: string) {
+      const filters: Array<[string, unknown]> = [];
+      let payload: unknown = null;
+      const builder = {
+        update(p: unknown) {
+          payload = p;
+          return builder;
+        },
+        eq(col: string, val: unknown) {
+          filters.push([col, val]);
+          return builder;
+        },
+        // deno-lint-ignore no-explicit-any
+        then(resolve: (v: { error: null }) => any) {
+          calls.push({ table, payload, filters: [...filters] });
+          return Promise.resolve(resolve({ error: null }));
+        },
+      };
+      return builder;
+    },
+  };
+}
+
+/**
+ * Reproduces handleContractorSign's resume-branch try/catch exactly (index.ts
+ * ~L1931-1959): attempt the sign-link call; on a PROVEN-permanent failure
+ * only, clear via clearStrandedEnvelopePointer; anything else rethrows
+ * uncleared. `attempt` stands in for issueContractorSignLink().
+ */
+async function simulateResumeSignAttempt(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  target: { claim_id: string; quote_id: string | null; contractor_id: string; envelopeId: string },
+  attempt: () => Promise<unknown>,
+) {
+  try {
+    return await attempt();
+  } catch (err) {
+    if (!isPermanentCreationFailure(err)) throw err;
+    await clearStrandedEnvelopePointer(supabase, target);
+    throw err;
+  }
+}
+
+Deno.test("resume path: PERMANENT failure clears quotes+claims exactly like the mint path", async () => {
+  const calls: Array<{ table: string; payload: unknown; filters: Array<[string, unknown]> }> = [];
+  const supabase = fakeSupabaseRecordingCalls(calls);
+  const err = new BoldSignPermanentCreationFailure(DEAD, "resume-path fixture");
+
+  let caught: unknown = null;
+  try {
+    await simulateResumeSignAttempt(
+      supabase,
+      { claim_id: "claim-1", quote_id: "quote-1", contractor_id: "contractor-1", envelopeId: DEAD },
+      () => { throw err; },
+    );
+  } catch (e) {
+    caught = e;
+  }
+
+  assert(caught === err, "must rethrow the original permanent error after clearing");
+  assertEquals(calls.length, 2, "must issue exactly one quotes update and one claims update");
+
+  const quotesCall = calls.find((c) => c.table === "quotes")!;
+  assertEquals(quotesCall.payload, { docusign_envelope_id: null });
+  assertEquals(quotesCall.filters, [["id", "quote-1"]]);
+
+  const claimsCall = calls.find((c) => c.table === "claims")!;
+  assertEquals(claimsCall.payload, { docusign_envelope_id: null, contract_sent_at: null });
+  assertEquals(
+    claimsCall.filters,
+    [["id", "claim-1"], ["docusign_envelope_id", DEAD]],
+    "the claims clear must stay guarded on the exact envelope id, so it cannot wipe a pointer something else has since replaced",
+  );
+});
+
+Deno.test("resume path: TIMEOUT (transient) failure does NOT clear — negative control", async () => {
+  const calls: Array<{ table: string; payload: unknown; filters: Array<[string, unknown]> }> = [];
+  const supabase = fakeSupabaseRecordingCalls(calls);
+  const err = new BoldSignReadinessTimeout(SLOW, 15000, "still building");
+
+  let caught: unknown = null;
+  try {
+    await simulateResumeSignAttempt(
+      supabase,
+      { claim_id: "claim-1", quote_id: "quote-1", contractor_id: "contractor-1", envelopeId: SLOW },
+      () => { throw err; },
+    );
+  } catch (e) {
+    caught = e;
+  }
+
+  assert(caught === err, "a timeout must still be rethrown, untouched");
+  assertEquals(calls.length, 0, "a timeout must NOT clear the envelope pointer -- it would re-mint a second paid document over one that is merely slow");
+});
+
+Deno.test("resume path: a successful resume (no error at all) does not touch quotes/claims", async () => {
+  const calls: Array<{ table: string; payload: unknown; filters: Array<[string, unknown]> }> = [];
+  const supabase = fakeSupabaseRecordingCalls(calls);
+
+  const result = await simulateResumeSignAttempt(
+    supabase,
+    { claim_id: "claim-1", quote_id: "quote-1", contractor_id: "contractor-1", envelopeId: SLOW },
+    () => Promise.resolve({ signingUrl: "https://example.test/sign" }),
+  );
+
+  assertEquals(result, { signingUrl: "https://example.test/sign" });
+  assertEquals(calls.length, 0);
+});
+
+Deno.test("clearStrandedEnvelopePointer falls back to claim_id+contractor_id when quote_id is absent (same fallback as the mint path)", async () => {
+  const calls: Array<{ table: string; payload: unknown; filters: Array<[string, unknown]> }> = [];
+  const supabase = fakeSupabaseRecordingCalls(calls);
+
+  await clearStrandedEnvelopePointer(supabase, {
+    claim_id: "claim-2",
+    quote_id: null,
+    contractor_id: "contractor-2",
+    envelopeId: DEAD,
+  });
+
+  const quotesCall = calls.find((c) => c.table === "quotes")!;
+  assertEquals(quotesCall.filters, [["claim_id", "claim-2"], ["contractor_id", "contractor-2"]]);
 });

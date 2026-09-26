@@ -87,6 +87,48 @@ export function isPermanentCreationFailure(err: unknown): boolean {
     err.message.includes(BOLDSIGN_PERMANENT_MARKER);
 }
 
+export interface StrandedEnvelopeClearTarget {
+  claim_id: string;
+  quote_id?: string | null;
+  contractor_id?: string | null;
+  envelopeId: string;
+}
+
+/**
+ * Un-record a stranded envelope pointer on a PROVEN-permanent BoldSign
+ * creation failure. Shared by every call site that can discover such a
+ * failure -- the mint path (a fresh /v1/document/send) AND the resume path
+ * (requestBody.resolved_envelope_id, where the failure is discovered on
+ * READ rather than at mint time, so it can surface on any later retry, not
+ * only the attempt that minted it) -- so a corpse found on either path is
+ * cleared identically: same fields, same guard.
+ *
+ * The caller decides IF this runs (via isPermanentCreationFailure(err)) --
+ * this function does not re-check that. It always clears when called, which
+ * is why the gate at the call site must stay narrow: a timeout or network
+ * error must never reach here, or it would re-mint a second paid document
+ * over a first one that was merely slow (gh-1400's failure, inverted).
+ *
+ * The `claims` clear is guarded on `.eq("docusign_envelope_id", envelopeId)`
+ * so it cannot wipe a pointer something else has since replaced.
+ */
+export async function clearStrandedEnvelopePointer(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  { claim_id, quote_id, contractor_id, envelopeId }: StrandedEnvelopeClearTarget,
+): Promise<{ quoteClearError: unknown; claimClearError: unknown }> {
+  const quoteClearFilter = quote_id
+    ? supabase.from("quotes").update({ docusign_envelope_id: null }).eq("id", quote_id)
+    : supabase.from("quotes").update({ docusign_envelope_id: null })
+        .eq("claim_id", claim_id).eq("contractor_id", contractor_id);
+  const { error: quoteClearError } = await quoteClearFilter;
+  const { error: claimClearError } = await supabase.from("claims").update({
+    docusign_envelope_id: null,
+    contract_sent_at: null,
+  }).eq("id", claim_id).eq("docusign_envelope_id", envelopeId);
+  return { quoteClearError, claimClearError };
+}
+
 const LIST_STATUSES = ["Draft", "InProgress", "Completed", "Declined", "Revoked", "Expired"];
 
 async function documentIsListed(

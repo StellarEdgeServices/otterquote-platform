@@ -12,6 +12,7 @@ import {
 // injected fetch/clock fixtures. The polling behaviour gh-1244 proved is
 // unchanged; what is new is the absence probe and the two distinct error types.
 import {
+  clearStrandedEnvelopePointer,
   isPermanentCreationFailure,
   waitForBoldSignDocumentReady as waitForBoldSignDocumentReadyImpl,
 } from "./boldsign-readiness.ts";
@@ -1929,15 +1930,45 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
   // to the document they are partway through -- not create a second one, strand
   // the first, and spend another unit of plan quota doing it.
   if (requestBody.resolved_envelope_id) {
-    console.log(`contractor_sign: resuming existing document ${requestBody.resolved_envelope_id} (no mint)`);
-    return await issueContractorSignLink(supabase, {
-      claim_id,
-      envelopeId: requestBody.resolved_envelope_id,
-      signer,
-      return_url,
-      corsHeaders,
-      resumed: true
-    });
+    const resumedEnvelopeId = requestBody.resolved_envelope_id;
+    console.log(`contractor_sign: resuming existing document ${resumedEnvelopeId} (no mint)`);
+    // gh-1842: the resume path can land on a document that failed background
+    // creation permanently just as easily as a freshly-minted one can -- the
+    // failure is discovered on read, not on write, so it can surface here on
+    // ANY later retry, not only the attempt that minted it. Mirror the mint
+    // path's un-record exactly: same fields, same guard, same narrow
+    // isPermanentCreationFailure() gate. A timeout or network error is NOT
+    // cleared here either -- clearing on an ambiguous failure would re-mint a
+    // second paid document over one that is merely slow.
+    try {
+      return await issueContractorSignLink(supabase, {
+        claim_id,
+        envelopeId: resumedEnvelopeId,
+        signer,
+        return_url,
+        corsHeaders,
+        resumed: true
+      });
+    } catch (err) {
+      if (!isPermanentCreationFailure(err)) throw err;
+      console.error(
+        `gh-1842: BoldSign document ${resumedEnvelopeId} failed background creation permanently ` +
+        `(discovered on resume); un-recording it from quotes/claims so the next attempt mints a new one.`
+      );
+      const { quoteClearError, claimClearError } = await clearStrandedEnvelopePointer(supabase, {
+        claim_id,
+        quote_id,
+        contractor_id,
+        envelopeId: resumedEnvelopeId
+      });
+      if (quoteClearError) {
+        console.error("gh-1842: failed to clear quotes.docusign_envelope_id:", quoteClearError);
+      }
+      if (claimClearError) {
+        console.error("gh-1842: failed to clear claims.docusign_envelope_id:", claimClearError);
+      }
+      throw err;
+    }
   }
   let autoFields = providedFields || {};
   let claimData = null;
@@ -2284,18 +2315,15 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
       `gh-1842: BoldSign document ${envelopeId} failed background creation permanently; ` +
       `un-recording it from quotes/claims so the next attempt mints a new one.`
     );
-    const quoteClearFilter = quote_id
-      ? supabase.from("quotes").update({ docusign_envelope_id: null }).eq("id", quote_id)
-      : supabase.from("quotes").update({ docusign_envelope_id: null })
-          .eq("claim_id", claim_id).eq("contractor_id", contractor_id);
-    const { error: quoteClearError } = await quoteClearFilter;
+    const { quoteClearError, claimClearError } = await clearStrandedEnvelopePointer(supabase, {
+      claim_id,
+      quote_id,
+      contractor_id,
+      envelopeId
+    });
     if (quoteClearError) {
       console.error("gh-1842: failed to clear quotes.docusign_envelope_id:", quoteClearError);
     }
-    const { error: claimClearError } = await supabase.from("claims").update({
-      docusign_envelope_id: null,
-      contract_sent_at: null
-    }).eq("id", claim_id).eq("docusign_envelope_id", envelopeId);
     if (claimClearError) {
       console.error("gh-1842: failed to clear claims.docusign_envelope_id:", claimClearError);
     }
