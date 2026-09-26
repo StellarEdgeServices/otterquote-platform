@@ -24,6 +24,7 @@ import type { HomeownerClaim } from './types';
 import { StateGateCard } from './components/StateGateCard';
 import { StatusBanner } from './components/StatusBanner';
 import { RebateCard } from './components/RebateCard';
+import { DetailedMeasurementBadge } from './components/DetailedMeasurementBadge';
 import { Checklist } from './components/Checklist';
 import { HomeProfilePrompt } from './components/HomeProfilePrompt';
 import { MessagesPanel } from './components/MessagesPanel';
@@ -93,6 +94,8 @@ function DashboardContent() {
       <HomeProfilePrompt claim={claim} profile={profile} hasHomeProfile={aux.hasHomeProfile} />
 
       <RebateCard order={aux.rebateOrder} />
+
+      <DetailedMeasurementBadge claim={claim} />
 
       {!claim.ready_for_bids && (
         <Checklist claim={claim} hoverOrder={aux.hoverOrder} userId={userId} onChange={aux.refetch} />

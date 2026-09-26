@@ -8,6 +8,7 @@
  */
 
 import type { HomeownerClaim, HoverRebateOrder } from './types';
+import { claimHasFullMeasurements } from '@/lib/measurement-shape';
 
 // ── D-178: State gate ───────────────────────────────────────────────────────
 
@@ -240,5 +241,42 @@ export function buildRebateCard(order: HoverRebateOrder): RebateCardModel {
     amountLabel,
     header: `Measurement fee paid — ${amountLabel}`,
     body: `Your ${amountLabel} measurement payment is on file.`,
+  };
+}
+
+// -- gh-1411 / D-317 cl. 5-6: Shape-B 'detailed' badge -----------------------
+
+export interface DetailedMeasurementBadgeModel {
+  header: string;
+  body: string;
+}
+
+/**
+ * Card only renders once admin-measurements.html has flipped this claim to
+ * the detailed shape (gh-1411's ONLY writer of claims.measurement_shape --
+ * see react-app/app/lib/measurement-shape.ts and js/measurement-shape.js).
+ * NULL / absent / any value other than the literal string 'full' all render
+ * nothing here, matching the resolver's tolerant-default contract exactly.
+ */
+export function shouldShowDetailedMeasurementBadge(
+  claim: HomeownerClaim | null | undefined,
+): boolean {
+  return claimHasFullMeasurements(claim);
+}
+
+/**
+ * Render model for the display-only Shape-B badge (gh-1411 closes-on: "the
+ * homeowner's screen renders Shape B with the 'detailed' mark"). No charge
+ * logic -- the purchase already happened on the contractor's side; this is
+ * purely the free upgrade D-317 cl. 5 promises the homeowner ("the
+ * homeowner's copy is upgraded... at no charge").
+ */
+export function buildDetailedMeasurementBadge(): DetailedMeasurementBadgeModel {
+  return {
+    header: "Detailed measurement report",
+    body:
+      "A contractor purchased the full detailed measurement report for your roof — " +
+      "your copy was upgraded at no charge, and every contractor bidding on your " +
+      "project now has access to the same detailed measurements.",
   };
 }
