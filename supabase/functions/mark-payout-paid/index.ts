@@ -185,7 +185,7 @@ serve(async (req: Request) => {
     });
   }
 
-  // ── JWT verification — admin only ───────────────────────────────────────────
+  // ── JWT verification — admin only ────────────────────────────────────────
   const authHeader = req.headers.get("Authorization") || "";
   const userClient = createClient(supabaseUrl, supabaseAnon || serviceRoleKey, {
     global: { headers: { Authorization: authHeader } },
@@ -202,7 +202,7 @@ serve(async (req: Request) => {
   const supabase = createClient(supabaseUrl, serviceRoleKey);
 
   try {
-    // ── Rate limiting ─────────────────────────────────────────
+    // ── Rate limiting ────────────────────────────────────────────────────────
     const { data: rlData, error: rlError } = await supabase.rpc("check_rate_limit", {
       p_function_name: FUNCTION_NAME,
       p_user_id: null,
@@ -215,7 +215,7 @@ serve(async (req: Request) => {
       });
     }
 
-    // ── Parse input ──────────────────────────────────────────
+    // ── Parse input ──────────────────────────────────────────────────────────
     let body: Record<string, unknown> = {};
     try { body = await req.json(); } catch (_) {
       return new Response(JSON.stringify({ ok: false, error: "Invalid JSON body" }), {
@@ -230,7 +230,7 @@ serve(async (req: Request) => {
       });
     }
 
-    // ── Load the approval row ──────────────────────────────────────
+    // ── Load the approval row ────────────────────────────────────────────────
     const { data: approval, error: approvalError } = await supabase
       .from("payout_approvals")
       .select("*")
@@ -243,7 +243,7 @@ serve(async (req: Request) => {
       });
     }
 
-    // ── Idempotency: only act on approved rows ────────────────────────
+    // ── Idempotency: only act on approved rows ───────────────────────────────
     // Covers a repeated call after this row already reached 'paid' (or is in
     // any other non-'approved' state) — no action taken, no duplicate writes
     // or emails.
@@ -297,7 +297,7 @@ serve(async (req: Request) => {
 
     const now = new Date().toISOString();
 
-    // ── Update payout_approvals: approved -> paid ──────────────────────
+    // ── Update payout_approvals: approved -> paid ────────────────────────────
     // Atomic status guard (mirrors approve-payout's pending_approval guard):
     // the JS pre-check above is advisory only. Constrain the UPDATE itself to
     // status = 'approved' and treat 0 rows updated as a concurrent-processing
@@ -327,7 +327,7 @@ serve(async (req: Request) => {
       });
     }
 
-    // ── Set referrals.commission_paid_at ──────────────────────────
+    // ── Set referrals.commission_paid_at ─────────────────────────────────────
     // Moved here from approve-payout (gh-1155): this is now the only place
     // that advances a referral to commission_paid — one step later than
     // authorization, and only once the payout has actually reached 'paid'.
@@ -372,7 +372,7 @@ serve(async (req: Request) => {
       }
     }
 
-    // ── Send "marked as paid" confirmation email to partner ───────────
+    // ── Send "marked as paid" confirmation email to partner ─────────────────
     // Reuse the agent row already loaded by the W-9 gate above (same columns).
     const partnerEmail: string | null = agent.email || null;
     if (!approval.partner_name) {
