@@ -53,7 +53,7 @@
 --   case, trivial next to the job's 15-minute cadence).
 --   URL, headers and body are unchanged; no data is read, written or deleted.
 --
--- Reversible via supabase/migrations_rollbacks/20260926210005_gh2009_reapply_
+-- Reversible via supabase/migrations_rollbacks/20260926221451_gh2009_reapply_
 --   platform_health_check_pg_net_timeout_rollback.sql, which restores the
 --   command text to its current (no-timeout) live form.
 -- ============================================================================
