@@ -17,6 +17,13 @@ const BASE_URL = `http://127.0.0.1:${PORT}`;
 
 export default defineConfig({
   testDir: __dirname,
+  // gh-2064 round 2: internal-traffic-gate.spec.ts needs Chromium launched
+  // with --host-resolver-rules (see internal-traffic-gate.config.ts) so
+  // js/ga-gate.js's / js/meta-pixel-gate.js's ALLOWED_HOSTS check passes on
+  // a local server -- this config's plain 127.0.0.1 baseURL never passes
+  // that check, so run it under its own config instead of failing here for
+  // an unrelated reason (host mismatch, not the opt-out).
+  testIgnore: 'internal-traffic-gate.spec.ts',
   timeout: 15_000,
   expect: { timeout: 5_000 },
   retries: 0,

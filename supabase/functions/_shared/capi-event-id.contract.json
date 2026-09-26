@@ -1,0 +1,8 @@
+{
+  "_comment": "gh-2078c / D-330. THE one place the dedup event_id format is written down. Meta dedupes the browser pixel Purchase against the server CAPI Purchase ONLY when both carry the identical event_id, so the client (react-app/app/lib/track.ts buildMeasurementPurchaseEventId) and the server (supabase/functions/stripe-webhook/meta-capi.ts buildCapiEventId) must derive the same string from the same PaymentIntent id. Neither runtime can import the other's module (Deno Edge Function versus Next.js bundle) and the Edge Function deploy path does not resolve _shared imports, so BOTH sides are pinned to this file by tests instead: react-app/app/lib/__tests__/track.test.ts (client) and supabase/functions/_shared/capi-event-id-contract.test.ts (server). Change the format here and both fail until both are updated together.",
+  "prefix": "measurement_purchase:",
+  "examples": [
+    { "paymentIntentId": "pi_abc123", "eventId": "measurement_purchase:pi_abc123" },
+    { "paymentIntentId": "pi_3QzReconcile2078c", "eventId": "measurement_purchase:pi_3QzReconcile2078c" }
+  ]
+}

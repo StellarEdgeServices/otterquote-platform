@@ -120,6 +120,7 @@ def build_fixture_js(
     alpha_entry_target="c-alpha-close",
     alpha_foreach_filtered=False,
     with_lender=False,
+    lender_variant="inline",
 ):
     """N=2 real referral-fee tracks (alpha, beta) + a declared-exempt
     'contractor' track (same key gh-2020's own JS_D266_EXEMPT_TRACKS uses,
@@ -166,19 +167,73 @@ def build_fixture_js(
   };
 """
     lender_block = ""
+    lender_copy = ""
+    lender_copy_comma = ""
     if with_lender:
-        lender_block = """
-  RENDERERS['c-lender-1'] = function () {
-    root.appendChild(bodyText('You will earn $200 for every referral you send us.'));
-    root.appendChild(continueButton('Continue', function () { go('c-lender-contact'); }, true));
-  };
-  RENDERERS['c-lender-contact'] = function () {
-    renderLenderContact({
+        # gh-2020 REVIEW: FAIL (comment 5780386929) X11/X12/X13/N23c: layer 4
+        # (fee-sentence track discovery) only ever saw an inline bodyText()
+        # string. `lender_variant` reproduces the other real shapes this
+        # module's own tracks use for their fee copy:
+        #   inline        -- original N23 (bodyText string literal)
+        #   array         -- X11: COPY.lenderIntro = ['...', '$200 ...
+        #                    referral ...'], rendered via
+        #                    COPY.lenderIntro.forEach(...) -- the same idiom
+        #                    every real close screen in this file uses.
+        #                    Layer 4 used to resolve only single-quoted
+        #                    SCALAR `key: '...'` values, never a COPY array.
+        #   scalar_double -- X12: a double-quoted scalar
+        #                    (`lenderFee: "$200 ... referral ..."`) -- layer
+        #                    4's scalar regex only matched single quotes.
+        #   spelled_out   -- X13: the fee amount spelled out in words
+        #                    ("Two hundred dollars for every referral...")
+        #                    with no `$` at all.
+        #   n23c          -- the approved fee copy's OWN first sentence,
+        #                    "$200 when a homeowner you refer completes a
+        #                    project of $10,000 or more." -- contains
+        #                    "refer", not "referral".
+        if lender_variant == "array":
+            lender_copy = "  lenderIntro: ['$200 when a borrower you refer sends us a completed loan.']\n"
+            lender_render = (
+                "COPY.lenderIntro.forEach(function (p) { root.appendChild(bodyText(p)); });"
+            )
+        elif lender_variant == "scalar_double":
+            lender_copy = '  lenderFee: "$200 when a borrower you refer sends us a completed loan."\n'
+            lender_render = "root.appendChild(bodyText(COPY.lenderFee));"
+        elif lender_variant == "spelled_out":
+            lender_copy = ""
+            lender_render = (
+                "root.appendChild(bodyText("
+                "'Two hundred dollars for every referral you send us.'));"
+            )
+        elif lender_variant == "n23c":
+            lender_copy = ""
+            lender_render = (
+                "root.appendChild(bodyText("
+                "'$200 when a homeowner you refer completes a project of "
+                "$10,000 or more.'));"
+            )
+        else:  # "inline" -- original N23
+            lender_copy = ""
+            lender_render = (
+                "root.appendChild(bodyText("
+                "'You will earn $200 for every referral you send us.'));"
+            )
+        lender_block = f"""
+  RENDERERS['c-lender-1'] = function () {{
+    {lender_render}
+    root.appendChild(continueButton('Continue', function () {{ go('c-lender-contact'); }}, true));
+  }};
+  RENDERERS['c-lender-contact'] = function () {{
+    renderLenderContact({{
       partnerIndustry: 'lender_agent',
       completeToken: 'c-lender-contact'
-    });
-  };
+    }});
+  }};
 """
+        if lender_copy:
+            lender_copy_comma = ","
+            lender_copy = f"    {lender_copy.strip()}\n"
+
     if alpha_foreach_filtered:
         alpha_foreach = (
             "COPY.alphaClose.forEach(function (p, i) { "
@@ -197,8 +252,8 @@ var COPY = {{
     betaClose: [
       'Beta intro paragraph, nothing D-266-shaped here.',
       {beta_close}
-    ]
-  }};
+    ]{lender_copy_comma}
+{lender_copy}  }};
 
   // 'home' distractor: a numbered step sequence, same '-1' shape a partner
   // track's entry screen has, but it never calls renderPartnerContact --
@@ -644,6 +699,93 @@ def main():
         check("restored-after-N23 failures", failures, [])
 
         print()
+        print("gh-2020 REVIEW: FAIL (comment 5780386929) N23c: the 'lender' "
+              "track renders only the APPROVED fee sentence's own first "
+              "clause, '$200 when a homeowner you refer completes a project "
+              "of $10,000 or more.' -- it contains 'refer', not 'referral', "
+              "which the old FEE_SENTENCE_RE required; must still FAIL as "
+              "an unrecognized fee-sentence track")
+        write_fixture(tmp_root, with_lender=True, lender_variant="n23c")
+        failures, notes = run_js_check(tmp_root)
+        check_true(
+            "N23c: 'refer' (not 'referral') fee sentence is reported as a failure",
+            any(
+                "c-lender-*" in f and "d266_js_fee_sentence_unrecognized_track" in f
+                for f in failures
+            ),
+        )
+
+        print()
+        print("restore -- must return to PASS")
+        write_fixture(tmp_root)
+        failures, notes = run_js_check(tmp_root)
+        check("restored-after-N23c failures", failures, [])
+
+        print()
+        print("gh-2020 REVIEW: FAIL (comment 5780386929) X11: the 'lender' "
+              "track's fee sentence lives in a COPY ARRAY (COPY.lenderIntro "
+              "= [...]), rendered via COPY.lenderIntro.forEach(...) -- the "
+              "same idiom every real close screen in this file uses for its "
+              "own fee copy. Layer 4 used to resolve only a single-quoted "
+              "SCALAR `key: '...'`, never a COPY array; must FAIL")
+        write_fixture(tmp_root, with_lender=True, lender_variant="array")
+        failures, notes = run_js_check(tmp_root)
+        check_true(
+            "X11: COPY-array fee sentence is reported as a failure",
+            any(
+                "c-lender-*" in f and "d266_js_fee_sentence_unrecognized_track" in f
+                for f in failures
+            ),
+        )
+
+        print()
+        print("restore -- must return to PASS")
+        write_fixture(tmp_root)
+        failures, notes = run_js_check(tmp_root)
+        check("restored-after-X11 failures", failures, [])
+
+        print()
+        print("gh-2020 REVIEW: FAIL (comment 5780386929) X12: same shape as "
+              "X11, but the fee sentence is a DOUBLE-quoted scalar "
+              "(lenderFee: \"$200 ... refer ...\") -- layer 4's scalar regex "
+              "only matched single quotes; must FAIL")
+        write_fixture(tmp_root, with_lender=True, lender_variant="scalar_double")
+        failures, notes = run_js_check(tmp_root)
+        check_true(
+            "X12: double-quoted scalar fee sentence is reported as a failure",
+            any(
+                "c-lender-*" in f and "d266_js_fee_sentence_unrecognized_track" in f
+                for f in failures
+            ),
+        )
+
+        print()
+        print("restore -- must return to PASS")
+        write_fixture(tmp_root)
+        failures, notes = run_js_check(tmp_root)
+        check("restored-after-X12 failures", failures, [])
+
+        print()
+        print("gh-2020 REVIEW: FAIL (comment 5780386929) X13: the 'lender' "
+              "track's fee amount is spelled out in words ('Two hundred "
+              "dollars for every referral...') with no '$' at all; must FAIL")
+        write_fixture(tmp_root, with_lender=True, lender_variant="spelled_out")
+        failures, notes = run_js_check(tmp_root)
+        check_true(
+            "X13: spelled-out fee amount is reported as a failure",
+            any(
+                "c-lender-*" in f and "d266_js_fee_sentence_unrecognized_track" in f
+                for f in failures
+            ),
+        )
+
+        print()
+        print("restore -- must return to PASS")
+        write_fixture(tmp_root)
+        failures, notes = run_js_check(tmp_root)
+        check("restored-after-X13 failures", failures, [])
+
+        print()
         print("gh-2020 refuter N19a: the registered surface "
               "js/router-discovery.js is simply ABSENT from the tree (moved, "
               "renamed, or deleted) -- must FAIL, not print a tolerant NOTE "
@@ -733,6 +875,80 @@ def main():
         )
 
         print()
+        print("gh-2020 REVIEW: FAIL (comment 5780386929) X6: disclaimer "
+              "wrapped in a collapsed <details><summary>Legal</summary>...  "
+              "</details> (no `open` attribute, so a browser hides the body "
+              "by default) -- must return False; a <details open> control "
+              "with the same markup must still return True")
+        html_details_collapsed = f'<details><summary>Legal</summary><p>{D266}</p></details>'
+        check_false(
+            "X6: disclaimer inside a collapsed <details> does not satisfy check_d266_disclaimer",
+            mod.check_d266_disclaimer(html_details_collapsed),
+        )
+        html_details_open = f'<details open><summary>Legal</summary><p>{D266}</p></details>'
+        check_true(
+            "X6 control: disclaimer inside an <details open> still satisfies check_d266_disclaimer",
+            mod.check_d266_disclaimer(html_details_open),
+        )
+
+        print()
+        print("gh-2020 REVIEW: FAIL (comment 5780386929) X9: disclaimer "
+              "inside a `hidden` element that NESTS ANOTHER element of the "
+              "SAME tag name ahead of the disclaimer -- the old non-greedy "
+              "`<(\\w+)...>.*?</\\1>` match stopped at the first same-name "
+              "closing tag (the inner </div>), leaving the outer <p> "
+              "disclaimer outside the stripped span -- must return False")
+        html_nested_hidden = (
+            '<div class="fine-print" hidden>'
+            '<div class="fine-print-title">Legal</div> '
+            f'<p>{D266}</p>'
+            '</div>'
+        )
+        check_false(
+            "X9: disclaimer inside a hidden element nesting a same-named tag does not satisfy check_d266_disclaimer",
+            mod.check_d266_disclaimer(html_nested_hidden),
+        )
+
+        print()
+        print("gh-2155 HI-0c control (landed on main after this issue's "
+              "last CLOSE-REVIEW): a disclaimer that starts "
+              "style=\"display:none\" but carries an id a <script> on the "
+              "SAME page later reveals via .style.display = '' (the site's "
+              "own fail-closed-then-JS-reveal pattern, Ben ruling 5836510515) "
+              "must still satisfy check_d266_disclaimer -- this is NOT the "
+              "N8/N9 bypass, which ships no reveal script at all")
+        html_conditionally_hidden = (
+            f'<p id="referralFeeDisclaimer" style="display:none;">{D266}</p>\n'
+            "<script>\n"
+            "  var el = document.getElementById('referralFeeDisclaimer');\n"
+            "  if (el) { el.style.display = ''; }\n"
+            "</script>\n"
+        )
+        check_true(
+            "HI-0c control: a script-revealed display:none disclaimer still satisfies check_d266_disclaimer",
+            mod.check_d266_disclaimer(html_conditionally_hidden),
+        )
+        html_conditionally_hidden_batch = (
+            f'<p id="referralFeeDisclaimer" style="display:none;">{D266}</p>\n'
+            "<script>\n"
+            "  var feeIds = ['referralFeeDisclaimer', 'recruitFeeHint'];\n"
+            "  feeIds.forEach(function (id) {\n"
+            "    var el = document.getElementById(id);\n"
+            "    if (el) el.style.display = '';\n"
+            "  });\n"
+            "</script>\n"
+        )
+        check_true(
+            "HI-0c control (batch forEach reveal): still satisfies check_d266_disclaimer",
+            mod.check_d266_disclaimer(html_conditionally_hidden_batch),
+        )
+        html_hidden_no_reveal_script = f'<p id="referralFeeDisclaimer" style="display:none;">{D266}</p>\n'
+        check_false(
+            "sanity: display:none with NO reveal script anywhere is still absent (N9 unaffected)",
+            mod.check_d266_disclaimer(html_hidden_no_reveal_script),
+        )
+
+        print()
         print("gh-2020 refuter N20/N21/N22: compute_d266_pages() census, "
               "isolated fixture tree with module.REPO_ROOT NOT touched "
               "(root is passed explicitly)")
@@ -798,6 +1014,88 @@ def main():
                 )
         finally:
             shutil.rmtree(census_root, ignore_errors=True)
+
+        print()
+        print("gh-2020 REVIEW: FAIL (comment 5780386929) X3/X4/X5: "
+              "FEE_SENTENCE_RE required a literal `$\\d` amount and the "
+              "exact token 'referral', with no newline or '.' between them "
+              "-- a source line-wrap (X3), a decimal amount (X4), or a "
+              "spelled-out amount (X5) all read as absent")
+        wrap_root = pathlib.Path(tempfile.mkdtemp(prefix="partnerparity-test-x345-"))
+        try:
+            (wrap_root / "lenders.html").write_text(
+                "<html><body><p>Earn $250 for every borrower you send us "
+                "whose\nproject completes -- paid for each referral.</p>"
+                "</body></html>",
+                encoding="utf-8",
+            )
+            pages = mod.compute_d266_pages(wrap_root)
+            check_true(
+                "X3: line-wrapped fee sentence is swept into the D-266 census",
+                "lenders" in pages,
+            )
+        finally:
+            shutil.rmtree(wrap_root, ignore_errors=True)
+
+        decimal_root = pathlib.Path(tempfile.mkdtemp(prefix="partnerparity-test-x345-"))
+        try:
+            (decimal_root / "lenders.html").write_text(
+                "<html><body><p>Earn $250.00 per referral you send us.</p></body></html>",
+                encoding="utf-8",
+            )
+            pages = mod.compute_d266_pages(decimal_root)
+            check_true(
+                "X4: decimal fee amount is swept into the D-266 census",
+                "lenders" in pages,
+            )
+        finally:
+            shutil.rmtree(decimal_root, ignore_errors=True)
+
+        spelled_root = pathlib.Path(tempfile.mkdtemp(prefix="partnerparity-test-x345-"))
+        try:
+            (spelled_root / "lenders.html").write_text(
+                "<html><body><p>Earn two hundred dollars for every referral "
+                "you send us.</p></body></html>",
+                encoding="utf-8",
+            )
+            pages = mod.compute_d266_pages(spelled_root)
+            check_true(
+                "X5: spelled-out fee amount is swept into the D-266 census",
+                "lenders" in pages,
+            )
+        finally:
+            shutil.rmtree(spelled_root, ignore_errors=True)
+
+        print()
+        print("gh-2020 CLOSE-REVIEW: FAIL (comment 5824278669) must-fix (3): "
+              "D-333's home-inspector no-fee exemption must FAIL CLOSED -- a "
+              "referral fee re-added to an exempt inspector page must be "
+              "caught, not silently pass because a name-based exemption "
+              "beats the fee census")
+        d333_root = pathlib.Path(tempfile.mkdtemp(prefix="partnerparity-test-d333-"))
+        try:
+            (d333_root / "partner-inspectors.html").write_text(
+                "<html><body><p>Home inspectors receive no referral fee or "
+                "recruit bonus.</p></body></html>",
+                encoding="utf-8",
+            )
+            pages = mod.compute_d266_pages(d333_root)
+            check_false(
+                "D-333: no-fee partner-inspectors.html is NOT required to carry D-266",
+                "partner-inspectors" in pages,
+            )
+            (d333_root / "partner-inspectors.html").write_text(
+                "<html><body><p>Earn a $200 referral fee for every "
+                "completed job.</p></body></html>",
+                encoding="utf-8",
+            )
+            pages = mod.compute_d266_pages(d333_root)
+            check_true(
+                "D-333 fail-closed: a fee re-added to partner-inspectors.html re-requires D-266",
+                "partner-inspectors" in pages,
+            )
+        finally:
+            shutil.rmtree(d333_root, ignore_errors=True)
 
     finally:
         shutil.rmtree(tmp_root, ignore_errors=True)

@@ -62,9 +62,14 @@ import {
   readHoverChargeRecord,
   saveHoverChargeRecord,
   clearHoverChargeRecord,
+  hasFiredMeasurementPurchase,
+  markMeasurementPurchaseFired,
   type PendingHoverCharge,
 } from './hover-charge-storage';
-import { track } from '@/lib/track';
+import { track, fbqTrack, buildMeasurementPurchaseEventId } from '@/lib/track';
+import { getVariant } from '@/lib/variant';
+import { supabase } from '@/lib/supabase';
+import { linkPendingLeadOnce } from '@/lib/lead-capture';
 
 /**
  * NEW operational copy for the gh-951 resume flow — like gh-416's ORDER_RETRY_COPY
@@ -98,6 +103,21 @@ function Content() {
   const { user } = useAuthReady();
   const userId = user?.id ?? null;
   const data = useHelpMeasurementsData(userId, true);
+
+  // gh-2121 (S16) / PR #2163 REVIEW: FAIL fix (comment 5821864061, M1's
+  // third Arm F scenario), 2026-09-24: an Arm F visitor who is ALREADY
+  // signed in and lands on this page directly with a live `?lead=` never
+  // goes through get-started/page.tsx's signUp() at all, so that call site
+  // alone could never link them. This page is reached only once `user` is
+  // resolved non-null (HomeownerShell's gate bounces anyone else away
+  // before Content ever mounts), so it is exactly the right place to call
+  // set_lead_converted for that path. linkPendingLeadOnce() is a no-op with
+  // nothing captured (the ordinary case), fires at most once per capture
+  // (it clears the capture itself), and never blocks rendering.
+  useEffect(() => {
+    if (!userId) return;
+    void linkPendingLeadOnce(supabase);
+  }, [userId]);
 
   if (data.loading) return <Boot />;
 
@@ -173,6 +193,31 @@ function PageBody({
         // on the success screen).
         if (result?.capture_request_id) {
           clearHoverChargeRecord();
+          // gh-2078 PR #2092 review fix 1: this resume path is a SECOND
+          // route to a completed order (the first is handlePaid, above) --
+          // a paid order that completes here (tab reload/close between the
+          // charge and placeHoverOrder resolving, or a first attempt that
+          // threw and was retried via a fresh mount rather than
+          // HoverPaymentForm's in-mount "Retry Order") must fire
+          // measurement_purchase too, or every resumed purchase is
+          // silently uncounted. Same once-only guard, same paymentIntent
+          // id as handlePaid's own call -- if handlePaid somehow already
+          // fired for this id (e.g. a race between the two paths), this
+          // is a no-op, not a double-count.
+          if (!hasFiredMeasurementPurchase(pendingResume.paymentIntentId)) {
+            const variant = getVariant();
+            track('measurement_purchase', { value: 15.0, currency: 'USD', variant });
+            // gh-2078c: eventID lets Meta dedup this client pixel event
+            // against the server-side CAPI Purchase (PR #2107) sent from
+            // the SAME paymentIntent id -- see lib/track.ts's
+            // buildMeasurementPurchaseEventId header.
+            fbqTrack(
+              'Purchase',
+              { value: 15.0, currency: 'USD', variant },
+              buildMeasurementPurchaseEventId(pendingResume.paymentIntentId),
+            );
+            markMeasurementPurchaseFired(pendingResume.paymentIntentId);
+          }
           setHoverStage('success');
           setView('hover');
         } else {
@@ -222,7 +267,11 @@ function PageBody({
     setHoverLoading(true);
     setStatus(null);
     try {
-      const res = await requestHoverPaymentIntent(claim);
+      // gh-2078c / D-330 reconciliation: thread the same persisted router arm
+      // the `measurement_purchase`/`Purchase` events below already read onto
+      // the PaymentIntent metadata, so the server-side Meta CAPI event
+      // (PR #2107) can attribute the purchase instead of reading 'unknown'.
+      const res = await requestHoverPaymentIntent(claim, getVariant());
       if (!res?.client_secret) {
         setStatus({ text: M.statusPaymentInitError, type: 'error' });
         return;
@@ -259,6 +308,36 @@ function PageBody({
       // order), not the CRO funnel's main job-payment step — see the
       // gh-1940 report for why GA4 `purchase` is not wired here instead.
       track('help_tool_used', { tool: 'help_measurements', method: 'hover_payment' });
+      // gh-2078: `measurement_purchase` -- the homeowner conversion event
+      // GA4/Meta optimise the D/E funnel toward. Guarded by
+      // hasFiredMeasurementPurchase/markMeasurementPurchaseFired (keyed on
+      // the CHARGED paymentIntent id, hover-charge-storage.ts) so a retry
+      // of the order step after a THROW here (this whole function can be
+      // re-invoked by HoverPaymentForm's "Retry Order" -- see that
+      // component's runOrder) never double-counts the same $15 charge as
+      // two purchases. Placed after the order-creation await above: this
+      // line is only reached once placeHoverOrder has actually resolved
+      // (a graceful EF-pending result counts as a completed order here,
+      // same as the resume-effect's own success criterion elsewhere in
+      // this file -- gh-951).
+      if (!hasFiredMeasurementPurchase(paymentIntentId)) {
+        const variant = getVariant();
+        track('measurement_purchase', { value: 15.0, currency: 'USD', variant });
+        // Meta Pixel: guarded no-op if fbevents.js was never loaded on this
+        // page -- see lib/track.ts's fbqTrack header for why (this is an
+        // authenticated route, outside MetaPixelGate.tsx's ALLOWED_PATHS
+        // today; see the gh-2078 PR description for the follow-up this
+        // leaves open). gh-2078c: eventID lets Meta dedup this client event
+        // against the server-side CAPI Purchase (PR #2107) sent from the
+        // SAME paymentIntent id -- see lib/track.ts's
+        // buildMeasurementPurchaseEventId header.
+        fbqTrack(
+          'Purchase',
+          { value: 15.0, currency: 'USD', variant },
+          buildMeasurementPurchaseEventId(paymentIntentId),
+        );
+        markMeasurementPurchaseFired(paymentIntentId);
+      }
       setHoverStage('success');
     },
     [profile, claim, user],

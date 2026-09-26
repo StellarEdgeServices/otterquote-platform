@@ -91,6 +91,8 @@
  *     caller-supplied object's keys unfiltered.
  */
 
+import { isAdSharingOptedOut } from './ad-optout';
+
 type PhotoTier = 'main' | 'tier1' | 'tier2' | 'tier3' | 'tier4';
 type HelpTool = 'help_estimate' | 'help_materials' | 'help_measurements';
 type HelpMethod = 'hover_payment' | 'email_request';
@@ -139,6 +141,16 @@ type TrackEventParams = {
    * event does not lose the dimension the pre-redirect emit used to carry.
    */
   sign_up: { method: 'google'; referral_source: ReferralSource };
+  /**
+   * gh-2078 -- fires once, from the measurement ($15 Hover) checkout
+   * success path (help-measurements/page.tsx's handlePaid), immediately
+   * after placeHoverOrder resolves (a real, confirmed Stripe charge --
+   * see HoverPaymentForm.tsx's own gh-416 double-charge guard, which this
+   * reuses rather than re-deriving). `value`/`currency` are fixed
+   * (the $15 RoofScope price), `variant` is the persisted router arm
+   * (lib/variant.ts), `'unknown'` when none was ever captured.
+   */
+  measurement_purchase: { value: number; currency: 'USD'; variant: string };
 };
 
 /**
@@ -155,6 +167,7 @@ const TRACK_EVENT_KEYS: { [E in keyof TrackEventParams]: ReadonlyArray<keyof Tra
   bid_accepted: ['bid_id', 'contractor_id', 'bid_amount', 'source', 'test_account'],
   contract_signed: [],
   sign_up: ['method', 'referral_source'],
+  measurement_purchase: ['value', 'currency', 'variant'],
 };
 
 /**
@@ -228,6 +241,22 @@ function sanitizeSignUpMethod(value: unknown): 'google' | 'unknown' {
   return typeof value === 'string' && SIGN_UP_METHODS.has(value) ? (value as 'google') : 'unknown';
 }
 
+/** fix -- measurement_purchase.value: fixed $15 price, but never trust the caller's number as-is. */
+function sanitizeMeasurementValue(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0;
+}
+
+const USD_ONLY: ReadonlySet<string> = new Set(['USD']);
+function sanitizeCurrency(value: unknown): 'USD' {
+  return typeof value === 'string' && USD_ONLY.has(value) ? 'USD' : 'USD';
+}
+
+/** Bounded shape check, same posture as sanitizeIdLike above -- no fixed arm vocabulary here (see lib/variant.ts). */
+const VARIANT_SHAPE_RE = /^[a-z0-9]{1,8}$/;
+function sanitizeVariantParam(value: unknown): string {
+  return typeof value === 'string' && VARIANT_SHAPE_RE.test(value) ? value : 'unknown';
+}
+
 const REFERRAL_SOURCES: ReadonlySet<string> = new Set(['insurance_agent', 'realtor', 'friend', 'web', 'partner_link', '']);
 function sanitizeReferralSource(value: unknown): ReferralSource {
   return typeof value === 'string' && REFERRAL_SOURCES.has(value) ? (value as ReferralSource) : '';
@@ -246,6 +275,7 @@ const FIELD_SANITIZERS: { [E in keyof TrackEventParams]: { [K in keyof TrackEven
   },
   contract_signed: {},
   sign_up: { method: sanitizeSignUpMethod, referral_source: sanitizeReferralSource },
+  measurement_purchase: { value: sanitizeMeasurementValue, currency: sanitizeCurrency, variant: sanitizeVariantParam },
 };
 
 /**
@@ -287,6 +317,64 @@ export function track<E extends keyof TrackEventParams>(event: E, params: TrackE
   } catch {
     // Never throw — an analytics failure must never break a user-facing action.
   }
+}
+
+/**
+ * gh-2078 -- guarded Meta Pixel emit, mirroring get-started/page.tsx's own
+ * local `fbq()` helper (that one is not exported / not shared, per this
+ * file's header -- get-started keeps its own call sites). Every call site
+ * outside get-started that needs fbq (this file's `measurement_purchase`
+ * callers, `partner_signup_complete`'s pages are static HTML and use their
+ * own `try { fbq(...) } catch {}` idiom instead) goes through here so
+ * there is exactly one `typeof window.fbq === 'function'` guard to keep in
+ * sync with MetaPixelGate.tsx's own contract. Never throws, never queues:
+ * if MetaPixelGate has not loaded fbq on this host+path (e.g. an
+ * authenticated route outside its ALLOWED_PATHS -- see that file), this is
+ * a silent no-op, exactly like `track()` above when GA4Gate has not
+ * loaded gtag.
+ *
+ * gh-2078c: an optional third argument, `eventId`, is forwarded to fbq as
+ * its 4th call argument (`fbq('track', name, params, {eventID: eventId})`)
+ * -- Meta's own client-side dedup mechanism. Omitted entirely (not just
+ * `undefined`) when `eventId` is not passed, so every pre-existing call
+ * site and test that does not pass one is byte-identical to before this
+ * change. See `buildMeasurementPurchaseEventId` below for the one id this
+ * file currently computes.
+ */
+export function fbqTrack(eventName: string, params?: Record<string, unknown>, eventId?: string): void {
+  try {
+    if (typeof window === 'undefined') return;
+    const w = window as unknown as { fbq?: (...args: unknown[]) => void };
+    if (typeof w.fbq !== 'function') return;
+    // gh-2107 (REVIEW N1 on #2134): re-check the advertising-sharing opt-out on EVERY event. The pixel's `allowed` state can outlive a
+    // client-side navigation, and a stored opt-out may only be read after fbevents.js is already loaded (GPC or the cookie it leaves).
+    if (isAdSharingOptedOut()) return;
+    if (eventId) w.fbq('track', eventName, params ?? {}, { eventID: eventId });
+    else if (params) w.fbq('track', eventName, params);
+    else w.fbq('track', eventName);
+  } catch {
+    // Never throw — an analytics failure must never break a user-facing action.
+  }
+}
+
+/**
+ * gh-2078c / D-330 reconciliation (Q: on #2078, comment 5780969290):
+ * deterministic Meta dedup id for a measurement-order `Purchase` event.
+ *
+ * MUST match `supabase/functions/stripe-webhook/meta-capi.ts`'s
+ * `buildCapiEventId` EXACTLY -- same `measurement_purchase:<paymentIntentId>`
+ * format, same `paymentIntentId` string already in scope at both of
+ * help-measurements/page.tsx's `fbqTrack('Purchase', ...)` call sites (the
+ * PR #2107 server-side CAPI event computes the identical string from the
+ * SAME PaymentIntent id, independently, with no coordination needed at
+ * request time). Meta dedupes a client pixel event against a server CAPI
+ * event ONLY when both carry the identical `event_name` + `event_id`; a
+ * value that "almost" matches (different prefix, different casing, a
+ * hash instead of the raw id) does not dedupe at all -- see
+ * `__tests__/track.test.ts`'s pinned-equivalence test.
+ */
+export function buildMeasurementPurchaseEventId(paymentIntentId: string): string {
+  return `measurement_purchase:${paymentIntentId}`;
 }
 
 /**

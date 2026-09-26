@@ -30,6 +30,31 @@ import { fileURLToPath } from 'url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const BASE_URL = process.env.LIVE_BASE_URL || 'https://otterquote.com';
 
+// gh-2064: this config's whole reason to exist is hitting the REAL deployed
+// production site (see module docstring above) -- exactly the kind of
+// automated walk that was being counted as a visitor in GA4, Meta and
+// Clarity. Pre-seeding the oq_internal cookie via storageState means every
+// context this config creates already carries it on its very first
+// request, before the first page.goto() -- js/internal-traffic.js only
+// needs the cookie OR the query param, and a pre-set cookie covers every
+// PAGE constant in entry-point-reachability.spec.ts without editing each
+// spec's own page.goto() call individually.
+const INTERNAL_TRAFFIC_STORAGE_STATE = {
+  cookies: [
+    {
+      name: 'oq_internal',
+      value: '1',
+      domain: '.otterquote.com',
+      path: '/',
+      expires: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 365,
+      httpOnly: false,
+      secure: true,
+      sameSite: 'Lax' as const,
+    },
+  ],
+  origins: [],
+};
+
 export default defineConfig({
   testDir: __dirname,
   // Only the reachability spec runs against the live site -- pages.spec.ts
@@ -51,6 +76,8 @@ export default defineConfig({
     headless: true,
     actionTimeout: 8_000,
     navigationTimeout: 15_000,
+    // gh-2064: opt this live run out of GA4/Meta/Clarity counting.
+    storageState: INTERNAL_TRAFFIC_STORAGE_STATE,
   },
 
   // No webServer block -- the target is already deployed and live.

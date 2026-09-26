@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { track, fireSignUpAndWait } from '../track';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { track, fireSignUpAndWait, fbqTrack, buildMeasurementPurchaseEventId } from '../track';
 
 describe('track()', () => {
   let gtagSpy: ReturnType<typeof vi.fn>;
@@ -235,5 +237,175 @@ describe('fireSignUpAndWait()', () => {
     expect(payload.method).toBe('google');
     expect(payload.referral_source).toBe('partner_link');
     expect(typeof payload.event_callback).toBe('function');
+  });
+});
+
+
+describe('measurement_purchase (gh-2078)', () => {
+  let gtagSpy: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    gtagSpy = vi.fn();
+    (window as unknown as { gtag?: unknown }).gtag = gtagSpy;
+  });
+
+  afterEach(() => {
+    delete (window as unknown as { gtag?: unknown }).gtag;
+  });
+
+  it('sends value/currency/variant exactly as given, when valid', () => {
+    track('measurement_purchase', { value: 15.0, currency: 'USD', variant: 'e' });
+    expect(gtagSpy).toHaveBeenCalledWith('event', 'measurement_purchase', {
+      value: 15.0,
+      currency: 'USD',
+      variant: 'e',
+    });
+  });
+
+  it('sanitizes a bad variant shape to "unknown" rather than forwarding it', () => {
+    track('measurement_purchase', {
+      value: 15.0,
+      currency: 'USD',
+      variant: 'not a real arm; DROP TABLE',
+    });
+    const payload = gtagSpy.mock.calls[0][2] as Record<string, unknown>;
+    expect(payload.variant).toBe('unknown');
+  });
+
+  it('sanitizes a negative/non-finite value to 0 rather than forwarding it', () => {
+    track('measurement_purchase', {
+      value: -999 as unknown as number,
+      currency: 'USD',
+      variant: 'd',
+    });
+    const payload = gtagSpy.mock.calls[0][2] as Record<string, unknown>;
+    expect(payload.value).toBe(0);
+  });
+});
+
+describe('fbqTrack() (gh-2078)', () => {
+  afterEach(() => {
+    delete (window as unknown as { fbq?: unknown }).fbq;
+  });
+
+  it('is a silent no-op when window.fbq is not a function (MetaPixelGate has not loaded here)', () => {
+    expect(() => fbqTrack('Purchase', { value: 15, currency: 'USD' })).not.toThrow();
+  });
+
+  it('calls window.fbq(\'track\', name, params) when fbq is present', () => {
+    const fbqSpy = vi.fn();
+    (window as unknown as { fbq: unknown }).fbq = fbqSpy;
+    fbqTrack('Purchase', { value: 15, currency: 'USD', variant: 'e' });
+    expect(fbqSpy).toHaveBeenCalledWith('track', 'Purchase', { value: 15, currency: 'USD', variant: 'e' });
+  });
+
+  it('calls window.fbq(\'track\', name) with no params object when none is given', () => {
+    const fbqSpy = vi.fn();
+    (window as unknown as { fbq: unknown }).fbq = fbqSpy;
+    fbqTrack('CompleteRegistration');
+    expect(fbqSpy).toHaveBeenCalledWith('track', 'CompleteRegistration');
+  });
+
+  it('never throws even if window.fbq itself throws', () => {
+    (window as unknown as { fbq: unknown }).fbq = () => {
+      throw new Error('boom');
+    };
+    expect(() => fbqTrack('Purchase', { value: 15 })).not.toThrow();
+  });
+
+  // gh-2078c / D-330 reconciliation (Q: on #2078, comment 5780969290): a
+  // third `eventId` argument is forwarded to fbq as its 4th call argument
+  // so Meta can dedup this client pixel event against the server-side CAPI
+  // event (PR #2107) computed for the SAME paymentIntent id.
+  it('forwards a 4th {eventID} argument to fbq when eventId is passed', () => {
+    const fbqSpy = vi.fn();
+    (window as unknown as { fbq: unknown }).fbq = fbqSpy;
+    fbqTrack('Purchase', { value: 15, currency: 'USD', variant: 'e' }, 'measurement_purchase:pi_abc123');
+    expect(fbqSpy).toHaveBeenCalledWith(
+      'track',
+      'Purchase',
+      { value: 15, currency: 'USD', variant: 'e' },
+      { eventID: 'measurement_purchase:pi_abc123' },
+    );
+  });
+
+  it('does not add a 4th argument when eventId is omitted (pre-existing call sites unchanged)', () => {
+    const fbqSpy = vi.fn();
+    (window as unknown as { fbq: unknown }).fbq = fbqSpy;
+    fbqTrack('Purchase', { value: 15, currency: 'USD', variant: 'e' });
+    expect(fbqSpy).toHaveBeenCalledWith('track', 'Purchase', { value: 15, currency: 'USD', variant: 'e' });
+    expect(fbqSpy.mock.calls[0]).toHaveLength(3);
+  });
+});
+
+// REVIEW: FAIL 5806828503 N1 on #2134: the pixel's `allowed` state can be sticky across client-side navigation (fbevents.js loaded on
+// /get-started, then a stored opt-out is read on /help-measurements). fbqTrack therefore re-checks the opt-out on every event.
+describe('fbqTrack honours the advertising-sharing opt-out on every event (gh-2107)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    delete (window as unknown as { fbq?: unknown }).fbq;
+    document.cookie = 'oq_ad_optout=; max-age=0; path=/';
+  });
+
+  it('CONTROL: with no opt-out, fbq is called', () => {
+    const fbqSpy = vi.fn();
+    (window as unknown as { fbq: unknown }).fbq = fbqSpy;
+    fbqTrack('Purchase', { value: 15 }, 'measurement_purchase:pi_1');
+    expect(fbqSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('GPC on: fbq is NOT called, even though the pixel is loaded', () => {
+    const fbqSpy = vi.fn();
+    (window as unknown as { fbq: unknown }).fbq = fbqSpy;
+    vi.stubGlobal('navigator', { globalPrivacyControl: true });
+    fbqTrack('Purchase', { value: 15 }, 'measurement_purchase:pi_1');
+    fbqTrack('Lead');
+    expect(fbqSpy).not.toHaveBeenCalled();
+  });
+
+  it('the oq_ad_optout cookie (left by a stored opt-out read mid-session): fbq is NOT called', () => {
+    const fbqSpy = vi.fn();
+    (window as unknown as { fbq: unknown }).fbq = fbqSpy;
+    document.cookie = 'oq_ad_optout=1; path=/';
+    fbqTrack('Purchase', { value: 15 });
+    expect(fbqSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('buildMeasurementPurchaseEventId() (gh-2078c / D-330 dedup reconciliation)', () => {
+  // gh-2078c REVIEW: FAIL 5805870455 (F1): this test used to compare against a COPY of the server's template literal, so
+  // editing either side left CI green while Meta silently stopped deduplicating (every purchase counted twice). Both
+  // runtimes are now pinned to ONE file, supabase/functions/_shared/capi-event-id.contract.json: this test is the client's
+  // half, supabase/functions/_shared/capi-event-id-contract.test.ts is the server's half (buildCapiEventId in
+  // stripe-webhook/meta-capi.ts, PR #2107). Neither runtime can import the other's module, so the shared FILE is the source.
+  // Vitest runs with react-app as the working directory (jsdom, so import.meta.url is not a file URL); the repo root is one up.
+  const contract = JSON.parse(
+    readFileSync(resolve(process.cwd(), '..', 'supabase', 'functions', '_shared', 'capi-event-id.contract.json'), 'utf8'),
+  ) as { prefix: string; examples: { paymentIntentId: string; eventId: string }[] };
+
+  it('the contract file was found and is well formed', () => {
+    expect(contract.prefix.length).toBeGreaterThan(0);
+    expect(contract.examples.length).toBeGreaterThanOrEqual(2);
+  });
+
+  // gh-2107 follow-up 6a (Ben, #2078 5806312169): the shared contract file is OUTSIDE react-app/, so a change to it alone did not
+  // trigger this workflow and the client half of the contract test could stay unrun while the server half changed. The
+  // workflow's path filter must therefore list the file, on BOTH triggers.
+  it('the React Vitest workflow runs when the shared contract file changes (it is in the paths filter of both triggers)', () => {
+    const wf = readFileSync(resolve(process.cwd(), '..', '.github', 'workflows', 'react-app-tests.yml'), 'utf8');
+    const needle = "'supabase/functions/_shared/capi-event-id.contract.json'";
+    const occurrences = wf.split(needle).length - 1;
+    expect(occurrences).toBe(2);
+    const pushPaths = wf.slice(wf.indexOf('push:'), wf.indexOf('pull_request:'));
+    const prPaths = wf.slice(wf.indexOf('pull_request:'), wf.indexOf('# gh-1731'));
+    expect(pushPaths).toContain(needle);
+    expect(prPaths).toContain(needle);
+  });
+
+  it('derives the contract event_id (prefix + paymentIntentId) for every example in the shared file', () => {
+    for (const e of contract.examples) {
+      expect(buildMeasurementPurchaseEventId(e.paymentIntentId)).toBe(e.eventId);
+      expect(buildMeasurementPurchaseEventId(e.paymentIntentId)).toBe(contract.prefix + e.paymentIntentId);
+    }
   });
 });

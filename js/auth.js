@@ -1139,8 +1139,25 @@ window.Auth = {
                 attestation_signer_name:  attestationPayload ? data.contact_name : null,
                 attestation_signer_title: data.signer_title || null,
                 attestation_text_version: attestationPayload ? (attestationPayload.text_version) : null,
-                // TCPA SMS consent
+                // TCPA SMS consent (legacy field — data.sms_consent_ts is never
+                // set by contractor-join.html today, so this has always
+                // written NULL for every contractor; left as-is for back-compat).
                 sms_consent_ts: data.sms_consent_ts || null,
+                // gh-1916 / R-134: the real opt-in the SMS send-side gate reads
+                // (supabase/functions/notify-contractors, process-dunning).
+                // data.sms_opt_in is only ever `true` (checkbox checked) or
+                // undefined (unchecked, or pre-this-change localStorage
+                // payload) — coerced to a real boolean/NULL here so an
+                // unchecked signup persists NULL, not `false`, matching the
+                // migration's column default and the issue's negative control.
+                sms_opt_in: data.sms_opt_in === true ? true : null,
+                sms_opt_in_at: data.sms_opt_in === true ? (data.sms_opt_in_at || new Date().toISOString()) : null,
+                sms_opt_in_source: data.sms_opt_in === true ? (data.sms_opt_in_source || 'contractor-signup') : null,
+                // R-177 rework: which exact consent sentence this opt-in was
+                // taken under (contractor-join.html sets this to match the copy
+                // it actually shows — see that file). NULL whenever sms_opt_in
+                // is not true, same as the sibling fields above.
+                sms_consent_text_version: data.sms_opt_in === true ? (data.sms_consent_text_version || 'contractor-v2-2026-09-15') : null,
                 // New contractors default to pending_approval status
                 status: 'pending_approval',
               })
@@ -1288,9 +1305,11 @@ Log in to the admin panel to review and approve this contractor.`;
         // (trade-selector) can stamp claims.referral_id, then clear the
         // advance-scoped keys so this block never re-runs.
         localStorage.setItem('oq_referral_id_for_claim', referralId);
-        // Keep the cookie alive under the claim-scoped name so the claim
-        // writer can still see it after a cross-origin hop.
-        if (window.OtterQuoteReferral) {
+        // gh-2062: only re-arm the cookie's 90-day clock on a successful
+        // advance. A failed RPC call is not a reason to extend the life of
+        // an id we were just told is not advanceable — the cookie keeps
+        // whatever TTL it already had instead of restarting the clock.
+        if (!advanceError && window.OtterQuoteReferral) {
           const kept = window.OtterQuoteReferral.read();
           window.OtterQuoteReferral.write({
             oq_referral_id: referralId,

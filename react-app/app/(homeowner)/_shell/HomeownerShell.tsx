@@ -38,6 +38,7 @@
 import { useEffect } from 'react';
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import { useNotificationCount } from '@/hooks/use-notification-count';
+import { readPendingLeadId } from '@/lib/lead-capture';
 
 export type HomeownerNavId = 'dashboard' | 'bids';
 
@@ -78,7 +79,22 @@ export function HomeownerShell({ active, children }: HomeownerShellProps) {
     // wait for that resolution rather than bounce.
     if (!settled || loading) return;
     if (!user) {
-      window.location.href = HOMEOWNER_GET_STARTED_URL;
+      // PR #2163 REVIEW: FAIL fix (comment 5821864061, M1), 2026-09-24: a
+      // signed-out Arm F visitor lands here (HomeownerShell gates
+      // /help-measurements and /help-estimate) with a lead already
+      // captured by app/layout.tsx's strip script (window.__oqRouterLeadId
+      // this same load, or the sessionStorage marker for one already
+      // consumed) — carry it across this cross-origin bounce to
+      // otterquote.com (which 301s straight back to
+      // app.otterquote.com/get-started, see _redirects) as a query param,
+      // since sessionStorage set on app.otterquote.com is not guaranteed
+      // to read back reliably across a hop through another origin in
+      // every browser. get-started/page.tsx's own capture script (same
+      // LEAD_CAPTURE_PATHS allowlist) re-captures it on arrival.
+      const leadId = readPendingLeadId();
+      window.location.href = leadId
+        ? `${HOMEOWNER_GET_STARTED_URL}?lead=${encodeURIComponent(leadId)}`
+        : HOMEOWNER_GET_STARTED_URL;
     } else if (role === 'contractor') {
       window.location.href = CONTRACTOR_DASHBOARD_URL;
     }
@@ -97,7 +113,8 @@ export function HomeownerShell({ active, children }: HomeownerShellProps) {
     <>
       <style>{STYLES}</style>
       <HomeownerNav active={active} userId={user.id} onSignOut={signOut} />
-      <main className="oqh-main">{children}</main>
+      {/* gh-1939: the ruled Clarity routes (/dashboard, /bids, /repair-intake) all render here, so the mask lives here: page content is masked in any replay. */}
+      <main className="oqh-main" data-clarity-mask="true">{children}</main>
       <footer className="oqh-footer">© {new Date().getFullYear()} Otter Quotes</footer>
     </>
   );
@@ -116,7 +133,7 @@ function HomeownerNav({
   const badge = count > 99 ? '99+' : String(count);
 
   return (
-    <header className="oqh-nav">
+    <header className="oqh-nav" data-clarity-mask="true">
       <a className="oqh-brand" href="/dashboard">Otter Quotes</a>
 
       <nav className="oqh-links" aria-label="Homeowner navigation">

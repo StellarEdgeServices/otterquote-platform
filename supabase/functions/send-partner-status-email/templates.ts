@@ -98,12 +98,18 @@ export function formatReferralDisplayName(
 
 // ── Email shell (mirrors notify-partner-w9 / notify-payout-pending) ──────
 
+import {
+  footerPostalAddressHtml,
+  footerPostalAddressText,
+} from "./email-footer.ts";
+
 function emailFooter(): string {
   return `
 <table width="100%" cellpadding="0" cellspacing="0" border="0">
   <tr>
     <td align="center" style="background:#F8FAFC;border-top:1px solid #E2E8F0;padding:20px 32px;font-family:${FONT_STACK};font-size:13px;color:#64748B;">
       <a href="mailto:support@otterquote.com" style="color:#0EA5E9;text-decoration:none;">support@otterquote.com</a>
+      ${footerPostalAddressHtml()}
     </td>
   </tr>
 </table>`.trim();
@@ -158,12 +164,32 @@ export interface RenderedEmail {
   text: string;
 }
 
+// ── D-333 gate: home inspectors get no stage-5 "payment is on its way"
+// email ──────────────────────────────────────────────────────────────────
+// Ben's ruling, CEO RUN 67 (PR #2158 re-review, comments 5818774175 /
+// 5818776287): every path that queues this series — the DB trigger's
+// catch-up call from apply_referral_commission() AND mark-job-complete's
+// direct call — funnels through this one function, so gating it HERE is
+// the single place that covers both senders. Only stage 5 carries payment
+// language ("Payment for this referral is on its way."); stages 1-4 are
+// plain progress updates with no payment language and are sent to a
+// home_inspector exactly as they are to anyone else. No wording changes
+// anywhere — this only decides whether stage 5 is sent at all.
+export function isStageBlockedForAgentType(
+  agentType: string | null | undefined,
+  stage: Stage,
+): boolean {
+  return agentType === "home_inspector" && stage === 5;
+}
+
 /**
- * Renders one of the 5 stage emails. `displayName` should already be run
- * through formatReferralDisplayName (kept as a separate step so tests can
- * exercise both functions independently).
+ * Internal: builds one of the 5 stage emails before the gh-1824 postal-
+ * address suffix is appended by the exported renderStageEmail() below.
+ * `displayName` should already be run through formatReferralDisplayName
+ * (kept as a separate step so tests can exercise both functions
+ * independently).
  */
-export function renderStageEmail(stage: Stage, displayName: string): RenderedEmail {
+function renderStageEmailBody(stage: Stage, displayName: string): RenderedEmail {
   const cta = { href: PARTNER_DASHBOARD_URL, label: "View My Dashboard" };
   const htmlCta = emailButton(cta);
   const textCtaLine = textCta(cta);
@@ -267,4 +293,22 @@ export function renderStageEmail(stage: Stage, displayName: string): RenderedEma
         ].join("\n"),
       };
   }
+}
+
+/**
+ * Renders one of the 5 stage emails. `displayName` should already be run
+ * through formatReferralDisplayName (kept as a separate step so tests can
+ * exercise both functions independently).
+ *
+ * gh-1824: appends the D-237 postal address to the plain-text part (the
+ * html part already carries it via emailFooter() -> footerPostalAddressHtml()
+ * inside buildEmailShell()).
+ */
+export function renderStageEmail(stage: Stage, displayName: string): RenderedEmail {
+  const email = renderStageEmailBody(stage, displayName);
+  const addressLine = footerPostalAddressText();
+  return {
+    ...email,
+    text: addressLine ? `${email.text}\n\n${addressLine}` : email.text,
+  };
 }

@@ -85,3 +85,41 @@ export function clearHoverChargeRecord(): void {
     // Non-fatal.
   }
 }
+
+
+/**
+ * gh-2078 -- once-only guard for the `measurement_purchase` conversion
+ * event, keyed by the CHARGED paymentIntent id (the same id gh-416's
+ * paidIntentId state and this file's own PendingHoverCharge already treat
+ * as the one-per-order identity). localStorage (not sessionStorage, unlike
+ * the pending-charge pointer above): the point of this marker is to
+ * survive a page reload of the success screen indefinitely, not just for
+ * the current tab/session -- HoverSuccess renders from React state alone
+ * and a reload does not restore hoverStage='success' from anywhere in
+ * this app, but this guard stays correct even if that ever changed
+ * (retry-order re-invoking the order step, a future resume path landing
+ * on success a second time, etc.): once fired for a given paymentIntent
+ * id, never again.
+ */
+const PURCHASE_FIRED_KEY_PREFIX = 'oq_ga4_measurement_purchase_fired_v1:';
+
+export function hasFiredMeasurementPurchase(paymentIntentId: string): boolean {
+  try {
+    return (
+      typeof localStorage !== 'undefined' &&
+      localStorage.getItem(PURCHASE_FIRED_KEY_PREFIX + paymentIntentId) === '1'
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function markMeasurementPurchaseFired(paymentIntentId: string): void {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(PURCHASE_FIRED_KEY_PREFIX + paymentIntentId, '1');
+    }
+  } catch {
+    // best-effort — a storage failure just risks a rare re-fire, never a crash
+  }
+}

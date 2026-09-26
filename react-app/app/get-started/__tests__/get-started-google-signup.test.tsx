@@ -14,6 +14,13 @@
  * identically on main tip 1bf4af6a before this fix). Updated Step 1 to fill
  * all four now-required fields via their real labels/ids
  * (street/city/state/zip, per get-started/page.tsx's validateHomeInfo()).
+ *
+ * gh-1901 Option 2 (2026-09-22): the first test below used to fill in
+ * First/Last Name before clicking Google because handleGoogle called
+ * validateAccountProfile() and blocked without it — that gate is gone (see
+ * page.tsx's handleGoogle), so this test now fills the name to exercise the
+ * ordinary case, and the second `it` below is the actual regression guard:
+ * an empty Step 2 must still reach `signInWithOAuth`, unblocked.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
@@ -70,7 +77,8 @@ describe('get-started page — Google OAuth path fires no pre-redirect sign_up',
     fireEvent.change(screen.getByLabelText('ZIP Code'), { target: { value: '78701' } });
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
 
-    // Step 2 — name (required even for the Google path).
+    // Step 2 — name (no longer required to click Google since gh-1901
+    // Option 2, but filled here to exercise the ordinary named-signup case).
     await screen.findByLabelText('First Name');
     fireEvent.change(screen.getByLabelText('First Name'), { target: { value: 'Jane' } });
     fireEvent.change(screen.getByLabelText('Last Name'), { target: { value: 'Doe' } });
@@ -91,6 +99,35 @@ describe('get-started page — Google OAuth path fires no pre-redirect sign_up',
     // removal above did not also drop the data the landing event needs.
     const csSignup = JSON.parse(localStorage.getItem('cs_signup') || '{}');
     expect(csSignup).toHaveProperty('referral_source');
+  });
+
+  it('gh-1901 Option 2: clicking Google with an EMPTY Step 2 fires OAuth immediately, unblocked', async () => {
+    const { supabase } = await import('@/lib/supabase');
+    render(<GetStartedPage />);
+
+    // Step 1 — property address only, same as the other test.
+    fireEvent.change(screen.getByLabelText('Street Address'), {
+      target: { value: '1 Otter Way' },
+    });
+    fireEvent.change(screen.getByLabelText('City'), { target: { value: 'Austin' } });
+    fireEvent.change(screen.getByLabelText('State'), { target: { value: 'TX' } });
+    fireEvent.change(screen.getByLabelText('ZIP Code'), { target: { value: '78701' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+
+    // Step 2 — deliberately left blank: no name, no email/password, no
+    // phone. This is the CRO-reported repro (comment 5673014838): an empty
+    // form, then a click on the Google button.
+    await screen.findByRole('button', { name: /Continue with Google/ });
+    fireEvent.click(screen.getByRole('button', { name: /Continue with Google/ }));
+
+    // The button must honour its promise: signInWithOAuth fires, with no
+    // "Please fill in your name" (or any other) error blocking it first.
+    await waitFor(() =>
+      expect(supabase.auth.signInWithOAuth).toHaveBeenCalledWith(
+        expect.objectContaining({ provider: 'google' }),
+      ),
+    );
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 
   it('gh-2004-followup negative control: the single "Property Address" field is gone (gh-1993 split it)', () => {

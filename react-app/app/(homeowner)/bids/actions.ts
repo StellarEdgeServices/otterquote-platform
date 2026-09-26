@@ -107,28 +107,60 @@ export async function awardClaimToContractor(params: {
 }): Promise<AwardResult> {
   const { claim, bid } = params;
 
-  const { error: claimErr } = await supabase
+  const { data: claimRows, error: claimErr } = await supabase
     .from('claims')
     .update({
       selected_contractor_id: bid.contractor_id,
       selected_bid_amount: bid.total_price,
       status: 'awarded',
     })
-    .eq('id', claim.id);
+    .eq('id', claim.id)
+    .select('id');
   // gh-1532: the accept-award payment-method guard raises
   // 'contractor_no_payment_method: ...'. Map it to homeowner-facing wording --
   // the internal identifier is never shown to a customer.
   if (claimErr) return { ok: false, error: mapAwardError(claimErr.message) };
+  // gh-2105 (#2103 pattern, decision a): `.update()` without `.select()`
+  // resolves `{ error: null }` even when RLS or the `.eq()` filter matches
+  // ZERO rows -- PostgREST/Supabase do not treat a zero-row match as an
+  // error. Without this check a homeowner could see "awarded" while
+  // claims.status never actually changed -- the highest-value write on this
+  // page. "Awarded" now means a row was actually written, not merely that
+  // the call did not complain.
+  if (!Array.isArray(claimRows) || claimRows.length === 0) {
+    return { ok: false, error: mapAwardError('claim_award_zero_rows: no matching claim row was updated') };
+  }
 
-  const { error: winErr } = await supabase.from('quotes').update({ status: 'selected' }).eq('id', bid.id);
+  const { data: winRows, error: winErr } = await supabase
+    .from('quotes')
+    .update({ status: 'selected' })
+    .eq('id', bid.id)
+    .select('id');
   if (winErr) return { ok: false, error: winErr.message };
+  // gh-2105 (decision a): same zero-row-silent-success gap as the claim
+  // write above -- the winning bid must actually flip to 'selected'.
+  if (!Array.isArray(winRows) || winRows.length === 0) {
+    // gh-2105 REVIEW FAIL nit: route through mapAwardError for the same
+    // reason :122/:131 do, even though today's only mapped sentinel
+    // (NO_PAYMENT_METHOD) can't appear here -- mapAwardError is a no-op
+    // passthrough for any other string, so this costs nothing and keeps
+    // every error this function returns on one consistent path.
+    return { ok: false, error: mapAwardError('winning_bid_zero_rows: no matching quote row was updated') };
+  }
 
-  const { error: rejectErr } = await supabase
+  const { data: rejectRows, error: rejectErr } = await supabase
     .from('quotes')
     .update({ status: 'declined' })
     .eq('claim_id', claim.id)
-    .neq('id', bid.id);
+    .neq('id', bid.id)
+    .select('id');
   if (rejectErr) return { ok: false, error: rejectErr.message };
+  // gh-2105 (decision b, NOT an error): a claim can legitimately have only
+  // one bid (the winner), so there may be nothing left to decline -- zero
+  // rows here is an expected outcome, not a silent-failure signal. `.select()`
+  // is still added so this site is provably audited/considered, not merely
+  // untouched (rejectRows intentionally unused beyond that intent).
+  void rejectRows;
 
   // gh-1940: "bid accepted" funnel step — fired here, after every write
   // above has succeeded, not on the modal's confirm click. fix3 (CEO ruling,

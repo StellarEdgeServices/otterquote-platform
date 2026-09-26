@@ -3,6 +3,7 @@
 import Script from "next/script";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { isInternalTraffic } from "../lib/internal-traffic";
 
 /**
  * GA4 host gate — gh-1619
@@ -75,7 +76,15 @@ const CLARITY_PROJECT_ID = "wwr7qlk8g5";
 // carries data-clarity-mask="true" -- clarity-route-guard.test.ts fails if
 // any authenticated path here loses that attribute. The fragment token guard
 // below still runs first on every path.
-const CLARITY_ALLOWED_PATHS = ["/get-started", "/trade-selector"];
+//
+// gh-1939 (row 0.4, Ben's ruling on Kevin's plan, #1939 5810533784; HELD until Dustin approves the privacy.html §5.4 disclosure): the React
+// homeowner funnel routes /dashboard, /bids and /repair-intake join the list -- the React equivalents of the static pages Dustin's ruling named
+// ("dashboard, bids", "repair-intake"; the static /project-info-* pages are NOT mapped to a React route). They are all authenticated and all render
+// inside HomeownerShell, whose <header> and <main> carry data-clarity-mask="true" (the masking is in the shell, so the nav and the page content
+// are both masked and a page cannot forget it). Every other homeowner route stays denied by default: /help-measurements (a card payment form),
+// /help-estimate, /help-materials, /color-selection, /project-confirmation and /contract-signing (the signing ceremony, excluded by the ruling).
+// clarity-react-funnel-gate.test.tsx enumerates every real page.tsx route and fails if Clarity loads on anything but this set.
+const CLARITY_ALLOWED_PATHS = ["/get-started", "/trade-selector", "/dashboard", "/bids", "/repair-intake"];
 
 function isClarityAllowedPath(pathname: string | null): boolean {
   if (!pathname) return false;
@@ -173,6 +182,10 @@ export function GA4Gate() {
   const clarityStopPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
+    // gh-2064: internal-traffic opt-out, checked first -- our own
+    // walks/probes must never load GA4 or Clarity, regardless of host or
+    // path allowlist below.
+    if (isInternalTraffic()) return;
     if (typeof window !== "undefined" && ALLOWED_HOSTS.includes(window.location.hostname)) {
       setAllowed(true);
 

@@ -3,7 +3,30 @@
 <head>
 <!-- Sentry Error Monitoring -->
 <!-- gh-2010: predeclare sentryOnLoad before the loader tag; the loader invokes it once the SDK is ready. -->
+<!-- gh-2063 (Ben, comment 5767975097, CEO RUN 57): Sentry's loader script
+     was requested via a synchronous <script src> tag, so its fetch+parse
+     cost landed at parse time on every visit. Loaded lazily instead, same
+     idle-or-first-interaction pattern js/ga-gate.js's and
+     js/meta-pixel-gate.js's own _oqLoadOnIdleOrInteraction already use for
+     gtag.js/fbevents.js (idle, capped at 1500ms via requestIdleCallback's
+     own timeout, or the visitor's first pointerdown/keydown/scroll/
+     touchstart, whichever comes first) -- this file keeps its own copy
+     below since no js/*.js include has run yet at this point in <head>.
+     No error is lost to the delay: window's error/unhandledrejection
+     listeners below push every pre-load error into window._oqErrorBuffer,
+     and sentryOnLoad() replays that buffer into Sentry.captureException /
+     captureMessage the instant Sentry.init() returns, before clearing it. -->
 <script>
+  window._oqErrorBuffer = [];
+  window._oqBufferError = function (e) {
+    window._oqErrorBuffer.push({ type: 'error', error: e.error, message: e.message, filename: e.filename, lineno: e.lineno, colno: e.colno });
+  };
+  window._oqBufferRejection = function (e) {
+    window._oqErrorBuffer.push({ type: 'unhandledrejection', reason: e.reason });
+  };
+  window.addEventListener('error', window._oqBufferError);
+  window.addEventListener('unhandledrejection', window._oqBufferRejection);
+
   window.sentryOnLoad = function () {
     Sentry.init({
       environment: window.location.hostname.includes("staging") ? "staging" : "production",
@@ -19,12 +42,72 @@
         return event;
       }
     });
+    // gh-2063: replay every error buffered before Sentry finished loading.
+    var buffered = window._oqErrorBuffer || [];
+    for (var i = 0; i < buffered.length; i++) {
+      var item = buffered[i];
+      try {
+        if (item.type === 'error' && item.error) {
+          Sentry.captureException(item.error);
+        } else if (item.type === 'error') {
+          Sentry.captureMessage(item.message || 'Unknown error (buffered pre-Sentry-load)');
+        } else if (item.type === 'unhandledrejection') {
+          if (item.reason instanceof Error) {
+            Sentry.captureException(item.reason);
+          } else {
+            Sentry.captureMessage('Unhandled rejection (buffered pre-Sentry-load): ' + String(item.reason));
+          }
+        }
+      } catch (replayErr) { /* replaying a buffered error must never itself throw */ }
+    }
+    window._oqErrorBuffer = [];
   };
+
+  // gh-2063: local copy of js/ga-gate.js's _oqLoadOnIdleOrInteraction,
+  // scoped to loading the Sentry loader script only.
+  (function () {
+    var fired = false;
+    var idleHandle = null;
+    var timeoutHandle = null;
+    var EVENTS = ['pointerdown', 'keydown', 'scroll', 'touchstart'];
+    function teardown() {
+      for (var i = 0; i < EVENTS.length; i++) {
+        window.removeEventListener(EVENTS[i], run);
+      }
+      if (idleHandle !== null && window.cancelIdleCallback) { window.cancelIdleCallback(idleHandle); }
+      if (timeoutHandle !== null) { clearTimeout(timeoutHandle); }
+    }
+    function loadSentryLoader() {
+      var s = document.createElement('script');
+      s.src = 'https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js';
+      s.crossOrigin = 'anonymous';
+      s.onload = function () {
+        // the loader's own listeners own capture from here on (no double-report)
+        window.removeEventListener('error', window._oqBufferError);
+        window.removeEventListener('unhandledrejection', window._oqBufferRejection);
+        // lazy loader: sentryOnLoad (and the replay) only runs once the SDK loads
+        if (window._oqErrorBuffer.length && window.Sentry && typeof window.Sentry.forceLoad === 'function') {
+          window.Sentry.forceLoad();
+        }
+      };
+      document.head.appendChild(s);
+    }
+    function run() {
+      if (fired) return;
+      fired = true;
+      teardown();
+      loadSentryLoader();
+    }
+    for (var i = 0; i < EVENTS.length; i++) {
+      window.addEventListener(EVENTS[i], run, { passive: true, once: true });
+    }
+    if (window.requestIdleCallback) {
+      idleHandle = window.requestIdleCallback(run, { timeout: 1500 });
+    } else {
+      timeoutHandle = setTimeout(run, 1500);
+    }
+  })();
 </script>
-<script
-  src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
-  crossorigin="anonymous"
-></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
@@ -46,9 +129,13 @@
      unattributable for good (GA4's variant/step custom dimensions are not
      retroactive). Precedence: an explicit, validated ?v= in the URL wins;
      else a persisted per-visitor assignment (localStorage, cookie
-     fallback); else uniform-random 1/3 across a/b/c. Persists the result to
-     BOTH localStorage and a first-party cookie (oq_variant_v1, versioned so
-     a future re-randomisation is a key bump) and rewrites the URL via
+     fallback); else uniform-random across the live set (gh-2074:
+     LIVE_VARIANTS below -- today just 'c'; a syntactically-valid but
+     non-live arm from ANY of those sources, e.g. a persisted 'a'/'b', is
+     re-mapped to a live arm on arrival, never served/blanked/404'd).
+     Persists the result to BOTH localStorage and a first-party cookie
+     (oq_variant_v1, versioned so a future re-randomisation is a key bump)
+     and rewrites the URL via
      history.replaceState -- never pushState -- preserving every existing
      query parameter (UTMs above all). Every storage/URL touch is its own
      try/catch: 39% of this traffic is the Facebook in-app webview, where
@@ -62,28 +149,230 @@
      gh-2014 fix round 4 comment on the main IIFE's own variant read). -->
 <script>
 (function () {
-  var KEY = 'oq_variant_v1';
-  var ARM_RE = /^[abc]$/;
+  // gh-2075 (D-327) round 2, review report ceo57-review-pr2086-20260921
+  // finding 1 (blocking, real-browser evidence: a visitor carrying a
+  // pre-flip key persisted 'c' was served 'c' in 4/4 loads after a
+  // standalone key bump): a key bump on ITS OWN, ahead of the
+  // LIVE_VARIANTS flip, does NOT decouple anything -- every visitor who
+  // reaches /start between THIS merge and the flip gets re-persisted 'c'
+  // under the new key (since LIVE_VARIANTS is still ['c'] the moment they
+  // land), and stays sticky to 'c' after the flip for the same reason
+  // isLive('c') is a no-op that this file's own LIVE_VARIANTS comment
+  // below already documents -- round 1 of this fix produced exactly the
+  // 80/10/10 skew it claimed to prevent. KEY stays 'oq_variant_v1' here;
+  // see LIVE_VARIANTS below for the single block the orchestrator edits
+  // -- the key bump and the live-set flip are ONE change, not two.
+  var KEY = 'oq_variant_v3'; // D-327 flip 1/2 (2026-09-22): D+E live
+
+  // gh-2074 fix round 2 (PR #2079 review, item 2): KNOWN_ARMS is the
+  // single source of truth for which arm letters are syntactically
+  // recognised at all -- NOT which ones are currently served (see
+  // LIVE_VARIANTS below for that). It already lists 'd'/'e' so shipping
+  // gh-2075/gh-2076 never needs a second change here: a persisted or
+  // ?v=-carried d/e always PARSES, even while LIVE_VARIANTS still keeps
+  // them unreachable. Exposed as window.__oqKnownArms so the main IIFE's
+  // own variant read further down this file (gh-2014/gh-2033 -- a
+  // SEPARATE <script> block/closure) derives its allowlist from this
+  // same list instead of a second hardcoded regex that can silently
+  // drift out of sync: review caught exactly that on the first pass of
+  // this fix -- an unsynced /^[abc]$/ there would read a live 'd'
+  // session back as variant=null and silently render arm A, the one arm
+  // this issue exists to eliminate.
+  var KNOWN_ARMS = ['a', 'b', 'c', 'd', 'e', 'f'];
+  window.__oqKnownArms = KNOWN_ARMS;
+  // gh-2122 (Arm F, D-332): arms reachable ONLY by an explicit ?v= in the URL.
+  // They are recognised (KNOWN_ARMS) but are never in LIVE_VARIANTS, so they
+  // are not in the random split until Sloane says so on #2122 -- and unlike
+  // every other non-live arm, an explicit ?v=f is NOT remapped onto the live
+  // set by toLiveArm(), because a paid-ad landing on /start?v=f is the whole
+  // point of the arm. A direct-only arm is also never persisted to
+  // localStorage/cookie (step 4 below), so it cannot stick to a browser and a
+  // later visit without ?v= still gets a live arm. Exposed on window so the
+  // main IIFE's own variant read (a separate <script>) applies the same rule.
+  var DIRECT_ONLY_ARMS = ['f'];
+  window.__oqDirectOnlyArms = DIRECT_ONLY_ARMS;
+  function isDirectOnly(arm) { return DIRECT_ONLY_ARMS.indexOf(arm) !== -1; }
+  var ARM_RE = new RegExp('^(' + KNOWN_ARMS.join('|') + ')$');
+
+  // gh-2074: the LIVE set. Today only 'c' -- a and b lose 90%+ of visitors
+  // at the first screen (GA4 router_step_view 7d: a 120->12, b 87->13,
+  // c 59->9). Arm a/b's code stays in this file, unreachable, for d/e to
+  // reuse -- nothing here is deleted.
+  //
+  // gh-2074 fix round 2 (PR #2079 review, item 3): flipping this constant
+  // to ['c', 'd', 'e'] when d/e ship is NOT "the whole switch" and does
+  // NOT give equal weights by itself -- the original comment here was
+  // wrong. Every visitor assigned 'c' during this single-arm period is
+  // persisted (KEY above, 180-day max-age -- see the gh-2033 comment
+  // block near the top of this file) and stays sticky to 'c' on return:
+  // isLive('c') is already true, so toLiveArm() is a no-op for every one
+  // of those returning sessions regardless of what this constant says
+  // later. Flipping it alone would therefore land roughly 80% of traffic
+  // on 'c' (every persisted single-arm-period visitor, plus 1/3 of
+  // brand-new ones) versus ~10% each for d/e -- not the even split
+  // "equal weights" implies. Shipping d/e as a real three-way test
+  // REQUIRES bumping KEY too (e.g. 'oq_variant_v2') alongside this flip,
+  // so every visitor -- persisted or not -- re-randomises across the new
+  // live set. Flip this constant WITHOUT the key bump only if a
+  // deliberately c-weighted d/e rollout is the actual intent.
+  // ══════════════════ D-327 ORCHESTRATOR FLIP BLOCK ══════════════════
+  // Do NOT flip LIVE_VARIANTS without ALSO bumping KEY (above) in the
+  // SAME deploy -- they are one change, not two (round-2 review finding
+  // 1 on PR #2086: bumping the key early, alone, does nothing but stamp
+  // every pre-flip visitor 'c' under the new key, which then persists
+  // for 180 days regardless of what this constant says later). When
+  // #2075 merges, in ONE commit:
+  //   1. KEY becomes 'oq_variant_v2'            (start.html, above)
+  //   2. LIVE_VARIANTS becomes ['c','d']          (this line)
+  // and when #2076 (arm e) merges, bump again together:
+  //   1. KEY becomes 'oq_variant_v3'
+  //   2. LIVE_VARIANTS becomes ['c','d','e']
+  // This PR (gh-2075) intentionally leaves BOTH constants unflipped, per
+  // #2075's own instruction ("the PR must not change live assignment").
+  // Until the flip, arm d's code below is shipped but unreachable:
+  // toLiveArm() (below) remaps any non-live arm -- including an explicit
+  // ?v=d -- onto the live set, so ?v=d does NOT render arm d pre-flip.
+  // tests/gh2033-variant-assignment.mjs reads BOTH constants out of this
+  // file itself (never a hardcoded copy) -- the flip above is genuinely
+  // the only edit needed; that test needs none.
+  //
+  // gh-2121 (Ben, CEO, Tier B, 2026-09-25): Arm C KILLED. Sloane's
+  // cro-daily scoreboard (this issue's own Scoreboard table, row "C
+  // (current)") measured ~1 of 86 paid step-1 advances since 09-20 --
+  // below the plan's early-kill line (<25% at 60) that was already
+  // written into this issue before Arm F shipped. Kept alive only until
+  // Arm F had somewhere to send traffic (comment 5798... / issue body);
+  // Arm F is live and proven (#2122) as of 09-24, so that reason is gone.
+  // Removed from LIVE_VARIANTS exactly the way arm a/b were killed
+  // earlier on this same line (NOT made direct-only like arm F -- 'c' is
+  // not a QA/paid-ad target, it is a dead arm whose code stays in the
+  // file, unreachable, same as a/b): isLive('c') is now false, so
+  // toLiveArm() remaps every source (fresh, persisted, explicit ?v=c) to
+  // a live arm -- a visitor already bucketed to 'c' is re-routed to d/e
+  // on their next load/reload, never a 404.
+  //
+  // KEY IS NOT BUMPED FOR THIS FLIP (review finding M1, PR #2181 comment
+  // 5833636471; Ben's call, 2026-09-25T14:01:57Z: do not reset D/E). The
+  // flip-block rule above ("do NOT flip LIVE_VARIANTS without ALSO
+  // bumping KEY") protects arm ADDITIONS, where an already-live persisted
+  // arm would otherwise stay sticky and skew the new split away from an
+  // even random assignment (that is exactly what the gh-2074/gh-2075
+  // reasoning above walks through for 'c'). It protects nothing on a
+  // REMOVAL: toLiveArm() already remaps a persisted 'c' onto a live arm
+  // no matter which key it was read under, so a bump here would do
+  // nothing but re-randomise every returning D/E visitor across the new
+  // two-arm split -- flipping roughly half of them to the other arm and
+  // overwriting the arm recorded on their original lead row, which
+  // contaminates the D-vs-E comparison #2121 exists to protect. KEY
+  // therefore stays 'oq_variant_v3', unchanged from main.
+  // ═════════════════════════════════════════════════════════════════
+  var LIVE_VARIANTS = ['d','e']; // gh-2121 (2026-09-25): Arm C killed -- D and E live; KEY unchanged (removal, not addition -- see block above)
+
+  // gh-2074 fix round 2 (PR #2079 review, item 4): guards a misconfigured
+  // empty LIVE_VARIANTS from indexing an empty array and writing a
+  // literal "v=undefined" into the URL, both stores, and every
+  // downstream analytics/lead write -- falls back to SAFE_DEFAULT_ARM.
+  // gh-2121 (2026-09-25, review S3): 'c' is dead (removed from
+  // LIVE_VARIANTS above), so the fallback must name a live arm -- 'd'.
+  var SAFE_DEFAULT_ARM = 'd';
+  function effectiveLiveVariants() {
+    return (LIVE_VARIANTS && LIVE_VARIANTS.length) ? LIVE_VARIANTS : [SAFE_DEFAULT_ARM];
+  }
 
   function validArm(v) {
     var s = String(v == null ? '' : v).toLowerCase();
     return ARM_RE.test(s) ? s : null;
   }
 
+  // gh-2074: is this (syntactically valid) arm one we're currently serving?
+  function isLive(arm) {
+    var live = effectiveLiveVariants();
+    for (var i = 0; i < live.length; i++) {
+      if (live[i] === arm) return true;
+    }
+    return false;
+  }
+
+  // gh-2074: map any syntactically-valid arm onto a live one -- a no-op for
+  // an already-live arm, otherwise a uniform-random re-assignment across
+  // the live set. Applied to every source below (URL, localStorage,
+  // cookie, random) so a/b (or any non-live arm) can never reach
+  // rendering.
+  //
+  // gh-2074 fix round 2 (PR #2079 review, item 1 BLOCKER): exposed as
+  // window.__oqToLiveArm so the main IIFE's own variant read further
+  // down this file -- a separate <script> block, so it does NOT share
+  // this closure -- can apply this identical mapping to its own URL
+  // fallback path, instead of trusting a stale, pre-mapped ?v= that this
+  // script's own history.replaceState call (below) failed to rewrite
+  // because it threw (sandboxed iframes without allow-same-origin,
+  // Safari's history-mutation rate limit -- both real /start traffic).
+  function toLiveArm(arm) {
+    if (isLive(arm)) return arm;
+    var live = effectiveLiveVariants();
+    return live[Math.floor(Math.random() * live.length)];
+  }
+  window.__oqToLiveArm = toLiveArm;
+  window.__oqLiveVariants = effectiveLiveVariants();
+
   function readCookie(name) {
     var m = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
     return m ? decodeURIComponent(m[1]) : null;
   }
 
-  // 1. Explicit ?v= wins over anything persisted.
+  // 1. Explicit ?v= wins over anything persisted -- re-mapped to a live arm
+  //    if it names a or b (gh-2074: do not 404, do not blank).
   var urlArm = null;
   try {
     urlArm = validArm(new URLSearchParams(window.location.search).get('v'));
   } catch (e) {}
-  var arm = urlArm;
+  // gh-2076 (D-327) QA override: an explicit ?v=e&oq_internal=1 renders
+  // that arm directly, bypassing toLiveArm()'s live-set remap, WITHOUT
+  // touching LIVE_VARIANTS/KEY above and WITHOUT changing what a normal
+  // visitor (no oq_internal param) ever sees -- #2076's own instruction
+  // that arm e must be reachable for manual/automated QA before the flip,
+  // the way arm d could not be (see PR #2086's own documented
+  // contradiction: an explicit ?v=d did NOT render arm d pre-flip,
+  // because toLiveArm() remaps every non-live arm unconditionally). Step
+  // 4 below still persists whatever `arm` ends up being to both stores,
+  // but that is harmless here: step 2's own read of a persisted arm on
+  // any LATER, non-oq_internal load still runs it through toLiveArm()
+  // unconditionally, so a stray persisted 'e' cannot leak into a normal
+  // visitor's assignment once this override is not present on the URL.
+  var oqInternalOverride = false;
+  try {
+    // #2088 round 1 item 2: the override is scoped to EXACTLY urlArm ===
+    // 'e' -- not "any urlArm while oq_internal=1" as fix round 1 had it,
+    // which let ?v=a&oq_internal=1 / ?v=b&oq_internal=1 also bypass
+    // toLiveArm() and briefly render A/B outside their own kill-switch,
+    // and which also changed ?v=d's own pre-flip behaviour (documented in
+    // PR #2086 as intentionally NOT bypassing toLiveArm()) whenever a
+    // visitor happened to also carry oq_internal=1. Only 'e' gets the
+    // bypass; every other urlArm (including 'd') still runs through
+    // toLiveArm() exactly as before this PR.
+    oqInternalOverride = urlArm === 'e' && new URLSearchParams(window.location.search).get('oq_internal') === '1';
+  } catch (e) {}
+  // #2088 round 1 item 3: read by insertFreshLead below (via
+  // window.__oqInternalOverride) and by arm E's own bridge, so a walk
+  // taken under this override is written to leads.is_synthetic = true
+  // instead of looking like a real visitor's lead.
+  window.__oqInternalOverride = oqInternalOverride;
+  // CEO run 57 post-flip walk finding (2026-09-22): oq_internal=1 walks on
+  // arms C and D wrote UNFLAGGED production leads, because is_synthetic was
+  // only threaded through the arm-E assignment override above. This flag is
+  // separate from that override: it never changes assignment (toLiveArm()
+  // still runs for every arm), it only marks any lead written during an
+  // oq_internal=1 page load as synthetic. Read by insertFreshLead() below.
+  var oqInternalWalk = false;
+  try { oqInternalWalk = new URLSearchParams(window.location.search).get('oq_internal') === '1'; } catch (e) {}
+  window.__oqInternalWalk = oqInternalWalk;
+  var arm = urlArm ? ((oqInternalOverride || isDirectOnly(urlArm)) ? urlArm : toLiveArm(urlArm)) : null;
 
   // 2. Else a persisted assignment -- localStorage first, cookie fallback,
   //    each in its own try/catch so a throw on one still lets the other run.
+  //    Also re-mapped to a live arm (gh-2074): a stale persisted a/b is
+  //    reassigned here, and step 4 below overwrites both stores with the
+  //    reassigned value rather than leaving the stale one in place.
   if (!arm) {
     var fromStorage = null;
     try { fromStorage = validArm(window.localStorage.getItem(KEY)); } catch (e) {}
@@ -91,25 +380,76 @@
     if (!fromStorage) {
       try { fromCookie = validArm(readCookie(KEY)); } catch (e) {}
     }
-    arm = fromStorage || fromCookie;
+    var persistedArm = fromStorage || fromCookie;
+    arm = persistedArm ? toLiveArm(persistedArm) : null;
   }
 
-  // 3. Else assign at random, uniform 1/3 across a/b/c.
+  // 3. Else assign at random, uniform across the LIVE set only (gh-2074:
+  //    never the full a-e set -- LIVE_VARIANTS today is just ['c']).
+  //    Uses effectiveLiveVariants() (fix round 2, item 4) so a
+  //    misconfigured empty LIVE_VARIANTS falls back to SAFE_DEFAULT_ARM
+  //    instead of indexing an empty array.
   if (!arm) {
-    arm = ['a', 'b', 'c'][Math.floor(Math.random() * 3)];
+    var liveForRandom = effectiveLiveVariants();
+    arm = liveForRandom[Math.floor(Math.random() * liveForRandom.length)];
   }
 
   // Expose before replaceState so a downstream throw there still leaves a
   // usable source for the main IIFE's own variant read.
   window.__oqVariant = arm;
 
-  // 4. Persist to BOTH stores, each independently guarded.
-  try { window.localStorage.setItem(KEY, arm); } catch (e) {}
-  try {
-    var secure = window.location.protocol === 'https:' ? '; Secure' : '';
-    document.cookie = KEY + '=' + arm + '; path=/; max-age=' + (180 * 24 * 60 * 60) +
-      '; SameSite=Lax' + secure;
-  } catch (e) {}
+  // gh-2160 review fix (comment 5818464392, must-fix 1): the header/footer
+  // skip was hard-coded for every arm this page can serve (A-E and no
+  // variant at all), not just F -- C/D/E's live random split lost their
+  // footer Privacy Policy/Terms links along with the escape hatches. Stamp
+  // the resolved arm onto <html> the instant it's known (still inside the
+  // synchronous head IIFE, well before the header/footer elements below are
+  // parsed) so both the CSS rule and the inline script right after the
+  // footer can scope themselves to arm === 'f' only. Every other arm (and a
+  // bare /start) gets no attribute here and keeps the header/footer exactly
+  // as main.
+  try { document.documentElement.setAttribute('data-oq-start-arm', arm || ''); } catch (e) {}
+
+  // gh-2121 (LRS S05, ceo67 Lighthouse trace): Arm F's LCP element is the
+  // step-1 <h1>, which js/router-variant-f.js renders -- and that file was
+  // only ever requested at the very bottom of <body>, after design-system.css
+  // /nav.css, the Supabase UMD bundle and five same-origin scripts had all
+  // been given a chance to load first. lcp-breakdown-insight measured ~2.2s
+  // of "element render delay" (time after first byte spent waiting, not
+  // loading) almost entirely attributable to that late request. We already
+  // know by this point -- before the parser has reached a single one of
+  // those other resources -- whether this visit needs router-variant-f.js at
+  // all (arm is direct-only for 'f': isDirectOnly('f') is true, so an
+  // explicit ?v=f is never remapped away by toLiveArm() above). A preload
+  // hint here starts that fetch in parallel with everything else on the
+  // page; the actual <script> tag that runs it is unchanged, added later in
+  // this file exactly as before -- this is additive only, a fetch that was
+  // always going to happen, just requested early instead of last.
+  if (arm === 'f') {
+    try {
+      var rfPreload = document.createElement('link');
+      rfPreload.rel = 'preload';
+      rfPreload.as = 'script';
+      rfPreload.href = '/js/router-variant-f.js';
+      document.head.appendChild(rfPreload);
+    } catch (e) {}
+  }
+
+  // 4. Persist to BOTH stores, each independently guarded -- SKIPPED
+  //    entirely while the #2088 round-1-item-2 QA override is active, so
+  //    a ?v=e&oq_internal=1 walk can never leak arm 'e' into a normal,
+  //    non-override later visit to this same browser (a stale persisted
+  //    'e' would otherwise still be remapped by toLiveArm() on that later
+  //    visit, per step 2 above, but skipping the write is simpler and
+  //    leaves zero trace of the QA walk in either store).
+  if (!oqInternalOverride && !isDirectOnly(arm)) {
+    try { window.localStorage.setItem(KEY, arm); } catch (e) {}
+    try {
+      var secure = window.location.protocol === 'https:' ? '; Secure' : '';
+      document.cookie = KEY + '=' + arm + '; path=/; max-age=' + (180 * 24 * 60 * 60) +
+        '; SameSite=Lax' + secure;
+    } catch (e) {}
+  }
 
   // 5. Rewrite the URL, preserving every existing query parameter.
   try {
@@ -126,24 +466,326 @@
      is requested"; js/meta-pixel-gate.js: "the ONLY place fbevents.js is
      requested"). Clarity rides the GA4 gate's own host check; js/ga-gate.js's
      CLARITY_ALLOWED_PATHS carries '/start' (gh-2014). -->
-<script src="/js/ga-gate.js"></script>
-<script src="/js/meta-pixel-gate.js"></script>
-<script>gtag('config', 'G-D1Y1TLGEFY');</script>
+<!-- gh-2160 review fix (comment 5818464392, must-fix 2): standard
+     base-code queuing stubs, defined here -- synchronous, no network,
+     effectively free -- so every gtag()/fbq() call site on this page
+     (trackRouter below, the two fbq('track','Lead',...) sites in this
+     file and js/router-variant-f.js) keeps working immediately, even
+     though js/ga-gate.js and js/meta-pixel-gate.js themselves are now
+     requested later (see below). window.gtag mirrors js/ga-gate.js's own
+     stub shape exactly (push arguments onto dataLayer); window.fbq is
+     copied verbatim from js/meta-pixel-gate.js's fbqStub (same
+     callMethod/queue/push/loaded/version shape fbevents.js's own
+     callMethod hookup depends on, per that file's gh-2000 comment). Each
+     gate file's own `window.dataLayer = window.dataLayer || []` /
+     `if (!window.fbq)` guard is exactly what lets it ADOPT this
+     already-present stub instead of clobbering it once it actually runs,
+     so nothing queued here before then is lost -- only possibly delayed.
+     gtag('js', ...) / gtag('config', ...) fire here, immediately, for the
+     same reason: queuing them first, before any trackRouter() call can
+     queue a router_step_view, is what keeps GA4's own automatic page_view
+     (sent when the real library processes the queued 'config' command)
+     ordered ahead of the first step_view once that library actually
+     loads -- matching gtag('js', ...)'s existing unconditional call inside
+     js/ga-gate.js itself. Whether the real gtag.js/fbevents.js library
+     ever loads at all, and whether GA4/Meta ever actually SEE any of what
+     is queued here, is still decided entirely by each gate file's own
+     unchanged ALLOWED_HOSTS/oqInternal()/oqAdOptOut() checks the moment it
+     runs -- queuing a call here never bypasses them; it only makes the
+     call safe to make early. -->
+<script>
+  window.dataLayer = window.dataLayer || [];
+  window.gtag = window.gtag || function () { window.dataLayer.push(arguments); };
+  gtag('js', new Date());
+  gtag('config', 'G-D1Y1TLGEFY');
+  if (!window.fbq) {
+    var _oqFbqStub = function () {
+      _oqFbqStub.callMethod
+        ? _oqFbqStub.callMethod.apply(_oqFbqStub, arguments)
+        : _oqFbqStub.queue.push(arguments);
+    };
+    window.fbq = _oqFbqStub;
+    if (!window._fbq) { window._fbq = _oqFbqStub; }
+    _oqFbqStub.push = _oqFbqStub;
+    _oqFbqStub.loaded = true;
+    _oqFbqStub.version = '2.0';
+    _oqFbqStub.queue = [];
+  }
+</script>
+<!-- gh-2063 fix round 3 (PR #2065 review2, remaining FAIL point) history:
+     round 2 put `defer` on these two same-origin gate files; round 3
+     restored plain synchronous `<script src>` tags after independent
+     review measured `defer` regressing FCP on slow-4G/3G.
+     gh-2160 review fix (comment 5818464392, must-fix 2): the ceo67
+     WITH-ANALYTICS Lighthouse re-measurement (the Netlify deploy preview
+     used for gh-2121's own S05 numbers loads no analytics at all, since
+     js/ga-gate.js/js/meta-pixel-gate.js are host-gated to otterquote.com --
+     see that file's ALLOWED_HOSTS) found median LCP still ~7.7s on BOTH
+     main and this PR once analytics is actually loaded: these two
+     synchronous, render-blocking, parser-serialised requests -- not the
+     header/footer DOM -- are the real cost neither round 2's `defer` nor
+     this PR's original header/footer fix touched. Both files' own
+     internal logic (ALLOWED_HOSTS, CLARITY_ALLOWED_PATHS, the D-330
+     ad-opt-out gate, oq_internal fail-closed) is BYTE-IDENTICAL to main --
+     see the diff -- only WHEN the browser is asked to fetch them changes:
+     now via the same idle-or-first-interaction pattern
+     _oqLoadOnIdleOrInteraction already uses for the vendor bundles inside
+     them (a short, capped requestIdleCallback -- 300ms here, falling back
+     to a plain timer -- or the visitor's first pointerdown/keydown/scroll/
+     touchstart, whichever comes first; there is no window 'load' listener
+     in this trigger), so neither file's own fetch/parse/execute can land
+     ahead of Arm F's LCP element (or any other arm's first paint). The dataLayer/fbq stubs a few lines
+     above already make every gtag()/fbq() call site on this page safe to
+     call before these files have run -- exactly the situation those
+     stubs' own "unconditional" comments (this file and
+     js/meta-pixel-gate.js) describe: nothing queued before either gate
+     loads is lost, only possibly delayed. -->
+<script>
+  (function () {
+    // gh-2160: the window 'load' event was tried first here and measured
+    // worse -- 'load' waits for EVERY resource on the page (fonts, the
+    // Supabase UMD bundle, images), so on a page this light it can end up
+    // firing barely ahead of everything else finishing anyway, which then
+    // serialises both gate files' fetch + the third-party bundles they in
+    // turn schedule onto the END of the load timeline instead of letting
+    // them overlap it -- net negative for Time to Interactive. A short,
+    // capped requestIdleCallback (falling back to a plain timer) gets
+    // these two small same-origin files off the parser/paint critical path
+    // -- the actual gh-2160 finding -- without pushing their own fetch
+    // past the point where everything else has already gone quiet. First
+    // real interaction still wins immediately if it happens first.
+    var GATE_EVENTS = ['pointerdown', 'keydown', 'scroll', 'touchstart'];
+    var fired = false;
+    var idleHandle = null;
+    var timeoutHandle = null;
+    function teardown() {
+      for (var i = 0; i < GATE_EVENTS.length; i++) { window.removeEventListener(GATE_EVENTS[i], run); }
+      if (idleHandle !== null && window.cancelIdleCallback) { window.cancelIdleCallback(idleHandle); }
+      if (timeoutHandle !== null) { clearTimeout(timeoutHandle); }
+    }
+    function run() {
+      if (fired) return;
+      fired = true;
+      teardown();
+      var s1 = document.createElement('script');
+      s1.src = '/js/ga-gate.js';
+      // gh-2160: window.clarity (created synchronously inside js/ga-gate.js,
+      // when the host/path gates allow it) does not exist until this script
+      // has actually executed -- which, unlike gh-2063 round 2's fix, is no
+      // longer guaranteed by DOMContentLoaded now that the request itself is
+      // deferred. onload is the one point any other code on this page can
+      // reliably hook to run something "as soon as ga-gate.js has run,
+      // whenever that turns out to be" -- see window.__oqOnGateReady below,
+      // used by the clarity('set','variant',...) call further down this
+      // file for exactly that.
+      s1.onload = function () {
+        window.__oqGateReady = true;
+        var cbs = window.__oqOnGateReady || [];
+        window.__oqOnGateReady = [];
+        for (var i = 0; i < cbs.length; i++) { try { cbs[i](); } catch (e) {} }
+      };
+      document.head.appendChild(s1);
+      var s2 = document.createElement('script');
+      s2.src = '/js/meta-pixel-gate.js';
+      document.head.appendChild(s2);
+    }
+    for (var i = 0; i < GATE_EVENTS.length; i++) {
+      window.addEventListener(GATE_EVENTS[i], run, { passive: true, once: true });
+    }
+    if (window.requestIdleCallback) {
+      idleHandle = window.requestIdleCallback(run, { timeout: 300 });
+    } else {
+      timeoutHandle = setTimeout(run, 300);
+    }
+  })();
+</script>
 <!-- Microsoft Clarity (wwr7qlk8g5) is loaded by /js/ga-gate.js, behind the same production-host gate as GA4 (gh-1619). Do not add a per-page loader. -->
 
 <!-- Supabase -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js" integrity="sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz" crossorigin="anonymous"></script>
+<!-- gh-2063 fix round 2 (PR #2065 review, blocker 1) history: `defer` was
+     removed here after independent review found it broke every step-1
+     submit on every arm. This page does NOT use js/config.js's page-level
+     `sb` (that comment about _oqCreateSupabaseClient()'s DOMContentLoaded
+     retry/~20s poll was about a DIFFERENT global, in a DIFFERENT file,
+     that this page's own IIFE below never reads) -- this file declared
+     its own local `var sb` a few lines into its inline router script and,
+     at the time, created it ONCE, synchronously, while the page was still
+     parsing. A deferred script always runs after parsing finishes, so
+     `typeof supabase` was always 'undefined' at that moment, `sb` stayed
+     null for the entire visit, and every "Continue" click on every arm
+     (A/B/C) hit a null-`sb` guard and showed "Something went wrong
+     loading the form." with no console error and no Sentry signal. Round
+     2 fixed that by keeping the script synchronous instead of fixing the
+     creation timing.
+     gh-2063 (Ben, comment 5767975097, CEO RUN 57): `defer` is back, this
+     time paired with the actual fix -- the script tag below only
+     schedules the FETCH to happen without blocking the parser; the
+     client itself is created lazily on first use via `ensureSb()`
+     (declared a few lines into this page's inline router script, below),
+     never at parse time, so there is no window where `sb` can be read
+     before `supabase` exists on `window`. See that function's own comment
+     for the full reasoning. -->
+<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js" integrity="sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz" crossorigin="anonymous"></script>
 
 <!-- Google Fonts -->
+<!-- gh-2063: non-blocking stylesheet load (preload + swap to `all` media on
+     load, noscript fallback) so the Rubik CSS fetch never blocks first
+     paint; the request itself already carries &display=swap so text
+     renders in a fallback font immediately either way. -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet"></noscript>
 <!-- Shared Styles -->
-<link rel="stylesheet" href="css/design-system.css">
-<link rel="stylesheet" href="css/nav.css">
+<!-- gh-2063 item 4 (Ben, comment 5767975097, CEO RUN 57) -- TRIED AND
+     REVERTED, measured: the preload + swap-to-`all`-media-on-load pattern
+     (matching the Rubik stylesheet above) was applied here to
+     design-system.css/nav.css, paired with an inline critical-CSS subset
+     for the router card + button so the first screen wouldn't flash
+     unstyled during the async window. Lighthouse mobile/simulate/4x-CPU,
+     3-run medians, local main vs. that variant: FCP improved
+     (~3531ms -> ~3203ms) but TBT got WORSE (~15ms -> ~210ms) and CLS
+     regressed from ~0 to ~0.12 on every run. Mechanism: deferring a
+     stylesheet does not remove the cost of applying it, it MOVES that
+     cost from before FCP (where Lighthouse's TBT window does not start
+     counting yet) to after FCP (where it does), and the unstyled-then-
+     restyled swap itself is a layout shift. Same class of mistake as fix
+     round 3's ga-gate.js/meta-pixel-gate.js defer regression earlier on
+     this issue -- reverted for the same reason: measured, not assumed.
+     Arms A-E and a bare /start keep the plain blocking links below,
+     UNCHANGED from that revert.
+
+     gh-2121 (LRS S05 round 2, Ben, deploy-preview measurement
+     ceo69-lcp-measure-20260925.md): render-blocking-insight on PR #2183's
+     own preview still showed css/nav.css (~658ms) and css/design-system.css
+     (~276ms) as the dominant remaining cost gating Arm F's LCP, now that
+     js/agent-types.js is off the critical path. Item 4's 2026 revert above
+     is why this is NOT the same blanket swap-on-load change repeated: (a)
+     it is scoped to Arm F ONLY via the same synchronous data-oq-start-arm
+     read used everywhere else on this page -- arms A-E and a bare /start
+     get byte-identical blocking <link> tags to before, so item 4's
+     measured TBT/CLS regression cannot recur for them; (b) unlike item 4's
+     attempt, Arm F's own step-1 screen is now FULLY statically rendered
+     (the #routerFRoot SSR markup a few hundred lines below) using ONLY
+     rules already living in this page's own inline STYLE block below,
+     never a design-system.css/nav.css class -- the one gap was the CSS
+     custom properties those rules read (--navy/--white/--slate/--amber/
+     --sp-*/--radius-*/--font-body) and the box-model reset design-system.css
+     normally supplies (without it, browser-default h1/p margins would
+     shift the step-1 screen down until the swap completes -- exactly item
+     4's "unstyled-then-restyled" CLS mechanism). The inline critical-CSS
+     block immediately below supplies just those two things (:root tokens +
+     a universal box-sizing/margin/padding reset, verbatim values copied
+     from css/design-system.css, so there is nothing for the async swap to
+     visibly change once it lands) -- not the router-card/button subset
+     item 4 tried and which still left gaps. #site-header/#site-footer stay
+     display:none for Arm F regardless of nav.css's load state (that rule
+     already lives in this same inline STYLE block, unconditionally, see
+     below), so nav.css contributes nothing to Arm F's visible first screen
+     either way. Measured before/after in the PR body (screenshot diff +
+     Lighthouse + CLS), not assumed.
+
+     gh-2121 round 3 (M1, review 5834623268): round 2 put the JS-off
+     fallback <noscript> INSIDE the document.write() string below, which is
+     never reached without JS -- so with JS off, EVERY arm (Arm F, arms A-E,
+     and a bare /start alike) got no stylesheet at all, not just Arm F. Fix:
+     a real, literal <noscript> block right below, in the actual page
+     markup, unconditional for every arm -- the one thing a no-JS browser
+     always parses regardless of data-oq-start-arm. A JS-enabled browser
+     never applies a <noscript> block's contents as real elements while
+     scripting is enabled, so this does not create a second, duplicate
+     stylesheet request for any arm; the <script> block below still runs
+     and is still the ONLY stylesheet loader when JS is on. -->
+<noscript><link rel="stylesheet" href="css/design-system.css"><link rel="stylesheet" href="css/nav.css"></noscript>
+<script>
+  // gh-2121 round 2: Arm F only gets the non-blocking preload+swap pattern;
+  // every other arm (and a bare /start) gets the exact same blocking
+  // <link> tags as before, via document.write in the same synchronous
+  // position they always occupied -- byte-identical DOM/request order for
+  // A-E, so item 4's measured regression above cannot recur for them.
+  // gh-2121 round 3 (M1): the JS-off fallback is no longer written here --
+  // see the literal <noscript> block immediately above this <script> tag.
+  (function () {
+    if (document.documentElement.getAttribute('data-oq-start-arm') === 'f') {
+      document.write('<link rel="preload" as="style" href="css/design-system.css" onload="this.onload=null;this.rel=\'stylesheet\'">');
+      document.write('<link rel="preload" as="style" href="css/nav.css" onload="this.onload=null;this.rel=\'stylesheet\'">');
+    } else {
+      document.write('<link rel="stylesheet" href="css/design-system.css">');
+      document.write('<link rel="stylesheet" href="css/nav.css">');
+    }
+  })();
+</script>
 
 <style>
+  /* gh-2121 round 2: verbatim subset of css/design-system.css's :root
+     tokens + universal reset, moved into this same (pre-existing) STYLE tag
+     block rather than a separate earlier one -- tests/gh2122-arm-f.mjs and
+     other tooling extract this page's CSS as "first opening STYLE tag to
+     first closing STYLE tag", and a second, earlier STYLE tag would have
+     silently cut every rule below it (including every #routerFRoot rule) out of that
+     extraction. Always present (all arms), not just Arm F -- identical
+     values to the full stylesheet, so arms A-E (which still load
+     design-system.css/nav.css blocking, see the <script> above) render
+     exactly as before; this only matters for Arm F's async window. See
+     that <script> block's own comment for why each piece is here. */
+  :root {
+    --navy: #0D1B2E; --navy-2: #162338; --navy-3: #1C2E45; --mid: #2A3F5C;
+    --amber: #E07B00; --amber-2: #A85C00; --amber-light: #FAC775; --amber-glow: rgba(224,123,0,0.15);
+    --white: #FFFFFF; --offwhite: #F8F9FC; --light: #E2E8F0; --slate: #8A9BAB; --gray: #64748B; --dark-gray: #3D4F60;
+    --green: #10B981; --green-light: #D1FAE5; --red: #EF4444; --red-light: #FEE2E2; --blue: #3B82F6; --blue-light: #DBEAFE;
+    --font-body: 'Rubik', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-heading: 'Rubik', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-mono: 'Fira Code', 'Consolas', 'Courier New', monospace;
+    --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 20px; --sp-6: 24px; --sp-8: 32px; --sp-10: 40px; --sp-12: 48px; --sp-16: 64px; --sp-20: 80px; --sp-24: 96px;
+    --radius-sm: 6px; --radius-md: 10px; --radius-lg: 16px; --radius-xl: 24px; --radius-full: 9999px;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.2); --shadow-md: 0 4px 12px rgba(0,0,0,0.25); --shadow-lg: 0 8px 32px rgba(0,0,0,0.3); --shadow-glow: 0 0 24px rgba(245,158,11,0.2);
+    --ease: cubic-bezier(0.4, 0, 0.2, 1); --duration: 0.2s;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; -webkit-font-smoothing: antialiased; }
+  body { font-family: var(--font-body); line-height: 1.6; font-size: 16px; }
+  /* gh-2121 round 3 (should-fix, review 5834623268): css/design-system.css:99
+     sets a line-height on every paragraph element; the round-2 critical-CSS
+     subset copied that same rule's slate text colour, further below, via
+     Arm F's own paragraph styling, but missed this element-level line
+     height, so Arm F's paragraph tags measured 24.32px during the async
+     window vs 25.84px once design-system.css applied -- a ~4.6px
+     CLS-causing shift. Verbatim value, matches design-system.css. */
+  p { line-height: 1.7; }
   body { background-color: var(--navy); }
   main { min-height: calc(100vh - 120px); display: flex; align-items: flex-start; justify-content: center; padding: var(--sp-8) var(--sp-4) var(--sp-16); }
+  /* gh-2160 review fix (comment 5818464392, must-fix 3): the -120px here
+     budgets for the header+footer's own height, which Arm F no longer
+     renders at all (see html[data-oq-start-arm="f"] #site-header /
+     #site-footer above). Left as calc(100vh - 120px), Arm F's total
+     document height came out a little SHORTER than one viewport -- no
+     header, no footer, and main's own padding didn't make up the gap --
+     which is what triggered GA4 Enhanced Measurement's automatic `scroll`
+     event on load with no real scroll: that event fires once the page's
+     scrollable depth is already effectively 100% at rest, a well-known
+     GA4 behaviour for a page whose content is not taller than the
+     viewport, not a bug this PR could catch by testing on desktop or by
+     reading either gate file (both untouched -- Enhanced Measurement's
+     tracked-event set is a GA4 property/stream Admin-UI setting, not
+     something a per-page `gtag('config', ...)` call can toggle; see the
+     PR/report for why a code-level opt-out for just this one event was
+     not available here). Restoring Arm F's height to exactly one viewport
+     (min-height: 100vh) was tried first and measured as NOT a fix: GA4
+     Enhanced Measurement's automatic `scroll` event fires whenever a
+     page's scrollable distance is non-zero at rest, and a page that is
+     exactly 100vh tall still has effectively zero scroll headroom once
+     mobile browser chrome (address bar, etc.) shrinks the *visual*
+     viewport below the *layout* viewport 100vh is computed against --
+     GA4 re-review (comment 5819921097) measured this rule sending
+     `scroll` on 8/8 Arm F loads. min-height: 112vh (comfortably above the
+     ~90% visual/layout viewport ratio GA4's own Enhanced Measurement docs
+     use as the "still counts as no scroll" threshold) gives Arm F real,
+     deliberate scroll headroom so GA4 sees genuine at-rest scrollable
+     content and does not fire the event on load. Arms A-E and a bare
+     /start keep the original calc -- their header/footer still renders,
+     so the -120px budget is still correct for them. */
+  html[data-oq-start-arm="f"] main { min-height: 112vh; }
   .router-card {
     width: 100%;
     max-width: 480px;
@@ -159,11 +801,92 @@
   .router-step { display: none; }
   .router-step.active { display: block; animation: fadeUp 0.25s ease both; }
   @keyframes fadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-  .router-step h1, #routerCRoot h1 { font-family: var(--font-heading, var(--font-body)); font-size: 1.5rem; color: var(--white); margin-bottom: var(--sp-2); line-height: 1.25; }
-  .router-step p.router-sub, #routerCRoot p.router-sub { color: var(--slate); font-size: 0.95rem; margin-bottom: var(--sp-5); }
+  .router-step h1, #routerCRoot h1, #routerDRoot h1, #routerFRoot h1 { font-family: var(--font-heading, var(--font-body)); font-size: 1.5rem; color: var(--white); margin-bottom: var(--sp-2); line-height: 1.25; }
+  .router-step p.router-sub, #routerCRoot p.router-sub, #routerDRoot p.router-sub, #routerFRoot p.router-sub { color: var(--slate); font-size: 0.95rem; margin-bottom: var(--sp-5); }
+  /* gh-2122 (Arm F): css/design-system.css's global h1 is #0D1B2E -- exactly the page's navy
+     background -- so an Arm F headline with no rule of its own is invisible and oversized
+     (the same defect gh-2117 fixed for arm E). F joins the C/D heading and subhead rules above
+     (and the mobile pair below). Everything else here is F-scoped: the consent row is a
+     checkbox beside its wrapped label, and the privacy/terms links are legible on the dark card. */
+  /* flex-direction:row is required: the shared .form-group rule is display:flex + flex-direction:column, so without it the
+     label stacks UNDER the checkbox instead of beside it (measured in a real browser). */
+  #routerFRoot .rf-consent { display: flex; flex-direction: row; align-items: flex-start; gap: var(--sp-3); margin-bottom: var(--sp-3); }
+  #routerFRoot .rf-consent input[type="checkbox"] { flex: 0 0 auto; width: 1.25rem; height: 1.25rem; margin: 0.15rem 0 0; }
+  /* text-transform:none matters: the design system's .form-label is UPPERCASE, which would render the legal consent sentence in
+     all capitals -- byte-identical text, but harder to read and not how the approved draft was written. */
+  #routerFRoot .rf-consent label { margin: 0; font-weight: 400; font-size: 0.85rem; line-height: 1.4; color: var(--slate); text-transform: none; letter-spacing: normal; }
+  #routerFRoot p.router-sub a { color: var(--amber); text-decoration: underline; }
+  /* gh-2117: arm E's headings inherited design-system.css's global h1 colour
+     (#0D1B2E navy) on the dark router card -- effectively invisible. Colour
+     only, matching arm C's white headline; no size/spacing/copy change. */
+  #routerERoot h1 { color: var(--white); }
+  /* gh-2118 (Dustin, 2026-09-23: "Perfect.  Give me the prompt to have ben
+     implement 2117 and the top bar."): hide the top audience bar
+     (Homeowner / Contractor / Referral Partner) on /start ONLY -- tapping
+     its Homeowner pill sent visitors to /index.html and out of the router.
+     Logo and menu (row 2 + hamburger) stay. Page-scoped: nav.js and
+     css/nav.css are untouched, so every other page keeps the bar. */
+  #site-header .nav-roles { display: none; }
+  /* gh-2121 (LRS S07, ceo67 audit row S07): #2118 above only closed the
+     role-pill class of "escape hatch before conversion" -- the header logo
+     (nav.js's logoHref, -> /index.html) and the entire footer nav (How It
+     Works / FAQ / Get Started / Blog) still rendered live on Arm F and
+     exited the funnel before screen 4. Same page-scoped CSS-hide pattern
+     as #2118: nav.js and css/nav.css stay untouched, so every other page
+     keeps its logo and footer.
+     gh-2160 review fix (comment 5818464392, must-fix 1): scoped to
+     html[data-oq-start-arm="f"] -- the PR that introduced this rule hid
+     it for EVERY arm /start can serve (A-E and no variant), which also
+     dropped C/D/E's footer Privacy Policy/Terms links. Arms A-E and a
+     bare /start now render the header/footer exactly as on main; only
+     Arm F skips them. #site-header/#site-footer also carry data-skip-nav
+     below (set the same way, arm-scoped), so nav.js never builds their
+     contents at all on Arm F (an escape-hatch element that is never in
+     the DOM can't be tabbed to either, and it drops the always-doubled
+     94.7KB otter-icon.png fetch -- header copy + footer copy -- off Arm
+     F's LCP path; see js/nav.js's own DOMContentLoaded auto-init for the
+     guard). This is display:none belt-and-suspenders for anyone who
+     somehow still reaches it (a race, a future nav.js change) -- not the
+     primary mechanism. */
+  html[data-oq-start-arm="f"] #site-header, html[data-oq-start-arm="f"] #site-footer { display: none; }
+  /* gh-2160 review fix (optional hardening, reviewer suggestion on
+     comment 5819921097): #step1 is Arm A's static markup and ships with
+     class="active" (display:block) directly in the raw HTML below --
+     every arm's JS (variant-c/d/e/f branches) removes that class once it
+     runs, but for the instant between first paint and that JS executing,
+     Arm F would otherwise show the Arm-A role-picker before its own
+     #routerFRoot content replaces it. Pure CSS, scoped the same way as
+     every other Arm-F-only rule above -- arms A-E and a bare /start are
+     unaffected, since #step1 IS their intended first screen. */
+  html[data-oq-start-arm="f"] #step1 { display: none !important; }
+  /* gh-2121 (LRS S05, ceo69: analytics-blocked mobile LCP/TTI still failed
+     at 3.54s/3.54s median post-#2160 -- lcp-breakdown-insight showed the
+     remaining ~2.2s "element render delay" is the JS chain that has to
+     finish (CSS load -> the whole end-of-body bootstrap IIFE parses/runs
+     -> js/router-variant-f.js is appended -> fetches/executes -> init()
+     calls show('f-funding') -> RENDERERS['f-funding'] finally appends the
+     step-1 <h1> -- Arm F's LCP element) before that <h1> exists in the DOM
+     at all. #routerFRoot below now ships the step-1 markup (h1/subhead/
+     question label/3 funding buttons) statically, byte-identical to what
+     RENDERERS['f-funding'] in js/router-variant-f.js builds (COPY.arm_f_s1_*)
+     -- js/router-variant-f.js's own init() detects it (data-ssr-step) and
+     HYDRATES it (attaches the click handlers, does not rebuild the DOM or
+     change when router_step_view fires) instead of building it from
+     scratch. This CSS rule is what actually reveals it: same belt-and-
+     suspenders idiom as #step1's rule immediately above, keyed off the
+     same synchronously-set data-oq-start-arm attribute, so the h1 can
+     paint the instant design-system.css/nav.css finish loading -- it no
+     longer has to wait for the JS chain above at all. Overrides the
+     `hidden` attribute #routerFRoot ships with (same as #routerCRoot/D/E)
+     so every other arm is unaffected. No copy, layout, tracking-event or
+     consent-text change -- see js/router-variant-f.js's own comment on
+     init()/show() for the hydrate path. */
+  html[data-oq-start-arm="f"] #routerFRoot[hidden] { display: block; }
   .form-group { margin-bottom: var(--sp-4); }
   .form-label { display: block; font-weight: 600; color: var(--white); margin-bottom: var(--sp-1); font-size: 0.95rem; }
   .form-label.required::after { content: ' *'; color: var(--red); }
+  /* gh-2042: phone is optional (Dustin, 2026-09-20). Muted, same line as the label. */
+  .form-label-optional { font-weight: 400; color: var(--gray-400, #9ca3af); font-size: 0.85em; }
   .form-input { width: 100%; padding: var(--sp-3) var(--sp-4); border: 1px solid rgba(255,255,255,0.14); border-radius: var(--radius-md); font-family: var(--font-body); font-size: 1rem; background: rgba(255,255,255,0.06); color: var(--white); }
   .form-input::placeholder { color: rgba(255,255,255,0.35); }
   .form-input:focus { outline: none; border-color: var(--amber); box-shadow: 0 0 0 3px var(--amber-glow); }
@@ -185,10 +908,29 @@
   .router-back { display: inline-flex; align-items: center; gap: var(--sp-1); color: var(--slate); font-size: 0.9rem; background: none; border: none; cursor: pointer; margin-bottom: var(--sp-4); padding: 0; }
   .router-back:hover { color: var(--white); }
   .router-spinner-wrap { text-align: center; padding: var(--sp-10) 0; color: var(--slate); }
+
+  /* gh-2063: on short mobile viewports (e.g. 390x844 in the Facebook
+     in-app browser, whose own chrome eats ~100px of that) the step-1 CTA
+     must stay above the fold. Tightens vertical spacing only below
+     700px tall -- no layout/copy change, same elements, same order. */
+  @media (max-height: 700px) {
+    main { padding-top: var(--sp-4); padding-bottom: var(--sp-8); }
+    .router-card { padding: var(--sp-4); }
+    .router-progress { margin-bottom: var(--sp-4); }
+    .router-step h1, #routerCRoot h1, #routerDRoot h1, #routerFRoot h1 { margin-bottom: var(--sp-1); }
+    .router-step p.router-sub, #routerCRoot p.router-sub, #routerDRoot p.router-sub, #routerFRoot p.router-sub { margin-bottom: var(--sp-3); }
+    .form-group { margin-bottom: var(--sp-2); }
+  }
 </style>
 </head>
 <body>
 
+<!-- gh-2121 (LRS S07): data-skip-nav tells js/nav.js's DOMContentLoaded
+     auto-init not to build this element's contents at all. gh-2160 review
+     fix (must-fix 1): NOT hard-coded here any more -- the inline script
+     right after the footer below sets it only when the head IIFE resolved
+     arm === 'f' (data-oq-start-arm). Arms A-E and a bare /start leave this
+     attribute unset and get the header exactly as on main. -->
 <header id="site-header"></header>
 
 <main>
@@ -227,8 +969,8 @@
         </div>
 
         <div class="form-group">
-          <label for="routerPhone" class="form-label required">Phone Number</label>
-          <input type="tel" id="routerPhone" name="phone" class="form-input" autocomplete="tel" inputmode="tel" placeholder="(555) 123-4567" required maxlength="20" aria-describedby="routerPhoneError">
+          <label for="routerPhone" class="form-label">Phone Number <span class="form-label-optional">(optional)</span></label>
+          <input type="tel" id="routerPhone" name="phone" class="form-input" autocomplete="tel" inputmode="tel" placeholder="(555) 123-4567" maxlength="20" aria-describedby="routerPhoneError">
           <div class="field-error" id="routerPhoneError"></div>
         </div>
 
@@ -273,16 +1015,186 @@
          branch below, at the same point that branch hides #step1/#step2/
          #step2a/#step3. -->
     <div id="routerCRoot" hidden></div>
+
+    <!-- ═══════════ Variant D — role tap / one email / everything else after
+         (gh-2075, D-327) ═══════════ -->
+    <!-- Empty by design, same convention as #routerCRoot above:
+         js/router-variant-d.js owns all rendering inside this element once
+         loaded. Hidden by default (zero effect on every other arm); unhidden
+         only inside this file's own variant === 'd' branch, same point that
+         branch hides #step1/#step2/#step2a/#step3/#routerProgress. -->
+    <div id="routerDRoot" hidden></div>
+
+    <!-- ═══════════ Variant E — role-first, homeowner path led by
+         exposition (gh-2076, D-327) ═══════════ -->
+    <!-- Empty by design, same convention as #routerCRoot/#routerDRoot
+         above: js/router-variant-e.js owns all rendering inside this
+         element once loaded. Hidden by default; unhidden only inside
+         this file's own variant === 'e' branch, same point that branch
+         hides #step1/#step2/#step2a/#step3/#routerProgress. -->
+    <div id="routerERoot" hidden></div>
+
+    <!-- ═══════════ Variant F — homeowner short path (gh-2122, D-332) ═══════════ -->
+    <!-- gh-2121 (LRS S05, ceo69, HO-1 S05 LCP fix): NOT empty any more, unlike
+         #routerCRoot/#routerDRoot/#routerERoot above. This is Arm F's step-1
+         screen (COPY.arm_f_s1_headline/s1_subhead/s1_question_label/the three
+         FUNDING_OPTIONS buttons in js/router-variant-f.js), shipped statically
+         so its <h1> -- Arm F's LCP element -- exists in the DOM and can paint
+         as soon as CSS applies, instead of waiting for js/router-variant-f.js
+         to fetch, execute and build it. `data-ssr-step="f-funding"` is the
+         marker js/router-variant-f.js's own init()/show() check for: it
+         HYDRATES this exact markup (attaches the funding-button click
+         handlers) instead of rebuilding it, and still fires router_step_view
+         at the same point it always did. If COPY.arm_f_s1_* in
+         js/router-variant-f.js ever changes, this markup must change with it
+         (js/router-variant-f.js's own hydrate path falls back to a full
+         rebuild if the option-button count here doesn't match FUNDING_OPTIONS,
+         so a mismatch degrades safely rather than breaking the screen -- but
+         it reintroduces the render-delay this fix removes, so keep them in
+         sync). Still `hidden` by default -- unaffected for every arm except F,
+         which reveals it via the CSS rule right above #step1's own identical
+         belt-and-suspenders rule, both keyed off the same synchronously-set
+         data-oq-start-arm attribute. -->
+    <div id="routerFRoot" hidden data-ssr-step="f-funding">
+      <h1>See if storm damage qualifies your roof for a free assessment.</h1>
+      <p class="router-sub">One quick question, then we'll get your info. Takes under a minute.</p>
+      <p class="router-sub">How will you pay for the repair?</p>
+      <div class="role-options">
+        <button type="button" class="role-option">Insurance claim</button>
+        <button type="button" class="role-option">Paying cash</button>
+        <button type="button" class="role-option">Not sure yet</button>
+      </div>
+    </div>
   </div>
 </main>
 
+<!-- gh-2121 round 3 (M2, review 5834623268): the #routerFRoot buttons just
+     above paint ~0.4s (SSR) but js/router-variant-f.js doesn't hydrate them
+     (attach the real click handlers) until ~1.3s -- 9 of 10 measured
+     first-tap runs landed in that ~0.9s dead window and were silently
+     lost. This runs synchronously right after the SSR markup above, so it
+     attaches BEFORE any user tap can possibly happen, and does exactly one
+     thing: remember the first funding button tapped, by index, in
+     window.__oqEarlyTap. js/router-variant-f.js's hydrateSsrFunding()
+     consumes it -- exactly once, clearing it immediately -- and replays it
+     as one real button.click() through the SAME per-button handler it just
+     wired, so it is one step advance and one router_step_complete, not a
+     separate code path (see that function's own comment). Arm-F-only,
+     no-op if the SSR buttons aren't there (every other arm, JS off, or a
+     COPY/markup mismatch that made router-variant-f.js fall back to a full
+     rebuild instead of hydrating). -->
+<script>
+  (function () {
+    if (document.documentElement.getAttribute('data-oq-start-arm') !== 'f') return;
+    var root = document.getElementById('routerFRoot');
+    if (!root) return;
+    var btns = root.querySelectorAll('.role-option');
+    var recorded = false;
+    for (var i = 0; i < btns.length; i++) {
+      (function (idx, btn) {
+        btn.addEventListener('click', function () {
+          if (recorded) return;
+          recorded = true;
+          window.__oqEarlyTap = { index: idx };
+        });
+      })(i, btns[i]);
+    }
+  })();
+</script>
+
+<!-- gh-2121 (LRS S07): see the header's own data-skip-nav comment above. -->
 <footer id="site-footer"></footer>
 
-<script src="js/cookie-storage.js"></script>
-<script src="js/config.js"></script>
-<script src="js/auth.js"></script>
-<script src="js/nav.js"></script>
-<script src="js/agent-types.js"></script>
+<!-- gh-2160 review fix (comment 5818464392, must-fix 1): sets data-skip-nav
+     on the header/footer ONLY when the head IIFE resolved this load to Arm
+     F (data-oq-start-arm="f" on <html>, set synchronously above before a
+     single body tag was parsed). Runs during HTML parsing, so it always
+     completes before js/nav.js's DOMContentLoaded auto-init reads
+     dataset.skipNav, regardless of nav.js's own defer. Arms A-E and a bare
+     /start never set the attribute, so nav.js builds their header/footer
+     -- including the footer's Privacy Policy/Terms links -- exactly as it
+     does on every other page. -->
+<script>
+  (function () {
+    try {
+      if (document.documentElement.getAttribute('data-oq-start-arm') !== 'f') return;
+      var h = document.getElementById('site-header');
+      var f = document.getElementById('site-footer');
+      if (h) h.setAttribute('data-skip-nav', 'true');
+      if (f) f.setAttribute('data-skip-nav', 'true');
+    } catch (e) {}
+  })();
+</script>
+
+<!-- gh-2121 (LRS S05, ceo67 Lighthouse trace): these five files exist ONLY
+     to (a) build the header/footer this page now skips (nav.js, and
+     auth.js/agent-types.js which nav.js alone reads -- confirmed by grep,
+     neither is referenced anywhere else in this file) or (b) back
+     ensureSb()'s lazy Supabase-client accessor and the ARM_F bridge's own
+     `get sb()`/`get detailsUrl()`/`get anonKey()` getters below, none of
+     which run until first user interaction (step-1 submit) at the
+     earliest -- config.js/cookie-storage.js were already read lazily
+     everywhere in this file before this change; the two ARM_F bridge
+     properties were the one remaining eager (parse-time) CONFIG read and
+     are now getters too (see that bridge, below), for exactly this reason.
+     `defer` lets the parser reach this file's own next script (the inline
+     IIFE that decides the arm and injects js/router-variant-f.js) without
+     first waiting on five serial same-origin fetch+parse+execute cycles --
+     that serial wait was most of the ~2.2s "element render delay"
+     lcp-breakdown-insight measured on the ceo67 Lighthouse trace, since
+     the LCP element (Arm F's step-1 <h1>) is rendered by router-variant-f.js
+     and that script was not even requested until this block had finished
+     running. `defer` scripts execute in this same order, before
+     DOMContentLoaded -- nav.js's own auto-init (which needs Auth/CONFIG)
+     runs on that event, so ordering is preserved. GA4/Meta/Clarity gating
+     (js/ga-gate.js, js/meta-pixel-gate.js) and the Supabase UMD bundle
+     above are untouched -- this list is exactly the five files whose only
+     synchronous-load reason was the header/footer this page no longer
+     builds. -->
+<script defer src="js/cookie-storage.js"></script>
+<script defer src="js/config.js"></script>
+<script defer src="js/auth.js"></script>
+<script defer src="js/nav.js"></script>
+<!-- gh-2121: agent-types.js stays synchronous, NOT deferred like the four
+     above -- this page's own inline script (immediately below) calls an
+     IIFE, renderPartnerIndustries(), at the top level of its own execution
+     (not inside a click handler or a RENDERERS['...'] callback like every
+     other AgentTypes.CHOOSER_LABELS read in this codebase), and reads
+     window.AgentTypes.CHOOSER_LABELS synchronously right there. A deferred
+     script here would still be queued behind cookie-storage/config/auth/
+     nav and would not have run yet at that call site (defer scripts run
+     after the WHOLE document parses, and that call happens mid-parse, from
+     a plain inline <script> reached immediately after this one) -- window.
+     AgentTypes would read undefined, and the fallback (`|| {}`) would
+     render every partner-industry button with its raw code
+     ("re_agent") instead of its label ("Real Estate Agent"), on every
+     /start visit regardless of arm, not just F. Confirmed no other
+     AgentTypes.CHOOSER_LABELS read in this codebase runs outside a
+     RENDERERS/click-handler callback. Small file (116 lines); the perf
+     cost of keeping it synchronous is not worth risking that regression.
+
+     gh-2121 (LRS S05, ceo69 HO-1 S05 LCP fix): Arm F alone now skips this
+     request. js/router-variant-f.js is a self-contained 4-screen flow that
+     never reads window.AgentTypes and never shows #step2a (confirmed: no
+     AgentTypes reference anywhere in js/router-variant-f.js) -- so on Arm F
+     this file has only ever sat in the render-blocking critical path
+     (Lighthouse's render-blocking-insight flagged it, ~300ms, on the
+     analytics-blocked ceo69 trace) for a screen this arm can never reach.
+     renderPartnerIndustries() below already falls back to `{}` when
+     window.AgentTypes is undefined (`(window.AgentTypes && ...) || {}`),
+     so skipping the load changes nothing observable: it builds #step2a's
+     industry buttons with placeholder labels that no Arm F visitor's
+     browser ever paints, exactly as if the request were merely slow. Every
+     other arm gets the identical byte-for-byte request, same URL, no
+     async/defer, via document.write so it stays a parser-inserted
+     synchronous load in the same document position -- ordering relative to
+     the inline script right after (which reads window.AgentTypes at its
+     own top level) is unchanged for A-E. -->
+<script>
+  if (document.documentElement.getAttribute('data-oq-start-arm') !== 'f') {
+    document.write('<script src="js/agent-types.js"><\/script>');
+  }
+</script>
 
 <script>
 (function () {
@@ -298,14 +1210,29 @@
   // once `js/config.js` was confirmed to declare `sb` as a page-level
   // global; this file's own copy of that same claim was missed until the
   // fix round 3 REVIEW pass caught it.)
+  // gh-2063 (Ben, comment 5767975097): the Supabase UMD script above now
+  // loads `defer` so it no longer blocks parsing -- but a deferred script
+  // has NOT run yet at the moment this synchronous inline script executes
+  // (deferred scripts run after parsing completes, in document order,
+  // before DOMContentLoaded), so `typeof supabase` is 'undefined' right
+  // here every time, the same way it always is. Round 2 of this issue
+  // learned that the hard way: it added `defer` here without this change
+  // and left `sb` permanently null. The fix is this lazy accessor --
+  // `ensureSb()` creates the client on FIRST USE (step 1's submit
+  // handler, well after `defer` has had time to run) and caches it, never
+  // at parse time. Every `sb.*` call site below goes through it.
   var sb = null;
-  try {
-    if (typeof supabase !== 'undefined' && typeof CONFIG !== 'undefined') {
-      sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, {
-        auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' }
-      });
-    }
-  } catch (e) { /* handled by the null-check on every use below */ }
+  function ensureSb() {
+    if (sb) return sb;
+    try {
+      if (typeof supabase !== 'undefined' && typeof CONFIG !== 'undefined') {
+        sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, {
+          auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' }
+        });
+      }
+    } catch (e) { /* handled by the null-check on every use below */ }
+    return sb;
+  }
 
   // ── Elements ──
   var progressEls = { 1: document.getElementById('progressStep1'), 2: document.getElementById('progressStep2'), 3: document.getElementById('progressStep3') };
@@ -319,7 +1246,7 @@
     // stay hidden the entire time, including the one indirect path here --
     // redirectTo() below calls renderStep(3), and the module calls
     // redirectTo() by reference per the bridge contract.
-    if (ARM_C) return;
+    if (ARM_C || ARM_D || ARM_E || ARM_F) return;
     Object.keys(steps).forEach(function (k) { steps[k].classList.toggle('active', k === String(key)); });
     // gh-2016: the 3-segment progress bar is hardcoded to A's screen ORDER,
     // not just its key names -- on arm B, contact (1) is the middle screen
@@ -392,21 +1319,80 @@
   // VARIANT_VALUES['__proto__'] are both truthy Object.prototype members).
   // A regex test never consults the prototype chain, so this is not
   // vulnerable to the same class of bypass. ──
+  // gh-2074 fix round 2 (PR #2079 review, item 1 BLOCKER): window.__oqVariant
+  // -- set by the head-inline assignment script above, already sanitised
+  // AND re-mapped to a live arm -- is now read FIRST, not as a fallback.
+  // Before this fix the URL's own ?v= was consulted first and
+  // window.__oqVariant only when the URL failed the allowlist; that order
+  // was correct pre-gh-2074 but became a live split-brain bug once a/b
+  // started being re-mapped to a live arm on arrival: the ONLY place that
+  // rewrites ?v= to the re-mapped arm is that same head script's
+  // history.replaceState call, which is wrapped in a swallowing try/catch
+  // and does throw in real /start traffic (sandboxed iframes without
+  // allow-same-origin -- ad-platform/CMS landing-page previews and
+  // embeds -- plus Safari's history-mutation rate limit). When it throws,
+  // the pre-mapped ?v=a/?v=b survives in the URL, and reading the URL
+  // first served arm a/b anyway with the correct, already-live
+  // window.__oqVariant sitting right there unused -- GA4/Clarity tagged
+  // variant=a/b and leads.variant written a/b, while both persisted
+  // stores already said 'c'. The URL is read here only as a fallback for
+  // the case window.__oqVariant is itself unset (the head script threw
+  // before reaching that assignment) -- and even then it is run through
+  // window.__oqToLiveArm, the SAME live-mapping function the head script
+  // itself uses, so a/b still cannot win from this path either.
+  //
+  // gh-2074 fix round 2 (PR #2079 review, item 2): the allowlist is no
+  // longer a second hardcoded /^[abc]$/ -- it is built from
+  // window.__oqKnownArms, the same KNOWN_ARMS constant the head script
+  // uses (falling back to a local literal only if that script somehow
+  // never ran). KNOWN_ARMS already includes 'd'/'e', so this read stays
+  // correct across the gh-2075/gh-2076 ship without a second edit here.
+  // Still a regex test, never an object-literal lookup, for the same
+  // prototype-chain-bypass reason as the fix-round-4 comment above.
+  var KNOWN_ARMS = window.__oqKnownArms || ['a', 'b', 'c', 'd', 'e', 'f'];
+  var KNOWN_ARM_RE = new RegExp('^(' + KNOWN_ARMS.join('|') + ')$');
+  var oqVariantArm = KNOWN_ARM_RE.test(String(window.__oqVariant || ''))
+    ? String(window.__oqVariant)
+    : null;
   var rawVariant = (new URLSearchParams(window.location.search).get('v') || '').toLowerCase();
-  // gh-2033: fall back to window.__oqVariant -- set by the head-inline
-  // assignment script (before js/ga-gate.js) -- when the URL's own ?v= comes
-  // back empty. Covers the case where that script's history.replaceState
-  // call itself threw and the URL was never rewritten to carry the arm it
-  // already persisted. Same /^[abc]$/ allowlist shape as above; never an
-  // object-literal lookup, for the reason in the fix-round-4 comment above.
-  var variant = /^[abc]$/.test(rawVariant) ? rawVariant
-              : (/^[abc]$/.test(String(window.__oqVariant || '')) ? String(window.__oqVariant) : null);
+  var toLiveArmFallback = window.__oqToLiveArm || function (a) { return a; };
+  // gh-2122: a direct-only arm (Arm F) is served as itself here too, matching
+  // the head script's own rule; every other arm is still remapped to a live one.
+  var directOnlyFallback = window.__oqDirectOnlyArms || [];
+  var urlFallbackArm = (!oqVariantArm && KNOWN_ARM_RE.test(rawVariant))
+    ? (directOnlyFallback.indexOf(rawVariant) !== -1 ? rawVariant : toLiveArmFallback(rawVariant))
+    : null;
+  var variant = oqVariantArm || urlFallbackArm;
   // gh-2014: js/ga-gate.js's CLARITY_ALLOWED_PATHS now carries '/start', so
   // this call is live rather than a no-op against a closed gate. Guarded on
   // both a recognised variant and window.clarity actually having loaded
   // (Clarity is still behind its own host/consent gate upstream of the
   // path allowlist).
-  try { if (variant && window.clarity) { clarity('set', 'variant', variant); } } catch (e) {}
+  // gh-2063 fix round 2 (PR #2065 review, blocker 3): this used to run here,
+  // at parse time, while the page's <script defer src="js/ga-gate.js"> --
+  // the only place window.clarity is created -- had not executed yet, so
+  // the guard above was always false and the call silently never ran.
+  // Round 2 fixed that by moving this into a DOMContentLoaded listener,
+  // back when js/ga-gate.js was still guaranteed to have run (deferred
+  // scripts finish strictly before DOMContentLoaded) by that point.
+  // gh-2160 review fix (comment 5818464392, must-fix 2): js/ga-gate.js is
+  // no longer requested until idle/first-interaction/load (see that
+  // script block, above the header/footer), so it can now run AFTER
+  // DOMContentLoaded too -- the same failure mode round 2 fixed would
+  // reopen if this stayed a one-shot DOMContentLoaded call. Hooked onto
+  // window.__oqOnGateReady instead (set up by that same script block's
+  // ga-gate.js onload handler): runs immediately if ga-gate.js has
+  // already executed by the time this line runs, or queues to run the
+  // instant it does otherwise -- either way exactly once, same guard
+  // logic, same payload.
+  function _oqSetClarityVariant() {
+    try { if (variant && window.clarity) { clarity('set', 'variant', variant); } } catch (e) {}
+  }
+  if (window.__oqGateReady) {
+    _oqSetClarityVariant();
+  } else {
+    (window.__oqOnGateReady = window.__oqOnGateReady || []).push(_oqSetClarityVariant);
+  }
 
   // ── gh-2016: arm B (contact-last). B asks #2011's IDENTICAL questions in
   // inverted order -- role, then industry if referral_partner, then
@@ -431,6 +1417,36 @@
   // arm C's own screen. redirectTo() (below) is called BY the module
   // itself, so its two calls into the now-guarded functions matter here.
   var ARM_C = variant === 'c';
+
+  // gh-2075 (D-327): arm D (role tap first, one email field, everything
+  // else after). Same reasoning as ARM_C immediately above -- js/router-
+  // variant-d.js owns its own sequencer/rendering entirely, reached
+  // through its own bridge assembled near the end of this IIFE. Also
+  // unreachable pre-flip: LIVE_VARIANTS above is still ['c'], and
+  // toLiveArm() remaps any non-live arm before `variant` is ever set, so
+  // `variant === 'd'` cannot be true today -- this flag and the file it
+  // gates ship dormant, exactly like arm A/B's own code already does.
+  var ARM_D = variant === 'd';
+
+  // gh-2076 (D-327): arm E (role-first, arm C's own screens, with the
+  // homeowner path led by exposition -- see js/router-variant-e.js's own
+  // top-of-file comment). Same reasoning as ARM_C/ARM_D immediately
+  // above -- js/router-variant-e.js owns its own sequencer/rendering
+  // entirely, reached through its own bridge assembled near the end of
+  // this IIFE. Unreachable pre-flip the same way ARM_D is, EXCEPT
+  // through the ?v=e&oq_internal=1 QA override this file's own head
+  // script adds (see that script's own comment) -- LIVE_VARIANTS above
+  // is still ['c','d'], so `variant === 'e'` is false for every visitor
+  // who does not carry that override.
+  var ARM_E = variant === 'e';
+
+  // gh-2122 (D-332): arm F, the homeowner short path (funding tap, address,
+  // name + phone/email, thank-you; the lead is saved before any account).
+  // Same reasoning as ARM_C/ARM_D/ARM_E above -- js/router-variant-f.js owns
+  // its own sequencer/rendering entirely, reached through its own bridge
+  // assembled near the end of this IIFE. Reachable only by an explicit
+  // ?v=f (see the head script's DIRECT_ONLY_ARMS); not in LIVE_VARIANTS.
+  var ARM_F = variant === 'f';
 
   // B's step vocabulary, deliberately non-colliding with A's 1/2/2a/3
   // (#2016 control 4). The arms ask DIFFERENT questions at the same
@@ -510,11 +1526,132 @@
   // file outside react-app/ (PR #1960's track() helper lives at
   // react-app/app/lib/track.ts and is unreachable from here), so every
   // router event stamps `variant` itself via this wrapper instead. ──
-  function trackRouter(name, extra) {
+  //
+  // gh-2063 / gh-2160: kept as a belt-and-suspenders fallback. `window.gtag`
+  // is now defined synchronously, near the top of <head> (see the
+  // gh-2160 stub comment above the deferred js/ga-gate.js load), so
+  // `typeof gtag === 'function'` below is true from the very first
+  // trackRouter() call onward and this queue no longer has anything to
+  // do in the normal case -- but it stays in place in case a future
+  // change removes that stub, so a timing regression there would degrade
+  // to "delayed" rather than "silently dropped".
+  var _oqTrackQueue = [];
+  function _oqFlushTrackQueue() {
+    if (typeof gtag !== 'function' || !_oqTrackQueue.length) return;
+    var q = _oqTrackQueue;
+    _oqTrackQueue = [];
+    for (var i = 0; i < q.length; i++) {
+      try { gtag('event', q[i].name, q[i].params); } catch (e) {}
+    }
+  }
+  document.addEventListener('DOMContentLoaded', _oqFlushTrackQueue);
+
+  // gh-2096 item 4: step_index (1-based) for arm A's numeric/'2a' tokens
+  // and arm B's b-* tokens (via stepToken() above). One lookup table per
+  // arm is the pattern this issue asks for; C/D/E keep their OWN tables
+  // in their own files (js/router-discovery.js, js/router-variant-d.js,
+  // js/router-variant-e.js) and pass step_index through already computed
+  // -- trackRouter below never overwrites a step_index a caller already
+  // supplied, it only fills the gap for arm A/B's own bare step values.
+  var STEP_INDEX_AB = { 1: 1, 2: 2, '2a': 3, 3: 4, 'b-role': 1, 'b-industry': 2, 'b-contact': 3, 'b-redirect': 4 };
+
+  // gh-2096 item 6: ua_context separates the Facebook/Instagram in-app
+  // browser population from everyone else -- computed once (the UA string
+  // never changes mid-session) and stamped on every router event via
+  // trackRouter below, for every arm, with no per-arm change needed.
+  function computeUaContext() {
+    try {
+      var ua = navigator.userAgent || '';
+      if (/FBAN|FBAV|FB_IAB/.test(ua)) return 'fb_iab';
+      if (/Instagram/.test(ua)) return 'ig_iab';
+      return 'other';
+    } catch (e) { return 'other'; }
+  }
+  var UA_CONTEXT = computeUaContext();
+
+  // gh-2096 item 3: shared state for the abandon beacon (below, near
+  // redirectTo and the visibilitychange+pagehide listeners). Updated
+  // only from trackRouter's own router_step_view handling, which every
+  // arm already calls on every screen entry (renderStep here for A/B,
+  // emitView in each module for C/D/E) -- no parallel emitter, no
+  // per-arm change needed to keep this current.
+  var abandonCurrentStep = null;
+  var abandonCurrentStepIndex;
+  var abandonCurrentVariant = null;
+  var abandonStepEnteredAt = 0;
+  var abandonFiredForView = false;
+  // gh-2096 item 3: set to true just before redirectTo() below performs
+  // a real `window.location.href` navigation -- the one signal that
+  // distinguishes "this visitor completed/left the step on purpose" from
+  // a real abandonment. Every arm's terminal hand-off funnels through
+  // that one function (confirmed by reading redirectWithLeadId in both
+  // variant modules and the direct bridge.redirectTo calls in this file
+  // and js/router-discovery.js), so setting it there once covers all of
+  // them. Read by the pagehide handler below.
+  var abandonSuppressedByNav = false;
+
+  // #2088 round 2 leftover (item 9): `variantOverride` lets a caller tag
+  // an event with a DIFFERENT arm than this page's own `variant` closure
+  // var -- used ONLY by the arm-E-script-load-failure fallback bridge
+  // below, so a visitor who silently falls back from E to C's own
+  // experience gets C's own step tokens tagged variant='c', not 'e'
+  // (which would otherwise collapse arm C's real funnel and arm E's
+  // fallback-to-C funnel into the same GA4/BigQuery column). Every other
+  // caller omits it and gets the page's own `variant`, unchanged.
+  function trackRouter(name, extra, variantOverride) {
     try {
       var p = extra || {};
-      if (variant) { p.variant = variant; }
-      gtag('event', name, p);
+      var v = variantOverride || variant;
+      if (v) { p.variant = v; }
+      // gh-2096 item 4: fill step_index for arm A/B's own bare step
+      // tokens only -- never overwrite one a caller (C/D/E's own
+      // emitView/emitComplete/emitDisqualified) already computed from
+      // its own arm-specific table.
+      if (p.step_index === undefined && p.step !== undefined && p.step !== null && STEP_INDEX_AB.hasOwnProperty(p.step)) {
+        p.step_index = STEP_INDEX_AB[p.step];
+      }
+      // gh-2096 item 6: every router event, every arm.
+      p.ua_context = UA_CONTEXT;
+      // gh-2096 item 7 (client half): once a lead row exists for this
+      // session -- set by insertFreshLead below, itself shared by every
+      // arm via the bridge -- stamp it on every subsequent event so the
+      // step events are connectable to the leads row. Never sent before
+      // a lead exists (undefined stays out of the payload rather than
+      // sending null/empty).
+      if (leadId) { p.lead_id = leadId; }
+      // gh-2096 item 5: Clarity step tag + per-step event, same
+      // try/catch-guarded, window.clarity-gated pattern as the existing
+      // 'variant' tag below -- every arm's screens funnel their
+      // router_step_view through here, so this is the one place that
+      // needs it. oq_internal walks are tagged 'internal' instead of
+      // relying on suppression reaching Clarity (audit: only 11 of 36
+      // overnight recordings carrying oq_internal=1 were actually
+      // suppressed there).
+      if (p.step !== undefined && p.step !== null) {
+        try {
+          if (window.clarity) {
+            clarity('set', 'step', String(p.step));
+            clarity('event', 'router_' + p.step);
+            if (oqInternalWalk) { clarity('set', 'internal', '1'); }
+          }
+        } catch (e2) {}
+      }
+      // gh-2096 item 3: track the step currently on screen, and reset
+      // the once-per-view abandon guard, only on an actual view -- never
+      // on router_step_complete/router_contact_submitted/etc, which fire
+      // for the step being LEFT, not the one now showing.
+      if (name === 'router_step_view') {
+        abandonCurrentStep = p.step;
+        abandonCurrentStepIndex = p.step_index;
+        abandonCurrentVariant = v;
+        abandonStepEnteredAt = Date.now();
+        abandonFiredForView = false;
+      }
+      if (typeof gtag === 'function') {
+        gtag('event', name, p);
+      } else {
+        _oqTrackQueue.push({ name: name, params: p });
+      }
     } catch (e) {}
   }
 
@@ -566,7 +1703,31 @@
   // is the same client-generated-id insert Step 1 already used for a
   // brand-new visitor, factored out so a stale/prefilled/expired lead id
   // can fall back to it instead of the visitor's data vanishing.
-  function insertFreshLead(name, email, phoneDigits) {
+  // #2088 round 1 item 3: `isSynthetic`, when true (arm E passes
+  // bridge.oqInternalOverride, which is only ever true while the
+  // ?v=e&oq_internal=1 QA override -- see that override's own comment
+  // above -- is active), sets leads.is_synthetic = true on the insert.
+  // The column already exists (migration
+  // 20260920195654_gh2055_add_notifications_suppressed_and_is_synthetic
+  // .sql) and the anon INSERT policy on `leads` is WITH CHECK (true), so
+  // no RPC or schema change is needed to set it client-side -- confirmed
+  // by reading that migration directly rather than assuming. Every other
+  // caller (arms A/B/C/D, and arm E outside the override) omits the 4th
+  // argument, so `isSynthetic` is undefined/false and the column is left
+  // out of the payload entirely -- unchanged behaviour, unchanged default
+  // (NULL) for every real lead.
+  // #2088 round 2 leftover (item 9): `variantOverride`, same reasoning
+  // as trackRouter's own -- used only by the arm-E-load-failure
+  // fallback bridge so THAT insert's leads.variant is 'c', not 'e'.
+  // gh-2122 (Arm F): `extraColumns`, when given, adds ONLY allow-listed
+  // columns that already exist on public.leads to the insert payload -- today
+  // just `zip`, parsed from Arm F's address. It is an allow-list on purpose: an
+  // unknown column makes PostgREST reject the WHOLE insert, and `leads` has no
+  // UPDATE policy, so a bad key here would destroy the lead with no retry (see
+  // the gh-2011 note in 20260918122231_gh2011_leads_variant.sql). Every other
+  // caller omits it and gets exactly the payload it always did.
+  var INSERT_EXTRA_COLUMNS = ['zip'];
+  function insertFreshLead(name, email, phoneDigits, isSynthetic, variantOverride, extraColumns) {
     var newId = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : (
       'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
         var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
@@ -574,7 +1735,7 @@
       })
     );
     var attr = collectAttribution();
-    return sb.from('leads').insert({
+    var payload = {
       id: newId,
       name: name,
       email: email,
@@ -587,10 +1748,33 @@
       utm_term: attr.utm_term,
       fbclid: attr.fbclid,
       gclid: attr.gclid,
-      variant: variant
-    }).then(function (res) {
+      variant: variantOverride || variant
+    };
+    if (isSynthetic || window.__oqInternalWalk) { payload.is_synthetic = true; }
+    if (extraColumns) {
+      INSERT_EXTRA_COLUMNS.forEach(function (col) {
+        if (extraColumns[col] !== undefined && extraColumns[col] !== null) { payload[col] = extraColumns[col]; }
+      });
+    }
+    return ensureSb().from('leads').insert(payload).then(function (res) {
       if (res && res.error) throw res.error;
       setStoredLeadId(newId);
+      // gh-2096 item 7 (client half): stamp this page's own top-level
+      // `leadId` here too, regardless of which arm called this function
+      // -- trackRouter reads it to stitch every subsequent router event
+      // to this leads row. Safe for arms C/D/E: every one of their own
+      // redirectTo() call sites already passes preBuilt=true (confirmed
+      // by reading redirectWithLeadId in both variant modules and the
+      // direct bridge.redirectTo calls in js/router-discovery.js), so
+      // this file's own "!preBuilt" branch that reads `leadId` to build
+      // the redirect URL is never reached by them either way -- setting
+      // it here changes no existing redirect behavior, only adds
+      // lead_id to events from here forward. Arms A/B already set this
+      // same var themselves in their own .then() callbacks immediately
+      // after this call resolves; this makes it available one tick
+      // earlier and covers C/D/E, which never set it at all before now.
+      leadId = newId;
+      try { if (window.clarity) { clarity('identify', newId); } } catch (e2) {}
       return newId;
     });
   }
@@ -637,6 +1821,39 @@
     var routerProgressEl = document.getElementById('routerProgress');
     if (routerProgressEl) routerProgressEl.hidden = true;
     if (routerCRoot) routerCRoot.hidden = false;
+  }
+
+  // gh-2075 (D-327): same treatment as arm C immediately above -- hide the
+  // four shared A/B sections and the 3-dot progress bar (hardcoded to A/B's
+  // shape), reveal D's own mount element. Doing this before the History
+  // block below reads `.router-step.active` is what keeps that block's own
+  // `if (initialStepEl)` guard a no-op for D too, same as it already is for
+  // C (see that block's own comment) -- no stray router_step_view for a
+  // screen D never shows.
+  var routerDRoot = document.getElementById('routerDRoot');
+  if (ARM_D) {
+    Object.keys(steps).forEach(function (k) { steps[k].classList.remove('active'); });
+    var routerProgressElD = document.getElementById('routerProgress');
+    if (routerProgressElD) routerProgressElD.hidden = true;
+    if (routerDRoot) routerDRoot.hidden = false;
+  }
+
+  // gh-2076 (D-327): same treatment as arms C/D immediately above.
+  var routerERoot = document.getElementById('routerERoot');
+  if (ARM_E) {
+    Object.keys(steps).forEach(function (k) { steps[k].classList.remove('active'); });
+    var routerProgressElE = document.getElementById('routerProgress');
+    if (routerProgressElE) routerProgressElE.hidden = true;
+    if (routerERoot) routerERoot.hidden = false;
+  }
+
+  // gh-2122 (D-332): same treatment as arms C/D/E immediately above.
+  var routerFRoot = document.getElementById('routerFRoot');
+  if (ARM_F) {
+    Object.keys(steps).forEach(function (k) { steps[k].classList.remove('active'); });
+    var routerProgressElF = document.getElementById('routerProgress');
+    if (routerProgressElF) routerProgressElF.hidden = true;
+    if (routerFRoot) routerFRoot.hidden = false;
   }
 
   // ── History: Step 2 and Step 2a each get their own history entry (pushed
@@ -784,10 +2001,10 @@
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { fieldError('routerEmailError', 'Please enter a valid email address.'); hasError = true; }
     // Negative control (closes-on a): empty (or otherwise invalid) phone
     // blocks Step 1 -- no leads row is inserted and Step 2 never shows.
-    if (!phoneRaw || !isValidUsPhone(phoneRaw)) { fieldError('routerPhoneError', 'Please enter a valid 10-digit US phone number.'); hasError = true; }
+    if (phoneRaw && !isValidUsPhone(phoneRaw)) { fieldError('routerPhoneError', 'Please enter a valid 10-digit US phone number.'); hasError = true; }
     if (hasError) return;
 
-    if (!sb) { showError('Something went wrong loading the form. Please refresh and try again.'); return; }
+    if (!ensureSb()) { showError('Something went wrong loading the form. Please refresh and try again.'); return; }
 
     // gh-2016: on arm B this screen is LAST, and the role picked on b-role
     // decides both the destination and the set_lead_role write that follows
@@ -820,7 +2037,8 @@
         return;
       }
       // GA4 — no PII, per #1994 item 4.
-      trackRouter('router_contact_submitted');
+      // gh-2096 item 2: step -- Step 1 is the contact screen this fires from.
+      trackRouter('router_contact_submitted', { step: stepToken(1) });
       // Meta Lead — same bare call as contractor-join.html:376's precedent,
       // no PII payload.
       try { fbq('track', 'Lead'); } catch (e) {}
@@ -844,7 +2062,12 @@
             redirectTo(bDest);
           }
         };
-        setRoleWithFallback(bRole, bIsPartner ? bIndustry : null).then(bProceed).catch(bProceed);
+        // gh-2016: this leadId was just written by this same request chain
+        // (insertFreshLead or a successful update_lead_contact, both above)
+        // -- it can never legitimately be stale, so a failure here must
+        // never fall back to inserting a second leads row. See
+        // setRoleWithFallback's skipFreshInsertOnFailure comment.
+        setRoleWithFallback(bRole, bIsPartner ? bIndustry : null, { skipFreshInsertOnFailure: true }).then(bProceed).catch(bProceed);
         return;
       }
       goToStep(2);
@@ -867,11 +2090,14 @@
     // values instead of losing them -- this is the actual B1 fix; the
     // update path above it is unchanged and still the common case.
     var storedLeadId = getStoredLeadId();
-    var phoneDigits = normalizePhone(phoneRaw);
+    // gh-2042 (Dustin, 2026-09-20: "Make phone optional"): an empty phone is
+    // sent as NULL, not '' -- leads.phone is nullable and update_lead_contact
+    // accepts NULL after migration gh2042_update_lead_contact_optional_phone.
+    var phoneDigits = phoneRaw ? normalizePhone(phoneRaw) : null;
 
     if (storedLeadId) {
       leadId = storedLeadId;
-      sb.rpc('update_lead_contact', {
+      ensureSb().rpc('update_lead_contact', {
         p_lead_id: leadId,
         p_name: name,
         p_email: email,
@@ -916,22 +2142,36 @@
   };
 
   // gh-1994 fix round 2 (Ben, REVIEW 5700804646 / LEGAL-READ 5700654821):
-  // the homeowner destination is the React get-started page
-  // (react-app/app/get-started/page.tsx), which this PR is explicitly
-  // barred from touching -- it does not strip `lead` from the URL or use
-  // it for anything, so a ?lead=<uuid> sent there would land in that
-  // origin's GA4/Meta/Clarity/Sentry beacons AND stay live for the full
-  // 30-minute prefill-read/overwrite window for anyone who captured the
-  // URL. DECIDED cure (Ben): homeowners get NO lead param at all, only
-  // attribution (utm_*/fbclid/gclid, never PII) -- the lead row and
-  // role=homeowner are already saved server-side by this point in the
-  // flow, so nothing is lost by not round-tripping the id. Contractor and
-  // referral-partner destinations are this repo's own static pages
-  // (contractor-join.html, partner-*.html), which DO strip+prefill via
-  // the early-strip head script added in fix round 1 -- unaffected, still
-  // get ?lead=<uuid>. Revisit once phase 2 adds strip+prefill support to
-  // the React page.
-  var NO_LEAD_ID_DESTINATIONS = { homeowner: true };
+  // the homeowner destination was the React get-started page
+  // (react-app/app/get-started/page.tsx), which that PR was explicitly
+  // barred from touching -- it did not strip `lead` from the URL or use
+  // it for anything, so a ?lead=<uuid> sent there would have landed in
+  // that origin's GA4/Meta/Clarity/Sentry beacons AND stayed live for the
+  // full 30-minute prefill-read/overwrite window for anyone who captured
+  // the URL. DECIDED cure at the time (Ben): homeowners got NO lead param
+  // at all, only attribution (utm_*/fbclid/gclid, never PII) -- the lead
+  // row and role=homeowner were already saved server-side by that point
+  // in the flow, so nothing was lost by not round-tripping the id.
+  //
+  // gh-2046 (phase 2, SHIPPED): the React page now carries its own
+  // beforeInteractive strip+prefill, mirroring this file's own
+  // early-strip head script exactly (see app/layout.tsx's
+  // LEAD_STRIP_SCRIPT and app/get-started/page.tsx's prefill effect) --
+  // `lead` is captured into window.__oqRouterLeadId and removed from the
+  // visible URL via history.replaceState before hydration, which is
+  // before GA4Gate/MetaPixelGate/SentryInitializer's own effects can
+  // possibly run, so no beacon on that origin ever sees it. Prefill
+  // itself goes through the same get_lead_prefill RPC every other
+  // destination already uses -- unmodified 30-minute window and
+  // prefill_used_at single-use semantics, honored server-side. The cure
+  // above is no longer needed for the reason it existed: homeowners now
+  // get ?lead=<uuid> like every other destination, so
+  // NO_LEAD_ID_DESTINATIONS is empty. Contractor and referral-partner
+  // destinations are this repo's own static pages (contractor-join.html,
+  // partner-*.html), which strip+prefill via the early-strip head script
+  // added in fix round 1 -- unaffected, still get ?lead=<uuid>, same as
+  // before.
+  var NO_LEAD_ID_DESTINATIONS = {};
 
   function appendParams(baseUrl, obj) {
     var parts = [];
@@ -959,19 +2199,50 @@
   // after the fallback still proceeds to the destination, per the
   // pre-existing "the role write failing must never strand a visitor on
   // the router" rule (closes-on control (c)); it is logged instead.
-  function setRoleWithFallback(role, industry) {
+  function setRoleWithFallback(role, industry, opts) {
     var payload = { p_lead_id: leadId, p_role: role };
     if (industry) payload.p_partner_industry = industry;
+    // gh-2016 (CEO RUN 56, comment 5751788737, "Third finding"): arm B's
+    // contact-last screen calls this function IMMEDIATELY after the same
+    // request chain either inserted this exact lead (insertFreshLead) or
+    // successfully updated it (update_lead_contact returning true) --
+    // prefill_used_at cannot already be set and the 30-minute window
+    // cannot have elapsed on a row this call chain just touched
+    // successfully. So a no-op/error on THIS call is a transient RPC
+    // failure, never a legitimate staleness case, and answering it with
+    // insertFreshLead()'s "abandon this row, make a new one" recovery
+    // would silently write a SECOND leads row with variant='b' for one
+    // visitor -- the exact defect the CEO's review caught (six variant='b'
+    // rows in production against an "exactly ONE row" requirement).
+    // Callers in that position pass skipFreshInsertOnFailure so the
+    // fallback below retries set_lead_role against the SAME row instead
+    // of ever inserting another one. Arm A's Step 2 / Step 2a role clicks
+    // (the pre-existing callers) do NOT pass this -- there, leadId can be
+    // a genuinely stale/prefilled/expired row from an earlier visit, and
+    // insertFreshLead's stale-lead-recovery fallback is still correct and
+    // is left unchanged.
+    var skipFreshInsert = !!(opts && opts.skipFreshInsertOnFailure);
 
     function fallback() {
+      if (skipFreshInsert) {
+        return ensureSb().rpc('set_lead_role', payload).then(function (res) {
+          if (res && res.error) throw res.error;
+          if (!(res && res.data === true)) {
+            console.error('[router] set_lead_role retry still refused on the just-written lead (' + leadId + ') -- proceeding to the destination anyway, no duplicate row created');
+          }
+        }).catch(function (err) {
+          console.error('[router] set_lead_role retry failed -- proceeding to the destination anyway, no duplicate row created:', err);
+        });
+      }
       var freshName = document.getElementById('routerName').value.trim();
       var freshEmail = document.getElementById('routerEmail').value.trim();
-      var freshPhone = normalizePhone(document.getElementById('routerPhone').value.trim());
+      var freshPhoneRaw = document.getElementById('routerPhone').value.trim();
+      var freshPhone = freshPhoneRaw ? normalizePhone(freshPhoneRaw) : null; // gh-2042
       return insertFreshLead(freshName, freshEmail, freshPhone).then(function (newId) {
         leadId = newId;
         var retryPayload = { p_lead_id: newId, p_role: role };
         if (industry) retryPayload.p_partner_industry = industry;
-        return sb.rpc('set_lead_role', retryPayload).then(function (res) {
+        return ensureSb().rpc('set_lead_role', retryPayload).then(function (res) {
           if (res && res.error) throw res.error;
           if (!(res && res.data === true)) {
             console.error('[router] set_lead_role still refused on a brand-new lead (' + newId + ') -- proceeding to the destination anyway');
@@ -982,7 +2253,7 @@
       });
     }
 
-    return sb.rpc('set_lead_role', payload).then(function (res) {
+    return ensureSb().rpc('set_lead_role', payload).then(function (res) {
       if (res && res.error) throw res.error;
       if (res && res.data === true) return;
       console.warn('[router] set_lead_role no-op (stale/prefilled/expired lead) -- inserting a fresh lead and retrying');
@@ -1009,7 +2280,7 @@
     btn.addEventListener('click', function () {
       if (btn.disabled) return;
       var role = btn.getAttribute('data-router-role');
-      if (!sb) { showError('Something went wrong. Please refresh and start over.'); return; }
+      if (!ensureSb()) { showError('Something went wrong. Please refresh and start over.'); return; }
       // gh-2016: arm B has no lead row yet by design -- leads.email is NOT
       // NULL at the column level (the CHECK constraint's `email IS NULL OR
       // ...` is not the authority here), so a contact-NULL row cannot be
@@ -1022,7 +2293,8 @@
       // table the real funnel reports from.
       if (ARM_B) {
         bRole = role;
-        trackRouter('router_role_selected', { role: role });
+        // gh-2096 item 2: step -- role is always picked on Step 2.
+        trackRouter('router_role_selected', { role: role, step: stepToken(2) });
         goToStep(role === 'referral_partner' ? '2a' : 1);
         return;
       }
@@ -1032,7 +2304,8 @@
 
       function proceed() {
         setRoleButtonsDisabled(false);
-        trackRouter('router_role_selected', { role: role });
+        // gh-2096 item 2: step -- role is always picked on Step 2.
+        trackRouter('router_role_selected', { role: role, step: stepToken(2) });
         if (role === 'referral_partner') {
           goToStep('2a');
           return;
@@ -1090,11 +2363,12 @@
 
   function selectPartnerIndustry(industry, btn) {
     if (btn && btn.disabled) return;
-    if (!sb) { showError('Something went wrong. Please refresh and start over.'); return; }
+    if (!ensureSb()) { showError('Something went wrong. Please refresh and start over.'); return; }
     // gh-2016: held, not written -- same reason as the role buttons above.
     if (ARM_B) {
       bIndustry = industry;
-      trackRouter('router_partner_industry', { industry: industry });
+      // gh-2096 item 2: step -- partner industry is always picked on Step 2a.
+      trackRouter('router_partner_industry', { industry: industry, step: stepToken('2a') });
       goToStep(1);
       return;
     }
@@ -1103,7 +2377,8 @@
 
     function proceed() {
       setIndustryButtonsDisabled(false);
-      trackRouter('router_partner_industry', { industry: industry });
+      // gh-2096 item 2: step -- partner industry is always picked on Step 2a.
+      trackRouter('router_partner_industry', { industry: industry, step: stepToken('2a') });
       redirectTo(PARTNER_INDUSTRY_DESTINATIONS[industry]);
     }
 
@@ -1137,6 +2412,12 @@
     // call's position ahead of renderStep(3), not ahead of a pushState.
     trackStepComplete();
     renderStep(3);
+    // gh-2096 item 3: this is the ONE function every arm's terminal
+    // hand-off funnels through (see this function's own bridge wiring
+    // and each variant module's redirectWithLeadId) -- setting this here,
+    // before the real navigation below, is what tells the pagehide
+    // handler "this exit is a completion, not a drop-off."
+    abandonSuppressedByNav = true;
     if (!preBuilt) {
       var sep = dest.indexOf('?') === -1 ? '?' : '&';
       dest = dest + sep + 'lead=' + encodeURIComponent(leadId);
@@ -1169,9 +2450,132 @@
   window.addEventListener('pageshow', function (e) {
     if (e.persisted) {
       try { history.replaceState({ step: ENTRY_STEP }, '', location.pathname + location.search); } catch (e2) {}
-      renderStep(ENTRY_STEP);
       leadId = null;
       try { sessionStorage.removeItem(LEAD_ID_STORAGE_KEY); } catch (e3) {}
+      // gh-2096 REVIEW fix round 2 (PR #2114, comment 5796844493, superseding
+      // the round-1 fix at comment 5782483911): that round-1 fix reset
+      // abandonSuppressedByNav here but left the REST of the abandon state
+      // (abandonCurrentStep/abandonCurrentStepIndex/abandonCurrentVariant/
+      // abandonFiredForView/abandonHiddenTimer) to be cleared by
+      // renderStep(ENTRY_STEP) below, via that function's own trackRouter
+      // call. That is false for every LIVE arm: renderStep's own first line
+      // is `if (ARM_C || ARM_D || ARM_E) return;` (this file, ~line 709),
+      // and LIVE_VARIANTS above is ['c','d','e'] -- 100% of real traffic
+      // takes that early return, so renderStep(ENTRY_STEP) never reaches
+      // its trackRouter('router_step_view', ...) call on any live arm. The
+      // review reproduced the result on arm C directly: a visitor who
+      // completes the funnel (redirectTo sets abandonSuppressedByNav =
+      // true), swipes back, then leaves WITHOUT resubmitting still has
+      // abandonCurrentStep pointing at the step they already completed --
+      // so once this handler reset only the suppression flag, that later,
+      // genuine exit fired router_step_abandoned for a step the visitor had
+      // already finished: a false abandon on exactly the step this issue
+      // exists to measure, on live traffic. Reset the full abandon-beacon
+      // state directly here instead, for every arm, without going through
+      // renderStep/trackRouter at all -- so this never again depends on a
+      // side effect that only some arms actually reach. This block runs
+      // BEFORE renderStep(ENTRY_STEP) below (not after): on the non-live
+      // arm (A), that call still re-populates this same state correctly
+      // via its own trackRouter('router_step_view', ...) for the fresh
+      // entry screen, so ordering this reset first is what lets A's real
+      // post-restore view stand instead of being wiped out by this fix.
+      abandonSuppressedByNav = false;
+      // Nulling the tracked step (rather than only re-arming
+      // abandonFiredForView) is what makes sendAbandonBeacon's own
+      // `!abandonCurrentStep` guard block it below, on every arm, until a
+      // fresh router_step_view repopulates these from a real screen entry.
+      abandonCurrentStep = null;
+      abandonCurrentStepIndex = undefined;
+      abandonCurrentVariant = null;
+      abandonStepEnteredAt = 0;
+      // Second, independent guard on top of the null step above -- belt
+      // and suspenders, not load-bearing on its own.
+      abandonFiredForView = true;
+      // A visibilitychange grace timer armed before this restore (the
+      // visitor was backgrounded on the pre-restore page, still within its
+      // ABANDON_HIDDEN_GRACE_MS window) must not be left to fire later
+      // against this now-cleared state.
+      if (abandonHiddenTimer) { clearTimeout(abandonHiddenTimer); abandonHiddenTimer = null; }
+      // Non-live arm (A): re-renders Step 1 and, via its own trackRouter
+      // call, repopulates the abandon state just cleared above with the
+      // fresh post-restore view. Live arms (C/D/E): no-ops (see this
+      // function's own `if (ARM_C || ARM_D || ARM_E) return;` guard), and
+      // the cleared state above stands until a real screen entry occurs.
+      renderStep(ENTRY_STEP);
+    }
+  });
+
+  // gh-2122 (Arm F): tells the shared abandon beacon below that the visitor
+  // has FINISHED. Arms C/D/E hand off with redirectTo() the instant the lead
+  // is saved, and redirectTo sets abandonSuppressedByNav; Arm F instead keeps
+  // the visitor on a thank-you screen after the save, so without this a
+  // tab-close there would fire router_step_abandoned for a screen nobody
+  // abandoned -- the false-abandon class #2096's review caught. Called by
+  // js/router-variant-f.js immediately after the lead is saved.
+  function markLeadSaved() {
+    abandonSuppressedByNav = true;
+  }
+
+  // gh-2096 item 3: the abandon beacon, shared by every arm (A/B render
+  // their own DOM here; C/D/E's screens live in #routerCRoot/#routerDRoot/
+  // #routerERoot, but every one of them fires router_step_view through
+  // this same trackRouter, which is what keeps abandonCurrentStep/
+  // abandonCurrentStepIndex/abandonCurrentVariant current -- no per-arm
+  // listener needed).
+  //
+  // Real exit vs. normal advance/back-navigation/tab-switch, stated:
+  // - Normal advance: every arm's terminal hand-off funnels through
+  //   redirectTo() above, which sets abandonSuppressedByNav BEFORE the
+  //   real navigation -- checked below, so a completed step never fires
+  //   this.
+  // - Back-navigation: the router's own Back controls (popstate here,
+  //   each module's own goBack()/stack) never unload this document --
+  //   they swap DOM/history state in place -- so neither pagehide nor a
+  //   sustained hidden visibilityState is ever reached by them. Nothing
+  //   extra needed to exclude this case; it is structurally excluded.
+  // - Tab-switch: `visibilitychange` fires identically for "switched
+  //   tabs, still here" and "actually left" -- sending on it directly
+  //   would resurrect #2042 (the Facebook in-app webview's own
+  //   backgrounding counted as a real exit). `pagehide` does NOT fire on
+  //   a same-window tab switch (the document is not being unloaded), so
+  //   it is the sole trigger that actually SENDS the beacon below.
+  //   `visibilitychange` is wired only as a fallback net for engines that
+  //   terminate a page without ever firing pagehide (some in-app
+  //   webviews): it starts a grace timer on going hidden and only fires
+  //   if the page is STILL hidden ABANDON_HIDDEN_GRACE_MS later with no
+  //   visibilitychange back to 'visible' in between -- a tab-switch-and-
+  //   return cancels the timer before it fires; a real close/background-
+  //   kill on an engine that skips pagehide does not.
+  var ABANDON_HIDDEN_GRACE_MS = 5000;
+  var abandonHiddenTimer = null;
+
+  function sendAbandonBeacon(visibilityState) {
+    if (abandonFiredForView || abandonSuppressedByNav || !abandonCurrentStep) return;
+    abandonFiredForView = true;
+    var seconds = Math.max(0, Math.round((Date.now() - abandonStepEnteredAt) / 1000));
+    trackRouter('router_step_abandoned', {
+      step: abandonCurrentStep,
+      step_index: abandonCurrentStepIndex,
+      seconds_on_step: seconds,
+      visibility_state: visibilityState,
+      // GA4's recommended transport for events fired during/near unload
+      // -- guarantees the beacon-safe navigator.sendBeacon transport
+      // rather than a regular (cancelable-on-unload) XHR/fetch.
+      transport_type: 'beacon'
+    }, abandonCurrentVariant);
+  }
+
+  window.addEventListener('pagehide', function () {
+    sendAbandonBeacon(document.visibilityState);
+  });
+
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'hidden') {
+      if (abandonHiddenTimer) clearTimeout(abandonHiddenTimer);
+      abandonHiddenTimer = setTimeout(function () { sendAbandonBeacon('hidden'); }, ABANDON_HIDDEN_GRACE_MS);
+    } else if (abandonHiddenTimer) {
+      clearTimeout(abandonHiddenTimer);
+      abandonHiddenTimer = null;
     }
   });
 
@@ -1179,17 +2583,19 @@
   // (ROLE_DESTINATIONS, NO_LEAD_ID_DESTINATIONS, PARTNER_INDUSTRY_
   // DESTINATIONS) is a `var X = {...}` assignment further up this same
   // IIFE, not a hoisted `function` declaration, so building this object
-  // any earlier would capture `undefined` for each of them. sb,
-  // trackRouter, collectAttribution, insertFreshLead, appendParams,
-  // redirectTo and showError are all `function` declarations and would be
-  // safe earlier, but there is no reason to split the object in two.
+  // any earlier would capture `undefined` for each of them. trackRouter,
+  // collectAttribution, insertFreshLead, appendParams, redirectTo and
+  // showError are all `function` declarations and would be safe earlier,
+  // but there is no reason to split the object in two. `sb` below is a
+  // live getter (gh-2063), not a captured value, so it is immune to this
+  // problem regardless of where the object is built -- see ensureSb().
   // js/router-discovery.js is loaded by injecting a <script> element --
   // never a static <script src> tag in this document -- so arms A and B
   // never fetch or execute it at all (#2015: /start?v=a must render
   // exactly what /start renders).
   if (ARM_C) {
     var routerCBridge = {
-      sb: sb,
+      get sb() { return ensureSb(); },
       trackRouter: trackRouter,
       collectAttribution: collectAttribution,
       insertFreshLead: insertFreshLead,
@@ -1213,6 +2619,179 @@
       showError('Something went wrong loading this page. Please refresh and try again.');
     };
     document.body.appendChild(routerCScript);
+  }
+
+  // gh-2075 (D-327): arm D's bridge -- same shape as arm C's immediately
+  // above, same reasoning (built last so every plain `var` it reads has
+  // already been assigned in this same IIFE; `sb` is a live getter so it
+  // is immune regardless). js/router-variant-d.js is loaded directly (not
+  // chained after router-discovery.js) so D's first screen -- the role
+  // tap, this arm's whole reason for existing -- paints and is tappable
+  // without waiting on a second file fetch; router-variant-d.js lazy-loads
+  // js/router-discovery.js itself, on demand, only once a visitor has
+  // cleared d-email/d-name/d-phone and is about to reach the first
+  // question screen it reuses copy/components from (see that file's own
+  // comment) -- matching this page's established lazy-load idiom
+  // (ensureSb() above, the deferred Supabase UMD script).
+  if (ARM_D) {
+    var routerDBridge = {
+      get sb() { return ensureSb(); },
+      trackRouter: trackRouter,
+      collectAttribution: collectAttribution,
+      insertFreshLead: insertFreshLead,
+      appendParams: appendParams,
+      redirectTo: redirectTo,
+      showError: showError,
+      ROLE_DESTINATIONS: ROLE_DESTINATIONS,
+      PARTNER_INDUSTRY_DESTINATIONS: PARTNER_INDUSTRY_DESTINATIONS,
+      NO_LEAD_ID_DESTINATIONS: NO_LEAD_ID_DESTINATIONS
+    };
+    var routerDScript = document.createElement('script');
+    routerDScript.src = 'js/router-variant-d.js';
+    routerDScript.onload = function () {
+      if (window.RouterVariantD && typeof window.RouterVariantD.init === 'function') {
+        window.RouterVariantD.init(routerDBridge, routerDRoot);
+      } else {
+        showError('Something went wrong loading this page. Please refresh and try again.');
+      }
+    };
+    routerDScript.onerror = function () {
+      showError('Something went wrong loading this page. Please refresh and try again.');
+    };
+    document.body.appendChild(routerDScript);
+  }
+
+  // gh-2076 (D-327): arm E's bridge -- same shape/reasoning as arms C/D
+  // immediately above. js/router-variant-e.js is loaded directly (same
+  // wiring as js/router-variant-d.js) -- it lazy-loads js/router-
+  // discovery.js itself, on demand, at its own init() (see that file's
+  // own comment for why it cannot defer that fetch past its first screen
+  // the way arm D does: arm E's own first screen IS arm C's role screen).
+  if (ARM_E) {
+    // #2088 round 1 item 3: read once here (not inside the bridge getter)
+    // since window.__oqInternalOverride is set once, synchronously, by
+    // the head script above and never changes for the life of this page.
+    var oqInternalOverrideFlag = !!window.__oqInternalOverride;
+    var routerEBridge = {
+      get sb() { return ensureSb(); },
+      trackRouter: trackRouter,
+      collectAttribution: collectAttribution,
+      insertFreshLead: insertFreshLead,
+      appendParams: appendParams,
+      redirectTo: redirectTo,
+      showError: showError,
+      ROLE_DESTINATIONS: ROLE_DESTINATIONS,
+      PARTNER_INDUSTRY_DESTINATIONS: PARTNER_INDUSTRY_DESTINATIONS,
+      NO_LEAD_ID_DESTINATIONS: NO_LEAD_ID_DESTINATIONS,
+      oqInternalOverride: oqInternalOverrideFlag
+    };
+    // #2088 round 2 leftover (item 9): a SEPARATE bridge for the
+    // script-load-failure fallback below -- reusing routerEBridge there
+    // (round 1's own fix) ran arm C's own js/router-discovery.js with a
+    // bridge whose trackRouter/insertFreshLead both tag events/rows with
+    // THIS page's `variant` ('e'), so a visitor who silently fell back
+    // from E to C's real experience had C's own 'c-*' steps and leads
+    // row recorded as variant='e' -- indistinguishable from an actual
+    // arm-E run in analytics/the leads table. Every field is identical to
+    // routerEBridge except trackRouter/insertFreshLead, which pass 'c' as
+    // their own variant override (see those two functions' own comments)
+    // -- oqInternalOverride/is_synthetic threading is unaffected, since
+    // that argument is unrelated to which arm a row/event is tagged with.
+    var routerCFallbackBridge = {
+      get sb() { return ensureSb(); },
+      trackRouter: function (name, extra) { return trackRouter(name, extra, 'c'); },
+      collectAttribution: collectAttribution,
+      insertFreshLead: function (nm, em, ph, isSynthetic) { return insertFreshLead(nm, em, ph, isSynthetic, 'c'); },
+      appendParams: appendParams,
+      redirectTo: redirectTo,
+      showError: showError,
+      ROLE_DESTINATIONS: ROLE_DESTINATIONS,
+      PARTNER_INDUSTRY_DESTINATIONS: PARTNER_INDUSTRY_DESTINATIONS,
+      NO_LEAD_ID_DESTINATIONS: NO_LEAD_ID_DESTINATIONS,
+      oqInternalOverride: oqInternalOverrideFlag
+    };
+    var routerEScript = document.createElement('script');
+    routerEScript.src = 'js/router-variant-e.js';
+    routerEScript.onload = function () {
+      if (window.RouterVariantE && typeof window.RouterVariantE.init === 'function') {
+        window.RouterVariantE.init(routerEBridge, routerERoot);
+      } else {
+        showError('Something went wrong loading this page. Please refresh and try again.');
+      }
+    };
+    // Nit (PR #2088 round 1): a script-load failure (network hiccup,
+    // ad-blocker, CDN outage on this same-origin file) used to strand the
+    // visitor on an empty panel. Arm C's own router-discovery.js is
+    // already the fallback module for the professional/contractor
+    // tracks this arm reuses, so on a load failure this now falls all the
+    // way back to arm C's own experience (its full role-first flow)
+    // rather than an error message -- a visitor still completes a router,
+    // just not in E's homeowner-exposition variant. Runs with
+    // routerCFallbackBridge (item 9 above), NOT routerEBridge, so its
+    // rows/events are tagged variant='c'.
+    routerEScript.onerror = function () {
+      var fallbackScript = document.createElement('script');
+      fallbackScript.src = 'js/router-discovery.js';
+      fallbackScript.onload = function () {
+        if (window.RouterDiscovery && typeof window.RouterDiscovery.init === 'function') {
+          window.RouterDiscovery.init(routerCFallbackBridge, routerERoot);
+        } else {
+          showError('Something went wrong loading this page. Please refresh and try again.');
+        }
+      };
+      fallbackScript.onerror = function () {
+        showError('Something went wrong loading this page. Please refresh and try again.');
+      };
+      document.body.appendChild(fallbackScript);
+    };
+    document.body.appendChild(routerEScript);
+  }
+
+  // gh-2122 (D-332): arm F's bridge -- same shape and reasoning as arms C/D/E
+  // above (built last so every plain `var` it reads is already assigned; `sb`
+  // is a live getter). One addition: markLeadSaved (see that function). No
+  // fallback bridge: a load failure here shows the standard error, it does not
+  // silently fall back to another arm, because an F visitor arrived by an
+  // explicit ?v=f link and a silent swap would put them in an arm the ad never
+  // promised.
+  if (ARM_F) {
+    var routerFBridge = {
+      get sb() { return ensureSb(); },
+      trackRouter: trackRouter,
+      collectAttribution: collectAttribution,
+      insertFreshLead: insertFreshLead,
+      appendParams: appendParams,
+      redirectTo: redirectTo,
+      showError: showError,
+      markLeadSaved: markLeadSaved,
+      // The record-lead-details Edge Function, called by js/router-variant-f.js as a keepalive fetch (with a sendBeacon
+      // fallback on pagehide), so it needs the URL and the public anon key. Both are already public in js/config.js.
+      // gh-2121: getters, not eager values -- config.js is now `defer`red (see
+      // its <script> tag's own comment), so CONFIG may not exist yet at the
+      // moment this bridge object literal is built. js/router-variant-f.js's
+      // own detailsUrl()/anonKey reads (grep confirms: both are read inside a
+      // function body, called at keepalive-fetch time, never cached at
+      // RouterVariantF.init()) already tolerate a getter exactly like `sb`
+      // above -- this changes WHEN CONFIG is read (call time, same as
+      // today's effective behavior once config.js finishes loading) not
+      // WHAT is returned once it has.
+      get detailsUrl() { return (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_URL) ? String(CONFIG.SUPABASE_URL).replace(/\/+$/, '') + '/functions/v1/record-lead-details' : null; },
+      get anonKey() { return (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_ANON) ? CONFIG.SUPABASE_ANON : null; },
+      ROLE_DESTINATIONS: ROLE_DESTINATIONS
+    };
+    var routerFScript = document.createElement('script');
+    routerFScript.src = 'js/router-variant-f.js';
+    routerFScript.onload = function () {
+      if (window.RouterVariantF && typeof window.RouterVariantF.init === 'function') {
+        window.RouterVariantF.init(routerFBridge, routerFRoot);
+      } else {
+        showError('Something went wrong loading this page. Please refresh and try again.');
+      }
+    };
+    routerFScript.onerror = function () {
+      showError('Something went wrong loading this page. Please refresh and try again.');
+    };
+    document.body.appendChild(routerFScript);
   }
 })();
 </script>

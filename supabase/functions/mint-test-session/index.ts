@@ -47,7 +47,12 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
-import { type DbAdapter, resolveAndMint, unexpectedErrorResponse } from "./gate.ts";
+import {
+  type DbAdapter,
+  extractBearerToken,
+  resolveAndMint,
+  unexpectedErrorResponse,
+} from "./gate.ts";
 
 // gh-1534: kept in sync with supabase/functions/_shared/admin.ts PRIMARY_ADMIN_EMAIL —
 // do not edit without updating that file too (deploy path does not resolve imports).
@@ -82,14 +87,17 @@ serve(async (req) => {
 
   try {
     // ── Get the JWT from Authorization header ──
+    // CTO36-B1513: parsing moved to gate.ts's extractBearerToken so this
+    // 401 path has a unit-testable negative control (gate.test.ts) without
+    // a live serve()/fetch listener. Behavior is unchanged.
     const authHeader = req.headers.get("authorization");
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    const token = extractBearerToken(authHeader);
+    if (!token) {
       return new Response(
         JSON.stringify({ error: "Missing or invalid Authorization header" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
-    const token = authHeader.substring(7);
 
     // ── Initialize Supabase service-role client ──
     const supabaseUrl = Deno.env.get("SUPABASE_URL");

@@ -1280,43 +1280,14 @@
                 let claimId = params.get('claim_id') || sessionStorage.getItem('oq_claim_id');
 
                 if (!claimId) {
-                    // Create a new repair claim if none exists
-                    const profile = await sb.from('profiles').select('full_name').eq('id', user.id).single();
-                    // gh-397/#689: stamp is_test on this insert path too — a
-                    // second, independent claim-creation site PR #714 didn't
-                    // cover (it only fixed the COI-identity contractor insert).
-                    const { data: newClaim, error: insertErr } = await sb
-                        .from('claims')
-                        .insert({
-                            user_id: user.id,
-                            job_type: 'repair',
-                            // Bridge 2026-08-26: was hardcoded 'insurance'. A cash
-                            // repair now reaches this page too, and stamping it
-                            // insurance here silently rewrote the homeowner's own
-                            // answer from the funding step.
-                            funding_type: (sessionStorage.getItem('oq_funding_type') === 'cash' ? 'cash' : 'insurance'),
-                            status: 'draft',
-                            trades: [selectedTrade || 'roofing'],
-                            existing_shingle_brand: materialBrand,
-                            existing_shingle_product: materialProduct,
-                            existing_shingle_color: materialColor,
-                            homeowner_notes: repairNotes,
-                            is_test: Auth.isTestEmail(user.email)
-                        })
-                        .select('id')
-                        .single();
-
-                    if (insertErr || !newClaim) throw new Error(insertErr?.message || 'Failed to create claim');
-                    claimId = newClaim.id;
-                    sessionStorage.setItem('oq_claim_id', claimId);
-                    // gh-1984: GA4 key event — this branch creates the claims row. No PII.
-                    if (typeof gtag === 'function') {
-                        gtag('event', 'claim_started', {
-                            job_type: 'repair',
-                            source: 'repair_intake',
-                            test_account: Auth.isTestEmail(user.email),
-                        });
-                    }
+                    // gh-2004: do NOT create a repair claim with no address
+                    // here (this insert had no property_* field at all).
+                    // Mirrors the React fix (use-repair-intake-data.ts's
+                    // submitRepairIntake): no claim → redirect to
+                    // trade-selector's address step instead of inserting.
+                    // No new customer-facing copy — pure routing change.
+                    window.location.href = 'https://app.otterquote.com/trade-selector';
+                    return;
                 } else {
                     // Update existing claim with repair data
                     const { error: updateErr } = await sb

@@ -112,6 +112,39 @@
     'c-home-dq-7': 'c-home-7'
   };
 
+  // gh-2096 item 4: step_index (1-based), one lookup table for this arm.
+  // Indexed by DEPTH within each of this module's four tracks (the
+  // homeowner track off c-entry, and the professional/realtor,
+  // professional/insurance and contractor tracks, which all branch off
+  // c-entry too) rather than flat registration order -- c-realtor-1 and
+  // c-ins-1 and c-contractor-1 are all "the first question after the
+  // entry screen" on their own track, so they share the same index, the
+  // same way c-prof-entry (professional's own entry sub-screen) shares
+  // its index with c-contractor-1. This is what lets index N mean
+  // roughly the same funnel depth across tracks AND across arms (D and E
+  // use the same depth convention in their own files), not just a
+  // meaningless enumeration order. Every c-home-dq-* / disqualifier
+  // token below is derived from DQ_SOURCE above, never hand-duplicated,
+  // so the two tables cannot drift apart.
+  var STEP_INDEX = {
+    'c-entry': 1,
+    // Homeowner track.
+    'c-home-1': 2, 'c-home-2': 3, 'c-home-3': 4, 'c-home-4': 5,
+    'c-home-5': 6, 'c-home-6': 7, 'c-home-7': 8, 'c-home-8': 9,
+    // Professional entry (parallel to c-home-1/c-contractor-1).
+    'c-prof-entry': 2,
+    // Realtor track.
+    'c-realtor-1': 3, 'c-realtor-2': 4, 'c-realtor-3': 5, 'c-realtor-4': 6,
+    'c-realtor-close': 7, 'c-realtor-contact': 8,
+    // Insurance track.
+    'c-ins-1': 3, 'c-ins-2': 4, 'c-ins-3': 5, 'c-ins-4': 6, 'c-ins-5': 7,
+    'c-ins-6': 8, 'c-ins-7': 9, 'c-ins-close': 10, 'c-ins-contact': 11,
+    // Contractor track (parallel to c-home-1/c-prof-entry).
+    'c-contractor-1': 2, 'c-contractor-2': 3, 'c-contractor-3': 4,
+    'c-contractor-4': 5, 'c-contractor-5': 6, 'c-contractor-contact': 7
+  };
+  Object.keys(DQ_SOURCE).forEach(function (dqToken) { STEP_INDEX[dqToken] = STEP_INDEX[DQ_SOURCE[dqToken]]; });
+
   // ── Approved copy -- ship verbatim, byte-exact. Dustin has declined
   // three times in his own voice to alter these words on this build
   // (#2011 D-1, D-4; #2019 "A."). Screen 4 option 3's EN DASH (U+2013,
@@ -327,6 +360,40 @@
     contractorQ5Text: 'Our jobs arrive pre-scoped: the homeowner is qualified, the measurements are done, and you bid against a known scope. It costs nothing to bid. A platform fee applies only when the homeowner signs your contract, and the exact dollar amount for that job is shown to you before you submit your bid. Does that fit how you want to grow?'
   };
 
+  // ── gh-2088 (PR #2088 round 1, item 6): export-only data describing arm
+  // C's own professional-track structure, so a caller (js/router-variant-e.js)
+  // can drive these exact questions generically instead of forking each one
+  // into its own hand-written renderer. Nothing here is read by arm C's own
+  // RENDERERS below -- they keep their existing hand-written form, byte for
+  // byte, so this is purely additive and changes no behaviour for arm C.
+  // PARTNER_INDUSTRY_ORDER duplicates RENDERERS['c-prof-entry']'s own local
+  // `order` array literal (kept separate, not refactored to share one
+  // variable, so this addition cannot alter that screen's existing,
+  // already-shipped behaviour) -- the two must be kept in sync by hand if
+  // arm C's own industry order ever changes.
+  var PARTNER_INDUSTRY_ORDER = ['re_agent', 'insurance_agent', 'home_inspector', 'adjuster', 'other'];
+  var REALTOR_TRACK = [
+    { headingKey: 'realtorQ1Heading', optionsKey: 'realtorQ1Options', answerKey: 'realtorQ1' },
+    { headingKey: 'realtorQ2Heading', optionsKey: 'realtorQ2Options', answerKey: 'realtorQ2' },
+    { headingKey: 'realtorQ3Heading', optionsKey: 'realtorQ3Options', answerKey: 'realtorQ3' },
+    { headingKey: 'realtorQ4Heading', optionsKey: 'realtorQ4Options', answerKey: 'realtorQ4' }
+  ];
+  var INSURANCE_TRACK = [
+    { headingKey: 'insQ1Heading', optionsKey: 'insQ1Options', answerKey: 'insQ1' },
+    { headingKey: 'insQ2Heading', optionsKey: 'insQ2Options', answerKey: 'insQ2' },
+    { headingKey: 'insQ3Heading', optionsKey: 'insQ3Options', answerKey: 'insQ3' },
+    { headingKey: 'insQ4Heading', optionsKey: 'insQ4Options', answerKey: 'insQ4' },
+    { headingKey: 'insQ5Heading', optionsKey: 'insQ5Options', answerKey: 'insQ5' },
+    { headingKey: 'insQ6Heading', optionsKey: 'insQ6Options', answerKey: 'insQ6' },
+    { headingKey: 'insQ7Heading', optionsKey: 'insQ7Options', answerKey: 'insQ7' }
+  ];
+  var CONTRACTOR_TRACK = [
+    { headingKey: 'contractorQ1Heading', optionsKey: 'contractorQ1Options', answerKey: 'contractorQ1' },
+    { headingKey: 'contractorQ2Heading', optionsKey: 'contractorQ2Options', answerKey: 'contractorQ2' },
+    { headingKey: 'contractorQ3Heading', optionsKey: 'contractorQ3Options', answerKey: 'contractorQ3' },
+    { headingKey: 'contractorQ4Heading', optionsKey: 'contractorQ4Options', answerKey: 'contractorQ4' }
+  ];
+
   // ── Small DOM helpers. Reuse the CSS classes start.html's own <style>
   // block already defines (.role-options/.role-option/.router-sub/
   // .form-group/.form-label/.form-input/.field-error/.router-btn/
@@ -403,9 +470,16 @@
   // trackStepComplete/renderStep (those two are no-ops for arm C anyway,
   // per start.html's own ARM_C guards, precisely so this module's calls
   // through bridge.redirectTo below cannot double-emit a wrong token). ──
-  function emitView(token) { bridge.trackRouter('router_step_view', { step: token }); }
-  function emitComplete(token) { bridge.trackRouter('router_step_complete', { step: token }); }
-  function emitDisqualified(sourceToken) { bridge.trackRouter('router_disqualified', { step: sourceToken }); }
+  // gh-2096 item 4: step_index attached here, from STEP_INDEX above --
+  // the one place every one of this module's view/complete/disqualified
+  // emits already funnels through, so no other call site needs to
+  // change. An unrecognized token (should never happen -- every RENDERERS
+  // key has an entry above) sends step_index: undefined rather than a
+  // guessed number, matching this file's own "a missing event is a hole
+  // we can see; a wrong one is not" rule for router_disqualified.
+  function emitView(token) { bridge.trackRouter('router_step_view', { step: token, step_index: STEP_INDEX[token] }); }
+  function emitComplete(token) { bridge.trackRouter('router_step_complete', { step: token, step_index: STEP_INDEX[token] }); }
+  function emitDisqualified(sourceToken) { bridge.trackRouter('router_disqualified', { step: sourceToken, step_index: STEP_INDEX[sourceToken] }); }
 
   var RENDERERS = {}; // populated below, keyed by token
 
@@ -548,7 +622,11 @@
 
     var nameF = field('rdName', 'Full Name', 'text', { autocomplete: 'name', maxlength: '200' });
     var emailF = field('rdEmail', 'Email', 'email', { autocomplete: 'email', inputmode: 'email', maxlength: '320' });
-    var phoneF = field('rdPhone', 'Phone Number', 'tel', { autocomplete: 'tel', inputmode: 'tel', maxlength: '20' });
+    var phoneF = field('rdPhone', 'Phone Number (optional)', 'tel', { autocomplete: 'tel', inputmode: 'tel', maxlength: '20' });
+      // gh-2042: phone is optional -- drop the `required` label marker the
+      // shared field() helper applies to every field.
+      phoneF.input.parentNode.querySelector('.form-label').classList.remove('required');
+
 
     var submitBtn = el('button', 'btn btn-primary router-btn', 'Continue');
     submitBtn.type = 'button';
@@ -567,7 +645,7 @@
       var hasError = false;
       if (!name) { nameF.err.textContent = 'Please enter your name.'; hasError = true; }
       if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { emailF.err.textContent = 'Please enter a valid email address.'; hasError = true; }
-      if (!phoneRaw || !isValidUsPhone(phoneRaw)) { phoneF.err.textContent = 'Please enter a valid 10-digit US phone number.'; hasError = true; }
+      if (phoneRaw && !isValidUsPhone(phoneRaw)) { phoneF.err.textContent = 'Please enter a valid 10-digit US phone number.'; hasError = true; }
       if (hasError) return;
 
       if (!bridge.sb) { bridge.showError('Something went wrong loading the form. Please refresh and try again.'); return; }
@@ -575,9 +653,16 @@
       submitBtn.disabled = true;
       submitBtn.textContent = 'Please wait…';
 
-      var phoneDigits = normalizePhone(phoneRaw);
+      var phoneDigits = phoneRaw ? normalizePhone(phoneRaw) : null; // gh-2042
 
-      bridge.insertFreshLead(name, email, phoneDigits).then(function (newId) {
+      // gh-2088 (PR #2088 round 2 leftover, item 9): thread
+      // bridge.oqInternalOverride the same way renderPartnerContact
+      // already does -- undefined/false on arm C's own normal bridge (no
+      // behavior change there), true only when arm E's own
+      // router-variant-e.js script failed to load and start.html fell
+      // back to running THIS module under the ?v=e&oq_internal=1 QA
+      // override, so that walk's homeowner lead is flagged synthetic too.
+      bridge.insertFreshLead(name, email, phoneDigits, bridge.oqInternalOverride).then(function (newId) {
         // gh-2017: leads_force_safe_insert_defaults() forces role NULL on
         // every raw insert regardless of arm, so this RPC is mandatory
         // here exactly as it is on arms A/B -- not extra work this arm
@@ -586,11 +671,36 @@
         // a failed role write must not strand a visitor on the router,
         // same rule arms A/B already follow.
         function proceed() {
+          // gh-2096 item 1: GA4 contact-submit + Meta Lead, mirroring
+          // arms A/B's own step1Form handler in start.html. This
+          // `proceed()` runs exactly once per successful c-home-8 submit
+          // (the set_lead_role RPC chain above calls it from either
+          // `.then` or `.catch`, never both, and the submit button is
+          // disabled for the duration of the request that reaches here),
+          // so no extra per-session dedup guard is needed the way arm D's
+          // leadEventFired flag is for its own multi-screen capture.
+          bridge.trackRouter('router_contact_submitted', { step: 'c-home-8', step_index: STEP_INDEX['c-home-8'] });
+          try { fbq('track', 'Lead'); } catch (e) {}
           emitComplete('c-home-8');
-          bridge.redirectTo(
-            bridge.appendParams(bridge.ROLE_DESTINATIONS.homeowner, bridge.collectAttribution()),
-            !!bridge.NO_LEAD_ID_DESTINATIONS.homeowner
-          );
+          // gh-2075 round 2, review report ceo57-review-pr2086-20260921
+          // finding 5 (non-blocking on #2075 itself, but biases any D-vs-C
+          // read): this used to call bridge.redirectTo(...) with
+          // preBuilt=!!NO_LEAD_ID_DESTINATIONS.homeowner -- that map is
+          // EMPTY (gh-2046 emptied it once homeowners started getting
+          // ?lead=<uuid> like every other destination), so preBuilt was
+          // always false, which made redirectTo() append `lead=` from
+          // start.html's own top-level `leadId` var -- a var this module
+          // NEVER sets (every other call site in this file passes
+          // preBuilt=true for exactly this reason; this was the one call
+          // site that did not) -- producing a literal `lead=null` AND a
+          // second, duplicate round of attribution params (redirectTo's
+          // own non-preBuilt branch re-appends collectAttribution() on
+          // top of the appendParams() call already made above). C
+          // homeowners got no #2046 prefill; D's own equivalent hand-off
+          // (js/router-variant-d.js) does not have this bug, which biases
+          // a D-vs-C comparison in D's favour. redirectWithLeadId is the
+          // same helper every other track in this file already uses.
+          redirectWithLeadId(bridge.ROLE_DESTINATIONS.homeowner, newId);
         }
         bridge.sb.rpc('set_lead_role', { p_lead_id: newId, p_role: 'homeowner' }).then(proceed).catch(function (roleErr) {
           console.error('[router-discovery] set_lead_role failed -- proceeding to destination anyway:', roleErr);
@@ -830,7 +940,11 @@
 
     var nameF = field('rdpName', 'Full Name', 'text', { autocomplete: 'name', maxlength: '200' });
     var emailF = field('rdpEmail', 'Email', 'email', { autocomplete: 'email', inputmode: 'email', maxlength: '320' });
-    var phoneF = field('rdpPhone', 'Phone Number', 'tel', { autocomplete: 'tel', inputmode: 'tel', maxlength: '20' });
+    var phoneF = field('rdpPhone', 'Phone Number (optional)', 'tel', { autocomplete: 'tel', inputmode: 'tel', maxlength: '20' });
+      // gh-2042: phone is optional -- drop the `required` label marker the
+      // shared field() helper applies to every field.
+      phoneF.input.parentNode.querySelector('.form-label').classList.remove('required');
+
 
     var submitBtn = el('button', 'btn btn-primary router-btn', 'Continue');
     submitBtn.type = 'button';
@@ -849,7 +963,7 @@
       var hasError = false;
       if (!name) { nameF.err.textContent = 'Please enter your name.'; hasError = true; }
       if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { emailF.err.textContent = 'Please enter a valid email address.'; hasError = true; }
-      if (!phoneRaw || !isValidUsPhone(phoneRaw)) { phoneF.err.textContent = 'Please enter a valid 10-digit US phone number.'; hasError = true; }
+      if (phoneRaw && !isValidUsPhone(phoneRaw)) { phoneF.err.textContent = 'Please enter a valid 10-digit US phone number.'; hasError = true; }
       if (hasError) return;
 
       if (!bridge.sb) { bridge.showError('Something went wrong loading the form. Please refresh and try again.'); return; }
@@ -857,14 +971,52 @@
       submitBtn.disabled = true;
       submitBtn.textContent = 'Please wait…';
 
-      var phoneDigits = normalizePhone(phoneRaw);
+      var phoneDigits = phoneRaw ? normalizePhone(phoneRaw) : null; // gh-2042
 
-      bridge.insertFreshLead(name, email, phoneDigits).then(function (newId) {
+      // gh-2088 (PR #2088 round 1, item 3): `bridge.oqInternalOverride` is
+      // undefined on arm C's own bridge (start.html never sets it there) --
+      // this trailing arg is a no-op for every existing arm C call site.
+      // It exists only so a bridge that DOES set it (js/router-variant-e.js's
+      // own bridge, only while the ?v=e&oq_internal=1 QA override is active)
+      // can flag a pre-flip QA walk's lead as synthetic without a schema/RPC
+      // change -- see insertFreshLead's own comment in start.html.
+      bridge.insertFreshLead(name, email, phoneDigits, bridge.oqInternalOverride).then(function (newId) {
         var payload = { p_lead_id: newId, p_role: cfg.role };
         if (cfg.partnerIndustry) payload.p_partner_industry = cfg.partnerIndustry;
 
         function proceed() {
-          emitComplete(cfg.completeToken);
+          // gh-2096 item 1: GA4 contact-submit + Meta Lead. `cfg.stepIndex`
+          // is passed by each call site (this function is shared by C's
+          // own realtor/insurance/contractor tracks AND, via this
+          // module's exported renderPartnerContact, E's contractor track
+          // -- E's own 'e-contractor-contact' token has no entry in this
+          // file's own STEP_INDEX table, so the index has to come from
+          // the caller, not a lookup here). Fires exactly once per
+          // successful submit, same reasoning as renderContact's own
+          // proceed() above.
+          bridge.trackRouter('router_contact_submitted', { step: cfg.completeToken, step_index: cfg.stepIndex });
+          // gh-2096 REVIEW finding 2 (PR #2114, comment 5796844493, non-
+          // blocking): this function is shared by C's own three tracks
+          // (realtor/insurance/contractor), which have no OTHER place a
+          // Lead event can fire, so an unconditional fbq call has always
+          // been correct for them. E's contractor track reaches this same
+          // function through the exported renderPartnerContact -- but E's
+          // own session-level Lead dedupe (js/router-variant-e.js's
+          // `leadEventFired`, guarding e-p7-5 and the realtor/insurance
+          // contact screens) never saw this call site, so an E visitor who
+          // already fired Lead on one track and then also completes the
+          // contractor track via Back navigation got a second, undeduped
+          // Lead. `cfg.fireLead`, when the caller supplies it (E's
+          // e-contractor-contact renderer below), replaces the raw fbq
+          // call with that arm's own dedupe check; omitted (C's three call
+          // sites, unchanged), this keeps firing unconditionally exactly as
+          // before.
+          if (cfg.fireLead) { cfg.fireLead(); } else { try { fbq('track', 'Lead'); } catch (e) {} }
+          // gh-2096 CLOSE-REVIEW: FAIL (5801804139): emitComplete() looks the
+          // token up in C's own STEP_INDEX, which has no 'e-contractor-contact'
+          // key, so E's complete event shipped with step_index undefined. Pass
+          // the caller's index, exactly as router_contact_submitted does above.
+          bridge.trackRouter('router_step_complete', { step: cfg.completeToken, step_index: cfg.stepIndex });
           redirectWithLeadId(cfg.destination, newId);
         }
         bridge.sb.rpc('set_lead_role', payload).then(function (res) {
@@ -926,7 +1078,8 @@
       role: 'referral_partner',
       partnerIndustry: 're_agent',
       destination: bridge.PARTNER_INDUSTRY_DESTINATIONS.re_agent,
-      completeToken: 'c-realtor-contact'
+      completeToken: 'c-realtor-contact',
+      stepIndex: STEP_INDEX['c-realtor-contact']
     });
   };
 
@@ -1000,7 +1153,8 @@
       role: 'referral_partner',
       partnerIndustry: 'insurance_agent',
       destination: bridge.PARTNER_INDUSTRY_DESTINATIONS.insurance_agent,
-      completeToken: 'c-ins-contact'
+      completeToken: 'c-ins-contact',
+      stepIndex: STEP_INDEX['c-ins-contact']
     });
   };
 
@@ -1048,7 +1202,8 @@
       role: 'contractor',
       partnerIndustry: null,
       destination: bridge.ROLE_DESTINATIONS.contractor,
-      completeToken: 'c-contractor-contact'
+      completeToken: 'c-contractor-contact',
+      stepIndex: STEP_INDEX['c-contractor-contact']
     });
   };
 
@@ -1060,5 +1215,61 @@
     show('c-entry');
   }
 
-  window.RouterDiscovery = { init: init };
+  // gh-2075 (D-327): Variant D reuses this module's exact copy and its
+  // exact multi-select/single-select/disqualifier rendering for the
+  // post-email question screens ("reuse C's step components and copy
+  // verbatim -- no new copy in D", issue #2075). js/router-variant-d.js
+  // is the only other file allowed to read these exports. renderMultiSelect/
+  // renderSingleSelect/renderDisqualifier below are thin wrappers around
+  // this module's own functions of the same name: those functions read
+  // and write the single module-level `root` closure variable, so each
+  // wrapper points `root` at the CALLER's mount element for the duration
+  // of the call (synchronous -- these functions never yield control before
+  // they finish building DOM) and restores this module's own `root`
+  // afterward. Safe because C and D never run in the same page load
+  // (`variant` is one value) and neither module's `init()` needs to have
+  // run for the other's exports to work. `cfg.backTo` is deliberately NOT
+  // forwarded by variant D -- that flag makes these functions call this
+  // module's OWN backButton()/goBack(), bound to c-entry's stack, not
+  // D's; D prepends its own back button before calling these wrappers
+  // instead. COPY/heading/bodyText/continueButton are pure (no `root`
+  // read) and exported directly.
+  // gh-2088 (PR #2088 round 1, item 6): lets a caller module (js/router-
+  // variant-e.js) point this module's own `bridge` at ITS bridge object,
+  // so the exported renderPartnerContact/track renderers below -- which
+  // read `bridge` internally, the same as every one of arm C's own
+  // screens does -- work without that caller ever invoking this module's
+  // own init() (which would also call show('c-entry') and render arm C's
+  // own screens into whatever root was passed). Arm C itself never calls
+  // this -- its own init() sets `bridge` directly, unchanged.
+  function setBridge(injectedBridge) { bridge = injectedBridge; }
+
+  function withRoot(targetRoot, fn) {
+    var savedRoot = root;
+    root = targetRoot;
+    try { fn(); } finally { root = savedRoot; }
+  }
+
+  window.RouterDiscovery = {
+    init: init,
+    setBridge: setBridge,
+    COPY: COPY,
+    PARTNER_INDUSTRY_ORDER: PARTNER_INDUSTRY_ORDER,
+    REALTOR_TRACK: REALTOR_TRACK,
+    INSURANCE_TRACK: INSURANCE_TRACK,
+    CONTRACTOR_TRACK: CONTRACTOR_TRACK,
+    heading: heading,
+    bodyText: bodyText,
+    continueButton: continueButton,
+    renderMultiSelect: function (targetRoot, cfg) { withRoot(targetRoot, function () { renderMultiSelect(cfg); }); },
+    renderSingleSelect: function (targetRoot, cfg) { withRoot(targetRoot, function () { renderSingleSelect(cfg); }); },
+    renderDisqualifier: function (targetRoot, cfg) { withRoot(targetRoot, function () { renderDisqualifier(cfg); }); },
+    // gh-2088 (PR #2088 round 1, item 6): exports arm C's own
+    // renderPartnerContact (name/email/phone capture + insertFreshLead +
+    // set_lead_role + redirect) so js/router-variant-e.js's professional/
+    // contractor tracks consume this one implementation instead of a
+    // forked copy of it. Same withRoot wrapper as the three renderers
+    // above -- see that function's own comment for why it is safe.
+    renderPartnerContact: function (targetRoot, cfg) { withRoot(targetRoot, function () { renderPartnerContact(cfg); }); }
+  };
 })();

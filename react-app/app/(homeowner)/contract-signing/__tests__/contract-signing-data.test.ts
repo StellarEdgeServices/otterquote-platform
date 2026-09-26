@@ -155,6 +155,7 @@ describe('sendContractorNudge', () => {
         company_name: 'Acme Roofing',
         phone: '+15551234567',
         notification_phones: ['+15559998888'],
+        sms_opt_in: true,
       },
       claim: { id: 'c1', homeowner_name: 'Jane', property_address: '1 Main St', contract_signed_at: null },
       claimId: 'c1',
@@ -168,6 +169,24 @@ describe('sendContractorNudge', () => {
     expect(smsTos).toContain('+15551234567');
     expect(smsTos).toContain(NUDGE_DUSTIN_PHONE);
     expect(NUDGE_DUSTIN_PHONE).toBe('+13175019215');
+  });
+
+  it('gh-1916 R-134 gate: suppresses contractor phones but still notifies Dustin when sms_opt_in is not true', async () => {
+    sb.functions.invoke.mockResolvedValue({ data: {}, error: null });
+    const ok = await sendContractorNudge({
+      contractor: {
+        company_name: 'Acme Roofing',
+        phone: '+15551234567',
+        notification_phones: ['+15559998888'],
+      },
+      claim: { id: 'c1', homeowner_name: 'Jane', property_address: '1 Main St', contract_signed_at: null },
+      claimId: 'c1',
+    });
+    expect(ok).toBe(true);
+    const smsTos = sb.functions.invoke.mock.calls
+      .filter((c: unknown[]) => c[0] === 'send-sms')
+      .map((c: [string, { body: { to: string } }]) => c[1].body.to);
+    expect(smsTos).toEqual([NUDGE_DUSTIN_PHONE]);
   });
 
   it('still notifies Dustin when the contractor has no phone numbers', async () => {

@@ -95,6 +95,100 @@
   var MEASUREMENT_ID = 'G-D1Y1TLGEFY';
   var CLARITY_PROJECT_ID = 'wwr7qlk8g5';
 
+  // gh-2063 fix round 2 (PR #2065 review, item 4): shared by the GA4 and
+  // Clarity vendor-script insertions below (js/meta-pixel-gate.js carries
+  // its own copy for fbevents.js -- these two files intentionally do not
+  // share a module today, see this file's own "single point" docstring
+  // above about not adding cross-file coupling lightly). Runs `fn` on
+  // whichever comes first: the browser going idle (capped at 1500ms via
+  // requestIdleCallback's own timeout option), a hard 1500ms timer where
+  // requestIdleCallback is unsupported, or the visitor's first
+  // pointerdown/keydown/scroll/touchstart. Exactly one of those wins; the
+  // rest are torn down immediately so `fn` never runs twice.
+  function _oqLoadOnIdleOrInteraction(fn) {
+    var fired = false;
+    var idleHandle = null;
+    var timeoutHandle = null;
+    var EVENTS = ['pointerdown', 'keydown', 'scroll', 'touchstart'];
+    function teardown() {
+      for (var i = 0; i < EVENTS.length; i++) {
+        window.removeEventListener(EVENTS[i], run);
+      }
+      if (idleHandle !== null && window.cancelIdleCallback) { window.cancelIdleCallback(idleHandle); }
+      if (timeoutHandle !== null) { clearTimeout(timeoutHandle); }
+    }
+    function run() {
+      if (fired) return;
+      fired = true;
+      teardown();
+      fn();
+    }
+    for (var i = 0; i < EVENTS.length; i++) {
+      window.addEventListener(EVENTS[i], run, { passive: true, once: true });
+    }
+    if (window.requestIdleCallback) {
+      idleHandle = window.requestIdleCallback(run, { timeout: 1500 });
+    } else {
+      timeoutHandle = setTimeout(run, 1500);
+    }
+  }
+
+  // gh-2064 round 2: the opt-out used to live ONLY in js/internal-traffic.js,
+  // which was included on 10 of the 99 pages that load this gate -- on the
+  // other 89 (including start.html and index.html), window.OQ_INTERNAL was
+  // simply never set, so `if (window.OQ_INTERNAL) return;` below never
+  // fired and this gate could not be told to stand down. That is exactly
+  // what the round-1 review failed the PR for: internal-traffic.js is now
+  // a documentation/early-set convenience only, and every gate reads
+  // and writes the signal itself so nothing depends on that other file
+  // being present on the page at all. Same cookie/param contract as
+  // internal-traffic.js (kept in sync deliberately: same name, same
+  // Max-Age, same Domain rule), wrapped in try/catch so a hostile or
+  // unsupported document.cookie / URLSearchParams never breaks tag loading
+  // for a real visitor.
+  function oqInternal() {
+    try {
+      var params = null;
+      try {
+        params = new URLSearchParams(window.location.search);
+      } catch (e) {
+        params = null;
+      }
+      var queryFlag = !!(params && params.get('oq_internal') === '1');
+
+      var cookieMatch = document.cookie.match(/(?:^|; )oq_internal=([^;]*)/);
+      var cookieFlag = !!(cookieMatch && decodeURIComponent(cookieMatch[1]) === '1');
+
+      if (queryFlag && !cookieFlag) {
+        var oneYear = 60 * 60 * 24 * 365;
+        var domainAttr = '';
+        // Only a real otterquote.com host accepts a .otterquote.com-scoped
+        // cookie -- on localhost/preview/test hosts this attribute would be
+        // rejected outright and silently fail to set (see
+        // js/internal-traffic.js for the same rule).
+        if (/(^|\.)otterquote\.com$/.test(window.location.hostname)) {
+          domainAttr = '; Domain=.otterquote.com';
+        }
+        document.cookie = 'oq_internal=1; Max-Age=' + oneYear + '; Path=/' +
+          domainAttr + '; SameSite=Lax';
+      }
+
+      var isInternal = queryFlag || cookieFlag;
+      window.OQ_INTERNAL = isInternal;
+      return isInternal;
+    } catch (e) {
+      // Fail closed on "internal" detection, i.e. never let a thrown error
+      // here suppress it -- but if window.OQ_INTERNAL is already true
+      // (e.g. set earlier by js/internal-traffic.js), respect that.
+      return !!window.OQ_INTERNAL;
+    }
+  }
+
+  // Runs immediately, before the gtag stub below, so window.OQ_INTERNAL is
+  // already correct by the time any gtag('js'|'config'|'event', ...) call
+  // reaches the stub -- not just at the early-return check further down.
+  var OQ_INTERNAL_FLAG = oqInternal();
+
   // gh-1964: the public, unauthenticated pages Clarity is allowed to record.
   // Entries are normalised paths (see normalizeClarityPath below): no
   // trailing slash (except root), no .html extension, and directory-index
@@ -157,7 +251,18 @@
     '/guides/how-to-file-property-damage-claim',
     '/guides/how-to-negotiate-with-insurer',
     '/guides/how-to-read-contractor-estimate',
+    // gh-2150 round 2 (REVIEW FAIL 5836233175/5836199486, Ben ruling (3),
+    // S12): the RE-1/INS-1/HI-1 dedicated single-purpose funnel landing
+    // pages (D-333), added together in this one change so none of the
+    // three funnel PRs needs to touch this shared file again. Each is
+    // PUBLIC by the same SESSION_AWARE_PUBLIC-reviewed pattern as
+    // partner-re/-inspectors/-adjusters/-other below: hasPartnerSession()
+    // only redirects an ALREADY-signed-in partner to partner-dashboard.html
+    // (see scripts/check-clarity-page-gate.py's SESSION_AWARE_PUBLIC for
+    // the per-page reason).
+    '/hi-1',
     '/how-it-works',
+    '/ins-1',
     '/landing',
     '/onboarding-demo',
     '/oq-voice-ai',
@@ -178,6 +283,7 @@
     '/project-info-acv',
     '/project-info-cash',
     '/project-info-rcv',
+    '/re-1',
     '/recruit',
     '/ref',
     '/ref-inspector',
@@ -221,18 +327,69 @@
   // queued-but-never-sent pushes) even when the host is not allowed --
   // callers do not need host-awareness of their own.
   window.dataLayer = window.dataLayer || [];
-  function gtag() { window.dataLayer.push(arguments); }
+  // gh-2064: any gtag() call that still reaches this stub while
+  // window.OQ_INTERNAL is set (oqInternal() above, run unconditionally by
+  // this file itself) gets traffic_type: 'internal' merged into its
+  // params -- belt-and-suspenders for the case where this stub is somehow
+  // reached without going through the early return below. The early return
+  // itself is what actually stops the GA4 library and Clarity from ever
+  // loading; this only marks a config/event call that has an object of its
+  // own to carry the flag on.
+  function gtag() {
+    var args = arguments;
+    if (window.OQ_INTERNAL) {
+      if (args.length >= 3 && args[2] && typeof args[2] === 'object') {
+        args[2].traffic_type = 'internal';
+      } else if (args.length === 2 && (args[0] === 'config' || args[0] === 'event')) {
+        args = [args[0], args[1], { traffic_type: 'internal' }];
+      }
+    }
+    window.dataLayer.push(args);
+  }
   window.gtag = gtag;
   gtag('js', new Date());
+
+  // gh-2064 round 2: internal-traffic opt-out, checked via the self-contained
+  // oqInternal() above -- not a dependency on js/internal-traffic.js being
+  // present on this page. Placed after the dataLayer/gtag stub above so
+  // every page's existing gtag(...) call sites keep working as harmless
+  // queued-but-never-sent pushes (same reasoning as the
+  // ALLOWED_HOSTS/CLARITY_ALLOWED_PATHS returns below) -- this just adds one
+  // more reason the library and Clarity never actually load: the current
+  // visit is our own walk/probe, not a visitor.
+  if (OQ_INTERNAL_FLAG) {
+    return;
+  }
 
   if (ALLOWED_HOSTS.indexOf(window.location.hostname) === -1) {
     return; // not a recognised production host -- the GA4 library never loads
   }
 
-  var s = document.createElement('script');
-  s.async = true;
-  s.src = 'https://www.googletagmanager.com/gtag/js?id=' + MEASUREMENT_ID;
-  document.head.appendChild(s);
+  // gh-2063 fix round 2 (PR #2065 review, item 4): gtag.js's own parse+
+  // execute cost (independently measured on this branch at ~384ms of main-
+  // thread time) was still landing at DOMContentLoaded, so deferring the
+  // *request* for this file did nothing for Total Blocking Time -- only
+  // for when the fetch started. _oqLoadOnIdleOrInteraction (below) delays
+  // creating this <script> tag itself until the browser is idle (or up to
+  // 1500ms, whichever first) or the visitor's first interaction, whichever
+  // happens first. Nothing else here changes: window.gtag/window.dataLayer
+  // are still defined unconditionally above, so gtag('js', ...) and every
+  // page's own gtag('config'/'event', ...) call keep queuing into
+  // dataLayer exactly as before and are drained -- in order, including the
+  // automatic page_view -- the moment gtag.js actually loads. A visit that
+  // never goes idle and never interacts still gets gtag.js within 1500ms
+  // via the requestIdleCallback timeout / setTimeout fallback, so page_view
+  // still fires once for every visit that reaches that point, same as
+  // before this change; only visitors who leave before ~1.5s (already
+  // recorded as 0-click bounces before this fix) would not have generated
+  // one previously fired at parse time either -- see the PR for the open
+  // question this raises for Sloane/D-322 on attribution completeness.
+  _oqLoadOnIdleOrInteraction(function () {
+    var s = document.createElement('script');
+    s.async = true;
+    s.src = 'https://www.googletagmanager.com/gtag/js?id=' + MEASUREMENT_ID;
+    document.head.appendChild(s);
+  });
 
   // gh-1964: default-deny page-set gate, Clarity only. GA4 above already
   // loaded unconditionally on any allowed host; Clarity additionally
@@ -370,12 +527,25 @@
   })();
 
   // Microsoft Clarity -- the vendor snippet, verbatim apart from living
-  // behind the allowlist checks above. Reached only on a production host,
-  // only on an allowlisted public page (gh-1964), and never on a URL
-  // carrying a live auth credential (see gh-1931 above).
+  // behind the allowlist checks above and (gh-2063 fix round 2, item 4)
+  // deferring only its own `<script src=clarity.ms/tag/...>` creation to
+  // idle/interaction via _oqLoadOnIdleOrInteraction, same as the GA4 script
+  // above. The queueing stub (`c[a] = c[a] || ...`) still runs synchronously,
+  // right here, so `window.clarity` exists the instant this allowlist gate
+  // is satisfied -- start.html's `clarity('set','variant',...)` call (moved
+  // to a DOMContentLoaded listener in the same fix round, see that file's
+  // own gh-2063 comment) depends on that. Any clarity(...) call made before
+  // the real library loads keeps queuing into c[a].q exactly as the stub
+  // always did, and is drained once it does. scripts/check-clarity-page-
+  // gate.py's structural check anchors on this IIFE's exact 7-argument
+  // signature (c, l, a, r, i, t, y) to confirm the allowlist gate above runs
+  // before it -- that signature is unchanged; only its body's script-
+  // insertion is now wrapped.
   (function (c, l, a, r, i, t, y) {
     c[a] = c[a] || function () { (c[a].q = c[a].q || []).push(arguments); };
-    t = l.createElement(r); t.async = 1; t.src = 'https://www.clarity.ms/tag/' + i;
-    y = l.getElementsByTagName(r)[0]; y.parentNode.insertBefore(t, y);
+    _oqLoadOnIdleOrInteraction(function () {
+      t = l.createElement(r); t.async = 1; t.src = 'https://www.clarity.ms/tag/' + i;
+      y = l.getElementsByTagName(r)[0]; y.parentNode.insertBefore(t, y);
+    });
   })(window, document, 'clarity', 'script', CLARITY_PROJECT_ID);
 })();

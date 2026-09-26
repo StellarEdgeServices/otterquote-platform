@@ -98,24 +98,78 @@ ALL_PAGES = VERTICAL_PAGES + ["partner-app", "partner-login", "partner-dashboard
 # loop (see main()) explicitly assumes it would be ("reported by the static
 # half above for pages in D266_PAGES"), which was false until now.
 #
+# gh-2150 RE-1 / D-333: re-1.html is a dedicated single-funnel landing page
+# outside the partner-*.html naming convention. It carries the D-266
+# disclaimer (approved copy, #2150 comment 5821403227) and is a
+# referral-fee funnel surface exactly like partner-re.html, so it is
+# registered explicitly (see `explicit` in compute_d266_pages() below).
+#
+# gh-2151 INS-1 / D-333: ins-1.html, same shape as re-1 above (approved
+# copy, #2151 comment 5821408557), also registered explicitly.
+#
+# gh-2155 HI-0b / D-333 (Ben, comment 5824245098): home inspectors receive
+# no referral fee at all (partner-agreement.html Section 4.3), so the D-266
+# "make sure it is lawful for you to accept referral fees" warning does not
+# apply to that track and partner-inspectors.html no longer carries it.
+# gh-2020 CLOSE-REVIEW: FAIL (comment 5824278669) rejected a plain static
+# exemption entry for this: `D266_PAGES_EXEMPT` (or an unconditional
+# removal from the required set) beats the fee census, so if a referral fee
+# ever reappeared on partner-inspectors.html (by mistake or by a future
+# track change) it would pass silently -- the exact regression D-333 exists
+# to prevent. Instead, partner-inspectors is removed only from the
+# unconditional `named` set below (mirroring partner-insurance/
+# partner-login, which are also carved out of `named` because they are
+# already covered by other layers); it remains fully exposed to the
+# fail-closed `fee_pages` census layer. So: no fee sentence on the page ->
+# not required to carry D266_TEXT (the D-333 exemption applies); a fee
+# sentence reappears -> the census re-adds it to the required set and an
+# undisclaimed fee on that page is a FAILURE again, per CLOSE-REVIEW's
+# recommendation (a).
+#
 # Three layers, so a page can't go uncovered just by not matching a naming
 # convention:
 #   1. Every partner-*.html page, by glob (was partner-insurance*.html only).
-#   2. partners.html and refer-a-friend.html, named explicitly (neither
-#      matches the partner-*.html glob).
+#   2. partners.html, refer-a-friend.html, re-1.html and ins-1.html, named
+#      explicitly (none matches the partner-*.html glob).
 #   3. FAIL-CLOSED CONTENT CENSUS: any *.html page anywhere at the repo
 #      root whose own text contains a referral-fee sentence (a dollar
 #      amount and the word "referral" in the same sentence) is swept in
 #      regardless of its filename -- so a page that follows neither naming
 #      convention still cannot carry real fee copy with no disclaimer
-#      requirement attached to it.
+#      requirement attached to it. This layer is also what lets the
+#      partner-inspectors D-333 exemption above fail closed rather than
+#      open.
 # A small, written-reason exemption list (D266_PAGES_EXEMPT below) removes
 # the handful of partner-*.html pages that are known, by inspection, to
 # carry no referral-fee copy of their own (mirrors STATIC_FUNNEL_EXEMPT's
 # convention) -- never add to it to silence a real gap.
+#
+# gh-2020 REVIEW: FAIL (comment 5780386929) X3/X4/X5/N23c: the fee-sentence
+# regex used to require a literal `$\d` amount, the exact token "referral"
+# and no newline or "." between them, so a line-wrapped fee ("Earn $250 for
+# every borrower ... \nwhose project completes"), a decimal amount
+# ("$250.00"), a spelled-out amount ("two hundred dollars") or the approved
+# copy's own "you refer" phrasing (not the bare noun "referral") all read as
+# absent. FEE_SENTENCE_RE now runs against whitespace-NORMALIZED text (see
+# _norm(), applied by _fee_sentence_pages() below before sentence-splitting,
+# so a source line-wrap can no longer break the match), accepts a decimal
+# cents suffix, accepts spelled-out amounts up to "ninehundred"-class
+# compounds and "thousand", and widens the fee-word family to the same
+# refer*/recruit family D-301 already recognizes as referral-fee vocabulary.
 FEE_SENTENCE_RE = re.compile(
-    r"\$\d[\d,]*\b[^.!?\n]{0,200}\breferral|"
-    r"\breferral[^.!?\n]{0,200}\$\d[\d,]*\b",
+    r"\$\d[\d,]*(?:\.\d{2})?\b[^.!?\n]{0,200}\b(?:refer(?:ral|red|rer|s)?|recruit(?:s|ed|ment)?)|"
+    r"\b(?:refer(?:ral|red|rer|s)?|recruit(?:s|ed|ment)?)[^.!?\n]{0,200}\$\d[\d,]*(?:\.\d{2})?\b|"
+    r"\b(?:one|two|three|four|five|six|seven|eight|nine|ten|twenty|thirty|forty|"
+    r"fifty|sixty|seventy|eighty|ninety|hundred|thousand)"
+    r"(?:[\s-]+(?:one|two|three|four|five|six|seven|eight|nine|ten|twenty|thirty|"
+    r"forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand))*"
+    r"\s+dollars\b[^.!?\n]{0,200}\b(?:refer(?:ral|red|rer|s)?|recruit(?:s|ed|ment)?)|"
+    r"\b(?:refer(?:ral|red|rer|s)?|recruit(?:s|ed|ment)?)[^.!?\n]{0,200}"
+    r"\b(?:one|two|three|four|five|six|seven|eight|nine|ten|twenty|thirty|forty|"
+    r"fifty|sixty|seventy|eighty|ninety|hundred|thousand)"
+    r"(?:[\s-]+(?:one|two|three|four|five|six|seven|eight|nine|ten|twenty|thirty|"
+    r"forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand))*"
+    r"\s+dollars\b",
     re.IGNORECASE,
 )
 
@@ -141,17 +195,27 @@ D266_PAGES_EXEMPT = {
     # CEO-sign-off gate (constitution entry 6) pending on the underlying
     # file, and these three are called out by name in the PR comment as a
     # judgment call for that review, not a settled legal position.
+    #
+    # "faq" REMOVED (gh-2020 LEGAL-READ: FAIL, comment 5780393531): the
+    # "For Insurance Agents" recruit-bonus answer on faq.html is a
+    # partner-addressed money promise ("you earn $50 for every job..."),
+    # the second half of the approved D-286/D-301 fee pair every partner
+    # funnel shows directly above the D-266 disclaimer -- not homeowner-
+    # facing informational copy, whatever the STATIC_FUNNEL_EXEMPT entry
+    # for the older, narrower unmapped-funnel scan assumed. The LEGAL-READ
+    # gave two ways to reach PASS: add the verbatim, already-approved D-266
+    # disclaimer to that answer, or get an explicit Tier-C ruling from
+    # Dustin. This is the smallest-change option -- no new copy, the
+    # byte-identical D266_TEXT sentence already live on every other partner
+    # page -- so faq.html now carries it (faq.html, "For Insurance Agents"
+    # category, directly under the recruit-bonus answer) and is no longer
+    # exempt here.
     "contractor-agreement": (
         "Sec. 7.7 W-9/1099-MISC tax-withholding clause for the contractor "
         "referral commission program; a tax notice, not the D-266 "
         "licensing-lawfulness disclaimer, and this page is not itself a "
         "referral-partner enrollment funnel (see contractor-login.html's "
         "existing STATIC_FUNNEL_EXEMPT entry for the same reasoning)."
-    ),
-    "faq": (
-        "Homeowner-facing FAQ answer about the recruit bonus -- "
-        "informational, not an enrollment funnel (mirrors this file's own "
-        "STATIC_FUNNEL_EXEMPT entry for faq.html)."
     ),
     "recruit": (
         "Client-side redirect router; a belt-and-suspenders IRS "
@@ -186,11 +250,40 @@ def _fee_sentence_pages(root: Path) -> set[str]:
         stripped = _strip_html_comments(raw)
         stripped = _FEE_CENSUS_SCRIPT_STYLE_RE.sub(" ", stripped)
         stripped = _FEE_CENSUS_TAG_RE.sub(" ", stripped)
-        for sentence in re.split(r"(?<=[.!?])\s+", stripped):
-            if FEE_SENTENCE_RE.search(sentence):
-                found.add(path.stem)
-                break
+        # gh-2020 REVIEW: FAIL (comment 5780386929) X3: a source line-wrap
+        # put a `\n` between the dollar amount and "referral", and
+        # FEE_SENTENCE_RE's gap class excluded `\n`, so a wrapped fee
+        # sentence read as two unrelated fragments. Normalize ALL whitespace
+        # (including newlines) to single spaces -- the same _norm() already
+        # used for the D-266 disclaimer comparison -- before matching, so a
+        # source-formatting line break can never break the fee-sentence
+        # adjacency test. Sentence-splitting on top of that is now
+        # unnecessary: FEE_SENTENCE_RE's own `[^.!?\n]{0,200}` gap already
+        # bounds how far apart the amount and the fee-word can be, and with
+        # newlines gone that bound is carried entirely by '.', '!', '?'.
+        normalized = _norm(stripped)
+        if FEE_SENTENCE_RE.search(normalized):
+            found.add(path.stem)
     return found
+
+
+# gh-2155 HI-0b / D-333, gh-2020 CLOSE-REVIEW: FAIL (comment 5824278669)
+# must-fix (3): home-inspector partner pages carry NO referral fee by design
+# (partner-agreement.html Sec. 4.3 / partner-agreement-inspector.html Sec.
+# 7). CLOSE-REVIEW rejected a plain D266_PAGES_EXEMPT entry for these,
+# because D266_PAGES_EXEMPT is a FINAL subtraction that beats the
+# fail-closed fee census -- if a referral fee were ever added back to one of
+# these pages, a plain exemption would hide it silently, exactly the
+# regression D-333 exists to prevent (CLOSE-REVIEW reproduced this live: a
+# simulated naive exemption + a re-added "$200 referral fee" sentence gave a
+# silent PASS). These names are instead removed only from the STRUCTURAL
+# (name-based) requirement -- the glob, in compute_d266_pages() below -- so
+# they are not unconditionally required to carry D266_TEXT, but they remain
+# fully exposed to the `fee_pages` content census: no fee sentence -> not
+# required (the D-333 exemption applies); a fee sentence reappears -> the
+# census re-adds the page to the required set and a silent PASS is no
+# longer possible.
+D333_NO_FEE_STRUCTURAL = {"partner-inspectors", "partner-agreement-inspector"}
 
 
 def compute_d266_pages(root: Path = None) -> list[str]:
@@ -198,9 +291,13 @@ def compute_d266_pages(root: Path = None) -> list[str]:
     A function, not a module-level constant, so it can be evaluated against
     an arbitrary root (a self-test fixture tree) as well as the real repo."""
     root = root or REPO_ROOT
-    globbed = {p.stem for p in root.glob("partner-*.html")}
-    named = {p for p in ALL_PAGES if p not in ("partner-insurance", "partner-login")}
-    explicit = {"partners", "refer-a-friend"}
+    globbed = {p.stem for p in root.glob("partner-*.html")} - D333_NO_FEE_STRUCTURAL
+    named = {
+        p
+        for p in ALL_PAGES
+        if p not in ("partner-insurance", "partner-login", "partner-inspectors")
+    }
+    explicit = {"partners", "refer-a-friend", "re-1", "ins-1"}
     fee_pages = {
         s for s in _fee_sentence_pages(root) if (root / f"{s}.html").is_file()
     }
@@ -377,37 +474,184 @@ def _strip_html_comments(text: str) -> str:
 # `style="visibility:hidden"` still satisfied the check even though no
 # visitor can ever see it. Strip the ENTIRE contents of any element whose
 # own opening tag carries one of those signals before comparing -- a
-# disclaimer inside such an element reads as ABSENT, not present. A bare
-# regex can't fully parse arbitrary nested HTML, but this repo's disclaimer
-# markup is always a single, non-nested <p>...</p> (verified against every
-# page this check runs against at the time this was written), so a
-# non-greedy same-tag-name match is sound for the real surfaces in scope.
+# disclaimer inside such an element reads as ABSENT, not present.
 # <script>, <template> and <noscript> content is never visible rendered
 # text either (code, an inert template, or the no-JS fallback on a site
 # that requires JS) and is stripped unconditionally for the same reason.
+#
+# gh-2020 REVIEW: FAIL (comment 5780386929) X6/X9: the original non-greedy
+# `<(\w+)...>.*?</\1>` match (a) treated a collapsed `<details>` (no `open`
+# attribute -- hidden by the browser itself until clicked) as visible, and
+# (b) stopped at the FIRST closing tag of the same name, so a hidden element
+# nesting another element with the identical tag name (`<div hidden><div
+# class="...">...</div> <p>disclaimer</p></div>`) ended the match at the
+# inner `</div>`, leaving the disclaimer paragraph outside the "stripped"
+# span and still counted as present. `_strip_matching_tag_block()` below
+# replaces the lazy regex with a depth-counting scan, so nesting the same
+# tag name inside a hidden element can no longer end the strip early, and
+# `_strip_collapsed_details()` treats an un-`open`ed `<details>` as fully
+# hidden the same way.
 _HIDDEN_ATTR = r"\bhidden\b(?:\s*=\s*(?:\"[^\"]*\"|'[^']*'|\S+))?"
 _HIDDEN_STYLE = (
     r"style\s*=\s*(?:\"[^\"]*(?:display\s*:\s*none|visibility\s*:\s*hidden)[^\"]*\"|"
     r"'[^']*(?:display\s*:\s*none|visibility\s*:\s*hidden)[^']*')"
 )
-HTML_HIDDEN_ELEMENT_RE = re.compile(
+HTML_HIDDEN_OPEN_TAG_RE = re.compile(
     r"<(\w+)\b(?:[^>\"']|\"[^\"]*\"|'[^']*')*?(?:" + _HIDDEN_ATTR + "|" + _HIDDEN_STYLE + r")"
-    r"(?:[^>\"']|\"[^\"]*\"|'[^']*')*>.*?</\1\s*>",
-    re.DOTALL | re.IGNORECASE,
+    r"(?:[^>\"']|\"[^\"]*\"|'[^']*')*>",
+    re.IGNORECASE,
 )
-HTML_ALWAYS_INVISIBLE_RE = re.compile(
-    r"<(script|template|noscript)\b[^>]*>.*?</\1\s*>", re.DOTALL | re.IGNORECASE
+# gh-2155 HI-0c (Ben ruling, comment 5836510515) landed on main AFTER this
+# issue's last CLOSE-REVIEW (2026-09-25T16:59): partner-app.html's own D-266
+# disclaimer, and analogous elements, are now DELIBERATELY shipped with
+# inline `style="display:none"` and a fail-closed-for-everyone default,
+# revealed only once `js/*.js` resolves the visitor's confirmed partner role
+# (`document.getElementById('referralFeeDisclaimer')...`, then a
+# `.style.display` mutation). A blanket "style=display:none is always
+# absent text" rule -- the correct call against N8/N9's adversarial fixture,
+# which ships no such reveal script -- would make this merge fail CI on
+# main's own already-ruled, already-shipped page. The distinction: does a
+# <script> on the SAME page reference this exact element's id and later
+# mutate its display/visibility/hidden state? If yes, the hiding is
+# conditional-at-render, not permanent, and the element counts as present
+# (subject to the browser actually revealing it, which is a product/QA
+# concern, not this guard's). If no such script exists, it is exactly the
+# N8/N9 case and stays stripped.
+_SCRIPT_CONTENT_RE = re.compile(r"<script\b[^>]*>(.*?)</script>", re.DOTALL | re.IGNORECASE)
+_ELEMENT_ID_RE = re.compile(r'\bid\s*=\s*(?:"([^"]+)"|\'([^\']+)\')', re.IGNORECASE)
+
+
+_REVEAL_MUTATION_RE = re.compile(
+    r"\.style\.display\s*=\s*(?!['\"]none['\"])['\"][^'\"]*['\"]|"
+    r"\.style\.visibility\s*=\s*(?!['\"]hidden['\"])['\"][^'\"]*['\"]|"
+    r"removeAttribute\(\s*['\"]hidden['\"]\s*\)|\.hidden\s*=\s*false",
+    re.IGNORECASE,
 )
+
+
+def _js_reveals_element(full_text: str, open_tag: str) -> bool:
+    id_match = _ELEMENT_ID_RE.search(open_tag)
+    if not id_match:
+        return False
+    elem_id = id_match.group(1) or id_match.group(2)
+    # Direct chain: getElementById('theId')....style.display = ...
+    direct_re = re.compile(
+        r"getElementById\(\s*['\"]" + re.escape(elem_id) + r"['\"]\s*\)"
+        r"[\s\S]{0,400}?(?:\.style\.(?:display|visibility)\s*=|"
+        r"removeAttribute\(\s*['\"]hidden['\"]\s*\)|\.hidden\s*=\s*false)",
+        re.IGNORECASE,
+    )
+    # Indirect: the id is listed in a batch (e.g. an array a forEach loop
+    # later resolves through a variable, `feeIds.forEach(function (id) {
+    # var el = document.getElementById(id); el.style.display = ''; })`) --
+    # matched by the id literal and a reveal mutation both appearing
+    # somewhere in the same <script> block, rather than adjacent to a
+    # literal getElementById(...) call.
+    id_literal_re = re.compile(r"['\"]" + re.escape(elem_id) + r"['\"]")
+    for sm in _SCRIPT_CONTENT_RE.finditer(full_text):
+        block = sm.group(1)
+        if direct_re.search(block):
+            return True
+        if id_literal_re.search(block) and _REVEAL_MUTATION_RE.search(block):
+            return True
+    return False
+
+
+HTML_ALWAYS_INVISIBLE_OPEN_TAG_RE = re.compile(
+    r"<(script|template|noscript)\b[^>]*>", re.IGNORECASE
+)
+_DETAILS_OPEN_TAG_RE = re.compile(r"<details\b[^>]*>", re.IGNORECASE)
+
+
+def _strip_matching_tag_block(text: str, open_tag_re, full_text: str = None) -> str:
+    """Find each opening tag matched by open_tag_re, then remove through its
+    properly NESTING-AWARE matching closing tag -- a same-named tag nested
+    inside cannot end the match early (gh-2020 X9). If no matching close is
+    ever found, strips to end of string (fail closed: an unterminated
+    "hidden" element is not evidence the rest of the file is visible).
+
+    If `full_text` is given, a matched element carrying an `id` that some
+    <script> on the page (searched in `full_text`, since script content is
+    stripped elsewhere) later reveals (see _js_reveals_element) is left
+    UNSTRIPPED -- the gh-2155 HI-0c conditional-disclosure pattern."""
+    out = []
+    pos = 0
+    n = len(text)
+    while pos < n:
+        m = open_tag_re.search(text, pos)
+        if not m:
+            out.append(text[pos:])
+            break
+        tag = m.group(1)
+        out.append(text[pos : m.start()])
+        close_re = re.compile(r"<(/?)" + re.escape(tag) + r"\b[^>]*>", re.IGNORECASE)
+        depth = 1
+        end = None
+        for cm in close_re.finditer(text, m.end()):
+            if cm.group(1):
+                depth -= 1
+                if depth == 0:
+                    end = cm.end()
+                    break
+            else:
+                depth += 1
+        span_end = end if end is not None else n
+        if full_text is not None and _js_reveals_element(full_text, m.group(0)):
+            out.append(text[m.start() : span_end])  # keep: conditionally revealed
+        else:
+            out.append(" ")
+        pos = span_end
+    return "".join(out)
+
+
+def _strip_collapsed_details(text: str) -> str:
+    """A <details> element with no `open` attribute is collapsed by default
+    -- its body (everything but <summary>) is not visible until a user
+    clicks it. gh-2020 REVIEW: FAIL X6: wrapping the disclaimer in a
+    collapsed <details><summary>Legal</summary>...disclaimer...</details>
+    read as present. Strip the whole block (summary included -- simpler
+    than re-inserting just the summary text, and never wrong, since a real
+    disclaimer is never placed inside a <summary>). A <details open> is
+    left untouched: its body is visible by default."""
+    out = []
+    pos = 0
+    n = len(text)
+    while pos < n:
+        m = _DETAILS_OPEN_TAG_RE.search(text, pos)
+        if not m:
+            out.append(text[pos:])
+            break
+        out.append(text[pos : m.start()])
+        has_open = re.search(r"\bopen\b", m.group(0), re.IGNORECASE) is not None
+        close_re = re.compile(r"<(/?)details\b[^>]*>", re.IGNORECASE)
+        depth = 1
+        end = None
+        for cm in close_re.finditer(text, m.end()):
+            if cm.group(1):
+                depth -= 1
+                if depth == 0:
+                    end = cm.end()
+                    break
+            else:
+                depth += 1
+        if has_open:
+            out.append(text[m.end() : end] if end is not None else text[m.end() :])
+        else:
+            out.append(" ")
+        pos = end if end is not None else n
+    return "".join(out)
 
 
 def _strip_invisible_html(text: str) -> str:
-    text = HTML_HIDDEN_ELEMENT_RE.sub(" ", text)
-    text = HTML_ALWAYS_INVISIBLE_RE.sub(" ", text)
+    original = text
+    text = _strip_collapsed_details(text)
+    text = _strip_matching_tag_block(text, HTML_HIDDEN_OPEN_TAG_RE, full_text=original)
+    text = _strip_matching_tag_block(text, HTML_ALWAYS_INVISIBLE_OPEN_TAG_RE)
     return text
 
 
 def _find_matching_bracket(text: str, open_pos: int, open_ch: str, close_ch: str) -> int:
-    """Index of the bracket matching the one at open_pos, skipping bracket
+    r"""Index of the bracket matching the one at open_pos, skipping bracket
     characters that occur inside a quoted JS string literal (so a `]`
     inside copy text can't end the scope early -- gh-2020 refuter's false
     positive against the old `\[(.*?)\]` lazy regex)."""
@@ -878,20 +1122,47 @@ def check_js_d266_surfaces() -> tuple[list[str], list[str]]:
             | set(JS_D266_EXEMPT_TRACKS)
             | partner_track_ids
         )
+        # gh-2020 REVIEW: FAIL (comment 5780386929) X11/X12: this scalar scan
+        # only matched single-quoted `key: '...'` values, so a double-quoted
+        # scalar (`key: "..."`) was invisible, and it never looked at COPY
+        # ARRAY properties at all -- yet an array rendered through
+        # `COPY.<name>.forEach(...)` is how every existing track in this
+        # file (the realtor/insurance close screens themselves) shows its
+        # fee copy, so a new track using that exact idiom with a different
+        # key name was structurally identical to the tracks this checker
+        # already trusts, and still fell through. Both gaps close the same
+        # way: match every quote style (', ", `) for scalars, and resolve
+        # any COPY.<key> reference to its array literal via
+        # _extract_array_literal (the same helper layer 2/3 already use for
+        # close-copy arrays) before testing it for fee-sentence text.
         copy_scalar_fee_keys = {
             m.group(1)
-            for m in re.finditer(r"(\w+)\s*:\s*'((?:[^'\\]|\\.)*)'", text)
-            if FEE_SENTENCE_RE.search(m.group(2))
+            for m in re.finditer(
+                r"(\w+)\s*:\s*(?:'((?:[^'\\]|\\.)*)'|\"((?:[^\"\\]|\\.)*)\"|`((?:[^`\\]|\\.)*)`)",
+                text,
+            )
+            if FEE_SENTENCE_RE.search(_norm(m.group(2) or m.group(3) or m.group(4) or ""))
         }
+        _array_fee_cache: dict[str, bool] = {}
+
+        def _copy_array_has_fee(key: str) -> bool:
+            if key not in _array_fee_cache:
+                arr = _extract_array_literal(text, key)
+                _array_fee_cache[key] = bool(
+                    arr and FEE_SENTENCE_RE.search(_norm(arr))
+                )
+            return _array_fee_cache[key]
+
         reported_fee_tracks: set[str] = set()
         for sm in JS_D266_ANY_SCREEN_RE.finditer(text):
             screen_track_id, screen_body = sm.group(1), sm.group(3)
             if screen_track_id in known_track_ids or screen_track_id in reported_fee_tracks:
                 continue
-            has_inline_fee = bool(FEE_SENTENCE_RE.search(screen_body))
+            has_inline_fee = bool(FEE_SENTENCE_RE.search(_norm(screen_body)))
+            copy_refs = set(re.findall(r"COPY\.(\w+)\b", screen_body))
             has_copy_ref_fee = any(
-                ref in copy_scalar_fee_keys
-                for ref in re.findall(r"COPY\.(\w+)\b", screen_body)
+                ref in copy_scalar_fee_keys or _copy_array_has_fee(ref)
+                for ref in copy_refs
             )
             if has_inline_fee or has_copy_ref_fee:
                 reported_fee_tracks.add(screen_track_id)
@@ -972,6 +1243,21 @@ STATIC_FUNNEL_EXEMPT = {
     "js/ga-gate.js": (
         "Source-code comment using \"referral link\" as an example while "
         "explaining analytics-gating behavior -- not rendered funnel copy."
+    ),
+    "hi-1.html": (
+        "gh-2152 HI-1: is a partner-enrollment funnel (the match is real "
+        "\"referral link\"/\"referral fee\" copy, not a stray comment), but "
+        "D-266 does not apply to it -- same per-track exemption already "
+        "recorded above for partner-inspectors.html (gh-2155 HI-0b / D-333, "
+        "comment 5824245098): home inspectors receive no referral fee or "
+        "recruit bonus at all (partner-agreement.html Section 4.3), so "
+        "D-266's \"make sure it is lawful for you to accept referral fees\" "
+        "warning has nothing to attach to. Dustin's ruling on #2152 (comment "
+        "5832300782, approving this page's copy) says so explicitly: \"no "
+        "D-266 disclaimer (inspectors take no fee, D-333)\". hi-1.html isn't "
+        "folded into D266_PAGES's glob/ALL_PAGES mechanism because it is a "
+        "single-purpose ad landing page, not a partner-*.html marketing "
+        "page -- same shape as the other STATIC_FUNNEL_EXEMPT entries above."
     ),
 }
 
