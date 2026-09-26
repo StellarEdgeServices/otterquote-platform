@@ -588,6 +588,17 @@
       var s2 = document.createElement('script');
       s2.src = '/js/meta-pixel-gate.js';
       document.head.appendChild(s2);
+      // gh-1926: LinkedIn Insight Tag + Reddit Pixel ride the same
+      // idle-or-first-interaction deferred path as ga-gate.js/
+      // meta-pixel-gate.js above -- both gates are dark (empty-string
+      // placeholder IDs) and self-contained host/oq_internal-gated, per
+      // #1926/PR #2102; this loader change does not alter that.
+      var s3 = document.createElement('script');
+      s3.src = '/js/linkedin-insight-gate.js';
+      document.head.appendChild(s3);
+      var s4 = document.createElement('script');
+      s4.src = '/js/reddit-pixel-gate.js';
+      document.head.appendChild(s4);
     }
     for (var i = 0; i < GATE_EVENTS.length; i++) {
       window.addEventListener(GATE_EVENTS[i], run, { passive: true, once: true });

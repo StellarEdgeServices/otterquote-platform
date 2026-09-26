@@ -28,7 +28,38 @@
  *   META_LEADGEN_VERIFY_TOKEN   — GET handshake token
  *   META_APP_SECRET             — HMAC key for X-Hub-Signature-256
  *   META_PAGE_ACCESS_TOKEN      — Graph API GET /{leadgen_id} bearer
- *   META_LEADGEN_FORM_ALLOWLIST — JSON form_id -> {agent_type, funnel_id, is_test?}
+ *   META_LEADGEN_FORM_ALLOWLIST — JSON form_id -> {agent_type, funnel_id, is_test?} (PARTNER forms)
+ *   META_LEADGEN_HOMEOWNER_FORM_ALLOWLIST — JSON form_id -> {funnel_id,
+ *     is_test?, consent_key, consent_text, privacy_url} (#2123 HO-2 — a
+ *     SEPARATE allowlist for homeowner `leads` forms). consent_key/
+ *     consent_text/privacy_url are REQUIRED per entry (REVIEW FAIL
+ *     5849223003 defects 4/5, D-299/D-332) -- an entry missing any of them
+ *     is dropped and logged as a config error, see homeowner-allowlist.ts.
+ *     A form_id checked against the partner allowlist first, then this one;
+ *     a form_id in neither is always a logged skip, no write. See
+ *     handler.ts's routing comment and homeowner-allowlist.ts's header for
+ *     why this is a distinct secret rather than a widened shared one.
+ *
+ * #2123 HO-2 fix round (REVIEW: FAIL + LEGAL-READ: FAIL, issue comment
+ * 5849223003) — summary of what changed in this revision, see each site's
+ * own comment for the full reasoning:
+ *   1. Homeowner registration now REQUIRES email (live leads.email is NOT
+ *      NULL) -- see handler.ts's incomplete_fields check.
+ *   2. sql/schema-snapshot.json and sql/schema-pending.json were corrected
+ *      (is_synthetic is live; meta_lead_id is declared pending against its
+ *      own migration).
+ *   3. The old set_lead_role() RPC call is gone from the homeowner path,
+ *      replaced by a service-role conditional UPDATE with no time window
+ *      -- see finalizeHomeownerLead below.
+ *   4. D-299 consent evidence (a `lead_consents` row, written the same way
+ *      Arm F's record_lead_details() does) is captured before role is ever
+ *      set -- see fetchHomeownerLeadFromGraph and finalizeHomeownerLead.
+ *   5. D-332: privacy_url is now a required allowlist field; see this PR's
+ *      body for the required Meta form config and the privacy.html read.
+ *   6. change.value.ad_id/adgroup_id (the signed webhook payload) become
+ *      utm_content/utm_term on the `leads` row.
+ *   7. isSynthetic also covers a founder/internal/QA email, parity with
+ *      Arm F's own exclusion -- see founder-filter.ts.
  *
  * Never logs raw lead PII or any secret/token — only leadgen_id + outcome.
  *
@@ -43,10 +74,14 @@ import {
   handlePost,
   handleVerification,
   interpretRateLimitResult,
+  isDataRejectionError,
   type FetchedLead,
+  type HomeownerDuplicateResult,
+  type RegisterHomeownerLeadArgs,
   type RegisterPartnerArgs,
   type WebhookDeps,
 } from "./handler.ts";
+import type { FetchedHomeownerLead, HomeownerConsentArgs } from "./homeowner-consent.ts";
 import { buildInviteEmail, isInviteEmailEnabled, PARTNER_INVITE_EMAIL_ENABLED_ENV } from "./invite-email.ts";
 import { PARTNER_INVITE_SECRET_ENV, signPartnerInviteToken } from "./invite-token.ts";
 import { buildPartnerOptOutUrl, canSendWithOptOut, PARTNER_OPTOUT_SECRET_ENV, signPartnerOptOutToken } from "./optout.ts";
@@ -135,6 +170,106 @@ async function fetchLeadFromGraph(
   }
 }
 
+/**
+ * #2123 HO-2 fix round (REVIEW FAIL 5849223003 defect 4(a)) — a SEPARATE
+ * Graph fetch from the partner path's fetchLeadFromGraph above, requesting
+ * the extra fields D-299 consent evidence and attribution need. The partner
+ * fetch above is left byte-identical.
+ */
+async function fetchHomeownerLeadFromGraph(
+  leadgenId: string,
+  token: string,
+  fetchImpl: typeof fetch,
+): Promise<{ data: FetchedHomeownerLead | null; error: string | null }> {
+  try {
+    const url =
+      `https://graph.facebook.com/${GRAPH_API_VERSION}/${encodeURIComponent(leadgenId)}` +
+      `?fields=field_data,custom_disclaimer_responses,created_time,form_id,ad_id,campaign_id,platform`;
+    const res = await fetchImpl(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) {
+      return { data: null, error: `graph_api_${res.status}` };
+    }
+    const data = (await res.json()) as FetchedHomeownerLead;
+    return { data, error: null };
+  } catch (err) {
+    return { data: null, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
+ * #2123 HO-2 fix round (REVIEW FAIL 5849223003 defects 3 + 4) — the shared
+ * "finish the job" step for a freshly-inserted `leads` row or a recovered
+ * existing one. Writes the D-299 `lead_consents` evidence row BEFORE the
+ * role update (Ben's ruling on #2122 comment 5803979399 applies here too: a
+ * consent record lost between the two writes is a compliance failure, so
+ * consent goes first and role is never set if it fails), then does a
+ * SERVICE-ROLE CONDITIONAL UPDATE in place of the old set_lead_role() RPC
+ * call -- see finalizeHomeownerLead's doc comment on WebhookDeps in
+ * handler.ts for why the RPC's 30-minute window made this unrecoverable.
+ */
+// Typed loosely (not a bound SupabaseClient parameter) — mirrors record-
+// lead-details/index.ts's own `rpc: (name, args) => sb.rpc(name, args) as
+// unknown as Promise<...>` convention (that file's header comment explains
+// why: passing the concrete client through an extra function boundary loses
+// supabase-js's per-call-site generic inference and does not type-check).
+async function finalizeHomeownerLead(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  leadId: string,
+  metaLeadId: string,
+  consent: HomeownerConsentArgs,
+): Promise<{ updated: boolean; error: { message?: string } | null }> {
+  const { error: consentErr } = await supabase.from("lead_consents").insert({
+    lead_id: leadId,
+    consent_key: consent.consentKey,
+    consent_given: consent.consentGiven,
+    consent_text: consent.consentText,
+    page_url: `meta-lead-form:${consent.formId}`,
+    user_agent: null,
+    ip: null,
+    payload: {
+      source: "meta_leadgen",
+      leadgen_id: metaLeadId,
+      form_id: consent.formId,
+      ad_id: consent.adId,
+      campaign_id: consent.campaignId,
+      created_time: consent.createdTime,
+    },
+    phone_as_typed: consent.phoneAsTyped,
+    form_payload: consent.formPayload,
+  });
+  if (consentErr) {
+    // lead_consents_lead_key_uniq (lead_id, consent_key) -- a retry of this
+    // same finalize step (e.g. a prior attempt wrote consent but then
+    // failed on the role update below) hits 23505 here; that means the
+    // evidence is ALREADY written, not an error -- same idempotent-retry
+    // posture record_lead_details()'s own ON CONFLICT DO NOTHING gives Arm F.
+    const consentErrCode = (consentErr as { code?: string }).code;
+    if (consentErrCode !== "23505") {
+      // REVIEW FAIL 5849684429 fix 3: a permanent data-rejection error
+      // (23502/23514/any other 22xxx-23xxx except 23505) on the
+      // lead_consents insert is terminal, not transient -- see
+      // isDataRejectionError's doc comment in handler.ts.
+      if (isDataRejectionError(consentErrCode)) {
+        return { updated: false, error: { message: "rejected_invalid_data" } };
+      }
+      return { updated: false, error: { message: consentErr.message } };
+    }
+  }
+
+  const { data, error } = await supabase
+    .from("leads")
+    .update({ role: "homeowner" })
+    .eq("id", leadId)
+    .eq("meta_lead_id", metaLeadId)
+    .is("role", null)
+    .select("id");
+  if (error) {
+    return { updated: false, error: { message: error.message } };
+  }
+  return { updated: Array.isArray(data) && data.length > 0, error: null };
+}
+
 if (import.meta.main) {
   serve(async (req: Request) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
@@ -143,6 +278,10 @@ if (import.meta.main) {
     const appSecret = Deno.env.get("META_APP_SECRET") || undefined;
     const pageAccessToken = Deno.env.get("META_PAGE_ACCESS_TOKEN") || undefined;
     const allowlistRaw = Deno.env.get("META_LEADGEN_FORM_ALLOWLIST") || undefined;
+    // #2123 HO-2: separate secret from the partner allowlist above — see
+    // homeowner-allowlist.ts's header for why this is a distinct env var
+    // rather than a widened shared one.
+    const homeownerAllowlistRaw = Deno.env.get("META_LEADGEN_HOMEOWNER_FORM_ALLOWLIST") || undefined;
 
     if (!supabaseUrl || !serviceRoleKey) {
       console.error(`${FUNCTION_NAME}: missing required Supabase environment variables`);
@@ -180,7 +319,9 @@ if (import.meta.main) {
       appSecret,
       pageAccessToken,
       allowlistRaw,
+      homeownerAllowlistRaw,
       fetchLead: (leadgenId, token) => fetchLeadFromGraph(leadgenId, token, fetch),
+      fetchHomeownerLead: (leadgenId, token) => fetchHomeownerLeadFromGraph(leadgenId, token, fetch),
       // gh-2154 P-5r (REVIEW FAIL 5833742114 must-fix 1): a dedupe-read DB
       // error is no longer collapsed into "yes, duplicate" -- that silently
       // and permanently dropped the lead. `errored: true` tells handler.ts
@@ -217,6 +358,102 @@ if (import.meta.main) {
       sendInvite: async ({ referralAgentId, email, firstName, agentType }) => {
         await sendPartnerInvite(supabaseUrl, serviceRoleKey, { referralAgentId, email, firstName, agentType });
       },
+      // #2123 HO-2 — dedupe read on public.leads.meta_lead_id (new column,
+      // this build's migration — see the migration file's header for why
+      // it's additive-only). Also reports whether `role` is already set on
+      // an existing row, so handler.ts can recover a lead whose insert
+      // succeeded on a prior delivery but whose set_lead_role() call did
+      // not (see RegisterHomeownerLeadArgs's doc comment in handler.ts).
+      isDuplicateHomeownerLead: async (metaLeadId): Promise<HomeownerDuplicateResult> => {
+        const { data, error } = await supabase
+          .from("leads")
+          .select("id, role")
+          .eq("meta_lead_id", metaLeadId)
+          .limit(1);
+        if (error) {
+          console.error(`${FUNCTION_NAME}: homeowner duplicate check failed`);
+          return { existingId: null, roleSet: false, errored: true };
+        }
+        const row = data && data.length > 0 ? (data[0] as { id: string; role: string | null }) : null;
+        return { existingId: row?.id ?? null, roleSet: row?.role != null, errored: false };
+      },
+      // #2123 HO-2 — INSERT into `leads` then set_lead_role(id, 'homeowner'),
+      // the exact same RPC and the exact same role-set-fires-the-alert
+      // mechanism js/router-variant-f.js's own Step 2 already relies on
+      // (gh-1994's trg_notify_admin_new_router_lead, AFTER UPDATE ON leads
+      // WHEN role transitions NULL -> non-NULL). The INSERT alone is never
+      // enough: public.leads_force_safe_insert_defaults() (an existing,
+      // unconditional BEFORE INSERT guard — see gh-1994's and gh-1994's
+      // router-lead-alert migrations) forces role back to NULL on every
+      // insert regardless of caller, service_role included, specifically so
+      // no insert path (anon or otherwise) can set role directly and either
+      // bypass validation or suppress its own alert.
+      //
+      // `source` is set to 'meta_leadgen' and `variant` to the funnel id
+      // (e.g. 'ho-2') — `variant` already carries the Arm-F-style funnel/arm
+      // id for router leads (gh-2011) and has no CHECK constraint (a
+      // deliberate choice on that column, see gh2011_leads_variant.sql: a
+      // measurement column must never be able to reject a revenue record),
+      // so it is reused here rather than adding a new funnel_id column to
+      // `leads`. utm_campaign is also set to the funnel id per this task's
+      // S14 naming convention (utm_campaign=<line>-<funnel>); utm_source/
+      // utm_medium are set to fixed 'meta'/'lead_form' values because a
+      // native Meta lead form's webhook payload carries no UTM parameters
+      // of its own for those two, but utm_content/utm_term ARE forwarded
+      // from the signed webhook payload's ad_id/adgroup_id (REVIEW FAIL
+      // 5849223003 item 6). REVIEW FAIL defect 3: this call is INSERT ONLY
+      // now -- role is set by the separate finalizeHomeownerLead() step
+      // (handler.ts calls it right after a successful insert), so consent
+      // evidence can be written before role is ever touched.
+      registerHomeownerLead: async (args: RegisterHomeownerLeadArgs) => {
+        const { data: inserted, error: insErr } = await supabase
+          .from("leads")
+          .insert({
+            name: args.name,
+            email: args.email,
+            phone: args.phone,
+            source: "meta_leadgen",
+            variant: args.funnelId,
+            utm_source: "meta",
+            utm_medium: "lead_form",
+            utm_campaign: args.funnelId,
+            utm_content: args.utmContent,
+            utm_term: args.utmTerm,
+            is_synthetic: args.isSynthetic,
+            meta_lead_id: args.metaLeadId,
+          })
+          .select("id")
+          .single();
+        if (insErr) {
+          // Postgres unique_violation (leads.meta_lead_id UNIQUE, this
+          // build's migration) — mirrors register_partner()'s own
+          // duplicate_meta_lead convention above so handler.ts's string
+          // match handles both paths identically.
+          const insErrCode = (insErr as { code?: string }).code;
+          if (insErrCode === "23505") {
+            return { data: null, error: { message: "duplicate_meta_lead" } };
+          }
+          // REVIEW FAIL 5849684429 fix 3: a permanent data-rejection error
+          // (23502 not_null_violation, 23514 check_violation, or any other
+          // 22xxx/23xxx except 23505) on the leads insert is terminal --
+          // never a 503 retry -- see isDataRejectionError's doc comment in
+          // handler.ts.
+          if (isDataRejectionError(insErrCode)) {
+            return { data: null, error: { message: "rejected_invalid_data" } };
+          }
+          return { data: null, error: { message: insErr.message } };
+        }
+        const newId = (inserted as { id?: string } | null)?.id;
+        if (!newId) {
+          return { data: null, error: { message: "insert_returned_no_id" } };
+        }
+        return { data: { id: newId }, error: null };
+      },
+      // #2123 HO-2 fix round — see finalizeHomeownerLead's own doc comment
+      // above (defects 3 + 4): shared by both the fresh-insert path and the
+      // recovery path in handler.ts.
+      finalizeHomeownerLead: (leadId, metaLeadId, consent) =>
+        finalizeHomeownerLead(supabase, leadId, metaLeadId, consent),
       checkRateLimit: async (bucket) => {
         const { data, error } = await supabase.rpc("check_rate_limit", {
           p_function_name: FUNCTION_NAME,
