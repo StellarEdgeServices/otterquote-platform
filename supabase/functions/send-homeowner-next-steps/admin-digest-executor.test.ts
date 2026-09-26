@@ -79,8 +79,9 @@ function fakes(opts: {
 
 // ─── isDigestCandidate (D1/D3) ──────────────────────────────────────────────
 
-Deno.test("isDigestCandidate: only '48h' is a digest candidate", () => {
+Deno.test("isDigestCandidate: '48h' and gh-1570 Part 2's checklist_complete_not_submitted are digest candidates; '2h' is not", () => {
   assertEquals(isDigestCandidate("48h"), true);
+  assertEquals(isDigestCandidate("checklist_complete_not_submitted"), true);
   assertEquals(isDigestCandidate("2h"), false);
   assertEquals(isDigestCandidate(null), false);
 });
@@ -94,6 +95,16 @@ Deno.test("selectDigestCandidates: filters a mixed '2h'/'48h' list down to '48h'
   ];
   const out = selectDigestCandidates(screened);
   assertEquals(out.map((c) => c.claimId), ["forty-eight-hour"]);
+});
+
+Deno.test("selectDigestCandidates: gh-1570 Part 2 — a mixed '2h'/'48h'/checklist_complete_not_submitted list keeps the latter two", () => {
+  const screened: ScreenedCandidate[] = [
+    candidate({ claimId: "two-hour", stage: "2h" }),
+    candidate({ claimId: "forty-eight-hour", stage: "48h" }),
+    candidate({ claimId: "checklist-complete", stage: "checklist_complete_not_submitted" }),
+  ];
+  const out = selectDigestCandidates(screened);
+  assertEquals(out.map((c) => c.claimId).sort(), ["checklist-complete", "forty-eight-hour"]);
 });
 
 Deno.test("selectDigestCandidates: strips the stage field — output shape has no 'stage'", () => {

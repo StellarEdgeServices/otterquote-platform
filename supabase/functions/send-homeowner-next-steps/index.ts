@@ -214,6 +214,16 @@ import {
   isWelcomeEnabled,
   type WelcomeDeps,
 } from "./welcome-hook.ts";
+import {
+  buildChecklistCompleteEmailContent,
+  CHECKLIST_COMPLETE_EVENT_TYPE,
+  CHECKLIST_COMPLETE_NUDGE_EVENT_TYPE,
+  CHECKLIST_COMPLETE_STAGE,
+  type ChecklistCompleteRow,
+  deliverChecklistCompleteStage,
+  reduceChecklistCompleteActivity,
+  screenChecklistCompleteClaim,
+} from "./checklist-complete-stage.ts";
 
 const FUNCTION_NAME = "send-homeowner-next-steps";
 const BATCH_LIMIT = 200;
@@ -417,6 +427,47 @@ async function sendWelcomeMailgunEmail(
   }
 }
 
+// gh-1570 Part 2: sends the `checklist_complete_not_submitted` stage's one
+// email. Same Mailgun call shape as sendMailgunEmail above (parses
+// `data.id`, same List-Unsubscribe headers pointed at the same signed
+// opt-out link — this stage is part of the same D-320-governed series), one
+// fewer link than the '2h'/'48h' template because there is nothing left to
+// upload or choose at this stage — the CTA is "go back and click Submit for
+// Bids".
+async function sendChecklistCompleteMailgunEmail(
+  apiKey: string,
+  to: string,
+  homeownerName: string,
+  dashboardUrl: string,
+  optOutUrl: string,
+): Promise<{ ok: boolean; mailgunId?: string; error?: string }> {
+  const { subject, textBody, htmlBody } = buildChecklistCompleteEmailContent(homeownerName, dashboardUrl, optOutUrl);
+  const formData = new URLSearchParams();
+  formData.append("from", "Otter Quotes <notifications@mail.otterquote.com>");
+  formData.append("to", to);
+  formData.append("subject", subject);
+  formData.append("text", textBody);
+  formData.append("html", htmlBody);
+  formData.append("h:List-Unsubscribe", `<${optOutUrl}>`);
+  formData.append("h:List-Unsubscribe-Post", "List-Unsubscribe=One-Click");
+
+  try {
+    const res = await fetch("https://api.mailgun.net/v3/mail.otterquote.com/messages", {
+      method: "POST",
+      headers: { Authorization: `Basic ${btoa(`api:${apiKey}`)}` },
+      body: formData,
+    });
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "(unreadable)");
+      return { ok: false, error: `Mailgun ${res.status}: ${errText}` };
+    }
+    const data = await res.json().catch(() => ({}));
+    return { ok: true, mailgunId: (data as { id?: string })?.id };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}
+
 // ─── Main handler ───────────────────────────────────────────────────────────
 
 serve(async (req: Request) => {
@@ -529,6 +580,25 @@ serve(async (req: Request) => {
   const now = Date.now();
   const twoHoursAgoIso = new Date(now - TWO_HOURS_MS).toISOString();
 
+  // gh-1933 review fix (D1)'s stalledForDigest array, declared HERE (rather
+  // than just above the main claims loop, where it lived before gh-1570 Part
+  // 2) so both the checklist-complete-stage block below and the "no main
+  // candidates at all" early return further down can push into / read the
+  // same array. See ./admin-digest-executor.ts for ScreenedCandidate.
+  const stalledForDigest: ScreenedCandidate[] = [];
+  let checklistCompleteSent = 0;
+  let checklistCompleteFailed = 0;
+  const checklistCompleteResults: { claim_id: string; sent: boolean; skipped_reason?: string }[] = [];
+  const checklistCompleteWouldSend: {
+    claim_id: string;
+    stage: string;
+    subject: string;
+    text_first_line: string;
+    has_optout_link_text: boolean;
+    has_optout_link_html: boolean;
+    recipient_present: boolean;
+  }[] = [];
+
   // gh-1933 review fix (D1) — the digest's injected dependencies, wired here
   // exactly once and passed into runAdminDigest at every call site below
   // (the "no candidates found at all" early return, and the end-of-handler
@@ -638,6 +708,147 @@ serve(async (req: Request) => {
     }
   }
 
+  // ── gh-1570 Part 2 (issue #1570, comment 5764786813) — the
+  // `checklist_complete_not_submitted` stage ───────────────────────────────
+  // Runs on every real cron tick regardless of whether the main '2h'/'48h'
+  // candidate scan below finds anything: a claim with its checklist complete
+  // has has_measurements=true (or an insurance estimate on file), so it is by
+  // construction EXCLUDED from that scan's has_measurements=false predicate.
+  // Same placement reasoning as the welcome-hook block above. See
+  // ./checklist-complete-stage.ts for the pure selection/delivery logic this
+  // wires together; that file, not this block, is where the eligibility and
+  // idempotence properties are tested.
+  {
+    const { data: ccClaims, error: ccClaimsErr } = await supabase
+      .from("claims")
+      .select("id, user_id, status, ready_for_bids, created_at")
+      .eq("is_test", scanIsTest)
+      .eq("status", NUDGE_ELIGIBLE_STATUS)
+      .limit(BATCH_LIMIT);
+
+    if (ccClaimsErr) {
+      console.error(`[${FUNCTION_NAME}] checklist-complete-stage candidate scan failed:`, ccClaimsErr.message);
+    } else if (ccClaims && ccClaims.length > 0) {
+      const ccClaimRows = ccClaims as {
+        id: string; user_id: string; status: string; ready_for_bids: boolean | null; created_at: string;
+      }[];
+      const ccUserIds = [...new Set(ccClaimRows.map((c) => c.user_id))];
+      const ccClaimIds = ccClaimRows.map((c) => c.id);
+
+      const { data: ccActivity, error: ccActivityErr } = await supabase
+        .from("activity_log")
+        .select("event_type, metadata, created_at")
+        .in("user_id", ccUserIds)
+        .in("event_type", [CHECKLIST_COMPLETE_EVENT_TYPE, CHECKLIST_COMPLETE_NUDGE_EVENT_TYPE]);
+
+      // gh-1786 / D-320: same dedicated, bounded opt-out read the main scan
+      // uses below — not reduced from a generic activity_log read (see
+      // fetchOptedOutClaimIds's own header for why).
+      const { optedOut: ccOptedOut, error: ccOptOutErr } = await fetchOptedOutClaimIds(
+        supabase,
+        ccUserIds,
+        ccClaimIds,
+      );
+
+      if (ccActivityErr) {
+        console.error(`[${FUNCTION_NAME}] checklist-complete-stage activity_log read failed:`, ccActivityErr.message);
+      } else if (ccOptOutErr) {
+        console.error(`[${FUNCTION_NAME}] checklist-complete-stage opt-out read failed:`, ccOptOutErr.message);
+      } else {
+        const ccReduced = reduceChecklistCompleteActivity((ccActivity || []) as ChecklistCompleteRow[]);
+
+        for (const c of ccClaimRows) {
+          const decision = screenChecklistCompleteClaim(
+            { id: c.id, status: c.status, ready_for_bids: c.ready_for_bids },
+            { optedOutClaimIds: ccOptedOut, reduced: ccReduced, now },
+          );
+          if (!decision.stage) {
+            checklistCompleteResults.push({ claim_id: c.id, sent: false, skipped_reason: decision.skipped_reason });
+            continue;
+          }
+
+          let ccHomeownerEmail: string | null = null;
+          let ccHomeownerName = "there";
+          const { data: ccProfile } = await supabase
+            .from("profiles")
+            .select("email, full_name")
+            .eq("id", c.user_id)
+            .maybeSingle();
+          if (ccProfile?.email) {
+            ccHomeownerEmail = ccProfile.email;
+            ccHomeownerName = ccProfile.full_name || "there";
+          } else {
+            const { data: ccAuthUser } = await supabase.auth.admin.getUserById(c.user_id);
+            ccHomeownerEmail = ccAuthUser?.user?.email || null;
+            ccHomeownerName = ccAuthUser?.user?.user_metadata?.full_name || "there";
+          }
+
+          if (!ccHomeownerEmail) {
+            checklistCompleteResults.push({ claim_id: c.id, sent: false, skipped_reason: "no_email" });
+            continue;
+          }
+
+          // gh-1570 Part 2: included in the admin digest regardless of
+          // activity, per Ben's spec — pushed unconditionally, same as the
+          // main loop pushes every screened '2h'/'48h' claim below.
+          stalledForDigest.push({
+            claimId: c.id,
+            userId: c.user_id,
+            email: ccHomeownerEmail,
+            createdAtIso: c.created_at,
+            stage: CHECKLIST_COMPLETE_STAGE,
+          });
+
+          const dashboardUrl = `${siteUrl}/dashboard.html`;
+          const ccOptOutUrl = buildOptOutUrl(
+            functionsBaseUrl,
+            await signOptOutToken(c.id, optOutSecret as string),
+          );
+
+          const ccOutcome = await deliverChecklistCompleteStage(
+            {
+              dryRun,
+              mailgunConfigured: Boolean(mailgunApiKey),
+              buildEmail: buildChecklistCompleteEmailContent,
+              insertActivityLog: async (row) => {
+                const { error } = await supabase.from("activity_log").insert(row);
+                return { error: error ?? null };
+              },
+              sendEmail: (to, name, dUrl, oUrl) =>
+                sendChecklistCompleteMailgunEmail(mailgunApiKey as string, to, name, dUrl, oUrl),
+              insertNotification: async (row) => {
+                const { error } = await supabase.from("notifications").insert(row);
+                return { error: error?.message ?? null };
+              },
+              log: (level, message) => console[level](`[${FUNCTION_NAME}] ${message}`),
+            },
+            {
+              claimId: c.id,
+              userId: c.user_id,
+              homeownerEmail: ccHomeownerEmail,
+              homeownerName: ccHomeownerName,
+              dashboardUrl,
+              optOutUrl: ccOptOutUrl,
+            },
+          );
+
+          if (ccOutcome.kind === "previewed") {
+            checklistCompleteWouldSend.push(ccOutcome.preview);
+            checklistCompleteResults.push({ claim_id: c.id, sent: false });
+          } else if (ccOutcome.kind === "sent") {
+            checklistCompleteSent++;
+            checklistCompleteResults.push({ claim_id: c.id, sent: true });
+          } else if (ccOutcome.kind === "already_sent") {
+            checklistCompleteResults.push({ claim_id: c.id, sent: false, skipped_reason: "already_sent" });
+          } else {
+            checklistCompleteFailed++;
+            checklistCompleteResults.push({ claim_id: c.id, sent: false, skipped_reason: ccOutcome.error });
+          }
+        }
+      }
+    }
+  }
+
   // ── Candidate scan: is_test=false, status='documents_needed' (and never
   // 'draft' — redundant with the equality but stated explicitly per CTO RUN
   // 22 defect 1), ready_for_bids=false, has_measurements=false, created at
@@ -665,15 +876,16 @@ serve(async (req: Request) => {
 
   if (!claims || claims.length === 0) {
     console.log(`[${FUNCTION_NAME}] Batch: no candidate claims found (is_test=${scanIsTest})`);
-    // gh-1933: no claims matched at all, so the digest candidate set is
-    // trivially empty too — still routed through runAdminDigest (a no-op
-    // I/O-wise for zero candidates, see its NEGATIVE CONTROLs) rather than
-    // hand-special-cased, so this response's digest fields never diverge in
-    // shape from the main path below.
+    // gh-1933: no MAIN ('2h'/'48h') claims matched, but gh-1570 Part 2's
+    // checklist-complete-stage block above may still have found candidates
+    // (that stage's own claims are excluded from this scan by construction —
+    // see that block's header comment) — `stalledForDigest` and
+    // `checklistCompleteResults` are populated independently of `claims`, so
+    // they are threaded through here rather than hand-special-cased to empty.
     const emptyDigestOutcome = await runAdminDigest(adminDigestDeps, {
       dryRun,
       previewSend: adminDigestPreview,
-      candidates: [],
+      candidates: stalledForDigest,
       siteUrl,
     });
     return jsonResponse(
@@ -684,10 +896,13 @@ serve(async (req: Request) => {
         welcome_enabled: welcomeEnabled,
         welcome_sent: welcomeSent,
         welcome_failed: welcomeFailed,
-        ...(dryRun ? { dry_run: true, would_send: [] } : {}),
+        checklist_complete_sent: checklistCompleteSent,
+        checklist_complete_failed: checklistCompleteFailed,
+        ...(dryRun ? { dry_run: true, would_send: [], checklist_complete_would_send: checklistCompleteWouldSend } : {}),
         ...buildDigestResponseFields(emptyDigestOutcome, dryRun, adminDigestPreview),
         ...(adminDigestPreviewIgnored ? { admin_digest_preview_ignored: true } : {}),
         results: [],
+        checklist_complete_results: checklistCompleteResults,
       },
       200,
       corsHeaders,
@@ -756,8 +971,9 @@ serve(async (req: Request) => {
   // its own). It now lives inside the tested executor —
   // selectDigestCandidates in ./admin-digest-executor.ts, called first
   // thing by runAdminDigest — so this array is deliberately the raw,
-  // unfiltered input to that function.
-  const stalledForDigest: ScreenedCandidate[] = [];
+  // unfiltered input to that function. (Declared earlier now, alongside
+  // gh-1570 Part 2's checklist-complete-stage block, so both feed the same
+  // array — see the comment there.)
 
   for (const claim of claims as ClaimRow[]) {
     // gh-1580: the whole screen — status, opt-out, hover_orders, real
@@ -931,6 +1147,11 @@ serve(async (req: Request) => {
       welcome_enabled: welcomeEnabled,
       welcome_sent: welcomeSent,
       welcome_failed: welcomeFailed,
+      // gh-1570 Part 2: checklist_complete_not_submitted stage stats for
+      // this tick — populated by the block that runs ahead of the main
+      // '2h'/'48h' scan (see its header comment).
+      checklist_complete_sent: checklistCompleteSent,
+      checklist_complete_failed: checklistCompleteFailed,
       ...buildDigestResponseFields(digestOutcome, dryRun, adminDigestPreview),
       ...(adminDigestPreviewIgnored ? { admin_digest_preview_ignored: true } : {}),
       // gh-1570: on a dry run `processed` is 0 by construction (nothing is
@@ -941,9 +1162,11 @@ serve(async (req: Request) => {
           previewed: wouldSend.length,
           // No recipient addresses: see PreviewRow in ./deliver-stage.ts.
           would_send: wouldSend,
+          checklist_complete_would_send: checklistCompleteWouldSend,
         }
         : {}),
       results,
+      checklist_complete_results: checklistCompleteResults,
     },
     200,
     corsHeaders,
