@@ -12,42 +12,50 @@
 --
 --     SELECT version, name FROM supabase_migrations.schema_migrations
 --      WHERE name ILIKE '%738%' OR name ILIKE '%health_check%';
---     -> 0 rows   (159 other migrations recorded, including several from the
---                  same 2026-08-12 batch, e.g. v108_pg_cron_vault_secrets)
+--     -> 0 rows   (183 rows recorded in production as of the PR #2227 review,
+--                  2026-09-26T21:32Z; none match this fix)
 --
 --     SELECT jobid, jobname, command FROM cron.job WHERE jobid = 7;
 --     -> command has no `timeout_milliseconds` argument, still the pg_net
---        5000ms implicit default, as of 2026-09-26 21:00:05Z.
+--        5000ms implicit default, confirmed again at review time.
 --
---   Effect (measured live, project yeszghaspzwwstvsrioa, response id 31501
---   among many others): platform-health-check-cron (jobid 7, */15 * * * *)
---   times out on ~75-85% of its ticks at the 5000ms pg_net default -- either
---   during DNS resolution or because the function's own multi-phase runtime
---   (calculated worst case ~33s: 6 parallel EF pings + 2 sequential public-
---   path probes with retry + a DB staleness check) exceeds 5s. pg_cron's
---   `cron.job_run_details` reports every one of these ticks as "succeeded"
---   (pg_net's http_post is fire-and-forget from cron's point of view), so
---   the health check -- the job whose entire purpose is to tell us the rest
---   of the platform is alive -- has been silently failing to report for
---   over a month while looking healthy in cron's own bookkeeping. Full
---   evidence trail: issue #2009 (comments 2026-09-17 through 2026-09-26).
+--   Effect (measured live, project yeszghaspzwwstvsrioa): platform-health-
+--   check-cron (jobid 7, */15 * * * *) timed out on 17 of 24 quarter-hour
+--   ticks (71%) in the retained pg_net window 15:30-21:15Z on 2026-09-26 --
+--   either during DNS resolution or because the function's own multi-phase
+--   runtime (measured p95 7.4s, max 10.0s over the trailing 24h; #780's
+--   calculated pathological worst case ~33s) exceeds pg_net's 5s client-side
+--   wait. pg_cron's `cron.job_run_details` reports every one of these ticks
+--   as "succeeded" (net.http_post is fire-and-forget from cron's point of
+--   view), so the health check has been silently failing to report for over
+--   a month while looking healthy in cron's own bookkeeping. Full evidence
+--   trail: issue #2009 (comments 2026-09-17 through 2026-09-26) and the PR
+--   #2227 review (comment 5850073954).
 --
 -- WHY A NEW MIGRATION, NOT JUST RE-MERGING #780:
 --   The original file is already on `main`, unmodified -- re-adding it
---   changes nothing. Whatever caused a merged migration to not be run
---   against prod (open question, flagged separately on #2009 for the
---   deploy-pipeline owner) will do the same to a re-push of the same file.
---   This migration reissues the identical, idempotent `cron.alter_job` call
---   under a new timestamp so it is picked up as a normal pending migration
---   on the next migration run, regardless of why the first one was missed.
+--   changes nothing. No workflow in .github/workflows/ runs `supabase db
+--   push` or otherwise applies migrations (confirmed by grep across all
+--   workflow files), so merging a file into supabase/migrations/ does NOT
+--   by itself change production -- that is exactly how #780 went stale for
+--   44 days. This migration reissues the identical, idempotent
+--   `cron.alter_job` call under a new timestamp; per supabase/migrations/
+--   README.md, a file in this directory represents SQL that has already
+--   been applied, and its filename is renamed to the version production
+--   records for it once that happens. The CTO session applies this exact
+--   statement to production out-of-band (Supabase `apply_migration`) and
+--   re-reads `cron.job` to confirm `timeout_milliseconds := 35000` before
+--   this file is renamed and the PR is merged.
 --
 -- FIX: identical to 20260812200000_gh738_..., restated here --
 --   platform-health-check-cron gets timeout_milliseconds := 35000 (comfortably
---   above the ~33s worst case, trivial next to the job's 15-minute cadence).
+--   above the measured 24h max of 10.0s and #780's ~33s pathological worst
+--   case, trivial next to the job's 15-minute cadence).
 --   URL, headers and body are unchanged; no data is read, written or deleted.
 --
--- Reversible: re-run cron.alter_job for the same jobid with a command that
---   omits timeout_milliseconds, restoring the implicit 5000ms default.
+-- Reversible via supabase/migrations_rollbacks/20260926210005_gh2009_reapply_
+--   platform_health_check_pg_net_timeout_rollback.sql, which restores the
+--   command text to its current (no-timeout) live form.
 -- ============================================================================
 
 SELECT cron.alter_job(
