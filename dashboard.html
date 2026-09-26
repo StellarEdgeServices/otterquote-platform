@@ -1794,47 +1794,16 @@
           }
 
           if (!currentClaim) {
-            // Create new claim if doesn't exist
-            console.log('[Dashboard] No claim found, creating new draft...');
-
-            // D-178 / BUG-5 fix: Do NOT set property_state on auto-created draft claims.
-            // property_state is populated during the intake flow when the user explicitly enters
-            // their property address. Pre-seeding it from signup localStorage caused the state
-            // gate to fire on every non-IN user's first dashboard visit — before intake.
-            // gh-397/#689: stamp is_test on the auto-create-draft path — a
-            // third independent claim-creation site PR #714 didn't cover.
-            const { data: newClaim, error: createError } = await sb
-              .from('claims')
-              .insert({
-                user_id: currentUser.id,
-                status: 'draft',
-                damage_type: 'roof',
-                is_test: Auth.isTestEmail(currentUser.email),
-              })
-              .select()
-              .single();
-
-            if (createError) {
-              console.error('[Dashboard] Error creating claim:', createError);
-            }
-
-            if (!createError && newClaim) {
-              // gh-1984: GA4 key event — a claims row was created here (draft
-              // auto-create for a signed-in homeowner with none). `source` lets
-              // reports separate it from the trade-selector path. No PII.
-              if (typeof gtag === 'function') {
-                try {
-                  gtag('event', 'claim_started', {
-                    job_type: 'draft',
-                    source: 'dashboard_autocreate',
-                    test_account: Auth.isTestEmail(currentUser.email),
-                  });
-                } catch (e) { /* non-fatal */ }
-              }
-              currentClaim = newClaim;
-              window.currentClaim = currentClaim;  // gh-1276 follow-up: Home Profile IIFE reads window.currentClaim
-              console.log('[Dashboard] Created new claim:', newClaim.id);
-            }
+            // gh-2004: do NOT auto-create a claim with no address here — it
+            // permanently blocks trade-selector's own address-collection step
+            // for this homeowner (its returning-user guard sends anyone with
+            // an existing claim straight back here). Mirrors the React fix
+            // (use-dashboard-data.ts's useLatestClaim): no claim → redirect to
+            // trade-selector's address step instead of inserting. No new
+            // customer-facing copy — pure routing change.
+            console.log('[Dashboard] No claim found, redirecting to trade-selector...');
+            window.location.href = 'https://app.otterquote.com/trade-selector';
+            return;
           }
 
           // If we STILL don't have a claim, create a local default so the UI renders
