@@ -1033,6 +1033,119 @@ def main():
         )
 
         print()
+        print("gh-2020 REVIEW: FAIL 5850179456 item 1 (P1/P1b/P2/P2b): "
+              "_js_reveals_element ran on RAW <script> text, not "
+              "comment-stripped text -- the same comment-blindness class "
+              "the original refuter bypasses 1/1b/2 closed for the "
+              "js/router-discovery.js structural scan and check_d266_"
+              "disclaimer's own HTML-comment strip, just not yet applied "
+              "to this newer reveal-detection code path. A `//`-commented "
+              "or `/* */`-commented reveal line, or an entire batch-reveal "
+              "forEach loop commented out (block or line-by-line), must "
+              "still read as ABSENT, not present.")
+        # P1: the direct-chain reveal line // commented out.
+        html_p1 = (
+            f'<p id="referralFeeDisclaimer" style="display:none;">{D266}</p>\n'
+            "<script>\n"
+            "  var el = document.getElementById('referralFeeDisclaimer');\n"
+            "  // if (el) { el.style.display = ''; }\n"
+            "</script>\n"
+        )
+        check_false(
+            "P1: //-commented reveal line does not satisfy check_d266_disclaimer",
+            mod.check_d266_disclaimer(html_p1),
+        )
+        # P1b: the same line wrapped in a /* */ block comment.
+        html_p1b = (
+            f'<p id="referralFeeDisclaimer" style="display:none;">{D266}</p>\n'
+            "<script>\n"
+            "  var el = document.getElementById('referralFeeDisclaimer');\n"
+            "  /* if (el) { el.style.display = ''; } */\n"
+            "</script>\n"
+        )
+        check_false(
+            "P1b: /* */-commented reveal line does not satisfy check_d266_disclaimer",
+            mod.check_d266_disclaimer(html_p1b),
+        )
+        # P2: the whole batch-reveal forEach loop block-commented.
+        html_p2 = (
+            f'<p id="referralFeeDisclaimer" style="display:none;">{D266}</p>\n'
+            "<script>\n"
+            "  var feeIds = ['feeSubtitleReferClient', 'referralFeeDisclaimer'];\n"
+            "  /*\n"
+            "  feeIds.forEach(function (id) {\n"
+            "    var el = document.getElementById(id);\n"
+            "    if (el) el.style.display = '';\n"
+            "  });\n"
+            "  */\n"
+            "</script>\n"
+        )
+        check_false(
+            "P2: block-commented batch-reveal loop does not satisfy check_d266_disclaimer",
+            mod.check_d266_disclaimer(html_p2),
+        )
+        # P2b: the same loop, every line // commented instead.
+        html_p2b = (
+            f'<p id="referralFeeDisclaimer" style="display:none;">{D266}</p>\n'
+            "<script>\n"
+            "  var feeIds = ['feeSubtitleReferClient', 'referralFeeDisclaimer'];\n"
+            "  // feeIds.forEach(function (id) {\n"
+            "  //   var el = document.getElementById(id);\n"
+            "  //   if (el) el.style.display = '';\n"
+            "  // });\n"
+            "</script>\n"
+        )
+        check_false(
+            "P2b: line-commented batch-reveal loop does not satisfy check_d266_disclaimer",
+            mod.check_d266_disclaimer(html_p2b),
+        )
+        # Sanity: the HI-0c/E1/E1b/E6 controls above must all still hold
+        # after comment-stripping is applied to the reveal-detection path.
+        check_true(
+            "sanity: HI-0c direct reveal (uncommented) still satisfies check_d266_disclaimer after comment-strip fix",
+            mod.check_d266_disclaimer(html_conditionally_hidden),
+        )
+        check_true(
+            "sanity: HI-0c batch reveal (uncommented) still satisfies check_d266_disclaimer after comment-strip fix",
+            mod.check_d266_disclaimer(html_conditionally_hidden_batch),
+        )
+
+        print()
+        print("gh-2020 REVIEW: FAIL 5850179456 item 2 (C1/C2): the fee "
+              "census's 'per (completed) job' shape missed the "
+              "\"bonus\"-framed idiom (C1, no 'per'/'job' at all) and a "
+              "different completion noun (C2, 'per closed job' vs. "
+              "'per completed job')")
+        c1_root = pathlib.Path(tempfile.mkdtemp(prefix="partnerparity-test-c12-"))
+        try:
+            (c1_root / "lenders.html").write_text(
+                "<html><body><p>Get a $250 bonus for every homeowner you "
+                "send us.</p></body></html>",
+                encoding="utf-8",
+            )
+            pages = mod.compute_d266_pages(c1_root)
+            check_true(
+                "C1: 'bonus ... send us' framing is swept into the D-266 census",
+                "lenders" in pages,
+            )
+        finally:
+            shutil.rmtree(c1_root, ignore_errors=True)
+
+        c2_root = pathlib.Path(tempfile.mkdtemp(prefix="partnerparity-test-c12-"))
+        try:
+            (c2_root / "lenders.html").write_text(
+                "<html><body><p>Earn $250 per closed job.</p></body></html>",
+                encoding="utf-8",
+            )
+            pages = mod.compute_d266_pages(c2_root)
+            check_true(
+                "C2: 'per closed job' is swept into the D-266 census",
+                "lenders" in pages,
+            )
+        finally:
+            shutil.rmtree(c2_root, ignore_errors=True)
+
+        print()
         print("gh-2020 refuter N20/N21/N22: compute_d266_pages() census, "
               "isolated fixture tree with module.REPO_ROOT NOT touched "
               "(root is passed explicitly)")

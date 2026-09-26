@@ -219,9 +219,18 @@ AMOUNT_RE = re.compile(
     r"\s+dollars\b",
     re.IGNORECASE,
 )
+# gh-2020 REVIEW: FAIL 5850179456 item 2 (C1/C2): "per (completed) job" was
+# too narrow a shape for the "you get paid when work finishes" idiom -- C1
+# ("a $250 bonus for every homeowner you send us") uses "bonus" with no
+# "per"/"job" at all, and C2 ("$250 per closed job") uses a noun the old
+# alternation didn't cover ("closed job" vs. "completed job"). Widened per
+# the review's own vetted (zero-new-page-on-today's-tree) replacement:
+# "per <word> job/project/install", "bonus(es)", and "send/sent/refer us".
 FEE_WORD_RE = re.compile(
     r"\b(?:refer(?:ral|red|rer|s)?|recruit(?:s|ed|ment)?|commission)\b|"
-    r"\bper\s+(?:completed\s+)?job\b",
+    r"\bper\s+(?:\w+\s+)?(?:job|project|install)\b|"
+    r"\bbonus(?:es)?\b|"
+    r"\b(?:send|sent|refer)\s+us\b",
     re.IGNORECASE,
 )
 _FEE_PROXIMITY_CHARS = 300
@@ -701,13 +710,30 @@ def _batch_reveal(block: str, elem_id: str) -> bool:
     return False
 
 
+# gh-2020 REVIEW: FAIL 5850179456 item 1 (P1/P1b/P2/P2b): this is the SAME
+# comment-blindness class as the original refuter bypasses 1/1/2 (comment
+# 5738197105) that _strip_js_comments() was written to close for the
+# js/router-discovery.js structural scan (see check_js_d266_surfaces, which
+# strips before doing ANY track/array/renderer analysis) and that
+# check_d266_disclaimer() closes on the HTML side via _strip_html_comments.
+# The reveal-detection path added this round (_direct_reveal/_batch_reveal)
+# was a NEW piece of JS-structural analysis and simply never got the same
+# treatment: it ran on the raw <script> block text, so a reveal line
+# commented out with `//` (P1) or wrapped in `/* */` (P1b), or an entire
+# batch-reveal forEach loop block-commented (P2) or line-commented on every
+# line (P2b), still "counted" as a live reveal. Every <script> block is now
+# comment-stripped ONCE here, before either reveal-detection path runs,
+# closing the whole class rather than the four listed instances: any future
+# reveal shape (chained, var-bound, batch, or one not yet seen) inherits the
+# same comment-blindness protection for free, because the stripping happens
+# before dispatch, not inside each detector.
 def _js_reveals_element(full_text: str, open_tag: str) -> bool:
     id_match = _ELEMENT_ID_RE.search(open_tag)
     if not id_match:
         return False
     elem_id = id_match.group(1) or id_match.group(2)
     for sm in _SCRIPT_CONTENT_RE.finditer(full_text):
-        block = sm.group(1)
+        block = _strip_js_comments(sm.group(1))
         if _direct_reveal(block, elem_id) or _batch_reveal(block, elem_id):
             return True
     return False
