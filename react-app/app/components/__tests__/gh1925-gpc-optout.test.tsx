@@ -47,6 +47,7 @@ function spyOnCookieWrites() {
 const wroteOptOutCookie = () => cookieWrites.some((w) => w.startsWith('oq_ad_optout=1'));
 const srcLoaded = (c: HTMLElement, substr: string) =>
   Array.from(c.querySelectorAll('[data-testid="tag-src"]')).some((el) => String(el.getAttribute('data-src')).indexOf(substr) !== -1);
+const initRendered = (c: HTMLElement, id: string) => c.querySelector(`[data-testid="tag-init"][data-id="${id}"]`) !== null;
 
 beforeEach(() => {
   spyOnCookieWrites();
@@ -81,6 +82,25 @@ describe('GA4Gate: the advertising-sharing opt-out (gh-1925)', () => {
   it('GPC absent, no cookie: behaviour is unchanged (GA4 loads)', async () => {
     const { container } = render(<GA4Gate />);
     await waitFor(() => expect(srcLoaded(container, 'googletagmanager.com/gtag')).toBe(true));
+  });
+
+  // REVIEW FAIL 5850307606 on PR #2234 round 1: gating the component's own `allowed` render guard on the opt-out
+  // ALSO hid Clarity (the `if (!allowed) return null;` above the whole return), contradicting this file's own
+  // comment and PR body ("Clarity is NOT gated by this flag") and the static stack's actual behaviour. `ga4Allowed`
+  // must be a flag separate from `allowed`/`clarityAllowed` so an opted-out visitor still gets Clarity (mockPath
+  // '/get-started' is on CLARITY_ALLOWED_PATHS) while never getting GA4.
+  it('GPC on: the GA4 library does NOT load, but Clarity STILL loads (Clarity is a separate vendor, not gated by #1925)', async () => {
+    vi.stubGlobal('navigator', { globalPrivacyControl: true });
+    const { container } = render(<GA4Gate />);
+    await waitFor(() => expect(initRendered(container, 'clarity-init')).toBe(true));
+    expect(srcLoaded(container, 'googletagmanager.com/gtag')).toBe(false);
+    expect(initRendered(container, 'ga4-init')).toBe(false);
+  });
+
+  it('GPC absent: both GA4 and Clarity load (CONTROL, both flags independently true)', async () => {
+    const { container } = render(<GA4Gate />);
+    await waitFor(() => expect(initRendered(container, 'ga4-init')).toBe(true));
+    expect(initRendered(container, 'clarity-init')).toBe(true);
   });
 });
 
