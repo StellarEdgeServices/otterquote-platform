@@ -118,6 +118,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import { supabase } from '@/lib/supabase';
+import { isInternalTraffic } from '@/lib/internal-traffic';
 import { readReferralIds, writeReferralIds } from '@/lib/cookie-storage';
 import { linkPendingLeadOnce } from '@/lib/lead-capture';
 import { readFirstTouch } from '@/lib/attribution';
@@ -946,12 +947,26 @@ export default function GetStartedPage() {
     //    may leave the email field blank, and the real address only arrives with
     //    the OAuth session.
     if (emailForLead) {
-      supabase.from('leads').insert({
+      // gh-2068 review fix (cto36 REVIEW: FAIL, comment 5779410643, B2):
+      // the X-OQ-Internal marker must reach leads_force_safe_insert_defaults()
+      // (BEFORE INSERT trigger on public.leads) WITHOUT going through
+      // `supabase`'s client-wide `global.headers` -- that would also attach
+      // it to every supabase.functions.invoke(...) this singleton makes,
+      // and Edge Function CORS allow-lists don't list x-oq-internal, so it
+      // would break payments/signing/admin for internal browsers (see
+      // react-app/app/lib/supabase.ts's comment). postgrest-js's
+      // per-request `.setHeader(name, value)` scopes the header to THIS
+      // insert only, leaving every other call this client makes untouched.
+      const leadInsert = supabase.from('leads').insert({
         name: `${firstName.trim()} ${lastName.trim()}`,
         email: emailForLead,
         source: referralSource || 'web',
         created_at: new Date().toISOString(),
-      }).then(({ error: leadErr }) => {
+      });
+      if (isInternalTraffic()) {
+        leadInsert.setHeader('x-oq-internal', '1');
+      }
+      leadInsert.then(({ error: leadErr }) => {
         if (leadErr) console.warn('[get-started] leads insert failed (non-fatal):', leadErr);
       });
     }
