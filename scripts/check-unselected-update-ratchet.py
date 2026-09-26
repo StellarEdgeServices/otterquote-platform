@@ -125,7 +125,17 @@ BASELINE: dict[str, int] = {
     "supabase/functions/create-hover-order/index.ts": 2,
     "supabase/functions/create-payment-intent/index.ts": 2,
     "supabase/functions/create-setup-intent/index.ts": 1,
-    "supabase/functions/docusign-webhook/index.ts": 13,
+    # gh-2105 batch 3: fixed all 13 real call sites (see the batch-3 PR body
+    # for the full grep enumeration + per-site a/b/c decisions). Lowered
+    # 13->0, following batches 1-2's own precedent of lowering a file's
+    # baseline in the same PR that fixes it (e.g. stripe-webhook 6->0,
+    # verify-payment-method 1->0 in PR #2210). NOTE: the pre-fix live count on
+    # `main` was actually 14, not 13 -- a comment at the old line 1770
+    # ("the .update() call in error handling...") contained the literal
+    # scanner-trigger substring and was a false positive the original
+    # baseline capture appears to have missed or hand-adjusted for; that
+    # comment is reworded in this same PR to stop tripping the scanner.
+    "supabase/functions/docusign-webhook/index.ts": 0,
     "supabase/functions/get-hover-pdf/index.ts": 1,
     "supabase/functions/get-hover-siding-data/index.ts": 1,
     "supabase/functions/hover-webhook/index.ts": 4,
@@ -141,7 +151,11 @@ BASELINE: dict[str, int] = {
     "supabase/functions/platform-health-check/index.ts": 2,
     "supabase/functions/process-bid-expirations/index.ts": 4,
     "supabase/functions/process-coi-reminders/index.ts": 5,
-    "supabase/functions/process-dunning/index.ts": 15,
+    # gh-2105 batch 3: fixed all 15 real call sites (see the batch-3 PR body
+    # for the full grep enumeration + per-site a/b/c decisions). Lowered
+    # 15->0, following batches 1-2's precedent (see the docusign-webhook
+    # entry above for the same note).
+    "supabase/functions/process-dunning/index.ts": 0,
     "supabase/functions/process-hover-rebate/index.ts": 1,
     "supabase/functions/process-payout-reminders/index.ts": 2,
     "supabase/functions/record-attestation/index.ts": 1,
