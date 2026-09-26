@@ -294,7 +294,7 @@
    * (or `-user`) key must never read/write/clear the shared session
    * cookies, so a rejected updateUser()'s PKCE cleanup can't silently sign
    * a user out -- already shipped on `main` at commit
-   * 3ced0572538166a19b5184394502f60701c174aa ("gh-2154 P-1: review round 5
+   * 3ced057 ("gh-2154 P-1: review round 5
    * — invert cookie-storage guard to a denylist of auxiliary keys"), via
    * isAuxiliaryStorageKey() above. This PR does NOT add that; it is a pure
    * structural refactor.

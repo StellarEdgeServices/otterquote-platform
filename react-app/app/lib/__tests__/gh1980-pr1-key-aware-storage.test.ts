@@ -13,7 +13,7 @@
  * read, write, or clear the shared session cookies, so a rejected
  * updateUser()'s PKCE cleanup can't silently sign a user out -- already
  * shipped on `main` via `isAuxiliaryStorageKey()` (gh-2154 P-1 review round
- * 5, commit 3ced0572538166a19b5184394502f60701c174aa). This file's job is
+ * 5, commit 3ced057). This file's job is
  * now to prove THAT invariant holds for any factory-built instance,
  * regardless of which `storageKey` it was built for -- the discriminating
  * assertions below fail against a mutant where `isAuxiliaryStorageKey`

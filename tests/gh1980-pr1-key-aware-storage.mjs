@@ -13,7 +13,7 @@
  * `-code-verifier` (or `-user`) key must never read, write, or clear the
  * shared session cookies -- already shipped on `main` via
  * isAuxiliaryStorageKey() (gh-2154 P-1 review round 5, commit
- * 3ced0572538166a19b5184394502f60701c174aa). Scenario (6) below is the
+ * 3ced057). Scenario (6) below is the
  * discriminating test: it fails against a mutant where
  * isAuxiliaryStorageKey always returns false (verified manually; see the
  * PR comment for that run), for BOTH the canonical key and the
