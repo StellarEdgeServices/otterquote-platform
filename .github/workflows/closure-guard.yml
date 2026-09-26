@@ -147,7 +147,7 @@ jobs:
 
     steps:
       - name: Grade the closure and reopen if the closing comment is missing
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           # 180s: observed-working.py GRACE_S. A comment posted within this
           # window of closed_at still counts as the closing comment -- and the

@@ -33,11 +33,12 @@ import {
   REFUSAL_CODE,
 } from "./live-charge-guard.ts";
 import { PlatformSettingMissingError, resolveRequiredPriceCents } from "./price-setting.ts";
-import {
-  evaluateMeasurementUpgradeGate,
-  UPGRADE_CHARGE_DESCRIPTION,
-  VENDOR_CREDIT_EXPECTED_CENTS,
-} from "./measurement-upgrade-gate.ts";
+import { attachVariantMetadata } from "./variant-metadata.ts";
+import { buildStandardCreateForm, standardIdempotencyKey } from "./standard-create-form.ts";
+import { evaluateMeasurementUpgradeGate } from "./measurement-upgrade-gate.ts";
+import { detectGpcSignal, type OptOutStore, recordGpcOptOut } from "./ad-sharing-opt-out.ts";
+import { AMBIGUOUS_OUTCOME_CODE, fetchStripeWithTimeout } from "./stripe-fetch.ts";
+import { AmbiguousChargeOutcomeError, runOffSessionPlatformFeeCharge } from "./off-session-charge.ts";
 
 const FUNCTION_NAME = "create-payment-intent";
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
@@ -109,7 +110,27 @@ serve(async (req) => {
   }
 
   try {
-    const { amount: clientAmount, currency, description, metadata, contractor_id, off_session } = await req.json();
+    const requestBody = await req.json();
+    const { amount: clientAmount, currency, description, metadata, contractor_id, off_session } = requestBody;
+
+    // gh-2107 / D-330 half 2: honour a Global Privacy Control advertising-sharing opt-out (Sec-GPC: 1 on the request, or
+    // gpc: true from the page's navigator.globalPrivacyControl) by flagging the caller's profile BEFORE any Purchase exists;
+    // the Stripe webhook then skips the Meta CAPI send. Sets the flag only, never clears it; never blocks or fails the payment.
+    const gpcStore: OptOutStore = {
+      markOptedOut: async (userId, source, atIso) => {
+        const { error } = await supabase
+          .from("profiles")
+          .update({ ad_sharing_opt_out: true, ad_sharing_opt_out_at: atIso, ad_sharing_opt_out_source: source })
+          .eq("id", userId)
+          .or("ad_sharing_opt_out.is.null,ad_sharing_opt_out.eq.false");
+        return error ? { code: (error as { code?: string }).code } : null;
+      },
+    };
+    await recordGpcOptOut({ callerId, piType: metadata?.type, headers: req.headers, body: requestBody, store: gpcStore });
+    // gh-2107 (REVIEW: FAIL 5806828503 F2 on #2134): the signal is ALSO carried on the PaymentIntent (below, via the non-keyed
+    // post-create update), derived from the REQUEST ALONE and not from whether the profile write succeeded, so a failed write
+    // does not fail toward sharing: the Stripe webhook skips the CAPI Purchase on either the profile flag or this metadata.
+    const gpcSignalPresent = detectGpcSignal(req.headers, requestBody) !== null;
 
     // D-181: server-side price enforcement for hover_measurement.
     let amount: number = clientAmount;
@@ -548,68 +569,53 @@ serve(async (req) => {
         throw new Error("Contractor does not have any payment methods on file. Charge cannot proceed.");
       }
 
-      let lastError = "";
-      let usedMethod: PaymentMethodAttempt | null = null;
-      let chargedAmount = amount;
-      let cardFeeCents = 0;
-      for (const method of methodsToTry) {
-        let thisChargeAmount = amount;
-        let thisCardFee = 0;
-        if (method.payment_type === "card") {
-          thisChargeAmount = calculateCardChargeAmount(amount);
-          thisCardFee = thisChargeAmount - amount;
+      // gh-1886 B1/B2 (independent review on #2198, 2026-09-25): the per-method attempt loop -- including
+      // the timeout-retry-then-stop logic that prevents a double charge across two payment methods -- now
+      // lives in off-session-charge.ts, where it can be driven with a fake Stripe in a test. See that
+      // module's header for why a create timeout must not fall through to a different payment method.
+      let offSessionResult;
+      try {
+        offSessionResult = await runOffSessionPlatformFeeCharge({
+          fetchFn: fetch,
+          apiBase: STRIPE_API_BASE,
+          basicAuth,
+          claimId: metadata.claim_id,
+          contractorId: contractor_id,
+          stripeCustomerId: contractorData.stripe_customer_id,
+          currency,
+          description,
+          amount,
+          methodsToTry,
+          calculateCardChargeAmount,
+        });
+      } catch (e) {
+        // gh-1886 re-review #2 (B1-c, independent review on #2198, 2026-09-25T22:02:35Z): an ambiguous
+        // charge outcome must NEVER surface as this function's ordinary 500 -- the outer catch(error)
+        // below would return a generic `{error}` body indistinguishable from a genuine, non-money-path
+        // bug, and docusign-webhook's caller (the only caller of this branch) treats every non-422,
+        // non-200 response as a hard_failure that goes straight into the dunning path, which charges the
+        // SAME contractor again under a DIFFERENT Idempotency-Key
+        // (`dunning-<quote_id>-<payment_method>`, which never collides with
+        // `plat-fee-<claim>-<contractor>-<payment_method>`). Mirrors the existing #1467 guard-refusal 422
+        // shape exactly (distinct `code`, same envelope) so a caller that already special-cases that one
+        // 422 can add this one the same way.
+        if (e instanceof AmbiguousChargeOutcomeError) {
+          console.error(`[${FUNCTION_NAME}] ${e.message}`);
+          return new Response(
+            JSON.stringify({
+              error: e.message,
+              code: AMBIGUOUS_OUTCOME_CODE,
+              idempotency_key: e.idempotencyKey,
+              claim_id: metadata.claim_id,
+              contractor_id,
+            }),
+            { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
         }
-        const form = new URLSearchParams();
-        form.append("amount", String(thisChargeAmount));
-        form.append("currency", currency);
-        form.append("customer", contractorData.stripe_customer_id);
-        form.append("payment_method", method.stripe_payment_method_id);
-        form.append("off_session", "true");
-        form.append("confirm", "true");
-        form.append("description", description || "");
-        form.append("metadata[claim_id]", metadata.claim_id);
-        form.append("metadata[type]", metadata.type);
-        form.append("metadata[contractor_id]", contractor_id);
-        form.append("metadata[payment_type]", method.payment_type);
-        form.append("metadata[platform_fee_cents]", String(amount));
-        if (thisCardFee > 0) form.append("metadata[card_fee_cents]", String(thisCardFee));
-        form.append("payment_method_types[]", method.payment_type === "us_bank_account" ? "us_bank_account" : "card");
-        try {
-          const offSessionKey = `plat-fee-${metadata.claim_id}-${contractor_id}-${method.stripe_payment_method_id}`;
-          const r = await fetch(`${STRIPE_API_BASE}/payment_intents`, {
-            method: "POST",
-            headers: {
-              Authorization: `Basic ${basicAuth}`,
-              "Content-Type": "application/x-www-form-urlencoded",
-              "Idempotency-Key": offSessionKey,
-            },
-            body: form.toString(),
-          });
-          const rd = await r.json();
-          if (!r.ok) { lastError = rd?.error?.message || `HTTP ${r.status}`; continue; }
-          if (rd.status === "requires_action" || rd.status === "requires_payment_method") {
-            lastError = `Payment ${rd.status} for method ${method.stripe_payment_method_id}`;
-            try {
-              await fetch(`${STRIPE_API_BASE}/payment_intents/${rd.id}/cancel`, {
-                method: "POST",
-                headers: { Authorization: `Basic ${basicAuth}`, "Content-Type": "application/x-www-form-urlencoded" },
-              });
-            } catch {}
-            continue;
-          }
-          paymentIntentData = rd;
-          usedMethod = method;
-          chargedAmount = thisChargeAmount;
-          cardFeeCents = thisCardFee;
-          break;
-        } catch (e) {
-          lastError = e instanceof Error ? e.message : String(e);
-          continue;
-        }
+        throw e;
       }
-      if (!paymentIntentData) {
-        throw new Error(`All ${methodsToTry.length} payment methods failed. Last error: ${lastError}`);
-      }
+      const { paymentIntentData: offSessionPaymentIntent, usedMethod, cardFeeCents } = offSessionResult;
+      paymentIntentData = offSessionPaymentIntent;
       if (metadata.quote_id) {
         // gh-948: 'processing' (ACH in flight) is NOT success. Map it to the
         // existing 'pending' quotes.payment_status value (allowed by
@@ -624,38 +630,26 @@ serve(async (req) => {
             ? "pending"
             : "failed";
         const quoteUpdate: Record<string, any> = {
-          payment_method_type: usedMethod!.payment_type,
+          payment_method_type: usedMethod.payment_type,
           payment_status: dbPaymentStatus,
           payment_intent_id: paymentIntentData.id,
         };
-        if (usedMethod!.id) quoteUpdate.payment_method_id = usedMethod!.id;
+        if (usedMethod.id) quoteUpdate.payment_method_id = usedMethod.id;
         if (cardFeeCents > 0) quoteUpdate.card_fee_cents = cardFeeCents;
         await supabase.from("quotes").update(quoteUpdate).eq("id", metadata.quote_id);
       }
     } else {
       // ===== Standard flow (hover_measurement, deductible_escrow, measurement_upgrade) =====
-      const form = new URLSearchParams();
-      form.append("amount", String(amount));
-      form.append("currency", currency);
-      // measurement_upgrade: description is server-enforced, never the
-      // client-sent value — D-312/#1414 scrubbed vendor names from every
-      // customer-facing string and this must never regress that.
-      const chargeDescription = metadata.type === "measurement_upgrade"
-        ? UPGRADE_CHARGE_DESCRIPTION
-        : (description || "");
-      form.append("description", chargeDescription);
-      form.append("metadata[claim_id]", metadata.claim_id);
-      form.append("metadata[type]", metadata.type);
-      if (metadata.type === "measurement_upgrade") {
-        form.append("metadata[contractor_id]", contractor_id);
-        // Bookkeeping only (Marty, #1411 cto-2026-09-02T13:45:25Z: "does not
-        // net it against the charge") — the contractor is still charged the
-        // full tier amount above.
-        form.append("metadata[vendor_credit_expected_cents]", String(VENDOR_CREDIT_EXPECTED_CENTS));
-      }
-      form.append("automatic_payment_methods[enabled]", "true");
-      const idempotencyKey = `${metadata.type}-${metadata.claim_id}`;
-      const r = await fetch(`${STRIPE_API_BASE}/payment_intents`, {
+      // The create body and its idempotency key are functions of the claim and the request type ONLY (see
+      // standard-create-form.ts): Stripe refuses a reused key with a different body, so nothing per-request may ever be in
+      // this create. The router variant is attached AFTER it, below.
+      const form = buildStandardCreateForm({ amount, currency, description, metadata, contractor_id });
+      const idempotencyKey = standardIdempotencyKey(metadata);
+      // gh-1886: bounded timeout. This call has no surrounding try/catch, so a timeout (like any
+      // other thrown error here) propagates to the handler's outer catch(error) below, which already
+      // maps it to the existing 500 JSON error-response path -- no new response shape, no change to
+      // the success path. The per-claim Idempotency-Key above is unchanged by this.
+      const r = await fetchStripeWithTimeout(fetch, `${STRIPE_API_BASE}/payment_intents`, {
         method: "POST",
         headers: {
           Authorization: `Basic ${basicAuth}`,
@@ -669,6 +663,23 @@ serve(async (req) => {
         throw new Error(`Stripe API error (HTTP ${r.status}): ${err}`);
       }
       paymentIntentData = await r.json();
+      if (metadata.type === "hover_measurement") {
+        // gh-2078c / D-330 (REVIEW: FAIL 5805531419, B1): the router variant is attached AFTER the create, in a separate
+        // best-effort update, NOT as a create parameter. The create above carries a per-claim Idempotency-Key, and Stripe
+        // refuses (HTTP 400) a reused key whose parameters differ, so a per-request value such as the browser's stored
+        // variant must never be part of it. The create form stays byte-identical to main. Awaited: the client confirms the
+        // card only after it has client_secret, so the metadata is in place before payment_intent.succeeded and the
+        // server-side Meta CAPI Purchase (PR #2107) reads it. Never fails the payment.
+        await attachVariantMetadata({
+          fetchFn: fetch,
+          apiBase: STRIPE_API_BASE,
+          basicAuth,
+          paymentIntentId: paymentIntentData.id,
+          status: paymentIntentData.status,
+          variant: metadata.variant,
+          optOut: gpcSignalPresent,
+        });
+      }
     }
 
     // gh-948: 'processing' (ACH in flight) must NOT be reported as `succeeded` —

@@ -8,6 +8,11 @@
     "created_at",
     "is_test"
   ],
+  "ad_sharing_suppressions": [
+    "email_sha256",
+    "source",
+    "created_at"
+  ],
   "adjuster_email_requests": [
     "id",
     "claim_id",
@@ -570,6 +575,20 @@
     "imported_at",
     "created_at"
   ],
+  "lead_consents": [
+    "id",
+    "lead_id",
+    "consent_key",
+    "consent_given",
+    "consent_text",
+    "page_url",
+    "user_agent",
+    "ip",
+    "payload",
+    "phone_as_typed",
+    "form_payload",
+    "created_at"
+  ],
   "leads": [
     "id",
     "email",
@@ -588,7 +607,11 @@
     "fbclid",
     "gclid",
     "converted_user_id",
-    "variant"
+    "variant",
+    "funding_type",
+    "property_address",
+    "fbc",
+    "fbp"
   ],
   "material_catalog": [
     "id",
@@ -730,7 +753,10 @@
     "referring_agent_email",
     "role",
     "sms_consent_ts",
-    "is_test"
+    "is_test",
+    "ad_sharing_opt_out",
+    "ad_sharing_opt_out_at",
+    "ad_sharing_opt_out_source"
   ],
   "quotes": [
     "id",
@@ -843,7 +869,11 @@
     "partner_agreement_version",
     "partner_agreement_accepted_at",
     "partner_agreement_attestation",
-    "needs_partner_reacceptance"
+    "needs_partner_reacceptance",
+    "fbclid",
+    "li_fat_id",
+    "funnel_id",
+    "app_first_signed_in_launch_at"
   ],
   "referral_network": [
     "id",

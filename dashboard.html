@@ -1728,9 +1728,10 @@
           console.log('[Dashboard] Claim query result:', { data: !!data, error: error?.message || null, errorCode: error?.code || null });
 
           if (error && error.code !== 'PGRST116') {
-            // PGRST116 = no rows found — that's OK, we'll create one
+            // Real error (not "no rows found") — do not redirect on this. Fall
+            // through to the local-default claim block below so the UI still
+            // renders, matching React's useLatestClaim (setError, no redirect).
             console.error('[Dashboard] Error loading claim:', error);
-            // Don't return — fall through to create a new claim
           }
 
           if (data) {
@@ -1793,53 +1794,26 @@
             }
           }
 
-          if (!currentClaim) {
-            // Create new claim if doesn't exist
-            console.log('[Dashboard] No claim found, creating new draft...');
-
-            // D-178 / BUG-5 fix: Do NOT set property_state on auto-created draft claims.
-            // property_state is populated during the intake flow when the user explicitly enters
-            // their property address. Pre-seeding it from signup localStorage caused the state
-            // gate to fire on every non-IN user's first dashboard visit — before intake.
-            // gh-397/#689: stamp is_test on the auto-create-draft path — a
-            // third independent claim-creation site PR #714 didn't cover.
-            const { data: newClaim, error: createError } = await sb
-              .from('claims')
-              .insert({
-                user_id: currentUser.id,
-                status: 'draft',
-                damage_type: 'roof',
-                is_test: Auth.isTestEmail(currentUser.email),
-              })
-              .select()
-              .single();
-
-            if (createError) {
-              console.error('[Dashboard] Error creating claim:', createError);
-            }
-
-            if (!createError && newClaim) {
-              // gh-1984: GA4 key event — a claims row was created here (draft
-              // auto-create for a signed-in homeowner with none). `source` lets
-              // reports separate it from the trade-selector path. No PII.
-              if (typeof gtag === 'function') {
-                try {
-                  gtag('event', 'claim_started', {
-                    job_type: 'draft',
-                    source: 'dashboard_autocreate',
-                    test_account: Auth.isTestEmail(currentUser.email),
-                  });
-                } catch (e) { /* non-fatal */ }
-              }
-              currentClaim = newClaim;
-              window.currentClaim = currentClaim;  // gh-1276 follow-up: Home Profile IIFE reads window.currentClaim
-              console.log('[Dashboard] Created new claim:', newClaim.id);
-            }
+          if (!currentClaim && (!error || error.code === 'PGRST116')) {
+            // gh-2004: do NOT auto-create a claim with no address here — it
+            // permanently blocks trade-selector's own address-collection step
+            // for this homeowner (its returning-user guard sends anyone with
+            // an existing claim straight back here). Mirrors the React fix
+            // (use-dashboard-data.ts's useLatestClaim): genuinely no claim (no
+            // error, or "no rows found") → redirect to trade-selector's address
+            // step instead of inserting. No new customer-facing copy — pure
+            // routing change.
+            console.log('[Dashboard] No claim found, redirecting to trade-selector...');
+            window.location.href = 'https://app.otterquote.com/trade-selector';
+            return;
           }
 
-          // If we STILL don't have a claim, create a local default so the UI renders
+          // If we STILL don't have a claim (a real, non-"no rows" lookup error),
+          // create a local default so the UI renders instead of redirecting —
+          // matches React's useLatestClaim, which shows an error state and does
+          // not redirect on a genuine fetch error.
           if (!currentClaim) {
-            console.warn('[Dashboard] Using local default claim — Supabase query/insert both failed');
+            console.warn('[Dashboard] Using local default claim — claim lookup failed:', error);
             currentClaim = {
               id: null,
               status: 'draft',
@@ -3133,18 +3107,22 @@
 
             // F-005 fix: trigger parse-loss-sheet for estimate uploads so
             // RCV/ACV are written back to claims.rcv_amount / claims.acv_amount
+            // gh-2070: fire-and-forget — mirrors PR #2080/#2208's fix.
+            // parse-loss-sheet makes a synchronous, non-streaming vision call
+            // (routinely 15-60s, bounded only by the ~150s Edge Function wall
+            // clock); an awaited invoke here could hang the upload UI
+            // indefinitely. A catch handles a rejection, not a latency, so
+            // this no longer awaits the call at all.
             if (type === 'estimate' && uploadedStoragePath) {
-              try {
-                await sb.functions.invoke('parse-loss-sheet', {
-                  body: {
-                    claim_id: currentClaim.id,
-                    storage_path: uploadedStoragePath,
-                  }
-                });
-              } catch (parseErr) {
+              void sb.functions.invoke('parse-loss-sheet', {
+                body: {
+                  claim_id: currentClaim.id,
+                  storage_path: uploadedStoragePath,
+                }
+              }).catch((parseErr) => {
                 // Non-fatal — parsing failure doesn't block the upload
                 console.warn('[uploadFile] parse-loss-sheet failed (non-fatal):', parseErr);
-              }
+              });
             }
           }
 

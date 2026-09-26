@@ -27,6 +27,23 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.join(__dirname, '..');
 
+// gh-2121 review S1 (PR #2181 comment 5833636471): reading VARIANT_KEY out
+// of each partner page's OWN source (as Check "key consistency" below used
+// to) checks a page against itself -- it cannot catch a page drifting out
+// of sync with start.html, which is the actual attribution-breaking bug
+// (negative control that caught it: reverting partner-re.html alone to
+// 'oq_variant_v3' while start.html stayed on a bumped key still printed
+// "All checks passed"). The one true source is start.html's own KEY
+// constant (same file gh-2033's test suite reads it from) -- both partner
+// pages must match THAT, not each other.
+const startHtmlSrc = fs.readFileSync(path.join(repoRoot, 'start.html'), 'utf8');
+const startKeyMatch = startHtmlSrc.match(/var KEY = '([^']*)';/);
+if (!startKeyMatch) {
+  console.log('FAIL: KEY constant not found in start.html — this suite\'s cross-file key-consistency check cannot be evaluated against it.');
+  process.exit(1);
+}
+const START_HTML_KEY = startKeyMatch[1];
+
 let failures = 0;
 function ok(cond, label) {
   if (cond) {
@@ -61,6 +78,16 @@ function loadHelpers(fileName) {
   }
   const combinedSrc = src.slice(fnStart, i + 1);
 
+  // gh-2121: read VARIANT_KEY out of the extracted source itself -- never a
+  // hardcoded copy here -- so this test's OWN sandbox setup (Check 3/4
+  // below, which needs to know what key to pre-seed) never desyncs from
+  // whatever the page currently uses. This does NOT by itself prove the
+  // page agrees with start.html -- see START_HTML_KEY / the cross-file
+  // check in main() below for that (review S1).
+  const keyMatch = combinedSrc.match(/var VARIANT_KEY = '([^']*)';/);
+  if (!keyMatch) throw new Error(`${fileName}: VARIANT_KEY not found in getOqVariant`);
+  const variantKey = keyMatch[1];
+
   const sandbox = {
     window: {
       location: { search: '', hostname: 'otterquote.com' },
@@ -84,7 +111,7 @@ function loadHelpers(fileName) {
   vm.runInContext(combinedSrc + '\nthis.__getOqVariant = getOqVariant; this.__fire = firePartnerSignupComplete;', sandbox, {
     filename: fileName,
   });
-  return { sandbox, gtagCalls, fbqCalls, combinedSrc };
+  return { sandbox, gtagCalls, fbqCalls, combinedSrc, variantKey };
 }
 
 function makeStorage() {
@@ -100,6 +127,16 @@ function main() {
   // ── partner-re.html ──
   const re = loadHelpers('partner-re.html');
 
+  // Check 0 (review S1, gh-2121): both partner pages' VARIANT_KEY must
+  // match start.html's own KEY -- the actual invariant this whole helper
+  // exists to protect (partner-re.html's own comment: "the SAME
+  // localStorage key/cookie start.html itself writes ... directly
+  // readable here too"). A page checked only against itself cannot catch
+  // this drifting; this must be checked against the third, independent
+  // source (start.html).
+  ok(re.variantKey === START_HTML_KEY,
+    `partner-re.html VARIANT_KEY ('${re.variantKey}') matches start.html's KEY ('${START_HTML_KEY}')`);
+
   // Check 1: no source at all -> 'unknown'
   ok(re.sandbox.__getOqVariant() === 'unknown', 'partner-re: no URL/storage/cookie -> "unknown"');
 
@@ -109,12 +146,12 @@ function main() {
 
   // Check 3: falls back to persisted localStorage when no ?v=
   re.sandbox.window.location.search = '';
-  re.sandbox.window.localStorage.setItem('oq_variant_v3', 'd');
+  re.sandbox.window.localStorage.setItem(re.variantKey, 'd');
   ok(re.sandbox.__getOqVariant() === 'd', 'partner-re: persisted localStorage "d" used when URL carries no ?v=');
 
   // Check 4: falls back to cookie when neither URL nor localStorage has it
-  re.sandbox.window.localStorage.removeItem('oq_variant_v3');
-  re.sandbox.document.cookie = 'oq_variant_v3=c';
+  re.sandbox.window.localStorage.removeItem(re.variantKey);
+  re.sandbox.document.cookie = re.variantKey + '=c';
   ok(re.sandbox.__getOqVariant() === 'c', 'partner-re: cookie "c" used as last resort');
 
   // Check 5: malformed ?v= never forwarded — falls through to storage/cookie/unknown
@@ -138,6 +175,8 @@ function main() {
 
   // ── partner-insurance.html — same getOqVariant contract, independently extracted ──
   const ins = loadHelpers('partner-insurance.html');
+  ok(ins.variantKey === START_HTML_KEY,
+    `partner-insurance.html VARIANT_KEY ('${ins.variantKey}') matches start.html's KEY ('${START_HTML_KEY}')`);
   ins.sandbox.window.location.search = '?v=e';
   ok(ins.sandbox.__getOqVariant() === 'e', 'partner-insurance: ?v=e read the same way as partner-re.html');
   ins.sandbox.__fire('e');

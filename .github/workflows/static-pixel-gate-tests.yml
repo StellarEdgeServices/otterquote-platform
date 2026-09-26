@@ -1,0 +1,151 @@
+name: Static Pixel Gate Tests
+
+# gh-2107 / D-330 -- the STATIC Meta Pixel gate (js/meta-pixel-gate.js, loaded by 63 static pages) had its opt-out, credential-in-URL and
+# PageView guards proven only by node vm-harness tests that no workflow ran (REVIEW N1 on #2139: "the static-stack guards have no CI
+# coverage"). This runs them. Each test executes the REAL js/ file in a vm context and exits non-zero on any failed assertion.
+#
+# `pull_request` (never `pull_request_target`), no secrets, read-only token: it needs none. Path-filtered to the files that can change the
+# verdict, so it costs nothing on unrelated PRs.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'js/meta-pixel-gate.js'
+      - 'js/services.js'
+      - 'js/cookie-storage.js'
+      - 'js/nav.js'
+      - 'tests/gh2106-pixel-gaps.mjs'
+      - 'tests/gh2107-pixel-gate-optout.mjs'
+      - 'tests/gh2107-gpc-client.mjs'
+      - 'partner-dashboard.html'
+      - 'partner-app.html'
+      - 'tests/gh2154-p2-app-activation.mjs'
+      - 'partner-agreement.html'
+      - 'partner-agreement-inspector.html'
+      - 'tools/build_inspector_agreement.py'
+      - 'partner-inspectors.html'
+      - 'partner-re.html'
+      - 'tools/partner_parity_check.py'
+      - 'tests/gh2155-hi0b-inspector-agreement.mjs'
+      - 'tests/gh2155-hi0c-inspector-agreement-parity.mjs'
+      - 'tests/gh2155-hi0c-inspector-sweep.mjs'
+      - 'partner-insurance.html'
+      - 'partner-login.html'
+      - 'tests/gh2154-p1-short-signup.mjs'
+      - 'tests/gh2154-p1-set-password.mjs'
+      - 'tests/gh2154-p1-login-reset.mjs'
+      - 'tests/gh2154-p1-cookie-storage-updateuser.mjs'
+      - 're-1.html'
+      - 'tests/gh2150-re1-page.mjs'
+      - 'ins-1.html'
+      - 'tests/gh2151-ins1-page.mjs'
+      - 'hi-1.html'
+      - 'tests/gh2152-hi1-page.mjs'
+      - 'tests/gh2150-gh2151-s05-perf-structure.mjs'
+      - 'tests/gh2192-s05-must-fix.mjs'
+      - 'index.html'
+      - 'partner-other.html'
+      - 'partners.html'
+      - 'partner-profile.html'
+      - 'tests/gh2155-hi05b-inspector-crawler.mjs'
+      - '.github/workflows/static-pixel-gate-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'js/meta-pixel-gate.js'
+      - 'js/services.js'
+      - 'js/cookie-storage.js'
+      - 'js/nav.js'
+      - 'tests/gh2106-pixel-gaps.mjs'
+      - 'tests/gh2107-pixel-gate-optout.mjs'
+      - 'tests/gh2107-gpc-client.mjs'
+      - 'partner-dashboard.html'
+      - 'partner-app.html'
+      - 'tests/gh2154-p2-app-activation.mjs'
+      - 'partner-agreement.html'
+      - 'partner-agreement-inspector.html'
+      - 'tools/build_inspector_agreement.py'
+      - 'partner-inspectors.html'
+      - 'partner-re.html'
+      - 'tools/partner_parity_check.py'
+      - 'tests/gh2155-hi0b-inspector-agreement.mjs'
+      - 'tests/gh2155-hi0c-inspector-agreement-parity.mjs'
+      - 'tests/gh2155-hi0c-inspector-sweep.mjs'
+      - 'partner-insurance.html'
+      - 'partner-login.html'
+      - 'tests/gh2154-p1-short-signup.mjs'
+      - 'tests/gh2154-p1-set-password.mjs'
+      - 'tests/gh2154-p1-login-reset.mjs'
+      - 'tests/gh2154-p1-cookie-storage-updateuser.mjs'
+      - 're-1.html'
+      - 'tests/gh2150-re1-page.mjs'
+      - 'ins-1.html'
+      - 'tests/gh2151-ins1-page.mjs'
+      - 'hi-1.html'
+      - 'tests/gh2152-hi1-page.mjs'
+      - 'tests/gh2150-gh2151-s05-perf-structure.mjs'
+      - 'tests/gh2192-s05-must-fix.mjs'
+      - 'index.html'
+      - 'partner-other.html'
+      - 'partners.html'
+      - 'partner-profile.html'
+      - 'tests/gh2155-hi05b-inspector-crawler.mjs'
+      - '.github/workflows/static-pixel-gate-tests.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-pixel-gate-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  static-pixel-gate-tests:
+    name: Static pixel gate (node vm harness)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Credential in the URL, PageView and history guards (gh2106-pixel-gaps)
+        run: node tests/gh2106-pixel-gaps.mjs
+      - name: Advertising-sharing opt-out and stored-flag read (gh2107-pixel-gate-optout)
+        run: node tests/gh2107-pixel-gate-optout.mjs
+      - name: GPC capture on the create-payment-intent call (gh2107-gpc-client)
+        run: node tests/gh2107-gpc-client.mjs
+      - name: Partner dashboard activation RPC, per-user flag (gh2154-p2-app-activation)
+        run: node tests/gh2154-p2-app-activation.mjs
+      - name: Home-inspector agreement v3-2026-09, no fee/D-266 for inspectors (gh2155-hi0b)
+        run: node tests/gh2155-hi0b-inspector-agreement.mjs
+      - name: Static inspector agreement build parity, no drift vs source (gh2155-hi0c-parity)
+        run: node tests/gh2155-hi0c-inspector-agreement-parity.mjs
+      - name: No fee wording reachable on the inspector track, JS on/off + negative controls (gh2155-hi0c-sweep)
+        run: node tests/gh2155-hi0c-inspector-sweep.mjs
+      - name: Short partner signup field set, attribution, D-333 (gh2154-p1-short-signup)
+        run: node tests/gh2154-p1-short-signup.mjs
+      - name: Partner dashboard one-time set-password card (gh2154-p1-set-password)
+        run: node tests/gh2154-p1-set-password.mjs
+      - name: Partner login forgot-password reset clears needs_password (gh2154-p1-login-reset)
+        run: node tests/gh2154-p1-login-reset.mjs
+      - name: Real supabase-js -- rejected updateUser() must not sign the partner out (gh2154-p1-cookie-storage-updateuser)
+        run: node tests/gh2154-p1-cookie-storage-updateuser.mjs
+      - name: RE-1 dedicated landing page -- approved copy, funnel_id attribution (gh2150-re1-page)
+        run: node tests/gh2150-re1-page.mjs
+      - name: INS-1 dedicated landing page -- approved copy, field set, funnel-id attribution (gh2151-ins1-page)
+        run: node tests/gh2151-ins1-page.mjs
+      - name: HI-1 dedicated landing page -- approved copy, field set, no-fee disclosure, HI-0.5 track links (gh2152-hi1-page)
+        run: node tests/gh2152-hi1-page.mjs
+      - name: S05 perf structure -- no render-blocking scripts/styles, lazy Supabase bundle on re-1/ins-1/hi-1 (gh2150-gh2151-s05-perf-structure)
+        run: node tests/gh2150-gh2151-s05-perf-structure.mjs
+      - name: S05 perf must-fixes -- recruit-code attribution race, pre-hydration submit queue/no-GET (gh2192-s05-must-fix)
+        run: node tests/gh2192-s05-must-fix.mjs
+      - name: Inspector-context crawler -- no fee text within 3 hops (JS on) / 1 hop (JS off) of hi-1/partner-inspectors, negative control (gh2155-hi05b-crawler)
+        run: node tests/gh2155-hi05b-inspector-crawler.mjs

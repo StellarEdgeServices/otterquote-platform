@@ -13,7 +13,6 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { isTestEmail } from '@/lib/test-signal';
 import type {
   CarrierOption,
   HomeownerClaim,
@@ -31,11 +30,16 @@ export interface LatestClaimResult {
 }
 
 /**
- * Resolve the homeowner's most-recent claim id. If none exists yet, create a
- * draft ({ status:'draft', damage_type:'roof' }) — exactly as the static page did
- * — so a brand-new homeowner still lands on a usable dashboard. Note (D-178/BUG-5):
- * property_state is deliberately NOT seeded on the draft, so the state gate does
- * not misfire before intake.
+ * Resolve the homeowner's most-recent claim id. gh-2004: this previously
+ * created a draft ({ status:'draft', damage_type:'roof' }) here with no
+ * address at all — the four `property_*` columns all NULL — whenever a
+ * signed-in homeowner had no claim yet. That claim then permanently blocked
+ * the one flow that does collect an address (trade-selector's own
+ * `hasFullAddress()` gate, gh-2004/#2007): once ANY claim exists,
+ * trade-selector's returning-user guard sends the homeowner straight back
+ * here instead. Now, when no claim exists, this redirects to trade-selector
+ * instead of inserting anything, so a claim is never created without an
+ * address on this path either.
  */
 export function useLatestClaim(userId: string | null | undefined): LatestClaimResult {
   const [claimId, setClaimId] = useState<string | null>(null);
@@ -77,32 +81,14 @@ export function useLatestClaim(userId: string | null | undefined): LatestClaimRe
           return;
         }
 
-        // No claim yet — create a draft (mirrors dashboard.html:1686-1694).
-        // gh-397/#689: stamp is_test on this auto-create path — PR #714 only
-        // fixed the COI-identity contractor insert, never any claims insert.
-        // Predicate mirrors the CEO-approved contractor check (#543 /
-        // test-exclusion.ts) and the static dashboard.html parity fix.
-        const {
-          data: { user: authUser },
-        } = await supabase.auth.getUser();
-        const { data: created, error: createErr } = await supabase
-          .from('claims')
-          .insert({
-            user_id: userId,
-            status: 'draft',
-            damage_type: 'roof',
-            is_test: isTestEmail(authUser?.email),
-          })
-          .select('id')
-          .single();
-
-        if (!mounted) return;
-        if (createErr) {
-          setError(new Error(createErr.message));
-        } else if (created?.id) {
-          setClaimId(created.id);
+        // No claim yet. gh-2004: route to trade-selector — the surface that
+        // actually collects/validates a full address before any claim is
+        // created — instead of inserting an addressless draft here. Loading
+        // is left true (not set false) so no dead-end dashboard state ever
+        // renders in the moment before the redirect lands.
+        if (typeof window !== 'undefined') {
+          window.location.href = '/trade-selector';
         }
-        setLoading(false);
       } catch (err) {
         if (mounted) {
           setError(err instanceof Error ? err : new Error(String(err)));

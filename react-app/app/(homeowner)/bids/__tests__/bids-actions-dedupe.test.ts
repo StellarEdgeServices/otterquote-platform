@@ -21,15 +21,24 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('@/lib/supabase', () => {
-  const eqThenNeq = (result: { error: null | { message: string } }) => {
-    const p = Promise.resolve(result);
-    return Object.assign(p, { neq: () => Promise.resolve(result) });
+  // gh-2105: awardClaimToContractor's three claims/quotes .update() calls
+  // now chain `.select('id')` (the #2103 pattern -- a zero-row RLS-filtered
+  // match resolves `{ error: null }` too, so the row(s) actually written
+  // must be checked, not just the absence of an error). Every `.eq()`/
+  // `.neq()` result here must therefore expose a `.select()` that resolves
+  // to a NON-EMPTY row array by default, matching the normal one-row-updated
+  // case this test suite otherwise exercises.
+  const withSelect = (result: { data: unknown; error: null | { message: string } }) => ({
+    select: vi.fn(() => Promise.resolve(result)),
+  });
+  const eqThenNeq = (result: { data: unknown; error: null | { message: string } }) => {
+    return Object.assign(withSelect(result), { neq: vi.fn(() => withSelect(result)) });
   };
   return {
     supabase: {
       from: vi.fn((table: string) => ({
         update: vi.fn(() => ({
-          eq: vi.fn(() => eqThenNeq({ error: null })),
+          eq: vi.fn(() => eqThenNeq({ data: [{ id: 'row-1' }], error: null })),
         })),
       })),
       auth: {
@@ -97,7 +106,10 @@ describe('awardClaimToContractor — bid_accepted dedupe + claim_id strip (fix3)
   it('does not fire bid_accepted at all when an earlier write fails (no partial/duplicate emission)', async () => {
     (supabase.from as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(() => ({
       update: () => ({
-        eq: () => Promise.resolve({ error: { message: 'contractor_no_payment_method: x' } }),
+        eq: () => ({
+          select: () =>
+            Promise.resolve({ data: null, error: { message: 'contractor_no_payment_method: x' } }),
+        }),
       }),
     }));
 

@@ -81,9 +81,61 @@ ALL_PAGES = VERTICAL_PAGES + ["partner-app", "partner-login", "partner-dashboard
 # at the repo root and unioning it with the other non-insurance, non-login pages
 # from ALL_PAGES. Only the discovery mechanism for this one check changes; the
 # other checks keep using ALL_PAGES/VERTICAL_PAGES unchanged.
+#
+# gh-2155 HI-0b / D-333 (Ben, comment 5824245098): home inspectors receive no
+# referral fee at all (partner-agreement.html Section 4.3), so the D-266
+# "make sure it is lawful for you to accept referral fees" warning does not
+# apply to that track and partner-inspectors.html no longer carries it -- this
+# is a per-track exemption for the INSPECTOR track ONLY, not a general
+# loosening of the D-266 gate. Every other page in D266_PAGES (realtor,
+# insurance and its siblings, adjusters, other, app, dashboard) is unaffected
+# and still fails this check if the sentence goes missing.
+#
+# gh-2150 RE-1 / D-333: re-1.html is a dedicated single-funnel landing page
+# outside the partner-*.html naming convention, so it is invisible to the
+# ALL_PAGES/partner-insurance* discovery above. It carries the D-266
+# disclaimer (approved copy, #2150 comment 5821403227) and is a referral-fee
+# funnel surface exactly like partner-re.html, so it is registered here
+# explicitly rather than left for find_unmapped_static_funnels() to flag as
+# static_funnel_unmapped -- the same convention D266_JS_SURFACES uses for
+# js/router-discovery.js below.
+#
+# gh-2151 INS-1 / D-333: ins-1.html is a dedicated single-funnel landing page
+# outside the partner-*.html naming convention, so it is invisible to the
+# ALL_PAGES/partner-insurance* discovery above. It carries the D-266
+# disclaimer (approved copy, #2151 comment 5821408557) and is a referral-fee
+# funnel surface exactly like partner-insurance.html, so it is registered
+# here explicitly rather than left for find_unmapped_static_funnels() to flag
+# as static_funnel_unmapped -- the same convention D266_JS_SURFACES uses for
+# js/router-discovery.js below (see also re-1's identical registration,
+# gh-2150, commit 524f85c6).
+#
+# gh-2031 (CEO57 triage, comment 5768832182): partners.html is the
+# profession-picker hub every vertical partner page links out from, and
+# already carries the D-266 disclaimer verbatim (wrapped across four source
+# lines -- see the "Note on matching" / _norm() above). It matches neither
+# the partner-insurance* glob nor any ALL_PAGES entry (the hyphen in
+# "partner-*" is load-bearing; "partners" is not "partner-*"), so it was
+# unguarded: the disclaimer could be deleted and this whole script would
+# stay green. Registered explicitly, same convention as re-1/ins-1 above,
+# rather than folded into the ALL_PAGES-derived glob, since it is a hub
+# page, not a vertical (the other ALL_PAGES-driven checks in this file --
+# signed_in_redirect, dashboard_access_block -- assume a vertical-page
+# shape that partners.html does not have; it is added to D266_PAGES only).
+# This also retires the STATIC_FUNNEL_EXEMPT["partners.html"] entry above:
+# once partners.html is enumerated in D266_PAGES it is in the checked set
+# find_unmapped_static_funnels() consults, so that exemption entry would
+# never fire again -- removed rather than left as dead documentation.
 D266_PAGES = sorted(
     {p.stem for p in REPO_ROOT.glob("partner-insurance*.html")}
-    | {p for p in ALL_PAGES if p not in ("partner-insurance", "partner-login")}
+    | {
+        p
+        for p in ALL_PAGES
+        if p not in ("partner-insurance", "partner-login", "partner-inspectors")
+    }
+    | {"re-1"}
+    | {"ins-1"}
+    | {"partners"}
 )
 
 D266_TEXT = (
@@ -315,17 +367,6 @@ STATIC_FUNNEL_EXEMPT = {
         "Short-link redirect/resolver page; the match is its \"Referral link "
         "not found\" error state, not fee content."
     ),
-    "partners.html": (
-        "Finding surfaced by this build, not fixed by it (out of gh-2020's "
-        "two named items): this is the profession-picker hub the vertical "
-        "pages link out from, and it already carries the D-266 disclaimer "
-        "verbatim -- this file's own \"Note on matching\" above already "
-        "documents partners.html wrapping the sentence across lines -- but "
-        "it is in neither ALL_PAGES nor D266_PAGES, so nothing here actually "
-        "verifies that today. Structurally the same class of gap this build "
-        "closes for router-discovery.js; left open and reported rather than "
-        "folded in, since gh-2020 scopes this build to exactly two items."
-    ),
     "js/auth.js": (
         "Source-code comment describing referral-status tracking logic "
         "(\"Advance referral status ... if homeowner arrived via referral "
@@ -334,6 +375,21 @@ STATIC_FUNNEL_EXEMPT = {
     "js/ga-gate.js": (
         "Source-code comment using \"referral link\" as an example while "
         "explaining analytics-gating behavior -- not rendered funnel copy."
+    ),
+    "hi-1.html": (
+        "gh-2152 HI-1: is a partner-enrollment funnel (the match is real "
+        "\"referral link\"/\"referral fee\" copy, not a stray comment), but "
+        "D-266 does not apply to it -- same per-track exemption already "
+        "recorded above for partner-inspectors.html (gh-2155 HI-0b / D-333, "
+        "comment 5824245098): home inspectors receive no referral fee or "
+        "recruit bonus at all (partner-agreement.html Section 4.3), so "
+        "D-266's \"make sure it is lawful for you to accept referral fees\" "
+        "warning has nothing to attach to. Dustin's ruling on #2152 (comment "
+        "5832300782, approving this page's copy) says so explicitly: \"no "
+        "D-266 disclaimer (inspectors take no fee, D-333)\". hi-1.html isn't "
+        "folded into D266_PAGES's glob/ALL_PAGES mechanism because it is a "
+        "single-purpose ad landing page, not a partner-*.html marketing "
+        "page -- same shape as the other STATIC_FUNNEL_EXEMPT entries above."
     ),
 }
 

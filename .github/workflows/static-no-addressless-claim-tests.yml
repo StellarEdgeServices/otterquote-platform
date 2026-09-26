@@ -1,0 +1,53 @@
+name: Static No-Addressless-Claim Tests
+
+# gh-2004 (PR #2211) -- the static twins of the React fix in #2209:
+# dashboard.html's loadClaimData() and repair-intake.html's submitForm() must
+# never insert a `claims` row with no address when reached with no existing
+# claim; they redirect to trade-selector's address step instead. REVIEW
+# (comment 5841939002) found tests/gh2004-static-no-addressless-claim.mjs
+# was written but never wired into CI, so the guard never ran. This runs it.
+#
+# `pull_request` (never `pull_request_target`), no secrets, read-only token:
+# it needs none. Path-filtered, following the same pattern as
+# static-pixel-gate-tests.yml, to the files that can change the verdict.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'dashboard.html'
+      - 'repair-intake.html'
+      - 'tests/gh2004-static-no-addressless-claim.mjs'
+      - '.github/workflows/static-no-addressless-claim-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'dashboard.html'
+      - 'repair-intake.html'
+      - 'tests/gh2004-static-no-addressless-claim.mjs'
+      - '.github/workflows/static-no-addressless-claim-tests.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-no-addressless-claim-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  static-no-addressless-claim-tests:
+    name: No addressless claim insert (dashboard.html + repair-intake.html)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: No addressless claims.insert(); error-gated redirect (gh2004-static-no-addressless-claim)
+        run: node tests/gh2004-static-no-addressless-claim.mjs

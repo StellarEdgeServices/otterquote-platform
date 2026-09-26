@@ -91,6 +91,25 @@
  *   reach GA4 — is carried over byte-for-byte; only the two step names
  *   and the one new tracked field name changed. Not re-reviewed as part
  *   of this rebase; flagged for a fresh independent review before merge.
+ *
+ *   [gh-1901 Option 2, 2026-09-22, CEO ruling 5780885632] Option 1 (button
+ *   moved below the form, relabelled "Continue with Google") shipped the
+ *   visual-order fix but left the click itself gated on
+ *   validateAccountProfile() — a visitor with an empty Step 2 still saw an
+ *   error instead of an OAuth redirect, the same shape of trap CRO
+ *   reported, just smaller (2 fields instead of 7). handleGoogle no longer
+ *   calls validateAccountProfile(); Google fires immediately regardless of
+ *   Step 2 fill state. Name is recovered afterward instead of gated on
+ *   upfront: auth-callback/page.tsx's backfillNameFromGoogleIdentity reads
+ *   the OAuth identity's given_name/family_name (or full_name) and patches
+ *   cs_signup's first_name/last_name before HubSpot and trade-selector's
+ *   profile upsert read them, but only when this page left both blank —
+ *   a name a visitor actually typed is never overwritten. Phone and "How
+ *   did you hear about us" were already non-gating on this page (phone is
+ *   optional unless SMS-consent is checked, per validateSmsConsent above;
+ *   the referral chips have never had a required validator) — audited as
+ *   part of this same change, not modified. SMS-consent checkbox and its
+ *   wording: untouched, byte-for-byte (Tier C boundary, not crossed).
  */
 
 'use client';
@@ -100,10 +119,12 @@ import type { ChangeEvent, FormEvent } from 'react';
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import { supabase } from '@/lib/supabase';
 import { readReferralIds, writeReferralIds } from '@/lib/cookie-storage';
+import { linkPendingLeadOnce } from '@/lib/lead-capture';
 import { readFirstTouch } from '@/lib/attribution';
 import { withFirstTouchParam } from '@/lib/attribution-core';
 import { formatPhoneValue, isValidEmail, isValidZip, fullAddress, splitLeadName } from './utils';
 import { captureVariantFromUrl } from '@/lib/variant';
+import { SMS_CONSENT_LABEL } from '../../constants/legal';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -1094,20 +1115,24 @@ export default function GetStartedPage() {
   const handleGoogle = async () => {
     setError('');
 
-    // gh-1901: Google button now lives in Step 2, so address is already
-    // guaranteed by the Step 1 → Step 2 transition below; only name remains
-    // to check here.
-    const problem = validateAccountProfile();
-    if (problem) {
-      setError(problem);
-      return;
-    }
+    // gh-1901 (2026-09-22, Option 2 — CEO ruling 5780885632): name is no
+    // longer required before this click fires OAuth. The previous
+    // validateAccountProfile() gate here required first/last name before
+    // Google would fire at all, which was itself a smaller version of the
+    // exact trap CRO reported (comment 5673014838): a button that silently
+    // refuses until other fields are typed. Google's own OAuth response
+    // supplies given_name/family_name (or full_name), and
+    // auth-callback/page.tsx's backfillNameFromGoogleIdentity fills
+    // cs_signup's first_name/last_name from that identity on return when
+    // this page left them blank — "collect what is still needed
+    // afterward," per the issue body, rather than gate on it here. The
+    // password path (handleSubmit) still calls validateAccountProfile(),
+    // since there is no OAuth identity to backfill from on that path.
     // gh-1940 (CEO RUN 47 fix, ceo47-review-pr1948 defect 2) — the
     // `[firstName, lastName, email, password, confirmPassword]` effect
     // above requires a valid email+password, so it never fires for a
-    // visitor who converts through Google (name only). This is the moment
-    // the visitor commits to the Google sign-in — right after the Step 2
-    // name validation it actually needs — so `account` fires here instead,
+    // visitor who converts through Google. This is the moment the visitor
+    // commits to the Google sign-in, so `account` fires here instead,
     // once-guarded on the SAME ref as the password path (whichever path
     // reaches its completion point first wins; the other is a no-op).
     // Deliberately no `method` param: `form_step_complete`'s
@@ -1118,7 +1143,12 @@ export default function GetStartedPage() {
       accountStepFiredRef.current = true;
       track('form_step_complete', { step_name: 'account' });
     }
-    // CEO RUN 43 review F2 — see validateSmsConsent().
+    // CEO RUN 43 review F2 — see validateSmsConsent(). Untouched by this
+    // change: the SMS-consent checkbox's default (unchecked) and wording
+    // are Tier C and are not part of this fix. This call only blocks a
+    // click where the visitor already ticked consent but left phone
+    // blank — not the reported trap, which reproduces on the untouched
+    // default (unchecked) state.
     const smsProblemGoogle = validateSmsConsent();
     if (smsProblemGoogle) {
       setError(smsProblemGoogle);
@@ -1248,6 +1278,41 @@ export default function GetStartedPage() {
         return;
       }
 
+      // gh-2121 (S16): close the loop from an Arm-F-style `?lead=<uuid>`
+      // deep link to the account it produced. PR #2163 REVIEW: FAIL fix
+      // (comment 5821864061, M1/S1), 2026-09-24: leadId comes from
+      // lib/lead-capture.ts (window.__oqRouterLeadId OR the sessionStorage
+      // marker the multi-path strip script also writes — see
+      // app/layout.tsx), not the window global alone, and the RPC no
+      // longer takes a p_user_id from the client (S1: set_lead_converted
+      // now derives the caller from auth.uid() server-side and rejects an
+      // anon caller — see the migration). Scoped to referred signups only:
+      // no captured lead -> linkPendingLeadOnce() is a no-op (see the
+      // negative control in __tests__/gh2121-lead-conversion.test.tsx).
+      //
+      // M2 fix (comment 5822978578), 2026-09-24: this used to fire the
+      // link call unconditionally right here, then navigate to
+      // /auth-callback a few lines below when a session was already live
+      // (the auto-confirm case, which is the production default — see
+      // that branch below). That navigation cancels the in-flight fetch
+      // before it resolves, and the old lead-capture.ts cleared the
+      // capture before awaiting the RPC, so the link was lost on a real
+      // share of password signups (3 aborted, plus more silently
+      // cancelled, in 10 real-browser trials). Fix: when a session is
+      // already live, SKIP the call here entirely and let /auth-callback
+      // link it instead — auth-callback's own routeSession() calls
+      // linkPendingLeadOnce() once it has that live session in hand, on
+      // the very next page load, with nothing racing it. It reads the
+      // same sessionStorage marker (this window's in-memory bridge does
+      // not survive the navigation, sessionStorage does, same-origin).
+      // When there is NO session yet (email confirmation required — see
+      // the branch below), nothing navigates away on this tick, so
+      // calling it here directly is safe and there's no reason to defer
+      // it to a callback page the user may not open for a while.
+      if (data.user?.id && !data.session) {
+        void linkPendingLeadOnce(supabase);
+      }
+
       fireSignupAnalytics('password');
       // gh-1940 (REVIEW: FAIL finding 2) — unlike the Google path, reaching
       // this line means supabase.auth.signUp already returned successfully
@@ -1260,7 +1325,10 @@ export default function GetStartedPage() {
       if (data.session) {
         // Project auto-confirms email — session is live, so hand off to
         // /auth-callback for the normal post-auth routing (HubSpot sync,
-        // referral advance, trade-selector vs dashboard).
+        // referral advance, trade-selector vs dashboard). The lead link
+        // (if any) is deliberately NOT fired above in this branch — see
+        // the M2 comment above; auth-callback links it instead, once this
+        // navigation has landed and nothing can cancel the call.
         signupNavigation.current = true;
         window.location.href = AUTH_CALLBACK_URL;
         return;
@@ -1970,9 +2038,13 @@ export default function GetStartedPage() {
                       onFocus={() => markFieldTouched('sms_consent')}
                     />
                     <span style={{ fontSize: '0.9rem', lineHeight: 1.5, color: 'var(--slate, #94a3b8)' }}>
-                      {/* TWILIO MESSAGE_FLOW required language */}
-                      I agree to receive transactional SMS from Otter Quotes. Message frequency varies.
-                      Message and data rates may apply. Reply STOP to unsubscribe. See our{' '}
+                      {/* gh-1954 (Dustin: ALIGN, comment 5682310604): rendered from
+                          legal.ts's SMS_CONSENT_LABEL, not an inline copy, so the two
+                          cannot drift apart again. Privacy/Terms links below are
+                          additional disclosure, not part of the canonical TCPA
+                          sentence, and are unchanged by this fix. */}
+                      {SMS_CONSENT_LABEL}{' '}
+                      See our{' '}
                       <a href="https://otterquote.com/privacy.html" style={{ color: 'var(--amber, #E07B00)', textDecoration: 'underline' }}>
                         Privacy Policy
                       </a>{' '}

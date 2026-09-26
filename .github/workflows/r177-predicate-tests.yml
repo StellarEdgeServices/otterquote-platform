@@ -14,20 +14,38 @@ name: R-177 predicate tests
 # Runs every *.test.mjs under scripts/r177/ via a glob rather than a hardcoded
 # list, so a new control file is picked up with no CI-wiring edit.
 #
-# Deliberately narrow triggers (gh-1731: PR-churn CI cost): the predicate itself
-# and the two trees the scope ratchet walks.
+# gh-1855: the `pull_request` trigger used to be path-filtered the same as the
+# `push` trigger below (gh-1731: PR-churn CI cost). That is a correctness bug,
+# not just a cost optimization, for the one thing this issue is actually about:
+# a workflow whose `pull_request` trigger is path-filtered can NEVER be safely
+# named as a GitHub branch-protection required status check, because a PR that
+# does not touch the filtered paths never causes the job to run at all -- the
+# named context is left "Expected", GitHub blocks the merge waiting for a
+# status that will never be reported, and every unrelated PR is frozen. That is
+# almost certainly *why* this check has never been made required (root-caused
+# on gh-1855: PR #1836 merged to `main` with this check red, because nothing
+# blocked it, and five sibling PR branches inherited the red state within 90
+# minutes -- the incident this issue tracks).
 #
-# Advisory by design. Under R-177 nothing in CI blocks a legal/money diff; the
-# `LEGAL-READ: PASS` + `R-177 SIGNED:` comment pair is enforced by the CTO's
-# merge tooling. See Docs/r177-legal-read.md.
+# So `pull_request` is now UNCONDITIONAL: this job runs, and reports a status,
+# on every PR regardless of what it touches -- the precondition for someone
+# (Dustin/CTO; a repo-settings change, not this workflow file) to add
+# "R-177 predicate tests" to `required_status_checks.contexts` on `main`
+# without freezing the rest of the queue. Cost (#1731): this suite is 53 tiny
+# `node --test` assertions with no I/O, ~0.2-0.5s of actual test time measured
+# locally (plus ~10-20s of checkout/setup-node fixed overhead) -- not in the
+# same class as the E2E/Playwright suites #1731 was written against, so paying
+# it on every PR is the cheap side of this tradeoff, not the expensive one.
+# `push` to `main` stays path-filtered below: that trigger does not gate PR
+# merges, and there is no correctness reason to widen it.
+#
+# Advisory by design (this workflow, still): being made a REQUIRED status
+# check is a branch-protection change owned by Dustin/CTO, not shipped by this
+# file. Until that repo-settings step happens, this job is still informational
+# — it runs and reports, but nothing blocks on it. See Docs/r177-legal-read.md.
 
 on:
   pull_request:
-    paths:
-      - 'scripts/r177/**'
-      - 'scripts/**'
-      - 'tools/**'
-      - '.github/workflows/r177-predicate-tests.yml'
   push:
     branches: [main]
     paths:

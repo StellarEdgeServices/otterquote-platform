@@ -66,8 +66,10 @@ import {
   markMeasurementPurchaseFired,
   type PendingHoverCharge,
 } from './hover-charge-storage';
-import { track, fbqTrack } from '@/lib/track';
+import { track, fbqTrack, buildMeasurementPurchaseEventId } from '@/lib/track';
 import { getVariant } from '@/lib/variant';
+import { supabase } from '@/lib/supabase';
+import { linkPendingLeadOnce } from '@/lib/lead-capture';
 
 /**
  * NEW operational copy for the gh-951 resume flow — like gh-416's ORDER_RETRY_COPY
@@ -101,6 +103,21 @@ function Content() {
   const { user } = useAuthReady();
   const userId = user?.id ?? null;
   const data = useHelpMeasurementsData(userId, true);
+
+  // gh-2121 (S16) / PR #2163 REVIEW: FAIL fix (comment 5821864061, M1's
+  // third Arm F scenario), 2026-09-24: an Arm F visitor who is ALREADY
+  // signed in and lands on this page directly with a live `?lead=` never
+  // goes through get-started/page.tsx's signUp() at all, so that call site
+  // alone could never link them. This page is reached only once `user` is
+  // resolved non-null (HomeownerShell's gate bounces anyone else away
+  // before Content ever mounts), so it is exactly the right place to call
+  // set_lead_converted for that path. linkPendingLeadOnce() is a no-op with
+  // nothing captured (the ordinary case), fires at most once per capture
+  // (it clears the capture itself), and never blocks rendering.
+  useEffect(() => {
+    if (!userId) return;
+    void linkPendingLeadOnce(supabase);
+  }, [userId]);
 
   if (data.loading) return <Boot />;
 
@@ -190,7 +207,15 @@ function PageBody({
           if (!hasFiredMeasurementPurchase(pendingResume.paymentIntentId)) {
             const variant = getVariant();
             track('measurement_purchase', { value: 15.0, currency: 'USD', variant });
-            fbqTrack('Purchase', { value: 15.0, currency: 'USD', variant });
+            // gh-2078c: eventID lets Meta dedup this client pixel event
+            // against the server-side CAPI Purchase (PR #2107) sent from
+            // the SAME paymentIntent id -- see lib/track.ts's
+            // buildMeasurementPurchaseEventId header.
+            fbqTrack(
+              'Purchase',
+              { value: 15.0, currency: 'USD', variant },
+              buildMeasurementPurchaseEventId(pendingResume.paymentIntentId),
+            );
             markMeasurementPurchaseFired(pendingResume.paymentIntentId);
           }
           setHoverStage('success');
@@ -242,7 +267,11 @@ function PageBody({
     setHoverLoading(true);
     setStatus(null);
     try {
-      const res = await requestHoverPaymentIntent(claim);
+      // gh-2078c / D-330 reconciliation: thread the same persisted router arm
+      // the `measurement_purchase`/`Purchase` events below already read onto
+      // the PaymentIntent metadata, so the server-side Meta CAPI event
+      // (PR #2107) can attribute the purchase instead of reading 'unknown'.
+      const res = await requestHoverPaymentIntent(claim, getVariant());
       if (!res?.client_secret) {
         setStatus({ text: M.statusPaymentInitError, type: 'error' });
         return;
@@ -298,8 +327,15 @@ function PageBody({
         // page -- see lib/track.ts's fbqTrack header for why (this is an
         // authenticated route, outside MetaPixelGate.tsx's ALLOWED_PATHS
         // today; see the gh-2078 PR description for the follow-up this
-        // leaves open).
-        fbqTrack('Purchase', { value: 15.0, currency: 'USD', variant });
+        // leaves open). gh-2078c: eventID lets Meta dedup this client event
+        // against the server-side CAPI Purchase (PR #2107) sent from the
+        // SAME paymentIntent id -- see lib/track.ts's
+        // buildMeasurementPurchaseEventId header.
+        fbqTrack(
+          'Purchase',
+          { value: 15.0, currency: 'USD', variant },
+          buildMeasurementPurchaseEventId(paymentIntentId),
+        );
         markMeasurementPurchaseFired(paymentIntentId);
       }
       setHoverStage('success');

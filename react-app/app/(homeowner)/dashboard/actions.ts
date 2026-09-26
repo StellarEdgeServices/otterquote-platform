@@ -99,16 +99,18 @@ export async function uploadClaimDocument(params: {
     .eq('id', claimId);
   if (updErr) return { ok: false, error: updErr.message };
 
-  // Parsing is non-blocking — a parse failure must not fail the upload (#336).
-  // Estimates only (F-005): parse-loss-sheet writes RCV/ACV back to the claim.
+  // Parsing is fire-and-forget (gh-2070) — parse-loss-sheet makes a
+  // synchronous, non-streaming Claude vision call (routinely 15-60s, bounded
+  // only by the ~150s Edge Function wall clock), so `await`ing it here could
+  // stall the upload indefinitely on a slow or hung call. A parse failure (or
+  // a call that never settles) must never fail or delay the upload (#336).
+  // Mirrors the trade-selector attach fix in PR #2080.
   if (kind === 'estimate') {
-    try {
-      await supabase.functions.invoke('parse-loss-sheet', {
-        body: { claim_id: claimId, storage_path: storagePath },
-      });
-    } catch (err) {
+    void supabase.functions.invoke('parse-loss-sheet', {
+      body: { claim_id: claimId, storage_path: storagePath },
+    }).catch((err) => {
       console.warn('[dashboard] parse-loss-sheet failed (non-fatal):', err);
-    }
+    });
   }
   return { ok: true, storagePath };
 }

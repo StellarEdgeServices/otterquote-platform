@@ -9,6 +9,7 @@ on:
       - 'feat/**'
     paths:
       - 'react-app/**'
+      - 'supabase/functions/_shared/capi-event-id.contract.json'
       - '.github/workflows/react-app-tests.yml'
   pull_request:
     branches:
@@ -16,6 +17,7 @@ on:
       - staging
     paths:
       - 'react-app/**'
+      - 'supabase/functions/_shared/capi-event-id.contract.json'
       - '.github/workflows/react-app-tests.yml'
 
 # gh-1731: dedupe repeat-push churn on open PRs -- unit tests have no shared

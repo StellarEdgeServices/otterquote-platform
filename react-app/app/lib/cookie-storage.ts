@@ -294,9 +294,43 @@ function cookiesUsable(): boolean {
   return _cookiesUsable;
 }
 
+/**
+ * gh-2168 (mirror of PR #2162 review round 5, js/cookie-storage.js): every
+ * method below used to IGNORE the key it was given and always operate on the
+ * shared session cookies. supabase-js 2.116.0's `_updateUser` calls
+ * `storage.removeItem('<storageKey>-code-verifier')` on ANY updateUser
+ * error (a rejected weak password, a plain 500, whatever) as part of its PKCE
+ * cleanup (GoTrueClient.js `_updateUser`'s catch -> `removePKCEVerifier`,
+ * unconditional even when flowId is null) — that is not a sign-out, but a
+ * key-blind removeItem wiped the whole session anyway.
+ *
+ * Fixed as a DENYLIST, same as the static stack: only the small, known set
+ * of AUXILIARY keys supabase-js derives from whatever storageKey a client
+ * actually uses — `${storageKey}-code-verifier` (and the flow-id/flows
+ * variants, which also end in `-code-verifier`) and `${storageKey}-user` —
+ * are ever diverted to plain localStorage. Every other key, including the
+ * canonical OTTERQUOTE_AUTH_STORAGE_KEY, keeps the exact pre-fix
+ * cookie-touching behavior. See js/cookie-storage.js's isAuxiliaryStorageKey
+ * for the sibling implementation both stacks must agree on.
+ */
+function isAuxiliaryStorageKey(key: string): boolean {
+  return typeof key === 'string' && (key.endsWith('-code-verifier') || key.endsWith('-user'));
+}
+
 export const otterquoteCookieStorage: CookieStorage = {
   getItem(key: string): string | null {
     if (!isBrowser()) return null;
+
+    // gh-2168: an auxiliary key (PKCE code-verifier, or the separate `-user`
+    // cache key) is plain localStorage, never the shared session cookies —
+    // see isAuxiliaryStorageKey() above.
+    if (isAuxiliaryStorageKey(key)) {
+      try {
+        return window.localStorage.getItem(key);
+      } catch {
+        return null;
+      }
+    }
 
     // 1. Canonical two-cookie format — the cross-subdomain source of truth.
     // A valid shared cookie session ALWAYS wins over the per-origin localStorage
@@ -337,6 +371,12 @@ export const otterquoteCookieStorage: CookieStorage = {
 
   setItem(key: string, value: string): void {
     if (!isBrowser()) return;
+    // gh-2168: auxiliary keys are plain localStorage, never the shared
+    // session cookies — see isAuxiliaryStorageKey() above.
+    if (isAuxiliaryStorageKey(key)) {
+      try { window.localStorage.setItem(key, value); } catch { /* ignore */ }
+      return;
+    }
     if (value === null || value === undefined || value === '') {
       this.removeItem(key);
       return;
@@ -358,6 +398,20 @@ export const otterquoteCookieStorage: CookieStorage = {
 
   removeItem(key: string): void {
     if (!isBrowser()) return;
+    // gh-2168 (mirror of PR #2162 review round 4/5, comment 5825170286): this
+    // used to delete the session cookies + legacy keys for ANY key, canonical
+    // or not. supabase-js's `_updateUser` calls
+    // removeItem('<storageKey>-code-verifier') on an update-user error (e.g.
+    // a HIBP-rejected weak password) as part of its PKCE cleanup — that is
+    // not a sign-out, but it wiped the whole session anyway, signing the
+    // homeowner/contractor out. Only an AUXILIARY key (see
+    // isAuxiliaryStorageKey() above) is a plain localStorage removeItem;
+    // every other key — the canonical OTTERQUOTE_AUTH_STORAGE_KEY or
+    // anything else — keeps the pre-fix cookie-clearing behavior.
+    if (isAuxiliaryStorageKey(key)) {
+      try { window.localStorage.removeItem(key); } catch { /* ignore */ }
+      return;
+    }
     deleteCookie(COOKIE_ACCESS);
     deleteCookie(COOKIE_REFRESH);
     try { window.localStorage.removeItem(key); } catch { /* ignore */ }
@@ -454,18 +508,37 @@ export function readReferralIds(): ReferralIds {
   return out;
 }
 
-/** Persist referral ids to storage AND the .otterquote.com cookie. */
+/**
+ * Persist referral ids to storage AND the .otterquote.com cookie.
+ *
+ * gh-2060: a key ABSENT from `ids` must not leave a PRIOR write's value for
+ * that key sitting in localStorage/sessionStorage. The cookie already gets
+ * a full overwrite every call (`payload` only ever contains this call's
+ * keys), but until this fix local/sessionStorage were only ever added to,
+ * never pruned — so an agent id (or referral id/code) from an earlier,
+ * unrelated referral event could silently resurface via readReferralIds()'s
+ * per-key storage fallback on a later write that intentionally omitted it,
+ * attaching a stranger's attribution to the wrong referral. Every key not
+ * present in this call's `ids` is now explicitly cleared from both storages
+ * so post-write state always matches `ids` exactly, mirroring the cookie.
+ */
 export function writeReferralIds(ids: ReferralIds): void {
   if (typeof document === 'undefined' || !ids) return;
   const payload: Record<string, string> = {};
   for (const key of REFERRAL_KEYS) {
     const v = ids[key];
-    if (!v) continue;
-    payload[key] = String(v);
-    try { localStorage.setItem(key, String(v)); } catch { /* storage blocked */ }
-    try { sessionStorage.setItem(key, String(v)); } catch { /* storage blocked */ }
+    if (v) payload[key] = String(v);
   }
   if (!Object.keys(payload).length) return;
+  for (const key of REFERRAL_KEYS) {
+    if (payload[key]) {
+      try { localStorage.setItem(key, payload[key]); } catch { /* storage blocked */ }
+      try { sessionStorage.setItem(key, payload[key]); } catch { /* storage blocked */ }
+    } else {
+      try { localStorage.removeItem(key); } catch { /* storage blocked */ }
+      try { sessionStorage.removeItem(key); } catch { /* storage blocked */ }
+    }
+  }
   try { writeCookie(REFERRAL_COOKIE, JSON.stringify(payload), REFERRAL_MAX_AGE); } catch { /* cookie blocked */ }
 }
 

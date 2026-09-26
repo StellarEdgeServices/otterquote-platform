@@ -50,14 +50,20 @@ import {
   buildUpgradeOrderInsert,
   UPGRADE_PRODUCT_CODE,
 } from "./measurement-upgrade-order.ts";
+import { checkMeasurementPaymentIntent, checkUpgradePaymentIntent, type PaymentCheckResult } from "./payment-intent-checks.ts";
+import {
+  NON_USD_ALERT_SEND_TIMEOUT_MS,
+  NON_USD_ALERT_TYPE,
+  postAdminAlertEmail,
+  raiseNonUsdPaymentAlert,
+  type NonUsdAlertDeps,
+} from "./non-usd-alert.ts";
 
 const FUNCTION_NAME = "create-measurement-order";
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
 
-/** PaymentIntent metadata.type this function will accept. */
-const PI_TYPE = "measurement_order";
-/** Legacy value still emitted by the older frontend payment path. */
-const PI_TYPE_LEGACY = "hover_measurement";
+// The PaymentIntent metadata.type values this function accepts (measurement_order, and the legacy hover_measurement) now live with
+// the checks that use them: payment-intent-checks.ts.
 
 const ALLOWED_ORIGINS = [
   "https://otterquote.com",
@@ -189,7 +195,7 @@ async function verifyPayment(
   expectedAmount: number,
   claimId: string | null,
   requestOrigin: string,
-): Promise<{ ok: true; amount: number; stripeChargeId: string | null } | { ok: false; status: number; error: string }> {
+): Promise<PaymentCheckResult> {
   // gh-1536: exact-match, not substring — "app-staging." falsely matched
   // app-staging.otterquote.com, a Netlify DOMAIN ALIAS on the PRODUCTION app
   // site (not staging), which selected Stripe TEST-mode keys against real
@@ -217,28 +223,8 @@ async function verifyPayment(
     };
   }
   const pi = await piRes.json();
-
-  if (pi.status !== "succeeded") {
-    return {
-      ok: false,
-      status: 402,
-      error: `Payment must complete before we can order your report. Current payment status: ${pi.status}.`,
-    };
-  }
-  if (pi.amount !== expectedAmount) {
-    console.error(`[${FUNCTION_NAME}] PI amount mismatch:`, { got: pi.amount, expected: expectedAmount, pi: pi.id });
-    return { ok: false, status: 402, error: "Payment amount does not match the report price. Please contact support." };
-  }
-  if (claimId && pi.metadata?.claim_id && pi.metadata.claim_id !== claimId) {
-    console.error(`[${FUNCTION_NAME}] PI claim mismatch:`, { pi_claim: pi.metadata.claim_id, supplied: claimId });
-    return { ok: false, status: 402, error: "Payment does not belong to this project. Please contact support." };
-  }
-  if (pi.metadata?.type && pi.metadata.type !== PI_TYPE && pi.metadata.type !== PI_TYPE_LEGACY) {
-    console.error(`[${FUNCTION_NAME}] PI type mismatch:`, { pi_type: pi.metadata.type });
-    return { ok: false, status: 402, error: "Payment is not a measurement charge. Please contact support." };
-  }
-
-  return { ok: true, amount: pi.amount, stripeChargeId: pi.latest_charge ?? null };
+  // gh-2107 (Ben's step 2 on #2078): the post-fetch checks live in payment-intent-checks.ts (verbatim, plus the USD guard).
+  return checkMeasurementPaymentIntent(pi, { expectedAmount, claimId });
 }
 
 /**
@@ -254,7 +240,7 @@ async function verifyUpgradePayment(
   paymentIntentId: string,
   claimId: string,
   requestOrigin: string,
-): Promise<{ ok: true; amount: number; stripeChargeId: string | null } | { ok: false; status: number; error: string }> {
+): Promise<PaymentCheckResult> {
   const isStaging = requestOrigin === "https://jade-alpaca-b82b5e.netlify.app" ||
     requestOrigin === "https://staging--jade-alpaca-b82b5e.netlify.app";
   const stripeSecretKey = isStaging
@@ -278,24 +264,8 @@ async function verifyUpgradePayment(
     };
   }
   const pi = await piRes.json();
-
-  if (pi.status !== "succeeded") {
-    return {
-      ok: false,
-      status: 402,
-      error: `Payment must complete before we can order your report. Current payment status: ${pi.status}.`,
-    };
-  }
-  if (pi.metadata?.claim_id && pi.metadata.claim_id !== claimId) {
-    console.error(`[${FUNCTION_NAME}] upgrade PI claim mismatch:`, { pi_claim: pi.metadata.claim_id, supplied: claimId });
-    return { ok: false, status: 402, error: "Payment does not belong to this project. Please contact support." };
-  }
-  if (pi.metadata?.type !== "measurement_upgrade") {
-    console.error(`[${FUNCTION_NAME}] upgrade PI type mismatch:`, { pi_type: pi.metadata?.type });
-    return { ok: false, status: 402, error: "Payment is not a measurement-upgrade charge. Please contact support." };
-  }
-
-  return { ok: true, amount: pi.amount, stripeChargeId: pi.latest_charge ?? null };
+  // gh-2107 (Ben's step 2 on #2078): same module, same USD guard.
+  return checkUpgradePaymentIntent(pi, { claimId });
 }
 
 /**
@@ -398,6 +368,36 @@ async function recordOrderCreated(
   }
 }
 
+/**
+ * gh-2107 (Ben's DECIDED (b) on #2078): the real dependencies for the non-USD admin alert. The row goes to platform_alerts_log; the email
+ * goes through notify-measurement-order (service-role bearer, the existing admin email path) in its `alert` mode.
+ */
+function nonUsdAlertDeps(supabase: any, supabaseUrl: string): NonUsdAlertDeps {
+  return {
+    async alreadyAlerted(paymentIntentId) {
+      const { data, error } = await supabase
+        .from("platform_alerts_log")
+        .select("id")
+        .eq("alert_type", NON_USD_ALERT_TYPE)
+        .ilike("message", `%${paymentIntentId}%`)
+        .limit(1);
+      if (error) throw new Error("lookup failed");
+      return Array.isArray(data) && data.length > 0;
+    },
+    insertAlert: (row) => supabase.from("platform_alerts_log").insert(row),
+    sendAdminEmail: (body) =>
+      // Bounded: aborted at ~5 s, so a hung mail call cannot hold the buyer's 402 open (Ben's follow-up on #2078, 5807572209).
+      postAdminAlertEmail({
+        fetchImpl: fetch,
+        supabaseUrl,
+        serviceKey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+        body,
+        timeoutMs: NON_USD_ALERT_SEND_TIMEOUT_MS,
+      }),
+    log: (m) => console.error(m),
+  };
+}
+
 serve(async (req) => {
   const corsHeaders = buildCorsHeaders(req);
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -461,7 +461,12 @@ serve(async (req) => {
       const isFirstBuyer = !priorUpgrade;
 
       const paidUpgrade = await verifyUpgradePayment(paymentIntentId, claimId, req.headers.get("Origin") || "");
-      if (!paidUpgrade.ok) return json({ error: paidUpgrade.error }, paidUpgrade.status, corsHeaders);
+      if (!paidUpgrade.ok) {
+        // gh-2107 (Ben's DECIDED (b) on #2078): a non-USD rejection also alerts the admin. Awaited (an edge function can be stopped once
+        // it responds), contained (never throws), and the response below is unchanged.
+        if (paidUpgrade.nonUsd) await raiseNonUsdPaymentAlert(nonUsdAlertDeps(supabase, supabaseUrl), paidUpgrade.nonUsd, "upgrade");
+        return json({ error: paidUpgrade.error }, paidUpgrade.status, corsHeaders);
+      }
 
       const decision = buildUpgradeOrderInsert(
         paidUpgrade,
@@ -626,7 +631,11 @@ serve(async (req) => {
     if (drift) return json({ error: drift }, 409, corsHeaders);
 
     const paid = await verifyPayment(paymentIntentId, price!, claimId, req.headers.get("Origin") || "");
-    if (!paid.ok) return json({ error: paid.error }, paid.status, corsHeaders);
+    if (!paid.ok) {
+      // gh-2107 (Ben's DECIDED (b) on #2078): as above, for the report purchase.
+      if (paid.nonUsd) await raiseNonUsdPaymentAlert(nonUsdAlertDeps(supabase, supabaseUrl), paid.nonUsd, "report");
+      return json({ error: paid.error }, paid.status, corsHeaders);
+    }
 
     const { data: order, error: insErr } = await supabase
       .from("hover_orders")
