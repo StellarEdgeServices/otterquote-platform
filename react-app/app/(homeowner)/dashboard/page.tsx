@@ -94,6 +94,14 @@ function DashboardContent() {
 
       <RebateCard order={aux.rebateOrder} />
 
+      {/* gh-1411 / D-317 cl. 5-6: DetailedMeasurementBadge is built and
+          fail-first-tested (react-app/app/(homeowner)/dashboard/components/
+          DetailedMeasurementBadge.tsx + __tests__/gh1411-detailed-measurement-
+          badge.test.ts) but DELIBERATELY NOT RENDERED HERE YET: its copy is a
+          PLACEHOLDER pending Sloane's draft + LEGAL-READ (see PR #2236 handoff).
+          Wiring it back in is this one line once copy is approved:
+          <DetailedMeasurementBadge claim={claim} /> */}
+
       {!claim.ready_for_bids && (
         <Checklist claim={claim} hoverOrder={aux.hoverOrder} userId={userId} onChange={aux.refetch} />
       )}

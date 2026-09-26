@@ -85,6 +85,35 @@
     return; // no real pixel ID configured yet -- complete no-op, dark merge
   }
 
+  // gh-1925: the advertising-sharing opt-out (privacy.html Section 12). Same self-contained check as
+  // js/meta-pixel-gate.js's oqAdOptOut() (gh-2107 / D-330, Ben's ruling on #2078, 5805593465, item a),
+  // reading/writing the SAME oq_ad_optout cookie so an opt-out recorded by any gate on this device is
+  // honoured by every other gate without asking again. Wrapped in try/catch so it can never break tag
+  // loading for a real visitor.
+  function oqWriteAdOptOutCookie() {
+    try {
+      var domainAttr = '';
+      if (/(^|\.)otterquote\.com$/.test(window.location.hostname)) {
+        domainAttr = '; Domain=.otterquote.com';
+      }
+      document.cookie = 'oq_ad_optout=1; Max-Age=' + (60 * 60 * 24 * 365) + '; Path=/' + domainAttr + '; SameSite=Lax';
+    } catch (e) { /* never break a page over a cookie */ }
+  }
+
+  function oqAdOptOut() {
+    try {
+      var cookieMatch = document.cookie.match(/(?:^|; )oq_ad_optout=([^;]*)/);
+      var cookieFlag = !!(cookieMatch && decodeURIComponent(cookieMatch[1]) === '1');
+      var gpc = (typeof navigator !== 'undefined') && navigator.globalPrivacyControl === true;
+      if (gpc && !cookieFlag) {
+        oqWriteAdOptOutCookie();
+      }
+      return gpc || cookieFlag;
+    } catch (e) {
+      return false;
+    }
+  }
+
   // gh-2064: internal-traffic opt-out, checked via the self-contained
   // oqInternal() above -- not a dependency on js/internal-traffic.js
   // being present on this page. Placed after the REDDIT_PIXEL_ID check
@@ -94,6 +123,12 @@
   // redpixel.js never actually loads: the current visit is our own
   // walk/probe, not a visitor.
   if (oqInternal()) {
+    return;
+  }
+
+  // gh-1925: an opted-out visitor (GPC, or the oq_ad_optout cookie GPC and js/meta-pixel-gate.js leave)
+  // never loads redpixel.js.
+  if (oqAdOptOut()) {
     return;
   }
 

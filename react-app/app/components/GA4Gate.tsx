@@ -4,6 +4,7 @@ import Script from "next/script";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { isInternalTraffic } from "../lib/internal-traffic";
+import { isAdSharingOptedOut } from "../lib/ad-optout";
 
 /**
  * GA4 host gate — gh-1619
@@ -177,6 +178,7 @@ export function startClarityInputExclusion(): void {
 export function GA4Gate() {
   const pathname = usePathname();
   const [allowed, setAllowed] = useState(false);
+  const [ga4Allowed, setGa4Allowed] = useState(false);
   const [clarityAllowed, setClarityAllowed] = useState(false);
   const clarityWasAllowedRef = useRef(false);
   const clarityStopPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -188,6 +190,18 @@ export function GA4Gate() {
     if (isInternalTraffic()) return;
     if (typeof window !== "undefined" && ALLOWED_HOSTS.includes(window.location.hostname)) {
       setAllowed(true);
+
+      // gh-1925 (REVIEW FAIL 5850307606 on PR #2234 round 1: gating `allowed` itself also hid Clarity behind
+      // `if (!allowed) return null;` below, contradicting this file's own claim and the static stack's actual
+      // behaviour): an opted-out visitor (GPC, or the oq_ad_optout cookie GPC and js/ga-gate.js/MetaPixelGate.tsx
+      // leave -- see lib/ad-optout.ts) never loads the GA4 library, which carries Google Ads/Signals once linked.
+      // `ga4Allowed` is a SEPARATE flag from `allowed` for exactly this reason -- it gates only the two GA4
+      // <Script>s below, never the Clarity block. Clarity is a separate vendor and is NOT gated by this flag --
+      // #1925 asks only about the "ad-tech tags" (Meta Pixel, Google Ads/Signals); whether Clarity's
+      // session-replay data also counts as a CPRA "share" is an open legal question this change does not decide
+      // (LEGAL-READ PASS 5850309589 on #2234: the privacy.html Section 12 GPC promise is scoped to "advertising
+      // purposes", and Clarity is disclosed elsewhere as behavioural analytics/session replay, not advertising).
+      setGa4Allowed(!isAdSharingOptedOut());
 
       // gh-1931/gh-1939: Clarity must never see a live Supabase
       // credential in the URL fragment. Ported from js/ga-gate.js's
@@ -255,17 +269,21 @@ export function GA4Gate() {
 
   return (
     <>
-      <Script
-        async
-        src={`https://www.googletagmanager.com/gtag/js?id=${MEASUREMENT_ID}`}
-        strategy="afterInteractive"
-      />
-      <Script id="ga4-init" strategy="afterInteractive">
-        {`window.dataLayer = window.dataLayer || [];
+      {ga4Allowed && (
+        <>
+          <Script
+            async
+            src={`https://www.googletagmanager.com/gtag/js?id=${MEASUREMENT_ID}`}
+            strategy="afterInteractive"
+          />
+          <Script id="ga4-init" strategy="afterInteractive">
+            {`window.dataLayer = window.dataLayer || [];
 function gtag(){dataLayer.push(arguments);}
 gtag('js', new Date());
 gtag('config', '${MEASUREMENT_ID}');`}
-      </Script>
+          </Script>
+        </>
+      )}
       {clarityAllowed && (
         <Script id="clarity-init" strategy="afterInteractive">
           {`(function (c, l, a, r, i, t, y) {

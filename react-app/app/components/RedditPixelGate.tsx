@@ -4,6 +4,7 @@ import Script from "next/script";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { isInternalTraffic } from "../lib/internal-traffic";
+import { isAdSharingOptedOut } from "../lib/ad-optout";
 
 /**
  * Reddit Pixel host + route gate — gh-1926
@@ -78,6 +79,9 @@ export function RedditPixelGate() {
     if (isInternalTraffic()) return;
     if (!REDDIT_PIXEL_ID) return; // dark merge: complete no-op until a real ID exists
     if (!isAllowedPath(pathname)) return; // authenticated/non-marketing route -- never load
+    // gh-1925: an opted-out visitor (GPC, or the oq_ad_optout cookie GPC and js/reddit-pixel-gate.js /
+    // MetaPixelGate.tsx leave -- see lib/ad-optout.ts) never loads redpixel.js, on any route.
+    if (isAdSharingOptedOut()) return;
     if (typeof window !== "undefined" && ALLOWED_HOSTS.includes(window.location.hostname)) {
       setAllowed(true);
     }

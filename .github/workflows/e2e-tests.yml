@@ -258,6 +258,9 @@ jobs:
       - name: auth.js cs_redirect role-guard unit test (gh-1412/#1476 regression)
         run: node tests/auth-cs-redirect-role-guard.mjs
 
+      - name: measurement-shape admin-fulfilment flip unit test (gh-1411 D-317 cl. 4-6; REVIEW finding A, PR #2236)
+        run: node tests/measurement-shape-flip-on-deliver.mjs
+
       - name: tsc --noEmit type gate (gh-414)
         working-directory: react-app
         run: npx tsc --noEmit
