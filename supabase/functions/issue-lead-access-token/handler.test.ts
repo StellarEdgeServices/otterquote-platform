@@ -89,3 +89,35 @@ Deno.test("getClientIp prefers cf-connecting-ip over x-forwarded-for", () => {
   const r = req({}, { "cf-connecting-ip": "1.2.3.4", "x-forwarded-for": "9.9.9.9, 8.8.8.8" });
   assertEquals(getClientIp(r), "1.2.3.4");
 });
+
+// ── PR #2226 REVIEW D3: the rate limit fails CLOSED ─────────────────────────────
+Deno.test("D3: a rate-limit RPC error refuses with 429 and never mints (fail closed)", async () => {
+  let mintCalled = false;
+  const rpc = (name: string) => {
+    if (name === "check_rate_limit") return Promise.resolve({ data: null, error: { message: "db down" } });
+    mintCalled = true;
+    return Promise.resolve({ data: [{ token: "t", expires_at: "2099-01-01T00:00:00Z" }], error: null });
+  };
+  const res = await handleRequest(req({ lead_id: LEAD_ID }), { rpc });
+  assertEquals(res.status, 429);
+  assertEquals(mintCalled, false);
+});
+
+Deno.test("D3: a rate-limit answer with no explicit allowed:true also refuses", async () => {
+  for (const data of [null, {}, { allowed: "true" }, { allowed: 1 }]) {
+    let mintCalled = false;
+    const rpc = (name: string) => {
+      if (name === "check_rate_limit") return Promise.resolve({ data, error: null });
+      mintCalled = true;
+      return Promise.resolve({ data: [], error: null });
+    };
+    const res = await handleRequest(req({ lead_id: LEAD_ID }), { rpc });
+    assertEquals(res.status, 429, JSON.stringify(data));
+    assertEquals(mintCalled, false);
+  }
+});
+
+Deno.test("NEGATIVE CONTROL (D3): the same fake with allowed:true does mint -- the refusals above are the gate, not the fake", async () => {
+  const res = await handleRequest(req({ lead_id: LEAD_ID }), { rpc: allowRpc() });
+  assertEquals((await res.json()).ok, true);
+});

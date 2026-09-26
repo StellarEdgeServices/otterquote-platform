@@ -1,46 +1,37 @@
 /**
  * OtterQuote Edge Function: create-lead-payment-intent
  *
- * gh-2121 (HO-3, #2121 row 3.2). Creates the $15 Stripe PaymentIntent for a
- * lead that has no account yet, resolved server-side from an unguessable
- * lead_token (Ben's Ruling 3) -- see ./handler.ts for the full contract and
- * ./handler.test.ts for the unit tests (including the negative controls: a
- * bad/expired token is rejected and no Stripe call is attempted without a
- * valid lead).
+ * gh-2121 (HO-3, #2121 row 3.2). Price preview + Stripe PaymentIntent for a
+ * lead with no account, resolved server-side from an unguessable lead_token
+ * (Ben's Ruling 3). See ./handler.ts for the contract and ./handler.test.ts
+ * for the tests (negative controls included).
  *
  * verify_jwt is pinned to false in supabase/config.toml: the caller is an
- * anonymous lead with no session. Authorization is entirely the lead_token
- * (resolved server-side via resolve_lead_by_token(), never a client-supplied
- * lead_id) plus the per-IP rate limit.
+ * anonymous lead. Authorization is the lead_token plus the per-IP rate limit.
  *
  * Environment variables:
  *   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
- *   STRIPE_SECRET_KEY (+ STRIPE_SECRET_KEY_TEST for staging origins)
+ *   STRIPE_MODE          -- "test" ONLY on a non-production project; anything
+ *                           else (or unset) means live. Never derived from the
+ *                           request (PR #2226 REVIEW D7).
+ *   STRIPE_SECRET_KEY    -- live mode
+ *   STRIPE_SECRET_KEY_TEST -- test mode only
  */
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
-import { fetchStripeWithTimeout } from "../create-payment-intent/stripe-fetch.ts";
-import { handleRequest, type ResolvedLead } from "./handler.ts";
+import { fetchStripeWithTimeout } from "../_shared/stripe-fetch-timeout.ts";
+import { resolveStripeMode, stripeSecretKeyForMode, HOVER_PRICE_SETTING_KEY } from "../_shared/lead-measurement-order.ts";
+import { FUNCTION_NAME, handleRequest, type ResolvedLead } from "./handler.ts";
 
-const FUNCTION_NAME = "create-lead-payment-intent";
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
 
-const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
-const sb = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "");
+const sb = createClient(Deno.env.get("SUPABASE_URL") || "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "");
+const stripeMode = resolveStripeMode(Deno.env.get("STRIPE_MODE"));
+const stripeSecretKey = stripeSecretKeyForMode(stripeMode, (k) => Deno.env.get(k));
 
-function stripeKeyForOrigin(origin: string): string | undefined {
-  const isStaging = origin === "https://jade-alpaca-b82b5e.netlify.app" ||
-    origin === "https://staging--jade-alpaca-b82b5e.netlify.app";
-  return isStaging
-    ? (Deno.env.get("STRIPE_SECRET_KEY_TEST") || Deno.env.get("STRIPE_SECRET_KEY"))
-    : Deno.env.get("STRIPE_SECRET_KEY");
-}
-
-serve((req: Request) => {
-  const origin = req.headers.get("Origin") || "";
-  const stripeSecretKey = stripeKeyForOrigin(origin);
-
-  return handleRequest(req, {
+serve((req: Request) =>
+  handleRequest(req, {
+    stripeMode,
     resolveLead: async (leadToken) => {
       const { data, error } = await sb.rpc("resolve_lead_by_token", { p_token: leadToken });
       if (error) {
@@ -61,9 +52,20 @@ serve((req: Request) => {
       const { data, error } = await sb
         .from("platform_settings")
         .select("value")
-        .eq("key", "hover_measurement_price")
+        .eq("key", HOVER_PRICE_SETTING_KEY)
         .maybeSingle();
       return { row: data ?? null, error: error ? { message: error.message } : null };
+    },
+    findLeadOrderStatuses: async (leadId) => {
+      const { data, error } = await sb
+        .from("lead_measurement_orders")
+        .select("status")
+        .eq("lead_id", leadId);
+      if (error) {
+        console.error(`[${FUNCTION_NAME}] lead order lookup failed`);
+        return { statuses: [], error: true };
+      }
+      return { statuses: (data ?? []).map((r: { status: string }) => r.status), error: false };
     },
     checkRateLimit: async (bucketUserId) => {
       const { data, error } = await sb.rpc("check_rate_limit", {
@@ -71,28 +73,41 @@ serve((req: Request) => {
         p_user_id: bucketUserId,
       });
       if (error) {
-        console.error(`[${FUNCTION_NAME}] rate limit check failed:`, error);
-        // Fail CLOSED here (unlike record-lead-details): this is a money
-        // path, not a consent write, so an infra hiccup refuses rather than
-        // risks an unbounded Stripe create loop.
+        // Fail CLOSED: a money path refuses rather than risks an unbounded create loop.
+        console.error(`[${FUNCTION_NAME}] rate limit check failed; failing closed`);
         return { allowed: false, reason: "rate_limit_check_failed" };
       }
-      const parsed = data as { allowed?: boolean; reason?: string; counts?: unknown } | null;
-      return { allowed: parsed?.allowed === true, reason: parsed?.reason, counts: parsed?.counts };
+      const parsed = data as { allowed?: boolean; reason?: string } | null;
+      return { allowed: parsed?.allowed === true, reason: parsed?.reason };
+    },
+    recordConsent: async (c) => {
+      const userAgent = (c.userAgent ?? "").slice(0, 500) || null;
+      const { error } = await sb.from("lead_consents").upsert(
+        {
+          lead_id: c.leadId,
+          consent_key: c.consentKey,
+          consent_given: true,
+          consent_text: c.consentText,
+          page_url: c.pageUrl,
+          user_agent: userAgent,
+          ip: c.ip,
+          payload: c.payload,
+        },
+        { onConflict: "lead_id,consent_key", ignoreDuplicates: true },
+      );
+      if (error) console.error(`[${FUNCTION_NAME}] lead_consents insert failed (code ${error.code ?? "unknown"})`);
+      return { ok: !error };
     },
     createPaymentIntent: async (form, idempotencyKey) => {
       if (!stripeSecretKey) {
-        console.error(`[${FUNCTION_NAME}] Stripe secret key not configured.`);
+        console.error(`[${FUNCTION_NAME}] Stripe secret key not configured for mode ${stripeMode}.`);
         return { ok: false, status: 0, body: {} };
       }
-      const basicAuth = btoa(`${stripeSecretKey}:`);
       try {
-        // Ben's Ruling 2: fetchStripeWithTimeout + an Idempotency-Key, exactly
-        // like create-payment-intent's own standard-flow create.
         const r = await fetchStripeWithTimeout(fetch, `${STRIPE_API_BASE}/payment_intents`, {
           method: "POST",
           headers: {
-            Authorization: `Basic ${basicAuth}`,
+            Authorization: `Basic ${btoa(`${stripeSecretKey}:`)}`,
             "Content-Type": "application/x-www-form-urlencoded",
             "Idempotency-Key": idempotencyKey,
           },
@@ -101,7 +116,7 @@ serve((req: Request) => {
         const body = await r.json().catch(() => ({}));
         return { ok: r.ok, status: r.status, body };
       } catch (e) {
-        console.error(`[${FUNCTION_NAME}] Stripe create threw:`, e instanceof Error ? e.message : e);
+        console.error(`[${FUNCTION_NAME}] Stripe create threw:`, e instanceof Error ? e.name : "non-error");
         return { ok: false, status: 0, body: {} };
       }
     },
@@ -113,9 +128,9 @@ serve((req: Request) => {
           message,
           sent_at: new Date().toISOString(),
         });
-      } catch (e) {
-        console.error("platform_alerts_log insert failed:", e);
+      } catch {
+        console.error(`[${FUNCTION_NAME}] platform_alerts_log insert failed`);
       }
     },
-  });
-});
+  })
+);

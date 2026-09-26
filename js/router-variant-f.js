@@ -11,8 +11,9 @@
 // gh-2121 (HO-3, row 3.2, this PR): the thank-you screen's two CTAs now go to
 // the NEW no-account pages (measure-lead.html / loss-sheet-lead.html)
 // instead of the authed app paths, carrying an unguessable, expiring
-// `?lead_token=` (Ben's Ruling 3 -- never the raw lead id) minted just-in-time
-// by issue-lead-access-token. Screens 1-3 and the lead-insert path are
+// lead_token (Ben's Ruling 3 -- never the raw lead id) minted just-in-time
+// by issue-lead-access-token and carried in the URL FRAGMENT (#lead_token=,
+// PR #2226 REVIEW D4). Screens 1-3 and the lead-insert path are
 // UNCHANGED, exactly as the HO-3 build spec calls for
 // (In Flight/reports/ceo71-ho-define-20260926.md).
 //
@@ -117,7 +118,7 @@
     { value: 'unsure', copyKey: 'arm_f_s1_option_unsure' }
   ];
   // gh-2121 (HO-3): the two thank-you buttons deep-link into the NEW
-  // no-account pages, carrying a minted `?lead_token=` (never the raw lead
+  // no-account pages, carrying a minted `#lead_token=` (never the raw lead
   // id -- see redirectWithLeadToken below). Same host/URL convention as the
   // authed destinations this replaces (no .html suffix).
   var CTA_DESTINATIONS = {
@@ -703,9 +704,12 @@
   function redirectWithLeadToken(destBase, fallbackBase) {
     mintLeadToken(leadId).then(function (token) {
       if (token) {
-        var sep = destBase.indexOf('?') === -1 ? '?' : '&';
-        var withToken = destBase + sep + 'lead_token=' + encodeURIComponent(token);
-        bridge.redirectTo(bridge.appendParams(withToken, bridge.collectAttribution()), true);
+        // PR #2226 REVIEW D4: the token rides in the URL FRAGMENT, never the
+        // query string. A fragment is never sent to a server or in a Referer,
+        // and the destination page strips it with history.replaceState before
+        // GA4/Sentry/Stripe.js load. Attribution stays in the query as before.
+        var withAttribution = bridge.appendParams(destBase, bridge.collectAttribution());
+        bridge.redirectTo(withAttribution + '#lead_token=' + encodeURIComponent(token), true);
       } else {
         // Ruling 3 refuses a raw-lead-id URL, so a failed mint falls back to
         // the ORIGINAL authed destination (still keyed by lead id, exactly

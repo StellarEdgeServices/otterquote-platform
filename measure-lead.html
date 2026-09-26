@@ -1,6 +1,25 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<!-- gh-2121 HO-3 / PR #2226 REVIEW D4: the lead_token arrives in the URL
+     FRAGMENT (#lead_token=...), which browsers never send to any server or in
+     a Referer. This runs FIRST -- before Sentry, GA4, Stripe.js or fonts can
+     read location -- captures the token into memory and strips it from the
+     address bar with history.replaceState, so no third party ever sees it. -->
+<script>
+  (function () {
+    var t = '';
+    try {
+      var m = /(?:^|&)lead_token=([^&]*)/.exec((window.location.hash || '').replace(/^#/, ''));
+      if (m) t = decodeURIComponent(m[1]);
+      if (window.location.hash && window.history && window.history.replaceState) {
+        window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      }
+    } catch (e) { /* never block the page */ }
+    window.__HO3_LEAD_TOKEN = t;
+  })();
+</script>
+<meta name="referrer" content="no-referrer">
 <!-- Sentry Error Monitoring (same pattern as help-measurements.html) -->
 <script
   src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
@@ -24,8 +43,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
-    <title>Get Your Roof Measured — Otter Quotes</title>
-    <meta name="description" content="Get a professional roof measurement report for $15 — no account needed.">
+    <title>Roof Measurement Report — Otter Quotes</title>
+    <meta name="description" content="We order a professional aerial measurement report of your roof.">
     <link rel="canonical" href="https://otterquote.com/measure-lead.html">
     <meta name="robots" content="noindex">
 
@@ -38,7 +57,8 @@
     <!-- Stripe.js — required for card payment -->
     <script src="https://js.stripe.com/v3/"></script>
     <script src="/js/ga-gate.js"></script>
-    <script>gtag('config', 'G-D1Y1TLGEFY');</script>
+    <!-- D4 belt and braces: page_location is set explicitly (no fragment, so never a token). -->
+    <script>gtag('config', 'G-D1Y1TLGEFY', { page_location: window.location.origin + window.location.pathname + window.location.search });</script>
 
     <style>
         body {
@@ -148,6 +168,10 @@
         @keyframes spin { to { transform: rotate(360deg); } }
 
         .fine-print { font-size: 0.75rem; color: #64748B; text-align: center; margin-top: 0.75rem; }
+        .rebate-callout { background: #ECFDF5; border: 1px solid #A7F3D0; border-radius: 8px; padding: 0.9rem 1rem; font-size: 0.92rem; color: #065F46; margin-bottom: 1.25rem; }
+        .consent-row { display: flex; gap: 0.6rem; align-items: flex-start; font-size: 0.92rem; color: #1a1a1a; margin: 0 0 1rem; }
+        .consent-row input { margin-top: 0.25rem; width: 18px; height: 18px; flex-shrink: 0; }
+        .consent-row a { color: #b8860b; }
         .privacy-line { font-size: 0.8rem; color: #666; text-align: center; margin-top: 1.5rem; }
         .privacy-line a { color: #b8860b; }
     </style>
@@ -159,16 +183,35 @@
         <div id="statusMessage" class="status-message"></div>
 
         <div id="offerSection">
-            <h1>Get your roof measured for $15 — no account needed.</h1>
-            <p class="subhead">Same professional aerial measurement report as our full service. Pay once, get your report by email — nothing else to set up.</p>
-            <div class="price-line">$15 (rebated if you use an Otter Quotes contractor)</div>
+            <!-- PR #2226 LEGAL-READ L4: every customer-facing sentence here is
+                 copied from the live help-measurements.html; the price is never
+                 typed into this file (L3) -- [data-price] is filled from the
+                 server's answer, the same number the charge uses. -->
+            <h1>Roof Measurement Report</h1>
+            <p class="subhead">We order a professional aerial measurement report of your roof &mdash; squares, pitch, facets, ridge, hip, valley and eave lengths. Nothing for you to do: no photos, no ladder, no appointment. It is enough for a contractor to bid most roofing jobs.</p>
+            <div class="price-line" id="priceLine" style="display:none;"><span data-price></span></div>
+
+            <!-- L1 disclosure, from help-measurements.html's "How the [price] works"
+                 callout. L2: its rebate sentence is NOT shown here -- the D-291
+                 rebate runs on claims only and nothing links a lead order to a
+                 claim, so this page cannot promise it (Tier C question on the PR). -->
+            <div class="rebate-callout" id="howItWorks" style="display:none;">
+                <strong>How the <span data-price></span> works:</strong> You pay <span data-price></span> now and we order the report. The report stays with you &mdash; it is yours to keep and reuse on any future project.
+            </div>
 
             <div class="card">
-                <button class="action-btn" id="purchaseBtn" onclick="purchase()">Pay $15 Securely</button>
+                <!-- L1: required, unticked clickwrap. The label text must equal
+                     MEASURE_TERMS_CONSENT_TEXT in create-lead-payment-intent/handler.ts
+                     character for character; the server refuses anything else. -->
+                <label class="consent-row" for="termsConsent">
+                    <input type="checkbox" id="termsConsent" onchange="onConsentChange()">
+                    <span id="termsConsentLabel">I agree to our <a href="terms.html">Terms of Service</a> and <a href="privacy.html">Privacy Policy</a>.</span>
+                </label>
+                <button class="action-btn" id="purchaseBtn" onclick="purchase()" disabled>Pay <span data-price></span> Securely</button>
                 <div id="cardWrap" style="display:none; margin-top:1.25rem;">
                     <div id="cardElement"></div>
                     <div id="cardErrors"></div>
-                    <button class="action-btn" id="confirmBtn" onclick="confirmPayment()">Pay $15 Securely</button>
+                    <button class="action-btn" id="confirmBtn" onclick="confirmPayment()">Pay <span data-price></span> Securely</button>
                 </div>
                 <p class="fine-print">🔒 Payment secured by Stripe. Your card info is never stored on our servers.</p>
             </div>
@@ -178,13 +221,14 @@
             <div class="success-state">
                 <div class="success-icon">📐</div>
                 <h1 style="text-align:center;">Measurement Report Ordered</h1>
-                <p class="subhead" style="text-align:center;">Your roof measurement report is on its way — usually within one business day. We'll email you when it's ready.</p>
+                <p class="subhead" style="text-align:center;">Your roof measurement report is on its way. There is nothing else for you to do.</p>
             </div>
         </div>
 
-        <p class="privacy-line">Otter Quotes / Stellar Edge Services. By continuing you agree to our <a href="privacy.html">Privacy Policy</a> and <a href="terms.html">Terms</a>.</p>
+        <p class="privacy-line">Otter Quotes / Stellar Edge Services. <a href="privacy.html">Privacy Policy</a> &middot; <a href="terms.html">Terms</a></p>
     </div>
 
+    <script src="js/cookie-storage.js"></script>
     <script src="js/config.js"></script>
     <script>
         // gh-2121 HO-3 (Ruling 5: GA4 step events + funnel id ho-3).
@@ -196,22 +240,62 @@
             } catch (e) { /* analytics must never block the flow */ }
         }
 
-        // Ruling 3: the URL carries an unguessable, expiring TOKEN, never a
-        // raw lead id. This page never reads or trusts a `?lead=` id.
-        var params = new URLSearchParams(window.location.search);
-        var LEAD_TOKEN = params.get('lead_token') || '';
+        // Ruling 3 + D4: the token came from the URL FRAGMENT and was captured
+        // (and stripped from the address bar) by the first script in <head>.
+        // This page never reads a lead id, and never reads a token from the query.
+        var LEAD_TOKEN = window.__HO3_LEAD_TOKEN || '';
 
         var stripeClient = null;
         var cardElement = null;
         var clientSecret = null;
+        var priceCents = null;   // L3: set ONLY from the server's answer
+        var priceCurrency = 'usd';
 
         document.addEventListener('DOMContentLoaded', function () {
             trackHo3('ho3_view', { step: 'measure_offer' });
             if (!LEAD_TOKEN) {
                 showError('This link is missing some information. Please go back and tap the button again.');
-                document.getElementById('purchaseBtn').disabled = true;
+                return;
             }
+            loadPrice();
         });
+
+        function formatPrice(cents) {
+            var dollars = cents / 100;
+            return '$' + (cents % 100 === 0 ? String(dollars) : dollars.toFixed(2));
+        }
+
+        function renderPrice() {
+            var text = formatPrice(priceCents);
+            var els = document.querySelectorAll('[data-price]');
+            for (var i = 0; i < els.length; i++) els[i].textContent = text;
+            document.getElementById('priceLine').style.display = '';
+            document.getElementById('howItWorks').style.display = '';
+        }
+
+        function showAlreadyOrdered() {
+            document.getElementById('offerSection').style.display = 'none';
+            document.getElementById('successSection').style.display = 'block';
+        }
+
+        async function loadPrice() {
+            try {
+                var res = await postFunction('create-lead-payment-intent', { lead_token: LEAD_TOKEN, mode: 'preview' });
+                if (res.status === 409 && res.data && res.data.already_ordered) { showAlreadyOrdered(); return; }
+                if (!res.ok || typeof res.data.amount !== 'number') throw new Error(res.data.error || 'Could not load the price. Please refresh.');
+                priceCents = res.data.amount;
+                priceCurrency = res.data.currency || 'usd';
+                renderPrice();
+                onConsentChange();
+            } catch (err) {
+                showError(err.message || 'Could not load the price. Please refresh.');
+            }
+        }
+
+        function onConsentChange() {
+            var ticked = document.getElementById('termsConsent').checked;
+            document.getElementById('purchaseBtn').disabled = !(ticked && priceCents !== null && LEAD_TOKEN);
+        }
 
         function showError(text) {
             var el = document.getElementById('statusMessage');
@@ -223,7 +307,7 @@
             return CONFIG.SUPABASE_URL + '/functions/v1/' + fn;
         }
 
-        async function callFunction(fn, body) {
+        async function postFunction(fn, body) {
             var res = await fetch(apiUrl(fn), {
                 method: 'POST',
                 headers: {
@@ -234,11 +318,17 @@
                 body: JSON.stringify(body)
             });
             var data = await res.json().catch(function () { return {}; });
-            if (!res.ok) throw new Error(data.error || ('Request failed (' + res.status + ')'));
-            return data;
+            return { ok: res.ok, status: res.status, data: data };
+        }
+
+        async function callFunction(fn, body) {
+            var r = await postFunction(fn, body);
+            if (!r.ok) throw new Error(r.data.error || ('Request failed (' + r.status + ')'));
+            return r.data;
         }
 
         async function purchase() {
+            if (!document.getElementById('termsConsent').checked) return;
             var btn = document.getElementById('purchaseBtn');
             var original = btn.innerHTML;
             btn.disabled = true;
@@ -246,12 +336,29 @@
             trackHo3('ho3_pay_start', { step: 'measure_offer' });
 
             try {
-                var result = await callFunction('create-lead-payment-intent', { lead_token: LEAD_TOKEN });
+                var r = await postFunction('create-lead-payment-intent', {
+                    lead_token: LEAD_TOKEN,
+                    mode: 'create',
+                    terms_accepted: true,
+                    // L1: the exact label the visitor saw; the server records it and refuses any other text.
+                    consent_text: document.getElementById('termsConsentLabel').textContent.replace(/\s+/g, ' ').trim(),
+                    page_url: window.location.origin + window.location.pathname
+                });
+                if (r.status === 409 && r.data && r.data.already_ordered) { showAlreadyOrdered(); return; }
+                if (!r.ok) throw new Error(r.data.error || 'Could not initialize payment. Please try again.');
+                var result = r.data;
                 if (!result.client_secret) throw new Error('Could not initialize payment. Please try again.');
                 clientSecret = result.client_secret;
+                if (typeof result.amount === 'number' && result.amount !== priceCents) {
+                    priceCents = result.amount;
+                    renderPrice();
+                }
 
-                if (!CONFIG.STRIPE_PK) throw new Error('Stripe publishable key not configured.');
-                stripeClient = Stripe(CONFIG.STRIPE_PK);
+                // D7: the publishable key follows the PaymentIntent's own mode
+                // (decided server-side), never this page's hostname.
+                var pk = result.livemode === true ? CONFIG.STRIPE_PK_LIVE : CONFIG.STRIPE_PK_TEST;
+                if (!pk) throw new Error('Stripe publishable key not configured.');
+                stripeClient = Stripe(pk);
                 var elements = stripeClient.elements();
                 cardElement = elements.create('card', {
                     style: { base: { fontSize: '15px', color: '#0D1B2E', fontFamily: 'Rubik, sans-serif', '::placeholder': { color: '#94A3B8' } }, invalid: { color: '#EF4444' } }
@@ -262,12 +369,13 @@
                 });
 
                 btn.style.display = 'none';
+                document.getElementById('termsConsent').disabled = true;
                 document.getElementById('cardWrap').style.display = 'block';
             } catch (err) {
-                console.error('measure-lead purchase init error:', err);
+                console.error('measure-lead purchase init error');
                 showError(err.message || 'Could not initialize payment. Please try again.');
-                btn.disabled = false;
                 btn.innerHTML = original;
+                onConsentChange();
             }
         }
 
@@ -279,6 +387,7 @@
             document.getElementById('cardErrors').textContent = '';
             trackHo3('ho3_payment_submitted', { step: 'measure_offer' });
 
+            var paymentIntent = null;
             try {
                 var confirmResult = await stripeClient.confirmCardPayment(clientSecret, { payment_method: { card: cardElement } });
                 if (confirmResult.error) {
@@ -287,28 +396,35 @@
                     btn.innerHTML = original;
                     return;
                 }
-                var paymentIntent = confirmResult.paymentIntent;
+                paymentIntent = confirmResult.paymentIntent;
                 if (paymentIntent.status !== 'succeeded') {
                     throw new Error('Unexpected payment status: ' + paymentIntent.status + '. Please contact support.');
                 }
+            } catch (err) {
+                document.getElementById('cardErrors').textContent = err.message || 'Payment failed. Please try again.';
+                btn.disabled = false;
+                btn.innerHTML = original;
+                return;
+            }
 
-                btn.innerHTML = '<span class="spinner"></span> Ordering your report...';
+            // The card is charged. From here on the buyer is NEVER invited to pay
+            // again: the server also records this order from Stripe's webhook
+            // (PR #2226 REVIEW D5), so this call is for the confirmation screen only.
+            btn.innerHTML = '<span class="spinner"></span> Ordering your report...';
+            try {
                 await callFunction('create-lead-measurement-order', {
                     lead_token: LEAD_TOKEN,
                     payment_intent_id: paymentIntent.id
                 });
-
-                document.getElementById('offerSection').style.display = 'none';
-                document.getElementById('successSection').style.display = 'block';
-                trackHo3('ho3_success', { step: 'measure_success' });
-                if (typeof gtag !== 'undefined') {
-                    gtag('event', 'purchase', { funnel_id: FUNNEL_ID, value: 15, currency: 'USD', transaction_id: paymentIntent.id });
-                }
             } catch (err) {
-                console.error('measure-lead confirm error:', err);
-                document.getElementById('cardErrors').textContent = err.message || 'Payment failed. Please try again.';
-                btn.disabled = false;
-                btn.innerHTML = original;
+                console.error('measure-lead order record call failed after payment');
+            }
+            document.getElementById('offerSection').style.display = 'none';
+            document.getElementById('successSection').style.display = 'block';
+            trackHo3('ho3_success', { step: 'measure_success' });
+            if (typeof gtag !== 'undefined') {
+                // L3: GA4 value is the charged amount, never a typed number.
+                gtag('event', 'purchase', { funnel_id: FUNNEL_ID, value: paymentIntent.amount / 100, currency: String(paymentIntent.currency || priceCurrency).toUpperCase(), transaction_id: paymentIntent.id });
             }
         }
     </script>

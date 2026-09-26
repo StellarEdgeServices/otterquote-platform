@@ -1,32 +1,43 @@
 /**
- * create-lead-measurement-order -- request handling for HO-3's no-account
- * $15 measurement purchase (the record-the-order half, after Stripe has
- * confirmed the charge).
+ * create-lead-measurement-order -- the browser half of recording HO-3's
+ * no-account measurement order, after Stripe has confirmed the charge.
  *
  * gh-2121 (HO-3, #2121 row 3.2). Called from measure-lead.html AFTER
- * hoverStripe.confirmCardPayment() has succeeded. Mirrors
- * create-measurement-order's "look the row up server-side, never trust
- * client fields" discipline: the lead_token resolves the lead, the
- * PaymentIntent is fetched from Stripe itself (never trusted from the
- * client), and the row is inserted into lead_measurement_orders (a sibling
- * of hover_orders -- see the migration's own note on why it is a separate
- * table).
+ * confirmCardPayment() succeeds. Since PR #2226 REVIEW D5 this call is for UX
+ * only: stripe-webhook records the SAME order on payment_intent.succeeded, so
+ * a closed tab, a dropped network, or a 401/429 here can no longer leave a
+ * charge with no order row. Both writers go through the shared
+ * recordLeadOrder() (INSERT ... ON CONFLICT (stripe_payment_intent_id) DO
+ * NOTHING), so exactly one row exists per PaymentIntent whichever arrives first.
  *
- * Ben's Ruling 2: every DB update uses the zero-row-update-guard. This
- * function only ever INSERTs the order row (an insert cannot silently match
- * zero rows the way an UPDATE can), so the guard is not needed for that
- * write -- see index.ts for the one UPDATE this feature performs
- * (issue_lead_access_token is a function, not a raw update) and
- * stripe-webhook's lead-capi.ts for where the guard actually applies on this
- * feature's money path.
+ * Checks, in order: rate limit (fails closed) -> lead_token resolves (401) ->
+ * an order for this PaymentIntent already exists (idempotent 200) -> server
+ * price -> the PaymentIntent fetched from Stripe (fetchStripeWithTimeout, D14)
+ * passes checkLeadPaymentIntent (livemode matches the server's Stripe mode
+ * (D7), succeeded, usd, exact price, this lead, this type) -> record. A
+ * failed record after a real charge writes platform_alerts_log and tells the
+ * buyer not to pay again.
  *
- * No imports here (unit-tested with a fake Stripe/DB) -- index.ts wires the
- * real Supabase client and fetch.
+ * Every write here is an INSERT (the order row); the zero-row-update guard
+ * does not apply. The one UPDATE this feature performs is notify-measurement-
+ * order's admin_notified_at claim, which uses the guard.
  */
 
+import {
+  checkLeadPaymentIntent,
+  HOVER_PRICE_SETTING_KEY,
+  LEAD_PRODUCT_CODE,
+  type LeadOrderRowInput,
+  type OrderRef,
+  type PaymentIntentLike,
+  type RecordOutcome,
+  resolveRequiredPriceCents,
+  type StripeMode,
+} from "../_shared/lead-measurement-order.ts";
+
+export { checkLeadPaymentIntent };
+
 export const FUNCTION_NAME = "create-lead-measurement-order";
-export const LEAD_MEASUREMENT_PI_TYPE = "lead_measurement_order";
-export const LEAD_PRODUCT_CODE = "roof_basic";
 
 export const ALLOWED_ORIGINS = [
   "https://otterquote.com",
@@ -83,61 +94,21 @@ export function validateBody(
 
 export interface ResolvedLead {
   leadId: string;
-}
-
-// deno-lint-ignore no-explicit-any
-type PaymentIntentLike = any;
-
-export type PaymentCheckResult =
-  | { ok: true; amount: number; stripeChargeId: string | null }
-  | { ok: false; status: number; error: string };
-
-/**
- * Same checks as create-measurement-order's checkMeasurementPaymentIntent
- * (payment-intent-checks.ts): succeeded, USD, the exact catalog price, and
- * the RIGHT charge -- here scoped to metadata.lead_id matching (instead of
- * claim_id) and metadata.type === lead_measurement_order.
- */
-export function checkLeadPaymentIntent(
-  pi: PaymentIntentLike,
-  ctx: { expectedAmount: number; leadId: string },
-): PaymentCheckResult {
-  if (pi.status !== "succeeded") {
-    return { ok: false, status: 402, error: `Payment must complete before we can order your report. Current payment status: ${pi.status}.` };
-  }
-  if (pi.currency !== "usd") {
-    return { ok: false, status: 402, error: "This payment could not be accepted because it was not made in US dollars. Nothing further has been charged. Please contact support." };
-  }
-  if (pi.amount !== ctx.expectedAmount) {
-    return { ok: false, status: 402, error: "Payment amount does not match the report price. Please contact support." };
-  }
-  if (pi.metadata?.lead_id !== ctx.leadId) {
-    return { ok: false, status: 402, error: "Payment does not belong to this request. Please contact support." };
-  }
-  if (pi.metadata?.type !== LEAD_MEASUREMENT_PI_TYPE) {
-    return { ok: false, status: 402, error: "Payment is not a measurement charge. Please contact support." };
-  }
-  return { ok: true, amount: pi.amount, stripeChargeId: typeof pi.latest_charge === "string" ? pi.latest_charge : (pi.latest_charge?.id ?? null) };
-}
-
-export interface ExistingOrder {
-  id: string;
-  status: string;
+  isSynthetic: boolean;
 }
 
 export interface Deps {
+  stripeMode: StripeMode;
   resolveLead: (leadToken: string) => Promise<ResolvedLead | null>;
   readPriceCents: () => Promise<{ row: { value: unknown } | null; error: { message?: string } | null }>;
-  /** Idempotency check FIRST, before touching Stripe -- same discipline as create-measurement-order. */
-  findExistingOrder: (paymentIntentId: string) => Promise<ExistingOrder | null>;
+  /** Idempotency check FIRST, before touching Stripe. */
+  findExistingOrder: (paymentIntentId: string) => Promise<OrderRef | null>;
+  /** Stripe PI retrieve via fetchStripeWithTimeout; null on any failure. */
   fetchPaymentIntent: (paymentIntentId: string) => Promise<PaymentIntentLike | null>;
-  insertOrder: (row: {
-    leadId: string;
-    paymentIntentId: string;
-    amountCents: number;
-    stripeChargeId: string | null;
-  }) => Promise<{ id: string; status: string } | { error: string }>;
+  /** The shared recordLeadOrder(), wired to the real table and platform_alerts_log. */
+  recordOrder: (input: LeadOrderRowInput) => Promise<RecordOutcome>;
   checkRateLimit: (bucketIp: string) => Promise<{ allowed: boolean; reason?: string }>;
+  /** Admin email via notify-measurement-order (lead_order branch). Called only for a newly inserted row. */
   notifyOrderCreated: (order: { id: string; leadId: string }) => Promise<void>;
 }
 
@@ -156,30 +127,26 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
   if (!parsed.ok) return json({ error: parsed.error }, 400, corsHeaders);
 
   const rl = await deps.checkRateLimit(getClientIp(req) ?? "unknown");
-  if (!rl.allowed) return json({ error: "Rate limit exceeded", reason: rl.reason }, 429, corsHeaders);
+  if (!rl.allowed) return json({ error: "Too many requests. Please try again later.", reason: rl.reason }, 429, corsHeaders);
 
-  // Ruling 3 / negative control: resolved server-side from the token. An
-  // invalid/expired token means no lead, and no order is ever written or
-  // Stripe call made for it.
   const lead = await deps.resolveLead(parsed.leadToken);
   if (!lead) return json({ error: "This link is no longer valid. Please start over." }, 401, corsHeaders);
 
-  // Idempotency FIRST, before touching Stripe -- a retried request for a
-  // PaymentIntent already recorded returns the existing order.
+  // Idempotency FIRST: the webhook (or an earlier retry) may already have recorded it.
   const existing = await deps.findExistingOrder(parsed.paymentIntentId);
   if (existing) {
+    if (existing.lead_id && existing.lead_id !== lead.leadId) {
+      return json({ error: "Payment does not belong to this request. Please contact support." }, 402, corsHeaders);
+    }
     return json({ order_id: existing.id, status: existing.status, idempotent: true }, 200, corsHeaders);
   }
 
   let expectedAmount: number;
   try {
     const { row, error } = await deps.readPriceCents();
-    if (error || row == null || row.value == null) throw new Error("price missing");
-    const v = typeof row.value === "number" ? row.value : Number(row.value);
-    if (!Number.isFinite(v) || v <= 0) throw new Error("price invalid");
-    expectedAmount = v;
+    expectedAmount = resolveRequiredPriceCents(HOVER_PRICE_SETTING_KEY, row, error);
   } catch {
-    return json({ error: "This report is temporarily unavailable. Please contact support." }, 500, corsHeaders);
+    return json({ error: "We could not confirm your order just now. Your payment is safe -- we will finish it and email you. Do not pay again." }, 500, corsHeaders);
   }
 
   const pi = await deps.fetchPaymentIntent(parsed.paymentIntentId);
@@ -187,28 +154,32 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
     return json({ error: "We could not verify your payment. Please try again or contact support." }, 402, corsHeaders);
   }
 
-  const check = checkLeadPaymentIntent(pi, { expectedAmount, leadId: lead.leadId });
-  if (!check.ok) return json({ error: check.error }, check.status, corsHeaders);
+  const check = checkLeadPaymentIntent(pi, { expectedAmount, leadId: lead.leadId, stripeMode: deps.stripeMode });
+  if (!check.ok) return json({ error: check.error, reason: check.reason }, check.status, corsHeaders);
 
-  const inserted = await deps.insertOrder({
+  const recorded = await deps.recordOrder({
     leadId: lead.leadId,
     paymentIntentId: parsed.paymentIntentId,
     amountCents: check.amount,
     stripeChargeId: check.stripeChargeId,
+    isTest: lead.isSynthetic,
+    recordedBy: "browser",
   });
-  if ("error" in inserted) {
-    // The buyer's money has already moved -- never invite a second payment.
-    console.error(`[${FUNCTION_NAME}] order insert failed AFTER successful payment for PI ${parsed.paymentIntentId}`);
+  if (recorded.outcome === "failed") {
+    // recordLeadOrder already wrote platform_alerts_log. Never invite a second payment.
     return json(
       { error: "Your payment went through, but we could not record the order. Do not pay again — contact support and we will finish it by hand.", payment_captured: true },
       500,
       corsHeaders,
     );
   }
+  if (recorded.outcome === "existing") {
+    return json({ order_id: recorded.order.id, status: recorded.order.status, idempotent: true }, 200, corsHeaders);
+  }
 
-  await deps.notifyOrderCreated({ id: inserted.id, leadId: lead.leadId }).catch((e) => {
-    console.error(`[${FUNCTION_NAME}] notifyOrderCreated failed (order already recorded):`, e instanceof Error ? e.message : e);
+  await deps.notifyOrderCreated({ id: recorded.order.id, leadId: lead.leadId }).catch(() => {
+    console.error(`[${FUNCTION_NAME}] notifyOrderCreated failed (order already recorded)`);
   });
 
-  return json({ order_id: inserted.id, status: inserted.status, product_code: LEAD_PRODUCT_CODE }, 200, corsHeaders);
+  return json({ order_id: recorded.order.id, status: recorded.order.status, product_code: LEAD_PRODUCT_CODE }, 200, corsHeaders);
 }

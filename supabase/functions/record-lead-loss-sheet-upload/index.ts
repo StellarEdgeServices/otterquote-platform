@@ -19,10 +19,9 @@ import { handleRequest } from "./handler.ts";
 const FUNCTION_NAME = "record-lead-loss-sheet-upload";
 const BUCKET = "lead-loss-sheets";
 
-const sb = createClient(
-  Deno.env.get("SUPABASE_URL") || "",
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "",
-);
+const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+const sb = createClient(supabaseUrl, serviceRoleKey);
 
 function base64ToBytes(base64: string): Uint8Array {
   const binary = atob(base64);
@@ -40,8 +39,8 @@ serve((req: Request) =>
         return null;
       }
       const rows = Array.isArray(data) ? data : [];
-      const row = rows[0] as { lead_id?: string } | undefined;
-      return row?.lead_id ? { leadId: row.lead_id } : null;
+      const row = rows[0] as { lead_id?: string; is_synthetic?: boolean } | undefined;
+      return row?.lead_id ? { leadId: row.lead_id, isSynthetic: row.is_synthetic === true } : null;
     },
     checkRateLimit: async (bucketIp) => {
       const bucketUuid = await ipToUuid(bucketIp);
@@ -50,7 +49,7 @@ serve((req: Request) =>
         p_user_id: bucketUuid,
       });
       if (error) {
-        console.error(`[${FUNCTION_NAME}] rate limit check failed:`, error);
+        console.error(`[${FUNCTION_NAME}] rate limit check failed; failing closed`);
         return { allowed: false, reason: "rate_limit_check_failed" };
       }
       const parsed = data as { allowed?: boolean; reason?: string } | null;
@@ -71,7 +70,7 @@ serve((req: Request) =>
       if (error) return { error: error.message };
       return { storagePath };
     },
-    insertUploadRow: async ({ leadId, storagePath, originalFilename, contentType, byteSize }) => {
+    insertUploadRow: async ({ leadId, storagePath, originalFilename, contentType, byteSize, isTest }) => {
       const { data, error } = await sb
         .from("lead_loss_sheet_uploads")
         .insert({
@@ -81,25 +80,37 @@ serve((req: Request) =>
           content_type: contentType,
           byte_size: byteSize,
           status: "received",
+          is_test: isTest,
         })
         .select("id")
         .single();
       if (error || !data) return { error: error?.message ?? "insert failed" };
       return data;
     },
-    notifyUploadReceived: async ({ id, leadId }) => {
+    alert: async (alertType, message) => {
+      console.error(`[${FUNCTION_NAME}] ${message}`);
       try {
-        const { error: logErr } = await sb.from("activity_log").insert({
-          event_type: "lead_loss_sheet_uploaded",
-          title: "lead_loss_sheet_uploaded",
-          user_id: null,
-          is_test: false,
-          metadata: { upload_id: id, lead_id: leadId },
+        await sb.from("platform_alerts_log").insert({
+          alert_type: alertType,
+          function_name: FUNCTION_NAME,
+          message,
+          sent_at: new Date().toISOString(),
         });
-        if (logErr) console.error(`[${FUNCTION_NAME}] activity_log insert failed:`, logErr);
-      } catch (e) {
-        console.error(`[${FUNCTION_NAME}] activity_log write threw:`, e);
+      } catch {
+        console.error(`[${FUNCTION_NAME}] platform_alerts_log insert failed`);
       }
+    },
+    notifyUploadReceived: async ({ id }) => {
+      // activity_log is NOT written: activity_log.user_id is NOT NULL with a FK
+      // to auth.users and a lead has no account (the first draft's user_id:null
+      // insert could never succeed). The admin email (PR #2226 REVIEW D6) and
+      // the row's is_test are the record.
+      const res = await fetch(`${supabaseUrl}/functions/v1/notify-measurement-order`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceRoleKey}` },
+        body: JSON.stringify({ upload_id: id, lead_upload: true }),
+      });
+      if (!res.ok) console.error(`[${FUNCTION_NAME}] notify-measurement-order returned ${res.status}`);
     },
   })
 );

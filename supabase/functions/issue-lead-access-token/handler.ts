@@ -4,7 +4,7 @@
  * gh-2121 (HO-3, #2121 row 3.2). Called from js/router-variant-f.js's
  * thank-you screen (f-thanks), right before a CTA button redirects to
  * measure-lead.html / loss-sheet-lead.html, to turn the in-memory lead id
- * into the unguessable, expiring `?lead_token=` those pages require
+ * into the unguessable, expiring `#lead_token=` (URL fragment, D4) those pages require
  * (Ben's Ruling 3: never the raw lead id).
  *
  * All request handling lives here (no imports, unit-tested per this repo's
@@ -19,11 +19,14 @@
  *             { ok: false, error }                        400 / 429 / 500
  *
  * verify_jwt is pinned to false in supabase/config.toml: the caller is on
- * /start?v=f with no session, same reasoning as record-lead-details. The only
- * thing this endpoint can do is mint a token for a lead id the caller already
- * has in memory (it just inserted that lead a few screens ago) -- it never
- * returns any OTHER lead's data, and issue_lead_access_token() itself refuses
- * a lead older than 30 minutes.
+ * /start?v=f with no session, same reasoning as record-lead-details. This is
+ * the ONE HO-3 function that accepts a client-supplied lead id: it is how the
+ * thank-you screen (which just inserted that lead) turns it into a token. What
+ * bounds it (PR #2226 REVIEW D3): issue_lead_access_token() checks freshness
+ * FIRST and mints nothing for a lead older than 30 minutes, whoever asks;
+ * there is no "return the existing token" path (only a hash is stored, D12);
+ * at most 5 live tokens per lead; and the per-IP rate limit fails closed. It
+ * never returns any lead data -- only a new token.
  */
 
 export const FUNCTION_NAME = "issue-lead-access-token";
@@ -110,11 +113,14 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
   const ip = getClientIp(req);
   const bucket = await ipToUuid(ip ?? "unknown");
   const rl = await deps.rpc("check_rate_limit", { p_function_name: FUNCTION_NAME, p_user_id: bucket });
+  // PR #2226 REVIEW D3: fail CLOSED. This endpoint mints bearer credentials;
+  // an infra hiccup must not turn into an unmetered mint. It strands nobody:
+  // on any non-ok answer the router falls back to the authed pages.
   if (rl.error) {
-    // Fail OPEN, same discipline as record-lead-details: an infra hiccup here
-    // must not strand a lead who is trying to pay.
-    console.error(`[${FUNCTION_NAME}] rate limit check failed, failing open`);
-  } else if (!(rl.data as { allowed?: boolean } | null)?.allowed) {
+    console.error(`[${FUNCTION_NAME}] rate limit check failed; failing closed`);
+    return json({ ok: false, error: "Too many requests. Please try again later." }, 429, corsHeaders);
+  }
+  if ((rl.data as { allowed?: boolean } | null)?.allowed !== true) {
     return json({ ok: false, error: "Too many requests. Please try again later." }, 429, corsHeaders);
   }
 

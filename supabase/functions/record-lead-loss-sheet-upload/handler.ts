@@ -25,8 +25,47 @@
  */
 
 export const FUNCTION_NAME = "record-lead-loss-sheet-upload";
-export const MAX_BASE64_LENGTH = 8_000_000; // ~6MB decoded -- generous for a PDF/photo of a loss sheet, well under the 8MB request-body concern the Arm F header raises for a different endpoint.
-export const ALLOWED_CONTENT_TYPES = new Set(["application/pdf", "image/jpeg", "image/png", "image/heic"]);
+/** 6 MiB decoded -- the same number the page, this handler, the table CHECK and the Storage bucket all enforce (PR #2226 REVIEW D13). */
+export const MAX_FILE_BYTES = 6 * 1024 * 1024;
+/** The exact base64 length of a MAX_FILE_BYTES file: Math.ceil(6 MiB / 3) * 4 = 8,388,608 chars. */
+export const MAX_BASE64_LENGTH = Math.ceil(MAX_FILE_BYTES / 3) * 4;
+
+export type SniffedType = { contentType: "application/pdf" | "image/jpeg" | "image/png" | "image/heic"; ext: "pdf" | "jpg" | "png" | "heic" };
+
+const HEIC_BRANDS = new Set(["heic", "heix", "mif1", "msf1"]);
+
+/**
+ * D13: the file type is decided by its leading bytes, never by the client's
+ * content_type or filename. Returns null for anything that is not a PDF,
+ * JPEG, PNG or HEIC -- including HTML/SVG renamed to .pdf.
+ */
+export function sniffFileType(head: Uint8Array): SniffedType | null {
+  const ascii = (from: number, to: number) => String.fromCharCode(...head.slice(from, to));
+  if (head.length >= 5 && ascii(0, 5) === "%PDF-") return { contentType: "application/pdf", ext: "pdf" };
+  if (head.length >= 3 && head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff) return { contentType: "image/jpeg", ext: "jpg" };
+  if (
+    head.length >= 8 && head[0] === 0x89 && head[1] === 0x50 && head[2] === 0x4e && head[3] === 0x47 &&
+    head[4] === 0x0d && head[5] === 0x0a && head[6] === 0x1a && head[7] === 0x0a
+  ) return { contentType: "image/png", ext: "png" };
+  if (head.length >= 12 && ascii(4, 8) === "ftyp" && HEIC_BRANDS.has(ascii(8, 12))) return { contentType: "image/heic", ext: "heic" };
+  return null;
+}
+
+const BASE64_RE = /^[A-Za-z0-9+/]*={0,2}$/;
+
+/** Exact decoded byte length of a (validated) base64 string. */
+export function decodedByteLength(base64: string): number {
+  const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
+  return (base64.length / 4) * 3 - padding;
+}
+
+/** Decodes only the first 18 bytes (24 base64 chars) -- enough for every signature above. */
+export function decodeHead(base64: string): Uint8Array {
+  const bin = atob(base64.slice(0, 24));
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
 
 export const ALLOWED_ORIGINS = [
   "https://otterquote.com",
@@ -65,18 +104,11 @@ export function getClientIp(req: Request): string | null {
   return null;
 }
 
-/** A safe, extension-preserving basename -- never the caller's raw filename verbatim in a storage path. */
-export function safeFileName(name: unknown): string {
-  const raw = typeof name === "string" ? name : "upload";
-  const extMatch = raw.match(/\.[A-Za-z0-9]{1,8}$/);
-  const ext = extMatch ? extMatch[0].toLowerCase() : "";
-  return `upload${ext}`;
-}
-
 export interface ValidBody {
   leadToken: string;
-  contentType: string;
+  sniffed: SniffedType;
   base64Data: string;
+  byteSize: number;
   originalFilename: string | null;
 }
 
@@ -91,30 +123,37 @@ export function validateBody(raw: unknown): Validation {
     return { ok: false, error: "lead_token is required" };
   }
 
-  const contentType = typeof b.content_type === "string" ? b.content_type.toLowerCase().trim() : "";
-  if (!ALLOWED_CONTENT_TYPES.has(contentType)) {
-    return { ok: false, error: "Unsupported file type. Please upload a PDF, JPEG, PNG, or HEIC." };
-  }
-
   const base64Data = typeof b.file_base64 === "string" ? b.file_base64 : "";
   if (!base64Data) return { ok: false, error: "file_base64 is required" };
   if (base64Data.length > MAX_BASE64_LENGTH) {
     return { ok: false, error: "File is too large. Please upload a file under 6MB." };
   }
+  if (base64Data.length % 4 !== 0 || !BASE64_RE.test(base64Data)) {
+    return { ok: false, error: "The file could not be read. Please choose it again." };
+  }
+  const byteSize = decodedByteLength(base64Data);
+  if (byteSize <= 0 || byteSize > MAX_FILE_BYTES) {
+    return { ok: false, error: "File is too large. Please upload a file under 6MB." };
+  }
+
+  const sniffed = sniffFileType(decodeHead(base64Data));
+  if (!sniffed) {
+    return { ok: false, error: "Unsupported file type. Please upload a PDF, JPEG, PNG, or HEIC." };
+  }
 
   const originalFilename = typeof b.filename === "string" ? b.filename.slice(0, 200) : null;
-
-  return { ok: true, value: { leadToken, contentType, base64Data, originalFilename } };
+  return { ok: true, value: { leadToken, sniffed, base64Data, byteSize, originalFilename } };
 }
 
 export interface ResolvedLead {
   leadId: string;
+  isSynthetic: boolean;
 }
 
 export interface Deps {
   resolveLead: (leadToken: string) => Promise<ResolvedLead | null>;
   checkRateLimit: (bucketIp: string) => Promise<{ allowed: boolean; reason?: string }>;
-  /** Uploads the decoded bytes to Storage and returns the stored path. */
+  /** Uploads the decoded bytes to Storage under a server-built path and returns it. */
   uploadToStorage: (args: { leadId: string; fileName: string; contentType: string; base64Data: string }) => Promise<{ storagePath: string } | { error: string }>;
   insertUploadRow: (row: {
     leadId: string;
@@ -122,7 +161,11 @@ export interface Deps {
     originalFilename: string | null;
     contentType: string;
     byteSize: number;
+    isTest: boolean;
   }) => Promise<{ id: string } | { error: string }>;
+  /** platform_alerts_log row; must never throw. */
+  alert: (alertType: string, message: string) => Promise<void>;
+  /** Admin email via notify-measurement-order (lead_upload branch). */
   notifyUploadReceived: (args: { id: string; leadId: string }) => Promise<void>;
 }
 
@@ -141,46 +184,47 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
   if (!parsed.ok) return json({ error: parsed.error }, 400, corsHeaders);
 
   const rl = await deps.checkRateLimit(getClientIp(req) ?? "unknown");
-  if (!rl.allowed) return json({ error: "Rate limit exceeded", reason: rl.reason }, 429, corsHeaders);
+  if (!rl.allowed) return json({ error: "Too many requests. Please try again later.", reason: rl.reason }, 429, corsHeaders);
 
   // Ruling 3 / negative control: resolved server-side from the token. An
-  // invalid/expired token means no lead, and nothing is ever written to
-  // Storage or the database for it.
+  // invalid/expired token means no lead, and nothing is ever written.
   const lead = await deps.resolveLead(parsed.value.leadToken);
   if (!lead) return json({ error: "This link is no longer valid. Please start over." }, 401, corsHeaders);
 
-  const fileName = safeFileName(parsed.value.originalFilename);
+  // D13: the stored name and type come from the sniffed bytes, never the client.
+  const fileName = `upload.${parsed.value.sniffed.ext}`;
+  const contentType = parsed.value.sniffed.contentType;
   const uploaded = await deps.uploadToStorage({
     leadId: lead.leadId,
     fileName,
-    contentType: parsed.value.contentType,
+    contentType,
     base64Data: parsed.value.base64Data,
   });
   if ("error" in uploaded) {
-    console.error(`[${FUNCTION_NAME}] storage upload failed:`, uploaded.error);
+    console.error(`[${FUNCTION_NAME}] storage upload failed`);
     return json({ error: "Could not upload your file. Please try again." }, 500, corsHeaders);
   }
-
-  // Decoded byte size is what gets stored, not the (larger) base64 length.
-  const byteSize = Math.floor((parsed.value.base64Data.length * 3) / 4);
 
   const inserted = await deps.insertUploadRow({
     leadId: lead.leadId,
     storagePath: uploaded.storagePath,
     originalFilename: parsed.value.originalFilename,
-    contentType: parsed.value.contentType,
-    byteSize,
+    contentType,
+    byteSize: parsed.value.byteSize,
+    isTest: lead.isSynthetic,
   });
   if ("error" in inserted) {
-    // The file is already in Storage even though the row failed -- log
-    // loudly so an admin can reconcile it, but don't ask the visitor to
-    // re-upload (their loss sheet already landed).
-    console.error(`[${FUNCTION_NAME}] upload row insert failed AFTER a successful storage write (${uploaded.storagePath}):`, inserted.error);
-    return json({ error: "Your file uploaded, but we could not finish recording it. We will follow up if we need anything else." }, 200, corsHeaders);
+    // The file is in Storage but has no row: alert an operator (never silent),
+    // and do not ask the visitor to upload again.
+    await deps.alert(
+      "lead_loss_sheet_unrecorded",
+      `HO-3 loss-sheet file stored but its row failed to insert; storage path ${uploaded.storagePath}. Reconcile by hand.`,
+    );
+    return json({ ok: true, recorded: false }, 200, corsHeaders);
   }
 
-  await deps.notifyUploadReceived({ id: inserted.id, leadId: lead.leadId }).catch((e) => {
-    console.error(`[${FUNCTION_NAME}] notifyUploadReceived failed (upload already recorded):`, e instanceof Error ? e.message : e);
+  await deps.notifyUploadReceived({ id: inserted.id, leadId: lead.leadId }).catch(() => {
+    console.error(`[${FUNCTION_NAME}] notifyUploadReceived failed (upload already recorded)`);
   });
 
   return json({ ok: true, upload_id: inserted.id }, 200, corsHeaders);

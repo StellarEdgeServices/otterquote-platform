@@ -1,6 +1,22 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<!-- gh-2121 HO-3 / PR #2226 REVIEW D4: capture the #lead_token= fragment into
+     memory and strip it from the address bar BEFORE Sentry, GA4 or fonts load. -->
+<script>
+  (function () {
+    var t = '';
+    try {
+      var m = /(?:^|&)lead_token=([^&]*)/.exec((window.location.hash || '').replace(/^#/, ''));
+      if (m) t = decodeURIComponent(m[1]);
+      if (window.location.hash && window.history && window.history.replaceState) {
+        window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      }
+    } catch (e) { /* never block the page */ }
+    window.__HO3_LEAD_TOKEN = t;
+  })();
+</script>
+<meta name="referrer" content="no-referrer">
 <!-- Sentry Error Monitoring (same pattern as help-measurements.html) -->
 <script
   src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
@@ -24,8 +40,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
-    <title>Upload Your Loss Sheet — Otter Quotes</title>
-    <meta name="description" content="Upload your insurance loss sheet — no account needed.">
+    <title>Upload My Insurance Loss Sheet — Otter Quotes</title>
+    <meta name="description" content="Upload my insurance loss sheet.">
     <link rel="canonical" href="https://otterquote.com/loss-sheet-lead.html">
     <meta name="robots" content="noindex">
 
@@ -33,7 +49,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="/js/ga-gate.js"></script>
-    <script>gtag('config', 'G-D1Y1TLGEFY');</script>
+    <script>gtag('config', 'G-D1Y1TLGEFY', { page_location: window.location.origin + window.location.pathname + window.location.search });</script>
 
     <style>
         body { font-family: 'Rubik', sans-serif; color: #1a1a1a; background-color: #f8f8f8; line-height: 1.6; margin: 0; }
@@ -96,8 +112,13 @@
         <div id="statusMessage" class="status-message"></div>
 
         <div id="offerSection">
-            <h1>Upload your insurance loss sheet — no account needed.</h1>
-            <p class="subhead">We'll attach it to your file. If you'd like a contractor bid based on it, we'll reach out.</p>
+            <!-- PR #2226 LEGAL-READ L4: copy reused verbatim from live pages only:
+                 the heading is the Arm F thank-you button's approved text
+                 (arm_f_s4_button_losssheet) and the paragraph is help-estimate.html's
+                 own explainer. The first draft's "We'll attach it to your file" /
+                 "we'll reach out" promises are removed (Tier C question on the PR). -->
+            <h1>Upload my insurance loss sheet</h1>
+            <p class="subhead">An insurance estimate (also called a "scope of loss" or "loss sheet") is a detailed document from your insurance company that lists all the damage they've agreed to cover and how much they'll pay for repairs.</p>
 
             <div class="card">
                 <label class="drop-zone" id="dropZone" for="fileInput">
@@ -111,14 +132,16 @@
         <div id="successSection" style="display:none;">
             <div class="success-state">
                 <div class="success-icon">✓</div>
-                <h1 style="text-align:center;">Loss Sheet Received</h1>
-                <p class="subhead" style="text-align:center;">Thanks — we've attached it to your file. If a contractor bid based on it makes sense, we'll reach out.</p>
+                <!-- Arm F's approved confirmation copy (arm_f_s4_confirm_email_only, first two sentences). -->
+                <p class="subhead" style="text-align:center;">Thanks. We've got your request.</p>
             </div>
         </div>
 
-        <p class="privacy-line">Otter Quotes / Stellar Edge Services. By continuing you agree to our <a href="privacy.html">Privacy Policy</a> and <a href="terms.html">Terms</a>.</p>
+        <!-- Arm F's approved privacy line (arm_f_s3_privacy_line), verbatim. -->
+        <p class="privacy-line">Otter Quotes / Stellar Edge Services. By continuing, you agree to our <a href="privacy.html">Privacy Policy</a> and <a href="terms.html">Terms</a>.</p>
     </div>
 
+    <script src="js/cookie-storage.js"></script>
     <script src="js/config.js"></script>
     <script>
         var FUNNEL_ID = 'ho-3';
@@ -130,8 +153,8 @@
         }
 
         // Ruling 3: the URL carries an unguessable, expiring TOKEN, never a raw lead id.
-        var params = new URLSearchParams(window.location.search);
-        var LEAD_TOKEN = params.get('lead_token') || '';
+        // D4: captured from the URL fragment (and stripped) by the first script in <head>.
+        var LEAD_TOKEN = window.__HO3_LEAD_TOKEN || '';
         var MAX_BYTES = 6 * 1024 * 1024;
         var selectedFile = null;
 
@@ -198,7 +221,8 @@
                     },
                     body: JSON.stringify({
                         lead_token: LEAD_TOKEN,
-                        content_type: selectedFile.type || 'application/pdf',
+                        // The server decides the type from the file's own bytes (D13); this is informational only.
+                        content_type: selectedFile.type || '',
                         filename: selectedFile.name,
                         file_base64: base64
                     })
@@ -210,7 +234,7 @@
                 document.getElementById('successSection').style.display = 'block';
                 trackHo3('ho3_success', { step: 'loss_sheet_success' });
             } catch (err) {
-                console.error('loss-sheet-lead upload error:', err);
+                console.error('loss-sheet-lead upload error');
                 showError(err.message || 'Upload failed. Please try again.');
                 btn.disabled = false;
                 btn.innerHTML = original;

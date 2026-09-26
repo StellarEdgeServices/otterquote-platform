@@ -41,6 +41,8 @@ import {
   footerPostalAddressText,
 } from "./email-footer.ts";
 import { buildNonUsdAlertEmail } from "./non-usd-alert-email.ts";
+import { handleLeadNotification, parseLeadNotifyBody, type LeadNotifyKind } from "./lead-notify.ts";
+import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 
 const FUNCTION_NAME = "notify-measurement-order";
 const ADMIN_EMAIL = "dustinstohler1@gmail.com";
@@ -266,6 +268,89 @@ serve(async (req: Request) => {
         return json({ error: "Failed to send notification" }, 502, corsHeaders);
       }
       return json({ success: true, alert: true }, 200, corsHeaders);
+    }
+
+    // gh-2121 (HO-3) / PR #2226 REVIEW D6: lead-keyed (no-account) orders and
+    // loss-sheet uploads. Dispatched BEFORE the hover_orders lookup below, which
+    // would otherwise answer 404 for a lead order id. See lead-notify.ts.
+    const leadReq = parseLeadNotifyBody(body);
+    if (leadReq && "error" in leadReq) {
+      return json({ error: leadReq.error }, 400, corsHeaders);
+    }
+    if (leadReq) {
+      const sbLead = createClient(supabaseUrl, serviceRoleKey);
+      const table = (k: LeadNotifyKind) => (k === "order" ? "lead_measurement_orders" : "lead_loss_sheet_uploads");
+      const result = await handleLeadNotification(leadReq, {
+        verifySend: isVerifySendRequested(req.headers),
+        loadRecord: async (kind, id) => {
+          const cols = kind === "order"
+            ? "id, lead_id, is_test, admin_notified_at, created_at, homeowner_charge_amount, stripe_payment_intent_id"
+            : "id, lead_id, is_test, admin_notified_at, created_at, content_type, byte_size, storage_path";
+          const { data } = await sbLead.from(table(kind)).select(cols).eq("id", id).maybeSingle();
+          return data ?? null;
+        },
+        loadLead: async (leadId) => {
+          const { data } = await sbLead
+            .from("leads")
+            .select("email, name, phone, property_address, is_synthetic")
+            .eq("id", leadId)
+            .maybeSingle();
+          return data ?? null;
+        },
+        claimNotified: async (kind, id) => {
+          const { data, error } = await sbLead
+            .from(table(kind))
+            .update({ admin_notified_at: new Date().toISOString() })
+            .eq("id", id)
+            .is("admin_notified_at", null)
+            .select("id");
+          if (error) return false;
+          const written = checkRowsWritten(data);
+          if (!written.wroteRows) {
+            console.log(zeroRowWriteMessage(FUNCTION_NAME, `${table(kind)}.admin_notified_at claim for ${id} (already notified)`));
+          }
+          return written.wroteRows;
+        },
+        releaseNotified: async (kind, id) => {
+          const { data } = await sbLead
+            .from(table(kind))
+            .update({ admin_notified_at: null })
+            .eq("id", id)
+            .select("id");
+          if (!checkRowsWritten(data).wroteRows) {
+            console.error(zeroRowWriteMessage(FUNCTION_NAME, `${table(kind)}.admin_notified_at release for ${id} after a failed send`));
+          }
+        },
+        sendEmail: async (msg) => {
+          const form = new FormData();
+          form.append("from", `Otter Quotes <notifications@${mailgunDomain}>`);
+          form.append("to", ADMIN_EMAIL);
+          form.append("subject", msg.subject);
+          form.append("text", msg.text);
+          form.append("html", msg.html);
+          const mgRes = await fetch(`https://api.mailgun.net/v3/${mailgunDomain}/messages`, {
+            method: "POST",
+            headers: { Authorization: `Basic ${btoa(`api:${mailgunKey}`)}` },
+            body: form,
+          });
+          if (!mgRes.ok) return { ok: false };
+          const mg = await mgRes.json().catch(() => ({}));
+          return { ok: true, id: (mg as { id?: string }).id };
+        },
+        alert: async (alertType, message) => {
+          try {
+            await sbLead.from("platform_alerts_log").insert({
+              alert_type: alertType,
+              function_name: FUNCTION_NAME,
+              message,
+              sent_at: new Date().toISOString(),
+            });
+          } catch {
+            console.error(`[${FUNCTION_NAME}] lead notification alert row could not be written`);
+          }
+        },
+      });
+      return json(result.body, result.status, corsHeaders);
     }
 
     const orderId = body?.order_id as string | undefined;

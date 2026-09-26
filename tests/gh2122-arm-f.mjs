@@ -223,7 +223,17 @@ function buildF(opts) {
   fakeWindow.Sentry = { captureMessage: function (msg, ctx) { sentry.push({ msg, ctx }); } };
   document.cookie = opts.cookie === undefined ? '_fbc=fb.1.1700000000.cookieFbc; _fbp=fb.1.1700000000.cookieFbp' : opts.cookie;
   const beacons = [];
+  const mintCalls = [];
   const fetchStub = (url, init) => {
+    // gh-2121 HO-3 (PR #2226): the thank-you CTAs mint a lead_token first. That call goes to
+    // issue-lead-access-token and is NOT a details call.
+    if (String(url).indexOf('/issue-lead-access-token') !== -1) {
+      mintCalls.push({ url, body: JSON.parse(init.body) });
+      const mm = opts.mintMode || 'ok';
+      if (mm === 'fail') return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({ ok: false }) });
+      if (mm === 'out-of-scope') return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: false, reason: 'lead_out_of_scope' }) });
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, token: 'TOKEN_abc-_123', expires_at: '2099-01-01T00:00:00Z' }) });
+    }
     detailsAttempts++;
     order.push('details');
     detailsCalls.push({ name: 'record-lead-details', url, init, body: JSON.parse(init.body) });
@@ -343,7 +353,7 @@ function buildF(opts) {
   RVF.init(bridge, root);
   return {
     beacons, fireVisibilityHidden: () => { document.visibilityState = 'hidden'; (windowListeners.visibilitychange || []).forEach((fn) => fn()); },
-    RVF, root, bridge, gtagCalls, fbqCalls, clarityCalls, insertCalls, rpcCalls, redirects, errors, fakeWindow, document, order, detailsCalls, sentry,
+    RVF, root, bridge, gtagCalls, fbqCalls, clarityCalls, insertCalls, rpcCalls, redirects, errors, fakeWindow, document, order, detailsCalls, sentry, mintCalls,
     firePagehide: () => (windowListeners.pagehide || []).forEach((fn) => fn()),
     ev: (name) => gtagCalls.filter((c) => c.name === name),
     leadFbq: () => fbqCalls.filter((c) => c[0] === 'track' && c[1] === 'Lead')
@@ -605,15 +615,26 @@ async function main() {
     ok(JSON.stringify(btns) === JSON.stringify([COPY.arm_f_s4_button_measure, COPY.arm_f_s4_button_losssheet]), 'the thank-you screen has exactly the two approved buttons');
     const before = inWin.leadFbq().length;
     buttonByText(inWin.root, COPY.arm_f_s4_button_measure).dispatchClick();
+    await settleN(6);
     const href = inWin.fakeWindow.location.href;
-    ok(/^https:\/\/app\.otterquote\.com\/help-measurements\?lead=00000000-0000-4000-8000-000000000001/.test(href) && href.indexOf('v=f') !== -1, 'the $15 button deep-links to the existing /help-measurements with lead + attribution (' + href + ')');
+    // gh-2121 HO-3 (PR #2226 REVIEW D4): the no-account page, attribution in the query, the minted token ONLY in the fragment, and never the raw lead id.
+    ok(/^https:\/\/app\.otterquote\.com\/measure-lead\?[^#]*v=f[^#]*#lead_token=TOKEN_abc-_123$/.test(href) && href.indexOf('lead=00000000') === -1, 'the $15 button goes to /measure-lead with attribution in the query and the token only in the #fragment, no raw lead id (' + href + ')');
+    ok(inWin.mintCalls.length === 1 && inWin.mintCalls[0].body.lead_id === '00000000-0000-4000-8000-000000000001' && /\/functions\/v1\/issue-lead-access-token\?apikey=/.test(inWin.mintCalls[0].url), 'the token is minted once, for this lead, from issue-lead-access-token');
     ok(inWin.leadFbq().length === before && inWin.ev('generate_lead').length === 1, 'clicking a deep link does NOT count a second conversion');
     const cta = inWin.ev('router_f_cta_measure');
     ok(cta.length === 1 && cta[0].params.step === 'f-thanks' && cta[0].params.step_index === 4 && cta[0].params.variant === 'f' && !('cta' in cta[0].params),
       'the click fires router_f_cta_measure {f-thanks, 4, variant f} -- the choice is in the event NAME, with no extra parameter');
     const ls = await thanks('2026-09-23T15:00:00Z');
     buttonByText(ls.root, COPY.arm_f_s4_button_losssheet).dispatchClick();
-    ok(/^https:\/\/app\.otterquote\.com\/help-estimate\?lead=/.test(ls.fakeWindow.location.href), 'the loss-sheet button deep-links to the existing /help-estimate with the lead id');
+    await settleN(6);
+    ok(/^https:\/\/app\.otterquote\.com\/loss-sheet-lead\?[^#]*#lead_token=TOKEN_abc-_123$/.test(ls.fakeWindow.location.href), 'the loss-sheet button goes to /loss-sheet-lead with the token only in the #fragment');
+    // NEGATIVE CONTROL: a failed or out-of-scope mint falls back to the ORIGINAL authed pages (never a no-auth page without a credential).
+    for (const mintMode of ['fail', 'out-of-scope']) {
+      const fb = buildF({ nowIso: '2026-09-23T15:00:00Z', mintMode }); drive(fb, CALLABLE); submit(fb); await settleN(4);
+      buttonByText(fb.root, COPY.arm_f_s4_button_measure).dispatchClick();
+      await new Promise((r) => setTimeout(r, 40)); await settleN(6);
+      ok(/^https:\/\/app\.otterquote\.com\/help-measurements\?lead=00000000-0000-4000-8000-000000000001/.test(fb.fakeWindow.location.href) && fb.fakeWindow.location.href.indexOf('lead_token') === -1, 'a ' + mintMode + ' mint falls back to /help-measurements?lead= (' + fb.fakeWindow.location.href + ')');
+    }
     ok(ls.ev('router_f_cta_loss_sheet').length === 1, 'the loss-sheet click fires router_f_cta_loss_sheet');
     // The #2127 review found the F15 key allow-list ran BEFORE any CTA click, so it could not see these events.
     const ctaKeys = new Set(); [...inWin.gtagCalls, ...ls.gtagCalls].forEach((c) => Object.keys(c.params || {}).forEach((k) => ctaKeys.add(k)));
@@ -805,11 +826,13 @@ async function main() {
     buttonByText(h.root, COPY.arm_f_s4_button_measure).dispatchClick();
     ok(h.fakeWindow.location.href === PAGE_URL && h.ev('router_f_cta_measure').length === 1, 'a CTA tap does NOT navigate while details are in flight (it would abort the request), but the click is still counted');
     await new Promise((r) => setTimeout(r, 80)); // CTA_WAIT_MS (2.5s, scaled) elapses
-    ok(/^https:\/\/app\.otterquote\.com\/help-measurements\?lead=/.test(h.fakeWindow.location.href), 'after the wait cap the CTA navigates anyway (a hung request never strands the visitor)');
+    await settleN(6);
+    ok(/^https:\/\/app\.otterquote\.com\/measure-lead\?[^#]*#lead_token=/.test(h.fakeWindow.location.href), 'after the wait cap the CTA navigates anyway (a hung request never strands the visitor)');
     const k = buildF({ detailsMode: 'ok' }); drive(k, GOOD); submit(k); await settleN(4);
     await new Promise((r) => setTimeout(r, 60));
     buttonByText(k.root, COPY.arm_f_s4_button_losssheet).dispatchClick();
-    ok(/help-estimate\?lead=/.test(k.fakeWindow.location.href), 'when the details call has already settled a CTA tap navigates immediately');
+    await settleN(6);
+    ok(/loss-sheet-lead\?[^#]*#lead_token=/.test(k.fakeWindow.location.href), 'when the details call has already settled a CTA tap navigates as soon as the token is minted');
     const b = buildF({ insertFails: 1 }); drive(b, GOOD);
     const backOf = (x) => buttons(x.root).find((y) => y.textContent === '← Back');
     ok(backOf(b) && backOf(b).disabled !== true, 'setup: Back is enabled on screen 3 before submit');
