@@ -18,8 +18,11 @@
 --      i.e. it trusted a header the caller fully controls FIRST. Fixed:
 --      a separate v_rl_ip is now derived cf-connecting-ip -> x-real-ip ->
 --      right-most X-Forwarded-For hop (last resort only), with an IPv6
---      address collapsed to its /64 before hashing, mirroring
---      check-email-exists/index.ts's getClientIp() (gh-1724). v_ip (the
+--      address collapsed to its /64 before hashing -- same cf-connecting-ip-
+--      first preference check-email-exists/index.ts's getClientIp() (gh-1724)
+--      already established in this repo, though that function's own
+--      fallback differs (left-most XFF hop, no x-real-ip step) -- not a
+--      byte-for-byte port of it. v_ip (the
 --      value stamped into the partner-agreement attestation) is
 --      UNCHANGED by this fix -- same spoofable-XFF issue there predates
 --      this PR and is explicitly out of scope per the review (routes
@@ -53,6 +56,33 @@
 --   D5 (should-fix): wording only, see the rollback file and PR body --
 --      not a SQL change.
 --
+-- REVISION 2026-09-26 (2nd fix round): fixes to REVIEW: FAIL comment
+-- 5850926064 on PR #2237, at head 8d60a969. All three items below are
+-- wording/config fixes only -- no behavior change to any already-reviewed
+-- (D1-D5) logic:
+--   F1 (blocking, CI red): the D5 rollback-wording comment quoted a 32-hex-
+--      char md5 hash, which the repo's Credential Shape Sweep flags as a
+--      HEX_RUN_20 finding. Removed from the rollback file's comment (see
+--      that file) -- it added nothing anyway.
+--   F2 (blocking): the rollback's config UPDATE still restored the
+--      pre-existing 10/hr+30/day+300/month row, but the LIVE row was
+--      changed to 50/hr+60/day+300/month by the interim #2154 mitigation
+--      before this re-review. Fixed in the rollback file to restore
+--      50/60/300 (see that file for detail).
+--   Reviewer's caveat (non-numbered, still addressed here): a request with
+--      no derivable IP at all (v_rl_ip IS NULL -- e.g. the Vault secret is
+--      missing, or every one of cf-connecting-ip/x-real-ip/XFF is absent)
+--      used to fall through to public.check_rate_limit()'s shared NULL-
+--      caller_id key on the SAME 'register_partner' bucket real per-client
+--      traffic with a derivable IP also falls back to for its own edge
+--      cases, and which review 5850926064 noted "already holds today's
+--      signups" at the per-client 20/day cap -- i.e. a genuinely IP-less
+--      request could be refused by traffic that has nothing to do with it.
+--      Fixed: a request with no derivable IP now draws from its own new
+--      'register_partner_no_ip' bucket (see rate_limit_config row (d)
+--      below) -- generous, and reset-safe because it is a brand-new
+--      function_name with no pre-existing rate_limits history to inherit.
+--
 -- Fix (unchanged from the first draft; see revisions above for what
 -- changed since REVIEW: FAIL): split the single shared bucket into three
 -- independent rate_limit_config rows, all still enforced through the
@@ -63,9 +93,11 @@
 --      Keyed by a salted HMAC hash of the caller's IP (public.
 --      rate_limit_client_key, new helper below), read the same way the
 --      existing v_ip/v_ua parsing already does from
---      current_setting('request.headers'). Falls back to the shared NULL
---      key only when no IP can be derived at all (rare; keeps that edge
---      case at least as safe as the old global bucket was).
+--      current_setting('request.headers'). Falls back to its own dedicated
+--      'register_partner_no_ip' bucket (below) only when no IP can be
+--      derived at all (rare) -- fixed in the 2nd fix round (REVIEW
+--      5850926064 caveat) so that edge case never shares a bucket with any
+--      real per-client traffic.
 --      8/hour + 20/day + 150/month PER CLIENT.
 --
 --   2. 'register_partner_test'    -- is_test ONLY (same
@@ -119,7 +151,7 @@ DO $vault_seed$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM vault.secrets WHERE name = 'rate_limit_ip_salt') THEN
     PERFORM vault.create_secret(
-      encode(gen_random_bytes(32), 'hex'),
+      encode(extensions.gen_random_bytes(32), 'hex'),
       'rate_limit_ip_salt',
       'gh2223 rate-limit fix: HMAC salt for public.rate_limit_client_key(). Never rotate without accepting that every existing caller_id bucket in rate_limits changes shape (harmless -- it is only ever compared to itself going forward, never joined against a stored raw IP).'
     );
@@ -246,6 +278,30 @@ ON CONFLICT (function_name) DO UPDATE SET
   monthly_budget_cap    = EXCLUDED.monthly_budget_cap,
   notes                 = EXCLUDED.notes;
 
+--    (d) REVIEW 5850926064 caveat fix: a real (non-test) signup for which
+--        NO client IP can be derived at all (v_rl_ip IS NULL -- e.g. every
+--        one of cf-connecting-ip/x-real-ip/XFF is absent, or the Vault
+--        salt is momentarily missing) used to fall back to the SAME
+--        'register_partner' bucket's shared NULL-caller_id key -- the
+--        exact bucket the reviewer noted "already holds today's signups"
+--        at the per-client 20/day cap, so a genuinely IP-less request
+--        could be refused by traffic that has nothing to do with it. Own
+--        bucket, generous, and reset-safe (brand-new function_name, no
+--        pre-existing rate_limits rows to inherit).
+INSERT INTO public.rate_limit_config
+  (function_name, max_per_hour, max_per_day, max_per_month, enabled, monthly_cost_estimate, monthly_budget_cap, notes)
+VALUES
+  ('register_partner_no_ip', 40, 150, 1500, true, 0.0000, 0.00,
+   'gh2223 fix (2026-09-26, 2nd fix round post-REVIEW:FAIL 5850926064): dedicated bucket for real (non-test) register_partner() calls where NO client IP could be derived at all (public.rate_limit_client_key(NULL) -> NULL -- e.g. cf-connecting-ip/x-real-ip/XFF all absent, or the Vault secret rate_limit_ip_salt is momentarily unreadable). Previously these calls silently shared the per-client register_partner bucket''s NULL-key row with every other IP-less caller, which could already be near its cap from unrelated traffic. Generous (40/hr, 150/day, 1500/month) since this path should be rare in normal edge traffic and is not a per-client key -- it is itself a shared bucket across all IP-less callers, same shape as the pre-fix defect but isolated from real per-client traffic and sized well above any plausible legitimate volume of headerless requests.')
+ON CONFLICT (function_name) DO UPDATE SET
+  max_per_hour          = EXCLUDED.max_per_hour,
+  max_per_day           = EXCLUDED.max_per_day,
+  max_per_month         = EXCLUDED.max_per_month,
+  enabled               = EXCLUDED.enabled,
+  monthly_cost_estimate = EXCLUDED.monthly_cost_estimate,
+  monthly_budget_cap    = EXCLUDED.monthly_budget_cap,
+  notes                 = EXCLUDED.notes;
+
 -- 3. register_partner(): re-keyed rate-limit gate. Signature UNCHANGED
 --    (every existing caller -- 5+ partner-funnel pages, the invite-accept
 --    flow, meta-leadgen-webhook -- keeps working with no code change on
@@ -326,9 +382,11 @@ BEGIN
   -- cf-connecting-ip (set by the Cloudflare edge in front of this project;
   -- cannot be forged by the caller), then x-real-ip, and only as a last
   -- resort the RIGHT-most X-Forwarded-For hop (the left-most hop, used by
-  -- the pre-fix code above, is fully caller-controlled -- see gh-1724's
-  -- check-email-exists/index.ts getClientIp() for the same reasoning
-  -- already applied elsewhere in this repo). An IPv6 address is collapsed
+  -- the pre-fix code above, is fully caller-controlled -- gh-1724's
+  -- check-email-exists/index.ts getClientIp() established the same
+  -- cf-connecting-ip-first principle in this repo, though its own fallback
+  -- differs -- left-most XFF hop, no x-real-ip step -- so this is not a
+  -- byte-for-byte port of that function). An IPv6 address is collapsed
   -- to its /64 before hashing, because one IPv6 host normally controls a
   -- whole /64 and could otherwise rotate through 2^64 buckets.
   v_rl_ip := COALESCE(
@@ -382,8 +440,20 @@ BEGIN
       -- (1) per-client budget -- stops one caller (bot, single office NAT,
       -- a mashed refresh button) from itself, without touching anyone
       -- else's signups.
+      --
+      -- REVIEW 5850926064 caveat fix: when v_client_key IS NULL (no client
+      -- IP could be derived at all -- rare; e.g. every one of
+      -- cf-connecting-ip/x-real-ip/XFF is absent, or the Vault salt is
+      -- momentarily unreadable), this call used to draw from the SAME
+      -- 'register_partner' bucket's shared NULL-caller_id row that every
+      -- other IP-less request also shares -- the exact bucket the review
+      -- noted "already holds today's signups" at the per-client 20/day cap,
+      -- so one genuinely IP-less request could be refused by unrelated
+      -- IP-less traffic. It now draws from its own dedicated
+      -- 'register_partner_no_ip' bucket instead (generous, reset-safe --
+      -- see that rate_limit_config row above).
       v_rate := public.check_rate_limit(
-        p_function_name => 'register_partner',
+        p_function_name => CASE WHEN v_client_key IS NULL THEN 'register_partner_no_ip' ELSE 'register_partner' END,
         p_user_id       => v_client_key
       );
       IF NOT COALESCE((v_rate->>'allowed')::boolean, false) THEN

@@ -1027,9 +1027,13 @@ async function runRegisterPartnerBudgetCheck(
 
   let alertsFired = 0;
   if (alert) {
+    // Nit (REVIEW 5850926064): earlier drafts appended the same
+    // "Resolve this alert at: .../admin-contractors.html" link Phases 1-4
+    // use, but that admin panel has no view for rate-limit-config buckets
+    // -- it doesn't help resolve THIS alert, so it's dropped here rather
+    // than copied by habit.
     const message = `${alert.message}\nChecked at: ${formatDualTimestamp(new Date())}\n` +
-      `This is an automated alert from OtterQuote platform monitoring (gh-2154/gh-2223).\n` +
-      `Resolve this alert at: https://otterquote.com/admin-contractors.html`;
+      `This is an automated alert from OtterQuote platform monitoring (gh-2154/gh-2223).`;
 
     const { alerted } = await fireAlert(
       supabase, mailgunApiKey, mailgunDomain,

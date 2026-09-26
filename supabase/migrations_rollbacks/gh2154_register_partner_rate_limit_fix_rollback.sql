@@ -17,9 +17,14 @@
 -- rollback must not silently undo. (D5, REVIEW FAIL 5850688286: this file
 -- previously called itself "byte-identical", which was wrong once comments
 -- were dropped -- corrected here to "semantically identical (comments
--- stripped)"; the CONSTRAINT_NAME/hash comparison in the review's own
--- verification, 41233bc9d29429bbeb1a4bff9af91e4a, is unaffected -- only the
--- wording of this comment changed.)
+-- stripped)".)
+--
+-- REVIEW FAIL 5850926064 F1: this comment previously quoted the 32-hex-char
+-- md5 hash from the review's own comment-stripped-body verification. The
+-- repo's Credential Shape Sweep flags any 32-hex-char run as a
+-- HEX_RUN_20 finding (it cannot tell a content hash from a credential), and
+-- that finding turned CI red on this PR. The hash added nothing here --
+-- removed rather than allowlisted, per the review's explicit instruction.
 --
 -- Nothing in the current forward migration creates a pg_cron job or a
 -- standalone alert-reconciler function (D2, REVIEW FAIL 5850688286: that
@@ -29,6 +34,20 @@
 -- drop here. Reverting the platform-health-check Edge Function's added
 -- alert checks is a plain code revert of that file, not part of this SQL
 -- rollback.
+--
+-- REVIEW FAIL 5850926064 F2: the config UPDATE below previously restored
+-- max_per_hour=10, max_per_day=30 -- the values live BEFORE this same day's
+-- separate interim #2154 mitigation (see PR #2237 body, "Immediate
+-- mitigation") raised them to 50/hr, 60/day as a same-day stopgap ahead of
+-- this PR merging. Restoring 10/30 here would silently re-impose the
+-- exact tighter cap that caused the 2026-09-26 outage this whole PR fixes,
+-- and would erase the interim change without saying so. Fixed: the UPDATE
+-- below now restores 50/60/300 -- the row actually live as of this
+-- re-review (confirmed by SELECT against yeszghaspzwwstvsrioa) -- not the
+-- pre-interim 10/30/300. If a future rollback of this file is run long
+-- after the interim mitigation is itself superseded by something else,
+-- whoever runs it should re-confirm the then-live row rather than trusting
+-- either number here.
 
 BEGIN;
 
@@ -180,20 +199,24 @@ EXCEPTION
 END;
 $function$;
 
--- Restore the pre-fix single-bucket config row. Note: this is a rolling
--- 24h window (check_rate_limit() uses now() - interval '1 day'), NOT a
--- fixed reset "until 00:00 UTC" -- D5 also corrects that wording in the PR
--- body; it was never a property of the SQL itself.
+-- Restore the pre-fix single-bucket config row to the INTERIM live value
+-- (50/hr, 60/day -- the same-day #2154 stopgap mitigation, live as of this
+-- rollback's authoring per a SELECT against yeszghaspzwwstvsrioa), NOT the
+-- original pre-interim 10/30. Note: this is a rolling 24h window
+-- (check_rate_limit() uses now() - interval '1 day'), NOT a fixed reset
+-- "until 00:00 UTC" -- D5 also corrects that wording in the PR body; it was
+-- never a property of the SQL itself.
 UPDATE public.rate_limit_config
-   SET max_per_hour = 10,
-       max_per_day = 30,
+   SET max_per_hour = 50,
+       max_per_day = 60,
        max_per_month = 300,
-       notes = 'gh973: partner self-serve signup RPC (#571/v95 family, sibling of track_referral_click). Rate-limit gate added to close unbounded-registration abuse vector (no config row existed before this migration). Limits are a starting judgment call, not traffic-validated - raise if legitimate signup volume is ever throttled.'
+       notes = 'gh973: partner self-serve signup RPC (#571/v95 family, sibling of track_referral_click). Rate-limit gate added to close unbounded-registration abuse vector (no config row existed before this migration). Raised to 50/hr+60/day same-day (2026-09-26) as an interim stopgap ahead of the gh2223 per-client/test/global split (this rollback restores that interim value, not the original 10/30 -- see gh2154_register_partner_rate_limit_fix.sql REVIEW FAIL 5850926064 F2). Limits are a starting judgment call, not traffic-validated - raise if legitimate signup volume is ever throttled.'
  WHERE function_name = 'register_partner';
 
--- Remove the two new buckets this fix introduced.
+-- Remove the three new buckets this fix introduced.
 DELETE FROM public.rate_limit_config WHERE function_name = 'register_partner_test';
 DELETE FROM public.rate_limit_config WHERE function_name = 'register_partner_global';
+DELETE FROM public.rate_limit_config WHERE function_name = 'register_partner_no_ip';
 
 -- Drop the per-client key helper -- nothing else references it once
 -- register_partner() no longer calls it. (The Vault secret

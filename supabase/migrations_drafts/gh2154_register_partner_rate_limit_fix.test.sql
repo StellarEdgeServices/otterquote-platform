@@ -66,10 +66,22 @@
 --      no separate reconciler to test now that D2 moved alerting out of
 --      SQL.
 --   7. D1 SPOOFING NEGATIVE CONTROL: cf-connecting-ip fixed at
---      198.51.100.9 for 21 calls; x-forwarded-for's LEFT-MOST hop changes
---      on every call (what an attacker fully controls). Assert call 21
---      raises rate_limited -- i.e. all 21 calls landed in ONE bucket,
+--      198.51.100.9 for 4 calls; x-forwarded-for's LEFT-MOST hop changes
+--      on every call (what an attacker fully controls). Assert call 4
+--      raises rate_limited -- i.e. all 4 calls landed in ONE bucket,
 --      keyed by cf-connecting-ip, not by the attacker-supplied XFF.
+--
+-- REVISION 2026-09-26 (post-REVIEW:FAIL 5850926064, PR #2237 2nd re-review):
+--   - Added step 8: the reviewer's caveat that a request with no derivable
+--     client IP at all fell into the per-client 'register_partner' bucket's
+--     shared NULL key, which "already holds today's signups" -- fixed by
+--     giving that case its own 'register_partner_no_ip' bucket. Step 8
+--     confirms a no-header signup succeeds even after the per-client
+--     'register_partner' bucket (keyed by IP) is fully exhausted, and that
+--     it draws down its own separate bucket, not the per-client one.
+--   - Corrected step 7's own comment/header: it makes 4 calls, not 21 (the
+--     "21 calls" wording was inherited from an earlier draft and never
+--     matched the code -- REVIEW 5850926064 nit).
 
 \set ON_ERROR_STOP 1
 
@@ -414,7 +426,10 @@ BEGIN
         RAISE EXCEPTION 'rate_limited: %', COALESCE(v_rate->>'reason', 'register_partner test-bucket rate limit exceeded');
       END IF;
     ELSE
-      v_rate := check_rate_limit('register_partner', v_client_key);
+      v_rate := check_rate_limit(
+        CASE WHEN v_client_key IS NULL THEN 'register_partner_no_ip' ELSE 'register_partner' END,
+        v_client_key
+      );
       IF NOT COALESCE((v_rate->>'allowed')::boolean, false) THEN
         RAISE EXCEPTION 'rate_limited: %', COALESCE(v_rate->>'reason', 'register_partner rate limit exceeded');
       END IF;
@@ -482,7 +497,8 @@ insert into rate_limit_config (function_name, max_per_hour, max_per_day, max_per
 values
   ('register_partner', 10, 3, 100, true, 0, 0),         -- per-client: 3/day
   ('register_partner_test', 100, 10, 1000, true, 0, 0), -- test bucket: 10/day PER CLIENT (D4)
-  ('register_partner_global', 100, 5, 1000, true, 0, 0) -- global ceiling: 5/day
+  ('register_partner_global', 100, 5, 1000, true, 0, 0), -- global ceiling: 5/day
+  ('register_partner_no_ip', 10, 2, 100, true, 0, 0)    -- no-IP fallback: 2/day (REVIEW 5850926064 caveat)
 ;
 
 -- === 1. per-client isolation: 3 real signups from IP-A succeed, 4th fails ===
@@ -686,9 +702,42 @@ begin
   end if;
 end $$;
 
+-- === 8. NO-IP FALLBACK BUCKET (REVIEW 5850926064 caveat) ===================
+-- A request with NO headers at all -> v_rl_ip NULL -> v_client_key NULL ->
+-- must draw from 'register_partner_no_ip' (limit 2/day here), NOT from the
+-- per-client 'register_partner' bucket (which steps 1/7 above have already
+-- driven well past its own 3/day limit for the keys they used -- proving
+-- isolation, since a shared-bucket bug would make this fail too).
+
+select set_config('request.headers', '{}', false);
+
+select register_partner('re_agent','NoIP1','Real','noip1@realtor-example.com');
+select register_partner('re_agent','NoIP2','Real','noip2@realtor-example.com');
+
 do $$
 begin
-  raise notice 'gh2223 rate-limit fix: ALL TEST STEPS PASSED (including D1 spoofing negative control)';
+  begin
+    perform register_partner('re_agent','NoIP3','Real','noip3@realtor-example.com');
+    raise exception 'TEST FAIL (step 8): 3rd no-IP signup should have hit the register_partner_no_ip 2/day limit';
+  exception when others then
+    if sqlerrm not like 'rate_limited:%' then
+      raise exception 'TEST FAIL (step 8): wrong error for 3rd no-IP signup: %', sqlerrm;
+    end if;
+  end;
+end $$;
+
+do $$
+declare v_no_ip_day int;
+begin
+  select count(*) into v_no_ip_day from rate_limits where function_name = 'register_partner_no_ip' and not blocked;
+  if v_no_ip_day <> 2 then
+    raise exception 'TEST FAIL (step 8 isolation): expected exactly 2 successful register_partner_no_ip rows, got %', v_no_ip_day;
+  end if;
+end $$;
+
+do $$
+begin
+  raise notice 'gh2223 rate-limit fix: ALL TEST STEPS PASSED (including D1 spoofing negative control and the no-IP fallback bucket)';
 end $$;
 
 rollback;
