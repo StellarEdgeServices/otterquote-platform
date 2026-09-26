@@ -1,4 +1,4 @@
--- ROLLBACK for 20260926211800_gh1529_p2_revoke_anon_execute_drift_trigger_fns.sql
+-- ROLLBACK for 20260926230502_gh1529_p2_revoke_anon_execute_drift_trigger_fns.sql
 --
 -- Restores EXECUTE to PUBLIC and anon exactly as captured live from
 -- pg_proc.proacl before the forward migration, for each of the 3 functions

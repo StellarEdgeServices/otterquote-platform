@@ -4,7 +4,7 @@
 -- against the target database. Never COMMIT.
 --
 -- Purpose: prove the exposure exists BEFORE
--- 20260926211800_gh1529_p2_revoke_anon_execute_drift_trigger_fns.sql
+-- 20260926230502_gh1529_p2_revoke_anon_execute_drift_trigger_fns.sql
 -- applies (fail-first negative control), then prove the migration closes
 -- it. Run this file twice: once against the pre-migration database (the
 -- first assertion should PASS -- has_function_privilege returns true,
