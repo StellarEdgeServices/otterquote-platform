@@ -61,5 +61,30 @@ export function isInternalTraffic(): boolean {
 
   const internal = queryFlag || cookieFlag;
   (window as unknown as { OQ_INTERNAL?: boolean }).OQ_INTERNAL = internal;
+
+  // gh-2068 review follow-up (cto36 REVIEW: FAIL, comment 5779410643,
+  // recommended follow-up (a)): ?oq_internal=1 is a public, guessable,
+  // shareable URL parameter -- a real homeowner who opens a forwarded walk
+  // link gets this 1-year cookie too. Stripping the param from the address
+  // bar right after reading it (history.replaceState, no navigation, no
+  // reload) means a link this visitor then copies/shares/bookmarks FROM
+  // this page no longer carries it onward. It does not undo the cookie
+  // already set on THIS visit -- deciding whether is_synthetic should
+  // require a trusted signal instead of the literal param, and whether to
+  // ever un-set an already-written cookie, are separate follow-ups the
+  // review left open (b)/(c), not done here.
+  if (queryFlag) {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      params.delete('oq_internal');
+      const qs = params.toString();
+      const newUrl = window.location.pathname + (qs ? `?${qs}` : '') + window.location.hash;
+      window.history.replaceState(null, '', newUrl);
+    } catch {
+      // Never worth breaking the page for -- the cookie/flag above are
+      // already set regardless of whether this cleanup succeeds.
+    }
+  }
+
   return internal;
 }
