@@ -45,6 +45,7 @@ import {
   evaluateDisputeRouting,
   maySubmitFinalEvidence,
 } from "./dispute-routing.ts";
+import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 import {
   buildCapiEventId,
   buildCapiPurchasePayload,
@@ -417,7 +418,7 @@ function buildEvidencePayload(params: {
     "evidence[customer_communication]": customerCommunication,
   };
 
-  // ── gh-1759 GATE 2: do not spend Stripe's ONE final submission blind ───────
+  // ── gh-1759 GATE 2: do not spend Stripe's ONE final submission blind ─────
   // `evidence[submit]: "true"` is irreversible — Stripe accepts exactly one
   // final submission per dispute. Before this change it was set
   // UNCONDITIONALLY, including on the path where `claim` and `feeAcceptance`
@@ -522,7 +523,7 @@ async function handleDisputeCreated(
     }
   }
 
-  // ── gh-1759 GATE 1: an unresolvable dispute goes to a human ───────────────
+  // ── gh-1759 GATE 1: an unresolvable dispute goes to a human ───────────
   // Previously `routeToManualQueue` considered only the amount and the reason,
   // so a sub-$500 dispute we could not tie to any claim fell into the
   // auto-submit branch and spent Stripe's single final submission on an empty
@@ -607,7 +608,11 @@ async function handleDisputeCreated(
     );
 
     if (disputeRowId) {
-      await supabase
+      // gh-2105 (batch 2): disputeRowId came from our own insert moments ago,
+      // so a zero-row match here means the row vanished between insert and
+      // update -- never expected, but if it happens the dispute's auto-submit
+      // outcome (evidence submitted or not) is lost with no error anywhere.
+      const { data: evidenceRows, error: evidenceUpdErr } = await supabase
         .from("disputes")
         .update({
           evidence_submitted_at: new Date().toISOString(),
@@ -616,7 +621,13 @@ async function handleDisputeCreated(
           auto_submit_error: result.ok ? null : result.error,
           status: result.ok ? "evidence_submitted" : dispute.status,
         })
-        .eq("id", disputeRowId);
+        .eq("id", disputeRowId)
+        .select("id");
+      if (evidenceUpdErr) {
+        console.error(`[${FN_NAME}] disputes evidence update failed for ${disputeRowId}:`, evidenceUpdErr);
+      } else if (!checkRowsWritten(evidenceRows).wroteRows) {
+        console.error(zeroRowWriteMessage(FN_NAME, `disputes evidence update for dispute row ${disputeRowId}`));
+      }
     }
 
     if (result.ok) {
@@ -715,7 +726,9 @@ async function handleDisputeCreated(
     }
 
     if (disputeRowId) {
-      await supabase
+      // gh-2105 (batch 2): same zero-row-silent-write gap as the auto-submit
+      // branch above -- disputeRowId is our own just-inserted row id.
+      const { data: manualQueueRows, error: manualQueueUpdErr } = await supabase
         .from("disputes")
         .update({
           auto_submit_result: {
@@ -729,7 +742,13 @@ async function handleDisputeCreated(
             reason: routingVerdict.reason,
           },
         })
-        .eq("id", disputeRowId);
+        .eq("id", disputeRowId)
+        .select("id");
+      if (manualQueueUpdErr) {
+        console.error(`[${FN_NAME}] disputes manual-queue update failed for ${disputeRowId}:`, manualQueueUpdErr);
+      } else if (!checkRowsWritten(manualQueueRows).wroteRows) {
+        console.error(zeroRowWriteMessage(FN_NAME, `disputes manual-queue update for dispute row ${disputeRowId}`));
+      }
     }
 
     await supabase.from("activity_log").insert({
@@ -828,10 +847,30 @@ async function handlePlatformFeePaymentSucceeded(
     return; // already finalized synchronously (card) or by a prior delivery of this event
   }
 
-  await supabase
+  // gh-2105 (batch 2, decision a): the highest-value write on this async ACH
+  // path -- if it silently matches zero rows, the platform fee was actually
+  // charged by Stripe but this system keeps believing it is still 'pending',
+  // so the contractor is never paid out and never notified. Detect and alert.
+  const { data: settledRows, error: settledUpdErr } = await supabase
     .from("quotes")
     .update({ payment_status: "succeeded" })
-    .eq("id", q.id);
+    .eq("id", q.id)
+    .select("id");
+  if (settledUpdErr) {
+    console.error(`[${FN_NAME}] quotes payment_status=succeeded update failed for quote ${q.id}:`, settledUpdErr);
+  } else if (!checkRowsWritten(settledRows).wroteRows) {
+    console.error(zeroRowWriteMessage(FN_NAME, `quotes.payment_status=succeeded for quote ${q.id}`));
+    try {
+      await supabase.from("platform_alerts_log").insert({
+        alert_type: "gh2105_zero_row_update",
+        function_name: FN_NAME,
+        message: `Platform fee for quote ${q.id} (claim ${q.claim_id}) was charged successfully by Stripe (payment_intent ${paymentIntent.id}), but the quotes.payment_status=succeeded write matched zero rows. The quote is stuck 'pending' and the contractor was not notified.`,
+        sent_at: new Date().toISOString(),
+      });
+    } catch (alertErr) {
+      console.error(`[${FN_NAME}] platform_alerts_log insert failed:`, alertErr);
+    }
+  }
 
   // Only flip platform_fee_charged + notify the FIRST time this settles (idempotent).
   const { data: claimRow } = await supabase
@@ -840,7 +879,7 @@ async function handlePlatformFeePaymentSucceeded(
     .eq("id", q.claim_id)
     .maybeSingle();
 
-  // ── gh-1759 THE WRITER, ACH HALF ───────────────────────────────────────────
+  // ── gh-1759 THE WRITER, ACH HALF ────────────────────────────────
   // docusign-webhook writes platform_fee_stripe_id on the SYNCHRONOUS success
   // path, where a card charge already has a charge id. An ACH charge does not:
   // create-payment-intent returns charge_id = null while the intent is
@@ -868,24 +907,43 @@ async function handlePlatformFeePaymentSucceeded(
       if (Number.isFinite(feeCents) && feeCents > 0) {
         feeUpdate.platform_fee_amount = Math.round(feeCents) / 100;
       }
-      const { error: feeIdErr } = await supabase
+      // gh-2105 (batch 2, decision b): `.select(` added for auditability
+      // (update-no-select-ok: the `.is(platform_fee_stripe_id, null)` filter
+      // is itself a race guard against a concurrent redelivery of this same
+      // event already having written the charge id -- a zero-row match here
+      // means that race already resolved it, not a silent failure).
+      const { data: feeIdRows, error: feeIdErr } = await supabase
         .from("claims")
         .update(feeUpdate)
         .eq("id", q.claim_id)
-        .is("platform_fee_stripe_id", null);
+        .is("platform_fee_stripe_id", null)
+        .select("id");
       if (feeIdErr) {
         console.error(`[${FN_NAME}] gh-1759: failed to record platform_fee_stripe_id on claim ${q.claim_id}:`, feeIdErr);
-      } else {
+      } else if (checkRowsWritten(feeIdRows).wroteRows) {
         console.log(`[${FN_NAME}] gh-1759: recorded platform_fee_stripe_id=${latestChargeId} on claim ${q.claim_id}`);
+      } else {
+        console.log(`[${FN_NAME}] gh-1759: platform_fee_stripe_id update for claim ${q.claim_id} matched zero rows (update-no-select-ok: already set by a concurrent redelivery).`);
       }
     }
   }
 
   if (claimRow && (claimRow as { id: string; platform_fee_charged: boolean }).platform_fee_charged !== true) {
-    await supabase
+    // gh-2105 (batch 2, decision a): a zero-row match here means the claim
+    // exists (claimRow was just fetched) but the flip silently failed, so a
+    // future redelivery of this same event will re-run this branch and
+    // re-notify the contractor -- detect it so the flag drift doesn't go
+    // unnoticed even though the notification below is unaffected either way.
+    const { data: feeChargedRows, error: feeChargedErr } = await supabase
       .from("claims")
       .update({ platform_fee_charged: true })
-      .eq("id", q.claim_id);
+      .eq("id", q.claim_id)
+      .select("id");
+    if (feeChargedErr) {
+      console.error(`[${FN_NAME}] claims platform_fee_charged update failed for claim ${q.claim_id}:`, feeChargedErr);
+    } else if (!checkRowsWritten(feeChargedRows).wroteRows) {
+      console.error(zeroRowWriteMessage(FN_NAME, `claims.platform_fee_charged=true for claim ${q.claim_id}`));
+    }
 
     try {
       const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -955,10 +1013,21 @@ async function handlePlatformFeePaymentFailed(
     paymentIntent.last_payment_error?.code ||
     "ACH payment failed after processing";
 
-  await supabase
+  // gh-2105 (batch 2, decision a): if this silently matches zero rows, the ACH
+  // failure the payment_failures insert and the dunning re-trigger below both
+  // still record/fire, but the quote itself stays stuck in whatever state it
+  // was in (e.g. still 'pending'), invisible to any query that filters on
+  // payment_status='dunning'. Detect it so that drift is not silent too.
+  const { data: dunningRows, error: dunningUpdErr } = await supabase
     .from("quotes")
     .update({ payment_status: "dunning" })
-    .eq("id", q.id);
+    .eq("id", q.id)
+    .select("id");
+  if (dunningUpdErr) {
+    console.error(`[${FN_NAME}] quotes payment_status=dunning update failed for quote ${q.id}:`, dunningUpdErr);
+  } else if (!checkRowsWritten(dunningRows).wroteRows) {
+    console.error(zeroRowWriteMessage(FN_NAME, `quotes.payment_status=dunning for quote ${q.id}`));
+  }
 
   // Mirrors docusign-webhook's synchronous failure branch: durable failure record +
   // alert + re-trigger process-dunning. This is the async (post-'processing') twin
