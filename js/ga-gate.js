@@ -261,8 +261,15 @@
     // (see scripts/check-clarity-page-gate.py's SESSION_AWARE_PUBLIC for
     // the per-page reason).
     '/hi-1',
+    // gh-2152 HI-4 (CEO RUN 71): printable-handout lead magnet, same
+    // PUBLIC pattern as hi-1 above (hasPartnerSession() only redirects an
+    // ALREADY-signed-in partner to partner-dashboard.html).
+    '/hi-4',
     '/how-it-works',
     '/ins-1',
+    // gh-2151 INS-5 (CEO RUN 71): co-branded client-handout lead magnet,
+    // same PUBLIC pattern as ins-1 above.
+    '/ins-5',
     '/landing',
     '/onboarding-demo',
     '/oq-voice-ai',
