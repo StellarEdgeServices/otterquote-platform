@@ -341,9 +341,14 @@ Deno.test("[TEST] prefix: is_test=true partner's subject is prefixed and it stil
 // ── backlog: at most one stage per run ───────────────────────────────────
 
 Deno.test("9-day backlog, real copy: only day7 sends, day0/1/3 marked skipped in one call each", async () => {
+  // gh-2154 P-5 (#2180 R-177 condition (4)): a normal P-1 signup stamps
+  // partner_agreement_accepted_at at the same instant as created_at, so
+  // this partner must age both the same way to keep meaning "signed up,
+  // and accepted, 9 days ago" — see the dedicated P-5 day-count tests below
+  // for a partner where these two timestamps deliberately DIFFER.
   const { deps, rec } = buildDeps({
     settingValue: ON,
-    partners: [partner({ created_at: agedIso(9 * DAY_MS) })],
+    partners: [partner({ created_at: agedIso(9 * DAY_MS), partner_agreement_accepted_at: agedIso(9 * DAY_MS) })],
   });
   withRealCopy(deps);
   const outcome = await runOnboardingSweep(deps);
@@ -512,11 +517,56 @@ Deno.test("negative control: partner who never activates reaches day7 eligibilit
   store.rows.set("p1::day0", { status: "sent", created_at: agedIso(29 * DAY_MS) });
   store.rows.set("p1::day1", { status: "sent", created_at: agedIso(28 * DAY_MS) });
   store.rows.set("p1::day3", { status: "sent", created_at: agedIso(26 * DAY_MS) });
-  const { deps, rec } = buildDeps({ settingValue: ON, partners: [partner({ created_at: agedIso(30 * DAY_MS) })], store });
+  const { deps, rec } = buildDeps({
+    settingValue: ON,
+    partners: [partner({ created_at: agedIso(30 * DAY_MS), partner_agreement_accepted_at: agedIso(30 * DAY_MS) })],
+    store,
+  });
   withRealCopy(deps);
   const outcome = await runOnboardingSweep(deps);
   if (outcome.ok && "results" in outcome) {
     assertEquals(outcome.results[0].sent, "day7");
+  }
+  assertEquals(rec.sends.length, 1);
+});
+
+// ── gh-2154 P-5 (#2180 R-177 condition (4)): day-count keys to agreement
+// acceptance, never row creation ────────────────────────────────────────────
+
+Deno.test("P-5 invite row accepted 8 days after webhook creation: day0 fires first, not day7 ('Last reminder' must never be a P-5 invite's first email)", async () => {
+  // The exact scenario the brief names: meta-leadgen-webhook inserted this
+  // row (created_at) 8 days ago as 'pending'; the lead only clicked the
+  // invite link and accepted (partner_agreement_accepted_at) moments ago.
+  // Keying age to created_at would put this partner at day7 on its very
+  // first eligible run; keying to acceptance must put it at day0.
+  const { deps, rec } = buildDeps({
+    settingValue: ON,
+    partners: [partner({
+      created_at: agedIso(8 * DAY_MS),
+      partner_agreement_accepted_at: agedIso(0),
+      status: "active",
+    })],
+  });
+  withRealCopy(deps);
+  const outcome = await runOnboardingSweep(deps);
+  if (outcome.ok && "results" in outcome) {
+    assertEquals(outcome.results[0].sent, "day0");
+    assertEquals(outcome.results[0].skipped_stages ?? [], [], "nothing should be backdated into 'skipped' backlog on a first-ever run");
+  }
+  assertEquals(rec.sends.length, 1);
+  assertEquals(rec.sent[0]?.stage, "day0");
+  assertEquals(rec.skipped.length, 0);
+});
+
+Deno.test("P-5 invite row: a WEBHOOK-CREATED-and-accepted-together row (accepted_at == created_at, same as P-1) behaves exactly like a P-1 signup of the same age", async () => {
+  const { deps, rec } = buildDeps({
+    settingValue: ON,
+    partners: [partner({ created_at: agedIso(3 * DAY_MS), partner_agreement_accepted_at: agedIso(3 * DAY_MS) })],
+  });
+  withRealCopy(deps);
+  const outcome = await runOnboardingSweep(deps);
+  if (outcome.ok && "results" in outcome) {
+    assertEquals(outcome.results[0].sent, "day3");
   }
   assertEquals(rec.sends.length, 1);
 });
