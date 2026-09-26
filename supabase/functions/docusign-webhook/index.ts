@@ -1411,14 +1411,31 @@ serve(async (req) => {
                 console.error(
                   `[docusign-webhook] platform fee outcome AMBIGUOUS for claim ${claim.id}, quote ${quote.id} (idempotency key ${idempotencyKeyHint}): ${paymentError.slice(0, 300)}`
                 );
-                await supabase
+                // gh-2105 (#2103 pattern, decision a): `.update()` without `.select()` resolves
+                // `{ error: null }` even when RLS or the `.eq()` filter matches ZERO rows. This
+                // write is best-effort bookkeeping alongside the ambiguous-payment alert above --
+                // it must NOT change the HTTP response returned to BoldSign/DocuSign or whether
+                // this handler proceeds (the response and control flow below are unchanged), so a
+                // zero-row match is only logged for a human to notice during reconciliation, not
+                // surfaced as a failure.
+                const { data: signedRows, error: signedUpdateErr } = await supabase
                   .from("claims")
                   .update({
                     contract_signed_at: completedDateTime || new Date().toISOString(),
                     contract_signed_by: recipientEmail || null,
                     status: "contract_signed",
                   })
-                  .eq("id", claim.id);
+                  .eq("id", claim.id)
+                  .select("id");
+                if (signedUpdateErr) {
+                  console.error(
+                    `[docusign-webhook] gh-2105: contract_signed update failed for claim ${claim.id}, quote ${quote.id} (idempotency key ${idempotencyKeyHint}): ${signedUpdateErr.message}`
+                  );
+                } else if (!Array.isArray(signedRows) || signedRows.length === 0) {
+                  console.error(
+                    `[docusign-webhook] gh-2105: contract_signed update matched ZERO rows for claim ${claim.id}, quote ${quote.id} (idempotency key ${idempotencyKeyHint}) -- claims.status may not have been flipped to contract_signed`
+                  );
+                }
                 try {
                   await supabase.from("platform_alerts_log").insert({
                     alert_type: "platform_fee_outcome_unknown",

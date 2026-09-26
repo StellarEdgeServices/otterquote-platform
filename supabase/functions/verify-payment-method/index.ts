@@ -55,6 +55,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 
 const FN_NAME = "verify-payment-method";
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
@@ -313,7 +314,12 @@ serve(async (req) => {
     // source of truth and it means exactly one thing: "Stripe confirmed this
     // method with the key we charge with."
     if (isFirstMethod) {
-      const { error: contractorUpdErr } = await sb
+      // gh-2105 (batch 2, decision a): `has_payment_method` is the single
+      // source of truth the payment gate reads (see comment above) -- a
+      // zero-row match here would leave a contractor Stripe-confirmed but
+      // still gated as "no payment method" with no error to explain why.
+      // Fails closed the same way the existing error branch already does.
+      const { data: contractorUpdRows, error: contractorUpdErr } = await sb
         .from("contractors")
         .update({
           has_payment_method: true,
@@ -322,11 +328,16 @@ serve(async (req) => {
           stripe_payment_method_brand: brand,
           updated_at: new Date().toISOString(),
         })
-        .eq("id", contractor_id);
+        .eq("id", contractor_id)
+        .select("id");
 
       if (contractorUpdErr) {
         console.error(`[${FN_NAME}] contractors update failed:`, contractorUpdErr);
         throw new Error(`Could not update contractor: ${contractorUpdErr.message}`);
+      }
+      if (!checkRowsWritten(contractorUpdRows).wroteRows) {
+        console.error(zeroRowWriteMessage(FN_NAME, `contractors.has_payment_method=true for contractor ${contractor_id}`));
+        throw new Error(`Could not update contractor: no matching contractor row (id ${contractor_id})`);
       }
     }
 
