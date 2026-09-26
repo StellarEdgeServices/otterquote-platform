@@ -55,8 +55,9 @@
 --
 -- Same shape as the 15 trigger functions PR #1634 already revoked
 -- (notify_admin_new_contractor, handle_new_user, etc.): fired only by
--- Postgres trigger machinery (which runs as the trigger owner, not the
--- invoking role), never invoked via `.rpc()` by any client.
+-- Postgres trigger machinery (these are SECURITY DEFINER, so the body
+-- runs as the function owner, `postgres`, whichever role's INSERT/UPDATE
+-- fired it), never invoked via `.rpc()` by any client.
 --
 -- CORRECTION (REVIEW: FAIL 5850171730, CTO RUN 42, fresh-context Opus
 -- refuter): the exposure is NOT "an anon caller can invoke the trigger
@@ -66,11 +67,15 @@
 -- functions can only be called as triggers" -- verified live 2026-09-26
 -- in a transaction forced to abort before this correction, and already on
 -- record from the 2026-09-04 refuter on #1634, comment `5544978633`).
--- Trigger firing itself does not check EXECUTE either (verified live
--- 2026-09-26: an anon INSERT into `claims` still fires
--- `trg_notify_admin_new_claim` with EXECUTE revoked from PUBLIC/anon), so
--- the claims/referral_agents/leads write paths are unaffected by this
--- revoke either way. The actual reason for this migration: these 3 anon
+-- Trigger firing itself does not check EXECUTE either (PostgreSQL does
+-- not check EXECUTE when a trigger fires; demonstrated 2026-09-26 in an
+-- aborted transaction on a scratch table with a SECURITY DEFINER trigger
+-- function whose EXECUTE was revoked from PUBLIC/anon, REVIEW 5850171730
+-- §3 TRIGSEM. Note that anon cannot INSERT into `claims` at all: the only
+-- INSERT policy's with_check is `user_id = auth.uid()`; its real writer
+-- is `authenticated`), so the claims/referral_agents/leads write paths
+-- are unaffected by this revoke either way. The actual reason for this
+-- migration: these 3 anon
 -- EXECUTE grants are advisor-flagged `anon_security_definer_function_executable`
 -- drift (no callable hole, but out of the least-privilege posture #1529
 -- exists to establish) and closing them is required for #1529's own
