@@ -156,6 +156,36 @@ ALL_PAGES = VERTICAL_PAGES + ["partner-app", "partner-login", "partner-dashboard
 # cents suffix, accepts spelled-out amounts up to "ninehundred"-class
 # compounds and "thousand", and widens the fee-word family to the same
 # refer*/recruit family D-301 already recognizes as referral-fee vocabulary.
+# gh-2020 REVIEW: FAIL 5849929623 item 2: the sentence-shaped regex above
+# (amount and fee-word both required within the SAME `[^.!?\n]{0,200}` span)
+# is still only one sentence wide. E2 ("Refer a borrower to Otter Quotes. We
+# pay you $250 when their project completes." -- amount and fee-word in
+# DIFFERENT sentences), E3 ("Earn 250 dollars for every referral..." -- a
+# spelled-out DIGIT amount, "250 dollars", not the word-only "two hundred
+# fifty dollars" shape handled above) and E4 (amount and fee-word split
+# across an <h2>/<p> pair, "Earn $250 Per Job" / "Get paid for every
+# homeowner you send us." -- no shared fee word in the SAME sentence as the
+# amount at all) all read as fee-free. Replaced with a proximity scan,
+# `_has_fee_sentence()` below: every AMOUNT_RE match and every FEE_WORD_RE
+# match in the whole (normalized, sentence-boundary-agnostic) page text is
+# found independently, and the two sets are fee-shaped together if any pair
+# is within 300 characters of each other, in EITHER order. AMOUNT_RE also
+# gains the digit-plus-"dollars" shape ("250 dollars"), and FEE_WORD_RE
+# gains "per (completed) job" (the shipped "Earn $200 Per Job" idiom) and
+# "commission" per the review's own list.
+# FEE_SENTENCE_RE stays the SENTENCE-bounded pattern (amount and fee-word
+# within the same `[^.!?\n]{0,200}` span) -- it is still what's used for the
+# JS layer-4 "does this specific screen/scalar/array render a referral-fee
+# sentence" checks below, where the whole point is that the fee text is
+# self-contained inside one small, specific piece of source (an array
+# element, a scalar, one RENDERERS screen body), not the whole page. Widening
+# that to a 300-char cross-boundary scan would start matching unrelated $
+# amounts and fee words that happen to both appear somewhere in a large
+# screen body (verified: it produced a false positive on the real 'home'
+# distractor track). The cross-sentence widening below (_has_fee_sentence)
+# is deliberately scoped to compute_d266_pages()'s PAGE-level census only,
+# per REVIEW: FAIL 5849929623 item 2 (E2/E3/E4 are about a whole PAGE never
+# being registered, not about a single small JS fragment).
 FEE_SENTENCE_RE = re.compile(
     r"\$\d[\d,]*(?:\.\d{2})?\b[^.!?\n]{0,200}\b(?:refer(?:ral|red|rer|s)?|recruit(?:s|ed|ment)?)|"
     r"\b(?:refer(?:ral|red|rer|s)?|recruit(?:s|ed|ment)?)[^.!?\n]{0,200}\$\d[\d,]*(?:\.\d{2})?\b|"
@@ -169,9 +199,53 @@ FEE_SENTENCE_RE = re.compile(
     r"fifty|sixty|seventy|eighty|ninety|hundred|thousand)"
     r"(?:[\s-]+(?:one|two|three|four|five|six|seven|eight|nine|ten|twenty|thirty|"
     r"forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand))*"
+    r"\s+dollars\b|"
+    r"\b\d[\d,]*\s+dollars\b[^.!?\n]{0,200}\b(?:refer(?:ral|red|rer|s)?|recruit(?:s|ed|ment)?)|"
+    r"\b(?:refer(?:ral|red|rer|s)?|recruit(?:s|ed|ment)?)[^.!?\n]{0,200}\b\d[\d,]*\s+dollars\b",
+    re.IGNORECASE,
+)
+
+# AMOUNT_RE / FEE_WORD_RE / _has_fee_sentence(): the CROSS-sentence,
+# proximity-based scan used only by compute_d266_pages()'s page-level
+# census (_fee_sentence_pages below) -- see the comment above FEE_SENTENCE_RE
+# for why the two are kept separate.
+AMOUNT_RE = re.compile(
+    r"\$\s?\d[\d,]*(?:\.\d{2})?|"
+    r"\b\d[\d,]*\s+dollars\b|"
+    r"\b(?:one|two|three|four|five|six|seven|eight|nine|ten|twenty|thirty|forty|"
+    r"fifty|sixty|seventy|eighty|ninety|hundred|thousand)"
+    r"(?:[\s-]+(?:one|two|three|four|five|six|seven|eight|nine|ten|twenty|thirty|"
+    r"forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand))*"
     r"\s+dollars\b",
     re.IGNORECASE,
 )
+FEE_WORD_RE = re.compile(
+    r"\b(?:refer(?:ral|red|rer|s)?|recruit(?:s|ed|ment)?|commission)\b|"
+    r"\bper\s+(?:completed\s+)?job\b",
+    re.IGNORECASE,
+)
+_FEE_PROXIMITY_CHARS = 300
+
+
+def _has_fee_sentence(text: str) -> bool:
+    amounts = [m.span() for m in AMOUNT_RE.finditer(text)]
+    if not amounts:
+        return False
+    fee_words = [m.span() for m in FEE_WORD_RE.finditer(text)]
+    if not fee_words:
+        return False
+    for a_start, a_end in amounts:
+        for f_start, f_end in fee_words:
+            if f_start >= a_end:
+                gap = f_start - a_end
+            elif a_start >= f_end:
+                gap = a_start - f_end
+            else:
+                gap = 0
+            if gap <= _FEE_PROXIMITY_CHARS:
+                return True
+    return False
+
 
 D266_PAGES_EXEMPT = {
     "partner-login": (
@@ -262,7 +336,7 @@ def _fee_sentence_pages(root: Path) -> set[str]:
         # bounds how far apart the amount and the fee-word can be, and with
         # newlines gone that bound is carried entirely by '.', '!', '?'.
         normalized = _norm(stripped)
-        if FEE_SENTENCE_RE.search(normalized):
+        if _has_fee_sentence(normalized):
             found.add(path.stem)
     return found
 
@@ -521,12 +595,110 @@ _SCRIPT_CONTENT_RE = re.compile(r"<script\b[^>]*>(.*?)</script>", re.DOTALL | re
 _ELEMENT_ID_RE = re.compile(r'\bid\s*=\s*(?:"([^"]+)"|\'([^\']+)\')', re.IGNORECASE)
 
 
-_REVEAL_MUTATION_RE = re.compile(
-    r"\.style\.display\s*=\s*(?!['\"]none['\"])['\"][^'\"]*['\"]|"
-    r"\.style\.visibility\s*=\s*(?!['\"]hidden['\"])['\"][^'\"]*['\"]|"
-    r"removeAttribute\(\s*['\"]hidden['\"]\s*\)|\.hidden\s*=\s*false",
-    re.IGNORECASE,
+def _is_reveal_value(value: str) -> bool:
+    """True if a `.style.display`/`.style.visibility` value actually shows
+    the element -- anything but 'none' / 'hidden'."""
+    v = value.strip().strip("'\"").lower()
+    return v not in ("none", "hidden")
+
+
+# gh-2020 REVIEW: FAIL 5849929623 items E1/E1b/E6: the first cut of this
+# exception fired on ANY `.style.display =` mutation within a 400-char
+# window of a getElementById(id) call, or on the id literal plus ANY reveal
+# mutation anywhere in the same <script> block -- neither check that the
+# mutation actually targets the SAME element. That let (E1) a reveal
+# rewritten to `= 'none'` still "count" (the window still matched the old,
+# now-inverted line), (E1b) a deleted reveal line still "count" because an
+# UNRELATED element's mutation (`payoutsPhrase.style.display = ''`) sat
+# inside the 400-char window, and (E6) a deleted batch-reveal loop still
+# "count" because the id was merely listed in an array while some other,
+# unrelated `.style.display` line existed later in the same block.
+#
+# Fixed shape, bound to the actual element:
+#   DIRECT chained:   getElementById('<id>').style.display = <v>
+#   DIRECT var-bound: var X = ...getElementById('<id>'); ... X.style.display
+#                     = <v> / X.removeAttribute('hidden') / X.hidden = false
+#                     -- the mutation must reference the SAME identifier X
+#                     the lookup was assigned to, found anywhere later in
+#                     the block (no proximity window).
+#   BATCH:            var A = [..., '<id>', ...]; A.forEach(function (p) {
+#                     var e = ...getElementById(p); e.style.display = <v>
+#                     / e.removeAttribute('hidden') / e.hidden = false
+#                     }) -- the forEach must iterate the SAME array A the id
+#                     literal was found in, and the mutation must reference
+#                     the SAME per-iteration binding e.
+# In every case <v> must not be 'none' (or 'hidden' for visibility).
+_REVEAL_CHAINED_RE_TMPL = (
+    r"getElementById\(\s*['\"]{0}['\"]\s*\)\s*\.style\.(display|visibility)\s*=\s*(['\"][^'\"]*['\"])"
 )
+_VAR_LOOKUP_RE_TMPL = (
+    r"\b(?:var|let|const)\s+(\w+)\s*=\s*[^;]*?getElementById\(\s*['\"]{0}['\"]\s*\)"
+)
+_VAR_MUTATION_RE_TMPL = (
+    r"\b{0}\.style\.(display|visibility)\s*=\s*(['\"][^'\"]*['\"])|"
+    r"\b{0}\.removeAttribute\(\s*['\"]hidden['\"]\s*\)|\b{0}\.hidden\s*=\s*false"
+)
+_ARRAY_ASSIGN_RE = re.compile(r"\b(?:var|let|const)\s+(\w+)\s*=\s*\[([^\]]*)\]")
+_FOREACH_RE_TMPL = r"\b{0}\.forEach\(\s*function\s*\(\s*(\w+)\s*\)\s*\{{"
+
+
+def _direct_reveal(block: str, elem_id: str) -> bool:
+    esc = re.escape(elem_id)
+    m = re.search(_REVEAL_CHAINED_RE_TMPL.format(esc), block, re.IGNORECASE)
+    if m and _is_reveal_value(m.group(2)):
+        return True
+    for lm in re.finditer(_VAR_LOOKUP_RE_TMPL.format(esc), block, re.IGNORECASE):
+        var = lm.group(1)
+        rest = block[lm.end():]
+        mut_re = re.compile(_VAR_MUTATION_RE_TMPL.format(re.escape(var)), re.IGNORECASE)
+        mm = mut_re.search(rest)
+        if mm:
+            if mm.group(1) is None and mm.group(2) is None:
+                return True  # removeAttribute('hidden') / .hidden = false
+            if mm.group(2) is not None and _is_reveal_value(mm.group(2)):
+                return True
+    return False
+
+
+def _batch_reveal(block: str, elem_id: str) -> bool:
+    id_literal_re = re.compile(r"['\"]" + re.escape(elem_id) + r"['\"]")
+    for am in _ARRAY_ASSIGN_RE.finditer(block):
+        array_var, array_body = am.group(1), am.group(2)
+        if not id_literal_re.search(array_body):
+            continue
+        fm = re.search(_FOREACH_RE_TMPL.format(re.escape(array_var)), block, re.IGNORECASE)
+        if not fm:
+            continue
+        loop_param = fm.group(1)
+        body_start = fm.end() - 1  # position of the forEach callback's '{'
+        body_end = _find_matching_bracket(block, body_start, "{", "}")
+        body = block[body_start : body_end + 1] if body_end != -1 else block[body_start:]
+        elem_lookup_re = re.compile(
+            r"\b(?:var|let|const)\s+(\w+)\s*=\s*[^;]*?getElementById\(\s*"
+            + re.escape(loop_param) + r"\s*\)",
+            re.IGNORECASE,
+        )
+        for lm in elem_lookup_re.finditer(body):
+            var = lm.group(1)
+            rest = body[lm.end():]
+            mut_re = re.compile(_VAR_MUTATION_RE_TMPL.format(re.escape(var)), re.IGNORECASE)
+            mm = mut_re.search(rest)
+            if mm:
+                if mm.group(1) is None and mm.group(2) is None:
+                    return True
+                if mm.group(2) is not None and _is_reveal_value(mm.group(2)):
+                    return True
+        # Also the directly-chained form inside the loop:
+        # getElementById(p).style.display = <v>
+        chained_re = re.compile(
+            r"getElementById\(\s*" + re.escape(loop_param) + r"\s*\)"
+            r"\s*\.style\.(display|visibility)\s*=\s*(['\"][^'\"]*['\"])",
+            re.IGNORECASE,
+        )
+        cm = chained_re.search(body)
+        if cm and _is_reveal_value(cm.group(2)):
+            return True
+    return False
 
 
 def _js_reveals_element(full_text: str, open_tag: str) -> bool:
@@ -534,25 +706,9 @@ def _js_reveals_element(full_text: str, open_tag: str) -> bool:
     if not id_match:
         return False
     elem_id = id_match.group(1) or id_match.group(2)
-    # Direct chain: getElementById('theId')....style.display = ...
-    direct_re = re.compile(
-        r"getElementById\(\s*['\"]" + re.escape(elem_id) + r"['\"]\s*\)"
-        r"[\s\S]{0,400}?(?:\.style\.(?:display|visibility)\s*=|"
-        r"removeAttribute\(\s*['\"]hidden['\"]\s*\)|\.hidden\s*=\s*false)",
-        re.IGNORECASE,
-    )
-    # Indirect: the id is listed in a batch (e.g. an array a forEach loop
-    # later resolves through a variable, `feeIds.forEach(function (id) {
-    # var el = document.getElementById(id); el.style.display = ''; })`) --
-    # matched by the id literal and a reveal mutation both appearing
-    # somewhere in the same <script> block, rather than adjacent to a
-    # literal getElementById(...) call.
-    id_literal_re = re.compile(r"['\"]" + re.escape(elem_id) + r"['\"]")
     for sm in _SCRIPT_CONTENT_RE.finditer(full_text):
         block = sm.group(1)
-        if direct_re.search(block):
-            return True
-        if id_literal_re.search(block) and _REVEAL_MUTATION_RE.search(block):
+        if _direct_reveal(block, elem_id) or _batch_reveal(block, elem_id):
             return True
     return False
 

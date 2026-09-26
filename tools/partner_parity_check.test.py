@@ -949,6 +949,90 @@ def main():
         )
 
         print()
+        print("gh-2020 REVIEW: FAIL 5849929623 item 1 (E1/E1b/E6): the first "
+              "cut of the HI-0c reveal exception fired on ANY "
+              "'.style.display =' mutation within a 400-char window of a "
+              "getElementById(id) call, or on the id literal plus ANY "
+              "reveal mutation anywhere in the same <script> block -- "
+              "neither bound to the SAME element")
+        # E1: the reveal line itself is rewritten to hide, not show.
+        html_e1 = (
+            f'<p id="referralFeeDisclaimer" style="display:none;">{D266}</p>\n'
+            "<script>\n"
+            "  var el = document.getElementById('referralFeeDisclaimer');\n"
+            "  if (el) { el.style.display = 'none'; }\n"
+            "</script>\n"
+        )
+        check_false(
+            "E1: reveal rewritten to display='none' does not satisfy check_d266_disclaimer",
+            mod.check_d266_disclaimer(html_e1),
+        )
+        # E1b: the reveal line is deleted, the lookup stays, and an
+        # UNRELATED element's reveal sits inside the old 400-char window.
+        html_e1b = (
+            f'<p id="referralFeeDisclaimer" style="display:none;">{D266}</p>\n'
+            "<script>\n"
+            "  var el = document.getElementById('referralFeeDisclaimer');\n"
+            "  // reveal line removed\n"
+            "  var payoutsPhrase = document.getElementById('payoutsPhrase');\n"
+            "  if (payoutsPhrase) payoutsPhrase.style.display = '';\n"
+            "</script>\n"
+        )
+        check_false(
+            "E1b: an unrelated element's reveal does not satisfy check_d266_disclaimer for THIS element",
+            mod.check_d266_disclaimer(html_e1b),
+        )
+        # E1c control: id renamed so no script mentions it at all -- must
+        # still fail (this is the plain N8/N9 case, not a new one).
+        html_e1c = f'<p id="referralFeeDisclaimerX" style="display:none;">{D266}</p>\n'
+        check_false(
+            "E1c control: renamed id with no matching script reference stays absent",
+            mod.check_d266_disclaimer(html_e1c),
+        )
+        # E6: the WHOLE batch-reveal forEach loop is deleted, the id stays
+        # listed in the feeIds array, and an unrelated .style.display line
+        # elsewhere in the block used to satisfy the old "any mutation in
+        # the block" rule.
+        html_e6 = (
+            f'<p id="referralFeeDisclaimer" style="display:none;">{D266}</p>\n'
+            "<script>\n"
+            "  var feeIds = ['feeSubtitleReferClient', 'referralFeeDisclaimer', 'recruitFeeHint'];\n"
+            "  // reveal forEach loop removed\n"
+            "  var unrelated = document.getElementById('unrelatedThing');\n"
+            "  if (unrelated) { unrelated.style.display = 'block'; }\n"
+            "</script>\n"
+        )
+        check_false(
+            "E6: deleted batch-reveal loop with an unrelated mutation elsewhere does not satisfy check_d266_disclaimer",
+            mod.check_d266_disclaimer(html_e6),
+        )
+        # E6b control: id removed from the feeIds array entirely -- the
+        # forEach loop is intact but never touches this element.
+        html_e6b = (
+            f'<p id="referralFeeDisclaimer" style="display:none;">{D266}</p>\n'
+            "<script>\n"
+            "  var feeIds = ['feeSubtitleReferClient', 'recruitFeeHint'];\n"
+            "  feeIds.forEach(function (id) {\n"
+            "    var el = document.getElementById(id);\n"
+            "    if (el) el.style.display = '';\n"
+            "  });\n"
+            "</script>\n"
+        )
+        check_false(
+            "E6b control: id removed from the feeIds array stays absent",
+            mod.check_d266_disclaimer(html_e6b),
+        )
+        # Sanity: the ORIGINAL HI-0c controls above (direct and batch reveal
+        # that DOES target this element) must still PASS after this fix.
+        check_true(
+            "sanity: direct-chain reveal control (getElementById(id).style.display = '') still satisfies check_d266_disclaimer",
+            mod.check_d266_disclaimer(
+                f'<p id="referralFeeDisclaimer" style="display:none;">{D266}</p>\n'
+                "<script>document.getElementById('referralFeeDisclaimer').style.display = '';</script>\n"
+            ),
+        )
+
+        print()
         print("gh-2020 refuter N20/N21/N22: compute_d266_pages() census, "
               "isolated fixture tree with module.REPO_ROOT NOT touched "
               "(root is passed explicitly)")
@@ -1096,6 +1180,76 @@ def main():
             )
         finally:
             shutil.rmtree(d333_root, ignore_errors=True)
+
+        print()
+        print("gh-2020 REVIEW: FAIL 5849929623 item 2 (E2/E3/E4): the "
+              "sentence-bounded fee census still required the amount and a "
+              "fee word in the SAME sentence -- an amount and fee word "
+              "split across two sentences (E2), a digit-plus-'dollars' "
+              "amount (E3, distinct from the word-spelled-out form), or "
+              "split across an <h2>/<p> pair with the shipped 'Earn $X Per "
+              "Job' idiom (E4) all read as fee-free")
+        e2_root = pathlib.Path(tempfile.mkdtemp(prefix="partnerparity-test-e234-"))
+        try:
+            (e2_root / "lenders.html").write_text(
+                "<html><body><p>Refer a borrower to Otter Quotes.</p>"
+                "<p>We pay you $250 when their project completes.</p>"
+                "</body></html>",
+                encoding="utf-8",
+            )
+            pages = mod.compute_d266_pages(e2_root)
+            check_true(
+                "E2: amount and fee word in different sentences is swept into the D-266 census",
+                "lenders" in pages,
+            )
+        finally:
+            shutil.rmtree(e2_root, ignore_errors=True)
+
+        e3_root = pathlib.Path(tempfile.mkdtemp(prefix="partnerparity-test-e234-"))
+        try:
+            (e3_root / "lenders.html").write_text(
+                "<html><body><p>Earn 250 dollars for every referral that "
+                "completes a project.</p></body></html>",
+                encoding="utf-8",
+            )
+            pages = mod.compute_d266_pages(e3_root)
+            check_true(
+                "E3: digit-plus-'dollars' amount is swept into the D-266 census",
+                "lenders" in pages,
+            )
+        finally:
+            shutil.rmtree(e3_root, ignore_errors=True)
+
+        e4_root = pathlib.Path(tempfile.mkdtemp(prefix="partnerparity-test-e234-"))
+        try:
+            (e4_root / "lenders.html").write_text(
+                "<html><body><h2>Earn $250 Per Job</h2>"
+                "<p>Get paid for every homeowner you send us.</p>"
+                "</body></html>",
+                encoding="utf-8",
+            )
+            pages = mod.compute_d266_pages(e4_root)
+            check_true(
+                "E4: amount/fee-word split across an h2/p pair ('Per Job' idiom) is swept into the D-266 census",
+                "lenders" in pages,
+            )
+        finally:
+            shutil.rmtree(e4_root, ignore_errors=True)
+
+        e5_root = pathlib.Path(tempfile.mkdtemp(prefix="partnerparity-test-e234-"))
+        try:
+            (e5_root / "lenders.html").write_text(
+                "<html><body><p>Earn $250 per referral that completes a "
+                "project.</p></body></html>",
+                encoding="utf-8",
+            )
+            pages = mod.compute_d266_pages(e5_root)
+            check_true(
+                "E5 control: amount and fee word in the same sentence is (still) swept into the D-266 census",
+                "lenders" in pages,
+            )
+        finally:
+            shutil.rmtree(e5_root, ignore_errors=True)
 
     finally:
         shutil.rmtree(tmp_root, ignore_errors=True)
