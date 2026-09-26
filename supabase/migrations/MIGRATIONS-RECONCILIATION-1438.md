@@ -224,11 +224,11 @@ session against `yeszghaspzwwstvsrioa` (**zero SQL executed against any
 database** — every row below is a `SELECT` against `information_schema`,
 `pg_policy`, `pg_proc`/`pg_trigger`, or the tables themselves):
 
-**CORRECTED 2026-09-26 (see the follow-on addendum below) — the gh1763 and
+**CORRECTED 2026-09-26 (see the follow-on addenda below) — the gh1763 and
 gh2042 rows here were both found wrong by independent review (comment
 5850286498) and are superseded by the corrected rows in the "REVIEW FAIL
-correction" addendum immediately below this table. Left as originally
-written for the record of what this session first measured and got wrong.**
+correction" addendum below this table. Left as originally written for the
+record of what this session first measured and got wrong.**
 
 | draft set | object tested | query | result | verdict | action taken |
 |---|---|---|---|---|---|
@@ -243,7 +243,7 @@ written for the record of what this session first measured and got wrong.**
 **Original (wrong) summary, superseded:** ~~of the 7 newer sets, 3 are LIVE
 (gh2010, gh2042, gh2055)... 1 (gh1763) is the one open discrepancy this
 addendum flags rather than resolves unilaterally.~~ See the correction
-addendum immediately below for the accurate summary.
+addendum below for the accurate summary.
 
 This addendum does not build the scheduled, non-blocking live-drift alarm
 job the 2026-09-01 baseline manifest's `known_limitations` names as the real
@@ -254,7 +254,7 @@ construction, and stays invisible to any per-PR gate. That remains flagged
 as follow-up work, not silently dropped, consistent with every prior pass on
 this issue.
 
-## 2026-09-26 REVIEW FAIL correction — independent review comment 5850286498 (Marty/CTO)
+## 2026-09-26 REVIEW FAIL correction (round 1) — independent review comment 5850286498 (Marty/CTO)
 
 Independent review of PR #2233 (head `703b4f790a26`) found the immediately
 preceding addendum wrong on two of its seven rows. Both corrected here,
@@ -336,9 +336,16 @@ from public.profiles p join public.contractors c on c.user_id = p.id
 where p.role = 'contractor' and p.is_test is distinct from c.is_test;
 ```
 ```
-=> 1 row: profile f70fe577-549d-47cc-88d0-dac90fc010b9 (is_test=true) /
-   contractor 2... (is_test=false), "Ceo48 GH2000 Test Co", created 2026-09-16
+=> 1 row: profile c82f9d42-ceeb-4472-a01d-baa3a2f97c30 (is_test=true) /
+   contractor f70fe577-549d-47cc-88d0-dac90fc010b9 (is_test=false),
+   "Ceo48 GH2000 Test Co", created 2026-09-16
 ```
+
+**Correction (round 2 review, comment 5850563014, finding F1):** the ids
+above were originally recorded swapped and truncated in this document's
+first pass; the pairing shown here (profile `c82f9d42-...` is_test=true /
+contractor `f70fe577-...` is_test=false) is the corrected, re-verified
+reading.
 
 This is the **reverse** direction from gh1763's 7 rows (profile true /
 contractor false, not the other way), a different contractor created after
@@ -366,3 +373,42 @@ Lines signed '-- Ben' outrank lines signed '-- Marty', so a Marty
 `DEFERRED (week goal, CEO RUN 60)` note does NOT stop you." That
 authorization is cited here for the CTO's visibility; it does not itself
 decide whether this PR merges now — that remains the CTO's/CEO's call.
+
+## 2026-09-26 REVIEW FAIL correction (round 2) — independent review comment 5850563014 (Marty/CTO)
+
+Round 2 confirmed the replay-safety core clean (gh2042 SQL md5-matched the
+ledger exactly; the gh1763 guard was already 43/43 lines identical to the
+base draft) and found four small, text-only defects, all fixed this pass:
+
+- **F1** — the unscoped-disagreement ids above (and in the
+  `migrations_applied_manually/` file's header) were swapped/truncated.
+  Fixed to the corrected pairing shown above.
+- **F2** — the `migrations_applied_manually/` file claimed its body was
+  byte-identical/unchanged below the header, but four comment-only hunks
+  had drifted from the base draft (an appended guard annotation, a
+  rewritten post-condition preamble, changed "expect:" wording, and an
+  added scoping clause that turned the documented unscoped closes-on query
+  into a scoped one). Reverted every line from "THE RULE AND THE
+  EXCEPTION" through the closing `commit;` to be byte-identical to
+  `supabase/migrations_drafts/gh1763_is_test_repair.sql` as it stood at
+  base commit `442b5371698e17e087d0a83002abda3873a22792` (verified by
+  direct text comparison of both fetched contents). All annotations worth
+  keeping now live in the header above that unchanged body.
+- **F3** — `migrations_rollbacks/gh1763_is_test_repair_pre-flight.md` still
+  told a reader to `\i supabase/migrations_drafts/gh1763_is_test_repair.sql`
+  to apply the repair — a runnable pointer at a deleted path, inside a doc
+  still presenting the repair as pending. Added a STATUS: APPLIED note at
+  the top and marked the apply step historical-only.
+  `migrations_drafts/gh1961_profiles_is_test_at_creation.sql`'s header
+  compared its posture to gh1763's old path with a claim ("same posture")
+  that stopped being true once gh1763 was filed as applied; corrected.
+- **F4** — three wording fixes: "no row for this repair" (not "for any
+  statement naming the 7 ids below", which a June migration's rollback
+  comment technically makes false for one id in an unrelated context);
+  dropped "(if present)" since both companion docs are confirmed present;
+  relabelled the CTO-ruling quote as paraphrased (arrow/quote-style
+  adapted for a SQL comment) rather than "verbatim", since the exact
+  Unicode arrows and quotation marks were not reproduced byte-for-byte.
+
+SELECT-only both passes; zero SQL executed against any database at any
+point in this issue's reconciliation work.
