@@ -4,12 +4,15 @@
 // the pattern this copies). Two sinks existed in index.ts before this fix:
 // the outer catch (`JSON.stringify({ error: String(err) })`) and the
 // candidate-query failure branch (`JSON.stringify({ error: candErr.message
-// })`, TRIAGE follow-up, Marty CTO RUN 41, #2213 comment 5848074328). Both
-// negative controls below are `ignore: true` so they document (and, run
-// manually with `ignore` deleted/flipped, PROVE) the old vulnerable shapes
-// fail these assertions, without leaving an always-red test in the default
-// `deno test` sweep — see PR #2215 for the captured red run pasted as
-// evidence per this repo's R-147 convention.
+// })`, TRIAGE follow-up, Marty CTO RUN 41, #2213 comment 5848074328).
+//
+// REVIEW: FAIL follow-up (PR #2215 comment 5848690713, M1): this file used
+// to also carry two `ignore: true` "negative control" tests that asserted
+// against object literals written inline in the test file, not against
+// index.ts -- so they proved nothing about the actual regression risk and
+// passed identically on the fixed head. Removed. The real fail-first proof
+// against index.ts itself now lives in index.response-safety.test.ts,
+// which reads and scans index.ts's own source text.
 import {
   assertEquals,
   assertStringIncludes,
@@ -17,35 +20,6 @@ import {
 import { internalErrorResponse, unexpectedErrorResponse } from "./error-response.ts";
 
 const FUNCTION_NAME = "send-lead-next-step-reminder";
-
-Deno.test({
-  name: "NEGATIVE CONTROL (ignored): pre-fix outer-catch shape leaks the message",
-  ignore: true,
-  fn() {
-    const secretDetail = new Error("Supabase credentials not configured at /internal/path.ts:42");
-    // The exact old (pre-fix) construction from index.ts's outer catch.
-    const oldResult = { status: 500, body: { error: String(secretDetail) } };
-    assertEquals(
-      JSON.stringify(oldResult.body).includes("Supabase credentials not configured"),
-      false,
-    );
-  },
-});
-
-Deno.test({
-  name: "NEGATIVE CONTROL (ignored): pre-fix candErr shape leaks the message",
-  ignore: true,
-  fn() {
-    const candErr = { message: "relation \"leads\" does not exist on schema internal_v3" };
-    // The exact old (pre-fix) construction from index.ts's candidate-query
-    // failure branch.
-    const oldResult = { status: 500, body: { error: candErr.message } };
-    assertEquals(
-      JSON.stringify(oldResult.body).includes("internal_v3"),
-      false,
-    );
-  },
-});
 
 Deno.test("unexpectedErrorResponse: generic body, real detail still logged (Error input)", () => {
   const loggedCalls: unknown[][] = [];
