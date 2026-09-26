@@ -93,11 +93,21 @@ GATE_FILES = {
     "react-app/app/components/GA4Gate.tsx",
     "js/meta-pixel-gate.js",
     "react-app/app/components/MetaPixelGate.tsx",
+    # gh-1926: LinkedIn Insight Tag + Reddit Pixel, same two-file-per-vendor
+    # gate pattern as Meta Pixel above (shipped dark/gated -- see each
+    # gate file's own header comment).
+    "js/linkedin-insight-gate.js",
+    "react-app/app/components/LinkedInInsightGate.tsx",
+    "js/reddit-pixel-gate.js",
+    "react-app/app/components/RedditPixelGate.tsx",
 }
 LOADER_RES = [
     ("gtag.js loader", re.compile(r"googletagmanager\.com/gtag/js")),
     ("clarity.ms loader", re.compile(r"clarity\.ms/tag")),
     ("fbevents.js loader", re.compile(r"connect\.facebook\.net/[^\s\"']*fbevents\.js")),
+    # gh-1926: same pattern as the fbevents.js extension in #1839.
+    ("insight.min.js loader (LinkedIn)", re.compile(r"snap\.licdn\.com/[^\s\"']*insight[^\s\"']*\.js")),
+    ("redpixel loader (Reddit)", re.compile(r"redditstatic\.com/[^\s\"']*redpixel[^\s\"']*\.js")),
 ]
 META_PIXEL_GATE = REPO / "js" / "meta-pixel-gate.js"
 
