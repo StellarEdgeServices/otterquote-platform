@@ -33,14 +33,13 @@ import {
   evaluateLiveChargeGuard,
   GUARD_SELECT,
 } from "./live-charge-guard.ts";
-// gh-2105 (batch 3): zero-row-update guard. A LOCAL module in this same
-// function directory (same-directory imports work fine on the EF body-deploy
-// path -- see live-charge-guard.ts, already imported above), NOT an import
-// from `supabase/functions/_shared/zero-row-update-guard.ts` (batch 2, PR
-// #2210): that file exists only on #2210's unmerged branch, not on `main`,
-// so a `main`-based branch cannot import it. See zero-row-update-guard.ts's
-// header for the full rationale and its test file for unit coverage.
-import { checkRowsWritten, zeroRowWriteMessage } from "./zero-row-update-guard.ts";
+// gh-2105 (batch 3, updated post-merge): batch 2's PR #2210 (shared
+// `_shared/zero-row-update-guard.ts`) merged to `main` as `a3f747a4` while
+// this batch was in flight, and stripe-webhook/create-payment-intent/
+// verify-payment-method already import it successfully (deployed, per
+// #2105 5848495644). Switched from this batch's original local copy to the
+// shared one; the local copy is deleted.
+import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 
 const PLATFORM_URL = "https://otterquote.com";
 const SETTINGS_URL = `${PLATFORM_URL}/contractor-settings.html`;

@@ -68,15 +68,16 @@ import {
   extractIdempotencyKeyHint,
   shouldTriggerDunning,
 } from "./payment-response-classify.ts";
-// gh-2105 (batch 3): zero-row-update guard. A LOCAL module in this same
-// function directory (same-directory imports work fine on the EF body-deploy
-// path -- see ack-verify.ts/price-verify.ts/payload-parser.ts, already
-// imported above), NOT an import from `supabase/functions/_shared/
-// zero-row-update-guard.ts` (batch 2, PR #2210): that file exists only on
-// #2210's unmerged branch, not on `main`, so a `main`-based branch cannot
-// import it. See zero-row-update-guard.ts's header for the full rationale
-// and its test file for unit coverage.
-import { checkRowsWritten, zeroRowWriteMessage } from "./zero-row-update-guard.ts";
+// gh-2105 (batch 3, updated post-merge): batch 2's PR #2210 (shared
+// `_shared/zero-row-update-guard.ts`) merged to `main` as `a3f747a4` while
+// this batch was in flight, and three other payment edge functions already
+// import it successfully (deployed, per #2105 5848495644) -- so the "EF
+// body-deploy path does not resolve `_shared` imports" constraint this
+// batch's first version assumed (and this file's own getServiceRoleKey()
+// comment states for a different, older case) does not hold for this
+// import. Switched from this batch's original local copy to the shared
+// one; the local copy is deleted.
+import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 
 // [gh-1886 re-review #2, independent review on #2198, 2026-09-25T22:02:35Z] Mirrored VERBATIM as a literal
 // string constant in the platform-fee-charge function's own stripe-fetch.ts (Supabase Edge Functions
@@ -1486,9 +1487,19 @@ serve(async (req) => {
                 console.error(
                   `[docusign-webhook] platform fee outcome AMBIGUOUS for claim ${claim.id}, quote ${quote.id} (idempotency key ${idempotencyKeyHint}): ${paymentError.slice(0, 300)}`
                 );
-                // gh-2105 (batch 3, decision a): same zero-row-silent-write gap
-                // as the guard_refused branch above.
-                const { data: ambigRows, error: ambigErr } = await supabase
+                // gh-2105 (#2103 pattern, decision a): `.update()` without `.select()` resolves
+                // `{ error: null }` even when RLS or the `.eq()` filter matches ZERO rows. This
+                // write is best-effort bookkeeping alongside the ambiguous-payment alert above --
+                // it must NOT change the HTTP response returned to BoldSign/DocuSign or whether
+                // this handler proceeds (the response and control flow below are unchanged), so a
+                // zero-row match is only logged for a human to notice during reconciliation, not
+                // surfaced as a failure.
+                // [k71-c-2105 batch 3 merge note] This exact site was independently fixed by
+                // #2218 (5a22ec81) while batch 3 was in flight; kept #2218's version verbatim
+                // here (ONE guard, not two) rather than the near-identical batch-3 duplicate that
+                // used the shared checkRowsWritten/zeroRowWriteMessage helpers -- see Marty's note
+                // on PR #2217 (5848469073).
+                const { data: signedRows, error: signedUpdateErr } = await supabase
                   .from("claims")
                   .update({
                     contract_signed_at: completedDateTime || new Date().toISOString(),
@@ -1497,10 +1508,14 @@ serve(async (req) => {
                   })
                   .eq("id", claim.id)
                   .select("id");
-                if (ambigErr) {
-                  console.error(`[docusign-webhook] claims contract_signed update failed for claim ${claim.id} (ambiguous_outcome branch):`, ambigErr);
-                } else if (!checkRowsWritten(ambigRows).wroteRows) {
-                  console.error(zeroRowWriteMessage("docusign-webhook", `claims.status=contract_signed for claim ${claim.id} (ambiguous_outcome branch)`));
+                if (signedUpdateErr) {
+                  console.error(
+                    `[docusign-webhook] gh-2105: contract_signed update failed for claim ${claim.id}, quote ${quote.id} (idempotency key ${idempotencyKeyHint}): ${signedUpdateErr.message}`
+                  );
+                } else if (!Array.isArray(signedRows) || signedRows.length === 0) {
+                  console.error(
+                    `[docusign-webhook] gh-2105: contract_signed update matched ZERO rows for claim ${claim.id}, quote ${quote.id} (idempotency key ${idempotencyKeyHint}) -- claims.status may not have been flipped to contract_signed`
+                  );
                 }
                 try {
                   await supabase.from("platform_alerts_log").insert({
