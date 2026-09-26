@@ -611,7 +611,8 @@
     "funding_type",
     "property_address",
     "fbc",
-    "fbp"
+    "fbp",
+    "is_synthetic"
   ],
   "material_catalog": [
     "id",

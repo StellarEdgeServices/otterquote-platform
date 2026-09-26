@@ -1,6 +1,6 @@
 // gh-2154 P-5 — field-mapping.ts tests.
 import { assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
-import { mapFieldData } from "./field-mapping.ts";
+import { fieldDataToPayload, mapFieldData } from "./field-mapping.ts";
 
 Deno.test("mapFieldData: first_name + last_name fields map directly", () => {
   const mapped = mapFieldData([
@@ -51,4 +51,20 @@ Deno.test("mapFieldData: null field_data yields all nulls", () => {
 Deno.test("mapFieldData: a field with an empty values array is ignored", () => {
   const mapped = mapFieldData([{ name: "email", values: [] }]);
   assertEquals(mapped.email, null);
+});
+
+// #2123 HO-2 / D-299 defect 4(c) — fieldDataToPayload.
+
+Deno.test("fieldDataToPayload: maps every field's first value by name", () => {
+  const payload = fieldDataToPayload([
+    { name: "full_name", values: ["Pat Homeowner"] },
+    { name: "phone_number", values: ["+13175559999", "unused-second-value"] },
+  ]);
+  assertEquals(payload, { full_name: "Pat Homeowner", phone_number: "+13175559999" });
+});
+
+Deno.test("fieldDataToPayload: blank/empty fields are omitted, never throws on null/undefined", () => {
+  assertEquals(fieldDataToPayload(null), {});
+  assertEquals(fieldDataToPayload(undefined), {});
+  assertEquals(fieldDataToPayload([{ name: "email", values: [] }, { name: "phone", values: ["  "] }]), {});
 });

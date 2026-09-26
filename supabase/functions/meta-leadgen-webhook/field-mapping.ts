@@ -30,6 +30,25 @@ function firstValue(fieldData: LeadFieldDatum[], names: string[]): string | null
   return null;
 }
 
+/**
+ * #2123 HO-2 / D-299 fix 4(c): the submitted field_data VALUES, name -> first
+ * value, for the `lead_consents.form_payload` evidence column -- the same
+ * "submitted form VALUES" idea record-lead-details/handler.ts's Arm F write
+ * already stores, but built from Meta's field_data shape instead of a
+ * browser form. Unknown/blank fields are simply omitted (never throws).
+ */
+export function fieldDataToPayload(fieldData: LeadFieldDatum[] | null | undefined): Record<string, string> {
+  const fd = Array.isArray(fieldData) ? fieldData : [];
+  const out: Record<string, string> = {};
+  for (const f of fd) {
+    if (!f || typeof f.name !== "string") continue;
+    if (!Array.isArray(f.values) || f.values.length === 0) continue;
+    const v = String(f.values[0]).trim();
+    if (v) out[f.name] = v;
+  }
+  return out;
+}
+
 export function mapFieldData(fieldData: LeadFieldDatum[] | null | undefined): MappedLeadFields {
   const fd = Array.isArray(fieldData) ? fieldData : [];
 

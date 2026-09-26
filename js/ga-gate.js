@@ -184,6 +184,43 @@
     }
   }
 
+  // gh-1925: the advertising-sharing opt-out (privacy.html Section 12 -- "Do Not Sell or Share My Personal
+  // Information"). CEO57 triage on #1925 found no Global Privacy Control handling anywhere on the site: the GA4
+  // library carries Google Ads/Signals once linked, so it must honour the same opt-out js/meta-pixel-gate.js
+  // already applies to the Meta Pixel (gh-2107 / D-330, Ben's ruling on #2078, 5805593465, item a). Same
+  // self-contained check, reading/writing the SAME oq_ad_optout cookie (1 year, Domain=.otterquote.com) so an
+  // opt-out recorded by any gate on this device -- GPC here, GPC or the stored profile flag on the Meta Pixel
+  // gate, GPC on the LinkedIn/Reddit gates -- is honoured by every other gate without asking again. Wrapped in
+  // try/catch so it can never break tag loading for a real visitor. Only the GA4 library load below is gated by
+  // this flag -- Microsoft Clarity (further down) is a separate vendor and #1925 asks only about the
+  // "ad-tech tags" (Meta Pixel, Google Ads/Signals); whether Clarity's session-replay data also counts as a
+  // CPRA "share" is an open legal question this PR does not decide (see the PR body).
+  function oqWriteAdOptOutCookie() {
+    try {
+      var domainAttr = '';
+      if (/(^|\.)otterquote\.com$/.test(window.location.hostname)) {
+        domainAttr = '; Domain=.otterquote.com';
+      }
+      document.cookie = 'oq_ad_optout=1; Max-Age=' + (60 * 60 * 24 * 365) + '; Path=/' + domainAttr + '; SameSite=Lax';
+    } catch (e) { /* never break a page over a cookie */ }
+  }
+
+  function oqAdOptOut() {
+    try {
+      var cookieMatch = document.cookie.match(/(?:^|; )oq_ad_optout=([^;]*)/);
+      var cookieFlag = !!(cookieMatch && decodeURIComponent(cookieMatch[1]) === '1');
+      var gpc = (typeof navigator !== 'undefined') && navigator.globalPrivacyControl === true;
+      if (gpc && !cookieFlag) {
+        oqWriteAdOptOutCookie();
+      }
+      return gpc || cookieFlag;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  var OQ_AD_OPTOUT_FLAG = oqAdOptOut();
+
   // Runs immediately, before the gtag stub below, so window.OQ_INTERNAL is
   // already correct by the time any gtag('js'|'config'|'event', ...) call
   // reaches the stub -- not just at the early-return check further down.
@@ -391,12 +428,16 @@
   // recorded as 0-click bounces before this fix) would not have generated
   // one previously fired at parse time either -- see the PR for the open
   // question this raises for Sloane/D-322 on attribution completeness.
-  _oqLoadOnIdleOrInteraction(function () {
-    var s = document.createElement('script');
-    s.async = true;
-    s.src = 'https://www.googletagmanager.com/gtag/js?id=' + MEASUREMENT_ID;
-    document.head.appendChild(s);
-  });
+  // gh-1925: an opted-out visitor never loads the GA4 library (see oqAdOptOut above) -- Clarity's own load,
+  // further down, is unaffected by this flag.
+  if (!OQ_AD_OPTOUT_FLAG) {
+    _oqLoadOnIdleOrInteraction(function () {
+      var s = document.createElement('script');
+      s.async = true;
+      s.src = 'https://www.googletagmanager.com/gtag/js?id=' + MEASUREMENT_ID;
+      document.head.appendChild(s);
+    });
+  }
 
   // gh-1964: default-deny page-set gate, Clarity only. GA4 above already
   // loaded unconditionally on any allowed host; Clarity additionally

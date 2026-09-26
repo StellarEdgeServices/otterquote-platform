@@ -17,6 +17,10 @@ on:
       - 'js/nav.js'
       - 'tests/gh2106-pixel-gaps.mjs'
       - 'tests/gh2107-pixel-gate-optout.mjs'
+      - 'js/ga-gate.js'
+      - 'js/linkedin-insight-gate.js'
+      - 'js/reddit-pixel-gate.js'
+      - 'tests/gh1925-gpc-optout.mjs'
       - 'tests/gh2107-gpc-client.mjs'
       - 'partner-dashboard.html'
       - 'partner-app.html'
@@ -69,6 +73,10 @@ on:
       - 'js/nav.js'
       - 'tests/gh2106-pixel-gaps.mjs'
       - 'tests/gh2107-pixel-gate-optout.mjs'
+      - 'js/ga-gate.js'
+      - 'js/linkedin-insight-gate.js'
+      - 'js/reddit-pixel-gate.js'
+      - 'tests/gh1925-gpc-optout.mjs'
       - 'tests/gh2107-gpc-client.mjs'
       - 'partner-dashboard.html'
       - 'partner-app.html'
@@ -139,6 +147,8 @@ jobs:
         run: node tests/gh2106-pixel-gaps.mjs
       - name: Advertising-sharing opt-out and stored-flag read (gh2107-pixel-gate-optout)
         run: node tests/gh2107-pixel-gate-optout.mjs
+      - name: GPC opt-out extended to GA4/Clarity-adjacent and LinkedIn/Reddit static gates (gh1925-gpc-optout)
+        run: node tests/gh1925-gpc-optout.mjs
       - name: GPC capture on the create-payment-intent call (gh2107-gpc-client)
         run: node tests/gh2107-gpc-client.mjs
       - name: Partner dashboard activation RPC, per-user flag (gh2154-p2-app-activation)
