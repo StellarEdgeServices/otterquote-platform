@@ -5,6 +5,7 @@ import { assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import {
   isReminderDue,
   isReminderEligible,
+  isUncertainPending,
   REMINDER_DELAY_MS,
   REMINDER_STAGE,
   runReminderSweep,
@@ -25,9 +26,14 @@ function row(overrides: Partial<ReminderCandidate> = {}): ReminderCandidate {
     partner_agreement_accepted_at: null,
     status: "pending",
     meta_lead_id: "leadgen_1",
+    onboarding_opted_out_at: null,
     ...overrides,
   };
 }
+
+Deno.test("isReminderEligible: opted-out (unsubscribed from the invite) is NOT eligible -- CAN-SPAM, REVIEW FAIL 5841303507 must-fix 2", () => {
+  assertEquals(isReminderEligible(row({ onboarding_opted_out_at: new Date(NOW).toISOString() })), false);
+});
 
 // ── pure eligibility/due checks ─────────────────────────────────────────────
 
@@ -71,6 +77,11 @@ function buildDeps(overrides: Partial<RunDeps> & { candidates?: ReminderCandidat
   const deps: RunDeps = {
     now: NOW,
     fetchCandidates: async () => overrides.candidates ?? [row()],
+    // Default: a stale 'pending' ledger row (a prior claim that never
+    // resolved) -- this is what every existing "uncertain" scenario below
+    // simulates. A test demonstrating the must-fix-4 quiet-skip path
+    // overrides this to a terminal 'sent'/'skipped' row instead.
+    existingLedgerRow: async () => ({ status: "pending", created_at: new Date(NOW - 60 * 60 * 1000).toISOString() }),
     claim: async (id) => {
       if (claimed.has(id)) return false;
       claimed.add(id);
@@ -133,12 +144,46 @@ Deno.test("a not-yet-due row (< 48h old) is skipped without claiming", async () 
 
 Deno.test("never double-sends: a second sweep for the same already-claimed-and-sent partner does not re-send (claim refuses)", async () => {
   const claimed = new Set<string>(["p1"]); // simulates an already-'sent' ledger row: claim() refuses
-  const { deps, sent } = buildDeps({ claim: async (id) => !claimed.has(id) });
+  const { deps, sent, alerts } = buildDeps({
+    claim: async (id) => !claimed.has(id),
+    // REVIEW FAIL 5841303507 must-fix 4: the ledger row is genuinely
+    // 'sent' (terminal), not a stuck 'pending' -- so a lost claim here is
+    // NOT uncertain and must not alert.
+    existingLedgerRow: async () => ({ status: "sent", created_at: new Date(NOW - 60 * 60 * 1000).toISOString() }),
+  });
   const outcome = await runReminderSweep(deps);
   if (outcome.ok) {
-    assertEquals(outcome.results[0].skipped_reason, "not_claimed");
+    assertEquals(outcome.results[0].skipped_reason, "already_sent");
+    assertEquals(outcome.uncertain, [], "an already-sent row must never appear in the uncertain list");
   }
   assertEquals(sent.length, 0, "must never send when the claim was refused");
+  assertEquals(alerts.length, 0, "NEGATIVE CONTROL: must-fix 4 -- an already-sent row must never trigger a false 'uncertain' admin alert");
+});
+
+Deno.test("REVIEW FAIL 5841303507 must-fix 4: a 'skipped' (terminal) ledger row on a lost claim is also a quiet skip, never a false alert", async () => {
+  const claimed = new Set<string>(["p1"]);
+  const { deps, alerts } = buildDeps({
+    claim: async (id) => !claimed.has(id),
+    existingLedgerRow: async () => ({ status: "skipped", created_at: new Date(NOW - 60 * 60 * 1000).toISOString() }),
+  });
+  const outcome = await runReminderSweep(deps);
+  if (outcome.ok) {
+    assertEquals(outcome.results[0].skipped_reason, "already_sent");
+    assertEquals(outcome.uncertain, []);
+  }
+  assertEquals(alerts.length, 0);
+});
+
+Deno.test("isUncertainPending: a 'sent' row is never uncertain regardless of age (NEGATIVE CONTROL for must-fix 4)", () => {
+  assertEquals(isUncertainPending({ status: "sent", created_at: new Date(NOW - 100 * HOUR).toISOString() }, NOW), false);
+});
+
+Deno.test("isUncertainPending: a fresh (non-stale) 'pending' row is not yet uncertain", () => {
+  assertEquals(isUncertainPending({ status: "pending", created_at: new Date(NOW - 60 * 1000).toISOString() }, NOW), false);
+});
+
+Deno.test("isUncertainPending: a stale (20m+) 'pending' row IS uncertain", () => {
+  assertEquals(isUncertainPending({ status: "pending", created_at: new Date(NOW - 21 * 60 * 1000).toISOString() }, NOW), true);
 });
 
 Deno.test("a thrown/timeout send (uncertain outcome) is NEVER marked failed or sent, and triggers exactly one admin alert -- P-4/#2191 posture", async () => {

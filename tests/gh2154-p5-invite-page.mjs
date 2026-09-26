@@ -82,6 +82,23 @@ ok(/Check your employment agreement and your governing licensing agency to make 
 ok(pageSrc.includes('PLACEHOLDER'), '(6) at least one clearly-marked PLACEHOLDER for non-approved new copy');
 ok(!/\u0000/.test(pageSrc), '(7) null-byte gate: file contains no null bytes');
 
+// ── REVIEW FAIL 5841303507 must-fix 1 / LEGAL-READ FAIL 5841305700 (D-333) ──
+ok(!/Review your details below and accept the Partner Terms to activate your account\./.test(pageSrc),
+  "(7b) NEGATIVE CONTROL: the unapproved 'Review your details below...' sentence must not appear anywhere in the page source");
+ok(!/Accept &amp; Activate My Account/.test(pageSrc),
+  "(7c) NEGATIVE CONTROL: the unapproved 'Accept & Activate My Account' button copy must not appear anywhere in the page source");
+ok(/Create My Partner Account/.test(pageSrc),
+  '(7d) the accept button reuses P-1\'s byte-identical live "Create My Partner Account" label (partner-re.html:1013 / partner-insurance.html:756)');
+
+// ── REVIEW FAIL 5841303507 must-fix 6 / LEGAL-READ FAIL 5841305700: token-gate ──
+// All four states must default to display:none in the RAW markup -- a
+// crawler, a slow/disabled-JS load, or a plain view-source must never see
+// any of them painted before the script decides which one to reveal.
+for (const id of ['inviteLoading', 'inviteInvalid', 'inviteForm', 'inviteSuccess']) {
+  const re = new RegExp('id="' + id + '"[^>]*style="display:\\s*none;?"');
+  ok(re.test(pageSrc), '(7e) #' + id + ' defaults to display:none in the raw HTML (token-gated: nothing rendered without JS deciding)');
+}
+
 // ── extract the real inline script IIFE ──────────────────────────────────
 function extractScript(src) {
   const startAnchor = "(function () {\n  'use strict';";
@@ -113,6 +130,7 @@ const ELEMENT_IDS = [
   'inviteLoading', 'inviteInvalid', 'inviteForm', 'inviteSuccess',
   'prefillName', 'prefillEmail', 'prefillAgentType', 'agreementLink',
   'agreeToTerms', 'inviteAcceptError', 'acceptBtn', 'inviteInvalidSignupLink',
+  'feeDisclaimer',
 ];
 
 function runPageScript({ search, fetchImpl }) {
@@ -240,6 +258,34 @@ async function settle() {
   }
 }
 
+// ── (9h/9i) D-333 / REVIEW FAIL 5841303507 must-fix 1: the referral-fee
+// disclaimer must be hidden for home_inspector and shown for every other
+// track, mirroring HI-0b's own partner-inspectors.html precedent ──
+{
+  const fetchImplFor = (agentType) => async () => ({
+    ok: true,
+    json: async () => ({ ok: true, agent_type: agentType, first_name: 'Jamie', last_name: 'Rivera', email: 'jamie@example.com' }),
+  });
+  try {
+    const { api, els } = runPageScript({ search: '?token=tok.sig', fetchImpl: fetchImplFor('home_inspector') });
+    await api.loadInvite();
+    await settle();
+    ok(els.get('feeDisclaimer').style.display === 'none',
+      '(9h) NEGATIVE CONTROL: home_inspector prefill hides the referral-fee disclaimer (D-333) -- FAILS on 051ab432, where it is unconditionally shown');
+  } catch (e) {
+    failWithReason('(9h) home_inspector hides fee disclaimer', e.message);
+  }
+  try {
+    const { api, els } = runPageScript({ search: '?token=tok.sig', fetchImpl: fetchImplFor('re_agent') });
+    await api.loadInvite();
+    await settle();
+    ok(els.get('feeDisclaimer').style.display === '',
+      '(9i) a non-inspector track (re_agent) still shows the referral-fee disclaimer');
+  } catch (e) {
+    failWithReason('(9i) re_agent shows fee disclaimer', e.message);
+  }
+}
+
 // ── (11) an invalid/expired token (EF GET returns ok:false or non-200) shows the fallback message + link to the normal signup page, never a 500 ──
 {
   const fetchImpl = async () => ({ ok: true, json: async () => ({ ok: false, error: 'not_found' }) });
@@ -283,6 +329,8 @@ async function settle() {
     await settle();
     ok(calls.length === 0, '(13a) no ?token= -> zero network calls -- got ' + calls.length);
     ok(els.get('inviteInvalid').style.display === '', '(13b) no ?token= -> invalid panel shown');
+    ok(els.get('inviteLoading').style.display === 'none',
+      '(13c) REVIEW FAIL 5841303507 must-fix 6: no ?token= -> the loading state (which carried placeholder copy pre-fix) is never shown at all');
   } catch (e) {
     failWithReason('(13) missing ?token=', e.message);
   }

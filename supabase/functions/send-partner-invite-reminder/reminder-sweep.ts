@@ -28,6 +28,35 @@ export interface ReminderCandidate {
   partner_agreement_accepted_at: string | null;
   status: string;
   meta_lead_id: string | null;
+  /** REVIEW FAIL 5841303507 must-fix 2 (CAN-SPAM): the invite email's own
+   * Unsubscribe link sets this column (partner-email-optout, the same
+   * mechanism P-4 uses). Neither fetchCandidates nor isReminderEligible
+   * checked it before this fix, so an unsubscribed invitee still got the
+   * 48h reminder. */
+  onboarding_opted_out_at: string | null;
+}
+
+/** Parity copy of send-partner-onboarding/onboarding-stage.ts's own
+ * isUncertainPending -- this directory has no cross-directory import (same
+ * reason invite-token.ts/invite-email-copy.ts etc. are duplicated here).
+ * REVIEW FAIL 5841303507 must-fix 4: reminder-sweep.ts previously treated
+ * EVERY lost claim as uncertain, including a row that is already
+ * terminally 'sent' or 'skipped' -- every already-reminded, still-pending
+ * partner triggered a bogus admin alert on the next 15-minute tick. Only a
+ * stale 'pending' ledger row (a prior run's claim that never resolved) is
+ * genuinely uncertain; 'sent'/'skipped' (and a non-stale 'pending') mean
+ * another run owns or already finished this send. */
+export const STALE_PENDING_MINUTES = 20;
+
+export function isUncertainPending(
+  existing: { status: string; created_at: string } | undefined,
+  now: number,
+  staleMinutes: number = STALE_PENDING_MINUTES,
+): boolean {
+  if (!existing || existing.status !== "pending") return false;
+  const claimedMs = new Date(existing.created_at).getTime();
+  if (Number.isNaN(claimedMs)) return true; // fail toward surfacing, never toward silently ignoring bad data
+  return now - claimedMs >= staleMinutes * 60 * 1000;
 }
 
 /**
@@ -39,11 +68,12 @@ export interface ReminderCandidate {
  * directory has no cross-directory import.
  */
 export function isReminderEligible(
-  row: Pick<ReminderCandidate, "status" | "meta_lead_id" | "partner_agreement_accepted_at">,
+  row: Pick<ReminderCandidate, "status" | "meta_lead_id" | "partner_agreement_accepted_at" | "onboarding_opted_out_at">,
 ): boolean {
   return row.status === "pending" &&
     typeof row.meta_lead_id === "string" && row.meta_lead_id.length > 0 &&
-    row.partner_agreement_accepted_at == null;
+    row.partner_agreement_accepted_at == null &&
+    row.onboarding_opted_out_at == null;
 }
 
 /** Fails CLOSED on a malformed created_at — never guess "due" from a NaN
@@ -69,6 +99,13 @@ export interface SendResult {
 export interface RunDeps {
   now: number;
   fetchCandidates: () => Promise<ReminderCandidate[]>;
+  /** The existing partner_onboarding_sends row (if any) for this partner at
+   * stage 'invite_reminder', fetched BEFORE the claim attempt below --
+   * same ordering as send-partner-onboarding/run-sweep.ts's own
+   * fetchLedgerForPartners, needed to tell a stale 'pending' claim (truly
+   * uncertain) apart from a terminal 'sent'/'skipped' row (already
+   * finished, not uncertain -- REVIEW FAIL 5841303507 must-fix 4). */
+  existingLedgerRow: (partnerId: string) => Promise<{ status: string; created_at: string } | undefined>;
   /** RPC wrapper for claim_partner_onboarding_stage(id, 'invite_reminder'). */
   claim: (partnerId: string) => Promise<boolean>;
   buildOptOutUrl: (partnerId: string) => Promise<string>;
@@ -119,11 +156,24 @@ export async function runReminderSweep(deps: RunDeps): Promise<SweepOutcome> {
       continue;
     }
 
+    // Checked BEFORE the claim attempt (same ordering as run-sweep.ts):
+    // tells a stale 'pending' row (genuinely uncertain -- a prior run's
+    // claim that never resolved) apart from a terminal 'sent'/'skipped'
+    // row or a fresh 'pending' another run currently owns (neither is
+    // uncertain; the claim below will simply fail and that is expected).
+    const existing = await deps.existingLedgerRow(row.id);
+    const stalePendingBeforeClaim = isUncertainPending(existing, deps.now);
+
     const claimed = await deps.claim(row.id);
     if (!claimed) {
-      // Either already 'sent'/'skipped' (terminal), a still-'pending' row
-      // from an in-flight/uncertain prior run (never reclaimed — see
-      // header comment), or a 'failed' row past its retry cap.
+      if (!stalePendingBeforeClaim) {
+        // Terminal ('sent'/'skipped'), a 'failed' row past its retry cap,
+        // or a fresh 'pending' owned by another in-flight run -- quiet
+        // skip, never a false "check Mailgun" admin alert (REVIEW FAIL
+        // 5841303507 must-fix 4).
+        results.push({ partner_id: row.id, skipped_reason: "already_sent" });
+        continue;
+      }
       const alreadyAlerted = await deps.alreadyAlertedUncertain(row.id);
       results.push({ partner_id: row.id, skipped_reason: "not_claimed" });
       if (!alreadyAlerted) {

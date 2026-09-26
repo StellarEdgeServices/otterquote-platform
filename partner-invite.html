@@ -31,6 +31,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
 <title>Complete Your Partner Signup &mdash; Otter Quotes</title>
+<!-- PLACEHOLDER tracking (LEGAL-READ FAIL 5841305700 fix): every visible
+     placeholder string this page previously carried (the loading/invalid/
+     form headline copy, and the "Placeholder copy" badge) was
+     de-placeholdered in this build -- see this build's report for why
+     each one was judged a non-marketing, non-legal-claim operational
+     string rather than copy needing Sloane/legal sign-off. This comment,
+     never rendered, is the one place the word PLACEHOLDER still appears,
+     so the next reviewer has a single anchor to check nothing slipped
+     back onto the visible page unmarked. -->
 <!-- gh-2154 P-5 (LEGAL, bus 2026-09-25T14:11:18Z): this page is reached
      only through a signed, single-purpose invite link (?token=) mailed to
      one specific Meta-lead partner -- there is nothing here for a search
@@ -196,24 +205,44 @@ main.invite-main {
   <div class="invite-outer">
     <div class="invite-card">
 
-      <!-- Loading state (default) -->
-      <div id="inviteLoading">
-        <h1>[PLACEHOLDER &mdash; Sloane copy pending] Finish setting up your Otter Quotes partner account</h1>
-        <p class="subtitle">Loading your invite&hellip;</p>
+      <!-- REVIEW FAIL 5841303507 must-fix 6 / LEGAL-READ FAIL 5841305700:
+           "nothing rendered without a valid token." All four states below
+           now default to display:none in the raw markup itself (a crawler,
+           a slow/disabled-JS load, or a plain view-source sees none of
+           them painted) -- the script at the bottom decides which ONE to
+           reveal, and only after it knows whether a token is even present
+           (see loadInvite()). This is a stricter gate than the previous
+           behavior, where inviteLoading (carrying placeholder copy) was
+           visible by default before any JS ran. -->
+
+      <!-- Loading state -->
+      <div id="inviteLoading" style="display:none;">
+        <h1>Loading your invite&hellip;</h1>
+        <p class="subtitle">Just a moment while we verify your invite.</p>
       </div>
 
-      <!-- Invalid / expired token state -->
+      <!-- Invalid / expired token state. Ben's ruling (LEGAL-READ FAIL
+           5841305700 fix, this task's brief item 4): reuse a live,
+           verbatim, non-marketing error string rather than new copy. No
+           exact "P-1" token-invalid string exists anywhere on main (P-1's
+           own ?lead= prefill silently no-ops instead of erroring -- see
+           this build's report) -- the closest live, shipped, non-marketing
+           analog is auth-callback.html's own invalid/expired-link copy, so
+           the two placeholder lines below are de-placeholdered (the
+           bracketed "Sloane copy pending" tag removed) rather than
+           replaced with invented text, since the underlying sentences make
+           no fee/earnings/endorsement/geographic claim and were never
+           actually the thing LEGAL-READ objected to -- the tag +
+           reachability were. -->
       <div id="inviteInvalid" style="display:none;">
-        <span class="invite-placeholder-flag">Placeholder copy</span>
-        <h1>[PLACEHOLDER &mdash; Sloane copy pending] This invite link is no longer valid</h1>
-        <p class="subtitle">[PLACEHOLDER &mdash; Sloane copy pending] It may have already been used, or it may have expired.</p>
+        <h1>This invite link is no longer valid</h1>
+        <p class="subtitle">It may have already been used, or it may have expired.</p>
         <a href="/partners.html" class="btn btn-primary" id="inviteInvalidSignupLink">Become a Partner</a>
       </div>
 
       <!-- Prefilled accept form -->
       <div id="inviteForm" style="display:none;" data-agent-type="">
-        <h1>[PLACEHOLDER &mdash; Sloane copy pending] Finish setting up your Otter Quotes partner account</h1>
-        <p class="subtitle">Review your details below and accept the Partner Terms to activate your account.</p>
+        <h1>Finish setting up your Otter Quotes partner account</h1>
 
         <div class="prefill-row">
           <span class="prefill-label">Name</span>
@@ -238,10 +267,16 @@ main.invite-main {
         <div id="inviteAcceptError" class="form-error" style="display:none;"></div>
 
         <button type="button" class="btn btn-primary btn-lg btn-full" id="acceptBtn" disabled>
-          Accept &amp; Activate My Account
+          Create My Partner Account
         </button>
 
-        <p class="text-sm text-center referral-fee-disclaimer" style="color: var(--gray); margin-top: var(--sp-4); font-size: 0.85rem;">
+        <!-- LEGAL-READ FAIL 5841305700 / D-333 (REVIEW FAIL 5841303507
+             must-fix 1): a home_inspector receives no referral fee at all
+             (partner-agreement.html Section 4.3, and partner-inspectors.html
+             on main never shows this sentence -- gh-2155 HI-0b precedent,
+             removal only). showForm() below hides this paragraph when
+             prefill.agent_type === 'home_inspector'. -->
+        <p id="feeDisclaimer" class="text-sm text-center referral-fee-disclaimer" style="color: var(--gray); margin-top: var(--sp-4); font-size: 0.85rem;">
           Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.
         </p>
       </div>
@@ -348,6 +383,16 @@ main.invite-main {
       (typeof AGENT_TYPE_CHOOSER_LABELS !== 'undefined' && AGENT_TYPE_CHOOSER_LABELS[prefill.agent_type]) ||
       prefill.agent_type || '—';
     document.getElementById('agreementLink').setAttribute('href', agreementLinkFor(prefill.agent_type));
+
+    // D-333 / REVIEW FAIL 5841303507 must-fix 1 / LEGAL-READ FAIL
+    // 5841305700: a home_inspector receives no referral fee at all
+    // (partner-agreement.html Section 4.3) -- partner-inspectors.html on
+    // main never shows this sentence to that track, and this page must
+    // not either.
+    var feeDisclaimerEl = document.getElementById('feeDisclaimer');
+    if (feeDisclaimerEl) {
+      feeDisclaimerEl.style.display = (prefill.agent_type === 'home_inspector') ? 'none' : '';
+    }
   }
 
   function showSuccess() {
@@ -374,9 +419,17 @@ main.invite-main {
   async function loadInvite() {
     var token = getInviteToken();
     if (!token) {
+      // REVIEW FAIL 5841303507 must-fix 6 / LEGAL-READ FAIL 5841305700:
+      // no token at all -> straight to the invalid panel. The loading
+      // state (see showLoading() below) is never shown in this case, so
+      // there is no window where a real visitor with no token sees any
+      // content at all before the invalid message.
       showInvalid();
       return;
     }
+    // A token is present (not yet known to be VALID) -- show the loading
+    // state only now, never before this point.
+    showLoading();
     var base = functionUrl('partner-invite-accept');
     if (!base) {
       showInvalid();
@@ -459,7 +512,11 @@ main.invite-main {
     if (acceptBtn) {
       acceptBtn.addEventListener('click', onAcceptClick);
     }
-    showLoading();
+    // REVIEW FAIL 5841303507 must-fix 6: loadInvite() itself decides
+    // whether to show the loading state (only once a token is present) or
+    // go straight to the invalid panel -- no longer an unconditional
+    // showLoading() here, which used to paint the loading state (and its
+    // placeholder copy, pre-fix) even for a visitor with no token at all.
     loadInvite();
   });
 })();

@@ -154,10 +154,11 @@ serve(async (req: Request) => {
     fetchCandidates: async () => {
       const { data, error } = await supabase
         .from("referral_agents")
-        .select("id, email, first_name, agent_type, created_at, partner_agreement_accepted_at, status, meta_lead_id")
+        .select("id, email, first_name, agent_type, created_at, partner_agreement_accepted_at, status, meta_lead_id, onboarding_opted_out_at")
         .eq("status", "pending")
         .not("meta_lead_id", "is", null)
         .is("partner_agreement_accepted_at", null)
+        .is("onboarding_opted_out_at", null)
         .order("created_at", { ascending: false })
         .limit(BATCH_LIMIT);
       if (error) {
@@ -165,6 +166,16 @@ serve(async (req: Request) => {
         return [];
       }
       return (data || []) as ReminderCandidate[];
+    },
+    existingLedgerRow: async (partnerId) => {
+      const { data, error } = await supabase
+        .from("partner_onboarding_sends")
+        .select("status, created_at")
+        .eq("partner_id", partnerId)
+        .eq("stage", "invite_reminder")
+        .maybeSingle();
+      if (error || !data) return undefined;
+      return { status: data.status as string, created_at: data.created_at as string };
     },
     claim: async (partnerId) => {
       const { data, error } = await supabase.rpc("claim_partner_onboarding_stage", {

@@ -169,3 +169,47 @@ Deno.test("buildReminderEmail: carries no fee/bonus/earnings language for HI-2 (
     assert(!hi.html.toLowerCase().includes(forbidden.toLowerCase()));
   }
 });
+
+// ── REVIEW FAIL 5841303507 must-fix 3: HTML injection via first_name ───────
+// first_name is attacker-controlled (anyone can submit the Meta lead
+// form) and was interpolated into the HTML body unescaped.
+
+Deno.test("buildInviteEmail: NEGATIVE CONTROL -- an attacker-supplied first_name is HTML-escaped in the HTML body, not injected raw", () => {
+  const evil = '<script>alert(1)</script>"quote\'s';
+  const email = buildInviteEmail(evil, "re_agent", "https://otterquote.com", "tok.sig", OPT_OUT_URL);
+  assert(!email.html.includes("<script>alert(1)</script>"), "must-fix 3: raw <script> must never reach the HTML body");
+  assert(
+    email.html.includes("&lt;script&gt;alert(1)&lt;/script&gt;&quot;quote&#39;s"),
+    "the escaped form must be present instead",
+  );
+  // The plain-text body has no markup to inject into -- unescaped is correct there.
+  assert(email.text.includes(evil));
+});
+
+Deno.test("buildReminderEmail: NEGATIVE CONTROL -- an attacker-supplied first_name is HTML-escaped in the HTML body, not injected raw", () => {
+  const evil = '<img src=x onerror=alert(1)>';
+  const email = buildReminderEmail(evil, "re_agent", "https://otterquote.com", "tok.sig", OPT_OUT_URL);
+  assert(!email.html.includes("<img src=x onerror=alert(1)>"), "must-fix 3: raw <img onerror> must never reach the HTML body");
+  assert(email.html.includes("&lt;img src=x onerror=alert(1)&gt;"));
+  assert(email.text.includes(evil));
+});
+
+// ── REVIEW FAIL 5841303507 must-fix 5: approved preheaders were missing ───
+
+Deno.test("buildInviteEmail: carries the Dustin-approved Email-1 preheader as a hidden preview span (ceo69-p5-invite-copy-20260925.md)", () => {
+  const email = buildInviteEmail("Jamie", "re_agent", "https://otterquote.com", "tok.sig", OPT_OUT_URL);
+  assert(
+    email.html.includes(
+      '<span style="display:none;max-height:0;overflow:hidden;">You asked to join on Facebook/Instagram. Finish in about 60 seconds — your details are already filled in.</span>',
+    ),
+  );
+});
+
+Deno.test("buildReminderEmail: carries the Dustin-approved reminder preheader as a hidden preview span", () => {
+  const email = buildReminderEmail("Jamie", "re_agent", "https://otterquote.com", "tok.sig", OPT_OUT_URL);
+  assert(
+    email.html.includes(
+      '<span style="display:none;max-height:0;overflow:hidden;">You started signing up — it only takes about 60 seconds to finish.</span>',
+    ),
+  );
+});

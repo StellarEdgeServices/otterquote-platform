@@ -36,6 +36,34 @@
 
 import { buildPartnerInviteUrl } from "./invite-token.ts";
 
+/** REVIEW FAIL 5841303507 must-fix 3: firstName is attacker-controlled (any
+ * caller can submit the Meta lead form with an arbitrary first_name), and
+ * the HTML body interpolates it unescaped. Same escaping shape as
+ * send-partner-onboarding/copy.ts's own escapeHtml -- text bodies are left
+ * unescaped (plain text has no markup to inject into), only the HTML
+ * bodies below run values through this first. */
+function escapeHtml(str: string): string {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+/** REVIEW FAIL 5841303507 must-fix 5: the approved draft
+ * (ceo69-p5-invite-copy-20260925.md, #2154 5837072371) specifies a hidden
+ * preview-text preheader for both emails; neither shipped one. Same hidden
+ * span pattern as send-partner-onboarding/copy.ts's renderStageCopy. */
+const EMAIL1_PREHEADER =
+  "You asked to join on Facebook/Instagram. Finish in about 60 seconds — your details are already filled in.";
+const REMINDER_PREHEADER =
+  "You started signing up — it only takes about 60 seconds to finish.";
+
+function preheaderSpanHtml(text: string): string {
+  return `<span style="display:none;max-height:0;overflow:hidden;">${escapeHtml(text)}</span>`;
+}
+
 /** Dustin-approved footer (#2154 comment 5837072371), verbatim from the
  * P-4 sequence per D-237, now with a real, signed unsubscribe link
  * (caller-supplied, already HMAC-verifiable -- see header comment). The
@@ -146,7 +174,8 @@ export function buildInviteEmail(firstName: string, agentType: string, siteBaseU
 
   const html =
     `<div style="font-family:Arial,Helvetica,sans-serif;color:#1F2937;">` +
-    `<p>Hi ${name},</p>` +
+    preheaderSpanHtml(EMAIL1_PREHEADER) +
+    `<p>Hi ${escapeHtml(name)},</p>` +
     `<p>${opening}</p>` +
     `<ol>` +
     `<li><strong>Open the link below.</strong> Your name, email and phone are already filled in.</li>` +
@@ -199,6 +228,7 @@ export function buildReminderEmail(firstName: string, agentType: string, siteBas
 
   const subject = reminderSubject(agentType);
   const bodySentence = reminderBodySentence(agentType, name);
+  const bodySentenceHtml = reminderBodySentence(agentType, escapeHtml(name));
   const footerText = buildFooter(optOutUrl, false);
   const footerHtml = buildFooter(optOutUrl, true);
 
@@ -209,7 +239,8 @@ export function buildReminderEmail(firstName: string, agentType: string, siteBas
 
   const html =
     `<div style="font-family:Arial,Helvetica,sans-serif;color:#1F2937;">` +
-    `<p>${bodySentence}</p>` +
+    preheaderSpanHtml(REMINDER_PREHEADER) +
+    `<p>${bodySentenceHtml}</p>` +
     `<p><a href="${url}">Finish My Signup</a></p>` +
     `<p style="font-size:12px;color:#64748B;">${footerHtml}</p>` +
     `</div>`;
