@@ -418,7 +418,7 @@ function buildEvidencePayload(params: {
     "evidence[customer_communication]": customerCommunication,
   };
 
-  // ── gh-1759 GATE 2: do not spend Stripe's ONE final submission blind ─────
+  // ── gh-1759 GATE 2: do not spend Stripe's ONE final submission blind ───────
   // `evidence[submit]: "true"` is irreversible — Stripe accepts exactly one
   // final submission per dispute. Before this change it was set
   // UNCONDITIONALLY, including on the path where `claim` and `feeAcceptance`
@@ -523,7 +523,7 @@ async function handleDisputeCreated(
     }
   }
 
-  // ── gh-1759 GATE 1: an unresolvable dispute goes to a human ───────────
+  // ── gh-1759 GATE 1: an unresolvable dispute goes to a human ───────────────
   // Previously `routeToManualQueue` considered only the amount and the reason,
   // so a sub-$500 dispute we could not tie to any claim fell into the
   // auto-submit branch and spent Stripe's single final submission on an empty
@@ -879,7 +879,7 @@ async function handlePlatformFeePaymentSucceeded(
     .eq("id", q.claim_id)
     .maybeSingle();
 
-  // ── gh-1759 THE WRITER, ACH HALF ────────────────────────────────
+  // ── gh-1759 THE WRITER, ACH HALF ──────────────────────────────────────────────
   // docusign-webhook writes platform_fee_stripe_id on the SYNCHRONOUS success
   // path, where a card charge already has a charge id. An ACH charge does not:
   // create-payment-intent returns charge_id = null while the intent is
