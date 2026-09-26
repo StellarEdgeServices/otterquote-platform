@@ -2,12 +2,9 @@
 <html lang="en">
 <head>
 <!-- Sentry Error Monitoring -->
-<script
-  src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
-  crossorigin="anonymous"
-></script>
+<!-- gh-2010: predeclare sentryOnLoad before the loader tag; the loader invokes it once the SDK is ready. -->
 <script>
-  Sentry.onLoad(function() {
+  window.sentryOnLoad = function () {
     Sentry.init({
       environment: window.location.hostname.includes("staging") ? "staging" : "production",
       // gh-439: drop phantom events from non-http(s) preview contexts (data:/file:/blob:
@@ -22,8 +19,12 @@
         return event;
       }
     });
-  });
+  };
 </script>
+<script
+  src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
+  crossorigin="anonymous"
+></script>
 <!-- Coming-soon gate — flip CONFIG.HOMEOWNER_LAUNCH_ENABLED=true in js/config.js to remove -->
 <script src="js/cookie-storage.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js" integrity="sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz" crossorigin="anonymous"></script>
@@ -266,7 +267,7 @@
 
         <p class="text-sm text-center" style="color: var(--gray);">
           Don't have an account yet?
-          <a href="get-started.html" style="color: var(--amber); font-weight: 600;">Create one free</a>
+          <a href="start.html" style="color: var(--amber); font-weight: 600;">Create one free</a>
         </p>
 
         <p class="text-sm text-center" style="color: var(--gray);">
@@ -390,6 +391,8 @@
     document.getElementById('google-btn').classList.add('hidden');
     document.querySelector('.oauth-divider').classList.add('hidden');
     setNewPasswordSection.classList.add('active');
+    document.querySelector('.login-form-wrap > h1') && document.querySelector('.login-form-wrap > h1').classList.add('hidden');
+    document.querySelector('.login-form-wrap > .subtitle') && document.querySelector('.login-form-wrap > .subtitle').classList.add('hidden');
   }
 
   // ── 2026-08-25 ──────────────────────────────────────────────────────────
@@ -592,7 +595,18 @@
         await Auth.redirectToDashboard();
       } catch (err) {
         console.error('Set new password error:', err);
-        newPasswordError.textContent = 'Something went wrong. Please request a new reset link and try again.';
+        const code = err && err.code;
+        let msg;
+        if (code === 'same_password') {
+          msg = 'That is already your password. Choose a different new password, or go back to sign in and use it.';
+        } else if (code === 'weak_password') {
+          msg = (err.message || 'That password is too weak.').replace(/\.?\s*$/, '. ') + 'Please choose a stronger password.';
+        } else if (['otp_expired','session_not_found','session_expired','bad_jwt','flow_state_expired'].includes(code) || err?.status === 401 || err?.status === 403 || err?.name === 'AuthSessionMissingError') {
+          msg = 'Your reset link has expired. Please request a new reset link and try again.';
+        } else {
+          msg = 'Something went wrong' + (err && err.message ? ': ' + err.message : '.') + ' Please try again.';
+        }
+        newPasswordError.textContent = msg;
         newPasswordError.style.display = 'block';
         btn.classList.remove('btn-loading');
         btn.disabled = false;
@@ -639,5 +653,45 @@
 
 <footer id="site-footer"></footer>
 
+<script>
+// gh-1994 phase 2 (round 2, review 5705874119 B1/N1): carry utm_*/fbclid/
+// gclid from this page's own URL onto every "Get started" CTA that points
+// at the router, on top of the oq_ft cookie fallback (gh-1983)
+// start.html's own collectAttribution() already reads -- belt and
+// suspenders for cookie-blocked browsers. No PII, same allow-list
+// start.html reads. Matches by normalized pathname, not an exact-string
+// selector, because Netlify's pretty-URL rewrite serves the on-disk
+// href="/start.html" as href="/start" (no ".html", no trailing slash) --
+// an exact-string selector never matches that served markup, only a local
+// static server without the rewrite. Also tolerates a trailing slash
+// ("/start/") and a login.html-style relative "start.html". Idempotent:
+// run once per page load, never runs twice on the same anchor.
+(function () {
+  'use strict';
+  var ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid'];
+  var params = new URLSearchParams(window.location.search);
+  var qs = '';
+  ATTR_KEYS.forEach(function (k) {
+    var v = params.get(k);
+    if (v) qs += (qs ? '&' : '?') + k + '=' + encodeURIComponent(v);
+  });
+  if (!qs) return;
+  function isStartHref(href) {
+    if (!href) return false;
+    try {
+      var p = new URL(href, window.location.href).pathname.replace(/\/+$/, '');
+      return p === '/start' || p === '/start.html';
+    } catch (e) {
+      return false;
+    }
+  }
+  document.querySelectorAll('a[href]').forEach(function (a) {
+    var href = a.getAttribute('href');
+    if (isStartHref(href)) {
+      a.setAttribute('href', href + qs);
+    }
+  });
+})();
+</script>
 </body>
 </html>

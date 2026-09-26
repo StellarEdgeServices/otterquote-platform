@@ -23,9 +23,11 @@ import { useState, useEffect, useCallback } from 'react';
 import type { ReactNode, ChangeEvent } from 'react';
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import { supabase } from '@/lib/supabase';
-import { readReferralIds } from '@/lib/cookie-storage';
+import { readReferralIds, clearReferralIds } from '@/lib/cookie-storage';
+import { recordFirstTouch } from '@/lib/attribution';
 import { isTestEmail } from '@/lib/test-signal';
-import { parseAddress } from './utils';
+import { parseAddress, fullAddress, isValidZip, hasFullAddress, type ParsedAddress } from './utils';
+import { gtagEventBeforeNavigation } from '@/lib/ga-events';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -38,6 +40,11 @@ const PROJECT_INFO_RCV_URL = 'https://otterquote.com/project-info-rcv.html';
 const PROJECT_INFO_ACV_URL = 'https://otterquote.com/project-info-acv.html';
 const PROJECT_INFO_CASH_URL = 'https://otterquote.com/project-info-cash.html';
 const GET_STARTED_URL = '/get-started';
+// gh-2070: single versioned sessionStorage key for a loss sheet staged before
+// a claim id exists — read by attachPendingLossSheetToClaim once
+// handleComplete knows savedClaimId. Distinct from the legacy
+// `oq_pending_loss_sheet` filename-only key used for the signed-out path.
+const PENDING_LOSS_SHEET_KEY = 'oq_pending_loss_sheet_v1';
 
 type FundingType = 'insurance' | 'cash' | null;
 type PolicyType = 'rcv' | 'acv' | 'idk' | null;
@@ -50,6 +57,65 @@ const TRADE_OPTIONS: { key: TradeKey; label: string; icon: string }[] = [
   { key: 'gutters', label: 'Gutters', icon: '💧' },
   { key: 'windows', label: 'Windows', icon: '🪟' },
 ];
+
+// gh-1991: get-started Step 1's "what do you need help with?" chip
+// (cs_signup.project_type) pre-selects the matching trade here so a
+// homeowner who already said "Gutters" doesn't have to say it twice.
+// Keys are get-started's ProjectType values 1:1 — 'other' and '' (unset)
+// intentionally have no entry, so they fall through to no pre-selection.
+// FIX ROUND 2 (PR #1998 comment 5700692978, non-blocking #4): a Map (rather
+// than a plain object indexed by an arbitrary string) sidesteps prototype
+// lookups entirely — .get() never resolves 'constructor'/'toString'/etc.
+// against Object.prototype the way `obj[projectType]` can.
+const PROJECT_TYPE_TO_TRADE: ReadonlyMap<string, TradeKey> = new Map([
+  ['roof', 'roofing'],
+  ['siding', 'siding'],
+  ['gutters', 'gutters'],
+  ['windows', 'windows'],
+]);
+
+// gh-2004: 50 states + DC + Puerto Rico — byte-for-byte the same list as
+// get-started/page.tsx's STATE_CODE_OPTIONS (kept local rather than
+// imported, matching that file's own "no cross-feature dependency" choice)
+// so a homeowner who lands here with no cs_signup/profile address sees the
+// identical state picker get-started already shipped in #1993/#1998.
+const STATE_CODE_OPTIONS: { value: string; label: string }[] = [
+  { value: 'AL', label: 'Alabama' }, { value: 'AK', label: 'Alaska' },
+  { value: 'AZ', label: 'Arizona' }, { value: 'AR', label: 'Arkansas' },
+  { value: 'CA', label: 'California' }, { value: 'CO', label: 'Colorado' },
+  { value: 'CT', label: 'Connecticut' }, { value: 'DE', label: 'Delaware' },
+  { value: 'DC', label: 'District of Columbia' }, { value: 'FL', label: 'Florida' },
+  { value: 'GA', label: 'Georgia' }, { value: 'HI', label: 'Hawaii' },
+  { value: 'ID', label: 'Idaho' }, { value: 'IL', label: 'Illinois' },
+  { value: 'IN', label: 'Indiana' }, { value: 'IA', label: 'Iowa' },
+  { value: 'KS', label: 'Kansas' }, { value: 'KY', label: 'Kentucky' },
+  { value: 'LA', label: 'Louisiana' }, { value: 'ME', label: 'Maine' },
+  { value: 'MD', label: 'Maryland' }, { value: 'MA', label: 'Massachusetts' },
+  { value: 'MI', label: 'Michigan' }, { value: 'MN', label: 'Minnesota' },
+  { value: 'MS', label: 'Mississippi' }, { value: 'MO', label: 'Missouri' },
+  { value: 'MT', label: 'Montana' }, { value: 'NE', label: 'Nebraska' },
+  { value: 'NV', label: 'Nevada' }, { value: 'NH', label: 'New Hampshire' },
+  { value: 'NJ', label: 'New Jersey' }, { value: 'NM', label: 'New Mexico' },
+  { value: 'NY', label: 'New York' }, { value: 'NC', label: 'North Carolina' },
+  { value: 'ND', label: 'North Dakota' }, { value: 'OH', label: 'Ohio' },
+  { value: 'OK', label: 'Oklahoma' }, { value: 'OR', label: 'Oregon' },
+  { value: 'PA', label: 'Pennsylvania' }, { value: 'PR', label: 'Puerto Rico' },
+  { value: 'RI', label: 'Rhode Island' }, { value: 'SC', label: 'South Carolina' },
+  { value: 'SD', label: 'South Dakota' }, { value: 'TN', label: 'Tennessee' },
+  { value: 'TX', label: 'Texas' }, { value: 'UT', label: 'Utah' },
+  { value: 'VT', label: 'Vermont' }, { value: 'VA', label: 'Virginia' },
+  { value: 'WA', label: 'Washington' }, { value: 'WV', label: 'West Virginia' },
+  { value: 'WI', label: 'Wisconsin' }, { value: 'WY', label: 'Wyoming' },
+];
+
+interface AddressFormState {
+  street: string;
+  city: string;
+  state: string;
+  zip: string;
+}
+
+const EMPTY_ADDRESS_FORM: AddressFormState = { street: '', city: '', state: '', zip: '' };
 
 interface WizardState {
   fundingType: FundingType;
@@ -321,6 +387,118 @@ export default function TradeSelectorPage() {
   const [completing, setCompleting] = useState(false);
   const [error, setError] = useState('');
 
+  // gh-2004: a returning homeowner who reaches this page without a live
+  // `cs_signup` in localStorage (new device, cleared storage, or a plain
+  // sign-in that skipped get-started) previously created a claim with
+  // property_address/city/state/zip all NULL — example claim `9bea2213`.
+  // `resolvedAddress` is the single source of truth every write site below
+  // reads from; it stays null only while we are still checking cs_signup
+  // and the profile, or while an address-less visitor is on the new
+  // 'address' step. `addressResolving` gates the whole page the same way
+  // `!settled` already does, so no step ever renders before we know
+  // whether the address step is needed.
+  const [resolvedAddress, setResolvedAddress] = useState<ParsedAddress | null>(null);
+  const [addressResolving, setAddressResolving] = useState(true);
+  const [needsAddressStep, setNeedsAddressStep] = useState(false);
+  const [addressForm, setAddressForm] = useState<AddressFormState>(EMPTY_ADDRESS_FORM);
+  const [addressFormError, setAddressFormError] = useState('');
+  const [addressSaving, setAddressSaving] = useState(false);
+
+  // gh-1991: pre-select the trade get-started's project_type chip already
+  // told us. Read-only, runs once on mount; only applies while `trades` is
+  // still empty so it can never clobber a selection the visitor made on
+  // THIS page (e.g. after using Back). Not gated on auth `settled` — this
+  // only touches local UI state, no network/DB call.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = localStorage.getItem('cs_signup');
+      if (!raw) return;
+      const signup = JSON.parse(raw) as Record<string, unknown>;
+      const projectType = typeof signup.project_type === 'string' ? signup.project_type : '';
+      const mapped = PROJECT_TYPE_TO_TRADE.get(projectType);
+      if (mapped) {
+        setWizardState(prev => (prev.trades.length === 0 ? { ...prev, trades: [mapped] } : prev));
+      }
+    } catch {
+      // cs_signup missing/malformed — no prefill, not fatal
+    }
+  }, []);
+
+  // gh-2004: resolve an address for this claim BEFORE any step renders,
+  // trying — in order — (1) cs_signup's structured fields, (2) a legacy
+  // cs_signup payload written before #1993 (a single combined string), (3)
+  // the signed-in user's saved profile (the fix for the actual bug: a
+  // returning homeowner with no live cs_signup). Only when all three come
+  // up short do we ask the homeowner here. Every candidate must clear
+  // hasFullAddress() (all four fields non-empty) before it is accepted —
+  // never insert a claim with a NULL address field from this page, not
+  // just never insert one with all four NULL.
+  useEffect(() => {
+    if (!settled || !user) return;
+    let cancelled = false;
+
+    (async () => {
+      let csSignup: Record<string, unknown> = {};
+      try {
+        const raw = typeof localStorage !== 'undefined' ? localStorage.getItem('cs_signup') : null;
+        if (raw) csSignup = JSON.parse(raw);
+      } catch {
+        // cs_signup missing/malformed — treated the same as absent below
+      }
+
+      // 1. cs_signup's structured fields (get-started, post-#1993).
+      const structured: ParsedAddress = {
+        street: ((csSignup.address_street as string) || '').trim() || null,
+        city: ((csSignup.address_city as string) || '').trim() || null,
+        state: ((csSignup.address_state as string) || '').trim() || null,
+        zip: ((csSignup.address_zip as string) || '').trim() || null,
+      };
+      if (hasFullAddress(structured)) {
+        if (!cancelled) { setResolvedAddress(structured); setAddressResolving(false); }
+        return;
+      }
+
+      // 2. A legacy cs_signup payload (pre-#1993, combined string only).
+      const legacyParsed = parseAddress((csSignup.address as string) || '');
+      if (hasFullAddress(legacyParsed)) {
+        if (!cancelled) { setResolvedAddress(legacyParsed); setAddressResolving(false); }
+        return;
+      }
+
+      // 3. gh-2004: no usable cs_signup — fall back to the profile this
+      // user already saved (verified live: profiles.address_street/
+      // address_city/address_state/address_zip all exist, nullable text).
+      try {
+        const { data: profileRow } = await supabase
+          .from('profiles')
+          .select('address_street, address_city, address_state, address_zip')
+          .eq('id', user.id)
+          .maybeSingle();
+        const fromProfile: ParsedAddress = {
+          street: (profileRow?.address_street || '').trim() || null,
+          city: (profileRow?.address_city || '').trim() || null,
+          state: (profileRow?.address_state || '').trim() || null,
+          zip: (profileRow?.address_zip || '').trim() || null,
+        };
+        if (hasFullAddress(fromProfile)) {
+          if (!cancelled) { setResolvedAddress(fromProfile); setAddressResolving(false); }
+          return;
+        }
+      } catch (e) {
+        console.warn('[trade-selector] gh-2004 profile address lookup failed:', e);
+      }
+
+      // 4. Nothing usable anywhere — ask the homeowner on the new step.
+      if (!cancelled) {
+        setNeedsAddressStep(true);
+        setAddressResolving(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [settled, user]);
+
   // Auth guard + returning-user guard
   useEffect(() => {
     if (!settled) return;
@@ -361,9 +539,14 @@ export default function TradeSelectorPage() {
   }, [settled, user]);
 
   // ── Step sequence ──
-  const stepSequence: string[] = wizardState.fundingType === 'insurance'
+  // gh-2004: 'address' only ever joins the sequence when the resolution
+  // effect above found no usable address anywhere (cs_signup, legacy
+  // cs_signup, profile). It always leads — the same position get-started
+  // asks for it in — so a claim can never be created before it is answered.
+  const baseSequence: string[] = wizardState.fundingType === 'insurance'
     ? ['funding', 'policy', 'trades', 'repair']
     : ['funding', 'trades', 'repair'];
+  const stepSequence: string[] = needsAddressStep ? ['address', ...baseSequence] : baseSequence;
   const totalSteps = stepSequence.length;
 
   // ── Navigation ──
@@ -374,10 +557,69 @@ export default function TradeSelectorPage() {
     }
   }, []);
 
+  // ── Step 0 (gh-2004, only when needed): Address ──
+  // Same field-by-field validation as get-started's validateHomeInfo() so
+  // the two forms behave identically.
+  const validateAddressForm = (): string | null => {
+    if (!addressForm.street.trim()) return 'Please enter your street address.';
+    if (!addressForm.city.trim()) return 'Please enter your city.';
+    if (!addressForm.state.trim()) return 'Please select your state.';
+    if (!isValidZip(addressForm.zip)) return 'Please enter a valid 5-digit ZIP code.';
+    return null;
+  };
+
+  const handleAddressContinue = async () => {
+    const validationError = validateAddressForm();
+    if (validationError) {
+      setAddressFormError(validationError);
+      return;
+    }
+    setAddressFormError('');
+    const parsed: ParsedAddress = {
+      street: addressForm.street.trim(),
+      city: addressForm.city.trim(),
+      state: addressForm.state.trim(),
+      zip: addressForm.zip.trim(),
+    };
+    setResolvedAddress(parsed);
+
+    // gh-2004: write the address back to the profile right away — a
+    // returning homeowner who hits this step once should never hit it
+    // again. Non-fatal: handleComplete's own upsert (below) re-persists the
+    // same values from resolvedAddress regardless of whether this succeeds.
+    if (user) {
+      setAddressSaving(true);
+      try {
+        await supabase.from('profiles').upsert({
+          id: user.id,
+          address_street: parsed.street,
+          address_city: parsed.city,
+          address_state: parsed.state,
+          address_zip: parsed.zip,
+          updated_at: new Date().toISOString(),
+        });
+      } catch (e) {
+        console.warn('[trade-selector] gh-2004 address write-back to profile failed:', e);
+      } finally {
+        setAddressSaving(false);
+      }
+    }
+
+    goToStep(stepSequence.indexOf('funding'));
+  };
+
   // ── Step 1: Funding ──
   const handleFundingSelect = (type: 'insurance' | 'cash') => {
     setWizardState(prev => ({ ...prev, fundingType: type, policyType: null }));
-    setTimeout(() => goToStep(1), 300);
+    // gh-2004: was a bare `goToStep(1)`, which only worked because 'funding'
+    // was always stepSequence[0] and the next step ('policy' or 'trades')
+    // was always stepSequence[1]. Once 'address' can lead the sequence,
+    // 'funding' is stepSequence[1] instead, so the fixed index would land
+    // back on funding itself instead of advancing. indexOf('funding') + 1
+    // is correct in both cases: index 0 (no address step) or 1 (address
+    // step present) — the step immediately after funding either way.
+    const fundingIdx = stepSequence.indexOf('funding');
+    setTimeout(() => goToStep(fundingIdx + 1), 300);
   };
 
   // ── Step 2 (Insurance): Policy ──
@@ -424,11 +666,30 @@ export default function TradeSelectorPage() {
 
     try {
       if (user) {
-        const filePath = `${user.id}/loss-sheets/${Date.now()}-${file.name}`;
+        const timestamp = Date.now();
+        const filePath = `${user.id}/loss-sheets/${timestamp}-${file.name}`;
         const { error: uploadError } = await supabase.storage
           .from('claim-documents')
           .upload(filePath, file);
         if (uploadError) throw uploadError;
+        // gh-2070: the claim row may not exist yet at this step (the wizard
+        // hasn't reached handleComplete). Stage the reference so
+        // attachPendingLossSheetToClaim can move it onto the claim and write
+        // back has_estimate/estimate_filename once savedClaimId is known —
+        // mirrors dashboard.html's checklist upload, which already has a
+        // claim id at upload time and writes back immediately. `timestamp`
+        // is carried through and reused (not regenerated) for the post-move
+        // destination path — see attachPendingLossSheetToClaim — so a
+        // second loss-sheet upload in the same session can't collide with
+        // the first's already-moved object under the same claim.
+        try {
+          sessionStorage.setItem(
+            PENDING_LOSS_SHEET_KEY,
+            JSON.stringify({ storagePath: filePath, filename: file.name, userId: user.id, timestamp }),
+          );
+        } catch {
+          // storage blocked — attach step below simply finds nothing staged
+        }
         setLossSheetStatus(`"${file.name}" uploaded successfully. We'll review it and get back to you.`);
       } else {
         sessionStorage.setItem('oq_pending_loss_sheet', file.name);
@@ -439,6 +700,97 @@ export default function TradeSelectorPage() {
       setLossSheetStatus('Upload failed. Please try again or continue without uploading.');
     } finally {
       setLossSheetUploading(false);
+    }
+  };
+
+  // gh-2070: move a loss sheet staged by handleLossSheetUpload onto the claim
+  // once savedClaimId is known — called from BOTH handleComplete branches
+  // (the existing-claim update and the new-claim insert) right after each
+  // sets savedClaimId, so a homeowner who uploads before or after the claim
+  // row exists gets the same outcome. Order matters for move + PATCH (move
+  // -> PATCH has_estimate/estimate_filename) — see the trade-selector attach
+  // vitest spec.
+  //
+  // Returns true when there was nothing to attach or the attach (move +
+  // PATCH) succeeded, false when it failed — the caller (handleComplete)
+  // uses this to surface a visible error, since this function has no render
+  // access of its own to a reachable one (see below).
+  //
+  // REVIEW gh-2070 PR #2080: this function is itself `await`ed from
+  // handleComplete, which is the homeowner's primary conversion path.
+  // parse-loss-sheet (supabase/functions/parse-loss-sheet/index.ts:337-400)
+  // synchronously downloads the PDF and makes a non-streaming Claude vision
+  // call — routinely 15-60s, bounded only by the EF's 150s wall clock. The
+  // first round of this fix `await`ed that invoke here, which meant a slow
+  // or hung parse-loss-sheet call stalled the homeowner's redirect for the
+  // same amount of time (worst case 150s+, or indefinitely on a
+  // never-settling promise). Fixed: the invoke below is fire-and-forget
+  // (`void ...catch(...)`, no `await`) — only the move and the PATCH, which
+  // are fast and whose success this function's return value depends on,
+  // are awaited.
+  const attachPendingLossSheetToClaim = async (claimId: string): Promise<boolean> => {
+    if (!user) return true;
+    let staged: { storagePath: string; filename: string; userId: string; timestamp: number } | null = null;
+    try {
+      const raw = sessionStorage.getItem(PENDING_LOSS_SHEET_KEY);
+      if (raw) staged = JSON.parse(raw);
+    } catch {
+      staged = null;
+    }
+    if (!staged) return true;
+    // REVIEW gh-2070 PR #2080: a staged entry from a different signed-in
+    // user (e.g. a shared machine) is discarded rather than attempted. Prod
+    // RLS (`Users can update own files`, `USING foldername[1] = auth.uid()`,
+    // no `WITH CHECK`) fails the move closed either way — no data leak —
+    // but attempting it produces a confusing silent failure instead of this
+    // explicit, understood no-op.
+    if (staged.userId !== user.id) return true;
+
+    const destPath = `${user.id}/${claimId}/${staged.timestamp}-${staged.filename}`;
+    try {
+      const { error: moveError } = await supabase.storage
+        .from('claim-documents')
+        .move(staged.storagePath, destPath);
+      if (moveError) throw moveError;
+
+      const { error: patchError } = await supabase
+        .from('claims')
+        .update({ has_estimate: true, estimate_filename: destPath })
+        .eq('id', claimId);
+      if (patchError) throw patchError;
+
+      // REVIEW gh-2070 PR #2080: kept (not cleared) on failure below, but
+      // that is not an active retry — nothing currently reads this key
+      // again once handleComplete redirects away from this component, and
+      // there is no path back to it for this claim. This just avoids
+      // silently discarding the reference in case a future surface (e.g.
+      // the dashboard) is built to read it.
+      try {
+        sessionStorage.removeItem(PENDING_LOSS_SHEET_KEY);
+      } catch {
+        // storage blocked — non-fatal, the attach itself already succeeded
+      }
+
+      // Parsing is fire-and-forget — see the REVIEW note above this
+      // function. A parse failure (or a slow/hung EF call) must never delay
+      // or fail completion (mirrors the INTENT, though not the `await`, of
+      // dashboard/actions.ts's uploadClaimDocument, #336).
+      void supabase.functions.invoke('parse-loss-sheet', {
+        body: { claim_id: claimId, storage_path: destPath },
+      }).catch((parseErr) => {
+        console.warn('[trade-selector] parse-loss-sheet failed (non-fatal):', parseErr);
+      });
+      return true;
+    } catch (attachErr) {
+      console.warn('[trade-selector] loss sheet attach failed:', attachErr);
+      // REVIEW gh-2070 PR #2080: setLossSheetStatus is NOT used here — that
+      // state only renders inside the policy step's "I'm Not Sure" panel,
+      // which is unmounted by the time handleComplete runs from a later
+      // step, making it silent dead code in practice. The caller surfaces
+      // this failure via the page-level error banner instead (rendered
+      // regardless of wizard step) and extends the pre-redirect delay so it
+      // is actually visible — see handleComplete.
+      return false;
     }
   };
 
@@ -465,6 +817,12 @@ export default function TradeSelectorPage() {
       // id) and passed through the redirect URL — see the redirect logic
       // near the end of this function.
       let savedClaimId: string | null = null;
+      // gh-2070: set by attachPendingLossSheetToClaim's return value when a
+      // staged loss sheet's move/PATCH failed — read below to surface the
+      // error banner and extend the pre-redirect delay.
+      let lossSheetAttachFailed = false;
+      // gh-1984: analytics sends awaited (bounded) before the redirect below.
+      const analyticsSends: Promise<void>[] = [];
 
       // Read cs_signup profile data from localStorage
       let csSignup: Record<string, unknown> = {};
@@ -475,15 +833,21 @@ export default function TradeSelectorPage() {
         // cs_signup missing — continue with empty
       }
 
+      // gh-2004: the address this claim uses comes from `resolvedAddress`,
+      // set before this step was ever reachable — by the mount effect
+      // (cs_signup's structured fields, a legacy cs_signup combined-string
+      // parse, or the signed-in user's saved profile) or, if none of those
+      // had one, by the homeowner filling in the new address step just
+      // above. It is guaranteed non-null and hasFullAddress() by the time
+      // Continue on the final step can be clicked — see the loading gate
+      // and the 'address' step's own Continue handler. The `?? {...}`
+      // fallback below is defense in depth only; every real path already
+      // guarantees a value here.
+      const parsedAddress: ParsedAddress = resolvedAddress ?? { street: null, city: null, state: null, zip: null };
+
       if (user) {
         // ── Upsert profiles table ──
         try {
-          const address = (csSignup.address as string) || '';
-          // gh-1579: tolerant regex-first parse (comma-split fallback) — see
-          // ./utils.ts. The old addressParts[1..3] comma-index split assumed
-          // exactly 4 comma segments and silently dropped state/zip on any
-          // address with fewer.
-          const parsedAddress = parseAddress(address);
           await supabase.from('profiles').upsert({
             id: user.id,
             role: 'homeowner',
@@ -500,6 +864,12 @@ export default function TradeSelectorPage() {
         } catch (profileErr) {
           console.warn('[trade-selector] profile upsert failed:', profileErr);
         }
+
+        // gh-1983: second chance to persist first-touch ad attribution (the
+        // first is /auth-callback). Runs BEFORE the claim write so the claims
+        // BEFORE INSERT trigger copies it onto the new claim; the RPC also
+        // backfills an existing claim. Write-once and non-fatal.
+        await recordFirstTouch(supabase);
 
         // ── Insert or update claims table ──
         try {
@@ -544,18 +914,45 @@ export default function TradeSelectorPage() {
 
           // #482: static-stack parity — property_address/property_state must land
           // on the claim (contractor cards + D-178 state gating read them).
-          const csAddress = (csSignup.address as string) || '';
-          // gh-1579: same tolerant parser as the profiles upsert above —
-          // one helper, both write sites (./utils.ts parseAddress).
-          const csStateToken = parseAddress(csAddress).state;
-
+          // gh-1993 REVIEW: FAIL (PR #1998 comment 5698654086, B1/B2) +
+          // CEO RULING (comment 5698876771): property_address STAYS the full
+          // combined line ("street, city, ST zip"), not the street line
+          // alone — notify-contractors, check-siding-design-completion, the
+          // contractor opportunities card (D-074 city-before-street-reveal),
+          // agreement_requested email/SMS, DocuSign customer_address and
+          // color-selection.html's ZIP extraction all parse this column
+          // expecting the combined shape.
+          //
+          // gh-2004: property_address is now built from `resolvedAddress`
+          // via fullAddress() rather than read as the raw `csSignup.address`
+          // string, because resolvedAddress may have come from the profile
+          // fallback or the new address step, neither of which has a
+          // pre-built combined string to read. For the get-started
+          // cs_signup path this is byte-identical to before: get-started
+          // itself builds cs_signup.address with this exact same
+          // fullAddress(street, city, state, zip) call, so recomputing it
+          // from the same four values reproduces the same string.
+          // property_city/property_zip are the two additive columns (PR
+          // #1998's migration, already applied to production) that carry
+          // the split city/zip alongside the combined property_address.
+          // gh-2004: never NULL — resolvedAddress is hasFullAddress() by
+          // construction (see the mount effect and the address step above),
+          // so all four of property_address/city/state/zip are always
+          // populated from this page now, not just property_address.
           const claimPayload: Record<string, unknown> = {
             funding_type: fundingType,
             policy_type: policyType,
             trades: trades,
             job_type: jobType,
-            property_address: csAddress || null,
-            property_state: csStateToken,
+            property_address: fullAddress(
+              parsedAddress.street || '',
+              parsedAddress.city || '',
+              parsedAddress.state || '',
+              parsedAddress.zip || '',
+            ) || null,
+            property_city: parsedAddress.city,
+            property_state: parsedAddress.state,
+            property_zip: parsedAddress.zip,
             updated_at: new Date().toISOString(),
             ...(referralSource && { referral_source: referralSource }),
             ...(referralAgentId && { referral_agent_id: referralAgentId }),
@@ -572,19 +969,47 @@ export default function TradeSelectorPage() {
               referrer_updates_opt_out: csSignup.referrer_updates_opt_out,
             }),
           };
+          // gh-1993 CEO RULING (comment 5698876771): property_city/
+          // property_zip are applied to production now (Tier 3A additive,
+          // verified present) — no pre-migration retry path. REVIEW: FAIL
+          // B3 was correct that the retry this PR previously had only
+          // matched 42703 (a SELECT-on-missing-column code) when PostgREST
+          // actually rejects an insert/update payload naming an unknown
+          // column with PGRST204, so the retry never would have fired
+          // anyway. Rather than fix the error code, the columns are simply
+          // live now, so there is no pre-migration window to guard and no
+          // dead retry path to carry.
 
+          // gh-2062 round 2 (REVIEW: FAIL): Supabase does not throw on a
+          // failed write by default — there is no throwOnError() anywhere
+          // in this repo — so an RLS denial or constraint violation
+          // resolves normally as { data: null, error: {...} }. Round 1's
+          // clear() below only checked whether a referral was PRESENT to
+          // carry forward, not whether the write that was supposed to
+          // carry it actually succeeded.
+          //
+          // gh-2062 round 3 (REVIEW: FAIL): error === null is NOT success.
+          // An UPDATE without .select() that matches ZERO rows — e.g. RLS
+          // silently filtering the WHERE match — also resolves with
+          // error: null. "Consumed" means a row was actually WRITTEN, not
+          // merely that the call did not complain. .select('id') added so
+          // the affected row (if any) comes back and can be checked.
+          let claimWriteSucceeded = false;
           if (existingClaim) {
-            await supabase
+            const { data: updatedRows, error: updateError } = await supabase
               .from('claims')
               .update(claimPayload)
-              .eq('id', existingClaim.id);
+              .eq('id', existingClaim.id)
+              .select('id');
+            claimWriteSucceeded = !updateError && Array.isArray(updatedRows) && updatedRows.length > 0;
             savedClaimId = existingClaim.id;
+            if (!(await attachPendingLossSheetToClaim(existingClaim.id))) lossSheetAttachFailed = true;
           } else {
             // gh-397/#689: stamp is_test on this React parity insert path —
             // PR #714 only fixed the COI-identity contractor insert, never
             // any claims insert. Predicate mirrors the CEO-approved
             // contractor check (#543 / test-exclusion.ts).
-            const { data: insertedClaim } = await supabase
+            const { data: insertedClaim, error: insertError } = await supabase
               .from('claims')
               .insert({
                 user_id: user.id,
@@ -594,6 +1019,16 @@ export default function TradeSelectorPage() {
               })
               .select('id')
               .single();
+            // gh-2062 round 3 audit: this insert branch does NOT have the
+            // round-2 zero-rows gap. .single() requires EXACTLY one row
+            // back from the .select('id') re-read — PostgREST/Supabase
+            // errors (PGRST116) if the insert produced zero or more than
+            // one row, so a silent zero-row success is not possible here
+            // the way it was on the update branch. !!insertedClaim is
+            // therefore redundant with !insertError in practice, but kept
+            // as an explicit belt-and-suspenders row check to match the
+            // update branch's shape.
+            claimWriteSucceeded = !insertError && !!insertedClaim;
             // gh-1276: capture the new row's id — previously never captured
             // here either (same gap as the static trade-selector.html this
             // file keeps parity with), so repair-intake.html's
@@ -601,25 +1036,61 @@ export default function TradeSelectorPage() {
             // fallback always found neither and unconditionally inserted a
             // SECOND claim row for every repair-path homeowner using this
             // (the actually-live) React surface.
-            if (insertedClaim) savedClaimId = insertedClaim.id;
+            if (insertedClaim) {
+              savedClaimId = insertedClaim.id;
+              if (!(await attachPendingLossSheetToClaim(insertedClaim.id))) lossSheetAttachFailed = true;
+              // gh-1940/gh-1984: "claim started" funnel step — fires once,
+              // only on the first claim row for this user (the `else`
+              // branch above is an update to an already-started claim, not
+              // a new start). #1988/gh-1984 already shipped this emission
+              // on this exact surface (dedupe per gh-1940 ruling
+              // 2026-09-16T13:12:08Z comment 5698022815) — kept as-is
+              // rather than adding a second, PR #1979-local emission here.
+              analyticsSends.push(
+                gtagEventBeforeNavigation('claim_started', {
+                  funding_type: fundingType,
+                  policy_type: policyType,
+                  job_type: jobType,
+                  trades: trades.join(','),
+                  source: 'trade_selector',
+                  test_account: isTestEmail(user.email),
+                }),
+              );
+            }
           }
 
           // #571: the claim_submitted advance now lives in the database —
           // trg_claims_advance_referral fires on the claims.referral_id
           // write above. The old client-side UPDATE always no-opped
           // against RLS and has been removed.
+
+          // gh-2062: the referral id has now been consumed — stamped onto
+          // claims.referral_id (or already resolved to referralAgentId, in
+          // which case there was nothing left for the raw cookie to do).
+          // Clear it so it cannot resurface on a later, unrelated signup on
+          // the same browser within its 90-day TTL. Only clear when this
+          // pass actually carried a referral forward AND the write that was
+          // supposed to record it actually succeeded — round 2 (REVIEW:
+          // FAIL): an RLS denial or constraint violation on the claim write
+          // must leave a live, unconsumed referral cookie alone, not
+          // destroy it out from under a partner who is still owed the
+          // commission. Mirrors the static trade-selector.html claim writer.
+          if ((chainReferralId || chainReferralAgentId) && claimWriteSucceeded) {
+            clearReferralIds();
+            localStorage.removeItem('oq_referral_id_for_claim');
+          }
         } catch (claimErr) {
           console.warn('[trade-selector] claim upsert failed:', claimErr);
         }
       }
 
       // GA4 funnel event
-      gtag('event', 'trade_selector_complete', {
+      analyticsSends.push(gtagEventBeforeNavigation('trade_selector_complete', {
         funding_type: fundingType,
         policy_type: policyType,
         trades: trades.join(','),
         has_repair: hasRepair,
-      });
+      }));
 
       // Write oq_trade_selections for repair-intake.html cross-page handoff (feature parity D-211)
       // repair-intake.html reads sessionStorage('oq_trade_selections') as { [tradeName]: boolean }
@@ -651,9 +1122,23 @@ export default function TradeSelectorPage() {
       if (savedClaimId) {
         redirectUrl += `?claim_id=${encodeURIComponent(savedClaimId)}`;
       }
-      setTimeout(() => {
-        window.location.href = redirectUrl;
-      }, 300);
+      // gh-2070: the claim itself saved fine — only the loss-sheet attach
+      // failed — so this does not throw into the catch block below (which
+      // would block the redirect entirely). It surfaces via the page-level
+      // error banner (rendered regardless of wizard step, unlike the "I'm
+      // Not Sure" panel's own status line) and gets a longer pre-redirect
+      // window than the default so the homeowner has a real chance to read
+      // it before the page navigates away.
+      if (lossSheetAttachFailed) {
+        setError("Your claim was saved, but we couldn't attach your loss sheet. You can upload it again from your dashboard.");
+      }
+      // gh-1984: wait for the analytics sends (each bounded to 1 s), never less
+      // than the original 300 ms.
+      await Promise.all([
+        Promise.all(analyticsSends),
+        new Promise((resolve) => setTimeout(resolve, lossSheetAttachFailed ? 4000 : 300)),
+      ]);
+      window.location.href = redirectUrl;
     } catch (err) {
       console.error('[trade-selector] completion error:', err);
       setError('Something went wrong. Please try again.');
@@ -662,7 +1147,10 @@ export default function TradeSelectorPage() {
   };
 
   // ── Loading state ──
-  if (!settled) {
+  // gh-2004: also wait on the address-resolution effect (only meaningful
+  // once a user exists — a signed-out visitor falls through to the
+  // redirect-in-flight `!user` branch below instead of spinning forever).
+  if (!settled || (user && addressResolving)) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '80vh' }}>
         <div style={{ textAlign: 'center' }}>
@@ -847,15 +1335,62 @@ export default function TradeSelectorPage() {
           border-radius: 8px;
           margin-bottom: 1.5rem;
         }
+        /* gh-2004: address-step fields, matching get-started's
+           .form-group/.form-label/.form-input/.form-row/.form-hint
+           byte-for-byte (PR #1998) so this page's fallback address form is
+           visually identical to the one get-started already ships. */
+        .ts-address-form {
+          display: flex;
+          flex-direction: column;
+          gap: var(--sp-5, 1.25rem);
+          animation: fadeUp 0.6s ease both 0.2s;
+        }
+        .form-row {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: var(--sp-4, 1rem);
+        }
+        .form-group {
+          display: flex;
+          flex-direction: column;
+          gap: var(--sp-1, 0.25rem);
+        }
+        .form-label {
+          font-size: 0.875rem;
+          font-weight: 600;
+          color: var(--white, #fff);
+        }
+        .form-input {
+          background: rgba(255,255,255,0.05);
+          border: 1px solid rgba(255,255,255,0.15);
+          border-radius: 8px;
+          padding: 10px 14px;
+          color: var(--white, #fff);
+          font-size: 1rem;
+          width: 100%;
+          box-sizing: border-box;
+          font-family: inherit;
+          transition: border-color 0.15s;
+        }
+        .form-input:focus {
+          outline: none;
+          border-color: var(--amber, #E07B00);
+        }
+        .form-hint {
+          font-size: 0.8rem;
+          color: var(--slate, #94a3b8);
+        }
         @media (max-width: 640px) {
           .funding-grid { grid-template-columns: 1fr; }
           .policy-grid { grid-template-columns: 1fr; }
           .trade-grid { grid-template-columns: repeat(2, 1fr); }
           .rr-grid { grid-template-columns: 1fr; }
+          .form-row { grid-template-columns: 1fr; }
         }
       `}</style>
 
-      <div className="ts-page">
+      {/* gh-1939: authenticated page on the Clarity allowlist -- mask all text/inputs in replay (Dustin: "Fields masked."). */}
+      <div className="ts-page" data-clarity-mask="true">
         <div className="ts-container">
           {/* Step indicator */}
           <StepIndicator totalSteps={totalSteps} currentStep={currentStep} />
@@ -863,6 +1398,93 @@ export default function TradeSelectorPage() {
           {/* Error banner */}
           {error && (
             <div className="error-banner" role="alert">{error}</div>
+          )}
+
+          {/* ── STEP: Address (gh-2004, only when cs_signup/profile had none) ── */}
+          {currentStepId === 'address' && (
+            <>
+              <div className="ts-header">
+                <h1>What&apos;s the property address?</h1>
+                <p className="ts-subtitle">
+                  We need this to match you with contractors who work in your area.
+                </p>
+              </div>
+
+              <div className="ts-address-form">
+                <div className="form-group">
+                  <label className="form-label" htmlFor="ts-street">Street Address</label>
+                  <input
+                    type="text"
+                    id="ts-street"
+                    className="form-input"
+                    required
+                    autoComplete="address-line1"
+                    placeholder="123 Main St"
+                    value={addressForm.street}
+                    onChange={e => setAddressForm(prev => ({ ...prev, street: e.target.value }))}
+                  />
+                  <span className="form-hint">The address for your project.</span>
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="ts-city">City</label>
+                    <input
+                      type="text"
+                      id="ts-city"
+                      className="form-input"
+                      required
+                      autoComplete="address-level2"
+                      placeholder="Anytown"
+                      value={addressForm.city}
+                      onChange={e => setAddressForm(prev => ({ ...prev, city: e.target.value }))}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="ts-state">State</label>
+                    <select
+                      id="ts-state"
+                      className="form-input"
+                      required
+                      autoComplete="address-level1"
+                      value={addressForm.state}
+                      onChange={e => setAddressForm(prev => ({ ...prev, state: e.target.value }))}
+                    >
+                      <option value="">Select...</option>
+                      {STATE_CODE_OPTIONS.map(({ value, label }) => (
+                        <option key={value} value={value}>{label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="ts-zip">ZIP Code</label>
+                    <input
+                      type="text"
+                      id="ts-zip"
+                      className="form-input"
+                      required
+                      inputMode="numeric"
+                      autoComplete="postal-code"
+                      pattern="\d{5}"
+                      maxLength={5}
+                      placeholder="12345"
+                      value={addressForm.zip}
+                      onChange={e => setAddressForm(prev => ({ ...prev, zip: e.target.value.replace(/\D/g, '').slice(0, 5) }))}
+                    />
+                  </div>
+                </div>
+
+                {addressFormError && (
+                  <div className="error-banner" role="alert">{addressFormError}</div>
+                )}
+
+                <ActionButtons
+                  onContinue={handleAddressContinue}
+                  continueLabel={addressSaving ? 'Saving…' : 'Continue →'}
+                  loading={addressSaving}
+                />
+              </div>
+            </>
           )}
 
           {/* ── STEP: Funding ── */}
@@ -1015,7 +1637,7 @@ export default function TradeSelectorPage() {
               )}
 
               <ActionButtons
-                onBack={() => goToStep(0)}
+                onBack={() => goToStep(stepSequence.indexOf('funding'))}
                 onContinue={() => {
                   const idx = stepSequence.indexOf('trades');
                   goToStep(idx);

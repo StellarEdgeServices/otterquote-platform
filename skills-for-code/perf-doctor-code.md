@@ -55,6 +55,12 @@ Default: staging if available, production if staging is unreachable.
 
 In scheduled/unsupervised mode: run production. Log environment in output header.
 
+gh-2064: when running against production, the first browser navigation of every
+scenario below must carry `?oq_internal=1` on its URL (or `&oq_internal=1` if the
+scenario's URL already has a query string) so this run is never counted as a
+visitor in GA4, Meta or Clarity. Staging needs no such param — it is already
+outside every gate's host allowlist.
+
 ---
 
 ## Performance Matrix

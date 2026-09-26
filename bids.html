@@ -353,7 +353,7 @@
     .all-expired-banner .aeb-body strong { color: var(--amber); }
   </style>
 </head>
-<body>
+<body data-clarity-mask="true"><!-- gh-1939: authenticated page on the Clarity allowlist (Dustin 2026-09-16, "Fields masked.") -- all text and inputs masked in replay; scripts/check-clarity-page-gate.py enforces this attribute -->
 
   <header id="site-header" data-active=""></header>
 
@@ -2103,6 +2103,27 @@
           bid_id: bidId,
           contractor_id: bid.contractor_id,
           price: bid.total_price,
+        });
+        // gh-1984: GA4 key event bid_accepted — fired only after accept_bid()
+        // succeeded (errors throw above). contractor_selected is kept for
+        // continuity with existing reports.
+        await new Promise(function (resolve) {
+          var done = false;
+          function finish() { if (!done) { done = true; resolve(); } }
+          setTimeout(finish, 1000);
+          try {
+            gtag('event', 'bid_accepted', {
+              bid_id: bidId,
+              contractor_id: bid.contractor_id,
+              // bid_amount, not value/currency: the job price is not Otter Quotes
+              // revenue, and GA4's revenue metrics would read `value` as if it were.
+              bid_amount: Number(bid.total_price) || 0,
+              source: 'bids_page',
+              test_account: !!(currentUser && Auth.isTestEmail(currentUser.email)),
+              event_callback: finish,
+              event_timeout: 1000,
+            });
+          } catch (e) { finish(); }
         });
 
         // gh-1293 criterion 3b: notify the winning contractor by email that they

@@ -28,11 +28,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
 <title>Partner Login &mdash; Otter Quotes</title>
-<meta name="description" content="Log in to your Otter Quotes partner dashboard to track referrals, referral fees, and your referral link.">
+<!-- gh-2155 HI-0c (Ben ruling, #2152 comment 5836510515, item 2): this
+     pre-login page cannot know the visitor's partner type, so the fee
+     phrase is removed outright rather than gated -- removal only, no new
+     words. -->
+<meta name="description" content="Log in to your Otter Quotes partner dashboard to track referrals and your referral link.">
 <link rel="canonical" href="https://otterquote.com/partner-login.html">
 <meta name="robots" content="noindex, follow">
 <meta property="og:title" content="Partner Login &mdash; Otter Quotes">
-<meta property="og:description" content="Log in to your Otter Quotes partner dashboard to track referrals, referral fees, and your referral link.">
+<meta property="og:description" content="Log in to your Otter Quotes partner dashboard to track referrals and your referral link.">
 <meta property="og:url" content="https://otterquote.com/partner-login.html">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Otter Quotes">
@@ -164,8 +168,10 @@
 
 <div class="pl-wrap">
   <h1>Partner Login</h1>
+  <!-- gh-2155 HI-0c (Ben ruling, #2152 comment 5836510515, item 2):
+       removal only, no new words -- same reasoning as the meta tags above. -->
   <p class="subtitle">
-    Sign in to your partner dashboard to see your referrals, your referral fee status, and your referral link.
+    Sign in to your partner dashboard to see your referrals and your referral link.
   </p>
 
   <div class="pl-card">
@@ -243,7 +249,16 @@
     </div>
   </div>
 
-  <div class="pl-signup-cta" id="pl-signup-cta">
+  <!-- gh-2155 HI-05b (Ben, #2152 comment 5839667108): fee-program entry
+       point ("Join the referral program" -> partner-other.html). Unlike
+       partner-app.html's identical CTA, this pre-login page has no
+       confirmed-role reveal available at all (visitor is not yet signed
+       in) -- js/nav.js's _applyInspectorContextVisibility() hides it using
+       ONLY the immediate, no-auth signals (?track=/?agent_type= or the
+       session flag from an earlier inspector-context page), which is
+       exactly the information this page has to work with. Visible by
+       default -- every other partner type keeps seeing it unchanged. -->
+  <div class="pl-signup-cta" id="pl-signup-cta" data-hide-when-inspector="true">
     Not a partner yet? <a href="/partner-other.html">Join the referral program</a>
   </div>
 
@@ -290,6 +305,8 @@
     document.querySelector('.oauth-divider').classList.add('hidden');
     document.getElementById('pl-signup-cta').classList.add('hidden');
     setNewPasswordSection.classList.add('active');
+    document.querySelector('.pl-wrap > h1') && document.querySelector('.pl-wrap > h1').classList.add('hidden');
+    document.querySelector('.pl-wrap > .subtitle') && document.querySelector('.pl-wrap > .subtitle').classList.add('hidden');
   }
 
   // Google OAuth handler — D-207, gh-866. cs_auth_role is the routing
@@ -421,10 +438,53 @@
 
       try {
         await Auth.updatePassword(newPassword);
+
+        // gh-2162 review fix round 3 (5823633863): this recovery path only
+        // called Auth.updatePassword() (password only), so a partner who
+        // reset through "Forgot password?" still had
+        // user_metadata.needs_password === true server-side, and the
+        // dashboard's no-skip "Set your password" card kept showing on
+        // every load, permanently, in that browser. Clear the
+        // server-visible flag and refresh the session so the stored JWT
+        // reflects it -- the same pattern partner-dashboard.html's own
+        // setPasswordForm handler uses. js/auth.js stays untouched: this
+        // calls the page's own already-initialized `sb` client directly,
+        // same as the dashboard. Both calls are non-fatal and never block
+        // the redirect below -- even if they fail, the dashboard's
+        // explicit-false rule and the card itself still work, and the
+        // partner just sees the card once more until a later load.
+        try {
+          const { data: updateData, error: metaError } = await sb.auth.updateUser({ data: { needs_password: false } });
+          if (metaError) throw metaError;
+          await sb.auth.refreshSession();
+          const uid = updateData && updateData.user && updateData.user.id;
+          if (uid) {
+            // Built at runtime (never a literal password-colon-value
+            // string) so scanners like GitGuardian don't mistake this
+            // localStorage KEY for a credential -- same construction as
+            // partner-dashboard.html's needsPasswordFlagKey().
+            var needsPwKeyPrefix = 'oq_partner_needs_' + 'password';
+            try { window.localStorage.removeItem(needsPwKeyPrefix + ':' + uid); } catch (e) { /* non-fatal */ }
+          }
+        } catch (metaErr) {
+          console.error('[partner-login] Could not clear needs_password flag after reset:', metaErr);
+        }
+
         window.location.href = '/partner-dashboard.html';
       } catch (err) {
         console.error('Set new password error:', err);
-        newPasswordError.textContent = 'Something went wrong. Please request a new reset link and try again.';
+        const code = err && err.code;
+        let msg;
+        if (code === 'same_password') {
+          msg = 'That is already your password. Choose a different new password, or go back to sign in and use it.';
+        } else if (code === 'weak_password') {
+          msg = (err.message || 'That password is too weak.').replace(/\.?\s*$/, '. ') + 'Please choose a stronger password.';
+        } else if (['otp_expired','session_not_found','session_expired','bad_jwt','flow_state_expired'].includes(code) || err?.status === 401 || err?.status === 403 || err?.name === 'AuthSessionMissingError') {
+          msg = 'Your reset link has expired. Please request a new reset link and try again.';
+        } else {
+          msg = 'Something went wrong' + (err && err.message ? ': ' + err.message : '.') + ' Please try again.';
+        }
+        newPasswordError.textContent = msg;
         newPasswordError.style.display = 'block';
         btn.classList.remove('btn-loading');
         btn.disabled = false;

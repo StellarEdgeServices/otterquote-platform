@@ -73,6 +73,7 @@ export interface ContractorInfo {
   user_id?: string | null;
   phone?: string | null;
   notification_phones?: string[] | null;
+  sms_opt_in?: boolean | null;
 }
 
 export interface SigningParams {
@@ -297,30 +298,49 @@ export async function createHomeownerEnvelope(args: {
  * (contract-signing.html:1645-1667): prefer the quote id, else key on the claim +
  * contractor. Errors are logged, not thrown — the redirect proceeds regardless,
  * exactly as the static did (the webhook is the source of truth).
+ *
+ * gh-1940 fix2 (cto32-review-pr1979-20260915.md, finding N4): now returns
+ * whether the write actually succeeded, so the caller (page.tsx) can skip
+ * firing the `contract_signed` funnel event on a failed write instead of
+ * counting a signature that was never durably recorded. Still never
+ * throws/rejects — a `false` return is the failure signal, not an
+ * exception — and the redirect still proceeds regardless, unchanged.
  */
 export async function recordHomeownerSigned(args: {
   claimId: string;
   quoteId: string | null;
   contractorId: string | null;
   signedAt: string;
-}): Promise<void> {
+}): Promise<boolean> {
   try {
     if (args.quoteId) {
       const { error } = await supabase
         .from('quotes')
         .update({ homeowner_signed_at: args.signedAt })
         .eq('id', args.quoteId);
-      if (error) console.error('Error updating homeowner_signed_at:', error);
+      if (error) {
+        console.error('Error updating homeowner_signed_at:', error);
+        return false;
+      }
+      return true;
     } else if (args.contractorId) {
       const { error } = await supabase
         .from('quotes')
         .update({ homeowner_signed_at: args.signedAt })
         .eq('claim_id', args.claimId)
         .eq('contractor_id', args.contractorId);
-      if (error) console.error('Error updating homeowner_signed_at:', error);
+      if (error) {
+        console.error('Error updating homeowner_signed_at:', error);
+        return false;
+      }
+      return true;
     }
+    // Neither id present — nothing to write, but that is not itself a
+    // write FAILURE (matches the pre-fix2 behavior of resolving cleanly).
+    return true;
   } catch (err) {
     console.error('Error updating claim:', err);
+    return false;
   }
 }
 
@@ -369,7 +389,16 @@ export async function sendContractorNudge(args: {
   const contractorMsg = `Otter Quotes: Hi ${contractorName} — your homeowner ${homeownerName} (${address}) signed their contract on ${signedDate} and hasn't heard from you yet. Please reach out as soon as possible. Questions? Call (844) 875-3412.`;
   const dustinMsg = `Otter Quotes Alert: ${homeownerName} (claim ${args.claimId || 'unknown'}) says they haven't heard from ${contractorName} since signing on ${signedDate}. Heads up.`;
 
-  const sends = phones.map((phone) =>
+  // gh-1916 R-134 gate: never text the contractor's phone without a stored opt-in.
+  let contractorPhones = phones;
+  if (c?.sms_opt_in !== true) {
+    console.warn(
+      `[use-contract-signing-data] SMS refused (gh-1916 R-134 gate) — sms_opt_in is not true for contractor ${c?.id ?? '(unknown)'} (value=${String(c?.sms_opt_in)}). ${phones.length} phone(s) suppressed. No Twilio call attempted.`,
+    );
+    contractorPhones = [];
+  }
+
+  const sends = contractorPhones.map((phone) =>
     supabase.functions.invoke('send-sms', { body: { to: phone, message: contractorMsg } }),
   );
   // Always notify Dustin (hardcoded number — byte-for-parity with the static).

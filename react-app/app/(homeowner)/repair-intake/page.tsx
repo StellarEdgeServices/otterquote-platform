@@ -30,6 +30,7 @@ import { PhotoUploader } from './components/PhotoUploader';
 import { MaterialTiers } from './components/MaterialTiers';
 import { ContractorList } from './components/ContractorList';
 import {
+  MissingClaimError,
   SessionExpiredError,
   submitRepairIntake,
   useRepairContractors,
@@ -184,6 +185,14 @@ function RepairIntakeContent() {
     } catch (err) {
       if (err instanceof SessionExpiredError) {
         window.location.href = HOMEOWNER_GET_STARTED_URL;
+        return;
+      }
+      if (err instanceof MissingClaimError) {
+        // gh-2004: no claim id in hand — route to trade-selector (the
+        // surface that collects/validates a full address) instead of
+        // showing a generic error for what the old code silently inserted
+        // as an addressless claim.
+        window.location.href = '/trade-selector';
         return;
       }
       setSubmitError('Something went wrong. Please try again.');

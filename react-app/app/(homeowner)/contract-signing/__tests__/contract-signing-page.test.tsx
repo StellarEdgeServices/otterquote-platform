@@ -22,15 +22,21 @@ vi.mock('@/lib/supabase', () => ({
 }));
 
 // Data layer mocked — the page test drives its return values directly.
+// gh-1940 fix2: recordHomeownerSigned now resolves a boolean (write ok?),
+// not void — see use-contract-signing-data.ts. Default true here so the
+// PRE-EXISTING tests below (written against the old void-return mock) keep
+// behaving the same way; the new tests further down override this per case.
 vi.mock('../use-contract-signing-data', () => ({
   useContractSigningData: vi.fn(),
   createHomeownerEnvelope: vi.fn(),
-  recordHomeownerSigned: vi.fn(() => Promise.resolve()),
+  recordHomeownerSigned: vi.fn(() => Promise.resolve(true)),
   sendContractorNudge: vi.fn(() => Promise.resolve(true)),
   requestBidRenewal: vi.fn(() => Promise.resolve(true)),
   buildProjectConfirmationUrl: (claimId: string) =>
     `https://otterquote.com/project-confirmation.html?claim_id=${claimId}`,
 }));
+
+vi.mock('@/lib/track', () => ({ track: vi.fn() }));
 
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import {
@@ -38,6 +44,7 @@ import {
   createHomeownerEnvelope,
   recordHomeownerSigned,
 } from '../use-contract-signing-data';
+import { track } from '@/lib/track';
 import { SIGN_COPY as C } from '../copy';
 import ContractSigningPage from '../page';
 
@@ -187,5 +194,62 @@ describe('contract-signing page — init-time signed=true return', () => {
     );
 
     if (original) Object.defineProperty(window, 'location', original);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// gh-1940 fix2 (cto32-review-pr1979-20260915.md, finding B3) — contract_signed
+// once-guard. The review's own probe found DocuSignEmbed's message listener
+// can invoke onComplete twice in one tick (a `session_end` message and a
+// separate `signing_complete` message both independently call it), which
+// doubled `contract_signed` for one signature.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('contract-signing page — contract_signed once-guard (gh-1940 fix2, finding B3)', () => {
+  async function proceedToSigningIframe() {
+    (createHomeownerEnvelope as unknown as Fn).mockResolvedValue({
+      signingUrl: 'https://ds/sign?token=x',
+    });
+    render(<ContractSigningPage />);
+    await screen.findByText(C.rightToCancelTitle);
+    fireEvent.click(document.getElementById('otterquoteAcknowledgment') as HTMLInputElement);
+    fireEvent.click(screen.getByRole('button', { name: /Proceed to Sign/ }));
+    await waitFor(() => {
+      const frame = document.getElementById('docusignFrame');
+      expect(frame).toBeTruthy();
+    });
+  }
+
+  it('fires contract_signed exactly once when DocuSign posts two completion messages in one tick', async () => {
+    (recordHomeownerSigned as unknown as Fn).mockResolvedValue(true);
+    await proceedToSigningIframe();
+
+    // Two independent completion signals in the same tick.
+    window.dispatchEvent(
+      new MessageEvent('message', { data: JSON.stringify({ type: 'session_end' }) }),
+    );
+    window.dispatchEvent(
+      new MessageEvent('message', { data: JSON.stringify({ event: 'signing_complete' }) }),
+    );
+
+    await waitFor(() => expect(recordHomeownerSigned as unknown as Fn).toHaveBeenCalledTimes(1));
+    expect(track as unknown as Fn).toHaveBeenCalledTimes(1);
+    // fix3 (CEO ruling, PR #1979 comment 5698022815): no claim_id — a
+    // per-homeowner database identifier must not reach GA4. contract_signed
+    // now carries no params at all; the event NAME is the funnel step.
+    expect(track as unknown as Fn).toHaveBeenCalledWith('contract_signed', {});
+    const payload = (track as unknown as Fn).mock.calls[0][1];
+    expect(payload).not.toHaveProperty('claim_id');
+  });
+
+  it('does not fire contract_signed when the signing write failed', async () => {
+    (recordHomeownerSigned as unknown as Fn).mockResolvedValue(false);
+    await proceedToSigningIframe();
+
+    window.dispatchEvent(
+      new MessageEvent('message', { data: JSON.stringify({ type: 'session_end' }) }),
+    );
+
+    await waitFor(() => expect(recordHomeownerSigned as unknown as Fn).toHaveBeenCalledTimes(1));
+    expect(track as unknown as Fn).not.toHaveBeenCalled();
   });
 });

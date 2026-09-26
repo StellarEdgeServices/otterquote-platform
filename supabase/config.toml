@@ -5,6 +5,18 @@
 # other row contents — so unauthenticated access is intentional, not a gap.
 verify_jwt = false
 
+[functions.record-lead-details]
+# gh-2122: called from /start?v=f BEFORE any auth session exists, right after the
+# `leads` row is saved. verify_jwt stays false, like check-email-exists (the other
+# pre-auth, browser-called function): supabase-js sends a stale expired session
+# token, if one is in the cookie, in place of the anon key, and a verified-JWT gate
+# would then reject and silently drop a real lead's TCPA consent record. Protected
+# instead by a per-IP rate limit (check_rate_limit + the rate_limit_config row in
+# 20260923211259_gh2122_leads_details_consent.sql), a lead id that must already exist
+# and be under 30 minutes old and unredeemed (enforced inside record_lead_details()),
+# and first-write-wins storage.
+verify_jwt = false
+
 [functions.submit-partner-w9]
 # verify_jwt=false: auth performed in-handler via user-scoped client (auth.getUser).
 # Preserves existing behavior; bucket changed to partner-w9 (86e1v6nnh Item 4).
@@ -275,6 +287,12 @@ verify_jwt = false
 [functions.notify-admin-new-contractor]
 verify_jwt = false
 
+# gh-2154 P-3: same auth model as notify-admin-new-contractor -- accepts
+# only the service-role key as bearer, called by the trg_notify_admin_new_partner
+# pg_net trigger, never by browser clients.
+[functions.notify-admin-new-partner]
+verify_jwt = false
+
 [functions.notify-feature-request]
 verify_jwt = false
 
@@ -386,6 +404,30 @@ verify_jwt = false
 [functions.homeowner-email-optout]
 verify_jwt = false
 
+# gh-2121 (LRS HO-1 S21) fix round 1 (CEO RUN 68 LEGAL-READ: FAIL, comment
+# 5825694840, must-fix 1): the unauthenticated opt-out endpoint behind the
+# "Stop these updates" footer link in send-lead-next-step-reminder's one
+# reminder email. Same reasoning as homeowner-email-optout immediately
+# above, word for word: a pre-signup lead clicking an unsubscribe link has
+# no JWT and no session at all, and CAN-SPAM/D-320 requires the mechanism to
+# work without one. verify_jwt=false is required, not a convenience -- the
+# signed HMAC token in the URL (lead-optout-token.ts) is the authorization,
+# and the handler is write-only with one invariant response (see the
+# function's own header comment). Missing this entry meant the Supabase
+# gateway defaulted to verify_jwt=true and 401'd the link before this fix.
+[functions.lead-next-step-optout]
+verify_jwt = false
+
+# gh-2121 (LRS HO-1 S21) fix round 1 (CEO RUN 68 REVIEW: FAIL, comment
+# 5825698253, must-fix 3): cron-exception, same pattern as
+# send-homeowner-next-steps and send-incomplete-onboarding-reminders -- JWT
+# verification disabled; access is gated by the CRON_SECRET header /
+# service-role Bearer check inside the function (cron-auth.ts's
+# isCronAuthorized(), mirrored from send-homeowner-next-steps/index.ts).
+# Pinned so a flagless `functions deploy` cannot flip it.
+[functions.send-lead-next-step-reminder]
+verify_jwt = false
+
 # gh-1313: Cron-exception, same pattern as send-homeowner-next-steps — JWT
 # verification disabled; access is gated by the CRON_SECRET / service-role
 # Bearer check inside the function. Read-only on contractor_templates; writes
@@ -399,3 +441,26 @@ verify_jwt = false
 # gh-1534 semantics). Pinned so a flagless `functions deploy` can't flip it.
 [functions.vault-resync]
 verify_jwt = true
+
+# gh-2107 / D-330 half 2: an admin records an advertising-sharing opt-out that a person requested by email to
+# support@otterquote.com. Auth is enforced in-handler (Bearer JWT via auth.getUser, then the admin gate, same as
+# approve-warranty-drift); pin false so a flagless deploy cannot flip it (the gateway JWT check is unreliable for admin callers).
+# No admin page calls it yet; an admin invokes it directly with their own JWT. A page is a follow-up.
+[functions.record-ad-sharing-opt-out]
+verify_jwt = false
+
+# gh-2154 P-4: cron-exception, same pattern as send-homeowner-next-steps —
+# JWT verification disabled; access is gated by the CRON_SECRET / service-role
+# Bearer check inside the function (see index.ts's auth block). Kill switch
+# (platform_settings.partner_onboarding_enabled) defaults OFF; this pin has
+# no bearing on that — it only controls the API gateway's own JWT check.
+[functions.send-partner-onboarding]
+verify_jwt = false
+
+# gh-2154 P-4 (Kevin correction Q1): the unauthenticated unsubscribe endpoint
+# behind the D-320-mirrored opt-out link in send-partner-onboarding's emails
+# — same pattern and same reason as homeowner-email-optout's own pin: an
+# email recipient clicking an unsubscribe link has no JWT, and the signed
+# HMAC token in the URL is the authorization.
+[functions.partner-email-optout]
+verify_jwt = false

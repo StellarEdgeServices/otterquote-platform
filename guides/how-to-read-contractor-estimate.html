@@ -18,6 +18,7 @@
 
 <!-- GA4 -->
 <script src="/js/ga-gate.js"></script>
+<script src="/js/meta-pixel-gate.js"></script>
 <script>gtag('config', 'G-D1Y1TLGEFY');</script>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
@@ -637,7 +638,7 @@
         <div class="faq-item">
           <h3>What is overhead and profit (O&amp;P) on a contractor estimate?</h3>
           <div class="faq-answer">
-            <p>Overhead and profit is a line item on insurance estimates (written in Xactimate) that covers the general contractor's business operating costs and a reasonable profit margin, separate from direct material and labor costs. It's standard on insurance claims where a general contractor is coordinating multiple trades. Adjusters sometimes omit O&amp;P when they determine a specialty contractor is handling the job directly without a GC; contractors who are genuinely acting as GCs on a project (coordinating multiple trades, carrying the full project liability) are entitled to it. If you see this line item on an estimate and your adjuster omitted it from the insurance payment, it may be a legitimate supplement item — ask your contractor whether they believe it applies to your project.</p>
+            <p>Overhead and profit is a line item on insurance estimates (written in Xactimate) that covers the general contractor's business operating costs and a reasonable profit margin, separate from direct material and labor costs. It's standard on insurance claims where a general contractor is coordinating multiple trades. Adjusters sometimes omit O&amp;P when they determine a specialty contractor is handling the job directly without a GC. If you see this line item on an estimate and your adjuster omitted it from the insurance payment, it may be a legitimate supplement item — ask your contractor whether they believe it applies to your project.</p>
           </div>
         </div>
 
@@ -653,7 +654,7 @@
       <div class="cta-box" style="margin-top: var(--sp-12); margin-bottom: var(--sp-8);">
         <h3>Compare Contractor Bids Without the Translation Work</h3>
         <p>Otter Quotes delivers competing bids from contractors in a standardized format — material grade, warranty tier, scope, and price side by side — so you're comparing the same thing across every bid.</p>
-        <a href="https://app.otterquote.com/get-started" class="btn btn-primary btn-lg">Get Competing Bids &mdash; Free</a>
+        <a href="/start.html" class="btn btn-primary btn-lg">Get Competing Bids &mdash; Free</a>
       </div>
 
     </div>
@@ -677,7 +678,7 @@
     "description": "JD cum laude, IU Maurer School of Law. Former General Counsel and VP HR at Indiana Department of Workforce Development. Former General Counsel at Deca Financial. Co-founded Stay Dry Roofing, growing it from $0 to $10M in revenue. Co-founder and CEO of Otter Quotes."
   },
   "datePublished": "2026-05-23",
-  "dateModified": "2026-05-23",
+  "dateModified": "2026-09-15",
   "publisher": {
     "@type": "Organization",
     "name": "Otter Quotes",
@@ -796,7 +797,7 @@
       "name": "What is overhead and profit (O&P) on a contractor estimate?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Overhead and profit is a line item on insurance estimates (written in Xactimate) covering the general contractor's operating costs and profit margin, separate from direct costs. It applies when a GC is coordinating multiple trades. Adjusters sometimes omit it; contractors acting as GC are entitled to it. If your adjuster omitted O&P and your contractor is genuinely acting as a GC, it may be a legitimate supplement item."
+        "text": "Overhead and profit is a line item on insurance estimates (written in Xactimate) covering the general contractor's operating costs and profit margin, separate from direct costs. It applies when a GC is coordinating multiple trades. Adjusters sometimes omit it. If your adjuster omitted O&P and your contractor is genuinely acting as a GC, it may be a legitimate supplement item."
       }
     },
     {
@@ -839,5 +840,45 @@
 }
 </script>
 
+<script>
+// gh-1994 phase 2 (round 2, review 5705874119 B1/N1): carry utm_*/fbclid/
+// gclid from this page's own URL onto every "Get started" CTA that points
+// at the router, on top of the oq_ft cookie fallback (gh-1983)
+// start.html's own collectAttribution() already reads -- belt and
+// suspenders for cookie-blocked browsers. No PII, same allow-list
+// start.html reads. Matches by normalized pathname, not an exact-string
+// selector, because Netlify's pretty-URL rewrite serves the on-disk
+// href="/start.html" as href="/start" (no ".html", no trailing slash) --
+// an exact-string selector never matches that served markup, only a local
+// static server without the rewrite. Also tolerates a trailing slash
+// ("/start/") and a login.html-style relative "start.html". Idempotent:
+// run once per page load, never runs twice on the same anchor.
+(function () {
+  'use strict';
+  var ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid'];
+  var params = new URLSearchParams(window.location.search);
+  var qs = '';
+  ATTR_KEYS.forEach(function (k) {
+    var v = params.get(k);
+    if (v) qs += (qs ? '&' : '?') + k + '=' + encodeURIComponent(v);
+  });
+  if (!qs) return;
+  function isStartHref(href) {
+    if (!href) return false;
+    try {
+      var p = new URL(href, window.location.href).pathname.replace(/\/+$/, '');
+      return p === '/start' || p === '/start.html';
+    } catch (e) {
+      return false;
+    }
+  }
+  document.querySelectorAll('a[href]').forEach(function (a) {
+    var href = a.getAttribute('href');
+    if (isStartHref(href)) {
+      a.setAttribute('href', href + qs);
+    }
+  });
+})();
+</script>
 </body>
 </html>

@@ -22,6 +22,27 @@
  * so that pre-auth call always 401'd. The session is live by the time we reach
  * routeSession() below, so supabase.functions.invoke attaches a valid JWT
  * automatically (same pattern as contractor/pre-approval's HubSpot sync).
+ *
+ * gh-1940: GA4 `sign_up` (Google path) also fires here, post-auth. This is
+ * now the ONLY place a Google sign_up is counted — get-started/page.tsx no
+ * longer fires one pre-redirect (see its `fireSignupAnalytics`) — fixed per
+ * cto32-review-pr1979-20260915.md (REVIEW: FAIL, findings B1/B2): the
+ * pre-redirect emit was in fact delivered (contrary to the original claim
+ * this file's history carried), so keeping BOTH emits double-counted every
+ * delivered Google signup. Fires at most once per user
+ * (maybeFireGoogleSignUp below), gated on the account being newly created
+ * with a bounded clock-skew allowance — a returning Google sign-in must
+ * never emit this. The call is AWAITED (bounded to ~1s — see
+ * lib/track.ts's fireSignUpAndWait) so the redirect below cannot tear the
+ * page down before the hit has had a real chance to be queued/sent; the
+ * referral_source dimension is carried through the `cs_signup` payload
+ * get-started/page.tsx already wrote before the redirect.
+ *
+ * gh-1901 Option 2 (2026-09-22, CEO ruling 5780885632): get-started's
+ * Google button no longer requires first/last name before firing OAuth, so
+ * this file backfills a blank name from the Google identity's own metadata
+ * (given_name/family_name/full_name) before anything reads cs_signup — see
+ * backfillNameFromGoogleIdentity below.
  */
 
 'use client';
@@ -31,6 +52,66 @@ import type { Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 
 import { readReferralIds, writeReferralIds } from '@/lib/cookie-storage';
+import { linkPendingLeadOnce } from '@/lib/lead-capture';
+import { maybeFireGoogleSignUp, readReferralSourceFromCsSignup } from './signup-analytics';
+import { adoptFirstTouchFromParam, recordFirstTouch } from '@/lib/attribution';
+
+// ─── Name recovery for the Google path (gh-1901 Option 2) ────────────────────
+
+/**
+ * gh-1901 Option 2 (CEO ruling 5780885632): get-started/page.tsx's
+ * handleGoogle no longer requires first/last name before firing OAuth — the
+ * previous gate was a smaller version of the exact trap CRO reported, a
+ * button that silently refused until fields were typed. So cs_signup can
+ * reach here with first_name/last_name both blank. Google's OAuth identity
+ * carries the name Supabase would otherwise have made the visitor type
+ * twice; recover it here, once, before anything downstream reads cs_signup
+ * (fireHomeownerHubspotContact below, and trade-selector's profiles upsert
+ * after the redirect this file issues — both origin-scoped localStorage
+ * reads of the same key, so a write here reaches both).
+ *
+ * Never overwrites a name half the visitor actually typed — only a blank
+ * first_name or last_name is filled in, and only from this identity, not
+ * from the password path (guarded on app_metadata.provider === 'google').
+ * Supabase's Google provider is not guaranteed to populate every metadata
+ * field on every account (scope/consent variance) — this degrades to a
+ * no-op, same as before this change, when none of given_name/family_name/
+ * full_name/name are present.
+ */
+function backfillNameFromGoogleIdentity(user: Session['user'] | null | undefined): void {
+  if (!user || typeof localStorage === 'undefined') return;
+  if ((user.app_metadata as Record<string, unknown> | undefined)?.provider !== 'google') return;
+
+  let signup: Record<string, unknown>;
+  try {
+    const raw = localStorage.getItem('cs_signup');
+    if (!raw) return;
+    signup = JSON.parse(raw);
+  } catch {
+    return;
+  }
+
+  const firstName = ((signup.first_name as string | undefined) || '').trim();
+  const lastName = ((signup.last_name as string | undefined) || '').trim();
+  if (firstName && lastName) return; // visitor already typed both halves.
+
+  const meta = (user.user_metadata || {}) as Record<string, unknown>;
+  const given = ((meta.given_name as string | undefined) || '').trim();
+  const family = ((meta.family_name as string | undefined) || '').trim();
+  const full = ((meta.full_name as string | undefined) || (meta.name as string | undefined) || '').trim();
+  const fullParts = full ? full.split(/\s+/) : [];
+
+  const nextFirst = firstName || given || fullParts[0] || '';
+  const nextLast = lastName || family || fullParts.slice(1).join(' ');
+  if (nextFirst === firstName && nextLast === lastName) return; // Google gave us nothing usable.
+
+  try {
+    localStorage.setItem('cs_signup', JSON.stringify({ ...signup, first_name: nextFirst, last_name: nextLast }));
+  } catch {
+    // Non-fatal — HubSpot/trade-selector simply see the pre-existing (possibly blank) names.
+  }
+}
+
 // ─── HubSpot — D-189, fired post-auth (#405) ─────────────────────────────────
 
 /** Same payload shape create-hubspot-contact's homeowner mode always expected. */
@@ -108,6 +189,24 @@ export default function AuthCallbackPage() {
     const errorCode = detectHashError();
     const hasTokens = urlHasAuthTokens();
 
+    // gh-1983: hold a first touch carried on ?ft= (Google OAuth redirectTo) and
+    // strip it from the address bar before analytics read the URL. It is
+    // adopted in routeSession() only once a real session exists — proof of an
+    // auth return (a crafted link cannot seed a campaign), with no race against
+    // Supabase clearing the hash before hydration.
+    let ftParam: string | null = null;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.has('ft')) {
+        ftParam = params.get('ft');
+        const clean = new URL(window.location.href);
+        clean.searchParams.delete('ft');
+        window.history.replaceState(window.history.state, '', clean.toString());
+      }
+    } catch {
+      // non-fatal
+    }
+
     // Immediate error — no point subscribing
     if (errorCode) {
       setPageState('error');
@@ -156,8 +255,12 @@ export default function AuthCallbackPage() {
             localStorage.setItem('oq_referral_id_for_claim', referralId);
             localStorage.removeItem('oq_referral_id');
           }
-          // Keep the cookie alive so the claim writer still sees it after a hop.
-          {
+          // gh-2062: only re-arm the cookie's 90-day clock on a successful
+          // advance (mirrors js/auth.js). A failed RPC call is not a reason
+          // to extend the life of an id we were just told is not
+          // advanceable — the cookie keeps whatever TTL it already had
+          // instead of restarting the clock.
+          if (!advanceError) {
             const kept = readReferralIds();
             writeReferralIds({
               oq_referral_id: referralId,
@@ -172,6 +275,46 @@ export default function AuthCallbackPage() {
       } catch {
         // Non-fatal — see above
       }
+
+      // gh-2121 (S16) / PR #2163 REVIEW: FAIL fix (comment 5821864061, S4;
+      // comment 5822978578, M2; comment 5823511418, M3), 2026-09-24: this
+      // is the ONE place the password path links its lead too now, not
+      // just Google's. Two reasons land here:
+      //   - Google: handleGoogle (get-started/page.tsx) fires
+      //     signInWithOAuth and the browser leaves for Google immediately,
+      //     so there is no "after signUp" moment on that page to hang the
+      //     call off like the password path has.
+      //   - Password, with a live session (production's default — email
+      //     auto-confirm is on): get-started deliberately SKIPS calling
+      //     this itself (see that file's M2 comment) because it navigates
+      //     here in the same tick, and that navigation used to cancel the
+      //     in-flight RPC before it resolved. Nothing races this call site.
+      // Either way, a real session now exists (routeSession only reaches
+      // here once `session` is non-null), so any lead captured earlier
+      // (window.__oqRouterLeadId does not survive a full navigation — this
+      // reads the sessionStorage marker app/layout.tsx's strip script also
+      // wrote) can be linked here.
+      //
+      // M3 fix (comment 5823511418): this call used to be fire-and-forget
+      // (`void linkPendingLeadOnce(supabase)`), started here and then
+      // immediately raced by `window.location.href` further down this same
+      // function once role resolution finished — the exact M2 failure this
+      // file's own comment claimed did not apply here ("nothing races this
+      // call site"), which the reviewer's real-browser harness showed was
+      // false: the RPC losing that race hit the M3 bug in lib/lead-capture.ts
+      // (a lost race there now KEEPS the capture instead of clearing it, but
+      // the lead is still not linked on this page load). Now AWAITED, in
+      // parallel with recordFirstTouch below (both are independently bounded
+      // to ~2.5 s and non-fatal — see lib/lead-capture.ts and
+      // lib/attribution.ts), so neither the RPC nor the redirect below can
+      // outrace the other: every trial either ends linked, or keeps the
+      // capture for retry.
+      //
+      // gh-1983: persist first-touch ad attribution (UTM / fbclid / gclid)
+      // onto the profile — write-once, server-guarded, bounded to 2.5 s and
+      // non-fatal. Awaited because every branch below navigates away.
+      adoptFirstTouchFromParam(ftParam);
+      await Promise.all([linkPendingLeadOnce(supabase), recordFirstTouch(supabase)]);
 
       const intent =
         typeof localStorage !== 'undefined'
@@ -214,9 +357,21 @@ export default function AuthCallbackPage() {
         return;
       }
 
+      // gh-1901 Option 2: recover any name Google's identity carries BEFORE
+      // anything below reads cs_signup — see backfillNameFromGoogleIdentity's
+      // header. No-op for the password path (guarded on provider === 'google')
+      // and for a Google sign-up that already has both name halves typed.
+      backfillNameFromGoogleIdentity(session.user);
+
       // Homeowner path confirmed (not a contractor record, no contractor intent) —
       // safe to fire the post-auth HubSpot sync now that a session JWT exists (#405).
       fireHomeownerHubspotContact(session.user.email);
+
+      // gh-1940 fix2: GA4 `sign_up` (Google path) — see
+      // maybeFireGoogleSignUp's header for the full guard rationale
+      // (new-user + one-time marker) and lib/track.ts's fireSignUpAndWait
+      // for why this is awaited before the redirect below.
+      await maybeFireGoogleSignUp(session.user, readReferralSourceFromCsSignup());
 
       // Homeowner: returning (has claim) → dashboard, new → trade-selector
       try {

@@ -95,6 +95,7 @@
 </script>
 
 <script src="/js/ga-gate.js"></script>
+<script src="/js/meta-pixel-gate.js"></script>
 <script>gtag('config','G-D1Y1TLGEFY');</script>
 <!-- Microsoft Clarity (wwr7qlk8g5) is loaded by /js/ga-gate.js, behind the same production-host gate as GA4 (gh-1619). Do not add a per-page loader. -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js" integrity="sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz" crossorigin="anonymous"></script>
@@ -283,7 +284,7 @@
   <div class="container">
     <h2>Ready to Get Started?</h2>
     <p>It takes less than 2 minutes. We'll guide you through the rest.</p>
-    <a href="https://app.otterquote.com/get-started" class="btn btn-primary btn-lg">Get Started Free</a>
+    <a href="/start.html" class="btn btn-primary btn-lg">Get Started Free</a>
     <p style="margin-top:var(--sp-6);color:var(--slate);font-size:0.95rem;">
       Helpful guides: 
       <a href="help-estimate.html" style="color:var(--amber);">Understanding Your Insurance Estimate</a> &middot;
@@ -299,5 +300,45 @@
 <script src="js/config.js"></script>
 <script src="js/auth.js"></script>
 <script src="js/nav.js"></script>
+<script>
+// gh-1994 phase 2 (round 2, review 5705874119 B1/N1): carry utm_*/fbclid/
+// gclid from this page's own URL onto every "Get started" CTA that points
+// at the router, on top of the oq_ft cookie fallback (gh-1983)
+// start.html's own collectAttribution() already reads -- belt and
+// suspenders for cookie-blocked browsers. No PII, same allow-list
+// start.html reads. Matches by normalized pathname, not an exact-string
+// selector, because Netlify's pretty-URL rewrite serves the on-disk
+// href="/start.html" as href="/start" (no ".html", no trailing slash) --
+// an exact-string selector never matches that served markup, only a local
+// static server without the rewrite. Also tolerates a trailing slash
+// ("/start/") and a login.html-style relative "start.html". Idempotent:
+// run once per page load, never runs twice on the same anchor.
+(function () {
+  'use strict';
+  var ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid'];
+  var params = new URLSearchParams(window.location.search);
+  var qs = '';
+  ATTR_KEYS.forEach(function (k) {
+    var v = params.get(k);
+    if (v) qs += (qs ? '&' : '?') + k + '=' + encodeURIComponent(v);
+  });
+  if (!qs) return;
+  function isStartHref(href) {
+    if (!href) return false;
+    try {
+      var p = new URL(href, window.location.href).pathname.replace(/\/+$/, '');
+      return p === '/start' || p === '/start.html';
+    } catch (e) {
+      return false;
+    }
+  }
+  document.querySelectorAll('a[href]').forEach(function (a) {
+    var href = a.getAttribute('href');
+    if (isStartHref(href)) {
+      a.setAttribute('href', href + qs);
+    }
+  });
+})();
+</script>
 </body>
 </html>

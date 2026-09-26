@@ -93,6 +93,56 @@ def main():
         code, output = run_against(tmp_root)
         check("clean tree exit code", code, 0)
         check_true("clean tree reports PASS banner", output.strip().startswith("PASS: check-credential-claims"))
+        clean.unlink()
+
+        print()
+        print("gh-2020: planted positive -- \"approved\"/\"endorsed\"/\"certified\" "
+              "(D-104's other three barred words; only \"vetted\" was caught before)")
+        approved_dirty = tmp_root / "gh2020-approved-fixture.html"
+        approved_dirty.write_text(
+            "<html><body><p>Our approved contractors are ready to help with "
+            "your roofing project today.</p></body></html>",
+            encoding="utf-8",
+        )
+        code, output = run_against(tmp_root)
+        check("gh-2020 approved-claim tree exit code", code, 1)
+        check_true(
+            "gh-2020 approved-claim tree reports FAIL banner",
+            "FAIL: contractor credential/screening claim found" in output,
+        )
+        check_true(
+            "gh-2020 approved-claim tree names the fixture file and matched phrase",
+            "gh2020-approved-fixture.html" in output and "approved contractors" in output,
+        )
+        approved_dirty.unlink()
+
+        print()
+        print("gh-2020: planted negative -- \"pre-approval\"/\"pre-approved\" must NOT "
+              "match (contractor-pre-approval.html, D-210's pre-approval gate, and "
+              "payout_approvals are all real, legitimate uses of \"approved\").")
+        print("       Fix round 1: the fixture now includes \"pre-approved contractors\" "
+              "and \"pre-approved professionals\" -- the compound followed by a "
+              "contractor-class noun, which is the form that actually reproduces "
+              "the false positive. The earlier fixture said only \"pre-approval "
+              "process\"/\"pre-approved to bid\", which the buggy \\b pattern "
+              "never matched, so it passed while the hazard was live.")
+        preapproval_clean = tmp_root / "gh2020-preapproval-fixture.html"
+        preapproval_clean.write_text(
+            "<html><body><p>Contractors who bid through Otter Quotes have agreed "
+            "to the platform's contractor terms and have completed the "
+            "pre-approval process. You are pre-approved to bid on this project "
+            "once your documents are on file. Browse our pre-approved contractors "
+            "and see which pre-approved professionals are already bidding.</p>"
+            "</body></html>",
+            encoding="utf-8",
+        )
+        code, output = run_against(tmp_root)
+        check("gh-2020 pre-approval tree exit code", code, 0)
+        check_true(
+            "gh-2020 pre-approval tree reports PASS banner",
+            output.strip().startswith("PASS: check-credential-claims"),
+        )
+        preapproval_clean.unlink()
     finally:
         shutil.rmtree(tmp_root, ignore_errors=True)
 

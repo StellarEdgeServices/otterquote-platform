@@ -8,6 +8,8 @@ import {
   saveHoverChargeRecord,
   readHoverChargeRecord,
   clearHoverChargeRecord,
+  hasFiredMeasurementPurchase,
+  markMeasurementPurchaseFired,
 } from '../hover-charge-storage';
 
 afterEach(() => {
@@ -44,5 +46,29 @@ describe('hover-charge-storage', () => {
   it('returns null for a validly-parsed but wrong-shaped payload', () => {
     window.sessionStorage.setItem('oq_hm_hover_charge_v1', JSON.stringify({ foo: 'bar' }));
     expect(readHoverChargeRecord()).toBeNull();
+  });
+});
+
+
+describe('measurement_purchase once-only guard (gh-2078)', () => {
+  afterEach(() => {
+    localStorage.removeItem('oq_ga4_measurement_purchase_fired_v1:pi_test_1');
+    localStorage.removeItem('oq_ga4_measurement_purchase_fired_v1:pi_test_2');
+  });
+
+  it('has not fired for a fresh paymentIntent id', () => {
+    expect(hasFiredMeasurementPurchase('pi_test_1')).toBe(false);
+  });
+
+  it('reports fired after being marked, for that id only', () => {
+    markMeasurementPurchaseFired('pi_test_1');
+    expect(hasFiredMeasurementPurchase('pi_test_1')).toBe(true);
+    expect(hasFiredMeasurementPurchase('pi_test_2')).toBe(false);
+  });
+
+  it('marking is idempotent — calling it twice does not throw or double-key', () => {
+    markMeasurementPurchaseFired('pi_test_1');
+    markMeasurementPurchaseFired('pi_test_1');
+    expect(hasFiredMeasurementPurchase('pi_test_1')).toBe(true);
   });
 });

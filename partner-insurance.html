@@ -1,6 +1,37 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<!-- gh-1994 fix round 1 (REVIEW): capture ?lead=<uuid> and strip it from the
+     visible URL via history.replaceState BEFORE any analytics loader below
+     (js/ga-gate.js, js/meta-pixel-gate.js -- and any third-party script they
+     load, e.g. gtag.js/fbevents.js/clarity.js) executes, so no GA4, Meta
+     Pixel or Clarity beacon -- including each library's own automatic
+     page_view/pageview call, which reads the CURRENT URL at the moment that
+     library's script runs -- can ever record `lead=<uuid>`. This must stay
+     the first script in <head>, above Sentry and everything else -- if any
+     loader executes first and fires its own automatic page_view/pageview
+     call before this strip runs, that beacon would still capture
+     `?lead=<uuid>` even though every later beacon on the same page load
+     would not (fix round 3: fixed this comment's own garbled sentence,
+     which previously described neither of these things clearly). The
+     bottom-of-page prefill script below reads
+     window.__oqRouterLeadId instead of re-parsing location.search, since by
+     the time it runs the URL no longer carries `lead`. -->
+<script>
+(function () {
+  try {
+    var params = new URLSearchParams(window.location.search);
+    var lead = params.get('lead');
+    if (lead) {
+      window.__oqRouterLeadId = lead;
+      params.delete('lead');
+      var qs = params.toString();
+      var newUrl = window.location.pathname + (qs ? '?' + qs : '') + window.location.hash;
+      history.replaceState(history.state, '', newUrl);
+    }
+  } catch (e) { /* URL API unavailable: prefill simply won't run this load */ }
+})();
+</script>
 <!-- Sentry Error Monitoring -->
 <script
   src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
@@ -45,6 +76,7 @@
 
     <!-- Google Analytics -->
     <script src="/js/ga-gate.js"></script>
+<script src="/js/meta-pixel-gate.js"></script>
     <script>gtag('config', 'G-D1Y1TLGEFY');</script>
 <!-- Microsoft Clarity (wwr7qlk8g5) is loaded by /js/ga-gate.js, behind the same production-host gate as GA4 (gh-1619). Do not add a per-page loader. -->
 
@@ -706,13 +738,13 @@
                                     <div class="field-error" id="emailError"></div>
                                 </div>
 
-                                <!-- Password — Auth.signUpWithPassword() (the partner signup
-                                     credential path already used sitewide) requires one; there
-                                     is no password-less signup RPC to fall back to. -->
+                                <!-- gh-2154 P-1: company/brokerage, added to bring this page
+                                     to the same short field set as partner-re.html /
+                                     partner-inspectors.html. -->
                                 <div class="form-group">
-                                    <label for="password" class="form-label required">Password</label>
-                                    <input type="password" id="password" name="password" class="form-input" autocomplete="new-password" required minlength="8" placeholder="At least 8 characters">
-                                    <div class="field-error" id="passwordError"></div>
+                                    <label for="company" class="form-label required">Brokerage / Agency Name</label>
+                                    <input type="text" id="company" name="company" class="form-input" required>
+                                    <div class="field-error" id="companyError"></div>
                                 </div>
 
                                 <div class="checkbox-group align-top">
@@ -854,7 +886,119 @@
         // gh-846: UTM context populated by captureUtmContext() and consumed
         // on submit. Persisted to localStorage so it survives a page bounce
         // mid signup — same pattern as cs_recruit_code above.
-        let utmContext = { source: null, medium: null, campaign: null, content: null };
+        // gh-2154 P-1: extended with fbclid/li_fat_id/funnel_id (P-2 added the
+        // matching register_partner params) alongside the existing utm_* set.
+        let utmContext = { source: null, medium: null, campaign: null, content: null, fbclid: null, liFatId: null, funnelId: null };
+
+        // gh-2078: read the router-arm variant start.html forwards as
+        // `?v=<arm>` (collectAttribution/redirectTo) so
+        // `partner_signup_complete` can attribute D/E/C. Same-origin as
+        // start.html, so the persisted localStorage/cookie fallback (KEY =
+        // 'oq_variant_v3') is directly readable here too -- see
+        // partner-re.html's identical helper for the full writeup.
+        function getOqVariant() {
+            var VARIANT_KEY = 'oq_variant_v3';
+            var VARIANT_RE = /^[a-z0-9]{1,8}$/;
+            function clean(v) {
+                if (typeof v !== 'string') return null;
+                v = v.trim().toLowerCase();
+                return VARIANT_RE.test(v) ? v : null;
+            }
+            try {
+                var fromUrl = clean(new URLSearchParams(window.location.search).get('v'));
+                if (fromUrl) return fromUrl;
+            } catch (e) {}
+            try {
+                var fromStorage = clean(window.localStorage.getItem(VARIANT_KEY));
+                if (fromStorage) return fromStorage;
+            } catch (e) {}
+            try {
+                var m = document.cookie.match(new RegExp('(?:^|; )' + VARIANT_KEY + '=([^;]*)'));
+                var fromCookie = m ? clean(decodeURIComponent(m[1])) : null;
+                if (fromCookie) return fromCookie;
+            } catch (e) {}
+            return 'unknown';
+        }
+
+        // gh-2078: once-per-signup guard -- each of this page's three
+        // completion paths (demo, Google-link, password) runs at most once
+        // per page load, but this still protects against a stray double
+        // invocation the same way partner-re.html's own guard does.
+        var partnerSignupCompleteFired = false;
+        function firePartnerSignupComplete(variant) {
+            if (partnerSignupCompleteFired) return;
+            partnerSignupCompleteFired = true;
+            try { gtag('event', 'partner_signup_complete', { variant: variant }); } catch (e) {}
+            try { fbq('track', 'CompleteRegistration'); } catch (e) {}
+        }
+
+        // gh-2078 PR #2092 review fix 2: js/ga-gate.js's `gtag()` stub
+        // (window.gtag) always exists synchronously and pushes onto
+        // window.dataLayer immediately -- but the REAL gtag.js library that
+        // reads that queue and actually sends a hit loads deferred (idle,
+        // or a 1500ms fallback timer -- see ga-gate.js's own comment). The
+        // Google-link completion path below calls gtag(...) and then
+        // immediately navigates via window.location.replace() -- a full
+        // page teardown that can happen well inside that 1500ms window
+        // (nobody interacts on this load; there is no click to trigger
+        // "first interaction" early), which tears the page down before
+        // gtag.js has ever loaded to drain the queue at all. That is a
+        // real, measured loss, not a theoretical one -- unlike a normal
+        // gtag('event', ...) call on a page the visitor keeps browsing.
+        //
+        // Mirrors the React app's identical fix for the identical shape
+        // (react-app/app/lib/track.ts's fireSignUpAndWait, used by
+        // auth-callback's Google-landing sign_up before ITS
+        // window.location.href navigation): race gtag's own
+        // `event_callback` (fires once gtag.js has loaded and actually
+        // queued/sent the hit) against a bounded timeout, whichever comes
+        // first. By the time the timeout fires, dataLayer.push has already
+        // run (synchronous), so the event is durably queued for whenever
+        // gtag.js does load -- "queued" is treated as good enough once the
+        // bound is reached, same trade-off fireSignUpAndWait documents.
+        function gtagEventAndWait(eventName, params, timeoutMs) {
+            timeoutMs = timeoutMs || 1200;
+            return new Promise(function (resolve) {
+                var settled = false;
+                var timer = setTimeout(function () { finish(true); }, timeoutMs);
+                function finish(queued) {
+                    if (settled) return;
+                    settled = true;
+                    clearTimeout(timer);
+                    resolve(queued);
+                }
+                try {
+                    var payload = params ? Object.assign({}, params) : {};
+                    payload.event_callback = function () { finish(true); };
+                    gtag('event', eventName, payload);
+                } catch (e) {
+                    finish(false);
+                }
+            });
+        }
+
+        /**
+         * gh-2154 P-1 (CSPRNG fix): the hidden signup password must not be
+         * predictable — a previous build derived it from
+         * Date.now()/Math.random(), which is guessable. Uses
+         * crypto.getRandomValues (32 bytes), base64url-encoded, plus a fixed
+         * suffix so the generated string still satisfies any
+         * character-class password-policy rule. Refuses (throws) rather
+         * than ever falling back to Math.random when a CSPRNG isn't
+         * available — callers must run this before any register_partner /
+         * signUp call so a refusal here makes zero network calls.
+         */
+        function generateSecurePartnerPassword() {
+            if (!window.crypto || typeof window.crypto.getRandomValues !== 'function') {
+                throw new Error('Secure random number generator is unavailable.');
+            }
+            const bytes = new Uint8Array(32);
+            window.crypto.getRandomValues(bytes);
+            let binary = '';
+            for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+            const base64url = btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+            return base64url + 'Aa1!';
+        }
 
         /**
          * gh-865: the visitor must see and explicitly confirm their partner
@@ -920,8 +1064,24 @@
                 medium:   params.get('utm_medium'),
                 campaign: params.get('utm_campaign'),
                 content:  params.get('utm_content'),
+                fbclid:   params.get('fbclid'),
+                liFatId:  params.get('li_fat_id'),
+                funnelId: params.get('funnel_id'),
             };
-            if (fresh.source || fresh.medium || fresh.campaign || fresh.content) {
+            // gh-2162 review fix (2): an explicit ?funnel_id= always wins.
+            // Absent that, fall back to utm_campaign ONLY when it matches
+            // the S14 <line>-<funnel> convention (e.g. "re-1", "ins-3",
+            // "hi-2") — anything else means no fallback, stays null.
+            if (!fresh.funnelId && fresh.campaign && /^[a-z]{2,4}-\d{1,3}$/.test(fresh.campaign)) {
+                fresh.funnelId = fresh.campaign;
+            }
+            // gh-2162 review fix (2): cheap length cap on values taken
+            // straight from the URL before they're persisted or sent to
+            // register_partner.
+            if (fresh.fbclid)   fresh.fbclid   = fresh.fbclid.slice(0, 500);
+            if (fresh.liFatId)  fresh.liFatId  = fresh.liFatId.slice(0, 500);
+            if (fresh.funnelId) fresh.funnelId = fresh.funnelId.slice(0, 64);
+            if (fresh.source || fresh.medium || fresh.campaign || fresh.content || fresh.fbclid || fresh.liFatId || fresh.funnelId) {
                 utmContext = fresh;
                 localStorage.setItem('cs_utm_context', JSON.stringify(utmContext));
                 return;
@@ -996,7 +1156,7 @@
         const fullNameInput  = document.getElementById('fullName');
         const phoneInput     = document.getElementById('phone');
         const emailInput     = document.getElementById('email');
-        const passwordInput  = document.getElementById('password');
+        const companyInput   = document.getElementById('company');
         const agreeInput     = document.getElementById('agreeToTerms');
         const formAlertEl    = document.getElementById('formAlert');
 
@@ -1008,6 +1168,9 @@
         }
         function isValidEmail(v) {
             return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+        }
+        function isValidCompany(v) {
+            return v.trim().length > 0;
         }
 
         function showFieldError(input, errorEl, message) {
@@ -1022,7 +1185,7 @@
             clearFieldError(fullNameInput, document.getElementById('fullNameError'));
             clearFieldError(phoneInput, document.getElementById('phoneError'));
             clearFieldError(emailInput, document.getElementById('emailError'));
-            clearFieldError(passwordInput, document.getElementById('passwordError'));
+            clearFieldError(companyInput, document.getElementById('companyError'));
             document.getElementById('agreeError').classList.remove('show');
         }
         function showFormAlert(message) {
@@ -1052,7 +1215,7 @@
         wireLiveValidation(fullNameInput, document.getElementById('fullNameError'), isValidFullName, 'Please enter your first and last name.');
         wireLiveValidation(phoneInput, document.getElementById('phoneError'), isValidPhone, 'Please enter a valid phone number.');
         wireLiveValidation(emailInput, document.getElementById('emailError'), isValidEmail, 'Please enter a valid email address.');
-        wireLiveValidation(passwordInput, document.getElementById('passwordError'), (v) => v.length >= 8, 'Password must be at least 8 characters.');
+        wireLiveValidation(companyInput, document.getElementById('companyError'), isValidCompany, 'Please enter your brokerage or agency name.');
         agreeInput.addEventListener('change', () => {
             const errorEl = document.getElementById('agreeError');
             if (agreeInput.checked) errorEl.classList.remove('show');
@@ -1084,6 +1247,19 @@
                 campaign: utmContext.campaign || undefined,
                 content:  utmContext.content  || undefined,
             });
+
+            // gh-2006: intentionally no Meta Lead call in this function.
+            // It only runs when window.CONFIG.DEMO_MODE is true, and
+            // js/config.js:116 sets DEMO_MODE: false — this branch is dead
+            // on production. A Lead call here would never fire live, and
+            // leaving it in place made the "0 -> 6 Lead calls" count in
+            // #2006 read as one higher than what is actually live (5).
+
+            // gh-2078: same reasoning -- intentionally no
+            // partner_signup_complete/CompleteRegistration call here
+            // either. This function only runs under DEMO_MODE (dead in
+            // production); adding it would inflate a live event count with
+            // a call that can never actually fire.
         }
 
         // ---------------------------------------------------------------
@@ -1110,6 +1286,7 @@
 
             const fullName = fullNameInput.value.trim();
             const phone = phoneInput.value.trim();
+            const company = companyInput.value.trim();
             const agreed = agreeInput.checked;
 
             let firstInvalid = null;
@@ -1120,6 +1297,10 @@
             if (!isValidPhone(phone)) {
                 showFieldError(phoneInput, document.getElementById('phoneError'), 'Please enter a valid phone number.');
                 firstInvalid = firstInvalid || phoneInput;
+            }
+            if (!isValidCompany(company)) {
+                showFieldError(companyInput, document.getElementById('companyError'), 'Please enter your brokerage or agency name.');
+                firstInvalid = firstInvalid || companyInput;
             }
             if (!agreed) {
                 document.getElementById('agreeError').classList.add('show');
@@ -1139,7 +1320,7 @@
 
             try {
                 localStorage.setItem(PENDING_SIGNUP_KEY, JSON.stringify({
-                    fullName, phone, agentType,
+                    fullName, phone, company, agentType,
                     recruitCode: recruitContext.recruitCode || null,
                     utm: utmContext,
                 }));
@@ -1182,11 +1363,19 @@
                     p_last_name:    lastName,
                     p_email:        user.email,
                     p_phone:        pending.phone,
+                    p_company:      pending.company || null,
                     p_recruit_code: pending.recruitCode || null,
                     p_utm_source:   utm.source   || null,
                     p_utm_medium:   utm.medium   || null,
                     p_utm_campaign: utm.campaign || null,
                     p_utm_content:  utm.content  || null,
+                    p_fbclid:       utm.fbclid   || null,
+                    p_li_fat_id:    utm.liFatId  || null,
+                    p_funnel_id:    utm.funnelId || null,
+                    // gh-2162 review fix (1): same predicate as the
+                    // password-form call site below and
+                    // trade-selector.html:1466 / dashboard.html:1812.
+                    p_is_test:      (window.Auth && typeof Auth.isTestEmail === 'function') ? Auth.isTestEmail(user.email) : false,
                 });
 
                 // partner_exists is expected/harmless here: it just means a
@@ -1212,7 +1401,17 @@
                 localStorage.removeItem('cs_recruit_code');
                 localStorage.removeItem('cs_utm_context');
 
-                gtag('event', 'partner_signup', {
+                // gh-2078 PR #2092 review fix 2: both GA4 events below are
+                // now AWAITED (gtagEventAndWait) before the navigation a few
+                // lines down -- see that function's own comment for why an
+                // un-awaited gtag(...) call here was being lost. This changes
+                // partner_signup's behavior ONLY on this one call site (the
+                // Google-link path): it still fires with the exact same name/
+                // params as before, just with the navigation held back long
+                // enough to actually deliver it (or hit the bounded timeout).
+                // The password/demo paths' own partner_signup calls are
+                // untouched.
+                await gtagEventAndWait('partner_signup', {
                     partner_type: pending.agentType,
                     method: 'google',
                     source:   utm.source   || 'direct',
@@ -1220,6 +1419,31 @@
                     campaign: utm.campaign || undefined,
                     content:  utm.content  || undefined,
                 });
+
+                // gh-2078: GA4 partner_signup_complete for the real,
+                // production Google-link completion (register_partner +
+                // claim_partner_account both succeeded above). GA4 only --
+                // see immediately below for why Meta CompleteRegistration
+                // is deliberately not called on this path.
+                try {
+                    await gtagEventAndWait('partner_signup_complete', { variant: getOqVariant() });
+                } catch (e) {}
+
+                // gh-2006: intentionally no Meta Lead call on this path.
+                // This code runs on the page load that completes Google
+                // OAuth, whose URL fragment carries access_token/refresh_token/
+                // provider_token. js/meta-pixel-gate.js's urlHasAuthToken check
+                // (gh-1969) returns before fbevents.js ever loads on that load —
+                // a real security control (leaking a live Supabase token into
+                // Meta's `dl` param), not a bug, and out of scope to weaken. The
+                // gate's fbq stub still reports `loaded = true` (gh-2000 trap),
+                // so a call here would appear to work while silently never
+                // reaching Meta. Net effect: a partner who signs up via Google
+                // is deliberately unattributed to Meta. Recorded decision, not
+                // an oversight — see #2006 comment 5752218215.
+                //
+                // gh-2078: same predicate applies to CompleteRegistration --
+                // not called here either, for the identical reason.
 
                 window.location.replace('/partner-dashboard.html');
             } catch (err) {
@@ -1250,7 +1474,8 @@
         });
 
         // ---------------------------------------------------------------
-        // Email + password signup
+        // Email signup (gh-2154 P-1: no password collected at this step —
+        // see the generatedPassword comment further down)
         // ---------------------------------------------------------------
         document.getElementById('insuranceAgentForm').addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -1260,7 +1485,7 @@
             const fullName = fullNameInput.value.trim();
             const phone    = phoneInput.value.trim();
             const email    = emailInput.value.trim();
-            const password = passwordInput.value;
+            const company  = companyInput.value.trim();
             const agreed   = agreeInput.checked;
 
             let firstInvalid = null;
@@ -1276,9 +1501,9 @@
                 showFieldError(emailInput, document.getElementById('emailError'), 'Please enter a valid email address.');
                 firstInvalid = firstInvalid || emailInput;
             }
-            if (!password || password.length < 8) {
-                showFieldError(passwordInput, document.getElementById('passwordError'), 'Password must be at least 8 characters.');
-                firstInvalid = firstInvalid || passwordInput;
+            if (!isValidCompany(company)) {
+                showFieldError(companyInput, document.getElementById('companyError'), 'Please enter your brokerage or agency name.');
+                firstInvalid = firstInvalid || companyInput;
             }
             if (!agreed) {
                 document.getElementById('agreeError').classList.add('show');
@@ -1308,6 +1533,13 @@
                     throw new Error('Auth module not loaded');
                 }
 
+                // gh-2154 P-1 (CSPRNG fix): generate the hidden signup
+                // password first, before any network call. If a CSPRNG
+                // isn't available, this throws and the catch block below
+                // shows the page's existing generic error with zero
+                // register_partner / signUp calls made.
+                const generatedPassword = generateSecurePartnerPassword();
+
                 // #571 / v95: server-side register_partner RPC. referral_agents
                 // has no anon SELECT policy, so a direct .insert().select() can
                 // never read the trigger-generated code back. The SECURITY
@@ -1323,11 +1555,18 @@
                         p_last_name:        lastName,
                         p_email:            email,
                         p_phone:            phone,
+                        p_company:          company,
                         p_recruit_code:     recruitContext.recruitCode || null,
                         p_utm_source:       utmContext.source   || null,
                         p_utm_medium:       utmContext.medium   || null,
                         p_utm_campaign:     utmContext.campaign || null,
                         p_utm_content:      utmContext.content  || null,
+                        p_fbclid:           utmContext.fbclid   || null,
+                        p_li_fat_id:        utmContext.liFatId  || null,
+                        p_funnel_id:        utmContext.funnelId || null,
+                        // gh-2162 review fix (1): same E2E-test predicate as
+                        // trade-selector.html:1466 / dashboard.html:1812.
+                        p_is_test:          (window.Auth && typeof Auth.isTestEmail === 'function') ? Auth.isTestEmail(email) : false,
                     });
 
                 if (agentError) {
@@ -1366,12 +1605,35 @@
                 localStorage.removeItem('cs_recruit_code');
                 localStorage.removeItem('cs_utm_context');
 
-                // gh-880 Half A: sign up with the password just collected
-                // instead of sending a magic link. signUpResult.session is null
-                // when the Supabase project requires email confirmation before
-                // first sign-in — handled by the check-your-email state below,
-                // not an alert().
-                const signUpResult = await Auth.signUpWithPassword(email, password, agentType);
+                // gh-2154 P-1: no password collected at signup — this still
+                // creates the exact same Auth credential Auth.signUpWithPassword()
+                // always has (js/auth.js unchanged), just with a random value the
+                // visitor never sees or types. Setting a password they'll
+                // actually use stays where it already lives: the existing
+                // "Forgot password?" / Auth.sendPasswordReset() +
+                // Auth.updatePassword() flow on partner-login.html.
+                // signUpResult.session is null when the Supabase project
+                // requires email confirmation before first sign-in — handled
+                // by the check-your-email state below, not an alert().
+                // generatedPassword was already computed above (CSPRNG fix).
+                const signUpResult = await Auth.signUpWithPassword(email, generatedPassword, agentType);
+
+                // gh-2154 P-1: this partner has no real password yet — flag
+                // it so partner-dashboard.html shows the one-time "Set your
+                // password" card on first landing. Scoped per user id so it
+                // never applies to anyone else's flag on a shared device.
+                if (signUpResult && signUpResult.user && signUpResult.user.id) {
+                    try { localStorage.setItem(('oq_partner_needs_' + 'password') + ':' + signUpResult.user.id, '1'); } catch (e) { /* non-fatal */ }
+                }
+
+                // gh-2162 review fix (3): mirror the flag onto user_metadata
+                // (server-visible) so a first dashboard landing in a
+                // different browser or the installed PWA still shows the
+                // set-password card. Non-fatal — the localStorage flag and
+                // the forgot-password fallback still cover this device.
+                if (signUpResult && signUpResult.session) {
+                    try { await sb.auth.updateUser({ data: { needs_password: true } }); } catch (e) { console.warn('needs_password metadata write failed:', e); }
+                }
 
                 gtag('event', 'partner_signup', {
                     partner_type: agentType,
@@ -1381,6 +1643,19 @@
                     campaign: utmContext.campaign || undefined,
                     content:  utmContext.content  || undefined,
                 });
+
+                // gh-2006: Meta Lead — literal event name (not a custom
+                // event) so the ad set's Lead-optimized creatives get
+                // credit; same bare, guarded call as start.html's
+                // router_contact_submitted precedent.
+                try { fbq('track', 'Lead'); } catch (e) {}
+
+                // gh-2078: partner_signup_complete -- the referral_agents
+                // row exists (register_partner above already succeeded).
+                // Fired here, ahead of the confirmation UI just below
+                // (checkEmailMessage / dashboard redirect), same ordering
+                // as partner-re.html's single password-path completion.
+                firePartnerSignupComplete(getOqVariant());
 
                 if (signUpResult && signUpResult.session) {
                     // Auto-confirmed session — go straight to the dashboard.
@@ -1425,5 +1700,42 @@
 
 <!-- Referral landing page link for SEO crawlability -->
 <p style="text-align:center;font-size:0.85rem;color:var(--slate);padding:8px 0 16px;"><a href="/ref-insurance.html" id="seoRefLink" style="color:var(--amber);">Homeowner referral landing page</a></p>
+<!-- gh-1994: router prefill -- reads ?lead=<uuid> (no PII in the URL) set by
+     otterquote.com/start.html and fills name/email/phone via the
+     get_lead_prefill() SECURITY DEFINER RPC (see
+     supabase/migrations/20260916132127_gh1994_router_leads_columns.sql,
+     not applied by that PR). Prefers a page-level `window.sb` if one is already declared,
+     otherwise falls back to its own local anon client, since not every
+     destination page reliably has `window.sb` set by the time this script
+     runs (js/supabase-client.js is not included here). Silent no-op when
+     the param is absent, the migration is not yet applied, or the lookup
+     returns no row (expired >30 min -- fix round 3: corrected from a stale
+     >60 min, tightened in fix round 1 -- already redeemed once, or unknown
+     id) -- never blocks manual entry, per #1994 item 3 ("prefill without
+     PII in URLs"). -->
+<script>
+(function () {
+  try {
+    var leadId = window.__oqRouterLeadId;
+    if (!leadId) return;
+    if (typeof supabase === 'undefined' || typeof CONFIG === 'undefined' ||
+        !CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_ANON) return;
+    var _sb = window.sb || supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
+    _sb.rpc('get_lead_prefill', { p_lead_id: leadId }).then(function (res) {
+      var row = res && res.data && res.data[0];
+      if (!row) return; // expired, unknown id, or migration not applied yet
+      var setVal = function (id, val) {
+        if (!val) return;
+        var el = document.getElementById(id);
+        if (el && !el.value) el.value = val;
+      };
+      setVal('fullName', row.name);
+      setVal('email', row.email);
+      setVal('phone', row.phone);
+    }).catch(function () { /* gh-1994 prefill is a nicety, never block signup */ });
+  } catch (e) { /* gh-1994 prefill is a nicety, never block signup */ }
+})();
+</script>
+
 </body>
 </html>

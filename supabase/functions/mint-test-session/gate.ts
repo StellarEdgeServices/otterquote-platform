@@ -23,6 +23,19 @@
 // email GoTrue itself reports for the resolved auth user id — never for a
 // caller-supplied or joined-table email column that might describe a
 // different identity than the one actually being minted for.
+//
+// CTO36-B1513 / gh-2047 (2026-09-22): the cross-table check above stopped
+// discriminating the three real companies gh-2047 identifies BY NAME
+// ("is_test means two different things" — synthetic data vs. "real
+// company, don't email yet") — a later, unrelated sync brought every
+// profiles.is_test row into agreement with its linked contractors.is_test
+// row, including these three (verified live, production, 2026-09-22: Indy
+// Rooftops and both Stohler Roofing rows now read contractors.is_test=true
+// AND profiles.is_test=true). Until gh-2047's own reclassification lands
+// (Tier C, pending Dustin), this gate also refuses the three specific rows
+// gh-2047 names, by id, regardless of what any is_test column reads — see
+// KNOWN_MISFLAGGED_REAL_ACCOUNTS below. That is a stopgap for the KNOWN
+// instances, not a structural fix for the general overload.
 
 export interface ContractorRow {
   id: string;
@@ -130,6 +143,109 @@ export function unexpectedErrorResponse(error: unknown): MintResult {
 }
 
 /**
+ * gh-2047 denylist (CTO36-B1513, 2026-09-22): `contractors.is_test` is
+ * overloaded — per #2047 ("is_test means two different things") it also
+ * marks a small number of REAL companies that were flagged `is_test = true`
+ * purely to suppress product-notification email, not because the row is
+ * synthetic data. The `profiles.is_test` cross-table check (gh-1513 cross-
+ * table fix, above) was built to catch exactly this kind of disagreement,
+ * but as of this fix it no longer does for these three rows — a later,
+ * unrelated sync brought every `profiles.is_test` row into agreement with
+ * its linked `contractors.is_test` row. Verified live, production,
+ * 2026-09-22 (SELECT only): all three below read `contractors.is_test =
+ * true` AND `profiles.is_test = true`.
+ *
+ * These are the exact three rows #2047 names by id/email:
+ *   - Indy Rooftops, LLC        (contractors.id 5ece9e69…, #2047 body)
+ *   - Stohler Roofing, LLC (#1) (contractors.id 8e90ff23…, #2047 body)
+ *   - Stohler Roofing, LLC (#2) (contractors.id ee452a12…; its user_id is
+ *     the PRIMARY ADMIN's own auth user — also named in #1773's forensics)
+ *
+ * Both the contractor row id and its linked auth-user id are listed, so
+ * this refuses on either the `contractor_id` path or a direct `user_id`
+ * path that happens to resolve to the same identity.
+ *
+ * This is a STOPGAP for the KNOWN instances of the #2047 overload, not a
+ * fix for its general cause: a new real signup flagged `is_test = true`
+ * tomorrow, for the same notification-suppression reason, would NOT be
+ * caught by this list. The durable fix is #2047's own reclassification
+ * (flip these — and only these, once verified — rows to `is_test = false`
+ * + `notifications_suppressed = true`, currently Tier C / pending Dustin);
+ * once that lands, `is_test` alone becomes trustworthy again and this list
+ * should be deleted rather than extended. Flagged as an open question on
+ * gh-1513's PR and issue comment rather than silently assumed.
+ */
+export const KNOWN_MISFLAGGED_REAL_ACCOUNTS: ReadonlySet<string> = new Set([
+  // Indy Rooftops, LLC — real contractor, #2047
+  "5ece9e69-91f8-48cd-b4fa-412dec4f8dee", // contractors.id
+  "edcbe10f-7efa-4945-be3b-5c3e4ef8f2e2", // contractors.user_id / profiles.id
+  // Stohler Roofing, LLC (row 1) — real contractor, #2047
+  "8e90ff23-3894-4f67-9ca7-58a044cd986b", // contractors.id
+  "e371c617-8a24-492e-9911-47c85705ebb4", // contractors.user_id / profiles.id
+  // Stohler Roofing, LLC (row 2) — real contractor; user_id is the PRIMARY
+  // ADMIN's own auth user (#2047, #1773 forensics)
+  "ee452a12-c16e-4d30-9d2c-df8128fbce52", // contractors.id
+  "3ea4d929-b916-4cc9-a285-d052df397992", // contractors.user_id / profiles.id
+  // Two real homeowners on the user_id (claims) path, found during the
+  // CTO36 fix-review of this PR (#2047 review comment, 2026-09-22): both
+  // rows read is_test = true on claims/profiles but belong to real people,
+  // not synthetic test fixtures. Deliberately no name or email in this
+  // file — see #2047 for identity detail. Neither has a contractors row
+  // entry here since neither is reachable via the contractor_id path.
+  "a3a6444c-512c-4d6b-bcb2-a0b4f9e1bdf9", // profiles.id / auth user_id
+  "eca661ca-e038-4e39-bf27-0353ddc5b38f", // profiles.id / auth user_id
+]);
+
+function knownRealAccountRefusal(): MintResult {
+  return jsonError(
+    403,
+    "Forbidden: target is a known real account misflagged is_test (see #2047) — refused regardless of is_test",
+  );
+}
+
+/**
+ * F1 fix (CTO36 fix-review of this PR, 2026-09-22): the user_id path used
+ * to compare the caller's raw request string against
+ * KNOWN_MISFLAGGED_REAL_ACCOUNTS with plain string equality. Postgres's own
+ * uuid type accepts other spellings of the same id (different case, no
+ * hyphens, {braced}) and canonicalizes them before every .eq() this gate's
+ * DbAdapter performs — so a caller could send an UPPERCASE, no-hyphen or
+ * {braced} spelling of a denylisted user_id, sail through every DB-level
+ * lookup exactly as if it were the canonical form, and never hit this
+ * denylist's exact string match. Verified live: Postgres treats
+ * 'EDCBE10F-…'::uuid = 'edcbe10f-…'::uuid as true, and the no-hyphen and
+ * {braced} forms both cast to the same canonical id.
+ *
+ * Fix: any id used in a denylist check must already be in canonical
+ * 8-4-4-4-12, hyphenated form (case-insensitive on the hex digits) —
+ * anything else is rejected outright with 400, never silently
+ * reinterpreted — and is then lowercased before comparison. Applied to the
+ * user_id path's own input (see resolveAndMint's else branch) and, as a
+ * second, independent check, to the auth user id GoTrue itself resolves,
+ * immediately before minting (see resolveAndMint, just before
+ * generateMagicLink).
+ */
+const CANONICAL_UUID_RE =
+  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
+export function normalizeCanonicalUuid(raw: string): string | null {
+  return CANONICAL_UUID_RE.test(raw) ? raw.toLowerCase() : null;
+}
+
+/**
+ * Pure parse of the caller's Authorization header. Extracted from index.ts
+ * (CTO36-B1513) so the "missing/invalid Authorization header -> 401" path
+ * has a negative-control unit test that doesn't require a live
+ * serve()/fetch listener. Returns the bearer token, or null if the header
+ * is absent or not a well-formed "Bearer <token>" value.
+ */
+export function extractBearerToken(authHeader: string | null): string | null {
+  if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
+  const token = authHeader.slice("Bearer ".length).trim();
+  return token.length > 0 ? token : null;
+}
+
+/**
  * Cross-table agreement check (gh-1513 cross-table fix). A target's own
  * table saying is_test=true is necessary but not sufficient — the linked
  * profiles row must agree. A missing profiles row or a false/null
@@ -219,7 +335,13 @@ export async function resolveAndMint(
     targetUserId = contractor.user_id;
     resolvedContractorId = contractor.id;
   } else {
-    const { data: claims, error } = await db.getClaimsByUserId(userId!);
+    // F1 fix: canonicalize before this id is used anywhere, including the
+    // denylist check below — see normalizeCanonicalUuid's doc comment.
+    const normalizedUserId = normalizeCanonicalUuid(userId!);
+    if (normalizedUserId === null) {
+      return jsonError(400, "user_id must be a canonical UUID");
+    }
+    const { data: claims, error } = await db.getClaimsByUserId(normalizedUserId);
     // gh-1562 fixup: same leak class as getContractorById above.
     if (error) return unexpectedErrorResponse(error);
     if (!claims || claims.length === 0) {
@@ -228,7 +350,20 @@ export async function resolveAndMint(
     if (!claims.every((c) => c.is_test === true)) {
       return jsonError(403, "Forbidden: not every claim owned by user is is_test");
     }
-    targetUserId = userId!;
+    targetUserId = normalizedUserId;
+  }
+
+  // gh-2047 denylist (CTO36-B1513): refused on identity alone, before the
+  // cross-table check even runs — these three rows are known to pass BOTH
+  // is_test columns as of 2026-09-22 (see KNOWN_MISFLAGGED_REAL_ACCOUNTS'
+  // doc comment), so the cross-table check alone can no longer be trusted
+  // to stop them.
+  if (
+    KNOWN_MISFLAGGED_REAL_ACCOUNTS.has(targetUserId) ||
+    (resolvedContractorId !== null &&
+      KNOWN_MISFLAGGED_REAL_ACCOUNTS.has(resolvedContractorId))
+  ) {
+    return knownRealAccountRefusal();
   }
 
   // gh-1513 cross-table fix: the target's own table said is_test=true; the
@@ -248,6 +383,23 @@ export async function resolveAndMint(
   if (!authUser || !authUser.email) {
     return jsonError(404, "Auth user not found");
   }
+
+  // F1 fix, second independent check: re-check the denylist against the
+  // AUTH USER'S OWN id exactly as GoTrue resolved it, immediately before
+  // minting — not just the caller-supplied / DB-joined id checked above.
+  // Catches any drift between the id spelling used earlier in this
+  // function and the canonical id GoTrue itself reports for the same
+  // identity. A non-canonical authUser.id (should not happen — GoTrue's
+  // own ids are always canonical) is not treated as a match; it simply
+  // skips this extra check rather than throwing.
+  const canonicalAuthUserId = normalizeCanonicalUuid(authUser.id);
+  if (
+    canonicalAuthUserId !== null &&
+    KNOWN_MISFLAGGED_REAL_ACCOUNTS.has(canonicalAuthUserId)
+  ) {
+    return knownRealAccountRefusal();
+  }
+
   const targetEmail = authUser.email;
 
   const { data: link, error: linkError } = await db.generateMagicLink(targetEmail);

@@ -38,6 +38,7 @@ import {
   useContractSigningData,
   type SigningParams,
 } from './use-contract-signing-data';
+import { track } from '@/lib/track';
 
 export default function ContractSigningPage() {
   // Resolve whether this render is the DocuSign embedded-return view loaded INSIDE
@@ -122,8 +123,22 @@ function SignContent() {
   // ── onComplete: write homeowner_signed_at, then redirect to the static
   //    project-confirmation (coexistence — React route lands Phase 26). Held in a
   //    ref so the DocuSignEmbed listener always calls the latest closure. ──
+  //
+  // gh-1940 fix2 (cto32-review-pr1979-20260915.md, finding B3): DocuSignEmbed's
+  // message listener can invoke onComplete twice in one tick — a
+  // `{type:'session_end'}` message and a separate `{event:'signing_complete'}`
+  // message both independently call it, and DocuSign is not contractually
+  // barred from posting both for one signature. `completedRef` below is a
+  // single choke point covering BOTH entry paths into this ref (the
+  // DocuSignEmbed message listener via handleComplete, AND the init-time
+  // `signedReturn` effect below), so a second call in the same tick — or any
+  // later tick — is a no-op instead of a second `contract_signed` for one
+  // signature.
+  const completedRef = useRef(false);
   const onCompleteRef = useRef<() => void>(() => {});
   onCompleteRef.current = () => {
+    if (completedRef.current) return;
+    completedRef.current = true;
     setPhase('done');
     setSigningUrl(null);
     const cid = data.claim?.id ?? params?.claimId ?? '';
@@ -132,7 +147,18 @@ function SignContent() {
       quoteId,
       contractorId,
       signedAt: new Date().toISOString(),
-    }).finally(() => {
+    }).then((wroteOk) => {
+      // gh-1940: "contract signed" funnel step — fired after the sign
+      // completion write settles. fix2 (finding N4): only when the write
+      // actually succeeded — recordHomeownerSigned never rejects, so a
+      // failed write must be read from its return value, not a catch.
+      // fix3 (CEO ruling, PR #1979 comment 5698022815): no claim_id — a
+      // per-homeowner database identifier must not reach a GA4 property
+      // linked for remarketing. The event NAME is the funnel step; no
+      // replacement param is added.
+      if (wroteOk) {
+        track('contract_signed', {});
+      }
       if (cid) {
         window.location.href = buildProjectConfirmationUrl(cid);
       }

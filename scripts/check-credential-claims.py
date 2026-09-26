@@ -86,6 +86,13 @@ Patterns (case-insensitive):
      background>" within one sentence. Negations are excluded from the gap, so
      the honest disclaimer this fix introduced ("We do not independently verify
      it") does not trip the scanner that required it.
+  6. gh-2020 / D-104's other three barred words -- "approved" / "endorsed" /
+     "certified" in reference to contractors, the same shape as patterns 2 and
+     3 above (adjective-before-noun, and the predicate form). Only "vetted"
+     was covered before this; these three appeared in no regex in the file.
+     Anchored to a contractor-class noun rather than a bare word search, so
+     that "pre-approval" (contractor-pre-approval.html, D-210's pre-approval
+     gate, payout_approvals) never matches.
 
 Three categories of match are legitimate and are ALLOWLISTed rather than
 special-cased inline (same convention as check-10k-floor-phrasing.py and
@@ -153,6 +160,46 @@ PATTERNS = [
         r"(?:licensed|insured|vetted|screened|verified|background[- ]checked)\b",
         re.IGNORECASE,
     ),
+    # gh-2020 / D-104: "approved" / "endorsed" / "certified" are the three
+    # barred words D-104 names that no pattern above catches -- only "vetted"
+    # was covered. Anchored to a contractor-class noun (never a bare
+    # \bapproved\b) because "approved" is load-bearing legitimate vocabulary
+    # elsewhere in this repo: contractor-pre-approval.html is a real page,
+    # D-210's three-artifact pre-approval gate is a real product flow, and
+    # payout_approvals is a real table. "pre-approval"/"pre-approved" must
+    # not match this pair -- verified against the repo's actual usage
+    # (scripts/check-credential-claims.test.py plants a "pre-approval"
+    # negative alongside the positive control).
+    # adjective-before-noun, mirroring PATTERNS[1]'s shape.
+    #
+    # gh-2020 fix round 1 (Kevin, orchestrator verify pass): the leading \b
+    # that gh-2020's body specifies is NOT sufficient to exclude
+    # "pre-approved". A hyphen is a non-word character, so "pre-approved
+    # contractors" carries a word boundary immediately before "approved" and
+    # the \b form matches it. Measured, not assumed:
+    #
+    #   re.search(r"\b(?:approved|...)\s+(?:contractors?|...)",
+    #             "our pre-approved contractors")   ->   "approved contractors"
+    #
+    # That is the exact false positive this issue forbids in its own words --
+    # "pre-approval / pre-approved must not match -- verify that explicitly,
+    # because \bapproved\b matches inside pre-approved in many naive
+    # spellings" -- and it would have fired on D-210's real three-artifact
+    # pre-approval flow and on contractor-pre-approval.html. The planted
+    # negative in the sibling .test.py did not catch it because its fixture
+    # said "pre-approval process" and "pre-approved to bid", neither of which
+    # is followed by a contractor-class noun; the fixture now carries the
+    # real hazard phrase.
+    #
+    # (?<![\w-]) forbids a preceding word character OR hyphen, which keeps
+    # every genuine D-104 violation and drops the compound forms.
+    re.compile(r"(?<![\w-])(?:approved|endorsed|certified)\s+"
+               r"(?:local\s+|roofing\s+)?(?:contractors?|professionals?|roofers?|bidders?)\b",
+               re.IGNORECASE),
+    # predicate form, mirroring PATTERNS[2]'s shape
+    re.compile(r"\b(?:contractors?|professionals?|roofers?|bidders?)\s+"
+               r"(?:on\s+[^.]{0,40}?\s+)?(?:are|is)\s+(?:all\s+|fully\s+)?"
+               r"(?:approved|endorsed|certified)\b", re.IGNORECASE),
     # -- pass 2: the bare-"licensed" roster forms (4a-4e) --
     # 4a: the supply claim -- "competing quotes/bids from licensed contractors".
     re.compile(
@@ -292,6 +339,118 @@ ALLOWLIST = [
         "is admin-triggered per contractor -- not automatic at signup -- is "
         "also why the welcome email no longer promises it to everyone. "
         "(Matches on two lines: plain-text and HTML halves of the same email.)",
+    ),
+    # ---- gh-2020: hits from the new "approved/endorsed/certified" patterns
+    # ---- (PATTERNS[3]/[4] above). None of these is OtterQuote representing
+    # ---- its own contractors as vetted or certified to a homeowner.
+    (
+        "bids.html",
+        "rows for active/approved contractors",
+        "Source-code comment describing the contractors_public view's row "
+        "filter (#534/D-218) -- an internal account-status predicate, never "
+        "rendered to any user. Not a claim about contractor screening.",
+    ),
+    (
+        "contractor-opportunities.html",
+        "You must be an approved contractor to purchase this report.",
+        "Contractor-facing gate message shown to a signed-out visitor on the "
+        "contractor opportunities marketplace -- 'approved' here means "
+        "accepted onto the platform (D-210's pre-approval/acceptance gate), "
+        "addressed to the contractor about their own account, not a "
+        "homeowner-facing claim that our contractors are vetted/certified.",
+    ),
+    (
+        "js/auth.js",
+        "Mirrors the CEO-approved contractor predicate (#543, see",
+        "Source-code doc comment for an E2E-test-signal predicate (gh-397/#689) "
+        "-- internal test-exclusion logic, never rendered to any user.",
+    ),
+    (
+        "react-app/app/lib/test-signal.ts",
+        "Mirrors the CEO-approved contractor predicate (#543, see",
+        "React twin of the js/auth.js doc comment above -- same internal "
+        "test-exclusion predicate, same reason.",
+    ),
+    (
+        "react-app/app/(homeowner)/bids/use-bids-data.ts",
+        "returns rows for active/approved contractors",
+        "Source-code comment describing the same contractors_public view "
+        "filter as the bids.html entry above (#534/D-218) -- internal "
+        "account-status predicate, never rendered to any user.",
+    ),
+    (
+        "react-app/app/(homeowner)/dashboard/use-dashboard-data.ts",
+        "Predicate mirrors the CEO-approved contractor check (#543",
+        "Source-code comment referencing the same internal E2E test-exclusion "
+        "predicate (#543/#689) as the js/auth.js entry above.",
+    ),
+    (
+        "react-app/app/(homeowner)/repair-intake/use-repair-intake-data.ts",
+        "Predicate mirrors the CEO-approved contractor check (#543",
+        "Source-code comment referencing the same internal E2E test-exclusion "
+        "predicate (#543/#689) as the js/auth.js entry above.",
+    ),
+    (
+        "blog/roof-shingle-warranty-tiers-explained.html",
+        "the better tiers are only available when a certified contractor installs a full system of matched components",
+        "Consumer education about MANUFACTURER certification programs (GAF "
+        "Master Elite, Owens Corning Platinum Preferred, CertainTeed SELECT "
+        "ShingleMaster) that gate warranty tiers -- a third party's "
+        "certification, not an OtterQuote claim about our own roster.",
+    ),
+    (
+        "blog/roof-shingle-warranty-tiers-explained.html",
+        "When a certified contractor installs a complete system of the manufacturer's matched components",
+        "Same manufacturer-certification consumer education as the entry "
+        "above, describing how GAF/Owens Corning/CertainTeed system "
+        "warranties work -- not a platform claim.",
+    ),
+    (
+        "blog/roof-shingle-warranty-tiers-explained.html",
+        "plus one or more upgraded system warranties available only through certified contractors",
+        "Same manufacturer-certification consumer education -- explains why "
+        "upgraded warranty tiers require a manufacturer-certified installer.",
+    ),
+    (
+        "blog/roof-shingle-warranty-tiers-explained.html",
+        "GAF</strong> pairs its shingles with system warranties available through Master Elite and Certified contractors",
+        "Same manufacturer-certification consumer education -- names GAF's "
+        "own certification tiers, not an OtterQuote representation.",
+    ),
+    (
+        "blog/roof-shingle-warranty-tiers-explained.html",
+        "ask each contractor which tier they're actually registering and whether they hold the certification it requires",
+        "Consumer advice telling the HOMEOWNER to ask about manufacturer "
+        "certification themselves -- the opposite of an OtterQuote claim "
+        "that our contractors are certified.",
+    ),
+    (
+        "blog/roof-shingle-warranty-tiers-explained.html",
+        "Why do I need a certified contractor for the best warranty?",
+        "FAQ heading (prose + JSON-LD twin) explaining the manufacturer-"
+        "certification concept to homeowners -- consumer education, not a "
+        "platform claim.",
+    ),
+    (
+        "guides/how-to-read-contractor-estimate.html",
+        "Certified Roofing Professional required for Advantage tier",
+        "Table cell in a manufacturer warranty-tier comparison -- describes "
+        "what the MANUFACTURER requires for its own tier, not an OtterQuote "
+        "claim about our roster.",
+    ),
+    (
+        "guides/how-to-read-contractor-estimate.html",
+        "or one might be a system warranty from a certified contractor",
+        "Consumer advice telling the homeowner to compare warranty tiers and "
+        "ask each contractor directly -- 'Ask each contractor to describe the "
+        "specific warranty document' is the very next sentence.",
+    ),
+    (
+        "guides/how-to-read-contractor-estimate.html",
+        "whether it requires a certified contractor, and whether the contractor holds that certification",
+        "Consumer advice telling the homeowner to verify manufacturer "
+        "certification directly on the manufacturer's own website -- the "
+        "sentence's own next clause says exactly that.",
     ),
 ]
 

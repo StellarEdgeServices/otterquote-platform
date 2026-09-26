@@ -205,6 +205,32 @@ export function showCompareToggle(bids: BidRow[]): boolean {
   return activeBids(bids).length >= 2;
 }
 
+/**
+ * gh-1940 — pure decision function for the `bids_viewed` funnel event's
+ * once-guard, extracted out of page.tsx's useEffect so the guard itself is
+ * unit-testable without mounting the full page (which needs
+ * useBidsClaim/useBidUpdates/useBidContractors/useContractorLicenses/
+ * useBidUpdatedNotifications all live). page.tsx still owns the
+ * `bidsViewedFiredRef` (a ref has to live in the component — it survives
+ * across renders, this function does not), and calls this once per render
+ * to decide whether THIS render is the one that should fire it.
+ *
+ * Fires once, the first time bids have actually finished loading with at
+ * least one bid to show — not on every render/poll from the realtime hook.
+ */
+export function shouldFireBidsViewed(args: {
+  alreadyFired: boolean;
+  claimLoading: boolean;
+  hasClaimId: boolean;
+  bidsLoading: boolean;
+  bidCount: number;
+}): boolean {
+  if (args.alreadyFired) return false;
+  if (args.claimLoading || (args.hasClaimId && args.bidsLoading)) return false;
+  if (args.bidCount === 0) return false;
+  return true;
+}
+
 // ── Award-refusal copy (gh-1532) ────────────────────────────────────────
 
 /**

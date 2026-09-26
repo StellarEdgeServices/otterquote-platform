@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
-<title>How to Negotiate Better Roof Repairs on Your Insurance Claim · Otter Quotes</title>
-<meta name="description" content="Learn how to negotiate better materials, extended warranties, and upgraded products from your roofing contractor after an insurance claim &mdash; without breaking the law.">
+<title>6 Things to Ask Your Roofer For on an Insurance Job | Otter Quotes</title>
+<meta name="description" content="What to ask your roofing contractor for on an insurance job — better shingles, longer workmanship warranties, synthetic underlayment — and the deductible line never to cross.">
 <link rel="canonical" href="https://otterquote.com/blog/how-to-negotiate-better-roof-repair-insurance-claim.html">
 <meta property="og:title" content="How to Negotiate Better Roof Repairs on Your Insurance Claim · Otter Quotes">
 <meta property="og:description" content="Your insurance claim covers the repair &mdash; but smart homeowners negotiate upgrades. Learn what you can (and can't) ask for from your contractor.">
@@ -18,6 +18,7 @@
 
 <!-- GA4 -->
 <script src="/js/ga-gate.js"></script>
+<script src="/js/meta-pixel-gate.js"></script>
 <script>gtag('config', 'G-D1Y1TLGEFY');</script>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
@@ -368,7 +369,7 @@
     <div class="cta-box">
       <h3>Compare Contractors Side by Side</h3>
       <p>Not sure which contractor offers the best value? Otter Quotes lets you compare bids, materials, warranties, and timelines from multiple contractors &mdash; so you can negotiate from a position of strength.</p>
-      <a href="https://app.otterquote.com/get-started" class="btn btn-primary btn-lg">Get Competing Bids Free</a>
+      <a href="/start.html" class="btn btn-primary btn-lg">Get Competing Bids Free</a>
     </div>
 
     <!-- Step 7 -->
@@ -443,11 +444,15 @@
       </div>
     </section>
 
+    <p style="font-size: 0.85rem; color: var(--gray); margin-top: var(--sp-4);">
+      Have more questions about how Otter Quotes works? See our <a href="/faq.html" style="color: var(--gray);">FAQ</a>.
+    </p>
+
     <!-- Final CTA -->
     <div class="cta-box" style="margin-top: var(--sp-12); margin-bottom: var(--sp-8);">
       <h3>Ready to Get Better Value From Your Insurance Claim?</h3>
       <p>Post your project on Otter Quotes and let contractors compete for your business. Compare bids, materials, warranties, and timelines &mdash; then choose the contractor who delivers the most value. It's completely free for homeowners.</p>
-      <a href="https://app.otterquote.com/get-started" class="btn btn-primary btn-lg">Get Started Today</a>
+      <a href="/start.html" class="btn btn-primary btn-lg">Get Started Today</a>
     </div>
 
   </div>
@@ -579,6 +584,46 @@ document.querySelectorAll('.faq-item h3').forEach(item => {
         this.parentElement.classList.toggle('active');
     });
 });
+</script>
+<script>
+// gh-1994 phase 2 (round 2, review 5705874119 B1/N1): carry utm_*/fbclid/
+// gclid from this page's own URL onto every "Get started" CTA that points
+// at the router, on top of the oq_ft cookie fallback (gh-1983)
+// start.html's own collectAttribution() already reads -- belt and
+// suspenders for cookie-blocked browsers. No PII, same allow-list
+// start.html reads. Matches by normalized pathname, not an exact-string
+// selector, because Netlify's pretty-URL rewrite serves the on-disk
+// href="/start.html" as href="/start" (no ".html", no trailing slash) --
+// an exact-string selector never matches that served markup, only a local
+// static server without the rewrite. Also tolerates a trailing slash
+// ("/start/") and a login.html-style relative "start.html". Idempotent:
+// run once per page load, never runs twice on the same anchor.
+(function () {
+  'use strict';
+  var ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid'];
+  var params = new URLSearchParams(window.location.search);
+  var qs = '';
+  ATTR_KEYS.forEach(function (k) {
+    var v = params.get(k);
+    if (v) qs += (qs ? '&' : '?') + k + '=' + encodeURIComponent(v);
+  });
+  if (!qs) return;
+  function isStartHref(href) {
+    if (!href) return false;
+    try {
+      var p = new URL(href, window.location.href).pathname.replace(/\/+$/, '');
+      return p === '/start' || p === '/start.html';
+    } catch (e) {
+      return false;
+    }
+  }
+  document.querySelectorAll('a[href]').forEach(function (a) {
+    var href = a.getAttribute('href');
+    if (isStartHref(href)) {
+      a.setAttribute('href', href + qs);
+    }
+  });
+})();
 </script>
 </body>
 </html>

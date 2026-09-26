@@ -9,6 +9,17 @@
 //   STRIPE_SECRET_KEY              — already set (do not use until prod approval)
 //   CLICKUP_API_KEY                — ClickUp personal API token (set before staging test)
 //
+// gh-2078b / D-330: server-side Meta Conversions API (CAPI) `Purchase` event,
+// sent when a measurement-order ($15 Hover report) PaymentIntent succeeds.
+// Additive and orthogonal to the gh-948 platform-fee handlers below -- scoped
+// by metadata.type, touches no platform_fee code path, isolated so a CAPI
+// failure/timeout can NEVER fail this webhook or block an order. See
+// meta-capi.ts for the payload/decision logic and its own header for the
+// dedupe / test-mode-isolation design. Requires the META_CAPI_ACCESS_TOKEN
+// Supabase secret (Doppler otterquote/prd, #2078 comment 5777717131); a safe
+// no-op when it is absent (tier:3b -- do not deploy until the R-097 window
+// closes; see PR body).
+//
 // D-228 routing logic:
 //   dispute.amount < $500 AND reason != 'product_not_received'
 //     → auto-submit D-215 evidence stack via Stripe Disputes API
@@ -34,6 +45,25 @@ import {
   evaluateDisputeRouting,
   maySubmitFinalEvidence,
 } from "./dispute-routing.ts";
+import {
+  buildCapiEventId,
+  buildCapiPurchasePayload,
+  CAPI_CLAIM_EVENT_TYPE,
+  capiClaimKey,
+  capiPurchaseValueUsd,
+  decideCapiPerson,
+  hashEmailSha256,
+  MEASUREMENT_ORDER_PI_TYPES,
+  MEASUREMENT_PURCHASE_VALUE_USD,
+  safeMetaErrorSummary,
+  sanitizeCapiVariant,
+  sendCapiPurchaseOnce,
+  shouldSendCapiEvent,
+  shouldSkipForAdSharingOptOut,
+  shouldSkipForNonUsdMeasurement,
+  shouldSkipForSuppression,
+  shouldSkipForGpcMetadata,
+} from "./meta-capi.ts";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -743,6 +773,7 @@ interface StripePaymentIntent {
   object: "payment_intent";
   status: string;
   amount: number;
+  amount_received?: number; // gh-2107: the charged amount, used for the CAPI Purchase value
   currency: string;
   livemode: boolean;
   metadata: Record<string, string>;
@@ -976,6 +1007,268 @@ async function handlePlatformFeePaymentFailed(
 }
 
 // ---------------------------------------------------------------------------
+// gh-2078b / D-330 -- Meta CAPI Purchase from measurement-order payments
+// ---------------------------------------------------------------------------
+// Bounded fetch timeout (acceptance criterion 2: "an unbounded `await` on a
+// user-facing path is a named defect class in this codebase" -- this path is
+// not user-facing, but the Stripe webhook has its own delivery-timeout
+// contract with Stripe, so an unbounded outbound call here is the same class
+// of risk). 3s leaves ample headroom under Stripe's own webhook timeout
+// while still giving Meta a real chance to respond.
+const META_CAPI_TIMEOUT_MS = 3000;
+const META_CAPI_API_VERSION = "v21.0";
+const META_CAPI_PIXEL_ID = "800470107451795";
+
+/**
+ * Sends a Meta CAPI `Purchase` event for a measurement-order PaymentIntent
+ * that just succeeded. Entirely best-effort:
+ *   - acceptance criterion 3: no-ops safely if META_CAPI_ACCESS_TOKEN is unset.
+ *   - acceptance criterion 4: skips test traffic unless a real Meta
+ *     test_event_code is configured (see meta-capi.ts's shouldSendCapiEvent).
+ *   - acceptance criterion 2: every failure mode (missing claim, missing
+ *     email, Meta HTTP error, timeout, thrown exception) is caught here and
+ *     logged -- NONE of them propagate. This function's completion is never
+ *     awaited by anything that could turn its failure into a webhook failure
+ *     or a Stripe retry.
+ * Scoped by metadata.type (MEASUREMENT_ORDER_PI_TYPES) so it never touches
+ * the platform_fee code path above, and vice versa.
+ */
+async function handleMeasurementOrderCapiPurchase(
+  paymentIntent: StripePaymentIntent,
+  supabase: ReturnType<typeof createClient>,
+): Promise<void> {
+  const piType = paymentIntent.metadata?.type;
+  if (!piType || !MEASUREMENT_ORDER_PI_TYPES.has(piType)) return; // not a measurement-order purchase
+
+  // gh-2107 (REVIEW: FAIL 5806828503 F2 on #2134): a Global Privacy Control signal carried on the PaymentIntent itself (stamped by
+  // create-payment-intent's post-create update) opts the buyer out even if the profile write failed. Checked FIRST, before any
+  // lookup, the profile read, the hash or a send. The log carries the PaymentIntent id and a fixed reason only.
+  const gpcMeta = shouldSkipForGpcMetadata(paymentIntent.metadata);
+  if (gpcMeta.skip) {
+    console.log(`[${FN_NAME}] gh-2107: CAPI Purchase skipped for PI ${paymentIntent.id} (${gpcMeta.reason})`);
+    return;
+  }
+
+  try {
+    // gh-2107 (Ben's DECIDED (a) on #2078; REVIEW B1 / LEGAL-READ L1): the Purchase is reported as 15 USD, so it is sent only for a
+    // PaymentIntent that is exactly 1500 cents in USD. Decided first: before the token, any lookup, the hash or the send. The log
+    // carries the PaymentIntent id and a fixed reason only (not the currency or amount).
+    const nonUsd = shouldSkipForNonUsdMeasurement(paymentIntent);
+    if (nonUsd.skip) {
+      console.log(
+        `[${FN_NAME}] gh-2107: CAPI Purchase skipped for PI ${paymentIntent.id} (${nonUsd.reason})`,
+      );
+      return;
+    }
+
+    const capiToken = Deno.env.get("META_CAPI_ACCESS_TOKEN");
+    if (!capiToken) {
+      // Acceptance criterion 3 -- safe to deploy before the secret lands.
+      console.log(
+        `[${FN_NAME}] gh-2078b: META_CAPI_ACCESS_TOKEN not set -- CAPI Purchase skipped (safe no-op) for PI ${paymentIntent.id}`,
+      );
+      return;
+    }
+
+    const claimId = paymentIntent.metadata?.claim_id ?? null;
+    let claimIsTest = false;
+    let userId: string | null = null;
+
+    let claimLookupFailed = false;
+
+    if (claimId) {
+      const { data: claim, error: claimErr } = await supabase
+        .from("claims")
+        .select("id, user_id, is_test")
+        .eq("id", claimId)
+        .maybeSingle();
+      if (claimErr) {
+        claimLookupFailed = true; // fixed message only: no raw database text in the log
+        console.error(`[${FN_NAME}] gh-2078b: claim lookup failed for PI ${paymentIntent.id}`);
+      } else if (claim) {
+        claimIsTest = (claim as { is_test: boolean | null }).is_test === true;
+        userId = (claim as { user_id: string | null }).user_id;
+      }
+    }
+
+    // gh-2107 (REVIEW: FAIL B2 / LEGAL-READ: FAIL): fail CLOSED on the person, not only on the profile. If the claim lookup
+    // failed, or there is no claim_id, or the claim has no user, whether this person opted out of advertising sharing
+    // cannot be read, and an unknown opt-out is not sent to. Decided before the test-mode decision, the profile read, and
+    // any send. The log carries the PaymentIntent id and a fixed reason only.
+    const person = decideCapiPerson({ claimId, claimLookupFailed, userId });
+    if (person.skip) {
+      console.log(
+        `[${FN_NAME}] gh-2107: CAPI Purchase skipped for PI ${paymentIntent.id} (${person.reason})`,
+      );
+      return;
+    }
+
+    // Acceptance criterion 4 -- decide BEFORE resolving PII whether this will
+    // send at all, so a skipped test-mode event never even looks up an email.
+    const testEventCode = Deno.env.get("META_CAPI_TEST_EVENT_CODE") ?? null;
+    if (
+      !shouldSendCapiEvent({
+        livemode: paymentIntent.livemode,
+        claimIsTest,
+        testEventCode,
+      })
+    ) {
+      console.log(
+        `[${FN_NAME}] gh-2078b: test-mode/is_test purchase with no META_CAPI_TEST_EVENT_CODE configured -- ` +
+          `CAPI Purchase skipped to avoid polluting Meta production data (PI ${paymentIntent.id}, livemode=${paymentIntent.livemode}, claimIsTest=${claimIsTest})`,
+      );
+      return;
+    }
+    const isTestTraffic = !paymentIntent.livemode || claimIsTest;
+
+    // -- Resolve + hash the homeowner's email (never send raw PII) --------
+    // profiles first, falling back to auth.admin -- same order mark-job-complete
+    // already uses for this exact lookup.
+    let hashedEmail: string | null = null;
+    if (userId) {
+      let rawEmail: string | null = null;
+      const { data: profile, error: profileErr } = await supabase
+        .from("profiles")
+        .select("email, ad_sharing_opt_out")
+        .eq("id", userId)
+        .maybeSingle();
+      // gh-2107 / D-330 half 2 (Dustin's ruling "b."): skip the CAPI Purchase for anyone who opted out of advertising
+      // sharing (privacy policy Section 12; recorded by a GPC signal or by an admin from a support email). Decided BEFORE
+      // the email is hashed or anything is built or sent. Fails closed if the profile could not be read. The log line
+      // carries the PaymentIntent id and a fixed reason only: no email, no raw database text.
+      const optOut = shouldSkipForAdSharingOptOut(
+        profile as { ad_sharing_opt_out?: boolean | null } | null,
+        !!profileErr,
+      );
+      if (optOut.skip) {
+        console.log(
+          `[${FN_NAME}] gh-2107: CAPI Purchase skipped for PI ${paymentIntent.id} (${optOut.reason})`,
+        );
+        return;
+      }
+      rawEmail = (profile as { email?: string | null } | null)?.email ?? null;
+      if (!rawEmail) {
+        const { data: authUser } = await supabase.auth.admin.getUserById(userId);
+        rawEmail = authUser?.user?.email ?? null;
+      }
+      if (rawEmail) hashedEmail = await hashEmailSha256(rawEmail);
+    }
+    // gh-2107 (Ben's ruling c. on #2078): the hashed-email suppression list. Placed AFTER the address is hashed, from whichever
+    // source it came (profiles.email or the auth.admin fallback), because the digest looked up is exactly the digest about to be
+    // sent as user_data.em; BEFORE the payload is built or anything is sent. Fails CLOSED: a lookup error (including the table
+    // being absent) skips. The log carries the PaymentIntent id and a fixed reason only: no digest, no email, no database text.
+    if (hashedEmail) {
+      const { data: suppressedRow, error: suppErr } = await supabase
+        .from("ad_sharing_suppressions")
+        .select("email_sha256")
+        .eq("email_sha256", hashedEmail)
+        .maybeSingle();
+      const suppression = shouldSkipForSuppression(!!suppressedRow, !!suppErr);
+      if (suppression.skip) {
+        console.log(
+          `[${FN_NAME}] gh-2107: CAPI Purchase skipped for PI ${paymentIntent.id} (${suppression.reason})`,
+        );
+        return;
+      }
+    }
+    if (!hashedEmail) {
+      console.warn(
+        `[${FN_NAME}] gh-2078b: no email resolvable for claim ${claimId ?? "unknown"} (PI ${paymentIntent.id}) -- ` +
+          `sending CAPI Purchase with no user_data (reduced Meta match quality, not blocked)`,
+      );
+    }
+
+    // `variant` is not currently threaded into PaymentIntent metadata (see
+    // meta-capi.ts's sanitizeCapiVariant doc) -- reads 'unknown' until a
+    // follow-up wires it through create-payment-intent. Flagged as a Q: on
+    // #2078, not silently faked here.
+    const variant = sanitizeCapiVariant(paymentIntent.metadata?.variant);
+
+    const payload = buildCapiPurchasePayload({
+      paymentIntentId: paymentIntent.id,
+      eventTimeSeconds: Math.floor(Date.now() / 1000),
+      // What Stripe charged (D-181 keeps the price server-side and it can move); the constant only if that is unusable.
+      valueUsd: capiPurchaseValueUsd(paymentIntent.amount_received ?? paymentIntent.amount, MEASUREMENT_PURCHASE_VALUE_USD),
+      variant,
+      hashedEmail,
+      testEventCode: isTestTraffic ? testEventCode : null,
+    });
+
+    // gh-2107 (Ben's return on the Test Events walk, #2078 5815458523): deduplicate on the PAYMENT INTENT, not the event. The same PaymentIntent under a
+    // new Stripe event id used to send a second Purchase and Meta processed both. The send is now CLAIMED first (`measurement_purchase:<pi>` in the
+    // existing stripe_webhook_events ledger, whose primary key makes the insert atomic); an existing claim skips (`already_sent`), a claim that cannot
+    // be verified does not send (`claim_failed`, fail closed), and a failed send releases the claim so a retry can send. Taken here, AFTER every skip
+    // decision above, so a skipped purchase never consumes a claim.
+    const outcome = await sendCapiPurchaseOnce({
+      claim: async () => {
+        const { error } = await supabase
+          .from("stripe_webhook_events")
+          .insert({ event_id: capiClaimKey(paymentIntent.id), event_type: CAPI_CLAIM_EVENT_TYPE });
+        return error ? { code: (error as { code?: string }).code } : null;
+      },
+      send: async () => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), META_CAPI_TIMEOUT_MS);
+        try {
+          // gh-2107 (REVIEW: FAIL B1): the access token goes in the JSON BODY, never the URL. A network-level fetch failure
+          // (DNS, TLS, connect) puts the full URL in the thrown error, and the token would be written to the function logs.
+          const res = await fetch(
+            `https://graph.facebook.com/${META_CAPI_API_VERSION}/${META_CAPI_PIXEL_ID}/events`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ...payload, access_token: capiToken }),
+              signal: controller.signal,
+            },
+          );
+          const resBody = await res.text();
+          if (!res.ok) {
+            // Meta's error body can echo request data: log and store only a numeric code and a short type token.
+            const metaError = safeMetaErrorSummary(resBody);
+            console.error(
+              `[${FN_NAME}] gh-2078b: Meta CAPI Purchase failed (HTTP ${res.status}, ${metaError}) for PI ${paymentIntent.id}`,
+            );
+            await supabase.from("platform_alerts_log").insert({
+              alert_type: "meta_capi_purchase_failed",
+              function_name: FN_NAME,
+              message: `Meta CAPI Purchase send failed (HTTP ${res.status}, ${metaError}) for payment_intent ${paymentIntent.id}`,
+              sent_at: new Date().toISOString(),
+            });
+            return false;
+          }
+          console.log(
+            `[${FN_NAME}] gh-2078b: Meta CAPI Purchase sent for PI ${paymentIntent.id} (event_id=${buildCapiEventId(paymentIntent.id)}, test_event_code=${isTestTraffic ? testEventCode : "none"})`,
+          );
+          return true;
+        } finally {
+          clearTimeout(timer);
+        }
+      },
+      release: async () => {
+        const { error } = await supabase
+          .from("stripe_webhook_events")
+          .delete()
+          .eq("event_id", capiClaimKey(paymentIntent.id));
+        return !error;
+      },
+      log: (m) => console.error(`[${FN_NAME}] ${m}`),
+    });
+    if (outcome === "already_sent" || outcome === "claim_failed") {
+      console.log(`[${FN_NAME}] gh-2107: CAPI Purchase skipped for PI ${paymentIntent.id} (${outcome})`);
+    }
+  } catch (err) {
+    // Acceptance criterion 2 -- CAPI failure/timeout/exception must NEVER
+    // fail the webhook, throw into Stripe's retry path, or block the order.
+    // Logged honestly; nothing here rethrows.
+    // The error NAME only, never the object: on a network failure its cause carries the request URL and message text.
+    const isAbort = err instanceof Error && err.name === "AbortError";
+    console.error(
+      `[${FN_NAME}] gh-2078b: Meta CAPI Purchase ${isAbort ? "timed out" : "threw"} for PI ${paymentIntent.id} (${err instanceof Error ? err.name : "non-error"})`,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
 Deno.serve(async (req: Request) => {
@@ -1072,6 +1365,9 @@ Deno.serve(async (req: Request) => {
     } else if (event.type === "payment_intent.succeeded") {
       const piEvent = event as unknown as StripePaymentIntentEvent;
       await handlePlatformFeePaymentSucceeded(piEvent.data.object, supabase);
+      // gh-2078b / D-330 -- independent of the platform_fee handler above
+      // (scoped by metadata.type, never throws -- see the function's own doc).
+      await handleMeasurementOrderCapiPurchase(piEvent.data.object, supabase);
     } else if (event.type === "payment_intent.payment_failed") {
       const piEvent = event as unknown as StripePaymentIntentEvent;
       await handlePlatformFeePaymentFailed(piEvent.data.object, supabase);

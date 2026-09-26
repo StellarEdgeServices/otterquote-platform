@@ -38,6 +38,43 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 const FUNCTION_NAME = "send-home-profile-prompt";
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
 const BATCH_LIMIT = 50;
+// gh-2069: this function's `notification_type` in the `notifications` table
+// — same table, same columns (recipient/channel/mailgun_id/delivered) the
+// admin digest in send-homeowner-next-steps already writes to.
+export const HOME_PROFILE_PROMPT_TEMPLATE = "home_profile_prompt";
+
+export interface NotificationRow {
+  user_id: string;
+  claim_id: string;
+  channel: "email";
+  notification_type: string;
+  recipient: string;
+  message_preview: string;
+  delivered: boolean;
+  mailgun_id: string | null;
+}
+
+// gh-2069: durable per-send record, written for every attempt (accepted or
+// rejected). A minimal Supabase-client shape rather than the concrete
+// `createClient` return type so a test can hand this a fake without
+// importing @supabase/supabase-js. Failure to write is logged, never thrown
+// — the email has already gone out (or definitively failed) by the time
+// this is called.
+export interface NotificationClient {
+  from(table: string): {
+    insert(row: NotificationRow): PromiseLike<{ error: { message: string } | null }>;
+  };
+}
+
+export async function insertNotification(
+  supabase: NotificationClient,
+  row: NotificationRow,
+): Promise<void> {
+  const { error } = await supabase.from("notifications").insert(row);
+  if (error) {
+    console.warn(`[${FUNCTION_NAME}] send recorded but notifications insert failed for claim ${row.claim_id}:`, error.message);
+  }
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -338,8 +375,30 @@ function buildEmailContent(
 
 // ─── Core: process a single claim ────────────────────────────────────────────
 
-async function processClaim(
-  supabase: ReturnType<typeof createClient>,
+// gh-2069: a minimal structural interface covering exactly what processClaim
+// calls on `supabase` — narrower than `ReturnType<typeof createClient>` so a
+// test can hand it a plain fake object (no real Supabase client, no network)
+// and TypeScript still checks the shape.
+export interface ProcessClaimSupabase extends NotificationClient {
+  from(table: string): {
+    select(columns: string): {
+      // PromiseLike, not Promise: the real supabase-js PostgrestBuilder is
+      // thenable but not a full Promise (no .catch/.finally), and this
+      // interface exists so a plain fake object satisfies it too.
+      eq(column: string, value: unknown): { maybeSingle(): PromiseLike<{ data: Record<string, unknown> | null }> };
+    };
+    update(row: Record<string, unknown>): { eq(column: string, value: unknown): PromiseLike<{ error: { message: string } | null }> };
+    insert(row: NotificationRow): PromiseLike<{ error: { message: string } | null }>;
+  };
+  auth: {
+    admin: {
+      getUserById(id: string): PromiseLike<{ data: { user: { email?: string; user_metadata?: { full_name?: string } } | null } }>;
+    };
+  };
+}
+
+export async function processClaim(
+  supabase: ProcessClaimSupabase,
   claim: ClaimRow,
   mailgunApiKey: string | undefined,
   siteUrl: string
@@ -384,8 +443,18 @@ async function processClaim(
     .maybeSingle();
 
   if (profile?.email) {
-    homeownerEmail = profile.email;
-    homeownerName = profile.full_name || "there";
+    // gh-2069 REVIEW FIX (CI red on head d3637483): the real supabase-js
+    // client's `.select("email, full_name")` return type resolves to `{}`
+    // under this pinned esm.sh types / Deno 2.8.3 combination (the same
+    // pre-existing TS2589-class mismatch documented at this file's top),
+    // so `profile.email` / `profile.full_name` type-check as `{}`, not
+    // `string`. These two casts assert the shape the `select()` column list
+    // actually requests — they add no runtime behavior, only satisfy
+    // `deno check` under the CI command
+    // (`deno test --allow-read=... supabase/functions/`), which type-checks
+    // every test file's imports, including this one via index.test.ts.
+    homeownerEmail = profile.email as string;
+    homeownerName = (profile.full_name as string | null) || "there";
   } else {
     const { data: authUser } = await supabase.auth.admin.getUserById(claim.user_id);
     homeownerEmail = authUser?.user?.email || null;
@@ -410,8 +479,25 @@ async function processClaim(
   );
 
   // Send via Mailgun
+  // gh-2069: write a `notifications` row for every attempt (accepted or
+  // rejected) — this function previously discarded Mailgun's response
+  // entirely and never touched `notifications`, same defect #2069 found in
+  // send-homeowner-next-steps. `insertNotification` is a plain local helper
+  // (this function has no injected-dependency test harness like
+  // ./deliver-stage.ts's — see index.test.ts for how the tests exercise this
+  // via a fake Mailgun + a fake Supabase client instead).
   if (!mailgunApiKey) {
     console.warn(`[${FUNCTION_NAME}] MAILGUN_API_KEY not set — skipping email send for claim ${claimId}`);
+    await insertNotification(supabase, {
+      user_id: claim.user_id,
+      claim_id: claimId,
+      channel: "email",
+      notification_type: HOME_PROFILE_PROMPT_TEMPLATE,
+      recipient: homeownerEmail,
+      message_preview: subject,
+      delivered: true,
+      mailgun_id: null,
+    });
   } else {
     const formData = new FormData();
     formData.append("from", "Otter Quotes <noreply@mail.otterquote.com>");
@@ -431,14 +517,49 @@ async function processClaim(
       );
 
       if (mgResponse.ok) {
+        // gh-2069: copy sendAdminDigestMail's pattern (send-homeowner-next-steps/
+        // index.ts) — parse the response body and keep Mailgun's message id
+        // instead of discarding it.
+        const mgData = await mgResponse.json().catch(() => ({}));
+        const mailgunId = (mgData as { id?: string })?.id ?? null;
         console.log(`[${FUNCTION_NAME}] Email sent → ${homeownerEmail} for claim ${claimId}`);
+        await insertNotification(supabase, {
+          user_id: claim.user_id,
+          claim_id: claimId,
+          channel: "email",
+          notification_type: HOME_PROFILE_PROMPT_TEMPLATE,
+          recipient: homeownerEmail,
+          message_preview: subject,
+          delivered: true,
+          mailgun_id: mailgunId,
+        });
       } else {
         const errText = await mgResponse.text().catch(() => "(unreadable)");
         console.error(`[${FUNCTION_NAME}] Mailgun ${mgResponse.status} for ${claimId}: ${errText}`);
+        await insertNotification(supabase, {
+          user_id: claim.user_id,
+          claim_id: claimId,
+          channel: "email",
+          notification_type: HOME_PROFILE_PROMPT_TEMPLATE,
+          recipient: homeownerEmail,
+          message_preview: `FAILED: Mailgun ${mgResponse.status}: ${errText}`,
+          delivered: false,
+          mailgun_id: null,
+        });
         return { claim_id: claimId, result: "error", error: `Mailgun ${mgResponse.status}` };
       }
     } catch (err) {
       console.error(`[${FUNCTION_NAME}] Mailgun fetch threw for ${claimId}:`, err);
+      await insertNotification(supabase, {
+        user_id: claim.user_id,
+        claim_id: claimId,
+        channel: "email",
+        notification_type: HOME_PROFILE_PROMPT_TEMPLATE,
+        recipient: homeownerEmail,
+        message_preview: `FAILED: ${String(err)}`,
+        delivered: false,
+        mailgun_id: null,
+      });
       return { claim_id: claimId, result: "error", error: String(err) };
     }
   }
@@ -459,6 +580,12 @@ async function processClaim(
 
 // ─── Main handler ─────────────────────────────────────────────────────────────
 
+// gh-2069: guarded so index.test.ts (new — see that file) can import this
+// module for processClaim/insertNotification without serve() binding a
+// port. Supabase's Edge Function runtime invokes this file as the entry
+// point, so import.meta.main is still true in production/deployment; only a
+// test importer sees it false.
+if (import.meta.main) {
 serve(async (req: Request) => {
   const corsHeaders = buildCorsHeaders(req);
 
@@ -535,7 +662,13 @@ serve(async (req: Request) => {
       return jsonResponse({ ok: true, result: "too_early" }, 200, corsHeaders);
     }
 
-    const result = await processClaim(supabase, claim as ClaimRow, mailgunApiKey, siteUrl);
+    // gh-2069 REVIEW FIX (CI red on head d3637483): the real SupabaseClient's
+    // PostgrestBuilder chain is thenable but not a structural match for
+    // ProcessClaimSupabase's PromiseLike<> methods under this Deno/TS
+    // version (TS2589, same pre-existing type-instantiation-depth class
+    // documented at this file's top) -- this cast is load-bearing for
+    // `deno check` only; at runtime `supabase` is unchanged.
+    const result = await processClaim(supabase as unknown as ProcessClaimSupabase, claim as ClaimRow, mailgunApiKey, siteUrl);
     return jsonResponse({ ok: true, ...result }, 200, corsHeaders);
   }
 
@@ -569,7 +702,7 @@ serve(async (req: Request) => {
 
   for (const claim of claims as ClaimRow[]) {
     try {
-      const result = await processClaim(supabase, claim, mailgunApiKey, siteUrl);
+      const result = await processClaim(supabase as unknown as ProcessClaimSupabase, claim, mailgunApiKey, siteUrl);
       results.push(result);
       if (result.result === "sent") processed++;
       else skipped++;
@@ -583,3 +716,4 @@ serve(async (req: Request) => {
   console.log(`[${FUNCTION_NAME}] Batch complete — sent: ${processed}, skipped: ${skipped}`);
   return jsonResponse({ ok: true, processed, skipped, results }, 200, corsHeaders);
 });
+}

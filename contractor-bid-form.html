@@ -5536,8 +5536,9 @@
               console.warn('Activity log failed (non-fatal):', logErr);
             }
 
+            // fix4 (CEO ruling, PR #1979 comment 5698878146): claim_id
+            // removed — a per-homeowner database identifier must not reach GA4.
             gtag('event', 'bid_updated', {
-              claim_id: currentClaim.id,
               bid_amount: quoteData.total_price,
             });
 

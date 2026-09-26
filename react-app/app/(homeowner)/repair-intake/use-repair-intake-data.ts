@@ -13,9 +13,8 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { isTestEmail } from '@/lib/test-signal';
+import { track } from '@/lib/track';
 import {
-  buildClaimInsert,
   buildClaimUpdate,
   buildStoragePath,
   fileExt,
@@ -35,6 +34,22 @@ export class SessionExpiredError extends Error {
   constructor(message = 'Session expired') {
     super(message);
     this.name = 'SessionExpiredError';
+  }
+}
+
+/**
+ * gh-2004: thrown instead of inserting when no claimId is in hand. Reaching
+ * submit with no claim id is already the anomalous path (repair-intake is
+ * normally arrived at from trade-selector with a claim id already set); the
+ * old insert here (buildClaimInsert, ./utils.ts) has no address field at
+ * all, so a claim created this way was permanently unbid-able. The page
+ * redirects to trade-selector — the surface that collects/validates a full
+ * address — instead.
+ */
+export class MissingClaimError extends Error {
+  constructor(message = 'No claim id') {
+    super(message);
+    this.name = 'MissingClaimError';
   }
 }
 
@@ -120,17 +135,8 @@ export async function submitRepairIntake(
   let claimId = sub.claimId;
   const submission: RepairSubmission = { ...sub, userId: user.id };
   if (!claimId) {
-    // gh-397/#689: stamp is_test on this insert path — PR #714 only fixed
-    // the COI-identity contractor insert, never any claims insert.
-    // Predicate mirrors the CEO-approved contractor check (#543 /
-    // test-exclusion.ts) and the static repair-intake.html parity fix.
-    const { data, error } = await supabase
-      .from('claims')
-      .insert({ ...buildClaimInsert(submission), is_test: isTestEmail(user.email) })
-      .select('id')
-      .single();
-    if (error || !data) throw new Error(error?.message || 'Failed to create claim');
-    claimId = (data as { id: string }).id;
+    // gh-2004: no claim id in hand — see MissingClaimError above.
+    throw new MissingClaimError();
   } else {
     const { error } = await supabase
       .from('claims')
@@ -156,6 +162,11 @@ export async function submitRepairIntake(
     if (uploadErr) {
       // Faithful: a single failed photo must not abort the submission.
       console.warn('Photo upload failed:', uploadErr.message);
+    } else {
+      // gh-1940: "documents uploaded" funnel step — fired per file, only on
+      // a confirmed storage write. `tier` is a photo-category label
+      // (PhotoTier), not file content or a filename — no PII.
+      track('document_uploaded', { tier });
     }
   }
 
