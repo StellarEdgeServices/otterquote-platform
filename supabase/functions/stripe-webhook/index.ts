@@ -65,6 +65,10 @@ import {
   shouldSkipForSuppression,
   shouldSkipForGpcMetadata,
 } from "./meta-capi.ts";
+// gh-2121 / HO-3: the lead-keyed (no-account) counterpart of the CAPI Purchase
+// handler above. See lead-capi.ts's header for why this is a separate module
+// and function rather than an extension of MEASUREMENT_ORDER_PI_TYPES.
+import { decideLeadCapiPerson, isLeadMeasurementPurchase, resolveLeadForCapi } from "./lead-capi.ts";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -418,7 +422,7 @@ function buildEvidencePayload(params: {
     "evidence[customer_communication]": customerCommunication,
   };
 
-  // ── gh-1759 GATE 2: do not spend Stripe's ONE final submission blind ───────
+  // ── gh-1759 GATE 2: do not spend Stripe's ONE final submission blind ─────────
   // `evidence[submit]: "true"` is irreversible — Stripe accepts exactly one
   // final submission per dispute. Before this change it was set
   // UNCONDITIONALLY, including on the path where `claim` and `feeAcceptance`
@@ -523,7 +527,7 @@ async function handleDisputeCreated(
     }
   }
 
-  // ── gh-1759 GATE 1: an unresolvable dispute goes to a human ───────────────
+  // ── gh-1759 GATE 1: an unresolvable dispute goes to a human ─────────────
   // Previously `routeToManualQueue` considered only the amount and the reason,
   // so a sub-$500 dispute we could not tie to any claim fell into the
   // auto-submit branch and spent Stripe's single final submission on an empty
@@ -879,7 +883,7 @@ async function handlePlatformFeePaymentSucceeded(
     .eq("id", q.claim_id)
     .maybeSingle();
 
-  // ── gh-1759 THE WRITER, ACH HALF ───────────────────────────────────────────
+  // ── gh-1759 THE WRITER, ACH HALF ──────────────────────────────────
   // docusign-webhook writes platform_fee_stripe_id on the SYNCHRONOUS success
   // path, where a card charge already has a charge id. An ACH charge does not:
   // create-payment-intent returns charge_id = null while the intent is
@@ -1337,6 +1341,175 @@ async function handleMeasurementOrderCapiPurchase(
   }
 }
 
+// gh-2121 / HO-3 -- Meta CAPI Purchase from the no-account, lead-keyed $15
+// measurement purchase. Same shape and the same safety discipline as
+// handleMeasurementOrderCapiPurchase above (every failure mode caught here,
+// nothing propagates, never awaited by anything that could turn its failure
+// into a webhook failure or a Stripe retry) -- see lead-capi.ts's header for
+// why this is a separate function rather than folded into the claim-keyed one.
+async function handleLeadMeasurementCapiPurchase(
+  paymentIntent: StripePaymentIntent,
+  supabase: ReturnType<typeof createClient>,
+): Promise<void> {
+  if (!isLeadMeasurementPurchase(paymentIntent)) return; // not a lead-keyed measurement purchase
+
+  const gpcMeta = shouldSkipForGpcMetadata(paymentIntent.metadata);
+  if (gpcMeta.skip) {
+    console.log(`[${FN_NAME}] gh-2121: lead CAPI Purchase skipped for PI ${paymentIntent.id} (${gpcMeta.reason})`);
+    return;
+  }
+
+  try {
+    // Ben's Ruling 2 / D-330 precedent: reported as 15 USD, so only for a
+    // PaymentIntent that is exactly 1500 cents in USD -- same guard the
+    // claim-keyed path uses.
+    const nonUsd = shouldSkipForNonUsdMeasurement(paymentIntent);
+    if (nonUsd.skip) {
+      console.log(`[${FN_NAME}] gh-2121: lead CAPI Purchase skipped for PI ${paymentIntent.id} (${nonUsd.reason})`);
+      return;
+    }
+
+    const capiToken = Deno.env.get("META_CAPI_ACCESS_TOKEN");
+    if (!capiToken) {
+      console.log(`[${FN_NAME}] gh-2121: META_CAPI_ACCESS_TOKEN not set -- lead CAPI Purchase skipped (safe no-op) for PI ${paymentIntent.id}`);
+      return;
+    }
+
+    const leadId = paymentIntent.metadata?.lead_id ?? null;
+    let leadLookupFailed = false;
+    let leadEmail: string | null = null;
+    let leadIsSynthetic = false;
+
+    if (leadId) {
+      const { data: lead, error: leadErr } = await supabase
+        .from("leads")
+        .select("id, email, is_synthetic")
+        .eq("id", leadId)
+        .maybeSingle();
+      if (leadErr) {
+        leadLookupFailed = true;
+        console.error(`[${FN_NAME}] gh-2121: lead lookup failed for PI ${paymentIntent.id}`);
+      } else {
+        const resolved = resolveLeadForCapi(lead as { id: string; email: string | null; is_synthetic: boolean | null } | null);
+        leadEmail = resolved.email;
+        leadIsSynthetic = resolved.isSynthetic;
+      }
+    }
+
+    // Fail CLOSED, same as the claim-keyed path's decideCapiPerson: an
+    // unresolvable lead means the Purchase is not sent.
+    const person = decideLeadCapiPerson({ leadId, leadLookupFailed });
+    if (person.skip) {
+      console.log(`[${FN_NAME}] gh-2121: lead CAPI Purchase skipped for PI ${paymentIntent.id} (${person.reason})`);
+      return;
+    }
+
+    // Ben's Ruling 4: founder/test exclusions and is_synthetic behave exactly
+    // as in Arm F -- leads.is_synthetic stands in for claims.is_test here.
+    const testEventCode = Deno.env.get("META_CAPI_TEST_EVENT_CODE") ?? null;
+    if (!shouldSendCapiEvent({ livemode: paymentIntent.livemode, claimIsTest: leadIsSynthetic, testEventCode })) {
+      console.log(
+        `[${FN_NAME}] gh-2121: test-mode/synthetic lead purchase with no META_CAPI_TEST_EVENT_CODE configured -- ` +
+          `lead CAPI Purchase skipped to avoid polluting Meta production data (PI ${paymentIntent.id}, livemode=${paymentIntent.livemode}, isSynthetic=${leadIsSynthetic})`,
+      );
+      return;
+    }
+    const isTestTraffic = !paymentIntent.livemode || leadIsSynthetic;
+
+    let hashedEmail: string | null = null;
+    if (leadEmail) {
+      hashedEmail = await hashEmailSha256(leadEmail);
+      // Same hashed-email suppression list the claim-keyed path checks, applied identically here.
+      const { data: suppressedRow, error: suppErr } = await supabase
+        .from("ad_sharing_suppressions")
+        .select("email_sha256")
+        .eq("email_sha256", hashedEmail)
+        .maybeSingle();
+      const suppression = shouldSkipForSuppression(!!suppressedRow, !!suppErr);
+      if (suppression.skip) {
+        console.log(`[${FN_NAME}] gh-2121: lead CAPI Purchase skipped for PI ${paymentIntent.id} (${suppression.reason})`);
+        return;
+      }
+    } else {
+      console.warn(
+        `[${FN_NAME}] gh-2121: no email resolvable for lead ${leadId ?? "unknown"} (PI ${paymentIntent.id}) -- ` +
+          `sending lead CAPI Purchase with no user_data (reduced Meta match quality, not blocked)`,
+      );
+    }
+
+    const variant = sanitizeCapiVariant(paymentIntent.metadata?.variant);
+    const payload = buildCapiPurchasePayload({
+      paymentIntentId: paymentIntent.id,
+      eventTimeSeconds: Math.floor(Date.now() / 1000),
+      valueUsd: capiPurchaseValueUsd(paymentIntent.amount_received ?? paymentIntent.amount, MEASUREMENT_PURCHASE_VALUE_USD),
+      variant,
+      hashedEmail,
+      testEventCode: isTestTraffic ? testEventCode : null,
+    });
+
+    // Same PaymentIntent-scoped dedupe claim as the claim-keyed path -- the
+    // key is a function of the PaymentIntent id alone, so it cannot collide
+    // with (or double-claim against) a claim-keyed purchase's own claim row.
+    const outcome = await sendCapiPurchaseOnce({
+      claim: async () => {
+        const { error } = await supabase
+          .from("stripe_webhook_events")
+          .insert({ event_id: capiClaimKey(paymentIntent.id), event_type: CAPI_CLAIM_EVENT_TYPE });
+        return error ? { code: (error as { code?: string }).code } : null;
+      },
+      send: async () => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), META_CAPI_TIMEOUT_MS);
+        try {
+          const res = await fetch(
+            `https://graph.facebook.com/${META_CAPI_API_VERSION}/${META_CAPI_PIXEL_ID}/events`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ...payload, access_token: capiToken }),
+              signal: controller.signal,
+            },
+          );
+          const resBody = await res.text();
+          if (!res.ok) {
+            const metaError = safeMetaErrorSummary(resBody);
+            console.error(`[${FN_NAME}] gh-2121: Meta CAPI Purchase (lead) failed (HTTP ${res.status}, ${metaError}) for PI ${paymentIntent.id}`);
+            await supabase.from("platform_alerts_log").insert({
+              alert_type: "meta_capi_purchase_failed",
+              function_name: FN_NAME,
+              message: `Meta CAPI Purchase (lead) send failed (HTTP ${res.status}, ${metaError}) for payment_intent ${paymentIntent.id}`,
+              sent_at: new Date().toISOString(),
+            });
+            return false;
+          }
+          console.log(
+            `[${FN_NAME}] gh-2121: Meta CAPI Purchase (lead) sent for PI ${paymentIntent.id} (event_id=${buildCapiEventId(paymentIntent.id)}, test_event_code=${isTestTraffic ? testEventCode : "none"})`,
+          );
+          return true;
+        } finally {
+          clearTimeout(timer);
+        }
+      },
+      release: async () => {
+        const { error } = await supabase
+          .from("stripe_webhook_events")
+          .delete()
+          .eq("event_id", capiClaimKey(paymentIntent.id));
+        return !error;
+      },
+      log: (m) => console.error(`[${FN_NAME}] ${m}`),
+    });
+    if (outcome === "already_sent" || outcome === "claim_failed") {
+      console.log(`[${FN_NAME}] gh-2121: lead CAPI Purchase skipped for PI ${paymentIntent.id} (${outcome})`);
+    }
+  } catch (err) {
+    const isAbort = err instanceof Error && err.name === "AbortError";
+    console.error(
+      `[${FN_NAME}] gh-2121: Meta CAPI Purchase (lead) ${isAbort ? "timed out" : "threw"} for PI ${paymentIntent.id} (${err instanceof Error ? err.name : "non-error"})`,
+    );
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
@@ -1437,6 +1610,9 @@ Deno.serve(async (req: Request) => {
       // gh-2078b / D-330 -- independent of the platform_fee handler above
       // (scoped by metadata.type, never throws -- see the function's own doc).
       await handleMeasurementOrderCapiPurchase(piEvent.data.object, supabase);
+      // gh-2121 / HO-3 -- the lead-keyed (no-account) counterpart, independent
+      // of both handlers above (scoped by a different metadata.type, never throws).
+      await handleLeadMeasurementCapiPurchase(piEvent.data.object, supabase);
     } else if (event.type === "payment_intent.payment_failed") {
       const piEvent = event as unknown as StripePaymentIntentEvent;
       await handlePlatformFeePaymentFailed(piEvent.data.object, supabase);
