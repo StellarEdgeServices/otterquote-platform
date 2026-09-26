@@ -60,6 +60,17 @@ ANNOTATION = "update-no-select-ok"
 # the one-line-update-then-unrelated-select shape the bug could hide, so
 # BASELINE's numbers below are unchanged; only the scanner's correctness on
 # a case the repo does not yet contain has changed.
+# gh-2105 batch 2 (CTO RUN 40, 2026-09-25): fixed the money-critical Stripe/
+# payments cluster -- stripe-webhook/index.ts (6 sites: dispute evidence x2,
+# quotes.payment_status=succeeded, claims.platform_fee_stripe_id [decision b],
+# claims.platform_fee_charged, quotes.payment_status=dunning),
+# create-payment-intent/index.ts (the off-session quotes update; the
+# ad_sharing_opt_out site at :121 is not a money write and was left alone),
+# verify-payment-method/index.ts (contractors.has_payment_method -- now fails
+# closed on a zero-row match, same as its existing error branch), and
+# mark-payout-paid/index.ts (both referrals updates -- decision b, each
+# already idempotency-guarded by its own filter). Baselines below dropped by
+# 10 accordingly (create-payment-intent 2->1, the other three 1/2/6->0).
 BASELINE: dict[str, int] = {
     "admin-contractors.html": 1,
     "admin-cpa.html": 2,
@@ -123,7 +134,7 @@ BASELINE: dict[str, int] = {
     "supabase/functions/check-siding-design-completion/index.ts": 3,
     "supabase/functions/create-docusign-envelope/index.ts": 7,
     "supabase/functions/create-hover-order/index.ts": 2,
-    "supabase/functions/create-payment-intent/index.ts": 2,
+    "supabase/functions/create-payment-intent/index.ts": 1,
     "supabase/functions/create-setup-intent/index.ts": 1,
     "supabase/functions/docusign-webhook/index.ts": 13,
     "supabase/functions/get-hover-pdf/index.ts": 1,
@@ -132,7 +143,7 @@ BASELINE: dict[str, int] = {
     "supabase/functions/lead-next-step-optout/index.ts": 1,
     "supabase/functions/mark-job-complete/index.ts": 2,
     "supabase/functions/mark-loss-sheet-reviewed/index.ts": 2,
-    "supabase/functions/mark-payout-paid/index.ts": 2,
+    "supabase/functions/mark-payout-paid/index.ts": 0,
     "supabase/functions/notify-admin-new-homeowner/index.ts": 1,
     "supabase/functions/notify-payout-pending/index.ts": 1,
     "supabase/functions/parse-hover-measurements/index.ts": 1,
@@ -153,12 +164,12 @@ BASELINE: dict[str, int] = {
     "supabase/functions/send-home-profile-prompt/index.ts": 2,
     "supabase/functions/send-incomplete-onboarding-reminders/index.ts": 1,
     "supabase/functions/send-partner-onboarding/index.ts": 3,
-    "supabase/functions/stripe-webhook/index.ts": 6,
+    "supabase/functions/stripe-webhook/index.ts": 0,
     "supabase/functions/submit-partner-w9/index.ts": 1,
     "supabase/functions/switch-contractor/index.ts": 4,
     "supabase/functions/validate-contract-template/index.ts": 1,
     "supabase/functions/validate-contract-template/revalidate.ts": 1,
-    "supabase/functions/verify-payment-method/index.ts": 1,
+    "supabase/functions/verify-payment-method/index.ts": 0,
 }
 
 
