@@ -285,12 +285,21 @@ export function shouldShowDetailedMeasurementBadge(
 export const DETAILED_MEASUREMENT_BADGE_COPY_IS_PLACEHOLDER = true;
 
 export function buildDetailedMeasurementBadge(): DetailedMeasurementBadgeModel {
+  // LEGAL-READ FIX (PR #2236 comment 5850580181): the prior body carried two
+  // clauses beyond the decided D-numbers -- "a contractor purchased..." (no
+  // D-number covers disclosing that a contractor paid) and "every contractor
+  // bidding on your project now has access..." (a new promise to the
+  // homeowner about every future bidder, and one that conflicts with D-317
+  // cl. 4 / provision 5's "every later upgrade on the same roof is margin"
+  // -- an unresolved Tier C question, not this PR's to answer). Reduced to
+  // ONLY the two clauses LEGAL-READ marked "covered": the receipt-text
+  // concept (D-317 prov. 5, "Detailed roof measurement report") and the free
+  // upgrade (D-317 cl. 5, "no charge"). Still a PLACEHOLDER -- Sloane owns
+  // the final wording -- but nothing beyond what D-317 already decided.
   return {
     header: "[PLACEHOLDER COPY -- pending Sloane draft + LEGAL-READ, gh-1411] Detailed measurement report",
     body:
       "[PLACEHOLDER COPY -- pending Sloane draft + LEGAL-READ, gh-1411] " +
-      "A contractor purchased the full detailed measurement report for your roof — " +
-      "your copy was upgraded at no charge, and every contractor bidding on your " +
-      "project now has access to the same detailed measurements.",
+      "Your copy was upgraded to detailed measurements at no charge.",
   };
 }

@@ -258,6 +258,9 @@ jobs:
       - name: auth.js cs_redirect role-guard unit test (gh-1412/#1476 regression)
         run: node tests/auth-cs-redirect-role-guard.mjs
 
+      - name: measurement-shape admin-fulfilment flip unit test (gh-1411 D-317 cl. 4-6; REVIEW finding A, PR #2236)
+        run: node tests/measurement-shape-flip-on-deliver.mjs
+
       - name: tsc --noEmit type gate (gh-414)
         working-directory: react-app
         run: npx tsc --noEmit
@@ -400,4 +403,15 @@ jobs:
       # body flags. Same source-only, read-only posture as gh-1314's addition: two
       # more sibling source directories, still no --allow-net/--allow-env/--allow-sys.
       - name: Edge Function unit tests (pure-unit, no secrets)
-        run: deno test --allow-read=supabase/functions,supabase/migrations_drafts,supabase/migrations,supabase/migrations_rollbacks supabase/functions/
+      #
+      # gh-1411 PR #2236 REVIEW finding A (Marty, CTO session, comment 5850578681):
+      # measurement-upgrade-second-contractor.test.ts reads js/measurement-shape.js
+      # (repo root) as TEXT via Deno.readTextFileSync and evaluates it against a
+      # window stub, so its second-contractor negative control exercises the REAL
+      # production flip function instead of a hand-copied TS mirror that could drift
+      # silently (the reviewer proved exactly that drift by mutating the mirror and
+      # showing the real function's own bug would have stayed invisible). 'js' is
+      # added to the allowlist for that one read; still source-only, read-only, no
+      # --allow-net/--allow-env/--allow-sys -- same posture as every prior addition
+      # to this list.
+        run: deno test --allow-read=supabase/functions,supabase/migrations_drafts,supabase/migrations,supabase/migrations_rollbacks,js supabase/functions/

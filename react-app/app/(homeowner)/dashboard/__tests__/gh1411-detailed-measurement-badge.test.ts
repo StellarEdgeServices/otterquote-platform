@@ -40,12 +40,20 @@ describe('DetailedMeasurementBadge (gh-1411 / D-317 cl. 5-6)', () => {
     expect(shouldShowDetailedMeasurementBadge(undefined)).toBe(false);
   });
 
-  it('renders copy naming no vendor (D-312) and stating the free upgrade (D-317 cl. 5)', () => {
+  it('renders copy naming no vendor (D-312) and stating the free upgrade (D-317 cl. 5), and nothing beyond what D-317 decided', () => {
     const model = buildDetailedMeasurementBadge();
     expect(model.header).toContain('Detailed measurement report');
     expect(model.body.toLowerCase()).not.toContain('roofscope');
     expect(model.body.toLowerCase()).not.toContain('hover');
     expect(model.body.toLowerCase()).toContain('no charge');
+    // LEGAL-READ FIX (PR #2236 comment 5850580181): these two clauses were
+    // flagged as "beyond D-numbers" (disclosing a contractor paid) and
+    // "beyond, and conflicts with, D-317" (a new promise about every future
+    // bidder, contradicting D-317 cl. 4's "every later upgrade... is
+    // margin" -- an unresolved Tier C question). Locked out here so a
+    // future edit cannot reintroduce either without this test catching it.
+    expect(model.body.toLowerCase()).not.toContain('every contractor');
+    expect(model.body.toLowerCase()).not.toContain('a contractor purchased');
   });
 
   it('PLACEHOLDER GUARD: the copy is marked as not production-approved, and both strings carry the marker', () => {
