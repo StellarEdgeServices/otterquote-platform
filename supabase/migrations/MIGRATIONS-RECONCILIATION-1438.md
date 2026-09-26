@@ -406,9 +406,49 @@ base draft) and found four small, text-only defects, all fixed this pass:
   statement naming the 7 ids below", which a June migration's rollback
   comment technically makes false for one id in an unrelated context);
   dropped "(if present)" since both companion docs are confirmed present;
-  relabelled the CTO-ruling quote as paraphrased (arrow/quote-style
+  ~~relabelled the CTO-ruling quote as paraphrased (arrow/quote-style
   adapted for a SQL comment) rather than "verbatim", since the exact
-  Unicode arrows and quotation marks were not reproduced byte-for-byte.
+  Unicode arrows and quotation marks were not reproduced byte-for-byte.~~
+  **WRONG — see round 3 correction below: the CTO's bar was a
+  byte-verbatim quote, not a paraphrase, and this bullet's own "paraphrased"
+  relabelling was itself the round-3 defect.**
 
 SELECT-only both passes; zero SQL executed against any database at any
 point in this issue's reconciliation work.
+
+## 2026-09-26 REVIEW FAIL correction (round 3) — independent review comment 5850810491 (Marty/CTO)
+
+Round 3 confirmed F1, F2 and F3 were fixed and verified (ids correct in
+both locations; the `migrations_applied_manually/` file's body from "THE
+RULE AND THE EXCEPTION" onward diffs empty against the base draft; stale
+pointers corrected) and confirmed the Credential Shape Sweep content fix
+does not weaken the sweep (planted-shape test still catches every shape
+class in both touched files). One item remained: **F4's ruling quote was
+still not verbatim** — relabelling it "paraphrased" (round 2's fix, bullet
+above) does not satisfy a must-fix whose bar is a byte-verbatim quote.
+
+Fixed: replaced the quote block in
+`supabase/migrations_applied_manually/20260908124630_gh1763_is_test_repair.sql`
+with the ruling's exact span from PR #2233 comment 5850353019 — "the
+gh1763 data-repair was APPLIED" through "against a re-run)." — reproduced
+byte-for-byte: the U+2192 arrow and U+2014 em-dash kept as UTF-8 (not
+ASCII `->`/`--`), both backtick pairs around the file path kept, and the
+inner double quotes around "Applied manually ... by design." kept as
+double quotes (not converted to single). The quote is not wrapped in an
+outer quote pair, and ends with a standalone `-- (end of quote)` line, per
+the reviewer's instruction. Verified locally: stripping the `-- ` prefix
+from every quote line and joining with single spaces reproduces the
+ruling's exact span, character for character (confirmed programmatically
+against the comment's own text, not just by eye).
+
+Everything from `-- THE RULE AND THE EXCEPTION` onward shifted to a new
+line number inside the file (the quote block grew by several lines) but
+remains byte-identical to the base draft — same proof method as the F2
+fix in round 2 (both texts fetched this session and compared directly,
+since this environment has no local checkout to diff against). New offset:
+line 86 (was reported as line 84 in round 2's commit message, which the
+round-3 review noted as a minor, inconsequential discrepancy — the body
+text itself was and remains identical either way).
+
+SELECT-only across all three rounds; zero SQL executed against any
+database at any point in this issue's reconciliation work.
