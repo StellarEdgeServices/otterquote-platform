@@ -285,28 +285,37 @@
 
   /**
    * gh-1980 PR 1/3 ("[SECURITY, PKCE] Move Supabase auth to PKCE", #1931
-   * artifact 3 / Marty's ruling on #1980) — step 1: "Make both storage
-   * adapters key-aware. No behaviour change, fully testable, no user
-   * impact."
+   * artifact 3 / Marty's ruling on #1980) — preparatory factory refactor
+   * ahead of PR 2 (storageKey convergence) and PR 3 (flowType: 'pkce' flip).
    *
-   * Factory that builds a storage-adapter instance explicitly bound to the
-   * `storageKey` its caller's Supabase client will use. `storageKey` is not
-   * currently consulted by isAuxiliaryStorageKey() above (that check stays
-   * the generic suffix match -- see its own docstring for why an exact-key
-   * allowlist regresses the config.js-style clients that pass no
+   * REVIEW: FAIL (comment 5850347173, CTO RUN 42) on the first version of
+   * this PR corrected the framing here: the key-awareness Marty's #1931
+   * ruling actually required for PR 1 -- an auxiliary PKCE `-code-verifier`
+   * (or `-user`) key must never read/write/clear the shared session
+   * cookies, so a rejected updateUser()'s PKCE cleanup can't silently sign
+   * a user out -- already shipped on `main` at commit
+   * 3ced0572538166a19b5184394502f60701c174aa ("gh-2154 P-1: review round 5
+   * — invert cookie-storage guard to a denylist of auxiliary keys"), via
+   * isAuxiliaryStorageKey() above. This PR does NOT add that; it is a pure
+   * structural refactor.
+   *
+   * createOtterQuoteCookieStorage(storageKey) builds a storage-adapter
+   * instance. `storageKey` is accepted and validated but is NOT YET
+   * consulted by any decision this instance makes -- isAuxiliaryStorageKey()
+   * stays the generic suffix match (see its own docstring for why an
+   * exact-key allowlist regresses the config.js-style clients that pass no
    * storageKey at all and fall back to supabase-js's own default
-   * `sb-<ref>-auth-token`). Threading `storageKey` through explicitly here,
-   * rather than only ever building one implicit singleton, is what lets PR
-   * 2 converge every construction site onto one storageKey (and PR 3 flip
-   * `flowType: 'pkce'`) without each call site reaching back into this
-   * file's internals. `window.OtterQuoteCookieStorage` below is this
-   * factory called once, for the canonical STORAGE_KEY -- so today's
-   * behavior is unchanged byte-for-byte; the parameterization is purely
-   * additive.
+   * `sb-<ref>-auth-token`). `storageKey` is reserved for PR 2, which will
+   * make it load-bearing once every construction site converges on one
+   * key. `window.OtterQuoteCookieStorage` below is this factory called
+   * once, for the canonical STORAGE_KEY -- so today's behavior is
+   * unchanged byte-for-byte; the parameterization is purely additive.
    */
   function createOtterQuoteCookieStorage(storageKey) {
     // Reserved for PR 2 (storageKey convergence): validated eagerly so a
     // misconfigured call site fails at construction time, not on first use.
+    // Not yet read by any getItem/setItem/removeItem decision below -- see
+    // this function's docstring.
     if (typeof storageKey !== 'string' || !storageKey) {
       throw new Error('createOtterQuoteCookieStorage: storageKey must be a non-empty string');
     }

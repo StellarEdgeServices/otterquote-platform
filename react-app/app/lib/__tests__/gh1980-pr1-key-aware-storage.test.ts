@@ -1,34 +1,31 @@
 /**
- * gh-1980 PR 1/3 ("[SECURITY, PKCE] Move Supabase auth to PKCE") — key-aware
- * storage adapters, step 1 of Marty's three-PR sequence (#1931 artifact 3,
- * ruling quoted verbatim on #1980): "Make both storage adapters key-aware.
- * No behaviour change, fully testable, no user impact."
+ * gh-1980 PR 1/3 ("[SECURITY, PKCE] Move Supabase auth to PKCE") --
+ * preparatory storage-adapter factory refactor ahead of PR 2 (storageKey
+ * convergence) and PR 3 (flowType: 'pkce' flip).
  *
- * Today `otterquoteCookieStorage` is a single module-level singleton object
- * that is never told which `storageKey` it is paired with -- every client
- * across the ~20 construction sites that uses it shares the exact same
- * object, and the object has no notion of "the key I was built for". That
- * is fine while every client either uses the canonical
- * OTTERQUOTE_AUTH_STORAGE_KEY or falls through supabase-js's own default,
- * but it is NOT the shape PR 2 needs once `storageKey` convergence starts
- * threading an explicit key through each construction site (and PR 3 flips
- * `flowType: 'pkce'`, which mints its own PKCE code-verifier keys off
- * whatever storageKey a given client actually uses).
+ * REVIEW: FAIL (PR #2232 comment 5850347173, CTO RUN 42) on the first
+ * version of this file: the original tests here only proved a
+ * `createOtterQuoteCookieStorage` export exists and that a second call
+ * produces a distinct object -- a mutant factory that accepts and discards
+ * `storageKey` (`return { ...otterquoteCookieStorage }`) passed every one
+ * of them. The key-awareness Marty's #1931 ruling actually required for
+ * step 1 -- an auxiliary PKCE `-code-verifier` (or `-user`) key must never
+ * read, write, or clear the shared session cookies, so a rejected
+ * updateUser()'s PKCE cleanup can't silently sign a user out -- already
+ * shipped on `main` via `isAuxiliaryStorageKey()` (gh-2154 P-1 review round
+ * 5, commit 3ced0572538166a19b5184394502f60701c174aa). This file's job is
+ * now to prove THAT invariant holds for any factory-built instance,
+ * regardless of which `storageKey` it was built for -- the discriminating
+ * assertions below fail against a mutant where `isAuxiliaryStorageKey`
+ * always returns `false` (verified manually; see the PR comment for that
+ * run) even though `storageKey` itself is still accepted but unused (that
+ * remains true and is reserved for PR 2 -- see cookie-storage.ts's own
+ * docstring on `createOtterQuoteCookieStorage`).
  *
- * This test proves the new `createOtterQuoteCookieStorage(storageKey)`
- * factory exists, that it is what `otterquoteCookieStorage` (the exported
- * singleton every current call site still imports) is built from, and that
- * building a second, independently-keyed instance behaves identically to
- * the default one for every scenario the pre-existing suite
- * (cookie-storage.test.ts / cookie-storage.updateuser.test.ts) already
- * covers -- i.e. genuinely "no behaviour change, no user impact": the
- * default export's runtime behavior is byte-for-byte the same before and
- * after this PR, and the new capability is purely additive.
- *
- * Fail-first: `createOtterQuoteCookieStorage` does not exist on the
- * pre-PR-1 module (only `otterquoteCookieStorage`, the bound singleton) --
- * every assertion below throws/fails on that commit. See the PR/issue
- * comment for the raw pre-fix run.
+ * Fail-first (this file's original form): `createOtterQuoteCookieStorage`
+ * does not exist on the pre-PR-1 module -- every assertion below
+ * throws/fails on that commit. See the PR/issue comment for the raw
+ * pre-fix run of both this file's original and revised forms.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as cookieStorageModule from '../cookie-storage';
@@ -134,4 +131,36 @@ describe('gh-1980 PR 1: storage adapters become key-aware (no behaviour change)'
     expect(document.cookie).not.toContain(_COOKIE_ACCESS + '=');
     expect(document.cookie).not.toContain(_COOKIE_REFRESH + '=');
   });
+
+  // REVIEW: FAIL follow-up (comment 5850347173, must-fix 2) -- the actual
+  // key-awareness requirement, proven for any factory-built instance
+  // regardless of which storageKey it was built for. This is what fails
+  // against a mutant `isAuxiliaryStorageKey` that always returns `false`
+  // (the pre-gh-2162-round-5 shape) -- Marty's #1931 failure mode is "a
+  // signed-in user's PKCE cleanup returns/clears the session blob".
+  const PROD_DEFAULT_KEY = 'sb-yeszghaspzwwstvsrioa-auth-token'; // supabase-js's own default for the prod project ref, per a config.js-style client that passes no storageKey
+  for (const K of [OTTERQUOTE_AUTH_STORAGE_KEY, PROD_DEFAULT_KEY]) {
+    it(`key-awareness (K="${K}"): a code-verifier/-user key never reads the session, and removing it never clears the session cookies`, () => {
+      const access = makeJwt({ sub: SUB, exp: NOW + 3600, iat: NOW, email: 'a@example.com' });
+      setCookie(_COOKIE_ACCESS, access);
+      setCookie(_COOKIE_REFRESH, 'refresh-abc');
+
+      const instance = cookieStorageModule.createOtterQuoteCookieStorage(K);
+      const verifierKey = `${K}-code-verifier`;
+      const userKey = `${K}-user`;
+
+      // An auxiliary key must never return the session blob, whether or
+      // not anything was ever written under it.
+      expect(instance.getItem(verifierKey)).toBeNull();
+      expect(instance.getItem(userKey)).toBeNull();
+
+      // Removing the code-verifier (supabase-js's PKCE cleanup on ANY
+      // rejected updateUser(), per gh-2154 P-1) must NOT sign the user out:
+      // the shared session cookies and the session itself must survive.
+      instance.removeItem(verifierKey);
+      expect(document.cookie).toContain(`${_COOKIE_ACCESS}=`);
+      expect(document.cookie).toContain(`${_COOKIE_REFRESH}=`);
+      expect(instance.getItem(K)).not.toBeNull();
+    });
+  }
 });
