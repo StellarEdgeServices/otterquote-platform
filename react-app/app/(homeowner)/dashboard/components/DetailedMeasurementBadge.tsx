@@ -9,6 +9,11 @@
  * purchase logic on this page: the homeowner's copy upgrades for free in the
  * same write that flips the shape, per D-317 cl. 5. Mirrors RebateCard's
  * layout/pattern (D-181) for a consistent homeowner-dashboard card style.
+ *
+ * NOT YET WIRED INTO page.tsx (gh-1411 PR #2236 review): its copy
+ * (utils.ts's buildDetailedMeasurementBadge) is a PLACEHOLDER, not approved
+ * production text. Do not import/render this component from page.tsx until
+ * Sloane (CRO) has drafted real copy and it has cleared LEGAL-READ.
  */
 
 import { shouldShowDetailedMeasurementBadge, buildDetailedMeasurementBadge } from '../utils';

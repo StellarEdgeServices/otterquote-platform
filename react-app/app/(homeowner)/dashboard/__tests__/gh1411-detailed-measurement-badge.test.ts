@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { shouldShowDetailedMeasurementBadge, buildDetailedMeasurementBadge } from '../utils';
+import {
+  shouldShowDetailedMeasurementBadge,
+  buildDetailedMeasurementBadge,
+  DETAILED_MEASUREMENT_BADGE_COPY_IS_PLACEHOLDER,
+} from '../utils';
 
 /**
  * gh-1411 / D-317 cl. 5-6 — homeowner Shape-B "detailed" mark.
@@ -38,9 +42,22 @@ describe('DetailedMeasurementBadge (gh-1411 / D-317 cl. 5-6)', () => {
 
   it('renders copy naming no vendor (D-312) and stating the free upgrade (D-317 cl. 5)', () => {
     const model = buildDetailedMeasurementBadge();
-    expect(model.header).toBe('Detailed measurement report');
+    expect(model.header).toContain('Detailed measurement report');
     expect(model.body.toLowerCase()).not.toContain('roofscope');
     expect(model.body.toLowerCase()).not.toContain('hover');
     expect(model.body.toLowerCase()).toContain('no charge');
+  });
+
+  it('PLACEHOLDER GUARD: the copy is marked as not production-approved, and both strings carry the marker', () => {
+    // This is not final copy (see utils.ts's PLACEHOLDER comment) -- it has not
+    // been drafted by Sloane or cleared by LEGAL-READ. The flag and the literal
+    // marker text exist so a future wiring-in of this component cannot miss
+    // that the strings need replacing first, and so this test starts failing
+    // loudly (not silently) once someone actually writes real copy without
+    // also flipping the flag and removing the marker deliberately.
+    expect(DETAILED_MEASUREMENT_BADGE_COPY_IS_PLACEHOLDER).toBe(true);
+    const model = buildDetailedMeasurementBadge();
+    expect(model.header).toContain('PLACEHOLDER COPY');
+    expect(model.body).toContain('PLACEHOLDER COPY');
   });
 });

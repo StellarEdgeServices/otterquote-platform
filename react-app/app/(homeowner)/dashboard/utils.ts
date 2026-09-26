@@ -270,11 +270,25 @@ export function shouldShowDetailedMeasurementBadge(
  * logic -- the purchase already happened on the contractor's side; this is
  * purely the free upgrade D-317 cl. 5 promises the homeowner ("the
  * homeowner's copy is upgraded... at no charge").
+ *
+ * PLACEHOLDER COPY -- NOT APPROVED FOR PRODUCTION (gh-1411 PR #2236 review).
+ * No existing byte-identical homeowner-facing string names this concept --
+ * grepped contractor-opportunities.html (#1621), dashboard.html, and this
+ * page's own copy; every hit is contractor-facing ("nothing to buy",
+ * "every other contractor... will see it too") and none reads naturally as
+ * first-person homeowner copy. Per the brief ("no new prices, promises or
+ * copy"), the text below is a PLACEHOLDER only -- do not treat it as final,
+ * and do not wire this into page.tsx until Sloane (CRO) drafts real copy and
+ * it clears LEGAL-READ. This component is deliberately NOT rendered by
+ * page.tsx yet for exactly that reason -- see the comment there.
  */
+export const DETAILED_MEASUREMENT_BADGE_COPY_IS_PLACEHOLDER = true;
+
 export function buildDetailedMeasurementBadge(): DetailedMeasurementBadgeModel {
   return {
-    header: "Detailed measurement report",
+    header: "[PLACEHOLDER COPY -- pending Sloane draft + LEGAL-READ, gh-1411] Detailed measurement report",
     body:
+      "[PLACEHOLDER COPY -- pending Sloane draft + LEGAL-READ, gh-1411] " +
       "A contractor purchased the full detailed measurement report for your roof — " +
       "your copy was upgraded at no charge, and every contractor bidding on your " +
       "project now has access to the same detailed measurements.",
