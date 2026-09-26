@@ -121,6 +121,7 @@ main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
 <script src="js/cookie-storage.js"></script>
 <script src="js/config.js"></script>
 <script src="js/auth.js"></script>
+<script src="js/measurement-shape.js"></script>
 
 <main id="main-content" style="display:none">
 
@@ -692,7 +693,7 @@ async function saveFulfillment() {
     // for every OTHER reader/writer of this flag: the migration is a
     // separate, separately-approved (D-182) step, and a claim delivered
     // before it lands must not have its order un-delivered by this failing.
-    if (delivering && row.product_code === 'roof_upgrade_detailed' && row.claim_id) {
+    if (window.MeasurementShape.shouldFlipMeasurementShapeOnDeliver(row, delivering)) {
       var shapeUpd = await sb.from('claims').update({ measurement_shape: 'full' }).eq('id', row.claim_id);
       if (shapeUpd.error) {
         console.error('[gh-1411] measurement_shape flip failed (migration not yet applied?)', shapeUpd.error);

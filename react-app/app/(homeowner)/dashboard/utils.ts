@@ -8,6 +8,7 @@
  */
 
 import type { HomeownerClaim, HoverRebateOrder } from './types';
+import { claimHasFullMeasurements } from '@/lib/measurement-shape';
 
 // ── D-178: State gate ───────────────────────────────────────────────────────
 
@@ -240,5 +241,65 @@ export function buildRebateCard(order: HoverRebateOrder): RebateCardModel {
     amountLabel,
     header: `Measurement fee paid — ${amountLabel}`,
     body: `Your ${amountLabel} measurement payment is on file.`,
+  };
+}
+
+// -- gh-1411 / D-317 cl. 5-6: Shape-B 'detailed' badge -----------------------
+
+export interface DetailedMeasurementBadgeModel {
+  header: string;
+  body: string;
+}
+
+/**
+ * Card only renders once admin-measurements.html has flipped this claim to
+ * the detailed shape (gh-1411's ONLY writer of claims.measurement_shape --
+ * see react-app/app/lib/measurement-shape.ts and js/measurement-shape.js).
+ * NULL / absent / any value other than the literal string 'full' all render
+ * nothing here, matching the resolver's tolerant-default contract exactly.
+ */
+export function shouldShowDetailedMeasurementBadge(
+  claim: HomeownerClaim | null | undefined,
+): boolean {
+  return claimHasFullMeasurements(claim);
+}
+
+/**
+ * Render model for the display-only Shape-B badge (gh-1411 closes-on: "the
+ * homeowner's screen renders Shape B with the 'detailed' mark"). No charge
+ * logic -- the purchase already happened on the contractor's side; this is
+ * purely the free upgrade D-317 cl. 5 promises the homeowner ("the
+ * homeowner's copy is upgraded... at no charge").
+ *
+ * PLACEHOLDER COPY -- NOT APPROVED FOR PRODUCTION (gh-1411 PR #2236 review).
+ * No existing byte-identical homeowner-facing string names this concept --
+ * grepped contractor-opportunities.html (#1621), dashboard.html, and this
+ * page's own copy; every hit is contractor-facing ("nothing to buy",
+ * "every other contractor... will see it too") and none reads naturally as
+ * first-person homeowner copy. Per the brief ("no new prices, promises or
+ * copy"), the text below is a PLACEHOLDER only -- do not treat it as final,
+ * and do not wire this into page.tsx until Sloane (CRO) drafts real copy and
+ * it clears LEGAL-READ. This component is deliberately NOT rendered by
+ * page.tsx yet for exactly that reason -- see the comment there.
+ */
+export const DETAILED_MEASUREMENT_BADGE_COPY_IS_PLACEHOLDER = true;
+
+export function buildDetailedMeasurementBadge(): DetailedMeasurementBadgeModel {
+  // LEGAL-READ FIX (PR #2236 comment 5850580181): the prior body carried two
+  // clauses beyond the decided D-numbers -- "a contractor purchased..." (no
+  // D-number covers disclosing that a contractor paid) and "every contractor
+  // bidding on your project now has access..." (a new promise to the
+  // homeowner about every future bidder, and one that conflicts with D-317
+  // cl. 4 / provision 5's "every later upgrade on the same roof is margin"
+  // -- an unresolved Tier C question, not this PR's to answer). Reduced to
+  // ONLY the two clauses LEGAL-READ marked "covered": the receipt-text
+  // concept (D-317 prov. 5, "Detailed roof measurement report") and the free
+  // upgrade (D-317 cl. 5, "no charge"). Still a PLACEHOLDER -- Sloane owns
+  // the final wording -- but nothing beyond what D-317 already decided.
+  return {
+    header: "[PLACEHOLDER COPY -- pending Sloane draft + LEGAL-READ, gh-1411] Detailed measurement report",
+    body:
+      "[PLACEHOLDER COPY -- pending Sloane draft + LEGAL-READ, gh-1411] " +
+      "Your copy was upgraded to detailed measurements at no charge.",
   };
 }
