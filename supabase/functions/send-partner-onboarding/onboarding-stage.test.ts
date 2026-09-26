@@ -174,6 +174,78 @@ Deno.test("clock-skewed future created_at: not due", () => {
   assertEquals(sel.reason, "not_due");
 });
 
+// ── gh-2154 P-5 (#2180 R-177 condition (4)): day-count keys to
+// COALESCE(partner_agreement_accepted_at, created_at) ───────────────────────
+
+Deno.test("P-5: created_at 8 days ago, accepted_at just now -- day0, not day7", () => {
+  const sel = selectStage(
+    {
+      created_at: new Date(NOW - 8 * DAY_MS).toISOString(),
+      partner_agreement_accepted_at: new Date(NOW).toISOString(),
+      app_first_signed_in_launch_at: null,
+      onboarding_opted_out_at: null,
+    },
+    none,
+    NOW,
+  );
+  assertEquals(sel.stage, "day0");
+  assertEquals(sel.toMarkSkipped, []);
+});
+
+Deno.test("P-5: no partner_agreement_accepted_at (field omitted entirely) falls back to created_at, unchanged from pre-P5 behavior", () => {
+  const sel = selectStage(
+    { created_at: new Date(NOW - 3 * DAY_MS).toISOString(), app_first_signed_in_launch_at: null, onboarding_opted_out_at: null },
+    none,
+    NOW,
+  );
+  assertEquals(sel.stage, "day3");
+});
+
+Deno.test("P-5: partner_agreement_accepted_at explicitly null falls back to created_at", () => {
+  const sel = selectStage(
+    {
+      created_at: new Date(NOW - 3 * DAY_MS).toISOString(),
+      partner_agreement_accepted_at: null,
+      app_first_signed_in_launch_at: null,
+      onboarding_opted_out_at: null,
+    },
+    none,
+    NOW,
+  );
+  assertEquals(sel.stage, "day3");
+});
+
+Deno.test("P-5: switch enabled_since gate now keys to acceptance too -- accepted after the switch flipped on enters even if created_at predates it", () => {
+  const switchEnabledSinceMs = NOW - 2 * DAY_MS;
+  const sel = selectStage(
+    {
+      created_at: new Date(NOW - 8 * DAY_MS).toISOString(), // before the switch flipped on
+      partner_agreement_accepted_at: new Date(NOW - 1 * DAY_MS).toISOString(), // after
+      app_first_signed_in_launch_at: null,
+      onboarding_opted_out_at: null,
+    },
+    none,
+    NOW,
+    switchEnabledSinceMs,
+  );
+  assertEquals(sel.stage, "day1");
+});
+
+Deno.test("P-5: malformed partner_agreement_accepted_at fails closed, same as malformed created_at", () => {
+  const sel = selectStage(
+    {
+      created_at: new Date(NOW).toISOString(),
+      partner_agreement_accepted_at: "not-a-date",
+      app_first_signed_in_launch_at: null,
+      onboarding_opted_out_at: null,
+    },
+    none,
+    NOW,
+  );
+  assertEquals(sel.stage, null);
+  assertEquals(sel.reason, "invalid_created_at");
+});
+
 // ── agent_type routing ──────────────────────────────────────────────────────
 
 Deno.test("re_agent / insurance_agent / home_inspector are eligible", () => {
