@@ -33,6 +33,13 @@ import {
   evaluateLiveChargeGuard,
   GUARD_SELECT,
 } from "./live-charge-guard.ts";
+// gh-2105 (batch 3, updated post-merge): batch 2's PR #2210 (shared
+// `_shared/zero-row-update-guard.ts`) merged to `main` as `a3f747a4` while
+// this batch was in flight, and stripe-webhook/create-payment-intent/
+// verify-payment-method already import it successfully (deployed, per
+// #2105 5848495644). Switched from this batch's original local copy to the
+// shared one; the local copy is deleted.
+import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 
 const PLATFORM_URL = "https://otterquote.com";
 const SETTINGS_URL = `${PLATFORM_URL}/contractor-settings.html`;
@@ -713,17 +720,36 @@ serve(async (req) => {
 
       if (choice === "proceed") {
         // ── Homeowner chose to move forward ──
-        await supabase
+        // gh-2105 (batch 3, decision a): failId was just used to fetch
+        // `failure` above -- a zero-row match here means the homeowner's
+        // explicit "I want to proceed" choice is silently never recorded,
+        // while the page below still tells them it worked.
+        const { data: resolvedRows, error: resolvedErr } = await supabase
           .from("payment_failures")
           .update({ dunning_status: "resolved", resolved_at: new Date().toISOString() })
-          .eq("id", failId);
+          .eq("id", failId)
+          .select("id");
+        if (resolvedErr) {
+          console.error(`[process-dunning] payment_failures dunning_status=resolved update failed for failure ${failId}:`, resolvedErr);
+        } else if (!checkRowsWritten(resolvedRows).wroteRows) {
+          console.error(zeroRowWriteMessage("process-dunning", `payment_failures.dunning_status=resolved for failure ${failId}`));
+        }
 
         // Homeowner's contact info is now released — update claim to surface it
+        // gh-2105 (batch 3, decision a): failure.claim_id was resolved from the
+        // same fetched row -- a zero-row match here means the claim status
+        // never gets restored to contract_signed, silently.
         if (failure.claim_id) {
-          await supabase
+          const { data: proceedClaimRows, error: proceedClaimErr } = await supabase
             .from("claims")
             .update({ status: "contract_signed" }) // restore signed status
-            .eq("id", failure.claim_id);
+            .eq("id", failure.claim_id)
+            .select("id");
+          if (proceedClaimErr) {
+            console.error(`[process-dunning] claims status=contract_signed update failed for claim ${failure.claim_id} (homeowner proceed):`, proceedClaimErr);
+          } else if (!checkRowsWritten(proceedClaimRows).wroteRows) {
+            console.error(zeroRowWriteMessage("process-dunning", `claims.status=contract_signed for claim ${failure.claim_id} (homeowner proceed)`));
+          }
         }
 
         // Notify contractor they're proceeding (and are on the hook for fees)
@@ -752,32 +778,68 @@ serve(async (req) => {
 
       } else {
         // ── Homeowner chose a different contractor ──
-        await supabase
+        // gh-2105 (batch 3, decision a): same as the "proceed" branch above --
+        // failId identifies the row just fetched.
+        const { data: contractorOutRows, error: contractorOutErr } = await supabase
           .from("payment_failures")
           .update({ dunning_status: "contractor_out", resolved_at: new Date().toISOString() })
-          .eq("id", failId);
+          .eq("id", failId)
+          .select("id");
+        if (contractorOutErr) {
+          console.error(`[process-dunning] payment_failures dunning_status=contractor_out update failed for failure ${failId}:`, contractorOutErr);
+        } else if (!checkRowsWritten(contractorOutRows).wroteRows) {
+          console.error(zeroRowWriteMessage("process-dunning", `payment_failures.dunning_status=contractor_out for failure ${failId}`));
+        }
 
         // Reset claim to bidding
         if (failure.claim_id) {
-          await supabase
+          // gh-2105 (batch 3, decision a): a zero-row match here strands the
+          // claim mid-dunning-resolution -- not back in bidding, not signed.
+          const { data: biddingRows, error: biddingErr } = await supabase
             .from("claims")
             .update({ status: "bidding", selected_contractor_id: null, selected_bid_amount: null })
-            .eq("id", failure.claim_id);
+            .eq("id", failure.claim_id)
+            .select("id");
+          if (biddingErr) {
+            console.error(`[process-dunning] claims status=bidding update failed for claim ${failure.claim_id}:`, biddingErr);
+          } else if (!checkRowsWritten(biddingRows).wroteRows) {
+            console.error(zeroRowWriteMessage("process-dunning", `claims.status=bidding for claim ${failure.claim_id}`));
+          }
 
           // Restore other quotes to submitted
-          await supabase
+          // gh-2105 (batch 3, decision b): update-no-select-ok -- this is a
+          // bulk update filtered on `.eq("status","declined")`; a claim can
+          // legitimately have zero declined quotes to restore (e.g. only one
+          // other bid existed), so a zero-row match is an expected steady
+          // state, not a silent failure.
+          const { data: restoredRows, error: restoredErr } = await supabase
             .from("quotes")
             .update({ status: "submitted" })
             .eq("claim_id", failure.claim_id)
-            .eq("status", "declined");
+            .eq("status", "declined")
+            .select("id");
+          if (restoredErr) {
+            console.error(`[process-dunning] quotes status=submitted restore failed for claim ${failure.claim_id}:`, restoredErr);
+          } else if (!checkRowsWritten(restoredRows).wroteRows) {
+            console.log(`[process-dunning] no declined quotes to restore for claim ${failure.claim_id} (update-no-select-ok).`);
+          }
         }
 
         // Update the failed quote
         if (failure.quote_id) {
-          await supabase
+          // gh-2105 (batch 3, decision a): failure.quote_id came from the same
+          // fetched row -- a zero-row match silently leaves the losing quote
+          // in whatever state it was in, instead of failed/declined.
+          const { data: failedQuoteRows, error: failedQuoteErr } = await supabase
             .from("quotes")
             .update({ payment_status: "failed", status: "declined" })
-            .eq("id", failure.quote_id);
+            .eq("id", failure.quote_id)
+            .select("id");
+          if (failedQuoteErr) {
+            console.error(`[process-dunning] quotes payment_status=failed update failed for quote ${failure.quote_id}:`, failedQuoteErr);
+          } else if (!checkRowsWritten(failedQuoteRows).wroteRows) {
+            console.error(zeroRowWriteMessage("process-dunning", `quotes.payment_status=failed for quote ${failure.quote_id}`));
+          }
         }
 
         // Notify contractor they lost the project
@@ -988,7 +1050,32 @@ serve(async (req) => {
                 if (method.cpm_id) quoteUpdate.payment_method_id = method.cpm_id;
                 if (cardFee > 0) quoteUpdate.card_fee_cents = cardFee;
 
-                await supabase.from("quotes").update(quoteUpdate).eq("id", quote_id);
+                // gh-2105 (batch 3, decision a): a zero-row match here means
+                // Stripe HAS charged the contractor on this retry but the
+                // quote never learns it succeeded -- the exact defect class
+                // this issue is about, on the money-recovery path. The
+                // response below still claims success either way, so log +
+                // best-effort alert rather than change the response shape.
+                const { data: retrySucceededRows, error: retrySucceededErr } = await supabase
+                  .from("quotes")
+                  .update(quoteUpdate)
+                  .eq("id", quote_id)
+                  .select("id");
+                if (retrySucceededErr) {
+                  console.error(`[process-dunning] quotes payment_status=succeeded (dunning retry) update failed for quote ${quote_id}:`, retrySucceededErr);
+                } else if (!checkRowsWritten(retrySucceededRows).wroteRows) {
+                  console.error(zeroRowWriteMessage("process-dunning", `quotes.payment_status=succeeded (dunning retry) for quote ${quote_id}`));
+                  try {
+                    await supabase.from("platform_alerts_log").insert({
+                      alert_type: "gh2105_zero_row_update",
+                      function_name: "process-dunning",
+                      message: `Dunning retry for quote ${quote_id} succeeded on Stripe (payment_intent ${respData.id}) but the quotes.payment_status=succeeded write matched zero rows.`,
+                      sent_at: new Date().toISOString(),
+                    });
+                  } catch (alertErr) {
+                    console.error("[process-dunning] platform_alerts_log insert failed:", alertErr);
+                  }
+                }
 
                 return new Response(
                   JSON.stringify({
@@ -1017,7 +1104,20 @@ serve(async (req) => {
                 if (method.cpm_id) quoteUpdate.payment_method_id = method.cpm_id;
                 if (cardFee > 0) quoteUpdate.card_fee_cents = cardFee;
 
-                await supabase.from("quotes").update(quoteUpdate).eq("id", quote_id);
+                // gh-2105 (batch 3, decision a): a zero-row match here means
+                // the ACH-in-flight state is lost, so the stripe-webhook
+                // settlement listener has no 'pending' row to reconcile
+                // against later.
+                const { data: retryPendingRows, error: retryPendingErr } = await supabase
+                  .from("quotes")
+                  .update(quoteUpdate)
+                  .eq("id", quote_id)
+                  .select("id");
+                if (retryPendingErr) {
+                  console.error(`[process-dunning] quotes payment_status=pending (dunning retry) update failed for quote ${quote_id}:`, retryPendingErr);
+                } else if (!checkRowsWritten(retryPendingRows).wroteRows) {
+                  console.error(zeroRowWriteMessage("process-dunning", `quotes.payment_status=pending (dunning retry) for quote ${quote_id}`));
+                }
 
                 return new Response(
                   JSON.stringify({
@@ -1073,7 +1173,22 @@ serve(async (req) => {
       if (contractor && (!contractor.timezone || contractor.timezone === "America/New_York") && contractor.address_state) {
         const derived = resolveTimezone(null, contractor.address_state);
         if (derived !== "America/New_York") {
-          await supabase.from("contractors").update({ timezone: derived }).eq("id", contractor_id);
+          // gh-2105 (batch 3, decision b): non-money, best-effort enrichment
+          // write -- `tz` above already falls back to the freshly-`derived`
+          // value in-memory for this request's own schedule computation
+          // regardless of whether this persist succeeds, so a zero-row match
+          // only means the NEXT invocation re-derives the same value again
+          // (cheap, not a silent data-loss on a money/legal path).
+          const { data: tzRows, error: tzErr } = await supabase
+            .from("contractors")
+            .update({ timezone: derived })
+            .eq("id", contractor_id)
+            .select("id");
+          if (tzErr) {
+            console.error(`[process-dunning] contractors timezone update failed for contractor ${contractor_id}:`, tzErr);
+          } else if (!checkRowsWritten(tzRows).wroteRows) {
+            console.log(`[process-dunning] contractors timezone update for ${contractor_id} matched zero rows (update-no-select-ok: non-critical enrichment, re-derived next run).`);
+          }
         }
       }
 
@@ -1114,7 +1229,20 @@ serve(async (req) => {
       if (insertError) throw new Error(`Failed to create payment_failures record: ${insertError.message}`);
 
       // Update quote payment status
-      await supabase.from("quotes").update({ payment_status: "dunning" }).eq("id", quote_id);
+      // gh-2105 (batch 3, decision a): a zero-row match here means the quote
+      // never learns dunning is active, invisible to any query filtering on
+      // payment_status='dunning' -- the same money-path gap as the identical
+      // write in docusign-webhook (batch 3, this PR).
+      const { data: triggerDunningRows, error: triggerDunningErr } = await supabase
+        .from("quotes")
+        .update({ payment_status: "dunning" })
+        .eq("id", quote_id)
+        .select("id");
+      if (triggerDunningErr) {
+        console.error(`[process-dunning] quotes payment_status=dunning update failed for quote ${quote_id}:`, triggerDunningErr);
+      } else if (!checkRowsWritten(triggerDunningRows).wroteRows) {
+        console.error(zeroRowWriteMessage("process-dunning", `quotes.payment_status=dunning for quote ${quote_id}`));
+      }
 
       // Collect all contact info
       const contacts = contractor ? await getContractorContacts(contractor as any, supabase) : { emails: [], phones: [] };
@@ -1126,10 +1254,21 @@ serve(async (req) => {
         await sendSMSToAll(contacts.phones, HOURLY_SMS);
 
         // Update reminder count
-        await supabase
+        // gh-2105 (batch 3, decision b): a zero-row match here leaves
+        // reminder_count at its default (0) instead of 1 -- the CRON pass
+        // below still drives off `next_reminder_at`/`dunning_status`, not
+        // this counter, so a missed increment under-counts the reminder log
+        // without stalling or skipping the actual dunning sequence.
+        const { data: firstReminderRows, error: firstReminderErr } = await supabase
           .from("payment_failures")
           .update({ reminder_count: 1 })
-          .eq("id", failureRecord.id);
+          .eq("id", failureRecord.id)
+          .select("id");
+        if (firstReminderErr) {
+          console.error(`[process-dunning] payment_failures reminder_count=1 update failed for failure ${failureRecord.id}:`, firstReminderErr);
+        } else if (!checkRowsWritten(firstReminderRows).wroteRows) {
+          console.log(`[process-dunning] reminder_count=1 update for failure ${failureRecord.id} matched zero rows (update-no-select-ok: non-blocking counter).`);
+        }
 
         console.log(`Trigger: sent immediate reminder to ${sent} email(s) for failure ${failureRecord.id}`);
       } else {
@@ -1204,13 +1343,25 @@ serve(async (req) => {
         await sendSMSToAll(contacts.phones, WARNING_SMS);
 
         // Advance status — clear next_reminder_at to stop hourly loop
-        await supabase
+        // gh-2105 (batch 3, decision a): a zero-row match here means the
+        // warning email above was sent, but the row silently stays 'active'
+        // with its old next_reminder_at -- the hourly loop keeps firing
+        // AFTER the final-notice email went out, and PASS 2 below (which
+        // only selects dunning_status='warning_sent') never picks this
+        // failure up for homeowner notification.
+        const { data: warningRows, error: warningErr } = await supabase
           .from("payment_failures")
           .update({
             dunning_status:  "warning_sent",
             next_reminder_at: null,
           })
-          .eq("id", failure.id);
+          .eq("id", failure.id)
+          .select("id");
+        if (warningErr) {
+          console.error(`[process-dunning] payment_failures dunning_status=warning_sent update failed for failure ${failure.id}:`, warningErr);
+        } else if (!checkRowsWritten(warningRows).wroteRows) {
+          console.error(zeroRowWriteMessage("process-dunning", `payment_failures.dunning_status=warning_sent for failure ${failure.id}`));
+        }
 
         console.log(`8 AM warning sent for failure ${failure.id}. Hourly reminders stopped.`);
 
@@ -1224,13 +1375,24 @@ serve(async (req) => {
 
         const nextReminder = nextHourlyReminder(now, tz, warningAt);
 
-        await supabase
+        // gh-2105 (batch 3, decision a): a zero-row match here means
+        // next_reminder_at never advances past `now` -- the very next CRON
+        // tick (every ~few minutes) re-selects this same failure and
+        // re-sends the hourly reminder email/SMS immediately, silently
+        // turning one reminder into a spam loop.
+        const { data: hourlyRows, error: hourlyErr } = await supabase
           .from("payment_failures")
           .update({
             reminder_count:   failure.reminder_count + 1,
             next_reminder_at: nextReminder.toISOString(),
           })
-          .eq("id", failure.id);
+          .eq("id", failure.id)
+          .select("id");
+        if (hourlyErr) {
+          console.error(`[process-dunning] payment_failures reminder_count/next_reminder_at update failed for failure ${failure.id}:`, hourlyErr);
+        } else if (!checkRowsWritten(hourlyRows).wroteRows) {
+          console.error(zeroRowWriteMessage("process-dunning", `payment_failures.next_reminder_at advance for failure ${failure.id}`));
+        }
       }
 
       processed++;
@@ -1256,10 +1418,19 @@ serve(async (req) => {
       if (!failure.homeowner_id) {
         console.warn(`failure ${failure.id} has no homeowner_id — skipping homeowner notification`);
         // Still advance status so we don't retry forever
-        await supabase
+        // gh-2105 (batch 3, decision a): a zero-row match here means this
+        // failure stays 'warning_sent' forever and PASS 2 re-selects it every
+        // CRON tick, re-logging the same "no homeowner_id" warning on a loop.
+        const { data: skipRows, error: skipErr } = await supabase
           .from("payment_failures")
           .update({ dunning_status: "homeowner_notified" })
-          .eq("id", failure.id);
+          .eq("id", failure.id)
+          .select("id");
+        if (skipErr) {
+          console.error(`[process-dunning] payment_failures dunning_status=homeowner_notified update failed for failure ${failure.id} (no homeowner_id):`, skipErr);
+        } else if (!checkRowsWritten(skipRows).wroteRows) {
+          console.error(zeroRowWriteMessage("process-dunning", `payment_failures.dunning_status=homeowner_notified for failure ${failure.id} (no homeowner_id)`));
+        }
         continue;
       }
 
@@ -1296,10 +1467,20 @@ serve(async (req) => {
         `)
       );
 
-      await supabase
+      // gh-2105 (batch 3, decision a): a zero-row match here means the
+      // homeowner and Dustin were just emailed, but the row stays
+      // 'warning_sent' -- the next CRON tick re-sends BOTH emails again,
+      // silently, every ~15 minutes until someone notices.
+      const { data: notifiedRows, error: notifiedErr } = await supabase
         .from("payment_failures")
         .update({ dunning_status: "homeowner_notified" })
-        .eq("id", failure.id);
+        .eq("id", failure.id)
+        .select("id");
+      if (notifiedErr) {
+        console.error(`[process-dunning] payment_failures dunning_status=homeowner_notified update failed for failure ${failure.id}:`, notifiedErr);
+      } else if (!checkRowsWritten(notifiedRows).wroteRows) {
+        console.error(zeroRowWriteMessage("process-dunning", `payment_failures.dunning_status=homeowner_notified for failure ${failure.id}`));
+      }
 
       processed++;
     }
