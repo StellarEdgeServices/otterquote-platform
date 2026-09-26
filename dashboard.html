@@ -3133,18 +3133,22 @@
 
             // F-005 fix: trigger parse-loss-sheet for estimate uploads so
             // RCV/ACV are written back to claims.rcv_amount / claims.acv_amount
+            // gh-2070: fire-and-forget — mirrors PR #2080/#2208's fix.
+            // parse-loss-sheet makes a synchronous, non-streaming vision call
+            // (routinely 15-60s, bounded only by the ~150s Edge Function wall
+            // clock); an awaited invoke here could hang the upload UI
+            // indefinitely. A catch handles a rejection, not a latency, so
+            // this no longer awaits the call at all.
             if (type === 'estimate' && uploadedStoragePath) {
-              try {
-                await sb.functions.invoke('parse-loss-sheet', {
-                  body: {
-                    claim_id: currentClaim.id,
-                    storage_path: uploadedStoragePath,
-                  }
-                });
-              } catch (parseErr) {
+              void sb.functions.invoke('parse-loss-sheet', {
+                body: {
+                  claim_id: currentClaim.id,
+                  storage_path: uploadedStoragePath,
+                }
+              }).catch((parseErr) => {
                 // Non-fatal — parsing failure doesn't block the upload
                 console.warn('[uploadFile] parse-loss-sheet failed (non-fatal):', parseErr);
-              }
+              });
             }
           }
 
