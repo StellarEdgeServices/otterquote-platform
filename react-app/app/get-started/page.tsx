@@ -118,6 +118,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import { supabase } from '@/lib/supabase';
+import { isInternalTraffic } from '@/lib/internal-traffic';
 import { readReferralIds, writeReferralIds } from '@/lib/cookie-storage';
 import { linkPendingLeadOnce } from '@/lib/lead-capture';
 import { readFirstTouch } from '@/lib/attribution';
@@ -530,6 +531,30 @@ function track<E extends keyof TrackEventParams>(event: E, params: TrackEventPar
 function fbq(...args: unknown[]) {
   if (typeof window !== 'undefined' && (window as any).fbq) {
     (window as any).fbq(...args);
+  }
+}
+
+// ─── LinkedIn Insight Tag helper — gh-1926 (shipped dark/gated) ───────────
+// window.oqLinkedInTrackLead is only ever defined by LinkedInInsightGate
+// once its host+path gate has passed AND a real LINKEDIN_CONVERSION_ID has
+// been configured (currently an empty placeholder) -- this guard keeps the
+// call a silent no-op everywhere else, same posture as fbq() above.
+
+function linkedInTrackLead() {
+  if (typeof window !== 'undefined' && typeof (window as any).oqLinkedInTrackLead === 'function') {
+    (window as any).oqLinkedInTrackLead();
+  }
+}
+
+// ─── Reddit Pixel helper — gh-1926 (shipped dark/gated) ───────────────────
+// window.rdt is only ever defined by RedditPixelGate once its host+path
+// gate has passed (currently blocked: REDDIT_PIXEL_ID is an empty
+// placeholder, so the gate never mounts the pixel) -- this guard keeps the
+// call a silent no-op everywhere else, same posture as fbq() above.
+
+function rdt(...args: unknown[]) {
+  if (typeof window !== 'undefined' && (window as any).rdt) {
+    (window as any).rdt(...args);
   }
 }
 
@@ -946,12 +971,26 @@ export default function GetStartedPage() {
     //    may leave the email field blank, and the real address only arrives with
     //    the OAuth session.
     if (emailForLead) {
-      supabase.from('leads').insert({
+      // gh-2068 review fix (cto36 REVIEW: FAIL, comment 5779410643, B2):
+      // the X-OQ-Internal marker must reach leads_force_safe_insert_defaults()
+      // (BEFORE INSERT trigger on public.leads) WITHOUT going through
+      // `supabase`'s client-wide `global.headers` -- that would also attach
+      // it to every supabase.functions.invoke(...) this singleton makes,
+      // and Edge Function CORS allow-lists don't list x-oq-internal, so it
+      // would break payments/signing/admin for internal browsers (see
+      // react-app/app/lib/supabase.ts's comment). postgrest-js's
+      // per-request `.setHeader(name, value)` scopes the header to THIS
+      // insert only, leaving every other call this client makes untouched.
+      const leadInsert = supabase.from('leads').insert({
         name: `${firstName.trim()} ${lastName.trim()}`,
         email: emailForLead,
         source: referralSource || 'web',
         created_at: new Date().toISOString(),
-      }).then(({ error: leadErr }) => {
+      });
+      if (isInternalTraffic()) {
+        leadInsert.setHeader('x-oq-internal', '1');
+      }
+      leadInsert.then(({ error: leadErr }) => {
         if (leadErr) console.warn('[get-started] leads insert failed (non-fatal):', leadErr);
       });
     }
@@ -1077,6 +1116,13 @@ export default function GetStartedPage() {
     // gh-1817: Meta Pixel Lead event — fires on both the Google OAuth and
     // password sign-up paths, matching the GA4 call sites above exactly.
     fbq('track', 'Lead');
+    // gh-1926: LinkedIn Insight Tag + Reddit Pixel Lead events — shipped
+    // dark/gated (LinkedInInsightGate/RedditPixelGate never mount their
+    // real loader until a follow-up config drop lands real IDs), same
+    // call-site placement as the Meta Lead call above so all three fire
+    // together once configured.
+    linkedInTrackLead();
+    rdt('track', 'Lead');
   };
 
   // ── Google OAuth sign-up (Dustin 2026-08-26; button sits below the form

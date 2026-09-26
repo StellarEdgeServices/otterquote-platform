@@ -139,8 +139,11 @@ Deno.test("gh-1314 step 4: a REJECTED persistence write is logged, not swallowed
   // not throw. A bare try/catch would swallow a missing column or a violated
   // CHECK in silence — the #1538 failure mode.
   assertStringIncludes(src, "signed-price persistence REJECTED");
+  // gh-2105 (batch 3): the destructure grew a `data: rows` alongside `error`
+  // (feeding the new zero-row-update check below it) — `error` itself is
+  // still inspected, which is what this assertion guards.
   assertEquals(
-    /const \{ error \} = await supabase\s*\n?\s*\.from\("claims"\)/.test(src),
+    /const \{ data: rows, error \} = await supabase\s*\n?\s*\.from\("claims"\)/.test(src),
     true,
     "REGRESSION (gh-1314 step 4): the persistence write no longer inspects PostgREST's `error`, " +
       "so a rejected write is silent.",

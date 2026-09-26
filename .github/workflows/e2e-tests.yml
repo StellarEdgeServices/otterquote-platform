@@ -112,6 +112,9 @@ jobs:
       - name: cookie-storage.js/config.js load-order check (Stage 5 prevention, #601)
         run: python3 scripts/check-script-load-order.py
 
+      - name: Sentry loader/onLoad ordering guard (gh-2010/PR #2023/gh-2043)
+        run: python3 scripts/check-sentry-onload-order.py
+
       - name: unselected .update() ratchet guard (gh-2105, #2103 pattern)
         run: python3 scripts/check-unselected-update-ratchet.py
 

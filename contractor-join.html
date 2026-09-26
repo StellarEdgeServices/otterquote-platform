@@ -72,6 +72,8 @@
     <!-- Google Analytics -->
     <script src="/js/ga-gate.js"></script>
     <script src="/js/meta-pixel-gate.js"></script>
+    <script src="/js/linkedin-insight-gate.js"></script>
+    <script src="/js/reddit-pixel-gate.js"></script>
     <script>gtag('config', 'G-D1Y1TLGEFY');</script>
 <!-- Microsoft Clarity (wwr7qlk8g5) is loaded by /js/ga-gate.js, behind the same production-host gate as GA4 (gh-1619). Do not add a per-page loader. -->
 
@@ -424,6 +426,18 @@
                 // gh-1817: Meta Pixel Lead event — contractor sign-up form submit
                 if (typeof fbq === 'function') {
                     fbq('track', 'Lead');
+                }
+
+                // gh-1926: LinkedIn Insight Tag + Reddit Pixel Lead events —
+                // shipped dark/gated (js/linkedin-insight-gate.js /
+                // js/reddit-pixel-gate.js never load their real vendor
+                // script until a follow-up config drop lands real IDs),
+                // same call-site placement as the Meta Lead call above.
+                if (typeof oqLinkedInTrackLead === 'function') {
+                    oqLinkedInTrackLead();
+                }
+                if (typeof rdt === 'function') {
+                    rdt('track', 'Lead');
                 }
 
                 document.getElementById('successMessage').classList.add('show');

@@ -30,6 +30,23 @@ on:
 permissions:
   contents: read
 
+# gh-1731 (COST GATE): dedupe repeat-push churn on open PRs -- this check
+# re-evaluates from scratch each run, so only the newest push's verdict is
+# useful. Cancelling a still-running run for the same PR/ref is safe here
+# (diff- or whole-tree-scoped, no shared fixture state) and does not change
+# what this check verifies or whether it reports on the final commit --
+# same pattern already applied to e2e-tests.yml/schema-lint.yml/
+# react-app-tests.yml/codeql.yml/credential-sweep.yml (PR #1740).
+# Measured net effect: ~$0 direct minute savings -- every job in this
+# workflow already sits on GitHub's 1-minute billing floor, so a
+# cancelled job bills the same minute a completed one does (PR #1740
+# measured this directly). This is queue-depth and merge-latency only,
+# per #1731's own "wall-clock is the half that costs throughput" framing,
+# never applied to a merge_group-triggered required check.
+concurrency:
+  group: workflow-safety-ratchet-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   workflow-safety-ratchet:
     name: No unsafe pull_request_target workflow
