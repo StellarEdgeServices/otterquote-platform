@@ -82,6 +82,13 @@ ok(/Check your employment agreement and your governing licensing agency to make 
 ok(pageSrc.includes('PLACEHOLDER'), '(6) at least one clearly-marked PLACEHOLDER for non-approved new copy');
 ok(!/\u0000/.test(pageSrc), '(7) null-byte gate: file contains no null bytes');
 
+// LEGAL-READ FAIL 5842031479 (delta at 51843e84): the <title> was the one
+// remaining unapproved string -- "Complete Your Partner Signup" was new
+// copy. Ben, DECIDED (Tier B): the approved CTA "Finish My Signup" plus the
+// site's standard " — Otter Quotes" title-brand suffix, nothing else.
+ok(/<title>Finish My Signup &mdash; Otter Quotes<\/title>/.test(pageSrc), '(7p) <title> is "Finish My Signup — Otter Quotes" (LEGAL-READ FAIL 5842031479)');
+ok(!/Complete Your Partner Signup/.test(pageSrc), '(7q) old unapproved <title> text "Complete Your Partner Signup" is absent');
+
 // ── REVIEW FAIL 5841303507 must-fix 1 / LEGAL-READ FAIL 5841305700 (D-333) ──
 ok(!/Review your details below and accept the Partner Terms to activate your account\./.test(pageSrc),
   "(7b) NEGATIVE CONTROL: the unapproved 'Review your details below...' sentence must not appear anywhere in the page source");
