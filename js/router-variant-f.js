@@ -8,6 +8,14 @@
 // screen into the EXISTING app paths (the no-account version is #2121 row
 // 3.2 and is NOT part of this issue).
 //
+// gh-2121 (HO-3, row 3.2, this PR): the thank-you screen's two CTAs now go to
+// the NEW no-account pages (measure-lead.html / loss-sheet-lead.html)
+// instead of the authed app paths, carrying an unguessable, expiring
+// `?lead_token=` (Ben's Ruling 3 -- never the raw lead id) minted just-in-time
+// by issue-lead-access-token. Screens 1-3 and the lead-insert path are
+// UNCHANGED, exactly as the HO-3 build spec calls for
+// (In Flight/reports/ceo71-ho-define-20260926.md).
+//
 // Reachable by URL only (/start?v=f). It is deliberately NOT in start.html's
 // LIVE_VARIANTS, so it is not in the random split until Sloane says so on
 // #2122 -- see start.html's DIRECT_ONLY_ARMS.
@@ -108,10 +116,19 @@
     { value: 'cash', copyKey: 'arm_f_s1_option_cash' },
     { value: 'unsure', copyKey: 'arm_f_s1_option_unsure' }
   ];
-  // The two thank-you buttons deep-link into the EXISTING app paths. The lead
-  // id and attribution are appended the same way every other arm's hand-off
-  // does (redirectWithLeadId below).
+  // gh-2121 (HO-3): the two thank-you buttons deep-link into the NEW
+  // no-account pages, carrying a minted `?lead_token=` (never the raw lead
+  // id -- see redirectWithLeadToken below). Same host/URL convention as the
+  // authed destinations this replaces (no .html suffix).
   var CTA_DESTINATIONS = {
+    measure: 'https://app.otterquote.com/measure-lead',
+    loss_sheet: 'https://app.otterquote.com/loss-sheet-lead'
+  };
+  // gh-2121: if a token cannot be minted (network error, or the lead somehow
+  // fell out of scope), fall back to the ORIGINAL authed destinations rather
+  // than stranding the visitor on a dead button -- they can still sign in
+  // and use the account-based path.
+  var CTA_DESTINATIONS_FALLBACK = {
     measure: 'https://app.otterquote.com/help-measurements',
     loss_sheet: 'https://app.otterquote.com/help-estimate'
   };
@@ -133,6 +150,10 @@
   var DETAILS_RETRIES = 1;
   var DETAILS_RETRY_DELAY_MS = 800;
   var CONSENT_KEY = 'arm_f_s3_consent_checkbox';
+  // gh-2121: same one-retry discipline as DETAILS_*, for the token mint.
+  var TOKEN_FUNCTION = 'issue-lead-access-token';
+  var TOKEN_RETRIES = 1;
+  var TOKEN_RETRY_DELAY_MS = 500;
 
   var STEP_INDEX = { 'f-funding': 1, 'f-address': 2, 'f-contact': 3, 'f-thanks': 4 };
 
@@ -484,11 +505,13 @@
   // One call plus DETAILS_RETRIES retries, shared by set_lead_role and the details call. `invoke` returns a
   // thenable; `isOk(res)` says whether it worked; `notRetryable(res)` marks a result that cannot succeed on retry.
   // Resolves true on success, false after the final failure (which is reported to Sentry).
-  function callWithRetry(what, newId, invoke, isOk, notRetryable) {
+  function callWithRetry(what, newId, invoke, isOk, notRetryable, maxRetries, retryDelayMs) {
+    var retries = typeof maxRetries === 'number' ? maxRetries : DETAILS_RETRIES;
+    var delay = typeof retryDelayMs === 'number' ? retryDelayMs : DETAILS_RETRY_DELAY_MS;
     return new Promise(function (resolve) {
       var attempts = 0;
       function fail(err, stop) {
-        if (!stop && attempts <= DETAILS_RETRIES) { setTimeout(attempt, DETAILS_RETRY_DELAY_MS); return; }
+        if (!stop && attempts <= retries) { setTimeout(attempt, delay); return; }
         reportFailure(what, newId, attempts, err);
         resolve(false);
       }
@@ -647,10 +670,52 @@
     setTimeout(run, CTA_WAIT_MS);
     detailsInFlight.then(run, run);
   }
-  function redirectWithLeadId(destBase) {
-    var sep = destBase.indexOf('?') === -1 ? '?' : '&';
-    var withLead = destBase + sep + 'lead=' + encodeURIComponent(leadId);
-    bridge.redirectTo(bridge.appendParams(withLead, bridge.collectAttribution()), true);
+  // gh-2121 (HO-3): mints the unguessable, expiring lead_token via
+  // issue-lead-access-token (never sends/uses the raw lead id as a URL
+  // credential -- Ben's Ruling 3). Same URL-construction convention as
+  // detailsUrl()/postDetails() (a simple, no-preflight cross-origin POST); a
+  // failed mint (network error, or the RPC reporting lead_out_of_scope)
+  // resolves null rather than throwing, so afterDetails-style callers can
+  // fall back cleanly instead of stranding the visitor.
+  function mintLeadToken(newId) {
+    var base = bridge.tokenUrl || (bridge.detailsUrl ? bridge.detailsUrl.replace(/record-lead-details\/?$/, TOKEN_FUNCTION) : null);
+    if (!base) return Promise.resolve(null);
+    var key = bridge.anonKey;
+    var url = key ? base + (base.indexOf('?') === -1 ? '?' : '&') + 'apikey=' + encodeURIComponent(key) : base;
+    var result = null;
+    var ok = callWithRetry('issue-lead-access-token', newId,
+      function () {
+        if (typeof fetch !== 'function') return null;
+        return fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=UTF-8' }, body: JSON.stringify({ lead_id: newId }) }).then(
+          function (r) {
+            return r.json().then(
+              function (d) { result = d; return { data: d, error: r.ok && d && d.ok ? null : { name: 'HttpError', status: r.status } }; },
+              function () { return { data: null, error: { name: 'BadJson', status: r.status } }; });
+          },
+          function (e) { return { data: null, error: { name: e && e.name ? e.name : 'FetchError' } }; });
+      },
+      function (res) { return !!res && !res.error && !!res.data && res.data.ok === true; },
+      function (res) { return !!(res && res.data && res.data.reason === 'lead_out_of_scope'); },
+      TOKEN_RETRIES, TOKEN_RETRY_DELAY_MS
+    );
+    return ok.then(function (succeeded) { return succeeded && result && result.token ? result.token : null; });
+  }
+  function redirectWithLeadToken(destBase, fallbackBase) {
+    mintLeadToken(leadId).then(function (token) {
+      if (token) {
+        var sep = destBase.indexOf('?') === -1 ? '?' : '&';
+        var withToken = destBase + sep + 'lead_token=' + encodeURIComponent(token);
+        bridge.redirectTo(bridge.appendParams(withToken, bridge.collectAttribution()), true);
+      } else {
+        // Ruling 3 refuses a raw-lead-id URL, so a failed mint falls back to
+        // the ORIGINAL authed destination (still keyed by lead id, exactly
+        // as it was before this PR) rather than sending anyone to a no-auth
+        // page with no credential at all.
+        var sep2 = fallbackBase.indexOf('?') === -1 ? '?' : '&';
+        var withLead = fallbackBase + sep2 + 'lead=' + encodeURIComponent(leadId);
+        bridge.redirectTo(bridge.appendParams(withLead, bridge.collectAttribution()), true);
+      }
+    });
   }
   RENDERERS['f-thanks'] = function () {
     root.appendChild(heading(COPY.arm_f_s4_headline));
@@ -658,11 +723,11 @@
     root.appendChild(primaryButton(COPY.arm_f_s4_button_measure, function () {
       // The choice is in the event NAME, not a parameter: analytics carries only the allow-listed keys.
       bridge.trackRouter('router_f_cta_measure', stepParams('f-thanks'));
-      afterDetails(function () { redirectWithLeadId(CTA_DESTINATIONS.measure); });
+      afterDetails(function () { redirectWithLeadToken(CTA_DESTINATIONS.measure, CTA_DESTINATIONS_FALLBACK.measure); });
     }));
     root.appendChild(primaryButton(COPY.arm_f_s4_button_losssheet, function () {
       bridge.trackRouter('router_f_cta_loss_sheet', stepParams('f-thanks'));
-      afterDetails(function () { redirectWithLeadId(CTA_DESTINATIONS.loss_sheet); });
+      afterDetails(function () { redirectWithLeadToken(CTA_DESTINATIONS.loss_sheet, CTA_DESTINATIONS_FALLBACK.loss_sheet); });
     }));
   };
 
