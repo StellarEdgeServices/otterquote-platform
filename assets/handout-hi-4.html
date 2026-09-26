@@ -101,6 +101,10 @@
 <body>
     <div class="print-button">
         <button onclick="window.print()">Print / Save as PDF</button>
+        <!-- gh2225 re-review fix (B6, REVIEW FAIL 5849956427): the handout
+             now opens in the same tab (see hi-4.html), so it needs its own
+             way back instead of relying on a second tab. -->
+        <button onclick="history.back()" style="margin-left: 8px;">&larr; Back</button>
     </div>
 
     <div class="page-container">
@@ -237,7 +241,11 @@
                     var contact = JSON.parse(raw);
                     setText('cbName', contact.name);
                     setText('cbCompany', contact.company);
-                    sessionStorage.removeItem('oq_handout_hi4_contact');
+                    // gh2225 re-review fix (B6 minor, REVIEW FAIL 5849956427):
+                    // used to removeItem() right after reading, so a reload or
+                    // a print-preview reload also lost the personalization.
+                    // Left in place instead -- it is same-tab sessionStorage,
+                    // so it never outlives this tab anyway.
                 }
             } catch (e) { /* no personalization data -- template stays generic/printable as-is */ }
         })();

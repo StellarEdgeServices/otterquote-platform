@@ -672,17 +672,25 @@
                                  the same approved sentence verbatim — no new words. -->
                             <!-- INS-5 confirmation copy: approved-copy-pending (issue
                                  #2151 comment 5849036069's "Post-submit confirmation"
-                                 string, verbatim as posted — DRAFT until Dustin rules).
-                                 #handoutLinkWrap is hidden until JS has a real
+                                 string as a starting point — DRAFT until Dustin rules).
+                                 gh2225 wave-3 fix (item 3, "truthful about how the
+                                 handout is produced"): the original wording ("Your
+                                 co-branded handout is ready") didn't say the handout
+                                 is generated client-side, in this browser, from the
+                                 name/company/phone/email just entered above -- not a
+                                 pre-made document sent from a server. Reworded so the
+                                 partner isn't surprised when reopening it elsewhere
+                                 (no account, no session) shows blank placeholders
+                                 instead. #handoutLinkWrap is hidden until JS has a real
                                  personalized handout URL (agent name + their own
                                  referral link filled in) to point it at — see the
                                  register_partner success handler below. No fee
                                  language is on the handout itself; the handout stays
                                  a client-facing document (S03 above). -->
                             <div id="successMessage" class="success-message">
-                                <p data-copy="confirmMsg">You're in! Your co-branded handout is ready — tap below to open and print it. Install the Otter Quotes partner app, sign in with the account you just created, and your referral link will be waiting inside.</p>
+                                <p data-copy="confirmMsg">You're in! We've generated your co-branded handout from the name, company, phone and email you entered above — tap below to open and print it. Install the Otter Quotes partner app, sign in with the account you just created, and your referral link will also be there.</p>
                                 <div id="handoutLinkWrap" style="display:none; margin-top: 16px;">
-                                    <a href="#" id="handoutLinkBtn" class="btn btn-primary" target="_blank" rel="noopener" data-copy="handoutCta">Get Your Co-Branded Handout</a>
+                                    <a href="#" id="handoutLinkBtn" class="btn btn-primary" data-copy="handoutCta">Get Your Co-Branded Handout</a>
                                 </div>
                                 <div style="margin-top: 20px;">
                                     <a href="/partner-app.html" class="btn btn-primary">Get the Partner App</a>
@@ -692,9 +700,9 @@
                             <div id="checkEmailMessage" class="success-message">
                                 <h3>Almost there — check your email</h3>
                                 <p>We sent a confirmation link to <strong id="checkEmailAddress"></strong>. Click it to verify your address, then sign in to your new partner account.</p>
-                                <p data-copy="confirmMsg">You're in! Your co-branded handout is ready — tap below to open and print it. Install the Otter Quotes partner app, sign in with the account you just created, and your referral link will be waiting inside.</p>
+                                <p data-copy="confirmMsg">You're in! We've generated your co-branded handout from the name, company, phone and email you entered above — tap below to open and print it. Install the Otter Quotes partner app, sign in with the account you just created, and your referral link will also be there.</p>
                                 <div id="handoutLinkWrapCheckEmail" style="display:none; margin-top: 16px;">
-                                    <a href="#" id="handoutLinkBtnCheckEmail" class="btn btn-primary" target="_blank" rel="noopener" data-copy="handoutCta">Get Your Co-Branded Handout</a>
+                                    <a href="#" id="handoutLinkBtnCheckEmail" class="btn btn-primary" data-copy="handoutCta">Get Your Co-Branded Handout</a>
                                 </div>
                                 <div style="margin-top: 20px;">
                                     <a href="/partner-app.html" class="btn btn-primary">Get the Partner App</a>
@@ -803,15 +811,13 @@
                         </div>
                         <div class="benefit-item">
                             <div class="benefit-check">✓</div>
-                            <!-- gh2225 fix (B3, REVIEW FAIL 5849558470): was a
-                                 paraphrase of the D-301/D-305 fee sentence
-                                 ("Earn $200 when a referred job of $10,000+
-                                 completes."), which fails the verbatim rule.
-                                 Fee-free bullet, static markup (no data-copy
-                                 hook, so no fee text can live in the
-                                 swappable draft-copy block) -- ins-1's
-                                 benefit1 wording. -->
-                            <p>Your client gets multiple contractor bids without a door-knocker showing up first.</p>
+                            <!-- gh2225 re-review 5849956427: the bullet-vs-verbatim
+                                 conflict (D-301/D-305) is a Tier C question for
+                                 Dustin, not settled in code. Restored to match
+                                 the live, Dustin-approved INS-1 wording
+                                 (#2151 comments 5821408557, 5832300528) so
+                                 ins-5 matches the approved INS-1 page. -->
+                            <p data-copy="benefit2">Earn $200 when a referred job of $10,000+ completes.</p>
                         </div>
                         <div class="benefit-item">
                             <div class="benefit-check">✓</div>
@@ -924,9 +930,10 @@
             // gh2225 fix (N1, REVIEW FAIL 5849558470): "attached" and "add
             // your name" were inaccurate -- nothing is attached, and the
             // handout auto-fills the agent's name already.
-            confirmMsg: "You're in! Your co-branded handout is ready — tap below to open and print it. Install the Otter Quotes partner app, sign in with the account you just created, and your referral link will be waiting inside.",
+            confirmMsg: "You're in! We've generated your co-branded handout from the name, company, phone and email you entered above — tap below to open and print it. Install the Otter Quotes partner app, sign in with the account you just created, and your referral link will also be there.",
             handoutCta: "Get Your Co-Branded Handout",
             benefit1: "A ready-made \"After the Hail\" handout, co-branded with you, to hand or email to any client.",
+            benefit2: "Earn $200 when a referred job of $10,000+ completes.",
             benefit3: "Track every referral from your phone, in real time.",
         };
         (function applyDraftCopy() {
@@ -953,9 +960,15 @@
         // branded page pointing anywhere. Only the opaque referral `code`
         // goes in the URL now; the handout builds the real referral URL
         // itself from that code. The rest of the contact data is handed off
-        // via sessionStorage (same-origin, same tab group -- carries across
-        // this target="_blank" open) so it never touches a query string,
-        // server log, or third-party pixel payload.
+        // via sessionStorage.
+        // gh2225 re-review fix (B6, REVIEW FAIL 5849956427): the handout link
+        // used to open with target="_blank" rel="noopener", which gives the
+        // new tab a fresh, empty sessionStorage -- the co-branding never
+        // arrived and the handout always printed with placeholders. The link
+        // now navigates the SAME tab (no target/rel at all), so sessionStorage
+        // is the same storage area the handout reads, and the handout has its
+        // own "Back to your dashboard" link (see assets/handout-ins-5.html)
+        // instead of relying on a second tab.
         function buildHandoutUrl(agentFirstName, agentCompany, agentPhone, agentEmail, uniqueCode) {
             try {
                 sessionStorage.setItem('oq_handout_ins5_contact', JSON.stringify({

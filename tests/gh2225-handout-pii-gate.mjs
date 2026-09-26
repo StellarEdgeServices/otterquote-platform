@@ -49,7 +49,19 @@ const FUNNEL_FILES = ['ins-5.html', 'hi-4.html'];
 // ── Checks applied to a given (filename, source) pair ──────────────────────
 
 function handoutHasNoPixel(src) {
-  return !/js\/meta-pixel-gate\.js/.test(src) && !/gtag\(/.test(src) && !/clarity\(/.test(src);
+  // gh2225 re-review fix (REVIEW FAIL 5849956427): the original check only
+  // caught js/meta-pixel-gate.js, gtag(), and clarity() -- it missed
+  // js/ga-gate.js itself (the script tag that would create gtag/Clarity),
+  // fbq(...), and any LinkedIn Insight Tag reference. A print utility page
+  // should load none of these.
+  return !/js\/meta-pixel-gate\.js/.test(src)
+    && !/js\/ga-gate\.js/.test(src)
+    && !/gtag\(/.test(src)
+    && !/googletagmanager\.com/.test(src)
+    && !/clarity\(/.test(src)
+    && !/clarity\.ms/.test(src)
+    && !/fbq\(/.test(src)
+    && !/linkedin|licdn/i.test(src);
 }
 
 function handoutHasNoLinkParam(src) {
@@ -152,9 +164,16 @@ ok(!handoutValidatesCode(PRE_FIX_HANDOUT_SNIPPET), 'negative control: pre-fix ha
 ok(!funnelBuildsCodeOnlyUrl(PRE_FIX_BUILD_HANDOUT_URL), 'negative control: pre-fix buildHandoutUrl() is correctly caught (PII in query string)');
 ok(!funnelUsesSessionStorageForContact(PRE_FIX_BUILD_HANDOUT_URL), 'negative control: pre-fix buildHandoutUrl() is correctly caught (no sessionStorage handoff)');
 
-// ── Bonus: the D-169 geographic claim and the B3 paraphrase must be gone too,
-// with the same negative-control shape (the pre-fix strings, byte-identical
-// to what shipped at c0092520, must still match the "bad" pattern).
+// ── Bonus: the D-169 geographic claim must be gone too, with the same
+// negative-control shape (the pre-fix string, byte-identical to what
+// shipped at c0092520, must still match the "bad" pattern).
+//
+// Note: the B3 paraphrase check that used to live here was removed per
+// re-review 5849956427 (L2) — the bullet-vs-verbatim conflict on the
+// approved INS-1 copy ("Earn $200 when a referred job of $10,000+
+// completes.") is a Tier C question for Dustin, not something this gate
+// enforces. ins-5's benefit2 was restored to match the live, approved
+// INS-1 wording (#2151 comments 5821408557, 5832300528).
 
 const INDIANA_RE = /"Otter Quotes"\s*service area:\s*Indiana\.|Otter Quotes,\s*Indiana/;
 for (const f of HANDOUT_FILES) {
@@ -163,11 +182,6 @@ for (const f of HANDOUT_FILES) {
 }
 ok(INDIANA_RE.test('"Otter Quotes" service area: Indiana.'), 'negative control: Indiana-claim regex correctly matches the removed sentence');
 ok(INDIANA_RE.test('Otter Quotes, Indiana &middot; otterquote.com'), 'negative control: Indiana-claim regex correctly matches the removed footer');
-
-const PARAPHRASED_FEE_RE = /Earn \$200 when a referred job of \$10,000\+ completes\./;
-const ins5Src = read('ins-5.html');
-ok(!PARAPHRASED_FEE_RE.test(ins5Src), 'ins-5.html: paraphrased D-301/D-305 fee bullet (benefit2) is gone');
-ok(PARAPHRASED_FEE_RE.test('Earn $200 when a referred job of $10,000+ completes.'), 'negative control: paraphrase regex correctly matches the removed bullet');
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

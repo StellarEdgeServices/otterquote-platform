@@ -675,7 +675,7 @@
                             <div id="successMessage" class="success-message">
                                 <p data-copy="confirmMsg">You're in! Install the Otter Quotes partner app, sign in with the account you just created, and download your printable handout — your link is already on it.</p>
                                 <div id="handoutLinkWrap" style="display:none; margin-top: 16px;">
-                                    <a href="#" id="handoutLinkBtn" class="btn btn-primary" target="_blank" rel="noopener" data-copy="handoutCta">Download Your Handout</a>
+                                    <a href="#" id="handoutLinkBtn" class="btn btn-primary" data-copy="handoutCta">Download Your Handout</a>
                                 </div>
                                 <div style="margin-top: 20px;">
                                     <a href="/partner-app.html?track=home_inspector" class="btn btn-primary">Install the App</a>
@@ -691,7 +691,7 @@
                                 <p>We sent a confirmation link to <strong id="checkEmailAddress"></strong>. Click it to verify your address, then sign in to your new partner account.</p>
                                 <p data-copy="confirmMsg">You're in! Install the Otter Quotes partner app, sign in with the account you just created, and download your printable handout — your link is already on it.</p>
                                 <div id="handoutLinkWrapCheckEmail" style="display:none; margin-top: 16px;">
-                                    <a href="#" id="handoutLinkBtnCheckEmail" class="btn btn-primary" target="_blank" rel="noopener" data-copy="handoutCta">Download Your Handout</a>
+                                    <a href="#" id="handoutLinkBtnCheckEmail" class="btn btn-primary" data-copy="handoutCta">Download Your Handout</a>
                                 </div>
                                 <div style="margin-top: 20px;">
                                     <a href="/partner-app.html?track=home_inspector" class="btn btn-primary">Install the App</a>
@@ -1016,6 +1016,14 @@
         // handout builds the real referral URL itself from that code. name/
         // company (the only fields the handout shows) go via sessionStorage
         // instead of the query string.
+        // gh2225 re-review fix (B6, REVIEW FAIL 5849956427): the handout link
+        // used to open with target="_blank" rel="noopener", which gives the
+        // new tab a fresh, empty sessionStorage -- the co-branding never
+        // arrived and the handout always printed with placeholders. The link
+        // now navigates the SAME tab (no target/rel at all), so sessionStorage
+        // is the same storage area the handout reads, and the handout has its
+        // own "Back to your dashboard" link (see assets/handout-hi-4.html)
+        // instead of relying on a second tab.
         function buildHandoutUrl(agentFirstName, agentCompany, agentPhone, agentEmail, uniqueCode) {
             try {
                 sessionStorage.setItem('oq_handout_hi4_contact', JSON.stringify({
