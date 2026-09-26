@@ -2,6 +2,24 @@
 -- contractors.is_test disagree.
 --
 -- >>> APPLIED MANUALLY (not a draft, not a db-push replay file) <<<
+-- DECIDED (Tier A) by Marty, CTO RUN 42, PR #2233 comment 5850353019,
+-- 2026-09-26T22:12:20Z, quoted verbatim: "the gh1763 data-repair was
+-- APPLIED on 2026-09-08 (CTO comment 5585368997 on #1763: run verbatim via
+-- execute_sql, guard passed, disagreement count 7 -> 0). Move it UNCHANGED,
+-- guard included, to supabase/migrations_applied_manually/20260908124630_gh1763_is_test_repair.sql
+-- with a header: 'Applied manually 2026-09-08 via execute_sql (see #1763
+-- comment 5585368997). NEVER replay. No schema_migrations row by design.'
+-- Keep the guard -- on an accidental re-run it matches 0 rows and raises,
+-- which is the safe failure. Rejected alternatives: (a) add a
+-- schema_migrations row (a production ledger write that would demand a
+-- replay file whose guard raises on every fresh branch); (b) strip the
+-- guard (removes the only protection against a re-run)." This file's
+-- location, filename and guard already matched that ruling before it was
+-- posted (this branch moved it here per the independent reviewer's
+-- recommendation, comment 5850286498); this header cites the ruling
+-- verbatim per the coordinator's follow-up instruction so the file's own
+-- text, not only the PR/issue comments, carries the DECIDED citation.
+--
 -- This file ran, byte-identical to below (guard included), against
 -- production (yeszghaspzwwstvsrioa) on 2026-09-08 at approximately
 -- 12:46:30Z UTC, executed by Marty (CTO) via Supabase MCP execute_sql --
@@ -28,12 +46,13 @@
 --     with is_test=false and raises, doing nothing).
 --
 -- Relocated here 2026-09-26 from supabase/migrations_drafts/ (gh-1438,
--- REVIEW FAIL 5850286498) -- that directory's own definition
--- (supabase/migrations/README.md) is "SQL that was written but is NOT
--- applied in production", which this file has not been true of since
--- 2026-09-08. Content below is unchanged from what actually ran; only
--- this header and the file's location changed. Rollback and pre-flight
--- docs, unmoved: supabase/migrations_rollbacks/gh1763_is_test_repair_rollback.sql
+-- REVIEW FAIL 5850286498; confirmed by DECIDED ruling 5850353019) --
+-- that directory's own definition (supabase/migrations/README.md) is
+-- "SQL that was written but is NOT applied in production", which this
+-- file has not been true of since 2026-09-08. Content below is unchanged
+-- from what actually ran; only this header and the file's location
+-- changed. Rollback and pre-flight docs, unmoved:
+-- supabase/migrations_rollbacks/gh1763_is_test_repair_rollback.sql
 -- and supabase/migrations_rollbacks/gh1763_is_test_repair_pre-flight.md
 -- (if present).
 --
