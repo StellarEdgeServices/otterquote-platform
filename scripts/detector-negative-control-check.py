@@ -1047,27 +1047,29 @@ def _find_key(lines, key):
 NO_PUSH_TRIGGER = "NO_PUSH_TRIGGER"
 NO_PATH_FILTER = "NO_PATH_FILTER"
 
+# gh-1731 PR #2262 REVIEW: FAIL (comment 5857733012, must-fix 3): this used to
+# read ONLY `on.push.paths`. After gh-1731 dropped the `push` trigger entirely
+# from schema-lint.yml and detector-negative-control.yml (in favor of
+# `pull_request`, which already gated every PR unchanged), every call for
+# those two workflows fell through to NO_PUSH_TRIGGER and check_wiring()
+# printed "PASS ... no push trigger (not applicable)" -- a checker that
+# cannot run rendering as a green PASS, which is gh-1738's own defect class
+# and exactly the shape this gate exists to catch. Fixed by checking, in
+# order, `on.push.paths`, then `on.pull_request.paths`, then
+# `on.merge_group.paths`, and returning the first trigger that exists at all
+# (by its `paths:` key or its absence) instead of stopping at `push`. Which
+# trigger supplied the answer is also returned so callers can say so.
+_TRIGGER_ORDER = ("push", "pull_request", "merge_group")
 
-def extract_push_paths(workflow_text: str):
-    """Returns a list of path-glob patterns from `on.push.paths`, or one of the two
-    sentinels above: NO_PUSH_TRIGGER (this workflow has no push trigger at all -- not
-    applicable to this reconciliation) or NO_PATH_FILTER (push trigger exists with no
-    `paths:` key -- fires unconditionally, i.e. full coverage by construction)."""
-    lines = workflow_text.splitlines()
-    on_idx, on_indent = _find_key(lines, "on")
-    if on_idx is None:
-        return NO_PUSH_TRIGGER
-    on_block = _get_block(lines, on_idx, on_indent)
 
-    push_idx, push_indent = _find_key(on_block, "push")
-    if push_idx is None:
-        return NO_PUSH_TRIGGER
-    push_block = _get_block(on_block, push_idx, push_indent)
-
-    paths_idx, paths_indent = _find_key(push_block, "paths")
+def _extract_paths_for_trigger(on_block, trigger_lines_indent_pair, trigger_name):
+    """Given the already-located `on.<trigger_name>` block, returns NO_PATH_FILTER
+    or the list of `paths:` glob patterns under it."""
+    trig_block, trig_indent = trigger_lines_indent_pair
+    paths_idx, paths_indent = _find_key(trig_block, "paths")
     if paths_idx is None:
         return NO_PATH_FILTER
-    paths_block = _get_block(push_block, paths_idx, paths_indent)
+    paths_block = _get_block(trig_block, paths_idx, paths_indent)
 
     patterns = []
     for line in paths_block:
@@ -1078,6 +1080,37 @@ def extract_push_paths(workflow_text: str):
                 val = val[1:-1]
             patterns.append(val)
     return patterns
+
+
+def extract_trigger_paths(workflow_text: str):
+    """Returns (trigger_name, result) where trigger_name is whichever of
+    push/pull_request/merge_group was found first (in that order), and result is
+    either NO_PATH_FILTER (that trigger exists with no `paths:` key -- fires
+    unconditionally, i.e. full coverage by construction) or the list of path-glob
+    patterns under its `paths:` key. Returns (None, NO_PUSH_TRIGGER) only when NONE
+    of the three triggers is present at all -- genuinely not applicable."""
+    lines = workflow_text.splitlines()
+    on_idx, on_indent = _find_key(lines, "on")
+    if on_idx is None:
+        return None, NO_PUSH_TRIGGER
+    on_block = _get_block(lines, on_idx, on_indent)
+
+    for trigger_name in _TRIGGER_ORDER:
+        trig_idx, trig_indent = _find_key(on_block, trigger_name)
+        if trig_idx is None:
+            continue
+        trig_block = _get_block(on_block, trig_idx, trig_indent)
+        return trigger_name, _extract_paths_for_trigger(on_block, (trig_block, trig_indent), trigger_name)
+
+    return None, NO_PUSH_TRIGGER
+
+
+def extract_push_paths(workflow_text: str):
+    """Back-compat wrapper kept for any external caller expecting the original,
+    push-only, sentinel-only signature. Prefer extract_trigger_paths(), which
+    check_wiring() uses directly and which also names the trigger it read."""
+    _trigger, result = extract_trigger_paths(workflow_text)
+    return result
 
 
 def path_pattern_to_regex(pattern: str):
@@ -1145,24 +1178,25 @@ def check_wiring(root: Path):
 
         for wf_rel in workflows:
             wf_text = (root / wf_rel).read_text(encoding="utf-8", errors="replace")
-            push_paths = extract_push_paths(wf_text)
+            trigger_name, trig_paths = extract_trigger_paths(wf_text)
 
-            if push_paths == NO_PUSH_TRIGGER:
+            if trig_paths == NO_PUSH_TRIGGER:
                 info.append(
-                    "PASS  %-40s <- %-40s no push trigger (not applicable)"
-                    % (rel, wf_rel)
+                    "PASS  %-40s <- %-40s no push/pull_request/merge_group trigger "
+                    "(not applicable)" % (rel, wf_rel)
                 )
                 continue
-            if push_paths == NO_PATH_FILTER:
+            if trig_paths == NO_PATH_FILTER:
                 info.append(
-                    "PASS  %-40s <- %-40s push trigger has no paths: filter "
-                    "(fires on every push -- full coverage by construction, %d real "
-                    "file(s) verified moot)" % (rel, wf_rel, len(real_files))
+                    "PASS  %-40s <- %-40s %s trigger has no paths: filter "
+                    "(fires on every %s -- full coverage by construction, %d real "
+                    "file(s) verified moot)"
+                    % (rel, wf_rel, trigger_name, trigger_name, len(real_files))
                 )
                 files_verified += len(real_files)
                 continue
 
-            regexes = [path_pattern_to_regex(pat) for pat in push_paths]
+            regexes = [path_pattern_to_regex(pat) for pat in trig_paths]
             uncovered_by_ext = {}
             for f in real_files:
                 if not any(rx.match(f) for rx in regexes):
@@ -1175,16 +1209,17 @@ def check_wiring(root: Path):
                     more = "" if len(files) <= 3 else " (+%d more)" % (len(files) - 3)
                     violations.append(
                         "FAIL  %s declares %s in its scanned extension set, and %s's "
-                        "push.paths trigger this scanner from, but push.paths has NO "
+                        "%s.paths trigger this scanner from, but %s.paths has NO "
                         "pattern matching real '%s' files under this repo -- e.g. %s%s. "
-                        "%s runs but is never handed these files on a direct push."
-                        % (rel, sorted(extensions), wf_rel, ext, examples, more, rel)
+                        "%s runs but is never handed these files on a %s."
+                        % (rel, sorted(extensions), wf_rel, trigger_name, trigger_name,
+                           ext, examples, more, rel, trigger_name)
                     )
             else:
                 files_verified += len(real_files)
                 info.append(
                     "PASS  %-40s <- %-40s every one of %d real matching file(s) is "
-                    "covered by push.paths" % (rel, wf_rel, len(real_files))
+                    "covered by %s.paths" % (rel, wf_rel, len(real_files), trigger_name)
                 )
 
     return violations, info, files_verified
