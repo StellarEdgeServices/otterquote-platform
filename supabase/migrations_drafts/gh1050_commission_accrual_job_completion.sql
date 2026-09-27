@@ -1,6 +1,13 @@
 -- ============================================================================
--- gh1050_commission_accrual_job_completion — Forward migration (REBASED)
+-- gh1050_commission_accrual_job_completion -- Forward migration (REBASED)
 -- ============================================================================
+-- >>> APPLIED (2026-09-26, gh-1438 part 2) -- already correctly filed as
+-- supabase/migrations/20260819225113_gh1050_commission_accrual_job_completion.sql.
+-- This copy is the pre-rebase-verification draft, kept here for history
+-- only per MIGRATIONS-RECONCILIATION-1438.md Part 1 (2026-09-01), which
+-- confirmed the filed copy is a post-apply-rebased version with added
+-- post-apply verification notes, not byte-identical to this file. Do not
+-- re-run this file; the filed copy above is the source of truth. <<<
 -- D-283 code half (GitHub #1050). R-097 24h notice window opened
 -- 2026-08-14T16:44:53Z, closed 2026-08-15T16:44:53Z with no objection.
 -- Execution permitted. Bridge answer A3 on #1053 (comment 2026-08-19T22:20:06Z)
@@ -14,7 +21,7 @@
 --   progressive_partner_status_triggers.sql, PR #1062) applied to production
 --   BEFORE this migration and appended a new, independently-BEGIN/EXCEPTION-
 --   wrapped "step 9" send-partner-status-email pg_net call to the end of
---   apply_referral_commission() — strictly after the existing step 8
+--   apply_referral_commission() -- strictly after the existing step 8
 --   (notify-payout-pending) call, before RETURN NEW. Verified byte-for-byte
 --   via pg_get_functiondef('public.apply_referral_commission()'::regprocedure)
 --   against production yeszghaspzwwstvsrioa (this session) and against
@@ -22,7 +29,7 @@
 --   triggers.sql on origin/main: identical. gh-916's addition is purely
 --   additive/appendable and does not touch the commission math, the
 --   payout_approvals insert, the recruit-bonus block, or the notify-payout-
---   pending block gh-1050 already carries — so this rebase carries gh-916's
+--   pending block gh-1050 already carries -- so this rebase carries gh-916's
 --   step 9 forward VERBATIM as a new step 10, on top of gh-1050's claims-
 --   retargeted body, with no other change to either side's logic.
 --
@@ -31,14 +38,14 @@
 --   after_quote_paid (AFTER UPDATE OF payment_status ON quotes, WHEN
 --   NEW.payment_status = 'succeeded' AND total_price >= $10,000). Per the
 --   stripe-webhook gh-948 routing comment, that transition is written by the
---   platform-fee ACH charge finalizing at CONTRACT SIGNING — i.e. before any
+--   platform-fee ACH charge finalizing at CONTRACT SIGNING -- i.e. before any
 --   contracted work has happened. Every partner-facing surface (Partner
 --   Referral Agreement Sec 4.2, partner-re.html, partner-dashboard.html)
 --   already says the commission is owed once the job is done. The gap this
 --   migration closes: the commission ledger entry (referrals.commission_amount
 --   + a payout_approvals row) is created before completion, not after.
 --
--- COMPLETION SIGNAL CHOSEN — claims.completion_date, via a DB trigger
+-- COMPLETION SIGNAL CHOSEN -- claims.completion_date, via a DB trigger
 --   Confirmed (2026-08-19) that claims.completion_date has exactly ONE write
 --   path in the live codebase: the mark-job-complete Edge Function
 --   (supabase/functions/mark-job-complete/index.ts). It is contractor-
@@ -70,14 +77,14 @@
 --
 -- WHAT THIS MIGRATION DELIBERATELY DOES NOT TOUCH
 --   - reverse_referral_commission() / after_quote_refunded (v42/v102):
---     unaffected — operates purely on referrals' current ledger state.
---   - approve-payout's existing completion gate (D-139/#567): unaffected —
+--     unaffected -- operates purely on referrals' current ledger state.
+--   - approve-payout's existing completion gate (D-139/#567): unaffected --
 --     already holds payout RELEASE on completion_date IS NULL.
 --   - mark-job-complete's own non-fatal referrals.status='job_completed'
 --     advance write: unaffected, still idempotent, now a no-op in the
 --     common case since the new trigger sets the same status first.
 --   - claims_advance_referral() and notify_partner_status_on_bid_submitted()
---     (gh-916 sites 1 and 2): untouched by this migration — gh-1050 only
+--     (gh-916 sites 1 and 2): untouched by this migration -- gh-1050 only
 --     ever modified apply_referral_commission() and its two triggers.
 --
 -- Rollback: gh1050_commission_accrual_job_completion_rollback.sql (rebased
@@ -94,7 +101,7 @@ BEGIN;
 DROP TRIGGER IF EXISTS after_quote_paid ON public.quotes;
 
 -- ============================================================================
--- SECTION 2: FUNCTION — apply_referral_commission() retargeted to claims,
+-- SECTION 2: FUNCTION -- apply_referral_commission() retargeted to claims,
 --            carrying gh-916's step 9 (send-partner-status-email) forward
 -- ============================================================================
 CREATE OR REPLACE FUNCTION public.apply_referral_commission()
@@ -115,7 +122,7 @@ DECLARE
 BEGIN
   -- 1. gh-1050: NEW is now a claims row (trigger moved from
   --    quotes.payment_status to claims.completion_date). referral_id lives
-  --    directly on claims — no join through quotes.claim_id needed anymore.
+  --    directly on claims -- no join through quotes.claim_id needed anymore.
   IF NEW.referral_id IS NULL THEN
     RETURN NEW;
   END IF;
@@ -163,7 +170,7 @@ BEGIN
 
   -- 6. Apply the $200 referrer bonus and advance status to 'job_completed'.
   --    gh-1050: this function now only ever runs AT completion, so the
-  --    interim 'contract_signed' label v94 introduced no longer applies —
+  --    interim 'contract_signed' label v94 introduced no longer applies --
   --    accrual IS completion now. Guard only against 'commission_paid' so a
   --    manually-reconciled row is never walked backward.
   UPDATE public.referrals
@@ -187,7 +194,7 @@ BEGIN
     v_referrer.id,
     TRIM(COALESCE(v_referrer.first_name, '') || ' ' || COALESCE(v_referrer.last_name, '')),
     200,
-    'Job completed — referral ' || v_referral.id::TEXT || ' (claim ' || NEW.id::TEXT || ')',
+    'Job completed -- referral ' || v_referral.id::TEXT || ' (claim ' || NEW.id::TEXT || ')',
     'pending_approval',
     NOW() + INTERVAL '7 days'
   )
@@ -220,7 +227,7 @@ BEGIN
       v_referrer.recruited_by_id,
       TRIM(COALESCE(v_recruiter.first_name, '') || ' ' || COALESCE(v_recruiter.last_name, '')),
       50,
-      'Recruit bonus — referral ' || v_referral.id::TEXT || ' (referrer: ' || TRIM(COALESCE(v_referrer.first_name, '') || ' ' || COALESCE(v_referrer.last_name, '')) || ')',
+      'Recruit bonus -- referral ' || v_referral.id::TEXT || ' (referrer: ' || TRIM(COALESCE(v_referrer.first_name, '') || ' ' || COALESCE(v_referrer.last_name, '')) || ')',
       'pending_approval',
       NOW() + INTERVAL '7 days'
     )
@@ -228,15 +235,15 @@ BEGIN
   END IF;
 
   -- 9. Fire notify-payout-pending via pg_net (async, fire-and-forget).
-  --    Vault-based key resolution — matches the LIVE gh-752 (2026-08-17)
-  --    body. Non-fatal — failure here never affects the accrual write above.
+  --    Vault-based key resolution -- matches the LIVE gh-752 (2026-08-17)
+  --    body. Non-fatal -- failure here never affects the accrual write above.
   BEGIN
     SELECT decrypted_secret INTO v_service_role_key
       FROM vault.decrypted_secrets
      WHERE name = 'cron_service_role_key';
 
     IF v_service_role_key IS NULL THEN
-      RAISE LOG 'apply_referral_commission: vault secret cron_service_role_key not found — skipping notify-payout-pending for approval_id=%', v_referral_approval;
+      RAISE LOG 'apply_referral_commission: vault secret cron_service_role_key not found -- skipping notify-payout-pending for approval_id=%', v_referral_approval;
     ELSIF v_referral_approval IS NOT NULL THEN
       PERFORM net.http_post(
         url     := 'https://yeszghaspzwwstvsrioa.supabase.co/functions/v1/notify-payout-pending',
@@ -257,11 +264,11 @@ BEGIN
 
   -- 10. gh-916 AC2 (carried forward verbatim by this rebase): progressive
   --     partner-status notify, catch-up mode. Independent BEGIN/EXCEPTION
-  --     block from step 9 — a failure sending the partner-status email can
+  --     block from step 9 -- a failure sending the partner-status email can
   --     never affect the notify-payout-pending call above, and vice versa.
   --     Reuses v_service_role_key if step 9 already resolved it; re-resolves
   --     only if step 9's Vault lookup itself failed. References v_referral.id
-  --     — unchanged meaning under gh-1050's retarget, since v_referral is
+  --     -- unchanged meaning under gh-1050's retarget, since v_referral is
   --     still loaded (and still the same row) in step 2 above.
   BEGIN
     IF v_service_role_key IS NULL THEN
@@ -271,7 +278,7 @@ BEGIN
     END IF;
 
     IF v_service_role_key IS NULL THEN
-      RAISE LOG 'apply_referral_commission: vault secret cron_service_role_key not found — skipping send-partner-status-email for referral_id=%', v_referral.id;
+      RAISE LOG 'apply_referral_commission: vault secret cron_service_role_key not found -- skipping send-partner-status-email for referral_id=%', v_referral.id;
     ELSE
       PERFORM net.http_post(
         url     := 'https://yeszghaspzwwstvsrioa.supabase.co/functions/v1/send-partner-status-email',
@@ -304,10 +311,10 @@ END;
 $function$;
 
 COMMENT ON FUNCTION public.apply_referral_commission() IS
-'gh-1050/D-283 + gh-916 AC2 (rebased 2026-08-19): retargeted from quotes.payment_status=succeeded (deposit/fee-charge success at contract signing) to claims.completion_date being set (job completion — currently sole write path: mark-job-complete Edge Function). On the transition, resolves the claim''s referral directly via claims.referral_id, floor-checks the winning quote''s total_price >= $10K, attributes $200 referrer + optional $50 recruiter commission, inserts payout_approvals rows with status=pending_approval, fires notify-payout-pending via pg_net (Vault-based key, gh-752 pattern), and fires send-partner-status-email catch-up notify via pg_net (gh-916 AC2, carried forward unchanged by this rebase). Idempotent via commission_amount > 0 guard. SECURITY DEFINER; all errors swallowed to protect the completion write.';
+'gh-1050/D-283 + gh-916 AC2 (rebased 2026-08-19): retargeted from quotes.payment_status=succeeded (deposit/fee-charge success at contract signing) to claims.completion_date being set (job completion -- currently sole write path: mark-job-complete Edge Function). On the transition, resolves the claim''s referral directly via claims.referral_id, floor-checks the winning quote''s total_price >= $10K, attributes $200 referrer + optional $50 recruiter commission, inserts payout_approvals rows with status=pending_approval, fires notify-payout-pending via pg_net (Vault-based key, gh-752 pattern), and fires send-partner-status-email catch-up notify via pg_net (gh-916 AC2, carried forward unchanged by this rebase). Idempotent via commission_amount > 0 guard. SECURITY DEFINER; all errors swallowed to protect the completion write.';
 
 -- ============================================================================
--- SECTION 3: TRIGGER — after_claim_completed (new accrual firing point)
+-- SECTION 3: TRIGGER -- after_claim_completed (new accrual firing point)
 -- ============================================================================
 DROP TRIGGER IF EXISTS after_claim_completed ON public.claims;
 
@@ -321,7 +328,7 @@ CREATE TRIGGER after_claim_completed
   EXECUTE FUNCTION public.apply_referral_commission();
 
 COMMENT ON TRIGGER after_claim_completed ON public.claims IS
-'gh-1050/D-283: fires apply_referral_commission() once, on the transition of claims.completion_date from NULL to a value — i.e. job completion (currently the mark-job-complete Edge Function''s sole write path). Supersedes after_quote_paid (dropped by this same migration), which fired too early, on the homeowner/platform-fee deposit success at contract signing.';
+'gh-1050/D-283: fires apply_referral_commission() once, on the transition of claims.completion_date from NULL to a value -- i.e. job completion (currently the mark-job-complete Edge Function''s sole write path). Supersedes after_quote_paid (dropped by this same migration), which fired too early, on the homeowner/platform-fee deposit success at contract signing.';
 
 COMMIT;
 

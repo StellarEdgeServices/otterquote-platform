@@ -1,7 +1,18 @@
 -- Migration: gh1070_activity_log_grants_revoke
+-- >>> SUPERSEDED (2026-09-26, gh-1438 part 2) -- the anon-grant-revoke
+-- EFFECT this file proposes IS live (anon has zero privileges on
+-- public.activity_log, confirmed read-only this session and in the
+-- 2026-09-01 MIGRATIONS-RECONCILIATION-1438.md Part 1 pass), but this
+-- file's own SQL is NOT what ran. The migration that actually ran under a
+-- #1070 name is supabase/migrations/20260824183229_gh1070_revoke_anon_activity_log.sql
+-- -- a single bare REVOKE, structurally different from and much shorter
+-- than this draft's broader, more heavily-annotated proposal (which also
+-- tightens the INSERT policy's WITH CHECK, an effect that did NOT ship).
+-- Do not represent this file as "the applied migration" -- it demonstrably
+-- isn't. Kept here, unmodified, for history. <<<
 -- Author: Code lane sub-agent (automated), run-work orchestration
 -- Date: 2026-08-21
--- Status: DRAFT ONLY — Tier 3B. NOT APPLIED. This session's standing rail
+-- Status: DRAFT ONLY -- Tier 3B. NOT APPLIED. This session's standing rail
 --         holds Tier 3B to the full R-097 24h notice-then-wait window even
 --         though the change is arguably R-134 fast-path eligible (see the
 --         R-097 notice on #1070 / #1206 for the explicit call-out). No
@@ -17,7 +28,7 @@
 --   "Users can insert own activity"  INSERT  with_check: (auth.uid() = user_id)
 --   "Users can view own activity"    SELECT  qual:       (auth.uid() = user_id)
 -- anon can never satisfy either predicate (auth.uid() is NULL for an
--- unauthenticated caller) — anon's grant does nothing productive today and
+-- unauthenticated caller) -- anon's grant does nothing productive today and
 -- is revoked to nothing. authenticated needs SELECT and INSERT only;
 -- DELETE, TRIGGER, TRUNCATE, REFERENCES are not defensible for either role
 -- (no policy anywhere on this table authorizes them).
@@ -31,12 +42,12 @@
 -- write to this table via the browser's authenticated client
 -- (react-app/app/contractor/dashboard/page.tsx, react-app/app/contractor/
 -- bid/[claimId]/bid-form.tsx, contractor-bid-form.html,
--- contractor-dashboard.html — cpa_accepted and bid_updated activity-feed
+-- contractor-dashboard.html -- cpa_accepted and bid_updated activity-feed
 -- entries) and none of them ever set is_test, so tightening with_check to
 -- require is_test = false does not break any of them while eliminating the
 -- forgery risk entirely: an authenticated direct insert can no longer set
 -- is_test = true under any circumstance. Server-side writes (the 14 Edge
--- Functions) are unaffected either way — they all authenticate as
+-- Functions) are unaffected either way -- they all authenticate as
 -- service_role, which bypasses RLS and table grants entirely, so this
 -- migration touches only the browser-facing write path.
 
@@ -53,7 +64,7 @@ REVOKE DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE
 REVOKE DELETE, REFERENCES, TRIGGER, TRUNCATE, UPDATE
   ON public.activity_log FROM authenticated;
 -- SELECT and INSERT intentionally retained for authenticated (policy-backed,
--- and INSERT is a live write path — see AC3 reasoning above).
+-- and INSERT is a live write path -- see AC3 reasoning above).
 
 -- AC3: close the is_test forgery path on the retained direct-client INSERT
 -- without touching the ownership predicate the four live call sites depend
