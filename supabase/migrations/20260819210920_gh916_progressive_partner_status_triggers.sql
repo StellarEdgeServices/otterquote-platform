@@ -88,8 +88,8 @@ BEGIN;
 -- ============================================================================
 CREATE OR REPLACE FUNCTION public.claims_advance_referral()
  RETURNS trigger
- SECURITY DEFINER
  LANGUAGE plpgsql
+ SECURITY DEFINER
  SET search_path TO 'public', 'pg_temp'
 AS $function$
 DECLARE
