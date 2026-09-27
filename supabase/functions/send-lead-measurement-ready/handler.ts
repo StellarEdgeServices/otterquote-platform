@@ -39,15 +39,16 @@
  * a lead has no auth.users row, unlike a homeowner's account):
  *   - activity_log.user_id is NOT NULL with a hard FK to auth.users(id)
  *     (baseline schema, `activity_log_user_id_fkey`). A lead order has no
- *     account and therefore no real user_id to put there. This repo already
- *     has a standing convention for exactly this gap — stripe-webhook and
- *     send-sms both fall back to the all-zero sentinel UUID
- *     "00000000-0000-0000-0000-000000000000" when there is no associated
- *     claim/user (see stripe-webhook/index.ts's two
- *     `claim?.user_id ?? "00000000-0000-0000-0000-000000000000"` call
- *     sites). SYSTEM_USER_ID below reuses that exact, already-shipped
- *     convention rather than inventing a new one or shipping a migration to
- *     make the column nullable.
+ *     account and therefore no real user_id of its own to put there. Per
+ *     REVIEW: FAIL 5860802819 must-fix 2 (a prod read-only count proved the
+ *     all-zero sentinel this file previously used has never once satisfied
+ *     that FK — 0 rows in auth.users, 0 rows in activity_log with that
+ *     user_id, ever), the row is instead attributed to the TRIGGERING
+ *     ADMIN's own `user.id` — a real, always-present auth.users row, since
+ *     only an authenticated admin can ever reach this far (the admin gate
+ *     runs first). `adminUserId` is passed in below rather than sourced from
+ *     Deps, and a failed pre-send activity_log insert now ABORTS the send
+ *     (502) instead of continuing — see handleSendRequest.
  *   - `notifications.user_id` has no such constraint (nullable, no FK — see
  *     baseline schema) so the notifications row this function inserts for
  *     idempotency simply carries `user_id: null, claim_id: null` for a lead
@@ -75,14 +76,6 @@ export { isVerifySendRequested };
 export const FUNCTION_NAME = "send-lead-measurement-ready";
 export const NOTIFICATION_TYPE = "lead_measurement_report_ready";
 export const ACTIVITY_LOG_EVENT_TYPE = "lead_measurement_report_sent";
-
-/**
- * gh-2272: activity_log.user_id is NOT NULL with a hard FK to auth.users.
- * A lead (no-account) order has no user to attribute the row to. This is
- * the SAME all-zero sentinel already used by stripe-webhook and send-sms
- * for exactly this "no associated account" case — not a new convention.
- */
-export const SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000000";
 
 /** Same test-account patterns as send-measurement-ready / notify-measurement-order. */
 export function isTestAccount(email: string): boolean {
@@ -134,13 +127,19 @@ export interface Deps {
   /** SELECT email, name, is_synthetic, property_address FROM leads WHERE id = leadId. */
   loadLead: (leadId: string) => Promise<LeadRow | null>;
   /**
-   * True iff a `notifications` row already exists for this order
+   * Checks whether a `notifications` row already exists for this order
    * (notification_type=NOTIFICATION_TYPE, channel='email', order id in
    * message_preview) — the exact idempotency check send-measurement-ready
    * uses. Checked BEFORE the activity_log write / send, so a re-trigger on
    * an already-sent order never reaches either.
+   *
+   * FAILS CLOSED (REVIEW: FAIL 5860802819 must-fix 3): `error: true` means
+   * the query itself could not be answered (a transient PostgREST/DB error),
+   * NOT "no row found" — handleSendRequest treats that as "cannot confirm
+   * not-yet-sent" and returns 5xx without sending, rather than defaulting to
+   * `exists: false` and risking a double send.
    */
-  findExistingNotification: (orderId: string) => Promise<boolean>;
+  findExistingNotification: (orderId: string) => Promise<{ exists: boolean; error: boolean }>;
   /**
    * INSERT INTO activity_log(...); called once, before sendEmail. Return
    * type is PromiseLike (not Promise) so the real wiring can hand back a
@@ -189,11 +188,21 @@ export interface HandlerResult {
  *      news — the {product} you ordered for {address} is ready.").
  *   2. "The measurements are now on your project, and contractors bidding
  *      your job can use them right away. You can review everything from
- *      your dashboard." -> CHANGED. A lead has no dashboard and no account
- *      to review anything from. Replaced with: "Your full report is
- *      attached to this email — there's nothing else you need to do."
- *      (matches the L4 success-screen sentence's own promise: "We'll email
- *      your roof measurement report... as soon as it's ready.")
+ *      your dashboard." -> REMOVED, NO REPLACEMENT PROMISE COPY (REVIEW:
+ *      FAIL 5860802819 must-fix 1 / Ben's RETURNED 5860911206). This
+ *      sentence originally said the report was "attached to this email" —
+ *      false: nothing attaches it, and there is no report/storage column on
+ *      lead_measurement_orders to attach from (#2226's migration). HOW a
+ *      lead actually receives the report is now a Tier C question with
+ *      Dustin (Ben's options: A — key measurements rendered in the email
+ *      body, no D-317 change, Ben's recommendation; B — an expiring
+ *      branded report link; C — the vendor PDF attached, which needs a
+ *      D-317 cl.7 carve-out, since main's send-measurement-ready header
+ *      states the vendor PDF is "NEVER served to a contractor or
+ *      homeowner"). Until Dustin answers, this function sends NO delivery
+ *      promise at all rather than inventing one — see the PR/HANDOFF-LIVE
+ *      for the hold. THIS PR MUST NOT MERGE until that answer is
+ *      implemented here.
  *   3. The "View your project" button, linking to DASHBOARD_URL -> REMOVED.
  *      No equivalent exists for a no-account lead; nothing replaces it.
  *   4. "Questions? Just reply to this email or write to
@@ -216,8 +225,6 @@ export function buildLeadReadyEmail(args: {
     `Hi ${args.firstName},`,
     ``,
     `Good news — the ${args.productLabel} you ordered for ${args.address} is ready.`,
-    ``,
-    `Your full report is attached to this email — there's nothing else you need to do.`,
     ``,
     `Questions? Just reply to this email or write to support@otterquote.com.`,
     ``,
@@ -255,9 +262,6 @@ export function buildLeadReadyEmail(args: {
               Good news — the ${escapeHtml(args.productLabel)} you ordered for
               <strong>${escapeHtml(args.address)}</strong> is ready.
             </p>
-            <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">
-              Your full report is attached to this email — there's nothing else you need to do.
-            </p>
             <p style="margin:0;font-size:13px;color:#64748B;line-height:1.6;">
               Questions? Just reply to this email or write to
               <a href="mailto:support@otterquote.com" style="color:#0EA5E9;">support@otterquote.com</a>.
@@ -288,10 +292,16 @@ export function buildLeadReadyEmail(args: {
  * as send-measurement-ready: PRIMARY_ADMIN_EMAIL fast-path, then
  * contractors.template_review_role === 'admin') and checked HERE first,
  * before any deps call — a non-admin caller triggers zero I/O.
+ *
+ * `adminUserId` is the triggering admin's own `user.id` (index.ts already
+ * has it from `userClient.auth.getUser()`), used to attribute the
+ * activity_log row — see the module doc comment and REVIEW: FAIL
+ * 5860802819 must-fix 2 for why a lead's own id can never be used there.
  */
 export async function handleSendRequest(
   orderId: string | undefined,
   isAdmin: boolean,
+  adminUserId: string | undefined,
   deps: Deps,
 ): Promise<HandlerResult> {
   if (!isAdmin) {
@@ -299,6 +309,12 @@ export async function handleSendRequest(
   }
   if (!orderId) {
     return { status: 400, body: { error: "Missing required field: order_id" } };
+  }
+  if (!adminUserId) {
+    // Defensive: isAdmin=true should always come with a resolved caller id.
+    // If it somehow doesn't, attributing the activity_log row to nothing
+    // would just trade one FK violation for another — abort instead.
+    return { status: 500, body: { error: "Internal server error" } };
   }
 
   const order = await deps.loadOrder(orderId);
@@ -326,17 +342,31 @@ export async function handleSendRequest(
     return { status: 200, body: { success: true, skipped: true, reason: "test_account" } };
   }
 
-  // Idempotency: one "report ready" email per order, ever.
-  const alreadySent = await deps.findExistingNotification(orderId);
-  if (alreadySent) {
+  // Idempotency: one "report ready" email per order, ever. FAILS CLOSED
+  // (REVIEW: FAIL 5860802819 must-fix 3): a query error means "cannot
+  // confirm not-yet-sent", not "not sent" — never send on that ambiguity.
+  const existingCheck = await deps.findExistingNotification(orderId);
+  if (existingCheck.error) {
+    return {
+      status: 502,
+      body: { error: "Could not confirm this order has not already been notified. Try again." },
+    };
+  }
+  if (existingCheck.exists) {
     return { status: 200, body: { success: true, skipped: true, reason: "already_notified" } };
   }
 
-  // ── activity_log BEFORE the send ────────────────────────────────────────
+  // ── activity_log BEFORE the send — a failure here ABORTS the send ───────
+  // (REVIEW: FAIL 5860802819 must-fix 2). Unlike send-measurement-ready
+  // (whose activity_log row logs a SEPARATE, already-true fact — order
+  // fulfilment — so a failed write there doesn't invalidate sending), this
+  // function's activity_log row IS the audit record for the send itself
+  // (#2226 Step 0(c) requires "an activity_log row recorded before the
+  // send"); if it can't be written, the send must not happen either.
   const { error: logErr } = await deps.writeActivityLog({
     event_type: ACTIVITY_LOG_EVENT_TYPE,
     title: ACTIVITY_LOG_EVENT_TYPE,
-    user_id: SYSTEM_USER_ID,
+    user_id: adminUserId,
     is_test: isTest,
     metadata: {
       order_id: order.id,
@@ -346,8 +376,8 @@ export async function handleSendRequest(
     },
   });
   if (logErr) {
-    // Loud but non-fatal: mirrors send-measurement-ready — the send path continues.
-    console.error(`[${FUNCTION_NAME}] activity_log insert failed for order=${orderId}:`, logErr.message);
+    console.error(`[${FUNCTION_NAME}] activity_log insert failed for order=${orderId}, aborting send:`, logErr.message);
+    return { status: 502, body: { error: "Failed to record activity_log; send aborted." } };
   }
 
   const firstName = (lead.name || "").trim().split(/\s+/)[0] || "there";
@@ -367,7 +397,7 @@ export async function handleSendRequest(
         functionName: FUNCTION_NAME,
         recipientRole: "lead",
         isTest,
-        userId: SYSTEM_USER_ID,
+        userId: adminUserId,
         extra: { order_id: orderId, lead_id: order.lead_id, verify_send: deps.verifySend },
       },
       (alert) => deps.insertPlatformAlert(alert),
@@ -382,7 +412,7 @@ export async function handleSendRequest(
         functionName: FUNCTION_NAME,
         recipientRole: "lead",
         isTest,
-        userId: SYSTEM_USER_ID,
+        userId: adminUserId,
         extra: { order_id: orderId, lead_id: order.lead_id, verify_send: deps.verifySend },
       },
       (alert) => deps.insertPlatformAlert(alert),

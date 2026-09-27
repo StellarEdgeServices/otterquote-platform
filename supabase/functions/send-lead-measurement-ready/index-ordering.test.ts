@@ -40,12 +40,24 @@ Deno.test("gh-2272: isAdmin falls back to contractors.template_review_role, same
 
 Deno.test("gh-2272: isAdmin is resolved BEFORE handleSendRequest is called", () => {
   const isAdminFallback = lineOf('adminRow?.template_review_role === "admin"');
-  const handleCall = lineOf("await handleSendRequest(orderId, isAdmin, deps)");
+  const handleCall = lineOf("await handleSendRequest(orderId, isAdmin, user.id, deps)");
   assert(isAdminFallback > 0 && handleCall > 0);
   assert(
     isAdminFallback < handleCall,
     `the admin fallback resolution (line ${isAdminFallback}) must precede the handleSendRequest call (line ${handleCall}) — ` +
       `otherwise a non-admin caller's request could reach handleSendRequest with a stale/undefined isAdmin`,
+  );
+});
+
+Deno.test("gh-2272: handleSendRequest receives the TRIGGERING ADMIN's own user.id, not a lead id or sentinel (REVIEW: FAIL 5860802819 must-fix 2)", () => {
+  assert(
+    SRC.includes("await handleSendRequest(orderId, isAdmin, user.id, deps)"),
+    "the activity_log attribution must be the resolved caller's own user.id — " +
+      "the same auth.users row getUser() already proved exists — not a sentinel or the lead's id",
+  );
+  assert(
+    !SRC.includes("00000000-0000-0000-0000-000000000000"),
+    "the all-zero sentinel must not reappear in index.ts — REVIEW: FAIL 5860802819 must-fix 2 found it never satisfies activity_log_user_id_fkey in prod",
   );
 });
 

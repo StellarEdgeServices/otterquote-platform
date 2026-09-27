@@ -69,7 +69,9 @@ function buildCorsHeaders(req: Request): Record<string, string> {
   const allowedOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
   return {
     "Access-Control-Allow-Origin": allowedOrigin,
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    // x-verify-send is included so a future browser-based admin UI could
+    // send the gh-1538 verify-send header (curl callers are unaffected).
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-verify-send",
     "Vary": "Origin",
   };
 }
@@ -147,15 +149,19 @@ serve(async (req: Request) => {
           .maybeSingle();
         return (data as LeadRow) ?? null;
       },
-      findExistingNotification: async (orderId: string): Promise<boolean> => {
-        const { data } = await sb
+      findExistingNotification: async (orderId: string): Promise<{ exists: boolean; error: boolean }> => {
+        const { data, error } = await sb
           .from("notifications")
           .select("id")
           .eq("notification_type", NOTIFICATION_TYPE)
           .eq("channel", "email")
           .ilike("message_preview", `%${orderId}%`)
           .limit(1);
-        return !!(data && data.length > 0);
+        if (error) {
+          console.error(`[${FUNCTION_NAME}] findExistingNotification query failed for order=${orderId}:`, error.message);
+          return { exists: false, error: true };
+        }
+        return { exists: !!(data && data.length > 0), error: false };
       },
       writeActivityLog: (row) => sb.from("activity_log").insert(row),
       sendEmail: async (to, msg) => {
@@ -183,7 +189,7 @@ serve(async (req: Request) => {
       verifySend,
     };
 
-    const result = await handleSendRequest(orderId, isAdmin, deps);
+    const result = await handleSendRequest(orderId, isAdmin, user.id, deps);
     return json(result.body, result.status, corsHeaders);
   } catch (err) {
     console.error(`[${FUNCTION_NAME}] error:`, err);
