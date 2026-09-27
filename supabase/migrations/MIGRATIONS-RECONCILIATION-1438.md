@@ -599,3 +599,132 @@ supplies the first of the two by construction (56/37 vs. the frozen
 
 SELECT-only throughout; no `apply_migration`, `execute_sql` write, or
 `db push` was run at any point in this PR's work.
+
+## 2026-09-26/27 REVIEW FAIL round 2 correction (PR #2244) — independent review comment 5851387029 (Marty/CTO)
+
+Round 2 review of PR #2244 found seven items wrong across parts (a) and (b)
+above and the baseline manifest. Every renamed file and every byte-exact
+claim was re-verified against the live ledger and the base commit this
+round, per the coordinator's explicit instruction; what was checked is
+listed at the end of this section.
+
+1. **The rename of `gh916` (item 1, the most severe) replaced live,
+   already-applied SQL with retyped draft text.** The prior commit
+   (`c0f692a`, this branch's earlier state) overwrote
+   `supabase/migrations/20260819210920_gh916_progressive_partner_status_triggers.sql`
+   with a copy of the `migrations_drafts/` version — ASCII `--` in 7 string
+   literals where the real file uses an em dash, and a reverted "DRAFT
+   ONLY" header — instead of the file's actual pre-PR committed content.
+   That is the exact live-vs-repo misrepresentation this issue exists to
+   fix, introduced inside `supabase/migrations/` itself. **Fixed**: refetched
+   the exact pre-PR blob from base `5d426112` via `get_file_contents` and
+   wrote it back byte-for-byte, adding only a one-line version-correction
+   comment. Re-fetched the file after pushing and visually confirmed it
+   matches the base blob exactly below that one added line.
+
+2. **Two renames (`gh974`, `gh972`) claimed a recorded version whose
+   recorded SQL did not match the file.** `20260818214332` is recorded as
+   the *combined* state (`ON CONFLICT (adjuster_name, adjuster_email,
+   carrier_id)`), reached only after two later, unfiled migrations
+   (`20260818214437 gh974_fix_adjusters_schema_mismatch`,
+   `20260818214513 gh974_fix_on_conflict_target`) — the renamed file held
+   an earlier, superseded version of the function. `20260818214025`
+   similarly omitted a `REVOKE EXECUTE ... FROM PUBLIC` statement recorded
+   separately as `20260818214054 gh972_fix_public_grant_gap`. **Fixed**:
+   took the reviewer's option (b) — both renames dropped from the batch.
+   The two files were restored to their original (pre-PR) filenames and
+   content, unmodified; the mis-renamed copies were deleted. This drops
+   the rename batch from 16 to **14** files. The three unfiled ledger
+   versions this surfaced (`20260818214437`, `20260818214513`,
+   `20260818214054`) are additional, previously-uncounted Direction-1 gaps
+   — already present in the live Direction-1 figure since Direction-1 was
+   never touched by this rename batch either way.
+
+3. **The `v88` banner pointed to an unrecorded version.** It named
+   `supabase/migrations/20260807223000_v101_referral_agents_public_directory_optin.sql`;
+   `20260807223000` is not in `supabase_migrations.schema_migrations`
+   (confirmed read-only this round). The recorded `v101` version is
+   `20260808134406`, already filed under that version. **Fixed**: repointed
+   the banner to `20260808134406`; `20260807223000` is now named as a
+   Direction-2 duplicate in the Remainder (below), not left as a broken
+   pointer.
+
+4. **Only 8 of the 23 files across the 8 live sets were re-headered; 9
+   rollback/pre-flight companions still said DRAFT ONLY / NOT APPLIED /
+   approval pending.** **Fixed**: added the same banner pointer as each
+   set's main `.sql` file to `gh1337_..._rollback.sql`,
+   `gh916_..._rollback.sql`, `v88_..._rollback.sql`,
+   `gh1050_..._pre-flight.md`, `gh1070_..._pre-flight.md`,
+   `gh1337_..._pre-flight.md`, `gh916_..._pre-flight.md`,
+   `gh969_..._pre-flight.md`, `v88_..._pre-flight.md`. Content otherwise
+   unchanged. The "23 files" language above is now accurate (8 main files
+   fixed in the prior push + these 9 companions fixed this round = 17 of
+   the 23; the remaining 6 are `.test.sql`/README-adjacent files that
+   never carried a DRAFT/NOT-APPLIED banner to begin with and needed no
+   change — see the per-set table above for which files exist per set).
+
+5. **The draft banners' own self-description overclaimed "byte-for-byte
+   unchanged."** Pre-existing comment lines in `gh1021`, `gh749`, and
+   `v88` had actually drifted (em dash converted to `--`, box-drawing
+   rules shortened) in the first banner pass. **Fixed**: rebuilt all three
+   files as banner-plus-exact-base-blob, with the base blob taken directly
+   from `get_file_contents` at commit `5d426112` rather than retyped —
+   `git diff 5d426112 -- <these 3 files>` now shows only `+` lines for the
+   banner block. Separately, `gh916`'s own draft banner said "NOT confirmed
+   byte-identical" when the reviewer's own md5 check confirmed it IS
+   byte-identical to the live ledger's recorded statements
+   (`2578213e89852dbd09e60999bc734bd5`) — wording corrected.
+
+6. **The baseline manifest was internally inconsistent**:
+   `counts.applied_no_repo_file` said 56 but `applied_no_repo_file_versions`
+   held 58 entries, two of which (`20260925222500`, `20260925223000`) have
+   repo files at both the measured commit and head. This was a
+   transcription error made when the array was hand-typed into the prior
+   push — the underlying computed set-difference file used to build it
+   locally had the correct 56 entries. **Fixed**: regenerated both version
+   arrays programmatically from the computed set-difference files rather
+   than retyping, and updated the counts for the 14-file (not 16-file)
+   rename batch: `applied_no_repo_file` stays **56** (a Direction-2-only
+   revert does not touch Direction-1); `repo_file_no_applied` is
+   `53 - 14 = 39`, adding `20260818214531` and `20260818214620` (gh974's
+   and gh972's original, unrenamed versions) back into the list.
+
+7. **CI: `No new GRANT to anon/PUBLIC/authenticated` and `New public
+   tables must GRANT service_role explicitly` both fail on this PR**,
+   confirmed by the reviewer to be triggered by the renames themselves —
+   both scripts compute a renamed file's "old" content by looking up its
+   NEW path at the base commit, which never existed there under that name,
+   so the whole file reads as newly added and its pre-existing, already-
+   live GRANT/REVOKE statements get flagged as new. Root-caused this round
+   by reading both scripts (`scripts/permissions-ratchet.py`'s
+   `changed_migration_files`/`run_diff_mode`, reused directly by
+   `scripts/new-table-service-role-grant-check.py`'s own `run_diff_mode`):
+   confirmed neither uses git's rename detection (`git diff --name-status
+   -M`), only `git diff --name-only`, so a renamed path's `old_text` lookup
+   via `git_show(base, new_path)` always misses. **Not fixed in this PR** —
+   the reviewer's own stated preference is "a separate PR that makes
+   [both scripts] rename-aware ... with a fail-first test. Then rebase this
+   PR." A script-logic change with its own fail-first test is a larger,
+   independently-reviewable unit of work than this SELECT-only
+   reconciliation PR's scope, and this environment has no local git
+   checkout to run either script's `--self-test` or exercise the fix
+   against a real rename before pushing it — flagged as explicit follow-up
+   work (see the pointer comment on #2153) rather than pushed unverified.
+   These two checks are expected to remain red on this PR's own head until
+   that follow-up lands and this PR is rebased onto it, consistent with the
+   reviewer's own suggested sequencing.
+
+**What was checked this round, proactively, beyond the seven items above**
+(per the coordinator's instruction to re-verify every rename against the
+live ledger and every byte-exact claim programmatically): re-ran the live
+Direction-1/Direction-2 SELECT against `yeszghaspzwwstvsrioa` (187 ledger
+rows, unchanged) and recomputed the repo-side set difference against the
+updated 168-file tree; reconfirmed via set-difference (both directions)
+that the 14 fixed versions are exactly the 14-element intersection of "was
+Direction-2 before" and "is Direction-1-resolved after"; re-fetched all 5
+of gh1021/gh749/gh1337/gh916/gh969/v88's `migrations_drafts/` files after
+pushing and spot-compared against the versions fetched from `5d426112`/
+`main` used to build them; re-fetched `gh916`'s restored
+`supabase/migrations/` file after pushing and visually confirmed it
+matches the base blob. SELECT-only throughout; zero `apply_migration`,
+`execute_sql` write, or `db push` at any point in this round.
