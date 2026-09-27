@@ -155,3 +155,53 @@ Deno.test("index.ts writes the three profile columns for the caller, sets TRUE o
   assert(block.includes("ad_sharing_opt_out_at") && block.includes("ad_sharing_opt_out_source"));
   assert(block.includes('.eq("id", userId)'), "scoped to the caller's own row");
 });
+
+// -- gh-2105 (decision a-with-alert, legal/consent) --------------------------
+// index.ts's markOptedOut had no `.select()`, so a zero-row RLS/id-mismatch
+// match returned `error: null` and this module's own recordGpcOptOut treated
+// it as "recorded" -- a real GPC opt-out signal silently never persisted,
+// with none of the existing failure-log visibility this file already has for
+// a genuine database error. FAIL-FIRST: on origin/k72/gh2105-batch6's
+// (pre-batch-7) index.ts, none of these assertions hold -- there is no
+// `.select("id")` chained and no `gh2105_zero_rows` code.
+Deno.test("wiring: markOptedOut selects the write and reports a zero-row match through the SAME failure-log path as a real error", () => {
+  const i = index.indexOf("markOptedOut");
+  const block = index.slice(i, i + 1400);
+  assert(block.includes('.select("id")'), 'must chain .select("id") to see whether a row actually matched');
+  assert(block.includes('"gh2105_zero_rows"'), "zero-row outcome must use the gh-2105 repo-wide sentinel code");
+  // The zero-row branch must return a `{ code }` shape -- NOT throw and NOT
+  // silently return null -- so it flows through recordGpcOptOut's existing
+  // `if (failure) { log(...) }` branch above (payment stays unaffected,
+  // same non-blocking contract every other outcome here already has).
+  assert(!/if \(!Array\.isArray\(data\)[\s\S]{0,50}throw/.test(block), "the zero-row check must not throw -- payment must proceed either way");
+});
+
+Deno.test("mutation control: a zero-row match (empty data array, no error) now yields code gh2105_zero_rows instead of silently succeeding", async () => {
+  // Exercises the actual gpcStore built in index.ts is out of reach without a
+  // live Supabase client, so this proves the CONTRACT recordGpcOptOut relies
+  // on: any store whose markOptedOut distinguishes a zero-row match this way
+  // surfaces it through the existing failure-log path, unchanged by this fix.
+  const calls: Call[] = [];
+  const store: OptOutStore = {
+    markOptedOut: (userId, source, atIso) => {
+      calls.push({ userId, source, at: atIso });
+      // Simulates the real fix's shape: error is null, but data was [] --
+      // pre-fix code only checked `error` and would have returned `null`
+      // (success) here.
+      return Promise.resolve({ code: "gh2105_zero_rows" });
+    },
+  };
+  const logs: string[] = [];
+  const outcome = await recordGpcOptOut({
+    callerId: USER,
+    piType: "hover_measurement",
+    headers: hdrs({ "Sec-GPC": "1" }),
+    body: {},
+    store,
+    now: () => AT,
+    log: (m) => logs.push(m),
+  });
+  assertEquals(outcome, "failed", "a zero-row match must NOT be reported as recorded");
+  assertEquals(logs.length, 1);
+  assert(logs[0].includes("(code gh2105_zero_rows)") && logs[0].includes("payment unaffected"));
+});

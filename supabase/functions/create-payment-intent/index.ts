@@ -119,12 +119,24 @@ serve(async (req) => {
     // the Stripe webhook then skips the Meta CAPI send. Sets the flag only, never clears it; never blocks or fails the payment.
     const gpcStore: OptOutStore = {
       markOptedOut: async (userId, source, atIso) => {
-        const { error } = await supabase
+        const { error, data } = await supabase
           .from("profiles")
           .update({ ad_sharing_opt_out: true, ad_sharing_opt_out_at: atIso, ad_sharing_opt_out_source: source })
           .eq("id", userId)
-          .or("ad_sharing_opt_out.is.null,ad_sharing_opt_out.eq.false");
-        return error ? { code: (error as { code?: string }).code } : null;
+          .or("ad_sharing_opt_out.is.null,ad_sharing_opt_out.eq.false")
+          .select("id");
+        if (error) return { code: (error as { code?: string }).code };
+        // gh-2105 (decision a-with-alert, consent): a zero-row match here is
+        // genuinely ambiguous -- the `.or(...)` guard means it can be a
+        // legitimate no-op (the flag was already true) OR the userId did not
+        // match at all (RLS/id mismatch), in which case a real GPC opt-out
+        // signal was received and never recorded. This module's own contract
+        // (see ad-sharing-opt-out.ts header) forbids throwing or failing the
+        // payment, so this reuses the SAME already-wired failure-log path
+        // recordGpcOptOut calls on a database error, rather than adding new
+        // alert plumbing or blocking the caller.
+        if (!Array.isArray(data) || data.length === 0) return { code: "gh2105_zero_rows" };
+        return null;
       },
     };
     await recordGpcOptOut({ callerId, piType: metadata?.type, headers: req.headers, body: requestBody, store: gpcStore });
