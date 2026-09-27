@@ -322,6 +322,7 @@
     btn.disabled = true;
     btn.innerHTML = 'Redirecting to Google…';
     localStorage.setItem('cs_auth_role', PARTNER_ROLE);
+    localStorage.setItem('cs_auth_role_at', String(Date.now()));
     try {
       await Auth.signInWithGoogle('/auth-callback.html?intent=' + PARTNER_ROLE);
     } catch (err) {

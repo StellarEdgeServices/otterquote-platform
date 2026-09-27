@@ -965,10 +965,43 @@ window.Auth = {
     // falls back to user_metadata. Bounded and non-fatal.
     await this.recordFirstTouchAttribution();
 
-    // Determine role: stored value > contractor record check > default homeowner
-    let role = localStorage.getItem('cs_auth_role') || sessionStorage.getItem('cs_auth_role');
+    // gh-2060 (static-stack counterpart to the React fix, PR #2253/#2098):
+    // cs_auth_role is a breadcrumb written immediately before a login/signup
+    // entry point redirects into the Supabase auth flow (login.html,
+    // contractor-login.html, contractor-join.html, get-started/partner-*.html,
+    // hi-1.html, ins-1.html, re-1.html). It used to have no expiry, so the
+    // "stored value wins" priority below — deliberate: a brand-new contractor
+    // signup has NO contractors row yet (the block further down in this same
+    // function is what creates it), so the DB check alone would misroute a
+    // genuine, in-progress contractor signup — became a liability once the
+    // value could outlive the flow that wrote it. A visitor who abandoned an
+    // earlier contractor signup on this browser, then later signed in as an
+    // unrelated user through a path that doesn't re-set cs_auth_role, had
+    // that stale 'contractor' value silently win, skipping the homeowner
+    // signup-data profile write below (the `role !== 'contractor'` guard).
+    // cs_auth_role_at bounds how long the stored value is trusted (generous
+    // enough for a real magic-link/OAuth round trip); missing or stale —
+    // including a pre-fix breadcrumb with no timestamp at all — is treated
+    // as absent, same as if cs_auth_role had never been set, and the DB
+    // check below runs exactly as it always has for that case. Both keys
+    // are cleared on read either way, one-shot regardless of which branch
+    // consumes them.
+    const CS_AUTH_ROLE_TTL_MS = 24 * 60 * 60 * 1000;
+    const storedRoleRaw = localStorage.getItem('cs_auth_role') || sessionStorage.getItem('cs_auth_role');
+    const storedAt = parseInt(localStorage.getItem('cs_auth_role_at') || sessionStorage.getItem('cs_auth_role_at') || '', 10);
+    let role = (
+      storedRoleRaw !== null &&
+      Number.isFinite(storedAt) &&
+      (Date.now() - storedAt) <= CS_AUTH_ROLE_TTL_MS
+    ) ? storedRoleRaw : null;
+    localStorage.removeItem('cs_auth_role');
+    localStorage.removeItem('cs_auth_role_at');
+    sessionStorage.removeItem('cs_auth_role');
+    sessionStorage.removeItem('cs_auth_role_at');
 
-    // If no stored role, check if a contractor record exists for this user
+    // If no TRUSTED stored role (missing, or stale/expired past the TTL
+    // above), check if a contractor record exists for this user — the live
+    // DB wins whenever there is no fresh breadcrumb to defer to.
     if (!role && sb) {
       try {
         const { data: contractor } = await sb

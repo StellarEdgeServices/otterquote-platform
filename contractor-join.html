@@ -403,6 +403,7 @@
                     onboarding_step:    1,
                 }));
                 localStorage.setItem('cs_auth_role', 'contractor');
+                localStorage.setItem('cs_auth_role_at', String(Date.now()));
 
                 // Send magic link — call Supabase directly so we control redirectTo
                 const sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, { auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' } }); // #488: adapter, not default storage
@@ -469,6 +470,7 @@
                 btn.disabled = true;
                 btn.innerHTML = 'Redirecting to Google…';
                 localStorage.setItem('cs_auth_role', 'contractor');
+                localStorage.setItem('cs_auth_role_at', String(Date.now()));
                 try {
                     await Auth.signInWithGoogle('/auth-callback.html?intent=contractor');
                 } catch (err) {
