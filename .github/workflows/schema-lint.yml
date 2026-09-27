@@ -1,25 +1,29 @@
 name: Schema Column Lint
 
+# gh-1731 (COST GATE), CTO RUN 43: the `push` trigger is REMOVED (it fired
+# on `main` only in practice -- 134 runs/7d measured 2026-09-20..27, zero
+# observed on `staging` despite being configured there -- each one a
+# post-merge re-run of a commit the `pull_request` trigger below already
+# fail-hard-checked pre-merge; ~2,563 job-min/month of zero-new-coverage
+# re-checking). Not a branch-protection-required context (see e2e-tests.yml's
+# `on:` comment for the current required list). The paths:-filter history
+# below is left in place unchanged -- it applies to `pull_request`, which
+# still runs on every PR exactly as before; nothing about that reasoning
+# changes when `push` is removed.
 on:
-  push:
-    branches: [staging, main]
-    # gh-1841 (detector-negative-control gate, CHECK 2): this paths: filter
-    # named '**.html' / 'js/**.js' / etc but never .ts/.tsx/.jsx, so a direct
-    # push touching only react-app/**/*.{ts,tsx,jsx} -- files
-    # scripts/schema-column-lint.py's own SCAN_EXTENSIONS explicitly scans --
-    # skipped this job entirely on push. This is the exact shape PR #1740's
-    # review (comment 5560891984, see the pull_request trigger below)
-    # already rejected for pull_request: a paths: filter here would let a
-    # money-path column-contract change bypass a fail-hard check. That
-    # review's reasoning applies identically to push -- the linter walks the
-    # whole tree regardless, and the job already hits GitHub's 1-minute
-    # billing floor whether or not this filter narrows it, so removing the
-    # filter costs ~0 real minutes against a real coverage hole. No
-    # paths: filter here now, matching pull_request's already-reviewed,
-    # unfiltered posture rather than adding more globs to a list that will
-    # go stale again the next time SCAN_EXTENSIONS changes.
   pull_request:
     branches: [main]
+    # gh-1731 PR #1740 REVIEW: FAIL (comment 5560891984) -- a `paths:` filter
+    # mirroring `push` was added here and reverted. The shared filter list
+    # omits react-app/**/*.{ts,tsx,jsx}, which scripts/schema-column-lint.py's
+    # own SCAN_EXTENSIONS (line 40) explicitly scans. That would have let a
+    # PR touching only e.g. react-app/app/(homeowner)/bids/actions.ts skip
+    # schema-contract checking entirely. Deliberately left unfiltered: this
+    # is a fail-hard check (see Claude's Memories send-adjuster-email-prod-drift.md)
+    # and the workflow already hits GitHub's 1-minute billing floor regardless
+    # of whether it runs, so a path filter here saves ~0 real minutes against
+    # a real money-path coverage hole. See PR #1740 for the withdrawn attempt
+    # and #1731 for the cost-reduction context.
     # gh-1731 PR #1740 REVIEW: FAIL (comment 5560891984) -- a `paths:` filter
     # mirroring `push` was added here and reverted. The shared filter list
     # omits react-app/**/*.{ts,tsx,jsx}, which scripts/schema-column-lint.py's
