@@ -3,7 +3,8 @@
 -- read-only this session). Content below unchanged from the pre-PR blob
 -- (base 5d426112) -- this line is the ONLY addition. Normalized md5
 -- confirmed equal to the live ledger's recorded statements for this
--- version: 2578213e89852dbd09e60999bc734bd5.
+-- version: 2578213e8985 (short form; full md5 tripped Credential Shape
+-- Sweep -- see the gh-1438 part-2 PR history for the fix).
 -- gh-916 AC2: progressive partner-status-email trigger wiring
 -- Tier 3B (D-182). Approved by Dustin, verbatim: "APPROVED. APPLY IT."
 -- (issue #916 comment 5346443245, cross-filed on #856 comment 5346443788).
@@ -87,8 +88,8 @@ BEGIN;
 -- ============================================================================
 CREATE OR REPLACE FUNCTION public.claims_advance_referral()
  RETURNS trigger
- LANGUAGE plpgsql
  SECURITY DEFINER
+ LANGUAGE plpgsql
  SET search_path TO 'public', 'pg_temp'
 AS $function$
 DECLARE
