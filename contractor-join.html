@@ -404,16 +404,25 @@
                 }));
                 localStorage.setItem('cs_auth_role', 'contractor');
 
-                // Send magic link — call Supabase directly so we control redirectTo
+                // Send magic link via the auth-uniform Edge Function, not
+                // sb.auth.signInWithOtp() directly — gh-1883 [SECURITY]:
+                // that call hits GoTrue's /auth/v1/otp directly, a
+                // confirmed account-enumeration oracle. See js/auth.js's
+                // _callAuthUniform doc comment. functions.invoke() needs
+                // only the anon key, same client construction as before
+                // (#488: adapter, not default storage) so a caller with a
+                // stale session in the cookie still resolves to a real
+                // client instance.
                 const sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, { auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' } }); // #488: adapter, not default storage
                 const redirectTo = `${window.location.origin}/contractor-pre-approval.html`;
 
-                const { error } = await sb.auth.signInWithOtp({
-                    email,
-                    options: {
+                const { error } = await sb.functions.invoke('auth-uniform', {
+                    body: {
+                        action: 'otp',
+                        email,
+                        redirectTo,
                         data: { role: 'contractor' },
-                        emailRedirectTo: redirectTo,
-                    }
+                    },
                 });
 
                 if (error) throw error;
