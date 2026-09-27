@@ -1,11 +1,19 @@
 -- Migration: v88_referral_agents_public_directory_optin
--- Author: run-work F-22 sub-agent (automated) — session rw-86e1h5j3x-f22-a015
+-- >>> SUPERSEDED (2026-09-26, gh-1438 part 2) -- referral_agents.public_directory_optin
+-- IS live in production, but this file is NOT what added it. It was added by a
+-- different, already-reconciled migration: supabase/migrations/20260807223000_v101_referral_agents_public_directory_optin.sql
+-- (issue #385), whose own header documents it as the re-cut, applied
+-- successor to this exact v88 draft. Applying THIS file now would attempt
+-- to add the same column a second time. Kept here, unmodified, for history
+-- only -- confirmed via information_schema.columns, this session and the
+-- 2026-09-01 MIGRATIONS-RECONCILIATION-1438.md Part 1 pass. <<<
+-- Author: run-work F-22 sub-agent (automated) -- session rw-86e1h5j3x-f22-a015
 -- Date: 2026-07-03
--- Status: DRAFT ONLY — DO NOT APPLY. Tier 3 (D-182) approval pending.
+-- Status: DRAFT ONLY -- DO NOT APPLY. Tier 3 (D-182) approval pending.
 -- D-numbers: D-182 (deploy tier 3), D-221 (path A deploy)
 -- Rollback: v88_referral_agents_public_directory_optin_rollback.sql
 -- Pre-flight: v88_referral_agents_public_directory_optin_pre-flight.md
--- ClickUp task: 86e1h5j3x (SEO P2 — /partners/ referral-partner directory)
+-- ClickUp task: 86e1h5j3x (SEO P2 -- /partners/ referral-partner directory)
 --
 -- NUMBERING NOTE: sql/v88-referral-agents-public-view.sql (2026-06-13) also
 -- carries the v88 label in the legacy sql/ lineage. This file follows the
@@ -15,7 +23,7 @@
 -- Summary: Adds public_directory_optin boolean column to referral_agents.
 --          Agents default to NOT opted in (false). The partner directory
 --          generator (tools/generate_partner_pages.py) renders pages only
---          for agents where this flag is true — zero pages until this
+--          for agents where this flag is true -- zero pages until this
 --          migration is applied AND agents explicitly opt in.
 
 BEGIN;

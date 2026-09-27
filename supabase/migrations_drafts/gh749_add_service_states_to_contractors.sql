@@ -1,7 +1,13 @@
 -- Migration: gh749_add_service_states_to_contractors
+-- >>> APPLIED (2026-09-26, gh-1438 part 2) -- this draft's SQL is byte-
+-- identical to what ran. Filed as
+-- supabase/migrations/20260821225742_gh749_add_service_states_to_contractors.sql
+-- (confirmed read-only against yeszghaspzwwstvsrioa, both this session and
+-- the 2026-09-01 MIGRATIONS-RECONCILIATION-1438.md Part 1 pass). This copy
+-- kept here for history only -- do not re-run it. <<<
 -- Author: Code lane sub-agent (automated), run-work orchestration
 -- Date: 2026-08-21
--- Status: DRAFT — Tier 3A, autonomous (purely additive: one new nullable
+-- Status: DRAFT -- Tier 3A, autonomous (purely additive: one new nullable
 --         column + a one-time backfill UPDATE that only touches the new
 --         column; nothing existing is read differently, nothing dropped,
 --         nothing destroyed). Per the #916 tier-test precedent
@@ -9,14 +15,14 @@
 --         columns, new tables, indexes) … is Tier 3A and autonomous."
 -- Rollback: gh749_add_service_states_to_contractors_rollback.sql
 -- Pre-flight: gh749_add_service_states_to_contractors_pre-flight.md
--- GitHub: #749 (contractor pre-approval — structured service_states column)
+-- GitHub: #749 (contractor pre-approval -- structured service_states column)
 --
 -- Summary: adds a nullable service_states text[] column to public.contractors
 -- (structured state coverage, replacing free-text parsing of
 -- service_area_description / service_counties for admin filtering) and
 -- backfills it for every row that already carries derivable state data from
 -- either legacy source. service_area_description and service_counties are
--- left untouched — this is additive, not a migration off either column.
+-- left untouched -- this is additive, not a migration off either column.
 
 BEGIN;
 
@@ -28,7 +34,7 @@ ALTER TABLE public.contractors
 --     (live data as of 2026-08-21 is a single code per row, e.g. "IN", but
 --     the split handles multi-value rows too).
 --   - service_counties: array of "STATE:county" / "STATE:*" strings (e.g.
---     "IN:*") — state code is the prefix before the colon, NOT a suffix
+--     "IN:*") -- state code is the prefix before the colon, NOT a suffix
 --     after a hyphen (admin-contractors.html's existing derivation comment
 --     assumed the latter and does not actually match live data).
 -- Rows with neither source populated are left NULL (2 of 11 live rows).
