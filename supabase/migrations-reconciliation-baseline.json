@@ -3,7 +3,7 @@
   "generated_at": "2026-09-26T21:40:00Z",
   "generated_by": "k71-w-1438, gh-1438 CLOSE-REVIEW response, branch k71/gh1438-part2",
   "measured_against": {
-    "repo_commit": "4871d46a9cb1300a6b944d339d5be0a6b9ebd1c0",
+    "repo_commit": "4871d46a9cb1",
     "supabase_project_ref": "yeszghaspzwwstvsrioa",
     "applied_migrations_query": "select version, name from supabase_migrations.schema_migrations order by version (Supabase MCP execute_sql, read-only) against project yeszghaspzwwstvsrioa -- 187 rows returned",
     "repo_migrations_scan": "GitHub MCP get_file_contents listing of supabase/migrations/ on branch k71/gh1438-part2, 14-digit YYYYMMDDHHMMSS prefix extracted per filename, de-duplicated -- 168 files, 168 distinct version prefixes"
