@@ -284,9 +284,151 @@ def test_existing_table_untouched_never_flagged():
     return ok
 
 
+import subprocess as _subprocess
+import tempfile as _tempfile
+
+
+def _git(args, cwd):
+    proc = _subprocess.run(
+        ["git"] + args, cwd=str(cwd), capture_output=True, text=True
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(
+            "git %s failed (rc=%d): %s%s"
+            % (" ".join(args), proc.returncode, proc.stdout, proc.stderr)
+        )
+    return proc.stdout.strip()
+
+
+def _init_repo(cwd):
+    _git(["init", "-q"], cwd)
+    _git(["config", "user.email", "grantcheck-test@example.com"], cwd)
+    _git(["config", "user.name", "Grant Check Test"], cwd)
+
+
+def _commit_all(cwd, msg):
+    _git(["add", "-A"], cwd)
+    _git(["commit", "-q", "-m", msg], cwd)
+    return _git(["rev-parse", "HEAD"], cwd)
+
+
+# Deliberately has NO in-file service_role grant -- this is the realistic
+# false-positive shape (a table whose Data-API access is granted by a later,
+# separate migration, or that pre-dates gh-2145 entirely). On UNPATCHED
+# main, a pure rename of this file is diffed against '' (nothing at the new
+# path in the base tree), so the pre-existing CREATE TABLE reads as newly
+# ADDED and wrongly fails "missing service_role grant" even though nothing
+# about this table actually changed. On the fix, the rename is diffed
+# against its OLD path's identical content, so zero lines are "added" and
+# the file is never evaluated at all.
+_RENAME_TABLE_SQL = (
+    "BEGIN;\n\n"
+    "CREATE TABLE IF NOT EXISTS public.foo_bar (\n"
+    "  id UUID PRIMARY KEY DEFAULT gen_random_uuid()\n"
+    ");\n\n"
+    "COMMIT;\n"
+)
+
+
+def test_pure_rename_zero_findings():
+    # gh-1438 follow-up (PR #2244 review comment 5851387029): this detector
+    # reuses permissions_ratchet.changed_migration_files()/run_diff_mode()'s
+    # own diff plumbing, so it inherited the same rename bug -- see
+    # _RENAME_TABLE_SQL's comment above for the exact failure mode.
+    with _tempfile.TemporaryDirectory(prefix="grantcheck-rename-a-") as tmp:
+        root = Path(tmp)
+        _init_repo(root)
+        mig = root / "supabase" / "migrations"
+        mig.mkdir(parents=True)
+        old_path = mig / "20260101000000_foo_bar.sql"
+        old_path.write_text(_RENAME_TABLE_SQL, encoding="utf-8")
+        base_sha = _commit_all(root, "base")
+
+        new_path = mig / "20260101000001_foo_bar.sql"
+        _git(["mv", old_path.name, new_path.name], mig)
+        head_sha = _commit_all(root, "pure rename, byte-identical content")
+
+        findings, _pass_notes, files_inspected = check.run_diff_mode(root, base_sha, head_sha)
+        ok = len(findings) == 0 and any(f.endswith("20260101000001_foo_bar.sql") for f in files_inspected)
+        print(
+            "PASS  pure rename of a table granted elsewhere -> 0 findings "
+            "(fails on unpatched main)"
+            if ok
+            else "FAIL  pure-rename case: findings=%r files_inspected=%r" % (findings, files_inspected)
+        )
+        return ok
+
+
+def test_rename_plus_new_ungranted_table_still_flagged():
+    # Negative control: a rename must not blind the detector to a genuinely
+    # new, ungranted table added in the SAME diff.
+    with _tempfile.TemporaryDirectory(prefix="grantcheck-rename-b-") as tmp:
+        root = Path(tmp)
+        _init_repo(root)
+        mig = root / "supabase" / "migrations"
+        mig.mkdir(parents=True)
+        old_path = mig / "20260101000000_foo_bar.sql"
+        old_path.write_text(_RENAME_TABLE_SQL, encoding="utf-8")
+        base_sha = _commit_all(root, "base")
+
+        new_path = mig / "20260101000001_foo_bar.sql"
+        _git(["mv", old_path.name, new_path.name], mig)
+        head_sha_rename = _commit_all(root, "pure rename")
+
+        new_table_path = mig / "20260101000002_baz.sql"
+        new_table_path.write_text(
+            "BEGIN;\n\nCREATE TABLE IF NOT EXISTS public.baz (\n"
+            "  id UUID PRIMARY KEY DEFAULT gen_random_uuid()\n"
+            ");\n\nCOMMIT;\n",
+            encoding="utf-8",
+        )
+        head_sha_new = _commit_all(root, "add ungranted table alongside the rename")
+
+        findings, _pass_notes, _files_inspected = check.run_diff_mode(root, base_sha, head_sha_new)
+        ok = len(findings) == 1 and "new-table-missing-service-role-grant" in findings[0] and "baz" in findings[0]
+        print(
+            "PASS  rename + new ungranted table still flags exactly the new table"
+            if ok
+            else "FAIL  rename+new-table case: findings=%r" % findings
+        )
+        return ok
+
+
+def test_brand_new_ungranted_table_no_rename_still_flagged():
+    with _tempfile.TemporaryDirectory(prefix="grantcheck-rename-c-") as tmp:
+        root = Path(tmp)
+        _init_repo(root)
+        mig = root / "supabase" / "migrations"
+        mig.mkdir(parents=True)
+        existing_path = mig / "20260101000000_foo_bar.sql"
+        existing_path.write_text(_RENAME_TABLE_SQL, encoding="utf-8")
+        base_sha = _commit_all(root, "base")
+
+        new_table_path = mig / "20260101000002_baz.sql"
+        new_table_path.write_text(
+            "BEGIN;\n\nCREATE TABLE IF NOT EXISTS public.baz (\n"
+            "  id UUID PRIMARY KEY DEFAULT gen_random_uuid()\n"
+            ");\n\nCOMMIT;\n",
+            encoding="utf-8",
+        )
+        head_sha = _commit_all(root, "brand-new ungranted table, no rename involved")
+
+        findings, _pass_notes, _files_inspected = check.run_diff_mode(root, base_sha, head_sha)
+        ok = len(findings) == 1 and "new-table-missing-service-role-grant" in findings[0] and "baz" in findings[0]
+        print(
+            "PASS  brand-new ungranted table (no rename) is still flagged"
+            if ok
+            else "FAIL  brand-new-table case: findings=%r" % findings
+        )
+        return ok
+
+
 def main():
     results = [
         test_self_test_passes(),
+        test_pure_rename_zero_findings(),
+        test_rename_plus_new_ungranted_table_still_flagged(),
+        test_brand_new_ungranted_table_no_rename_still_flagged(),
         test_bare_diff_missing_grant_fails(),
         test_bare_diff_with_grant_passes(),
         test_quoted_cli_style_no_grant_fails(),

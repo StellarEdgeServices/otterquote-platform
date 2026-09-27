@@ -326,6 +326,148 @@ check_true(
     len(hard_fails16) == 0,
 )
 
+# ---------------------------------------------------------------------------
+# Layer 3 -- rename-awareness (gh-1438 follow-up, PR #2244 review comment
+# 5851387029): changed_migration_files() previously used `git diff
+# --name-only`, which performs NO rename detection, so a pure `git mv` /
+# R100 rename of a migration file was read as a brand-new file with an
+# empty old side -- every pre-existing, already-live GRANT in that file
+# then read as newly ADDED and got flagged. These tests build a real git
+# repo (subprocess `git`, not a mock) so `-M` rename detection is exercised
+# for real, not merely asserted.
+# ---------------------------------------------------------------------------
+print()
+print("Layer 3: rename-awareness (gh-1438 follow-up -- git diff -M / --find-renames)")
+
+import subprocess as _subprocess
+import tempfile as _tempfile
+
+
+def _git(args, cwd):
+    proc = _subprocess.run(
+        ["git"] + args, cwd=str(cwd), capture_output=True, text=True
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(
+            "git %s failed (rc=%d): %s%s"
+            % (" ".join(args), proc.returncode, proc.stdout, proc.stderr)
+        )
+    return proc.stdout.strip()
+
+
+def _init_repo(cwd):
+    _git(["init", "-q"], cwd)
+    _git(["config", "user.email", "ratchet-test@example.com"], cwd)
+    _git(["config", "user.name", "Ratchet Test"], cwd)
+
+
+def _commit_all(cwd, msg):
+    _git(["add", "-A"], cwd)
+    _git(["commit", "-q", "-m", msg], cwd)
+    return _git(["rev-parse", "HEAD"], cwd)
+
+
+# Deliberately a pre-existing, already-live GRANT TO anon (not service_role):
+# on UNPATCHED main, a pure rename of this file is diffed against '' (the
+# renamed path does not exist at base), so this statement reads as newly
+# ADDED and wrongly fails rule 1. On the fix, the rename is diffed against
+# its OLD path's identical content, so this pre-existing statement is
+# correctly seen as untouched and produces zero findings.
+RENAME_BASE_SQL = "BEGIN;\n\nGRANT SELECT ON public.foo TO anon;\n\nCOMMIT;\n"
+
+with _tempfile.TemporaryDirectory(prefix="ratchet-rename-a-") as _tmp_a:
+    _root_a = Path(_tmp_a)
+    _init_repo(_root_a)
+    _mig_a = _root_a / "supabase" / "migrations"
+    _mig_a.mkdir(parents=True)
+    _old_a = _mig_a / "20260101000000_foo.sql"
+    _old_a.write_text(RENAME_BASE_SQL, encoding="utf-8")
+    _base_a = _commit_all(_root_a, "base")
+
+    _new_a = _mig_a / "20260101000001_foo.sql"
+    _git(["mv", _old_a.name, _new_a.name], _mig_a)
+    _head_a = _commit_all(_root_a, "pure rename, byte-identical content")
+
+    _entries_a = ratchet.changed_migration_files(_root_a, _base_a, _head_a)
+    check_true(
+        "changed_migration_files() reports the rename as ONE entry with an "
+        "old_path set (not a bare add with old_path=None)",
+        len(_entries_a) == 1 and _entries_a[0][0].endswith("20260101000001_foo.sql")
+        and _entries_a[0][1] is not None
+        and _entries_a[0][1].endswith("20260101000000_foo.sql"),
+    )
+
+    _findings_a, _pn_a, _files_a, _bypass_a = ratchet.run_diff_mode(
+        _root_a, _base_a, _head_a, []
+    )
+    _hard_a = [f for f in _findings_a if f.severity == "FAIL"]
+    check_true(
+        "pure byte-identical rename produces ZERO findings (this is the "
+        "case that FAILS on unpatched main, which diffs the renamed file "
+        "against '' at the new path and reads its pre-existing GRANT as new)",
+        len(_hard_a) == 0,
+    )
+    check_true(
+        "the renamed file is still inspected at its new path, not silently "
+        "dropped",
+        any(f.endswith("20260101000001_foo.sql") for f in _files_a),
+    )
+
+with _tempfile.TemporaryDirectory(prefix="ratchet-rename-b-") as _tmp_b:
+    _root_b = Path(_tmp_b)
+    _init_repo(_root_b)
+    _mig_b = _root_b / "supabase" / "migrations"
+    _mig_b.mkdir(parents=True)
+    _old_b = _mig_b / "20260101000000_foo.sql"
+    _old_b.write_text(RENAME_BASE_SQL, encoding="utf-8")
+    _base_b = _commit_all(_root_b, "base")
+
+    _new_b = _mig_b / "20260101000001_foo.sql"
+    _git(["mv", _old_b.name, _new_b.name], _mig_b)
+    _new_b.write_text(
+        RENAME_BASE_SQL.rstrip("\n") + "\nGRANT SELECT ON public.foo TO anon;\n",
+        encoding="utf-8",
+    )
+    _head_b = _commit_all(_root_b, "rename + new GRANT TO anon in the same diff")
+
+    _findings_b, _pn_b, _files_b, _bypass_b = ratchet.run_diff_mode(
+        _root_b, _base_b, _head_b, []
+    )
+    _hard_b = [f for f in _findings_b if f.severity == "FAIL"]
+    check_true(
+        "negative control: rename + an added GRANT TO anon in the SAME "
+        "commit still flags exactly the added GRANT -- rename-awareness "
+        "must not blind the ratchet to a real new violation riding along "
+        "in the same diff",
+        len(_hard_b) == 1 and _hard_b[0].rule == "grant-to-disallowed-role",
+    )
+
+with _tempfile.TemporaryDirectory(prefix="ratchet-rename-c-") as _tmp_c:
+    _root_c = Path(_tmp_c)
+    _init_repo(_root_c)
+    _mig_c = _root_c / "supabase" / "migrations"
+    _mig_c.mkdir(parents=True)
+    _existing_c = _mig_c / "20260101000000_foo.sql"
+    _existing_c.write_text(RENAME_BASE_SQL, encoding="utf-8")
+    _base_c = _commit_all(_root_c, "base")
+
+    _brand_new_c = _mig_c / "20260101000002_bar.sql"
+    _brand_new_c.write_text(
+        "BEGIN;\n\nGRANT SELECT ON public.bar TO anon;\n\nCOMMIT;\n", encoding="utf-8"
+    )
+    _head_c = _commit_all(_root_c, "brand-new file with GRANT TO anon (no rename)")
+
+    _findings_c, _pn_c, _files_c, _bypass_c = ratchet.run_diff_mode(
+        _root_c, _base_c, _head_c, []
+    )
+    _hard_c = [f for f in _findings_c if f.severity == "FAIL"]
+    check_true(
+        "a brand-new file (no rename involved at all) with GRANT TO anon is "
+        "still flagged exactly as before this fix",
+        len(_hard_c) == 1 and _hard_c[0].rule == "grant-to-disallowed-role",
+    )
+
+
 print()
 print("assertions: %d, failures: %d" % (TOTAL_CHECKS, len(FAILURES)))
 if FAILURES:

@@ -378,17 +378,21 @@ def evaluate_file(file_rel: str, old_text: str, new_text: str):
 
 
 def run_diff_mode(root: Path, base: str, head: str):
-    files = pr.changed_migration_files(root, base, head)
+    entries = pr.changed_migration_files(root, base, head)
     all_findings = []
     all_pass_notes = []
     files_inspected = []
-    for f in files:
-        old_text = pr.git_show(root, base, f) or ""
-        new_text = pr.git_show(root, head, f)
+    for new_path, old_path in entries:
+        # A renamed file is diffed against its OLD path at base -- see
+        # permissions-ratchet.py's changed_migration_files() docstring
+        # (gh-1438 follow-up); this detector reuses that same function and
+        # inherited the same rename bug, so it needs the same fix.
+        old_text = pr.git_show(root, base, old_path or new_path) or ""
+        new_text = pr.git_show(root, head, new_path)
         if new_text is None:
             continue
-        files_inspected.append(f)
-        findings, pass_notes = evaluate_file(f, old_text, new_text)
+        files_inspected.append(new_path)
+        findings, pass_notes = evaluate_file(new_path, old_text, new_text)
         all_findings.extend(findings)
         all_pass_notes.extend(pass_notes)
     return all_findings, all_pass_notes, files_inspected

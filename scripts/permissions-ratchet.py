@@ -895,18 +895,66 @@ def git_show(root: Path, ref: str, path: str):
 
 
 def changed_migration_files(root: Path, base: str, head: str):
+    """Returns a list of (new_path, old_path) tuples for every
+    supabase/migrations/*.sql file touched between base and head, keyed by
+    the file's path in the NEW (head) tree.
+
+    `old_path` is None for an ordinary add/modify, and is the file's
+    PRE-RENAME path (itself inside supabase/migrations/) when `git diff -M`
+    classifies the change as a rename or copy. Callers MUST diff the new
+    content against `old_path` at `base`, never against `new_path` at
+    `base` -- under the new name the file does not exist at base at all,
+    so git_show() returns None there and every line of the renamed file
+    reads as newly ADDED, flagging its pre-existing, already-live GRANTs as
+    if they were new (gh-1438 follow-up, PR #2244 review comment
+    5851387029: a pure git R100 rename was read as a brand-new file by
+    both this ratchet and new-table-service-role-grant-check.py, which
+    reuses this function).
+
+    `--name-status -M` (not the previous `--name-only`, which performs NO
+    rename detection at all -- `diff.renames` is off by default for this
+    kind of plumbing invocation) is what makes a pure, byte-identical
+    rename show up as a single `R100\told\tnew` line instead of a D+A
+    pair with no link between them."""
     code, out, err = run_git(
-        ["diff", "--name-only", "%s...%s" % (base, head), "--", "supabase/migrations"],
+        [
+            "diff",
+            "--name-status",
+            "-M",
+            "%s...%s" % (base, head),
+            "--",
+            "supabase/migrations",
+        ],
         root,
     )
     if code != 0:
-        raise RuntimeError("git diff --name-only failed: %s" % err)
-    files = [
-        f.strip().replace("\\", "/")
-        for f in out.splitlines()
-        if f.strip() and MIGRATIONS_PATH_RE.match(f.strip().replace("\\", "/"))
-    ]
-    return files
+        raise RuntimeError("git diff --name-status failed: %s" % err)
+    entries = []
+    for line in out.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        parts = line.split("\t")
+        status = parts[0]
+        if status.startswith("R") or status.startswith("C"):
+            # Rename/copy: `<status>\t<old_path>\t<new_path>`.
+            if len(parts) < 3:
+                continue
+            old_path = parts[1].strip().replace("\\", "/")
+            new_path = parts[2].strip().replace("\\", "/")
+            if not MIGRATIONS_PATH_RE.match(new_path):
+                continue
+            entries.append(
+                (new_path, old_path if MIGRATIONS_PATH_RE.match(old_path) else None)
+            )
+        else:
+            # Ordinary add/modify/delete: `<status>\t<path>`.
+            if len(parts) < 2:
+                continue
+            path = parts[1].strip().replace("\\", "/")
+            if MIGRATIONS_PATH_RE.match(path):
+                entries.append((path, None))
+    return entries
 
 
 def diff_added_line_numbers(old_text: str, new_text: str):
@@ -965,17 +1013,19 @@ def apply_bypass(findings, labels):
 
 
 def run_diff_mode(root: Path, base: str, head: str, labels):
-    files = changed_migration_files(root, base, head)
+    entries = changed_migration_files(root, base, head)
     all_findings = []
     all_pass_notes = []
     files_inspected = []
-    for f in files:
-        old_text = git_show(root, base, f) or ""
-        new_text = git_show(root, head, f)
+    for new_path, old_path in entries:
+        # A renamed file is diffed against its OLD path at base -- see
+        # changed_migration_files()'s docstring (gh-1438 follow-up).
+        old_text = git_show(root, base, old_path or new_path) or ""
+        new_text = git_show(root, head, new_path)
         if new_text is None:
             continue  # file deleted -- deletions are not this ratchet's job
-        files_inspected.append(f)
-        findings, pass_notes = evaluate_file(f, old_text, new_text)
+        files_inspected.append(new_path)
+        findings, pass_notes = evaluate_file(new_path, old_text, new_text)
         all_findings.extend(findings)
         all_pass_notes.extend(pass_notes)
     bypass_active = apply_bypass(all_findings, labels)
