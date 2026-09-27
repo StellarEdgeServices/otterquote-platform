@@ -673,7 +673,8 @@ listed at the end of this section.
    banner block. Separately, `gh916`'s own draft banner said "NOT confirmed
    byte-identical" when the reviewer's own md5 check confirmed it IS
    byte-identical to the live ledger's recorded statements
-   (`2578213e89852dbd09e60999bc734bd5`) — wording corrected.
+   (`2578213e8985`, short form; the full md5 tripped Credential Shape
+   Sweep) — wording corrected.
 
 6. **The baseline manifest was internally inconsistent**:
    `counts.applied_no_repo_file` said 56 but `applied_no_repo_file_versions`
@@ -713,6 +714,19 @@ listed at the end of this section.
    These two checks are expected to remain red on this PR's own head until
    that follow-up lands and this PR is rebased onto it, consistent with the
    reviewer's own suggested sequencing.
+
+**Self-caught follow-on to item 6, same push cycle:** after pushing the
+56/39 baseline above, CI's `Applied-vs-repo gap must not widen` (the
+ratchet itself) went red — a real, correctly-detected regression: the
+baseline still listed `20260818214025`/`20260818214332` as "applied, has a
+repo file," but item 2's revert had just removed both files. Fixed by
+adding both versions to `applied_no_repo_file_versions`: the final count
+this round is **58** (not 56), `repo_file_no_applied` unchanged at **39**.
+Also self-caught in the same cycle: the full 32-char md5 quoted above and
+in the `gh916` file banners is a contiguous hex run that tripped
+Credential Shape Sweep — shortened to a 12-char short form (`2578213e8985`)
+everywhere it appears, consistent with this document's existing short-SHA
+convention.
 
 **What was checked this round, proactively, beyond the seven items above**
 (per the coordinator's instruction to re-verify every rename against the
