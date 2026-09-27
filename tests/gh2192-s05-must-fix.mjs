@@ -349,6 +349,12 @@ await testRecruitCodeRace('hi-1.html', 'homeInspectorForm', {
   fullName: 'Jane Test', email: 'gh2192-hi1-test@example.invalid', phone: '3175551234', company: 'Test Co', agreeToTerms: true,
 }, 'hi-1.html must-fix (1)');
 
+// gh-2222: re-3/ins-3 inherit the re-1/ins-1 mechanism byte-for-byte, so
+// they must pass the same must-fix checks. There is no dc7135be blob for
+// these files (they postdate that commit), so only the post-fix half runs.
+await testRecruitCodeRace('ins-3.html', 'insuranceAgentForm', {
+  fullName: 'Jane Test', email: 'gh2192-ins3-test@example.invalid', phone: '3175551234', company: 'Test Agency', agreeToTerms: true,
+}, 'ins-3.html must-fix (1)');
 // gh-2151/gh-2152 INS-5/HI-4 (CEO RUN 71): clones of ins-1.html/hi-1.html --
 // same must-fix (1) applies verbatim (no dc7135be pre-fix history for these
 // new files, so the pre-fix half SKIPs and only the post-fix assertion runs).
@@ -468,6 +474,16 @@ await testEarlyTapGuard('hi-1.html', 'homeInspectorForm', {
   fullName: 'Jane Test', email: 'gh2192-hi1-test2@example.invalid', phone: '3175551234', company: 'Test Co', agreeToTerms: true,
 }, 'hi-1.html must-fix (2)');
 
+// gh-2222: re-3/ins-3 inherit the re-1/ins-1 mechanism byte-for-byte, so
+// they must pass the same must-fix checks. There is no dc7135be blob for
+// these files (they postdate that commit), so only the post-fix half runs.
+await testEarlyTapGuard('re-3.html', 'partner-form', {
+  name: 'Jane Realtor', email: 'gh2192-re3-test@example.invalid', phone: '3175551234', brokerage: 'Test Brokerage', terms: true,
+}, 're-3.html must-fix (2)');
+
+await testEarlyTapGuard('ins-3.html', 'insuranceAgentForm', {
+  fullName: 'Jane Test', email: 'gh2192-ins3-test2@example.invalid', phone: '3175551234', company: 'Test Agency', agreeToTerms: true,
+}, 'ins-3.html must-fix (2)');
 await testEarlyTapGuard('ins-5.html', 'insuranceAgentForm', {
   fullName: 'Jane Test', email: 'gh2192-ins5-test2@example.invalid', phone: '3175551234', company: 'Test Agency', agreeToTerms: true,
 }, 'ins-5.html must-fix (2)');
