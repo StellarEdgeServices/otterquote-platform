@@ -167,9 +167,14 @@ BEGIN
     v_msg := SQLERRM;
   END;
   RAISE NOTICE 'gh1529_r3 BEFORE: anon INSERT into quotes -> SQLSTATE=% SQLERRM=%', v_state, v_msg;
-  IF v_state = 'SUCCESS' THEN
-    RAISE EXCEPTION 'gh1529_r3 BEFORE PRE-CHECK FAILED: anon INSERT into quotes unexpectedly succeeded (RLS should reject it -- with_check auth.uid() conjunct can never be satisfied by anon)';
+  -- REVIEW: FAIL 5856724811 must-fix #2: assert the EXACT RLS SQLSTATE
+  -- (42501), not merely "not SUCCESS" -- otherwise an unrelated rejection
+  -- (e.g. the D-199 bid-gate trigger's P0001, if the contractor_templates
+  -- fixture were ever missing) would wrongly PASS this proof.
+  IF v_state IS DISTINCT FROM '42501' THEN
+    RAISE EXCEPTION 'gh1529_r3 BEFORE PRE-CHECK FAILED: expected anon INSERT into quotes to be rejected with SQLSTATE 42501 (row-level security), got %/% instead', v_state, v_msg;
   END IF;
+  RAISE NOTICE 'gh1529_r3 BEFORE: quotes-insert PRE-CHECK PASSED (exact SQLSTATE 42501).';
 END;
 $gh1529_r3_before_quotes_insert$;
 
@@ -314,9 +319,10 @@ BEGIN
     v_msg := SQLERRM;
   END;
   RAISE NOTICE 'gh1529_r3 AFTER: anon INSERT into quotes -> SQLSTATE=% SQLERRM=%', v_state, v_msg;
-  IF v_state = 'SUCCESS' THEN
-    RAISE EXCEPTION 'gh1529_r3 AFTER POST-CHECK FAILED: anon INSERT into quotes unexpectedly succeeded post-migration';
+  IF v_state IS DISTINCT FROM '42501' THEN
+    RAISE EXCEPTION 'gh1529_r3 AFTER POST-CHECK FAILED: expected anon INSERT into quotes to be rejected with SQLSTATE 42501 (row-level security), got %/% instead', v_state, v_msg;
   END IF;
+  RAISE NOTICE 'gh1529_r3 AFTER: quotes-insert POST-CHECK PASSED (exact SQLSTATE 42501).';
 END;
 $gh1529_r3_after_quotes_insert$;
 
@@ -365,6 +371,34 @@ CREATE TABLE IF NOT EXISTS public.partner_onboarding_sends (
 ALTER TABLE public.partner_onboarding_sends ENABLE ROW LEVEL SECURITY;
 GRANT SELECT, INSERT, UPDATE, DELETE, REFERENCES, TRIGGER, TRUNCATE ON public.partner_onboarding_sends TO anon;
 
+-- ── Snapshot BEFORE the forward DDL (REVIEW: FAIL 5856724811 must-fix #1:
+--    a substring/regex check like `proacl ~ '=X/postgres'` can never fail
+--    -- it matches ANY grantee's entry, not specifically PUBLIC's. Snapshot
+--    the actual (grantee, privilege_type) SET via aclexplode() instead, and
+--    assert set EQUALITY after the rollback, not a truthy substring.
+--    MUTATION-PROVEN (REVIEW: FAIL 5856724811 must-fix #3): this exact
+--    predicate was run once against the real rollback DDL (PASS, 0 diff
+--    rows) and once against the rollback DDL with `GRANT EXECUTE ON
+--    FUNCTION public.contractor_can_bid(uuid) TO PUBLIC` deliberately
+--    removed (FAIL, 1 diff row: contractor_can_bid_acl / PUBLIC:EXECUTE /
+--    missing_after) -- raw output pasted on PR #2250. The mutated variant
+--    is not committed here; only the real rollback DDL below is. ──
+CREATE TEMP TABLE gh1529_c_snapshot (phase text, dimension text, item text) ON COMMIT DROP;
+
+INSERT INTO gh1529_c_snapshot
+SELECT 'before', 'policy_roles', r::text
+FROM pg_policies, unnest(roles) AS r
+WHERE schemaname='public' AND tablename='quotes' AND policyname='Contractors can insert quotes'
+UNION ALL
+SELECT 'before', 'contractor_can_bid_acl',
+       (CASE WHEN a.grantee = 0 THEN 'PUBLIC' ELSE a.grantee::regrole::text END) || ':' || a.privilege_type
+FROM pg_proc p, aclexplode(p.proacl) a
+WHERE p.oid = 'public.contractor_can_bid(uuid)'::regprocedure
+UNION ALL
+SELECT 'before', 'partner_onboarding_sends_anon_grants', privilege_type
+FROM information_schema.role_table_grants
+WHERE table_schema='public' AND table_name='partner_onboarding_sends' AND grantee='anon';
+
 -- ── Forward DDL (exact contents of the forward migration) ──────────────
 ALTER POLICY "Contractors can insert quotes" ON public.quotes TO authenticated;
 REVOKE EXECUTE ON FUNCTION public.contractor_can_bid(uuid) FROM PUBLIC;
@@ -378,49 +412,56 @@ GRANT EXECUTE ON FUNCTION public.contractor_can_bid(uuid) TO PUBLIC;
 GRANT EXECUTE ON FUNCTION public.contractor_can_bid(uuid) TO anon;
 GRANT INSERT, UPDATE, DELETE ON public.partner_onboarding_sends TO anon;
 
--- ── Assert the rollback restored the exact pre-migration state ─────────
+-- ── Snapshot AFTER the rollback DDL, same three dimensions ──────────────
+INSERT INTO gh1529_c_snapshot
+SELECT 'after', 'policy_roles', r::text
+FROM pg_policies, unnest(roles) AS r
+WHERE schemaname='public' AND tablename='quotes' AND policyname='Contractors can insert quotes'
+UNION ALL
+SELECT 'after', 'contractor_can_bid_acl',
+       (CASE WHEN a.grantee = 0 THEN 'PUBLIC' ELSE a.grantee::regrole::text END) || ':' || a.privilege_type
+FROM pg_proc p, aclexplode(p.proacl) a
+WHERE p.oid = 'public.contractor_can_bid(uuid)'::regprocedure
+UNION ALL
+SELECT 'after', 'partner_onboarding_sends_anon_grants', privilege_type
+FROM information_schema.role_table_grants
+WHERE table_schema='public' AND table_name='partner_onboarding_sends' AND grantee='anon';
+
+-- ── Assert SET EQUALITY between 'before' and 'after' per dimension:
+--    symmetric difference must be empty. Any row here is either something
+--    the rollback failed to restore (missing_after) or something extra
+--    the rollback left behind (extra_after) -- a diff, not a truthy check. ──
+CREATE TEMP TABLE gh1529_c_diff AS
+SELECT dimension, item, 'missing_after' AS diff
+FROM (SELECT dimension, item FROM gh1529_c_snapshot WHERE phase='before') b
+WHERE NOT EXISTS (
+  SELECT 1 FROM gh1529_c_snapshot a WHERE a.phase='after' AND a.dimension=b.dimension AND a.item=b.item
+)
+UNION ALL
+SELECT dimension, item, 'extra_after' AS diff
+FROM (SELECT dimension, item FROM gh1529_c_snapshot WHERE phase='after') a
+WHERE NOT EXISTS (
+  SELECT 1 FROM gh1529_c_snapshot b WHERE b.phase='before' AND b.dimension=a.dimension AND b.item=a.item
+);
+
 DO $gh1529_r3_rollback_assert$
 DECLARE
-  v_policy_roles text;
-  v_anon_exec_fn boolean;
-  v_proacl text;
-  v_proacl_has_public boolean;
-  v_proacl_has_anon boolean;
-  v_anon_ins_pos boolean;
-  v_anon_upd_pos boolean;
-  v_anon_del_pos boolean;
+  v_diff_count int;
+  v_diff_text text;
 BEGIN
-  SELECT roles::text INTO v_policy_roles FROM pg_policies
-  WHERE schemaname='public' AND tablename='quotes' AND policyname='Contractors can insert quotes';
+  SELECT count(*) INTO v_diff_count FROM gh1529_c_diff;
+  SELECT string_agg(dimension || ':' || item || ' (' || diff || ')', '; ') INTO v_diff_text FROM gh1529_c_diff;
 
-  SELECT has_function_privilege('anon', 'public.contractor_can_bid(uuid)', 'EXECUTE') INTO v_anon_exec_fn;
-
-  SELECT p.proacl::text INTO v_proacl
-  FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-  WHERE n.nspname='public' AND p.proname='contractor_can_bid';
-  v_proacl_has_public := v_proacl ~ '=X/postgres';
-  v_proacl_has_anon := v_proacl ~ 'anon=X/postgres';
-
-  SELECT has_table_privilege('anon','public.partner_onboarding_sends','INSERT') INTO v_anon_ins_pos;
-  SELECT has_table_privilege('anon','public.partner_onboarding_sends','UPDATE') INTO v_anon_upd_pos;
-  SELECT has_table_privilege('anon','public.partner_onboarding_sends','DELETE') INTO v_anon_del_pos;
-
-  RAISE NOTICE 'gh1529_r3 ROLLBACK-ASSERT: policy_roles=% (expect {public})', v_policy_roles;
-  RAISE NOTICE 'gh1529_r3 ROLLBACK-ASSERT: anon_exec_fn=% (expect true)', v_anon_exec_fn;
-  RAISE NOTICE 'gh1529_r3 ROLLBACK-ASSERT: proacl=% has_public=% has_anon=% (expect both true)', v_proacl, v_proacl_has_public, v_proacl_has_anon;
-  RAISE NOTICE 'gh1529_r3 ROLLBACK-ASSERT: anon ins/upd/del on partner_onboarding_sends = %/%/%  (expect true/true/true)', v_anon_ins_pos, v_anon_upd_pos, v_anon_del_pos;
-
-  IF v_policy_roles !~ 'public'
-     OR NOT v_anon_exec_fn
-     OR NOT v_proacl_has_public
-     OR NOT v_proacl_has_anon
-     OR NOT v_anon_ins_pos OR NOT v_anon_upd_pos OR NOT v_anon_del_pos THEN
-    RAISE EXCEPTION 'gh1529_r3 ROLLBACK-ASSERT FAILED: rollback did not restore the exact pre-migration state -- policy_roles=%, anon_exec_fn=%, proacl=%, ins=%, upd=%, del=%',
-      v_policy_roles, v_anon_exec_fn, v_proacl, v_anon_ins_pos, v_anon_upd_pos, v_anon_del_pos;
+  IF v_diff_count > 0 THEN
+    RAISE NOTICE 'gh1529_r3 ROLLBACK-ASSERT: FAIL -- % diff row(s): %', v_diff_count, v_diff_text;
+    RAISE EXCEPTION 'gh1529_r3 ROLLBACK-ASSERT FAILED: rollback did not restore the exact pre-migration state -- % diff row(s): %', v_diff_count, v_diff_text;
   END IF;
-  RAISE NOTICE 'gh1529_r3 ROLLBACK-ASSERT PASSED: rollback file restores the exact pre-migration state.';
+  RAISE NOTICE 'gh1529_r3 ROLLBACK-ASSERT: PASS -- 0 diff rows, before/after sets are identical across policy_roles, contractor_can_bid_acl (aclexplode set), and partner_onboarding_sends_anon_grants.';
 END;
 $gh1529_r3_rollback_assert$;
+
+-- Raw diff row count, for the batch's own result set (0 rows = PASS).
+SELECT dimension, item, diff FROM gh1529_c_diff ORDER BY dimension, item;
 
 -- Section C never commits either.
 ROLLBACK;
