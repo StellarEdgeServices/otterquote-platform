@@ -3,9 +3,11 @@ name: Schema Column Lint
 # gh-1731 (COST GATE), CTO RUN 43, figure corrected per adversarial review
 # (comment 5857733012 on PR #2262 -- the original number below wrongly reused
 # this workflow's whole-workflow run total instead of its push share): the
-# `push` trigger is REMOVED (it fired on `main` only in practice -- 135
-# runs/7d measured 2026-09-20..27, zero observed on `staging` despite being
-# configured there -- each one a post-merge re-run of a commit the
+# `push` trigger is REMOVED (it fired on `main` -- 135 runs/7d measured
+# 2026-09-20..27 -- and, separately, on 5 manual human pushes to `staging`
+# over the workflow's history, most recently 2026-07-13; the GITHUB_TOKEN-
+# pushed `staging` mirror itself never triggers a run -- each `main` run was
+# a post-merge re-run of a commit the
 # `pull_request` trigger below already fail-hard-checked pre-merge; at this
 # workflow's measured 1.0 billable min/run that is ~579 job-min/month of
 # zero-new-coverage re-checking, NOT ~2,563/month as originally stated here).
