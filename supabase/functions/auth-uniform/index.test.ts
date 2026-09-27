@@ -74,14 +74,45 @@ function stripSignatureTypes(fnSrc: string): string {
   return sig + body;
 }
 
-// ---- ALLOWED_REDIRECTS (module-level const Set) ----
+// ---- REDIRECT_ORIGIN_PATHS (module-level origin -> Set<path> allow-list) ----
+//
+// gh-1883 REVIEW FOLLOW-UP (must-fix 1+2+3, comment 5857851132): the old
+// ALLOWED_REDIRECTS flat Set<string> of exact URLs was replaced by an
+// origin allow-list x path allow-list (see index.ts's comment above
+// REDIRECT_ORIGIN_PATHS). Extraction has to pull all three path Sets plus
+// the record that assigns them to origins, then reconstruct the module's
+// own isAllowedRedirect against that reconstructed object -- same
+// source-extraction principle as before, just over more declarations.
 
-const allowedRedirectsMatch = src.match(/const ALLOWED_REDIRECTS = new Set\(\[([\s\S]*?)\]\);/);
-if (!allowedRedirectsMatch) throw new Error("ALLOWED_REDIRECTS const not found in index.ts");
-const ALLOWED_REDIRECTS: string[] = new Function(
-  `return [${allowedRedirectsMatch[1]}];`,
+const staticPathsMatch = src.match(/const REDIRECT_STATIC_PATHS = new Set\(\[([\s\S]*?)\]\);/);
+const reactPathsMatch = src.match(/const REDIRECT_REACT_PATHS = new Set\(\[([\s\S]*?)\]\);/);
+const localhostPathsMatch = src.match(/const REDIRECT_LOCALHOST_PATHS = new Set\(\[([\s\S]*?)\]\);/);
+const originPathsMatch = src.match(
+  /const REDIRECT_ORIGIN_PATHS: Record<string, Set<string>> = \{([\s\S]*?)\};/,
+);
+if (!staticPathsMatch) throw new Error("REDIRECT_STATIC_PATHS const not found in index.ts");
+if (!reactPathsMatch) throw new Error("REDIRECT_REACT_PATHS const not found in index.ts");
+if (!localhostPathsMatch) throw new Error("REDIRECT_LOCALHOST_PATHS const not found in index.ts");
+if (!originPathsMatch) throw new Error("REDIRECT_ORIGIN_PATHS const not found in index.ts");
+
+const redirectDeclsScript = `
+  const REDIRECT_STATIC_PATHS = new Set([${staticPathsMatch[1]}]);
+  const REDIRECT_REACT_PATHS = new Set([${reactPathsMatch[1]}]);
+  const REDIRECT_LOCALHOST_PATHS = new Set([${localhostPathsMatch[1]}]);
+  const REDIRECT_ORIGIN_PATHS = {${originPathsMatch[1]}};
+`;
+
+const REDIRECT_ORIGIN_PATHS: Record<string, Set<string>> = new Function(
+  `${redirectDeclsScript}\nreturn REDIRECT_ORIGIN_PATHS;`,
 )();
-assert(ALLOWED_REDIRECTS.length > 0, "sanity: allow-list extraction found entries");
+assert(Object.keys(REDIRECT_ORIGIN_PATHS).length > 0, "sanity: origin allow-list extraction found entries");
+
+// Every allow-listed origin+path pair, flattened into full URLs -- used by
+// the "accepts every entry in the shipped allow-list" sanity test below.
+const ALL_SHIPPED_REDIRECTS: string[] = Object.entries(REDIRECT_ORIGIN_PATHS).flatMap(
+  ([origin, paths]) => [...paths].map((path) => origin + path),
+);
+assert(ALL_SHIPPED_REDIRECTS.length > 0, "sanity: flattened allow-list is non-empty");
 
 // ---- isValidAction / isAllowedRedirect ----
 
@@ -91,9 +122,8 @@ const isValidAction: (action: unknown) => boolean = new Function(
 )();
 
 const isAllowedRedirectSrc = stripSignatureTypes(grabFunction("function isAllowedRedirect("));
-const allowedRedirectsDecl = `const ALLOWED_REDIRECTS = new Set([${allowedRedirectsMatch[1]}]);`;
 const isAllowedRedirect: (redirectTo: unknown) => boolean = new Function(
-  `${allowedRedirectsDecl}\n${isAllowedRedirectSrc}\nreturn isAllowedRedirect;`,
+  `${redirectDeclsScript}\n${isAllowedRedirectSrc}\nreturn isAllowedRedirect;`,
 )();
 
 Deno.test("isValidAction: accepts exactly \"otp\" and \"recover\"", () => {
@@ -110,8 +140,8 @@ Deno.test("isValidAction: rejects near-misses, case variants, and non-strings", 
   assertEquals(isValidAction(1), false);
 });
 
-Deno.test("isAllowedRedirect: accepts every URL in the shipped allow-list", () => {
-  for (const url of ALLOWED_REDIRECTS) {
+Deno.test("isAllowedRedirect: accepts every origin+path entry in the shipped allow-list", () => {
+  for (const url of ALL_SHIPPED_REDIRECTS) {
     assert(isAllowedRedirect(url), `expected ${url} to be allowed`);
   }
 });
@@ -124,17 +154,124 @@ Deno.test("isAllowedRedirect: rejects a same-host path not on the list (no prefi
   assertEquals(isAllowedRedirect("https://otterquote.com/some-other-page.html"), false);
 });
 
-Deno.test("isAllowedRedirect: rejects a modified allowed URL (query-injection guard)", () => {
-  assertEquals(
-    isAllowedRedirect("https://otterquote.com/dashboard.html?x=https://evil.example"),
-    false,
-  );
-});
+Deno.test(
+  "isAllowedRedirect: an allow-listed path accepts an appended query string (must-fix 1 -- this is now intentional, not a gap)",
+  () => {
+    // gh-1883 REVIEW FOLLOW-UP: real callers append their own query strings
+    // to allow-listed paths (?recovery=1, ?intent=homeowner, ...) -- see
+    // the caller-target table below. Matching origin+path only (never the
+    // query string) is what makes those pass. The query string reaching
+    // otterquote.com/dashboard.html here is inert: nothing in this repo
+    // reads a `?x=` param on that page to redirect anywhere else, and the
+    // origin+path that actually determines where the browser navigates is
+    // still exactly the allow-listed one.
+    assertEquals(
+      isAllowedRedirect("https://otterquote.com/dashboard.html?x=https://evil.example"),
+      true,
+    );
+  },
+);
 
 Deno.test("isAllowedRedirect: rejects non-string values", () => {
   assertEquals(isAllowedRedirect(null), false);
   assertEquals(isAllowedRedirect(undefined), false);
   assertEquals(isAllowedRedirect(123), false);
+});
+
+// ---- must-fix 3 (comment 5857851132): table-driven caller-target test ----
+//
+// The old "accepts every URL in the shipped allow-list" test was
+// tautological: it built its expected set FROM the same allow-list it then
+// checked against, so it could never catch a real caller target the
+// allow-list was missing (must-fix 1's login.html break, and must-fix 2's
+// staging break, both passed that test on the pre-fix head). This table
+// instead hand-enumerates every real `redirectTo` value this repo's own
+// callers actually construct today, independent of index.ts's allow-list
+// source, across all three deployed hosts.
+//
+// Sources (grepped repo-wide for every sendMagicLink / sendPasswordReset /
+// direct auth-uniform invoke call site, 2026-09-27):
+//   - js/auth.js sendMagicLink()'s default redirectPage ('/auth-callback.html'),
+//     called with no override by ref-insurance.html, and with an explicit
+//     matching override by contractor-login.html.
+//   - ref-re.html / ref-inspector.html's direct _callAuthUniform('otp', ...,
+//     `${CONFIG.SITE_URL}/dashboard.html`).
+//   - contractor-join.html's direct functions.invoke('auth-uniform', ...)
+//     with `${window.location.origin}/contractor-pre-approval.html`.
+//   - login.html's Auth.sendPasswordReset(email, '/login.html?recovery=1')
+//     (must-fix 1 -- the one that broke).
+//   - partner-login.html's Auth.sendPasswordReset(email) default
+//     ('/partner-login.html?recovery=1').
+//   - react-app's AUTH_CALLBACK_URL, hardcoded to
+//     'https://app.otterquote.com/auth-callback' regardless of build target
+//     (react-app/app/login/utils.ts, .../contractor/login/utils.ts).
+//
+// CONFIG.SITE_URL (js/config.js) and contractor-join.html's own
+// window.location.origin both resolve to one of exactly three hosts in
+// production: otterquote.com, or (on the two Netlify contexts this repo
+// deploys to) jade-alpaca-b82b5e.netlify.app / staging--jade-alpaca-b82b5e
+// .netlify.app -- so every static-site target below is listed once per
+// host; the react-app target is host-independent (hardcoded).
+const REAL_CALLER_TARGETS: string[] = (() => {
+  const staticHosts = [
+    "https://otterquote.com",
+    "https://jade-alpaca-b82b5e.netlify.app",
+    "https://staging--jade-alpaca-b82b5e.netlify.app",
+  ];
+  const staticPaths = [
+    "/auth-callback.html", // ref-insurance.html, contractor-login.html
+    "/dashboard.html", // ref-re.html, ref-inspector.html
+    "/contractor-pre-approval.html", // contractor-join.html
+    "/login.html?recovery=1", // login.html -- must-fix 1
+    "/partner-login.html?recovery=1", // partner-login.html
+  ];
+  const targets: string[] = [];
+  for (const host of staticHosts) {
+    for (const path of staticPaths) targets.push(`${host}${path}`);
+  }
+  targets.push("https://app.otterquote.com/auth-callback"); // react-app, both login pages
+  return targets;
+})();
+
+Deno.test("isAllowedRedirect: CALLER-TARGET TABLE -- every real caller's redirectTo must be allowed", () => {
+  const failures: string[] = [];
+  for (const target of REAL_CALLER_TARGETS) {
+    if (!isAllowedRedirect(target)) failures.push(target);
+  }
+  assertEquals(
+    failures,
+    [],
+    `these real caller targets are rejected by isAllowedRedirect (would 400 in production): ${
+      JSON.stringify(failures, null, 2)
+    }`,
+  );
+});
+
+// Attack forms the independent review (comment 5857851132) confirmed the
+// pre-fix exact-Set implementation rejected -- re-asserted here against the
+// rebuilt origin+path implementation so the redesign does not reopen the
+// open-redirect guard while fixing the caller-target gaps above.
+const REDIRECT_ATTACK_FORMS: Array<[string, string]> = [
+  ["https://otterquote.com.evil.com/auth-callback.html", "look-alike suffix domain"],
+  ["https://otterquote.com.evil.com/auth-callback.html", "look-alike suffix domain (dup for table shape)"],
+  ["//evil.com/auth-callback.html", "protocol-relative URL"],
+  ["https://evil.com@otterquote.com/auth-callback.html", "userinfo/credentials smuggling"],
+  ["https://otterquote.com/auth-callback.html#@evil.com", "fragment smuggling"],
+  ["HTTPS://OTTERQUOTE.COM.EVIL.COM/AUTH-CALLBACK.HTML", "uppercase variant of a look-alike domain"],
+  ["https://EVIL.COM@otterquote.com/auth-callback.html", "uppercase variant of userinfo smuggling"],
+  ["https://otterquote.com/../evil.example/auth-callback.html", "path traversal out of origin (invalid, non-relative)"],
+];
+
+Deno.test("isAllowedRedirect: ATTACK-FORM TABLE -- every listed attack form must still be rejected", () => {
+  const passed: string[] = [];
+  for (const [target, label] of REDIRECT_ATTACK_FORMS) {
+    if (isAllowedRedirect(target)) passed.push(`${target} (${label})`);
+  }
+  assertEquals(
+    passed,
+    [],
+    `these attack-form redirects were WRONGLY accepted: ${JSON.stringify(passed, null, 2)}`,
+  );
 });
 
 // ---- extractOtpMetadata (contractor-join.html's role-stamping passthrough) ----
