@@ -52,15 +52,25 @@ name: Playwright E2E Tests
 #     <=600 job-min/month across the whole repo. The `paths-ignore` below is
 #     kept because it is free, not because it pays.
 
+# gh-1731 (COST GATE), CTO RUN 43: the `push` trigger is REMOVED. Measured,
+# 7-day census 2026-09-20..27 (Actions API, job-level ceil(sec/60)): this
+# workflow ran 597 times over 7 days, of which 133 were `push` (all to
+# `main`/`staging`, i.e. every one a post-merge re-run of a commit whose PR
+# already ran these same 5 jobs under `pull_request` before merge) at this
+# workflow's measured mean 5.0 billable job-min/run -- 133 x 5.0 = 665 min/7d
+# = ~2,850 job-min/month, none of it new coverage. None of this workflow's
+# jobs are a branch-protection-required context (live
+# required_status_checks.contexts on main is exactly ["Null-Byte & Size
+# Sanity Check", "5-Page Revenue-Path Smoke Check", "R-177 predicate tests",
+# "Credential Shape Sweep"] -- this workflow is in none of them), so losing
+# the post-merge re-run trades zero required-gate coverage for the full
+# saving. What is preserved: every PR still runs the full suite before merge
+# via `pull_request` below, unchanged. If a merge-commit-specific failure
+# (e.g. a semantic conflict invisible to the PR diff) is ever suspected,
+# `workflow_dispatch` can re-run this by hand -- not added here since nothing
+# has needed it, and an unused trigger is not free (gh-1841's own lesson:
+# an unfireable/unused mechanism does not audit itself). See #1731.
 on:
-  push:
-    branches:
-      - staging
-      - main
-    paths-ignore:
-      - '**.md'
-      - 'Docs/**'
-      - 'handoffs/**'
   pull_request:
     branches:
       - staging
