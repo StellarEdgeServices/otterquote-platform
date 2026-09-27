@@ -9,7 +9,9 @@
  *   • recordHomeownerSigned writes quotes.homeowner_signed_at (quote-id path) and
  *     uses the claim_id+contractor_id fallback when no quote id is known.
  *   • buildProjectConfirmationUrl targets the static project-confirmation page.
- *   • sendContractorNudge SMSes the contractor + the hardcoded Dustin number.
+ *   • sendContractorNudge asks the send-contractor-nudge EF to text the
+ *     contractor (server-side consent lookup) and Dustin's alert line.
+ *     gh-1916 RETURNED 5856782745 (Marty, CTO RUN 44) / D-328.
  *   • requestBidRenewal notifies the contractor + emails support.
  */
 
@@ -25,7 +27,6 @@ vi.mock('@/lib/supabase', () => ({
 import { supabase } from '@/lib/supabase';
 import { buildHomeownerEnvelopeRequest } from '../utils';
 import {
-  NUDGE_DUSTIN_PHONE,
   buildProjectConfirmationUrl,
   createHomeownerEnvelope,
   recordHomeownerSigned,
@@ -147,107 +148,39 @@ describe('buildProjectConfirmationUrl', () => {
 });
 
 describe('sendContractorNudge', () => {
-  it('SMSes every contractor number AND the hardcoded Dustin alert line', async () => {
-    sb.functions.invoke.mockResolvedValue({ data: {}, error: null });
+  // gh-1916 RETURNED 5856782745 (Marty, CTO RUN 44) / D-328: this no longer
+  // builds SMS text or takes the contractor/claim rows — the phone number
+  // and consent lookup happen entirely inside send-contractor-nudge, which
+  // this client never sees the outcome of beyond "did the call succeed".
 
-    const ok = await sendContractorNudge({
-      contractor: {
-        company_name: 'Acme Roofing',
-        phone: '+15551234567',
-        notification_phones: ['+15559998888'],
-        sms_opt_in: true,
-      },
-      claim: { id: 'c1', homeowner_name: 'Jane', property_address: '1 Main St', contract_signed_at: null },
-      claimId: 'c1',
-    });
+  it('invokes send-contractor-nudge with the claim + contractor ids', async () => {
+    sb.functions.invoke.mockResolvedValue({ data: { ok: true }, error: null });
+
+    const ok = await sendContractorNudge({ claimId: 'c1', contractorId: 'ctr-1' });
 
     expect(ok).toBe(true);
-    const smsTos = sb.functions.invoke.mock.calls
-      .filter((c: unknown[]) => c[0] === 'send-sms')
-      .map((c: [string, { body: { to: string } }]) => c[1].body.to);
-    expect(smsTos).toContain('+15559998888');
-    expect(smsTos).toContain('+15551234567');
-    expect(smsTos).toContain(NUDGE_DUSTIN_PHONE);
-    expect(NUDGE_DUSTIN_PHONE).toBe('+13175019215');
+    expect(sb.functions.invoke).toHaveBeenCalledWith('send-contractor-nudge', {
+      body: { claim_id: 'c1', contractor_id: 'ctr-1' },
+    });
   });
 
-  it('gh-1916 R-134 gate: suppresses contractor phones but still notifies Dustin when sms_opt_in is undefined (field omitted)', async () => {
-    sb.functions.invoke.mockResolvedValue({ data: {}, error: null });
-    const ok = await sendContractorNudge({
-      contractor: {
-        company_name: 'Acme Roofing',
-        phone: '+15551234567',
-        notification_phones: ['+15559998888'],
-      },
-      claim: { id: 'c1', homeowner_name: 'Jane', property_address: '1 Main St', contract_signed_at: null },
-      claimId: 'c1',
-    });
-    expect(ok).toBe(true);
-    const smsTos = sb.functions.invoke.mock.calls
-      .filter((c: unknown[]) => c[0] === 'send-sms')
-      .map((c: [string, { body: { to: string } }]) => c[1].body.to);
-    expect(smsTos).toEqual([NUDGE_DUSTIN_PHONE]);
+  it('never passes a phone number or consent field — the EF looks those up itself', async () => {
+    sb.functions.invoke.mockResolvedValue({ data: { ok: true }, error: null });
+    await sendContractorNudge({ claimId: 'c1', contractorId: 'ctr-1' });
+    const [, invokeArgs] = sb.functions.invoke.mock.calls[0];
+    expect(invokeArgs.body).toEqual({ claim_id: 'c1', contractor_id: 'ctr-1' });
+    expect(JSON.stringify(invokeArgs.body)).not.toMatch(/phone|sms_opt_in|consent/i);
   });
 
-  it('gh-1916 R-134 gate: suppresses contractor phones when sms_opt_in is explicitly null (never asked, v115 default)', async () => {
-    sb.functions.invoke.mockResolvedValue({ data: {}, error: null });
-    const ok = await sendContractorNudge({
-      contractor: {
-        company_name: 'Acme Roofing',
-        phone: '+15551234567',
-        notification_phones: ['+15559998888'],
-        sms_opt_in: null,
-      },
-      claim: { id: 'c1', homeowner_name: 'Jane', property_address: '1 Main St', contract_signed_at: null },
-      claimId: 'c1',
-    });
-    expect(ok).toBe(true);
-    const smsTos = sb.functions.invoke.mock.calls
-      .filter((c: unknown[]) => c[0] === 'send-sms')
-      .map((c: [string, { body: { to: string } }]) => c[1].body.to);
-    expect(smsTos).toEqual([NUDGE_DUSTIN_PHONE]);
+  it('returns false when the EF call returns an error', async () => {
+    sb.functions.invoke.mockResolvedValue({ data: null, error: { message: 'boom' } });
+    const ok = await sendContractorNudge({ claimId: 'c1', contractorId: 'ctr-1' });
+    expect(ok).toBe(false);
   });
 
-  it('gh-1916 R-134 gate: suppresses contractor phones when sms_opt_in is explicitly false (opted out)', async () => {
-    sb.functions.invoke.mockResolvedValue({ data: {}, error: null });
-    const ok = await sendContractorNudge({
-      contractor: {
-        company_name: 'Acme Roofing',
-        phone: '+15551234567',
-        notification_phones: ['+15559998888'],
-        sms_opt_in: false,
-      },
-      claim: { id: 'c1', homeowner_name: 'Jane', property_address: '1 Main St', contract_signed_at: null },
-      claimId: 'c1',
-    });
-    expect(ok).toBe(true);
-    const smsTos = sb.functions.invoke.mock.calls
-      .filter((c: unknown[]) => c[0] === 'send-sms')
-      .map((c: [string, { body: { to: string } }]) => c[1].body.to);
-    expect(smsTos).toEqual([NUDGE_DUSTIN_PHONE]);
-  });
-
-  it('still notifies Dustin when the contractor has no phone numbers', async () => {
-    sb.functions.invoke.mockResolvedValue({ data: {}, error: null });
-    const ok = await sendContractorNudge({
-      contractor: { company_name: 'Acme Roofing' },
-      claim: { id: 'c1' },
-      claimId: 'c1',
-    });
-    expect(ok).toBe(true);
-    const smsTos = sb.functions.invoke.mock.calls
-      .filter((c: unknown[]) => c[0] === 'send-sms')
-      .map((c: [string, { body: { to: string } }]) => c[1].body.to);
-    expect(smsTos).toEqual([NUDGE_DUSTIN_PHONE]);
-  });
-
-  it('returns false when a send rejects', async () => {
-    sb.functions.invoke.mockRejectedValue(new Error('sms down'));
-    const ok = await sendContractorNudge({
-      contractor: { company_name: 'Acme' },
-      claim: { id: 'c1' },
-      claimId: 'c1',
-    });
+  it('returns false when the EF call rejects', async () => {
+    sb.functions.invoke.mockRejectedValue(new Error('network down'));
+    const ok = await sendContractorNudge({ claimId: 'c1', contractorId: null });
     expect(ok).toBe(false);
   });
 });

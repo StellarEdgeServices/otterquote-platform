@@ -324,6 +324,14 @@ verify_jwt = false
 [functions.send-sms]
 verify_jwt = false
 
+# gh-1916 RETURNED 5856782745 (Marty, CTO RUN 44) / D-328: the homeowner
+# "haven't heard from your contractor" nudge moved server-side so a contractor's
+# phone number and sms_opt_in never reach the browser. Auth enforced in-handler
+# (auth.getUser; caller must be the claim's homeowner AND the contractor must be
+# linked to that claim), matching get-contractor-info. Pinned at creation.
+[functions.send-contractor-nudge]
+verify_jwt = true
+
 # Provider callback: Stripe signs with a webhook secret and cannot present a
 # Supabase JWT. Flipping this to true would break every incoming Stripe event.
 [functions.stripe-webhook]
