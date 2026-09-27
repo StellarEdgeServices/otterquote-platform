@@ -378,7 +378,8 @@ def evaluate_file(file_rel: str, old_text: str, new_text: str):
 
 
 def run_diff_mode(root: Path, base: str, head: str):
-    entries = pr.changed_migration_files(root, base, head)
+    applied_versions = pr.load_applied_versions(root)
+    entries = pr.changed_migration_files(root, base, head, applied_versions)
     all_findings = []
     all_pass_notes = []
     files_inspected = []

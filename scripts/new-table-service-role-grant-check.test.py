@@ -284,6 +284,7 @@ def test_existing_table_untouched_never_flagged():
     return ok
 
 
+import json as _json
 import subprocess as _subprocess
 import tempfile as _tempfile
 
@@ -318,9 +319,15 @@ def _commit_all(cwd, msg):
 # main, a pure rename of this file is diffed against '' (nothing at the new
 # path in the base tree), so the pre-existing CREATE TABLE reads as newly
 # ADDED and wrongly fails "missing service_role grant" even though nothing
-# about this table actually changed. On the fix, the rename is diffed
+# about this table actually changed. On the fix, a SAFE rename (same
+# version prefix, only the slug changes -- see CTO RUN 43 review, comment
+# 5856302490, permissions-ratchet.py's changed_migration_files()) is diffed
 # against its OLD path's identical content, so zero lines are "added" and
-# the file is never evaluated at all.
+# the file is never evaluated at all. A version-CHANGING rename is
+# deliberately NOT used for this 0-findings case any more -- see
+# permissions-ratchet.test.py's Layer 3 for why that must now be treated as
+# a brand-new file unless the new version is already in
+# supabase/migrations-reconciliation-baseline.json's applied_versions.
 _RENAME_TABLE_SQL = (
     "BEGIN;\n\n"
     "CREATE TABLE IF NOT EXISTS public.foo_bar (\n"
@@ -334,7 +341,9 @@ def test_pure_rename_zero_findings():
     # gh-1438 follow-up (PR #2244 review comment 5851387029): this detector
     # reuses permissions_ratchet.changed_migration_files()/run_diff_mode()'s
     # own diff plumbing, so it inherited the same rename bug -- see
-    # _RENAME_TABLE_SQL's comment above for the exact failure mode.
+    # _RENAME_TABLE_SQL's comment above for the exact failure mode. The
+    # rename here keeps the SAME 14-digit version prefix (only the slug
+    # changes) so it is a SAFE rename per the CTO RUN 43 fix.
     with _tempfile.TemporaryDirectory(prefix="grantcheck-rename-a-") as tmp:
         root = Path(tmp)
         _init_repo(root)
@@ -344,17 +353,49 @@ def test_pure_rename_zero_findings():
         old_path.write_text(_RENAME_TABLE_SQL, encoding="utf-8")
         base_sha = _commit_all(root, "base")
 
+        new_path = mig / "20260101000000_foo_bar_renamed.sql"
+        _git(["mv", old_path.name, new_path.name], mig)
+        head_sha = _commit_all(root, "pure rename, byte-identical content, same version")
+
+        findings, _pass_notes, files_inspected = check.run_diff_mode(root, base_sha, head_sha)
+        ok = len(findings) == 0 and any(f.endswith("20260101000000_foo_bar_renamed.sql") for f in files_inspected)
+        print(
+            "PASS  same-version-prefix rename of a table granted elsewhere -> 0 findings "
+            "(fails on unpatched main)"
+            if ok
+            else "FAIL  pure-rename case: findings=%r files_inspected=%r" % (findings, files_inspected)
+        )
+        return ok
+
+
+def test_rename_to_applied_version_zero_findings():
+    # gh-1438 CTO RUN 43 follow-up: a version-CHANGING rename is also safe
+    # when the new version is already recorded as applied in
+    # supabase/migrations-reconciliation-baseline.json (PR #2244's real
+    # shape: renaming a file to its actual, already-applied ledger version).
+    with _tempfile.TemporaryDirectory(prefix="grantcheck-rename-a2-") as tmp:
+        root = Path(tmp)
+        _init_repo(root)
+        (root / "supabase").mkdir(parents=True, exist_ok=True)
+        (root / "supabase" / "migrations-reconciliation-baseline.json").write_text(
+            _json.dumps({"applied_versions": ["20260101000001"]}), encoding="utf-8"
+        )
+        mig = root / "supabase" / "migrations"
+        mig.mkdir(parents=True)
+        old_path = mig / "20260101000000_foo_bar.sql"
+        old_path.write_text(_RENAME_TABLE_SQL, encoding="utf-8")
+        base_sha = _commit_all(root, "base")
+
         new_path = mig / "20260101000001_foo_bar.sql"
         _git(["mv", old_path.name, new_path.name], mig)
-        head_sha = _commit_all(root, "pure rename, byte-identical content")
+        head_sha = _commit_all(root, "rename to the real, already-applied ledger version")
 
         findings, _pass_notes, files_inspected = check.run_diff_mode(root, base_sha, head_sha)
         ok = len(findings) == 0 and any(f.endswith("20260101000001_foo_bar.sql") for f in files_inspected)
         print(
-            "PASS  pure rename of a table granted elsewhere -> 0 findings "
-            "(fails on unpatched main)"
+            "PASS  rename to an already-applied ledger version -> 0 findings"
             if ok
-            else "FAIL  pure-rename case: findings=%r files_inspected=%r" % (findings, files_inspected)
+            else "FAIL  rename-to-applied-version case: findings=%r files_inspected=%r" % (findings, files_inspected)
         )
         return ok
 
@@ -371,9 +412,9 @@ def test_rename_plus_new_ungranted_table_still_flagged():
         old_path.write_text(_RENAME_TABLE_SQL, encoding="utf-8")
         base_sha = _commit_all(root, "base")
 
-        new_path = mig / "20260101000001_foo_bar.sql"
+        new_path = mig / "20260101000000_foo_bar_renamed.sql"
         _git(["mv", old_path.name, new_path.name], mig)
-        head_sha_rename = _commit_all(root, "pure rename")
+        head_sha_rename = _commit_all(root, "same-version-prefix rename")
 
         new_table_path = mig / "20260101000002_baz.sql"
         new_table_path.write_text(
@@ -390,6 +431,41 @@ def test_rename_plus_new_ungranted_table_still_flagged():
             "PASS  rename + new ungranted table still flags exactly the new table"
             if ok
             else "FAIL  rename+new-table case: findings=%r" % findings
+        )
+        return ok
+
+
+def test_version_changing_rename_unapplied_now_flagged():
+    # CTO RUN 43 masked-case negative control (comment 5856302490): a
+    # version-CHANGING rename whose new version is NOT already applied must
+    # be treated as brand-new -- a pre-existing, ungranted CREATE TABLE
+    # riding along in such a rename must now surface, not be waved through
+    # as "already live". This produced 0 findings on the first
+    # rename-awareness fix (6999240a) and must produce 1 on this head.
+    with _tempfile.TemporaryDirectory(prefix="grantcheck-rename-d-") as tmp:
+        root = Path(tmp)
+        _init_repo(root)
+        mig = root / "supabase" / "migrations"
+        mig.mkdir(parents=True)
+        old_path = mig / "20260101000000_foo_bar.sql"
+        old_path.write_text(_RENAME_TABLE_SQL, encoding="utf-8")
+        base_sha = _commit_all(root, "base")
+
+        new_path = mig / "20261001000000_foo_bar.sql"  # version CHANGES, never applied
+        _git(["mv", old_path.name, new_path.name], mig)
+        head_sha = _commit_all(root, "version-changing rename to a never-applied version")
+
+        findings, _pass_notes, _files_inspected = check.run_diff_mode(root, base_sha, head_sha)
+        ok = (
+            len(findings) == 1
+            and "new-table-missing-service-role-grant" in findings[0]
+            and "foo_bar" in findings[0]
+        )
+        print(
+            "PASS  version-changing rename to a never-applied version now "
+            "flags the carried-over ungranted table (masked on 6999240a)"
+            if ok
+            else "FAIL  version-changing-rename case: findings=%r" % findings
         )
         return ok
 
@@ -427,7 +503,9 @@ def main():
     results = [
         test_self_test_passes(),
         test_pure_rename_zero_findings(),
+        test_rename_to_applied_version_zero_findings(),
         test_rename_plus_new_ungranted_table_still_flagged(),
+        test_version_changing_rename_unapplied_now_flagged(),
         test_brand_new_ungranted_table_no_rename_still_flagged(),
         test_bare_diff_missing_grant_fails(),
         test_bare_diff_with_grant_passes(),

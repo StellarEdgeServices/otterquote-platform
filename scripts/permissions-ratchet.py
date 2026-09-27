@@ -894,14 +894,52 @@ def git_show(root: Path, ref: str, path: str):
     return out
 
 
-def changed_migration_files(root: Path, base: str, head: str):
+MIGRATION_VERSION_RE = re.compile(r"^(\d{14})_")
+RECONCILIATION_BASELINE_REL = "supabase/migrations-reconciliation-baseline.json"
+
+
+def _migration_version(path_rel: str):
+    """Returns the 14-digit version prefix of a `supabase/migrations/`
+    filename, or None if the filename does not start with one (should never
+    happen for anything MIGRATIONS_PATH_RE matched, but callers treat None
+    conservatively rather than assuming it can't occur)."""
+    name = path_rel.rsplit("/", 1)[-1]
+    m = MIGRATION_VERSION_RE.match(name)
+    return m.group(1) if m else None
+
+
+def load_applied_versions(root: Path):
+    """Reads `applied_versions` out of
+    supabase/migrations-reconciliation-baseline.json (gh-1438's ratchet
+    baseline -- see that file's own `_purpose` field) and returns it as a
+    set of version-prefix strings. Returns an EMPTY set -- never raises --
+    if the file is missing, unreadable, or malformed, which is the
+    fail-closed direction for changed_migration_files()'s rename check
+    below: no baseline data means no rename gets the "already-applied
+    ledger version" pass, so an unresolvable rename falls through to being
+    treated as brand-new, exactly like main's pre-fix behaviour, rather
+    than silently trusting an absent or corrupt manifest."""
+    path = root / RECONCILIATION_BASELINE_REL
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return set()
+    versions = data.get("applied_versions")
+    if not isinstance(versions, list):
+        return set()
+    return {str(v) for v in versions}
+
+
+def changed_migration_files(root: Path, base: str, head: str, applied_versions=None):
     """Returns a list of (new_path, old_path) tuples for every
     supabase/migrations/*.sql file touched between base and head, keyed by
     the file's path in the NEW (head) tree.
 
     `old_path` is None for an ordinary add/modify, and is the file's
     PRE-RENAME path (itself inside supabase/migrations/) when `git diff -M`
-    classifies the change as a rename or copy. Callers MUST diff the new
+    classifies the change as a rename -- but ONLY when that rename cannot
+    make previously-applied SQL execute again (or execute for the first
+    time) under a version Supabase has never run. Callers MUST diff the new
     content against `old_path` at `base`, never against `new_path` at
     `base` -- under the new name the file does not exist at base at all,
     so git_show() returns None there and every line of the renamed file
@@ -911,11 +949,47 @@ def changed_migration_files(root: Path, base: str, head: str):
     both this ratchet and new-table-service-role-grant-check.py, which
     reuses this function).
 
+    CTO RUN 43 fresh-context review (comment 5856302490) on the first fix:
+    treating EVERY git-paired rename as "already live" makes this a fail-
+    OPEN gate. `-M` rename detection pairs files by CONTENT SIMILARITY, not
+    by migration identity -- Supabase's actual execution key is the
+    14-digit version prefix, not the file's name or its git history. Three
+    masked shapes the review reproduced: (1) an old migration's anon GRANT,
+    already REVOKEd by a later migration, `git mv`'d to a LATER version --
+    on deploy it re-executes AFTER the revoke, re-opening the access; (2) a
+    brand-new, unrelated migration git-pairs (R081, ~60-81% similar) with a
+    deleted file, so its carried-over GRANT reads as untouched; (3) two
+    deletes plus one add pair as an "identical rename" (R100) though the
+    added file was never applied under that name. All three keep the SAME
+    file content but change WHICH VERSION will run it -- exactly what a
+    filename-similarity diff cannot distinguish from a safe re-slug.
+
+    So `old_path` is preserved ONLY when the rename cannot change WHAT
+    executes on deploy:
+      (a) the version prefix is UNCHANGED -- only the slug after it
+          differs, so the exact same version the CLI already ran (or will
+          run once, unchanged) is still the one that runs; or
+      (b) the NEW path's version prefix is already recorded as applied in
+          `applied_versions` (supabase/migrations-reconciliation-baseline
+          .json) -- PR #2244's real case, renaming a file to its actual,
+          already-applied ledger version, which the Supabase CLI will
+          never re-run because `schema_migrations` already has that
+          version.
+    Any other rename -- most dangerously one that changes the version
+    prefix to something NOT already applied -- gets `old_path=None`, i.e.
+    is treated as a BRAND-NEW file exactly like main's original,
+    fail-closed behaviour: every line, including a GRANT the file already
+    contained before the rename, reads as newly added and is inspected.
+
     `--name-status -M` (not the previous `--name-only`, which performs NO
     rename detection at all -- `diff.renames` is off by default for this
     kind of plumbing invocation) is what makes a pure, byte-identical
     rename show up as a single `R100\told\tnew` line instead of a D+A
-    pair with no link between them."""
+    pair with no link between them. Copy detection (`C` status) is never
+    requested here -- `-M` alone does not enable it -- so a `C`-status line
+    is unreachable with this invocation and is not given its own branch."""
+    if applied_versions is None:
+        applied_versions = set()
     code, out, err = run_git(
         [
             "diff",
@@ -936,17 +1010,27 @@ def changed_migration_files(root: Path, base: str, head: str):
             continue
         parts = line.split("\t")
         status = parts[0]
-        if status.startswith("R") or status.startswith("C"):
-            # Rename/copy: `<status>\t<old_path>\t<new_path>`.
+        if status.startswith("R"):
+            # Rename: `<status>\t<old_path>\t<new_path>`.
             if len(parts) < 3:
                 continue
             old_path = parts[1].strip().replace("\\", "/")
             new_path = parts[2].strip().replace("\\", "/")
             if not MIGRATIONS_PATH_RE.match(new_path):
                 continue
-            entries.append(
-                (new_path, old_path if MIGRATIONS_PATH_RE.match(old_path) else None)
+            old_is_migration = bool(MIGRATIONS_PATH_RE.match(old_path))
+            old_version = _migration_version(old_path) if old_is_migration else None
+            new_version = _migration_version(new_path)
+            same_version = (
+                old_version is not None and old_version == new_version
             )
+            new_version_already_applied = (
+                new_version is not None and new_version in applied_versions
+            )
+            safe_rename = old_is_migration and (
+                same_version or new_version_already_applied
+            )
+            entries.append((new_path, old_path if safe_rename else None))
         else:
             # Ordinary add/modify/delete: `<status>\t<path>`.
             if len(parts) < 2:
@@ -1013,7 +1097,8 @@ def apply_bypass(findings, labels):
 
 
 def run_diff_mode(root: Path, base: str, head: str, labels):
-    entries = changed_migration_files(root, base, head)
+    applied_versions = load_applied_versions(root)
+    entries = changed_migration_files(root, base, head, applied_versions)
     all_findings = []
     all_pass_notes = []
     files_inspected = []
