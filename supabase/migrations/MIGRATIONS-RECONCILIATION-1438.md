@@ -636,9 +636,15 @@ listed at the end of this section.
    content, unmodified; the mis-renamed copies were deleted. This drops
    the rename batch from 16 to **14** files. The three unfiled ledger
    versions this surfaced (`20260818214437`, `20260818214513`,
-   `20260818214054`) are additional, previously-uncounted Direction-1 gaps
-   — already present in the live Direction-1 figure since Direction-1 was
-   never touched by this rename batch either way.
+   `20260818214054`) are additional, previously-uncounted Direction-1 gaps.
+   **Correction (round 3 review, comment 5856332109, must-fix 4):** the
+   sentence that follows this note in an earlier draft claimed "Direction 1
+   was never touched by this rename batch either way." That is false. The
+   14 renames onto recorded ledger versions are exactly what moves
+   Direction 1 from **72 to 58** (each renamed file resolves one
+   previously-orphan ledger row). The gh974/gh972 revert itself does not
+   independently move Direction 1 beyond that — it simply excludes those
+   two versions from the batch that does the moving.
 
 3. **The `v88` banner pointed to an unrecorded version.** It named
    `supabase/migrations/20260807223000_v101_referral_agents_public_directory_optin.sql`;
@@ -662,6 +668,18 @@ listed at the end of this section.
    the 23; the remaining 6 are `.test.sql`/README-adjacent files that
    never carried a DRAFT/NOT-APPLIED banner to begin with and needed no
    change — see the per-set table above for which files exist per set).
+   **Correction (round 3 review, comment 5856332109, must-fix 2):** the
+   "remaining 6" claim above is false. There are no `.test.sql` or README
+   files in these 8 sets. The actual remaining 6 are
+   `gh1021_add_paid_state_pre-flight.md`, `gh1021_add_paid_state_rollback.sql`,
+   `gh749_add_service_states_to_contractors_pre-flight.md`,
+   `gh749_add_service_states_to_contractors_rollback.sql`,
+   `gh1070_activity_log_grants_revoke_rollback.sql` and
+   `gh1050_commission_accrual_job_completion_rollback.sql`. Five of the six
+   still carried a `Status: DRAFT` line; only the gh1050 rollback was
+   already clean. Fixed this round: the same banner-pointer convention was
+   added to the five DRAFT-carrying files (base blob unchanged below the
+   banner, same as every other re-header in this PR).
 
 5. **The draft banners' own self-description overclaimed "byte-for-byte
    unchanged."** Pre-existing comment lines in `gh1021`, `gh749`, and
@@ -685,10 +703,15 @@ listed at the end of this section.
    locally had the correct 56 entries. **Fixed**: regenerated both version
    arrays programmatically from the computed set-difference files rather
    than retyping, and updated the counts for the 14-file (not 16-file)
-   rename batch: `applied_no_repo_file` stays **56** (a Direction-2-only
-   revert does not touch Direction-1); `repo_file_no_applied` is
-   `53 - 14 = 39`, adding `20260818214531` and `20260818214620` (gh974's
-   and gh972's original, unrenamed versions) back into the list.
+   rename batch: `repo_file_no_applied` is `53 - 14 = 39`, adding
+   `20260818214531` and `20260818214620` (gh974's and gh972's original,
+   unrenamed versions) back into the list. **Correction (round 3 review,
+   comment 5856332109, must-fix 4):** the line above originally said
+   `applied_no_repo_file` "stays **56**", reasoning that a Direction-2-only
+   revert does not touch Direction-1. That is self-contradicted by the very
+   next paragraph, which raises it to 58 once the gh974/gh972 revert's own
+   knock-on effect is accounted for. The true final number for this round
+   is **58**, not 56 — see the self-caught follow-on immediately below.
 
 7. **CI: `No new GRANT to anon/PUBLIC/authenticated` and `New public
    tables must GRANT service_role explicitly` both fail on this PR**,
@@ -742,3 +765,90 @@ pushing and spot-compared against the versions fetched from `5d426112`/
 `supabase/migrations/` file after pushing and visually confirmed it
 matches the base blob. SELECT-only throughout; zero `apply_migration`,
 `execute_sql` write, or `db push` at any point in this round.
+
+## 2026-09-27 REVIEW FAIL round 3 correction (PR #2244) — independent review comment 5856332109, RETURNED 5856398678 (Marty/CTO)
+
+Round 3 (a fresh-context reviewer, not this PR's author) reviewed head
+`ecc66bfc` and found LEGAL-READ: PASS but REVIEW: FAIL on five items,
+four of them content/doc defects and one a merge-gate dependency. All
+four content items are fixed in this push.
+
+1. **Round-2 must-fix 5 was still open.** The `migrations_drafts/` diff
+   against base `5d426112` must show only `+` lines; it showed 12 `-`
+   lines across 4 files: `gh1337_claims_referrer_updates_opt_out_forward.sql`
+   (1), `gh916_progressive_partner_status_triggers.sql` (3, drift
+   introduced fixing round-2's own em-dash rewrap),
+   `gh969_hover_rebate_trigger_completion.sql` (5) and
+   `v88_referral_agents_public_directory_optin_pre-flight.md` (3, table
+   separator rows rewritten). **Fixed**: all 4 rebuilt as banner +
+   exact base blob (base fetched via `git show 5d426112:<path>`, never
+   retyped). Verified: `git diff 5d426112 -- <these 4 files>` now shows
+   `0` removed/changed lines for all four, confirmed by script (see
+   `/tmp/k73work/verify_all.py`'s reconstruction check — stripping the
+   banner from the new content and comparing to the base blob byte-for-
+   byte returns `OK` for all four).
+
+2. **The recon doc's "remaining 6 companion files" claim (round-2 item 4)
+   was false.** No `.test.sql`/README files exist in these 8 sets; the
+   real 6 are `gh1021_add_paid_state_pre-flight.md`,
+   `gh1021_add_paid_state_rollback.sql`,
+   `gh749_add_service_states_to_contractors_pre-flight.md`,
+   `gh749_add_service_states_to_contractors_rollback.sql`,
+   `gh1070_activity_log_grants_revoke_rollback.sql` and
+   `gh1050_commission_accrual_job_completion_rollback.sql`, and 5 of
+   the 6 still carried `Status: DRAFT` / `**Status**: DRAFT` lines
+   (only the gh1050 rollback was already clean). **Fixed**: the same
+   banner-pointer convention already used on each set's main file was
+   added to the 5 DRAFT-carrying companions — banner + exact base blob,
+   base content (including the DRAFT line) left untouched below the
+   banner, same byte-for-byte verification as item 1. The doc's item 4
+   text is corrected in place.
+
+3. **Eight renamed `supabase/migrations/` files (v91, p15 ×3, v104,
+   gh1028 ×2, gh1075) claimed "Content below unchanged" but had drifted
+   pre-existing comment lines** — em dash converted to ASCII `--` in
+   several, and gh1075's own comment changed a version-number reference
+   (`20260820004212` → `20260820004417`) that points at an unrelated
+   ledger row. **Fixed**: all 8 rebuilt as (unchanged first line) +
+   banner + exact base blob for every line from the base file's second
+   line onward, so the em-dash/comment drift and the gh1075 reference
+   are both reverted to base. Verified the same way as item 1: `git diff
+   5d426112 -- <these 8 files>` (with rename detection) shows 0
+   removed/changed lines for all eight, and `grep` confirms gh1075's
+   comment again reads `20260820004212` (the base value).
+
+4. **This PR body and the recon doc still stated the pre-round-2 numbers**
+   (16 renames, Direction 1 72→56, Direction 2 53→37, baseline 56/37) and
+   two internally self-contradicting Direction-1 statements (round-2 item
+   2's "Direction-1 was never touched by this rename batch either way" and
+   round-2 item 6's "`applied_no_repo_file` stays 56", both contradicted
+   by the round-2 self-caught follow-on that raised it to 58). **Fixed**:
+   PR body updated to the true numbers (14 renames, 72→58, 53→39); both
+   doc sentences corrected in place (see the "Correction (round 3 review,
+   comment 5856332109, ...)" notes inline in the round-2 section above).
+
+5. **Merge gate (not a content defect): the two GRANT checks
+   (`No new GRANT to anon/PUBLIC/authenticated`,
+   `New public tables must GRANT service_role explicitly`) are still red
+   on head `ecc66bfc`**, confirmed again this round via
+   `ghcli.py checks otterquote-platform ecc66bfc1396f4ba713830ff10a93fa19c8027c6`
+   (both `completed/failure`; the two required gates, Null-Byte & Size
+   Sanity Check and 5-Page Revenue-Path Smoke Check, are `completed/
+  success`). Both are the same rename-detection false positive
+   root-caused in round 2 — `permissions-ratchet.py` and
+   `new-table-service-role-grant-check.py` don't use `git diff -M` and so
+   read a clean rename's unchanged, already-live GRANT/REVOKE statements
+   as newly added. The fix lives in PR #2245 (rename-aware scanners),
+   which is itself RETURNED and being fixed in parallel by a sibling
+   worker. **Not fixed here** — out of this PR's scope per the reviewer's
+   own stated sequencing (#2245 → #2244 → #2248). Rebase onto #2245 once
+   it merges and re-run both checks; this content push does not touch
+   either script.
+
+Ledger/replay safety (14/14 renamed versions recorded, SQL matches the
+ledger) and the merge-tree-with-main check were both independently
+re-derived and passed in the round-3 review itself (comment 5856332109,
+items 5 and 9) and are unaffected by this round's fixes, which touch only
+comment/banner text, never executable SQL. SELECT-only throughout; zero
+`apply_migration`, `execute_sql` write, or `db push` at any point in this
+round.

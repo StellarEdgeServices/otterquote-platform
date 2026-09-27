@@ -3,6 +3,7 @@
 -- version 20260820195608; the real ledger row is 20260820195746 (confirmed
 -- read-only this session). Content below unchanged.
 -- Section 4 (commission -> referral fee, D-301) shipped as an "edit in
+-- Section 4 (commission -> referral fee, D-301) shipped as an "edit in
 -- place" amendment (Dustin's verbatim ruling, R-135) while zero real
 -- partners have accepted anything (all 13 referral_agents rows verified
 -- zero accepted_at, live, at authoring time). gh-1059's own migration
@@ -14,7 +15,7 @@
 -- changes exactly one literal (the v_agreement_version constant, 'v1-2026-08'
 -- -> 'v2-2026-08') -- every parameter, every other line of the function body,
 -- and its signature are byte-identical to the version applied by
--- 20260820004417_gh1059_partner_agreement_acceptance.sql. Nothing
+-- 20260820004212_gh1059_partner_agreement_acceptance.sql. Nothing
 -- destructive, no schema change, no money or consent-flow behavior change
 -- (the function still requires the same client-side checkbox gate it always
 -- has -- this migration only changes which version string gets stamped).
