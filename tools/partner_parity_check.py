@@ -380,7 +380,11 @@ def compute_d266_pages(root: Path = None) -> list[str]:
         for p in ALL_PAGES
         if p not in ("partner-insurance", "partner-login", "partner-inspectors")
     }
-    explicit = {"partners", "refer-a-friend", "re-1", "ins-1", "ins-5"}
+    # CEO RUN 71 wave 3 (#2150/#2151, PR #2222): re-3/ins-3 reuse the
+    # RE-1/INS-1 build byte-for-byte (D-333) and carry the D-266
+    # disclaimer verbatim -- registered explicitly, same convention as
+    # re-1/ins-1/ins-5 above.
+    explicit = {"partners", "refer-a-friend", "re-1", "ins-1", "ins-5", "re-3", "ins-3"}
     fee_pages = {
         s for s in _fee_sentence_pages(root) if (root / f"{s}.html").is_file()
     }
@@ -1557,7 +1561,7 @@ def main() -> int:
         if not check_d266_disclaimer(html):
             failures.append(f"{page}.html: missing D-266 disclaimer verbatim text (d266_disclaimer)")
 
-    # ── React parity half (D-266) ────────────────────────────────────────────
+    # ── React parity half (D-266) ───────────────────────────────────────────────
     # Root-level *.html is only what main publishes TODAY; react-app/ is what a
     # cutover publishes instead. A disclaimer that survives in one and not the
     # other is a gap this script previously could not see at all.

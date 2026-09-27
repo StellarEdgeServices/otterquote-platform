@@ -152,6 +152,10 @@ function runAll(html, label) {
 runAll(stripComments(fs.readFileSync(path.join(repoRoot, 're-1.html'), 'utf8')), 're-1.html');
 runAll(stripComments(fs.readFileSync(path.join(repoRoot, 'ins-1.html'), 'utf8')), 'ins-1.html');
 runAll(stripComments(fs.readFileSync(path.join(repoRoot, 'hi-1.html'), 'utf8')), 'hi-1.html');
+// gh-2222: re-3/ins-3 inherit the re-1/ins-1 mechanism byte-for-byte, so
+// they must pass the same S05 structure checks.
+runAll(stripComments(fs.readFileSync(path.join(repoRoot, 're-3.html'), 'utf8')), 're-3.html');
+runAll(stripComments(fs.readFileSync(path.join(repoRoot, 'ins-3.html'), 'utf8')), 'ins-3.html');
 // gh-2151/gh-2152 INS-5/HI-4 (CEO RUN 71): cloned from ins-1.html/hi-1.html,
 // same S05 perf structure preserved verbatim (scripts relocated to the end
 // of <body>, lazy Supabase bundle load) -- covered by the same assertions.

@@ -304,6 +304,10 @@
     '/hi-4',
     '/how-it-works',
     '/ins-1',
+    // gh-2150/gh-2151 CEO RUN 71 wave 3: RE-3/INS-3 reuse the RE-1/INS-1
+    // build byte-for-byte (D-333) -- same PUBLIC pattern, hasPartnerSession()
+    // only redirects an ALREADY-signed-in partner to partner-dashboard.html.
+    '/ins-3',
     // gh-2151 INS-5 (CEO RUN 71): co-branded client-handout lead magnet,
     // same PUBLIC pattern as ins-1 above.
     '/ins-5',
@@ -328,6 +332,7 @@
     '/project-info-cash',
     '/project-info-rcv',
     '/re-1',
+    '/re-3',
     '/recruit',
     '/ref',
     '/ref-inspector',
