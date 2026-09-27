@@ -37,7 +37,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="OQ Admin">
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js" integrity="sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.js" integrity="sha384-iLddHTLokph6Omwoyid4XKxHaWa6w41BnoEj0q5oOrzmYPpHIKt1wyjReA7s//pP" crossorigin="anonymous"></script>
 <link rel="stylesheet" href="css/design-system.css">
 <link rel="stylesheet" href="css/nav.css">
 <style>
@@ -263,7 +263,13 @@ main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
  * only thing computed here is which rows to show, never their checklist or
  * their days-since-movement.
  */
-var sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
+// gh-1980 PR 2/3: converge onto the canonical cookie-adapter + storageKey
+// (this used to be a bare createClient() with supabase-js's own default
+// storage/key, silently overwriting the canonical window.sb js/config.js
+// already set -- see js/cookie-storage.js migrateLegacySession() for the
+// migration that keeps an already-signed-in admin signed in through this
+// change).
+var sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, { auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' } });
 
 var AUDIENCE_LABELS = { homeowner: 'Homeowner', contractor: 'Contractor', referral_partner: 'Referral Partner' };
 

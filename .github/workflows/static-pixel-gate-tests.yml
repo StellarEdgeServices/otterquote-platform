@@ -46,6 +46,11 @@ on:
       - 'tests/gh2154-p1-login-reset.mjs'
       - 'tests/gh2154-p1-cookie-storage-updateuser.mjs'
       - 'tests/gh1980-pr1-key-aware-storage.mjs'
+      - 'tests/gh1980-pr2-storagekey-migration.mjs'
+      - 'admin-dashboard.html'
+      - 'admin-homeowners.html'
+      - 'admin-measurements.html'
+      - 'js/config.js'
       - 're-1.html'
       - 'tests/gh2150-re1-page.mjs'
       - 'ins-1.html'
@@ -105,6 +110,11 @@ on:
       - 'tests/gh2154-p1-login-reset.mjs'
       - 'tests/gh2154-p1-cookie-storage-updateuser.mjs'
       - 'tests/gh1980-pr1-key-aware-storage.mjs'
+      - 'tests/gh1980-pr2-storagekey-migration.mjs'
+      - 'admin-dashboard.html'
+      - 'admin-homeowners.html'
+      - 'admin-measurements.html'
+      - 'js/config.js'
       - 're-1.html'
       - 'tests/gh2150-re1-page.mjs'
       - 'ins-1.html'
@@ -181,6 +191,8 @@ jobs:
         run: node tests/gh2154-p1-cookie-storage-updateuser.mjs
       - name: gh-1980 PR 1 -- storage-adapter factory parity + key-awareness discriminating test (gh1980-pr1-key-aware-storage)
         run: node tests/gh1980-pr1-key-aware-storage.mjs
+      - name: gh-1980 PR 2 -- storageKey convergence + legacy-session migration safety (gh1980-pr2-storagekey-migration)
+        run: node tests/gh1980-pr2-storagekey-migration.mjs
       - name: RE-1 dedicated landing page -- approved copy, funnel_id attribution (gh2150-re1-page)
         run: node tests/gh2150-re1-page.mjs
       - name: INS-1 dedicated landing page -- approved copy, field set, funnel-id attribution (gh2151-ins1-page)
