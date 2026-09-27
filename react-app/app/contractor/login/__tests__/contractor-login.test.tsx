@@ -198,6 +198,13 @@ describe('<ContractorLoginPage /> rendered behavior (unauthenticated)', () => {
       options: { emailRedirectTo: AUTH_CALLBACK_URL },
     });
     expect(localStorage.getItem('cs_auth_role')).toBe('contractor');
+    // gh-2060 RETURNED item 1 (contractor magic-link writer): /auth-callback
+    // only trusts cs_auth_role when cs_auth_role_at is present and within
+    // its 24h TTL — this must fail if the stamp write is deleted.
+    const stampRaw = localStorage.getItem('cs_auth_role_at');
+    expect(stampRaw).not.toBeNull();
+    expect(Number.isFinite(Number(stampRaw))).toBe(true);
+    expect(Date.now() - Number(stampRaw)).toBeLessThan(5000);
   });
 
   it('starts Google OAuth with the contractor-intent callback', async () => {
@@ -210,6 +217,12 @@ describe('<ContractorLoginPage /> rendered behavior (unauthenticated)', () => {
       }),
     );
     expect(localStorage.getItem('cs_auth_role')).toBe('contractor');
+    // gh-2060 RETURNED item 1 (contractor Google OAuth writer): same TTL-
+    // stamp requirement as the magic-link writer above.
+    const stampRaw = localStorage.getItem('cs_auth_role_at');
+    expect(stampRaw).not.toBeNull();
+    expect(Number.isFinite(Number(stampRaw))).toBe(true);
+    expect(Date.now() - Number(stampRaw)).toBeLessThan(5000);
   });
 });
 

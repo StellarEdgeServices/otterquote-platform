@@ -507,6 +507,62 @@ describe('auth-callback page — gh-2060 dirty-state: stale cs_auth_role from a 
     );
   });
 
+  it('gh-2060 RETURNED item 2: clears cs_auth_role and cs_auth_role_at after routing on the stale/untrusted homeowner branch', async () => {
+    // Same stale-untimestamped seed as the first test in this block, but
+    // this test's assertion is on the STORAGE STATE after routing, not the
+    // redirect target — it must fail if the unconditional
+    // removeItem('cs_auth_role') / removeItem('cs_auth_role_at') pair
+    // (page.tsx ~350-351) is deleted, even though that mutation leaves the
+    // redirect-target assertions above passing (the value was never
+    // trusted on this branch either way).
+    seedStaleStorage({ localStorage: { cs_auth_role: 'contractor' } });
+
+    let capturedCallback: ((event: string, session: unknown) => void) | undefined;
+    (supabase.auth.onAuthStateChange as unknown as Fn).mockImplementation((cb) => {
+      capturedCallback = cb;
+      return { data: { subscription: { unsubscribe: vi.fn() } } };
+    });
+
+    render(<AuthCallbackPage />);
+    await waitFor(() => expect(capturedCallback).toBeDefined());
+    capturedCallback?.('SIGNED_IN', googleSession());
+
+    await waitFor(() => expect(hrefSpy).toHaveBeenCalled());
+    expect(localStorage.getItem('cs_auth_role')).toBeNull();
+    expect(localStorage.getItem('cs_auth_role_at')).toBeNull();
+  });
+
+  it('gh-2060 RETURNED item 2: clears cs_auth_role and cs_auth_role_at after routing on the trusted contractor branch', async () => {
+    // Mirrors the POSITIVE CONTROL seed (fresh, within-TTL) but asserts the
+    // one-shot clear property instead of the redirect target — the fix's
+    // own stated behavior is "cleared on read either way", not only on the
+    // untrusted branch.
+    seedStaleStorage({
+      localStorage: {
+        cs_auth_role: 'contractor',
+        cs_auth_role_at: String(Date.now() - 5 * 60 * 1000), // 5 minutes old
+      },
+    });
+
+    let capturedCallback: ((event: string, session: unknown) => void) | undefined;
+    (supabase.auth.onAuthStateChange as unknown as Fn).mockImplementation((cb) => {
+      capturedCallback = cb;
+      return { data: { subscription: { unsubscribe: vi.fn() } } };
+    });
+
+    render(<AuthCallbackPage />);
+    await waitFor(() => expect(capturedCallback).toBeDefined());
+    capturedCallback?.('SIGNED_IN', googleSession());
+
+    await waitFor(() =>
+      expect(hrefSpy).toHaveBeenCalledWith(
+        expect.stringContaining('contractor-pre-approval'),
+      ),
+    );
+    expect(localStorage.getItem('cs_auth_role')).toBeNull();
+    expect(localStorage.getItem('cs_auth_role_at')).toBeNull();
+  });
+
   it('POSITIVE CONTROL: a FRESH cs_auth_role="contractor" (within the TTL, as a real magic-link/OAuth round trip leaves it) still routes to the contractor pre-approval wizard', async () => {
     seedStaleStorage({
       localStorage: {

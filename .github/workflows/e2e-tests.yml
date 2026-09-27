@@ -258,6 +258,12 @@ jobs:
       - name: auth.js cs_redirect role-guard unit test (gh-1412/#1476 regression)
         run: node tests/auth-cs-redirect-role-guard.mjs
 
+      - name: js/auth.js cs_auth_role staleness unit test (gh-2060 static-stack regression, PR #2253)
+        run: node tests/gh2060-static-cs-auth-role-staleness.mjs
+
+      - name: auth-callback.html _oqGetIntent cs_auth_role staleness unit test (gh-2060 RETURNED item 4, PR #2253)
+        run: node tests/gh2060-auth-callback-html-staleness.mjs
+
       - name: measurement-shape admin-fulfilment flip unit test (gh-1411 D-317 cl. 4-6; REVIEW finding A, PR #2236)
         run: node tests/measurement-shape-flip-on-deliver.mjs
 
