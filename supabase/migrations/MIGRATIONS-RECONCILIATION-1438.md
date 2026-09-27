@@ -947,7 +947,9 @@ four content items are fixed in this push.
    (`No new GRANT to anon/PUBLIC/authenticated`,
    `New public tables must GRANT service_role explicitly`) are still red
    on head `ecc66bfc`**, confirmed again this round via
-   `ghcli.py checks otterquote-platform ecc66bfc1396f4ba713830ff10a93fa19c8027c6`
+   `ghcli.py checks otterquote-platform ecc66bfc` (short SHA; full form
+   trips Credential Shape Sweep's HEX_RUN_20, per this doc's existing
+   short-SHA convention)
    (both `completed/failure`; the two required gates, Null-Byte & Size
    Sanity Check and 5-Page Revenue-Path Smoke Check, are `completed/
   success`). Both are the same rename-detection false positive
