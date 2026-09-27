@@ -1,3 +1,5 @@
+> **SUPERSEDED (2026-09-26, gh-1438 part 2)** -- the anon-grant-revoke effect this document describes IS live, but not from this migration's own SQL. The migration that actually ran under a #1070 name is `supabase/migrations/20260824183229_gh1070_revoke_anon_activity_log.sql` -- a single bare REVOKE, structurally different from and much shorter than this draft's broader proposal (see the forward file's own banner). Kept unmodified below this banner for history.
+
 # Pre-Flight: gh1070_activity_log_grants_revoke
 
 **Migration**: gh1070_activity_log_grants_revoke.sql
