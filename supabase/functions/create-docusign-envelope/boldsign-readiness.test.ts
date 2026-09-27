@@ -410,3 +410,100 @@ Deno.test("clearStrandedEnvelopePointer: a zero-row match is DETECTED (gh-2105),
   assertEquals(claimClearError, null);
   assertEquals(claimRows, 1, "the claims write in this fixture still matched its one row");
 });
+
+// ---------------------------------------------------------------------------
+// REVIEW FAIL round 2 (PR #2240, 5851036566), fix 2: fakeSupabaseRecordingCalls
+// only checks the SHAPE of the filters a call site requests -- it proves the
+// right .eq() calls were made, not that they actually protect a row. A
+// STATEFUL fake that applies those filters against seeded in-memory rows is
+// needed to prove the two scenarios REVIEW round 1 (F1) raised: a concurrent
+// mint's replacement pointer must survive, and the guarded fallback must hit
+// the RIGHT row when a claim/contractor has more than one quote.
+
+/**
+ * A stateful chainable fake: `.update(payload).eq(...).eq(...).select("id")`
+ * actually filters the seeded rows and mutates only the ones that match, so
+ * assertions can check the ROWS afterward, not just which filters were sent.
+ */
+function statefulFakeSupabase(seed: { quotes: Record<string, unknown>[]; claims: Record<string, unknown>[] }) {
+  function tableOps(rows: Record<string, unknown>[]) {
+    return {
+      update(payload: Record<string, unknown>) {
+        const filters: Array<[string, unknown]> = [];
+        const builder = {
+          eq(col: string, val: unknown) {
+            filters.push([col, val]);
+            return builder;
+          },
+          select(_cols: string) {
+            const matched = rows.filter((r) => filters.every(([c, v]) => r[c] === v));
+            for (const r of matched) Object.assign(r, payload);
+            return Promise.resolve({ data: matched.map((r) => ({ id: r.id })), error: null });
+          },
+        };
+        return builder;
+      },
+    };
+  }
+  return {
+    from(table: "quotes" | "claims") {
+      return tableOps(seed[table]);
+    },
+  };
+}
+
+Deno.test("clearStrandedEnvelopePointer (stateful): a REPLACEMENT pointer from a concurrent mint survives the clear", async () => {
+  // Requests A and B both resumed the same dead document. A already cleared
+  // and mint C wrote NEW over the pointer. B's clear (for the dead id) must
+  // NOT wipe NEW -- that would be gh-1400's failure, inverted.
+  const seed = {
+    quotes: [{ id: "q1", claim_id: "c1", contractor_id: "k1", docusign_envelope_id: "NEW" }],
+    claims: [{ id: "c1", docusign_envelope_id: "NEW", contract_sent_at: "x" }],
+  };
+  const db = statefulFakeSupabase(seed);
+
+  const { quoteRows, claimRows } = await clearStrandedEnvelopePointer(db, {
+    claim_id: "c1",
+    quote_id: null,
+    contractor_id: "k1",
+    envelopeId: DEAD,
+  });
+
+  assertEquals(quoteRows, 0, "the clear must not match the row now holding a DIFFERENT (replacement) envelope id");
+  assertEquals(claimRows, 0, "same for claims");
+  assertEquals(seed.quotes[0].docusign_envelope_id, "NEW", "the replacement pointer must survive untouched");
+  assertEquals(seed.claims[0].docusign_envelope_id, "NEW");
+  assertEquals(seed.claims[0].contract_sent_at, "x", "contract_sent_at must not be wiped either");
+});
+
+Deno.test("clearStrandedEnvelopePointer (stateful): the guarded fallback clears the RIGHT quote among several for the same claim+contractor", async () => {
+  // q1 has no envelope, q2 holds the dead document, q3 holds an unrelated
+  // live one. An unguarded claim_id+contractor_id-only filter would match
+  // ALL THREE; the envelope guard must narrow it to q2 alone.
+  const seed = {
+    quotes: [
+      { id: "q1", claim_id: "c1", contractor_id: "k1", docusign_envelope_id: null },
+      { id: "q2", claim_id: "c1", contractor_id: "k1", docusign_envelope_id: DEAD },
+      { id: "q3", claim_id: "c1", contractor_id: "k1", docusign_envelope_id: "OTHER" },
+    ],
+    claims: [{ id: "c1", docusign_envelope_id: DEAD, contract_sent_at: "x" }],
+  };
+  const db = statefulFakeSupabase(seed);
+
+  const { quoteRows, claimRows } = await clearStrandedEnvelopePointer(db, {
+    claim_id: "c1",
+    quote_id: null,
+    contractor_id: "k1",
+    envelopeId: DEAD,
+  });
+
+  assertEquals(quoteRows, 1, "exactly the one quote holding the dead id must be cleared");
+  assertEquals(claimRows, 1);
+  assertEquals(
+    seed.quotes.map((q) => q.docusign_envelope_id),
+    [null, null, "OTHER"],
+    "q1 stays null, q2 (the dead one) is cleared, q3's unrelated live document is untouched",
+  );
+  assertEquals(seed.claims[0].docusign_envelope_id, null);
+  assertEquals(seed.claims[0].contract_sent_at, null);
+});
