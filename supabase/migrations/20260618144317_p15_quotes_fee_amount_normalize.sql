@@ -1,20 +1,21 @@
--- Migration: 20260618144317_p15_quotes_fee_amount_normalize
+-- Migration: 20260618130000_p15_quotes_fee_amount_normalize
 -- CORRECTED 2026-09-26 (gh-1438 part 2): this file was previously filed at
 -- version 20260618130000; the real ledger row is 20260618144317 (confirmed
 -- read-only this session). Content below unchanged.
 -- Author: Claude Code (Opus 4.8) -- D-211 Phase 15, Unit MIG-C (U15-4 Part 1)
+-- Author: Claude Code (Opus 4.8) — D-211 Phase 15, Unit MIG-C (U15-4 Part 1)
 -- Date: 2026-06-18
--- D-numbers: D-211 P15 (U15-4 Part 1 -- quotes.fee_amount server-side normalization);
---            references D-199 (bid_can_submit BEFORE-INSERT gate -- independent, see note below)
+-- D-numbers: D-211 P15 (U15-4 Part 1 — quotes.fee_amount server-side normalization);
+--            references D-199 (bid_can_submit BEFORE-INSERT gate — independent, see note below)
 -- Rollback: 20260618130000_p15_quotes_fee_amount_normalize_rollback.sql
 --
--- Summary: ADDITIVE -- installs a BEFORE INSERT OR UPDATE row-level trigger on quotes that
+-- Summary: ADDITIVE — installs a BEFORE INSERT OR UPDATE row-level trigger on quotes that
 --          forces fee_amount to ALWAYS equal the platform fee CHARGE BASIS, computed
 --          server-side as round((platform_fee_pct / 100.0) * total_price, 2).
 --
 --          Why: quotes.fee_amount is a denormalized display/disclosure column written at
 --          bid submission. The actual fee CHARGE is computed independently by the revenue
---          path (docusign-webhook + create-payment-intent) as platform_fee_pct% x total_price;
+--          path (docusign-webhook + create-payment-intent) as platform_fee_pct% × total_price;
 --          the charge never reads fee_amount. fee_amount can therefore drift from the charge
 --          basis when platform_fee_pct <> 5% or when an insurance RCV base <> total_price.
 --          Live today: 0 mismatches (all quotes at 5%), so the drift is latent. This trigger
@@ -24,7 +25,7 @@
 --            * Touches ONLY quotes.fee_amount, and only the value written into it.
 --            * Does NOT alter platform_fee_pct, total_price, fee_percentage, any constraint,
 --              or any column type/default. No legal/disclosure copy is involved.
---            * Computes nothing when platform_fee_pct IS NULL or total_price IS NULL -- in that
+--            * Computes nothing when platform_fee_pct IS NULL or total_price IS NULL — in that
 --              case NEW.fee_amount is left exactly as supplied (fee_amount is NOT NULL, so the
 --              caller's value still satisfies the column constraint).
 --
@@ -34,7 +35,7 @@
 --            fee_amount. This trigger only SETS a column and never raises. The two cannot
 --            conflict. Postgres fires BEFORE-row triggers in trigger-name order, so on INSERT
 --            'quotes_enforce_bid_can_submit' runs before 'quotes_normalize_fee_amount'; if the
---            D-199 gate aborts, normalization simply never runs -- the correct outcome.
+--            D-199 gate aborts, normalization simply never runs — the correct outcome.
 --
 --          Locking: CREATE TRIGGER takes a brief ACCESS EXCLUSIVE lock on quotes for the
 --          catalog change only (no table rewrite). The backfill is a no-op today (0 rows).
@@ -65,7 +66,7 @@ CREATE TRIGGER quotes_normalize_fee_amount
   FOR EACH ROW
   EXECUTE FUNCTION public.normalize_quotes_fee_amount();
 
--- 3. One-time backfill of any pre-existing drift (no-op today -- 0 rows).
+-- 3. One-time backfill of any pre-existing drift (no-op today — 0 rows).
 --    Only corrects rows where both inputs are present AND the stored value differs.
 UPDATE public.quotes
 SET fee_amount = round((platform_fee_pct / 100.0) * total_price, 2)

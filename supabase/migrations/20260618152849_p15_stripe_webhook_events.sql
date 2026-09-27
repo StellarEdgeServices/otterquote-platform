@@ -1,14 +1,15 @@
--- Migration: 20260618152849_p15_stripe_webhook_events
+-- Migration: 20260618140000_p15_stripe_webhook_events
 -- CORRECTED 2026-09-26 (gh-1438 part 2): this file was previously filed at
 -- version 20260618140000; the real ledger row is 20260618152849 (confirmed
 -- read-only this session). Content below unchanged.
 -- Author: Claude Code (Opus 4.8) -- D-211 Phase 15, Unit U15-1
+-- Author: Claude Code (Opus 4.8) — D-211 Phase 15, Unit U15-1
 -- Date: 2026-06-18
--- D-numbers: D-211 P15 (U15-1 -- stripe-webhook event-level idempotency);
---            supports D-228 (charge.dispute.created handler -- see EF dedupe guard)
+-- D-numbers: D-211 P15 (U15-1 — stripe-webhook event-level idempotency);
+--            supports D-228 (charge.dispute.created handler — see EF dedupe guard)
 -- Rollback: 20260618140000_p15_stripe_webhook_events_rollback.sql
 --
--- Summary: ADDITIVE -- creates the stripe_webhook_events ledger: a one-row-per-event
+-- Summary: ADDITIVE — creates the stripe_webhook_events ledger: a one-row-per-event
 --          record keyed on the Stripe event.id. The stripe-webhook Edge Function
 --          INSERTs into this table BEFORE running any handler/side-effect; the
 --          event_id PRIMARY KEY makes a redelivered event collide (SQLSTATE 23505),
@@ -39,7 +40,7 @@ CREATE TABLE IF NOT EXISTS public.stripe_webhook_events (
 -- 2. Lock the table down to service_role only.
 ALTER TABLE public.stripe_webhook_events ENABLE ROW LEVEL SECURITY;
 
--- 3. RESTRICTIVE deny-all for anon/authenticated (explicit deny -- security-advisor
+-- 3. RESTRICTIVE deny-all for anon/authenticated (explicit deny — security-advisor
 --    pattern from v76c). Idempotent guard so re-runs don't error.
 DO $$ BEGIN
   IF NOT EXISTS (

@@ -1,3 +1,8 @@
+-- >>> APPLIED (2026-09-26, gh-1438 part 2) -- the forward migration this
+-- rollback pairs with is live, filed as
+-- supabase/migrations/20260821205432_gh1150_add_paid_state.sql (confirmed
+-- read-only against yeszghaspzwwstvsrioa). This rollback is kept here,
+-- unmodified below this banner, for history. <<<
 -- Rollback: gh1021_add_paid_state_rollback.sql
 -- Reverts: gh1021_add_paid_state.sql
 -- Status: DRAFT — forward migration not yet applied.

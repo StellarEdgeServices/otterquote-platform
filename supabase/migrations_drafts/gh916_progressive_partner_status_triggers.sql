@@ -35,10 +35,9 @@
 --
 -- Vault key pattern: identical to gh-752 (Dustin-approved, applied 2026-08-17) —
 -- `vault.decrypted_secrets` / 'cron_service_role_key', NOT the app.* GUCs (confirmed
--- NULL/unset on this database by #752's live audit). Every new pg_net call is
--- wrapped in its own BEGIN/EXCEPTION block so a failure can NEVER roll back or
--- block the underlying claims/quotes/commission write those triggers exist to
--- protect.
+-- NULL/unset on this database by #752's live audit). Every new pg_net call is wrapped
+-- in its own BEGIN/EXCEPTION block so a failure can NEVER roll back or block the
+-- underlying claims/quotes/commission write those triggers exist to protect.
 --
 -- Sites touched:
 --   1. claims_advance_referral()  — fires at intake. Notify only added when the

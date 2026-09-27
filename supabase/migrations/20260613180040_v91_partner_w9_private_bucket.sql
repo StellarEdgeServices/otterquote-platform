@@ -3,10 +3,10 @@
 -- version 20260613000000; the real supabase_migrations.schema_migrations
 -- row is 20260613180040 (name v91_partner_w9_private_bucket, confirmed
 -- read-only this session). Content below unchanged.
--- Security item 86e1v6nnh Item 4 -- moves W-9 PDFs off the public partner-photos bucket.
+-- Security item 86e1v6nnh Item 4 — moves W-9 PDFs off the public partner-photos bucket.
 -- W-9s were publicly readable via CDN (RLS is bypassed on public buckets).
 -- partner-photos remains public for headshots; this new bucket is private by design.
--- Writes go through the service role (submit-partner-w9 EF) -- no INSERT/UPDATE/DELETE
+-- Writes go through the service role (submit-partner-w9 EF) — no INSERT/UPDATE/DELETE
 -- policy needed (service role bypasses RLS).
 -- Companion rollback: sql/v91-rollback-partner-w9-bucket.sql
 

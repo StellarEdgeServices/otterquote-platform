@@ -19,7 +19,7 @@
 -- db push has been run. Do not apply without a posted, provably-expired R-097
 -- notice and Dustin's Tier 3 approval (D-182).
 --
--- ── Why ─────────────────────────────────────────────────────────────────
+-- ── Why ──────────────────────────────────────────────────────────────────
 -- D-291 (2026-08-17, Dustin-locked) moves the $15 RoofScope rebate from firing
 -- at contract signing to firing at job completion. The Edge Function half is
 -- already done: process-hover-rebate was redeployed to v33 (2026-08-20T19:44:09Z,
@@ -37,7 +37,7 @@
 --
 -- Net effect today: the trigger fires at signing, wakes v33, v33 checks
 -- claims.completion_date, finds it unset (job just signed, not done), and
--- declines — a wasted no-op pg_net POST, not a failure. The trigger never
+-- declines -- a wasted no-op pg_net POST, not a failure. The trigger never
 -- fires again later at actual completion, because nothing updates
 -- quotes.payment_status at that point.
 --
@@ -46,7 +46,7 @@
 -- originally carried. It does still pay: cron jobid 10
 -- (process-hover-rebate-scan, */30 * * * *, 5,667+ succeeded runs) invokes
 -- process-hover-rebate in scan mode independently of this trigger, gating
--- each row on the same claims.completion_date condition — already the
+-- each row on the same claims.completion_date condition -- already the
 -- correct D-291 signal. The real, smaller defect this migration fixes is
 -- (a) the wasted no-op POST at signing, and (b) up to 30 minutes of added
 -- latency before the scan picks up the completion. Neither is "the rebate
@@ -62,7 +62,7 @@
 -- to act on today. Zero live exposure. This is the reason the change is safe
 -- to draft now — not a reason it stops being Tier 3.
 --
--- ── What this migration does ────────────────────────────────────────
+-- ── What this migration does ────────────────────────────────────────────
 -- 1. Drops after_quote_paid_rebate on public.quotes.
 -- 2. Redefines notify_hover_rebate() to read the claim id off NEW.id instead
 --    of NEW.claim_id, because the trigger now fires FROM public.claims (whose
@@ -78,7 +78,7 @@
 --    after_claim_completed trigger (which calls apply_referral_commission(),
 --    a different function) to avoid a naming collision on public.claims.
 --
--- ── What this migration does NOT do ────────────────────────────────
+-- ── What this migration does NOT do ─────────────────────────────────────
 -- Does not touch quotes.payment_status, does not touch hover_orders schema,
 -- does not touch process-hover-rebate (already deployed, v33). Does not touch
 -- the referral-commission trigger/function (gh-1050, separate and already done).

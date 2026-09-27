@@ -3,9 +3,10 @@
 -- version 20260818205500; the real ledger row is 20260818205142 (confirmed
 -- read-only this session). Content below unchanged.
 -- (AC4 -- enumerated as the full set of DB views reading `quotes` for counts;
+-- (AC4 — enumerated as the full set of DB views reading `quotes` for counts;
 -- see PR body for the enumeration). Neither view previously filtered on
 -- quotes.is_test (added v104, 2026-08-10) even though the column already
--- existed -- this was already-stale exposure, not something introduced today.
+-- existed — this was already-stale exposure, not something introduced today.
 
 CREATE OR REPLACE VIEW public.cert_verification_quality AS
  SELECT ( SELECT count(*) AS count
