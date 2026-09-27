@@ -12,6 +12,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, waitFor } from '@testing-library/react';
 import { LEAD_STORAGE_KEY, LEAD_TTL_MS } from '@/lib/lead-capture';
+import { seedStaleStorage } from '@/test/storage-fixtures';
 
 vi.mock('@/lib/supabase', () => {
   const chain = (result: { data: unknown; error: unknown }) => {
@@ -414,5 +415,120 @@ describe('auth-callback page — gh-1901 Option 2: Google name backfill', () => 
       sessionWithGoogleIdentity({ given_name: 'Jane', family_name: 'Doe' }),
     );
     expect(localStorage.getItem('cs_signup')).toBeNull();
+  });
+});
+
+describe('auth-callback page — gh-2060 dirty-state: stale cs_auth_role from a prior, abandoned visit', () => {
+  // gh-2060: `beforeEach` clearing storage between tests means no test in
+  // this suite could ever start with "a previous visitor/tab left something
+  // behind" already present. `cs_auth_role` is written by the contractor and
+  // homeowner login/signup entry points (contractor/login/page.tsx,
+  // login/page.tsx, get-started/page.tsx) and read here as `intent` to route
+  // a fresh sign-in to the contractor pre-approval wizard — but it is only
+  // ever CLEARED on the `intent === 'contractor'` branch itself (line ~354).
+  // If a visitor starts the contractor flow (cs_auth_role='contractor'),
+  // abandons before completing auth, and the SAME BROWSER later signs in
+  // through a route that never re-sets cs_auth_role (e.g. this page reached
+  // directly via a Google OAuth redirect), the stale 'contractor' value
+  // survives the whole gap and is read as this new session's intent.
+  let hrefSpy: ReturnType<typeof vi.fn>;
+  let originalLocation: PropertyDescriptor | undefined;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    sessionStorage.clear();
+    (maybeFireGoogleSignUp as unknown as Fn).mockResolvedValue(true);
+    hrefSpy = vi.fn();
+    originalLocation = Object.getOwnPropertyDescriptor(window, 'location');
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...window.location, hash: '', search: '', set href(v: string) { hrefSpy(v); } },
+    });
+  });
+
+  afterEach(() => {
+    if (originalLocation) Object.defineProperty(window, 'location', originalLocation);
+    localStorage.clear();
+    sessionStorage.clear();
+  });
+
+  it('does not route a fresh homeowner sign-in into the contractor wizard on a stale cs_auth_role="contractor" left by a prior abandoned visit', async () => {
+    // Seeded AFTER this describe's own beforeEach clear, per
+    // app/test/storage-fixtures.ts's contract — "a previous visitor/tab left
+    // this behind", not this test's own setup.
+    seedStaleStorage({ localStorage: { cs_auth_role: 'contractor' } });
+
+    // resolved_user_role mock (module-level) already returns 'homeowner' —
+    // this session has no contractor record, exactly the case a stale
+    // 'contractor' intent would misroute.
+    let capturedCallback: ((event: string, session: unknown) => void) | undefined;
+    (supabase.auth.onAuthStateChange as unknown as Fn).mockImplementation((cb) => {
+      capturedCallback = cb;
+      return { data: { subscription: { unsubscribe: vi.fn() } } };
+    });
+
+    render(<AuthCallbackPage />);
+    await waitFor(() => expect(capturedCallback).toBeDefined());
+    capturedCallback?.('SIGNED_IN', googleSession());
+
+    await waitFor(() => expect(hrefSpy).toHaveBeenCalled());
+
+    // MUST-FIX: a homeowner with no contractor record must land on the
+    // homeowner path, never the contractor pre-approval wizard, regardless
+    // of what an earlier, unrelated visit to this browser left in
+    // cs_auth_role.
+    expect(hrefSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining('contractor-pre-approval'),
+    );
+  });
+
+  it('also treats a cs_auth_role="contractor" older than the 24h TTL as stale, even with a timestamp present', async () => {
+    seedStaleStorage({
+      localStorage: {
+        cs_auth_role: 'contractor',
+        cs_auth_role_at: String(Date.now() - 25 * 60 * 60 * 1000), // 25h old
+      },
+    });
+
+    let capturedCallback: ((event: string, session: unknown) => void) | undefined;
+    (supabase.auth.onAuthStateChange as unknown as Fn).mockImplementation((cb) => {
+      capturedCallback = cb;
+      return { data: { subscription: { unsubscribe: vi.fn() } } };
+    });
+
+    render(<AuthCallbackPage />);
+    await waitFor(() => expect(capturedCallback).toBeDefined());
+    capturedCallback?.('SIGNED_IN', googleSession());
+
+    await waitFor(() => expect(hrefSpy).toHaveBeenCalled());
+    expect(hrefSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining('contractor-pre-approval'),
+    );
+  });
+
+  it('POSITIVE CONTROL: a FRESH cs_auth_role="contractor" (within the TTL, as a real magic-link/OAuth round trip leaves it) still routes to the contractor pre-approval wizard', async () => {
+    seedStaleStorage({
+      localStorage: {
+        cs_auth_role: 'contractor',
+        cs_auth_role_at: String(Date.now() - 5 * 60 * 1000), // 5 minutes old
+      },
+    });
+
+    let capturedCallback: ((event: string, session: unknown) => void) | undefined;
+    (supabase.auth.onAuthStateChange as unknown as Fn).mockImplementation((cb) => {
+      capturedCallback = cb;
+      return { data: { subscription: { unsubscribe: vi.fn() } } };
+    });
+
+    render(<AuthCallbackPage />);
+    await waitFor(() => expect(capturedCallback).toBeDefined());
+    capturedCallback?.('SIGNED_IN', googleSession());
+
+    await waitFor(() =>
+      expect(hrefSpy).toHaveBeenCalledWith(
+        expect.stringContaining('contractor-pre-approval'),
+      ),
+    );
   });
 });

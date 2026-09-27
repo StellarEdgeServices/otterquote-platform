@@ -80,6 +80,7 @@ export default function LoginPage() {
     try {
       // cs_auth_role drives /auth-callback's contractor-table-first routing.
       localStorage.setItem('cs_auth_role', 'homeowner');
+      localStorage.setItem('cs_auth_role_at', String(Date.now()));
       const { error: otpError } = await supabase.auth.signInWithOtp({
         email: trimmed,
         options: { emailRedirectTo: AUTH_CALLBACK_URL },
@@ -119,6 +120,7 @@ export default function LoginPage() {
     setGoogleLoading(true);
     try {
       localStorage.setItem('cs_auth_role', 'homeowner');
+      localStorage.setItem('cs_auth_role_at', String(Date.now()));
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: { redirectTo: GOOGLE_OAUTH_REDIRECT },
