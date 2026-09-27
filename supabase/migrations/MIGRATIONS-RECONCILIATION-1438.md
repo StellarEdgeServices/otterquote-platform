@@ -742,3 +742,119 @@ pushing and spot-compared against the versions fetched from `5d426112`/
 `supabase/migrations/` file after pushing and visually confirmed it
 matches the base blob. SELECT-only throughout; zero `apply_migration`,
 `execute_sql` write, or `db push` at any point in this round.
+
+## 2026-09-27 part 3 (PR stacked on #2244, worker k72-f-1438p3)
+
+Scope: reduce the Direction-2 remainder part 2 left (37 stated / 39 actual
+live count at part-2 head after its own self-corrections) using a stricter
+bar than part 2's first pass -- exact filename-slug match to a Direction-1
+orphan ledger row, AND comment/whitespace/BEGIN-COMMIT-normalized md5 of the
+file's SQL body equal to the same normalization applied to
+`array_to_string(statements, E'\n')` for that ledger version, both computed
+this session, both SELECT-only against `yeszghaspzwwstvsrioa`.
+
+**Method note:** an exact slug match is necessary but not sufficient -- the
+round-2 review of #2244 (comment 5851387029) found `gh974`/`gh972` had the
+right slug but a body superseded by later, still-unfiled patch versions
+(`..214437`, `..214513`, `..214054`). This session generalized that check:
+every one of the 21 exact-slug Direction-2/Direction-1 pairs found this run
+was content-diffed via normalized md5 before any rename, not just the two
+the prior review happened to catch.
+
+**Result: 21 exact-slug pairs found, 6 content-matched (renamed), 15 did
+not (left alone).**
+
+| repo file (old) | matched ledger version | content match? | action |
+|---|---|---|---|
+| `20260825112956_gh1245_measurement_manual_fulfillment.sql` | `20260825113124` | yes | renamed |
+| `20260825113728_gh1245_admin_measurements_rls.sql` | `20260825113857` | yes | renamed |
+| `20260825114153_gh1245_claims_admin_select_fix.sql` | `20260825114251` | yes | renamed |
+| `20260907220015_gh1796_claims_loss_sheet_reviewed_at.sql` | `20260908055116` | yes | renamed |
+| `20260908194734_gh1724_check_email_exists_rate_limit.sql` | `20260909033039` | yes | renamed |
+| `20260914204807_gh1932_..._trigger.sql` | `20260914204825` | yes | renamed |
+| `20260818214531_gh974_...ownership_check.sql` | `20260818214332` | **known no** (round-2 finding, unchanged) | left in Remainder |
+| `20260818214620_gh972_...auth_scope.sql` | `20260818214025` | **known no** (round-2 finding, unchanged) | left in Remainder |
+| `20260904132600_gh1532_claims_status_check.sql` | `20260908175940` | no | left in Remainder |
+| `20260904233727_gh1532_accept_bid_payment_guard.sql` | `20260908180021` | no | left in Remainder |
+| `20260914195746_gh1932_notify_admin_new_homeowner_triggers.sql` | `20260914200612` | no | left in Remainder |
+| `20260924160000_gh2154_p2_partner_attribution_activation.sql` | `20260924195135` | no | left in Remainder |
+| `20260924195639_gh2121_lead_goal_writeback.sql` | `20260925012137` | no | left in Remainder |
+| `20260925020000_gh2121_lead_next_step_reminder.sql` | `20260925131220` | no | left in Remainder |
+| `20260925090000_gh2121_lead_next_step_reminder_cron.sql` | `20260925131729` | no | left in Remainder |
+| `20260925012956_gh2155_hi0b_agreement_v3.sql` | `20260925140409` | no | left in Remainder |
+| `20260925131429_gh2154_p3_notifications_referral_agent_id.sql` | `20260925180145` | no | left in Remainder |
+| `20260924200316_gh2154_p3_partner_new_alert_trigger.sql` | `20260925180241` | no | left in Remainder |
+| `20260924210000_gh2154_p4_partner_onboarding_ledger.sql` | `20260925180541` | no | left in Remainder |
+| `20260924211500_gh2154_p4_partner_onboarding_cron.sql` | `20260925180647` | no | left in Remainder |
+| `20260925183000_gh2154_p4_switchon_retry_cap_uncertain_alert.sql` | `20260925185056` | no | left in Remainder |
+
+The 15 content-mismatched, same-slug pairs are new findings, not
+previously enumerated by name in this doc except gh974/gh972. Each is a
+same-named file whose live, ledger-recorded body differs from the repo
+file's body -- most likely later unfiled patch versions in the gap between
+the two timestamps, the same pattern gh974/gh972 showed. None was renamed.
+Resolving them needs, per file: pull every ledger version between the
+repo file's timestamp and the matched version, diff each patch's
+`statements` against the repo file to find where they diverge, and either
+update the repo file's body to the final live state (a content change, not
+a pure rename -- out of this SELECT-only reconciliation PR's rename-only
+scope) or leave the file named for its own (unfiled) version and file the
+missing patch versions separately. Flagged as explicit next-dispatch work.
+
+The remaining 18 Direction-2 files (39 at part-2 head, minus the 21
+exact-slug pairs above) have no ledger row sharing their exact slug at all
+-- resolving those needs a statement-body diff against every candidate
+ledger version, not a name match, and was out of scope for this pass. A
+few have a close-but-not-exact ledger name worth checking first in the
+next pass: `add_claims_hover_measurements` (repo 20260709100547; ledger
+has the same base name at 20260709100251 -- possibly a true duplicate,
+not a rename candidate, needs a body diff to tell which), `gh820_accept_
+public_directory_rpc_risk` (repo 20260814013701; ledger has it at
+20260814013724), `gh1059_partner_agreement_acceptance` (repo
+20260820004212; ledger files it under version 20260820004417 with that
+same string as part of its recorded name), `gh1253_backfill_service_
+states_from_description` (repo 20260830170958; ledger has `..._restamp`
+at 20260831113959 -- name is not identical, verify before treating as a
+match), `gh1304_v115_guard_log_bid_accepted` (repo 20260901132754; ledger
+has `v115_guard_log_bid_accepted` at 20260901132827), and `gh1509_w9_gate_
+retired_policy_key` (repo 20260904234257; ledger files that exact string
+under version 20260909122835). The remaining files with no close-name
+candidate at all: `v82_d182_retroactive_members_table`, `v84_drop_orphan_
+tables`, `v101_referral_agents_public_directory_optin` (20260807223000,
+the known v88-banner duplicate from round 2), `gh738_platform_health_
+check_pg_net_timeout`, `gh1544_contractors_email_lower_uniq`, `gh1529_
+revoke_anon_execute_orphaned_security_definer_fns`, `gh1585_funnel_
+abandonment_facts`, `gh1759_backfill_claims_platform_fee_charge`, `gh1725_
+activity_log_nudge_once_uniq`, `gh1825_sms_sent_sid_idx`, `gh1529_revoke_
+anon_write_grants_unbacked_rls_tables`.
+
+Baseline manifest regenerated programmatically this pass (both
+`counts.*` fields and their matching `*_versions` array lengths derived
+from the same live-ledger/repo-tree computation, not hand-typed) --
+`applied_no_repo_file` 58 -> 52, `repo_file_no_applied` 39 -> 33. Both
+ratchet-script runs this session (part-2 head, then this branch's head)
+gave the required "two consecutive runs, second lower than first" result
+in both directions:
+
+```
+part-2 head (origin/k71/gh1438-part2):
+  Baseline applied-but-no-repo-file debt: 58
+  Current repo-file-but-not-applied count: 39 (baseline: 39)
+
+this branch's head:
+  Baseline applied-but-no-repo-file debt: 52
+  Current repo-file-but-not-applied count: 33 (baseline: 33)
+```
+
+Both #2245's rename-aware `permissions-ratchet.py` and
+`new-table-service-role-grant-check.py`, run directly from
+`origin/k71/gh1438-grant-scan-renames` (no cherry-pick) against this
+branch's diff against `origin/k71/gh1438-part2`, gave:
+
+```
+permissions-ratchet: files inspected: 6 -- hard_fail_count=0 bypassed_count=0 bypass_label_present=False -- GATE: PASS
+new-table-service-role-grant-check: files inspected: 6 -- fail_count=0 -- GATE: PASS
+```
+
+SELECT-only throughout; zero `apply_migration`, `execute_sql` write, or
+`db push` at any point in this pass.
