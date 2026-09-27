@@ -407,6 +407,15 @@ SESSION_AWARE_PUBLIC: dict[str, str] = {
     "/hi-4": "hasPartnerSession() only redirects an ALREADY-signed-in "
              "partner to partner-dashboard.html; same pattern as "
              "partner-adjusters.html (hi-4.html).",
+    # CEO RUN 71 (subagent of ceo-2026-09-26T16:23:19Z), app-first funnels
+    # RE-5/HI-5 (D-333): same hasPartnerSession()-only redirect pattern as
+    # re-1.html/hi-1.html above; the FB-in-app-browser fallback form on
+    # each page is the identical re-1/hi-1 form mechanism, unchanged.
+    "/re-5": "hasPartnerSession() only redirects an ALREADY-signed-in partner "
+             "to partner-dashboard.html; same pattern as re-1.html (re-5.html).",
+    "/hi-5": "hasPartnerSession() only redirects an ALREADY-signed-in "
+             "partner to partner-dashboard.html; same pattern as "
+             "hi-1.html (hi-5.html).",
 }
 
 # Reviewed, one-line-reasoned override for the OTHER direction: a page that
