@@ -40,9 +40,13 @@ const html = fs.readFileSync(path.join(repoRoot, PAGE_FILE), 'utf8');
 // Every string here is quoted directly from issue #2150 comment
 // 5821403227, approved as-posted by Dustin (comment 5832299784). A
 // FAIL here means the shipped page no longer matches the approved wording.
+// Subhead updated per Dustin's approval on issue #2150 comment 5856964018
+// ("APPROVE TO ALL"): drops the $10k-minimum framing -- "a referral fee
+// when the job's done" -> "a referral fee on qualifying completed
+// projects." (CEO72 re1-subtitle, PR #2259.)
 const APPROVED_STRINGS = [
   ["H1", "Every Realtor's New Best Friend"],
-  ["Subhead", "Send your clients to Otter Quotes for fast, competing repair bids — no extra work for you, and a referral fee when the job's done."],
+  ["Subhead", "Send your clients to Otter Quotes for fast, competing repair bids — no extra work for you, and a referral fee on qualifying completed projects."],
   ["Bullet 1", "Your client gets multiple contractor bids without hunting for one."],
   ["Bullet 2", "Earn $200 when a referred job of $10,000+ completes."],
   ["Bullet 3", "Track every referral from your phone, in real time."],
