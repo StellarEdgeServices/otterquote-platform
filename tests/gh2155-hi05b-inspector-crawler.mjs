@@ -471,7 +471,7 @@ async function crawl({ starts, maxDepth, jsOn, respectInspectorHiding, inspector
 // ── Scenario 1: JS ON, 3 levels deep, inspector context set, UNSCOPED ─────
 {
   const { visited, hits, exclusionHits } = await crawl({
-    starts: ['hi-1.html', 'partner-inspectors.html'],
+    starts: ['hi-1.html', 'hi-4.html', 'partner-inspectors.html'],
     maxDepth: 3,
     jsOn: true,
     respectInspectorHiding: true,
@@ -512,7 +512,7 @@ async function crawl({ starts, maxDepth, jsOn, respectInspectorHiding, inspector
 // ── Scenario 2: JS OFF, 1 level, static markup + edges only, UNSCOPED ─────
 {
   const { visited, hits, exclusionHits } = await crawl({
-    starts: ['hi-1.html', 'partner-inspectors.html'],
+    starts: ['hi-1.html', 'hi-4.html', 'partner-inspectors.html'],
     maxDepth: 1,
     jsOn: false,
     respectInspectorHiding: false, // the JS that reads data-hide-when-inspector never runs

@@ -268,7 +268,6 @@ DETECTOR_REGISTRY = {
 # (WARN, not silent). When one of these gains a <name>.test.py, remove it from
 # here; it will then be picked up by the generic check automatically.
 LEGACY_EXEMPT = {
-    "scripts/check-10k-floor-phrasing.py": "no negative-control test yet (pre-gh-1738)",
     "scripts/check-email-parts.py": "no negative-control test yet (pre-gh-1738)",
     "scripts/check-gtag-single-source.py": "no negative-control test yet (pre-gh-1738)",
     "scripts/check-partner-surface-single-source.py": "no negative-control test yet (pre-gh-1738)",

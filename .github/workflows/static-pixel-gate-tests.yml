@@ -52,6 +52,12 @@ on:
       - 'tests/gh2151-ins1-page.mjs'
       - 'hi-1.html'
       - 'tests/gh2152-hi1-page.mjs'
+      - 're-3.html'
+      - 'ins-3.html'
+      - 'ins-5.html'
+      - 'hi-4.html'
+      - 'assets/handout-ins-5.html'
+      - 'assets/handout-hi-4.html'
       - 'tests/gh2150-gh2151-s05-perf-structure.mjs'
       - 'tests/gh2192-s05-must-fix.mjs'
       - 'index.html'
@@ -59,6 +65,7 @@ on:
       - 'partners.html'
       - 'partner-profile.html'
       - 'tests/gh2155-hi05b-inspector-crawler.mjs'
+      - 'tests/gh2225-handout-pii-gate.mjs'
       - '.github/workflows/static-pixel-gate-tests.yml'
   push:
     branches: [main]
@@ -104,6 +111,12 @@ on:
       - 'tests/gh2151-ins1-page.mjs'
       - 'hi-1.html'
       - 'tests/gh2152-hi1-page.mjs'
+      - 're-3.html'
+      - 'ins-3.html'
+      - 'ins-5.html'
+      - 'hi-4.html'
+      - 'assets/handout-ins-5.html'
+      - 'assets/handout-hi-4.html'
       - 'tests/gh2150-gh2151-s05-perf-structure.mjs'
       - 'tests/gh2192-s05-must-fix.mjs'
       - 'index.html'
@@ -111,6 +124,7 @@ on:
       - 'partners.html'
       - 'partner-profile.html'
       - 'tests/gh2155-hi05b-inspector-crawler.mjs'
+      - 'tests/gh2225-handout-pii-gate.mjs'
       - '.github/workflows/static-pixel-gate-tests.yml'
 
 permissions:
@@ -179,3 +193,5 @@ jobs:
         run: node tests/gh2192-s05-must-fix.mjs
       - name: Inspector-context crawler -- no fee text within 3 hops (JS on) / 1 hop (JS off) of hi-1/partner-inspectors, negative control (gh2155-hi05b-crawler)
         run: node tests/gh2155-hi05b-inspector-crawler.mjs
+      - name: Handout PII/pixel gate -- code-only query string, validated code, no pixel, no Indiana claim, no paraphrased fee bullet, negative controls (gh2225)
+        run: node tests/gh2225-handout-pii-gate.mjs

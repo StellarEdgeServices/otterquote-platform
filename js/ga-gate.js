@@ -298,9 +298,24 @@
     // (see scripts/check-clarity-page-gate.py's SESSION_AWARE_PUBLIC for
     // the per-page reason).
     '/hi-1',
+    // gh-2152 HI-4 (CEO RUN 71): printable-handout lead magnet, same
+    // PUBLIC pattern as hi-1 above (hasPartnerSession() only redirects an
+    // ALREADY-signed-in partner to partner-dashboard.html).
+    '/hi-4',
+    // CEO RUN 71 (subagent of ceo-2026-09-26T16:23:19Z), app-first funnels
+    // RE-5/HI-5 (D-333): same hasPartnerSession()-only redirect pattern as
+    // re-1.html/hi-1.html above; the FB-in-app-browser fallback form on
+    // each page is the identical re-1/hi-1 form mechanism, unchanged.
     '/hi-5',
     '/how-it-works',
     '/ins-1',
+    // gh-2150/gh-2151 CEO RUN 71 wave 3: RE-3/INS-3 reuse the RE-1/INS-1
+    // build byte-for-byte (D-333) -- same PUBLIC pattern, hasPartnerSession()
+    // only redirects an ALREADY-signed-in partner to partner-dashboard.html.
+    '/ins-3',
+    // gh-2151 INS-5 (CEO RUN 71): co-branded client-handout lead magnet,
+    // same PUBLIC pattern as ins-1 above.
+    '/ins-5',
     '/landing',
     '/onboarding-demo',
     '/oq-voice-ai',
@@ -322,6 +337,7 @@
     '/project-info-cash',
     '/project-info-rcv',
     '/re-1',
+    '/re-3',
     '/re-5',
     '/recruit',
     '/ref',

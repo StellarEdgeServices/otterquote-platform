@@ -388,6 +388,25 @@ SESSION_AWARE_PUBLIC: dict[str, str] = {
     "/hi-1": "hasPartnerSession() only redirects an ALREADY-signed-in "
              "partner to partner-dashboard.html; same pattern as "
              "partner-adjusters.html (hi-1.html).",
+    # CEO RUN 71 wave 3 (#2150/#2151): RE-3/INS-3 reuse the RE-1/INS-1 build
+    # byte-for-byte (D-333) -- same PUBLIC pattern, hasPartnerSession() only
+    # redirects an ALREADY-signed-in partner to partner-dashboard.html;
+    # renders no session-scoped data to an anonymous visitor.
+    "/re-3": "hasPartnerSession() only redirects an ALREADY-signed-in partner "
+             "to partner-dashboard.html; same pattern as "
+             "partner-adjusters.html (re-3.html).",
+    "/ins-3": "hasPartnerSession() only redirects an ALREADY-signed-in "
+              "partner to partner-dashboard.html; same pattern as "
+              "partner-adjusters.html (ins-3.html).",
+    # gh-2151/gh-2152 INS-5/HI-4 (CEO RUN 71, wave 3): the two client-handout
+    # lead-magnet funnel pages, same PUBLIC pattern and same redirect-only
+    # session check as re-1/ins-1/hi-1 above.
+    "/ins-5": "hasPartnerSession() only redirects an ALREADY-signed-in "
+              "partner to partner-dashboard.html; same pattern as "
+              "partner-adjusters.html (ins-5.html).",
+    "/hi-4": "hasPartnerSession() only redirects an ALREADY-signed-in "
+             "partner to partner-dashboard.html; same pattern as "
+             "partner-adjusters.html (hi-4.html).",
     # CEO RUN 71 (subagent of ceo-2026-09-26T16:23:19Z), app-first funnels
     # RE-5/HI-5 (D-333): same hasPartnerSession()-only redirect pattern as
     # re-1.html/hi-1.html above; the FB-in-app-browser fallback form on
