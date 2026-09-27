@@ -141,6 +141,8 @@ const declsScript = `
   const MIN_RESPONSE_MS = ${constScalar("MIN_RESPONSE_MS")};
   const EMAIL_RE = ${constScalar("EMAIL_RE")};
   const ALLOWED_METADATA_ROLES = new Set([${constSet("ALLOWED_METADATA_ROLES")}]);
+  ${constStatement("IPV4_RE")}
+  ${constStatement("IPV6_RE")}
 `;
 
 const fnsScript = [
@@ -148,6 +150,9 @@ const fnsScript = [
   extractFn("function buildCorsHeaders("),
   extractFn("function json("),
   extractFn("function sleep("),
+  extractFn("function safeAuthErrorInfo("),
+  extractFn("function resolveSecretKey("),
+  extractFn("function isValidIpAddress("),
   extractFn("async function dispatchAuthCall("),
   extractFn("async function alertBackgroundAuthFailure("),
   extractFn("function getClientIp("),
@@ -156,6 +161,30 @@ const fnsScript = [
   extractFn("function isAllowedRedirect("),
   extractFn("async function handle("),
 ].join("\n\n");
+
+// IPV4_RE / IPV6_RE are top-level `const` statements (a regex literal and a
+// `new RegExp(...)` call respectively), not functions, so extractFn's
+// brace-matching doesn't apply. This grabs the whole statement by balancing
+// parens/brackets/braces from "const NAME = " to the top-level ";" -- same
+// principle as grabFunction's brace-matching above, and safe for the same
+// reason: every "(", "[", "{" that appears inside a nested string literal
+// (e.g. the character classes in IPV6_RE's pattern strings) is already
+// paired with its own closer, so it nets to zero and never displaces the
+// real statement-ending ";".
+function constStatement(name: string): string {
+  const marker = `const ${name} = `;
+  const start = src.indexOf(marker);
+  if (start === -1) throw new Error(`${name} not found in index.ts`);
+  let i = start + marker.length;
+  let depth = 0;
+  for (; i < src.length; i++) {
+    const c = src[i];
+    if (c === "(" || c === "[" || c === "{") depth++;
+    else if (c === ")" || c === "]" || c === "}") depth--;
+    else if (c === ";" && depth === 0) break;
+  }
+  return src.slice(start, i + 1);
+}
 
 // ---- Scenario-driven stubs for createClient AND Deno (shadows the real
 // global inside the generated function's scope, so handle()'s
@@ -166,13 +195,29 @@ const fnsScript = [
 interface Scenario {
   rateLimited: boolean;
   gotrueDelayMs: number;
-  gotrueError: { message: string } | null;
+  gotrueError: { message: string; code?: string; status?: number } | null;
   alertInserts: Array<Record<string, unknown>>;
   rpcCalls: number;
+  // must-fix 2 (IP forwarding): raw value the harness returns for
+  // `Deno.env.get("SUPABASE_SECRET_KEYS")`, and what createClient() was
+  // actually invoked with, so tests can assert the header is sent only
+  // when it should be.
+  secretKeysEnv: string | undefined;
+  forwardedFor: string | undefined;
+  forwardedKey: string | undefined;
 }
 
 function freshScenario(): Scenario {
-  return { rateLimited: false, gotrueDelayMs: 0, gotrueError: null, alertInserts: [], rpcCalls: 0 };
+  return {
+    rateLimited: false,
+    gotrueDelayMs: 0,
+    gotrueError: null,
+    alertInserts: [],
+    rpcCalls: 0,
+    secretKeysEnv: undefined,
+    forwardedFor: undefined,
+    forwardedKey: undefined,
+  };
 }
 
 function sleepReal(ms: number): Promise<void> {
@@ -180,7 +225,16 @@ function sleepReal(ms: number): Promise<void> {
 }
 
 function makeCreateClient(scenario: Scenario) {
-  return function createClient(_url: string, _key: string, _opts?: unknown) {
+  return function createClient(
+    _url: string,
+    key: string,
+    opts?: { global?: { headers?: Record<string, string> } },
+  ) {
+    const forwarded = opts?.global?.headers?.["Sb-Forwarded-For"];
+    if (forwarded) {
+      scenario.forwardedFor = forwarded;
+      scenario.forwardedKey = key;
+    }
     return {
       auth: {
         async signInWithOtp(_args: unknown) {
@@ -211,8 +265,16 @@ function makeCreateClient(scenario: Scenario) {
 
 // A minimal stand-in for the real `Deno` global -- only `.env.get` is
 // exercised by the extracted code, and every value it returns is unused by
-// the stub `createClient` above anyway (it ignores its url/key args).
-const fakeDeno = { env: { get: (_name: string) => undefined } };
+// the stub `createClient` above except SUPABASE_SECRET_KEYS, which
+// resolveSecretKey() reads to decide whether IP forwarding can switch on
+// (must-fix 2). Scenario-driven so each test controls it independently.
+function makeFakeDeno(scenario: Scenario) {
+  return {
+    env: {
+      get: (name: string) => (name === "SUPABASE_SECRET_KEYS" ? scenario.secretKeysEnv : undefined),
+    },
+  };
+}
 
 function buildHandle(scenario: Scenario): (req: Request) => Promise<Response> {
   const factory = new Function(
@@ -220,7 +282,7 @@ function buildHandle(scenario: Scenario): (req: Request) => Promise<Response> {
     "Deno",
     `${declsScript}\n${fnsScript}\nreturn handle;`,
   );
-  return factory(makeCreateClient(scenario), fakeDeno);
+  return factory(makeCreateClient(scenario), makeFakeDeno(scenario));
 }
 
 function postReq(body: unknown, headers: Record<string, string> = {}): Request {
@@ -335,7 +397,14 @@ Deno.test(
   async () => {
     const scenario = freshScenario();
     scenario.gotrueDelayMs = 10;
-    scenario.gotrueError = { message: "over_request_rate_limit: rate limit exceeded" };
+    // Realistic GoTrue AuthError shape: `.code`/`.status` are the fixed,
+    // non-address-bearing fields the fix now classifies on; `.message` is
+    // human text that must never be stored (see must-fix 1 tests below).
+    scenario.gotrueError = {
+      message: "over_request_rate_limit: rate limit exceeded",
+      code: "over_request_rate_limit",
+      status: 429,
+    };
     const handle = buildHandle(scenario);
 
     const res = await handle(postReq(EXISTING_BODY));
@@ -383,3 +452,161 @@ Deno.test("handle(): a successful background call writes no alert row", async ()
 
   assertEquals(scenario.alertInserts.length, 0);
 });
+
+// ---- 4. Round-2 review must-fix 1 (comment 5858125323): GoTrue error
+// messages that embed the caller's email address must never reach the
+// alert row or console output ----
+
+Deno.test(
+  "handle(): a GoTrue error whose message embeds the caller's email address never appears in the alert row or console output",
+  async () => {
+    const scenario = freshScenario();
+    scenario.gotrueDelayMs = 10;
+    // GoTrue's own message shape for a real failure mode (mail.go:927):
+    // `Email address %q is invalid`. A safe implementation must never
+    // store or log `.message` itself -- only `.code`/`.status`, which
+    // GoTrue never populates with the address.
+    scenario.gotrueError = {
+      message: 'Email address "victim@example.com" is invalid',
+      code: "email_address_invalid",
+      status: 400,
+    };
+    const handle = buildHandle(scenario);
+
+    const originalConsoleError = console.error;
+    const originalConsoleWarn = console.warn;
+    const originalConsoleLog = console.log;
+    const consoleOutput: string[] = [];
+    const capture = (...args: unknown[]) => {
+      consoleOutput.push(args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" "));
+    };
+    console.error = capture;
+    console.warn = capture;
+    console.log = capture;
+    try {
+      const res = await handle(postReq(EXISTING_BODY));
+      assertEquals(res.status, 200); // caller still sees the uniform success
+      await sleepReal(150);
+    } finally {
+      console.error = originalConsoleError;
+      console.warn = originalConsoleWarn;
+      console.log = originalConsoleLog;
+    }
+
+    assertEquals(scenario.alertInserts.length, 1, "expected exactly one alert row");
+    const rowText = JSON.stringify(scenario.alertInserts[0]);
+    assert(
+      !rowText.includes("victim@example.com"),
+      `alert row must never include the caller's email address, got: ${rowText}`,
+    );
+    assertEquals(scenario.alertInserts[0].alert_type, "auth_uniform_send_failed");
+
+    const logText = consoleOutput.join("\n");
+    assert(
+      !logText.includes("victim@example.com"),
+      `console output must never include the caller's email address, got: ${logText}`,
+    );
+  },
+);
+
+// ---- 5. Round-2 review must-fix 2 (comment 5858125323): IP forwarding
+// via SUPABASE_SECRET_KEYS + a validated client IP ----
+
+Deno.test(
+  "handle(): forwards Sb-Forwarded-For with the resolved secret key when SUPABASE_SECRET_KEYS has a usable default entry and the client IP is a valid IPv4",
+  async () => {
+    const scenario = freshScenario();
+    scenario.secretKeysEnv = JSON.stringify({ default: "sb_secret_test_key_abc" });
+    const handle = buildHandle(scenario);
+
+    await handle(postReq(EXISTING_BODY, { "cf-connecting-ip": "203.0.113.50" }));
+    await sleepReal(50);
+
+    assertEquals(scenario.forwardedFor, "203.0.113.50");
+    assertEquals(scenario.forwardedKey, "sb_secret_test_key_abc");
+  },
+);
+
+Deno.test(
+  "handle(): forwards Sb-Forwarded-For for a valid IPv6 client address too",
+  async () => {
+    const scenario = freshScenario();
+    scenario.secretKeysEnv = JSON.stringify({ default: "sb_secret_test_key_abc" });
+    const handle = buildHandle(scenario);
+
+    await handle(postReq(EXISTING_BODY, { "cf-connecting-ip": "2001:db8::1" }));
+    await sleepReal(50);
+
+    assertEquals(scenario.forwardedFor, "2001:db8::1");
+  },
+);
+
+Deno.test(
+  "handle(): sends no forwarding header when SUPABASE_SECRET_KEYS is absent (falls back to the anon key)",
+  async () => {
+    const scenario = freshScenario();
+    scenario.secretKeysEnv = undefined;
+    const handle = buildHandle(scenario);
+
+    await handle(postReq(EXISTING_BODY, { "cf-connecting-ip": "203.0.113.50" }));
+    await sleepReal(50);
+
+    assertEquals(scenario.forwardedFor, undefined);
+  },
+);
+
+Deno.test(
+  "handle(): sends no forwarding header when SUPABASE_SECRET_KEYS is malformed JSON",
+  async () => {
+    const scenario = freshScenario();
+    scenario.secretKeysEnv = "{not valid json";
+    const handle = buildHandle(scenario);
+
+    await handle(postReq(EXISTING_BODY, { "cf-connecting-ip": "203.0.113.50" }));
+    await sleepReal(50);
+
+    assertEquals(scenario.forwardedFor, undefined);
+  },
+);
+
+Deno.test(
+  "handle(): sends no forwarding header when SUPABASE_SECRET_KEYS has no \"default\" entry",
+  async () => {
+    const scenario = freshScenario();
+    scenario.secretKeysEnv = JSON.stringify({ other: "sb_secret_not_default" });
+    const handle = buildHandle(scenario);
+
+    await handle(postReq(EXISTING_BODY, { "cf-connecting-ip": "203.0.113.50" }));
+    await sleepReal(50);
+
+    assertEquals(scenario.forwardedFor, undefined);
+  },
+);
+
+Deno.test(
+  "handle(): sends no forwarding header when the client IP is not syntactically valid (getClientIp() returns \"unknown\")",
+  async () => {
+    const scenario = freshScenario();
+    scenario.secretKeysEnv = JSON.stringify({ default: "sb_secret_test_key_abc" });
+    const handle = buildHandle(scenario);
+
+    await handle(postReq(EXISTING_BODY)); // no cf-connecting-ip / x-forwarded-for header at all
+    await sleepReal(50);
+
+    assertEquals(scenario.forwardedFor, undefined);
+  },
+);
+
+Deno.test(
+  "handle(): sends no forwarding header when the client-supplied IP header is malformed",
+  async () => {
+    const scenario = freshScenario();
+    scenario.secretKeysEnv = JSON.stringify({ default: "sb_secret_test_key_abc" });
+    const handle = buildHandle(scenario);
+
+    await handle(postReq(EXISTING_BODY, { "x-forwarded-for": "not-an-ip, 203.0.113.10" }));
+    await sleepReal(50);
+
+    assertEquals(scenario.forwardedFor, undefined);
+  },
+);
