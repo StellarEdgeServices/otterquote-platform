@@ -5,14 +5,14 @@ name: Schema Column Lint
 # this workflow's whole-workflow run total instead of its push share): the
 # `push` trigger is REMOVED (it fired on `main` -- 135 runs/7d measured
 # 2026-09-20..27 -- and, separately, on 5 manual human pushes to `staging`
-# over the workflow's history, most recently 2026-07-13; the GITHUB_TOKEN-
-# pushed `staging` mirror itself never triggers a run -- each `main` run was
-# a post-merge re-run of a commit the
+# over the workflow's history, all on 2026-05-29; the GITHUB_TOKEN-pushed
+# `staging` mirror itself never triggers a run -- each `main` run was a
+# post-merge re-run of a commit the
 # `pull_request` trigger below already fail-hard-checked pre-merge; at this
 # workflow's measured 1.0 billable min/run that is ~579 job-min/month of
-# zero-new-coverage re-checking, NOT ~2,563/month as originally stated here).
-# Unlike e2e-tests.yml, a 7-day census found no merged-tree-only breakage
-# this workflow's push leg would have caught, so accepting that (small,
+# re-checking, NOT ~2,563/month as originally stated here). Unlike
+# e2e-tests.yml, a 7-day census found no merged-tree-only breakage this
+# workflow's push leg would have caught, so accepting that (small,
 # theoretical) coverage loss for the saving is defensible. Not a
 # branch-protection-required context (see e2e-tests.yml's `on:` comment for
 # the current required list). The paths:-filter history below is left in
