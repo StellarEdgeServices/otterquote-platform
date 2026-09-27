@@ -46,10 +46,19 @@
  *
  *   - CORS allow-list matches check-email-exists's ALLOWED_ORIGINS exactly
  *     (same set of first-party origins call auth flows).
- *   - `redirectTo` is validated against an allow-list mirroring
- *     supabase/config.toml's `[auth].additional_redirect_urls` (plus the
- *     react-app's own `/auth-callback` origin, which is not a static-site
- *     path and so is not in that list) — an unrecognized redirect target
+ *     [REVIEW FOLLOW-UP, comment 5857851132] originally documented here as
+ *     "mirroring supabase/config.toml's `additional_redirect_urls`" — that
+ *     was never accurate: config.toml lists `stellaredgeservices.com` URLs,
+ *     a different domain than this app serves, and is stale relative to
+ *     production independently of this PR. This function's own allow-list
+ *     (REDIRECT_ORIGIN_PATHS, below) is authoritative for what THIS
+ *     function accepts; it is validated against every real first-party
+ *     caller target in this repo, static and staging alike, by
+ *     index.test.ts's caller-target table, not against config.toml.
+ *   - `redirectTo` is validated against that allow-list, checked as an
+ *     origin (an exact, case-insensitive match) plus a path (an exact
+ *     match; the query string and any fragment are handled separately, see
+ *     `isAllowedRedirect`) — an unrecognized redirect target
  *     is a 400, not a padded 200; it is a caller bug (or a misuse attempt),
  *     not part of the enumeration surface this function protects, so it
  *     costs the caller no information about any address and does not need
@@ -113,35 +122,76 @@ const ALLOWED_ORIGINS = [
   "https://staging--jade-alpaca-b82b5e.netlify.app",
 ];
 
-// Mirrors supabase/config.toml's [auth].additional_redirect_urls (the
-// static-site pages that call sendMagicLink/sendPasswordReset via
-// js/auth.js) plus the react-app's own callback origin (app.otterquote.com
-// is already in ALLOWED_ORIGINS above as a CORS origin, but redirectTo is a
-// full URL checked separately and independently of Origin, since a caller
-// could in principle be cross-origin-safe but still ask to redirect
-// somewhere this project never intends to send an auth link).
-const ALLOWED_REDIRECTS = new Set([
-  "https://otterquote.com",
-  "https://otterquote.com/dashboard.html",
-  "https://otterquote.com/get-started.html",
-  "https://otterquote.com/bids.html",
-  "https://otterquote.com/help-estimate.html",
-  "https://otterquote.com/help-measurements.html",
-  "https://otterquote.com/help-materials.html",
-  "https://otterquote.com/color-selection.html",
-  "https://otterquote.com/contract-signing.html",
-  "https://otterquote.com/auth/hover/callback",
-  "https://otterquote.com/auth-callback.html",
-  "https://otterquote.com/contractor-pre-approval.html",
-  "https://otterquote.com/partner-dashboard.html",
-  "https://otterquote.com/partner-login.html?recovery=1",
-  "https://jade-alpaca-b82b5e.netlify.app",
-  "https://jade-alpaca-b82b5e.netlify.app/dashboard.html",
-  "https://app.otterquote.com/auth-callback",
-  "https://app-staging.otterquote.com/auth-callback",
-  "http://localhost:3000",
-  "http://localhost:5500",
+// gh-1883 REVIEW FOLLOW-UP (must-fix 1+2, comment 5857851132): this used to
+// be a flat Set of exact URL strings, matched verbatim including query
+// string. Two real callers broke as a result:
+//   - login.html's "Forgot password?" sends
+//     `${CONFIG.SITE_URL}/login.html?recovery=1` -- not in the old Set (only
+//     partner-login.html's equivalent was), so every homeowner reset 400'd.
+//   - CONFIG.SITE_URL (js/config.js) and contractor-join.html's
+//     window.location.origin both resolve to the STAGING Netlify origins on
+//     jade-alpaca-b82b5e.netlify.app / staging--jade-alpaca-b82b5e.netlify.app
+//     when the page is loaded there, and the old Set had no staging entries
+//     for anything but /dashboard.html -- every staging sign-in/reset 400'd.
+//
+// Rebuilt as an origin allow-list x path allow-list, checked independently,
+// with the query string and fragment handled explicitly below in
+// isAllowedRedirect -- NOT as part of the string being matched. This is
+// intentionally origin+path matching, not a prefix or substring match: an
+// unlisted path on an allow-listed origin is still rejected (same guarantee
+// the old exact-Set gave), but a listed path now accepts ANY query string
+// (real callers append `?recovery=1`, `?intent=...`, etc., and none of that
+// affects which page ultimately handles the redirect).
+//
+// This list is NOT a mirror of supabase/config.toml's
+// [auth].additional_redirect_urls -- that file lists stellaredgeservices.com
+// URLs (a different domain than this app serves), so it is already stale
+// relative to production and this EF's own allow-list is authoritative for
+// what THIS function accepts. GoTrue's own project-level redirect allow-list
+// (config.toml, pushed via the deploy pipeline) is a SEPARATE gate the
+// emailed link must also clear once GoTrue sends it -- config.toml is not
+// touched by this PR; reconciling it with production's real domain is a
+// separate, larger config change, not a must-fix here.
+const REDIRECT_STATIC_PATHS = new Set([
+  "/",
+  "/dashboard.html",
+  "/get-started.html",
+  "/bids.html",
+  "/help-estimate.html",
+  "/help-measurements.html",
+  "/help-materials.html",
+  "/color-selection.html",
+  "/contract-signing.html",
+  "/auth/hover/callback",
+  "/auth-callback.html",
+  "/contractor-pre-approval.html",
+  "/partner-dashboard.html",
+  "/partner-login.html",
+  "/login.html",
 ]);
+
+// The react-app's own callback path (app.otterquote.com / its staging
+// alias), a Next.js route with no ".html" suffix -- distinct path space
+// from the static site above, so kept as its own set rather than merged in.
+const REDIRECT_REACT_PATHS = new Set([
+  "/auth-callback",
+]);
+
+// Local dev only -- both static-site (python -m http.server / live-server)
+// and react-app (next dev) local runs redirect back to their own root.
+const REDIRECT_LOCALHOST_PATHS = new Set([
+  "/",
+]);
+
+const REDIRECT_ORIGIN_PATHS: Record<string, Set<string>> = {
+  "https://otterquote.com": REDIRECT_STATIC_PATHS,
+  "https://jade-alpaca-b82b5e.netlify.app": REDIRECT_STATIC_PATHS,
+  "https://staging--jade-alpaca-b82b5e.netlify.app": REDIRECT_STATIC_PATHS,
+  "https://app.otterquote.com": REDIRECT_REACT_PATHS,
+  "https://app-staging.otterquote.com": REDIRECT_REACT_PATHS,
+  "http://localhost:3000": REDIRECT_LOCALHOST_PATHS,
+  "http://localhost:5500": REDIRECT_LOCALHOST_PATHS,
+};
 
 const FUNCTION_NAME = "auth-uniform";
 const MIN_RESPONSE_MS = 800;
@@ -201,37 +251,112 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// gh-1883 REVIEW FOLLOW-UP (must-fix 4, comment 5857851132): GoTrue's own
+// per-IP limiter for /otp, /recover, /signup and /resend is shared across
+// ALL FOUR of those routes, keyed on the caller's IP
+// (internal/api/apilimiter/apilimiter.go, performRateLimiting). Called from
+// here, that caller IP is this Edge Function's own egress IP, not the
+// end user's -- every user's magic-link/reset/signup request would land in
+// the SAME shared bucket (hosted default: 30/5min) unless the real
+// end-user IP is forwarded.
+//
+// Supabase supports exactly this via the `Sb-Forwarded-For` request header
+// (see "IP address forwarding" in Supabase's Rate Limits docs), but ONLY
+// when BOTH of these hold:
+//   1. The project has "IP Address Forwarding" turned ON under
+//      Authentication > Rate Limits (or `security_sb_forwarded_for_enabled`
+//      via the Management API) -- a project setting, not something this
+//      function or this repo's code can flip. NOT verified as on for this
+//      project as part of this fix; do not assume it is.
+//   2. The GoTrue call is authenticated with a NEW-format secret key
+//      (`sb_secret_...`). Supabase's docs are explicit that legacy
+//      `service_role`/`anon` keys and the new publishable key are NOT
+//      supported for this header -- so the anon key this call otherwise
+//      uses could never carry it even if (1) were on.
+//
+// This function forwards the header whenever a `SUPABASE_SECRET_KEY` EF
+// secret is provisioned (checked at call time, not import time, so a
+// human adding the secret later takes effect on the next invocation with
+// no code change) and falls back to the anon key exactly as before when it
+// is not -- i.e. today, until that secret exists AND (1) is confirmed on,
+// this is a documented no-op, not a silent gap: see the alerting below,
+// which is what makes a resulting throttle visible instead of silent
+// either way.
+//
 // Runs the real GoTrue call OFF the request path. Never throws — any error
-// (network, GoTrue rejection, bad credentials) is caught and logged
-// server-side only; nothing about the outcome reaches the HTTP response,
-// which is the entire point (see file header).
+// (network, GoTrue rejection, bad credentials) is caught, logged
+// server-side, and (best-effort) recorded to platform_alerts_log so a rate
+// limit or send failure back here is visible to an operator instead of
+// only ever showing the caller a uniform "check your email" that never
+// arrives. Nothing about the outcome reaches the HTTP response, which is
+// the entire point (see file header).
 async function dispatchAuthCall(
   action: "otp" | "recover",
   email: string,
   redirectTo: string,
   otpMetadata: Record<string, unknown> | undefined,
+  clientIp: string,
 ): Promise<void> {
+  let errorMessage: string | undefined;
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
-    const sb = createClient(supabaseUrl, anonKey);
+    // New-format `sb_secret_...` key, provisioned separately from the
+    // legacy SUPABASE_SERVICE_ROLE_KEY (which is not accepted for
+    // Sb-Forwarded-For -- see comment above). Absent until a human
+    // provisions it and confirms project-level IP forwarding is on.
+    const secretKey = Deno.env.get("SUPABASE_SECRET_KEY") || "";
+    const canForwardIp = Boolean(secretKey) && clientIp !== "unknown";
+    const sb = canForwardIp
+      ? createClient(supabaseUrl, secretKey, {
+        global: { headers: { "Sb-Forwarded-For": clientIp } },
+      })
+      : createClient(supabaseUrl, anonKey);
 
     if (action === "otp") {
       const { error } = await sb.auth.signInWithOtp({
         email,
         options: { emailRedirectTo: redirectTo, data: otpMetadata },
       });
-      if (error) {
-        console.error(`[${FUNCTION_NAME}] background otp call failed:`, error.message);
-      }
+      if (error) errorMessage = error.message;
     } else {
       const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo });
-      if (error) {
-        console.error(`[${FUNCTION_NAME}] background recover call failed:`, error.message);
-      }
+      if (error) errorMessage = error.message;
     }
   } catch (err) {
-    console.error(`[${FUNCTION_NAME}] background ${action} call threw:`, err);
+    errorMessage = err instanceof Error ? err.message : String(err);
+  }
+
+  if (errorMessage) {
+    console.error(`[${FUNCTION_NAME}] background ${action} call failed:`, errorMessage);
+    await alertBackgroundAuthFailure(action, errorMessage);
+  }
+}
+
+// Best-effort alert row so a background GoTrue failure -- most importantly
+// a rate-limit throttle (`over_request_rate_limit` /
+// `over_email_send_rate_limit`), which the uniform 200 response now hides
+// completely from the caller -- leaves a trace an operator actually
+// watches, per this repo's existing platform_alerts_log convention (see
+// e.g. notify-measurement-order/index.ts). Uses its own service-role
+// client, independent of whichever key dispatchAuthCall used for the
+// GoTrue call itself, since platform_alerts_log writes require it. Never
+// includes the email address -- same "no addresses in logs" posture as the
+// rest of this function.
+async function alertBackgroundAuthFailure(action: "otp" | "recover", reason: string): Promise<void> {
+  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+    const sbAdmin = createClient(supabaseUrl, serviceRoleKey);
+    const isRateLimit = /rate.?limit/i.test(reason);
+    await sbAdmin.from("platform_alerts_log").insert({
+      alert_type: isRateLimit ? "auth_uniform_rate_limited" : "auth_uniform_send_failed",
+      function_name: FUNCTION_NAME,
+      message: `background ${action} call failed: ${reason}`,
+      sent_at: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error(`[${FUNCTION_NAME}] failed to write alert row:`, err);
   }
 }
 
@@ -264,7 +389,49 @@ function isValidAction(action: unknown): action is "otp" | "recover" {
 }
 
 function isAllowedRedirect(redirectTo: unknown): redirectTo is string {
-  return typeof redirectTo === "string" && ALLOWED_REDIRECTS.has(redirectTo);
+  if (typeof redirectTo !== "string" || redirectTo.length === 0) return false;
+
+  let url;
+  try {
+    // `new URL()` with no base rejects protocol-relative ("//evil.com") and
+    // other non-absolute forms outright (throws), so those never reach the
+    // checks below.
+    url = new URL(redirectTo);
+  } catch {
+    return false;
+  }
+
+  // Reject embedded credentials before ever looking at origin/path:
+  // `https://evil.com@otterquote.com` parses to origin "https://otterquote.com"
+  // (evil.com is the *username*), which would otherwise sail through the
+  // origin+path check below even though the browser is being told to
+  // authenticate to "evil.com" first. No real caller in this repo ever puts
+  // a username/password in a redirect URL, so this costs nothing.
+  if (url.username || url.password) return false;
+
+  // Reject a fragment outright. No real caller appends one, and without
+  // this check a payload like ".../auth-callback.html#@evil.com" would
+  // parse to the same allow-listed origin+path with the attacker-controlled
+  // part silently dropped as the (ignored) hash -- correct in that the
+  // browser never actually leaves otterquote.com, but the shipped review
+  // treated this shape as one that must still be rejected outright, so it
+  // is rejected here rather than allowed on the technicality that it's
+  // harmless.
+  if (url.hash) return false;
+
+  // `URL` lower-cases scheme and host during parsing, so origin comparison
+  // here is already case-insensitive (an uppercase-scheme/host attack
+  // variant of an otherwise-malicious URL still fails to match any
+  // allow-listed origin; it is not a way to bypass the check).
+  const allowedPaths = REDIRECT_ORIGIN_PATHS[url.origin];
+  if (!allowedPaths) return false;
+
+  // Path must match exactly (URL normalizes away ../ segments and duplicate
+  // slashes before this runs) -- the query string is deliberately NOT part
+  // of this comparison. A listed path accepts any query string a real
+  // caller appends (?recovery=1, ?intent=homeowner, etc.); an unlisted path
+  // is rejected regardless of query string, same as before.
+  return allowedPaths.has(url.pathname);
 }
 
 async function handle(req: Request): Promise<Response> {
@@ -332,7 +499,7 @@ async function handle(req: Request): Promise<Response> {
   // (and in some local runs), so fall back to a bare fire-and-forget
   // promise with its own internal `.catch` (dispatchAuthCall never
   // rejects, but the fallback is defensive).
-  const bg = dispatchAuthCall(action, email, redirectTo, otpMetadata);
+  const bg = dispatchAuthCall(action, email, redirectTo, otpMetadata, clientIp);
   if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) {
     EdgeRuntime.waitUntil(bg);
   } else {
@@ -352,7 +519,7 @@ serve(handle);
 
 export {
   ALLOWED_METADATA_ROLES,
-  ALLOWED_REDIRECTS,
+  REDIRECT_ORIGIN_PATHS,
   extractOtpMetadata,
   getClientIp,
   handle,
