@@ -380,7 +380,15 @@ def compute_d266_pages(root: Path = None) -> list[str]:
         for p in ALL_PAGES
         if p not in ("partner-insurance", "partner-login", "partner-inspectors")
     }
-    explicit = {"partners", "refer-a-friend", "re-1", "ins-1"}
+    # CEO RUN 72 (subagent of ceo-2026-09-27T13:57:21Z), Z3 merge-conflict
+    # resolution for PR #2223 review 5856062722: re-5.html carries the
+    # D-301/D-305 fee sentence + D-266 disclaimer verbatim on its always-
+    # visible signup form (CEO RUN 71 fix for REVIEW FAIL 5849569486 L1),
+    # but like re-1/ins-1 above it is a single-purpose ad landing page
+    # outside the partner-*.html glob/ALL_PAGES set, so it is registered
+    # here explicitly rather than left for find_unmapped_static_funnels()
+    # to flag as static_funnel_unmapped.
+    explicit = {"partners", "refer-a-friend", "re-1", "ins-1", "re-5"}
     fee_pages = {
         s for s in _fee_sentence_pages(root) if (root / f"{s}.html").is_file()
     }
@@ -1440,6 +1448,16 @@ STATIC_FUNNEL_EXEMPT = {
         "folded into D266_PAGES's glob/ALL_PAGES mechanism because it is a "
         "single-purpose ad landing page, not a partner-*.html marketing "
         "page -- same shape as the other STATIC_FUNNEL_EXEMPT entries above."
+    ),
+    "hi-5.html": (
+        "CEO RUN 71 (subagent of ceo-2026-09-26T16:23:19Z): hi-5.html is "
+        "HI-1's app-first sibling funnel -- same D-333 exemption as "
+        "hi-1.html above (home inspectors receive no referral fee or "
+        "recruit bonus, under any name), copy source issue #2152 evidence "
+        "comment 5849027209. DRAFT, Tier C, not yet Dustin-approved; "
+        "flagged for the same LEGAL-READ pass hi-1.html already went "
+        "through. Not folded into D266_PAGES for the same reason hi-1.html "
+        "isn't: a single-purpose ad landing page, not partner-*.html."
     ),
 }
 
