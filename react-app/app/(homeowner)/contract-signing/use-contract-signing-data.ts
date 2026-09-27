@@ -305,6 +305,18 @@ export async function createHomeownerEnvelope(args: {
  * counting a signature that was never durably recorded. Still never
  * throws/rejects — a `false` return is the failure signal, not an
  * exception — and the redirect still proceeds regardless, unchanged.
+ *
+ * gh-2105 batch 4 (decision a, LEGAL path — flag for R-177): both branches
+ * below used to check only `error`, which is the exact #2103 gap — a
+ * `.update()` with no `.select()` resolves `{ error: null }` even when RLS
+ * or the `.eq()` filter matches ZERO rows. That is precisely the failure
+ * mode fix2 above says it wants to catch ("the write actually succeeded"),
+ * so a zero-row match was silently treated as success and `true` was
+ * returned even though `quotes.homeowner_signed_at` — the durable record of
+ * a signed contract — was never written. BEHAVIOR CHANGE: a signed contract
+ * that hits a zero-row match now returns `false` (funnel event suppressed)
+ * where it previously returned `true`; the redirect still proceeds
+ * regardless (webhook remains the source of truth), unchanged.
  */
 export async function recordHomeownerSigned(args: {
   claimId: string;
@@ -314,23 +326,43 @@ export async function recordHomeownerSigned(args: {
 }): Promise<boolean> {
   try {
     if (args.quoteId) {
-      const { error } = await supabase
+      const { data: rows, error } = await supabase
         .from('quotes')
         .update({ homeowner_signed_at: args.signedAt })
-        .eq('id', args.quoteId);
+        .eq('id', args.quoteId)
+        .select('id');
       if (error) {
         console.error('Error updating homeowner_signed_at:', error);
         return false;
       }
+      if (!Array.isArray(rows) || rows.length === 0) {
+        console.error(
+          'homeowner_signed_at_zero_rows: no matching quote row was updated (quoteId=' +
+            args.quoteId +
+            ')',
+        );
+        return false;
+      }
       return true;
     } else if (args.contractorId) {
-      const { error } = await supabase
+      const { data: rows, error } = await supabase
         .from('quotes')
         .update({ homeowner_signed_at: args.signedAt })
         .eq('claim_id', args.claimId)
-        .eq('contractor_id', args.contractorId);
+        .eq('contractor_id', args.contractorId)
+        .select('id');
       if (error) {
         console.error('Error updating homeowner_signed_at:', error);
+        return false;
+      }
+      if (!Array.isArray(rows) || rows.length === 0) {
+        console.error(
+          'homeowner_signed_at_zero_rows: no matching quote row was updated (claimId=' +
+            args.claimId +
+            ', contractorId=' +
+            args.contractorId +
+            ')',
+        );
         return false;
       }
       return true;
