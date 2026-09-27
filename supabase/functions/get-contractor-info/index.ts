@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { shapeConsentFields } from "./consent-shape.ts";
 
 const ALLOWED_ORIGINS = [
   "https://stellaredgeservices.com",
@@ -88,7 +89,7 @@ serve(async (req: Request) => {
   // Service-role read bypasses RLS
   const { data: contractor, error: contractorErr } = await sb
     .from("contractors")
-    .select("company_name, user_id, stripe_payment_method_id, has_payment_method, contract_templates, contract_pdf_url")
+    .select("company_name, user_id, phone, notification_phones, sms_opt_in, sms_opt_in_at, sms_consent_text_version, stripe_payment_method_id, has_payment_method, contract_templates, contract_pdf_url")
     .eq("id", contractor_id)
     .single();
 
@@ -169,10 +170,26 @@ serve(async (req: Request) => {
     }
   }
 
-  // Return only safe fields; never expose Stripe IDs
+  // Return only safe fields; never expose Stripe IDs.
+  //
+  // gh-1916 CLOSE-REVIEW FAIL 5777750121: the send path (notify-contractors,
+  // process-dunning, the homeowner "nudge" on contract-signing.html and its
+  // React port) gates strictly on sms_opt_in === true and needs the phone
+  // number(s) plus consent metadata to prove which text version was agreed
+  // to. Both callers are already scoped above to the claim's homeowner or
+  // the contractor itself (isHomeowner || isTheContractor, AND linked via
+  // selected_contractor_id or a quote on THIS claim) — returning phone and
+  // consent fields does not widen exposure beyond that pair; no other
+  // caller can reach this branch (verify_jwt = true, Bearer-token auth,
+  // Forbidden otherwise).
   return json({
+    id: contractor_id,
     company_name: contractor.company_name,
     user_id: contractor.user_id,
+    // shapeConsentFields is the single, tested place sms_opt_in collapses to
+    // exactly `true`/`null` (never a bare `false`) and withholds the opt-in
+    // timestamp/consent-text-version unless consent is really `true`.
+    ...shapeConsentFields(contractor),
     has_payment_method: hasPaymentMethod,
     contract_templates: contractor.contract_templates,
     contract_pdf_url: contractor.contract_pdf_url,
