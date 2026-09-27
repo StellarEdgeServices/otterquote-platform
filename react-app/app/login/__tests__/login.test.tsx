@@ -20,14 +20,19 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 vi.mock('@/lib/supabase', () => ({
   supabase: {
     auth: {
-      signInWithOtp: vi.fn(),
       signInWithOAuth: vi.fn(),
     },
   },
 }));
+// gh-1883 [SECURITY]: magic-link send/resend now goes through auth-uniform
+// (lib/auth-uniform.ts), not supabase.auth.signInWithOtp() directly — see
+// that file's doc comment. Mocked separately so these tests assert the
+// call this page ACTUALLY makes.
+vi.mock('@/lib/auth-uniform', () => ({ callAuthUniform: vi.fn() }));
 vi.mock('@/hooks/use-auth-ready', () => ({ useAuthReady: vi.fn() }));
 
 import { supabase } from '@/lib/supabase';
+import { callAuthUniform } from '@/lib/auth-uniform';
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import LoginPage from '../page';
 import { LOGIN_COPY } from '../copy';
@@ -78,7 +83,7 @@ function asUnauthenticated() {
 beforeEach(() => {
   vi.clearAllMocks();
   window.history.replaceState({}, '', '/');
-  (supabase.auth.signInWithOtp as ReturnType<typeof vi.fn>).mockResolvedValue({ error: null });
+  (callAuthUniform as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
   (supabase.auth.signInWithOAuth as ReturnType<typeof vi.fn>).mockResolvedValue({ error: null });
 });
 
@@ -162,7 +167,7 @@ describe('<LoginPage /> rendered behavior (unauthenticated)', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: STATIC.submit }));
     expect(screen.getByText(LOGIN_COPY.errorInvalidEmail)).toBeInTheDocument();
-    expect(supabase.auth.signInWithOtp).not.toHaveBeenCalled();
+    expect(callAuthUniform).not.toHaveBeenCalled();
   });
 
   it('sends a magic link and shows the D-244 sent state', async () => {
@@ -178,10 +183,7 @@ describe('<LoginPage /> rendered behavior (unauthenticated)', () => {
     expect(screen.getByText(STATIC.sentResend)).toBeInTheDocument();
     expect(screen.getByText('jane@example.com')).toBeInTheDocument();
 
-    expect(supabase.auth.signInWithOtp).toHaveBeenCalledWith({
-      email: 'jane@example.com',
-      options: { emailRedirectTo: AUTH_CALLBACK_URL },
-    });
+    expect(callAuthUniform).toHaveBeenCalledWith('otp', 'jane@example.com', AUTH_CALLBACK_URL);
     expect(localStorage.getItem('cs_auth_role')).toBe('homeowner');
   });
 
