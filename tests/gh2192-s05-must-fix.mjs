@@ -349,6 +349,17 @@ await testRecruitCodeRace('hi-1.html', 'homeInspectorForm', {
   fullName: 'Jane Test', email: 'gh2192-hi1-test@example.invalid', phone: '3175551234', company: 'Test Co', agreeToTerms: true,
 }, 'hi-1.html must-fix (1)');
 
+// gh-2151/gh-2152 INS-5/HI-4 (CEO RUN 71): clones of ins-1.html/hi-1.html --
+// same must-fix (1) applies verbatim (no dc7135be pre-fix history for these
+// new files, so the pre-fix half SKIPs and only the post-fix assertion runs).
+await testRecruitCodeRace('ins-5.html', 'insuranceAgentForm', {
+  fullName: 'Jane Test', email: 'gh2192-ins5-test@example.invalid', phone: '3175551234', company: 'Test Agency', agreeToTerms: true,
+}, 'ins-5.html must-fix (1)');
+
+await testRecruitCodeRace('hi-4.html', 'homeInspectorForm', {
+  fullName: 'Jane Test', email: 'gh2192-hi4-test@example.invalid', phone: '3175551234', company: 'Test Co', agreeToTerms: true,
+}, 'hi-4.html must-fix (1)');
+
 // re-1.html negative control: no recruit-code feature exists on this page
 // at all (p_recruit_code is a hardcoded null on both dc7135be and main) --
 // confirmed here so the "check re-1.html for the same class of bug" ask is
@@ -456,6 +467,14 @@ await testEarlyTapGuard('ins-1.html', 'insuranceAgentForm', {
 await testEarlyTapGuard('hi-1.html', 'homeInspectorForm', {
   fullName: 'Jane Test', email: 'gh2192-hi1-test2@example.invalid', phone: '3175551234', company: 'Test Co', agreeToTerms: true,
 }, 'hi-1.html must-fix (2)');
+
+await testEarlyTapGuard('ins-5.html', 'insuranceAgentForm', {
+  fullName: 'Jane Test', email: 'gh2192-ins5-test2@example.invalid', phone: '3175551234', company: 'Test Agency', agreeToTerms: true,
+}, 'ins-5.html must-fix (2)');
+
+await testEarlyTapGuard('hi-4.html', 'homeInspectorForm', {
+  fullName: 'Jane Test', email: 'gh2192-hi4-test2@example.invalid', phone: '3175551234', company: 'Test Co', agreeToTerms: true,
+}, 'hi-4.html must-fix (2)');
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed (post-fix assertions -- these gate CI)');
 console.log(preFixPass + ' passed, ' + preFixFail + ' failed (pre-fix/dc7135be bug-documentation assertions -- informational only, never gate CI)');

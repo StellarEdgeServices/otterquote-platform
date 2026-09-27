@@ -380,7 +380,7 @@ def compute_d266_pages(root: Path = None) -> list[str]:
         for p in ALL_PAGES
         if p not in ("partner-insurance", "partner-login", "partner-inspectors")
     }
-    explicit = {"partners", "refer-a-friend", "re-1", "ins-1"}
+    explicit = {"partners", "refer-a-friend", "re-1", "ins-1", "ins-5"}
     fee_pages = {
         s for s in _fee_sentence_pages(root) if (root / f"{s}.html").is_file()
     }
@@ -1440,6 +1440,17 @@ STATIC_FUNNEL_EXEMPT = {
         "folded into D266_PAGES's glob/ALL_PAGES mechanism because it is a "
         "single-purpose ad landing page, not a partner-*.html marketing "
         "page -- same shape as the other STATIC_FUNNEL_EXEMPT entries above."
+    ),
+    "hi-4.html": (
+        "gh-2152 HI-4 (CEO RUN 71, wave 3): the printable-handout client "
+        "lead magnet for the home-inspector track -- same underlying offer "
+        "and same D-333 exemption as hi-1.html above (Dustin ruling 5832300782: "
+        "\"no D-266 disclaimer, inspectors take no fee\"). The match is the "
+        "mandatory D-333 NO-fee statement itself (\"referral fee\" appears "
+        "inside \"do not receive a referral fee or recruit bonus\"), not an "
+        "actual fee offer. Not folded into D266_PAGES for the same reason "
+        "hi-1.html isn't: a single-purpose ad landing page, not a "
+        "partner-*.html marketing page."
     ),
 }
 

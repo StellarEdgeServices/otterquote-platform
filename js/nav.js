@@ -121,7 +121,12 @@ const Nav = {
    */
   _INSPECTOR_CONTEXT_KEY: 'oq_inspector_ctx',
 
-  _INSPECTOR_PAGES: ['hi-1', 'partner-inspectors', 'partner-agreement-inspector'],
+  // gh-2152 HI-4 (CEO RUN 71): the printable-handout inspector funnel page
+  // is the same inspector-context surface as hi-1 -- added here so any
+  // shared nav-rendered link (Partner Login, footer, etc.) treats an hi-4.html
+  // visitor identically to an hi-1.html visitor, never surfacing fee-bearing
+  // copy or a "join the referral program" link (D-333).
+  _INSPECTOR_PAGES: ['hi-1', 'hi-4', 'partner-inspectors', 'partner-agreement-inspector'],
 
   /** Strip a trailing "/" and a trailing ".html" so a Netlify pretty URL
    *  (no extension) and the literal filename both normalize to the same

@@ -152,6 +152,11 @@ function runAll(html, label) {
 runAll(stripComments(fs.readFileSync(path.join(repoRoot, 're-1.html'), 'utf8')), 're-1.html');
 runAll(stripComments(fs.readFileSync(path.join(repoRoot, 'ins-1.html'), 'utf8')), 'ins-1.html');
 runAll(stripComments(fs.readFileSync(path.join(repoRoot, 'hi-1.html'), 'utf8')), 'hi-1.html');
+// gh-2151/gh-2152 INS-5/HI-4 (CEO RUN 71): cloned from ins-1.html/hi-1.html,
+// same S05 perf structure preserved verbatim (scripts relocated to the end
+// of <body>, lazy Supabase bundle load) -- covered by the same assertions.
+runAll(stripComments(fs.readFileSync(path.join(repoRoot, 'ins-5.html'), 'utf8')), 'ins-5.html');
+runAll(stripComments(fs.readFileSync(path.join(repoRoot, 'hi-4.html'), 'utf8')), 'hi-4.html');
 
 console.log('');
 console.log(pass + ' passed, ' + fail + ' failed');
