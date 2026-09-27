@@ -988,15 +988,15 @@ async function handleFormSubmit(e) {
   submitBtn.textContent = 'Sending secure link...';
 
   try {
-    // Send magic link
-    const { error: authError } = await sb.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: `${CONFIG.SITE_URL}/dashboard.html`,
-      },
-    });
-
-    if (authError) throw new Error(authError.message);
+    // Send magic link via the auth-uniform Edge Function, not
+    // sb.auth.signInWithOtp() directly — gh-1883 [SECURITY]: that call
+    // hits GoTrue's /auth/v1/otp directly, a confirmed account-enumeration
+    // oracle. See js/auth.js's _callAuthUniform doc comment.
+    try {
+      await _callAuthUniform('otp', email, `${CONFIG.SITE_URL}/dashboard.html`);
+    } catch (authError) {
+      throw new Error(authError.message);
+    }
 
     // Persist profile data to localStorage for post-auth pickup
     const profileData = {
