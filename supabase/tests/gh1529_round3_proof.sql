@@ -1,11 +1,14 @@
 -- gh-1529 round 3 proof.
 --
 -- Run against the CI TEST project (zsdvaqilfdclwosmiheh) ONLY. Never run
--- against production. Each of the two sections below is its own
+-- against production. Each of the three sections below is its own
 -- self-contained BEGIN ... ROLLBACK batch -- run SECTION A once (before
--- the migration -- fail-first negative control), then SECTION B once
--- (applies the migration's DDL inline in the SAME rolled-back transaction,
--- then asserts it closed). Neither section ever COMMITs.
+-- the migration -- fail-first negative control), SECTION B once (applies
+-- the migration's DDL inline in the SAME rolled-back transaction, then
+-- asserts it closed), and SECTION C once (applies the forward DDL, then
+-- the ROLLBACK file's exact DDL, in the same rolled-back transaction, and
+-- asserts the rollback restores the exact pre-migration state -- REVIEW:
+-- FAIL 5856575411 must-fix #2). No section ever COMMITs.
 --
 -- WHY A SHIM: the CI test project (zsdvaqilfdclwosmiheh) has `quotes`,
 -- `contractors`, `claims`, and `contractor_can_bid(uuid)` in the same live
@@ -59,6 +62,16 @@ BEGIN
 
   INSERT INTO public.claims (id, user_id, is_test)
   VALUES (v_claim_id, v_uid, true)
+  ON CONFLICT (id) DO NOTHING;
+
+  -- Satisfies the quotes_enforce_bid_can_submit / D-199 bid-gate trigger
+  -- (bid_can_submit) so the quotes INSERT below is rejected by RLS, not
+  -- masked by an unrelated business-rule gate: default trade='roofing',
+  -- default funding_type='retail' per enforce_bid_can_submit()'s own
+  -- coalesce/derivation logic when trade_type/claims.funding_type/
+  -- claims.job_type are all null (this fixture's case).
+  INSERT INTO public.contractor_templates (id, contractor_id, trade, funding_type, pdf_storage_path, status)
+  VALUES (gen_random_uuid(), v_contractor_id, 'roofing', 'retail', 'gh1529-r3-test.pdf', 'auto_validated')
   ON CONFLICT (id) DO NOTHING;
 
   RAISE NOTICE 'gh1529_r3 SETUP: contractor % , claim % , auth.users %', v_contractor_id, v_claim_id, v_uid;
@@ -131,6 +144,35 @@ EXCEPTION WHEN insufficient_privilege THEN
 END;
 $gh1529_r3_before_call$;
 
+-- Direct proof: anon INSERT into quotes (is_test row) -- BEFORE migration.
+-- Work order 5851011353 item 1 / REVIEW: FAIL 5856575411 must-fix #1:
+-- anon IS a member of the policy's role set ({public}) pre-migration, but
+-- can never satisfy the with_check's auth.uid() conjunct -- expect a
+-- row-level-security rejection (SQLSTATE 42501).
+DO $gh1529_r3_before_quotes_insert$
+DECLARE
+  v_state text;
+  v_msg text;
+BEGIN
+  BEGIN
+    SET LOCAL ROLE anon;
+    INSERT INTO public.quotes (claim_id, contractor_id, total_price, fee_percentage, fee_amount, is_test)
+    VALUES ('22222222-2222-2222-2222-222222222222', '11111111-1111-1111-1111-111111111111', 1000, 10, 100, true);
+    RESET ROLE;
+    v_state := 'SUCCESS';
+    v_msg := 'insert succeeded (unexpected)';
+  EXCEPTION WHEN OTHERS THEN
+    RESET ROLE;
+    v_state := SQLSTATE;
+    v_msg := SQLERRM;
+  END;
+  RAISE NOTICE 'gh1529_r3 BEFORE: anon INSERT into quotes -> SQLSTATE=% SQLERRM=%', v_state, v_msg;
+  IF v_state = 'SUCCESS' THEN
+    RAISE EXCEPTION 'gh1529_r3 BEFORE PRE-CHECK FAILED: anon INSERT into quotes unexpectedly succeeded (RLS should reject it -- with_check auth.uid() conjunct can never be satisfied by anon)';
+  END IF;
+END;
+$gh1529_r3_before_quotes_insert$;
+
 -- Section A never commits.
 ROLLBACK;
 
@@ -156,6 +198,10 @@ BEGIN
   ON CONFLICT (id) DO NOTHING;
   INSERT INTO public.claims (id, user_id, is_test)
   VALUES (v_claim_id, v_uid, true)
+  ON CONFLICT (id) DO NOTHING;
+
+  INSERT INTO public.contractor_templates (id, contractor_id, trade, funding_type, pdf_storage_path, status)
+  VALUES (gen_random_uuid(), v_contractor_id, 'roofing', 'retail', 'gh1529-r3-test.pdf', 'auto_validated')
   ON CONFLICT (id) DO NOTHING;
 END;
 $gh1529_r3_fixtures_b$;
@@ -245,7 +291,138 @@ BEGIN
 END;
 $gh1529_r3_kept$;
 
+-- Direct proof: anon INSERT into quotes (is_test row) -- AFTER migration.
+-- Expect rejection again, but now for a different reason: no policy at all
+-- applies to anon's role on quotes INSERT (the policy's role set is
+-- {authenticated} only) -- still SQLSTATE 42501 / "new row violates
+-- row-level security policy", captured here rather than assumed.
+DO $gh1529_r3_after_quotes_insert$
+DECLARE
+  v_state text;
+  v_msg text;
+BEGIN
+  BEGIN
+    SET LOCAL ROLE anon;
+    INSERT INTO public.quotes (claim_id, contractor_id, total_price, fee_percentage, fee_amount, is_test)
+    VALUES ('22222222-2222-2222-2222-222222222222', '11111111-1111-1111-1111-111111111111', 1000, 10, 100, true);
+    RESET ROLE;
+    v_state := 'SUCCESS';
+    v_msg := 'insert succeeded (unexpected)';
+  EXCEPTION WHEN OTHERS THEN
+    RESET ROLE;
+    v_state := SQLSTATE;
+    v_msg := SQLERRM;
+  END;
+  RAISE NOTICE 'gh1529_r3 AFTER: anon INSERT into quotes -> SQLSTATE=% SQLERRM=%', v_state, v_msg;
+  IF v_state = 'SUCCESS' THEN
+    RAISE EXCEPTION 'gh1529_r3 AFTER POST-CHECK FAILED: anon INSERT into quotes unexpectedly succeeded post-migration';
+  END IF;
+END;
+$gh1529_r3_after_quotes_insert$;
+
 -- Section B never commits either.
+ROLLBACK;
+
+-- ============================================================================
+-- SECTION C -- rollback-half proof (REVIEW: FAIL 5856575411 must-fix #2):
+-- apply the forward DDL, then apply the ROLLBACK file's exact DDL in the
+-- SAME transaction, and assert the pre-migration state is restored. Run as
+-- its own separate batch:
+--   BEGIN;
+--   \i supabase/tests/gh1529_round3_proof.sql   -- (SECTION C only)
+--   ROLLBACK;
+-- ============================================================================
+
+BEGIN;
+
+DO $gh1529_r3_fixtures_c$
+DECLARE
+  v_uid uuid;
+BEGIN
+  SELECT id INTO v_uid FROM auth.users LIMIT 1;
+  INSERT INTO public.contractors (id, company_name, contact_name, email, is_test)
+  VALUES ('11111111-1111-1111-1111-111111111111', 'gh1529-r3 test co', 'gh1529-r3 tester', 'gh1529-r3@example.invalid', true)
+  ON CONFLICT (id) DO NOTHING;
+  INSERT INTO public.claims (id, user_id, is_test)
+  VALUES ('22222222-2222-2222-2222-222222222222', v_uid, true)
+  ON CONFLICT (id) DO NOTHING;
+END;
+$gh1529_r3_fixtures_c$;
+
+CREATE TABLE IF NOT EXISTS public.partner_onboarding_sends (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  partner_id uuid NOT NULL,
+  stage text NOT NULL,
+  status text NOT NULL,
+  skipped_reason text,
+  error text,
+  mailgun_id text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  attempt_count integer NOT NULL DEFAULT 0,
+  terminal_failure boolean NOT NULL DEFAULT false,
+  uncertain_alerted_at timestamptz
+);
+ALTER TABLE public.partner_onboarding_sends ENABLE ROW LEVEL SECURITY;
+GRANT SELECT, INSERT, UPDATE, DELETE, REFERENCES, TRIGGER, TRUNCATE ON public.partner_onboarding_sends TO anon;
+
+-- ── Forward DDL (exact contents of the forward migration) ──────────────
+ALTER POLICY "Contractors can insert quotes" ON public.quotes TO authenticated;
+REVOKE EXECUTE ON FUNCTION public.contractor_can_bid(uuid) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.contractor_can_bid(uuid) FROM anon;
+REVOKE INSERT, UPDATE, DELETE ON public.partner_onboarding_sends FROM anon;
+
+-- ── Rollback DDL (exact contents of
+--    supabase/migrations_rollbacks/20260927133501_gh1529_r3_contractor_can_bid_and_onboarding_sends_rollback.sql) ──
+ALTER POLICY "Contractors can insert quotes" ON public.quotes TO public;
+GRANT EXECUTE ON FUNCTION public.contractor_can_bid(uuid) TO PUBLIC;
+GRANT EXECUTE ON FUNCTION public.contractor_can_bid(uuid) TO anon;
+GRANT INSERT, UPDATE, DELETE ON public.partner_onboarding_sends TO anon;
+
+-- ── Assert the rollback restored the exact pre-migration state ─────────
+DO $gh1529_r3_rollback_assert$
+DECLARE
+  v_policy_roles text;
+  v_anon_exec_fn boolean;
+  v_proacl text;
+  v_proacl_has_public boolean;
+  v_proacl_has_anon boolean;
+  v_anon_ins_pos boolean;
+  v_anon_upd_pos boolean;
+  v_anon_del_pos boolean;
+BEGIN
+  SELECT roles::text INTO v_policy_roles FROM pg_policies
+  WHERE schemaname='public' AND tablename='quotes' AND policyname='Contractors can insert quotes';
+
+  SELECT has_function_privilege('anon', 'public.contractor_can_bid(uuid)', 'EXECUTE') INTO v_anon_exec_fn;
+
+  SELECT p.proacl::text INTO v_proacl
+  FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+  WHERE n.nspname='public' AND p.proname='contractor_can_bid';
+  v_proacl_has_public := v_proacl ~ '=X/postgres';
+  v_proacl_has_anon := v_proacl ~ 'anon=X/postgres';
+
+  SELECT has_table_privilege('anon','public.partner_onboarding_sends','INSERT') INTO v_anon_ins_pos;
+  SELECT has_table_privilege('anon','public.partner_onboarding_sends','UPDATE') INTO v_anon_upd_pos;
+  SELECT has_table_privilege('anon','public.partner_onboarding_sends','DELETE') INTO v_anon_del_pos;
+
+  RAISE NOTICE 'gh1529_r3 ROLLBACK-ASSERT: policy_roles=% (expect {public})', v_policy_roles;
+  RAISE NOTICE 'gh1529_r3 ROLLBACK-ASSERT: anon_exec_fn=% (expect true)', v_anon_exec_fn;
+  RAISE NOTICE 'gh1529_r3 ROLLBACK-ASSERT: proacl=% has_public=% has_anon=% (expect both true)', v_proacl, v_proacl_has_public, v_proacl_has_anon;
+  RAISE NOTICE 'gh1529_r3 ROLLBACK-ASSERT: anon ins/upd/del on partner_onboarding_sends = %/%/%  (expect true/true/true)', v_anon_ins_pos, v_anon_upd_pos, v_anon_del_pos;
+
+  IF v_policy_roles !~ 'public'
+     OR NOT v_anon_exec_fn
+     OR NOT v_proacl_has_public
+     OR NOT v_proacl_has_anon
+     OR NOT v_anon_ins_pos OR NOT v_anon_upd_pos OR NOT v_anon_del_pos THEN
+    RAISE EXCEPTION 'gh1529_r3 ROLLBACK-ASSERT FAILED: rollback did not restore the exact pre-migration state -- policy_roles=%, anon_exec_fn=%, proacl=%, ins=%, upd=%, del=%',
+      v_policy_roles, v_anon_exec_fn, v_proacl, v_anon_ins_pos, v_anon_upd_pos, v_anon_del_pos;
+  END IF;
+  RAISE NOTICE 'gh1529_r3 ROLLBACK-ASSERT PASSED: rollback file restores the exact pre-migration state.';
+END;
+$gh1529_r3_rollback_assert$;
+
+-- Section C never commits either.
 ROLLBACK;
 
 -- ============================================================================
