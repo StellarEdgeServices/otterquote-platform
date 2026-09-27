@@ -261,41 +261,6 @@ function readLegacy(callerKey: string): string | null {
   return null;
 }
 
-/**
- * gh-1980 PR 2/3 (storageKey convergence) — migration safety. Mirrors
- * js/cookie-storage.js's migrateLegacySession() (see that file for the full
- * rationale): before the "no cookie session -> purge and treat as signed
- * out" branch runs, give a still-valid legacy-key session (e.g. a
- * pre-convergence session under `sb-<project-ref>-auth-token`) one chance
- * to migrate onto the canonical cookies instead of being purged. An
- * already-expired legacy session is not migrated and falls through to the
- * existing purge/sign-out path unchanged.
- */
-function migrateLegacySession(callerKey: string): string | null {
-  try {
-    let raw = window.localStorage.getItem(callerKey);
-    if (!raw) {
-      for (const k of LEGACY_KEYS) {
-        const v = window.localStorage.getItem(k);
-        if (v) { raw = v; break; }
-      }
-    }
-    if (!raw) return null;
-    const session = parseSession(raw);
-    if (!session) return null;
-    if (session.expSec && session.expSec <= Math.floor(Date.now() / 1000)) return null;
-    const maxAge = getCookieMaxAge(session.expSec);
-    writeCookie(COOKIE_ACCESS,  session.access,  maxAge);
-    writeCookie(COOKIE_REFRESH, session.refresh, maxAge);
-    verifyWrite(COOKIE_ACCESS,  session.access,  'access_token (gh-1980 PR2 migration)');
-    verifyWrite(COOKIE_REFRESH, session.refresh, 'refresh_token (gh-1980 PR2 migration)');
-    try { window.localStorage.setItem(callerKey, raw); } catch { /* ignore */ }
-    return raw;
-  } catch {
-    return null;
-  }
-}
-
 function verifyWrite(key: string, expected: string, label: string): boolean {
   const actual = readCookie(key);
   if (actual === null) {
@@ -429,11 +394,6 @@ export function createOtterQuoteCookieStorage(storageKey: string): CookieStorage
     // Purge local copies so sign-out sticks everywhere. Only a browser that
     // cannot hold cookies at all falls back to localStorage.
     if (cookiesUsable()) {
-      // gh-1980 PR 2: before purging, give a legacy (pre-convergence)
-      // session one chance to migrate onto the canonical cookies -- see
-      // migrateLegacySession() above.
-      const migrated = migrateLegacySession(key);
-      if (migrated) return migrated;
       try { window.localStorage.removeItem(key); } catch { /* ignore */ }
       try {
         for (const k of LEGACY_KEYS) window.localStorage.removeItem(k);

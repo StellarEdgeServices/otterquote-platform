@@ -1,22 +1,30 @@
 /**
  * gh-1980 PR 2/3 ("[SECURITY, PKCE] Move Supabase auth to PKCE") -- static
- * stack storageKey convergence + migration safety, mirroring the react-app
- * suite's gh1980-pr2-storagekey-migration.test.ts.
+ * stack storageKey convergence, mirroring the react-app suite's
+ * gh1980-pr2-storagekey-migration.test.ts.
  *
  * PR 2's job: converge every browser-side Supabase client construction onto
  * the canonical storageKey (window.OTTERQUOTE_AUTH_STORAGE_KEY /
  * 'sb-otterquote-auth'), and pin supabase-js so the CDN version does not
  * float. This file has two halves:
  *
- *   Scenarios (1)-(4): run the REAL js/cookie-storage.js, unmodified, in a
- *   vm context (same harness as tests/gh1980-pr1-key-aware-storage.mjs) and
- *   prove the migration-safety guarantee added to getItem(): a session that
- *   exists only under a legacy (pre-convergence) key is migrated to cookies,
- *   not purged, the first time a call site reads under the canonical key.
- *   This is what makes it safe for admin-dashboard.html,
- *   admin-homeowners.html and admin-measurements.html to switch from a bare
- *   createClient() (supabase-js's own default storage/key) to this adapter
- *   in this same PR without signing anyone out.
+ *   Scenarios (1)-(3): #488 regression coverage (RETURNED per REVIEW: FAIL
+ *   comment 5856934888 / RETURNED 5856979533 on PR #2255, CTO RUN 43). The
+ *   PR's original migrateLegacySession() ran BEFORE the "both cookies
+ *   absent -> signed out, purge local copies" branch and wrote a still-valid
+ *   per-origin localStorage session back onto the shared, domain-wide
+ *   cookies. That reverses #488: a user who signs out on app.otterquote.com
+ *   (deleting only the shared cookies + app's own localStorage) and then
+ *   loads otterquote.com is signed back in, because otterquote.com's own
+ *   localStorage copy (canonical key OR any recognized legacy key) still had
+ *   a live session and got promoted onto the cookies. On a shared computer
+ *   the next person inherits it. migrateLegacySession() has been removed
+ *   entirely; getItem() now runs the unconditional #488 purge exactly as it
+ *   did before this PR, run REGARDLESS of which key (canonical or legacy)
+ *   carries the leftover session.
+ *
+ *   Scenario (4): a malformed legacy value is still purged, not migrated
+ *   (there is no migration path any more) -- basic purge-path coverage.
  *
  *   Scenario (5): a static, repo-wide convergence guard -- greps every
  *   tracked HTML file (and js/config.js) for a `createClient(` call site and
@@ -27,10 +35,11 @@
  *   adapter at all), this scenario fails instead of silently reintroducing
  *   the gh-1980 PR 2 regression.
  *
- * Fail-first: scenarios (1)-(4) fail against the pre-PR-2
- * js/cookie-storage.js (no migrateLegacySession()) -- see the PR/issue
- * comment for the raw pre-fix run. Scenario (5) fails against the pre-PR-2
- * working tree (admin-dashboard.html etc. had no storageKey at all).
+ * Fail-first: scenarios (1)-(2) FAIL against PR #2255 head 50ef0f81 (the
+ * pre-fix `migrateLegacySession()` resurrects the session and rewrites the
+ * cookies instead of signing out) and PASS on this head. Scenario (5) fails
+ * against the pre-PR-2 working tree (admin-dashboard.html etc. had no
+ * storageKey at all).
  *
  * Run: node tests/gh1980-pr2-storagekey-migration.mjs
  * Exit code 0 = every scenario passed, 1 = at least one failed.
@@ -141,29 +150,58 @@ const NOW = Math.floor(Date.now() / 1000);
 function main() {
   const cookieStorageSrc = fs.readFileSync(path.join(repoRoot, 'js', 'cookie-storage.js'), 'utf8');
 
-  // (1) NEGATIVE CONTROL: a still-valid legacy-key session is migrated to
-  // cookies, not purged, when read under the canonical key -- proves a page
-  // that just converged (no cookies of its own yet) does not sign its user
-  // out.
+  // (1) #488 REGRESSION -- CANONICAL key: a still-valid session sitting only
+  // in this origin's localStorage under the canonical key, no session
+  // cookies present (the cross-subdomain sign-out scenario: cookies were
+  // deleted on the other subdomain, this origin's localStorage was never
+  // touched) -- getItem() under the canonical key MUST return null (signed
+  // out), MUST NOT write the session-cookies, and MUST purge the canonical
+  // key from localStorage. This is exactly what RETURNED comment 5856979533
+  // says PR #2255 head 50ef0f81 gets wrong: migrateLegacySession() reads
+  // this same localStorage entry and promotes it back onto the shared
+  // cookies, undoing the sign-out.
   {
     try {
-      const access = makeJwt({ sub: 'user-mig', exp: NOW + 3600, iat: NOW });
-      const raw = sessionJson(access, 'refresh-legacy', NOW + 3600);
-      const { ctx, cookieDoc } = buildRealm(cookieStorageSrc, { [LEGACY_KEY]: raw });
+      const access = makeJwt({ sub: 'user-486-canonical', exp: NOW + 3600, iat: NOW });
+      const raw = sessionJson(access, 'refresh-canonical', NOW + 3600);
+      const { ctx, cookieDoc } = buildRealm(cookieStorageSrc, { [STORAGE_KEY]: raw });
 
-      ok(!cookieDoc.has(COOKIE_ACCESS), '(1) precondition: no session cookies exist before migration');
+      ok(!cookieDoc.has(COOKIE_ACCESS), '(1) precondition: no session cookies exist (simulates sign-out on the other subdomain)');
 
       const result = ctx.window.OtterQuoteCookieStorage.getItem(STORAGE_KEY);
-      ok(result !== null, '(1) legacy-key session is NOT treated as signed-out when read under the canonical key');
-      ok(result !== null && JSON.parse(result).access_token === access, '(1) migrated session carries the original access token');
-      ok(cookieDoc.has(COOKIE_ACCESS) && cookieDoc.has(COOKIE_REFRESH), '(1) migration promotes the legacy session onto the shared cookies');
+      ok(result === null, '(1) #488 REGRESSION: a canonical-key localStorage session with no cookies is signed out, not resurrected');
+      ok(!cookieDoc.has(COOKIE_ACCESS) && !cookieDoc.has(COOKIE_REFRESH), '(1) #488 REGRESSION: the session-cookies are never written from the localStorage copy');
+      ok(ctx.localStorage.getItem(STORAGE_KEY) === null, '(1) #488 REGRESSION: the canonical-key localStorage entry is purged, not left to resurrect on a later read');
     } catch (e) {
-      failWithReason('(1) legacy-key migration negative control', e.message);
+      failWithReason('(1) #488 regression -- canonical key', e.message);
     }
   }
 
-  // (2) An EXPIRED legacy-key session is NOT migrated -- falls through to
-  // the existing purge/sign-out path unchanged.
+  // (2) #488 REGRESSION -- LEGACY key: same scenario, but the leftover
+  // session sits under a legacy (pre-convergence) key
+  // (`sb-<project-ref>-auth-token`, what admin-dashboard.html's old bare
+  // createClient() used) instead of the canonical one. The RETURNED comment
+  // is explicit that restricting the old migration shim to legacy keys only
+  // would NOT have fixed the defect -- this scenario is the proof: the fix
+  // must purge unconditionally regardless of which key holds the leftover
+  // session.
+  {
+    try {
+      const access = makeJwt({ sub: 'user-488-legacy', exp: NOW + 3600, iat: NOW });
+      const raw = sessionJson(access, 'refresh-legacy', NOW + 3600);
+      const { ctx, cookieDoc } = buildRealm(cookieStorageSrc, { [LEGACY_KEY]: raw });
+
+      const result = ctx.window.OtterQuoteCookieStorage.getItem(STORAGE_KEY);
+      ok(result === null, '(2) #488 REGRESSION: a legacy-key localStorage session with no cookies is signed out, not resurrected');
+      ok(!cookieDoc.has(COOKIE_ACCESS) && !cookieDoc.has(COOKIE_REFRESH), '(2) #488 REGRESSION: the session-cookies are never written from the legacy-key localStorage copy');
+      ok(ctx.localStorage.getItem(LEGACY_KEY) === null, '(2) #488 REGRESSION: the legacy key itself is purged from localStorage');
+    } catch (e) {
+      failWithReason('(2) #488 regression -- legacy key', e.message);
+    }
+  }
+
+  // (3) An EXPIRED legacy-key session hits the same unconditional purge path
+  // (there is no migration branch left to special-case it).
   {
     try {
       const access = makeJwt({ sub: 'user-exp', exp: NOW - 3600, iat: NOW - 7200 });
@@ -171,44 +209,24 @@ function main() {
       const { ctx, cookieDoc } = buildRealm(cookieStorageSrc, { [LEGACY_KEY]: raw });
 
       const result = ctx.window.OtterQuoteCookieStorage.getItem(STORAGE_KEY);
-      ok(result === null, '(2) an expired legacy-key session is not migrated');
-      ok(!cookieDoc.has(COOKIE_ACCESS), '(2) no cookies were written for an expired legacy session');
-      ok(ctx.localStorage.getItem(LEGACY_KEY) === null, '(2) purge behavior (pre-existing, unchanged): the legacy key itself is removed');
+      ok(result === null, '(3) an expired legacy-key session is signed out');
+      ok(!cookieDoc.has(COOKIE_ACCESS), '(3) no cookies were written for an expired legacy session');
+      ok(ctx.localStorage.getItem(LEGACY_KEY) === null, '(3) purge behavior: the legacy key itself is removed');
     } catch (e) {
-      failWithReason('(2) expired legacy session not migrated', e.message);
+      failWithReason('(3) expired legacy session purged', e.message);
     }
   }
 
-  // (3) A malformed legacy value is not migrated -- purge path runs exactly
-  // as before this PR.
+  // (4) A malformed legacy value is purged the same way -- no migration path
+  // exists to special-case it.
   {
     try {
       const { ctx, cookieDoc } = buildRealm(cookieStorageSrc, { [LEGACY_KEY]: 'not-json-and-not-a-session' });
       const result = ctx.window.OtterQuoteCookieStorage.getItem(STORAGE_KEY);
-      ok(result === null, '(3) a malformed legacy value is not migrated');
-      ok(!cookieDoc.has(COOKIE_ACCESS), '(3) no cookies were written for a malformed legacy value');
+      ok(result === null, '(4) a malformed legacy value is signed out, not migrated');
+      ok(!cookieDoc.has(COOKIE_ACCESS), '(4) no cookies were written for a malformed legacy value');
     } catch (e) {
-      failWithReason('(3) malformed legacy value not migrated', e.message);
-    }
-  }
-
-  // (4) One-time self-heal: after migration, the cookie fast-path wins even
-  // if a stale legacy value reappears (e.g. a second tab writing garbage).
-  {
-    try {
-      const access = makeJwt({ sub: 'user-heal', exp: NOW + 3600, iat: NOW });
-      const raw = sessionJson(access, 'refresh-legacy', NOW + 3600);
-      const { ctx } = buildRealm(cookieStorageSrc, { [LEGACY_KEY]: raw });
-
-      const first = ctx.window.OtterQuoteCookieStorage.getItem(STORAGE_KEY);
-      ok(first !== null, '(4) first read migrates successfully');
-
-      ctx.localStorage.setItem(LEGACY_KEY, 'garbage-that-would-fail-to-parse');
-      const second = ctx.window.OtterQuoteCookieStorage.getItem(STORAGE_KEY);
-      ok(second !== null && JSON.parse(second).access_token === access,
-        '(4) second read takes the cookie fast-path, ignoring the now-stale legacy key');
-    } catch (e) {
-      failWithReason('(4) one-time self-heal', e.message);
+      failWithReason('(4) malformed legacy value purged', e.message);
     }
   }
 

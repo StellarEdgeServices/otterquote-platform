@@ -240,55 +240,6 @@
     return null;
   }
 
-  /**
-   * gh-1980 PR 2/3 (storageKey convergence) — migration safety.
-   *
-   * Converging every call site onto the canonical storageKey means some
-   * pages (e.g. admin-dashboard.html, admin-homeowners.html,
-   * admin-measurements.html) switch, for the first time, from a bare
-   * `createClient(...)` with supabase-js's own default storage/key
-   * (localStorage under `sb-<project-ref>-auth-token`, no cookies at all)
-   * to this cookie adapter under the canonical key. Without this function,
-   * the very next getItem() on such a page would see no session cookie yet
-   * (this page never wrote one), fall into the "both cookies absent -> purge
-   * and treat as signed out" branch below, and sign out a user who was
-   * validly signed in a moment ago under the old key -- exactly the
-   * regression gh-1980 PR 2 must not cause.
-   *
-   * Read-then-migrate: look for a still-valid (unexpired) session under the
-   * caller's own key or any recognized legacy key, and if found, promote it
-   * to the canonical cookies (the same write path setItem() uses) instead
-   * of purging it. One-time and idempotent -- once the cookies exist, this
-   * function is never reached again (the getItem() cookie check above wins).
-   * An already-expired legacy session is deliberately NOT migrated: it falls
-   * through to the existing purge/sign-out path, same as before this PR.
-   */
-  function migrateLegacySession(callerKey) {
-    try {
-      var raw = window.localStorage.getItem(callerKey);
-      if (!raw) {
-        var lk = legacyKeys();
-        for (var i = 0; i < lk.length; i++) {
-          var v = window.localStorage.getItem(lk[i]);
-          if (v) { raw = v; break; }
-        }
-      }
-      if (!raw) return null;
-      var session = parseSession(raw);
-      if (!session) return null;
-      if (session.expSec && session.expSec <= Math.floor(Date.now() / 1000)) return null;
-      var maxAge = getCookieMaxAge(session.expSec);
-      writeCookie(COOKIE_ACCESS,  session.access,  maxAge);
-      writeCookie(COOKIE_REFRESH, session.refresh, maxAge);
-      verifyWrite(COOKIE_ACCESS,  session.access,  'access_token (gh-1980 PR2 migration)');
-      verifyWrite(COOKIE_REFRESH, session.refresh, 'refresh_token (gh-1980 PR2 migration)');
-      try { window.localStorage.setItem(callerKey, raw); } catch (e) {}
-      return raw;
-    } catch (e) {
-      return null;
-    }
-  }
-
   // #488 — cookie-usability probe (memoized per page load). When cookies are
   // blocked entirely the cookie cannot be canonical and localStorage remains
   // the only viable store; everywhere else, absent cookies mean signed out.
@@ -390,11 +341,6 @@
       // subdomain. Purge local copies so sign-out sticks everywhere. Only a
       // browser that cannot hold cookies at all falls back to localStorage.
       if (cookiesUsable()) {
-        // gh-1980 PR 2: before purging, give a legacy (pre-convergence)
-        // session one chance to migrate onto the canonical cookies -- see
-        // migrateLegacySession() above.
-        var migrated = migrateLegacySession(key);
-        if (migrated) return migrated;
         try { window.localStorage.removeItem(key); } catch (e) {}
         try {
           var purge = legacyKeys();

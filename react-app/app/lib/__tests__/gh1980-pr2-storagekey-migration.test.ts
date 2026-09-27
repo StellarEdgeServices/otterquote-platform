@@ -17,10 +17,20 @@
  * supabase-js's own default storage/key to this adapter under the
  * canonical key without signing anyone out.
  *
- * Negative control: an old-key session is still recognized (migrated, not
- * purged) after the change. Fails against the pre-PR-2 getItem(), which
- * purges any non-cookie, non-canonical-key session unconditionally the
- * first time cookiesUsable() is true and no cookie session exists.
+ * #488 regression coverage (RETURNED per REVIEW: FAIL comment 5856934888 /
+ * RETURNED 5856979533 on PR #2255, CTO RUN 43): the original
+ * migrateLegacySession() ran before the "both cookies absent -> signed out,
+ * purge local copies" branch and wrote a still-valid per-origin localStorage
+ * session back onto the shared, domain-wide cookies -- reversing #488. A
+ * user who signs out on app.otterquote.com (deleting only the shared
+ * cookies + app's own localStorage) and then loads otterquote.com was
+ * signed back in, because otterquote.com's own localStorage copy (canonical
+ * key OR any recognized legacy key) still had a live session and got
+ * promoted onto the cookies. migrateLegacySession() has been removed
+ * entirely; getItem() now runs the unconditional #488 purge exactly as it
+ * did before this PR, regardless of which key (canonical or legacy) carries
+ * the leftover session. The tests below fail against PR #2255 head
+ * 50ef0f81 and pass on this head.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
@@ -95,7 +105,7 @@ describe('gh-1980 PR 2: React client already converged onto the canonical storag
   });
 });
 
-describe('gh-1980 PR 2: legacy-key session migration safety (getItem)', () => {
+describe('gh-1980 PR 2: #488 regression -- sign-out must stick, not be undone by a leftover localStorage session', () => {
   beforeEach(() => {
     clearCookies();
     try { window.localStorage.clear(); } catch { /* ignore */ }
@@ -107,32 +117,44 @@ describe('gh-1980 PR 2: legacy-key session migration safety (getItem)', () => {
     vi.restoreAllMocks();
   });
 
-  it('NEGATIVE CONTROL: a still-valid session under a legacy (pre-convergence) key is migrated to cookies, not purged, when read under the canonical key', () => {
-    // No cookies exist yet (this page never wrote them -- it just switched
-    // from a bare createClient() to the canonical adapter). A legacy-key
-    // session sits in localStorage from before the switch.
+  it('#488 REGRESSION (canonical key): a still-valid session under the CANONICAL key with no session cookies is signed out, not resurrected', () => {
+    // No cookies exist (simulates a sign-out on the other subdomain, which
+    // deletes only the shared cookies + that origin's own localStorage).
+    // This origin's localStorage still has a live session under the
+    // canonical key from before the sign-out.
+    const access = makeJwt({ sub: SUB, exp: NOW + 3600, iat: NOW, email: 'admin@example.com' });
+    const raw = sessionJson(access, 'refresh-canonical', NOW + 3600);
+    window.localStorage.setItem(OTTERQUOTE_AUTH_STORAGE_KEY, raw);
+
+    expect(document.cookie).not.toContain(`${_COOKIE_ACCESS}=`);
+
+    const result = otterquoteCookieStorage.getItem(OTTERQUOTE_AUTH_STORAGE_KEY);
+
+    // The user must be treated as signed out, exactly as #488 requires.
+    expect(result).toBeNull();
+    expect(document.cookie).not.toContain(`${_COOKIE_ACCESS}=`);
+    expect(document.cookie).not.toContain(`${_COOKIE_REFRESH}=`);
+    // The localStorage copy must be purged, not left to resurrect the
+    // session on a later read.
+    expect(window.localStorage.getItem(OTTERQUOTE_AUTH_STORAGE_KEY)).toBeNull();
+  });
+
+  it('#488 REGRESSION (legacy key): a still-valid session under a LEGACY (pre-convergence) key with no session cookies is signed out, not resurrected', () => {
     const access = makeJwt({ sub: SUB, exp: NOW + 3600, iat: NOW, email: 'admin@example.com' });
     const raw = sessionJson(access, 'refresh-legacy', NOW + 3600);
     window.localStorage.setItem(LEGACY_KEY, raw);
 
     expect(document.cookie).not.toContain(`${_COOKIE_ACCESS}=`);
 
-    // Read under the CANONICAL key -- what every converged client now uses.
     const result = otterquoteCookieStorage.getItem(OTTERQUOTE_AUTH_STORAGE_KEY);
 
-    // The user must NOT be treated as signed out.
-    expect(result).not.toBeNull();
-    const parsed = JSON.parse(result as string);
-    expect(parsed.access_token).toBe(access);
-
-    // And the migration must be durable -- the shared cookies now exist,
-    // so any OTHER converged client (a different page, the other stack)
-    // sees the same session without needing the legacy key at all.
-    expect(document.cookie).toContain(`${_COOKIE_ACCESS}=`);
-    expect(document.cookie).toContain(`${_COOKIE_REFRESH}=`);
+    expect(result).toBeNull();
+    expect(document.cookie).not.toContain(`${_COOKIE_ACCESS}=`);
+    expect(document.cookie).not.toContain(`${_COOKIE_REFRESH}=`);
+    expect(window.localStorage.getItem(LEGACY_KEY)).toBeNull();
   });
 
-  it('an EXPIRED legacy-key session is NOT migrated -- falls through to the existing purge/sign-out path unchanged', () => {
+  it('an EXPIRED legacy-key session is signed out -- purge path unchanged', () => {
     const access = makeJwt({ sub: SUB, exp: NOW - 3600, iat: NOW - 7200, email: 'admin@example.com' });
     const raw = sessionJson(access, 'refresh-legacy-expired', NOW - 3600);
     window.localStorage.setItem(LEGACY_KEY, raw);
@@ -141,11 +163,10 @@ describe('gh-1980 PR 2: legacy-key session migration safety (getItem)', () => {
 
     expect(result).toBeNull();
     expect(document.cookie).not.toContain(`${_COOKIE_ACCESS}=`);
-    // Purge behavior (pre-existing, unchanged): the legacy key itself is gone too.
     expect(window.localStorage.getItem(LEGACY_KEY)).toBeNull();
   });
 
-  it('a MALFORMED legacy-key value (not a parseable session) is NOT migrated -- purge path runs exactly as before this PR', () => {
+  it('a MALFORMED legacy-key value (not a parseable session) is signed out -- purge path unchanged', () => {
     window.localStorage.setItem(LEGACY_KEY, 'not-json-and-not-a-session');
 
     const result = otterquoteCookieStorage.getItem(OTTERQUOTE_AUTH_STORAGE_KEY);
@@ -154,23 +175,7 @@ describe('gh-1980 PR 2: legacy-key session migration safety (getItem)', () => {
     expect(document.cookie).not.toContain(`${_COOKIE_ACCESS}=`);
   });
 
-  it('migration is a one-time self-heal: a second getItem() call after migration takes the cookie fast-path, not the migration path again', () => {
-    const access = makeJwt({ sub: SUB, exp: NOW + 3600, iat: NOW, email: 'admin@example.com' });
-    const raw = sessionJson(access, 'refresh-legacy', NOW + 3600);
-    window.localStorage.setItem(LEGACY_KEY, raw);
-
-    const first = otterquoteCookieStorage.getItem(OTTERQUOTE_AUTH_STORAGE_KEY);
-    expect(first).not.toBeNull();
-
-    // Simulate a hostile/stale legacy value reappearing (e.g. another tab) --
-    // it must be ignored now that the cookies are the source of truth.
-    window.localStorage.setItem(LEGACY_KEY, 'garbage-that-would-fail-to-parse');
-    const second = otterquoteCookieStorage.getItem(OTTERQUOTE_AUTH_STORAGE_KEY);
-    expect(second).not.toBeNull();
-    expect(JSON.parse(second as string).access_token).toBe(access);
-  });
-
-  it('migration also works through a freshly-built factory instance for a NON-canonical key (mirrors a client mid-convergence)', () => {
+  it('a freshly-built factory instance for a NON-canonical key also signs out on a leftover legacy session, never rewriting the shared cookies', () => {
     const access = makeJwt({ sub: SUB, exp: NOW + 3600, iat: NOW, email: 'admin@example.com' });
     const raw = sessionJson(access, 'refresh-legacy', NOW + 3600);
     window.localStorage.setItem(LEGACY_KEY, raw);
@@ -178,7 +183,7 @@ describe('gh-1980 PR 2: legacy-key session migration safety (getItem)', () => {
     const instance = createOtterQuoteCookieStorage('sb-some-other-caller-key');
     const result = instance.getItem('sb-some-other-caller-key');
 
-    expect(result).not.toBeNull();
-    expect(document.cookie).toContain(`${_COOKIE_ACCESS}=`);
+    expect(result).toBeNull();
+    expect(document.cookie).not.toContain(`${_COOKIE_ACCESS}=`);
   });
 });
