@@ -317,4 +317,20 @@ describe('page.tsx source guards', () => {
     expect(pageSrc).toContain(".eq('id', editingId)");
     expect(pageSrc).toContain(".eq('id', deletingId)");
   });
+
+  // gh-2105 batch 6 -- the platform_fee_config .update() (fee rule edit) had
+  // no `.select()`, so a zero-row RLS/id-mismatch match reported success
+  // ("Fee rule updated successfully") while the fee percentage every bid's
+  // disclosure is computed from never actually changed. FAIL-FIRST: on
+  // main (pre-batch-6) page.tsx, `.update(payload).eq('id', editingId)` has
+  // no `.select('id')` chained and there is no editingId-guarded zero-row
+  // throw — these assertions fail there. HTML twin: admin-fee-config.html
+  // has the identical defect and fix.
+  it('gh-2105 (decision a, money — HIGH PRIORITY): the fee-rule update chains .select() and throws on a zero-row match', () => {
+    const idx = pageSrc.indexOf('editingId');
+    expect(idx).toBeGreaterThan(-1);
+    expect(pageSrc).toContain(".update(payload).eq('id', editingId).select('id')");
+    expect(pageSrc).toContain('gh2105_zero_rows');
+    expect(pageSrc).toContain('editingId && (!Array.isArray(result.data) || result.data.length === 0)');
+  });
 });
