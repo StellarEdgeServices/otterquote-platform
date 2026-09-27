@@ -12,14 +12,34 @@
 // `true` may ever reach Twilio. Mirrors notify-contractors'
 // sendSmsViaEdgeFunction (supabase/functions/notify-contractors/index.ts)
 // exactly, so the same choke point exists for every SMS-sending function.
+//
+// RETURNED 5856782745 (Marty, CTO RUN 44) fix 2 (coordinator follow-up on
+// PR #2252): `sms_opt_in = true` alone is not the whole of D-328's "opted in,
+// current text version contractor-v2-2026-09-15" condition. A contractor who
+// consented under a since-superseded sentence (`contractor-v1-2026-09-14`,
+// the pre-CEO-RUN-43 draft — see contractor-join.html's own
+// sms_consent_text_version write) or with no stored version at all must
+// still be refused. CURRENT_CONTRACTOR_SMS_CONSENT_VERSION is the ONE place
+// that string lives on this send path — contractor-join.html (the #1938
+// consent-capture form, untouched by this fix) has its own literal for the
+// same reason contractor-join.html and this Edge Function cannot share a
+// TS module (one is a static page, the other a Deno function); grepping the
+// repo for the literal found no existing shared constant to import instead.
+export const CURRENT_CONTRACTOR_SMS_CONSENT_VERSION = "contractor-v2-2026-09-15";
 
 /**
  * The send-path gate itself: true only when consent is really, strictly
- * `true`. NULL (never asked — the v115 default for every pre-migration row)
- * and `false` (opted out) both refuse.
+ * `true` AND the stored consent was captured under the CURRENT text version.
+ * NULL/undefined `smsOptIn` (never asked — the v115 default for every
+ * pre-migration row) and `false` (opted out) both refuse, as do a missing or
+ * superseded `smsConsentTextVersion` even when `smsOptIn` is `true` — the
+ * contractor agreed to a sentence Otter Quotes no longer sends under.
  */
-export function isSmsConsented(smsOptIn: boolean | null | undefined): boolean {
-  return smsOptIn === true;
+export function isSmsConsented(
+  smsOptIn: boolean | null | undefined,
+  smsConsentTextVersion: string | null | undefined,
+): boolean {
+  return smsOptIn === true && smsConsentTextVersion === CURRENT_CONTRACTOR_SMS_CONSENT_VERSION;
 }
 
 export interface SendResult {
@@ -33,10 +53,12 @@ export interface SendResult {
  * Attempt a single contractor SMS via the send-sms Edge Function, using the
  * service-role bearer (send-sms's own auth gate trusts the service-role key
  * as an internal caller — see send-sms/index.ts). Refuses BEFORE any network
- * call unless `smsOptIn` is strictly `true`. `fetchImpl` is injected so this
- * is unit-testable without a live network call or a real Supabase project —
- * the test asserts fetchImpl is never called for a non-consenting contractor
- * and IS called for a consenting one.
+ * call unless `smsOptIn` is strictly `true` AND `smsConsentTextVersion`
+ * equals `CURRENT_CONTRACTOR_SMS_CONSENT_VERSION`. `fetchImpl` is injected so
+ * this is unit-testable without a live network call or a real Supabase
+ * project — the test asserts fetchImpl is never called for a non-consenting
+ * (or stale-version) contractor and IS called for a genuinely, currently
+ * consenting one.
  */
 export async function attemptContractorSms(
   fetchImpl: typeof fetch,
@@ -46,10 +68,11 @@ export async function attemptContractorSms(
   message: string,
   contractorId: string,
   smsOptIn: boolean | null | undefined,
+  smsConsentTextVersion: string | null | undefined,
 ): Promise<SendResult> {
-  if (!isSmsConsented(smsOptIn)) {
+  if (!isSmsConsented(smsOptIn, smsConsentTextVersion)) {
     console.warn(
-      `[send-contractor-nudge] SMS refused (gh-1916 R-134 / D-328 gate) — sms_opt_in is not true for contractor ${contractorId} (value=${String(smsOptIn)}). No Twilio call attempted.`,
+      `[send-contractor-nudge] SMS refused (gh-1916 R-134 / D-328 gate) — sms_opt_in/sms_consent_text_version do not satisfy the gate for contractor ${contractorId} (sms_opt_in=${String(smsOptIn)}, sms_consent_text_version=${String(smsConsentTextVersion)}, required=${CURRENT_CONTRACTOR_SMS_CONSENT_VERSION}). No Twilio call attempted.`,
     );
     return { attempted: false, ok: false };
   }

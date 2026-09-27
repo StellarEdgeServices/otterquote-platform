@@ -132,10 +132,13 @@ serve(async (req: Request) => {
   }
 
   // Service-role read — this is the ONLY place phone/consent fields are read
-  // for this flow, and they never leave this function.
+  // for this flow, and they never leave this function. sms_consent_text_version
+  // is read alongside sms_opt_in per RETURNED 5856782745's full condition
+  // ("opted in, current text version contractor-v2-2026-09-15") — see
+  // consent-gate.ts's isSmsConsented.
   const { data: contractor, error: contractorErr } = await sb
     .from("contractors")
-    .select("company_name, phone, notification_phones, sms_opt_in")
+    .select("company_name, phone, notification_phones, sms_opt_in, sms_consent_text_version")
     .eq("id", contractor_id)
     .single();
 
@@ -189,7 +192,8 @@ serve(async (req: Request) => {
   }
 
   // D-328 / gh-1916 R-134 gate: attemptContractorSms refuses (+logs) before
-  // ever calling Twilio unless contractor.sms_opt_in is strictly true.
+  // ever calling Twilio unless contractor.sms_opt_in is strictly true AND
+  // sms_consent_text_version equals CURRENT_CONTRACTOR_SMS_CONSENT_VERSION.
   let contractorNotified = false;
   for (const phone of phones) {
     const result = await attemptContractorSms(
@@ -200,6 +204,7 @@ serve(async (req: Request) => {
       contractorMsg,
       contractor_id,
       contractor.sms_opt_in,
+      contractor.sms_consent_text_version,
     );
     if (result.ok) contractorNotified = true;
   }
