@@ -1,0 +1,4 @@
+gh-1855 Credential Shape Sweep negative control -- DO NOT MERGE (throwaway PR, will be closed).
+The value below is an obviously fake, non-secret 40-char hex run (repeated 'deadbeef') chosen to trip
+the sweep's HEX_RUN_20 shape class only. It is not a credential of any provider.
+fake_hex_run = deadbeefdeadbeefdeadbeefdeadbeefdeadbeef
