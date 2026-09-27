@@ -1,3 +1,5 @@
+> **SUPERSEDED (2026-09-26, gh-1438 part 2)** -- the object this document describes is not live under this migration's own name; the live column was added by `supabase/migrations/20260808134406_v101_referral_agents_public_directory_optin.sql` instead (issue #385). Kept unmodified below this banner for history.
+
 # Pre-Flight: v88_referral_agents_public_directory_optin
 
 **Migration**: v88_referral_agents_public_directory_optin.sql
@@ -20,7 +22,7 @@ Until this migration is applied, the generator detects the missing column and ex
 ## Row Count Estimate
 
 | Table | Row Count | Source |
-|-------|-----------|--------|
+|---|---|---|
 | referral_agents | 2 | Orchestrator live-DB dup-check — 2026-07-03 |
 
 ---
@@ -28,7 +30,7 @@ Until this migration is applied, the generator detects the missing column and ex
 ## Lock Duration Estimate
 
 | Operation | Lock Type | Estimated Duration |
-|-----------|-----------|-------------------|
+|---|---|---|
 | ADD COLUMN with DEFAULT (2 rows) | ACCESS EXCLUSIVE (brief) | < 5ms — negligible |
 
 ---
@@ -36,7 +38,7 @@ Until this migration is applied, the generator detects the missing column and ex
 ## Danger Pattern Check
 
 | # | Pattern | Triggered? | Override? |
-|---|---------|-----------|-----------|
+|---|---|---|---|
 | 1 | NOT NULL column without DEFAULT | ✅ No — has `DEFAULT false` | — |
 | 2 | NOT NULL on table > 100K rows | ✅ No — only 2 rows | — |
 | 3 | DROP COLUMN | ✅ No | — |

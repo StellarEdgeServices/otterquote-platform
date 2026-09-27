@@ -1,3 +1,5 @@
+> **COMPANION OF AN APPLIED MIGRATION (2026-09-26, gh-1438 part 2)** -- the forward migration this pre-flight documents is live in production, filed as `supabase/migrations/20260831124504_gh1337_claims_referrer_updates_opt_out.sql`. This document's own "DRAFTED, NOT APPLIED" status line below is historical -- it describes the state at drafting time, before apply. Kept unmodified below this banner for history.
+
 # Pre-flight — gh-1337 `claims.referrer_updates_opt_out`
 
 **Tier:** 3A (additive, autonomous per D-261).
