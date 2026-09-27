@@ -1,3 +1,12 @@
+-- >>> APPLIED (2026-09-26, gh-1438 part 2) -- the ADD COLUMN this file
+-- proposes IS live on public.claims (referrer_updates_opt_out, confirmed
+-- read-only against yeszghaspzwwstvsrioa this session), but the applied
+-- migration is filed as supabase/migrations/20260831124504_gh1337_claims_referrer_updates_opt_out.sql
+-- (no "_forward" suffix), which is NOT confirmed byte-identical to this
+-- file in this pass -- both add the same column with the same COMMENT text
+-- content, but this pass did not diff them character-for-character. Treat
+-- as "same effect, unverified byte match" rather than "identical". Kept
+-- here, unmodified below this banner, for history. <<<
 -- gh-1337 forward.sql — Tier 3A (additive, autonomous per D-261). NOT APPLIED.
 --
 -- Adds the storage for the homeowner's referrer-updates opt-out choice captured
@@ -8,7 +17,7 @@
 -- STATUS: DRAFT ONLY. This file has NOT been applied to production
 -- (yeszghaspzwwstvsrioa) or to any branch. It ships in the gh-1337 PR as an
 -- artifact for the legal read. (Written under R-120, when that read was Dustin's;
--- R-177 moved it to a fresh-context refuter agent plus a CEO signature on the PR --
+-- R-177 moved it to a fresh-context refuter agent plus a CEO signature on the PR —
 -- see Docs/r177-legal-read.md. Do not apply without that pair.)
 --
 -- Tri-state semantics — the gate depends on all three being distinguishable:

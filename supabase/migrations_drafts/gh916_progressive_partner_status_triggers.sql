@@ -1,3 +1,13 @@
+-- >>> APPLIED (2026-09-26, gh-1438 part 2) -- this draft's effect (progressive
+-- partner-status notify sites on claims_advance_referral(),
+-- notify_partner_status_on_bid_submitted() + its quotes trigger, and
+-- apply_referral_commission()'s step 9) IS live, but the version that ran
+-- and is filed as supabase/migrations/20260819210920_gh916_progressive_partner_status_triggers.sql
+-- (renamed from its previously-wrong-version filename earlier in this same
+-- PR, part (b)) is NOT confirmed byte-identical to this draft in this pass
+-- -- both describe the same three sites, this pass did not diff them
+-- character-for-character. Kept here, unmodified below this banner, for
+-- history. <<<
 -- Migration: gh916_progressive_partner_status_triggers
 -- Author: Code lane sub-agent (automated), run-work orchestration
 -- Date: 2026-08-18
