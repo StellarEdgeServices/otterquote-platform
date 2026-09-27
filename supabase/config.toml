@@ -379,6 +379,15 @@ verify_jwt = false
 [functions.send-measurement-ready]
 verify_jwt = false
 
+# send-lead-measurement-ready (gh-2272): the no-account (lead) sibling of
+# send-measurement-ready above. Called from an admin surface with the
+# admin's own JWT; in-handler admin gate is byte-identical to
+# send-measurement-ready's (PRIMARY_ADMIN_EMAIL fast-path, falling back to
+# contractors.template_review_role === 'admin'). Depends on PR #2226's
+# lead_measurement_orders table — see index.ts's SCHEMA DEPENDENCY note.
+[functions.send-lead-measurement-ready]
+verify_jwt = false
+
 # gh-1513, R-174: mints a Supabase magic link for is_test-only fixtures so
 # the Code lane (no service-role key, no auth-admin MCP tool in its own env)
 # can obtain a signed-in session for E2E verification. Auth is enforced BOTH
