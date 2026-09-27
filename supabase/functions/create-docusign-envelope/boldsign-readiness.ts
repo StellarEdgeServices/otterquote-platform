@@ -35,6 +35,13 @@
 // stranded document (09400a4b-6682-4ee5-b3bb-c73dfc854ad3) is unrevocable
 // through the API anyway -- POST /v1/document/revoke returns 403 for it.
 
+// gh-2105 (PR #2240 REVIEW FAIL, F3): the clearing writes in
+// clearStrandedEnvelopePointer() below must DETECT a zero-row match, not
+// annotate it away -- checkRowsWritten() is the same shared guard
+// docusign-webhook/index.ts and mark-payout-paid/index.ts already use for
+// this pattern.
+import { checkRowsWritten } from "../_shared/zero-row-update-guard.ts";
+
 export const BOLDSIGN_PERMANENT_MARKER = "BOLDSIGN_PERMANENT_CREATION_FAILURE";
 
 /** Thrown when BoldSign accepted the send but background creation will never finish. */
@@ -85,6 +92,88 @@ export function isPermanentCreationFailure(err: unknown): boolean {
   if (err instanceof BoldSignPermanentCreationFailure) return true;
   return err instanceof Error && typeof err.message === "string" &&
     err.message.includes(BOLDSIGN_PERMANENT_MARKER);
+}
+
+export interface StrandedEnvelopeClearTarget {
+  claim_id: string;
+  quote_id?: string | null;
+  contractor_id?: string | null;
+  envelopeId: string;
+}
+
+/**
+ * Un-record a stranded envelope pointer on a PROVEN-permanent BoldSign
+ * creation failure. Shared by every call site that can discover such a
+ * failure -- the mint path (a fresh /v1/document/send) AND the resume path
+ * (requestBody.resolved_envelope_id, where the failure is discovered on
+ * READ rather than at mint time, so it can surface on any later retry, not
+ * only the attempt that minted it) -- so a corpse found on either path is
+ * cleared identically: same fields, same guard.
+ *
+ * The caller decides IF this runs (via isPermanentCreationFailure(err)) --
+ * this function does not re-check that. It always clears when called, which
+ * is why the gate at the call site must stay narrow: a timeout or network
+ * error must never reach here, or it would re-mint a second paid document
+ * over a first one that was merely slow (gh-1400's failure, inverted).
+ *
+ * REVIEW FAIL (PR #2240, F1): on the resume path the pointer was NOT written
+ * by this request -- findExistingEnvelopeId() may have found it via the
+ * (claim_id, contractor_id) fallback rather than the caller's own quote_id.
+ * Guarding the quotes clear on `.eq("id", quote_id)` alone (no envelope
+ * check) could therefore hit the WRONG quote (a zero-effect null on an
+ * already-null pointer while the real corpse row keeps its dead id) or, in a
+ * race with a concurrent mint, wipe a brand-new pointer a third request just
+ * wrote (gh-1400 inverted). So BOTH quotes branches are now additionally
+ * guarded on `.eq("docusign_envelope_id", envelopeId)`, exactly like the
+ * claims clear already was -- a zero-row match on any of the three writes
+ * below now can ONLY mean something else already cleared or replaced this
+ * exact pointer, never "matched a different row that happens to share an id
+ * or claim/contractor pair."
+ *
+ * Each write chains `.select("id")` and reports whether it matched a row via
+ * `checkRowsWritten()` (gh-2105's shared zero-row guard) instead of an
+ * `update-no-select-ok` comment -- a zero-row match on a money path is
+ * detected and logged, not merely asserted harmless.
+ */
+export async function clearStrandedEnvelopePointer(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  { claim_id, quote_id, contractor_id, envelopeId }: StrandedEnvelopeClearTarget,
+): Promise<
+  { quoteClearError: unknown; claimClearError: unknown; quoteRows: number; claimRows: number }
+> {
+  let quoteClearError: unknown;
+  let quoteData: unknown;
+  if (quote_id) {
+    // Guarded on the envelope id (not just the caller-supplied quote_id) --
+    // see the REVIEW FAIL note above this function. A zero-row match here is
+    // detected via checkRowsWritten() below, not annotated away.
+    const { data, error } = await supabase.from("quotes").update({ docusign_envelope_id: null })
+      .eq("id", quote_id).eq("docusign_envelope_id", envelopeId).select("id");
+    quoteData = data;
+    quoteClearError = error;
+  } else {
+    // Same guard, for the claim_id+contractor_id fallback this function's
+    // caller uses when it has no quote_id of its own (e.g. the resume path,
+    // which does not trust findExistingEnvelopeId()'s resolved quote_id).
+    const { data, error } = await supabase.from("quotes").update({ docusign_envelope_id: null })
+      .eq("claim_id", claim_id).eq("contractor_id", contractor_id).eq("docusign_envelope_id", envelopeId)
+      .select("id");
+    quoteData = data;
+    quoteClearError = error;
+  }
+  // Already guarded on .eq("docusign_envelope_id", envelopeId) since #1868 --
+  // unchanged here except for the added .select("id").
+  const { data: claimData, error: claimClearError } = await supabase.from("claims").update({
+    docusign_envelope_id: null,
+    contract_sent_at: null,
+  }).eq("id", claim_id).eq("docusign_envelope_id", envelopeId).select("id");
+  return {
+    quoteClearError,
+    claimClearError,
+    quoteRows: checkRowsWritten(quoteData).rowCount,
+    claimRows: checkRowsWritten(claimData).rowCount,
+  };
 }
 
 const LIST_STATUSES = ["Draft", "InProgress", "Completed", "Declined", "Revoked", "Expired"];
