@@ -1,17 +1,17 @@
 {
   "_purpose": "gh-1438 CI reconciliation RATCHET baseline. Not a backfill target list -- see scripts/migrations-reconciliation-check.py. Per the CTO's ruling (issuecomment-5488058121 / 5494363131 on gh-1438): a lint that fails on pre-existing debt on day one is disabled on day two. This manifest freezes that debt so the CI check can pass on it while still catching any PR that makes it worse.",
-  "generated_at": "2026-09-26T21:40:00Z",
-  "generated_by": "k71-w-1438, gh-1438 CLOSE-REVIEW response, branch k71/gh1438-part2",
+  "generated_at": "2026-09-27T00:59:00Z",
+  "generated_by": "k71-w-1438, gh-1438 REVIEW FAIL round 2 response, branch k71/gh1438-part2",
   "measured_against": {
-    "repo_commit": "4871d46a9cb1",
+    "repo_commit": "276915cc3c40",
     "supabase_project_ref": "yeszghaspzwwstvsrioa",
     "applied_migrations_query": "select version, name from supabase_migrations.schema_migrations order by version (Supabase MCP execute_sql, read-only) against project yeszghaspzwwstvsrioa -- 187 rows returned",
-    "repo_migrations_scan": "GitHub MCP get_file_contents listing of supabase/migrations/ on branch k71/gh1438-part2, 14-digit YYYYMMDDHHMMSS prefix extracted per filename, de-duplicated -- 168 files, 168 distinct version prefixes"
+    "repo_migrations_scan": "GitHub MCP get_file_contents listing of supabase/migrations/ on branch k71/gh1438-part2, 14-digit YYYYMMDDHHMMSS prefix extracted per filename, de-duplicated -- 168 files, 168 distinct version prefixes (14-file rename batch, not 16 -- gh974/gh972 reverted per REVIEW FAIL 5851387029 item 2)"
   },
   "counts": {
     "applied_versions_total": 187,
     "applied_no_repo_file": 56,
-    "repo_file_no_applied": 37
+    "repo_file_no_applied": 39
   },
   "applied_versions": [
     "20260101000000",
@@ -258,9 +258,7 @@
     "20260925180241",
     "20260925180541",
     "20260925180647",
-    "20260925185056",
-    "20260925222500",
-    "20260925223000"
+    "20260925185056"
   ],
   "repo_file_no_applied_versions": [
     "20260519221215",
@@ -269,6 +267,8 @@
     "20260807223000",
     "20260812200000",
     "20260814013701",
+    "20260818214531",
+    "20260818214620",
     "20260819221010",
     "20260820004212",
     "20260825112956",
@@ -302,10 +302,10 @@
     "20260925183000"
   ],
   "known_limitations": [
-    "Version-number matching ONLY. This does not verify that a repo file's SQL is byte-identical to what schema_migrations recorded as having run -- see the gh-1438 part-2 PR body and the migrations-reconciliation doc's part(a) table for several sets explicitly flagged as unverified-byte-match.",
+    "Version-number matching ONLY. This does not verify byte-identical SQL -- see the gh-1438 part-2 PR body and the migrations-reconciliation doc's part(a) table for sets explicitly flagged as unverified-byte-match.",
     "repo_file_no_applied conflates genuinely abandoned drafts with a migration mid-flight between being filed and being auto-run post-merge; the CI gate deliberately does not fail on growth in this direction alone.",
-    "This is a point-in-time snapshot (2026-09-26, gh-1438 part 2 PR) superseding the 2026-09-01 and 2026-09-05 baselines recorded in this issue's history. The 56/37 counts reflect this PR's 16-file Direction-2 rename batch (72/53 before, 56/37 after); the ratchet's Direction-2 conjunct (two consecutive runs, second lower than first) is measured starting from this baseline.",
-    "A migration applied directly to production outside any PR (Management API SQL, dashboard, or execute_sql/apply_migration with no committed file) is invisible to a per-PR repo-diff check by construction. This baseline's applied_no_repo_file_versions is the live count as of this session; it does not distinguish that leak from ordinary backfill debt.",
-    "37 Direction-2 files remain after this PR's 16-file batch. Roughly 19 have a high-confidence unrenamed name match to an orphan ledger row (same method as the 16 fixed here) and are explicit follow-up; the rest need a statement-body diff against schema_migrations.statements rather than a name match. Not fixed by this baseline refresh -- see the gh-1438 part-2 PR body."
+    "This is a point-in-time snapshot (2026-09-26/27, gh-1438 part 2 PR, round-2 fix) superseding all earlier baselines in this issue's history. applied_no_repo_file (56) is unaffected by the Direction-2-only gh974/gh972 revert; repo_file_no_applied is 53 - 14 = 39 (14 files renamed and confirmed against the live ledger, not the original 16 -- see counts below and the PR body).",
+    "A migration applied directly to production outside any PR is invisible to a per-PR repo-diff check by construction. This baseline's applied_no_repo_file_versions is the live count as of this session.",
+    "39 Direction-2 files remain after this PR's 14-file batch (up from the 37 claimed by the round-1 fix, which incorrectly included 2 renames -- gh974, gh972 -- whose target versions' recorded SQL did not match the file content; both reverted to the Remainder per REVIEW FAIL 5851387029 item 2). Roughly 19 more have a high-confidence unrenamed name match to an orphan ledger row and are explicit follow-up; the rest need a statement-body diff. Not fixed by this baseline refresh -- see the gh-1438 part-2 PR body."
   ]
 }
