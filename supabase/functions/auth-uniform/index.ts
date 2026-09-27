@@ -251,6 +251,85 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// gh-1883 round-2 review (must-fix 1, comment 5858125323): the ONLY shape of
+// a GoTrue auth error this function is allowed to log or store. `.message`
+// is deliberately excluded -- GoTrue embeds the caller's email address
+// verbatim in several of its own messages (mail.go:927 `"Email address %q
+// is invalid"`, mail.go:775 `"... is not authorized"`). `.code` and
+// `.status` are fixed, enum-like values GoTrue never populates with the
+// address (e.g. "over_request_rate_limit", 429).
+interface SafeAuthErrorInfo {
+  code: string;
+  status: number | null;
+}
+
+// deno-lint-ignore no-explicit-any
+function safeAuthErrorInfo(error: any): SafeAuthErrorInfo {
+  if (!error || typeof error !== "object") {
+    return { code: "unknown_error", status: null };
+  }
+  const code = typeof error.code === "string" && error.code.length > 0
+    ? error.code
+    : (typeof error.name === "string" && error.name.length > 0 ? error.name : "unknown_error");
+  const status = typeof error.status === "number" ? error.status : null;
+  return { code, status };
+}
+
+// gh-1883 round-2 review (must-fix 2, comment 5858125323): reads the
+// platform's actual secret-key injection shape. Supabase Edge Functions
+// reserve the `SUPABASE_` prefix for secret NAMES (its Limits doc: "Names
+// must NOT start with the prefix SUPABASE_"), so a secret literally named
+// `SUPABASE_SECRET_KEY` can never be provisioned -- that branch was dead
+// code. The platform instead injects the new-format secret key(s) as
+// `SUPABASE_SECRET_KEYS`, a JSON object keyed by name with (at minimum) a
+// "default" entry holding the `sb_secret_...` value. Parses defensively:
+// absent, unparseable, or missing "default" all resolve to `undefined`,
+// which callers treat exactly like "no secret key provisioned" (fall back
+// to the anon key, forwarding stays off) -- never throws.
+function resolveSecretKey(): string | undefined {
+  const raw = Deno.env.get("SUPABASE_SECRET_KEYS");
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(raw);
+    if (
+      parsed && typeof parsed === "object" && typeof parsed.default === "string" &&
+      parsed.default.length > 0
+    ) {
+      return parsed.default;
+    }
+  } catch {
+    // Malformed JSON -- fall through to "no secret key". Forwarding stays
+    // off; the anon-key path is unaffected.
+  }
+  return undefined;
+}
+
+const IPV4_RE = /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/;
+
+// Standard IPv6 literal pattern (covers full, compressed "::" and
+// IPv4-mapped forms). Used only to gate whether `clientIp` is safe to
+// forward as `Sb-Forwarded-For` -- never to validate GoTrue's own behavior.
+const IPV6_RE = new RegExp(
+  "^(" +
+    "([0-9A-Fa-f]{1,4}:){7}[0-9A-Fa-f]{1,4}|" +
+    "([0-9A-Fa-f]{1,4}:){1,7}:|" +
+    "([0-9A-Fa-f]{1,4}:){1,6}:[0-9A-Fa-f]{1,4}|" +
+    "([0-9A-Fa-f]{1,4}:){1,5}(:[0-9A-Fa-f]{1,4}){1,2}|" +
+    "([0-9A-Fa-f]{1,4}:){1,4}(:[0-9A-Fa-f]{1,4}){1,3}|" +
+    "([0-9A-Fa-f]{1,4}:){1,3}(:[0-9A-Fa-f]{1,4}){1,4}|" +
+    "([0-9A-Fa-f]{1,4}:){1,2}(:[0-9A-Fa-f]{1,4}){1,5}|" +
+    "[0-9A-Fa-f]{1,4}:((:[0-9A-Fa-f]{1,4}){1,6})|" +
+    ":((:[0-9A-Fa-f]{1,4}){1,7}|:)|" +
+    "fe80:(:[0-9A-Fa-f]{0,4}){0,4}%[0-9a-zA-Z]+|" +
+    "::(ffff(:0{1,4})?:)?((25[0-5]|(2[0-4]|1?[0-9])?[0-9])\\.){3}(25[0-5]|(2[0-4]|1?[0-9])?[0-9])|" +
+    "([0-9A-Fa-f]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1?[0-9])?[0-9])\\.){3}(25[0-5]|(2[0-4]|1?[0-9])?[0-9])" +
+    ")$",
+);
+
+function isValidIpAddress(ip: string): boolean {
+  return IPV4_RE.test(ip) || IPV6_RE.test(ip);
+}
+
 // gh-1883 REVIEW FOLLOW-UP (must-fix 4, comment 5857851132): GoTrue's own
 // per-IP limiter for /otp, /recover, /signup and /resend is shared across
 // ALL FOUR of those routes, keyed on the caller's IP
@@ -274,14 +353,22 @@ function sleep(ms: number): Promise<void> {
 //      supported for this header -- so the anon key this call otherwise
 //      uses could never carry it even if (1) were on.
 //
-// This function forwards the header whenever a `SUPABASE_SECRET_KEY` EF
-// secret is provisioned (checked at call time, not import time, so a
-// human adding the secret later takes effect on the next invocation with
-// no code change) and falls back to the anon key exactly as before when it
-// is not -- i.e. today, until that secret exists AND (1) is confirmed on,
-// this is a documented no-op, not a silent gap: see the alerting below,
-// which is what makes a resulting throttle visible instead of silent
-// either way.
+// This function forwards the header whenever `resolveSecretKey()` finds a
+// usable `sb_secret_...` value in the `SUPABASE_SECRET_KEYS` map (checked at
+// call time, not import time, so a human confirming the project setting
+// later takes effect on the next invocation with no code change) AND
+// `clientIp` is a syntactically valid IPv4/IPv6 literal, falling back to the
+// anon key exactly as before otherwise -- i.e. until (1) is confirmed on for
+// this project, this is a documented no-op, not a silent gap: see the
+// alerting below, which is what makes a resulting throttle visible instead
+// of silent either way.
+//
+// [REVIEW FOLLOW-UP, comment 5858125323] This previously gated on a secret
+// literally named `SUPABASE_SECRET_KEY`, which Supabase's Edge Functions
+// secret store rejects outright (names starting with `SUPABASE_` are
+// reserved) -- that branch could never switch on no matter what a human
+// provisioned. `SUPABASE_SECRET_KEYS` (plural, a JSON map with a "default"
+// entry) is the platform's actual injection shape; see resolveSecretKey().
 //
 // Runs the real GoTrue call OFF the request path. Never throws — any error
 // (network, GoTrue rejection, bad credentials) is caught, logged
@@ -297,18 +384,33 @@ async function dispatchAuthCall(
   otpMetadata: Record<string, unknown> | undefined,
   clientIp: string,
 ): Promise<void> {
-  let errorMessage: string | undefined;
+  let errorInfo: SafeAuthErrorInfo | undefined;
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
-    // New-format `sb_secret_...` key, provisioned separately from the
-    // legacy SUPABASE_SERVICE_ROLE_KEY (which is not accepted for
-    // Sb-Forwarded-For -- see comment above). Absent until a human
-    // provisions it and confirms project-level IP forwarding is on.
-    const secretKey = Deno.env.get("SUPABASE_SECRET_KEY") || "";
-    const canForwardIp = Boolean(secretKey) && clientIp !== "unknown";
+    // New-format `sb_secret_...` key. The platform injects it as
+    // SUPABASE_SECRET_KEYS (a JSON map, `{"default": "sb_secret_..."}`) --
+    // NOT as a bare SUPABASE_SECRET_KEY env var, which Supabase's Edge
+    // Functions secret store rejects outright: names starting with the
+    // `SUPABASE_` prefix are reserved, so a secret literally named
+    // SUPABASE_SECRET_KEY can never be provisioned and that branch was dead
+    // code (gh-1883 round-2 review, must-fix 2, comment 5858125323).
+    // resolveSecretKey() parses the map defensively -- absent or malformed
+    // JSON, or no "default" entry, all fall back to the anon key exactly as
+    // before, with no code change once a human provisions it.
+    const secretKey = resolveSecretKey();
+    // Forward the header only when the resolved key exists AND clientIp is
+    // a syntactically valid IPv4/IPv6 literal -- never the client-influenced
+    // "unknown" sentinel or a malformed/spoofed value (round-2 review,
+    // must-fix 2).
+    const canForwardIp = Boolean(secretKey) && isValidIpAddress(clientIp);
+    // `secretKey || anonKey` rather than a non-null assertion: canForwardIp
+    // being true already guarantees secretKey is a non-empty string here,
+    // and this form keeps the code trivially extractable (as plain JS, no
+    // TS-only cast) by handler.test.ts's source-extraction harness, same
+    // constraint as the rest of this file's helpers.
     const sb = canForwardIp
-      ? createClient(supabaseUrl, secretKey, {
+      ? createClient(supabaseUrl, secretKey || anonKey, {
         global: { headers: { "Sb-Forwarded-For": clientIp } },
       })
       : createClient(supabaseUrl, anonKey);
@@ -318,18 +420,26 @@ async function dispatchAuthCall(
         email,
         options: { emailRedirectTo: redirectTo, data: otpMetadata },
       });
-      if (error) errorMessage = error.message;
+      if (error) errorInfo = safeAuthErrorInfo(error);
     } else {
       const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo });
-      if (error) errorMessage = error.message;
+      if (error) errorInfo = safeAuthErrorInfo(error);
     }
   } catch (err) {
-    errorMessage = err instanceof Error ? err.message : String(err);
+    errorInfo = safeAuthErrorInfo(err);
   }
 
-  if (errorMessage) {
-    console.error(`[${FUNCTION_NAME}] background ${action} call failed:`, errorMessage);
-    await alertBackgroundAuthFailure(action, errorMessage);
+  if (errorInfo) {
+    // gh-1883 round-2 review, must-fix 1 (comment 5858125323): GoTrue's own
+    // error messages sometimes embed the caller's email address verbatim
+    // (e.g. mail.go:927 `"Email address %q is invalid"`, mail.go:775 `"...
+    // is not authorized"`). Never log or store `.message` -- only the
+    // fixed action label plus the error's `.code`/`.status`, neither of
+    // which GoTrue ever populates with the address.
+    console.error(
+      `[${FUNCTION_NAME}] background ${action} call failed: code=${errorInfo.code} status=${errorInfo.status ?? "unknown"}`,
+    );
+    await alertBackgroundAuthFailure(action, errorInfo);
   }
 }
 
@@ -343,20 +453,29 @@ async function dispatchAuthCall(
 // GoTrue call itself, since platform_alerts_log writes require it. Never
 // includes the email address -- same "no addresses in logs" posture as the
 // rest of this function.
-async function alertBackgroundAuthFailure(action: "otp" | "recover", reason: string): Promise<void> {
+async function alertBackgroundAuthFailure(action: "otp" | "recover", errorInfo: SafeAuthErrorInfo): Promise<void> {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
     const sbAdmin = createClient(supabaseUrl, serviceRoleKey);
-    const isRateLimit = /rate.?limit/i.test(reason);
+    // Classified from the error's code/status ONLY -- both are fixed,
+    // non-address-bearing GoTrue enum values (e.g. "over_request_rate_limit",
+    // 429), never free-text that could carry an email address.
+    const isRateLimit = errorInfo.status === 429 || /rate.?limit/i.test(errorInfo.code);
     await sbAdmin.from("platform_alerts_log").insert({
       alert_type: isRateLimit ? "auth_uniform_rate_limited" : "auth_uniform_send_failed",
       function_name: FUNCTION_NAME,
-      message: `background ${action} call failed: ${reason}`,
+      // gh-1883 round-2 review, must-fix 1: never the raw GoTrue error
+      // message -- only the fixed action label plus code/status, which are
+      // never address-bearing.
+      message: `background ${action} call failed: code=${errorInfo.code} status=${errorInfo.status ?? "unknown"}`,
       sent_at: new Date().toISOString(),
     });
-  } catch (err) {
-    console.error(`[${FUNCTION_NAME}] failed to write alert row:`, err);
+  } catch {
+    // Never serialize the caught error here either -- an insert-time
+    // failure could in principle wrap driver-level detail; a fixed message
+    // is enough to know an alert write failed.
+    console.error(`[${FUNCTION_NAME}] failed to write alert row`);
   }
 }
 
@@ -491,6 +610,11 @@ async function handle(req: Request): Promise<Response> {
   if (!isAllowedRedirect(redirectTo)) {
     return json({ error: "redirectTo is not an allowed redirect target" }, 400, corsHeaders);
   }
+  // [Round-2 review, non-blocking] Pass the normalized form (`new URL(...).href`)
+  // to GoTrue rather than the raw string, so a leading/trailing-whitespace or
+  // tab-in-host variant that isAllowedRedirect's URL-parsing already
+  // canonicalized to an allow-listed origin+path is never forwarded as-is.
+  const normalizedRedirectTo = new URL(redirectTo).href;
 
   // Kick off the real GoTrue call but do NOT await it -- its latency and
   // outcome must never reach the response. `EdgeRuntime.waitUntil` is the
@@ -499,7 +623,7 @@ async function handle(req: Request): Promise<Response> {
   // (and in some local runs), so fall back to a bare fire-and-forget
   // promise with its own internal `.catch` (dispatchAuthCall never
   // rejects, but the fallback is defensive).
-  const bg = dispatchAuthCall(action, email, redirectTo, otpMetadata, clientIp);
+  const bg = dispatchAuthCall(action, email, normalizedRedirectTo, otpMetadata, clientIp);
   if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) {
     EdgeRuntime.waitUntil(bg);
   } else {
@@ -526,4 +650,7 @@ export {
   ipToUuid,
   isAllowedRedirect,
   isValidAction,
+  isValidIpAddress,
+  resolveSecretKey,
+  safeAuthErrorInfo,
 };
