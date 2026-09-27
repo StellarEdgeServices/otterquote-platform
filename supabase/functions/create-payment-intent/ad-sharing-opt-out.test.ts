@@ -4,6 +4,7 @@
 import { assert, assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import {
   detectGpcSignal,
+  makeGpcStore,
   OPT_OUT_PI_TYPES,
   type OptOutSource,
   type OptOutStore,
@@ -134,6 +135,7 @@ Deno.test("recordGpcOptOut: a thrown error is swallowed and NOTHING from it (dat
 
 // -- structure: it is wired into index.ts, after auth, for the caller only -----
 const index = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+const adSharingOptOutSrc = await Deno.readTextFile(new URL("./ad-sharing-opt-out.ts", import.meta.url));
 
 Deno.test("index.ts imports and calls recordGpcOptOut exactly once, AFTER the caller is authenticated and the body is parsed", () => {
   assert(index.includes('from "./ad-sharing-opt-out.ts"'));
@@ -145,10 +147,17 @@ Deno.test("index.ts imports and calls recordGpcOptOut exactly once, AFTER the ca
   assert(authAt > 0 && parseAt > authAt && callAt > parseAt, "call must come after auth and body parse");
 });
 
-Deno.test("index.ts writes the three profile columns for the caller, sets TRUE only, and never clears the flag", () => {
-  const i = index.indexOf("markOptedOut");
-  assert(i > 0, "the store is defined in index.ts");
-  const block = index.slice(i, i + 900);
+Deno.test("index.ts builds its store via makeGpcStore(supabase), and makeGpcStore writes the three profile columns, sets TRUE only, and never clears the flag", () => {
+  const wireI = index.indexOf("makeGpcStore");
+  assert(wireI > 0, "index.ts must build the store via the importable makeGpcStore, not an inline object");
+  assert(index.includes('from "./ad-sharing-opt-out.ts"'));
+
+  const src = adSharingOptOutSrc;
+  const fnAt = src.indexOf("export function makeGpcStore");
+  assert(fnAt > 0, "makeGpcStore is defined in ad-sharing-opt-out.ts");
+  const i = src.indexOf("markOptedOut", fnAt);
+  assert(i > fnAt, "the store's markOptedOut is defined inside makeGpcStore");
+  const block = src.slice(i, i + 900);
   assert(block.includes('.from("profiles")'));
   assert(/ad_sharing_opt_out:\s*true/.test(block), "sets TRUE");
   assert(!/ad_sharing_opt_out:\s*false/.test(block) && !/ad_sharing_opt_out:\s*null/.test(block), "never writes false or null");
@@ -157,16 +166,17 @@ Deno.test("index.ts writes the three profile columns for the caller, sets TRUE o
 });
 
 // -- gh-2105 (decision a-with-alert, legal/consent) --------------------------
-// index.ts's markOptedOut had no `.select()`, so a zero-row RLS/id-mismatch
-// match returned `error: null` and this module's own recordGpcOptOut treated
-// it as "recorded" -- a real GPC opt-out signal silently never persisted,
-// with none of the existing failure-log visibility this file already has for
-// a genuine database error. FAIL-FIRST: on origin/k72/gh2105-batch6's
-// (pre-batch-7) index.ts, none of these assertions hold -- there is no
-// `.select("id")` chained and no `gh2105_zero_rows` code.
-Deno.test("wiring: markOptedOut selects the write and reports a zero-row match through the SAME failure-log path as a real error", () => {
-  const i = index.indexOf("markOptedOut");
-  const block = index.slice(i, i + 1400);
+// The first-round fix (batch 7 as originally submitted) had no `.select()`, so a zero-row
+// RLS/id-mismatch match returned `error: null` and this module's own recordGpcOptOut treated it as
+// "recorded" -- a real GPC opt-out signal silently never persisted. Review 5860481443 must-fix 1:
+// simply checking `.select()` then over-reports, since the write's own `.or(...)` guard makes a
+// zero-row match the STEADY-STATE case whenever the flag is already true. makeGpcStore (extracted
+// from the former index.ts inline object per must-fix 2) disambiguates by reading the flag back.
+Deno.test("wiring: makeGpcStore selects the write and can report a zero-row match through the SAME failure-log path as a real error", () => {
+  const src = adSharingOptOutSrc;
+  const fnAt = src.indexOf("export function makeGpcStore");
+  const i = src.indexOf("markOptedOut", fnAt);
+  const block = src.slice(i, i + 1800);
   assert(block.includes('.select("id")'), 'must chain .select("id") to see whether a row actually matched');
   assert(block.includes('"gh2105_zero_rows"'), "zero-row outcome must use the gh-2105 repo-wide sentinel code");
   // The zero-row branch must return a `{ code }` shape -- NOT throw and NOT
@@ -176,21 +186,95 @@ Deno.test("wiring: markOptedOut selects the write and reports a zero-row match t
   assert(!/if \(!Array\.isArray\(data\)[\s\S]{0,50}throw/.test(block), "the zero-row check must not throw -- payment must proceed either way");
 });
 
-Deno.test("mutation control: a zero-row match (empty data array, no error) now yields code gh2105_zero_rows instead of silently succeeding", async () => {
-  // Exercises the actual gpcStore built in index.ts is out of reach without a
-  // live Supabase client, so this proves the CONTRACT recordGpcOptOut relies
-  // on: any store whose markOptedOut distinguishes a zero-row match this way
-  // surfaces it through the existing failure-log path, unchanged by this fix.
-  const calls: Call[] = [];
-  const store: OptOutStore = {
-    markOptedOut: (userId, source, atIso) => {
-      calls.push({ userId, source, at: atIso });
-      // Simulates the real fix's shape: error is null, but data was [] --
-      // pre-fix code only checked `error` and would have returned `null`
-      // (success) here.
-      return Promise.resolve({ code: "gh2105_zero_rows" });
+// -- gh-2105 must-fix 2 (real behavioral coverage of makeGpcStore itself) ----
+// Review 5860481443 must-fix 2: the old "mutation control" test drove a hand-scripted store that
+// returned `{ code: "gh2105_zero_rows" }` directly -- it never called the actual fix code, so it
+// passed against the unfixed b8cce8d5 sources too. These tests call the REAL `makeGpcStore` against
+// a fake Supabase client that answers both calls it issues: the update chain
+// (`.update().eq().or().select()`) and the disambiguating read (`.select().eq().maybeSingle()`).
+interface FakeProfilesClient {
+  client: { from(table: string): unknown };
+  updateCalls: Record<string, unknown>[];
+  readCalls: string[];
+}
+function fakeProfilesClient(
+  updateResult: { error: { code?: string } | null; data: unknown[] | null },
+  readResult: { error: { code?: string } | null; data: { ad_sharing_opt_out?: boolean } | null },
+): FakeProfilesClient {
+  const updateCalls: Record<string, unknown>[] = [];
+  const readCalls: string[] = [];
+  const client = {
+    from(_table: string) {
+      return {
+        update(values: Record<string, unknown>) {
+          updateCalls.push(values);
+          return {
+            eq(_col: string, _val: string) {
+              return {
+                or(_filter: string) {
+                  return { select: (_cols: string) => Promise.resolve(updateResult) };
+                },
+              };
+            },
+          };
+        },
+        select(cols: string) {
+          readCalls.push(cols);
+          return {
+            eq(_col: string, _val: string) {
+              return { maybeSingle: () => Promise.resolve(readResult) };
+            },
+          };
+        },
+      };
     },
   };
+  return { client, updateCalls, readCalls };
+}
+
+Deno.test("makeGpcStore: a zero-row match where the flag is ALREADY true is a no-op, NOT a reported failure", async () => {
+  // FAIL-FIRST against the naive must-fix-1 shape (checks `.select()` but has no read-back): that
+  // code returns { code: "gh2105_zero_rows" } here too -- the exact over-reporting bug must-fix 1
+  // flagged (steady-state GPC re-sends on an already-opted-out user would spam the failure log).
+  const { client, updateCalls, readCalls } = fakeProfilesClient(
+    { error: null, data: [] },
+    { error: null, data: { ad_sharing_opt_out: true } },
+  );
+  const store = makeGpcStore(client);
+  const result = await store.markOptedOut(USER, "gpc_header", AT.toISOString());
+  assertEquals(result, null, "already-opted-out zero-row match must not be a failure");
+  assertEquals(updateCalls.length, 1);
+  assertEquals(readCalls.length, 1, "must read the flag back to disambiguate the zero-row match");
+});
+
+Deno.test("makeGpcStore: a zero-row match where the flag is NOT already true reports gh2105_zero_rows", async () => {
+  for (const notYetOptedOut of [{ ad_sharing_opt_out: false }, {}, null]) {
+    const { client } = fakeProfilesClient({ error: null, data: [] }, { error: null, data: notYetOptedOut });
+    const store = makeGpcStore(client);
+    const result = await store.markOptedOut(USER, "gpc_header", AT.toISOString());
+    assertEquals(result, { code: "gh2105_zero_rows" }, `case ${JSON.stringify(notYetOptedOut)}`);
+  }
+});
+
+Deno.test("makeGpcStore: a successful (non-zero-row) update never triggers the disambiguating read", async () => {
+  const { client, readCalls } = fakeProfilesClient({ error: null, data: [{ id: USER }] }, { error: null, data: null });
+  const store = makeGpcStore(client);
+  const result = await store.markOptedOut(USER, "gpc_header", AT.toISOString());
+  assertEquals(result, null);
+  assertEquals(readCalls.length, 0, "a matched row needs no disambiguating read");
+});
+
+Deno.test("makeGpcStore: a genuine database error on the update is returned as-is (no read-back)", async () => {
+  const { client, readCalls } = fakeProfilesClient({ error: { code: "23514" }, data: null }, { error: null, data: null });
+  const store = makeGpcStore(client);
+  const result = await store.markOptedOut(USER, "gpc_header", AT.toISOString());
+  assertEquals(result, { code: "23514" });
+  assertEquals(readCalls.length, 0);
+});
+
+Deno.test("mutation control: makeGpcStore's real zero-row-miss branch feeds recordGpcOptOut's existing failure-log path exactly like a database error", async () => {
+  const { client } = fakeProfilesClient({ error: null, data: [] }, { error: null, data: { ad_sharing_opt_out: false } });
+  const store = makeGpcStore(client);
   const logs: string[] = [];
   const outcome = await recordGpcOptOut({
     callerId: USER,
@@ -201,7 +285,7 @@ Deno.test("mutation control: a zero-row match (empty data array, no error) now y
     now: () => AT,
     log: (m) => logs.push(m),
   });
-  assertEquals(outcome, "failed", "a zero-row match must NOT be reported as recorded");
+  assertEquals(outcome, "failed", "a genuine zero-row miss must NOT be reported as recorded");
   assertEquals(logs.length, 1);
   assert(logs[0].includes("(code gh2105_zero_rows)") && logs[0].includes("payment unaffected"));
 });

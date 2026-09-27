@@ -68,6 +68,44 @@ function safeCode(code: unknown): string {
   return typeof code === "string" && /^[A-Za-z0-9_]{1,20}$/.test(code) ? ` (code ${code})` : "";
 }
 
+/**
+ * [gh-2105 must-fix 1, PR #2266 review 5860481443] Builds the real `OptOutStore` used by index.ts.
+ * Extracted here -- rather than an object literal inlined in index.ts -- so it can be exercised in
+ * THIS file's own unit tests with a fake Supabase client; a real client cannot be constructed there.
+ *
+ * The write's `.or("ad_sharing_opt_out.is.null,ad_sharing_opt_out.eq.false")` guard makes a zero-row
+ * match ambiguous: it is either (a) the STEADY-STATE case for a GPC browser -- the flag is already
+ * true, since Sec-GPC is sent on every request -- which is not a failure at all, or (b) a real miss
+ * (an RLS/id mismatch, or a row that never existed) where a genuine opt-out signal was never
+ * persisted. Reporting (a) as `gh2105_zero_rows` would make the failure-log fire on nearly every
+ * payment from an already-opted-out GPC user, burying real misses in that noise -- so on a zero-row
+ * update this reads the flag back and reports `gh2105_zero_rows` only when it is NOT already true.
+ */
+export function makeGpcStore(supabase: any): OptOutStore {
+  return {
+    markOptedOut: async (userId, source, atIso) => {
+      const { error, data } = await supabase
+        .from("profiles")
+        .update({ ad_sharing_opt_out: true, ad_sharing_opt_out_at: atIso, ad_sharing_opt_out_source: source })
+        .eq("id", userId)
+        .or("ad_sharing_opt_out.is.null,ad_sharing_opt_out.eq.false")
+        .select("id");
+      if (error) return { code: (error as { code?: string }).code };
+      if (Array.isArray(data) && data.length > 0) return null;
+      // Zero rows: ambiguous. Read the flag back to tell "already true" (no-op, not a failure)
+      // apart from a real miss.
+      const { data: row, error: readError } = await supabase
+        .from("profiles")
+        .select("ad_sharing_opt_out")
+        .eq("id", userId)
+        .maybeSingle();
+      if (readError) return { code: (readError as { code?: string }).code ?? "gh2105_zero_rows" };
+      if (row?.ad_sharing_opt_out === true) return null;
+      return { code: "gh2105_zero_rows" };
+    },
+  };
+}
+
 export async function recordGpcOptOut(a: RecordArgs): Promise<OptOutOutcome> {
   const log = a.log ?? ((m: string) => console.error(m));
   if (!a.callerId) return "not_applicable";
