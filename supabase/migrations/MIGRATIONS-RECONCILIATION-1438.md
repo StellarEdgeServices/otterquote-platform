@@ -452,3 +452,150 @@ text itself was and remains identical either way).
 
 SELECT-only across all three rounds; zero SQL executed against any
 database at any point in this issue's reconciliation work.
+
+## 2026-09-26 CLOSE-REVIEW response (part 2) — independent review comment 5850997376 (Marty/CTO), branch `k71/gh1438-part2`
+
+This addendum's premise is corrected relative to every addendum above it:
+the "2026-09-26 addendum" and its two "REVIEW FAIL correction" follow-ons
+(all on PR #2233) treated the 8 original live sets found in the 2026-09-01
+Part 1 table as already reconciled once a post-apply *trace* file existed
+somewhere in `supabase/migrations/`. The CLOSE-REVIEW found that premise
+wrong: **the 8 original `migrations_drafts/` files themselves were never
+touched** — all 23 files across gh1021, gh1050, gh1337, gh749, gh916, gh969,
+v88, and gh1070 remained in `migrations_drafts/`, still headered "DRAFT
+ONLY" or "NOT APPLIED", even though 7 of the 8 sets are live in production.
+That is exactly the artifact-level misrepresentation issue #1438 was filed
+to fix. Fixed on this branch, not on #2233 (left alone, signed and queued):
+
+### Part (a) — re-header the 8 original live-set drafts
+
+| set | live status (re-verified this session, read-only) | banner added |
+|---|---|---|
+| `gh1021_add_paid_state` | LIVE, byte-identical to `supabase/migrations/20260821205432_gh1150_add_paid_state.sql` (per the 2026-09-01 Part 1 table) | `>>> APPLIED <<<` |
+| `gh749_add_service_states_to_contractors` | LIVE, byte-identical to `supabase/migrations/20260821225742_gh749_add_service_states_to_contractors.sql` | `>>> APPLIED <<<` |
+| `v88_referral_agents_public_directory_optin` | LIVE via a different, already-reconciled migration (`v101`, issue #385) | `>>> SUPERSEDED <<<` |
+| `gh1050_commission_accrual_job_completion` | LIVE, filed as `supabase/migrations/20260819225113_gh1050_commission_accrual_job_completion.sql` | `>>> APPLIED <<<` |
+| `gh1337_claims_referrer_updates_opt_out_forward` | LIVE (column exists), NOT confirmed byte-identical to the filed `20260831124504_gh1337_claims_referrer_updates_opt_out.sql` in this pass | `>>> APPLIED <<<` (byte-match unverified, stated as such) |
+| `gh916_progressive_partner_status_triggers` (draft) | LIVE (all three trigger sites confirmed present), NOT confirmed byte-identical to the filed, now-correctly-versioned `20260819210920_gh916_progressive_partner_status_triggers.sql` (this PR's part (b) rename) | `>>> APPLIED <<<` (byte-match unverified, stated as such) |
+| `gh969_hover_rebate_trigger_completion` | LIVE, filed as `supabase/migrations/20260824184631_gh969_hover_rebate_trigger_completion.sql` (same base name, timestamped at apply) | `>>> APPLIED <<<` (byte-match unverified, stated as such) |
+| `gh1070_activity_log_grants_revoke` | LIVE effect, but not this file's SQL — the applied migration is the much shorter, structurally different `supabase/migrations/20260824183229_gh1070_revoke_anon_activity_log.sql` | `>>> SUPERSEDED <<<` |
+
+Method: each banner is a comment block prepended above the file's own
+pre-existing header; the executable SQL body (`BEGIN;` ... `COMMIT;`) and
+every pre-existing comment line are otherwise byte-for-byte unchanged. No
+`db push` re-execution risk: these files stay in `migrations_drafts/`, which
+`db push` never reads.
+
+Self-caught defect during this work: this branch's first attempt at the
+gh1050 and gh1070 banners (commit `2f706c4`) reconstructed the body from
+memory instead of the fetched source and introduced ASCII `--` where the
+real files use an em dash `—` in several places — the same class of
+byte-identity drift flagged in every review round on #2233. Caught before
+this addendum was written (not by a reviewer) by re-fetching both files via
+`get_file_contents` and diffing by eye against what had been pushed;
+corrected in commit `4871d46` using the exact fetched text for all 5 files
+touched in that commit (gh1050, gh1070, gh1337, gh916, gh969).
+
+### Part (b) — Direction-2 rename batch (16 of 53)
+
+Live Direction-1/Direction-2 commands and raw counts, BEFORE this PR
+(matches the CLOSE-REVIEW's own quoted 72/53 exactly):
+
+```
+-- ledger (live, read-only)
+select version, name from supabase_migrations.schema_migrations order by version;
+-- => 187 rows
+
+-- repo (origin/main, before this PR)
+ls supabase/migrations/*.sql | xargs -n1 basename
+-- => 168 files, 168 distinct 14-digit version prefixes
+
+-- Direction 1 (ledger version, no repo file):  72
+-- Direction 2 (repo file version, no ledger row): 53
+```
+
+16 files were renamed to their real ledger version (content otherwise
+unchanged; old wrongly-versioned file deleted in the same batch):
+
+| old (wrong) filename | new (real ledger) filename |
+|---|---|
+| `20260613000000_v91_partner_w9_private_bucket.sql` | `20260613180040_v91_partner_w9_private_bucket.sql` |
+| `20260618125007_p15_quotes_payment_status_no_method.sql` | `20260618131038_p15_quotes_payment_status_no_method.sql` |
+| `20260618130000_p15_quotes_fee_amount_normalize.sql` | `20260618144317_p15_quotes_fee_amount_normalize.sql` |
+| `20260618140000_p15_stripe_webhook_events.sql` | `20260618152849_p15_stripe_webhook_events.sql` |
+| `20260810232816_v104_add_is_test_to_quotes_and_referral_ledger.sql` | `20260810233131_v104_add_is_test_to_quotes_and_referral_ledger.sql` |
+| `20260814110108_gh846_add_utm_columns_to_referral_agents.sql` | `20260814110153_gh846_add_utm_columns_to_referral_agents.sql` |
+| `20260818204945_gh1028_add_is_test_to_activity_log.sql` | `20260818205120_gh1028_add_is_test_to_activity_log.sql` |
+| `20260818205500_gh1028_exclude_is_test_from_cert_verification_views.sql` | `20260818205142_gh1028_exclude_is_test_from_cert_verification_views.sql` |
+| `20260818211118_gh886_referral_agents_payout_guard.sql` | `20260818210921_gh886_referral_agents_payout_guard.sql` |
+| `20260818214531_gh974_upsert_adjuster_from_claim_ownership_check.sql` | `20260818214332_gh974_upsert_adjuster_from_claim_ownership_check.sql` |
+| `20260818214604_gh970_revoke_anon_execute_ops_ratelimit_functions.sql` | `20260818213934_gh970_revoke_anon_execute_ops_ratelimit_functions.sql` |
+| `20260818214620_gh972_get_contractor_quote_claim_ids_auth_scope.sql` | `20260818214025_gh972_get_contractor_quote_claim_ids_auth_scope.sql` |
+| `20260818214635_gh973_register_partner_rate_limit_gate.sql` | `20260818214217_gh973_register_partner_rate_limit_gate.sql` |
+| `20260819211149_gh916_progressive_partner_status_triggers.sql` | `20260819210920_gh916_progressive_partner_status_triggers.sql` |
+| `20260820195608_gh1075_partner_agreement_v2_version_bump.sql` | `20260820195746_gh1075_partner_agreement_v2_version_bump.sql` |
+| `20260820214032_gh945_backfill_activity_log_is_test_propagation_gap.sql` | `20260820214050_gh945_backfill_activity_log_is_test_propagation_gap.sql` |
+
+Each pairing was confirmed by matching the file's base name (the part after
+the 14-digit prefix) between the pre-PR repo file list and the live ledger
+name list — a name-uniqueness argument, since these are auto-generated,
+distinct migration names with no duplicates in either set. No ledger row
+was read, written, or executed to produce this table; every row comes from
+the two live SELECTs above plus a directory listing of the repo tree.
+
+Live Direction-1/Direction-2 commands and raw counts, AFTER this PR's 16
+renames (re-run this session against the same live ledger and the updated
+repo tree on `k71/gh1438-part2`):
+
+```
+-- repo (k71/gh1438-part2, after the 16 renames)
+-- => 168 files, 168 distinct 14-digit version prefixes (net unchanged --
+--    each rename removes one wrong version and adds one different, correct
+--    version, so the total file count and distinct-version count do not move)
+
+-- Direction 1 (ledger version, no repo file):  56   (72 - 16)
+-- Direction 2 (repo file version, no ledger row): 37   (53 - 16)
+```
+
+The 16 fixed versions were confirmed to be exactly the 16 versions that
+dropped out of the "before" Direction-2 set and exactly the 16 versions
+that appeared newly resolved between the "before" and "after" Direction-1
+sets (set-difference computed both directions; both differences are the
+same 16-element set, order-independent). No other Direction-1 or
+Direction-2 entry moved.
+
+### Remainder — not renamed in this PR (documented, not dropped)
+
+37 Direction-2 files remain. Of the 37 unresolved-by-this-PR repo-file
+versions with no ledger row, this session found high-confidence
+same-base-name matches to an orphan Direction-1 ledger row (a `version`
+with no repo file) for roughly a third of them by the identical
+name-uniqueness argument used for the 16 above; the coordinator's guidance
+("if renaming 53 files is too large for one safe PR, do the money-path
+ones first and state the remainder") was applied by scoping this PR to the
+16 that are also part of, or immediately adjacent to, the 8 originally-live
+draft sets and the money-path referral/commission trigger family (gh916,
+gh1050's neighbors, gh886, gh974, gh970, gh972, gh973, gh1028,
+gh1075/gh945, v91/p15/v104/gh846). The remaining roughly 19 name-matched-
+but-not-yet-renamed files and the remaining unmatched files (which need a
+statement-body diff against `schema_migrations.statements` rather than a
+name match, since no unique name pairing is available) are explicit
+follow-up work for the next dispatch on this issue, not silently dropped.
+This PR does not claim to close the Direction-2 gap; it reduces it by 16
+and states the remainder's shape so the next pass does not re-derive it
+from scratch.
+
+### Baseline manifest
+
+`supabase/migrations-reconciliation-baseline.json` refreshed in this PR
+(new `generated_at`, `measured_against`, and `counts`/`*_versions` arrays
+reflecting this session's live 187-row ledger and the repo tree as of this
+PR's head commit). This gives the CI ratchet a fresh reference point; per
+the amended `closes-on`'s Direction-2 conjunct ("two consecutive ratchet
+runs, second lower than first"), the run against this PR's own head and the
+next run after it merges are the two runs that conjunct measures — this PR
+supplies the first of the two by construction (56/37 vs. the frozen
+2026-09-01 105/29 baseline the ratchet script currently compares against).
+
+SELECT-only throughout; no `apply_migration`, `execute_sql` write, or
+`db push` was run at any point in this PR's work.
