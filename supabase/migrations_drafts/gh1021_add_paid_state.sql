@@ -1,22 +1,22 @@
--- Migration: gh1021_add_paid_state
 -- >>> APPLIED (2026-09-26, gh-1438 part 2) -- this draft's SQL is byte-
 -- identical to what ran. Filed as supabase/migrations/20260821205432_gh1150_add_paid_state.sql
 -- (confirmed read-only against yeszghaspzwwstvsrioa, both this session and
 -- the 2026-09-01 MIGRATIONS-RECONCILIATION-1438.md Part 1 pass). This copy
 -- kept here for history only -- do not re-run it; the live file above is
 -- the source of truth and the one the replay chain reads. <<<
+-- Migration: gh1021_add_paid_state
 -- Author: Code lane sub-agent (automated), run-work orchestration
 -- Date: 2026-08-21
--- Status: DRAFT -- Tier 3A, autonomous (no D-182 approval / R-097 notice owed;
+-- Status: DRAFT — Tier 3A, autonomous (no D-182 approval / R-097 notice owed;
 --         see pre-flight for the #916 tier-test citation).
 -- Rollback: gh1021_add_paid_state_rollback.sql
 -- Pre-flight: gh1021_add_paid_state_pre-flight.md
--- GitHub: #1150 (child of #1021 -- D-293 manual commission payment)
+-- GitHub: #1150 (child of #1021 — D-293 manual commission payment)
 --
 -- Summary: adds a nullable paid_at timestamptz column to public.payout_approvals
 -- and widens payout_approvals_status_check to additionally admit 'paid', while
 -- preserving every value already admitted today: pending_approval, approved,
--- rejected, auto_approved, pre_approved. Purely additive -- nothing reads or
+-- rejected, auto_approved, pre_approved. Purely additive — nothing reads or
 -- writes the new column yet. That wiring (Edge Function + dashboard) is a
 -- separate Tier-3B child of #1021, not this migration.
 --

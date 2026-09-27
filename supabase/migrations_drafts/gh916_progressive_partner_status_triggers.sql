@@ -1,13 +1,13 @@
--- >>> APPLIED (2026-09-26, gh-1438 part 2) -- this draft's effect (progressive
--- partner-status notify sites on claims_advance_referral(),
--- notify_partner_status_on_bid_submitted() + its quotes trigger, and
--- apply_referral_commission()'s step 9) IS live, but the version that ran
--- and is filed as supabase/migrations/20260819210920_gh916_progressive_partner_status_triggers.sql
+-- >>> APPLIED (2026-09-26, gh-1438 part 2; banner corrected round 2) -- this
+-- draft's SQL is byte-identical to what ran and is filed as
+-- supabase/migrations/20260819210920_gh916_progressive_partner_status_triggers.sql
 -- (renamed from its previously-wrong-version filename earlier in this same
--- PR, part (b)) is NOT confirmed byte-identical to this draft in this pass
--- -- both describe the same three sites, this pass did not diff them
--- character-for-character. Kept here, unmodified below this banner, for
--- history. <<<
+-- PR, part (b)). Confirmed via independent review comment 5851387029: this
+-- draft's normalized md5 (comment/blank/BEGIN/COMMIT-stripped) equals
+-- 2578213e89852dbd09e60999bc734bd5, matching both the live ledger's
+-- recorded statements for version 20260819210920 and the restored
+-- migrations/ file's own md5 (round-2 fix, this PR). Kept here, unmodified
+-- below this banner, for history. <<<
 -- Migration: gh916_progressive_partner_status_triggers
 -- Author: Code lane sub-agent (automated), run-work orchestration
 -- Date: 2026-08-18
@@ -35,9 +35,10 @@
 --
 -- Vault key pattern: identical to gh-752 (Dustin-approved, applied 2026-08-17) —
 -- `vault.decrypted_secrets` / 'cron_service_role_key', NOT the app.* GUCs (confirmed
--- NULL/unset on this database by #752's live audit). Every new pg_net call is wrapped
--- in its own BEGIN/EXCEPTION block so a failure can NEVER roll back or block the
--- underlying claims/quotes/commission write those triggers exist to protect.
+-- NULL/unset on this database by #752's live audit). Every new pg_net call is
+-- wrapped in its own BEGIN/EXCEPTION block so a failure can NEVER roll back or
+-- block the underlying claims/quotes/commission write those triggers exist to
+-- protect.
 --
 -- Sites touched:
 --   1. claims_advance_referral()  — fires at intake. Notify only added when the
