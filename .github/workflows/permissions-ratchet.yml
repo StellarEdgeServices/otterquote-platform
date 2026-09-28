@@ -34,6 +34,23 @@ on:
 permissions:
   contents: read
 
+# gh-1731 (COST GATE): dedupe repeat-push churn on open PRs -- this check
+# re-evaluates from scratch each run, so only the newest push's verdict is
+# useful. Cancelling a still-running run for the same PR/ref is safe here
+# (diff- or whole-tree-scoped, no shared fixture state) and does not change
+# what this check verifies or whether it reports on the final commit --
+# same pattern already applied to e2e-tests.yml/schema-lint.yml/
+# react-app-tests.yml/codeql.yml/credential-sweep.yml (PR #1740).
+# Measured net effect: ~$0 direct minute savings -- every job in this
+# workflow already sits on GitHub's 1-minute billing floor, so a
+# cancelled job bills the same minute a completed one does (PR #1740
+# measured this directly). This is queue-depth and merge-latency only,
+# per #1731's own "wall-clock is the half that costs throughput" framing,
+# never applied to a merge_group-triggered required check.
+concurrency:
+  group: permissions-ratchet-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   permissions-ratchet:
     name: No new GRANT to anon/PUBLIC/authenticated
@@ -58,6 +75,17 @@ jobs:
       # scripts/permissions-ratchet-fixtures/ and --self-test).
       - name: Self-test the ratchet's own rules
         run: python scripts/permissions-ratchet.py --self-test
+
+      # BUILD-FAILING. gh-1438 CTO RUN 43 follow-up (review comment
+      # 5856302490): scripts/permissions-ratchet.test.py existed but was
+      # never actually run in this workflow -- only its own `--self-test`
+      # (the fixture suite) was wired in above. This exercises the rename-
+      # awareness / version-safety logic directly (Layer 3 / Layer 3b),
+      # which the fixtures directory does not cover, same convention as
+      # new-table-service-role-grant.yml's "Run the detector's own test.py"
+      # step.
+      - name: Run the ratchet's own test.py
+        run: python scripts/permissions-ratchet.test.py
 
       # BUILD-FAILING. Diff-scoped to supabase/migrations/**/*.sql lines
       # THIS PR adds (base = the PR's target-branch sha, head = the PR's own

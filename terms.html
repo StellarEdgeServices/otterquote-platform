@@ -2,12 +2,9 @@
 <html lang="en">
 <head>
 <!-- Sentry Error Monitoring -->
-<script
-  src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
-  crossorigin="anonymous"
-></script>
+<!-- gh-2043: predeclare sentryOnLoad before the loader tag; the loader invokes it once the SDK is ready (pattern from gh-2010, PR #2023). -->
 <script>
-  Sentry.onLoad(function() {
+  window.sentryOnLoad = function () {
     Sentry.init({
       environment: window.location.hostname.includes("staging") ? "staging" : "production",
       // gh-439: drop phantom events from non-http(s) preview contexts (data:/file:/blob:
@@ -22,8 +19,12 @@
         return event;
       }
     });
-  });
+  };
 </script>
+<script
+  src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
+  crossorigin="anonymous"
+></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
@@ -40,11 +41,13 @@
     <!-- GA4 -->
     <script src="/js/ga-gate.js"></script>
 <script src="/js/meta-pixel-gate.js"></script>
+<script src="/js/linkedin-insight-gate.js"></script>
+<script src="/js/reddit-pixel-gate.js"></script>
     <script>gtag('config', 'G-D1Y1TLGEFY');</script>
 <!-- Microsoft Clarity (wwr7qlk8g5) is loaded by /js/ga-gate.js, behind the same production-host gate as GA4 (gh-1619). Do not add a per-page loader. -->
 
     <!-- Supabase JS -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js" integrity="sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.js" integrity="sha384-iLddHTLokph6Omwoyid4XKxHaWa6w41BnoEj0q5oOrzmYPpHIKt1wyjReA7s//pP" crossorigin="anonymous"></script>
 
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -167,7 +170,7 @@
         </section>
 
         <div class="legal-content">
-            <p><strong>Effective Date:</strong> March 16, 2026</p>
+            <p><strong>Effective Date:</strong> September 28, 2026</p>
 
             <div class="disclaimer-box">
                 <h3>Legal Disclaimer</h3>
@@ -324,6 +327,8 @@
                 <p><strong>Partial Rebates.</strong> Otter Quotes does not issue partial Rebates. The Rebate is either issued in full when the conditions above are met or not issued at all.</p>
 
                 <p><strong>Chargebacks and Disputes.</strong> Initiating a chargeback or payment dispute with your card issuer or bank in connection with the Measurement Fee, or with any other fee governed by these Terms, forfeits any Rebate that might otherwise be owed, is a breach of these Terms, and may result in suspension of your account.</p>
+
+                <p><strong>No-Account Orders.</strong> The Rebate described in this Section 8.5 applies only to a Measurement Fee paid in connection with a claim on the Platform. It does not apply to, and is never issued for, a measurement report ordered without an account through our no-account order page; that fee is retained by Otter Quotes in all cases, consistent with "What the Fee Covers" above.</p>
             </section>
 
             <section>

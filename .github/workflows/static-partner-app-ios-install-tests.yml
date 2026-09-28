@@ -1,0 +1,49 @@
+name: Static Partner App iOS Install Tests
+
+# gh-2296 / gh-2298 -- partner-app-install-ios.html's Add to Home Screen steps (updated for iOS 26's ••• menu and
+# "Open as Web App" toggle) had a static regression test (tests/gh2296-partner-app-install-ios-flow.mjs) that no
+# workflow ran -- the same CI-coverage gap flagged as REVIEW N1 on #2139 and again in REVIEW: FAIL on #2298. This
+# runs it. A dedicated workflow rather than an edit to static-pixel-gate-tests.yml, since #2297 adds its own
+# workflow there in parallel.
+#
+# `pull_request` (never `pull_request_target`), no secrets, read-only token: it needs none. Path-filtered to the
+# files that can change the verdict, so it costs nothing on unrelated PRs.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'partner-app-install-ios.html'
+      - 'tests/gh2296-partner-app-install-ios-flow.mjs'
+      - '.github/workflows/static-partner-app-ios-install-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'partner-app-install-ios.html'
+      - 'tests/gh2296-partner-app-install-ios-flow.mjs'
+      - '.github/workflows/static-partner-app-ios-install-tests.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-partner-app-ios-install-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  static-partner-app-ios-install-tests:
+    name: Partner app iOS install flow (static source checks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: iOS Add to Home Screen flow -- ••• menu, Open as Web App toggle, step 2 fallback (gh2296-partner-app-install-ios-flow)
+        run: node tests/gh2296-partner-app-install-ios-flow.mjs

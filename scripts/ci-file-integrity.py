@@ -334,7 +334,31 @@ if _handler_guard_result.stderr:
     print(_handler_guard_result.stderr, end="", file=sys.stderr)
 handler_guard_exit = _handler_guard_result.returncode
 
+# -- D-104 contractor credential-claim guard + its self-test (gh-2020) --------
+# gh-2020 (#2011 D-7): scripts/check-credential-claims.py ran only in the
+# optional "Static Integrity Checks" job (e2e-tests.yml) and its self-test only
+# in the optional "Detector Negative Control Gate", so a PR planting "our
+# approved contractors" went red on a non-required job and could still merge
+# (close-review comment 5857444397, finding C). Chained here, the same way as
+# partner_parity_check.py above, so D-104 is enforced by the required
+# "Null-Byte & Size Sanity Check" job without adding a fifth required check.
+# BUILD-FAILING: a violation, or a regression in the guard's own detection
+# logic, fails this job.
+_credential_results = []
+for _cred_script in ("check-credential-claims.py", "check-credential-claims.test.py"):
+    print()
+    print("-" * 78)
+    _cred_result = subprocess.run(
+        [sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), _cred_script)],
+        capture_output=True, text=True,
+    )
+    print(_cred_result.stdout, end="")
+    if _cred_result.stderr:
+        print(_cred_result.stderr, end="", file=sys.stderr)
+    _credential_results.append(_cred_result.returncode)
+credential_claims_exit = 1 if any(_credential_results) else 0
+
 if (file_integrity_exit != 0 or partner_parity_exit != 0 or agent_types_exit != 0
-        or xss_guard_exit != 0 or handler_guard_exit != 0):
+        or xss_guard_exit != 0 or handler_guard_exit != 0 or credential_claims_exit != 0):
     sys.exit(1)
 sys.exit(0)

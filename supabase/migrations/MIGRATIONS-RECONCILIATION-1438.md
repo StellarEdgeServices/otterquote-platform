@@ -210,3 +210,245 @@ idempotently, because `db push` will treat its file as pending.
   defect 2 documented. Belongs to the backfill/hygiene batches.
 - Batch 3 (PR #1604, 70 → 49) — check its merge state; the live count of 71 before
   this PR says it had not landed at measurement time.
+
+
+## 2026-09-26 addendum — k71-w-1438 (gh-1438 slice): the 7 sets added since 09-05
+
+`supabase/migrations_drafts/` grew 7 new sets between the 09-05 pass above and
+today, none previously measured on this issue: `gh1314_persist_signed_price`,
+`gh1339_quotes_section2_declarations`, `gh1763_is_test_repair`,
+`gh1961_profiles_is_test_at_creation` (+ `.test.sql`),
+`gh2010_leads_authenticated_insert`, `gh2042_update_lead_contact_optional_phone`,
+`gh2055_add_notifications_suppressed_and_is_synthetic`. Measured read-only this
+session against `yeszghaspzwwstvsrioa` (**zero SQL executed against any
+database** — every row below is a `SELECT` against `information_schema`,
+`pg_policy`, `pg_proc`/`pg_trigger`, or the tables themselves):
+
+**CORRECTED 2026-09-26 (see the follow-on addenda below) — the gh1763 and
+gh2042 rows here were both found wrong by independent review (comment
+5850286498) and are superseded by the corrected rows in the "REVIEW FAIL
+correction" addendum below this table. Left as originally written for the
+record of what this session first measured and got wrong.**
+
+| draft set | object tested | query | result | verdict | action taken |
+|---|---|---|---|---|---|
+| `gh1314_persist_signed_price` | `claims.signed_contract_price` (+ 4 sibling columns) | `select column_name from information_schema.columns where table_schema='public' and table_name='claims' and column_name like 'signed_%';` | `[]` (0 rows) | **NOT LIVE** | None. Draft's own header already says "DRAFT. NOT APPLIED" and explains why (superseded an earlier 2026-09-06 draft after PR #1798 changed the reason-union). Correctly marked, left untouched. |
+| `gh1339_quotes_section2_declarations` | `quotes.section2_declarations` | `select column_name from information_schema.columns where table_schema='public' and table_name='quotes' and column_name='section2_declarations';` | `[]` (0 rows) | **NOT LIVE** | None. Correctly marked, left untouched. |
+| `gh1763_is_test_repair` | the 7 named `profiles`/`contractors` id pairs' `is_test` agreement | `select p.id, p.is_test, c.id, c.is_test, c.company_name from public.profiles p join public.contractors c on c.user_id=p.id where p.id in (<7 ids>);` | all 7 rows: `profile_is_test=true`, `contractor_is_test=true` | ~~DATA ALREADY MATCHES THE MIGRATION'S POST-CONDITION, but the file still reads "DRAFT. NOT APPLIED."~~ **WRONG — see correction below: this was not an open question.** | ~~Not archived, not moved~~ **WRONG — see correction below.** |
+| `gh1961_profiles_is_test_at_creation` (+ `.test.sql`) | triggers `profiles_set_is_test_for_internal_domain`, `contractors_zz_inherit_profile_is_test` | `select tgname from pg_trigger where tgname ilike '%is_test%' and not tgisinternal;` | `[]` (0 rows) | **NOT LIVE** | None. Correctly marked; active review thread elsewhere (PR #2002, comments 5706433778 / 5707827031) — out of this dispatch's scope, not touched. |
+| `gh2010_leads_authenticated_insert` | `pg_policy` role list on `public.leads` "Allow anonymous inserts" | `select policyname, roles, cmd from pg_policies where schemaname='public' and tablename='leads';` | `{"Allow anonymous inserts", roles: {anon,authenticated}, cmd: INSERT}` | **LIVE** — already correctly filed as `supabase/migrations/20260917203831_gh2010_leads_authenticated_insert.sql` | Forward file needed no change. Its `_rollback.sql`/`_pre-flight.md` companions were still sitting in `migrations_drafts/` (contradicting `migrations/README.md`'s own convention) — moved to `supabase/migrations_rollbacks/20260917203831_gh2010_leads_authenticated_insert_{rollback.sql,pre-flight.md}` this session; forward file's header comment repointed to the new path. |
+| `gh2042_update_lead_contact_optional_phone` | `public.update_lead_contact()` function body | `select pg_get_functiondef(p.oid) like '%gh-2042%' from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='update_lead_contact';` | `true` | **LIVE** — ~~already correctly filed as `supabase/migrations/20260920160133_gh2042_update_lead_contact_optional_phone.sql`. Note: this version is absent from `supabase_migrations.schema_migrations` (checked directly) — same ledger-bypass pattern as `gh1585_funnel_abandonment_facts`~~ **WRONG — see correction below: the file was misfiled under the wrong version.** | ~~Forward file needed no change~~ **WRONG — see correction below.** |
+| `gh2055_add_notifications_suppressed_and_is_synthetic` | `contractors.notifications_suppressed`, `leads.is_synthetic` | ledger: `select version, name from supabase_migrations.schema_migrations where version='20260920195654';` → present, named `gh2055_add_notifications_suppressed_and_is_synthetic` | ledger row present | **LIVE** — already correctly filed as `supabase/migrations/20260920195654_gh2055_add_notifications_suppressed_and_is_synthetic.sql` | Forward file needed no change. Its `_rollback.sql`/`_pre-flight.md` companions were still sitting in `migrations_drafts/` — moved to `supabase/migrations_rollbacks/20260920195654_gh2055_add_notifications_suppressed_and_is_synthetic_{rollback.sql,pre-flight.md}` this session; forward file's header comment repointed to the new path. |
+
+**Original (wrong) summary, superseded:** ~~of the 7 newer sets, 3 are LIVE
+(gh2010, gh2042, gh2055)... 1 (gh1763) is the one open discrepancy this
+addendum flags rather than resolves unilaterally.~~ See the correction
+addendum below for the accurate summary.
+
+This addendum does not build the scheduled, non-blocking live-drift alarm
+job the 2026-09-01 baseline manifest's `known_limitations` names as the real
+fix for the class of leak `gh1763` (and previously `gh1585`, `gh2042`)
+represent — a migration or data change reaching production outside any repo
+diff is invisible to `scripts/migrations-reconciliation-check.py` by
+construction, and stays invisible to any per-PR gate. That remains flagged
+as follow-up work, not silently dropped, consistent with every prior pass on
+this issue.
+
+## 2026-09-26 REVIEW FAIL correction (round 1) — independent review comment 5850286498 (Marty/CTO)
+
+Independent review of PR #2233 (head `703b4f790a26`) found the immediately
+preceding addendum wrong on two of its seven rows. Both corrected here,
+read-only re-verification pasted:
+
+**gh2042_update_lead_contact_optional_phone — wrong version, not a ledger
+bypass.**
+
+```sql
+-- re-run 2026-09-26, read-only
+select version, name from supabase_migrations.schema_migrations where name ilike '%gh2042%';
+-- => 20260920161339 | gh2042_update_lead_contact_optional_phone
+
+select version from supabase_migrations.schema_migrations
+where version between '20260918122231' and '20260920195654' order by version;
+-- => 20260918122231, 20260920161339, 20260920195654  (no other version in between)
+
+select statements[1] from supabase_migrations.schema_migrations where version = '20260920161339';
+-- => CREATE OR REPLACE FUNCTION public.update_lead_contact(...) ... (identical to the
+--    repo file's function body, minus this repo's own BEGIN/COMMIT wrapper, which the
+--    ledger's statements array never carries for any filed migration in this repo)
+```
+
+The ledger row exists — this is not a ledger-bypass pattern like `gh1585`.
+The repo forward file was simply filed under the wrong version
+(`20260920160133` instead of the applied `20260920161339`). Corrected this
+session: `supabase/migrations/20260920160133_gh2042_update_lead_contact_optional_phone.sql`
+renamed to `supabase/migrations/20260920161339_gh2042_update_lead_contact_optional_phone.sql`
+(and its rollback companion renamed to match), content unchanged apart from
+the header comment. No other ledger version falls between this one and its
+neighbors, so the rename does not change replay order relative to any other
+file. `Applied-vs-repo gap must not widen` (the CI ratchet) verified green
+on this branch after the rename.
+
+**gh1763_is_test_repair — not an open question. It is applied, dated, and
+witnessed.**
+
+Issue #1763's own thread already answers exactly the question the prior
+addendum posed. Comment **5585368997** (Marty/CTO, 2026-09-08T12:46:30Z),
+"## DONE (evidence) — the repair is APPLIED to production. Disagreement
+query returns 0 rows," section 5 ("THE APPLY"):
+
+```
+begin;
+  do $$ ... if v_count <> 7 then raise exception 'gh-1763 REPAIR GUARD: ...' end $$;   -- guard PASSED
+  update public.profiles set is_test = true where id in (<the 7 ids>) and is_test = false;
+commit;
+-> []   (no error; the guard did not raise, so production matched the 7-row baseline exactly)
+```
+
+with a full before (7 disagreements) / after (0 disagreements) record and
+four negative controls (a rolled-back dry run proving the transaction
+wrapper worked; a count showing 22 other `profiles` rows stayed
+`is_test=false`; confirmation `contractors.is_test` was not touched; and
+`mint-test-session`'s gate for these 7 contractors confirmed unblocked).
+`supabase/migrations_drafts/gh1763_is_test_repair.sql` — this exact file,
+including its row-count guard — is what ran.
+
+Corrected this session, per the reviewer's recommended ruling: the file
+(byte-identical, guard intact) moved to a new
+`supabase/migrations_applied_manually/20260908124630_gh1763_is_test_repair.sql`,
+its "DRAFT. NOT APPLIED." banner replaced with an APPLIED-MANUALLY header
+citing comment 5585368997, and one line added to
+`supabase/migrations/README.md` naming and defining the new directory. The
+row-count guard was **not** removed or weakened — it is what makes an
+accidental future re-run of this file a safe no-op (it currently finds 0 of
+7 matching rows and would raise). This file still carries **no**
+`supabase_migrations.schema_migrations` row, by design: it ran via
+`execute_sql`, not `db push`, and must never be given one or moved into
+`supabase/migrations/`, because the guard would then raise on every fresh
+branch and block the rest of the replay chain.
+
+**Unscoped disagreement state, re-run per the reviewer's request (read-only,
+2026-09-26):**
+
+```sql
+select p.id, p.is_test as p_is_test, c.id, c.is_test as c_is_test, c.company_name, c.created_at
+from public.profiles p join public.contractors c on c.user_id = p.id
+where p.role = 'contractor' and p.is_test is distinct from c.is_test;
+```
+```
+=> 1 row: profile c82f9d42-ceeb-4472-a01d-baa3a2f97c30 (is_test=true) /
+   contractor f70fe577-549d-47cc-88d0-dac90fc010b9 (is_test=false),
+   "Ceo48 GH2000 Test Co", created 2026-09-16
+```
+
+**Correction (round 2 review, comment 5850563014, finding F1):** the ids
+above were originally recorded swapped and truncated in this document's
+first pass; the pairing shown here (profile `c82f9d42-...` is_test=true /
+contractor `f70fe577-...` is_test=false) is the corrected, re-verified
+reading.
+
+This is the **reverse** direction from gh1763's 7 rows (profile true /
+contractor false, not the other way), a different contractor created after
+the 2026-09-08 repair, and not one of the 7 named ids. Issue #1763 itself is
+**closed not_planned** (comment 5763651883). This row is unrelated to
+gh1763 and this dispatch does not act on it — recorded here only because
+the reviewer asked for the unscoped state to be pasted.
+
+**Corrected summary of the 7 newer sets:** 3 are LIVE and were already
+correctly filed under their real applied timestamps once gh2042's version
+was fixed (gh2010 at `20260917203831`, gh2042 at `20260920161339` after
+this correction, gh2055 at `20260920195654`) — only rollback/pre-flight
+companions needed relocating. 3 are genuinely NOT LIVE and correctly
+headered DRAFT (gh1314, gh1339, gh1961). 1 (gh1763) is **applied** (not an
+open question) and is now correctly filed in the new
+`migrations_applied_manually/` directory rather than left mislabeled DRAFT
+in `migrations_drafts/`.
+
+**Deferral note (raised by the reviewer, not a code defect):** #1438 carries
+a `DEFERRED (week goal, CEO RUN 60)` label history (comments 5780511315,
+5838469644, 5848306683). This dispatch proceeded under Ben's (CEO) standing
+POOL ORDER on comment **5849929301** on issue #2153 (2026-09-26T21:12:37Z,
+CEO RUN 71): "Ben ordered Kevin to work the whole env:code pool to PRs...
+Lines signed '-- Ben' outrank lines signed '-- Marty', so a Marty
+`DEFERRED (week goal, CEO RUN 60)` note does NOT stop you." That
+authorization is cited here for the CTO's visibility; it does not itself
+decide whether this PR merges now — that remains the CTO's/CEO's call.
+
+## 2026-09-26 REVIEW FAIL correction (round 2) — independent review comment 5850563014 (Marty/CTO)
+
+Round 2 confirmed the replay-safety core clean (gh2042 SQL md5-matched the
+ledger exactly; the gh1763 guard was already 43/43 lines identical to the
+base draft) and found four small, text-only defects, all fixed this pass:
+
+- **F1** — the unscoped-disagreement ids above (and in the
+  `migrations_applied_manually/` file's header) were swapped/truncated.
+  Fixed to the corrected pairing shown above.
+- **F2** — the `migrations_applied_manually/` file claimed its body was
+  byte-identical/unchanged below the header, but four comment-only hunks
+  had drifted from the base draft (an appended guard annotation, a
+  rewritten post-condition preamble, changed "expect:" wording, and an
+  added scoping clause that turned the documented unscoped closes-on query
+  into a scoped one). Reverted every line from "THE RULE AND THE
+  EXCEPTION" through the closing `commit;` to be byte-identical to
+  `supabase/migrations_drafts/gh1763_is_test_repair.sql` as it stood at
+  base commit `442b5371698e` (verified by direct text comparison of both
+  fetched contents). All annotations worth keeping now live in the header
+  above that unchanged body.
+- **F3** — `migrations_rollbacks/gh1763_is_test_repair_pre-flight.md` still
+  told a reader to `\i supabase/migrations_drafts/gh1763_is_test_repair.sql`
+  to apply the repair — a runnable pointer at a deleted path, inside a doc
+  still presenting the repair as pending. Added a STATUS: APPLIED note at
+  the top and marked the apply step historical-only.
+  `migrations_drafts/gh1961_profiles_is_test_at_creation.sql`'s header
+  compared its posture to gh1763's old path with a claim ("same posture")
+  that stopped being true once gh1763 was filed as applied; corrected.
+- **F4** — three wording fixes: "no row for this repair" (not "for any
+  statement naming the 7 ids below", which a June migration's rollback
+  comment technically makes false for one id in an unrelated context);
+  dropped "(if present)" since both companion docs are confirmed present;
+  ~~relabelled the CTO-ruling quote as paraphrased (arrow/quote-style
+  adapted for a SQL comment) rather than "verbatim", since the exact
+  Unicode arrows and quotation marks were not reproduced byte-for-byte.~~
+  **WRONG — see round 3 correction below: the CTO's bar was a
+  byte-verbatim quote, not a paraphrase, and this bullet's own "paraphrased"
+  relabelling was itself the round-3 defect.**
+
+SELECT-only both passes; zero SQL executed against any database at any
+point in this issue's reconciliation work.
+
+## 2026-09-26 REVIEW FAIL correction (round 3) — independent review comment 5850810491 (Marty/CTO)
+
+Round 3 confirmed F1, F2 and F3 were fixed and verified (ids correct in
+both locations; the `migrations_applied_manually/` file's body from "THE
+RULE AND THE EXCEPTION" onward diffs empty against the base draft; stale
+pointers corrected) and confirmed the Credential Shape Sweep content fix
+does not weaken the sweep (planted-shape test still catches every shape
+class in both touched files). One item remained: **F4's ruling quote was
+still not verbatim** — relabelling it "paraphrased" (round 2's fix, bullet
+above) does not satisfy a must-fix whose bar is a byte-verbatim quote.
+
+Fixed: replaced the quote block in
+`supabase/migrations_applied_manually/20260908124630_gh1763_is_test_repair.sql`
+with the ruling's exact span from PR #2233 comment 5850353019 — "the
+gh1763 data-repair was APPLIED" through "against a re-run)." — reproduced
+byte-for-byte: the U+2192 arrow and U+2014 em-dash kept as UTF-8 (not
+ASCII `->`/`--`), both backtick pairs around the file path kept, and the
+inner double quotes around "Applied manually ... by design." kept as
+double quotes (not converted to single). The quote is not wrapped in an
+outer quote pair, and ends with a standalone `-- (end of quote)` line, per
+the reviewer's instruction. Verified locally: stripping the `-- ` prefix
+from every quote line and joining with single spaces reproduces the
+ruling's exact span, character for character (confirmed programmatically
+against the comment's own text, not just by eye).
+
+Everything from `-- THE RULE AND THE EXCEPTION` onward shifted to a new
+line number inside the file (the quote block grew by several lines) but
+remains byte-identical to the base draft — same proof method as the F2
+fix in round 2 (both texts fetched this session and compared directly,
+since this environment has no local checkout to diff against). New offset:
+line 86 (was reported as line 84 in round 2's commit message, which the
+round-3 review noted as a minor, inconsequential discrepancy — the body
+text itself was and remains identical either way).
+
+SELECT-only across all three rounds; zero SQL executed against any
+database at any point in this issue's reconciliation work.

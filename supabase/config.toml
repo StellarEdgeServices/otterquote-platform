@@ -1,3 +1,15 @@
+[functions.auth-uniform]
+# gh-1883 [SECURITY]: fronts /auth/v1/otp and /auth/v1/recover, both called
+# BEFORE any auth session exists (pre-magic-link, pre-password-reset), same
+# reason check-email-exists (immediately below) stays unauthenticated: the
+# caller has no JWT to present. Must be callable anonymously for the
+# magic-link/password-reset UI to work at all. Protected instead by its own
+# per-IP rate limit (check_rate_limit + the rate_limit_config row added in
+# 20260927170000_gh1883_auth_uniform_rate_limit.sql) and by never returning
+# anything but a uniform, fixed-timing 200 {} regardless of account
+# existence or GoTrue outcome (see the function's own header comment).
+verify_jwt = false
+
 [functions.check-email-exists]
 # gh-1544: called from contractor-join.html BEFORE any auth session exists
 # (pre-magic-link, pre-OAuth), so it cannot carry a JWT. The function only
@@ -183,7 +195,14 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.process-dunning]
-# Cron — auth gated in-handler. Pin false (matches deployed v45).
+# gh-2309: auth gated in-handler (caller-gate.ts). TRIGGER + CRON modes require
+# `Authorization: Bearer <key>` where key is the runtime SUPABASE_SERVICE_ROLE_KEY or the
+# getServiceRoleKey() value (SUPABASE_SECRET_KEYS.default, which docusign-webhook sends);
+# constant-time compare, 401 with zero I/O otherwise; callers are cron job 5, docusign-webhook (L1662) and stripe-webhook (L1061). verify_jwt MUST stay
+# false because the cron key (vault `cron_service_role_key`) is NOT a JWT (measured 2026-09-28: `like 'eyJ%'` = false, per #2309 triage), so the
+# platform JWT check would reject the real caller; the
+# emailed homeowner_choice GET link also carries no bearer (its failure_id/choice are
+# validated in-handler). health_check + OPTIONS are ungated and do no I/O.
 verify_jwt = false
 
 [functions.create-invoice]
@@ -463,4 +482,32 @@ verify_jwt = false
 # email recipient clicking an unsubscribe link has no JWT, and the signed
 # HMAC token in the URL is the authorization.
 [functions.partner-email-optout]
+verify_jwt = false
+
+# gh-2154 P-5: Meta cannot send a Supabase JWT (this is Meta's own webhook
+# delivery, GET handshake + POST event notification). Authentication is
+# entirely in-handler: the GET handshake checks hub.verify_token against
+# META_LEADGEN_VERIFY_TOKEN, and the POST checks X-Hub-Signature-256 (an
+# HMAC-SHA256 of the raw body, keyed with META_APP_SECRET, constant-time
+# compared) BEFORE any read or write — see signature.ts / handler.ts. Same
+# verify_jwt=false-but-in-handler-authenticated shape as check-email-exists,
+# just with a signature instead of a rate-limited open endpoint.
+[functions.meta-leadgen-webhook]
+verify_jwt = false
+
+# gh-2154 P-5 go-live (item 2): the 48h invite-reminder sweep — same
+# cron-exception pattern as send-partner-onboarding above; access is gated
+# by the CRON_SECRET / service-role Bearer check inside the function (see
+# cron-auth.ts, duplicated). Its own switch (PARTNER_INVITE_EMAIL_ENABLED,
+# the SAME one the initial invite email uses) defaults OFF; this pin has no
+# bearing on that — it only controls the API gateway's own JWT check.
+[functions.send-partner-invite-reminder]
+verify_jwt = false
+
+# gh-2154 P-5r (LEGAL-READ FAIL 5833717530) — an invited Meta-lead partner
+# has no Supabase JWT yet (they are not signed in). Same
+# verify_jwt=false-but-in-handler-authenticated shape as partner-email-
+# optout just above: the signed "invite:" HMAC token in the URL/body IS the
+# authorization, checked before any read or write.
+[functions.partner-invite-accept]
 verify_jwt = false

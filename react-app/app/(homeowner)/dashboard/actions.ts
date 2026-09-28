@@ -54,11 +54,20 @@ export async function submitForBids(claimId: string): Promise<ActionResult> {
       }
     }
   } catch { /* non-fatal — submit still proceeds */ }
-  const { error: updErr } = await supabase
+  // gh-2105 batch 4 (decision a): `.update()` without `.select()` resolves
+  // `{ error: null }` even on a zero-row RLS/filter match — the homeowner
+  // could see "submitted for bids" while claims.status/ready_for_bids never
+  // actually flipped, so no contractor is ever notified. `.select()` plus a
+  // zero-row check makes that failure visible instead of silent.
+  const { data: updRows, error: updErr } = await supabase
     .from('claims')
     .update(update)
-    .eq('id', claimId);
+    .eq('id', claimId)
+    .select('id');
   if (updErr) return { ok: false, error: updErr.message };
+  if (!Array.isArray(updRows) || updRows.length === 0) {
+    return { ok: false, error: 'submit_for_bids_zero_rows: no matching claim row was updated' };
+  }
 
   // notify-contractors is non-fatal — a notification failure must not block submit.
   try {
@@ -93,11 +102,19 @@ export async function uploadClaimDocument(params: {
   // display name 404s — PR #473).
   const flagField = kind === 'estimate' ? 'has_estimate' : 'has_measurements';
   const nameField = kind === 'estimate' ? 'estimate_filename' : 'measurements_filename';
-  const { error: updErr } = await supabase
+  // gh-2105 batch 4 (decision a): same zero-row-silent-success gap — the file
+  // is already durably in storage at this point, so a zero-row match here
+  // would leave the checklist flag/filename un-set while the caller believes
+  // the whole upload succeeded. `.select()` + a zero-row check surfaces it.
+  const { data: updRows, error: updErr } = await supabase
     .from('claims')
     .update({ [flagField]: true, [nameField]: storagePath })
-    .eq('id', claimId);
+    .eq('id', claimId)
+    .select('id');
   if (updErr) return { ok: false, error: updErr.message };
+  if (!Array.isArray(updRows) || updRows.length === 0) {
+    return { ok: false, error: 'upload_claim_document_zero_rows: no matching claim row was updated' };
+  }
 
   // Parsing is fire-and-forget (gh-2070) — parse-loss-sheet makes a
   // synchronous, non-streaming Claude vision call (routinely 15-60s, bounded
@@ -215,6 +232,21 @@ export async function joinExpansionWaitlist(params: {
   );
   if (error) return { ok: false, error: error.message };
 
-  await supabase.from('claims').update({ status: 'waitlisted' }).eq('id', claimId);
+  // gh-2105 batch 4 (decision a): this write was previously fire-and-forget —
+  // neither `error` nor row count was checked at all, so a zero-row (or
+  // outright errored) claims.status='waitlisted' write was always silently
+  // swallowed and the caller always saw `{ ok: true }`. This is the D-178
+  // state gate itself (not just the opt-in record above it), so a homeowner
+  // could opt in to the waitlist while their claim never actually left the
+  // active flow. `.select()` + a zero-row check now surfaces that failure.
+  const { data: waitlistRows, error: waitlistErr } = await supabase
+    .from('claims')
+    .update({ status: 'waitlisted' })
+    .eq('id', claimId)
+    .select('id');
+  if (waitlistErr) return { ok: false, error: waitlistErr.message };
+  if (!Array.isArray(waitlistRows) || waitlistRows.length === 0) {
+    return { ok: false, error: 'join_expansion_waitlist_zero_rows: no matching claim row was updated' };
+  }
   return { ok: true };
 }

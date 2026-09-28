@@ -12,6 +12,7 @@ import {
 // injected fetch/clock fixtures. The polling behaviour gh-1244 proved is
 // unchanged; what is new is the absence probe and the two distinct error types.
 import {
+  clearStrandedEnvelopePointer,
   isPermanentCreationFailure,
   waitForBoldSignDocumentReady as waitForBoldSignDocumentReadyImpl,
 } from "./boldsign-readiness.ts";
@@ -1929,15 +1930,60 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
   // to the document they are partway through -- not create a second one, strand
   // the first, and spend another unit of plan quota doing it.
   if (requestBody.resolved_envelope_id) {
-    console.log(`contractor_sign: resuming existing document ${requestBody.resolved_envelope_id} (no mint)`);
-    return await issueContractorSignLink(supabase, {
-      claim_id,
-      envelopeId: requestBody.resolved_envelope_id,
-      signer,
-      return_url,
-      corsHeaders,
-      resumed: true
-    });
+    const resumedEnvelopeId = requestBody.resolved_envelope_id;
+    console.log(`contractor_sign: resuming existing document ${resumedEnvelopeId} (no mint)`);
+    // gh-1842: the resume path can land on a document that failed background
+    // creation permanently just as easily as a freshly-minted one can -- the
+    // failure is discovered on read, not on write, so it can surface here on
+    // ANY later retry, not only the attempt that minted it. Mirror the mint
+    // path's un-record exactly: same fields, same guard, same narrow
+    // isPermanentCreationFailure() gate. A timeout or network error is NOT
+    // cleared here either -- clearing on an ambiguous failure would re-mint a
+    // second paid document over one that is merely slow.
+    try {
+      return await issueContractorSignLink(supabase, {
+        claim_id,
+        envelopeId: resumedEnvelopeId,
+        signer,
+        return_url,
+        corsHeaders,
+        resumed: true
+      });
+    } catch (err) {
+      if (!isPermanentCreationFailure(err)) throw err;
+      console.error(
+        `gh-1842: BoldSign document ${resumedEnvelopeId} failed background creation permanently ` +
+        `(discovered on resume); un-recording it from quotes/claims so the next attempt mints a new one.`
+      );
+      // REVIEW FAIL (PR #2240, F1): resumedEnvelopeId came from
+      // findExistingEnvelopeId(), which can resolve via the (claim_id,
+      // contractor_id) fallback rather than this request's own quote_id --
+      // so quote_id is NOT trusted as the clear target here. Passing
+      // quote_id: null forces clearStrandedEnvelopePointer into its
+      // claim_id+contractor_id branch, which (as of the same fix) is
+      // additionally guarded on .eq("docusign_envelope_id", resumedEnvelopeId)
+      // so it can only ever clear the row that actually holds this exact
+      // dead pointer -- never a different quote that happens to share the
+      // claim/contractor pair, and never a pointer a concurrent mint just
+      // wrote (gh-1400 inverted).
+      const { quoteClearError, claimClearError, quoteRows, claimRows } = await clearStrandedEnvelopePointer(supabase, {
+        claim_id,
+        quote_id: null,
+        contractor_id,
+        envelopeId: resumedEnvelopeId
+      });
+      if (quoteClearError) {
+        console.error("gh-1842: failed to clear quotes.docusign_envelope_id:", quoteClearError);
+      } else if (quoteRows === 0) {
+        console.warn(`gh-1842: quotes clear matched zero rows for ${resumedEnvelopeId} (resume) - pointer already cleared or replaced`);
+      }
+      if (claimClearError) {
+        console.error("gh-1842: failed to clear claims.docusign_envelope_id:", claimClearError);
+      } else if (claimRows === 0) {
+        console.warn(`gh-1842: claims clear matched zero rows for ${resumedEnvelopeId} (resume) - pointer already cleared or replaced`);
+      }
+      throw err;
+    }
   }
   let autoFields = providedFields || {};
   let claimData = null;
@@ -2284,20 +2330,21 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
       `gh-1842: BoldSign document ${envelopeId} failed background creation permanently; ` +
       `un-recording it from quotes/claims so the next attempt mints a new one.`
     );
-    const quoteClearFilter = quote_id
-      ? supabase.from("quotes").update({ docusign_envelope_id: null }).eq("id", quote_id)
-      : supabase.from("quotes").update({ docusign_envelope_id: null })
-          .eq("claim_id", claim_id).eq("contractor_id", contractor_id);
-    const { error: quoteClearError } = await quoteClearFilter;
+    const { quoteClearError, claimClearError, quoteRows, claimRows } = await clearStrandedEnvelopePointer(supabase, {
+      claim_id,
+      quote_id,
+      contractor_id,
+      envelopeId
+    });
     if (quoteClearError) {
       console.error("gh-1842: failed to clear quotes.docusign_envelope_id:", quoteClearError);
+    } else if (quoteRows === 0) {
+      console.warn(`gh-1842: quotes clear matched zero rows for ${envelopeId} (mint) - pointer already cleared or replaced`);
     }
-    const { error: claimClearError } = await supabase.from("claims").update({
-      docusign_envelope_id: null,
-      contract_sent_at: null
-    }).eq("id", claim_id).eq("docusign_envelope_id", envelopeId);
     if (claimClearError) {
       console.error("gh-1842: failed to clear claims.docusign_envelope_id:", claimClearError);
+    } else if (claimRows === 0) {
+      console.warn(`gh-1842: claims clear matched zero rows for ${envelopeId} (mint) - pointer already cleared or replaced`);
     }
     throw err;
   }

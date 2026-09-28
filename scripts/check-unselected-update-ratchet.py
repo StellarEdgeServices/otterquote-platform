@@ -60,6 +60,17 @@ ANNOTATION = "update-no-select-ok"
 # the one-line-update-then-unrelated-select shape the bug could hide, so
 # BASELINE's numbers below are unchanged; only the scanner's correctness on
 # a case the repo does not yet contain has changed.
+# gh-2105 batch 2 (CTO RUN 40, 2026-09-25): fixed the money-critical Stripe/
+# payments cluster -- stripe-webhook/index.ts (6 sites: dispute evidence x2,
+# quotes.payment_status=succeeded, claims.platform_fee_stripe_id [decision b],
+# claims.platform_fee_charged, quotes.payment_status=dunning),
+# create-payment-intent/index.ts (the off-session quotes update; the
+# ad_sharing_opt_out site at :121 is not a money write and was left alone),
+# verify-payment-method/index.ts (contractors.has_payment_method -- now fails
+# closed on a zero-row match, same as its existing error branch), and
+# mark-payout-paid/index.ts (both referrals updates -- decision b, each
+# already idempotency-guarded by its own filter). Baselines below dropped by
+# 10 accordingly (create-payment-intent 2->1, the other three 1/2/6->0).
 BASELINE: dict[str, int] = {
     "admin-contractors.html": 1,
     "admin-cpa.html": 2,
@@ -90,8 +101,15 @@ BASELINE: dict[str, int] = {
     "project-info-rcv.html": 2,
     "react-app/app/(homeowner)/bids/actions.ts": 1,
     "react-app/app/(homeowner)/color-selection/use-color-selection-data.ts": 1,
-    "react-app/app/(homeowner)/contract-signing/use-contract-signing-data.ts": 2,
-    "react-app/app/(homeowner)/dashboard/actions.ts": 3,
+    # gh-2105 batch 4: fixed both sites (recordHomeownerSigned's two
+    # quotes.homeowner_signed_at writes -- decision a, LEGAL path, see the
+    # batch-4 PR body). Lowered 2->0, following batches 1-3's precedent of
+    # lowering a file's baseline in the same PR that fixes it.
+    "react-app/app/(homeowner)/contract-signing/use-contract-signing-data.ts": 0,
+    # gh-2105 batch 4: fixed all 3 sites (submitForBids, uploadClaimDocument,
+    # joinExpansionWaitlist -- all decision a, see the batch-4 PR body for the
+    # full grep enumeration + per-site decisions). Lowered 3->0.
+    "react-app/app/(homeowner)/dashboard/actions.ts": 0,
     "react-app/app/(homeowner)/help-estimate/actions.ts": 1,
     "react-app/app/(homeowner)/help-materials/use-help-materials-data.ts": 1,
     "react-app/app/(homeowner)/help-measurements/use-help-measurements-data.ts": 1,
@@ -123,16 +141,26 @@ BASELINE: dict[str, int] = {
     "supabase/functions/check-siding-design-completion/index.ts": 3,
     "supabase/functions/create-docusign-envelope/index.ts": 7,
     "supabase/functions/create-hover-order/index.ts": 2,
-    "supabase/functions/create-payment-intent/index.ts": 2,
+    "supabase/functions/create-payment-intent/index.ts": 1,
     "supabase/functions/create-setup-intent/index.ts": 1,
-    "supabase/functions/docusign-webhook/index.ts": 13,
+    # gh-2105 batch 3: fixed all 13 real call sites (see the batch-3 PR body
+    # for the full grep enumeration + per-site a/b/c decisions). Lowered
+    # 13->0, following batches 1-2's own precedent of lowering a file's
+    # baseline in the same PR that fixes it (e.g. stripe-webhook 6->0,
+    # verify-payment-method 1->0 in PR #2210). NOTE: the pre-fix live count on
+    # `main` was actually 14, not 13 -- a comment at the old line 1770
+    # ("the .update() call in error handling...") contained the literal
+    # scanner-trigger substring and was a false positive the original
+    # baseline capture appears to have missed or hand-adjusted for; that
+    # comment is reworded in this same PR to stop tripping the scanner.
+    "supabase/functions/docusign-webhook/index.ts": 0,
     "supabase/functions/get-hover-pdf/index.ts": 1,
     "supabase/functions/get-hover-siding-data/index.ts": 1,
     "supabase/functions/hover-webhook/index.ts": 4,
     "supabase/functions/lead-next-step-optout/index.ts": 1,
     "supabase/functions/mark-job-complete/index.ts": 2,
     "supabase/functions/mark-loss-sheet-reviewed/index.ts": 2,
-    "supabase/functions/mark-payout-paid/index.ts": 2,
+    "supabase/functions/mark-payout-paid/index.ts": 0,
     "supabase/functions/notify-admin-new-homeowner/index.ts": 1,
     "supabase/functions/notify-payout-pending/index.ts": 1,
     "supabase/functions/parse-hover-measurements/index.ts": 1,
@@ -141,7 +169,11 @@ BASELINE: dict[str, int] = {
     "supabase/functions/platform-health-check/index.ts": 2,
     "supabase/functions/process-bid-expirations/index.ts": 4,
     "supabase/functions/process-coi-reminders/index.ts": 5,
-    "supabase/functions/process-dunning/index.ts": 15,
+    # gh-2105 batch 3: fixed all 15 real call sites (see the batch-3 PR body
+    # for the full grep enumeration + per-site a/b/c decisions). Lowered
+    # 15->0, following batches 1-2's precedent (see the docusign-webhook
+    # entry above for the same note).
+    "supabase/functions/process-dunning/index.ts": 0,
     "supabase/functions/process-hover-rebate/index.ts": 1,
     "supabase/functions/process-payout-reminders/index.ts": 2,
     "supabase/functions/record-attestation/index.ts": 1,
@@ -153,12 +185,12 @@ BASELINE: dict[str, int] = {
     "supabase/functions/send-home-profile-prompt/index.ts": 2,
     "supabase/functions/send-incomplete-onboarding-reminders/index.ts": 1,
     "supabase/functions/send-partner-onboarding/index.ts": 3,
-    "supabase/functions/stripe-webhook/index.ts": 6,
+    "supabase/functions/stripe-webhook/index.ts": 0,
     "supabase/functions/submit-partner-w9/index.ts": 1,
     "supabase/functions/switch-contractor/index.ts": 4,
     "supabase/functions/validate-contract-template/index.ts": 1,
     "supabase/functions/validate-contract-template/revalidate.ts": 1,
-    "supabase/functions/verify-payment-method/index.ts": 1,
+    "supabase/functions/verify-payment-method/index.ts": 0,
 }
 
 

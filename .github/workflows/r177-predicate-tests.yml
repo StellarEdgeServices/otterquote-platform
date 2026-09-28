@@ -39,12 +39,28 @@ name: R-177 predicate tests
 # `push` to `main` stays path-filtered below: that trigger does not gate PR
 # merges, and there is no correctness reason to widen it.
 #
-# Advisory by design (this workflow, still): being made a REQUIRED status
-# check is a branch-protection change owned by Dustin/CTO, not shipped by this
-# file. Until that repo-settings step happens, this job is still informational
-# — it runs and reports, but nothing blocks on it. See Docs/r177-legal-read.md.
+# gh-1855 (CTO RUN 36, 2026-09-22, comment 5780204852): a required-check flip
+# was tried and REVERTED 20 minutes later. `main` merges through a GitHub
+# merge queue, which builds each queued PR on a synthetic
+# `gh-readonly-queue/main/**` ref and fires `merge_group`, matching neither
+# `pull_request` nor the path-filtered `push` trigger below. Without a
+# `merge_group` trigger, a required "R-177 predicate tests" context would
+# leave every queue entry waiting on a status this job never reports until
+# GitHub's checkResponseTimeout (3600s) drops it -- freezing the whole queue,
+# not just this PR. `post-deploy-verify.yml` and `e2e-smoke.yml` (the two
+# contexts already required on `main`) both declare this same trigger for the
+# same reason; this workflow now matches them.
+#
+# Advisory by design (still): being made a REQUIRED status check is a
+# branch-protection change owned by Dustin/CTO, not shipped by this file. This
+# change only removes the precondition that made the last attempt unsafe; it
+# does not flip the switch. Until that repo-settings step happens, this job
+# is still informational -- it runs and reports, but nothing blocks on it.
+# See Docs/r177-legal-read.md.
 
 on:
+  merge_group:
+    types: [checks_requested]
   pull_request:
   push:
     branches: [main]

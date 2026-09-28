@@ -81,6 +81,7 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { isCronAuthorized } from "./cron-auth.ts";
 import { buildLeadReminderEmail } from "./email-content.ts";
+import { internalErrorResponse, unexpectedErrorResponse } from "./error-response.ts";
 import {
   LEAD_OPTOUT_SECRET_ENV,
   LEAD_OPTOUT_SECRET_PREVIOUS_ENV,
@@ -90,6 +91,7 @@ import {
 import {
   type CandidateLead,
   dedupeByNormalizedEmail,
+  REMINDER_ELIGIBLE_VARIANTS,
   REMINDER_MAX_AGE_MS,
   REMINDER_MIN_AGE_MS,
   selectLeadForReminder,
@@ -270,18 +272,23 @@ serve(async (req: Request) => {
       .is("next_step_reminder_sent_at", null)
       .is("next_step_reminder_opted_out_at", null)
       .not("email", "is", null)
-      // Fix round 1, must-fix 6: HO-1 / Arm F scope at the query level too
-      // (defense in depth — selectLeadForReminder() re-checks the same
-      // fields on every row regardless of this filter).
+      // Fix round 1, must-fix 6 (widened by gh-2300): homeowner scope at the
+      // query level too (defense in depth — selectLeadForReminder()
+      // re-checks the same fields on every row regardless of this filter).
       .eq("role", "homeowner")
-      .eq("variant", "f")
+      .in("variant", REMINDER_ELIGIBLE_VARIANTS)
       .order("created_at", { ascending: true })
       .limit(BATCH_LIMIT);
 
     if (candErr) {
+      // gh-2213 follow-up (Marty, CTO RUN 41, #2213 comment 5848074328):
+      // this branch used to put candErr.message straight into the response
+      // body — same js/stack-trace-exposure sink as the outer catch below,
+      // one query earlier. Detail stays in this console.error line only.
       console.error(`[${FUNCTION_NAME}] candidate query failed: ${candErr.message}`);
-      return new Response(JSON.stringify({ error: candErr.message }), {
-        status: 500,
+      const { status, body } = internalErrorResponse();
+      return new Response(JSON.stringify(body), {
+        status,
         headers: { "Content-Type": "application/json" },
       });
     }
@@ -392,9 +399,13 @@ serve(async (req: Request) => {
       headers: { "Content-Type": "application/json" },
     });
   } catch (err) {
-    console.error(`[${FUNCTION_NAME}] unexpected failure: ${String(err)}`);
-    return new Response(JSON.stringify({ error: String(err) }), {
-      status: 500,
+    // gh-2213 (js/stack-trace-exposure, CodeQL alert #57): the response
+    // body must never carry the exception's message/stack — only the
+    // fixed generic string unexpectedErrorResponse returns. The full
+    // detail still reaches console.error inside that helper.
+    const { status, body } = unexpectedErrorResponse(FUNCTION_NAME, err);
+    return new Response(JSON.stringify(body), {
+      status,
       headers: { "Content-Type": "application/json" },
     });
   }

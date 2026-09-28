@@ -2,7 +2,7 @@
  * gh-2154 P-1 / PR #2162 review round 4 (comment 5825170286) --
  * "any rejected sb.auth.updateUser() signs the user out."
  *
- * supabase-js 2.112.4's `_updateUser` always runs its PKCE code-verifier
+ * supabase-js 2.116.0's `_updateUser` always runs its PKCE code-verifier
  * cleanup on ANY updateUser error (regardless of flow type or whether email
  * was part of the payload): `storage.removeItem('<storageKey>-code-verifier')`.
  * `js/cookie-storage.js`'s `removeItem(key)` used to IGNORE the key it was
@@ -24,7 +24,7 @@
  * STUB `sb` object -- as tests/gh2154-p1-set-password.mjs and friends use --
  * never exercises `_updateUser`'s real storage cleanup, which is exactly why
  * it went unnoticed. This test instead runs:
- *   - the REAL supabase-js 2.112.4 UMD bundle, fetched from the exact CDN
+ *   - the REAL supabase-js 2.116.0 UMD bundle, fetched from the exact CDN
  *     URL the pages pin and byte-verified against the SAME SRI hash those
  *     pages carry (so a version/CDN drift fails loudly instead of silently
  *     testing something the site doesn't actually ship), and
@@ -56,7 +56,7 @@ function failWithReason(label, reason) {
   fail++;
 }
 
-const SUPABASE_JS_URL = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js';
+const SUPABASE_JS_URL = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.js';
 
 /**
  * Fetch the REAL supabase-js UMD bundle and verify its SRI hash matches, byte
@@ -68,7 +68,7 @@ async function loadRealSupabaseJs() {
   let pinnedIntegrity = null;
   for (const page of ['partner-dashboard.html', 'partner-login.html']) {
     const html = fs.readFileSync(path.join(repoRoot, page), 'utf8');
-    const m = html.match(/supabase-js@2\.112\.4\/dist\/umd\/supabase\.js"\s+integrity="([^"]+)"/);
+    const m = html.match(/supabase-js@2\.116\.0\/dist\/umd\/supabase\.js"\s+integrity="([^"]+)"/);
     if (!m) throw new Error(page + ': could not find the pinned supabase-js <script> tag (integrity attribute)');
     if (pinnedIntegrity === null) pinnedIntegrity = m[1];
     else if (pinnedIntegrity !== m[1]) {
@@ -186,7 +186,7 @@ async function freshSignedInEnv(supabaseSrc, cookieStorageSrc, { userId, fetchIm
   ctx.window.window = ctx.window;
   vm.createContext(ctx);
   vm.runInContext(cookieStorageSrc, ctx, { filename: 'js/cookie-storage.js (real)' });
-  vm.runInContext(supabaseSrc, ctx, { filename: 'supabase-js 2.112.4 UMD (real, jsdelivr, SRI-verified)' });
+  vm.runInContext(supabaseSrc, ctx, { filename: 'supabase-js 2.116.0 UMD (real, jsdelivr, SRI-verified)' });
 
   // gh-2162 review round 5: `configStyle` builds the client EXACTLY the way
   // js/config.js's `_oqCreateSupabaseClient()` does (js/config.js:146) --

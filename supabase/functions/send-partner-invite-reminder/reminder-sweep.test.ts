@@ -1,0 +1,315 @@
+// gh-2154 P-5 go-live (Ben, bus 22:17:42Z item 2) — reminder-sweep.ts tests.
+// Run: deno test --allow-read=supabase/functions supabase/functions/send-partner-invite-reminder/
+
+import { assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
+import {
+  isReminderDue,
+  isReminderEligible,
+  isUncertainPending,
+  REMINDER_DELAY_MS,
+  REMINDER_STAGE,
+  runReminderSweep,
+  type ReminderCandidate,
+  type RunDeps,
+} from "./reminder-sweep.ts";
+
+const NOW = Date.parse("2026-09-25T12:00:00Z");
+const HOUR = 60 * 60 * 1000;
+
+function row(overrides: Partial<ReminderCandidate> = {}): ReminderCandidate {
+  return {
+    id: "p1",
+    email: "lead@example.com",
+    first_name: "Jamie",
+    agent_type: "re_agent",
+    created_at: new Date(NOW - 49 * HOUR).toISOString(),
+    partner_agreement_accepted_at: null,
+    status: "pending",
+    meta_lead_id: "leadgen_1",
+    onboarding_opted_out_at: null,
+    ...overrides,
+  };
+}
+
+Deno.test("isReminderEligible: opted-out (unsubscribed from the invite) is NOT eligible -- CAN-SPAM, REVIEW FAIL 5841303507 must-fix 2", () => {
+  assertEquals(isReminderEligible(row({ onboarding_opted_out_at: new Date(NOW).toISOString() })), false);
+});
+
+// ── pure eligibility/due checks ─────────────────────────────────────────────
+
+Deno.test("isReminderEligible: pending + meta_lead_id + no acceptance is eligible", () => {
+  assertEquals(isReminderEligible(row()), true);
+});
+
+Deno.test("isReminderEligible: already accepted is NOT eligible -- 'skip anyone who has already accepted'", () => {
+  assertEquals(isReminderEligible(row({ partner_agreement_accepted_at: new Date(NOW).toISOString() })), false);
+});
+
+Deno.test("isReminderEligible: not a webhook-sourced row (no meta_lead_id) is not eligible", () => {
+  assertEquals(isReminderEligible(row({ meta_lead_id: null })), false);
+});
+
+Deno.test("isReminderEligible: not 'pending' (e.g. already active) is not eligible", () => {
+  assertEquals(isReminderEligible(row({ status: "active" })), false);
+});
+
+Deno.test("isReminderDue: exactly 48h old is due", () => {
+  assertEquals(isReminderDue(new Date(NOW - REMINDER_DELAY_MS).toISOString(), NOW), true);
+});
+
+Deno.test("isReminderDue: 47h59m old is not yet due", () => {
+  assertEquals(isReminderDue(new Date(NOW - REMINDER_DELAY_MS + 60_000).toISOString(), NOW), false);
+});
+
+Deno.test("isReminderDue: malformed created_at fails CLOSED (never guess due)", () => {
+  assertEquals(isReminderDue("not-a-date", NOW), false);
+});
+
+// ── runReminderSweep: injected-dependency integration ───────────────────────
+
+function buildDeps(overrides: Partial<RunDeps> & { candidates?: ReminderCandidate[] } = {}) {
+  const sent: { partnerId: string; mailgunId?: string }[] = [];
+  const failed: { partnerId: string; error: string; terminal: boolean }[] = [];
+  const claimed = new Set<string>();
+  const alerted = new Set<string>();
+  const alerts: { partner_id: string; stage: string }[][] = [];
+
+  const deps: RunDeps = {
+    now: NOW,
+    fetchCandidates: async () => overrides.candidates ?? [row()],
+    // Default: a stale 'pending' ledger row (a prior claim that never
+    // resolved) -- this is what every existing "uncertain" scenario below
+    // simulates. A test demonstrating the must-fix-4 quiet-skip path
+    // overrides this to a terminal 'sent'/'skipped' row instead.
+    existingLedgerRow: async () => ({ status: "pending", created_at: new Date(NOW - 60 * 60 * 1000).toISOString() }),
+    claim: async (id) => {
+      if (claimed.has(id)) return false;
+      claimed.add(id);
+      return true;
+    },
+    buildOptOutUrl: async (id) => `https://x.supabase.co/functions/v1/partner-email-optout?t=tok-${id}`,
+    sendEmail: async () => ({ ok: true, mailgunId: "mg-1" }),
+    markSent: async (partnerId, mailgunId) => {
+      sent.push({ partnerId, mailgunId });
+      return {};
+    },
+    markFailed: async (partnerId, error, terminal) => {
+      failed.push({ partnerId, error, terminal });
+      return {};
+    },
+    alreadyAlertedUncertain: async (id) => alerted.has(id),
+    markUncertainAlerted: async (id) => {
+      alerted.add(id);
+    },
+    alertAdminUncertain: async (rows) => {
+      alerts.push([...rows]);
+    },
+    ...overrides,
+  };
+  return { deps, sent, failed, claimed, alerted, alerts };
+}
+
+Deno.test("a due, eligible, unclaimed row is claimed, sent, and marked sent", async () => {
+  const { deps, sent, claimed } = buildDeps();
+  const outcome = await runReminderSweep(deps);
+  if (outcome.ok) {
+    assertEquals(outcome.results[0].sent, true);
+  }
+  assertEquals(claimed.has("p1"), true);
+  assertEquals(sent, [{ partnerId: "p1", mailgunId: "mg-1" }]);
+});
+
+Deno.test("an already-accepted row is skipped -- never claimed, never sent", async () => {
+  const { deps, claimed, sent } = buildDeps({
+    candidates: [row({ partner_agreement_accepted_at: new Date(NOW).toISOString() })],
+  });
+  const outcome = await runReminderSweep(deps);
+  if (outcome.ok) {
+    assertEquals(outcome.results[0].skipped_reason, "not_eligible");
+  }
+  assertEquals(claimed.size, 0);
+  assertEquals(sent.length, 0);
+});
+
+Deno.test("a not-yet-due row (< 48h old) is skipped without claiming", async () => {
+  const { deps, claimed } = buildDeps({
+    candidates: [row({ created_at: new Date(NOW - 10 * HOUR).toISOString() })],
+  });
+  const outcome = await runReminderSweep(deps);
+  if (outcome.ok) {
+    assertEquals(outcome.results[0].skipped_reason, "not_due");
+  }
+  assertEquals(claimed.size, 0);
+});
+
+Deno.test("never double-sends: a second sweep for the same already-claimed-and-sent partner does not re-send (claim refuses)", async () => {
+  const claimed = new Set<string>(["p1"]); // simulates an already-'sent' ledger row: claim() refuses
+  const { deps, sent, alerts } = buildDeps({
+    claim: async (id) => !claimed.has(id),
+    // REVIEW FAIL 5841303507 must-fix 4: the ledger row is genuinely
+    // 'sent' (terminal), not a stuck 'pending' -- so a lost claim here is
+    // NOT uncertain and must not alert.
+    existingLedgerRow: async () => ({ status: "sent", created_at: new Date(NOW - 60 * 60 * 1000).toISOString() }),
+  });
+  const outcome = await runReminderSweep(deps);
+  if (outcome.ok) {
+    assertEquals(outcome.results[0].skipped_reason, "already_sent");
+    assertEquals(outcome.uncertain, [], "an already-sent row must never appear in the uncertain list");
+  }
+  assertEquals(sent.length, 0, "must never send when the claim was refused");
+  assertEquals(alerts.length, 0, "NEGATIVE CONTROL: must-fix 4 -- an already-sent row must never trigger a false 'uncertain' admin alert");
+});
+
+Deno.test("REVIEW FAIL 5841303507 must-fix 4: a 'skipped' (terminal) ledger row on a lost claim is also a quiet skip, never a false alert", async () => {
+  const claimed = new Set<string>(["p1"]);
+  const { deps, alerts } = buildDeps({
+    claim: async (id) => !claimed.has(id),
+    existingLedgerRow: async () => ({ status: "skipped", created_at: new Date(NOW - 60 * 60 * 1000).toISOString() }),
+  });
+  const outcome = await runReminderSweep(deps);
+  if (outcome.ok) {
+    assertEquals(outcome.results[0].skipped_reason, "already_sent");
+    assertEquals(outcome.uncertain, []);
+  }
+  assertEquals(alerts.length, 0);
+});
+
+Deno.test("isUncertainPending: a 'sent' row is never uncertain regardless of age (NEGATIVE CONTROL for must-fix 4)", () => {
+  assertEquals(isUncertainPending({ status: "sent", created_at: new Date(NOW - 100 * HOUR).toISOString() }, NOW), false);
+});
+
+Deno.test("isUncertainPending: a fresh (non-stale) 'pending' row is not yet uncertain", () => {
+  assertEquals(isUncertainPending({ status: "pending", created_at: new Date(NOW - 60 * 1000).toISOString() }, NOW), false);
+});
+
+Deno.test("isUncertainPending: a stale (20m+) 'pending' row IS uncertain", () => {
+  assertEquals(isUncertainPending({ status: "pending", created_at: new Date(NOW - 21 * 60 * 1000).toISOString() }, NOW), true);
+});
+
+// ── REVIEW PASS 5841912094 SHOULD-FIX: a DB read error surfaces as
+// uncertain (fail toward surfacing), never as a silent quiet skip ───────────
+
+Deno.test("REVIEW PASS 5841912094 SHOULD-FIX: existingLedgerRow throwing (a real DB read error) is treated as uncertain and alerts, NEGATIVE CONTROL against the old silent-skip behavior", async () => {
+  const claimed = new Set<string>(["p1"]); // claim() also fails, as it would for a genuinely stuck row
+  const { deps, alerts } = buildDeps({
+    claim: async (id) => !claimed.has(id),
+    existingLedgerRow: async () => {
+      throw new Error("connection reset");
+    },
+  });
+  const outcome = await runReminderSweep(deps);
+  if (outcome.ok) {
+    // NEGATIVE CONTROL: pre-fix, a read error resolved to `undefined`,
+    // which is indistinguishable from "no row yet" -- isUncertainPending
+    // returns false for that, so this would have been a quiet
+    // "already_sent" skip with zero alerts. Fail-toward-surfacing means it
+    // must instead behave exactly like a stale pending row.
+    assertEquals(outcome.results[0].skipped_reason, "not_claimed");
+    assertEquals(outcome.uncertain, [{ partner_id: "p1" }]);
+  }
+  assertEquals(alerts.length, 1, "a DB read error on the ledger lookup must alert, not skip silently");
+});
+
+Deno.test("existingLedgerRow resolving to undefined (genuinely no row yet, not an error) still behaves as before -- not uncertain by itself", async () => {
+  const claimed = new Set<string>(); // claim() succeeds -- there really is no existing row
+  const { deps, sent } = buildDeps({
+    claim: async (id) => {
+      if (claimed.has(id)) return false;
+      claimed.add(id);
+      return true;
+    },
+    existingLedgerRow: async () => undefined,
+  });
+  const outcome = await runReminderSweep(deps);
+  if (outcome.ok) assertEquals(outcome.results[0].sent, true);
+  assertEquals(sent.length, 1, "a genuine no-row-yet lookup must not be treated as an error");
+});
+
+Deno.test("a thrown/timeout send (uncertain outcome) is NEVER marked failed or sent, and triggers exactly one admin alert -- P-4/#2191 posture", async () => {
+  const { deps, sent, failed, alerts, alerted } = buildDeps({
+    sendEmail: async () => {
+      throw new Error("network timeout");
+    },
+  });
+  const outcome = await runReminderSweep(deps);
+  if (outcome.ok) {
+    assertEquals(outcome.uncertain, [{ partner_id: "p1" }]);
+  }
+  assertEquals(sent.length, 0, "never markSent on an uncertain outcome");
+  assertEquals(failed.length, 0, "never markFailed on an uncertain outcome -- that would make it wrongly retryable");
+  assertEquals(alerts, [[{ partner_id: "p1", stage: "invite_reminder" }]]);
+  assertEquals(alerted.has("p1"), true);
+});
+
+Deno.test("a stale-uncertain row (claim refused, not yet alerted) is surfaced and alerted exactly once, then not re-alerted on a later run", async () => {
+  const claimSet = new Set<string>(["p1"]); // simulates a stuck 'pending' row: never reclaimable
+  const alertedSet = new Set<string>();
+  const alertsLog: unknown[] = [];
+  const { deps: deps1 } = buildDeps({
+    claim: async (id) => !claimSet.has(id),
+    alreadyAlertedUncertain: async (id) => alertedSet.has(id),
+    markUncertainAlerted: async (id) => {
+      alertedSet.add(id);
+    },
+    alertAdminUncertain: async (rows) => {
+      alertsLog.push([...rows]);
+    },
+  });
+  const outcome1 = await runReminderSweep(deps1);
+  if (outcome1.ok) assertEquals(outcome1.uncertain, [{ partner_id: "p1" }]);
+  assertEquals(alertsLog.length, 1, "first run alerts once");
+
+  // Second run: still stuck, but already alerted -- must not alert again.
+  const { deps: deps2 } = buildDeps({
+    claim: async (id) => !claimSet.has(id),
+    alreadyAlertedUncertain: async (id) => alertedSet.has(id),
+    markUncertainAlerted: async (id) => {
+      alertedSet.add(id);
+    },
+    alertAdminUncertain: async (rows) => {
+      alertsLog.push([...rows]);
+    },
+  });
+  const outcome2 = await runReminderSweep(deps2);
+  if (outcome2.ok) assertEquals(outcome2.uncertain, [{ partner_id: "p1" }]);
+  assertEquals(alertsLog.length, 1, "second run must NOT re-alert an already-alerted stuck row");
+});
+
+Deno.test("a definite (500-shaped) rejection is markFailed with terminal=false (retryable)", async () => {
+  const { deps, failed, sent } = buildDeps({
+    sendEmail: async () => ({ ok: false, error: "Mailgun 500", permanent: false }),
+  });
+  const outcome = await runReminderSweep(deps);
+  if (outcome.ok) assertEquals(outcome.results[0].skipped_reason, "send_failed");
+  assertEquals(sent.length, 0);
+  assertEquals(failed, [{ partnerId: "p1", error: "Mailgun 500", terminal: false }]);
+});
+
+Deno.test("a permanent (4xx-not-429) rejection is markFailed with terminal=true (never retried)", async () => {
+  const { deps, failed } = buildDeps({
+    sendEmail: async () => ({ ok: false, error: "Mailgun 400", permanent: true }),
+  });
+  await runReminderSweep(deps);
+  assertEquals(failed, [{ partnerId: "p1", error: "Mailgun 400", terminal: true }]);
+});
+
+Deno.test("a row with no email is skipped without claiming", async () => {
+  const { deps, claimed } = buildDeps({ candidates: [row({ email: null })] });
+  const outcome = await runReminderSweep(deps);
+  if (outcome.ok) assertEquals(outcome.results[0].skipped_reason, "no_email");
+  assertEquals(claimed.size, 0);
+});
+
+Deno.test("REMINDER_STAGE is the exact stage string the migration widens the CHECK constraint for", () => {
+  assertEquals(REMINDER_STAGE, "invite_reminder");
+});
+
+Deno.test("fetchCandidates throwing surfaces as a top-level failure, not a crash", async () => {
+  const { deps } = buildDeps({
+    fetchCandidates: async () => {
+      throw new Error("db down");
+    },
+  });
+  const outcome = await runReminderSweep(deps);
+  assertEquals(outcome.ok, false);
+});

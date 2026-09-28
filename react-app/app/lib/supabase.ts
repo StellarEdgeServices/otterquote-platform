@@ -44,5 +44,18 @@ export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKe
     lock: nonDeadlockingLock,
   },
 });
+// gh-2068 review fix (cto36 REVIEW: FAIL, comment 5779410643, B2): a
+// client-wide `global.headers` here would attach X-OQ-Internal to EVERY
+// request this singleton makes -- auth, storage, realtime, and every
+// `supabase.functions.invoke(...)` -- and Edge Function CORS allow-lists
+// (supabase/functions/*/index.ts) do not list x-oq-internal, so the
+// browser blocks those preflights once the oq_internal cookie is set.
+// That breaks payments/signing/admin (create-payment-intent,
+// create-docusign-envelope, admin-contractor-action, etc.) for exactly
+// the internal browsers the marker is for. Do NOT re-add `global.headers`
+// here. The header now goes ONLY on the leads insert itself, via
+// postgrest-js's per-request `.setHeader('x-oq-internal', '1')` at the
+// call site (react-app/app/get-started/page.tsx's persistSignupContext),
+// using the same isInternalTraffic() check this file used to run here.
 
 // Server-side admin client lives in supabase-admin.ts — do not import here.

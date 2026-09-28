@@ -137,18 +137,25 @@ const EMPTY_SKIP: OnboardingStage[] = [];
  * RESOLVED_STATUSES above for which ones actually block re-selection).
  */
 export function selectStage(
-  partner: Pick<PartnerRow, "created_at" | "app_first_signed_in_launch_at" | "onboarding_opted_out_at">,
+  partner: Pick<PartnerRow, "created_at" | "app_first_signed_in_launch_at" | "onboarding_opted_out_at"> & {
+    // gh-2154 P-5 (#2180 R-177 condition (4), carried by Kevin): optional so
+    // every pre-existing call site/test that has no opinion on invite
+    // acceptance keeps compiling unchanged. See the effectiveStartMs note
+    // below for why this is COALESCEd with created_at, never used alone.
+    partner_agreement_accepted_at?: string | null;
+  },
   priorRecords: ReadonlyMap<OnboardingStage, LedgerStatus>,
   now: number,
   // Ben, DECIDED (bus 14:01:57Z, ruling a — REVIEW FAIL 5833587935): the
   // moment the kill switch was turned on (see kill-switch.ts's
-  // parseOnboardingSwitch). A partner created BEFORE this moment never
-  // enters the sequence, at any stage, ever — this is what stops turning
-  // the switch on from blasting day0-through-day7 at every partner who
-  // signed up while it was off. Optional and defaulting to -Infinity ("the
-  // switch has effectively always been on") purely so every pre-existing
-  // test in this file that has no opinion on switch timing keeps passing
-  // unchanged; run-sweep.ts's real caller always passes the real value.
+  // parseOnboardingSwitch). A partner whose effective onboarding start (see
+  // effectiveStartMs below) is BEFORE this moment never enters the
+  // sequence, at any stage, ever — this is what stops turning the switch on
+  // from blasting day0-through-day7 at every partner who signed up while it
+  // was off. Optional and defaulting to -Infinity ("the switch has
+  // effectively always been on") purely so every pre-existing test in this
+  // file that has no opinion on switch timing keeps passing unchanged;
+  // run-sweep.ts's real caller always passes the real value.
   switchEnabledSinceMs: number = -Infinity,
 ): StageSelection {
   // Stop conditions FIRST — checked before stage math, before the
@@ -163,20 +170,37 @@ export function selectStage(
     return { stage: null, toMarkSkipped: EMPTY_SKIP, reason: "activated" };
   }
 
-  const createdMs = new Date(partner.created_at).getTime();
-  if (Number.isNaN(createdMs)) {
+  // gh-2154 P-5 (#2180 R-177 condition (4)): the day-count clock starts at
+  // real agreement ACCEPTANCE, never at row creation. A P-1 browser signup
+  // stamps partner_agreement_accepted_at at the same instant as created_at,
+  // so this changes nothing for them (COALESCE is a no-op). A P-5 Meta
+  // webhook invite row, though, is created 'pending' with no acceptance —
+  // meta-leadgen-webhook's insert and the partner's actual click on the
+  // invite link (partner-invite-accept) can be days apart. Keying age to
+  // created_at there would make an invite accepted 8 days after the webhook
+  // fired look "8 days old" the instant it activates, jumping straight to
+  // day7 ("Last reminder") as the FIRST email that partner ever gets, with
+  // day0/1/3 all marked skipped as backlog before they were ever eligible
+  // to receive one. Keying to acceptance instead makes day0 fire on their
+  // actual first eligible run, same as every other partner. (hasAccepted-
+  // AgreementAndIsActive() at the run-sweep.ts call site already means this
+  // function is never even reached for a not-yet-accepted P-5 row, but the
+  // age math itself must not silently fall back to created_at once it is.)
+  const effectiveStartMs = new Date(partner.partner_agreement_accepted_at ?? partner.created_at).getTime();
+  if (Number.isNaN(effectiveStartMs)) {
     // Fail closed on malformed data — never guess a stage from a NaN age.
     return { stage: null, toMarkSkipped: EMPTY_SKIP, reason: "invalid_created_at" };
   }
 
-  // Ruling (a): a partner who signed up before the switch was ever turned
-  // on never enters, permanently — same "checked before stage math, no
-  // ledger writes at all" shape as the activated/opted_out gates above.
-  if (createdMs < switchEnabledSinceMs) {
+  // Ruling (a): a partner whose effective start is before the switch was
+  // ever turned on never enters, permanently — same "checked before stage
+  // math, no ledger writes at all" shape as the activated/opted_out gates
+  // above.
+  if (effectiveStartMs < switchEnabledSinceMs) {
     return { stage: null, toMarkSkipped: EMPTY_SKIP, reason: "before_switch_enabled" };
   }
 
-  const ageMs = now - createdMs;
+  const ageMs = now - effectiveStartMs;
   if (ageMs < 0) {
     // Clock-skewed future created_at — not due for anything yet.
     return { stage: null, toMarkSkipped: EMPTY_SKIP, reason: "not_due" };

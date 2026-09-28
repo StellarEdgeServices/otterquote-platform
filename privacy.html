@@ -2,6 +2,25 @@
 <html lang="en">
 <head>
 <!-- Sentry Error Monitoring -->
+<!-- gh-2043: predeclare sentryOnLoad before the loader tag; the loader invokes it once the SDK is ready (pattern from gh-2010, PR #2023). -->
+<script>
+  window.sentryOnLoad = function () {
+    Sentry.init({
+      environment: window.location.hostname.includes("staging") ? "staging" : "production",
+      // gh-439: drop phantom events from non-http(s) preview contexts (data:/file:/blob:
+      // URLs -- e.g. Claude's HTML preview renders pages via data: URIs; relative scripts
+      // like js/auth.js then fail and report noise such as "Auth is not defined").
+      denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+      beforeSend: function (event) {
+        var proto = window.location.protocol;
+        if (proto !== "http:" && proto !== "https:") return null;
+        var req = event.request && event.request.url;
+        if (req && /^(data|file|blob):/.test(req)) return null;
+        return event;
+      }
+    });
+  };
+</script>
 <script
   src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
   crossorigin="anonymous"
@@ -22,11 +41,13 @@
     <!-- GA4 -->
     <script src="/js/ga-gate.js"></script>
     <script src="/js/meta-pixel-gate.js"></script>
+    <script src="/js/linkedin-insight-gate.js"></script>
+    <script src="/js/reddit-pixel-gate.js"></script>
     <script>gtag('config', 'G-D1Y1TLGEFY');</script>
 <!-- Microsoft Clarity (wwr7qlk8g5) is loaded by /js/ga-gate.js, behind the same production-host gate as GA4 (gh-1619). Do not add a per-page loader. -->
 
     <!-- Supabase JS CDN -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js" integrity="sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.js" integrity="sha384-iLddHTLokph6Omwoyid4XKxHaWa6w41BnoEj0q5oOrzmYPpHIKt1wyjReA7s//pP" crossorigin="anonymous"></script>
 
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -68,7 +89,7 @@
         <section class="page-hero">
             <h1>Privacy Policy</h1>
             <p>How Otter Quotes Collects, Uses, and Protects Your Data</p>
-            <p><strong>Effective Date: September 24, 2026</strong></p>
+            <p><strong>Effective Date: September 27, 2026</strong></p>
         </section>
 
         <!-- Legal Content -->
@@ -97,6 +118,7 @@
                     <li><strong>Property Information:</strong> Property address, property type, size, condition, and photos</li>
                     <li><strong>Communication Data:</strong> Messages, emails, support requests, and correspondence with us or other users</li>
                     <li><strong>Contractor Information:</strong> Contractor details, quotes, estimates, and work descriptions</li>
+                    <li><strong>No-Account Measurement Report Orders:</strong> If you request a roof measurement report through our website without creating an account, we collect the name, email address, and phone number you provide, your property address, your order and payment details, any loss sheet or insurance document you upload, and the record of your consent to our Terms of Service and Privacy Policy. We use this information to fulfil your order — including sharing your property address and contact information with our measurement-report provider (see Section 4.2) — and to email the finished report to the address you provided.</li>
                 </ul>
 
                 <h3>2.2 Information Automatically Collected</h3>
@@ -160,6 +182,7 @@
                     <li><strong>Microsoft Clarity:</strong> Behavioral analytics and session-replay service used to understand how visitors navigate and interact with our platform (clicks, scrolling, page-to-page movement) so we can improve the user experience. Microsoft's handling of this data is governed by Microsoft's own privacy policy.</li>
                     <li><strong>Meta (Facebook and Instagram):</strong> Advertising measurement (the Meta Pixel in your browser and, when you purchase a measurement report, a purchase event sent from our servers that includes a hashed copy of your email address), and hosting the lead forms that appear in our ads (see Section 2.3)</li>
                     <li><strong>LinkedIn:</strong> Advertising measurement (the LinkedIn Insight Tag, which collects information about your visit to our site to help us measure ad performance), and hosting the lead forms that appear in our ads (see Section 2.3)</li>
+                    <li><strong>Reddit Pixel:</strong> Advertising measurement</li>
                 </ul>
 
                 <h3>4.3 Legal Requests and Obligations</h3>
@@ -268,6 +291,18 @@
                         <tr>
                             <td>Communications</td>
                             <td>3 years</td>
+                        </tr>
+                        <tr>
+                            <td>Call and Text Consent Records (including consent given on ad-platform lead forms)</td>
+                            <td>4 years from creation, matching the TCPA's 4-year statute of limitations</td>
+                        </tr>
+                        <tr>
+                            <td>Lead Records</td>
+                            <td>4 years from creation, then deleted unless the lead has become an account</td>
+                        </tr>
+                        <tr>
+                            <td>No-Account Lead / Measurement Order Data (name, email, phone, property address, order and consent records, uploaded loss sheet)</td>
+                            <td>4 years from creation, then deleted unless converted to an account</td>
                         </tr>
                     </tbody>
                 </table>

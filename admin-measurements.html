@@ -2,12 +2,9 @@
 <html lang="en">
 <head>
 <!-- Sentry Error Monitoring -->
-<script
-  src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
-  crossorigin="anonymous"
-></script>
+<!-- gh-2043: predeclare sentryOnLoad before the loader tag; the loader invokes it once the SDK is ready (pattern from gh-2010, PR #2023). -->
 <script>
-  Sentry.onLoad(function() {
+  window.sentryOnLoad = function () {
     Sentry.init({
       environment: window.location.hostname.includes("staging") ? "staging" : "production",
       denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
@@ -19,15 +16,19 @@
         return event;
       }
     });
-  });
+  };
 </script>
+<script
+  src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
+  crossorigin="anonymous"
+></script>
 <meta charset="UTF-8">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex,nofollow">
 <title>Admin - Measurement Orders | Otter Quotes</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js" integrity="sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.js" integrity="sha384-iLddHTLokph6Omwoyid4XKxHaWa6w41BnoEj0q5oOrzmYPpHIKt1wyjReA7s//pP" crossorigin="anonymous"></script>
 <link rel="stylesheet" href="css/design-system.css">
 <link rel="stylesheet" href="css/nav.css">
 <style>
@@ -120,6 +121,7 @@ main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
 <script src="js/cookie-storage.js"></script>
 <script src="js/config.js"></script>
 <script src="js/auth.js"></script>
+<script src="js/measurement-shape.js"></script>
 
 <main id="main-content" style="display:none">
 
@@ -288,7 +290,11 @@ main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
  *   EF) which writes the 'measurement_order_fulfilled' activity_log row and
  *   emails the homeowner. Idempotent per order — Edit re-saves do not re-send.
  */
-var sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
+// gh-1980 PR 2/3: converge onto the canonical cookie-adapter + storageKey.
+// The cookies are the session of record whatever the storageKey is, so an
+// already-signed-in admin stays signed in through this change with no
+// migration step needed -- see the #488 purge rule in js/cookie-storage.js.
+var sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, { auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' } });
 var STORAGE_BUCKET = 'claim-documents';
 
 var state = { filter: 'awaiting_fulfillment', rows: [], catalog: {}, current: null, user: null };
@@ -691,7 +697,7 @@ async function saveFulfillment() {
     // for every OTHER reader/writer of this flag: the migration is a
     // separate, separately-approved (D-182) step, and a claim delivered
     // before it lands must not have its order un-delivered by this failing.
-    if (delivering && row.product_code === 'roof_upgrade_detailed' && row.claim_id) {
+    if (window.MeasurementShape.shouldFlipMeasurementShapeOnDeliver(row, delivering)) {
       var shapeUpd = await sb.from('claims').update({ measurement_shape: 'full' }).eq('id', row.claim_id);
       if (shapeUpd.error) {
         console.error('[gh-1411] measurement_shape flip failed (migration not yet applied?)', shapeUpd.error);

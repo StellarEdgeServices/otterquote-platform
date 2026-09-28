@@ -17,6 +17,10 @@ on:
       - 'js/nav.js'
       - 'tests/gh2106-pixel-gaps.mjs'
       - 'tests/gh2107-pixel-gate-optout.mjs'
+      - 'js/ga-gate.js'
+      - 'js/linkedin-insight-gate.js'
+      - 'js/reddit-pixel-gate.js'
+      - 'tests/gh1925-gpc-optout.mjs'
       - 'tests/gh2107-gpc-client.mjs'
       - 'partner-dashboard.html'
       - 'partner-app.html'
@@ -26,6 +30,9 @@ on:
       - 'tools/build_inspector_agreement.py'
       - 'partner-inspectors.html'
       - 'partner-re.html'
+      - 'start.html'
+      - 'tests/gh2068-start-html-oq-internal-header.mjs'
+      - 'tests/gh2068-partner-re-html-oq-internal-header.mjs'
       - 'tools/partner_parity_check.py'
       - 'tests/gh2155-hi0b-inspector-agreement.mjs'
       - 'tests/gh2155-hi0c-inspector-agreement-parity.mjs'
@@ -34,14 +41,28 @@ on:
       - 'partner-login.html'
       - 'tests/gh2154-p1-short-signup.mjs'
       - 'tests/gh2154-p1-set-password.mjs'
+      - 'partner-invite.html'
+      - 'tests/gh2154-p5-invite-page.mjs'
       - 'tests/gh2154-p1-login-reset.mjs'
       - 'tests/gh2154-p1-cookie-storage-updateuser.mjs'
+      - 'tests/gh1980-pr1-key-aware-storage.mjs'
+      - 'tests/gh1980-pr2-storagekey-migration.mjs'
+      - 'admin-dashboard.html'
+      - 'admin-homeowners.html'
+      - 'admin-measurements.html'
+      - 'js/config.js'
       - 're-1.html'
       - 'tests/gh2150-re1-page.mjs'
       - 'ins-1.html'
       - 'tests/gh2151-ins1-page.mjs'
       - 'hi-1.html'
       - 'tests/gh2152-hi1-page.mjs'
+      - 're-3.html'
+      - 'ins-3.html'
+      - 'ins-5.html'
+      - 'hi-4.html'
+      - 'assets/handout-ins-5.html'
+      - 'assets/handout-hi-4.html'
       - 'tests/gh2150-gh2151-s05-perf-structure.mjs'
       - 'tests/gh2192-s05-must-fix.mjs'
       - 'index.html'
@@ -49,6 +70,7 @@ on:
       - 'partners.html'
       - 'partner-profile.html'
       - 'tests/gh2155-hi05b-inspector-crawler.mjs'
+      - 'tests/gh2225-handout-pii-gate.mjs'
       - '.github/workflows/static-pixel-gate-tests.yml'
   push:
     branches: [main]
@@ -59,6 +81,10 @@ on:
       - 'js/nav.js'
       - 'tests/gh2106-pixel-gaps.mjs'
       - 'tests/gh2107-pixel-gate-optout.mjs'
+      - 'js/ga-gate.js'
+      - 'js/linkedin-insight-gate.js'
+      - 'js/reddit-pixel-gate.js'
+      - 'tests/gh1925-gpc-optout.mjs'
       - 'tests/gh2107-gpc-client.mjs'
       - 'partner-dashboard.html'
       - 'partner-app.html'
@@ -68,6 +94,9 @@ on:
       - 'tools/build_inspector_agreement.py'
       - 'partner-inspectors.html'
       - 'partner-re.html'
+      - 'start.html'
+      - 'tests/gh2068-start-html-oq-internal-header.mjs'
+      - 'tests/gh2068-partner-re-html-oq-internal-header.mjs'
       - 'tools/partner_parity_check.py'
       - 'tests/gh2155-hi0b-inspector-agreement.mjs'
       - 'tests/gh2155-hi0c-inspector-agreement-parity.mjs'
@@ -76,14 +105,28 @@ on:
       - 'partner-login.html'
       - 'tests/gh2154-p1-short-signup.mjs'
       - 'tests/gh2154-p1-set-password.mjs'
+      - 'partner-invite.html'
+      - 'tests/gh2154-p5-invite-page.mjs'
       - 'tests/gh2154-p1-login-reset.mjs'
       - 'tests/gh2154-p1-cookie-storage-updateuser.mjs'
+      - 'tests/gh1980-pr1-key-aware-storage.mjs'
+      - 'tests/gh1980-pr2-storagekey-migration.mjs'
+      - 'admin-dashboard.html'
+      - 'admin-homeowners.html'
+      - 'admin-measurements.html'
+      - 'js/config.js'
       - 're-1.html'
       - 'tests/gh2150-re1-page.mjs'
       - 'ins-1.html'
       - 'tests/gh2151-ins1-page.mjs'
       - 'hi-1.html'
       - 'tests/gh2152-hi1-page.mjs'
+      - 're-3.html'
+      - 'ins-3.html'
+      - 'ins-5.html'
+      - 'hi-4.html'
+      - 'assets/handout-ins-5.html'
+      - 'assets/handout-hi-4.html'
       - 'tests/gh2150-gh2151-s05-perf-structure.mjs'
       - 'tests/gh2192-s05-must-fix.mjs'
       - 'index.html'
@@ -91,6 +134,7 @@ on:
       - 'partners.html'
       - 'partner-profile.html'
       - 'tests/gh2155-hi05b-inspector-crawler.mjs'
+      - 'tests/gh2225-handout-pii-gate.mjs'
       - '.github/workflows/static-pixel-gate-tests.yml'
 
 permissions:
@@ -119,6 +163,8 @@ jobs:
         run: node tests/gh2106-pixel-gaps.mjs
       - name: Advertising-sharing opt-out and stored-flag read (gh2107-pixel-gate-optout)
         run: node tests/gh2107-pixel-gate-optout.mjs
+      - name: GPC opt-out extended to GA4/Clarity-adjacent and LinkedIn/Reddit static gates (gh1925-gpc-optout)
+        run: node tests/gh1925-gpc-optout.mjs
       - name: GPC capture on the create-payment-intent call (gh2107-gpc-client)
         run: node tests/gh2107-gpc-client.mjs
       - name: Partner dashboard activation RPC, per-user flag (gh2154-p2-app-activation)
@@ -129,14 +175,24 @@ jobs:
         run: node tests/gh2155-hi0c-inspector-agreement-parity.mjs
       - name: No fee wording reachable on the inspector track, JS on/off + negative controls (gh2155-hi0c-sweep)
         run: node tests/gh2155-hi0c-inspector-sweep.mjs
+      - name: leads_force_safe_insert_defaults() X-OQ-Internal header, start.html half (gh2068)
+        run: node tests/gh2068-start-html-oq-internal-header.mjs
+      - name: leads_force_safe_insert_defaults() X-OQ-Internal header, partner-re.html half (gh2068, cto38-b2068r)
+        run: node tests/gh2068-partner-re-html-oq-internal-header.mjs
       - name: Short partner signup field set, attribution, D-333 (gh2154-p1-short-signup)
         run: node tests/gh2154-p1-short-signup.mjs
       - name: Partner dashboard one-time set-password card (gh2154-p1-set-password)
         run: node tests/gh2154-p1-set-password.mjs
+      - name: Partner invite accept page -- prefill, checkbox gate, inspector track (gh2154-p5-invite-page)
+        run: node tests/gh2154-p5-invite-page.mjs
       - name: Partner login forgot-password reset clears needs_password (gh2154-p1-login-reset)
         run: node tests/gh2154-p1-login-reset.mjs
       - name: Real supabase-js -- rejected updateUser() must not sign the partner out (gh2154-p1-cookie-storage-updateuser)
         run: node tests/gh2154-p1-cookie-storage-updateuser.mjs
+      - name: gh-1980 PR 1 -- storage-adapter factory parity + key-awareness discriminating test (gh1980-pr1-key-aware-storage)
+        run: node tests/gh1980-pr1-key-aware-storage.mjs
+      - name: gh-1980 PR 2 -- storageKey convergence + #488 sign-out purge regression (gh1980-pr2-storagekey-migration)
+        run: node tests/gh1980-pr2-storagekey-migration.mjs
       - name: RE-1 dedicated landing page -- approved copy, funnel_id attribution (gh2150-re1-page)
         run: node tests/gh2150-re1-page.mjs
       - name: INS-1 dedicated landing page -- approved copy, field set, funnel-id attribution (gh2151-ins1-page)
@@ -149,3 +205,5 @@ jobs:
         run: node tests/gh2192-s05-must-fix.mjs
       - name: Inspector-context crawler -- no fee text within 3 hops (JS on) / 1 hop (JS off) of hi-1/partner-inspectors, negative control (gh2155-hi05b-crawler)
         run: node tests/gh2155-hi05b-inspector-crawler.mjs
+      - name: Handout PII/pixel gate -- code-only query string, validated code, no pixel, no Indiana claim, no paraphrased fee bullet, negative controls (gh2225)
+        run: node tests/gh2225-handout-pii-gate.mjs
