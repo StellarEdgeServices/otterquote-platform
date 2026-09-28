@@ -10,6 +10,42 @@ function escapeHtml(str) {
 }
 
 /**
+ * gh-1883 [SECURITY]: routes a magic-link ("otp") or password-reset
+ * ("recover") request through the auth-uniform Edge Function instead of
+ * calling `sb.auth.signInWithOtp()` / `sb.auth.resetPasswordForEmail()`
+ * directly. Those supabase-js methods call Supabase GoTrue's own
+ * `/auth/v1/otp` and `/auth/v1/recover` routes straight from the browser —
+ * both are confirmed unauthenticated account-enumeration oracles (distinct
+ * status/body for `/otp`, a timing side-channel for `/recover`; see
+ * supabase/functions/auth-uniform/index.ts's header for the full writeup).
+ * Fronting them with our own EF only closes the oracle for callers that
+ * route through it, so every first-party caller of the old direct methods
+ * must call this helper instead — the entire point of this change.
+ *
+ * The EF ALWAYS resolves with the same shape (`{}`) after a fixed minimum
+ * delay, whether the address exists or not and whether GoTrue's own call
+ * (dispatched server-side, off this request) succeeds or fails. The only
+ * errors this can throw are caller-side (invalid input, bad redirect,
+ * network failure, or the EF's own per-IP rate limit) — never anything
+ * that distinguishes an existing address from an absent one.
+ * @param {'otp'|'recover'} action
+ * @param {string} email
+ * @param {string} redirectTo - full URL, must be on auth-uniform's redirect allow-list
+ * @param {{role?: string}|null} [data] - optional signup metadata for the
+ *   'otp' action only (e.g. { role: 'contractor' }, mirroring the old
+ *   direct signInWithOtp({ options: { data } }) call sites). auth-uniform
+ *   forwards only an allow-listed `role` value; anything else is dropped.
+ * @returns {Promise<void>}
+ */
+async function _callAuthUniform(action, email, redirectTo, data = null) {
+  if (!sb) throw new Error('Supabase not initialized');
+  const body = { action, email, redirectTo };
+  if (data) body.data = data;
+  const { error } = await sb.functions.invoke('auth-uniform', { body });
+  if (error) throw error;
+}
+
+/**
  * Clear the domain-wide auth cookies and canonical localStorage key.
  * Called when Auth.getSession() detects a fast-path / live-session identity
  * mismatch (ADR-012) or during sign-out to prevent identity bleed across accounts.
@@ -367,13 +403,9 @@ window.Auth = {
         ? '/partner-dashboard.html'
         : '/auth-callback.html';
     const redirectPage = redirectTo || defaultRedirectPage;
-    const { error } = await sb.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: `${CONFIG.SITE_URL}${redirectPage}`,
-      }
-    });
-    if (error) throw error;
+    // gh-1883 [SECURITY]: routed through auth-uniform, not sb.auth.signInWithOtp()
+    // directly — see _callAuthUniform's doc comment above.
+    await _callAuthUniform('otp', email, `${CONFIG.SITE_URL}${redirectPage}`);
     return true;
   },
 
@@ -459,11 +491,10 @@ window.Auth = {
    * @param {string} redirectPage
    */
   async sendPasswordReset(email, redirectPage = '/partner-login.html?recovery=1') {
-    if (!sb) throw new Error('Supabase not initialized');
-    const { error } = await sb.auth.resetPasswordForEmail(email, {
-      redirectTo: `${CONFIG.SITE_URL}${redirectPage}`,
-    });
-    if (error) throw error;
+    // gh-1883 [SECURITY]: routed through auth-uniform, not
+    // sb.auth.resetPasswordForEmail() directly — /auth/v1/recover is a
+    // confirmed timing oracle; see _callAuthUniform's doc comment above.
+    await _callAuthUniform('recover', email, `${CONFIG.SITE_URL}${redirectPage}`);
     return true;
   },
 
@@ -965,10 +996,43 @@ window.Auth = {
     // falls back to user_metadata. Bounded and non-fatal.
     await this.recordFirstTouchAttribution();
 
-    // Determine role: stored value > contractor record check > default homeowner
-    let role = localStorage.getItem('cs_auth_role') || sessionStorage.getItem('cs_auth_role');
+    // gh-2060 (static-stack counterpart to the React fix, PR #2253/#2098):
+    // cs_auth_role is a breadcrumb written immediately before a login/signup
+    // entry point redirects into the Supabase auth flow (login.html,
+    // contractor-login.html, contractor-join.html, get-started/partner-*.html,
+    // hi-1.html, ins-1.html, re-1.html). It used to have no expiry, so the
+    // "stored value wins" priority below — deliberate: a brand-new contractor
+    // signup has NO contractors row yet (the block further down in this same
+    // function is what creates it), so the DB check alone would misroute a
+    // genuine, in-progress contractor signup — became a liability once the
+    // value could outlive the flow that wrote it. A visitor who abandoned an
+    // earlier contractor signup on this browser, then later signed in as an
+    // unrelated user through a path that doesn't re-set cs_auth_role, had
+    // that stale 'contractor' value silently win, skipping the homeowner
+    // signup-data profile write below (the `role !== 'contractor'` guard).
+    // cs_auth_role_at bounds how long the stored value is trusted (generous
+    // enough for a real magic-link/OAuth round trip); missing or stale —
+    // including a pre-fix breadcrumb with no timestamp at all — is treated
+    // as absent, same as if cs_auth_role had never been set, and the DB
+    // check below runs exactly as it always has for that case. Both keys
+    // are cleared on read either way, one-shot regardless of which branch
+    // consumes them.
+    const CS_AUTH_ROLE_TTL_MS = 24 * 60 * 60 * 1000;
+    const storedRoleRaw = localStorage.getItem('cs_auth_role') || sessionStorage.getItem('cs_auth_role');
+    const storedAt = parseInt(localStorage.getItem('cs_auth_role_at') || sessionStorage.getItem('cs_auth_role_at') || '', 10);
+    let role = (
+      storedRoleRaw !== null &&
+      Number.isFinite(storedAt) &&
+      (Date.now() - storedAt) <= CS_AUTH_ROLE_TTL_MS
+    ) ? storedRoleRaw : null;
+    localStorage.removeItem('cs_auth_role');
+    localStorage.removeItem('cs_auth_role_at');
+    sessionStorage.removeItem('cs_auth_role');
+    sessionStorage.removeItem('cs_auth_role_at');
 
-    // If no stored role, check if a contractor record exists for this user
+    // If no TRUSTED stored role (missing, or stale/expired past the TTL
+    // above), check if a contractor record exists for this user — the live
+    // DB wins whenever there is no fresh breadcrumb to defer to.
     if (!role && sb) {
       try {
         const { data: contractor } = await sb
