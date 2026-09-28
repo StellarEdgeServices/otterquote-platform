@@ -99,6 +99,16 @@
     <link rel="preload" as="style" href="css/nav.css" onload="this.onload=null;this.rel='stylesheet'">
     <noscript><link rel="stylesheet" href="css/design-system.css"><link rel="stylesheet" href="css/nav.css"></noscript>
 
+    <!-- S05 LCP fix: the hero <video poster> below is this page's LCP
+         element (RE-1/HI-1 have no hero image/video, so this only applies
+         here). Lighthouse's lcp-discovery-insight flagged it as
+         discoverable in the initial HTML but not prioritized --
+         fetchpriority=high should be applied. This preload plus
+         fetchpriority="high" on the <video> tag itself (below) is the
+         standard fix for video-poster-as-LCP pages. No change to the
+         video's lazy-load-on-scroll source injection. -->
+    <link rel="preload" as="image" href="assets/video/hi-5-demo-poster.jpg" fetchpriority="high">
+
     <style>
         /* gh-2150/gh-2151 (S05 perf, k70-w11-s05perf): verbatim subset of
            css/design-system.css's :root tokens + reset + .btn family,
@@ -657,7 +667,7 @@
                   <!-- P1: no <source> in static markup -- lazy-loaded by the
                        detector/loader script near </body>, mobile-weight
                        encode, never for an in-app visitor. -->
-                  <video id="hi5DemoVideo" playsinline muted loop preload="none" poster="assets/video/hi-5-demo-poster.jpg" style="width:100%;display:block;background:#000;" aria-label="Demo of the Otter Quotes partner app for home inspectors: dashboard, referral link, and referral status tracking"></video>
+                  <video id="hi5DemoVideo" playsinline muted loop preload="none" poster="assets/video/hi-5-demo-poster.jpg" fetchpriority="high" style="width:100%;display:block;background:#000;" aria-label="Demo of the Otter Quotes partner app for home inspectors: dashboard, referral link, and referral status tracking"></video>
                 </div>
                 <a href="#signup" class="btn btn-primary btn-lg">Get My Link</a>
                 <p style="color: var(--slate, #94A3B8); font-size: 0.85rem; text-align: center; margin-top: 12px;">Home-inspector partners do not receive a referral fee or recruit bonus.</p>
@@ -1003,7 +1013,14 @@
                 var fromCookie = m ? clean(decodeURIComponent(m[1])) : null;
                 if (fromCookie) return fromCookie;
             } catch (e) {}
-            return 'unknown';
+            // S11 fix: no partner page ever sets the oq_variant_v3 cookie,
+            // so this always fell through to 'unknown' on HI-5 (this
+            // getOqVariant() was copied from hi-1.html's router-arm test,
+            // where 'unknown' is the correct fallback). HI-5 has exactly
+            // one variant of itself (it isn't an Arm-style router test,
+            // same as re-5.html), so the page's own funnel id is the
+            // correct fixed value here, matching re-5.html's getOqVariant().
+            return 'hi-5';
         }
 
         // Once-per-signup guard — same as ins-1.html/re-1.html.
@@ -1177,21 +1194,22 @@
         // allowlist entry for /hi-5 is added by this PR (js/ga-gate.js's
         // CLARITY_ALLOWED_PATHS), so this call is live, not a no-op.
         var HI1_FUNNEL_ID = 'hi-5';
-        // REVIEW FAIL 5849569486 B4: only fire the view event when the
-        // signup section is actually visible/displayed.
-        function isSignupSectionVisible() {
-            var el = document.getElementById('signup');
-            if (!el) return false;
-            return window.getComputedStyle(el).display !== 'none';
-        }
+        // REVIEW FAIL 5849569486 B4 originally gated this event on
+        // isSignupSectionVisible() (only fire when #signup is actually
+        // displayed). That gate's own B1 fix made #signup unconditionally
+        // visible to every visitor on this page, so the check no longer
+        // has a purpose -- it was the one asymmetry versus re-5.html's
+        // otherwise-identical event-firing mechanism, and a no-longer-
+        // load-bearing getComputedStyle() check running once at parse
+        // time is the one plausible way a real device/timing edge case
+        // could suppress this event. Removed; the event now fires
+        // unconditionally on load, same as re-5.html's partner_signup_view.
         try {
-            if (isSignupSectionVisible()) {
-                gtag('event', 'partner_funnel_view', {
-                    funnel_id: HI1_FUNNEL_ID,
-                    variant: getOqVariant(),
-                    step: 'view',
-                });
-            }
+            gtag('event', 'partner_funnel_view', {
+                funnel_id: HI1_FUNNEL_ID,
+                variant: getOqVariant(),
+                step: 'view',
+            });
         } catch (e) {}
         try {
             if (typeof clarity === 'function') clarity('set', 'funnel_id', HI1_FUNNEL_ID);

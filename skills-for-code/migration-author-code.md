@@ -198,6 +198,10 @@ CREATE TABLE IF NOT EXISTS new_table (
 
 ALTER TABLE new_table ENABLE ROW LEVEL SECURITY;
 
+-- RW-CTO41-GRANT-BLOCK: Supabase stops auto-granting new public tables on
+-- 2026-10-30 (#2145); CI gate from PR #2201 enforces the service_role grant.
+GRANT SELECT, INSERT, UPDATE, DELETE ON new_table TO service_role;
+
 CREATE POLICY "Users can read own rows" ON new_table
   FOR SELECT USING (auth.uid() = user_id);
 ```

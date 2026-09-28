@@ -920,8 +920,8 @@
                 } catch (e) { /* CONFIG not ready yet -- fall through to a real load */ }
                 if (alreadyReady || window.supabase) { resolve(); return; }
                 var s = document.createElement('script');
-                s.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js';
-                s.integrity = 'sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz';
+                s.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.js';
+                s.integrity = 'sha384-iLddHTLokph6Omwoyid4XKxHaWa6w41BnoEj0q5oOrzmYPpHIKt1wyjReA7s//pP';
                 s.crossOrigin = 'anonymous';
                 s.onload = function () { resolve(); };
                 s.onerror = function () { reject(new Error('Supabase library failed to load')); };
@@ -985,7 +985,9 @@
             // HI-1 ruling (4): every GA4 event on this page carries step
             // alongside variant, mirroring HO-1 Arm F's trackRouter shape
             // (start.html) where every router_* event carries variant.
-            try { gtag('event', 'partner_signup_complete', { variant: variant, step: 'complete' }); } catch (e) {}
+            // funnel_id added to match ins-5.html/re-3.html's conversion
+            // event shape (S13 fix; hi-4.html carried the identical gap).
+            try { gtag('event', 'partner_signup_complete', { variant: variant, step: 'complete', funnel_id: utmContext.funnelId }); } catch (e) {}
             try { fbq('track', 'CompleteRegistration'); } catch (e) {}
         }
 
@@ -1328,6 +1330,7 @@
                 medium:   utmContext.medium   || undefined,
                 campaign: utmContext.campaign || undefined,
                 content:  utmContext.content  || undefined,
+                funnel_id: utmContext.funnelId,
             });
 
             // gh-2006 / gh-2078 pattern: intentionally no Meta Lead /
@@ -1509,6 +1512,7 @@
                     medium:   utmContext.medium   || undefined,
                     campaign: utmContext.campaign || undefined,
                     content:  utmContext.content  || undefined,
+                    funnel_id: utmContext.funnelId,
                 });
 
                 // Meta Lead — literal event name so the ad set's
@@ -1573,7 +1577,7 @@
     loadPromise.then(function () {
       if (typeof supabase === 'undefined' || typeof CONFIG === 'undefined' ||
           !CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_ANON) return;
-      var _sb = window.sb || supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
+      var _sb = window.sb || supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, { auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' } }); // gh-1980 PR2: converge fallback client onto canonical key too
       _sb.rpc('get_lead_prefill', { p_lead_id: leadId }).then(function (res) {
         var row = res && res.data && res.data[0];
         if (!row) return; // expired, unknown id, or migration not applied yet
