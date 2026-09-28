@@ -1208,6 +1208,29 @@ async function handleSignup(e) {
     // with zero register_partner / signUp calls made.
     const generatedPassword = generateSecurePartnerPassword();
 
+    let signUpResult = null;
+    // gh-2282: sign up FIRST, register_partner second. auth.users is checked here
+    // (Auth.signUpWithPassword rejects an already-registered email), so a
+    // duplicate-email attempt returns before register_partner runs and can never
+    // leave an orphaned referral_agents row (user_id NULL, unique on email) behind.
+    // gh-2274 / gh-2281: the duplicate is matched on Supabase's structured
+    // error.code ('user_already_exists') with the message text as a fallback, and
+    // routed to the designed already-a-partner state instead of the generic catch.
+    if (window.Auth) {
+      try {
+        signUpResult = await Auth.signUpWithPassword(email, generatedPassword, agentType);
+      } catch (signUpError) {
+        // gh-2281: match Supabase's structured error code first; the English message text is kept only as a fallback for SDK versions that don't set .code.
+        if ((signUpError && signUpError.code === 'user_already_exists') || (signUpError.message || '').toLowerCase().includes('already registered')) {
+          alert("You're already a partner — sign in at otterquote.com/partner-login.html.");
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Generate My Referral Link';
+          return;
+        }
+        throw signUpError;
+      }
+    }
+
     // #571 / v95: server-side register_partner RPC. referral_agents has no
     // anon SELECT policy, so a direct .insert().select() can never read the
     // trigger-generated code back. The SECURITY DEFINER RPC inserts (user_id
@@ -1284,26 +1307,6 @@ async function handleSignup(e) {
     if (window.Auth) {
       // generatedPassword was already computed above (CSPRNG fix).
       //
-      // gh-2274: the RPC above only special-cases a duplicate referral_agents
-      // row ('partner_exists'). auth.users is a separate existence check --
-      // an email can already have an auth account with no referral_agents
-      // row yet, so the RPC above succeeds and THIS call is what actually
-      // rejects the duplicate, via Supabase's own "User already registered"
-      // message. Route it to the same designed already-a-partner alert
-      // instead of letting it fall through to the generic catch below.
-      let signUpResult;
-      try {
-        signUpResult = await Auth.signUpWithPassword(email, generatedPassword, agentType);
-      } catch (signUpError) {
-        // gh-2281: match Supabase's structured error code first; the English message text is kept only as a fallback for SDK versions that don't set .code.
-        if ((signUpError && signUpError.code === 'user_already_exists') || (signUpError.message || '').toLowerCase().includes('already registered')) {
-          alert("You're already a partner — sign in at otterquote.com/partner-login.html.");
-          submitBtn.disabled = false;
-          submitBtn.textContent = 'Generate My Referral Link';
-          return;
-        }
-        throw signUpError;
-      }
 
       // gh-2154 P-1: this partner has no real password yet — flag it so
       // partner-dashboard.html shows the one-time "Set your password" card

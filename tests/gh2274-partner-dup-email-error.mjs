@@ -139,8 +139,8 @@ function makeElementStore() {
 }
 
 // Runs a page's real inline script(s) in a vm context. register_partner
-// always SUCCEEDS (this simulates the RPC-level duplicate check not
-// catching it -- e.g. no referral_agents row yet for this email/type).
+// SUCCEEDS unless rpcError is given (this simulates the RPC-level duplicate
+// check not catching it -- e.g. no referral_agents row yet for this email/type).
 // Auth.signUpWithPassword() REJECTS with Supabase's own literal duplicate-
 // registration message -- this is the auth.users-level duplicate the RPC
 // above cannot see.
@@ -407,8 +407,10 @@ for (const page of PAGES) {
     // register_partner must have been called and (per this test's mock)
     // succeeded -- confirming Auth.signUpWithPassword() is genuinely what
     // raised the duplicate error, same ordering as the real pages.
+    // gh-2282: the auth-level duplicate is now hit FIRST, so register_partner
+    // must never run -- otherwise it leaves an orphaned referral_agents row.
     const rpcCalls = run.rpcCalls.filter((c) => c.name === 'register_partner');
-    ok(rpcCalls.length === 1, label + ': register_partner (the RPC-level duplicate check) is called and succeeds before the auth-level duplicate is hit -- got ' + rpcCalls.length + ' call(s)');
+    ok(rpcCalls.length === 0, label + ': register_partner is NOT called when the email already has an auth account (no orphan referral_agents row) -- got ' + rpcCalls.length + ' call(s)');
 
     let surfaced = '';
     if (page.surface === 'formAlert') {
@@ -426,6 +428,30 @@ for (const page of PAGES) {
     failWithReason(label + ': a duplicate-email auth error routes to the designed already-a-partner state', e.message + (e.stack ? '\n' + e.stack.split('\n').slice(1, 4).join('\n') : ''));
   }
   }
+}
+
+// gh-2282 (d)/(e): success path and the RPC-level duplicate, both now AFTER
+// a successful Auth.signUpWithPassword().
+for (const page of PAGES) {
+  const html = fs.readFileSync(path.join(repoRoot, page.file), 'utf8');
+  // (d) new email: signUp first, then register_partner exactly once.
+  let run = runPageScript(html, { signUp: 'ok' });
+  if (run.setupError) { failWithReason(page.file + ' (d)', run.setupError); continue; }
+  try {
+    await submitForm(run, page.formId, page.fields, { hasConfirmPopup: !!page.hasConfirmPopup });
+    ok(run.callOrder.join(',') === 'signUp,register_partner', page.file + ' (d): new email -- Auth.signUpWithPassword runs BEFORE register_partner, which runs exactly once -- got ' + JSON.stringify(run.callOrder));
+  } catch (e) { failWithReason(page.file + ' (d)', e.message); }
+  // (e) register_partner says partner_exists after signUp succeeded: the designed message still shows.
+  run = runPageScript(html, { signUp: 'ok', rpcError: { message: 'partner_exists' } });
+  if (run.setupError) { failWithReason(page.file + ' (e)', run.setupError); continue; }
+  try {
+    await submitForm(run, page.formId, page.fields, { hasConfirmPopup: !!page.hasConfirmPopup });
+    let surfaced = '';
+    if (page.surface === 'formAlert') surfaced = run.store.byId.get('formAlert') ? run.store.byId.get('formAlert').textContent : '';
+    else if (page.surface === 'errorEl') { const el = run.store.byId.get(page.errorElId); surfaced = el ? (el.innerHTML || el.textContent) : ''; }
+    else surfaced = run.alertCalls.join(' | ');
+    ok(surfaced.includes(page.designed), page.file + ' (e): RPC partner_exists still shows the designed already-a-partner message -- got ' + JSON.stringify(surfaced));
+  } catch (e) { failWithReason(page.file + ' (e)', e.message); }
 }
 
 // gh-2281 static guard: every page consults the structured error.code.
