@@ -19,6 +19,7 @@ import {
   BoldSignReadinessTimeout,
   clearStrandedEnvelopePointer,
   isPermanentCreationFailure,
+  LIST_STATUSES,
   waitForBoldSignDocumentReady,
 } from "./boldsign-readiness.ts";
 
@@ -71,8 +72,12 @@ function fakeBoldSign(
       calls.list++;
       if (listStatus !== 200) return Promise.resolve(json(listStatus, { error: "Internal Server Error" }));
       const status = new URL(u).searchParams.get("Status");
-      // Every listed document is reported under InProgress, as the live account does.
-      const rows = status === "InProgress" ? listedIds.map((id) => ({ documentId: id })) : [];
+      // gh-1842 (comment 5869362477): "InProgress" is not a real BoldSign
+      // status -- the live account reports an in-flight document under
+      // WaitingForOthers. Every status this fixture is asked for is a real,
+      // valid one (LIST_STATUSES is pinned to the documented enum below), so
+      // unlike production before this fix, none of these calls 400.
+      const rows = status === "WaitingForOthers" ? listedIds.map((id) => ({ documentId: id })) : [];
       return Promise.resolve(json(200, { result: rows }));
     }
     throw new Error("unexpected fetch: " + u);
@@ -198,6 +203,164 @@ Deno.test("isPermanentCreationFailure is narrow — an ambiguous error never un-
   assertEquals(isPermanentCreationFailure(null), false);
   assertEquals(isPermanentCreationFailure(new BoldSignPermanentCreationFailure("x", "")), true);
 });
+
+// ---------------------------------------------------------------------------
+// gh-1842 (comments 5869362477 / 5869347983, "LIST_STATUSES enum" defect):
+// LIST_STATUSES used to include "InProgress", which is not a value BoldSign's
+// List Documents endpoint accepts (400 "The value 'InProgress' is not
+// valid."). documentIsListed() aborts its WHOLE absence probe on the first
+// non-OK page, so that one bad entry made isPermanentCreationFailure
+// unreachable in production -- every probe died at "InProgress" (the 2nd
+// entry) before ever reaching Completed/Declined/Revoked/Expired.
+//
+// Documented enum (https://developers.boldsign.com/documents/list-documents/,
+// "Query parameters" -> Status, fetched 2026-09-28): "You can set None if you
+// don't want to filter based on the document status. Other values are
+// WaitingForMe, WaitingForOthers, NeedAttention, Completed, Declined,
+// Revoked, Expired, Scheduled, and Draft."
+const DOCUMENTED_BOLDSIGN_LIST_STATUS_ENUM = [
+  "None", // "don't filter" -- deliberately NOT in LIST_STATUSES; see below.
+  "WaitingForMe",
+  "WaitingForOthers",
+  "NeedAttention",
+  "Completed",
+  "Declined",
+  "Revoked",
+  "Expired",
+  "Scheduled",
+  "Draft",
+];
+
+Deno.test("contract: every LIST_STATUSES entry is a real BoldSign Status value — pins the enum", () => {
+  for (const status of LIST_STATUSES) {
+    assert(
+      DOCUMENTED_BOLDSIGN_LIST_STATUS_ENUM.includes(status),
+      `"${status}" is not in BoldSign's documented Status enum for List Documents -- ` +
+        `a status outside the enum 400s and, per gh-1842, silently disables permanent-failure detection`,
+    );
+  }
+  // The specific regression this issue is about: the invalid value must never
+  // come back, and its valid replacement must be present.
+  assert(!LIST_STATUSES.includes("InProgress"), "InProgress is not a valid BoldSign status and must not reappear");
+  assert(LIST_STATUSES.includes("WaitingForOthers"), "WaitingForOthers is the valid in-flight status this probe needs");
+  // "None" means "don't filter" -- looping over it would just re-fetch the
+  // unfiltered list once per LIST_STATUSES pass, so it must be excluded.
+  assert(!LIST_STATUSES.includes("None"), '"None" is a no-op filter, not a document state, and must not be looped over');
+});
+
+Deno.test(
+  "NEGATIVE CONTROL — the pre-fix InProgress entry makes a genuinely-absent document read as UNKNOWN, never PERMANENT (this is gh-1842's live production bug, reproduced)",
+  async () => {
+    const clock = fakeClock();
+    const PRE_FIX_LIST_STATUSES = ["Draft", "InProgress", "Completed", "Declined", "Revoked", "Expired"];
+
+    // Real BoldSign behaviour, measured live 2026-09-28 (comment 5869347983):
+    // Status=Draft -> 200 (empty), Status=InProgress -> 400, everything after
+    // InProgress is never reached because documentIsListed aborts on the
+    // first non-OK page. The document is genuinely absent from every status
+    // BoldSign would have reported it under, same fixture as the RED test
+    // above (DEAD is absent, everything else present).
+    const calls = { list: 0 };
+    const fetchImpl = ((url: string | URL | Request) => {
+      const u = String(url);
+      if (u.includes("/v1/document/properties")) return Promise.resolve(json(403, { error: "Forbidden" }));
+      if (u.includes("/v1/document/list")) {
+        calls.list++;
+        const status = new URL(u).searchParams.get("Status");
+        if (status === "InProgress") {
+          return Promise.resolve(json(400, { errors: { Status: ["The value 'InProgress' is not valid."] } }));
+        }
+        return Promise.resolve(json(200, { result: [] })); // DEAD is absent everywhere else too
+      }
+      throw new Error("unexpected fetch: " + u);
+    }) as unknown as typeof fetch;
+
+    // Reproduces documentIsListed's exact loop, but against the PRE-FIX
+    // array, to prove what production actually did before this PR -- not a
+    // re-implementation of the fix, the literal old defect.
+    async function documentIsListedPreFix(documentId: string): Promise<{ listed: boolean; probed: boolean }> {
+      let anyPageRead = false;
+      for (const status of PRE_FIX_LIST_STATUSES) {
+        const res = await fetchImpl(`${API}/v1/document/list?PageSize=100&Page=1&Status=${status}`, {});
+        if (!res.ok) return { listed: false, probed: false };
+        anyPageRead = true;
+        const body = await res.json() as { result?: Array<{ documentId?: string }> };
+        if ((body.result ?? []).some((r) => r.documentId === documentId)) return { listed: true, probed: true };
+      }
+      return anyPageRead ? { listed: false, probed: true } : { listed: false, probed: false };
+    }
+
+    const preFixResult = await documentIsListedPreFix(DEAD);
+    // FAILS to reach a verdict at all -- this is the bug. A document that is
+    // genuinely absent from BoldSign forever reads as merely "unknown", so
+    // isPermanentCreationFailure can never fire and the stranding gh-1842
+    // exists to fix is never detected in production.
+    assertEquals(preFixResult, { listed: false, probed: false }, "pre-fix: the InProgress 400 aborts before a verdict is ever reached");
+    assertEquals(calls.list, 2, "pre-fix: only Draft and InProgress are ever queried -- Completed/Declined/Revoked/Expired are unreachable");
+
+    // Same fixture, same document, run through the ACTUAL FIXED CODE (current
+    // LIST_STATUSES, no invalid entries) via the real exported function. This
+    // must now reach every status and correctly conclude PERMANENT.
+    let caught: unknown = null;
+    try {
+      await waitForBoldSignDocumentReady(DEAD, {
+        apiBase: API,
+        headers: {},
+        fetchImpl,
+        intervalMs: 1000,
+        ceilingMs: 15000,
+        absenceProbeAfterMs: 5000,
+        now: clock.now,
+        sleep: clock.sleep,
+      });
+    } catch (e) {
+      caught = e;
+    }
+    assert(caught instanceof BoldSignPermanentCreationFailure, "post-fix: the same document now correctly resolves to PERMANENT");
+    assert(isPermanentCreationFailure(caught));
+  },
+);
+
+Deno.test(
+  "fail-CLOSED: a single bad status page (transient, on a VALID status) yields UNKNOWN, never PERMANENT — a bad page must not clear a live envelope",
+  async () => {
+    const clock = fakeClock();
+    // A valid status (Scheduled) 500s once, mid-list -- distinct from the
+    // InProgress case above, which was an invalid value, not a transient
+    // fault. Both must fail closed the same way: probed=false, never "listed:
+    // false" treated as absence.
+    const fetchImpl = ((url: string | URL | Request) => {
+      const u = String(url);
+      if (u.includes("/v1/document/properties")) return Promise.resolve(json(403, { error: "Forbidden" }));
+      if (u.includes("/v1/document/list")) {
+        const status = new URL(u).searchParams.get("Status");
+        if (status === "Scheduled") return Promise.resolve(json(500, { error: "Internal Server Error" }));
+        return Promise.resolve(json(200, { result: [] }));
+      }
+      throw new Error("unexpected fetch: " + u);
+    }) as unknown as typeof fetch;
+
+    let caught: unknown = null;
+    try {
+      await waitForBoldSignDocumentReady(DEAD, {
+        apiBase: API,
+        headers: {},
+        fetchImpl,
+        intervalMs: 1000,
+        ceilingMs: 15000,
+        absenceProbeAfterMs: 5000,
+        now: clock.now,
+        sleep: clock.sleep,
+      });
+    } catch (e) {
+      caught = e;
+    }
+    // Must NOT be permanent -- one unreadable page must never let a document
+    // read as "absent" and risk clearing a live, merely-slow envelope.
+    assertEquals(isPermanentCreationFailure(caught), false, "a single bad page must fail CLOSED (unknown), never read as absent");
+    assert(caught instanceof BoldSignReadinessTimeout, "with the verdict unknown, this must resolve as a timeout, not a permanent failure");
+  },
+);
 
 // ---------------------------------------------------------------------------
 // gh-1842 (resume-path follow-up, per Marty CTO RUN 42 comment 5850771831 on

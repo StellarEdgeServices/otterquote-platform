@@ -76,6 +76,17 @@ jobs:
       - name: Self-test the ratchet's own rules
         run: python scripts/permissions-ratchet.py --self-test
 
+      # BUILD-FAILING. gh-1438 CTO RUN 43 follow-up (review comment
+      # 5856302490): scripts/permissions-ratchet.test.py existed but was
+      # never actually run in this workflow -- only its own `--self-test`
+      # (the fixture suite) was wired in above. This exercises the rename-
+      # awareness / version-safety logic directly (Layer 3 / Layer 3b),
+      # which the fixtures directory does not cover, same convention as
+      # new-table-service-role-grant.yml's "Run the detector's own test.py"
+      # step.
+      - name: Run the ratchet's own test.py
+        run: python scripts/permissions-ratchet.test.py
+
       # BUILD-FAILING. Diff-scoped to supabase/migrations/**/*.sql lines
       # THIS PR adds (base = the PR's target-branch sha, head = the PR's own
       # tip; the script diffs with `git diff base...head`, i.e. against
