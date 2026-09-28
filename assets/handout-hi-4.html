@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <title>What Happens Next - Otter Quotes</title>
+    <!--
+      gh-2152 HI-4 (CEO RUN 71, issue #2152 comment 5849024140): the
+      inspector's printable client handout.
+
+      MECHANISM CHOICE: identical reasoning to assets/handout-ins-5.html
+      (see that file's header comment for the full write-up) -- an HTML
+      template personalized client-side from the URL query string hi-4.html
+      builds after signup, printed / saved as PDF via window.print(), the
+      same proven pattern as assets/partner-onepager-insurance.html.
+
+      D-333 (verbatim, NO paraphrase, appears TWICE per issue #2152 comment
+      5849024140: once in the "why no fee" callout, once in the footer) --
+      those two <p data-copy="noFee..."> elements are intentionally driven
+      from HI4_HANDOUT_COPY.noFee, the SAME string in both places, so the
+      two copies can never drift apart by editing one and forgetting the
+      other. NO other fee/dollar/bonus language appears anywhere on this
+      page -- grep for "$", "fee" or "bonus" here before ever adding new
+      copy; the only permitted match is the no-fee sentence itself.
+    -->
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Rubik', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            line-height: 1.5;
+            color: #1f2937;
+            background: #f3f4f6;
+        }
+        .print-button { display: flex; justify-content: center; padding: 16px; background: #f3f4f6; }
+        .print-button button {
+            padding: 8px 24px; background: #E07B00; color: white; border: none;
+            border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600;
+        }
+        .print-button button:hover { background: #A85C00; }
+        .page-container { max-width: 850px; margin: 16px auto; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .page { width: 100%; padding: 40px; min-height: 1122px; }
+        .header { border-bottom: 3px solid #E07B00; padding-bottom: 16px; margin-bottom: 20px; }
+        .logo { font-size: 28px; font-weight: 700; color: #0D1B2E; }
+        .main-headline { font-size: 26px; font-weight: 700; color: #0D1B2E; margin: 6px 0 10px; }
+        .intro { font-size: 13.5px; color: #4b5563; margin-bottom: 20px; line-height: 1.6; }
+        .steps { margin-bottom: 20px; }
+        .step { display: flex; gap: 14px; margin-bottom: 14px; padding-bottom: 12px; }
+        .step:not(:last-child) { border-bottom: 1px solid #e5e7eb; }
+        .step-num {
+            flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%; background: #0D1B2E;
+            color: white; font-weight: 700; font-size: 13px; display: flex; align-items: center;
+            justify-content: center; line-height: 1;
+        }
+        .step-content h3 { font-size: 14.5px; font-weight: 600; color: #0D1B2E; margin-bottom: 4px; }
+        .step-content p { font-size: 12.5px; color: #6b7280; line-height: 1.55; }
+        .nofee-box {
+            border: 2px solid #94A3B8; border-radius: 8px; padding: 14px 16px; margin: 18px 0;
+            font-size: 12.5px; color: #374151; background: #f8fafc;
+        }
+        .nofee-box .label { font-weight: 700; color: #0D1B2E; margin-bottom: 4px; }
+        .cobrand-box {
+            border: 2px dashed #94A3B8; border-radius: 8px; padding: 14px 16px; margin: 18px 0;
+            font-size: 12.5px; color: #374151; background: #f8fafc;
+            display: flex; gap: 20px; align-items: center;
+        }
+        .cobrand-box .fields { flex: 1; }
+        .cobrand-box .row { margin: 3px 0; }
+        .qr-placeholder {
+            width: 96px; height: 96px; flex-shrink: 0; border: 2px dashed #E07B00; border-radius: 4px;
+            display: flex; align-items: center; justify-content: center; background: white;
+            font-size: 10px; color: #6b7280; text-align: center;
+        }
+        .cta-section {
+            text-align: center; margin: 20px 0; padding: 16px; background: #f0f9ff;
+            border-radius: 6px; border: 1px solid #c7f0e8;
+        }
+        .cta-label { font-size: 13px; font-weight: 600; color: #0D1B2E; margin-bottom: 8px; }
+        .link-box {
+            display: inline-block; padding: 8px 14px; background: white; border: 1px solid #E07B00;
+            border-radius: 6px; font-family: 'Courier New', monospace; font-size: 12px; color: #0D1B2E;
+            word-break: break-all;
+        }
+        .footer { border-top: 1px solid #e5e7eb; padding-top: 12px; margin-top: 18px; font-size: 10.5px; color: #6b7280; }
+        .footer p { margin: 6px 0; }
+        @media print {
+            body { background: white; }
+            .print-button { display: none; }
+            .page-container { max-width: 100%; margin: 0; box-shadow: none; }
+            .page { min-height: auto; box-shadow: none; }
+        }
+        @media (max-width: 768px) {
+            .page { padding: 20px; }
+            .main-headline { font-size: 22px; }
+            .cobrand-box { flex-direction: column; align-items: stretch; }
+        }
+    </style>
+</head>
+<body>
+    <div class="print-button">
+        <button onclick="window.print()">Print / Save as PDF</button>
+        <!-- gh2225 re-review fix (B6, REVIEW FAIL 5849956427): the handout
+             now opens in the same tab (see hi-4.html), so it needs its own
+             way back instead of relying on a second tab. -->
+        <button onclick="history.back()" style="margin-left: 8px;">&larr; Back</button>
+    </div>
+
+    <div class="page-container">
+        <div class="page">
+            <div class="header">
+                <div class="logo">&#129446; Otter Quotes</div>
+            </div>
+
+            <h1 class="main-headline" data-copy="title">What Happens Next</h1>
+            <p class="intro" data-copy="intro">Your inspector flagged something worth a closer look. Here's a simple next step if you'd like a repair estimate — no obligation to hire anyone.</p>
+
+            <div class="steps" id="stepsList"></div>
+
+            <!-- gh2225 fix (N2, REVIEW FAIL 5849558470): was framed under
+                 "Why is this free?", which implies the inspector's non-
+                 payment is why the service is free to the homeowner --
+                 confusing and not what D-333 says. Neutral label instead. -->
+            <div class="nofee-box">
+                <div class="label" data-copy="noFeeLabel">About Otter Quotes</div>
+                <p data-copy="noFee">Home-inspector partners do not receive a referral fee or recruit bonus.</p>
+            </div>
+
+            <!-- Co-branding + QR slots: filled from the funnel page's own
+                 signup data (name/company/link) when present; dashed
+                 placeholders otherwise, per comment 5849024140's "placeholder
+                 box for the inspector's name/link + QR code". -->
+            <div class="cobrand-box">
+                <div class="fields">
+                    <div class="row">Your inspector: <strong id="cbName">[ ]</strong></div>
+                    <div class="row">Company: <strong id="cbCompany">[ ]</strong></div>
+                </div>
+                <div class="qr-placeholder" id="qrPlaceholder">[QR Code]</div>
+            </div>
+
+            <div class="cta-section">
+                <div class="cta-label" data-copy="ctaLabel">Get competing local contractor bids, free to use.</div>
+                <div class="link-box" id="refLinkBox">[ Your link: otterquote.com/ref.html?code=[inspector-code] ]</div>
+            </div>
+
+            <div class="footer">
+                <p data-copy="noFee">Home-inspector partners do not receive a referral fee or recruit bonus.</p>
+                <!-- gh2225 fix (B5, REVIEW FAIL 5849558470, D-169): dropped the geographic claim. -->
+                <p>Otter Quotes &middot; otterquote.com &middot; <a href="mailto:support@otterquote.com" style="color:#E07B00;">support@otterquote.com</a></p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ---------------------------------------------------------------
+        // HI-4 HANDOUT DRAFT COPY — SINGLE SWAPPABLE BLOCK. Every string
+        // here is DRAFT pending Dustin's ruling on issue #2152 comment
+        // 5849024140, EXCEPT `noFee`, which is the already-locked, verbatim
+        // D-333 statement (hi-1.html's exact wording) and must never be
+        // paraphrased even after the rest of this object changes. It is
+        // intentionally the same string object rendered in two places (the
+        // callout and the footer) so it cannot drift.
+        var HI4_HANDOUT_COPY = {
+            title: "What Happens Next",
+            intro: "Your inspector flagged something worth a closer look. Here's a simple next step if you'd like a repair estimate — no obligation to hire anyone.",
+            noFeeLabel: "About Otter Quotes",
+            noFee: "Home-inspector partners do not receive a referral fee or recruit bonus.",
+            ctaLabel: "Get competing local contractor bids, free to use.",
+            steps: [
+                { h: "Review your inspection report", p: "Look over what your inspector flagged and any photos included with the report." },
+                { h: "Decide if you want repair estimates", p: "There's no obligation to hire anyone — this is just a way to see options." },
+                { h: "Use your inspector's link to request bids", p: "Local contractors compete for your project; you review and compare on your own timeline." },
+                { h: "Keep your report and any bids together", p: "Handy to have in one place if you decide to move forward later." },
+            ],
+        };
+
+        (function apply() {
+            try {
+                document.querySelectorAll('[data-copy]').forEach(function (el) {
+                    var key = el.getAttribute('data-copy');
+                    if (Object.prototype.hasOwnProperty.call(HI4_HANDOUT_COPY, key)) {
+                        el.textContent = HI4_HANDOUT_COPY[key];
+                    }
+                });
+            } catch (e) {}
+
+            var stepsEl = document.getElementById('stepsList');
+            HI4_HANDOUT_COPY.steps.forEach(function (step, i) {
+                var div = document.createElement('div');
+                div.className = 'step';
+                var numDiv = document.createElement('div');
+                numDiv.className = 'step-num';
+                numDiv.textContent = String(i + 1);
+                var contentDiv = document.createElement('div');
+                contentDiv.className = 'step-content';
+                var h3 = document.createElement('h3');
+                h3.textContent = step.h;
+                var p = document.createElement('p');
+                p.textContent = step.p;
+                contentDiv.appendChild(h3);
+                contentDiv.appendChild(p);
+                div.appendChild(numDiv);
+                div.appendChild(contentDiv);
+                stepsEl.appendChild(div);
+            });
+
+            // Personalization (gh2225 fix, B1/B2, REVIEW FAIL 5849558470):
+            // hi-4.html now passes only ?code= in the URL -- validated below
+            // against the real unique_code alphabet before it is ever used to
+            // build a link, so nobody can hand this page an arbitrary
+            // redirect URL (the coming QR code would otherwise turn that into
+            // a scannable phishing redirect). name/company come from
+            // sessionStorage (written by hi-4.html's buildHandoutUrl() right
+            // before this page opens), never the query string. A real QR
+            // image is a follow-up enhancement (needs an approved
+            // QR-generation dependency/CDN, out of scope for this draft-copy
+            // pass) -- the placeholder box keeps the layout correct today and
+            // is easy to swap for a real <img> (generated from the same
+            // validated URL below) once that's approved.
+            // gh2225 N4 (non-blocking, REVIEW 5850333585): `?code=` is
+            // scrubbed from the address bar below, so a reload (or a
+            // print-preview reload) had no code left to rebuild the link
+            // from, even though the contact fields survive in
+            // sessionStorage. `code` now also rides in the same
+            // sessionStorage payload (not PII) as a fallback source.
+            var storedContact = null;
+            try {
+                var raw = sessionStorage.getItem('oq_handout_hi4_contact');
+                if (raw) storedContact = JSON.parse(raw);
+            } catch (e) { /* no personalization data -- template stays generic/printable as-is */ }
+
+            try {
+                var CODE_RE = /^[A-Za-z0-9_-]{1,64}$/;
+                var qp = new URLSearchParams(window.location.search);
+                var rawCode = qp.get('code');
+                if (!(rawCode && CODE_RE.test(rawCode)) && storedContact && storedContact.code && CODE_RE.test(storedContact.code)) {
+                    rawCode = storedContact.code;
+                }
+                if (rawCode && CODE_RE.test(rawCode)) {
+                    document.getElementById('refLinkBox').textContent =
+                        'https://otterquote.com/ref.html?code=' + encodeURIComponent(rawCode);
+                }
+                if (window.history && window.history.replaceState) {
+                    window.history.replaceState(null, '', '/assets/handout-hi-4.html');
+                }
+            } catch (e) { /* invalid/missing code -- template stays generic/printable as-is */ }
+
+            try {
+                var setText = function (id, val) {
+                    var el = document.getElementById(id);
+                    if (el && val) el.textContent = val;
+                };
+                if (storedContact) {
+                    setText('cbName', storedContact.name);
+                    setText('cbCompany', storedContact.company);
+                    // gh2225 re-review fix (B6 minor, REVIEW FAIL 5849956427):
+                    // used to removeItem() right after reading, so a reload or
+                    // a print-preview reload also lost the personalization.
+                    // Left in place instead -- it is same-tab sessionStorage,
+                    // so it never outlives this tab anyway.
+                }
+            } catch (e) { /* no personalization data -- template stays generic/printable as-is */ }
+        })();
+    </script>
+</body>
+</html>

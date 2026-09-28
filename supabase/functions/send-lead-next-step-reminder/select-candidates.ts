@@ -25,13 +25,20 @@ export const REMINDER_MIN_AGE_MS = 24 * 60 * 60 * 1000; // "the day after the le
 // job (notify-admin-new-homeowner/index.ts's own MAX_AGE_DAYS=7).
 export const REMINDER_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
+// gh-2300 (CTO RUN 46 dispatch, exec:ceo #2121 comment 5868990332 item 2):
+// native Meta-form HO-2 leads (meta-leadgen-webhook, funnel_id HO-2) write
+// leads.variant = 'HO-2', not 'f', so the original Arm-F-only gate silently
+// skipped every one of them. HO-3 (the $15 no-account funnel) must stay
+// excluded — do not widen this by prefix/regex match.
+export const REMINDER_ELIGIBLE_VARIANTS: readonly string[] = ["f", "HO-2"];
+
 export type SkipReason =
   | "disabled"
   | "no_email"
   | "invalid_email_format"
   | "founder_or_test_email"
   | "synthetic_lead"
-  | "not_homeowner_arm_f"
+  | "not_reminder_eligible_variant"
   | "too_young"
   | "too_old"
   | "already_sent"
@@ -62,7 +69,9 @@ export interface CandidateLead {
    * ('a'..'f'; see 20260918122231_gh2011_leads_variant.sql and
    * start.html's insertFreshLead(), which writes the SAME `variant` scope
    * variable start.html uses for the arm letter, not a separate Meta-test
-   * value — confirmed by reading that call site). 'f' is Arm F. */
+   * value — confirmed by reading that call site), OR the native-form funnel
+   * id 'HO-2' written by meta-leadgen-webhook (gh-2300). 'f' is Arm F;
+   * 'HO-3' (the $15 no-account funnel) is deliberately NOT eligible here. */
   variant: string | null;
 }
 
@@ -100,9 +109,14 @@ export function selectLeadForReminder(
   if (isSyntheticLead(lead.is_synthetic)) {
     return { send: false, skip_reason: "synthetic_lead" };
   }
-  // Fix round 1, must-fix 6: HO-1 / Arm F scope only.
-  if (lead.role !== "homeowner" || lead.variant !== "f") {
-    return { send: false, skip_reason: "not_homeowner_arm_f" };
+  // Fix round 1, must-fix 6 (widened by gh-2300): homeowner role, and
+  // variant must be one of REMINDER_ELIGIBLE_VARIANTS ('f' or 'HO-2').
+  if (
+    lead.role !== "homeowner" ||
+    lead.variant === null ||
+    !REMINDER_ELIGIBLE_VARIANTS.includes(lead.variant)
+  ) {
+    return { send: false, skip_reason: "not_reminder_eligible_variant" };
   }
   if (lead.next_step_reminder_opted_out_at) {
     return { send: false, skip_reason: "opted_out" };

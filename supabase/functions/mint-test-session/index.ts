@@ -30,7 +30,13 @@
  *
  * Response: { ok, action_link, user_id, email, is_test: true, expires_in }.
  *
- * Caller gate: same admin single-address gate as admin-contractor-action
+ * gh-2305: a second caller path, an executive service identity, is accepted
+ * alongside the admin JWT: header X-Exec-Mint-Secret matched (constant-time,
+ * fail-closed when unset/empty/<32 chars) against EXEC_MINT_SECRET, with the
+ * anon-key JWT in Authorization to satisfy verify_jwt = true. Logic lives in
+ * ./caller-auth.ts. activity_log.metadata.caller records which path was used.
+ *
+ * Caller gate (admin path): same admin single-address gate as admin-contractor-action
  * (JWT must resolve via auth.getUser to dustinstohler1@gmail.com). Unlike
  * admin-contractor-action, config.toml pins verify_jwt = true here per the
  * gh-1513 spec — defense in depth (gateway signature check + in-handler
@@ -43,10 +49,12 @@
  * Environment variables:
  *   SUPABASE_URL
  *   SUPABASE_SERVICE_ROLE_KEY
+ *   EXEC_MINT_SECRET (gh-2305, optional; >= 32 chars or the exec path is off)
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { authorizeCaller, EXEC_MINT_HEADER } from "./caller-auth.ts";
 import {
   type DbAdapter,
   extractBearerToken,
@@ -74,7 +82,7 @@ function buildCorsHeaders(req: Request): Record<string, string> {
   return {
     "Access-Control-Allow-Origin": allowedOrigin,
     "Access-Control-Allow-Headers":
-      "authorization, x-client-info, apikey, content-type",
+      "authorization, x-client-info, apikey, content-type, x-exec-mint-secret",
     "Vary": "Origin",
   };
 }
@@ -107,9 +115,18 @@ serve(async (req) => {
     }
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // ── Caller gate: admin allow-list (same single-admin pattern as admin-contractor-action) ──
-    const { data: callerData, error: callerError } = await supabase.auth.getUser(token);
-    if (callerError || !callerData?.user || callerData.user.email !== PRIMARY_ADMIN_EMAIL) {
+    // ── Caller gate: admin allow-list OR executive service secret (gh-2305) ──
+    const decision = await authorizeCaller({
+      token,
+      execHeader: req.headers.get(EXEC_MINT_HEADER),
+      execSecret: Deno.env.get("EXEC_MINT_SECRET"),
+      primaryAdminEmail: PRIMARY_ADMIN_EMAIL,
+      resolveUserEmail: async (t) => {
+        const { data, error } = await supabase.auth.getUser(t);
+        return error || !data?.user ? null : (data.user.email ?? null);
+      },
+    });
+    if (!decision.ok) {
       return new Response(
         JSON.stringify({ error: "Unauthorized" }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -169,7 +186,7 @@ serve(async (req) => {
       },
     };
 
-    const result = await resolveAndMint(body, db, callerData.user.email);
+    const result = await resolveAndMint(body, db, decision.actor, decision.caller);
 
     return new Response(JSON.stringify(result.body), {
       status: result.status,
