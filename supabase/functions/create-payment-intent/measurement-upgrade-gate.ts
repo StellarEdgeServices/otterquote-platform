@@ -143,12 +143,15 @@ export function evaluateMeasurementUpgradeGate(
     };
   }
 
-  // ── #1410 shape gate: a claim already Shape B still refuses THIS
-  // contractor a second charge for the same upgrade -- but per D-317 cl. 4
-  // ("every later upgrade on the same roof is margin"), it does NOT waive
-  // every OTHER contractor through free. Only a repeat purchase by the same
-  // contractor is refused here. ──
-  if (resolveShape(claim) === "full" && contractorAlreadyPurchased) {
+  // ── Per-contractor dedupe: THIS contractor already has an upgrade order
+  // on this claim -- refuse regardless of the claim's CURRENT shape.
+  // (REVIEW 5869709815 nit: checked unconditionally now, not only when
+  // shape === 'full' -- a contractor could otherwise double-buy while the
+  // claim is still Shape A, i.e. paid but not yet admin-delivered.) Per
+  // D-317 cl. 4 ("every later upgrade on the same roof is margin"), this
+  // does NOT waive every OTHER contractor through free -- only a repeat
+  // purchase by the SAME contractor is refused here. ──
+  if (contractorAlreadyPurchased) {
     return {
       allow: false,
       status: 409,
@@ -179,4 +182,76 @@ export function evaluateMeasurementUpgradeGate(
   }
 
   return { allow: true, amountCents: priceForSquares(squares), squares };
+}
+
+/**
+ * [REVIEW: FAIL 5869709815, must-fix 1] The per-contractor dedupe lookup
+ * (index.ts, `hover_orders` read for `product_code = 'roof_upgrade_detailed'`
+ * scoped to this contractor) is a money-relevant unknown exactly like the
+ * ones evaluateMeasurementUpgradeGate already fails closed on -- a query
+ * ERROR is NOT the same thing as "no prior row found", and must never be
+ * silently treated as `contractorAlreadyPurchased = false`. Discarding the
+ * error there would let a contractor who already paid mint a SECOND
+ * PaymentIntent for the same upgrade whenever that one read happens to fail
+ * (network blip, RLS misconfig, etc.) -- `main` could never do this, because
+ * it refused every Shape-B request outright with no query at all.
+ *
+ * Pulled into its own pure function (rather than inlined in index.ts) so the
+ * fail-closed behaviour is unit-testable without a database, same reasoning
+ * as every other decision in this module.
+ */
+export interface PriorUpgradeQueryResult {
+  data: { id: string } | null | undefined;
+  error: { message?: string; code?: string } | null | undefined;
+}
+
+export type ContractorPurchaseCheck =
+  | { ok: true; alreadyPurchased: boolean }
+  | { ok: false; status: number; code: string; error: string };
+
+export function resolveContractorAlreadyPurchased(
+  result: PriorUpgradeQueryResult,
+): ContractorPurchaseCheck {
+  if (result.error) {
+    return {
+      ok: false,
+      status: 503,
+      code: "UPGRADE_STATUS_LOOKUP_FAILED",
+      error: "We could not verify this contractor's purchase history for this claim. Nothing has been charged.",
+    };
+  }
+  return { ok: true, alreadyPurchased: !!result.data };
+}
+
+/**
+ * [REVIEW: FAIL 5869709815, nit] Pins the exact table/columns/constant the
+ * per-contractor dedupe lookup must query, so the wiring itself (not just
+ * the fail-closed decision above) is testable without a database or a
+ * chainable Supabase-client mock. index.ts builds its query from this
+ * object's fields rather than repeating the literals inline.
+ */
+export interface PriorUpgradeLookupParams {
+  claimId: string;
+  contractorId: string;
+}
+
+export interface PriorUpgradeLookupQuery {
+  table: "hover_orders";
+  select: "id";
+  /** [column, value] pairs, applied as `.eq(column, value)` in order. */
+  eq: readonly [string, string][];
+}
+
+export function buildPriorUpgradeLookupQuery(
+  params: PriorUpgradeLookupParams,
+): PriorUpgradeLookupQuery {
+  return {
+    table: "hover_orders",
+    select: "id",
+    eq: [
+      ["claim_id", params.claimId],
+      ["product_code", UPGRADE_PRODUCT_CODE],
+      ["requested_by_contractor_id", params.contractorId],
+    ],
+  };
 }

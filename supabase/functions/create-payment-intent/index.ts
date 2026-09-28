@@ -35,7 +35,11 @@ import {
 import { PlatformSettingMissingError, resolveRequiredPriceCents } from "./price-setting.ts";
 import { attachVariantMetadata } from "./variant-metadata.ts";
 import { buildStandardCreateForm, standardIdempotencyKey } from "./standard-create-form.ts";
-import { evaluateMeasurementUpgradeGate, UPGRADE_PRODUCT_CODE } from "./measurement-upgrade-gate.ts";
+import {
+  buildPriorUpgradeLookupQuery,
+  evaluateMeasurementUpgradeGate,
+  resolveContractorAlreadyPurchased,
+} from "./measurement-upgrade-gate.ts";
 import { detectGpcSignal, type OptOutStore, recordGpcOptOut } from "./ad-sharing-opt-out.ts";
 import { AMBIGUOUS_OUTCOME_CODE, fetchStripeWithTimeout } from "./stripe-fetch.ts";
 import { AmbiguousChargeOutcomeError, runOffSessionPlatformFeeCharge } from "./off-session-charge.ts";
@@ -338,19 +342,43 @@ serve(async (req) => {
       // isFirstBuyer check on the create-measurement-order recording side
       // (which stays claim-wide -- the vendor-credit bookkeeping is a
       // one-time-per-claim entry, not a per-contractor one).
-      const { data: priorUpgradeForThisContractor } = await supabase
-        .from("hover_orders")
-        .select("id")
-        .eq("claim_id", metadata.claim_id)
-        .eq("product_code", UPGRADE_PRODUCT_CODE)
-        .eq("requested_by_contractor_id", contractor_id)
+      //
+      // REVIEW: FAIL 5869709815 must-fix 1: this lookup is itself a
+      // money-relevant unknown -- a query ERROR must fail CLOSED (refuse),
+      // never be silently read as "no prior purchase found." The query
+      // itself is built from buildPriorUpgradeLookupQuery so the column
+      // names / product-code constant are pinned and unit-testable; the
+      // {data, error} -> decision step goes through
+      // resolveContractorAlreadyPurchased for the same reason.
+      const priorUpgradeLookup = buildPriorUpgradeLookupQuery({
+        claimId: metadata.claim_id,
+        contractorId: contractor_id,
+      });
+      const { data: priorUpgradeForThisContractor, error: priorUpgradeErr } = await supabase
+        .from(priorUpgradeLookup.table)
+        .select(priorUpgradeLookup.select)
+        .eq(priorUpgradeLookup.eq[0][0], priorUpgradeLookup.eq[0][1])
+        .eq(priorUpgradeLookup.eq[1][0], priorUpgradeLookup.eq[1][1])
+        .eq(priorUpgradeLookup.eq[2][0], priorUpgradeLookup.eq[2][1])
         .limit(1)
         .maybeSingle();
+
+      const purchaseCheck = resolveContractorAlreadyPurchased({
+        data: priorUpgradeForThisContractor,
+        error: priorUpgradeErr,
+      });
+      if (!purchaseCheck.ok) {
+        console.error(`[${FUNCTION_NAME}] measurement_upgrade prior-purchase lookup failed (failing closed):`, priorUpgradeErr);
+        return new Response(
+          JSON.stringify({ error: purchaseCheck.error, code: purchaseCheck.code }),
+          { status: purchaseCheck.status, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
 
       const gate = evaluateMeasurementUpgradeGate(
         upgradeClaimRow,
         basicOrderRow?.status ?? null,
-        !!priorUpgradeForThisContractor,
+        purchaseCheck.alreadyPurchased,
       );
       if (!gate.allow) {
         if (gate.code === "TEST_CLAIM_CHARGE_REFUSED") {

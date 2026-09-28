@@ -905,18 +905,17 @@
         function getUpgradePurchaseHtml(o) {
             const safeId = String(o.id).replace(/[^a-zA-Z0-9_-]/g, '_');
 
-            // #1410 shape gate, mirrored for display only. KNOWN GAP (gh-1411,
-            // D-317 cl. 4 later-contractor-pays): this UI has no per-contractor
-            // "did I already buy this" signal, so it still shows the
-            // nothing-to-buy badge to every contractor once the claim is Shape
-            // B, even one who has not purchased and per D-317 owes the same
-            // tier price. The server-side gate (measurement-upgrade-gate.ts)
-            // is already correct -- it allows and charges that contractor --
-            // this display-only branch is not wired to reach it. Follow-up,
-            // not fixed in this PR: see the PR body.
-            if (o.measurementShape === 'full') {
-                return '<div class="upgrade-section"><span class="upgrade-available-badge">&#x2713; Detailed measurement report available &mdash; nothing to buy</span></div>';
-            }
+            // [REVIEW: FAIL 5869709815 / LEGAL-READ: FAIL 5869712252] Do NOT
+            // special-case measurementShape === 'full' as "nothing to buy"
+            // here -- per D-317 cl. 4 (later contractors pay), a claim
+            // already Shape B still owes the tier price from every
+            // contractor who has not personally bought it. This UI has no
+            // per-contractor "did I already buy this" signal, so it always
+            // renders the normal buy panel below; the server's own
+            // ALREADY_PURCHASED refusal (measurement-upgrade-gate.ts,
+            // existing copy in UPGRADE_ERROR_COPY) is what actually stops a
+            // repeat buyer, surfaced via the existing error-handling path in
+            // confirmUpgradePayment below -- no new copy needed here.
             // No basic-report squares on file yet — the gate would refuse with
             // SQUARES_UNKNOWN or BASIC_REPORT_NOT_READY. Don't offer a button
             // that can only fail; the badge above already covers "Measurements Pending."
