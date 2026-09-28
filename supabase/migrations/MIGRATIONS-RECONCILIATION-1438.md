@@ -547,14 +547,21 @@ Live Direction-1/Direction-2 commands and raw counts, AFTER this PR's 16
 renames (re-run this session against the same live ledger and the updated
 repo tree on `k71/gh1438-part2`):
 
+**Correction (round 3 review, comment 5856332109, must-fix 4):** this block
+is the round-2 snapshot, taken before gh974/gh972 were dropped from the
+batch (see the round-2 section above). It is kept here unmodified for
+history. The batch that actually shipped is **14** renames, and the live
+counts at this PR's head are Direction 1 **72 → 58** and Direction 2
+**53 → 39** — see the reconciliation-check output and the PR body.
+
 ```
--- repo (k71/gh1438-part2, after the 16 renames)
+-- repo (k71/gh1438-part2, after the 16 renames) -- ROUND-2 SNAPSHOT, SUPERSEDED
 -- => 168 files, 168 distinct 14-digit version prefixes (net unchanged --
 --    each rename removes one wrong version and adds one different, correct
 --    version, so the total file count and distinct-version count do not move)
 
--- Direction 1 (ledger version, no repo file):  56   (72 - 16)
--- Direction 2 (repo file version, no ledger row): 37   (53 - 16)
+-- Direction 1 (ledger version, no repo file):  56   (72 - 16)   [round-2; see correction above -- final: 58]
+-- Direction 2 (repo file version, no ledger row): 37   (53 - 16)   [round-2; see correction above -- final: 39]
 ```
 
 The 16 fixed versions were confirmed to be exactly the 16 versions that

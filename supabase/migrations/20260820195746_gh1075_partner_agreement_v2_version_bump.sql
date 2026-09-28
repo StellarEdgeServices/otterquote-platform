@@ -3,7 +3,6 @@
 -- version 20260820195608; the real ledger row is 20260820195746 (confirmed
 -- read-only this session). Content below unchanged.
 -- Section 4 (commission -> referral fee, D-301) shipped as an "edit in
--- Section 4 (commission -> referral fee, D-301) shipped as an "edit in
 -- place" amendment (Dustin's verbatim ruling, R-135) while zero real
 -- partners have accepted anything (all 13 referral_agents rows verified
 -- zero accepted_at, live, at authoring time). gh-1059's own migration
