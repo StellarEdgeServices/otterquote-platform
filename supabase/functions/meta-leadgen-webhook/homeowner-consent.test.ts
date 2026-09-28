@@ -28,10 +28,47 @@ Deno.test("getConsentGiven: missing custom_disclaimer_responses entirely -> fals
   assertEquals(getConsentGiven(null, CONSENT_KEY), false);
 });
 
-Deno.test("getConsentGiven: is_checked present but not the literal boolean true -> false", () => {
-  // deno-lint-ignore no-explicit-any
-  assertEquals(getConsentGiven([{ id: CONSENT_KEY, is_checked: "true" as any }], CONSENT_KEY), false);
+Deno.test("getConsentGiven: is_checked absent or unrecognised -> false", () => {
   assertEquals(getConsentGiven([{ id: CONSENT_KEY }], CONSENT_KEY), false);
+  // deno-lint-ignore no-explicit-any
+  assertEquals(getConsentGiven([{ id: CONSENT_KEY, is_checked: "yes" as any }], CONSENT_KEY), false);
+});
+
+// #2325: real Meta shape. Key text is the HO-2 checkbox key, identical on forms
+// 1078244861764331 and 1714389966848447 (In Flight/reports/ceo78 archives). The
+// {checkbox_key, is_checked:"1"} shape is from the Graph read of the live lead
+// (leadgen custom_disclaimer_responses, CEO78 ho2form report section 5).
+const META_KEY = "i_agree_that_otterquote_/_stellar_edge_services_may_call_or_text_me_at_the_number_above_about_my_roof_assessment,_including_by_autodialer_or_prerecorded/artificial_voice._consent_is_not_a_condition_of_purchase._msg_&_data_rates_may_apply.";
+const META_TICKED = [{ checkbox_key: META_KEY, is_checked: "1" }];
+const META_UNTICKED = [{ checkbox_key: META_KEY, is_checked: "0" }];
+
+Deno.test("#2325 getConsentGiven: real Meta payload, ticked (checkbox_key + is_checked \"1\") -> true", () => {
+  assertEquals(getConsentGiven(META_TICKED, META_KEY), true);
+});
+
+Deno.test("#2325 getConsentGiven: real Meta payload, unticked (is_checked \"0\") -> false", () => {
+  assertEquals(getConsentGiven(META_UNTICKED, META_KEY), false);
+  assertEquals(getConsentGiven([{ checkbox_key: META_KEY, is_checked: false }], META_KEY), false);
+});
+
+Deno.test("#2325 getConsentGiven: real Meta payload, checkbox absent from responses -> false", () => {
+  assertEquals(getConsentGiven([], META_KEY), false);
+  assertEquals(getConsentGiven([{ checkbox_key: "some_other_box", is_checked: "1" }], META_KEY), false);
+  assertEquals(getConsentGiven([{ checkbox_key: META_KEY }], META_KEY), false);
+});
+
+Deno.test("#2325 getConsentGiven: boolean true and \"true\" also count as ticked", () => {
+  assertEquals(getConsentGiven([{ checkbox_key: META_KEY, is_checked: true }], META_KEY), true);
+  assertEquals(getConsentGiven([{ checkbox_key: META_KEY, is_checked: "true" }], META_KEY), true);
+});
+
+Deno.test("#2325 buildHomeownerConsentArgs: ticked Meta fixture -> consentGiven true", () => {
+  const args = buildHomeownerConsentArgs(
+    { field_data: [], custom_disclaimer_responses: META_TICKED },
+    { consentKey: META_KEY, consentText: CONSENT_TEXT },
+    "1714389966848447",
+  );
+  assertEquals(args.consentGiven, true);
 });
 
 Deno.test("buildHomeownerConsentArgs: assembles all fields from the Graph fetch + config", () => {

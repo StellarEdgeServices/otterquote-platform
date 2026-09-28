@@ -78,7 +78,7 @@
 <!-- Microsoft Clarity (wwr7qlk8g5) is loaded by /js/ga-gate.js, behind the same production-host gate as GA4 (gh-1619). Do not add a per-page loader. -->
 
     <!-- Supabase -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js" integrity="sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.js" integrity="sha384-iLddHTLokph6Omwoyid4XKxHaWa6w41BnoEj0q5oOrzmYPpHIKt1wyjReA7s//pP" crossorigin="anonymous"></script>
 
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -403,17 +403,27 @@
                     onboarding_step:    1,
                 }));
                 localStorage.setItem('cs_auth_role', 'contractor');
+                localStorage.setItem('cs_auth_role_at', String(Date.now()));
 
-                // Send magic link — call Supabase directly so we control redirectTo
+                // Send magic link via the auth-uniform Edge Function, not
+                // sb.auth.signInWithOtp() directly — gh-1883 [SECURITY]:
+                // that call hits GoTrue's /auth/v1/otp directly, a
+                // confirmed account-enumeration oracle. See js/auth.js's
+                // _callAuthUniform doc comment. functions.invoke() needs
+                // only the anon key, same client construction as before
+                // (#488: adapter, not default storage) so a caller with a
+                // stale session in the cookie still resolves to a real
+                // client instance.
                 const sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, { auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' } }); // #488: adapter, not default storage
                 const redirectTo = `${window.location.origin}/contractor-pre-approval.html`;
 
-                const { error } = await sb.auth.signInWithOtp({
-                    email,
-                    options: {
+                const { error } = await sb.functions.invoke('auth-uniform', {
+                    body: {
+                        action: 'otp',
+                        email,
+                        redirectTo,
                         data: { role: 'contractor' },
-                        emailRedirectTo: redirectTo,
-                    }
+                    },
                 });
 
                 if (error) throw error;
@@ -469,6 +479,7 @@
                 btn.disabled = true;
                 btn.innerHTML = 'Redirecting to Google…';
                 localStorage.setItem('cs_auth_role', 'contractor');
+                localStorage.setItem('cs_auth_role_at', String(Date.now()));
                 try {
                     await Auth.signInWithGoogle('/auth-callback.html?intent=contractor');
                 } catch (err) {
@@ -512,7 +523,7 @@
     if (!leadId) return;
     if (typeof supabase === 'undefined' || typeof CONFIG === 'undefined' ||
         !CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_ANON) return;
-    var _sb = window.sb || supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
+    var _sb = window.sb || supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, { auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' } }); // gh-1980 PR2: converge fallback client onto canonical key too
     _sb.rpc('get_lead_prefill', { p_lead_id: leadId }).then(function (res) {
       var row = res && res.data && res.data[0];
       if (!row) return; // expired, unknown id, or migration not applied yet

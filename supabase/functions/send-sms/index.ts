@@ -27,6 +27,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { resolveAuthorization, resolveTwilioSender } from "./sender-selection.ts";
 
 const FUNCTION_NAME = "send-sms";
 
@@ -67,17 +68,16 @@ serve(async (req) => {
     // notify-contractors) OR a valid authenticated-user JWT. Reject anyone
     // presenting no token or only the public anon key.
     const authHeader = req.headers.get("Authorization") || "";
-    const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+    const authDecision = await resolveAuthorization(
+      authHeader,
+      supabaseKey,
+      async (token) => {
+        const { data: userData } = await supabase.auth.getUser(token);
+        return userData;
+      },
+    );
 
-    let isAuthorized = false;
-    if (token && token === supabaseKey) {
-      isAuthorized = true; // trusted internal caller (service role)
-    } else if (token) {
-      const { data: userData } = await supabase.auth.getUser(token);
-      if (userData?.user) isAuthorized = true; // authenticated end user
-    }
-
-    if (!isAuthorized) {
+    if (!authDecision.authorized) {
       console.warn(`[${FUNCTION_NAME}] Unauthorized call rejected (no valid user/service token).`);
       return new Response(
         JSON.stringify({ error: "Authentication required" }),
@@ -163,11 +163,15 @@ serve(async (req) => {
       );
     }
 
-    if (!TWILIO_MESSAGING_SERVICE_SID && !TWILIO_PHONE_NUMBER) {
-      throw new Error(
-        "No Twilio sender configured. Set TWILIO_MESSAGING_SERVICE_SID (preferred) or TWILIO_PHONE_NUMBER."
-      );
-    }
+    // Sender selection (which Twilio field to populate) is resolved by the
+    // pure, unit-tested resolveTwilioSender (./sender-selection.ts) — it
+    // throws the same "No Twilio sender configured" error as before when
+    // neither TWILIO_MESSAGING_SERVICE_SID nor TWILIO_PHONE_NUMBER is usably
+    // set (whitespace-only values now count as unset; see gh-1843).
+    const senderField = resolveTwilioSender({
+      messagingServiceSid: TWILIO_MESSAGING_SERVICE_SID,
+      phoneNumber: TWILIO_PHONE_NUMBER,
+    });
 
     // ========== SEND SMS ==========
     const basicAuth = btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`);
@@ -175,16 +179,12 @@ serve(async (req) => {
     const formData = new URLSearchParams();
     formData.append("To", to);
     formData.append("Body", safeMessage);
-
-    // Use Messaging Service SID for A2P / TCR compliance when available.
-    // Fall back to a direct phone number only if the SID is not configured.
-    if (TWILIO_MESSAGING_SERVICE_SID) {
-      formData.append("MessagingServiceSid", TWILIO_MESSAGING_SERVICE_SID);
-      console.log("Sending SMS via MessagingServiceSid to:", to);
-    } else {
-      formData.append("From", TWILIO_PHONE_NUMBER!);
-      console.log("Sending SMS via phone number to:", to, "from:", TWILIO_PHONE_NUMBER);
-    }
+    formData.append(senderField.field, senderField.value);
+    console.log(
+      senderField.field === "MessagingServiceSid"
+        ? `Sending SMS via MessagingServiceSid to: ${to}`
+        : `Sending SMS via phone number to: ${to} from: ${senderField.value}`
+    );
 
     const twilioResponse = await fetch(
       `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`,

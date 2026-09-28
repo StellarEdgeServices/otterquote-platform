@@ -36,7 +36,7 @@
 <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
 <title>Signing In &mdash; Otter Quotes</title>
 <meta name="robots" content="noindex, nofollow">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js" integrity="sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.js" integrity="sha384-iLddHTLokph6Omwoyid4XKxHaWa6w41BnoEj0q5oOrzmYPpHIKt1wyjReA7s//pP" crossorigin="anonymous"></script>
 <script src="js/cookie-storage.js"></script>
 <script src="js/config.js"></script>
 <script src="js/auth.js"></script>
@@ -174,9 +174,30 @@
         return urlIntent;
       }
     } catch (e) {}
+    // gh-2060 RETURNED item 4: cs_auth_role used to be trusted here with no
+    // age limit, same bug class fixed in js/auth.js's handleAuthCallback()
+    // (gh-2060 static-stack batch) and React's auth-callback/page.tsx. A
+    // stale 'contractor' or partner-role breadcrumb left by a prior,
+    // abandoned visit on a shared browser would silently misroute a later,
+    // unrelated sign-in (e.g. to /contractor-pre-approval.html or
+    // /partner-dashboard.html) with no live-record check to catch it, since
+    // this reader is the one that actually ROUTES on the value. Same
+    // CS_AUTH_ROLE_TTL_MS / cs_auth_role_at key names as both other fixes
+    // (all three readers share the same browser storage on the same
+    // origin). Cleared on read either way (one-shot), regardless of
+    // whether the value was trusted.
+    var CS_AUTH_ROLE_TTL_MS = 24 * 60 * 60 * 1000;
     var ls = localStorage.getItem('cs_auth_role');
-    _oqLog('intent from localStorage:', ls);
-    return ls;
+    var lsAt = parseInt(localStorage.getItem('cs_auth_role_at') || '', 10);
+    var trusted = (
+      ls !== null &&
+      Number.isFinite(lsAt) &&
+      (Date.now() - lsAt) <= CS_AUTH_ROLE_TTL_MS
+    ) ? ls : null;
+    localStorage.removeItem('cs_auth_role');
+    localStorage.removeItem('cs_auth_role_at');
+    _oqLog('intent from localStorage:', ls, 'trusted:', trusted);
+    return trusted;
   }
 
   async function handle(session) {

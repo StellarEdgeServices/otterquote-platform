@@ -27,7 +27,7 @@
 ></script>
 <!-- Coming-soon gate — flip CONFIG.HOMEOWNER_LAUNCH_ENABLED=true in js/config.js to remove -->
 <script src="js/cookie-storage.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js" integrity="sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.js" integrity="sha384-iLddHTLokph6Omwoyid4XKxHaWa6w41BnoEj0q5oOrzmYPpHIKt1wyjReA7s//pP" crossorigin="anonymous"></script>
 <script src="js/config.js"></script>
 <script>(function(){if(typeof CONFIG!=='undefined'&&!CONFIG.HOMEOWNER_LAUNCH_ENABLED){window.location.replace('/coming-soon.html?from=ref-inspector&persona=homeowner');}})()</script>
 <meta charset="UTF-8">
@@ -988,15 +988,15 @@ async function handleFormSubmit(e) {
   submitBtn.textContent = 'Sending secure link...';
 
   try {
-    // Send magic link
-    const { error: authError } = await sb.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: `${CONFIG.SITE_URL}/dashboard.html`,
-      },
-    });
-
-    if (authError) throw new Error(authError.message);
+    // Send magic link via the auth-uniform Edge Function, not
+    // sb.auth.signInWithOtp() directly — gh-1883 [SECURITY]: that call
+    // hits GoTrue's /auth/v1/otp directly, a confirmed account-enumeration
+    // oracle. See js/auth.js's _callAuthUniform doc comment.
+    try {
+      await _callAuthUniform('otp', email, `${CONFIG.SITE_URL}/dashboard.html`);
+    } catch (authError) {
+      throw new Error(authError.message);
+    }
 
     // Persist profile data to localStorage for post-auth pickup
     const profileData = {
