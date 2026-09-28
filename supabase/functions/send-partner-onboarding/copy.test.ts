@@ -279,5 +279,8 @@ Deno.test("Ben, DECIDED: approved copy words (subject/preheader/paragraphs/ctaTe
   const json = JSON.stringify(words);
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(json));
   const hex = [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
-  assertEquals(hex, "4e723abebde58ace0c50ece012c43b232914218d919ee89f15a2c1b1105e5c89");
+  // gh-2296 (Marty ruling, CTO RUN 48): hash re-pinned once, for the six iOS 26
+  // Add-to-Home-Screen step lines only (Share icon -> ••• / Share / Open as Web App).
+  // Nothing else in any literal changed (see PR diff).
+  assertEquals(hex, "23c7b581eaa9d6d01827b8d696882875b1133eac4556517ee8c5dabd491bf15c");
 });

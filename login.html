@@ -592,6 +592,7 @@
       try {
         await Auth.updatePassword(newPassword);
         localStorage.setItem('cs_auth_role', 'homeowner');
+        localStorage.setItem('cs_auth_role_at', String(Date.now()));
         await Auth.redirectToDashboard();
       } catch (err) {
         console.error('Set new password error:', err);
@@ -620,6 +621,7 @@
     btn.disabled = true;
     btn.textContent = 'Redirecting to Google…';
     localStorage.setItem('cs_auth_role', 'homeowner');
+    localStorage.setItem('cs_auth_role_at', String(Date.now()));
     try {
       await Auth.signInWithGoogle('/auth-callback.html?intent=homeowner');
     } catch (err) {

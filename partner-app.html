@@ -193,6 +193,26 @@
 
         #appQr { display: inline-block; background: #FFFFFF; padding: 12px; border-radius: var(--radius-md); border: 1px solid var(--light); }
 
+        /* gh-2295: mobile-only direct install CTA, shown in place of the
+           desktop "scan to open on your phone" QR (see applyMobileInstallBranch
+           below). Hidden by default so a JS-off/undetected visitor still sees
+           the original desktop content unchanged. */
+        .mobile-install-block {
+            text-align: center;
+            margin-bottom: var(--sp-10);
+        }
+
+        .mobile-install-block .btn { display: inline-block; }
+
+        .mobile-install-hint {
+            font-family: var(--font-body);
+            font-size: 0.9rem;
+            line-height: 1.5;
+            color: var(--gray);
+            max-width: 520px;
+            margin: 0 auto var(--sp-4);
+        }
+
         .signup-cta {
             font-family: var(--font-body);
             text-align: center;
@@ -238,6 +258,19 @@
                      same mechanism/call site as referralFeeDisclaimer. -->
                 <p>Refer homeowners, grow your partner network, and track your referrals<span id="payoutsPhrase" style="display:none;"> and payouts</span> &mdash; right from your phone. Free, no app store needed, installs in seconds.</p>
             </div>
+        </div>
+
+        <!-- gh-2295: mobile-only direct install CTA. A visitor who is already
+             on their phone (the common case for this funnel -- signup happens
+             inside Facebook's in-app browser) has no use for a QR code
+             pointed at "scan this with your phone"; applyMobileInstallBranch()
+             below reveals this and links it straight to the matching
+             iOS/Android install walkthrough, and hides the desktop QR block
+             further down. Stays hidden -- and desktop stays byte-identical --
+             unless JS detects a mobile UA/viewport. -->
+        <div class="mobile-install-block" id="mobileInstallBlock" style="display:none;">
+            <p class="mobile-install-hint" id="mobileInstallHint" style="display:none;"></p>
+            <a class="btn btn-primary btn-lg" id="mobileInstallCta" href="#">Install the App</a>
         </div>
 
         <!-- Install instructions -->
@@ -326,6 +359,69 @@
                     window.navigator.standalone === true;
             }
 
+            // gh-2295: mobile/in-app-browser detection for the direct install
+            // CTA. isInAppBrowser mirrors hi-5.html's isInAppBrowser() (same
+            // Facebook/Instagram/LinkedIn/Android-WebView signature set) --
+            // this funnel's own INS-1.S23 real-device walk found Facebook's
+            // in-app browser is the common case here, and Add to Home
+            // Screen/PWA install doesn't work inside it.
+            function isMobileDevice() {
+                var ua = navigator.userAgent || '';
+                if (/iPhone|iPad|iPod|Android/i.test(ua)) return true;
+                // Since iPadOS 13, iPad Safari sends a Mac-shaped UA by
+                // default (desktop mode). A real Mac reports
+                // maxTouchPoints === 0, so this doesn't false-positive on
+                // desktop Macs (REVIEW: FAIL 5874476509, must-fix 2).
+                if (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) return true;
+                return window.matchMedia('(max-width: 640px)').matches;
+            }
+
+            function detectMobileOs() {
+                var ua = navigator.userAgent || '';
+                if (/iPhone|iPad|iPod/i.test(ua)) return 'ios';
+                if (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) return 'ios';
+                if (/Android/i.test(ua)) return 'android';
+                return null;
+            }
+
+            function isInAppBrowser() {
+                var ua = navigator.userAgent || '';
+                return /FBAN|FBAV|FB_IAB|Instagram|LinkedInApp/i.test(ua) || /Android.*; wv\)/i.test(ua);
+            }
+
+            // gh-2295: on mobile, replace the desktop-oriented "scan this QR
+            // with your phone" flow with a direct button to the matching
+            // iOS/Android install walkthrough -- a visitor already holding
+            // the phone has no use for a code pointed back at itself. Desktop
+            // (and any mobile OS this can't identify) is untouched.
+            function applyMobileInstallBranch() {
+                if (!isMobileDevice()) return;
+                var os = detectMobileOs();
+                var installHref = os === 'ios' ? '/partner-app-install-ios.html' :
+                    os === 'android' ? '/partner-app-install-android.html' : null;
+                if (!installHref) return;
+
+                var qrBlock = document.querySelector('.qr-block');
+                if (qrBlock) qrBlock.style.display = 'none';
+
+                var cta = document.getElementById('mobileInstallCta');
+                var block = document.getElementById('mobileInstallBlock');
+                if (!cta || !block) return;
+                cta.href = installHref;
+                block.style.display = 'block';
+
+                if (isInAppBrowser()) {
+                    var hint = document.getElementById('mobileInstallHint');
+                    if (hint) {
+                        hint.textContent = os === 'ios'
+                            ? "You're viewing this inside an app's built-in browser, which can't add anything to your home screen. Tap the menu (••• or ⋮) and choose Open in Safari / Open in external browser, then tap Install the App again."
+                            : "You're viewing this inside an app's built-in browser, which can't install the app directly. Tap the menu (⋮ or •••) and choose Open in Chrome (or Open in browser), then tap Install the App again.";
+                        hint.style.display = 'block';
+                    }
+                    gaEvent('partner_app_install_inapp', { page: 'partner-app', os: os });
+                }
+            }
+
             // The two "How to install" QR codes link out to their own
             // walkthrough pages (partner-app-install-ios.html /
             // partner-app-install-android.html) - no in-page install button
@@ -339,6 +435,8 @@
                 window.location.replace('/partner-dashboard.html?source=pwa');
                 return;
             }
+
+            applyMobileInstallBranch();
 
             // #632: signed-in partners land straight on their dashboard when they
             // open this page in a regular browser tab too - mirrors the loop-guard

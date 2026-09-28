@@ -53,9 +53,25 @@ function makeJwt(userMetadataRole) {
  * Runs the real bounce script with a mock window/localStorage and returns the
  * URL passed to location.replace(), or null if the bounce did not fire.
  */
-function runBounce({ jwtRole, csAuthRole }) {
+function runBounce({ jwtRole, csAuthRole, csAuthRoleAt }) {
   const hash = `#access_token=${makeJwt(jwtRole)}&token_type=bearer`;
-  const store = { cs_auth_role: csAuthRole ?? undefined };
+  // gh-2060 RETURNED item 4: index.html's bounce now TTL-gates cs_auth_role
+  // via cs_auth_role_at (same pattern as js/auth.js and auth-callback.html's
+  // _oqGetIntent()). Callers that only care about the pre-existing
+  // precedence rules (below) don't need to think about the TTL, so a
+  // csAuthRole with no explicit `csAuthRoleAt` defaults to "just written"
+  // (fresh) -- pass `csAuthRoleAt: null` to simulate a pre-fix breadcrumb
+  // with no timestamp at all, or an epoch-ms string to simulate a specific
+  // age.
+  const store = {
+    cs_auth_role: csAuthRole ?? undefined,
+    cs_auth_role_at:
+      csAuthRole == null
+        ? undefined
+        : csAuthRoleAt !== undefined
+          ? csAuthRoleAt
+          : String(Date.now()),
+  };
   let replacedTo = null;
 
   const sandbox = {
@@ -122,6 +138,58 @@ function main() {
       `no role resolvable at all: expected no bounce (homepage renders), got ${JSON.stringify(dest)}`
     );
     console.log('✓ PASS: unrecognized/absent role — no bounce, homepage renders');
+  }
+
+  // gh-2060 RETURNED item 4: a STALE, un-timestamped cs_auth_role='contractor'
+  // (the exact pre-fix breadcrumb shape -- no cs_auth_role_at at all) must
+  // NOT override the JWT, even though it names a value the override branch
+  // would otherwise accept if it were a partner role. Here the JWT itself
+  // says 'contractor', so this also proves the fallback localStorage read
+  // path stays gated: with no JWT decode failure this case wouldn't reach
+  // the fallback, so it is combined with case 2's assertion by using a
+  // partner value that WOULD win if trusted.
+  {
+    const dest = runBounce({ jwtRole: 'contractor', csAuthRole: 'home_inspector', csAuthRoleAt: null });
+    assert.ok(
+      dest && dest.startsWith('/contractor-pre-approval.html'),
+      `stale untimestamped cs_auth_role='home_inspector' (no cs_auth_role_at at all), JWT='contractor': ` +
+      `expected the stale partner override to be ignored and the JWT to win (bounce to /contractor-pre-approval.html), got ${JSON.stringify(dest)}`
+    );
+    console.log('✓ PASS: gh-2060 untimestamped (pre-fix-shaped) cs_auth_role does not override the JWT');
+  }
+
+  // gh-2060 RETURNED item 4: a >24h-stale cs_auth_role_at is treated
+  // identically to "absent" -- same TTL as the other two readers.
+  {
+    const dest = runBounce({
+      jwtRole: 'contractor',
+      csAuthRole: 'home_inspector',
+      csAuthRoleAt: String(Date.now() - 25 * 60 * 60 * 1000), // 25h old
+    });
+    assert.ok(
+      dest && dest.startsWith('/contractor-pre-approval.html'),
+      `>24h-stale cs_auth_role_at, JWT='contractor': expected the stale partner override to be ignored ` +
+      `(bounce to /contractor-pre-approval.html), got ${JSON.stringify(dest)}`
+    );
+    console.log('✓ PASS: gh-2060 >24h-stale cs_auth_role_at does not override the JWT');
+  }
+
+  // gh-2060 RETURNED item 4: a FRESH cs_auth_role_at (within the TTL) still
+  // lets the partner override win -- this is case 1 above, restated
+  // explicitly as the positive control so a regression that broke the TTL
+  // math (rather than just failing to add it) also turns red here.
+  {
+    const dest = runBounce({
+      jwtRole: 'contractor',
+      csAuthRole: 'home_inspector',
+      csAuthRoleAt: String(Date.now() - 5 * 60 * 1000), // 5 minutes old
+    });
+    assert.ok(
+      dest && dest.startsWith('/partner-dashboard.html'),
+      `POSITIVE CONTROL: fresh cs_auth_role_at (5 min old), cs_auth_role='home_inspector', JWT='contractor': ` +
+      `expected the override to still win (bounce to /partner-dashboard.html), got ${JSON.stringify(dest)}`
+    );
+    console.log('✓ PASS: gh-2060 POSITIVE CONTROL — fresh cs_auth_role_at still lets the partner override win');
   }
 
   console.log('\n✓ All index.html bounce routing-outcome cases pass.');
