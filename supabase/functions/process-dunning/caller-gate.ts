@@ -5,11 +5,16 @@
 // anonymous POST could run the CRON scan or forge a TRIGGER (Stripe retries,
 // payment_failures insert, email/SMS to every contact on file).
 //
-// Real callers (both send `Authorization: Bearer <service-role key>`):
+// Real callers (all send `Authorization: Bearer <service-role key>`):
 //   - pg_cron job 5 `process-dunning-cron` (key from vault `cron_service_role_key`)
-//   - docusign-webhook (`Bearer ${supabaseKey}`)
-// The gate compares that bearer, in constant time, with this function's own
-// SUPABASE_SERVICE_ROLE_KEY. Fail-closed: an empty/unset key authorizes nobody.
+//   - docusign-webhook (`Bearer ${supabaseKey}`, where supabaseKey comes from its
+//     getServiceRoleKey(): SUPABASE_SECRET_KEYS.default when present, else the legacy
+//     SUPABASE_SERVICE_ROLE_KEY)
+//   - stripe-webhook, platform-health-check
+// The gate accepts EITHER accepted key: the runtime SUPABASE_SERVICE_ROLE_KEY or the key
+// getServiceRoleKey() returns (inlined below, this repo's per-function convention).
+// Each candidate is compared in constant time (no early exit between candidates).
+// Fail-closed: an empty/unset key never matches, so an empty bearer authorizes nobody.
 //
 // Routing (pure, no I/O -- unit-tested in caller-gate.test.ts):
 //   OPTIONS                                  -> "preflight"  (CORS only)
@@ -42,13 +47,49 @@ export function constantTimeEqual(a: string, b: string): boolean {
   return diff === 0;
 }
 
-/** True only for `Authorization: Bearer <serviceKey>`; false if either side is empty. */
-export function hasServiceBearer(req: Request, serviceKey: string | undefined | null): boolean {
-  if (!serviceKey) return false;
+type KeyInput = string | undefined | null;
+
+/**
+ * Same resolution order as docusign-webhook's getServiceRoleKey() (D-274 / #631):
+ * SUPABASE_SECRET_KEYS.default when present and valid JSON, else the legacy
+ * SUPABASE_SERVICE_ROLE_KEY, else "". `getEnv` is injectable for tests.
+ */
+export function getServiceRoleKey(getEnv: (name: string) => string | undefined): string {
+  const raw = getEnv("SUPABASE_SECRET_KEYS");
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed?.default) return String(parsed.default);
+    } catch (_e) {
+      console.warn("[process-dunning] SUPABASE_SECRET_KEYS present but not valid JSON -- falling back to legacy key");
+    }
+  }
+  return getEnv("SUPABASE_SERVICE_ROLE_KEY") || "";
+}
+
+/** The accepted bearer keys: runtime service-role key and getServiceRoleKey() (may be equal or empty). */
+export function acceptedServiceKeys(getEnv: (name: string) => string | undefined): string[] {
+  return [getEnv("SUPABASE_SERVICE_ROLE_KEY") || "", getServiceRoleKey(getEnv)];
+}
+
+/**
+ * True only for `Authorization: Bearer <k>` where k equals one of the non-empty
+ * accepted keys. Every candidate is compared (no short-circuit); an empty/missing
+ * key is skipped so it can never match, not even an empty bearer.
+ */
+export function hasServiceBearer(req: Request, serviceKeys: KeyInput | readonly KeyInput[]): boolean {
+  const keys = (Array.isArray(serviceKeys) ? serviceKeys : [serviceKeys]) as readonly KeyInput[];
   const header = req.headers.get("Authorization") || "";
   const m = /^Bearer\s+(.+)$/i.exec(header.trim());
   if (!m) return false;
-  return constantTimeEqual(m[1].trim(), serviceKey);
+  const presented = m[1].trim();
+  if (!presented) return false;
+  let ok = false;
+  for (const k of keys) {
+    if (!k) continue;
+    if (constantTimeEqual(presented, k)) ok = true;
+  }
+  return ok;
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -93,11 +134,11 @@ export function classifyRequest(req: Request, bodyPeek: unknown): Route {
 export function gateResponse(
   route: Route,
   req: Request,
-  serviceKey: string | undefined | null,
+  serviceKeys: KeyInput | readonly KeyInput[],
   corsHeaders: Record<string, string>,
 ): Response | null {
   if (route.kind !== "gated") return null;
-  if (hasServiceBearer(req, serviceKey)) return null;
+  if (hasServiceBearer(req, serviceKeys)) return null;
   return new Response(JSON.stringify({ error: "Unauthorized" }), {
     status: 401,
     headers: { ...corsHeaders, "Content-Type": "application/json" },

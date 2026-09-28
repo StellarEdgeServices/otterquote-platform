@@ -19,7 +19,7 @@
  *   CRON      POST/GET without body — scans all active dunning records
  *   HOMEOWNER GET ?mode=homeowner_choice&failure_id=UUID&choice=proceed|different
  *
- * AUTH (gh-2309): TRIGGER and CRON require `Authorization: Bearer <SUPABASE_SERVICE_ROLE_KEY>`
+ * AUTH (gh-2309): TRIGGER and CRON require `Authorization: Bearer <SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SECRET_KEYS.default>`
  * (see caller-gate.ts); anonymous callers get 401 before any DB/vendor I/O. HOMEOWNER is the
  * emailed link (no bearer) and stays open, GET-only, with failure_id/choice validated.
  * health_check and OPTIONS are ungated and do no I/O.
@@ -46,7 +46,7 @@ import {
 // shared one; the local copy is deleted.
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 // gh-2309: inbound caller gate (service-role bearer on TRIGGER + CRON).
-import { classifyRequest, gateResponse, validateHomeownerChoice } from "./caller-gate.ts";
+import { acceptedServiceKeys, classifyRequest, gateResponse, validateHomeownerChoice } from "./caller-gate.ts";
 
 const PLATFORM_URL = "https://otterquote.com";
 const SETTINGS_URL = `${PLATFORM_URL}/contractor-settings.html`;
@@ -661,7 +661,14 @@ function homeownerResponsePage(title: string, message: string, isError = false):
 
 // MAIN HANDLER
 
-serve(async (req) => {
+// gh-2309: exported so caller-gate.test.ts can drive the REAL handler. serve() is
+// guarded by import.meta.main (same precedent as meta-leadgen-webhook and
+// send-home-profile-prompt); the Edge runtime runs this file as the entry point, so it is
+// still true in deployment. `getEnv` defaults to Deno.env.get.
+export async function handler(
+  req: Request,
+  getEnv: (name: string) => string | undefined = (n) => Deno.env.get(n),
+): Promise<Response> {
   const corsHeaders = buildCorsHeaders(req);
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -682,12 +689,14 @@ serve(async (req) => {
     });
   }
 
-  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-  const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const supabaseUrl = getEnv("SUPABASE_URL")!;
+  const supabaseKey = getEnv("SUPABASE_SERVICE_ROLE_KEY")!;
 
   // gh-2309: TRIGGER and CRON (and any other method/mode) require the service-role
-  // bearer that cron job 5 and docusign-webhook already send. 401 = zero I/O.
-  const denied = gateResponse(route, req, supabaseKey, corsHeaders);
+  // bearer that cron job 5 and docusign-webhook already send: either the runtime
+  // SUPABASE_SERVICE_ROLE_KEY or getServiceRoleKey()'s SUPABASE_SECRET_KEYS.default
+  // (docusign-webhook sends the latter). 401 = zero I/O.
+  const denied = gateResponse(route, req, acceptedServiceKeys(getEnv), corsHeaders);
   if (denied) {
     console.warn("[process-dunning] 401: gated mode called without the service bearer");
     return denied;
@@ -1523,4 +1532,8 @@ serve(async (req) => {
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
-});
+}
+
+if (import.meta.main) {
+  serve((req) => handler(req));
+}

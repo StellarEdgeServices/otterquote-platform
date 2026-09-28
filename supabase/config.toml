@@ -196,8 +196,9 @@ verify_jwt = false
 
 [functions.process-dunning]
 # gh-2309: auth gated in-handler (caller-gate.ts). TRIGGER + CRON modes require
-# `Authorization: Bearer <SUPABASE_SERVICE_ROLE_KEY>` (constant-time compare, 401 with
-# zero I/O otherwise); callers are cron job 5, docusign-webhook (L1662) and stripe-webhook (L1061). verify_jwt MUST stay
+# `Authorization: Bearer <key>` where key is the runtime SUPABASE_SERVICE_ROLE_KEY or the
+# getServiceRoleKey() value (SUPABASE_SECRET_KEYS.default, which docusign-webhook sends);
+# constant-time compare, 401 with zero I/O otherwise; callers are cron job 5, docusign-webhook (L1662) and stripe-webhook (L1061). verify_jwt MUST stay
 # false because the cron key (vault `cron_service_role_key`) is NOT a JWT (measured 2026-09-28: `like 'eyJ%'` = false, per #2309 triage), so the
 # platform JWT check would reject the real caller; the
 # emailed homeowner_choice GET link also carries no bearer (its failure_id/choice are
@@ -486,7 +487,7 @@ verify_jwt = false
 # gh-2154 P-5: Meta cannot send a Supabase JWT (this is Meta's own webhook
 # delivery, GET handshake + POST event notification). Authentication is
 # entirely in-handler: the GET handshake checks hub.verify_token against
-# META_LEADGEN_VERIFY_TOKEN, and the POST checks X-Hub-Signature-256 (measured on 2026-09-28: `like 'eyJ%'` = false, per #2309 triage) so the
+# META_LEADGEN_VERIFY_TOKEN, and the POST checks X-Hub-Signature-256 (an
 # HMAC-SHA256 of the raw body, keyed with META_APP_SECRET, constant-time
 # compared) BEFORE any read or write — see signature.ts / handler.ts. Same
 # verify_jwt=false-but-in-handler-authenticated shape as check-email-exists,

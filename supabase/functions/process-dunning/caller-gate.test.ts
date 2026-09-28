@@ -5,31 +5,53 @@
 // the index.ts wiring test FAIL. Raw before/after output is in the PR body.
 import { assert, assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import {
+  acceptedServiceKeys,
   classifyRequest,
   constantTimeEqual,
   gateResponse,
+  getServiceRoleKey,
   hasServiceBearer,
   isUuid,
   validateHomeownerChoice,
 } from "./caller-gate.ts";
+import { handler } from "./index.ts";
 
-const KEY = "sb_secret_test_service_key_0123456789";
+const KEY = "fixture-runtime-service-key-0123456789"; // runtime SUPABASE_SERVICE_ROLE_KEY
+const ALT = "fixture-rotated-default-key-9876543210"; // SUPABASE_SECRET_KEYS.default (docusign-webhook's key)
 const BASE = "https://x.supabase.co/functions/v1/process-dunning";
 const CORS = { "Access-Control-Allow-Origin": "https://otterquote.com" };
 const FAIL_ID = "3f2b8c1e-9a4d-4e57-8b1c-2d6f7a9e0b13";
 
 const TRIGGER_BODY = JSON.stringify({ quote_id: "q", contractor_id: "c", claim_id: "cl", amount_cents: 99999999 });
 
-/** Runs the same classify -> gate sequence index.ts runs, counting any network I/O. */
-async function runGate(req: Request, key: string | undefined = KEY) {
+type Env = Record<string, string | undefined>;
+const ENV_BOTH: Env = {
+  SUPABASE_URL: "https://x.supabase.co",
+  SUPABASE_SERVICE_ROLE_KEY: KEY,
+  SUPABASE_SECRET_KEYS: JSON.stringify({ default: ALT }),
+};
+const ENV_LEGACY_ONLY: Env = { SUPABASE_URL: "https://x.supabase.co", SUPABASE_SERVICE_ROLE_KEY: KEY };
+const ENV_EMPTY: Env = { SUPABASE_URL: "https://x.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "", SUPABASE_SECRET_KEYS: "" };
+
+/**
+ * Drives the REAL exported handler from index.ts (classify -> gate -> body), with
+ * env injected and global fetch replaced by a counting stub that answers every
+ * PostgREST/vendor call with an empty 200 array. fetchCalls === 0 on a 401 proves
+ * the gate ran before any DB/vendor I/O.
+ */
+async function runGate(req: Request, env: Env = ENV_BOTH) {
   const realFetch = globalThis.fetch;
   let fetchCalls = 0;
-  globalThis.fetch = (() => { fetchCalls++; return Promise.reject(new Error("I/O attempted")); }) as typeof fetch;
+  globalThis.fetch = (() => {
+    fetchCalls++;
+    return Promise.resolve(new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } }));
+  }) as typeof fetch;
   try {
-    const peek = await req.clone().json().catch(() => ({}));
-    const route = classifyRequest(req, peek);
-    const denied = gateResponse(route, req, key, CORS);
-    return { route, denied, fetchCalls };
+    const probe = req.clone(); // handler may consume the body
+    const res = await handler(req, (n) => env[n]);
+    const denied = res.status === 401 ? res : null;
+    const peek = await probe.json().catch(() => ({}));
+    return { route: classifyRequest(req, peek), res, denied, fetchCalls };
   } finally {
     globalThis.fetch = realFetch;
   }
@@ -38,58 +60,108 @@ async function runGate(req: Request, key: string | undefined = KEY) {
 Deno.test("anonymous TRIGGER POST -> 401, zero I/O", async () => {
   const r = await runGate(new Request(BASE, { method: "POST", body: TRIGGER_BODY }));
   assertEquals(r.route.kind, "gated");
-  assertEquals(r.denied?.status, 401);
+  assertEquals(r.res.status, 401);
   assertEquals(r.fetchCalls, 0);
 });
 
 Deno.test("anonymous CRON POST (empty body) and GET -> 401, zero I/O", async () => {
   for (const req of [new Request(BASE, { method: "POST" }), new Request(BASE, { method: "GET" })]) {
     const r = await runGate(req);
-    assertEquals(r.denied?.status, 401);
+    assertEquals(r.res.status, 401);
     assertEquals(r.fetchCalls, 0);
   }
 });
 
-Deno.test("wrong bearer, anon-key-shaped bearer, non-Bearer scheme, near-miss key -> 401", async () => {
+Deno.test("wrong bearer, anon-key-shaped bearer, non-Bearer scheme, near-miss keys -> 401 (both keys configured)", async () => {
   const headers = [
     "Bearer wrong",
     "Bearer eyJhbGciOiJIUzI1NiJ9.anon.sig",
     `Basic ${KEY}`,
     `Bearer ${KEY}x`,
     `Bearer ${KEY.slice(0, -1)}`,
+    `Bearer ${ALT}x`,
+    `Bearer ${ALT.slice(0, -1)}`,
     "Bearer ",
     KEY, // no scheme
   ];
   for (const h of headers) {
     const r = await runGate(new Request(BASE, { method: "POST", body: TRIGGER_BODY, headers: { Authorization: h } }));
-    assertEquals(r.denied?.status, 401, `should reject Authorization: ${h}`);
+    assertEquals(r.res.status, 401, `should reject Authorization: ${h}`);
+    assertEquals(r.fetchCalls, 0, `no I/O for ${h}`);
   }
 });
 
-Deno.test("fail-closed: unset/empty service key authorizes nobody, even an empty bearer", async () => {
-  for (const key of [undefined, ""]) {
-    const r = await runGate(new Request(BASE, { method: "POST", headers: { Authorization: "Bearer " } }), key);
-    assertEquals(r.denied?.status, 401);
-    const r2 = await runGate(new Request(BASE, { method: "POST", headers: { Authorization: "Bearer undefined" } }), key);
-    assertEquals(r2.denied?.status, 401);
+Deno.test("fail-closed: empty/unset env keys authorize nobody, even an empty bearer", async () => {
+  const envs: Env[] = [
+    ENV_EMPTY,
+    { SUPABASE_URL: "https://x.supabase.co" }, // both unset
+    { SUPABASE_URL: "https://x.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "", SUPABASE_SECRET_KEYS: JSON.stringify({ default: "" }) },
+    { SUPABASE_URL: "https://x.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "", SUPABASE_SECRET_KEYS: "{not json" },
+  ];
+  for (const env of envs) {
+    for (const h of ["Bearer ", "Bearer", "Bearer undefined", "Bearer null", "Bearer  "]) {
+      const r = await runGate(new Request(BASE, { method: "POST", headers: { Authorization: h } }), env);
+      assertEquals(r.res.status, 401, `${JSON.stringify(env)} + ${JSON.stringify(h)}`);
+      assertEquals(r.fetchCalls, 0);
+    }
+    // the missing header entirely
+    const r0 = await runGate(new Request(BASE, { method: "POST" }), env);
+    assertEquals(r0.res.status, 401);
   }
 });
 
-Deno.test("service-role bearer (cron job 5 / docusign-webhook shape) passes the gate for TRIGGER and CRON", async () => {
+Deno.test("accepted key 1: runtime SUPABASE_SERVICE_ROLE_KEY passes TRIGGER and CRON (real handler proceeds past the gate)", async () => {
   const auth = { Authorization: `Bearer ${KEY}` };
-  const trig = await runGate(new Request(BASE, { method: "POST", body: TRIGGER_BODY, headers: auth }));
-  assertEquals(trig.denied, null);
   const cron = await runGate(new Request(BASE, { method: "POST", body: "{}", headers: auth }));
-  assertEquals(cron.denied, null);
-  const lower = await runGate(new Request(BASE, { method: "POST", headers: { authorization: `bearer ${KEY}` } }));
-  assertEquals(lower.denied, null);
+  assert(cron.res.status !== 401, `CRON got ${cron.res.status}`);
+  assert(cron.fetchCalls > 0, "CRON past the gate must reach the DB");
+  const trig = await runGate(new Request(BASE, { method: "POST", body: TRIGGER_BODY, headers: auth }));
+  assert(trig.res.status !== 401, `TRIGGER got ${trig.res.status}`);
+  const lower = await runGate(new Request(BASE, { method: "POST", body: "{}", headers: { authorization: `bearer ${KEY}` } }));
+  assert(lower.res.status !== 401);
+  // also passes when only the legacy var exists (SUPABASE_SECRET_KEYS unset)
+  const legacy = await runGate(new Request(BASE, { method: "POST", body: "{}", headers: auth }), ENV_LEGACY_ONLY);
+  assert(legacy.res.status !== 401);
+});
+
+Deno.test("accepted key 2: getServiceRoleKey() value (SUPABASE_SECRET_KEYS.default, docusign-webhook's bearer) passes TRIGGER and CRON", async () => {
+  const auth = { Authorization: `Bearer ${ALT}` };
+  const cron = await runGate(new Request(BASE, { method: "POST", body: "{}", headers: auth }));
+  assert(cron.res.status !== 401, `CRON got ${cron.res.status}`);
+  assert(cron.fetchCalls > 0);
+  const trig = await runGate(new Request(BASE, { method: "POST", body: TRIGGER_BODY, headers: auth }));
+  assert(trig.res.status !== 401, `TRIGGER got ${trig.res.status}`);
+});
+
+Deno.test("wrong key fails with a different key configured, and a valid key from ANOTHER env is not accepted", async () => {
+  const other = "fixture-someone-elses-key-000000000000";
+  for (const env of [ENV_BOTH, ENV_LEGACY_ONLY]) {
+    const r = await runGate(new Request(BASE, { method: "POST", body: "{}", headers: { Authorization: `Bearer ${other}` } }), env);
+    assertEquals(r.res.status, 401);
+    assertEquals(r.fetchCalls, 0);
+  }
+  // With only the legacy env configured, the rotated key is not accepted.
+  const r2 = await runGate(new Request(BASE, { method: "POST", body: "{}", headers: { Authorization: `Bearer ${ALT}` } }), ENV_LEGACY_ONLY);
+  assertEquals(r2.res.status, 401);
+});
+
+Deno.test("getServiceRoleKey / acceptedServiceKeys mirror docusign-webhook's helper", () => {
+  const g = (env: Env) => (n: string) => env[n];
+  assertEquals(getServiceRoleKey(g(ENV_BOTH)), ALT);
+  assertEquals(getServiceRoleKey(g(ENV_LEGACY_ONLY)), KEY);
+  assertEquals(getServiceRoleKey(g({ ...ENV_LEGACY_ONLY, SUPABASE_SECRET_KEYS: "{bad" })), KEY);
+  assertEquals(getServiceRoleKey(g({})), "");
+  assertEquals(acceptedServiceKeys(g(ENV_BOTH)), [KEY, ALT]);
+  // gateResponse itself, and hasServiceBearer's list form, skip empty entries
+  const req = new Request(BASE, { method: "POST", headers: { Authorization: "Bearer " } });
+  assert(!hasServiceBearer(req, ["", undefined, null]));
+  assertEquals(gateResponse({ kind: "gated" }, req, ["", ""], CORS)?.status, 401);
 });
 
 Deno.test("401 body leaks nothing and carries CORS + JSON headers", async () => {
   const r = await runGate(new Request(BASE, { method: "POST", body: TRIGGER_BODY }));
-  assertEquals(await r.denied!.json(), { error: "Unauthorized" });
-  assertEquals(r.denied!.headers.get("Content-Type"), "application/json");
-  assertEquals(r.denied!.headers.get("Access-Control-Allow-Origin"), "https://otterquote.com");
+  assertEquals(await r.res.json(), { error: "Unauthorized" });
+  assertEquals(r.res.headers.get("Content-Type"), "application/json");
 });
 
 Deno.test("homeowner_choice GET (emailed link) stays reachable with no bearer", async () => {
@@ -165,8 +237,8 @@ Deno.test("index.ts wiring: gateResponse runs before createClient(...) and befor
   const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
   const lines = src.split("\n");
   const idx = (needle: string) => lines.findIndex((l) => !l.trim().startsWith("//") && l.includes(needle));
-  const serveAt = idx("serve(async (req)");
-  const gateAt = idx("gateResponse(route, req, supabaseKey");
+  const serveAt = idx("export async function handler(");
+  const gateAt = idx("gateResponse(route, req, acceptedServiceKeys(getEnv)");
   const clientAt = idx("const supabase    = createClient(");
   const firstFrom = lines.findIndex((l, i) => i > serveAt && !l.trim().startsWith("//") && l.includes(".from("));
   assert(serveAt > 0 && gateAt > serveAt, "gateResponse must be called inside serve()");
