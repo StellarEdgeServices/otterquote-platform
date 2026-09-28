@@ -1,0 +1,39 @@
+# gh-1727 closes-on probe (CTO RUN 48, wave A). EVIDENCE-ONLY, NEVER MERGE.
+# Runs the negative control + positive control from #1727's closes-on using the REAL
+# Actions secret GH_CROSS_REPO_PAT (the only place its value exists; it is absent from Doppler).
+# Prints HTTP status codes ONLY. No response body and no token value is ever written to the log.
+# The PR carrying this file is closed unmerged after the run is read.
+name: gh1727-crossrepo-pat-probe
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/gh1727-crossrepo-pat-probe.yml'
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      T: ${{ secrets.GH_CROSS_REPO_PAT }}
+    steps:
+      - name: status-code-only probe
+        run: |
+          set -u
+          echo "secret present: $([ -n "$T" ] && echo yes || echo NO)  length=${#T}"
+          code() { curl -s -o /dev/null -w '%{http_code}' -H "Accept: application/vnd.github+json" "$@"; }
+          P=StellarEdgeServices/otterquote-platform
+          C=StellarEdgeServices/otter-crm
+          echo "--- NEGATIVE CONTROLS: Administration:Read must be gone (expect 403 or 404)"
+          echo "token  platform branches/main/protection : $(code -H "Authorization: Bearer $T" https://api.github.com/repos/$P/branches/main/protection)"
+          echo "token  platform collaborators            : $(code -H "Authorization: Bearer $T" https://api.github.com/repos/$P/collaborators)"
+          echo "token  platform keys                     : $(code -H "Authorization: Bearer $T" https://api.github.com/repos/$P/keys)"
+          echo "token  otter-crm keys                    : $(code -H "Authorization: Bearer $T" https://api.github.com/repos/$C/keys)"
+          echo "token  otter-crm branches/main/protection: $(code -H "Authorization: Bearer $T" https://api.github.com/repos/$C/branches/main/protection)"
+          echo "--- POSITIVE CONTROLS: workflow still works (expect 200)"
+          echo "token  otter-crm commits/main            : $(code -H "Authorization: Bearer $T" https://api.github.com/repos/$C/commits/main)"
+          echo "token  platform  commits/main            : $(code -H "Authorization: Bearer $T" https://api.github.com/repos/$P/commits/main)"
+          echo "--- BASELINES: anonymous, and a deliberately invalid token"
+          echo "anon   platform branches/main/protection : $(code https://api.github.com/repos/$P/branches/main/protection)"
+          echo "anon   otter-crm commits/main            : $(code https://api.github.com/repos/$C/commits/main)"
+          echo "bogus  otter-crm commits/main            : $(code -H "Authorization: Bearer ghp_invalid0000000000000000000000000000" https://api.github.com/repos/$C/commits/main)"
