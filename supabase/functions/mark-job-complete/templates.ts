@@ -56,7 +56,8 @@ export function jobCompleteEmailHtml(
   </div>
   <p style="color:#6B7280;font-size:0.875rem;">Thank you for using Otter Quotes.</p>
   <hr style="border:none;border-top:1px solid #E2E8F0;margin:1.5rem 0;">
-  <p style="color:#9CA3AF;font-size:0.75rem;text-align:center;">${footerPostalAddressHtml()} <a href="https://otterquote.com" style="color:#9CA3AF;">otterquote.com</a></p>
+  <div style="color:#9CA3AF;font-size:0.75rem;text-align:center;">${footerPostalAddressHtml()}</div>
+  <p style="color:#9CA3AF;font-size:0.75rem;text-align:center;"><a href="https://otterquote.com" style="color:#9CA3AF;">otterquote.com</a></p>
 </body>
 </html>`;
 }
