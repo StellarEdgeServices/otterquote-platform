@@ -144,7 +144,7 @@ function makeElementStore() {
 // Auth.signUpWithPassword() REJECTS with Supabase's own literal duplicate-
 // registration message -- this is the auth.users-level duplicate the RPC
 // above cannot see.
-function runPageScript(html, { search = '', signUp = 'dup', dupError = null, rpcError = null } = {}) {
+function runPageScript(html, { search = '', signUp = 'dup', dupError = null, rpcError = null, signUpSeq = null, rpcSeq = null, sessionEmail = null } = {}) {
   const script = extractInlineScripts(html);
   if (!script || script.indexOf('register_partner') === -1) {
     return { setupError: 'no inline script containing register_partner was found on the page' };
@@ -152,6 +152,7 @@ function runPageScript(html, { search = '', signUp = 'dup', dupError = null, rpc
   const store = makeElementStore();
   const rpcCalls = [];
   const callOrder = [];
+  let signUpN = 0, rpcN = 0;
   const alertCalls = [];
   // gh2274 fix-up: a plain always-Promise-returning Proxy trap (the prior
   // shape here) breaks the moment a caller does something other than a
@@ -181,7 +182,8 @@ function runPageScript(html, { search = '', signUp = 'dup', dupError = null, rpc
       rpcCalls.push({ name, params });
       if (name === 'register_partner') {
         callOrder.push('register_partner');
-        if (rpcError) return Promise.resolve({ data: null, error: rpcError });
+        const rpcErr = rpcSeq ? rpcSeq[Math.min(rpcN++, rpcSeq.length - 1)] : rpcError;
+        if (rpcErr) return Promise.resolve({ data: null, error: rpcErr });
         return Promise.resolve({ data: { id: 'gh2274-test-id', unique_code: 'TESTCODE123' }, error: null });
       }
       if (name === 'claim_partner_account') {
@@ -231,11 +233,12 @@ function runPageScript(html, { search = '', signUp = 'dup', dupError = null, rpc
   const AuthObj = {
     signUpWithPassword: async () => {
       callOrder.push('signUp');
-      if (signUp === 'ok') return { user: { id: 'gh2274-user-id' }, session: null };
+      const mode = signUpSeq ? signUpSeq[Math.min(signUpN++, signUpSeq.length - 1)] : signUp;
+      if (mode === 'ok') return { user: { id: 'gh2274-user-id' }, session: null };
       throw (dupError || new Error('User already registered'));
     },
     hasPartnerSession: async () => false,
-    getUser: async () => null,
+    getUser: async () => (sessionEmail ? { email: sessionEmail } : null),
     isTestEmail: (email) => (email || '').trim().toLowerCase().endsWith('@otterquote-internal.test'),
   };
   win.Auth = AuthObj;
@@ -263,7 +266,7 @@ function runPageScript(html, { search = '', signUp = 'dup', dupError = null, rpc
     return { setupError: 'script execution error while loading the page: ' + e.message };
   }
   for (const fn of domContentLoadedListeners) { try { fn(); } catch (e) {} }
-  return { store, rpcCalls, alertCalls, callOrder };
+  return { store, rpcCalls, alertCalls, callOrder, lsStore };
 }
 
 async function submitForm(runResult, formId, fill, { hasConfirmPopup = false } = {}) {
@@ -452,6 +455,50 @@ for (const page of PAGES) {
     else surfaced = run.alertCalls.join(' | ');
     ok(surfaced.includes(page.designed), page.file + ' (e): RPC partner_exists still shows the designed already-a-partner message -- got ' + JSON.stringify(surfaced));
   } catch (e) { failWithReason(page.file + ' (e)', e.message); }
+}
+
+// gh-2282 review must-fix 1: signUp now runs before register_partner, so a
+// register_partner failure must not strand the user with an auth account and
+// no referral_agents row. (f) rate-limit then retry, (g) existing auth user
+// (signed in) with no partner row, (h) a genuine existing partner.
+const PENDING_KEY = 'oq_partner_pending_registration';
+function surfacedOf(run, page) {
+  if (page.surface === 'formAlert') return run.store.byId.get('formAlert') ? run.store.byId.get('formAlert').textContent : '';
+  if (page.surface === 'errorEl') { const el = run.store.byId.get(page.errorElId); return el ? (el.innerHTML || el.textContent) : ''; }
+  return run.alertCalls.join(' | ');
+}
+const emailKey = 'gh2274-dup@example.invalid';
+for (const page of PAGES) {
+  const html = fs.readFileSync(path.join(repoRoot, page.file), 'utf8');
+  const submit = (run) => submitForm(run, page.formId, page.fields, { hasConfirmPopup: !!page.hasConfirmPopup });
+  // (f) new email; signUp ok, register_partner rate-limited; user resubmits (signUp now says duplicate).
+  let run = runPageScript(html, { signUpSeq: ['ok', 'dup'], rpcSeq: [{ message: 'rate_limited' }, null] });
+  if (run.setupError) { failWithReason(page.file + ' (f)', run.setupError); continue; }
+  try {
+    await submit(run);
+    const marker = run.lsStore.get(PENDING_KEY);
+    ok(!!marker && JSON.parse(marker).email === emailKey && !/pass/i.test(marker), page.file + ' (f): after a register_partner failure a pending-registration marker (email, no password) is kept -- got ' + marker);
+    ok(!/already a partner|already registered/i.test(surfacedOf(run, page)), page.file + ' (f): the first-attempt failure is not shown as already-a-partner');
+    await submit(run);
+    ok(run.callOrder.join(',') === 'signUp,register_partner,signUp,register_partner', page.file + ' (f): retry completes register_partner after the duplicate signUp -- got ' + JSON.stringify(run.callOrder));
+    ok(!/already a partner|already registered/i.test(surfacedOf(run, page)), page.file + ' (f): the retry does NOT show "already a partner" -- got ' + JSON.stringify(surfacedOf(run, page)));
+    ok(!run.lsStore.has(PENDING_KEY), page.file + ' (f): marker cleared once register_partner succeeded');
+  } catch (e) { failWithReason(page.file + ' (f)', e.message); }
+  // (g) existing auth user, signed in as that email, no partner row: complete registration.
+  run = runPageScript(html, { signUpSeq: ['dup'], sessionEmail: emailKey });
+  if (run.setupError) { failWithReason(page.file + ' (g)', run.setupError); continue; }
+  try {
+    await submit(run);
+    ok(run.callOrder.join(',') === 'signUp,register_partner', page.file + ' (g): signed-in existing auth user without a partner row completes register_partner -- got ' + JSON.stringify(run.callOrder));
+    ok(!/already a partner|already registered/i.test(surfacedOf(run, page)), page.file + ' (g): no already-a-partner message -- got ' + JSON.stringify(surfacedOf(run, page)));
+  } catch (e) { failWithReason(page.file + ' (g)', e.message); }
+  // (h) genuine existing partner (signed in, register_partner says partner_exists): existing-partner message.
+  run = runPageScript(html, { signUpSeq: ['dup'], sessionEmail: emailKey, rpcSeq: [{ message: 'partner_exists' }] });
+  if (run.setupError) { failWithReason(page.file + ' (h)', run.setupError); continue; }
+  try {
+    await submit(run);
+    ok(surfacedOf(run, page).includes(page.designed), page.file + ' (h): a genuine existing partner still gets the existing-partner message -- got ' + JSON.stringify(surfacedOf(run, page)));
+  } catch (e) { failWithReason(page.file + ' (h)', e.message); }
 }
 
 // gh-2281 static guard: every page consults the structured error.code.

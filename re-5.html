@@ -1153,12 +1153,32 @@ a:hover { color: var(--amber-2); }
         signUpResult = await Auth.signUpWithPassword(email, generatedPassword, agentType);
       } catch (signUpError) {
         // gh-2281: match Supabase's structured error code first; the English message text is kept only as a fallback for SDK versions that don't set .code.
-        if ((signUpError && signUpError.code === 'user_already_exists') || (signUpError.message || '').toLowerCase().includes('already registered')) {
+        const isDuplicate = (signUpError && signUpError.code === 'user_already_exists') || (signUpError.message || '').toLowerCase().includes('already registered');
+        // gh-2282: a duplicate is only "already a partner" when nothing is left to finish. If THIS browser already created the
+        // auth account (pending marker written below) or is signed in as this exact email, a previous attempt got past signUp but
+        // register_partner failed (rate limit, network, rejected email) -- complete register_partner instead of dead-ending.
+        let canFinishRegistration = false;
+        if (isDuplicate) {
+          try {
+            const pendingMarker = JSON.parse(localStorage.getItem('oq_partner_pending_registration') || 'null');
+            const emailKey = String(email || '').trim().toLowerCase();
+            canFinishRegistration = !!(pendingMarker && pendingMarker.email === emailKey);
+            if (!canFinishRegistration && window.Auth && typeof Auth.getUser === 'function') {
+              const sessionUser = await Auth.getUser();
+              canFinishRegistration = !!(sessionUser && sessionUser.email && String(sessionUser.email).toLowerCase() === emailKey);
+            }
+          } catch (e) { canFinishRegistration = false; }
+        }
+        if (isDuplicate && !canFinishRegistration) {
           errorEl.innerHTML = "You're already a partner — <a href=\"/partner-login.html\">sign in here</a>.";
           errorEl.style.display = 'block';
           return;
         }
-        throw signUpError;
+        if (!isDuplicate) throw signUpError;
+      }
+      if (signUpResult) {
+        // gh-2282: auth account created here; remember it (no password) until register_partner reaches a definitive outcome.
+        try { localStorage.setItem('oq_partner_pending_registration', JSON.stringify({ email: String(email || '').trim().toLowerCase(), agentType: agentType, firstName: firstName, lastName: lastName, phone: phone, company: brokerage || null, ts: Date.now() })); } catch (e) { /* non-fatal */ }
       }
 
       // #571 / v95: server-side register_partner RPC. Same call shape as
@@ -1181,6 +1201,8 @@ a:hover { color: var(--amber-2); }
           p_funnel_id:        utmContext.funnelId || null,
           p_is_test:          isTest,
         });
+      // gh-2282: definitive outcome (row created, or it already exists) -- the pending marker has done its job.
+      if (!agentError || (agentError.message || '').includes('partner_exists')) { try { localStorage.removeItem('oq_partner_pending_registration'); } catch (e) { /* non-fatal */ } }
 
       if (agentError) {
         if ((agentError.message || '').includes('partner_exists')) {
