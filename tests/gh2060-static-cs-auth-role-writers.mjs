@@ -5,63 +5,34 @@
  * `tests/gh2060-static-cs-auth-role-staleness.mjs` proves the js/auth.js
  * READER (`Auth.handleAuthCallback()`) fails closed when `cs_auth_role_at`
  * is missing or stale. It does that by seeding `localStorage` directly —
- * it never executes any of the 16 static WRITE call-sites across the 12
+ * it never executes any of the static WRITE call-sites across the
  * login/signup pages, so it cannot catch a regression where one of those
  * writers stops stamping `cs_auth_role_at` while still writing
  * `cs_auth_role`. The round-2 reviewer's own repro (5856970831) proved
- * exactly this gap: deleting all 16 static writes was silent under every
- * test that existed at the time.
+ * exactly this gap: deleting all 16 (then-known) static writes was silent
+ * under every test that existed at the time.
  *
- * This test enumerates the 16 write sites by literal grep (raw output
- * pasted below, and reproduced live by this file itself so a future write
- * added or removed without updating this file's hard-coded `EXPECTED`
- * counts also turns this red), then asserts -- for every occurrence -- that
- * the very next line in the same file stamps `cs_auth_role_at`. A source
- * scan, not a live page execution: these are 12 different login/signup
- * pages with heavy DOM/Supabase dependencies, and the property being
- * guarded (“every cs_auth_role write is immediately followed by a
- * cs_auth_role_at write”) is a structural one that a source scan verifies
- * directly, the same style already used by this repo for
- * `tests/auth-cs-redirect-role-guard.mjs`'s Section B
- * (CONTRACTOR_GATED_FILES re-derivation).
+ * RETURNED round 3 (5869018861): the original version of this file used a
+ * hard-coded 12-file list plus a fixed `EXPECTED_TOTAL === 16` check. When
+ * `main` moved 79 commits ahead and 6 new funnel pages (hi-4.html,
+ * hi-5.html, ins-3.html, ins-5.html, re-3.html, re-5.html) each added a
+ * `cs_auth_role` write without a matching `cs_auth_role_at` stamp, this
+ * test could not see them at all -- it never looked at those files, and
+ * the fixed-total assertion has no way to notice a write site it never
+ * counted. Per round-3 item 2, this version discovers every writer by
+ * scanning every root `*.html` file and every `js/*.js` file, keeps the
+ * per-site adjacency check, and replaces the fixed total with "every write
+ * site found (whatever the count) is stamped" -- so a future page that
+ * adds a `cs_auth_role` write without a `cs_auth_role_at` stamp fails this
+ * test immediately, instead of being invisible to it.
  *
- * Grep command + raw output (react-app is not in scope here -- see
- * tests/gh2060-*.mjs for the React writer coverage):
+ * Grep command + raw output, reproduced live by this file itself:
  *
- *   $ grep -n "setItem('cs_auth_role'" login.html contractor-login.html \
- *       contractor-join.html hi-1.html ins-1.html re-1.html \
- *       partner-login.html partner-adjusters.html partner-inspectors.html \
- *       partner-insurance.html partner-other.html partner-re.html
- *   login.html:594:        localStorage.setItem('cs_auth_role', 'homeowner');
- *   login.html:623:    localStorage.setItem('cs_auth_role', 'homeowner');
- *   contractor-login.html:392:    localStorage.setItem('cs_auth_role', 'contractor');
- *   contractor-login.html:424:      localStorage.setItem('cs_auth_role', 'contractor');
- *   contractor-join.html:405:                localStorage.setItem('cs_auth_role', 'contractor');
- *   contractor-join.html:472:                localStorage.setItem('cs_auth_role', 'contractor');
- *   hi-1.html:1468:                localStorage.setItem('cs_auth_role', agentType);
- *   ins-1.html:1494:                localStorage.setItem('cs_auth_role', agentType);
- *   re-1.html:1120:      localStorage.setItem('cs_auth_role', agentType);
- *   partner-login.html:324:    localStorage.setItem('cs_auth_role', PARTNER_ROLE);
- *   partner-adjusters.html:1310:    localStorage.setItem('cs_auth_role', agentType);
- *   partner-inspectors.html:1268:    localStorage.setItem('cs_auth_role', agentType);
- *   partner-insurance.html:1330:                localStorage.setItem('cs_auth_role', agentType);
- *   partner-insurance.html:1605:                localStorage.setItem('cs_auth_role', agentType);
- *   partner-other.html:1290:    localStorage.setItem('cs_auth_role', agentType);
- *   partner-re.html:1630:      localStorage.setItem('cs_auth_role', agentType);
- *   (16 lines -- 16 write sites across the 12 files.)
+ *   $ grep -rn "setItem('cs_auth_role'" --include=*.html . | grep -v node_modules
+ *   $ grep -n "setItem('cs_auth_role'" js/*.js
  *
- * NEGATIVE CONTROL (pasted in the PR/HANDOFF-LIVE, reproduced against this
- * repo's actual working tree, then reverted):
- *   RED (all 16 `cs_auth_role_at` lines deleted):
- *     sed -i "/localStorage.setItem('cs_auth_role_at'/d" login.html contractor-login.html \
- *       contractor-join.html hi-1.html ins-1.html re-1.html partner-login.html \
- *       partner-adjusters.html partner-inspectors.html partner-insurance.html \
- *       partner-other.html partner-re.html
- *     node tests/gh2060-static-cs-auth-role-writers.mjs   -> 16 case(s) failed.
- *   RED (a single one deleted, e.g. login.html's first site):
- *     sed -i '595d' login.html   (the cs_auth_role_at line immediately after :594)
- *     node tests/gh2060-static-cs-auth-role-writers.mjs   -> 1 case failed (login.html #1).
- *   GREEN (reverted): all cases pass.
+ * (See the round-3 review comment and the Q comment on issue #2060 for the
+ * full enumeration at the merge-base used to fix this PR.)
  *
  * Run: node tests/gh2060-static-cs-auth-role-writers.mjs
  * Exit code 0 = pass, 1 = fail.
@@ -73,30 +44,12 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.join(__dirname, '..');
 
-// Hard-coded from the grep enumeration above -- a write added or removed
-// without updating this map turns the file-count check red too, not just
-// the per-site adjacency check.
-const EXPECTED_WRITE_COUNTS = {
-  'login.html': 2,
-  'contractor-login.html': 2,
-  'contractor-join.html': 2,
-  'hi-1.html': 1,
-  'ins-1.html': 1,
-  're-1.html': 1,
-  'partner-login.html': 1,
-  'partner-adjusters.html': 1,
-  'partner-inspectors.html': 1,
-  'partner-insurance.html': 2,
-  'partner-other.html': 1,
-  'partner-re.html': 1,
-};
-const EXPECTED_TOTAL = 16;
-
 const ROLE_RE = /localStorage\.setItem\(\s*['"]cs_auth_role['"]\s*,/;
 const ROLE_AT_RE = /localStorage\.setItem\(\s*['"]cs_auth_role_at['"]\s*,/;
 
 let failures = 0;
 let totalFound = 0;
+let filesWithWrites = 0;
 
 function check(name, fn) {
   try {
@@ -109,8 +62,30 @@ function check(name, fn) {
   }
 }
 
+// Discover writer files: every root-level *.html file, plus every js/*.js
+// file -- no hard-coded list, so a new page/file is picked up automatically.
+function discoverCandidateFiles() {
+  const rootHtml = fs
+    .readdirSync(REPO_ROOT)
+    .filter((name) => name.endsWith('.html'))
+    .filter((name) => fs.statSync(path.join(REPO_ROOT, name)).isFile())
+    .sort();
+
+  const jsDir = path.join(REPO_ROOT, 'js');
+  const jsFiles = fs
+    .readdirSync(jsDir)
+    .filter((name) => name.endsWith('.js'))
+    .filter((name) => fs.statSync(path.join(jsDir, name)).isFile())
+    .map((name) => path.join('js', name))
+    .sort();
+
+  return [...rootHtml, ...jsFiles];
+}
+
 function main() {
-  for (const [file, expectedCount] of Object.entries(EXPECTED_WRITE_COUNTS)) {
+  const candidateFiles = discoverCandidateFiles();
+
+  for (const file of candidateFiles) {
     const fullPath = path.join(REPO_ROOT, file);
     const lines = fs.readFileSync(fullPath, 'utf8').split('\n');
 
@@ -119,17 +94,9 @@ function main() {
       if (ROLE_RE.test(line)) writeLineNumbers.push(idx); // 0-based
     });
 
-    check(
-      `${file}: exactly ${expectedCount} cs_auth_role write site(s) (found ${writeLineNumbers.length})`,
-      () => {
-        if (writeLineNumbers.length !== expectedCount) {
-          throw new Error(
-            `expected ${expectedCount} cs_auth_role write site(s) in ${file}, found ${writeLineNumbers.length} ` +
-            `at line(s) ${writeLineNumbers.map((i) => i + 1).join(', ')} -- a write was added or removed`
-          );
-        }
-      }
-    );
+    if (writeLineNumbers.length === 0) continue;
+
+    filesWithWrites += 1;
     totalFound += writeLineNumbers.length;
 
     writeLineNumbers.forEach((idx, siteNum) => {
@@ -149,17 +116,25 @@ function main() {
     });
   }
 
-  check(`total cs_auth_role write sites across all 12 files == ${EXPECTED_TOTAL}`, () => {
-    if (totalFound !== EXPECTED_TOTAL) {
-      throw new Error(`expected ${EXPECTED_TOTAL} total write sites, found ${totalFound}`);
+  check(
+    `every discovered cs_auth_role write site is stamped (${totalFound} site(s) across ${filesWithWrites} file(s), ${candidateFiles.length} file(s) scanned)`,
+    () => {
+      if (totalFound === 0) {
+        throw new Error('found 0 cs_auth_role write sites -- discovery is broken (expected > 0)');
+      }
+      // The per-site checks above already fail individually on any
+      // unstamped write; this final check exists so a silent discovery
+      // regression (e.g. the root/js scan finding nothing) cannot pass by
+      // vacuous truth. Failures already counted in the per-site loop above
+      // are what actually turns this test red -- this assertion is a floor.
     }
-  });
+  );
 
   if (failures > 0) {
     console.log(`\n✗ ${failures} case(s) failed.`);
     process.exit(1);
   }
-  console.log(`\n✓ All gh-2060 static-stack cs_auth_role WRITER cases pass (${totalFound} write sites, 12 files).`);
+  console.log(`\n✓ All gh-2060 static-stack cs_auth_role WRITER cases pass (${totalFound} write sites across ${filesWithWrites} files, ${candidateFiles.length} files scanned).`);
   process.exit(0);
 }
 
