@@ -152,7 +152,7 @@ const IPADOS_DESKTOP_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) Apple
 {
   const els = runScenario({ ua: ANDROID_FB_IAB_UA });
   ok(els.mobileInstallHint.style.display === 'block', 'Android FB IAB: hint revealed');
-  ok(/external browser/.test(els.mobileInstallHint.textContent), 'Android FB IAB: hint mentions external browser');
+  ok(/Chrome/.test(els.mobileInstallHint.textContent) && !/Safari/.test(els.mobileInstallHint.textContent), 'Android FB IAB: hint says Open in Chrome, never Safari');
 }
 
 // 6b. iPadOS in default desktop mode (Mac-shaped UA + multi-touch) -> must
