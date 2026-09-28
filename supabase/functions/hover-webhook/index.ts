@@ -25,6 +25,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { resolveJobState } from "./job-completion.ts";
+import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 
 const HOVER_API_BASE = "https://hover.to";
 
@@ -130,10 +131,16 @@ serve(async (req) => {
     // Update order status based on job state (job-state-changed-v2 semantics, #430).
     const { newStatus, isCompleted } = resolveJobState(state, order.status);
 
-    await supabase
+    const { error: statusErr, data: statusRows } = await supabase
       .from("hover_orders")
       .update({ status: newStatus })
-      .eq("id", order.id);
+      .eq("id", order.id)
+      .select("id");
+    // gh-2105: log-only (webhook keeps its existing 200 flow) -- a zero-row
+    // match means the order status was silently not written.
+    if (statusErr || !checkRowsWritten(statusRows).wroteRows) {
+      console.error(zeroRowWriteMessage("hover-webhook", `hover_orders.status=${newStatus} for order ${order.id}`), statusErr?.message ?? "");
+    }
 
     console.log(
       `Updated hover_order ${order.id} status: ${order.status} → ${newStatus}`
@@ -164,24 +171,35 @@ serve(async (req) => {
             const measurements = await measurementsResponse.json();
 
             // Store measurements as JSON in the hover_orders table
-            await supabase
+            const { error: measErr, data: measRows } = await supabase
               .from("hover_orders")
               .update({
                 status: "complete",
                 measurements_json: measurements,
               })
-              .eq("id", order.id);
+              .eq("id", order.id)
+              .select("id");
+            // gh-2105: log-only -- measurements_json silently not stored.
+            if (measErr || !checkRowsWritten(measRows).wroteRows) {
+              console.error(zeroRowWriteMessage("hover-webhook", `hover_orders.measurements_json for order ${order.id}`), measErr?.message ?? "");
+            }
 
             // Also update the claim so Hover data is available AND the dashboard
             // submit gate opens — #481: a paid, completed Hover order must set
             // has_measurements (the cash-claim Submit-for-Bids hard gate).
-            await supabase
+            const { error: hasMeasErr, data: hasMeasRows } = await supabase
               .from("claims")
               .update({
                 has_measurements: true,
                 measurements_filename: `hover_${job_id}_measurements.json`,
               })
-              .eq("id", order.claim_id);
+              .eq("id", order.claim_id)
+              .select("id");
+            // gh-2105: log-only -- the dashboard submit gate (#481) silently
+            // did not open if this matched no rows.
+            if (hasMeasErr || !checkRowsWritten(hasMeasRows).wroteRows) {
+              console.error(zeroRowWriteMessage("hover-webhook", `claims.has_measurements=true for claim ${order.claim_id}`), hasMeasErr?.message ?? "");
+            }
 
             console.log(
               `Measurements stored for hover_order ${order.id}, claim ${order.claim_id}`
@@ -333,14 +351,20 @@ async function getValidAccessToken(supabase: any): Promise<string | null> {
     Date.now() + (newTokenData.expires_in || 7200) * 1000
   ).toISOString();
 
-  await supabase
+  const { error: tokenSaveErr, data: tokenSaveRows } = await supabase
     .from("hover_tokens")
     .update({
       access_token: newTokenData.access_token,
       refresh_token: newTokenData.refresh_token || token.refresh_token,
       expires_at: newExpiresAt,
     })
-    .eq("id", token.id);
+    .eq("id", token.id)
+    .select("id");
+  // gh-2105: log-only -- the fresh access token is still returned; a silent
+  // miss would otherwise lose the rotated refresh token unnoticed.
+  if (tokenSaveErr || !checkRowsWritten(tokenSaveRows).wroteRows) {
+    console.error(zeroRowWriteMessage("hover-webhook", `hover_tokens refresh for token ${token.id}`), tokenSaveErr?.message ?? "");
+  }
 
   return newTokenData.access_token;
 }
