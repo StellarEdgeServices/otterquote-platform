@@ -1682,6 +1682,7 @@
         unique_code: finalCode,
       }));
       localStorage.setItem('cs_auth_role', agentType);
+      localStorage.setItem('cs_auth_role_at', String(Date.now()));
 
       // Recruit code consumed — clear so a future signup on this device
       // doesn't accidentally attribute to the same recruiter.
