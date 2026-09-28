@@ -845,13 +845,16 @@ $ python verify15.py
 TOTAL: 15 pairs; content_match(n1&n2)=True for 13; False for 2
 ```
 
-For two of the 13, even the RAW (un-normalized) md5 of the whole repo file
-equals the ledger's raw `array_to_string(statements, E'\n')`:
+For 12 of the 13 (every row above with `raw_match=True` — all except
+`gh1932_notify_admin_new_homeowner_triggers`, which matches only after
+normalization), even the RAW (un-normalized) md5 of the whole repo file
+equals the ledger's raw `array_to_string(statements, E'\n')`. Two
+representative pairs (short 12-char md5 form, per this doc's convention):
 ```
-20260904132600_gh1532_claims_status_check.sql          raw md5 4e265fcea68fb01af44dd902566fa692
-  == ledger 20260908175940 raw md5 4e265fcea68fb01af44dd902566fa692
-20260925090000_gh2121_lead_next_step_reminder_cron.sql raw md5 320836e6d9e3ced3c20c9a9693b10e57
-  == ledger 20260925131729 raw md5 320836e6d9e3ced3c20c9a9693b10e57
+20260904132600_gh1532_claims_status_check.sql          raw md5 4e265fcea68f
+  == ledger 20260908175940 raw md5 4e265fcea68f
+20260925090000_gh2121_lead_next_step_reminder_cron.sql raw md5 320836e6d9e3
+  == ledger 20260925131729 raw md5 320836e6d9e3
 ```
 
 **What was wrong with the original comparison:** the original pass
@@ -871,9 +874,14 @@ banner-only protocol #2244/this PR's 6 renames used, instead of going
 looking for unfiled patch versions that do not exist.
 
 The remaining 18 Direction-2 files (39 at part-2 head, minus the 21
-exact-slug pairs above) have no ledger row sharing their exact slug at all
--- resolving those needs a statement-body diff against every candidate
-ledger version, not a name match, and was out of scope for this pass.
+exact-slug pairs above) mostly have no ledger row sharing their exact slug
+at all -- resolving those needs a statement-body diff against every
+candidate ledger version, not a name match, and was out of scope for this
+pass. Two of the 18 are the exception, per the correction above: `gh820_
+accept_public_directory_rpc_risk` and `add_claims_hover_measurements` DO
+have an exact-slug ledger row, but that row already has its own repo file,
+so these two are Direction-2 duplicates, not unresolved renames -- see
+the "Corrected remainder" paragraph below for what that means for each.
 
 **REVIEW FAIL correction (comment 5860477833, must-fix 2):** this list
 originally named only 17 of the 18 (omitting
@@ -892,22 +900,32 @@ an already-filed rename, not a rename candidate at all -- resolving it
 means deciding whether to delete/merge the duplicate, not a body-diff
 search for a new match.
 
+**REVIEW FAIL correction (CTO RUN 45, comment 5868996512):** the paragraph
+below originally listed `add_claims_hover_measurements` as a
+close-but-not-exact candidate. It is not close -- it is an **exact** slug
+match, confirmed this session (`SELECT version, name FROM
+supabase_migrations.schema_migrations WHERE version = '20260709100251'`
+-> `add_claims_hover_measurements`), and that version already has its own
+repo file (`20260709100251_add_claims_hover_measurements.sql`, present in
+the tree). So `20260709100547_add_claims_hover_measurements.sql` is a
+Direction-2 **duplicate** of an already-filed rename, exactly like
+`gh820_accept_public_directory_rpc_risk` below -- not a rename candidate,
+and not one of the files with "no ledger row sharing their exact slug at
+all" either. It moves out of both groups into the duplicate group.
+
 Corrected remainder (18): a few have a close-but-not-exact ledger name
-worth checking first in the next pass: `add_claims_hover_measurements`
-(repo 20260709100547; ledger has the same base name at 20260709100251 --
-possibly a true duplicate, not a rename candidate, needs a body diff to
-tell which), `gh1059_partner_agreement_acceptance` (repo 20260820004212;
-ledger files it under version 20260820004417 with that same string as
-part of its recorded name), `gh1253_backfill_service_states_from_
+worth checking first in the next pass: `gh1059_partner_agreement_acceptance`
+(repo 20260820004212; ledger files it under version 20260820004417 with
+that same string as part of its recorded name), `gh1253_backfill_service_states_from_
 description` (repo 20260830170958; ledger has `..._restamp` at
 20260831113959 -- name is not identical, verify before treating as a
 match), `gh1304_v115_guard_log_bid_accepted` (repo 20260901132754; ledger
 has `v115_guard_log_bid_accepted` at 20260901132827), and `gh1509_w9_gate_
 retired_policy_key` (repo 20260904234257; ledger files that exact string
 under version 20260909122835). `gh820_accept_public_directory_rpc_risk`
-moves out of this close-name group per the correction above (it is a
-duplicate, not a candidate). The remaining files with no close-name
-candidate at all: `v82_d182_retroactive_members_table`, `v84_drop_orphan_
+and `add_claims_hover_measurements` both move out of this close-name group
+per the corrections above (each is a duplicate, not a candidate). The
+remaining files with no close-name candidate at all: `v82_d182_retroactive_members_table`, `v84_drop_orphan_
 tables`, `v101_referral_agents_public_directory_optin` (20260807223000,
 the known v88-banner duplicate from round 2), `gh738_platform_health_
 check_pg_net_timeout`, `gh1041_revoke_platform_alerts_log_anon_grants`
