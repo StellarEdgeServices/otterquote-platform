@@ -1632,7 +1632,7 @@
           } catch (e) { canFinishRegistration = false; }
         }
         if (isDuplicate && !canFinishRegistration) {
-          errorEl.innerHTML = "You're already a partner — <a href=\"/partner-login.html\">sign in here</a>.";
+          errorEl.innerHTML = "This email is already registered — <a href=\"/partner-login.html\">sign in here</a>, or email support@otterquote.com if you need help.";
           errorEl.style.display = 'block';
           return;
         }

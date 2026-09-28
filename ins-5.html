@@ -1652,7 +1652,7 @@
                       } catch (e) { canFinishRegistration = false; }
                     }
                     if (isDuplicate && !canFinishRegistration) {
-                        showFormAlert("You're already a partner — sign in at the Partner Login page.");
+                        showFormAlert("This email is already registered — sign in at the Partner Login page, or email support@otterquote.com if you need help.");
                         return;
                     }
                     if (!isDuplicate) throw signUpError;

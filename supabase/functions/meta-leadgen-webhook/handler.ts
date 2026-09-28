@@ -4,7 +4,9 @@
 // this file — index.ts wires the real Supabase client, Mailgun-free Graph
 // API fetch, and global fetch.
 //
-// TWO PATHS: partner (original P-5 build, UNCHANGED below) and homeowner
+// TWO PATHS: partner (original P-5 build; gh-2313 stores call/text consent
+// evidence BEFORE register_partner but never gates registration on it, see the
+// partner branch below) and homeowner
 // (#2123 HO-2, added by this file's gh-2154/gh-2123 revision). A form_id is
 // checked against the PARTNER allowlist first (lookupForm, unchanged), then
 // the HOMEOWNER allowlist (lookupHomeownerForm, new); a form_id in neither
@@ -30,6 +32,11 @@ import {
   type HomeownerConsentArgs,
 } from "./homeowner-consent.ts";
 import { isFounderOrTestEmail } from "./founder-filter.ts";
+import {
+  buildPartnerConsentArgs,
+  type FetchedPartnerLead,
+  type PartnerConsentArgs,
+} from "./partner-consent.ts";
 
 export const FUNCTION_NAME = "meta-leadgen-webhook";
 
@@ -56,9 +63,10 @@ export function getClientIp(req: Request): string | null {
   return null;
 }
 
-export interface FetchedLead {
-  field_data?: LeadFieldDatum[];
-}
+// gh-2313: the partner Graph fetch now also returns custom_disclaimer_responses
+// (and the attribution fields), so this is the partner-consent module's shape.
+// `field_data` is still the only field the partner path READS for the lead itself.
+export type FetchedLead = FetchedPartnerLead;
 
 /**
  * REVIEW FAIL 5849684429 fix 1 -- normalises a homeowner lead's phone the
@@ -201,6 +209,21 @@ export interface WebhookDeps {
   registerPartner: (
     args: RegisterPartnerArgs,
   ) => Promise<{ data: { id?: string } | null; error: { message?: string } | null }>;
+  /**
+   * gh-2313: writes the partner's call/text consent evidence row
+   * (public.partner_lead_consents, key `partner_call_text_consent`) BEFORE
+   * registerPartner is ever called. Idempotent: a unique_violation on
+   * (meta_lead_id, consent_key) -- a Meta redelivery, or a retry after a
+   * register_partner failure -- is treated as already-written, never an
+   * error. A permanent data-rejection error (isDataRejectionError) surfaces
+   * as error.message === "rejected_invalid_data" (terminal); any other error
+   * is transient (503 so Meta redelivers). Only called when a row is due (box present in the
+   * response; see partner-consent.ts). If this fails, register_partner is NOT
+   * called: a partner is never registered without a row we decided to store.
+   */
+  recordPartnerConsent: (
+    args: PartnerConsentArgs,
+  ) => Promise<{ error: { message?: string } | null }>;
   /**
    * #2123 HO-2: dedupe read on `leads.meta_lead_id`, keyed the same way
    * isDuplicate() above keys on `referral_agents.meta_lead_id`. Also
@@ -666,6 +689,50 @@ export async function handlePost(
         continue;
       }
 
+      // gh-2313 (TCPA call/text consent evidence; ruling on PR #2322,
+      // comment 5879500610, Tier A): consent is NEVER a condition of partner
+      // signup, so every branch below ends in register_partner.
+      //   box present, ticked   -> row consent_given=true, THEN register
+      //   box present, unticked -> row consent_given=false, THEN register
+      //   box absent / no consent wording configured -> NO row, warn, register
+      //   wording over 2,000 chars -> NO row, logged ERROR (rejected, never
+      //     truncated), register
+      // The evidence row is written BEFORE register_partner, and a failed write
+      // stops registration (503 so Meta redelivers): a partner is never
+      // registered while a row we decided to store is missing. Automated
+      // calls/texts are limited to consent_given=true rows elsewhere; see the
+      // HANDOFF-LIVE on #2322 for where (and whether) that gate exists.
+      // Logs leadgen_id and a reason only -- never the lead's PII or wording.
+      const consent = buildPartnerConsentArgs(fetched.data, config, formId, leadgenId);
+      let consentTag = "none";
+      if (consent.status === "ok") {
+        const consentWrite = await deps.recordPartnerConsent(consent.args);
+        if (consentWrite.error) {
+          if ((consentWrite.error.message ?? "").includes("rejected_invalid_data")) {
+            // Permanent data rejection: no redelivery ever fixes it -- terminal, never a 503 loop.
+            deps.log("error", `${FUNCTION_NAME}: partner consent write rejected invalid data leadgen_id=${leadgenId}`);
+            outcomes.push({ leadgenId, formId, outcome: "skipped_invalid_data" });
+          } else {
+            deps.log("error", `${FUNCTION_NAME}: partner consent write failed leadgen_id=${leadgenId}`);
+            outcomes.push({ leadgenId, formId, outcome: "error_consent_write_failed" });
+            hasTransientFailure = true;
+          }
+          continue;
+        }
+        consentTag = consent.args.consentGiven ? "true" : "false";
+      } else if (consent.status === "text_too_long") {
+        deps.log(
+          "error",
+          `${FUNCTION_NAME}: consent_text_too_long leadgen_id=${leadgenId} form_id=${formId} length=${consent.length} max=2000 (wording rejected, not truncated; no consent row stored; partner registered without consent evidence)`,
+        );
+      } else {
+        const reason = consent.status === "no_box" ? "consent_box_absent" : "consent_config_missing";
+        deps.log(
+          "warn",
+          `${FUNCTION_NAME}: no consent row leadgen_id=${leadgenId} reason=${reason} form_id=${formId} (partner registered; not eligible for automated calls/texts)`,
+        );
+      }
+
       const reg = await deps.registerPartner({
         agentType: config.agentType,
         firstName: mapped.firstName ?? mapped.fullName ?? "",
@@ -701,7 +768,7 @@ export async function handlePost(
 
       deps.log(
         "log",
-        `${FUNCTION_NAME}: registered leadgen_id=${leadgenId}${suppliedLastNamePlaceholder ? " last_name=placeholder" : ""}`,
+        `${FUNCTION_NAME}: registered leadgen_id=${leadgenId} consent=${consentTag}${suppliedLastNamePlaceholder ? " last_name=placeholder" : ""}`,
       );
       outcomes.push({ leadgenId, formId, outcome: "registered" });
 

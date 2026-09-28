@@ -1292,7 +1292,7 @@ async function handleSignup(e) {
           } catch (e) { canFinishRegistration = false; }
         }
         if (isDuplicate && !canFinishRegistration) {
-          alert("You're already a partner — sign in at otterquote.com/partner-login.html.");
+          alert("This email is already registered — sign in at otterquote.com/partner-login.html, or email support@otterquote.com if you need help.");
           submitBtn.disabled = false;
           submitBtn.textContent = 'Generate My Referral Link';
           return;

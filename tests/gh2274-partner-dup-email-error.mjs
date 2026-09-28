@@ -391,6 +391,21 @@ const VARIANTS = [
   { tag: '(a)', dupError: null },
   { tag: '(c)', dupError: Object.assign(new Error('Ce compte existe deja'), { code: 'user_already_exists' }) },
 ];
+// gh-2283 (DRAFT COPY -- needs R-177 LEGAL-READ before merge): the auth-level
+// duplicate no longer asserts a role. auth.users is shared across homeowner /
+// contractor / partner, so the old "You're already a partner" claim was false
+// for a non-partner. The RPC-level 'partner_exists' branch (a real
+// referral_agents row) keeps the original already-a-partner message.
+const AUTH_DUP_COPY = {
+  "You're already a partner — sign in at the Partner Login page.":
+    "This email is already registered — sign in at the Partner Login page, or email support@otterquote.com if you need help.",
+  "You're already a partner — <a href=\"/partner-login.html\">sign in here</a>.":
+    "This email is already registered — <a href=\"/partner-login.html\">sign in here</a>, or email support@otterquote.com if you need help.",
+  "You're already a partner — sign in at otterquote.com/partner-login.html.":
+    "This email is already registered — sign in at otterquote.com/partner-login.html, or email support@otterquote.com if you need help.",
+};
+for (const p of PAGES) p.designedAuthDup = AUTH_DUP_COPY[p.designed];
+
 for (const page of PAGES) {
   for (const variant of VARIANTS) {
   const label = page.file + ' ' + variant.tag;
@@ -427,7 +442,8 @@ for (const page of PAGES) {
     }
 
     ok(!/User already registered/.test(surfaced), label + ': the raw Supabase "User already registered" string is NOT shown to the user -- got ' + JSON.stringify(surfaced));
-    ok(surfaced.includes(page.designed), label + ': the pre-existing designed already-a-partner message is shown verbatim -- got ' + JSON.stringify(surfaced));
+    ok(surfaced.includes(page.designedAuthDup), label + ': the role-neutral already-registered message is shown verbatim -- got ' + JSON.stringify(surfaced));
+    ok(!/already a partner/i.test(surfaced), label + ': the auth-level duplicate does NOT claim the visitor is already a partner -- got ' + JSON.stringify(surfaced));
   } catch (e) {
     failWithReason(label + ': a duplicate-email auth error routes to the designed already-a-partner state', e.message + (e.stack ? '\n' + e.stack.split('\n').slice(1, 4).join('\n') : ''));
   }
