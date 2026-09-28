@@ -266,9 +266,10 @@ main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
 // gh-1980 PR 2/3: converge onto the canonical cookie-adapter + storageKey
 // (this used to be a bare createClient() with supabase-js's own default
 // storage/key, silently overwriting the canonical window.sb js/config.js
-// already set -- see js/cookie-storage.js migrateLegacySession() for the
-// migration that keeps an already-signed-in admin signed in through this
-// change).
+// already set). The cookies are the session of record whatever the
+// storageKey is, so an already-signed-in admin stays signed in through
+// this change with no migration step needed -- see the #488 purge rule in
+// js/cookie-storage.js.
 var sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, { auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' } });
 
 var AUDIENCE_LABELS = { homeowner: 'Homeowner', contractor: 'Contractor', referral_partner: 'Referral Partner' };

@@ -254,9 +254,10 @@ main { max-width: 1400px; margin: 0 auto; padding: 1.25rem 1rem 6rem; }
  * states or implies an ACV/RCV determination — per Dustin's ruling that copy is
  * explicitly unchanged.
  */
-// gh-1980 PR 2/3: converge onto the canonical cookie-adapter + storageKey
-// (see js/cookie-storage.js migrateLegacySession() for the migration that
-// keeps an already-signed-in admin signed in through this change).
+// gh-1980 PR 2/3: converge onto the canonical cookie-adapter + storageKey.
+// The cookies are the session of record whatever the storageKey is, so an
+// already-signed-in admin stays signed in through this change with no
+// migration step needed -- see the #488 purge rule in js/cookie-storage.js.
 var sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, { auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' } });
 
 var state = {

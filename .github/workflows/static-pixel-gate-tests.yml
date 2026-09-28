@@ -191,7 +191,7 @@ jobs:
         run: node tests/gh2154-p1-cookie-storage-updateuser.mjs
       - name: gh-1980 PR 1 -- storage-adapter factory parity + key-awareness discriminating test (gh1980-pr1-key-aware-storage)
         run: node tests/gh1980-pr1-key-aware-storage.mjs
-      - name: gh-1980 PR 2 -- storageKey convergence + legacy-session migration safety (gh1980-pr2-storagekey-migration)
+      - name: gh-1980 PR 2 -- storageKey convergence + #488 sign-out purge regression (gh1980-pr2-storagekey-migration)
         run: node tests/gh1980-pr2-storagekey-migration.mjs
       - name: RE-1 dedicated landing page -- approved copy, funnel_id attribution (gh2150-re1-page)
         run: node tests/gh2150-re1-page.mjs

@@ -290,9 +290,10 @@ main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
  *   EF) which writes the 'measurement_order_fulfilled' activity_log row and
  *   emails the homeowner. Idempotent per order — Edit re-saves do not re-send.
  */
-// gh-1980 PR 2/3: converge onto the canonical cookie-adapter + storageKey
-// (see js/cookie-storage.js migrateLegacySession() for the migration that
-// keeps an already-signed-in admin signed in through this change).
+// gh-1980 PR 2/3: converge onto the canonical cookie-adapter + storageKey.
+// The cookies are the session of record whatever the storageKey is, so an
+// already-signed-in admin stays signed in through this change with no
+// migration step needed -- see the #488 purge rule in js/cookie-storage.js.
 var sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, { auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' } });
 var STORAGE_BUCKET = 'claim-documents';
 
