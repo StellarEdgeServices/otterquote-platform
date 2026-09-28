@@ -75,7 +75,7 @@ function makeEl() {
   return { style: {}, textContent: '', href: '' };
 }
 
-function runScenario({ ua, matchesNarrowViewport, gaEvents }) {
+function runScenario({ ua, matchesNarrowViewport, maxTouchPoints, gaEvents }) {
   const els = {
     '.qr-block': makeEl(),
     mobileInstallCta: makeEl(),
@@ -83,7 +83,7 @@ function runScenario({ ua, matchesNarrowViewport, gaEvents }) {
     mobileInstallHint: makeEl(),
   };
   const sandbox = {
-    navigator: { userAgent: ua || '' },
+    navigator: { userAgent: ua || '', maxTouchPoints: maxTouchPoints || 0 },
     window: {
       matchMedia: function () { return { matches: !!matchesNarrowViewport }; },
     },
@@ -109,6 +109,10 @@ const IOS_FB_IAB_UA = IOS_UA + ' [FBAN/FBIOS;FBAV/500.0]';
 const ANDROID_UA = 'Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Mobile Safari/537.36';
 const ANDROID_FB_IAB_UA = 'Mozilla/5.0 (Linux; Android 15; Pixel 9; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/128.0 Mobile Safari/537.36 [FB_IAB/FB4A]';
 const DESKTOP_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36';
+// Since iPadOS 13, iPad Safari sends this Mac-shaped UA by default (desktop
+// mode). A real Mac sends the same UA but reports maxTouchPoints === 0 --
+// that's the discriminator (REVIEW: FAIL 5874476509, must-fix 2).
+const IPADOS_DESKTOP_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15';
 
 // 1. iOS Safari -> CTA revealed, points at the iOS walkthrough, QR block hidden.
 {
@@ -141,14 +145,33 @@ const DESKTOP_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
   const els = runScenario({ ua: IOS_FB_IAB_UA, gaEvents: events });
   ok(els.mobileInstallHint.style.display === 'block', 'iOS FB IAB: hint revealed');
   ok(/Safari/.test(els.mobileInstallHint.textContent), 'iOS FB IAB: hint mentions Safari');
-  ok(events.some(function (e) { return e.name === 'partner_app_install_fb_iab'; }), 'iOS FB IAB: gaEvent fired');
+  ok(events.some(function (e) { return e.name === 'partner_app_install_inapp'; }), 'iOS FB IAB: gaEvent fired');
 }
 
-// 5. Android in-app WebView -> hint shown, mentions Chrome.
+// 5. Android in-app WebView -> hint shown, mentions the external-browser escape hatch.
 {
   const els = runScenario({ ua: ANDROID_FB_IAB_UA });
   ok(els.mobileInstallHint.style.display === 'block', 'Android FB IAB: hint revealed');
-  ok(/Chrome/.test(els.mobileInstallHint.textContent), 'Android FB IAB: hint mentions Chrome');
+  ok(/external browser/.test(els.mobileInstallHint.textContent), 'Android FB IAB: hint mentions external browser');
+}
+
+// 6b. iPadOS in default desktop mode (Mac-shaped UA + multi-touch) -> must
+//     be treated as iOS: CTA revealed, points at the iOS walkthrough, QR
+//     block hidden. (REVIEW: FAIL 5874476509, must-fix 2.)
+{
+  const els = runScenario({ ua: IPADOS_DESKTOP_UA, maxTouchPoints: 5 });
+  ok(els.mobileInstallBlock.style.display === 'block', 'iPadOS desktop-mode UA: mobileInstallBlock revealed');
+  ok(els.mobileInstallCta.href === '/partner-app-install-ios.html', 'iPadOS desktop-mode UA: CTA points at partner-app-install-ios.html');
+  ok(els['.qr-block'].style.display === 'none', 'iPadOS desktop-mode UA: desktop qr-block hidden');
+}
+
+// 6c. Negative control: a REAL Mac sends the identical UA but
+//     maxTouchPoints === 0 -- must stay untouched, same as scenario 3.
+{
+  const els = runScenario({ ua: IPADOS_DESKTOP_UA, maxTouchPoints: 0, matchesNarrowViewport: false });
+  ok(els.mobileInstallBlock.style.display === undefined, 'real Mac (maxTouchPoints=0): mobileInstallBlock never revealed');
+  ok(els.mobileInstallCta.href === '', 'real Mac (maxTouchPoints=0): CTA href never set');
+  ok(els['.qr-block'].style.display === undefined, 'real Mac (maxTouchPoints=0): qr-block never hidden');
 }
 
 // 6. Narrow-viewport fallback for a UA that doesn't self-identify, but no

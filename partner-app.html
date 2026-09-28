@@ -368,12 +368,18 @@
             function isMobileDevice() {
                 var ua = navigator.userAgent || '';
                 if (/iPhone|iPad|iPod|Android/i.test(ua)) return true;
+                // Since iPadOS 13, iPad Safari sends a Mac-shaped UA by
+                // default (desktop mode). A real Mac reports
+                // maxTouchPoints === 0, so this doesn't false-positive on
+                // desktop Macs (REVIEW: FAIL 5874476509, must-fix 2).
+                if (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) return true;
                 return window.matchMedia('(max-width: 640px)').matches;
             }
 
             function detectMobileOs() {
                 var ua = navigator.userAgent || '';
                 if (/iPhone|iPad|iPod/i.test(ua)) return 'ios';
+                if (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) return 'ios';
                 if (/Android/i.test(ua)) return 'android';
                 return null;
             }
@@ -408,11 +414,11 @@
                     var hint = document.getElementById('mobileInstallHint');
                     if (hint) {
                         hint.textContent = os === 'ios'
-                            ? "You're viewing this inside an app's built-in browser, which can't add anything to your home screen. Tap the menu (•••) and choose “Open in Safari,” then tap Install the App again."
-                            : "You're viewing this inside an app's built-in browser, which can't install the app directly. Tap the menu (•••) and choose “Open in Chrome,” then tap Install the App again.";
+                            ? "You're viewing this inside an app's built-in browser, which can't add anything to your home screen. Tap the menu (••• or ⋮) and choose Open in Safari / Open in external browser, then tap Install the App again."
+                            : "You're viewing this inside an app's built-in browser, which can't install the app directly. Tap the menu (••• or ⋮) and choose Open in Safari / Open in external browser, then tap Install the App again.";
                         hint.style.display = 'block';
                     }
-                    gaEvent('partner_app_install_fb_iab', { page: 'partner-app', os: os });
+                    gaEvent('partner_app_install_inapp', { page: 'partner-app', os: os });
                 }
             }
 
