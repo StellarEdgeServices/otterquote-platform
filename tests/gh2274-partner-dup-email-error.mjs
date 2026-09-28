@@ -63,7 +63,7 @@ function failWithReason(label, reason) {
 const ALL_PARTNER_PAGES = [
   'hi-1.html', 'hi-4.html', 'hi-5.html',
   'ins-1.html', 'ins-3.html', 'ins-5.html', 'partner-insurance.html',
-  're-1.html', 're-3.html', 're-5.html',
+  're-1.html', 're-3.html', 're-5.html', 'partner-re.html',
   'partner-adjusters.html', 'partner-inspectors.html', 'partner-other.html',
 ];
 const LEAK_PATTERNS = [
@@ -152,6 +152,29 @@ function runPageScript(html, { search = '' } = {}) {
   const store = makeElementStore();
   const rpcCalls = [];
   const alertCalls = [];
+  // gh2274 fix-up: a plain always-Promise-returning Proxy trap (the prior
+  // shape here) breaks the moment a caller does something other than a
+  // single terminal method call -- e.g. partner-re.html builds the query
+  // (`sb.from('leads').insert({...})`), calls a non-terminal chained method
+  // on the *result* (`leadInsert.setHeader(...)`), and only then awaits the
+  // original reference. Accessing `.then` off the old Proxy returned a
+  // function that ignored the resolve/reject callbacks it was given, so the
+  // await never settled. This chainable object is itself thenable (real
+  // .then/.catch/.finally that settle) AND every other property access
+  // returns a function that yields that same object back, so any chain
+  // depth or extra non-terminal calls (setHeader, select, single, ...)
+  // stay awaitable no matter where the `await` lands.
+  function makeChainable(result) {
+    const proxy = new Proxy(function () {}, {
+      get(_t, prop) {
+        if (prop === 'then') return (resolve, reject) => Promise.resolve(result).then(resolve, reject);
+        if (prop === 'catch') return (reject) => Promise.resolve(result).catch(reject);
+        if (prop === 'finally') return (fn) => Promise.resolve(result).finally(fn);
+        return () => proxy;
+      },
+    });
+    return proxy;
+  }
   const sb = {
     rpc(name, params) {
       rpcCalls.push({ name, params });
@@ -163,7 +186,7 @@ function runPageScript(html, { search = '' } = {}) {
       }
       return Promise.resolve({ data: null, error: null });
     },
-    from() { return new Proxy(function () {}, { get: () => () => new Proxy(function () {}, { get: () => () => Promise.resolve({ data: null, error: null }) }) }); },
+    from() { return makeChainable({ data: null, error: null }); },
     storage: { from() { return { upload: () => Promise.resolve({ data: { path: 'x' }, error: null }), getPublicUrl: () => ({ data: { publicUrl: null } }) }; } },
     auth: { onAuthStateChange() {}, updateUser() { return Promise.resolve({ data: {}, error: null }); } },
   };
@@ -312,6 +335,12 @@ const PAGES = [
   {
     file: 're-5.html', formId: 'partner-form',
     fields: { name: 'Jane Test', email: 'gh2274-dup@example.invalid', phone: '3175551234', brokerage: 'Test Realty', terms: true },
+    surface: 'errorEl', errorElId: 'form-error',
+    designed: "You're already a partner — <a href=\"/partner-login.html\">sign in here</a>.",
+  },
+  {
+    file: 'partner-re.html', formId: 'partner-form', hasConfirmPopup: true,
+    fields: { 'first-name': 'Jane', 'last-name': 'Test', email: 'gh2274-dup@example.invalid', phone: '3175551234', brokerage: 'Test Realty', terms: true },
     surface: 'errorEl', errorElId: 'form-error',
     designed: "You're already a partner — <a href=\"/partner-login.html\">sign in here</a>.",
   },
