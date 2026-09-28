@@ -1,3 +1,15 @@
+[functions.auth-uniform]
+# gh-1883 [SECURITY]: fronts /auth/v1/otp and /auth/v1/recover, both called
+# BEFORE any auth session exists (pre-magic-link, pre-password-reset), same
+# reason check-email-exists (immediately below) stays unauthenticated: the
+# caller has no JWT to present. Must be callable anonymously for the
+# magic-link/password-reset UI to work at all. Protected instead by its own
+# per-IP rate limit (check_rate_limit + the rate_limit_config row added in
+# 20260927170000_gh1883_auth_uniform_rate_limit.sql) and by never returning
+# anything but a uniform, fixed-timing 200 {} regardless of account
+# existence or GoTrue outcome (see the function's own header comment).
+verify_jwt = false
+
 [functions.check-email-exists]
 # gh-1544: called from contractor-join.html BEFORE any auth session exists
 # (pre-magic-link, pre-OAuth), so it cannot carry a JWT. The function only

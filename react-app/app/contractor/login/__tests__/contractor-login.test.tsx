@@ -21,14 +21,17 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 vi.mock('@/lib/supabase', () => ({
   supabase: {
     auth: {
-      signInWithOtp: vi.fn(),
       signInWithOAuth: vi.fn(),
     },
   },
 }));
+// gh-1883 [SECURITY]: magic-link send/resend now goes through auth-uniform
+// (lib/auth-uniform.ts), not supabase.auth.signInWithOtp() directly.
+vi.mock('@/lib/auth-uniform', () => ({ callAuthUniform: vi.fn() }));
 vi.mock('@/hooks/use-auth-ready', () => ({ useAuthReady: vi.fn() }));
 
 import { supabase } from '@/lib/supabase';
+import { callAuthUniform } from '@/lib/auth-uniform';
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import ContractorLoginPage from '../page';
 import { CONTRACTOR_LOGIN_COPY } from '../copy';
@@ -89,7 +92,7 @@ beforeEach(() => {
   window.history.replaceState({}, '', '/');
   localStorage.clear();
   sessionStorage.clear();
-  (supabase.auth.signInWithOtp as ReturnType<typeof vi.fn>).mockResolvedValue({ error: null });
+  (callAuthUniform as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
   (supabase.auth.signInWithOAuth as ReturnType<typeof vi.fn>).mockResolvedValue({ error: null });
 });
 
@@ -177,7 +180,7 @@ describe('<ContractorLoginPage /> rendered behavior (unauthenticated)', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: STATIC.submit }));
     expect(screen.getByText(CONTRACTOR_LOGIN_COPY.errorInvalidEmail)).toBeInTheDocument();
-    expect(supabase.auth.signInWithOtp).not.toHaveBeenCalled();
+    expect(callAuthUniform).not.toHaveBeenCalled();
   });
 
   it('sends a contractor magic link and shows the D-244 sent state', async () => {
@@ -193,10 +196,7 @@ describe('<ContractorLoginPage /> rendered behavior (unauthenticated)', () => {
     expect(screen.getByText(STATIC.sentResend)).toBeInTheDocument();
     expect(screen.getByText('pro@roofco.com')).toBeInTheDocument();
 
-    expect(supabase.auth.signInWithOtp).toHaveBeenCalledWith({
-      email: 'pro@roofco.com',
-      options: { emailRedirectTo: AUTH_CALLBACK_URL },
-    });
+    expect(callAuthUniform).toHaveBeenCalledWith('otp', 'pro@roofco.com', AUTH_CALLBACK_URL);
     expect(localStorage.getItem('cs_auth_role')).toBe('contractor');
   });
 
