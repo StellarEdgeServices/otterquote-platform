@@ -185,6 +185,17 @@ describe('<LoginPage /> rendered behavior (unauthenticated)', () => {
 
     expect(callAuthUniform).toHaveBeenCalledWith('otp', 'jane@example.com', AUTH_CALLBACK_URL);
     expect(localStorage.getItem('cs_auth_role')).toBe('homeowner');
+    // gh-2060 RETURNED item 1: /auth-callback trusts cs_auth_role only when
+    // cs_auth_role_at is present and within its 24h TTL. If this writer
+    // stops stamping cs_auth_role_at, a real contractor's stale intent is
+    // silently indistinguishable from a fresh one at read time (see
+    // auth-callback/__tests__/page.test.tsx's M4 negative control) — so this
+    // writer-side assertion must fail if the stamp write is removed.
+    const stampRaw = localStorage.getItem('cs_auth_role_at');
+    expect(stampRaw).not.toBeNull();
+    const stamp = Number(stampRaw);
+    expect(Number.isFinite(stamp)).toBe(true);
+    expect(Date.now() - stamp).toBeLessThan(5000);
   });
 
   it('starts Google OAuth with the homeowner-intent callback', async () => {
@@ -196,6 +207,13 @@ describe('<LoginPage /> rendered behavior (unauthenticated)', () => {
         options: { redirectTo: GOOGLE_OAUTH_REDIRECT },
       }),
     );
+    // gh-2060 RETURNED item 1 (Google OAuth writer): same TTL-stamp
+    // requirement as the magic-link writer above.
+    expect(localStorage.getItem('cs_auth_role')).toBe('homeowner');
+    const stampRaw = localStorage.getItem('cs_auth_role_at');
+    expect(stampRaw).not.toBeNull();
+    expect(Number.isFinite(Number(stampRaw))).toBe(true);
+    expect(Date.now() - Number(stampRaw)).toBeLessThan(5000);
   });
 
   it('shows the admin-required banner when bounced from the admin gate', () => {

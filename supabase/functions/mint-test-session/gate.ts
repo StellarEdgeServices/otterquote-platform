@@ -300,6 +300,9 @@ export async function resolveAndMint(
   input: MintInput,
   db: DbAdapter,
   actorEmail: string,
+  // gh-2305: which caller path authorized this mint; recorded in
+  // activity_log.metadata.caller so the exec path is distinguishable.
+  caller: "admin_jwt" | "exec_service" = "admin_jwt",
 ): Promise<MintResult> {
   const contractorId =
     typeof input.contractor_id === "string" && input.contractor_id.length > 0
@@ -421,6 +424,7 @@ export async function resolveAndMint(
     is_test: true,
     metadata: {
       actor: actorEmail,
+      caller,
       target_user_id: targetUserId,
       contractor_id: resolvedContractorId,
     },
