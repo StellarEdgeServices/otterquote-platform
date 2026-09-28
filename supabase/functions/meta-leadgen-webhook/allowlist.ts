@@ -32,6 +32,24 @@ export interface PartnerFormConfig {
   agentType: string;
   funnelId: string;
   isTest: boolean;
+  /**
+   * gh-2313: identifies which of the Meta form's custom disclaimer
+   * checkboxes is the call/text consent one (matched against Meta's
+   * custom_disclaimer_responses[].id or .name -- see homeowner-consent.ts's
+   * getConsentGiven, reused unchanged). Optional in the parsed shape so an
+   * entry written before gh-2313 still parses; handler.ts fails CLOSED (logs,
+   * does not register) for a partner form without BOTH consentKey and
+   * consentText. Same semantics as homeowner-allowlist.ts's consent_key.
+   */
+  consentKey?: string;
+  /**
+   * gh-2313: the exact disclaimer text as rendered on that Meta form,
+   * stored verbatim as the evidence row's consent_text. Supplied by the
+   * allowlist entry (config), never composed in code -- same as
+   * homeowner-allowlist.ts's consent_text. Capped at 2,000 chars, matching
+   * that file and record-lead-details.
+   */
+  consentText?: string;
 }
 
 export type Allowlist = Record<string, PartnerFormConfig>;
@@ -69,7 +87,17 @@ export function parseAllowlist(raw: string | undefined): Allowlist {
     const agentType = typeof cfg.agent_type === "string" ? cfg.agent_type : "";
     const funnelId = typeof cfg.funnel_id === "string" ? cfg.funnel_id : "";
     if (!VALID_AGENT_TYPES.has(agentType) || !funnelId) continue;
-    out[formId] = { agentType, funnelId, isTest: cfg.is_test === true };
+    const entry: PartnerFormConfig = { agentType, funnelId, isTest: cfg.is_test === true };
+    // gh-2313: optional per-entry consent config. Only attached when BOTH are
+    // non-empty strings, so a half-configured entry reads as "no consent
+    // config" and handler.ts fails closed on it.
+    const consentKey = typeof cfg.consent_key === "string" ? cfg.consent_key.trim() : "";
+    const consentTextRaw = typeof cfg.consent_text === "string" ? cfg.consent_text.trim() : "";
+    if (consentKey && consentTextRaw) {
+      entry.consentKey = consentKey;
+      entry.consentText = consentTextRaw.length > 2000 ? consentTextRaw.slice(0, 2000) : consentTextRaw;
+    }
+    out[formId] = entry;
   }
   return out;
 }

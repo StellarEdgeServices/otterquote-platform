@@ -4,7 +4,8 @@
 // this file — index.ts wires the real Supabase client, Mailgun-free Graph
 // API fetch, and global fetch.
 //
-// TWO PATHS: partner (original P-5 build, UNCHANGED below) and homeowner
+// TWO PATHS: partner (original P-5 build; gh-2313 adds a consent-evidence
+// gate BEFORE register_partner, see the partner branch below) and homeowner
 // (#2123 HO-2, added by this file's gh-2154/gh-2123 revision). A form_id is
 // checked against the PARTNER allowlist first (lookupForm, unchanged), then
 // the HOMEOWNER allowlist (lookupHomeownerForm, new); a form_id in neither
@@ -30,6 +31,11 @@ import {
   type HomeownerConsentArgs,
 } from "./homeowner-consent.ts";
 import { isFounderOrTestEmail } from "./founder-filter.ts";
+import {
+  buildPartnerConsentArgs,
+  type FetchedPartnerLead,
+  type PartnerConsentArgs,
+} from "./partner-consent.ts";
 
 export const FUNCTION_NAME = "meta-leadgen-webhook";
 
@@ -56,9 +62,10 @@ export function getClientIp(req: Request): string | null {
   return null;
 }
 
-export interface FetchedLead {
-  field_data?: LeadFieldDatum[];
-}
+// gh-2313: the partner Graph fetch now also returns custom_disclaimer_responses
+// (and the attribution fields), so this is the partner-consent module's shape.
+// `field_data` is still the only field the partner path READS for the lead itself.
+export type FetchedLead = FetchedPartnerLead;
 
 /**
  * REVIEW FAIL 5849684429 fix 1 -- normalises a homeowner lead's phone the
@@ -201,6 +208,20 @@ export interface WebhookDeps {
   registerPartner: (
     args: RegisterPartnerArgs,
   ) => Promise<{ data: { id?: string } | null; error: { message?: string } | null }>;
+  /**
+   * gh-2313: writes the partner's call/text consent evidence row
+   * (public.partner_lead_consents, key `partner_call_text_consent`) BEFORE
+   * registerPartner is ever called. Idempotent: a unique_violation on
+   * (meta_lead_id, consent_key) -- a Meta redelivery, or a retry after a
+   * register_partner failure -- is treated as already-written, never an
+   * error. A permanent data-rejection error (isDataRejectionError) surfaces
+   * as error.message === "rejected_invalid_data" (terminal); any other error
+   * is transient (503 so Meta redelivers). If this fails, register_partner
+   * is NOT called: a partner is never registered without stored evidence.
+   */
+  recordPartnerConsent: (
+    args: PartnerConsentArgs,
+  ) => Promise<{ error: { message?: string } | null }>;
   /**
    * #2123 HO-2: dedupe read on `leads.meta_lead_id`, keyed the same way
    * isDuplicate() above keys on `referral_agents.meta_lead_id`. Also
@@ -663,6 +684,44 @@ export async function handlePost(
       if (!mapped.email || (!mapped.firstName && !mapped.fullName) || !lastName) {
         deps.log("warn", `${FUNCTION_NAME}: skip leadgen_id=${leadgenId} reason=incomplete_fields`);
         outcomes.push({ leadgenId, formId, outcome: "skipped_incomplete_fields" });
+        continue;
+      }
+
+      // gh-2313 (Marty's ruling, #2306 comment 5876046128; TCPA call/text
+      // consent evidence): the consent-evidence row is written BEFORE
+      // register_partner, and a lead whose required consent box is absent,
+      // unticked, or has no configured wording is logged and NOT registered.
+      // Mirrors the homeowner path's evidence-before-effect ordering
+      // (finalizeHomeownerLead writes lead_consents before setting role).
+      // Logs leadgen_id and a reason only -- never the lead's PII or wording.
+      const consent = buildPartnerConsentArgs(fetched.data, config, formId, leadgenId);
+      if (consent.status === "config_missing") {
+        deps.log(
+          "error",
+          `${FUNCTION_NAME}: skip leadgen_id=${leadgenId} reason=consent_config_missing form_id=${formId} (allowlist entry has no consent_key/consent_text; partner NOT registered)`,
+        );
+        outcomes.push({ leadgenId, formId, outcome: "skipped_consent_config_missing" });
+        continue;
+      }
+      if (consent.status === "not_given") {
+        deps.log(
+          "warn",
+          `${FUNCTION_NAME}: skip leadgen_id=${leadgenId} reason=consent_not_given form_id=${formId} (required call/text consent box absent or unticked; partner NOT registered)`,
+        );
+        outcomes.push({ leadgenId, formId, outcome: "skipped_consent_not_given" });
+        continue;
+      }
+      const consentWrite = await deps.recordPartnerConsent(consent.args);
+      if (consentWrite.error) {
+        if ((consentWrite.error.message ?? "").includes("rejected_invalid_data")) {
+          // Permanent data rejection: no redelivery ever fixes it -- terminal, never a 503 loop.
+          deps.log("error", `${FUNCTION_NAME}: partner consent write rejected invalid data leadgen_id=${leadgenId}`);
+          outcomes.push({ leadgenId, formId, outcome: "skipped_invalid_data" });
+        } else {
+          deps.log("error", `${FUNCTION_NAME}: partner consent write failed leadgen_id=${leadgenId}`);
+          outcomes.push({ leadgenId, formId, outcome: "error_consent_write_failed" });
+          hasTransientFailure = true;
+        }
         continue;
       }
 
