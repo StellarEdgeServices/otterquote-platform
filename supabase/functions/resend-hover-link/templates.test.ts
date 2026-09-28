@@ -25,6 +25,15 @@ Deno.test("gh-1824 resend-hover-link: buildTextBody includes the D-237 postal ad
 // full rendered text AND HTML, not just an .includes() check -- see
 // process-payout-reminders/templates.test.ts for the fuller explanation of
 // how this golden was captured.
+//
+// gh-1824 REVIEW FAIL 5871298554 on #2293 (must-fix): the first version of
+// this golden pinned a `mailto:support@otterquote.com` link that this new
+// footer row added alongside the D-237 address -- main never had ANY footer
+// row in buildHtmlBody, so that line was new user-visible text riding in on
+// a D-237-only PR, not something the golden should have locked in. Fixed in
+// templates.ts: the row now holds ONLY `${footerPostalAddressHtml()}`,
+// matching approve-warranty-drift's pattern in #2292. Golden regenerated
+// from that corrected code (main's body plus the footer only).
 // ---------------------------------------------------------------------------
 
 const GOLDEN_HTML = `<!DOCTYPE html>
@@ -78,7 +87,6 @@ const GOLDEN_HTML = `<!DOCTYPE html>
         </tr>
         <tr>
           <td align="center" style="background:#F8FAFC;border-top:1px solid #E2E8F0;padding:20px 32px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;color:#64748B;">
-            <a href="mailto:support@otterquote.com" style="color:#0EA5E9;text-decoration:none;">support@otterquote.com</a>
             <div style="margin-top:6px;">Stellar Edge Services, LLC d/b/a Otter Quotes · 3410 N High School Rd, Ste G #102, Indianapolis, IN 46224</div>
           </td>
         </tr>

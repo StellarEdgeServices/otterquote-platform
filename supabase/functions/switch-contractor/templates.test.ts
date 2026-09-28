@@ -137,3 +137,37 @@ Deno.test("gh-1824 switch-contractor: switchSupportEmailText(...) exact-matches 
     GOLDEN_SUPPORT_TEXT,
   );
 });
+
+// ---------------------------------------------------------------------------
+// gh-1824 REVIEW FAIL 5871298554 on #2293 (nit): the fixture above only
+// exercises refundIssued=true ("Refund issued: Yes"), so the "Pending"
+// branch was never pinned. Add a second fixture/golden with
+// refundIssued=false to cover it.
+// ---------------------------------------------------------------------------
+
+const GOLDEN_SUPPORT_TEXT_PENDING = `[Action Required] Homeowner contractor switch — 456 Oak Ave
+
+A homeowner has submitted a contractor switch request. Per D-171, please contact them directly to confirm their next contractor placement.
+
+Claim ID:        claim-456
+Property:        456 Oak Ave
+Original contractor: Beta Gutters
+Refund issued:   Pending
+
+--- Homeowner Switch Survey ---
+Reasons selected: quality
+Additional notes: notes here
+
+Please reach out to the homeowner to confirm their new contractor placement.
+Admin: https://otterquote.com/admin-contractors.html
+
+— OtterQuote automated alert
+
+Stellar Edge Services, LLC d/b/a Otter Quotes · 3410 N High School Rd, Ste G #102, Indianapolis, IN 46224`;
+
+Deno.test("gh-1824 switch-contractor: switchSupportEmailText(...) exact-matches the pinned golden text for the refundIssued=false (Pending) branch", () => {
+  assertEquals(
+    switchSupportEmailText("claim-456", "456 Oak Ave", "Beta Gutters", false, "quality", "notes here"),
+    GOLDEN_SUPPORT_TEXT_PENDING,
+  );
+});

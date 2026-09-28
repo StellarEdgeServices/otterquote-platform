@@ -78,7 +78,6 @@ ${emailButton({ href: captureLink, label: "Open Your Measurement Link →" })}
         </tr>
         <tr>
           <td align="center" style="background:#F8FAFC;border-top:1px solid #E2E8F0;padding:20px 32px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;color:#64748B;">
-            <a href="mailto:support@otterquote.com" style="color:#0EA5E9;text-decoration:none;">support@otterquote.com</a>
             ${footerPostalAddressHtml()}
           </td>
         </tr>
