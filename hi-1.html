@@ -985,7 +985,9 @@
             // HI-1 ruling (4): every GA4 event on this page carries step
             // alongside variant, mirroring HO-1 Arm F's trackRouter shape
             // (start.html) where every router_* event carries variant.
-            try { gtag('event', 'partner_signup_complete', { variant: variant, step: 'complete' }); } catch (e) {}
+            // funnel_id added to match ins-5.html/re-3.html's conversion
+            // event shape (S13 fix; hi-4.html carried the identical gap).
+            try { gtag('event', 'partner_signup_complete', { variant: variant, step: 'complete', funnel_id: utmContext.funnelId }); } catch (e) {}
             try { fbq('track', 'CompleteRegistration'); } catch (e) {}
         }
 
@@ -1328,6 +1330,7 @@
                 medium:   utmContext.medium   || undefined,
                 campaign: utmContext.campaign || undefined,
                 content:  utmContext.content  || undefined,
+                funnel_id: utmContext.funnelId,
             });
 
             // gh-2006 / gh-2078 pattern: intentionally no Meta Lead /
@@ -1508,6 +1511,7 @@
                     medium:   utmContext.medium   || undefined,
                     campaign: utmContext.campaign || undefined,
                     content:  utmContext.content  || undefined,
+                    funnel_id: utmContext.funnelId,
                 });
 
                 // Meta Lead — literal event name so the ad set's

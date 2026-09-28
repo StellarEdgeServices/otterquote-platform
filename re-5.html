@@ -93,6 +93,15 @@
 <link rel="preload" as="style" href="css/nav.css" onload="this.onload=null;this.rel='stylesheet'">
 <noscript><link rel="stylesheet" href="css/design-system.css"><link rel="stylesheet" href="css/nav.css"></noscript>
 
+<!-- S05 LCP fix: the hero <video poster> below is this page's LCP element
+     (RE-1/HI-1 have no hero image/video, so this only applies here).
+     Lighthouse's lcp-discovery-insight flagged it as discoverable in the
+     initial HTML but not prioritized -- fetchpriority=high should be
+     applied. This preload plus fetchpriority="high" on the <video> tag
+     itself (below) is the standard fix for video-poster-as-LCP pages. No
+     change to the video's lazy-load-on-scroll source injection. -->
+<link rel="preload" as="image" href="assets/video/re-5-demo-poster.jpg" fetchpriority="high">
+
 <style>
 /* gh-2150/gh-2151 (S05 perf, k70-w11-s05perf): verbatim subset of
    css/design-system.css's :root tokens + reset + base type, copied into
@@ -498,7 +507,7 @@ a:hover { color: var(--amber-2); }
            injects a mobile-weight source only for a real (non-in-app)
            browser, only once the player scrolls into view
            (IntersectionObserver), and never at all for an in-app visitor. -->
-      <video id="re5DemoVideo" playsinline muted loop preload="none" poster="assets/video/re-5-demo-poster.jpg" style="width:100%;display:block;background:#000;" aria-label="Demo of the Otter Quotes partner app: dashboard, referral link, and referral status tracking"></video>
+      <video id="re5DemoVideo" playsinline muted loop preload="none" poster="assets/video/re-5-demo-poster.jpg" fetchpriority="high" style="width:100%;display:block;background:#000;" aria-label="Demo of the Otter Quotes partner app: dashboard, referral link, and referral status tracking"></video>
     </div>
     <div style="text-align:center;">
       <a href="#partner-form" class="btn btn-primary btn-lg">Get My Referral Link</a>
