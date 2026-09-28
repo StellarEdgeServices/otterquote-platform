@@ -15,6 +15,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render } from '@testing-library/react';
+import { seedStaleStorage } from '@/test/storage-fixtures';
 
 // Controllable supabase.auth.signOut — resolve in one test, reject in the other.
 // vi.hoisted lifts the spy alongside the hoisted vi.mock factory so the factory can
@@ -129,5 +130,26 @@ describe('AuthProvider.signOut — deterministic session clear (D-211 P33, 86e20
     expect(document.cookie).not.toContain(_COOKIE_ACCESS);
     expect(document.cookie).not.toContain(_COOKIE_REFRESH);
     expect(document.cookie).not.toContain('sb_at=');
+  });
+
+  it('gh-2060 round-4: clears an unconsumed cs_auth_role breadcrumb on sign-out (resolve AND reject)', async () => {
+    // An abandoned magic-link request on a shared browser leaves the routing
+    // breadcrumb behind (fresh, so the TTL alone would still trust it for
+    // 24h). Sign-out must not leave it for the next user of this browser.
+    for (const settle of ['resolve', 'reject'] as const) {
+      if (settle === 'resolve') supabaseSignOut.mockResolvedValue({ error: null });
+      else supabaseSignOut.mockRejectedValue(new Error('network down'));
+      seedStaleStorage({
+        localStorage: { cs_auth_role: 'contractor', cs_auth_role_at: String(Date.now()) },
+      });
+      render(
+        <AuthProvider>
+          <Consumer />
+        </AuthProvider>,
+      );
+      await capturedSignOut!().catch(() => undefined);
+      expect(localStorage.getItem('cs_auth_role')).toBeNull();
+      expect(localStorage.getItem('cs_auth_role_at')).toBeNull();
+    }
   });
 });
