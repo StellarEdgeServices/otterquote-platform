@@ -30,6 +30,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
 
@@ -352,23 +353,29 @@ serve(async (req) => {
 
     // ── 6. Cancel the quote ───────────────────────────────────────────────
     if (winningQuote?.id) {
-      const { error: cancelError } = await sb
+      const { error: cancelError, data: cancelRows } = await sb
         .from("quotes")
         .update({
           status: "cancelled",
           cancelled_at: new Date().toISOString(),
           cancellation_reason: "homeowner_switched_contractor",
         })
-        .eq("id", winningQuote.id);
+        .eq("id", winningQuote.id)
+        .select("id");
 
       if (cancelError) {
         console.error("[switch-contractor] Error cancelling quote:", cancelError);
         // Non-fatal — continue
+      } else if (!checkRowsWritten(cancelRows).wroteRows) {
+        // gh-2105 (decision a, non-fatal like cancelError): `winningQuote` was
+        // fetched by this id, so zero rows means the cancel silently did not
+        // land and the switched-away quote stays live.
+        console.error(zeroRowWriteMessage("switch-contractor", `quotes.status=cancelled for quote ${winningQuote.id}`));
       }
     }
 
     // ── 7. Reset the claim ────────────────────────────────────────────────
-    const { error: claimUpdateError } = await sb
+    const { error: claimUpdateError, data: claimUpdateRows } = await sb
       .from("claims")
       .update({
         status: "bidding",
@@ -376,10 +383,18 @@ serve(async (req) => {
         contractor_switched_at: new Date().toISOString(),
         contractor_switch_count: (claim.contractor_switch_count || 0) + 1,
       })
-      .eq("id", claim_id);
+      .eq("id", claim_id)
+      .select("id");
 
     if (claimUpdateError) {
       console.error("[switch-contractor] Error resetting claim:", claimUpdateError);
+      return jsonResponse({ error: "Failed to reset claim status. Please try again." }, 500);
+    }
+    // gh-2105 (decision a, money): a zero-row match here would leave the claim
+    // awarded while the refund/emails below proceed as if it were reset. Same
+    // existing 500 response as claimUpdateError -- no new user-facing text.
+    if (!checkRowsWritten(claimUpdateRows).wroteRows) {
+      console.error(zeroRowWriteMessage("switch-contractor", `claims.status=bidding for claim ${claim_id}`));
       return jsonResponse({ error: "Failed to reset claim status. Please try again." }, 500);
     }
 
@@ -390,12 +405,16 @@ serve(async (req) => {
         notes: surveyNotes,
         submitted_at: new Date().toISOString(),
       };
-      const { error: surveyError } = await sb
+      const { error: surveyError, data: surveyRows } = await sb
         .from("claims")
         .update({ switch_reason_survey: surveyPayload })
-        .eq("id", claim_id);
+        .eq("id", claim_id)
+        .select("id");
       if (surveyError) {
         console.warn("[switch-contractor] Survey persist failed (non-critical):", surveyError);
+      } else if (!checkRowsWritten(surveyRows).wroteRows) {
+        // gh-2105 (decision a, non-critical): logged, never fails the switch.
+        console.warn(zeroRowWriteMessage("switch-contractor", `claims.switch_reason_survey for claim ${claim_id}`));
       } else {
         console.log("[switch-contractor] Survey saved:", JSON.stringify(surveyPayload));
       }
@@ -410,9 +429,15 @@ serve(async (req) => {
 
       // Update the quote with refund info
       if (refundResult.success && refundResult.refundId) {
-        await sb.from("quotes").update({
+        const { error: refundMarkErr, data: refundMarkRows } = await sb.from("quotes").update({
           payment_status: "refunded",
-        }).eq("id", winningQuote.id);
+        }).eq("id", winningQuote.id).select("id");
+        // gh-2105 (decision a-with-alert, money): the Stripe refund already
+        // fired and is irreversible from here, so no throw -- but a silent miss
+        // leaves payment_status="succeeded" on a refunded charge.
+        if (refundMarkErr || !checkRowsWritten(refundMarkRows).wroteRows) {
+          console.error(zeroRowWriteMessage("switch-contractor", `quotes.payment_status=refunded for quote ${winningQuote.id} (refund ${refundResult.refundId})`), refundMarkErr?.message ?? "");
+        }
       }
     } else {
       console.log("[switch-contractor] No Stripe refund needed — payment_intent_id:", winningQuote?.payment_intent_id, "payment_status:", winningQuote?.payment_status);

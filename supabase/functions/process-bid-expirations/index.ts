@@ -63,6 +63,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 
 // =============================================================================
 // CONSTANTS
@@ -569,10 +570,18 @@ async function expireBids(
         // Fall through to mark original expired without renewal
       } else {
         // 2. Mark original as superseded
-        await supabase
+        const { error: supersedeErr, data: supersedeRows } = await supabase
           .from("quotes")
           .update({ bid_status: "superseded", expired_at: now })
-          .eq("id", quote.id);
+          .eq("id", quote.id)
+          .select("id");
+        // gh-2105 (decision a, fire-and-forget): the renewal quote already
+        // exists, so no throw -- but a silent miss leaves the original live
+        // next to its renewal (two live bids for one contractor/claim).
+        if (supersedeErr || !checkRowsWritten(supersedeRows).wroteRows) {
+          console.error(zeroRowWriteMessage("process-bid-expirations", `quotes.bid_status=superseded for quote ${quote.id}`), supersedeErr?.message ?? "");
+          errors.push(`Supersede update failed for ${quote.id}: ${supersedeErr?.message ?? "zero rows matched (gh-2105)"}`);
+        }
 
         // 3. Contractor dashboard notification (auto-renewed)
         try {
@@ -619,10 +628,17 @@ async function expireBids(
     if (shouldAutoRenew && renewalDepth >= MAX_AUTO_RENEWALS) {
       // ── AUTO-RENEW CAP PATH ─────────────────────────────────────────────────
       // Mark expired and send cap-reached email.
-      await supabase
+      const { error: capExpireErr, data: capExpireRows } = await supabase
         .from("quotes")
         .update({ bid_status: "expired", expired_at: now })
-        .eq("id", quote.id);
+        .eq("id", quote.id)
+        .select("id");
+      // gh-2105 (decision a, fire-and-forget): log + surface in errors[]; the
+      // cap-reached email below still goes out as before.
+      if (capExpireErr || !checkRowsWritten(capExpireRows).wroteRows) {
+        console.error(zeroRowWriteMessage("process-bid-expirations", `quotes.bid_status=expired (cap path) for quote ${quote.id}`), capExpireErr?.message ?? "");
+        errors.push(`Cap-path expire update failed for ${quote.id}: ${capExpireErr?.message ?? "zero rows matched (gh-2105)"}`);
+      }
 
       try {
         await supabase.from("notifications").insert({
@@ -657,14 +673,23 @@ async function expireBids(
     }
 
     // ── STANDARD EXPIRY PATH (no auto-renew) ──────────────────────────────────
-    const { error: updateError } = await supabase
+    const { error: updateError, data: expireRows } = await supabase
       .from("quotes")
       .update({ bid_status: "expired", expired_at: now })
-      .eq("id", quote.id);
+      .eq("id", quote.id)
+      .select("id");
 
     if (updateError) {
       console.error(`[process-bid-expirations] Failed to mark quote ${quote.id} expired:`, updateError.message);
       errors.push(`Expire update failed for ${quote.id}: ${updateError.message}`);
+      continue;
+    }
+    // gh-2105 (decision a): a zero-row match means the quote was not actually
+    // expired (row changed/RLS), so -- exactly like the updateError branch
+    // above -- record it and skip the expiry notification/email for this quote.
+    if (!checkRowsWritten(expireRows).wroteRows) {
+      console.error(zeroRowWriteMessage("process-bid-expirations", `quotes.bid_status=expired for quote ${quote.id}`));
+      errors.push(`Expire update failed for ${quote.id}: zero rows matched (gh-2105)`);
       continue;
     }
 
@@ -766,14 +791,23 @@ async function notifyBidWindowExpirations(
     const bidsUrl = `https://otterquote.com/bids.html?claim=${claim.id}`;
 
     // Mark claim as notified first (idempotency — don't double-send if email fails)
-    const { error: updateError } = await supabase
+    const { error: updateError, data: notifiedRows } = await supabase
       .from("claims")
       .update({ bid_window_notified_at: now })
-      .eq("id", claim.id);
+      .eq("id", claim.id)
+      .select("id");
 
     if (updateError) {
       console.error(`[process-bid-expirations] Failed to set bid_window_notified_at for claim ${claim.id}:`, updateError.message);
       errors.push(`Window notified_at update failed for ${claim.id}: ${updateError.message}`);
+      continue;
+    }
+    // gh-2105 (decision a): the notified_at stamp is the idempotency guard for
+    // the send below. A zero-row match means it did NOT stick, so sending would
+    // re-send every run -- same handling as the updateError branch above.
+    if (!checkRowsWritten(notifiedRows).wroteRows) {
+      console.error(zeroRowWriteMessage("process-bid-expirations", `claims.bid_window_notified_at for claim ${claim.id}`));
+      errors.push(`Window notified_at update failed for ${claim.id}: zero rows matched (gh-2105)`);
       continue;
     }
 

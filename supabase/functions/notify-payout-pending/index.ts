@@ -33,6 +33,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 
 const FUNCTION_NAME = "notify-payout-pending";
 const ADMIN_EMAIL   = "dustinstohler1@gmail.com";
@@ -341,13 +342,19 @@ ${emailButton({ href: ADMIN_PAYOUTS_URL, label: "Review in Admin →" })}
 
     // ── Mark notification_sent_at ────────────────────────────────────────────
     if (sent) {
-      const { error: updateError } = await supabase
+      const { error: updateError, data: updateRows } = await supabase
         .from("payout_approvals")
         .update({ notification_sent_at: new Date().toISOString() })
-        .eq("id", payoutApprovalId);
+        .eq("id", payoutApprovalId)
+        .select("id");
 
       if (updateError) {
         console.error(`[${FUNCTION_NAME}] Failed to set notification_sent_at:`, updateError.message);
+      } else if (!checkRowsWritten(updateRows).wroteRows) {
+        // gh-2105 (decision a, fire-and-forget): the email already went out and
+        // cannot be recalled, so no throw -- but a zero-row match means
+        // notification_sent_at stays null and the payout notice can re-send.
+        console.error(zeroRowWriteMessage(FUNCTION_NAME, `payout_approvals.notification_sent_at for approval ${payoutApprovalId}`));
       }
     }
 

@@ -61,6 +61,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 import { readW9GateFlag, shouldSkipW9ReminderJob } from "./w9-gate.ts";
 
 const FUNCTION_NAME     = "process-payout-reminders";
@@ -335,13 +336,20 @@ ${emailButton({ href: ADMIN_PAYOUTS_URL, label: "Review All Pending Approvals â†
 
         // Mark reminder_sent_at on all rows in this batch
         const ids = pendingReminder.map(p => p.id);
-        const { error: markError } = await supabase
+        const { error: markError, data: markRows } = await supabase
           .from("payout_approvals")
           .update({ reminder_sent_at: new Date().toISOString() })
-          .in("id", ids);
+          .in("id", ids)
+          .select("id");
 
         if (markError) {
           results.errors.push(`Failed to set reminder_sent_at: ${markError.message}`);
+        } else if (!checkRowsWritten(markRows).wroteRows) {
+          // gh-2105 (decision a, fire-and-forget): the digest already sent; a
+          // zero-row match means reminder_sent_at stays null and the day-2
+          // reminder re-sends on the next run.
+          console.error(zeroRowWriteMessage(FUNCTION_NAME, `payout_approvals.reminder_sent_at for ${ids.length} row(s)`));
+          results.errors.push("Failed to set reminder_sent_at: zero rows matched (gh-2105)");
         }
       } else {
         results.errors.push("Day-2 reminder digest email failed to send via Mailgun.");
@@ -480,14 +488,20 @@ ${emailButton({ href: ADMIN_PAYOUTS_URL, label: "Review All Pending Approvals â†
 
             // Stamp only after a confirmed send, so a transient failure retries
             // tomorrow rather than silently burning the one-time notification.
-            const { error: stampErr } = await supabase
+            const { error: stampErr, data: stampRows } = await supabase
               .from("referral_agents")
               .update({ w9_notification_sent_at: new Date().toISOString() })
               .eq("id", agent.id)
-              .is("w9_notification_sent_at", null);
+              .is("w9_notification_sent_at", null)
+              .select("id");
 
             if (stampErr) {
               results.errors.push(`W-9 request stamp failed for agent ${agent.id}: ${stampErr.message}`);
+            } else if (!checkRowsWritten(stampRows).wroteRows) {
+              // gh-2105 (decision b): the `.is("w9_notification_sent_at", null)`
+              // guard makes a zero-row match a legitimate concurrent-run outcome;
+              // logged (not an error) so an id-mismatch is still distinguishable.
+              console.warn(zeroRowWriteMessage(FUNCTION_NAME, `referral_agents.w9_notification_sent_at for agent ${agent.id} (benign if already stamped)`));
             }
             results.w9RequestsSent++;
           } catch (err) {
