@@ -44,7 +44,7 @@
 <!-- Microsoft Clarity (wwr7qlk8g5) is loaded by /js/ga-gate.js, behind the same production-host gate as GA4 (gh-1619). Do not add a per-page loader. -->
 
     <!-- Supabase JS -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js" integrity="sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.js" integrity="sha384-iLddHTLokph6Omwoyid4XKxHaWa6w41BnoEj0q5oOrzmYPpHIKt1wyjReA7s//pP" crossorigin="anonymous"></script>
 
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -955,6 +955,17 @@
                 <input type="checkbox" id="appInstalledCheckbox" style="width: 16px; height: 16px; cursor: pointer;">
                 I've already installed it &mdash; don't show this again
             </label>
+        </div>
+
+        <!-- gh-2296 (Marty ruling, CTO RUN 48): one-time iOS nudge for partners who
+             signed in here in a normal Safari tab (not the installed app). If they
+             already added it to the Home Screen with "Open as Web App" off, the icon
+             just opens Safari and app_first_signed_in_launch_at never gets set.
+             Shown by refreshIosOpenAsWebAppNudge() (bottom script): signed in AND iOS
+             AND !isStandaloneLaunch() AND not dismissed. Dismissal: localStorage. -->
+        <div id="iosOpenAsWebAppNudge" class="link-hint" style="display: none; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 12px 0;">
+            <span>Added it to your Home Screen but it opens in Safari? Re-add it and turn on <strong>Open as Web App</strong>.</span>
+            <button type="button" id="iosOpenAsWebAppNudgeDismiss" aria-label="Dismiss" style="background: none; border: 0; font-size: 1.2rem; line-height: 1; cursor: pointer; color: #5A6B7B;">&times;</button>
         </div>
 
         <!-- Hero Section -->
@@ -3167,10 +3178,41 @@ Let me know if you have any questions!`;
             // who's signed in.
             window.refreshAppInstallBanner = function (userId) {
                 appInstallUserId = userId || null;
+                refreshIosOpenAsWebAppNudge(userId);
                 if (!banner) return;
                 banner.style.display = (isStandalone() || isAppInstalledDismissed(appInstallUserId)) ? 'none' : 'block';
                 if (appInstalledCheckbox) appInstalledCheckbox.checked = isAppInstalledDismissed(appInstallUserId);
             };
+
+            // gh-2296: one-time, dismissible iOS "Open as Web App" nudge. Reads
+            // isStandaloneLaunch() (top script) but never changes it, and never
+            // touches how app_first_signed_in_launch_at is written.
+            function isIos() {
+                var ua = window.navigator.userAgent || '';
+                return /iPad|iPhone|iPod/.test(ua) ||
+                    (window.navigator.platform === 'MacIntel' && window.navigator.maxTouchPoints > 1);
+            }
+            function iosNudgeKey(userId) { return 'oq_ios_open_as_web_app_nudge_dismissed_' + userId; }
+            function iosNudgeDismissed(userId) {
+                try { return window.localStorage.getItem(iosNudgeKey(userId)) === '1'; } catch (_) { return false; }
+            }
+            var iosNudge = document.getElementById('iosOpenAsWebAppNudge');
+            var iosNudgeUserId = null;
+            function refreshIosOpenAsWebAppNudge(userId) {
+                iosNudgeUserId = userId || null;
+                if (!iosNudge) return;
+                var show = !!iosNudgeUserId && isIos() && !isStandaloneLaunch() && !iosNudgeDismissed(iosNudgeUserId);
+                iosNudge.style.display = show ? 'flex' : 'none';
+            }
+            var iosNudgeDismissBtn = document.getElementById('iosOpenAsWebAppNudgeDismiss');
+            if (iosNudgeDismissBtn) {
+                iosNudgeDismissBtn.addEventListener('click', function () {
+                    if (iosNudgeUserId) {
+                        try { window.localStorage.setItem(iosNudgeKey(iosNudgeUserId), '1'); } catch (_) { /* non-fatal */ }
+                    }
+                    if (iosNudge) iosNudge.style.display = 'none';
+                });
+            }
 
             window.addEventListener('beforeinstallprompt', function (e) {
                 e.preventDefault();

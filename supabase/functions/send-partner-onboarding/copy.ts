@@ -128,7 +128,7 @@ const RE_AGENT_DAY0: StageCopySource = {
   paragraphs: [
     `Hi ${FIRST_NAME_TOKEN},`,
     "You're set up as an Otter Quotes referral partner. Two steps to get your referral link live:",
-    '1. **Install the app.** iPhone: open this email on your phone, tap the button below, then in Safari tap the Share icon and choose **Add to Home Screen**. Android: tap "Install app" when prompted.',
+    '1. **Install the app.** iPhone: open this email on your phone, tap the button below, then in Safari tap the ••• button in the address bar, then **Share** → **Add to Home Screen**, and make sure **Open as Web App** is turned on. Android: tap "Install app" when prompted.',
     "2. **Open the app icon from your home screen and sign in there.** The installed app starts signed out, even if you're already signed in in your browser — signing in inside the app is what activates your account and unlocks your referral link.",
     "$200 referral fee on completed jobs of $10,000+. Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.",
   ],
@@ -141,7 +141,7 @@ const RE_AGENT_DAY1: StageCopySource = {
   preheader: "Installed it yesterday? Open it and sign in — that's the step that activates your account.",
   paragraphs: [
     `Hi ${FIRST_NAME_TOKEN}, if you installed the Otter Quotes app yesterday, open it from your phone's home screen and sign in there — a fresh sign-in inside the installed app (not your browser) is what activates your referral link.`,
-    "Haven't installed it yet? One tap below, then on iPhone: Share icon → Add to Home Screen.",
+    "Haven't installed it yet? One tap below, then on iPhone: ••• menu → Share → Add to Home Screen, with Open as Web App turned on.",
     "$200 flat referral fee on completed jobs of $10,000+. Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.",
   ],
   ctaText: "Open & Sign In",
@@ -175,7 +175,7 @@ const INSURANCE_AGENT_DAY0: StageCopySource = {
   paragraphs: [
     `Hi ${FIRST_NAME_TOKEN},`,
     "You're set up as an Otter Quotes referral partner. Two steps to get your referral link live:",
-    '1. **Install the app.** iPhone: tap the button below, then in Safari tap the Share icon and choose **Add to Home Screen**. Android: tap "Install app" when prompted.',
+    '1. **Install the app.** iPhone: tap the button below, then in Safari tap the ••• button in the address bar, then **Share** → **Add to Home Screen**, and make sure **Open as Web App** is turned on. Android: tap "Install app" when prompted.',
     "2. **Open the app icon from your home screen and sign in there.** The installed app starts signed out — signing in inside it is what activates your account and unlocks your referral link.",
     "$200 referral fee on completed jobs of $10,000+. Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.",
   ],
@@ -188,7 +188,7 @@ const INSURANCE_AGENT_DAY1: StageCopySource = {
   preheader: "Installed it yesterday? Open it and sign in — that's the step that activates your account.",
   paragraphs: [
     `Hi ${FIRST_NAME_TOKEN}, if you installed the Otter Quotes app yesterday, open it from your home screen and sign in — a fresh sign-in inside the installed app is what activates your referral link.`,
-    "Haven't installed it yet? One tap below, then on iPhone: Share icon → Add to Home Screen.",
+    "Haven't installed it yet? One tap below, then on iPhone: ••• menu → Share → Add to Home Screen, with Open as Web App turned on.",
     "$200 flat referral fee on completed jobs of $10,000+. Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.",
   ],
   ctaText: "Open & Sign In",
@@ -223,7 +223,7 @@ const HOME_INSPECTOR_DAY0: StageCopySource = {
     `Hi ${FIRST_NAME_TOKEN},`,
     "You're set up as an Otter Quotes partner. When your report flags roof or exterior damage, your clients get a real next step — competing repair bids, not one contractor's number scrawled on a business card.",
     "Two steps to get your link live:",
-    '1. **Install the app.** iPhone: tap the button below, then in Safari tap the Share icon and choose **Add to Home Screen**. Android: tap "Install app" when prompted.',
+    '1. **Install the app.** iPhone: tap the button below, then in Safari tap the ••• button in the address bar, then **Share** → **Add to Home Screen**, and make sure **Open as Web App** is turned on. Android: tap "Install app" when prompted.',
     "2. **Open the app icon from your home screen and sign in there.** The installed app starts signed out — signing in inside it is what activates your account and unlocks your link.",
   ],
   ctaText: "Install the App",
@@ -235,7 +235,7 @@ const HOME_INSPECTOR_DAY1: StageCopySource = {
   preheader: "Installed it yesterday? Open it and sign in — that's the step that activates your account.",
   paragraphs: [
     `Hi ${FIRST_NAME_TOKEN}, if you installed the Otter Quotes app yesterday, open it from your home screen and sign in — a fresh sign-in inside the installed app is what activates your account.`,
-    "Haven't installed it yet? One tap below, then on iPhone: Share icon → Add to Home Screen.",
+    "Haven't installed it yet? One tap below, then on iPhone: ••• menu → Share → Add to Home Screen, with Open as Web App turned on.",
   ],
   ctaText: "Open & Sign In",
   ctaUrl: PARTNER_APP_SIGNIN_URL,

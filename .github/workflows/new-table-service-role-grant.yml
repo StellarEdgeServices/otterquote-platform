@@ -22,16 +22,23 @@ name: New-Table Service-Role Grant
 # doesn't touch supabase/migrations/**, so there is no "can never go green"
 # problem to justify an advisory posture.
 
+# CTO RUN 46 (2026-09-28): this job became a REQUIRED status check on main
+# at ~17:10Z (#2145). Two trigger gaps then blocked every merge:
+#   1. no `merge_group` trigger -- main merges through a merge queue, which
+#      fires `merge_group` on a gh-readonly-queue ref, so every queue entry
+#      waited forever for this check (PR #2263 sat AWAITING_CHECKS from
+#      17:02Z; its merge-group commit a52f37e4 ran the other 4 required
+#      checks and never this one). Same class as gh-1855.
+#   2. a `paths:` filter -- a required check whose workflow is path-filtered
+#      out never reports on PRs that don't touch those paths, so those PRs
+#      can never satisfy it. The script is already diff-scoped (it inspects
+#      only migrations the diff adds), so running it on every PR costs one
+#      billing-floor minute and changes no verdict.
 on:
+  merge_group:
+    types: [checks_requested]
   pull_request:
     branches: [main]
-    paths:
-      - 'supabase/migrations/**'
-      - 'scripts/permissions-ratchet.py'
-      - 'scripts/new-table-service-role-grant-check.py'
-      - 'scripts/new-table-service-role-grant-check.test.py'
-      - 'scripts/new-table-service-role-grant-fixtures/**'
-      - '.github/workflows/new-table-service-role-grant.yml'
 
 permissions:
   contents: read
@@ -89,5 +96,5 @@ jobs:
         run: |
           python scripts/new-table-service-role-grant-check.py \
             --root . \
-            --base "${{ github.event.pull_request.base.sha }}" \
-            --head "${{ github.event.pull_request.head.sha }}"
+            --base "${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}" \
+            --head "${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}"
