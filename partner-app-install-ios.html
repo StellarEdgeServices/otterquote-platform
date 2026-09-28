@@ -212,16 +212,22 @@
 
         <div class="browser-note">
             <span class="note-emoji">&#9888;&#65039;</span>
-            <span>You must use <strong>Safari</strong> for this. Chrome, Firefox, and other browsers on iPhone and iPad can't add the app to your home screen &mdash; that's an Apple restriction, not something we can change. If this page didn't open in Safari, copy the link and paste it into Safari first.</span>
+            <span>The steps below are for <strong>Safari</strong>. Since iOS 16.4, other browsers like Chrome, Firefox, and Edge can also add web apps to your home screen from their own menus, but the steps differ slightly &mdash; check that browser's Share or menu button. If this page didn't open in Safari and you'd rather follow the exact steps below, copy the link and paste it into Safari first.</span>
         </div>
 
-        <!-- gh-2296: iOS 26 (shipped Sept 2026) changed this flow -- Safari's
-             address bar now shows a ••• (more) button instead of a direct
-             Share icon, and Add to Home Screen gained a new "Open as Web
-             App" toggle that must be turned ON, or the result is a plain
-             Safari bookmark (browser chrome, not a standalone app). No
-             version branch: iOS 26 is the shipping OS as of this fix, and
-             the page had no pre-26/post-26 distinction to preserve. -->
+        <!-- gh-2296 / gh-2298 fix: iOS 26 (shipped Sept 2025, MacRumors
+             2025-08-20) moved Safari's Share icon behind a new ••• (more)
+             button in the address bar, and Add to Home Screen gained an
+             "Open as Web App" toggle -- it is ON by default (iDownloadBlog,
+             2025-06-17), and skipping/turning it off yields a plain Safari
+             bookmark (browser chrome, not a standalone app) instead of the
+             app. iOS 27 / iPadOS 27 shipped 2026-09-14 (AppleInsider,
+             2026-09-09); MacRumors' "iOS 27: All the New Safari Features"
+             guide lists no changes to Add to Home Screen or Open as Web App,
+             so the flow below is believed unchanged on iOS 27, but this has
+             not been independently device-verified on iOS 27 -- treat that
+             as unverified. Page copy below stays version-neutral ("recent
+             iOS versions") rather than naming a specific OS number. -->
         <ol class="step-list">
             <li class="step-row">
                 <span class="step-num">1</span>
@@ -229,7 +235,7 @@
             </li>
             <li class="step-row">
                 <span class="step-num">2</span>
-                <span class="step-text">Tap the <strong>&#8226;&#8226;&#8226;</strong> button in the address bar <span class="sub">(three dots)</span>, then tap <strong>Share</strong></span>
+                <span class="step-text">Tap the <strong>&#8226;&#8226;&#8226;</strong> button in the address bar <span class="sub">(three dots)</span>, then tap <strong>Share</strong> <span class="sub">(Don&rsquo;t see &#8226;&#8226;&#8226;? Tap the <strong>Share</strong> button &mdash; the square with an up-arrow &mdash; directly.)</span></span>
             </li>
             <li class="step-row">
                 <span class="step-num">3</span>
@@ -237,7 +243,7 @@
             </li>
             <li class="step-row">
                 <span class="step-num">4</span>
-                <span class="step-text">Turn ON the <strong>&ldquo;Open as Web App&rdquo;</strong> toggle <span class="sub">(new in iOS 26 &mdash; skip this and you'll get a plain bookmark instead of the app)</span></span>
+                <span class="step-text">Check that the <strong>&ldquo;Open as Web App&rdquo;</strong> toggle is <strong>ON</strong> <span class="sub">(it's on by default on recent iOS versions &mdash; if it's off, you'll get a plain Safari bookmark instead of the app)</span></span>
             </li>
             <li class="step-row">
                 <span class="step-num">5</span>
