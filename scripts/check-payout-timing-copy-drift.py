@@ -157,6 +157,22 @@ ALLOWLIST = [
         "Same reminder email, same threshold, second mention.",
     ),
     (
+        # gh-1824 footer batch 5 review fix (REVIEW: FAIL 5870472283 on #2292):
+        # a golden exact-equality test in templates.test.ts pins the full
+        # rendered body (see that file), which necessarily repeats this same
+        # admin-only copy verbatim as a literal.
+        "supabase/functions/process-payout-reminders/templates.test.ts",
+        "commissions have been pending for more than 2 days",
+        "internal admin behavior",
+        "Golden pin of the templates.ts copy above, same threshold.",
+    ),
+    (
+        "supabase/functions/process-payout-reminders/templates.test.ts",
+        "commission(s) awaiting approval (>2 days pending)",
+        "internal admin behavior",
+        "Golden pin of the templates.ts copy above, same threshold, second mention.",
+    ),
+    (
         "supabase/functions/process-payout-reminders/index.ts",
         "were automatically approved after 7 days with no action",
         "internal admin behavior",
