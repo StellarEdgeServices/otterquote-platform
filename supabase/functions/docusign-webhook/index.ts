@@ -41,6 +41,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { findCompletedContractSigner, parsePayload } from "./payload-parser.ts";
+import { footerPostalAddressHtml, footerPostalAddressText } from "./email-footer.ts"; // gh-1824 D-237
 import { evaluateAcknowledgment, fetchDocumentSignerStatus } from "./ack-verify.ts";
 // [#1314] Signed-price reconciliation. Pure + unit-tested (price-verify.test.ts)
 // for the same reason evaluateAcknowledgment is: it is a money check.
@@ -694,7 +695,7 @@ serve(async (req) => {
                   `Counter-sign from your dashboard:\n${contractorDashboardUrl}\n\n` +
                   `We'll send you a reminder every couple of hours during business hours until the contract is fully executed.\n\n` +
                   `Questions? Reply to this email or call (844) 875-3412.\n\n` +
-                  `— The Otter Quotes Team`;
+                  `— The Otter Quotes Team\n\n${footerPostalAddressText()}`;
                 const nudgeHtml =
                   `<!DOCTYPE html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;line-height:1.6;color:#333;max-width:600px;margin:0 auto;padding:20px;">` +
                   `<p>Hi ${nudgeName},</p>` +
@@ -703,7 +704,7 @@ serve(async (req) => {
                   `<p><a href="${contractorDashboardUrl}" style="color:#0066cc;">Counter-sign from your dashboard</a></p>` +
                   `<p>We'll send you a reminder every couple of hours during business hours until the contract is fully executed.</p>` +
                   `<p>Questions? Reply to this email or call (844) 875-3412.</p>` +
-                  `<p>— The Otter Quotes Team</p></body></html>`;
+                  `<p>— The Otter Quotes Team</p>${footerPostalAddressHtml()}</body></html>`;
 
                 const nudgeApiKey = Deno.env.get("MAILGUN_API_KEY") || "";
                 // MAILGUN_DOMAIN with a fallback to the domain already
@@ -2069,7 +2070,7 @@ serve(async (req) => {
               `• ${contractorCompany} will contact you within 48 hours to coordinate next steps.\n` +
               `• You can track your project status anytime on your dashboard: ${dashboardUrl}\n\n` +
               `Questions? Reply to this email or contact support@otterquote.com.\n\n` +
-              `— The Otter Quotes Team`;
+              `— The Otter Quotes Team\n\n${footerPostalAddressText()}`;
             const htmlBody =
               `<!DOCTYPE html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;line-height:1.6;color:#333;max-width:600px;margin:0 auto;padding:20px;">` +
               `<p>Hi ${homeownerName},</p>` +
@@ -2079,7 +2080,7 @@ serve(async (req) => {
               `<ul><li>${contractorCompany} will contact you within 48 hours to coordinate next steps.</li>` +
               `<li>You can track your project status anytime on your <a href="${dashboardUrl}" style="color:#0066cc;">dashboard</a>.</li></ul>` +
               `<p>Questions? Reply to this email or contact <a href="mailto:support@otterquote.com">support@otterquote.com</a>.</p>` +
-              `<p>— The Otter Quotes Team</p></body></html>`;
+              `<p>— The Otter Quotes Team</p>${footerPostalAddressHtml()}</body></html>`;
 
             const mailgunApiKey = Deno.env.get("MAILGUN_API_KEY") || "";
             if (mailgunApiKey) {

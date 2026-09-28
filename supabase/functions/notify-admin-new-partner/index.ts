@@ -45,6 +45,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { appendPostalFooterHtml, appendPostalFooterText } from "./footer-append.ts"; // gh-1824 D-237
 
 export const ADMIN_EMAIL       = "dustinstohler1@gmail.com";
 export const ADMIN_PORTAL_URL  = "https://otterquote.com/admin-referrals.html";
@@ -402,8 +403,8 @@ export async function handleNotifyAdminNewPartner(req: Request, deps: PartnerDep
     formData.append("from",    `Otter Quotes <notifications@${deps.mailgunDomain}>`);
     formData.append("to",      ADMIN_EMAIL);
     formData.append("subject", subject);
-    formData.append("text",    textBody);
-    formData.append("html",    htmlBody);
+    formData.append("text",    appendPostalFooterText(textBody));
+    formData.append("html",    appendPostalFooterHtml(htmlBody));
 
     const mgRes = await deps.fetchImpl(
       `https://api.mailgun.net/v3/${deps.mailgunDomain}/messages`,

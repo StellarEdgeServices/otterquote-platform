@@ -33,6 +33,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { appendPostalFooterHtml, appendPostalFooterText } from "./footer-append.ts"; // gh-1824 D-237
 import {
   describeGuardVerdict,
   evaluateLiveChargeGuard,
@@ -351,8 +352,8 @@ async function sendEmail(to: string, subject: string, html: string, from?: strin
   body.append("from",    from || `Otter Quotes <noreply@${domain}>`);
   body.append("to",      to);
   body.append("subject", subject);
-  body.append("text",    text || htmlToPlainText(html));
-  body.append("html",    html);
+  body.append("text",    appendPostalFooterText(text || htmlToPlainText(html)));
+  body.append("html",    appendPostalFooterHtml(html));
 
   try {
     const r = await fetch(`https://api.mailgun.net/v3/${domain}/messages`, {

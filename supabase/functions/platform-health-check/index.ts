@@ -100,6 +100,7 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { findConsecutiveUndelivered, buildSmsAlertMessage, type TwilioMessageRow } from "./sms-delivery-check.ts";
 import { evaluateRegisterPartnerGlobalBudget } from "./register-partner-budget-check.ts";
+import { footerPostalAddressText } from "./email-footer.ts"; // gh-1824 D-237
 
 // =============================================================================
 // CONSTANTS
@@ -220,7 +221,7 @@ async function sendMailgunAlert(
     formData.append("from", `OtterQuote Monitoring <alerts@${domain}>`);
     formData.append("to", ALERT_EMAIL);
     formData.append("subject", subject);
-    formData.append("text", body);
+    formData.append("text", `${body}\n\n${footerPostalAddressText()}`);
 
     const res = await fetch(`https://api.mailgun.net/v3/${domain}/messages`, {
       method: "POST",

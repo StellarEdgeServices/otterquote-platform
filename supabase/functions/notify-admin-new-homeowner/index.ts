@@ -106,6 +106,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { appendPostalFooterHtml, appendPostalFooterText } from "./footer-append.ts"; // gh-1824 D-237
 import {
   ADMIN_EMAIL,
   normalizeBody,
@@ -839,8 +840,8 @@ async function sendMail(
   formData.append("from",    `Otter Quotes <notifications@${mailgunDomain}>`);
   formData.append("to",      ADMIN_EMAIL);
   formData.append("subject", subject);
-  formData.append("text",    textBody);
-  formData.append("html",    htmlBody);
+  formData.append("text",    appendPostalFooterText(textBody));
+  formData.append("html",    appendPostalFooterHtml(htmlBody));
 
   const mgRes = await fetch(
     `https://api.mailgun.net/v3/${mailgunDomain}/messages`,
