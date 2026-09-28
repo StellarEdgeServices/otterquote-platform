@@ -1172,7 +1172,24 @@ a:hover { color: var(--amber-2); }
       localStorage.setItem('cs_auth_role', agentType);
       localStorage.removeItem('cs_utm_context');
 
-      const signUpResult = await Auth.signUpWithPassword(email, generatedPassword, agentType);
+      // gh-2274: the RPC above only special-cases a duplicate referral_agents
+      // row ('partner_exists'). auth.users is a separate existence check --
+      // an email can already have an auth account with no referral_agents
+      // row yet, so the RPC above succeeds and THIS call is what actually
+      // rejects the duplicate, via Supabase's own "User already registered"
+      // message. Route it to the same designed already-a-partner state
+      // instead of letting it fall through to the generic catch below.
+      let signUpResult;
+      try {
+        signUpResult = await Auth.signUpWithPassword(email, generatedPassword, agentType);
+      } catch (signUpError) {
+        if ((signUpError.message || '').toLowerCase().includes('already registered')) {
+          errorEl.innerHTML = "You're already a partner — <a href=\"/partner-login.html\">sign in here</a>.";
+          errorEl.style.display = 'block';
+          return;
+        }
+        throw signUpError;
+      }
 
       if (signUpResult && signUpResult.user && signUpResult.user.id) {
         try { localStorage.setItem(('oq_partner_needs_' + 'password') + ':' + signUpResult.user.id, '1'); } catch (e) { /* non-fatal */ }
