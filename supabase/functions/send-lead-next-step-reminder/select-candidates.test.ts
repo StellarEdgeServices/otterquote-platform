@@ -154,27 +154,44 @@ Deno.test("malformed created_at fails closed (too_young, never a crash)", () => 
 
 Deno.test("skips a contractor-role lead (adversarial test A5 scope)", () => {
   const lead = baseLead({ role: "contractor" });
-  assertEquals(selectLeadForReminder(lead, true, NOW), { send: false, skip_reason: "not_homeowner_arm_f" });
+  assertEquals(selectLeadForReminder(lead, true, NOW), { send: false, skip_reason: "not_reminder_eligible_variant" });
 });
 
 Deno.test("skips a referral_partner-role lead", () => {
   const lead = baseLead({ role: "referral_partner" });
-  assertEquals(selectLeadForReminder(lead, true, NOW), { send: false, skip_reason: "not_homeowner_arm_f" });
+  assertEquals(selectLeadForReminder(lead, true, NOW), { send: false, skip_reason: "not_reminder_eligible_variant" });
 });
 
-Deno.test("skips a homeowner lead from a different arm (variant != 'f')", () => {
+Deno.test("skips a homeowner lead from a different arm (variant != 'f'/'HO-2')", () => {
   const lead = baseLead({ variant: "a" });
-  assertEquals(selectLeadForReminder(lead, true, NOW), { send: false, skip_reason: "not_homeowner_arm_f" });
+  assertEquals(selectLeadForReminder(lead, true, NOW), { send: false, skip_reason: "not_reminder_eligible_variant" });
 });
 
-Deno.test("skips a homeowner Arm F lead whose variant is NULL (unset arm, not yet Arm F)", () => {
+Deno.test("skips a homeowner lead whose variant is NULL (unset arm)", () => {
   const lead = baseLead({ variant: null });
-  assertEquals(selectLeadForReminder(lead, true, NOW), { send: false, skip_reason: "not_homeowner_arm_f" });
+  assertEquals(selectLeadForReminder(lead, true, NOW), { send: false, skip_reason: "not_reminder_eligible_variant" });
 });
 
-Deno.test("sends for role='homeowner' AND variant='f' (in-scope)", () => {
+Deno.test("sends for role='homeowner' AND variant='f' (in-scope, regression)", () => {
   const lead = baseLead({ role: "homeowner", variant: "f" });
   assertEquals(selectLeadForReminder(lead, true, NOW).send, true);
+});
+
+// -- gh-2300: widen the gate to also admit native-form HO-2 leads --
+
+Deno.test("gh-2300: sends for role='homeowner' AND variant='HO-2' (native-form lead)", () => {
+  const lead = baseLead({ role: "homeowner", variant: "HO-2" });
+  assertEquals(selectLeadForReminder(lead, true, NOW).send, true);
+});
+
+Deno.test("gh-2300: skips variant='HO-3' (the $15 no-account funnel — negative control, must stay excluded)", () => {
+  const lead = baseLead({ variant: "HO-3" });
+  assertEquals(selectLeadForReminder(lead, true, NOW), { send: false, skip_reason: "not_reminder_eligible_variant" });
+});
+
+Deno.test("gh-2300: skips a synthetic HO-2 lead (synthetic check still wins)", () => {
+  const lead = baseLead({ variant: "HO-2", is_synthetic: true });
+  assertEquals(selectLeadForReminder(lead, true, NOW), { send: false, skip_reason: "synthetic_lead" });
 });
 
 // -- must-fix 5: strict single-address validation (adversarial test A6) --
