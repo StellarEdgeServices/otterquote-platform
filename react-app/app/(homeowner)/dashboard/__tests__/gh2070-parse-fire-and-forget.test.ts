@@ -21,7 +21,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const { storageUploadMock, claimsUpdateMock, functionsInvokeMock } = vi.hoisted(() => ({
   storageUploadMock: vi.fn(() => Promise.resolve({ data: {}, error: null })),
-  claimsUpdateMock: vi.fn(() => ({ eq: () => Promise.resolve({ error: null }) })),
+  // gh-2105 batch 4: uploadClaimDocument's claims.update() now chains
+  // `.select('id')` (decision a — detect a zero-row RLS/filter match), so
+  // the mock's terminal call moved from `.eq` to `.eq().select`.
+  claimsUpdateMock: vi.fn(() => ({
+    eq: () => ({ select: () => Promise.resolve({ data: [{ id: 'claim-1' }], error: null }) }),
+  })),
   functionsInvokeMock: vi.fn(() => new Promise(() => {
     /* never resolves or rejects — mirrors a hung parse-loss-sheet call */
   })),

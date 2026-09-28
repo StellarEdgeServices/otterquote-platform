@@ -101,8 +101,15 @@ BASELINE: dict[str, int] = {
     "project-info-rcv.html": 2,
     "react-app/app/(homeowner)/bids/actions.ts": 1,
     "react-app/app/(homeowner)/color-selection/use-color-selection-data.ts": 1,
-    "react-app/app/(homeowner)/contract-signing/use-contract-signing-data.ts": 2,
-    "react-app/app/(homeowner)/dashboard/actions.ts": 3,
+    # gh-2105 batch 4: fixed both sites (recordHomeownerSigned's two
+    # quotes.homeowner_signed_at writes -- decision a, LEGAL path, see the
+    # batch-4 PR body). Lowered 2->0, following batches 1-3's precedent of
+    # lowering a file's baseline in the same PR that fixes it.
+    "react-app/app/(homeowner)/contract-signing/use-contract-signing-data.ts": 0,
+    # gh-2105 batch 4: fixed all 3 sites (submitForBids, uploadClaimDocument,
+    # joinExpansionWaitlist -- all decision a, see the batch-4 PR body for the
+    # full grep enumeration + per-site decisions). Lowered 3->0.
+    "react-app/app/(homeowner)/dashboard/actions.ts": 0,
     "react-app/app/(homeowner)/help-estimate/actions.ts": 1,
     "react-app/app/(homeowner)/help-materials/use-help-materials-data.ts": 1,
     "react-app/app/(homeowner)/help-measurements/use-help-measurements-data.ts": 1,

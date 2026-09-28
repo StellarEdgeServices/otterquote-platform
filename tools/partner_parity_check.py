@@ -380,7 +380,11 @@ def compute_d266_pages(root: Path = None) -> list[str]:
         for p in ALL_PAGES
         if p not in ("partner-insurance", "partner-login", "partner-inspectors")
     }
-    explicit = {"partners", "refer-a-friend", "re-1", "ins-1"}
+    # CEO RUN 71 wave 3 (#2150/#2151, PR #2222): re-3/ins-3 reuse the
+    # RE-1/INS-1 build byte-for-byte (D-333) and carry the D-266
+    # disclaimer verbatim -- registered explicitly, same convention as
+    # re-1/ins-1/ins-5 above.
+    explicit = {"partners", "refer-a-friend", "re-1", "ins-1", "ins-5", "re-3", "ins-3", "re-5"}
     fee_pages = {
         s for s in _fee_sentence_pages(root) if (root / f"{s}.html").is_file()
     }
@@ -1441,6 +1445,27 @@ STATIC_FUNNEL_EXEMPT = {
         "single-purpose ad landing page, not a partner-*.html marketing "
         "page -- same shape as the other STATIC_FUNNEL_EXEMPT entries above."
     ),
+    "hi-4.html": (
+        "gh-2152 HI-4 (CEO RUN 71, wave 3): the printable-handout client "
+        "lead magnet for the home-inspector track -- same underlying offer "
+        "and same D-333 exemption as hi-1.html above (Dustin ruling 5832300782: "
+        "\"no D-266 disclaimer, inspectors take no fee\"). The match is the "
+        "mandatory D-333 NO-fee statement itself (\"referral fee\" appears "
+        "inside \"do not receive a referral fee or recruit bonus\"), not an "
+        "actual fee offer. Not folded into D266_PAGES for the same reason "
+        "hi-1.html isn't: a single-purpose ad landing page, not a "
+        "partner-*.html marketing page."
+    ),
+    "hi-5.html": (
+        "CEO RUN 71 (subagent of ceo-2026-09-26T16:23:19Z): hi-5.html is "
+        "HI-1's app-first sibling funnel -- same D-333 exemption as "
+        "hi-1.html above (home inspectors receive no referral fee or "
+        "recruit bonus, under any name), copy source issue #2152 evidence "
+        "comment 5849027209. DRAFT, Tier C, not yet Dustin-approved; "
+        "flagged for the same LEGAL-READ pass hi-1.html already went "
+        "through. Not folded into D266_PAGES for the same reason hi-1.html "
+        "isn't: a single-purpose ad landing page, not partner-*.html."
+    ),
 }
 
 
@@ -1546,7 +1571,7 @@ def main() -> int:
         if not check_d266_disclaimer(html):
             failures.append(f"{page}.html: missing D-266 disclaimer verbatim text (d266_disclaimer)")
 
-    # ── React parity half (D-266) ────────────────────────────────────────────
+    # ── React parity half (D-266) ───────────────────────────────────────────────
     # Root-level *.html is only what main publishes TODAY; react-app/ is what a
     # cutover publishes instead. A disclaimer that survives in one and not the
     # other is a gap this script previously could not see at all.

@@ -270,6 +270,9 @@ jobs:
       - name: measurement-shape admin-fulfilment flip unit test (gh-1411 D-317 cl. 4-6; REVIEW finding A, PR #2236)
         run: node tests/measurement-shape-flip-on-deliver.mjs
 
+      - name: partner signup duplicate-email error routing unit test (gh-2274 regression)
+        run: node tests/gh2274-partner-dup-email-error.mjs
+
       - name: tsc --noEmit type gate (gh-414)
         working-directory: react-app
         run: npx tsc --noEmit

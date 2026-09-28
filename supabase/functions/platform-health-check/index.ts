@@ -54,6 +54,27 @@
  *    are not set in this function's env. Read-only: sends no SMS, changes no
  *    send-sms behaviour.
  *
+ * 7. register_partner_global budget alerting (added Sep 2026 — gh-2154/
+ *    gh-2223, PR #2237 REVIEW:FAIL 5850688286 defect D2): the rate-limit fix
+ *    in supabase/migrations_drafts/gh2154_register_partner_rate_limit_fix.sql
+ *    splits register_partner's anon rate-limit gate into a per-client
+ *    bucket, an is_test bucket, and a platform-wide `register_partner_global`
+ *    abuse backstop. The FIRST draft of that fix wrote an alert row to
+ *    `platform_alerts_log` from a standalone pg_cron reconciler with nothing
+ *    to actually deliver it — an exhausted ceiling (every real signup
+ *    refused) just sat in a table no one watched. That reconciler and its
+ *    pg_cron schedule are REMOVED; Phase 5 here does the same check (>=80%/
+ *    100% of the daily cap, AND >=100% of the hourly cap — the reconciler
+ *    only ever watched the daily count, which is exactly what D2 flagged)
+ *    and routes it through this file's EXISTING fireAlert() (Mailgun +
+ *    platform_alerts_log write + 15-minute dedup), the same path Phases 1-4
+ *    already use. Pure threshold logic lives in
+ *    register-partner-budget-check.ts (unit-tested there, mirroring Phase 4's
+ *    sms-delivery-check.ts split) — this phase only does the DB read and the
+ *    fireAlert() call. Read-only against `rate_limits`/`rate_limit_config`;
+ *    writes nothing except (conditionally) `platform_alerts_log` via
+ *    fireAlert(), same as every other phase.
+ *
  * Scheduled: every 15 minutes via pg_cron (schedule: "* /15 * * * *")
  * Auth: verify_jwt = false (see supabase/config.toml). Gated instead by a
  * caller-identity check at the top of the handler: the request must carry
@@ -78,6 +99,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { findConsecutiveUndelivered, buildSmsAlertMessage, type TwilioMessageRow } from "./sms-delivery-check.ts";
+import { evaluateRegisterPartnerGlobalBudget } from "./register-partner-budget-check.ts";
 
 // =============================================================================
 // CONSTANTS
@@ -347,7 +369,7 @@ async function autoAckPendingFailures(
       .eq("function_name", functionName)
       .eq("alert_type", "ef_failure_pending")
       .is("acknowledged_at", null);
-    
+
     if (ackError) {
       console.error(`[auto-ack] error for ${functionName}:`, ackError.message);
     } else {
@@ -936,6 +958,93 @@ async function runSmsDeliveryCheck(
   };
 }
 
+/**
+ * Phase 5 (gh-2154/gh-2223, PR #2237 REVIEW:FAIL 5850688286 defect D2):
+ * register_partner_global budget alerting.
+ *
+ * Reads the ALLOWED (`NOT blocked`) `register_partner_global` call counts
+ * for the last hour and the last rolling 24h directly from `rate_limits`
+ * (the same table/columns `check_rate_limit()` itself counts against — see
+ * the migration this replaces, gh2154_register_partner_rate_limit_fix.sql),
+ * and the bucket's current limits from `rate_limit_config`. Pure threshold
+ * logic is in register-partner-budget-check.ts (unit-tested there); this
+ * function only does the DB read and the fireAlert() call, exactly the
+ * shape Phase 4 already established for gh-1825.
+ *
+ * Soft-fails (returns zero-effect result, does not throw, does not block
+ * any other phase) if the config row is missing/disabled or either read
+ * errors — an observability check must not become a new source of cron
+ * failure.
+ */
+async function runRegisterPartnerBudgetCheck(
+  supabase: ReturnType<typeof createClient>,
+  mailgunApiKey: string,
+  mailgunDomain: string,
+): Promise<{ checked: boolean; alertsFired: number; hourCount: number; dayCount: number; skipped?: string }> {
+  const { data: config, error: configError } = await supabase
+    .from("rate_limit_config")
+    .select("max_per_hour, max_per_day, enabled")
+    .eq("function_name", "register_partner_global")
+    .maybeSingle() as { data: { max_per_hour: number; max_per_day: number; enabled: boolean } | null; error: { message: string } | null };
+
+  if (configError || !config) {
+    console.warn("[platform-health-check] Phase 5 (register_partner budget): no config row, skipping:", configError?.message);
+    return { checked: false, alertsFired: 0, hourCount: 0, dayCount: 0, skipped: "no-config-row" };
+  }
+  if (!config.enabled) {
+    return { checked: false, alertsFired: 0, hourCount: 0, dayCount: 0, skipped: "bucket-disabled" };
+  }
+
+  const hourCutoff = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const dayCutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+  const [{ count: hourCount, error: hourError }, { count: dayCount, error: dayError }] = await Promise.all([
+    supabase
+      .from("rate_limits")
+      .select("id", { count: "exact", head: true })
+      .eq("function_name", "register_partner_global")
+      .is("caller_id", null)
+      .eq("blocked", false)
+      .gte("called_at", hourCutoff),
+    supabase
+      .from("rate_limits")
+      .select("id", { count: "exact", head: true })
+      .eq("function_name", "register_partner_global")
+      .is("caller_id", null)
+      .eq("blocked", false)
+      .gte("called_at", dayCutoff),
+  ]);
+
+  if (hourError || dayError) {
+    console.error("[platform-health-check] Phase 5 (register_partner budget): rate_limits read failed:", hourError ?? dayError);
+    return { checked: false, alertsFired: 0, hourCount: 0, dayCount: 0, skipped: "rate-limits-read-error" };
+  }
+
+  const alert = evaluateRegisterPartnerGlobalBudget(
+    { hourCount: hourCount ?? 0, dayCount: dayCount ?? 0 },
+    { maxPerHour: config.max_per_hour, maxPerDay: config.max_per_day },
+  );
+
+  let alertsFired = 0;
+  if (alert) {
+    // Nit (REVIEW 5850926064): earlier drafts appended the same
+    // "Resolve this alert at: .../admin-contractors.html" link Phases 1-4
+    // use, but that admin panel has no view for rate-limit-config buckets
+    // -- it doesn't help resolve THIS alert, so it's dropped here rather
+    // than copied by habit.
+    const message = `${alert.message}\nChecked at: ${formatDualTimestamp(new Date())}\n` +
+      `This is an automated alert from OtterQuote platform monitoring (gh-2154/gh-2223).`;
+
+    const { alerted } = await fireAlert(
+      supabase, mailgunApiKey, mailgunDomain,
+      alert.alertType, alert.functionName, alert.subject, message,
+    );
+    if (alerted) alertsFired++;
+  }
+
+  return { checked: true, alertsFired, hourCount: hourCount ?? 0, dayCount: dayCount ?? 0 };
+}
+
 // =============================================================================
 // MAIN HANDLER
 // =============================================================================
@@ -996,6 +1105,10 @@ serve(async (req) => {
   // ordering relative to them does not matter.
   const phase4 = await runSmsDeliveryCheck(supabase, mailgunApiKey, mailgunDomain);
 
+  // ── Phase 5: register_partner_global budget check (gh-2154/gh-2223 D2) ──────
+  // Independent of Phases 1-4 (own data source, own soft-fail path).
+  const phase5 = await runRegisterPartnerBudgetCheck(supabase, mailgunApiKey, mailgunDomain);
+
   const elapsed = Date.now() - startedAt;
 
   const result = {
@@ -1012,7 +1125,12 @@ serve(async (req) => {
     smsAlertsCount:     phase4.alertsFired,
     smsConsecutiveUndelivered: phase4.consecutiveUndelivered,
     smsSkipped:         phase4.skipped ?? null,
-    totalAlerts:        phase1.alertsFired + phase2.alertsFired + phase3.alertsFired + phase4.alertsFired,
+    registerPartnerBudgetChecked: phase5.checked,
+    registerPartnerBudgetAlertsCount: phase5.alertsFired,
+    registerPartnerBudgetHourCount: phase5.hourCount,
+    registerPartnerBudgetDayCount: phase5.dayCount,
+    registerPartnerBudgetSkipped: phase5.skipped ?? null,
+    totalAlerts:        phase1.alertsFired + phase2.alertsFired + phase3.alertsFired + phase4.alertsFired + phase5.alertsFired,
     elapsedMs:          elapsed,
     ranAt:              new Date().toISOString(),
   };
