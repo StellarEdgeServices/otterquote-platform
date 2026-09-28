@@ -144,13 +144,14 @@ function makeElementStore() {
 // Auth.signUpWithPassword() REJECTS with Supabase's own literal duplicate-
 // registration message -- this is the auth.users-level duplicate the RPC
 // above cannot see.
-function runPageScript(html, { search = '' } = {}) {
+function runPageScript(html, { search = '', signUp = 'dup', dupError = null, rpcError = null } = {}) {
   const script = extractInlineScripts(html);
   if (!script || script.indexOf('register_partner') === -1) {
     return { setupError: 'no inline script containing register_partner was found on the page' };
   }
   const store = makeElementStore();
   const rpcCalls = [];
+  const callOrder = [];
   const alertCalls = [];
   // gh2274 fix-up: a plain always-Promise-returning Proxy trap (the prior
   // shape here) breaks the moment a caller does something other than a
@@ -179,6 +180,8 @@ function runPageScript(html, { search = '' } = {}) {
     rpc(name, params) {
       rpcCalls.push({ name, params });
       if (name === 'register_partner') {
+        callOrder.push('register_partner');
+        if (rpcError) return Promise.resolve({ data: null, error: rpcError });
         return Promise.resolve({ data: { id: 'gh2274-test-id', unique_code: 'TESTCODE123' }, error: null });
       }
       if (name === 'claim_partner_account') {
@@ -226,7 +229,11 @@ function runPageScript(html, { search = '' } = {}) {
   // duplicate-registration error -- always AFTER register_partner has
   // already succeeded above, exactly the ordering every page uses.
   const AuthObj = {
-    signUpWithPassword: async () => { throw new Error('User already registered'); },
+    signUpWithPassword: async () => {
+      callOrder.push('signUp');
+      if (signUp === 'ok') return { user: { id: 'gh2274-user-id' }, session: null };
+      throw (dupError || new Error('User already registered'));
+    },
     hasPartnerSession: async () => false,
     getUser: async () => null,
     isTestEmail: (email) => (email || '').trim().toLowerCase().endsWith('@otterquote-internal.test'),
@@ -256,7 +263,7 @@ function runPageScript(html, { search = '' } = {}) {
     return { setupError: 'script execution error while loading the page: ' + e.message };
   }
   for (const fn of domContentLoadedListeners) { try { fn(); } catch (e) {} }
-  return { store, rpcCalls, alertCalls };
+  return { store, rpcCalls, alertCalls, callOrder };
 }
 
 async function submitForm(runResult, formId, fill, { hasConfirmPopup = false } = {}) {
@@ -372,15 +379,24 @@ const PAGES = [
   },
 ];
 
+// gh-2281: (a) = English message text only (older SDKs, no .code);
+// (c) = Supabase's structured error.code with a LOCALIZED/reworded message
+// that contains no "already registered" text -- the case a message-only
+// match silently drops through to the generic catch-all.
+const VARIANTS = [
+  { tag: '(a)', dupError: null },
+  { tag: '(c)', dupError: Object.assign(new Error('Ce compte existe deja'), { code: 'user_already_exists' }) },
+];
 for (const page of PAGES) {
-  const label = page.file + ' (a)';
+  for (const variant of VARIANTS) {
+  const label = page.file + ' ' + variant.tag;
   const htmlPath = path.join(repoRoot, page.file);
   if (!fs.existsSync(htmlPath)) {
     failWithReason(label + ': a duplicate-email auth error routes to the designed already-a-partner state', 'file not found: ' + page.file);
     continue;
   }
   const html = fs.readFileSync(htmlPath, 'utf8');
-  const run = runPageScript(html);
+  const run = runPageScript(html, { dupError: variant.dupError });
   if (run.setupError) {
     failWithReason(label + ': a duplicate-email auth error routes to the designed already-a-partner state', run.setupError);
     continue;
@@ -409,6 +425,14 @@ for (const page of PAGES) {
   } catch (e) {
     failWithReason(label + ': a duplicate-email auth error routes to the designed already-a-partner state', e.message + (e.stack ? '\n' + e.stack.split('\n').slice(1, 4).join('\n') : ''));
   }
+  }
+}
+
+// gh-2281 static guard: every page consults the structured error.code.
+for (const file of ALL_PARTNER_PAGES) {
+  const html = fs.readFileSync(path.join(repoRoot, file), 'utf8');
+  ok(/signUpError\s*&&\s*signUpError\.code\s*===\s*'user_already_exists'/.test(html), file + ' (c): checks signUpError.code === \'user_already_exists\'');
+  ok(/toLowerCase\(\)\.includes\('already registered'\)/.test(html), file + ' (c): keeps the message-text fallback');
 }
 
 console.log('');
