@@ -73,6 +73,10 @@ const LEAK_PATTERNS = [
   /\balert\([^)]*err\.message/,
   /\balert\(`[^`]*\$\{\s*err\.message\s*\}/,
   /\balert\(`[^`]*\$\{\s*error\.message\s*\}/,
+  // gh-2284: a raw err.message/error.message concatenated (= or +=)
+  // straight into .textContent/.innerHTML, bypassing showFormAlert/alert
+  // entirely -- the actual surface the re-*/partner-* generic catches use.
+  /(textContent|innerHTML)\s*\+?=[^;]*(err|error)\.message/,
 ];
 for (const file of ALL_PARTNER_PAGES) {
   const html = fs.readFileSync(path.join(repoRoot, file), 'utf8');
