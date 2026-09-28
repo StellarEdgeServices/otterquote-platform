@@ -870,11 +870,12 @@ def main():
     )
     check("extract_extension_set returns None when the script declares none", neg.extract_extension_set("x = 1\n"), None)
 
-    check(
-        "extract_push_paths: NO_PUSH_TRIGGER when there is no push trigger",
-        neg.extract_push_paths("on:\n  pull_request:\n    branches: [main]\n"),
-        neg.NO_PUSH_TRIGGER,
-    )
+    # gh-1731 PR #2262 REVIEW: FAIL (comment 5857733012, must-fix 3): extract_push_paths
+    # used to look at `push` only, so a workflow with no push trigger (e.g. after
+    # gh-1731 removed it in favor of `pull_request`) always read NO_PUSH_TRIGGER --
+    # rendering CHECK 2 permanently "not applicable" for it. It now falls through to
+    # pull_request, then merge_group, before giving up. The old push-only behavior is
+    # still covered by the extract_push_paths back-compat wrapper.
     check(
         "extract_push_paths: NO_PATH_FILTER when push has no paths key",
         neg.extract_push_paths("on:\n  push:\n    branches: [main]\n"),
@@ -884,6 +885,34 @@ def main():
         "extract_push_paths: extracts the real pattern list",
         neg.extract_push_paths("on:\n  push:\n    paths:\n      - '**.html'\n      - 'js/**.js'\n"),
         ["**.html", "js/**.js"],
+    )
+    check(
+        "extract_trigger_paths: NO_PUSH_TRIGGER only when push/pull_request/merge_group are ALL absent",
+        neg.extract_trigger_paths("on:\n  schedule:\n    - cron: '0 0 * * *'\n"),
+        (None, neg.NO_PUSH_TRIGGER),
+    )
+    check(
+        "extract_trigger_paths: falls through to pull_request when there is no push trigger",
+        neg.extract_trigger_paths("on:\n  pull_request:\n    paths:\n      - '**.html'\n"),
+        ("pull_request", ["**.html"]),
+    )
+    check(
+        "extract_trigger_paths: pull_request with no paths key is NO_PATH_FILTER, not NO_PUSH_TRIGGER",
+        neg.extract_trigger_paths("on:\n  pull_request:\n    branches: [main]\n"),
+        ("pull_request", neg.NO_PATH_FILTER),
+    )
+    check(
+        "extract_trigger_paths: falls through to merge_group when neither push nor pull_request exists",
+        neg.extract_trigger_paths("on:\n  merge_group:\n    paths:\n      - 'js/**.js'\n"),
+        ("merge_group", ["js/**.js"]),
+    )
+    check(
+        "extract_trigger_paths: push wins over pull_request when both are present",
+        neg.extract_trigger_paths(
+            "on:\n  push:\n    paths:\n      - '**.html'\n"
+            "  pull_request:\n    paths:\n      - 'js/**.js'\n"
+        ),
+        ("push", ["**.html"]),
     )
 
     # Secret-name scan: a `#`-prefixed comment narrating the historical bug must
@@ -1114,6 +1143,80 @@ def main():
         )
         wfs3 = neg.find_referencing_workflows(root, "scripts/docker-scanner.py")
         check("CHECK2 structural: a Docker action's args: list IS an invocation site", wfs3, [".github/workflows/docker.yml"])
+
+    # 4. gh-1731 PR #2262 REVIEW: FAIL (comment 5857733012, must-fix 3): once a
+    #    workflow drops `push` for `pull_request`-only (the exact shape gh-1731
+    #    left schema-lint.yml/detector-negative-control.yml in), CHECK 2 must
+    #    still be ABLE to flag a real coverage gap -- not silently report
+    #    "not applicable" forever. Reproduces the real defect this gate exists to
+    #    catch (gh-1738's motivating case): a scanner declares an extension its
+    #    own workflow's trigger paths: filter does not cover.
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        write(
+            root / "scripts" / "pr-only-scanner.py",
+            DETECTOR_SOURCE + '\nSCAN_EXTENSIONS = {".ts", ".html"}\n',
+        )
+        write(root / "react-app" / "actions.ts", "export const x = 1;\n")
+        write(root / "blog" / "post.html", "<p>hi</p>\n")
+        write(
+            root / ".github" / "workflows" / "pr-only.yml",
+            "name: PROnly\n"
+            "on:\n"
+            "  pull_request:\n"
+            "    branches: [main]\n"
+            "    paths:\n"
+            "      - 'blog/**.html'\n"
+            "jobs:\n"
+            "  x:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - run: python3 scripts/pr-only-scanner.py --root .\n",
+        )
+        p_violations, p_info, p_files = neg.check_wiring(root)
+        check_true(
+            "CHECK2 post-gh1731 shape: a pull_request-only workflow is NOT reported "
+            "'not applicable' when it has a paths: filter",
+            not any("pr-only-scanner.py" in i and "not applicable" in i for i in p_info),
+        )
+        check_true(
+            "CHECK2 post-gh1731 shape: the real, uncovered .ts file IS flagged (the gate still works)",
+            any("pr-only-scanner.py" in v and "actions.ts" in v for v in p_violations),
+        )
+
+    # 5. Companion case: a pull_request-only workflow with NO paths: filter at
+    #    all fires on every PR unconditionally, so full coverage holds and PASS
+    #    is correct -- but it must say so via "pull_request trigger has no
+    #    paths: filter", not via the old, wrong "not applicable" reasoning.
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        write(
+            root / "scripts" / "pr-unfiltered-scanner.py",
+            DETECTOR_SOURCE + '\nSCAN_EXTENSIONS = {".ts"}\n',
+        )
+        write(root / "react-app" / "actions.ts", "export const x = 1;\n")
+        write(
+            root / ".github" / "workflows" / "pr-unfiltered.yml",
+            "name: PRUnfiltered\n"
+            "on:\n"
+            "  pull_request:\n"
+            "    branches: [main]\n"
+            "jobs:\n"
+            "  x:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - run: python3 scripts/pr-unfiltered-scanner.py --root .\n",
+        )
+        u_violations, u_info, u_files = neg.check_wiring(root)
+        check_true(
+            "CHECK2 post-gh1731 shape: unfiltered pull_request trigger PASSes via "
+            "'no paths: filter' (full coverage by construction), not 'not applicable'",
+            any(
+                "pr-unfiltered-scanner.py" in i and "pull_request trigger has no paths" in i
+                for i in u_info
+            ),
+        )
+        check("CHECK2 post-gh1731 shape: unfiltered pull_request trigger raises no violation", len(u_violations), 0)
 
     # NOTE: whether this fix still rediscovers instance 5 against the REAL
     # repo tree (schema-column-lint.py / schema-lint.yml) is verified as a

@@ -52,10 +52,52 @@ name: Playwright E2E Tests
 #     <=600 job-min/month across the whole repo. The `paths-ignore` below is
 #     kept because it is free, not because it pays.
 
+# gh-1731 (COST GATE), CTO RUN 43, REVISED per adversarial review (comment
+# 5857733012 on PR #2262): the `push` trigger is KEPT for `main`, and only
+# the `staging` leg of it is dropped (staging is a GITHUB_TOKEN mirror of
+# main -- see staging-mirror.yml -- and GITHUB_TOKEN pushes do not trigger
+# workflows, so that automatic mirror leg never fired a run; the last human
+# push directly to `staging` that did trigger this workflow was 2026-07-13).
+#
+# Why the push:main leg is NOT a duplicate of the pull_request run: main only
+# advances through the merge queue (`merge_group`), and this workflow has no
+# `merge_group` trigger (0 merge_group runs, ever). A `pull_request` run
+# checks `refs/pull/N/merge` against whatever `main` was at that PR's last
+# sync -- not the tree the queue actually lands, which can differ when two
+# PRs are each green alone but red together (a semantic conflict invisible to
+# either PR's own diff). The push:main run is the ONLY run in this repo that
+# tests the tree that actually reaches main for this workflow's 5 jobs
+# (Static Integrity Checks / TypeScript Check / edge-function-parity /
+# cross-table-guard / Supabase Edge Function Tests), including the repo's
+# only `tsc --noEmit` gate. Measured, 7-day census 2026-09-20..27: it caught
+# 2 merged-tree-only breakages in that single week that both PRs' own
+# pre-merge runs had passed clean --
+#   * run 36257631921 (commit d30983bc40, from PR #2189, head 17ee3ca214):
+#     Static Integrity Checks failed post-merge; PR #2189's own head had
+#     passed it.
+#   * run 36255426442 (commit 8b7c2ab5a6, from PR #2198, head bbff4db4b0):
+#     same step, same pattern; PR #2198's own head had passed it.
+# A 3rd push failure that week (run 35698564550, PR #2092) was a genuine
+# duplicate -- that PR's own run was already red -- so it doesn't count
+# toward the case for keeping this trigger, but doesn't argue against it
+# either.
+#
+# None of this workflow's jobs are a branch-protection-required context
+# (live required_status_checks.contexts on main is exactly ["Null-Byte &
+# Size Sanity Check", "5-Page Revenue-Path Smoke Check", "R-177 predicate
+# tests", "Credential Shape Sweep"] -- this workflow is in none of them), so
+# keeping push:main risks no required-gate interaction; it is the repo's
+# only backstop against a merged-tree-only breakage on these 5 checks.
+# `merge_group:` was considered as the "correct" fix (it would test the
+# actual queue tree pre-land instead of post-land) but is deliberately NOT
+# added here: this workflow's jobs are not required, so adding `merge_group`
+# would make the merge queue run the full Playwright/TS/edge-function suite
+# on every queue entry in addition to every push -- MORE minutes, not fewer,
+# for coverage this repo already gets for free from `pull_request` plus the
+# kept `push:main`. See #1731 and PR #2262 comment 5857733012.
 on:
   push:
     branches:
-      - staging
       - main
     paths-ignore:
       - '**.md'
