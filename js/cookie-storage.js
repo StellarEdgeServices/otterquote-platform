@@ -449,17 +449,39 @@
    * solved this same problem with .otterquote.com cookies (D-212); referral
    * attribution just never got the same treatment.
    *
-   * 90 days matches the attribution window the referrals table assumes.
+   * gh-2062 (CEO ruling, issue comment 5874597169): the attribution window
+   * is 30 days FROM THE PARTNER-LINK CLICK. The cookie carries the click time
+   * (oq_referral_ts); write() only starts that clock when called with
+   * { click: true } (ref*.html, on a fresh ?ref= visit, last click wins). Any
+   * other write - the auth advance block, get-started - keeps the original
+   * click time and sets Max-Age to the time REMAINING, so it can never re-arm
+   * the window. A write with no known click time does not write the cookie.
    * ───────────────────────────────────────────────────────────────────── */
   var REFERRAL_KEYS      = ['oq_referral_id', 'oq_referral_agent_id', 'oq_referral_code'];
   var REFERRAL_COOKIE    = 'oq-ref';           // one cookie, JSON payload — all three ids are short
-  var REFERRAL_MAX_AGE   = 60 * 60 * 24 * 90;  // 90 days
+  var REFERRAL_TS_KEY    = 'oq_referral_ts';   // epoch-ms of the partner-link click
+  var REFERRAL_MAX_AGE   = 60 * 60 * 24 * 30;  // 30 days, from the click
+
+  /** Click time (epoch-ms) on record: cookie first, else the localStorage
+   *  mirror. null when none (nothing armed, or a pre-gh-2062 legacy cookie). */
+  function readReferralTs() {
+    var ts = null;
+    try {
+      var raw = readCookie(REFERRAL_COOKIE);
+      if (raw) ts = Number(JSON.parse(raw)[REFERRAL_TS_KEY]);
+    } catch (e) {}
+    if (!ts || !isFinite(ts)) {
+      try { ts = Number(window.localStorage.getItem(REFERRAL_TS_KEY)); } catch (e) { ts = null; }
+    }
+    return ts && isFinite(ts) ? ts : null;
+  }
 
   window.OtterQuoteReferral = {
     /** Persist referral ids to localStorage, sessionStorage AND a
      *  .otterquote.com cookie so app.otterquote.com can read them. */
-    write: function (ids) {
+    write: function (ids, opts) {
       if (!ids) return;
+      var click = !!(opts && opts.click);
       var payload = {};
       for (var i = 0; i < REFERRAL_KEYS.length; i++) {
         var k = REFERRAL_KEYS[i];
@@ -470,8 +492,16 @@
         try { window.sessionStorage.setItem(k, String(v)); } catch (e) {}
       }
       if (!Object.keys(payload).length) return;
+      // Only a fresh partner-link click starts the clock; every other write
+      // inherits the click time already on record (or has none).
+      var ts = click ? Date.now() : readReferralTs();
+      if (ts === null) return;
+      var remaining = REFERRAL_MAX_AGE - Math.floor((Date.now() - ts) / 1000);
+      if (remaining <= 0) return;
+      payload[REFERRAL_TS_KEY] = String(ts);
+      try { window.localStorage.setItem(REFERRAL_TS_KEY, String(ts)); } catch (e) {}
       try {
-        writeCookie(REFERRAL_COOKIE, JSON.stringify(payload), REFERRAL_MAX_AGE);
+        writeCookie(REFERRAL_COOKIE, JSON.stringify(payload), remaining);
       } catch (e) {}
     },
 
@@ -479,12 +509,19 @@
      *  Returns an object with whichever of the three keys are available. */
     read: function () {
       var out = {};
+      // Past the 30-day window (belt and braces over the cookie Max-Age, and
+      // the only bound on the same-origin storage mirrors): nothing to return.
+      var clickTs = readReferralTs();
+      if (clickTs !== null && (Date.now() - clickTs) > REFERRAL_MAX_AGE * 1000) {
+        this.clear();
+        return out;
+      }
       try {
         var raw = readCookie(REFERRAL_COOKIE);
         if (raw) {
           var parsed = JSON.parse(raw);
           for (var k in parsed) {
-            if (Object.prototype.hasOwnProperty.call(parsed, k)) out[k] = parsed[k];
+            if (k !== REFERRAL_TS_KEY && Object.prototype.hasOwnProperty.call(parsed, k)) out[k] = parsed[k];
           }
         }
       } catch (e) {}
@@ -504,11 +541,13 @@
         try { window.localStorage.removeItem(REFERRAL_KEYS[i]); } catch (e) {}
         try { window.sessionStorage.removeItem(REFERRAL_KEYS[i]); } catch (e) {}
       }
+      try { window.localStorage.removeItem(REFERRAL_TS_KEY); } catch (e) {}
       try { deleteCookie(REFERRAL_COOKIE); } catch (e) {}
     },
 
     _COOKIE: REFERRAL_COOKIE,
-    _KEYS:   REFERRAL_KEYS
+    _KEYS:   REFERRAL_KEYS,
+    _MAX_AGE: REFERRAL_MAX_AGE
   };
 
   // Constants exposed for diagnostics + contract tests.

@@ -531,7 +531,26 @@ export { getCookieMaxAge as _getCookieMaxAge }; // gh-867 test hook
 
 export const REFERRAL_COOKIE = 'oq-ref';
 const REFERRAL_KEYS = ['oq_referral_id', 'oq_referral_agent_id', 'oq_referral_code'] as const;
-const REFERRAL_MAX_AGE = 60 * 60 * 24 * 90; // 90 days
+const REFERRAL_TS_KEY = 'oq_referral_ts'; // epoch-ms of the partner-link click
+// gh-2062 (CEO ruling, issue comment 5874597169): 30 days FROM THE CLICK.
+// Only writeReferralIds(ids, { click: true }) starts the clock; every other
+// write keeps the recorded click time and sets Max-Age to the time remaining.
+const REFERRAL_MAX_AGE = 60 * 60 * 24 * 30; // 30 days
+export const REFERRAL_MAX_AGE_SECONDS = REFERRAL_MAX_AGE;
+
+/** Click time (epoch-ms) on record: cookie first, else the localStorage
+ *  mirror. null when none (nothing armed, or a pre-gh-2062 legacy cookie). */
+function readReferralTs(): number | null {
+  let ts: number | null = null;
+  try {
+    const raw = readCookie(REFERRAL_COOKIE);
+    if (raw) ts = Number((JSON.parse(raw) as Record<string, unknown>)[REFERRAL_TS_KEY]);
+  } catch { /* malformed cookie */ }
+  if (!ts || !Number.isFinite(ts)) {
+    try { ts = Number(localStorage.getItem(REFERRAL_TS_KEY)); } catch { ts = null; }
+  }
+  return ts && Number.isFinite(ts) ? ts : null;
+}
 
 export type ReferralIds = Partial<Record<(typeof REFERRAL_KEYS)[number], string>>;
 
@@ -539,9 +558,20 @@ export type ReferralIds = Partial<Record<(typeof REFERRAL_KEYS)[number], string>
 export function readReferralIds(): ReferralIds {
   const out: ReferralIds = {};
   if (typeof document === 'undefined') return out;
+  // Past the 30-day window (belt and braces over the cookie Max-Age, and the
+  // only bound on the same-origin storage mirrors): nothing to return.
+  const clickTs = readReferralTs();
+  if (clickTs !== null && Date.now() - clickTs > REFERRAL_MAX_AGE * 1000) {
+    clearReferralIds();
+    return out;
+  }
   try {
     const raw = readCookie(REFERRAL_COOKIE);
-    if (raw) Object.assign(out, JSON.parse(raw) as ReferralIds);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Record<string, string>;
+      delete parsed[REFERRAL_TS_KEY];
+      Object.assign(out, parsed as ReferralIds);
+    }
   } catch { /* malformed cookie — fall through to same-origin storage */ }
   for (const key of REFERRAL_KEYS) {
     if (out[key]) continue;
@@ -566,8 +596,13 @@ export function readReferralIds(): ReferralIds {
  * attaching a stranger's attribution to the wrong referral. Every key not
  * present in this call's `ids` is now explicitly cleared from both storages
  * so post-write state always matches `ids` exactly, mirroring the cookie.
+ *
+ * gh-2062: `{ click: true }` (a fresh partner-link click) is the ONLY thing
+ * that starts the 30-day clock. Any other write keeps the click time already
+ * on record and sets Max-Age to the time remaining, so it can never re-arm the
+ * window; with no click time on record the cookie is not written at all.
  */
-export function writeReferralIds(ids: ReferralIds): void {
+export function writeReferralIds(ids: ReferralIds, opts?: { click?: boolean }): void {
   if (typeof document === 'undefined' || !ids) return;
   const payload: Record<string, string> = {};
   for (const key of REFERRAL_KEYS) {
@@ -584,7 +619,13 @@ export function writeReferralIds(ids: ReferralIds): void {
       try { sessionStorage.removeItem(key); } catch { /* storage blocked */ }
     }
   }
-  try { writeCookie(REFERRAL_COOKIE, JSON.stringify(payload), REFERRAL_MAX_AGE); } catch { /* cookie blocked */ }
+  const ts = opts?.click ? Date.now() : readReferralTs();
+  if (ts === null) return;
+  const remaining = REFERRAL_MAX_AGE - Math.floor((Date.now() - ts) / 1000);
+  if (remaining <= 0) return;
+  payload[REFERRAL_TS_KEY] = String(ts);
+  try { localStorage.setItem(REFERRAL_TS_KEY, String(ts)); } catch { /* storage blocked */ }
+  try { writeCookie(REFERRAL_COOKIE, JSON.stringify(payload), remaining); } catch { /* cookie blocked */ }
 }
 
 /** Clear attribution once it has been stamped onto a claim. */
@@ -594,5 +635,6 @@ export function clearReferralIds(): void {
     try { localStorage.removeItem(key); } catch { /* storage blocked */ }
     try { sessionStorage.removeItem(key); } catch { /* storage blocked */ }
   }
+  try { localStorage.removeItem(REFERRAL_TS_KEY); } catch { /* storage blocked */ }
   try { deleteCookie(REFERRAL_COOKIE); } catch { /* cookie blocked */ }
 }

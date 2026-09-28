@@ -223,7 +223,7 @@ describe('TradeSelectorPage referral cookie — gh-2062 (money-path: both direct
   }
 
   it('POSITIVE CONTROL: a live, unconsumed referral still attributes correctly', async () => {
-    writeReferralIds(PARTNER_A_REFERRAL);
+    writeReferralIds(PARTNER_A_REFERRAL, { click: true });
 
     const payload = await completeCashSingleTradeWalk();
 
@@ -233,7 +233,7 @@ describe('TradeSelectorPage referral cookie — gh-2062 (money-path: both direct
   });
 
   it('gh-2062 FIX: a CONSUMED referral is cleared and does not resurface', async () => {
-    writeReferralIds(PARTNER_A_REFERRAL);
+    writeReferralIds(PARTNER_A_REFERRAL, { click: true });
 
     const payload = await completeCashSingleTradeWalk();
     // Sanity: this pass did attribute to partner A (same assertion as the
@@ -262,7 +262,7 @@ describe('TradeSelectorPage referral cookie — gh-2062 (money-path: both direct
   });
 
   it('ROUND 2 FIX: a claim write that returns an error (RLS/constraint shape, NOT a thrown exception) does NOT clear a live referral', async () => {
-    writeReferralIds(PARTNER_A_REFERRAL);
+    writeReferralIds(PARTNER_A_REFERRAL, { click: true });
 
     // Supabase's real failure shape for an RLS denial or constraint
     // violation: the promise resolves normally, data is null, error is set.
@@ -294,7 +294,7 @@ describe('TradeSelectorPage referral cookie — gh-2062 (money-path: both direct
   });
 
   it('ROUND 3 sanity: a real (row-affecting) UPDATE still clears a consumed referral (update branch, positive)', async () => {
-    writeReferralIds(PARTNER_A_REFERRAL);
+    writeReferralIds(PARTNER_A_REFERRAL, { click: true });
     // .mockImplementation (not Once): the component's own mount-time
     // "returning user already has a claim" guard (a separate maybeSingle()
     // call, harmless no-op redirect under our window.location mock) AND
@@ -315,7 +315,7 @@ describe('TradeSelectorPage referral cookie — gh-2062 (money-path: both direct
   });
 
   it('ROUND 3 FIX: an UPDATE that matches ZERO rows (RLS-filtered, error: null) does NOT clear a live referral', async () => {
-    writeReferralIds(PARTNER_A_REFERRAL);
+    writeReferralIds(PARTNER_A_REFERRAL, { click: true });
     claimsMaybeSingleMock.mockImplementation(() =>
       Promise.resolve({ data: { id: 'existing-claim-id' }, error: null }),
     );
