@@ -29,6 +29,7 @@ import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import { supabase } from '@/lib/supabase';
+import { callAuthUniform } from '@/lib/auth-uniform';
 import { CONTRACTOR_LOGIN_COPY as C } from './copy';
 import {
   AUTH_CALLBACK_URL,
@@ -110,11 +111,9 @@ export default function ContractorLoginPage() {
     try {
       // cs_auth_role drives /auth-callback's contractor-table-first routing.
       localStorage.setItem('cs_auth_role', 'contractor');
-      const { error: otpError } = await supabase.auth.signInWithOtp({
-        email: trimmed,
-        options: { emailRedirectTo: AUTH_CALLBACK_URL },
-      });
-      if (otpError) throw otpError;
+      // gh-1883 [SECURITY]: routed through auth-uniform, not
+      // supabase.auth.signInWithOtp() directly — see lib/auth-uniform.ts.
+      await callAuthUniform('otp', trimmed, AUTH_CALLBACK_URL);
 
       setSentToEmail(trimmed);
       setMagicLinkSent(true);
@@ -132,11 +131,9 @@ export default function ContractorLoginPage() {
     e.preventDefault();
     if (!sentToEmail) return;
     try {
-      const { error: otpError } = await supabase.auth.signInWithOtp({
-        email: sentToEmail,
-        options: { emailRedirectTo: AUTH_CALLBACK_URL },
-      });
-      if (otpError) throw otpError;
+      // gh-1883 [SECURITY]: routed through auth-uniform, not
+      // supabase.auth.signInWithOtp() directly — see lib/auth-uniform.ts.
+      await callAuthUniform('otp', sentToEmail, AUTH_CALLBACK_URL);
       alert(C.resendAlert);
     } catch {
       alert(C.resendErrorAlert);
