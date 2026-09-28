@@ -35,7 +35,7 @@ import {
 import { PlatformSettingMissingError, resolveRequiredPriceCents } from "./price-setting.ts";
 import { attachVariantMetadata } from "./variant-metadata.ts";
 import { buildStandardCreateForm, standardIdempotencyKey } from "./standard-create-form.ts";
-import { evaluateMeasurementUpgradeGate } from "./measurement-upgrade-gate.ts";
+import { evaluateMeasurementUpgradeGate, UPGRADE_PRODUCT_CODE } from "./measurement-upgrade-gate.ts";
 import { detectGpcSignal, type OptOutStore, recordGpcOptOut } from "./ad-sharing-opt-out.ts";
 import { AMBIGUOUS_OUTCOME_CODE, fetchStripeWithTimeout } from "./stripe-fetch.ts";
 import { AmbiguousChargeOutcomeError, runOffSessionPlatformFeeCharge } from "./off-session-charge.ts";
@@ -331,7 +331,27 @@ serve(async (req) => {
         .limit(1)
         .maybeSingle();
 
-      const gate = evaluateMeasurementUpgradeGate(upgradeClaimRow, basicOrderRow?.status ?? null);
+      // D-317 cl. 4 (#1411 comment 5856964558, "APPROVE TO ALL"): a claim
+      // already flipped to Shape B does not wave every later contractor
+      // through free -- only THIS contractor buying it a second time is
+      // refused. Scoped to contractor_id, not claim-wide, unlike the
+      // isFirstBuyer check on the create-measurement-order recording side
+      // (which stays claim-wide -- the vendor-credit bookkeeping is a
+      // one-time-per-claim entry, not a per-contractor one).
+      const { data: priorUpgradeForThisContractor } = await supabase
+        .from("hover_orders")
+        .select("id")
+        .eq("claim_id", metadata.claim_id)
+        .eq("product_code", UPGRADE_PRODUCT_CODE)
+        .eq("requested_by_contractor_id", contractor_id)
+        .limit(1)
+        .maybeSingle();
+
+      const gate = evaluateMeasurementUpgradeGate(
+        upgradeClaimRow,
+        basicOrderRow?.status ?? null,
+        !!priorUpgradeForThisContractor,
+      );
       if (!gate.allow) {
         if (gate.code === "TEST_CLAIM_CHARGE_REFUSED") {
           const guardMessage = describeGuardVerdict(

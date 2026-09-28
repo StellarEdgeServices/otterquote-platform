@@ -58,16 +58,39 @@ Deno.test("a TEST claim WITH the #1467 marker is still gated by shape/basic-repo
   assertEquals(verdict, { allow: true, amountCents: 5500, squares: 55 });
 });
 
-Deno.test("already-detailed no-mint: measurement_shape === 'full' refuses regardless of everything else", () => {
+Deno.test("already-purchased no-mint: measurement_shape === 'full' AND this contractor already bought it refuses", () => {
   const verdict = evaluateMeasurementUpgradeGate(
     { ...REAL_CLAIM, measurement_shape: "full", hover_measurements: { squares: 30 } },
     "completed",
+    true, // contractorAlreadyPurchased
   );
   assertEquals(verdict.allow, false);
   if (!verdict.allow) {
     assertEquals(verdict.status, 409);
-    assertEquals(verdict.code, "ALREADY_DETAILED");
+    assertEquals(verdict.code, "ALREADY_PURCHASED");
   }
+});
+
+// [gh-1411 D-317 cl. 4, #1411 comment 5856964558 "APPROVE TO ALL"] A claim
+// already flipped to Shape B does NOT wave a DIFFERENT (later) contractor
+// through free -- they pay the same tier price. Only a repeat purchase by
+// the SAME contractor (contractorAlreadyPurchased=true, tested above) is
+// refused. This is the behaviour PR #2236 deliberately left NAMED-BLOCKED
+// (comment 5850724836) pending this Dustin ruling.
+Deno.test("later-contractor-pays (D-317 cl. 4): measurement_shape === 'full' but THIS contractor has not purchased -> allowed, charged full tier price", () => {
+  const verdictUnder = evaluateMeasurementUpgradeGate(
+    { ...REAL_CLAIM, measurement_shape: "full", hover_measurements: { squares: 42 } },
+    "completed",
+    false, // this contractor has not purchased it yet
+  );
+  assertEquals(verdictUnder, { allow: true, amountCents: 2500, squares: 42 });
+
+  const verdictOver = evaluateMeasurementUpgradeGate(
+    { ...REAL_CLAIM, measurement_shape: "full", hover_measurements: { squares: 60 } },
+    "completed",
+    false,
+  );
+  assertEquals(verdictOver, { allow: true, amountCents: 5500, squares: 60 });
 });
 
 Deno.test("#1410 tolerance: measurement_shape absent, null, or the column missing entirely all resolve to 'basic' (purchase proceeds)", () => {
