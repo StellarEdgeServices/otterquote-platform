@@ -1207,6 +1207,15 @@ function confirmAgentType(defaultType) {
 async function handleSignup(e) {
   e.preventDefault();
 
+  // gh-2282: hard gate on the agreement checkbox in JS as well (not only the native
+  // `required` attribute), same guard and wording as partner-inspectors.html -- a
+  // partner row / pending-registration marker must never exist without it.
+  const agreeToTermsBox = document.getElementById('agreeToTerms');
+  if (!agreeToTermsBox || !agreeToTermsBox.checked) {
+    alert('Please agree to the Partner Terms to continue.');
+    return;
+  }
+
   // gh-865: explicit user confirmation — this, not the page default, is
   // what gets written to referral_agents.agent_type.
   const agentType = await confirmAgentType('other');

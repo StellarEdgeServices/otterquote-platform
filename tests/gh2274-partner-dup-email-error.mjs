@@ -527,6 +527,14 @@ for (const page of PAGES) {
     ok(run.rpcCalls.filter((c) => c.name === 'register_partner').length === 0, page.file + ' (k): an expired marker does not trigger register_partner');
     ok(/already/i.test(surfacedOf(run, page)), page.file + ' (k): the duplicate message is shown -- got ' + JSON.stringify(surfacedOf(run, page)));
   } catch (e) { failWithReason(page.file + ' (k)', e.message); }
+  // (l) the marker only ever exists AFTER the page's terms checkbox: unticked terms -> no signUp, no register_partner, no marker.
+  run = runPageScript(html, { signUp: 'ok' });
+  if (run.setupError) { failWithReason(page.file + ' (l)', run.setupError); continue; }
+  try {
+    const noTerms = Object.fromEntries(Object.entries(page.fields).map(([k, v]) => [k, typeof v === 'boolean' ? false : v]));
+    await submitForm(run, page.formId, noTerms, { hasConfirmPopup: !!page.hasConfirmPopup });
+    ok(run.callOrder.length === 0 && !run.lsStore.has(PENDING_KEY), page.file + ' (l): with the terms checkbox unticked nothing is called and no pending marker is written -- got ' + JSON.stringify(run.callOrder));
+  } catch (e) { failWithReason(page.file + ' (l)', e.message); }
 }
 
 // gh-2281 static guard: every page consults the structured error.code.

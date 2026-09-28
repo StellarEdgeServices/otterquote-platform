@@ -48,7 +48,7 @@ function makeEl(id) {
     addEventListener(t, f) { (el._l[t] = el._l[t] || []).push(f); } };
   return el;
 }
-async function run({ marker, claimError = false, rpcResult = { error: null }, email = OWN, form = null }) {
+async function run({ marker, claimError = false, rpcResult = { error: null }, email = OWN, clickRetry = false }) {
   const els = new Map();
   const doc = { getElementById(id) { if (!els.has(id)) els.set(id, makeEl(id)); return els.get(id); }, createElement() { return makeEl('opt'); } };
   const ls = new Map(); if (marker !== undefined) ls.set(KEY, typeof marker === 'string' ? marker : JSON.stringify(marker));
@@ -56,7 +56,7 @@ async function run({ marker, claimError = false, rpcResult = { error: null }, em
   const rpcCalls = []; let reloads = 0;
   const sb = { rpc: async (name, params) => { rpcCalls.push({ name, params }); return rpcResult; } };
   const win = { location: { reload() { reloads++; } }, localStorage, Auth: { isTestEmail: () => false },
-    AgentTypes: { CHOOSER_LABELS: { re_agent: 'Real Estate Agent', insurance_agent: 'Insurance Agent', home_inspector: 'Home Inspector', adjuster: 'Adjuster', other: 'Other' } } };
+    AgentTypes: { CHOOSER_LABELS: {} } };
   win.window = win;
   const ctx = { window: win, Auth: win.Auth, AgentTypes: win.AgentTypes, document: doc, localStorage, sb, currentUser: { id: 'u1', email }, console: { error() {}, log() {} }, JSON, Date, String, Promise };
   vm.createContext(ctx);
@@ -65,12 +65,8 @@ async function run({ marker, claimError = false, rpcResult = { error: null }, em
   vm.runInContext(beginSrc + '\n' + showSrc + '\n;this.__show = showNoPartnerState;', ctx);
   ctx.__show(claimError ? { message: 'claim failed' } : null);
   for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0));
-  if (form) {
-    doc.getElementById('partnerFinishType').value = form.agentType;
-    doc.getElementById('partnerFinishFirst').value = form.first;
-    doc.getElementById('partnerFinishLast').value = form.last;
-    doc.getElementById('partnerFinishPhone').value = form.phone || '';
-    (doc.getElementById('partnerFinishForm')._l.submit || []).forEach((f) => f({ preventDefault() {} }));
+  if (clickRetry) {
+    (doc.getElementById('partnerFinishRetry')._l.click || []).forEach((f) => f({}));
     for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0));
   }
   return { rpcCalls, reloads, ls, doc };
@@ -83,21 +79,23 @@ if (showSrc && beginSrc && lib) {
   ok(r.rpcCalls.length === 1 && r.rpcCalls[0].name === 'register_partner', '(1) a valid pending marker triggers register_partner once');
   ok(r.rpcCalls[0] && r.rpcCalls[0].params.p_email === OWN && r.rpcCalls[0].params.p_agent_type === 're_agent' && r.rpcCalls[0].params.p_first_name === 'Jane' && r.rpcCalls[0].params.p_company === 'Test Realty', '(1) it uses the signed-in email and the marker name/type/company');
   ok(r.reloads === 1 && !r.ls.has(KEY), '(1) the dashboard reloads and the marker is cleared');
-  // 2. no marker: minimal form, nothing called until submit; submit registers OWN email.
+  // 2. no marker: NEVER registers (no terms checkbox was ticked); sends the visitor to the partner signup page.
   r = await run({});
-  ok(r.rpcCalls.length === 0 && r.doc.getElementById('partnerFinishForm').style.display === 'block', '(2) no marker: the minimal form is shown and no RPC runs');
-  r = await run({ form: { agentType: 'insurance_agent', first: 'Sam', last: 'Rivera', phone: '3175550000' } });
-  ok(r.rpcCalls.length === 1 && r.rpcCalls[0].params.p_email === OWN && r.rpcCalls[0].params.p_agent_type === 'insurance_agent' && r.rpcCalls[0].params.p_first_name === 'Sam' && r.reloads === 1, '(2) submitting the form registers the signed-in email with the chosen type/name, then reloads');
+  ok(r.rpcCalls.length === 0 && r.reloads === 0, '(2) no marker: register_partner is never called and the page does not reload');
+  ok(r.doc.getElementById('partnerFinishSignup').style.display === 'inline-block' && /partner-re\.html/.test(html.match(/id="partnerFinishSignup"[^>]*>|<a href="[^"]*"[^>]*id="partnerFinishSignup"[^>]*>/)[0]), '(2) no marker: a "Go to Partner Signup" link to the partner signup page is shown');
+  ok(!/id="partnerFinishForm"|partnerFinishFirst/.test(html), '(2) the registration form is gone from the dashboard');
   // 3. marker for another email, 4. expired marker, malformed marker: not used.
   r = await run({ marker: { ...good(), email: 'someone-else@example.invalid' } });
-  ok(r.rpcCalls.length === 0 && r.doc.getElementById('partnerFinishForm').style.display === 'block', '(3) a marker for a different email is ignored (form shown, no RPC)');
+  ok(r.rpcCalls.length === 0 && r.doc.getElementById('partnerFinishSignup').style.display === 'inline-block', '(3) a marker for a different email is ignored (signup link shown, no RPC)');
   r = await run({ marker: { ...good(), ts: Date.now() - 8 * 24 * 60 * 60 * 1000 } });
-  ok(r.rpcCalls.length === 0 && !r.ls.has(KEY), '(4) an expired (8 day) marker is ignored and removed');
+  ok(r.rpcCalls.length === 0 && !r.ls.has(KEY) && r.doc.getElementById('partnerFinishSignup').style.display === 'inline-block', '(4) an expired (8 day) marker is ignored, removed, and the signup link is shown');
   r = await run({ marker: '{not json' });
   ok(r.rpcCalls.length === 0, '(4) a malformed marker is ignored');
   // 5. RPC failure: marker kept, error shown, no reload, form available for retry.
   r = await run({ marker: good(), rpcResult: { error: { message: 'rate_limited' } } });
-  ok(r.rpcCalls.length === 1 && r.reloads === 0 && r.ls.has(KEY) && r.doc.getElementById('partnerFinishForm').style.display === 'block' && /support@otterquote\.com/.test(r.doc.getElementById('partnerFinishStatus').textContent), '(5) a rate_limited failure keeps the marker, shows the error and the retry form, does not reload');
+  ok(r.rpcCalls.length === 1 && r.reloads === 0 && r.ls.has(KEY) && r.doc.getElementById('partnerFinishRetry').style.display === 'inline-block' && /support@otterquote\.com/.test(r.doc.getElementById('partnerFinishStatus').textContent), '(5) a rate_limited failure keeps the marker, shows the error and a Try Again button, does not reload');
+  r = await run({ marker: good(), rpcResult: { error: { message: 'rate_limited' } }, clickRetry: true });
+  ok(r.rpcCalls.length === 2, '(5) Try Again calls register_partner again');
   // 6. partner_exists: a row is already there -> reload so init() claims it.
   r = await run({ marker: good(), rpcResult: { error: { message: 'partner_exists' } } });
   ok(r.reloads === 1 && !r.ls.has(KEY), '(6) partner_exists reloads (the dashboard claim step links the row) and clears the marker');
