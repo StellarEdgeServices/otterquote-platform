@@ -384,9 +384,13 @@ def _commit_all(cwd, msg):
 
 def _write_baseline(root: Path, applied_versions):
     """Writes a minimal supabase/migrations-reconciliation-baseline.json
-    with the given applied_versions list -- load_applied_versions() reads
-    this straight off disk (the checked-out working tree), not from git
-    history, so it does not need to be committed for the test to see it."""
+    with the given applied_versions list. load_applied_versions() now reads
+    this from a git REF (the `base` commit passed in), not off disk -- see
+    its docstring (CTO RUN 45 review, comment 5868991987) -- so callers
+    MUST commit this write (via _commit_all) at whichever ref they intend
+    load_applied_versions() to read it from before that ref is used as
+    `base`. A write left uncommitted, or committed only at `head`, is
+    invisible to load_applied_versions(root, base)."""
     (root / "supabase").mkdir(parents=True, exist_ok=True)
     (root / "supabase" / "migrations-reconciliation-baseline.json").write_text(
         _json.dumps({"applied_versions": list(applied_versions)}), encoding="utf-8"
@@ -564,7 +568,7 @@ with _tempfile.TemporaryDirectory(prefix="ratchet-rename-p1-") as _tmp_p1:
     _head_p1 = _commit_all(_root_p1, "P1: git mv to a later, never-applied version")
 
     _entries_p1 = ratchet.changed_migration_files(
-        _root_p1, _base_p1, _head_p1, ratchet.load_applied_versions(_root_p1)
+        _root_p1, _base_p1, _head_p1, ratchet.load_applied_versions(_root_p1, _base_p1)
     )
     check_true(
         "P1: renaming to a later, never-applied version reports old_path=None "
@@ -621,7 +625,7 @@ with _tempfile.TemporaryDirectory(prefix="ratchet-rename-p2-") as _tmp_p2:
     )
 
     _entries_p2 = ratchet.changed_migration_files(
-        _root_p2, _base_p2, _head_p2, ratchet.load_applied_versions(_root_p2)
+        _root_p2, _base_p2, _head_p2, ratchet.load_applied_versions(_root_p2, _base_p2)
     )
     check_true(
         "P2: git -M pairs the new file with the deleted one by similarity, "
@@ -668,7 +672,7 @@ with _tempfile.TemporaryDirectory(prefix="ratchet-rename-p7-") as _tmp_p7:
     )
 
     _entries_p7 = ratchet.changed_migration_files(
-        _root_p7, _base_p7, _head_p7, ratchet.load_applied_versions(_root_p7)
+        _root_p7, _base_p7, _head_p7, ratchet.load_applied_versions(_root_p7, _base_p7)
     )
     # Two entries come back: the R100-paired add (c.sql, old_path decided by
     # the version-safety check below) and the plain delete of b.sql (kept
@@ -692,6 +696,78 @@ with _tempfile.TemporaryDirectory(prefix="ratchet-rename-p7-") as _tmp_p7:
         "under a version it never ran under before, is flagged",
         len(_hard_p7) == 1 and _hard_p7[0].rule == "grant-to-disallowed-role",
     )
+
+# ---------------------------------------------------------------------------
+# Layer 3c: CTO RUN 45 fresh-context review (comment 5868991987) -- a PR
+# cannot approve its own rename by editing the baseline JSON in the same
+# head. load_applied_versions() must read applied_versions from `base`,
+# never from the PR's own working tree / head commit.
+# ---------------------------------------------------------------------------
+print()
+print("Layer 3c: CTO RUN 45 self-approving-baseline negative control (comment 5868991987)")
+
+with _tempfile.TemporaryDirectory(prefix="ratchet-rename-p8-") as _tmp_p8:
+    _root_p8 = Path(_tmp_p8)
+    _init_repo(_root_p8)
+    # base: the OLD version is live with an anon GRANT; the baseline does
+    # NOT (yet) list the later version this PR is about to rename onto.
+    _write_baseline(_root_p8, ["20250101000000"])
+    _mig_p8 = _root_p8 / "supabase" / "migrations"
+    _mig_p8.mkdir(parents=True)
+    _P8_SQL = "BEGIN;\n\nGRANT SELECT ON public.secrets TO anon;\n\nCOMMIT;\n"
+    _old_p8 = _mig_p8 / "20250101000000_a.sql"
+    _old_p8.write_text(_P8_SQL, encoding="utf-8")
+    _base_p8 = _commit_all(_root_p8, "base -- baseline does not list 20261001000000")
+
+    # head, ONE commit: git mv to a later, never-applied version AND append
+    # that same version to the baseline JSON -- the self-approval this
+    # review reproduced. If load_applied_versions() read this off disk /
+    # the PR's own head, the rename would read as "already live".
+    _new_p8 = _mig_p8 / "20261001000000_a.sql"
+    _git(["mv", _old_p8.name, _new_p8.name], _mig_p8)
+    _write_baseline(_root_p8, ["20250101000000", "20261001000000"])
+    _head_p8 = _commit_all(
+        _root_p8, "P8: rename to a never-applied version + self-approve via baseline edit"
+    )
+
+    check_true(
+        "P8: applied_versions read from `base` does NOT include the version "
+        "this head's own commit added to the baseline",
+        "20261001000000" not in ratchet.load_applied_versions(_root_p8, _base_p8),
+    )
+    _findings_p8, _pn_p8, _files_p8, _bypass_p8 = ratchet.run_diff_mode(
+        _root_p8, _base_p8, _head_p8, []
+    )
+    _hard_p8 = [f for f in _findings_p8 if f.severity == "FAIL"]
+    check_true(
+        "P8: a PR cannot approve its own rename by editing the baseline in "
+        "the same head -- reading applied_versions from `base` still flags "
+        "the carried-over GRANT (GATE: FAIL), not waved through as PASS",
+        len(_hard_p8) == 1 and _hard_p8[0].rule == "grant-to-disallowed-role",
+    )
+    # Positive control: this is really testing the base-vs-head distinction,
+    # not something else broken -- when the target version is ALREADY in
+    # the baseline AT base (Layer 3's existing "case A2" shape, no
+    # self-approval involved), the identical rename is 0 findings.
+    with _tempfile.TemporaryDirectory(prefix="ratchet-rename-p8ctrl-") as _tmp_p8c:
+        _root_p8c = Path(_tmp_p8c)
+        _init_repo(_root_p8c)
+        _write_baseline(_root_p8c, ["20250101000000", "20261001000000"])
+        _mig_p8c = _root_p8c / "supabase" / "migrations"
+        _mig_p8c.mkdir(parents=True)
+        _old_p8c = _mig_p8c / "20250101000000_a.sql"
+        _old_p8c.write_text(_P8_SQL, encoding="utf-8")
+        _base_p8c = _commit_all(_root_p8c, "base -- baseline already lists 20261001000000")
+        _git(["mv", _old_p8c.name, "20261001000000_a.sql"], _mig_p8c)
+        _head_p8c = _commit_all(_root_p8c, "P8 control: rename onto an already-applied-at-base version")
+        _findings_p8c, _pn_p8c, _files_p8c, _bypass_p8c = ratchet.run_diff_mode(
+            _root_p8c, _base_p8c, _head_p8c, []
+        )
+        check_true(
+            "P8 control: the same rename with the target version ALREADY in "
+            "the baseline AT BASE (no self-approval) is 0 findings",
+            len([f for f in _findings_p8c if f.severity == "FAIL"]) == 0,
+        )
 
 
 print()

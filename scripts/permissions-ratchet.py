@@ -908,21 +908,43 @@ def _migration_version(path_rel: str):
     return m.group(1) if m else None
 
 
-def load_applied_versions(root: Path):
+def load_applied_versions(root: Path, base: str):
     """Reads `applied_versions` out of
     supabase/migrations-reconciliation-baseline.json (gh-1438's ratchet
-    baseline -- see that file's own `_purpose` field) and returns it as a
-    set of version-prefix strings. Returns an EMPTY set -- never raises --
-    if the file is missing, unreadable, or malformed, which is the
-    fail-closed direction for changed_migration_files()'s rename check
-    below: no baseline data means no rename gets the "already-applied
-    ledger version" pass, so an unresolvable rename falls through to being
-    treated as brand-new, exactly like main's pre-fix behaviour, rather
-    than silently trusting an absent or corrupt manifest."""
-    path = root / RECONCILIATION_BASELINE_REL
+    baseline -- see that file's own `_purpose` field) AT THE `base` REF --
+    never off disk / the PR's own working tree -- and returns it as a set
+    of version-prefix strings.
+
+    CTO RUN 45 fresh-context review (comment 5868991987) on the rename-
+    safety fix above: reading the baseline from disk means CI, which checks
+    out the PR head (`--root .`), hands this function the PR's OWN copy of
+    the baseline. A PR can therefore rename a migration to an unapplied
+    version AND, in the same commit, append that version to
+    `applied_versions` in the baseline JSON -- the rename-safety check then
+    reads it as "already live" and waves the carried-over GRANT through,
+    exactly the fail-open shape rule (b) exists to prevent, just reached
+    through the manifest instead of git history. Nothing else in this tree
+    checks that list against the real ledger; migrations-reconciliation-
+    check.py only compares the tree against the baseline, so it passes too.
+
+    Reading from `base` (the PR's merge-base / target branch tip, not its
+    head) closes this: a PR cannot rewrite history that already landed on
+    `base`, so it cannot manufacture its own "already applied" entry for a
+    version that only IT introduces.
+
+    Returns an EMPTY set -- never raises -- if the baseline is missing at
+    `base`, or unreadable, or malformed, which is the fail-closed direction
+    for changed_migration_files()'s rename check below: no baseline data
+    means no rename gets the "already-applied ledger version" pass, so an
+    unresolvable rename falls through to being treated as brand-new,
+    exactly like main's pre-fix behaviour, rather than silently trusting an
+    absent or corrupt manifest."""
+    text = git_show(root, base, RECONCILIATION_BASELINE_REL)
+    if text is None:
+        return set()
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+        data = json.loads(text)
+    except ValueError:
         return set()
     versions = data.get("applied_versions")
     if not isinstance(versions, list):
@@ -971,10 +993,12 @@ def changed_migration_files(root: Path, base: str, head: str, applied_versions=N
           run once, unchanged) is still the one that runs; or
       (b) the NEW path's version prefix is already recorded as applied in
           `applied_versions` (supabase/migrations-reconciliation-baseline
-          .json) -- PR #2244's real case, renaming a file to its actual,
-          already-applied ledger version, which the Supabase CLI will
-          never re-run because `schema_migrations` already has that
-          version.
+          .json, read from the `base` commit -- see load_applied_versions()
+          -- never from the PR's own working tree or head, so a PR cannot
+          manufacture its own "already applied" entry) -- PR #2244's real
+          case, renaming a file to its actual, already-applied ledger
+          version, which the Supabase CLI will never re-run because
+          `schema_migrations` already has that version.
     Any other rename -- most dangerously one that changes the version
     prefix to something NOT already applied -- gets `old_path=None`, i.e.
     is treated as a BRAND-NEW file exactly like main's original,
@@ -1097,7 +1121,7 @@ def apply_bypass(findings, labels):
 
 
 def run_diff_mode(root: Path, base: str, head: str, labels):
-    applied_versions = load_applied_versions(root)
+    applied_versions = load_applied_versions(root, base)
     entries = changed_migration_files(root, base, head, applied_versions)
     all_findings = []
     all_pass_notes = []
