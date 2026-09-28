@@ -6,7 +6,12 @@ import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import { buildEmail, reminderDigestBodyHtml, reminderDigestBodyText } from "./templates.ts";
 import { POSTAL_ADDRESS } from "./email-footer.ts";
 
-const ROW = { partner_name: "Acme Roofing", amount: 125.5, payout_type: "commission_referral", created_at: "2026-09-01T00:00:00Z" };
+// created_at is deliberately null (renders "—", TZ-independent) -- an
+// absolute UTC timestamp here made the golden below flaky across the dev
+// sandbox's local TZ vs. the CI runner's TZ (the sandbox rendered "Sep 1"
+// for 2026-09-01T00:00:00Z, CI rendered "Aug 31" -- toLocaleDateString()
+// is local-TZ-sensitive, which a pinned golden must never depend on).
+const ROW = { partner_name: "Acme Roofing", amount: 125.5, payout_type: "commission_referral", created_at: null as string | null };
 const URL = "https://otterquote.com/admin-payouts.html";
 
 Deno.test("gh-1824 process-payout-reminders: reminderDigestBodyText includes the D-237 postal address", () => {
@@ -76,7 +81,7 @@ const GOLDEN_HTML = `<!DOCTYPE html>
   <td style="padding:10px 12px;border-bottom:1px solid #E2E8F0;font-size:0.875rem;color:#0B1929;">Acme Roofing</td>
   <td style="padding:10px 12px;border-bottom:1px solid #E2E8F0;font-size:0.875rem;color:#64748B;">Referral</td>
   <td style="padding:10px 12px;border-bottom:1px solid #E2E8F0;font-size:0.875rem;font-weight:600;color:#0B1929;">$125.50</td>
-  <td style="padding:10px 12px;border-bottom:1px solid #E2E8F0;font-size:0.875rem;color:#EF4444;">Aug 31</td>
+  <td style="padding:10px 12px;border-bottom:1px solid #E2E8F0;font-size:0.875rem;color:#EF4444;">—</td>
 </tr></tbody>
 </table>
 
