@@ -1635,7 +1635,8 @@
                 try {
                     signUpResult = await Auth.signUpWithPassword(email, generatedPassword, agentType);
                 } catch (signUpError) {
-                    if ((signUpError.message || '').toLowerCase().includes('already registered')) {
+                    // gh-2281: match Supabase's structured error code first; the English message text is kept only as a fallback for SDK versions that don't set .code.
+                    if ((signUpError && signUpError.code === 'user_already_exists') || (signUpError.message || '').toLowerCase().includes('already registered')) {
                         showFormAlert("You're already a partner — sign in at the Partner Login page.");
                         return;
                     }
