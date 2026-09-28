@@ -1,0 +1,49 @@
+name: Static Partner App Mobile Tests
+
+# gh-2295 -- the mobile-install branch on partner-app.html (isMobileDevice / detectMobileOs / isInAppBrowser /
+# applyMobileInstallBranch) was proven only by node vm-harness tests that no workflow ran (REVIEW: FAIL 5874476509
+# on #2297: "The new test is not run by any CI workflow... The green CI proves nothing about this change."). This
+# runs it. A dedicated file rather than an addition to static-pixel-gate-tests.yml, since #2298 adds its own test
+# to that file in parallel and a shared file would conflict.
+#
+# `pull_request` (never `pull_request_target`), no secrets, read-only token: it needs none. Path-filtered to the
+# files that can change the verdict, so it costs nothing on unrelated PRs.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'partner-app.html'
+      - 'tests/gh2295-partner-app-mobile-install-branch.mjs'
+      - '.github/workflows/static-partner-app-mobile-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'partner-app.html'
+      - 'tests/gh2295-partner-app-mobile-install-branch.mjs'
+      - '.github/workflows/static-partner-app-mobile-tests.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-partner-app-mobile-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  static-partner-app-mobile-tests:
+    name: Partner app mobile install branch (node vm harness)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Mobile install branch -- UA/viewport detection, iPadOS desktop-mode UA, in-app-browser hints, negative controls (gh2295)
+        run: node tests/gh2295-partner-app-mobile-install-branch.mjs
