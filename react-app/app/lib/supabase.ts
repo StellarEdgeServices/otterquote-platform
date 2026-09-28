@@ -39,6 +39,11 @@ export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKe
     persistSession: true,
     storageKey: OTTERQUOTE_AUTH_STORAGE_KEY,
     storage: otterquoteCookieStorage,
+    // gh-1980 PR 3/3: PKCE. OAuth/email links now return ?code= (exchanged against
+    // the code-verifier this browser holds), not a #access_token fragment. The
+    // verifier is an auxiliary storage key (cookie-storage.ts isAuxiliaryStorageKey)
+    // kept in origin-scoped localStorage, never on the shared session cookies.
+    flowType: 'pkce',
     // Avoid the supabase-js navigator.locks deadlock that froze getSession() and
     // the contractor dashboard (D-211 2026-06-16, true root of Blocker 1).
     lock: nonDeadlockingLock,

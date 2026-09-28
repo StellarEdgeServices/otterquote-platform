@@ -54,6 +54,7 @@ import { supabase } from '@/lib/supabase';
 import { readReferralIds, writeReferralIds } from '@/lib/cookie-storage';
 import { linkPendingLeadOnce } from '@/lib/lead-capture';
 import { maybeFireGoogleSignUp, readReferralSourceFromCsSignup } from './signup-analytics';
+import { rescueImplicitFragment } from './implicit-fragment';
 import { adoptFirstTouchFromParam, recordFirstTouch } from '@/lib/attribution';
 
 // ─── Name recovery for the Google path (gh-1901 Option 2) ────────────────────
@@ -434,8 +435,21 @@ export default function AuthCallbackPage() {
         } else if (!hasTokens) {
           // No tokens in URL + no existing session = something failed
           await routeSession(null);
+        } else {
+          // gh-1980 PR 3/3: INITIAL_SESSION is emitted only AFTER supabase-js's
+          // init (including any ?code= exchange) has finished, so a null session
+          // here means the exchange did not yield one (cross-device link with no
+          // code-verifier in this browser, expired/used code, or a legacy
+          // implicit fragment the pkce client refused). Try the legacy fragment;
+          // otherwise show the error now instead of idling to the 30 s timer.
+          // Deferred a tick: setSession() must not run inside this callback
+          // (it is invoked under supabase-js's auth lock).
+          setTimeout(() => {
+            void rescueImplicitFragment(supabase).then((ok) => {
+              if (!ok) void routeSession(null);
+            });
+          }, 0);
         }
-        // else: tokens present, PKCE exchange still in progress — wait for SIGNED_IN
       }
     });
 

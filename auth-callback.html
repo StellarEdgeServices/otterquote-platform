@@ -320,6 +320,33 @@
     window.location.href = '/trade-selector.html';
   }
 
+  // gh-1980 PR 3/3: the client is flowType:'pkce'. supabase-js (2.116.0,
+  // GoTrueClient._getSessionFromURL) REJECTS a legacy implicit-flow URL
+  // (#access_token=...&refresh_token=...) under pkce and leaves the fragment in
+  // place. Auth links emailed BEFORE this flip (and any link auth-uniform still
+  // issues in implicit form) carry exactly that fragment, so recover the session
+  // from it by hand rather than hard-failing. Resolves true only if a session
+  // was established (setSession then fires SIGNED_IN, which handle() consumes).
+  function rescueImplicitFragment() {
+    try {
+      var h = window.location.hash;
+      if (!h || h.indexOf('access_token') === -1) return Promise.resolve(false);
+      var p = new URLSearchParams(h.replace(/^#/, ''));
+      var at = p.get('access_token');
+      var rt = p.get('refresh_token');
+      if (!at || !rt) return Promise.resolve(false);
+      return sb.auth.setSession({ access_token: at, refresh_token: rt }).then(function (res) {
+        if (res && res.data && res.data.session) {
+          try { window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search); } catch (e) {}
+          return true;
+        }
+        return false;
+      }, function () { return false; });
+    } catch (e) {
+      return Promise.resolve(false);
+    }
+  }
+
   // D-208 F-007d pattern: wait for PKCE exchange if code is in URL
   if (!sb) {
     showError();
@@ -334,8 +361,19 @@
       } else if (!window._oq_has_auth_in_url) {
         // No auth tokens in URL and no existing session — something went wrong
         await handle(null);
+      } else {
+        // gh-1980 PR 3/3: INITIAL_SESSION is emitted only AFTER supabase-js's
+        // init (including any ?code= exchange) has finished, so a null session
+        // here means the exchange did not yield one (cross-device link with no
+        // code-verifier in this browser, expired/used code, or a legacy
+        // implicit fragment the pkce client refused). Try the legacy fragment;
+        // otherwise show the error now instead of idling to the 30 s timeout.
+        // Deferred a tick: setSession() must not run inside this callback (it
+        // is invoked under supabase-js's auth lock).
+        setTimeout(function () {
+          rescueImplicitFragment().then(function (ok) { if (!ok) handle(null); });
+        }, 0);
       }
-      // else: _oq_has_auth_in_url is true, PKCE exchange in progress — wait for SIGNED_IN
     }
   });
 

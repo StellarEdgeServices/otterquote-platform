@@ -33,7 +33,7 @@
   window.sb = factory(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, {
     auth: {
       storage: window.OtterQuoteCookieStorage,
-      storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth',
+      storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth', flowType: 'pkce',
     },
   });
 })();

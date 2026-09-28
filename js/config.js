@@ -143,7 +143,7 @@ var sb; // var (not let) — allows safe early-load in <head> of gated pages alo
 function _oqCreateSupabaseClient() {
   if (sb) return true;
   if (typeof supabase === 'undefined') return false;
-  sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, { auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' } }); // gh-1980 PR2: storageKey convergence
+  sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, { auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth', flowType: 'pkce' } }); // gh-1980 PR2: storageKey convergence
   return true;
 }
 
