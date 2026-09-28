@@ -26,7 +26,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
-import { buildEmail, messageNotificationText } from "./templates.ts"; // gh-1824: footer moved to templates.ts (testable, no serve() import)
+import { messageNotificationHtml, messageNotificationText, MESSAGE_NOTIFICATION_SUBJECT } from "./templates.ts"; // gh-1824: footer moved to templates.ts (testable, no serve() import)
 
 const FUNCTION_NAME = "send-message-notification";
 const DASHBOARD_URL = "https://otterquote.com/dashboard";
@@ -260,21 +260,16 @@ async function handleRequest(req: Request): Promise<Response> {
       }
 
       // Send email to contractor
-      const subject = "You have a new message on your Otter Quotes project";
+      const subject = MESSAGE_NOTIFICATION_SUBJECT;
       const messagePreview = message.body.substring(0, 200);
       const messageTruncated = message.body.length > 200;
-      const htmlBody = buildEmail(`
-        <p>Hi ${escapeHtml(contractorProfile.full_name || "")},</p>
-        <p>You have a new message from <strong>${escapeHtml(senderProfile.full_name || "")}</strong> regarding your project.</p>
-        <p><strong>Message preview:</strong></p>
-        <blockquote style="border-left: 4px solid #14B8A6; padding-left: 16px; margin: 16px 0; color: #666;">
-          ${escapeHtml(messagePreview)}${messageTruncated ? "..." : ""}
-        </blockquote>
-        <p>
-          <a href="${dashboardUrl}" class="button">View Message</a>
-        </p>
-        <p>Log in to Otter Quotes to read and reply to the full message.</p>
-      `);
+      const htmlBody = messageNotificationHtml(
+        contractorProfile.full_name || "",
+        senderProfile.full_name || "",
+        messagePreview,
+        messageTruncated,
+        dashboardUrl
+      );
       const textBody = messageNotificationText(
         contractorProfile.full_name || "",
         senderProfile.full_name || "",
@@ -328,21 +323,16 @@ async function handleRequest(req: Request): Promise<Response> {
       }
 
       // Send email to homeowner
-      const subject = "You have a new message on your Otter Quotes project";
+      const subject = MESSAGE_NOTIFICATION_SUBJECT;
       const messagePreview = message.body.substring(0, 200);
       const messageTruncated = message.body.length > 200;
-      const htmlBody = buildEmail(`
-        <p>Hi ${escapeHtml(homeownerProfile.full_name || "")},</p>
-        <p>You have a new message from <strong>${escapeHtml(senderProfile.full_name || "")}</strong> regarding your project.</p>
-        <p><strong>Message preview:</strong></p>
-        <blockquote style="border-left: 4px solid #14B8A6; padding-left: 16px; margin: 16px 0; color: #666;">
-          ${escapeHtml(messagePreview)}${messageTruncated ? "..." : ""}
-        </blockquote>
-        <p>
-          <a href="${dashboardUrl}" class="button">View Message</a>
-        </p>
-        <p>Log in to Otter Quotes to read and reply to the full message.</p>
-      `);
+      const htmlBody = messageNotificationHtml(
+        homeownerProfile.full_name || "",
+        senderProfile.full_name || "",
+        messagePreview,
+        messageTruncated,
+        dashboardUrl
+      );
       const textBody = messageNotificationText(
         homeownerProfile.full_name || "",
         senderProfile.full_name || "",
@@ -386,18 +376,6 @@ async function handleRequest(req: Request): Promise<Response> {
       }
     );
   }
-}
-
-// Helper function to escape HTML
-function escapeHtml(text: string): string {
-  const map: Record<string, string> = {
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#039;",
-  };
-  return text.replace(/[&<>"']/g, (char) => map[char]);
 }
 
 serve(handleRequest);
