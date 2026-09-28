@@ -535,6 +535,11 @@ const REFERRAL_TS_KEY = 'oq_referral_ts'; // epoch-ms of the partner-link click
 // gh-2062 (CEO ruling, issue comment 5874597169): 30 days FROM THE CLICK.
 // Only writeReferralIds(ids, { click: true }) starts the clock; every other
 // write keeps the recorded click time and sets Max-Age to the time remaining.
+// UNDATED IDS (REVIEW: FAIL on PR #2321; default rule pending CEO Q on #2062):
+// an id with no click time on record anywhere (pre-gh-2062 legacy cookie, or a
+// copy left by an undated write) has no click, so no window - it is EXPIRED.
+// readReferralIds() purges it; a non-click write with no click on record writes
+// NOTHING (no cookie, no storage mirror). Never backfilled.
 const REFERRAL_MAX_AGE = 60 * 60 * 24 * 30; // 30 days
 export const REFERRAL_MAX_AGE_SECONDS = REFERRAL_MAX_AGE;
 
@@ -580,6 +585,11 @@ export function readReferralIds(): ReferralIds {
       if (v) out[key] = v;
     } catch { /* storage blocked */ }
   }
+  // Undated id (no click time anywhere): no click, no window => expired.
+  if (clickTs === null && Object.keys(out).length) {
+    clearReferralIds();
+    return {};
+  }
   return out;
 }
 
@@ -600,7 +610,7 @@ export function readReferralIds(): ReferralIds {
  * gh-2062: `{ click: true }` (a fresh partner-link click) is the ONLY thing
  * that starts the 30-day clock. Any other write keeps the click time already
  * on record and sets Max-Age to the time remaining, so it can never re-arm the
- * window; with no click time on record the cookie is not written at all.
+ * window; with no click time on record NOTHING is written (undated = expired).
  */
 export function writeReferralIds(ids: ReferralIds, opts?: { click?: boolean }): void {
   if (typeof document === 'undefined' || !ids) return;
@@ -610,6 +620,12 @@ export function writeReferralIds(ids: ReferralIds, opts?: { click?: boolean }): 
     if (v) payload[key] = String(v);
   }
   if (!Object.keys(payload).length) return;
+  // No click on record (or window spent) => write NOTHING, so no undated
+  // mirror can exist.
+  const ts = opts?.click ? Date.now() : readReferralTs();
+  if (ts === null) return;
+  const remaining = REFERRAL_MAX_AGE - Math.floor((Date.now() - ts) / 1000);
+  if (remaining <= 0) return;
   for (const key of REFERRAL_KEYS) {
     if (payload[key]) {
       try { localStorage.setItem(key, payload[key]); } catch { /* storage blocked */ }
@@ -619,10 +635,6 @@ export function writeReferralIds(ids: ReferralIds, opts?: { click?: boolean }): 
       try { sessionStorage.removeItem(key); } catch { /* storage blocked */ }
     }
   }
-  const ts = opts?.click ? Date.now() : readReferralTs();
-  if (ts === null) return;
-  const remaining = REFERRAL_MAX_AGE - Math.floor((Date.now() - ts) / 1000);
-  if (remaining <= 0) return;
   payload[REFERRAL_TS_KEY] = String(ts);
   try { localStorage.setItem(REFERRAL_TS_KEY, String(ts)); } catch { /* storage blocked */ }
   try { writeCookie(REFERRAL_COOKIE, JSON.stringify(payload), remaining); } catch { /* cookie blocked */ }

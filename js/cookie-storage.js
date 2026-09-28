@@ -455,7 +455,15 @@
    * { click: true } (ref*.html, on a fresh ?ref= visit, last click wins). Any
    * other write - the auth advance block, get-started - keeps the original
    * click time and sets Max-Age to the time REMAINING, so it can never re-arm
-   * the window. A write with no known click time does not write the cookie.
+   * the window.
+   *
+   * UNDATED IDS (REVIEW: FAIL on PR #2321; default rule, pending CEO Q on
+   * #2062): an id with no click time on record anywhere (a pre-gh-2062 legacy
+   * cookie, or a copy left by an undated write) has no click, so it has no
+   * window - it is treated as EXPIRED. read() purges it and returns nothing;
+   * a non-click write with no click on record writes NOTHING (no cookie, no
+   * storage mirror). A click time is only ever stamped by a fresh click; it
+   * is never backfilled.
    * ───────────────────────────────────────────────────────────────────── */
   var REFERRAL_KEYS      = ['oq_referral_id', 'oq_referral_agent_id', 'oq_referral_code'];
   var REFERRAL_COOKIE    = 'oq-ref';           // one cookie, JSON payload — all three ids are short
@@ -488,16 +496,21 @@
         var v = ids[k];
         if (v === undefined || v === null || v === '') continue;
         payload[k] = String(v);
-        try { window.localStorage.setItem(k, String(v)); } catch (e) {}
-        try { window.sessionStorage.setItem(k, String(v)); } catch (e) {}
       }
       if (!Object.keys(payload).length) return;
       // Only a fresh partner-link click starts the clock; every other write
-      // inherits the click time already on record (or has none).
+      // inherits the click time already on record. No click on record (or the
+      // window already spent) => write NOTHING, so no undated mirror can exist.
       var ts = click ? Date.now() : readReferralTs();
       if (ts === null) return;
       var remaining = REFERRAL_MAX_AGE - Math.floor((Date.now() - ts) / 1000);
       if (remaining <= 0) return;
+      for (var j = 0; j < REFERRAL_KEYS.length; j++) {
+        var kk = REFERRAL_KEYS[j];
+        if (payload[kk] === undefined) continue;
+        try { window.localStorage.setItem(kk, payload[kk]); } catch (e) {}
+        try { window.sessionStorage.setItem(kk, payload[kk]); } catch (e) {}
+      }
       payload[REFERRAL_TS_KEY] = String(ts);
       try { window.localStorage.setItem(REFERRAL_TS_KEY, String(ts)); } catch (e) {}
       try {
@@ -531,6 +544,11 @@
         if (out[key]) continue;
         try { out[key] = window.sessionStorage.getItem(key) || window.localStorage.getItem(key) || undefined; } catch (e) {}
         if (!out[key]) delete out[key];
+      }
+      // Undated id (no click time anywhere): no click, no window => expired.
+      if (clickTs === null && Object.keys(out).length) {
+        this.clear();
+        return {};
       }
       return out;
     },

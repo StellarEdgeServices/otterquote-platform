@@ -140,5 +140,58 @@ const B = { oq_referral_id: 'ref-B', oq_referral_agent_id: 'agent-B', oq_referra
   check(!t.hasCookie(), 'after clear(), a non-click write cannot resurrect a cookie');
 }
 
+// 7. REVIEW: FAIL on PR #2321 - legacy / undated ids must not be immortal.
+//    Rule (default, pending CEO Q): an id with no click time on record is
+//    EXPIRED. It is purged on read; undated writes store nothing; a click time
+//    is stamped only by a fresh click, never backfilled.
+{
+  const seedLegacy = (t) => {
+    t.win.document.cookie = 'oq-ref=' + encodeURIComponent(JSON.stringify(A)) + '; Path=/; Max-Age=' + 90 * DAY;
+    for (const k of Object.keys(A)) { t.win.localStorage.setItem(k, A[k]); t.win.sessionStorage.setItem(k, A[k]); }
+  };
+  // 7a. pre-deploy cookie (no oq_referral_ts) + mirrors: never attributes, purged.
+  {
+    const t = freshSandbox();
+    seedLegacy(t);
+    const r = t.R.read();
+    check(Object.keys(r).length === 0, `legacy undated cookie+mirrors: read() returns nothing on first read (got ${JSON.stringify(r)})`);
+    check(!t.hasCookie() && t.win.localStorage.getItem('oq_referral_id') === null && t.win.sessionStorage.getItem('oq_referral_id') === null, 'legacy undated: cookie and both mirrors purged');
+  }
+  // 7b. the refuter's repro: legacy state + advance-block write + 495 days.
+  {
+    const t = freshSandbox();
+    seedLegacy(t);
+    t.R.write(A); // advance-block write on an undated id
+    t.advanceDays(45);
+    t.R.write(A);
+    t.advanceDays(450);
+    check(Object.keys(t.R.read()).length === 0, 'legacy + advance-block writes, day 495: read() returns nothing (was: still returned the id)');
+    check(t.win.localStorage.getItem('oq_referral_id') === null, 'day 495: no immortal localStorage mirror');
+  }
+  // 7c. an undated write creates NO storage mirror at all.
+  {
+    const t = freshSandbox();
+    t.R.write(A);
+    check(t.win.localStorage.getItem('oq_referral_id') === null && t.win.sessionStorage.getItem('oq_referral_id') === null, 'undated non-click write: no localStorage/sessionStorage mirror created');
+    check(Object.keys(t.R.read()).length === 0, 'undated non-click write: nothing attributes');
+  }
+  // 7d. mirror-only undated ids (no cookie) are expired too.
+  {
+    const t = freshSandbox();
+    for (const k of Object.keys(A)) t.win.localStorage.setItem(k, A[k]);
+    check(Object.keys(t.R.read()).length === 0, 'undated mirror-only id: read() returns nothing');
+  }
+  // 7e. no backfill: after purge, only a fresh click re-establishes attribution.
+  {
+    const t = freshSandbox();
+    seedLegacy(t);
+    t.R.read();
+    t.R.write(A);
+    check(Object.keys(t.R.read()).length === 0, 'no backfill: a non-click write after purge does not resurrect attribution');
+    t.R.write(B, { click: true });
+    check(t.R.read().oq_referral_id === 'ref-B' && t.maxAge() === 30 * DAY, 'fresh click after purge attributes to B for a full 30 days (positive control)');
+  }
+}
+
 if (failed) { console.log(`\n${failed} check(s) FAILED`); process.exit(1); }
 console.log('\nOK: gh-2062 30-day click-anchored window proven.');

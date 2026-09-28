@@ -102,4 +102,53 @@ describe('gh-2062: 30-day, click-anchored oq-ref window (real cookie)', () => {
     writeReferralIds(A);
     expect(cookieJarHasOqRef()).toBe(false);
   });
+
+  // REVIEW: FAIL on PR #2321 - legacy / undated ids must not be immortal.
+  // Rule (default, pending CEO Q): no click time on record => EXPIRED.
+  describe('undated / legacy ids', () => {
+    const seedLegacy = () => {
+      document.cookie = 'oq-ref=' + encodeURIComponent(JSON.stringify(A)) + '; Path=/; Max-Age=' + 90 * 24 * 3600;
+      for (const [k, v] of Object.entries(A)) { localStorage.setItem(k, v); sessionStorage.setItem(k, v); }
+    };
+
+    it('pre-deploy cookie (no oq_referral_ts) + mirrors: read() returns nothing and purges everything', () => {
+      seedLegacy();
+      expect(readReferralIds()).toEqual({});
+      expect(cookieJarHasOqRef()).toBe(false);
+      expect(localStorage.getItem('oq_referral_id')).toBeNull();
+      expect(sessionStorage.getItem('oq_referral_id')).toBeNull();
+    });
+
+    it('refuter repro: legacy + advance-block writes, day 495: read() returns nothing', () => {
+      seedLegacy();
+      writeReferralIds(A);
+      vi.setSystemTime(Date.now() + 45 * DAY_MS);
+      writeReferralIds(A);
+      vi.setSystemTime(Date.now() + 450 * DAY_MS);
+      expect(readReferralIds()).toEqual({});
+      expect(localStorage.getItem('oq_referral_id')).toBeNull();
+    });
+
+    it('an undated non-click write creates no storage mirror and nothing attributes', () => {
+      writeReferralIds(A);
+      expect(localStorage.getItem('oq_referral_id')).toBeNull();
+      expect(sessionStorage.getItem('oq_referral_id')).toBeNull();
+      expect(readReferralIds()).toEqual({});
+    });
+
+    it('mirror-only undated id: read() returns nothing', () => {
+      for (const [k, v] of Object.entries(A)) localStorage.setItem(k, v);
+      expect(readReferralIds()).toEqual({});
+    });
+
+    it('no backfill: only a fresh click re-establishes attribution (positive control)', () => {
+      seedLegacy();
+      readReferralIds();
+      writeReferralIds(A);
+      expect(readReferralIds()).toEqual({});
+      writeReferralIds(B, { click: true });
+      expect(readReferralIds().oq_referral_id).toBe('ref-B');
+      expect(lastOqRefMaxAge()).toBe(30 * 24 * 3600);
+    });
+  });
 });
