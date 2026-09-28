@@ -1619,7 +1619,26 @@
                 // requires email confirmation before first sign-in — handled
                 // by the check-your-email state below, not an alert().
                 // generatedPassword was already computed above (CSPRNG fix).
-                const signUpResult = await Auth.signUpWithPassword(email, generatedPassword, agentType);
+                // gh-2274: the RPC above only special-cases a duplicate
+                // referral_agents row ('partner_exists'). auth.users is a
+                // separate existence check -- an email can already have an
+                // auth account (e.g. registered under a different partner
+                // type, or a prior signup that got this far before failing)
+                // with no referral_agents row yet, so the RPC above succeeds
+                // and THIS call is what actually rejects the duplicate, via
+                // Supabase's own "User already registered" message. Route it
+                // to the same designed already-a-partner state instead of
+                // letting it fall through to the generic catch below.
+                let signUpResult;
+                try {
+                    signUpResult = await Auth.signUpWithPassword(email, generatedPassword, agentType);
+                } catch (signUpError) {
+                    if ((signUpError.message || '').toLowerCase().includes('already registered')) {
+                        showFormAlert("You're already a partner — sign in at the Partner Login page.");
+                        return;
+                    }
+                    throw signUpError;
+                }
 
                 // gh-2154 P-1: this partner has no real password yet — flag
                 // it so partner-dashboard.html shows the one-time "Set your
@@ -1678,7 +1697,7 @@
 
             } catch (error) {
                 console.error('Error submitting application:', error);
-                showFormAlert('An error occurred. Please try again or email us at ' + CONFIG.SUPPORT_EMAIL + ': ' + (error.message || 'Unknown error'));
+                showFormAlert('An error occurred. Please try again or email us at ' + CONFIG.SUPPORT_EMAIL);
             } finally {
                 submitBtn.disabled = false;
                 submitBtn.classList.remove('btn-loading');

@@ -1,24 +1,23 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- gh-2150 RE-3 ("deal-saver"): dedicated short-signup landing page for the
-     realtor line's third funnel (D-333). This page reuses the RE-1 build
-     mechanism byte-for-byte (see #2150/#2151 evidence for what makes RE-1/
-     INS-1 pass S05-S20); only the funnel id and the hero/marketing copy
-     differ. THE HERO/BODY COPY BELOW IS DRAFT, NOT DUSTIN-APPROVED VERBATIM
-     -- a sibling worker is drafting real marketing copy for this funnel in
-     parallel (CEO RUN 71 wave 3). It is confined to the clearly marked
-     "RE-3 COPY BLOCK" below so it can be swapped without touching any
-     mechanism code. The D-301/D-305 fee sentence and D-266 disclaimer text
-     ARE locked/approved verbatim (copied unchanged from re-1.html) and must
-     not be edited without a fresh Tier-C ruling.
+<!-- gh-2150 RE-5: dedicated app-first funnel page for the realtor line
+     (D-333), cloned from re-1.html. Dustin ruling comment 5832299784
+     ("Approved as posted, including the slug `re-1.html` and the
+     D-301/D-305 fee sentence + D-266 disclaimer as quoted.") approved
+     re-1.html's copy -- it does NOT approve this page. RE-5's own
+     headline/subhead/CTA copy is DRAFT, Tier C, NOT yet approved; see the
+     OQ_RE5_COPY block below for its actual (unapproved) source. The
+     fee sentence and D-266 disclaimer text themselves are the D-301/D-305/
+     D-266 locked standard verbatim strings used system-wide -- do not
+     paraphrase those specifically without a fresh Dustin approval.
      Mechanism, attribution wiring (fbclid/li_fat_id/funnel_id capture,
      register_partner RPC call shape, CSPRNG signup password, gh-865
      agent-type confirm, GA4/Meta pixel events) is copied from the shared
      P-1 build on partner-re.html (gh-2154, PR #2162, merged to main) --
      same register_partner path, same field semantics, just this page's
      own copy and a hardcoded funnel id fallback (see captureUtmContext
-     below) since this page only ever represents the re-3 funnel. -->
+     below) since this page only ever represents the re-5 funnel. -->
 <script>
 (function () {
   try {
@@ -37,14 +36,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
-<!-- ===== RE-3 COPY BLOCK START — draft copy, swap freely, keep tags intact ===== -->
-<title>Keep the Deal Moving After a Bad Inspection — Otter Quotes</title>
-<meta name="description" content="When the inspection flags the roof, don't let it flag the deal. Send your client to Otter Quotes for fast, competing repair bids.">
-<link rel="canonical" href="https://otterquote.com/re-3.html">
-<meta property="og:title" content="Keep the Deal Moving After a Bad Inspection — Otter Quotes">
-<meta property="og:description" content="When the inspection flags the roof, don't let it flag the deal. Send your client to Otter Quotes for fast, competing repair bids.">
-<meta property="og:url" content="https://otterquote.com/re-3.html">
-<!-- ===== RE-3 COPY BLOCK END ===== -->
+<title>Your Referral Link, In Your Pocket — Otter Quotes</title>
+<meta name="description" content="Watch how fast it is: sign up, install the Otter Quotes partner app, and your referral link is ready to send.">
+<link rel="canonical" href="https://otterquote.com/re-5.html">
+<meta property="og:title" content="Your Referral Link, In Your Pocket — Otter Quotes">
+<meta property="og:description" content="Watch how fast it is: sign up, install the Otter Quotes partner app, and your referral link is ready to send.">
+<meta property="og:url" content="https://otterquote.com/re-5.html">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Otter Quotes">
 <meta property="og:image" content="https://otterquote.com/img/otter-logo.svg">
@@ -468,23 +465,53 @@ a:hover { color: var(--amber-2); }
      DOMContentLoaded render entirely. -->
 <header id="site-header" data-active="" data-skip-nav="true"></header>
 
-<!-- ===== RE-3 COPY BLOCK START — draft H1/subhead/bullets, swap freely ===== -->
-<!-- Hero Section — DRAFT copy, not yet Dustin-approved verbatim. Structure/
-     classes must stay as-is; text content is the only swappable part. -->
-<section class="hero">
+<!-- RE-5 · app-first demo funnel (D-333) — DRAFT COPY, Tier C, NOT APPROVED.
+     Copy source: issue #2150 evidence comment 5849021274 (CEO RUN 71,
+     subagent of ceo-2026-09-26T16:23:19Z). Do not treat any string below
+     as legally cleared — it needs Dustin/Sloane sign-off + R-177
+     LEGAL-READ before this page is published or an ad points at it.
+     All customer-facing strings live in the OQ_RE5_COPY block below so a
+     copy revision never touches markup/mechanics. -->
+<script>
+  var OQ_RE5_COPY = {
+    fbFallbackNotice: "You're viewing this in an app's in-app browser, which can't install the app directly. Sign up below, then tap the menu (•••) and choose “Open in Browser” to finish installing."
+  };
+</script>
+
+<!-- App-first hero: app demo video, headline/subhead server-rendered
+     directly in markup (P2 -- no late script-fill of the LCP text). REVIEW
+     FAIL 5849569486 B1/B2: the on-page 4-field signup form below is now
+     shown to EVERY visitor as the primary conversion path (not just an
+     FB-in-app fallback) -- it is the same re-1 form, fixed to agent_type
+     re_agent and sending funnel_id/fbclid/li_fat_id/UTMs. Installing the
+     app is offered AFTER signup, on the thank-you step below, so
+     attribution is captured before any install/storage-boundary hop. The
+     hero itself carries no install CTA and no fee text (L1: the D-301/D-305
+     fee sentence + D-266 disclaimer live only on the always-visible form,
+     never paraphrased in the hero). -->
+<section class="hero" id="appFirstHero">
   <div class="hero-content">
-    <h1>When the inspection flags the roof, keep the deal moving</h1>
-    <p class="subtitle">Send your client to Otter Quotes the moment a home inspection turns up roof damage. Competing contractor bids, fast.</p>
-    <ul class="hero-bullets">
-      <li><span class="bullet-check">✓</span><span>Your client gets multiple contractor bids without hunting for one.</span></li>
-      <li><span class="bullet-check">✓</span><span>Competing bids arrive fast, so your client can make a repair decision sooner.</span></li>
-      <li><span class="bullet-check">✓</span><span>Track every referral from your phone, in real time.</span></li>
-    </ul>
+    <h1>Your Referral Link, In Your Pocket</h1>
+    <p class="subtitle">Watch how fast it is: sign up, install the app, and your referral link is ready to send — no extra work, no waiting.</p>
+    <div class="video-demo-wrap" id="re5VideoWrap" style="max-width:390px;margin:0 auto var(--sp-6);border-radius:var(--radius-lg);overflow:hidden;box-shadow:var(--shadow-lg);">
+      <!-- P1: no <source> in static markup -- re5VideoWrap's script below
+           injects a mobile-weight source only for a real (non-in-app)
+           browser, only once the player scrolls into view
+           (IntersectionObserver), and never at all for an in-app visitor. -->
+      <video id="re5DemoVideo" playsinline muted loop preload="none" poster="assets/video/re-5-demo-poster.jpg" style="width:100%;display:block;background:#000;" aria-label="Demo of the Otter Quotes partner app: dashboard, referral link, and referral status tracking"></video>
+    </div>
+    <div style="text-align:center;">
+      <a href="#partner-form" class="btn btn-primary btn-lg">Get My Referral Link</a>
+    </div>
   </div>
 </section>
-<!-- ===== RE-3 COPY BLOCK END ===== -->
 
-<!-- Signup Form -->
+<!-- FB-in-app fallback banner — hidden unless the detector below finds a
+     Facebook/Instagram in-app browser user agent. -->
+<div id="re5FbNotice" style="display:none;background:var(--amber-glow);border:1px solid var(--amber);border-radius:var(--radius-md);padding:var(--sp-4);margin:0 var(--sp-6) var(--sp-6);text-align:center;font-size:0.9rem;"></div>
+
+<!-- Signup Form — shown to every visitor as the primary conversion path
+     (the re-1 form, fixed to agent_type=re_agent). -->
 <section class="signup-section" id="signup-section">
   <div class="signup-form-wrap">
     <!-- gh-2150 round 2 (REVIEW FAIL 5836233175, Ben ruling (3), S12): the
@@ -606,7 +633,7 @@ a:hover { color: var(--amber-2); }
       <p>You're in! Install the Otter Quotes partner app, sign in with the account you just created, and your referral link will be waiting inside.</p>
 
       <div style="margin-top: var(--sp-6);">
-        <button type="button" class="btn btn-primary btn-lg" id="install-app-btn">Install the App</button>
+        <a href="/partner-app.html?source=pwa&amp;funnel_id=re-5" id="install-app-btn" class="btn btn-primary btn-lg">Install the App</a>
       </div>
     </div>
   </div>
@@ -643,19 +670,19 @@ a:hover { color: var(--amber-2); }
 <!-- Sentry Error Monitoring -->
 <!-- gh-2043: predeclare sentryOnLoad before the loader tag; the loader invokes it once the SDK is ready (pattern from gh-2010, PR #2023). -->
 <script>
-    window.sentryOnLoad = function () {
-      Sentry.init({
-        environment: window.location.hostname.includes("staging") ? "staging" : "production",
-        denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
-        beforeSend: function (event) {
-          var proto = window.location.protocol;
-          if (proto !== "http:" && proto !== "https:") return null;
-          var req = event.request && event.request.url;
-          if (req && /^(data|file|blob):/.test(req)) return null;
-          return event;
-        }
-      });
-    };
+  window.sentryOnLoad = function () {
+    Sentry.init({
+      environment: window.location.hostname.includes("staging") ? "staging" : "production",
+      denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+      beforeSend: function (event) {
+        var proto = window.location.protocol;
+        if (proto !== "http:" && proto !== "https:") return null;
+        var req = event.request && event.request.url;
+        if (req && /^(data|file|blob):/.test(req)) return null;
+        return event;
+      }
+    });
+  };
 </script>
 <script
   src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
@@ -664,7 +691,7 @@ a:hover { color: var(--amber-2); }
 <!-- Coming-soon gate — flip CONFIG.HOMEOWNER_LAUNCH_ENABLED=true in js/config.js to remove -->
 <script src="js/cookie-storage.js"></script>
 <script src="js/config.js"></script>
-<script>(function(){if(typeof CONFIG!=='undefined'&&!CONFIG.HOMEOWNER_LAUNCH_ENABLED){window.location.replace('/coming-soon.html?from=re-3&persona=partner');}})()</script>
+<script>(function(){if(typeof CONFIG!=='undefined'&&!CONFIG.HOMEOWNER_LAUNCH_ENABLED){window.location.replace('/coming-soon.html?from=re-5&persona=partner');}})()</script>
 <script src="/js/ga-gate.js"></script>
 <script src="/js/meta-pixel-gate.js"></script>
 <script>gtag('config','G-D1Y1TLGEFY');</script>
@@ -759,30 +786,37 @@ a:hover { color: var(--amber-2); }
   // beforeinstallprompt-or-fallback pattern as partner-dashboard.html's
   // #installAppBtn (~3136) -- PWA install prompt where available, else the
   // partner-app.html walkthrough (QR-code iOS/Android install
-  // instructions).
+  // instructions). REVIEW FAIL 5849569486 B2/B4: this link's href already
+  // carries ?source=pwa&funnel_id=re-5 for post-install activation
+  // attribution (P-2's "first signed-in launch"), and every click -- native
+  // prompt or plain navigation -- fires partner_install_click first so
+  // install intent is measurable (it was not, before this fix).
   let deferredInstallPrompt = null;
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredInstallPrompt = e;
   });
   if (installAppBtn) {
-    installAppBtn.addEventListener('click', () => {
+    installAppBtn.addEventListener('click', (e) => {
+      try {
+        gtag('event', 'partner_install_click', { funnel_id: utmContext.funnelId || 're-5', variant: getOqVariant(), step: 'install' });
+      } catch (err) {}
       if (deferredInstallPrompt) {
+        e.preventDefault();
         deferredInstallPrompt.prompt();
         deferredInstallPrompt.userChoice.then(() => { deferredInstallPrompt = null; });
-      } else {
-        window.location.href = '/partner-app.html';
       }
+      // else: let the anchor's own href (?source=pwa&funnel_id=re-5) navigate normally.
     });
   }
 
-  // gh-2150: RE-3 is a dedicated single-funnel page (Meta + YouTube, per
+  // gh-2150: RE-5 is a dedicated single-funnel page (Meta + YouTube, per
   // S14 destination URLs on #2150), reusing the shared P-1 attribution
   // wiring from partner-re.html (gh-2154, PR #2162). UTM/click-id capture
   // is byte-identical to that page's captureUtmContext(), plus a
-  // page-specific fallback: this page only ever represents the re-3
+  // page-specific fallback: this page only ever represents the re-5
   // funnel, so a visit with no query string at all (e.g. a bookmark, or a
-  // manual QA hit) still attributes to re-3 rather than leaving funnel_id
+  // manual QA hit) still attributes to re-5 rather than leaving funnel_id
   // null.
   let utmContext = { source: null, medium: null, campaign: null, content: null, fbclid: null, liFatId: null, funnelId: null };
 
@@ -799,7 +833,7 @@ a:hover { color: var(--amber-2); }
     };
     // Same S14 <line>-<funnel> convention fallback as partner-re.html: an
     // explicit ?funnel_id= always wins, else utm_campaign is used only when
-    // it matches the convention (e.g. "re-3").
+    // it matches the convention (e.g. "re-5").
     if (!fresh.funnelId && fresh.campaign && /^[a-z]{2,4}-\d{1,3}$/.test(fresh.campaign)) {
       fresh.funnelId = fresh.campaign;
     }
@@ -815,20 +849,20 @@ a:hover { color: var(--amber-2); }
         if (stored) utmContext = stored;
       } catch (e) { /* malformed stored value — ignore, keep default */ }
     }
-    // gh-2150: this page IS the re-3 funnel — a dedicated funnel id
+    // gh-2150: this page IS the re-5 funnel — a dedicated funnel id
     // fallback that runs after the shared capture logic above, only when
     // nothing (URL or stored) supplied one. Ben ruling (6): this default is
     // the PAGE's own id, never a stale value some other funnel stored --
     // it applies whenever the current visit itself carried no funnel_id/
     // matching utm_campaign, overriding whatever "stored" resolved to above.
-    if (!utmContext.funnelId) utmContext.funnelId = 're-3';
+    if (!utmContext.funnelId) utmContext.funnelId = 're-5';
   }
 
   // gh-2150 round 2 (REVIEW FAIL 5836233175, Ben ruling (3), S12): Clarity
   // funnel_id tag, same window.clarity-guarded try/catch convention as
   // start.html's `clarity('set','variant',...)` (:1161). js/ga-gate.js
   // gates whether Clarity ever loads on this path at all (CLARITY_ALLOWED_
-  // PATHS now includes '/re-3'); this call is a no-op until it does.
+  // PATHS now includes '/re-5'); this call is a no-op until it does.
   function tagClarityFunnelId(funnelId) {
     try { if (window.clarity) { clarity('set', 'funnel_id', funnelId); } } catch (e) {}
   }
@@ -856,10 +890,10 @@ a:hover { color: var(--amber-2); }
     } catch (e) {}
     // gh-2150 round 3 (REVIEW PASS 5836698881, should-fix 3): no partner
     // page ever sets the oq_variant_v3 cookie, so this always fell through
-    // to 'unknown' on RE-3. This page has exactly one variant of itself
+    // to 'unknown' on RE-5. This page has exactly one variant of itself
     // (it isn't an Arm-style router test), so the page's own funnel id is
     // the correct fixed value here, not 'unknown'.
-    return 're-3';
+    return 're-5';
   }
 
   var partnerSignupCompleteFired = false;
@@ -898,8 +932,8 @@ a:hover { color: var(--amber-2); }
 
   /** Splits a single "Name" field into first/last for register_partner's
    *  p_first_name/p_last_name — same technique as partner-insurance.html's
-   *  splitFullName(), since RE-3 inherits RE-1's approved field label, a
-   *  single "Name" field, not the first/last split partner-re.html uses. */
+   *  splitFullName(), since RE-5's approved field label is a single "Name"
+   *  field, not the first/last split partner-re.html uses. */
   function splitFullName(fullName) {
     const parts = (fullName || '').trim().split(/\s+/).filter(Boolean);
     const firstName = parts[0] || fullName.trim();
@@ -912,10 +946,10 @@ a:hover { color: var(--amber-2); }
   }
 
   // gh-2150 round 2 (REVIEW FAIL 5836233175, Ben ruling (8), S08): partner
-  // type is fixed by this page -- no gh-865-style type pop-up (RE-3 inherits
-  // RE-1's realtor-specific copy end to end; the pop-up was also flagged as an
+  // type is fixed by this page -- no gh-865-style type pop-up (RE-5's copy
+  // is realtor-specific end to end; the pop-up was also flagged as an
   // unapproved escape hatch on the funnel pages generally). agent_type is
-  // always 're_agent' for every RE-3 signup.
+  // always 're_agent' for every RE-5 signup.
   const FIXED_AGENT_TYPE = 're_agent';
 
   captureUtmContext();
@@ -924,13 +958,23 @@ a:hover { color: var(--amber-2); }
   // gh-2150 round 2 (REVIEW FAIL 5836233175, Ben ruling (4), S11): a GA4
   // view event on load, carrying variant + step -- mirrors HO-1 Arm F's
   // router_step_view (start.html :1047/:1670), which fires once per screen
-  // shown. RE-3 has one screen (the signup form itself).
+  // shown. REVIEW FAIL 5849569486 B4: only fired when the form section is
+  // actually visible/displayed, so a corrupted view every time the section
+  // was `display:none` (the old FB-fallback-only state) can't recur even if
+  // a future change re-hides it for some segment.
+  function isSignupSectionVisible() {
+    var el = document.getElementById('signup-section');
+    if (!el) return false;
+    return window.getComputedStyle(el).display !== 'none';
+  }
   try {
-    gtag('event', 'partner_signup_view', {
-      variant: getOqVariant(),
-      step: 'signup',
-      funnel_id: utmContext.funnelId,
-    });
+    if (isSignupSectionVisible()) {
+      gtag('event', 'partner_signup_view', {
+        variant: getOqVariant(),
+        step: 'signup',
+        funnel_id: utmContext.funnelId,
+      });
+    }
   } catch (e) {}
 
   // gh-2150/gh-2151 (S05 perf, k70-w11-s05perf): a cheap, sb-free peek at
@@ -1174,7 +1218,7 @@ a:hover { color: var(--amber-2); }
 
       gtag('event', 'partner_signup', {
         partner_type: agentType,
-        funnel_id: utmContext.funnelId || 're-3',
+        funnel_id: utmContext.funnelId || 're-5',
         variant:  getOqVariant(),
         step:     'signup',
         source:   utmContext.source   || 'direct',
@@ -1185,7 +1229,7 @@ a:hover { color: var(--amber-2); }
 
       try { fbq('track', 'Lead'); } catch (e) {}
 
-      firePartnerSignupComplete(getOqVariant(), utmContext.funnelId || 're-3');
+      firePartnerSignupComplete(getOqVariant(), utmContext.funnelId || 're-5');
 
     } catch (err) {
       console.error('Signup error:', err);
@@ -1196,6 +1240,83 @@ a:hover { color: var(--amber-2); }
       submitBtn.disabled = false;
     }
   });
+})();
+</script>
+
+<!-- In-app-browser detector + lazy video load (RE-5). Runs after the copy
+     block above; no dependency on the Supabase-loading mechanics further
+     up. REVIEW FAIL 5849569486 fixes applied here:
+     B1/B2 -- the signup form is the primary path for everyone now (see the
+       always-visible #signup-section above), so this script no longer
+       toggles the form's visibility. It only shows the in-app notice and
+       controls the demo video, which a PWA-hostile in-app browser (Meta,
+       Instagram, LinkedIn) can't install anyway.
+     B3 -- the detector now also matches LinkedIn's in-app browser
+       (`LinkedInApp` in its UA) plus a generic Android WebView signature,
+       not just Facebook/Instagram.
+     P1 -- an in-app visitor never loads the video source at all,
+       consistent with "skip loading the source entirely in the FB/in-app
+       branch." A real browser gets the video lazily, via
+       IntersectionObserver, only once the player scrolls into view, using
+       the mobile-weight 592x1280 encode -- never on page load. -->
+<script>
+(function () {
+  function $(id) { return document.getElementById(id); }
+
+  function isInAppBrowser() {
+    var ua = navigator.userAgent || '';
+    // Facebook/Instagram, LinkedIn's in-app browser, and a generic
+    // Android WebView signature (wv) -- none of these can complete a PWA
+    // install, so all three get the same fallback treatment.
+    return /FBAN|FBAV|FB_IAB|Instagram|LinkedInApp/i.test(ua) || /Android.*; wv\)/i.test(ua);
+  }
+
+  var inApp = isInAppBrowser();
+
+  if (inApp) {
+    var notice = $('re5FbNotice');
+    if (notice) {
+      notice.textContent = OQ_RE5_COPY.fbFallbackNotice;
+      notice.style.display = 'block';
+    }
+    var videoWrap = $('re5VideoWrap');
+    if (videoWrap) videoWrap.style.display = 'none';
+    try {
+      if (typeof gtag === 'function') {
+        gtag('event', 're5_fb_inapp_fallback', { funnel_id: 're-5' });
+      }
+    } catch (e) {}
+  } else {
+    // Real browser: load the mobile-weight video only once it is actually
+    // in view, never eagerly.
+    var video = $('re5DemoVideo');
+    if (video && 'IntersectionObserver' in window) {
+      var loaded = false;
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (entry.isIntersecting && !loaded) {
+            loaded = true;
+            var source = document.createElement('source');
+            source.src = 'assets/video/re-5-demo-mobile.mp4';
+            source.type = 'video/mp4';
+            video.appendChild(source);
+            video.load();
+            video.play().catch(function () { /* autoplay may be blocked; poster stays visible */ });
+            io.disconnect();
+          }
+        });
+      }, { rootMargin: '200px' });
+      io.observe(video);
+    } else if (video) {
+      // No IntersectionObserver support: fall back to loading immediately
+      // rather than never showing a video at all.
+      var fallbackSource = document.createElement('source');
+      fallbackSource.src = 'assets/video/re-5-demo-mobile.mp4';
+      fallbackSource.type = 'video/mp4';
+      video.appendChild(fallbackSource);
+      video.load();
+    }
+  }
 })();
 </script>
 

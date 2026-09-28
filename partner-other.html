@@ -1301,7 +1301,25 @@ async function handleSignup(e) {
     // sign-in — handled via an alert, same as the other partner_exists
     // notices on this page.
     if (window.Auth) {
-      const signUpResult = await Auth.signUpWithPassword(email, password, agentType, '/partner-dashboard.html');
+      // gh-2274: the RPC above only special-cases a duplicate referral_agents
+      // row ('partner_exists'). auth.users is a separate existence check --
+      // an email can already have an auth account with no referral_agents
+      // row yet, so the RPC above succeeds and THIS call is what actually
+      // rejects the duplicate, via Supabase's own "User already registered"
+      // message. Route it to the same designed already-a-partner alert
+      // instead of letting it fall through to the generic catch below.
+      let signUpResult;
+      try {
+        signUpResult = await Auth.signUpWithPassword(email, password, agentType, '/partner-dashboard.html');
+      } catch (signUpError) {
+        if ((signUpError.message || '').toLowerCase().includes('already registered')) {
+          alert("You're already a partner — sign in at otterquote.com/partner-login.html.");
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Generate My Referral Link';
+          return;
+        }
+        throw signUpError;
+      }
       if (!signUpResult || !signUpResult.session) {
         alert('Account created! Check your email to confirm your address, then sign in at the Partner Login page.');
       }
@@ -1337,7 +1355,7 @@ async function handleSignup(e) {
 
   } catch (err) {
     console.error('Signup error:', err);
-    alert(`Something went wrong: ${err.message}. Please try again or email us at support@otterquote.com`);
+    alert('Something went wrong. Please try again or email us at support@otterquote.com');
     submitBtn.disabled = false;
     submitBtn.textContent = 'Generate My Referral Link';
   }

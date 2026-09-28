@@ -384,7 +384,7 @@ def compute_d266_pages(root: Path = None) -> list[str]:
     # RE-1/INS-1 build byte-for-byte (D-333) and carry the D-266
     # disclaimer verbatim -- registered explicitly, same convention as
     # re-1/ins-1/ins-5 above.
-    explicit = {"partners", "refer-a-friend", "re-1", "ins-1", "ins-5", "re-3", "ins-3"}
+    explicit = {"partners", "refer-a-friend", "re-1", "ins-1", "ins-5", "re-3", "ins-3", "re-5"}
     fee_pages = {
         s for s in _fee_sentence_pages(root) if (root / f"{s}.html").is_file()
     }
@@ -1455,6 +1455,16 @@ STATIC_FUNNEL_EXEMPT = {
         "actual fee offer. Not folded into D266_PAGES for the same reason "
         "hi-1.html isn't: a single-purpose ad landing page, not a "
         "partner-*.html marketing page."
+    ),
+    "hi-5.html": (
+        "CEO RUN 71 (subagent of ceo-2026-09-26T16:23:19Z): hi-5.html is "
+        "HI-1's app-first sibling funnel -- same D-333 exemption as "
+        "hi-1.html above (home inspectors receive no referral fee or "
+        "recruit bonus, under any name), copy source issue #2152 evidence "
+        "comment 5849027209. DRAFT, Tier C, not yet Dustin-approved; "
+        "flagged for the same LEGAL-READ pass hi-1.html already went "
+        "through. Not folded into D266_PAGES for the same reason hi-1.html "
+        "isn't: a single-purpose ad landing page, not partner-*.html."
     ),
 }
 
