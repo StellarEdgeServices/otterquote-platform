@@ -226,6 +226,9 @@ export function buildLeadReadyEmail(args: {
     ``,
     `Good news — the ${args.productLabel} you ordered for ${args.address} is ready.`,
     ``,
+    // TODO(HO-3 delivery, Dustin ruling pending: A/B/C): delivery-mechanism
+    // copy goes here once Dustin answers (Ben's options A/B/C on comment
+    // 5860911206). No replacement promise text until then.
     `Questions? Just reply to this email or write to support@otterquote.com.`,
     ``,
     `— Otter Quotes`,
@@ -233,6 +236,10 @@ export function buildLeadReadyEmail(args: {
     footerPostalAddressText(),
   ].join("\n");
 
+  // TODO(HO-3 delivery, Dustin ruling pending: A/B/C): once Dustin answers
+  // (Ben's options A/B/C on comment 5860911206), the delivery-mechanism
+  // markup goes in the html body below, between the "Good news..." <p> and
+  // the "Questions?" <p>. No replacement promise markup until then.
   const htmlBody = `
 <!DOCTYPE html>
 <html>
