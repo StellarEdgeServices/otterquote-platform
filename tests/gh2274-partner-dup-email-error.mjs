@@ -144,7 +144,7 @@ function makeElementStore() {
 // Auth.signUpWithPassword() REJECTS with Supabase's own literal duplicate-
 // registration message -- this is the auth.users-level duplicate the RPC
 // above cannot see.
-function runPageScript(html, { search = '', signUp = 'dup', dupError = null, rpcError = null, signUpSeq = null, rpcSeq = null, sessionEmail = null } = {}) {
+function runPageScript(html, { search = '', signUp = 'dup', dupError = null, rpcError = null, signUpSeq = null, rpcSeq = null, sessionEmail = null, ls = null } = {}) {
   const script = extractInlineScripts(html);
   if (!script || script.indexOf('register_partner') === -1) {
     return { setupError: 'no inline script containing register_partner was found on the page' };
@@ -196,6 +196,7 @@ function runPageScript(html, { search = '', signUp = 'dup', dupError = null, rpc
     auth: { onAuthStateChange() {}, updateUser() { return Promise.resolve({ data: {}, error: null }); } },
   };
   const lsStore = new Map();
+  if (ls) for (const [k, v] of Object.entries(ls)) lsStore.set(k, v);
   const localStorage = {
     getItem: (k) => (lsStore.has(k) ? lsStore.get(k) : null),
     setItem: (k, v) => { lsStore.set(k, String(v)); },
@@ -499,6 +500,33 @@ for (const page of PAGES) {
     await submit(run);
     ok(surfacedOf(run, page).includes(page.designed), page.file + ' (h): a genuine existing partner still gets the existing-partner message -- got ' + JSON.stringify(surfacedOf(run, page)));
   } catch (e) { failWithReason(page.file + ' (h)', e.message); }
+  // (i) a SECOND failed retry: the marker survives and the user is never told "already a partner"; the third try completes.
+  run = runPageScript(html, { signUpSeq: ['ok', 'dup', 'dup', 'dup'], rpcSeq: [{ message: 'rate_limited' }, { message: 'rate_limited' }, null] });
+  if (run.setupError) { failWithReason(page.file + ' (i)', run.setupError); continue; }
+  try {
+    await submit(run); await submit(run);
+    ok(run.callOrder.join(',') === 'signUp,register_partner,signUp,register_partner', page.file + ' (i): two failed attempts -- got ' + JSON.stringify(run.callOrder));
+    ok(run.lsStore.has(PENDING_KEY), page.file + ' (i): marker still present after the second failed retry');
+    ok(!/already a partner|already registered/i.test(surfacedOf(run, page)), page.file + ' (i): second failure is not shown as already-a-partner -- got ' + JSON.stringify(surfacedOf(run, page)));
+    await submit(run);
+    ok(run.callOrder.slice(-2).join(',') === 'signUp,register_partner' && run.callOrder.filter((c) => c === 'register_partner').length === 3 && !run.lsStore.has(PENDING_KEY), page.file + ' (i): the third attempt completes and clears the marker -- got ' + JSON.stringify(run.callOrder));
+  } catch (e) { failWithReason(page.file + ' (i)', e.message); }
+  // (j) a marker for a DIFFERENT email must not let a duplicate through to register_partner.
+  run = runPageScript(html, { signUpSeq: ['dup'], ls: { [PENDING_KEY]: JSON.stringify({ email: 'someone-else@example.invalid', ts: Date.now() }) } });
+  if (run.setupError) { failWithReason(page.file + ' (j)', run.setupError); continue; }
+  try {
+    await submit(run);
+    ok(run.rpcCalls.filter((c) => c.name === 'register_partner').length === 0, page.file + ' (j): a marker for another email does not trigger register_partner');
+    ok(/already/i.test(surfacedOf(run, page)), page.file + ' (j): the duplicate message is shown -- got ' + JSON.stringify(surfacedOf(run, page)));
+  } catch (e) { failWithReason(page.file + ' (j)', e.message); }
+  // (k) an EXPIRED (8 day old) marker for the right email is ignored.
+  run = runPageScript(html, { signUpSeq: ['dup'], ls: { [PENDING_KEY]: JSON.stringify({ email: emailKey, ts: Date.now() - 8 * 24 * 60 * 60 * 1000 }) } });
+  if (run.setupError) { failWithReason(page.file + ' (k)', run.setupError); continue; }
+  try {
+    await submit(run);
+    ok(run.rpcCalls.filter((c) => c.name === 'register_partner').length === 0, page.file + ' (k): an expired marker does not trigger register_partner');
+    ok(/already/i.test(surfacedOf(run, page)), page.file + ' (k): the duplicate message is shown -- got ' + JSON.stringify(surfacedOf(run, page)));
+  } catch (e) { failWithReason(page.file + ' (k)', e.message); }
 }
 
 // gh-2281 static guard: every page consults the structured error.code.

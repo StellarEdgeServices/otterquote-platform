@@ -1601,7 +1601,7 @@
           try {
             const pendingMarker = JSON.parse(localStorage.getItem('oq_partner_pending_registration') || 'null');
             const emailKey = String(email || '').trim().toLowerCase();
-            canFinishRegistration = !!(pendingMarker && pendingMarker.email === emailKey);
+            canFinishRegistration = !!(pendingMarker && pendingMarker.email === emailKey && typeof pendingMarker.ts === 'number' && Date.now() - pendingMarker.ts < 7 * 24 * 60 * 60 * 1000);
             if (!canFinishRegistration && window.Auth && typeof Auth.getUser === 'function') {
               const sessionUser = await Auth.getUser();
               canFinishRegistration = !!(sessionUser && sessionUser.email && String(sessionUser.email).toLowerCase() === emailKey);

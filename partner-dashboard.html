@@ -897,6 +897,32 @@
                         <a href="/partner-re.html" class="btn" style="text-decoration: none;">Become a Partner</a>
                     </div>
                 </div>
+                <div id="partnerFinishRegistration" style="display: none;">
+                    <!-- gh-2282 follow-up: a signed-in account with no referral_agents row. If a pending
+                         registration from the signup page exists it is completed automatically
+                         (js/partner-registration.js); otherwise the minimal form below registers THIS
+                         account's own email via the existing register_partner RPC. -->
+                    <p id="partnerFinishStatus" class="empty-state-text" role="status" aria-live="polite"></p>
+                    <form id="partnerFinishForm" novalidate style="display: none; max-width: 420px; margin: var(--sp-3) auto 0; text-align: left;">
+                        <div class="form-group">
+                            <label for="partnerFinishType">I am a</label>
+                            <select id="partnerFinishType" required></select>
+                        </div>
+                        <div class="form-group">
+                            <label for="partnerFinishFirst">First name</label>
+                            <input type="text" id="partnerFinishFirst" autocomplete="given-name" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="partnerFinishLast">Last name</label>
+                            <input type="text" id="partnerFinishLast" autocomplete="family-name" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="partnerFinishPhone">Phone (optional)</label>
+                            <input type="tel" id="partnerFinishPhone" autocomplete="tel">
+                        </div>
+                        <button type="submit" class="btn" id="partnerFinishSubmit">Finish Registration</button>
+                    </form>
+                </div>
                 <div id="partnerClaimFailedMessage" style="display: none;">
                     <h3 class="empty-state-title">We Couldn't Verify Your Partner Account</h3>
                     <p class="empty-state-text">Linking this sign-in to your partner record failed. That's not the same as not having one — try again, or sign out and use a different account.</p>
@@ -1418,6 +1444,7 @@ Let me know if you have any questions!
     <script src="js/auth.js"></script>
     <script src="js/nav.js"></script>
     <script src="js/agent-types.js"></script>
+    <script src="js/partner-registration.js"></script>
 
     <script>
         // State
@@ -1782,6 +1809,66 @@ Let me know if you have any questions!
             } else {
                 if (claimFailedMsg) claimFailedMsg.style.display = 'none';
                 if (noRecordMsg) noRecordMsg.style.display = 'block';
+                beginPartnerRegistrationCompletion();
+            }
+        }
+
+        // gh-2282 follow-up: complete a partner registration for this signed-in
+        // account (auth user, no referral_agents row) by calling register_partner
+        // for the account's OWN email, then reloading so init() reads the new row.
+        function beginPartnerRegistrationCompletion() {
+            const wrap = document.getElementById('partnerFinishRegistration');
+            if (!wrap || !window.PartnerRegistration || !sb || !currentUser || !currentUser.email) return;
+            const statusEl = document.getElementById('partnerFinishStatus');
+            const formEl = document.getElementById('partnerFinishForm');
+            const typeEl = document.getElementById('partnerFinishType');
+            const firstEl = document.getElementById('partnerFinishFirst');
+            const lastEl = document.getElementById('partnerFinishLast');
+            const phoneEl = document.getElementById('partnerFinishPhone');
+            wrap.style.display = 'block';
+            const labels = (window.AgentTypes && AgentTypes.CHOOSER_LABELS) || {};
+            PartnerRegistration.TYPES.forEach(function (t) {
+                const o = document.createElement('option');
+                o.value = t; o.textContent = labels[t] || t;
+                typeEl.appendChild(o);
+            });
+            const isTest = !!(window.Auth && typeof Auth.isTestEmail === 'function' && Auth.isTestEmail(currentUser.email));
+            let busy = false;
+            async function run(input) {
+                if (busy) return;
+                const params = PartnerRegistration.buildParams(input, currentUser.email, isTest);
+                if (!params) {
+                    statusEl.textContent = 'Please choose what you do and enter your first and last name.';
+                    formEl.style.display = 'block';
+                    return;
+                }
+                busy = true;
+                statusEl.textContent = 'Finishing your partner registration...';
+                formEl.style.display = 'none';
+                const r = await PartnerRegistration.complete(sb, params, localStorage);
+                if (r.status === 'error') {
+                    console.error('Partner registration completion failed:', r.error);
+                    statusEl.textContent = 'An error occurred. Please try again or email us at support@otterquote.com';
+                    formEl.style.display = 'block';
+                    busy = false;
+                    return;
+                }
+                window.location.reload();
+            }
+            formEl.addEventListener('submit', function (ev) {
+                ev.preventDefault();
+                run({ agentType: typeEl.value, firstName: firstEl.value, lastName: lastEl.value, phone: phoneEl.value });
+            });
+            const marker = PartnerRegistration.readMarker(localStorage, currentUser.email);
+            if (marker) {
+                typeEl.value = marker.agentType || typeEl.value;
+                firstEl.value = marker.firstName || '';
+                lastEl.value = marker.lastName || '';
+                phoneEl.value = marker.phone || '';
+                run(marker);
+            } else {
+                statusEl.textContent = "This email isn't registered as a partner yet. Tell us a little about you to register it.";
+                formEl.style.display = 'block';
             }
         }
 
