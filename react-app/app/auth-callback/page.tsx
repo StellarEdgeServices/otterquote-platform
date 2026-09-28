@@ -316,10 +316,40 @@ export default function AuthCallbackPage() {
       adoptFirstTouchFromParam(ftParam);
       await Promise.all([linkPendingLeadOnce(supabase), recordFirstTouch(supabase)]);
 
-      const intent =
-        typeof localStorage !== 'undefined'
-          ? localStorage.getItem('cs_auth_role')
-          : null;
+      // gh-2060: cs_auth_role is a breadcrumb written immediately before a
+      // login/signup entry point redirects into the Supabase auth flow
+      // (login/page.tsx, contractor/login/page.tsx, get-started/page.tsx),
+      // read here to route a fresh sign-in. It used to have no expiry and
+      // was cleared only on the `intent === 'contractor'` branch below — so
+      // a visitor who started the contractor flow, abandoned before
+      // completing auth, and later signed in on the SAME BROWSER through a
+      // path that never re-sets cs_auth_role (e.g. a Google OAuth redirect
+      // landing here directly) had that stale 'contractor' value read as
+      // THIS session's intent and got routed to the contractor
+      // pre-approval wizard despite having no contractor record — a
+      // stranger's/earlier visit's intent silently attaching to an
+      // unrelated sign-in. `cs_auth_role_at` bounds how long the intent is
+      // trusted (generous enough to survive a real magic-link/OAuth round
+      // trip, e.g. an email clicked minutes to hours later); a value older
+      // than that, or with no timestamp at all (pre-fix breadcrumb still
+      // sitting from before this change), is treated as absent. Cleared on
+      // read either way, so it is one-shot regardless of which path
+      // consumes it or whether it was trusted.
+      const CS_AUTH_ROLE_TTL_MS = 24 * 60 * 60 * 1000;
+      let intent: string | null = null;
+      if (typeof localStorage !== 'undefined') {
+        const storedIntent = localStorage.getItem('cs_auth_role');
+        const storedAt = parseInt(localStorage.getItem('cs_auth_role_at') || '', 10);
+        if (
+          storedIntent !== null &&
+          Number.isFinite(storedAt) &&
+          Date.now() - storedAt <= CS_AUTH_ROLE_TTL_MS
+        ) {
+          intent = storedIntent;
+        }
+        localStorage.removeItem('cs_auth_role');
+        localStorage.removeItem('cs_auth_role_at');
+      }
 
       // Role resolution — gh-909 (D-182 v113, 2026-08-19): single
       // fact-table-derived read via public.resolved_user_role replaces the
