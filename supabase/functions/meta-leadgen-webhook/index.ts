@@ -82,6 +82,7 @@ import {
   type WebhookDeps,
 } from "./handler.ts";
 import type { FetchedHomeownerLead, HomeownerConsentArgs } from "./homeowner-consent.ts";
+import type { PartnerConsentArgs } from "./partner-consent.ts";
 import { buildInviteEmail, isInviteEmailEnabled, PARTNER_INVITE_EMAIL_ENABLED_ENV } from "./invite-email.ts";
 import { PARTNER_INVITE_SECRET_ENV, signPartnerInviteToken } from "./invite-token.ts";
 import { buildPartnerOptOutUrl, canSendWithOptOut, PARTNER_OPTOUT_SECRET_ENV, signPartnerOptOutToken } from "./optout.ts";
@@ -157,7 +158,7 @@ async function fetchLeadFromGraph(
     // `fetched.error`-adjacent log line that includes the request URL --
     // moving the token out of it removes that class of leak outright rather
     // than relying on "nothing logs it today" staying true forever.
-    const url = `https://graph.facebook.com/${GRAPH_API_VERSION}/${encodeURIComponent(leadgenId)}?fields=field_data`;
+    const url = `https://graph.facebook.com/${GRAPH_API_VERSION}/${encodeURIComponent(leadgenId)}?fields=field_data,custom_disclaimer_responses,created_time,form_id,ad_id,campaign_id,platform`;
     const res = await fetchImpl(url, { headers: { Authorization: `Bearer ${token}` } });
     if (!res.ok) {
       // Never logs the response body — Graph error bodies can echo request context back.
@@ -270,6 +271,46 @@ async function finalizeHomeownerLead(
   return { updated: Array.isArray(data) && data.length > 0, error: null };
 }
 
+/**
+ * gh-2313 -- writes the partner call/text consent evidence row BEFORE
+ * register_partner (handler.ts enforces the order). Service role only:
+ * public.partner_lead_consents has RLS on with no policy and no anon/
+ * authenticated grants. Idempotent -- unique (meta_lead_id, consent_key), so a
+ * Meta redelivery or a retry after a register_partner failure hits 23505,
+ * which means the evidence is ALREADY written (same posture as
+ * finalizeHomeownerLead above), not an error.
+ */
+async function recordPartnerConsent(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  consent: PartnerConsentArgs,
+): Promise<{ error: { message?: string } | null }> {
+  const { error } = await supabase.from("partner_lead_consents").insert({
+    meta_lead_id: consent.leadgenId,
+    form_id: consent.formId,
+    consent_key: consent.consentKey,
+    consent_given: consent.consentGiven,
+    consent_text: consent.consentText,
+    disclaimer_responses: consent.disclaimerResponses,
+    phone_as_typed: consent.phoneAsTyped,
+    form_payload: consent.formPayload,
+    payload: {
+      source: "meta_leadgen",
+      leadgen_id: consent.leadgenId,
+      form_id: consent.formId,
+      funnel_id: consent.funnelId,
+      ad_id: consent.adId,
+      campaign_id: consent.campaignId,
+      created_time: consent.createdTime,
+    },
+  });
+  if (!error) return { error: null };
+  const code = (error as { code?: string }).code;
+  if (code === "23505") return { error: null };
+  if (isDataRejectionError(code)) return { error: { message: "rejected_invalid_data" } };
+  return { error: { message: error.message } };
+}
+
 if (import.meta.main) {
   serve(async (req: Request) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
@@ -355,6 +396,7 @@ if (import.meta.main) {
           error: error ? { message: error.message } : null,
         };
       },
+      recordPartnerConsent: (consent) => recordPartnerConsent(supabase, consent),
       sendInvite: async ({ referralAgentId, email, firstName, agentType }) => {
         await sendPartnerInvite(supabaseUrl, serviceRoleKey, { referralAgentId, email, firstName, agentType });
       },

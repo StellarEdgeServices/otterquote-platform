@@ -139,18 +139,20 @@ function makeElementStore() {
 }
 
 // Runs a page's real inline script(s) in a vm context. register_partner
-// always SUCCEEDS (this simulates the RPC-level duplicate check not
-// catching it -- e.g. no referral_agents row yet for this email/type).
+// SUCCEEDS unless rpcError is given (this simulates the RPC-level duplicate
+// check not catching it -- e.g. no referral_agents row yet for this email/type).
 // Auth.signUpWithPassword() REJECTS with Supabase's own literal duplicate-
 // registration message -- this is the auth.users-level duplicate the RPC
 // above cannot see.
-function runPageScript(html, { search = '' } = {}) {
+function runPageScript(html, { search = '', signUp = 'dup', dupError = null, rpcError = null, signUpSeq = null, rpcSeq = null, sessionEmail = null } = {}) {
   const script = extractInlineScripts(html);
   if (!script || script.indexOf('register_partner') === -1) {
     return { setupError: 'no inline script containing register_partner was found on the page' };
   }
   const store = makeElementStore();
   const rpcCalls = [];
+  const callOrder = [];
+  let signUpN = 0, rpcN = 0;
   const alertCalls = [];
   // gh2274 fix-up: a plain always-Promise-returning Proxy trap (the prior
   // shape here) breaks the moment a caller does something other than a
@@ -179,6 +181,9 @@ function runPageScript(html, { search = '' } = {}) {
     rpc(name, params) {
       rpcCalls.push({ name, params });
       if (name === 'register_partner') {
+        callOrder.push('register_partner');
+        const rpcErr = rpcSeq ? rpcSeq[Math.min(rpcN++, rpcSeq.length - 1)] : rpcError;
+        if (rpcErr) return Promise.resolve({ data: null, error: rpcErr });
         return Promise.resolve({ data: { id: 'gh2274-test-id', unique_code: 'TESTCODE123' }, error: null });
       }
       if (name === 'claim_partner_account') {
@@ -226,9 +231,14 @@ function runPageScript(html, { search = '' } = {}) {
   // duplicate-registration error -- always AFTER register_partner has
   // already succeeded above, exactly the ordering every page uses.
   const AuthObj = {
-    signUpWithPassword: async () => { throw new Error('User already registered'); },
+    signUpWithPassword: async () => {
+      callOrder.push('signUp');
+      const mode = signUpSeq ? signUpSeq[Math.min(signUpN++, signUpSeq.length - 1)] : signUp;
+      if (mode === 'ok') return { user: { id: 'gh2274-user-id' }, session: null };
+      throw (dupError || new Error('User already registered'));
+    },
     hasPartnerSession: async () => false,
-    getUser: async () => null,
+    getUser: async () => (sessionEmail ? { email: sessionEmail } : null),
     isTestEmail: (email) => (email || '').trim().toLowerCase().endsWith('@otterquote-internal.test'),
   };
   win.Auth = AuthObj;
@@ -256,7 +266,7 @@ function runPageScript(html, { search = '' } = {}) {
     return { setupError: 'script execution error while loading the page: ' + e.message };
   }
   for (const fn of domContentLoadedListeners) { try { fn(); } catch (e) {} }
-  return { store, rpcCalls, alertCalls };
+  return { store, rpcCalls, alertCalls, callOrder, lsStore };
 }
 
 async function submitForm(runResult, formId, fill, { hasConfirmPopup = false } = {}) {
@@ -372,15 +382,39 @@ const PAGES = [
   },
 ];
 
+// gh-2281: (a) = English message text only (older SDKs, no .code);
+// (c) = Supabase's structured error.code with a LOCALIZED/reworded message
+// that contains no "already registered" text -- the case a message-only
+// match silently drops through to the generic catch-all.
+const VARIANTS = [
+  { tag: '(a)', dupError: null },
+  { tag: '(c)', dupError: Object.assign(new Error('Ce compte existe deja'), { code: 'user_already_exists' }) },
+];
+// gh-2283 (DRAFT COPY -- needs R-177 LEGAL-READ before merge): the auth-level
+// duplicate no longer asserts a role. auth.users is shared across homeowner /
+// contractor / partner, so the old "You're already a partner" claim was false
+// for a non-partner. The RPC-level 'partner_exists' branch (a real
+// referral_agents row) keeps the original already-a-partner message.
+const AUTH_DUP_COPY = {
+  "You're already a partner — sign in at the Partner Login page.":
+    "This email is already registered — sign in at the Partner Login page, or email support@otterquote.com if you need help.",
+  "You're already a partner — <a href=\"/partner-login.html\">sign in here</a>.":
+    "This email is already registered — <a href=\"/partner-login.html\">sign in here</a>, or email support@otterquote.com if you need help.",
+  "You're already a partner — sign in at otterquote.com/partner-login.html.":
+    "This email is already registered — sign in at otterquote.com/partner-login.html, or email support@otterquote.com if you need help.",
+};
+for (const p of PAGES) p.designedAuthDup = AUTH_DUP_COPY[p.designed];
+
 for (const page of PAGES) {
-  const label = page.file + ' (a)';
+  for (const variant of VARIANTS) {
+  const label = page.file + ' ' + variant.tag;
   const htmlPath = path.join(repoRoot, page.file);
   if (!fs.existsSync(htmlPath)) {
     failWithReason(label + ': a duplicate-email auth error routes to the designed already-a-partner state', 'file not found: ' + page.file);
     continue;
   }
   const html = fs.readFileSync(htmlPath, 'utf8');
-  const run = runPageScript(html);
+  const run = runPageScript(html, { dupError: variant.dupError });
   if (run.setupError) {
     failWithReason(label + ': a duplicate-email auth error routes to the designed already-a-partner state', run.setupError);
     continue;
@@ -391,8 +425,10 @@ for (const page of PAGES) {
     // register_partner must have been called and (per this test's mock)
     // succeeded -- confirming Auth.signUpWithPassword() is genuinely what
     // raised the duplicate error, same ordering as the real pages.
+    // gh-2282: the auth-level duplicate is now hit FIRST, so register_partner
+    // must never run -- otherwise it leaves an orphaned referral_agents row.
     const rpcCalls = run.rpcCalls.filter((c) => c.name === 'register_partner');
-    ok(rpcCalls.length === 1, label + ': register_partner (the RPC-level duplicate check) is called and succeeds before the auth-level duplicate is hit -- got ' + rpcCalls.length + ' call(s)');
+    ok(rpcCalls.length === 0, label + ': register_partner is NOT called when the email already has an auth account (no orphan referral_agents row) -- got ' + rpcCalls.length + ' call(s)');
 
     let surfaced = '';
     if (page.surface === 'formAlert') {
@@ -405,10 +441,87 @@ for (const page of PAGES) {
     }
 
     ok(!/User already registered/.test(surfaced), label + ': the raw Supabase "User already registered" string is NOT shown to the user -- got ' + JSON.stringify(surfaced));
-    ok(surfaced.includes(page.designed), label + ': the pre-existing designed already-a-partner message is shown verbatim -- got ' + JSON.stringify(surfaced));
+    ok(surfaced.includes(page.designedAuthDup), label + ': the role-neutral already-registered message is shown verbatim -- got ' + JSON.stringify(surfaced));
+    ok(!/already a partner/i.test(surfaced), label + ': the auth-level duplicate does NOT claim the visitor is already a partner -- got ' + JSON.stringify(surfaced));
   } catch (e) {
     failWithReason(label + ': a duplicate-email auth error routes to the designed already-a-partner state', e.message + (e.stack ? '\n' + e.stack.split('\n').slice(1, 4).join('\n') : ''));
   }
+  }
+}
+
+// gh-2282 (d)/(e): success path and the RPC-level duplicate, both now AFTER
+// a successful Auth.signUpWithPassword().
+for (const page of PAGES) {
+  const html = fs.readFileSync(path.join(repoRoot, page.file), 'utf8');
+  // (d) new email: signUp first, then register_partner exactly once.
+  let run = runPageScript(html, { signUp: 'ok' });
+  if (run.setupError) { failWithReason(page.file + ' (d)', run.setupError); continue; }
+  try {
+    await submitForm(run, page.formId, page.fields, { hasConfirmPopup: !!page.hasConfirmPopup });
+    ok(run.callOrder.join(',') === 'signUp,register_partner', page.file + ' (d): new email -- Auth.signUpWithPassword runs BEFORE register_partner, which runs exactly once -- got ' + JSON.stringify(run.callOrder));
+  } catch (e) { failWithReason(page.file + ' (d)', e.message); }
+  // (e) register_partner says partner_exists after signUp succeeded: the designed message still shows.
+  run = runPageScript(html, { signUp: 'ok', rpcError: { message: 'partner_exists' } });
+  if (run.setupError) { failWithReason(page.file + ' (e)', run.setupError); continue; }
+  try {
+    await submitForm(run, page.formId, page.fields, { hasConfirmPopup: !!page.hasConfirmPopup });
+    let surfaced = '';
+    if (page.surface === 'formAlert') surfaced = run.store.byId.get('formAlert') ? run.store.byId.get('formAlert').textContent : '';
+    else if (page.surface === 'errorEl') { const el = run.store.byId.get(page.errorElId); surfaced = el ? (el.innerHTML || el.textContent) : ''; }
+    else surfaced = run.alertCalls.join(' | ');
+    ok(surfaced.includes(page.designed), page.file + ' (e): RPC partner_exists still shows the designed already-a-partner message -- got ' + JSON.stringify(surfaced));
+  } catch (e) { failWithReason(page.file + ' (e)', e.message); }
+}
+
+// gh-2282 review must-fix 1: signUp now runs before register_partner, so a
+// register_partner failure must not strand the user with an auth account and
+// no referral_agents row. (f) rate-limit then retry, (g) existing auth user
+// (signed in) with no partner row, (h) a genuine existing partner.
+const PENDING_KEY = 'oq_partner_pending_registration';
+function surfacedOf(run, page) {
+  if (page.surface === 'formAlert') return run.store.byId.get('formAlert') ? run.store.byId.get('formAlert').textContent : '';
+  if (page.surface === 'errorEl') { const el = run.store.byId.get(page.errorElId); return el ? (el.innerHTML || el.textContent) : ''; }
+  return run.alertCalls.join(' | ');
+}
+const emailKey = 'gh2274-dup@example.invalid';
+for (const page of PAGES) {
+  const html = fs.readFileSync(path.join(repoRoot, page.file), 'utf8');
+  const submit = (run) => submitForm(run, page.formId, page.fields, { hasConfirmPopup: !!page.hasConfirmPopup });
+  // (f) new email; signUp ok, register_partner rate-limited; user resubmits (signUp now says duplicate).
+  let run = runPageScript(html, { signUpSeq: ['ok', 'dup'], rpcSeq: [{ message: 'rate_limited' }, null] });
+  if (run.setupError) { failWithReason(page.file + ' (f)', run.setupError); continue; }
+  try {
+    await submit(run);
+    const marker = run.lsStore.get(PENDING_KEY);
+    ok(!!marker && JSON.parse(marker).email === emailKey && !/pass/i.test(marker), page.file + ' (f): after a register_partner failure a pending-registration marker (email, no password) is kept -- got ' + marker);
+    ok(!/already a partner|already registered/i.test(surfacedOf(run, page)), page.file + ' (f): the first-attempt failure is not shown as already-a-partner');
+    await submit(run);
+    ok(run.callOrder.join(',') === 'signUp,register_partner,signUp,register_partner', page.file + ' (f): retry completes register_partner after the duplicate signUp -- got ' + JSON.stringify(run.callOrder));
+    ok(!/already a partner|already registered/i.test(surfacedOf(run, page)), page.file + ' (f): the retry does NOT show "already a partner" -- got ' + JSON.stringify(surfacedOf(run, page)));
+    ok(!run.lsStore.has(PENDING_KEY), page.file + ' (f): marker cleared once register_partner succeeded');
+  } catch (e) { failWithReason(page.file + ' (f)', e.message); }
+  // (g) existing auth user, signed in as that email, no partner row: complete registration.
+  run = runPageScript(html, { signUpSeq: ['dup'], sessionEmail: emailKey });
+  if (run.setupError) { failWithReason(page.file + ' (g)', run.setupError); continue; }
+  try {
+    await submit(run);
+    ok(run.callOrder.join(',') === 'signUp,register_partner', page.file + ' (g): signed-in existing auth user without a partner row completes register_partner -- got ' + JSON.stringify(run.callOrder));
+    ok(!/already a partner|already registered/i.test(surfacedOf(run, page)), page.file + ' (g): no already-a-partner message -- got ' + JSON.stringify(surfacedOf(run, page)));
+  } catch (e) { failWithReason(page.file + ' (g)', e.message); }
+  // (h) genuine existing partner (signed in, register_partner says partner_exists): existing-partner message.
+  run = runPageScript(html, { signUpSeq: ['dup'], sessionEmail: emailKey, rpcSeq: [{ message: 'partner_exists' }] });
+  if (run.setupError) { failWithReason(page.file + ' (h)', run.setupError); continue; }
+  try {
+    await submit(run);
+    ok(surfacedOf(run, page).includes(page.designed), page.file + ' (h): a genuine existing partner still gets the existing-partner message -- got ' + JSON.stringify(surfacedOf(run, page)));
+  } catch (e) { failWithReason(page.file + ' (h)', e.message); }
+}
+
+// gh-2281 static guard: every page consults the structured error.code.
+for (const file of ALL_PARTNER_PAGES) {
+  const html = fs.readFileSync(path.join(repoRoot, file), 'utf8');
+  ok(/signUpError\s*&&\s*signUpError\.code\s*===\s*'user_already_exists'/.test(html), file + ' (c): checks signUpError.code === \'user_already_exists\'');
+  ok(/toLowerCase\(\)\.includes\('already registered'\)/.test(html), file + ' (c): keeps the message-text fallback');
 }
 
 console.log('');
