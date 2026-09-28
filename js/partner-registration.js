@@ -9,9 +9,18 @@
  * pages leave a pending marker in localStorage; partner-dashboard.html's
  * "No Partner Account Found" state uses this module to complete the registration.
  *
- * Marker (localStorage 'oq_partner_pending_registration'): email, agentType,
- * firstName, lastName, phone, company, ts. No password. Every field is read here
- * or by the signup pages' retry check; it expires after 7 days.
+ * Marker (localStorage 'oq_partner_pending_registration'): email, ts (written),
+ * termsAcceptedAt (the submit that followed the ticked terms checkbox) and
+ * rpcArgs (the EXACT register_partner arguments the signup page built: agent
+ * type, name, phone, company, recruit code, UTM fields, fbclid, li_fat_id,
+ * funnel_id, ... -- so a dashboard-completed registration is attributed
+ * identically to a page-completed one). No password. Expires after 7 days.
+ *
+ * Terms-acceptance evidence: register_partner stamps partner_agreement_accepted_at
+ * and the IP/UA attestation at CALL time. On this path that is later than the real
+ * assent, so the true client-side time is passed in p_metadata (stored by the RPC in
+ * referral_agents.metadata) as terms_accepted_at_client, with
+ * completion_path = 'dashboard_marker'.
  *
  * Client-side only: register_partner is the existing anon/authenticated RPC.
  */
@@ -40,23 +49,25 @@
 
   function clearMarker(storage) { try { storage.removeItem(KEY); } catch (e) { /* non-fatal */ } }
 
-  /** register_partner arguments for the signed-in user's OWN email. Null when the input cannot satisfy the RPC. */
-  function buildParams(input, ownEmail, isTest) {
-    input = input || {};
-    var first = String(input.firstName || '').trim();
-    var last = String(input.lastName || '').trim();
-    if (!norm(ownEmail) || !first || !last || TYPES.indexOf(input.agentType) === -1) return null;
-    var phone = String(input.phone || '').trim();
-    var company = String(input.company || '').trim();
-    return {
-      p_agent_type: input.agentType,
-      p_first_name: first,
-      p_last_name: last,
-      p_email: norm(ownEmail),
-      p_phone: phone || null,
-      p_company: company || null,
-      p_is_test: !!isTest,
-    };
+  /**
+   * register_partner arguments for the signed-in user's OWN email, from a marker.
+   * Null when the marker cannot satisfy the RPC (no args / type / name / terms time).
+   */
+  function buildParams(marker, ownEmail, isTest) {
+    var a = marker && marker.rpcArgs;
+    if (!a || typeof a !== 'object' || !norm(ownEmail)) return null;
+    if (TYPES.indexOf(a.p_agent_type) === -1 || !String(a.p_first_name || '').trim() || !String(a.p_last_name || '').trim()) return null;
+    if (typeof marker.termsAcceptedAt !== 'number' || !isFinite(marker.termsAcceptedAt)) return null;
+    var p = {};
+    Object.keys(a).forEach(function (k) { if (k.indexOf('p_') === 0) p[k] = a[k]; });
+    p.p_email = norm(ownEmail);
+    p.p_is_test = !!(isTest || a.p_is_test);
+    var md = {};
+    if (a.p_metadata && typeof a.p_metadata === 'object') Object.keys(a.p_metadata).forEach(function (k) { md[k] = a.p_metadata[k]; });
+    md.terms_accepted_at_client = new Date(marker.termsAcceptedAt).toISOString();
+    md.completion_path = 'dashboard_marker';
+    p.p_metadata = md;
+    return p;
   }
 
   /** Calls register_partner. status: 'created' | 'exists' (a row is already there; the dashboard's claim step links it) | 'error'. */

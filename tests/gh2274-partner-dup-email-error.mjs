@@ -463,6 +463,11 @@ for (const page of PAGES) {
 // no referral_agents row. (f) rate-limit then retry, (g) existing auth user
 // (signed in) with no partner row, (h) a genuine existing partner.
 const PENDING_KEY = 'oq_partner_pending_registration';
+function loadRegLib() {
+  const w = {}; w.window = w;
+  vm.runInContext(fs.readFileSync(path.join(repoRoot, 'js', 'partner-registration.js'), 'utf8'), vm.createContext({ window: w, Date, JSON, String, Object, isFinite }));
+  return w.PartnerRegistration;
+}
 function surfacedOf(run, page) {
   if (page.surface === 'formAlert') return run.store.byId.get('formAlert') ? run.store.byId.get('formAlert').textContent : '';
   if (page.surface === 'errorEl') { const el = run.store.byId.get(page.errorElId); return el ? (el.innerHTML || el.textContent) : ''; }
@@ -535,6 +540,29 @@ for (const page of PAGES) {
     await submitForm(run, page.formId, noTerms, { hasConfirmPopup: !!page.hasConfirmPopup });
     ok(run.callOrder.length === 0 && !run.lsStore.has(PENDING_KEY), page.file + ' (l): with the terms checkbox unticked nothing is called and no pending marker is written -- got ' + JSON.stringify(run.callOrder));
   } catch (e) { failWithReason(page.file + ' (l)', e.message); }
+  // (m) dashboard-marker completion sends the SAME register_partner arguments as the signup page (attribution parity) plus the real terms time.
+  const UTM = { source: 'facebook', medium: 'paid', campaign: 'camp1', content: 'creative1', fbclid: 'FB123', liFatId: 'LI456', funnelId: 'funnel-x' };
+  run = runPageScript(html, { signUpSeq: ['ok'], rpcSeq: [{ message: 'rate_limited' }], ls: { cs_utm_context: JSON.stringify(UTM), cs_recruit_code: 'RECRUIT1' } });
+  if (run.setupError) { failWithReason(page.file + ' (m)', run.setupError); continue; }
+  try {
+    const before = Date.now();
+    await submit(run);
+    const pageArgs = run.rpcCalls.filter((c) => c.name === 'register_partner')[0].params;
+    const marker = JSON.parse(run.lsStore.get(PENDING_KEY));
+    ok(pageArgs.p_utm_source === 'facebook' && pageArgs.p_utm_campaign === 'camp1' && (pageArgs.p_fbclid === undefined || pageArgs.p_fbclid === 'FB123'), page.file + ' (m): the page really sends the seeded attribution (utm_source=' + pageArgs.p_utm_source + ', fbclid=' + pageArgs.p_fbclid + ', funnel=' + pageArgs.p_funnel_id + ', recruit=' + pageArgs.p_recruit_code + ')');
+    const lib = loadRegLib();
+    const dash = lib.buildParams(marker, emailKey, false);
+    ok(!!dash, page.file + ' (m): the marker yields dashboard register_partner arguments');
+    if (dash) {
+      const keys = new Set([...Object.keys(pageArgs), ...Object.keys(dash)]);
+      const diffs = [...keys].filter((k) => !['p_metadata', 'p_is_test'].includes(k) && JSON.stringify(pageArgs[k]) !== JSON.stringify(dash[k]));
+      ok(diffs.length === 0, page.file + ' (m): dashboard args equal signup-page args for every attribution/profile field (recruit code, UTM, fbclid, li_fat_id, funnel_id, ...) -- differing: ' + JSON.stringify(diffs));
+      ok(dash.p_metadata && dash.p_metadata.completion_path === 'dashboard_marker' && typeof dash.p_metadata.terms_accepted_at_client === 'string', page.file + ' (m): p_metadata carries completion_path and terms_accepted_at_client');
+      const at = Date.parse(dash.p_metadata.terms_accepted_at_client);
+      ok(at >= before - 1000 && at <= Date.now() + 1000 && marker.termsAcceptedAt <= marker.ts, page.file + ' (m): terms_accepted_at_client is the submit time captured on the page, not completion time');
+      ok(Object.keys(pageArgs.p_metadata || {}).every((k) => dash.p_metadata[k] === pageArgs.p_metadata[k]), page.file + ' (m): the page\'s own p_metadata keys are preserved');
+    }
+  } catch (e) { failWithReason(page.file + ' (m)', e.message); }
 }
 
 // gh-2281 static guard: every page consults the structured error.code.

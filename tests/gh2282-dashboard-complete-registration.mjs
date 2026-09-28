@@ -71,18 +71,25 @@ async function run({ marker, claimError = false, rpcResult = { error: null }, em
   }
   return { rpcCalls, reloads, ls, doc };
 }
-const good = () => ({ email: OWN, agentType: 're_agent', firstName: 'Jane', lastName: 'Test', phone: '3175551234', company: 'Test Realty', ts: Date.now() });
+const TICK = Date.now() - 60000;
+const good = () => ({ email: OWN, ts: Date.now(), termsAcceptedAt: TICK, rpcArgs: {
+  p_agent_type: 're_agent', p_first_name: 'Jane', p_last_name: 'Test', p_email: OWN, p_phone: '3175551234', p_company: 'Test Realty',
+  p_recruit_code: 'RECRUIT1', p_utm_source: 'facebook', p_utm_medium: 'paid', p_utm_campaign: 'camp1', p_utm_content: 'creative1',
+  p_fbclid: 'FB123', p_li_fat_id: 'LI456', p_funnel_id: 'funnel-x', p_is_test: false } });
 
 if (showSrc && beginSrc && lib) {
   // 1. valid marker: automatic completion for the account's own email, then reload.
   let r = await run({ marker: good() });
   ok(r.rpcCalls.length === 1 && r.rpcCalls[0].name === 'register_partner', '(1) a valid pending marker triggers register_partner once');
-  ok(r.rpcCalls[0] && r.rpcCalls[0].params.p_email === OWN && r.rpcCalls[0].params.p_agent_type === 're_agent' && r.rpcCalls[0].params.p_first_name === 'Jane' && r.rpcCalls[0].params.p_company === 'Test Realty', '(1) it uses the signed-in email and the marker name/type/company');
+  const c0 = r.rpcCalls[0] && r.rpcCalls[0].params;
+  ok(c0 && c0.p_email === OWN && c0.p_agent_type === 're_agent' && c0.p_first_name === 'Jane' && c0.p_company === 'Test Realty', '(1) it uses the signed-in email and the marker name/type/company');
+  ok(c0 && c0.p_recruit_code === 'RECRUIT1' && c0.p_utm_source === 'facebook' && c0.p_utm_medium === 'paid' && c0.p_utm_campaign === 'camp1' && c0.p_utm_content === 'creative1' && c0.p_fbclid === 'FB123' && c0.p_li_fat_id === 'LI456' && c0.p_funnel_id === 'funnel-x', '(1) recruiter code, UTM, fbclid, li_fat_id and funnel_id from the signup page reach register_partner');
+  ok(c0 && c0.p_metadata && c0.p_metadata.completion_path === 'dashboard_marker' && c0.p_metadata.terms_accepted_at_client === new Date(TICK).toISOString(), '(1) p_metadata records completion_path and the ACTUAL client terms time from the marker');
   ok(r.reloads === 1 && !r.ls.has(KEY), '(1) the dashboard reloads and the marker is cleared');
   // 2. no marker: NEVER registers (no terms checkbox was ticked); sends the visitor to the partner signup page.
   r = await run({});
   ok(r.rpcCalls.length === 0 && r.reloads === 0, '(2) no marker: register_partner is never called and the page does not reload');
-  ok(r.doc.getElementById('partnerFinishSignup').style.display === 'inline-block' && /partner-re\.html/.test(html.match(/id="partnerFinishSignup"[^>]*>|<a href="[^"]*"[^>]*id="partnerFinishSignup"[^>]*>/)[0]), '(2) no marker: a "Go to Partner Signup" link to the partner signup page is shown');
+  ok(r.doc.getElementById('partnerFinishSignup').style.display === 'inline-block' && /href="\/partners\.html"/.test(html.match(/<a href="[^"]*"[^>]*id="partnerFinishSignup"[^>]*>/)[0]), '(2) no marker: a "Go to Partner Signup" link to /partners.html is shown');
   ok(!/id="partnerFinishForm"|partnerFinishFirst/.test(html), '(2) the registration form is gone from the dashboard');
   // 3. marker for another email, 4. expired marker, malformed marker: not used.
   r = await run({ marker: { ...good(), email: 'someone-else@example.invalid' } });
@@ -91,6 +98,8 @@ if (showSrc && beginSrc && lib) {
   ok(r.rpcCalls.length === 0 && !r.ls.has(KEY) && r.doc.getElementById('partnerFinishSignup').style.display === 'inline-block', '(4) an expired (8 day) marker is ignored, removed, and the signup link is shown');
   r = await run({ marker: '{not json' });
   ok(r.rpcCalls.length === 0, '(4) a malformed marker is ignored');
+  r = await run({ marker: (() => { const m = good(); delete m.termsAcceptedAt; return m; })() });
+  ok(r.rpcCalls.length === 0, '(4) a marker with no terms time is not used');
   // 5. RPC failure: marker kept, error shown, no reload, form available for retry.
   r = await run({ marker: good(), rpcResult: { error: { message: 'rate_limited' } } });
   ok(r.rpcCalls.length === 1 && r.reloads === 0 && r.ls.has(KEY) && r.doc.getElementById('partnerFinishRetry').style.display === 'inline-block' && /support@otterquote\.com/.test(r.doc.getElementById('partnerFinishStatus').textContent), '(5) a rate_limited failure keeps the marker, shows the error and a Try Again button, does not reload');
