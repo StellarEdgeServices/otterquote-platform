@@ -18,14 +18,16 @@
  *     (utils.buildHomeownerReturnUrl → the React route). EF contract UNCHANGED.
  *   • recordHomeownerSigned — the quotes.homeowner_signed_at write + the static's
  *     .eq(claim_id,contractor_id) fallback (contract-signing.html:1645-1667).
- *   • sendContractorNudge / requestBidRenewal — the Step-3 send-sms nudge and the
- *     expired-bid send-support-email renewal, ported AS-IS. The hardcoded Dustin
- *     number and the message text are preserved byte-for-parity (brief item 8).
+ *   • sendContractorNudge / requestBidRenewal — the Step-3 nudge and the
+ *     expired-bid send-support-email renewal. gh-1916 RETURNED 5856782745
+ *     (Marty, CTO RUN 44) / D-328: sendContractorNudge now delegates the SMS
+ *     send entirely to the send-contractor-nudge EF (server-side consent
+ *     lookup + Dustin alert) instead of building the message and gating on
+ *     sms_opt_in here — see that function's own doc comment.
  *
- * CARRIED (EF-side, out of scope here — CTO to ticket): send-sms and
- * send-support-email have open relay/abuse findings (audit-digest §6.3) and
- * send-sms hardcodes a recipient. This PR ports the CALLS unchanged; it does NOT
- * touch those Edge Functions.
+ * CARRIED (EF-side, out of scope here — CTO to ticket): send-support-email has
+ * an open relay/abuse finding (audit-digest §6.3). This PR ports that CALL
+ * unchanged; it does NOT touch that Edge Function.
  */
 
 import { useEffect, useState } from 'react';
@@ -36,9 +38,6 @@ import {
   resolveSignGate,
   type SignGateState,
 } from './utils';
-
-// Dustin's alert line — preserved byte-for-parity from contract-signing.html:1762.
-export const NUDGE_DUSTIN_PHONE = '+13175019215';
 
 /** Claim row (superset of utils.SigningClaim — adds the fields the page renders). */
 export interface SigningClaimRow {
@@ -65,15 +64,21 @@ export interface SigningQuoteRow {
   docusign_envelope_id?: string | null;
 }
 
-/** Shape returned by the get-contractor-info EF (only the fields the page uses). */
+/**
+ * Shape returned by the get-contractor-info EF (only the fields the page uses).
+ *
+ * gh-1916 RETURNED 5856782745 (Marty, CTO RUN 44) / D-328: `phone`,
+ * `notification_phones`, `sms_opt_in`, `sms_opt_in_at` and
+ * `sms_consent_text_version` were removed from the EF's response — a
+ * contractor's phone number and consent metadata never reach the browser now.
+ * The homeowner nudge (sendContractorNudge, below) moved server-side into
+ * send-contractor-nudge, which looks up consent itself.
+ */
 export interface ContractorInfo {
   id?: string | null;
   name?: string | null;
   company_name?: string | null;
   user_id?: string | null;
-  phone?: string | null;
-  notification_phones?: string[] | null;
-  sms_opt_in?: boolean | null;
 }
 
 export interface SigningParams {
@@ -386,62 +391,31 @@ export function buildProjectConfirmationUrl(claimId: string): string {
 }
 
 /**
- * Step-3 "haven't heard from your contractor" nudge — SMS the contractor (every
- * collected number) and Dustin's alert line. Ported AS-IS from
- * contract-signing.html:1731-1778: the recipient set, the hardcoded Dustin number,
- * and the message text are preserved byte-for-parity. Resolves true iff every send
- * succeeded (the page reflects success/failure copy). The send-sms EF is UNCHANGED.
+ * Step-3 "haven't heard from your contractor" nudge.
+ *
+ * gh-1916 RETURNED 5856782745 (Marty, CTO RUN 44, fresh-context REVIEW+LEGAL-READ
+ * FAIL 5856738126 on PR #2252): the previous version of this function built the
+ * SMS text and gated on `contractor.sms_opt_in` HERE, in the browser — but
+ * `get-contractor-info` had started returning every contractor's phone number
+ * and opt-in timestamp to the claim's homeowner regardless of consent, and a
+ * client-side gate is not something a browser caller is ever obligated to
+ * honor. Marty's ruling: consent enforcement is SERVER-SIDE. This now only
+ * asks send-contractor-nudge (which has its own service-role lookup of
+ * `contractors.sms_opt_in`, refuses + logs when it isn't strictly `true`, and
+ * never returns a phone number or consent field) to do the send; it no longer
+ * receives or needs the contractor's phone/consent fields at all. Resolves
+ * true iff the EF call itself succeeded — the EF's response never reveals
+ * whether the contractor half was actually sent or refused for consent.
  */
 export async function sendContractorNudge(args: {
-  contractor: ContractorInfo | null;
-  claim: SigningClaimRow | null;
   claimId: string | null;
+  contractorId: string | null;
 }): Promise<boolean> {
-  const c = args.contractor;
-  const cl = args.claim;
-  const contractorName = c?.company_name || c?.name || 'your contractor';
-  const homeownerName = cl?.homeowner_name || 'your homeowner';
-  const address = cl?.property_address || 'their property';
-  const signedDate = cl?.contract_signed_at
-    ? new Date(cl.contract_signed_at).toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-      })
-    : 'recently';
-
-  const phones: string[] = [];
-  if (Array.isArray(c?.notification_phones) && c.notification_phones.length) {
-    phones.push(...c.notification_phones.filter(Boolean));
-  }
-  if (c?.phone && !phones.includes(c.phone)) {
-    phones.push(c.phone);
-  }
-
-  const contractorMsg = `Otter Quotes: Hi ${contractorName} — your homeowner ${homeownerName} (${address}) signed their contract on ${signedDate} and hasn't heard from you yet. Please reach out as soon as possible. Questions? Call (844) 875-3412.`;
-  const dustinMsg = `Otter Quotes Alert: ${homeownerName} (claim ${args.claimId || 'unknown'}) says they haven't heard from ${contractorName} since signing on ${signedDate}. Heads up.`;
-
-  // gh-1916 R-134 gate: never text the contractor's phone without a stored opt-in.
-  let contractorPhones = phones;
-  if (c?.sms_opt_in !== true) {
-    console.warn(
-      `[use-contract-signing-data] SMS refused (gh-1916 R-134 gate) — sms_opt_in is not true for contractor ${c?.id ?? '(unknown)'} (value=${String(c?.sms_opt_in)}). ${phones.length} phone(s) suppressed. No Twilio call attempted.`,
-    );
-    contractorPhones = [];
-  }
-
-  const sends = contractorPhones.map((phone) =>
-    supabase.functions.invoke('send-sms', { body: { to: phone, message: contractorMsg } }),
-  );
-  // Always notify Dustin (hardcoded number — byte-for-parity with the static).
-  sends.push(
-    supabase.functions.invoke('send-sms', {
-      body: { to: NUDGE_DUSTIN_PHONE, message: dustinMsg },
-    }),
-  );
-
   try {
-    await Promise.all(sends);
+    const { error } = await supabase.functions.invoke('send-contractor-nudge', {
+      body: { claim_id: args.claimId, contractor_id: args.contractorId },
+    });
+    if (error) throw error;
     return true;
   } catch (err) {
     console.error('Nudge error:', err);
