@@ -195,7 +195,13 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.process-dunning]
-# Cron — auth gated in-handler. Pin false (matches deployed v45).
+# gh-2309: auth gated in-handler (caller-gate.ts). TRIGGER + CRON modes require
+# `Authorization: Bearer <SUPABASE_SERVICE_ROLE_KEY>` (constant-time compare, 401 with
+# zero I/O otherwise); callers are cron job 5 and docusign-webhook. verify_jwt MUST stay
+# false because the cron key (vault `cron_service_role_key`) is NOT a JWT (an
+# `sb_secret_`-style key) so the platform JWT check would reject the real caller; the
+# emailed homeowner_choice GET link also carries no bearer (its failure_id/choice are
+# validated in-handler). health_check + OPTIONS are ungated and do no I/O.
 verify_jwt = false
 
 [functions.create-invoice]

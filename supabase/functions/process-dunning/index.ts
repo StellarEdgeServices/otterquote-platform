@@ -19,6 +19,11 @@
  *   CRON      POST/GET without body — scans all active dunning records
  *   HOMEOWNER GET ?mode=homeowner_choice&failure_id=UUID&choice=proceed|different
  *
+ * AUTH (gh-2309): TRIGGER and CRON require `Authorization: Bearer <SUPABASE_SERVICE_ROLE_KEY>`
+ * (see caller-gate.ts); anonymous callers get 401 before any DB/vendor I/O. HOMEOWNER is the
+ * emailed link (no bearer) and stays open, GET-only, with failure_id/choice validated.
+ * health_check and OPTIONS are ungated and do no I/O.
+ *
  * Environment variables:
  *   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
  *   MAILGUN_API_KEY, MAILGUN_DOMAIN
@@ -40,6 +45,8 @@ import {
 // #2105 5848495644). Switched from this batch's original local copy to the
 // shared one; the local copy is deleted.
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
+// gh-2309: inbound caller gate (service-role bearer on TRIGGER + CRON).
+import { classifyRequest, gateResponse, validateHomeownerChoice } from "./caller-gate.ts";
 
 const PLATFORM_URL = "https://otterquote.com";
 const SETTINGS_URL = `${PLATFORM_URL}/contractor-settings.html`;
@@ -660,35 +667,47 @@ serve(async (req) => {
     return new Response("ok", { headers: corsHeaders });
   }
 
+  // gh-2309: route first, gate second, and only THEN touch the DB / vendors.
   // Health check ping -- returns immediately without doing real work.
-  // Called by platform-health-check every 15 minutes.
+  // Called by platform-health-check every 15 minutes (no I/O, ungated).
+  let bodyPeek: unknown = {};
   try {
-    const bodyPeek = await req.clone().json().catch(() => ({}));
-    if (bodyPeek?.health_check === true) {
-      return new Response(JSON.stringify({ status: "ok" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200,
-      });
-    }
+    bodyPeek = await req.clone().json().catch(() => ({}));
   } catch { /* no-op */ }
+  const route = classifyRequest(req, bodyPeek);
+
+  if (route.kind === "health") {
+    return new Response(JSON.stringify({ status: "ok" }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200,
+    });
+  }
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+  // gh-2309: TRIGGER and CRON (and any other method/mode) require the service-role
+  // bearer that cron job 5 and docusign-webhook already send. 401 = zero I/O.
+  const denied = gateResponse(route, req, supabaseKey, corsHeaders);
+  if (denied) {
+    console.warn("[process-dunning] 401: gated mode called without the service bearer");
+    return denied;
+  }
+
   const supabase    = createClient(supabaseUrl, supabaseKey);
 
   try {
 
-    // MODE: HOMEOWNER CHOICE  (GET ?mode=homeowner_choice)
+    // MODE: HOMEOWNER CHOICE  (GET ?mode=homeowner_choice) -- ungated emailed link;
+    // gh-2309: its tokens (failure_id UUID, choice enum) are validated before any DB read.
     const url    = new URL(req.url);
     const mode   = url.searchParams.get("mode");
     const choice = url.searchParams.get("choice");
     const failId = url.searchParams.get("failure_id");
 
     if (req.method === "GET" && mode === "homeowner_choice") {
-      if (!failId || !choice) {
-        return homeownerResponsePage("Invalid Link", "This link is missing required parameters. Please contact support@otterquote.com.", true);
-      }
-      if (choice !== "proceed" && choice !== "different") {
-        return homeownerResponsePage("Invalid Choice", "Unrecognized selection. Please contact support@otterquote.com.", true);
+      const chk = validateHomeownerChoice(url);
+      if (!chk.ok) {
+        return homeownerResponsePage(chk.title, chk.message, true);
       }
 
       // Fetch the failure record
