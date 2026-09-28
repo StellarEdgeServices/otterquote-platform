@@ -17,10 +17,10 @@
 -- project yeszghaspzwwstvsrioa, 2026-09-28): the null-id check, the S1 anon rejection
 -- (ERRCODE 28000), the D4 JWT-email ownership guard, first-write-wins
 -- (converted_user_id IS NULL), SECURITY DEFINER, SET search_path = public, pg_temp,
--- and the grants. The ONLY changed executable token is: interval '24 hours' -> interval '8 days'.
+-- and the ACL (privileges are not touched: CREATE OR REPLACE keeps the existing ACL). The ONLY changed executable token is: interval '24 hours' -> interval '8 days'.
 -- The function COMMENT is updated so it no longer says "24h window".
 --
--- Idempotent (CREATE OR REPLACE / REVOKE / GRANT / COMMENT).
+-- Idempotent (CREATE OR REPLACE / COMMENT).
 
 BEGIN;
 
@@ -63,9 +63,6 @@ BEGIN
   RETURN v_rows > 0;
 END;
 $$;
-
-REVOKE ALL ON FUNCTION public.set_lead_converted(uuid) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.set_lead_converted(uuid) TO authenticated;
 
 COMMENT ON FUNCTION public.set_lead_converted(uuid) IS
   'gh-2121 (LRS HO-1 S16), revised 2026-09-26 (REVIEW: FAIL 5849942876, D4): SECURITY DEFINER write-back of leads.converted_user_id for auth.uid(), now ALSO requiring the caller''s JWT email to match the lead''s email (case-insensitive) when the lead has one -- closes the raw-uuid hijack (a signed-in visitor editing ?lead= to someone else''s fresh lead id). Stopgap ahead of PR #2226''s hashed lead_token model. First write wins; 8-day window (gh-2300: reminder max age 7 days + 1); anon rejected outright.';

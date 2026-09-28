@@ -2,9 +2,9 @@
 -- GitHub: #2300, #2121
 -- Tier 3B. Restores set_lead_converted(uuid) to its live pre-change definition (interval '24 hours'),
 -- copied from 20260926221500_gh2121_s16_lead_goal_security_fix.sql and confirmed identical to
--- pg_get_functiondef on production (prosrc md5 ba14bac2d9871665b052106b25b42dfb) on 2026-09-28.
+-- pg_get_functiondef on production (prosrc md5 prefix ba14bac2d987) on 2026-09-28.
 -- Effect of running it: reminded leads (24 h - 7 days old) stop linking again. Leads already linked stay linked
--- (this touches no data). Grants and the function signature are unchanged.
+-- (this touches no data). The ACL and the function signature are unchanged (privileges are not touched: CREATE OR REPLACE keeps the existing ACL).
 
 BEGIN;
 
@@ -47,9 +47,6 @@ BEGIN
   RETURN v_rows > 0;
 END;
 $$;
-
-REVOKE ALL ON FUNCTION public.set_lead_converted(uuid) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.set_lead_converted(uuid) TO authenticated;
 
 COMMENT ON FUNCTION public.set_lead_converted(uuid) IS
   'gh-2121 (LRS HO-1 S16), revised 2026-09-26 (REVIEW: FAIL 5849942876, D4): SECURITY DEFINER write-back of leads.converted_user_id for auth.uid(), now ALSO requiring the caller''s JWT email to match the lead''s email (case-insensitive) when the lead has one -- closes the raw-uuid hijack (a signed-in visitor editing ?lead= to someone else''s fresh lead id). Stopgap ahead of PR #2226''s hashed lead_token model. First write wins; 24h window; anon rejected outright.';
