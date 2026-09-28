@@ -28,7 +28,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex,nofollow">
 <title>Admin - Measurement Orders | Otter Quotes</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js" integrity="sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.js" integrity="sha384-iLddHTLokph6Omwoyid4XKxHaWa6w41BnoEj0q5oOrzmYPpHIKt1wyjReA7s//pP" crossorigin="anonymous"></script>
 <link rel="stylesheet" href="css/design-system.css">
 <link rel="stylesheet" href="css/nav.css">
 <style>
@@ -290,7 +290,11 @@ main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
  *   EF) which writes the 'measurement_order_fulfilled' activity_log row and
  *   emails the homeowner. Idempotent per order — Edit re-saves do not re-send.
  */
-var sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
+// gh-1980 PR 2/3: converge onto the canonical cookie-adapter + storageKey.
+// The cookies are the session of record whatever the storageKey is, so an
+// already-signed-in admin stays signed in through this change with no
+// migration step needed -- see the #488 purge rule in js/cookie-storage.js.
+var sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, { auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' } });
 var STORAGE_BUCKET = 'claim-documents';
 
 var state = { filter: 'awaiting_fulfillment', rows: [], catalog: {}, current: null, user: null };

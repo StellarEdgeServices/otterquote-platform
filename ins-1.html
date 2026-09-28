@@ -905,8 +905,8 @@
                 } catch (e) { /* CONFIG not ready yet -- fall through to a real load */ }
                 if (alreadyReady || window.supabase) { resolve(); return; }
                 var s = document.createElement('script');
-                s.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js';
-                s.integrity = 'sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz';
+                s.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.js';
+                s.integrity = 'sha384-iLddHTLokph6Omwoyid4XKxHaWa6w41BnoEj0q5oOrzmYPpHIKt1wyjReA7s//pP';
                 s.crossOrigin = 'anonymous';
                 s.onload = function () { resolve(); };
                 s.onerror = function () { reject(new Error('Supabase library failed to load')); };
@@ -1632,7 +1632,7 @@
     loadPromise.then(function () {
       if (typeof supabase === 'undefined' || typeof CONFIG === 'undefined' ||
           !CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_ANON) return;
-      var _sb = window.sb || supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
+      var _sb = window.sb || supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, { auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' } }); // gh-1980 PR2: converge fallback client onto canonical key too
       _sb.rpc('get_lead_prefill', { p_lead_id: leadId }).then(function (res) {
         var row = res && res.data && res.data[0];
         if (!row) return; // expired, unknown id, or migration not applied yet
