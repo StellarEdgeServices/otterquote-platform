@@ -37,19 +37,26 @@ export interface PartnerFormConfig {
    * checkboxes is the call/text consent one (matched against Meta's
    * custom_disclaimer_responses[].id or .name -- see homeowner-consent.ts's
    * getConsentGiven, reused unchanged). Optional in the parsed shape so an
-   * entry written before gh-2313 still parses; handler.ts fails CLOSED (logs,
-   * does not register) for a partner form without BOTH consentKey and
-   * consentText. Same semantics as homeowner-allowlist.ts's consent_key.
+   * entry written before gh-2313 still parses. A form without BOTH consentKey
+   * and consentText still registers its partners (consent is never a condition
+   * of signup, PR #2322 ruling 5879500610) but stores no consent row and logs a
+   * warning. Same semantics as homeowner-allowlist.ts's consent_key.
    */
   consentKey?: string;
   /**
    * gh-2313: the exact disclaimer text as rendered on that Meta form,
    * stored verbatim as the evidence row's consent_text. Supplied by the
    * allowlist entry (config), never composed in code -- same as
-   * homeowner-allowlist.ts's consent_text. Capped at 2,000 chars, matching
-   * that file and record-lead-details.
+   * homeowner-allowlist.ts's consent_text. Never truncated: wording over 2,000
+   * chars is rejected (see consentTextTooLong).
    */
   consentText?: string;
+  /**
+   * Set (to the trimmed length) when consent_text is over 2,000 chars. The
+   * entry then carries NO consentKey/consentText, and handler.ts logs an error
+   * and stores no consent row -- rejected loudly, never sliced.
+   */
+  consentTextTooLong?: number;
 }
 
 export type Allowlist = Record<string, PartnerFormConfig>;
@@ -90,12 +97,15 @@ export function parseAllowlist(raw: string | undefined): Allowlist {
     const entry: PartnerFormConfig = { agentType, funnelId, isTest: cfg.is_test === true };
     // gh-2313: optional per-entry consent config. Only attached when BOTH are
     // non-empty strings, so a half-configured entry reads as "no consent
-    // config" and handler.ts fails closed on it.
+    // config" (handler.ts registers the partner, stores no row, warns).
     const consentKey = typeof cfg.consent_key === "string" ? cfg.consent_key.trim() : "";
     const consentTextRaw = typeof cfg.consent_text === "string" ? cfg.consent_text.trim() : "";
-    if (consentKey && consentTextRaw) {
+    if (consentKey && consentTextRaw.length > 2000) {
+      // Rejected, not truncated (PR #2322 review, ruling 5879500610).
+      entry.consentTextTooLong = consentTextRaw.length;
+    } else if (consentKey && consentTextRaw) {
       entry.consentKey = consentKey;
-      entry.consentText = consentTextRaw.length > 2000 ? consentTextRaw.slice(0, 2000) : consentTextRaw;
+      entry.consentText = consentTextRaw;
     }
     out[formId] = entry;
   }

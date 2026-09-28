@@ -4,8 +4,9 @@
 // this file — index.ts wires the real Supabase client, Mailgun-free Graph
 // API fetch, and global fetch.
 //
-// TWO PATHS: partner (original P-5 build; gh-2313 adds a consent-evidence
-// gate BEFORE register_partner, see the partner branch below) and homeowner
+// TWO PATHS: partner (original P-5 build; gh-2313 stores call/text consent
+// evidence BEFORE register_partner but never gates registration on it, see the
+// partner branch below) and homeowner
 // (#2123 HO-2, added by this file's gh-2154/gh-2123 revision). A form_id is
 // checked against the PARTNER allowlist first (lookupForm, unchanged), then
 // the HOMEOWNER allowlist (lookupHomeownerForm, new); a form_id in neither
@@ -216,8 +217,9 @@ export interface WebhookDeps {
    * register_partner failure -- is treated as already-written, never an
    * error. A permanent data-rejection error (isDataRejectionError) surfaces
    * as error.message === "rejected_invalid_data" (terminal); any other error
-   * is transient (503 so Meta redelivers). If this fails, register_partner
-   * is NOT called: a partner is never registered without stored evidence.
+   * is transient (503 so Meta redelivers). Only called when a row is due (box present in the
+   * response; see partner-consent.ts). If this fails, register_partner is NOT
+   * called: a partner is never registered without a row we decided to store.
    */
   recordPartnerConsent: (
     args: PartnerConsentArgs,
@@ -687,42 +689,48 @@ export async function handlePost(
         continue;
       }
 
-      // gh-2313 (Marty's ruling, #2306 comment 5876046128; TCPA call/text
-      // consent evidence): the consent-evidence row is written BEFORE
-      // register_partner, and a lead whose required consent box is absent,
-      // unticked, or has no configured wording is logged and NOT registered.
-      // Mirrors the homeowner path's evidence-before-effect ordering
-      // (finalizeHomeownerLead writes lead_consents before setting role).
+      // gh-2313 (TCPA call/text consent evidence; ruling on PR #2322,
+      // comment 5879500610, Tier A): consent is NEVER a condition of partner
+      // signup, so every branch below ends in register_partner.
+      //   box present, ticked   -> row consent_given=true, THEN register
+      //   box present, unticked -> row consent_given=false, THEN register
+      //   box absent / no consent wording configured -> NO row, warn, register
+      //   wording over 2,000 chars -> NO row, logged ERROR (rejected, never
+      //     truncated), register
+      // The evidence row is written BEFORE register_partner, and a failed write
+      // stops registration (503 so Meta redelivers): a partner is never
+      // registered while a row we decided to store is missing. Automated
+      // calls/texts are limited to consent_given=true rows elsewhere; see the
+      // HANDOFF-LIVE on #2322 for where (and whether) that gate exists.
       // Logs leadgen_id and a reason only -- never the lead's PII or wording.
       const consent = buildPartnerConsentArgs(fetched.data, config, formId, leadgenId);
-      if (consent.status === "config_missing") {
+      let consentTag = "none";
+      if (consent.status === "ok") {
+        const consentWrite = await deps.recordPartnerConsent(consent.args);
+        if (consentWrite.error) {
+          if ((consentWrite.error.message ?? "").includes("rejected_invalid_data")) {
+            // Permanent data rejection: no redelivery ever fixes it -- terminal, never a 503 loop.
+            deps.log("error", `${FUNCTION_NAME}: partner consent write rejected invalid data leadgen_id=${leadgenId}`);
+            outcomes.push({ leadgenId, formId, outcome: "skipped_invalid_data" });
+          } else {
+            deps.log("error", `${FUNCTION_NAME}: partner consent write failed leadgen_id=${leadgenId}`);
+            outcomes.push({ leadgenId, formId, outcome: "error_consent_write_failed" });
+            hasTransientFailure = true;
+          }
+          continue;
+        }
+        consentTag = consent.args.consentGiven ? "true" : "false";
+      } else if (consent.status === "text_too_long") {
         deps.log(
           "error",
-          `${FUNCTION_NAME}: skip leadgen_id=${leadgenId} reason=consent_config_missing form_id=${formId} (allowlist entry has no consent_key/consent_text; partner NOT registered)`,
+          `${FUNCTION_NAME}: consent_text_too_long leadgen_id=${leadgenId} form_id=${formId} length=${consent.length} max=2000 (wording rejected, not truncated; no consent row stored; partner registered without consent evidence)`,
         );
-        outcomes.push({ leadgenId, formId, outcome: "skipped_consent_config_missing" });
-        continue;
-      }
-      if (consent.status === "not_given") {
+      } else {
+        const reason = consent.status === "no_box" ? "consent_box_absent" : "consent_config_missing";
         deps.log(
           "warn",
-          `${FUNCTION_NAME}: skip leadgen_id=${leadgenId} reason=consent_not_given form_id=${formId} (required call/text consent box absent or unticked; partner NOT registered)`,
+          `${FUNCTION_NAME}: no consent row leadgen_id=${leadgenId} reason=${reason} form_id=${formId} (partner registered; not eligible for automated calls/texts)`,
         );
-        outcomes.push({ leadgenId, formId, outcome: "skipped_consent_not_given" });
-        continue;
-      }
-      const consentWrite = await deps.recordPartnerConsent(consent.args);
-      if (consentWrite.error) {
-        if ((consentWrite.error.message ?? "").includes("rejected_invalid_data")) {
-          // Permanent data rejection: no redelivery ever fixes it -- terminal, never a 503 loop.
-          deps.log("error", `${FUNCTION_NAME}: partner consent write rejected invalid data leadgen_id=${leadgenId}`);
-          outcomes.push({ leadgenId, formId, outcome: "skipped_invalid_data" });
-        } else {
-          deps.log("error", `${FUNCTION_NAME}: partner consent write failed leadgen_id=${leadgenId}`);
-          outcomes.push({ leadgenId, formId, outcome: "error_consent_write_failed" });
-          hasTransientFailure = true;
-        }
-        continue;
       }
 
       const reg = await deps.registerPartner({
@@ -760,7 +768,7 @@ export async function handlePost(
 
       deps.log(
         "log",
-        `${FUNCTION_NAME}: registered leadgen_id=${leadgenId}${suppliedLastNamePlaceholder ? " last_name=placeholder" : ""}`,
+        `${FUNCTION_NAME}: registered leadgen_id=${leadgenId} consent=${consentTag}${suppliedLastNamePlaceholder ? " last_name=placeholder" : ""}`,
       );
       outcomes.push({ leadgenId, formId, outcome: "registered" });
 

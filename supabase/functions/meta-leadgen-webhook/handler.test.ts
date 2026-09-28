@@ -1308,54 +1308,86 @@ Deno.test("gh2313: partner lead WITH the ticked consent response writes the evid
   assertEquals(row.funnelId, "meta-leadgen-re-2026");
 });
 
-Deno.test("gh2313 NEGATIVE CONTROL: partner lead WITHOUT the consent response (no custom_disclaimer_responses) -> no referral_agents write, no consent row, logged", async () => {
+Deno.test("gh2313 (ruling 5879500610): box ABSENT (no custom_disclaimer_responses) -> partner IS registered, NO consent row, warning logged", async () => {
   const order: string[] = [];
   const logs: string[] = [];
-  const { deps, counters } = partnerDepsWith(undefined, order, logs);
+  const levels: string[] = [];
+  const { deps, counters } = partnerDepsWith(undefined, order, logs, {
+    log: (level, message) => { levels.push(level); logs.push(message); },
+  });
   const body = leadgenBody({ leadgenId: "leadgen_p_none", formId: "form_real_123" });
   const { response, outcomes } = await handlePost(body, await sign(body), "1.2.3.4", deps);
-  assertEquals(response.status, 200, "a missing consent box is terminal: ack 200, never a retry loop");
-  assertEquals(outcomes[0].outcome, "skipped_consent_not_given");
-  assertEquals(counters.registerCalls, 0, "register_partner must NOT run without consent");
-  assertEquals(counters.partnerConsentCalls, 0);
-  assertEquals(order, []);
-  assert(
-    logs.some((m) => m.includes("leadgen_id=leadgen_p_none") && m.includes("reason=consent_not_given")),
-    "the skip must be logged with leadgen_id and reason",
-  );
+  assertEquals(response.status, 200);
+  assertEquals(outcomes[0].outcome, "registered", "consent is never a condition of partner signup");
+  assertEquals(counters.registerCalls, 1);
+  assertEquals(counters.partnerConsentCalls, 0, "no row when the box is absent");
+  assertEquals(order, ["register"]);
+  const idx = logs.findIndex((m) => m.includes("leadgen_id=leadgen_p_none") && m.includes("reason=consent_box_absent"));
+  assert(idx >= 0, "the missing box must be logged with leadgen_id and reason");
+  assertEquals(levels[idx], "warn");
 });
 
-Deno.test("gh2313: an UNTICKED consent box (is_checked:false) is not registered", async () => {
+Deno.test("gh2313 (ruling 5879500610): box PRESENT but UNTICKED -> row consent_given=false is stored BEFORE register_partner", async () => {
   const order: string[] = [];
-  const { deps, counters } = partnerDepsWith([{ id: PARTNER_CONSENT_KEY_CFG, is_checked: false }], order, []);
+  const { deps, counters, captured } = partnerDepsWith([{ id: PARTNER_CONSENT_KEY_CFG, is_checked: false }], order, []);
   const body = leadgenBody({ leadgenId: "leadgen_p_unticked", formId: "form_real_123" });
   const { response, outcomes } = await handlePost(body, await sign(body), "1.2.3.4", deps);
   assertEquals(response.status, 200);
-  assertEquals(outcomes[0].outcome, "skipped_consent_not_given");
-  assertEquals(counters.registerCalls, 0);
+  assertEquals(outcomes[0].outcome, "registered");
+  assertEquals(order, ["consent", "register"]);
+  assertEquals(counters.registerCalls, 1);
+  assertEquals(counters.partnerConsentCalls, 1);
+  assertEquals(captured.consent[0].consentGiven, false);
+  assertEquals(captured.consent[0].consentText, PARTNER_CONSENT_TEXT);
+  assertEquals(captured.consent[0].leadgenId, "leadgen_p_unticked");
+});
+
+Deno.test("gh2313: Meta's REAL shape {checkbox_key, is_checked:\"1\"} ticked -> row consent_given=true before register", async () => {
+  const order: string[] = [];
+  // deno-lint-ignore no-explicit-any
+  const real = [{ checkbox_key: PARTNER_CONSENT_KEY_CFG, is_checked: "1" }] as any;
+  const { deps, captured } = partnerDepsWith(real, order, []);
+  const body = leadgenBody({ leadgenId: "leadgen_p_real1", formId: "form_real_123" });
+  const { outcomes } = await handlePost(body, await sign(body), "1.2.3.4", deps);
+  assertEquals(outcomes[0].outcome, "registered");
+  assertEquals(order, ["consent", "register"]);
+  assertEquals(captured.consent[0].consentGiven, true);
+  assertEquals(captured.consent[0].disclaimerResponses, real);
+});
+
+Deno.test("gh2313: Meta's REAL shape {checkbox_key, is_checked:\"0\"} -> row consent_given=false, registered (NEGATIVE CONTROL for the \"1\" test above)", async () => {
+  const order: string[] = [];
+  // deno-lint-ignore no-explicit-any
+  const { deps, captured } = partnerDepsWith([{ checkbox_key: PARTNER_CONSENT_KEY_CFG, is_checked: "0" }] as any, order, []);
+  const body = leadgenBody({ leadgenId: "leadgen_p_real0", formId: "form_real_123" });
+  const { outcomes } = await handlePost(body, await sign(body), "1.2.3.4", deps);
+  assertEquals(outcomes[0].outcome, "registered");
+  assertEquals(order, ["consent", "register"]);
+  assertEquals(captured.consent[0].consentGiven, false);
+});
+
+Deno.test("gh2313: a DIFFERENT disclaimer ticked (not the configured consent box) counts as box absent -> registered, no row", async () => {
+  const order: string[] = [];
+  // deno-lint-ignore no-explicit-any
+  const { deps, counters } = partnerDepsWith([{ checkbox_key: "some_other_box", is_checked: "1" }] as any, order, []);
+  const body = leadgenBody({ leadgenId: "leadgen_p_wrongbox", formId: "form_real_123" });
+  const { outcomes } = await handlePost(body, await sign(body), "1.2.3.4", deps);
+  assertEquals(outcomes[0].outcome, "registered");
+  assertEquals(counters.registerCalls, 1);
   assertEquals(counters.partnerConsentCalls, 0);
 });
 
-Deno.test("gh2313: a DIFFERENT disclaimer ticked (not the configured consent box) is not consent", async () => {
-  const order: string[] = [];
-  const { deps, counters } = partnerDepsWith([{ id: "some_other_box", is_checked: true }], order, []);
-  const body = leadgenBody({ leadgenId: "leadgen_p_wrongbox", formId: "form_real_123" });
-  const { outcomes } = await handlePost(body, await sign(body), "1.2.3.4", deps);
-  assertEquals(outcomes[0].outcome, "skipped_consent_not_given");
-  assertEquals(counters.registerCalls, 0);
-});
-
-Deno.test("gh2313: a truthy-but-not-boolean is_checked (\"true\") is not consent (fails closed)", async () => {
+Deno.test("gh2313: a truthy-but-unrecognised is_checked (\"true\") never records consent_given=true (fails closed to false)", async () => {
   const order: string[] = [];
   // deno-lint-ignore no-explicit-any
-  const { deps, counters } = partnerDepsWith([{ id: PARTNER_CONSENT_KEY_CFG, is_checked: "true" as any }], order, []);
+  const { deps, captured } = partnerDepsWith([{ id: PARTNER_CONSENT_KEY_CFG, is_checked: "true" as any }], order, []);
   const body = leadgenBody({ leadgenId: "leadgen_p_strtrue", formId: "form_real_123" });
   const { outcomes } = await handlePost(body, await sign(body), "1.2.3.4", deps);
-  assertEquals(outcomes[0].outcome, "skipped_consent_not_given");
-  assertEquals(counters.registerCalls, 0);
+  assertEquals(outcomes[0].outcome, "registered");
+  assertEquals(captured.consent[0].consentGiven, false);
 });
 
-Deno.test("gh2313: an allowlist entry with NO consent_key/consent_text is not registered (no wording is invented), logged as a config error", async () => {
+Deno.test("gh2313 (ruling 5879500610): allowlist entry with NO consent_key/consent_text -> partner IS registered, NO row, warning logged", async () => {
   const order: string[] = [];
   const logs: string[] = [];
   const levels: string[] = [];
@@ -1369,12 +1401,40 @@ Deno.test("gh2313: an allowlist entry with NO consent_key/consent_text is not re
   const body = leadgenBody({ leadgenId: "leadgen_p_cfg", formId: "form_legacy_1" });
   const { response, outcomes } = await handlePost(body, await sign(body), "1.2.3.4", deps);
   assertEquals(response.status, 200);
-  assertEquals(outcomes[0].outcome, "skipped_consent_config_missing");
-  assertEquals(counters.registerCalls, 0);
-  assertEquals(counters.partnerConsentCalls, 0);
+  assertEquals(outcomes[0].outcome, "registered", "no wording configured must not block signup (F2 cliff removed)");
+  assertEquals(counters.registerCalls, 1);
+  assertEquals(counters.partnerConsentCalls, 0, "no wording -> no invented wording -> no row");
   const idx = logs.findIndex((m) => m.includes("reason=consent_config_missing"));
-  assert(idx >= 0, "config error must be logged");
+  assert(idx >= 0, "missing config must be logged");
+  assertEquals(levels[idx], "warn");
+});
+
+Deno.test("gh2313 (2,000-char cap): consent_text over 2000 chars is REJECTED loudly -- error logged, NO row, never truncated; partner still registered", async () => {
+  const order: string[] = [];
+  const logs: string[] = [];
+  const levels: string[] = [];
+  const tooLong = "y".repeat(2001);
+  const { deps, counters } = partnerDepsWith(
+    [{ id: PARTNER_CONSENT_KEY_CFG, is_checked: true }], order, logs,
+    {
+      allowlistRaw: JSON.stringify({
+        "form_long_1": {
+          agent_type: "re_agent", funnel_id: "meta-leadgen-long",
+          consent_key: PARTNER_CONSENT_KEY_CFG, consent_text: tooLong,
+        },
+      }),
+      log: (level, message) => { levels.push(level); logs.push(message); },
+    },
+  );
+  const body = leadgenBody({ leadgenId: "leadgen_p_long", formId: "form_long_1" });
+  const { response, outcomes } = await handlePost(body, await sign(body), "1.2.3.4", deps);
+  assertEquals(response.status, 200);
+  assertEquals(outcomes[0].outcome, "registered");
+  assertEquals(counters.partnerConsentCalls, 0, "no row, and certainly no sliced 2000-char row");
+  const idx = logs.findIndex((m) => m.includes("consent_text_too_long") && m.includes("leadgen_id=leadgen_p_long"));
+  assert(idx >= 0, "over-long wording must be logged");
   assertEquals(levels[idx], "error");
+  assertFalse(logs.join("\n").includes(tooLong.slice(0, 50)), "the wording itself is never logged");
 });
 
 Deno.test("gh2313: if the consent write fails transiently, register_partner is NOT called and the delivery is a 503 (Meta redelivers)", async () => {
