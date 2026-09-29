@@ -178,7 +178,7 @@ export function adminAlertEmail(subject: string, body: string): string {
 }
 
 /** Admin (Dustin) dunning alert body: Homeowner Chose to Proceed. */
-export function proceededAdminAlertEmail(failId: string, companyName: string, contractorId: string, claimLabel: string, amountCents: number): string {
+export function proceededAdminAlertEmail(failId: string | null, companyName: string, contractorId: string | null, claimLabel: string, amountCents: number): string {
   return adminAlertEmail("Homeowner Chose to Proceed", `
             <p><strong>Failure ID:</strong> ${failId}</p>
             <p><strong>Contractor:</strong> ${companyName} (${contractorId})</p>
@@ -189,7 +189,7 @@ export function proceededAdminAlertEmail(failId: string, companyName: string, co
 }
 
 /** Admin (Dustin) dunning alert body: Homeowner Chose Different Contractor. */
-export function differentContractorAdminAlertEmail(failId: string, companyName: string, contractorId: string, claimLabel: string): string {
+export function differentContractorAdminAlertEmail(failId: string | null, companyName: string, contractorId: string | null, claimLabel: string): string {
   return adminAlertEmail("Homeowner Chose Different Contractor", `
             <p><strong>Failure ID:</strong> ${failId}</p>
             <p><strong>Contractor:</strong> ${companyName} (${contractorId})</p>
@@ -199,7 +199,7 @@ export function differentContractorAdminAlertEmail(failId: string, companyName: 
 }
 
 /** Admin (Dustin) dunning alert body: Homeowner Notified (10 AM). */
-export function homeownerNotifiedAdminAlertEmail(failId: string, companyName: string, contractorId: string, claimLabel: string, amountCents: number, reminderCount: number): string {
+export function homeownerNotifiedAdminAlertEmail(failId: string | null, companyName: string, contractorId: string | null, claimLabel: string, amountCents: number, reminderCount: number): string {
   return adminAlertEmail("Homeowner Notified (10 AM)", `
           <p><strong>Failure ID:</strong> ${failId}</p>
           <p><strong>Contractor:</strong> ${companyName} (${contractorId})</p>

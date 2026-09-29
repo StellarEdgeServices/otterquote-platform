@@ -22,7 +22,7 @@ import { POSTAL_ADDRESS } from "./email-footer.ts";
 
 const CHECKED_AT = "2026-09-28 14:15:00 UTC (10:15:00 AM EDT)";
 const sent = (a: { message: string }) => alertEmailText(a.message);
-const SMS_RES = { alarmed: true, consecutiveCount: 3, streak: [
+const SMS_RES = { alarmed: true, consecutiveCount: 3, fictionalExcluded: 0, streak: [
   { sid: "SM111", to: "+13175550101", status: "undelivered", error_code: 30032, date_created: "2026-09-28T13:00:00Z" },
   { sid: "SM222", to: "+13175550102", status: "failed", error_code: null, date_created: "2026-09-28T13:05:00Z" },
   { sid: "SM333", to: "+13175550103", status: "undelivered", error_code: 30032, date_created: "2026-09-28T13:10:00Z" },
