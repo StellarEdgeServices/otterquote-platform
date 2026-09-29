@@ -770,7 +770,7 @@ const gaGateSrc = fs.readFileSync(path.join(repoRoot, 'js', 'ga-gate.js'), 'utf8
   ok(/<img[^>]*src="\/img\/brand-assets\/otter-quotes-icon-512\.png"[^>]*alt="Otter Quotes"/.test(inner), 're-1.html gh-2361: header holds the existing logo asset with the js/nav.js alt text');
   ok(/>\s*Otter Quotes\s*</.test(inner), 're-1.html gh-2361: header holds the wordmark "Otter Quotes"');
   ok(!/<a[\s>]/i.test(inner) && !/<button|onclick=/i.test(inner), 're-1.html gh-2361: the header trust block contains no link/button (non-link logo, no escape hatch)');
-  ok(/<img[^>]*id="oqTrustPhoto"[^>]*\shidden(\s|>|=)/.test(inner) && !/id="oqTrustPhoto"[^>]*\ssrc=/.test(inner), 're-1.html gh-2361: photo slot #oqTrustPhoto ships HIDDEN with no src (no placeholder image)');
+  ok(/<img[^>]*id="oqTrustPhoto"/.test(inner) && !/id="oqTrustPhoto"[^>]*\ssrc=/.test(inner) && /\.oq-trust__photo:not\(\[src\]\)\s*\{\s*display:\s*none/.test(html), 're-1.html gh-2361: photo slot #oqTrustPhoto ships HIDDEN with no src (no placeholder image)');
   const text = inner.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
   ok(text === 'Otter Quotes', 're-1.html gh-2361: the ONLY visible header text is the wordmark -- got ' + JSON.stringify(text));
 }

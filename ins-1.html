@@ -631,7 +631,7 @@
     .oq-trust__logo { width: 32px; height: 32px; border-radius: 8px; display: block; }
     .oq-trust__wordmark { font-weight: 700; font-size: 1.125rem; line-height: 1; color: #FFFFFF; letter-spacing: 0.2px; }
     .oq-trust__photo { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; display: block; }
-    .oq-trust__photo[hidden] { display: none; }
+    .oq-trust__photo:not([src]) { display: none; }
     </style>
 </head>
 <body>
@@ -646,12 +646,12 @@
          Existing asset, NON-link static elements (no anchor tag): data-skip-nav keeps this an escape-hatch-free funnel
          header. Logo alt text is js/nav.js's own. This snippet and its .oq-trust* CSS (in this page's <style>) are
          identical (modulo indentation) on re-1 / ins-1 / hi-1 so re-3 / re-5 / ins-3 / ins-5 / hi-4 / hi-5 can adopt it verbatim.
-         PHOTO SLOT (Q1): ships HIDDEN, no src, no placeholder. To enable once Dustin supplies img/team/dustin.webp:
-         add src="/img/team/dustin.webp", add the approved alt text, and remove the hidden attribute on #oqTrustPhoto. -->
+         PHOTO SLOT (Q1): ships HIDDEN (CSS .oq-trust__photo:not([src]) hides it), no src, no placeholder. To enable once Dustin
+         supplies img/team/dustin.webp: add src="/img/team/dustin.webp" and the approved alt text to #oqTrustPhoto. -->
     <div class="oq-trust" data-oq-trust-header="1">
     <img class="oq-trust__logo" src="/img/brand-assets/otter-quotes-icon-512.png" alt="Otter Quotes" width="32" height="32" decoding="async">
     <span class="oq-trust__wordmark">Otter Quotes</span>
-    <img id="oqTrustPhoto" class="oq-trust__photo" width="40" height="40" alt="" hidden decoding="async">
+    <img id="oqTrustPhoto" class="oq-trust__photo" width="40" height="40" alt="" decoding="async">
     </div>
     </header>
 

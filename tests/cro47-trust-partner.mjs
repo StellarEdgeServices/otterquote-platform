@@ -197,7 +197,7 @@ async function pageChecks(spec, mutate = {}) {
       navRendered: !!q('.nav-inner') || !!q('#site-header .nav-links') || !!q('#support-fab') || !!q('#site-footer .footer-inner'),
       headerNavChildren: hdr ? hdr.querySelectorAll('nav,.nav-inner,.nav-links').length : -1,
       photoExists: !!photo,
-      photoHidden: !!photo && (photo.hasAttribute('hidden') && !vis(photo)),
+      photoHidden: !!photo && !vis(photo), // hidden by CSS .oq-trust__photo:not([src]); a `hidden` attribute on a void <img> makes tools/partner_parity_check.py swallow the rest of the page
       photoSrc: photo ? (photo.getAttribute('src') || '') : null,
       firstInputTop: firstInput ? Math.round(firstInput.getBoundingClientRect().top) : null,
       h1Top: q('h1') ? Math.round(q('h1').getBoundingClientRect().top) : null,
