@@ -359,7 +359,7 @@ const ADMIN_EMAIL      = 'dustinstohler1@gmail.com';
 // parse/first-run time. Guarded to match the house pattern already used in
 // admin-incomplete-profiles.html's init().
 if (typeof supabase !== 'undefined' && typeof CONFIG !== 'undefined') {
-  sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth', flowType: 'pkce' } });
+  sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' } });
 }
 
 // =============================================================================

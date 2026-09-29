@@ -320,7 +320,7 @@ function isAuxiliaryStorageKey(key: string): boolean {
 /**
  * gh-1980 PR 1/3 ("[SECURITY, PKCE] Move Supabase auth to PKCE", #1931
  * artifact 3 / Marty's ruling on #1980) — preparatory factory refactor
- * ahead of PR 2 (storageKey convergence) and PR 3 (flowType: 'pkce' flip).
+ * ahead of PR 2 (storageKey convergence) and PR 3 (Google-only PKCE).
  *
  * REVIEW: FAIL (comment 5850347173, round 1; corrected again per round 2,
  * comment 5850607453 -- round 1's fix cited the wrong commit for THIS

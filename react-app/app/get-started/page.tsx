@@ -118,6 +118,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import { supabase } from '@/lib/supabase';
+import { signInWithGoogleOAuth } from '@/lib/supabase-oauth';
 import { isInternalTraffic } from '@/lib/internal-traffic';
 import { readReferralIds, writeReferralIds } from '@/lib/cookie-storage';
 import { linkPendingLeadOnce } from '@/lib/lead-capture';
@@ -1201,11 +1202,10 @@ export default function GetStartedPage() {
         googleGraceTimeoutRef.current = null;
       }, GOOGLE_REDIRECT_GRACE_MS);
 
-      const { error: oauthError } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
+      const { error: oauthError } = await signInWithGoogleOAuth({
         // gh-1983: carry the first touch in the callback URL — survives the
         // FB/IG in-app browser -> Safari/Chrome switch Google's WebView block forces.
-        options: { redirectTo: withFirstTouchParam(GOOGLE_OAUTH_REDIRECT, readFirstTouch()) },
+        redirectTo: withFirstTouchParam(GOOGLE_OAUTH_REDIRECT, readFirstTouch()),
       });
       if (oauthError) throw oauthError;
       // On success the browser navigates to Google; nothing else to do.

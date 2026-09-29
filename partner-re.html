@@ -1796,7 +1796,7 @@
     if (!leadId) return;
     if (typeof supabase === 'undefined' || typeof CONFIG === 'undefined' ||
         !CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_ANON) return;
-    var _sb = window.sb || supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, { auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth', flowType: 'pkce' } }); // gh-1980 PR2: converge fallback client onto canonical key too
+    var _sb = window.sb || supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, { auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' } }); // gh-1980 PR2: converge fallback client onto canonical key too
     _sb.rpc('get_lead_prefill', { p_lead_id: leadId }).then(function (res) {
       var row = res && res.data && res.data[0];
       if (!row) return; // expired, unknown id, or migration not applied yet

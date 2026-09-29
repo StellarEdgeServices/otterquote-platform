@@ -1,15 +1,16 @@
 /**
- * gh-1980 PR 3/3 -- legacy implicit-flow fragment rescue for the auth callback.
+ * gh-1980 PR 3/3 -- implicit-fragment rescue for the React auth callback.
  *
- * The browser client is now `flowType: 'pkce'`. Under pkce, supabase-js
- * (2.116.0, GoTrueClient._getSessionFromURL) REJECTS a legacy implicit-flow
- * URL (`#access_token=...&refresh_token=...`) with "Not a valid PKCE flow
- * url" and leaves the fragment in place. Auth links emailed BEFORE the flip
- * (and any link the auth-uniform Edge Function still issues in implicit
- * form) carry exactly that fragment, so instead of hard-failing we recover
- * the session from it by hand. Resolves true only if a session was
+ * Emailed magic / recovery / confirmation links stay IMPLICIT (Google is the only
+ * PKCE flow; Dustin, #1980 comment 5889011351), so they arrive as
+ * `#access_token=...&refresh_token=...`. The shared client is an implicit client
+ * on such a load, so supabase-js's detectSessionInUrl normally consumes the
+ * fragment; if it did not (client that skipped it, or a stale pkce page load
+ * that refused it with "Not a valid PKCE flow url."), recover the session by
+ * hand instead of hard-failing. Resolves true only if a session was
  * established (setSession then emits SIGNED_IN, which the callback page's
- * onAuthStateChange handler routes on).
+ * onAuthStateChange handler routes on). Static twin: js/auth.js
+ * rescueImplicitFragment().
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 

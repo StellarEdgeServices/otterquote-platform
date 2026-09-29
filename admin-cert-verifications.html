@@ -197,7 +197,7 @@ main { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
     }
 
     const { createClient } = window.supabase;
-    sb = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, { auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth', flowType: 'pkce' } });
+    sb = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, { auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' } });
 
     const hash = window.location.hash;
     if (hash && hash.includes('access_token')) {

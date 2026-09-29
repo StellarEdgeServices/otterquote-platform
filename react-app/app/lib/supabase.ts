@@ -4,6 +4,7 @@ import {
   OTTERQUOTE_AUTH_STORAGE_KEY,
 } from './cookie-storage';
 import { nonDeadlockingLock } from './supabase-lock';
+import { flowTypeForPageLoad } from './oauth-pkce';
 
 /**
  * Singleton Supabase client for the browser.
@@ -39,11 +40,12 @@ export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKe
     persistSession: true,
     storageKey: OTTERQUOTE_AUTH_STORAGE_KEY,
     storage: otterquoteCookieStorage,
-    // gh-1980 PR 3/3: PKCE. OAuth/email links now return ?code= (exchanged against
-    // the code-verifier this browser holds), not a #access_token fragment. The
-    // verifier is an auxiliary storage key (cookie-storage.ts isAuxiliaryStorageKey)
-    // kept in origin-scoped localStorage, never on the shared session cookies.
-    flowType: 'pkce',
+    // gh-1980 PR 3/3 (Google-only PKCE, Dustin/Ben #1980 5889011351): stay IMPLICIT so
+    // emailed magic / recovery / confirmation links (#access_token) keep working on any
+    // device. Only a verifier-backed ?code= return (our own Google sign-in) gets a pkce
+    // client, decided per page load -- see oauth-pkce.ts. Google INITIATION is in
+    // supabase-oauth.ts.
+    flowType: flowTypeForPageLoad(),
     // Avoid the supabase-js navigator.locks deadlock that froze getSession() and
     // the contractor dashboard (D-211 2026-06-16, true root of Blocker 1).
     lock: nonDeadlockingLock,
