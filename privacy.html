@@ -515,8 +515,34 @@
         } catch (e) { /* never break a page over a cookie */ }
       }
       if (optedOut()) { btn.disabled = true; }
+      // gh-1925 residual (cto51): a signed-in visitor's opt-out must follow the PERSON to other devices, not only this browser.
+      // js/meta-pixel-gate.js already READS profiles.ad_sharing_opt_out for a signed-in person on every page; this is the missing
+      // WRITE. It is one plain REST PATCH with the user's own token: profiles_user_update (RLS, id = auth.uid()) and the
+      // authenticated UPDATE column grants already allow it, so there is no migration and no Edge Function. The `or` filter means
+      // a flag that is already TRUE is never rewritten (the first opted-out-at and source survive). ad_sharing_opt_out_source is
+      // left NULL on purpose: the CHECK only allows gpc_header/gpc_client/support_email, and widening it is a separate additive
+      // migration. Best effort: a failure never blocks the cookie opt-out above, which has already taken effect in this browser.
+      function persistProfileFlag() {
+        try {
+          var m = document.cookie.match(/(?:^|; )sb-otterquote-at=([^;]*)/);
+          var cfg = (typeof CONFIG !== 'undefined') ? CONFIG : null;
+          if (!m || !cfg || !cfg.SUPABASE_URL || !cfg.SUPABASE_ANON || typeof fetch !== 'function') { return; }
+          var token = decodeURIComponent(m[1]);
+          var parts = token.split('.');
+          if (parts.length !== 3) { return; }
+          var sub = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/'))).sub;
+          if (typeof sub !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sub)) { return; }
+          fetch(String(cfg.SUPABASE_URL).replace(/\/+$/, '') + '/rest/v1/profiles?id=eq.' + encodeURIComponent(sub) +
+                '&or=(ad_sharing_opt_out.is.null,ad_sharing_opt_out.eq.false)', {
+            method: 'PATCH',
+            headers: { apikey: cfg.SUPABASE_ANON, Authorization: 'Bearer ' + token, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+            body: JSON.stringify({ ad_sharing_opt_out: true, ad_sharing_opt_out_at: new Date().toISOString() })
+          }).catch(function () { /* best effort */ });
+        } catch (e) { /* never break a page over the profile write */ }
+      }
       btn.addEventListener('click', function () {
         writeCookie();
+        persistProfileFlag();
         btn.disabled = true;
       });
     })();
