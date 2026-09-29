@@ -759,6 +759,22 @@ const gaGateSrc = fs.readFileSync(path.join(repoRoot, 'js', 'ga-gate.js'), 'utf8
   }
 }
 
+// ── gh-2361 (CRO47 spec 3.3, PR b): partner trust header -- static guards ──
+// Sloane's rulings (#2361): logo + wordmark "Otter Quotes" + photo slot ONLY,
+// non-link, inside the existing data-skip-nav header; photo slot HIDDEN, no src.
+// The browser-level proof (P1-P5, PN1-PN4) is tests/cro47-trust-partner.mjs.
+{
+  const hm = /<header id="site-header"[^>]*data-skip-nav="true"[^>]*>([\s\S]*?)<\/header>/.exec(html);
+  ok(!!hm, 're-1.html gh-2361: #site-header still carries data-skip-nav="true" and now holds the trust block');
+  const inner = hm ? hm[1].replace(/<!--[\s\S]*?-->/g, '') : '';
+  ok(/<img[^>]*src="\/img\/brand-assets\/otter-quotes-icon-512\.png"[^>]*alt="Otter Quotes"/.test(inner), 're-1.html gh-2361: header holds the existing logo asset with the js/nav.js alt text');
+  ok(/>\s*Otter Quotes\s*</.test(inner), 're-1.html gh-2361: header holds the wordmark "Otter Quotes"');
+  ok(!/<a[\s>]/i.test(inner) && !/<button|onclick=/i.test(inner), 're-1.html gh-2361: the header trust block contains no link/button (non-link logo, no escape hatch)');
+  ok(/<img[^>]*id="oqTrustPhoto"[^>]*\shidden(\s|>|=)/.test(inner) && !/id="oqTrustPhoto"[^>]*\ssrc=/.test(inner), 're-1.html gh-2361: photo slot #oqTrustPhoto ships HIDDEN with no src (no placeholder image)');
+  const text = inner.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  ok(text === 'Otter Quotes', 're-1.html gh-2361: the ONLY visible header text is the wordmark -- got ' + JSON.stringify(text));
+}
+
 console.log('');
 console.log(pass + ' passed, ' + fail + ' failed');
 process.exit(fail > 0 ? 1 : 0);
