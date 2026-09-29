@@ -1060,8 +1060,8 @@
             if (!updatedRows || updatedRows.length === 0) {
                 // No contractors row for this live user_id — create it now, folding the
                 // profile fields (updateObj) over the signup stub data.
-                const signupRaw = localStorage.getItem('cs_contractor_signup');
-                const signup    = signupRaw ? JSON.parse(signupRaw) : {};
+                // gh-2340: only this user's own fresh signup blob is honoured (js/auth.js getOwnedContractorSignup)
+                const signup    = window.Auth.getOwnedContractorSignup((liveSession && liveSession.user) || currentUser) || {};
                 const createObj = {
                     user_id:                  user_id,
                     email:                    (liveSession?.user?.email) || currentUser?.email || '',
@@ -1386,8 +1386,8 @@
                 }
 
                 // Contractor record doesn't exist yet — create from localStorage signup data
-                const signupRaw = localStorage.getItem('cs_contractor_signup');
-                const signup    = signupRaw ? JSON.parse(signupRaw) : {};
+                // gh-2340: only this user's own fresh signup blob is honoured (js/auth.js getOwnedContractorSignup)
+                const signup    = window.Auth.getOwnedContractorSignup(currentUser) || {};
                 const insertObj = {
                     user_id:                 currentUser.id,
                     email:                   currentUser.email,
@@ -1422,8 +1422,8 @@
             // Pre-populate step 2 profile inputs from any prior signup/contractor data
             // so a returning contractor sees their existing values instead of a blank form.
             try {
-                const signupRaw = localStorage.getItem('cs_contractor_signup');
-                const signup    = signupRaw ? JSON.parse(signupRaw) : {};
+                // gh-2340: only this user's own fresh signup blob is honoured (js/auth.js getOwnedContractorSignup)
+                const signup    = window.Auth.getOwnedContractorSignup(currentUser) || {};
                 const phoneInput = document.getElementById('profile-phone');
                 if (phoneInput && !phoneInput.value) {
                     phoneInput.value = ct.phone || signup.phone || '';
