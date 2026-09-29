@@ -15,6 +15,9 @@ on:
       - 'tests/gh2122-arm-f.mjs'
       - 'tests/cro47-trust-start.mjs'
       - 'tests/cro47-trust-start-playwright.mjs'
+      - 'js/config.js'
+      - 'js/router-*.js'
+      - 'tests/gh2060-oq-router-lead-id-stale.mjs'
       - '.github/workflows/static-start-arm-f-tests.yml'
 
 permissions:
@@ -63,3 +66,7 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: T1 + N1 + N5 in a real browser (cro47-trust-start-playwright)
         run: node tests/cro47-trust-start-playwright.mjs
+      # gh-2060 (Q 5881020422 item 6): oq_router_lead_id stale-state harness + negative controls. Hosted here to reuse
+      # this job's Chromium install (#1731 Actions-minutes); the ledger checker already runs in e2e-tests.yml.
+      - name: oq_router_lead_id stale-state harness (gh2060-oq-router-lead-id-stale)
+        run: node tests/gh2060-oq-router-lead-id-stale.mjs

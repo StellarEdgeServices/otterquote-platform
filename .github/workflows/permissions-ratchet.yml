@@ -87,6 +87,41 @@ jobs:
       - name: Run the ratchet's own test.py
         run: python scripts/permissions-ratchet.test.py
 
+      - name: Guard - GRANT gates must not use the stale event base sha
+        run: python scripts/grant-gates-dynamic-base.test.py
+
+      # Stale-base trap fix (gh-1438, Marty A 5896036859): the event payload's
+      # base.sha is not the current tip of main, so `base...head` spanned every
+      # main commit merged into the PR since and read already-live GRANT lines
+      # as new. Resolve the base from the checked-out ref instead: for a
+      # pull_request event actions/checkout checks out the PR MERGE ref
+      # (refs/pull/N/merge, fetch-depth 0), whose first parent HEAD^1 is the
+      # current tip of the target branch. Fallbacks: merge_group -> its own
+      # base_sha; anything else (or a checkout that is not a merge commit) ->
+      # the target branch's remote tip, else fail loudly rather than guess.
+      - name: Resolve base sha from the checked-out merge ref
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          MERGE_GROUP_BASE: ${{ github.event.merge_group.base_sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          BASE_REF: ${{ github.base_ref || 'main' }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "merge_group" ]; then
+            base="$MERGE_GROUP_BASE"
+          elif [ "$EVENT_NAME" = "pull_request" ] \
+               && [ "$(git rev-parse --verify -q 'HEAD^2' || true)" = "$PR_HEAD" ]; then
+            base="$(git rev-parse HEAD^1)"
+          else
+            base="$(git rev-parse --verify -q "origin/${BASE_REF}" || true)"
+          fi
+          if [ -z "$base" ]; then
+            echo "::error::could not resolve a base sha (event=$EVENT_NAME)" >&2
+            exit 1
+          fi
+          echo "Resolved base: $base"
+          echo "RESOLVED_BASE_SHA=$base" >> "$GITHUB_ENV"
+
       # BUILD-FAILING. Diff-scoped to supabase/migrations/**/*.sql lines
       # THIS PR adds (base = the PR's target-branch sha, head = the PR's own
       # tip; the script diffs with `git diff base...head`, i.e. against
@@ -105,7 +140,7 @@ jobs:
         run: |
           python scripts/permissions-ratchet.py \
             --root . \
-            --base "${{ github.event.pull_request.base.sha }}" \
+            --base "$RESOLVED_BASE_SHA" \
             --head "${{ github.event.pull_request.head.sha }}" \
             --labels "$PR_LABELS"
 
@@ -115,7 +150,7 @@ jobs:
           {
             echo "# Permissions Ratchet (gh-1767)"
             echo
-            echo "Base: \`${{ github.event.pull_request.base.sha }}\`  Head: \`${{ github.event.pull_request.head.sha }}\`"
+            echo "Base: \`$RESOLVED_BASE_SHA\`  Head: \`${{ github.event.pull_request.head.sha }}\`"
             echo "Labels seen: \`$PR_LABELS\`"
             echo
           } >> "$GITHUB_STEP_SUMMARY"

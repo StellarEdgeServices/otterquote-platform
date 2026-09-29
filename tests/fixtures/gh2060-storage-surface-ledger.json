@@ -541,8 +541,22 @@
     {
       "key": "oq_router_lead_id",
       "stack": "static (start.html, sessionStorage)",
-      "status": "open",
-      "reason": "start.html reuses sessionStorage.oq_router_lead_id to resubmit an existing lead via update_lead_contact (per-tab, no owner/timestamp). A reused tab lets the next visitor's Step-1 resubmit target the previous visitor's lead id; the server-side 30-minute / prefill_used_at guard is the only protection. No executable test exists yet: the resubmit path is a large closure in start.html that needs its own extraction harness. Q on #2060 with a recommended default."
+      "status": "known-gap",
+      "tests": [
+        {
+          "file": "tests/gh2060-oq-router-lead-id-stale.mjs",
+          "contains": "a stored lead id this page did not create (stale/other visitor) is never sent to update_lead_contact; a fresh lead is inserted instead"
+        },
+        {
+          "file": "tests/gh2060-oq-router-lead-id-stale.mjs",
+          "contains": "same visitor resubmits within the window: the stored id IS reused via update_lead_contact (dedup), no second insert"
+        },
+        {
+          "file": "tests/gh2060-oq-router-lead-id-stale.mjs",
+          "contains": "bfcache restore (pageshow persisted) clears the stored id, and the next submit inserts fresh instead of updating"
+        }
+      ],
+      "reason": "Real-Chromium harness (item 6 of the Q on #2060). Confirmed: start.html's Step-1 submit handler sends whatever sessionStorage.oq_router_lead_id holds to update_lead_contact with the NEW visitor's name/email/phone -- the value has no owner or timestamp, and the only clearing is the bfcache pageshow handler (nothing clears on success/completion). Server-side 30-minute / prefill_used_at guard is the only protection. Latent today: #step1Form is the arm A/B form and only d/e/f are served, so no real visitor reaches the read site (a reachability check pins that; the arm modules only write the key via insertFreshLead). Recommended default: reuse the id only if this page context created it (or store an owner marker), otherwise insert fresh; no behaviour change until the form is reachable."
     },
     {
       "key": "oq_handout_hi4_contact",
