@@ -25,8 +25,8 @@
  *   PN1 remove data-skip-nav from the header -> the "no nav render" check goes RED.
  *   PN2 alter one character of the D-266 disclaimer -> P3 goes RED.
  *   PN3 wrap the logo in an <a> -> P1 goes RED.
- *   PN4 the snippet must not live in shared JS/CSS: /start, partner-re.html and
- *       partner-insurance.html render without it; injecting it into css/nav.css
+ *   PN4 the snippet must not live in shared JS/CSS: partner-re.html and
+ *       partner-insurance.html render without it (/start dropped by gh-1925: gh-2362 ships its own Arm F header there); injecting it into css/nav.css
  *       makes the check go RED.
  * Every PN mutation is applied at SERVE time (the file on disk is never
  * touched) and the mutation target MUST exist; a missing target is a FAIL, so a
@@ -315,7 +315,9 @@ async function sharedSurfaceCheck() {
     if (/oq-trust|oqTrustPhoto/.test(txt)) bad.push(f);
   }
   const ctx = await newContext();
-  for (const u of ['/start.html?v=f', '/start.html', '/partner-re.html', '/partner-insurance.html']) {
+  // gh-1925 (CI-red fix): /start.html and /start.html?v=f are no longer listed. #2367 (gh-2362) deliberately ships the Arm F trust header IN start.html
+  // (self-contained, Arm-F-scoped; asserted by tests/cro47-trust-start.mjs + cro47-trust-start-playwright.mjs), so "/start renders without it" is stale.
+  for (const u of ['/partner-re.html', '/partner-insurance.html']) {
     const page = await loadPage(ctx, u);
     const n = await page.evaluate(() => document.querySelectorAll('.oq-trust,#oqTrustPhoto,[data-oq-trust-header]').length);
     if (n) bad.push(u + ' renders ' + n + ' trust element(s)');
@@ -327,7 +329,7 @@ async function sharedSurfaceCheck() {
 mutations.clear();
 {
   const bad = await sharedSurfaceCheck();
-  ok(bad.length === 0, 'PN4 /start (?v=f and bare), partner-re.html, partner-insurance.html and shared js/nav.js + css/nav.css + css/design-system.css carry no trust snippet -- offenders: ' + JSON.stringify(bad));
+  ok(bad.length === 0, 'PN4 partner-re.html, partner-insurance.html and shared js/nav.js + css/nav.css + css/design-system.css carry no trust snippet -- offenders: ' + JSON.stringify(bad));
   mutations.set('/css/nav.css', (t) => t + '\n.oq-trust{display:flex}\n');
   const bad2 = await sharedSurfaceCheck();
   ok(bad2.length > 0, 'PN4 control: the snippet injected into shared css/nav.css makes the check go RED as required -- offenders: ' + JSON.stringify(bad2));
