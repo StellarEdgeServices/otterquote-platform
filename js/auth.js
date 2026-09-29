@@ -1049,6 +1049,22 @@ window.Auth = {
     } catch (err) { /* storage blocked: reader fails closed (no owner) */ }
   },
 
+  // gh-2344 / #2355 item (b): a short one-way tag of the normalised email, used to bind non-PII browser state (the
+  // partner signup context) to its signer WITHOUT storing the address itself. cyrb53, sync, not a secret: it only
+  // has to tell two people on one browser apart. '' for an empty input.
+  ownerTag(email) {
+    const s = typeof email === 'string' ? email.trim().toLowerCase() : '';
+    if (!s) return '';
+    let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+    for (let i = 0; i < s.length; i++) {
+      const ch = s.charCodeAt(i);
+      h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return 'o1:' + (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+  },
+
   roleOwnerMatches(userEmail) {
     let stored = null;
     try { stored = localStorage.getItem('cs_auth_role_email'); } catch (e) { stored = null; }

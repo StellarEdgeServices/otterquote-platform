@@ -46,7 +46,7 @@ function ctxFromPage(file, args, local) {
   const line = read(file).split('\n').find((l) => l.includes("localStorage.setItem('" + CTX + "'"));
   if (!line) return { missing: true };
   const stmt = line.slice(line.indexOf("try { localStorage.setItem('" + CTX + "'"), line.indexOf('// gh-2355: NON-PII'));
-  vm.runInContext(stmt, vm.createContext({ localStorage: local, partnerRpcArgs: args, JSON, Date }));
+  vm.runInContext(stmt, vm.createContext({ localStorage: local, partnerRpcArgs: args, JSON, Date, oqCtxOwner: 'o1:sampletag' /* gh-2344: computed on the statement before, as the pages do */ }));
   return {};
 }
 const sampleArgs = { p_agent_type: 'adjuster', p_first_name: 'Jane', p_last_name: 'Smith', p_email: OWN, p_phone: '3175551234', p_company: 'Acme Claims Co', p_referred_by_note: 'Jane Smith', p_recruit_code: 'RECRUIT1', p_metadata: { adjuster_type: 'x' },

@@ -115,7 +115,7 @@
   };
 
   /** The non-PII signup context ({agentType, attribution:{p_*}}) or null (missing / malformed / expired). */
-  function readCtx(storage, now) {
+  function readCtx(storage, now, ownTag) {
     var raw, c;
     try { raw = storage.getItem(CTX_KEY); } catch (e) { return null; }
     if (!raw) return null;
@@ -125,6 +125,12 @@
     var attr = {};
     var a = c.attribution && typeof c.attribution === 'object' ? c.attribution : {};
     CTX_ATTR.forEach(function (k) { if (a[k] !== undefined && a[k] !== null && a[k] !== '') attr[k] = a[k]; });
+    // gh-2344 (#2355 item b): the context is bound to the signup email by a one-way tag (Auth.ownerTag), never the address.
+    // When the caller supplies the signed-in user's tag, a context with no owner (pre-binding) or another owner is
+    // foreign (shared browser) and is ignored.
+    if (typeof ownTag === 'string' && ownTag) {
+      if (typeof c.owner !== 'string' || c.owner !== ownTag) return null;
+    }
     return { agentType: TYPES.indexOf(c.agentType) === -1 ? null : c.agentType, attribution: attr };
   }
   function clearCtx(storage) { try { storage.removeItem(CTX_KEY); } catch (e) { /* non-fatal */ } }

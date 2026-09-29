@@ -1200,7 +1200,7 @@ a:hover { color: var(--amber-2); }
       }
       if (signUpResult) {
         // gh-2282: auth account created here; remember it (no password) until register_partner reaches a definitive outcome.
-        try { localStorage.removeItem('oq_partner_pending_registration'); sessionStorage.setItem('oq_partner_pending_registration', JSON.stringify({ email: String(email || '').trim().toLowerCase(), ts: Date.now(), termsAcceptedAt: oqTermsAcceptedAt, rpcArgs: partnerRpcArgs })); } catch (e) { /* non-fatal */ } try { localStorage.setItem('oq_partner_signup_ctx', JSON.stringify({ ts: Date.now(), agentType: partnerRpcArgs.p_agent_type, attribution: { p_recruit_code: partnerRpcArgs.p_recruit_code || null, p_utm_source: partnerRpcArgs.p_utm_source || null, p_utm_medium: partnerRpcArgs.p_utm_medium || null, p_utm_campaign: partnerRpcArgs.p_utm_campaign || null, p_utm_content: partnerRpcArgs.p_utm_content || null, p_fbclid: partnerRpcArgs.p_fbclid || null, p_li_fat_id: partnerRpcArgs.p_li_fat_id || null, p_funnel_id: partnerRpcArgs.p_funnel_id || null } })); } catch (e) { /* non-fatal */ } // gh-2355: NON-PII signup context (agent type + attribution) so the dashboard re-collect recovery can attribute a new-tab return
+        try { localStorage.removeItem('oq_partner_pending_registration'); sessionStorage.setItem('oq_partner_pending_registration', JSON.stringify({ email: String(email || '').trim().toLowerCase(), ts: Date.now(), termsAcceptedAt: oqTermsAcceptedAt, rpcArgs: partnerRpcArgs })); } catch (e) { /* non-fatal */ } var oqCtxOwner = ''; try { oqCtxOwner = Auth.ownerTag(email); } catch (e) { /* non-fatal */ } try { localStorage.setItem('oq_partner_signup_ctx', JSON.stringify({ ts: Date.now(), owner: oqCtxOwner, agentType: partnerRpcArgs.p_agent_type, attribution: { p_recruit_code: partnerRpcArgs.p_recruit_code || null, p_utm_source: partnerRpcArgs.p_utm_source || null, p_utm_medium: partnerRpcArgs.p_utm_medium || null, p_utm_campaign: partnerRpcArgs.p_utm_campaign || null, p_utm_content: partnerRpcArgs.p_utm_content || null, p_fbclid: partnerRpcArgs.p_fbclid || null, p_li_fat_id: partnerRpcArgs.p_li_fat_id || null, p_funnel_id: partnerRpcArgs.p_funnel_id || null } })); } catch (e) { /* non-fatal */ } // gh-2355: NON-PII signup context (agent type + attribution) so the dashboard re-collect recovery can attribute a new-tab return
       }
 
       // #571 / v95: server-side register_partner RPC. Same call shape as
@@ -1224,6 +1224,7 @@ a:hover { color: var(--amber-2); }
 
       localStorage.setItem('cs_auth_role', agentType);
       localStorage.setItem('cs_auth_role_at', String(Date.now()));
+      try { Auth.stampRoleOwner(email); } catch (e) { /* non-fatal: reader fails closed */ } // gh-2344: bind the breadcrumb to its signer
       localStorage.removeItem('cs_utm_context');
 
 

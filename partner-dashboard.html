@@ -1865,7 +1865,7 @@ Let me know if you have any questions!
             const host = document.getElementById('partnerRecollect');
             if (!host || !window.PartnerRegistration || !sb || !currentUser || !currentUser.email) return;
             const PR = PartnerRegistration;
-            const ctx = PR.readCtx(localStorage);
+            const ctx = PR.readCtx(localStorage, undefined, (window.Auth && typeof Auth.ownerTag === 'function') ? Auth.ownerTag(currentUser.email) : '');
             const agentType = (ctx && ctx.agentType) || 'other';
             const form = PR.formFor(agentType);
             const isTest = !!(window.Auth && typeof Auth.isTestEmail === 'function' && Auth.isTestEmail(currentUser.email));
