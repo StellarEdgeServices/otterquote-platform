@@ -191,10 +191,21 @@ function AdminFeeConfigContent() {
 
     try {
       const result = editingId
-        ? await supabase.from('platform_fee_config').update(payload).eq('id', editingId)
+        ? await supabase.from('platform_fee_config').update(payload).eq('id', editingId).select('id')
         : await supabase.from('platform_fee_config').insert([payload]);
 
       if (result.error) throw result.error;
+      // gh-2105 (decision a, money — HIGH PRIORITY): `.update()` without
+      // `.select()` reports success even on a zero-row RLS/id-mismatch
+      // match. This is the platform fee percentage every bid's fee
+      // disclosure is computed from -- a silent miss here would show "Fee
+      // rule updated successfully" while contractors keep being charged
+      // the OLD percentage. Only applies to the update branch; insert
+      // always creates a row so it has nothing to check. Same defect and
+      // fix as admin-fee-config.html's HTML twin.
+      if (editingId && (!Array.isArray(result.data) || result.data.length === 0)) {
+        throw new Error('gh2105_zero_rows: no matching platform_fee_config row was updated');
+      }
 
       const wasEditing = editingId !== null;
       closeModal();

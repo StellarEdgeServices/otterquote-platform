@@ -191,19 +191,43 @@ Deno.serve(async (req: Request) => {
   const rescindedAt = new Date().toISOString();
 
   // Update the quote
-  const { error: updateError } = await supabase
+  const { error: updateError, data: updateRows } = await supabase
     .from("quotes")
     .update({
       bid_status: "rescinded",
       updated_at: rescindedAt,
     })
-    .eq("id", body.quote_id);
+    .eq("id", body.quote_id)
+    .select("id");
 
   if (updateError) {
     return new Response(
       JSON.stringify({ error: "Failed to rescind bid", details: updateError }),
       {
         status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          ...buildCorsHeaders(req),
+        },
+      }
+    );
+  }
+
+  // gh-2105 (decision a, money — HIGH PRIORITY): `.update()` without
+  // `.select()` reports success even on a zero-row RLS/id-mismatch match.
+  // `quote` was fetched earlier by this same id, so a zero-row match here
+  // means it changed out from under the request (RLS, concurrent delete) —
+  // without this check the caller would get `success: true` while
+  // quotes.bid_status never actually flipped to "rescinded", leaving a bid
+  // that still looks live/payable to the award flow.
+  if (!Array.isArray(updateRows) || updateRows.length === 0) {
+    return new Response(
+      JSON.stringify({
+        error: "Failed to rescind bid",
+        details: "gh2105_zero_rows: no matching quote row was updated",
+      }),
+      {
+        status: 409,
         headers: {
           "Content-Type": "application/json",
           ...buildCorsHeaders(req),
