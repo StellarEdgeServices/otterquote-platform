@@ -307,7 +307,8 @@ function sanitizeMarketingParam(value: unknown): string | null {
 }
 
 function gtag(...args: unknown[]) {
-  if (typeof window !== 'undefined' && (window as any).gtag) {
+  // gh-2356: a QA walk (oq_internal, qa=1, test fbclid/utm) never reaches GA4.
+  if (typeof window !== 'undefined' && (window as any).gtag && !isInternalTraffic()) {
     (window as any).gtag(...args);
   }
 }
@@ -529,7 +530,8 @@ function track<E extends keyof TrackEventParams>(event: E, params: TrackEventPar
 // ─── Meta Pixel helper — gh-1817 ──────────────────────────────────────────
 
 function fbq(...args: unknown[]) {
-  if (typeof window !== 'undefined' && (window as any).fbq) {
+  // gh-2356: a QA walk (oq_internal, qa=1, test fbclid/utm) never reaches Meta.
+  if (typeof window !== 'undefined' && (window as any).fbq && !isInternalTraffic()) {
     (window as any).fbq(...args);
   }
 }

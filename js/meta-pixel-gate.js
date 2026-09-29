@@ -53,6 +53,31 @@
   // js/ga-gate.js and js/internal-traffic.js (same cookie name, Max-Age,
   // Domain rule), wrapped in try/catch so it can never break pixel loading
   // for a real visitor.
+  // BEGIN oq-synthetic-guard (gh-2356)
+  // ONE list of synthetic-traffic patterns, byte-identical in js/ga-gate.js, js/meta-pixel-gate.js and js/internal-traffic.js
+  // (tests/gh2356-synthetic-traffic-guard.mjs fails if any copy drifts; react-app/app/lib/internal-traffic.ts is the TS twin).
+  // A visit is synthetic (our own QA walk) when it carries qa=1, or an fbclid/gclid/utm_* value that starts with an agent-name QA prefix
+  // (ceo/cto/cro/sloane/marty/ben/kevin/rw/rwf/autodrive, or k<digits>) followed by a digit or walk/probe/test/stub (the values our walk skills
+  // really emit in production: ceo75walk..., CEO71TEST..., sloane66walk..., cro37probe, ceo64probe, rw-test, cto33_probe), or TESTFBCLID*/TESTGCLID*.
+  // Real Meta fbclids start with 'Iw' and never match; a generic TEST/QA prefix is deliberately NOT a rule (real ad names like Test_Video_A).
+  var OQ_SYNTHETIC_VALUE_PATTERNS = [/^TEST(FBCLID|GCLID)/i, /^(?:(?:ceo|cto|cro|sloane|marty|ben|kevin|rwf?|autodrive)[-_]?(?:\d|walk|probe|test|stub)|k\d+[-_]?(?:walk|probe|test|stub))/i];
+  var OQ_SYNTHETIC_PARAM_KEYS = ['fbclid', 'gclid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'];
+  function oqSyntheticSignal(params) {
+    try {
+      if (!params) return false;
+      if (params.get('qa') === '1') return true;
+      for (var k = 0; k < OQ_SYNTHETIC_PARAM_KEYS.length; k++) {
+        var v = params.get(OQ_SYNTHETIC_PARAM_KEYS[k]);
+        if (!v) continue;
+        for (var p = 0; p < OQ_SYNTHETIC_VALUE_PATTERNS.length; p++) {
+          if (OQ_SYNTHETIC_VALUE_PATTERNS[p].test(v)) return true;
+        }
+      }
+    } catch (e) { /* never break a page over detection */ }
+    return false;
+  }
+  // END oq-synthetic-guard
+
   function oqInternal() {
     try {
       var params = null;
@@ -62,11 +87,12 @@
         params = null;
       }
       var queryFlag = !!(params && params.get('oq_internal') === '1');
+      var syntheticFlag = oqSyntheticSignal(params);
 
       var cookieMatch = document.cookie.match(/(?:^|; )oq_internal=([^;]*)/);
       var cookieFlag = !!(cookieMatch && decodeURIComponent(cookieMatch[1]) === '1');
 
-      if (queryFlag && !cookieFlag) {
+      if ((queryFlag || syntheticFlag) && !cookieFlag) {
         var oneYear = 60 * 60 * 24 * 365;
         var domainAttr = '';
         if (/(^|\.)otterquote\.com$/.test(window.location.hostname)) {
@@ -76,7 +102,7 @@
           domainAttr + '; SameSite=Lax';
       }
 
-      var isInternal = queryFlag || cookieFlag;
+      var isInternal = queryFlag || cookieFlag || syntheticFlag;
       window.OQ_INTERNAL = isInternal;
       return isInternal;
     } catch (e) {
@@ -227,6 +253,12 @@
   // more reason fbevents.js never actually loads: the current visit is our
   // own walk/probe, not a visitor.
   if (oqInternal()) {
+    // gh-2356: internal / synthetic visit -- every page's fbq('track', ...) call becomes a dropped no-op (nothing queued,
+    // fbevents.js never loads), so a QA walk cannot reach Meta by any call site.
+    var oqNoopFbq = function () {};
+    oqNoopFbq.push = oqNoopFbq; oqNoopFbq.loaded = true; oqNoopFbq.version = '2.0'; oqNoopFbq.queue = [];
+    window.fbq = oqNoopFbq;
+    window._fbq = oqNoopFbq;
     return;
   }
 

@@ -14,6 +14,27 @@
  * window.OQ_INTERNAL before loading anything.
  */
 
+// BEGIN oq-synthetic-guard (gh-2356) -- TS twin of the block in js/ga-gate.js / js/meta-pixel-gate.js / js/internal-traffic.js
+// (tests/gh2356-synthetic-traffic-guard.mjs compares the two lists literally).
+export const OQ_SYNTHETIC_VALUE_PATTERNS: RegExp[] = [/^TEST(FBCLID|GCLID)/i, /^(?:(?:ceo|cto|cro|sloane|marty|ben|kevin|rwf?|autodrive)[-_]?(?:\d|walk|probe|test|stub)|k\d+[-_]?(?:walk|probe|test|stub))/i];
+export const OQ_SYNTHETIC_PARAM_KEYS: string[] = ['fbclid', 'gclid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'];
+/** True for a QA walk: qa=1, or an fbclid/gclid/utm_* value that matches a synthetic pattern. Never throws. */
+export function isSyntheticTrafficParams(params: URLSearchParams | null | undefined): boolean {
+  try {
+    if (!params) return false;
+    if (params.get('qa') === '1') return true;
+    for (const key of OQ_SYNTHETIC_PARAM_KEYS) {
+      const v = params.get(key);
+      if (!v) continue;
+      if (OQ_SYNTHETIC_VALUE_PATTERNS.some((re) => re.test(v))) return true;
+    }
+  } catch {
+    /* never break a page over detection */
+  }
+  return false;
+}
+// END oq-synthetic-guard
+
 function isBrowser(): boolean {
   return typeof window !== 'undefined' && typeof document !== 'undefined';
 }
@@ -48,18 +69,24 @@ export function isInternalTraffic(): boolean {
   if (!isBrowser()) return false;
 
   let queryFlag = false;
+  let syntheticFlag = false;
   try {
-    queryFlag = new URLSearchParams(window.location.search).get('oq_internal') === '1';
+    const search = new URLSearchParams(window.location.search);
+    queryFlag = search.get('oq_internal') === '1';
+    syntheticFlag = isSyntheticTrafficParams(search);
   } catch {
     queryFlag = false;
+    syntheticFlag = false;
   }
   const cookieFlag = readCookie('oq_internal') === '1';
 
-  if (queryFlag && !cookieFlag) {
+  // gh-2356: a QA walk (qa=1 / test fbclid or utm) is persisted with the SAME cookie oq_internal uses (#2064), so later pages
+  // that no longer carry the param are still recognised.
+  if ((queryFlag || syntheticFlag) && !cookieFlag) {
     writeCookie('oq_internal', '1');
   }
 
-  const internal = queryFlag || cookieFlag;
+  const internal = queryFlag || cookieFlag || syntheticFlag;
   (window as unknown as { OQ_INTERNAL?: boolean }).OQ_INTERNAL = internal;
 
   // gh-2068 review follow-up (cto36 REVIEW: FAIL, comment 5779410643,
