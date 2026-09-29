@@ -288,6 +288,22 @@
       ]
     },
     {
+      "key": "oq_referral_ts",
+      "stack": "react+static",
+      "status": "tested",
+      "tests": [
+        {
+          "file": "react-app/app/lib/__tests__/gh2346-session-tab-clock.test.ts",
+          "contains": "TWO-TAB: tab 1 clicks A day 0, tab 2 clicks B day 40"
+        },
+        {
+          "file": "tests/gh2346-session-tab-clock.mjs",
+          "contains": "two-tab: the claim from tab 1 does NOT yield A"
+        }
+      ],
+      "note": "The click clock (cookie + localStorage) and, since gh-2346, a per-tab stamp in sessionStorage next to the ids: sessionStorage ids are trusted only with a stamp inside 30 days that equals the click time on record."
+    },
+    {
       "key": "oq_referral_source",
       "also": [
         "oq_partner_id"
