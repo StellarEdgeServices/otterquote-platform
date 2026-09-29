@@ -27,6 +27,29 @@ marked `class="inspector-hide"` in the source:
      partner-agreement.html (the fee-earning partners' agreement) is NOT
      edited.
 
+  6. (gh-2155 HI-0e, D-333, Ben ruling 5882085491 on #2155, "STRIP IT.")
+     The fee-payment mechanics, removal only, no new words, no renumbering:
+       - all of Section 5 (Payment Method; Payment Information), heading
+         included -- every sentence in it describes paying a fee or bonus;
+       - all of Section 10 (Commission Reversal), heading included;
+       - the Section 9 sentence "Commissions and bonuses are earned only on
+         jobs ..." (calculation of a commission; the attribution sentences
+         that follow it are kept);
+       - the Section 11 cross-reference "10 (Commission Reversal), " (it
+         points at the dropped Section 10);
+       - the phrase "commission terms" from the meta description, og
+         description and the top-of-page notice.
+     A sentence that mixes a payment element with a non-payment obligation
+     (Sections 8, 11, 13, 17) is KEPT and listed in the PR for Ben to rule on.
+
+  7. (gh-2155 HI-0f, D-333, Ben ruling 5882387113) Two of those mixed
+     sentences are trimmed, removal only: the Section 8 forfeiture clause
+     (" and forfeiture of any commission attributable to the violating
+     conduct") and the Section 11 payout-survival clause ("affect commissions
+     that were fully earned ... termination date, and does not "), leaving
+     "Termination does not relieve Partner of obligations under Sections 6, 8,
+     14, 15 ...". The other mixed sentences remain KEPT per the same ruling.
+
 This is REMOVAL ONLY, apart from the one Section 4 heading in item 5 (whose
 new text is the only wording this script writes; the 4.3 statement under it
 is copied verbatim from the source). Everything else in
@@ -59,6 +82,29 @@ SPAN_14A_START = '<span class="inspector-hide">'
 SECTION_4_START = '<section>\n                <h2>4. Referral Fee Structure</h2>'
 FOUR_THREE_START = '<h3>4.3 Home Inspector Partners</h3>\n                <p>'
 INSPECTOR_SECTION_4_HEADING = "4. No Referral Fee or Recruit Bonus"
+
+# HI-0e (D-333): fee-payment mechanics removed from the inspector build.
+SECTION_5_START = "<section>\n                <h2>5. Payment Method; Payment Information</h2>"
+SECTION_10_START = "<section>\n                <h2>10. Commission Reversal</h2>"
+SECTION_9_SENTENCE = (
+    "Commissions and bonuses are earned only on jobs that Otter Quotes&rsquo; "
+    "tracking systems attribute to Partner&rsquo;s unique referral or recruit link. "
+)
+SECTION_11_XREF = "10 (Commission Reversal), "
+# HI-0f (D-333, Ben ruling 5882387113 on #2155, items 2 and 3): words removed only.
+# Section 8 keeps "...termination under Section 11." (forfeiture clause dropped).
+SECTION_8_FORFEITURE = " and forfeiture of any commission attributable to the violating conduct"
+# Section 11 keeps "Termination does not relieve Partner of obligations under
+# Sections 6, 8, 14, 15 ..." (the fully-earned-commissions payout clause dropped).
+SECTION_11_PAYOUT_SURVIVAL = (
+    "affect commissions that were fully earned and approved for payout before "
+    "the termination date, and does not "
+)
+# (old, new, expected occurrences): each `new` is `old` with words removed.
+PHRASE_REMOVALS = [
+    ("— commission terms, tax treatment, and", "— tax treatment and", 2),  # meta + og description
+    ("tax reporting obligations, commission terms, and licensing", "tax reporting obligations and licensing", 1),
+]
 
 
 def _cut_balanced(text: str, start_marker: str, close_tag: str, search_from: int = 0) -> tuple[str, int]:
@@ -103,6 +149,30 @@ def build_inspector_agreement(source_text: str) -> str:
         "                " + statement + "\n            </section>"
     )
     text = text[:sec_start] + new_section + text[sec_end:]
+
+    # 6. HI-0e (D-333): remove the fee-payment mechanics (see docstring item 6).
+    #    Whole sections are dropped (with the blank line that follows them) and
+    #    the remaining sections keep their numbers.
+    for start in (SECTION_5_START, SECTION_10_START):
+        sec_start = text.index(start)
+        sec_end = text.index("</section>", sec_start) + len("</section>")
+        tail = "\n\n            "
+        if text.startswith(tail, sec_end):
+            sec_end += len(tail)
+        text = text[:sec_start] + text[sec_end:]
+    for old, expected in (
+        (SECTION_9_SENTENCE, 1),
+        (SECTION_11_XREF, 1),
+        (SECTION_8_FORFEITURE, 1),
+        (SECTION_11_PAYOUT_SURVIVAL, 1),
+    ):
+        if text.count(old) != expected:
+            raise ValueError(f"expected {expected} occurrence(s) of {old!r}, found {text.count(old)}")
+        text = text.replace(old, "")
+    for old, new, expected in PHRASE_REMOVALS:
+        if text.count(old) != expected:
+            raise ValueError(f"expected {expected} occurrence(s) of {old!r}, found {text.count(old)}")
+        text = text.replace(old, new)
 
     return text
 
