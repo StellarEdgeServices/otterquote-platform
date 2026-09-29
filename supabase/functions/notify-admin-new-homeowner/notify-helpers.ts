@@ -121,6 +121,18 @@ export function isRouterLeadExcluded(email: unknown): boolean {
   return lower.endsWith(ROUTER_LEAD_EXCLUDED_EMAIL_SUFFIX);
 }
 
+// gh-2019 (D-324): a homeowner screened out of the arm-E router who asked
+// for contractor contact information is captured as an ordinary router
+// lead whose `variant` is this exact value (js/router-variant-e.js's
+// REFERRAL_OUT_VARIANT -- keep the two in step; the client cannot import
+// this file). It is matched by strict equality only, never by prefix or
+// pattern, and only ever selects between two fixed admin-email shapes.
+export const REFERRAL_OUT_VARIANT = "e-referral-out";
+
+export function isReferralOutLead(record: Record<string, unknown>): boolean {
+  return record?.variant === REFERRAL_OUT_VARIANT;
+}
+
 // gh-1994 fix round 1 (REVIEW B1): a fixed label map, no raw passthrough.
 // `leads.role` is DB-CHECK-constrained to these three values in practice,
 // but roleLabel() renders ANY input this way regardless -- an unrecognized
@@ -243,6 +255,23 @@ export interface RouterLeadEmail {
 
 export function buildRouterLeadEmail(leadRow: Record<string, unknown>): RouterLeadEmail {
   const { subject, textBody } = buildRouterLeadSubjectAndText(leadRow);
+  if (isReferralOutLead(leadRow)) {
+    // gh-2019 (D-324): admin-only. Shows only what Dustin needs to fulfil
+    // the request by hand -- who asked and where they came from.
+    const rName  = (leadRow.name  as string) || "(no name given)";
+    const rEmail = (leadRow.email as string) || "(no email)";
+    return {
+      subject,
+      textBody,
+      htmlRows: [
+        ["Name", escapeHtml(rName)],
+        ["Email", escapeHtml(rEmail)],
+        ["Attribution", escapeHtml(buildAttributionSource(leadRow))],
+      ],
+      extraHtml:
+        `<p style="font-family:sans-serif;font-size:12px;color:#94A3B8;margin:0 0 16px;">${escapeHtml(REFERRAL_OUT_ADMIN_NOTE)}</p>`,
+    };
+  }
   const name        = (leadRow.name  as string) || "(no name given)";
   const email       = (leadRow.email as string) || "(no email)";
   const phone       = (leadRow.phone as string) || "(no phone)";
@@ -272,7 +301,26 @@ export function buildRouterLeadEmail(leadRow: Record<string, unknown>): RouterLe
 // this alert must be directly actionable). index.ts builds the HTML rows
 // separately, escaping each value with escapeHtml() before rendering, same
 // as every other event type in that file already does.
+export const REFERRAL_OUT_ADMIN_NOTE =
+  "D-324: three names from outside our own network (D-249), no quality claim of any kind. The requester is emailed only when you send it; nothing has been sent to them yet.";
+
 export function buildRouterLeadSubjectAndText(record: Record<string, unknown>): { subject: string; textBody: string } {
+  if (isReferralOutLead(record)) {
+    const rName  = (record.name  as string) || "(no name given)";
+    const rEmail = (record.email as string) || "(no email)";
+    const lines = [
+      `A homeowner who was screened out of the Otter Quotes router asked for contractor contact information (D-324).`,
+      `Name       : ${rName}`,
+      `Email      : ${rEmail}`,
+      `Attribution: ${buildAttributionSource(record)}`,
+      ``,
+      REFERRAL_OUT_ADMIN_NOTE,
+    ];
+    return {
+      subject: stripCrlf("[OtterQuote] Referral-out request: contractor contact information"),
+      textBody: lines.join("\n"),
+    };
+  }
   const name  = (record.name  as string) || "(no name given)";
   const email = (record.email as string) || "(no email)";
   const phone = (record.phone as string) || "(no phone)";

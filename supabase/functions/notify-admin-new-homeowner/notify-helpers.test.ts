@@ -13,6 +13,9 @@ import {
   buildRouterLeadEmail,
   stripCrlf,
   UTM_MAX_LEN,
+  REFERRAL_OUT_VARIANT,
+  REFERRAL_OUT_ADMIN_NOTE,
+  isReferralOutLead,
 } from "./notify-helpers.ts";
 
 // ---------------------------------------------------------------------------
@@ -365,4 +368,60 @@ Deno.test("buildRouterLeadSubjectAndText: is pure — identical input produces i
   const a = buildRouterLeadSubjectAndText(record);
   const b = buildRouterLeadSubjectAndText(record);
   assertEquals(a, b);
+});
+
+// ---------------------------------------------------------------------------
+// gh-2019 (D-324): referral-out request alert. A homeowner screened out of the
+// arm-E router who asked for contractor contact information is captured as a
+// router lead with variant = "e-referral-out"; the admin alert for that row
+// says so, and every other lead's alert is byte-identical to before.
+// ---------------------------------------------------------------------------
+
+Deno.test("gh-2019: REFERRAL_OUT_VARIANT is the exact marker the arm-E client writes", () => {
+  assertStrictEquals(REFERRAL_OUT_VARIANT, "e-referral-out");
+  assert(isReferralOutLead({ variant: "e-referral-out" }));
+});
+
+Deno.test("gh-2019: isReferralOutLead is strict equality -- near-misses and ordinary arms are not referral-out", () => {
+  for (const v of ["e", "c", "f", "E-REFERRAL-OUT", "e-referral-out ", "e-referral", "e-referral-out-x", "", null, undefined]) {
+    assertStrictEquals(isReferralOutLead({ variant: v }), false, `variant=${String(v)}`);
+  }
+  assertStrictEquals(isReferralOutLead({}), false);
+});
+
+Deno.test("gh-2019: referral-out alert subject and body name the request and the fixed hand-off rules", () => {
+  const row = {
+    name: "Jane Smith", email: "jane@example.com", phone: null, role: "homeowner",
+    partner_industry: null, variant: "e-referral-out", utm_source: "meta",
+  };
+  const { subject, textBody } = buildRouterLeadSubjectAndText(row);
+  assertEquals(subject, "[OtterQuote] Referral-out request: contractor contact information");
+  assert(textBody.includes("Name       : Jane Smith"));
+  assert(textBody.includes("Email      : jane@example.com"));
+  assert(textBody.includes("utm_source=meta"));
+  assert(textBody.includes(REFERRAL_OUT_ADMIN_NOTE));
+  // Admin-only email: no customer-facing copy, no callback line (no phone is collected here).
+  assert(!textBody.includes("callback"));
+  assert(!/[\r\n]/.test(subject));
+});
+
+Deno.test("gh-2019: referral-out HTML rows are escaped and carry no phone/role rows", () => {
+  const row = { name: "<b>x</b>", email: "a&b@example.com", variant: "e-referral-out" };
+  const built = buildRouterLeadEmail(row);
+  assertEquals(built.htmlRows.map((r) => r[0]), ["Name", "Email", "Attribution"]);
+  assertEquals(built.htmlRows[0][1], "&lt;b&gt;x&lt;/b&gt;");
+  assertEquals(built.htmlRows[1][1], "a&amp;b@example.com");
+  assert(built.extraHtml.includes("D-324"));
+});
+
+Deno.test("gh-2019: negative control -- an ordinary router lead's alert is unchanged (no referral-out shape)", () => {
+  const row = { name: "Jane", email: "j@example.com", phone: "5551234567", role: "homeowner", variant: "e" };
+  const { subject, textBody } = buildRouterLeadSubjectAndText(row);
+  assertEquals(subject, "[OtterQuote] New router lead: Homeowner");
+  assert(textBody.includes("Phone carries no consent -- callback only."));
+  assert(!textBody.includes("D-324"));
+  const built = buildRouterLeadEmail(row);
+  assertEquals(built.htmlRows.map((r) => r[0]), ["Name", "Email", "Phone", "Role", "Attribution"]);
+  // A row with no variant at all (every pre-gh-2019 lead) behaves the same.
+  assertEquals(buildRouterLeadSubjectAndText({ name: "J", email: "j@example.com", role: "homeowner" }).subject, "[OtterQuote] New router lead: Homeowner");
 });
