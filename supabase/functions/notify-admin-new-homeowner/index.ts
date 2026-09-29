@@ -449,7 +449,7 @@ async function handleRouterLead(
     .not("role", "is", null)
     .not("email", "ilike", `%${ROUTER_LEAD_EXCLUDED_EMAIL_SUFFIX}`)
     .select(
-      "name, email, phone, role, partner_industry, utm_source, utm_medium, utm_campaign, utm_content, utm_term, fbclid, gclid",
+      "name, email, phone, role, partner_industry, variant, utm_source, utm_medium, utm_campaign, utm_content, utm_term, fbclid, gclid",
     );
 
   if (claimErr) {
