@@ -401,19 +401,38 @@
                     sms_consent_text_version: smsConsent ? 'contractor-v2-2026-09-15' : null,
                     role:               'contractor',
                     onboarding_step:    1,
+                    // gh-2340: freshness stamp; readers honour the blob only for
+                    // the same email and only within 24h (js/auth.js
+                    // getOwnedContractorSignup).
+                    _at:                Date.now(),
                 }));
+                // gh-2340: same stamp under its own key, and a per-tab-session marker
+                // (sessionStorage) recording that the contractor-signup action
+                // happened in THIS session (role guard for pre-existing accounts).
+                localStorage.setItem('cs_contractor_signup_at', String(Date.now()));
+                try { sessionStorage.setItem('cs_contractor_signup_session', '1'); } catch (e) { /* non-fatal */ }
                 localStorage.setItem('cs_auth_role', 'contractor');
+                localStorage.setItem('cs_auth_role_at', String(Date.now()));
 
-                // Send magic link — call Supabase directly so we control redirectTo
+                // Send magic link via the auth-uniform Edge Function, not
+                // sb.auth.signInWithOtp() directly — gh-1883 [SECURITY]:
+                // that call hits GoTrue's /auth/v1/otp directly, a
+                // confirmed account-enumeration oracle. See js/auth.js's
+                // _callAuthUniform doc comment. functions.invoke() needs
+                // only the anon key, same client construction as before
+                // (#488: adapter, not default storage) so a caller with a
+                // stale session in the cookie still resolves to a real
+                // client instance.
                 const sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, { auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' } }); // #488: adapter, not default storage
                 const redirectTo = `${window.location.origin}/contractor-pre-approval.html`;
 
-                const { error } = await sb.auth.signInWithOtp({
-                    email,
-                    options: {
+                const { error } = await sb.functions.invoke('auth-uniform', {
+                    body: {
+                        action: 'otp',
+                        email,
+                        redirectTo,
                         data: { role: 'contractor' },
-                        emailRedirectTo: redirectTo,
-                    }
+                    },
                 });
 
                 if (error) throw error;
@@ -469,6 +488,7 @@
                 btn.disabled = true;
                 btn.innerHTML = 'Redirecting to Google…';
                 localStorage.setItem('cs_auth_role', 'contractor');
+                localStorage.setItem('cs_auth_role_at', String(Date.now()));
                 try {
                     await Auth.signInWithGoogle('/auth-callback.html?intent=contractor');
                 } catch (err) {

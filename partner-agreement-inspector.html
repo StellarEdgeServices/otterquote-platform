@@ -29,10 +29,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
     <title>Partner Referral Agreement · Otter Quotes</title>
-    <meta name="description" content="The Otter Quotes Partner Referral Agreement — commission terms, W-9 and 1099-NEC tax requirements, and independent-contractor terms for Otter Quotes referral partners.">
+    <meta name="description" content="The Otter Quotes Partner Referral Agreement — commission terms, tax treatment, and independent-contractor terms for Otter Quotes referral partners.">
     <link rel="canonical" href="https://otterquote.com/partner-agreement.html">
     <meta property="og:title" content="Partner Referral Agreement · Otter Quotes">
-    <meta property="og:description" content="The Otter Quotes Partner Referral Agreement — commission terms, W-9 and 1099-NEC tax requirements, and independent-contractor terms for Otter Quotes referral partners.">
+    <meta property="og:description" content="The Otter Quotes Partner Referral Agreement — commission terms, tax treatment, and independent-contractor terms for Otter Quotes referral partners.">
     <meta property="og:url" content="https://otterquote.com/partner-agreement.html">
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="Otter Quotes">
@@ -288,22 +288,37 @@
             </section>
 
             <section>
-                <h2>4. No Referral Fee or Recruit Bonus</h2>
-                <!-- gh-2155 HI-0b round 4 (Dustin, chat, 2026-09-28: "STRIP
-                     IT" -- resolving the Tier C item flagged non-blocking at
-                     CLOSE-REVIEW: PASS 5841242322 / triage comment 5858278504,
-                     which accepted a no-dollar-figure "Referral Fee Structure"
-                     heading and generic commission/bonus payment-timing text
-                     as not a blocker but did not decide whether they should
-                     stay). This file is reached only from
-                     partner-inspectors.html (repo-wide grep confirmed
-                     2026-09-28), so every real reader of this page is a Home
-                     Inspector Partner who earns $0 under D-333; a heading
-                     promising a "Referral Fee Structure" and mechanics text
-                     about how commissions/bonuses are paid no longer describe
-                     anything that applies to this audience and are removed.
-                     The statement below is the entire substance of this
-                     section now. -->
+                <h2>4. Referral Fee Structure</h2>
+                <!-- gh-2155 HI-0b: this block (intro paragraph, fee table, and
+                     the $10,000-Floor paragraph) is hidden entirely from the
+                     home_inspector track by the track-detection script at the
+                     bottom of this page. Section 4.3 already states, in plain
+                     language, that Home Inspector Partners receive no fee --
+                     showing the $200/$50 table to that track alongside it was
+                     the close-review defect (Ben, comment 5824245098). Least-
+                     invasive mechanism chosen: a ?track=home_inspector /
+                     ?agent_type=home_inspector query param (set by
+                     partner-inspectors.html's agreement link) toggles
+                     display:none on this id via plain JS -- this page had no
+                     existing track-awareness to extend, and a param is the
+                     smallest change that doesn't touch the fee amounts, the
+                     legal text, or any other track's rendering. -->
+                
+
+                <!-- gh-2155 HI-0b round 2 (Ben ruling, comment 5825652208 item
+                     2a): hidden for home_inspector -- removal only, no new
+                     words. This subsection exists only to describe the
+                     Recruit Bonus's single-level/forward-only accrual rules,
+                     which conflict with D-333 and Section 4.3 for a track
+                     that earns no Recruit Bonus at all. Section 4.2 (Payment
+                     Timing) is unaffected -- it describes commissions and
+                     bonuses generally, not the Recruit Bonus specifically. -->
+                
+
+                <h3>4.2 Payment Timing</h3>
+                <p>Commissions and bonuses are paid after the underlying job is complete and the payout has been approved through Otter Quotes&rsquo; internal review process. Otter Quotes may adjust the commission-approval process from time to time; doing so does not change the commission amounts or triggers stated in this Section 4 without a modification under Section 17.</p>
+
+                <h3>4.3 Home Inspector Partners</h3>
                 <p><strong>Home Inspector Partners.</strong> A Partner whose partner type is Home Inspector receives no Referral Fee and no Recruit Bonus under this Agreement.</p>
 
             </section>
@@ -357,7 +372,7 @@
 
             <section>
                 <h2>11. Term and Termination</h2>
-                <p>This Agreement begins on the date Partner accepts it under Section 1 and continues until terminated. <strong>Either party may terminate this Agreement, and Partner&rsquo;s participation in the Program, at any time, for any reason or no reason, with or without cause, by providing notice to the other party.</strong> Otter Quotes may deactivate Partner&rsquo;s referral and recruit links immediately upon termination. Termination does not affect commissions that were fully earned (including satisfaction of the Section 5 W-9 condition) and approved for payout before the termination date, and does not relieve Partner of obligations under Sections 6 (Tax Treatment), 8 (Prohibited Conduct, as to conduct before termination), 10 (Commission Reversal), 14 (Indemnification), 15 (Disputes: Individual Arbitration; No Class Actions), or any other provision that by its nature should survive termination.</p>
+                <p>This Agreement begins on the date Partner accepts it under Section 1 and continues until terminated. <strong>Either party may terminate this Agreement, and Partner&rsquo;s participation in the Program, at any time, for any reason or no reason, with or without cause, by providing notice to the other party.</strong> Otter Quotes may deactivate Partner&rsquo;s referral and recruit links immediately upon termination. Termination does not affect commissions that were fully earned and approved for payout before the termination date, and does not relieve Partner of obligations under Sections 6 (Tax Treatment), 8 (Prohibited Conduct, as to conduct before termination), 10 (Commission Reversal), 14 (Indemnification), 15 (Disputes: Individual Arbitration; No Class Actions), or any other provision that by its nature should survive termination.</p>
             </section>
 
             <section>
@@ -401,7 +416,7 @@
 
             <section>
                 <h2>17. Modification of Agreement</h2>
-                <p>Otter Quotes may modify this Agreement at any time. Otter Quotes will notify Partner of material changes by email or through Partner&rsquo;s dashboard at least 30 days before the change takes effect. For non-material changes, continued participation in the Program after the effective date of a change constitutes Partner&rsquo;s acceptance of the modified Agreement. For material changes — including any change to the commission structure in Section 4, the W-9 condition in Section 5, or the tax treatment in Section 6 — Otter Quotes will require Partner&rsquo;s affirmative re-acknowledgment before the change applies to Partner.</p>
+                <p>Otter Quotes may modify this Agreement at any time. Otter Quotes will notify Partner of material changes by email or through Partner&rsquo;s dashboard at least 30 days before the change takes effect. For non-material changes, continued participation in the Program after the effective date of a change constitutes Partner&rsquo;s acceptance of the modified Agreement. For material changes — including any change to the commission structure in Section 4 or the tax treatment in Section 6 — Otter Quotes will require Partner&rsquo;s affirmative re-acknowledgment before the change applies to Partner.</p>
             </section>
 
             <section>

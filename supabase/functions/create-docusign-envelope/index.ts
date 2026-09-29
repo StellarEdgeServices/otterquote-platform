@@ -16,6 +16,16 @@ import {
   isPermanentCreationFailure,
   waitForBoldSignDocumentReady as waitForBoldSignDocumentReadyImpl,
 } from "./boldsign-readiness.ts";
+// gh-2105 batch 5: shared zero-row-update detection (see batch 2's
+// `_shared/zero-row-update-guard.ts`). This file's envelope-pointer writes
+// are deliberately fire-and-forget (gh-1400/gh-1842 above): a real,
+// paid-for BoldSign document has already been created by the time any of
+// these run, so a failed write must NOT throw -- that would strand the
+// signer on a document the DB can no longer find. It only needs to stop
+// being SILENT: an alert lets an operator notice and re-point the record
+// instead of the pointer just vanishing into a zero-row no-op.
+import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
+const FN_NAME = "create-docusign-envelope";
 // deno-lint-ignore no-explicit-any
 async function getHomeownerName(supabase, claimId) {
   const empty = {
@@ -2290,17 +2300,44 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
   // failure: the signer retries and lands back on the same document.
   const quoteUpdateFilter = quote_id ? supabase.from("quotes").update({
     docusign_envelope_id: envelopeId
-  }).eq("id", quote_id) : supabase.from("quotes").update({
+  }).eq("id", quote_id).select("id") : supabase.from("quotes").update({
     docusign_envelope_id: envelopeId
-  }).eq("claim_id", claim_id).eq("contractor_id", contractor_id);
-  const { error: quoteUpdateError } = await quoteUpdateFilter;
+  }).eq("claim_id", claim_id).eq("contractor_id", contractor_id).select("id");
+  const { error: quoteUpdateError, data: quoteUpdateRows } = await quoteUpdateFilter;
   if (quoteUpdateError) {
     console.error("Failed to update quote with envelope ID:", quoteUpdateError);
+  } else if (!checkRowsWritten(quoteUpdateRows).wroteRows) {
+    console.error(zeroRowWriteMessage(FN_NAME, `quotes.docusign_envelope_id for quote ${quote_id ?? `claim ${claim_id}/contractor ${contractor_id}`}`));
+    try {
+      await supabase.from("platform_alerts_log").insert({
+        alert_type: "gh2105_zero_row_update",
+        function_name: FN_NAME,
+        message: `BoldSign document ${envelopeId} was created (contract_sign) but the quotes.docusign_envelope_id pointer write matched zero rows for ${quote_id ? `quote ${quote_id}` : `claim ${claim_id}/contractor ${contractor_id}`}. A retry will mint a duplicate document instead of resuming this one -- gh-1400.`,
+        sent_at: new Date().toISOString(),
+      });
+    } catch (alertErr) {
+      console.error(`[${FN_NAME}] platform_alerts_log insert failed:`, alertErr);
+    }
   }
-  await supabase.from("claims").update({
+  const { error: claimUpdateError, data: claimUpdateRows } = await supabase.from("claims").update({
     contract_sent_at: new Date().toISOString(),
     docusign_envelope_id: envelopeId
-  }).eq("id", claim_id);
+  }).eq("id", claim_id).select("id");
+  if (claimUpdateError) {
+    console.error("Failed to update claim with envelope ID:", claimUpdateError);
+  } else if (!checkRowsWritten(claimUpdateRows).wroteRows) {
+    console.error(zeroRowWriteMessage(FN_NAME, `claims.docusign_envelope_id for claim ${claim_id}`));
+    try {
+      await supabase.from("platform_alerts_log").insert({
+        alert_type: "gh2105_zero_row_update",
+        function_name: FN_NAME,
+        message: `BoldSign document ${envelopeId} was created (contract_sign) but the claims.contract_sent_at/docusign_envelope_id write matched zero rows for claim ${claim_id}. A retry will mint a duplicate document instead of resuming this one -- gh-1400.`,
+        sent_at: new Date().toISOString(),
+      });
+    } catch (alertErr) {
+      console.error(`[${FN_NAME}] platform_alerts_log insert failed:`, alertErr);
+    }
+  }
   // gh-1842: gh-1400's write-first ordering above is kept exactly as it is --
   // recording the pointer before handing out a link is what makes the resume
   // lookup authoritative on a partial failure. What it could not handle is the
@@ -2566,9 +2603,21 @@ async function handleLegacyFlow(supabase, requestBody, corsHeaders) {
   } else if (document_type === "project_confirmation") {
     updateData.project_confirmation_envelope_id = envelopeId;
   }
-  const { error: updateError } = await supabase.from("claims").update(updateData).eq("id", claim_id);
+  const { error: updateError, data: updateRows } = await supabase.from("claims").update(updateData).eq("id", claim_id).select("id");
   if (updateError) {
     console.error("Failed to update claim:", updateError);
+  } else if (!checkRowsWritten(updateRows).wroteRows) {
+    console.error(zeroRowWriteMessage(FN_NAME, `claims.${document_type === "contract" ? "docusign_envelope_id" : document_type + "_envelope_id"} for claim ${claim_id}`));
+    try {
+      await supabase.from("platform_alerts_log").insert({
+        alert_type: "gh2105_zero_row_update",
+        function_name: FN_NAME,
+        message: `BoldSign document ${envelopeId} (${document_type}) was created but the claims update matched zero rows for claim ${claim_id}. contract_sent_at / envelope pointer was not recorded.`,
+        sent_at: new Date().toISOString(),
+      });
+    } catch (alertErr) {
+      console.error(`[${FN_NAME}] platform_alerts_log insert failed:`, alertErr);
+    }
   }
   return new Response(JSON.stringify({
     success: true,
