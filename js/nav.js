@@ -406,7 +406,9 @@ const Nav = {
       const role = window.localStorage.getItem(this._ROLE_STORAGE_KEY);
       if (!role || !this._ROLE_NAV[role]) return null;
       const at = parseInt(window.localStorage.getItem(this._ROLE_EXPLICIT_KEY) || '0', 10);
-      if (!at || (Date.now() - at) > this._ROLE_EXPLICIT_TTL_MS) return null;
+      // gh-2060: `at > Date.now()` rejects a future-dated stamp (a negative age would
+      // otherwise pass the TTL test and outrank the account role indefinitely).
+      if (!at || at > Date.now() || (Date.now() - at) > this._ROLE_EXPLICIT_TTL_MS) return null;
       return role;
     } catch (_) { return null; }
   },

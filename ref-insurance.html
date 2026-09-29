@@ -891,7 +891,7 @@ select.form-input option {
             oq_referral_id: referralId,
             oq_referral_code: ref,
             oq_referral_agent_id: (referralAgentData && referralAgentData.id) || null
-          });
+          }, { click: true });
         } else {
           sessionStorage.setItem('oq_referral_id', referralId);
           sessionStorage.setItem('oq_referral_code', ref);

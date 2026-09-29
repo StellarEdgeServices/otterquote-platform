@@ -216,10 +216,11 @@ export interface WebhookDeps {
    * (meta_lead_id, consent_key) -- a Meta redelivery, or a retry after a
    * register_partner failure -- is treated as already-written, never an
    * error. A permanent data-rejection error (isDataRejectionError) surfaces
-   * as error.message === "rejected_invalid_data" (terminal); any other error
-   * is transient (503 so Meta redelivers). Only called when a row is due (box present in the
-   * response; see partner-consent.ts). If this fails, register_partner is NOT
-   * called: a partner is never registered without a row we decided to store.
+   * as error.message === "rejected_invalid_data": the handler logs it at
+   * error level, stores no row, and STILL calls register_partner (consent is
+   * never a condition of signup). Any other error is transient (503 so Meta
+   * redelivers) and register_partner is NOT called. Only called when a row is
+   * due (box present in the response; see partner-consent.ts).
    */
   recordPartnerConsent: (
     args: PartnerConsentArgs,
@@ -697,29 +698,40 @@ export async function handlePost(
       //   box absent / no consent wording configured -> NO row, warn, register
       //   wording over 2,000 chars -> NO row, logged ERROR (rejected, never
       //     truncated), register
-      // The evidence row is written BEFORE register_partner, and a failed write
-      // stops registration (503 so Meta redelivers): a partner is never
-      // registered while a row we decided to store is missing. Automated
+      // The evidence row is written BEFORE register_partner. A TRANSIENT write
+      // failure stops registration (503 so Meta redelivers); a PERMANENT
+      // data rejection (isDataRejectionError) logs an error, stores no row and
+      // still registers (Ben's decision on #2313, 5879931952). Automated
       // calls/texts are limited to consent_given=true rows elsewhere; see the
       // HANDOFF-LIVE on #2322 for where (and whether) that gate exists.
       // Logs leadgen_id and a reason only -- never the lead's PII or wording.
       const consent = buildPartnerConsentArgs(fetched.data, config, formId, leadgenId);
       let consentTag = "none";
+      let consentRejected = false;
       if (consent.status === "ok") {
         const consentWrite = await deps.recordPartnerConsent(consent.args);
         if (consentWrite.error) {
           if ((consentWrite.error.message ?? "").includes("rejected_invalid_data")) {
-            // Permanent data rejection: no redelivery ever fixes it -- terminal, never a 503 loop.
-            deps.log("error", `${FUNCTION_NAME}: partner consent write rejected invalid data leadgen_id=${leadgenId}`);
-            outcomes.push({ leadgenId, formId, outcome: "skipped_invalid_data" });
+            // gh-2313 follow-up (Ben, DECIDED, #2313 5879931952; reviewer
+            // 5879852216 Q1): consent is never a condition of partner signup,
+            // so a consent row the database permanently rejects as bad data
+            // (e.g. a NUL in a free-text answer -> 22P05) must NOT drop the
+            // partner. Log it loudly, record it, store no row, and fall
+            // through to register_partner. No retry: redelivery cannot fix it.
+            deps.log(
+              "error",
+              `${FUNCTION_NAME}: partner consent evidence rejected as invalid data (permanent; no row stored, no retry) leadgen_id=${leadgenId} form_id=${formId} reason=consent_row_rejected_invalid_data (partner still registered; not eligible for automated calls/texts)`,
+            );
+            consentRejected = true;
           } else {
+            // Transient: stop, 503, Meta redelivers (register_partner NOT called).
             deps.log("error", `${FUNCTION_NAME}: partner consent write failed leadgen_id=${leadgenId}`);
             outcomes.push({ leadgenId, formId, outcome: "error_consent_write_failed" });
             hasTransientFailure = true;
+            continue;
           }
-          continue;
         }
-        consentTag = consent.args.consentGiven ? "true" : "false";
+        consentTag = consentRejected ? "rejected_invalid_data" : consent.args.consentGiven ? "true" : "false";
       } else if (consent.status === "text_too_long") {
         deps.log(
           "error",
@@ -770,7 +782,7 @@ export async function handlePost(
         "log",
         `${FUNCTION_NAME}: registered leadgen_id=${leadgenId} consent=${consentTag}${suppliedLastNamePlaceholder ? " last_name=placeholder" : ""}`,
       );
-      outcomes.push({ leadgenId, formId, outcome: "registered" });
+      outcomes.push({ leadgenId, formId, outcome: consentRejected ? "registered_consent_rejected" : "registered" });
 
       // Best-effort only: never lets an invite-send problem turn a
       // successful registration into a transient-failure retry (the row is

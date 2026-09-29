@@ -905,11 +905,17 @@
         function getUpgradePurchaseHtml(o) {
             const safeId = String(o.id).replace(/[^a-zA-Z0-9_-]/g, '_');
 
-            // #1410 shape gate, mirrored for display only: already detailed ->
-            // nothing to buy, matching evaluateMeasurementUpgradeGate's ALREADY_DETAILED case.
-            if (o.measurementShape === 'full') {
-                return '<div class="upgrade-section"><span class="upgrade-available-badge">&#x2713; Detailed measurement report available &mdash; nothing to buy</span></div>';
-            }
+            // [REVIEW: FAIL 5869709815 / LEGAL-READ: FAIL 5869712252] Do NOT
+            // special-case measurementShape === 'full' as "nothing to buy"
+            // here -- per D-317 cl. 4 (later contractors pay), a claim
+            // already Shape B still owes the tier price from every
+            // contractor who has not personally bought it. This UI has no
+            // per-contractor "did I already buy this" signal, so it always
+            // renders the normal buy panel below; the server's own
+            // ALREADY_PURCHASED refusal (measurement-upgrade-gate.ts,
+            // existing copy in UPGRADE_ERROR_COPY) is what actually stops a
+            // repeat buyer, surfaced via the existing error-handling path in
+            // confirmUpgradePayment below -- no new copy needed here.
             // No basic-report squares on file yet — the gate would refuse with
             // SQUARES_UNKNOWN or BASIC_REPORT_NOT_READY. Don't offer a button
             // that can only fail; the badge above already covers "Measurements Pending."
@@ -923,7 +929,7 @@
                 + '<div class="upgrade-panel" id="upgrade-panel-' + safeId + '">'
                 + '<div class="upgrade-panel-price" id="upgrade-panel-price-' + safeId + '">Loading price&hellip;</div>'
                 + '<div class="upgrade-panel-note">One-time upgrade from the basic to the full detailed measurement report for this roof ('
-                + o.hoverSquares.toFixed(1) + ' sq). Once purchased, every other contractor already bidding this project sees the detailed report too &mdash; nothing more for them to buy &mdash; and the homeowner&rsquo;s own copy upgrades at the same time, at no extra charge.</div>'
+                + o.hoverSquares.toFixed(1) + ' sq). Once purchased, the homeowner&rsquo;s own copy upgrades to the detailed report at the same time, at no extra charge.</div>'
                 + '<div class="upgrade-card-element" id="upgrade-card-element-' + safeId + '"></div>'
                 + '<div class="upgrade-card-errors" id="upgrade-card-errors-' + safeId + '"></div>'
                 + '<div class="upgrade-panel-actions">'
@@ -967,7 +973,7 @@
         // return. The server is the sole source of truth for whether a charge is
         // allowed; this map only turns its `code` into a readable sentence.
         const UPGRADE_ERROR_COPY = {
-            ALREADY_DETAILED: 'The detailed report is already available for this project — there is nothing left to buy.',
+            ALREADY_PURCHASED: 'You have already purchased the detailed measurement report for this project.',
             BASIC_REPORT_NOT_READY: 'The basic measurement report has not been delivered for this project yet. Please try again once it has arrived.',
             SQUARES_UNKNOWN: 'We do not have measured squares on file for this roof yet, so we cannot price the upgrade.',
             TEST_CLAIM_CHARGE_REFUSED: 'This project cannot be charged.',
@@ -1162,7 +1168,7 @@
                 teardownUpgradePanel(claimId);
 
                 if (panel) {
-                    panel.innerHTML = '<span class="upgrade-available-badge">&#x2713; Purchased. We will email you when the detailed report is ready &mdash; every other contractor on this project will see it too, at no charge.</span>';
+                    panel.innerHTML = '<span class="upgrade-available-badge">&#x2713; Purchased. We will email you when the detailed report is ready.</span>';
                     panel.classList.add('open');
                 }
 

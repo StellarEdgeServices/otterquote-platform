@@ -76,6 +76,9 @@ const SAFE_SENTENCES = [
   // partner-inspectors.html's marketing-page heading -- asserts the ABSENCE
   // of a fee (already verified live, comment 5835976176: "'No Referral
   // Fee' (735)" was one of the explicitly-passing hits).
+  // gh-2155 HI-0d (D-333): the inspector agreement's Section 4 heading, which asserts the
+  // ABSENCE of a fee. Listed BEFORE 'No Referral Fee' so the longer phrase is stripped whole.
+  '4. No Referral Fee or Recruit Bonus',
   'No Referral Fee',
   // partner-agreement-inspector.html: the Section 4 HEADING survives by
   // ruling (only its fee sub-content -- the table, Section 4.1 -- is

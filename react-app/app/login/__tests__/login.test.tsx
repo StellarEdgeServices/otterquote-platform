@@ -15,6 +15,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { seedStaleStorage } from '@/test/storage-fixtures';
 
 // Mock the Supabase singleton (no env / network in unit tests) and the auth hook.
 vi.mock('@/lib/supabase', () => ({
@@ -194,6 +195,34 @@ describe('<LoginPage /> rendered behavior (unauthenticated)', () => {
     const stampRaw = localStorage.getItem('cs_auth_role_at');
     expect(stampRaw).not.toBeNull();
     const stamp = Number(stampRaw);
+    expect(Number.isFinite(stamp)).toBe(true);
+    expect(Date.now() - stamp).toBeLessThan(5000);
+  });
+
+  it('gh-2060 round-4: a resend >24h after the first send re-stamps cs_auth_role, so the emailed link still routes as homeowner', async () => {
+    vi.spyOn(window, 'alert').mockImplementation(() => undefined);
+    render(<LoginPage />);
+    fireEvent.change(screen.getByPlaceholderText(LOGIN_COPY.emailPlaceholder), {
+      target: { value: 'jane@example.com' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: STATIC.submit }));
+    await waitFor(() => expect(screen.getByText(STATIC.sentResend)).toBeInTheDocument());
+
+    // A day and an hour later the visitor finally hits "Send again": the
+    // breadcrumb from the first send is already past its 24h TTL (and would
+    // be read as absent by /auth-callback). Seeded dirty, per the harness.
+    seedStaleStorage({
+      localStorage: {
+        cs_auth_role: 'homeowner',
+        cs_auth_role_at: String(Date.now() - 25 * 60 * 60 * 1000),
+      },
+    });
+
+    fireEvent.click(screen.getByText(STATIC.sentResend));
+    await waitFor(() => expect(callAuthUniform).toHaveBeenCalledTimes(2));
+
+    expect(localStorage.getItem('cs_auth_role')).toBe('homeowner');
+    const stamp = Number(localStorage.getItem('cs_auth_role_at'));
     expect(Number.isFinite(stamp)).toBe(true);
     expect(Date.now() - stamp).toBeLessThan(5000);
   });

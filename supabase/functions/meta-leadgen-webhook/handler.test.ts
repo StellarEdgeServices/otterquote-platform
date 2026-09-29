@@ -1451,16 +1451,40 @@ Deno.test("gh2313: if the consent write fails transiently, register_partner is N
   assertEquals(order, ["consent"]);
 });
 
-Deno.test("gh2313: a permanent data-rejection on the consent write is a terminal 200 skip, not a 503 loop, and register_partner is NOT called", async () => {
+Deno.test("gh2313 follow-up: a consent row permanently rejected as bad data (e.g. 22P05) stores no row, logs an error, records the rejection, STILL registers the partner, and does not retry", async () => {
+  const order: string[] = [];
+  const logs: string[] = [];
+  const levels: string[] = [];
   const { deps, counters } = partnerDepsWith(
-    [{ id: PARTNER_CONSENT_KEY_CFG, is_checked: true }], [], [],
-    { recordPartnerConsent: async () => ({ error: { message: "rejected_invalid_data" } }) },
+    [{ id: PARTNER_CONSENT_KEY_CFG, is_checked: true }], order, logs,
+    {
+      recordPartnerConsent: async () => { order.push("consent"); return { error: { message: "rejected_invalid_data" } }; },
+      log: (level, message) => { levels.push(level); logs.push(message); },
+    },
   );
   const body = leadgenBody({ leadgenId: "leadgen_p_rej", formId: "form_real_123" });
   const { response, outcomes } = await handlePost(body, await sign(body), "1.2.3.4", deps);
-  assertEquals(response.status, 200);
-  assertEquals(outcomes[0].outcome, "skipped_invalid_data");
-  assertEquals(counters.registerCalls, 0);
+  assertEquals(response.status, 200, "no 503 retry loop");
+  assertEquals(counters.registerCalls, 1, "the partner MUST still be registered");
+  assertEquals(order, ["consent", "register"], "one consent attempt (no retry), then register");
+  assertEquals(outcomes.length, 1);
+  assertEquals(outcomes[0].outcome, "registered_consent_rejected", "the rejection is recorded on the outcome");
+  const idx = logs.findIndex((m) => m.includes("rejected as invalid data") && m.includes("leadgen_id=leadgen_p_rej"));
+  assert(idx >= 0, "rejection must be logged with a clear reason");
+  assertEquals(levels[idx], "error");
+  assert(logs[idx].includes("reason=consent_row_rejected_invalid_data"));
+  assert(logs.some((m) => m.includes("consent=rejected_invalid_data")), "registered log carries the consent state");
+  for (const secret of ["jamie@example.com", "3175551234", PARTNER_CONSENT_TEXT]) {
+    assertFalse(logs.join("\n").includes(secret), `log must not contain ${secret}`);
+  }
+});
+
+Deno.test("gh2313 follow-up: SQLSTATE 22P05 classifies as a permanent data rejection; connection-class errors do not", () => {
+  assertEquals(isDataRejectionError("22P05"), true);
+  assertEquals(isDataRejectionError("23514"), true);
+  assertEquals(isDataRejectionError("23505"), false);
+  assertEquals(isDataRejectionError("08006"), false);
+  assertEquals(isDataRejectionError(undefined), false);
 });
 
 Deno.test("gh2313: consent already written (redelivery) is idempotent -- consent write returns no error and registration proceeds", async () => {

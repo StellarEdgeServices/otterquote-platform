@@ -27,7 +27,7 @@ import {
   type PaymentMethodRecord, type PaymentType,
   formatPaymentMethod, paymentMethodsBanner, isFirstMethod, buildSetupIntentBody,
   buildCardInsert, buildAchInsert, buildLegacyContractorUpdate, nextDefaultAfterRemoval,
-  removalConfirmMessage, legacyBrandFor, stripePublishableKeyConfigured,
+  removalConfirmMessage, legacyBrandFor, stripePublishableKeyConfigured, wroteRow,
 } from './utils';
 
 // ── Minimal Stripe.js typings (no @stripe/* package on the client) ──
@@ -290,7 +290,21 @@ export function StripePaymentMethods({ contractorId, billingName, billingEmail }
     const { error: insertError } = await supabase.from('contractor_payment_methods').insert(insert);
     if (insertError) throw insertError;
     if (isFirstMethod(methods)) {
-      await supabase.from('contractors').update(buildLegacyContractorUpdate(legacyRef, new Date().toISOString())).eq('id', contractorId);
+      const { data: legacyRows, error: legacyErr } = await supabase
+        .from('contractors')
+        .update(buildLegacyContractorUpdate(legacyRef, new Date().toISOString()))
+        .eq('id', contractorId)
+        .select('id');
+      if (legacyErr) throw legacyErr;
+      // gh-2105 (decision a, money): `.update()` without `.select()` reports
+      // success even on a zero-row RLS/id-mismatch match. This write syncs
+      // the legacy `contractors.stripe_*`/`payment_method_*` fields that
+      // downstream payout code still reads for the first payment method —
+      // a silent miss here means payouts keep targeting no method (or a
+      // stale one) even though the UI shows the new method as saved.
+      if (!wroteRow(legacyRows)) {
+        throw new Error('contractor_legacy_sync_zero_rows: no matching contractor row was updated');
+      }
     }
     resetForm();
     await loadMethods();
@@ -299,11 +313,36 @@ export function StripePaymentMethods({ contractorId, billingName, billingEmail }
   // ── Set default ──
   async function onSetDefault(methodId: string) {
     try {
+      // gh-2105 (decision b, update-no-select-ok: clearing the previous
+      // default legitimately matches zero rows when there was no prior
+      // default — not a failure, so no .select()/throw is added here).
       await supabase.from('contractor_payment_methods').update({ is_default: false }).eq('contractor_id', contractorId);
-      await supabase.from('contractor_payment_methods').update({ is_default: true }).eq('id', methodId);
+      const { data: defaultRows, error: defaultErr } = await supabase
+        .from('contractor_payment_methods')
+        .update({ is_default: true })
+        .eq('id', methodId)
+        .select('id');
+      if (defaultErr) throw defaultErr;
+      // gh-2105 (decision a, money — HIGH PRIORITY): this is the write that
+      // actually moves the contractor's default payout method. A silent
+      // zero-row match here would leave the OLD method as default (or none)
+      // while the UI reports success.
+      if (!wroteRow(defaultRows)) {
+        throw new Error('payment_method_set_default_zero_rows: no matching payment method row was updated');
+      }
       const method = methods.find((m) => m.id === methodId);
       if (method) {
-        await supabase.from('contractors').update(buildLegacyContractorUpdate(method, new Date().toISOString())).eq('id', contractorId);
+        const { data: legacyRows, error: legacyErr } = await supabase
+          .from('contractors')
+          .update(buildLegacyContractorUpdate(method, new Date().toISOString()))
+          .eq('id', contractorId)
+          .select('id');
+        if (legacyErr) throw legacyErr;
+        // gh-2105 (decision a, money): same legacy-field sync gap as
+        // persistNewMethod above.
+        if (!wroteRow(legacyRows)) {
+          throw new Error('contractor_legacy_sync_zero_rows: no matching contractor row was updated');
+        }
       }
       await loadMethods();
     } catch (err) {
@@ -322,10 +361,40 @@ export function StripePaymentMethods({ contractorId, billingName, billingEmail }
       await supabase.from('contractor_payment_methods').delete().eq('id', methodId);
       const plan = nextDefaultAfterRemoval(methods, methodId);
       if (plan.promote) {
-        await supabase.from('contractor_payment_methods').update({ is_default: true }).eq('id', plan.promote.id);
-        await supabase.from('contractors').update(buildLegacyContractorUpdate(plan.promote, new Date().toISOString())).eq('id', contractorId);
+        const { data: promoteRows, error: promoteErr } = await supabase
+          .from('contractor_payment_methods')
+          .update({ is_default: true })
+          .eq('id', plan.promote.id)
+          .select('id');
+        if (promoteErr) throw promoteErr;
+        // gh-2105 (decision a, money — HIGH PRIORITY): promoting the next
+        // method to default after a removal is the same money-critical
+        // write as onSetDefault above.
+        if (!wroteRow(promoteRows)) {
+          throw new Error('payment_method_promote_default_zero_rows: no matching payment method row was updated');
+        }
+        const { data: legacyRows, error: legacyErr } = await supabase
+          .from('contractors')
+          .update(buildLegacyContractorUpdate(plan.promote, new Date().toISOString()))
+          .eq('id', contractorId)
+          .select('id');
+        if (legacyErr) throw legacyErr;
+        // gh-2105 (decision a, money): same legacy-field sync gap as above.
+        if (!wroteRow(legacyRows)) {
+          throw new Error('contractor_legacy_sync_zero_rows: no matching contractor row was updated');
+        }
       } else if (plan.clearLegacy) {
-        await supabase.from('contractors').update(buildLegacyContractorUpdate(null, new Date().toISOString())).eq('id', contractorId);
+        const { data: clearRows, error: clearErr } = await supabase
+          .from('contractors')
+          .update(buildLegacyContractorUpdate(null, new Date().toISOString()))
+          .eq('id', contractorId)
+          .select('id');
+        if (clearErr) throw clearErr;
+        // gh-2105 (decision a, money): a silent miss here leaves stale
+        // legacy payout fields pointing at the just-deleted method.
+        if (!wroteRow(clearRows)) {
+          throw new Error('contractor_legacy_clear_zero_rows: no matching contractor row was updated');
+        }
       }
       await loadMethods();
       track('payment_method_removed', { contractor_id: contractorId, payment_type: method.payment_type });

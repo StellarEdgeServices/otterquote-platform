@@ -86,6 +86,13 @@ serve(async (req: Request) => {
   }
 
   // Service-role read bypasses RLS
+  //
+  // gh-1916 RETURNED 5856782745 (Marty, CTO RUN 44): phone, notification_phones,
+  // sms_opt_in, sms_opt_in_at and sms_consent_text_version are DELIBERATELY not
+  // selected here. This function no longer returns a contractor's phone number
+  // or consent metadata to the browser at all, consented or not — see the
+  // return statement below and send-contractor-nudge/index.ts, which now looks
+  // those fields up itself (service role) to run the homeowner "nudge" send.
   const { data: contractor, error: contractorErr } = await sb
     .from("contractors")
     .select("company_name, user_id, stripe_payment_method_id, has_payment_method, contract_templates, contract_pdf_url")
@@ -169,8 +176,27 @@ serve(async (req: Request) => {
     }
   }
 
-  // Return only safe fields; never expose Stripe IDs
+  // Return only safe fields; never expose Stripe IDs.
+  //
+  // gh-1916 RETURNED 5856782745 (Marty, CTO RUN 44), superseding the
+  // CLOSE-REVIEW FAIL 5777750121 fix that shipped on this branch: that fix
+  // added phone, notification_phones, sms_opt_in, sms_opt_in_at and
+  // sms_consent_text_version to this response so the homeowner "nudge"
+  // (contract-signing.html / its React port) could gate on sms_opt_in
+  // client-side. REVIEW + LEGAL-READ (5856738126) failed it: even though both
+  // callers are scoped to the claim's homeowner or the contractor itself, the
+  // claim's HOMEOWNER had never before received a contractor's phone number
+  // or opt-in timestamp — that is new disclosure to an existing audience with
+  // no D-number behind it (D-328 governs SENDING with consent, not disclosing
+  // numbers), and a client-side-only gate is not something a browser caller is
+  // ever obligated to honor. Marty's ruling: consent enforcement is
+  // SERVER-SIDE. No contractor phone number or consent metadata goes to the
+  // browser, full stop — this function returns neither, and the nudge send
+  // moved into send-contractor-nudge/index.ts, which looks up
+  // contractors.sms_opt_in itself (service role) and refuses + logs before
+  // ever calling Twilio.
   return json({
+    id: contractor_id,
     company_name: contractor.company_name,
     user_id: contractor.user_id,
     has_payment_method: hasPaymentMethod,

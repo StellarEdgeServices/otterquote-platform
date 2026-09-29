@@ -233,6 +233,24 @@ async function main() {
     }
   );
 
+  // Case 5c (gh-2060 round-4 hardening 2) — a FUTURE-dated cs_auth_role_at
+  // (negative age) used to pass `<= TTL` and be trusted; it must be absent.
+  await check(
+    'a future-dated cs_auth_role_at is treated as absent (no misroute to /contractor-pre-approval.html)',
+    async () => {
+      const { dest } = await runHandle({
+        csAuthRole: 'contractor',
+        csAuthRoleAt: String(Date.now() + 365 * 24 * 60 * 60 * 1000),
+        role: 'homeowner',
+        hasClaim: false,
+      });
+      assert.ok(
+        dest && !dest.includes('contractor-pre-approval'),
+        `future-dated cs_auth_role_at should not misroute, got ${JSON.stringify(dest)}`
+      );
+    }
+  );
+
   // Case 6 — the URL ?intent= param still wins outright and is unaffected
   // by the TTL gate (it never touches localStorage at all).
   await check(

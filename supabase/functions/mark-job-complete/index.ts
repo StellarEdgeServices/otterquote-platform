@@ -41,6 +41,8 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
+import { jobCompleteEmailText, jobCompleteEmailHtml } from "./templates.ts"; // gh-1824: email bodies moved to templates.ts (testable, no serve() import)
 
 const FUNCTION_NAME = "mark-job-complete";
 
@@ -130,38 +132,8 @@ async function sendHomeownerNotification(
 
   const subject = `Your contractor has marked your job complete — ${address}`;
 
-  const textBody = [
-    `Hi ${homeownerName},`,
-    "",
-    `${contractorName} has marked the job at ${address} as complete as of ${formattedDate}.`,
-    "",
-    "If the work is finished to your satisfaction, no action is needed. If you have any concerns or believe the job is not yet complete, please log in to your Otter Quotes account and reach out through your project dashboard.",
-    "",
-    "Log in to review: https://app.otterquote.com",
-    "",
-    "Thank you for using Otter Quotes.",
-    "— The Otter Quotes Team",
-  ].join("\n");
-
-  const htmlBody = `<!DOCTYPE html>
-<html>
-<head><meta charset="UTF-8"></head>
-<body style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:2rem;color:#1F2937;">
-  <div style="text-align:center;margin-bottom:2rem;">
-    <img src="https://otterquote.com/images/otter-logo.png" alt="Otter Quotes" style="height:48px;" onerror="this.style.display='none'">
-  </div>
-  <h2 style="color:#0D1B2E;margin-bottom:1rem;">Job Marked Complete</h2>
-  <p>Hi ${homeownerName},</p>
-  <p><strong>${contractorName}</strong> has marked the job at <strong>${address}</strong> as complete as of <strong>${formattedDate}</strong>.</p>
-  <p>If the work is finished to your satisfaction, no action is needed. If you have any concerns or believe the job is not yet complete, please log in to your Otter Quotes account and reach out through your project dashboard.</p>
-  <div style="text-align:center;margin:2rem 0;">
-    <a href="https://app.otterquote.com" style="background:#E07B00;color:#fff;padding:0.75rem 1.5rem;border-radius:0.5rem;text-decoration:none;font-weight:600;">Review Your Project</a>
-  </div>
-  <p style="color:#6B7280;font-size:0.875rem;">Thank you for using Otter Quotes.</p>
-  <hr style="border:none;border-top:1px solid #E2E8F0;margin:1.5rem 0;">
-  <p style="color:#9CA3AF;font-size:0.75rem;text-align:center;">Otter Quotes · Indianapolis, IN · <a href="https://otterquote.com" style="color:#9CA3AF;">otterquote.com</a></p>
-</body>
-</html>`;
+  const textBody = jobCompleteEmailText(homeownerName, contractorName, address, formattedDate);
+  const htmlBody = jobCompleteEmailHtml(homeownerName, contractorName, address, formattedDate);
 
   const mailgunFormData = new FormData();
   mailgunFormData.append("from", "Otter Quotes <noreply@mail.otterquote.com>");
@@ -400,13 +372,25 @@ serve(async (req: Request) => {
     // ── Set completion_date ────────────────────────────────────────────────────
     const completionDate = new Date().toISOString();
 
-    const { error: updateError } = await supabase
+    const { error: updateError, data: updateRows } = await supabase
       .from("claims")
       .update({ completion_date: completionDate })
-      .eq("id", claimId);
+      .eq("id", claimId)
+      .select("id");
 
     if (updateError) {
       console.error(`[${FUNCTION_NAME}] Failed to set completion_date on claim ${claimId}:`, updateError.message);
+      return jsonResponse({ ok: false, error: "Failed to record job completion" }, 500, corsHeaders);
+    }
+
+    // gh-2105 (decision a, money): completion_date is the gate the payout
+    // completion check reads. `.update()` without `.select()` reports success
+    // on a zero-row match, so an RLS/id miss would tell the contractor the job
+    // is complete while nothing was written. `claim` was fetched by this same
+    // id above, so zero rows is never legitimate here. Same existing 500
+    // response as updateError -- no new user-facing text.
+    if (!checkRowsWritten(updateRows).wroteRows) {
+      console.error(zeroRowWriteMessage(FUNCTION_NAME, `claims.completion_date for claim ${claimId}`));
       return jsonResponse({ ok: false, error: "Failed to record job completion" }, 500, corsHeaders);
     }
 
@@ -437,14 +421,21 @@ serve(async (req: Request) => {
     // 'job_completed' so the payout completion gate can release the commission.
     // Same non-fatal pattern as the activity_log write above.
     if (claim.referral_id) {
-      const { error: referralAdvanceError } = await supabase
+      const { error: referralAdvanceError, data: referralAdvanceRows } = await supabase
         .from("referrals")
         .update({ status: "job_completed" })
         .eq("id", claim.referral_id)
-        .not("status", "in", '("job_completed","commission_paid")');
+        .not("status", "in", '("job_completed","commission_paid")')
+        .select("id");
 
       if (referralAdvanceError) {
         console.error(`[${FUNCTION_NAME}] referral advance failed (non-fatal) for referral ${claim.referral_id}:`, referralAdvanceError.message);
+      } else if (!checkRowsWritten(referralAdvanceRows).wroteRows) {
+        // gh-2105 (decision b): the `.not("status", "in", ...)` guard makes a
+        // zero-row match a LEGITIMATE outcome (already advanced / commission
+        // already paid), so it stays non-fatal -- logged so an id-mismatch/RLS
+        // miss is distinguishable from the benign case.
+        console.warn(zeroRowWriteMessage(FUNCTION_NAME, `referrals.status=job_completed for referral ${claim.referral_id} (benign if already advanced)`));
       }
 
       // ── Partner status email series (#856) ─────────────────────────────────

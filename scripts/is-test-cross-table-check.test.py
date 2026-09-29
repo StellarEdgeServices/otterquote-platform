@@ -449,6 +449,198 @@ class SelfTestProdGuardTests(unittest.TestCase):
         self.assertEqual(code, 1)
 
 
+class FakeSupabase:
+    """Stateful in-memory stand-in for the slice of Supabase the guard touches
+    (auth admin, profiles, contractors), honouring the PostgREST filters the
+    script uses. One instance == one SHARED project, so two self-test runs
+    pointed at it can collide exactly the way two CI jobs did."""
+
+    def __init__(self, now=None):
+        from datetime import datetime, timezone
+        self.now = now or datetime.now(timezone.utc)
+        self.users, self.profiles, self.contractors = set(), {}, {}
+        self.n = 0
+        self.hook = None  # optional callable(method, url) run before each request
+
+    def iso(self, age_seconds=0):
+        from datetime import timedelta
+        return (self.now - timedelta(seconds=age_seconds)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    def seed(self, name, profile_is_test, contractor_is_test, age_seconds=0, role="contractor"):
+        self.n += 1
+        uid, cid = f"u{self.n}", f"c{self.n}"
+        self.users.add(uid)
+        self.profiles[uid] = {"id": uid, "is_test": profile_is_test, "role": role, "full_name": name, "created_at": self.iso(age_seconds)}
+        self.contractors[cid] = {"id": cid, "user_id": uid, "is_test": contractor_is_test, "company_name": name, "created_at": self.iso(age_seconds)}
+        return uid, cid
+
+    def _like(self, value, pattern):
+        return isinstance(value, str) and value.startswith(pattern.rstrip("*"))
+
+    def urlopen(self, req, timeout=30):
+        import urllib.parse as up
+        url, method = req.full_url, req.get_method()
+        if self.hook:
+            self.hook(method, url)
+        u = up.urlparse(url)
+        q = {k: v[0] for k, v in up.parse_qs(u.query).items()}
+        body = json.loads(req.data.decode()) if req.data else None
+        R = lambda o: _FakeResponse(json.dumps(o).encode())
+        if u.path.startswith("/auth/v1/admin/users"):
+            if method == "POST":
+                self.n += 1
+                uid = f"u{self.n}"
+                self.users.add(uid)
+                return R({"id": uid})
+            self.users.discard(u.path.rsplit("/", 1)[1])
+            return _FakeResponse(b"")
+        table = u.path.rsplit("/", 1)[1]
+        store = self.profiles if table == "profiles" else self.contractors
+        if method == "POST":
+            if table == "profiles":
+                self.profiles[body["id"]] = {**body, "created_at": self.iso()}
+                return _FakeResponse(b"")
+            self.n += 1
+            cid = f"c{self.n}"
+            self.contractors[cid] = {**body, "id": cid, "created_at": self.iso()}
+            return R([{"id": cid}])
+        target = None
+        if "id" in q and q["id"].startswith("eq."):
+            target = q["id"][3:]
+        if method == "PATCH":
+            store[target].update(body)
+            return _FakeResponse(b"")
+        if method == "DELETE":
+            store.pop(target, None)
+            return _FakeResponse(b"")
+        rows = list(store.values())
+        if "id" in q and q["id"].startswith("in.("):
+            ids = set(q["id"][4:-1].split(","))
+            rows = [r for r in rows if r["id"] in ids]
+        if "user_id" in q:
+            rows = [r for r in rows if r.get("user_id")]
+        for col in ("company_name", "full_name"):
+            if col in q and q[col].startswith("like."):
+                rows = [r for r in rows if self._like(r.get(col), q[col][5:])]
+        if "created_at" in q and q["created_at"].startswith("lt."):
+            rows = [r for r in rows if r["created_at"] < q["created_at"][3:]]
+        return R(rows)
+
+
+class SelfTestIsolationTests(unittest.TestCase):
+    """CTO RUN 48: the self-test must not be broken by (or break) a concurrent
+    run sharing the project, and the REAL pass must not be weakened."""
+
+    URL = "https://zsdvaqilfdclwosmiheh.supabase.co"
+
+    def _self_test(self, db, run_id="111-1"):
+        with patch("sys.stdout", new_callable=io.StringIO) as out, patch("sys.stderr", new_callable=io.StringIO):
+            code = guard.self_test(self.URL, "k", urlopen=db.urlopen, run_id=run_id)
+        return code, out.getvalue()
+
+    def _run(self, db, **kw):
+        with patch("sys.stdout", new_callable=io.StringIO), patch("sys.stderr", new_callable=io.StringIO):
+            return guard.run(self.URL, "k", urlopen=db.urlopen, **kw)
+
+    def test_concurrent_runs_bad_fixture_does_not_break_this_run(self):
+        """The observed flake: another run's profile is_test=false / contractor is_test=true
+        fixture is live in the shared table while this run's GREEN phase executes."""
+        db = FakeSupabase()
+        db.seed(guard._fixture_label("999-1"), False, True)  # concurrent run, mid-RED
+        code, out = self._self_test(db)
+        self.assertEqual(code, 0, out)
+        self.assertIn("GREEN expectation (exit==0): PASS", out)
+        self.assertIn("REAL expectation (exit==0): PASS", out)
+        # the other run's rows are untouched (fresh, so not stale)
+        self.assertEqual(len(db.contractors), 1)
+
+    def test_old_whole_table_assertion_would_have_failed(self):
+        """Documents the bug: an unscoped run() over the same shared state exits 1."""
+        db = FakeSupabase()
+        db.seed(guard._fixture_label("999-1"), False, True)
+        self.assertEqual(self._run(db), 1)
+
+    def test_fixtures_are_tagged_with_run_id(self):
+        db = FakeSupabase()
+        seen = []
+        db.hook = lambda m, u: None
+        orig = db.urlopen
+        def spy(req, timeout=30):
+            if req.get_method() == "POST" and req.data and b"company_name" in req.data:
+                seen.append(json.loads(req.data)["company_name"])
+            return orig(req, timeout)
+        with patch("sys.stdout", new_callable=io.StringIO), patch("sys.stderr", new_callable=io.StringIO):
+            guard.self_test(self.URL, "k", urlopen=spy, run_id="424242-2")
+        self.assertEqual(len(seen), 2)
+        self.assertTrue(all("run=424242-2" in n and n.startswith(guard.SELFTEST_MARKER) for n in seen))
+
+    def test_run_id_from_github_env(self):
+        with patch.dict(guard.os.environ, {"GITHUB_RUN_ID": "77", "GITHUB_RUN_ATTEMPT": "3"}, clear=False):
+            guard.os.environ.pop("SELFTEST_RUN_ID", None)
+            self.assertEqual(guard._selftest_run_id(), "77-3")
+
+    def test_negative_control_real_guard_still_fails_on_genuine_bad_row(self):
+        """A bad-shape row that is NOT a self-test fixture must fail the job, both via the
+        job's own self-test (REAL pass) and via the plain/exclude modes."""
+        db = FakeSupabase()
+        db.seed("Acme Roofing LLC", False, True)  # genuine disagreement, no marker
+        code, out = self._self_test(db)
+        self.assertEqual(code, 1, out)
+        self.assertIn("RED expectation (exit==1): PASS", out)
+        self.assertIn("GREEN expectation (exit==0): PASS", out)
+        self.assertIn("REAL expectation (exit==0): FAIL", out)
+        self.assertIn("Acme Roofing LLC", out)
+        self.assertEqual(self._run(db, exclude_selftest=True), 1)
+        self.assertEqual(self._run(db), 1)
+
+    def test_real_pass_excludes_any_selftest_marker_but_nothing_else(self):
+        db = FakeSupabase()
+        db.seed(guard._fixture_label("1-1"), False, True)     # marker on both rows
+        db.seed("IS-TEST GUARD SELFTEST (gh-1763) -- DO NOT USE", False, True)  # legacy untagged fixture
+        self.assertEqual(self._run(db, exclude_selftest=True), 0)
+        db.seed("Real Co", False, True)
+        self.assertEqual(self._run(db, exclude_selftest=True), 1)
+
+    def test_marker_on_only_one_side_still_excluded_and_lookalike_is_not(self):
+        db = FakeSupabase()
+        uid, cid = db.seed("Real Co", False, True)
+        db.profiles[uid]["full_name"] = guard._fixture_label("5-1")  # marker only on profile side
+        self.assertEqual(self._run(db, exclude_selftest=True), 0)
+        db.seed("My IS-TEST GUARD SELFTEST co", False, True)  # marker not a prefix: genuine
+        self.assertEqual(self._run(db, exclude_selftest=True), 1)
+
+    def test_production_management_api_mode_has_no_exclusion(self):
+        offenders = [{"profile_id": "p", "profile_is_test": False, "contractor_id": "c",
+                      "contractor_is_test": True, "company_name": guard._fixture_label("1-1")}]
+        with patch("sys.stdout", new_callable=io.StringIO), patch("sys.stderr", new_callable=io.StringIO):
+            code = guard.run_management_api("yeszghaspzwwstvsrioa", "tok", fetcher=lambda r, t: offenders)
+        self.assertEqual(code, 1)
+
+    def test_stale_selftest_rows_older_than_1h_removed_fresh_and_real_kept(self):
+        db = FakeSupabase()
+        db.seed(guard._fixture_label("old-1"), False, True, age_seconds=3 * 3600)
+        db.seed(guard._fixture_label("old-2"), False, False, age_seconds=3601)
+        _, fresh = db.seed(guard._fixture_label("live-1"), False, True, age_seconds=30)
+        _, real_old = db.seed("Real Old Co", False, False, age_seconds=9 * 3600)
+        code, out = self._self_test(db)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(sorted(db.contractors), sorted([fresh, real_old]))
+        self.assertEqual({p["full_name"] for p in db.profiles.values()}, {guard._fixture_label("live-1"), "Real Old Co"})
+        self.assertNotIn("u1", db.users)
+
+    def test_cleanup_runs_even_when_a_phase_fails_midway(self):
+        db = FakeSupabase()
+        def boom(method, url):
+            if method == "PATCH":  # repair step blows up after fixtures are seeded
+                raise guard.urllib.error.URLError("stub outage")
+        db.hook = boom
+        code, out = self._self_test(db)
+        self.assertEqual(code, 1)
+        self.assertEqual(db.contractors, {})
+        self.assertEqual(db.profiles, {})
+        self.assertEqual(db.users, set())
+
+
 class _FakeResponse:
     def __init__(self, body: bytes, status: int = 200):
         self._body = body

@@ -70,6 +70,7 @@ import {
   type TemplateRowInput,
   WATCHED_STATUSES,
 } from "./select-stale.ts";
+import { buildDigest } from "./templates.ts"; // gh-1824: email body moved to templates.ts (testable, no serve() import)
 
 const FUNCTION_NAME = "watch-template-mapping";
 const BATCH_LIMIT = 500;
@@ -106,25 +107,8 @@ function jsonResponse(data: unknown, status: number, corsHeaders: Record<string,
 }
 
 // ─── Email (flag-gated, plain text, platform-health-check transport) ────────
-
-function buildDigest(newlyAlerted: StaleTemplate[], thresholdHours: number): { subject: string; text: string } {
-  const n = newlyAlerted.length;
-  const subject = `OtterQuote — ${n} contract template${n === 1 ? "" : "s"} waiting on mapping/review > ${thresholdHours}h`;
-  const lines = [
-    `${n} contractor template${n === 1 ? " has" : "s have"} sat in a pending state longer than ${thresholdHours} hours ` +
-      `and nobody has acted (gh-1313 watcher).`,
-    "",
-    ...newlyAlerted.map((t) =>
-      `- ${t.company_name ?? "(unknown contractor)"}${t.is_test ? " [is_test]" : ""} — ${t.trade} × ${t.funding_type} — ` +
-      `${t.status} for ${t.age_hours}h (since ${t.since}) — template ${t.template_id}`
-    ),
-    "",
-    "Review: https://otterquote.com/admin-template-review.html",
-    "",
-    `Sent by ${FUNCTION_NAME}. One email per template per 24h.`,
-  ];
-  return { subject, text: lines.join("\n") };
-}
+// gh-1824: buildDigest moved to ./templates.ts (testable without importing
+// this file's top-level serve() call). See templates.ts / templates.test.ts.
 
 async function sendMailgunAlert(
   apiKey: string,
@@ -285,7 +269,7 @@ serve(async (req: Request) => {
       email = "not_configured";
       console.warn(`[${FUNCTION_NAME}] TEMPLATE_WATCH_EMAIL_ENABLED=true but MAILGUN_API_KEY/MAILGUN_DOMAIN unset — no email sent`);
     } else {
-      const { subject, text } = buildDigest(newlyAlerted, thresholdHours);
+      const { subject, text } = buildDigest(newlyAlerted, thresholdHours, FUNCTION_NAME);
       const r = await sendMailgunAlert(mailgunApiKey, mailgunDomain, subject, text);
       email = r.ok ? "sent" : "failed";
       emailError = r.error;

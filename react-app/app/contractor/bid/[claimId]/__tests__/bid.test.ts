@@ -9,6 +9,9 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
 import {
   hasAttestation, isCoiOk, isProfileComplete, isPendingApproval,
   preCpaBidGate, profileIncompleteRedirect, BID_GATE_ROUTES,
@@ -21,7 +24,7 @@ import {
   applyCustomWarrantyReview, CUSTOM_WARRANTY_REVIEW_NOTE,
   buildFeeAcceptanceInsert, buildBidConfirmationBody, buildNotifyContractorsBody, buildBidUpdatedNotification,
   RESCINDABLE_STATUSES, isRescindable, buildRescindRequest,
-  resolveClaimId, resolveBidMode,
+  resolveClaimId, resolveBidMode, wroteRow,
   type BidGateContractor, type BidClaim,
 } from '../utils';
 import {
@@ -409,5 +412,61 @@ describe('React route helpers (copy.ts)', () => {
   it('fee info copy', () => {
     expect(BID_COPY.fee.feeInfoInsurance('$20,000.00')).toBe('ℹ A flat 5% platform fee based on the RCV ($20,000.00) applies upon contract signing.');
     expect(BID_COPY.fee.feeInfoRetail).toBe('ℹ A flat 5% platform fee applies to all projects upon contract signing.');
+  });
+});
+
+// gh-2105 batch 6 -- wroteRow is the local copy of
+// supabase/functions/_shared/zero-row-update-guard.ts#checkRowsWritten used
+// by the bid price change/renew write in bid-form.tsx (see the
+// "bid-form.tsx wiring" describe block below).
+describe('wroteRow (gh-2105 zero-row-update detection)', () => {
+  it('true only for a non-empty array', () => {
+    expect(wroteRow([{ id: 'quote-1' }])).toBe(true);
+  });
+  it('false for empty array, null, undefined, and any non-array value', () => {
+    expect(wroteRow([])).toBe(false);
+    expect(wroteRow(null)).toBe(false);
+    expect(wroteRow(undefined)).toBe(false);
+    expect(wroteRow('nope')).toBe(false);
+  });
+});
+
+// gh-2105 batch 6 -- bid-form.tsx's quotes.update() for a bid price
+// change/renewal had no `.select()`, so a zero-row RLS/id-mismatch match
+// reported "Bid updated!" success while quotes.total_price -- what the
+// homeowner sees and what any later award pays out on -- never changed.
+// The component isn't rendered in this suite (router/auth/Stripe-adjacent
+// context — same convention as bid.test.ts's own "Network... live in the
+// page, not here" scope note), so this reads it as text and asserts the
+// fix's wiring, following fee-config.test.ts's page.tsx source-guard
+// pattern.
+//
+// FAIL-FIRST: run against main's (pre-batch-6) bid-form.tsx -- the
+// `.update(updatePayload).eq('id', existingQuote!.id)` call has no
+// `.select('id')` chained and no wroteRow() check; these fail there.
+describe('bid-form.tsx wiring (gh-2105, money — HIGH PRIORITY)', () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const compSrc = readFileSync(resolve(here, '..', 'bid-form.tsx'), 'utf8');
+
+  it('imports wroteRow from ./utils', () => {
+    expect(compSrc).toMatch(/wroteRow[\s\S]*from '\.\/utils'/);
+  });
+
+  it('the change/renew quotes.update() selects and checks rows before the non-fatal notification/log/email block', () => {
+    const idxUpdate = compSrc.indexOf(".update(updatePayload).eq('id', existingQuote!.id)");
+    expect(idxUpdate).toBeGreaterThan(-1);
+    const idxNotif = compSrc.indexOf('"bid updated" notification', idxUpdate);
+    const block = compSrc.slice(idxUpdate, idxNotif === -1 ? idxUpdate + 800 : idxNotif);
+    expect(block).toContain(".select('id')");
+    expect(block).toContain('wroteRow(upRows)');
+    expect(block).toContain('bid_update_zero_rows');
+  });
+
+  it('mutation control: removing .select(\'id\') breaks the wroteRow(upRows) call from ever seeing real data', () => {
+    const idxUpdate = compSrc.indexOf(".update(updatePayload).eq('id', existingQuote!.id)");
+    const line = compSrc.slice(idxUpdate, idxUpdate + 80);
+    const mutated = line.replace(".select('id')", '');
+    expect(mutated).not.toContain(".select('id')");
+    expect(line).toContain(".select('id')");
   });
 });
