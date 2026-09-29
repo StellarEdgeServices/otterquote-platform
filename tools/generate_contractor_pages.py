@@ -310,7 +310,7 @@ def generate_html(c: dict, slug: str, _licenses: list) -> str:
 
 <footer style="text-align:center; padding: var(--sp-8); color: var(--gray); font-size:0.85rem; border-top: 1px solid rgba(255,255,255,0.06);">
   <p>&copy; {datetime.date.today().year} Stellar Edge Services, LLC &mdash; Otter Quotes</p>
-  <p><a href="/terms.html" style="color:var(--amber)">Terms</a> &bull; <a href="/privacy.html" style="color:var(--amber)">Privacy</a></p>
+  <p><a href="/terms.html" style="color:var(--amber)">Terms</a> &bull; <a href="/privacy.html" style="color:var(--amber)">Privacy</a> &bull; <a href="/privacy.html#do-not-sell-or-share" style="color:var(--amber)">Do Not Sell or Share My Personal Information</a></p>
 </footer>
 
 <script src="/js/config.js"></script>
