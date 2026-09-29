@@ -1880,6 +1880,102 @@ def main():
           )["verdict"],
           nd.BEHIND)
 
+    # -------------------------------------------------------------------------------
+    print("\ngh-2289: push delivery -- BUILD_FAILING/BEHIND only, once per site per 24 h, fail soft")
+    print("(mocked transport: no network, no real push is ever sent)")
+    # -------------------------------------------------------------------------------
+    if not hasattr(nd, "deliver_pushes"):
+        check("gh-2289: deliver_pushes exists (push delivery is not implemented on this script)", False, True)
+    else:
+        P_NOW = datetime.datetime(2026, 9, 29, 12, 0, tzinfo=datetime.timezone.utc)
+        P_ENV = {"DRIFT_ALARM_CHANNEL": "pwa", "DRIFT_PUSH_URL": "https://push.invalid/send",
+                 "DRIFT_PUSH_TOKEN": "test-token-not-real"}
+        P_SITE = {"key": "otterquote-platform", "label": "otterquote.com (jade-alpaca-b82b5e)",
+                  "repo": "StellarEdgeServices/otterquote-platform"}
+        p_same = "a" * 40
+        # The recorded #1548 shape: sha still matches, newest production deploy errors.
+        bf_row = nd.evaluate_site(P_SITE, p_same, "2026-09-02T18:33:33.000Z", p_same, 0, "error",
+                                  "Skipped due to account credit usage exceeded", True)
+        ident_row = nd.evaluate_site(P_SITE, p_same, "2026-09-02T18:33:33.000Z", p_same, 0, "ready", None, False)
+        stale_row = nd.evaluate_non_git_site(
+            {"key": "stohlerroof-bridge", "label": "stohlerroof.com (stohlerroof-bridge)"},
+            content_sha256="b" * 64, expected_sha256="b" * 64,
+            published_at=P_NOW - datetime.timedelta(days=138), now=P_NOW, max_age_days=90)
+        unm_row = nd.unmeasured_row(P_SITE, "HTTP 410 (Gone) reading site")
+        check("fixture sanity: verdicts are BUILD_FAILING / IDENTICAL / PUBLISH_STALE / UNMEASURED",
+              [bf_row["verdict"], ident_row["verdict"], stale_row["verdict"], unm_row["verdict"]],
+              [nd.BUILD_FAILING, nd.IDENTICAL, nd.PUBLISH_STALE, nd.UNMEASURED])
+
+        calls = []
+
+        def fake_transport(payload, url, token):
+            calls.append((payload, url, token))
+            return True, "HTTP 200"
+
+        def run(rows, bodies=(), env=None):
+            del calls[:]
+            markers, statuses = nd.deliver_pushes(
+                rows, P_NOW, env=P_ENV if env is None else env, transport=fake_transport,
+                read_comments=lambda: list(bodies))
+            return markers, statuses
+
+        # (1) BUILD_FAILING fixture -> exactly one push, payload is only site/verdict/url.
+        markers, statuses = run([bf_row])
+        check("BUILD_FAILING (#1548 fixture) -> exactly one push call", len(calls), 1)
+        check("push payload carries only site, verdict, url", sorted(calls[0][0].keys()), ["site", "url", "verdict"])
+        check("push verdict text is the line the script already prints",
+              calls[0][0]["verdict"], nd.display_verdict(bf_row))
+        check("push link is the #1549 alarm issue", calls[0][0]["url"].endswith("/issues/1549"), True)
+        check("one dedupe marker is emitted for the pushed site", len(markers), 1)
+
+        # (2) A second BUILD_FAILING within 24 h (marker read back from the alarm comment) -> zero.
+        body = nd.render_issue_comment_body([bf_row], 2, push_markers=markers)
+        check("the marker rides in the alarm comment body", markers[0] in body, True)
+        run([bf_row], bodies=[body])
+        check("second BUILD_FAILING within 24 h -> zero push calls", len(calls), 0)
+        old_marker = nd.push_marker(bf_row["key"], P_NOW - datetime.timedelta(hours=25))
+        run([bf_row], bodies=[old_marker])
+        check("BUILD_FAILING 25 h after the last push -> pushes again (window is 24 h)", len(calls), 1)
+        other = nd.push_marker("otter-crm", P_NOW - datetime.timedelta(hours=1))
+        run([bf_row], bodies=[other])
+        check("dedupe is per site: another site's recent marker does not suppress", len(calls), 1)
+
+        # (3) Noise and clean verdicts never push.
+        run([ident_row])
+        check("IDENTICAL -> zero push calls", len(calls), 0)
+        run([stale_row])
+        check("PUBLISH_STALE -> zero push calls", len(calls), 0)
+        run([unm_row])
+        check("UNMEASURED (410) -> zero push calls", len(calls), 0)
+        run([ident_row, stale_row, unm_row, bf_row])
+        check("mixed run pushes only the BUILD_FAILING site", len(calls), 1)
+
+        # (4) Missing secret / channel -> skip, no crash, no call.
+        markers, statuses = run([bf_row], env={"DRIFT_ALARM_CHANNEL": "pwa"})
+        check("missing DRIFT_PUSH_URL/TOKEN -> zero push calls, no crash", len(calls), 0)
+        check("missing secret logs a skip line", any("push skipped" in x for x in statuses), True)
+        run([bf_row], env={})
+        check("channel switch unset -> zero push calls", len(calls), 0)
+
+        # (5) Unreadable dedupe state or a transport failure never crashes and never dedupes a failure.
+        def boom():
+            raise OSError("boom")
+        del calls[:]
+        markers, statuses = nd.deliver_pushes([bf_row], P_NOW, env=P_ENV, transport=fake_transport, read_comments=boom)
+        check("unreadable dedupe state -> skip (zero calls), logged", (len(calls), any("unreadable" in x for x in statuses)), (0, True))
+        markers, statuses = nd.deliver_pushes([bf_row], P_NOW, env=P_ENV, transport=lambda *a: (False, "HTTP 500"),
+                                              read_comments=lambda: [])
+        check("failed transport -> no marker written (retries next run), no crash", markers, [])
+
+        # (6) The default transport never leaks the token and never raises.
+        real_urlopen_p = nd.urllib.request.urlopen
+        nd.urllib.request.urlopen = lambda *a, **k: (_ for _ in ()).throw(urllib.error.URLError("down"))
+        try:
+            ok, detail = nd.http_push_transport({"site": "x"}, "https://push.invalid/send", "SECRET-VALUE")
+        finally:
+            nd.urllib.request.urlopen = real_urlopen_p
+        check("http transport failure -> (False, detail) without the token", (ok, "SECRET-VALUE" in detail), (False, False))
+
     print()
     if FAILURES:
         print(f"FAILED — {len(FAILURES)} assertion(s): {', '.join(FAILURES)}")

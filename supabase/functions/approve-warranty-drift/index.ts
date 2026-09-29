@@ -17,6 +17,8 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.104.0";
+import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
+import { deprecatedWarrantyEmailText, deprecatedWarrantyEmailHtml } from "./templates.ts"; // gh-1824: email bodies moved to templates.ts (testable, no Deno.serve() import)
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -138,11 +140,14 @@ Deno.serve(async (req: Request) => {
             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
-        const { error: updateErr } = await sb
+        const { error: updateErr, data: updateRows } = await sb
           .from("warranty_options")
           .update(effectiveProposed)
-          .eq("id", drift.warranty_option_id);
+          .eq("id", drift.warranty_option_id)
+          .select("id");
         if (updateErr) throw new Error(`warranty_options update failed: ${updateErr.message}`);
+        // gh-2105: hard-fail via the existing catch (generic 500, no new user text).
+        if (!checkRowsWritten(updateRows).wroteRows) throw new Error(zeroRowWriteMessage("approve-warranty-drift", `warranty_options update for option ${drift.warranty_option_id}`));
         break;
       }
 
@@ -167,11 +172,16 @@ Deno.serve(async (req: Request) => {
             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
-        const { error: deactivateErr } = await sb
+        const { error: deactivateErr, data: deactivateRows } = await sb
           .from("warranty_options")
           .update({ active: false })
-          .eq("id", drift.warranty_option_id);
+          .eq("id", drift.warranty_option_id)
+          .select("id");
         if (deactivateErr) throw new Error(`warranty_options deactivate failed: ${deactivateErr.message}`);
+        // gh-2105: hard-fail via the existing catch (generic 500, no new user text);
+        // thrown BEFORE the contractor notification so nobody is told about a
+        // deprecation that was not written.
+        if (!checkRowsWritten(deactivateRows).wroteRows) throw new Error(zeroRowWriteMessage("approve-warranty-drift", `warranty_options.active=false for option ${drift.warranty_option_id}`));
 
         // Notify affected contractors
         await notifyDeprecatedContractors(sb, drift.warranty_option_id, drift.manufacturer, drift.tier);
@@ -181,11 +191,13 @@ Deno.serve(async (req: Request) => {
       case "no_source": {
         // Admin approved with no proposed changes — nothing to apply to warranty_options.
         // Mark as skipped instead of applied (no change was made).
-        await sb.from("warranty_manifest_drift").update({
+        const { data: skipRows } = await sb.from("warranty_manifest_drift").update({
           status: "skipped",
           reviewed_by: adminEmail,
           reviewed_at: now,
-        }).eq("id", driftId);
+        }).eq("id", driftId).select("id");
+        // gh-2105: hard-fail via the existing catch (generic 500, no new user text).
+        if (!checkRowsWritten(skipRows).wroteRows) throw new Error(zeroRowWriteMessage("approve-warranty-drift", `warranty_manifest_drift.status=skipped for drift ${driftId}`));
 
         await logActivity(sb, user.id, adminEmail, drift, "warranty_manifest_drift_skipped");
 
@@ -197,7 +209,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // ── Mark drift row as applied ─────────────────────────────────────────
-    const { error: markErr } = await sb
+    const { error: markErr, data: markRows } = await sb
       .from("warranty_manifest_drift")
       .update({
         status: "applied",
@@ -206,8 +218,11 @@ Deno.serve(async (req: Request) => {
         applied_at: now,
         ...(effectiveProposed ? { proposed_value: effectiveProposed } : {}),
       })
-      .eq("id", driftId);
+      .eq("id", driftId)
+      .select("id");
     if (markErr) throw new Error(`Failed to mark drift row applied: ${markErr.message}`);
+    // gh-2105: hard-fail via the existing catch (generic 500, no new user text).
+    if (!checkRowsWritten(markRows).wroteRows) throw new Error(zeroRowWriteMessage("approve-warranty-drift", `warranty_manifest_drift.status=applied for drift ${driftId}`));
 
     // ── Log activity ──────────────────────────────────────────────────────
     await logActivity(sb, user.id, adminEmail, drift, "warranty_manifest_drift_applied");
@@ -263,61 +278,6 @@ async function logActivity(
   }
 }
 
-/** Escape HTML special characters in dynamic DB-sourced strings before interpolation. */
-function escapeHtml(text: string): string {
-  const map: Record<string, string> = {
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#039;",
-  };
-  return text.replace(/[&<>"']/g, (char) => map[char]);
-}
-
-/** Shared HTML shell for approve-warranty-drift's contractor notifications (gh-1013). */
-function buildEmail(bodyHtml: string): string {
-  return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-</head>
-<body style="margin:0;padding:0;background:#F1F5F9;">
-<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F1F5F9;">
-  <tr>
-    <td align="center" style="padding:24px 16px;">
-      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
-        <tr>
-          <td align="left" style="background:#0B1929;padding:24px 32px;">
-            <span style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:20px;font-weight:700;color:#ffffff;letter-spacing:-0.3px;">Otter Quotes</span>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:32px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#374151;font-size:15px;line-height:1.6;">
-            ${bodyHtml}
-          </td>
-        </tr>
-      </table>
-    </td>
-  </tr>
-</table>
-</body>
-</html>`.trim();
-}
-
-/** HTML counterpart of the deprecated-warranty-program contractor notice (gh-1013). */
-function deprecatedWarrantyEmailHtml(businessName: string, manufacturer: string, tier: string): string {
-  const body = `
-    <p style="margin:0 0 16px;">Hi ${escapeHtml(businessName)},</p>
-    <p style="margin:0 0 16px;">We wanted to let you know that the ${escapeHtml(manufacturer)} ${escapeHtml(tier)} warranty program has been updated in the Otter Quotes platform.</p>
-    <p style="margin:0 0 16px;">Please log in to your contractor profile and review your saved warranty selections to ensure they reflect the current program offerings.</p>
-    <p style="margin:0 0 16px;">If you have any questions, reply to this email.</p>
-    <p style="margin:0;">&mdash; Otter Quotes Platform</p>
-  `;
-  return buildEmail(body);
-}
-
 async function notifyDeprecatedContractors(
   sb: ReturnType<typeof createClient>,
   warrantyOptionId: string,
@@ -354,19 +314,7 @@ async function notifyDeprecatedContractors(
       );
       formData.append(
         "text",
-        [
-          `Hi ${contractor.business_name ?? "there"},`,
-          ``,
-          `We wanted to let you know that the ${manufacturer} ${tier} warranty program`,
-          `has been updated in the Otter Quotes platform.`,
-          ``,
-          `Please log in to your contractor profile and review your saved warranty`,
-          `selections to ensure they reflect the current program offerings.`,
-          ``,
-          `If you have any questions, reply to this email.`,
-          ``,
-          `— Otter Quotes Platform`,
-        ].join("\n")
+        deprecatedWarrantyEmailText(contractor.business_name ?? "there", manufacturer, tier)
       );
       formData.append(
         "html",

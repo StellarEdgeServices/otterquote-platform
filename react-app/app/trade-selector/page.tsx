@@ -890,7 +890,7 @@ export default function TradeSelectorPage() {
             refCookie.oq_referral_id ||
             sessionStorage.getItem('oq_referral_id') ||
             localStorage.getItem('oq_referral_id') ||
-            localStorage.getItem('oq_referral_id_for_claim') ||
+            refCookie.oq_referral_id_for_claim ||
             null;
           const chainReferralAgentId =
             refCookie.oq_referral_agent_id ||

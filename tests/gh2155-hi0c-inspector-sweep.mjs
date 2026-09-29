@@ -76,6 +76,9 @@ const SAFE_SENTENCES = [
   // partner-inspectors.html's marketing-page heading -- asserts the ABSENCE
   // of a fee (already verified live, comment 5835976176: "'No Referral
   // Fee' (735)" was one of the explicitly-passing hits).
+  // gh-2155 HI-0d (D-333): the inspector agreement's Section 4 heading, which asserts the
+  // ABSENCE of a fee. Listed BEFORE 'No Referral Fee' so the longer phrase is stripped whole.
+  '4. No Referral Fee or Recruit Bonus',
   'No Referral Fee',
   // partner-agreement-inspector.html: the Section 4 HEADING survives by
   // ruling (only its fee sub-content -- the table, Section 4.1 -- is
@@ -85,6 +88,9 @@ const SAFE_SENTENCES = [
   // would need new words, which the ruling forbids). Matches the
   // refuter's own precedent of not failing the box over generic residual
   // wording with no dollar amount (comment 5836510515, item 4).
+  // gh-2354 (D-341): the inspector Section 13 liability-cap floor. The "$100" is a limit on
+  // Otter Quotes' liability, not a fee offered to the partner; exact sentence only.
+  'SHALL NOT EXCEED THE GREATER OF TOTAL COMMISSIONS PAID TO PARTNER IN THE TWELVE (12) MONTHS PRECEDING THE CLAIM OR $100.',
   '4. Referral Fee Structure',
   'Referral fees and bonuses under Section 4 are paid through a third-party payment service',
 ];

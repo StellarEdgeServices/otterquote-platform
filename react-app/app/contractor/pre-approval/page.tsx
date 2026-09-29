@@ -39,6 +39,7 @@ import { useRouter } from 'next/navigation';
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import { supabase } from '@/lib/supabase';
 import { markContractorGateBounce } from '@/lib/contractor-gate';
+import { readOwnedContractorSignup } from '@/lib/contractor-signup-owner';
 import { type ContractorRecord } from '../_shell/use-contractor-record';
 import { PRE_APPROVAL_COPY as T, PROFILE_TRADES, JURISDICTION_LEVELS, TEMPLATE_TRADES, TEMPLATE_FUNDING_TYPES, CONTRACTOR_DASHBOARD_ROUTE, CONTRACTOR_JOIN_URL, CONTRACTOR_FAQ_URL, CONTRACTOR_AGREEMENT_URL, SUPPORT_EMAIL } from './copy';
 import {
@@ -53,7 +54,12 @@ import {
 } from './utils';
 
 const CONTRACTOR_LOGIN_ROUTE = '/contractor/login';
-const SIGNUP_LS_KEY = 'cs_contractor_signup';
+// gh-2340: the cs_contractor_signup blob is honoured only for its own signer (email match + 24h
+// stamp); a foreign/stale blob is cleared and yields null, i.e. the same empty signup as no blob.
+function ownedSignupRaw(email: string | null | undefined): string | null {
+  const owned = readOwnedContractorSignup(email);
+  return owned ? JSON.stringify(owned) : null;
+}
 
 type Panel = 'loading' | 'error' | 'submitted' | 'wizard';
 
@@ -101,7 +107,7 @@ export default function ContractorPreApprovalPage() {
         let rec = ct as ContractorRecord | null;
         if (!rec) {
           // No row yet (brand-new contractor) — create the stub from the signup blob.
-          const signup = parseSignup(typeof localStorage !== 'undefined' ? localStorage.getItem(SIGNUP_LS_KEY) : null);
+          const signup = parseSignup(ownedSignupRaw(user.email));
           const ins = await supabase
             .from('contractors')
             .insert(buildInitialContractorInsert(user.id, email, signup))
@@ -354,7 +360,7 @@ function Step2Card({ contractor, userEmail, onLoading, onError, onAdvance }: {
 
       let rec: ContractorRecord;
       if (!updatedRows || updatedRows.length === 0) {
-        const signup = parseSignup(typeof localStorage !== 'undefined' ? localStorage.getItem(SIGNUP_LS_KEY) : null);
+        const signup = parseSignup(ownedSignupRaw(sess.session?.user?.email ?? userEmail));
         const createObj = buildStep2FallbackCreate(liveUserId, sess.session?.user?.email ?? userEmail, signup, step2Update);
         const createRes = await supabase.from('contractors').insert(createObj).select().single();
         if (createRes.error) throw createRes.error;

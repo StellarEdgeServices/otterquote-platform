@@ -487,3 +487,21 @@ export function buildFeatureRequestInsert(
     created_at: nowIso,
   };
 }
+
+// ================================================================
+// gh-2105 (batch 6): zero-row-update detection for StripePaymentMethods.tsx
+// ================================================================
+
+/**
+ * Inspect the `data` returned by `.update(...).eq(...).select('id')` and
+ * report whether the write actually matched a row. Local copy of the same
+ * check as supabase/functions/_shared/zero-row-update-guard.ts#checkRowsWritten
+ * — that module is Deno/edge-function-only (its own doc comment: "no shared
+ * module boundary with the React app"), so this file carries the same pure
+ * logic for the client-side Stripe payment-method writes in
+ * StripePaymentMethods.tsx (default-method flips + legacy `contractors`
+ * field sync — both payout-routing paths).
+ */
+export function wroteRow(rows: unknown): boolean {
+  return Array.isArray(rows) && rows.length > 0;
+}

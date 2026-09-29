@@ -102,6 +102,11 @@ export default function LoginPage() {
     e.preventDefault();
     if (!sentToEmail) return;
     try {
+      // gh-2060 round-4: a resend can come >24h after the first send; the
+      // magic link it emails is what completes sign-in, so re-stamp the
+      // routing breadcrumb or the TTL has already expired it.
+      localStorage.setItem('cs_auth_role', 'homeowner');
+      localStorage.setItem('cs_auth_role_at', String(Date.now()));
       // gh-1883 [SECURITY]: routed through auth-uniform, not
       // supabase.auth.signInWithOtp() directly — see lib/auth-uniform.ts.
       await callAuthUniform('otp', sentToEmail, AUTH_CALLBACK_URL);

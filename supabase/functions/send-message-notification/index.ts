@@ -26,6 +26,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { messageNotificationHtml, messageNotificationText, MESSAGE_NOTIFICATION_SUBJECT } from "./templates.ts"; // gh-1824: footer moved to templates.ts (testable, no serve() import)
 
 const FUNCTION_NAME = "send-message-notification";
 const DASHBOARD_URL = "https://otterquote.com/dashboard";
@@ -49,65 +50,6 @@ function buildCorsHeaders(req: Request): Record<string, string> {
       "authorization, x-client-info, apikey, content-type",
     "Vary": "Origin",
   };
-}
-
-function buildEmail(bodyHtml: string): string {
-  return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #333; }
-    .container { max-width: 600px; margin: 0 auto; background: #fff; }
-    .header { background: #001D3D; color: #fff; padding: 24px 32px; }
-    .content { padding: 32px; }
-    .footer { background: #F8FAFC; border-top: 1px solid #E2E8F0; padding: 20px 32px; text-align: center; font-size: 13px; color: #64748B; }
-    a { color: #0EA5E9; text-decoration: none; }
-    .button { display: inline-block; background: #14B8A6; color: #fff; padding: 12px 24px; border-radius: 8px; font-weight: 600; text-decoration: none; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h2 style="margin: 0;">Otter Quotes</h2>
-    </div>
-    <div class="content">
-      ${bodyHtml}
-    </div>
-    <div class="footer">
-      <p style="margin: 0 0 12px 0;">Need help? Contact <a href="mailto:support@otterquote.com">support@otterquote.com</a> or call (844) 875-3412</p>
-    </div>
-  </div>
-</body>
-</html>`;
-}
-
-/**
- * Plain-text fallback for the new-message notification email (gh-1013).
- * Per #869 AC 2, this deliberately keeps the bare URL — text/plain clients
- * cannot render a styled link, and this is the accessibility + HTML-blocked
- * fallback. Never strip the URL here.
- */
-function messageNotificationText(
-  recipientName: string,
-  senderName: string,
-  messagePreview: string,
-  truncated: boolean,
-  dashboardUrl: string
-): string {
-  return `Hi ${recipientName},
-
-You have a new message from ${senderName} regarding your project.
-
-Message preview:
-"${messagePreview}${truncated ? "..." : ""}"
-
-View message: ${dashboardUrl}
-
-Log in to Otter Quotes to read and reply to the full message.
-
----
-Need help? Contact support@otterquote.com or call (844) 875-3412`;
 }
 
 async function sendMailgunEmail(
@@ -318,21 +260,16 @@ async function handleRequest(req: Request): Promise<Response> {
       }
 
       // Send email to contractor
-      const subject = "You have a new message on your Otter Quotes project";
+      const subject = MESSAGE_NOTIFICATION_SUBJECT;
       const messagePreview = message.body.substring(0, 200);
       const messageTruncated = message.body.length > 200;
-      const htmlBody = buildEmail(`
-        <p>Hi ${escapeHtml(contractorProfile.full_name || "")},</p>
-        <p>You have a new message from <strong>${escapeHtml(senderProfile.full_name || "")}</strong> regarding your project.</p>
-        <p><strong>Message preview:</strong></p>
-        <blockquote style="border-left: 4px solid #14B8A6; padding-left: 16px; margin: 16px 0; color: #666;">
-          ${escapeHtml(messagePreview)}${messageTruncated ? "..." : ""}
-        </blockquote>
-        <p>
-          <a href="${dashboardUrl}" class="button">View Message</a>
-        </p>
-        <p>Log in to Otter Quotes to read and reply to the full message.</p>
-      `);
+      const htmlBody = messageNotificationHtml(
+        contractorProfile.full_name || "",
+        senderProfile.full_name || "",
+        messagePreview,
+        messageTruncated,
+        dashboardUrl
+      );
       const textBody = messageNotificationText(
         contractorProfile.full_name || "",
         senderProfile.full_name || "",
@@ -386,21 +323,16 @@ async function handleRequest(req: Request): Promise<Response> {
       }
 
       // Send email to homeowner
-      const subject = "You have a new message on your Otter Quotes project";
+      const subject = MESSAGE_NOTIFICATION_SUBJECT;
       const messagePreview = message.body.substring(0, 200);
       const messageTruncated = message.body.length > 200;
-      const htmlBody = buildEmail(`
-        <p>Hi ${escapeHtml(homeownerProfile.full_name || "")},</p>
-        <p>You have a new message from <strong>${escapeHtml(senderProfile.full_name || "")}</strong> regarding your project.</p>
-        <p><strong>Message preview:</strong></p>
-        <blockquote style="border-left: 4px solid #14B8A6; padding-left: 16px; margin: 16px 0; color: #666;">
-          ${escapeHtml(messagePreview)}${messageTruncated ? "..." : ""}
-        </blockquote>
-        <p>
-          <a href="${dashboardUrl}" class="button">View Message</a>
-        </p>
-        <p>Log in to Otter Quotes to read and reply to the full message.</p>
-      `);
+      const htmlBody = messageNotificationHtml(
+        homeownerProfile.full_name || "",
+        senderProfile.full_name || "",
+        messagePreview,
+        messageTruncated,
+        dashboardUrl
+      );
       const textBody = messageNotificationText(
         homeownerProfile.full_name || "",
         senderProfile.full_name || "",
@@ -444,18 +376,6 @@ async function handleRequest(req: Request): Promise<Response> {
       }
     );
   }
-}
-
-// Helper function to escape HTML
-function escapeHtml(text: string): string {
-  const map: Record<string, string> = {
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#039;",
-  };
-  return text.replace(/[&<>"']/g, (char) => map[char]);
 }
 
 serve(handleRequest);

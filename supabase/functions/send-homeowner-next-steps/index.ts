@@ -185,7 +185,7 @@ import {
   dryRunAuthorized,
   parseDryRun,
 } from "./dry-run.ts";
-import { deliverStage, type PreviewRow } from "./deliver-stage.ts";
+import { type DeliverDeps, deliverStage, type PreviewRow } from "./deliver-stage.ts";
 import {
   canSendWithOptOut,
   fetchOptedOutClaimIds,
@@ -214,6 +214,24 @@ import {
   isWelcomeEnabled,
   type WelcomeDeps,
 } from "./welcome-hook.ts";
+import {
+  buildChecklistCompleteEmailContent,
+  CHECKLIST_COMPLETE_EVENT_TYPE,
+  CHECKLIST_COMPLETE_NUDGE_EVENT_TYPE,
+  CHECKLIST_COMPLETE_STAGE,
+  type ChecklistCompleteRow,
+  deliverChecklistCompleteStage,
+  reduceChecklistCompleteActivity,
+  screenChecklistCompleteClaim,
+} from "./checklist-complete-stage.ts";
+import {
+  parseTestSend,
+  runTestSend,
+  type TestSendClaim,
+  type TestSendProfile,
+  testSendAuthorized,
+  validateRequestBody,
+} from "./test-send.ts";
 
 const FUNCTION_NAME = "send-homeowner-next-steps";
 const BATCH_LIMIT = 200;
@@ -417,6 +435,47 @@ async function sendWelcomeMailgunEmail(
   }
 }
 
+// gh-1570 Part 2: sends the `checklist_complete_not_submitted` stage's one
+// email. Same Mailgun call shape as sendMailgunEmail above (parses
+// `data.id`, same List-Unsubscribe headers pointed at the same signed
+// opt-out link — this stage is part of the same D-320-governed series), one
+// fewer link than the '2h'/'48h' template because there is nothing left to
+// upload or choose at this stage — the CTA is "go back and click Submit for
+// Bids".
+async function sendChecklistCompleteMailgunEmail(
+  apiKey: string,
+  to: string,
+  homeownerName: string,
+  dashboardUrl: string,
+  optOutUrl: string,
+): Promise<{ ok: boolean; mailgunId?: string; error?: string }> {
+  const { subject, textBody, htmlBody } = buildChecklistCompleteEmailContent(homeownerName, dashboardUrl, optOutUrl);
+  const formData = new URLSearchParams();
+  formData.append("from", "Otter Quotes <notifications@mail.otterquote.com>");
+  formData.append("to", to);
+  formData.append("subject", subject);
+  formData.append("text", textBody);
+  formData.append("html", htmlBody);
+  formData.append("h:List-Unsubscribe", `<${optOutUrl}>`);
+  formData.append("h:List-Unsubscribe-Post", "List-Unsubscribe=One-Click");
+
+  try {
+    const res = await fetch("https://api.mailgun.net/v3/mail.otterquote.com/messages", {
+      method: "POST",
+      headers: { Authorization: `Basic ${btoa(`api:${apiKey}`)}` },
+      body: formData,
+    });
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "(unreadable)");
+      return { ok: false, error: `Mailgun ${res.status}: ${errText}` };
+    }
+    const data = await res.json().catch(() => ({}));
+    return { ok: true, mailgunId: (data as { id?: string })?.id };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}
+
 // ─── Main handler ───────────────────────────────────────────────────────────
 
 serve(async (req: Request) => {
@@ -477,7 +536,15 @@ serve(async (req: Request) => {
   // See ./dry-run.ts for why it exists and what it deliberately does not do
   // (it writes no activity_log row and sends no email — it cannot manufacture
   // the artifact it is meant to help produce).
-  const requestBody = await req.clone().json().catch(() => ({}));
+  // gh-2069 hardening: strict body validation BEFORE any flag is read or any
+  // side effect runs. An empty body (the pg_cron `{}`) is the normal run; an
+  // unknown key (e.g. a typo of test_send_claim_ids) must NOT fall through to
+  // a real cron run, so it is a 400 with nothing sent or written.
+  const bodyCheck = validateRequestBody(await req.clone().text().catch(() => ""));
+  if (!bodyCheck.ok) {
+    return jsonResponse({ ok: false, error: bodyCheck.error, sent: 0 }, 400, corsHeaders);
+  }
+  const requestBody = bodyCheck.body;
   const dryRunRequested = parseDryRun(requestBody);
   // gh-1859 review fix: a dry run does NOT inherit the batch gate's permissive
   // `if (!cronSecret) authorized = true` branch. That branch fails OPEN, and a
@@ -492,6 +559,34 @@ serve(async (req: Request) => {
       401,
       corsHeaders,
     );
+  }
+  // gh-2069 (path (a), CTO ruling 5869465122) — claim-scoped test send. Inert
+  // unless the body carries the literal `test_send_claim_ids` key; a normal
+  // cron body parses to "absent" and nothing below changes. Read AFTER the
+  // authorization gate, and it additionally requires POSITIVE proof of
+  // authorization (matching X-Cron-Secret / service-role bearer), never the
+  // permissive no-CRON_SECRET branch. See ./test-send.ts for the fail-closed
+  // validation (every claim + owner is_test=true, every recipient a
+  // dustinstohler1+<tag>@gmail.com alias) that runs before any side effect.
+  const testSend = parseTestSend(requestBody);
+  if (testSend.kind !== "absent") {
+    if (!testSendAuthorized({ cronSecret, incomingCronSecret, authHeader, serviceRoleKey })) {
+      return jsonResponse(
+        { ok: false, error: "test_send_claim_ids requires an explicit cron secret or service-role credential" },
+        401,
+        corsHeaders,
+      );
+    }
+    if (testSend.kind === "invalid") {
+      return jsonResponse({ ok: false, error: testSend.error, sent: 0 }, 400, corsHeaders);
+    }
+    if (dryRunRequested) {
+      return jsonResponse(
+        { ok: false, error: "test_send_claim_ids cannot be combined with dry_run", sent: 0 },
+        400,
+        corsHeaders,
+      );
+    }
   }
   const dryRun = dryRunRequested;
   const scanIsTest = candidateIsTestFlag(dryRun);
@@ -528,6 +623,129 @@ serve(async (req: Request) => {
   const supabase = createClient(supabaseUrl, serviceRoleKey);
   const now = Date.now();
   const twoHoursAgoIso = new Date(now - TWO_HOURS_MS).toISOString();
+
+  // The '2h'/'48h' deliverStage dependency object, built once and shared by the
+  // production loop below and the gh-2069 claim-scoped test send, so a test
+  // send goes through the SAME send / activity_log stamp / notifications insert
+  // as a cron send rather than a parallel copy of them.
+  const buildNudgeDeliverDeps = (isDryRun: boolean): DeliverDeps => ({
+    dryRun: isDryRun,
+    mailgunConfigured: Boolean(mailgunApiKey),
+    buildEmail: buildEmailContent,
+    insertActivityLog: async (row) => {
+      const { error } = await supabase.from("activity_log").insert(row);
+      return { error: error ?? null };
+    },
+    sendEmail: (to, name, mUrl, cUrl, oUrl) =>
+      sendMailgunEmail(mailgunApiKey as string, to, name, mUrl, cUrl, oUrl),
+    // gh-2069: the durable per-send record — same `notifications` table
+    // the admin digest already writes to, via the same insert path.
+    insertNotification: async (row) => {
+      const { error } = await supabase.from("notifications").insert(row);
+      return { error: error?.message ?? null };
+    },
+    log: (level, message) => console[level](`[${FUNCTION_NAME}] ${message}`),
+  });
+
+  if (testSend.kind === "ok") {
+    const outcome = await runTestSend(
+      {
+        mailgunConfigured: Boolean(mailgunApiKey),
+        now,
+        nudgeEventType: NUDGE_EVENT_TYPE,
+        optOutEventType: OPTOUT_EVENT_TYPE,
+        fetchClaimsByIds: async (ids) => {
+          const { data, error } = await supabase
+            .from("claims")
+            .select("id, user_id, status, created_at, is_test")
+            .in("id", ids);
+          return { rows: (data || []) as TestSendClaim[], error: error?.message ?? null };
+        },
+        fetchProfilesByIds: async (userIds) => {
+          const { data, error } = await supabase
+            .from("profiles")
+            .select("id, email, full_name, is_test")
+            .in("id", userIds);
+          return { rows: (data || []) as TestSendProfile[], error: error?.message ?? null };
+        },
+        fetchAuthContact: async (userId) => {
+          const { data } = await supabase.auth.admin.getUserById(userId);
+          return {
+            email: data?.user?.email || null,
+            name: data?.user?.user_metadata?.full_name || null,
+          };
+        },
+        // The production candidate scan, scanIsTest=true, narrowed to the ids.
+        fetchCandidateClaims: async (ids) => {
+          // deno-lint-ignore no-explicit-any
+          const { data, error } = await (buildCandidateQuery(
+            // deno-lint-ignore no-explicit-any
+            supabase.from("claims") as any,
+            {
+              scanIsTest: true,
+              eligibleStatus: NUDGE_ELIGIBLE_STATUS,
+              excludedStatus: NUDGE_EXCLUDED_STATUS,
+              cutoffIso: twoHoursAgoIso,
+              limit: BATCH_LIMIT,
+            },
+            // deno-lint-ignore no-explicit-any
+          ) as any).in("id", ids);
+          return { rows: (data || []) as TestSendClaim[], error: error?.message ?? null };
+        },
+        fetchHoverClaimIds: async (ids) => {
+          const { data, error } = await supabase.from("hover_orders").select("claim_id").in("claim_id", ids);
+          return {
+            ids: (data || []).map((h: { claim_id: string }) => h.claim_id),
+            error: error?.message ?? null,
+          };
+        },
+        fetchActivity: async (userIds) => {
+          const { data, error } = await supabase
+            .from("activity_log")
+            .select("user_id, event_type, metadata, created_at")
+            .in("user_id", userIds);
+          return { rows: (data || []) as ActivityLogRow[], error: error?.message ?? null };
+        },
+        // deno-lint-ignore no-explicit-any
+        fetchOptedOut: (userIds, ids) => fetchOptedOutClaimIds(supabase as any, userIds, ids),
+        deliver: async ({ claim, stage, homeownerEmail, homeownerName }) =>
+          deliverStage(buildNudgeDeliverDeps(false), {
+            claimId: claim.id,
+            userId: claim.user_id,
+            stage,
+            homeownerEmail,
+            homeownerName,
+            measurementsUrl: `${siteUrl}/help-measurements.html`,
+            colorUrl: `${siteUrl}/color-selection.html?claim_id=${claim.id}`,
+            optOutUrl: buildOptOutUrl(
+              functionsBaseUrl,
+              await signOptOutToken(claim.id, optOutSecret as string),
+            ),
+          }),
+      },
+      testSend.claimIds,
+    );
+    return jsonResponse(outcome.body, outcome.status, corsHeaders);
+  }
+
+  // gh-1933 review fix (D1)'s stalledForDigest array, declared HERE (rather
+  // than just above the main claims loop, where it lived before gh-1570 Part
+  // 2) so both the checklist-complete-stage block below and the "no main
+  // candidates at all" early return further down can push into / read the
+  // same array. See ./admin-digest-executor.ts for ScreenedCandidate.
+  const stalledForDigest: ScreenedCandidate[] = [];
+  let checklistCompleteSent = 0;
+  let checklistCompleteFailed = 0;
+  const checklistCompleteResults: { claim_id: string; sent: boolean; skipped_reason?: string }[] = [];
+  const checklistCompleteWouldSend: {
+    claim_id: string;
+    stage: string;
+    subject: string;
+    text_first_line: string;
+    has_optout_link_text: boolean;
+    has_optout_link_html: boolean;
+    recipient_present: boolean;
+  }[] = [];
 
   // gh-1933 review fix (D1) — the digest's injected dependencies, wired here
   // exactly once and passed into runAdminDigest at every call site below
@@ -638,6 +856,193 @@ serve(async (req: Request) => {
     }
   }
 
+  // ── gh-1570 Part 2 (issue #1570, comment 5764786813) — the
+  // `checklist_complete_not_submitted` stage ───────────────────────────────
+  // Runs on every real cron tick regardless of whether the main '2h'/'48h'
+  // candidate scan below finds anything: a claim with its checklist complete
+  // has has_measurements=true (or an insurance estimate on file), so it is by
+  // construction EXCLUDED from that scan's has_measurements=false predicate.
+  // Same placement reasoning as the welcome-hook block above. See
+  // ./checklist-complete-stage.ts for the pure selection/delivery logic this
+  // wires together; that file, not this block, is where the eligibility and
+  // idempotence properties are tested.
+  {
+    const { data: ccClaims, error: ccClaimsErr } = await supabase
+      .from("claims")
+      .select("id, user_id, status, ready_for_bids, created_at")
+      .eq("is_test", scanIsTest)
+      .eq("status", NUDGE_ELIGIBLE_STATUS)
+      .order("created_at", { ascending: true })
+      .limit(BATCH_LIMIT);
+
+    if (ccClaimsErr) {
+      console.error(`[${FUNCTION_NAME}] checklist-complete-stage candidate scan failed:`, ccClaimsErr.message);
+    } else if (ccClaims && ccClaims.length > 0) {
+      const ccClaimRows = ccClaims as {
+        id: string; user_id: string; status: string; ready_for_bids: boolean | null; created_at: string;
+      }[];
+      const ccUserIds = [...new Set(ccClaimRows.map((c) => c.user_id))];
+      const ccClaimIds = ccClaimRows.map((c) => c.id);
+
+      // D-320 two-nudge cap (gh-2219 / PR #2219 REVIEW: FAIL M1): this stage
+      // is a third, independent touch alongside the '2h'/'48h' age ladder, so
+      // the SAME `next_steps_nudge_sent` event type the main scan stamps
+      // (NUDGE_EVENT_TYPE, index.ts:230) is read here too, purely to count —
+      // never to re-derive — how many of the two capped stages a claim has
+      // already received.
+      const { data: ccActivity, error: ccActivityErr } = await supabase
+        .from("activity_log")
+        .select("event_type, metadata, created_at")
+        .in("user_id", ccUserIds)
+        .in("event_type", [
+          CHECKLIST_COMPLETE_EVENT_TYPE,
+          CHECKLIST_COMPLETE_NUDGE_EVENT_TYPE,
+          NUDGE_EVENT_TYPE,
+        ]);
+
+      // gh-1786 / D-320: same dedicated, bounded opt-out read the main scan
+      // uses below — not reduced from a generic activity_log read (see
+      // fetchOptedOutClaimIds's own header for why).
+      const { optedOut: ccOptedOut, error: ccOptOutErr } = await fetchOptedOutClaimIds(
+        supabase,
+        ccUserIds,
+        ccClaimIds,
+      );
+
+      if (ccActivityErr) {
+        console.error(`[${FUNCTION_NAME}] checklist-complete-stage activity_log read failed:`, ccActivityErr.message);
+      } else if (ccOptOutErr) {
+        console.error(`[${FUNCTION_NAME}] checklist-complete-stage opt-out read failed:`, ccOptOutErr.message);
+      } else {
+        const ccReduced = reduceChecklistCompleteActivity((ccActivity || []) as ChecklistCompleteRow[]);
+
+        // D-320 two-nudge cap: claim_id -> distinct '2h'/'48h' stages already
+        // stamped by the main scan's own `next_steps_nudge_sent` rows (same
+        // convention as ./select-stage.ts's reduceActivityRows nudgeSentByClaim
+        // — a Set rather than a raw count so a pre-unique-index duplicate
+        // stamp of the SAME stage, see select-stage.ts:169, is not
+        // double-counted).
+        const ccPriorNudgeStagesByClaim = new Map<string, Set<string>>();
+        for (const row of (ccActivity || []) as {
+          event_type: string;
+          metadata?: { claim_id?: string; nudge_stage?: string } | null;
+        }[]) {
+          if (row.event_type !== NUDGE_EVENT_TYPE) continue;
+          const claimId = row.metadata?.claim_id;
+          const stage = row.metadata?.nudge_stage;
+          if (!claimId || (stage !== "2h" && stage !== "48h")) continue;
+          let stages = ccPriorNudgeStagesByClaim.get(claimId);
+          if (!stages) {
+            stages = new Set<string>();
+            ccPriorNudgeStagesByClaim.set(claimId, stages);
+          }
+          stages.add(stage);
+        }
+
+        for (const c of ccClaimRows) {
+          const decision = screenChecklistCompleteClaim(
+            { id: c.id, status: c.status, ready_for_bids: c.ready_for_bids },
+            {
+              optedOutClaimIds: ccOptedOut,
+              reduced: ccReduced,
+              now,
+              priorNudgeCount: ccPriorNudgeStagesByClaim.get(c.id)?.size ?? 0,
+            },
+          );
+          if (!decision.stage) {
+            checklistCompleteResults.push({ claim_id: c.id, sent: false, skipped_reason: decision.skipped_reason });
+            continue;
+          }
+
+          let ccHomeownerEmail: string | null = null;
+          let ccHomeownerName = "there";
+          const { data: ccProfile } = await supabase
+            .from("profiles")
+            .select("email, full_name")
+            .eq("id", c.user_id)
+            .maybeSingle();
+          if (ccProfile?.email) {
+            ccHomeownerEmail = ccProfile.email;
+            ccHomeownerName = ccProfile.full_name || "there";
+          } else {
+            const { data: ccAuthUser } = await supabase.auth.admin.getUserById(c.user_id);
+            ccHomeownerEmail = ccAuthUser?.user?.email || null;
+            ccHomeownerName = ccAuthUser?.user?.user_metadata?.full_name || "there";
+          }
+
+          if (!ccHomeownerEmail) {
+            checklistCompleteResults.push({ claim_id: c.id, sent: false, skipped_reason: "no_email" });
+            continue;
+          }
+
+          // gh-1570 Part 2: included in the admin digest regardless of
+          // activity, per Ben's spec — pushed unconditionally, same as the
+          // main loop pushes every screened '2h'/'48h' claim below.
+          stalledForDigest.push({
+            claimId: c.id,
+            userId: c.user_id,
+            email: ccHomeownerEmail,
+            createdAtIso: c.created_at,
+            stage: CHECKLIST_COMPLETE_STAGE,
+            // gh-2219 REVIEW: FAIL 5849873052 M1 — already computed above by
+            // reduceChecklistCompleteActivity; carried through so the digest
+            // measures this row's age from checklist completion, not claim
+            // creation (decision.stage being truthy here means ccReduced
+            // .completedAtByClaim has this claim id — screenChecklistCompleteClaim
+            // returns "not_checklist_complete" otherwise).
+            checklistCompletedAtIso: ccReduced.completedAtByClaim.get(c.id),
+          });
+
+          const dashboardUrl = `${siteUrl}/dashboard.html`;
+          const ccOptOutUrl = buildOptOutUrl(
+            functionsBaseUrl,
+            await signOptOutToken(c.id, optOutSecret as string),
+          );
+
+          const ccOutcome = await deliverChecklistCompleteStage(
+            {
+              dryRun,
+              mailgunConfigured: Boolean(mailgunApiKey),
+              buildEmail: buildChecklistCompleteEmailContent,
+              insertActivityLog: async (row) => {
+                const { error } = await supabase.from("activity_log").insert(row);
+                return { error: error ?? null };
+              },
+              sendEmail: (to, name, dUrl, oUrl) =>
+                sendChecklistCompleteMailgunEmail(mailgunApiKey as string, to, name, dUrl, oUrl),
+              insertNotification: async (row) => {
+                const { error } = await supabase.from("notifications").insert(row);
+                return { error: error?.message ?? null };
+              },
+              log: (level, message) => console[level](`[${FUNCTION_NAME}] ${message}`),
+            },
+            {
+              claimId: c.id,
+              userId: c.user_id,
+              homeownerEmail: ccHomeownerEmail,
+              homeownerName: ccHomeownerName,
+              dashboardUrl,
+              optOutUrl: ccOptOutUrl,
+            },
+          );
+
+          if (ccOutcome.kind === "previewed") {
+            checklistCompleteWouldSend.push(ccOutcome.preview);
+            checklistCompleteResults.push({ claim_id: c.id, sent: false });
+          } else if (ccOutcome.kind === "sent") {
+            checklistCompleteSent++;
+            checklistCompleteResults.push({ claim_id: c.id, sent: true });
+          } else if (ccOutcome.kind === "already_sent") {
+            checklistCompleteResults.push({ claim_id: c.id, sent: false, skipped_reason: "already_sent" });
+          } else {
+            checklistCompleteFailed++;
+            checklistCompleteResults.push({ claim_id: c.id, sent: false, skipped_reason: ccOutcome.error });
+          }
+        }
+      }
+    }
+  }
+
   // ── Candidate scan: is_test=false, status='documents_needed' (and never
   // 'draft' — redundant with the equality but stated explicitly per CTO RUN
   // 22 defect 1), ready_for_bids=false, has_measurements=false, created at
@@ -665,15 +1070,16 @@ serve(async (req: Request) => {
 
   if (!claims || claims.length === 0) {
     console.log(`[${FUNCTION_NAME}] Batch: no candidate claims found (is_test=${scanIsTest})`);
-    // gh-1933: no claims matched at all, so the digest candidate set is
-    // trivially empty too — still routed through runAdminDigest (a no-op
-    // I/O-wise for zero candidates, see its NEGATIVE CONTROLs) rather than
-    // hand-special-cased, so this response's digest fields never diverge in
-    // shape from the main path below.
+    // gh-1933: no MAIN ('2h'/'48h') claims matched, but gh-1570 Part 2's
+    // checklist-complete-stage block above may still have found candidates
+    // (that stage's own claims are excluded from this scan by construction —
+    // see that block's header comment) — `stalledForDigest` and
+    // `checklistCompleteResults` are populated independently of `claims`, so
+    // they are threaded through here rather than hand-special-cased to empty.
     const emptyDigestOutcome = await runAdminDigest(adminDigestDeps, {
       dryRun,
       previewSend: adminDigestPreview,
-      candidates: [],
+      candidates: stalledForDigest,
       siteUrl,
     });
     return jsonResponse(
@@ -684,10 +1090,13 @@ serve(async (req: Request) => {
         welcome_enabled: welcomeEnabled,
         welcome_sent: welcomeSent,
         welcome_failed: welcomeFailed,
-        ...(dryRun ? { dry_run: true, would_send: [] } : {}),
+        checklist_complete_sent: checklistCompleteSent,
+        checklist_complete_failed: checklistCompleteFailed,
+        ...(dryRun ? { dry_run: true, would_send: [], checklist_complete_would_send: checklistCompleteWouldSend } : {}),
         ...buildDigestResponseFields(emptyDigestOutcome, dryRun, adminDigestPreview),
         ...(adminDigestPreviewIgnored ? { admin_digest_preview_ignored: true } : {}),
         results: [],
+        checklist_complete_results: checklistCompleteResults,
       },
       200,
       corsHeaders,
@@ -756,8 +1165,9 @@ serve(async (req: Request) => {
   // its own). It now lives inside the tested executor —
   // selectDigestCandidates in ./admin-digest-executor.ts, called first
   // thing by runAdminDigest — so this array is deliberately the raw,
-  // unfiltered input to that function.
-  const stalledForDigest: ScreenedCandidate[] = [];
+  // unfiltered input to that function. (Declared earlier now, alongside
+  // gh-1570 Part 2's checklist-complete-stage block, so both feed the same
+  // array — see the comment there.)
 
   for (const claim of claims as ClaimRow[]) {
     // gh-1580: the whole screen — status, opt-out, hover_orders, real
@@ -845,24 +1255,7 @@ serve(async (req: Request) => {
       // fake dependencies instead of resting on the position of one `continue`
       // in this loop. Production behaviour is unchanged.
       const outcome = await deliverStage(
-        {
-          dryRun,
-          mailgunConfigured: Boolean(mailgunApiKey),
-          buildEmail: buildEmailContent,
-          insertActivityLog: async (row) => {
-            const { error } = await supabase.from("activity_log").insert(row);
-            return { error: error ?? null };
-          },
-          sendEmail: (to, name, mUrl, cUrl, oUrl) =>
-            sendMailgunEmail(mailgunApiKey as string, to, name, mUrl, cUrl, oUrl),
-          // gh-2069: the durable per-send record — same `notifications` table
-          // the admin digest already writes to, via the same insert path.
-          insertNotification: async (row) => {
-            const { error } = await supabase.from("notifications").insert(row);
-            return { error: error?.message ?? null };
-          },
-          log: (level, message) => console[level](`[${FUNCTION_NAME}] ${message}`),
-        },
+        buildNudgeDeliverDeps(dryRun),
         {
           claimId: claim.id,
           userId: claim.user_id,
@@ -931,6 +1324,11 @@ serve(async (req: Request) => {
       welcome_enabled: welcomeEnabled,
       welcome_sent: welcomeSent,
       welcome_failed: welcomeFailed,
+      // gh-1570 Part 2: checklist_complete_not_submitted stage stats for
+      // this tick — populated by the block that runs ahead of the main
+      // '2h'/'48h' scan (see its header comment).
+      checklist_complete_sent: checklistCompleteSent,
+      checklist_complete_failed: checklistCompleteFailed,
       ...buildDigestResponseFields(digestOutcome, dryRun, adminDigestPreview),
       ...(adminDigestPreviewIgnored ? { admin_digest_preview_ignored: true } : {}),
       // gh-1570: on a dry run `processed` is 0 by construction (nothing is
@@ -941,9 +1339,11 @@ serve(async (req: Request) => {
           previewed: wouldSend.length,
           // No recipient addresses: see PreviewRow in ./deliver-stage.ts.
           would_send: wouldSend,
+          checklist_complete_would_send: checklistCompleteWouldSend,
         }
         : {}),
       results,
+      checklist_complete_results: checklistCompleteResults,
     },
     200,
     corsHeaders,

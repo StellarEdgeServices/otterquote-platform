@@ -48,6 +48,7 @@ on:
       - 'tests/gh1980-pr1-key-aware-storage.mjs'
       - 'tests/gh1980-pr2-storagekey-migration.mjs'
       - 'tests/gh1980-pr3-pkce-flow.mjs'
+      - 'tests/gh1980-funnel-convergence.mjs'
       - 'admin-dashboard.html'
       - 'admin-homeowners.html'
       - 'admin-measurements.html'
@@ -58,6 +59,7 @@ on:
       - 'tests/gh2151-ins1-page.mjs'
       - 'hi-1.html'
       - 'tests/gh2152-hi1-page.mjs'
+      - 'tests/cro47-trust-partner.mjs'
       - 're-3.html'
       - 'ins-3.html'
       - 'ins-5.html'
@@ -113,6 +115,7 @@ on:
       - 'tests/gh1980-pr1-key-aware-storage.mjs'
       - 'tests/gh1980-pr2-storagekey-migration.mjs'
       - 'tests/gh1980-pr3-pkce-flow.mjs'
+      - 'tests/gh1980-funnel-convergence.mjs'
       - 'admin-dashboard.html'
       - 'admin-homeowners.html'
       - 'admin-measurements.html'
@@ -123,6 +126,7 @@ on:
       - 'tests/gh2151-ins1-page.mjs'
       - 'hi-1.html'
       - 'tests/gh2152-hi1-page.mjs'
+      - 'tests/cro47-trust-partner.mjs'
       - 're-3.html'
       - 'ins-3.html'
       - 'ins-5.html'
@@ -153,7 +157,7 @@ jobs:
   static-pixel-gate-tests:
     name: Static pixel gate (node vm harness)
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -197,6 +201,8 @@ jobs:
         run: node tests/gh1980-pr2-storagekey-migration.mjs
       - name: gh-1980 PR 3 -- flowType pkce on every converged client + callback fragment fallback (gh1980-pr3-pkce-flow)
         run: node tests/gh1980-pr3-pkce-flow.mjs
+      - name: gh-1980 funnel-page convergence -- hi-4/hi-5/ins-3/ins-5 canonical client (gh1980-funnel-convergence)
+        run: node tests/gh1980-funnel-convergence.mjs
       - name: RE-1 dedicated landing page -- approved copy, funnel_id attribution (gh2150-re1-page)
         run: node tests/gh2150-re1-page.mjs
       - name: INS-1 dedicated landing page -- approved copy, field set, funnel-id attribution (gh2151-ins1-page)
@@ -211,3 +217,10 @@ jobs:
         run: node tests/gh2155-hi05b-inspector-crawler.mjs
       - name: Handout PII/pixel gate -- code-only query string, validated code, no pixel, no Indiana claim, no paraphrased fee bullet, negative controls (gh2225)
         run: node tests/gh2225-handout-pii-gate.mjs
+      - name: Install Playwright + Chromium from the tests/e2e lockfile (gh-2361 real-browser proof)
+        working-directory: tests/e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Partner trust header on re-1/ins-1/hi-1 -- 390x744 FB UA, fields/legal/events unchanged, negative controls PN1-PN4 (cro47-trust-partner)
+        run: node tests/cro47-trust-partner.mjs

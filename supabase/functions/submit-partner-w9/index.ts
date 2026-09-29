@@ -184,20 +184,35 @@ serve(async (req) => {
     }
 
     // ── Update referral_agents ───────────────────────────────────────────────
-    const { error: updateErr } = await sbAdmin
+    const { error: updateErr, data: updateRows } = await sbAdmin
       .from("referral_agents")
       .update({
         w9_file_url:      storagePath,
         w9_submitted_at:  new Date().toISOString(),
         payments_blocked: false,
       })
-      .eq("id", agent.id);
+      .eq("id", agent.id)
+      .select("id");
 
     if (updateErr) {
       console.error("submit-partner-w9: DB update error", updateErr);
       // Don't leave an orphaned file — attempt to clean up, but don't fail hard
       await sbAdmin.storage.from("partner-w9").remove([storagePath]).catch(() => {});
       throw new Error(`Database update failed: ${updateErr.message}`);
+    }
+
+    // gh-2105 (decision a, money/legal — HIGH PRIORITY): `.update()` without
+    // `.select()` reports success even on a zero-row RLS/id-mismatch match.
+    // This is the write that clears `payments_blocked` and records the W-9
+    // submission; a silent miss here would return "W-9 submitted
+    // successfully. Your payment will be processed..." while the agent's
+    // payments stay blocked and no W-9 is on file — the exact failure mode
+    // this endpoint exists to prevent. Same cleanup as the updateErr branch
+    // above: don't leave the uploaded file orphaned.
+    if (!Array.isArray(updateRows) || updateRows.length === 0) {
+      console.error("submit-partner-w9: zero-row DB update (gh-2105)", agent.id);
+      await sbAdmin.storage.from("partner-w9").remove([storagePath]).catch(() => {});
+      throw new Error("gh2105_zero_rows: no matching referral_agents row was updated");
     }
 
     console.log(`submit-partner-w9: W-9 submitted for agent_id=${agent.id} user_id=${user.id} path=${storagePath}`);

@@ -158,14 +158,59 @@ async function rebateOne(
   const refund = await refundRes.json();
 
   // Mark rebated — idempotent via rebate_paid_at guard on the update.
-  const { error: updErr } = await supabase
+  const { error: updErr, data: updRows } = await supabase
     .from("hover_orders")
     .update({
       rebate_due: false,
       rebate_paid_at: new Date().toISOString(),
     })
     .eq("id", order.id)
-    .is("rebate_paid_at", null); // idempotency: only flip if still unpaid
+    .is("rebate_paid_at", null) // idempotency: only flip if still unpaid
+    .select("id");
+  // gh-2105 (decision a-with-alert, money — HIGH PRIORITY, refund write):
+  // `.update()` without `.select()` reports success even when the filter
+  // matches ZERO rows. A zero-row match here is ambiguous by design (the
+  // `.is("rebate_paid_at", null)` guard makes a concurrent/retry race a
+  // LEGITIMATE zero-row outcome — decision b), but an id-mismatch/RLS miss
+  // is not: it would leave rebate_due=true forever after a refund that
+  // already fired, so the next pg_cron scan would refund this order AGAIN
+  // (double refund, real money, no error anywhere to notice it by). No
+  // throw here — same as updErr below, the Stripe refund already happened
+  // and is irreversible from this function — just a visible alert so an
+  // operator can tell the two cases apart and stop the retry before it
+  // double-charges the platform.
+  if (!updErr && (!Array.isArray(updRows) || updRows.length === 0)) {
+    console.error(
+      "[rebate] gh-2105: zero-row DB update after refund -- order",
+      order.id,
+      "refund",
+      refund.id,
+      "-- either an idempotent race (already marked paid, benign) or an id-mismatch that will cause a duplicate refund on retry (not benign)."
+    );
+    try {
+      await supabase.from("activity_log").insert({
+        event_type: "hover_rebate_zero_row_update",
+        title: "hover_rebate_zero_row_update",
+        user_id: claimUserId,
+        is_test: claimIsTest,
+        metadata: {
+          hover_order_id: order.id,
+          claim_id: order.claim_id,
+          stripe_refund_id: refund.id,
+        },
+      });
+    } catch { /* non-fatal */ }
+    try {
+      await supabase.from("platform_alerts_log").insert({
+        alert_type: "gh2105_zero_row_update",
+        function_name: FUNCTION_NAME,
+        message: `Stripe refund ${refund.id} succeeded for hover_orders ${order.id} but the rebate_due/rebate_paid_at update matched zero rows. If this was not an idempotent retry race, rebate_due is stuck true and the next scan will refund this order again -- gh-2105.`,
+        sent_at: new Date().toISOString(),
+      });
+    } catch (alertErr) {
+      console.error(`[${FUNCTION_NAME}] platform_alerts_log insert failed:`, alertErr);
+    }
+  }
   if (updErr) {
     console.error("[rebate] DB update after refund failed:", order.id, updErr);
     // Refund already happened — log but do not fail the call (refund is real).

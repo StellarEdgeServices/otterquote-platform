@@ -75,10 +75,18 @@ CANARY_FILES = {
     # (JWT/RSA machinery removed, but BoldSign-specific comments and the
     # server-side operator-token/HMAC logic added more than it removed).
     "supabase/functions/create-docusign-envelope/index.ts": 69000,  # known-good 87,017 bytes (was 74,299 pre-BoldSign)
-    "supabase/functions/notify-contractors/index.ts":        48000,  # known-good 61,138 bytes
+    # [gh-1824 footer batch 4, 2026-09-28] notify-contractors, process-coi-reminders
+    # and process-bid-expirations each had their email HTML/text builder
+    # functions extracted out of index.ts into a new templates.ts (so the D-237
+    # footer's builder functions are unit-testable without importing index.ts,
+    # which calls serve() at module load). index.ts legitimately shrank as a
+    # result; thresholds and known-good sizes below are recalibrated to the new,
+    # smaller-but-complete file (still ~80% of the new known-good size, same
+    # convention as the D-274 update above).
+    "supabase/functions/notify-contractors/index.ts":        48000,  # known-good 54,938 bytes (was 61,138 pre-batch-4 extraction)
     "supabase/functions/process-dunning/index.ts":           43000,  # known-good 53,989 bytes
-    "supabase/functions/process-coi-reminders/index.ts":     32000,  # known-good 40,948 bytes
-    "supabase/functions/process-bid-expirations/index.ts":   29000,  # known-good 36,794 bytes
+    "supabase/functions/process-coi-reminders/index.ts":     19000,  # known-good 23,735 bytes (was 40,948 pre-batch-4 extraction)
+    "supabase/functions/process-bid-expirations/index.ts":   22000,  # known-good 27,450 bytes (was 36,794 pre-batch-4 extraction)
     "supabase/functions/docusign-webhook/index.ts":          52000,  # known-good 65,017 bytes (was 30,263 pre-BoldSign)
 }
 

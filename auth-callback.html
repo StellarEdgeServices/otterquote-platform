@@ -192,6 +192,8 @@
     var trusted = (
       ls !== null &&
       Number.isFinite(lsAt) &&
+      // gh-2060 round-4 hardening 2: reject a future-dated stamp (negative age).
+      (Date.now() - lsAt) >= 0 &&
       (Date.now() - lsAt) <= CS_AUTH_ROLE_TTL_MS
     ) ? ls : null;
     localStorage.removeItem('cs_auth_role');
