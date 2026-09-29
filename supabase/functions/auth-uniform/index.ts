@@ -632,9 +632,20 @@ async function handle(req: Request): Promise<Response> {
 
   // Pad to a fixed minimum wall-clock time so the response is
   // indistinguishable regardless of account existence or GoTrue behavior.
-  const elapsed = performance.now() - start;
-  const remaining = Math.max(0, MIN_RESPONSE_MS - elapsed);
-  if (remaining > 0) await sleep(remaining);
+  //
+  // setTimeout is a lower-bound-by-intent, not a guarantee: the timer wheel
+  // runs on a whole-millisecond clock that is not the performance.now()
+  // monotonic clock used for `start`, so a single sleep(remaining) can resume
+  // up to ~1 ms EARLY (observed: 799.86 / 799.96 ms against the 800 ms floor,
+  // ~2 in 30 local runs and 4+ CI failures in one day). Re-check the real
+  // elapsed time after every wake-up and sleep out any shortfall, so the
+  // floor is a guarantee rather than a best effort. Keeps the account-
+  // enumeration timing floor exact (gh-1724 / gh-1883).
+  let remaining = MIN_RESPONSE_MS - (performance.now() - start);
+  while (remaining > 0) {
+    await sleep(Math.ceil(remaining));
+    remaining = MIN_RESPONSE_MS - (performance.now() - start);
+  }
 
   return json({}, 200, corsHeaders);
 }

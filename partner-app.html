@@ -415,7 +415,7 @@
                     if (hint) {
                         hint.textContent = os === 'ios'
                             ? "You're viewing this inside an app's built-in browser, which can't add anything to your home screen. Tap the menu (••• or ⋮) and choose Open in Safari / Open in external browser, then tap Install the App again."
-                            : "You're viewing this inside an app's built-in browser, which can't install the app directly. Tap the menu (••• or ⋮) and choose Open in Safari / Open in external browser, then tap Install the App again.";
+                            : "You're viewing this inside an app's built-in browser, which can't install the app directly. Tap the menu (⋮ or •••) and choose Open in Chrome (or Open in browser), then tap Install the App again.";
                         hint.style.display = 'block';
                     }
                     gaEvent('partner_app_install_inapp', { page: 'partner-app', os: os });

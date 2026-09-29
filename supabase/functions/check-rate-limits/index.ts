@@ -24,6 +24,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { rateLimitAlertText } from "./templates.ts"; // gh-1824: email body moved to templates.ts (testable, no serve() import)
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -118,16 +119,7 @@ serve(async (req) => {
             MAILGUN_DOMAIN,
             ALERT_EMAIL,
             `OtterQuote Rate Limit Alert: ${config.function_name} at ${Math.round(usage_percent)}% of monthly limit`,
-            `
-Function: ${config.function_name}
-Current Usage: ${count} calls
-Monthly Limit: ${limit} calls
-Usage: ${Math.round(usage_percent)}%
-
-Recommendation: Review usage patterns and consider optimization or plan for increased capacity.
-
-This is an automated alert from OtterQuote monitoring.
-            `.trim()
+            rateLimitAlertText(config.function_name, count, limit, usage_percent)
           );
 
           if (alertMessage.success) {

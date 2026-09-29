@@ -275,7 +275,7 @@ const Services = {
    * basic-report squares (measurement-upgrade-gate.ts) and returns the
    * authoritative amount in the response. Raw fetch rather than
    * sb.functions.invoke, matching createMeasurementOrder below: the gate's
-   * refusal codes (ALREADY_DETAILED, BASIC_REPORT_NOT_READY, SQUARES_UNKNOWN,
+   * refusal codes (ALREADY_PURCHASED, BASIC_REPORT_NOT_READY, SQUARES_UNKNOWN,
    * TEST_CLAIM_CHARGE_REFUSED) are attached to the thrown error as `.code`
    * so the caller can show a specific message instead of a generic failure.
    *

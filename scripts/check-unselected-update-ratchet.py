@@ -139,7 +139,14 @@ BASELINE: dict[str, int] = {
     "supabase/functions/approve-warranty-drift/index.ts": 4,
     "supabase/functions/check-rate-limits/index.ts": 1,
     "supabase/functions/check-siding-design-completion/index.ts": 3,
-    "supabase/functions/create-docusign-envelope/index.ts": 7,
+    # gh-2105 batch 5: fixed all 4 remaining sites (gh-1400/gh-1842 envelope
+    # pointer writes in handleContractorSign + the getEmbeddedSignLink resume
+    # path). All 4 stay fire-and-forget by design (a paid-for BoldSign
+    # document already exists by the time these run; throwing would strand
+    # the signer) -- checkRowsWritten + a platform_alerts_log alert on a
+    # zero-row match, no throw added, matching stripe-webhook/docusign-webhook's
+    # batch 2/3 precedent for money/legal-critical fire-and-forget writes.
+    "supabase/functions/create-docusign-envelope/index.ts": 0,
     "supabase/functions/create-hover-order/index.ts": 2,
     "supabase/functions/create-payment-intent/index.ts": 1,
     "supabase/functions/create-setup-intent/index.ts": 1,
