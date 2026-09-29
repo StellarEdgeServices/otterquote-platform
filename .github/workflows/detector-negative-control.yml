@@ -79,10 +79,27 @@ name: Detector Negative Control Gate
 # reasoning in this comment, not the tool's. Said explicitly per the work
 # order: the checker cannot check itself here.
 
+# gh-1731 (COST GATE), CTO RUN 43, figure corrected per adversarial review
+# (comment 5857913222 on PR #2262): the `push` trigger is REMOVED. Measured,
+# 7-day census 2026-09-20..27: 135 push runs (all `main`) at this workflow's
+# measured 1.0 billable min/run, ~579 job-min/month (not "zero-new-coverage"
+# -- see the trade-off below).
+#
+# Trade-off, stated plainly: the removed `push:main` run was the only
+# merged-tree run OF THIS CHECK -- e2e-tests.yml's own kept `push:main` (see
+# that file's `on:` comment) still checks the merged tree for its 5 jobs. A
+# 30-day census (2026-08-28..2026-09-27) found 245 push runs, 1 failure (run
+# 35698564616, commit a9da38406a, from PR #2092) -- and that PR's own
+# `pull_request` run (head 96b395c5) had already failed the same `Detector
+# Negative Control Gate` check pre-merge, so it was a duplicate, not a
+# merged-tree-only catch. Zero merged-tree-only catches in 30 days, so this
+# loss is accepted (unlike e2e-tests.yml, whose `push:main` is kept because
+# its 7-day census found 2 such catches). Not a branch-protection-required
+# context (see e2e-tests.yml's `on:` comment, same repo-wide check performed
+# this run, for the current required list). `pull_request` is unchanged, so
+# every PR is still gated exactly as before.
 on:
   pull_request:
-    branches: [main]
-  push:
     branches: [main]
 
 # gh-1731 (COST GATE): dedupe repeat-push churn on open PRs -- this check

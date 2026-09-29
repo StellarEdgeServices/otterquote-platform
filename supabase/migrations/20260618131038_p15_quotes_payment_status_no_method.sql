@@ -3,7 +3,6 @@
 -- version 20260618125007; the real ledger row is 20260618131038 (confirmed
 -- read-only this session). Content below unchanged apart from this note
 -- and the corrected version in this comment block's own filename echo.
--- Author: Claude Code (Opus 4.8) -- D-211 Phase 15, Unit U15-2
 -- Author: Claude Code (Opus 4.8) — D-211 Phase 15, Unit U15-2
 -- Date: 2026-06-18
 -- D-numbers: D-182 (Tier 3 deploy), D-211 P15 (docusign-webhook revenue-path hardening)

@@ -44,7 +44,7 @@
 <!-- Microsoft Clarity (wwr7qlk8g5) is loaded by /js/ga-gate.js, behind the same production-host gate as GA4 (gh-1619). Do not add a per-page loader. -->
 
     <!-- Supabase JS -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js" integrity="sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.js" integrity="sha384-iLddHTLokph6Omwoyid4XKxHaWa6w41BnoEj0q5oOrzmYPpHIKt1wyjReA7s//pP" crossorigin="anonymous"></script>
 
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -897,6 +897,18 @@
                         <a href="/partner-re.html" class="btn" style="text-decoration: none;">Become a Partner</a>
                     </div>
                 </div>
+                <div id="partnerFinishRegistration" style="display: none;">
+                    <!-- gh-2282 follow-up: a signed-in account with no referral_agents row. Only a pending
+                         registration left by a signup page (written after that page's terms checkbox was
+                         ticked) is completed here, automatically (js/partner-registration.js). With no valid
+                         pending registration the visitor is sent to the partner signup page: a partner row is
+                         never created without that page's terms checkbox. -->
+                    <p id="partnerFinishStatus" class="empty-state-text" role="status" aria-live="polite"></p>
+                    <div class="btn-group" style="justify-content: center;">
+                        <button type="button" class="btn" id="partnerFinishRetry" style="display: none;">Try Again</button>
+                        <a href="/partners.html" class="btn" id="partnerFinishSignup" style="display: none; text-decoration: none;">Go to Partner Signup</a>
+                    </div>
+                </div>
                 <div id="partnerClaimFailedMessage" style="display: none;">
                     <h3 class="empty-state-title">We Couldn't Verify Your Partner Account</h3>
                     <p class="empty-state-text">Linking this sign-in to your partner record failed. That's not the same as not having one — try again, or sign out and use a different account.</p>
@@ -955,6 +967,17 @@
                 <input type="checkbox" id="appInstalledCheckbox" style="width: 16px; height: 16px; cursor: pointer;">
                 I've already installed it &mdash; don't show this again
             </label>
+        </div>
+
+        <!-- gh-2296 (Marty ruling, CTO RUN 48): one-time iOS nudge for partners who
+             signed in here in a normal Safari tab (not the installed app). If they
+             already added it to the Home Screen with "Open as Web App" off, the icon
+             just opens Safari and app_first_signed_in_launch_at never gets set.
+             Shown by refreshIosOpenAsWebAppNudge() (bottom script): signed in AND iOS
+             AND !isStandaloneLaunch() AND not dismissed. Dismissal: localStorage. -->
+        <div id="iosOpenAsWebAppNudge" class="link-hint" style="display: none; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 12px 0;">
+            <span>Added it to your Home Screen but it opens in Safari? Re-add it and turn on <strong>Open as Web App</strong>.</span>
+            <button type="button" id="iosOpenAsWebAppNudgeDismiss" aria-label="Dismiss" style="background: none; border: 0; font-size: 1.2rem; line-height: 1; cursor: pointer; color: #5A6B7B;">&times;</button>
         </div>
 
         <!-- Hero Section -->
@@ -1418,6 +1441,7 @@ Let me know if you have any questions!
     <script src="js/auth.js"></script>
     <script src="js/nav.js"></script>
     <script src="js/agent-types.js"></script>
+    <script src="js/partner-registration.js"></script>
 
     <script>
         // State
@@ -1782,7 +1806,50 @@ Let me know if you have any questions!
             } else {
                 if (claimFailedMsg) claimFailedMsg.style.display = 'none';
                 if (noRecordMsg) noRecordMsg.style.display = 'block';
+                beginPartnerRegistrationCompletion();
             }
+        }
+
+        // gh-2282 follow-up: complete a partner registration for this signed-in
+        // account (auth user, no referral_agents row) by calling register_partner
+        // for the account's OWN email, then reloading so init() reads the new row.
+        // ONLY driven by a pending marker (written by a signup page after its terms
+        // checkbox was ticked and signUp succeeded). No marker -> no registration
+        // here: point the visitor at the partner signup page instead, so a partner
+        // row is never created without the terms checkbox.
+        function beginPartnerRegistrationCompletion() {
+            const wrap = document.getElementById('partnerFinishRegistration');
+            if (!wrap || !window.PartnerRegistration || !sb || !currentUser || !currentUser.email) return;
+            const statusEl = document.getElementById('partnerFinishStatus');
+            const retryEl = document.getElementById('partnerFinishRetry');
+            const signupEl = document.getElementById('partnerFinishSignup');
+            wrap.style.display = 'block';
+            const isTest = !!(window.Auth && typeof Auth.isTestEmail === 'function' && Auth.isTestEmail(currentUser.email));
+            const marker = PartnerRegistration.readMarker(localStorage, currentUser.email);
+            const params = marker ? PartnerRegistration.buildParams(marker, currentUser.email, isTest) : null;
+            if (!params) {
+                statusEl.textContent = "This email isn't registered as a partner yet. Register on the partner signup page.";
+                signupEl.style.display = 'inline-block';
+                return;
+            }
+            let busy = false;
+            async function run() {
+                if (busy) return;
+                busy = true;
+                retryEl.style.display = 'none';
+                statusEl.textContent = 'Finishing your partner registration...';
+                const r = await PartnerRegistration.complete(sb, params, localStorage);
+                if (r.status === 'error') {
+                    console.error('Partner registration completion failed:', r.error);
+                    statusEl.textContent = 'An error occurred. Please try again or email us at support@otterquote.com';
+                    retryEl.style.display = 'inline-block';
+                    busy = false;
+                    return;
+                }
+                window.location.reload();
+            }
+            retryEl.addEventListener('click', run);
+            run();
         }
 
         function updateUI() {
@@ -3167,10 +3234,41 @@ Let me know if you have any questions!`;
             // who's signed in.
             window.refreshAppInstallBanner = function (userId) {
                 appInstallUserId = userId || null;
+                refreshIosOpenAsWebAppNudge(userId);
                 if (!banner) return;
                 banner.style.display = (isStandalone() || isAppInstalledDismissed(appInstallUserId)) ? 'none' : 'block';
                 if (appInstalledCheckbox) appInstalledCheckbox.checked = isAppInstalledDismissed(appInstallUserId);
             };
+
+            // gh-2296: one-time, dismissible iOS "Open as Web App" nudge. Reads
+            // isStandaloneLaunch() (top script) but never changes it, and never
+            // touches how app_first_signed_in_launch_at is written.
+            function isIos() {
+                var ua = window.navigator.userAgent || '';
+                return /iPad|iPhone|iPod/.test(ua) ||
+                    (window.navigator.platform === 'MacIntel' && window.navigator.maxTouchPoints > 1);
+            }
+            function iosNudgeKey(userId) { return 'oq_ios_open_as_web_app_nudge_dismissed_' + userId; }
+            function iosNudgeDismissed(userId) {
+                try { return window.localStorage.getItem(iosNudgeKey(userId)) === '1'; } catch (_) { return false; }
+            }
+            var iosNudge = document.getElementById('iosOpenAsWebAppNudge');
+            var iosNudgeUserId = null;
+            function refreshIosOpenAsWebAppNudge(userId) {
+                iosNudgeUserId = userId || null;
+                if (!iosNudge) return;
+                var show = !!iosNudgeUserId && isIos() && !isStandaloneLaunch() && !iosNudgeDismissed(iosNudgeUserId);
+                iosNudge.style.display = show ? 'flex' : 'none';
+            }
+            var iosNudgeDismissBtn = document.getElementById('iosOpenAsWebAppNudgeDismiss');
+            if (iosNudgeDismissBtn) {
+                iosNudgeDismissBtn.addEventListener('click', function () {
+                    if (iosNudgeUserId) {
+                        try { window.localStorage.setItem(iosNudgeKey(iosNudgeUserId), '1'); } catch (_) { /* non-fatal */ }
+                    }
+                    if (iosNudge) iosNudge.style.display = 'none';
+                });
+            }
 
             window.addEventListener('beforeinstallprompt', function (e) {
                 e.preventDefault();

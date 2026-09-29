@@ -52,10 +52,52 @@ name: Playwright E2E Tests
 #     <=600 job-min/month across the whole repo. The `paths-ignore` below is
 #     kept because it is free, not because it pays.
 
+# gh-1731 (COST GATE), CTO RUN 43, REVISED per adversarial review (comment
+# 5857733012 on PR #2262): the `push` trigger is KEPT for `main`, and only
+# the `staging` leg of it is dropped (staging is a GITHUB_TOKEN mirror of
+# main -- see staging-mirror.yml -- and GITHUB_TOKEN pushes do not trigger
+# workflows, so that automatic mirror leg never fired a run; the last human
+# push directly to `staging` that did trigger this workflow was 2026-07-13).
+#
+# Why the push:main leg is NOT a duplicate of the pull_request run: main only
+# advances through the merge queue (`merge_group`), and this workflow has no
+# `merge_group` trigger (0 merge_group runs, ever). A `pull_request` run
+# checks `refs/pull/N/merge` against whatever `main` was at that PR's last
+# sync -- not the tree the queue actually lands, which can differ when two
+# PRs are each green alone but red together (a semantic conflict invisible to
+# either PR's own diff). The push:main run is the ONLY run in this repo that
+# tests the tree that actually reaches main for this workflow's 5 jobs
+# (Static Integrity Checks / TypeScript Check / edge-function-parity /
+# cross-table-guard / Supabase Edge Function Tests), including the repo's
+# only `tsc --noEmit` gate. Measured, 7-day census 2026-09-20..27: it caught
+# 2 merged-tree-only breakages in that single week that both PRs' own
+# pre-merge runs had passed clean --
+#   * run 36257631921 (commit d30983bc40, from PR #2189, head 17ee3ca214):
+#     Static Integrity Checks failed post-merge; PR #2189's own head had
+#     passed it.
+#   * run 36255426442 (commit 8b7c2ab5a6, from PR #2198, head bbff4db4b0):
+#     same step, same pattern; PR #2198's own head had passed it.
+# A 3rd push failure that week (run 35698564550, PR #2092) was a genuine
+# duplicate -- that PR's own run was already red -- so it doesn't count
+# toward the case for keeping this trigger, but doesn't argue against it
+# either.
+#
+# None of this workflow's jobs are a branch-protection-required context
+# (live required_status_checks.contexts on main is exactly ["Null-Byte &
+# Size Sanity Check", "5-Page Revenue-Path Smoke Check", "R-177 predicate
+# tests", "Credential Shape Sweep"] -- this workflow is in none of them), so
+# keeping push:main risks no required-gate interaction; it is the repo's
+# only backstop against a merged-tree-only breakage on these 5 checks.
+# `merge_group:` was considered as the "correct" fix (it would test the
+# actual queue tree pre-land instead of post-land) but is deliberately NOT
+# added here: this workflow's jobs are not required, so adding `merge_group`
+# would make the merge queue run the full Playwright/TS/edge-function suite
+# on every queue entry in addition to every push -- MORE minutes, not fewer,
+# for coverage this repo already gets for free from `pull_request` plus the
+# kept `push:main`. See #1731 and PR #2262 comment 5857733012.
 on:
   push:
     branches:
-      - staging
       - main
     paths-ignore:
       - '**.md'
@@ -97,7 +139,7 @@ jobs:
   static-integrity:
     name: Static Integrity Checks
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
 
     steps:
       - name: Checkout code
@@ -199,6 +241,100 @@ jobs:
       - name: payout-timing copy drift check (gh-832)
         run: python3 scripts/check-payout-timing-copy-drift.py
 
+      # gh-1731 (COST GATE), CTO RUN 48 Wave D: the two former standalone jobs
+      # `CI-test Edge Function Parity Check (gh-1584)` (job id
+      # ci-test-function-parity) and `is-test Cross-Table Guard (gh-1763)` (job
+      # id is-test-cross-table-guard) run as the steps below, inside this job.
+      # Measured (job seconds, 5 runs each): parity 4-6 s, cross-table 9-11 s,
+      # this job 12-16 s -- each of the three paid GitHub's 1-minute-per-job
+      # billing floor for ~10 s of work, i.e. 3 billed min where ~1 is used.
+      # Merging them costs ~2 billed job-min per run x 718 runs/7d (7-day census
+      # 2026-09-21..28) = ~1,436 min/7d = ~6,150 job-min/month, and no
+      # wall-clock (the longest sibling job, TypeScript Check, is ~40 s; this
+      # job stays under it). NOT a coverage cut: every step, command, env and
+      # secret is byte-identical to the deleted job, and each carries
+      # `if: !cancelled()` so a failure in an earlier step here still lets
+      # these run, exactly as separate jobs always ran regardless of each other.
+      # Neither deleted job is a branch-protection-required context (live
+      # required_status_checks.contexts on main, 2026-09-28: Null-Byte & Size
+      # Sanity Check, 5-Page Revenue-Path Smoke Check, R-177 predicate tests,
+      # Credential Shape Sweep, New public tables must GRANT service_role
+      # explicitly); no script or workflow references either job name outside
+      # comments (grep of the repo at this commit). The step-level guards of
+      # both jobs, incl. their "must be able to fail a PR" discipline (no
+      # continue-on-error), are unchanged. Original design comments for both
+      # jobs are kept verbatim in this file, directly above their steps.
+      # --- former job `is-test-cross-table-guard`, original design comment (verbatim): ---
+      # No continue-on-error: same discipline as ci-test-function-parity above --
+      # this must actually be able to fail a PR, not just log a warning.
+      #
+      # gh-1763: profiles.is_test and contractors.is_test disagreed on 7 production
+      # rows and broke a real R-173 gate (claim 82f5dff4...). The CTO's ruling
+      # (comment 5572645535): profiles is authoritative; contractors mirrors it. A
+      # disagreement recurs the next time a test contractor is seeded by a path
+      # that writes one table and not the other -- which is exactly how the 7
+      # rows happened -- so per constitution entry 16 ("a recurring defect closes
+      # on a mechanism, not a rule"), this job is that mechanism, not a follow-up.
+      #
+      # Runs against the CI-test project (zsdvaqilfdclwosmiheh) -- the same DB
+      # `Seed Must Pass (gh-1584)` and `CI-test Edge Function Parity Check` already
+      # use -- via --self-test, which seeds one throwaway fixture row in the exact
+      # bad shape gh-1763 found, proves the guard goes RED, repairs it, proves
+      # GREEN, then deletes everything it created. It never runs against
+      # production (yeszghaspzwwstvsrioa): scripts/is-test-cross-table-check.py's
+      # self_test() refuses that project ref outright before making any network
+      # call, per gh-1763's hard limits -- the RED control's seeded write may only
+      # ever happen in a local/fixture context.
+      #
+      # PR #1826 review (comment 5577633751): this job proves the DETECTION LOGIC
+      # isn't regressed, and nothing else -- it says nothing about the actual
+      # production disagreement count on any given day. That coverage is the
+      # `is-test-cross-table-guard-prod` job in
+      # .github/workflows/edge-function-drift.yml, on the same daily schedule as
+      # the other production-drift detectors, reading production read-only via
+      # the Management API (--management-api --project-ref) since this job's
+      # PostgREST + service-role-key path is structurally unusable against
+      # production (no SUPABASE_SERVICE_ROLE_KEY for prod exists anywhere).
+      - name: Set up Python (for the is-test Cross-Table Guard steps below)
+        if: ${{ !cancelled() }}
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      # --- former job `ci-test-function-parity`, original design comment (verbatim): ---
+      # No continue-on-error: this is the mechanism the CTO ruled for on gh-1584
+      # ("only-as-needed *plus* a check that fails a PR whose test path calls a
+      # function the CI-test project lacks") -- it must actually be able to
+      # fail a PR, unlike the `test` job below.
+      - name: Edge Function parity check against the CI-test project
+        if: ${{ !cancelled() }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: python3 scripts/ci-test-function-parity.py
+
+      # Pure client-side join+compare logic, no network -- catches a logic
+      # regression even on a run where the CI-test project is unreachable.
+      - name: Self-test the disagreement-detection logic (hermetic)
+        if: ${{ !cancelled() }}
+        run: python3 scripts/is-test-cross-table-check.test.py
+
+      # Live RED/GREEN demonstration against the CI-test project's own DB.
+      # Reuses SUPABASE_TEST_SERVICE_ROLE_KEY -- the same secret the `test`
+      # job's Seed/Run/Teardown steps already use to write to this project --
+      # rather than requesting a new one, since this job needs the identical
+      # write scope (insert/update/delete one throwaway fixture row).
+      # CTO RUN 48 isolation: the script tags its fixtures with GITHUB_RUN_ID-
+      # GITHUB_RUN_ATTEMPT (read from the runner env), asserts RED/GREEN over its
+      # own fixture ids only, then runs the REAL whole-table pass excluding
+      # self-test-marked rows, and always cleans up (incl. rows >1 h old). The step
+      # name is unchanged on purpose: it is a check-run context.
+      - name: RED/GREEN self-test against the CI-test project
+        if: ${{ !cancelled() }}
+        env:
+          SUPABASE_URL: https://zsdvaqilfdclwosmiheh.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_TEST_SERVICE_ROLE_KEY }}
+        run: python3 scripts/is-test-cross-table-check.py --self-test
+
   typescript-check:
     name: TypeScript Check
     runs-on: ubuntu-latest
@@ -258,89 +394,33 @@ jobs:
       - name: auth.js cs_redirect role-guard unit test (gh-1412/#1476 regression)
         run: node tests/auth-cs-redirect-role-guard.mjs
 
+      - name: js/auth.js cs_auth_role staleness unit test (gh-2060 static-stack regression, PR #2253)
+        run: node tests/gh2060-static-cs-auth-role-staleness.mjs
+
+      - name: auth-callback.html _oqGetIntent cs_auth_role staleness unit test (gh-2060 RETURNED item 4, PR #2253)
+        run: node tests/gh2060-auth-callback-html-staleness.mjs
+
+      - name: static-stack cs_auth_role WRITER coverage — every discovered write site stamps cs_auth_role_at (gh-2060 RETURNED round 2 item 1 / round 3 item 2, PR #2253)
+        run: node tests/gh2060-static-cs-auth-role-writers.mjs
+
+      - name: partner-page cs_auth_role write ORDERING — only after register_partner success (gh-2060 round-4 hardening 3)
+        run: node tests/gh2060-partner-cs-auth-role-ordering.mjs
+
+      - name: static-stack storage surfaces — dirty-state (seeded stale) checks (gh-2060 closes-on b)
+        run: node tests/gh2060-static-surfaces-staleness.mjs
+
+      - name: storage-surface ledger — every storage key has a status + a cited test (gh-2060 closes-on c)
+        run: node tests/gh2060-storage-surface-ledger.mjs
+
       - name: measurement-shape admin-fulfilment flip unit test (gh-1411 D-317 cl. 4-6; REVIEW finding A, PR #2236)
         run: node tests/measurement-shape-flip-on-deliver.mjs
+
+      - name: partner signup duplicate-email error routing unit test (gh-2274 regression)
+        run: node tests/gh2274-partner-dup-email-error.mjs
 
       - name: tsc --noEmit type gate (gh-414)
         working-directory: react-app
         run: npx tsc --noEmit
-
-  ci-test-function-parity:
-    name: CI-test Edge Function Parity Check (gh-1584)
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    # No continue-on-error: this is the mechanism the CTO ruled for on gh-1584
-    # ("only-as-needed *plus* a check that fails a PR whose test path calls a
-    # function the CI-test project lacks") -- it must actually be able to
-    # fail a PR, unlike the `test` job below.
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Edge Function parity check against the CI-test project
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-        run: python3 scripts/ci-test-function-parity.py
-
-  is-test-cross-table-guard:
-    name: is-test Cross-Table Guard (gh-1763)
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    # No continue-on-error: same discipline as ci-test-function-parity above --
-    # this must actually be able to fail a PR, not just log a warning.
-    #
-    # gh-1763: profiles.is_test and contractors.is_test disagreed on 7 production
-    # rows and broke a real R-173 gate (claim 82f5dff4...). The CTO's ruling
-    # (comment 5572645535): profiles is authoritative; contractors mirrors it. A
-    # disagreement recurs the next time a test contractor is seeded by a path
-    # that writes one table and not the other -- which is exactly how the 7
-    # rows happened -- so per constitution entry 16 ("a recurring defect closes
-    # on a mechanism, not a rule"), this job is that mechanism, not a follow-up.
-    #
-    # Runs against the CI-test project (zsdvaqilfdclwosmiheh) -- the same DB
-    # `Seed Must Pass (gh-1584)` and `CI-test Edge Function Parity Check` already
-    # use -- via --self-test, which seeds one throwaway fixture row in the exact
-    # bad shape gh-1763 found, proves the guard goes RED, repairs it, proves
-    # GREEN, then deletes everything it created. It never runs against
-    # production (yeszghaspzwwstvsrioa): scripts/is-test-cross-table-check.py's
-    # self_test() refuses that project ref outright before making any network
-    # call, per gh-1763's hard limits -- the RED control's seeded write may only
-    # ever happen in a local/fixture context.
-    #
-    # PR #1826 review (comment 5577633751): this job proves the DETECTION LOGIC
-    # isn't regressed, and nothing else -- it says nothing about the actual
-    # production disagreement count on any given day. That coverage is the
-    # `is-test-cross-table-guard-prod` job in
-    # .github/workflows/edge-function-drift.yml, on the same daily schedule as
-    # the other production-drift detectors, reading production read-only via
-    # the Management API (--management-api --project-ref) since this job's
-    # PostgREST + service-role-key path is structurally unusable against
-    # production (no SUPABASE_SERVICE_ROLE_KEY for prod exists anywhere).
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v7
-        with:
-          python-version: '3.11'
-
-      # Pure client-side join+compare logic, no network -- catches a logic
-      # regression even on a run where the CI-test project is unreachable.
-      - name: Self-test the disagreement-detection logic (hermetic)
-        run: python3 scripts/is-test-cross-table-check.test.py
-
-      # Live RED/GREEN demonstration against the CI-test project's own DB.
-      # Reuses SUPABASE_TEST_SERVICE_ROLE_KEY -- the same secret the `test`
-      # job's Seed/Run/Teardown steps already use to write to this project --
-      # rather than requesting a new one, since this job needs the identical
-      # write scope (insert/update/delete one throwaway fixture row).
-      - name: RED/GREEN self-test against the CI-test project
-        env:
-          SUPABASE_URL: https://zsdvaqilfdclwosmiheh.supabase.co
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_TEST_SERVICE_ROLE_KEY }}
-        run: python3 scripts/is-test-cross-table-check.py --self-test
 
   edge-function-tests:
     # Renamed from "Edge Function Tests (Deno)" (gh-1738): the old name was

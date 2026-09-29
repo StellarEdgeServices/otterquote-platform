@@ -30,7 +30,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin - Template Review | Otter Quotes</title>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js" integrity="sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.js" integrity="sha384-iLddHTLokph6Omwoyid4XKxHaWa6w41BnoEj0q5oOrzmYPpHIKt1wyjReA7s//pP" crossorigin="anonymous"></script>
     <link rel="stylesheet" href="css/design-system.css">
     <link rel="stylesheet" href="css/nav.css">
     <style>
@@ -565,14 +565,22 @@
 
     async function approveTemplate(id) {
         if (!confirm('Approve this template as admin-validated? Contractor will be able to bid using this template.')) return;
-        const { error } = await sb.from('contractor_templates').update({
+        // gh-2105 (decision a, legal): id came from the drawer already open
+        // on this template, so a zero-row match means the approval never
+        // actually persisted while the admin UI closes the drawer and
+        // refreshes as if it had.
+        const { error, data } = await sb.from('contractor_templates').update({
             status: 'admin_validated',
             reviewed_by: currentUser.id,
             reviewed_at: new Date().toISOString(),
             admin_notes: '(approved without notes)',
-        }).eq('id', id);
+        }).eq('id', id).select('id');
         if (error) {
             alert('Approve failed: ' + error.message);
+            return;
+        }
+        if (!Array.isArray(data) || data.length === 0) {
+            alert('Approve failed: gh2105_zero_rows -- no matching template row was updated.');
             return;
         }
         closeDrawer();
@@ -585,14 +593,20 @@
             alert('Rejection reason is required.');
             return;
         }
-        const { error } = await sb.from('contractor_templates').update({
+        // gh-2105 (decision a, legal): same reasoning as approveTemplate
+        // above -- a zero-row match means the rejection never persisted.
+        const { error, data } = await sb.from('contractor_templates').update({
             status: 'rejected',
             reviewed_by: currentUser.id,
             reviewed_at: new Date().toISOString(),
             admin_notes: reason,
-        }).eq('id', id);
+        }).eq('id', id).select('id');
         if (error) {
             alert('Reject failed: ' + error.message);
+            return;
+        }
+        if (!Array.isArray(data) || data.length === 0) {
+            alert('Reject failed: gh2105_zero_rows -- no matching template row was updated.');
             return;
         }
         closeDrawer();

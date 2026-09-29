@@ -204,9 +204,16 @@ serve(async (req: Request) => {
 
     // First-write-wins, idempotent: the WHERE guard means a second click (or
     // a concurrent one) is a harmless no-op, not a second write.
+    // gh-2105 (decision b): a zero-row match here is ambiguous by design —
+    // either a legitimate repeat click on an already-opted-out partner (the
+    // `.is(..., null)` guard makes that the expected, common case) or a
+    // partner id that no longer resolves. This endpoint's own
+    // anti-enumeration contract (see file header) requires the response to
+    // stay identical either way, so no `.select()`+throw or per-click alert
+    // is added here.
     const { error: updateErr } = await supabase
       .from("referral_agents")
-      .update({ onboarding_opted_out_at: new Date().toISOString() })
+      .update({ onboarding_opted_out_at: new Date().toISOString() }) // update-no-select-ok: see the comment above.
       .eq("id", partnerId)
       .is("onboarding_opted_out_at", null);
     if (updateErr) {

@@ -2,6 +2,25 @@
 <html lang="en">
 <head>
 <!-- Sentry Error Monitoring -->
+<!-- gh-2043: predeclare sentryOnLoad before the loader tag; the loader invokes it once the SDK is ready (pattern from gh-2010, PR #2023). -->
+<script>
+  window.sentryOnLoad = function () {
+    Sentry.init({
+      environment: window.location.hostname.includes("staging") ? "staging" : "production",
+      // gh-439: drop phantom events from non-http(s) preview contexts (data:/file:/blob:
+      // URLs -- e.g. Claude's HTML preview renders pages via data: URIs; relative scripts
+      // like js/auth.js then fail and report noise such as "Auth is not defined").
+      denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+      beforeSend: function (event) {
+        var proto = window.location.protocol;
+        if (proto !== "http:" && proto !== "https:") return null;
+        var req = event.request && event.request.url;
+        if (req && /^(data|file|blob):/.test(req)) return null;
+        return event;
+      }
+    });
+  };
+</script>
 <script
   src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js"
   crossorigin="anonymous"
@@ -28,7 +47,7 @@
 <!-- Microsoft Clarity (wwr7qlk8g5) is loaded by /js/ga-gate.js, behind the same production-host gate as GA4 (gh-1619). Do not add a per-page loader. -->
 
     <!-- Supabase JS CDN -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js" integrity="sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.js" integrity="sha384-iLddHTLokph6Omwoyid4XKxHaWa6w41BnoEj0q5oOrzmYPpHIKt1wyjReA7s//pP" crossorigin="anonymous"></script>
 
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -70,7 +89,7 @@
         <section class="page-hero">
             <h1>Privacy Policy</h1>
             <p>How Otter Quotes Collects, Uses, and Protects Your Data</p>
-            <p><strong>Effective Date: September 26, 2026</strong></p>
+            <p><strong>Effective Date: September 27, 2026</strong></p>
         </section>
 
         <!-- Legal Content -->
@@ -99,6 +118,7 @@
                     <li><strong>Property Information:</strong> Property address, property type, size, condition, and photos</li>
                     <li><strong>Communication Data:</strong> Messages, emails, support requests, and correspondence with us or other users</li>
                     <li><strong>Contractor Information:</strong> Contractor details, quotes, estimates, and work descriptions</li>
+                    <li><strong>No-Account Measurement Report Orders:</strong> If you request a roof measurement report through our website without creating an account, we collect the name, email address, and phone number you provide, your property address, your order and payment details, any loss sheet or insurance document you upload, and the record of your consent to our Terms of Service and Privacy Policy. We use this information to fulfil your order — including sharing your property address and contact information with our measurement-report provider (see Section 4.2) — and to email the finished report to the address you provided.</li>
                 </ul>
 
                 <h3>2.2 Information Automatically Collected</h3>
@@ -276,6 +296,14 @@
                             <td>Call and Text Consent Records (including consent given on ad-platform lead forms)</td>
                             <td>4 years from creation, matching the TCPA's 4-year statute of limitations</td>
                         </tr>
+                        <tr>
+                            <td>Lead Records</td>
+                            <td>4 years from creation, then deleted unless the lead has become an account</td>
+                        </tr>
+                        <tr>
+                            <td>No-Account Lead / Measurement Order Data (name, email, phone, property address, order and consent records, uploaded loss sheet)</td>
+                            <td>4 years from creation, then deleted unless converted to an account</td>
+                        </tr>
                     </tbody>
                 </table>
 
@@ -392,7 +420,7 @@
             </section>
 
             <!-- Section 12: California Privacy Rights -->
-            <section>
+            <section id="do-not-sell-or-share">
                 <h2>12. California Privacy Rights (CPRA/CCPA)</h2>
                 <p>If you are a California resident, you have additional privacy rights under the California Consumer Privacy Rights Act (CPRA) and the California Consumer Privacy Act (CCPA):</p>
                 <ul>
@@ -406,6 +434,8 @@
                 </ul>
                 <p>To submit a CCPA/CPRA request, please contact us at <a href="mailto:support@otterquote.com">support@otterquote.com</a>. We will verify your identity and respond to your request within 45 days.</p>
                 <p>We treat a Global Privacy Control (GPC) signal sent by your browser as a request to opt out of the sale or sharing of your personal information for advertising purposes.</p>
+                <!-- gh-1925 item 2 (Dustin ruling 5881048326): the in-page opt-out control. Button text is the ruled string, verbatim. -->
+                <p><button type="button" id="oq-ad-optout-btn" class="btn btn-primary">Opt out of sale/sharing</button></p>
             </section>
 
             <!-- Section 13: Indiana-Specific Privacy Rights -->
@@ -464,5 +494,32 @@
 <script src="js/config.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/nav.js"></script>
+    <script>
+    // gh-1925 item 2: the section 12 button sets the SAME oq_ad_optout cookie the GPC path sets (1 year, Path=/, Domain=.otterquote.com
+    // on otterquote hosts, SameSite=Lax; identical to oqWriteAdOptOutCookie in js/meta-pixel-gate.js and the other three gates), which
+    // every gate reads on later page loads. No profile-flag write: no client-side write path exists (record-ad-sharing-opt-out is admin-only).
+    (function () {
+      var btn = document.getElementById('oq-ad-optout-btn');
+      if (!btn) { return; }
+      function optedOut() {
+        try {
+          var m = document.cookie.match(/(?:^|; )oq_ad_optout=([^;]*)/);
+          return !!(m && decodeURIComponent(m[1]) === '1');
+        } catch (e) { return false; }
+      }
+      function writeCookie() {
+        try {
+          var domainAttr = '';
+          if (/(^|\.)otterquote\.com$/.test(window.location.hostname)) { domainAttr = '; Domain=.otterquote.com'; }
+          document.cookie = 'oq_ad_optout=1; Max-Age=' + (60 * 60 * 24 * 365) + '; Path=/' + domainAttr + '; SameSite=Lax';
+        } catch (e) { /* never break a page over a cookie */ }
+      }
+      if (optedOut()) { btn.disabled = true; }
+      btn.addEventListener('click', function () {
+        writeCookie();
+        btn.disabled = true;
+      });
+    })();
+    </script>
 </body>
 </html>

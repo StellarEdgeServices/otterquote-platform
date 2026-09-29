@@ -12,9 +12,20 @@ import {
 // injected fetch/clock fixtures. The polling behaviour gh-1244 proved is
 // unchanged; what is new is the absence probe and the two distinct error types.
 import {
+  clearStrandedEnvelopePointer,
   isPermanentCreationFailure,
   waitForBoldSignDocumentReady as waitForBoldSignDocumentReadyImpl,
 } from "./boldsign-readiness.ts";
+// gh-2105 batch 5: shared zero-row-update detection (see batch 2's
+// `_shared/zero-row-update-guard.ts`). This file's envelope-pointer writes
+// are deliberately fire-and-forget (gh-1400/gh-1842 above): a real,
+// paid-for BoldSign document has already been created by the time any of
+// these run, so a failed write must NOT throw -- that would strand the
+// signer on a document the DB can no longer find. It only needs to stop
+// being SILENT: an alert lets an operator notice and re-point the record
+// instead of the pointer just vanishing into a zero-row no-op.
+import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
+const FN_NAME = "create-docusign-envelope";
 // deno-lint-ignore no-explicit-any
 async function getHomeownerName(supabase, claimId) {
   const empty = {
@@ -1929,15 +1940,60 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
   // to the document they are partway through -- not create a second one, strand
   // the first, and spend another unit of plan quota doing it.
   if (requestBody.resolved_envelope_id) {
-    console.log(`contractor_sign: resuming existing document ${requestBody.resolved_envelope_id} (no mint)`);
-    return await issueContractorSignLink(supabase, {
-      claim_id,
-      envelopeId: requestBody.resolved_envelope_id,
-      signer,
-      return_url,
-      corsHeaders,
-      resumed: true
-    });
+    const resumedEnvelopeId = requestBody.resolved_envelope_id;
+    console.log(`contractor_sign: resuming existing document ${resumedEnvelopeId} (no mint)`);
+    // gh-1842: the resume path can land on a document that failed background
+    // creation permanently just as easily as a freshly-minted one can -- the
+    // failure is discovered on read, not on write, so it can surface here on
+    // ANY later retry, not only the attempt that minted it. Mirror the mint
+    // path's un-record exactly: same fields, same guard, same narrow
+    // isPermanentCreationFailure() gate. A timeout or network error is NOT
+    // cleared here either -- clearing on an ambiguous failure would re-mint a
+    // second paid document over one that is merely slow.
+    try {
+      return await issueContractorSignLink(supabase, {
+        claim_id,
+        envelopeId: resumedEnvelopeId,
+        signer,
+        return_url,
+        corsHeaders,
+        resumed: true
+      });
+    } catch (err) {
+      if (!isPermanentCreationFailure(err)) throw err;
+      console.error(
+        `gh-1842: BoldSign document ${resumedEnvelopeId} failed background creation permanently ` +
+        `(discovered on resume); un-recording it from quotes/claims so the next attempt mints a new one.`
+      );
+      // REVIEW FAIL (PR #2240, F1): resumedEnvelopeId came from
+      // findExistingEnvelopeId(), which can resolve via the (claim_id,
+      // contractor_id) fallback rather than this request's own quote_id --
+      // so quote_id is NOT trusted as the clear target here. Passing
+      // quote_id: null forces clearStrandedEnvelopePointer into its
+      // claim_id+contractor_id branch, which (as of the same fix) is
+      // additionally guarded on .eq("docusign_envelope_id", resumedEnvelopeId)
+      // so it can only ever clear the row that actually holds this exact
+      // dead pointer -- never a different quote that happens to share the
+      // claim/contractor pair, and never a pointer a concurrent mint just
+      // wrote (gh-1400 inverted).
+      const { quoteClearError, claimClearError, quoteRows, claimRows } = await clearStrandedEnvelopePointer(supabase, {
+        claim_id,
+        quote_id: null,
+        contractor_id,
+        envelopeId: resumedEnvelopeId
+      });
+      if (quoteClearError) {
+        console.error("gh-1842: failed to clear quotes.docusign_envelope_id:", quoteClearError);
+      } else if (quoteRows === 0) {
+        console.warn(`gh-1842: quotes clear matched zero rows for ${resumedEnvelopeId} (resume) - pointer already cleared or replaced`);
+      }
+      if (claimClearError) {
+        console.error("gh-1842: failed to clear claims.docusign_envelope_id:", claimClearError);
+      } else if (claimRows === 0) {
+        console.warn(`gh-1842: claims clear matched zero rows for ${resumedEnvelopeId} (resume) - pointer already cleared or replaced`);
+      }
+      throw err;
+    }
   }
   let autoFields = providedFields || {};
   let claimData = null;
@@ -2244,17 +2300,44 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
   // failure: the signer retries and lands back on the same document.
   const quoteUpdateFilter = quote_id ? supabase.from("quotes").update({
     docusign_envelope_id: envelopeId
-  }).eq("id", quote_id) : supabase.from("quotes").update({
+  }).eq("id", quote_id).select("id") : supabase.from("quotes").update({
     docusign_envelope_id: envelopeId
-  }).eq("claim_id", claim_id).eq("contractor_id", contractor_id);
-  const { error: quoteUpdateError } = await quoteUpdateFilter;
+  }).eq("claim_id", claim_id).eq("contractor_id", contractor_id).select("id");
+  const { error: quoteUpdateError, data: quoteUpdateRows } = await quoteUpdateFilter;
   if (quoteUpdateError) {
     console.error("Failed to update quote with envelope ID:", quoteUpdateError);
+  } else if (!checkRowsWritten(quoteUpdateRows).wroteRows) {
+    console.error(zeroRowWriteMessage(FN_NAME, `quotes.docusign_envelope_id for quote ${quote_id ?? `claim ${claim_id}/contractor ${contractor_id}`}`));
+    try {
+      await supabase.from("platform_alerts_log").insert({
+        alert_type: "gh2105_zero_row_update",
+        function_name: FN_NAME,
+        message: `BoldSign document ${envelopeId} was created (contract_sign) but the quotes.docusign_envelope_id pointer write matched zero rows for ${quote_id ? `quote ${quote_id}` : `claim ${claim_id}/contractor ${contractor_id}`}. A retry will mint a duplicate document instead of resuming this one -- gh-1400.`,
+        sent_at: new Date().toISOString(),
+      });
+    } catch (alertErr) {
+      console.error(`[${FN_NAME}] platform_alerts_log insert failed:`, alertErr);
+    }
   }
-  await supabase.from("claims").update({
+  const { error: claimUpdateError, data: claimUpdateRows } = await supabase.from("claims").update({
     contract_sent_at: new Date().toISOString(),
     docusign_envelope_id: envelopeId
-  }).eq("id", claim_id);
+  }).eq("id", claim_id).select("id");
+  if (claimUpdateError) {
+    console.error("Failed to update claim with envelope ID:", claimUpdateError);
+  } else if (!checkRowsWritten(claimUpdateRows).wroteRows) {
+    console.error(zeroRowWriteMessage(FN_NAME, `claims.docusign_envelope_id for claim ${claim_id}`));
+    try {
+      await supabase.from("platform_alerts_log").insert({
+        alert_type: "gh2105_zero_row_update",
+        function_name: FN_NAME,
+        message: `BoldSign document ${envelopeId} was created (contract_sign) but the claims.contract_sent_at/docusign_envelope_id write matched zero rows for claim ${claim_id}. A retry will mint a duplicate document instead of resuming this one -- gh-1400.`,
+        sent_at: new Date().toISOString(),
+      });
+    } catch (alertErr) {
+      console.error(`[${FN_NAME}] platform_alerts_log insert failed:`, alertErr);
+    }
+  }
   // gh-1842: gh-1400's write-first ordering above is kept exactly as it is --
   // recording the pointer before handing out a link is what makes the resume
   // lookup authoritative on a partial failure. What it could not handle is the
@@ -2284,20 +2367,21 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
       `gh-1842: BoldSign document ${envelopeId} failed background creation permanently; ` +
       `un-recording it from quotes/claims so the next attempt mints a new one.`
     );
-    const quoteClearFilter = quote_id
-      ? supabase.from("quotes").update({ docusign_envelope_id: null }).eq("id", quote_id)
-      : supabase.from("quotes").update({ docusign_envelope_id: null })
-          .eq("claim_id", claim_id).eq("contractor_id", contractor_id);
-    const { error: quoteClearError } = await quoteClearFilter;
+    const { quoteClearError, claimClearError, quoteRows, claimRows } = await clearStrandedEnvelopePointer(supabase, {
+      claim_id,
+      quote_id,
+      contractor_id,
+      envelopeId
+    });
     if (quoteClearError) {
       console.error("gh-1842: failed to clear quotes.docusign_envelope_id:", quoteClearError);
+    } else if (quoteRows === 0) {
+      console.warn(`gh-1842: quotes clear matched zero rows for ${envelopeId} (mint) - pointer already cleared or replaced`);
     }
-    const { error: claimClearError } = await supabase.from("claims").update({
-      docusign_envelope_id: null,
-      contract_sent_at: null
-    }).eq("id", claim_id).eq("docusign_envelope_id", envelopeId);
     if (claimClearError) {
       console.error("gh-1842: failed to clear claims.docusign_envelope_id:", claimClearError);
+    } else if (claimRows === 0) {
+      console.warn(`gh-1842: claims clear matched zero rows for ${envelopeId} (mint) - pointer already cleared or replaced`);
     }
     throw err;
   }
@@ -2519,9 +2603,21 @@ async function handleLegacyFlow(supabase, requestBody, corsHeaders) {
   } else if (document_type === "project_confirmation") {
     updateData.project_confirmation_envelope_id = envelopeId;
   }
-  const { error: updateError } = await supabase.from("claims").update(updateData).eq("id", claim_id);
+  const { error: updateError, data: updateRows } = await supabase.from("claims").update(updateData).eq("id", claim_id).select("id");
   if (updateError) {
     console.error("Failed to update claim:", updateError);
+  } else if (!checkRowsWritten(updateRows).wroteRows) {
+    console.error(zeroRowWriteMessage(FN_NAME, `claims.${document_type === "contract" ? "docusign_envelope_id" : document_type + "_envelope_id"} for claim ${claim_id}`));
+    try {
+      await supabase.from("platform_alerts_log").insert({
+        alert_type: "gh2105_zero_row_update",
+        function_name: FN_NAME,
+        message: `BoldSign document ${envelopeId} (${document_type}) was created but the claims update matched zero rows for claim ${claim_id}. contract_sent_at / envelope pointer was not recorded.`,
+        sent_at: new Date().toISOString(),
+      });
+    } catch (alertErr) {
+      console.error(`[${FN_NAME}] platform_alerts_log insert failed:`, alertErr);
+    }
   }
   return new Response(JSON.stringify({
     success: true,

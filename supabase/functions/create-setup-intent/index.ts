@@ -178,14 +178,36 @@ serve(async (req) => {
       customerId = customerData.id;
 
       // Save customer ID to contractor record
-      const { error: updateError } = await supabase
+      const { error: updateError, data: updateRows } = await supabase
         .from("contractors")
         .update({ stripe_customer_id: customerId })
-        .eq("id", contractor_id);
+        .eq("id", contractor_id)
+        .select("id");
 
       if (updateError) {
         console.error("Failed to save stripe_customer_id:", updateError);
         // Non-fatal — continue with SetupIntent creation
+      } else if (!Array.isArray(updateRows) || updateRows.length === 0) {
+        // gh-2105 (decision a-with-alert, money): `.update()` without
+        // `.select()` reports success even on a zero-row RLS/id-mismatch
+        // match. This save is already explicitly non-fatal by design (see
+        // comment above) -- the SetupIntent still gets created either way
+        // -- so this keeps that behaviour unchanged and only adds
+        // visibility: without stripe_customer_id ever persisting, every
+        // future call for this contractor re-creates a new Stripe Customer
+        // instead of reusing one (duplicate Stripe customers, no charge
+        // impact but real billing-hygiene drift).
+        console.error("gh-2105: zero-row update saving stripe_customer_id for contractor", contractor_id, "-- Stripe Customer", customerId, "was created but not persisted.");
+        try {
+          await supabase.from("platform_alerts_log").insert({
+            alert_type: "gh2105_zero_row_update",
+            function_name: "create-setup-intent",
+            message: `Stripe Customer ${customerId} was created for contractor ${contractor_id} but the contractors.stripe_customer_id pointer write matched zero rows. Every future SetupIntent call for this contractor will mint a duplicate Stripe Customer until this is fixed -- gh-2105.`,
+            sent_at: new Date().toISOString(),
+          });
+        } catch (alertErr) {
+          console.error("[create-setup-intent] platform_alerts_log insert failed:", alertErr);
+        }
       }
 
       console.log("Stripe Customer created:", customerId);

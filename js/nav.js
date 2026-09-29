@@ -121,7 +121,12 @@ const Nav = {
    */
   _INSPECTOR_CONTEXT_KEY: 'oq_inspector_ctx',
 
-  _INSPECTOR_PAGES: ['hi-1', 'partner-inspectors', 'partner-agreement-inspector'],
+  // gh-2152 HI-4 (CEO RUN 71): the printable-handout inspector funnel page
+  // is the same inspector-context surface as hi-1 -- added here so any
+  // shared nav-rendered link (Partner Login, footer, etc.) treats an hi-4.html
+  // visitor identically to an hi-1.html visitor, never surfacing fee-bearing
+  // copy or a "join the referral program" link (D-333).
+  _INSPECTOR_PAGES: ['hi-1', 'hi-4', 'partner-inspectors', 'partner-agreement-inspector'],
 
   /** Strip a trailing "/" and a trailing ".html" so a Netlify pretty URL
    *  (no extension) and the literal filename both normalize to the same
@@ -401,7 +406,9 @@ const Nav = {
       const role = window.localStorage.getItem(this._ROLE_STORAGE_KEY);
       if (!role || !this._ROLE_NAV[role]) return null;
       const at = parseInt(window.localStorage.getItem(this._ROLE_EXPLICIT_KEY) || '0', 10);
-      if (!at || (Date.now() - at) > this._ROLE_EXPLICIT_TTL_MS) return null;
+      // gh-2060: `at > Date.now()` rejects a future-dated stamp (a negative age would
+      // otherwise pass the TTL test and outrank the account role indefinitely).
+      if (!at || at > Date.now() || (Date.now() - at) > this._ROLE_EXPLICIT_TTL_MS) return null;
       return role;
     } catch (_) { return null; }
   },
@@ -1210,6 +1217,8 @@ const Nav = {
             <h4 class="footer-heading">Legal</h4>
             <a href="/terms.html">Terms of Service</a>
             <a href="/privacy.html">Privacy Policy</a>
+            <!-- gh-1925 item 2 (Dustin ruling 5881048326): link text is the ruled string, verbatim. Shared footer = every nav.js page. -->
+            <a id="footer-do-not-sell-link" href="/privacy.html#do-not-sell-or-share">Do Not Sell or Share My Personal Information</a>
             <!-- Moved out of the partner header nav 2026-08-25 (Dustin: "Does the
                  agreement need its own button on our header or can it be in the
                  disclaimers at the bottom?"). It is a reference document, not a

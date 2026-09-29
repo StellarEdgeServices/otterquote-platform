@@ -16,19 +16,23 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { seedStaleStorage } from '@/test/storage-fixtures';
 
 // Mock the Supabase singleton (no env / network in unit tests) and the auth hook.
 vi.mock('@/lib/supabase', () => ({
   supabase: {
     auth: {
-      signInWithOtp: vi.fn(),
       signInWithOAuth: vi.fn(),
     },
   },
 }));
+// gh-1883 [SECURITY]: magic-link send/resend now goes through auth-uniform
+// (lib/auth-uniform.ts), not supabase.auth.signInWithOtp() directly.
+vi.mock('@/lib/auth-uniform', () => ({ callAuthUniform: vi.fn() }));
 vi.mock('@/hooks/use-auth-ready', () => ({ useAuthReady: vi.fn() }));
 
 import { supabase } from '@/lib/supabase';
+import { callAuthUniform } from '@/lib/auth-uniform';
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import ContractorLoginPage from '../page';
 import { CONTRACTOR_LOGIN_COPY } from '../copy';
@@ -89,7 +93,7 @@ beforeEach(() => {
   window.history.replaceState({}, '', '/');
   localStorage.clear();
   sessionStorage.clear();
-  (supabase.auth.signInWithOtp as ReturnType<typeof vi.fn>).mockResolvedValue({ error: null });
+  (callAuthUniform as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
   (supabase.auth.signInWithOAuth as ReturnType<typeof vi.fn>).mockResolvedValue({ error: null });
 });
 
@@ -177,7 +181,7 @@ describe('<ContractorLoginPage /> rendered behavior (unauthenticated)', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: STATIC.submit }));
     expect(screen.getByText(CONTRACTOR_LOGIN_COPY.errorInvalidEmail)).toBeInTheDocument();
-    expect(supabase.auth.signInWithOtp).not.toHaveBeenCalled();
+    expect(callAuthUniform).not.toHaveBeenCalled();
   });
 
   it('sends a contractor magic link and shows the D-244 sent state', async () => {
@@ -193,11 +197,43 @@ describe('<ContractorLoginPage /> rendered behavior (unauthenticated)', () => {
     expect(screen.getByText(STATIC.sentResend)).toBeInTheDocument();
     expect(screen.getByText('pro@roofco.com')).toBeInTheDocument();
 
-    expect(supabase.auth.signInWithOtp).toHaveBeenCalledWith({
-      email: 'pro@roofco.com',
-      options: { emailRedirectTo: AUTH_CALLBACK_URL },
-    });
+    expect(callAuthUniform).toHaveBeenCalledWith('otp', 'pro@roofco.com', AUTH_CALLBACK_URL);
     expect(localStorage.getItem('cs_auth_role')).toBe('contractor');
+    // gh-2060 RETURNED item 1 (contractor magic-link writer): /auth-callback
+    // only trusts cs_auth_role when cs_auth_role_at is present and within
+    // its 24h TTL — this must fail if the stamp write is deleted.
+    const stampRaw = localStorage.getItem('cs_auth_role_at');
+    expect(stampRaw).not.toBeNull();
+    expect(Number.isFinite(Number(stampRaw))).toBe(true);
+    expect(Date.now() - Number(stampRaw)).toBeLessThan(5000);
+  });
+
+  it('gh-2060 round-4: a resend >24h after the first send re-stamps cs_auth_role, so the emailed link still routes as contractor', async () => {
+    vi.spyOn(window, 'alert').mockImplementation(() => undefined);
+    render(<ContractorLoginPage />);
+    fireEvent.change(screen.getByPlaceholderText(CONTRACTOR_LOGIN_COPY.emailPlaceholder), {
+      target: { value: 'pro@roofco.com' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: STATIC.submit }));
+    await waitFor(() => expect(screen.getByText(STATIC.sentResend)).toBeInTheDocument());
+
+    // A day and an hour later the visitor finally hits "Send again": the
+    // breadcrumb from the first send is already past its 24h TTL (and would
+    // be read as absent by /auth-callback). Seeded dirty, per the harness.
+    seedStaleStorage({
+      localStorage: {
+        cs_auth_role: 'contractor',
+        cs_auth_role_at: String(Date.now() - 25 * 60 * 60 * 1000),
+      },
+    });
+
+    fireEvent.click(screen.getByText(STATIC.sentResend));
+    await waitFor(() => expect(callAuthUniform).toHaveBeenCalledTimes(2));
+
+    expect(localStorage.getItem('cs_auth_role')).toBe('contractor');
+    const stamp = Number(localStorage.getItem('cs_auth_role_at'));
+    expect(Number.isFinite(stamp)).toBe(true);
+    expect(Date.now() - stamp).toBeLessThan(5000);
   });
 
   it('starts Google OAuth with the contractor-intent callback', async () => {
@@ -210,6 +246,12 @@ describe('<ContractorLoginPage /> rendered behavior (unauthenticated)', () => {
       }),
     );
     expect(localStorage.getItem('cs_auth_role')).toBe('contractor');
+    // gh-2060 RETURNED item 1 (contractor Google OAuth writer): same TTL-
+    // stamp requirement as the magic-link writer above.
+    const stampRaw = localStorage.getItem('cs_auth_role_at');
+    expect(stampRaw).not.toBeNull();
+    expect(Number.isFinite(Number(stampRaw))).toBe(true);
+    expect(Date.now() - Number(stampRaw)).toBeLessThan(5000);
   });
 });
 

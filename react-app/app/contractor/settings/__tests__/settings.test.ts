@@ -10,6 +10,9 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
 import {
   NOTIFICATION_TYPES, getNotificationEmails, getNotificationPhones, resolveNotificationPrefs,
   buildSettingsPayload, formatPaymentMethod, paymentMethodsBanner, isFirstMethod, buildSetupIntentBody,
@@ -17,7 +20,7 @@ import {
   removalConfirmMessage, billingName, stripePublishableKeyConfigured, ATTESTATION_TEXT_VERSION,
   shouldShowAttestationCard, validateAttestation, buildAttestationPayload, buildAttestationContractorUpdate,
   validateCoi, coiNeedsFile, coiFilePath, buildCoiUpdate, coiBannerState, validateFeatureRequest,
-  buildFeatureRequestInsert, type PaymentMethodRecord, type SettingsFormState,
+  buildFeatureRequestInsert, wroteRow, type PaymentMethodRecord, type SettingsFormState,
 } from '../utils';
 import { SETTINGS_COPY } from '../copy';
 import { enforceCpaRedirect, CURRENT_CPA_VERSION } from '../../_shell/cpa-guard';
@@ -233,5 +236,82 @@ describe('gating parity — CPA-only, NO pending-approval gate', () => {
     const out = enforceCpaRedirect(pending, redirect, '/contractor/dashboard', fakeStorage());
     expect(out).toBe(false);
     expect(redirect).not.toHaveBeenCalled();
+  });
+});
+
+// gh-2105 batch 6 -- wroteRow is the local copy of
+// supabase/functions/_shared/zero-row-update-guard.ts#checkRowsWritten used
+// by StripePaymentMethods.tsx's default-method-flip and legacy-field-sync
+// writes (see the "StripePaymentMethods.tsx wiring" describe block below
+// for the writes themselves).
+describe('wroteRow (gh-2105 zero-row-update detection)', () => {
+  it('true only for a non-empty array', () => {
+    expect(wroteRow([{ id: 'row-1' }])).toBe(true);
+    expect(wroteRow([{ id: 'a' }, { id: 'b' }])).toBe(true);
+  });
+
+  it('false for empty array, null, undefined, and any non-array value', () => {
+    expect(wroteRow([])).toBe(false);
+    expect(wroteRow(null)).toBe(false);
+    expect(wroteRow(undefined)).toBe(false);
+    expect(wroteRow('not-an-array')).toBe(false);
+    expect(wroteRow(42)).toBe(false);
+  });
+});
+
+// gh-2105 batch 6 -- StripePaymentMethods.tsx's payment-method writes
+// (default-method flip, promote-after-remove, legacy contractors sync) had
+// no `.select()`, so a zero-row RLS/id-mismatch match reported success
+// while the contractor's default payout method silently never changed.
+// The component isn't rendered in this suite (Stripe.js/router/auth
+// context — see the file's own "thin side-effectful shell" doc comment),
+// so — following the project's established source-guard convention (see
+// fee-config.test.ts's page.tsx guards) — this reads it as text and
+// asserts the fix's wiring is present at each of the 7 fixed sites.
+//
+// FAIL-FIRST: run against main's (pre-batch-6) StripePaymentMethods.tsx --
+// every `.update(...).eq(...)` call in onSetDefault/onRemove/
+// persistNewMethod has no `.select('id')` chained and no wroteRow() check;
+// these assertions fail there.
+describe('StripePaymentMethods.tsx wiring (gh-2105)', () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const compSrc = readFileSync(resolve(here, '..', 'StripePaymentMethods.tsx'), 'utf8');
+
+  it('imports wroteRow from ./utils', () => {
+    expect(compSrc).toContain('wroteRow');
+    expect(compSrc).toMatch(/from '\.\/utils'/);
+  });
+
+  it('onSetDefault: promoting a method to default selects and checks rows before syncing legacy fields', () => {
+    const idx = compSrc.indexOf('async function onSetDefault');
+    const end = compSrc.indexOf('async function onRemove', idx);
+    const block = compSrc.slice(idx, end);
+    expect(block).toContain(".update({ is_default: true })");
+    expect(block).toContain(".select('id')");
+    expect(block).toContain('wroteRow(defaultRows)');
+    expect(block).toContain('payment_method_set_default_zero_rows');
+    // decision (b): clearing the OLD default is annotated, not selected/thrown.
+    expect(block).toContain('update-no-select-ok');
+  });
+
+  it('onRemove: promoting the next default, and clearing legacy fields when none is promoted, both select and check rows', () => {
+    const idx = compSrc.indexOf('async function onRemove');
+    const block = compSrc.slice(idx);
+    expect(block).toContain('payment_method_promote_default_zero_rows');
+    expect(block).toContain('contractor_legacy_clear_zero_rows');
+    expect((block.match(/\.select\('id'\)/g) || []).length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('persistNewMethod: the first-method legacy sync selects and checks rows', () => {
+    const idx = compSrc.indexOf('async function persistNewMethod');
+    const end = compSrc.indexOf('async function onSetDefault', idx);
+    const block = compSrc.slice(idx, end);
+    expect(block).toContain('contractor_legacy_sync_zero_rows');
+    expect(block).toContain("select('id')");
+  });
+
+  it('mutation control: all 6 decision-(a) sites (7 writes minus the 1 decision-b clear) use wroteRow, not just error', () => {
+    const wroteRowCount = (compSrc.match(/wroteRow\(/g) || []).length;
+    expect(wroteRowCount).toBe(6);
   });
 });

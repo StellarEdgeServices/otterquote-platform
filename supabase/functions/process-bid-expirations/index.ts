@@ -63,6 +63,13 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
+import {
+  buildBidExpiredEmail,
+  buildAutoRenewedEmail,
+  buildRenewalCapEmail,
+  buildBidWindowExpiredHomeownerEmail,
+} from "./templates.ts"; // gh-1824: email bodies moved to templates.ts (testable, no serve() import)
 
 // =============================================================================
 // CONSTANTS
@@ -148,219 +155,6 @@ async function sendMailgunEmail(
     return false;
   }
   return true;
-}
-
-// =============================================================================
-// EMAIL BUILDERS
-// =============================================================================
-
-function buildBidExpiredEmail(params: {
-  contractorName: string;
-  homeownerAddress: string;
-  tradeLabel: string;
-  quoteId: string;
-  mailgunDomain: string;
-}): { subject: string; text: string; html: string } {
-  const { contractorName, homeownerAddress, tradeLabel, quoteId, mailgunDomain } = params;
-  const renewUrl = `https://otterquote.com/contractor-bid-form.html?renew=${quoteId}`;
-
-  const subject = `Your ${tradeLabel} bid has expired — renew in one click`;
-
-  const text = `Hi ${contractorName},
-
-Your ${tradeLabel} bid for the property at ${homeownerAddress} has expired (14-day window).
-
-The homeowner can still see your bid but cannot select you until it's renewed.
-
-Renew your bid: ${renewUrl}
-
-If you're no longer interested in this project, no action is needed.
-
-— The Otter Quotes Team`;
-
-  const html = `<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"></head>
-<body style="font-family:Arial,sans-serif;background:#f5f5f5;padding:24px;">
-  <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:8px;padding:32px;">
-    <img src="https://otterquote.com/img/otter-logo.svg" alt="Otter Quotes" width="40" style="margin-bottom:16px;" />
-    <h2 style="color:#0A1E2C;margin:0 0 8px;">Your bid has expired</h2>
-    <p style="color:#555;margin:0 0 16px;">Hi ${contractorName},</p>
-    <p style="color:#555;margin:0 0 16px;">
-      Your <strong>${tradeLabel}</strong> bid for <strong>${homeownerAddress}</strong>
-      has expired (14-day window). The homeowner can still see your bid,
-      but cannot select you until it's renewed.
-    </p>
-    <a href="${renewUrl}"
-       style="display:inline-block;background:#14B8A6;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:bold;margin-bottom:16px;">
-      Renew My Bid
-    </a>
-    <p style="color:#888;font-size:12px;">
-      If you're no longer interested in this project, no action is needed.
-    </p>
-    <hr style="border:none;border-top:1px solid #eee;margin:24px 0;" />
-    <p style="color:#aaa;font-size:11px;">
-      Otter Quotes &bull; notifications@${mailgunDomain}
-    </p>
-  </div>
-</body>
-</html>`;
-
-  return { subject, text, html };
-}
-
-function buildAutoRenewedEmail(params: {
-  contractorName: string;
-  homeownerAddress: string;
-  tradeLabel: string;
-  newQuoteId: string;
-  newExpiresAt: string;
-  stopUrl: string;
-  mailgunDomain: string;
-}): { subject: string; text: string; html: string } {
-  const { contractorName, homeownerAddress, tradeLabel, newExpiresAt, stopUrl, mailgunDomain } = params;
-
-  const subject = `Your ${tradeLabel} bid was auto-renewed — valid for 14 more days`;
-
-  const text = `Hi ${contractorName},
-
-Your ${tradeLabel} bid for ${homeownerAddress} was auto-renewed. It's now valid until ${newExpiresAt}.
-
-To stop auto-renewing this bid: ${stopUrl}
-
-— The Otter Quotes Team`;
-
-  const html = `<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"></head>
-<body style="font-family:Arial,sans-serif;background:#f5f5f5;padding:24px;">
-  <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:8px;padding:32px;">
-    <img src="https://otterquote.com/img/otter-logo.svg" alt="Otter Quotes" width="40" style="margin-bottom:16px;" />
-    <h2 style="color:#0A1E2C;margin:0 0 8px;">Your bid was auto-renewed ✓</h2>
-    <p style="color:#555;margin:0 0 16px;">Hi ${contractorName},</p>
-    <p style="color:#555;margin:0 0 16px;">
-      Your <strong>${tradeLabel}</strong> bid for <strong>${homeownerAddress}</strong>
-      was automatically renewed and is valid until <strong>${newExpiresAt}</strong>.
-    </p>
-    <p style="color:#555;margin:0 0 16px;">
-      <a href="${stopUrl}" style="color:#14B8A6;">Stop auto-renewing this bid</a>
-    </p>
-    <hr style="border:none;border-top:1px solid #eee;margin:24px 0;" />
-    <p style="color:#aaa;font-size:11px;">
-      Otter Quotes &bull; notifications@${mailgunDomain}
-    </p>
-  </div>
-</body>
-</html>`;
-
-  return { subject, text, html };
-}
-
-function buildRenewalCapEmail(params: {
-  contractorName: string;
-  homeownerAddress: string;
-  tradeLabel: string;
-  mailgunDomain: string;
-}): { subject: string; text: string; html: string } {
-  const { contractorName, homeownerAddress, tradeLabel, mailgunDomain } = params;
-
-  const subject = `Your ${tradeLabel} bid renewal limit reached — review your pricing`;
-
-  const text = `Hi ${contractorName},
-
-Your ${tradeLabel} bid for ${homeownerAddress} has reached the maximum of 3 auto-renewals (42 days total). No further auto-renewals will occur.
-
-The homeowner can still see your original bid for comparison, but it is marked expired.
-
-If you'd like to stay competitive, log in to submit a fresh bid: https://otterquote.com/contractor-opportunities.html
-
-— The Otter Quotes Team`;
-
-  const html = `<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"></head>
-<body style="font-family:Arial,sans-serif;background:#f5f5f5;padding:24px;">
-  <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:8px;padding:32px;">
-    <img src="https://otterquote.com/img/otter-logo.svg" alt="Otter Quotes" width="40" style="margin-bottom:16px;" />
-    <h2 style="color:#0A1E2C;margin:0 0 8px;">Auto-renewal limit reached</h2>
-    <p style="color:#555;margin:0 0 16px;">Hi ${contractorName},</p>
-    <p style="color:#555;margin:0 0 16px;">
-      Your <strong>${tradeLabel}</strong> bid for <strong>${homeownerAddress}</strong>
-      has reached the maximum of <strong>3 auto-renewals</strong> (42 days total).
-      No further auto-renewals will occur.
-    </p>
-    <p style="color:#555;margin:0 0 16px;">
-      If you'd like to stay competitive, consider submitting a fresh bid with updated pricing.
-    </p>
-    <a href="https://otterquote.com/contractor-opportunities.html"
-       style="display:inline-block;background:#14B8A6;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:bold;margin-bottom:16px;">
-      View Open Opportunities
-    </a>
-    <hr style="border:none;border-top:1px solid #eee;margin:24px 0;" />
-    <p style="color:#aaa;font-size:11px;">
-      Otter Quotes &bull; notifications@${mailgunDomain}
-    </p>
-  </div>
-</body>
-</html>`;
-
-  return { subject, text, html };
-}
-
-function buildBidWindowExpiredHomeownerEmail(params: {
-  homeownerName: string;
-  propertyAddress: string;
-  bidsUrl: string;
-  mailgunDomain: string;
-}): { subject: string; text: string; html: string } {
-  const { homeownerName, propertyAddress, bidsUrl, mailgunDomain } = params;
-
-  const subject = `All contractor bids for your project have expired`;
-
-  const text = `Hi ${homeownerName},
-
-All contractor bids for your project at ${propertyAddress} have expired.
-
-This can happen when the bidding window closes before a contractor is selected. To move forward, log in to your dashboard — you may request fresh bids or contact us for help.
-
-View your project: ${bidsUrl}
-
-If you have any questions, reply to this email or call us at (844) 875-3412.
-
-— The Otter Quotes Team`;
-
-  const html = `<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"></head>
-<body style="font-family:Arial,sans-serif;background:#f5f5f5;padding:24px;">
-  <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:8px;padding:32px;">
-    <img src="https://otterquote.com/img/otter-logo.svg" alt="Otter Quotes" width="40" style="margin-bottom:16px;" />
-    <h2 style="color:#0A1E2C;margin:0 0 8px;">Your bids have expired</h2>
-    <p style="color:#555;margin:0 0 16px;">Hi ${homeownerName},</p>
-    <p style="color:#555;margin:0 0 16px;">
-      All contractor bids for your project at <strong>${propertyAddress}</strong>
-      have expired. This can happen when the bidding window closes before a contractor is selected.
-    </p>
-    <p style="color:#555;margin:0 0 16px;">
-      To move forward, visit your dashboard — you may request fresh bids from the contractors
-      you were considering, or contact us and we'll help you find new options.
-    </p>
-    <a href="${bidsUrl}"
-       style="display:inline-block;background:#14B8A6;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:bold;margin-bottom:16px;">
-      View My Project
-    </a>
-    <p style="color:#888;font-size:13px;">
-      Questions? Reply to this email or call us at (844) 875-3412.
-    </p>
-    <hr style="border:none;border-top:1px solid #eee;margin:24px 0;" />
-    <p style="color:#aaa;font-size:11px;">
-      Otter Quotes &bull; notifications@${mailgunDomain}
-    </p>
-  </div>
-</body>
-</html>`;
-
-  return { subject, text, html };
 }
 
 // =============================================================================
@@ -569,10 +363,18 @@ async function expireBids(
         // Fall through to mark original expired without renewal
       } else {
         // 2. Mark original as superseded
-        await supabase
+        const { error: supersedeErr, data: supersedeRows } = await supabase
           .from("quotes")
           .update({ bid_status: "superseded", expired_at: now })
-          .eq("id", quote.id);
+          .eq("id", quote.id)
+          .select("id");
+        // gh-2105 (decision a, fire-and-forget): the renewal quote already
+        // exists, so no throw -- but a silent miss leaves the original live
+        // next to its renewal (two live bids for one contractor/claim).
+        if (supersedeErr || !checkRowsWritten(supersedeRows).wroteRows) {
+          console.error(zeroRowWriteMessage("process-bid-expirations", `quotes.bid_status=superseded for quote ${quote.id}`), supersedeErr?.message ?? "");
+          errors.push(`Supersede update failed for ${quote.id}: ${supersedeErr?.message ?? "zero rows matched (gh-2105)"}`);
+        }
 
         // 3. Contractor dashboard notification (auto-renewed)
         try {
@@ -619,10 +421,17 @@ async function expireBids(
     if (shouldAutoRenew && renewalDepth >= MAX_AUTO_RENEWALS) {
       // ── AUTO-RENEW CAP PATH ─────────────────────────────────────────────────
       // Mark expired and send cap-reached email.
-      await supabase
+      const { error: capExpireErr, data: capExpireRows } = await supabase
         .from("quotes")
         .update({ bid_status: "expired", expired_at: now })
-        .eq("id", quote.id);
+        .eq("id", quote.id)
+        .select("id");
+      // gh-2105 (decision a, fire-and-forget): log + surface in errors[]; the
+      // cap-reached email below still goes out as before.
+      if (capExpireErr || !checkRowsWritten(capExpireRows).wroteRows) {
+        console.error(zeroRowWriteMessage("process-bid-expirations", `quotes.bid_status=expired (cap path) for quote ${quote.id}`), capExpireErr?.message ?? "");
+        errors.push(`Cap-path expire update failed for ${quote.id}: ${capExpireErr?.message ?? "zero rows matched (gh-2105)"}`);
+      }
 
       try {
         await supabase.from("notifications").insert({
@@ -657,14 +466,23 @@ async function expireBids(
     }
 
     // ── STANDARD EXPIRY PATH (no auto-renew) ──────────────────────────────────
-    const { error: updateError } = await supabase
+    const { error: updateError, data: expireRows } = await supabase
       .from("quotes")
       .update({ bid_status: "expired", expired_at: now })
-      .eq("id", quote.id);
+      .eq("id", quote.id)
+      .select("id");
 
     if (updateError) {
       console.error(`[process-bid-expirations] Failed to mark quote ${quote.id} expired:`, updateError.message);
       errors.push(`Expire update failed for ${quote.id}: ${updateError.message}`);
+      continue;
+    }
+    // gh-2105 (decision a): a zero-row match means the quote was not actually
+    // expired (row changed/RLS), so -- exactly like the updateError branch
+    // above -- record it and skip the expiry notification/email for this quote.
+    if (!checkRowsWritten(expireRows).wroteRows) {
+      console.error(zeroRowWriteMessage("process-bid-expirations", `quotes.bid_status=expired for quote ${quote.id}`));
+      errors.push(`Expire update failed for ${quote.id}: zero rows matched (gh-2105)`);
       continue;
     }
 
@@ -766,14 +584,23 @@ async function notifyBidWindowExpirations(
     const bidsUrl = `https://otterquote.com/bids.html?claim=${claim.id}`;
 
     // Mark claim as notified first (idempotency — don't double-send if email fails)
-    const { error: updateError } = await supabase
+    const { error: updateError, data: notifiedRows } = await supabase
       .from("claims")
       .update({ bid_window_notified_at: now })
-      .eq("id", claim.id);
+      .eq("id", claim.id)
+      .select("id");
 
     if (updateError) {
       console.error(`[process-bid-expirations] Failed to set bid_window_notified_at for claim ${claim.id}:`, updateError.message);
       errors.push(`Window notified_at update failed for ${claim.id}: ${updateError.message}`);
+      continue;
+    }
+    // gh-2105 (decision a): the notified_at stamp is the idempotency guard for
+    // the send below. A zero-row match means it did NOT stick, so sending would
+    // re-send every run -- same handling as the updateError branch above.
+    if (!checkRowsWritten(notifiedRows).wroteRows) {
+      console.error(zeroRowWriteMessage("process-bid-expirations", `claims.bid_window_notified_at for claim ${(claim as { id: string }).id}`));
+      errors.push(`Window notified_at update failed for ${(claim as { id: string }).id}: zero rows matched (gh-2105)`);
       continue;
     }
 

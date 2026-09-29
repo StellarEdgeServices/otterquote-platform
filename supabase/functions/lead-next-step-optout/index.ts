@@ -171,9 +171,17 @@ serve(async (req: Request) => {
     // Idempotent, write-only: unconditional UPDATE, no prior SELECT — a
     // second click (or a lead id that never existed) touches zero or one row
     // either way and this endpoint never varies its response on the result.
+    // gh-2105 (decision b): a zero-row match here is ambiguous by design and
+    // deliberately left that way — it is either a legitimate repeat click on
+    // an already-opted-out lead (the `.is(..., null)` guard makes that the
+    // expected, common case) or a token whose lead id no longer resolves.
+    // This endpoint's own anti-enumeration contract (see file header)
+    // requires the response to stay byte-identical either way, so neither a
+    // `.select()`+throw nor a visible alert on every ambiguous zero-row
+    // match is added here.
     const { error: updateErr } = await supabase
       .from("leads")
-      .update({ next_step_reminder_opted_out_at: new Date().toISOString() })
+      .update({ next_step_reminder_opted_out_at: new Date().toISOString() }) // update-no-select-ok: see the comment above.
       .eq("id", leadId)
       .is("next_step_reminder_opted_out_at", null);
     if (updateErr) {

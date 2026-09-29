@@ -99,6 +99,17 @@ describe('get-started page — Google OAuth path fires no pre-redirect sign_up',
     // removal above did not also drop the data the landing event needs.
     const csSignup = JSON.parse(localStorage.getItem('cs_signup') || '{}');
     expect(csSignup).toHaveProperty('referral_source');
+
+    // gh-2060 RETURNED item 1 (get-started writer): persistSignupContext()
+    // must stamp cs_auth_role_at alongside cs_auth_role='homeowner' so
+    // /auth-callback's 24h TTL guard can distinguish a fresh intent from a
+    // stale one left by a prior, abandoned visit. Must fail if the stamp
+    // write (page.tsx, persistSignupContext) is deleted.
+    expect(localStorage.getItem('cs_auth_role')).toBe('homeowner');
+    const stampRaw = localStorage.getItem('cs_auth_role_at');
+    expect(stampRaw).not.toBeNull();
+    expect(Number.isFinite(Number(stampRaw))).toBe(true);
+    expect(Date.now() - Number(stampRaw)).toBeLessThan(5000);
   });
 
   it('gh-1901 Option 2: clicking Google with an EMPTY Step 2 fires OAuth immediately, unblocked', async () => {

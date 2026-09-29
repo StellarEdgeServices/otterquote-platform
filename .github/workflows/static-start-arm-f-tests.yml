@@ -1,0 +1,65 @@
+name: Static /start Arm F Tests
+
+# gh-2362 -- /start Arm F trust header + the address asked AFTER contact. Runs the Arm F vm harness (gh2122-arm-f), the
+# gh-2362 acceptance tests + negative controls (cro47-trust-start), and the real-Chromium Facebook-in-app phone-viewport proof
+# (cro47-trust-start-playwright). `pull_request` only, no secrets, read-only token, path-filtered.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'start.html'
+      - 'js/router-variant-f.js'
+      - 'partner-profile.html'
+      - 'img/brand-assets/otter-quotes-icon-512.png'
+      - 'tests/gh2122-arm-f.mjs'
+      - 'tests/cro47-trust-start.mjs'
+      - 'tests/cro47-trust-start-playwright.mjs'
+      - '.github/workflows/static-start-arm-f-tests.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-start-arm-f-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  arm-f-vm:
+    name: Arm F vm harness + gh-2362 acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Arm F short path (gh2122-arm-f)
+        run: node tests/gh2122-arm-f.mjs
+      - name: Trust header + address after contact, T2-T9 and N1-N5 (cro47-trust-start)
+        run: node tests/cro47-trust-start.mjs
+
+  arm-f-chromium:
+    name: Arm F trust header, real Chromium, FB in-app 390x744
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Install e2e dependencies
+        working-directory: tests/e2e
+        run: npm ci
+      - name: Install Chromium
+        working-directory: tests/e2e
+        run: npx playwright install --with-deps chromium
+      - name: T1 + N1 + N5 in a real browser (cro47-trust-start-playwright)
+        run: node tests/cro47-trust-start-playwright.mjs

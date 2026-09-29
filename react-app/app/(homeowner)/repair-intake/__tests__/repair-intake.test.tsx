@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { seedStaleStorage } from '@/test/storage-fixtures';
 
 // ── Mock the auth + notification hooks the shell depends on (before import). ──
 vi.mock('@/hooks/use-auth-ready', () => ({ useAuthReady: vi.fn() }));
@@ -532,5 +533,72 @@ describe('(g) utils', () => {
       JSON.stringify({ siding: false, gutters: true }),
     );
     expect(getTradeFromSession()).toBe('gutters');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// (f) gh-2060 — stale sessionStorage handoff keys (oq_claim_id, oq_trade_selections)
+// ─────────────────────────────────────────────────────────────────────────────
+describe('(f) gh-2060 stale handoff state (oq_claim_id / oq_trade_selections)', () => {
+  let originalLocation: Location;
+  beforeEach(() => {
+    vi.clearAllMocks();
+    window.sessionStorage.clear();
+    mockAuth(authed());
+    wireContractors();
+    originalLocation = window.location;
+  });
+  afterEach(() => {
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: originalLocation,
+    });
+  });
+
+  async function submitOnePhoto(container: HTMLElement) {
+    const input = fileInputs(container)[0];
+    fireEvent.change(input, { target: { files: [new File(['x'], 'photo.png', { type: 'image/png' })] } });
+    await waitFor(() => expect(screen.getByAltText('photo.png')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('✓ Submit for Contractor Review'));
+    await waitFor(() => expect(submitRepairIntake as ReturnType<typeof vi.fn>).toHaveBeenCalledTimes(1));
+    return (submitRepairIntake as ReturnType<typeof vi.fn>).mock.calls[0][0] as RepairSubmission;
+  }
+
+  it('an oq_claim_id left by an EARLIER claim in this tab never beats the ?claim_id= on the URL', async () => {
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: { href: '', search: '?claim_id=c-CURRENT' },
+    });
+    seedStaleStorage({
+      sessionStorage: { oq_claim_id: 'c-STALE-PREVIOUS', oq_trade_selections: JSON.stringify({ siding: true }) },
+    });
+    (submitRepairIntake as ReturnType<typeof vi.fn>).mockResolvedValue({ claimId: 'c-CURRENT' });
+    const { container } = render(<RepairIntakePage />);
+    const arg = await submitOnePhoto(container);
+    expect(arg.claimId).toBe('c-CURRENT');
+  });
+
+  it('POSITIVE CONTROL: with no ?claim_id= the sessionStorage handoff from trade-selector is still used', async () => {
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: { href: '', search: '' },
+    });
+    seedStaleStorage({
+      sessionStorage: { oq_claim_id: 'c-FROM-TRADE-SELECTOR', oq_trade_selections: JSON.stringify({ siding: true }) },
+    });
+    (submitRepairIntake as ReturnType<typeof vi.fn>).mockResolvedValue({ claimId: 'c-FROM-TRADE-SELECTOR' });
+    const { container } = render(<RepairIntakePage />);
+    const arg = await submitOnePhoto(container);
+    expect(arg.claimId).toBe('c-FROM-TRADE-SELECTOR');
+  });
+
+  it('a corrupt oq_trade_selections (older app version / half-written) falls back to roofing and never throws', () => {
+    seedStaleStorage({ sessionStorage: { oq_trade_selections: '{"siding": tr' } });
+    expect(getTradeFromSession()).toBeNull();
+    seedStaleStorage({ sessionStorage: { oq_trade_selections: JSON.stringify({ siding: false, roofing: false }) } });
+    expect(getTradeFromSession()).toBeNull();
   });
 });

@@ -58,7 +58,7 @@
 ></script>
 <!-- Coming-soon gate — flip CONFIG.HOMEOWNER_LAUNCH_ENABLED=true in js/config.js to remove -->
 <script src="js/cookie-storage.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js" integrity="sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.js" integrity="sha384-iLddHTLokph6Omwoyid4XKxHaWa6w41BnoEj0q5oOrzmYPpHIKt1wyjReA7s//pP" crossorigin="anonymous"></script>
 <script src="js/config.js"></script>
 <script>(function(){if(typeof CONFIG!=='undefined'&&!CONFIG.HOMEOWNER_LAUNCH_ENABLED){window.location.replace('/coming-soon.html?from=partner-inspectors&persona=partner');}})()</script>
 <meta charset="UTF-8">
@@ -1208,13 +1208,8 @@ async function handleSignup(e) {
     // with zero register_partner / signUp calls made.
     const generatedPassword = generateSecurePartnerPassword();
 
-    // #571 / v95: server-side register_partner RPC. referral_agents has no
-    // anon SELECT policy, so a direct .insert().select() can never read the
-    // trigger-generated code back. The SECURITY DEFINER RPC inserts (user_id
-    // NULL — linked post-magic-link in auth.js), resolves the recruit code
-    // server-side (D-143), and returns {id, unique_code, recruit_code}.
-    const { data, error } = await sb
-      .rpc('register_partner', {
+    // gh-2282: the exact register_partner arguments, built once so the pending marker (dashboard completion) and the RPC below can never drift apart.
+    const partnerRpcArgs = {
         p_agent_type:       agentType,
         p_first_name:       firstName,
         p_last_name:        lastName,
@@ -1232,7 +1227,60 @@ async function handleSignup(e) {
         // gh-2162 review fix (1): same E2E-test predicate as
         // trade-selector.html:1466 / dashboard.html:1812.
         p_is_test:          (window.Auth && typeof Auth.isTestEmail === 'function') ? Auth.isTestEmail(email) : false,
-      });
+    };
+    const oqTermsAcceptedAt = Date.now(); // gh-2282: the submit (terms checkbox already verified above) -- recorded in the pending marker
+    let signUpResult = null;
+    // gh-2282: sign up FIRST, register_partner second. auth.users is checked here
+    // (Auth.signUpWithPassword rejects an already-registered email), so a
+    // duplicate-email attempt returns before register_partner runs and can never
+    // leave an orphaned referral_agents row (user_id NULL, unique on email) behind.
+    // gh-2274 / gh-2281: the duplicate is matched on Supabase's structured
+    // error.code ('user_already_exists') with the message text as a fallback, and
+    // routed to the designed already-a-partner state instead of the generic catch.
+    if (window.Auth) {
+      try {
+        signUpResult = await Auth.signUpWithPassword(email, generatedPassword, agentType);
+      } catch (signUpError) {
+        // gh-2281: match Supabase's structured error code first; the English message text is kept only as a fallback for SDK versions that don't set .code.
+        const isDuplicate = (signUpError && signUpError.code === 'user_already_exists') || (signUpError.message || '').toLowerCase().includes('already registered');
+        // gh-2282: a duplicate is only "already a partner" when nothing is left to finish. If THIS browser already created the
+        // auth account (pending marker written below) or is signed in as this exact email, a previous attempt got past signUp but
+        // register_partner failed (rate limit, network, rejected email) -- complete register_partner instead of dead-ending.
+        let canFinishRegistration = false;
+        if (isDuplicate) {
+          try {
+            const pendingMarker = JSON.parse(localStorage.getItem('oq_partner_pending_registration') || 'null');
+            const emailKey = String(email || '').trim().toLowerCase();
+            canFinishRegistration = !!(pendingMarker && pendingMarker.email === emailKey && typeof pendingMarker.ts === 'number' && Date.now() - pendingMarker.ts < 7 * 24 * 60 * 60 * 1000);
+            if (!canFinishRegistration && window.Auth && typeof Auth.getUser === 'function') {
+              const sessionUser = await Auth.getUser();
+              canFinishRegistration = !!(sessionUser && sessionUser.email && String(sessionUser.email).toLowerCase() === emailKey);
+            }
+          } catch (e) { canFinishRegistration = false; }
+        }
+        if (isDuplicate && !canFinishRegistration) {
+          alert("This email is already registered — sign in at otterquote.com/partner-login.html, or email support@otterquote.com if you need help.");
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Generate My Referral Link';
+          return;
+        }
+        if (!isDuplicate) throw signUpError;
+      }
+      if (signUpResult) {
+        // gh-2282: auth account created here; remember it (no password) until register_partner reaches a definitive outcome.
+        try { localStorage.setItem('oq_partner_pending_registration', JSON.stringify({ email: String(email || '').trim().toLowerCase(), ts: Date.now(), termsAcceptedAt: oqTermsAcceptedAt, rpcArgs: partnerRpcArgs })); } catch (e) { /* non-fatal */ }
+      }
+    }
+
+    // #571 / v95: server-side register_partner RPC. referral_agents has no
+    // anon SELECT policy, so a direct .insert().select() can never read the
+    // trigger-generated code back. The SECURITY DEFINER RPC inserts (user_id
+    // NULL — linked post-magic-link in auth.js), resolves the recruit code
+    // server-side (D-143), and returns {id, unique_code, recruit_code}.
+    const { data, error } = await sb
+      .rpc('register_partner', partnerRpcArgs);
+    // gh-2282: definitive outcome (row created, or it already exists) -- the pending marker has done its job.
+    if (!error || (error.message || '').includes('partner_exists')) { try { localStorage.removeItem('oq_partner_pending_registration'); } catch (e) { /* non-fatal */ } }
 
     if (error) {
       if ((error.message || '').includes('partner_exists')) {
@@ -1266,6 +1314,7 @@ async function handleSignup(e) {
       unique_code: finalCode,
     }));
     localStorage.setItem('cs_auth_role', agentType);
+    localStorage.setItem('cs_auth_role_at', String(Date.now()));
 
     // Recruit code has now been consumed — clear it so a future signup on
     // this device doesn't accidentally attribute to the same recruiter.
@@ -1283,7 +1332,7 @@ async function handleSignup(e) {
     // via an alert, same as the other partner_exists notices on this page.
     if (window.Auth) {
       // generatedPassword was already computed above (CSPRNG fix).
-      const signUpResult = await Auth.signUpWithPassword(email, generatedPassword, agentType);
+      //
 
       // gh-2154 P-1: this partner has no real password yet — flag it so
       // partner-dashboard.html shows the one-time "Set your password" card
@@ -1335,7 +1384,7 @@ async function handleSignup(e) {
 
   } catch (err) {
     console.error('Signup error:', err);
-    alert(`Something went wrong: ${err.message}. Please try again or email us at support@otterquote.com`);
+    alert('Something went wrong. Please try again or email us at support@otterquote.com');
     submitBtn.disabled = false;
     submitBtn.textContent = 'Generate My Referral Link';
   }
@@ -1441,7 +1490,7 @@ function toggleFaq(btn) {
     if (!leadId) return;
     if (typeof supabase === 'undefined' || typeof CONFIG === 'undefined' ||
         !CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_ANON) return;
-    var _sb = window.sb || supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
+    var _sb = window.sb || supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, { auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' } }); // gh-1980 PR2: converge fallback client onto canonical key too
     _sb.rpc('get_lead_prefill', { p_lead_id: leadId }).then(function (res) {
       var row = res && res.data && res.data[0];
       if (!row) return; // expired, unknown id, or migration not applied yet

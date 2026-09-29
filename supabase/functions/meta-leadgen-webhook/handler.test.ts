@@ -17,9 +17,20 @@ const APP_SECRET = "meta-app-secret-fixture-not-real-000";
 const VERIFY_TOKEN = "meta-leadgen-verify-token-fixture-not-real";
 const PAGE_TOKEN = "meta-page-access-token-fixture-not-real";
 
+// gh-2313: a partner entry now carries consent_key (matched against Meta's
+// custom_disclaimer_responses id/name) and consent_text (stored verbatim). The
+// text below is a TEST FIXTURE string, not approved consent wording.
+const PARTNER_CONSENT_KEY_CFG = "partner_call_text_consent_meta_box";
+const PARTNER_CONSENT_TEXT = "TEST FIXTURE ONLY: partner call/text consent wording as rendered on the form.";
 const ALLOWLIST_RAW = JSON.stringify({
-  "form_real_123": { agent_type: "re_agent", funnel_id: "meta-leadgen-re-2026" },
-  "form_test_456": { agent_type: "insurance_agent", funnel_id: "meta-leadgen-test", is_test: true },
+  "form_real_123": {
+    agent_type: "re_agent", funnel_id: "meta-leadgen-re-2026",
+    consent_key: PARTNER_CONSENT_KEY_CFG, consent_text: PARTNER_CONSENT_TEXT,
+  },
+  "form_test_456": {
+    agent_type: "insurance_agent", funnel_id: "meta-leadgen-test", is_test: true,
+    consent_key: PARTNER_CONSENT_KEY_CFG, consent_text: PARTNER_CONSENT_TEXT,
+  },
 });
 
 // #2123 HO-2: a form_id here is DISJOINT from ALLOWLIST_RAW above — a real
@@ -47,11 +58,13 @@ interface Counters {
   homeownerFetchCalls: number;
   homeownerRegisterCalls: number;
   finalizeCalls: number;
+  partnerConsentCalls: number;
 }
 
 function makeDeps(overrides: Partial<WebhookDeps> = {}, counters: Counters = {
   fetchCalls: 0, registerCalls: 0, duplicateCalls: 0, rateLimitCalls: 0,
   homeownerDuplicateCalls: 0, homeownerFetchCalls: 0, homeownerRegisterCalls: 0, finalizeCalls: 0,
+  partnerConsentCalls: 0,
 }): WebhookDeps {
   return {
     verifyToken: VERIFY_TOKEN,
@@ -69,9 +82,14 @@ function makeDeps(overrides: Partial<WebhookDeps> = {}, counters: Counters = {
             { name: "phone_number", values: ["+13175551234"] },
             { name: "company_name", values: ["Rivera Realty"] },
           ],
+          custom_disclaimer_responses: [{ id: PARTNER_CONSENT_KEY_CFG, is_checked: true }],
         },
         error: null,
       };
+    },
+    recordPartnerConsent: async () => {
+      counters.partnerConsentCalls++;
+      return { error: null };
     },
     isDuplicate: async () => {
       counters.duplicateCalls++;
@@ -123,6 +141,7 @@ function makeCounters(): Counters {
   return {
     fetchCalls: 0, registerCalls: 0, duplicateCalls: 0, rateLimitCalls: 0,
     homeownerDuplicateCalls: 0, homeownerFetchCalls: 0, homeownerRegisterCalls: 0, finalizeCalls: 0,
+    partnerConsentCalls: 0,
   };
 }
 
@@ -378,6 +397,7 @@ Deno.test("POST: first name with no last name registers with a placeholder last 
             { name: "first_name", values: ["Cher"] },
             { name: "email", values: ["cher@example.com"] },
           ],
+          custom_disclaimer_responses: [{ id: PARTNER_CONSENT_KEY_CFG, is_checked: true }],
         },
         error: null,
       };
@@ -1209,4 +1229,305 @@ Deno.test("POST: homeowner recovery path's finalizeHomeownerLead rejected_invali
   const { response, outcomes } = await handlePost(body, sig, "1.2.3.4", deps);
   assertEquals(response.status, 200);
   assertEquals(outcomes[0].outcome, "skipped_invalid_data");
+});
+
+
+// ── gh-2313: partner call/text consent evidence, written BEFORE register_partner ─────────
+// closes-on (issue #2313, amended): a partner lead fixture WITH the consent response asserts a
+// consent-evidence row (key partner_call_text_consent, text, form_id, leadgen_id) is written
+// before register_partner; a fixture WITHOUT it asserts no referral_agents row is written.
+// Run against pre-fix main these FAIL (see the PR body's negative control).
+
+const PARTNER_FIELD_DATA = [
+  { name: "full_name", values: ["Jamie Rivera"] },
+  { name: "email", values: ["jamie@example.com"] },
+  { name: "phone_number", values: ["+13175551234"] },
+  { name: "company_name", values: ["Rivera Realty"] },
+];
+
+function partnerDepsWith(
+  disclaimers: { id?: string; name?: string; is_checked?: boolean }[] | undefined,
+  order: string[],
+  logs: string[],
+  extra: Partial<WebhookDeps> = {},
+  captured: { consent: import("./partner-consent.ts").PartnerConsentArgs[] } = { consent: [] },
+) {
+  const counters = makeCounters();
+  const deps = makeDeps({
+    fetchLead: async () => {
+      counters.fetchCalls++;
+      return {
+        data: {
+          field_data: PARTNER_FIELD_DATA,
+          ...(disclaimers === undefined ? {} : { custom_disclaimer_responses: disclaimers }),
+          created_time: "2026-09-28T12:00:00+0000",
+          ad_id: "ad_p_1",
+          campaign_id: "camp_p_1",
+        },
+        error: null,
+      };
+    },
+    recordPartnerConsent: async (args) => {
+      counters.partnerConsentCalls++;
+      order.push("consent");
+      captured.consent.push(args);
+      return { error: null };
+    },
+    registerPartner: async () => {
+      counters.registerCalls++;
+      order.push("register");
+      return { data: { id: "agent-fixture-id" }, error: null };
+    },
+    log: (_level, message) => { logs.push(message); },
+    ...extra,
+  }, counters);
+  return { deps, counters, captured };
+}
+
+Deno.test("gh2313: partner lead WITH the ticked consent response writes the evidence row BEFORE register_partner", async () => {
+  const order: string[] = [];
+  const logs: string[] = [];
+  const { deps, counters, captured } = partnerDepsWith(
+    [{ id: PARTNER_CONSENT_KEY_CFG, is_checked: true }], order, logs,
+  );
+  const body = leadgenBody({ leadgenId: "leadgen_p_ok", formId: "form_real_123" });
+  const { response, outcomes } = await handlePost(body, await sign(body), "1.2.3.4", deps);
+  assertEquals(response.status, 200);
+  assertEquals(outcomes[0].outcome, "registered");
+  assertEquals(order, ["consent", "register"], "consent evidence must be written before register_partner");
+  assertEquals(counters.partnerConsentCalls, 1);
+  assertEquals(counters.registerCalls, 1);
+  const row = captured.consent[0];
+  assertEquals(row.consentKey, "partner_call_text_consent");
+  assertEquals(row.consentText, PARTNER_CONSENT_TEXT);
+  assertEquals(row.formId, "form_real_123");
+  assertEquals(row.leadgenId, "leadgen_p_ok");
+  assertEquals(row.consentGiven, true);
+  assertEquals(row.disclaimerResponses, [{ id: PARTNER_CONSENT_KEY_CFG, is_checked: true }]);
+  assertEquals(row.phoneAsTyped, "+13175551234");
+  assertEquals(row.funnelId, "meta-leadgen-re-2026");
+});
+
+Deno.test("gh2313 (ruling 5879500610): box ABSENT (no custom_disclaimer_responses) -> partner IS registered, NO consent row, warning logged", async () => {
+  const order: string[] = [];
+  const logs: string[] = [];
+  const levels: string[] = [];
+  const { deps, counters } = partnerDepsWith(undefined, order, logs, {
+    log: (level, message) => { levels.push(level); logs.push(message); },
+  });
+  const body = leadgenBody({ leadgenId: "leadgen_p_none", formId: "form_real_123" });
+  const { response, outcomes } = await handlePost(body, await sign(body), "1.2.3.4", deps);
+  assertEquals(response.status, 200);
+  assertEquals(outcomes[0].outcome, "registered", "consent is never a condition of partner signup");
+  assertEquals(counters.registerCalls, 1);
+  assertEquals(counters.partnerConsentCalls, 0, "no row when the box is absent");
+  assertEquals(order, ["register"]);
+  const idx = logs.findIndex((m) => m.includes("leadgen_id=leadgen_p_none") && m.includes("reason=consent_box_absent"));
+  assert(idx >= 0, "the missing box must be logged with leadgen_id and reason");
+  assertEquals(levels[idx], "warn");
+});
+
+Deno.test("gh2313 (ruling 5879500610): box PRESENT but UNTICKED -> row consent_given=false is stored BEFORE register_partner", async () => {
+  const order: string[] = [];
+  const { deps, counters, captured } = partnerDepsWith([{ id: PARTNER_CONSENT_KEY_CFG, is_checked: false }], order, []);
+  const body = leadgenBody({ leadgenId: "leadgen_p_unticked", formId: "form_real_123" });
+  const { response, outcomes } = await handlePost(body, await sign(body), "1.2.3.4", deps);
+  assertEquals(response.status, 200);
+  assertEquals(outcomes[0].outcome, "registered");
+  assertEquals(order, ["consent", "register"]);
+  assertEquals(counters.registerCalls, 1);
+  assertEquals(counters.partnerConsentCalls, 1);
+  assertEquals(captured.consent[0].consentGiven, false);
+  assertEquals(captured.consent[0].consentText, PARTNER_CONSENT_TEXT);
+  assertEquals(captured.consent[0].leadgenId, "leadgen_p_unticked");
+});
+
+Deno.test("gh2313: Meta's REAL shape {checkbox_key, is_checked:\"1\"} ticked -> row consent_given=true before register", async () => {
+  const order: string[] = [];
+  // deno-lint-ignore no-explicit-any
+  const real = [{ checkbox_key: PARTNER_CONSENT_KEY_CFG, is_checked: "1" }] as any;
+  const { deps, captured } = partnerDepsWith(real, order, []);
+  const body = leadgenBody({ leadgenId: "leadgen_p_real1", formId: "form_real_123" });
+  const { outcomes } = await handlePost(body, await sign(body), "1.2.3.4", deps);
+  assertEquals(outcomes[0].outcome, "registered");
+  assertEquals(order, ["consent", "register"]);
+  assertEquals(captured.consent[0].consentGiven, true);
+  assertEquals(captured.consent[0].disclaimerResponses, real);
+});
+
+Deno.test("gh2313: Meta's REAL shape {checkbox_key, is_checked:\"0\"} -> row consent_given=false, registered (NEGATIVE CONTROL for the \"1\" test above)", async () => {
+  const order: string[] = [];
+  // deno-lint-ignore no-explicit-any
+  const { deps, captured } = partnerDepsWith([{ checkbox_key: PARTNER_CONSENT_KEY_CFG, is_checked: "0" }] as any, order, []);
+  const body = leadgenBody({ leadgenId: "leadgen_p_real0", formId: "form_real_123" });
+  const { outcomes } = await handlePost(body, await sign(body), "1.2.3.4", deps);
+  assertEquals(outcomes[0].outcome, "registered");
+  assertEquals(order, ["consent", "register"]);
+  assertEquals(captured.consent[0].consentGiven, false);
+});
+
+Deno.test("gh2313: a DIFFERENT disclaimer ticked (not the configured consent box) counts as box absent -> registered, no row", async () => {
+  const order: string[] = [];
+  // deno-lint-ignore no-explicit-any
+  const { deps, counters } = partnerDepsWith([{ checkbox_key: "some_other_box", is_checked: "1" }] as any, order, []);
+  const body = leadgenBody({ leadgenId: "leadgen_p_wrongbox", formId: "form_real_123" });
+  const { outcomes } = await handlePost(body, await sign(body), "1.2.3.4", deps);
+  assertEquals(outcomes[0].outcome, "registered");
+  assertEquals(counters.registerCalls, 1);
+  assertEquals(counters.partnerConsentCalls, 0);
+});
+
+Deno.test("gh2313: a truthy-but-unrecognised is_checked (\"true\") never records consent_given=true (fails closed to false)", async () => {
+  const order: string[] = [];
+  // deno-lint-ignore no-explicit-any
+  const { deps, captured } = partnerDepsWith([{ id: PARTNER_CONSENT_KEY_CFG, is_checked: "true" as any }], order, []);
+  const body = leadgenBody({ leadgenId: "leadgen_p_strtrue", formId: "form_real_123" });
+  const { outcomes } = await handlePost(body, await sign(body), "1.2.3.4", deps);
+  assertEquals(outcomes[0].outcome, "registered");
+  assertEquals(captured.consent[0].consentGiven, false);
+});
+
+Deno.test("gh2313 (ruling 5879500610): allowlist entry with NO consent_key/consent_text -> partner IS registered, NO row, warning logged", async () => {
+  const order: string[] = [];
+  const logs: string[] = [];
+  const levels: string[] = [];
+  const { deps, counters } = partnerDepsWith(
+    [{ id: PARTNER_CONSENT_KEY_CFG, is_checked: true }], order, logs,
+    {
+      allowlistRaw: JSON.stringify({ "form_legacy_1": { agent_type: "re_agent", funnel_id: "meta-leadgen-legacy" } }),
+      log: (level, message) => { levels.push(level); logs.push(message); },
+    },
+  );
+  const body = leadgenBody({ leadgenId: "leadgen_p_cfg", formId: "form_legacy_1" });
+  const { response, outcomes } = await handlePost(body, await sign(body), "1.2.3.4", deps);
+  assertEquals(response.status, 200);
+  assertEquals(outcomes[0].outcome, "registered", "no wording configured must not block signup (F2 cliff removed)");
+  assertEquals(counters.registerCalls, 1);
+  assertEquals(counters.partnerConsentCalls, 0, "no wording -> no invented wording -> no row");
+  const idx = logs.findIndex((m) => m.includes("reason=consent_config_missing"));
+  assert(idx >= 0, "missing config must be logged");
+  assertEquals(levels[idx], "warn");
+});
+
+Deno.test("gh2313 (2,000-char cap): consent_text over 2000 chars is REJECTED loudly -- error logged, NO row, never truncated; partner still registered", async () => {
+  const order: string[] = [];
+  const logs: string[] = [];
+  const levels: string[] = [];
+  const tooLong = "y".repeat(2001);
+  const { deps, counters } = partnerDepsWith(
+    [{ id: PARTNER_CONSENT_KEY_CFG, is_checked: true }], order, logs,
+    {
+      allowlistRaw: JSON.stringify({
+        "form_long_1": {
+          agent_type: "re_agent", funnel_id: "meta-leadgen-long",
+          consent_key: PARTNER_CONSENT_KEY_CFG, consent_text: tooLong,
+        },
+      }),
+      log: (level, message) => { levels.push(level); logs.push(message); },
+    },
+  );
+  const body = leadgenBody({ leadgenId: "leadgen_p_long", formId: "form_long_1" });
+  const { response, outcomes } = await handlePost(body, await sign(body), "1.2.3.4", deps);
+  assertEquals(response.status, 200);
+  assertEquals(outcomes[0].outcome, "registered");
+  assertEquals(counters.partnerConsentCalls, 0, "no row, and certainly no sliced 2000-char row");
+  const idx = logs.findIndex((m) => m.includes("consent_text_too_long") && m.includes("leadgen_id=leadgen_p_long"));
+  assert(idx >= 0, "over-long wording must be logged");
+  assertEquals(levels[idx], "error");
+  assertFalse(logs.join("\n").includes(tooLong.slice(0, 50)), "the wording itself is never logged");
+});
+
+Deno.test("gh2313: if the consent write fails transiently, register_partner is NOT called and the delivery is a 503 (Meta redelivers)", async () => {
+  const order: string[] = [];
+  const { deps, counters } = partnerDepsWith(
+    [{ id: PARTNER_CONSENT_KEY_CFG, is_checked: true }], order, [],
+    { recordPartnerConsent: async () => { order.push("consent"); return { error: { message: "connection reset" } }; } },
+  );
+  const body = leadgenBody({ leadgenId: "leadgen_p_cw", formId: "form_real_123" });
+  const { response, outcomes } = await handlePost(body, await sign(body), "1.2.3.4", deps);
+  assertEquals(response.status, 503);
+  assertEquals(outcomes[0].outcome, "error_consent_write_failed");
+  assertEquals(counters.registerCalls, 0, "a partner is never registered without stored evidence");
+  assertEquals(order, ["consent"]);
+});
+
+Deno.test("gh2313 follow-up: a consent row permanently rejected as bad data (e.g. 22P05) stores no row, logs an error, records the rejection, STILL registers the partner, and does not retry", async () => {
+  const order: string[] = [];
+  const logs: string[] = [];
+  const levels: string[] = [];
+  const { deps, counters } = partnerDepsWith(
+    [{ id: PARTNER_CONSENT_KEY_CFG, is_checked: true }], order, logs,
+    {
+      recordPartnerConsent: async () => { order.push("consent"); return { error: { message: "rejected_invalid_data" } }; },
+      log: (level, message) => { levels.push(level); logs.push(message); },
+    },
+  );
+  const body = leadgenBody({ leadgenId: "leadgen_p_rej", formId: "form_real_123" });
+  const { response, outcomes } = await handlePost(body, await sign(body), "1.2.3.4", deps);
+  assertEquals(response.status, 200, "no 503 retry loop");
+  assertEquals(counters.registerCalls, 1, "the partner MUST still be registered");
+  assertEquals(order, ["consent", "register"], "one consent attempt (no retry), then register");
+  assertEquals(outcomes.length, 1);
+  assertEquals(outcomes[0].outcome, "registered_consent_rejected", "the rejection is recorded on the outcome");
+  const idx = logs.findIndex((m) => m.includes("rejected as invalid data") && m.includes("leadgen_id=leadgen_p_rej"));
+  assert(idx >= 0, "rejection must be logged with a clear reason");
+  assertEquals(levels[idx], "error");
+  assert(logs[idx].includes("reason=consent_row_rejected_invalid_data"));
+  assert(logs.some((m) => m.includes("consent=rejected_invalid_data")), "registered log carries the consent state");
+  for (const secret of ["jamie@example.com", "3175551234", PARTNER_CONSENT_TEXT]) {
+    assertFalse(logs.join("\n").includes(secret), `log must not contain ${secret}`);
+  }
+});
+
+Deno.test("gh2313 follow-up: SQLSTATE 22P05 classifies as a permanent data rejection; connection-class errors do not", () => {
+  assertEquals(isDataRejectionError("22P05"), true);
+  assertEquals(isDataRejectionError("23514"), true);
+  assertEquals(isDataRejectionError("23505"), false);
+  assertEquals(isDataRejectionError("08006"), false);
+  assertEquals(isDataRejectionError(undefined), false);
+});
+
+Deno.test("gh2313: consent already written (redelivery) is idempotent -- consent write returns no error and registration proceeds", async () => {
+  // index.ts maps unique_violation (23505) on (meta_lead_id, consent_key) to { error: null };
+  // this asserts the handler treats that as success and still registers, once.
+  const order: string[] = [];
+  const { deps, counters } = partnerDepsWith([{ id: PARTNER_CONSENT_KEY_CFG, is_checked: true }], order, []);
+  const body = leadgenBody({ leadgenId: "leadgen_p_redeliver", formId: "form_real_123" });
+  const sig = await sign(body);
+  await handlePost(body, sig, "1.2.3.4", deps);
+  await handlePost(body, sig, "1.2.3.4", deps);
+  assertEquals(counters.partnerConsentCalls, 2);
+  assertEquals(counters.registerCalls, 2); // fake isDuplicate always false; real one dedupes on referral_agents.meta_lead_id
+});
+
+Deno.test("gh2313: skip and write logs never contain the lead's PII or the consent wording", async () => {
+  const logs: string[] = [];
+  const { deps } = partnerDepsWith(undefined, [], logs);
+  const body = leadgenBody({ leadgenId: "leadgen_p_pii", formId: "form_real_123" });
+  await handlePost(body, await sign(body), "1.2.3.4", deps);
+  const joined = logs.join("\n");
+  for (const secret of ["jamie@example.com", "Jamie", "3175551234", "Rivera", PARTNER_CONSENT_TEXT]) {
+    assertFalse(joined.includes(secret), `log must not contain ${secret}`);
+  }
+});
+
+Deno.test("gh2313: a partner test form (is_test:true) with consent still writes evidence before register", async () => {
+  const order: string[] = [];
+  const { deps, captured } = partnerDepsWith([{ id: PARTNER_CONSENT_KEY_CFG, is_checked: true }], order, []);
+  const body = leadgenBody({ leadgenId: "leadgen_p_test", formId: "form_test_456" });
+  const { outcomes } = await handlePost(body, await sign(body), "1.2.3.4", deps);
+  assertEquals(outcomes[0].outcome, "registered");
+  assertEquals(order, ["consent", "register"]);
+  assertEquals(captured.consent[0].formId, "form_test_456");
+});
+
+Deno.test("gh2313: the partner Graph fetch in index.ts requests custom_disclaimer_responses (structural)", async () => {
+  const src = await Deno.readTextFile("supabase/functions/meta-leadgen-webhook/index.ts");
+  const start = src.indexOf("async function fetchLeadFromGraph(");
+  const end = src.indexOf("async function fetchHomeownerLeadFromGraph(");
+  assert(start !== -1 && end > start, "expected both fetch functions in index.ts");
+  assert(
+    src.slice(start, end).includes("custom_disclaimer_responses"),
+    "fetchLeadFromGraph (partner path) must request custom_disclaimer_responses",
+  );
 });

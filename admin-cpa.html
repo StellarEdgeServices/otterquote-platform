@@ -24,7 +24,7 @@
   };
 </script>
 <script src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js" integrity="sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.js" integrity="sha384-iLddHTLokph6Omwoyid4XKxHaWa6w41BnoEj0q5oOrzmYPpHIKt1wyjReA7s//pP" crossorigin="anonymous"></script>
     <script src="js/cookie-storage.js"></script>
     <!-- 2026-08-25: added so SUPABASE_ANON_KEY below resolves from the single
          source (CONFIG.SUPABASE_ANON) instead of an inline literal. This page
@@ -498,9 +498,13 @@ async function handlePublish(e) {
 
     try {
         // Step 1: Deactivate all current versions
+        // gh-2105 (decision b): a zero-row match here is legitimate and
+        // expected on the very first-ever CPA publish (no row has
+        // is_current=true yet), so this is left un-selected rather than
+        // annotated as a false alarm on every first publish.
         const { error: deactivateErr } = await sb
             .from('cpa_versions')
-            .update({ is_current: false })
+            .update({ is_current: false }) // update-no-select-ok: see the comment above.
             .eq('is_current', true);
 
         if (deactivateErr) throw new Error(`Deactivate failed: ${deactivateErr.message}`);
@@ -518,13 +522,25 @@ async function handlePublish(e) {
         if (insertErr) throw new Error(`Insert failed: ${insertErr.message}`);
 
         // Step 3: Bulk-flag contractors NOT on the new version
-        const { error: flagErr } = await sb
+        // gh-2105 (decision a-with-alert, legal): a zero-row match here can
+        // be legitimate (every active/pending contractor already carries
+        // this exact label) but can also mean the filter silently matched
+        // nothing while contractors DO still need re-attestation -- the
+        // success toast below would then be false. `.select('id')` lets the
+        // admin see, via the console, which case this was without throwing
+        // (a re-publish that genuinely flags zero contractors is not an
+        // error and must not block the CPA version itself from publishing).
+        const { error: flagErr, data: flagRows } = await sb
             .from('contractors')
             .update({ needs_cpa_reattestation: true })
             .neq('cpa_version', label)
-            .in('status', ['active', 'pending_approval']);
+            .in('status', ['active', 'pending_approval'])
+            .select('id');
 
         if (flagErr) throw new Error(`Flag update failed: ${flagErr.message}`);
+        if (!Array.isArray(flagRows) || flagRows.length === 0) {
+            console.warn(`[gh-2105] CPA ${label} publish flagged zero contractors for re-attestation -- verify this is expected (every active/pending contractor already on this label) and not a filter miss.`);
+        }
 
         showToast(`✅ CPA ${label} published. Contractors on prior versions have been flagged.`);
         document.getElementById('publishForm').reset();
