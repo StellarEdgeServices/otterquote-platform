@@ -507,6 +507,30 @@ describe('auth-callback page — gh-2060 dirty-state: stale cs_auth_role from a 
     );
   });
 
+  it('gh-2060 round-4 hardening 2: treats a FUTURE-dated cs_auth_role_at (negative age) as stale, not fresh', async () => {
+    seedStaleStorage({
+      localStorage: {
+        cs_auth_role: 'contractor',
+        cs_auth_role_at: String(Date.now() + 365 * 24 * 60 * 60 * 1000), // +1 year
+      },
+    });
+
+    let capturedCallback: ((event: string, session: unknown) => void) | undefined;
+    (supabase.auth.onAuthStateChange as unknown as Fn).mockImplementation((cb) => {
+      capturedCallback = cb;
+      return { data: { subscription: { unsubscribe: vi.fn() } } };
+    });
+
+    render(<AuthCallbackPage />);
+    await waitFor(() => expect(capturedCallback).toBeDefined());
+    capturedCallback?.('SIGNED_IN', googleSession());
+
+    await waitFor(() => expect(hrefSpy).toHaveBeenCalled());
+    expect(hrefSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining('contractor-pre-approval'),
+    );
+  });
+
   it('gh-2060 RETURNED item 2: clears cs_auth_role and cs_auth_role_at after routing on the stale/untrusted homeowner branch', async () => {
     // Same stale-untimestamped seed as the first test in this block, but
     // this test's assertion is on the STORAGE STATE after routing, not the

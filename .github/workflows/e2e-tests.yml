@@ -400,8 +400,17 @@ jobs:
       - name: auth-callback.html _oqGetIntent cs_auth_role staleness unit test (gh-2060 RETURNED item 4, PR #2253)
         run: node tests/gh2060-auth-callback-html-staleness.mjs
 
-      - name: static-stack cs_auth_role WRITER coverage — 16 sites, 12 pages (gh-2060 RETURNED round 2 item 1, PR #2253)
+      - name: static-stack cs_auth_role WRITER coverage — every discovered write site stamps cs_auth_role_at (gh-2060 RETURNED round 2 item 1 / round 3 item 2, PR #2253)
         run: node tests/gh2060-static-cs-auth-role-writers.mjs
+
+      - name: partner-page cs_auth_role write ORDERING — only after register_partner success (gh-2060 round-4 hardening 3)
+        run: node tests/gh2060-partner-cs-auth-role-ordering.mjs
+
+      - name: static-stack storage surfaces — dirty-state (seeded stale) checks (gh-2060 closes-on b)
+        run: node tests/gh2060-static-surfaces-staleness.mjs
+
+      - name: storage-surface ledger — every storage key has a status + a cited test (gh-2060 closes-on c)
+        run: node tests/gh2060-storage-surface-ledger.mjs
 
       - name: measurement-shape admin-fulfilment flip unit test (gh-1411 D-317 cl. 4-6; REVIEW finding A, PR #2236)
         run: node tests/measurement-shape-flip-on-deliver.mjs

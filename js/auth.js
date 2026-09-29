@@ -551,6 +551,15 @@ window.Auth = {
       await sb.auth.signOut({ scope: 'local' });
     } finally {
       try { document.cookie = 'sb_at=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT'; } catch (e) { /* non-fatal */ }
+      // gh-2060 round-4 hardening 1: an unconsumed cs_auth_role breadcrumb
+      // (e.g. an abandoned magic-link request) must not outlive the session
+      // on a shared browser.
+      try {
+        localStorage.removeItem('cs_auth_role');
+        localStorage.removeItem('cs_auth_role_at');
+        sessionStorage.removeItem('cs_auth_role');
+        sessionStorage.removeItem('cs_auth_role_at');
+      } catch (e) { /* non-fatal */ }
       window.location.href = '/index.html';
     }
   },
@@ -1094,6 +1103,9 @@ window.Auth = {
     let role = (
       storedRoleRaw !== null &&
       Number.isFinite(storedAt) &&
+      // gh-2060 round-4 hardening 2: a future-dated stamp (negative age) must
+      // not pass the `<= TTL` check and be trusted indefinitely.
+      (Date.now() - storedAt) >= 0 &&
       (Date.now() - storedAt) <= CS_AUTH_ROLE_TTL_MS
     ) ? storedRoleRaw : null;
     localStorage.removeItem('cs_auth_role');
@@ -1443,8 +1455,10 @@ Log in to the admin panel to review and approve this contractor.`;
         // #567: keep the id under a claim-scoped key so the claim writer
         // (trade-selector) can stamp claims.referral_id, then clear the
         // advance-scoped keys so this block never re-runs.
-        localStorage.setItem('oq_referral_id_for_claim', referralId);
-        // gh-2062: only re-arm the cookie's 90-day clock on a successful
+        // gh-2062: the claim-scoped copy lives under the same 30-day click
+        // clock as the cookie (no click time on record => nothing written).
+        if (window.OtterQuoteReferral) window.OtterQuoteReferral.writeClaimId(referralId);
+        // gh-2062: only re-arm the cookie's 30-day clock on a successful
         // advance. A failed RPC call is not a reason to extend the life of
         // an id we were just told is not advanceable — the cookie keeps
         // whatever TTL it already had instead of restarting the clock.

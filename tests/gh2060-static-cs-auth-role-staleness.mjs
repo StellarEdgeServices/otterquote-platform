@@ -137,6 +137,7 @@ function makeSandbox({ hasContractorRecord }) {
   sandbox.sb = {
     from: (table) => tableQuery(table),
     rpc: (_name, _args) => Promise.resolve({ data: { claimed: false }, error: null }),
+    auth: { signOut: async () => ({ error: null }) },
   };
   sandbox.window.sb = sandbox.sb;
 
@@ -268,6 +269,44 @@ async function main() {
       await sandbox.window.Auth.handleAuthCallback();
       assert.equal(localStorage.getItem('cs_auth_role'), null, 'cs_auth_role must be cleared after read');
       assert.equal(localStorage.getItem('cs_auth_role_at'), null, 'cs_auth_role_at must be cleared after read');
+    }
+  );
+
+  // Case 6 (gh-2060 round-4 hardening 2) — a FUTURE-dated cs_auth_role_at
+  // (negative age) used to pass the `<= TTL` check and be trusted forever.
+  await check(
+    'a future-dated cs_auth_role_at is treated as absent (negative age is not "fresh")',
+    async () => {
+      const { sandbox, localStorage, calls } = makeSandbox({ hasContractorRecord: false });
+      localStorage.setItem('cs_auth_role', 'contractor');
+      localStorage.setItem('cs_auth_role_at', String(Date.now() + 365 * 24 * 60 * 60 * 1000)); // +1y
+      localStorage.setItem('cs_signup', homeownerSignupData);
+
+      await sandbox.window.Auth.handleAuthCallback();
+      assert.notEqual(
+        calls.profileUpsert, null,
+        'a future-dated cs_auth_role_at was trusted as a fresh breadcrumb and suppressed the homeowner profile write'
+      );
+    }
+  );
+
+  // Case 7 (gh-2060 round-4 hardening 1) — sign-out must not leave an
+  // unconsumed breadcrumb (e.g. an abandoned magic-link request) behind for
+  // the next user of a shared browser.
+  await check(
+    'Auth.signOut() clears cs_auth_role and cs_auth_role_at from localStorage and sessionStorage',
+    async () => {
+      const { sandbox, localStorage, sessionStorage } = makeSandbox({ hasContractorRecord: false });
+      localStorage.setItem('cs_auth_role', 'contractor');
+      localStorage.setItem('cs_auth_role_at', String(Date.now()));
+      sessionStorage.setItem('cs_auth_role', 'contractor');
+      sessionStorage.setItem('cs_auth_role_at', String(Date.now()));
+
+      await sandbox.window.Auth.signOut();
+      assert.equal(localStorage.getItem('cs_auth_role'), null, 'localStorage cs_auth_role survived sign-out');
+      assert.equal(localStorage.getItem('cs_auth_role_at'), null, 'localStorage cs_auth_role_at survived sign-out');
+      assert.equal(sessionStorage.getItem('cs_auth_role'), null, 'sessionStorage cs_auth_role survived sign-out');
+      assert.equal(sessionStorage.getItem('cs_auth_role_at'), null, 'sessionStorage cs_auth_role_at survived sign-out');
     }
   );
 

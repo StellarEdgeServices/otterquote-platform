@@ -456,6 +456,10 @@
     const email = sentEmail.textContent;
     if (email) {
       try {
+        // gh-2060 round-4: a resend can come >24h after the first send; re-stamp
+        // the routing breadcrumb or the TTL has already expired it.
+        localStorage.setItem('cs_auth_role', 'contractor');
+        localStorage.setItem('cs_auth_role_at', String(Date.now()));
         await Auth.sendMagicLink(email, 'contractor', '/auth-callback.html');
         // D-244: canonical login-path copy, verbatim-locked.
         alert('If an account exists, we sent a link.');

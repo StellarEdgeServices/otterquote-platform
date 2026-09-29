@@ -1333,6 +1333,10 @@
             } catch (err) {
                 console.error('Google sign-in error:', err);
                 localStorage.removeItem(PENDING_SIGNUP_KEY);
+                // gh-2060 round-4 hardening 3: a failed Google attempt must not
+                // leave the cs_auth_role breadcrumb behind.
+                localStorage.removeItem('cs_auth_role');
+                localStorage.removeItem('cs_auth_role_at');
                 googleBtn.disabled = false;
                 googleBtn.innerHTML = GOOGLE_BTN_DEFAULT_HTML;
                 showFormAlert('Google sign-in failed. Please try again or use the form below.');
