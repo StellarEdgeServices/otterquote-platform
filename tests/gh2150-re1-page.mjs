@@ -422,7 +422,8 @@ const gaGateSrc = fs.readFileSync(path.join(repoRoot, 'js', 'ga-gate.js'), 'utf8
   const fEnd = html.indexOf('</footer>', fStart);
   const footerHtml = fStart !== -1 && fEnd !== -1 ? html.slice(fStart, fEnd) : '';
   const footerLinks = [...footerHtml.matchAll(/<a\s[^>]*href="([^"]+)"/g)].map((m) => m[1]);
-  ok(footerLinks.length === 3, '(1) S07: footer carries exactly 3 links, no link farm -- got ' + JSON.stringify(footerLinks));
+  // gh-1925 item 2 (Dustin ruling 5881048326): the CPRA opt-out link is a legally required 4th footer link; still no link farm.
+  ok(footerLinks.filter((l) => l !== '/privacy.html#do-not-sell-or-share').length === 3 && footerLinks.filter((l) => l === '/privacy.html#do-not-sell-or-share').length === 1, '(1) S07: footer carries exactly 3 links plus the CPRA opt-out link (gh-1925), no link farm -- got ' + JSON.stringify(footerLinks));
   ok(footerLinks.includes('/privacy.html'), '(1) S07: footer links include Privacy');
   ok(footerLinks.includes('/terms.html'), '(1) S07: footer links include Terms');
   ok(footerLinks.includes('/partner-agreement.html'), '(1) S07: footer links include Partner Agreement');
