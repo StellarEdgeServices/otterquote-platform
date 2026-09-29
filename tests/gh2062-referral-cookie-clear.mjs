@@ -110,7 +110,7 @@ function main() {
     const Referral = sandbox.window.OtterQuoteReferral;
     assert(typeof Referral === 'object', 'window.OtterQuoteReferral is defined');
 
-    Referral.write(PARTNER_A);
+    Referral.write(PARTNER_A, { click: true });
     const read1 = Referral.read();
     assert(read1.oq_referral_id === PARTNER_A.oq_referral_id, 'live referral: oq_referral_id round-trips');
     assert(read1.oq_referral_agent_id === PARTNER_A.oq_referral_agent_id, 'live referral: oq_referral_agent_id round-trips');
@@ -129,7 +129,7 @@ function main() {
     const sandbox = freshSandbox();
     const Referral = sandbox.window.OtterQuoteReferral;
 
-    Referral.write(PARTNER_A);
+    Referral.write(PARTNER_A, { click: true });
     assert(Referral.read().oq_referral_id === PARTNER_A.oq_referral_id, 'consumed-case setup: referral was live before the claim');
 
     // Simulates the claim writer (trade-selector.html) having just stamped

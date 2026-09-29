@@ -192,6 +192,22 @@ function main() {
     console.log('✓ PASS: gh-2060 POSITIVE CONTROL — fresh cs_auth_role_at still lets the partner override win');
   }
 
+  // gh-2060 round-4 hardening 2: a FUTURE-dated cs_auth_role_at (negative
+  // age) must not pass the `<= TTL` check -- treated as absent, JWT wins.
+  {
+    const dest = runBounce({
+      jwtRole: 'contractor',
+      csAuthRole: 'home_inspector',
+      csAuthRoleAt: String(Date.now() + 365 * 24 * 60 * 60 * 1000), // +1 year
+    });
+    assert.ok(
+      dest && dest.startsWith('/contractor-pre-approval.html'),
+      `future-dated cs_auth_role_at, JWT='contractor': expected the override to be ignored ` +
+      `(bounce to /contractor-pre-approval.html), got ${JSON.stringify(dest)}`
+    );
+    console.log('✓ PASS: gh-2060 future-dated cs_auth_role_at does not override the JWT');
+  }
+
   console.log('\n✓ All index.html bounce routing-outcome cases pass.');
   process.exit(0);
 }

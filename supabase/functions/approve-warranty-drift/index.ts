@@ -17,6 +17,7 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.104.0";
+import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 import { deprecatedWarrantyEmailText, deprecatedWarrantyEmailHtml } from "./templates.ts"; // gh-1824: email bodies moved to templates.ts (testable, no Deno.serve() import)
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -139,11 +140,14 @@ Deno.serve(async (req: Request) => {
             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
-        const { error: updateErr } = await sb
+        const { error: updateErr, data: updateRows } = await sb
           .from("warranty_options")
           .update(effectiveProposed)
-          .eq("id", drift.warranty_option_id);
+          .eq("id", drift.warranty_option_id)
+          .select("id");
         if (updateErr) throw new Error(`warranty_options update failed: ${updateErr.message}`);
+        // gh-2105: hard-fail via the existing catch (generic 500, no new user text).
+        if (!checkRowsWritten(updateRows).wroteRows) throw new Error(zeroRowWriteMessage("approve-warranty-drift", `warranty_options update for option ${drift.warranty_option_id}`));
         break;
       }
 
@@ -168,11 +172,16 @@ Deno.serve(async (req: Request) => {
             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
-        const { error: deactivateErr } = await sb
+        const { error: deactivateErr, data: deactivateRows } = await sb
           .from("warranty_options")
           .update({ active: false })
-          .eq("id", drift.warranty_option_id);
+          .eq("id", drift.warranty_option_id)
+          .select("id");
         if (deactivateErr) throw new Error(`warranty_options deactivate failed: ${deactivateErr.message}`);
+        // gh-2105: hard-fail via the existing catch (generic 500, no new user text);
+        // thrown BEFORE the contractor notification so nobody is told about a
+        // deprecation that was not written.
+        if (!checkRowsWritten(deactivateRows).wroteRows) throw new Error(zeroRowWriteMessage("approve-warranty-drift", `warranty_options.active=false for option ${drift.warranty_option_id}`));
 
         // Notify affected contractors
         await notifyDeprecatedContractors(sb, drift.warranty_option_id, drift.manufacturer, drift.tier);
@@ -182,11 +191,13 @@ Deno.serve(async (req: Request) => {
       case "no_source": {
         // Admin approved with no proposed changes — nothing to apply to warranty_options.
         // Mark as skipped instead of applied (no change was made).
-        await sb.from("warranty_manifest_drift").update({
+        const { data: skipRows } = await sb.from("warranty_manifest_drift").update({
           status: "skipped",
           reviewed_by: adminEmail,
           reviewed_at: now,
-        }).eq("id", driftId);
+        }).eq("id", driftId).select("id");
+        // gh-2105: hard-fail via the existing catch (generic 500, no new user text).
+        if (!checkRowsWritten(skipRows).wroteRows) throw new Error(zeroRowWriteMessage("approve-warranty-drift", `warranty_manifest_drift.status=skipped for drift ${driftId}`));
 
         await logActivity(sb, user.id, adminEmail, drift, "warranty_manifest_drift_skipped");
 
@@ -198,7 +209,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // ── Mark drift row as applied ─────────────────────────────────────────
-    const { error: markErr } = await sb
+    const { error: markErr, data: markRows } = await sb
       .from("warranty_manifest_drift")
       .update({
         status: "applied",
@@ -207,8 +218,11 @@ Deno.serve(async (req: Request) => {
         applied_at: now,
         ...(effectiveProposed ? { proposed_value: effectiveProposed } : {}),
       })
-      .eq("id", driftId);
+      .eq("id", driftId)
+      .select("id");
     if (markErr) throw new Error(`Failed to mark drift row applied: ${markErr.message}`);
+    // gh-2105: hard-fail via the existing catch (generic 500, no new user text).
+    if (!checkRowsWritten(markRows).wroteRows) throw new Error(zeroRowWriteMessage("approve-warranty-drift", `warranty_manifest_drift.status=applied for drift ${driftId}`));
 
     // ── Log activity ──────────────────────────────────────────────────────
     await logActivity(sb, user.id, adminEmail, drift, "warranty_manifest_drift_applied");
