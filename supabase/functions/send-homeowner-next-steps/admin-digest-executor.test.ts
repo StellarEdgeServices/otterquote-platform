@@ -30,6 +30,7 @@ import {
   selectDigestCandidates,
 } from "./admin-digest-executor.ts";
 import { ADMIN_DIGEST_EMAIL, ADMIN_DIGEST_NOTIFICATION_TYPE } from "./admin-digest.ts";
+import { CHECKLIST_COMPLETE_STAGE } from "./checklist-complete-stage.ts";
 
 const NOW = Date.parse("2026-09-15T12:00:00.000Z");
 const SITE_URL = "https://otterquote.com";
@@ -79,8 +80,9 @@ function fakes(opts: {
 
 // ─── isDigestCandidate (D1/D3) ──────────────────────────────────────────────
 
-Deno.test("isDigestCandidate: only '48h' is a digest candidate", () => {
+Deno.test("isDigestCandidate: '48h' and gh-1570 Part 2's checklist_complete_not_submitted are digest candidates; '2h' is not", () => {
   assertEquals(isDigestCandidate("48h"), true);
+  assertEquals(isDigestCandidate("checklist_complete_not_submitted"), true);
   assertEquals(isDigestCandidate("2h"), false);
   assertEquals(isDigestCandidate(null), false);
 });
@@ -96,12 +98,46 @@ Deno.test("selectDigestCandidates: filters a mixed '2h'/'48h' list down to '48h'
   assertEquals(out.map((c) => c.claimId), ["forty-eight-hour"]);
 });
 
+Deno.test("selectDigestCandidates: gh-1570 Part 2 — a mixed '2h'/'48h'/checklist_complete_not_submitted list keeps the latter two", () => {
+  const screened: ScreenedCandidate[] = [
+    candidate({ claimId: "two-hour", stage: "2h" }),
+    candidate({ claimId: "forty-eight-hour", stage: "48h" }),
+    candidate({ claimId: "checklist-complete", stage: "checklist_complete_not_submitted" }),
+  ];
+  const out = selectDigestCandidates(screened);
+  assertEquals(out.map((c) => c.claimId).sort(), ["checklist-complete", "forty-eight-hour"]);
+});
+
 Deno.test("selectDigestCandidates: strips the stage field — output shape has no 'stage'", () => {
   const out = selectDigestCandidates([candidate({ stage: "48h" })]);
   assertEquals(out, [
-    { claimId: "claim-1", userId: "user-1", email: "nick@example.com", createdAtIso: "2026-09-12T12:00:00.000Z" },
+    {
+      claimId: "claim-1",
+      userId: "user-1",
+      email: "nick@example.com",
+      createdAtIso: "2026-09-12T12:00:00.000Z",
+      isChecklistCompleteStage: false,
+    },
   ]);
   assertEquals(Object.hasOwn(out[0], "stage"), false);
+});
+
+Deno.test("selectDigestCandidates: a checklist_complete_not_submitted candidate is flagged isChecklistCompleteStage — gh-2219 / REVIEW: FAIL M2", () => {
+  const out = selectDigestCandidates([candidate({ stage: CHECKLIST_COMPLETE_STAGE })]);
+  assertEquals(out.length, 1);
+  assertEquals(out[0].isChecklistCompleteStage, true);
+});
+
+Deno.test("selectDigestCandidates: carries checklistCompletedAtIso through for a checklist_complete_not_submitted candidate — gh-2219 / REVIEW: FAIL 5849873052 M1", () => {
+  const out = selectDigestCandidates([
+    candidate({ stage: CHECKLIST_COMPLETE_STAGE, checklistCompletedAtIso: "2026-09-15T09:00:00.000Z" }),
+  ]);
+  assertEquals(out[0].checklistCompletedAtIso, "2026-09-15T09:00:00.000Z");
+});
+
+Deno.test("selectDigestCandidates: a '48h' candidate's output has no checklistCompletedAtIso key at all", () => {
+  const out = selectDigestCandidates([candidate({ stage: "48h" })]);
+  assertEquals(Object.hasOwn(out[0], "checklistCompletedAtIso"), false);
 });
 
 Deno.test("selectDigestCandidates: an all-'2h' list yields nothing", () => {

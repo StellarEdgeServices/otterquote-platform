@@ -176,7 +176,38 @@ export async function clearStrandedEnvelopePointer(
   };
 }
 
-const LIST_STATUSES = ["Draft", "InProgress", "Completed", "Declined", "Revoked", "Expired"];
+// gh-1842 (comment 5869362477/5869347983): "InProgress" is NOT a valid value
+// for this endpoint's Status filter -- BoldSign's List Documents API rejects
+// it with 400 "The value 'InProgress' is not valid.", confirmed live via 3
+// direct read-only calls, 2026-09-28. Because documentIsListed() below aborts
+// its ENTIRE absence probe (all statuses) on the first non-OK page, that one
+// invalid value made isPermanentCreationFailure unreachable in production on
+// both the mint and resume paths -- every probe died at this entry before
+// ever reaching Completed/Declined/Revoked/Expired.
+//
+// This is the full documented Status enum for the List Documents endpoint
+// (https://developers.boldsign.com/documents/list-documents/, "Query
+// parameters" -> Status, fetched 2026-09-28): "You can set None if you don't
+// want to filter based on the document status. Other values are
+// WaitingForMe, WaitingForOthers, NeedAttention, Completed, Declined,
+// Revoked, Expired, Scheduled, and Draft." `None` is excluded here -- it
+// means "don't filter," not a document state, so looping over it would just
+// re-fetch the unfiltered list N times. `WaitingForOthers` is the in-flight
+// value this probe actually needs (BoldSign's replacement for the invalid
+// "InProgress" this array used to carry). LIST_STATUSES is pinned against
+// this exact enum by a contract test in boldsign-readiness.test.ts -- a
+// status string outside it fails that test.
+export const LIST_STATUSES = [
+  "Draft",
+  "WaitingForMe",
+  "WaitingForOthers",
+  "NeedAttention",
+  "Completed",
+  "Declined",
+  "Revoked",
+  "Expired",
+  "Scheduled",
+];
 
 async function documentIsListed(
   documentId: string,

@@ -34,7 +34,7 @@
   <script src="/js/ga-gate.js"></script>
   <script>gtag('config','G-D1Y1TLGEFY');</script>
 <!-- Microsoft Clarity (wwr7qlk8g5) is loaded by /js/ga-gate.js, behind the same production-host gate as GA4 (gh-1619). Do not add a per-page loader. -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js" integrity="sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.js" integrity="sha384-iLddHTLokph6Omwoyid4XKxHaWa6w41BnoEj0q5oOrzmYPpHIKt1wyjReA7s//pP" crossorigin="anonymous"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/design-system.css">
@@ -2113,6 +2113,13 @@
     }
 
     // ── Send nudge to contractor + Dustin when homeowner hasn't heard back ──
+    //
+    // gh-1916 RETURNED 5856782745 (Marty, CTO RUN 44) / D-328: consent
+    // enforcement moved SERVER-SIDE. get-contractor-info no longer returns a
+    // contractor's phone number or consent metadata to the browser, so this
+    // no longer builds the message or collects phones client-side — it just
+    // asks send-contractor-nudge to do it, and that function looks up
+    // sms_opt_in itself and refuses (+logs) before ever calling Twilio.
     async function sendContractorNudge() {
       const btn = document.getElementById('noContactBtn');
       const statusEl = document.getElementById('nudgeStatus');
@@ -2120,40 +2127,13 @@
       btn.textContent = 'Sending…';
 
       const c = state.contractor;
-      const cl = state.claim;
       const contractorName = c?.company_name || c?.name || 'your contractor';
-      const homeownerName = cl?.homeowner_name || 'your homeowner';
-      const address = cl?.property_address || 'their property';
-      const signedDate = cl?.contract_signed_at
-        ? new Date(cl.contract_signed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-        : 'recently';
-
-      // Collect all contractor phone numbers
-      const phones = [];
-      if (Array.isArray(c?.notification_phones) && c.notification_phones.length) {
-        phones.push(...c.notification_phones.filter(Boolean));
-      }
-      if (c?.phone && !phones.includes(c.phone)) {
-        phones.push(c.phone);
-      }
-
-      const contractorMsg = `Otter Quotes: Hi ${contractorName} — your homeowner ${homeownerName} (${address}) signed their contract on ${signedDate} and hasn't heard from you yet. Please reach out as soon as possible. Questions? Call (317) 501-9215.`;
-      const dustinMsg = `Otter Quotes Alert: ${homeownerName} (claim ${state.claimId || 'unknown'}) says they haven't heard from ${contractorName} since signing on ${signedDate}. Heads up.`;
-
-      // gh-1916 R-134 gate: never text the contractor's phone without a stored opt-in.
-      if (c?.sms_opt_in !== true) {
-        console.warn(`[contract-signing] SMS refused (gh-1916 R-134 gate) — sms_opt_in is not true for contractor ${c?.id ?? '(unknown)'} (value=${String(c?.sms_opt_in)}). ${phones.length} phone(s) suppressed. No Twilio call attempted.`);
-        phones.length = 0;
-      }
-
-      const sends = phones.map(phone =>
-        sb.functions.invoke('send-sms', { body: { to: phone, message: contractorMsg } })
-      );
-      // Always notify Dustin
-      sends.push(sb.functions.invoke('send-sms', { body: { to: '+13175019215', message: dustinMsg } }));
 
       try {
-        await Promise.all(sends);
+        const { error } = await sb.functions.invoke('send-contractor-nudge', {
+          body: { claim_id: state.claimId, contractor_id: state.contractorId },
+        });
+        if (error) throw error;
         btn.textContent = '✓ Message sent';
         statusEl.textContent = `We've notified ${contractorName} and our team. You should hear back soon.`;
         statusEl.style.color = 'var(--emerald, #10b981)';

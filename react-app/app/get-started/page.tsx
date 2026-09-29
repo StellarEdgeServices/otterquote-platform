@@ -1060,6 +1060,7 @@ export default function GetStartedPage() {
 
     // 5. Store intended role for post-auth routing
     localStorage.setItem('cs_auth_role', 'homeowner');
+    localStorage.setItem('cs_auth_role_at', String(Date.now()));
   };
 
   /**

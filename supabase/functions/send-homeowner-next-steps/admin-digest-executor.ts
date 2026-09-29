@@ -30,6 +30,11 @@
 // D2), and the two actual I/O calls (send the email, write the dedup rows).
 
 import type { NudgeStage } from "./select-stage.ts";
+import { CHECKLIST_COMPLETE_STAGE } from "./checklist-complete-stage.ts";
+
+/** A screened claim's stage may be one of the '2h'/'48h' age-ladder rungs, or
+ * gh-1570 Part 2's independent `checklist_complete_not_submitted` stage. */
+export type DigestableStage = NudgeStage | typeof CHECKLIST_COMPLETE_STAGE;
 import {
   ADMIN_DIGEST_EMAIL,
   ADMIN_DIGEST_NOTIFICATION_TYPE,
@@ -70,17 +75,25 @@ import {
  * per-claim loop failed (so a same-UTC-day retry could otherwise re-surface
  * it) — it is not, and must not be read as, a daily-recurrence mechanism.
  */
-export function isDigestCandidate(stage: NudgeStage | null): boolean {
-  return stage === "48h";
+// gh-1570 Part 2 (issue #1570, comment 5764786813): "inclusion in the admin
+// digest regardless of activity" for the new `checklist_complete_not_submitted`
+// stage — added to this predicate alongside the pre-existing '48h' rule
+// rather than replacing it. Unlike '48h', this new stage is NOT reached via
+// select-stage.ts's real-activity screen (see checklist-complete-stage.ts's
+// file header for why), so its presence here does not change anything about
+// the '48h' analysis in the comment above this function.
+export function isDigestCandidate(stage: DigestableStage | null): boolean {
+  return stage === "48h" || stage === CHECKLIST_COMPLETE_STAGE;
 }
 
 /** A screened claim as index.ts's per-claim loop produces it, BEFORE the
  * digest filter is applied — every claim that reached the point of having a
- * resolved homeowner email, carrying whichever stage selectStage() picked
- * for it ('2h' or '48h'). Round 2: index.ts pushes ALL of these
+ * resolved homeowner email, carrying whichever stage was selected for it
+ * ('2h' / '48h' from select-stage.ts, or gh-1570 Part 2's
+ * `checklist_complete_not_submitted`). Round 2: index.ts pushes ALL of these
  * unconditionally; this file decides which ones become digest candidates. */
 export interface ScreenedCandidate extends StalledCandidate {
-  stage: NudgeStage;
+  stage: DigestableStage;
 }
 
 /**
@@ -105,6 +118,19 @@ export function selectDigestCandidates(screened: ScreenedCandidate[]): StalledCa
       userId: c.userId,
       email: c.email,
       createdAtIso: c.createdAtIso,
+      // gh-2219 (PR #2219 REVIEW: FAIL M2) — carried through so
+      // ./admin-digest.ts's buildAdminDigestEmail can give this row its own
+      // line instead of the '48h' stalled/no-activity sentence, which is
+      // false for it. See that file's StalledCandidate doc.
+      isChecklistCompleteStage: c.stage === CHECKLIST_COMPLETE_STAGE,
+      // gh-2219 REVIEW: FAIL 5849873052 M1 — carried through (spread only
+      // when present) so the digest's "checklist complete Nd ago" age is
+      // measured from checklist completion, not claim creation. Conditional
+      // spread rather than an unconditional `checklistCompletedAtIso:
+      // c.checklistCompletedAtIso` so a '48h' candidate's output keeps the
+      // exact shape existing callers/tests assert (no key with an
+      // `undefined` value).
+      ...(c.checklistCompletedAtIso ? { checklistCompletedAtIso: c.checklistCompletedAtIso } : {}),
     }));
 }
 
