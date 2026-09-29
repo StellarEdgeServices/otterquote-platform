@@ -1,0 +1,48 @@
+name: Static /start oq_router_lead_id Tests
+
+# gh-2060 (Q 5881020422 item 6) -- real-Chromium stale-state harness for sessionStorage.oq_router_lead_id in start.html,
+# incl. its in-process negative controls. `pull_request` only, no secrets, read-only token, path-filtered.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'start.html'
+      - 'js/config.js'
+      - 'js/router-*.js'
+      - 'tests/gh2060-oq-router-lead-id-stale.mjs'
+      - 'tests/fixtures/gh2060-storage-surface-ledger.json'
+      - '.github/workflows/static-start-lead-id-tests.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-start-lead-id-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  lead-id-chromium:
+    name: oq_router_lead_id stale-state harness, real Chromium
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Install e2e dependencies
+        working-directory: tests/e2e
+        run: npm ci
+      - name: Install Chromium
+        working-directory: tests/e2e
+        run: npx playwright install --with-deps chromium
+      - name: oq_router_lead_id stale-state harness + negative controls (gh2060-oq-router-lead-id-stale)
+        run: node tests/gh2060-oq-router-lead-id-stale.mjs
+      - name: storage-surface ledger (citations resolve)
+        run: node tests/gh2060-storage-surface-ledger.mjs
