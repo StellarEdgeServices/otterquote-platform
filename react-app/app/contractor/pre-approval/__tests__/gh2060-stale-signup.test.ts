@@ -8,15 +8,14 @@
  * on a shared browser by ANOTHER person therefore seeds a stranger's company
  * name / contact / phone into the next brand-new contractor's row.
  *
- * KNOWN GAP (Q on #2060): the RECOMMENDED DEFAULT (ignore a blob whose email
- * does not match the signed-in user) is encoded below with `it.fails` -- it
- * passes while the gap exists and turns red when the fix lands (flip to `it`).
- * Not implemented here because a contractor who signs up with one email and
- * authenticates with a different Google account would lose their signup data
- * -- a product call, not a test-coverage call.
+ * CLOSED by gh-2340 / PR #2343: the page now reads the blob through
+ * readOwnedContractorSignup(), which ignores (and clears) a blob whose email
+ * does not match the signed-in user or whose `_at` stamp is missing/stale. The
+ * former `it.fails` known-gap test is now a normal `it` asserting that.
  */
 import { beforeEach, describe, expect, it } from 'vitest';
 import { seedStaleStorage } from '@/test/storage-fixtures';
+import { readOwnedContractorSignup } from '@/lib/contractor-signup-owner';
 import { buildInitialContractorInsert, parseSignup } from '../utils';
 
 const STRANGER_BLOB = JSON.stringify({
@@ -24,6 +23,7 @@ const STRANGER_BLOB = JSON.stringify({
   company_name: 'Stranger Roofing LLC',
   contact_name: 'Sam Stranger',
   phone: '555-0100',
+  _at: Date.now(),
 });
 
 describe('cs_contractor_signup -- stale blob on a shared browser (pre-approval)', () => {
@@ -53,9 +53,12 @@ describe('cs_contractor_signup -- stale blob on a shared browser (pre-approval)'
     expect(buildInitialContractorInsert('u1', 'me@example.com', signup)).toMatchObject({ company_name: 'My Roofing' });
   });
 
-  it.fails('KNOWN GAP: a blob left by ANOTHER person (different email) is not used to build this user\'s row', () => {
+  it('a blob left by ANOTHER person (different email) is not used to build this user\'s row', () => {
     seedStaleStorage({ localStorage: { cs_contractor_signup: STRANGER_BLOB } });
-    const signup = parseSignup(localStorage.getItem('cs_contractor_signup'));
+    const owned = readOwnedContractorSignup('homeowner-turned-contractor@example.com');
+    expect(owned).toBeNull();
+    expect(localStorage.getItem('cs_contractor_signup')).toBeNull();
+    const signup = parseSignup(owned ? JSON.stringify(owned) : null);
     const row = buildInitialContractorInsert('u-new', 'homeowner-turned-contractor@example.com', signup);
     expect(row.company_name).toBe('');
     expect(row.contact_name).toBe('');

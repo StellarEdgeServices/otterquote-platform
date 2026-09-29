@@ -14,7 +14,7 @@
  *   utm_params (landing.html)
  *   oq_variant_v3 (11 static readers, getOqVariant)
  *   oq_ft (js/auth.js recordFirstTouchAttribution)
- *   cs_contractor_signup (js/auth.js handleAuthCallback)      [KNOWN GAP]
+ *   cs_contractor_signup (js/auth.js handleAuthCallback)      [CLOSED by gh-2340]
  *   cs_recruit_code (11 partner/funnel pages, detectRecruitCode) [KNOWN GAP]
  *   oq_cpa_redirect_guard (5 guard pages + dashboard clear)
  *
@@ -292,7 +292,7 @@ for (const page of variantPages) {
 }
 
 // ---------------------------------------------------------------------------
-// cs_contractor_signup -- js/auth.js handleAuthCallback() (KNOWN GAP)
+// cs_contractor_signup -- js/auth.js handleAuthCallback() (CLOSED by gh-2340 / PR #2343)
 // ---------------------------------------------------------------------------
 {
   const authSrc = read('js/auth.js');
@@ -321,10 +321,11 @@ for (const page of variantPages) {
     sandbox.window.sb = sandbox.sb;
     vm.createContext(sandbox);
     vm.runInContext(authSrc, sandbox, { filename: 'js/auth.js' });
-    sandbox.window.Auth.getUser = async () => ({ id: 'user-gh2060', email: userEmail });
+    sandbox.window.Auth.getUser = async () => ({ id: 'user-gh2060', email: userEmail, created_at: new Date().toISOString() });
     return { sandbox, localStorage, calls };
   };
-  const blob = (email) => ({ email, company_name: 'Stranger Roofing', contact_name: 'Sam Stranger', phone: '555-0100' });
+  // gh-2340: a blob is honoured only with a matching email AND a fresh `_at` (js/auth.js getOwnedContractorSignup).
+  const blob = (email) => ({ email, company_name: 'Stranger Roofing', contact_name: 'Sam Stranger', phone: '555-0100', _at: Date.now() });
 
   await check('POSITIVE CONTROL: a signup blob for THIS user\'s own email creates the contractor row, promotes the role, and is cleared', async () => {
     const { sandbox, localStorage, calls } = run({ blob: blob('me@example.com'), userEmail: 'me@example.com' });
@@ -334,7 +335,7 @@ for (const page of variantPages) {
     assert.equal(localStorage.getItem('cs_contractor_signup'), null, 'blob must be cleared after use');
   });
 
-  await knownGap('a stale cs_contractor_signup left by ANOTHER person (different email) does not create a contractor row or promote the signed-in user\'s role', async () => {
+  await check('a stale cs_contractor_signup left by ANOTHER person (different email) does not create a contractor row or promote the signed-in user\'s role', async () => {
     const { sandbox, calls } = run({ blob: blob('stranger@example.com'), userEmail: 'homeowner@example.com' });
     await sandbox.window.Auth.handleAuthCallback();
     assert.ok(calls.contractorInsert === null, 'a stranger\'s company data was inserted as this user\'s contractor row');

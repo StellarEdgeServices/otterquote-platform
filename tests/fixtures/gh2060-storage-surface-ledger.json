@@ -64,17 +64,37 @@
     },
     {
       "key": "cs_contractor_signup",
+      "also": [
+        "cs_contractor_signup_at",
+        "cs_contractor_signup_session"
+      ],
       "stack": "react+static",
-      "status": "known-gap",
-      "reason": "Blob has an email but no reader compares it to the signed-in user; ungated on the static side (js/auth.js handleAuthCallback promotes profiles.role and inserts a contractors row from it). Recommended default: ignore a blob whose email differs from the signed-in user's.",
+      "status": "tested",
+      "reason": "CLOSED by gh-2340 / PR #2343. Writer contractor-join.html stamps `_at` in the blob, cs_contractor_signup_at, and a per-tab sessionStorage cs_contractor_signup_session marker. Readers (js/auth.js getOwnedContractorSignup + _contractorSignupRoleGuardOk; react-app/app/lib/contractor-signup-owner.ts) honour the blob only for the same email, a fresh (<24h, non-future) stamp, and, for a pre-existing non-contractor account, the same-session marker. The _at and _session keys are read, not write-only.",
       "tests": [
         {
           "file": "tests/gh2060-static-surfaces-staleness.mjs",
           "contains": "a stale cs_contractor_signup left by ANOTHER person"
         },
         {
+          "file": "tests/gh2340-contractor-signup-owner.mjs",
+          "contains": "FOREIGN blob (different email, fresh stamp)"
+        },
+        {
+          "file": "tests/gh2340-contractor-signup-owner.mjs",
+          "contains": "STALE stamp (>24h) for the SAME email"
+        },
+        {
+          "file": "tests/gh2340-contractor-signup-owner.mjs",
+          "contains": "NO same-session signup action"
+        },
+        {
+          "file": "react-app/app/lib/__tests__/contractor-signup-owner.test.ts",
+          "contains": "accepts the stamp from the cs_contractor_signup_at key"
+        },
+        {
           "file": "react-app/app/contractor/pre-approval/__tests__/gh2060-stale-signup.test.ts",
-          "contains": "KNOWN GAP: a blob left by ANOTHER person"
+          "contains": "a blob left by ANOTHER person"
         }
       ]
     },
