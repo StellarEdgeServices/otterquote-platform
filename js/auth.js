@@ -1443,8 +1443,10 @@ Log in to the admin panel to review and approve this contractor.`;
         // #567: keep the id under a claim-scoped key so the claim writer
         // (trade-selector) can stamp claims.referral_id, then clear the
         // advance-scoped keys so this block never re-runs.
-        localStorage.setItem('oq_referral_id_for_claim', referralId);
-        // gh-2062: only re-arm the cookie's 90-day clock on a successful
+        // gh-2062: the claim-scoped copy lives under the same 30-day click
+        // clock as the cookie (no click time on record => nothing written).
+        if (window.OtterQuoteReferral) window.OtterQuoteReferral.writeClaimId(referralId);
+        // gh-2062: only re-arm the cookie's 30-day clock on a successful
         // advance. A failed RPC call is not a reason to extend the life of
         // an id we were just told is not advanceable — the cookie keeps
         // whatever TTL it already had instead of restarting the clock.

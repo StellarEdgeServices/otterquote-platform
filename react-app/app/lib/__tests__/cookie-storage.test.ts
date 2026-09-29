@@ -281,7 +281,7 @@ describe('writeReferralIds — gh-2060 stale-state contamination (negative contr
     writeReferralIds({
       oq_referral_id: 'REFERRAL-NEW',
       oq_referral_code: 'CODE-NEW',
-    });
+    }, { click: true }); // gh-2062: a new referral event is a fresh partner-link click
 
     const ids = readReferralIds();
     expect(ids.oq_referral_id).toBe('REFERRAL-NEW');
@@ -300,7 +300,7 @@ describe('writeReferralIds — gh-2060 stale-state contamination (negative contr
       oq_referral_id: 'REFERRAL-1',
       oq_referral_agent_id: 'AGENT-1',
       oq_referral_code: 'CODE-1',
-    });
+    }, { click: true }); // gh-2062: models a fresh partner-link click
     const ids = readReferralIds();
     expect(ids.oq_referral_id).toBe('REFERRAL-1');
     expect(ids.oq_referral_agent_id).toBe('AGENT-1');
