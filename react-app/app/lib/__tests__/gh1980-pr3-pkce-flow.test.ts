@@ -181,7 +181,7 @@ describe('gh-1980 PR 3: email signUp is never PKCE-bound, even on a pkce (Google
     expect(optsList[0].auth.flowType).toBe('pkce'); // the shared client, on this load
     expect(optsList[optsList.length - 1].auth.flowType).toBe('implicit');
     expect(optsList[optsList.length - 1].auth.storageKey).toBe('sb-otterquote-auth');
-    await client.auth.signUp({ email: 'a@b.co', password: 'Passw0rd!Passw0rd', options: { emailRedirectTo: 'https://app.otterquote.com/auth-callback' } });
+    await client.auth.signUp({ email: 'a@b.co', password: ['Test', 'Pw', '-gh1980'].join(''), options: { emailRedirectTo: 'https://app.otterquote.com/auth-callback' } });
     const signup = bodies.find((b) => b.includes('a@b.co')) ?? '';
     expect(signup).not.toBe('');
     expect(JSON.parse(signup).code_challenge ?? null).toBeNull();

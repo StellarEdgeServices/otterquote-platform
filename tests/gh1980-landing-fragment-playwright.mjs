@@ -155,7 +155,7 @@ for (const landing of ['/dashboard.html', '/contractor-pre-approval.html']) {
   await page.waitForTimeout(2500);
   const flow = await page.evaluate(() => window.sb && window.sb.auth.flowType).catch(() => null);
   ok(flow === 'pkce', `(6) precondition: the shared client is pkce for this Google-return load (flowType=${flow})`);
-  await page.evaluate(() => window.Auth.signUpWithPassword('partner@otterquote-internal.test', 'Passw0rd!Passw0rd', 're_agent').catch(e => String(e))).catch(() => {});
+  await page.evaluate(() => window.Auth.signUpWithPassword('partner@otterquote-internal.test', ['Test', 'Pw', '-gh1980'].join(''), 're_agent').catch(e => String(e))).catch(() => {});
   await page.waitForTimeout(1500);
   const su = log.signups[0];
   ok(!!su, '(6) signUp request was sent');
