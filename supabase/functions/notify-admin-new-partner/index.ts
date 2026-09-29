@@ -45,9 +45,11 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { appendPostalFooterHtml, appendPostalFooterText } from "./footer-append.ts"; // gh-1824 D-237
+import { ADMIN_PORTAL_URL, buildEmailHtml, partnerSignupText } from "./templates.ts"; // gh-1824 email bodies (pinned by templates.test.ts)
+export { ADMIN_PORTAL_URL };
 
 export const ADMIN_EMAIL       = "dustinstohler1@gmail.com";
-export const ADMIN_PORTAL_URL  = "https://otterquote.com/admin-referrals.html";
 export const NOTIFICATION_TYPE = "admin_new_partner_alert";
 
 // CORS — origin-allowlisted per project standard (Session 254), matching
@@ -93,15 +95,6 @@ export function isTestAccount(email: string): boolean {
  */
 export function isInternalTestDomain(email: string): boolean {
   return (email || "").toLowerCase().endsWith("@otterquote-internal.test");
-}
-
-function escapeHtml(str: string): string {
-  return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
 }
 
 /**
@@ -152,110 +145,6 @@ export interface PartnerDeps {
   mailgunDomain: string;
   supabase: PartnerSupabase;
   fetchImpl: typeof fetch;
-}
-
-function buildEmailHtml(
-  isTest: boolean,
-  fullName: string,
-  agentType: string,
-  email: string,
-  company: string,
-  funnelId: string,
-  fbclidPresent: boolean,
-  signupTs: string,
-): string {
-  const testBanner = isTest
-    ? `<tr><td style="background:#FEF3C7;color:#92400E;padding:8px 24px;font-family:sans-serif;font-size:13px;font-weight:600;">TEST SIGNUP — not a real partner lead</td></tr>`
-    : "";
-  return `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-</head>
-<body style="margin:0;padding:0;background:#F1F5F9;">
-<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F1F5F9;">
-  <tr>
-    <td align="center" style="padding:24px 16px;">
-      <table width="100%" cellpadding="0" cellspacing="0" border="0"
-             style="max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
-        <!-- Header -->
-        <tr>
-          <td style="background:#0B1929;padding:20px 24px;">
-            <h2 style="color:#F59E0B;margin:0;font-size:1.1rem;font-family:sans-serif;">
-              🦦 New Partner Signup
-            </h2>
-          </td>
-        </tr>
-        ${testBanner}
-        <!-- Body -->
-        <tr>
-          <td style="padding:24px;font-family:sans-serif;color:#0B1929;">
-            <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">
-              A new partner has signed up.
-            </p>
-            <table width="100%" cellpadding="0" cellspacing="0" border="0"
-                   style="border-collapse:collapse;font-size:14px;margin-bottom:24px;">
-              <tr>
-                <td style="padding:8px 0;color:#64748B;width:130px;vertical-align:top;">Name</td>
-                <td style="padding:8px 0;font-weight:600;">${escapeHtml(fullName)}</td>
-              </tr>
-              <tr>
-                <td style="padding:8px 0;color:#64748B;vertical-align:top;">Agent type</td>
-                <td style="padding:8px 0;">${escapeHtml(agentType)}</td>
-              </tr>
-              <tr>
-                <td style="padding:8px 0;color:#64748B;vertical-align:top;">Email</td>
-                <td style="padding:8px 0;">
-                  <a href="mailto:${escapeHtml(email)}" style="color:#0369A1;">${escapeHtml(email)}</a>
-                </td>
-              </tr>
-              <tr>
-                <td style="padding:8px 0;color:#64748B;vertical-align:top;">Company</td>
-                <td style="padding:8px 0;">${escapeHtml(company)}</td>
-              </tr>
-              <tr>
-                <td style="padding:8px 0;color:#64748B;vertical-align:top;">Funnel</td>
-                <td style="padding:8px 0;">${escapeHtml(funnelId)}</td>
-              </tr>
-              <tr>
-                <td style="padding:8px 0;color:#64748B;vertical-align:top;">fbclid</td>
-                <td style="padding:8px 0;">${fbclidPresent ? "present" : "not present"}</td>
-              </tr>
-              <tr>
-                <td style="padding:8px 0;color:#64748B;vertical-align:top;">Signed up</td>
-                <td style="padding:8px 0;">${escapeHtml(signupTs)} CT</td>
-              </tr>
-            </table>
-            <table cellpadding="0" cellspacing="0" border="0">
-              <tr>
-                <td align="center" bgcolor="#F59E0B" style="border-radius:8px;">
-                  <a href="${ADMIN_PORTAL_URL}"
-                     style="display:inline-block;font-family:sans-serif;font-size:15px;font-weight:700;
-                            color:#0B1929;text-decoration:none;padding:12px 24px;">
-                    Review in Admin Portal &rarr;
-                  </a>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <!-- Footer -->
-        <tr>
-          <td align="center"
-              style="background:#F8FAFC;border-top:1px solid #E2E8F0;padding:16px;
-                     font-family:sans-serif;font-size:12px;color:#94A3B8;">
-            Otter Quotes &nbsp;|&nbsp;
-            <a href="mailto:support@otterquote.com" style="color:#0EA5E9;text-decoration:none;">support@otterquote.com</a>
-          </td>
-        </tr>
-      </table>
-    </td>
-  </tr>
-</table>
-</body>
-</html>`.trim();
 }
 
 // =============================================================================
@@ -379,22 +268,7 @@ export async function handleNotifyAdminNewPartner(req: Request, deps: PartnerDep
     const subject  = stripHeaderInjection(
       `${subjectPrefix}🦦 New Partner Signup — ${fullName} (${agentType})`,
     );
-    const textBody = [
-      isTest ? `TEST SIGNUP — not a real partner lead.` : null,
-      isTest ? `` : null,
-      `New partner signup on Otter Quotes.`,
-      ``,
-      `Name     : ${fullName}`,
-      `Type     : ${agentType}`,
-      `Email    : ${email}`,
-      `Company  : ${company}`,
-      `Funnel   : ${funnelId}`,
-      `fbclid   : ${fbclidPresent ? "present" : "not present"}`,
-      `Signed up: ${signupTs} CT`,
-      ``,
-      `Review in admin portal:`,
-      ADMIN_PORTAL_URL,
-    ].filter((l) => l !== null).join("\n");
+    const textBody = partnerSignupText(isTest, fullName, agentType, email, company, funnelId, fbclidPresent, signupTs);
 
     const htmlBody = buildEmailHtml(isTest, fullName, agentType, email, company, funnelId, fbclidPresent, signupTs);
 
@@ -402,8 +276,8 @@ export async function handleNotifyAdminNewPartner(req: Request, deps: PartnerDep
     formData.append("from",    `Otter Quotes <notifications@${deps.mailgunDomain}>`);
     formData.append("to",      ADMIN_EMAIL);
     formData.append("subject", subject);
-    formData.append("text",    textBody);
-    formData.append("html",    htmlBody);
+    formData.append("text",    appendPostalFooterText(textBody));
+    formData.append("html",    appendPostalFooterHtml(htmlBody));
 
     const mgRes = await deps.fetchImpl(
       `https://api.mailgun.net/v3/${deps.mailgunDomain}/messages`,
