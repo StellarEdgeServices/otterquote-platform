@@ -1633,10 +1633,6 @@
                 // own name/company/referral link the moment we have a code.
                 if (finalCode) { showHandoutLink(buildHandoutUrl(firstName, company, phone, email, finalCode)); }
 
-                localStorage.setItem('cs_partner_signup', JSON.stringify({
-                    email: email,
-                    unique_code: finalCode,
-                }));
                 localStorage.setItem('cs_auth_role', agentType);
                 localStorage.setItem('cs_auth_role_at', String(Date.now()));
 

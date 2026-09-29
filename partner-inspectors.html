@@ -1308,11 +1308,6 @@ async function handleSignup(e) {
       seoRefLink.href = `${CONFIG.SITE_URL}/ref-inspector.html?code=${finalCode}`;
     }
 
-    // Store data for post-auth user_id linking
-    localStorage.setItem('cs_partner_signup', JSON.stringify({
-      email: email,
-      unique_code: finalCode,
-    }));
     localStorage.setItem('cs_auth_role', agentType);
     localStorage.setItem('cs_auth_role_at', String(Date.now()));
 

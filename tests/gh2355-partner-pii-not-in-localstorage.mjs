@@ -41,5 +41,28 @@ ok(/TTL_MS = 24 \* 60 \* 60 \* 1000/.test(lib), 'js/partner-registration.js: 24h
 let hits = '';
 try { hits = execSync("git grep -n \"localStorage.setItem('" + K + "'\" -- . \":!tests\"", { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); } catch (e) { hits = ''; /* git grep exit 1 = no match */ }
 ok(hits === '', 'repo-wide: no localStorage.setItem of the marker outside tests -- ' + JSON.stringify(hits));
+// Generic scan (gh-2355 review must-fix 1(i)): NO localStorage.setItem on any partner signup page (or the dashboard)
+// may write a value carrying name / email / phone / company keys, whatever the storage key is called.
+// TEMPORARY allow-list (removed in step B once the parallel work on these three pages lands): the dead cs_partner_signup {email} write.
+const TEMP_ALLOW = new Set(['re-1.html', 'ins-1.html', 'hi-1.html']);
+const PII_KEYS = /\b(email|phone|company|employer|first_?name|last_?name|full_?name|p_first_name|p_last_name|p_phone|p_company|p_email)\b/i;
+function setItemStatements(src) {
+  const out = [];
+  let i = 0;
+  while ((i = src.indexOf('localStorage.setItem(', i)) !== -1) {
+    let d = 0, k = i + 'localStorage.setItem'.length;
+    for (; k < src.length; k++) { if (src[k] === '(') d++; else if (src[k] === ')') { d--; if (d === 0) break; } }
+    out.push(src.slice(i, k + 1)); i = k;
+  }
+  return out;
+}
+const scanFiles = [...new Set([...pages, 'partner-dashboard.html', 'partner-insurance.html'])];
+for (const f of scanFiles) {
+  const bad = setItemStatements(read(f)).filter((st) => PII_KEYS.test(st));
+  if (TEMP_ALLOW.has(f)) { ok(bad.every((st) => st.includes("'cs_partner_signup'")), f + ': (temp allow-list) only the dead cs_partner_signup write remains'); continue; }
+  ok(bad.length === 0, f + ': no localStorage.setItem writes a name/email/phone/company value -- offending: ' + JSON.stringify(bad.map((b) => b.slice(0, 80))));
+}
+// The Google-flow pending payload must not be in localStorage.
+ok(!/localStorage\.setItem\(PENDING_SIGNUP_KEY/.test(read('partner-insurance.html')) && /sessionStorage\.setItem\(PENDING_SIGNUP_KEY/.test(read('partner-insurance.html')), 'partner-insurance.html: cs_pending_partner_signup (name/phone/company) is sessionStorage-only');
 console.log('\nTOTAL: ' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail === 0 ? 0 : 1);

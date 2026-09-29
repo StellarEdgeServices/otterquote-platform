@@ -1322,7 +1322,9 @@
             googleBtn.textContent = 'Redirecting to Google…';
 
             try {
-                localStorage.setItem(PENDING_SIGNUP_KEY, JSON.stringify({
+                // gh-2355: name/phone/company -- sessionStorage only (Google OAuth full-page redirect returns to this same tab); never localStorage.
+                localStorage.removeItem(PENDING_SIGNUP_KEY); // purge any legacy copy
+                sessionStorage.setItem(PENDING_SIGNUP_KEY, JSON.stringify({
                     fullName, phone, company, agentType,
                     recruitCode: recruitContext.recruitCode || null,
                     utm: utmContext,
@@ -1332,7 +1334,7 @@
                 await Auth.signInWithGoogle('/partner-insurance.html?g=1');
             } catch (err) {
                 console.error('Google sign-in error:', err);
-                localStorage.removeItem(PENDING_SIGNUP_KEY);
+                sessionStorage.removeItem(PENDING_SIGNUP_KEY);
                 // gh-2060 round-4 hardening 3: a failed Google attempt must not
                 // leave the cs_auth_role breadcrumb behind.
                 localStorage.removeItem('cs_auth_role');
@@ -1351,7 +1353,8 @@
         async function finishGoogleSignupIfPending() {
             if (finishingGoogleSignup) return;
             let pending;
-            try { pending = JSON.parse(localStorage.getItem(PENDING_SIGNUP_KEY) || 'null'); } catch (e) { pending = null; }
+            try { localStorage.removeItem(PENDING_SIGNUP_KEY); } catch (e) { /* gh-2355: purge any legacy localStorage copy */ }
+            try { pending = JSON.parse(sessionStorage.getItem(PENDING_SIGNUP_KEY) || 'null'); } catch (e) { pending = null; }
             if (!pending) return;
 
             let user = null;
@@ -1359,7 +1362,7 @@
             if (!user || !user.email) return; // OAuth exchange not finished yet; onAuthStateChange below will retry.
 
             finishingGoogleSignup = true;
-            localStorage.removeItem(PENDING_SIGNUP_KEY);
+            sessionStorage.removeItem(PENDING_SIGNUP_KEY);
 
             const { firstName, lastName } = splitFullName(pending.fullName);
             const utm = pending.utm || {};
@@ -1656,11 +1659,6 @@
                     seoRefLink.href = `/ref-insurance.html?code=${finalCode}`;
                 }
 
-                // Store data for post-auth linking
-                localStorage.setItem('cs_partner_signup', JSON.stringify({
-                    email: email,
-                    unique_code: finalCode,
-                }));
                 localStorage.setItem('cs_auth_role', agentType);
                 localStorage.setItem('cs_auth_role_at', String(Date.now()));
 
