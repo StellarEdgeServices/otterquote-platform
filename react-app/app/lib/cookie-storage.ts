@@ -563,6 +563,29 @@ function readReferralTs(): number | null {
   return ts && Number.isFinite(ts) ? ts : null;
 }
 
+/** gh-2346: sessionStorage is PER TAB but the click clock (cookie +
+ *  localStorage) is ONE per browser, so a newer click in another tab made this
+ *  tab's older ids look in-window. Every mirror write stamps the click time
+ *  NEXT TO the ids in this tab's sessionStorage (same key name, different
+ *  store); the ids are only trusted while that stamp is present, inside the 30
+ *  days, and equal to the click time now on record. */
+function sessionIdsTrusted(clickTs: number | null): boolean {
+  if (clickTs === null) return false;
+  let stamp: number | null = null;
+  try { stamp = Number(sessionStorage.getItem(REFERRAL_TS_KEY)); } catch { return false; }
+  if (!stamp || !Number.isFinite(stamp)) return false;
+  if (Date.now() - stamp > REFERRAL_MAX_AGE * 1000) return false;
+  return stamp === clickTs;
+}
+
+/** Drop this tab's sessionStorage ids and their stamp. */
+function purgeSessionIds(): void {
+  for (const key of REFERRAL_KEYS) {
+    try { sessionStorage.removeItem(key); } catch { /* storage blocked */ }
+  }
+  try { sessionStorage.removeItem(REFERRAL_TS_KEY); } catch { /* storage blocked */ }
+}
+
 export type ReferralIds = Partial<Record<(typeof REFERRAL_KEYS)[number], string>> & {
   oq_referral_id_for_claim?: string;
 };
@@ -599,6 +622,9 @@ export function readReferralIds(): ReferralIds {
       Object.assign(out, parsed as ReferralIds);
     }
   } catch { /* malformed cookie — fall through to same-origin storage */ }
+  // gh-2346: purge this tab's superseded/unstamped sessionStorage ids BEFORE
+  // the gap-fill (and before any caller's raw sessionStorage fallback).
+  if (!sessionIdsTrusted(clickTs)) purgeSessionIds();
   for (const key of REFERRAL_KEYS) {
     if (out[key]) continue;
     try {
@@ -665,6 +691,8 @@ export function writeReferralIds(ids: ReferralIds, opts?: { click?: boolean }): 
   }
   payload[REFERRAL_TS_KEY] = String(ts);
   try { localStorage.setItem(REFERRAL_TS_KEY, String(ts)); } catch { /* storage blocked */ }
+  // gh-2346: this tab's own stamp, next to its ids.
+  try { sessionStorage.setItem(REFERRAL_TS_KEY, String(ts)); } catch { /* storage blocked */ }
   try { writeCookie(REFERRAL_COOKIE, JSON.stringify(payload), remaining); } catch { /* cookie blocked */ }
 }
 
@@ -675,6 +703,7 @@ export function clearReferralIds(): void {
     try { localStorage.removeItem(key); } catch { /* storage blocked */ }
     try { sessionStorage.removeItem(key); } catch { /* storage blocked */ }
   }
+  try { sessionStorage.removeItem(REFERRAL_TS_KEY); } catch { /* storage blocked */ }
   try { localStorage.removeItem(REFERRAL_CLAIM_KEY); } catch { /* storage blocked */ }
   try { localStorage.removeItem(REFERRAL_TS_KEY); } catch { /* storage blocked */ }
   try { deleteCookie(REFERRAL_COOKIE); } catch { /* cookie blocked */ }
