@@ -1,9 +1,20 @@
 // js/router-variant-f.js
 //
 // gh-2122 (Arm F, D-332, checklist row 1.1 on #2121): the homeowner SHORT
-// PATH. Four screens -- funding (one tap), address, name + phone/email,
-// thank-you -- and the `leads` row is written on the third screen's submit,
-// BEFORE any account exists. Nothing on screens 1-3 touches auth; the
+// PATH. Four screens -- funding (one tap), name + phone/email, address,
+// thank-you -- and the `leads` row is written on the SECOND screen's (contact)
+// submit, BEFORE any account exists.
+//
+// gh-2362 (#2121 Ben ruling 5895347981, Tier B; spec cro47-trustspec-20260929 section 2):
+// the address is asked AFTER contact. Order is now funding -> contact -> address ->
+// thanks. The lead insert, the conversion (GA4 generate_lead + Meta Lead, ONE
+// event_id), set_lead_role (the #1932 alert) and the first record-lead-details call
+// (consent + funding + fbc/fbp, property_address null) all happen at the contact
+// submit, so a visitor who abandons on the address screen has already been saved and
+// alerted. The address then goes in through a SECOND record-lead-details call
+// (record_lead_details() is first-write-wins per column, so property_address is
+// written from NULL; the consent row is ON CONFLICT DO NOTHING, so the evidence is
+// not duplicated). No migration: leads.zip stays NULL for Arm F (no consumer reads it). Nothing on screens 1-3 touches auth; the
 // $15 measurement and the loss-sheet upload are deep links on the thank-you
 // screen into the EXISTING app paths (the no-account version is #2121 row
 // 3.2 and is NOT part of this issue).
@@ -37,16 +48,15 @@
 // record_lead_details() RPC, and the record-lead-details Edge Function reads the
 // IP and user agent from the request. So this module does, in this order:
 //   1. insert the lead -- EXISTING columns only (name, email, phone, source,
-//      variant, utm_*, fbclid/gclid, is_synthetic, and `zip` parsed from the
-//      address). It never sends a column that does not exist: an unknown column
+//      variant, utm_*, fbclid/gclid, is_synthetic; no `zip`, see gh-2362 above). It never sends a column that does not exist: an unknown column
 //      makes PostgREST reject the whole insert and `leads` has no UPDATE
 //      policy, so the lead would be destroyed with no retry;
 //   2. AT THE SAME MOMENT (no wait, D-299: a consent record lost to a closed tab is a
 //      compliance failure, ruling #2122 comment 5803979399) start two calls in parallel:
 //      set_lead_role(homeowner), which trips the #1932 new-lead alert, and
 //   3. the record-lead-details Edge Function, sent as a keepalive fetch (a simple
-//      request, no CORS preflight) with a sendBeacon fallback on pagehide, carrying the funding answer, the
-//      address, fbc/fbp and the consent record. One retry; if it still fails
+//      request, no CORS preflight) with a sendBeacon fallback on pagehide, carrying the funding answer,
+//      fbc/fbp and the consent record (the address follows in a second call, gh-2362). One retry; if it still fails
 //      it is reported to Sentry (the lead id, the attempt count and the error
 //      class -- no personal data) and the flow carries on -- the lead is saved
 //      and the visitor is never blocked. set_lead_role gets the same one retry
@@ -71,7 +81,7 @@
     arm_f_s2_placeholder: "123 Main St, City, State ZIP",
     arm_f_s2_button_continue: "Continue",
     arm_f_s2_error_required: "Please enter the property address.",
-    arm_f_s3_headline: "Almost done — how should we reach you?",
+    arm_f_s3_headline: "How should we reach you?",
     arm_f_s3_subhead: "Enter your name and at least one of phone or email.",
     arm_f_s3_label_name: "First Name",
     arm_f_s3_placeholder_name: "Jane",
@@ -134,19 +144,21 @@
   var DETAILS_RETRY_DELAY_MS = 800;
   var CONSENT_KEY = 'arm_f_s3_consent_checkbox';
 
-  var STEP_INDEX = { 'f-funding': 1, 'f-address': 2, 'f-contact': 3, 'f-thanks': 4 };
+  var STEP_INDEX = { 'f-funding': 1, 'f-contact': 2, 'f-address': 3, 'f-thanks': 4 };
 
   var bridge = null;
   var root = null;
   var funding = null;
   var address = null;
-  var addressRaw = null; // the address exactly as typed (D-299 form payload); `address` is the trimmed value used for the zip
+  var addressRaw = null; // the address exactly as typed (D-299 form payload); `address` is the trimmed value
   var leadId = null;
   var submitting = false;
-  var detailsInFlight = null; // a promise while the details call is running, else null
+  var addressSubmitting = false;
+  var detailsInFlight = []; // the details calls (contact, then address) that are still running
   var callPromiseAllowed = false; // set at submit: a phone number was given (LEGAL-READ B1; the consent box does not gate this screen)
-  var pendingDetails = null; // { body } until the Edge Function has confirmed the write; the pagehide beacon re-sends it
-  var beaconSent = false;
+  var pendingDetails = []; // [{ body, beaconSent }] for each details call the Edge Function has not yet confirmed; the pagehide beacon re-sends each
+  var contactValues = null; // the contact form values (as typed); the address call re-sends them so the consent row is complete whichever call lands first
+  var consentRecord = null; // the consent object sent with the contact call; the address call re-sends the SAME object (first row wins server-side)
   var leadEventFired = false;
   var activeToken = null;
   var stack = [];
@@ -216,7 +228,7 @@
   // hydrates it (wires the funding buttons' click handlers onto the
   // existing DOM) instead of clearRoot()+RENDERERS['f-funding']() throwing
   // it away and rebuilding an identical copy. Every later call to show()
-  // (address/contact/thanks, or f-funding again via goBack -- goBack can
+  // (contact/address/thanks, or f-funding again via goBack -- goBack can
   // only be reached after clearRoot() has already run once, so the SSR
   // markup is gone by then) takes the normal rebuild path unchanged.
   // router_step_view still fires at exactly the same call site either way.
@@ -234,7 +246,7 @@
     FUNDING_OPTIONS.forEach(function (opt, i) {
       buttons[i].addEventListener('click', function () {
         funding = opt.value; // held in memory; goes only to the details Edge Function
-        go('f-address');
+        go('f-contact');
       });
     });
     // gh-2121 round 3 (M2, review 5834623268): replay a tap that landed in
@@ -248,7 +260,7 @@
     // has already thrown the SSR root away by then), so there is no second
     // chance to read a stale value. buttons[early.index].click() re-enters
     // the exact click handler wired two lines above -- one funding value
-    // set, one go('f-address'), one router_step_complete -- not a separate
+    // set, one go('f-contact'), one router_step_complete -- not a separate
     // "replay" code path that could double-fire against a real second tap.
     try {
       var early = window.__oqEarlyTap;
@@ -295,12 +307,6 @@
     return true;
   }
   function isValidEmail(v) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v); }
-  // The only address-derived column that exists today is `zip`.
-  function zipFromAddress(addr) {
-    var m = /\b(\d{5})(?:-\d{4})?\s*$/.exec(addr || '');
-    return m ? m[1] : null;
-  }
-
   // ── Screen 1: funding. One tap, no typing, no role question, no header
   // navigation. ──
   RENDERERS['f-funding'] = function () {
@@ -313,35 +319,14 @@
       btn.type = 'button';
       btn.addEventListener('click', function () {
         funding = opt.value; // held in memory; goes only to the details Edge Function
-        go('f-address');
+        go('f-contact');
       });
       wrap.appendChild(btn);
     });
     root.appendChild(wrap);
   };
 
-  // ── Screen 2: address. /start has no address autocomplete, so this is the
-  // single text field the spec asks for in that case. ──
-  RENDERERS['f-address'] = function () {
-    root.appendChild(backButton(goBack));
-    root.appendChild(heading(COPY.arm_f_s2_headline));
-    root.appendChild(bodyText(COPY.arm_f_s2_subhead));
-    var f = field('rfAddress', COPY.arm_f_s2_headline, 'text', {
-      placeholder: COPY.arm_f_s2_placeholder, autocomplete: 'street-address', maxlength: '200'
-    });
-    if (address) f.input.value = address;
-    var btn = primaryButton(COPY.arm_f_s2_button_continue, function () {
-      var v = (f.input.value || '').replace(/^\s+|\s+$/g, '');
-      if (v.length < 5) { setError(f.err, COPY.arm_f_s2_error_required); return; }
-      setError(f.err, '');
-      address = v;
-      addressRaw = f.input.value || '';
-      go('f-contact');
-    });
-    root.appendChild(btn);
-  };
-
-  // ── Screen 3: contact. Phone OR email, first name, an OPTIONAL unchecked
+  // ── Screen 2: contact (gh-2362: was screen 3). Phone OR email, first name, an OPTIONAL unchecked
   // consent checkbox (consent is not a condition of submitting -- the approved
   // line itself says so), and the privacy line. ──
   // Renders `text` with its "Privacy Policy" and "Terms" words as same-tab
@@ -392,7 +377,8 @@
     formError.id = 'rfFormError';
     root.appendChild(formError);
 
-    var submitBtn = primaryButton(COPY.arm_f_s3_button_submit, function () {
+    // gh-2362: more is coming (the address), so this button reuses the approved "Continue" string; "Send My Info" is now the address screen's final submit.
+    var submitBtn = primaryButton(COPY.arm_f_s2_button_continue, function () {
       if (submitting) return;
       var nm = (nameF.input.value || '').replace(/^\s+|\s+$/g, '');
       var phoneRaw = (phoneF.input.value || '').replace(/^\s+|\s+$/g, '');
@@ -422,6 +408,31 @@
     root.appendChild(submitBtn);
   };
 
+  // ── Screen 3: address (gh-2362: was screen 2). /start has no address autocomplete, so this is
+  // the single text field the spec asks for in that case. The lead already exists by the time this
+  // screen renders, so there is deliberately NO Back button (going back would allow a second insert,
+  // the same hazard saveLead's Back lock guards) and the address goes in as an UPDATE through the
+  // record-lead-details Edge Function (there is no anon UPDATE policy on `leads`). ──
+  RENDERERS['f-address'] = function () {
+    root.appendChild(heading(COPY.arm_f_s2_headline));
+    root.appendChild(bodyText(COPY.arm_f_s2_subhead));
+    var f = field('rfAddress', COPY.arm_f_s2_headline, 'text', {
+      placeholder: COPY.arm_f_s2_placeholder, autocomplete: 'street-address', maxlength: '200'
+    });
+    var btn = primaryButton(COPY.arm_f_s3_button_submit, function () {
+      if (addressSubmitting) return;
+      var v = (f.input.value || '').replace(/^\s+|\s+$/g, '');
+      if (v.length < 5) { setError(f.err, COPY.arm_f_s2_error_required); return; }
+      setError(f.err, '');
+      addressSubmitting = true;
+      btn.disabled = true;
+      address = v;
+      addressRaw = f.input.value || '';
+      saveAddress();
+    });
+    root.appendChild(btn);
+  };
+
   // ── The save. Order is the point: (1) the leads row, first, before anything
   // else; (2) only if that succeeded, the conversion -- GA4 generate_lead and
   // Meta Lead with ONE shared event_id, exactly once; (3) set_lead_role so the
@@ -444,14 +455,52 @@
     } catch (e) { /* no fbclid */ }
     return null;
   }
+  // The contact-step body (gh-2362). The address is NOT known yet, so property_address is null and neither `address`
+  // nor its value appears in submitted_fields / form_payload; the address call (buildAddressBody) carries it.
   function buildDetailsBody(v, newId) {
     var fields = ['name'];
     if (v.phone) fields.push('phone');
     if (v.email) fields.push('email');
-    fields.push('address', 'funding');
+    fields.push('funding');
     var pageUrl = null;
     // Capped client-side (the server caps it at 2000 too): an over-long URL must not push the body past the 64 KB keepalive limit,
     // which would make both the fetch and the beacon fail and lose the consent record.
+    try { pageUrl = (window.location.href || '').slice(0, 2000) || null; } catch (e) { /* none */ }
+    contactValues = v;
+    // The exact string rendered next to the checkbox, byte-identical to the approved copy.
+    consentRecord = { key: CONSENT_KEY, given: v.consentGiven, text: COPY.arm_f_s3_consent_checkbox };
+    return {
+      lead_id: newId,
+      funding_type: funding,
+      property_address: null,
+      fbc: deriveFbc(),
+      fbp: readCookie('_fbp'),
+      consent: consentRecord,
+      page_url: pageUrl,
+      submitted_fields: fields,
+      // D-299 section 2, ruling #2122 comment 5803979399: the phone number AS TYPED and the submitted form VALUES. They go to
+      // the Edge Function only -- never into a GA4, Meta or Clarity call.
+      phone_as_typed: v.phoneTyped,
+      form_payload: { name: v.nameTyped, phone: v.phoneTyped, email: v.emailTyped, funding_type: funding }
+    };
+  }
+  // The address-step body (gh-2362): the SECOND record-lead-details call for the same lead. Server-side it is first-write-wins per
+  // column, so property_address is written from NULL while funding / fbc / fbp keep their first values; the consent object is the
+  // SAME one sent at contact (same key, same given, same text) and its lead_consents row is ON CONFLICT DO NOTHING, so the evidence
+  // is neither duplicated nor overwritten. The function requires a consent object on every call, hence re-sending it.
+  //
+  // F2 (D-299, review 5896318444): the two calls are NOT serialised (no added latency), so the address call can reach the server
+  // BEFORE the contact call. Whichever call creates the lead_consents row wins (ON CONFLICT DO NOTHING), so BOTH calls carry the
+  // same consent evidence: the same consent object, phone_as_typed, and the full form values (name, phone as typed, email, funding);
+  // the address call adds the address. First-write-wins per leads column is unaffected (identical values; property_address only
+  // comes from this call). If the contact call lands first its form_payload has no address; the address is in leads.property_address.
+  function buildAddressBody(newId) {
+    var v = contactValues || {};
+    var fields = ['name'];
+    if (v.phoneTyped) fields.push('phone');
+    if (v.emailTyped) fields.push('email');
+    fields.push('address', 'funding');
+    var pageUrl = null;
     try { pageUrl = (window.location.href || '').slice(0, 2000) || null; } catch (e) { /* none */ }
     return {
       lead_id: newId,
@@ -459,12 +508,9 @@
       property_address: address,
       fbc: deriveFbc(),
       fbp: readCookie('_fbp'),
-      // The exact string rendered next to the checkbox, byte-identical to the approved copy.
-      consent: { key: CONSENT_KEY, given: v.consentGiven, text: COPY.arm_f_s3_consent_checkbox },
+      consent: consentRecord,
       page_url: pageUrl,
       submitted_fields: fields,
-      // D-299 section 2, ruling #2122 comment 5803979399: the phone number AS TYPED and the submitted form VALUES. They go to
-      // the Edge Function only -- never into a GA4, Meta or Clarity call.
       phone_as_typed: v.phoneTyped,
       form_payload: { name: v.nameTyped, phone: v.phoneTyped, email: v.emailTyped, address: addressRaw, funding_type: funding }
     };
@@ -535,35 +581,46 @@
     return bridge.sb.functions.invoke(DETAILS_FUNCTION, { body: body });
   }
   function sendDetails(body, newId) {
-    pendingDetails = { body: body };
+    var entry = { body: body, beaconSent: false };
+    pendingDetails.push(entry);
     return callWithRetry('record-lead-details', newId,
       function () { return postDetails(body); },
       function (res) {
         var ok = !!res && !res.error && !!res.data && res.data.ok === true;
-        if (ok) pendingDetails = null; // confirmed: nothing left for the unload beacon to re-send
+        if (ok) { var i = pendingDetails.indexOf(entry); if (i !== -1) pendingDetails.splice(i, 1); } // confirmed: nothing left for the unload beacon to re-send
         return ok;
       },
       // a 200 with reason lead_out_of_scope (unknown / too old / already redeemed lead) cannot succeed on retry
       function (res) { return !!(res && res.data && res.data.reason === 'lead_out_of_scope'); });
   }
-  // The tab-close net (Ben, ruling #2122 comment 5803979399): if the page is going away (or has been hidden) while the details
+  // Track a details call in detailsInFlight until it settles (callWithRetry's promise always resolves).
+  function trackDetails(p) {
+    detailsInFlight.push(p);
+    function done() { var i = detailsInFlight.indexOf(p); if (i !== -1) detailsInFlight.splice(i, 1); }
+    p.then(done, done);
+    return p;
+  }
+  // The tab-close net (Ben, ruling #2122 comment 5803979399): if the page is going away (or has been hidden) while a details
   // write is NOT yet confirmed, re-send the same body with navigator.sendBeacon. The body is text/plain for the same no-preflight
   // reason as above. The server keeps the first write and ignores a duplicate, so a beacon that races the fetch is harmless.
+  // gh-2362: there can now be two unconfirmed bodies (contact, address); each is re-sent at most once per successful beacon.
   function beaconDetails() {
-    if (!pendingDetails || beaconSent) return;
     var url = detailsUrl();
     if (!url) return;
-    try {
-      if (navigator.sendBeacon && navigator.sendBeacon(url, new Blob([JSON.stringify(pendingDetails.body)], { type: 'text/plain;charset=UTF-8' }))) {
-        beaconSent = true;
-      }
-    } catch (e) { /* the beacon is best-effort */ }
+    pendingDetails.slice().forEach(function (entry) {
+      if (entry.beaconSent) return;
+      try {
+        if (navigator.sendBeacon && navigator.sendBeacon(url, new Blob([JSON.stringify(entry.body)], { type: 'text/plain;charset=UTF-8' }))) {
+          entry.beaconSent = true;
+        }
+      } catch (e) { /* the beacon is best-effort */ }
+    });
   }
 
   function saveLead(v, submitBtn, formError, backBtn) {
     submitting = true;
     submitBtn.disabled = true;
-    // Going Back while the save is in flight would let the visitor change the address or funding answer after the lead
+    // Going Back while the save is in flight would let the visitor change the funding answer after the lead
     // row was written, so the details call could disagree with the row.
     if (backBtn) backBtn.disabled = true;
     function saveFailed(err) {
@@ -573,16 +630,14 @@
       if (backBtn) backBtn.disabled = false;
       setError(formError, COPY.arm_f_error_generic);
     }
-    var extra = {};
-    var zip = zipFromAddress(address);
-    if (zip) extra.zip = zip;
+    // gh-2362: no address exists yet, so the insert carries no `zip` (leads.zip stays NULL for Arm F; no consumer reads it).
     // leads.email is NOT NULL, so an email-less (phone-only) lead is saved
     // with '' -- never a synthetic address (start.html's own arm-B comment
     // forbids one). The #1932 alert's claim query is NOT ILIKE-based, so ''
     // still alerts; NULL would not.
     var saving;
     try {
-      saving = bridge.insertFreshLead(v.name, v.email, v.phone, undefined, undefined, extra);
+      saving = bridge.insertFreshLead(v.name, v.email, v.phone, undefined, undefined, {});
     } catch (e) {
       // insertFreshLead can throw SYNCHRONOUSLY (its supabase client is null when the deferred CDN script did
       // not load); without this the button would stay disabled with no message.
@@ -592,23 +647,31 @@
     saving.then(function (newId) {
       leadId = newId;
       fireConversion();
-      bridge.markLeadSaved();
-      var finished = false;
-      function finish() {
-        if (finished) return;
-        finished = true;
-        go('f-thanks');
-      }
-      setTimeout(finish, FLOW_GUARD_MS);
+      // NOT bridge.markLeadSaved() here (gh-2362): that silences router_step_abandoned, which would hide a visitor who saved
+      // contact and then left on the address screen -- the very drop-off this reorder needs to measure. It runs when the
+      // thank-you screen is entered (see RENDERERS['f-thanks']).
       // D-299: the consent record waits for NOTHING. Start it in the same tick the insert resolved, then run set_lead_role
-      // (the #1932 alert) in parallel; the thank-you screen follows when both have settled, or at the flow guard.
-      var running = sendDetails(buildDetailsBody(v, newId), newId);
-      detailsInFlight = running;
-      function detailsDone() { if (detailsInFlight === running) detailsInFlight = null; }
-      running.then(detailsDone, detailsDone);
-      var role = setRole(newId);
-      Promise.all([running, role]).then(finish, finish);
+      // (the #1932 alert) in parallel; the address screen follows at once without waiting for either.
+      trackDetails(sendDetails(buildDetailsBody(v, newId), newId));
+      setRole(newId);
+      go('f-address');
     }, saveFailed);
+  }
+
+  // The address step (gh-2362): a second record-lead-details call for the SAME lead. The thank-you screen appears when it has
+  // settled, and never later than FLOW_GUARD_MS: a hung request must not strand a visitor whose lead is already saved. A failed
+  // address write is non-fatal (the lead exists and the call does not need the address): it is reported to Sentry with the lead id
+  // only (callWithRetry), and the thank-you screen still shows.
+  function saveAddress() {
+    var finished = false;
+    function finish() {
+      if (finished) return;
+      finished = true;
+      go('f-thanks');
+    }
+    setTimeout(finish, FLOW_GUARD_MS);
+    var running = trackDetails(sendDetails(buildAddressBody(leadId), leadId));
+    running.then(finish, finish);
   }
 
   // The conversion. Events carry step / step_index (and variant, ua_context, lead_id, added by
@@ -618,6 +681,7 @@
     if (leadEventFired) return;
     leadEventFired = true;
     var eventId = leadId;
+    // The conversion now counts at the contact step (gh-2362), one screen earlier than before; same events, same event_id.
     bridge.trackRouter('router_contact_submitted', stepParams('f-contact'));
     bridge.trackRouter('generate_lead', stepParams('f-contact', { event_id: eventId }));
     try { fbq('track', 'Lead', {}, { eventID: eventId }); } catch (e) {}
@@ -639,13 +703,13 @@
     } catch (e) { /* fall through */ }
     return false;
   }
-  // Runs `cb` once a details call that is still in flight has settled, or after CTA_WAIT_MS, whichever is first.
+  // Runs `cb` once every details call that is still in flight has settled, or after CTA_WAIT_MS, whichever is first.
   function afterDetails(cb) {
-    if (!detailsInFlight) { cb(); return; }
+    if (!detailsInFlight.length) { cb(); return; }
     var done = false;
     function run() { if (done) return; done = true; cb(); }
     setTimeout(run, CTA_WAIT_MS);
-    detailsInFlight.then(run, run);
+    Promise.all(detailsInFlight.slice()).then(run, run);
   }
   function redirectWithLeadId(destBase) {
     var sep = destBase.indexOf('?') === -1 ? '?' : '&';
@@ -653,6 +717,8 @@
     bridge.redirectTo(bridge.appendParams(withLead, bridge.collectAttribution()), true);
   }
   RENDERERS['f-thanks'] = function () {
+    // gh-2362: the lead is now "finished" for the shared abandon beacon only here (was: at the contact save).
+    bridge.markLeadSaved();
     root.appendChild(heading(COPY.arm_f_s4_headline));
     root.appendChild(bodyText(!callPromiseAllowed ? COPY.arm_f_s4_confirm_email_only : inCallWindow() ? COPY.arm_f_s4_body_in_window : COPY.arm_f_s4_body_after_hours));
     root.appendChild(primaryButton(COPY.arm_f_s4_button_measure, function () {
