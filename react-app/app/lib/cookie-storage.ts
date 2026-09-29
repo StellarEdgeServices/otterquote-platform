@@ -535,13 +535,19 @@ const REFERRAL_TS_KEY = 'oq_referral_ts'; // epoch-ms of the partner-link click
 // gh-2062 (CEO ruling, issue comment 5874597169): 30 days FROM THE CLICK.
 // Only writeReferralIds(ids, { click: true }) starts the clock; every other
 // write keeps the recorded click time and sets Max-Age to the time remaining.
-// UNDATED IDS (REVIEW: FAIL on PR #2321; default rule pending CEO Q on #2062):
+// UNDATED IDS (REVIEW: FAIL on PR #2321; CEO ruling, comment 5880667348 - undated ids expire):
 // an id with no click time on record anywhere (pre-gh-2062 legacy cookie, or a
 // copy left by an undated write) has no click, so no window - it is EXPIRED.
 // readReferralIds() purges it; a non-click write with no click on record writes
 // NOTHING (no cookie, no storage mirror). Never backfilled.
 const REFERRAL_MAX_AGE = 60 * 60 * 24 * 30; // 30 days
 export const REFERRAL_MAX_AGE_SECONDS = REFERRAL_MAX_AGE;
+// gh-2062 (REVIEW: FAIL 5881363760): the claim-scoped copy the auth advance
+// re-keys the id into. No clock of its own - it lives under the SAME click
+// clock: written only with a click on record, returned by readReferralIds()
+// only inside the window, purged by clearReferralIds() and by the
+// expired/undated purge.
+const REFERRAL_CLAIM_KEY = 'oq_referral_id_for_claim';
 
 /** Click time (epoch-ms) on record: cookie first, else the localStorage
  *  mirror. null when none (nothing armed, or a pre-gh-2062 legacy cookie). */
@@ -557,7 +563,18 @@ function readReferralTs(): number | null {
   return ts && Number.isFinite(ts) ? ts : null;
 }
 
-export type ReferralIds = Partial<Record<(typeof REFERRAL_KEYS)[number], string>>;
+export type ReferralIds = Partial<Record<(typeof REFERRAL_KEYS)[number], string>> & {
+  oq_referral_id_for_claim?: string;
+};
+
+/** Persist the claim-scoped id (oq_referral_id_for_claim). No click time on
+ *  record, or window spent => writes NOTHING (undated = expired). */
+export function writeClaimReferralId(id: string): void {
+  if (typeof document === 'undefined' || !id) return;
+  const ts = readReferralTs();
+  if (ts === null || Date.now() - ts > REFERRAL_MAX_AGE * 1000) return;
+  try { localStorage.setItem(REFERRAL_CLAIM_KEY, String(id)); } catch { /* storage blocked */ }
+}
 
 /** Read referral ids, cookie FIRST so a cross-origin hop still resolves. */
 export function readReferralIds(): ReferralIds {
@@ -569,6 +586,10 @@ export function readReferralIds(): ReferralIds {
   if (clickTs !== null && Date.now() - clickTs > REFERRAL_MAX_AGE * 1000) {
     clearReferralIds();
     return out;
+  }
+  // A claim-scoped id with no click time on record is undated => expired.
+  if (clickTs === null) {
+    try { localStorage.removeItem(REFERRAL_CLAIM_KEY); } catch { /* storage blocked */ }
   }
   try {
     const raw = readCookie(REFERRAL_COOKIE);
@@ -589,6 +610,13 @@ export function readReferralIds(): ReferralIds {
   if (clickTs === null && Object.keys(out).length) {
     clearReferralIds();
     return {};
+  }
+  // In-window claim-scoped id (the windowed fallback for the claim writers).
+  if (clickTs !== null) {
+    try {
+      const claimId = localStorage.getItem(REFERRAL_CLAIM_KEY);
+      if (claimId) out.oq_referral_id_for_claim = claimId;
+    } catch { /* storage blocked */ }
   }
   return out;
 }
@@ -647,6 +675,7 @@ export function clearReferralIds(): void {
     try { localStorage.removeItem(key); } catch { /* storage blocked */ }
     try { sessionStorage.removeItem(key); } catch { /* storage blocked */ }
   }
+  try { localStorage.removeItem(REFERRAL_CLAIM_KEY); } catch { /* storage blocked */ }
   try { localStorage.removeItem(REFERRAL_TS_KEY); } catch { /* storage blocked */ }
   try { deleteCookie(REFERRAL_COOKIE); } catch { /* cookie blocked */ }
 }

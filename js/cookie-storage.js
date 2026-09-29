@@ -457,8 +457,8 @@
    * click time and sets Max-Age to the time REMAINING, so it can never re-arm
    * the window.
    *
-   * UNDATED IDS (REVIEW: FAIL on PR #2321; default rule, pending CEO Q on
-   * #2062): an id with no click time on record anywhere (a pre-gh-2062 legacy
+   * UNDATED IDS (REVIEW: FAIL on PR #2321; CEO ruling, issue comment
+   * 5880667348 - undated ids expire): an id with no click time on record anywhere (a pre-gh-2062 legacy
    * cookie, or a copy left by an undated write) has no click, so it has no
    * window - it is treated as EXPIRED. read() purges it and returns nothing;
    * a non-click write with no click on record writes NOTHING (no cookie, no
@@ -469,6 +469,11 @@
   var REFERRAL_COOKIE    = 'oq-ref';           // one cookie, JSON payload — all three ids are short
   var REFERRAL_TS_KEY    = 'oq_referral_ts';   // epoch-ms of the partner-link click
   var REFERRAL_MAX_AGE   = 60 * 60 * 24 * 30;  // 30 days, from the click
+  // gh-2062 (REVIEW: FAIL 5881363760): the claim-scoped copy the auth advance
+  // re-keys the id into. It has no clock of its own - it lives under the SAME
+  // click clock: written only with a click on record, returned by read() only
+  // inside the window, purged by clear() and by the expired/undated purge.
+  var REFERRAL_CLAIM_KEY = 'oq_referral_id_for_claim';
 
   /** Click time (epoch-ms) on record: cookie first, else the localStorage
    *  mirror. null when none (nothing armed, or a pre-gh-2062 legacy cookie). */
@@ -518,6 +523,15 @@
       } catch (e) {}
     },
 
+    /** Persist the claim-scoped id (oq_referral_id_for_claim). No click time
+     *  on record, or window spent => writes NOTHING (undated = expired). */
+    writeClaimId: function (id) {
+      if (!id) return;
+      var ts = readReferralTs();
+      if (ts === null || (Date.now() - ts) > REFERRAL_MAX_AGE * 1000) return;
+      try { window.localStorage.setItem(REFERRAL_CLAIM_KEY, String(id)); } catch (e) {}
+    },
+
     /** Read referral ids, cookie FIRST so a cross-origin hop still resolves.
      *  Returns an object with whichever of the three keys are available. */
     read: function () {
@@ -528,6 +542,10 @@
       if (clickTs !== null && (Date.now() - clickTs) > REFERRAL_MAX_AGE * 1000) {
         this.clear();
         return out;
+      }
+      // A claim-scoped id with no click time on record is undated => expired.
+      if (clickTs === null) {
+        try { window.localStorage.removeItem(REFERRAL_CLAIM_KEY); } catch (e) {}
       }
       try {
         var raw = readCookie(REFERRAL_COOKIE);
@@ -550,6 +568,13 @@
         this.clear();
         return {};
       }
+      // In-window claim-scoped id (the windowed fallback for the claim writers).
+      if (clickTs !== null) {
+        try {
+          var claimId = window.localStorage.getItem(REFERRAL_CLAIM_KEY);
+          if (claimId) out[REFERRAL_CLAIM_KEY] = claimId;
+        } catch (e) {}
+      }
       return out;
     },
 
@@ -559,6 +584,7 @@
         try { window.localStorage.removeItem(REFERRAL_KEYS[i]); } catch (e) {}
         try { window.sessionStorage.removeItem(REFERRAL_KEYS[i]); } catch (e) {}
       }
+      try { window.localStorage.removeItem(REFERRAL_CLAIM_KEY); } catch (e) {}
       try { window.localStorage.removeItem(REFERRAL_TS_KEY); } catch (e) {}
       try { deleteCookie(REFERRAL_COOKIE); } catch (e) {}
     },

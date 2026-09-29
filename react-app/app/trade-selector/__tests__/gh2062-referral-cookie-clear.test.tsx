@@ -334,4 +334,54 @@ describe('TradeSelectorPage referral cookie — gh-2062 (money-path: both direct
     expect(afterZeroRowUpdate.oq_referral_code).toBe(PARTNER_A_REFERRAL.oq_referral_code);
     expect(document.cookie).toContain('oq-ref=');
   });
+  // ── REVIEW: FAIL 5881363760 / RETURNED 5881780522, must-fix 1 ────────────
+  // `oq_referral_id_for_claim` (written by the auth advance) must ride the same
+  // 30-day click clock. Advance at day 0, no claim; the claim writer at day 31
+  // must NOT stamp claims.referral_id from it.
+  describe('gh-2062 claim-scoped id (oq_referral_id_for_claim) rides the 30-day click clock', () => {
+    const DAY_MS = 24 * 3600 * 1000;
+    const seedAdvancedNoClaim = () => {
+      // State after: click at day 0 -> email verified -> auth advance ran
+      // (re-keyed the id to the claim-scoped key, dropped the advance-scoped
+      // mirrors) -> the cookie and its id mirrors are gone (blocked/cleared),
+      // only the click time and the claim-scoped id remain on this origin.
+      writeReferralIds(PARTNER_A_REFERRAL, { click: true });
+      localStorage.setItem('oq_referral_id_for_claim', PARTNER_A_REFERRAL.oq_referral_id);
+      clearAllCookies();
+      for (const k of ['oq_referral_id', 'oq_referral_agent_id', 'oq_referral_code']) {
+        localStorage.removeItem(k);
+        sessionStorage.removeItem(k);
+      }
+    };
+
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-09-01T00:00:00Z'));
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('POSITIVE CONTROL day 29: the claim writer still stamps the claim-scoped id', async () => {
+      seedAdvancedNoClaim();
+      vi.setSystemTime(Date.now() + 29 * DAY_MS);
+      const payload = await completeCashSingleTradeWalk();
+      expect(payload.referral_id).toBe(PARTNER_A_REFERRAL.oq_referral_id);
+    });
+
+    it('day 31, no claim filed at day 0: the claim writer gets NO referral id', async () => {
+      seedAdvancedNoClaim();
+      vi.setSystemTime(Date.now() + 31 * DAY_MS);
+      const payload = await completeCashSingleTradeWalk();
+      expect(payload.referral_id).toBeUndefined();
+      expect(localStorage.getItem('oq_referral_id_for_claim')).toBeNull();
+    });
+
+    it('an UNDATED claim-scoped id (no click time on record) is not stamped', async () => {
+      localStorage.setItem('oq_referral_id_for_claim', 'ref-stale');
+      const payload = await completeCashSingleTradeWalk();
+      expect(payload.referral_id).toBeUndefined();
+      expect(localStorage.getItem('oq_referral_id_for_claim')).toBeNull();
+    });
+  });
 });
