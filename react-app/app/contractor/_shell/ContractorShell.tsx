@@ -90,7 +90,11 @@ export function ContractorShell({ active, children }: ContractorShellProps) {
       <style>{STYLES}</style>
       <ContractorNav active={active} userId={user.id} onSignOut={signOut} />
       <main className="oqc-main">{children}</main>
-      <footer className="oqc-footer">© {new Date().getFullYear()} Otter Quotes</footer>
+      <footer className="oqc-footer">
+        © {new Date().getFullYear()} Otter Quotes
+        {/* gh-1925 (Ben ruling 5896607701): the CPRA opt-out link, Dustin ruling 5881048326 string verbatim; privacy.html lives on otterquote.com. */}
+        <a className="oqc-footer-dns" href="https://otterquote.com/privacy.html#do-not-sell-or-share">Do Not Sell or Share My Personal Information</a>
+      </footer>
     </>
   );
 }
@@ -157,6 +161,7 @@ const STYLES = `
   .oqc-signout:hover { border-color: var(--amber, #E07B00); background: rgba(224,123,0,0.08); }
   .oqc-main { min-height: calc(100vh - 64px); }
   .oqc-footer { padding: 1.5rem; text-align: center; color: var(--gray, #64748b); font-size: 0.8rem; border-top: 1px solid rgba(255,255,255,0.06); }
+  .oqc-footer-dns { display: block; margin-top: 0.5rem; font-size: 0.75rem; color: inherit; text-decoration: underline; }
   @media (max-width: 768px) {
     .oqc-nav { gap: 0.75rem; padding: 0 1rem; }
     .oqc-links { gap: 0; overflow-x: auto; }

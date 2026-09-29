@@ -2274,6 +2274,10 @@ export default function GetStartedPage() {
           </div>
         </div>
       </div>
+      {/* gh-1925 (Ben ruling 5896607701): this page loads the ad tags (MetaPixelGate allows /get-started), so it carries the CPRA opt-out link, Dustin ruling 5881048326 string verbatim. */}
+      <p className="text-sm-center" style={{ fontSize: '0.75rem', padding: '0 16px 24px' }}>
+        <a id="footer-do-not-sell-link" href="https://otterquote.com/privacy.html#do-not-sell-or-share">Do Not Sell or Share My Personal Information</a>
+      </p>
     </>
   );
 }
