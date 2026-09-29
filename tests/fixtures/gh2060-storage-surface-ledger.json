@@ -492,6 +492,17 @@
       ]
     },
     {
+      "key": "oq_partner_signup_ctx",
+      "stack": "static",
+      "status": "tested",
+      "tests": [
+        {
+          "file": "tests/gh2355-crosstab-recovery.mjs",
+          "contains": "an expired ctx is ignored"
+        }
+      ]
+    },
+    {
       "key": "oq_partner_needs_",
       "stack": "static",
       "status": "write-only",
@@ -501,7 +512,7 @@
       "key": "cs_partner_signup",
       "stack": "static",
       "status": "write-only",
-      "reason": "14 partner pages write it; the only other touch is js/auth.js removing it. No reader.",
+      "reason": "gh-2355: no longer written by any partner page (dead write, email PII, removed from all 14); the only other touch is js/auth.js removing it (legacy cleanup). No reader.",
       "note": "Ordering (write only after register_partner success) is pinned by tests/gh2060-partner-cs-auth-role-ordering.mjs for the sibling cs_auth_role key."
     },
     {
@@ -511,7 +522,7 @@
       "tests": [
         {
           "file": "tests/gh2154-p1-short-signup.mjs",
-          "contains": "preLocalStorage: { [PENDING_SIGNUP_KEY]: pendingPayload }"
+          "contains": "preSessionStorage: { [PENDING_SIGNUP_KEY]: pendingPayload }"
         }
       ]
     },

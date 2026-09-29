@@ -40,6 +40,7 @@ function extractFn(src, name) {
 }
 const showSrc = extractFn(html, 'showNoPartnerState');
 const beginSrc = extractFn(html, 'beginPartnerRegistrationCompletion');
+const recollectSrc = extractFn(html, 'renderPartnerRecollect') || '';
 ok(!!showSrc && showSrc.includes('beginPartnerRegistrationCompletion()'), 'showNoPartnerState() starts the completion for the no-record state');
 ok(!!beginSrc, 'beginPartnerRegistrationCompletion() exists on the dashboard');
 
@@ -48,28 +49,32 @@ function makeEl(id) {
     addEventListener(t, f) { (el._l[t] = el._l[t] || []).push(f); } };
   return el;
 }
-async function run({ marker, claimError = false, rpcResult = { error: null }, email = OWN, clickRetry = false }) {
+async function run({ marker, claimError = false, rpcResult = { error: null }, email = OWN, clickRetry = false, legacy = null }) {
   const els = new Map();
-  const doc = { getElementById(id) { if (!els.has(id)) els.set(id, makeEl(id)); return els.get(id); }, createElement() { return makeEl('opt'); } };
+  const doc = { getElementById(id) { if (!els.has(id)) els.set(id, makeEl(id)); return els.get(id); }, createElement() { return makeEl('opt'); }, createTextNode(t) { return { text: t }; } };
   const ls = new Map(); if (marker !== undefined) ls.set(KEY, typeof marker === 'string' ? marker : JSON.stringify(marker));
   const localStorage = { getItem: (k) => (ls.has(k) ? ls.get(k) : null), setItem: (k, v) => ls.set(k, String(v)), removeItem: (k) => ls.delete(k) };
+  // gh-2355: the marker (name/phone/company) is read from sessionStorage; localStorage must never hold it. `ls` (returned) is the sessionStorage map the marker lives in.
+  const lsLegacy = new Map(legacy ? [[KEY, JSON.stringify(legacy)]] : []);
+  const realLocal = { getItem: (k) => (lsLegacy.has(k) ? lsLegacy.get(k) : null), setItem: (k, v) => lsLegacy.set(k, String(v)), removeItem: (k) => lsLegacy.delete(k) };
+  const sessionStorage = localStorage;
   const rpcCalls = []; let reloads = 0;
   const sb = { rpc: async (name, params) => { rpcCalls.push({ name, params }); return rpcResult; } };
-  const win = { location: { reload() { reloads++; } }, localStorage, Auth: { isTestEmail: () => false },
+  const win = { location: { reload() { reloads++; } }, localStorage: realLocal, sessionStorage, Auth: { isTestEmail: () => false },
     AgentTypes: { CHOOSER_LABELS: {} } };
   win.window = win;
-  const ctx = { window: win, Auth: win.Auth, AgentTypes: win.AgentTypes, document: doc, localStorage, sb, currentUser: { id: 'u1', email }, console: { error() {}, log() {} }, JSON, Date, String, Promise };
+  const ctx = { window: win, Auth: win.Auth, AgentTypes: win.AgentTypes, document: doc, localStorage: realLocal, sessionStorage, sb, currentUser: { id: 'u1', email }, console: { error() {}, log() {} }, alert() {}, JSON, Date, String, Promise, Object, isFinite };
   vm.createContext(ctx);
   vm.runInContext(lib, ctx);
   ctx.PartnerRegistration = win.PartnerRegistration;
-  vm.runInContext(beginSrc + '\n' + showSrc + '\n;this.__show = showNoPartnerState;', ctx);
+  vm.runInContext(beginSrc + '\n' + recollectSrc + '\n' + showSrc + '\n;this.__show = showNoPartnerState;', ctx);
   ctx.__show(claimError ? { message: 'claim failed' } : null);
   for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0));
   if (clickRetry) {
     (doc.getElementById('partnerFinishRetry')._l.click || []).forEach((f) => f({}));
     for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0));
   }
-  return { rpcCalls, reloads, ls, doc };
+  return { rpcCalls, reloads, ls, doc, lsLegacy };
 }
 const TICK = Date.now() - 60000;
 const good = () => ({ email: OWN, ts: Date.now(), termsAcceptedAt: TICK, rpcArgs: {
@@ -108,6 +113,12 @@ if (showSrc && beginSrc && lib) {
   // 6. partner_exists: a row is already there -> reload so init() claims it.
   r = await run({ marker: good(), rpcResult: { error: { message: 'partner_exists' } } });
   ok(r.reloads === 1 && !r.ls.has(KEY), '(6) partner_exists reloads (the dashboard claim step links the row) and clears the marker');
+  // 8. gh-2355: a legacy localStorage copy of the marker (older signup pages) is purged and never used to register.
+  r = await run({ marker: good(), legacy: good() });
+  ok(!r.lsLegacy.has(KEY), '(8) gh-2355 a legacy localStorage marker is purged by the dashboard');
+  r = await run({ legacy: good() });
+  ok(r.rpcCalls.length === 0 && !r.lsLegacy.has(KEY), '(8) gh-2355 a localStorage-only legacy marker is never replayed automatically (no PII read from localStorage) and is purged');
+  ok(r.doc.getElementById('partnerRecollect').style.display === 'block' && r.doc.getElementById('partnerFinishSignup').style.display === 'inline-block', '(8) gh-2355 with no usable marker the dashboard offers the re-collect form (not a dead end); cross-tab flow is proven in tests/gh2355-crosstab-recovery.mjs');
   // 7. claim failure state must NOT start a registration.
   r = await run({ marker: good(), claimError: true });
   ok(r.rpcCalls.length === 0, '(7) the claim-failed state never calls register_partner');
