@@ -186,6 +186,8 @@ describe('<LoginPage /> rendered behavior (unauthenticated)', () => {
 
     expect(callAuthUniform).toHaveBeenCalledWith('otp', 'jane@example.com', AUTH_CALLBACK_URL);
     expect(localStorage.getItem('cs_auth_role')).toBe('homeowner');
+    // gh-2344: the breadcrumb is bound to the signer's normalised email.
+    expect(localStorage.getItem('cs_auth_role_email')).toBe('jane@example.com');
     // gh-2060 RETURNED item 1: /auth-callback trusts cs_auth_role only when
     // cs_auth_role_at is present and within its 24h TTL. If this writer
     // stops stamping cs_auth_role_at, a real contractor's stale intent is

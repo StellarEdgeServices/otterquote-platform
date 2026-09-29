@@ -125,6 +125,7 @@ import { readFirstTouch } from '@/lib/attribution';
 import { withFirstTouchParam } from '@/lib/attribution-core';
 import { formatPhoneValue, isValidEmail, isValidZip, fullAddress, splitLeadName } from './utils';
 import { captureVariantFromUrl } from '@/lib/variant';
+import { stampRoleOwner } from '@/lib/role-breadcrumb-owner';
 import { SMS_CONSENT_LABEL } from '../../constants/legal';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -965,7 +966,7 @@ export default function GetStartedPage() {
    * localStorage — which is origin-scoped — survives the Google round-trip intact.
    * Reusing cs_signup keeps one mechanism instead of inventing a parallel one.
    */
-  const persistSignupContext = (emailForLead: string | null) => {
+  const persistSignupContext = (emailForLead: string | null, oauth = false) => {
     // 1. Insert into leads table (non-fatal, fire-and-forget — no await).
     //    Skipped when we have no email to attach: on the Google path the visitor
     //    may leave the email field blank, and the real address only arrives with
@@ -1061,6 +1062,9 @@ export default function GetStartedPage() {
     // 5. Store intended role for post-auth routing
     localStorage.setItem('cs_auth_role', 'homeowner');
     localStorage.setItem('cs_auth_role_at', String(Date.now()));
+    // gh-2344: bind the breadcrumb to its signer (Google: email unknown until
+    // the OAuth session exists, so bind to this tab instead).
+    stampRoleOwner(oauth ? null : emailForLead);
   };
 
   /**
@@ -1176,7 +1180,7 @@ export default function GetStartedPage() {
       const typedEmail = email.trim();
       // Stash the profile payload BEFORE the browser leaves for Google —
       // nothing in the OAuth callback can reconstruct it otherwise.
-      persistSignupContext(typedEmail && isValidEmail(typedEmail) ? typedEmail : null);
+      persistSignupContext(typedEmail && isValidEmail(typedEmail) ? typedEmail : null, true);
       // Fired here rather than after the call because a successful
       // signInWithOAuth unloads this page immediately.
       fireSignupAnalytics('google');

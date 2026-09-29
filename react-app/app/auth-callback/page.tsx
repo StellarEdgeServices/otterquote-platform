@@ -54,6 +54,7 @@ import { supabase } from '@/lib/supabase';
 import { readReferralIds, writeReferralIds, writeClaimReferralId } from '@/lib/cookie-storage';
 import { linkPendingLeadOnce } from '@/lib/lead-capture';
 import { readOwnedContractorSignup } from '@/lib/contractor-signup-owner';
+import { clearRoleBreadcrumb, roleOwnerMatches } from '@/lib/role-breadcrumb-owner';
 import { maybeFireGoogleSignUp, readReferralSourceFromCsSignup } from './signup-analytics';
 import { adoptFirstTouchFromParam, recordFirstTouch } from '@/lib/attribution';
 
@@ -343,8 +344,12 @@ export default function AuthCallbackPage() {
       if (typeof localStorage !== 'undefined') {
         const storedIntent = localStorage.getItem('cs_auth_role');
         const storedAt = parseInt(localStorage.getItem('cs_auth_role_at') || '', 10);
+        // gh-2344: honour only a breadcrumb written for THIS signer (stored
+        // owner email === signed-in email, or this tab's OAuth nonce); a
+        // foreign or owner-less (legacy) breadcrumb is ignored and cleared.
         if (
           storedIntent !== null &&
+          roleOwnerMatches(session.user.email) &&
           Number.isFinite(storedAt) &&
           // gh-2060 round-4 hardening 2: reject a future-dated stamp (negative
           // age would otherwise pass `<= TTL` and be trusted indefinitely).
@@ -352,9 +357,10 @@ export default function AuthCallbackPage() {
           Date.now() - storedAt <= CS_AUTH_ROLE_TTL_MS
         ) {
           intent = storedIntent;
+        } else if (storedIntent !== null) {
+          console.warn('[cs_auth_role] ignored and cleared: not written for the signed-in user');
         }
-        localStorage.removeItem('cs_auth_role');
-        localStorage.removeItem('cs_auth_role_at');
+        clearRoleBreadcrumb();
       }
 
       // Role resolution — gh-909 (D-182 v113, 2026-08-19): single

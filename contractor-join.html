@@ -413,6 +413,7 @@
                 try { sessionStorage.setItem('cs_contractor_signup_session', '1'); } catch (e) { /* non-fatal */ }
                 localStorage.setItem('cs_auth_role', 'contractor');
                 localStorage.setItem('cs_auth_role_at', String(Date.now()));
+                Auth.stampRoleOwner(email); // gh-2344
 
                 // Send magic link via the auth-uniform Edge Function, not
                 // sb.auth.signInWithOtp() directly — gh-1883 [SECURITY]:
@@ -489,6 +490,7 @@
                 btn.innerHTML = 'Redirecting to Google…';
                 localStorage.setItem('cs_auth_role', 'contractor');
                 localStorage.setItem('cs_auth_role_at', String(Date.now()));
+                Auth.stampRoleOwner(null); // gh-2344
                 try {
                     await Auth.signInWithGoogle('/auth-callback.html?intent=contractor');
                 } catch (err) {

@@ -328,6 +328,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         localStorage.removeItem('cs_auth_role');
         localStorage.removeItem('cs_auth_role_at');
+        localStorage.removeItem('cs_auth_role_email');
+        sessionStorage.removeItem('cs_auth_role_tab');
       } catch {
         /* storage blocked — nothing to clear */
       }

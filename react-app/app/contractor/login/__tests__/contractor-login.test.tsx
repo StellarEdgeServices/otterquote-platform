@@ -199,6 +199,8 @@ describe('<ContractorLoginPage /> rendered behavior (unauthenticated)', () => {
 
     expect(callAuthUniform).toHaveBeenCalledWith('otp', 'pro@roofco.com', AUTH_CALLBACK_URL);
     expect(localStorage.getItem('cs_auth_role')).toBe('contractor');
+    // gh-2344: the breadcrumb is bound to the signer's normalised email.
+    expect(localStorage.getItem('cs_auth_role_email')).toBe('pro@roofco.com');
     // gh-2060 RETURNED item 1 (contractor magic-link writer): /auth-callback
     // only trusts cs_auth_role when cs_auth_role_at is present and within
     // its 24h TTL — this must fail if the stamp write is deleted.
@@ -246,6 +248,9 @@ describe('<ContractorLoginPage /> rendered behavior (unauthenticated)', () => {
       }),
     );
     expect(localStorage.getItem('cs_auth_role')).toBe('contractor');
+    // gh-2344: email unknown before Google -> bound to this tab (nonce in sessionStorage).
+    expect(localStorage.getItem('cs_auth_role_email')).toBe('oauth-tab:' + sessionStorage.getItem('cs_auth_role_tab'));
+    expect(sessionStorage.getItem('cs_auth_role_tab')).toBeTruthy();
     // gh-2060 RETURNED item 1 (contractor Google OAuth writer): same TTL-
     // stamp requirement as the magic-link writer above.
     const stampRaw = localStorage.getItem('cs_auth_role_at');

@@ -36,10 +36,33 @@
     var CS_AUTH_ROLE_TTL_MS = 24 * 60 * 60 * 1000;
     var lsRoleAt = null;
     var lsFresh = false;
+    // gh-2344: the breadcrumb is honoured only when written for THIS signer:
+    // stored owner (cs_auth_role_email) === the access_token JWT's email
+    // (normalised), or this tab's OAuth nonce. No token / no email in the
+    // token / no stored owner (legacy) => not fresh; the keys are cleared below.
+    var lsOwnerOk = false;
+    try {
+      var _own = localStorage.getItem('cs_auth_role_email') || '';
+      if (_own.indexOf('oauth-tab:') === 0) {
+        var _tab = sessionStorage.getItem('cs_auth_role_tab');
+        lsOwnerOk = !!_tab && _own === 'oauth-tab:' + _tab;
+      } else if (_own) {
+        var _p = new URLSearchParams(hash.charAt(0) === '#' ? hash.substring(1) : hash);
+        var _t = _p.get('access_token');
+        var _parts = _t ? _t.split('.') : [];
+        if (_parts.length === 3) {
+          var _b = _parts[1].replace(/-/g, '+').replace(/_/g, '/');
+          while (_b.length % 4) _b += '=';
+          var _em = JSON.parse(atob(_b)).email;
+          _em = typeof _em === 'string' ? _em.trim().toLowerCase() : '';
+          lsOwnerOk = !!_em && _own.trim().toLowerCase() === _em;
+        }
+      }
+    } catch (e) { lsOwnerOk = false; }
     try {
       lsRoleAt = parseInt(localStorage.getItem('cs_auth_role_at') || '', 10);
       // gh-2060 round-4 hardening 2: `>= 0` rejects a future-dated stamp.
-      lsFresh = Number.isFinite(lsRoleAt) && (Date.now() - lsRoleAt) >= 0 && (Date.now() - lsRoleAt) <= CS_AUTH_ROLE_TTL_MS;
+      lsFresh = lsOwnerOk && Number.isFinite(lsRoleAt) && (Date.now() - lsRoleAt) >= 0 && (Date.now() - lsRoleAt) <= CS_AUTH_ROLE_TTL_MS;
     } catch (e) {}
 
     // gh-817 A1b: user_metadata.role is a signup-time artifact (stamped once by
@@ -90,6 +113,8 @@
     try {
       localStorage.removeItem('cs_auth_role');
       localStorage.removeItem('cs_auth_role_at');
+      localStorage.removeItem('cs_auth_role_email');
+      sessionStorage.removeItem('cs_auth_role_tab');
     } catch (e) {}
 
     if (role === 'contractor') {

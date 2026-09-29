@@ -42,6 +42,7 @@ import {
 } from './utils';
 import { consumeContractorGateBounce } from '@/lib/contractor-gate';
 import { readValidCookieSession } from '@/lib/cookie-storage';
+import { stampRoleOwner } from '@/lib/role-breadcrumb-owner';
 
 // ─── GA4 helper (parity with contractor-login.html gtag) ──────────────
 function gtag(...args: unknown[]) {
@@ -112,6 +113,7 @@ export default function ContractorLoginPage() {
       // cs_auth_role drives /auth-callback's contractor-table-first routing.
       localStorage.setItem('cs_auth_role', 'contractor');
       localStorage.setItem('cs_auth_role_at', String(Date.now()));
+      stampRoleOwner(trimmed);
       // gh-1883 [SECURITY]: routed through auth-uniform, not
       // supabase.auth.signInWithOtp() directly — see lib/auth-uniform.ts.
       await callAuthUniform('otp', trimmed, AUTH_CALLBACK_URL);
@@ -137,6 +139,7 @@ export default function ContractorLoginPage() {
       // routing breadcrumb or the TTL has already expired it.
       localStorage.setItem('cs_auth_role', 'contractor');
       localStorage.setItem('cs_auth_role_at', String(Date.now()));
+      stampRoleOwner(sentToEmail);
       // gh-1883 [SECURITY]: routed through auth-uniform, not
       // supabase.auth.signInWithOtp() directly — see lib/auth-uniform.ts.
       await callAuthUniform('otp', sentToEmail, AUTH_CALLBACK_URL);
@@ -153,6 +156,7 @@ export default function ContractorLoginPage() {
     try {
       localStorage.setItem('cs_auth_role', 'contractor');
       localStorage.setItem('cs_auth_role_at', String(Date.now()));
+      stampRoleOwner(null); // gh-2344: email unknown before Google; bind to this tab
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: { redirectTo: GOOGLE_OAUTH_REDIRECT },

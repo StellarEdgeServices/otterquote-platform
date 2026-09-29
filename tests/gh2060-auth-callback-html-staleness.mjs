@@ -54,6 +54,19 @@ function makeStorage(initial = {}) {
   };
 }
 
+// gh-2344: load the real js/auth.js into a vm sharing this run's localStorage and
+// return its roleOwnerMatches (so auth-callback.html is tested against the real owner check).
+function realRoleOwnerMatches(localStorage) {
+  const authSrc = fs.readFileSync(path.join(__dirname, '..', 'js', 'auth.js'), 'utf8');
+  const sessionStorage = makeStorage({});
+  const sb = { auth: { signOut: async () => ({ error: null }) } };
+  const sb2 = { console, setTimeout, clearTimeout, Promise, localStorage, sessionStorage, document: { cookie: '' }, navigator: { userAgent: 'node-test' }, window: { location: { pathname: '/auth-callback.html', href: '' } }, sb };
+  sb2.window.sb = sb;
+  vm.createContext(sb2);
+  vm.runInContext(authSrc, sb2, { filename: 'js/auth.js' });
+  return (email) => sb2.window.Auth.roleOwnerMatches(email);
+}
+
 /**
  * Runs the real auth-callback.html routing IIFE against a mock Supabase
  * client + Auth global, fires the SIGNED_IN callback with a fixed session,
@@ -63,6 +76,8 @@ async function runHandle({ csAuthRole, csAuthRoleAt, role = 'homeowner', hasClai
   const localStorageStore = {};
   if (csAuthRole !== undefined) localStorageStore.cs_auth_role = csAuthRole;
   if (csAuthRoleAt !== undefined) localStorageStore.cs_auth_role_at = csAuthRoleAt;
+  // gh-2344: pre-existing cases are the SAME signer as the session below.
+  if (csAuthRole !== undefined) localStorageStore.cs_auth_role_email = 'user@example.com';
   const localStorage = makeStorage(localStorageStore);
 
   const hrefWrites = [];
@@ -88,6 +103,8 @@ async function runHandle({ csAuthRole, csAuthRoleAt, role = 'homeowner', hasClai
       recordFirstTouchAttribution: async () => {},
       getRole: async () => role,
       _getIsAdmin: async () => false,
+      // gh-2344: the REAL Auth.roleOwnerMatches from js/auth.js, bound to this run's storage.
+      roleOwnerMatches: realRoleOwnerMatches(localStorage),
     },
   };
   sandbox.window.localStorage = localStorage;
@@ -118,7 +135,7 @@ async function runHandle({ csAuthRole, csAuthRoleAt, role = 'homeowner', hasClai
   vm.runInContext(routingSrc, sandbox, { filename: 'auth-callback.html#routing' });
 
   assert.ok(typeof capturedCallback === 'function', 'sb.auth.onAuthStateChange callback was never registered');
-  await capturedCallback('SIGNED_IN', { user: { id: 'user-gh2060' } });
+  await capturedCallback('SIGNED_IN', { user: { id: 'user-gh2060', email: 'user@example.com' } });
 
   return { dest: hrefWrites[0] ?? null, localStorage };
 }
