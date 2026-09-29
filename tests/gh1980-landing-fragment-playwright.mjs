@@ -32,11 +32,18 @@ import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(process.argv[2] || path.join(here, '..'));
-const UMD = process.env.SUPABASE_UMD || path.join(here, '..', 'react-app/node_modules/@supabase/supabase-js/dist/umd/supabase.js');
-const require = createRequire(import.meta.url);
+// supabase-js 2.116.0 UMD: tests/e2e's own dependency in CI (npm ci there), else the react-app copy locally.
+const UMD_CANDIDATES = [process.env.SUPABASE_UMD,
+  path.join(here, 'e2e/node_modules/@supabase/supabase-js/dist/umd/supabase.js'),
+  path.join(here, '..', 'react-app/node_modules/@supabase/supabase-js/dist/umd/supabase.js')].filter(Boolean);
+const UMD = UMD_CANDIDATES.find(f => fs.existsSync(f));
+if (!UMD) throw new Error('supabase-js UMD not found; tried: ' + UMD_CANDIDATES.join(', '));
 let chromium;
-try { ({ chromium } = require('playwright')); }
-catch { ({ chromium } = require(process.env.PLAYWRIGHT_PATH || '/opt/node22/lib/node_modules/playwright')); }
+try { ({ chromium } = createRequire(path.join(here, 'e2e', 'package.json'))('playwright')); }
+catch {
+  try { ({ chromium } = createRequire(import.meta.url)('playwright')); }
+  catch { ({ chromium } = createRequire(import.meta.url)(process.env.PLAYWRIGHT_PATH || '/opt/node22/lib/node_modules/playwright')); }
+}
 
 let pass = 0, fail = 0;
 const ok = (c, l) => { console.log((c ? 'PASS: ' : 'FAIL: ') + l); c ? pass++ : fail++; };
@@ -77,7 +84,7 @@ const browser = await chromium.launch();
 
 async function newPage(seed) {
   const ctx = await browser.newContext(); // fresh context == "second browser"
-  const log = { userAuth: [], tokenPosts: [], authorize: [], navs: [], failedExternal: 0 };
+  const log = { userAuth: [], tokenPosts: [], authorize: [], signups: [], navs: [], failedExternal: 0 };
   await ctx.route('**/*', (route) => {
     const u = new URL(route.request().url());
     if (u.hostname === '127.0.0.1') return route.continue();
@@ -86,6 +93,8 @@ async function newPage(seed) {
       const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': '*' };
       if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
       if (rp === '/auth/v1/user') { log.userAuth.push(route.request().headers()['authorization'] || ''); return route.fulfill({ status: 200, headers: cors, contentType: 'application/json', body: JSON.stringify(USER) }); }
+      if (rp === '/auth/v1/signup') { log.signups.push({ q: u.search, body: route.request().postData() || '' }); return route.fulfill({ status: 200, headers: cors, contentType: 'application/json', body: JSON.stringify({ ...USER, identities: [] }) }); }
+      if (rp === '/auth/v1/token' && /grant_type=refresh_token/.test(u.search)) { log.tokenPosts.push({ q: u.search, body: route.request().postData() }); return route.fulfill({ status: 400, headers: cors, contentType: 'application/json', body: JSON.stringify({ code: 400, error_code: 'refresh_token_not_found', msg: 'Invalid Refresh Token: Refresh Token Not Found' }) }); }
       if (rp === '/auth/v1/token') { log.tokenPosts.push({ q: u.search, body: route.request().postData() }); return route.fulfill({ status: 200, headers: cors, contentType: 'application/json', body: JSON.stringify(SESSION) }); }
       if (rp === '/auth/v1/authorize') { log.authorize.push(u.href); return route.abort(); }
       if (rp.startsWith('/rest/v1/')) return route.fulfill({ status: 200, headers: cors, contentType: 'application/json', body: '[]' });
@@ -135,6 +144,41 @@ for (const landing of ['/dashboard.html', '/contractor-pre-approval.html']) {
   ok(!/access_token/.test(r.hash || ''), `(5) ${tag}: fragment scrubbed from the URL after setSession`);
   ok(!!r.ls || /sb_at|sb-/.test(r.cookie || ''), `(5) ${tag}: session persisted`);
   ok(log.navs.filter(n => BOUNCE.test(n)).length === 0, `(5) ${tag}: no auth-guard bounce (navs: ${log.navs.join(' > ')})`);
+  await ctx.close();
+}
+
+// (6) email signUp on a pkce page load must NOT be PKCE-bound (Ben: email flows never PKCE)
+{
+  const { ctx, page, log } = await newPage({ 'sb-otterquote-auth-code-verifier': JSON.stringify('VERIFIER-signup-1') });
+  await page.goto(BASE + '/partner-insurance.html?g=1&code=GOOGLE-CODE-2', { waitUntil: 'domcontentloaded' }).catch(() => {});
+  await page.waitForFunction(() => window.Auth && window.sb, null, { timeout: 8000 }).catch(() => {});
+  await page.waitForTimeout(2500);
+  const flow = await page.evaluate(() => window.sb && window.sb.auth.flowType).catch(() => null);
+  ok(flow === 'pkce', `(6) precondition: the shared client is pkce for this Google-return load (flowType=${flow})`);
+  await page.evaluate(() => window.Auth.signUpWithPassword('partner@otterquote-internal.test', 'Passw0rd!Passw0rd', 're_agent').catch(e => String(e))).catch(() => {});
+  await page.waitForTimeout(1500);
+  const su = log.signups[0];
+  ok(!!su, '(6) signUp request was sent');
+  ok(!!su && (JSON.parse(su.body).code_challenge ?? null) === null, '(6) the confirmation-link signUp carries NO code_challenge (implicit) even on a pkce page load' + (su ? ` [body=${su.body.slice(0, 120)}]` : ''));
+  ok(!!su && /emailRedirectTo|redirect_to/.test(su.q + su.body), '(6) ...and still carries its emailRedirectTo');
+  await ctx.close();
+}
+
+// (7) rescue must not burn a session where auth-js deliberately would not
+for (const landing of ['/dashboard.html']) {
+  const { ctx, page, log } = await newPage();
+  await page.goto(BASE + landing + frag, { waitUntil: 'domcontentloaded' }).catch(() => {});
+  await page.waitForTimeout(3500); // signed in natively
+  const before = await page.evaluate(async () => { const r = await window.sb.auth.getSession(); return !!(r.data.session); }).catch(() => false);
+  ok(before, '(7) precondition: a valid session is stored');
+  const expired = `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({ sub: USER.id, role: 'authenticated', exp: NOW - 3600 })}.sig`;
+  log.tokenPosts.length = 0;
+  await page.goto(BASE + landing + '?nodetect=1#access_token=' + expired + '&refresh_token=RT-OLD&expires_in=3600&token_type=bearer&type=magiclink', { waitUntil: 'domcontentloaded' }).catch(() => {});
+  await page.waitForTimeout(3500);
+  const after = await page.evaluate(async () => { const r = await window.sb.auth.getSession(); return { has: !!r.data.session, uid: r.data.session && r.data.session.user.id, hash: location.hash }; }).catch(() => ({ has: false, hash: 'PAGE-GONE' }));
+  ok(!log.tokenPosts.some(t => /grant_type=refresh_token/.test(t.q)), '(7) expired fragment: no refresh-token request (setSession not run)');
+  ok(after.has && after.uid === USER.id, '(7) expired fragment + existing session: the session is kept (not signed out)');
+  ok(!/access_token/.test(after.hash || ''), `(7) ...and the dead fragment is scrubbed (hash=${JSON.stringify(after.hash)})`);
   await ctx.close();
 }
 

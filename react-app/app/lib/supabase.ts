@@ -4,7 +4,7 @@ import {
   OTTERQUOTE_AUTH_STORAGE_KEY,
 } from './cookie-storage';
 import { nonDeadlockingLock } from './supabase-lock';
-import { flowTypeForPageLoad } from './oauth-pkce';
+import { PAGE_LOAD_FLOW_TYPE } from './oauth-pkce';
 
 /**
  * Singleton Supabase client for the browser.
@@ -45,7 +45,7 @@ export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKe
     // device. Only a verifier-backed ?code= return (our own Google sign-in) gets a pkce
     // client, decided per page load -- see oauth-pkce.ts. Google INITIATION is in
     // supabase-oauth.ts.
-    flowType: flowTypeForPageLoad(),
+    flowType: PAGE_LOAD_FLOW_TYPE,
     // Avoid the supabase-js navigator.locks deadlock that froze getSession() and
     // the contractor dashboard (D-211 2026-06-16, true root of Blocker 1).
     lock: nonDeadlockingLock,

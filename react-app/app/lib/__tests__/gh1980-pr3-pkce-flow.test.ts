@@ -72,6 +72,17 @@ describe('gh-1980 PR 3: the shared React client is implicit except on a Google ?
   });
 });
 
+describe('gh-1980 PR 3: oauth-pkce canonical key', () => {
+  it('the storageKey oauth-pkce.ts assumes is the canonical one', async () => {
+    const { OTTERQUOTE_AUTH_STORAGE_KEY } = await import('../cookie-storage');
+    localStorage.clear();
+    localStorage.setItem(`${OTTERQUOTE_AUTH_STORAGE_KEY}-code-verifier`, 'v');
+    setUrl('/x?code=abc');
+    expect(flowTypeForPageLoad()).toBe('pkce');
+    setUrl('/');
+  });
+});
+
 describe('gh-1980 PR 3: Google initiation is PKCE on an isolated, verifier-only storage', () => {
   beforeEach(() => {
     vi.resetModules();
@@ -137,36 +148,114 @@ describe('gh-1980 PR 3: email-initiated flows are not PKCE-bound', () => {
     }
     // get-started signUp() rides the shared implicit client (no flowType override).
     const gs = src('get-started/page.tsx').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-    expect(gs).toMatch(/supabase\.auth\.signUp\(/);
+    expect(gs).toMatch(/getEmailAuthClient\(\)\.auth\.signUp\(/);
     expect(gs).not.toMatch(/flowType/);
   });
 });
 
-describe('gh-1980 PR 3: rescueImplicitFragment (pre-flip #access_token links)', () => {
+describe('gh-1980 PR 3: email signUp is never PKCE-bound, even on a pkce (Google-return) page load', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    createClientMock.mockReset();
+    localStorage.clear();
+    setUrl('/');
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://example.supabase.co');
+    vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'anon-test-key');
+  });
+
+  it('(d) on a pkce page load getEmailAuthClient() is an explicitly implicit client and signUp sends no code_challenge', async () => {
+    const actual = await vi.importActual<typeof import('@supabase/supabase-js')>('@supabase/supabase-js');
+    createClientMock.mockImplementation(((...a: unknown[]) => (actual.createClient as any)(...a)) as any);
+    localStorage.setItem('sb-otterquote-auth-code-verifier', JSON.stringify('v'));
+    setUrl('/get-started?code=abc');
+    const bodies: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (_u: unknown, init?: RequestInit) => {
+      bodies.push(String(init?.body ?? ''));
+      return new Response(JSON.stringify({ id: 'u', identities: [] }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }));
+    const { getEmailAuthClient } = await import('../supabase-email');
+    const { supabase } = await import('../supabase');
+    const client = getEmailAuthClient();
+    expect(client).not.toBe(supabase);
+    const optsList = createClientMock.mock.calls.map((c) => (c as unknown[])[2] as { auth: Record<string, unknown> });
+    expect(optsList[0].auth.flowType).toBe('pkce'); // the shared client, on this load
+    expect(optsList[optsList.length - 1].auth.flowType).toBe('implicit');
+    expect(optsList[optsList.length - 1].auth.storageKey).toBe('sb-otterquote-auth');
+    await client.auth.signUp({ email: 'a@b.co', password: 'Passw0rd!Passw0rd', options: { emailRedirectTo: 'https://app.otterquote.com/auth-callback' } });
+    const signup = bodies.find((b) => b.includes('a@b.co')) ?? '';
+    expect(signup).not.toBe('');
+    expect(JSON.parse(signup).code_challenge ?? null).toBeNull();
+    vi.unstubAllGlobals();
+  });
+
+  it('(d) on a normal load getEmailAuthClient() is just the shared implicit client', async () => {
+    const { getEmailAuthClient } = await import('../supabase-email');
+    const { supabase } = await import('../supabase');
+    expect(getEmailAuthClient()).toBe(supabase);
+  });
+
+  it('(d) get-started signs up through getEmailAuthClient(), not the shared client directly', () => {
+    const code = src('get-started/page.tsx');
+    expect(code).toContain('getEmailAuthClient().auth.signUp(');
+    expect(code).not.toMatch(/\bsupabase\.auth\.signUp\(\{/);
+  });
+});
+
+describe('gh-1980 PR 3: rescueImplicitFragment (#access_token links)', () => {
+  const b64 = (o: object) => Buffer.from(JSON.stringify(o)).toString('base64url');
+  const jwtWith = (exp: number) => `${b64({ alg: 'HS256' })}.${b64({ sub: 'u', exp })}.sig`;
+  const VALID = jwtWith(Math.floor(Date.now() / 1000) + 3600);
+  const EXPIRED = jwtWith(Math.floor(Date.now() / 1000) - 3600);
   const mkWin = (hash: string) => {
     const replaceState = vi.fn();
     return { win: { location: { hash, pathname: '/auth-callback', search: '?intent=homeowner' }, history: { state: null, replaceState } } as any, replaceState };
   };
+  const mkClient = (session: unknown, setSession = vi.fn()) => ({
+    auth: { getSession: vi.fn().mockResolvedValue({ data: { session } }), setSession },
+  }) as any;
 
-  it('sets the session from a legacy fragment and strips it from the URL', async () => {
+  it('valid fragment + NO stored session: sets the session and strips the fragment', async () => {
     const setSession = vi.fn().mockResolvedValue({ data: { session: { access_token: 'a' } }, error: null });
-    const { win, replaceState } = mkWin('#access_token=AT&refresh_token=RT&expires_in=3600&token_type=bearer');
-    await expect(rescueImplicitFragment({ auth: { setSession } } as any, win)).resolves.toBe(true);
-    expect(setSession).toHaveBeenCalledWith({ access_token: 'AT', refresh_token: 'RT' });
+    const { win, replaceState } = mkWin(`#access_token=${VALID}&refresh_token=RT&expires_in=3600&token_type=bearer`);
+    await expect(rescueImplicitFragment(mkClient(null, setSession), win)).resolves.toBe(true);
+    expect(setSession).toHaveBeenCalledWith({ access_token: VALID, refresh_token: 'RT' });
     expect(replaceState).toHaveBeenCalledWith(null, '', '/auth-callback?intent=homeowner');
+  });
+
+  it('EXPIRED fragment + an existing session: no setSession (nothing refreshed, nothing signed out), session kept, fragment scrubbed', async () => {
+    const setSession = vi.fn();
+    const { win, replaceState } = mkWin(`#access_token=${EXPIRED}&refresh_token=RT-OLD&expires_in=3600&token_type=bearer`);
+    await expect(rescueImplicitFragment(mkClient({ access_token: 'live' }, setSession), win)).resolves.toBe(true);
+    expect(setSession).not.toHaveBeenCalled();
+    expect(replaceState).toHaveBeenCalledWith(null, '', '/auth-callback?intent=homeowner');
+  });
+
+  it('VALID fragment + an existing session: the stored session wins, no setSession', async () => {
+    const setSession = vi.fn();
+    const { win } = mkWin(`#access_token=${VALID}&refresh_token=RT&expires_in=3600&token_type=bearer`);
+    await expect(rescueImplicitFragment(mkClient({ access_token: 'live' }, setSession), win)).resolves.toBe(true);
+    expect(setSession).not.toHaveBeenCalled();
+  });
+
+  it('EXPIRED fragment and no session: no setSession (no refresh burn), scrubbed, false', async () => {
+    const setSession = vi.fn();
+    const { win, replaceState } = mkWin(`#access_token=${EXPIRED}&refresh_token=RT-OLD`);
+    await expect(rescueImplicitFragment(mkClient(null, setSession), win)).resolves.toBe(false);
+    expect(setSession).not.toHaveBeenCalled();
+    expect(replaceState).toHaveBeenCalled();
   });
 
   it('returns false and never calls setSession when there is no fragment (e.g. a cross-device ?code= link)', async () => {
     const setSession = vi.fn();
     const { win } = mkWin('');
-    await expect(rescueImplicitFragment({ auth: { setSession } } as any, win)).resolves.toBe(false);
+    await expect(rescueImplicitFragment(mkClient(null, setSession), win)).resolves.toBe(false);
     expect(setSession).not.toHaveBeenCalled();
   });
 
   it('returns false when the fragment lacks a refresh token or setSession rejects it', async () => {
     const setSession = vi.fn().mockResolvedValue({ data: { session: null }, error: new Error('bad') });
-    await expect(rescueImplicitFragment({ auth: { setSession } } as any, mkWin('#access_token=AT').win)).resolves.toBe(false);
+    await expect(rescueImplicitFragment(mkClient(null, setSession), mkWin(`#access_token=${VALID}`).win)).resolves.toBe(false);
     expect(setSession).not.toHaveBeenCalled();
-    await expect(rescueImplicitFragment({ auth: { setSession } } as any, mkWin('#access_token=AT&refresh_token=RT').win)).resolves.toBe(false);
+    await expect(rescueImplicitFragment(mkClient(null, setSession), mkWin(`#access_token=${VALID}&refresh_token=RT`).win)).resolves.toBe(false);
   });
 });

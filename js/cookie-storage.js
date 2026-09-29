@@ -690,7 +690,25 @@
     });
   }
 
+  // Email-initiated calls (signUp confirmation, OTP, recovery) must never be PKCE-bound
+  // (Ben, #1980 5889011351). On the one page load where the shared client is pkce (a
+  // Google ?code= return, e.g. partner-insurance.html?g=1) they go through this explicitly
+  // implicit client instead: same canonical storageKey + adapter, but it only initiates
+  // (no URL detection, no token refresh).
+  function createEmailClient(url, anon) {
+    return window.supabase.createClient(url, anon, {
+      auth: {
+        flowType: 'implicit',
+        storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || STORAGE_KEY,
+        storage: window.OtterQuoteCookieStorage,
+        detectSessionInUrl: false,
+        autoRefreshToken: false
+      }
+    });
+  }
+
   window.OtterQuoteOAuthPkce = {
+    createEmailClient: createEmailClient,
     flowTypeForPageLoad: flowTypeForPageLoad,
     createVerifierOnlyStorage: createVerifierOnlyStorage,
     createOAuthClient: createOAuthClient

@@ -119,6 +119,7 @@ import type { ChangeEvent, FormEvent } from 'react';
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import { supabase } from '@/lib/supabase';
 import { signInWithGoogleOAuth } from '@/lib/supabase-oauth';
+import { getEmailAuthClient } from '@/lib/supabase-email';
 import { isInternalTraffic } from '@/lib/internal-traffic';
 import { readReferralIds, writeReferralIds } from '@/lib/cookie-storage';
 import { linkPendingLeadOnce } from '@/lib/lead-capture';
@@ -1270,7 +1271,7 @@ export default function GetStartedPage() {
       // helper because it lives in the static stack's global Auth object, which
       // the React app deliberately does not load; the React surfaces call
       // `supabase.auth.*` directly (same convention as /login).
-      const { data, error: signUpError } = await supabase.auth.signUp({
+      const { data, error: signUpError } = await getEmailAuthClient().auth.signUp({
         email: emailTrimmed,
         password,
         options: {

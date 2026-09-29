@@ -229,6 +229,15 @@ var PARTNER_ROLES = ['re_agent', 'insurance_agent', 'home_inspector', 'adjuster'
  * `access_token` is in the URL, and setSession() fires SIGNED_IN.
  * Memoised: one attempt per page load. Never throws.
  */
+function _oqJwtExpired(jwt) {
+  try {
+    var part = String(jwt).split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    var payload = JSON.parse(atob(part + '==='.slice((part.length + 3) % 4)));
+    return typeof payload.exp === 'number' && payload.exp * 1000 <= Date.now();
+  } catch (e) {
+    return true; // undecodable == unusable
+  }
+}
 var _oqFragmentRescue = null;
 function rescueImplicitFragment() {
   if (_oqFragmentRescue) return _oqFragmentRescue;
@@ -246,7 +255,15 @@ function rescueImplicitFragment() {
       var p = new URLSearchParams(h.replace(/^#/, ''));
       var at = p.get('access_token');
       var rt = p.get('refresh_token');
-      if (!at || !rt) return false;
+      // Never do what auth-js itself deliberately will not ("Don't remove existing session
+      // on URL login failure"): setSession() on a dead access_token goes to a refresh whose
+      // non-retryable failure clears the local session, and a stale refresh token can trip
+      // GoTrue reuse detection. So: a valid stored session wins, an expired fragment is
+      // only scrubbed.
+      var scrub = function () { try { window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search); } catch (e) { /* non-fatal */ } };
+      var existing = await sb.auth.getSession();
+      if (existing && existing.data && existing.data.session) { scrub(); return true; }
+      if (!at || !rt || _oqJwtExpired(at)) { scrub(); return false; }
       var res = await sb.auth.setSession({ access_token: at, refresh_token: rt });
       if (res && res.data && res.data.session) {
         try { window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search); } catch (e) { /* non-fatal */ }
@@ -538,7 +555,19 @@ window.Auth = {
       ? '/partner-dashboard.html'
       : '/auth-callback.html';
     const redirectPage = redirectTo || defaultRedirectPage;
-    const { data, error } = await sb.auth.signUp({
+    // gh-1980 PR 3/3: the shared client is pkce for the whole page load of a Google
+    // ?code= return (e.g. partner-insurance.html?g=1). An emailed confirmation link
+    // must stay implicit, so on such a load sign up through an explicitly implicit
+    // client (same storageKey + adapter) rather than the pkce `sb`.
+    var emailClient = sb;
+    if (sb.auth && sb.auth.flowType === 'pkce') {
+      var _pk = window.OtterQuoteOAuthPkce;
+      if (!_pk || typeof _pk.createEmailClient !== 'function' || !window.supabase) {
+        throw new Error('Sign-up unavailable: js/cookie-storage.js must load first');
+      }
+      emailClient = _pk.createEmailClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
+    }
+    const { data, error } = await emailClient.auth.signUp({
       email,
       password,
       options: { emailRedirectTo: `${CONFIG.SITE_URL}${redirectPage}` }

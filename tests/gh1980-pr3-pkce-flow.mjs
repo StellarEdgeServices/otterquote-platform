@@ -166,9 +166,24 @@ function fakeBrowser(href, store) {
   ok(withChallenge.length === 0, '(d) no email caller passes a code_challenge' + (withChallenge.length ? ' -- ' + withChallenge.join(', ') : ''));
   const auth = read('js/auth.js');
   const su = auth.match(/async signUpWithPassword\([\s\S]*?\n  \},/)[0];
-  ok(/\bsb\.auth\.signUp\(/.test(su) && !/OtterQuoteOAuthPkce/.test(su), '(d) signUp confirmation links go through the shared implicit client');
+  ok(/\bemailClient\.auth\.signUp\(/.test(su) && !/createOAuthClient/.test(su), '(d) signUp confirmation links never use the OAuth (pkce) client');
+  ok(/flowType\s*===\s*'pkce'/.test(su) && /createEmailClient/.test(su) && /emailClient\.auth\.signUp\(/.test(su), "(d) signUpWithPassword uses an explicitly implicit email client whenever the shared client is pkce for this page load (Google return, e.g. partner-insurance.html?g=1)");
+  const cs2 = read('js/cookie-storage.js');
+  ok(/function createEmailClient[\s\S]{0,400}flowType:\s*'implicit'/.test(cs2), "(d) createEmailClient is flowType 'implicit' on the canonical storageKey");
   const sm = auth.match(/async sendMagicLink\([\s\S]*?\n  \},/)[0];
   ok(/_callAuthUniform\('otp'/.test(sm) && !/OtterQuoteOAuthPkce/.test(sm), '(d) sendMagicLink goes through auth-uniform, never the pkce client');
+}
+
+// ---------------------------------------------------------------- (f) rescue never burns a session
+{
+  const auth = read('js/auth.js');
+  const fn = auth.slice(auth.indexOf('function rescueImplicitFragment'), auth.indexOf('window.Auth = {'));
+  const iGet = fn.indexOf('sb.auth.getSession()', fn.indexOf('access_token', fn.indexOf('URLSearchParams')));
+  const iSet = fn.indexOf('sb.auth.setSession(');
+  ok(iGet > 0 && iSet > iGet, '(f) the rescue checks for a stored session BEFORE any setSession()');
+  ok(/_oqJwtExpired\(at\)/.test(fn) && fn.indexOf('_oqJwtExpired(at)') < iSet, '(f) ...and refuses an expired fragment JWT before setSession()');
+  const ts = read('react-app/app/auth-callback/implicit-fragment.ts');
+  ok(/getSession\(\)/.test(ts) && /isJwtExpired\(accessToken\)/.test(ts) && ts.indexOf('isJwtExpired(accessToken)') < ts.indexOf('setSession({'), '(f) React implicit-fragment.ts has the same guards');
 }
 
 // ---------------------------------------------------------------- (e)

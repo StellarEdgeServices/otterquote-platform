@@ -15,9 +15,12 @@
  * 'implicit'. Google INITIATION uses a dedicated pkce client (supabase-oauth.ts).
  */
 import type { SupportedStorage } from '@supabase/supabase-js';
-import { OTTERQUOTE_AUTH_STORAGE_KEY } from './cookie-storage';
 
 const FLOW_ID_PARAM = 'sb_flow_id';
+// Canonical storageKey. Deliberately a literal (no import of ./cookie-storage): this module
+// evaluates PAGE_LOAD_FLOW_TYPE at load, and pages' tests partially mock cookie-storage.
+// gh1980-pr3-pkce-flow.test.ts asserts it equals OTTERQUOTE_AUTH_STORAGE_KEY.
+const CANONICAL_STORAGE_KEY = 'sb-otterquote-auth';
 
 export type OAuthFlowType = 'pkce' | 'implicit';
 
@@ -33,7 +36,7 @@ export function isCodeVerifierKey(key: unknown): key is string {
  */
 export function flowTypeForPageLoad(
   win: Pick<Window, 'location' | 'localStorage'> | undefined = typeof window === 'undefined' ? undefined : window,
-  storageKey: string = OTTERQUOTE_AUTH_STORAGE_KEY,
+  storageKey: string = CANONICAL_STORAGE_KEY,
 ): OAuthFlowType {
   try {
     if (!win) return 'implicit';
@@ -64,3 +67,10 @@ export function createVerifierOnlyStorage(real: SupportedStorage): SupportedStor
     },
   };
 }
+
+/**
+ * The flow the shared client was built with for THIS page load. Captured once at
+ * module load, alongside app/lib/supabase.ts: a Google ?code= return stops looking
+ * like one as soon as supabase-js exchanges the code and scrubs the URL.
+ */
+export const PAGE_LOAD_FLOW_TYPE: OAuthFlowType = flowTypeForPageLoad();
