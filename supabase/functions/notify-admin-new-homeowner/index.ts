@@ -110,14 +110,24 @@ import { appendPostalFooterHtml, appendPostalFooterText } from "./footer-append.
 import {
   ADMIN_EMAIL,
   normalizeBody,
-  escapeHtml,
   ROUTER_LEAD_EXCLUDED_EMAIL_SUFFIX,
   roleLabel,
   isRouterLeadAuthorized,
   buildRouterLeadEmail,
 } from "./notify-helpers.ts";
-
-const ADMIN_PORTAL_URL = "https://otterquote.com/admin-dashboard.html";
+import {
+  backfillDigestHtml,
+  backfillDigestText,
+  backlogDigestHtml,
+  backlogDigestText,
+  locationOf,
+  maskEmail,
+  newClaimHtml,
+  newClaimText,
+  newHomeownerHtml,
+  newHomeownerText,
+  routerLeadHtml,
+} from "./templates.ts"; // gh-1824 email bodies (pinned by templates.test.ts)
 
 const NOTIF_TYPE_HOMEOWNER   = "admin_new_homeowner";
 const NOTIF_TYPE_CLAIM       = "admin_new_claim";
@@ -168,76 +178,6 @@ function isExcludedEmail(email: string): boolean {
   return false;
 }
 
-function maskEmail(email: string): string {
-  const at = (email || "").indexOf("@");
-  if (at <= 0) return "(no email)";
-  return `${email[0]}***${email.slice(at)}`;
-}
-
-function buildEmailHtml(heading: string, rows: [string, string][], extraHtml?: string): string {
-  const rowsHtml = rows
-    .map(
-      ([label, value]) => `
-              <tr>
-                <td style="padding:8px 0;color:#64748B;width:130px;vertical-align:top;">${escapeHtml(label)}</td>
-                <td style="padding:8px 0;">${value}</td>
-              </tr>`,
-    )
-    .join("");
-  return `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-</head>
-<body style="margin:0;padding:0;background:#F1F5F9;">
-<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F1F5F9;">
-  <tr>
-    <td align="center" style="padding:24px 16px;">
-      <table width="100%" cellpadding="0" cellspacing="0" border="0"
-             style="max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
-        <tr>
-          <td style="background:#0B1929;padding:20px 24px;">
-            <h2 style="color:#F59E0B;margin:0;font-size:1.1rem;font-family:sans-serif;">
-              🦦 ${escapeHtml(heading)}
-            </h2>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:24px;font-family:sans-serif;color:#0B1929;">
-            <table width="100%" cellpadding="0" cellspacing="0" border="0"
-                   style="border-collapse:collapse;font-size:14px;margin-bottom:24px;">${rowsHtml}
-            </table>
-            ${extraHtml || ""}
-            <table cellpadding="0" cellspacing="0" border="0">
-              <tr>
-                <td align="center" bgcolor="#F59E0B" style="border-radius:8px;">
-                  <a href="${ADMIN_PORTAL_URL}"
-                     style="display:inline-block;font-family:sans-serif;font-size:15px;font-weight:700;
-                            color:#0B1929;text-decoration:none;padding:12px 24px;">
-                    Open Admin Dashboard &rarr;
-                  </a>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <tr>
-          <td align="center"
-              style="background:#F8FAFC;border-top:1px solid #E2E8F0;padding:16px;
-                     font-family:sans-serif;font-size:12px;color:#94A3B8;">
-            Otter Quotes &nbsp;|&nbsp;
-            <a href="mailto:support@otterquote.com" style="color:#0EA5E9;text-decoration:none;">support@otterquote.com</a>
-          </td>
-        </tr>
-      </table>
-    </td>
-  </tr>
-</table>
-</body>
-</html>`.trim();
-}
 
 serve(async (req: Request) => {
   const corsHeaders = buildCorsHeaders(req);
@@ -365,22 +305,8 @@ serve(async (req: Request) => {
     const maskedEmail = maskEmail(email);
 
     const subject  = `[OtterQuote] New claim #${claimNumber} from ${maskedEmail}`;
-    const textBody = [
-      `A new claim was created on Otter Quotes.`,
-      `Claim    : #${claimNumber}`,
-      `Homeowner: ${homeownerName} (${maskedEmail})`,
-      `Created  : ${createdTs} CT`,
-      `Property : ${propertyAddr}`,
-      ``,
-      `Open the admin dashboard:`,
-      ADMIN_PORTAL_URL,
-    ].join("\n");
-    const htmlBody = buildEmailHtml("New Claim Created", [
-      ["Claim", `#${escapeHtml(claimNumber)}`],
-      ["Homeowner", `${escapeHtml(homeownerName)} (${escapeHtml(maskedEmail)})`],
-      ["Created", `${escapeHtml(createdTs)} CT`],
-      ["Property", escapeHtml(propertyAddr)],
-    ]);
+    const textBody = newClaimText(claimNumber, homeownerName, maskedEmail, createdTs, propertyAddr);
+    const htmlBody = newClaimHtml(claimNumber, homeownerName, maskedEmail, createdTs, propertyAddr);
 
     const mgData = await sendMail(mailgunDomain, mailgunKey, subject, textBody, htmlBody);
 
@@ -476,7 +402,7 @@ async function handleRouterLead(
   // `leadRow` -- the query's RETURNING result above -- never the request
   // body. See its doc comment in notify-helpers.ts.
   const { subject, textBody, htmlRows, extraHtml } = buildRouterLeadEmail(leadRow);
-  const htmlBody = buildEmailHtml("New Router Lead", htmlRows, extraHtml);
+  const htmlBody = routerLeadHtml(htmlRows, extraHtml);
 
   let mgData: { id: string };
   try {
@@ -595,39 +521,11 @@ async function handleSignupSweep(
     );
   }
 
-  const locationOf = (p: any) =>
-    [p.address_city, p.address_state, p.address_zip].filter(Boolean).join(", ") || "location not yet provided";
-
   if (!digestAlreadySent) {
     // ONE digest email listing every backlog profile, then mark all alerted.
-    const rowsHtml = toAlert
-      .map((p: any) => {
-        const ts = new Date(p.created_at).toLocaleString("en-US", { timeZone: "America/Chicago" });
-        return `<tr><td style="padding:4px 8px;color:#64748B;">${escapeHtml(maskEmail(p.email || ""))}</td><td style="padding:4px 8px;">${escapeHtml(ts)} CT</td><td style="padding:4px 8px;">${escapeHtml(locationOf(p))}</td></tr>`;
-      })
-      .join("");
-    const extraHtml = `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;font-size:13px;margin-bottom:20px;border:1px solid #E2E8F0;">
-      <tr style="background:#F8FAFC;"><th align="left" style="padding:6px 8px;">Email</th><th align="left" style="padding:6px 8px;">Signed up</th><th align="left" style="padding:6px 8px;">Location</th></tr>
-      ${rowsHtml}
-    </table>`;
-
     const subject  = `[OtterQuote] Homeowner signup backlog digest: ${toAlert.length} existing homeowner(s)`;
-    const textLines = toAlert.map((p: any) => `- ${maskEmail(p.email || "")} | ${new Date(p.created_at).toLocaleString("en-US", { timeZone: "America/Chicago" })} CT | ${locationOf(p)}`);
-    const textBody = [
-      `This is a one-time backlog digest for the gh-1932 homeowner signup sweep.`,
-      `${toAlert.length} existing homeowner(s) with no claim were found and are listed below.`,
-      `From now on, only NEW signups will trigger individual emails.`,
-      ``,
-      ...textLines,
-      ``,
-      `Open the admin dashboard:`,
-      ADMIN_PORTAL_URL,
-    ].join("\n");
-    const htmlBody = buildEmailHtml(
-      "Homeowner Signup Backlog Digest",
-      [["Count", String(toAlert.length)]],
-      extraHtml,
-    );
+    const textBody = backlogDigestText(toAlert);
+    const htmlBody = backlogDigestHtml(toAlert);
 
     const mgData = await sendMail(mailgunDomain, mailgunKey, subject, textBody, htmlBody);
 
@@ -659,27 +557,11 @@ async function handleSignupSweep(
   // Steady state: individual email per newly-eligible profile.
   let lastMailgunId = "";
   for (const p of toAlert) {
-    const ts = new Date(p.created_at).toLocaleString("en-US", { timeZone: "America/Chicago" });
     const maskedEmail = maskEmail(p.email || "");
     const location = locationOf(p);
-    const fullName = p.full_name || "(no name given)";
     const subject  = `[OtterQuote] New homeowner: ${maskedEmail} — ${location}`;
-    const textBody = [
-      `A homeowner signed up on Otter Quotes and has not yet filed a claim.`,
-      `Name     : ${fullName}`,
-      `Email    : ${maskedEmail}`,
-      `Signed up: ${ts} CT`,
-      `Location : ${location}`,
-      ``,
-      `Open the admin dashboard:`,
-      ADMIN_PORTAL_URL,
-    ].join("\n");
-    const htmlBody = buildEmailHtml("New Homeowner Signup", [
-      ["Name", escapeHtml(fullName)],
-      ["Email", escapeHtml(maskedEmail)],
-      ["Signed up", `${escapeHtml(ts)} CT`],
-      ["Location", escapeHtml(location)],
-    ]);
+    const textBody = newHomeownerText(p);
+    const htmlBody = newHomeownerHtml(p);
 
     const mgData = await sendMail(mailgunDomain, mailgunKey, subject, textBody, htmlBody);
     lastMailgunId = mgData.id;
@@ -771,37 +653,9 @@ async function handleSignupBackfill(
 
   const toAlert = eligible.filter((e: any) => !alreadyAlertedIds.has(e.id));
 
-  const locationOf = (p: any) =>
-    [p.address_city, p.address_state, p.address_zip].filter(Boolean).join(", ") || "location not yet provided";
-
-  const rowsHtml = toAlert
-    .map((p: any) => {
-      const ts = new Date(p.created_at).toLocaleString("en-US", { timeZone: "America/Chicago" });
-      return `<tr><td style="padding:4px 8px;color:#64748B;">${escapeHtml(maskEmail(p.email || ""))}</td><td style="padding:4px 8px;">${escapeHtml(ts)} CT</td><td style="padding:4px 8px;">${escapeHtml(locationOf(p))}</td></tr>`;
-    })
-    .join("");
-  const extraHtml = `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;font-size:13px;margin-bottom:20px;border:1px solid #E2E8F0;">
-      <tr style="background:#F8FAFC;"><th align="left" style="padding:6px 8px;">Email</th><th align="left" style="padding:6px 8px;">Signed up</th><th align="left" style="padding:6px 8px;">Location</th></tr>
-      ${rowsHtml}
-    </table>`;
-
   const subject  = `[OtterQuote] Homeowner signup backlog catch-up digest: ${toAlert.length} homeowner(s)`;
-  const textLines = toAlert.map((p: any) => `- ${maskEmail(p.email || "")} | ${new Date(p.created_at).toLocaleString("en-US", { timeZone: "America/Chicago" })} CT | ${locationOf(p)}`);
-  const textBody = [
-    `One-time backlog catch-up for the gh-1932 homeowner signup sweep (no age cap).`,
-    `${toAlert.length} homeowner(s) with no claim, older than the recurring sweep's 7-day window, were found and are listed below.`,
-    `They are now marked alerted; the recurring 15-minute sweep keeps its 7-day window going forward.`,
-    ``,
-    ...textLines,
-    ``,
-    `Open the admin dashboard:`,
-    ADMIN_PORTAL_URL,
-  ].join("\n");
-  const htmlBody = buildEmailHtml(
-    "Homeowner Signup Backlog Catch-up",
-    [["Count", String(toAlert.length)]],
-    extraHtml,
-  );
+  const textBody = backfillDigestText(toAlert);
+  const htmlBody = backfillDigestHtml(toAlert);
 
   const mgData = await sendMail(mailgunDomain, mailgunKey, subject, textBody, htmlBody);
 

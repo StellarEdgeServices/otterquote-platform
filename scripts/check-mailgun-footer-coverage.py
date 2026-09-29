@@ -113,6 +113,13 @@ REQUIRED_FOOTER = {
     "send-lead-next-step-reminder",  # MODE B
     "send-partner-onboarding",     # MODE A
     "send-partner-status-email",   # MODE A (gh-1824)
+    # gh-1824 footer batch 6 (PR #2331; REVIEW: FAIL 5881354201 -- these 5 must
+    # be enforced so removing a wrap turns CI red)
+    "docusign-webhook",            # MODE A
+    "notify-admin-new-homeowner",  # MODE A
+    "notify-admin-new-partner",    # MODE A
+    "platform-health-check",       # MODE A
+    "process-dunning",             # MODE A
 }
 
 

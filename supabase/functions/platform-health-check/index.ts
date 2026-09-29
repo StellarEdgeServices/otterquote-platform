@@ -98,9 +98,17 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
-import { findConsecutiveUndelivered, buildSmsAlertMessage, type TwilioMessageRow } from "./sms-delivery-check.ts";
+import { findConsecutiveUndelivered, type TwilioMessageRow } from "./sms-delivery-check.ts";
 import { evaluateRegisterPartnerGlobalBudget } from "./register-partner-budget-check.ts";
-import { footerPostalAddressText } from "./email-footer.ts"; // gh-1824 D-237
+import {
+  alertEmailText,
+  cronErrorAlert,
+  cronStalenessAlert,
+  efSilentFailureAlert,
+  publicPathFailureAlert,
+  registerPartnerBudgetMessage,
+  smsUndeliveredAlert,
+} from "./templates.ts"; // gh-1824 D-237 (bodies pinned by templates.test.ts)
 
 // =============================================================================
 // CONSTANTS
@@ -221,7 +229,7 @@ async function sendMailgunAlert(
     formData.append("from", `OtterQuote Monitoring <alerts@${domain}>`);
     formData.append("to", ALERT_EMAIL);
     formData.append("subject", subject);
-    formData.append("text", `${body}\n\n${footerPostalAddressText()}`);
+    formData.append("text", alertEmailText(body));
 
     const res = await fetch(`https://api.mailgun.net/v3/${domain}/messages`, {
       method: "POST",
@@ -552,19 +560,7 @@ async function runEdgeFunctionPings(
         );
       } else {
         // 2nd-strike: fire the real alert.
-        const subject = `OtterQuote Health Alert — ${result.functionName} is not responding (2 consecutive failures)`;
-        const message = [
-          `Edge Function: ${result.functionName}`,
-          `Status: ${result.status}`,
-          result.httpStatus ? `HTTP Status: ${result.httpStatus}` : null,
-          result.error ? `Error: ${result.error}` : null,
-          `Checked at: ${formatDualTimestamp(new Date())}`,
-          "",
-          "Two consecutive failures across two cron runs (~15 min apart) — first failure was suppressed by the 2-strikes gate; this is the second.",
-          "",
-          "This is an automated alert from OtterQuote platform monitoring.",
-          "Resolve this alert at: https://otterquote.com/admin-contractors.html",
-        ].filter(Boolean).join("\n");
+        const { subject, message } = efSilentFailureAlert(result, formatDualTimestamp(new Date()));
 
         const { alerted } = await fireAlert(
           supabase, mailgunApiKey, mailgunDomain,
@@ -641,18 +637,7 @@ async function runStalenessCheck(
         continue;
       }
 
-      const subject = `OtterQuote Health Alert — cron job "${jobName}" last run failed (2 consecutive failures)`;
-      const message = [
-        `Cron Job: ${jobName}`,
-        `Last Run: ${lastRunAt}`,
-        `Status: ERROR`,
-        lastError ? `Error: ${lastError}` : null,
-        `Checked at: ${formatDualTimestamp(new Date())}`,
-        "",
-        "Two consecutive failed runs across two cron ticks (~15 min apart) — first failure was suppressed by the 2-strikes gate; this is the second.",
-        "This is an automated alert from OtterQuote platform monitoring.",
-        "Resolve this alert at: https://otterquote.com/admin-contractors.html",
-      ].filter(Boolean).join("\n");
+      const { subject, message } = cronErrorAlert(jobName, lastRunAt, lastError, formatDualTimestamp(new Date()));
 
       const { alerted } = await fireAlert(
         supabase, mailgunApiKey, mailgunDomain,
@@ -691,17 +676,7 @@ async function runStalenessCheck(
         continue;
       }
 
-      const subject = `OtterQuote Health Alert — cron job "${jobName}" is stale (2 consecutive ticks)`;
-      const message = [
-        `Cron Job: ${jobName}`,
-        `Last Run: ${lastRunAt ?? "never"}`,
-        `Age: ${Math.round(ageMs / 60000)} minutes (threshold: ${thresholdHuman})`,
-        `Checked at: ${formatDualTimestamp(new Date())}`,
-        "",
-        "This cron job has not run within its expected window across two consecutive checks (~15 min apart) — first miss was suppressed by the 2-strikes gate; this is the second.",
-        "This is an automated alert from OtterQuote platform monitoring.",
-        "Resolve this alert at: https://otterquote.com/admin-contractors.html",
-      ].join("\n");
+      const { subject, message } = cronStalenessAlert(jobName, lastRunAt, ageMs, thresholdHuman, formatDualTimestamp(new Date()));
 
       const { alerted } = await fireAlert(
         supabase, mailgunApiKey, mailgunDomain,
@@ -855,19 +830,7 @@ async function runPublicPathProbes(
     }
 
     if (result.status !== "ok") {
-      const subject = `OtterQuote Health Alert — public path unavailable: ${result.path}`;
-      const message = [
-        `Public Path: ${result.path}`,
-        `Job: ${result.jobName}`,
-        `Status: ${result.status}`,
-        result.error ? `Error: ${result.error}` : null,
-        `Checked at: ${formatDualTimestamp(new Date())}`,
-        "",
-        "This failure survived one in-run retry (~5s later) before being recorded.",
-        "The OtterQuote public site may be unreachable or serving incorrect content.",
-        "This is an automated alert from OtterQuote platform monitoring.",
-        "Resolve this alert at: https://otterquote.com/admin-contractors.html",
-      ].filter(Boolean).join("\n");
+      const { subject, message } = publicPathFailureAlert(result, formatDualTimestamp(new Date()));
 
       const { alerted } = await fireAlert(
         supabase, mailgunApiKey, mailgunDomain,
@@ -939,11 +902,7 @@ async function runSmsDeliveryCheck(
   let alertsFired = 0;
 
   if (result.alarmed) {
-    const subject = `OtterQuote Health Alert — ${result.consecutiveCount} consecutive undelivered SMS sends`;
-    const message = buildSmsAlertMessage(result, SMS_CONSECUTIVE_UNDELIVERED_THRESHOLD) +
-      `\nChecked at: ${formatDualTimestamp(new Date())}\n` +
-      `This is an automated alert from OtterQuote platform monitoring (gh-1825).\n` +
-      `Resolve this alert at: https://otterquote.com/admin-contractors.html`;
+    const { subject, message } = smsUndeliveredAlert(result, SMS_CONSECUTIVE_UNDELIVERED_THRESHOLD, formatDualTimestamp(new Date()));
 
     const { alerted } = await fireAlert(
       supabase, mailgunApiKey, mailgunDomain,
@@ -1033,8 +992,7 @@ async function runRegisterPartnerBudgetCheck(
     // use, but that admin panel has no view for rate-limit-config buckets
     // -- it doesn't help resolve THIS alert, so it's dropped here rather
     // than copied by habit.
-    const message = `${alert.message}\nChecked at: ${formatDualTimestamp(new Date())}\n` +
-      `This is an automated alert from OtterQuote platform monitoring (gh-2154/gh-2223).`;
+    const message = registerPartnerBudgetMessage(alert.message, formatDualTimestamp(new Date()));
 
     const { alerted } = await fireAlert(
       supabase, mailgunApiKey, mailgunDomain,
