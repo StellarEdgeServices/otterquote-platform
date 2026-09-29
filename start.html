@@ -967,10 +967,19 @@
        (96x96, <= 12 KB), set src="img/team/dustin.webp" on #oqTrustPhoto and delete its `hidden` attribute. No placeholder is shipped. -->
   <div id="oqTrustHeader">
     <div class="oq-trust-row">
-      <img id="oqTrustLogo" src="img/brand-assets/otter-quotes-icon-512.png" width="32" height="32" alt="Otter Quotes" decoding="async">
+      <img id="oqTrustLogo" data-src="img/brand-assets/otter-quotes-icon-512.png" width="32" height="32" alt="Otter Quotes" decoding="async">
       <span class="oq-trust-name">Otter Quotes</span>
       <img id="oqTrustPhoto" width="40" height="40" alt="Dustin" decoding="async" hidden>
     </div>
+    <script>
+      /* gh-2362 F1: the logo has NO src in the markup, so arms D/E/A/B and a bare /start never request it (Arm-F-only ruling). It is set
+         here, synchronously and only when the head IIFE resolved arm f (data-oq-start-arm); width/height are in the markup so it adds no CLS. */
+      (function () {
+        if (document.documentElement.getAttribute('data-oq-start-arm') !== 'f') return;
+        var l = document.getElementById('oqTrustLogo');
+        if (l) l.src = l.getAttribute('data-src');
+      })();
+    </script>
     <p class="oq-trust-line">Otter Quotes connects homeowners with multiple competing contractor bids for their project — free, with no obligation.</p>
   </div>
   <div class="router-card">

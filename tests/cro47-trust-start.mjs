@@ -148,11 +148,29 @@ function buildF(opts) {
   fakeWindow.Sentry = { captureMessage: (msg, c) => { sentry.push({ msg, ctx: c }); } };
   document.cookie = opts.cookie === undefined ? '' : opts.cookie;
   const beacons = [];
+  // Server model (record_lead_details + the EF's rawText/buildFormPayload): the FIRST call to LAND creates the lead_consents row
+  // (ON CONFLICT DO NOTHING drops the second's); phone_as_typed = body.phone_as_typed ?? form_payload.phone.
+  const consentRows = [];
+  const land = (body) => {
+    if (consentRows.length) return;
+    const fp = body.form_payload && typeof body.form_payload === 'object' ? body.form_payload : null;
+    consentRows.push({ phone_as_typed: body.phone_as_typed || (fp && fp.phone) || null, form_payload: fp, consent: body.consent });
+  };
+  let releaseContact = null;
   const fetchStub = (u, init) => {
     const body = JSON.parse(init.body);
     detailsCalls.push({ url: u, init, body });
     const reply = (good, status, data) => { const p = Promise.resolve({ ok: good, status, json: () => Promise.resolve(data) }); return { then: (a, b) => p.then(a, b) }; };
     if (opts.detailsMode === 'fail-address' && body.property_address) return reply(false, 500, { ok: false });
+    if (opts.detailsMode === 'contact-slow') {
+      if (!body.property_address) { // the contact call is sent first but LANDS after the address call
+        const p = new Promise((res) => { releaseContact = () => { land(body); res({ ok: true, status: 200, json: () => Promise.resolve({ ok: true }) }); }; });
+        return { then: (a, b) => p.then(a, b) };
+      }
+      land(body); if (releaseContact) setTimeout(releaseContact, 0);
+      return reply(true, 200, { ok: true });
+    }
+    land(body);
     return reply(true, 200, { ok: true });
   };
   const sandbox = {
@@ -195,7 +213,7 @@ function buildF(opts) {
   if (!RVF || typeof RVF.init !== 'function') throw new Error('window.RouterVariantF.init was not defined');
   RVF.init(bridge, root);
   return {
-    RVF, root, gtagCalls, fbqCalls, clarityCalls, inserts, rpcCalls, detailsCalls, sentry, beacons, fakeWindow,
+    consentRows, RVF, root, gtagCalls, fbqCalls, clarityCalls, inserts, rpcCalls, detailsCalls, sentry, beacons, fakeWindow,
     firePagehide: () => (windowListeners.pagehide || []).forEach((fn) => fn()),
     ev: (name) => gtagCalls.filter((c) => c.name === name),
     leadFbq: () => fbqCalls.filter((c) => c[0] === 'track' && c[1] === 'Lead')
@@ -228,7 +246,7 @@ async function acceptance(mod, startSrc) {
     chk('T1', idxBlock > startSrc.indexOf('<main>') && idxBlock < startSrc.indexOf('<div class="router-card">') && idxBlock < startSrc.indexOf('id="routerFRoot"'), 'the trust header is inside <main>, above the card and OUTSIDE #routerFRoot (the SSR-hydrate contract is untouched)');
     chk('T1', !/<a[\s>]/i.test(block) && !/<\/a>/i.test(block), 'the trust header contains NO link (the logo is not clickable: gh-2121 S07 escape-hatch rule)');
     const logo = /<img id="oqTrustLogo"([^>]*)>/.exec(block);
-    chk('T1', !!logo && /src="img\/brand-assets\/otter-quotes-icon-512\.png"/.test(logo[1]) && /width="32"/.test(logo[1]) && /height="32"/.test(logo[1]) && /alt="Otter Quotes"/.test(logo[1]), 'the logo is the existing otter-quotes-icon-512.png, with explicit width/height (no layout shift) and alt "Otter Quotes"');
+    chk('T1', !!logo && /data-src="img\/brand-assets\/otter-quotes-icon-512\.png"/.test(logo[1]) && !/(^|\s)src=/.test(logo[1]) && /width="32"/.test(logo[1]) && /height="32"/.test(logo[1]) && /alt="Otter Quotes"/.test(logo[1]), 'the logo is the existing otter-quotes-icon-512.png held in data-src (NO src attribute: arms D/E/bare never fetch it; F1), with explicit width/height (no layout shift) and alt "Otter Quotes"');
     chk('T1', fs.existsSync(path.join(repoRoot, 'img/brand-assets/otter-quotes-icon-512.png')), 'the logo asset exists in the repo (no new artwork)');
     const line = /<p class="oq-trust-line">([\s\S]*?)<\/p>/.exec(block);
     chk('T1', !!line && line[1].replace(/\s+/g, ' ').trim() === WHO_WE_ARE, 'the who-we-are line equals the live partner-profile.html sentence byte-for-byte: "' + WHO_WE_ARE + '"');
@@ -360,6 +378,23 @@ async function acceptance(mod, startSrc) {
     chk('T8', t.ev('router_step_abandoned').length === 0, 'a pagehide on f-thanks fires none');
   });
 
+  // T10 (F2, D-299, review 5896318444): consent evidence is complete whichever record-lead-details call LANDS first.
+  await T('T10', async () => {
+    const slow = buildF(Object.assign({}, base, { detailsMode: 'contact-slow' }));
+    await toContact(slow); await contactSubmit(slow); await addressSubmit(slow); await settleN(6);
+    const row = slow.consentRows[0];
+    chk('T10', slow.detailsCalls.length === 2 && !!row, '(i) setup: the address call LANDED before the contact call (2 calls, one consent row)');
+    chk('T10', !!row && row.phone_as_typed === P.phone, '(i) the consent row written by the address call carries phone_as_typed (' + JSON.stringify(row && row.phone_as_typed) + ')');
+    const fp = row && row.form_payload;
+    chk('T10', !!fp && fp.name === P.name && fp.phone === P.phone && fp.email === P.email && fp.funding_type === 'insurance' && fp.address === P.address, '(i) ... and the FULL form_payload (name, phone as typed, email, funding, address)');
+    chk('T10', !!row && JSON.stringify(row.consent) === JSON.stringify(slow.detailsCalls[0].body.consent), '(i) ... and the same consent object as the contact call');
+    const norm = buildF(base);
+    await toContact(norm); await contactSubmit(norm); await addressSubmit(norm);
+    const r2 = norm.consentRows[0];
+    chk('T10', norm.detailsCalls.length === 2 && !!r2 && r2.phone_as_typed === P.phone && r2.form_payload.name === P.name && r2.form_payload.email === P.email && !('address' in r2.form_payload), '(ii) normal order unchanged: the contact call lands first and its row carries phone_as_typed and name/phone/email, no address');
+    chk('T10', norm.detailsCalls[0].body.property_address === null && norm.detailsCalls[1].body.property_address === P.address && JSON.stringify(norm.detailsCalls[0].body.consent) === JSON.stringify(norm.detailsCalls[1].body.consent), '(ii) contact body keeps a null address; address body carries the address and the same consent');
+  });
+
   // T9 failures.
   await T('T9', async () => {
     const f = buildF(Object.assign({}, base, { insertFails: 1 }));
@@ -412,7 +447,7 @@ async function main() {
   const real = await acceptance(ROUTER, START);
   real.forEach((r) => ok(r.ok, r.id + ': ' + r.label));
   const ids = Object.keys(summarize(real)).sort();
-  ok(['N1', 'T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9'].every((i) => ids.indexOf(i) !== -1), 'every one of T1 (static), T2-T9 ran at least one check (' + ids.join(',') + ')');
+  ok(['N1', 'T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10'].every((i) => ids.indexOf(i) !== -1), 'every one of T1 (static), T2-T9 ran at least one check (' + ids.join(',') + ')');
   ok(redIds(real).length === 0, 'the unmutated sources are fully green (red: ' + redIds(real).join(',') + ')');
 
   // The must-not-change list, statically.
@@ -448,9 +483,18 @@ async function main() {
   }
   {
     const m = mutateOnce(START, '<img id="oqTrustLogo"', '<a href="/"><img id="oqTrustLogo"', 'N5 open');
-    const m2 = mutateOnce(m, 'alt="Otter Quotes" decoding="async">', 'alt="Otter Quotes" decoding="async"></a>', 'N5 close');
+    const m2 = mutateOnce(m, 'alt="Otter Quotes" decoding="async">\n', 'alt="Otter Quotes" decoding="async"></a>\n', 'N5 close');
     const r = redIds(await acceptance(ROUTER, m2));
     ok(r.indexOf('T1') !== -1, 'N5: wrapping the logo in an <a> turns T1 RED (red: ' + r.join(',') + ')');
+  }
+
+  {
+    const m = mutateOnce(ROUTER, "form_payload: { name: v.nameTyped, phone: v.phoneTyped, email: v.emailTyped, address: addressRaw, funding_type: funding }", "form_payload: { address: addressRaw }", 'N6');
+    const r = redIds(await acceptance(m, START));
+    ok(r.indexOf('T10') !== -1, 'N6: the address call carrying only the address (the pre-F2 shape) turns T10 RED (red: ' + r.join(',') + ')');
+    const m1 = mutateOnce(START, '<img id="oqTrustLogo" data-src=', '<img id="oqTrustLogo" src=', 'N7');
+    const r1 = redIds(await acceptance(ROUTER, m1));
+    ok(r1.indexOf('T1') !== -1, 'N7: a src in the logo markup (the pre-F1 shape) turns T1 RED (red: ' + r1.join(',') + ')');
   }
 
   console.log('\n=== Summary ===\n' + pass + ' passed, ' + fail + ' failed');

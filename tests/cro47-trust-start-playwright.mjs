@@ -152,6 +152,26 @@ async function main() {
       await context.close();
     }
 
+    console.log('\n=== F1: the logo file is requested exactly once on ?v=f and never on d / e / bare /start ===');
+    for (const [qs, want] of [['?v=f', 1], ['?v=d', 0], ['?v=e', 0], ['', 0]]) {
+      const { page, context } = await newPage(browser, base);
+      const reqs = [];
+      page.on('request', (r) => { if (/otter-quotes-icon-512\.png/.test(r.url())) reqs.push(r.url()); });
+      await page.goto(base + '/start' + qs, { waitUntil: 'load' });
+      await page.waitForTimeout(1200);
+      ok(reqs.length === want, 'F1: /start' + qs + ' requests the logo PNG ' + want + ' time(s) (saw ' + reqs.length + ')');
+      await context.close();
+    }
+    {
+      const { page, context } = await newPage(browser, base, { mutateStart: (h) => h.replace('<img id="oqTrustLogo" data-src=', '<img id="oqTrustLogo" src=') });
+      const reqs = [];
+      page.on('request', (r) => { if (/otter-quotes-icon-512\.png/.test(r.url())) reqs.push(r.url()); });
+      await page.goto(base + '/start?v=d', { waitUntil: 'load' });
+      await page.waitForTimeout(1200);
+      ok(reqs.length >= 1, 'F1 control: with a src in the markup (the pre-fix shape) /start?v=d DOES request the logo, so the zero above is meaningful');
+      await context.close();
+    }
+
     console.log('\n=== N1: arms D/E and a bare /start never show the header ===');
     for (const [label, qs] of [['?v=d', '?v=d'], ['?v=e', '?v=e'], ['bare /start', '']]) {
       const { page, context } = await newPage(browser, base);

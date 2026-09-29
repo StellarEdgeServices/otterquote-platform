@@ -157,6 +157,7 @@
   var detailsInFlight = []; // the details calls (contact, then address) that are still running
   var callPromiseAllowed = false; // set at submit: a phone number was given (LEGAL-READ B1; the consent box does not gate this screen)
   var pendingDetails = []; // [{ body, beaconSent }] for each details call the Edge Function has not yet confirmed; the pagehide beacon re-sends each
+  var contactValues = null; // the contact form values (as typed); the address call re-sends them so the consent row is complete whichever call lands first
   var consentRecord = null; // the consent object sent with the contact call; the address call re-sends the SAME object (first row wins server-side)
   var leadEventFired = false;
   var activeToken = null;
@@ -465,6 +466,7 @@
     // Capped client-side (the server caps it at 2000 too): an over-long URL must not push the body past the 64 KB keepalive limit,
     // which would make both the fetch and the beacon fail and lose the consent record.
     try { pageUrl = (window.location.href || '').slice(0, 2000) || null; } catch (e) { /* none */ }
+    contactValues = v;
     // The exact string rendered next to the checkbox, byte-identical to the approved copy.
     consentRecord = { key: CONSENT_KEY, given: v.consentGiven, text: COPY.arm_f_s3_consent_checkbox };
     return {
@@ -486,7 +488,18 @@
   // column, so property_address is written from NULL while funding / fbc / fbp keep their first values; the consent object is the
   // SAME one sent at contact (same key, same given, same text) and its lead_consents row is ON CONFLICT DO NOTHING, so the evidence
   // is neither duplicated nor overwritten. The function requires a consent object on every call, hence re-sending it.
+  //
+  // F2 (D-299, review 5896318444): the two calls are NOT serialised (no added latency), so the address call can reach the server
+  // BEFORE the contact call. Whichever call creates the lead_consents row wins (ON CONFLICT DO NOTHING), so BOTH calls carry the
+  // same consent evidence: the same consent object, phone_as_typed, and the full form values (name, phone as typed, email, funding);
+  // the address call adds the address. First-write-wins per leads column is unaffected (identical values; property_address only
+  // comes from this call). If the contact call lands first its form_payload has no address; the address is in leads.property_address.
   function buildAddressBody(newId) {
+    var v = contactValues || {};
+    var fields = ['name'];
+    if (v.phoneTyped) fields.push('phone');
+    if (v.emailTyped) fields.push('email');
+    fields.push('address', 'funding');
     var pageUrl = null;
     try { pageUrl = (window.location.href || '').slice(0, 2000) || null; } catch (e) { /* none */ }
     return {
@@ -497,8 +510,9 @@
       fbp: readCookie('_fbp'),
       consent: consentRecord,
       page_url: pageUrl,
-      submitted_fields: ['address'],
-      form_payload: { address: addressRaw }
+      submitted_fields: fields,
+      phone_as_typed: v.phoneTyped,
+      form_payload: { name: v.nameTyped, phone: v.phoneTyped, email: v.emailTyped, address: addressRaw, funding_type: funding }
     };
   }
   // Surfaced to Sentry with the lead id, the attempt count and the error class only -- never the address,
