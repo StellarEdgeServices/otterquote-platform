@@ -861,3 +861,22 @@ items 5 and 9) and are unaffected by this round's fixes, which touch only
 comment/banner text, never executable SQL. SELECT-only throughout; zero
 `apply_migration`, `execute_sql` write, or `db push` at any point in this
 round.
+
+## 2026-09-29 baseline refresh after merging main (Marty A 5896036859)
+
+Stale-base fix requested on PR #2244: `origin/main` was merged into this
+branch (merge commit, no force-push) and
+`supabase/migrations-reconciliation-baseline.json` was regenerated from a
+read-only live `schema_migrations` SELECT (199 rows, 2026-09-29T20:55Z,
+project `yeszghaspzwwstvsrioa`) plus the merged tree's filesystem scan.
+The ratchet had read 46 repo-file-but-not-applied against a baseline of 39
+because seven main migrations (20260926221500 through 20260928215500) were
+absent from the older 187-row snapshot.
+
+| Count | 2026-09-27 baseline | 2026-09-29 baseline |
+|---|---|---|
+| applied_versions_total | 187 | 199 |
+| applied_no_repo_file | 58 | 69 |
+| repo_file_no_applied | 39 | 45 |
+
+SELECT-only; zero writes. Version-number matching only, as before.

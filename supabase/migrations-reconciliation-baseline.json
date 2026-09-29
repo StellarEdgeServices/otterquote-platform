@@ -1,17 +1,17 @@
 {
   "_purpose": "gh-1438 CI reconciliation RATCHET baseline. Not a backfill target list -- see scripts/migrations-reconciliation-check.py. Per the CTO's ruling (issuecomment-5488058121 / 5494363131 on gh-1438): a lint that fails on pre-existing debt on day one is disabled on day two. This manifest freezes that debt so the CI check can pass on it while still catching any PR that makes it worse.",
-  "generated_at": "2026-09-27T01:20:00Z",
-  "generated_by": "k71-w-1438, gh-1438 REVIEW FAIL round 2 response, branch k71/gh1438-part2",
+  "generated_at": "2026-09-29T20:55:00Z",
+  "generated_by": "cloud-kevin, Marty A 5896036859, branch k71/gh1438-part2",
   "measured_against": {
-    "repo_commit": "34cb4e0ecc33",
+    "repo_commit": "6a70c8873c48 (pre-baseline-commit head of the merged tree)",
     "supabase_project_ref": "yeszghaspzwwstvsrioa",
-    "applied_migrations_query": "select version, name from supabase_migrations.schema_migrations order by version (Supabase MCP execute_sql, read-only) against project yeszghaspzwwstvsrioa -- 187 rows returned",
-    "repo_migrations_scan": "GitHub MCP get_file_contents listing of supabase/migrations/ on branch k71/gh1438-part2, 14-digit YYYYMMDDHHMMSS prefix extracted per filename, de-duplicated -- 166 files, 166 distinct version prefixes (14-file rename batch; gh974/gh972 reverted to their original filenames per REVIEW FAIL 5851387029 item 2, so 20260818214025 and 20260818214332 no longer have a repo file at all)"
+    "applied_migrations_query": "select version, name from supabase_migrations.schema_migrations order by version (read-only, run by orchestrator) against project yeszghaspzwwstvsrioa at 2026-09-29T20:55Z -- 199 rows returned",
+    "repo_migrations_scan": "filesystem scan of supabase/migrations/ on branch k71/gh1438-part2 after merging origin/main, 14-digit prefix per filename via scan_repo_versions() (excludes _rollback.sql and _pre-flight.md), de-duplicated -- 175 files, 175 distinct version prefixes"
   },
   "counts": {
-    "applied_versions_total": 187,
-    "applied_no_repo_file": 58,
-    "repo_file_no_applied": 39
+    "applied_versions_total": 199,
+    "applied_no_repo_file": 69,
+    "repo_file_no_applied": 45
   },
   "applied_versions": [
     "20260101000000",
@@ -200,7 +200,19 @@
     "20260926190930",
     "20260926221430",
     "20260926221451",
-    "20260926230502"
+    "20260926230502",
+    "20260927143606",
+    "20260927143746",
+    "20260927150342",
+    "20260927183251",
+    "20260927235229",
+    "20260927235943",
+    "20260928114011",
+    "20260928115913",
+    "20260928170147",
+    "20260929014230",
+    "20260929023234",
+    "20260929023242"
   ],
   "applied_no_repo_file_versions": [
     "20260423184557",
@@ -221,7 +233,9 @@
     "20260805120648",
     "20260809120000",
     "20260812125540",
+    "20260818214025",
     "20260818214054",
+    "20260818214332",
     "20260818214437",
     "20260818214513",
     "20260818222413",
@@ -259,8 +273,17 @@
     "20260925180541",
     "20260925180647",
     "20260925185056",
-    "20260818214025",
-    "20260818214332"
+    "20260927143606",
+    "20260927143746",
+    "20260927150342",
+    "20260927183251",
+    "20260927235229",
+    "20260927235943",
+    "20260928115913",
+    "20260928170147",
+    "20260929014230",
+    "20260929023234",
+    "20260929023242"
   ],
   "repo_file_no_applied_versions": [
     "20260519221215",
@@ -301,13 +324,19 @@
     "20260925020000",
     "20260925090000",
     "20260925131429",
-    "20260925183000"
+    "20260925183000",
+    "20260926221500",
+    "20260927133100",
+    "20260927133501",
+    "20260927170000",
+    "20260928211500",
+    "20260928215500"
   ],
   "known_limitations": [
     "Version-number matching ONLY. This does not verify byte-identical SQL -- see the gh-1438 part-2 PR body and the migrations-reconciliation doc's part(a) table for sets explicitly flagged as unverified-byte-match.",
     "repo_file_no_applied conflates genuinely abandoned drafts with a migration mid-flight between being filed and being auto-run post-merge; the CI gate deliberately does not fail on growth in this direction alone.",
-    "This is a point-in-time snapshot (2026-09-27, gh-1438 part 2 PR, round-2 fix) superseding all earlier baselines in this issue's history. applied_no_repo_file is 58 (56 unaffected by the Direction-2-only gh974/gh972 revert, plus the 2 versions -- 20260818214025, 20260818214332 -- that the revert itself made file-less); repo_file_no_applied is 53 - 14 = 39.",
+    "This is a point-in-time snapshot (2026-09-29T20:55Z, regenerated after merging origin/main, Marty A 5896036859) superseding all earlier baselines in this issue's history. Counts: applied 199, applied_no_repo_file 69, repo_file_no_applied 45.",
     "A migration applied directly to production outside any PR is invisible to a per-PR repo-diff check by construction. This baseline's applied_no_repo_file_versions is the live count as of this session.",
-    "39 Direction-2 files remain after this PR's 14-file batch. Roughly 19 more have a high-confidence unrenamed name match to an orphan ledger row and are explicit follow-up; the rest need a statement-body diff. Not fixed by this baseline refresh -- see the gh-1438 part-2 PR body."
+    "45 Direction-2 files remain after this PR's 14-file batch (includes migrations filed on main after the 2026-09-27 snapshot and not yet in the ledger snapshot at the time). Roughly 19 more have a high-confidence unrenamed name match to an orphan ledger row and are explicit follow-up; the rest need a statement-body diff. Not fixed by this baseline refresh -- see the gh-1438 part-2 PR body."
   ]
 }
