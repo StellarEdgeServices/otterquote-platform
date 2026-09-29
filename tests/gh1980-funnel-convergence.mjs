@@ -10,7 +10,10 @@
  *   (3) no bare createClient remains;
  *   (4) js/cookie-storage.js is loaded synchronously before the createClient;
  *   (5) flowType is NOT set (that is PR #2336's job);
- *   (6) the credential-sweep allowlist no longer names these pages.
+ *   (6) the credential-sweep allowlist no longer names these pages;
+ *   (7) the old 2.112.4 SRI is gone repo-wide: re-3 / re-5 (lazy-load only,
+ *       no createClient of their own) load 2.116.0 too, and the old hash's
+ *       allowlist entry is removed (Ben: "old allowlisted hash removed").
  * Run: node tests/gh1980-funnel-convergence.mjs   (exit 0 = all pass)
  */
 import fs from 'node:fs';
@@ -52,6 +55,13 @@ const allow = fs.readFileSync(path.join(root, 'scripts', 'credential-sweep-allow
 for (const page of PAGES) {
   ok(!allow.includes(page), '(6) credential-sweep allowlist no longer names ' + page);
 }
+
+for (const page of ['re-3.html', 're-5.html']) {
+  const src = fs.readFileSync(path.join(root, page), 'utf8');
+  ok(src.includes("s.src = '" + CDN + "'") && src.includes("s.integrity = '" + SRI_NEW + "'"), page + ' (7) lazy loader is supabase-js 2.116.0 with the canonical SRI');
+  ok(!src.includes('2.112.4') && !src.includes(SRI_OLD), page + ' (7) no 2.112.4 / old SRI remains');
+}
+ok(!allow.includes(SRI_OLD.slice('sha384-'.length)), '(7) credential-sweep allowlist no longer carries the old 2.112.4 hash');
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail === 0 ? 0 : 1);
