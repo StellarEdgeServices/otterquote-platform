@@ -47,6 +47,7 @@ on:
       - 'tests/gh2154-p1-cookie-storage-updateuser.mjs'
       - 'tests/gh1980-pr1-key-aware-storage.mjs'
       - 'tests/gh1980-pr2-storagekey-migration.mjs'
+      - 'tests/gh1980-funnel-convergence.mjs'
       - 'admin-dashboard.html'
       - 'admin-homeowners.html'
       - 'admin-measurements.html'
@@ -112,6 +113,7 @@ on:
       - 'tests/gh2154-p1-cookie-storage-updateuser.mjs'
       - 'tests/gh1980-pr1-key-aware-storage.mjs'
       - 'tests/gh1980-pr2-storagekey-migration.mjs'
+      - 'tests/gh1980-funnel-convergence.mjs'
       - 'admin-dashboard.html'
       - 'admin-homeowners.html'
       - 'admin-measurements.html'
@@ -195,6 +197,8 @@ jobs:
         run: node tests/gh1980-pr1-key-aware-storage.mjs
       - name: gh-1980 PR 2 -- storageKey convergence + #488 sign-out purge regression (gh1980-pr2-storagekey-migration)
         run: node tests/gh1980-pr2-storagekey-migration.mjs
+      - name: gh-1980 funnel-page convergence -- hi-4/hi-5/ins-3/ins-5 canonical client (gh1980-funnel-convergence)
+        run: node tests/gh1980-funnel-convergence.mjs
       - name: RE-1 dedicated landing page -- approved copy, funnel_id attribution (gh2150-re1-page)
         run: node tests/gh2150-re1-page.mjs
       - name: INS-1 dedicated landing page -- approved copy, field set, funnel-id attribution (gh2151-ins1-page)
