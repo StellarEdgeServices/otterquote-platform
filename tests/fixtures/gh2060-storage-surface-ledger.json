@@ -502,7 +502,7 @@
       "key": "cs_partner_signup",
       "stack": "static",
       "status": "write-only",
-      "reason": "gh-2355: no longer written by 11 partner pages (dead write, email PII); re-1/ins-1/hi-1 pending step B; the only other touch is js/auth.js removing it (legacy cleanup). No reader.",
+      "reason": "gh-2355: no longer written by any partner page (dead write, email PII, removed from all 14); the only other touch is js/auth.js removing it (legacy cleanup). No reader.",
       "note": "Ordering (write only after register_partner success) is pinned by tests/gh2060-partner-cs-auth-role-ordering.mjs for the sibling cs_auth_role key."
     },
     {

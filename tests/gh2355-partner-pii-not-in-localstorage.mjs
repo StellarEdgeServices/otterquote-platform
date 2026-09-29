@@ -43,8 +43,8 @@ try { hits = execSync("git grep -n \"localStorage.setItem('" + K + "'\" -- . \":
 ok(hits === '', 'repo-wide: no localStorage.setItem of the marker outside tests -- ' + JSON.stringify(hits));
 // Generic scan (gh-2355 review must-fix 1(i)): NO localStorage.setItem on any partner signup page (or the dashboard)
 // may write a value carrying name / email / phone / company keys, whatever the storage key is called.
-// TEMPORARY allow-list (removed in step B once the parallel work on these three pages lands): the dead cs_partner_signup {email} write.
-const TEMP_ALLOW = new Set(['re-1.html', 'ins-1.html', 'hi-1.html']);
+// No allow-list: the dead cs_partner_signup {email} write is gone from all 14 pages.
+const TEMP_ALLOW = new Set([]); // step B done: re-1/ins-1/hi-1 no longer allow-listed
 const PII_KEYS = /\b(email|phone|company|employer|first_?name|last_?name|full_?name|p_first_name|p_last_name|p_phone|p_company|p_email)\b/i;
 function setItemStatements(src) {
   const out = [];
