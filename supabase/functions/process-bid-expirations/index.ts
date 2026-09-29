@@ -599,8 +599,8 @@ async function notifyBidWindowExpirations(
     // the send below. A zero-row match means it did NOT stick, so sending would
     // re-send every run -- same handling as the updateError branch above.
     if (!checkRowsWritten(notifiedRows).wroteRows) {
-      console.error(zeroRowWriteMessage("process-bid-expirations", `claims.bid_window_notified_at for claim ${claim.id}`));
-      errors.push(`Window notified_at update failed for ${claim.id}: zero rows matched (gh-2105)`);
+      console.error(zeroRowWriteMessage("process-bid-expirations", `claims.bid_window_notified_at for claim ${(claim as { id: string }).id}`));
+      errors.push(`Window notified_at update failed for ${(claim as { id: string }).id}: zero rows matched (gh-2105)`);
       continue;
     }
 
