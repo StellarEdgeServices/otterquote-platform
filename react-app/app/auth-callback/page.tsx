@@ -346,6 +346,9 @@ export default function AuthCallbackPage() {
         if (
           storedIntent !== null &&
           Number.isFinite(storedAt) &&
+          // gh-2060 round-4 hardening 2: reject a future-dated stamp (negative
+          // age would otherwise pass `<= TTL` and be trusted indefinitely).
+          Date.now() - storedAt >= 0 &&
           Date.now() - storedAt <= CS_AUTH_ROLE_TTL_MS
         ) {
           intent = storedIntent;

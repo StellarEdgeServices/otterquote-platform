@@ -16,6 +16,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { seedStaleStorage } from '@/test/storage-fixtures';
 
 // Mock the Supabase singleton (no env / network in unit tests) and the auth hook.
 vi.mock('@/lib/supabase', () => ({
@@ -205,6 +206,34 @@ describe('<ContractorLoginPage /> rendered behavior (unauthenticated)', () => {
     expect(stampRaw).not.toBeNull();
     expect(Number.isFinite(Number(stampRaw))).toBe(true);
     expect(Date.now() - Number(stampRaw)).toBeLessThan(5000);
+  });
+
+  it('gh-2060 round-4: a resend >24h after the first send re-stamps cs_auth_role, so the emailed link still routes as contractor', async () => {
+    vi.spyOn(window, 'alert').mockImplementation(() => undefined);
+    render(<ContractorLoginPage />);
+    fireEvent.change(screen.getByPlaceholderText(CONTRACTOR_LOGIN_COPY.emailPlaceholder), {
+      target: { value: 'pro@roofco.com' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: STATIC.submit }));
+    await waitFor(() => expect(screen.getByText(STATIC.sentResend)).toBeInTheDocument());
+
+    // A day and an hour later the visitor finally hits "Send again": the
+    // breadcrumb from the first send is already past its 24h TTL (and would
+    // be read as absent by /auth-callback). Seeded dirty, per the harness.
+    seedStaleStorage({
+      localStorage: {
+        cs_auth_role: 'contractor',
+        cs_auth_role_at: String(Date.now() - 25 * 60 * 60 * 1000),
+      },
+    });
+
+    fireEvent.click(screen.getByText(STATIC.sentResend));
+    await waitFor(() => expect(callAuthUniform).toHaveBeenCalledTimes(2));
+
+    expect(localStorage.getItem('cs_auth_role')).toBe('contractor');
+    const stamp = Number(localStorage.getItem('cs_auth_role_at'));
+    expect(Number.isFinite(stamp)).toBe(true);
+    expect(Date.now() - stamp).toBeLessThan(5000);
   });
 
   it('starts Google OAuth with the contractor-intent callback', async () => {

@@ -1,0 +1,604 @@
+{
+  "_doc": "gh-2060 storage-surface ledger. Every browser-storage key the shipped source reads or writes must appear here with a status. tests/gh2060-storage-surface-ledger.mjs (a) rediscovers the keys from source and fails on any key missing from this file, (b) checks every citation (file exists and contains the quoted test name), (c) proves 'write-only' surfaces really have no reader. Statuses: tested = at least one test seeds stale/pre-existing state and asserts the correct behaviour; known-gap = a test encodes the RECOMMENDED DEFAULT and is expected to fail today (it.fails / knownGap), pending the Q: comment on #2060; write-only = no code path reads the value, so a stale copy is inert (the ledger test fails the moment a reader appears); excluded = not a browser storage key or intentionally long-lived (reason given).",
+  "surfaces": [
+    {
+      "key": "cs_auth_role",
+      "also": [
+        "cs_auth_role_at"
+      ],
+      "stack": "react+static",
+      "status": "tested",
+      "tests": [
+        {
+          "file": "react-app/app/auth-callback/__tests__/page.test.tsx",
+          "contains": "treats a FUTURE-dated cs_auth_role_at"
+        },
+        {
+          "file": "react-app/app/auth-callback/__tests__/page.test.tsx",
+          "contains": "also treats a cs_auth_role=\"contractor\" older than the 24h TTL as stale"
+        },
+        {
+          "file": "tests/gh2060-static-cs-auth-role-staleness.mjs",
+          "contains": "stale untimestamped cs_auth_role=contractor"
+        },
+        {
+          "file": "tests/gh2060-static-cs-auth-role-staleness.mjs",
+          "contains": "Auth.signOut() clears cs_auth_role"
+        },
+        {
+          "file": "tests/gh2060-auth-callback-html-staleness.mjs",
+          "contains": "future-dated cs_auth_role_at"
+        },
+        {
+          "file": "tests/auth-index-bounce-routing.mjs",
+          "contains": "future-dated cs_auth_role_at"
+        },
+        {
+          "file": "react-app/app/login/__tests__/login.test.tsx",
+          "contains": "a resend >24h after the first send re-stamps cs_auth_role"
+        },
+        {
+          "file": "react-app/app/providers/__tests__/auth-provider.signout.test.tsx",
+          "contains": "clears an unconsumed cs_auth_role breadcrumb on sign-out"
+        },
+        {
+          "file": "tests/gh2060-partner-cs-auth-role-ordering.mjs",
+          "contains": "Google-redirect writer clears"
+        }
+      ]
+    },
+    {
+      "key": "cs_signup",
+      "also": [
+        "cs_signup_at"
+      ],
+      "stack": "react+static",
+      "status": "known-gap",
+      "reason": "cs_signup carries a stranger's name/phone/address into the next signup's profile/HubSpot contact and has no timestamp or owner key. Recommended default: stamp cs_signup_at and apply the same 24h TTL + clear-on-sign-out as cs_auth_role.",
+      "tests": [
+        {
+          "file": "tests/gh2060-static-surfaces-staleness.mjs",
+          "contains": "a cs_signup older than 24h"
+        }
+      ]
+    },
+    {
+      "key": "cs_contractor_signup",
+      "also": [
+        "cs_contractor_signup_at",
+        "cs_contractor_signup_session"
+      ],
+      "stack": "react+static",
+      "status": "tested",
+      "reason": "CLOSED by gh-2340 / PR #2343. Writer contractor-join.html stamps `_at` in the blob, cs_contractor_signup_at, and a per-tab sessionStorage cs_contractor_signup_session marker. Readers (js/auth.js getOwnedContractorSignup + _contractorSignupRoleGuardOk; react-app/app/lib/contractor-signup-owner.ts) honour the blob only for the same email, a fresh (<24h, non-future) stamp, and, for a pre-existing non-contractor account, the same-session marker. The _at and _session keys are read, not write-only.",
+      "tests": [
+        {
+          "file": "tests/gh2060-static-surfaces-staleness.mjs",
+          "contains": "a stale cs_contractor_signup left by ANOTHER person"
+        },
+        {
+          "file": "tests/gh2340-contractor-signup-owner.mjs",
+          "contains": "FOREIGN blob (different email, fresh stamp)"
+        },
+        {
+          "file": "tests/gh2340-contractor-signup-owner.mjs",
+          "contains": "STALE stamp (>24h) for the SAME email"
+        },
+        {
+          "file": "tests/gh2340-contractor-signup-owner.mjs",
+          "contains": "NO same-session signup action"
+        },
+        {
+          "file": "react-app/app/lib/__tests__/contractor-signup-owner.test.ts",
+          "contains": "accepts the stamp from the cs_contractor_signup_at key"
+        },
+        {
+          "file": "react-app/app/contractor/pre-approval/__tests__/gh2060-stale-signup.test.ts",
+          "contains": "a blob left by ANOTHER person"
+        }
+      ]
+    },
+    {
+      "key": "oq_ft",
+      "stack": "react+static",
+      "status": "tested",
+      "tests": [
+        {
+          "file": "react-app/app/lib/__tests__/gh2060-stale-surfaces.test.ts",
+          "contains": "a junk value left in localStorage does not block capturing a real tagged touch"
+        },
+        {
+          "file": "react-app/app/lib/__tests__/attribution.test.ts",
+          "contains": "first tagged touch wins over a later tagged landing"
+        },
+        {
+          "file": "tests/gh2060-static-surfaces-staleness.mjs",
+          "contains": "an unparsable oq_ft"
+        }
+      ]
+    },
+    {
+      "key": "oq_pending_lead",
+      "stack": "react",
+      "status": "tested",
+      "tests": [
+        {
+          "file": "react-app/app/lib/__tests__/lead-capture.test.ts",
+          "contains": "negative control: an expired sessionStorage entry is not returned"
+        },
+        {
+          "file": "react-app/app/lib/__tests__/lead-capture.test.ts",
+          "contains": "negative control: a malformed/forged sessionStorage entry is not returned"
+        }
+      ]
+    },
+    {
+      "key": "oq_lead_id",
+      "stack": "react (NEVER on main; instance 2 of #2060, from refuted PR #2059)",
+      "status": "tested",
+      "negativeControl": true,
+      "tests": [
+        {
+          "file": "react-app/app/get-started/__tests__/gh2060-stale-lead-id.test.tsx",
+          "contains": "does not fire get_lead_prefill on a stranger's stale oq_lead_id"
+        },
+        {
+          "file": "react-app/app/get-started/__tests__/gh2060-stale-lead-id.test.tsx",
+          "contains": "does not apply a stranger's cached name/email/phone"
+        }
+      ]
+    },
+    {
+      "key": "oq_prefill_",
+      "stack": "react (never on main; cache of the refuted PR #2059)",
+      "status": "tested",
+      "tests": [
+        {
+          "file": "react-app/app/get-started/__tests__/gh2060-stale-lead-id.test.tsx",
+          "contains": "does not apply a stranger's cached name/email/phone"
+        }
+      ]
+    },
+    {
+      "key": "oq_variant_v3",
+      "stack": "react+static",
+      "status": "tested",
+      "tests": [
+        {
+          "file": "react-app/app/lib/__tests__/gh2060-stale-surfaces.test.ts",
+          "contains": "a fresh ?v= on this load wins over a DIFFERENT arm"
+        },
+        {
+          "file": "tests/gh2060-static-surfaces-staleness.mjs",
+          "contains": "a stale value of the wrong shape (older app version) is never forwarded"
+        }
+      ]
+    },
+    {
+      "key": "oq_hm_hover_charge_v1",
+      "stack": "react",
+      "status": "tested",
+      "tests": [
+        {
+          "file": "react-app/app/(homeowner)/help-measurements/__tests__/help-measurements-page.test.tsx",
+          "contains": "ignores a pending pointer left over from a different claim"
+        },
+        {
+          "file": "react-app/app/lib/__tests__/gh2060-stale-surfaces.test.ts",
+          "contains": "a pending-charge pointer with the wrong shape"
+        }
+      ]
+    },
+    {
+      "key": "oq_ga4_measurement_purchase_fired_v1:",
+      "stack": "react",
+      "status": "tested",
+      "tests": [
+        {
+          "file": "react-app/app/lib/__tests__/gh2060-stale-surfaces.test.ts",
+          "contains": "a PaymentIntent marker from a previous purchase does not mark a NEW PaymentIntent as already fired"
+        }
+      ]
+    },
+    {
+      "key": "oq_ga4_signup_fired_v1:",
+      "stack": "react",
+      "status": "tested",
+      "tests": [
+        {
+          "file": "react-app/app/lib/__tests__/gh2060-stale-surfaces.test.ts",
+          "contains": "another user's marker on a shared browser does not suppress"
+        },
+        {
+          "file": "react-app/app/auth-callback/__tests__/signup-analytics.test.ts",
+          "contains": "fires once even if the marker was already set by a prior page load"
+        }
+      ]
+    },
+    {
+      "key": "oq_contractor_gate_bounce",
+      "stack": "react",
+      "status": "tested",
+      "tests": [
+        {
+          "file": "react-app/app/lib/__tests__/gh2060-stale-surfaces.test.ts",
+          "contains": "a FUTURE-dated marker (negative age)"
+        },
+        {
+          "file": "react-app/app/lib/__tests__/contractor-gate.test.ts",
+          "contains": "ignores (and clears) a stale marker older than the TTL"
+        }
+      ]
+    },
+    {
+      "key": "oq_cpa_redirect_guard",
+      "stack": "react+static",
+      "status": "tested",
+      "tests": [
+        {
+          "file": "react-app/app/lib/__tests__/gh2060-stale-surfaces.test.ts",
+          "contains": "a guard left by an earlier session is cleared once this contractor is current"
+        },
+        {
+          "file": "tests/gh2060-static-surfaces-staleness.mjs",
+          "contains": "the guard is only SET on the path that also redirects"
+        }
+      ],
+      "note": "Guard has no TTL and is not cleared on sign-out (a stale guard suppresses the redirect to the re-attestation modal). Compliance (CPA re-attestation) surface: fix left as a Q on #2060, recommended default = clear on sign-out on both stacks."
+    },
+    {
+      "key": "oq_referral_id",
+      "also": [
+        "oq_referral_agent_id",
+        "oq_referral_code",
+        "oq-ref"
+      ],
+      "stack": "react+static",
+      "status": "tested",
+      "tests": [
+        {
+          "file": "react-app/app/lib/__tests__/cookie-storage.test.ts",
+          "contains": "agent id leak into a write that omits it"
+        },
+        {
+          "file": "react-app/app/trade-selector/__tests__/gh2062-referral-cookie-clear.test.tsx",
+          "contains": "gh-2062 FIX: a CONSUMED referral is cleared and does not resurface"
+        },
+        {
+          "file": "tests/gh2062-referral-cookie-clear.mjs",
+          "contains": "later unrelated visit: no stale attribution resurfaces"
+        }
+      ]
+    },
+    {
+      "key": "oq_referral_agent",
+      "stack": "static (ref.html, sessionStorage JSON)",
+      "status": "write-only",
+      "reason": "ref.html writes it; nothing in the repo reads oq_referral_agent (the readers use oq_referral_agent_id / the oq-ref cookie)."
+    },
+    {
+      "key": "oq_referral_id_for_claim",
+      "stack": "react+static",
+      "status": "tested",
+      "tests": [
+        {
+          "file": "react-app/app/trade-selector/__tests__/gh2062-referral-cookie-clear.test.tsx",
+          "contains": "gh-2062 FIX: a CONSUMED referral is cleared and does not resurface"
+        }
+      ]
+    },
+    {
+      "key": "oq_referral_source",
+      "also": [
+        "oq_partner_id"
+      ],
+      "stack": "react+static",
+      "status": "known-gap",
+      "reason": "sessionStorage attribution keys written from ?ref= / ?partner_id= and never cleared, so a reused tab attributes the next claim to the earlier partner. Attribution/commission surface: recommended default (consume on successful claim write, as gh-2062 does for the referral id) left as a Q on #2060.",
+      "tests": [
+        {
+          "file": "react-app/app/trade-selector/__tests__/gh2060-stale-session-keys.test.tsx",
+          "contains": "KNOWN GAP: oq_partner_id / oq_referral_source"
+        }
+      ]
+    },
+    {
+      "key": "oq_funding_type",
+      "stack": "react (static reader repair-intake.html)",
+      "status": "tested",
+      "tests": [
+        {
+          "file": "react-app/app/trade-selector/__tests__/gh2060-stale-session-keys.test.tsx",
+          "contains": "oq_funding_type from an earlier (insurance) run is replaced"
+        }
+      ]
+    },
+    {
+      "key": "oq_trade_selections",
+      "stack": "react+static",
+      "status": "tested",
+      "tests": [
+        {
+          "file": "react-app/app/trade-selector/__tests__/gh2060-stale-session-keys.test.tsx",
+          "contains": "oq_trade_selections from an earlier run is REPLACED"
+        },
+        {
+          "file": "react-app/app/(homeowner)/repair-intake/__tests__/repair-intake.test.tsx",
+          "contains": "a corrupt oq_trade_selections"
+        }
+      ]
+    },
+    {
+      "key": "oq_claim_id",
+      "stack": "react+static",
+      "status": "tested",
+      "tests": [
+        {
+          "file": "react-app/app/(homeowner)/repair-intake/__tests__/repair-intake.test.tsx",
+          "contains": "an oq_claim_id left by an EARLIER claim in this tab never beats the ?claim_id= on the URL"
+        },
+        {
+          "file": "react-app/app/trade-selector/__tests__/gh2060-stale-session-keys.test.tsx",
+          "contains": "a stale oq_claim_id from an earlier claim"
+        }
+      ]
+    },
+    {
+      "key": "oq_pending_loss_sheet",
+      "also": [
+        "oq_pending_loss_sheet_v1"
+      ],
+      "stack": "react (static writer trade-selector.html)",
+      "status": "tested",
+      "tests": [
+        {
+          "file": "react-app/app/trade-selector/__tests__/gh2070-loss-sheet-attach.test.tsx",
+          "contains": "discards a staged entry belonging to a different user"
+        }
+      ]
+    },
+    {
+      "key": "hover_photos_",
+      "stack": "react (static twin contractor-bid-form.html)",
+      "status": "tested",
+      "tests": [
+        {
+          "file": "react-app/app/contractor/bid/[claimId]/__tests__/gh2060-stale-caches.test.tsx",
+          "contains": "does not show another claim's cached photos on this claim"
+        },
+        {
+          "file": "react-app/app/contractor/bid/[claimId]/__tests__/gh2060-stale-caches.test.tsx",
+          "contains": "refetches when this claim cache entry is past the 10-minute TTL"
+        }
+      ]
+    },
+    {
+      "key": "d202_warranty_options",
+      "also": [
+        "d202_warranty_options_at"
+      ],
+      "stack": "react (static twin contractor-bid-form.html)",
+      "status": "tested",
+      "tests": [
+        {
+          "file": "react-app/app/contractor/bid/[claimId]/__tests__/gh2060-stale-caches.test.tsx",
+          "contains": "a catalog cached more than 5 minutes ago is NOT trusted"
+        }
+      ],
+      "note": "warranty-card.tsx / home-photos-card.tsx treat a FUTURE-dated cache timestamp as fresh (negative age passes the TTL test). Money-adjacent (warranty pricing); left as a Q on #2060 rather than changed here."
+    },
+    {
+      "key": "oq_wizard_",
+      "stack": "react (static twin contractor-bid-form.html)",
+      "status": "write-only",
+      "reason": "bid-form.tsx only removes oq_wizard_<claimId> on submit success; the React app never reads it."
+    },
+    {
+      "key": "oq_hp_dismissed_",
+      "stack": "react (static twin dashboard.html)",
+      "status": "tested",
+      "tests": [
+        {
+          "file": "react-app/app/(homeowner)/dashboard/__tests__/gh2060-home-profile-dismiss.test.tsx",
+          "contains": "another claim's dismissal (left on this browser) does not hide the prompt on THIS claim"
+        }
+      ]
+    },
+    {
+      "key": "cs_utm_context",
+      "stack": "static",
+      "status": "tested",
+      "tests": [
+        {
+          "file": "tests/gh2060-static-surfaces-staleness.mjs",
+          "contains": "a fresh ?utm_source= beats a stale stored context"
+        },
+        {
+          "file": "tests/gh2060-static-surfaces-staleness.mjs",
+          "contains": "a funnel id stored by a DIFFERENT funnel page never survives"
+        }
+      ]
+    },
+    {
+      "key": "utm_params",
+      "stack": "static (landing.html)",
+      "status": "tested",
+      "tests": [
+        {
+          "file": "tests/gh2060-static-surfaces-staleness.mjs",
+          "contains": "a fresh landing (?utm_source=) overwrites the stale sessionStorage utm_params"
+        }
+      ]
+    },
+    {
+      "key": "cs_recruit_code",
+      "stack": "static",
+      "status": "known-gap",
+      "reason": "Read as localStorage || ?recruit=, so a stale stored code beats the URL param on this load (recruit attribution). Recommended default: URL param first.",
+      "tests": [
+        {
+          "file": "tests/gh2060-static-surfaces-staleness.mjs",
+          "contains": "takes precedence over a stale stored recruit code"
+        }
+      ]
+    },
+    {
+      "key": "oq_partner_pending_registration",
+      "stack": "static",
+      "status": "tested",
+      "tests": [
+        {
+          "file": "tests/gh2060-static-surfaces-staleness.mjs",
+          "contains": "the recovery marker is only honoured for the SAME email"
+        }
+      ]
+    },
+    {
+      "key": "oq_partner_needs_",
+      "stack": "static",
+      "status": "write-only",
+      "reason": "Written per user id by the partner signup pages; no getItem of oq_partner_needs_ exists in the shipped source (the password-setup flow reads it through a concatenated key covered by tests/gh2154-p1-set-password.mjs)."
+    },
+    {
+      "key": "cs_partner_signup",
+      "stack": "static",
+      "status": "write-only",
+      "reason": "14 partner pages write it; the only other touch is js/auth.js removing it. No reader.",
+      "note": "Ordering (write only after register_partner success) is pinned by tests/gh2060-partner-cs-auth-role-ordering.mjs for the sibling cs_auth_role key."
+    },
+    {
+      "key": "cs_pending_partner_signup",
+      "stack": "static (partner-insurance.html Google path)",
+      "status": "tested",
+      "tests": [
+        {
+          "file": "tests/gh2154-p1-short-signup.mjs",
+          "contains": "preLocalStorage: { [PENDING_SIGNUP_KEY]: pendingPayload }"
+        }
+      ]
+    },
+    {
+      "key": "cs_homeowner_data",
+      "stack": "static (ref-insurance.html)",
+      "status": "write-only",
+      "reason": "Written on submit; nothing reads it."
+    },
+    {
+      "key": "cs_landing_page",
+      "stack": "static (ref-insurance.html)",
+      "status": "write-only",
+      "reason": "Written on submit; nothing reads it."
+    },
+    {
+      "key": "cs_referral_code",
+      "stack": "static (ref-insurance.html)",
+      "status": "write-only",
+      "reason": "Written on submit; nothing reads it."
+    },
+    {
+      "key": "pending_profile",
+      "stack": "static (ref-inspector.html, ref-re.html)",
+      "status": "write-only",
+      "reason": "Written on submit; nothing reads it."
+    },
+    {
+      "key": "ref_code",
+      "also": [
+        "ref_timestamp"
+      ],
+      "stack": "static (ref-inspector.html, ref-re.html)",
+      "status": "write-only",
+      "reason": "Written on landing; nothing reads either key."
+    },
+    {
+      "key": "oq_router_lead_id",
+      "stack": "static (start.html, sessionStorage)",
+      "status": "open",
+      "reason": "start.html reuses sessionStorage.oq_router_lead_id to resubmit an existing lead via update_lead_contact (per-tab, no owner/timestamp). A reused tab lets the next visitor's Step-1 resubmit target the previous visitor's lead id; the server-side 30-minute / prefill_used_at guard is the only protection. No executable test exists yet: the resubmit path is a large closure in start.html that needs its own extraction harness. Q on #2060 with a recommended default."
+    },
+    {
+      "key": "oq_handout_hi4_contact",
+      "also": [
+        "oq_handout_ins5_contact"
+      ],
+      "stack": "static (hi-4.html/ins-5.html -> assets/handout-*.html, sessionStorage)",
+      "status": "known-gap",
+      "tests": [
+        {
+          "file": "tests/gh2060-static-surfaces-staleness.mjs",
+          "contains": "a stored contact left by a DIFFERENT partner"
+        },
+        {
+          "file": "tests/gh2060-static-surfaces-staleness.mjs",
+          "contains": "the URL ?code= wins over a stale stored code for the referral link"
+        }
+      ],
+      "reason": "Handout renders the stored partner name/company whenever present, even if the stored code differs from the URL ?code= (a different partner's PII on this partner's handout). Recommended default: honour the stored contact only when its code matches the URL code (or the URL has none)."
+    },
+    {
+      "key": "sb-otterquote-auth",
+      "also": [
+        "sb-",
+        "<storageKey>-code-verifier",
+        "sb_at"
+      ],
+      "stack": "react+static",
+      "status": "tested",
+      "tests": [
+        {
+          "file": "react-app/app/lib/__tests__/cookie-storage.test.ts",
+          "contains": "returns the cookie session"
+        }
+      ]
+    },
+    {
+      "key": "cs_redirect",
+      "stack": "static",
+      "status": "tested",
+      "tests": [
+        {
+          "file": "tests/auth-cs-redirect-role-guard.mjs",
+          "contains": "cs_redirect"
+        }
+      ]
+    },
+    {
+      "key": "oq_nav_role",
+      "also": [
+        "oq_nav_role_at"
+      ],
+      "stack": "static (js/nav.js)",
+      "status": "tested",
+      "tests": [
+        {
+          "file": "tests/gh2060-static-surfaces-staleness.mjs",
+          "contains": "a FUTURE-dated oq_nav_role_at"
+        },
+        {
+          "file": "tests/gh2060-static-surfaces-staleness.mjs",
+          "contains": "an explicit role click older than 30 minutes"
+        }
+      ]
+    },
+    {
+      "key": "oq_ad_optout",
+      "also": [
+        "oq_internal",
+        "oq-cookie-probe"
+      ],
+      "stack": "react+static cookies",
+      "status": "excluded",
+      "reason": "Long-lived (1 year) opt-out / internal-traffic toggles: staleness is the intended behaviour. Unit-tested in react-app/app/lib/__tests__/ad-optout.test.ts."
+    }
+  ],
+  "excluded": [
+    {
+      "key": "arm_f_s3_consent_checkbox",
+      "reason": "A copy-table key in js/router-variant-f.js, not a browser storage key."
+    },
+    {
+      "key": "sb_publishable_",
+      "reason": "The Supabase publishable (public) API key constant in a demo page, not a storage key."
+    }
+  ]
+}
