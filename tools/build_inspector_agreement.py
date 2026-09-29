@@ -42,6 +42,14 @@ marked `class="inspector-hide"` in the source:
      A sentence that mixes a payment element with a non-payment obligation
      (Sections 8, 11, 13, 17) is KEPT and listed in the PR for Ben to rule on.
 
+  7. (gh-2155 HI-0f, D-333, Ben ruling 5882387113) Two of those mixed
+     sentences are trimmed, removal only: the Section 8 forfeiture clause
+     (" and forfeiture of any commission attributable to the violating
+     conduct") and the Section 11 payout-survival clause ("affect commissions
+     that were fully earned ... termination date, and does not "), leaving
+     "Termination does not relieve Partner of obligations under Sections 6, 8,
+     14, 15 ...". The other mixed sentences remain KEPT per the same ruling.
+
 This is REMOVAL ONLY, apart from the one Section 4 heading in item 5 (whose
 new text is the only wording this script writes; the 4.3 statement under it
 is copied verbatim from the source). Everything else in
@@ -83,6 +91,15 @@ SECTION_9_SENTENCE = (
     "tracking systems attribute to Partner&rsquo;s unique referral or recruit link. "
 )
 SECTION_11_XREF = "10 (Commission Reversal), "
+# HI-0f (D-333, Ben ruling 5882387113 on #2155, items 2 and 3): words removed only.
+# Section 8 keeps "...termination under Section 11." (forfeiture clause dropped).
+SECTION_8_FORFEITURE = " and forfeiture of any commission attributable to the violating conduct"
+# Section 11 keeps "Termination does not relieve Partner of obligations under
+# Sections 6, 8, 14, 15 ..." (the fully-earned-commissions payout clause dropped).
+SECTION_11_PAYOUT_SURVIVAL = (
+    "affect commissions that were fully earned and approved for payout before "
+    "the termination date, and does not "
+)
 # (old, new, expected occurrences): each `new` is `old` with words removed.
 PHRASE_REMOVALS = [
     ("— commission terms, tax treatment, and", "— tax treatment and", 2),  # meta + og description
@@ -143,7 +160,12 @@ def build_inspector_agreement(source_text: str) -> str:
         if text.startswith(tail, sec_end):
             sec_end += len(tail)
         text = text[:sec_start] + text[sec_end:]
-    for old, expected in ((SECTION_9_SENTENCE, 1), (SECTION_11_XREF, 1)):
+    for old, expected in (
+        (SECTION_9_SENTENCE, 1),
+        (SECTION_11_XREF, 1),
+        (SECTION_8_FORFEITURE, 1),
+        (SECTION_11_PAYOUT_SURVIVAL, 1),
+    ):
         if text.count(old) != expected:
             raise ValueError(f"expected {expected} occurrence(s) of {old!r}, found {text.count(old)}")
         text = text.replace(old, "")

@@ -158,13 +158,12 @@ ok(renderedOnly.includes('Partner&rsquo;s breach of this Agreement; (b) any viol
 // bonus. A sentence that mixes payment with another obligation is KEPT
 // verbatim (Ben's rule) and pinned here, by exact string, so that any
 // further "commission" wording (or a silent change to these) fails the test.
+// After Ben's ruling 5882387113 (HI-0f) this is exactly the ruled-KEEP list containing
+// "commission": items 1 (S8 inducement), 4 (S13 earnings), 5 (S13 liability cap), 6 (S17).
+// Items 7 (S14(c)) and 8 (S6) contain no "commission" and are asserted separately below.
 const KEPT_AMBIGUOUS = [
   // Section 8 (prohibited inducement to homeowners; not a payout)
   'a specific commission split, fee waiver, discount, or other financial benefit as an inducement to use the Platform',
-  // Section 8: termination + forfeiture
-  'forfeiture of any commission attributable to the violating conduct',
-  // Section 11: survival of earned commissions + survival of other obligations
-  'Termination does not affect commissions that were fully earned and approved for payout before the termination date',
   // Section 13: earnings disclaimer + liability cap measured in commissions
   'A COMPLETED JOB, A COMMISSION, OR ANY PARTICULAR LEVEL OF EARNINGS',
   'SHALL NOT EXCEED THE TOTAL COMMISSIONS PAID TO PARTNER IN THE TWELVE (12) MONTHS PRECEDING THE CLAIM',
@@ -185,6 +184,17 @@ function checkNoFeeMechanics(label, html) {
   // "commission" (any case) may survive only inside the exact kept-ambiguous sentences.
   const leftover = stripKept(rendered).match(/.{0,50}commission.{0,50}/gi) || [];
   ok(leftover.length === 0, `${label}: "commission" appears only inside the pinned KEPT_AMBIGUOUS sentences` + (leftover.length ? ' -- offenders: ' + JSON.stringify(leftover) : ''));
+  // HI-0f (Ben ruling 5882387113, items 2 and 3): the two trimmed fragments are gone,
+  // and the trimmed sentences read exactly as the ruling specifies.
+  ok(!rendered.includes('forfeiture of any commission attributable to the violating conduct'), `${label}: Section 8 forfeiture clause is trimmed`);
+  ok(!rendered.includes('and forfeiture of'), `${label}: no "and forfeiture of" remains`);
+  ok(rendered.includes('grounds for immediate termination under Section 11.</p>'), `${label}: Section 8 sentence ends at "termination under Section 11."`);
+  ok(!rendered.includes('Termination does not affect commissions'), `${label}: Section 11 payout-survival clause is trimmed`);
+  ok(!rendered.includes('fully earned and approved for payout'), `${label}: no "fully earned and approved for payout" remains`);
+  ok(rendered.includes('Termination does not relieve Partner of obligations under Sections 6 (Tax Treatment), 8 (Prohibited Conduct, as to conduct before termination), 14 (Indemnification), 15 (Disputes: Individual Arbitration; No Class Actions), or any other provision that by its nature should survive termination.'), `${label}: Section 11 survival sentence keeps Sections 6, 8, 14, 15 verbatim`);
+  // Ruled-KEEP items with no "commission" word: S14(c) indemnity trigger and S6 tax treatment.
+  ok(rendered.includes("that Partner&rsquo;s acceptance of compensation under this Agreement violated Partner&rsquo;s own legal, professional, or contractual obligations"), `${label}: KEEP item 7 (S14(c)) present`);
+  ok(/<h2>6\. Tax Treatment/.test(rendered), `${label}: KEEP item 8 (S6 Tax Treatment) present`);
   const keptPresent = KEPT_AMBIGUOUS.filter(k => rendered.includes(k)).length;
   ok(keptPresent === KEPT_AMBIGUOUS.length, `${label}: all ${KEPT_AMBIGUOUS.length} pinned KEPT_AMBIGUOUS sentences are still present verbatim (${keptPresent})`);
 }
