@@ -80,6 +80,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 import {
   build30DayEmail,
   build14DayEmail,
@@ -309,16 +310,22 @@ async function processCOIReminders(
         continue;
       }
 
-      const { error: suspendError } = await supabase
+      const { error: suspendError, data: suspendRows } = await supabase
         .from("contractors")
         .update({
           status: "suspended",
           coi_expired_notified_at: now,
         })
-        .eq("id", contractorId);
+        .eq("id", contractorId)
+        .select("id");
 
-      if (suspendError) {
-        const msg = `Contractor ${contractorId}: suspend update failed — ${suspendError.message}`;
+      // gh-2105: hard-fail on the existing error path (result.errors + continue,
+      // machine-facing cron output) -- a zero-row match means the suspension was
+      // NOT written, so no expiry notice goes out.
+      if (suspendError || !checkRowsWritten(suspendRows).wroteRows) {
+        const msg = suspendError
+          ? `Contractor ${contractorId}: suspend update failed — ${suspendError.message}`
+          : zeroRowWriteMessage(FUNCTION_NAME, `contractors.status=suspended for contractor ${contractorId}`);
         console.error(`[${FUNCTION_NAME}] ${msg}`);
         result.errors.push(msg);
         continue;
@@ -380,14 +387,21 @@ async function processCOIReminders(
       }
 
       if (sent7) {
-        const { error: stampError } = await supabase
+        const { error: stampError, data: stampRows } = await supabase
           .from("contractors")
           .update({ coi_reminder_7_sent_at: now })
-          .eq("id", contractorId);
+          .eq("id", contractorId)
+          .select("id");
 
         if (stampError) {
           result.errors.push(
             `Contractor ${contractorId}: 7-day stamp failed — ${stampError.message}`
+          );
+        } else if (!checkRowsWritten(stampRows).wroteRows) {
+          // gh-2105: same existing error path (machine-facing cron output) -- the
+          // stamp was NOT written, so the reminder is not counted as sent.
+          result.errors.push(
+            zeroRowWriteMessage(FUNCTION_NAME, `contractors.coi_reminder_7_sent_at for contractor ${contractorId}`)
           );
         } else {
           result.reminded7++;
@@ -420,14 +434,21 @@ async function processCOIReminders(
       }
 
       if (sent14) {
-        const { error: stampError } = await supabase
+        const { error: stampError, data: stampRows } = await supabase
           .from("contractors")
           .update({ coi_reminder_14_sent_at: now })
-          .eq("id", contractorId);
+          .eq("id", contractorId)
+          .select("id");
 
         if (stampError) {
           result.errors.push(
             `Contractor ${contractorId}: 14-day stamp failed — ${stampError.message}`
+          );
+        } else if (!checkRowsWritten(stampRows).wroteRows) {
+          // gh-2105: same existing error path (machine-facing cron output) -- the
+          // stamp was NOT written, so the reminder is not counted as sent.
+          result.errors.push(
+            zeroRowWriteMessage(FUNCTION_NAME, `contractors.coi_reminder_14_sent_at for contractor ${contractorId}`)
           );
         } else {
           result.reminded14++;
@@ -460,14 +481,21 @@ async function processCOIReminders(
       }
 
       if (sent30) {
-        const { error: stampError } = await supabase
+        const { error: stampError, data: stampRows } = await supabase
           .from("contractors")
           .update({ coi_reminder_30_sent_at: now })
-          .eq("id", contractorId);
+          .eq("id", contractorId)
+          .select("id");
 
         if (stampError) {
           result.errors.push(
             `Contractor ${contractorId}: 30-day stamp failed — ${stampError.message}`
+          );
+        } else if (!checkRowsWritten(stampRows).wroteRows) {
+          // gh-2105: same existing error path (machine-facing cron output) -- the
+          // stamp was NOT written, so the reminder is not counted as sent.
+          result.errors.push(
+            zeroRowWriteMessage(FUNCTION_NAME, `contractors.coi_reminder_30_sent_at for contractor ${contractorId}`)
           );
         } else {
           result.reminded30++;
@@ -592,14 +620,21 @@ async function processWCReminders(
       }
 
       if (sentWC) {
-        const { error: stampError } = await supabase
+        const { error: stampError, data: stampRows } = await supabase
           .from("contractors")
           .update({ wc_cert_reminder_30_sent_at: now })
-          .eq("id", contractorId);
+          .eq("id", contractorId)
+          .select("id");
 
         if (stampError) {
           result.errors.push(
             `Contractor ${contractorId}: WC 30-day stamp failed — ${stampError.message}`
+          );
+        } else if (!checkRowsWritten(stampRows).wroteRows) {
+          // gh-2105: same existing error path (machine-facing cron output) -- the
+          // stamp was NOT written, so the reminder is not counted as sent.
+          result.errors.push(
+            zeroRowWriteMessage(FUNCTION_NAME, `contractors.wc_cert_reminder_30_sent_at for contractor ${contractorId}`)
           );
         } else {
           result.reminded30++;
