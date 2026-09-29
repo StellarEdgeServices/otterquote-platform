@@ -29,6 +29,8 @@ on:
       - 'partner-dashboard.html'
       - 'partner-insurance.html'
       - 'login.html'
+      - 'js/router-*.js'
+      - 'tests/gh2060-oq-router-lead-id-stale.mjs'
       - '.github/workflows/static-start-arm-f-tests.yml'
 
 permissions:
@@ -79,3 +81,7 @@ jobs:
         run: node tests/cro47-trust-start-playwright.mjs
       - name: gh-1980 Google-only PKCE + landing-page fragment rescue, real supabase-js (gh1980-landing-fragment-playwright)
         run: node tests/gh1980-landing-fragment-playwright.mjs
+      # gh-2060 (Q 5881020422 item 6): oq_router_lead_id stale-state harness + negative controls. Hosted here to reuse
+      # this job's Chromium install (#1731 Actions-minutes); the ledger checker already runs in e2e-tests.yml.
+      - name: oq_router_lead_id stale-state harness (gh2060-oq-router-lead-id-stale)
+        run: node tests/gh2060-oq-router-lead-id-stale.mjs
