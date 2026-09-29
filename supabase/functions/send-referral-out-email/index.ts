@@ -153,11 +153,14 @@ serve(async (req) => {
         if (error) console.error("send-referral-out-email: failed to remove claim row", id, error);
       },
       async markDelivered(id, mailgunId) {
-        const { error } = await sb
+        const { data, error } = await sb
           .from("notifications")
           .update({ delivered: true, mailgun_id: mailgunId, sent_at: new Date().toISOString() })
-          .eq("id", id);
+          .eq("id", id)
+          .select("id");
         if (error) throw error;
+        // gh-2105: a zero-row match is not "success" -- runSend reports record_incomplete.
+        if (!data || data.length === 0) throw new Error(`no notifications row matched claim ${id}`);
       },
       sendToRequester: (msg) => mailgunSend(mailgunKey, mailgunDomain, msg),
       async sendAdminAlert(msg) {
