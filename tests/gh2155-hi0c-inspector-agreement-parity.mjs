@@ -40,6 +40,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import crypto from 'node:crypto';
+
+// gh-2354 / D-341 pinned sentences (Section 13 liability cap).
+const D341_CAP_OLD = 'SHALL NOT EXCEED THE TOTAL COMMISSIONS PAID TO PARTNER IN THE TWELVE (12) MONTHS PRECEDING THE CLAIM.';
+const D341_CAP_NEW = 'SHALL NOT EXCEED THE GREATER OF TOTAL COMMISSIONS PAID TO PARTNER IN THE TWELVE (12) MONTHS PRECEDING THE CLAIM OR $100.';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.join(__dirname, '..');
@@ -51,7 +56,8 @@ function ok(cond, label) {
 }
 
 const SOURCE_PATH = path.join(repoRoot, 'partner-agreement.html');
-const OUTPUT_PATH = path.join(repoRoot, 'partner-agreement-inspector.html');
+// INSPECTOR_HTML_PATH is overridable only for negative controls (gh-2354).
+const OUTPUT_PATH = process.env.INSPECTOR_HTML_PATH || path.join(repoRoot, 'partner-agreement-inspector.html');
 const BUILD_SCRIPT = process.env.INSPECTOR_BUILD_SCRIPT || path.join(repoRoot, 'tools', 'build_inspector_agreement.py');
 
 function findPython() {
@@ -166,7 +172,8 @@ const KEPT_AMBIGUOUS = [
   'a specific commission split, fee waiver, discount, or other financial benefit as an inducement to use the Platform',
   // Section 13: earnings disclaimer + liability cap measured in commissions
   'A COMPLETED JOB, A COMMISSION, OR ANY PARTICULAR LEVEL OF EARNINGS',
-  'SHALL NOT EXCEED THE TOTAL COMMISSIONS PAID TO PARTNER IN THE TWELVE (12) MONTHS PRECEDING THE CLAIM',
+  // gh-2354 (D-341): the inspector cap is now the greater-of form (pinned in section 6 below).
+  'SHALL NOT EXCEED THE GREATER OF TOTAL COMMISSIONS PAID TO PARTNER IN THE TWELVE (12) MONTHS PRECEDING THE CLAIM OR $100',
   // Section 17: notice of a change to "the commission structure in Section 4"
   'including any change to the commission structure in Section 4',
 ];
@@ -219,10 +226,31 @@ for (const need of ['Venmo', 'PayPal', 'Commission Reversal', '5. Payment Method
 const tok = t => (t.toLowerCase().match(/[a-z0-9$]+/g) || []);
 const srcCount = new Map();
 for (const w of tok(sourceText)) srcCount.set(w, (srcCount.get(w) || 0) + 1);
-for (const w of tok('4. No Referral Fee or Recruit Bonus')) srcCount.set(w, (srcCount.get(w) || 0) + 1);
+// gh-2354 (D-341): the only other words the build adds are the Section 13 cap floor.
+for (const w of tok('4. No Referral Fee or Recruit Bonus ' + D341_CAP_NEW)) srcCount.set(w, (srcCount.get(w) || 0) + 1);
 const added = [];
 for (const w of tok(committed)) { const c = srcCount.get(w) || 0; if (c <= 0) added.push(w); else srcCount.set(w, c - 1); }
 ok(added.length === 0, 'HI-0e: the inspector build adds no words that are not in the source (removal only)' + (added.length ? ' -- added: ' + added.slice(0, 10).join(',') : ''));
+
+// ── 6. gh-2354 (D-341): Section 13 liability cap floor, inspector build only ──
+// Source: Dustin's ruling "Greater of fees or $100 (Recommended)" (#2155 comment
+// 5882472895), registered as D-341; build wording per the #2354 body.
+function checkD341Cap(label, html) {
+  ok(html.includes(D341_CAP_NEW), `${label}: D-341 inspector Section 13 cap sentence is present verbatim`);
+  ok(html.split(D341_CAP_NEW).length === 2, `${label}: the D-341 cap sentence appears exactly once`);
+  ok(!html.includes(D341_CAP_OLD), `${label}: the old commission-only cap is gone`);
+  ok(!/SHALL NOT EXCEED THE TOTAL COMMISSIONS PAID/.test(html), `${label}: no "SHALL NOT EXCEED THE TOTAL COMMISSIONS PAID" remains`);
+}
+checkD341Cap('D-341 committed', committed);
+checkD341Cap('D-341 fresh build', freshBuild);
+// The source (fee-earning partners) keeps the ORIGINAL cap and does not gain the floor.
+ok(sourceText.includes(D341_CAP_OLD), 'D-341 guard: the source partner-agreement.html Section 13 still has the original commission-only cap');
+ok(!sourceText.includes('GREATER OF') && !sourceText.includes('$100'), 'D-341 guard: the source partner-agreement.html has no greater-of / $100 wording');
+// partner-agreement.html is pinned byte-for-byte (sha256 as of origin/main d0b157dc).
+const SOURCE_SHA256 = '96949433650e2f9bd1154427bf65d288da8916cf97f78f0d02454dca55d1e101';
+ok(crypto.createHash('sha256').update(fs.readFileSync(SOURCE_PATH)).digest('hex') === SOURCE_SHA256, 'D-341 guard: partner-agreement.html is byte-identical to its pinned sha256 (unchanged by gh-2354)');
+const s13 = sourceText.match(/<h2>13\.[\s\S]*?<\/section>/);
+ok(!!s13 && s13[0].includes(D341_CAP_OLD), 'D-341 guard: the source Section 13 block contains the original cap sentence');
 
 console.log(`\n${pass} passed, ${fail} failed.`);
 process.exit(fail === 0 ? 0 : 1);

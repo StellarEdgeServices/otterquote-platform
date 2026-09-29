@@ -66,6 +66,9 @@ const SAFE_SENTENCES = [
   // ABSENCE of a fee. Listed BEFORE 'No Referral Fee' so the longer phrase is stripped whole.
   '4. No Referral Fee or Recruit Bonus',
   'No Referral Fee',
+  // gh-2354 (D-341): the inspector Section 13 liability-cap floor. The "$100" is a limit on
+  // Otter Quotes' liability, not a fee offered to the partner; exact sentence only.
+  'SHALL NOT EXCEED THE GREATER OF TOTAL COMMISSIONS PAID TO PARTNER IN THE TWELVE (12) MONTHS PRECEDING THE CLAIM OR $100.',
   '4. Referral Fee Structure',
   'Referral fees and bonuses under Section 4 are paid through a third-party payment service',
 ];
