@@ -20,6 +20,28 @@
 
     var partnerRoles = ['re_agent', 'insurance_agent', 'home_inspector', 'adjuster', 'other'];
 
+    // gh-2060 RETURNED item 4: both localStorage cs_auth_role reads below
+    // used to be trusted with no age limit — same bug class fixed in
+    // js/auth.js's handleAuthCallback() and auth-callback.html's
+    // _oqGetIntent() (gh-2060 batch). A stale 'contractor' or partner-role
+    // breadcrumb left by a prior, abandoned visit on a shared browser would
+    // silently win here and bounce a later, unrelated sign-in to the wrong
+    // page (/contractor-pre-approval.html or /partner-dashboard.html), with
+    // no live-record check on this page to catch it — this script runs
+    // before Supabase init. Same CS_AUTH_ROLE_TTL_MS / cs_auth_role_at key
+    // names as both other fixes (all readers share the same browser
+    // storage on the same origin). `lsFresh` gates BOTH reads below; both
+    // keys are cleared once either read is consulted, one-shot regardless
+    // of whether the value was trusted.
+    var CS_AUTH_ROLE_TTL_MS = 24 * 60 * 60 * 1000;
+    var lsRoleAt = null;
+    var lsFresh = false;
+    try {
+      lsRoleAt = parseInt(localStorage.getItem('cs_auth_role_at') || '', 10);
+      // gh-2060 round-4 hardening 2: `>= 0` rejects a future-dated stamp.
+      lsFresh = Number.isFinite(lsRoleAt) && (Date.now() - lsRoleAt) >= 0 && (Date.now() - lsRoleAt) <= CS_AUTH_ROLE_TTL_MS;
+    } catch (e) {}
+
     // gh-817 A1b: user_metadata.role is a signup-time artifact (stamped once by
     // contractor-join.html, never updated) and is stale for any account whose
     // role changed since. cs_auth_role is stamped fresh by the surface the user
@@ -29,10 +51,10 @@
     // 5292800526).
     var role = null;
     try {
-      var lsRoleEarly = localStorage.getItem('cs_auth_role');
+      var lsRoleEarly = lsFresh ? localStorage.getItem('cs_auth_role') : null;
       if (partnerRoles.indexOf(lsRoleEarly) !== -1) {
         role = lsRoleEarly;
-        log('cs_auth_role override (partner role)=', role);
+        log('cs_auth_role override (partner role)=', role, 'fresh=', lsFresh);
       }
     } catch (e) {}
 
@@ -54,14 +76,23 @@
         }
       } catch (e) { log('JWT decode err:', e && e.message); }
 
-      // Fallback: localStorage
+      // Fallback: localStorage (gh-2060: TTL-gated, same as the override above)
       if (!role) {
-        try { role = localStorage.getItem('cs_auth_role'); log('localStorage cs_auth_role=', role); } catch (e) {}
+        try {
+          role = lsFresh ? localStorage.getItem('cs_auth_role') : null;
+          log('localStorage cs_auth_role=', role, 'fresh=', lsFresh);
+        } catch (e) {}
       }
     }
 
+    // One-shot: clear both keys now that they've been consulted, regardless
+    // of whether either read above trusted the value.
+    try {
+      localStorage.removeItem('cs_auth_role');
+      localStorage.removeItem('cs_auth_role_at');
+    } catch (e) {}
+
     if (role === 'contractor') {
-      try { localStorage.removeItem('cs_auth_role'); } catch (e) {}
       log('BOUNCING to /contractor-pre-approval.html');
       window.location.replace('/contractor-pre-approval.html' + search + hash);
     } else if (role === 'homeowner') {
@@ -133,7 +164,7 @@
 <!-- Microsoft Clarity (wwr7qlk8g5) is loaded by /js/ga-gate.js, behind the same production-host gate as GA4 (gh-1619). Do not add a per-page loader. -->
 
 <!-- Supabase -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js" integrity="sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.js" integrity="sha384-iLddHTLokph6Omwoyid4XKxHaWa6w41BnoEj0q5oOrzmYPpHIKt1wyjReA7s//pP" crossorigin="anonymous"></script>
 
 <!-- Fonts -->
 <link rel="preconnect" href="https://fonts.googleapis.com">

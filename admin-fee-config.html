@@ -24,7 +24,7 @@
   };
 </script>
 <script src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js" integrity="sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.js" integrity="sha384-iLddHTLokph6Omwoyid4XKxHaWa6w41BnoEj0q5oOrzmYPpHIKt1wyjReA7s//pP" crossorigin="anonymous"></script>
     <script src="js/cookie-storage.js"></script>
     <style>
         * {
@@ -709,7 +709,8 @@
                     result = await sb
                         .from('platform_fee_config')
                         .update(data)
-                        .eq('id', currentEditingId);
+                        .eq('id', currentEditingId)
+                        .select('id');
                 } else {
                     result = await sb
                         .from('platform_fee_config')
@@ -717,6 +718,17 @@
                 }
 
                 if (result.error) throw result.error;
+                // gh-2105 (decision a, money — HIGH PRIORITY): `.update()`
+                // without `.select()` reports success even on a zero-row
+                // RLS/id-mismatch match. This is the platform fee percentage
+                // that every bid's fee disclosure is computed from -- a
+                // silent miss here would show "Fee rule updated
+                // successfully" while contractors keep being charged the
+                // OLD percentage. Only applies to the update branch; insert
+                // always creates a row so it has nothing to check.
+                if (currentEditingId && (!Array.isArray(result.data) || result.data.length === 0)) {
+                    throw new Error('gh2105_zero_rows: no matching platform_fee_config row was updated');
+                }
 
                 closeRuleModal();
                 showSuccess(currentEditingId ? 'Fee rule updated successfully' : 'Fee rule added successfully');

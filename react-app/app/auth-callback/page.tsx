@@ -51,8 +51,9 @@ import { useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 
-import { readReferralIds, writeReferralIds } from '@/lib/cookie-storage';
+import { readReferralIds, writeReferralIds, writeClaimReferralId } from '@/lib/cookie-storage';
 import { linkPendingLeadOnce } from '@/lib/lead-capture';
+import { readOwnedContractorSignup } from '@/lib/contractor-signup-owner';
 import { maybeFireGoogleSignUp, readReferralSourceFromCsSignup } from './signup-analytics';
 import { adoptFirstTouchFromParam, recordFirstTouch } from '@/lib/attribution';
 
@@ -230,15 +231,16 @@ export default function AuthCallbackPage() {
       // (trade-selector) can stamp claims.referral_id. Non-fatal: never
       // block sign-in routing on referral bookkeeping.
       try {
+        // gh-2062: windowed reader FIRST - it purges an expired/undated
+        // cookie and storage mirror - and only then the raw fallbacks, in the
+        // same order as js/auth.js. Bridge 2026-08-26 (P0): the cookie is the
+        // only copy visible here when ref.html wrote on otterquote.com.
         const referralId =
+          readReferralIds().oq_referral_id ||
           (typeof localStorage !== 'undefined' &&
             localStorage.getItem('oq_referral_id')) ||
           (typeof sessionStorage !== 'undefined' &&
             sessionStorage.getItem('oq_referral_id')) ||
-          // Bridge 2026-08-26 (P0): cross-subdomain cookie fallback — the two
-          // origin-scoped reads above are blind to anything ref.html wrote on
-          // otterquote.com.
-          readReferralIds().oq_referral_id ||
           null;
         if (referralId) {
           const { error: advanceError } = await supabase.rpc(
@@ -251,11 +253,12 @@ export default function AuthCallbackPage() {
               advanceError
             );
           }
+          // gh-2062: claim-scoped copy under the same 30-day click clock.
+          writeClaimReferralId(referralId);
           if (typeof localStorage !== 'undefined') {
-            localStorage.setItem('oq_referral_id_for_claim', referralId);
             localStorage.removeItem('oq_referral_id');
           }
-          // gh-2062: only re-arm the cookie's 90-day clock on a successful
+          // gh-2062: only re-arm the cookie's 30-day clock on a successful
           // advance (mirrors js/auth.js). A failed RPC call is not a reason
           // to extend the life of an id we were just told is not
           // advanceable — the cookie keeps whatever TTL it already had
@@ -316,10 +319,43 @@ export default function AuthCallbackPage() {
       adoptFirstTouchFromParam(ftParam);
       await Promise.all([linkPendingLeadOnce(supabase), recordFirstTouch(supabase)]);
 
-      const intent =
-        typeof localStorage !== 'undefined'
-          ? localStorage.getItem('cs_auth_role')
-          : null;
+      // gh-2060: cs_auth_role is a breadcrumb written immediately before a
+      // login/signup entry point redirects into the Supabase auth flow
+      // (login/page.tsx, contractor/login/page.tsx, get-started/page.tsx),
+      // read here to route a fresh sign-in. It used to have no expiry and
+      // was cleared only on the `intent === 'contractor'` branch below — so
+      // a visitor who started the contractor flow, abandoned before
+      // completing auth, and later signed in on the SAME BROWSER through a
+      // path that never re-sets cs_auth_role (e.g. a Google OAuth redirect
+      // landing here directly) had that stale 'contractor' value read as
+      // THIS session's intent and got routed to the contractor
+      // pre-approval wizard despite having no contractor record — a
+      // stranger's/earlier visit's intent silently attaching to an
+      // unrelated sign-in. `cs_auth_role_at` bounds how long the intent is
+      // trusted (generous enough to survive a real magic-link/OAuth round
+      // trip, e.g. an email clicked minutes to hours later); a value older
+      // than that, or with no timestamp at all (pre-fix breadcrumb still
+      // sitting from before this change), is treated as absent. Cleared on
+      // read either way, so it is one-shot regardless of which path
+      // consumes it or whether it was trusted.
+      const CS_AUTH_ROLE_TTL_MS = 24 * 60 * 60 * 1000;
+      let intent: string | null = null;
+      if (typeof localStorage !== 'undefined') {
+        const storedIntent = localStorage.getItem('cs_auth_role');
+        const storedAt = parseInt(localStorage.getItem('cs_auth_role_at') || '', 10);
+        if (
+          storedIntent !== null &&
+          Number.isFinite(storedAt) &&
+          // gh-2060 round-4 hardening 2: reject a future-dated stamp (negative
+          // age would otherwise pass `<= TTL` and be trusted indefinitely).
+          Date.now() - storedAt >= 0 &&
+          Date.now() - storedAt <= CS_AUTH_ROLE_TTL_MS
+        ) {
+          intent = storedIntent;
+        }
+        localStorage.removeItem('cs_auth_role');
+        localStorage.removeItem('cs_auth_role_at');
+      }
 
       // Role resolution — gh-909 (D-182 v113, 2026-08-19): single
       // fact-table-derived read via public.resolved_user_role replaces the
@@ -341,6 +377,11 @@ export default function AuthCallbackPage() {
       } catch {
         // Proceed with null role — default to homeowner path below
       }
+
+      // gh-2340: a cs_contractor_signup blob left by ANOTHER person (or older than 24h) must not
+      // outlive this sign-in. This page never applies the blob itself (the pre-approval wizard
+      // does, behind the same guard); validating here clears a foreign/stale one right away.
+      readOwnedContractorSignup(session.user.email);
 
       // Contractor already has a record → straight to dashboard
       if (role === 'contractor') {

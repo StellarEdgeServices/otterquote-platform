@@ -35,8 +35,12 @@ import {
 import { PlatformSettingMissingError, resolveRequiredPriceCents } from "./price-setting.ts";
 import { attachVariantMetadata } from "./variant-metadata.ts";
 import { buildStandardCreateForm, standardIdempotencyKey } from "./standard-create-form.ts";
-import { evaluateMeasurementUpgradeGate } from "./measurement-upgrade-gate.ts";
-import { detectGpcSignal, type OptOutStore, recordGpcOptOut } from "./ad-sharing-opt-out.ts";
+import {
+  buildPriorUpgradeLookupQuery,
+  evaluateMeasurementUpgradeGate,
+  resolveContractorAlreadyPurchased,
+} from "./measurement-upgrade-gate.ts";
+import { detectGpcSignal, makeGpcStore, recordGpcOptOut } from "./ad-sharing-opt-out.ts";
 import { AMBIGUOUS_OUTCOME_CODE, fetchStripeWithTimeout } from "./stripe-fetch.ts";
 import { AmbiguousChargeOutcomeError, runOffSessionPlatformFeeCharge } from "./off-session-charge.ts";
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
@@ -117,16 +121,10 @@ serve(async (req) => {
     // gh-2107 / D-330 half 2: honour a Global Privacy Control advertising-sharing opt-out (Sec-GPC: 1 on the request, or
     // gpc: true from the page's navigator.globalPrivacyControl) by flagging the caller's profile BEFORE any Purchase exists;
     // the Stripe webhook then skips the Meta CAPI send. Sets the flag only, never clears it; never blocks or fails the payment.
-    const gpcStore: OptOutStore = {
-      markOptedOut: async (userId, source, atIso) => {
-        const { error } = await supabase
-          .from("profiles")
-          .update({ ad_sharing_opt_out: true, ad_sharing_opt_out_at: atIso, ad_sharing_opt_out_source: source })
-          .eq("id", userId)
-          .or("ad_sharing_opt_out.is.null,ad_sharing_opt_out.eq.false");
-        return error ? { code: (error as { code?: string }).code } : null;
-      },
-    };
+    // gh-2105 must-fix 1 (PR #2266 review 5860481443): the store is built by makeGpcStore in
+    // ad-sharing-opt-out.ts (not inlined here) so its zero-row-vs-already-opted-out disambiguation
+    // can be unit-tested with a fake Supabase client.
+    const gpcStore = makeGpcStore(supabase);
     await recordGpcOptOut({ callerId, piType: metadata?.type, headers: req.headers, body: requestBody, store: gpcStore });
     // gh-2107 (REVIEW: FAIL 5806828503 F2 on #2134): the signal is ALSO carried on the PaymentIntent (below, via the non-keyed
     // post-create update), derived from the REQUEST ALONE and not from whether the profile write succeeded, so a failed write
@@ -331,7 +329,51 @@ serve(async (req) => {
         .limit(1)
         .maybeSingle();
 
-      const gate = evaluateMeasurementUpgradeGate(upgradeClaimRow, basicOrderRow?.status ?? null);
+      // D-317 cl. 4 (#1411 comment 5856964558, "APPROVE TO ALL"): a claim
+      // already flipped to Shape B does not wave every later contractor
+      // through free -- only THIS contractor buying it a second time is
+      // refused. Scoped to contractor_id, not claim-wide, unlike the
+      // isFirstBuyer check on the create-measurement-order recording side
+      // (which stays claim-wide -- the vendor-credit bookkeeping is a
+      // one-time-per-claim entry, not a per-contractor one).
+      //
+      // REVIEW: FAIL 5869709815 must-fix 1: this lookup is itself a
+      // money-relevant unknown -- a query ERROR must fail CLOSED (refuse),
+      // never be silently read as "no prior purchase found." The query
+      // itself is built from buildPriorUpgradeLookupQuery so the column
+      // names / product-code constant are pinned and unit-testable; the
+      // {data, error} -> decision step goes through
+      // resolveContractorAlreadyPurchased for the same reason.
+      const priorUpgradeLookup = buildPriorUpgradeLookupQuery({
+        claimId: metadata.claim_id,
+        contractorId: contractor_id,
+      });
+      const { data: priorUpgradeForThisContractor, error: priorUpgradeErr } = await supabase
+        .from(priorUpgradeLookup.table)
+        .select(priorUpgradeLookup.select)
+        .eq(priorUpgradeLookup.eq[0][0], priorUpgradeLookup.eq[0][1])
+        .eq(priorUpgradeLookup.eq[1][0], priorUpgradeLookup.eq[1][1])
+        .eq(priorUpgradeLookup.eq[2][0], priorUpgradeLookup.eq[2][1])
+        .limit(1)
+        .maybeSingle();
+
+      const purchaseCheck = resolveContractorAlreadyPurchased({
+        data: priorUpgradeForThisContractor,
+        error: priorUpgradeErr,
+      });
+      if (!purchaseCheck.ok) {
+        console.error(`[${FUNCTION_NAME}] measurement_upgrade prior-purchase lookup failed (failing closed):`, priorUpgradeErr);
+        return new Response(
+          JSON.stringify({ error: purchaseCheck.error, code: purchaseCheck.code }),
+          { status: purchaseCheck.status, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      const gate = evaluateMeasurementUpgradeGate(
+        upgradeClaimRow,
+        basicOrderRow?.status ?? null,
+        purchaseCheck.alreadyPurchased,
+      );
       if (!gate.allow) {
         if (gate.code === "TEST_CLAIM_CHARGE_REFUSED") {
           const guardMessage = describeGuardVerdict(

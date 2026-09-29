@@ -10,6 +10,42 @@ function escapeHtml(str) {
 }
 
 /**
+ * gh-1883 [SECURITY]: routes a magic-link ("otp") or password-reset
+ * ("recover") request through the auth-uniform Edge Function instead of
+ * calling `sb.auth.signInWithOtp()` / `sb.auth.resetPasswordForEmail()`
+ * directly. Those supabase-js methods call Supabase GoTrue's own
+ * `/auth/v1/otp` and `/auth/v1/recover` routes straight from the browser —
+ * both are confirmed unauthenticated account-enumeration oracles (distinct
+ * status/body for `/otp`, a timing side-channel for `/recover`; see
+ * supabase/functions/auth-uniform/index.ts's header for the full writeup).
+ * Fronting them with our own EF only closes the oracle for callers that
+ * route through it, so every first-party caller of the old direct methods
+ * must call this helper instead — the entire point of this change.
+ *
+ * The EF ALWAYS resolves with the same shape (`{}`) after a fixed minimum
+ * delay, whether the address exists or not and whether GoTrue's own call
+ * (dispatched server-side, off this request) succeeds or fails. The only
+ * errors this can throw are caller-side (invalid input, bad redirect,
+ * network failure, or the EF's own per-IP rate limit) — never anything
+ * that distinguishes an existing address from an absent one.
+ * @param {'otp'|'recover'} action
+ * @param {string} email
+ * @param {string} redirectTo - full URL, must be on auth-uniform's redirect allow-list
+ * @param {{role?: string}|null} [data] - optional signup metadata for the
+ *   'otp' action only (e.g. { role: 'contractor' }, mirroring the old
+ *   direct signInWithOtp({ options: { data } }) call sites). auth-uniform
+ *   forwards only an allow-listed `role` value; anything else is dropped.
+ * @returns {Promise<void>}
+ */
+async function _callAuthUniform(action, email, redirectTo, data = null) {
+  if (!sb) throw new Error('Supabase not initialized');
+  const body = { action, email, redirectTo };
+  if (data) body.data = data;
+  const { error } = await sb.functions.invoke('auth-uniform', { body });
+  if (error) throw error;
+}
+
+/**
  * Clear the domain-wide auth cookies and canonical localStorage key.
  * Called when Auth.getSession() detects a fast-path / live-session identity
  * mismatch (ADR-012) or during sign-out to prevent identity bleed across accounts.
@@ -367,13 +403,9 @@ window.Auth = {
         ? '/partner-dashboard.html'
         : '/auth-callback.html';
     const redirectPage = redirectTo || defaultRedirectPage;
-    const { error } = await sb.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: `${CONFIG.SITE_URL}${redirectPage}`,
-      }
-    });
-    if (error) throw error;
+    // gh-1883 [SECURITY]: routed through auth-uniform, not sb.auth.signInWithOtp()
+    // directly — see _callAuthUniform's doc comment above.
+    await _callAuthUniform('otp', email, `${CONFIG.SITE_URL}${redirectPage}`);
     return true;
   },
 
@@ -459,11 +491,10 @@ window.Auth = {
    * @param {string} redirectPage
    */
   async sendPasswordReset(email, redirectPage = '/partner-login.html?recovery=1') {
-    if (!sb) throw new Error('Supabase not initialized');
-    const { error } = await sb.auth.resetPasswordForEmail(email, {
-      redirectTo: `${CONFIG.SITE_URL}${redirectPage}`,
-    });
-    if (error) throw error;
+    // gh-1883 [SECURITY]: routed through auth-uniform, not
+    // sb.auth.resetPasswordForEmail() directly — /auth/v1/recover is a
+    // confirmed timing oracle; see _callAuthUniform's doc comment above.
+    await _callAuthUniform('recover', email, `${CONFIG.SITE_URL}${redirectPage}`);
     return true;
   },
 
@@ -520,6 +551,15 @@ window.Auth = {
       await sb.auth.signOut({ scope: 'local' });
     } finally {
       try { document.cookie = 'sb_at=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT'; } catch (e) { /* non-fatal */ }
+      // gh-2060 round-4 hardening 1: an unconsumed cs_auth_role breadcrumb
+      // (e.g. an abandoned magic-link request) must not outlive the session
+      // on a shared browser.
+      try {
+        localStorage.removeItem('cs_auth_role');
+        localStorage.removeItem('cs_auth_role_at');
+        sessionStorage.removeItem('cs_auth_role');
+        sessionStorage.removeItem('cs_auth_role_at');
+      } catch (e) { /* non-fatal */ }
       window.location.href = '/index.html';
     }
   },
@@ -954,6 +994,77 @@ window.Auth = {
     }
   },
 
+  // gh-2340: cs_contractor_signup (written by contractor-join.html) carries a
+  // company's signup data and is applied on the NEXT sign-in in this browser.
+  // With no owner check, an abandoned signup left on a shared browser promoted
+  // whoever signed in next to contractor and attached the stranger's company data.
+  // Honour the blob only for its own signer: stored email === signed-in email
+  // (case-insensitive, trimmed) AND a present, non-future `_at` stamp < 24h.
+  // Otherwise ignore, clear it, and warn (no user-visible text). Returns the
+  // parsed blob (with a normalised `_at`) or null. Pure/synchronous; the
+  // role guard lives in _contractorSignupRoleGuardOk().
+  getOwnedContractorSignup(user) {
+    const KEY = 'cs_contractor_signup';
+    const TTL_MS = 24 * 60 * 60 * 1000;
+    const raw = localStorage.getItem(KEY) || sessionStorage.getItem(KEY);
+    if (!raw) return null;
+    const reject = (why) => {
+      console.warn('[cs_contractor_signup] ignored and cleared: ' + why);
+      this.clearContractorSignup();
+      return null;
+    };
+    let data = null;
+    try { data = JSON.parse(raw); } catch (e) { data = null; }
+    if (!data || typeof data !== 'object') return reject('unparseable blob');
+    const norm = (v) => (typeof v === 'string' ? v.trim().toLowerCase() : '');
+    const userEmail = norm(user && user.email);
+    if (!userEmail || norm(data.email) !== userEmail) return reject('email does not match the signed-in user');
+    const at = Number(data._at != null ? data._at : (localStorage.getItem(KEY + '_at') || sessionStorage.getItem(KEY + '_at')));
+    const age = Date.now() - at;
+    if (!Number.isFinite(at) || at <= 0 || age < 0 || age >= TTL_MS) return reject('missing, future-dated or stale _at stamp');
+    data._at = at;
+    return data;
+  },
+
+  clearContractorSignup() {
+    ['cs_contractor_signup', 'cs_contractor_signup_at', 'cs_contractor_signup_session'].forEach((k) => {
+      try { localStorage.removeItem(k); } catch (e) { /* non-fatal */ }
+      try { sessionStorage.removeItem(k); } catch (e) { /* non-fatal */ }
+    });
+  },
+
+  // gh-2340 role guard. Every new profile row is created with role='homeowner'
+  // (handle_new_user() sets no role), so "has a non-contractor role" alone
+  // cannot separate a brand-new contractor from an established homeowner.
+  // Definition used: the account PREDATES the signup action (auth user
+  // created_at more than 5 min before the blob's _at; missing created_at is
+  // treated as predating) AND its profile role is not 'contractor' (an
+  // unreadable role counts as non-contractor). Such a user is promoted only
+  // if the contractor-signup action happened in THIS browser-tab session:
+  // contractor-join.html sets sessionStorage cs_contractor_signup_session
+  // beside the blob. A magic link opened in a new tab therefore does not carry
+  // the marker; a pre-existing homeowner must submit contractor-join again in
+  // the tab that completes sign-in.
+  async _contractorSignupRoleGuardOk(user, data) {
+    const SKEW_MS = 5 * 60 * 1000;
+    let profileRole = null;
+    try {
+      if (sb) {
+        const { data: prof } = await sb.from('profiles').select('role').eq('id', user.id).maybeSingle();
+        profileRole = (prof && prof.role) || null;
+      }
+    } catch (e) { profileRole = null; }
+    if (profileRole === 'contractor') return true;
+    const createdMs = Date.parse(user && user.created_at);
+    const predates = !Number.isFinite(createdMs) || (createdMs + SKEW_MS) < data._at;
+    if (!predates) return true;
+    let sameSession = false;
+    try { sameSession = sessionStorage.getItem('cs_contractor_signup_session') === '1'; } catch (e) { /* non-fatal */ }
+    if (sameSession) return true;
+    console.warn('[cs_contractor_signup] ignored and cleared: existing non-contractor account and no contractor signup action in this session');
+    return false;
+  },
+
   async handleAuthCallback() {
     const user = await this.getUser();
     if (!user) return;
@@ -965,10 +1076,46 @@ window.Auth = {
     // falls back to user_metadata. Bounded and non-fatal.
     await this.recordFirstTouchAttribution();
 
-    // Determine role: stored value > contractor record check > default homeowner
-    let role = localStorage.getItem('cs_auth_role') || sessionStorage.getItem('cs_auth_role');
+    // gh-2060 (static-stack counterpart to the React fix, PR #2253/#2098):
+    // cs_auth_role is a breadcrumb written immediately before a login/signup
+    // entry point redirects into the Supabase auth flow (login.html,
+    // contractor-login.html, contractor-join.html, get-started/partner-*.html,
+    // hi-1.html, ins-1.html, re-1.html). It used to have no expiry, so the
+    // "stored value wins" priority below — deliberate: a brand-new contractor
+    // signup has NO contractors row yet (the block further down in this same
+    // function is what creates it), so the DB check alone would misroute a
+    // genuine, in-progress contractor signup — became a liability once the
+    // value could outlive the flow that wrote it. A visitor who abandoned an
+    // earlier contractor signup on this browser, then later signed in as an
+    // unrelated user through a path that doesn't re-set cs_auth_role, had
+    // that stale 'contractor' value silently win, skipping the homeowner
+    // signup-data profile write below (the `role !== 'contractor'` guard).
+    // cs_auth_role_at bounds how long the stored value is trusted (generous
+    // enough for a real magic-link/OAuth round trip); missing or stale —
+    // including a pre-fix breadcrumb with no timestamp at all — is treated
+    // as absent, same as if cs_auth_role had never been set, and the DB
+    // check below runs exactly as it always has for that case. Both keys
+    // are cleared on read either way, one-shot regardless of which branch
+    // consumes them.
+    const CS_AUTH_ROLE_TTL_MS = 24 * 60 * 60 * 1000;
+    const storedRoleRaw = localStorage.getItem('cs_auth_role') || sessionStorage.getItem('cs_auth_role');
+    const storedAt = parseInt(localStorage.getItem('cs_auth_role_at') || sessionStorage.getItem('cs_auth_role_at') || '', 10);
+    let role = (
+      storedRoleRaw !== null &&
+      Number.isFinite(storedAt) &&
+      // gh-2060 round-4 hardening 2: a future-dated stamp (negative age) must
+      // not pass the `<= TTL` check and be trusted indefinitely.
+      (Date.now() - storedAt) >= 0 &&
+      (Date.now() - storedAt) <= CS_AUTH_ROLE_TTL_MS
+    ) ? storedRoleRaw : null;
+    localStorage.removeItem('cs_auth_role');
+    localStorage.removeItem('cs_auth_role_at');
+    sessionStorage.removeItem('cs_auth_role');
+    sessionStorage.removeItem('cs_auth_role_at');
 
-    // If no stored role, check if a contractor record exists for this user
+    // If no TRUSTED stored role (missing, or stale/expired past the TTL
+    // above), check if a contractor record exists for this user — the live
+    // DB wins whenever there is no fresh breadcrumb to defer to.
     if (!role && sb) {
       try {
         const { data: contractor } = await sb
@@ -1051,10 +1198,15 @@ window.Auth = {
     }
 
     // Handle contractor signup data
-    const contractorSignupData = localStorage.getItem('cs_contractor_signup') || sessionStorage.getItem('cs_contractor_signup');
-    if (contractorSignupData) {
+    // gh-2340: owner + 24h + role guard (see getOwnedContractorSignup). A rejected blob is cleared.
+    let contractorSignupOwned = this.getOwnedContractorSignup(user);
+    if (contractorSignupOwned && !(await this._contractorSignupRoleGuardOk(user, contractorSignupOwned))) {
+      this.clearContractorSignup();
+      contractorSignupOwned = null;
+    }
+    if (contractorSignupOwned) {
       try {
-        const data = JSON.parse(contractorSignupData);
+        const data = contractorSignupOwned;
 
         // Update profile for contractor (non-blocking).
         // Fix #86e1b39u1: two bugs patched here:
@@ -1277,8 +1429,7 @@ Log in to the admin panel to review and approve this contractor.`;
         console.error('Error creating contractor profile:', err);
       } finally {
         // Always clear the signup flag — even on failure — to prevent infinite retry on every dashboard load.
-        localStorage.removeItem('cs_contractor_signup');
-        sessionStorage.removeItem('cs_contractor_signup');
+        this.clearContractorSignup();
       }
     }
 
@@ -1304,8 +1455,10 @@ Log in to the admin panel to review and approve this contractor.`;
         // #567: keep the id under a claim-scoped key so the claim writer
         // (trade-selector) can stamp claims.referral_id, then clear the
         // advance-scoped keys so this block never re-runs.
-        localStorage.setItem('oq_referral_id_for_claim', referralId);
-        // gh-2062: only re-arm the cookie's 90-day clock on a successful
+        // gh-2062: the claim-scoped copy lives under the same 30-day click
+        // clock as the cookie (no click time on record => nothing written).
+        if (window.OtterQuoteReferral) window.OtterQuoteReferral.writeClaimId(referralId);
+        // gh-2062: only re-arm the cookie's 30-day clock on a successful
         // advance. A failed RPC call is not a reason to extend the life of
         // an id we were just told is not advanceable — the cookie keeps
         // whatever TTL it already had instead of restarting the clock.

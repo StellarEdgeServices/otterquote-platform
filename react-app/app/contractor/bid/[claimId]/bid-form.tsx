@@ -29,7 +29,7 @@ import {
   bidGateRpcParams, interpretBidGate, BID_GATE_ROUTES, DEFAULT_PLATFORM_FEE_PCT,
   buildScopeSummary, buildQuoteInsert, buildQuoteUpdate,
   buildFeeAcceptanceInsert, buildBidConfirmationBody, buildNotifyContractorsBody, buildBidUpdatedNotification,
-  computeWizardEligibility, wizardReducer,
+  computeWizardEligibility, wizardReducer, wroteRow,
 } from './utils';
 
 // ── Option lists (values byte-faithful to contractor-bid-form.html) ──
@@ -323,8 +323,17 @@ export function BidForm({ mode, claim, contractor, existingQuote, flags, claimRc
           ...common, renewMode: mode === 'renew',
           existingRenewalsCount: (existingQuote?.renewals_count as number) ?? 0, now: new Date(),
         });
-        const { error: upErr } = await supabase.from('quotes').update(updatePayload).eq('id', existingQuote!.id);
+        const { data: upRows, error: upErr } = await supabase.from('quotes').update(updatePayload).eq('id', existingQuote!.id).select('id');
         if (upErr) throw upErr;
+        // gh-2105 (decision a, money — HIGH PRIORITY): `.update()` without
+        // `.select()` reports success even on a zero-row RLS/id-mismatch
+        // match. This write is the bid's own price/terms change or renewal
+        // — a silent miss here shows the contractor a "Bid updated"
+        // success screen while quotes.total_price (what the homeowner sees
+        // and what any later award pays out on) never changed.
+        if (!wroteRow(upRows)) {
+          throw new Error('bid_update_zero_rows: no matching quote row was updated');
+        }
         // Homeowner "bid updated" notification + activity log + GA + contractor email (all non-fatal).
         try {
           await supabase.from('notifications').insert(buildBidUpdatedNotification({

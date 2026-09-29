@@ -12,8 +12,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
 vi.mock('@/lib/supabase', () => ({
-  supabase: { auth: { signInWithOtp: vi.fn(), signInWithOAuth: vi.fn() } },
+  supabase: { auth: { signInWithOAuth: vi.fn() } },
 }));
+// gh-1883 [SECURITY]: /contractor/login now imports lib/auth-uniform for its
+// magic-link send/resend; mocked here purely so the import resolves in this
+// loop-safety test, which asserts on navigation, not on auth calls.
+vi.mock('@/lib/auth-uniform', () => ({ callAuthUniform: vi.fn() }));
 vi.mock('@/hooks/use-auth-ready', () => ({ useAuthReady: vi.fn() }));
 
 import { useAuthReady } from '@/hooks/use-auth-ready';

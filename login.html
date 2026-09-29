@@ -27,7 +27,7 @@
 ></script>
 <!-- Coming-soon gate — flip CONFIG.HOMEOWNER_LAUNCH_ENABLED=true in js/config.js to remove -->
 <script src="js/cookie-storage.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js" integrity="sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.js" integrity="sha384-iLddHTLokph6Omwoyid4XKxHaWa6w41BnoEj0q5oOrzmYPpHIKt1wyjReA7s//pP" crossorigin="anonymous"></script>
 <script src="js/config.js"></script>
 <script>(function(){if(typeof CONFIG!=='undefined'&&!CONFIG.HOMEOWNER_LAUNCH_ENABLED){window.location.replace('/coming-soon.html?from=login&persona=homeowner');}})()</script>
 <meta charset="UTF-8">
@@ -592,6 +592,7 @@
       try {
         await Auth.updatePassword(newPassword);
         localStorage.setItem('cs_auth_role', 'homeowner');
+        localStorage.setItem('cs_auth_role_at', String(Date.now()));
         await Auth.redirectToDashboard();
       } catch (err) {
         console.error('Set new password error:', err);
@@ -620,6 +621,7 @@
     btn.disabled = true;
     btn.textContent = 'Redirecting to Google…';
     localStorage.setItem('cs_auth_role', 'homeowner');
+    localStorage.setItem('cs_auth_role_at', String(Date.now()));
     try {
       await Auth.signInWithGoogle('/auth-callback.html?intent=homeowner');
     } catch (err) {

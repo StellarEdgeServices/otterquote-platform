@@ -26,9 +26,9 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { buildEmailHtml, buildEmailText, ADMIN_PORTAL_URL } from "./templates.ts"; // gh-1824: email bodies moved to templates.ts (testable, no serve() import)
 
 const ADMIN_EMAIL        = "dustinstohler1@gmail.com";
-const ADMIN_PORTAL_URL   = "https://otterquote.com/admin-contractors.html";
 const NOTIFICATION_TYPE  = "admin_new_contractor";
 
 // CORS — origin-allowlisted per project standard (Session 254).
@@ -57,98 +57,6 @@ function isTestAccount(email: string): boolean {
     lower.includes("pfw-") ||
     lower.includes("authdoctor")
   );
-}
-
-function escapeHtml(str: string): string {
-  return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function buildEmailHtml(
-  companyName: string,
-  contactName: string,
-  email: string,
-  signupTs: string,
-): string {
-  return `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-</head>
-<body style="margin:0;padding:0;background:#F1F5F9;">
-<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F1F5F9;">
-  <tr>
-    <td align="center" style="padding:24px 16px;">
-      <table width="100%" cellpadding="0" cellspacing="0" border="0"
-             style="max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
-        <!-- Header -->
-        <tr>
-          <td style="background:#0B1929;padding:20px 24px;">
-            <h2 style="color:#F59E0B;margin:0;font-size:1.1rem;font-family:sans-serif;">
-              🦦 New Contractor Signup — Review Required
-            </h2>
-          </td>
-        </tr>
-        <!-- Body -->
-        <tr>
-          <td style="padding:24px;font-family:sans-serif;color:#0B1929;">
-            <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">
-              A new contractor has signed up and is awaiting approval.
-            </p>
-            <table width="100%" cellpadding="0" cellspacing="0" border="0"
-                   style="border-collapse:collapse;font-size:14px;margin-bottom:24px;">
-              <tr>
-                <td style="padding:8px 0;color:#64748B;width:130px;vertical-align:top;">Company</td>
-                <td style="padding:8px 0;font-weight:600;">${escapeHtml(companyName)}</td>
-              </tr>
-              <tr>
-                <td style="padding:8px 0;color:#64748B;vertical-align:top;">Contact</td>
-                <td style="padding:8px 0;">${escapeHtml(contactName)}</td>
-              </tr>
-              <tr>
-                <td style="padding:8px 0;color:#64748B;vertical-align:top;">Email</td>
-                <td style="padding:8px 0;">
-                  <a href="mailto:${escapeHtml(email)}" style="color:#0369A1;">${escapeHtml(email)}</a>
-                </td>
-              </tr>
-              <tr>
-                <td style="padding:8px 0;color:#64748B;vertical-align:top;">Signed up</td>
-                <td style="padding:8px 0;">${escapeHtml(signupTs)} CT</td>
-              </tr>
-            </table>
-            <table cellpadding="0" cellspacing="0" border="0">
-              <tr>
-                <td align="center" bgcolor="#F59E0B" style="border-radius:8px;">
-                  <a href="${ADMIN_PORTAL_URL}"
-                     style="display:inline-block;font-family:sans-serif;font-size:15px;font-weight:700;
-                            color:#0B1929;text-decoration:none;padding:12px 24px;">
-                    Review in Admin Portal &rarr;
-                  </a>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <!-- Footer -->
-        <tr>
-          <td align="center"
-              style="background:#F8FAFC;border-top:1px solid #E2E8F0;padding:16px;
-                     font-family:sans-serif;font-size:12px;color:#94A3B8;">
-            Otter Quotes &nbsp;|&nbsp;
-            <a href="mailto:support@otterquote.com" style="color:#0EA5E9;text-decoration:none;">support@otterquote.com</a>
-          </td>
-        </tr>
-      </table>
-    </td>
-  </tr>
-</table>
-</body>
-</html>`.trim();
 }
 
 // =============================================================================
@@ -239,18 +147,7 @@ serve(async (req: Request) => {
       : new Date().toLocaleString("en-US", { timeZone: "America/Chicago" });
 
     const subject  = `🦦 New Contractor Signup — ${companyName} (pending review)`;
-    const textBody = [
-      `New contractor signup on Otter Quotes — review required.`,
-      ``,
-      `Company  : ${companyName}`,
-      `Contact  : ${contactName}`,
-      `Email    : ${email}`,
-      `Signed up: ${signupTs} CT`,
-      ``,
-      `Review in admin portal:`,
-      ADMIN_PORTAL_URL,
-    ].join("\n");
-
+    const textBody = buildEmailText(companyName, contactName, email, signupTs);
     const htmlBody = buildEmailHtml(companyName, contactName, email, signupTs);
 
     const formData = new FormData();

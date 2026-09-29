@@ -75,10 +75,18 @@ CANARY_FILES = {
     # (JWT/RSA machinery removed, but BoldSign-specific comments and the
     # server-side operator-token/HMAC logic added more than it removed).
     "supabase/functions/create-docusign-envelope/index.ts": 69000,  # known-good 87,017 bytes (was 74,299 pre-BoldSign)
-    "supabase/functions/notify-contractors/index.ts":        48000,  # known-good 61,138 bytes
+    # [gh-1824 footer batch 4, 2026-09-28] notify-contractors, process-coi-reminders
+    # and process-bid-expirations each had their email HTML/text builder
+    # functions extracted out of index.ts into a new templates.ts (so the D-237
+    # footer's builder functions are unit-testable without importing index.ts,
+    # which calls serve() at module load). index.ts legitimately shrank as a
+    # result; thresholds and known-good sizes below are recalibrated to the new,
+    # smaller-but-complete file (still ~80% of the new known-good size, same
+    # convention as the D-274 update above).
+    "supabase/functions/notify-contractors/index.ts":        48000,  # known-good 54,938 bytes (was 61,138 pre-batch-4 extraction)
     "supabase/functions/process-dunning/index.ts":           43000,  # known-good 53,989 bytes
-    "supabase/functions/process-coi-reminders/index.ts":     32000,  # known-good 40,948 bytes
-    "supabase/functions/process-bid-expirations/index.ts":   29000,  # known-good 36,794 bytes
+    "supabase/functions/process-coi-reminders/index.ts":     19000,  # known-good 23,735 bytes (was 40,948 pre-batch-4 extraction)
+    "supabase/functions/process-bid-expirations/index.ts":   22000,  # known-good 27,450 bytes (was 36,794 pre-batch-4 extraction)
     "supabase/functions/docusign-webhook/index.ts":          52000,  # known-good 65,017 bytes (was 30,263 pre-BoldSign)
 }
 
@@ -334,7 +342,31 @@ if _handler_guard_result.stderr:
     print(_handler_guard_result.stderr, end="", file=sys.stderr)
 handler_guard_exit = _handler_guard_result.returncode
 
+# -- D-104 contractor credential-claim guard + its self-test (gh-2020) --------
+# gh-2020 (#2011 D-7): scripts/check-credential-claims.py ran only in the
+# optional "Static Integrity Checks" job (e2e-tests.yml) and its self-test only
+# in the optional "Detector Negative Control Gate", so a PR planting "our
+# approved contractors" went red on a non-required job and could still merge
+# (close-review comment 5857444397, finding C). Chained here, the same way as
+# partner_parity_check.py above, so D-104 is enforced by the required
+# "Null-Byte & Size Sanity Check" job without adding a fifth required check.
+# BUILD-FAILING: a violation, or a regression in the guard's own detection
+# logic, fails this job.
+_credential_results = []
+for _cred_script in ("check-credential-claims.py", "check-credential-claims.test.py"):
+    print()
+    print("-" * 78)
+    _cred_result = subprocess.run(
+        [sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), _cred_script)],
+        capture_output=True, text=True,
+    )
+    print(_cred_result.stdout, end="")
+    if _cred_result.stderr:
+        print(_cred_result.stderr, end="", file=sys.stderr)
+    _credential_results.append(_cred_result.returncode)
+credential_claims_exit = 1 if any(_credential_results) else 0
+
 if (file_integrity_exit != 0 or partner_parity_exit != 0 or agent_types_exit != 0
-        or xss_guard_exit != 0 or handler_guard_exit != 0):
+        or xss_guard_exit != 0 or handler_guard_exit != 0 or credential_claims_exit != 0):
     sys.exit(1)
 sys.exit(0)

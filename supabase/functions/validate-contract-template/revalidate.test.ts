@@ -40,7 +40,7 @@ const TEXT_BY_PATH: Record<string, string> = {
 };
 
 // deno-lint-ignore no-explicit-any
-function fakeSupabase(rows: any[]) {
+function fakeSupabase(rows: any[], zeroRowIds: string[] = []) {
   // deno-lint-ignore no-explicit-any
   const writes: any[] = [];
   const client = {
@@ -56,7 +56,25 @@ function fakeSupabase(rows: any[]) {
           then(resolve: (v: unknown) => void) { resolve({ data: filtered, error: null }); },
           // deno-lint-ignore no-explicit-any
           update(patch: any) {
-            return { eq(_col: string, id: string) { writes.push({ id, patch }); return Promise.resolve({ error: null }); } };
+            return {
+              eq(_col: string, id: string) {
+                return {
+                  select(_cols: string) {
+                    // gh-2105: mirrors the real .update().eq().select("id")
+                    // shape -- a matching row (id present in `rows` and NOT
+                    // in `zeroRowIds`) yields one row back; a zero-row match
+                    // (the row was in `rows` when read, but is in
+                    // `zeroRowIds` -- simulating a row that changed out from
+                    // under the sweep between the read and this write, e.g.
+                    // deleted or RLS-denied) yields an empty array, same as
+                    // PostgREST would for a real zero-row miss.
+                    const matched = rows.some((r) => r.id === id) && !zeroRowIds.includes(id);
+                    writes.push({ id, patch });
+                    return Promise.resolve({ data: matched ? [{ id }] : [], error: null });
+                  },
+                };
+              },
+            };
           },
         };
         return chain;
@@ -174,6 +192,25 @@ Deno.test("write mode honours stored manual_overrides for the status verdict (ma
   const sb = fakeSupabase(rows);
   const r = await revalidateTemplates({ supabase: sb, dryRun: false, extractPdfText: fakeExtract, now: fixedNow });
   assertEquals(r.rows.find((x) => x.id === "C")!.after?.status, "manual_validated");
+});
+
+// gh-2105 (decision a, legal): the write had no `.select()`, so a zero-row
+// RLS/id-mismatch match (the row changed out from under the sweep between
+// the initial read and this write -- deleted, RLS) reported `written: true`
+// with `report.written` counting a revalidation verdict that never actually
+// persisted. FAIL-FIRST: against origin/k72/gh2105-batch6's (pre-batch-7)
+// revalidate.ts, this test throws (the fake client's `.select` doesn't
+// exist on that branch's `update().eq()` return value) rather than
+// reporting an error for row A -- proving the pre-fix code path never
+// checked what `.select()` would have shown it.
+Deno.test("write mode (gh-2105): a zero-row match is reported as an error, not counted as written", async () => {
+  const sb = fakeSupabase(fixtureRows(), ["A"]);
+  const r = await revalidateTemplates({ supabase: sb, dryRun: false, extractPdfText: fakeExtract, now: fixedNow });
+  const rowA = r.rows.find((x) => x.id === "A")!;
+  assertEquals(rowA.written, false, "a zero-row match must not be marked written");
+  assertStringIncludes(rowA.error!, "gh-2105");
+  assertEquals(r.written, 2, "only C and D actually wrote (A zero-rowed, B 404d before ever reaching the write)");
+  assertEquals(r.errors, 2, "B's 404 plus A's zero-row match");
 });
 
 Deno.test("force: a row with a current result is re-scanned too; template_ids restricts the pass", async () => {

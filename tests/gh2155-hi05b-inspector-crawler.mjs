@@ -62,7 +62,13 @@ const FEE_TERM_RE = /\$[\d,]+|referral fee|recruit bonus/gi;
 const SAFE_SENTENCES = [
   'Home-inspector partners do not receive a referral fee or recruit bonus.',
   'receives no Referral Fee and no Recruit Bonus under this Agreement.',
+  // gh-2155 HI-0d (D-333): the inspector agreement's Section 4 heading, which asserts the
+  // ABSENCE of a fee. Listed BEFORE 'No Referral Fee' so the longer phrase is stripped whole.
+  '4. No Referral Fee or Recruit Bonus',
   'No Referral Fee',
+  // gh-2354 (D-341): the inspector Section 13 liability-cap floor. The "$100" is a limit on
+  // Otter Quotes' liability, not a fee offered to the partner; exact sentence only.
+  'SHALL NOT EXCEED THE GREATER OF TOTAL COMMISSIONS PAID TO PARTNER IN THE TWELVE (12) MONTHS PRECEDING THE CLAIM OR $100.',
   '4. Referral Fee Structure',
   'Referral fees and bonuses under Section 4 are paid through a third-party payment service',
 ];
@@ -471,7 +477,7 @@ async function crawl({ starts, maxDepth, jsOn, respectInspectorHiding, inspector
 // ── Scenario 1: JS ON, 3 levels deep, inspector context set, UNSCOPED ─────
 {
   const { visited, hits, exclusionHits } = await crawl({
-    starts: ['hi-1.html', 'partner-inspectors.html'],
+    starts: ['hi-1.html', 'hi-4.html', 'partner-inspectors.html'],
     maxDepth: 3,
     jsOn: true,
     respectInspectorHiding: true,
@@ -512,7 +518,7 @@ async function crawl({ starts, maxDepth, jsOn, respectInspectorHiding, inspector
 // ── Scenario 2: JS OFF, 1 level, static markup + edges only, UNSCOPED ─────
 {
   const { visited, hits, exclusionHits } = await crawl({
-    starts: ['hi-1.html', 'partner-inspectors.html'],
+    starts: ['hi-1.html', 'hi-4.html', 'partner-inspectors.html'],
     maxDepth: 1,
     jsOn: false,
     respectInspectorHiding: false, // the JS that reads data-hide-when-inspector never runs

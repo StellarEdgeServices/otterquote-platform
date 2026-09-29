@@ -40,9 +40,13 @@ const html = fs.readFileSync(path.join(repoRoot, PAGE_FILE), 'utf8');
 // Every string here is quoted directly from issue #2150 comment
 // 5821403227, approved as-posted by Dustin (comment 5832299784). A
 // FAIL here means the shipped page no longer matches the approved wording.
+// Subhead updated per Dustin's approval on issue #2150 comment 5856964018
+// ("APPROVE TO ALL"): drops the $10k-minimum framing -- "a referral fee
+// when the job's done" -> "a referral fee on qualifying completed
+// projects." (CEO72 re1-subtitle, PR #2259.)
 const APPROVED_STRINGS = [
   ["H1", "Every Realtor's New Best Friend"],
-  ["Subhead", "Send your clients to Otter Quotes for fast, competing repair bids — no extra work for you, and a referral fee when the job's done."],
+  ["Subhead", "Send your clients to Otter Quotes for fast, competing repair bids — no extra work for you, and a referral fee on qualifying completed projects."],
   ["Bullet 1", "Your client gets multiple contractor bids without hunting for one."],
   ["Bullet 2", "Earn $200 when a referred job of $10,000+ completes."],
   ["Bullet 3", "Track every referral from your phone, in real time."],
@@ -418,7 +422,8 @@ const gaGateSrc = fs.readFileSync(path.join(repoRoot, 'js', 'ga-gate.js'), 'utf8
   const fEnd = html.indexOf('</footer>', fStart);
   const footerHtml = fStart !== -1 && fEnd !== -1 ? html.slice(fStart, fEnd) : '';
   const footerLinks = [...footerHtml.matchAll(/<a\s[^>]*href="([^"]+)"/g)].map((m) => m[1]);
-  ok(footerLinks.length === 3, '(1) S07: footer carries exactly 3 links, no link farm -- got ' + JSON.stringify(footerLinks));
+  // gh-1925 item 2 (Dustin ruling 5881048326): the CPRA opt-out link is a legally required 4th footer link; still no link farm.
+  ok(footerLinks.filter((l) => l !== '/privacy.html#do-not-sell-or-share').length === 3 && footerLinks.filter((l) => l === '/privacy.html#do-not-sell-or-share').length === 1, '(1) S07: footer carries exactly 3 links plus the CPRA opt-out link (gh-1925), no link farm -- got ' + JSON.stringify(footerLinks));
   ok(footerLinks.includes('/privacy.html'), '(1) S07: footer links include Privacy');
   ok(footerLinks.includes('/terms.html'), '(1) S07: footer links include Terms');
   ok(footerLinks.includes('/partner-agreement.html'), '(1) S07: footer links include Partner Agreement');
@@ -753,6 +758,22 @@ const gaGateSrc = fs.readFileSync(path.join(repoRoot, 'js', 'ga-gate.js'), 'utf8
       failWithReason('(11) #nameError on an empty submit matches main\'s partner-insurance.html verbatim', e.message);
     }
   }
+}
+
+// ── gh-2361 (CRO47 spec 3.3, PR b): partner trust header -- static guards ──
+// Sloane's rulings (#2361): logo + wordmark "Otter Quotes" + photo slot ONLY,
+// non-link, inside the existing data-skip-nav header; photo slot HIDDEN, no src.
+// The browser-level proof (P1-P5, PN1-PN4) is tests/cro47-trust-partner.mjs.
+{
+  const hm = /<header id="site-header"[^>]*data-skip-nav="true"[^>]*>([\s\S]*?)<\/header>/.exec(html);
+  ok(!!hm, 're-1.html gh-2361: #site-header still carries data-skip-nav="true" and now holds the trust block');
+  const inner = hm ? hm[1].replace(/<!--[\s\S]*?-->/g, '') : '';
+  ok(/<img[^>]*src="\/img\/brand-assets\/otter-quotes-icon-512\.png"[^>]*alt="Otter Quotes"/.test(inner), 're-1.html gh-2361: header holds the existing logo asset with the js/nav.js alt text');
+  ok(/>\s*Otter Quotes\s*</.test(inner), 're-1.html gh-2361: header holds the wordmark "Otter Quotes"');
+  ok(!/<a[\s>]/i.test(inner) && !/<button|onclick=/i.test(inner), 're-1.html gh-2361: the header trust block contains no link/button (non-link logo, no escape hatch)');
+  ok(/<img[^>]*id="oqTrustPhoto"/.test(inner) && !/id="oqTrustPhoto"[^>]*\ssrc=/.test(inner) && /\.oq-trust__photo:not\(\[src\]\)\s*\{\s*display:\s*none/.test(html), 're-1.html gh-2361: photo slot #oqTrustPhoto ships HIDDEN with no src (no placeholder image)');
+  const text = inner.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  ok(text === 'Otter Quotes', 're-1.html gh-2361: the ONLY visible header text is the wordmark -- got ' + JSON.stringify(text));
 }
 
 console.log('');

@@ -60,6 +60,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 
 const FUNCTION_NAME = "record-attestation";
 
@@ -248,10 +249,11 @@ serve(async (req) => {
     };
   }
 
-  const { error: updateError } = await supabase
+  const { error: updateError, data: updateRows } = await supabase
     .from("contractors")
     .update(updateData)
-    .eq("id", contractor_id);
+    .eq("id", contractor_id)
+    .select("id");
 
   if (updateError) {
     console.error(
@@ -260,6 +262,31 @@ serve(async (req) => {
     );
     return jsonResponse(
       { error: "Failed to record attestation", detail: updateError.message },
+      500,
+      corsHeaders
+    );
+  }
+
+  // gh-2105 (decision a, legal — HIGH PRIORITY): `contractor` was fetched by
+  // this same id above and ownership was verified against it, so a zero-row
+  // match here means the row changed out from under the request (RLS,
+  // concurrent delete) between that lookup and this write. Without this
+  // check the caller gets `success: true` and a signed-looking
+  // `recorded_at` while `wc_cert_uploaded_at` / `license_attestation_signed_at`
+  // never actually changed -- a WCE-1 exemption or no-license attestation
+  // that was never actually recorded server-side.
+  if (!checkRowsWritten(updateRows).wroteRows) {
+    console.error(
+      zeroRowWriteMessage(
+        FUNCTION_NAME,
+        `contractors.${attestation_type} for contractor ${contractor_id}`
+      )
+    );
+    return jsonResponse(
+      {
+        error: "Failed to record attestation",
+        detail: "gh2105_zero_rows: no matching contractor row was updated",
+      },
       500,
       corsHeaders
     );

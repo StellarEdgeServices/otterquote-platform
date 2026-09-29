@@ -20,9 +20,18 @@ import { fieldDataToPayload, mapFieldData, type LeadFieldDatum } from "./field-m
 
 /** Meta Graph API's per-form custom disclaimer response shape (Marketing API "Retrieving Leads" docs). */
 export interface CustomDisclaimerResponse {
+  /** #2325: what Meta actually sends -- the checkbox KEY (a slug of the consent text). */
+  checkbox_key?: string;
+  /** Legacy/assumed shapes; kept only as a fallback match (#2325). */
   id?: string;
   name?: string;
-  is_checked?: boolean;
+  /** Meta sends the STRING "1" / "0" (observed 2026-09-28); a boolean is also tolerated. */
+  is_checked?: boolean | string | number;
+}
+
+/** #2325: true only for a clear "ticked" -- boolean true or Meta's "1"/"true". Everything else is false. */
+function isTicked(v: unknown): boolean {
+  return v === true || v === "1" || v === 1 || v === "true";
 }
 
 /** #2123 HO-2: the Graph API fields fetchHomeownerLead requests, beyond the partner path's field_data. */
@@ -56,12 +65,13 @@ export interface HomeownerConsentArgs {
 }
 
 /**
- * Fails closed to `false` when `responses` is missing/malformed, or when no
- * entry matches `consentKey` (matched against either Meta's disclaimer `id`
- * or its `name` -- Meta's own docs are not consistent about which one a form
- * exports, so both are accepted), or when the matching entry's `is_checked`
- * is anything other than the literal boolean `true` (e.g. absent, or a
- * missing checkbox answer entirely).
+ * #2325: matches `consentKey` against Meta's `checkbox_key` (the real shape,
+ * `{checkbox_key, is_checked: "1"}`), falling back to `id` / `name` (used by
+ * the pre-#2325 tests and handler fixtures). Ticked is boolean true or the
+ * string "1"/"true"; "0", false, absent, or anything else is false. Fails
+ * closed to `false` when `responses` is missing/malformed or nothing matches.
+ * NOTE: the allowlist consent_key must be the checkbox KEY string (identical
+ * on forms 1078244861764331 and 1714389966848447), not the checkbox id.
  */
 export function getConsentGiven(
   responses: CustomDisclaimerResponse[] | null | undefined,
@@ -70,8 +80,8 @@ export function getConsentGiven(
   if (!Array.isArray(responses)) return false;
   for (const r of responses) {
     if (!r || typeof r !== "object") continue;
-    if (r.id === consentKey || r.name === consentKey) {
-      return r.is_checked === true;
+    if (r.checkbox_key === consentKey || r.id === consentKey || r.name === consentKey) {
+      return isTicked(r.is_checked);
     }
   }
   return false;

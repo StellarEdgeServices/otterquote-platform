@@ -30,6 +30,12 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
+import {
+  contractorSwitchEmailHtml,
+  contractorSwitchEmailText,
+  switchSupportEmailText,
+} from "./templates.ts"; // gh-1824: email bodies moved to templates.ts (testable, no serve() import)
 
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
 
@@ -128,73 +134,9 @@ async function stripeRefund(
   }
 }
 
-/** Escape HTML special characters in dynamic DB-sourced strings before interpolation. */
-function escapeHtml(text: string): string {
-  const map: Record<string, string> = {
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#039;",
-  };
-  return text.replace(/[&<>"']/g, (char) => map[char]);
-}
-
-/** Shared HTML shell for switch-contractor's contractor notification (gh-1013). */
-function buildEmail(bodyHtml: string): string {
-  return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-</head>
-<body style="margin:0;padding:0;background:#F1F5F9;">
-<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F1F5F9;">
-  <tr>
-    <td align="center" style="padding:24px 16px;">
-      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
-        <tr>
-          <td align="left" style="background:#0B1929;padding:24px 32px;">
-            <span style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:20px;font-weight:700;color:#ffffff;letter-spacing:-0.3px;">Otter Quotes</span>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:32px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#374151;font-size:15px;line-height:1.6;">
-            ${bodyHtml}
-          </td>
-        </tr>
-        <tr>
-          <td align="center" style="background:#F8FAFC;border-top:1px solid #E2E8F0;padding:20px 32px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;color:#64748B;">
-            <a href="mailto:support@otterquote.com" style="color:#0EA5E9;text-decoration:none;">support@otterquote.com</a>
-            &nbsp;&nbsp;|&nbsp;&nbsp;
-            <a href="tel:+18448753412" style="color:#0EA5E9;text-decoration:none;">(844) 875-3412</a>
-          </td>
-        </tr>
-      </table>
-    </td>
-  </tr>
-</table>
-</body>
-</html>`.trim();
-}
-
-/**
- * HTML counterpart of the contractor-switch notification (gh-1013). No CTA
- * link exists in the source text, so none is added here — structure only,
- * same sentences, no new copy.
- */
-function contractorSwitchEmailHtml(contractorName: string, refundLine: string): string {
-  const body = `
-    <p style="margin:0 0 16px;">Hi ${escapeHtml(contractorName)},</p>
-    <p style="margin:0 0 16px;">We're writing to let you know that the homeowner on the following project has chosen to switch contractors through Otter Quotes.</p>
-    <p style="margin:0 0 16px;">This is a platform feature available to homeowners up to 3 days before their scheduled installation date.</p>
-    <p style="margin:0 0 16px;">${escapeHtml(refundLine)}</p>
-    <p style="margin:0 0 16px;">The project has been re-opened to the Otter Quotes contractor network. You are welcome to bid again when it reappears in your Opportunities dashboard.</p>
-    <p style="margin:0 0 16px;">We appreciate your participation on Otter Quotes and look forward to connecting you with future projects.</p>
-    <p style="margin:0;">Best regards,<br>The Otter Quotes Team</p>
-  `;
-  return buildEmail(body);
-}
+// gh-1824: escapeHtml/buildEmail/contractorSwitchEmailHtml moved to
+// ./templates.ts (testable without importing this file's top-level serve()
+// call). See templates.ts / templates.test.ts.
 
 /** Send an email via Mailgun. Optional html param — gh-1013 adds it only where a customer/contractor-facing send needs parity; internal alert sends stay text-only. */
 async function sendEmail(
@@ -352,23 +294,29 @@ serve(async (req) => {
 
     // ── 6. Cancel the quote ───────────────────────────────────────────────
     if (winningQuote?.id) {
-      const { error: cancelError } = await sb
+      const { error: cancelError, data: cancelRows } = await sb
         .from("quotes")
         .update({
           status: "cancelled",
           cancelled_at: new Date().toISOString(),
           cancellation_reason: "homeowner_switched_contractor",
         })
-        .eq("id", winningQuote.id);
+        .eq("id", winningQuote.id)
+        .select("id");
 
       if (cancelError) {
         console.error("[switch-contractor] Error cancelling quote:", cancelError);
         // Non-fatal — continue
+      } else if (!checkRowsWritten(cancelRows).wroteRows) {
+        // gh-2105 (decision a, non-fatal like cancelError): `winningQuote` was
+        // fetched by this id, so zero rows means the cancel silently did not
+        // land and the switched-away quote stays live.
+        console.error(zeroRowWriteMessage("switch-contractor", `quotes.status=cancelled for quote ${winningQuote.id}`));
       }
     }
 
     // ── 7. Reset the claim ────────────────────────────────────────────────
-    const { error: claimUpdateError } = await sb
+    const { error: claimUpdateError, data: claimUpdateRows } = await sb
       .from("claims")
       .update({
         status: "bidding",
@@ -376,10 +324,18 @@ serve(async (req) => {
         contractor_switched_at: new Date().toISOString(),
         contractor_switch_count: (claim.contractor_switch_count || 0) + 1,
       })
-      .eq("id", claim_id);
+      .eq("id", claim_id)
+      .select("id");
 
     if (claimUpdateError) {
       console.error("[switch-contractor] Error resetting claim:", claimUpdateError);
+      return jsonResponse({ error: "Failed to reset claim status. Please try again." }, 500);
+    }
+    // gh-2105 (decision a, money): a zero-row match here would leave the claim
+    // awarded while the refund/emails below proceed as if it were reset. Same
+    // existing 500 response as claimUpdateError -- no new user-facing text.
+    if (!checkRowsWritten(claimUpdateRows).wroteRows) {
+      console.error(zeroRowWriteMessage("switch-contractor", `claims.status=bidding for claim ${claim_id}`));
       return jsonResponse({ error: "Failed to reset claim status. Please try again." }, 500);
     }
 
@@ -390,12 +346,16 @@ serve(async (req) => {
         notes: surveyNotes,
         submitted_at: new Date().toISOString(),
       };
-      const { error: surveyError } = await sb
+      const { error: surveyError, data: surveyRows } = await sb
         .from("claims")
         .update({ switch_reason_survey: surveyPayload })
-        .eq("id", claim_id);
+        .eq("id", claim_id)
+        .select("id");
       if (surveyError) {
         console.warn("[switch-contractor] Survey persist failed (non-critical):", surveyError);
+      } else if (!checkRowsWritten(surveyRows).wroteRows) {
+        // gh-2105 (decision a, non-critical): logged, never fails the switch.
+        console.warn(zeroRowWriteMessage("switch-contractor", `claims.switch_reason_survey for claim ${claim_id}`));
       } else {
         console.log("[switch-contractor] Survey saved:", JSON.stringify(surveyPayload));
       }
@@ -410,9 +370,15 @@ serve(async (req) => {
 
       // Update the quote with refund info
       if (refundResult.success && refundResult.refundId) {
-        await sb.from("quotes").update({
+        const { error: refundMarkErr, data: refundMarkRows } = await sb.from("quotes").update({
           payment_status: "refunded",
-        }).eq("id", winningQuote.id);
+        }).eq("id", winningQuote.id).select("id");
+        // gh-2105 (decision a-with-alert, money): the Stripe refund already
+        // fired and is irreversible from here, so no throw -- but a silent miss
+        // leaves payment_status="succeeded" on a refunded charge.
+        if (refundMarkErr || !checkRowsWritten(refundMarkRows).wroteRows) {
+          console.error(zeroRowWriteMessage("switch-contractor", `quotes.payment_status=refunded for quote ${winningQuote.id} (refund ${refundResult.refundId})`), refundMarkErr?.message ?? "");
+        }
       }
     } else {
       console.log("[switch-contractor] No Stripe refund needed — payment_intent_id:", winningQuote?.payment_intent_id, "payment_status:", winningQuote?.payment_status);
@@ -428,7 +394,7 @@ serve(async (req) => {
           ? "No platform fee had been charged on this project, so no refund is necessary."
           : "We will process your platform fee refund separately. Please contact support at support@otterquote.com if you have questions.";
 
-      const emailText = `Hi ${contractorName},\n\nWe're writing to let you know that the homeowner on the following project has chosen to switch contractors through Otter Quotes.\n\nThis is a platform feature available to homeowners up to 3 days before their scheduled installation date.\n\n${refundLine}\n\nThe project has been re-opened to the Otter Quotes contractor network. You are welcome to bid again when it reappears in your Opportunities dashboard.\n\nWe appreciate your participation on Otter Quotes and look forward to connecting you with future projects.\n\nBest regards,\nThe Otter Quotes Team\nsupport@otterquote.com | (844) 875-3412`;
+      const emailText = contractorSwitchEmailText(contractorName, refundLine); // gh-1824
 
       emailSent = await sendEmail(
         mailgunKey,
@@ -451,7 +417,14 @@ serve(async (req) => {
         : "(none selected)";
       const notesLine = surveyNotes || "(none provided)";
       const propertyAddress = claim.property_address || "Unknown address";
-      const supportEmailText = `[Action Required] Homeowner contractor switch — ${propertyAddress}\n\nA homeowner has submitted a contractor switch request. Per D-171, please contact them directly to confirm their next contractor placement.\n\nClaim ID:        ${claim_id}\nProperty:        ${propertyAddress}\nOriginal contractor: ${contractorName}\nRefund issued:   ${refundResult.success ? "Yes" : "Pending"}\n\n--- Homeowner Switch Survey ---\nReasons selected: ${reasonsLine}\nAdditional notes: ${notesLine}\n\nPlease reach out to the homeowner to confirm their new contractor placement.\nAdmin: https://otterquote.com/admin-contractors.html\n\n— OtterQuote automated alert`;
+      const supportEmailText = switchSupportEmailText(
+        claim_id,
+        propertyAddress,
+        contractorName,
+        refundResult.success,
+        reasonsLine,
+        notesLine,
+      ); // gh-1824
 
       await sendEmail(
         mailgunKey,

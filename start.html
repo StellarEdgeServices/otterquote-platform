@@ -636,7 +636,7 @@
      never at parse time, so there is no window where `sb` can be read
      before `supabase` exists on `window`. See that function's own comment
      for the full reasoning. -->
-<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js" integrity="sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.js" integrity="sha384-iLddHTLokph6Omwoyid4XKxHaWa6w41BnoEj0q5oOrzmYPpHIKt1wyjReA7s//pP" crossorigin="anonymous"></script>
 
 <!-- Google Fonts -->
 <!-- gh-2063: non-blocking stylesheet load (preload + swap to `all` media on
@@ -797,6 +797,20 @@
      /start keep the original calc -- their header/footer still renders,
      so the -120px budget is still correct for them. */
   html[data-oq-start-arm="f"] main { min-height: 112vh; }
+  /* gh-2362 (Ben's Tier B ruling on #2121, comment 5895347981; spec cro47-trustspec-20260929 section 2.1): Arm F trust header.
+     A STATIC, NON-CLICKABLE block (logo + wordmark + the live who-we-are sentence + a hidden photo slot) above the card. It is
+     deliberately not a link and not nav.js's header: the header logo was removed as an escape hatch by gh-2121 S07 above. It is
+     display:none by default and shown ONLY under html[data-oq-start-arm="f"] (set synchronously by the head IIFE), so arms D/E/A/B
+     and a bare /start never see it. Plain HTML, not built by js/router-variant-f.js, so it paints with the LCP h1. Fixed
+     width/height on both images so it adds no layout shift. main becomes a column ONLY on Arm F so the block stacks above the card. */
+  #oqTrustHeader { display: none; }
+  html[data-oq-start-arm="f"] main { flex-direction: column; align-items: center; justify-content: flex-start; }
+  html[data-oq-start-arm="f"] #oqTrustHeader { display: block; width: 100%; max-width: 480px; margin: 0 0 var(--sp-3); }
+  html[data-oq-start-arm="f"] #oqTrustHeader .oq-trust-row { display: flex; align-items: center; gap: var(--sp-2); }
+  html[data-oq-start-arm="f"] #oqTrustHeader img { display: block; flex: 0 0 auto; border-radius: 8px; }
+  html[data-oq-start-arm="f"] #oqTrustHeader img[hidden] { display: none; }
+  html[data-oq-start-arm="f"] #oqTrustHeader .oq-trust-name { flex: 1 1 auto; font-weight: 700; font-size: 1rem; color: var(--white); }
+  html[data-oq-start-arm="f"] #oqTrustHeader .oq-trust-line { margin: var(--sp-1) 0 0; font-size: 0.78rem; line-height: 1.35; color: var(--slate); }
   .router-card {
     width: 100%;
     max-width: 480px;
@@ -931,6 +945,8 @@
     .router-step h1, #routerCRoot h1, #routerDRoot h1, #routerFRoot h1 { margin-bottom: var(--sp-1); }
     .router-step p.router-sub, #routerCRoot p.router-sub, #routerDRoot p.router-sub, #routerFRoot p.router-sub { margin-bottom: var(--sp-3); }
     .form-group { margin-bottom: var(--sp-2); }
+    html[data-oq-start-arm="f"] #oqTrustHeader { margin-bottom: var(--sp-2); }
+    html[data-oq-start-arm="f"] #oqTrustHeader .oq-trust-line { margin-top: 2px; }
   }
 </style>
 </head>
@@ -945,6 +961,27 @@
 <header id="site-header"></header>
 
 <main>
+  <!-- gh-2362: Arm F trust header (see the CSS comment above). Static, non-clickable, hidden on every other arm. The who-we-are
+       sentence is the live partner-profile.html sentence, byte-for-byte (Sloane's ruling, CRO RUN 47): do not reword it. The logo is
+       img/brand-assets/otter-quotes-icon-512.png (14 KB, existing asset). To ship Dustin's photo: add the file at img/team/dustin.webp
+       (96x96, <= 12 KB), set src="img/team/dustin.webp" on #oqTrustPhoto and delete its `hidden` attribute. No placeholder is shipped. -->
+  <div id="oqTrustHeader">
+    <div class="oq-trust-row">
+      <img id="oqTrustLogo" data-src="img/brand-assets/otter-quotes-icon-512.png" width="32" height="32" alt="Otter Quotes" decoding="async">
+      <span class="oq-trust-name">Otter Quotes</span>
+      <img id="oqTrustPhoto" width="40" height="40" alt="Dustin" decoding="async" hidden>
+    </div>
+    <script>
+      /* gh-2362 F1: the logo has NO src in the markup, so arms D/E/A/B and a bare /start never request it (Arm-F-only ruling). It is set
+         here, synchronously and only when the head IIFE resolved arm f (data-oq-start-arm); width/height are in the markup so it adds no CLS. */
+      (function () {
+        if (document.documentElement.getAttribute('data-oq-start-arm') !== 'f') return;
+        var l = document.getElementById('oqTrustLogo');
+        if (l) l.src = l.getAttribute('data-src');
+      })();
+    </script>
+    <p class="oq-trust-line">Otter Quotes connects homeowners with multiple competing contractor bids for their project — free, with no obligation.</p>
+  </div>
   <div class="router-card">
     <div class="router-progress" id="routerProgress">
       <span id="progressStep1"></span>

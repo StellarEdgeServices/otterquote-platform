@@ -346,9 +346,8 @@ function SignContent() {
       {phase === 'done' && (
         <Confirmation
           contractorName={contractorName}
-          contractor={contractor}
-          claim={claim}
           claimId={claim?.id ?? params?.claimId ?? null}
+          contractorId={contractorId}
         />
       )}
     </Wrap>
@@ -356,24 +355,27 @@ function SignContent() {
 }
 
 // ── Step-3 confirmation + contractor nudge ──
+//
+// gh-1916 RETURNED 5856782745 (Marty, CTO RUN 44) / D-328: sendContractorNudge
+// no longer takes the contractor/claim rows — the send-contractor-nudge EF
+// looks up the contractor's phone + consent itself (server-side), so this
+// component only needs the ids and the display name.
 function Confirmation({
   contractorName,
-  contractor,
-  claim,
   claimId,
+  contractorId,
 }: {
   contractorName: string;
-  contractor: Parameters<typeof sendContractorNudge>[0]['contractor'];
-  claim: Parameters<typeof sendContractorNudge>[0]['claim'];
   claimId: string | null;
+  contractorId: Parameters<typeof sendContractorNudge>[0]['contractorId'];
 }) {
   const [nudge, setNudge] = useState<'idle' | 'sending' | 'sent' | 'failed'>('idle');
 
   const onNudge = useCallback(async () => {
     setNudge('sending');
-    const ok = await sendContractorNudge({ contractor, claim, claimId });
+    const ok = await sendContractorNudge({ claimId, contractorId });
     setNudge(ok ? 'sent' : 'failed');
-  }, [contractor, claim, claimId]);
+  }, [claimId, contractorId]);
 
   return (
     <div className="oqcs-confirm">

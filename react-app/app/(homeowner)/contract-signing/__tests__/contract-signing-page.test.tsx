@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 
 vi.mock('@/hooks/use-auth-ready', () => ({ useAuthReady: vi.fn() }));
 vi.mock('@/hooks/use-notification-count', () => ({
@@ -217,6 +217,12 @@ describe('contract-signing page — contract_signed once-guard (gh-1940 fix2, fi
       const frame = document.getElementById('docusignFrame');
       expect(frame).toBeTruthy();
     });
+    // The iframe (and DocuSignEmbed's window 'message' listener) mount in the
+    // same commit, but the listener is registered in a passive useEffect that
+    // can run AFTER waitFor observes the frame in the DOM. Dispatching before
+    // then drops the event (flaky "called 0 times" in CI). Flush pending
+    // effects so the listener is guaranteed attached before any dispatch.
+    await act(async () => {});
   }
 
   it('fires contract_signed exactly once when DocuSign posts two completion messages in one tick', async () => {

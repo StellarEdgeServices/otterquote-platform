@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <title>After the Hail: Next Steps - Otter Quotes</title>
+    <!--
+      gh-2151 INS-5 (CEO RUN 71, issue #2151 comment 5849036069): the
+      co-branded "After the Hail: Next Steps" client handout.
+
+      MECHANISM CHOICE (per the wave-3 task): personalize this HTML template
+      client-side (fill the agent's name/agency/link from the URL query
+      string ins-5.html builds after a successful signup) and let the agent
+      print / "Save as PDF" from their own browser -- window.print(), same
+      pattern already live in production on assets/partner-onepager-
+      insurance.html and assets/partner-onepager-re.html (see
+      partner-dashboard.html:1178's "View / Print One-Pager" button, which
+      opens exactly this kind of page today).
+
+      WHY THIS OVER (a) client-side PDF-merging a static approved PDF, or
+      (b) a static PDF + separate link card:
+        - No new client-side dependency (no pdf-lib/pdf.js bundle to load
+          over a mobile connection inside an in-app browser).
+        - Reuses a mechanism already proven in this exact codebase, in this
+          exact browser environment, today -- lowest risk of the three.
+        - target="_blank" from the funnel page + window.print() here is a
+          plain link tap and a plain button tap; nothing about it depends on
+          File System Access, download-manager, or blob-URL behavior, which
+          is exactly the class of API that is flakiest inside Facebook's
+          in-app WKWebView/Chrome-Custom-Tab browser. Worst case (a device
+          that can't produce a PDF from print), the agent still has a
+          normal, readable, personalized web page they can screenshot or
+          just read from -- never a broken download.
+        - A static pre-approved PDF can't carry this agent's own name/
+          company/link at all without per-agent server-side generation,
+          which is out of scope for a draft-copy funnel Dustin hasn't
+          approved yet (S01/S03 of comment 5849036069 -- copy may still
+          change). This template is the ONE place that changes when it does.
+
+      COPY: every visible string below is DRAFT, not yet approved by Dustin
+      (issue #2151 comment 5849036069, CEO RUN 71/wave 3) -- centralized in
+      the INS5_HANDOUT_COPY object below so a copy change is a one-block
+      edit, never a markup hunt. The D-326 no-outcome-promise disclaimer in
+      the footer, and the D-104/D-169/D-175 constraints it was written
+      against, are exactly as posted in that comment and marked verbatim
+      there -- do not paraphrase the footer text even after other copy on
+      this page changes.
+    -->
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Rubik', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            line-height: 1.5;
+            color: #1f2937;
+            background: #f3f4f6;
+        }
+        .print-button { display: flex; justify-content: center; padding: 16px; background: #f3f4f6; }
+        .print-button button {
+            padding: 8px 24px; background: #E07B00; color: white; border: none;
+            border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600;
+        }
+        .print-button button:hover { background: #A85C00; }
+        .page-container { max-width: 850px; margin: 16px auto; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .page { width: 100%; padding: 40px; min-height: 1122px; }
+        .header { border-bottom: 3px solid #E07B00; padding-bottom: 16px; margin-bottom: 20px; }
+        .logo { font-size: 28px; font-weight: 700; color: #0D1B2E; }
+        .eyebrow { font-size: 12px; font-weight: 700; letter-spacing: 0.08em; color: #E07B00; margin-top: 10px; }
+        .main-headline { font-size: 26px; font-weight: 700; color: #0D1B2E; margin: 6px 0 10px; }
+        .intro { font-size: 13.5px; color: #4b5563; margin-bottom: 20px; line-height: 1.6; }
+        .steps { margin-bottom: 20px; }
+        .step { display: flex; gap: 14px; margin-bottom: 14px; padding-bottom: 12px; }
+        .step:not(:last-child) { border-bottom: 1px solid #e5e7eb; }
+        .step-num {
+            flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%; background: #0D1B2E;
+            color: white; font-weight: 700; font-size: 13px; display: flex; align-items: center;
+            justify-content: center; line-height: 1;
+        }
+        .step-content h3 { font-size: 14.5px; font-weight: 600; color: #0D1B2E; margin-bottom: 4px; }
+        .step-content p { font-size: 12.5px; color: #6b7280; line-height: 1.55; }
+        .cobrand-box {
+            border: 2px dashed #94A3B8; border-radius: 8px; padding: 14px 16px; margin: 18px 0;
+            font-size: 12.5px; color: #374151; background: #f8fafc;
+        }
+        .cobrand-box .row { margin: 3px 0; }
+        .cobrand-box .missing { color: #94A3B8; font-style: italic; }
+        .cta-section {
+            text-align: center; margin: 20px 0; padding: 16px; background: #f0f9ff;
+            border-radius: 6px; border: 1px solid #c7f0e8;
+        }
+        .cta-label { font-size: 13px; font-weight: 600; color: #0D1B2E; margin-bottom: 8px; }
+        .cta-desc { font-size: 12px; color: #4b5563; margin-bottom: 10px; }
+        .link-box {
+            display: inline-block; padding: 8px 14px; background: white; border: 1px solid #E07B00;
+            border-radius: 6px; font-family: 'Courier New', monospace; font-size: 12px; color: #0D1B2E;
+            word-break: break-all;
+        }
+        .footer { border-top: 1px solid #e5e7eb; padding-top: 12px; margin-top: 18px; font-size: 10.5px; color: #6b7280; }
+        .footer p { margin: 6px 0; }
+        @media print {
+            body { background: white; }
+            .print-button { display: none; }
+            .page-container { max-width: 100%; margin: 0; box-shadow: none; }
+            .page { min-height: auto; box-shadow: none; }
+        }
+        @media (max-width: 768px) {
+            .page { padding: 20px; }
+            .main-headline { font-size: 22px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="print-button">
+        <button onclick="window.print()">Print / Save as PDF</button>
+        <!-- gh2225 re-review fix (B6, REVIEW FAIL 5849956427): the handout
+             now opens in the same tab (see ins-5.html), so it needs its own
+             way back instead of relying on a second tab. -->
+        <button onclick="history.back()" style="margin-left: 8px;">&larr; Back</button>
+    </div>
+
+    <div class="page-container">
+        <div class="page">
+            <div class="header">
+                <div class="logo">&#129446; Otter Quotes</div>
+                <div class="eyebrow" data-copy="eyebrow">AFTER THE HAIL</div>
+            </div>
+
+            <h1 class="main-headline" data-copy="title">After the Hail: Next Steps for Your Home</h1>
+            <p class="intro" data-copy="intro">A hailstorm can leave damage you can't always see from the ground. Here's what to do in the days after the storm, whether or not you've filed a claim yet.</p>
+
+            <div class="steps" id="stepsList"></div>
+
+            <!-- Co-branding slots: filled from the funnel page's own signup
+                 data (name/company/phone/email) when present; a dashed
+                 placeholder box otherwise, per S03's "agent name/agency/
+                 phone/email placeholder box (dashed border, marked '[ ]')". -->
+            <div class="cobrand-box">
+                <div class="row">Your agent: <strong id="cbName">[ ]</strong></div>
+                <div class="row">Agency: <strong id="cbCompany">[ ]</strong></div>
+                <div class="row">Phone: <strong id="cbPhone">[ ]</strong></div>
+                <div class="row">Email: <strong id="cbEmail">[ ]</strong></div>
+            </div>
+
+            <div class="cta-section">
+                <div class="cta-label" data-copy="ctaLabel">Want competing repair bids without the door-knocking?</div>
+                <div class="cta-desc" data-copy="ctaDesc">Otter Quotes brings you multiple local contractor bids for your project in one place, free to use.</div>
+                <div class="link-box" id="refLinkBox">[ Your referral link: otterquote.com/ref.html?code=[agent-code] ]</div>
+            </div>
+
+            <div class="footer">
+                <p data-copy="d326">This sheet is general information, not a coverage determination, a legal opinion, or a promise about how your claim will be decided. Only your insurance company can determine what is covered under your policy. Otter Quotes does not adjust claims, does not represent your insurance company, and does not guarantee any contractor's work.</p>
+                <!-- gh2225 fix (B5, REVIEW FAIL 5849558470, D-169): dropped the geographic claim. -->
+                <p>Otter Quotes &middot; otterquote.com &middot; <a href="mailto:support@otterquote.com" style="color:#E07B00;">support@otterquote.com</a></p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ---------------------------------------------------------------
+        // INS-5 HANDOUT DRAFT COPY — SINGLE SWAPPABLE BLOCK. Every string
+        // here is DRAFT pending Dustin's ruling on issue #2151 comment
+        // 5849036069. The D-326 footer sentence is verbatim from that
+        // comment and must stay verbatim across any future edit to the rest
+        // of this object.
+        var INS5_HANDOUT_COPY = {
+            eyebrow: "AFTER THE HAIL",
+            title: "After the Hail: Next Steps for Your Home",
+            intro: "A hailstorm can leave damage you can't always see from the ground. Here's what to do in the days after the storm, whether or not you've filed a claim yet.",
+            ctaLabel: "Want competing repair bids without the door-knocking?",
+            ctaDesc: "Otter Quotes brings you multiple local contractor bids for your project in one place, free to use.",
+            // gh2225 fix (B5, REVIEW FAIL 5849558470, D-169): dropped the
+            // "'Otter Quotes' service area: Indiana." sentence -- no live
+            // page or one-pager carries a geographic claim like this.
+            d326: "This sheet is general information, not a coverage determination, a legal opinion, or a promise about how your claim will be decided. Only your insurance company can determine what is covered under your policy. Otter Quotes does not adjust claims, does not represent your insurance company, and does not guarantee any contractor's work.",
+            steps: [
+                { h: "Document what you can see", p: "Photograph your roof, siding, gutters, screens and AC unit. Note the storm's date and time." },
+                { h: "Call your insurance agent first", p: "Your agent walks you through starting a claim. Coverage decisions are always made by your insurance company, not by your agent or by Otter Quotes." },
+                { h: "Be careful who you let on the roof", p: "Get a second opinion before signing anything, especially a contract that signs over your insurance payment." },
+                { h: "Get more than one written repair bid", p: "Compare scope, materials and price. Getting more than one bid is common." },
+                { h: "Keep everything in one place", p: "Your policy, the adjuster's report, photos, and every bid you collect." },
+            ],
+        };
+
+        (function apply() {
+            try {
+                document.querySelectorAll('[data-copy]').forEach(function (el) {
+                    var key = el.getAttribute('data-copy');
+                    if (Object.prototype.hasOwnProperty.call(INS5_HANDOUT_COPY, key)) {
+                        el.textContent = INS5_HANDOUT_COPY[key];
+                    }
+                });
+            } catch (e) {}
+
+            var stepsEl = document.getElementById('stepsList');
+            INS5_HANDOUT_COPY.steps.forEach(function (step, i) {
+                var div = document.createElement('div');
+                div.className = 'step';
+                var numDiv = document.createElement('div');
+                numDiv.className = 'step-num';
+                numDiv.textContent = String(i + 1);
+                var contentDiv = document.createElement('div');
+                contentDiv.className = 'step-content';
+                var h3 = document.createElement('h3');
+                h3.textContent = step.h;
+                var p = document.createElement('p');
+                p.textContent = step.p;
+                contentDiv.appendChild(h3);
+                contentDiv.appendChild(p);
+                div.appendChild(numDiv);
+                div.appendChild(contentDiv);
+                stepsEl.appendChild(div);
+            });
+
+            // Personalization (gh2225 fix, B1/B2, REVIEW FAIL 5849558470):
+            // ins-5.html now passes only ?code= in the URL -- validated below
+            // against the real unique_code alphabet before it is ever used to
+            // build a link, so nobody can hand this page an arbitrary
+            // redirect URL. name/company/phone/email come from sessionStorage
+            // (written by ins-5.html's buildHandoutUrl() right before this
+            // page opens), never the query string, so they never appear in a
+            // server log, browser history, or a pixel's page-URL payload.
+            // Every field left blank stays the "[ ]" placeholder so a printed
+            // page with a missing field never shows "null" or "undefined".
+            // gh2225 N4 (non-blocking, REVIEW 5850333585): `?code=` is
+            // scrubbed from the address bar below, so a reload (or a
+            // print-preview reload) had no code left to rebuild the link
+            // from, even though the contact fields survive in
+            // sessionStorage. `code` now also rides in the same
+            // sessionStorage payload (not PII) as a fallback source.
+            var storedContact = null;
+            try {
+                var raw = sessionStorage.getItem('oq_handout_ins5_contact');
+                if (raw) storedContact = JSON.parse(raw);
+            } catch (e) { /* no personalization data -- template stays generic/printable as-is */ }
+
+            try {
+                var CODE_RE = /^[A-Za-z0-9_-]{1,64}$/;
+                var qp = new URLSearchParams(window.location.search);
+                var rawCode = qp.get('code');
+                if (!(rawCode && CODE_RE.test(rawCode)) && storedContact && storedContact.code && CODE_RE.test(storedContact.code)) {
+                    rawCode = storedContact.code;
+                }
+                if (rawCode && CODE_RE.test(rawCode)) {
+                    var box = document.getElementById('refLinkBox');
+                    box.textContent = 'https://otterquote.com/ref.html?code=' + encodeURIComponent(rawCode);
+                }
+                // Never leave the code sitting in the address bar / history.
+                if (window.history && window.history.replaceState) {
+                    window.history.replaceState(null, '', '/assets/handout-ins-5.html');
+                }
+            } catch (e) { /* invalid/missing code -- template stays generic/printable as-is */ }
+
+            try {
+                var setText = function (id, val) {
+                    var el = document.getElementById(id);
+                    if (el && val) el.textContent = val;
+                };
+                if (storedContact) {
+                    setText('cbName', storedContact.name);
+                    setText('cbCompany', storedContact.company);
+                    setText('cbPhone', storedContact.phone);
+                    setText('cbEmail', storedContact.email);
+                    // gh2225 re-review fix (B6 minor, REVIEW FAIL 5849956427):
+                    // used to removeItem() right after reading, so a reload or
+                    // a print-preview reload also lost the personalization.
+                    // Left in place instead -- it is same-tab sessionStorage,
+                    // so it never outlives this tab anyway.
+                }
+            } catch (e) { /* no personalization data -- template stays generic/printable as-is */ }
+        })();
+    </script>
+</body>
+</html>
