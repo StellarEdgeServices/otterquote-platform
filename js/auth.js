@@ -994,6 +994,77 @@ window.Auth = {
     }
   },
 
+  // gh-2340: cs_contractor_signup (written by contractor-join.html) carries a
+  // company's signup data and is applied on the NEXT sign-in in this browser.
+  // With no owner check, an abandoned signup left on a shared browser promoted
+  // whoever signed in next to contractor and attached the stranger's company data.
+  // Honour the blob only for its own signer: stored email === signed-in email
+  // (case-insensitive, trimmed) AND a present, non-future `_at` stamp < 24h.
+  // Otherwise ignore, clear it, and warn (no user-visible text). Returns the
+  // parsed blob (with a normalised `_at`) or null. Pure/synchronous; the
+  // role guard lives in _contractorSignupRoleGuardOk().
+  getOwnedContractorSignup(user) {
+    const KEY = 'cs_contractor_signup';
+    const TTL_MS = 24 * 60 * 60 * 1000;
+    const raw = localStorage.getItem(KEY) || sessionStorage.getItem(KEY);
+    if (!raw) return null;
+    const reject = (why) => {
+      console.warn('[cs_contractor_signup] ignored and cleared: ' + why);
+      this.clearContractorSignup();
+      return null;
+    };
+    let data = null;
+    try { data = JSON.parse(raw); } catch (e) { data = null; }
+    if (!data || typeof data !== 'object') return reject('unparseable blob');
+    const norm = (v) => (typeof v === 'string' ? v.trim().toLowerCase() : '');
+    const userEmail = norm(user && user.email);
+    if (!userEmail || norm(data.email) !== userEmail) return reject('email does not match the signed-in user');
+    const at = Number(data._at != null ? data._at : (localStorage.getItem(KEY + '_at') || sessionStorage.getItem(KEY + '_at')));
+    const age = Date.now() - at;
+    if (!Number.isFinite(at) || at <= 0 || age < 0 || age >= TTL_MS) return reject('missing, future-dated or stale _at stamp');
+    data._at = at;
+    return data;
+  },
+
+  clearContractorSignup() {
+    ['cs_contractor_signup', 'cs_contractor_signup_at', 'cs_contractor_signup_session'].forEach((k) => {
+      try { localStorage.removeItem(k); } catch (e) { /* non-fatal */ }
+      try { sessionStorage.removeItem(k); } catch (e) { /* non-fatal */ }
+    });
+  },
+
+  // gh-2340 role guard. Every new profile row is created with role='homeowner'
+  // (handle_new_user() sets no role), so "has a non-contractor role" alone
+  // cannot separate a brand-new contractor from an established homeowner.
+  // Definition used: the account PREDATES the signup action (auth user
+  // created_at more than 5 min before the blob's _at; missing created_at is
+  // treated as predating) AND its profile role is not 'contractor' (an
+  // unreadable role counts as non-contractor). Such a user is promoted only
+  // if the contractor-signup action happened in THIS browser-tab session:
+  // contractor-join.html sets sessionStorage cs_contractor_signup_session
+  // beside the blob. A magic link opened in a new tab therefore does not carry
+  // the marker; a pre-existing homeowner must submit contractor-join again in
+  // the tab that completes sign-in.
+  async _contractorSignupRoleGuardOk(user, data) {
+    const SKEW_MS = 5 * 60 * 1000;
+    let profileRole = null;
+    try {
+      if (sb) {
+        const { data: prof } = await sb.from('profiles').select('role').eq('id', user.id).maybeSingle();
+        profileRole = (prof && prof.role) || null;
+      }
+    } catch (e) { profileRole = null; }
+    if (profileRole === 'contractor') return true;
+    const createdMs = Date.parse(user && user.created_at);
+    const predates = !Number.isFinite(createdMs) || (createdMs + SKEW_MS) < data._at;
+    if (!predates) return true;
+    let sameSession = false;
+    try { sameSession = sessionStorage.getItem('cs_contractor_signup_session') === '1'; } catch (e) { /* non-fatal */ }
+    if (sameSession) return true;
+    console.warn('[cs_contractor_signup] ignored and cleared: existing non-contractor account and no contractor signup action in this session');
+    return false;
+  },
+
   async handleAuthCallback() {
     const user = await this.getUser();
     if (!user) return;
@@ -1127,10 +1198,15 @@ window.Auth = {
     }
 
     // Handle contractor signup data
-    const contractorSignupData = localStorage.getItem('cs_contractor_signup') || sessionStorage.getItem('cs_contractor_signup');
-    if (contractorSignupData) {
+    // gh-2340: owner + 24h + role guard (see getOwnedContractorSignup). A rejected blob is cleared.
+    let contractorSignupOwned = this.getOwnedContractorSignup(user);
+    if (contractorSignupOwned && !(await this._contractorSignupRoleGuardOk(user, contractorSignupOwned))) {
+      this.clearContractorSignup();
+      contractorSignupOwned = null;
+    }
+    if (contractorSignupOwned) {
       try {
-        const data = JSON.parse(contractorSignupData);
+        const data = contractorSignupOwned;
 
         // Update profile for contractor (non-blocking).
         // Fix #86e1b39u1: two bugs patched here:
@@ -1353,8 +1429,7 @@ Log in to the admin panel to review and approve this contractor.`;
         console.error('Error creating contractor profile:', err);
       } finally {
         // Always clear the signup flag — even on failure — to prevent infinite retry on every dashboard load.
-        localStorage.removeItem('cs_contractor_signup');
-        sessionStorage.removeItem('cs_contractor_signup');
+        this.clearContractorSignup();
       }
     }
 

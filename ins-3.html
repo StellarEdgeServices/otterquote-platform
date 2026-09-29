@@ -1453,6 +1453,26 @@
                 // of interaction order.
                 await detectRecruitCode();
 
+                // gh-2282: the exact register_partner arguments, built once so the pending marker (dashboard completion) and the RPC below can never drift apart.
+                const partnerRpcArgs = {
+                        p_agent_type:       agentType,
+                        p_first_name:       firstName,
+                        p_last_name:        lastName,
+                        p_email:            email,
+                        p_phone:            phone,
+                        p_company:          company,
+                        p_recruit_code:     recruitContext.recruitCode || null,
+                        p_utm_source:       utmContext.source   || null,
+                        p_utm_medium:       utmContext.medium   || null,
+                        p_utm_campaign:     utmContext.campaign || null,
+                        p_utm_content:      utmContext.content  || null,
+                        p_fbclid:           utmContext.fbclid   || null,
+                        p_li_fat_id:        utmContext.liFatId  || null,
+                        p_funnel_id:        utmContext.funnelId || null,
+                        // gh-2162 review fix (1): same E2E-test predicate as
+                        // trade-selector.html:1466 / dashboard.html:1812.
+                        p_is_test:          (window.Auth && typeof Auth.isTestEmail === 'function') ? Auth.isTestEmail(email) : false,
+                };
                 // gh-2154 P-1: no password collected at signup — this still
                 // creates the exact same Auth credential Auth.signUpWithPassword()
                 // always has (js/auth.js unchanged), just with a random value the
@@ -1471,6 +1491,7 @@
                 // gh-2274 / gh-2281: the duplicate is matched on Supabase's structured
                 // error.code ('user_already_exists') with the message text as a fallback, and
                 // routed to the designed already-a-partner state instead of the generic catch.
+                const oqTermsAcceptedAt = Date.now(); // gh-2282: the submit (terms checkbox already verified above) -- recorded in the pending marker
                 let signUpResult;
                 try {
                     signUpResult = await Auth.signUpWithPassword(email, generatedPassword, agentType);
@@ -1485,7 +1506,7 @@
                       try {
                         const pendingMarker = JSON.parse(localStorage.getItem('oq_partner_pending_registration') || 'null');
                         const emailKey = String(email || '').trim().toLowerCase();
-                        canFinishRegistration = !!(pendingMarker && pendingMarker.email === emailKey);
+                        canFinishRegistration = !!(pendingMarker && pendingMarker.email === emailKey && typeof pendingMarker.ts === 'number' && Date.now() - pendingMarker.ts < 7 * 24 * 60 * 60 * 1000);
                         if (!canFinishRegistration && window.Auth && typeof Auth.getUser === 'function') {
                           const sessionUser = await Auth.getUser();
                           canFinishRegistration = !!(sessionUser && sessionUser.email && String(sessionUser.email).toLowerCase() === emailKey);
@@ -1500,7 +1521,7 @@
                 }
                 if (signUpResult) {
                   // gh-2282: auth account created here; remember it (no password) until register_partner reaches a definitive outcome.
-                  try { localStorage.setItem('oq_partner_pending_registration', JSON.stringify({ email: String(email || '').trim().toLowerCase(), agentType: agentType, firstName: firstName, lastName: lastName, phone: phone, company: company || null, ts: Date.now() })); } catch (e) { /* non-fatal */ }
+                  try { localStorage.setItem('oq_partner_pending_registration', JSON.stringify({ email: String(email || '').trim().toLowerCase(), ts: Date.now(), termsAcceptedAt: oqTermsAcceptedAt, rpcArgs: partnerRpcArgs })); } catch (e) { /* non-fatal */ }
                 }
 
                 // #571 / v95: server-side register_partner RPC. referral_agents
@@ -1512,25 +1533,7 @@
                 // recruit_code}. Client-side code generation is gone — codes
                 // are server-generated only.
                 const { data: agentData, error: agentError } = await readySb
-                    .rpc('register_partner', {
-                        p_agent_type:       agentType,
-                        p_first_name:       firstName,
-                        p_last_name:        lastName,
-                        p_email:            email,
-                        p_phone:            phone,
-                        p_company:          company,
-                        p_recruit_code:     recruitContext.recruitCode || null,
-                        p_utm_source:       utmContext.source   || null,
-                        p_utm_medium:       utmContext.medium   || null,
-                        p_utm_campaign:     utmContext.campaign || null,
-                        p_utm_content:      utmContext.content  || null,
-                        p_fbclid:           utmContext.fbclid   || null,
-                        p_li_fat_id:        utmContext.liFatId  || null,
-                        p_funnel_id:        utmContext.funnelId || null,
-                        // gh-2162 review fix (1): same E2E-test predicate as
-                        // trade-selector.html:1466 / dashboard.html:1812.
-                        p_is_test:          (window.Auth && typeof Auth.isTestEmail === 'function') ? Auth.isTestEmail(email) : false,
-                    });
+                    .rpc('register_partner', partnerRpcArgs);
                 // gh-2282: definitive outcome (row created, or it already exists) -- the pending marker has done its job.
                 if (!agentError || (agentError.message || '').includes('partner_exists')) { try { localStorage.removeItem('oq_partner_pending_registration'); } catch (e) { /* non-fatal */ } }
 

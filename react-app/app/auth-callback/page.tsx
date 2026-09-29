@@ -53,6 +53,7 @@ import { supabase } from '@/lib/supabase';
 
 import { readReferralIds, writeReferralIds } from '@/lib/cookie-storage';
 import { linkPendingLeadOnce } from '@/lib/lead-capture';
+import { readOwnedContractorSignup } from '@/lib/contractor-signup-owner';
 import { maybeFireGoogleSignUp, readReferralSourceFromCsSignup } from './signup-analytics';
 import { adoptFirstTouchFromParam, recordFirstTouch } from '@/lib/attribution';
 
@@ -374,6 +375,11 @@ export default function AuthCallbackPage() {
       } catch {
         // Proceed with null role — default to homeowner path below
       }
+
+      // gh-2340: a cs_contractor_signup blob left by ANOTHER person (or older than 24h) must not
+      // outlive this sign-in. This page never applies the blob itself (the pre-approval wizard
+      // does, behind the same guard); validating here clears a foreign/stale one right away.
+      readOwnedContractorSignup(session.user.email);
 
       // Contractor already has a record → straight to dashboard
       if (role === 'contractor') {
