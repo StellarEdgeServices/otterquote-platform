@@ -365,6 +365,7 @@ async function autoAckPendingFailures(
   try {
     const { error: ackError } = await supabase
       .from("platform_alerts_log")
+      // update-no-select-ok: gh-2105 decision b -- no pending 1st-strike alert rows is the normal, expected state on a healthy check.
       .update({ acknowledged_at: new Date().toISOString() })
       .eq("function_name", functionName)
       .eq("alert_type", "ef_failure_pending")
@@ -436,6 +437,7 @@ async function autoAckPendingCronFailures(
   try {
     const { error: ackError } = await supabase
       .from("platform_alerts_log")
+      // update-no-select-ok: gh-2105 decision b -- no pending 1st-strike cron alert rows is the normal, expected state on a healthy check.
       .update({ acknowledged_at: new Date().toISOString() })
       .eq("function_name", jobName)
       .eq("alert_type", "cron_failure_pending")

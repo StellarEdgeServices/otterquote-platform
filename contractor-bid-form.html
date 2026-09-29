@@ -5477,9 +5477,9 @@
           }
 
           if (changeBidMode && existingQuote) {
-            const { error: updateError } = await sb
-              .from('quotes')
-              .update({
+            // gh-2105: payload hoisted to a named const so the ratchet scanner's
+            // 25-line statement window can see the .select('id') chained below.
+            const _changeBidPayload = {
                 total_price: quoteData.total_price,
                 fee_percentage: quoteData.fee_percentage,
                 fee_amount: quoteData.fee_amount,
@@ -5507,10 +5507,21 @@
                   renewals_count: (existingQuote.renewals_count || 0) + 1,
                 } : {}),
                 updated_at: new Date().toISOString(),
-              })
-              .eq('id', existingQuote.id);
+            };
+            const { data: updatedRows, error: updateError } = await sb
+              .from('quotes')
+              .update(_changeBidPayload)
+              .eq('id', existingQuote.id)
+              .select('id');
 
             if (updateError) throw updateError;
+            // gh-2105 (decision a, money): a zero-row RLS/id-mismatch match used to
+            // show the "Bid updated" success screen while total_price never changed.
+            // Same throw as the React twin (bid-form.tsx); surfaces through the
+            // existing 'Error submitting bid: ' alert below -- no new copy.
+            if (!Array.isArray(updatedRows) || updatedRows.length === 0) {
+              throw new Error('bid_update_zero_rows: no matching quote row was updated');
+            }
 
             try {
               await sb.from('notifications').insert({

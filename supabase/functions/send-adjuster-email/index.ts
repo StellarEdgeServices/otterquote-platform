@@ -14,6 +14,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 
 const FUNCTION_NAME = "send-adjuster-email";
 
@@ -314,12 +315,13 @@ serve(async (req) => {
 
     // ========== UPDATE ADJUSTER_EMAIL_REQUESTS TABLE ==========
     if (request_id) {
-      const { error: updateError } = await supabase
+      const { error: updateError, data: updateRows } = await supabase
         .from("adjuster_email_requests")
         .update({
           sent_at: new Date().toISOString(),
         })
-        .eq("id", request_id);
+        .eq("id", request_id)
+        .select("id");
 
       if (updateError) {
         console.error(
@@ -327,6 +329,9 @@ serve(async (req) => {
           updateError
         );
         // Non-fatal — the email was sent on Mailgun's side
+      } else if (!checkRowsWritten(updateRows).wroteRows) {
+        // gh-2105: log-only, same non-fatal reasoning as above.
+        console.error(zeroRowWriteMessage("send-adjuster-email", `adjuster_email_requests.sent_at for request ${request_id}`));
       }
     }
 
