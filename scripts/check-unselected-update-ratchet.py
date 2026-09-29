@@ -73,11 +73,11 @@ ANNOTATION = "update-no-select-ok"
 # 10 accordingly (create-payment-intent 2->1, the other three 1/2/6->0).
 BASELINE: dict[str, int] = {
     "admin-contractors.html": 1,
-    "admin-cpa.html": 2,
+    "admin-cpa.html": 0,  # gh-2105 batch 7: both sites fixed (see PR body)
     "admin-fee-config.html": 0,
     "admin-measurements.html": 3,
     "admin-referrals.html": 4,
-    "admin-template-review.html": 2,
+    "admin-template-review.html": 0,  # gh-2105 batch 7: both sites fixed (see PR body)
     "bids.html": 2,
     "color-selection.html": 1,
     "contract-signing.html": 2,
@@ -92,7 +92,7 @@ BASELINE: dict[str, int] = {
     "help-materials.html": 1,
     "help-measurements.html": 1,
     "js/auth.js": 2,
-    "js/contract-template-validation.js": 1,
+    "js/contract-template-validation.js": 0,  # gh-2105 batch 7: fixed (see PR body)
     "js/services.js": 2,
     "js/video-upload-handler.js": 1,
     "project-confirmation.html": 1,
@@ -119,7 +119,7 @@ BASELINE: dict[str, int] = {
     "react-app/app/admin/fee-config/page.tsx": 0,
     "react-app/app/admin/referrals/page.tsx": 6,
     "react-app/app/admin/referrals/utils.ts": 1,
-    "react-app/app/admin/template-review/page.tsx": 2,
+    "react-app/app/admin/template-review/page.tsx": 0,  # gh-2105 batch 7: both sites fixed (see PR body)
     "react-app/app/contractor/auto-bids/page.tsx": 1,
     "react-app/app/contractor/bid/[claimId]/bid-form.tsx": 0,
     "react-app/app/contractor/dashboard/page.tsx": 2,
@@ -148,7 +148,7 @@ BASELINE: dict[str, int] = {
     # batch 2/3 precedent for money/legal-critical fire-and-forget writes.
     "supabase/functions/create-docusign-envelope/index.ts": 0,
     "supabase/functions/create-hover-order/index.ts": 2,
-    "supabase/functions/create-payment-intent/index.ts": 1,
+    "supabase/functions/create-payment-intent/index.ts": 0,  # gh-2105 batch 7: ad-sharing opt-out site fixed (see PR body)
     "supabase/functions/create-setup-intent/index.ts": 0,
     # gh-2105 batch 3: fixed all 13 real call sites (see the batch-3 PR body
     # for the full grep enumeration + per-site a/b/c decisions). Lowered
@@ -164,7 +164,7 @@ BASELINE: dict[str, int] = {
     "supabase/functions/get-hover-pdf/index.ts": 1,
     "supabase/functions/get-hover-siding-data/index.ts": 1,
     "supabase/functions/hover-webhook/index.ts": 4,
-    "supabase/functions/lead-next-step-optout/index.ts": 1,
+    "supabase/functions/lead-next-step-optout/index.ts": 0,  # gh-2105 batch 7: decision-b annotated (see PR body)
     "supabase/functions/mark-job-complete/index.ts": 2,
     "supabase/functions/mark-loss-sheet-reviewed/index.ts": 2,
     "supabase/functions/mark-payout-paid/index.ts": 0,
@@ -172,7 +172,7 @@ BASELINE: dict[str, int] = {
     "supabase/functions/notify-payout-pending/index.ts": 1,
     "supabase/functions/parse-hover-measurements/index.ts": 1,
     "supabase/functions/parse-loss-sheet/index.ts": 1,
-    "supabase/functions/partner-email-optout/index.ts": 1,
+    "supabase/functions/partner-email-optout/index.ts": 0,  # gh-2105 batch 7: decision-b annotated (see PR body)
     "supabase/functions/platform-health-check/index.ts": 2,
     "supabase/functions/process-bid-expirations/index.ts": 4,
     "supabase/functions/process-coi-reminders/index.ts": 5,
@@ -183,7 +183,7 @@ BASELINE: dict[str, int] = {
     "supabase/functions/process-dunning/index.ts": 0,
     "supabase/functions/process-hover-rebate/index.ts": 0,
     "supabase/functions/process-payout-reminders/index.ts": 2,
-    "supabase/functions/record-attestation/index.ts": 1,
+    "supabase/functions/record-attestation/index.ts": 0,  # gh-2105 batch 7: fixed (see PR body)
     "supabase/functions/record-warranty-upload/index.ts": 1,
     "supabase/functions/reject-warranty-drift/index.ts": 1,
     "supabase/functions/rescind-bid/index.ts": 0,
@@ -195,8 +195,8 @@ BASELINE: dict[str, int] = {
     "supabase/functions/stripe-webhook/index.ts": 0,
     "supabase/functions/submit-partner-w9/index.ts": 0,
     "supabase/functions/switch-contractor/index.ts": 4,
-    "supabase/functions/validate-contract-template/index.ts": 1,
-    "supabase/functions/validate-contract-template/revalidate.ts": 1,
+    "supabase/functions/validate-contract-template/index.ts": 0,  # gh-2105 batch 7: fixed (see PR body)
+    "supabase/functions/validate-contract-template/revalidate.ts": 0,  # gh-2105 batch 7: fixed (see PR body)
     "supabase/functions/verify-payment-method/index.ts": 0,
 }
 

@@ -725,14 +725,24 @@
         if (missingFields.length > 0) {
           if (typeof sb === 'undefined' || !sb) throw new Error('Database not connected.');
           // First, persist the typed mappings so admin can see them
-          const { error: persistErr } = await sb
+          // gh-2105 (decision a, legal): .update() without .select() reports
+          // success even on a zero-row RLS/id-mismatch match. validationRow
+          // was already resolved from this same table earlier in this flow,
+          // so a zero-row match here means the manual-mapping overrides and
+          // the admin-review escalation never actually persisted while the
+          // UI told the contractor it did.
+          const { error: persistErr, data: persistRows } = await sb
             .from('contractor_templates')
             .update({
               manual_overrides: { ...overrides, _missing_fields: missingFields },
               status: 'submitted_for_admin_review',
             })
-            .eq('id', validationRow.id);
+            .eq('id', validationRow.id)
+            .select('id');
           if (persistErr) throw persistErr;
+          if (!Array.isArray(persistRows) || persistRows.length === 0) {
+            throw new Error('gh2105_zero_rows: manual-mapping override save matched no rows');
+          }
           backdrop.remove();
           // Refresh the row in UI by re-fetching
           const { data: refreshed } = await sb

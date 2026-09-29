@@ -40,7 +40,7 @@ import {
   evaluateMeasurementUpgradeGate,
   resolveContractorAlreadyPurchased,
 } from "./measurement-upgrade-gate.ts";
-import { detectGpcSignal, type OptOutStore, recordGpcOptOut } from "./ad-sharing-opt-out.ts";
+import { detectGpcSignal, makeGpcStore, recordGpcOptOut } from "./ad-sharing-opt-out.ts";
 import { AMBIGUOUS_OUTCOME_CODE, fetchStripeWithTimeout } from "./stripe-fetch.ts";
 import { AmbiguousChargeOutcomeError, runOffSessionPlatformFeeCharge } from "./off-session-charge.ts";
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
@@ -121,16 +121,10 @@ serve(async (req) => {
     // gh-2107 / D-330 half 2: honour a Global Privacy Control advertising-sharing opt-out (Sec-GPC: 1 on the request, or
     // gpc: true from the page's navigator.globalPrivacyControl) by flagging the caller's profile BEFORE any Purchase exists;
     // the Stripe webhook then skips the Meta CAPI send. Sets the flag only, never clears it; never blocks or fails the payment.
-    const gpcStore: OptOutStore = {
-      markOptedOut: async (userId, source, atIso) => {
-        const { error } = await supabase
-          .from("profiles")
-          .update({ ad_sharing_opt_out: true, ad_sharing_opt_out_at: atIso, ad_sharing_opt_out_source: source })
-          .eq("id", userId)
-          .or("ad_sharing_opt_out.is.null,ad_sharing_opt_out.eq.false");
-        return error ? { code: (error as { code?: string }).code } : null;
-      },
-    };
+    // gh-2105 must-fix 1 (PR #2266 review 5860481443): the store is built by makeGpcStore in
+    // ad-sharing-opt-out.ts (not inlined here) so its zero-row-vs-already-opted-out disambiguation
+    // can be unit-tested with a fake Supabase client.
+    const gpcStore = makeGpcStore(supabase);
     await recordGpcOptOut({ callerId, piType: metadata?.type, headers: req.headers, body: requestBody, store: gpcStore });
     // gh-2107 (REVIEW: FAIL 5806828503 F2 on #2134): the signal is ALSO carried on the PaymentIntent (below, via the non-keyed
     // post-create update), derived from the REQUEST ALONE and not from whether the profile write succeeded, so a failed write

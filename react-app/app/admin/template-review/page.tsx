@@ -119,12 +119,21 @@ function TemplateReviewContent() {
     ) {
       return;
     }
-    const { error } = await supabase
+    // gh-2105 (decision a, legal): openTemplate is the row the drawer is
+    // already open on, so a zero-row match means the approval never
+    // actually persisted while the UI closes the drawer and refreshes as
+    // if it had. Twin of admin-template-review.html's approveTemplate.
+    const { error, data } = await supabase
       .from('contractor_templates')
       .update(buildApproveUpdate(user.id))
-      .eq('id', openTemplate.id);
+      .eq('id', openTemplate.id)
+      .select('id');
     if (error) {
       window.alert('Approve failed: ' + error.message);
+      return;
+    }
+    if (!Array.isArray(data) || data.length === 0) {
+      window.alert('Approve failed: gh2105_zero_rows -- no matching template row was updated.');
       return;
     }
     closeDrawer();
@@ -138,12 +147,18 @@ function TemplateReviewContent() {
       window.alert('Rejection reason is required.');
       return;
     }
-    const { error } = await supabase
+    // gh-2105 (decision a, legal): same reasoning as handleApprove above.
+    const { error, data } = await supabase
       .from('contractor_templates')
       .update(buildRejectUpdate(user.id, reason))
-      .eq('id', openTemplate.id);
+      .eq('id', openTemplate.id)
+      .select('id');
     if (error) {
       window.alert('Reject failed: ' + error.message);
+      return;
+    }
+    if (!Array.isArray(data) || data.length === 0) {
+      window.alert('Reject failed: gh2105_zero_rows -- no matching template row was updated.');
       return;
     }
     closeDrawer();

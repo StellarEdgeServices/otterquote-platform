@@ -78,6 +78,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.104.0";
 import { extractPdfText } from "./pdf-text.ts";
 import { MANIFEST, scanRequiredAnchors, scanOptionalAnchors } from "./manifest.ts";
 import { revalidateTemplates } from "./revalidate.ts";
+import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 import {
   describeMissingMarkers,
   detectFilledProposal,
@@ -450,17 +451,32 @@ Deno.serve(async (req: Request) => {
       newStatus = "manual_mapping_pending";
     }
 
-    const { error: updateErr } = await supabase
+    const { error: updateErr, data: updateRows } = await supabase
       .from("contractor_templates")
       .update({
         validation_result: validationResult,
         manual_overrides: manualOverrides ?? null,
         status: newStatus,
       })
-      .eq("id", contractor_template_id);
+      .eq("id", contractor_template_id)
+      .select("id");
 
     if (updateErr) {
       return jsonResponse({ error: "Failed to update template", details: updateErr.message }, 500, corsHeaders);
+    }
+
+    // gh-2105 (decision a, legal): a zero-row match here means the D-199
+    // validation result and status transition (auto_validated/
+    // manual_validated/manual_mapping_pending) never actually persisted,
+    // while the caller would otherwise see `ok: true` and a status that
+    // does not match what is in the database.
+    if (!checkRowsWritten(updateRows).wroteRows) {
+      console.error(zeroRowWriteMessage("validate-contract-template", `contractor_templates.status=${newStatus} for template ${contractor_template_id}`));
+      return jsonResponse(
+        { error: "Failed to update template", details: "gh2105_zero_rows: no matching contractor_templates row was updated" },
+        500,
+        corsHeaders,
+      );
     }
 
     return jsonResponse({
