@@ -288,6 +288,26 @@
       ]
     },
     {
+      "key": "oq_referral_ts",
+      "stack": "static+react",
+      "status": "tested",
+      "note": "Click clock for the referral id: written on a click (?ref=) as both a cookie and a localStorage mirror, arms a 30-day window (rulings 5874597169 / 5880667348). Reads past day 30 return nothing and purge the mirror; undated or pre-deploy ids never attribute. Not leaked into read() results.",
+      "tests": [
+        {
+          "file": "react-app/app/lib/__tests__/gh2062-ref-30d-window.test.ts",
+          "contains": "day 31: cookie expired AND the storage mirror does not resurrect the id"
+        },
+        {
+          "file": "react-app/app/lib/__tests__/gh2062-ref-30d-window.test.ts",
+          "contains": "pre-deploy cookie (no oq_referral_ts) + mirrors: read() returns nothing and purges everything"
+        },
+        {
+          "file": "tests/gh2062-ref-30d-window.mjs",
+          "contains": "click: click timestamp is not leaked into read() results"
+        }
+      ]
+    },
+    {
       "key": "oq_referral_source",
       "also": [
         "oq_partner_id"
