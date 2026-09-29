@@ -289,9 +289,8 @@
     },
     {
       "key": "oq_referral_ts",
-      "stack": "static+react",
+      "stack": "react+static",
       "status": "tested",
-      "note": "Click clock for the referral id: written on a click (?ref=) as both a cookie and a localStorage mirror, arms a 30-day window (rulings 5874597169 / 5880667348). Reads past day 30 return nothing and purge the mirror; undated or pre-deploy ids never attribute. Not leaked into read() results.",
       "tests": [
         {
           "file": "react-app/app/lib/__tests__/gh2062-ref-30d-window.test.ts",
@@ -304,8 +303,17 @@
         {
           "file": "tests/gh2062-ref-30d-window.mjs",
           "contains": "click: click timestamp is not leaked into read() results"
+        },
+        {
+          "file": "react-app/app/lib/__tests__/gh2346-session-tab-clock.test.ts",
+          "contains": "TWO-TAB: tab 1 clicks A day 0, tab 2 clicks B day 40"
+        },
+        {
+          "file": "tests/gh2346-session-tab-clock.mjs",
+          "contains": "two-tab: the claim from tab 1 does NOT yield A"
         }
-      ]
+      ],
+      "note": "The click clock (cookie + localStorage) and, since gh-2346, a per-tab stamp in sessionStorage next to the ids: sessionStorage ids are trusted only with a stamp inside 30 days that equals the click time on record."
     },
     {
       "key": "oq_referral_source",

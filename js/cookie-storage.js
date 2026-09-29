@@ -475,6 +475,29 @@
   // inside the window, purged by clear() and by the expired/undated purge.
   var REFERRAL_CLAIM_KEY = 'oq_referral_id_for_claim';
 
+  /** gh-2346: sessionStorage is PER TAB but the click clock (cookie +
+   *  localStorage) is ONE per browser, so a newer click in another tab made
+   *  this tab's older ids look in-window. Every mirror write therefore stamps
+   *  the click time NEXT TO the ids in this tab's sessionStorage (same key
+   *  name, different store); the ids are only trusted while that stamp is
+   *  present, inside the 30 days, and equal to the click time now on record. */
+  function sessionIdsTrusted(clickTs) {
+    if (clickTs === null) return false;
+    var stamp = null;
+    try { stamp = Number(window.sessionStorage.getItem(REFERRAL_TS_KEY)); } catch (e) { return false; }
+    if (!stamp || !isFinite(stamp)) return false;
+    if ((Date.now() - stamp) > REFERRAL_MAX_AGE * 1000) return false;
+    return stamp === clickTs;
+  }
+
+  /** Drop this tab's sessionStorage ids and their stamp. */
+  function purgeSessionIds() {
+    for (var i = 0; i < REFERRAL_KEYS.length; i++) {
+      try { window.sessionStorage.removeItem(REFERRAL_KEYS[i]); } catch (e) {}
+    }
+    try { window.sessionStorage.removeItem(REFERRAL_TS_KEY); } catch (e) {}
+  }
+
   /** Click time (epoch-ms) on record: cookie first, else the localStorage
    *  mirror. null when none (nothing armed, or a pre-gh-2062 legacy cookie). */
   function readReferralTs() {
@@ -512,12 +535,21 @@
       if (remaining <= 0) return;
       for (var j = 0; j < REFERRAL_KEYS.length; j++) {
         var kk = REFERRAL_KEYS[j];
-        if (payload[kk] === undefined) continue;
+        // gh-2346: a key ABSENT from this write must not keep a PRIOR write's
+        // value (partner A's agent/code beside partner B's id). Post-write
+        // storage matches `ids` exactly, like the cookie and the React writer.
+        if (payload[kk] === undefined) {
+          try { window.localStorage.removeItem(kk); } catch (e) {}
+          try { window.sessionStorage.removeItem(kk); } catch (e) {}
+          continue;
+        }
         try { window.localStorage.setItem(kk, payload[kk]); } catch (e) {}
         try { window.sessionStorage.setItem(kk, payload[kk]); } catch (e) {}
       }
       payload[REFERRAL_TS_KEY] = String(ts);
       try { window.localStorage.setItem(REFERRAL_TS_KEY, String(ts)); } catch (e) {}
+      // gh-2346: this tab's own stamp, next to its ids.
+      try { window.sessionStorage.setItem(REFERRAL_TS_KEY, String(ts)); } catch (e) {}
       try {
         writeCookie(REFERRAL_COOKIE, JSON.stringify(payload), remaining);
       } catch (e) {}
@@ -556,6 +588,11 @@
           }
         }
       } catch (e) {}
+      // gh-2346: this tab's sessionStorage ids are only trusted with their own
+      // stamp, in the window, equal to the click time on record; otherwise a
+      // newer click in another tab has superseded them - purge BEFORE the
+      // gap-fill (and before any caller's raw sessionStorage fallback).
+      if (!sessionIdsTrusted(clickTs)) purgeSessionIds();
       // Same-origin storage fills any gap and wins only where the cookie is silent.
       for (var i = 0; i < REFERRAL_KEYS.length; i++) {
         var key = REFERRAL_KEYS[i];
@@ -584,6 +621,7 @@
         try { window.localStorage.removeItem(REFERRAL_KEYS[i]); } catch (e) {}
         try { window.sessionStorage.removeItem(REFERRAL_KEYS[i]); } catch (e) {}
       }
+      try { window.sessionStorage.removeItem(REFERRAL_TS_KEY); } catch (e) {}
       try { window.localStorage.removeItem(REFERRAL_CLAIM_KEY); } catch (e) {}
       try { window.localStorage.removeItem(REFERRAL_TS_KEY); } catch (e) {}
       try { deleteCookie(REFERRAL_COOKIE); } catch (e) {}
