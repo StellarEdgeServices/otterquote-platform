@@ -57,6 +57,16 @@ def main():
             all(STALE not in inv for inv in invocations) and len(invocations) >= 1,
         )
         check(f"{name}: resolves base from HEAD^1 (merge ref first parent)", "HEAD^1" in joined)
+        # The resolve step must feed the gate: the invocation passes the
+        # resolved sha, and the step exports it to GITHUB_ENV.
+        check(
+            f"{name}: --base is the resolved sha",
+            len(invocations) >= 1 and all('--base "$RESOLVED_BASE_SHA"' in inv for inv in invocations),
+        )
+        check(
+            f"{name}: resolve step exports RESOLVED_BASE_SHA",
+            re.search(r'echo "RESOLVED_BASE_SHA=\$base" >> "\$GITHUB_ENV"', joined) is not None,
+        )
     print()
     if FAILURES:
         print(f"FAILED: {len(FAILURES)} check(s)")
