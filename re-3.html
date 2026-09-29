@@ -713,8 +713,8 @@ a:hover { color: var(--amber-2); }
       } catch (e) { /* CONFIG not ready yet -- fall through to a real load */ }
       if (alreadyReady || window.supabase) { resolve(); return; }
       var s = document.createElement('script');
-      s.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js';
-      s.integrity = 'sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz';
+      s.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.js';
+      s.integrity = 'sha384-iLddHTLokph6Omwoyid4XKxHaWa6w41BnoEj0q5oOrzmYPpHIKt1wyjReA7s//pP';
       s.crossOrigin = 'anonymous';
       s.onload = function () { resolve(); };
       s.onerror = function () { reject(new Error('Supabase library failed to load')); };
