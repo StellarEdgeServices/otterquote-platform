@@ -11,6 +11,8 @@ import {
   buildRouterLeadSubjectAndText,
   isRouterLeadAuthorized,
   buildRouterLeadEmail,
+  fundingLabel,
+  propertyAddressLabel,
   stripCrlf,
   UTM_MAX_LEN,
 } from "./notify-helpers.ts";
@@ -365,4 +367,53 @@ Deno.test("buildRouterLeadSubjectAndText: is pure — identical input produces i
   const a = buildRouterLeadSubjectAndText(record);
   const b = buildRouterLeadSubjectAndText(record);
   assertEquals(a, b);
+});
+
+// ---------------------------------------------------------------------------
+// gh-2362 (F3): the new-lead alert carries the property address and funding answer
+// ---------------------------------------------------------------------------
+
+Deno.test("gh-2362 F3: homeowner alert carries address and funding in text body and HTML rows", () => {
+  const leadRow = {
+    name: "Jane Homeowner", email: "jane@example.com", phone: "5125551234", role: "homeowner",
+    property_address: "123 Main St, Zionsville, IN 46077", funding_type: "insurance",
+  };
+  const { textBody } = buildRouterLeadSubjectAndText(leadRow);
+  assert(textBody.includes("Property   : 123 Main St, Zionsville, IN 46077"), textBody);
+  assert(textBody.includes("Funding    : Insurance claim"), textBody);
+  const { htmlRows } = buildRouterLeadEmail(leadRow);
+  assertStrictEquals(htmlRows.find(([l]) => l === "Property")?.[1], "123 Main St, Zionsville, IN 46077");
+  assertStrictEquals(htmlRows.find(([l]) => l === "Funding")?.[1], "Insurance claim");
+});
+
+Deno.test("gh-2362 F3: funding labels for cash and unsure; unknown values are not echoed", () => {
+  assertStrictEquals(fundingLabel("cash"), "Paying cash");
+  assertStrictEquals(fundingLabel("unsure"), "Not sure yet");
+  assertStrictEquals(fundingLabel("<b>x</b>"), "(not given)");
+  assertStrictEquals(fundingLabel(null), "(not given)");
+  assertStrictEquals(fundingLabel(undefined), "(not given)");
+});
+
+Deno.test("gh-2362 F3: negative control - address not yet saved renders an explicit placeholder, no throw", () => {
+  const leadRow = { name: "Jane", email: "j@example.com", phone: "5125551234", role: "homeowner", property_address: null, funding_type: null };
+  const { textBody } = buildRouterLeadSubjectAndText(leadRow);
+  assert(textBody.includes("Property   : (not provided yet)"), textBody);
+  assert(textBody.includes("Funding    : (not given)"), textBody);
+  assertStrictEquals(propertyAddressLabel("   "), "(not provided yet)");
+});
+
+Deno.test("gh-2362 F3: address is HTML-escaped in the row and CRLF-stripped; never reaches the subject", () => {
+  const leadRow = { role: "homeowner", email: "x@example.com", property_address: "<script>1</script>\r\nBcc: v@example.com", funding_type: "cash" };
+  const result = buildRouterLeadEmail(leadRow);
+  const row = result.htmlRows.find(([l]) => l === "Property")!;
+  assert(!row[1].includes("<script>") && row[1].includes("&lt;script&gt;"));
+  assert(!result.textBody.includes("\r"));
+  assert(!result.subject.includes("script") && !result.subject.includes("Bcc"));
+});
+
+Deno.test("gh-2362 F3: partner leads get no property/funding lines", () => {
+  const leadRow = { role: "referral_partner", partner_industry: "re_agent", property_address: "1 Leak St", funding_type: "cash" };
+  const { textBody } = buildRouterLeadSubjectAndText(leadRow);
+  assert(!textBody.includes("Property") && !textBody.includes("1 Leak St") && !textBody.includes("Funding"));
+  assert(!buildRouterLeadEmail(leadRow).htmlRows.some(([l]) => l === "Property" || l === "Funding"));
 });

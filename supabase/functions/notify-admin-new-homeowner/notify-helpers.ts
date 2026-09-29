@@ -257,12 +257,37 @@ export function buildRouterLeadEmail(leadRow: Record<string, unknown>): RouterLe
     ["Role", escapeHtml(role)],
   ];
   if (industry) htmlRows.push(["Industry", escapeHtml(industry)]);
+  // gh-2362 (F3): homeowner leads only; partner leads have no property or funding answer.
+  if (leadRow.role === "homeowner") {
+    htmlRows.push(["Property", escapeHtml(propertyAddressLabel(leadRow.property_address))]);
+    htmlRows.push(["Funding", escapeHtml(fundingLabel(leadRow.funding_type))]);
+  }
   htmlRows.push(["Attribution", escapeHtml(attribution)]);
 
   const extraHtml =
     `<p style="font-family:sans-serif;font-size:12px;color:#94A3B8;margin:0 0 16px;">Phone carries no consent — callback only.</p>`;
 
   return { subject, textBody, htmlRows, extraHtml };
+}
+
+// gh-2362 (F3): label for leads.funding_type. record_lead_details() only ever
+// stores 'insurance' | 'cash' | 'unsure' (mig 20260923211259_gh2122, CASE at :215),
+// so anything else (or NULL) is rendered as not-given rather than echoed.
+export function fundingLabel(v: unknown): string {
+  switch (typeof v === "string" ? v.trim().toLowerCase() : "") {
+    case "insurance": return "Insurance claim";
+    case "cash":      return "Paying cash";
+    case "unsure":    return "Not sure yet";
+    default:          return "(not given)";
+  }
+}
+
+// gh-2362 (F3): the alert fires on set_lead_role, seconds after the contact screen and
+// BEFORE the Arm F address screen (#2362 PR #2367), so the address is often not there
+// yet. Said plainly instead of leaving the line out.
+export function propertyAddressLabel(v: unknown): string {
+  const a = typeof v === "string" ? stripCrlf(v).trim() : "";
+  return a || "(not provided yet)";
 }
 
 // gh-1994: subject + plain-text body for the router-lead admin email. Pure
@@ -289,6 +314,10 @@ export function buildRouterLeadSubjectAndText(record: Record<string, unknown>): 
     `Role       : ${role}`,
   ];
   if (industry) lines.push(`Industry   : ${industry}`);
+  if (record.role === "homeowner") {
+    lines.push(`Property   : ${propertyAddressLabel(record.property_address)}`);
+    lines.push(`Funding    : ${fundingLabel(record.funding_type)}`);
+  }
   lines.push(`Attribution: ${attribution}`, ``, `Phone carries no consent -- callback only.`);
 
   return { subject, textBody: lines.join("\n") };
