@@ -24,6 +24,15 @@
  *      inspector output. The test's build script is overridable via the
  *      INSPECTOR_BUILD_SCRIPT env var (used only for a negative control).
  *
+ *   5. (HI-0e, D-333, Ben ruling 5882085491 on #2155, "STRIP IT.") Asserts the
+ *      fee-payment mechanics are gone from the inspector build -- all of
+ *      Section 5 (Venmo/PayPal payout text) and Section 10 (Commission
+ *      Reversal), the Section 9 "earned only on jobs" sentence, the meta/og
+ *      "commission terms" -- with NO renumbering, NO new words, the source
+ *      partner-agreement.html still carrying every one of them, and the
+ *      word "commission" surviving ONLY inside the exact mixed-obligation
+ *      sentences Ben must rule on (KEPT_AMBIGUOUS below).
+ *
  * Run: node tests/gh2155-hi0c-inspector-agreement-parity.mjs
  * Exit code 0 = every scenario passed, 1 = at least one failed.
  */
@@ -102,7 +111,6 @@ const survivingMarkers = [
   ['2. Independent Contractor Relationship', 'Section 2'],
   ['3. Scope of Referral Services', 'Section 3'],
   ['receives no Referral Fee and no Recruit Bonus', 'the Section 4.3 no-fee sentence text'],
-  ['5. Payment Method', 'Section 5'],
   ['6. Tax Treatment', 'Section 6'],
   ['8. No Solicitation of Homeowners', 'Section 8'],
   ['14. Indemnification', 'the Section 14 heading (kept -- only the (a) cross-reference phrase is removed)'],
@@ -143,6 +151,68 @@ ok(sourceText.includes('4. Referral Fee Structure') && sourceText.includes('4.2 
 // marker.
 ok(renderedOnly.includes('Partner&rsquo;s breach of this Agreement; (b) any violation'),
   'kept: Section 14(a)/(b) reads cleanly with the cross-reference span removed');
+
+// ── 5. gh-2155 HI-0e (D-333, Ben ruling 5882085491): fee-payment mechanics ──
+// The inspector build removes Section 5 and Section 10 and every commission
+// sentence whose ONLY job is paying / reversing / calculating a commission or
+// bonus. A sentence that mixes payment with another obligation is KEPT
+// verbatim (Ben's rule) and pinned here, by exact string, so that any
+// further "commission" wording (or a silent change to these) fails the test.
+const KEPT_AMBIGUOUS = [
+  // Section 8 (prohibited inducement to homeowners; not a payout)
+  'a specific commission split, fee waiver, discount, or other financial benefit as an inducement to use the Platform',
+  // Section 8: termination + forfeiture
+  'forfeiture of any commission attributable to the violating conduct',
+  // Section 11: survival of earned commissions + survival of other obligations
+  'Termination does not affect commissions that were fully earned and approved for payout before the termination date',
+  // Section 13: earnings disclaimer + liability cap measured in commissions
+  'A COMPLETED JOB, A COMMISSION, OR ANY PARTICULAR LEVEL OF EARNINGS',
+  'SHALL NOT EXCEED THE TOTAL COMMISSIONS PAID TO PARTNER IN THE TWELVE (12) MONTHS PRECEDING THE CLAIM',
+  // Section 17: notice of a change to "the commission structure in Section 4"
+  'including any change to the commission structure in Section 4',
+];
+function stripKept(t) { for (const k of KEPT_AMBIGUOUS) t = t.split(k).join(' '); return t; }
+function checkNoFeeMechanics(label, html) {
+  const rendered = html.replace(/<!--[\s\S]*?-->/g, '').replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<style[\s\S]*?<\/style>/gi, '');
+  ok(!/venmo/i.test(rendered), `${label}: no "Venmo" in the inspector agreement`);
+  ok(!/paypal/i.test(rendered), `${label}: no "PayPal" in the inspector agreement`);
+  ok(!/Commission Reversal/i.test(rendered), `${label}: no "Commission Reversal" in the inspector agreement`);
+  ok(!html.includes('5. Payment Method'), `${label}: Section 5 heading is gone`);
+  ok(!html.includes('10. Commission Reversal'), `${label}: Section 10 heading is gone`);
+  ok(!rendered.includes('Referral fees and bonuses under Section 4 are paid'), `${label}: the Section 5 payout paragraph is gone`);
+  ok(!rendered.includes('Commissions and bonuses are earned only on jobs'), `${label}: the Section 9 commission-earning sentence is gone`);
+  ok(!rendered.includes('commission terms'), `${label}: "commission terms" is gone (meta, og and top-of-page notice)`);
+  // "commission" (any case) may survive only inside the exact kept-ambiguous sentences.
+  const leftover = stripKept(rendered).match(/.{0,50}commission.{0,50}/gi) || [];
+  ok(leftover.length === 0, `${label}: "commission" appears only inside the pinned KEPT_AMBIGUOUS sentences` + (leftover.length ? ' -- offenders: ' + JSON.stringify(leftover) : ''));
+  const keptPresent = KEPT_AMBIGUOUS.filter(k => rendered.includes(k)).length;
+  ok(keptPresent === KEPT_AMBIGUOUS.length, `${label}: all ${KEPT_AMBIGUOUS.length} pinned KEPT_AMBIGUOUS sentences are still present verbatim (${keptPresent})`);
+}
+checkNoFeeMechanics('HI-0e committed', committed);
+checkNoFeeMechanics('HI-0e fresh build', freshBuild);
+
+// No renumbering: every other section keeps its number; 5, 7 and 10 are simply absent.
+for (const n of [1, 2, 3, 4, 6, 8, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19]) {
+  ok(new RegExp('<h2>' + n + '\. ').test(committed), `HI-0e: Section ${n} heading still present under its original number`);
+}
+ok(!/<h2>5\. /.test(committed) && !/<h2>10\. /.test(committed) && !/<h2>7\. /.test(committed), 'HI-0e: sections 5, 7 and 10 are absent and nothing was renumbered into their slots');
+// Kept non-payment obligations survive.
+for (const keep of ['Partner is solely responsible for all federal, state, and local taxes', 'Otter Quotes&rsquo; tracking and attribution records are the sole basis', 'Partner is responsible for confirming that homeowners and recruited agents use Partner&rsquo;s correct, current link', 'Either party may terminate this Agreement']) {
+  ok(committed.includes(keep), `HI-0e: kept non-payment obligation is present: "${keep.slice(0, 60)}..."`);
+}
+// The SOURCE (fee-earning partners' agreement) still has every removed item.
+for (const need of ['Venmo', 'PayPal', 'Commission Reversal', '5. Payment Method', '10. Commission Reversal', 'Commissions and bonuses are earned only on jobs', 'commission terms', 'Referral fees and bonuses under Section 4 are paid']) {
+  ok(sourceText.includes(need), `guard: the source partner-agreement.html still contains "${need}"`);
+}
+// REMOVAL ONLY: every word of the inspector build already exists in the source
+// (multiset check), apart from the words of the new Section 4 heading.
+const tok = t => (t.toLowerCase().match(/[a-z0-9$]+/g) || []);
+const srcCount = new Map();
+for (const w of tok(sourceText)) srcCount.set(w, (srcCount.get(w) || 0) + 1);
+for (const w of tok('4. No Referral Fee or Recruit Bonus')) srcCount.set(w, (srcCount.get(w) || 0) + 1);
+const added = [];
+for (const w of tok(committed)) { const c = srcCount.get(w) || 0; if (c <= 0) added.push(w); else srcCount.set(w, c - 1); }
+ok(added.length === 0, 'HI-0e: the inspector build adds no words that are not in the source (removal only)' + (added.length ? ' -- added: ' + added.slice(0, 10).join(',') : ''));
 
 console.log(`\n${pass} passed, ${fail} failed.`);
 process.exit(fail === 0 ? 0 : 1);
