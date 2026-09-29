@@ -9,12 +9,13 @@
  * pages leave a pending marker in localStorage; partner-dashboard.html's
  * "No Partner Account Found" state uses this module to complete the registration.
  *
- * Marker (localStorage 'oq_partner_pending_registration'): email, ts (written),
+ * Marker (sessionStorage 'oq_partner_pending_registration' -- gh-2355: it holds name/phone/company, so it
+ * must never persist in localStorage; a legacy localStorage copy is purged by the pages): email, ts (written),
  * termsAcceptedAt (the submit that followed the ticked terms checkbox) and
  * rpcArgs (the EXACT register_partner arguments the signup page built: agent
  * type, name, phone, company, recruit code, UTM fields, fbclid, li_fat_id,
  * funnel_id, ... -- so a dashboard-completed registration is attributed
- * identically to a page-completed one). No password. Expires after 7 days.
+ * identically to a page-completed one). No password. Expires after 24 hours (and with the tab).
  *
  * Terms-acceptance evidence: register_partner stamps partner_agreement_accepted_at
  * and the IP/UA attestation at CALL time. On this path that is later than the real
@@ -27,7 +28,7 @@
 (function (root) {
   'use strict';
   var KEY = 'oq_partner_pending_registration';
-  var TTL_MS = 7 * 24 * 60 * 60 * 1000;
+  var TTL_MS = 24 * 60 * 60 * 1000;
   var TYPES = ['re_agent', 'insurance_agent', 'home_inspector', 'adjuster', 'other'];
 
   function norm(email) { return String(email || '').trim().toLowerCase(); }

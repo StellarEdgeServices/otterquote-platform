@@ -1825,7 +1825,8 @@ Let me know if you have any questions!
             const signupEl = document.getElementById('partnerFinishSignup');
             wrap.style.display = 'block';
             const isTest = !!(window.Auth && typeof Auth.isTestEmail === 'function' && Auth.isTestEmail(currentUser.email));
-            const marker = PartnerRegistration.readMarker(localStorage, currentUser.email);
+            const marker = PartnerRegistration.readMarker(sessionStorage, currentUser.email); // gh-2355: PII marker lives in sessionStorage only
+            try { localStorage.removeItem(PartnerRegistration.KEY); } catch (e) { /* non-fatal: purge any legacy localStorage copy */ }
             const params = marker ? PartnerRegistration.buildParams(marker, currentUser.email, isTest) : null;
             if (!params) {
                 statusEl.textContent = "This email isn't registered as a partner yet. Register on the partner signup page.";
@@ -1838,7 +1839,7 @@ Let me know if you have any questions!
                 busy = true;
                 retryEl.style.display = 'none';
                 statusEl.textContent = 'Finishing your partner registration...';
-                const r = await PartnerRegistration.complete(sb, params, localStorage);
+                const r = await PartnerRegistration.complete(sb, params, sessionStorage);
                 if (r.status === 'error') {
                     console.error('Partner registration completion failed:', r.error);
                     statusEl.textContent = 'An error occurred. Please try again or email us at support@otterquote.com';

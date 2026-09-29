@@ -1622,9 +1622,9 @@
         let canFinishRegistration = false;
         if (isDuplicate) {
           try {
-            const pendingMarker = JSON.parse(localStorage.getItem('oq_partner_pending_registration') || 'null');
+            const pendingMarker = JSON.parse(sessionStorage.getItem('oq_partner_pending_registration') || 'null');
             const emailKey = String(email || '').trim().toLowerCase();
-            canFinishRegistration = !!(pendingMarker && pendingMarker.email === emailKey && typeof pendingMarker.ts === 'number' && Date.now() - pendingMarker.ts < 7 * 24 * 60 * 60 * 1000);
+            canFinishRegistration = !!(pendingMarker && pendingMarker.email === emailKey && typeof pendingMarker.ts === 'number' && Date.now() - pendingMarker.ts < 24 * 60 * 60 * 1000);
             if (!canFinishRegistration && window.Auth && typeof Auth.getUser === 'function') {
               const sessionUser = await Auth.getUser();
               canFinishRegistration = !!(sessionUser && sessionUser.email && String(sessionUser.email).toLowerCase() === emailKey);
@@ -1640,7 +1640,7 @@
       }
       if (signUpResult) {
         // gh-2282: auth account created here; remember it (no password) until register_partner reaches a definitive outcome.
-        try { localStorage.setItem('oq_partner_pending_registration', JSON.stringify({ email: String(email || '').trim().toLowerCase(), ts: Date.now(), termsAcceptedAt: oqTermsAcceptedAt, rpcArgs: partnerRpcArgs })); } catch (e) { /* non-fatal */ }
+        try { localStorage.removeItem('oq_partner_pending_registration'); sessionStorage.setItem('oq_partner_pending_registration', JSON.stringify({ email: String(email || '').trim().toLowerCase(), ts: Date.now(), termsAcceptedAt: oqTermsAcceptedAt, rpcArgs: partnerRpcArgs })); } catch (e) { /* non-fatal */ }
       }
 
       // #571 / v95: server-side register_partner RPC. referral_agents has no
@@ -1652,7 +1652,7 @@
       const { data: agentData, error: agentError } = await sb
         .rpc('register_partner', partnerRpcArgs);
       // gh-2282: definitive outcome (row created, or it already exists) -- the pending marker has done its job.
-      if (!agentError || (agentError.message || '').includes('partner_exists')) { try { localStorage.removeItem('oq_partner_pending_registration'); } catch (e) { /* non-fatal */ } }
+      if (!agentError || (agentError.message || '').includes('partner_exists')) { try { sessionStorage.removeItem('oq_partner_pending_registration'); localStorage.removeItem('oq_partner_pending_registration'); } catch (e) { /* non-fatal */ } }
 
       if (agentError) {
         if ((agentError.message || '').includes('partner_exists')) {
