@@ -20,6 +20,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 import {
   approvalEmailText,
   approvalEmailHtml,
@@ -177,17 +178,23 @@ serve(async (req) => {
       // contractors are opted into the public directory by default, with
       // notice given at signup (contractor-pre-approval.html). They can
       // still opt out afterward via the settings toggle (PR #194/#293).
-      const { error: updateError } = await supabase
+      const { error: updateError, data: updatedRows } = await supabase
         .from("contractors")
         .update({
           status: "active",
           approved_at: new Date().toISOString(),
           public_directory_optin: true,
         })
-        .eq("id", contractor_id);
+        .eq("id", contractor_id)
+        .select("id");
 
       if (updateError) {
         throw updateError;
+      }
+      // gh-2105: log-only (admin-facing; the existing 500 path has no zero-row text and
+      // none is added) -- a zero-row match means no contractor row was written.
+      if (!checkRowsWritten(updatedRows).wroteRows) {
+        console.error(zeroRowWriteMessage("admin-contractor-action", `contractors.status=active for contractor ${contractor_id} (approve)`));
       }
 
       // Fetch contractor details (include contact_name for personal greeting)
@@ -227,17 +234,23 @@ serve(async (req) => {
       }
 
       // Update contractor status
-      const { error: updateError } = await supabase
+      const { error: updateError, data: updatedRows } = await supabase
         .from("contractors")
         .update({
           status: "inactive",
           rejected_at: new Date().toISOString(),
           rejection_reason: reason,
         })
-        .eq("id", contractor_id);
+        .eq("id", contractor_id)
+        .select("id");
 
       if (updateError) {
         throw updateError;
+      }
+      // gh-2105: log-only (admin-facing; the existing 500 path has no zero-row text and
+      // none is added) -- a zero-row match means no contractor row was written.
+      if (!checkRowsWritten(updatedRows).wroteRows) {
+        console.error(zeroRowWriteMessage("admin-contractor-action", `contractors.status=inactive for contractor ${contractor_id} (reject)`));
       }
 
       // Fetch contractor details
@@ -277,16 +290,22 @@ serve(async (req) => {
       }
 
       // Update contractor
-      const { error: updateError } = await supabase
+      const { error: updateError, data: updatedRows } = await supabase
         .from("contractors")
         .update({
           insurance_verification_sent_at: new Date().toISOString(),
           insurance_verification_email: broker_email,
         })
-        .eq("id", contractor_id);
+        .eq("id", contractor_id)
+        .select("id");
 
       if (updateError) {
         throw updateError;
+      }
+      // gh-2105: log-only (admin-facing; the existing 500 path has no zero-row text and
+      // none is added) -- a zero-row match means no contractor row was written.
+      if (!checkRowsWritten(updatedRows).wroteRows) {
+        console.error(zeroRowWriteMessage("admin-contractor-action", `contractors.insurance_verification_sent_at for contractor ${contractor_id} (send_insurance_verification)`));
       }
 
       await sendMailgunEmail(
@@ -307,16 +326,22 @@ serve(async (req) => {
 
     // ── Action: mark_license_verified ──
     if (action === "mark_license_verified") {
-      const { error: updateError } = await supabase
+      const { error: updateError, data: updatedRows } = await supabase
         .from("contractors")
         .update({
           license_verified: true,
           license_verified_at: new Date().toISOString(),
         })
-        .eq("id", contractor_id);
+        .eq("id", contractor_id)
+        .select("id");
 
       if (updateError) {
         throw updateError;
+      }
+      // gh-2105: log-only (admin-facing; the existing 500 path has no zero-row text and
+      // none is added) -- a zero-row match means no contractor row was written.
+      if (!checkRowsWritten(updatedRows).wroteRows) {
+        console.error(zeroRowWriteMessage("admin-contractor-action", `contractors.license_verified for contractor ${contractor_id} (mark_license_verified)`));
       }
 
       return new Response(
@@ -327,16 +352,22 @@ serve(async (req) => {
 
     // ── Action: mark_insurance_verified ──
     if (action === "mark_insurance_verified") {
-      const { error: updateError } = await supabase
+      const { error: updateError, data: updatedRows } = await supabase
         .from("contractors")
         .update({
           insurance_verified: true,
           insurance_verified_at: new Date().toISOString(),
         })
-        .eq("id", contractor_id);
+        .eq("id", contractor_id)
+        .select("id");
 
       if (updateError) {
         throw updateError;
+      }
+      // gh-2105: log-only (admin-facing; the existing 500 path has no zero-row text and
+      // none is added) -- a zero-row match means no contractor row was written.
+      if (!checkRowsWritten(updatedRows).wroteRows) {
+        console.error(zeroRowWriteMessage("admin-contractor-action", `contractors.insurance_verified for contractor ${contractor_id} (mark_insurance_verified)`));
       }
 
       return new Response(
@@ -347,15 +378,21 @@ serve(async (req) => {
 
     // ── Action: save_notes ──
     if (action === "save_notes") {
-      const { error: updateError } = await supabase
+      const { error: updateError, data: updatedRows } = await supabase
         .from("contractors")
         .update({
           admin_notes: notes || null,
         })
-        .eq("id", contractor_id);
+        .eq("id", contractor_id)
+        .select("id");
 
       if (updateError) {
         throw updateError;
+      }
+      // gh-2105: log-only (admin-facing; the existing 500 path has no zero-row text and
+      // none is added) -- a zero-row match means no contractor row was written.
+      if (!checkRowsWritten(updatedRows).wroteRows) {
+        console.error(zeroRowWriteMessage("admin-contractor-action", `contractors.admin_notes for contractor ${contractor_id} (save_notes)`));
       }
 
       return new Response(
