@@ -103,5 +103,41 @@ console.log('INFO: shared=' + shared + ' own-link=' + own + ' empty-skip-nav=' +
 for (const g of ['generate_contractor_pages', 'generate_location_pages', 'generate_partner_pages']) {
   ok(read('tools/' + g + '.py').includes('href="/privacy.html#' + ANCHOR + '" style="color:var(--amber)">' + LINK_TEXT + '</a>'), 'tools/' + g + '.py footer template carries the link');
 }
+// must-fix 3: the own-footer pages are asserted IN the page, never via the nav.js fall-through (re-1/3/5 also mount #site-footer).
+for (const p of ['contractors/index.html', 'landing.html', 're-1.html', 're-3.html', 're-5.html']) {
+  const m = read(p).match(/<footer[\s\S]*?<\/footer>/);
+  ok(!!m && hrefRe.test(m[0]), p + ': its OWN <footer> element contains the exact link text + anchor (not via nav.js)');
+}
+// must-fix 2: the generator INDEX templates (contractor + partner directory) emit the link, so regeneration keeps it.
+for (const [g, marker] of [['generate_contractor_pages', 'index_path = CONTRACTOR_DIR'], ['generate_partner_pages', 'index_path = PARTNERS_DIR']]) {
+  const src = read('tools/' + g + '.py'); const i = src.indexOf(marker);
+  const tail = src.slice(Math.max(0, i - 700), i);
+  ok(i > 0 && tail.includes('<footer') && tail.includes('href="/privacy.html#' + ANCHOR + '" style="color:var(--amber)">' + LINK_TEXT + '</a>'), 'tools/' + g + '.py INDEX template footer carries the link');
+}
+// must-fix 1: the button's cookie reaches the server. A cookie-only visitor (real button script, GPC absent/false) sends gpc:true.
+{
+  const svc = read('js/services.js');
+  const PARAMS = { claim_id: 'c1', amount: 1500, description: 'Complete Property Report' };
+  async function bodyFor({ nav, cookie }) {
+    const invoked = [];
+    const ctx = { sb: { functions: { invoke: (n, o) => { invoked.push(o.body); return Promise.resolve({ data: {}, error: null }); } } }, console, decodeURIComponent };
+    if (nav !== undefined) ctx.navigator = nav;
+    ctx.document = { get cookie() { return cookie; } };
+    vm.createContext(ctx);
+    vm.runInContext(svc + '\n;globalThis.__S = Services;', ctx);
+    await ctx.__S.createHoverPaymentIntent(PARAMS);
+    return invoked[0];
+  }
+  const b = makeCtx({ host: 'otterquote.com' }); vm.runInContext(btnScript, b.ctx); b.listeners.click();
+  const jar = b.ctx.document.cookie; // the cookie exactly as the real button script left it
+  ok(jar === 'oq_ad_optout=1', 'real button script leaves cookie jar "' + jar + '"');
+  for (const nav of [{ globalPrivacyControl: false }, {}, undefined]) {
+    const body = await bodyFor({ nav, cookie: jar });
+    ok(body.gpc === true, 'static services.js: cookie-only visitor (navigator ' + JSON.stringify(nav) + ') -> create-payment-intent body carries gpc:true');
+  }
+  ok((await bodyFor({ nav: { globalPrivacyControl: false }, cookie: '' })).gpc === undefined, 'static services.js: no cookie and no GPC -> no gpc field');
+  ok((await bodyFor({ nav: {}, cookie: 'a=1; oq_ad_optout=10' })).gpc === undefined, 'static services.js: oq_ad_optout=10 is not a match');
+  ok((await bodyFor({ nav: {}, cookie: 'a=1; oq_ad_optout=1; b=2' })).gpc === true, 'static services.js: oq_ad_optout=1 among other cookies matches');
+}
 console.log('\n' + passed + ' passed, ' + failed + ' failed');
 process.exit(failed ? 1 : 0);
