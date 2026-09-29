@@ -323,6 +323,11 @@ jobs:
       # job's Seed/Run/Teardown steps already use to write to this project --
       # rather than requesting a new one, since this job needs the identical
       # write scope (insert/update/delete one throwaway fixture row).
+      # CTO RUN 48 isolation: the script tags its fixtures with GITHUB_RUN_ID-
+      # GITHUB_RUN_ATTEMPT (read from the runner env), asserts RED/GREEN over its
+      # own fixture ids only, then runs the REAL whole-table pass excluding
+      # self-test-marked rows, and always cleans up (incl. rows >1 h old). The step
+      # name is unchanged on purpose: it is a check-run context.
       - name: RED/GREEN self-test against the CI-test project
         if: ${{ !cancelled() }}
         env:
