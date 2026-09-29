@@ -136,6 +136,15 @@ async function runSuite(browser, base, mutate) {
   const open = (o) => openStart(browser, base, Object.assign({ mutate }, o));
 
   // REACHABILITY
+  // Static pin: the read site only becomes live if arm A or B is served. Assert LIVE_VARIANTS names neither, so
+  // re-adding A/B next to the current arms (e.g. ['a','d','e']) trips this suite even though ?v=d still renders D.
+  await check('reachability: LIVE_VARIANTS in start.html serves neither arm A nor arm B (the only arms that show #step1Form)', async () => {
+    const m = START_HTML.match(/var LIVE_VARIANTS\s*=\s*\[([^\]]*)\]/);
+    assert.ok(m, 'LIVE_VARIANTS declaration not found in start.html -- re-anchor this pin');
+    const arms = (m[1].match(/'([a-z])'/g) || []).map((x) => x.slice(1, 2));
+    assert.ok(arms.length >= 1, 'LIVE_VARIANTS parsed empty: ' + m[0]);
+    assert.ok(!arms.includes('a') && !arms.includes('b'), 'arm A/B is live -- the oq_router_lead_id leak is now reachable: ' + m[0]);
+  });
   await check('reachability: on the live arm the shared arm A/B Step-1 form is not visible to a real visitor (read site is latent)', async () => {
     const { page, context } = await open({});
     try { assert.equal(await page.locator('#step1Form').isVisible(), false); } finally { await context.close(); }
