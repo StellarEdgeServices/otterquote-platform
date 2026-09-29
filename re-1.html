@@ -1080,50 +1080,8 @@ a:hover { color: var(--amber-2); }
       const readySb = await ensureSb();
       if (!readySb) throw new Error('Supabase failed to initialize');
 
-      // gh-2282: sign up FIRST, register_partner second. auth.users is checked here
-      // (Auth.signUpWithPassword rejects an already-registered email), so a
-      // duplicate-email attempt returns before register_partner runs and can never
-      // leave an orphaned referral_agents row (user_id NULL, unique on email) behind.
-      // gh-2274 / gh-2281: the duplicate is matched on Supabase's structured
-      // error.code ('user_already_exists') with the message text as a fallback, and
-      // routed to the designed already-a-partner state instead of the generic catch.
-      let signUpResult;
-      try {
-        signUpResult = await Auth.signUpWithPassword(email, generatedPassword, agentType);
-      } catch (signUpError) {
-        // gh-2281: match Supabase's structured error code first; the English message text is kept only as a fallback for SDK versions that don't set .code.
-        const isDuplicate = (signUpError && signUpError.code === 'user_already_exists') || (signUpError.message || '').toLowerCase().includes('already registered');
-        // gh-2282: a duplicate is only "already a partner" when nothing is left to finish. If THIS browser already created the
-        // auth account (pending marker written below) or is signed in as this exact email, a previous attempt got past signUp but
-        // register_partner failed (rate limit, network, rejected email) -- complete register_partner instead of dead-ending.
-        let canFinishRegistration = false;
-        if (isDuplicate) {
-          try {
-            const pendingMarker = JSON.parse(localStorage.getItem('oq_partner_pending_registration') || 'null');
-            const emailKey = String(email || '').trim().toLowerCase();
-            canFinishRegistration = !!(pendingMarker && pendingMarker.email === emailKey);
-            if (!canFinishRegistration && window.Auth && typeof Auth.getUser === 'function') {
-              const sessionUser = await Auth.getUser();
-              canFinishRegistration = !!(sessionUser && sessionUser.email && String(sessionUser.email).toLowerCase() === emailKey);
-            }
-          } catch (e) { canFinishRegistration = false; }
-        }
-        if (isDuplicate && !canFinishRegistration) {
-          errorEl.innerHTML = "This email is already registered — <a href=\"/partner-login.html\">sign in here</a>, or email support@otterquote.com if you need help.";
-          errorEl.style.display = 'block';
-          return;
-        }
-        if (!isDuplicate) throw signUpError;
-      }
-      if (signUpResult) {
-        // gh-2282: auth account created here; remember it (no password) until register_partner reaches a definitive outcome.
-        try { localStorage.setItem('oq_partner_pending_registration', JSON.stringify({ email: String(email || '').trim().toLowerCase(), agentType: agentType, firstName: firstName, lastName: lastName, phone: phone, company: brokerage || null, ts: Date.now() })); } catch (e) { /* non-fatal */ }
-      }
-
-      // #571 / v95: server-side register_partner RPC. Same call shape as
-      // partner-re.html (gh-2154 P-1/P-2).
-      const { data: agentData, error: agentError } = await readySb
-        .rpc('register_partner', {
+      // gh-2282: the exact register_partner arguments, built once so the pending marker (dashboard completion) and the RPC below can never drift apart.
+      const partnerRpcArgs = {
           p_agent_type:       agentType,
           p_first_name:       firstName,
           p_last_name:        lastName,
@@ -1139,7 +1097,52 @@ a:hover { color: var(--amber-2); }
           p_li_fat_id:        utmContext.liFatId  || null,
           p_funnel_id:        utmContext.funnelId || null,
           p_is_test:          isTest,
-        });
+      };
+      // gh-2282: sign up FIRST, register_partner second. auth.users is checked here
+      // (Auth.signUpWithPassword rejects an already-registered email), so a
+      // duplicate-email attempt returns before register_partner runs and can never
+      // leave an orphaned referral_agents row (user_id NULL, unique on email) behind.
+      // gh-2274 / gh-2281: the duplicate is matched on Supabase's structured
+      // error.code ('user_already_exists') with the message text as a fallback, and
+      // routed to the designed already-a-partner state instead of the generic catch.
+      const oqTermsAcceptedAt = Date.now(); // gh-2282: the submit (terms checkbox already verified above) -- recorded in the pending marker
+      let signUpResult;
+      try {
+        signUpResult = await Auth.signUpWithPassword(email, generatedPassword, agentType);
+      } catch (signUpError) {
+        // gh-2281: match Supabase's structured error code first; the English message text is kept only as a fallback for SDK versions that don't set .code.
+        const isDuplicate = (signUpError && signUpError.code === 'user_already_exists') || (signUpError.message || '').toLowerCase().includes('already registered');
+        // gh-2282: a duplicate is only "already a partner" when nothing is left to finish. If THIS browser already created the
+        // auth account (pending marker written below) or is signed in as this exact email, a previous attempt got past signUp but
+        // register_partner failed (rate limit, network, rejected email) -- complete register_partner instead of dead-ending.
+        let canFinishRegistration = false;
+        if (isDuplicate) {
+          try {
+            const pendingMarker = JSON.parse(localStorage.getItem('oq_partner_pending_registration') || 'null');
+            const emailKey = String(email || '').trim().toLowerCase();
+            canFinishRegistration = !!(pendingMarker && pendingMarker.email === emailKey && typeof pendingMarker.ts === 'number' && Date.now() - pendingMarker.ts < 7 * 24 * 60 * 60 * 1000);
+            if (!canFinishRegistration && window.Auth && typeof Auth.getUser === 'function') {
+              const sessionUser = await Auth.getUser();
+              canFinishRegistration = !!(sessionUser && sessionUser.email && String(sessionUser.email).toLowerCase() === emailKey);
+            }
+          } catch (e) { canFinishRegistration = false; }
+        }
+        if (isDuplicate && !canFinishRegistration) {
+          errorEl.innerHTML = "This email is already registered — <a href=\"/partner-login.html\">sign in here</a>, or email support@otterquote.com if you need help.";
+          errorEl.style.display = 'block';
+          return;
+        }
+        if (!isDuplicate) throw signUpError;
+      }
+      if (signUpResult) {
+        // gh-2282: auth account created here; remember it (no password) until register_partner reaches a definitive outcome.
+        try { localStorage.setItem('oq_partner_pending_registration', JSON.stringify({ email: String(email || '').trim().toLowerCase(), ts: Date.now(), termsAcceptedAt: oqTermsAcceptedAt, rpcArgs: partnerRpcArgs })); } catch (e) { /* non-fatal */ }
+      }
+
+      // #571 / v95: server-side register_partner RPC. Same call shape as
+      // partner-re.html (gh-2154 P-1/P-2).
+      const { data: agentData, error: agentError } = await readySb
+        .rpc('register_partner', partnerRpcArgs);
       // gh-2282: definitive outcome (row created, or it already exists) -- the pending marker has done its job.
       if (!agentError || (agentError.message || '').includes('partner_exists')) { try { localStorage.removeItem('oq_partner_pending_registration'); } catch (e) { /* non-fatal */ } }
 
