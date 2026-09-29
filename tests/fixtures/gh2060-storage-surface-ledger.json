@@ -482,6 +482,17 @@
       ]
     },
     {
+      "key": "oq_partner_signup_ctx",
+      "stack": "static",
+      "status": "tested",
+      "tests": [
+        {
+          "file": "tests/gh2355-crosstab-recovery.mjs",
+          "contains": "an expired ctx is ignored"
+        }
+      ]
+    },
+    {
       "key": "oq_partner_needs_",
       "stack": "static",
       "status": "write-only",
