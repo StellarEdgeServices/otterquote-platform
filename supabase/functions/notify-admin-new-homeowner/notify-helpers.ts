@@ -258,7 +258,7 @@ export function buildRouterLeadEmail(leadRow: Record<string, unknown>): RouterLe
   if (isReferralOutLead(leadRow)) {
     // gh-2019 (D-324): admin-only. Shows only what Dustin needs to fulfil
     // the request by hand -- who asked and where they came from.
-    const rName  = (leadRow.name  as string) || "(no name given)";
+    const rName  = referralOutNameLabel(leadRow);
     const rEmail = (leadRow.email as string) || "(no email)";
     return {
       subject,
@@ -269,7 +269,10 @@ export function buildRouterLeadEmail(leadRow: Record<string, unknown>): RouterLe
         ["Attribution", escapeHtml(buildAttributionSource(leadRow))],
       ],
       extraHtml:
-        `<p style="font-family:sans-serif;font-size:12px;color:#94A3B8;margin:0 0 16px;">${escapeHtml(REFERRAL_OUT_ADMIN_NOTE)}</p>`,
+        `<p style="font-family:sans-serif;font-size:12px;color:#94A3B8;margin:0 0 16px;">${escapeHtml(REFERRAL_OUT_ADMIN_NOTE)}</p>` +
+        (referralOutNameBlank(leadRow)
+          ? `<p style="font-family:sans-serif;font-size:12px;color:#94A3B8;margin:0 0 16px;">${escapeHtml(REFERRAL_OUT_NO_NAME_NOTE)}</p>`
+          : ""),
     };
   }
   const name        = (leadRow.name  as string) || "(no name given)";
@@ -302,11 +305,27 @@ export function buildRouterLeadEmail(leadRow: Record<string, unknown>): RouterLe
 // separately, escaping each value with escapeHtml() before rendering, same
 // as every other event type in that file already does.
 export const REFERRAL_OUT_ADMIN_NOTE =
-  "D-324: three names from outside our own network (D-249), no quality claim of any kind. The requester is emailed only when you send it; nothing has been sent to them yet.";
+  "D-324: three names from outside our own network (D-249), no quality claim of any kind. Nothing has been sent to the requester yet; the approved one-time email goes out only when you trigger send-referral-out-email with the three names.";
+
+// gh-2019 (Ben, #2019 comment 5889011634): a referral-out row whose name is
+// empty or whitespace-only gets NO email -- the approved message opens with the
+// name and no fallback greeting exists -- and the admin alert says so. Kept in
+// step with send-referral-out-email/templates.ts (drift test in its tests).
+export const REFERRAL_OUT_NO_NAME_NOTE =
+  "No name captured: the approved D-324 email was NOT sent to this requester (it opens with their name and no fallback greeting exists). Follow up by hand.";
+
+function referralOutNameBlank(record: Record<string, unknown>): boolean {
+  const n = record.name;
+  return typeof n !== "string" || n.trim() === "";
+}
+
+function referralOutNameLabel(record: Record<string, unknown>): string {
+  return referralOutNameBlank(record) ? "(no name captured)" : (record.name as string);
+}
 
 export function buildRouterLeadSubjectAndText(record: Record<string, unknown>): { subject: string; textBody: string } {
   if (isReferralOutLead(record)) {
-    const rName  = (record.name  as string) || "(no name given)";
+    const rName  = referralOutNameLabel(record);
     const rEmail = (record.email as string) || "(no email)";
     const lines = [
       `A homeowner who was screened out of the Otter Quotes router asked for contractor contact information (D-324).`,
@@ -316,6 +335,7 @@ export function buildRouterLeadSubjectAndText(record: Record<string, unknown>): 
       ``,
       REFERRAL_OUT_ADMIN_NOTE,
     ];
+    if (referralOutNameBlank(record)) lines.push(``, REFERRAL_OUT_NO_NAME_NOTE);
     return {
       subject: stripCrlf("[OtterQuote] Referral-out request: contractor contact information"),
       textBody: lines.join("\n"),

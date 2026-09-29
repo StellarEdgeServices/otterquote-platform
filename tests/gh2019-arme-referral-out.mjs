@@ -586,6 +586,26 @@ function assertAcceptPath(routerERoot, label) {
   }).catch((e) => { console.error('scenario7 error:', e); fail++; });
 })();
 
+// Scenario 8 (D-324 send): the admin-triggered send function exists, is pinned
+// verify_jwt=false exactly like admin-contractor-action (JWT verified in-handler,
+// primary-admin gate before any DB read), and is deployable only by an explicit
+// config entry. Behaviour is covered by the deno tests under
+// supabase/functions/send-referral-out-email/.
+(function scenario8() {
+  const cfg = fs.readFileSync(path.join(repoRoot, 'supabase', 'config.toml'), 'utf8');
+  ok(/\[functions\.send-referral-out-email\]\r?\nverify_jwt = false/.test(cfg),
+    'config.toml pins send-referral-out-email verify_jwt = false');
+  ok(/\[functions\.admin-contractor-action\]\r?\nverify_jwt = false/.test(cfg),
+    'sibling admin function admin-contractor-action has the same pin (consistency)');
+  const idxPath = path.join(repoRoot, 'supabase', 'functions', 'send-referral-out-email', 'index.ts');
+  ok(fs.existsSync(idxPath), 'send-referral-out-email/index.ts exists');
+  if (fs.existsSync(idxPath)) {
+    const idx = fs.readFileSync(idxPath, 'utf8');
+    ok(idx.indexOf('isPrimaryAdmin(') > 0 && idx.indexOf('isPrimaryAdmin(') < idx.indexOf('runSend('),
+      'the admin gate precedes any send');
+  }
+})();
+
 setTimeout(() => {
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail === 0 ? 0 : 1);

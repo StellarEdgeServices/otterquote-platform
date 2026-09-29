@@ -16,6 +16,7 @@ import {
   REFERRAL_OUT_VARIANT,
   REFERRAL_OUT_ADMIN_NOTE,
   isReferralOutLead,
+  REFERRAL_OUT_NO_NAME_NOTE,
 } from "./notify-helpers.ts";
 
 // ---------------------------------------------------------------------------
@@ -424,4 +425,25 @@ Deno.test("gh-2019: negative control -- an ordinary router lead's alert is uncha
   assertEquals(built.htmlRows.map((r) => r[0]), ["Name", "Email", "Phone", "Role", "Attribution"]);
   // A row with no variant at all (every pre-gh-2019 lead) behaves the same.
   assertEquals(buildRouterLeadSubjectAndText({ name: "J", email: "j@example.com", role: "homeowner" }).subject, "[OtterQuote] New router lead: Homeowner");
+});
+
+Deno.test("gh-2019 (D-324): a referral-out row with no usable name says 'no name captured' in the admin alert (text and HTML)", () => {
+  for (const name of [null, undefined, "", "   ", "\r\n\t "]) {
+    const row = { name, email: "jane@example.com", variant: "e-referral-out" };
+    const { subject, textBody } = buildRouterLeadSubjectAndText(row);
+    assertEquals(subject, "[OtterQuote] Referral-out request: contractor contact information");
+    assert(textBody.includes("Name       : (no name captured)"), `name=${JSON.stringify(name)}`);
+    assert(textBody.includes(REFERRAL_OUT_NO_NAME_NOTE));
+    const built = buildRouterLeadEmail(row);
+    assertEquals(built.htmlRows[0], ["Name", "(no name captured)"]);
+    assert(built.extraHtml.includes("No name captured"));
+  }
+});
+
+Deno.test("gh-2019 (D-324): negative control -- a referral-out row WITH a name carries no 'no name captured' text", () => {
+  const row = { name: "Jane", email: "jane@example.com", variant: "e-referral-out" };
+  const { textBody } = buildRouterLeadSubjectAndText(row);
+  assert(!textBody.includes("no name captured"));
+  assert(!textBody.includes(REFERRAL_OUT_NO_NAME_NOTE));
+  assert(!buildRouterLeadEmail(row).extraHtml.includes("No name captured"));
 });

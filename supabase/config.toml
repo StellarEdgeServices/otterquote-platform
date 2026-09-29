@@ -519,3 +519,13 @@ verify_jwt = false
 # authorization, checked before any read or write.
 [functions.partner-invite-accept]
 verify_jwt = false
+
+# gh-2019 / D-324: admin-triggered, once-per-recipient send of the approved
+# referral-out email. Same shape as admin-contractor-action (verify_jwt=false at
+# the gateway; the caller's JWT is verified IN the handler with
+# supabase.auth.getUser() and compared to the single primary admin identity
+# BEFORE any read or write). Pinned so a flagless `functions deploy` (CLI
+# default verify_jwt=true) cannot flip it. Deploy is Tier 3B (new outbound
+# email path) and is NOT part of the PR that adds it.
+[functions.send-referral-out-email]
+verify_jwt = false
