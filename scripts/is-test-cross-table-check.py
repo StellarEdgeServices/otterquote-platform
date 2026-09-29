@@ -115,12 +115,54 @@ import sys
 import time
 import urllib.error
 import urllib.request
+import re
+import urllib.parse
 import uuid
+from datetime import datetime, timedelta, timezone
 
 PRODUCTION_PROJECT_REF = "yeszghaspzwwstvsrioa"
 IDS_PER_BATCH = 200  # PostgREST `in.()` filters -- kept well under any URL-length concern.
 
 MANAGEMENT_API_BASE = "https://api.supabase.com/v1"
+
+# --- self-test isolation (CTO RUN 48, flake on PRs #2315/#2333/#2317) --------
+# The self-test seeds bad-shape rows in the SHARED CI-test project. Two runs of
+# this job overlapping in time used to see each other's bad rows, because the
+# GREEN phase asserted the WHOLE table was clean. Isolation rules now:
+#   1. every fixture is tagged with a unique run id (GITHUB_RUN_ID-ATTEMPT),
+#   2. the self-test's RED/GREEN assertions look ONLY at that run's own
+#      fixture contractor ids,
+#   3. the REAL whole-table pass (the actual guard) still scans every row but
+#      skips rows carrying ANY self-test marker (any run's fixture),
+#   4. cleanup always runs, and also sweeps self-test rows older than 1 hour
+#      (leaked by a cancelled/killed run).
+# The production modes (plain run() default and --management-api) are
+# unchanged: they never exclude anything.
+SELFTEST_MARKER = "IS-TEST GUARD SELFTEST (gh-1763)"
+SELFTEST_MARKER_PREFIX = "IS-TEST GUARD SELFTEST"  # matches any run's fixture, incl. pre-tag ones
+STALE_SELFTEST_SECONDS = 3600
+
+
+def _selftest_run_id() -> str:
+    """Unique id for this self-test invocation: SELFTEST_RUN_ID if set, else
+    GITHUB_RUN_ID-GITHUB_RUN_ATTEMPT (unique per job execution), else random
+    (local runs)."""
+    raw = os.environ.get("SELFTEST_RUN_ID", "").strip()
+    if not raw and os.environ.get("GITHUB_RUN_ID"):
+        raw = f"{os.environ['GITHUB_RUN_ID']}-{os.environ.get('GITHUB_RUN_ATTEMPT', '1')}"
+    if not raw:
+        raw = uuid.uuid4().hex[:12]
+    return re.sub(r"[^A-Za-z0-9-]", "-", raw)[:48]
+
+
+def _fixture_label(run_id: str) -> str:
+    return f"{SELFTEST_MARKER} run={run_id} -- DO NOT USE"
+
+
+def has_selftest_marker(*names) -> bool:
+    """True if ANY of the given names (contractor company_name, profile full_name)
+    carries the self-test marker prefix -- any run's fixture, not just ours."""
+    return any(isinstance(n, str) and n.startswith(SELFTEST_MARKER_PREFIX) for n in names)
 
 # Role-agnostic (2026-09-09 fix): the issue body's own query scoped this to
 # `p.role = 'contractor'`, which is exactly what let the edcbe10f/5ece9e69
@@ -214,7 +256,7 @@ def fetch_profiles_by_ids(project_url: str, service_key: str, ids: list, urlopen
         id_list = ",".join(batch)
         url = (
             f"{project_url}/rest/v1/profiles"
-            f"?select=id,is_test,role&id=in.({id_list})&limit=10000"
+            f"?select=id,is_test,role,full_name&id=in.({id_list})&limit=10000"
         )
         payload = _request("GET", url, service_key, urlopen=urlopen)
         if not isinstance(payload, list):
@@ -223,7 +265,7 @@ def fetch_profiles_by_ids(project_url: str, service_key: str, ids: list, urlopen
     return rows
 
 
-def find_disagreements(contractors: list, profiles: list) -> list:
+def find_disagreements(contractors: list, profiles: list, exclude_selftest: bool = False, only_contractor_ids=None) -> list:
     """Pure join+compare, no I/O -- unit-testable directly.
 
     Role-agnostic (2026-09-09 fix): compares profiles.is_test vs
@@ -236,12 +278,22 @@ def find_disagreements(contractors: list, profiles: list) -> list:
     before it ever reached here. A contractor whose user_id has no matching
     profiles row at all is not in scope -- same as the SQL join, which
     would simply drop it.
+
+    exclude_selftest (default False): skip a pair when the contractor's
+    company_name OR the profile's full_name carries the self-test marker (any
+    run's fixture). Only the CI-test self-test job's REAL pass sets it.
+    only_contractor_ids (default None = all): restrict to these contractor ids;
+    used ONLY for the self-test's own RED/GREEN assertions.
     """
     profiles_by_id = {p["id"]: p for p in profiles}
     offenders = []
     for c in contractors:
+        if only_contractor_ids is not None and c.get("id") not in only_contractor_ids:
+            continue
         p = profiles_by_id.get(c.get("user_id"))
         if p is None:
+            continue
+        if exclude_selftest and has_selftest_marker(c.get("company_name"), p.get("full_name")):
             continue
         if p.get("is_test") != c.get("is_test"):
             offenders.append({
@@ -267,8 +319,12 @@ def render_table(offenders: list) -> str:
     return "\n".join(lines)
 
 
-def run(project_url: str, service_key: str, urlopen=urllib.request.urlopen) -> int:
-    """Core logic, decoupled from argv/env for testability. Returns the process exit code."""
+def run(project_url: str, service_key: str, urlopen=urllib.request.urlopen, exclude_selftest: bool = False, only_contractor_ids=None) -> int:
+    """Core logic, decoupled from argv/env for testability. Returns the process exit code.
+
+    Defaults scan every row and exclude nothing (the production behaviour).
+    exclude_selftest / only_contractor_ids are the self-test isolation hooks
+    documented above find_disagreements()."""
     if not project_url or not service_key:
         print(
             "UNMEASURED: SUPABASE_URL and/or SUPABASE_SERVICE_ROLE_KEY are not set.\n"
@@ -280,6 +336,8 @@ def run(project_url: str, service_key: str, urlopen=urllib.request.urlopen) -> i
 
     try:
         contractors = fetch_contractors(project_url, service_key, urlopen=urlopen)
+        if only_contractor_ids is not None:
+            contractors = [c for c in contractors if c.get("id") in only_contractor_ids]
         user_ids = sorted({c["user_id"] for c in contractors if c.get("user_id")})
         profiles = fetch_profiles_by_ids(project_url, service_key, user_ids, urlopen=urlopen) if user_ids else []
     except FetchError as exc:
@@ -291,7 +349,7 @@ def run(project_url: str, service_key: str, urlopen=urllib.request.urlopen) -> i
         )
         return 3
 
-    offenders = find_disagreements(contractors, profiles)
+    offenders = find_disagreements(contractors, profiles, exclude_selftest=exclude_selftest)
     print(render_table(offenders))
 
     if offenders:
@@ -557,22 +615,22 @@ def _admin_delete_user(project_url: str, service_key: str, user_id: str, urlopen
     _request("DELETE", url, service_key, urlopen=urlopen)
 
 
-def _insert_profile(project_url: str, service_key: str, profile_id: str, is_test: bool, urlopen=urllib.request.urlopen, role: str = "contractor"):
+def _insert_profile(project_url: str, service_key: str, profile_id: str, is_test: bool, urlopen=urllib.request.urlopen, role: str = "contractor", label: str = None):
     url = f"{project_url}/rest/v1/profiles"
     body = {
         "id": profile_id,
         "role": role,
         "is_test": is_test,
-        "full_name": "IS-TEST GUARD SELFTEST (gh-1763) -- DO NOT USE",
+        "full_name": label or f"{SELFTEST_MARKER} -- DO NOT USE",
     }
     _request("POST", url, service_key, body=body, urlopen=urlopen, extra_headers={"Prefer": "return=minimal"})
 
 
-def _insert_contractor(project_url: str, service_key: str, user_id: str, is_test: bool, urlopen=urllib.request.urlopen) -> str:
+def _insert_contractor(project_url: str, service_key: str, user_id: str, is_test: bool, urlopen=urllib.request.urlopen, label: str = None) -> str:
     url = f"{project_url}/rest/v1/contractors"
     body = {
         "user_id": user_id,
-        "company_name": "IS-TEST GUARD SELFTEST (gh-1763) -- DO NOT USE",
+        "company_name": label or f"{SELFTEST_MARKER} -- DO NOT USE",
         "contact_name": "gh-1763 selftest",
         "email": f"gh1763-selftest+{user_id}@otterquote-internal.test",
         "is_test": is_test,
@@ -598,19 +656,68 @@ def _delete_profile(project_url: str, service_key: str, profile_id: str, urlopen
     _request("DELETE", url, service_key, urlopen=urlopen)
 
 
-def self_test(project_url: str, service_key: str, urlopen=urllib.request.urlopen) -> int:
-    """RED/GREEN self-test against a fixture project. Covers TWO bad shapes:
+def cleanup_stale_selftest_rows(project_url: str, service_key: str, urlopen=urllib.request.urlopen, now=None) -> int:
+    """Delete self-test fixtures older than STALE_SELFTEST_SECONDS (a run that was
+    cancelled or killed before its own cleanup). Matches ONLY rows whose
+    contractors.company_name / profiles.full_name start with the self-test marker
+    AND whose created_at is older than the cutoff, so a concurrent run's live
+    fixtures (seconds old) are never touched. Never raises: returns the number
+    of auth identities removed and prints warnings for failures."""
+    now = now or datetime.now(timezone.utc)
+    cutoff = (now - timedelta(seconds=STALE_SELFTEST_SECONDS)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    like = urllib.parse.quote(SELFTEST_MARKER_PREFIX + "*", safe="*")
+    cut = urllib.parse.quote(cutoff, safe="")
+    removed = 0
+    try:
+        contractors = _request(
+            "GET",
+            f"{project_url}/rest/v1/contractors?select=id,user_id,company_name,created_at"
+            f"&company_name=like.{like}&created_at=lt.{cut}&limit=1000",
+            service_key, urlopen=urlopen) or []
+        profiles = _request(
+            "GET",
+            f"{project_url}/rest/v1/profiles?select=id,full_name,created_at"
+            f"&full_name=like.{like}&created_at=lt.{cut}&limit=1000",
+            service_key, urlopen=urlopen) or []
+    except FetchError as exc:
+        print(f"stale-cleanup warning: could not list stale self-test rows: {exc}", file=sys.stderr)
+        return 0
+    # Belt and braces: re-check the marker client-side; never delete on the server's word alone.
+    contractors = [c for c in contractors if has_selftest_marker(c.get("company_name"))]
+    profiles = [p for p in profiles if has_selftest_marker(p.get("full_name"))]
+    user_ids = {c["user_id"] for c in contractors if c.get("user_id")} | {p["id"] for p in profiles}
+    for c in contractors:
+        try:
+            _delete_contractor(project_url, service_key, c["id"], urlopen=urlopen)
+        except FetchError as exc:
+            print(f"stale-cleanup warning: contractor {c['id']}: {exc}", file=sys.stderr)
+    for uid in sorted(user_ids):
+        for what, fn in (("profile", _delete_profile), ("auth user", _admin_delete_user)):
+            try:
+                fn(project_url, service_key, uid, urlopen=urlopen)
+            except FetchError as exc:
+                print(f"stale-cleanup warning: {what} {uid}: {exc}", file=sys.stderr)
+        removed += 1
+    if removed:
+        print(f"stale-cleanup: removed {removed} self-test identity(ies) older than {STALE_SELFTEST_SECONDS}s")
+    return removed
 
+
+def self_test(project_url: str, service_key: str, urlopen=urllib.request.urlopen, run_id: str = None) -> int:
+    """RED/GREEN self-test against a fixture project, isolated per run.
+
+    Covers TWO bad shapes:
     1. The original 7-row shape gh-1763 found: profile role='contractor',
        profile_is_test=false, contractor_is_test=true.
     2. The 8th-row recurrence (adjudication 5590705970 / CLOSE-REVIEW FAIL
-       5596021411): profile role='homeowner' on a contractor identity,
-       same is_test mismatch. This is the exact shape that recurred in
-       production (edcbe10f/5ece9e69, "Indy Rooftops, LLC") and was
-       invisible to the pre-fix role-scoped guard. Seeding both here in the
-       actual CI job that gates PRs ("is-test Cross-Table Guard (gh-1763)")
-       means a regression back to role-scoping fails this check directly,
-       not just the offline unit tests.
+       5596021411): profile role='homeowner' on a contractor identity.
+       This is the shape that recurred in production (edcbe10f/5ece9e69,
+       "Indy Rooftops, LLC") and was invisible to the pre-fix role-scoped guard.
+
+    Isolation (see the block comment at SELFTEST_MARKER): fixtures carry this
+    run's id; RED/GREEN assert ONLY over this run's own contractor ids; a final
+    REAL whole-table pass scans everything but skips any self-test marker;
+    cleanup (own rows + stale >1h rows) runs in `finally`.
     """
     if PRODUCTION_PROJECT_REF in project_url:
         print(
@@ -626,36 +733,41 @@ def self_test(project_url: str, service_key: str, urlopen=urllib.request.urlopen
         print("UNMEASURED: SUPABASE_URL and/or SUPABASE_SERVICE_ROLE_KEY are not set.", file=sys.stderr)
         return 3
 
+    run_id = run_id or _selftest_run_id()
+    label = _fixture_label(run_id)
     fixtures = [
         {"label": "original shape (gh-1763 body, role=contractor)", "role": "contractor"},
         {"label": "recurrence shape (8th row, role=homeowner)", "role": "homeowner"},
     ]
     for f in fixtures:
-        f["email"] = f"gh1763-selftest+{uuid.uuid4().hex}@otterquote-internal.test"
+        f["email"] = f"gh1763-selftest+{run_id}-{uuid.uuid4().hex[:8]}@otterquote-internal.test"
         f["user_id"] = None
         f["contractor_id"] = None
         f["profile_inserted"] = False
 
     overall_ok = True
+    print(f"=== gh-1763 guard self-test against {project_url} (run id {run_id}) ===")
 
     try:
         try:
-            print(f"=== gh-1763 guard self-test against {project_url} ===")
+            cleanup_stale_selftest_rows(project_url, service_key, urlopen=urlopen)
             for f in fixtures:
                 f["user_id"] = _admin_create_user(project_url, service_key, f["email"], urlopen=urlopen)
                 print(f"Created throwaway auth user {f['user_id']} ({f['email']}) for {f['label']}")
 
                 # Bad shape: profile says production, contractor says test.
-                _insert_profile(project_url, service_key, f["user_id"], is_test=False, urlopen=urlopen, role=f["role"])
+                _insert_profile(project_url, service_key, f["user_id"], is_test=False, urlopen=urlopen, role=f["role"], label=label)
                 f["profile_inserted"] = True
-                f["contractor_id"] = _insert_contractor(project_url, service_key, f["user_id"], is_test=True, urlopen=urlopen)
+                f["contractor_id"] = _insert_contractor(project_url, service_key, f["user_id"], is_test=True, urlopen=urlopen, label=label)
                 print(
                     f"Seeded bad-shape fixture ({f['label']}): profile {f['user_id']} "
                     f"role={f['role']} is_test=false, contractor {f['contractor_id']} is_test=true"
                 )
 
-            print(f"\n--- RED run (both bad fixtures present, {len(fixtures)} rows expected) ---")
-            red_code = run(project_url, service_key, urlopen=urlopen)
+            own_ids = {f["contractor_id"] for f in fixtures}
+
+            print(f"\n--- RED run (this run's {len(fixtures)} bad fixtures only; other runs' rows ignored) ---")
+            red_code = run(project_url, service_key, urlopen=urlopen, only_contractor_ids=own_ids)
             red_ok = red_code == 1
             print(f"RED expectation (exit==1): {'PASS' if red_ok else 'FAIL'} (got exit {red_code})")
             overall_ok = overall_ok and red_ok
@@ -665,8 +777,8 @@ def self_test(project_url: str, service_key: str, urlopen=urllib.request.urlopen
                 _update_contractor_is_test(project_url, service_key, f["contractor_id"], is_test=False, urlopen=urlopen)
                 print(f"\nRepaired fixture ({f['label']}): contractor {f['contractor_id']} is_test set to false to match profile")
 
-            print("\n--- GREEN run (clean fixtures) ---")
-            green_code = run(project_url, service_key, urlopen=urlopen)
+            print("\n--- GREEN run (this run's repaired fixtures only) ---")
+            green_code = run(project_url, service_key, urlopen=urlopen, only_contractor_ids=own_ids)
             green_ok = green_code == 0
             print(f"GREEN expectation (exit==0): {'PASS' if green_ok else 'FAIL'} (got exit {green_code})")
             overall_ok = overall_ok and green_ok
@@ -698,6 +810,16 @@ def self_test(project_url: str, service_key: str, urlopen=urllib.request.urlopen
                     print(f"Deleted auth user {f['user_id']} ({f['label']})")
             except FetchError as exc:
                 print(f"cleanup warning: could not delete auth user {f['user_id']}: {exc}", file=sys.stderr)
+        cleanup_stale_selftest_rows(project_url, service_key, urlopen=urlopen)
+
+    # REAL guard pass: the production check this job exists for. Scans the WHOLE
+    # table (not just our fixtures) and fails on any genuine bad-shape row; the
+    # only rows it skips are self-test fixtures, from any run.
+    print("\n--- REAL pass (whole table, self-test-marked rows excluded) ---")
+    real_code = run(project_url, service_key, urlopen=urlopen, exclude_selftest=True)
+    real_ok = real_code == 0
+    print(f"REAL expectation (exit==0): {'PASS' if real_ok else 'FAIL'} (got exit {real_code})")
+    overall_ok = overall_ok and real_ok
 
     print(f"\n=== self-test {'PASS' if overall_ok else 'FAIL'} ===")
     return 0 if overall_ok else 1
@@ -727,7 +849,9 @@ def main() -> int:
     if "--self-test" in argv:
         return self_test(project_url, service_key)
 
-    return run(project_url, service_key)
+    # Plain mode excludes nothing (production behaviour). --exclude-selftest is
+    # for the CI-test project only, where concurrent self-test runs park fixtures.
+    return run(project_url, service_key, exclude_selftest="--exclude-selftest" in argv)
 
 
 if __name__ == "__main__":
