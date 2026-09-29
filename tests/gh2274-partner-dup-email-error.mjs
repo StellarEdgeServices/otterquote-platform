@@ -514,6 +514,8 @@ for (const page of PAGES) {
     ok(!!marker && JSON.parse(marker).email === emailKey && !/pass/i.test(marker), page.file + ' (f): after a register_partner failure a pending-registration marker (email, no password) is kept -- got ' + marker);
     ok(![...run.lsStore.entries()].some(([k, v]) => /Jane|3175551234|Test Co|gh2274-dup@example/i.test(k + ' ' + v)), page.file + ' (f): gh-2355 no name/email/phone/company is written to localStorage -- got ' + JSON.stringify([...run.lsStore.entries()]));
     ok(!!marker && /Jane/.test(marker) && /3175551234/.test(marker), page.file + ' (f): gh-2355 the resume marker (with the rpcArgs the dashboard replays) is kept in sessionStorage');
+    const sctx = JSON.parse(run.lsStore.get('oq_partner_signup_ctx') || 'null');
+    ok(!!sctx && typeof sctx.agentType === 'string' && sctx.attribution && typeof sctx.ts === 'number', page.file + ' (f): gh-2355 the NON-PII signup ctx (agent type + attribution) is kept in localStorage for cross-tab recovery');
     ok(!/already a partner|already registered/i.test(surfacedOf(run, page)), page.file + ' (f): the first-attempt failure is not shown as already-a-partner');
     await submit(run);
     ok(run.callOrder.join(',') === 'signUp,register_partner,signUp,register_partner', page.file + ' (f): retry completes register_partner after the duplicate signUp -- got ' + JSON.stringify(run.callOrder));

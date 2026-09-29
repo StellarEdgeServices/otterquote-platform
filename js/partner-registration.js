@@ -81,5 +81,76 @@
     return { status: 'error', error: err };
   }
 
-  root.PartnerRegistration = { KEY: KEY, TTL_MS: TTL_MS, TYPES: TYPES, readMarker: readMarker, clearMarker: clearMarker, buildParams: buildParams, complete: complete };
+
+  /* ---------------------------------------------------------------------------------------------
+   * gh-2355 re-collect recovery. The PII marker above is tab-scoped, so a partner who returns in a
+   * NEW tab (confirmation / sign-in link) after a failed register_partner has no marker. The signup
+   * pages therefore also leave a NON-PII context in localStorage (agent type + recruit code + UTM /
+   * click-id / funnel attribution, no name/email/phone/company) and the dashboard re-collects the
+   * rest (name, phone, company, a freshly ticked terms checkbox -> a NEW termsAcceptedAt).
+   * Every string in FORMS is copied VERBATIM from the matching signup page (partner-re,
+   * partner-insurance, partner-inspectors, partner-adjusters, partner-other); unknown type -> other.
+   * ------------------------------------------------------------------------------------------- */
+  var CTX_KEY = 'oq_partner_signup_ctx';
+  var CTX_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+  var CTX_ATTR = ['p_recruit_code', 'p_utm_source', 'p_utm_medium', 'p_utm_campaign', 'p_utm_content', 'p_fbclid', 'p_li_fat_id', 'p_funnel_id'];
+  var ERR_TEXT = 'Something went wrong. Please try again or email us at support@otterquote.com';
+  var SUBMITTING = 'Setting up your account...';
+  var TERMS_STD = [{ t: "I agree to Otter Quotes's " }, { a: 'partner-agreement.html', t: 'Partner Terms' }];
+  var TERMS_ERR_STD = 'Please agree to the Partner Terms to continue.';
+  var FORMS = {
+    re_agent: { first: { label: 'First Name', ph: 'Jane' }, last: { label: 'Last Name', ph: 'Smith' }, phone: { label: 'Phone', ph: '(317) 555-1234' },
+      company: { label: 'Brokerage / Agency Name', ph: 'Your Real Estate Company', required: true }, terms: TERMS_STD, termsError: TERMS_ERR_STD, submit: 'Create My Partner Account' },
+    insurance_agent: { full: { label: 'Full Name', err: 'Please enter your first and last name.' }, phone: { label: 'Phone Number', ph: '' },
+      company: { label: 'Brokerage / Agency Name', ph: '', required: true },
+      terms: [{ t: 'I agree to the ' }, { a: '/partner-agreement.html', t: 'Partner Agreement' }, { t: ' and ' }, { a: '/terms.html', t: 'Terms' }],
+      termsError: 'You must agree to the Partner Agreement and Terms.', submit: 'Create My Partner Account' },
+    home_inspector: { first: { label: 'First Name', ph: 'John' }, last: { label: 'Last Name', ph: 'Doe' }, phone: { label: 'Phone', ph: '(555) 123-4567' },
+      company: { label: 'Company Name', ph: 'ABC Home Inspections', required: true },
+      terms: [{ t: "I agree to Otter Quotes's " }, { a: 'partner-agreement-inspector.html', t: 'Partner Terms' }], termsError: TERMS_ERR_STD, submit: 'Generate My Referral Link' },
+    adjuster: { first: { label: 'First Name', ph: 'John' }, last: { label: 'Last Name', ph: 'Doe' }, phone: { label: 'Phone', ph: '(555) 123-4567' },
+      company: { label: 'Employer / Adjusting Firm', ph: 'ABC Claims Adjusting', required: true }, terms: TERMS_STD, termsError: TERMS_ERR_STD, submit: 'Generate My Referral Link' },
+    other: { first: { label: 'First Name', ph: 'John' }, last: { label: 'Last Name', ph: 'Doe' }, phone: { label: 'Phone', ph: '(555) 123-4567' },
+      company: { label: 'Company / Business Name', ph: 'ABC Property Services', required: false, optional: '(optional)' }, terms: TERMS_STD, termsError: TERMS_ERR_STD, submit: 'Generate My Referral Link' }
+  };
+
+  /** The non-PII signup context ({agentType, attribution:{p_*}}) or null (missing / malformed / expired). */
+  function readCtx(storage, now) {
+    var raw, c;
+    try { raw = storage.getItem(CTX_KEY); } catch (e) { return null; }
+    if (!raw) return null;
+    try { c = JSON.parse(raw); } catch (e) { return null; }
+    var t = typeof now === 'number' ? now : Date.now();
+    if (!c || typeof c !== 'object' || typeof c.ts !== 'number' || t - c.ts >= CTX_TTL_MS || c.ts > t + 60000) return null;
+    var attr = {};
+    var a = c.attribution && typeof c.attribution === 'object' ? c.attribution : {};
+    CTX_ATTR.forEach(function (k) { if (a[k] !== undefined && a[k] !== null && a[k] !== '') attr[k] = a[k]; });
+    return { agentType: TYPES.indexOf(c.agentType) === -1 ? null : c.agentType, attribution: attr };
+  }
+  function clearCtx(storage) { try { storage.removeItem(CTX_KEY); } catch (e) { /* non-fatal */ } }
+  function formFor(agentType) { return FORMS[agentType] || FORMS.other; }
+
+  /** register_partner arguments from the re-collected values (v: {first,last,full,phone,company}), the ctx and the signed-in email. termsAcceptedAt = the fresh ticked submit. */
+  function buildRecollectParams(agentType, v, ctx, ownEmail, isTest, termsAcceptedAt) {
+    var type = TYPES.indexOf(agentType) === -1 ? 'other' : agentType;
+    var form = formFor(type), first = String(v.first || '').trim(), last = String(v.last || '').trim();
+    if (form.full) {
+      var parts = String(v.full || '').trim().split(/\s+/).filter(Boolean);
+      if (parts.length < 2) return null;
+      first = parts[0]; last = parts.slice(1).join(' ');
+    }
+    if (!first || !last || !String(v.phone || '').trim() || !norm(ownEmail)) return null;
+    var company = String(v.company || '').trim();
+    if (form.company.required && !company) return null;
+    if (typeof termsAcceptedAt !== 'number' || !isFinite(termsAcceptedAt)) return null;
+    var p = { p_agent_type: type, p_first_name: first, p_last_name: last, p_email: norm(ownEmail), p_phone: String(v.phone).trim(), p_company: company || null };
+    var attr = (ctx && ctx.attribution) || {};
+    CTX_ATTR.forEach(function (k) { p[k] = attr[k] !== undefined ? attr[k] : null; });
+    p.p_is_test = !!isTest;
+    p.p_metadata = { terms_accepted_at_client: new Date(termsAcceptedAt).toISOString(), completion_path: 'dashboard_recollect' };
+    return p;
+  }
+
+  root.PartnerRegistration = { KEY: KEY, TTL_MS: TTL_MS, TYPES: TYPES, readMarker: readMarker, clearMarker: clearMarker, buildParams: buildParams, complete: complete,
+    CTX_KEY: CTX_KEY, FORMS: FORMS, ERR_TEXT: ERR_TEXT, SUBMITTING: SUBMITTING, readCtx: readCtx, clearCtx: clearCtx, formFor: formFor, buildRecollectParams: buildRecollectParams };
 })(typeof window !== 'undefined' ? window : this);

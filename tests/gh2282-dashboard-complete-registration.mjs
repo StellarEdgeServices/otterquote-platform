@@ -40,6 +40,7 @@ function extractFn(src, name) {
 }
 const showSrc = extractFn(html, 'showNoPartnerState');
 const beginSrc = extractFn(html, 'beginPartnerRegistrationCompletion');
+const recollectSrc = extractFn(html, 'renderPartnerRecollect') || '';
 ok(!!showSrc && showSrc.includes('beginPartnerRegistrationCompletion()'), 'showNoPartnerState() starts the completion for the no-record state');
 ok(!!beginSrc, 'beginPartnerRegistrationCompletion() exists on the dashboard');
 
@@ -50,7 +51,7 @@ function makeEl(id) {
 }
 async function run({ marker, claimError = false, rpcResult = { error: null }, email = OWN, clickRetry = false, legacy = null }) {
   const els = new Map();
-  const doc = { getElementById(id) { if (!els.has(id)) els.set(id, makeEl(id)); return els.get(id); }, createElement() { return makeEl('opt'); } };
+  const doc = { getElementById(id) { if (!els.has(id)) els.set(id, makeEl(id)); return els.get(id); }, createElement() { return makeEl('opt'); }, createTextNode(t) { return { text: t }; } };
   const ls = new Map(); if (marker !== undefined) ls.set(KEY, typeof marker === 'string' ? marker : JSON.stringify(marker));
   const localStorage = { getItem: (k) => (ls.has(k) ? ls.get(k) : null), setItem: (k, v) => ls.set(k, String(v)), removeItem: (k) => ls.delete(k) };
   // gh-2355: the marker (name/phone/company) is read from sessionStorage; localStorage must never hold it. `ls` (returned) is the sessionStorage map the marker lives in.
@@ -62,11 +63,11 @@ async function run({ marker, claimError = false, rpcResult = { error: null }, em
   const win = { location: { reload() { reloads++; } }, localStorage: realLocal, sessionStorage, Auth: { isTestEmail: () => false },
     AgentTypes: { CHOOSER_LABELS: {} } };
   win.window = win;
-  const ctx = { window: win, Auth: win.Auth, AgentTypes: win.AgentTypes, document: doc, localStorage: realLocal, sessionStorage, sb, currentUser: { id: 'u1', email }, console: { error() {}, log() {} }, JSON, Date, String, Promise };
+  const ctx = { window: win, Auth: win.Auth, AgentTypes: win.AgentTypes, document: doc, localStorage: realLocal, sessionStorage, sb, currentUser: { id: 'u1', email }, console: { error() {}, log() {} }, alert() {}, JSON, Date, String, Promise, Object, isFinite };
   vm.createContext(ctx);
   vm.runInContext(lib, ctx);
   ctx.PartnerRegistration = win.PartnerRegistration;
-  vm.runInContext(beginSrc + '\n' + showSrc + '\n;this.__show = showNoPartnerState;', ctx);
+  vm.runInContext(beginSrc + '\n' + recollectSrc + '\n' + showSrc + '\n;this.__show = showNoPartnerState;', ctx);
   ctx.__show(claimError ? { message: 'claim failed' } : null);
   for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0));
   if (clickRetry) {
@@ -116,7 +117,8 @@ if (showSrc && beginSrc && lib) {
   r = await run({ marker: good(), legacy: good() });
   ok(!r.lsLegacy.has(KEY), '(8) gh-2355 a legacy localStorage marker is purged by the dashboard');
   r = await run({ legacy: good() });
-  ok(r.rpcCalls.length === 0 && !r.lsLegacy.has(KEY), '(8) gh-2355 a localStorage-only marker is never used to register (no PII read from localStorage)');
+  ok(r.rpcCalls.length === 0 && !r.lsLegacy.has(KEY), '(8) gh-2355 a localStorage-only legacy marker is never replayed automatically (no PII read from localStorage) and is purged');
+  ok(r.doc.getElementById('partnerRecollect').style.display === 'block' && r.doc.getElementById('partnerFinishSignup').style.display === 'inline-block', '(8) gh-2355 with no usable marker the dashboard offers the re-collect form (not a dead end); cross-tab flow is proven in tests/gh2355-crosstab-recovery.mjs');
   // 7. claim failure state must NOT start a registration.
   r = await run({ marker: good(), claimError: true });
   ok(r.rpcCalls.length === 0, '(7) the claim-failed state never calls register_partner');
