@@ -551,6 +551,15 @@ window.Auth = {
       await sb.auth.signOut({ scope: 'local' });
     } finally {
       try { document.cookie = 'sb_at=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT'; } catch (e) { /* non-fatal */ }
+      // gh-2060 round-4 hardening 1: an unconsumed cs_auth_role breadcrumb
+      // (e.g. an abandoned magic-link request) must not outlive the session
+      // on a shared browser.
+      try {
+        localStorage.removeItem('cs_auth_role');
+        localStorage.removeItem('cs_auth_role_at');
+        sessionStorage.removeItem('cs_auth_role');
+        sessionStorage.removeItem('cs_auth_role_at');
+      } catch (e) { /* non-fatal */ }
       window.location.href = '/index.html';
     }
   },
@@ -1094,6 +1103,9 @@ window.Auth = {
     let role = (
       storedRoleRaw !== null &&
       Number.isFinite(storedAt) &&
+      // gh-2060 round-4 hardening 2: a future-dated stamp (negative age) must
+      // not pass the `<= TTL` check and be trusted indefinitely.
+      (Date.now() - storedAt) >= 0 &&
       (Date.now() - storedAt) <= CS_AUTH_ROLE_TTL_MS
     ) ? storedRoleRaw : null;
     localStorage.removeItem('cs_auth_role');

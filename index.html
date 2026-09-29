@@ -38,7 +38,8 @@
     var lsFresh = false;
     try {
       lsRoleAt = parseInt(localStorage.getItem('cs_auth_role_at') || '', 10);
-      lsFresh = Number.isFinite(lsRoleAt) && (Date.now() - lsRoleAt) <= CS_AUTH_ROLE_TTL_MS;
+      // gh-2060 round-4 hardening 2: `>= 0` rejects a future-dated stamp.
+      lsFresh = Number.isFinite(lsRoleAt) && (Date.now() - lsRoleAt) >= 0 && (Date.now() - lsRoleAt) <= CS_AUTH_ROLE_TTL_MS;
     } catch (e) {}
 
     // gh-817 A1b: user_metadata.role is a signup-time artifact (stamped once by

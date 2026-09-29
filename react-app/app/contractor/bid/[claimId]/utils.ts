@@ -972,3 +972,14 @@ export function wizardReducer(state: WizardState, action: WizardAction): WizardS
       return state;
   }
 }
+
+// ================================================================
+// gh-2105 (batch 6): zero-row-update detection for the bid price update/
+// renew write in bid-form.tsx. Local copy of the same check as
+// supabase/functions/_shared/zero-row-update-guard.ts#checkRowsWritten —
+// that module is Deno/edge-function-only, so this file carries the same
+// pure logic for the client-side quotes-price-update write in bid-form.tsx.
+// ================================================================
+export function wroteRow(rows: unknown): boolean {
+  return Array.isArray(rows) && rows.length > 0;
+}

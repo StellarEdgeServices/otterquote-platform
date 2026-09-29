@@ -322,6 +322,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // host-only sb_at. The SIGNED_OUT handler still resets React state.
       otterquoteCookieStorage.removeItem(OTTERQUOTE_AUTH_STORAGE_KEY);
       setSbAtCookie(null);
+      // gh-2060 round-4 hardening 1: an unconsumed cs_auth_role breadcrumb
+      // (e.g. an abandoned magic-link request) must not outlive the session
+      // on a shared browser.
+      try {
+        localStorage.removeItem('cs_auth_role');
+        localStorage.removeItem('cs_auth_role_at');
+      } catch {
+        /* storage blocked — nothing to clear */
+      }
     }
   };
 

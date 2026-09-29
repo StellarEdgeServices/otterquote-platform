@@ -813,7 +813,10 @@ a:hover { color: var(--amber-2); }
     // the PAGE's own id, never a stale value some other funnel stored --
     // it applies whenever the current visit itself carried no funnel_id/
     // matching utm_campaign, overriding whatever "stored" resolved to above.
-    if (!utmContext.funnelId) utmContext.funnelId = 're-1';
+    // gh-2060 round-4: keyed on THIS load's own signal (`fresh`), not on the
+    // merged utmContext -- a stored funnelId left by a bounce through a
+    // DIFFERENT funnel page must not survive here (mirrors ins-1/ins-3/ins-5).
+    if (!fresh.funnelId) utmContext.funnelId = 're-1';
   }
 
   // gh-2150 round 2 (REVIEW FAIL 5836233175, Ben ruling (3), S12): Clarity

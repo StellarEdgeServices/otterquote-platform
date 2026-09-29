@@ -30,6 +30,7 @@ import {
   foundFieldIds,
   isTemplateUsable,
 } from "./template-validity.ts";
+import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 
 export interface RevalidateOptions {
   supabase: any;
@@ -224,12 +225,23 @@ export async function revalidateTemplates(opts: RevalidateOptions): Promise<Reva
 
     if (dryRun) continue;
 
-    const { error: updateErr } = await supabase
+    const { error: updateErr, data: updateRows } = await supabase
       .from("contractor_templates")
       .update({ validation_result: validationResult, status: newStatus })
-      .eq("id", tmpl.id);
+      .eq("id", tmpl.id)
+      .select("id");
     if (updateErr) {
       rowReport.error = `Failed to update template: ${updateErr.message}`;
+      report.errors++;
+      continue;
+    }
+    // gh-2105 (decision a, legal): `tmpl` was already read from this same
+    // table earlier in this pass, so a zero-row match here means the row
+    // changed out from under the sweep (deleted, RLS) between that read and
+    // this write -- without this check `report.written` would count a
+    // revalidation that never actually persisted the new verdict.
+    if (!checkRowsWritten(updateRows).wroteRows) {
+      rowReport.error = zeroRowWriteMessage("validate-contract-template/revalidate", `contractor_templates.status=${newStatus} for template ${tmpl.id}`);
       report.errors++;
       continue;
     }
