@@ -56,7 +56,7 @@
 <!-- Microsoft Clarity (wwr7qlk8g5) is loaded by /js/ga-gate.js, behind the same production-host gate as GA4 (gh-1619). Do not add a per-page loader. -->
 
 <!-- Supabase JS -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js" integrity="sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.js" integrity="sha384-iLddHTLokph6Omwoyid4XKxHaWa6w41BnoEj0q5oOrzmYPpHIKt1wyjReA7s//pP" crossorigin="anonymous"></script>
 
 <!-- Google Fonts -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -212,9 +212,22 @@
 
         <div class="browser-note">
             <span class="note-emoji">&#9888;&#65039;</span>
-            <span>You must use <strong>Safari</strong> for this. Chrome, Firefox, and other browsers on iPhone and iPad can't add the app to your home screen &mdash; that's an Apple restriction, not something we can change. If this page didn't open in Safari, copy the link and paste it into Safari first.</span>
+            <span>The steps below are for <strong>Safari</strong>. Since iOS 16.4, other browsers like Chrome, Firefox, and Edge can also add web apps to your home screen from their own menus, but the steps differ slightly &mdash; check that browser's Share or menu button. If this page didn't open in Safari and you'd rather follow the exact steps below, copy the link and paste it into Safari first.</span>
         </div>
 
+        <!-- gh-2296 / gh-2298 fix: iOS 26 (shipped Sept 2025, MacRumors
+             2025-08-20) moved Safari's Share icon behind a new ••• (more)
+             button in the address bar, and Add to Home Screen gained an
+             "Open as Web App" toggle -- it is ON by default (iDownloadBlog,
+             2025-06-17), and skipping/turning it off yields a plain Safari
+             bookmark (browser chrome, not a standalone app) instead of the
+             app. iOS 27 / iPadOS 27 shipped 2026-09-14 (AppleInsider,
+             2026-09-09); MacRumors' "iOS 27: All the New Safari Features"
+             guide lists no changes to Add to Home Screen or Open as Web App,
+             so the flow below is believed unchanged on iOS 27, but this has
+             not been independently device-verified on iOS 27 -- treat that
+             as unverified. Page copy below stays version-neutral ("recent
+             iOS versions") rather than naming a specific OS number. -->
         <ol class="step-list">
             <li class="step-row">
                 <span class="step-num">1</span>
@@ -222,7 +235,7 @@
             </li>
             <li class="step-row">
                 <span class="step-num">2</span>
-                <span class="step-text">Tap the <strong>Share</strong> button <span class="sub">(the square with an arrow pointing up &mdash; usually at the bottom of the screen on iPhone, or the top-right on iPad)</span></span>
+                <span class="step-text">Tap the <strong>&#8226;&#8226;&#8226;</strong> button in the address bar <span class="sub">(three dots)</span>, then tap <strong>Share</strong> <span class="sub">(Don&rsquo;t see &#8226;&#8226;&#8226;? Tap the <strong>Share</strong> button &mdash; the square with an up-arrow &mdash; directly.)</span></span>
             </li>
             <li class="step-row">
                 <span class="step-num">3</span>
@@ -230,10 +243,14 @@
             </li>
             <li class="step-row">
                 <span class="step-num">4</span>
-                <span class="step-text">Tap <strong>Add</strong> in the top-right corner</span>
+                <span class="step-text">Check that the <strong>&ldquo;Open as Web App&rdquo;</strong> toggle is <strong>ON</strong> <span class="sub">(it's on by default on recent iOS versions &mdash; if it's off, you'll get a plain Safari bookmark instead of the app)</span></span>
             </li>
             <li class="step-row">
                 <span class="step-num">5</span>
+                <span class="step-text">Name it, then tap <strong>Add</strong> in the top-right corner</span>
+            </li>
+            <li class="step-row">
+                <span class="step-num">6</span>
                 <span class="step-text">Find the <strong>OQ Partners</strong> icon on your home screen, tap it, and sign in to your partner account</span>
             </li>
         </ol>

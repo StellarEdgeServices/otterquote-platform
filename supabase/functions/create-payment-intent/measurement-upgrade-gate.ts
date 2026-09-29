@@ -34,10 +34,23 @@
  * resolve to 'basic'. This module mirrors that exact contract in TypeScript
  * (Deno edge functions cannot import the browser-global js/measurement-shape.js
  * — see that file's own "do not import cross-world" note) rather than
- * re-deriving it: a claim already flagged 'full' refuses to mint a second
- * PaymentIntent (the "already-detailed no-mint" test case) and everything
- * else — including the column not existing at all — is treated as 'basic'
- * and the purchase is allowed to proceed to its other checks.
+ * re-deriving it: a claim already flagged 'full' is a "nothing new for THIS
+ * contractor to buy" question ONLY for a contractor who has already bought it
+ * themselves (the `contractorAlreadyPurchased` no-mint case, below) — the
+ * column not existing at all, or being anything other than 'full', is treated
+ * as 'basic' and the purchase is allowed to proceed to its other checks.
+ *
+ * LATER-CONTRACTOR PRICING (D-317 cl. 4, Dustin "APPROVE TO ALL" on #1411
+ * comment 5856964558, per Marty's recommended default 5850642246): a claim
+ * already flagged Shape B (`measurement_shape === 'full'`) does NOT waive
+ * every subsequent contractor through free. D-317 cl. 4's own text --
+ * "every later upgrade on the same roof is margin" -- only makes sense if
+ * later upgrades are PURCHASES, not free views. The vendor-credit rebate
+ * (see below) is a one-time, first-buyer-only bookkeeping entry regardless;
+ * it was never netted against the charge for anyone, so the tier price is
+ * identical for the first buyer and every later one. The ONLY thing a
+ * Shape-B claim still refuses is the SAME contractor buying it a second
+ * time (`contractorAlreadyPurchased`) -- that is a dedupe, not a discount.
  *
  * FAIL CLOSED on the money-relevant unknowns: an unreadable claim, a missing
  * basic-report fulfillment, or a missing/invalid squares reading all refuse
@@ -101,10 +114,21 @@ export function priceForSquares(squares: number): number {
  *                          row, or null if none exists. Only 'completed'
  *                          (admin-delivered — see admin-measurements.html)
  *                          counts as fulfilled.
+ * @param contractorAlreadyPurchased Whether THIS requesting contractor
+ *                          already has an upgrade order on this claim
+ *                          (any `hover_orders` row, `product_code =
+ *                          'roof_upgrade_detailed'`, this contractor's id —
+ *                          see index.ts). Defaults to false so every existing
+ *                          caller/test that predates the later-contractor-pays
+ *                          build (D-317 cl. 4, #1411 comment 5856964558) is
+ *                          unaffected. This is a per-contractor dedupe, NOT a
+ *                          per-claim "nothing left to buy" flag — see the
+ *                          LATER-CONTRACTOR PRICING module doc above.
  */
 export function evaluateMeasurementUpgradeGate(
   claim: UpgradeClaimRow | null | undefined,
   basicOrderStatus: string | null | undefined,
+  contractorAlreadyPurchased = false,
 ): UpgradeGateVerdict {
   // ── #1467 GATE, reused verbatim (never re-implemented) ──
   const chargeGuard = evaluateLiveChargeGuard(claim);
@@ -119,13 +143,20 @@ export function evaluateMeasurementUpgradeGate(
     };
   }
 
-  // ── #1410 shape gate: already detailed -> nothing to buy ──
-  if (resolveShape(claim) === "full") {
+  // ── Per-contractor dedupe: THIS contractor already has an upgrade order
+  // on this claim -- refuse regardless of the claim's CURRENT shape.
+  // (REVIEW 5869709815 nit: checked unconditionally now, not only when
+  // shape === 'full' -- a contractor could otherwise double-buy while the
+  // claim is still Shape A, i.e. paid but not yet admin-delivered.) Per
+  // D-317 cl. 4 ("every later upgrade on the same roof is margin"), this
+  // does NOT waive every OTHER contractor through free -- only a repeat
+  // purchase by the SAME contractor is refused here. ──
+  if (contractorAlreadyPurchased) {
     return {
       allow: false,
       status: 409,
-      code: "ALREADY_DETAILED",
-      error: "This claim's measurements are already the detailed report — there is nothing to purchase.",
+      code: "ALREADY_PURCHASED",
+      error: "This contractor has already purchased the detailed measurement upgrade for this claim.",
     };
   }
 
@@ -151,4 +182,76 @@ export function evaluateMeasurementUpgradeGate(
   }
 
   return { allow: true, amountCents: priceForSquares(squares), squares };
+}
+
+/**
+ * [REVIEW: FAIL 5869709815, must-fix 1] The per-contractor dedupe lookup
+ * (index.ts, `hover_orders` read for `product_code = 'roof_upgrade_detailed'`
+ * scoped to this contractor) is a money-relevant unknown exactly like the
+ * ones evaluateMeasurementUpgradeGate already fails closed on -- a query
+ * ERROR is NOT the same thing as "no prior row found", and must never be
+ * silently treated as `contractorAlreadyPurchased = false`. Discarding the
+ * error there would let a contractor who already paid mint a SECOND
+ * PaymentIntent for the same upgrade whenever that one read happens to fail
+ * (network blip, RLS misconfig, etc.) -- `main` could never do this, because
+ * it refused every Shape-B request outright with no query at all.
+ *
+ * Pulled into its own pure function (rather than inlined in index.ts) so the
+ * fail-closed behaviour is unit-testable without a database, same reasoning
+ * as every other decision in this module.
+ */
+export interface PriorUpgradeQueryResult {
+  data: { id: string } | null | undefined;
+  error: { message?: string; code?: string } | null | undefined;
+}
+
+export type ContractorPurchaseCheck =
+  | { ok: true; alreadyPurchased: boolean }
+  | { ok: false; status: number; code: string; error: string };
+
+export function resolveContractorAlreadyPurchased(
+  result: PriorUpgradeQueryResult,
+): ContractorPurchaseCheck {
+  if (result.error) {
+    return {
+      ok: false,
+      status: 503,
+      code: "UPGRADE_STATUS_LOOKUP_FAILED",
+      error: "We could not verify this contractor's purchase history for this claim. Nothing has been charged.",
+    };
+  }
+  return { ok: true, alreadyPurchased: !!result.data };
+}
+
+/**
+ * [REVIEW: FAIL 5869709815, nit] Pins the exact table/columns/constant the
+ * per-contractor dedupe lookup must query, so the wiring itself (not just
+ * the fail-closed decision above) is testable without a database or a
+ * chainable Supabase-client mock. index.ts builds its query from this
+ * object's fields rather than repeating the literals inline.
+ */
+export interface PriorUpgradeLookupParams {
+  claimId: string;
+  contractorId: string;
+}
+
+export interface PriorUpgradeLookupQuery {
+  table: "hover_orders";
+  select: "id";
+  /** [column, value] pairs, applied as `.eq(column, value)` in order. */
+  eq: readonly [string, string][];
+}
+
+export function buildPriorUpgradeLookupQuery(
+  params: PriorUpgradeLookupParams,
+): PriorUpgradeLookupQuery {
+  return {
+    table: "hover_orders",
+    select: "id",
+    eq: [
+      ["claim_id", params.claimId],
+      ["product_code", UPGRADE_PRODUCT_CODE],
+      ["requested_by_contractor_id", params.contractorId],
+    ],
+  };
 }
