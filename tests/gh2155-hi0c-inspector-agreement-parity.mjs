@@ -18,6 +18,11 @@
  *      section heading, the footer/legal boilerplate, and Section 4.3's
  *      no-fee statement (which must survive; it is NOT one of the removed
  *      elements).
+ *   4. (HI-0d, D-333) Asserts Section 4 is re-headed "4. No Referral Fee or
+ *      Recruit Bonus" with only the verbatim 4.3 statement, and FAILS if
+ *      "Referral Fee Structure" or "4.2 Payment Timing" appears in the
+ *      inspector output. The test's build script is overridable via the
+ *      INSPECTOR_BUILD_SCRIPT env var (used only for a negative control).
  *
  * Run: node tests/gh2155-hi0c-inspector-agreement-parity.mjs
  * Exit code 0 = every scenario passed, 1 = at least one failed.
@@ -38,7 +43,7 @@ function ok(cond, label) {
 
 const SOURCE_PATH = path.join(repoRoot, 'partner-agreement.html');
 const OUTPUT_PATH = path.join(repoRoot, 'partner-agreement-inspector.html');
-const BUILD_SCRIPT = path.join(repoRoot, 'tools', 'build_inspector_agreement.py');
+const BUILD_SCRIPT = process.env.INSPECTOR_BUILD_SCRIPT || path.join(repoRoot, 'tools', 'build_inspector_agreement.py');
 
 function findPython() {
   const candidates = ['python', 'python3', 'py'];
@@ -96,9 +101,6 @@ const survivingMarkers = [
   ['1. Acceptance of Agreement', 'Section 1'],
   ['2. Independent Contractor Relationship', 'Section 2'],
   ['3. Scope of Referral Services', 'Section 3'],
-  ['4. Referral Fee Structure', 'the Section 4 heading (kept -- only its fee sub-content is removed)'],
-  ['4.2 Payment Timing', 'Section 4.2 (generic payment timing, kept)'],
-  ['4.3 Home Inspector Partners', 'Section 4.3 (the no-fee statement itself, kept)'],
   ['receives no Referral Fee and no Recruit Bonus', 'the Section 4.3 no-fee sentence text'],
   ['5. Payment Method', 'Section 5'],
   ['6. Tax Treatment', 'Section 6'],
@@ -113,6 +115,26 @@ for (const [marker, label] of survivingMarkers) {
   ok(committed.includes(marker), `kept: ${label} ("${marker}") is present in partner-agreement-inspector.html`);
   ok(fs.readFileSync(SOURCE_PATH, 'utf8').includes(marker), `sanity: ${label} is also present in the source partner-agreement.html`);
 }
+
+// ── 4. gh-2155 HI-0d (D-333, Ben ruling on PR #2312): Section 4 ─────────────
+// The inspector build must emit Section 4 as the heading
+// "4. No Referral Fee or Recruit Bonus" containing ONLY the verbatim 4.3
+// Home Inspector Partners statement copied from the source. The fee heading
+// and the 4.2 Payment Timing paragraph must NOT appear anywhere in the output.
+const sourceText = fs.readFileSync(SOURCE_PATH, 'utf8');
+ok(!committed.includes('Referral Fee Structure'), 'D-333: "Referral Fee Structure" does not appear anywhere in the committed inspector agreement');
+ok(!freshBuild.includes('Referral Fee Structure'), 'D-333: "Referral Fee Structure" does not appear in the freshly built inspector output');
+ok(!committed.includes('4.2 Payment Timing'), 'D-333: "4.2 Payment Timing" does not appear anywhere in the committed inspector agreement');
+ok(!freshBuild.includes('4.2 Payment Timing'), 'D-333: "4.2 Payment Timing" does not appear in the freshly built inspector output');
+const stmtMatch = sourceText.match(/<h3>4\.3 Home Inspector Partners<\/h3>\s*(<p>[\s\S]*?<\/p>)/);
+ok(!!stmtMatch, 'sanity: the source partner-agreement.html carries the 4.3 Home Inspector Partners statement');
+const expectedSection4 = '<section>\n                <h2>4. No Referral Fee or Recruit Bonus</h2>\n                ' +
+  (stmtMatch ? stmtMatch[1] : '') + '\n            </section>';
+ok(committed.includes(expectedSection4),
+  'D-333: Section 4 is exactly the "4. No Referral Fee or Recruit Bonus" heading plus the verbatim 4.3 Home Inspector Partners statement');
+ok(committed.split('4. No Referral Fee or Recruit Bonus').length === 2, 'D-333: the new Section 4 heading appears exactly once');
+ok(!sourceText.includes('4. No Referral Fee or Recruit Bonus'), 'guard: the source partner-agreement.html is NOT retitled (fee-earning partners keep their Section 4)');
+ok(sourceText.includes('4. Referral Fee Structure') && sourceText.includes('4.2 Payment Timing'), 'guard: the source partner-agreement.html still carries its own Section 4 heading and 4.2');
 
 // This exact phrase only EXISTS after the Section 14(a) span removal joins
 // "...this Agreement" directly to "; (b) any violation..." -- it is not a

@@ -62,6 +62,9 @@ const FEE_TERM_RE = /\$[\d,]+|referral fee|recruit bonus/gi;
 const SAFE_SENTENCES = [
   'Home-inspector partners do not receive a referral fee or recruit bonus.',
   'receives no Referral Fee and no Recruit Bonus under this Agreement.',
+  // gh-2155 HI-0d (D-333): the inspector agreement's Section 4 heading, which asserts the
+  // ABSENCE of a fee. Listed BEFORE 'No Referral Fee' so the longer phrase is stripped whole.
+  '4. No Referral Fee or Recruit Bonus',
   'No Referral Fee',
   '4. Referral Fee Structure',
   'Referral fees and bonuses under Section 4 are paid through a third-party payment service',

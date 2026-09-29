@@ -19,8 +19,17 @@ marked `class="inspector-hide"` in the source:
      a fee inspectors never accept.
   4. The Section 14(a) cross-reference span pointing back at "the
      representation in Section 7".
+  5. (gh-2155 HI-0d, D-333, Ben ruling on PR #2312) Everything in Section 4
+     except the 4.3 "Home Inspector Partners" statement: the "4. Referral Fee
+     Structure" heading and the 4.2 Payment Timing paragraph are dropped, and
+     the section is re-headed "4. No Referral Fee or Recruit Bonus". The 4.3
+     statement itself is copied byte-for-byte from the source. The source
+     partner-agreement.html (the fee-earning partners' agreement) is NOT
+     edited.
 
-This is REMOVAL ONLY -- no new words are added anywhere. Everything else in
+This is REMOVAL ONLY, apart from the one Section 4 heading in item 5 (whose
+new text is the only wording this script writes; the 4.3 statement under it
+is copied verbatim from the source). Everything else in
 the document (title, meta tags, every other section, the footer, the
 tracking CSS/JS -- now inert since the hidden content no longer exists to
 hide) is byte-for-byte identical to `partner-agreement.html`. A committed
@@ -46,6 +55,10 @@ FEE_BLOCK_START = '<div id="feeStructureBlock" class="inspector-hide">'
 FOUR_ONE_START = '<div class="inspector-hide">\n                <h3>4.1 Single-Level Recruiting'
 SECTION_7_START = '<section class="inspector-hide">'
 SPAN_14A_START = '<span class="inspector-hide">'
+
+SECTION_4_START = '<section>\n                <h2>4. Referral Fee Structure</h2>'
+FOUR_THREE_START = '<h3>4.3 Home Inspector Partners</h3>\n                <p>'
+INSPECTOR_SECTION_4_HEADING = "4. No Referral Fee or Recruit Bonus"
 
 
 def _cut_balanced(text: str, start_marker: str, close_tag: str, search_from: int = 0) -> tuple[str, int]:
@@ -75,6 +88,21 @@ def build_inspector_agreement(source_text: str) -> str:
 
     # 4. Section 14(a) cross-reference span (span, no nested <span> inside it).
     text, pos = _cut_balanced(text, SPAN_14A_START, "</span>", pos)
+
+    # 5. Section 4 -> heading "4. No Referral Fee or Recruit Bonus" containing
+    #    ONLY the verbatim 4.3 Home Inspector Partners statement (drops the
+    #    "4. Referral Fee Structure" heading, the 4.2 Payment Timing paragraph
+    #    and the 4.3 sub-heading; no nested <section>/<p> inside the paragraph).
+    p_start = source_text.index(FOUR_THREE_START) + len(FOUR_THREE_START) - len("<p>")
+    p_end = source_text.index("</p>", p_start) + len("</p>")
+    statement = source_text[p_start:p_end]
+    sec_start = text.index(SECTION_4_START)
+    sec_end = text.index("</section>", sec_start) + len("</section>")
+    new_section = (
+        "<section>\n                <h2>" + INSPECTOR_SECTION_4_HEADING + "</h2>\n"
+        "                " + statement + "\n            </section>"
+    )
+    text = text[:sec_start] + new_section + text[sec_end:]
 
     return text
 
