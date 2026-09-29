@@ -57,6 +57,7 @@ on:
       - 'tests/gh2151-ins1-page.mjs'
       - 'hi-1.html'
       - 'tests/gh2152-hi1-page.mjs'
+      - 'tests/cro47-trust-partner.mjs'
       - 're-3.html'
       - 'ins-3.html'
       - 'ins-5.html'
@@ -121,6 +122,7 @@ on:
       - 'tests/gh2151-ins1-page.mjs'
       - 'hi-1.html'
       - 'tests/gh2152-hi1-page.mjs'
+      - 'tests/cro47-trust-partner.mjs'
       - 're-3.html'
       - 'ins-3.html'
       - 'ins-5.html'
@@ -151,7 +153,7 @@ jobs:
   static-pixel-gate-tests:
     name: Static pixel gate (node vm harness)
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -207,3 +209,10 @@ jobs:
         run: node tests/gh2155-hi05b-inspector-crawler.mjs
       - name: Handout PII/pixel gate -- code-only query string, validated code, no pixel, no Indiana claim, no paraphrased fee bullet, negative controls (gh2225)
         run: node tests/gh2225-handout-pii-gate.mjs
+      - name: Install Playwright + Chromium from the tests/e2e lockfile (gh-2361 real-browser proof)
+        working-directory: tests/e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Partner trust header on re-1/ins-1/hi-1 -- 390x744 FB UA, fields/legal/events unchanged, negative controls PN1-PN4 (cro47-trust-partner)
+        run: node tests/cro47-trust-partner.mjs
