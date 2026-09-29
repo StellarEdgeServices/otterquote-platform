@@ -1,4 +1,7 @@
 -- gh-886: Narrow the referral_agents payout-governing write surface
+-- CORRECTED 2026-09-26 (gh-1438 part 2): this file was previously filed at
+-- version 20260818211118; the real ledger row is 20260818210921 (confirmed
+-- read-only this session). Content below unchanged.
 -- Tier 3B, R-097 24h notice served 2026-08-18T11:37:10Z (issue #886 comment
 -- 5327596693, corrected 5332180631) and fast-pathed same-day per Dustin's
 -- CEO-board approval ("Q3: Approved - fast path it"). Branch-verified

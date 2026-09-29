@@ -1,4 +1,7 @@
 -- Migration: 20260618140000_p15_stripe_webhook_events
+-- CORRECTED 2026-09-26 (gh-1438 part 2): this file was previously filed at
+-- version 20260618140000; the real ledger row is 20260618152849 (confirmed
+-- read-only this session). Content below unchanged.
 -- Author: Claude Code (Opus 4.8) — D-211 Phase 15, Unit U15-1
 -- Date: 2026-06-18
 -- D-numbers: D-211 P15 (U15-1 — stripe-webhook event-level idempotency);

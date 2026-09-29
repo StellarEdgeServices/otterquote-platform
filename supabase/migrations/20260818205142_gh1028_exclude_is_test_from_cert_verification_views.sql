@@ -1,4 +1,7 @@
 -- gh-1028: exclude is_test rows from the two cert-verification reporting views
+-- CORRECTED 2026-09-26 (gh-1438 part 2): this file was previously filed at
+-- version 20260818205500; the real ledger row is 20260818205142 (confirmed
+-- read-only this session). Content below unchanged.
 -- (AC4 — enumerated as the full set of DB views reading `quotes` for counts;
 -- see PR body for the enumeration). Neither view previously filtered on
 -- quotes.is_test (added v104, 2026-08-10) even though the column already

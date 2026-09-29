@@ -1,3 +1,5 @@
+> **COMPANION OF AN APPLIED MIGRATION (2026-09-26, gh-1438 part 2)** -- the forward migration this pre-flight documents is live in production, filed as `supabase/migrations/20260824184631_gh969_hover_rebate_trigger_completion.sql`. This document's own "DRAFT ONLY -- NOT APPLIED" status line below is historical. Kept unmodified below this banner for history.
+
 # Pre-Flight: gh969_hover_rebate_trigger_completion
 
 **Migration**: gh969_hover_rebate_trigger_completion.sql

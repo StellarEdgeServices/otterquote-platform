@@ -1,3 +1,9 @@
+-- >>> SUPERSEDED (2026-09-26, gh-1438 part 2) -- the migration that actually
+-- ran under a #1070 name is supabase/migrations/20260824183229_gh1070_revoke_anon_activity_log.sql,
+-- structurally different from and much shorter than this draft's forward
+-- file (see that file's own banner). This rollback does not pair with
+-- anything that ran. Kept here, unmodified below this banner, for
+-- history. <<<
 -- Rollback: gh1070_activity_log_grants_revoke_rollback.sql
 -- Reverts: gh1070_activity_log_grants_revoke.sql
 -- Status: DRAFT — forward migration not yet applied.

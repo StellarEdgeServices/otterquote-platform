@@ -1,3 +1,9 @@
+-- >>> COMPANION OF AN APPLIED MIGRATION (2026-09-26, gh-1438 part 2) -- the
+-- forward migration this rollback reverses is live in production, filed as
+-- supabase/migrations/20260819210920_gh916_progressive_partner_status_triggers.sql.
+-- This rollback itself was never run. Kept here, unmodified below this
+-- banner, for history and for future use if these triggers ever need to be
+-- reverted. <<<
 -- Rollback: gh916_progressive_partner_status_triggers_rollback.sql
 -- Reverts: gh916_progressive_partner_status_triggers.sql
 -- Status: DRAFT ONLY — forward migration not yet applied (D-182 approval pending).

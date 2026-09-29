@@ -1,4 +1,7 @@
 -- gh-1075 [P1]: partner-agreement.html Section 15 (AAA -> JAMS, D-311) and
+-- CORRECTED 2026-09-26 (gh-1438 part 2): this file was previously filed at
+-- version 20260820195608; the real ledger row is 20260820195746 (confirmed
+-- read-only this session). Content below unchanged.
 -- Section 4 (commission -> referral fee, D-301) shipped as an "edit in
 -- place" amendment (Dustin's verbatim ruling, R-135) while zero real
 -- partners have accepted anything (all 13 referral_agents rows verified

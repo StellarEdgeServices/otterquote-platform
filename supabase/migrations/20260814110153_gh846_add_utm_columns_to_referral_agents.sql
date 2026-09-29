@@ -1,45 +1,63 @@
--- gh-973: register_partner() was missing the rate_limit_config gate its
--- sibling RPC track_referral_click has (#571/v95 family) - anon could
--- create unlimited referral_agents rows. D-182 approved by Dustin
--- 2026-08-18 ("APPROVE ALL 7"). Applied live via Supabase MCP; this file
--- is the git record.
+-- gh-846: partner signup drops all UTM attribution.
+-- CORRECTED 2026-09-26 (gh-1438 part 2): this file was previously filed at
+-- version 20260814110108; the real ledger row is 20260814110153 (confirmed
+-- read-only this session). Content below unchanged.
 --
--- Judgment call, not traffic-validated: 10/hour, 30/day, 300/month.
--- register_partner is spread across 5+ landing pages; a closer analog by
--- shape (form submission creating a lasting record) is submit-partner-w9
--- at 10/10/30. Raise if legitimate signup volume ever gets throttled.
+-- referral_agents had no utm_* columns at all -- referrals does (utm_source,
+-- utm_medium, utm_campaign), but that table only exists once a partner is
+-- already recruiting *homeowners*, not when the partner themselves signs up.
+-- The warm outreach kit's 16 per-contact links carry utm_source/medium/
+-- campaign/content on the partner *application* URL, and register_partner()
+-- had nowhere to put them.
+--
+-- Additive-only (new nullable columns) -- Tier 3A per the issue's own AC.
 
-INSERT INTO public.rate_limit_config
-  (function_name, max_per_hour, max_per_day, max_per_month, enabled, monthly_cost_estimate, monthly_budget_cap, notes)
-VALUES
-  ('register_partner', 10, 30, 300, true, 0.0000, 0.00,
-   'gh973: partner self-serve signup RPC (#571/v95 family, sibling of track_referral_click). Rate-limit gate added to close unbounded-registration abuse vector (no config row existed before this migration). Limits are a starting judgment call, not traffic-validated - raise if legitimate signup volume is ever throttled.')
-ON CONFLICT (function_name) DO NOTHING;
+ALTER TABLE public.referral_agents
+  ADD COLUMN IF NOT EXISTS utm_source   text,
+  ADD COLUMN IF NOT EXISTS utm_medium   text,
+  ADD COLUMN IF NOT EXISTS utm_campaign text,
+  ADD COLUMN IF NOT EXISTS utm_content  text;
 
-CREATE OR REPLACE FUNCTION public.register_partner(p_agent_type text, p_first_name text, p_last_name text, p_email text, p_phone text DEFAULT NULL::text, p_company text DEFAULT NULL::text, p_website text DEFAULT NULL::text, p_service_area text DEFAULT NULL::text, p_referred_by_note text DEFAULT NULL::text, p_recruit_code text DEFAULT NULL::text, p_metadata jsonb DEFAULT '{}'::jsonb, p_photo_url text DEFAULT NULL::text, p_utm_source text DEFAULT NULL::text, p_utm_medium text DEFAULT NULL::text, p_utm_campaign text DEFAULT NULL::text, p_utm_content text DEFAULT NULL::text, p_is_test boolean DEFAULT false)
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public', 'pg_temp'
+-- register_partner() signature changes (new trailing optional params), so the
+-- old 12-arg overload is dropped explicitly rather than left to coexist --
+-- PostgREST resolves named-parameter RPC calls by matching the available
+-- signatures, and two overloads where one is a strict subset of the other's
+-- optional params is exactly the shape that produces "function name is not
+-- unique" errors on real traffic.
+DROP FUNCTION IF EXISTS public.register_partner(
+  text, text, text, text, text, text, text, text, text, text, jsonb, text
+);
+
+CREATE FUNCTION public.register_partner(
+  p_agent_type       text,
+  p_first_name       text,
+  p_last_name        text,
+  p_email            text,
+  p_phone            text DEFAULT NULL,
+  p_company          text DEFAULT NULL,
+  p_website          text DEFAULT NULL,
+  p_service_area     text DEFAULT NULL,
+  p_referred_by_note text DEFAULT NULL,
+  p_recruit_code     text DEFAULT NULL,
+  p_metadata         jsonb DEFAULT '{}'::jsonb,
+  p_photo_url        text DEFAULT NULL,
+  p_utm_source       text DEFAULT NULL,
+  p_utm_medium       text DEFAULT NULL,
+  p_utm_campaign     text DEFAULT NULL,
+  p_utm_content      text DEFAULT NULL,
+  p_is_test          boolean DEFAULT false
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
 AS $function$
 DECLARE
   v_email        text;
   v_recruiter_id uuid;
   v_constraint   text;
   v_row          referral_agents%ROWTYPE;
-  v_rate         jsonb;
 BEGIN
-  -- gh973: rate-limit gate, mirrors track_referral_click's check_rate_limit
-  -- pattern (#571/v95). Runs before any validation so unbounded signup
-  -- attempts are capped regardless of payload validity.
-  v_rate := public.check_rate_limit(
-    p_function_name => 'register_partner',
-    p_user_id       => auth.uid()
-  );
-  IF NOT COALESCE((v_rate->>'allowed')::boolean, false) THEN
-    RAISE EXCEPTION 'rate_limited: %', COALESCE(v_rate->>'reason', 'register_partner rate limit exceeded');
-  END IF;
-
   IF p_agent_type IS NULL OR p_agent_type NOT IN
      ('re_agent', 'insurance_agent', 'home_inspector', 'customer', 'adjuster', 'other') THEN
     RAISE EXCEPTION 'invalid_agent_type: % is not a recognized partner type',
@@ -60,6 +78,7 @@ BEGIN
     RAISE EXCEPTION 'partner_exists';
   END IF;
 
+  -- D-143: resolve recruit code -> recruiter; unknown ignored silently
   IF p_recruit_code IS NOT NULL AND btrim(p_recruit_code) <> '' THEN
     SELECT id INTO v_recruiter_id
     FROM referral_agents
@@ -108,3 +127,8 @@ EXCEPTION
     RAISE;
 END;
 $function$;
+
+GRANT EXECUTE ON FUNCTION public.register_partner(
+  text, text, text, text, text, text, text, text, text, text, jsonb, text,
+  text, text, text, text, boolean
+) TO anon, authenticated, service_role;

@@ -1,3 +1,5 @@
+> **SUPERSEDED (2026-09-26, gh-1438 part 2)** -- the object this document describes is not live under this migration's own name; the live column was added by `supabase/migrations/20260808134406_v101_referral_agents_public_directory_optin.sql` instead (issue #385). Kept unmodified below this banner for history.
+
 # Pre-Flight: v88_referral_agents_public_directory_optin
 
 **Migration**: v88_referral_agents_public_directory_optin.sql

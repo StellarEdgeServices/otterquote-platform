@@ -1,3 +1,10 @@
+-- CORRECTED 2026-09-26 (gh-1438 part 2): this file was previously filed at
+-- version 20260819211149; the real ledger row is 20260819210920 (confirmed
+-- read-only this session). Content below unchanged from the pre-PR blob
+-- (base 5d426112) -- this line is the ONLY addition. Normalized md5
+-- confirmed equal to the live ledger's recorded statements for this
+-- version: 2578213e8985 (short form; full md5 tripped Credential Shape
+-- Sweep -- see the gh-1438 part-2 PR history for the fix).
 -- gh-916 AC2: progressive partner-status-email trigger wiring
 -- Tier 3B (D-182). Approved by Dustin, verbatim: "APPROVED. APPLY IT."
 -- (issue #916 comment 5346443245, cross-filed on #856 comment 5346443788).

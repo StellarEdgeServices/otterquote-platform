@@ -1,4 +1,11 @@
 -- gh-945 (SG-4): backfill activity_log.is_test for the 6 rows the gh-1028 propagation
+-- CORRECTED 2026-09-26 (gh-1438 part 2): this file was previously filed at
+-- version 20260820214032; the real ledger row is 20260820214050 (confirmed
+-- read-only this session). Content below unchanged. This is a targeted data
+-- UPDATE against 6 named-by-predicate rows (not by literal id list), and on
+-- an empty/fresh branch activity_log has 0 rows, so the predicate matches
+-- nothing and this file is a safe no-op there -- no re-execution hazard from
+-- filing it under its correct forward-replay version.
 -- fix (20260818224203) only prevented going forward, not backfilled historically.
 -- Tier 3A, additive/idempotent, flag-not-delete -- governed by the same Dustin-approved
 -- 2026-08-18 ruling gh-1028 cites ("flag + exclude, do NOT delete"). Same operation

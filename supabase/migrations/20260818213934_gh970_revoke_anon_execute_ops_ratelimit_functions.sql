@@ -1,4 +1,7 @@
 -- gh-970: 6 internal ops/rate-limit SECURITY DEFINER functions were
+-- CORRECTED 2026-09-26 (gh-1438 part 2): this file was previously filed at
+-- version 20260818214604; the real ledger row is 20260818213934 (confirmed
+-- read-only this session). Content below unchanged.
 -- anon-executable with zero auth check. D-182 approved by Dustin
 -- 2026-08-18 ("APPROVE ALL 7"). Applied live via Supabase MCP; this file
 -- is the git record. Full analysis + per-function caller audit: issue

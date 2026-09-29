@@ -1,3 +1,12 @@
+-- >>> APPLIED (2026-09-26, gh-1438 part 2) -- this draft's effect (retarget
+-- notify_hover_rebate()'s firing trigger from quotes.payment_status to
+-- claims.completion_date) IS live and filed as
+-- supabase/migrations/20260824184631_gh969_hover_rebate_trigger_completion.sql
+-- (same filename this draft carries, only relocated from migrations_drafts/
+-- to migrations/ with a 14-digit timestamp prefix at apply time), but this
+-- pass did not diff the two bodies character-for-character, so treat as
+-- "same effect, unverified byte match" rather than "identical". Kept here,
+-- unmodified below this banner, for history. <<<
 -- gh-969: D-291 trigger half — hover/RoofScope rebate, contract-signing -> job completion
 -- Tier 3 (D-182). DRAFT ONLY. NOT APPLIED. Mirrors the gh-1050/D-283 precedent
 -- (supabase/migrations/20260819225113_gh1050_commission_accrual_job_completion.sql),
