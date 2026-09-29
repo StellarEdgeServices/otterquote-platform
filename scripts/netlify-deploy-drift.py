@@ -270,6 +270,20 @@ USAGE
     --queued-stale-minutes N
                      Age threshold in minutes for the QUEUED_STALE signal (default 60).
 
+PUSH DELIVERY (gh-2289, split from #1549)
+  With --file-issue AND DRIFT_ALARM_CHANNEL=pwa, a site resolving to BEHIND or
+  BUILD_FAILING also sends ONE push per site per 24 h. Never for PUBLISH_STALE,
+  QUEUED_STALE, CONTENT_CHANGED or UNMEASURED (any reason, including the 410 noise): see
+  PUSH_VERDICTS. The payload is only {site, verdict, url}; `verdict` is display_verdict()'s
+  own line. Dedupe state lives in the #1549 alarm comment this script already posts: a
+  hidden `<!-- drift-push site=<key> at=<iso> -->` marker per pushed site, read back from
+  the issue's recent comments. No table, no cache, no migration.
+  Transport: one HTTPS POST (Bearer DRIFT_PUSH_TOKEN) to DRIFT_PUSH_URL. Both are
+  Actions secrets that must be added by the CTO. If either is missing, or the dedupe
+  state cannot be read, the push is SKIPPED with a log line: the run's exit code is
+  never changed by push delivery (fail soft, so CI is not red before the secret exists).
+  The sender behind DRIFT_PUSH_URL (admin PWA push) is NOT in this repo yet: see #2289.
+
 AUTH
   NETLIFY_PAT                    Netlify Personal Access Token. Per gh-1549's filing
                                   issue: lives in Doppler otterquote/prd, verified live
@@ -318,6 +332,7 @@ import hashlib
 import json
 import os
 import pathlib
+import re
 import sys
 import urllib.error
 import urllib.parse
@@ -515,6 +530,17 @@ SKIPPED_NO_CONTENT = "SKIPPED_NO_CONTENT"
 # GitHub alarm-comment POST itself failed" -- see final_exit_code() and the EXIT
 # section of this module's docstring.
 ALARM_POST_FAILED_EXIT = 4
+
+# gh-2289: push delivery. Only these two verdicts page a phone. PUBLISH_STALE and
+# UNMEASURED (incl. the 410 noise) are deliberately absent; so are QUEUED_STALE and
+# CONTENT_CHANGED, which the issue did not authorise for paging.
+PUSH_VERDICTS = frozenset({BEHIND, BUILD_FAILING})
+PUSH_DEDUPE_HOURS = 24
+PUSH_CHANNEL_ENV_VAR = "DRIFT_ALARM_CHANNEL"
+PUSH_CHANNEL_PWA = "pwa"
+PUSH_URL_ENV_VAR = "DRIFT_PUSH_URL"
+PUSH_TOKEN_ENV_VAR = "DRIFT_PUSH_TOKEN"
+PUSH_MARKER_PREFIX = "drift-push"
 
 
 def is_benign_deploy_error(error_message):
@@ -1379,7 +1405,7 @@ def render_json(rows, code, warnings=None, alarm_post_status=None, alarm_post_de
 # ---------------------------------------------------------------------------
 
 
-def render_issue_comment_body(rows, code):
+def render_issue_comment_body(rows, code, push_markers=None):
     lines = [
         "Automated Netlify production-deploy drift check (`scripts/netlify-deploy-drift.py`, gh-1549) "
         "found a problem:\n",
@@ -1391,6 +1417,9 @@ def render_issue_comment_body(rows, code):
         "\nDo not fix by redeploying everything blind -- diagnose the specific site "
         "(Netlify credit/billing, a cancelled build, a stuck queue) per #1548 / #1517."
     )
+    # gh-2289: hidden dedupe markers for sites a push was actually sent for this run.
+    for marker in (push_markers or []):
+        lines.append(marker)
     return "\n".join(lines)
 
 
@@ -1440,6 +1469,138 @@ def post_issue_comment(body, timeout=TIMEOUT_SECONDS):
     detail = html_url or "posted (no html_url in response)"
     print("Posted drift report to issue #%d: %s" % (ALARM_ISSUE_NUMBER, detail), file=sys.stderr)
     return True, detail
+
+
+# ---------------------------------------------------------------------------
+# Push delivery (gh-2289). Pure planning + a swappable transport, so the tests run with
+# no network. Nothing here may raise into main() or change the run's exit code.
+# ---------------------------------------------------------------------------
+
+
+def push_marker(site_key, sent_at):
+    """Hidden dedupe marker embedded in the #1549 alarm comment."""
+    return "<!-- %s site=%s at=%s -->" % (PUSH_MARKER_PREFIX, site_key, sent_at.strftime("%Y-%m-%dT%H:%M:%SZ"))
+
+
+def parse_push_markers(comment_bodies):
+    """Pure: {site_key: newest datetime} from every drift-push marker in the given comment
+    bodies. Unparseable markers are ignored."""
+    found = {}
+    pattern = re.compile(r"<!-- %s site=(\S+) at=(\S+) -->" % re.escape(PUSH_MARKER_PREFIX))
+    for body in comment_bodies:
+        for key, ts in pattern.findall(body or ""):
+            try:
+                at = _parse_iso8601(ts)
+            except Exception:  # noqa: BLE001 -- a bad marker is ignored, never a crash
+                continue
+            if at is not None and (key not in found or at > found[key]):
+                found[key] = at
+    return found
+
+
+def plan_pushes(rows, last_sent, now, dedupe_hours=PUSH_DEDUPE_HOURS):
+    """Pure: the rows that should page a phone now. A row qualifies only when its verdict
+    is in PUSH_VERDICTS and no push for its site key was sent within dedupe_hours."""
+    window = datetime.timedelta(hours=dedupe_hours)
+    plan = []
+    for r in rows:
+        if r["verdict"] not in PUSH_VERDICTS:
+            continue
+        sent = last_sent.get(r["key"])
+        if sent is not None and now - sent < window:
+            continue
+        plan.append(r)
+    return plan
+
+
+def build_push_payload(row):
+    """Only site, verdict and link. `verdict` reuses the line the script already prints."""
+    return {
+        "site": row["label"],
+        "verdict": display_verdict(row),
+        "url": "https://github.com/%s/issues/%d" % (ISSUE_REPO, ALARM_ISSUE_NUMBER),
+    }
+
+
+def http_push_transport(payload, url, token, timeout=TIMEOUT_SECONDS):
+    """POST the payload. Returns (ok, detail). Never raises, never echoes a response body
+    or the token."""
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        method="POST",
+        headers={
+            "Authorization": "Bearer " + token,
+            "Content-Type": "application/json",
+            "User-Agent": "otterquote-netlify-drift-detector",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            code = getattr(resp, "status", 200)
+        return (200 <= code < 300), "HTTP %s" % code
+    except urllib.error.HTTPError as exc:
+        return False, "HTTP %s (%s)" % (exc.code, exc.reason)
+    except Exception as exc:  # noqa: BLE001 -- push delivery must never crash the run
+        return False, "%s: %s" % (type(exc).__name__, exc)
+
+
+def fetch_recent_alarm_comments(token, now, timeout=TIMEOUT_SECONDS):
+    """Bodies of #1549 comments updated within the dedupe window. Raises on any failure;
+    the caller treats that as 'dedupe state unreadable'."""
+    since = (now - datetime.timedelta(hours=PUSH_DEDUPE_HOURS + 1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    req = urllib.request.Request(
+        "https://api.github.com/repos/%s/issues/%d/comments?per_page=100&since=%s"
+        % (ISSUE_REPO, ALARM_ISSUE_NUMBER, since),
+        headers={
+            "Authorization": "Bearer " + token,
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "otterquote-netlify-drift-detector",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+    return [c.get("body") or "" for c in data]
+
+
+def deliver_pushes(rows, now, env=None, transport=None, read_comments=None):
+    """Send the planned pushes. Returns (markers, statuses): markers are the hidden
+    comment lines for sites actually pushed; statuses is a list of log strings. Fail
+    soft: a missing channel/secret, unreadable dedupe state or transport failure logs and
+    skips. Unreadable state SKIPS (never spams every run); the #1549 comment still fires."""
+    env = os.environ if env is None else env
+    transport = transport or http_push_transport
+    if (env.get(PUSH_CHANNEL_ENV_VAR) or "").strip().lower() != PUSH_CHANNEL_PWA:
+        return [], []
+    if not any(r["verdict"] in PUSH_VERDICTS for r in rows):
+        return [], []
+    url = (env.get(PUSH_URL_ENV_VAR) or "").strip()
+    token = (env.get(PUSH_TOKEN_ENV_VAR) or "").strip()
+    if not url or not token:
+        return [], ["push skipped: %s / %s not set (secret not added yet)" % (PUSH_URL_ENV_VAR, PUSH_TOKEN_ENV_VAR)]
+    try:
+        if read_comments is None:
+            gh_token = env.get("GITHUB_TOKEN") or env.get(GITHUB_TOKEN_ENV_VAR)
+            if not gh_token:
+                raise RuntimeError("no GITHUB_TOKEN / %s" % GITHUB_TOKEN_ENV_VAR)
+            bodies = fetch_recent_alarm_comments(gh_token, now)
+        else:
+            bodies = read_comments()
+        last_sent = parse_push_markers(bodies)
+    except Exception as exc:  # noqa: BLE001
+        return [], ["push skipped: dedupe state unreadable (%s: %s)" % (type(exc).__name__, exc)]
+    markers, statuses = [], []
+    for r in plan_pushes(rows, last_sent, now):
+        try:
+            ok, detail = transport(build_push_payload(r), url, token)
+        except Exception as exc:  # noqa: BLE001
+            ok, detail = False, "%s: %s" % (type(exc).__name__, exc)
+        if ok:
+            markers.append(push_marker(r["key"], now))
+            statuses.append("push sent: %s (%s)" % (r["key"], detail))
+        else:
+            statuses.append("push FAILED (not deduped, will retry next run): %s (%s)" % (r["key"], detail))
+    return markers, statuses
 
 
 # ---------------------------------------------------------------------------
@@ -2052,7 +2213,11 @@ def main():
     alarm_post_status = None
     alarm_post_detail = None
     if args.file_issue and any(r["verdict"] in FAILING_VERDICTS for r in rows):
-        posted, detail = post_issue_comment(render_issue_comment_body(rows, code))
+        # gh-2289: push first so the sent-markers ride in the same alarm comment.
+        push_markers, push_statuses = deliver_pushes(rows, datetime.datetime.now(datetime.timezone.utc))
+        for line in push_statuses:
+            print("gh-2289: " + line, file=sys.stderr)
+        posted, detail = post_issue_comment(render_issue_comment_body(rows, code, push_markers=push_markers))
         alarm_post_status = "posted" if posted else "failed"
         alarm_post_detail = detail
 

@@ -332,6 +332,14 @@ jobs:
           # in this same repo -- fixes the POST without touching the cross-repo
           # read path at all.
           GITHUB_TOKEN: ${{ github.token }}
+          # gh-2289: phone delivery for BEHIND / BUILD_FAILING (one push per site per
+          # 24 h; never for PUBLISH_STALE / UNMEASURED). FAIL SOFT: while
+          # DRIFT_PUSH_URL / DRIFT_PUSH_TOKEN are not set as repository secrets the
+          # script logs "push skipped" and the run is unchanged. Both secrets are
+          # added by the CTO, not by CI. See the script's PUSH DELIVERY section.
+          DRIFT_ALARM_CHANNEL: pwa
+          DRIFT_PUSH_URL: ${{ secrets.DRIFT_PUSH_URL }}
+          DRIFT_PUSH_TOKEN: ${{ secrets.DRIFT_PUSH_TOKEN }}
         # pipefail is load-bearing: without it, `| tee` swallows the script's
         # exit code and an UNMEASURED (exit 3) run concludes success -- measured
         # on schedule run 33761892324, the silent-detector shape this file exists
