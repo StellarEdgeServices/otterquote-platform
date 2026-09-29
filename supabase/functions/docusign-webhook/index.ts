@@ -78,6 +78,7 @@ import {
 // import. Switched from this batch's original local copy to the shared
 // one; the local copy is deleted.
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
+import { shouldSuppressAnalyticsDispatch } from "../_shared/synthetic-traffic.ts";
 
 // [gh-1886 re-review #2, independent review on #2198, 2026-09-25T22:02:35Z] Mirrored VERBATIM as a literal
 // string constant in the platform-fee-charge function's own stripe-fetch.ts (Supabase Edge Functions
@@ -171,7 +172,13 @@ function getServiceRoleKey(): string {
 }
 
 // ========== GA4 MEASUREMENT PROTOCOL ==========
-async function sendGA4Event(eventName: string, params: Record<string, unknown> = {}): Promise<void> {
+async function sendGA4Event(
+  eventName: string,
+  params: Record<string, unknown> = {},
+  signals?: { isTest?: boolean | null; isSynthetic?: boolean | null },
+): Promise<void> {
+  // gh-2356: a QA row never reaches production GA4.
+  if (shouldSuppressAnalyticsDispatch("ga4_mp", eventName, signals)) return;
   const measurementId = Deno.env.get("GA4_MEASUREMENT_ID");
   const apiSecret = Deno.env.get("GA4_API_SECRET");
   if (!measurementId || !apiSecret) return;
@@ -754,7 +761,7 @@ serve(async (req) => {
 
     if (status === "completed") {
       // Envelope fully signed by all parties
-      await sendGA4Event("envelope_signed", { envelope_id: envelopeId, claim_id: claim.id });
+      await sendGA4Event("envelope_signed", { envelope_id: envelopeId, claim_id: claim.id }, { isTest: claim.is_test });
       if (isContract) {
         // ========== D-269 ACKNOWLEDGMENT BACKSTOP (#550) ==========
         // Field-level enforcement is the inline sign-type Text Tag on the

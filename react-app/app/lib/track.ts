@@ -92,6 +92,7 @@
  */
 
 import { isAdSharingOptedOut } from './ad-optout';
+import { isInternalTraffic } from './internal-traffic';
 
 type PhotoTier = 'main' | 'tier1' | 'tier2' | 'tier3' | 'tier4';
 type HelpTool = 'help_estimate' | 'help_materials' | 'help_measurements';
@@ -311,6 +312,8 @@ function getGtag(): ((...args: unknown[]) => void) | undefined {
 
 export function track<E extends keyof TrackEventParams>(event: E, params: TrackEventParams[E]): void {
   try {
+    // gh-2356: a QA walk (oq_internal, qa=1, test fbclid/utm) emits no GA4 event, whatever page or component calls track().
+    if (isInternalTraffic()) return;
     const gtag = getGtag();
     if (!gtag) return; // GA4Gate has not loaded (blocked host, ad blocker, SSR) — no-op, no queue.
     gtag('event', event, buildSafeParams(event, params));
@@ -346,6 +349,8 @@ export function fbqTrack(eventName: string, params?: Record<string, unknown>, ev
     if (typeof window === 'undefined') return;
     const w = window as unknown as { fbq?: (...args: unknown[]) => void };
     if (typeof w.fbq !== 'function') return;
+    // gh-2356: a QA walk emits no Meta pixel event.
+    if (isInternalTraffic()) return;
     // gh-2107 (REVIEW N1 on #2134): re-check the advertising-sharing opt-out on EVERY event. The pixel's `allowed` state can outlive a
     // client-side navigation, and a stored opt-out may only be read after fbevents.js is already loaded (GPC or the cookie it leaves).
     if (isAdSharingOptedOut()) return;
@@ -417,7 +422,7 @@ export function fireSignUpAndWait(params: TrackEventParams['sign_up'], timeoutMs
   return new Promise((resolve) => {
     let gtag: ((...args: unknown[]) => void) | undefined;
     try {
-      gtag = getGtag();
+      gtag = isInternalTraffic() ? undefined : getGtag(); // gh-2356: a QA walk sends no sign_up
     } catch {
       gtag = undefined;
     }

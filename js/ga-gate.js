@@ -146,6 +146,28 @@
   // Max-Age, same Domain rule), wrapped in try/catch so a hostile or
   // unsupported document.cookie / URLSearchParams never breaks tag loading
   // for a real visitor.
+  // BEGIN oq-synthetic-guard (gh-2356)
+  // ONE list of synthetic-traffic patterns, byte-identical in js/ga-gate.js, js/meta-pixel-gate.js and js/internal-traffic.js
+  // (tests/gh2356-synthetic-traffic-guard.mjs fails if any copy drifts; react-app/app/lib/internal-traffic.ts is the TS twin).
+  // A visit is synthetic (our own QA walk) when it carries qa=1, or an fbclid/gclid/utm_* value that looks like a test fixture.
+  var OQ_SYNTHETIC_VALUE_PATTERNS = [/^TEST(FBCLID|GCLID)/i, /^(TEST|QA)([-_.\s]|\d|$)/i, /^CEO.*STUB/i];
+  var OQ_SYNTHETIC_PARAM_KEYS = ['fbclid', 'gclid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'];
+  function oqSyntheticSignal(params) {
+    try {
+      if (!params) return false;
+      if (params.get('qa') === '1') return true;
+      for (var k = 0; k < OQ_SYNTHETIC_PARAM_KEYS.length; k++) {
+        var v = params.get(OQ_SYNTHETIC_PARAM_KEYS[k]);
+        if (!v) continue;
+        for (var p = 0; p < OQ_SYNTHETIC_VALUE_PATTERNS.length; p++) {
+          if (OQ_SYNTHETIC_VALUE_PATTERNS[p].test(v)) return true;
+        }
+      }
+    } catch (e) { /* never break a page over detection */ }
+    return false;
+  }
+  // END oq-synthetic-guard
+
   function oqInternal() {
     try {
       var params = null;
@@ -155,11 +177,12 @@
         params = null;
       }
       var queryFlag = !!(params && params.get('oq_internal') === '1');
+      var syntheticFlag = oqSyntheticSignal(params);
 
       var cookieMatch = document.cookie.match(/(?:^|; )oq_internal=([^;]*)/);
       var cookieFlag = !!(cookieMatch && decodeURIComponent(cookieMatch[1]) === '1');
 
-      if (queryFlag && !cookieFlag) {
+      if ((queryFlag || syntheticFlag) && !cookieFlag) {
         var oneYear = 60 * 60 * 24 * 365;
         var domainAttr = '';
         // Only a real otterquote.com host accepts a .otterquote.com-scoped
@@ -173,7 +196,7 @@
           domainAttr + '; SameSite=Lax';
       }
 
-      var isInternal = queryFlag || cookieFlag;
+      var isInternal = queryFlag || cookieFlag || syntheticFlag;
       window.OQ_INTERNAL = isInternal;
       return isInternal;
     } catch (e) {
@@ -391,15 +414,10 @@
   // loading; this only marks a config/event call that has an object of its
   // own to carry the flag on.
   function gtag() {
-    var args = arguments;
-    if (window.OQ_INTERNAL) {
-      if (args.length >= 3 && args[2] && typeof args[2] === 'object') {
-        args[2].traffic_type = 'internal';
-      } else if (args.length === 2 && (args[0] === 'config' || args[0] === 'event')) {
-        args = [args[0], args[1], { traffic_type: 'internal' }];
-      }
-    }
-    window.dataLayer.push(args);
+    // gh-2356: an internal or synthetic visit (oq_internal, qa=1, test fbclid/utm -- see oqSyntheticSignal above) emits NO gtag
+    // call at all: the call is dropped here, so nothing is queued on dataLayer, whether or not the GA4 library later loads.
+    if (window.OQ_INTERNAL) return;
+    window.dataLayer.push(arguments);
   }
   window.gtag = gtag;
   gtag('js', new Date());

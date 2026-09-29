@@ -46,6 +46,7 @@ import {
   maySubmitFinalEvidence,
 } from "./dispute-routing.ts";
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
+import { shouldSuppressAnalyticsDispatch } from "../_shared/synthetic-traffic.ts";
 import {
   buildCapiEventId,
   buildCapiPurchasePayload,
@@ -1169,6 +1170,12 @@ async function handleMeasurementOrderCapiPurchase(
       console.log(
         `[${FN_NAME}] gh-2107: CAPI Purchase skipped for PI ${paymentIntent.id} (${person.reason})`,
       );
+      return;
+    }
+
+    // gh-2356: QA traffic never reaches Meta CAPI. The PaymentIntent metadata is checked against the shared synthetic-traffic
+    // patterns (test fbclid/utm, qa=1, oq_internal=1) -- one info line, fixed reason, no values, then return normally.
+    if (shouldSuppressAnalyticsDispatch("meta_capi", "Purchase", { params: paymentIntent.metadata })) {
       return;
     }
 

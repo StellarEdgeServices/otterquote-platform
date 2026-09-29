@@ -22,6 +22,28 @@
 // files' own docstrings require) -- it does not load or gate anything
 // itself, it only sets the flag those loaders check.
 (function () {
+  // BEGIN oq-synthetic-guard (gh-2356)
+  // ONE list of synthetic-traffic patterns, byte-identical in js/ga-gate.js, js/meta-pixel-gate.js and js/internal-traffic.js
+  // (tests/gh2356-synthetic-traffic-guard.mjs fails if any copy drifts; react-app/app/lib/internal-traffic.ts is the TS twin).
+  // A visit is synthetic (our own QA walk) when it carries qa=1, or an fbclid/gclid/utm_* value that looks like a test fixture.
+  var OQ_SYNTHETIC_VALUE_PATTERNS = [/^TEST(FBCLID|GCLID)/i, /^(TEST|QA)([-_.\s]|\d|$)/i, /^CEO.*STUB/i];
+  var OQ_SYNTHETIC_PARAM_KEYS = ['fbclid', 'gclid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'];
+  function oqSyntheticSignal(params) {
+    try {
+      if (!params) return false;
+      if (params.get('qa') === '1') return true;
+      for (var k = 0; k < OQ_SYNTHETIC_PARAM_KEYS.length; k++) {
+        var v = params.get(OQ_SYNTHETIC_PARAM_KEYS[k]);
+        if (!v) continue;
+        for (var p = 0; p < OQ_SYNTHETIC_VALUE_PATTERNS.length; p++) {
+          if (OQ_SYNTHETIC_VALUE_PATTERNS[p].test(v)) return true;
+        }
+      }
+    } catch (e) { /* never break a page over detection */ }
+    return false;
+  }
+  // END oq-synthetic-guard
+
   function readCookie(name) {
     var match = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
     return match ? decodeURIComponent(match[1]) : null;
@@ -54,13 +76,14 @@
   }
 
   var queryFlag = !!(params && params.get('oq_internal') === '1');
+  var syntheticFlag = oqSyntheticSignal(params);
   var cookieFlag = readCookie('oq_internal') === '1';
 
-  if (queryFlag && !cookieFlag) {
+  if ((queryFlag || syntheticFlag) && !cookieFlag) {
     writeCookie('oq_internal', '1');
   }
 
-  window.OQ_INTERNAL = queryFlag || cookieFlag;
+  window.OQ_INTERNAL = queryFlag || cookieFlag || syntheticFlag;
 
   // gh-2068 review follow-up (cto36 REVIEW: FAIL, comment 5779410643,
   // recommended follow-up (a)): ?oq_internal=1 is a public, guessable,

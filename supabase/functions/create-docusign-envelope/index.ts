@@ -25,6 +25,7 @@ import {
 // being SILENT: an alert lets an operator notice and re-point the record
 // instead of the pointer just vanishing into a zero-row no-op.
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
+import { shouldSuppressAnalyticsDispatch } from "../_shared/synthetic-traffic.ts";
 const FN_NAME = "create-docusign-envelope";
 // deno-lint-ignore no-explicit-any
 async function getHomeownerName(supabase, claimId) {
@@ -88,7 +89,9 @@ function getServiceRoleKey() {
   return Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 }
 // ========== GA4 MEASUREMENT PROTOCOL ==========
-async function sendGA4Event(eventName, params = {}) {
+async function sendGA4Event(eventName, params = {}, signals) {
+  // gh-2356: a QA row never reaches production GA4.
+  if (shouldSuppressAnalyticsDispatch("ga4_mp", eventName, signals)) return;
   const measurementId = Deno.env.get("GA4_MEASUREMENT_ID");
   const apiSecret = Deno.env.get("GA4_API_SECRET");
   if (!measurementId || !apiSecret) return;
@@ -2564,11 +2567,16 @@ async function handleLegacyFlow(supabase, requestBody, corsHeaders) {
   const envelopeId = sendData.documentId;
   if (!envelopeId) throw new Error("No documentId returned from BoldSign");
   console.log(`Document created (${document_type}): ${envelopeId}`);
+  let ga4ClaimIsTest = null;
+  try {
+    const { data: ga4Claim } = await supabase.from("claims").select("is_test").eq("id", claim_id).maybeSingle();
+    ga4ClaimIsTest = ga4Claim?.is_test ?? null;
+  } catch (_) { /* unknown -> treated as a real row, as before */ }
   await sendGA4Event("envelope_sent", {
     document_type,
     envelope_id: envelopeId,
     claim_id
-  });
+  }, { isTest: ga4ClaimIsTest });
   // gh-1244: bounded wait for BoldSign's async document creation to settle
   // before asking for a signing link -- see waitForBoldSignDocumentReady().
   await waitForBoldSignDocumentReady(envelopeId);
