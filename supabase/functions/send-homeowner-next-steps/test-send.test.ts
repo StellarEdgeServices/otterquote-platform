@@ -16,6 +16,8 @@ import {
   type TestSendDeps,
   type TestSendProfile,
   testSendAuthorized,
+  validateRequestBody,
+  ALLOWED_BODY_KEYS,
 } from "./test-send.ts";
 
 const CLAIM_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -314,4 +316,57 @@ Deno.test("WIRING: index.ts gates the flag behind auth, refuses before any side 
   assertEquals(src.split("await deliverStage(").length - 1, 1, "only the cron loop awaits deliverStage directly");
   // the test-send candidate scan is the production one, pinned to is_test=true
   assert(src.includes("scanIsTest: true"));
+});
+
+Deno.test("BODY KEYS: unknown key -> 400 (no run), including typos of test_send_claim_ids", () => {
+  const typos = ["test_send_claim_id", "testSendClaimIds", "Test_Send_Claim_Ids", "test_send_claim_ids ", "test-send-claim-ids", "dryrun", "dry_run_", "foo"];
+  for (const k of typos) {
+    const r = validateRequestBody(JSON.stringify({ [k]: ["x"] }));
+    assertEquals(r.ok, false, `key ${JSON.stringify(k)} must be rejected`);
+  }
+  // one legitimate key does not launder an unknown one
+  assertEquals(validateRequestBody(JSON.stringify({ dry_run: true, extra: 1 })).ok, false);
+  assertEquals(validateRequestBody(JSON.stringify({ test_send_claim_ids: ["a"], test_send_claim_id: ["b"] })).ok, false);
+});
+
+Deno.test("BODY KEYS: every legitimate caller body still passes (v113 cron sends '{}')", () => {
+  const legit = [
+    "{}",
+    "",
+    "   ",
+    "null",
+    '{"dry_run":true}',
+    '{"dry_run":true,"admin_digest_preview":true}',
+    '{"health_check":true}',
+    '{"test_send_claim_ids":["11111111-1111-4111-8111-111111111111"]}',
+  ];
+  for (const t of legit) assertEquals(validateRequestBody(t).ok, true, `must pass: ${JSON.stringify(t)}`);
+  assertEquals([...ALLOWED_BODY_KEYS].sort(), ["admin_digest_preview", "dry_run", "health_check", "test_send_claim_ids"]);
+});
+
+Deno.test("BODY KEYS: empty body is the normal cron run (parses to absent, flags off)", () => {
+  const r = validateRequestBody("");
+  assertEquals(r.ok, true);
+  if (r.ok) assertEquals(parseTestSend(r.body), { kind: "absent" });
+});
+
+Deno.test("BODY KEYS: malformed JSON and non-object bodies are refused, not run as cron", () => {
+  for (const t of ['{"test_send_claim_ids": ["a"]', "[1]", '"x"', "7", "not json"]) {
+    assertEquals(validateRequestBody(t).ok, false, `must reject: ${t}`);
+  }
+});
+
+Deno.test("WIRING: index.ts validates the body right after the auth gate, before any flag or side effect", async () => {
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  const at = (needle: string) => {
+    const i = src.indexOf(needle);
+    assert(i >= 0, `index.ts must contain: ${needle}`);
+    return i;
+  };
+  const authGate = at('return jsonResponse({ ok: false, error: "Unauthorized" }');
+  const validate = at("validateRequestBody(");
+  const dryParse = at("parseDryRun(requestBody)");
+  const testParse = at("parseTestSend(requestBody)");
+  assert(authGate < validate && validate < dryParse && validate < testParse, "body validated after auth, before any flag is parsed");
+  assertEquals(src.split("req.clone().json()").length - 1, 1, "only the health_check peek still parses the body loosely");
 });

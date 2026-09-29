@@ -48,6 +48,45 @@ export const TEST_SEND_MAX_CLAIMS = 5;
 export const TEST_SEND_ALIAS_RE = /^dustinstohler1\+[a-z0-9-]+@gmail\.com$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** Every top-level body key this function reads. Enumerated from the code and
+ * every real caller: the v113 pg_cron job sends `{}`; `health_check` is the
+ * probe bypass in index.ts; `dry_run` / `admin_digest_preview` are the
+ * dry-run.ts / admin-digest-executor.ts flags; `test_send_claim_ids` is the
+ * gh-2069 test send. Anything else is a typo or a stale caller. */
+export const ALLOWED_BODY_KEYS: readonly string[] = [
+  "dry_run",
+  "admin_digest_preview",
+  "health_check",
+  TEST_SEND_BODY_KEY,
+];
+
+export type BodyValidation = { ok: true; body: unknown } | { ok: false; error: string };
+
+/** gh-2069 hardening (REVIEW 5883264904): a mistyped key such as
+ * `test_send_claim_id` used to parse to "absent" and fall through to a NORMAL
+ * cron run that emails real homeowners. Reject before any side effect: an
+ * empty / whitespace body is the normal cron run ({}); anything else must be a
+ * JSON object whose keys are all in ALLOWED_BODY_KEYS. Malformed JSON or a
+ * non-object (array, string, number) is refused too, for the same reason. */
+export function validateRequestBody(rawText: string): BodyValidation {
+  if (rawText.trim() === "") return { ok: true, body: {} };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawText);
+  } catch (_) {
+    return { ok: false, error: "request body is not valid JSON" };
+  }
+  if (parsed === null) return { ok: true, body: {} };
+  if (typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { ok: false, error: "request body must be a JSON object" };
+  }
+  const unknown = Object.keys(parsed as Record<string, unknown>).filter((k) => !ALLOWED_BODY_KEYS.includes(k));
+  if (unknown.length > 0) {
+    return { ok: false, error: `unknown request body key(s): ${unknown.sort().join(", ")}; allowed: ${ALLOWED_BODY_KEYS.join(", ")}` };
+  }
+  return { ok: true, body: parsed };
+}
+
 export type ParsedTestSend =
   | { kind: "absent" }
   | { kind: "invalid"; error: string }

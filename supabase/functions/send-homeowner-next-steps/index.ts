@@ -230,6 +230,7 @@ import {
   type TestSendClaim,
   type TestSendProfile,
   testSendAuthorized,
+  validateRequestBody,
 } from "./test-send.ts";
 
 const FUNCTION_NAME = "send-homeowner-next-steps";
@@ -535,7 +536,15 @@ serve(async (req: Request) => {
   // See ./dry-run.ts for why it exists and what it deliberately does not do
   // (it writes no activity_log row and sends no email — it cannot manufacture
   // the artifact it is meant to help produce).
-  const requestBody = await req.clone().json().catch(() => ({}));
+  // gh-2069 hardening: strict body validation BEFORE any flag is read or any
+  // side effect runs. An empty body (the pg_cron `{}`) is the normal run; an
+  // unknown key (e.g. a typo of test_send_claim_ids) must NOT fall through to
+  // a real cron run, so it is a 400 with nothing sent or written.
+  const bodyCheck = validateRequestBody(await req.clone().text().catch(() => ""));
+  if (!bodyCheck.ok) {
+    return jsonResponse({ ok: false, error: bodyCheck.error, sent: 0 }, 400, corsHeaders);
+  }
+  const requestBody = bodyCheck.body;
   const dryRunRequested = parseDryRun(requestBody);
   // gh-1859 review fix: a dry run does NOT inherit the batch gate's permissive
   // `if (!cronSecret) authorized = true` branch. That branch fails OPEN, and a
