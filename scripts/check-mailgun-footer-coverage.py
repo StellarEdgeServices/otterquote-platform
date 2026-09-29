@@ -102,6 +102,43 @@ CANONICAL_ADDRESS_COMPONENTS = (
     "Indianapolis, IN 46224",
 )
 
+# gh-1824 ratchet (CTO RUN 51, cto51-tri-build2): every sender that ALREADY has a
+# USED D-237 footer on main but was never enforced. Before this set existed only
+# the 7 REQUIRED_FOOTER functions could turn CI red; 27 more covered senders could
+# silently lose their footer. This set is a floor, not a target: add a function
+# here when its footer lands, never remove one to make CI green. It is kept
+# separate from REQUIRED_FOOTER so the two grow in different PRs without
+# touching the same lines.
+RATCHET_FOOTER = {
+    "admin-contractor-action",
+    "approve-payout",
+    "approve-warranty-drift",
+    "check-rate-limits",
+    "counter-sig-reminders",
+    "mark-job-complete",
+    "mark-payout-paid",
+    "notify-admin-new-contractor",
+    "notify-contractors",
+    "notify-feature-request",
+    "notify-partner-w9",
+    "notify-payout-pending",
+    "process-auto-bids",
+    "process-bid-expirations",
+    "process-coi-reminders",
+    "process-payout-reminders",
+    "refresh-warranty-manifest",
+    "resend-hover-link",
+    "send-bid-confirmation",
+    "send-home-profile-prompt",
+    "send-incomplete-onboarding-reminders",
+    "send-message-notification",
+    "send-referral-out-email",
+    "send-support-email",
+    "send-welcome-email",
+    "switch-contractor",
+    "watch-template-mapping",
+}
+
 # Functions this guard actively enforces (must never regress). Each one was
 # independently confirmed, by this script's own logic, to USE (not merely
 # carry) the D-237 address before being added here.
@@ -228,7 +265,8 @@ def main():
     for n in sorted(missing):
         print(f"  [ ] {n}")
 
-    failures = sorted(n for n in REQUIRED_FOOTER if n not in covered)
+    enforced = REQUIRED_FOOTER | RATCHET_FOOTER
+    failures = sorted(n for n in enforced if n not in covered)
     if failures:
         print()
         print("FAIL: check-mailgun-footer-coverage: the following REQUIRED_FOOTER "
@@ -237,7 +275,7 @@ def main():
             print(f"  - {n}")
         return 1
 
-    stale = sorted(n for n in REQUIRED_FOOTER if n not in senders)
+    stale = sorted(n for n in enforced if n not in senders)
     if stale:
         print()
         print("FAIL: check-mailgun-footer-coverage: REQUIRED_FOOTER names a function "
@@ -247,12 +285,12 @@ def main():
             print(f"  - {n}")
         return 1
 
-    other_gap = sorted(set(missing) - REQUIRED_FOOTER)
+    other_gap = sorted(set(missing) - enforced)
     print()
-    print(f"PASS: check-mailgun-footer-coverage: all {len(REQUIRED_FOOTER)} "
-          f"REQUIRED_FOOTER functions have a USED D-237 footer. "
+    print(f"PASS: check-mailgun-footer-coverage: all {len(enforced)} "
+          f"REQUIRED_FOOTER/RATCHET_FOOTER functions have a USED D-237 footer. "
           f"{len(other_gap)} other Mailgun sender(s) remain a known gap "
-          f"(#1824 continuation, not yet in REQUIRED_FOOTER).")
+          f"(#1824 continuation, not yet enforced).")
     return 0
 
 
