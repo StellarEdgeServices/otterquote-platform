@@ -214,6 +214,16 @@ function _isContractorGatedFile(pathname) {
  */
 var PARTNER_ROLES = ['re_agent', 'insurance_agent', 'home_inspector', 'adjuster', 'other'];
 
+// gh-1980: true when a JWT is expired or cannot be decoded (the rescue skips it).
+function _oqJwtExpired(jwt) {
+  try {
+    var part = String(jwt).split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    var payload = JSON.parse(atob(part + '==='.slice((part.length + 3) % 4)));
+    return typeof payload.exp === 'number' && payload.exp * 1000 <= Date.now();
+  } catch (e) {
+    return true; // undecodable == unusable
+  }
+}
 /**
  * gh-1980 PR 3/3 -- SHARED implicit-fragment rescue (Ben's ruling on #1980,
  * comment 5889011351). Emailed magic / recovery / confirmation links are IMPLICIT
@@ -229,15 +239,6 @@ var PARTNER_ROLES = ['re_agent', 'insurance_agent', 'home_inspector', 'adjuster'
  * `access_token` is in the URL, and setSession() fires SIGNED_IN.
  * Memoised: one attempt per page load. Never throws.
  */
-function _oqJwtExpired(jwt) {
-  try {
-    var part = String(jwt).split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-    var payload = JSON.parse(atob(part + '==='.slice((part.length + 3) % 4)));
-    return typeof payload.exp === 'number' && payload.exp * 1000 <= Date.now();
-  } catch (e) {
-    return true; // undecodable == unusable
-  }
-}
 var _oqFragmentRescue = null;
 function rescueImplicitFragment() {
   if (_oqFragmentRescue) return _oqFragmentRescue;

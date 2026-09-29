@@ -17,6 +17,8 @@ on:
       - 'tests/cro47-trust-start.mjs'
       - 'tests/cro47-trust-start-playwright.mjs'
       - 'tests/gh1980-landing-fragment-playwright.mjs'
+      - 'tests/e2e/package.json'
+      - 'tests/e2e/package-lock.json'
       - 'js/auth.js'
       - 'js/config.js'
       - 'js/cookie-storage.js'
