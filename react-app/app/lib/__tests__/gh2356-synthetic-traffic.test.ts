@@ -17,13 +17,25 @@ describe('isSyntheticTrafficParams', () => {
   it.each([
     ['?qa=1'],
     ['?fbclid=TESTFBCLID123'],
-    ['?fbclid=CEO75STUB1234567890'],
-    ['?utm_source=test_walk'],
-    ['?utm_campaign=QA-run-7'],
+    ['?fbclid=ceo75walk1790609196'],
+    ['?fbclid=CEO71TEST1790446212'],
+    ['?fbclid=ceo67walkbduod'],
+    ['?fbclid=sloane66walkm3'],
+    ['?fbclid=cro37probe'],
+    ['?fbclid=cro38fbwalkclean01'],
+    ['?utm_source=ceo53'],
+    ['?utm_source=ceo64probe'],
+    ['?utm_source=rw-test'],
+    ['?utm_source=rwf35test'],
+    ['?utm_source=cto33_probe'],
   ])('%s is synthetic', (q) => {
     expect(isSyntheticTrafficParams(new URLSearchParams(q))).toBe(true);
   });
-  it.each([[''], ['?fbclid=IwAR3realClickId'], ['?utm_campaign=testimonials-spring&utm_source=qatar-roofing'], ['?qa=0']])(
+  it.each([[''], ['?fbclid=IwAR3realClickId'], ['?utm_campaign=testimonials-spring&utm_source=qatar-roofing'], ['?qa=0'],
+    ['?fbclid=IwAR_real_looking&utm_campaign=Test_Video_A'],
+    ['?gclid=Cj0KCQreal&utm_term=test%20for%20hail%20damage'],
+    ['?fbclid=IwZXh0bgNhZW0CMTAAAR3kqWm9x_ceo75walk_Jt2vXbP7Q8sHnLrE0aYcUfD1oGiTz4w'],
+    ['?utm_source=benefits-guide&utm_medium=croatia&utm_campaign=QA-Roofing-Leads']])(
     '%s is NOT synthetic',
     (q) => {
       expect(isSyntheticTrafficParams(new URLSearchParams(q))).toBe(false);
@@ -57,7 +69,7 @@ describe('dispatch gate', () => {
     expect(fbq).toHaveBeenCalledTimes(1);
   });
 
-  it.each([['?qa=1'], ['?fbclid=TESTFBCLID123'], ['?fbclid=CEO75STUB1234567890'], ['?oq_internal=1']])(
+  it.each([['?qa=1'], ['?fbclid=TESTFBCLID123'], ['?fbclid=ceo75walk1790609196'], ['?oq_internal=1']])(
     'QA walk %s emits ZERO gtag and ZERO fbq calls',
     async (q) => {
       setLocation(q);

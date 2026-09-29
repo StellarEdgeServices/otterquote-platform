@@ -21,9 +21,28 @@ Deno.test("qa=1 and oq_internal=1 are suppressed", () => {
 
 Deno.test("synthetic fbclid / utm values are suppressed", () => {
   assertEquals(syntheticTrafficReason({ params: { fbclid: "TESTFBCLID123" } }), "synthetic_value");
-  assertEquals(syntheticTrafficReason({ params: { fbclid: "CEO75STUB1234567890" } }), "synthetic_value");
-  assertEquals(syntheticTrafficReason({ params: { utm_source: "test_walk" } }), "synthetic_value");
-  assertEquals(syntheticTrafficReason({ params: { utm_campaign: "QA-run-7" } }), "synthetic_value");
+  for (const v of ["ceo75walk1790609196", "CEO71TEST1790446212", "ceo67walkbduod", "sloane66walkm3", "cro37probe", "cro38fbwalkclean01"]) {
+    assertEquals(syntheticTrafficReason({ params: { fbclid: v } }), "synthetic_value", v);
+  }
+  for (const v of ["ceo53", "ceo64probe", "rw-test", "rwf35test", "cto33_probe"]) {
+    assertEquals(syntheticTrafficReason({ params: { utm_source: v } }), "synthetic_value", v);
+  }
+});
+
+Deno.test("real ad names / keywords / real Meta fbclids are NOT suppressed", () => {
+  assertEquals(syntheticTrafficReason({ params: { utm_campaign: "Test_Video_A" } }), null);
+  assertEquals(syntheticTrafficReason({ params: { utm_content: "Test_Video_A", utm_term: "test for hail damage" } }), null);
+  assertEquals(syntheticTrafficReason({ params: { utm_campaign: "QA-Roofing-Leads" } }), null);
+  assertEquals(syntheticTrafficReason({ params: { fbclid: "IwAR_real_looking", gclid: "Cj0KCQreal" } }), null);
+  assertEquals(syntheticTrafficReason({ params: { fbclid: "IwZXh0bgNhZW0CMTAAAR3kqWm9x_ceo75walk_Jt2vXbP7Q8sHnLrE0aYcUfD1oGiTz4w" } }), null);
+});
+
+Deno.test("claim-shaped attribution (the stripe-webhook input: claims row with id/user_id/is_test/fbclid/utm_*)", () => {
+  const claim = { id: "c1", user_id: "u1", is_test: false, fbclid: "ceo75walk1790609196", gclid: null, utm_source: "facebook", utm_medium: null, utm_campaign: "ho-1", utm_content: null, utm_term: null };
+  assertEquals(syntheticTrafficReason({ params: claim }), "synthetic_value");
+  assertEquals(syntheticTrafficReason({ params: { ...claim, fbclid: "IwAR3realClickId" } }), null);
+  assertEquals(syntheticTrafficReason({ params: { ...claim, fbclid: null, utm_campaign: "Test_Video_A" } }), null);
+  assertEquals(syntheticTrafficReason({ params: null }), null);
 });
 
 Deno.test("dispatch gate: suppressed traffic logs exactly one info line, with no attribution value in it", () => {

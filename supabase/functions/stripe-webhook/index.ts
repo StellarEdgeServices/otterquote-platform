@@ -1143,13 +1143,15 @@ async function handleMeasurementOrderCapiPurchase(
     const claimId = paymentIntent.metadata?.claim_id ?? null;
     let claimIsTest = false;
     let userId: string | null = null;
+    // gh-2356: the claim's stored attribution (claims.fbclid / gclid / utm_*), read from the claim lookup below.
+    let claimAttribution: Record<string, unknown> | null = null;
 
     let claimLookupFailed = false;
 
     if (claimId) {
       const { data: claim, error: claimErr } = await supabase
         .from("claims")
-        .select("id, user_id, is_test")
+        .select("id, user_id, is_test, fbclid, gclid, utm_source, utm_medium, utm_campaign, utm_content, utm_term")
         .eq("id", claimId)
         .maybeSingle();
       if (claimErr) {
@@ -1158,6 +1160,7 @@ async function handleMeasurementOrderCapiPurchase(
       } else if (claim) {
         claimIsTest = (claim as { is_test: boolean | null }).is_test === true;
         userId = (claim as { user_id: string | null }).user_id;
+        claimAttribution = claim as Record<string, unknown>;
       }
     }
 
@@ -1173,9 +1176,11 @@ async function handleMeasurementOrderCapiPurchase(
       return;
     }
 
-    // gh-2356: QA traffic never reaches Meta CAPI. The PaymentIntent metadata is checked against the shared synthetic-traffic
-    // patterns (test fbclid/utm, qa=1, oq_internal=1) -- one info line, fixed reason, no values, then return normally.
-    if (shouldSuppressAnalyticsDispatch("meta_capi", "Purchase", { params: paymentIntent.metadata })) {
+    // gh-2356: QA traffic never reaches Meta CAPI. The claim's STORED attribution (claims.fbclid / gclid / utm_*, written when the
+    // homeowner's lead became a claim) is checked against the shared synthetic-traffic patterns (agent-name walk/probe/test/stub
+    // fixtures, TESTFBCLID*, qa=1 / oq_internal=1) -- one info line, fixed reason, no values, then return normally. A claim with
+    // is_test = true keeps the #2078b path below (Meta Test Events only, and only when META_CAPI_TEST_EVENT_CODE is set).
+    if (shouldSuppressAnalyticsDispatch("meta_capi", "Purchase", { params: claimAttribution })) {
       return;
     }
 

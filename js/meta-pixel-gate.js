@@ -56,8 +56,11 @@
   // BEGIN oq-synthetic-guard (gh-2356)
   // ONE list of synthetic-traffic patterns, byte-identical in js/ga-gate.js, js/meta-pixel-gate.js and js/internal-traffic.js
   // (tests/gh2356-synthetic-traffic-guard.mjs fails if any copy drifts; react-app/app/lib/internal-traffic.ts is the TS twin).
-  // A visit is synthetic (our own QA walk) when it carries qa=1, or an fbclid/gclid/utm_* value that looks like a test fixture.
-  var OQ_SYNTHETIC_VALUE_PATTERNS = [/^TEST(FBCLID|GCLID)/i, /^(TEST|QA)([-_.\s]|\d|$)/i, /^CEO.*STUB/i];
+  // A visit is synthetic (our own QA walk) when it carries qa=1, or an fbclid/gclid/utm_* value that starts with an agent-name QA prefix
+  // (ceo/cto/cro/sloane/marty/ben/kevin/rw/rwf/autodrive, or k<digits>) followed by a digit or walk/probe/test/stub (the values our walk skills
+  // really emit in production: ceo75walk..., CEO71TEST..., sloane66walk..., cro37probe, ceo64probe, rw-test, cto33_probe), or TESTFBCLID*/TESTGCLID*.
+  // Real Meta fbclids start with 'Iw' and never match; a generic TEST/QA prefix is deliberately NOT a rule (real ad names like Test_Video_A).
+  var OQ_SYNTHETIC_VALUE_PATTERNS = [/^TEST(FBCLID|GCLID)/i, /^(?:(?:ceo|cto|cro|sloane|marty|ben|kevin|rwf?|autodrive)[-_]?(?:\d|walk|probe|test|stub)|k\d+[-_]?(?:walk|probe|test|stub))/i];
   var OQ_SYNTHETIC_PARAM_KEYS = ['fbclid', 'gclid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'];
   function oqSyntheticSignal(params) {
     try {

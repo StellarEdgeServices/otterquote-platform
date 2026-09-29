@@ -8,7 +8,7 @@
 // Pure, no network, never throws.
 
 // BEGIN oq-synthetic-guard-ts (gh-2356)
-export const OQ_SYNTHETIC_VALUE_PATTERNS: RegExp[] = [/^TEST(FBCLID|GCLID)/i, /^(TEST|QA)([-_.\s]|\d|$)/i, /^CEO.*STUB/i];
+export const OQ_SYNTHETIC_VALUE_PATTERNS: RegExp[] = [/^TEST(FBCLID|GCLID)/i, /^(?:(?:ceo|cto|cro|sloane|marty|ben|kevin|rwf?|autodrive)[-_]?(?:\d|walk|probe|test|stub)|k\d+[-_]?(?:walk|probe|test|stub))/i];
 export const OQ_SYNTHETIC_PARAM_KEYS: string[] = ["fbclid", "gclid", "utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"];
 // END oq-synthetic-guard-ts
 

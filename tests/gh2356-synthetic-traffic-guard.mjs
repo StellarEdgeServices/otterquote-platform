@@ -77,6 +77,13 @@ for (const [label, search] of [
   ['no params', ''],
   ['real-looking fbclid + ordinary utm', '?fbclid=IwAR3xYzRealClickId_abc&utm_source=facebook&utm_campaign=120234567890&utm_medium=paid'],
   ['utm_campaign that merely starts with "test"/"qa" letters (testimonial, qatar)', '?utm_campaign=testimonials-spring&utm_source=qatar-roofing'],
+  ['REAL AD NAME utm_campaign=Test_Video_A (must NOT be suppressed)', '?fbclid=IwAR_real_looking&utm_source=facebook&utm_campaign=Test_Video_A'],
+  ['REAL AD NAME utm_content=Test_Video_A, ho-1 campaign', '?fbclid=IwAR_real_looking&utm_source=facebook&utm_campaign=ho-1&utm_content=Test_Video_A'],
+  ['REAL SEARCH KEYWORD utm_term="test for hail damage" (must NOT be suppressed)', '?gclid=Cj0KCQreal&utm_term=test%20for%20hail%20damage'],
+  ['utm_campaign=QA-Roofing-Leads (generic QA prefix is not a rule)', '?utm_campaign=QA-Roofing-Leads&utm_term=qa%20inspection'],
+  ['real Meta fbclid IwZXh... (long base64-ish)', '?fbclid=IwZXh0bgNhZW0CMTAAAR3kqWm9x_ceo75walk_Jt2vXbP7Q8sHnLrE0aYcUfD1oGiTz4wNV6KqBpM5eS8AaHfQ9dRb0yXm&utm_source=facebook&utm_campaign=120234567890'],
+  ['real Meta fbclid IwAR... containing walk/test/probe mid-string', '?fbclid=IwAR2walktestprobe9xY_abcdefghijklmnopqrstuvwxyz0123456789&utm_source=facebook'],
+  ['utm_source values that merely begin with an agent word (benefits, kevinsroofing, benchmark, croatia)', '?utm_source=benefits-guide&utm_campaign=benchmark&utm_medium=croatia'],
 ]) {
   const r = walk({ search });
   ok(r.gaEvents === 1, `CONTROL (${label}): gtag generate_lead is emitted once`);
@@ -89,9 +96,25 @@ for (const [label, search] of [
 for (const [label, search, cookie] of [
   ['qa=1', '?qa=1', ''],
   ['fbclid=TESTFBCLID123', '?fbclid=TESTFBCLID123', ''],
-  ['fbclid=CEO75STUB...', '?fbclid=CEO75STUB1234567890', ''],
-  ['utm_source=test_walk', '?utm_source=test_walk', ''],
-  ['utm_campaign=QA-run-7', '?utm_campaign=QA-run-7', ''],
+  ['fbclid=TESTFBCLID (any case)', '?fbclid=testfbclid9', ''],
+  ['production QA fbclid=ceo75walk1790609196', '?fbclid=ceo75walk1790609196', ''],
+  ['production QA fbclid=CEO71TEST1790446212', '?fbclid=CEO71TEST1790446212', ''],
+  ['production QA fbclid=ceo67walkbduod1790', '?fbclid=ceo67walkbduod1790', ''],
+  ['production QA fbclid=sloane66walk2m1790', '?fbclid=sloane66walk2m1790', ''],
+  ['production QA fbclid=sloane66walkm3', '?fbclid=sloane66walkm3', ''],
+  ['production QA fbclid=cro37probe', '?fbclid=cro37probe', ''],
+  ['production QA fbclid=cro38fbwalkclean01', '?fbclid=cro38fbwalkclean01', ''],
+  ['production QA utm_source=ceo53', '?utm_source=ceo53', ''],
+  ['production QA utm_source=ceo64probe', '?utm_source=ceo64probe', ''],
+  ['production QA utm_source=rw-test', '?utm_source=rw-test', ''],
+  ['production QA utm_source=rwf35test', '?utm_source=rwf35test', ''],
+  ['production QA utm_source=cto33_probe', '?utm_source=cto33_probe', ''],
+  ['production QA utm_content=ceo75-walk', '?utm_content=ceo75-walk', ''],
+  ['production QA fbclid=k72walk1', '?fbclid=k72walk1', ''],
+  ['production QA fbclid=marty5probe', '?fbclid=marty5probe', ''],
+  ['production QA fbclid=ben3test', '?fbclid=ben3test', ''],
+  ['production QA fbclid=kevin7stub', '?fbclid=kevin7stub', ''],
+  ['production QA fbclid=autodrive12', '?fbclid=autodrive12', ''],
   ['oq_internal=1 (the #2064 flag)', '?oq_internal=1', ''],
   ['oq_internal cookie, no param (a later page of a walk)', '', 'oq_internal=1'],
 ]) {
@@ -110,7 +133,7 @@ for (const [label, search, cookie] of [
 }
 
 // ---- js/internal-traffic.js (the early-set file) agrees ---------------------------------------------------------------
-for (const [label, search, expected] of [['qa=1', '?qa=1', true], ['TESTFBCLID123', '?fbclid=TESTFBCLID123', true], ['clean', '?fbclid=IwAR3real', false]]) {
+for (const [label, search, expected] of [['qa=1', '?qa=1', true], ['TESTFBCLID123', '?fbclid=TESTFBCLID123', true], ['ceo75walk1790609196', '?fbclid=ceo75walk1790609196', true], ['clean', '?fbclid=IwAR3real', false], ['Test_Video_A', '?utm_campaign=Test_Video_A', false], ['test for hail damage', '?utm_term=test%20for%20hail%20damage', false]]) {
   const { ctx, win } = makeCtx({ search });
   vm.runInContext(IT_SRC, ctx);
   ok(win.OQ_INTERNAL === expected, `js/internal-traffic.js (${label}): window.OQ_INTERNAL === ${expected}`);
@@ -139,7 +162,12 @@ for (const [name, src] of [['react-app/app/lib/internal-traffic.ts', tsSrc], ['s
 for (const f of ['supabase/functions/create-invoice/index.ts', 'supabase/functions/docusign-webhook/index.ts', 'supabase/functions/create-docusign-envelope/index.ts']) {
   ok(read(f).includes('shouldSuppressAnalyticsDispatch("ga4_mp"'), `${f}: GA4 Measurement Protocol send is gated`);
 }
-ok(read('supabase/functions/stripe-webhook/index.ts').includes('shouldSuppressAnalyticsDispatch("meta_capi"'), 'stripe-webhook: Meta CAPI Purchase send is gated');
+{
+  const sw = read('supabase/functions/stripe-webhook/index.ts');
+  ok(sw.includes('shouldSuppressAnalyticsDispatch("meta_capi"'), 'stripe-webhook: Meta CAPI Purchase send is gated');
+  ok(/\.select\("id, user_id, is_test, fbclid, gclid, utm_source, utm_medium, utm_campaign, utm_content, utm_term"\)/.test(sw), 'stripe-webhook: the claim lookup reads the claim\'s stored fbclid/gclid/utm_* columns');
+  ok(sw.includes('{ params: claimAttribution }') && !sw.includes('params: paymentIntent.metadata'), 'stripe-webhook: the gate is fed the claim\'s stored attribution, not PaymentIntent metadata');
+}
 ok(/isInternalTraffic\(\)\) return;\s*\n\s*const gtag = getGtag/.test(read('react-app/app/lib/track.ts')), 'react track(): gated on isInternalTraffic()');
 ok(read('react-app/app/lib/track.ts').includes('gh-2356: a QA walk emits no Meta pixel event'), 'react fbqTrack(): gated on isInternalTraffic()');
 

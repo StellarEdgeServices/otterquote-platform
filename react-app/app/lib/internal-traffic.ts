@@ -16,7 +16,7 @@
 
 // BEGIN oq-synthetic-guard (gh-2356) -- TS twin of the block in js/ga-gate.js / js/meta-pixel-gate.js / js/internal-traffic.js
 // (tests/gh2356-synthetic-traffic-guard.mjs compares the two lists literally).
-export const OQ_SYNTHETIC_VALUE_PATTERNS: RegExp[] = [/^TEST(FBCLID|GCLID)/i, /^(TEST|QA)([-_.\s]|\d|$)/i, /^CEO.*STUB/i];
+export const OQ_SYNTHETIC_VALUE_PATTERNS: RegExp[] = [/^TEST(FBCLID|GCLID)/i, /^(?:(?:ceo|cto|cro|sloane|marty|ben|kevin|rwf?|autodrive)[-_]?(?:\d|walk|probe|test|stub)|k\d+[-_]?(?:walk|probe|test|stub))/i];
 export const OQ_SYNTHETIC_PARAM_KEYS: string[] = ['fbclid', 'gclid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'];
 /** True for a QA walk: qa=1, or an fbclid/gclid/utm_* value that matches a synthetic pattern. Never throws. */
 export function isSyntheticTrafficParams(params: URLSearchParams | null | undefined): boolean {
