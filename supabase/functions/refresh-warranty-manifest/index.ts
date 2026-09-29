@@ -14,6 +14,7 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.104.0";
+import { warrantyDriftEmailText } from "./templates.ts"; // gh-1824: email body moved to templates.ts (testable, no serve() import)
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -403,33 +404,7 @@ async function sendMailgunNotification(
   rows: DriftInsert[],
   gafProgrammatic: boolean
 ) {
-  const manufacturerBreakdown = Object.entries(
-    rows.reduce((acc: Record<string, number>, r) => {
-      acc[r.manufacturer] = (acc[r.manufacturer] ?? 0) + 1;
-      return acc;
-    }, {})
-  )
-    .map(([mfr, n]) => `  • ${mfr}: ${n} item(s)`)
-    .join("\n");
-
-  const body = [
-    `Warranty Manifest Quarterly Review`,
-    ``,
-    `${count} item(s) flagged for your review.`,
-    ``,
-    `Breakdown:`,
-    manufacturerBreakdown,
-    ``,
-    gafProgrammatic
-      ? `GAF: programmatic scrape completed.`
-      : `All manufacturers: manual review required (no_source).`,
-    ``,
-    `Review queue: https://otterquote.com/admin-warranty-drift.html`,
-    ``,
-    `No changes will be made to the warranty manifest until you approve them.`,
-    ``,
-    `— Otter Quotes Platform`,
-  ].join("\n");
+  const body = warrantyDriftEmailText(count, rows, gafProgrammatic); // gh-1824
 
   try {
     const formData = new FormData();

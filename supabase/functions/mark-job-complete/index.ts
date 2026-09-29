@@ -42,6 +42,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
+import { jobCompleteEmailText, jobCompleteEmailHtml } from "./templates.ts"; // gh-1824: email bodies moved to templates.ts (testable, no serve() import)
 
 const FUNCTION_NAME = "mark-job-complete";
 
@@ -131,38 +132,8 @@ async function sendHomeownerNotification(
 
   const subject = `Your contractor has marked your job complete — ${address}`;
 
-  const textBody = [
-    `Hi ${homeownerName},`,
-    "",
-    `${contractorName} has marked the job at ${address} as complete as of ${formattedDate}.`,
-    "",
-    "If the work is finished to your satisfaction, no action is needed. If you have any concerns or believe the job is not yet complete, please log in to your Otter Quotes account and reach out through your project dashboard.",
-    "",
-    "Log in to review: https://app.otterquote.com",
-    "",
-    "Thank you for using Otter Quotes.",
-    "— The Otter Quotes Team",
-  ].join("\n");
-
-  const htmlBody = `<!DOCTYPE html>
-<html>
-<head><meta charset="UTF-8"></head>
-<body style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:2rem;color:#1F2937;">
-  <div style="text-align:center;margin-bottom:2rem;">
-    <img src="https://otterquote.com/images/otter-logo.png" alt="Otter Quotes" style="height:48px;" onerror="this.style.display='none'">
-  </div>
-  <h2 style="color:#0D1B2E;margin-bottom:1rem;">Job Marked Complete</h2>
-  <p>Hi ${homeownerName},</p>
-  <p><strong>${contractorName}</strong> has marked the job at <strong>${address}</strong> as complete as of <strong>${formattedDate}</strong>.</p>
-  <p>If the work is finished to your satisfaction, no action is needed. If you have any concerns or believe the job is not yet complete, please log in to your Otter Quotes account and reach out through your project dashboard.</p>
-  <div style="text-align:center;margin:2rem 0;">
-    <a href="https://app.otterquote.com" style="background:#E07B00;color:#fff;padding:0.75rem 1.5rem;border-radius:0.5rem;text-decoration:none;font-weight:600;">Review Your Project</a>
-  </div>
-  <p style="color:#6B7280;font-size:0.875rem;">Thank you for using Otter Quotes.</p>
-  <hr style="border:none;border-top:1px solid #E2E8F0;margin:1.5rem 0;">
-  <p style="color:#9CA3AF;font-size:0.75rem;text-align:center;">Otter Quotes · Indianapolis, IN · <a href="https://otterquote.com" style="color:#9CA3AF;">otterquote.com</a></p>
-</body>
-</html>`;
+  const textBody = jobCompleteEmailText(homeownerName, contractorName, address, formattedDate);
+  const htmlBody = jobCompleteEmailHtml(homeownerName, contractorName, address, formattedDate);
 
   const mailgunFormData = new FormData();
   mailgunFormData.append("from", "Otter Quotes <noreply@mail.otterquote.com>");

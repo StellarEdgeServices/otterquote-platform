@@ -330,7 +330,7 @@ ALLOWLIST = [
         "would cost us the enforcement hook and buy no honesty.",
     ),
     (
-        "supabase/functions/admin-contractor-action/index.ts",
+        "supabase/functions/admin-contractor-action/templates.ts",
         "We are writing to verify the Certificate of Insurance on file for",
         "A verification we actually perform: the body of the COI confirmation "
         "email an admin sends to the contractor's broker, which stamps "
@@ -338,7 +338,10 @@ ALLOWLIST = [
         "here because the action is happening as the sentence is sent. That it "
         "is admin-triggered per contractor -- not automatic at signup -- is "
         "also why the welcome email no longer promises it to everyone. "
-        "(Matches on two lines: plain-text and HTML halves of the same email.)",
+        "(Matches on two lines: plain-text and HTML halves of the same email.) "
+        "gh-1824 footer batch 3: this email body moved from index.ts to "
+        "templates.ts so it could be unit-tested without importing index.ts's "
+        "top-level serve() call -- path updated here to match, text unchanged.",
     ),
     # ---- gh-2020: hits from the new "approved/endorsed/certified" patterns
     # ---- (PATTERNS[3]/[4] above). None of these is OtterQuote representing

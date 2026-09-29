@@ -17,6 +17,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { supportEmailBody } from "./templates.ts"; // gh-1824: email body moved to templates.ts (testable, no serve() import)
 
 const SUPPORT_DESTINATION = "dustinstohler1@gmail.com";
 const MAILGUN_TIMEOUT_MS  = 10_000; // 10s — defensive; Mailgun can be slow on cold calls
@@ -93,18 +94,7 @@ serve(async (req) => {
       ? `[Otter Quotes Support] ${subject}`
       : `[Otter Quotes Support] Message from ${from_name}`;
 
-    const emailBody = `Otter Quotes Support Request
-===========================
-From:    ${from_name}
-Email:   ${from_email}
-Subject: ${subject || "(none)"}
-
-Message:
-${message}
-
----
-Sent via Otter Quotes support form.
-Reply directly to this email to respond.`;
+    const emailBody = supportEmailBody(from_name, from_email, subject, message); // gh-1824
 
     const from = `Otter Quotes Support <noreply@${MAILGUN_DOMAIN}>`;
 
