@@ -59,6 +59,14 @@ describe('gpcField with the oq_ad_optout cookie (gh-1925)', () => {
     expect('gpc' in gpcField()).toBe(false);
   });
 
+  it('N1: malformed cookie oq_ad_optout=% with GPC true still -> { gpc: true }; with GPC false -> {}', () => {
+    document.cookie = 'oq_ad_optout=%; Path=/';
+    vi.stubGlobal('navigator', { globalPrivacyControl: true });
+    expect(gpcField()).toEqual({ gpc: true });
+    vi.stubGlobal('navigator', { globalPrivacyControl: false });
+    expect(gpcField()).toEqual({});
+  });
+
   it('oq_ad_optout=10 is not a match', () => {
     vi.stubGlobal('navigator', {});
     document.cookie = 'oq_ad_optout=10; Path=/';

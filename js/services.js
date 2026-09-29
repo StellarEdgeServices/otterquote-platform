@@ -23,9 +23,14 @@ function oqGpcField() {
   try {
     // gh-1925 item 2: the privacy s12 button "Opt out of sale/sharing" leaves the oq_ad_optout=1 cookie (same one GPC leaves), and
     // the cookie is not sent to the Supabase function host, so report it here exactly like GPC. Exact match: oq_ad_optout=10 is not it.
-    var m = (typeof document !== 'undefined' && document.cookie) ? document.cookie.match(/(?:^|; )oq_ad_optout=([^;]*)/) : null;
-    var cookieOptOut = !!(m && decodeURIComponent(m[1]) === '1');
-    return ((typeof navigator !== 'undefined' && navigator.globalPrivacyControl === true) || cookieOptOut) ? { gpc: true } : {};
+    // GPC is decided FIRST, outside any cookie parsing: a malformed cookie must never turn a GPC visitor into `{}`.
+    var gpc = (typeof navigator !== 'undefined' && navigator.globalPrivacyControl === true);
+    var cookieOptOut = false;
+    try {
+      var m = (typeof document !== 'undefined' && document.cookie) ? document.cookie.match(/(?:^|; )oq_ad_optout=([^;]*)/) : null;
+      cookieOptOut = !!(m && decodeURIComponent(m[1]) === '1');
+    } catch (e) { cookieOptOut = false; } // a cookie that will not parse means no cookie opt-out, never no GPC
+    return (gpc || cookieOptOut) ? { gpc: true } : {};
   } catch (e) {
     return {};
   }

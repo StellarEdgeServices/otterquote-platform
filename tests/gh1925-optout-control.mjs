@@ -138,6 +138,10 @@ for (const [g, marker] of [['generate_contractor_pages', 'index_path = CONTRACTO
   ok((await bodyFor({ nav: { globalPrivacyControl: false }, cookie: '' })).gpc === undefined, 'static services.js: no cookie and no GPC -> no gpc field');
   ok((await bodyFor({ nav: {}, cookie: 'a=1; oq_ad_optout=10' })).gpc === undefined, 'static services.js: oq_ad_optout=10 is not a match');
   ok((await bodyFor({ nav: {}, cookie: 'a=1; oq_ad_optout=1; b=2' })).gpc === true, 'static services.js: oq_ad_optout=1 among other cookies matches');
+  // N1 (REVIEW 5896098325): a malformed cookie must never turn a GPC visitor into {}.
+  ok((await bodyFor({ nav: { globalPrivacyControl: true }, cookie: 'oq_ad_optout=%' })).gpc === true, 'static services.js N1: oq_ad_optout=% + GPC true -> gpc:true');
+  ok((await bodyFor({ nav: { globalPrivacyControl: false }, cookie: 'oq_ad_optout=%' })).gpc === undefined, 'static services.js N1: oq_ad_optout=% + GPC false -> no gpc field');
+  ok((await bodyFor({ nav: { globalPrivacyControl: false }, cookie: 'oq_ad_optout=1' })).gpc === true, 'static services.js N1: oq_ad_optout=1 + GPC false -> gpc:true');
 }
 console.log('\n' + passed + ' passed, ' + failed + ' failed');
 process.exit(failed ? 1 : 0);
