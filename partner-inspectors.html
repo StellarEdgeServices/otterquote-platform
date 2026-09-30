@@ -1249,9 +1249,9 @@ async function handleSignup(e) {
         let canFinishRegistration = false;
         if (isDuplicate) {
           try {
-            const pendingMarker = JSON.parse(localStorage.getItem('oq_partner_pending_registration') || 'null');
+            const pendingMarker = JSON.parse(sessionStorage.getItem('oq_partner_pending_registration') || 'null');
             const emailKey = String(email || '').trim().toLowerCase();
-            canFinishRegistration = !!(pendingMarker && pendingMarker.email === emailKey && typeof pendingMarker.ts === 'number' && Date.now() - pendingMarker.ts < 7 * 24 * 60 * 60 * 1000);
+            canFinishRegistration = !!(pendingMarker && pendingMarker.email === emailKey && typeof pendingMarker.ts === 'number' && Date.now() - pendingMarker.ts < 24 * 60 * 60 * 1000);
             if (!canFinishRegistration && window.Auth && typeof Auth.getUser === 'function') {
               const sessionUser = await Auth.getUser();
               canFinishRegistration = !!(sessionUser && sessionUser.email && String(sessionUser.email).toLowerCase() === emailKey);
@@ -1268,7 +1268,7 @@ async function handleSignup(e) {
       }
       if (signUpResult) {
         // gh-2282: auth account created here; remember it (no password) until register_partner reaches a definitive outcome.
-        try { localStorage.setItem('oq_partner_pending_registration', JSON.stringify({ email: String(email || '').trim().toLowerCase(), ts: Date.now(), termsAcceptedAt: oqTermsAcceptedAt, rpcArgs: partnerRpcArgs })); } catch (e) { /* non-fatal */ }
+        try { localStorage.removeItem('oq_partner_pending_registration'); sessionStorage.setItem('oq_partner_pending_registration', JSON.stringify({ email: String(email || '').trim().toLowerCase(), ts: Date.now(), termsAcceptedAt: oqTermsAcceptedAt, rpcArgs: partnerRpcArgs })); } catch (e) { /* non-fatal */ } try { localStorage.setItem('oq_partner_signup_ctx', JSON.stringify({ ts: Date.now(), agentType: partnerRpcArgs.p_agent_type, attribution: { p_recruit_code: partnerRpcArgs.p_recruit_code || null, p_utm_source: partnerRpcArgs.p_utm_source || null, p_utm_medium: partnerRpcArgs.p_utm_medium || null, p_utm_campaign: partnerRpcArgs.p_utm_campaign || null, p_utm_content: partnerRpcArgs.p_utm_content || null, p_fbclid: partnerRpcArgs.p_fbclid || null, p_li_fat_id: partnerRpcArgs.p_li_fat_id || null, p_funnel_id: partnerRpcArgs.p_funnel_id || null } })); } catch (e) { /* non-fatal */ } // gh-2355: NON-PII signup context (agent type + attribution) so the dashboard re-collect recovery can attribute a new-tab return
       }
     }
 
@@ -1280,7 +1280,7 @@ async function handleSignup(e) {
     const { data, error } = await sb
       .rpc('register_partner', partnerRpcArgs);
     // gh-2282: definitive outcome (row created, or it already exists) -- the pending marker has done its job.
-    if (!error || (error.message || '').includes('partner_exists')) { try { localStorage.removeItem('oq_partner_pending_registration'); } catch (e) { /* non-fatal */ } }
+    if (!error || (error.message || '').includes('partner_exists')) { try { sessionStorage.removeItem('oq_partner_pending_registration'); localStorage.removeItem('oq_partner_pending_registration'); localStorage.removeItem('oq_partner_signup_ctx'); } catch (e) { /* non-fatal */ } }
 
     if (error) {
       if ((error.message || '').includes('partner_exists')) {
@@ -1308,11 +1308,6 @@ async function handleSignup(e) {
       seoRefLink.href = `${CONFIG.SITE_URL}/ref-inspector.html?code=${finalCode}`;
     }
 
-    // Store data for post-auth user_id linking
-    localStorage.setItem('cs_partner_signup', JSON.stringify({
-      email: email,
-      unique_code: finalCode,
-    }));
     localStorage.setItem('cs_auth_role', agentType);
     localStorage.setItem('cs_auth_role_at', String(Date.now()));
 

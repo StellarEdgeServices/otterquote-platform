@@ -41,6 +41,12 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { findCompletedContractSigner, parsePayload } from "./payload-parser.ts";
+import {
+  counterSignNudgeHtml,
+  counterSignNudgeText,
+  homeownerContractSignedHtml,
+  homeownerContractSignedText,
+} from "./templates.ts"; // gh-1824 D-237
 import { evaluateAcknowledgment, fetchDocumentSignerStatus } from "./ack-verify.ts";
 // [#1314] Signed-price reconciliation. Pure + unit-tested (price-verify.test.ts)
 // for the same reason evaluateAcknowledgment is: it is a money check.
@@ -78,6 +84,7 @@ import {
 // import. Switched from this batch's original local copy to the shared
 // one; the local copy is deleted.
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
+import { shouldSuppressAnalyticsDispatch } from "../_shared/synthetic-traffic.ts";
 
 // [gh-1886 re-review #2, independent review on #2198, 2026-09-25T22:02:35Z] Mirrored VERBATIM as a literal
 // string constant in the platform-fee-charge function's own stripe-fetch.ts (Supabase Edge Functions
@@ -171,7 +178,13 @@ function getServiceRoleKey(): string {
 }
 
 // ========== GA4 MEASUREMENT PROTOCOL ==========
-async function sendGA4Event(eventName: string, params: Record<string, unknown> = {}): Promise<void> {
+async function sendGA4Event(
+  eventName: string,
+  params: Record<string, unknown> = {},
+  signals?: { isTest?: boolean | null; isSynthetic?: boolean | null },
+): Promise<void> {
+  // gh-2356: a QA row never reaches production GA4.
+  if (shouldSuppressAnalyticsDispatch("ga4_mp", eventName, signals)) return;
   const measurementId = Deno.env.get("GA4_MEASUREMENT_ID");
   const apiSecret = Deno.env.get("GA4_API_SECRET");
   if (!measurementId || !apiSecret) return;
@@ -687,23 +700,8 @@ serve(async (req) => {
                 const nudgeName = nudgeContractor?.contact_name || "Contractor";
 
                 const nudgeSubject = "The homeowner has signed — your counter-signature is needed";
-                const nudgeText =
-                  `Hi ${nudgeName},\n\n` +
-                  `Good news — the homeowner has signed the contract for ${nudgeAddress} (${nudgeJobNumber}).\n\n` +
-                  `The contract is now waiting on your counter-signature. Once you sign, the agreement is fully executed and the project can move forward.\n\n` +
-                  `Counter-sign from your dashboard:\n${contractorDashboardUrl}\n\n` +
-                  `We'll send you a reminder every couple of hours during business hours until the contract is fully executed.\n\n` +
-                  `Questions? Reply to this email or call (844) 875-3412.\n\n` +
-                  `— The Otter Quotes Team`;
-                const nudgeHtml =
-                  `<!DOCTYPE html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;line-height:1.6;color:#333;max-width:600px;margin:0 auto;padding:20px;">` +
-                  `<p>Hi ${nudgeName},</p>` +
-                  `<p>Good news — the homeowner has signed the contract for <strong>${nudgeAddress}</strong> (${nudgeJobNumber}).</p>` +
-                  `<p>The contract is now waiting on <strong>your counter-signature</strong>. Once you sign, the agreement is fully executed and the project can move forward.</p>` +
-                  `<p><a href="${contractorDashboardUrl}" style="color:#0066cc;">Counter-sign from your dashboard</a></p>` +
-                  `<p>We'll send you a reminder every couple of hours during business hours until the contract is fully executed.</p>` +
-                  `<p>Questions? Reply to this email or call (844) 875-3412.</p>` +
-                  `<p>— The Otter Quotes Team</p></body></html>`;
+                const nudgeText = counterSignNudgeText(nudgeName, nudgeAddress, nudgeJobNumber, contractorDashboardUrl);
+                const nudgeHtml = counterSignNudgeHtml(nudgeName, nudgeAddress, nudgeJobNumber, contractorDashboardUrl);
 
                 const nudgeApiKey = Deno.env.get("MAILGUN_API_KEY") || "";
                 // MAILGUN_DOMAIN with a fallback to the domain already
@@ -754,7 +752,7 @@ serve(async (req) => {
 
     if (status === "completed") {
       // Envelope fully signed by all parties
-      await sendGA4Event("envelope_signed", { envelope_id: envelopeId, claim_id: claim.id });
+      await sendGA4Event("envelope_signed", { envelope_id: envelopeId, claim_id: claim.id }, { isTest: claim.is_test });
       if (isContract) {
         // ========== D-269 ACKNOWLEDGMENT BACKSTOP (#550) ==========
         // Field-level enforcement is the inline sign-type Text Tag on the
@@ -2061,25 +2059,8 @@ serve(async (req) => {
 
           if (homeownerEmail) {
             const subject = "Your Otter Quotes contract is signed and your project is in motion";
-            const textBody =
-              `Hi ${homeownerName},\n\n` +
-              `Great news — your contract with ${contractorCompany} for ${propertyAddress} is fully executed.\n\n` +
-              `${jobNumber}\n\n` +
-              `What happens next:\n` +
-              `• ${contractorCompany} will contact you within 48 hours to coordinate next steps.\n` +
-              `• You can track your project status anytime on your dashboard: ${dashboardUrl}\n\n` +
-              `Questions? Reply to this email or contact support@otterquote.com.\n\n` +
-              `— The Otter Quotes Team`;
-            const htmlBody =
-              `<!DOCTYPE html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;line-height:1.6;color:#333;max-width:600px;margin:0 auto;padding:20px;">` +
-              `<p>Hi ${homeownerName},</p>` +
-              `<p>Great news — your contract with <strong>${contractorCompany}</strong> for <strong>${propertyAddress}</strong> is fully executed.</p>` +
-              `<p style="font-size:1.05rem;font-weight:bold;color:#0066cc;">${jobNumber}</p>` +
-              `<p><strong>What happens next:</strong></p>` +
-              `<ul><li>${contractorCompany} will contact you within 48 hours to coordinate next steps.</li>` +
-              `<li>You can track your project status anytime on your <a href="${dashboardUrl}" style="color:#0066cc;">dashboard</a>.</li></ul>` +
-              `<p>Questions? Reply to this email or contact <a href="mailto:support@otterquote.com">support@otterquote.com</a>.</p>` +
-              `<p>— The Otter Quotes Team</p></body></html>`;
+            const textBody = homeownerContractSignedText(homeownerName, contractorCompany, propertyAddress, jobNumber, dashboardUrl);
+            const htmlBody = homeownerContractSignedHtml(homeownerName, contractorCompany, propertyAddress, jobNumber, dashboardUrl);
 
             const mailgunApiKey = Deno.env.get("MAILGUN_API_KEY") || "";
             if (mailgunApiKey) {

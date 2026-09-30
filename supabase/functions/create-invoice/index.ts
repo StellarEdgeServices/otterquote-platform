@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.104.0";
+import { shouldSuppressAnalyticsDispatch } from "../_shared/synthetic-traffic.ts";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
 const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
@@ -72,7 +73,13 @@ function formatDate(isoString: string): string {
   }
 }
 
-async function sendGA4Event(eventName: string, params: Record<string, unknown> = {}): Promise<void> {
+async function sendGA4Event(
+  eventName: string,
+  params: Record<string, unknown> = {},
+  signals?: { isTest?: boolean | null; isSynthetic?: boolean | null },
+): Promise<void> {
+  // gh-2356: a QA row never reaches production GA4.
+  if (shouldSuppressAnalyticsDispatch("ga4_mp", eventName, signals)) return;
   const measurementId = Deno.env.get("GA4_MEASUREMENT_ID");
   const apiSecret = Deno.env.get("GA4_API_SECRET");
   if (!measurementId || !apiSecret) return;
@@ -445,7 +452,7 @@ serve(async (req: Request) => {
       contractor_id,
       platform_fee_amount: platformFeeAmount,
       bid_amount: bidAmount,
-    });
+    }, { isTest: quote.is_test });
 
     return new Response(
       JSON.stringify({

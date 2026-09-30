@@ -30,6 +30,17 @@ vi.mock('@/lib/supabase', () => ({
 // that file's doc comment. Mocked separately so these tests assert the
 // call this page ACTUALLY makes.
 vi.mock('@/lib/auth-uniform', () => ({ callAuthUniform: vi.fn() }));
+// gh-1980 PR 3/3 (Google-only PKCE): Google now initiates through
+// lib/supabase-oauth.ts (a dedicated pkce client). Delegate to the mocked
+// shared client so this test keeps asserting the exact OAuth call the page makes.
+vi.mock('@/lib/supabase-oauth', async () => {
+  const { supabase } = await import('@/lib/supabase');
+  return {
+    signInWithGoogleOAuth: (options: unknown) =>
+      (supabase.auth.signInWithOAuth as (a: unknown) => unknown)({ provider: 'google', options }),
+  };
+});
+
 vi.mock('@/hooks/use-auth-ready', () => ({ useAuthReady: vi.fn() }));
 
 import { supabase } from '@/lib/supabase';

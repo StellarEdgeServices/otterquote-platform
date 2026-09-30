@@ -1,3 +1,9 @@
+-- >>> APPLIED (2026-09-26, gh-1438 part 2) -- this draft's SQL is byte-
+-- identical to what ran. Filed as supabase/migrations/20260821205432_gh1150_add_paid_state.sql
+-- (confirmed read-only against yeszghaspzwwstvsrioa, both this session and
+-- the 2026-09-01 MIGRATIONS-RECONCILIATION-1438.md Part 1 pass). This copy
+-- kept here for history only -- do not re-run it; the live file above is
+-- the source of truth and the one the replay chain reads. <<<
 -- Migration: gh1021_add_paid_state
 -- Author: Code lane sub-agent (automated), run-work orchestration
 -- Date: 2026-08-21

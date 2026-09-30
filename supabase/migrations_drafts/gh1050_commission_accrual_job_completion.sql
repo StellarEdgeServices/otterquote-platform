@@ -1,3 +1,14 @@
+-- >>> APPLIED (2026-09-26, gh-1438 part 2, corrected) -- this draft's body is
+-- filed live as supabase/migrations/20260819225113_gh1050_commission_accrual_job_completion.sql
+-- (confirmed read-only against yeszghaspzwwstvsrioa: after_claim_completed
+-- trigger + apply_referral_commission() SECURITY DEFINER both present, this
+-- session). Kept here, unmodified below this banner, for history only -- do
+-- not re-run it; the filed copy above is the source of truth the replay
+-- chain reads. NOTE (self-correction, this commit): an earlier version of
+-- this banner+body pushed to this branch (commit 2f706c4) had drifted from
+-- this exact text (ASCII "--" substituted for this file's own em dash
+-- "—" in several places) -- refetched via get_file_contents and
+-- rebuilt from that exact text to fix it. <<<
 -- ============================================================================
 -- gh1050_commission_accrual_job_completion — Forward migration (REBASED)
 -- ============================================================================

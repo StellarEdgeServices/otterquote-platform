@@ -359,7 +359,7 @@ function makeElementStore() {
   };
 }
 
-function runPageScript(page, { search, omitCrypto = false, sessionOnSignup = false, authGetUserResult = null, preLocalStorage = null } = {}) {
+function runPageScript(page, { search, omitCrypto = false, sessionOnSignup = false, authGetUserResult = null, preLocalStorage = null, preSessionStorage = null } = {}) {
   const html = fs.readFileSync(path.join(repoRoot, page.file), 'utf8');
   const script = extractInlineScripts(html);
   if (!script || script.indexOf('register_partner') === -1) {
@@ -381,6 +381,14 @@ function runPageScript(page, { search, omitCrypto = false, sessionOnSignup = fal
     getItem: (k) => (lsStore.has(k) ? lsStore.get(k) : null),
     setItem: (k, v) => { lsStore.set(k, String(v)); },
     removeItem: (k) => { lsStore.delete(k); },
+  };
+  // gh-2355: the Google pending-signup payload (name/phone/company) lives in sessionStorage (same-tab OAuth redirect).
+  const ssStore = new Map();
+  if (preSessionStorage) for (const [k, v] of Object.entries(preSessionStorage)) ssStore.set(k, v);
+  const sessionStorage = {
+    getItem: (k) => (ssStore.has(k) ? ssStore.get(k) : null),
+    setItem: (k, v) => { ssStore.set(k, String(v)); },
+    removeItem: (k) => { ssStore.delete(k); },
   };
 
   // gh-2154 P-1 (CSPRNG fix, test (a)/(b)): instrument crypto.getRandomValues
@@ -419,7 +427,7 @@ function runPageScript(page, { search, omitCrypto = false, sessionOnSignup = fal
   };
   const win = {
     location: { search: search || '', hostname: 'otterquote.com', href: '', replace() {} },
-    localStorage,
+    localStorage, sessionStorage,
     addEventListener() {}, removeEventListener() {},
     scrollTo() {},
     requestIdleCallback(fn) { fn(); return 1; },
@@ -446,7 +454,7 @@ function runPageScript(page, { search, omitCrypto = false, sessionOnSignup = fal
   const ctx = {
     window: win,
     document: doc,
-    localStorage,
+    localStorage, sessionStorage,
     navigator: { clipboard: { writeText: () => Promise.resolve() } },
     console,
     URLSearchParams,
@@ -496,7 +504,7 @@ function runPageScript(page, { search, omitCrypto = false, sessionOnSignup = fal
   for (const fn of domContentLoadedListeners) {
     try { fn(); } catch (e) { /* ignore, surfaced via missing submit listener below */ }
   }
-  return { store, rpcCalls, ctx, cryptoCounters, mathCounters, authCounters, lsStore, authUpdateUserCalls };
+  return { store, rpcCalls, ctx, cryptoCounters, mathCounters, authCounters, lsStore, authUpdateUserCalls, ssStore };
 }
 
 async function submitForm(runResult, formId, fill) {
@@ -782,7 +790,7 @@ for (const page of PAGES) {
   {
     const run = runPageScript(insurancePage, {
       search: '?g=1',
-      preLocalStorage: { [PENDING_SIGNUP_KEY]: pendingPayload },
+      preSessionStorage: { [PENDING_SIGNUP_KEY]: pendingPayload },
       authGetUserResult: { email: 'pfw-p1@otterquote-internal.test' },
     });
     if (run.setupError) {
@@ -802,7 +810,7 @@ for (const page of PAGES) {
   {
     const run = runPageScript(insurancePage, {
       search: '?g=1',
-      preLocalStorage: { [PENDING_SIGNUP_KEY]: pendingPayload },
+      preSessionStorage: { [PENDING_SIGNUP_KEY]: pendingPayload },
       authGetUserResult: { email: 'gh2154-p1-google-test@example.invalid' },
     });
     if (run.setupError) {
@@ -813,6 +821,21 @@ for (const page of PAGES) {
       const calls = run.rpcCalls.filter((c) => c.name === 'register_partner');
       const params = calls[0] ? calls[0].params || {} : {};
       ok(params.p_is_test === false, 'partner-insurance.html (m): the Google-completion register_partner call has p_is_test=false for a normal email -- got ' + JSON.stringify(params.p_is_test));
+    }
+  }
+
+  // (n) gh-2355: a LEGACY localStorage copy of the pending payload (name/phone/company) is purged and never replayed.
+  {
+    const run = runPageScript(insurancePage, {
+      search: '?g=1',
+      preLocalStorage: { [PENDING_SIGNUP_KEY]: pendingPayload },
+      authGetUserResult: { email: 'gh2154-p1-google-test@example.invalid' },
+    });
+    if (run.setupError) failWithReason('partner-insurance.html (n)', run.setupError);
+    else {
+      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((r) => setTimeout(r, 0));
+      ok(run.rpcCalls.filter((c) => c.name === 'register_partner').length === 0 && !run.lsStore.has(PENDING_SIGNUP_KEY), 'partner-insurance.html (n): gh-2355 a legacy localStorage pending payload is purged and never used to register');
     }
   }
 }

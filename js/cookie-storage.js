@@ -632,6 +632,88 @@
     _MAX_AGE: REFERRAL_MAX_AGE
   };
 
+  // ── gh-1980 PR 3/3 (re-scoped): PKCE for Google OAuth ONLY ──────────────────
+  // Dustin, verbatim (#1980 comment 5889011351): "PKCE for Google only
+  // (Recommended)". Emailed magic / recovery / confirmation links stay IMPLICIT
+  // (#access_token fragments) so they keep working on any device.
+  //
+  // supabase-js 2.116.0 (auth-js GoTrueClient) selects the flow CLIENT-WIDE:
+  //   * _getSessionFromURL throws "Not a valid implicit grant flow url." when a
+  //     ?code= return reaches an implicit client, and "Not a valid PKCE flow
+  //     url." when a #access_token fragment reaches a pkce client;
+  //   * _isPKCECallback counts ?code= as a callback only if a code-verifier is in
+  //     storage (<storageKey>-code-verifier, or <storageKey>-flow-<id>-code-verifier
+  //     when an sb_flow_id param is present).
+  // So (1) the shared client is built per page load: 'pkce' ONLY when this very URL
+  // is a verifier-backed ?code= return (our own Google sign-in coming home; supabase-js
+  // then exchanges the code natively and scrubs the URL), 'implicit' for everything
+  // else; and (2) Google INITIATION uses a dedicated pkce client on a verifier-only
+  // storage adapter (never the shared session), which writes the verifier under the
+  // canonical storageKey where (1) reads it.
+  function isCodeVerifierKey(key) {
+    return typeof key === 'string' && /-code-verifier$/.test(key);
+  }
+
+  function flowTypeForPageLoad() {
+    try {
+      var params = new URLSearchParams(window.location.search || '');
+      if (!params.get('code')) return 'implicit';
+      var flowId = params.get('sb_flow_id');
+      if (flowId && window.localStorage.getItem(STORAGE_KEY + '-flow-' + flowId + '-code-verifier')) return 'pkce';
+      return window.localStorage.getItem(STORAGE_KEY + '-code-verifier') ? 'pkce' : 'implicit';
+    } catch (e) {
+      return 'implicit';
+    }
+  }
+
+  // Persists *-code-verifier keys (origin localStorage, via the shared adapter's
+  // auxiliary-key routing); inert for everything else, so the OAuth-initiation
+  // client can never read, write or clear the shared session cookies.
+  function createVerifierOnlyStorage() {
+    var real = window.OtterQuoteCookieStorage;
+    return {
+      getItem: function (key) { return isCodeVerifierKey(key) ? real.getItem(key) : null; },
+      setItem: function (key, value) { if (isCodeVerifierKey(key)) real.setItem(key, value); },
+      removeItem: function (key) { if (isCodeVerifierKey(key)) real.removeItem(key); }
+    };
+  }
+
+  function createOAuthClient(url, anon) {
+    return window.supabase.createClient(url, anon, {
+      auth: {
+        flowType: 'pkce',
+        storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || STORAGE_KEY,
+        storage: createVerifierOnlyStorage(),
+        detectSessionInUrl: false,
+        autoRefreshToken: false
+      }
+    });
+  }
+
+  // Email-initiated calls (signUp confirmation, OTP, recovery) must never be PKCE-bound
+  // (Ben, #1980 5889011351). On the one page load where the shared client is pkce (a
+  // Google ?code= return, e.g. partner-insurance.html?g=1) they go through this explicitly
+  // implicit client instead: same canonical storageKey + adapter, but it only initiates
+  // (no URL detection, no token refresh).
+  function createEmailClient(url, anon) {
+    return window.supabase.createClient(url, anon, {
+      auth: {
+        flowType: 'implicit',
+        storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || STORAGE_KEY,
+        storage: window.OtterQuoteCookieStorage,
+        detectSessionInUrl: false,
+        autoRefreshToken: false
+      }
+    });
+  }
+
+  window.OtterQuoteOAuthPkce = {
+    createEmailClient: createEmailClient,
+    flowTypeForPageLoad: flowTypeForPageLoad,
+    createVerifierOnlyStorage: createVerifierOnlyStorage,
+    createOAuthClient: createOAuthClient
+  };
+
   // Constants exposed for diagnostics + contract tests.
   window.OtterQuoteCookieStorage._COOKIE_ACCESS   = COOKIE_ACCESS;
   window.OtterQuoteCookieStorage._COOKIE_REFRESH  = COOKIE_REFRESH;
