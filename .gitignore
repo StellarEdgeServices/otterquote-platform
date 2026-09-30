@@ -67,3 +67,6 @@ tools/dmarc/.secrets
 tools/dmarc/results/
 tools/dmarc/__pycache__/
 tools/dmarc/tests/__pycache__/
+
+# gh-2392: build output (copy of the served tree, see netlify.toml [build])
+_site/
