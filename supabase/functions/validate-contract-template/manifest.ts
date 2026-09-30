@@ -14,6 +14,7 @@
 
 // deno-lint-ignore-file no-explicit-any
 import { CURRENT_TEMPLATE_MANIFEST_VERSION } from "./template-validity.ts";
+import { findLabeledSignTags, type LabeledTagViolation } from "./boldsign-tag-lint.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // BoldSign Text Tag builder — matches the syntax create-docusign-envelope's
@@ -22,7 +23,18 @@ import { CURRENT_TEMPLATE_MANIFEST_VERSION } from "./template-validity.ts";
 // are the 7 documented at developers.boldsign.com/text-tags/supported-fields/:
 // text, sign, init, date, editdate, title, company. Required is "*" or a
 // single space (not-required) per the same page.
+//
+// [gh-1314] `sign`, `init` and `date` tags MUST have an EMPTY FieldLabel. BoldSign
+// accepts the send (201 + documentId) and then fails document creation
+// permanently and silently when one of these carries a label (measured
+// 2026-09-30, #1314 comment 5912190043). `text` tags may keep their label.
+// tag() therefore REFUSES a non-empty label for sign/init/date, so the manifest
+// (and the starter template built from it) can never again demand the form
+// BoldSign cannot create.
 export function tag(fieldType: "text" | "sign" | "init" | "date", signerIndex: 1 | 2, required: boolean, label: string, fieldId: string): string {
+  if (fieldType !== "text" && label !== "") {
+    throw new Error(`gh-1314: a ${fieldType} tag must have an empty label (got "${label}" for ${fieldId}); BoldSign cannot create a document from a labeled ${fieldType} tag`);
+  }
   return `{{${fieldType}|${signerIndex}|${required ? "*" : " "}|${label}|${fieldId}}}`;
 }
 export const CONTRACTOR_IDX = 1; // Signers[0] in handleContractorSign — see file header coupling note.
@@ -45,10 +57,10 @@ export const MANIFEST: any = {
         slot: "roofing/retail",
         requiredCount: 13,
         required: [
-          { anchor: tag("sign", HOMEOWNER_IDX, true, "Homeowner Signature", "homeowner_signature"), mechanism: "boldsign_tag", field: "Homeowner signature", tabType: "sign", source: "HICA" },
-          { anchor: tag("date", HOMEOWNER_IDX, true, "Homeowner Sign Date", "homeowner_signature_date"), mechanism: "boldsign_tag", field: "Homeowner sign date", tabType: "date", source: "HICA" },
-          { anchor: tag("sign", CONTRACTOR_IDX, true, "Contractor Signature", "contractor_signature"), mechanism: "boldsign_tag", field: "Contractor signature", tabType: "sign", source: "HICA" },
-          { anchor: tag("date", CONTRACTOR_IDX, true, "Contractor Sign Date", "contractor_signature_date"), mechanism: "boldsign_tag", field: "Contractor sign date", tabType: "date", source: "HICA" },
+          { anchor: tag("sign", HOMEOWNER_IDX, true, "", "homeowner_signature"), mechanism: "boldsign_tag", field: "Homeowner signature", tabType: "sign", source: "HICA" },
+          { anchor: tag("date", HOMEOWNER_IDX, true, "", "homeowner_signature_date"), mechanism: "boldsign_tag", field: "Homeowner sign date", tabType: "date", source: "HICA" },
+          { anchor: tag("sign", CONTRACTOR_IDX, true, "", "contractor_signature"), mechanism: "boldsign_tag", field: "Contractor signature", tabType: "sign", source: "HICA" },
+          { anchor: tag("date", CONTRACTOR_IDX, true, "", "contractor_signature_date"), mechanism: "boldsign_tag", field: "Contractor sign date", tabType: "date", source: "HICA" },
           { anchor: tag("text", CONTRACTOR_IDX, true, "Customer Name", "customer_name"), mechanism: "boldsign_tag", field: "Customer name", tabType: "text", source: "Party identification" },
           { anchor: tag("text", CONTRACTOR_IDX, true, "Property Address", "customer_address"), mechanism: "boldsign_tag", field: "Property address", tabType: "text", source: "Property identification" },
           { anchor: tag("text", CONTRACTOR_IDX, true, "Contract Price", "contract_price"), mechanism: "boldsign_tag", field: "Total contract amount", tabType: "text", source: "Financial term" },
@@ -65,10 +77,10 @@ export const MANIFEST: any = {
         slot: "roofing/insurance",
         requiredCount: 14,
         required: [
-          { anchor: tag("sign", HOMEOWNER_IDX, true, "Homeowner Signature", "homeowner_signature"), mechanism: "boldsign_tag", field: "Homeowner signature", tabType: "sign", source: "HICA" },
-          { anchor: tag("date", HOMEOWNER_IDX, true, "Homeowner Sign Date", "homeowner_signature_date"), mechanism: "boldsign_tag", field: "Homeowner sign date", tabType: "date", source: "HICA" },
-          { anchor: tag("sign", CONTRACTOR_IDX, true, "Contractor Signature", "contractor_signature"), mechanism: "boldsign_tag", field: "Contractor signature", tabType: "sign", source: "HICA" },
-          { anchor: tag("date", CONTRACTOR_IDX, true, "Contractor Sign Date", "contractor_signature_date"), mechanism: "boldsign_tag", field: "Contractor sign date", tabType: "date", source: "HICA" },
+          { anchor: tag("sign", HOMEOWNER_IDX, true, "", "homeowner_signature"), mechanism: "boldsign_tag", field: "Homeowner signature", tabType: "sign", source: "HICA" },
+          { anchor: tag("date", HOMEOWNER_IDX, true, "", "homeowner_signature_date"), mechanism: "boldsign_tag", field: "Homeowner sign date", tabType: "date", source: "HICA" },
+          { anchor: tag("sign", CONTRACTOR_IDX, true, "", "contractor_signature"), mechanism: "boldsign_tag", field: "Contractor signature", tabType: "sign", source: "HICA" },
+          { anchor: tag("date", CONTRACTOR_IDX, true, "", "contractor_signature_date"), mechanism: "boldsign_tag", field: "Contractor sign date", tabType: "date", source: "HICA" },
           { anchor: tag("text", CONTRACTOR_IDX, true, "Customer Name", "customer_name"), mechanism: "boldsign_tag", field: "Customer name", tabType: "text", source: "Party identification" },
           { anchor: tag("text", CONTRACTOR_IDX, true, "Property Address", "customer_address"), mechanism: "boldsign_tag", field: "Property address", tabType: "text", source: "Property identification" },
           { anchor: tag("text", CONTRACTOR_IDX, true, "Contract Price", "contract_price"), mechanism: "boldsign_tag", field: "Total contract amount (RCV-based)", tabType: "text", source: "Financial term" },
@@ -88,10 +100,10 @@ export const MANIFEST: any = {
         slot: "siding/retail",
         requiredCount: 13,
         required: [
-          { anchor: tag("sign", HOMEOWNER_IDX, true, "Homeowner Signature", "homeowner_signature"), mechanism: "boldsign_tag", field: "Homeowner signature", tabType: "sign", source: "HICA" },
-          { anchor: tag("date", HOMEOWNER_IDX, true, "Homeowner Sign Date", "homeowner_signature_date"), mechanism: "boldsign_tag", field: "Homeowner sign date", tabType: "date", source: "HICA" },
-          { anchor: tag("sign", CONTRACTOR_IDX, true, "Contractor Signature", "contractor_signature"), mechanism: "boldsign_tag", field: "Contractor signature", tabType: "sign", source: "HICA" },
-          { anchor: tag("date", CONTRACTOR_IDX, true, "Contractor Sign Date", "contractor_signature_date"), mechanism: "boldsign_tag", field: "Contractor sign date", tabType: "date", source: "HICA" },
+          { anchor: tag("sign", HOMEOWNER_IDX, true, "", "homeowner_signature"), mechanism: "boldsign_tag", field: "Homeowner signature", tabType: "sign", source: "HICA" },
+          { anchor: tag("date", HOMEOWNER_IDX, true, "", "homeowner_signature_date"), mechanism: "boldsign_tag", field: "Homeowner sign date", tabType: "date", source: "HICA" },
+          { anchor: tag("sign", CONTRACTOR_IDX, true, "", "contractor_signature"), mechanism: "boldsign_tag", field: "Contractor signature", tabType: "sign", source: "HICA" },
+          { anchor: tag("date", CONTRACTOR_IDX, true, "", "contractor_signature_date"), mechanism: "boldsign_tag", field: "Contractor sign date", tabType: "date", source: "HICA" },
           { anchor: tag("text", CONTRACTOR_IDX, true, "Customer Name", "customer_name"), mechanism: "boldsign_tag", field: "Customer name", tabType: "text", source: "Party identification" },
           { anchor: tag("text", CONTRACTOR_IDX, true, "Property Address", "customer_address"), mechanism: "boldsign_tag", field: "Property address", tabType: "text", source: "Property identification" },
           { anchor: tag("text", CONTRACTOR_IDX, true, "Contract Price", "contract_price"), mechanism: "boldsign_tag", field: "Total contract amount", tabType: "text", source: "Financial term" },
@@ -108,10 +120,10 @@ export const MANIFEST: any = {
         slot: "siding/insurance",
         requiredCount: 14,
         required: [
-          { anchor: tag("sign", HOMEOWNER_IDX, true, "Homeowner Signature", "homeowner_signature"), mechanism: "boldsign_tag", field: "Homeowner signature", tabType: "sign", source: "HICA" },
-          { anchor: tag("date", HOMEOWNER_IDX, true, "Homeowner Sign Date", "homeowner_signature_date"), mechanism: "boldsign_tag", field: "Homeowner sign date", tabType: "date", source: "HICA" },
-          { anchor: tag("sign", CONTRACTOR_IDX, true, "Contractor Signature", "contractor_signature"), mechanism: "boldsign_tag", field: "Contractor signature", tabType: "sign", source: "HICA" },
-          { anchor: tag("date", CONTRACTOR_IDX, true, "Contractor Sign Date", "contractor_signature_date"), mechanism: "boldsign_tag", field: "Contractor sign date", tabType: "date", source: "HICA" },
+          { anchor: tag("sign", HOMEOWNER_IDX, true, "", "homeowner_signature"), mechanism: "boldsign_tag", field: "Homeowner signature", tabType: "sign", source: "HICA" },
+          { anchor: tag("date", HOMEOWNER_IDX, true, "", "homeowner_signature_date"), mechanism: "boldsign_tag", field: "Homeowner sign date", tabType: "date", source: "HICA" },
+          { anchor: tag("sign", CONTRACTOR_IDX, true, "", "contractor_signature"), mechanism: "boldsign_tag", field: "Contractor signature", tabType: "sign", source: "HICA" },
+          { anchor: tag("date", CONTRACTOR_IDX, true, "", "contractor_signature_date"), mechanism: "boldsign_tag", field: "Contractor sign date", tabType: "date", source: "HICA" },
           { anchor: tag("text", CONTRACTOR_IDX, true, "Customer Name", "customer_name"), mechanism: "boldsign_tag", field: "Customer name", tabType: "text", source: "Party identification" },
           { anchor: tag("text", CONTRACTOR_IDX, true, "Property Address", "customer_address"), mechanism: "boldsign_tag", field: "Property address", tabType: "text", source: "Property identification" },
           { anchor: tag("text", CONTRACTOR_IDX, true, "Contract Price", "contract_price"), mechanism: "boldsign_tag", field: "Total contract amount (RCV-based)", tabType: "text", source: "Financial term" },
@@ -131,10 +143,10 @@ export const MANIFEST: any = {
         slot: "gutters/retail",
         requiredCount: 12,
         required: [
-          { anchor: tag("sign", HOMEOWNER_IDX, true, "Homeowner Signature", "homeowner_signature"), mechanism: "boldsign_tag", field: "Homeowner signature", tabType: "sign", source: "HICA" },
-          { anchor: tag("date", HOMEOWNER_IDX, true, "Homeowner Sign Date", "homeowner_signature_date"), mechanism: "boldsign_tag", field: "Homeowner sign date", tabType: "date", source: "HICA" },
-          { anchor: tag("sign", CONTRACTOR_IDX, true, "Contractor Signature", "contractor_signature"), mechanism: "boldsign_tag", field: "Contractor signature", tabType: "sign", source: "HICA" },
-          { anchor: tag("date", CONTRACTOR_IDX, true, "Contractor Sign Date", "contractor_signature_date"), mechanism: "boldsign_tag", field: "Contractor sign date", tabType: "date", source: "HICA" },
+          { anchor: tag("sign", HOMEOWNER_IDX, true, "", "homeowner_signature"), mechanism: "boldsign_tag", field: "Homeowner signature", tabType: "sign", source: "HICA" },
+          { anchor: tag("date", HOMEOWNER_IDX, true, "", "homeowner_signature_date"), mechanism: "boldsign_tag", field: "Homeowner sign date", tabType: "date", source: "HICA" },
+          { anchor: tag("sign", CONTRACTOR_IDX, true, "", "contractor_signature"), mechanism: "boldsign_tag", field: "Contractor signature", tabType: "sign", source: "HICA" },
+          { anchor: tag("date", CONTRACTOR_IDX, true, "", "contractor_signature_date"), mechanism: "boldsign_tag", field: "Contractor sign date", tabType: "date", source: "HICA" },
           { anchor: tag("text", CONTRACTOR_IDX, true, "Customer Name", "customer_name"), mechanism: "boldsign_tag", field: "Customer name", tabType: "text", source: "Party identification" },
           { anchor: tag("text", CONTRACTOR_IDX, true, "Property Address", "customer_address"), mechanism: "boldsign_tag", field: "Property address", tabType: "text", source: "Property identification" },
           { anchor: tag("text", CONTRACTOR_IDX, true, "Contract Price", "contract_price"), mechanism: "boldsign_tag", field: "Total contract amount", tabType: "text", source: "Financial term" },
@@ -150,10 +162,10 @@ export const MANIFEST: any = {
         slot: "gutters/insurance",
         requiredCount: 13,
         required: [
-          { anchor: tag("sign", HOMEOWNER_IDX, true, "Homeowner Signature", "homeowner_signature"), mechanism: "boldsign_tag", field: "Homeowner signature", tabType: "sign", source: "HICA" },
-          { anchor: tag("date", HOMEOWNER_IDX, true, "Homeowner Sign Date", "homeowner_signature_date"), mechanism: "boldsign_tag", field: "Homeowner sign date", tabType: "date", source: "HICA" },
-          { anchor: tag("sign", CONTRACTOR_IDX, true, "Contractor Signature", "contractor_signature"), mechanism: "boldsign_tag", field: "Contractor signature", tabType: "sign", source: "HICA" },
-          { anchor: tag("date", CONTRACTOR_IDX, true, "Contractor Sign Date", "contractor_signature_date"), mechanism: "boldsign_tag", field: "Contractor sign date", tabType: "date", source: "HICA" },
+          { anchor: tag("sign", HOMEOWNER_IDX, true, "", "homeowner_signature"), mechanism: "boldsign_tag", field: "Homeowner signature", tabType: "sign", source: "HICA" },
+          { anchor: tag("date", HOMEOWNER_IDX, true, "", "homeowner_signature_date"), mechanism: "boldsign_tag", field: "Homeowner sign date", tabType: "date", source: "HICA" },
+          { anchor: tag("sign", CONTRACTOR_IDX, true, "", "contractor_signature"), mechanism: "boldsign_tag", field: "Contractor signature", tabType: "sign", source: "HICA" },
+          { anchor: tag("date", CONTRACTOR_IDX, true, "", "contractor_signature_date"), mechanism: "boldsign_tag", field: "Contractor sign date", tabType: "date", source: "HICA" },
           { anchor: tag("text", CONTRACTOR_IDX, true, "Customer Name", "customer_name"), mechanism: "boldsign_tag", field: "Customer name", tabType: "text", source: "Party identification" },
           { anchor: tag("text", CONTRACTOR_IDX, true, "Property Address", "customer_address"), mechanism: "boldsign_tag", field: "Property address", tabType: "text", source: "Property identification" },
           { anchor: tag("text", CONTRACTOR_IDX, true, "Contract Price", "contract_price"), mechanism: "boldsign_tag", field: "Total contract amount (RCV-based)", tabType: "text", source: "Financial term" },
@@ -172,10 +184,10 @@ export const MANIFEST: any = {
         slot: "windows/retail",
         requiredCount: 11,
         required: [
-          { anchor: tag("sign", HOMEOWNER_IDX, true, "Homeowner Signature", "homeowner_signature"), mechanism: "boldsign_tag", field: "Homeowner signature", tabType: "sign", source: "HICA" },
-          { anchor: tag("date", HOMEOWNER_IDX, true, "Homeowner Sign Date", "homeowner_signature_date"), mechanism: "boldsign_tag", field: "Homeowner sign date", tabType: "date", source: "HICA" },
-          { anchor: tag("sign", CONTRACTOR_IDX, true, "Contractor Signature", "contractor_signature"), mechanism: "boldsign_tag", field: "Contractor signature", tabType: "sign", source: "HICA" },
-          { anchor: tag("date", CONTRACTOR_IDX, true, "Contractor Sign Date", "contractor_signature_date"), mechanism: "boldsign_tag", field: "Contractor sign date", tabType: "date", source: "HICA" },
+          { anchor: tag("sign", HOMEOWNER_IDX, true, "", "homeowner_signature"), mechanism: "boldsign_tag", field: "Homeowner signature", tabType: "sign", source: "HICA" },
+          { anchor: tag("date", HOMEOWNER_IDX, true, "", "homeowner_signature_date"), mechanism: "boldsign_tag", field: "Homeowner sign date", tabType: "date", source: "HICA" },
+          { anchor: tag("sign", CONTRACTOR_IDX, true, "", "contractor_signature"), mechanism: "boldsign_tag", field: "Contractor signature", tabType: "sign", source: "HICA" },
+          { anchor: tag("date", CONTRACTOR_IDX, true, "", "contractor_signature_date"), mechanism: "boldsign_tag", field: "Contractor sign date", tabType: "date", source: "HICA" },
           { anchor: tag("text", CONTRACTOR_IDX, true, "Customer Name", "customer_name"), mechanism: "boldsign_tag", field: "Customer name", tabType: "text", source: "Party identification" },
           { anchor: tag("text", CONTRACTOR_IDX, true, "Property Address", "customer_address"), mechanism: "boldsign_tag", field: "Property address", tabType: "text", source: "Property identification" },
           { anchor: tag("text", CONTRACTOR_IDX, true, "Contract Price", "contract_price"), mechanism: "boldsign_tag", field: "Total contract amount", tabType: "text", source: "Financial term" },
@@ -190,10 +202,10 @@ export const MANIFEST: any = {
         slot: "windows/insurance",
         requiredCount: 12,
         required: [
-          { anchor: tag("sign", HOMEOWNER_IDX, true, "Homeowner Signature", "homeowner_signature"), mechanism: "boldsign_tag", field: "Homeowner signature", tabType: "sign", source: "HICA" },
-          { anchor: tag("date", HOMEOWNER_IDX, true, "Homeowner Sign Date", "homeowner_signature_date"), mechanism: "boldsign_tag", field: "Homeowner sign date", tabType: "date", source: "HICA" },
-          { anchor: tag("sign", CONTRACTOR_IDX, true, "Contractor Signature", "contractor_signature"), mechanism: "boldsign_tag", field: "Contractor signature", tabType: "sign", source: "HICA" },
-          { anchor: tag("date", CONTRACTOR_IDX, true, "Contractor Sign Date", "contractor_signature_date"), mechanism: "boldsign_tag", field: "Contractor sign date", tabType: "date", source: "HICA" },
+          { anchor: tag("sign", HOMEOWNER_IDX, true, "", "homeowner_signature"), mechanism: "boldsign_tag", field: "Homeowner signature", tabType: "sign", source: "HICA" },
+          { anchor: tag("date", HOMEOWNER_IDX, true, "", "homeowner_signature_date"), mechanism: "boldsign_tag", field: "Homeowner sign date", tabType: "date", source: "HICA" },
+          { anchor: tag("sign", CONTRACTOR_IDX, true, "", "contractor_signature"), mechanism: "boldsign_tag", field: "Contractor signature", tabType: "sign", source: "HICA" },
+          { anchor: tag("date", CONTRACTOR_IDX, true, "", "contractor_signature_date"), mechanism: "boldsign_tag", field: "Contractor sign date", tabType: "date", source: "HICA" },
           { anchor: tag("text", CONTRACTOR_IDX, true, "Customer Name", "customer_name"), mechanism: "boldsign_tag", field: "Customer name", tabType: "text", source: "Party identification" },
           { anchor: tag("text", CONTRACTOR_IDX, true, "Property Address", "customer_address"), mechanism: "boldsign_tag", field: "Property address", tabType: "text", source: "Property identification" },
           { anchor: tag("text", CONTRACTOR_IDX, true, "Contract Price", "contract_price"), mechanism: "boldsign_tag", field: "Total contract amount (RCV-based)", tabType: "text", source: "Financial term" },
@@ -284,4 +296,15 @@ export function scanOptionalAnchors(rawPdfText: string, tradeManifest: any): Arr
 /** Manifest slot for a template row, or null when the trade/funding pair has no manifest. */
 export function manifestSlotFor(trade: string, fundingType: string): any | null {
   return MANIFEST.trades?.[String(trade || "").toLowerCase()]?.[String(fundingType || "").toLowerCase()] ?? null;
+}
+
+/**
+ * [gh-1314] Sign/init/date tags in the PDF text that carry a non-empty label.
+ * The scan above matches the empty-label form only, so a labeled tag already
+ * fails to satisfy its required anchor; this names the offending tag so the
+ * contractor gets a specific error instead of a bare "missing marker", and so
+ * a manual override can never let a labeled tag through as "found".
+ */
+export function scanLabeledSignTags(rawPdfText: string): LabeledTagViolation[] {
+  return findLabeledSignTags(normalizeForScan(rawPdfText));
 }
