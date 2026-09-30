@@ -871,7 +871,12 @@
         <a href="/privacy.html" style="color:var(--amber);">Privacy Policy</a>
     </p>
 
-<footer id="site-footer" data-skip-nav="true"></footer>
+<footer id="site-footer" data-skip-nav="true">
+    <!-- gh-1925 (Ben ruling 5896607701): the one CPRA opt-out link, Dustin ruling 5881048326 string verbatim. Nothing else re-enters this footer. -->
+    <p style="text-align:center;font-size:0.75rem;color:var(--slate);padding:0 24px 32px;margin:0;">
+        <a id="footer-do-not-sell-link" href="/privacy.html#do-not-sell-or-share" style="color:var(--amber);">Do Not Sell or Share My Personal Information</a>
+    </p>
+</footer>
 
     <!-- gh-2150/gh-2151 (S05 perf, k70-w11-s05perf): relocated from <head>
          -- see the comment above the <style> tag in <head> for why (render-

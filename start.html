@@ -874,6 +874,10 @@
      somehow still reaches it (a race, a future nav.js change) -- not the
      primary mechanism. */
   html[data-oq-start-arm="f"] #site-header, html[data-oq-start-arm="f"] #site-footer { display: none; }
+  /* gh-1925: the CPRA opt-out link, Arm F only (the footer above is hidden there). */
+  #oq-armf-dns { display: none; }
+  html[data-oq-start-arm="f"] #oq-armf-dns { display: block; text-align: center; font-size: 0.75rem; padding: 0 16px 24px; }
+  #oq-armf-dns a { color: var(--amber, #E07B00); }
   /* gh-2160 review fix (optional hardening, reviewer suggestion on
      comment 5819921097): #step1 is Arm A's static markup and ships with
      class="active" (display:block) directly in the raw HTML below --
@@ -1152,6 +1156,9 @@
 
 <!-- gh-2121 (LRS S07): see the header's own data-skip-nav comment above. -->
 <footer id="site-footer"></footer>
+<!-- gh-1925 (Ben ruling 5896607701): Arm F hides #site-footer, so the one CPRA opt-out link lives in its own element, shown on Arm F only.
+     Arms A-E and a bare /start keep nav.js's footer link (no duplicate). -->
+<div id="oq-armf-dns"><a id="footer-do-not-sell-link-armf" href="/privacy.html#do-not-sell-or-share">Do Not Sell or Share My Personal Information</a></div>
 
 <!-- gh-2160 review fix (comment 5818464392, must-fix 1): sets data-skip-nav
      on the header/footer ONLY when the head IIFE resolved this load to Arm
