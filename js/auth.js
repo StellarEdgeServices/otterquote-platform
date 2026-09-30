@@ -1031,9 +1031,10 @@ window.Auth = {
   // gh-2344: owner binding for the cs_auth_role breadcrumb. The role + 24h
   // stamp bound its AGE but not WHO it is for: on a shared device a stranger's
   // abandoned contractor signup steered the next user's post-login routing.
-  // stampRoleOwner() stores the signer's normalised (trimmed, lowercased)
-  // email in cs_auth_role_email beside the role; roleOwnerMatches() is true
-  // only when that equals the signed-in user's email. A Google OAuth writer
+  // stampRoleOwner() stores a one-way tag (ownerTag) of the signer's normalised
+  // (trimmed, lowercased) email in cs_auth_role_email beside the role, never the
+  // address itself (CodeQL js/clear-text-storage-of-sensitive-data; #2355 class);
+  // roleOwnerMatches() is true only when that equals ownerTag(signed-in email). A Google OAuth writer
   // does not know the email before the redirect, so it passes null and gets
   // 'oauth-tab:<nonce>' (nonce also in sessionStorage cs_auth_role_tab, which
   // survives the same-tab Google round trip but not a closed tab). A legacy
@@ -1042,7 +1043,7 @@ window.Auth = {
   stampRoleOwner(email) {
     const e = typeof email === 'string' ? email.trim().toLowerCase() : '';
     try {
-      if (e) { localStorage.setItem('cs_auth_role_email', e); return; }
+      if (e) { localStorage.setItem('cs_auth_role_email', this.ownerTag(e)); return; }
       const nonce = Math.random().toString(36).slice(2) + Date.now().toString(36);
       try { sessionStorage.setItem('cs_auth_role_tab', nonce); } catch (err) { /* non-fatal */ }
       localStorage.setItem('cs_auth_role_email', 'oauth-tab:' + nonce);
@@ -1075,7 +1076,7 @@ window.Auth = {
       return !!tab && stored === 'oauth-tab:' + tab;
     }
     const u = typeof userEmail === 'string' ? userEmail.trim().toLowerCase() : '';
-    return !!u && stored.trim().toLowerCase() === u;
+    return !!u && stored === this.ownerTag(u);
   },
 
   clearContractorSignup() {

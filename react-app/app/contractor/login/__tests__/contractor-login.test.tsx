@@ -17,6 +17,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { seedStaleStorage } from '@/test/storage-fixtures';
+import { ownerTag } from '@/lib/role-breadcrumb-owner';
 
 // Mock the Supabase singleton (no env / network in unit tests) and the auth hook.
 vi.mock('@/lib/supabase', () => ({
@@ -199,8 +200,9 @@ describe('<ContractorLoginPage /> rendered behavior (unauthenticated)', () => {
 
     expect(callAuthUniform).toHaveBeenCalledWith('otp', 'pro@roofco.com', AUTH_CALLBACK_URL);
     expect(localStorage.getItem('cs_auth_role')).toBe('contractor');
-    // gh-2344: the breadcrumb is bound to the signer's normalised email.
-    expect(localStorage.getItem('cs_auth_role_email')).toBe('pro@roofco.com');
+    // gh-2344: the breadcrumb is bound to a one-way tag of the signer's normalised email, never the address.
+    expect(localStorage.getItem('cs_auth_role_email')).toBe(ownerTag('pro@roofco.com'));
+    expect(localStorage.getItem('cs_auth_role_email')).not.toContain('@');
     // gh-2060 RETURNED item 1 (contractor magic-link writer): /auth-callback
     // only trusts cs_auth_role when cs_auth_role_at is present and within
     // its 24h TTL — this must fail if the stamp write is deleted.

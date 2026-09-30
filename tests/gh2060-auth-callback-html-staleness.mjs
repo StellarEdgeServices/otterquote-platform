@@ -28,6 +28,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
+import { ownerTag } from './fixtures/owner-tag.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.join(__dirname, '..');
@@ -77,7 +78,7 @@ async function runHandle({ csAuthRole, csAuthRoleAt, role = 'homeowner', hasClai
   if (csAuthRole !== undefined) localStorageStore.cs_auth_role = csAuthRole;
   if (csAuthRoleAt !== undefined) localStorageStore.cs_auth_role_at = csAuthRoleAt;
   // gh-2344: pre-existing cases are the SAME signer as the session below.
-  if (csAuthRole !== undefined) localStorageStore.cs_auth_role_email = 'user@example.com';
+  if (csAuthRole !== undefined) localStorageStore.cs_auth_role_email = ownerTag('user@example.com');
   const localStorage = makeStorage(localStorageStore);
 
   const hrefWrites = [];

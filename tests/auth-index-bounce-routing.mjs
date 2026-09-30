@@ -28,6 +28,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
+import { ownerTag } from './fixtures/owner-tag.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const indexHtml = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
@@ -66,8 +67,8 @@ function runBounce({ jwtRole, csAuthRole, csAuthRoleAt }) {
   // age.
   const store = {
     cs_auth_role: csAuthRole ?? undefined,
-    // gh-2344: breadcrumb owner (normalised) -- these pre-existing cases are the SAME signer.
-    cs_auth_role_email: csAuthRole == null ? undefined : 'test-user@example.com',
+    // gh-2344: breadcrumb owner (one-way tag of the normalised email) -- these pre-existing cases are the SAME signer.
+    cs_auth_role_email: csAuthRole == null ? undefined : ownerTag('test-user@example.com'),
     cs_auth_role_at:
       csAuthRole == null
         ? undefined

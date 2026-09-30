@@ -7,9 +7,10 @@
  * WHO the breadcrumb is for: on a shared device, a stranger's abandoned
  * contractor signup steers the next person's post-login routing.
  *
- * Fix: `cs_auth_role_email` is stored beside the role (trimmed, lowercased
- * signer email). A reader honours the breadcrumb only when that stored email
- * equals the signed-in user's email (same normalisation); otherwise it is
+ * Fix: `cs_auth_role_email` is stored beside the role as a one-way tag of the
+ * signer's email (`ownerTag`: cyrb53 of the trimmed, lowercased address, never
+ * the address itself). A reader honours the breadcrumb only when that stored tag
+ * equals the tag of the signed-in user's email (same normalisation); otherwise it is
  * ignored and all keys are cleared. A legacy breadcrumb with no owner is
  * treated as foreign.
  *
@@ -27,12 +28,32 @@ const OAUTH_PREFIX = 'oauth-tab:';
 
 const norm = (v: unknown): string => (typeof v === 'string' ? v.trim().toLowerCase() : '');
 
+/**
+ * One-way owner tag of a normalised email (cyrb53, sync, not a secret: it only has to tell two people on one
+ * browser apart). Byte-identical port of Auth.ownerTag in js/auth.js and the inline copy in index.html; a parity
+ * test pins the three. '' for an empty input.
+ */
+export function ownerTag(email: unknown): string {
+  const s = norm(email);
+  if (!s) return '';
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return 'o1:' + (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+}
+
 /** Store the owner beside the role. Pass the signer's email, or null/undefined for an OAuth (email-unknown) write. */
 export function stampRoleOwner(email?: string | null): void {
   if (typeof localStorage === 'undefined') return;
   const e = norm(email);
   if (e) {
-    localStorage.setItem(ROLE_EMAIL_KEY, e);
+    localStorage.setItem(ROLE_EMAIL_KEY, ownerTag(e));
     return;
   }
   const nonce = Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -59,5 +80,5 @@ export function roleOwnerMatches(userEmail: string | null | undefined): boolean 
     return !!tab && stored === OAUTH_PREFIX + tab;
   }
   const u = norm(userEmail);
-  return !!u && norm(stored) === u;
+  return !!u && stored === ownerTag(u);
 }

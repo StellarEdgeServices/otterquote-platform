@@ -37,8 +37,8 @@
     var lsRoleAt = null;
     var lsFresh = false;
     // gh-2344: the breadcrumb is honoured only when written for THIS signer:
-    // stored owner (cs_auth_role_email) === the access_token JWT's email
-    // (normalised), or this tab's OAuth nonce. No token / no email in the
+    // stored owner (cs_auth_role_email, a one-way tag, never the address) === the tag
+    // of the access_token JWT's email (normalised), or this tab's OAuth nonce. No token / no email in the
     // token / no stored owner (legacy) => not fresh; the keys are cleared below.
     var lsOwnerOk = false;
     try {
@@ -55,7 +55,15 @@
           while (_b.length % 4) _b += '=';
           var _em = JSON.parse(atob(_b)).email;
           _em = typeof _em === 'string' ? _em.trim().toLowerCase() : '';
-          lsOwnerOk = !!_em && _own.trim().toLowerCase() === _em;
+          // inline copy of Auth.ownerTag (js/auth.js): cyrb53 of the normalised email, 'o1:' prefix
+          var _h1 = 0xdeadbeef, _h2 = 0x41c6ce57;
+          for (var _i = 0; _i < _em.length; _i++) {
+            var _ch = _em.charCodeAt(_i);
+            _h1 = Math.imul(_h1 ^ _ch, 2654435761); _h2 = Math.imul(_h2 ^ _ch, 1597334677);
+          }
+          _h1 = Math.imul(_h1 ^ (_h1 >>> 16), 2246822507) ^ Math.imul(_h2 ^ (_h2 >>> 13), 3266489909);
+          _h2 = Math.imul(_h2 ^ (_h2 >>> 16), 2246822507) ^ Math.imul(_h1 ^ (_h1 >>> 13), 3266489909);
+          lsOwnerOk = !!_em && _own === 'o1:' + (4294967296 * (2097151 & _h2) + (_h1 >>> 0)).toString(36);
         }
       }
     } catch (e) { lsOwnerOk = false; }

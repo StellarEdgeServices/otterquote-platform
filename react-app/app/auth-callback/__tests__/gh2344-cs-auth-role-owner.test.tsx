@@ -4,8 +4,9 @@
  * The 24h TTL bounds the breadcrumb's AGE, not who it is for: on a shared
  * device a stranger's abandoned `cs_auth_role='contractor'` steered the NEXT
  * person's post-login routing into the contractor wizard. The writer now stores
- * the signer's normalised email in `cs_auth_role_email`; this page honours the
- * breadcrumb only when that equals the signed-in user's email (or, for a Google
+ * a one-way tag of the signer's normalised email (never the address) in
+ * `cs_auth_role_email`; this page honours the breadcrumb only when that equals
+ * the tag of the signed-in user's email (or, for a Google
  * OAuth write that could not know the email, this tab's nonce). Foreign or
  * owner-less (legacy) breadcrumbs are ignored AND all keys are cleared.
  *
@@ -16,6 +17,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, waitFor } from '@testing-library/react';
 import { seedStaleStorage } from '@/test/storage-fixtures';
+import { ownerTag } from '@/lib/role-breadcrumb-owner';
 
 vi.mock('@/lib/supabase', () => {
   const chain = (result: { data: unknown; error: unknown }) => {
@@ -110,7 +112,7 @@ describe('auth-callback page -- gh-2344 cs_auth_role owner binding', () => {
     seedStaleStorage({
       localStorage: {
         cs_auth_role: 'contractor',
-        cs_auth_role_email: STRANGER,
+        cs_auth_role_email: ownerTag(STRANGER),
         cs_auth_role_at: String(Date.now() - 5 * 60 * 1000),
       },
     });
@@ -134,7 +136,7 @@ describe('auth-callback page -- gh-2344 cs_auth_role owner binding', () => {
     seedStaleStorage({
       localStorage: {
         cs_auth_role: 'contractor',
-        cs_auth_role_email: '  Jane@Example.COM ',
+        cs_auth_role_email: ownerTag('  Jane@Example.COM '),
         cs_auth_role_at: String(Date.now() - 5 * 60 * 1000),
       },
     });
@@ -147,7 +149,7 @@ describe('auth-callback page -- gh-2344 cs_auth_role owner binding', () => {
     seedStaleStorage({
       localStorage: {
         cs_auth_role: 'contractor',
-        cs_auth_role_email: ME,
+        cs_auth_role_email: ownerTag(ME),
         cs_auth_role_at: String(Date.now() - 25 * 60 * 60 * 1000),
       },
     });

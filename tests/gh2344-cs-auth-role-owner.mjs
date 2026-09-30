@@ -29,6 +29,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
+import { ownerTag } from './fixtures/owner-tag.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = process.argv[2] ? path.resolve(process.argv[2]) : path.join(__dirname, '..');
@@ -55,11 +56,11 @@ function makeStorage(initial = {}) {
   };
 }
 
-/** Seed a breadcrumb. `owner`: string (stored as-is), or undefined for a legacy owner-less breadcrumb. */
+/** Seed a breadcrumb. `owner`: an email (stored as ownerTag(email)), an `oauth-tab:` string (as-is), or undefined for a legacy owner-less breadcrumb. */
 function seed(ls, role, owner, at = Date.now()) {
   ls.setItem('cs_auth_role', role);
   ls.setItem('cs_auth_role_at', String(at));
-  if (owner !== undefined) ls.setItem('cs_auth_role_email', owner);
+  if (owner !== undefined) ls.setItem('cs_auth_role_email', owner.includes('@') ? ownerTag(owner) : owner); // an address is stored as its one-way tag
 }
 
 function assertCleared(ls, ss) {

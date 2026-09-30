@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, waitFor } from '@testing-library/react';
 import { LEAD_STORAGE_KEY, LEAD_TTL_MS } from '@/lib/lead-capture';
 import { seedStaleStorage } from '@/test/storage-fixtures';
+import { ownerTag } from '@/lib/role-breadcrumb-owner';
 
 vi.mock('@/lib/supabase', () => {
   const chain = (result: { data: unknown; error: unknown }) => {
@@ -457,7 +458,7 @@ describe('auth-callback page — gh-2060 dirty-state: stale cs_auth_role from a 
     // Seeded AFTER this describe's own beforeEach clear, per
     // app/test/storage-fixtures.ts's contract — "a previous visitor/tab left
     // this behind", not this test's own setup.
-    seedStaleStorage({ localStorage: { cs_auth_role: 'contractor', cs_auth_role_email: 'jane@example.com' } });
+    seedStaleStorage({ localStorage: { cs_auth_role: 'contractor', cs_auth_role_email: ownerTag('jane@example.com') } });
 
     // resolved_user_role mock (module-level) already returns 'homeowner' —
     // this session has no contractor record, exactly the case a stale
@@ -487,7 +488,7 @@ describe('auth-callback page — gh-2060 dirty-state: stale cs_auth_role from a 
     seedStaleStorage({
       localStorage: {
         cs_auth_role: 'contractor',
-        cs_auth_role_email: 'jane@example.com', // gh-2344: same signer as googleSession()
+        cs_auth_role_email: ownerTag('jane@example.com'), // gh-2344: same signer as googleSession()
         cs_auth_role_at: String(Date.now() - 25 * 60 * 60 * 1000), // 25h old
       },
     });
@@ -512,7 +513,7 @@ describe('auth-callback page — gh-2060 dirty-state: stale cs_auth_role from a 
     seedStaleStorage({
       localStorage: {
         cs_auth_role: 'contractor',
-        cs_auth_role_email: 'jane@example.com', // gh-2344: same signer as googleSession()
+        cs_auth_role_email: ownerTag('jane@example.com'), // gh-2344: same signer as googleSession()
         cs_auth_role_at: String(Date.now() + 365 * 24 * 60 * 60 * 1000), // +1 year
       },
     });
@@ -541,7 +542,7 @@ describe('auth-callback page — gh-2060 dirty-state: stale cs_auth_role from a 
     // (page.tsx ~350-351) is deleted, even though that mutation leaves the
     // redirect-target assertions above passing (the value was never
     // trusted on this branch either way).
-    seedStaleStorage({ localStorage: { cs_auth_role: 'contractor', cs_auth_role_email: 'jane@example.com' } });
+    seedStaleStorage({ localStorage: { cs_auth_role: 'contractor', cs_auth_role_email: ownerTag('jane@example.com') } });
 
     let capturedCallback: ((event: string, session: unknown) => void) | undefined;
     (supabase.auth.onAuthStateChange as unknown as Fn).mockImplementation((cb) => {
@@ -566,7 +567,7 @@ describe('auth-callback page — gh-2060 dirty-state: stale cs_auth_role from a 
     seedStaleStorage({
       localStorage: {
         cs_auth_role: 'contractor',
-        cs_auth_role_email: 'jane@example.com', // gh-2344: same signer as googleSession()
+        cs_auth_role_email: ownerTag('jane@example.com'), // gh-2344: same signer as googleSession()
         cs_auth_role_at: String(Date.now() - 5 * 60 * 1000), // 5 minutes old
       },
     });
@@ -594,7 +595,7 @@ describe('auth-callback page — gh-2060 dirty-state: stale cs_auth_role from a 
     seedStaleStorage({
       localStorage: {
         cs_auth_role: 'contractor',
-        cs_auth_role_email: 'jane@example.com', // gh-2344: same signer as googleSession()
+        cs_auth_role_email: ownerTag('jane@example.com'), // gh-2344: same signer as googleSession()
         cs_auth_role_at: String(Date.now() - 5 * 60 * 1000), // 5 minutes old
       },
     });
