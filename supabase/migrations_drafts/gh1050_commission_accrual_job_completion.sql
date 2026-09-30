@@ -1,3 +1,9 @@
+-- STATUS (gh-1438, as of 2026-09-30T12:32Z): APPLIED
+-- FILE ROLE: forward file of set gh1050_commission_accrual_job_completion (the STATUS is the set's; it describes the forward migration)
+-- EVIDENCE: trigger after_claim_completed + apply_referral_commission() live: comment 5494221280 (RW-DONE, PR #1471, supabase/migrations/MIGRATIONS-RECONCILIATION-1438.md Part 1, read-only queries 2026-09-01); filed version 20260819225113; ledger version 20260819225113 is in the 199-row schema_migrations snapshot recorded in supabase/migrations-reconciliation-baseline.json (queried 2026-09-29T20:55Z; comments 5902170993, 5902404090)
+-- REPO COPY: supabase/migrations/20260819225113_gh1050_commission_accrual_job_completion.sql -- DIFFERS in SQL statements (comment/whitespace-normalised compare, this session)
+-- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
+--
 -- >>> APPLIED (2026-09-26, gh-1438 part 2, corrected) -- this draft's body is
 -- filed live as supabase/migrations/20260819225113_gh1050_commission_accrual_job_completion.sql
 -- (confirmed read-only against yeszghaspzwwstvsrioa: after_claim_completed

@@ -115,7 +115,11 @@ export function HomeownerShell({ active, children }: HomeownerShellProps) {
       <HomeownerNav active={active} userId={user.id} onSignOut={signOut} />
       {/* gh-1939: the ruled Clarity routes (/dashboard, /bids, /repair-intake) all render here, so the mask lives here: page content is masked in any replay. */}
       <main className="oqh-main" data-clarity-mask="true">{children}</main>
-      <footer className="oqh-footer">© {new Date().getFullYear()} Otter Quotes</footer>
+      <footer className="oqh-footer">
+        © {new Date().getFullYear()} Otter Quotes
+        {/* gh-1925 (Ben ruling 5896607701): the CPRA opt-out link, Dustin ruling 5881048326 string verbatim; privacy.html lives on otterquote.com. */}
+        <a className="oqh-footer-dns" href="https://otterquote.com/privacy.html#do-not-sell-or-share">Do Not Sell or Share My Personal Information</a>
+      </footer>
     </>
   );
 }
@@ -182,6 +186,7 @@ const STYLES = `
   .oqh-signout:hover { border-color: var(--amber, #E07B00); background: rgba(224,123,0,0.08); }
   .oqh-main { min-height: calc(100vh - 64px); }
   .oqh-footer { padding: 1.5rem; text-align: center; color: var(--gray, #64748b); font-size: 0.8rem; border-top: 1px solid rgba(255,255,255,0.06); }
+  .oqh-footer-dns { display: block; margin-top: 0.5rem; font-size: 0.75rem; color: inherit; text-decoration: underline; }
   @media (max-width: 768px) {
     .oqh-nav { gap: 0.75rem; padding: 0 1rem; }
     .oqh-links { gap: 0; overflow-x: auto; }

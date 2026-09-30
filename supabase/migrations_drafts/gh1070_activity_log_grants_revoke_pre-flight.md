@@ -1,3 +1,10 @@
+<!--
+STATUS (gh-1438, as of 2026-09-30T12:32Z): NOT APPLIED (this file's SQL). The anon revoke EFFECT is live via a different, shorter migration
+FILE ROLE: pre-flight file of set gh1070_activity_log_grants_revoke (the STATUS is the set's; it describes the forward migration)
+EVIDENCE: anon has zero privileges on public.activity_log but the SQL that ran is 20260824183229_gh1070_revoke_anon_activity_log: comment 5494221280 (RW-DONE, PR #1471, supabase/migrations/MIGRATIONS-RECONCILIATION-1438.md Part 1, read-only queries 2026-09-01); ledger version 20260824183229 is in the 199-row schema_migrations snapshot recorded in supabase/migrations-reconciliation-baseline.json (queried 2026-09-29T20:55Z; comments 5902170993, 5902404090)
+REPO COPY: none in supabase/migrations/ or supabase/migrations_rollbacks/ for this file (_rollback.sql/_pre-flight.md: no copy filed on purpose (they target this draft's broader design, not what ran))
+DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
+-->
 > **SUPERSEDED (2026-09-26, gh-1438 part 2)** -- the anon-grant-revoke effect this document describes IS live, but not from this migration's own SQL. The migration that actually ran under a #1070 name is `supabase/migrations/20260824183229_gh1070_revoke_anon_activity_log.sql` -- a single bare REVOKE, structurally different from and much shorter than this draft's broader proposal (see the forward file's own banner). Kept unmodified below this banner for history.
 
 # Pre-Flight: gh1070_activity_log_grants_revoke

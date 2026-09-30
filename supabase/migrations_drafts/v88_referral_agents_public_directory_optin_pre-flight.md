@@ -1,3 +1,10 @@
+<!--
+STATUS (gh-1438, as of 2026-09-30T12:32Z): NOT APPLIED (this file's SQL). SUPERSEDED: referral_agents.public_directory_optin is live via v101
+FILE ROLE: pre-flight file of set v88_referral_agents_public_directory_optin (the STATUS is the set's; it describes the forward migration)
+EVIDENCE: column live via v101_referral_agents_public_directory_optin, ledger version 20260808134406 (the 20260807223000 filename is not a ledger version): comment 5494221280 (RW-DONE, PR #1471, supabase/migrations/MIGRATIONS-RECONCILIATION-1438.md Part 1, read-only queries 2026-09-01); ledger version 20260808134406 is in the 199-row schema_migrations snapshot recorded in supabase/migrations-reconciliation-baseline.json (queried 2026-09-29T20:55Z; comments 5902170993, 5902404090)
+REPO COPY: supabase/migrations_rollbacks/20260807223000_v101_referral_agents_public_directory_optin_pre-flight.md -- DIFFERS in text (banner/whitespace-normalised compare, this session)
+DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
+-->
 > **SUPERSEDED (2026-09-26, gh-1438 part 2)** -- the object this document describes is not live under this migration's own name; the live column was added by `supabase/migrations/20260808134406_v101_referral_agents_public_directory_optin.sql` instead (issue #385). Kept unmodified below this banner for history.
 
 # Pre-Flight: v88_referral_agents_public_directory_optin
