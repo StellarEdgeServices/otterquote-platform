@@ -1530,6 +1530,19 @@
               if (window.OtterQuoteReferral) window.OtterQuoteReferral.clear();
               localStorage.removeItem('oq_referral_id_for_claim');
             }
+
+            // gh-2060 item 3 (CEO ruling, #2060 comment 5911272482): the
+            // partner-attribution keys are consumed the same way -- only when
+            // this pass carried one forward (it is in the claim payload above)
+            // AND the claim write succeeded. An error or no-op pass leaves
+            // them alone. Cookie + localStorage + sessionStorage copies.
+            if ((referralSource || partnerIdParam) && claimWriteSucceeded) {
+              if (window.OtterQuoteReferral && window.OtterQuoteReferral.clearPartnerAttribution) {
+                window.OtterQuoteReferral.clearPartnerAttribution();
+              } else {
+                try { sessionStorage.removeItem('oq_referral_source'); sessionStorage.removeItem('oq_partner_id'); } catch (_) {}
+              }
+            }
           } catch (supabaseError) {
             console.warn('Supabase save failed:', supabaseError);
             // Continue regardless of Supabase error

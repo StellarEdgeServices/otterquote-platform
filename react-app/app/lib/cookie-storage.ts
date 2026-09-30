@@ -708,3 +708,20 @@ export function clearReferralIds(): void {
   try { localStorage.removeItem(REFERRAL_TS_KEY); } catch { /* storage blocked */ }
   try { deleteCookie(REFERRAL_COOKIE); } catch { /* cookie blocked */ }
 }
+
+/** gh-2060 item 3 (CEO ruling, #2060 comment 5911272482): consume the
+ *  partner-attribution keys once a claim write has succeeded and the
+ *  referral/partner id is stamped on the claim -- the same rule gh-2062
+ *  applies to the oq-ref cookie. Clears the cookie plus the localStorage and
+ *  sessionStorage copies. Call ONLY after a successful claim write; never on
+ *  an error or no-op pass. */
+const PARTNER_ATTRIBUTION_KEYS = ['oq_referral_source', 'oq_partner_id'] as const;
+
+export function clearPartnerAttribution(): void {
+  if (typeof document === 'undefined') return;
+  for (const key of PARTNER_ATTRIBUTION_KEYS) {
+    try { localStorage.removeItem(key); } catch { /* storage blocked */ }
+    try { sessionStorage.removeItem(key); } catch { /* storage blocked */ }
+    try { deleteCookie(key); } catch { /* cookie blocked */ }
+  }
+}

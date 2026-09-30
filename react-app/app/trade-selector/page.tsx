@@ -23,7 +23,7 @@ import { useState, useEffect, useCallback } from 'react';
 import type { ReactNode, ChangeEvent } from 'react';
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import { supabase } from '@/lib/supabase';
-import { readReferralIds, clearReferralIds } from '@/lib/cookie-storage';
+import { readReferralIds, clearReferralIds, clearPartnerAttribution } from '@/lib/cookie-storage';
 import { recordFirstTouch } from '@/lib/attribution';
 import { isTestEmail } from '@/lib/test-signal';
 import { parseAddress, fullAddress, isValidZip, hasFullAddress, type ParsedAddress } from './utils';
@@ -1078,6 +1078,16 @@ export default function TradeSelectorPage() {
           if ((chainReferralId || chainReferralAgentId) && claimWriteSucceeded) {
             clearReferralIds();
             localStorage.removeItem('oq_referral_id_for_claim');
+          }
+
+          // gh-2060 item 3 (CEO ruling, #2060 comment 5911272482): consume the
+          // partner-attribution keys the same way -- only when this pass
+          // carried one forward (it is in the claim payload above) AND the
+          // claim write succeeded. An error or no-op pass leaves them alone.
+          // Cookie + localStorage + sessionStorage copies. Mirrors the static
+          // trade-selector.html claim writer.
+          if ((referralSource || partnerIdParam) && claimWriteSucceeded) {
+            clearPartnerAttribution();
           }
         } catch (claimErr) {
           console.warn('[trade-selector] claim upsert failed:', claimErr);

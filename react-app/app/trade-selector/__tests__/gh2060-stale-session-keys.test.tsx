@@ -137,19 +137,49 @@ describe('trade-selector — stale handoff keys from an earlier wizard run (gh-2
     expect(JSON.stringify(payload)).not.toContain('c-STALE-PREVIOUS');
   });
 
-  // KNOWN GAP (Q on #2060): encodes the RECOMMENDED DEFAULT (consume-on-success,
-  // the same rule gh-2062 already applies to the referral id/cookie) for the
-  // sessionStorage attribution keys. Today neither key is ever cleared, so a
-  // ?partner_id= / ?ref= from an earlier visit in a reused tab attributes THIS
-  // claim to that partner (commission attribution). `it.fails` passes while the
-  // gap exists and turns RED when the fix lands -- flip it to `it` then.
-  it.fails('KNOWN GAP: oq_partner_id / oq_referral_source left by an earlier visit are consumed (cleared) once a claim write succeeds', async () => {
+  // gh-2060 item 3 (CEO ruling, #2060 comment 5911272482): oq_referral_source /
+  // oq_partner_id are CONSUMED (cookie + localStorage + sessionStorage copies)
+  // once the claim write succeeded and they are stamped on the claim -- the
+  // same rule gh-2062 applies to the oq-ref cookie. Never cleared on an error
+  // or no-op pass. (Flipped from the earlier `it.fails` known-gap.)
+  it('oq_partner_id / oq_referral_source left by an earlier visit are consumed (cleared, all copies) once a claim write succeeds', async () => {
     seedStaleStorage({
       sessionStorage: { oq_partner_id: 'PARTNER-FROM-EARLIER-VISIT', oq_referral_source: 'realtor' },
+      localStorage: { oq_partner_id: 'PARTNER-FROM-EARLIER-VISIT', oq_referral_source: 'realtor' },
+      cookies: { oq_partner_id: 'PARTNER-FROM-EARLIER-VISIT', oq_referral_source: 'realtor' },
     });
     await walkCash(false);
     await waitFor(() => expect(sessionStorage.getItem('oq_funding_type')).toBe('cash')); // flow finished
+    // The claim write carried the source it consumed.
+    const payload = claimsInsertMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload.referral_source).toBe('realtor');
     expect(sessionStorage.getItem('oq_partner_id')).toBeNull();
     expect(sessionStorage.getItem('oq_referral_source')).toBeNull();
+    expect(localStorage.getItem('oq_partner_id')).toBeNull();
+    expect(localStorage.getItem('oq_referral_source')).toBeNull();
+    expect(document.cookie).not.toContain('oq_partner_id');
+    expect(document.cookie).not.toContain('oq_referral_source');
+  });
+
+  it('a claim write that returns an ERROR does NOT consume oq_partner_id / oq_referral_source', async () => {
+    claimsInsertMock.mockReset().mockImplementation(() => ({
+      select: () => ({
+        single: () =>
+          Promise.resolve({
+            data: null,
+            error: { message: 'new row violates row-level security policy', code: '42501' },
+          }),
+      }),
+    }));
+    seedStaleStorage({
+      sessionStorage: { oq_partner_id: 'PARTNER-LIVE', oq_referral_source: 'realtor' },
+      localStorage: { oq_partner_id: 'PARTNER-LIVE', oq_referral_source: 'realtor' },
+    });
+    await walkCash(false);
+    await waitFor(() => expect(sessionStorage.getItem('oq_funding_type')).toBe('cash')); // flow finished
+    expect(sessionStorage.getItem('oq_partner_id')).toBe('PARTNER-LIVE');
+    expect(sessionStorage.getItem('oq_referral_source')).toBe('realtor');
+    expect(localStorage.getItem('oq_partner_id')).toBe('PARTNER-LIVE');
+    expect(localStorage.getItem('oq_referral_source')).toBe('realtor');
   });
 });
