@@ -59,6 +59,23 @@ export interface AuthUserRow {
   email: string | null;
 }
 
+/**
+ * R-134 (mint134): every admin signal the app itself uses, for one auth user.
+ * Any single true signal makes the account an admin account for this gate.
+ *   - profile_role:        profiles.role (role column)
+ *   - contractor_roles:    contractors.template_review_role for every contractors
+ *                          row linked to the user (admin-contractor-action,
+ *                          approve-warranty-drift, js/auth.js _getIsAdmin)
+ *   - app_metadata_role:   auth user app_metadata.role (JWT claim source;
+ *                          validate-contract-template)
+ * The email allow-list is evaluated separately from the resolved auth email.
+ */
+export interface AdminSignals {
+  profile_role: string | null;
+  contractor_roles: (string | null)[];
+  app_metadata_role: string | null;
+}
+
 export interface GenerateLinkData {
   action_link: string;
 }
@@ -93,6 +110,9 @@ export interface DbAdapter {
   getAuthUserById(
     userId: string,
   ): Promise<{ data: AuthUserRow | null; error: AdapterError | null }>;
+  getAdminSignals(
+    userId: string,
+  ): Promise<{ data: AdminSignals | null; error: AdapterError | null }>;
   generateMagicLink(
     email: string,
   ): Promise<{ data: GenerateLinkData | null; error: AdapterError | null }>;
@@ -243,6 +263,72 @@ export function extractBearerToken(authHeader: string | null): string | null {
   if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
   const token = authHeader.slice("Bearer ".length).trim();
   return token.length > 0 ? token : null;
+}
+
+/**
+ * R-134 (mint134): admin allow-list, INLINED from _shared/admin.ts ADMIN_EMAILS
+ * (the deploy path does not resolve _shared/ imports; keep in sync by eye).
+ * This is the FULL allow-list, deliberately wider than the single primary
+ * email the caller gate accepts: a target on either address is an admin.
+ * Compared case-insensitively and trimmed, because this is a refusal check
+ * (the stricter reading is the safe one).
+ */
+const ADMIN_EMAILS_LOWER: readonly string[] = [
+  "dustinstohler1@gmail.com",
+  "dustin@otterquote.com",
+];
+
+export const ADMIN_ACCOUNT_REFUSED = "ADMIN_ACCOUNT_REFUSED";
+export const ADMIN_CHECK_UNAVAILABLE = "ADMIN_CHECK_UNAVAILABLE";
+
+function isAdminRole(v: string | null | undefined): boolean {
+  return typeof v === "string" && v.trim().toLowerCase() === "admin";
+}
+
+function codedError(status: number, code: string, error: string): MintResult {
+  return { status, body: { error, code } };
+}
+
+/**
+ * R-134 (mint134): refuse to mint for an account that is an admin by ANY of
+ * the app's admin tests: email allow-list, profiles.role, contractors.
+ * template_review_role, auth app_metadata.role. R-174 only ever intended
+ * minting for synthetic test accounts; is_test alone cannot prove that
+ * (the founder's own profile is is_test = true, gh-2047). FAILS CLOSED: if
+ * the signals cannot be read, the mint is refused (403), never allowed.
+ * Returns null when the target is provably not an admin.
+ */
+async function adminRefusal(
+  db: DbAdapter,
+  userId: string,
+  email: string,
+): Promise<MintResult | null> {
+  if (ADMIN_EMAILS_LOWER.includes(email.trim().toLowerCase())) {
+    return codedError(403, ADMIN_ACCOUNT_REFUSED, "Forbidden: target is an admin account — refused regardless of is_test");
+  }
+  let signals: AdminSignals | null = null;
+  try {
+    const { data, error } = await db.getAdminSignals(userId);
+    if (error) console.error("[mint-test-session] admin check failed:", error.message);
+    else signals = data;
+  } catch (e) {
+    console.error("[mint-test-session] admin check threw:", e);
+  }
+  if (
+    !signals || !Array.isArray(signals.contractor_roles) ||
+    typeof signals.profile_role === "undefined" ||
+    typeof signals.app_metadata_role === "undefined"
+  ) {
+    return codedError(403, ADMIN_CHECK_UNAVAILABLE, "Forbidden: admin status of target could not be verified — refused");
+  }
+  if (
+    isAdminRole(signals.profile_role) ||
+    isAdminRole(signals.app_metadata_role) ||
+    signals.contractor_roles.some(isAdminRole)
+  ) {
+    return codedError(403, ADMIN_ACCOUNT_REFUSED, "Forbidden: target is an admin account — refused regardless of is_test");
+  }
+  return null;
 }
 
 /**
@@ -402,6 +488,12 @@ export async function resolveAndMint(
   ) {
     return knownRealAccountRefusal();
   }
+
+  // R-134 (mint134): never mint for an admin account, whatever its is_test
+  // columns say. Placed after the auth user is resolved (its email is the one
+  // that would be minted for) and before generateMagicLink. Fail closed.
+  const adminBlock = await adminRefusal(db, targetUserId, authUser.email);
+  if (adminBlock) return adminBlock;
 
   const targetEmail = authUser.email;
 
