@@ -111,7 +111,10 @@ async function t1(page, base) {
   rec('logo-loaded', m.logoLoaded, 'the logo image loaded (naturalWidth > 0)');
   rec('logo-not-link', !m.logoInLink, 'the logo is NOT inside an <a>');
   rec('who-we-are', m.lineText === WHO_WE_ARE, 'the who-we-are text equals the live partner-profile.html sentence byte-for-byte');
-  rec('no-links', m.links.length === 0, 'NO link is visible anywhere on the funding screen (visible links: ' + JSON.stringify(m.links) + ')');
+  // gh-1925 (Ben ruling 5896607701): the ONE legally required CPRA opt-out link is the only link Arm F may show.
+  const nonDnsLinks = m.links.filter((l) => l.indexOf('id="footer-do-not-sell-link-armf"') === -1);
+  rec('no-links', nonDnsLinks.length === 0, 'NO link other than the ruled Do Not Sell or Share link is visible anywhere on the funding screen (visible links: ' + JSON.stringify(m.links) + ')');
+  rec('dns-link-only', m.links.length - nonDnsLinks.length === 1, 'exactly one Do Not Sell or Share link is visible on Arm F (gh-1925)');
   rec('photo-hidden', !m.photoRenders, 'the photo slot renders nothing (hidden until Dustin supplies the file)');
   rec('above-fold', m.firstBtnBottom !== null && m.firstBtnBottom <= 744, 'the first funding button bottom edge is <= 744px (measured ' + m.firstBtnBottom + ')');
   rec('header-height', m.hdrHeight !== null && m.hdrHeight <= 72, 'the trust block is <= 72px tall (measured ' + (m.hdrHeight && m.hdrHeight.toFixed(1)) + ')');
@@ -183,6 +186,30 @@ async function main() {
       const green = await n1(page, base, 'mutated ?v=d', '?v=d');
       ok(green === false, 'N1 control: with the Arm-F scoping stripped from the CSS, the arm D check goes RED (header leaks)');
       await context.close();
+    }
+
+    console.log('\n=== D1 (gh-1925): the Do Not Sell or Share link is visible once on every arm (Arm F: own element; A-E: nav.js footer) ===');
+    {
+      const dnsState = async (qs, opts) => {
+        const { page, context } = await newPage(browser, base, opts);
+        await page.goto(base + '/start' + qs, { waitUntil: 'load' });
+        await page.waitForTimeout(1500);
+        const r = await page.evaluate(() => {
+          const vis = (e) => { const cs = getComputedStyle(e); return cs.display !== 'none' && cs.visibility !== 'hidden' && e.getClientRects().length > 0; };
+          const all = Array.from(document.querySelectorAll('a')).filter((a) => a.textContent.trim() === 'Do Not Sell or Share My Personal Information');
+          return { visible: all.filter(vis).length, total: all.length, armFVisible: !!document.getElementById('oq-armf-dns') && vis(document.getElementById('oq-armf-dns')) };
+        });
+        await context.close();
+        return r;
+      };
+      const f = await dnsState('?v=f', undefined);
+      ok(f.visible === 1 && f.armFVisible, 'D1: /start?v=f shows exactly one Do Not Sell or Share link, the Arm F element (' + JSON.stringify(f) + ')');
+      for (const qs of ['?v=d', '?v=e', '']) {
+        const r = await dnsState(qs, undefined);
+        ok(r.visible === 1 && !r.armFVisible, 'D1: /start' + qs + ' shows exactly one link (nav.js footer) and the Arm F element stays hidden -- no duplicate (' + JSON.stringify(r) + ')');
+      }
+      const c = await dnsState('?v=d', { mutateStart: (h) => h.split('html[data-oq-start-arm="f"] #oq-armf-dns { display: block;').join('#oq-armf-dns { display: block;') });
+      ok(c.visible !== 1 || c.armFVisible, 'D1 control: with the Arm-F scoping stripped from the CSS the arm D check goes RED (duplicate link leaks) (' + JSON.stringify(c) + ')');
     }
 
     console.log('\n=== N5 control: the logo wrapped in an <a> ===');
