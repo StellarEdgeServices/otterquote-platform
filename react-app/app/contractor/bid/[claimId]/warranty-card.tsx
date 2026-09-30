@@ -37,7 +37,9 @@ async function loadWarrantyOptions(): Promise<WarrantyOption[]> {
   try {
     const cached = sessionStorage.getItem('d202_warranty_options');
     const cachedAt = sessionStorage.getItem('d202_warranty_options_at');
-    if (cached && cachedAt && Date.now() - parseInt(cachedAt, 10) < OPTS_TTL) {
+    // gh-2060 item 7: a future-dated stamp (negative age) is not "fresh".
+    const cacheAge = Date.now() - parseInt(cachedAt || '', 10);
+    if (cached && cachedAt && cacheAge >= 0 && cacheAge < OPTS_TTL) {
       return JSON.parse(cached) as WarrantyOption[];
     }
   } catch { /* ignore */ }

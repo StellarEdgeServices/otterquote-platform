@@ -2808,7 +2808,9 @@
         const raw = sessionStorage.getItem('hover_photos_' + claimId);
         if (raw) {
           const parsed = JSON.parse(raw);
-          if (Date.now() - parsed.ts < HOVER_PHOTOS_TTL) {
+          // gh-2060 item 7: a future-dated ts (negative age) is not "fresh".
+          const hpAge = Date.now() - parsed.ts;
+          if (hpAge >= 0 && hpAge < HOVER_PHOTOS_TTL) {
             cached = parsed;
           }
         }
@@ -4478,7 +4480,9 @@
       try {
         const cached = sessionStorage.getItem('d202_warranty_options');
         const cachedAt = sessionStorage.getItem('d202_warranty_options_at');
-        if (cached && cachedAt && (Date.now() - parseInt(cachedAt) < 5 * 60 * 1000)) {
+        // gh-2060 item 7: a future-dated stamp (negative age) is not "fresh".
+        const d202Age = Date.now() - parseInt(cachedAt);
+        if (cached && cachedAt && d202Age >= 0 && d202Age < 5 * 60 * 1000) {
           __d202WarrantyOptionsCache = JSON.parse(cached);
           return __d202WarrantyOptionsCache;
         }

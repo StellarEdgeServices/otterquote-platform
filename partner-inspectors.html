@@ -1057,7 +1057,7 @@ function captureUtmContext() {
  */
 async function detectRecruitCode() {
   const urlParams = new URLSearchParams(window.location.search);
-  const recruitCode = localStorage.getItem('cs_recruit_code') || urlParams.get('recruit');
+  const recruitCode = urlParams.get('recruit') || localStorage.getItem('cs_recruit_code'); // gh-2060 item 4: a ?recruit= on THIS load wins over a stale stored code
   if (!recruitCode) return;
 
   try {

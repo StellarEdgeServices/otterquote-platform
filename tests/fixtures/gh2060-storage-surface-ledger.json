@@ -53,14 +53,30 @@
         "cs_signup_at"
       ],
       "stack": "react+static",
-      "status": "known-gap",
-      "reason": "cs_signup carries a stranger's name/phone/address into the next signup's profile/HubSpot contact and has no timestamp or owner key. Recommended default: stamp cs_signup_at and apply the same 24h TTL + clear-on-sign-out as cs_auth_role.",
+      "status": "tested",
       "tests": [
         {
           "file": "tests/gh2060-static-surfaces-staleness.mjs",
           "contains": "a cs_signup older than 24h"
+        },
+        {
+          "file": "tests/gh2060-static-surfaces-staleness.mjs",
+          "contains": "Auth.signOut() clears cs_signup + cs_signup_at and oq_cpa_redirect_guard"
+        },
+        {
+          "file": "react-app/app/lib/__tests__/gh2060-signup-storage.test.ts",
+          "contains": "a blob older than 24h is ignored and cleared"
+        },
+        {
+          "file": "react-app/app/providers/__tests__/auth-provider.signout.test.tsx",
+          "contains": "gh-2060 items 2 and 7: sign-out clears cs_signup"
+        },
+        {
+          "file": "react-app/app/trade-selector/__tests__/gh2060-stale-session-keys.test.tsx",
+          "contains": "a cs_signup older than 24h"
         }
-      ]
+      ],
+      "note": "CLOSED (gh-2060 item 2, Marty A 5899109815): cs_signup_at stamped by get-started; a missing, future-dated or >24h stamp makes every reader ignore AND clear the blob; sign-out clears it on both stacks."
     },
     {
       "key": "cs_contractor_signup",
@@ -242,9 +258,17 @@
         {
           "file": "tests/gh2060-static-surfaces-staleness.mjs",
           "contains": "the guard is only SET on the path that also redirects"
+        },
+        {
+          "file": "tests/gh2060-static-surfaces-staleness.mjs",
+          "contains": "Auth.signOut() clears cs_signup + cs_signup_at and oq_cpa_redirect_guard"
+        },
+        {
+          "file": "react-app/app/providers/__tests__/auth-provider.signout.test.tsx",
+          "contains": "gh-2060 items 2 and 7: sign-out clears cs_signup"
         }
       ],
-      "note": "Guard has no TTL and is not cleared on sign-out (a stale guard suppresses the redirect to the re-attestation modal). Compliance (CPA re-attestation) surface: fix left as a Q on #2060, recommended default = clear on sign-out on both stacks."
+      "note": "CLOSED (gh-2060 item 7, Marty A 5899109815): cleared on sign-out on both stacks (js/auth.js signOut, providers/auth-provider.tsx)."
     },
     {
       "key": "oq_referral_id",
@@ -397,8 +421,17 @@
         {
           "file": "react-app/app/contractor/bid/[claimId]/__tests__/gh2060-stale-caches.test.tsx",
           "contains": "refetches when this claim cache entry is past the 10-minute TTL"
+        },
+        {
+          "file": "react-app/app/contractor/bid/[claimId]/__tests__/gh2060-stale-caches.test.tsx",
+          "contains": "a FUTURE-dated entry (negative age) is not \"fresh\""
+        },
+        {
+          "file": "tests/gh2060-static-surfaces-staleness.mjs",
+          "contains": "hover_photos_ cache read rejects a future-dated ts"
         }
-      ]
+      ],
+      "note": "gh-2060 item 7: a future-dated ts (negative age) is no longer treated as fresh (React + static twin)."
     },
     {
       "key": "d202_warranty_options",
@@ -411,9 +444,17 @@
         {
           "file": "react-app/app/contractor/bid/[claimId]/__tests__/gh2060-stale-caches.test.tsx",
           "contains": "a catalog cached more than 5 minutes ago is NOT trusted"
+        },
+        {
+          "file": "react-app/app/contractor/bid/[claimId]/__tests__/gh2060-stale-caches.test.tsx",
+          "contains": "a FUTURE-dated catalog stamp (negative age) is not \"fresh\""
+        },
+        {
+          "file": "tests/gh2060-static-surfaces-staleness.mjs",
+          "contains": "d202_warranty_options_at read rejects a future-dated stamp"
         }
       ],
-      "note": "warranty-card.tsx / home-photos-card.tsx treat a FUTURE-dated cache timestamp as fresh (negative age passes the TTL test). Money-adjacent (warranty pricing); left as a Q on #2060 rather than changed here."
+      "note": "gh-2060 item 7: a future-dated cache stamp (negative age) is no longer treated as fresh (React + static twin)."
     },
     {
       "key": "oq_wizard_",
@@ -461,14 +502,14 @@
     {
       "key": "cs_recruit_code",
       "stack": "static",
-      "status": "known-gap",
-      "reason": "Read as localStorage || ?recruit=, so a stale stored code beats the URL param on this load (recruit attribution). Recommended default: URL param first.",
+      "status": "tested",
       "tests": [
         {
           "file": "tests/gh2060-static-surfaces-staleness.mjs",
           "contains": "takes precedence over a stale stored recruit code"
         }
-      ]
+      ],
+      "note": "CLOSED (gh-2060 item 4, Marty A 5899109815): a ?recruit= on the current load wins over the stored code on all 11 pages."
     },
     {
       "key": "oq_partner_pending_registration",
@@ -552,7 +593,7 @@
     {
       "key": "oq_router_lead_id",
       "stack": "static (start.html, sessionStorage)",
-      "status": "known-gap",
+      "status": "tested",
       "tests": [
         {
           "file": "tests/gh2060-oq-router-lead-id-stale.mjs",
@@ -567,7 +608,7 @@
           "contains": "bfcache restore (pageshow persisted) clears the stored id, and the next submit inserts fresh instead of updating"
         }
       ],
-      "reason": "Real-Chromium harness (item 6 of the Q on #2060). Confirmed: start.html's Step-1 submit handler sends whatever sessionStorage.oq_router_lead_id holds to update_lead_contact with the NEW visitor's name/email/phone -- the value has no owner or timestamp, and the only clearing is the bfcache pageshow handler (nothing clears on success/completion). Server-side 30-minute / prefill_used_at guard is the only protection. Latent today: #step1Form is the arm A/B form and only d/e/f are served, so no real visitor reaches the read site (a reachability check pins that; the arm modules only write the key via insertFreshLead). Recommended default: reuse the id only if this page context created it (or store an owner marker), otherwise insert fresh; no behaviour change until the form is reachable."
+      "note": "CLOSED (gh-2060 item 6b, Marty A 5899109815): start.html reuses the stored id only when this page context inserted it (in-memory ownedLeadId); negative control M2 in the harness reverts the fix and the stale-id check goes red. Still latent-unreachable today (LIVE_VARIANTS has no arm A/B)."
     },
     {
       "key": "oq_handout_hi4_contact",
@@ -575,7 +616,7 @@
         "oq_handout_ins5_contact"
       ],
       "stack": "static (hi-4.html/ins-5.html -> assets/handout-*.html, sessionStorage)",
-      "status": "known-gap",
+      "status": "tested",
       "tests": [
         {
           "file": "tests/gh2060-static-surfaces-staleness.mjs",
@@ -586,7 +627,7 @@
           "contains": "the URL ?code= wins over a stale stored code for the referral link"
         }
       ],
-      "reason": "Handout renders the stored partner name/company whenever present, even if the stored code differs from the URL ?code= (a different partner's PII on this partner's handout). Recommended default: honour the stored contact only when its code matches the URL code (or the URL has none)."
+      "note": "CLOSED (gh-2060 item 5, Marty A 5899109815): the stored contact is honoured only when its code matches the URL ?code= (or the URL has none)."
     },
     {
       "key": "sb-otterquote-auth",

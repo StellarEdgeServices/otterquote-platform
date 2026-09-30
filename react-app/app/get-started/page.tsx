@@ -127,6 +127,7 @@ import { readFirstTouch } from '@/lib/attribution';
 import { withFirstTouchParam } from '@/lib/attribution-core';
 import { formatPhoneValue, isValidEmail, isValidZip, fullAddress, splitLeadName } from './utils';
 import { captureVariantFromUrl } from '@/lib/variant';
+import { stampSignup } from '@/lib/signup-storage';
 import { SMS_CONSENT_LABEL } from '../../constants/legal';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -1050,6 +1051,8 @@ export default function GetStartedPage() {
         referrer_updates_opt_out: referrerOptOut,
       }),
     );
+    // gh-2060 item 2: stamp it so a stale blob (24h TTL) never seeds another visitor.
+    stampSignup();
 
     // 4. Persist referral_id so auth-callback can advance referral status.
     // Written through the cookie bridge so it survives the app<->www hop —

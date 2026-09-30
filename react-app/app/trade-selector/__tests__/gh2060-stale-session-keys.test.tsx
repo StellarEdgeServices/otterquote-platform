@@ -103,6 +103,7 @@ describe('trade-selector — stale handoff keys from an earlier wizard run (gh-2
 
   async function walkCash(repair: boolean) {
     localStorage.setItem('cs_signup', JSON.stringify(CS_SIGNUP));
+    localStorage.setItem('cs_signup_at', String(Date.now()));
     render(<TradeSelectorPage />);
     fireEvent.click(screen.getByText("I'm paying for this myself (retail/cash)"));
     await waitFor(() => expect(screen.getByText('What do you need done?')).toBeInTheDocument());
@@ -135,6 +136,21 @@ describe('trade-selector — stale handoff keys from an earlier wizard run (gh-2
     expect(claimsInsertMock).toHaveBeenCalledTimes(1);
     const payload = claimsInsertMock.mock.calls[0][0] as Record<string, unknown>;
     expect(JSON.stringify(payload)).not.toContain('c-STALE-PREVIOUS');
+  });
+
+  it('gh-2060 item 2: a cs_signup older than 24h (a stranger\'s abandoned signup) is not used to prefill this visitor, and is cleared', async () => {
+    seedStaleStorage({
+      localStorage: {
+        cs_signup: JSON.stringify(CS_SIGNUP),
+        cs_signup_at: String(Date.now() - 25 * 60 * 60 * 1000),
+      },
+    });
+    render(<TradeSelectorPage />);
+    await waitFor(() => expect(localStorage.getItem('cs_signup')).toBeNull());
+    expect(localStorage.getItem('cs_signup_at')).toBeNull();
+    // no stranger data reaches the page or a claim write
+    expect(claimsInsertMock).not.toHaveBeenCalled();
+    expect(document.body.innerHTML).not.toContain('910 Congress Street');
   });
 
   // KNOWN GAP (Q on #2060): encodes the RECOMMENDED DEFAULT (consume-on-success,

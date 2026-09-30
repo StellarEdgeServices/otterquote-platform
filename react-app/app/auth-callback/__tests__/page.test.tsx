@@ -369,6 +369,7 @@ describe('auth-callback page — gh-1901 Option 2: Google name backfill', () => 
 
   it('fills blank cs_signup first/last name from given_name/family_name and forwards them to HubSpot', async () => {
     localStorage.setItem('cs_signup', JSON.stringify({ first_name: '', last_name: '', role: 'homeowner' }));
+    localStorage.setItem('cs_signup_at', String(Date.now()));
 
     await fireAndWaitForRedirect(
       sessionWithGoogleIdentity({ given_name: 'Jane', family_name: 'Doe' }),
@@ -386,6 +387,7 @@ describe('auth-callback page — gh-1901 Option 2: Google name backfill', () => 
 
   it('falls back to splitting full_name when given_name/family_name are absent', async () => {
     localStorage.setItem('cs_signup', JSON.stringify({ first_name: '', last_name: '', role: 'homeowner' }));
+    localStorage.setItem('cs_signup_at', String(Date.now()));
 
     await fireAndWaitForRedirect(sessionWithGoogleIdentity({ full_name: 'Jane Q Doe' }));
 
@@ -399,6 +401,7 @@ describe('auth-callback page — gh-1901 Option 2: Google name backfill', () => 
       'cs_signup',
       JSON.stringify({ first_name: 'Typed', last_name: 'Name', role: 'homeowner' }),
     );
+    localStorage.setItem('cs_signup_at', String(Date.now()));
 
     await fireAndWaitForRedirect(
       sessionWithGoogleIdentity({ given_name: 'Jane', family_name: 'Doe' }),

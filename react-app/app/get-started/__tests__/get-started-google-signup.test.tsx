@@ -110,6 +110,8 @@ describe('get-started page — Google OAuth path fires no pre-redirect sign_up',
     // removal above did not also drop the data the landing event needs.
     const csSignup = JSON.parse(localStorage.getItem('cs_signup') || '{}');
     expect(csSignup).toHaveProperty('referral_source');
+    // gh-2060 item 2: the blob is stamped so a stale one (24h TTL) never seeds another visitor.
+    expect(Number(localStorage.getItem('cs_signup_at'))).toBeGreaterThan(Date.now() - 60_000);
 
     // gh-2060 RETURNED item 1 (get-started writer): persistSignupContext()
     // must stamp cs_auth_role_at alongside cs_auth_role='homeowner' so

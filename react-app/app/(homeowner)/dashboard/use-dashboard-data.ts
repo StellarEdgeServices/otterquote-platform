@@ -13,6 +13,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { readFreshSignupRaw } from '@/lib/signup-storage';
 import type {
   CarrierOption,
   HomeownerClaim,
@@ -151,7 +152,7 @@ export function useHomeownerProfile(
         let signup: Record<string, unknown> = {};
         try {
           signup = JSON.parse(
-            localStorage.getItem('cs_signup') || sessionStorage.getItem('cs_signup') || '{}',
+            readFreshSignupRaw() || sessionStorage.getItem('cs_signup') || '{}',
           );
         } catch {
           signup = {};

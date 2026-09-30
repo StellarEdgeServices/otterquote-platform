@@ -56,6 +56,7 @@ import { linkPendingLeadOnce } from '@/lib/lead-capture';
 import { readOwnedContractorSignup } from '@/lib/contractor-signup-owner';
 import { maybeFireGoogleSignUp, readReferralSourceFromCsSignup } from './signup-analytics';
 import { rescueImplicitFragment } from './implicit-fragment';
+import { readFreshSignupRaw } from '@/lib/signup-storage';
 import { adoptFirstTouchFromParam, recordFirstTouch } from '@/lib/attribution';
 
 // ─── Name recovery for the Google path (gh-1901 Option 2) ────────────────────
@@ -86,7 +87,7 @@ function backfillNameFromGoogleIdentity(user: Session['user'] | null | undefined
 
   let signup: Record<string, unknown>;
   try {
-    const raw = localStorage.getItem('cs_signup');
+    const raw = readFreshSignupRaw();
     if (!raw) return;
     signup = JSON.parse(raw);
   } catch {
@@ -137,7 +138,7 @@ function fireHomeownerHubspotContact(email: string | null | undefined) {
   if (!email) return;
   let signup: Record<string, unknown> = {};
   try {
-    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem('cs_signup') : null;
+    const raw = typeof localStorage !== 'undefined' ? readFreshSignupRaw() : null;
     if (!raw) return;
     signup = JSON.parse(raw);
   } catch {

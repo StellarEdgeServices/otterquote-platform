@@ -162,6 +162,7 @@ describe('TradeSelectorPage loss-sheet attach — gh-2070', () => {
   /** Funding "insurance" -> Policy "I'm Not Sure" -> uploads a loss sheet. */
   async function walkToUploadedLossSheet() {
     localStorage.setItem('cs_signup', JSON.stringify(CS_SIGNUP));
+    localStorage.setItem('cs_signup_at', String(Date.now()));
     render(<TradeSelectorPage />);
 
     fireEvent.click(screen.getByText('I have an insurance claim'));
@@ -335,6 +336,7 @@ describe('TradeSelectorPage loss-sheet attach — gh-2070', () => {
 
   it('with no loss sheet staged, no attach calls fire (move/PATCH/invoke all silent)', async () => {
     localStorage.setItem('cs_signup', JSON.stringify(CS_SIGNUP));
+    localStorage.setItem('cs_signup_at', String(Date.now()));
     render(<TradeSelectorPage />);
 
     fireEvent.click(screen.getByText("I'm paying for this myself (retail/cash)"));

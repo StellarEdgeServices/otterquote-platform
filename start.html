@@ -1784,10 +1784,17 @@
   // detect "this same browsing session already created a lead" -- it is
   // never read as a source of truth for anything beyond that id.
   var LEAD_ID_STORAGE_KEY = 'oq_router_lead_id';
+  // gh-2060 item 6b (Marty A: 5899109815): the stored id is reused ONLY when
+  // THIS page context inserted it (`ownedLeadId`, in-memory). An id that is in
+  // sessionStorage but that this page did not create -- a previous visitor's
+  // leftover in a reused tab -- used to be sent to update_lead_contact with the
+  // NEW visitor's name/email/phone. It is now ignored and a fresh lead inserted.
+  var ownedLeadId = null;
   function getStoredLeadId() {
-    try { return sessionStorage.getItem(LEAD_ID_STORAGE_KEY); } catch (e) { return null; }
+    try { var v = sessionStorage.getItem(LEAD_ID_STORAGE_KEY); return (v && v === ownedLeadId) ? v : null; } catch (e) { return null; }
   }
   function setStoredLeadId(id) {
+    ownedLeadId = id;
     try { sessionStorage.setItem(LEAD_ID_STORAGE_KEY, id); } catch (e) { /* private-mode / blocked storage: resubmit dedup best-effort only */ }
   }
 
@@ -2562,6 +2569,7 @@
     if (e.persisted) {
       try { history.replaceState({ step: ENTRY_STEP }, '', location.pathname + location.search); } catch (e2) {}
       leadId = null;
+      ownedLeadId = null;
       try { sessionStorage.removeItem(LEAD_ID_STORAGE_KEY); } catch (e3) {}
       // gh-2096 REVIEW fix round 2 (PR #2114, comment 5796844493, superseding
       // the round-1 fix at comment 5782483911): that round-1 fix reset

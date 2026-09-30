@@ -108,6 +108,7 @@ describe('TradeSelectorPage claims write — gh-1993 FIX ROUND 1 (property_addre
 
   async function completeCashSingleTradeWalk() {
     localStorage.setItem('cs_signup', JSON.stringify(CS_SIGNUP));
+    localStorage.setItem('cs_signup_at', String(Date.now()));
     render(<TradeSelectorPage />);
 
     // Funding: cash -> lands directly on Trades (no Policy step).

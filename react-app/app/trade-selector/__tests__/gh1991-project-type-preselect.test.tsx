@@ -89,6 +89,7 @@ describe('TradeSelectorPage — gh-1991 project_type pre-select', () => {
       address: '123 Main St, Anytown, IN 46201',
       project_type: 'gutters',
     }));
+    localStorage.setItem('cs_signup_at', String(Date.now()));
 
     render(<TradeSelectorPage />);
 
@@ -112,6 +113,7 @@ describe('TradeSelectorPage — gh-1991 project_type pre-select', () => {
 
   it('negative control: pre-selects nothing when cs_signup is absent', async () => {
     // No localStorage.setItem('cs_signup', ...) — the exact same render path,
+    localStorage.setItem('cs_signup_at', String(Date.now()));
     // deliberately without the signal that drives the pre-select above.
     render(<TradeSelectorPage />);
 
@@ -128,6 +130,7 @@ describe('TradeSelectorPage — gh-1991 project_type pre-select', () => {
 
   it('negative control: an unmapped project_type ("other") pre-selects nothing', async () => {
     localStorage.setItem('cs_signup', JSON.stringify({ project_type: 'other' }));
+    localStorage.setItem('cs_signup_at', String(Date.now()));
 
     render(<TradeSelectorPage />);
 

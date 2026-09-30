@@ -35,6 +35,7 @@
  */
 
 import { fireSignUpAndWait, type ReferralSource } from '@/lib/track';
+import { readFreshSignupRaw } from '@/lib/signup-storage';
 
 /** A new account is one Supabase created within this window of "now". */
 const NEW_SIGNUP_WINDOW_MS = 5 * 60 * 1000; // 5 minutes (upper bound — not "too old")
@@ -107,7 +108,7 @@ export function isNewlyCreatedUser(user: Pick<SignUpGuardUser, 'created_at'>): b
  */
 export function readReferralSourceFromCsSignup(): ReferralSource {
   try {
-    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem('cs_signup') : null;
+    const raw = typeof localStorage !== 'undefined' ? readFreshSignupRaw() : null;
     if (!raw) return '';
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     return typeof parsed.referral_source === 'string' ? (parsed.referral_source as ReferralSource) : '';

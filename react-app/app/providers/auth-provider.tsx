@@ -19,6 +19,8 @@ import * as Sentry from '@sentry/nextjs';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { otterquoteCookieStorage, OTTERQUOTE_AUTH_STORAGE_KEY, readValidCookieSession } from '../lib/cookie-storage';
+import { clearSignup } from '../lib/signup-storage';
+import { clearCpaRedirectGuard } from '../contractor/_shell/cpa-guard';
 import type { AuthContextValue, AuthState, AuthUser, OtterRole } from '../types/auth';
 
 // ─── Admin allow-list (mirrors admin-auth-gate.ts) ───────────────────────────
@@ -331,6 +333,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch {
         /* storage blocked — nothing to clear */
       }
+      // gh-2060 item 2: an unconsumed cs_signup (name/phone/address) must not
+      // outlive the session on a shared browser.
+      clearSignup();
+      // gh-2060 item 7: the CPA anti-loop guard is per-session; a stale one would
+      // suppress the redirect to the CPA re-attestation modal for the next user.
+      clearCpaRedirectGuard();
     }
   };
 

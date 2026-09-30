@@ -15,7 +15,7 @@
  *   oq_variant_v3 (11 static readers, getOqVariant)
  *   oq_ft (js/auth.js recordFirstTouchAttribution)
  *   cs_contractor_signup (js/auth.js handleAuthCallback)      [CLOSED by gh-2340]
- *   cs_recruit_code (11 partner/funnel pages, detectRecruitCode) [KNOWN GAP]
+ *   cs_recruit_code (11 partner/funnel pages, detectRecruitCode) [CLOSED by gh-2060 item 4]
  *   oq_cpa_redirect_guard (5 guard pages + dashboard clear)
  *
  * KNOWN GAP cases encode the recommended-default behaviour asked for in the
@@ -344,7 +344,7 @@ for (const page of variantPages) {
 }
 
 // ---------------------------------------------------------------------------
-// cs_recruit_code -- detectRecruitCode() precedence on the partner/funnel pages (KNOWN GAP)
+// cs_recruit_code -- detectRecruitCode() precedence on the partner/funnel pages [CLOSED by gh-2060 item 4]
 // ---------------------------------------------------------------------------
 {
   const recruitPages = rootHtml().filter((f) => /localStorage\.getItem\('cs_recruit_code'\)/.test(read(f)));
@@ -356,7 +356,7 @@ for (const page of variantPages) {
     await check(`${page}: the recruit code is consumed (cleared) once a signup completes`, () => {
       assert.match(src, /localStorage\.removeItem\('cs_recruit_code'\)/);
     });
-    await knownGap(`${page}: a ?recruit= on THIS load takes precedence over a stale stored recruit code`, () => {
+    await check(`${page}: a ?recruit= on THIS load takes precedence over a stale stored recruit code`, () => {
       const m = src.match(/const recruitCode = ([^;]+);/);
       assert.ok(m, 'recruitCode assignment not found');
       assert.ok(
@@ -426,7 +426,7 @@ for (const page of variantPages) {
 }
 
 // ---------------------------------------------------------------------------
-// cs_signup -- js/auth.js handleAuthCallback() homeowner profile write (KNOWN GAP)
+// cs_signup -- js/auth.js handleAuthCallback() homeowner profile write + sign-out clear [CLOSED by gh-2060 items 2 and 7]
 // ---------------------------------------------------------------------------
 {
   const authSrc = read('js/auth.js');
@@ -470,11 +470,54 @@ for (const page of variantPages) {
     assert.equal(localStorage.getItem('cs_signup'), null, 'cs_signup must be cleared after use');
   });
 
-  await knownGap('a cs_signup older than 24h (abandoned signup by someone else on this browser) is not written to the new user\'s profile', async () => {
-    const { sandbox, calls } = run({ ls: { cs_signup: signup, cs_signup_at: String(Date.now() - 25 * 60 * 60 * 1000) } });
+  await check('a cs_signup older than 24h (abandoned signup by someone else on this browser) is not written to the new user\'s profile, and is cleared', async () => {
+    const { sandbox, calls, localStorage } = run({ ls: { cs_signup: signup, cs_signup_at: String(Date.now() - 25 * 60 * 60 * 1000) } });
     await sandbox.window.Auth.handleAuthCallback();
     assert.ok(calls.profileUpsert === null, 'a stale stranger cs_signup was written to this user\'s profile');
+    assert.equal(localStorage.getItem('cs_signup'), null, 'a stale cs_signup must be cleared');
+    assert.equal(localStorage.getItem('cs_signup_at'), null, 'the stale stamp must be cleared with it');
   });
+
+  await check('a cs_signup with NO cs_signup_at stamp (pre-fix blob / stranger leftover) is not written to the profile, and is cleared', async () => {
+    const { sandbox, calls, localStorage } = run({ ls: { cs_signup: signup } });
+    await sandbox.window.Auth.handleAuthCallback();
+    assert.ok(calls.profileUpsert === null, 'an unstamped stranger cs_signup was written to this user\'s profile');
+    assert.equal(localStorage.getItem('cs_signup'), null);
+  });
+
+  await check('a FUTURE-dated cs_signup_at (negative age) is not "fresh"', async () => {
+    const { sandbox, calls } = run({ ls: { cs_signup: signup, cs_signup_at: String(Date.now() + 24 * 60 * 60 * 1000) } });
+    await sandbox.window.Auth.handleAuthCallback();
+    assert.ok(calls.profileUpsert === null, 'a future-dated cs_signup was trusted');
+  });
+
+  await check('Auth.readFreshSignup() (dashboard.html bootstrap): stale -> {} and cleared; fresh -> parsed', () => {
+    const stale = run({ ls: { cs_signup: signup, cs_signup_at: String(Date.now() - 25 * 60 * 60 * 1000) } });
+    assert.equal(JSON.stringify(stale.sandbox.window.Auth.readFreshSignup()), '{}');
+    assert.equal(stale.localStorage.getItem('cs_signup'), null);
+    const fresh = run({ ls: { cs_signup: signup, cs_signup_at: String(Date.now() - 1000) } });
+    assert.equal(fresh.sandbox.window.Auth.readFreshSignup().first_name, 'Sam');
+    assert.equal(fresh.localStorage.getItem('cs_signup'), signup, 'reading must not consume a fresh blob');
+  });
+
+  await check('dashboard.html reads cs_signup only through Auth.readFreshSignup() (no raw localStorage read left)', () => {
+    const src = read('dashboard.html');
+    assert.ok(!/getItem\('cs_signup'\)/.test(src), 'dashboard.html still reads cs_signup directly');
+    assert.equal((src.match(/Auth\.readFreshSignup\(\)/g) || []).length, 2);
+  });
+
+  // sign-out clears cs_signup (item 2) and the CPA redirect guard (item 7) on the static stack
+  for (const settle of ['resolve', 'reject']) {
+    await check(`Auth.signOut() clears cs_signup + cs_signup_at and oq_cpa_redirect_guard (revoke ${settle}s)`, async () => {
+      const { sandbox, localStorage } = run({ ls: { cs_signup: signup, cs_signup_at: String(Date.now()), oq_cpa_redirect_guard: '1', unrelated_key: 'keep' } });
+      sandbox.sb.auth.signOut = async () => { if (settle === 'reject') throw new Error('network down'); return {}; };
+      await sandbox.window.Auth.signOut().catch(() => undefined);
+      assert.equal(localStorage.getItem('cs_signup'), null);
+      assert.equal(localStorage.getItem('cs_signup_at'), null);
+      assert.equal(localStorage.getItem('oq_cpa_redirect_guard'), null);
+      assert.equal(localStorage.getItem('unrelated_key'), 'keep', 'sign-out must not wipe unrelated keys');
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -541,10 +584,35 @@ for (const [file, key] of [['assets/handout-hi-4.html', 'oq_handout_hi4_contact'
     const link = els.get('refLinkBox') && els.get('refLinkBox').textContent;
     assert.ok(link && link.includes('NEWCODE') && !link.includes('OLDCODE'), String(link));
   });
-  await knownGap(`${file}: a stored contact left by a DIFFERENT partner (stored code != URL code) is not shown on this handout`, () => {
+  await check(`${file}: a stored contact left by a DIFFERENT partner (stored code != URL code) is not shown on this handout`, () => {
     const els = runHandout({ search: '?code=NEWCODE', stored: JSON.stringify({ name: 'Old Agent', company: 'Old Agency', code: 'OLDCODE' }) });
     const name = els.get('cbName') && els.get('cbName').textContent;
     assert.ok(name !== 'Old Agent', `another partner's name was rendered on this handout: ${name}`);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// hover_photos_<claimId> / d202_warranty_options_at -- contractor-bid-form.html cache freshness (gh-2060 item 7)
+// A future-dated stamp gives a NEGATIVE age, which passed the old `age < TTL` test forever. Both static readers
+// live inside a large async page function, so they are pinned at source level (behaviour is executed on the React
+// twins in react-app/app/contractor/bid/[claimId]/__tests__/gh2060-stale-caches.test.tsx).
+// ---------------------------------------------------------------------------
+{
+  const src = read('contractor-bid-form.html');
+  await check('contractor-bid-form.html: hover_photos_ cache read rejects a future-dated ts (age >= 0 before age < TTL)', () => {
+    const i = src.indexOf("sessionStorage.getItem('hover_photos_' + claimId)");
+    assert.ok(i > -1, 'hover_photos_ reader not found');
+    const win = src.slice(i, i + 600);
+    assert.match(win, /const hpAge = Date\.now\(\) - parsed\.ts;/);
+    assert.match(win, /hpAge >= 0 && hpAge < HOVER_PHOTOS_TTL/);
+    assert.ok(!/Date\.now\(\) - parsed\.ts < HOVER_PHOTOS_TTL/.test(win), 'the unguarded age check is still present');
+  });
+  await check('contractor-bid-form.html: d202_warranty_options_at read rejects a future-dated stamp (age >= 0 before age < TTL)', () => {
+    const i = src.indexOf("sessionStorage.getItem('d202_warranty_options_at')");
+    assert.ok(i > -1, 'd202 reader not found');
+    const win = src.slice(i, i + 600);
+    assert.match(win, /const d202Age = Date\.now\(\) - parseInt\(cachedAt\);/);
+    assert.match(win, /d202Age >= 0 && d202Age < 5 \* 60 \* 1000/);
   });
 }
 
