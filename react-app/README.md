@@ -53,7 +53,7 @@ react-app/
 ├── tsconfig.json          # TypeScript configuration
 ├── netlify.toml           # Netlify build and deploy settings
 ├── postcss.config.js      # PostCSS configuration for Tailwind
-├── .eslintrc.json         # ESLint configuration
+├── eslint.config.mjs      # ESLint flat configuration
 └── .env.local.example     # Environment variable template
 ```
 
