@@ -26,6 +26,8 @@ import {
 // instead of the pointer just vanishing into a zero-row no-op.
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 import { shouldSuppressAnalyticsDispatch } from "../_shared/synthetic-traffic.ts";
+// gh-1314: refuse a labeled sign/init/date tag BEFORE /v1/document/send (BoldSign builds it silently-broken).
+import { LabeledSignTagError, preflightTemplateTags } from "./tag-preflight.ts";
 const FN_NAME = "create-docusign-envelope";
 // deno-lint-ignore no-explicit-any
 async function getHomeownerName(supabase, claimId) {
@@ -2235,6 +2237,9 @@ async function handleContractorSign(supabase, requestBody, corsHeaders) {
       scopeOfWorkBase64 = null;
     }
   }
+  // gh-1314: nothing has been sent yet, so a bad template costs nothing here; after the send it
+  // costs an unrevocable document and a dead pointer.
+  await preflightTemplateTags(templateBase64, `contractor_sign template for contractor ${contractor_id}`);
   const docLabel = getDocumentLabel("contractor_sign");
   const files = [
     `data:application/pdf;base64,${templateBase64}`,
@@ -2500,6 +2505,8 @@ async function handleLegacyFlow(supabase, requestBody, corsHeaders) {
   }
   let contractorEmail = autoFields.contractor_email || "contractor@example.com";
   let contractorName = autoFields.contractor_name || "Contractor";
+  // gh-1314: same pre-send guard as handleContractorSign.
+  await preflightTemplateTags(templateBase64, `${document_type} template for contractor ${contractor_id}`);
   const docLabel = getDocumentLabel(document_type);
   const files = [
     `data:application/pdf;base64,${templateBase64}`
@@ -3061,6 +3068,20 @@ serve(async (req)=>{
         stored_manifest_version: error.usability.storedManifestVersion,
         current_manifest_version: CURRENT_TEMPLATE_MANIFEST_VERSION,
         missing_field_ids: error.usability.missingFieldIds
+      }), {
+        status: error.statusCode,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json"
+        }
+      });
+    }
+    if (error instanceof LabeledSignTagError) {
+      // [gh-1314] Specific refusal, raised before /v1/document/send -- nothing was sent or recorded.
+      return new Response(JSON.stringify({
+        error: error.code,
+        message: error.message,
+        violations: error.violations.map((v) => ({ tag: v.tag, label: v.label, fixed_tag: v.fixedTag }))
       }), {
         status: error.statusCode,
         headers: {

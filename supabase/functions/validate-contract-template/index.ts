@@ -76,11 +76,12 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.104.0";
 import { extractPdfText } from "./pdf-text.ts";
-import { MANIFEST, scanRequiredAnchors, scanOptionalAnchors } from "./manifest.ts";
+import { MANIFEST, scanRequiredAnchors, scanOptionalAnchors, scanLabeledSignTags } from "./manifest.ts";
 import { revalidateTemplates } from "./revalidate.ts";
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 import {
   describeMissingMarkers,
+  describeLabeledTagMarkers,
   detectFilledProposal,
   cancellationNoticeState,
   buildExecutionPagePdf,
@@ -384,7 +385,11 @@ Deno.serve(async (req: Request) => {
     const optionalResults = scanOptionalAnchors(pdfText, tradeManifest);
 
     const requiredFoundCount = anchorResults.filter((a: any) => a.found).length;
-    const allRequiredFound = requiredFoundCount === tradeManifest.required.length;
+    // [gh-1314] A sign/init/date tag with a label cannot be created by BoldSign (silent, permanent,
+    // unrevocable). It is a hard failure even if every required anchor was otherwise found, and
+    // even if a manual override "found" it.
+    const labeledTagErrors = scanLabeledSignTags(pdfText);
+    const allRequiredFound = requiredFoundCount === tradeManifest.required.length && labeledTagErrors.length === 0;
 
     // ─── #1313 piece 3: make the failure legible ────────────────────────────
     // "The validator already knows exactly which of the 13 markers are missing
@@ -394,7 +399,7 @@ Deno.serve(async (req: Request) => {
     // beside it, which describes the failure and not the fix. Indy Rooftops
     // scored 0 of 12 and was told "Upload and validate it on your profile
     // before bidding."
-    const missingMarkers = describeMissingMarkers(anchorResults);
+    const missingMarkers = [...describeMissingMarkers(anchorResults), ...describeLabeledTagMarkers(labeledTagErrors)];
 
     // ─── #1313 piece 2: is this a template at all? ──────────────────────────
     // The worse of the two problems. A tagless filled PROPOSAL and a tagless
@@ -437,6 +442,7 @@ Deno.serve(async (req: Request) => {
       anchors: anchorResults,
       optional: optionalResults,
       missingMarkers,
+      labeledTagErrors,
       filledProposal,
       cancellationNotice,
       assistApplied,
