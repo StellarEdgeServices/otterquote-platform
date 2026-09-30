@@ -64,7 +64,7 @@ function buildFooter(optOutUrl: string, escapeForHtml: boolean): string {
     `Otter Quotes is a service of Stellar Edge Services LLC. You're receiving this because you signed up as an Otter Quotes referral partner. ` +
     `${POSTAL_ADDRESS_ONLY} · ` +
     `Manage email preferences / Unsubscribe: ${unsubText} · ` +
-    `Questions? Reply to this email or contact support@otterquote.com / (317) 501-9215.`
+    `Questions? Reply to this email or contact support@otterquote.com / (844) 875-3412.`
   );
 }
 
