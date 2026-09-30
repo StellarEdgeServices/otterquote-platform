@@ -10,6 +10,26 @@
   publish = "."
   command = "sed -i \"s|%%STRIPE_PK%%|${STRIPE_PK}|g\" js/config.js && echo 'STRIPE_PK injected into js/config.js'"
 
+# gh-2389: skip a PRODUCTION build when nothing the site serves changed.
+# Netlify semantics (docs.netlify.com/build/configure-builds/ignore-builds/):
+# ignore command exit 0 = no changes, SKIP the build; exit 1 = BUILD.
+# CACHED_COMMIT_REF = last commit Netlify built before this one, so several
+# skipped merges accumulate into the next diff (nothing is lost).
+# Deploy previews and branch deploys are not credit-metered, so only the
+# production context is gated; they still build as before.
+# Publish is "." so the site serves the whole repo; this list names ONLY the
+# trees/files that no served page references (verified by grep, gh-2389).
+# Any path NOT listed here still triggers a build (fails toward building).
+# Also BUILDS when: CACHED_COMMIT_REF is empty, equals COMMIT_REF (cache-less
+# rebuild / retry of the same commit), or git diff errors (e.g. ref missing).
+# Excluded: react-app (own site, own netlify.toml + base-dir check), supabase,
+# scripts, .github, sql, tests, handoffs, docs, Docs, .claude, Archive,
+# skills-for-code, runbooks, democracy, deploy-checks, forge-config,
+# otterquote-deploy, root-level *.md, .gitignore, .gitattributes.
+# Test: python3 scripts/netlify-ignore.test.py
+[context.production]
+  ignore = "[ -n \"$CACHED_COMMIT_REF\" ] && [ \"$CACHED_COMMIT_REF\" != \"$COMMIT_REF\" ] && git diff --quiet \"$CACHED_COMMIT_REF\" \"$COMMIT_REF\" -- . ':!react-app' ':!supabase' ':!scripts' ':!.github' ':!sql' ':!tests' ':!handoffs' ':!docs' ':!Docs' ':!.claude' ':!Archive' ':!skills-for-code' ':!runbooks' ':!democracy' ':!deploy-checks' ':!forge-config' ':!otterquote-deploy' ':(exclude,glob)*.md' ':!.gitignore' ':!.gitattributes' || exit 1"
+
 # Stripe publishable key per deploy context (not secrets — publishable keys are client-safe)
 [context.production.environment]
   STRIPE_PK = "pk_live_51TCI2O0AJRnqIYPU4ybaUmt2FRxihUu4kMKXvjnrvfsWRHyoi8ptkVuyKsDs3Zq4dMrGniPGg5BxtAmZfukah5aI00K31rnCbk"
