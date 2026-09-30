@@ -16,7 +16,7 @@
 # are covered by the redirects only (see /netlify/* below).
 [build]
   publish = "."
-  command = "sed -i \"s|%%STRIPE_PK%%|${STRIPE_PK}|g\" js/config.js && echo 'STRIPE_PK injected into js/config.js' && rm -rf supabase scripts sql tests handoffs react-app .github docs Docs Archive runbooks skills-for-code democracy deploy-checks forge-config otterquote-deploy .claude tools && echo 'repo dirs removed from publish dir (gh-2389)'"
+  command = "sed -i \"s|%%STRIPE_PK%%|${STRIPE_PK}|g\" js/config.js && echo 'STRIPE_PK injected into js/config.js'; rm -rf supabase || true; rm -rf scripts || true; rm -rf sql || true; rm -rf tests || true; rm -rf handoffs || true; rm -rf react-app || true; rm -rf .github || true; rm -rf docs || true; rm -rf Docs || true; rm -rf Archive || true; rm -rf runbooks || true; rm -rf skills-for-code || true; rm -rf democracy || true; rm -rf deploy-checks || true; rm -rf forge-config || true; rm -rf otterquote-deploy || true; rm -rf .claude || true; rm -rf tools || true ; echo 'repo dirs removed from publish dir (gh-2389)'"
 
 # Stripe publishable key per deploy context (not secrets — publishable keys are client-safe)
 [context.production.environment]
