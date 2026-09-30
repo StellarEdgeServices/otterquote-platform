@@ -10,7 +10,9 @@ Each assertion below is paired with the mutation it exists to catch, per
 that gate's own requirement ("a firing self-test... must exit 0 and print
 at least one self-reported PASS/FAIL assertion line").
 
-No network, no repo tree mutation -- every fixture is a tempfile.
+No network and no repo tree mutation. Every fixture is a tempfile, except
+assertion 8, which READS the real tree to prove BASELINE has no slack (so this
+self-test also goes red if a fix lands without lowering its baseline).
 
 Run: python3 scripts/check-unselected-update-ratchet.test.py
 """
@@ -141,7 +143,7 @@ with tempfile.TemporaryDirectory() as tmp:
     )
     code, out = run_main_against(root, {"js/widget.js": 1})
     check("a file AT its baseline passes the gate", code, 0)
-    check("... and reports GATE: PASS-shaped output", "no file exceeds its baseline" in out, True)
+    check("... and reports GATE: PASS-shaped output", "every file matches its baseline" in out, True)
 
     code, out = run_main_against(root, {"js/widget.js": 0})
     check("a file with a NEW violation over baseline fails the gate", code, 1)
@@ -150,9 +152,49 @@ with tempfile.TemporaryDirectory() as tmp:
     (root / "js" / "widget.js").write_text(
         "await supabase.from('claims').update({a: 1}).eq('id', x).select('id');\n"
     )
+    # gh-2105 hole (5902317441): a fixed file whose baseline was never lowered
+    # used to pass with slack, so a NEW un-annotated .update() appended to it
+    # hid inside the old count. A baseline above the live count is now itself
+    # a failure -- the fixing PR must lower it in the same change.
     code, out = run_main_against(root, {"js/widget.js": 1})
-    check("a file that DROPS below its baseline (fixed) still passes", code, 0)
-    check("... and is reported as IMPROVED", "IMPROVED" in out, True)
+    check("a file that DROPS below its baseline (stale baseline) fails the gate", code, 1)
+    check("... and says to lower BASELINE", "lower BASELINE" in out, True)
+
+# 7. The measured hole itself (5902317441): admin-contractor-action had 0 live
+#    sites against a baseline of 6, and a synthetic un-annotated .update()
+#    APPENDED to that existing file passed the gate (exit 0). Fixture: a file
+#    fixed to 0 live sites with a stale baseline of 6, then one new write
+#    appended. The gate must not pass that tree.
+with tempfile.TemporaryDirectory() as tmp:
+    root = pathlib.Path(tmp)
+    fn = root / "supabase" / "functions" / "admin-contractor-action"
+    fn.mkdir(parents=True)
+    rel = "supabase/functions/admin-contractor-action/index.ts"
+    (fn / "index.ts").write_text(
+        "const { data } = await sb.from('contractors').update({a: 1}).eq('id', x).select('id');\n"
+        "\n"
+        "await sb.from('quotes').update({ x: 1 }).eq('id', 1);\n"
+    )
+    code, out = run_main_against(root, {rel: 6})
+    check("hole: a new .update() appended to a file with baseline slack fails the gate", code, 1)
+    check("... and names that file as a FAIL", f"FAIL: {rel}" in out, True)
+
+# 8. The real tree: every BASELINE entry equals its file's live count, so no
+#    file on main carries slack a new write could hide in.
+live_counts: dict[str, int] = {}
+for path in ratchet.iter_candidate_files():
+    rel = path.relative_to(ratchet.REPO).as_posix()
+    if "__tests__" in rel or ".test." in rel or rel.endswith(".d.ts"):
+        continue
+    n = len(ratchet.find_violations(path))
+    if n:
+        live_counts[rel] = n
+slack = sorted(
+    f"{rel} ({base} > {live_counts.get(rel, 0)})"
+    for rel, base in ratchet.BASELINE.items()
+    if base > live_counts.get(rel, 0)
+)
+check("real tree: no BASELINE entry is above its file's live count", slack, [])
 
 if failures:
     print(f"\n{len(failures)} assertion(s) failed")
