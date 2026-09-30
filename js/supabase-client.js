@@ -34,6 +34,9 @@
     auth: {
       storage: window.OtterQuoteCookieStorage,
       storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth',
+      // gh-1980 PR 3/3 (Google-only PKCE): implicit unless this page load is a
+      // verifier-backed Google ?code= return -- see js/cookie-storage.js.
+      flowType: (window.OtterQuoteOAuthPkce ? window.OtterQuoteOAuthPkce.flowTypeForPageLoad() : 'implicit'),
     },
   });
 })();

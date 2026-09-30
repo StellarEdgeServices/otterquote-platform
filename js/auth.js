@@ -214,6 +214,70 @@ function _isContractorGatedFile(pathname) {
  */
 var PARTNER_ROLES = ['re_agent', 'insurance_agent', 'home_inspector', 'adjuster', 'other'];
 
+// gh-1980: true when a JWT is expired or cannot be decoded (the rescue skips it).
+function _oqJwtExpired(jwt) {
+  try {
+    var part = String(jwt).split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    var payload = JSON.parse(atob(part + '==='.slice((part.length + 3) % 4)));
+    return typeof payload.exp === 'number' && payload.exp * 1000 <= Date.now();
+  } catch (e) {
+    return true; // undecodable == unusable
+  }
+}
+/**
+ * gh-1980 PR 3/3 -- SHARED implicit-fragment rescue (Ben's ruling on #1980,
+ * comment 5889011351). Emailed magic / recovery / confirmation links are IMPLICIT
+ * and arrive as `#access_token=...&refresh_token=...` on whatever page their
+ * redirectTo / emailRedirectTo names (contractor-pre-approval, partner-dashboard,
+ * dashboard, ...). The shared client is implicit, so supabase-js's own
+ * detectSessionInUrl normally consumes the fragment during init; this guarantees
+ * it: once init has finished, if a usable fragment is STILL in the URL (a client
+ * that did not consume it), the session is established by hand with setSession()
+ * and the fragment is scrubbed from the address bar. Runs at load on every page
+ * that loads this file (bottom of file), before any page-level auth guard: the
+ * guards go through Auth.getSession(), which waits on onAuthStateChange while
+ * `access_token` is in the URL, and setSession() fires SIGNED_IN.
+ * Memoised: one attempt per page load. Never throws.
+ */
+var _oqFragmentRescue = null;
+function rescueImplicitFragment() {
+  if (_oqFragmentRescue) return _oqFragmentRescue;
+  _oqFragmentRescue = (async function () {
+    try {
+      if (typeof window === 'undefined' || typeof sb === 'undefined' || !sb) return false;
+      if ((window.location.hash || '').indexOf('access_token') === -1) return false;
+      try { await sb.auth.initializePromise; } catch (e) { /* fall through */ }
+      var h = window.location.hash || '';
+      if (h.indexOf('access_token') === -1) {
+        // supabase-js consumed (and cleared) the fragment itself.
+        var cur = await sb.auth.getSession();
+        return !!(cur && cur.data && cur.data.session);
+      }
+      var p = new URLSearchParams(h.replace(/^#/, ''));
+      var at = p.get('access_token');
+      var rt = p.get('refresh_token');
+      // Never do what auth-js itself deliberately will not ("Don't remove existing session
+      // on URL login failure"): setSession() on a dead access_token goes to a refresh whose
+      // non-retryable failure clears the local session, and a stale refresh token can trip
+      // GoTrue reuse detection. So: a valid stored session wins, an expired fragment is
+      // only scrubbed.
+      var scrub = function () { try { window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search); } catch (e) { /* non-fatal */ } };
+      var existing = await sb.auth.getSession();
+      if (existing && existing.data && existing.data.session) { scrub(); return true; }
+      if (!at || !rt || _oqJwtExpired(at)) { scrub(); return false; }
+      var res = await sb.auth.setSession({ access_token: at, refresh_token: rt });
+      if (res && res.data && res.data.session) {
+        try { window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search); } catch (e) { /* non-fatal */ }
+        return true;
+      }
+      return false;
+    } catch (e) {
+      return false;
+    }
+  })();
+  return _oqFragmentRescue;
+}
+
 window.Auth = {
   /** Get current session - robust race-free implementation.
    *
@@ -416,7 +480,19 @@ window.Auth = {
    */
   async signInWithGoogle(redirectPage = '/dashboard.html') {
     if (!sb) throw new Error('Supabase not initialized');
-    const { error } = await sb.auth.signInWithOAuth({
+    // gh-1980 PR 3/3 (Dustin: "PKCE for Google only"): Google is the ONLY PKCE
+    // flow. It initiates through a dedicated pkce client on a verifier-only
+    // storage adapter (js/cookie-storage.js) -- flowType is client-wide in
+    // supabase-js, and the shared `sb` stays implicit so emailed links keep
+    // working on any device. On return, config.js / supabase-client.js build
+    // the shared client as pkce for that one page load and supabase-js
+    // exchanges the ?code= natively.
+    var pkce = window.OtterQuoteOAuthPkce;
+    if (!pkce || typeof pkce.createOAuthClient !== 'function' || !window.supabase) {
+      throw new Error('Google sign-in unavailable: js/cookie-storage.js must load first');
+    }
+    const oauthClient = pkce.createOAuthClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
+    const { error } = await oauthClient.auth.signInWithOAuth({
       provider: 'google',
       options: {
         redirectTo: `${CONFIG.SITE_URL}${redirectPage}`,
@@ -424,6 +500,15 @@ window.Auth = {
     });
     if (error) throw error;
   },
+
+  /**
+   * gh-1980 PR 3/3: shared implicit-fragment rescue -- see rescueImplicitFragment().
+   * Resolves true iff a session is established from a `#access_token` link.
+   */
+  rescueImplicitFragment() {
+    return rescueImplicitFragment();
+  },
+
 
   /**
    * Sign in with email + password.
@@ -471,7 +556,19 @@ window.Auth = {
       ? '/partner-dashboard.html'
       : '/auth-callback.html';
     const redirectPage = redirectTo || defaultRedirectPage;
-    const { data, error } = await sb.auth.signUp({
+    // gh-1980 PR 3/3: the shared client is pkce for the whole page load of a Google
+    // ?code= return (e.g. partner-insurance.html?g=1). An emailed confirmation link
+    // must stay implicit, so on such a load sign up through an explicitly implicit
+    // client (same storageKey + adapter) rather than the pkce `sb`.
+    var emailClient = sb;
+    if (sb.auth && sb.auth.flowType === 'pkce') {
+      var _pk = window.OtterQuoteOAuthPkce;
+      if (!_pk || typeof _pk.createEmailClient !== 'function' || !window.supabase) {
+        throw new Error('Sign-up unavailable: js/cookie-storage.js must load first');
+      }
+      emailClient = _pk.createEmailClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
+    }
+    const { data, error } = await emailClient.auth.signUp({
       email,
       password,
       options: { emailRedirectTo: `${CONFIG.SITE_URL}${redirectPage}` }
@@ -1692,3 +1789,9 @@ if (typeof window !== 'undefined' && window.Auth && typeof CONFIG !== 'undefined
     }
   } catch (e) { /* non-fatal — never block page load over a banner */ }
 })();
+
+// gh-1980 PR 3/3: run the shared implicit-fragment rescue on every page that
+// loads this file, immediately (it self-gates on `access_token` in the URL).
+if (typeof window !== 'undefined') {
+  rescueImplicitFragment();
+}
