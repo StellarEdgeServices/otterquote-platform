@@ -14,15 +14,19 @@ a separate class of review, but none has been individually triaged yet.
 
 Rather than block every PR on that full backlog, this is a RATCHET: each
 file gets a baseline violation count (BASELINE below, captured the day this
-guard was added). CI fails only when a file's current count exceeds its
-baseline -- i.e. a NEW un-annotated `.update(` without `.select(` was added
--- never on the pre-existing backlog. Fixing a site (adding `.select(` or
+guard was added). CI fails when a file's current count differs from its
+baseline: above it means a NEW un-annotated `.update(` without `.select(`
+was added; the pre-existing backlog itself never fails. Fixing a site (adding `.select(` or
 annotating it, see below) lowers that file's live count below its baseline,
 and the SAME change must lower BASELINE to match: a baseline above the live
 count also fails. That slack is exactly where a new un-annotated write hides
 (gh-2105, 5902317441: 10 fixed files kept their old baselines, 35 slack
 sites, and a synthetic `.update(` appended to admin-contractor-action passed
 the gate with exit 0).
+
+Known limit: the count is per file, so fixing one site and adding a new
+un-annotated one in the SAME change leaves the count equal and passes. Review
+of the diff is what catches that case, not this gate.
 
 A site that legitimately matches zero rows (decision b in gh-2105/#2103's
 own triage, e.g. an idempotent re-send) does not need `.select(` -- it can
@@ -31,7 +35,7 @@ line directly above it, documenting why, and is excluded from the count
 without touching the ratchet baseline.
 
 Exit codes:
-  0 -- no file exceeds its baseline
+  0 -- every file's live count equals its baseline
   1 -- one or more files have MORE un-annotated, un-selected `.update(`
        call sites than their recorded baseline, OR a baseline is higher
        than the file's live count (stale -- lower it in the same PR)
@@ -299,7 +303,7 @@ def main() -> int:
 
     print(
         f"check-unselected-update-ratchet: {len(live)} file(s) with pre-existing "
-        f"sites ({total_live} total), no file exceeds its baseline."
+        f"sites ({total_live} total), every file matches its baseline."
     )
     return 0
 

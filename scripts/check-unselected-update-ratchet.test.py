@@ -10,7 +10,9 @@ Each assertion below is paired with the mutation it exists to catch, per
 that gate's own requirement ("a firing self-test... must exit 0 and print
 at least one self-reported PASS/FAIL assertion line").
 
-No network, no repo tree mutation -- every fixture is a tempfile.
+No network and no repo tree mutation. Every fixture is a tempfile, except
+assertion 8, which READS the real tree to prove BASELINE has no slack (so this
+self-test also goes red if a fix lands without lowering its baseline).
 
 Run: python3 scripts/check-unselected-update-ratchet.test.py
 """
@@ -141,7 +143,7 @@ with tempfile.TemporaryDirectory() as tmp:
     )
     code, out = run_main_against(root, {"js/widget.js": 1})
     check("a file AT its baseline passes the gate", code, 0)
-    check("... and reports GATE: PASS-shaped output", "no file exceeds its baseline" in out, True)
+    check("... and reports GATE: PASS-shaped output", "every file matches its baseline" in out, True)
 
     code, out = run_main_against(root, {"js/widget.js": 0})
     check("a file with a NEW violation over baseline fails the gate", code, 1)
@@ -175,7 +177,7 @@ with tempfile.TemporaryDirectory() as tmp:
     )
     code, out = run_main_against(root, {rel: 6})
     check("hole: a new .update() appended to a file with baseline slack fails the gate", code, 1)
-    check("... and names that file", rel in out, True)
+    check("... and names that file as a FAIL", f"FAIL: {rel}" in out, True)
 
 # 8. The real tree: every BASELINE entry equals its file's live count, so no
 #    file on main carries slack a new write could hide in.
