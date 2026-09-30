@@ -80,7 +80,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { isCronAuthorized } from "./cron-auth.ts";
-import { buildLeadReminderEmail } from "./email-content.ts";
+import { buildLeadReminderEmail, replyToForVariant } from "./email-content.ts";
 import { internalErrorResponse, unexpectedErrorResponse } from "./error-response.ts";
 import {
   LEAD_OPTOUT_SECRET_ENV,
@@ -118,6 +118,9 @@ async function sendMailgunEmail(
   textBody: string,
   htmlBody: string,
   optOutUrl: string,
+  // gh-2378: Reply-To header, set only for ho6 sends (undefined = no header,
+  // exactly as before for every other variant).
+  replyTo?: string,
 ): Promise<{ ok: boolean; mailgunId?: string; error?: string }> {
   const formData = new URLSearchParams();
   formData.append("from", "Otter Quotes <notifications@mail.otterquote.com>");
@@ -128,6 +131,7 @@ async function sendMailgunEmail(
   // RFC 8058 one-click unsubscribe, same as send-homeowner-next-steps.
   formData.append("h:List-Unsubscribe", `<${optOutUrl}>`);
   formData.append("h:List-Unsubscribe-Post", "List-Unsubscribe=One-Click");
+  if (replyTo) formData.append("h:Reply-To", replyTo);
 
   try {
     const res = await fetch("https://api.mailgun.net/v3/mail.otterquote.com/messages", {
@@ -381,8 +385,9 @@ serve(async (req: Request) => {
       const token = await signLeadOptOutToken(row.id, optOutSecrets[0]);
       const optOutUrl = buildLeadOptOutUrl(baseUrl, token);
       const hasPhone = hasPhoneOnFile(row.phone);
-      const { subject, textBody, htmlBody } = buildLeadReminderEmail(row.id, row.name, optOutUrl, hasPhone);
-      const result = await sendMailgunEmail(mailgunApiKey, row.email as string, subject, textBody, htmlBody, optOutUrl);
+      const { subject, textBody, htmlBody } = buildLeadReminderEmail(row.id, row.name, optOutUrl, hasPhone, row.variant);
+      const result = await sendMailgunEmail(mailgunApiKey, row.email as string, subject, textBody, htmlBody, optOutUrl,
+        replyToForVariant(row.variant));
       if (!result.ok) {
         console.error(`[${FUNCTION_NAME}] Mailgun send failed for lead ${row.id}: ${result.error}`);
         await recordMailgunFailure(supabase, row.id, result.error || "unknown error");
