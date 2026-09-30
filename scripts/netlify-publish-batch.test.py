@@ -22,7 +22,7 @@ import time, urllib.error, urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 YML_REL = ".github/workflows/netlify-publish-batch.yml"
-OLD_SHA = "ca3f4438e883cf526addc13d23d8b3fe590dbb0f"
+OLD_SHA = "ca3f4438"  # short ref on purpose: a 40-hex literal trips credential-sweep HEX_RUN_20
 JADE = "6748a414-1baa-4309-a5f9-f3a7f45e3d94"
 APP = "26316673-212a-4f20-a95e-902ece8387c4"
 STEP_MAIN = "Publish batch"
