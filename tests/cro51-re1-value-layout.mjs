@@ -105,6 +105,8 @@ if (chromium) {
     const r = (e) => e.getBoundingClientRect();
     return {
       scrollW: document.documentElement.scrollWidth, innerW: window.innerWidth,
+      // body has overflow-x:hidden (site base), which masks scrollWidth, so ALSO measure the right edge of every element
+      maxRight: Math.max(...Array.from(document.querySelectorAll('.re1-value, .re1-value *, #signup-section, #signup-section *')).map((e) => e.getBoundingClientRect().right)),
       sections: Array.from(document.querySelectorAll('.re1-section')).map((s) => {
         const p = r(s.querySelector('.re1-photo')), t = r(s.querySelector('.re1-text'));
         return { photoLeft: p.left, textLeft: t.left, photoTop: p.top, textTop: t.top, photoW: p.width };
@@ -118,7 +120,7 @@ if (chromium) {
   });
   const phone = await open(390, 844, true);
   const g = await geo(phone);
-  ok(g.scrollW <= g.innerW, '390px: no horizontal scroll (scrollWidth ' + g.scrollW + ' <= ' + g.innerW + ')');
+  ok(g.scrollW <= g.innerW && g.maxRight <= g.innerW + 0.5, '390px: no horizontal scroll and no element past the viewport (scrollWidth ' + g.scrollW + ', max right edge ' + Math.round(g.maxRight) + ', viewport ' + g.innerW + ')');
   ok(g.sections.every((s) => s.photoTop < s.textTop && Math.abs(s.photoLeft - s.textLeft) < 2), '390px: every section is stacked, photo above text');
   await phone.evaluate(() => window.scrollTo(0, 0));
   // tap the first button: must land on the existing form section
@@ -128,14 +130,14 @@ if (chromium) {
   ok(top >= -2 && top < 400, '390px: tapping "Become a partner today" scrolls the signup form into view (top=' + top + ')');
   const desk = await open(1280, 800, false);
   const d = await geo(desk);
-  ok(d.scrollW <= d.innerW, '1280px: no horizontal scroll');
+  ok(d.scrollW <= d.innerW && d.maxRight <= d.innerW + 0.5, '1280px: no horizontal scroll and no element past the viewport');
   ok(d.sections.every((s, i) => i % 2 === 0 ? (s.textLeft < s.photoLeft) : (s.photoLeft < s.textLeft)), '1280px: sections alternate (text left/photo right, then photo left/text right ...) -- ' + JSON.stringify(d.sections.map((s) => Math.round(s.photoLeft) + '/' + Math.round(s.textLeft))));
   ok(d.bg === 'rgb(255, 255, 255)' && d.h1Color === 'rgb(30, 79, 168)' && d.h2Color === 'rgb(30, 79, 168)' && d.pColor === 'rgb(0, 0, 0)', 'colours: white background, blue headers, black text -- ' + [d.bg, d.h1Color, d.h2Color, d.pColor].join(' | '));
   ok(/Rubik/.test(d.font), 'site font (Rubik) is used');
   // negative control for the overflow assertion: a wide element must trip the same measure
-  await phone.evaluate(() => { const x = document.createElement('div'); x.style.cssText = 'width:600px;height:2px'; document.body.appendChild(x); });
+  await phone.evaluate(() => { const x = document.createElement('div'); x.style.cssText = 'width:600px;height:2px'; document.querySelector('.re1-value').appendChild(x); });
   const g2 = await geo(phone);
-  ok(g2.scrollW > g2.innerW, 'negative control: an injected 600px element is detected as horizontal overflow');
+  ok(g2.maxRight > g2.innerW + 0.5, 'negative control: an injected 600px element is detected as horizontal overflow');
   await browser.close(); server.close();
 }
 console.log(''); console.log(pass + ' passed, ' + fail + ' failed');
