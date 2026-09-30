@@ -95,5 +95,5 @@ Deno.test("proof script is BEGIN..ROLLBACK, has a negative control, and asserts 
   for (const d of ["stellaredgeservices.com", "tryotterquote.com", "stohlerroof.com", "otterquote-internal.test"]) {
     assert(s.includes(d), `proof does not cover ${d}`);
   }
-  assert(s.includes("dustinstohler10@") && s.includes("stellaredgeservices.com.evil.io"), "near-miss controls missing");
+  assert(s.includes("'dustinstohler10+gh2310' || p_run") && s.includes("stellaredgeservices.com.evil.io"), "near-miss controls missing");
 });

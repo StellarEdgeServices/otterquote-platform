@@ -69,6 +69,11 @@ BEGIN
   IF v_base = '' THEN
     RAISE EXCEPTION 'gh2310 gap2 trigger: referral_agents row % yields an empty base local part', c_stacy_id;
   END IF;
+  -- Gmail local parts are letters, digits and dots only. Anything else (e.g. a '$' that could end the
+  -- $body$ quote in the EXECUTE below) means the row is not what Ben's ruling assumed: fail closed.
+  IF v_base !~ '^[a-z0-9.]+$' THEN
+    RAISE EXCEPTION 'gh2310 gap2 trigger: referral_agents row % base local part has characters outside [a-z0-9.]', c_stacy_id;
+  END IF;
 
   EXECUTE format($fn$
     CREATE OR REPLACE FUNCTION public.is_internal_test_email(p_email text)

@@ -46,8 +46,8 @@ BEGIN
       ('stacy plus-address (from live row)', v_base || '+gh2310' || p_run || '@' || 'gmail.com',  true),
       -- expected FALSE: real-looking control and near-misses
       ('control example.com',              'gh2310-' || p_run || '-f@example.com',              false),
-      ('near-miss dustinstohler10',        'dustinstohler10@' || 'gmail.com',                   false),
-      ('near-miss stacy base + digit',     v_base || '9@' || 'gmail.com',                       false),
+      ('near-miss dustinstohler10',        'dustinstohler10+gh2310' || p_run || '@' || 'gmail.com', false),
+      ('near-miss stacy base + digit',     v_base || '9+gh2310' || p_run || '@' || 'gmail.com',   false),
       ('near-miss lookalike domain',       'gh2310-' || p_run || '-g@stellaredgeservices.com.evil.io', false),
       ('near-miss prefixed domain',        'gh2310-' || p_run || '-h@notstohlerroof.com',       false),
       ('near-miss dustin base wrong domain', 'dustinstohler1+gh2310' || p_run || '@example.com', false),
@@ -87,7 +87,10 @@ BEGIN
   PERFORM pg_temp.gh2310_run_cases('neg');
   RAISE EXCEPTION 'NEGATIVE CONTROL FAILED: assertions passed with the trigger disabled';
 EXCEPTION WHEN raise_exception THEN
-  IF SQLERRM LIKE 'gh2310 proof mismatch%' THEN
+  -- Exactly the 7 expected-TRUE cases must flip to false with the trigger off; any other count means the
+  -- proof is measuring something other than this trigger.
+  IF SQLERRM LIKE 'gh2310 proof mismatch%' AND (length(SQLERRM) - length(replace(SQLERRM, 'expected t]', ''))) / length('expected t]') = 7
+     AND SQLERRM NOT LIKE '%expected f]%' THEN
     RAISE NOTICE 'negative control OK: %', SQLERRM;
   ELSE
     RAISE;
@@ -99,7 +102,7 @@ ALTER TABLE public.referral_agents ENABLE TRIGGER referral_agents_set_is_test_in
 ROLLBACK;
 
 SELECT 'after' AS phase, count(*) AS ra_total, count(*) FILTER (WHERE is_test = false) AS ra_false,
-       count(*) FILTER (WHERE email ILIKE 'gh2310-%') AS fixtures_left,
+       count(*) FILTER (WHERE email ILIKE '%gh2310%') AS fixtures_left,
        (SELECT tgenabled FROM pg_trigger WHERE tgname = 'referral_agents_set_is_test_internal'
           AND tgrelid = 'public.referral_agents'::regclass) AS trigger_enabled_flag  -- expect 'O' (enabled)
 FROM public.referral_agents;
