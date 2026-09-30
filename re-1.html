@@ -34,10 +34,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
-<title>Every Realtor's New Best Friend — Otter Quotes</title>
+<title>Meet Your New Best Friend — Otter Quotes</title>
 <meta name="description" content="Send your clients to Otter Quotes for fast, competing repair bids — no extra work for you, and a referral fee on qualifying completed projects.">
 <link rel="canonical" href="https://otterquote.com/re-1.html">
-<meta property="og:title" content="Every Realtor's New Best Friend — Otter Quotes">
+<meta property="og:title" content="Meet Your New Best Friend — Otter Quotes">
 <meta property="og:description" content="Send your clients to Otter Quotes for fast, competing repair bids — no extra work for you, and a referral fee on qualifying completed projects.">
 <meta property="og:url" content="https://otterquote.com/re-1.html">
 <meta property="og:type" content="website">
@@ -130,72 +130,27 @@ a:hover { color: var(--amber-2); }
 .text-sm { font-size: 0.875rem; }
 .text-center { text-align: center; }
 
-/* ── Hero / bullets ── */
-/* gh-2150 round 2 (REVIEW FAIL 5836233175 must-fix 2): the original rule
-   here was `background: linear-gradient(...); background-image:
-   radial-gradient(...)` -- two declarations, not one. The `background`
-   shorthand resets background-color to transparent when given only a
-   gradient value, and the very next `background-image` declaration then
-   REPLACES that gradient with just the (mostly transparent) radial glow,
-   so the hero rendered near-white in practice, not navy. Both gradients
-   are layered in ONE background-image list below so the real navy
-   gradient actually paints, with h1/subtitle recolored for AA contrast
-   against that real navy background (bullets' existing #E5EDF5 was
-   already >14:1 against navy -- it only looked broken because the
-   background behind it wasn't actually navy). No copy changed. */
-.hero {
-  padding: var(--sp-20) var(--sp-8) var(--sp-12);
-  background-color: var(--navy);
-  background-image: linear-gradient(135deg, var(--navy) 0%, var(--navy-2) 100%), radial-gradient(ellipse at 30% 50%, rgba(224,123,0,0.08) 0%, transparent 60%);
-  text-align: center;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
-}
-
-.hero-content {
-  max-width: 760px;
-  margin: 0 auto;
-}
-
-.hero h1 {
-  font-size: clamp(2.2rem, 5vw, 3.5rem);
-  margin-bottom: var(--sp-4);
-  color: var(--white);
-}
-
-.hero .subtitle {
-  font-size: 1.1rem;
-  color: var(--slate);
-  line-height: 1.8;
-  margin-bottom: var(--sp-8);
-  max-width: 640px;
-  margin-left: auto;
-  margin-right: auto;
-}
-
-.hero-bullets {
-  list-style: none;
-  margin: 0 0 var(--sp-8);
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-3);
-  max-width: 560px;
-  margin-left: auto;
-  margin-right: auto;
-  text-align: left;
-}
-
-.hero-bullets li {
-  display: flex;
-  gap: var(--sp-3);
-  color: #E5EDF5;
-  font-size: 1.02rem;
-  line-height: 1.5;
-}
-
-.hero-bullets .bullet-check {
-  color: var(--amber);
-  flex-shrink: 0;
+/* ── CRO51 RE-1 value layout: white background, black text, blue headers, alternating photo/text sections ── */
+.re1-value { background: #FFFFFF; color: #000000; padding: var(--sp-12) var(--sp-8) var(--sp-8); }
+.re1-intro { max-width: 900px; margin: 0 auto var(--sp-12); text-align: center; }
+.re1-value h1 { color: #1E4FA8; font-size: clamp(2rem, 5vw, 3.25rem); letter-spacing: 0.01em; margin-bottom: var(--sp-4); }
+.re1-value .re1-sub { color: #000000; font-size: 1.25rem; line-height: 1.5; }
+.re1-section { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-12); align-items: center; max-width: 1080px; margin: 0 auto; padding: var(--sp-10) 0; border-top: 1px solid #E2E8F0; }
+.re1-photo { margin: 0; order: 2; }
+.re1-photo img { display: block; width: 100%; height: auto; border-radius: var(--radius-md); background: #EEF2F7; }
+.re1-text { order: 1; }
+.re1-section--flip .re1-photo { order: 1; }
+.re1-section--flip .re1-text { order: 2; }
+.re1-value h2 { color: #1E4FA8; font-size: clamp(1.5rem, 3vw, 2rem); margin-bottom: var(--sp-4); }
+.re1-value .re1-text p { color: #000000; font-size: 1.1rem; line-height: 1.7; margin-bottom: var(--sp-6); }
+.re1-cta { display: inline-block; padding: var(--sp-3) var(--sp-6); background: #1E4FA8; color: #FFFFFF; border-radius: var(--radius-md); font-family: var(--font-body); font-size: 1rem; font-weight: 600; text-align: center; transition: background var(--duration) var(--ease); }
+.re1-cta:hover, .re1-cta:focus-visible { background: #163B82; color: #FFFFFF; }
+@media (max-width: 768px) {
+  .re1-value { padding: var(--sp-10) var(--sp-4) var(--sp-4); }
+  .re1-section { grid-template-columns: 1fr; gap: var(--sp-5); padding: var(--sp-8) 0; }
+  .re1-photo, .re1-section--flip .re1-photo { order: 1; }
+  .re1-text, .re1-section--flip .re1-text { order: 2; }
+  .re1-cta { display: block; width: 100%; }
 }
 
 /* ── Signup Form Section ── */
@@ -430,18 +385,6 @@ a:hover { color: var(--amber-2); }
 
 /* ── Responsive ── */
 @media (max-width: 768px) {
-  .hero {
-    padding: var(--sp-12) var(--sp-6) var(--sp-10);
-  }
-
-  .hero h1 {
-    font-size: 1.8rem;
-  }
-
-  .hero .subtitle {
-    font-size: 0.95rem;
-  }
-
   .signup-section {
     padding: var(--sp-10) var(--sp-6);
   }
@@ -483,18 +426,47 @@ a:hover { color: var(--amber-2); }
 </div>
 </header>
 
-<!-- Hero Section — H1/subhead/bullets APPROVED VERBATIM (#2150 comment 5821403227) -->
-<section class="hero">
-  <div class="hero-content">
-    <h1>Every Realtor's New Best Friend</h1>
-    <p class="subtitle">Send your clients to Otter Quotes for fast, competing repair bids — no extra work for you, and a referral fee on qualifying completed projects.</p>
-    <ul class="hero-bullets">
-      <li><span class="bullet-check">✓</span><span>Your client gets multiple contractor bids without hunting for one.</span></li>
-      <li><span class="bullet-check">✓</span><span>Earn $200 when a referred job of $10,000+ completes.</span></li>
-      <li><span class="bullet-check">✓</span><span>Track every referral from your phone, in real time.</span></li>
-    </ul>
-  </div>
-</section>
+<!-- CRO51 (Dustin, 2026-09-30; source: Claude's Memories/otterquote-value-proposition.md section 5 item 4): RE-1 value layout.
+     Headline, subhead and the four sections below are DUSTIN'S WORDS VERBATIM. Each section's first sentence is its blue header.
+     Every "Become a partner today" button is an in-page anchor to #signup-section (the existing short-signup form below, unchanged). -->
+<main class="re1-value" id="re1-value">
+  <section class="re1-intro">
+    <h1>MEET YOUR NEW BEST FRIEND.</h1>
+    <p class="re1-sub">Otter Quotes help realtors close deals faster.</p>
+  </section>
+  <section class="re1-section" data-re1-section="1">
+    <figure class="re1-photo"><img src="/img/re1/re1-1.webp" width="900" height="600" alt="Roofer nailing asphalt shingles onto a roof deck" loading="lazy" decoding="async"></figure>
+    <div class="re1-text">
+      <h2>Get repairs done faster.</h2>
+      <p>Otter Quotes will create a scope of work and submit it to multiple contractors. No leaving messages for multiple contractors, no meeting someone on site. No waiting for schedules to line up. Just submit your job and start getting bids in one to two days.</p>
+      <a class="re1-cta" href="#signup-section" data-re1-cta="1">Become a partner today</a>
+    </div>
+  </section>
+  <section class="re1-section re1-section--flip" data-re1-section="2">
+    <figure class="re1-photo"><img src="/img/re1/re1-2.webp" width="900" height="600" alt="House with a shingle roof and large windows" loading="lazy" decoding="async"></figure>
+    <div class="re1-text">
+      <h2>Get multiple competitive bids.</h2>
+      <p>Contractors know they are competing for work on Otter Quotes. So they offer the best pricing they can.</p>
+      <a class="re1-cta" href="#signup-section" data-re1-cta="2">Become a partner today</a>
+    </div>
+  </section>
+  <section class="re1-section" data-re1-section="3">
+    <figure class="re1-photo"><img src="/img/re1/re1-3.webp" width="900" height="600" alt="Mitre saw cutting lumber on a construction site" loading="lazy" decoding="async"></figure>
+    <div class="re1-text">
+      <h2>See subcontractor pricing.</h2>
+      <p>Clients can choose from local, well known contractors or work directly with the subcontractors who do the work.</p>
+      <a class="re1-cta" href="#signup-section" data-re1-cta="3">Become a partner today</a>
+    </div>
+  </section>
+  <section class="re1-section re1-section--flip" data-re1-section="4">
+    <figure class="re1-photo"><img src="/img/re1/re1-4.webp" width="900" height="600" alt="Tradesperson installing a window frame with a drill" loading="lazy" decoding="async"></figure>
+    <div class="re1-text">
+      <h2>Reduce unnecessary expenses.</h2>
+      <p>Otter Quotes reduces the need for sales and marketing costs. Passing those savings along to your clients.</p>
+      <a class="re1-cta" href="#signup-section" data-re1-cta="4">Become a partner today</a>
+    </div>
+  </section>
+</main>
 
 <!-- Signup Form -->
 <section class="signup-section" id="signup-section">

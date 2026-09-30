@@ -45,11 +45,12 @@ const html = fs.readFileSync(path.join(repoRoot, PAGE_FILE), 'utf8');
 // when the job's done" -> "a referral fee on qualifying completed
 // projects." (CEO72 re1-subtitle, PR #2259.)
 const APPROVED_STRINGS = [
-  ["H1", "Every Realtor's New Best Friend"],
-  ["Subhead", "Send your clients to Otter Quotes for fast, competing repair bids — no extra work for you, and a referral fee on qualifying completed projects."],
-  ["Bullet 1", "Your client gets multiple contractor bids without hunting for one."],
-  ["Bullet 2", "Earn $200 when a referred job of $10,000+ completes."],
-  ["Bullet 3", "Track every referral from your phone, in real time."],
+  // CRO51 (Dustin, 2026-09-30, verbatim; see tests/cro51-re1-value-layout.mjs): the hero H1/subhead/bullets were REPLACED by Dustin's
+  // value-layout copy. The old H1 "Every Realtor's New Best Friend", the old subhead and the three hero bullets are retired on purpose;
+  // the new headline/subhead are pinned here, the four value sections are pinned in the CRO51 test. The form, fee sentence and D-266
+  // disclaimer below are unchanged.
+  ["H1", "MEET YOUR NEW BEST FRIEND."],
+  ["Subhead", "Otter Quotes help realtors close deals faster."],
   ["Agreement checkbox text", "I agree to Otter Quotes's"],
   ["Agreement checkbox text (Partner Terms link text)", "Partner Terms"],
   ["CTA", "Get My Referral Link"],
@@ -430,31 +431,13 @@ const gaGateSrc = fs.readFileSync(path.join(repoRoot, 'js', 'ga-gate.js'), 'utf8
   ok(!/support-fab|support-modal|Contact Support/i.test(footerHtml), '(1) S07: no support-chat bubble markup in the footer');
 }
 
-// (2) Hero bullets: WCAG AA 4.5:1 contrast, no copy change. The bug was a
-// `background: linear-gradient(...); background-image: radial-gradient(...)`
-// pair where the second declaration silently drops the first (background-
-// image is not layered with the shorthand's own image), leaving the hero
-// section effectively transparent/white while its light-on-navy text
-// (#E5EDF5 bullets, navy h1) assumed a real navy background. Fix: both
-// gradients layered in one background-image list, plus h1 recolored to
-// something that is actually readable against the now-real navy background.
+// (2) CRO51: the navy hero (and its bullets) was replaced by the white value layout. The old contrast guards on .hero are retired;
+// the new AA contrast guard is: blue headers (#1E4FA8 on #FFFFFF is about 7.7:1) and black body text on white.
 {
-  const heroBlockMatch = /\.hero\s*\{([^}]*)\}/.exec(html);
-  const heroBlock = heroBlockMatch ? heroBlockMatch[1] : '';
-  const bgImageDeclMatch = /background-image\s*:([^;]*);/.exec(heroBlock);
-  const bgImageDecl = bgImageDeclMatch ? bgImageDeclMatch[1] : '';
-  ok(/linear-gradient\(135deg\s*,\s*var\(--navy\)/.test(bgImageDecl) && /radial-gradient/.test(bgImageDecl),
-     '(2) .hero background-image layers the navy gradient AND the radial glow in one declaration (not two competing ones) -- got ' + JSON.stringify(bgImageDecl));
-  const h1BlockMatch = /\.hero h1\s*\{([^}]*)\}/.exec(html);
-  const h1Block = h1BlockMatch ? h1BlockMatch[1] : '';
-  ok(!/color\s*:\s*var\(--navy\)/.test(h1Block), '(2) .hero h1 is no longer navy-on-navy (invisible once the background bug above is fixed)');
-  const subtitleBlockMatch = /\.hero \.subtitle\s*\{([^}]*)\}/.exec(html);
-  const subtitleBlock = subtitleBlockMatch ? subtitleBlockMatch[1] : '';
-  ok(!/#5A6B7B/i.test(subtitleBlock), '(2) .hero .subtitle no longer uses the low-contrast #5A6B7B override once the background is real navy');
-  // No copy change: the approved bullet/H1/subtitle text strings from (a)
-  // above must still be present verbatim -- already asserted; this is a
-  // targeted re-check that a CSS-only fix didn't touch the hero markup text.
-  ok(html.includes('Earn $200 when a referred job of $10,000+ completes.'), '(2) hero bullet copy is unchanged (CSS-only contrast fix)');
+  ok(!/\.hero\s*\{/.test(html) && !/class="hero"/.test(html), '(2) CRO51: the old navy .hero section and its CSS are gone');
+  ok(!html.includes('Earn $200 when a referred job of $10,000+ completes.') && !html.includes('Track every referral from your phone'), '(2) CRO51: the three retired hero bullets (incl. the "Track every referral ... in real time" claim) are gone');
+  ok(/\.re1-value\s*\{[^}]*background:\s*#FFFFFF[^}]*color:\s*#000000/.test(html), '(2) CRO51: value block is white background, black text');
+  ok(/\.re1-value h2\s*\{\s*color:\s*#1E4FA8/.test(html) && /\.re1-value h1\s*\{\s*color:\s*#1E4FA8/.test(html), '(2) CRO51: headers are blue #1E4FA8');
 }
 
 // (3) S12: /re-1 on the Clarity allowlist, funnel_id tag set, PII fields
