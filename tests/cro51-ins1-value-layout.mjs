@@ -29,7 +29,7 @@ const H1_A = "Don't just send a check.";
 const H1_B = 'SEND HELP AFTER THE STORM';
 const SUBHEAD = 'Otter Quotes gets multiple competitive bids for your clients.';
 const SECTIONS = [
-  ['Easier Service.', 'Otter Quotes generates a scope of work and submits it to multiple contractors for bid. In less time than it takes for them to sign with a door to door canvasser, your client can get multiple bids from local, trusted contractors.'],
+  ['Easier Service.', 'Otter Quotes generates a scope of work and submits it to multiple contractors for bid. In less time than it takes for them to sign with a door to door canvasser, your client can get multiple bids from local, well-known contractors.'],
   ['Educated Clients.', 'We show your clients how higher grade materials can reduce damage from hail and wind. So you have fewer claims in the future and you get to surprise them with discounted rates.'],
   ['Better Warranties and Materials.', "Otter Quotes helps contractors reduce or eliminate the cost of sales and marketing and forces them to compete. So they can funnel those savings into better material and warranties to win your clients' jobs."],
   ['No cost, no obligation.', 'There is no obligation to work with our contractors and no cost for homeowners who provide a copy of their insurance estimate.'],
@@ -49,6 +49,9 @@ SECTIONS.forEach(([h, body], i) => {
   const im = /<img[^>]*>/.exec(sec);
   ok(!!im && /width="900"/.test(im[0]) && /height="600"/.test(im[0]) && /loading="lazy"/.test(im[0]) && /alt="[^"]{8,}"/.test(im[0]), 'section ' + (i + 1) + ' photo has width/height, lazy loading and alt text');
 });
+// Dustin 2026-09-30 ruling: "local, well-known contractors" (replaces "trusted"); "trusted" must not appear in the value block.
+ok(!/trusted/i.test(main) && main.includes('local, well-known contractors'), 'Easier Service says "local, well-known contractors" and "trusted" is absent from the value block');
+ok(/trusted/i.test(main.replace('well-known', 'trusted')), 'negative control: the "trusted" check fires when "well-known" is swapped back');
 // the one typo fix, and only that one
 ok(main.includes('licensing terms allow this.') && !/\ball this\b/.test(main), 'typo fix: "allow this" (Dustin wrote "all this"; fixed, flagged in the PR body)');
 // Top button directly under the subhead, same style + target.
