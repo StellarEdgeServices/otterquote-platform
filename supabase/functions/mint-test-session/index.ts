@@ -166,6 +166,34 @@ serve(async (req) => {
           error: error ? { message: error.message } : null,
         };
       },
+      async getAdminSignals(userId) {
+        // R-134 (mint134): all admin signals for the target, service-role reads.
+        const [profile, contractors, authUser] = await Promise.all([
+          supabase.from("profiles").select("role").eq("id", userId).maybeSingle(),
+          supabase.from("contractors").select("template_review_role").eq("user_id", userId),
+          supabase.auth.admin.getUserById(userId),
+        ]);
+        if (profile.error || contractors.error || authUser.error || !authUser.data?.user) {
+          return {
+            data: null,
+            error: {
+              message: profile.error?.message ?? contractors.error?.message ??
+                authUser.error?.message ?? "auth user not found",
+            },
+          };
+        }
+        const appRole = (authUser.data.user.app_metadata as Record<string, unknown> | undefined)?.role;
+        return {
+          data: {
+            profile_role: (profile.data as { role?: string | null } | null)?.role ?? null,
+            contractor_roles: (contractors.data ?? []).map(
+              (r: { template_review_role: string | null }) => r.template_review_role ?? null,
+            ),
+            app_metadata_role: typeof appRole === "string" ? appRole : null,
+          },
+          error: null,
+        };
+      },
       async generateMagicLink(email) {
         const { data, error } = await supabase.auth.admin.generateLink({
           type: "magiclink",

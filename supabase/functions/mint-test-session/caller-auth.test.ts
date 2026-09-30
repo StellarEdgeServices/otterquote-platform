@@ -47,6 +47,10 @@ function fakeDb(over: Partial<DbAdapter> = {}, logs: ActivityLogRow[] = []): DbA
       data: { id: "stub", email: "resolved@otterquote-internal.test" },
       error: null,
     }),
+    getAdminSignals: async () => ({
+      data: { profile_role: "contractor", contractor_roles: [], app_metadata_role: null },
+      error: null,
+    }),
     generateMagicLink: async () => ({
       data: { action_link: "https://stub.supabase.co/auth/v1/verify?token=stub" },
       error: null,
