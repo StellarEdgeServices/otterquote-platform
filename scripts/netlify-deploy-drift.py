@@ -397,6 +397,15 @@ UNMEASURED = "UNMEASURED"
 CONTENT_VERIFIED = "CONTENT_VERIFIED"
 CONTENT_CHANGED = "CONTENT_CHANGED"
 PUBLISH_STALE = "PUBLISH_STALE"
+# gh-2289 (Marty ruling, CTO RUN 51, #2289 5900839413: "approve the `GONE` verdict ...
+# A site that returns HTTP 410 is reported as GONE, not as DRIFT, and fails nothing."):
+# a content-hash site whose published-page fetch returns HTTP 410 (Gone). Netlify's answer
+# for a taken-down site. Printed on every run so a resurrection is visible, but never
+# UNMEASURED, never in FAILING_VERDICTS, never in PUSH_VERDICTS, and never above exit 0.
+# ONLY an HTTP 410 on the content page maps here: a 404/500/timeout stays UNMEASURED, and a
+# 200 with changed content stays CONTENT_CHANGED.
+GONE = "GONE"
+GONE_HTTP_STATUS = 410
 # gh-1734: a site explicitly recorded as not measured, with a reason on its own row --
 # never UNMEASURED (which means "could not measure"; this means "chose not to, and
 # said why") and never silently absent from the output.
@@ -409,7 +418,7 @@ FAILING_VERDICTS = {BEHIND, BUILD_FAILING, QUEUED_STALE, CONTENT_CHANGED, PUBLIS
 # "here's what's wrong" banner/issue-comment listings alongside IDENTICAL (gh-1734:
 # CONTENT_VERIFIED is content-hash's IDENTICAL; OUT_OF_SCOPE is a clean, explained
 # non-measurement, not a concern to list when some OTHER site on the same run alarms).
-CLEAN_VERDICTS = {IDENTICAL, CONTENT_VERIFIED, OUT_OF_SCOPE}
+CLEAN_VERDICTS = {IDENTICAL, CONTENT_VERIFIED, OUT_OF_SCOPE, GONE}
 
 # gh-1734: explicit per-site classification -- see the module docstring's EXPLICIT SITE
 # CLASSIFICATION section. Keyed by the Netlify site's "name" field (its stable API
@@ -707,6 +716,20 @@ def out_of_scope_row(site, reason):
         # not to, and said why), so there is no deploy-error count to report either.
         "errored_since_publish": None,
     }
+
+
+def is_gone_reason(reason):
+    """gh-2289: True only for fetch_url_content()'s HTTP 410 reason string."""
+    return isinstance(reason, str) and reason.startswith("HTTP %d " % GONE_HTTP_STATUS)
+
+
+def gone_row(site, reason):
+    """gh-2289: a content-hash site whose page returns HTTP 410. Same shape as
+    out_of_scope_row(): a clean, explained row that can never turn a run non-zero."""
+    row = out_of_scope_row(site, reason)
+    row["verdict"] = GONE
+    row["detail"] = "%s -- taken down; reported, not drift" % reason
+    return row
 
 
 def evaluate_site(
@@ -1359,6 +1382,12 @@ def render_text(rows, code, warnings=None, alarm_post_status=None, alarm_post_de
         lines.extend(banner)
     else:
         lines.append("Every site's production deploy is byte-for-commit identical to `main`.")
+    gone = [r for r in rows if r["verdict"] == GONE]
+    if gone:
+        # gh-2289: GONE is reported every run (a resurrection must be visible) but is not drift.
+        lines.append("")
+        lines.append("GONE (HTTP 410, not drift, exit code unaffected): %s"
+                     % ", ".join(r["label"] for r in gone))
     if alarm_post_status is not None:
         lines.append("")
         lines.append(
@@ -2005,6 +2034,8 @@ def check_non_git_site(site, netlify_token, now=None, timeout=TIMEOUT_SECONDS,
 
     raw_content, reason = fetch_url_content(content_url, timeout=timeout)
     if raw_content is None:
+        if is_gone_reason(reason):
+            return gone_row(site, reason)
         return unmeasured_row(site, "published-page fetch failed: %s" % reason)
     content_sha256 = hashlib.sha256(raw_content).hexdigest()
 

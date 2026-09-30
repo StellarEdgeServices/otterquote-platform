@@ -1,0 +1,149 @@
+# Netlify production deploy drift -- split out of edge-function-drift.yml (gh-2289).
+#
+# Marty's ruling on #2289 (comment 5900839413, CTO RUN 51): "approve the `GONE`
+# verdict and the split workflow." Before the split, the `netlify-drift` job shared a
+# workflow run with the Supabase Edge Function drift steps and the is-test guard, which
+# were red every scheduled day for unrelated reasons (runs 36246150861, 36326799761,
+# 36459533685, 36593119674, 2026-09-26..29, all failure), and the job itself was red
+# because two ClaimShield preview sites return HTTP 410 (exit 3, UNMEASURED outranks
+# everything). With GONE (HTTP 410 -> exit 0, reported each run) and its own workflow,
+# this run is red ONLY for a real BEHIND / BUILD_FAILING (exit 2), an alarm-post failure
+# (exit 4) or a genuine measurement failure (exit 3), so GitHub's own failed-scheduled-run
+# notification is a usable phone path with no new secret.
+#
+# The job body below is moved VERBATIM from edge-function-drift.yml (history: gh-1549,
+# gh-1721, gh-2289 push notifier). Same cron as before (09:17 UTC = 05:17 ET, inside the
+# R-031 off-peak window, off :00 for the scheduler-delay reason recorded in
+# edge-function-drift.yml).
+
+name: Netlify Deploy Drift
+
+on:
+  schedule:
+    - cron: '17 9 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/netlify-deploy-drift.py'
+      - 'scripts/netlify-deploy-drift.test.py'
+      - 'scripts/netlify-drift-fixtures/**'
+      - '.github/workflows/netlify-deploy-drift.yml'
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  netlify-drift:
+    name: Netlify production deploy vs main
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # File an alarm comment on gh-1549 -- the alarm IS the comment (the #1295
+      # pattern). Not needed by the `drift` job above, so scoped to this job only.
+      issues: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      # Same discipline as the Edge Function job above: a logic regression (e.g. a
+      # BUILD_FAILING check that stops firing when a still-matching published_deploy
+      # is present -- the exact #1548 shape) is caught even on a run where the
+      # Netlify/GitHub fetch cannot happen at all.
+      - name: Self-test the detector
+        run: python3 scripts/netlify-deploy-drift.test.py
+
+      # NOT a soft skip when NETLIFY_PAT is absent -- same fail-loud discipline as
+      # the Edge Function job: the script exits 3 (UNMEASURED) on a missing token,
+      # an unreachable API, or a malformed response, and UNMEASURED is never
+      # quieter than a measured BEHIND/BUILD_FAILING (gh-1419).
+      #
+      # GITHUB_PERSONAL_ACCESS_TOKEN here must have READ access to BOTH
+      # StellarEdgeServices/otterquote-platform AND StellarEdgeServices/otter-crm --
+      # the default `secrets.GITHUB_TOKEN` this job would otherwise get for free is
+      # scoped only to the repo the workflow runs in and 404s on a different private
+      # repo it cannot see at all. Confirmed live 2026-09-02 (gh-1549 build): the
+      # Code-lane fine-grained PAT available while writing this detector could read
+      # otterquote-platform but 404'd on otter-crm's `commits/main`.
+      #
+      # CORRECTED 2026-09-05: the secret backing this env var was originally named
+      # GITHUB_PERSONAL_ACCESS_TOKEN, which GitHub Actions refuses to let any
+      # repository secret be named ("Secret names must not start with GITHUB_.").
+      # It was never creatable, so this line's `|| github.token` fallback fired on
+      # every single run since #1549 was built -- otter-crm's UNMEASURED verdict
+      # was this naming bug, not (only) a scope gap. Now backed by GH_CROSS_REPO_PAT,
+      # a fine-grained PAT with Contents+Metadata+Administration read on both
+      # otterquote-platform and otter-crm.
+      #
+      # `--file-issue` posts to gh-1549 itself on any BEHIND/BUILD_FAILING site
+      # (never on UNMEASURED alone -- a measurement gap is not a drift finding).
+      # Combined into this one invocation (rather than a second run) so the check
+      # and the alarm comment share one set of API calls.
+      - name: Check Netlify production deploys against main
+        env:
+          NETLIFY_PAT: ${{ secrets.NETLIFY_PAT }}
+          # GH_CROSS_REPO_PAT is the cross-repo credential (see the CORRECTED note
+          # above); the job-local env var name stays GITHUB_PERSONAL_ACCESS_TOKEN
+          # because that's the name the script reads. Falls back to the workflow's
+          # own token if the secret is ever removed: it reads this repo's commits,
+          # which covers the two otterquote-platform sites, but otter-crm will
+          # report UNMEASURED again without the cross-repo PAT.
+          GITHUB_PERSONAL_ACCESS_TOKEN: ${{ secrets.GH_CROSS_REPO_PAT || github.token }}
+          # gh-1721: GH_CROSS_REPO_PAT is a fine-grained PAT scoped to
+          # Contents+Metadata+Administration READ only -- it has no Issues
+          # permission, so `--file-issue`'s comment POST to gh-1549 got HTTP 403
+          # every time it was ever attempted (confirmed live 2026-09-06) even
+          # though the drift READS above worked fine with the same token. The
+          # script's post_issue_comment() reads GITHUB_TOKEN first and only falls
+          # back to GITHUB_PERSONAL_ACCESS_TOKEN, so handing it the ambient
+          # job token here -- which DOES carry `issues: write` via this job's own
+          # `permissions:` block, scoped correctly since ALARM_ISSUE_NUMBER lives
+          # in this same repo -- fixes the POST without touching the cross-repo
+          # read path at all.
+          GITHUB_TOKEN: ${{ github.token }}
+          # gh-2289: phone delivery for BEHIND / BUILD_FAILING (one push per site per
+          # 24 h; never for PUBLISH_STALE / UNMEASURED). FAIL SOFT: while
+          # DRIFT_PUSH_URL / DRIFT_PUSH_TOKEN are not set as repository secrets the
+          # script logs "push skipped" and the run is unchanged. Both secrets are
+          # added by the CTO, not by CI. See the script's PUSH DELIVERY section.
+          DRIFT_ALARM_CHANNEL: pwa
+          DRIFT_PUSH_URL: ${{ secrets.DRIFT_PUSH_URL }}
+          DRIFT_PUSH_TOKEN: ${{ secrets.DRIFT_PUSH_TOKEN }}
+        # pipefail is load-bearing: without it, `| tee` swallows the script's
+        # exit code and an UNMEASURED (exit 3) run concludes success -- measured
+        # on schedule run 33761892324, the silent-detector shape this file exists
+        # to prevent.
+        shell: bash
+        run: |
+          python3 scripts/netlify-deploy-drift.py --json --file-issue | tee netlify-drift-report.json
+
+      # Runs even on failure -- the report is most useful precisely when the step
+      # above went red.
+      - name: Publish drift table to the job summary
+        if: always()
+        run: |
+          {
+            echo "# Netlify production deploy drift"
+            echo
+            if [ -s netlify-drift-report.json ]; then
+              echo '```json'
+              cat netlify-drift-report.json
+              echo '```'
+            else
+              echo "No report produced — the detector could not measure. This is a"
+              echo "failure, not a clean run. See the step log above."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload drift report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: netlify-deploy-drift-report
+          path: netlify-drift-report.json
+          if-no-files-found: ignore
