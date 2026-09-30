@@ -1,0 +1,96 @@
+name: Netlify publish-dir tests
+
+# gh-2392 follow-up (Marty, CTO RUN 53, 5911784069: "Tier A. A small NON-required
+# workflow ... path-filtered to netlify.toml, scripts/netlify-*, netlify/** and any
+# new root-level entry"). Before this file, scripts/netlify-publish-dir.test.py and
+# scripts/netlify-ignore.test.py were run by NO workflow, so a new internal root dir
+# or file would have gone live on otterquote.com with nothing to catch it: the build
+# copies every top-level entry into _site/ except a fixed denylist.
+#
+# NOT a required check (Marty: "earn it first"). A required check must also run on
+# merge_group (#2308), and merge_group ignores `paths:`, so it would bill a job on
+# every queue entry (~430 merges/month measured 2026-08-31..09-30, gh-1731 cost
+# gate). merge_group is added in the same PR that makes this required.
+#
+# "Any new root-level entry" cannot be expressed as "new" in a paths filter, so:
+#   - every root-level file except *.html pages (served by design; 92 of them, and
+#     they appear in ~40% of PRs) and *.md (never published) triggers the run, and
+#   - every file under a root dir triggers it UNLESS that dir is one of today's
+#     known dirs, negated below. A brand-new root dir is not negated, so it runs.
+# scripts/netlify-publish-dir-workflow.test.py keeps the negation list equal to the
+# repo's current root dirs and proves the filter fires for a new dir/file.
+# GitHub evaluates `paths` in order; the last matching pattern wins.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - '*'
+      - '!*.html'
+      - '!*.md'
+      - '*/**'
+      - '!.claude/**'
+      - '!.github/**'
+      - '!Archive/**'
+      - '!Docs/**'
+      - '!assets/**'
+      - '!blog/**'
+      - '!contractors/**'
+      - '!css/**'
+      - '!data/**'
+      - '!deploy-checks/**'
+      - '!docs/**'
+      - '!forge-config/**'
+      - '!guides/**'
+      - '!handoffs/**'
+      - '!img/**'
+      - '!js/**'
+      - '!netlify/**'
+      - '!otterquote-deploy/**'
+      - '!react-app/**'
+      - '!runbooks/**'
+      - '!scripts/**'
+      - '!skills-for-code/**'
+      - '!sql/**'
+      - '!supabase/**'
+      - '!tests/**'
+      - '!tools/**'
+      - '!twiml/**'
+      # Re-included after the negations above (last match wins).
+      - 'netlify.toml'
+      - '_redirects'
+      - 'netlify/**'
+      - 'scripts/netlify-*'
+      - 'react-app/app/lib/attribution-core.ts'
+      - '.github/workflows/netlify-publish-dir-tests.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: netlify-publish-dir-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  netlify-publish-dir:
+    name: Netlify publish-dir + ignore-rule tests (non-required)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # netlify-ignore.test.py replays the production ignore rule over real
+          # historical commit pairs; a depth-1 clone reports all 13 as MISSING.
+          fetch-depth: 0
+      # The runner's system python3 (3.12 on ubuntu-24.04) has tomllib; the tests
+      # use the standard library only, so no setup-python / pip step is needed.
+      - name: Workflow path filter covers new root entries
+        run: python3 scripts/netlify-publish-dir-workflow.test.py
+      - name: Publish dir holds only served files (gh-2392)
+        run: python3 scripts/netlify-publish-dir.test.py
+      - name: Production ignore rule builds when served files change (gh-2389)
+        run: python3 scripts/netlify-ignore.test.py

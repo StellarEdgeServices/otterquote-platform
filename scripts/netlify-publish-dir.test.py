@@ -16,7 +16,10 @@ under both `sh` (dash on Debian/Ubuntu) and `bash`, then asserts:
      planted in the temp copy (README.MD, Netlify/, REACT-APP/, .git, node_modules)
   2. the top-level dir set of the publish dir is exactly the known served set (a
      new root dir must be added to SERVED_TOP_LEVEL_DIRS deliberately -- a new
-     internal dir therefore fails closed in CI rather than being published)
+     internal dir therefore fails closed in CI rather than being published), and
+     the set of non-.html top-level FILES is exactly the known served set (same
+     rule for a new root file: a stray internal-notes.json or .env.bak fails
+     closed rather than going live)
   3. required served files exist; js/config.js has the dummy key injected
   4. every local path a served page/script/stylesheet references that exists in
      the source tree also exists in the publish dir (nothing referenced excluded)
@@ -51,6 +54,13 @@ INTERNAL_SEGMENTS = {
 }
 INTERNAL_SUFFIXES = (".md", ".py", ".sh", ".toml", ".ts", ".tsx")
 SERVED_TOP_LEVEL_DIRS = {"assets", "blog", "contractors", "css", "data", "guides", "img", "js", "twiml"}
+# Root-level *.html pages are served by design (and item 3 proves every one is copied);
+# every OTHER root file the build publishes is pinned here. A new root file that is not
+# internal must be added deliberately; an internal one belongs in the netlify.toml denylist.
+SERVED_TOP_LEVEL_FILES = {
+    "_redirects", "admin-app.webmanifest", "admin-sw.js", "llms.txt",
+    "partner-app.webmanifest", "partner-sw.js", "robots.txt", "sitemap.xml",
+}
 REQUIRED = [
     "index.html", "login.html", "start.html", "privacy.html", "terms.html",
     "js/auth.js", "js/config.js", "js/nav.js", "_redirects", "robots.txt", "sitemap.xml",
@@ -156,6 +166,9 @@ top = sorted(os.listdir(pub))
 top_dirs = {n for n in top if os.path.isdir(os.path.join(pub, n))}
 check(top_dirs == SERVED_TOP_LEVEL_DIRS, "top-level dirs == known served set; extra=%s missing=%s" % (
     sorted(top_dirs - SERVED_TOP_LEVEL_DIRS), sorted(SERVED_TOP_LEVEL_DIRS - top_dirs)))
+top_files = {n for n in top if os.path.isfile(os.path.join(pub, n)) and not n.lower().endswith(".html")}
+check(top_files == SERVED_TOP_LEVEL_FILES, "top-level non-.html files == known served set; extra=%s missing=%s" % (
+    sorted(top_files - SERVED_TOP_LEVEL_FILES), sorted(SERVED_TOP_LEVEL_FILES - top_files)))
 dot = [n for n in top if n.startswith(".")]
 check(not dot, "no dotfiles/dot-dirs at publish root %s" % dot)
 
