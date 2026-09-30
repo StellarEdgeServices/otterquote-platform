@@ -6,19 +6,50 @@
 # env var into js/config.js (replaces %%STRIPE_PK%% placeholder) at build time.
 # Keys are set per context below — no hardcoded Stripe keys in source files.
 
-# gh-2389 (second layer): measured on the first Deploy Preview that the 404
-# redirects below match EXACT CASE only, while Netlify's static lookup is
-# case-insensitive for directory names and root file names -- /Supabase/config.toml,
-# /Scripts/*.py, /README.MD, /REACT-APP/package.json all still returned 200.
-# The build command above therefore also deletes those directories and root
-# files from the publish dir, which is case-proof. Kept on disk on purpose:
-# netlify.toml, netlify/ (edge-function source, bundled after the build) and
-# react-app/app/lib/attribution-core.ts (imported by
-# netlify/edge-functions/first-touch-attribution.ts -- deleting react-app/
-# wholesale failed the deploy). Those are covered by the redirects only.
+# gh-2392 (supersedes the gh-2389 delete-in-place approach): the site is NOT
+# published from the repo root any more. The build command copies the served
+# tree into _site/ and publishes that. Everything internal is simply never
+# copied, so it is physically absent from the deploy: no exact-case redirect to
+# bypass. Measured on the gh-2389 Deploy Preview: redirect rules match EXACT CASE
+# only while Netlify's static lookup is case-insensitive, so
+# /nEtlify/edge-functions/ref-redirect.ts, /REACT-APP/app/lib/attribution-core.ts
+# and /netlify%2fedge-functions%2f... still returned 200 while netlify/ and
+# react-app/app/lib/attribution-core.ts had to stay in the publish dir.
+# Now they do not: edge functions are bundled from the SOURCE checkout
+# (default netlify/edge-functions relative to the base dir, unaffected by
+# `publish`), and the source tree is never modified by this command.
+# What is copied: every top-level entry (plus .well-known if it ever exists)
+# except the denylist below (matched case-insensitively); other dotfiles/dot-dirs (.git, .github, .claude,
+# .netlify, .gitignore ...) are never copied because `*` does not match them.
+# Nested junk (node_modules, .DS_Store, .git, *.md/*.py/*.sh/*.toml/*.ts/*.tsx) is pruned from the copy afterwards.
+# STRIPE_PK is injected into the COPY (_site/js/config.js); the source file and
+# its placeholder logic are untouched. (js/config.js currently hardcodes its
+# keys, so the sed is a no-op today; kept so a %%STRIPE_PK%% placeholder works.)
+# A NEW root directory is published by default: scripts/netlify-publish-dir.test.py
+# pins the exact set of served top-level dirs and fails CI if one appears, so add
+# it to the denylist here (internal) or to the test (served) deliberately.
+# _redirects and [[headers]] are unaffected: _redirects is copied into _site/
+# and netlify.toml is read from the base dir.
+# Test: python3 scripts/netlify-publish-dir.test.py
 [build]
-  publish = "."
-  command = "sed -i \"s|%%STRIPE_PK%%|${STRIPE_PK}|g\" js/config.js && echo 'STRIPE_PK injected into js/config.js' && rm -rf supabase scripts sql tests handoffs .github docs Docs Archive runbooks skills-for-code democracy deploy-checks forge-config otterquote-deploy .claude tools && find react-app -type f ! -path react-app/app/lib/attribution-core.ts -delete && find react-app -depth -type d -empty -delete && rm -f *.md *.py tools-e2e-test.txt .gitignore .gitattributes && echo 'repo internals removed from publish dir (gh-2389)'"
+  publish = "_site"
+  command = '''
+set -eu
+rm -rf _site
+mkdir _site
+for f in * .well-known; do
+  [ -e "$f" ] || continue
+  l=$(printf '%s' "$f" | tr 'A-Z' 'a-z')
+  case "$l" in
+    _site|netlify|react-app|supabase|scripts|sql|tests|handoffs|docs|archive|runbooks|skills-for-code|democracy|deploy-checks|forge-config|otterquote-deploy|tools|node_modules|netlify.toml|tools-e2e-test.txt|package.json|package-lock.json|*.md|*.py|*.sh|*.toml) continue ;;
+  esac
+  cp -R "$f" _site/
+done
+find _site \( -name node_modules -o -name .git -o -name .DS_Store \) -prune -exec rm -rf {} +
+find _site -type f \( -iname '*.md' -o -iname '*.py' -o -iname '*.sh' -o -iname '*.toml' -o -iname '*.ts' -o -iname '*.tsx' \) -delete
+sed -i "s|%%STRIPE_PK%%|${STRIPE_PK}|g" _site/js/config.js
+echo 'STRIPE_PK injected into _site/js/config.js; repo internals excluded from publish dir (gh-2392)'
+'''
 
 # gh-2389: skip a PRODUCTION build when nothing the site serves changed.
 # Netlify semantics (docs.netlify.com/build/configure-builds/ignore-builds/):
@@ -27,7 +58,7 @@
 # skipped merges accumulate into the next diff (nothing is lost).
 # Deploy previews and branch deploys are not credit-metered, so only the
 # production context is gated; they still build as before.
-# Publish is "." so the site serves the whole repo; this list names ONLY the
+# (Publish is now _site, gh-2392; the build still runs from the repo root.) This list names ONLY the
 # trees/files that no served page references (verified by grep, gh-2389).
 # Any path NOT listed here still triggers a build (fails toward building).
 # Also BUILDS when: CACHED_COMMIT_REF is empty, equals COMMIT_REF (cache-less
@@ -51,14 +82,14 @@
 
 # Staging context — deploys to staging--jade-alpaca-b82b5e.netlify.app
 [context.staging]
-  publish = "."
+  publish = "_site"
 
 [context.staging.environment]
   STRIPE_PK = "pk_test_51TCI2O0AJRnqIYPUgKku8lRifucMiKIBTdu8hkmBLjjXVR73eggMnqVuPPtlZF8thfGypv8UShBoLsoIgY4ELfRP009TrgSIxo"
 
 # Branch deploy previews (feature branches)
 [context.deploy-preview]
-  publish = "."
+  publish = "_site"
 
 # Explicit Content-Type for .txt files (llms.txt, robots.txt, etc.)
 [[headers]]
