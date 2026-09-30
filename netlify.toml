@@ -29,11 +29,11 @@
 # scripts/netlify-ignore.test.py enforces this by parsing those imports.
 # Excluded: react-app (own site, own netlify.toml + base-dir check), supabase,
 # scripts, .github, sql, tests, handoffs, docs, Docs, .claude, Archive,
-# skills-for-code, runbooks, democracy, deploy-checks, forge-config,
+# skills-for-code, runbooks, deploy-checks, forge-config,
 # otterquote-deploy, root-level *.md, .gitignore, .gitattributes.
 # Test: python3 scripts/netlify-ignore.test.py
 [context.production]
-  ignore = "[ -n \"$CACHED_COMMIT_REF\" ] && [ \"$CACHED_COMMIT_REF\" != \"$COMMIT_REF\" ] && git diff --quiet \"$CACHED_COMMIT_REF\" \"$COMMIT_REF\" -- react-app/app/lib/attribution-core.ts && git diff --quiet \"$CACHED_COMMIT_REF\" \"$COMMIT_REF\" -- . ':!react-app' ':!supabase' ':!scripts' ':!.github' ':!sql' ':!tests' ':!handoffs' ':!docs' ':!Docs' ':!.claude' ':!Archive' ':!skills-for-code' ':!runbooks' ':!democracy' ':!deploy-checks' ':!forge-config' ':!otterquote-deploy' ':(exclude,glob)*.md' ':!.gitignore' ':!.gitattributes' || exit 1"
+  ignore = "[ -n \"$CACHED_COMMIT_REF\" ] && [ \"$CACHED_COMMIT_REF\" != \"$COMMIT_REF\" ] && git diff --quiet \"$CACHED_COMMIT_REF\" \"$COMMIT_REF\" -- react-app/app/lib/attribution-core.ts && git diff --quiet \"$CACHED_COMMIT_REF\" \"$COMMIT_REF\" -- . ':!react-app' ':!supabase' ':!scripts' ':!.github' ':!sql' ':!tests' ':!handoffs' ':!docs' ':!Docs' ':!.claude' ':!Archive' ':!skills-for-code' ':!runbooks' ':!deploy-checks' ':!forge-config' ':!otterquote-deploy' ':(exclude,glob)*.md' ':!.gitignore' ':!.gitattributes' || exit 1"
 
 # Stripe publishable key per deploy context (not secrets — publishable keys are client-safe)
 [context.production.environment]
