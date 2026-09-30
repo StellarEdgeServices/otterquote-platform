@@ -31,7 +31,7 @@ const SECTIONS = [
   ['Get repairs done faster.', 'Otter Quotes will create a scope of work and submit it to multiple contractors. No leaving messages for multiple contractors, no meeting someone on site. No waiting for schedules to line up. Just submit your job and start getting bids in one to two days.'],
   ['Get multiple competitive bids.', 'Contractors know they are competing for work on Otter Quotes. So they offer the best pricing they can.'],
   ['See subcontractor pricing.', 'Clients can choose from local, well known contractors or work directly with the subcontractors who do the work.'],
-  ['Reduce unnecessary expenses.', 'Otter Quotes reduces the need for sales and marketing costs. Passing those savings along to your clients.'],
+  ['Reduce unnecessary expenses.', 'Otter Quotes reduces the need for sales and marketing costs, so contractors can pass those savings along to your clients.'],
 ];
 ok(main.includes('<h1>' + HEADLINE + '</h1>'), 'headline is exactly "' + HEADLINE + '" in the h1');
 ok(main.includes('<p class="re1-sub">' + SUBHEAD + '</p>'), 'subhead is exactly "' + SUBHEAD + '"');
@@ -46,6 +46,10 @@ SECTIONS.forEach(([h, body], i) => {
   const im = /<img[^>]*>/.exec(sec);
   ok(!!im && /width="900"/.test(im[0]) && /height="600"/.test(im[0]) && /loading="lazy"/.test(im[0]) && /alt="[^"]{8,}"/.test(im[0]), 'section ' + (i + 1) + ' photo has width/height, lazy loading and alt text');
 });
+// Top button (Dustin 2026-09-30, "Keep page headline; add form link at top"): directly under the subhead, same style + target.
+ok(main.includes('<p class="re1-sub">' + SUBHEAD + '</p>\n    <a class="re1-cta re1-cta--top" href="#signup-section" data-re1-cta="top">Become a partner today</a>'), 'one "Become a partner today" button sits directly under the subhead -> #signup-section, same re1-cta style');
+ok((main.match(/<a class="re1-cta[ "][^>]*>Become a partner today<\/a>/g) || []).length === 5 && (main.match(/href="#signup-section"/g) || []).length === 5, 'five "Become a partner today" buttons in total (top + four sections), all -> #signup-section');
+ok(/gtag\('event', 'partner_cta_click', \{ position: a\.getAttribute\('data-re1-cta'\)/.test(html) && /querySelectorAll\('\.re1-cta'\)/.test(html), 'every .re1-cta (top + four) fires the same partner_cta_click event with a position param (top/1-4)');
 ok(/id="signup-section"/.test(html) && /<form[^>]*id="partner-form"/.test(html), 'the button target #signup-section is the existing short-signup section holding #partner-form');
 ok((html.match(/id="signup-section"/g) || []).length === 1, 'exactly one #signup-section');
 // The four sections all sit before the form (buttons scroll DOWN to the existing form).
@@ -128,6 +132,14 @@ if (chromium) {
   await phone.waitForTimeout(900);
   const top = await phone.evaluate(() => Math.round(document.getElementById('signup-section').getBoundingClientRect().top));
   ok(top >= -2 && top < 400, '390px: tapping "Become a partner today" scrolls the signup form into view (top=' + top + ')');
+  // top button is visible in the first screen at 390x664 and scrolls to the form
+  const small = await open(390, 664, true);
+  const tb = await small.evaluate(() => { const b = document.querySelector('[data-re1-cta="top"]').getBoundingClientRect(); return { top: b.top, bottom: b.bottom, w: b.width }; });
+  ok(tb.top >= 0 && tb.bottom <= 664 && tb.w > 100, '390x664: top "Become a partner today" button is fully inside the first screen (top ' + Math.round(tb.top) + ', bottom ' + Math.round(tb.bottom) + ')');
+  await small.click('[data-re1-cta="top"]');
+  await small.waitForTimeout(900);
+  const top2 = await small.evaluate(() => Math.round(document.getElementById('signup-section').getBoundingClientRect().top));
+  ok(top2 >= -2 && top2 < 400, '390x664: tapping the top button scrolls the signup form into view (top=' + top2 + ')');
   const desk = await open(1280, 800, false);
   const d = await geo(desk);
   ok(d.scrollW <= d.innerW && d.maxRight <= d.innerW + 0.5, '1280px: no horizontal scroll and no element past the viewport');

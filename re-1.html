@@ -144,6 +144,7 @@ a:hover { color: var(--amber-2); }
 .re1-value h2 { color: #1E4FA8; font-size: clamp(1.5rem, 3vw, 2rem); margin-bottom: var(--sp-4); }
 .re1-value .re1-text p { color: #000000; font-size: 1.1rem; line-height: 1.7; margin-bottom: var(--sp-6); }
 .re1-cta { display: inline-block; padding: var(--sp-3) var(--sp-6); background: #1E4FA8; color: #FFFFFF; border-radius: var(--radius-md); font-family: var(--font-body); font-size: 1rem; font-weight: 600; text-align: center; transition: background var(--duration) var(--ease); }
+.re1-cta--top { margin-top: var(--sp-6); }
 .re1-cta:hover, .re1-cta:focus-visible { background: #163B82; color: #FFFFFF; }
 @media (max-width: 768px) {
   .re1-value { padding: var(--sp-10) var(--sp-4) var(--sp-4); }
@@ -433,6 +434,7 @@ a:hover { color: var(--amber-2); }
   <section class="re1-intro">
     <h1>MEET YOUR NEW BEST FRIEND.</h1>
     <p class="re1-sub">Otter Quotes help realtors close deals faster.</p>
+    <a class="re1-cta re1-cta--top" href="#signup-section" data-re1-cta="top">Become a partner today</a>
   </section>
   <section class="re1-section" data-re1-section="1">
     <figure class="re1-photo"><img src="/img/re1/re1-1.webp" width="900" height="600" alt="Roofer nailing asphalt shingles onto a roof deck" loading="lazy" decoding="async"></figure>
@@ -462,7 +464,7 @@ a:hover { color: var(--amber-2); }
     <figure class="re1-photo"><img src="/img/re1/re1-4.webp" width="900" height="600" alt="Tradesperson installing a window frame with a drill" loading="lazy" decoding="async"></figure>
     <div class="re1-text">
       <h2>Reduce unnecessary expenses.</h2>
-      <p>Otter Quotes reduces the need for sales and marketing costs. Passing those savings along to your clients.</p>
+      <p>Otter Quotes reduces the need for sales and marketing costs, so contractors can pass those savings along to your clients.</p>
       <a class="re1-cta" href="#signup-section" data-re1-cta="4">Become a partner today</a>
     </div>
   </section>
@@ -1208,6 +1210,12 @@ a:hover { color: var(--amber-2); }
       submitBtn.classList.remove('btn-loading');
       submitBtn.disabled = false;
     }
+  });
+  // CRO51: every "Become a partner today" button (top + four sections) fires one event with its position.
+  document.querySelectorAll('.re1-cta').forEach(function (a) {
+    a.addEventListener('click', function () {
+      try { gtag('event', 'partner_cta_click', { position: a.getAttribute('data-re1-cta'), funnel_id: 're-1' }); } catch (e) {}
+    });
   });
 })();
 </script>
