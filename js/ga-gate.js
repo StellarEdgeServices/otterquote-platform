@@ -314,6 +314,12 @@
     '/guides/how-to-file-property-damage-claim',
     '/guides/how-to-negotiate-with-insurer',
     '/guides/how-to-read-contractor-estimate',
+    // cro51 / #2121 HO-1 rebuild: /hc hub + four topic pages. Unauthenticated funnel pages (no session read, no auth call), same as /ho6.
+    '/hc',
+    '/hc/save-money',
+    '/hc/materials',
+    '/hc/warranties',
+    '/hc/decisions',
     // gh-2150 round 2 (REVIEW FAIL 5836233175/5836199486, Ben ruling (3),
     // S12): the RE-1/INS-1/HI-1 dedicated single-purpose funnel landing
     // pages (D-333), added together in this one change so none of the

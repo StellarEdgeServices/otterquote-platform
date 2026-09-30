@@ -1,0 +1,58 @@
+name: Static HC Value Page Tests
+
+# cro51 / #2121 -- HO-1 rebuild: /hc hub + four topic pages. Runs tests/cro51-hc-value-pages.mjs: the static half (approved copy pinned byte for byte
+# plus sha256 pins, links and utm string, GA gate / events, banned phrases from the value-proposition sections 3 and 4, /ho6 untouched) and the
+# real-Chromium half (first screen at 390x664, utm / fbclid pass-through, events), each with its negative controls.
+# `pull_request` only, no secrets, read-only token, path-filtered.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'hc.html'
+      - 'hc-*.html'
+      - 'css/hc.css'
+      - 'css/ho6.css'
+      - 'js/hc.js'
+      - 'js/ga-gate.js'
+      - 'ho6.html'
+      - 'ho6-start.html'
+      - '_redirects'
+      - 'tests/cro51-hc-value-pages.mjs'
+      - 'tests/fixtures/hc-copy.txt'
+      - 'scripts/check-credential-claims.py'
+      - 'scripts/check-clarity-page-gate.py'
+      - '.github/workflows/static-hc-tests.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-hc-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  hc:
+    name: HC value pages static + Chromium acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Install e2e dependencies
+        working-directory: tests/e2e
+        run: npm ci
+      - name: Install Chromium
+        working-directory: tests/e2e
+        run: npx playwright install --with-deps chromium
+      - name: HC value pages acceptance tests with negative controls (cro51-hc-value-pages)
+        run: node tests/cro51-hc-value-pages.mjs
