@@ -124,3 +124,8 @@ https://www.stellaredgeservices.com/* /stellar-edge.html 200
 /otterquote-deploy/blog/what-is-scope-of-loss-roofing.html /blog/what-is-scope-of-loss-roofing.html 301
 /otterquote-deploy/blog/when-not-to-file-roof-insurance-claim.html /blog/when-not-to-file-roof-insurance-claim.html 301
 /otterquote-deploy/blog/why-roofers-quote-different-prices.html /blog/why-roofers-quote-different-prices.html 301
+
+# gh-2378 HO-6: /ho6 is served by Netlify Pretty URLs from ho6.html (same as /hi-1 -> hi-1.html). /ho6/start has no static file at that
+# path (there is deliberately no ho6/ directory), so a plain 200 rewrite serves ho6-start.html and keeps the address bar and query string.
+/ho6/start   /ho6-start.html   200
+/ho6/start/  /ho6-start.html   200

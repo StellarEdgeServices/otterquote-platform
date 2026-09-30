@@ -627,6 +627,25 @@
       try { deleteCookie(REFERRAL_COOKIE); } catch (e) {}
     },
 
+    /** gh-2060 item 3 (CEO ruling, #2060 comment 5911272482): consume the
+     *  partner-attribution keys once a claim write has succeeded and the value
+     *  is stamped on the claim -- the same rule gh-2062 applies to the oq-ref
+     *  cookie. Clears the cookie plus the localStorage and sessionStorage
+     *  copies. `which` names the keys to consume ({ source: bool, partnerId:
+     *  bool }); each is cleared ONLY when its own value was stamped (round 2:
+     *  a failed partner lookup stamps no referral_agent_id, so oq_partner_id
+     *  must survive). Never call on an error or no-op pass. */
+    clearPartnerAttribution: function (which) {
+      var keys = [];
+      if (!which || which.source) keys.push('oq_referral_source');
+      if (!which || which.partnerId) keys.push('oq_partner_id');
+      for (var i = 0; i < keys.length; i++) {
+        try { window.localStorage.removeItem(keys[i]); } catch (e) {}
+        try { window.sessionStorage.removeItem(keys[i]); } catch (e) {}
+        try { deleteCookie(keys[i]); } catch (e) {}
+      }
+    },
+
     _COOKIE: REFERRAL_COOKIE,
     _KEYS:   REFERRAL_KEYS,
     _MAX_AGE: REFERRAL_MAX_AGE

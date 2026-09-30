@@ -17,6 +17,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 import { buildHtmlBody, buildTextBody } from "./templates.ts"; // gh-1824: email body moved to templates.ts (testable, no serve() import)
 
 const MAX_RESENDS_PER_DAY = 3;
@@ -254,13 +255,14 @@ serve(async (req) => {
 
     // ── Update resend tracking on hover_orders ────────────────────────────
     const newCount = todayResendCount + 1;
-    const { error: updateError } = await supabase
+    const { error: updateError, data: updateRows } = await supabase
       .from("hover_orders")
       .update({
         resend_count: newCount,
         last_resend_at: new Date().toISOString(),
       })
-      .eq("id", hoverOrder.id);
+      .eq("id", hoverOrder.id)
+      .select("id");
 
     if (updateError) {
       // Non-fatal — the email was sent; just log the tracking failure
@@ -268,6 +270,10 @@ serve(async (req) => {
         "[resend-hover-link] Failed to update resend tracking:",
         updateError
       );
+    } else if (!checkRowsWritten(updateRows).wroteRows) {
+      // gh-2105: log-only. A zero-row match means the daily resend counter was
+      // not advanced, so the rate limit is not being enforced for this order.
+      console.error(zeroRowWriteMessage("resend-hover-link", `hover_orders resend tracking for order ${hoverOrder.id}`));
     }
 
     return new Response(

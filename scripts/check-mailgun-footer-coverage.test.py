@@ -130,9 +130,11 @@ def main():
     tmp_root = pathlib.Path(tempfile.mkdtemp(prefix="mailgun-footer-guard-test-"))
     original_functions_dir = mod.FUNCTIONS_DIR
     original_required = mod.REQUIRED_FOOTER
+    original_ratchet = mod.RATCHET_FOOTER
     try:
         mod.FUNCTIONS_DIR = str(tmp_root)
         mod.REQUIRED_FOOTER = {"fake-sender"}
+        mod.RATCHET_FOOTER = set()
 
         print("setup: a compliant fixture function (Mode A -- wrapper + real call)")
         write_fixture(tmp_root)
@@ -172,9 +174,25 @@ def main():
         code, out = run_guard()
         check("(d) restored exit code (PASS)", code, 0)
 
+        print()
+        print("(e) RATCHET_FOOTER is enforced too: a ratchet-only function that loses its footer FAILS")
+        mod.REQUIRED_FOOTER = set()
+        mod.RATCHET_FOOTER = {"fake-sender"}
+        write_fixture(tmp_root)
+        code, out = run_guard()
+        check("(e) ratchet-only compliant exit code (PASS)", code, 0)
+        write_fixture(tmp_root, index_ts=INDEX_TS_NO_CALL)
+        code, out = run_guard()
+        check("(e) ratchet-only call-removed exit code (FAIL)", code, 1)
+        check("(e) ratchet-only call-removed names fake-sender", "fake-sender" in out, True)
+        write_fixture(tmp_root)
+        mod.REQUIRED_FOOTER = {"fake-sender"}
+        mod.RATCHET_FOOTER = set()
+
     finally:
         mod.FUNCTIONS_DIR = original_functions_dir
         mod.REQUIRED_FOOTER = original_required
+        mod.RATCHET_FOOTER = original_ratchet
         shutil.rmtree(tmp_root, ignore_errors=True)
 
     print()
@@ -183,7 +201,7 @@ def main():
         return 1
     print(
         "check-mailgun-footer-coverage: all assertions passed (negative controls "
-        "(a)/(b)/(c) observed FAILING; baseline and restore observed PASSING)."
+        "(a)/(b)/(c)/(e) observed FAILING; baseline and restore observed PASSING)."
     )
     return 0
 

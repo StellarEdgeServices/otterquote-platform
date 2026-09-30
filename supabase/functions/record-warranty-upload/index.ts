@@ -34,6 +34,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 
 const FUNCTION_NAME = "record-warranty-upload";
 
@@ -212,16 +213,24 @@ serve(async (req: Request) => {
     const uploadedAt   = new Date().toISOString();
 
     // ── Write warranty_document_url + warranty_uploaded_at ─────────────────────
-    const { error: updateError } = await supabase
+    const { error: updateError, data: updateRows } = await supabase
       .from("quotes")
       .update({
         warranty_document_url: storagePath,
         warranty_uploaded_at:  uploadedAt,
       })
-      .eq("id", quoteId);
+      .eq("id", quoteId)
+      .select("id");
 
     if (updateError) {
       console.error(`[${FUNCTION_NAME}] Failed to update quote ${quoteId}:`, updateError.message);
+      return jsonResponse({ ok: false, error: "Failed to record warranty upload" }, 500, corsHeaders);
+    }
+    // gh-2105: a zero-row match (quote gone / RLS-hidden) previously fell through
+    // to ok:true with no warranty recorded. Reuse the existing 500 and its
+    // existing message -- no new user-facing text.
+    if (!checkRowsWritten(updateRows).wroteRows) {
+      console.error(zeroRowWriteMessage(FUNCTION_NAME, `quotes.warranty_document_url for quote ${quoteId}`));
       return jsonResponse({ ok: false, error: "Failed to record warranty upload" }, 500, corsHeaders);
     }
 
