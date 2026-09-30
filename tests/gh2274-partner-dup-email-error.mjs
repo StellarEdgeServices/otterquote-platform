@@ -148,7 +148,7 @@ function makeElementStore() {
 // Auth.signUpWithPassword() REJECTS with Supabase's own literal duplicate-
 // registration message -- this is the auth.users-level duplicate the RPC
 // above cannot see.
-function runPageScript(html, { search = '', signUp = 'dup', dupError = null, rpcError = null, signUpSeq = null, rpcSeq = null, sessionEmail = null, ls = null } = {}) {
+function runPageScript(html, { search = '', signUp = 'dup', dupError = null, rpcError = null, signUpSeq = null, rpcSeq = null, sessionEmail = null, ls = null, ss = null } = {}) {
   const script = extractInlineScripts(html);
   if (!script || script.indexOf('register_partner') === -1) {
     return { setupError: 'no inline script containing register_partner was found on the page' };
@@ -201,6 +201,14 @@ function runPageScript(html, { search = '', signUp = 'dup', dupError = null, rpc
   };
   const lsStore = new Map();
   if (ls) for (const [k, v] of Object.entries(ls)) lsStore.set(k, v);
+  // gh-2355: the pending-registration marker (name/phone/company) lives in sessionStorage, never localStorage.
+  const ssStore = new Map();
+  if (ss) for (const [k, v] of Object.entries(ss)) ssStore.set(k, v);
+  const sessionStorage = {
+    getItem: (k) => (ssStore.has(k) ? ssStore.get(k) : null),
+    setItem: (k, v) => { ssStore.set(k, String(v)); },
+    removeItem: (k) => { ssStore.delete(k); },
+  };
   const localStorage = {
     getItem: (k) => (lsStore.has(k) ? lsStore.get(k) : null),
     setItem: (k, v) => { lsStore.set(k, String(v)); },
@@ -224,7 +232,7 @@ function runPageScript(html, { search = '', signUp = 'dup', dupError = null, rpc
   };
   const win = {
     location: { search: search || '', hostname: 'otterquote.com', href: '', replace() {} },
-    localStorage,
+    localStorage, sessionStorage,
     addEventListener() {}, removeEventListener() {},
     scrollTo() {},
     requestIdleCallback(fn) { fn(); return 1; },
@@ -248,7 +256,7 @@ function runPageScript(html, { search = '', signUp = 'dup', dupError = null, rpc
   };
   win.Auth = AuthObj;
   const ctx = {
-    window: win, document: doc, localStorage,
+    window: win, document: doc, localStorage, sessionStorage,
     navigator: { clipboard: { writeText: () => Promise.resolve() } },
     console, URLSearchParams,
     Promise, JSON, Date, Math, Array, Object, String, Number, Boolean, RegExp,
@@ -271,7 +279,7 @@ function runPageScript(html, { search = '', signUp = 'dup', dupError = null, rpc
     return { setupError: 'script execution error while loading the page: ' + e.message };
   }
   for (const fn of domContentLoadedListeners) { try { fn(); } catch (e) {} }
-  return { store, rpcCalls, alertCalls, callOrder, lsStore };
+  return { store, rpcCalls, alertCalls, callOrder, lsStore, ssStore };
 }
 
 async function submitForm(runResult, formId, fill, { hasConfirmPopup = false } = {}) {
@@ -502,13 +510,17 @@ for (const page of PAGES) {
   if (run.setupError) { failWithReason(page.file + ' (f)', run.setupError); continue; }
   try {
     await submit(run);
-    const marker = run.lsStore.get(PENDING_KEY);
+    const marker = run.ssStore.get(PENDING_KEY);
     ok(!!marker && JSON.parse(marker).email === emailKey && !/pass/i.test(marker), page.file + ' (f): after a register_partner failure a pending-registration marker (email, no password) is kept -- got ' + marker);
+    ok(![...run.lsStore.entries()].some(([k, v]) => /Jane|3175551234|Test Co|gh2274-dup@example/i.test(k + ' ' + v)), page.file + ' (f): gh-2355 no name/email/phone/company is written to localStorage -- got ' + JSON.stringify([...run.lsStore.entries()]));
+    ok(!!marker && /Jane/.test(marker) && /3175551234/.test(marker), page.file + ' (f): gh-2355 the resume marker (with the rpcArgs the dashboard replays) is kept in sessionStorage');
+    const sctx = JSON.parse(run.lsStore.get('oq_partner_signup_ctx') || 'null');
+    ok(!!sctx && typeof sctx.agentType === 'string' && sctx.attribution && typeof sctx.ts === 'number', page.file + ' (f): gh-2355 the NON-PII signup ctx (agent type + attribution) is kept in localStorage for cross-tab recovery');
     ok(!/already a partner|already registered/i.test(surfacedOf(run, page)), page.file + ' (f): the first-attempt failure is not shown as already-a-partner');
     await submit(run);
     ok(run.callOrder.join(',') === 'signUp,register_partner,signUp,register_partner', page.file + ' (f): retry completes register_partner after the duplicate signUp -- got ' + JSON.stringify(run.callOrder));
     ok(!/already a partner|already registered/i.test(surfacedOf(run, page)), page.file + ' (f): the retry does NOT show "already a partner" -- got ' + JSON.stringify(surfacedOf(run, page)));
-    ok(!run.lsStore.has(PENDING_KEY), page.file + ' (f): marker cleared once register_partner succeeded');
+    ok(!run.ssStore.has(PENDING_KEY), page.file + ' (f): marker cleared once register_partner succeeded');
   } catch (e) { failWithReason(page.file + ' (f)', e.message); }
   // (g) existing auth user, signed in as that email, no partner row: complete registration.
   run = runPageScript(html, { signUpSeq: ['dup'], sessionEmail: emailKey });
@@ -531,13 +543,13 @@ for (const page of PAGES) {
   try {
     await submit(run); await submit(run);
     ok(run.callOrder.join(',') === 'signUp,register_partner,signUp,register_partner', page.file + ' (i): two failed attempts -- got ' + JSON.stringify(run.callOrder));
-    ok(run.lsStore.has(PENDING_KEY), page.file + ' (i): marker still present after the second failed retry');
+    ok(run.ssStore.has(PENDING_KEY), page.file + ' (i): marker still present after the second failed retry');
     ok(!/already a partner|already registered/i.test(surfacedOf(run, page)), page.file + ' (i): second failure is not shown as already-a-partner -- got ' + JSON.stringify(surfacedOf(run, page)));
     await submit(run);
-    ok(run.callOrder.slice(-2).join(',') === 'signUp,register_partner' && run.callOrder.filter((c) => c === 'register_partner').length === 3 && !run.lsStore.has(PENDING_KEY), page.file + ' (i): the third attempt completes and clears the marker -- got ' + JSON.stringify(run.callOrder));
+    ok(run.callOrder.slice(-2).join(',') === 'signUp,register_partner' && run.callOrder.filter((c) => c === 'register_partner').length === 3 && !run.ssStore.has(PENDING_KEY), page.file + ' (i): the third attempt completes and clears the marker -- got ' + JSON.stringify(run.callOrder));
   } catch (e) { failWithReason(page.file + ' (i)', e.message); }
   // (j) a marker for a DIFFERENT email must not let a duplicate through to register_partner.
-  run = runPageScript(html, { signUpSeq: ['dup'], ls: { [PENDING_KEY]: JSON.stringify({ email: 'someone-else@example.invalid', ts: Date.now() }) } });
+  run = runPageScript(html, { signUpSeq: ['dup'], ss: { [PENDING_KEY]: JSON.stringify({ email: 'someone-else@example.invalid', ts: Date.now() }) } });
   if (run.setupError) { failWithReason(page.file + ' (j)', run.setupError); continue; }
   try {
     await submit(run);
@@ -545,7 +557,7 @@ for (const page of PAGES) {
     ok(/already/i.test(surfacedOf(run, page)), page.file + ' (j): the duplicate message is shown -- got ' + JSON.stringify(surfacedOf(run, page)));
   } catch (e) { failWithReason(page.file + ' (j)', e.message); }
   // (k) an EXPIRED (8 day old) marker for the right email is ignored.
-  run = runPageScript(html, { signUpSeq: ['dup'], ls: { [PENDING_KEY]: JSON.stringify({ email: emailKey, ts: Date.now() - 8 * 24 * 60 * 60 * 1000 }) } });
+  run = runPageScript(html, { signUpSeq: ['dup'], ss: { [PENDING_KEY]: JSON.stringify({ email: emailKey, ts: Date.now() - 8 * 24 * 60 * 60 * 1000 }) } });
   if (run.setupError) { failWithReason(page.file + ' (k)', run.setupError); continue; }
   try {
     await submit(run);
@@ -558,7 +570,7 @@ for (const page of PAGES) {
   try {
     const noTerms = Object.fromEntries(Object.entries(page.fields).map(([k, v]) => [k, typeof v === 'boolean' ? false : v]));
     await submitForm(run, page.formId, noTerms, { hasConfirmPopup: !!page.hasConfirmPopup });
-    ok(run.callOrder.length === 0 && !run.lsStore.has(PENDING_KEY), page.file + ' (l): with the terms checkbox unticked nothing is called and no pending marker is written -- got ' + JSON.stringify(run.callOrder));
+    ok(run.callOrder.length === 0 && !run.ssStore.has(PENDING_KEY), page.file + ' (l): with the terms checkbox unticked nothing is called and no pending marker is written -- got ' + JSON.stringify(run.callOrder));
   } catch (e) { failWithReason(page.file + ' (l)', e.message); }
   // (m) dashboard-marker completion sends the SAME register_partner arguments as the signup page (attribution parity) plus the real terms time.
   const UTM = { source: 'facebook', medium: 'paid', campaign: 'camp1', content: 'creative1', fbclid: 'FB123', liFatId: 'LI456', funnelId: 'funnel-x' };
@@ -568,7 +580,8 @@ for (const page of PAGES) {
     const before = Date.now();
     await submit(run);
     const pageArgs = run.rpcCalls.filter((c) => c.name === 'register_partner')[0].params;
-    const marker = JSON.parse(run.lsStore.get(PENDING_KEY));
+    const marker = JSON.parse(run.ssStore.get(PENDING_KEY));
+    ok(![...run.lsStore.entries()].some(([k, v]) => /Jane|3175551234|Test Co|gh2274-dup@example/i.test(k + ' ' + v)), page.file + ' (m): gh-2355 no name/email/phone/company is written to localStorage -- got ' + JSON.stringify([...run.lsStore.entries()]));
     ok(pageArgs.p_utm_source === 'facebook' && pageArgs.p_utm_campaign === 'camp1' && (pageArgs.p_fbclid === undefined || pageArgs.p_fbclid === 'FB123'), page.file + ' (m): the page really sends the seeded attribution (utm_source=' + pageArgs.p_utm_source + ', fbclid=' + pageArgs.p_fbclid + ', funnel=' + pageArgs.p_funnel_id + ', recruit=' + pageArgs.p_recruit_code + ')');
     const lib = loadRegLib();
     const dash = lib.buildParams(marker, emailKey, false);

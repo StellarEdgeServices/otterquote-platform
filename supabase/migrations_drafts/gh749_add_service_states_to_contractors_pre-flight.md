@@ -1,3 +1,5 @@
+> **APPLIED (2026-09-26, gh-1438 part 2)** -- this draft's SQL is byte-identical to what ran, filed as `supabase/migrations/20260821225742_gh749_add_service_states_to_contractors.sql` (confirmed read-only against yeszghaspzwwstvsrioa). This pre-flight doc is kept here unmodified below this banner for history.
+
 # Pre-Flight: gh749_add_service_states_to_contractors
 
 **Migration**: gh749_add_service_states_to_contractors.sql

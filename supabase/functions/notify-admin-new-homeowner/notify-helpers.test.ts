@@ -11,6 +11,8 @@ import {
   buildRouterLeadSubjectAndText,
   isRouterLeadAuthorized,
   buildRouterLeadEmail,
+  fundingLabel,
+  propertyAddressLabel,
   stripCrlf,
   UTM_MAX_LEN,
   REFERRAL_OUT_VARIANT,
@@ -372,6 +374,55 @@ Deno.test("buildRouterLeadSubjectAndText: is pure — identical input produces i
 });
 
 // ---------------------------------------------------------------------------
+// gh-2362 (F3): the new-lead alert carries the property address and funding answer
+// ---------------------------------------------------------------------------
+
+Deno.test("gh-2362 F3: homeowner alert carries address and funding in text body and HTML rows", () => {
+  const leadRow = {
+    name: "Jane Homeowner", email: "jane@example.com", phone: "5125551234", role: "homeowner",
+    property_address: "123 Main St, Zionsville, IN 46077", funding_type: "insurance",
+  };
+  const { textBody } = buildRouterLeadSubjectAndText(leadRow);
+  assert(textBody.includes("Property   : 123 Main St, Zionsville, IN 46077"), textBody);
+  assert(textBody.includes("Funding    : Insurance claim"), textBody);
+  const { htmlRows } = buildRouterLeadEmail(leadRow);
+  assertStrictEquals(htmlRows.find(([l]) => l === "Property")?.[1], "123 Main St, Zionsville, IN 46077");
+  assertStrictEquals(htmlRows.find(([l]) => l === "Funding")?.[1], "Insurance claim");
+});
+
+Deno.test("gh-2362 F3: funding labels for cash and unsure; unknown values are not echoed", () => {
+  assertStrictEquals(fundingLabel("cash"), "Paying cash");
+  assertStrictEquals(fundingLabel("unsure"), "Not sure yet");
+  assertStrictEquals(fundingLabel("<b>x</b>"), "(not given)");
+  assertStrictEquals(fundingLabel(null), "(not given)");
+  assertStrictEquals(fundingLabel(undefined), "(not given)");
+});
+
+Deno.test("gh-2362 F3: negative control - address not yet saved renders an explicit placeholder, no throw", () => {
+  const leadRow = { name: "Jane", email: "j@example.com", phone: "5125551234", role: "homeowner", property_address: null, funding_type: null };
+  const { textBody } = buildRouterLeadSubjectAndText(leadRow);
+  assert(textBody.includes("Property   : (not provided yet)"), textBody);
+  assert(textBody.includes("Funding    : (not given)"), textBody);
+  assertStrictEquals(propertyAddressLabel("   "), "(not provided yet)");
+});
+
+Deno.test("gh-2362 F3: address is HTML-escaped in the row and CRLF-stripped; never reaches the subject", () => {
+  const leadRow = { role: "homeowner", email: "x@example.com", property_address: "<script>1</script>\r\nBcc: v@example.com", funding_type: "cash" };
+  const result = buildRouterLeadEmail(leadRow);
+  const row = result.htmlRows.find(([l]) => l === "Property")!;
+  assert(!row[1].includes("<script>") && row[1].includes("&lt;script&gt;"));
+  assert(!result.textBody.includes("\r"));
+  assert(!result.subject.includes("script") && !result.subject.includes("Bcc"));
+});
+
+Deno.test("gh-2362 F3: partner leads get no property/funding lines", () => {
+  const leadRow = { role: "referral_partner", partner_industry: "re_agent", property_address: "1 Leak St", funding_type: "cash" };
+  const { textBody } = buildRouterLeadSubjectAndText(leadRow);
+  assert(!textBody.includes("Property") && !textBody.includes("1 Leak St") && !textBody.includes("Funding"));
+  assert(!buildRouterLeadEmail(leadRow).htmlRows.some(([l]) => l === "Property" || l === "Funding"));
+});
+
+// ---------------------------------------------------------------------------
 // gh-2019 (D-324): referral-out request alert. A homeowner screened out of the
 // arm-E router who asked for contractor contact information is captured as a
 // router lead with variant = "e-referral-out"; the admin alert for that row
@@ -415,14 +466,20 @@ Deno.test("gh-2019: referral-out HTML rows are escaped and carry no phone/role r
   assert(built.extraHtml.includes("D-324"));
 });
 
-Deno.test("gh-2019: negative control -- an ordinary router lead's alert is unchanged (no referral-out shape)", () => {
+Deno.test("gh-2019: negative control -- an ordinary router lead's alert has no referral-out shape (gh-2362 F3 adds Property and Funding lines)", () => {
   const row = { name: "Jane", email: "j@example.com", phone: "5551234567", role: "homeowner", variant: "e" };
   const { subject, textBody } = buildRouterLeadSubjectAndText(row);
   assertEquals(subject, "[OtterQuote] New router lead: Homeowner");
   assert(textBody.includes("Phone carries no consent -- callback only."));
   assert(!textBody.includes("D-324"));
   const built = buildRouterLeadEmail(row);
-  assertEquals(built.htmlRows.map((r) => r[0]), ["Name", "Email", "Phone", "Role", "Attribution"]);
+  // gh-2362 F3 intentionally changes the ordinary homeowner alert: it now also carries the Property and Funding rows
+  // (placeholders here, since this row has neither). Marty's ruling: the assertion is rewritten, no switch turns F3 off.
+  assertEquals(built.htmlRows.map((r) => r[0]), ["Name", "Email", "Phone", "Role", "Property", "Funding", "Attribution"]);
+  assertEquals(built.htmlRows.find(([l]) => l === "Property")?.[1], "(not provided yet)");
+  assertEquals(built.htmlRows.find(([l]) => l === "Funding")?.[1], "(not given)");
+  assert(textBody.includes("Property   : (not provided yet)"));
+  assert(textBody.includes("Funding    : (not given)"));
   // A row with no variant at all (every pre-gh-2019 lead) behaves the same.
   assertEquals(buildRouterLeadSubjectAndText({ name: "J", email: "j@example.com", role: "homeowner" }).subject, "[OtterQuote] New router lead: Homeowner");
 });

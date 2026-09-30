@@ -118,6 +118,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import { supabase } from '@/lib/supabase';
+import { signInWithGoogleOAuth } from '@/lib/supabase-oauth';
+import { getEmailAuthClient } from '@/lib/supabase-email';
 import { isInternalTraffic } from '@/lib/internal-traffic';
 import { readReferralIds, writeReferralIds } from '@/lib/cookie-storage';
 import { linkPendingLeadOnce } from '@/lib/lead-capture';
@@ -307,7 +309,8 @@ function sanitizeMarketingParam(value: unknown): string | null {
 }
 
 function gtag(...args: unknown[]) {
-  if (typeof window !== 'undefined' && (window as any).gtag) {
+  // gh-2356: a QA walk (oq_internal, qa=1, test fbclid/utm) never reaches GA4.
+  if (typeof window !== 'undefined' && (window as any).gtag && !isInternalTraffic()) {
     (window as any).gtag(...args);
   }
 }
@@ -529,7 +532,8 @@ function track<E extends keyof TrackEventParams>(event: E, params: TrackEventPar
 // ─── Meta Pixel helper — gh-1817 ──────────────────────────────────────────
 
 function fbq(...args: unknown[]) {
-  if (typeof window !== 'undefined' && (window as any).fbq) {
+  // gh-2356: a QA walk (oq_internal, qa=1, test fbclid/utm) never reaches Meta.
+  if (typeof window !== 'undefined' && (window as any).fbq && !isInternalTraffic()) {
     (window as any).fbq(...args);
   }
 }
@@ -1201,11 +1205,10 @@ export default function GetStartedPage() {
         googleGraceTimeoutRef.current = null;
       }, GOOGLE_REDIRECT_GRACE_MS);
 
-      const { error: oauthError } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
+      const { error: oauthError } = await signInWithGoogleOAuth({
         // gh-1983: carry the first touch in the callback URL — survives the
         // FB/IG in-app browser -> Safari/Chrome switch Google's WebView block forces.
-        options: { redirectTo: withFirstTouchParam(GOOGLE_OAUTH_REDIRECT, readFirstTouch()) },
+        redirectTo: withFirstTouchParam(GOOGLE_OAUTH_REDIRECT, readFirstTouch()),
       });
       if (oauthError) throw oauthError;
       // On success the browser navigates to Google; nothing else to do.
@@ -1270,7 +1273,7 @@ export default function GetStartedPage() {
       // helper because it lives in the static stack's global Auth object, which
       // the React app deliberately does not load; the React surfaces call
       // `supabase.auth.*` directly (same convention as /login).
-      const { data, error: signUpError } = await supabase.auth.signUp({
+      const { data, error: signUpError } = await getEmailAuthClient().auth.signUp({
         email: emailTrimmed,
         password,
         options: {
@@ -2274,6 +2277,10 @@ export default function GetStartedPage() {
           </div>
         </div>
       </div>
+      {/* gh-1925 (Ben ruling 5896607701): this page loads the ad tags (MetaPixelGate allows /get-started), so it carries the CPRA opt-out link, Dustin ruling 5881048326 string verbatim. */}
+      <p className="text-sm-center" style={{ fontSize: '0.75rem', padding: '0 16px 24px' }}>
+        <a id="footer-do-not-sell-link" href="https://otterquote.com/privacy.html#do-not-sell-or-share">Do Not Sell or Share My Personal Information</a>
+      </p>
     </>
   );
 }

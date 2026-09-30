@@ -1,3 +1,5 @@
+> **COMPANION OF AN APPLIED MIGRATION (2026-09-26, gh-1438 part 2)** -- the forward migration this pre-flight documents is live in production, filed as `supabase/migrations/20260819225113_gh1050_commission_accrual_job_completion.sql`. This document's own "DRAFT ONLY -- NOT APPLIED" status line below is historical. Kept unmodified below this banner for history.
+
 # Pre-Flight: gh1050_commission_accrual_job_completion
 
 **Migration**: gh1050_commission_accrual_job_completion.sql

@@ -1,3 +1,15 @@
+-- >>> SUPERSEDED (2026-09-26, gh-1438 part 2; pointer corrected round 2) --
+-- referral_agents.public_directory_optin IS live in production, but this
+-- file is NOT what added it. It was added by a different, already-
+-- reconciled migration: supabase/migrations/20260808134406_v101_referral_agents_public_directory_optin.sql
+-- (version 20260808134406, issue #385). NOTE: an earlier version of this
+-- banner pointed to supabase/migrations/20260807223000_v101_...sql --
+-- 20260807223000 is NOT a recorded ledger version (confirmed read-only
+-- this session); it is a Direction-2 duplicate, named as such in
+-- MIGRATIONS-RECONCILIATION-1438.md's Remainder section, not a valid
+-- pointer target. Applying THIS file now would attempt to add the same
+-- column a second time. Kept here, unmodified below this banner, for
+-- history only. <<<
 -- Migration: v88_referral_agents_public_directory_optin
 -- Author: run-work F-22 sub-agent (automated) — session rw-86e1h5j3x-f22-a015
 -- Date: 2026-07-03

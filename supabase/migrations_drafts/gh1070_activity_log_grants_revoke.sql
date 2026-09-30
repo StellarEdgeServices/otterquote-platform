@@ -1,3 +1,18 @@
+-- >>> SUPERSEDED (2026-09-26, gh-1438 part 2, corrected) -- the anon-grant-
+-- revoke EFFECT this file proposes IS live (anon has zero privileges on
+-- public.activity_log, confirmed read-only this session), but this file's
+-- own SQL is NOT what ran. The migration that actually ran under a #1070
+-- name is supabase/migrations/20260824183229_gh1070_revoke_anon_activity_log.sql
+-- -- a single bare REVOKE, structurally different from and much shorter
+-- than this draft's broader, more heavily-annotated proposal (which also
+-- tightens the INSERT policy's WITH CHECK, an effect that did NOT ship).
+-- Do not represent this file as "the applied migration" -- it demonstrably
+-- isn't. Kept here, unmodified below this banner, for history. NOTE
+-- (self-correction, this commit): an earlier version of this banner+body
+-- pushed to this branch (commit 2f706c4) had drifted from this exact text
+-- (ASCII "--" substituted for this file's own em dash "—" in several
+-- places) -- refetched via get_file_contents and rebuilt from that exact
+-- text to fix it. <<<
 -- Migration: gh1070_activity_log_grants_revoke
 -- Author: Code lane sub-agent (automated), run-work orchestration
 -- Date: 2026-08-21
