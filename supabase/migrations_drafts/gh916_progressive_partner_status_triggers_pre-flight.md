@@ -1,3 +1,10 @@
+<!--
+STATUS (gh-1438, as of 2026-09-30T12:32Z): APPLIED
+FILE ROLE: pre-flight file of set gh916_progressive_partner_status_triggers (the STATUS is the set's; it describes the forward migration)
+EVIDENCE: trg_notify_partner_status_on_bid_submitted live, ledger version 20260819210920: comment 5494221280 (RW-DONE, PR #1471, supabase/migrations/MIGRATIONS-RECONCILIATION-1438.md Part 1, read-only queries 2026-09-01); ledger version 20260819210920 is in the 199-row schema_migrations snapshot recorded in supabase/migrations-reconciliation-baseline.json (queried 2026-09-29T20:55Z; comments 5902170993, 5902404090)
+REPO COPY: supabase/migrations_rollbacks/gh916_progressive_partner_status_triggers_pre-flight.md -- same text (differs only in the top banner/whitespace)
+DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
+-->
 > **COMPANION OF AN APPLIED MIGRATION (2026-09-26, gh-1438 part 2)** -- the forward migration this pre-flight documents is live in production, filed as `supabase/migrations/20260819210920_gh916_progressive_partner_status_triggers.sql`. This document's own "DRAFT ONLY -- NOT APPLIED" status line below is historical. Kept unmodified below this banner for history.
 
 # Pre-Flight: gh916_progressive_partner_status_triggers
