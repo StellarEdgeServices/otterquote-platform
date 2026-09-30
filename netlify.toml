@@ -47,7 +47,7 @@ for f in * .well-known; do
 done
 find _site \( -name node_modules -o -name .git -o -name .DS_Store \) -prune -exec rm -rf {} +
 find _site -type f \( -iname '*.md' -o -iname '*.py' -o -iname '*.sh' -o -iname '*.toml' -o -iname '*.ts' -o -iname '*.tsx' \) -delete
-sed -i "s|%%STRIPE_PK%%|${STRIPE_PK}|g" _site/js/config.js
+sed -i "s|%%STRIPE_PK%%|${STRIPE_PK:-}|g" _site/js/config.js
 echo 'STRIPE_PK injected into _site/js/config.js; repo internals excluded from publish dir (gh-2392)'
 '''
 
