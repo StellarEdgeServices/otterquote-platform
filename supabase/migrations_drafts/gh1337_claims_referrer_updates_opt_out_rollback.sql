@@ -1,3 +1,9 @@
+-- >>> COMPANION OF AN APPLIED MIGRATION (2026-09-26, gh-1438 part 2) -- the
+-- forward migration this rollback reverses is live in production, filed as
+-- supabase/migrations/20260831124504_gh1337_claims_referrer_updates_opt_out.sql.
+-- This rollback itself was never run. Kept here, unmodified below this
+-- banner, for history and for future use if the column ever needs to be
+-- reverted. <<<
 -- gh-1337 rollback.sql — reverses gh1337_claims_referrer_updates_opt_out_forward.sql
 --
 -- STATUS: DRAFT ONLY, paired with a forward migration that has NOT been applied.

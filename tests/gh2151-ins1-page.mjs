@@ -359,7 +359,8 @@ const AD_QS = '?utm_source=meta&utm_medium=paid_social&utm_campaign=ins-1&utm_co
   const scriptStart = html.indexOf('<script', footerStart);
   const footerLinksBlock = html.slice(footerStart, scriptStart === -1 ? undefined : scriptStart);
   const hrefs = [...footerLinksBlock.matchAll(/href="([^"]+)"/g)].map((m) => m[1]).filter((h) => !/fonts\.googleapis|^https:\/\/app\.netlify/.test(h));
-  const allowed = new Set(['/partner-agreement.html', '/terms.html', '/privacy.html']);
+  // gh-1925 (Ben ruling 5896607701): the one CPRA opt-out link is the only addition to this footer.
+  const allowed = new Set(['/partner-agreement.html', '/terms.html', '/privacy.html', '/privacy.html#do-not-sell-or-share']);
   const disallowed = hrefs.filter((h) => !allowed.has(h));
   ok(disallowed.length === 0, 'ins-1.html (e) S07: only Privacy/Terms/Partner Agreement links after the footer -- extra: ' + JSON.stringify(disallowed));
 }

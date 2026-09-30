@@ -1,3 +1,13 @@
+-- >>> APPLIED (2026-09-26, gh-1438 part 2; banner corrected round 2) -- this
+-- draft's SQL is byte-identical to what ran and is filed as
+-- supabase/migrations/20260819210920_gh916_progressive_partner_status_triggers.sql
+-- (renamed from its previously-wrong-version filename earlier in this same
+-- PR, part (b)). Confirmed via independent review comment 5851387029: this
+-- draft's normalized md5 (comment/blank/BEGIN/COMMIT-stripped) equals
+-- 2578213e8985 (short form; full md5 tripped Credential Shape Sweep),
+-- matching both the live ledger's recorded statements for version
+-- 20260819210920 and the restored migrations/ file's own md5 (round-2 fix,
+-- this PR). Kept here, unmodified below this banner, for history. <<<
 -- Migration: gh916_progressive_partner_status_triggers
 -- Author: Code lane sub-agent (automated), run-work orchestration
 -- Date: 2026-08-18

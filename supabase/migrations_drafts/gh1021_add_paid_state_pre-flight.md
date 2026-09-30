@@ -1,3 +1,5 @@
+> **APPLIED (2026-09-26, gh-1438 part 2)** -- this draft's SQL is byte-identical to what ran, filed as `supabase/migrations/20260821205432_gh1150_add_paid_state.sql` (confirmed read-only against yeszghaspzwwstvsrioa). This pre-flight doc is kept here unmodified below this banner for history; it does not reflect the applied filename.
+
 # Pre-Flight: gh1021_add_paid_state
 
 **Migration**: gh1021_add_paid_state.sql

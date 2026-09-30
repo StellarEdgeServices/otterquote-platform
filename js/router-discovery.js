@@ -208,6 +208,13 @@
     // option 1 (D-2, ruled) -- option 2 QUALIFIES and continues to c-home-8.
     dq7Text: 'Otter Quotes is an online service, so everything happens here on the site. If you would rather have a sales rep in your living room before you decide, we would be happy to send you the contact information for contractors who do business that way.',
     dq7Opt1: 'I\'ll give the online version a try - let\'s continue.',
+    // gh-2019 (D-324): the referral-out accept path's four strings, Ben's
+    // ruling verbatim (#2019 comment 5857659103, Tier B). No delivery time
+    // anywhere, no D-104 words -- do not paraphrase.
+    referralEmailLabel: 'Your email',
+    referralButton: 'Send my request',
+    referralConfirmation: "Thanks — we've received your request. We'll email the contact information to you.",
+    referralEmailError: 'Please enter your email address.',
     home8Text: 'From our stand point, it seems like you would be a good fit. You are a tech savvy homeowner who wants to save time and money. The next steps are: 1. We will get additional information about your job; 2. We will create a scope of work and submit it to multiple contractors for bids. 3. Their bids will appear here on the site. 4. If one of the bids suits your needs, you select your contractor on the site and schedule your job. There is no obligation to work with us or our contractors. They don\'t get your information unless you select them. Our service is free to homeowners. To get started we need the following information:',
 
     // ── gh-2018: Variant C professional tracks (realtor, insurance,
@@ -572,9 +579,70 @@
   // tappable rows as every qualifying screen -- never a modal, never
   // confirm(), which traps focus in the Facebook in-app webview (this
   // arm's single worst mobile failure mode). ──
+  //
+  // gh-2019 (D-324): when cfg.onReferral is a function, the screen also
+  // renders the accept path for the offer its own body text makes ("we would
+  // be happy to send you the contact information for contractors..."): one
+  // email field, one button, an inline error and a confirmation, all four
+  // strings Ben's ruling verbatim (#2019 comment 5857659103) and held in
+  // COPY.referral*. cfg.onReferral(email) returns a promise; this function
+  // owns only the DOM and never touches the database itself. Callers that
+  // omit onReferral (arm C, whose module is dead) render exactly as before.
+  function renderReferralForm(onReferral) {
+    var form = el('form', 'router-referral-form');
+    form.setAttribute('novalidate', 'novalidate');
+    form.setAttribute('data-rd-referral', '1');
+    var group = el('div', 'form-group');
+    var label = el('label', 'form-label', COPY.referralEmailLabel);
+    label.setAttribute('for', 'rdReferralEmail');
+    var input = el('input', 'form-input');
+    input.type = 'email';
+    input.id = 'rdReferralEmail';
+    input.setAttribute('autocomplete', 'email');
+    input.setAttribute('inputmode', 'email');
+    input.setAttribute('maxlength', '320');
+    var err = el('div', 'field-error');
+    err.id = 'rdReferralEmailError';
+    err.setAttribute('role', 'alert');
+    group.appendChild(label);
+    group.appendChild(input);
+    group.appendChild(err);
+    var btn = el('button', 'btn btn-primary router-btn', COPY.referralButton);
+    btn.type = 'submit';
+    btn.id = 'rdReferralSubmit';
+    var done = el('p', 'router-sub', COPY.referralConfirmation);
+    done.id = 'rdReferralConfirmation';
+    done.setAttribute('role', 'status');
+    done.hidden = true;
+    form.appendChild(group);
+    form.appendChild(btn);
+    var busy = false;
+    form.addEventListener('submit', function (evt) {
+      if (evt && evt.preventDefault) evt.preventDefault();
+      if (busy) return;
+      err.textContent = '';
+      var value = input.value.trim();
+      if (!value || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) { err.textContent = COPY.referralEmailError; return; }
+      busy = true;
+      btn.disabled = true;
+      Promise.resolve().then(function () { return onReferral(value); }).then(function () {
+        form.hidden = true;
+        done.hidden = false;
+      }).catch(function (e) {
+        console.error('[router-discovery] referral request failed:', e);
+        busy = false;
+        btn.disabled = false;
+        bridge.showError('Something went wrong saving your info. Please try again.');
+      });
+    });
+    root.appendChild(form);
+    root.appendChild(done);
+  }
+
   function renderDisqualifier(cfg) {
     var textEl = bodyText(cfg.text);
     root.appendChild(textEl);
+    if (typeof cfg.onReferral === 'function') renderReferralForm(cfg.onReferral);
     var wrap = optionsWrap();
     var opt1 = optionRow(cfg.opt1, 1, { onActivate: function () { cfg.onContinue(); } });
     wrap.appendChild(opt1);
