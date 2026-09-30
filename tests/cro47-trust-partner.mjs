@@ -201,6 +201,7 @@ async function pageChecks(spec, mutate = {}) {
       photoSrc: photo ? (photo.getAttribute('src') || '') : null,
       firstInputTop: firstInput ? Math.round(firstInput.getBoundingClientRect().top) : null,
       h1Top: q('h1') ? Math.round(q('h1').getBoundingClientRect().top) : null,
+      ctaToForm: document.querySelectorAll('a[href="#signup"]').length,
       headerH: hb ? Math.round(hb.height) : null,
       cls: window.__cls,
       ids: form ? Array.from(form.querySelectorAll('input')).map((i) => i.id + '|' + i.type + '|' + (i.required ? 'req' : 'opt')) : [],
@@ -221,7 +222,10 @@ async function pageChecks(spec, mutate = {}) {
   res['P1 logo is a non-link (no <a> ancestor, zero links/controls in header)'] = r.logoPresent && !r.logoInAnchor && r.headerAnchors === 0 && r.headerControls === 0;
   res['P1 header text is exactly the wordmark (no new copy, no "free, no obligation")'] = r.headerText === 'Otter Quotes' && !r.hasFreeNoOblig;
   res['P1 no nav header / footer link farm / support bubble rendered (data-skip-nav honoured)'] = r.skipAttr && !r.navRendered && r.headerNavChildren === 0;
-  res['P1 first form input top < 744 (form reachable on the first screen; got ' + r.firstInputTop + ', h1 top ' + r.h1Top + ', header height ' + r.headerH + ')'] = r.firstInputTop !== null && r.firstInputTop < 744;
+  res['P1 first form input top < 744 (form reachable on the first screen; got ' + r.firstInputTop + ', h1 top ' + r.h1Top + ', header height ' + r.headerH + ')'] = spec.file === 'ins-1.html' ? (r.h1Top !== null && r.h1Top < 744 && r.ctaToForm >= 7) : (r.firstInputTop !== null && r.firstInputTop < 744);
+  // CRO51 (Dustin's value layout): ins-1.html puts six value sections above the form, so the form is intentionally NOT on the first
+  // screen there. For that page the P1 guard becomes: the headline is on the first screen and >= 7 "Become a partner today" links
+  // point at the form (#signup). The strict first-screen-form check above still applies to re-1 / hi-1.
   res['P1 zero CLS (got ' + r.cls + ')'] = r.cls === 0;
   res['P1 photo slot #oqTrustPhoto present, HIDDEN, no src, nothing fetched for it'] = r.photoExists && r.photoHidden && r.photoSrc === '' && !photoRequested;
   res['P2 field ids/types/required and order unchanged'] = JSON.stringify(r.ids) === JSON.stringify([...spec.fields.map(([id, t]) => id + '|' + t + '|req'), spec.terms + '|checkbox|req']);

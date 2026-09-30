@@ -8,8 +8,7 @@
  *
  * Asserts:
  *   (a) every approved copy string from #2151 comment 5821408557 is
- *       present verbatim on the rendered page (H1, subhead, 3 benefit
- *       bullets, agreement checkbox text, CTA, fee sentence, D-266
+ *       present verbatim on the rendered page (H1, subhead, agreement checkbox text, CTA, fee sentence, D-266
  *       disclaimer, post-submit confirmation).
  *   (b) the short field set (name/email/phone/agency + checkbox, no
  *       visible password) with field labels "Name / Email / Phone /
@@ -81,11 +80,12 @@ function failWithReason(label, reason) {
 
 // ── (a) approved copy, verbatim (#2151 comment 5821408557) ──────────────
 const APPROVED_STRINGS = [
-  ['H1', 'Keep Your Client After a Storm Claim'],
-  ['Subhead', 'Send your policyholders to Otter Quotes for fast, competing repair bids — you stay their trusted agent, not a canvassing contractor.'],
-  ['Bullet 1', 'Your client gets multiple contractor bids without a door-knocker showing up first.'],
-  ['Bullet 2', 'Earn $200 when a referred job of $10,000+ completes.'],
-  ['Bullet 3', 'Track every referral from your phone, in real time.'],
+  // CRO51 (Dustin, 2026-09-30, verbatim; see tests/cro51-ins1-value-layout.mjs): the old H1 "Keep Your Client After a Storm Claim",
+  // the old subhead and the three "What You Get" sidebar bullets were REPLACED by Dustin's value-layout copy and are retired on
+  // purpose. The new headline/subhead are pinned here; the six value sections are pinned in the CRO51 test. The form, fee sentence,
+  // D-266 disclaimer, confirmation and every script below are unchanged.
+  ['H1', "Don't just send a check. SEND HELP AFTER THE STORM"],
+  ['Subhead', 'Otter Quotes gets multiple competitive bids for your clients.'],
   ['CTA', 'Get My Referral Link'],
   ['Agreement checkbox text', "I agree to Otter Quotes's Partner Terms"],
   ['Fee sentence (D-301/D-305, verbatim)', '$200 when a homeowner you refer completes a project of $10,000 or more. $50 on the same terms for referrals from partners you recruit.'],

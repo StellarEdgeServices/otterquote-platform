@@ -35,12 +35,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
-    <title>Keep Your Client After a Storm Claim | Otter Quotes</title>
-    <meta name="description" content="No door-knockers. Just your client, in good hands.">
+    <title>Send Help After the Storm | Otter Quotes</title>
+    <meta name="description" content="Otter Quotes gets multiple competitive bids for your clients.">
     <meta name="robots" content="noindex, nofollow">
     <link rel="canonical" href="https://otterquote.com/ins-1.html">
-    <meta property="og:title" content="Keep Your Client After a Storm Claim · Otter Quotes">
-    <meta property="og:description" content="No door-knockers. Just your client, in good hands.">
+    <meta property="og:title" content="Send Help After the Storm · Otter Quotes">
+    <meta property="og:description" content="Otter Quotes gets multiple competitive bids for your clients.">
     <meta property="og:url" content="https://otterquote.com/ins-1.html">
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="Otter Quotes">
@@ -175,38 +175,6 @@
 
         main {
             min-height: calc(100vh - 120px);
-        }
-
-        /* Hero Section */
-        .hero {
-            background: linear-gradient(135deg, var(--navy) 0%, var(--navy-2) 100%);
-            color: var(--white);
-            padding: 96px 24px;
-            text-align: center;
-        }
-
-        .hero h1 {
-            font-family: var(--font-heading);
-            font-size: clamp(2rem, 5vw, 3.5rem);
-            font-weight: 700;
-            margin-bottom: 24px;
-            line-height: 1.2;
-            /* #2026-08-05: design-system.css sets a global "h1,h2,...{color:#0D1B2E}"
-               rule (dark navy, meant for light backgrounds). An explicit rule on the
-               element always wins over an inherited value, so relying on the parent
-               .hero's `color: var(--white)` to cascade down here silently lost —
-               the heading rendered navy-on-navy against the dark hero gradient below
-               and was effectively invisible. Set explicitly to match every other
-               heading on this page's dark sections. */
-            color: var(--white);
-        }
-
-        .hero p {
-            font-size: 1.25rem;
-            max-width: 700px;
-            margin: 0 auto 40px;
-            color: rgba(255, 255, 255, 0.85);
-            line-height: 1.7;
         }
 
         /* Container */
@@ -494,56 +462,6 @@
 
         @keyframes btnSpin { to { transform: translate(-50%, -50%) rotate(360deg); } }
 
-        /* Benefits Sidebar */
-        .benefits-sidebar {
-            background: var(--navy-3);
-            border: 1px solid rgba(224, 123, 0, 0.2);
-            border-radius: 12px;
-            padding: 40px 32px;
-            height: fit-content;
-            position: sticky;
-            top: 20px;
-        }
-
-        .benefits-sidebar h3 {
-            font-family: var(--font-heading);
-            font-size: 1.3rem;
-            color: var(--white);
-            margin-bottom: 24px;
-        }
-
-        .benefit-item {
-            display: flex;
-            gap: 12px;
-            margin-bottom: 20px;
-            align-items: flex-start;
-        }
-
-        .benefit-check {
-            display: inline-flex;
-            width: 24px;
-            height: 24px;
-            background: var(--amber);
-            border-radius: 50%;
-            align-items: center;
-            justify-content: center;
-            color: var(--navy);
-            font-weight: 700;
-            font-size: 0.9rem;
-            flex-shrink: 0;
-            margin-top: 2px;
-        }
-
-        .benefit-item p {
-            /* gh-2151 REVIEW FAIL 5836199486 (hero bullets, DECIDED Ben):
-               var(--slate) #94A3B8 on this card's --navy-3 #12354A
-               background fell short of WCAG AA 4.5:1. No copy change --
-               contrast only. */
-            color: rgba(255, 255, 255, 0.88);
-            line-height: 1.6;
-            font-size: 0.95rem;
-        }
-
         /* Success / Check-your-email Messages */
         .success-message {
             display: none;
@@ -569,19 +487,6 @@
 
         /* Responsive */
         @media (max-width: 768px) {
-            .hero {
-                padding: 60px 20px;
-            }
-
-            .hero h1 {
-                margin-bottom: 20px;
-            }
-
-            .hero p {
-                font-size: 1rem;
-                margin-bottom: 30px;
-            }
-
             .section {
                 padding: 60px 20px;
             }
@@ -604,11 +509,6 @@
                 gap: 40px;
             }
 
-            .benefits-sidebar {
-                position: static;
-                top: auto;
-            }
-
             .form-container {
                 padding: 24px;
             }
@@ -618,11 +518,59 @@
             }
         }
 
-        /* Never let the hero/header CTA pair wrap or crowd at very narrow
-           widths (down to 360px) — both buttons share height/padding via
-           the shared .btn system, so this only needs to manage layout. */
-        @media (max-width: 400px) {
-            .hero .btn { width: 100%; }
+        /* ── CRO51 INS-1 value layout (mirrors the RE-1 layout, PR #2413): white background, black text, blue headers,
+           alternating photo/text sections. Self-contained: nothing here depends on re-1.html or PR #2413. ── */
+        .ins1-value { background: #FFFFFF; color: #000000; padding: var(--sp-12) var(--sp-8) var(--sp-8); }
+        .ins1-intro { max-width: 900px; margin: 0 auto var(--sp-12); text-align: center; }
+        .ins1-value h1 { color: #1E4FA8; font-size: clamp(2rem, 5vw, 3.25rem); letter-spacing: 0.01em; margin-bottom: var(--sp-4); }
+        .ins1-value h1 .ins1-h1-a { display: block; font-size: 0.6em; font-weight: 500; letter-spacing: 0; margin-bottom: var(--sp-2); }
+        .ins1-value h1 .ins1-h1-b { display: block; font-weight: 800; }
+        .ins1-value .ins1-sub { color: #000000; font-size: 1.25rem; line-height: 1.5; max-width: none; margin: 0; }
+        .ins1-section { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-12); align-items: center; max-width: 1080px; margin: 0 auto; padding: var(--sp-10) 0; border-top: 1px solid #E2E8F0; }
+        .ins1-photo { margin: 0; order: 2; }
+        .ins1-photo img { display: block; width: 100%; height: auto; border-radius: var(--radius-md); background: #EEF2F7; }
+        .ins1-text { order: 1; }
+        .ins1-section--flip .ins1-photo { order: 1; }
+        .ins1-section--flip .ins1-text { order: 2; }
+        .ins1-value h2 { color: #1E4FA8; font-size: clamp(1.5rem, 3vw, 2rem); margin-bottom: var(--sp-4); }
+        .ins1-value .ins1-text p { color: #000000; font-size: 1.1rem; line-height: 1.7; margin-bottom: var(--sp-6); }
+        .ins1-cta { display: inline-block; padding: var(--sp-3) var(--sp-6); background: #1E4FA8; color: #FFFFFF; border-radius: var(--radius-md); font-family: var(--font-body); font-size: 1rem; font-weight: 600; text-align: center; transition: background var(--duration) var(--ease); }
+        .ins1-cta--top { margin-top: var(--sp-6); }
+        .ins1-cta:hover, .ins1-cta:focus-visible { background: #163B82; color: #FFFFFF; }
+        @media (max-width: 768px) {
+            .ins1-value { padding: var(--sp-10) var(--sp-4) var(--sp-4); }
+            .ins1-section { grid-template-columns: 1fr; gap: var(--sp-5); padding: var(--sp-8) 0; }
+            .ins1-photo, .ins1-section--flip .ins1-photo { order: 1; }
+            .ins1-text, .ins1-section--flip .ins1-text { order: 2; }
+            .ins1-cta { display: block; width: 100%; }
+        }
+
+        /* CRO51: signup form restyled to match the value page above (same blue #1E4FA8 and button style as .ins1-cta).
+           CSS ONLY -- no markup, id, name, consent, fee-sentence, D-266 or JS change. The two <p> under the submit button carry
+           inline colour styles, so their override below needs !important. The old two-column form + "What You Get" sidebar
+           layout is now a single centred card (the sidebar's bullets are retired; the $200 fee is now section 6 above). */
+        .form-section { background: #FFFFFF; color: #000000; padding: var(--sp-10) var(--sp-8) var(--sp-16); border-top: 1px solid #E2E8F0; }
+        .form-section .form-wrapper { display: block; max-width: 520px; margin: 0 auto; }
+        .form-section .form-container { background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: var(--radius-md); box-shadow: 0 1px 3px rgba(15,23,42,0.08); padding: var(--sp-8); }
+        .form-section .form-label { color: #000000; font-size: 1rem; }
+        .form-section .form-input { background: #FFFFFF; color: #000000; border: 1px solid #94A3B8; font-size: 1rem; }
+        .form-section .form-input::placeholder { color: #64748B; }
+        .form-section .form-input:focus { background: #FFFFFF; border-color: #1E4FA8; box-shadow: 0 0 0 3px rgba(30,79,168,0.18); }
+        .form-section .form-input.error { border-color: #B91C1C; }
+        .form-section .checkbox-group input[type="checkbox"] { accent-color: #1E4FA8; }
+        .form-section .checkbox-group label { color: #000000; font-size: 1rem; }
+        .form-section .checkbox-group label a { color: #1E4FA8; }
+        .form-section .field-error { color: #B91C1C; }
+        .form-section .form-alert { background: #FEF2F2; border-color: #FCA5A5; color: #991B1B; }
+        .form-section .btn-primary { background: #1E4FA8; color: #FFFFFF; padding: var(--sp-3) var(--sp-6); font-size: 1rem; font-weight: 600; }
+        .form-section .btn-primary:hover, .form-section .btn-primary:focus-visible { background: #163B82; color: #FFFFFF; transform: none; box-shadow: none; }
+        .form-section .btn-loading::after { border-color: rgba(255,255,255,0.4); border-top-color: #FFFFFF; }
+        .form-section form > p { color: #334155 !important; }
+        .form-section .success-message { background: #ECFDF5; border-color: #34D399; color: #064E3B; }
+        .form-section .success-message h3 { color: #065F46; }
+        .form-section .success-message p { color: #064E3B; }
+        @media (max-width: 768px) {
+            .form-section .form-container { padding: var(--sp-5); }
         }
     /* gh-2361 / CRO47: trust header (identical, modulo indentation, on re-1 / ins-1 / hi-1). The [data-skip-nav] selector out-ranks
        css/nav.css's sticky #site-header so the async nav.css swap cannot move or restyle this (CLS 0). */
@@ -656,15 +604,65 @@
     </header>
 
     <main>
-        <!-- Hero Section — INS-1 (gh-2151), approved copy verbatim (issue
-             #2151 comment 5821408557, Dustin ruling comment 5832300528). -->
-        <section class="hero">
-            <div class="container">
-                <h1>Keep Your Client After a Storm Claim</h1>
-                <p>Send your policyholders to Otter Quotes for fast, competing repair bids — you stay their trusted agent, not a canvassing contractor.</p>
-                <a href="#signup" class="btn btn-primary btn-lg">Get My Referral Link</a>
-            </div>
-        </section>
+        <!-- CRO51 (Dustin, 2026-09-30; source: Claude's Memories/otterquote-value-proposition.md section 5 item 5): INS-1 value layout.
+             Headline, subhead and the six sections below are DUSTIN'S WORDS VERBATIM (one typo fixed: "all this" -> "allow this" in
+             section 6). Each section's first sentence is its blue header. Every "Become a partner today" button is an in-page
+             anchor to #signup (the existing INS-1 signup form below, unchanged). -->
+        <div class="ins1-value" id="ins1-value">
+            <section class="ins1-intro">
+                <h1><span class="ins1-h1-a">Don't just send a check.</span> <span class="ins1-h1-b">SEND HELP AFTER THE STORM</span></h1>
+                <p class="ins1-sub">Otter Quotes gets multiple competitive bids for your clients.</p>
+                <a class="ins1-cta ins1-cta--top" href="#signup" data-ins1-cta="top">Become a partner today</a>
+            </section>
+            <section class="ins1-section" data-ins1-section="1">
+                <figure class="ins1-photo"><img src="/img/ins1/ins1-1.webp" width="900" height="600" alt="Storm-damaged homes in an aerial view of a neighborhood after a tornado" loading="lazy" decoding="async"></figure>
+                <div class="ins1-text">
+                    <h2>Easier Service.</h2>
+                    <p>Otter Quotes generates a scope of work and submits it to multiple contractors for bid. In less time than it takes for them to sign with a door to door canvasser, your client can get multiple bids from local, trusted contractors.</p>
+                    <a class="ins1-cta" href="#signup" data-ins1-cta="1">Become a partner today</a>
+                </div>
+            </section>
+            <section class="ins1-section ins1-section--flip" data-ins1-section="2">
+                <figure class="ins1-photo"><img src="/img/ins1/ins1-2.webp" width="900" height="600" alt="Roof tiles torn loose and damaged by a storm, in black and white" loading="lazy" decoding="async"></figure>
+                <div class="ins1-text">
+                    <h2>Educated Clients.</h2>
+                    <p>We show your clients how higher grade materials can reduce damage from hail and wind. So you have fewer claims in the future and you get to surprise them with discounted rates.</p>
+                    <a class="ins1-cta" href="#signup" data-ins1-cta="2">Become a partner today</a>
+                </div>
+            </section>
+            <section class="ins1-section" data-ins1-section="3">
+                <figure class="ins1-photo"><img src="/img/ins1/ins1-3.webp" width="900" height="600" alt="A house with a new roof being installed while crews work on the roof and ladder" loading="lazy" decoding="async"></figure>
+                <div class="ins1-text">
+                    <h2>Better Warranties and Materials.</h2>
+                    <p>Otter Quotes helps contractors reduce or eliminate the cost of sales and marketing and forces them to compete. So they can funnel those savings into better material and warranties to win your clients' jobs.</p>
+                    <a class="ins1-cta" href="#signup" data-ins1-cta="3">Become a partner today</a>
+                </div>
+            </section>
+            <section class="ins1-section ins1-section--flip" data-ins1-section="4">
+                <figure class="ins1-photo"><img src="/img/ins1/ins1-4.webp" width="900" height="600" alt="Hands filling out a home insurance policy form on a clipboard" loading="lazy" decoding="async"></figure>
+                <div class="ins1-text">
+                    <h2>No cost, no obligation.</h2>
+                    <p>There is no obligation to work with our contractors and no cost for homeowners who provide a copy of their insurance estimate.</p>
+                    <a class="ins1-cta" href="#signup" data-ins1-cta="4">Become a partner today</a>
+                </div>
+            </section>
+            <section class="ins1-section" data-ins1-section="5">
+                <figure class="ins1-photo"><img src="/img/ins1/ins1-5.webp" width="900" height="600" alt="Hands typing a message on a smartphone" loading="lazy" decoding="async"></figure>
+                <div class="ins1-text">
+                    <h2>Simple and easy to send.</h2>
+                    <p>We know it's hard to reach out to everyone affected by a storm. So we make it easy to send your link to clients.</p>
+                    <a class="ins1-cta" href="#signup" data-ins1-cta="5">Become a partner today</a>
+                </div>
+            </section>
+            <section class="ins1-section ins1-section--flip" data-ins1-section="6">
+                <figure class="ins1-photo"><img src="/img/ins1/ins1-6.webp" width="900" height="600" alt="Two people shaking hands, close-up of hands only" loading="lazy" decoding="async"></figure>
+                <div class="ins1-text">
+                    <h2>$200 referral fee.</h2>
+                    <p>For every client you refer who does $10,000 or more of work through Otter Quotes, we will send you $200. Please make sure your employment and licensing terms allow this.</p>
+                    <a class="ins1-cta" href="#signup" data-ins1-cta="6">Become a partner today</a>
+                </div>
+            </section>
+        </div>
 
         <!-- Signup Form — moved directly below the hero paragraph so it's
              the first thing after the pitch, above every other section. -->
@@ -792,23 +790,6 @@
                         </div>
                     </div>
 
-                    <!-- Benefits Sidebar — INS-1 approved proof/benefit bullets
-                         (comment 5821408557), verbatim. -->
-                    <div class="benefits-sidebar">
-                        <h3>What You Get</h3>
-                        <div class="benefit-item">
-                            <div class="benefit-check">✓</div>
-                            <p>Your client gets multiple contractor bids without a door-knocker showing up first.</p>
-                        </div>
-                        <div class="benefit-item">
-                            <div class="benefit-check">✓</div>
-                            <p>Earn $200 when a referred job of $10,000+ completes.</p>
-                        </div>
-                        <div class="benefit-item">
-                            <div class="benefit-check">✓</div>
-                            <p>Track every referral from your phone, in real time.</p>
-                        </div>
-                    </div>
                 </div>
             </div>
         </section>
@@ -1692,6 +1673,18 @@
       }).catch(function () { /* gh-1994 prefill is a nicety, never block signup */ });
     }).catch(function () { /* gh-1994 prefill is a nicety, never block signup */ });
   } catch (e) { /* gh-1994 prefill is a nicety, never block signup */ }
+})();
+</script>
+
+<script>
+// CRO51: every "Become a partner today" button (top + six sections) fires one event with its position. Own script tag: the
+// existing signup/attribution scripts above are untouched.
+(function () {
+  document.querySelectorAll('.ins1-cta').forEach(function (a) {
+    a.addEventListener('click', function () {
+      try { gtag('event', 'partner_cta_click', { position: a.getAttribute('data-ins1-cta'), funnel_id: 'ins-1' }); } catch (e) {}
+    });
+  });
 })();
 </script>
 
