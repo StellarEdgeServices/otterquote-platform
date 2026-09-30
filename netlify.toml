@@ -6,9 +6,17 @@
 # env var into js/config.js (replaces %%STRIPE_PK%% placeholder) at build time.
 # Keys are set per context below — no hardcoded Stripe keys in source files.
 
+# gh-2389 (second layer): measured on the first Deploy Preview that the 404
+# redirects below match EXACT CASE only, while Netlify's static lookup is
+# case-insensitive for directory names and root file names -- /Supabase/config.toml,
+# /Scripts/*.py, /README.MD, /REACT-APP/package.json all still returned 200.
+# The build command above therefore also deletes those directories and root
+# files from the publish dir, which is case-proof. netlify.toml and netlify/
+# (edge-function source, bundled after the build) must stay on disk, so they
+# are covered by the redirects only (see /netlify/* below).
 [build]
   publish = "."
-  command = "sed -i \"s|%%STRIPE_PK%%|${STRIPE_PK}|g\" js/config.js && echo 'STRIPE_PK injected into js/config.js'"
+  command = "sed -i \"s|%%STRIPE_PK%%|${STRIPE_PK}|g\" js/config.js && echo 'STRIPE_PK injected into js/config.js' && rm -rf supabase scripts sql tests handoffs react-app .github docs Docs Archive runbooks skills-for-code democracy deploy-checks forge-config otterquote-deploy .claude tools && rm -f *.md *.py tools-e2e-test.txt .gitignore .gitattributes && echo 'repo internals removed from publish dir (gh-2389)'"
 
 # Stripe publishable key per deploy context (not secrets — publishable keys are client-safe)
 [context.production.environment]
@@ -411,6 +419,26 @@
 
 [[redirects]]
   from = "/*.toml"
+  to = "/404.html"
+  status = 404
+  force = true
+
+# netlify/ holds the edge-function source and cannot be deleted at build time.
+
+[[redirects]]
+  from = "/netlify/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/Netlify/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/NETLIFY/*"
   to = "/404.html"
   status = 404
   force = true
