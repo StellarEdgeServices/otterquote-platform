@@ -365,8 +365,9 @@ ok(/<footer id="site-footer"[^>]*\bdata-skip-nav="true"/.test(html), 'hi-1.html 
   const allHrefs = [...preConversionHtml.matchAll(/<a\s+[^>]*\bhref="([^"]+)"/g)]
     .map((m) => m[1])
     .filter((h) => !h.startsWith('#'));
-  const ALLOWED = ['/partner-agreement-inspector.html', 'partner-agreement-inspector.html', '/terms.html', '/privacy.html'];
-  ok(allHrefs.length === 4, 'hi-1.html ruling(1) EXTENDED: exactly 4 off-page links leave the page before conversion (checkbox Partner Agreement link + the 3 legally required footer links) -- got ' + allHrefs.length + ': ' + JSON.stringify(allHrefs));
+  // gh-1925 (Ben ruling 5896607701): the one CPRA opt-out link ("Do Not Sell or Share My Personal Information") is the only addition.
+  const ALLOWED = ['/partner-agreement-inspector.html', 'partner-agreement-inspector.html', '/terms.html', '/privacy.html', '/privacy.html#do-not-sell-or-share'];
+  ok(allHrefs.length === 5, 'hi-1.html ruling(1) EXTENDED: exactly 5 off-page links leave the page before conversion (checkbox Partner Agreement link + the 3 legally required footer links + the ruled CPRA opt-out link) -- got ' + allHrefs.length + ': ' + JSON.stringify(allHrefs));
   ok(allHrefs.every((h) => ALLOWED.includes(h)), 'hi-1.html ruling(1) EXTENDED: every off-page link before conversion is one of the legally required links (Privacy, Terms, Partner Agreement -> partner-agreement-inspector.html) -- got ' + JSON.stringify(allHrefs));
   ok(!/\.href\s*=\s*[`'"]\/?ref-inspector\.html/.test(html), 'hi-1.html ruling(1): no JS-built link assigns a /ref-inspector.html href anywhere on the page (the removed seoRefLink escape hatch does not come back)');
   ok(!html.includes('ref-inspector.html'), 'hi-1.html ruling(1): the string "ref-inspector.html" does not appear anywhere on the page (link and JS both removed)');

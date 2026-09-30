@@ -336,8 +336,21 @@
       } else if (!window._oq_has_auth_in_url) {
         // No auth tokens in URL and no existing session — something went wrong
         await handle(null);
+      } else {
+        // gh-1980 PR 3/3 (Google-only PKCE): INITIAL_SESSION is emitted only AFTER
+        // supabase-js's init (including a Google ?code= exchange, which runs on a
+        // pkce client for exactly that page load) has finished, so a null session
+        // here means the exchange did not yield one (expired/used code, missing
+        // verifier), or an emailed #access_token link was not consumed natively.
+        // Auth.rescueImplicitFragment() (js/auth.js, shared with every landing
+        // page) recovers the fragment via setSession(); otherwise show the error
+        // now instead of idling to the 30 s timeout. Deferred a tick: setSession()
+        // must not run inside this callback (it is invoked under supabase-js's
+        // auth lock).
+        setTimeout(function () {
+          Auth.rescueImplicitFragment().then(function (ok) { if (!ok) handle(null); });
+        }, 0);
       }
-      // else: _oq_has_auth_in_url is true, PKCE exchange in progress — wait for SIGNED_IN
     }
   });
 

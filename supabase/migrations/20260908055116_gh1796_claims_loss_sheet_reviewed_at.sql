@@ -1,3 +1,9 @@
+-- gh-1438 reconciliation part 3 (2026-09-27T13:34:45Z): renamed from 20260907220015_* to the REAL
+-- applied version. Live ledger row: supabase_migrations.schema_migrations version=20260908055116
+-- name=gh1796_claims_loss_sheet_reviewed_at (SELECT-only verified: normalized-statement md5 of this file's body
+-- equals the ledger's recorded statements md5 for this version). Executable SQL body
+-- byte-for-byte unchanged; only the filename's version prefix and this banner changed.
+-- ============================================================================
 -- Migration: gh1796_claims_loss_sheet_reviewed_at
 -- Issue: #1796 (sub-issue of #1653) — loss-sheet queue in admin homeowner tracking
 -- Tier: 3A (additive, nullable, no default, no backfill, no constraint) per D-182 / D-261

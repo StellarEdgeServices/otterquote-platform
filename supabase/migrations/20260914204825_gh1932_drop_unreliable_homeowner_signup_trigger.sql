@@ -1,3 +1,9 @@
+-- gh-1438 reconciliation part 3 (2026-09-27T13:34:45Z): renamed from 20260914204807_* to the REAL
+-- applied version. Live ledger row: supabase_migrations.schema_migrations version=20260914204825
+-- name=gh1932_drop_unreliable_homeowner_signup_trigger (SELECT-only verified: normalized-statement md5 of this file's body
+-- equals the ledger's recorded statements md5 for this version). Executable SQL body
+-- byte-for-byte unchanged; only the filename's version prefix and this banner changed.
+-- ============================================================================
 -- gh-1932 rework: drop the profiles-insert admin-alert trigger added by
 -- 20260914195746_gh1932_notify_admin_new_homeowner_triggers.sql (applied to
 -- prod as schema_migrations version 20260914200612). Refuter FAIL

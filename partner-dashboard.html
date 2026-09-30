@@ -908,6 +908,7 @@
                         <button type="button" class="btn" id="partnerFinishRetry" style="display: none;">Try Again</button>
                         <a href="/partners.html" class="btn" id="partnerFinishSignup" style="display: none; text-decoration: none;">Go to Partner Signup</a>
                     </div>
+                    <div id="partnerRecollect" style="display: none;"></div>
                 </div>
                 <div id="partnerClaimFailedMessage" style="display: none;">
                     <h3 class="empty-state-title">We Couldn't Verify Your Partner Account</h3>
@@ -1825,11 +1826,14 @@ Let me know if you have any questions!
             const signupEl = document.getElementById('partnerFinishSignup');
             wrap.style.display = 'block';
             const isTest = !!(window.Auth && typeof Auth.isTestEmail === 'function' && Auth.isTestEmail(currentUser.email));
-            const marker = PartnerRegistration.readMarker(localStorage, currentUser.email);
+            const marker = PartnerRegistration.readMarker(sessionStorage, currentUser.email); // gh-2355: PII marker lives in sessionStorage only
+            try { localStorage.removeItem(PartnerRegistration.KEY); } catch (e) { /* non-fatal: purge any legacy localStorage copy */ }
             const params = marker ? PartnerRegistration.buildParams(marker, currentUser.email, isTest) : null;
             if (!params) {
                 statusEl.textContent = "This email isn't registered as a partner yet. Register on the partner signup page.";
                 signupEl.style.display = 'inline-block';
+                // gh-2355: no usable (tab-scoped) marker -- e.g. the partner returned in a NEW tab -- so re-collect the PII (never stored) with a freshly ticked terms checkbox.
+                renderPartnerRecollect();
                 return;
             }
             let busy = false;
@@ -1838,7 +1842,7 @@ Let me know if you have any questions!
                 busy = true;
                 retryEl.style.display = 'none';
                 statusEl.textContent = 'Finishing your partner registration...';
-                const r = await PartnerRegistration.complete(sb, params, localStorage);
+                const r = await PartnerRegistration.complete(sb, params, sessionStorage);
                 if (r.status === 'error') {
                     console.error('Partner registration completion failed:', r.error);
                     statusEl.textContent = 'An error occurred. Please try again or email us at support@otterquote.com';
@@ -1850,6 +1854,68 @@ Let me know if you have any questions!
             }
             retryEl.addEventListener('click', run);
             run();
+        }
+
+        // gh-2355: re-collect recovery. No PII is persisted in browser storage; when the tab-scoped marker is gone the
+        // partner re-enters name/phone/company and re-ticks the terms box (a NEW termsAcceptedAt), and register_partner is
+        // called with the same argument shape the signup pages use. Agent type + attribution come from the NON-PII
+        // localStorage context the signup pages leave (PartnerRegistration.readCtx); unknown type -> the 'other' form.
+        // Every label/placeholder/terms/error string is verbatim from the matching signup page (see FORMS in js/partner-registration.js).
+        function renderPartnerRecollect() {
+            const host = document.getElementById('partnerRecollect');
+            if (!host || !window.PartnerRegistration || !sb || !currentUser || !currentUser.email) return;
+            const PR = PartnerRegistration;
+            const ctx = PR.readCtx(localStorage);
+            const agentType = (ctx && ctx.agentType) || 'other';
+            const form = PR.formFor(agentType);
+            const isTest = !!(window.Auth && typeof Auth.isTestEmail === 'function' && Auth.isTestEmail(currentUser.email));
+            const el = (tag, props, kids) => { const n = document.createElement(tag); Object.keys(props || {}).forEach((k) => { n[k] = props[k]; }); (kids || []).forEach((c) => n.appendChild(typeof c === 'string' ? document.createTextNode(c) : c)); return n; };
+            const inputs = {};
+            const group = (key, spec, type, required) => {
+                const id = 'partnerRecollect_' + key;
+                const input = el('input', { type: type || 'text', id: id, className: 'form-input', required: !!required });
+                if (spec.ph) input.placeholder = spec.ph;
+                inputs[key] = input;
+                const lbl = el('label', { className: 'form-label', htmlFor: id }, [spec.label]);
+                if (spec.optional) { lbl.appendChild(document.createTextNode(' ')); lbl.appendChild(el('span', {}, [spec.optional])); }
+                return el('div', { className: 'form-group' }, [lbl, input]);
+            };
+            const formEl = el('form', { id: 'partnerRecollectForm' });
+            if (form.full) formEl.appendChild(group('full', form.full, 'text', true));
+            else { formEl.appendChild(group('first', form.first, 'text', true)); formEl.appendChild(group('last', form.last, 'text', true)); }
+            formEl.appendChild(group('phone', form.phone, 'tel', true));
+            formEl.appendChild(group('company', form.company, 'text', form.company.required));
+            const terms = el('input', { type: 'checkbox', id: 'partnerRecollect_terms', required: true });
+            const termsLbl = el('label', { htmlFor: 'partnerRecollect_terms' }, form.terms.map((p) => (p.a ? el('a', { href: p.a }, [p.t]) : p.t)));
+            formEl.appendChild(el('div', { className: 'form-group' }, [terms, termsLbl]));
+            const submit = el('button', { type: 'submit', className: 'btn', id: 'partnerRecollectSubmit' }, [form.submit]);
+            formEl.appendChild(submit);
+            host.appendChild(formEl);
+            host.style.display = 'block';
+            let busy = false;
+            formEl.addEventListener('submit', async (ev) => {
+                if (ev && ev.preventDefault) ev.preventDefault();
+                if (busy) return;
+                if (!terms.checked) { alert(form.termsError); return; }
+                const termsAcceptedAt = Date.now(); // freshly ticked -- re-collected, not replayed
+                const values = { first: inputs.first && inputs.first.value, last: inputs.last && inputs.last.value, full: inputs.full && inputs.full.value, phone: inputs.phone.value, company: inputs.company.value };
+                const params = PR.buildRecollectParams(agentType, values, ctx, currentUser.email, isTest, termsAcceptedAt);
+                if (!params) { if (form.full && form.full.err && !String(values.full || '').trim().includes(' ')) alert(form.full.err); return; }
+                busy = true;
+                submit.disabled = true;
+                submit.textContent = PR.SUBMITTING;
+                const r = await PR.complete(sb, params, sessionStorage);
+                if (r.status === 'error') {
+                    console.error('Partner registration re-collect failed:', r.error);
+                    alert(PR.ERR_TEXT);
+                    submit.disabled = false;
+                    submit.textContent = form.submit;
+                    busy = false;
+                    return;
+                }
+                PR.clearCtx(localStorage);
+                window.location.reload();
+            });
         }
 
         function updateUI() {

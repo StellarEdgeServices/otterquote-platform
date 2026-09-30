@@ -1,3 +1,9 @@
+-- gh-1438 reconciliation part 3 (2026-09-27T13:34:45Z): renamed from 20260908194734_* to the REAL
+-- applied version. Live ledger row: supabase_migrations.schema_migrations version=20260909033039
+-- name=gh1724_check_email_exists_rate_limit (SELECT-only verified: normalized-statement md5 of this file's body
+-- equals the ledger's recorded statements md5 for this version). Executable SQL body
+-- byte-for-byte unchanged; only the filename's version prefix and this banner changed.
+-- ============================================================================
 -- gh-1724 [SECURITY] step 2: check-email-exists had no rate_limit_config
 -- row, so if it ever called check_rate_limit() the RPC would deny by
 -- default (fail-closed) -- but it never called it at all before this PR.
