@@ -1,14 +1,14 @@
 {
-  "note": "HO-6 photo manifest (gh-2378). Pexels free licence, https://www.pexels.com/license/. Files are resized to 900px webp; images 2 and 3 are also cropped to keep faces out of frame.",
+  "note": "HO-6 photo manifest (gh-2378). Pexels free licence, https://www.pexels.com/license/. Files are resized to 900x600 webp; images 1, 2, 3 and 5 are also cropped (1 and 5 are people-free subjects; 2 and 3 are cropped to keep faces out of frame).",
   "images": [
     {
       "section": 1,
       "file": "img/ho6/ho6-1.webp",
-      "page_url": "https://www.pexels.com/photo/group-of-people-wearing-hard-hats-standing-on-a-roof-4956920/",
-      "photographer": "Denniz Futalan",
-      "photographer_url": "https://www.pexels.com/@denniz-futalan-339724/",
+      "page_url": "https://www.pexels.com/photo/beautiful-house-with-large-windows-and-shingles-roof-18098285/",
+      "photographer": "Nikolaeva Nastia",
+      "photographer_url": "https://www.pexels.com/@nikolaeva-nastia-3312562/",
       "licence_url": "https://www.pexels.com/license/",
-      "edit": "resize only"
+      "edit": "centre-cropped to 3:2, resized"
     },
     {
       "section": 2,
@@ -40,11 +40,11 @@
     {
       "section": 5,
       "file": "img/ho6/ho6-5.webp",
-      "page_url": "https://www.pexels.com/photo/unrecognizable-workman-installing-window-in-house-during-renovation-process-5691531/",
-      "photographer": "Ksenia Chernaya",
-      "photographer_url": "https://www.pexels.com/@kseniachernaya/",
+      "page_url": "https://www.pexels.com/photo/white-paper-on-the-concrete-ground-8470064/",
+      "photographer": "Thirdman",
+      "photographer_url": "https://www.pexels.com/@thirdman/",
       "licence_url": "https://www.pexels.com/license/",
-      "edit": "resize only"
+      "edit": "cropped to the lower 3:2 region, resized"
     },
     {
       "section": 6,

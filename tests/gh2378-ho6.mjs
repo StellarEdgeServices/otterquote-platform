@@ -201,6 +201,22 @@ m.REPO=pathlib.Path(sys.argv[1]);sys.exit(m.main())`;
     ok(JSON.stringify(stepsInJs) === JSON.stringify(stepsInHtml) && stepsInJs.length === 2, 'H-step every step section in the markup has one STEPS entry in js/ho6-start.js (contact, thanks)');
     control('H-step', JSON.stringify(stepsInJs) !== JSON.stringify([...stepsInHtml, ['job', 'ho6StepJob']]));
   }
+  // H17 (round 2): the early-submit guard. The submit handler loads deferred, after supabase-js; until then a native submit would put names, email
+  // and phone into the URL (GET form). The button ships disabled, an inline listener stops any submit, the form is POST, and init() enables the button.
+  {
+    const formTag = (START.match(/<form id="ho6Form"[^>]*>/) || [''])[0];
+    const btnTag = (START.match(/<button[^>]*id="ho6Submit"[^>]*>/) || [''])[0];
+    const guardOk = (h) => { const i = h.indexOf('</form>'); return i > 0 && /^\s*<script>[\s\S]*?getElementById\('ho6Form'\)\.addEventListener\('submit', function \(e\) \{ e\.preventDefault\(\); \}\);[\s\S]*?<\/script>/.test(h.slice(i + 7)); };
+    const good = (h, js) => /<form id="ho6Form"[^>]* method="post"/.test(h) && /<button[^>]*id="ho6Submit"[^>]* disabled[ >]/.test(h) && guardOk(h) && /\$\('ho6Submit'\)\.disabled = false;/.test(js);
+    ok(/ method="post"/.test(formTag) && !/ action=/.test(formTag), 'H17 the form is method="post" (no GET query string is possible): ' + formTag);
+    ok(/ disabled[ >]/.test(btnTag), 'H17 the submit button ships disabled');
+    ok(guardOk(START), 'H17 an inline preventDefault submit guard sits immediately after </form>');
+    ok(/\$\('ho6Submit'\)\.disabled = false;/.test(START_JS), 'H17 js/ho6-start.js init() enables the button');
+    ok(good(START, START_JS), 'H17 all four guards present together');
+    control('H17 (old markup: no method, enabled button, no guard)', !good(START.replace(' method="post"', '').replace(/(id="ho6Submit"[^>]*) disabled>/, '$1>').replace(/<script>\s*\/\* Early-submit guard[\s\S]*?<\/script>/, ''), START_JS.replace("$('ho6Submit').disabled = false;", '')));
+    ok(/_oqErrorBuffer/.test(START) && /Sentry\.captureException\(item\.error\)/.test(START) && /Sentry\.captureMessage\(/.test(START) && /window\._oqErrorBuffer = \[\];\s*\};/.test(START), 'H17 sentryOnLoad replays and clears window._oqErrorBuffer (as start.html does)');
+    control('H17 (sentry replay removed)', !/Sentry\.captureException\(item\.error\)/.test(START.replace(/Sentry\.captureException\(item\.error\)/g, '')));
+  }
   // H16 static side + H10 static side
   {
     const noCall = (s) => !/(dustin will call|will call you|call you|within \d+ minutes|within minutes|we'll call|we will call)/i.test(s);
@@ -223,11 +239,12 @@ const TINY_GIF = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAA
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.webp': 'image/webp', '.png': 'image/png', '.json': 'application/json', '.svg': 'image/svg+xml' };
 
 // Serves the repo root with Netlify-like routes. `overlay` maps a repo-relative path to replacement content (the mutations).
-function startServer(overlay) {
+function startServer(overlay, delays = {}) {
   const routes = { '/ho6': 'ho6.html', '/ho6/start': 'ho6-start.html', '/ho6/start/': 'ho6-start.html' };
   const srv = http.createServer((req, res) => {
     const u = new URL(req.url, 'http://x');
     const rel = routes[u.pathname] || decodeURIComponent(u.pathname).replace(/^\/+/, '');
+    if (delays[rel]) { const ms = delays[rel]; delete delays[rel]; setTimeout(() => srv.emit('request', req, res), ms); return; }   // delays a file's first request only (mutation tests: a slow script load)
     if (Object.prototype.hasOwnProperty.call(overlay, rel)) { res.writeHead(200, { 'Content-Type': MIME[path.extname(rel)] || 'text/plain' }); res.end(overlay[rel]); return; }
     const fp = path.join(ROOT, rel);
     if (!fp.startsWith(ROOT) || !fs.existsSync(fp) || !fs.statSync(fp).isFile()) {
@@ -274,7 +291,7 @@ async function openPage(browser, base, opts) {
   });
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
-  await page.goto(base + opts.path, { waitUntil: 'load' });
+  await page.goto(base + opts.path, { waitUntil: opts.waitUntil || 'load' });
   await page.waitForTimeout(opts.settle || 150);
   const events = async () => (await page.evaluate(() => (window.dataLayer || []).map((a) => Array.from(a)).filter((a) => a[0] === 'event').map((a) => ({ name: a[1], params: a[2] }))));
   const calls = async () => page.evaluate(() => window.__calls || []);
@@ -430,6 +447,37 @@ async function browserHalf() {
       const r = await e2e(S2.base, { phone: '(317) 555-0134' }); control('H16 ("Dustin will call you" injected)', noCallRe.test(r.thanks)); S2.srv.close(); }
     { const S2 = await startServer({ ...base0, 'js/ho6-start.js': START_JS.replace("text: CONSENT_TEXT", "text: CONSENT.checkbox_label") });
       const r = await e2e(S2.base, { phone: '(317) 555-0134', check: true }); const b = JSON.parse(r.posts[0].body); control('H-consent (stored text drifts from the pin)', md5(b.consent.text) !== PINNED_MD5_LITERAL); S2.srv.close(); }
+    // H17 (round 2): early submit. ho6-start.js is held back for 4s (a slow phone), the visitor fills the form and submits by Enter, by click, by
+    // requestSubmit() and by a raw form.submit(); the URL must never gain first_name/last_name/email/phone. The negative control serves the old markup.
+    {
+      const early = async (startHtml) => {
+        const S2 = await startServer({ 'ho6-start.html': startHtml }, { 'js/ho6-start.js': 4000 });
+        const p = await openPage(browser, S2.base, { path: '/ho6/start', waitUntil: 'commit', settle: 0 });
+        await p.page.waitForSelector('#ho6Phone');
+        const before = await p.page.evaluate(() => ({ handlerLoaded: !!window.Ho6Start, disabled: document.getElementById('ho6Submit').disabled }));
+        await p.page.fill('#ho6First', 'Jane'); await p.page.fill('#ho6Last', 'Doe'); await p.page.fill('#ho6Email', 'jane@example.com'); await p.page.fill('#ho6Phone', '(317) 555-0134');
+        await p.page.press('#ho6Email', 'Enter'); await p.page.waitForTimeout(400);
+        const urlEnter = p.page.url();
+        await p.page.click('#ho6Submit', { force: true, noWaitAfter: true, timeout: 2000 }).catch(() => {}); await p.page.waitForTimeout(400);
+        const urlClick = p.page.url();
+        await p.page.evaluate(() => { try { document.getElementById('ho6Form').requestSubmit(); } catch (e) {} }).catch(() => {}); await p.page.waitForTimeout(400);
+        const urlReq = p.page.url();
+        await p.page.evaluate(() => { document.getElementById('ho6Form').submit(); }).catch(() => {}); await p.page.waitForTimeout(600);
+        const urlRaw = p.page.url();
+        await p.ctx.close(); S2.srv.close();
+        return { before, urls: [urlEnter, urlClick, urlReq, urlRaw] };
+      };
+      const clean = (u) => { const x = new URL(u); return x.search === '' && !/first_name|last_name|email|phone|jane|example|317/i.test(x.search + x.hash); };   // the port is random, so only query and hash are inspected
+      const good = await early(noIntegrity(START));
+      ok(good.before.handlerLoaded === false && good.before.disabled === true, 'H17 while ho6-start.js is still loading the submit button is disabled');
+      ok(good.urls.every(clean), 'H17 submitting before ho6-start.js loads (Enter, click, requestSubmit, raw submit) leaves the URL free of name, email and phone: ' + good.urls.join(' | '));
+      const oldHtml = noIntegrity(START.replace(' method="post"', '').replace(/(id="ho6Submit"[^>]*) disabled>/, '$1>').replace(/<script>\s*\/\* Early-submit guard[\s\S]*?<\/script>/, ''));
+      const bad = await early(oldHtml);
+      control('H17 (old markup leaks the PII into the URL)', bad.urls.some((u) => /first_name=Jane/.test(u) && /email=jane%40example\.com/.test(u)));
+      // after the script loads, the button is enabled and the real flow still works (H9 covers the flow itself)
+      const p2 = await openPage(browser, S.base, { path: '/ho6/start' });
+      ok(await p2.page.evaluate(() => !document.getElementById('ho6Submit').disabled), 'H17 once ho6-start.js has initialised the submit button is enabled'); await p2.ctx.close();
+    }
   } finally { S.srv.close(); await browser.close(); }
 }
 

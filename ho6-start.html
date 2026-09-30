@@ -36,6 +36,25 @@
         return event;
       }
     });
+    // Replay every error buffered before Sentry finished loading (same pattern as start.html, gh-2063).
+    var buffered = window._oqErrorBuffer || [];
+    for (var i = 0; i < buffered.length; i++) {
+      var item = buffered[i];
+      try {
+        if (item.type === 'error' && item.error) {
+          Sentry.captureException(item.error);
+        } else if (item.type === 'error') {
+          Sentry.captureMessage(item.message || 'Unknown error (buffered pre-Sentry-load)');
+        } else if (item.type === 'unhandledrejection') {
+          if (item.reason instanceof Error) {
+            Sentry.captureException(item.reason);
+          } else {
+            Sentry.captureMessage('Unhandled rejection (buffered pre-Sentry-load): ' + String(item.reason));
+          }
+        }
+      } catch (replayErr) { /* replaying a buffered error must never itself throw */ }
+    }
+    window._oqErrorBuffer = [];
   };
 </script>
 <script src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js" crossorigin="anonymous" async></script>
@@ -54,7 +73,7 @@
       <p class="ho6-brand" style="text-align:center">OTTER QUOTES</p>
       <h1>Get my bids now</h1>
       <p class="ho6-lede">Tell us how to reach you.</p>
-      <form id="ho6Form" novalidate>
+      <form id="ho6Form" method="post" novalidate>
         <div class="ho6-row">
           <div class="ho6-field">
             <label for="ho6First">First name</label>
@@ -81,8 +100,14 @@
         <p class="ho6-consent" id="ho6EmailLine">Otter Quotes may email me about my project.</p>
         <label class="ho6-check"><input type="checkbox" id="ho6TextCall" name="text_call_consent"><span id="ho6CheckLabel">Also text or call me at the number above about my project.</span></label>
         <div class="ho6-err" id="ho6FormErr" role="alert"></div>
-        <button type="submit" id="ho6Submit" class="ho6-btn ho6-submit">Get my bids now</button>
+        <button type="submit" id="ho6Submit" class="ho6-btn ho6-submit" disabled>Get my bids now</button>
       </form>
+      <script>
+        /* Early-submit guard: the handler in js/ho6-start.js loads deferred, after supabase-js. Until then the
+           button ships disabled and this listener stops any submit (Enter key, autofill) so names, email and
+           phone can never be placed in the URL by a native form navigation. */
+        document.getElementById('ho6Form').addEventListener('submit', function (e) { e.preventDefault(); });
+      </script>
     </section>
     <section id="ho6StepThanks" class="ho6-step" data-ho6-step="thanks" hidden>
       <p id="ho6ThanksLine"></p>

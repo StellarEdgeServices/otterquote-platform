@@ -154,6 +154,7 @@
     root.setAttribute('data-clarity-mask', 'true');   // session replay must not record names, emails or phone numbers
     $('ho6TextCall').checked = false;
     $('ho6Form').addEventListener('submit', onSubmit);
+    $('ho6Submit').disabled = false;   // ships disabled in the markup; enabled only once this handler is attached
     CORE.installUnloadNet();
     showStep('contact');
     function tagClarity() { try { if (window.clarity) { clarity('set', 'variant', 'ho6'); } } catch (e) {} }
