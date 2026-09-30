@@ -2025,18 +2025,25 @@
       if (sb && state.claimId) {
         try {
           if (state.quoteId) {
-            const { error: quoteErr } = await sb
+            const { data: quoteRows, error: quoteErr } = await sb
               .from('quotes')
               .update({ [_signedField]: new Date().toISOString() })
-              .eq('id', state.quoteId);
+              .eq('id', state.quoteId)
+              .select('id');
             if (quoteErr) console.error('Error updating ' + _signedField + ':', quoteErr);
+            // gh-2105: log-only. The docusign-webhook is the source of truth for
+            // this stamp, so a zero-row match must not interrupt the signer.
+            else if (!Array.isArray(quoteRows) || quoteRows.length === 0) console.warn('gh-2105: zero-row update -- quotes.' + _signedField + ' matched no rows for quote ' + state.quoteId);
           } else if (state.contractorId) {
-            const { error: quoteErr } = await sb
+            const { data: quoteRows, error: quoteErr } = await sb
               .from('quotes')
               .update({ [_signedField]: new Date().toISOString() })
               .eq('claim_id', state.claimId)
-              .eq('contractor_id', state.contractorId);
+              .eq('contractor_id', state.contractorId)
+              .select('id');
             if (quoteErr) console.error('Error updating ' + _signedField + ':', quoteErr);
+            // gh-2105: log-only (see above).
+            else if (!Array.isArray(quoteRows) || quoteRows.length === 0) console.warn('gh-2105: zero-row update -- quotes.' + _signedField + ' matched no rows for claim ' + state.claimId + ' / contractor ' + state.contractorId);
           }
         } catch (err) {
           console.error('Error updating claim:', err);
