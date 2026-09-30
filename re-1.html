@@ -413,6 +413,8 @@ a:hover { color: var(--amber-2); }
 .signup-section .btn-loading::after { border-color: rgba(255,255,255,0.4); border-top-color: #FFFFFF; }
 .signup-section .partner-form > p { color: #000000 !important; }
 .signup-section .partner-form > .referral-fee-disclaimer { color: #334155 !important; }
+/* REVIEW FAIL 5916897295: confirmation text was var(--slate) #8A9BAB = 2.85:1 on the white card; #334155 = 10.35:1 (same ink as the fine print). */
+.signup-section .success-message p { color: #334155; }
 @media (max-width: 768px) {
   .signup-section { padding: var(--sp-8) var(--sp-4) var(--sp-10); }
   .signup-section .signup-form-wrap { padding: var(--sp-5); }
