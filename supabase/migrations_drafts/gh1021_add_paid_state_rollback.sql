@@ -1,3 +1,14 @@
+-- STATUS (gh-1438, as of 2026-09-30T12:32Z): APPLIED
+-- FILE ROLE: rollback file of set gh1021_add_paid_state (the STATUS is the set's; it describes the forward migration)
+-- EVIDENCE: applied as gh1150_add_paid_state, ledger version 20260821205432, SQL read back from schema_migrations.statements: comment 5494221280 (RW-DONE, PR #1471, supabase/migrations/MIGRATIONS-RECONCILIATION-1438.md Part 1, read-only queries 2026-09-01); ledger version 20260821205432 is in the 199-row schema_migrations snapshot recorded in supabase/migrations-reconciliation-baseline.json (queried 2026-09-29T20:55Z; comments 5902170993, 5902404090)
+-- REPO COPY: supabase/migrations_rollbacks/20260821205432_gh1150_add_paid_state_rollback.sql -- same SQL statements (differs only in comments/blank lines/BEGIN/COMMIT/whitespace)
+-- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
+--
+-- >>> APPLIED (2026-09-26, gh-1438 part 2) -- the forward migration this
+-- rollback pairs with is live, filed as
+-- supabase/migrations/20260821205432_gh1150_add_paid_state.sql (confirmed
+-- read-only against yeszghaspzwwstvsrioa). This rollback is kept here,
+-- unmodified below this banner, for history. <<<
 -- Rollback: gh1021_add_paid_state_rollback.sql
 -- Reverts: gh1021_add_paid_state.sql
 -- Status: DRAFT — forward migration not yet applied.

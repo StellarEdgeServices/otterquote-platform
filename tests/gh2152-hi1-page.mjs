@@ -365,8 +365,9 @@ ok(/<footer id="site-footer"[^>]*\bdata-skip-nav="true"/.test(html), 'hi-1.html 
   const allHrefs = [...preConversionHtml.matchAll(/<a\s+[^>]*\bhref="([^"]+)"/g)]
     .map((m) => m[1])
     .filter((h) => !h.startsWith('#'));
-  const ALLOWED = ['/partner-agreement-inspector.html', 'partner-agreement-inspector.html', '/terms.html', '/privacy.html'];
-  ok(allHrefs.length === 4, 'hi-1.html ruling(1) EXTENDED: exactly 4 off-page links leave the page before conversion (checkbox Partner Agreement link + the 3 legally required footer links) -- got ' + allHrefs.length + ': ' + JSON.stringify(allHrefs));
+  // gh-1925 (Ben ruling 5896607701): the one CPRA opt-out link ("Do Not Sell or Share My Personal Information") is the only addition.
+  const ALLOWED = ['/partner-agreement-inspector.html', 'partner-agreement-inspector.html', '/terms.html', '/privacy.html', '/privacy.html#do-not-sell-or-share'];
+  ok(allHrefs.length === 5, 'hi-1.html ruling(1) EXTENDED: exactly 5 off-page links leave the page before conversion (checkbox Partner Agreement link + the 3 legally required footer links + the ruled CPRA opt-out link) -- got ' + allHrefs.length + ': ' + JSON.stringify(allHrefs));
   ok(allHrefs.every((h) => ALLOWED.includes(h)), 'hi-1.html ruling(1) EXTENDED: every off-page link before conversion is one of the legally required links (Privacy, Terms, Partner Agreement -> partner-agreement-inspector.html) -- got ' + JSON.stringify(allHrefs));
   ok(!/\.href\s*=\s*[`'"]\/?ref-inspector\.html/.test(html), 'hi-1.html ruling(1): no JS-built link assigns a /ref-inspector.html href anywhere on the page (the removed seoRefLink escape hatch does not come back)');
   ok(!html.includes('ref-inspector.html'), 'hi-1.html ruling(1): the string "ref-inspector.html" does not appear anywhere on the page (link and JS both removed)');
@@ -630,6 +631,22 @@ ok(!html.includes('Please enter your company name.'), 'hi-1.html (6): the unappr
   ok(installHrefs.length >= 1 && installHrefs.every((h) => h === '/partner-app.html?track=home_inspector'), 'hi-1.html HI-0.5 fix (1): every "Install the App" link is /partner-app.html?track=home_inspector -- got ' + JSON.stringify(installHrefs));
   const agreementHrefs = [...noComments.matchAll(/<a\b[^>]*href="([^"]*partner-agreement[^"]*)"/g)].map((m) => m[1]);
   ok(agreementHrefs.length >= 1 && agreementHrefs.every((h) => /partner-agreement-inspector\.html$/.test(h)), 'hi-1.html HI-0.5 fix (1): agreement links still point at partner-agreement-inspector.html, unchanged -- got ' + JSON.stringify(agreementHrefs));
+}
+
+// ── gh-2361 (CRO47 spec 3.3, PR b): partner trust header -- static guards ──
+// Sloane's rulings (#2361): logo + wordmark "Otter Quotes" + photo slot ONLY,
+// non-link, inside the existing data-skip-nav header; photo slot HIDDEN, no src.
+// The browser-level proof (P1-P5, PN1-PN4) is tests/cro47-trust-partner.mjs.
+{
+  const hm = /<header id="site-header"[^>]*data-skip-nav="true"[^>]*>([\s\S]*?)<\/header>/.exec(html);
+  ok(!!hm, 'hi-1.html gh-2361: #site-header still carries data-skip-nav="true" and now holds the trust block');
+  const inner = hm ? hm[1].replace(/<!--[\s\S]*?-->/g, '') : '';
+  ok(/<img[^>]*src="\/img\/brand-assets\/otter-quotes-icon-512\.png"[^>]*alt="Otter Quotes"/.test(inner), 'hi-1.html gh-2361: header holds the existing logo asset with the js/nav.js alt text');
+  ok(/>\s*Otter Quotes\s*</.test(inner), 'hi-1.html gh-2361: header holds the wordmark "Otter Quotes"');
+  ok(!/<a[\s>]/i.test(inner) && !/<button|onclick=/i.test(inner), 'hi-1.html gh-2361: the header trust block contains no link/button (non-link logo, no escape hatch)');
+  ok(/<img[^>]*id="oqTrustPhoto"/.test(inner) && !/id="oqTrustPhoto"[^>]*\ssrc=/.test(inner) && /\.oq-trust__photo:not\(\[src\]\)\s*\{\s*display:\s*none/.test(html), 'hi-1.html gh-2361: photo slot #oqTrustPhoto ships HIDDEN with no src (no placeholder image)');
+  const text = inner.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  ok(text === 'Otter Quotes', 'hi-1.html gh-2361: the ONLY visible header text is the wordmark -- got ' + JSON.stringify(text));
 }
 
 console.log('');

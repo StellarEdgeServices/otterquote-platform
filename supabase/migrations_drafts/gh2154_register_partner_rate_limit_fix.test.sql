@@ -1,3 +1,9 @@
+-- STATUS (gh-1438, as of 2026-09-30T12:32Z): APPLIED
+-- FILE ROLE: test file of set gh2154_register_partner_rate_limit_fix (the STATUS is the set's; it describes the forward migration)
+-- EVIDENCE: applied 2026-09-27/28 via the Management API /database/migrations, then re-applied byte-identical by a parallel session (idempotent): PR #2237 comments 5861052277 and 5861206755 (5 register_partner* rate_limit_config rows, vault salt count 1, anon EXECUTE false). Ledger version NOT recorded in either comment (the 2026-09-29T20:55Z ledger snapshot has ledger-only versions 20260927235229 and 20260927235943 near that time, but no name is recorded, so this is not confirmed). Not previously measured on gh-1438
+-- REPO COPY: none in supabase/migrations/ or supabase/migrations_rollbacks/ for this file (forward .sql/.test.sql/_pre-flight.md: no copy in supabase/migrations/ (applied but never filed under its ledger version: a #1438 direction-1 gap))
+-- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
+--
 -- gh-2223 rate-limit fix -- reference/manual test harness.
 --
 -- Reference/manual test -- this repo has no pgTAP or SQL test runner wired

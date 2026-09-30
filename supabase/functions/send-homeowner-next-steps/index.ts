@@ -185,7 +185,7 @@ import {
   dryRunAuthorized,
   parseDryRun,
 } from "./dry-run.ts";
-import { deliverStage, type PreviewRow } from "./deliver-stage.ts";
+import { type DeliverDeps, deliverStage, type PreviewRow } from "./deliver-stage.ts";
 import {
   canSendWithOptOut,
   fetchOptedOutClaimIds,
@@ -224,6 +224,14 @@ import {
   reduceChecklistCompleteActivity,
   screenChecklistCompleteClaim,
 } from "./checklist-complete-stage.ts";
+import {
+  parseTestSend,
+  runTestSend,
+  type TestSendClaim,
+  type TestSendProfile,
+  testSendAuthorized,
+  validateRequestBody,
+} from "./test-send.ts";
 
 const FUNCTION_NAME = "send-homeowner-next-steps";
 const BATCH_LIMIT = 200;
@@ -528,7 +536,15 @@ serve(async (req: Request) => {
   // See ./dry-run.ts for why it exists and what it deliberately does not do
   // (it writes no activity_log row and sends no email — it cannot manufacture
   // the artifact it is meant to help produce).
-  const requestBody = await req.clone().json().catch(() => ({}));
+  // gh-2069 hardening: strict body validation BEFORE any flag is read or any
+  // side effect runs. An empty body (the pg_cron `{}`) is the normal run; an
+  // unknown key (e.g. a typo of test_send_claim_ids) must NOT fall through to
+  // a real cron run, so it is a 400 with nothing sent or written.
+  const bodyCheck = validateRequestBody(await req.clone().text().catch(() => ""));
+  if (!bodyCheck.ok) {
+    return jsonResponse({ ok: false, error: bodyCheck.error, sent: 0 }, 400, corsHeaders);
+  }
+  const requestBody = bodyCheck.body;
   const dryRunRequested = parseDryRun(requestBody);
   // gh-1859 review fix: a dry run does NOT inherit the batch gate's permissive
   // `if (!cronSecret) authorized = true` branch. That branch fails OPEN, and a
@@ -543,6 +559,34 @@ serve(async (req: Request) => {
       401,
       corsHeaders,
     );
+  }
+  // gh-2069 (path (a), CTO ruling 5869465122) — claim-scoped test send. Inert
+  // unless the body carries the literal `test_send_claim_ids` key; a normal
+  // cron body parses to "absent" and nothing below changes. Read AFTER the
+  // authorization gate, and it additionally requires POSITIVE proof of
+  // authorization (matching X-Cron-Secret / service-role bearer), never the
+  // permissive no-CRON_SECRET branch. See ./test-send.ts for the fail-closed
+  // validation (every claim + owner is_test=true, every recipient a
+  // dustinstohler1+<tag>@gmail.com alias) that runs before any side effect.
+  const testSend = parseTestSend(requestBody);
+  if (testSend.kind !== "absent") {
+    if (!testSendAuthorized({ cronSecret, incomingCronSecret, authHeader, serviceRoleKey })) {
+      return jsonResponse(
+        { ok: false, error: "test_send_claim_ids requires an explicit cron secret or service-role credential" },
+        401,
+        corsHeaders,
+      );
+    }
+    if (testSend.kind === "invalid") {
+      return jsonResponse({ ok: false, error: testSend.error, sent: 0 }, 400, corsHeaders);
+    }
+    if (dryRunRequested) {
+      return jsonResponse(
+        { ok: false, error: "test_send_claim_ids cannot be combined with dry_run", sent: 0 },
+        400,
+        corsHeaders,
+      );
+    }
   }
   const dryRun = dryRunRequested;
   const scanIsTest = candidateIsTestFlag(dryRun);
@@ -579,6 +623,110 @@ serve(async (req: Request) => {
   const supabase = createClient(supabaseUrl, serviceRoleKey);
   const now = Date.now();
   const twoHoursAgoIso = new Date(now - TWO_HOURS_MS).toISOString();
+
+  // The '2h'/'48h' deliverStage dependency object, built once and shared by the
+  // production loop below and the gh-2069 claim-scoped test send, so a test
+  // send goes through the SAME send / activity_log stamp / notifications insert
+  // as a cron send rather than a parallel copy of them.
+  const buildNudgeDeliverDeps = (isDryRun: boolean): DeliverDeps => ({
+    dryRun: isDryRun,
+    mailgunConfigured: Boolean(mailgunApiKey),
+    buildEmail: buildEmailContent,
+    insertActivityLog: async (row) => {
+      const { error } = await supabase.from("activity_log").insert(row);
+      return { error: error ?? null };
+    },
+    sendEmail: (to, name, mUrl, cUrl, oUrl) =>
+      sendMailgunEmail(mailgunApiKey as string, to, name, mUrl, cUrl, oUrl),
+    // gh-2069: the durable per-send record — same `notifications` table
+    // the admin digest already writes to, via the same insert path.
+    insertNotification: async (row) => {
+      const { error } = await supabase.from("notifications").insert(row);
+      return { error: error?.message ?? null };
+    },
+    log: (level, message) => console[level](`[${FUNCTION_NAME}] ${message}`),
+  });
+
+  if (testSend.kind === "ok") {
+    const outcome = await runTestSend(
+      {
+        mailgunConfigured: Boolean(mailgunApiKey),
+        now,
+        nudgeEventType: NUDGE_EVENT_TYPE,
+        optOutEventType: OPTOUT_EVENT_TYPE,
+        fetchClaimsByIds: async (ids) => {
+          const { data, error } = await supabase
+            .from("claims")
+            .select("id, user_id, status, created_at, is_test")
+            .in("id", ids);
+          return { rows: (data || []) as TestSendClaim[], error: error?.message ?? null };
+        },
+        fetchProfilesByIds: async (userIds) => {
+          const { data, error } = await supabase
+            .from("profiles")
+            .select("id, email, full_name, is_test")
+            .in("id", userIds);
+          return { rows: (data || []) as TestSendProfile[], error: error?.message ?? null };
+        },
+        fetchAuthContact: async (userId) => {
+          const { data } = await supabase.auth.admin.getUserById(userId);
+          return {
+            email: data?.user?.email || null,
+            name: data?.user?.user_metadata?.full_name || null,
+          };
+        },
+        // The production candidate scan, scanIsTest=true, narrowed to the ids.
+        fetchCandidateClaims: async (ids) => {
+          // deno-lint-ignore no-explicit-any
+          const { data, error } = await (buildCandidateQuery(
+            // deno-lint-ignore no-explicit-any
+            supabase.from("claims") as any,
+            {
+              scanIsTest: true,
+              eligibleStatus: NUDGE_ELIGIBLE_STATUS,
+              excludedStatus: NUDGE_EXCLUDED_STATUS,
+              cutoffIso: twoHoursAgoIso,
+              limit: BATCH_LIMIT,
+            },
+            // deno-lint-ignore no-explicit-any
+          ) as any).in("id", ids);
+          return { rows: (data || []) as TestSendClaim[], error: error?.message ?? null };
+        },
+        fetchHoverClaimIds: async (ids) => {
+          const { data, error } = await supabase.from("hover_orders").select("claim_id").in("claim_id", ids);
+          return {
+            ids: (data || []).map((h: { claim_id: string }) => h.claim_id),
+            error: error?.message ?? null,
+          };
+        },
+        fetchActivity: async (userIds) => {
+          const { data, error } = await supabase
+            .from("activity_log")
+            .select("user_id, event_type, metadata, created_at")
+            .in("user_id", userIds);
+          return { rows: (data || []) as ActivityLogRow[], error: error?.message ?? null };
+        },
+        // deno-lint-ignore no-explicit-any
+        fetchOptedOut: (userIds, ids) => fetchOptedOutClaimIds(supabase as any, userIds, ids),
+        deliver: async ({ claim, stage, homeownerEmail, homeownerName }) =>
+          deliverStage(buildNudgeDeliverDeps(false), {
+            claimId: claim.id,
+            userId: claim.user_id,
+            stage,
+            homeownerEmail,
+            homeownerName,
+            measurementsUrl: `${siteUrl}/help-measurements.html`,
+            colorUrl: `${siteUrl}/color-selection.html?claim_id=${claim.id}`,
+            optOutUrl: buildOptOutUrl(
+              functionsBaseUrl,
+              await signOptOutToken(claim.id, optOutSecret as string),
+            ),
+          }),
+      },
+      testSend.claimIds,
+    );
+    return jsonResponse(outcome.body, outcome.status, corsHeaders);
+  }
 
   // gh-1933 review fix (D1)'s stalledForDigest array, declared HERE (rather
   // than just above the main claims loop, where it lived before gh-1570 Part
@@ -1107,24 +1255,7 @@ serve(async (req: Request) => {
       // fake dependencies instead of resting on the position of one `continue`
       // in this loop. Production behaviour is unchanged.
       const outcome = await deliverStage(
-        {
-          dryRun,
-          mailgunConfigured: Boolean(mailgunApiKey),
-          buildEmail: buildEmailContent,
-          insertActivityLog: async (row) => {
-            const { error } = await supabase.from("activity_log").insert(row);
-            return { error: error ?? null };
-          },
-          sendEmail: (to, name, mUrl, cUrl, oUrl) =>
-            sendMailgunEmail(mailgunApiKey as string, to, name, mUrl, cUrl, oUrl),
-          // gh-2069: the durable per-send record — same `notifications` table
-          // the admin digest already writes to, via the same insert path.
-          insertNotification: async (row) => {
-            const { error } = await supabase.from("notifications").insert(row);
-            return { error: error?.message ?? null };
-          },
-          log: (level, message) => console[level](`[${FUNCTION_NAME}] ${message}`),
-        },
+        buildNudgeDeliverDeps(dryRun),
         {
           claimId: claim.id,
           userId: claim.user_id,

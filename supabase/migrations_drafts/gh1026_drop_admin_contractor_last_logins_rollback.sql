@@ -1,3 +1,9 @@
+-- STATUS (gh-1438, as of 2026-09-30T12:32Z): NOT APPLIED
+-- FILE ROLE: rollback file of set gh1026_drop_admin_contractor_last_logins (the STATUS is the set's; it describes the forward migration)
+-- EVIDENCE: the DROP VIEW has not run (view still exists; authenticated SELECT already revoked live): comment 5494221280 (RW-DONE, PR #1471, supabase/migrations/MIGRATIONS-RECONCILIATION-1438.md Part 1, read-only queries 2026-09-01); comment 5850997376 (CLOSE-REVIEW 2026-09-26). Not re-measured since; re-query the live ledger before relying on it.
+-- REPO COPY: none in supabase/migrations/ or supabase/migrations_rollbacks/ for this file
+-- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
+--
 -- Rollback: gh1026_drop_admin_contractor_last_logins_rollback.sql
 -- Reverts: gh1026_drop_admin_contractor_last_logins.sql
 -- Status: DRAFT — forward migration not yet applied.

@@ -6,9 +6,44 @@
 # env var into js/config.js (replaces %%STRIPE_PK%% placeholder) at build time.
 # Keys are set per context below — no hardcoded Stripe keys in source files.
 
+# gh-2389 (second layer): measured on the first Deploy Preview that the 404
+# redirects below match EXACT CASE only, while Netlify's static lookup is
+# case-insensitive for directory names and root file names -- /Supabase/config.toml,
+# /Scripts/*.py, /README.MD, /REACT-APP/package.json all still returned 200.
+# The build command above therefore also deletes those directories and root
+# files from the publish dir, which is case-proof. Kept on disk on purpose:
+# netlify.toml, netlify/ (edge-function source, bundled after the build) and
+# react-app/app/lib/attribution-core.ts (imported by
+# netlify/edge-functions/first-touch-attribution.ts -- deleting react-app/
+# wholesale failed the deploy). Those are covered by the redirects only.
 [build]
   publish = "."
-  command = "sed -i \"s|%%STRIPE_PK%%|${STRIPE_PK}|g\" js/config.js && echo 'STRIPE_PK injected into js/config.js'"
+  command = "sed -i \"s|%%STRIPE_PK%%|${STRIPE_PK}|g\" js/config.js && echo 'STRIPE_PK injected into js/config.js' && rm -rf supabase scripts sql tests handoffs .github docs Docs Archive runbooks skills-for-code democracy deploy-checks forge-config otterquote-deploy .claude tools && find react-app -type f ! -path react-app/app/lib/attribution-core.ts -delete && find react-app -depth -type d -empty -delete && rm -f *.md *.py tools-e2e-test.txt .gitignore .gitattributes && echo 'repo internals removed from publish dir (gh-2389)'"
+
+# gh-2389: skip a PRODUCTION build when nothing the site serves changed.
+# Netlify semantics (docs.netlify.com/build/configure-builds/ignore-builds/):
+# ignore command exit 0 = no changes, SKIP the build; exit 1 = BUILD.
+# CACHED_COMMIT_REF = last commit Netlify built before this one, so several
+# skipped merges accumulate into the next diff (nothing is lost).
+# Deploy previews and branch deploys are not credit-metered, so only the
+# production context is gated; they still build as before.
+# Publish is "." so the site serves the whole repo; this list names ONLY the
+# trees/files that no served page references (verified by grep, gh-2389).
+# Any path NOT listed here still triggers a build (fails toward building).
+# Also BUILDS when: CACHED_COMMIT_REF is empty, equals COMMIT_REF (cache-less
+# rebuild / retry of the same commit), or git diff errors (e.g. ref missing).
+# CARVE-OUT: react-app/app/lib/attribution-core.ts is imported by
+# netlify/edge-functions/first-touch-attribution.ts and bundled into the site's
+# edge function, so a change to it must BUILD even though react-app is excluded.
+# Rule: any file imported (transitively) by anything under netlify/ must build;
+# scripts/netlify-ignore.test.py enforces this by parsing those imports.
+# Excluded: react-app (own site, own netlify.toml + base-dir check), supabase,
+# scripts, .github, sql, tests, handoffs, docs, Docs, .claude, Archive,
+# skills-for-code, runbooks, deploy-checks, forge-config,
+# otterquote-deploy, root-level *.md, .gitignore, .gitattributes.
+# Test: python3 scripts/netlify-ignore.test.py
+[context.production]
+  ignore = "[ -n \"$CACHED_COMMIT_REF\" ] && [ \"$CACHED_COMMIT_REF\" != \"$COMMIT_REF\" ] && git diff --quiet \"$CACHED_COMMIT_REF\" \"$COMMIT_REF\" -- react-app/app/lib/attribution-core.ts && git diff --quiet \"$CACHED_COMMIT_REF\" \"$COMMIT_REF\" -- . ':!react-app' ':!supabase' ':!scripts' ':!.github' ':!sql' ':!tests' ':!handoffs' ':!docs' ':!Docs' ':!.claude' ':!Archive' ':!skills-for-code' ':!runbooks' ':!deploy-checks' ':!forge-config' ':!otterquote-deploy' ':(exclude,glob)*.md' ':!.gitignore' ':!.gitattributes' || exit 1"
 
 # Stripe publishable key per deploy context (not secrets — publishable keys are client-safe)
 [context.production.environment]
@@ -202,3 +237,235 @@
 [[edge_functions]]
   path = "/guides/how-to-read-contractor-estimate"
   function = "blog-guides-redirect"
+
+# gh-2389 (R-134 protective): the build publishes the whole repo root
+# (`publish = "."`), so repository internals were world-readable on
+# otterquote.com -- measured 2026-09-30 with curl: /supabase/config.toml 200,
+# /supabase/functions/process-dunning/index.ts 200, /scripts/*.py 200,
+# /README.md 200, /react-app/package.json 200. Every rule below returns 404
+# for a non-site path. `force = true` is required: without it Netlify serves
+# the matching static file ahead of a redirect rule. No served page, script
+# or stylesheet loads any of these paths (grep in PR #gh-2389). Evaluation
+# order: `_redirects` rules run before these, so the gh-1795
+# /otterquote-deploy/blog/*.html 301s in `_redirects` still win over the
+# /otterquote-deploy/* block.
+
+[[redirects]]
+  from = "/supabase/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/scripts/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/sql/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/tests/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/handoffs/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/react-app/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/.github/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/docs/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/Docs/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/Archive/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/runbooks/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/skills-for-code/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/democracy/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/deploy-checks/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/forge-config/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/otterquote-deploy/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/.claude/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/tools/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+# Root-level non-site files (exact paths, plus globs for future files).
+
+[[redirects]]
+  from = "/README.md"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/CLAUDE.md"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/DOCUSIGN-SETUP.md"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/Deploy_Review_Checklist.md"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/SPENDING-CONTROLS.md"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/SUPABASE-SECRETS-SETUP.md"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/netlify.toml"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/package.json"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/package-lock.json"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/.gitignore"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/.gitattributes"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/tools-e2e-test.txt"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/*.md"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/*.py"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/*.toml"
+  to = "/404.html"
+  status = 404
+  force = true
+
+# netlify/ holds the edge-function source and cannot be deleted at build time.
+
+[[redirects]]
+  from = "/netlify/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/Netlify/*"
+  to = "/404.html"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/NETLIFY/*"
+  to = "/404.html"
+  status = 404
+  force = true

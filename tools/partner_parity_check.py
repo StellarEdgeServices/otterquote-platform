@@ -314,6 +314,12 @@ _FEE_CENSUS_SCRIPT_STYLE_RE = re.compile(
 _FEE_CENSUS_TAG_RE = re.compile(r"<[^>]+>")
 
 
+D341_LIABILITY_CAP_SENTENCE = (
+    "SHALL NOT EXCEED THE GREATER OF TOTAL COMMISSIONS PAID TO PARTNER IN THE "
+    "TWELVE (12) MONTHS PRECEDING THE CLAIM OR $100."
+)
+
+
 def _fee_sentence_pages(root: Path) -> set[str]:
     """Stems of *.html pages at the repo root whose own VISIBLE text
     contains a referral-fee sentence (dollar amount + "referral" in the
@@ -345,6 +351,12 @@ def _fee_sentence_pages(root: Path) -> set[str]:
         # bounds how far apart the amount and the fee-word can be, and with
         # newlines gone that bound is carried entirely by '.', '!', '?'.
         normalized = _norm(stripped)
+        # gh-2354 / D-341 (Dustin ruling, #2155 comment 5882472895): the inspector
+        # agreement's Section 13 liability-cap floor contains "$100" next to the
+        # word "commissions". That "$100" limits Otter Quotes' liability; it is not
+        # a fee offered to the partner. Only this EXACT sentence is excluded, so any
+        # other dollar amount near a fee word still trips the census.
+        normalized = normalized.replace(D341_LIABILITY_CAP_SENTENCE, " ")
         if _has_fee_sentence(normalized):
             found.add(path.stem)
     return found

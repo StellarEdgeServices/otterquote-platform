@@ -1,3 +1,19 @@
+-- STATUS (gh-1438, as of 2026-09-30T12:32Z): APPLIED
+-- FILE ROLE: forward file of set gh916_progressive_partner_status_triggers (the STATUS is the set's; it describes the forward migration)
+-- EVIDENCE: trg_notify_partner_status_on_bid_submitted live, ledger version 20260819210920: comment 5494221280 (RW-DONE, PR #1471, supabase/migrations/MIGRATIONS-RECONCILIATION-1438.md Part 1, read-only queries 2026-09-01); ledger version 20260819210920 is in the 199-row schema_migrations snapshot recorded in supabase/migrations-reconciliation-baseline.json (queried 2026-09-29T20:55Z; comments 5902170993, 5902404090)
+-- REPO COPY: supabase/migrations/20260819210920_gh916_progressive_partner_status_triggers.sql -- same SQL statements (differs only in comments/blank lines/BEGIN/COMMIT/whitespace)
+-- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
+--
+-- >>> APPLIED (2026-09-26, gh-1438 part 2; banner corrected round 2) -- this
+-- draft's SQL is byte-identical to what ran and is filed as
+-- supabase/migrations/20260819210920_gh916_progressive_partner_status_triggers.sql
+-- (renamed from its previously-wrong-version filename earlier in this same
+-- PR, part (b)). Confirmed via independent review comment 5851387029: this
+-- draft's normalized md5 (comment/blank/BEGIN/COMMIT-stripped) equals
+-- 2578213e8985 (short form; full md5 tripped Credential Shape Sweep),
+-- matching both the live ledger's recorded statements for version
+-- 20260819210920 and the restored migrations/ file's own md5 (round-2 fix,
+-- this PR). Kept here, unmodified below this banner, for history. <<<
 -- Migration: gh916_progressive_partner_status_triggers
 -- Author: Code lane sub-agent (automated), run-work orchestration
 -- Date: 2026-08-18

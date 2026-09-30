@@ -50,8 +50,13 @@ marked `class="inspector-hide"` in the source:
      "Termination does not relieve Partner of obligations under Sections 6, 8,
      14, 15 ...". The other mixed sentences remain KEPT per the same ruling.
 
-This is REMOVAL ONLY, apart from the one Section 4 heading in item 5 (whose
-new text is the only wording this script writes; the 4.3 statement under it
+  8. (gh-2354, D-341, Dustin ruling #2155 5882472895) The Section 13 liability
+     cap basis reads "THE GREATER OF TOTAL COMMISSIONS PAID TO PARTNER IN THE
+     TWELVE (12) MONTHS PRECEDING THE CLAIM OR $100" (source: "THE TOTAL
+     COMMISSIONS PAID ... PRECEDING THE CLAIM"). Inspector build only.
+
+This is REMOVAL ONLY, apart from the one Section 4 heading in item 5 and the
+Section 13 cap basis in item 8 (whose new text is the only wording this script writes; the 4.3 statement under it
 is copied verbatim from the source). Everything else in
 the document (title, meta tags, every other section, the footer, the
 tracking CSS/JS -- now inert since the hidden content no longer exists to
@@ -99,6 +104,18 @@ SECTION_8_FORFEITURE = " and forfeiture of any commission attributable to the vi
 SECTION_11_PAYOUT_SURVIVAL = (
     "affect commissions that were fully earned and approved for payout before "
     "the termination date, and does not "
+)
+# HI-0g (gh-2354, D-341, Dustin ruling #2155 5882472895 "Greater of fees or $100
+# (Recommended)"; build wording per #2354 body): the Section 13 cap basis for the
+# inspector build only. The one place this script ADDS words: "GREATER OF" and
+# "OR $100" (capitalization follows the source sentence, which is all caps).
+SECTION_13_CAP_OLD = (
+    "SHALL NOT EXCEED THE TOTAL COMMISSIONS PAID TO PARTNER IN THE TWELVE (12) "
+    "MONTHS PRECEDING THE CLAIM."
+)
+SECTION_13_CAP_NEW = (
+    "SHALL NOT EXCEED THE GREATER OF TOTAL COMMISSIONS PAID TO PARTNER IN THE "
+    "TWELVE (12) MONTHS PRECEDING THE CLAIM OR $100."
 )
 # (old, new, expected occurrences): each `new` is `old` with words removed.
 PHRASE_REMOVALS = [
@@ -173,6 +190,11 @@ def build_inspector_agreement(source_text: str) -> str:
         if text.count(old) != expected:
             raise ValueError(f"expected {expected} occurrence(s) of {old!r}, found {text.count(old)}")
         text = text.replace(old, new)
+
+    # 7. HI-0g (D-341): Section 13 liability cap floor (inspector build only).
+    if text.count(SECTION_13_CAP_OLD) != 1:
+        raise ValueError(f"expected 1 occurrence of {SECTION_13_CAP_OLD!r}, found {text.count(SECTION_13_CAP_OLD)}")
+    text = text.replace(SECTION_13_CAP_OLD, SECTION_13_CAP_NEW)
 
     return text
 

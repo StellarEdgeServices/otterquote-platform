@@ -420,7 +420,7 @@
             </section>
 
             <!-- Section 12: California Privacy Rights -->
-            <section>
+            <section id="do-not-sell-or-share">
                 <h2>12. California Privacy Rights (CPRA/CCPA)</h2>
                 <p>If you are a California resident, you have additional privacy rights under the California Consumer Privacy Rights Act (CPRA) and the California Consumer Privacy Act (CCPA):</p>
                 <ul>
@@ -434,6 +434,8 @@
                 </ul>
                 <p>To submit a CCPA/CPRA request, please contact us at <a href="mailto:support@otterquote.com">support@otterquote.com</a>. We will verify your identity and respond to your request within 45 days.</p>
                 <p>We treat a Global Privacy Control (GPC) signal sent by your browser as a request to opt out of the sale or sharing of your personal information for advertising purposes.</p>
+                <!-- gh-1925 item 2 (Dustin ruling 5881048326): the in-page opt-out control. Button text is the ruled string, verbatim. -->
+                <p><button type="button" id="oq-ad-optout-btn" class="btn btn-primary">Opt out of sale/sharing</button></p>
             </section>
 
             <!-- Section 13: Indiana-Specific Privacy Rights -->
@@ -492,5 +494,32 @@
 <script src="js/config.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/nav.js"></script>
+    <script>
+    // gh-1925 item 2: the section 12 button sets the SAME oq_ad_optout cookie the GPC path sets (1 year, Path=/, Domain=.otterquote.com
+    // on otterquote hosts, SameSite=Lax; identical to oqWriteAdOptOutCookie in js/meta-pixel-gate.js and the other three gates), which
+    // every gate reads on later page loads. No profile-flag write: no client-side write path exists (record-ad-sharing-opt-out is admin-only).
+    (function () {
+      var btn = document.getElementById('oq-ad-optout-btn');
+      if (!btn) { return; }
+      function optedOut() {
+        try {
+          var m = document.cookie.match(/(?:^|; )oq_ad_optout=([^;]*)/);
+          return !!(m && decodeURIComponent(m[1]) === '1');
+        } catch (e) { return false; }
+      }
+      function writeCookie() {
+        try {
+          var domainAttr = '';
+          if (/(^|\.)otterquote\.com$/.test(window.location.hostname)) { domainAttr = '; Domain=.otterquote.com'; }
+          document.cookie = 'oq_ad_optout=1; Max-Age=' + (60 * 60 * 24 * 365) + '; Path=/' + domainAttr + '; SameSite=Lax';
+        } catch (e) { /* never break a page over a cookie */ }
+      }
+      if (optedOut()) { btn.disabled = true; }
+      btn.addEventListener('click', function () {
+        writeCookie();
+        btn.disabled = true;
+      });
+    })();
+    </script>
 </body>
 </html>

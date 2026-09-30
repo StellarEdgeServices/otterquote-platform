@@ -359,7 +359,8 @@ const AD_QS = '?utm_source=meta&utm_medium=paid_social&utm_campaign=ins-1&utm_co
   const scriptStart = html.indexOf('<script', footerStart);
   const footerLinksBlock = html.slice(footerStart, scriptStart === -1 ? undefined : scriptStart);
   const hrefs = [...footerLinksBlock.matchAll(/href="([^"]+)"/g)].map((m) => m[1]).filter((h) => !/fonts\.googleapis|^https:\/\/app\.netlify/.test(h));
-  const allowed = new Set(['/partner-agreement.html', '/terms.html', '/privacy.html']);
+  // gh-1925 (Ben ruling 5896607701): the one CPRA opt-out link is the only addition to this footer.
+  const allowed = new Set(['/partner-agreement.html', '/terms.html', '/privacy.html', '/privacy.html#do-not-sell-or-share']);
   const disallowed = hrefs.filter((h) => !allowed.has(h));
   ok(disallowed.length === 0, 'ins-1.html (e) S07: only Privacy/Terms/Partner Agreement links after the footer -- extra: ' + JSON.stringify(disallowed));
 }
@@ -509,6 +510,22 @@ const AD_QS = '?utm_source=meta&utm_medium=paid_social&utm_campaign=ins-1&utm_co
   } catch (e) {
     failWithReason('ins-1.html (j) S20: an already-signed-in visitor lands on the confirmation, not the dashboard', e.message);
   }
+}
+
+// ── gh-2361 (CRO47 spec 3.3, PR b): partner trust header -- static guards ──
+// Sloane's rulings (#2361): logo + wordmark "Otter Quotes" + photo slot ONLY,
+// non-link, inside the existing data-skip-nav header; photo slot HIDDEN, no src.
+// The browser-level proof (P1-P5, PN1-PN4) is tests/cro47-trust-partner.mjs.
+{
+  const hm = /<header id="site-header"[^>]*data-skip-nav="true"[^>]*>([\s\S]*?)<\/header>/.exec(html);
+  ok(!!hm, 'ins-1.html gh-2361: #site-header still carries data-skip-nav="true" and now holds the trust block');
+  const inner = hm ? hm[1].replace(/<!--[\s\S]*?-->/g, '') : '';
+  ok(/<img[^>]*src="\/img\/brand-assets\/otter-quotes-icon-512\.png"[^>]*alt="Otter Quotes"/.test(inner), 'ins-1.html gh-2361: header holds the existing logo asset with the js/nav.js alt text');
+  ok(/>\s*Otter Quotes\s*</.test(inner), 'ins-1.html gh-2361: header holds the wordmark "Otter Quotes"');
+  ok(!/<a[\s>]/i.test(inner) && !/<button|onclick=/i.test(inner), 'ins-1.html gh-2361: the header trust block contains no link/button (non-link logo, no escape hatch)');
+  ok(/<img[^>]*id="oqTrustPhoto"/.test(inner) && !/id="oqTrustPhoto"[^>]*\ssrc=/.test(inner) && /\.oq-trust__photo:not\(\[src\]\)\s*\{\s*display:\s*none/.test(html), 'ins-1.html gh-2361: photo slot #oqTrustPhoto ships HIDDEN with no src (no placeholder image)');
+  const text = inner.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  ok(text === 'Otter Quotes', 'ins-1.html gh-2361: the ONLY visible header text is the wordmark -- got ' + JSON.stringify(text));
 }
 
 console.log('');

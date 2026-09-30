@@ -43,6 +43,11 @@
  * result; the phone walks in the Facebook in-app browser (issue's working test
  * points 1-6) remain Sloane's, in production.
  *
+ * gh-2362 (Ben's Tier B ruling, #2121 comment 5895347981): the order-dependent scenarios below were updated for
+ * funding -> CONTACT -> ADDRESS -> thanks. The lead is saved (and conversion / set_lead_role / the first
+ * record-lead-details call fire) at the contact submit; the address goes in through a second record-lead-details call.
+ * The new-order acceptance tests (T1-T9, N1-N5) live in tests/cro47-trust-start.mjs.
+ *
  * Run: node tests/gh2122-arm-f.mjs
  * Exit code 0 = every scenario passed, 1 = at least one failed.
  */
@@ -354,7 +359,8 @@ const COPY = (function () { const s = buildF(); return s.RVF.COPY; })();
 // ARM F COPY -- APPROVED (no-call variant), #2122 comment 5804614805, Dustin's ruling: 'Change "DUSTIN" to "we"'. Straight apostrophe (0x27).
 const APPROVED_NOCALL = "Thanks. We've got your request. We will email you shortly with next steps.";
 
-function toAddress(s, addr) { byId(s.root, 'rfAddress').value = addr; buttonByText(s.root, COPY.arm_f_s2_button_continue).dispatchClick(); }
+// gh-2362: the address screen is now the FINAL input screen ("Send My Info"); the contact screen's button is "Continue".
+function toAddress(s, addr) { byId(s.root, 'rfAddress').value = addr; buttonByText(s.root, COPY.arm_f_s3_button_submit).dispatchClick(); }
 function pickFunding(s, label) { buttonByText(s.root, label).dispatchClick(); }
 function fillContact(s, v) {
   byId(s.root, 'rfName').value = v.name != null ? v.name : '';
@@ -362,12 +368,15 @@ function fillContact(s, v) {
   byId(s.root, 'rfEmail').value = v.email != null ? v.email : '';
   byId(s.root, 'rfConsent').checked = !!v.consent;
 }
-function submit(s) { buttonByText(s.root, COPY.arm_f_s3_button_submit).dispatchClick(); }
+function submit(s) { buttonByText(s.root, COPY.arm_f_s2_button_continue).dispatchClick(); }
+// drive() now stops on the CONTACT screen (funding -> contact); the address is remembered for finish().
 function drive(s, v, funding) {
+  s._addr = v.address || '123 Main St, Indianapolis, IN 46204';
   pickFunding(s, funding || COPY.arm_f_s1_option_insurance);
-  toAddress(s, v.address || '123 Main St, Indianapolis, IN 46204');
   fillContact(s, v);
 }
+// After submit(): let the contact save settle, type the address on the address screen, send it, let that settle.
+async function finish(s) { await settleN(4); toAddress(s, s._addr); await settleN(4); }
 const GOOD = { name: 'Jane', phone: '(317) 255-0142', email: 'jane@example.com', consent: false };
 const CALLABLE = { name: 'Jane', phone: '(317) 255-0142', email: 'jane@example.com', consent: true }; // a phone AND a ticked box: the only lead the thank-you screen may promise a call to
 
@@ -411,8 +420,8 @@ async function main() {
     ok(s0.fakeWindow.__oqEarlyTap == null, 'no early tap: window.__oqEarlyTap stays unset through hydrate');
     pickFunding(s0, 'Paying cash');
     const v0 = s0.ev('router_step_view').map((e) => e.params.step);
-    ok(JSON.stringify(v0) === JSON.stringify(['f-funding', 'f-address']),
-      'SSR-hydrated screen 1, no early tap: a normal post-hydrate tap still advances f-funding -> f-address (' + v0.join(',') + ')');
+    ok(JSON.stringify(v0) === JSON.stringify(['f-funding', 'f-contact']),
+      'SSR-hydrated screen 1, no early tap: a normal post-hydrate tap still advances f-funding -> f-contact (' + v0.join(',') + ')');
 
     // A tap on "Paying cash" (index 1) BEFORE js/router-variant-f.js's
     // hydrateSsrFunding() ever runs -- the exact dead-window scenario.
@@ -420,8 +429,8 @@ async function main() {
     ok(s1.fakeWindow.__oqEarlyTap == null, 'the early tap is consumed and cleared by hydrateSsrFunding (not left set)');
     const v1 = s1.ev('router_step_view').map((e) => e.params.step);
     const c1 = s1.ev('router_step_complete').map((e) => e.params.step);
-    ok(JSON.stringify(v1) === JSON.stringify(['f-funding', 'f-address']),
-      'a tap in the SSR-to-hydrate dead window is replayed on hydrate, not lost: router_step_view f-funding then f-address (' + v1.join(',') + ')');
+    ok(JSON.stringify(v1) === JSON.stringify(['f-funding', 'f-contact']),
+      'a tap in the SSR-to-hydrate dead window is replayed on hydrate, not lost: router_step_view f-funding then f-contact (' + v1.join(',') + ')');
     ok(JSON.stringify(c1) === JSON.stringify(['f-funding']), 'exactly ONE router_step_complete (f-funding) from the replay -- no double-fire');
     ok(s1.insertCalls.length === 0, 'the replay only advances the step; screen 1 still writes nothing, same as a normal tap');
     ok(flatten(s1.root).map((c) => c.textContent).join('|').indexOf(COPY.arm_f_s1_headline) === -1,
@@ -429,7 +438,6 @@ async function main() {
     // Finish the flow (screen 1 is already behind us) and confirm the
     // replayed tap chose the RIGHT button (index 1, "Paying cash" ->
     // funding 'cash'), not just some advance.
-    toAddress(s1, '123 Main St, Indianapolis, IN 46204');
     fillContact(s1, GOOD);
     submit(s1); await settleN(4);
     ok(s1.detailsCalls.length === 1 && s1.detailsCalls[0].body.funding_type === 'cash',
@@ -443,25 +451,28 @@ async function main() {
     ok(JSON.stringify(c2) === JSON.stringify(['f-funding']), 'two early taps before hydrate still replay only once (first tap wins, second is ignored)');
   }
 
-  // ═══ F2: funding -> address -> contact; validation; step events. ═══
+  // ═══ F2: funding -> contact -> address; validation; step events. ═══
   {
     const s = buildF();
     pickFunding(s, COPY.arm_f_s1_option_cash);
     ok(s.ev('router_funding_selected').length === 0 && s.gtagCalls.every((c) => JSON.stringify(c.params).indexOf('cash') === -1),
       'the funding tap fires NO funding event and the funding value appears in no analytics call (Ben: no funding in GA4/Meta)');
-    ok(byId(s.root, 'rfAddress') && byId(s.root, 'rfAddress').getAttribute('placeholder') === COPY.arm_f_s2_placeholder, 'screen 2 shows the address field with the approved placeholder');
-    ok(flatten(s.root).filter((c) => c.tagName === 'INPUT').length === 1, 'screen 2 is a single text field (no autocomplete exists in /start)');
-    buttonByText(s.root, COPY.arm_f_s2_button_continue).dispatchClick();
+    ok(byId(s.root, 'rfName') && byId(s.root, 'rfPhone') && byId(s.root, 'rfEmail') && !byId(s.root, 'rfAddress'), 'screen 2 (after funding) is the CONTACT screen, with no address field (gh-2362)');
+    fillContact(s, GOOD); submit(s); await settleN(4);
+    ok(byId(s.root, 'rfAddress') && byId(s.root, 'rfAddress').getAttribute('placeholder') === COPY.arm_f_s2_placeholder, 'screen 3 shows the address field with the approved placeholder');
+    ok(flatten(s.root).filter((c) => c.tagName === 'INPUT').length === 1, 'screen 3 is a single text field (no autocomplete exists in /start)');
+    ok(!byId(s.root, 'rfName') && !byId(s.root, 'rfPhone') && !byId(s.root, 'rfEmail') && !byId(s.root, 'rfConsent'), 'the address screen holds none of the contact fields');
+    buttonByText(s.root, COPY.arm_f_s3_button_submit).dispatchClick();
     ok(flatten(s.root).some((c) => c.textContent === COPY.arm_f_s2_error_required), 'an empty address shows the approved required error and does not advance');
-    ok(s.ev('router_step_view').filter((e) => e.params.step === 'f-contact').length === 0, 'no f-contact view while the address is empty');
-    toAddress(s, '123 Main St, Indianapolis, IN 46204');
+    ok(s.ev('router_step_view').filter((e) => e.params.step === 'f-thanks').length === 0, 'no f-thanks view while the address is empty');
+    toAddress(s, '123 Main St, Indianapolis, IN 46204'); await settleN(4);
     const views = s.ev('router_step_view').map((e) => e.params.step + ':' + e.params.step_index);
-    ok(JSON.stringify(views) === JSON.stringify(['f-funding:1', 'f-address:2', 'f-contact:3']), 'views f-funding:1, f-address:2, f-contact:3 in order (' + views.join(',') + ')');
+    ok(JSON.stringify(views) === JSON.stringify(['f-funding:1', 'f-contact:2', 'f-address:3', 'f-thanks:4']), 'views f-funding:1, f-contact:2, f-address:3, f-thanks:4 in order (' + views.join(',') + ')');
     const comp = s.ev('router_step_complete').map((e) => e.params.step + ':' + e.params.step_index);
-    ok(JSON.stringify(comp) === JSON.stringify(['f-funding:1', 'f-address:2']), 'completes f-funding:1 and f-address:2 carry step_index (' + comp.join(',') + ')');
+    ok(JSON.stringify(comp) === JSON.stringify(['f-funding:1', 'f-contact:2', 'f-address:3']), 'completes f-funding:1, f-contact:2 and f-address:3 carry step_index (' + comp.join(',') + ')');
   }
 
-  // ═══ F3: screen 3 markup and validation. ═══
+  // ═══ F3: the contact screen (screen 2 since gh-2362): markup and validation. ═══
   {
     const s = buildF();
     drive(s, GOOD);
@@ -500,7 +511,7 @@ async function main() {
     ok(s.insertCalls.length === 1, 'exactly one leads insert on submit');
     const ins = s.insertCalls[0];
     ok(ins.name === 'Jane' && ins.email === 'jane@example.com' && ins.phone === '3172550142', 'insert carries name, lower-cased email and 10-digit phone (' + JSON.stringify([ins.name, ins.email, ins.phone]) + ')');
-    ok(ins.extra && ins.extra.zip === '46204' && Object.keys(ins.extra).join() === 'zip', 'the only extra column is zip, parsed from the address (existing column; funding/address/fbc have NO column yet)');
+    ok(ins.extra && Object.keys(ins.extra).length === 0, 'the insert carries NO extra column: no zip (the address is not known yet at the contact step; leads.zip stays NULL for Arm F), and funding/address/fbc have NO column on the insert');
     const firedBeforeInsert = s.gtagCalls.slice(0, ins.eventsBefore).map((c) => c.name);
     ok(['router_contact_submitted', 'generate_lead'].every((n) => firedBeforeInsert.indexOf(n) === -1) && s.ev('router_contact_submitted').length === 1,
       'the lead insert happens BEFORE any submit/conversion event (events before insert: ' + firedBeforeInsert.join(',') + ')');
@@ -524,7 +535,7 @@ async function main() {
   {
     const s = buildF({ ua: FB_UA });
     drive(s, GOOD);
-    submit(s); await settleN(3);
+    submit(s); await finish(s);
     const routerish = s.gtagCalls.filter((c) => c.action === 'event');
     const bad = routerish.filter((c) => !(c.params.variant === 'f' && typeof c.params.step === 'string' && typeof c.params.step_index === 'number' && c.params.ua_context === 'fb_iab'));
     ok(routerish.length >= 8 && bad.length === 0, 'all ' + routerish.length + ' events carry variant f / step / numeric step_index / ua_context (offenders: ' + bad.map((c) => c.name + ':' + c.params.step).join(',') + ')');
@@ -543,7 +554,7 @@ async function main() {
     const s = buildF();
     drive(s, GOOD);
     submit(s); submit(s); // double tap while the insert is in flight
-    await settleN(4);
+    await finish(s);
     ok(s.insertCalls.length === 1, 'a double-tap on submit still inserts exactly one lead');
     const gl = s.ev('generate_lead');
     ok(gl.length === 1, 'GA4 generate_lead fires exactly once');
@@ -554,12 +565,12 @@ async function main() {
     const idxThanks = s.gtagCalls.findIndex((c) => c.name === 'router_step_view' && c.params.step === 'f-thanks');
     ok(idxGL >= 0 && idxThanks > idxGL, 'the conversion fires BEFORE the thank-you view (generate_lead at ' + idxGL + ', f-thanks view at ' + idxThanks + ')');
     ok(s.redirects.length === 0 && s.fakeWindow.location.href === PAGE_URL, 'no redirect has happened yet when the conversion is counted (location is still the /start page)');
-    ok(s.ev('router_contact_submitted').length === 1 && s.ev('router_contact_submitted')[0].params.step === 'f-contact' && s.ev('router_contact_submitted')[0].params.step_index === 3,
-      'router_contact_submitted fires once {f-contact, step_index 3}');
+    ok(s.ev('router_contact_submitted').length === 1 && s.ev('router_contact_submitted')[0].params.step === 'f-contact' && s.ev('router_contact_submitted')[0].params.step_index === 2,
+      'router_contact_submitted fires once {f-contact, step_index 2}');
     const thanks = s.ev('router_step_view').filter((e) => e.params.step === 'f-thanks');
     ok(thanks.length === 1 && thanks[0].params.step_index === 4, 'the thank-you screen fires router_step_view {f-thanks, step_index 4}');
-    ok(s.ev('router_step_complete').filter((e) => e.params.step === 'f-contact').length === 1 && s.ev('router_step_complete').find((e) => e.params.step === 'f-contact').params.step_index === 3,
-      'router_step_complete for f-contact carries step_index 3 (the #2096 CLOSE-REVIEW defect class)');
+    ok(s.ev('router_step_complete').filter((e) => e.params.step === 'f-contact').length === 1 && s.ev('router_step_complete').find((e) => e.params.step === 'f-contact').params.step_index === 2,
+      'router_step_complete for f-contact carries step_index 2 (the #2096 CLOSE-REVIEW defect class)');
   }
 
   // ═══ F8: NEGATIVE CONTROL -- a failed insert counts nothing, shows the approved error, and a retry counts once. ═══
@@ -571,7 +582,7 @@ async function main() {
       'NEGATIVE CONTROL: a failed insert fires NO generate_lead, NO Meta Lead, NO router_contact_submitted');
     ok(s.rpcCalls.length === 0, 'a failed insert never calls set_lead_role');
     ok(flatten(s.root).some((c) => c.textContent === COPY.arm_f_error_generic), 'a failed insert shows the approved generic error');
-    ok(!buttonByText(s.root, COPY.arm_f_s3_button_submit).disabled, 'the submit button is re-enabled for a retry');
+    ok(!buttonByText(s.root, COPY.arm_f_s2_button_continue).disabled, 'the submit button is re-enabled for a retry');
     ok(s.ev('router_step_view').filter((e) => e.params.step === 'f-thanks').length === 0, 'no thank-you screen after a failed save');
     submit(s); await settleN(3);
     ok(s.insertCalls.length === 2 && s.ev('generate_lead').length === 1 && s.leadFbq().length === 1, 'the retry succeeds and counts exactly one conversion');
@@ -579,19 +590,21 @@ async function main() {
 
   // ═══ F9: set_lead_role error / hang never blocks the thank-you screen or loses the count. ═══
   {
-    const e = buildF({ roleMode: 'error' }); drive(e, GOOD); submit(e); await settleN(4);
+    const e = buildF({ roleMode: 'error' }); drive(e, GOOD); submit(e); await finish(e);
     await new Promise((r) => setTimeout(r, 200));
     ok(e.ev('router_step_view').some((v) => v.params.step === 'f-thanks') && e.leadFbq().length === 1, 'set_lead_role returning an error still reaches the thank-you screen with one Lead');
     const h = buildF({ roleMode: 'hang' }); drive(h, GOOD); submit(h); await settleN(3);
     ok(h.leadFbq().length === 1 && h.ev('generate_lead').length === 1, 'set_lead_role hanging does not delay the conversion count');
     await new Promise((r) => setTimeout(r, 300));
     ok(h.detailsCalls.length === 1, 'a hung set_lead_role does not delay the details/consent call at all: it started immediately');
-    ok(h.ev('router_step_view').some((v) => v.params.step === 'f-thanks'), 'a hung set_lead_role falls through to the thank-you screen after the guard timeout');
+    ok(byId(h.root, 'rfAddress'), 'a hung set_lead_role does not hold the visitor on the contact screen: the address screen shows at once');
+    toAddress(h, h._addr); await new Promise((r) => setTimeout(r, 300));
+    ok(h.ev('router_step_view').some((v) => v.params.step === 'f-thanks'), 'a hung set_lead_role does not block the thank-you screen after the address');
   }
 
   // ═══ F10: thank-you screen -- copy, business-hours promise, two deep links, no second conversion. ═══
   {
-    function thanks(nowIso, lead) { const s = buildF({ nowIso }); drive(s, lead || CALLABLE); submit(s); return settleN(4).then(() => s); }
+    function thanks(nowIso, lead) { const s = buildF({ nowIso }); drive(s, lead || CALLABLE); submit(s); return finish(s).then(() => s); }
     const inWin = await thanks('2026-09-23T15:00:00Z'); // 11:00 Indianapolis
     const t1 = flatten(inWin.root).map((c) => c.textContent);
     ok(t1.indexOf(COPY.arm_f_s4_headline) !== -1 && t1.indexOf(COPY.arm_f_s4_body_in_window) !== -1 && t1.indexOf(COPY.arm_f_s4_body_after_hours) === -1, 'inside 8am-8pm the in-window body shows and the after-hours body does not');
@@ -628,7 +641,7 @@ async function main() {
     const NOCALL = COPY.arm_f_s4_confirm_email_only;
     const promises = (s) => flatten(s.root).some((c) => c.textContent === COPY.arm_f_s4_body_in_window || c.textContent === COPY.arm_f_s4_body_after_hours);
     const says = (s, t) => flatten(s.root).some((c) => c.textContent === t);
-    async function shown(lead, nowIso) { const s = buildF({ nowIso: nowIso || '2026-09-23T15:00:00Z' }); drive(s, lead); submit(s); await settleN(4); return s; }
+    async function shown(lead, nowIso) { const s = buildF({ nowIso: nowIso || '2026-09-23T15:00:00Z' }); drive(s, lead); submit(s); await finish(s); return s; }
     ok(NOCALL === APPROVED_NOCALL, 'the no-call line is BYTE-IDENTICAL to the approved string (ARM F COPY -- APPROVED, no-call variant)');
     ok(NOCALL !== COPY.arm_f_s4_body_in_window && NOCALL !== COPY.arm_f_s4_body_after_hours, 'the no-call line is a distinct string from both call variants');
     const emailOnly = await shown({ name: 'Jane', phone: '', email: 'jane@example.com', consent: false });
@@ -646,7 +659,7 @@ async function main() {
     const callableLate = await shown(CALLABLE, '2026-09-24T02:00:00Z');
     ok(says(callableLate, COPY.arm_f_s4_body_after_hours) && !says(callableLate, NOCALL), 'phone + ticked box, after hours -> the after-hours call variant');
     // the screen choice changes what is SHOWN, never what is stored or counted, and the box is never presumed ticked
-    ok(emailOnly.detailsCalls.length === 1 && emailOnly.detailsCalls[0].body.consent.given === false, 'the consent record is still written for a no-phone lead (given:false)');
+    ok(emailOnly.detailsCalls.length === 2 && emailOnly.detailsCalls.every((c) => c.body.consent.given === false), 'the consent record is still written for a no-phone lead (given:false), on both details calls');
     ok(phoneUnticked.detailsCalls[0].body.consent.given === false, 'an unticked box is STILL recorded given:false even though the screen shows the call variant (no dialer may ever treat this lead as consented)');
     ok(emailOnly.ev('generate_lead').length === 1, 'a no-call lead still counts exactly one conversion');
     ok(JSON.stringify(buttons(emailOnly.root).map((b) => b.textContent)) === JSON.stringify([COPY.arm_f_s4_button_measure, COPY.arm_f_s4_button_losssheet]), 'the two CTA buttons still show for a no-call lead');
@@ -657,75 +670,88 @@ async function main() {
   // ═══ F11: abandonment. Before the save a pagehide IS an abandon; after the save it is NOT. Negative control removes the guard. ═══
   {
     const pre = buildF();
-    pickFunding(pre, COPY.arm_f_s1_option_cash); // now on f-address
+    pickFunding(pre, COPY.arm_f_s1_option_cash); // now on f-contact
     pre.firePagehide();
     const ab = pre.ev('router_step_abandoned');
-    ok(ab.length === 1 && ab[0].params.step === 'f-address' && ab[0].params.step_index === 2 && ab[0].params.variant === 'f' && ab[0].params.ua_context === 'other',
-      'a pagehide on screen 2 fires router_step_abandoned {f-address, 2, variant f, ua_context} -- the drop-off layer works for F');
-    const post = buildF(); drive(post, GOOD); submit(post); await settleN(4);
+    ok(ab.length === 1 && ab[0].params.step === 'f-contact' && ab[0].params.step_index === 2 && ab[0].params.variant === 'f' && ab[0].params.ua_context === 'other',
+      'a pagehide on screen 2 (contact, before the save) fires router_step_abandoned {f-contact, 2, variant f, ua_context} -- the drop-off layer works for F');
+    const post = buildF(); drive(post, GOOD); submit(post); await finish(post);
     post.firePagehide();
-    ok(post.ev('router_step_abandoned').length === 0, 'after the lead is saved a pagehide fires NO router_step_abandoned (thank-you is not a drop-off)');
-    const ctl = buildF({ noSuppress: true }); drive(ctl, GOOD); submit(ctl); await settleN(4);
+    ok(post.ev('router_step_abandoned').length === 0, 'after the address is sent (thank-you) a pagehide fires NO router_step_abandoned (thank-you is not a drop-off)');
+    const ctl = buildF({ noSuppress: true }); drive(ctl, GOOD); submit(ctl); await finish(ctl);
     ctl.firePagehide();
     ok(ctl.ev('router_step_abandoned').length === 1 && ctl.ev('router_step_abandoned')[0].params.step === 'f-thanks',
       'NEGATIVE CONTROL: with markLeadSaved() removed the false router_step_abandoned{f-thanks} DOES fire, so the suppression above is what prevents it');
   }
 
-  // ═══ F13: the details + consent call -- exact body, byte-identical consent, server-bound only. ═══
+  // ═══ F13: the details + consent calls -- exact bodies, byte-identical consent, server-bound only. gh-2362: TWO calls per
+  // session: the contact call (property_address null) at the contact submit, then the address call. ═══
   {
     const s = buildF({ ua: FB_UA });
     drive(s, { name: 'Jane', phone: '(317) 255-0142', email: 'jane@example.com', consent: true, address: '123 Main St, Indianapolis, IN 46204' }, COPY.arm_f_s1_option_insurance);
     submit(s); await settleN(4);
-    ok(s.detailsCalls.length === 1 && s.detailsCalls[0].name === 'record-lead-details', 'exactly one call to the record-lead-details Edge Function on success');
+    ok(s.detailsCalls.length === 1 && s.detailsCalls[0].name === 'record-lead-details', 'exactly one call to the record-lead-details Edge Function at the contact submit (the address is not yet known)');
     const b = s.detailsCalls[0] && s.detailsCalls[0].body;
     ok(!!b && b.lead_id === '00000000-0000-4000-8000-000000000001', 'the body carries the saved lead id');
-    ok(b.funding_type === 'insurance' && b.property_address === '123 Main St, Indianapolis, IN 46204', 'the body carries the funding answer and the address');
+    ok(b.funding_type === 'insurance' && b.property_address === null, 'the contact body carries the funding answer and a NULL address');
     ok(b.fbc === 'fb.1.1700000000.cookieFbc' && b.fbp === 'fb.1.1700000000.cookieFbp', 'the body carries fbc and fbp from the Meta cookies');
     ok(b.consent && b.consent.key === 'arm_f_s3_consent_checkbox' && b.consent.given === true && b.consent.text === APPROVED_CONSENT,
       'the consent record is {key arm_f_s3_consent_checkbox, given true, text BYTE-IDENTICAL to the approved draft}');
     ok(b.page_url === PAGE_URL, 'the body carries the page URL');
-    ok(JSON.stringify(b.submitted_fields) === JSON.stringify(['name', 'phone', 'email', 'address', 'funding']), 'the body lists which fields were submitted (no values)');
+    ok(JSON.stringify(b.submitted_fields) === JSON.stringify(['name', 'phone', 'email', 'funding']), 'the body lists which fields were submitted (no values; no address yet)');
     ok(!('ip' in b) && !('user_agent' in b), 'the client sends NO ip or user_agent: the Edge Function observes them itself');
     ok(b.phone_as_typed === '(317) 255-0142', 'D-299: the body carries the phone AS TYPED, before normalisation (' + JSON.stringify(b.phone_as_typed) + ')');
-    ok(b.form_payload && b.form_payload.name === 'Jane' && b.form_payload.phone === '(317) 255-0142' && b.form_payload.email === 'jane@example.com' && b.form_payload.address === '123 Main St, Indianapolis, IN 46204' && b.form_payload.funding_type === 'insurance',
-      'D-299: the body carries the form payload -- the submitted VALUES (name, phone as typed, email, address, funding)');
+    ok(b.form_payload && b.form_payload.name === 'Jane' && b.form_payload.phone === '(317) 255-0142' && b.form_payload.email === 'jane@example.com' && b.form_payload.funding_type === 'insurance' && !('address' in b.form_payload),
+      'D-299: the body carries the form payload -- the submitted VALUES (name, phone as typed, email, funding); no address in it yet');
     const call = s.detailsCalls[0];
     ok(call.init.keepalive === true && call.init.method === 'POST', 'the details request is a keepalive POST (the browser lets it finish after the page is gone)');
     ok(Object.keys(call.init.headers).join() === 'Content-Type' && /^text\/plain/.test(call.init.headers['Content-Type']), 'it is a SIMPLE request: Content-Type text/plain and NO custom header, so there is no CORS preflight to fail during unload');
     ok(/^https:\/\/proj\.supabase\.co\/functions\/v1\/record-lead-details\?apikey=anon-key-123$/.test(call.url), 'the anon key rides as a query parameter (a header would force a preflight): ' + call.url);
     ok(!/Authorization|apikey/i.test(JSON.stringify(call.init.headers)), 'no Authorization or apikey header is sent');
+    toAddress(s, '123 Main St, Indianapolis, IN 46204'); await settleN(4);
+    ok(s.detailsCalls.length === 2 && s.detailsCalls[1].name === 'record-lead-details', 'the address submit makes exactly ONE more record-lead-details call (two in the session)');
+    const b2 = s.detailsCalls[1].body;
+    ok(b2.lead_id === b.lead_id && b2.property_address === '123 Main St, Indianapolis, IN 46204' && b2.funding_type === 'insurance', 'the address body carries the SAME lead id and the address');
+    ok(JSON.stringify(b2.consent) === JSON.stringify(b.consent), 'the address body re-sends the consent object deep-equal to the first (same key, same given, same text)');
+    ok(b2.form_payload && b2.form_payload.address === '123 Main St, Indianapolis, IN 46204', 'the address body carries the address as typed in its form payload');
+    ok(s.insertCalls.length === 1, 'the address is an UPDATE via the Edge Function: no second leads insert');
     ok(s.sentry.length === 0, 'no Sentry report on success');
     const u = buildF({ ua: FB_UA }); drive(u, { name: 'Jane', phone: '(317) 255-0142', email: '', consent: false }); submit(u); await settleN(4);
     ok(u.detailsCalls[0].body.consent.given === false && u.detailsCalls[0].body.consent.text === APPROVED_CONSENT, 'an UNTICKED box is recorded as given:false with the same exact text (evidence of what was displayed)');
-    ok(JSON.stringify(u.detailsCalls[0].body.submitted_fields) === JSON.stringify(['name', 'phone', 'address', 'funding']), 'phone-only: email is not listed as submitted');
+    ok(JSON.stringify(u.detailsCalls[0].body.submitted_fields) === JSON.stringify(['name', 'phone', 'funding']), 'phone-only: email is not listed as submitted');
     const nocookie = buildF({ cookie: '' }); drive(nocookie, GOOD); submit(nocookie); await settleN(4);
     ok(/^fb\.1\.\d+\.IwAR123$/.test(nocookie.detailsCalls[0].body.fbc) && nocookie.detailsCalls[0].body.fbp === null, 'with no _fbc cookie, fbc is derived from the fbclid in the URL; a missing _fbp is null');
   }
 
-  // ═══ F14: ONE retry, then Sentry (lead id only); never blocks; never a second conversion. ═══
+  // ═══ F14: ONE retry, then Sentry (lead id only); never blocks; never a second conversion. Two calls per session (gh-2362). ═══
   {
-    const once = buildF({ detailsMode: 'fail-once' }); drive(once, GOOD); submit(once); await settleN(4);
-    await new Promise((r) => setTimeout(r, 100));
-    ok(once.detailsCalls.length === 2 && once.sentry.length === 0, 'a first failure is retried once; the retry succeeds and nothing is reported');
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    const once = buildF({ detailsMode: 'fail-once' }); drive(once, GOOD); submit(once); await finish(once);
+    await wait(100);
+    ok(once.detailsCalls.length === 3 && once.sentry.length === 0, 'a first failure (contact call) is retried once; the retry succeeds, the address call follows, nothing is reported (3 calls: ' + once.detailsCalls.length + ')');
     const bad = buildF({ detailsMode: 'fail-always' }); drive(bad, GOOD); submit(bad); await settleN(4);
-    await new Promise((r) => setTimeout(r, 200));
-    ok(bad.detailsCalls.length === 2, 'a persistent failure makes exactly TWO calls (one retry, not a loop)');
-    ok(bad.sentry.length === 1 && /record-lead-details failed after 2 attempt/.test(bad.sentry[0].msg), 'the final failure is reported to Sentry once: "' + (bad.sentry[0] && bad.sentry[0].msg) + '"');
+    await wait(100);
+    ok(bad.detailsCalls.length === 2, 'a persistent failure of the contact call makes exactly TWO calls (one retry, not a loop)');
+    ok(byId(bad.root, 'rfAddress'), 'a failing contact details call does NOT hold the visitor on the contact screen: the address screen shows');
+    toAddress(bad, bad._addr); await settleN(4); await wait(200);
+    ok(bad.detailsCalls.length === 4, 'a persistent failure of the address call also makes exactly TWO calls (4 in the session)');
+    ok(bad.sentry.length === 2 && bad.sentry.every((r) => /record-lead-details failed after 2 attempt/.test(r.msg)), 'each final failure is reported to Sentry once: "' + (bad.sentry[0] && bad.sentry[0].msg) + '"');
     const rep = JSON.stringify(bad.sentry);
     ok(rep.indexOf('Main St') === -1 && rep.indexOf('autodialer') === -1 && rep.indexOf('jane@example.com') === -1 && rep.indexOf('317') === -1 && rep.indexOf('insurance') === -1,
-      'the Sentry report carries NO address, consent text, email, phone or funding answer');
-    ok(bad.sentry[0].ctx.extra.lead_id === '00000000-0000-4000-8000-000000000001', 'the Sentry report carries the lead id');
-    ok(bad.ev('router_step_view').some((v) => v.params.step === 'f-thanks'), 'a failing details call does NOT block the thank-you screen');
-    ok(bad.ev('generate_lead').length === 1 && bad.leadFbq().length === 1, 'a failing details call does not count a second conversion or lose the first');
-    const oos = buildF({ detailsMode: 'out-of-scope' }); drive(oos, GOOD); submit(oos); await settleN(4);
-    await new Promise((r) => setTimeout(r, 100));
-    ok(oos.detailsCalls.length === 1 && oos.sentry.length === 1, 'lead_out_of_scope is NOT retried (it cannot succeed) but is reported');
+      'the Sentry reports carry NO address, consent text, email, phone or funding answer');
+    ok(bad.sentry.every((r) => r.ctx.extra.lead_id === '00000000-0000-4000-8000-000000000001'), 'the Sentry reports carry the lead id');
+    ok(bad.ev('router_step_view').some((v) => v.params.step === 'f-thanks'), 'failing details calls do NOT block the thank-you screen');
+    ok(bad.ev('generate_lead').length === 1 && bad.leadFbq().length === 1, 'failing details calls do not count a second conversion or lose the first');
+    const oos = buildF({ detailsMode: 'out-of-scope' }); drive(oos, GOOD); submit(oos); await finish(oos);
+    await wait(100);
+    ok(oos.detailsCalls.length === 2 && oos.sentry.length === 2, 'lead_out_of_scope is NOT retried (it cannot succeed) but is reported (one call and one report per step)');
     const notok = buildF({ detailsMode: 'notok' }); drive(notok, GOOD); submit(notok); await settleN(4);
-    await new Promise((r) => setTimeout(r, 200));
-    ok(notok.detailsCalls.length === 2 && notok.sentry.length === 1, 'an ok:false response is treated as a failure: retried once, then reported');
-    const hang = buildF({ detailsMode: 'hang' }); drive(hang, GOOD); submit(hang); await settleN(4);
-    await new Promise((r) => setTimeout(r, 200));
-    ok(hang.ev('router_step_view').some((v) => v.params.step === 'f-thanks'), 'a HUNG details call falls through to the thank-you screen after the flow guard');
+    await wait(200);
+    toAddress(notok, notok._addr); await settleN(4); await wait(200);
+    ok(notok.detailsCalls.length === 4 && notok.sentry.length === 2, 'an ok:false response is treated as a failure: retried once, then reported (per call)');
+    const hang = buildF({ detailsMode: 'hang' }); drive(hang, GOOD); submit(hang); await finish(hang);
+    await wait(200);
+    ok(hang.ev('router_step_view').some((v) => v.params.step === 'f-thanks'), 'a HUNG address details call falls through to the thank-you screen after the flow guard');
     const failInsert = buildF({ insertFails: 1 }); drive(failInsert, GOOD); submit(failInsert); await settleN(4);
     ok(failInsert.detailsCalls.length === 0, 'NEGATIVE CONTROL: a failed insert makes NO details call (there is no lead to attach it to)');
   }
@@ -734,7 +760,7 @@ async function main() {
   {
     const s = buildF({ ua: FB_UA });
     drive(s, { name: 'Jane', phone: '(317) 255-0142', email: 'jane@example.com', consent: true, address: '123 Main St, Indianapolis, IN 46204' }, COPY.arm_f_s1_option_insurance);
-    submit(s); await settleN(4);
+    submit(s); await finish(s);
     const everything = JSON.stringify([s.gtagCalls, s.fbqCalls, s.clarityCalls]);
     const banned = ['Main St', '46204', 'Jane', 'jane@example.com', '2550142', 'autodialer', 'call or text', 'cookieFbc', 'cookieFbp', 'IwAR123'];
     const leaked = banned.filter((t) => everything.indexOf(t) !== -1);
@@ -750,10 +776,10 @@ async function main() {
 
   // ═══ F16: set_lead_role is retried once and reported (the #1932 alert only fires when it succeeds). ═══
   {
-    const once = buildF({ roleMode: 'fail-once' }); drive(once, GOOD); submit(once); await settleN(4);
+    const once = buildF({ roleMode: 'fail-once' }); drive(once, GOOD); submit(once); await finish(once);
     await new Promise((r) => setTimeout(r, 200));
     ok(once.rpcCalls.filter((c) => c.name === 'set_lead_role').length === 2 && once.sentry.length === 0, 'a failing set_lead_role is retried once; the retry succeeds and nothing is reported');
-    const bad = buildF({ roleMode: 'error' }); drive(bad, GOOD); submit(bad); await settleN(4);
+    const bad = buildF({ roleMode: 'error' }); drive(bad, GOOD); submit(bad); await finish(bad);
     await new Promise((r) => setTimeout(r, 300));
     ok(bad.rpcCalls.filter((c) => c.name === 'set_lead_role').length === 2, 'a persistent set_lead_role failure makes exactly TWO calls (one retry, not a loop)');
     const roleReport = bad.sentry.find((r) => /set_lead_role/.test(r.msg));
@@ -771,7 +797,7 @@ async function main() {
   {
     const t = buildF({ insertThrows: true }); drive(t, GOOD); submit(t); await settleN(4);
     ok(flatten(t.root).some((c) => c.textContent === COPY.arm_f_error_generic), 'a synchronous throw from insertFreshLead shows the approved generic error');
-    ok(!buttonByText(t.root, COPY.arm_f_s3_button_submit).disabled, 'the submit button is re-enabled after a synchronous throw (it stayed disabled forever before this fix)');
+    ok(!buttonByText(t.root, COPY.arm_f_s2_button_continue).disabled, 'the submit button is re-enabled after a synchronous throw (it stayed disabled forever before this fix)');
     ok(t.ev('generate_lead').length === 0 && t.leadFbq().length === 0 && t.detailsCalls.length === 0 && t.rpcCalls.length === 0, 'a synchronous throw counts no conversion and makes no details or role call');
   }
 
@@ -791,22 +817,23 @@ async function main() {
     const c3 = buildF(); drive(c3, GOOD);
     ok(/(^| )rf-consent( |$)/.test(byId(c3.root, 'rfConsent').parentNode.className), 'the consent checkbox sits inside the .rf-consent flex row the CSS targets');
     const mid = buildF({ Intl: { DateTimeFormat: function () { return { formatToParts: () => [{ type: 'hour', value: '24' }] }; } } });
-    drive(mid, CALLABLE); submit(mid); await settleN(4);
+    drive(mid, CALLABLE); submit(mid); await finish(mid);
     ok(flatten(mid.root).some((c) => c.textContent === COPY.arm_f_s4_body_after_hours), 'an engine that reports midnight as "24" gets the AFTER-HOURS copy');
-    const noIntl = buildF({ Intl: null }); drive(noIntl, CALLABLE); submit(noIntl); await settleN(4);
+    const noIntl = buildF({ Intl: null }); drive(noIntl, CALLABLE); submit(noIntl); await finish(noIntl);
     ok(flatten(noIntl.root).some((c) => c.textContent === COPY.arm_f_s4_body_after_hours), 'with NO Intl available the AFTER-HOURS copy is shown (the promise that is never wrong)');
   }
 
   // ═══ F19: a thank-you button must not abort a details call that is still in flight; Back is locked during the save. ═══
   {
     const h = buildF({ detailsMode: 'hang' }); drive(h, GOOD); submit(h); await settleN(3);
+    toAddress(h, h._addr); await settleN(3);
     await new Promise((r) => setTimeout(r, 90)); // the flow guard (6s, scaled) shows the thank-you screen while details hang
     ok(h.ev('router_step_view').some((v) => v.params.step === 'f-thanks') && h.detailsCalls.length >= 1, 'setup: the thank-you screen is showing while the details call is still in flight');
     buttonByText(h.root, COPY.arm_f_s4_button_measure).dispatchClick();
     ok(h.fakeWindow.location.href === PAGE_URL && h.ev('router_f_cta_measure').length === 1, 'a CTA tap does NOT navigate while details are in flight (it would abort the request), but the click is still counted');
     await new Promise((r) => setTimeout(r, 80)); // CTA_WAIT_MS (2.5s, scaled) elapses
     ok(/^https:\/\/app\.otterquote\.com\/help-measurements\?lead=/.test(h.fakeWindow.location.href), 'after the wait cap the CTA navigates anyway (a hung request never strands the visitor)');
-    const k = buildF({ detailsMode: 'ok' }); drive(k, GOOD); submit(k); await settleN(4);
+    const k = buildF({ detailsMode: 'ok' }); drive(k, GOOD); submit(k); await finish(k);
     await new Promise((r) => setTimeout(r, 60));
     buttonByText(k.root, COPY.arm_f_s4_button_losssheet).dispatchClick();
     ok(/help-estimate\?lead=/.test(k.fakeWindow.location.href), 'when the details call has already settled a CTA tap navigates immediately');
@@ -816,7 +843,7 @@ async function main() {
     submit(b);
     ok(backOf(b).disabled === true, 'Back is DISABLED as soon as the save starts');
     await settleN(4);
-    ok(backOf(b).disabled === false, 'Back is re-enabled after a failed save (the visitor can still correct the address)');
+    ok(backOf(b).disabled === false, 'Back is re-enabled after a failed save (the visitor can still correct the funding answer)');
   }
 
   // ═══ F20: D-299 -- the details request starts immediately and survives a closed tab. ═══
@@ -831,7 +858,7 @@ async function main() {
     const text = await bc.blob.text();
     const parsed = JSON.parse(text);
     ok(/^https:\/\/proj\.supabase\.co\/functions\/v1\/record-lead-details\?apikey=anon-key-123$/.test(bc.url) && /^text\/plain/.test(bc.blob.type), 'the beacon goes to the same URL as a text/plain body (a simple request: no preflight)');
-    ok(parsed.lead_id === '00000000-0000-4000-8000-000000000001' && parsed.consent.text === APPROVED_CONSENT && parsed.consent.key === 'arm_f_s3_consent_checkbox' && parsed.phone_as_typed === '(317) 255-0142' && parsed.form_payload.address === '123 Main St, Indianapolis, IN 46204',
+    ok(parsed.lead_id === '00000000-0000-4000-8000-000000000001' && parsed.consent.text === APPROVED_CONSENT && parsed.consent.key === 'arm_f_s3_consent_checkbox' && parsed.phone_as_typed === '(317) 255-0142' && parsed.property_address === null && parsed.form_payload.name === 'Jane',
       'the beacon carries the SAME full body: lead id, the byte-identical consent record, the phone as typed and the form payload');
     a.firePagehide();
     ok(a.beacons.length === 1, 'a second pagehide does not send a second beacon');
@@ -857,7 +884,7 @@ async function main() {
     const bf = buildF({ detailsMode: 'hang', beaconFails: true }); drive(bf, GOOD); submit(bf); await settle(); await settle();
     bf.firePagehide(); bf.firePagehide();
     ok(bf.beacons.length === 2, 'when sendBeacon returns FALSE (queue full) the beacon stays retryable: a second pagehide tries again');
-    const once = buildF({ detailsMode: 'ok' }); drive(once, GOOD); submit(once); await settleN(4);
+    const once = buildF({ detailsMode: 'ok' }); drive(once, GOOD); submit(once); await finish(once);
     await new Promise((r) => setTimeout(r, 120)); // well past the flow guard (6 s scaled to 60 ms)
     ok(once.ev('router_step_view').filter((e) => e.params.step === 'f-thanks').length === 1, 'the thank-you screen is shown exactly ONCE even though both the settle path and the flow guard fire (finish is idempotent)');
     const longUrl = buildF({ detailsMode: 'ok' }); longUrl.fakeWindow.location.href = 'https://otterquote.com/start?v=f&x=' + 'y'.repeat(5000);

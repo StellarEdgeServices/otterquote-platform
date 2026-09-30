@@ -1,3 +1,18 @@
+-- STATUS (gh-1438, as of 2026-09-30T12:32Z): APPLIED
+-- FILE ROLE: forward file of set gh969_hover_rebate_trigger_completion (the STATUS is the set's; it describes the forward migration)
+-- EVIDENCE: trigger after_claim_completed_rebate live, ledger version 20260824184631: comment 5494221280 (RW-DONE, PR #1471, supabase/migrations/MIGRATIONS-RECONCILIATION-1438.md Part 1, read-only queries 2026-09-01); ledger version 20260824184631 is in the 199-row schema_migrations snapshot recorded in supabase/migrations-reconciliation-baseline.json (queried 2026-09-29T20:55Z; comments 5902170993, 5902404090)
+-- REPO COPY: supabase/migrations/20260824184631_gh969_hover_rebate_trigger_completion.sql -- DIFFERS in SQL statements (comment/whitespace-normalised compare, this session)
+-- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
+--
+-- >>> APPLIED (2026-09-26, gh-1438 part 2) -- this draft's effect (retarget
+-- notify_hover_rebate()'s firing trigger from quotes.payment_status to
+-- claims.completion_date) IS live and filed as
+-- supabase/migrations/20260824184631_gh969_hover_rebate_trigger_completion.sql
+-- (same filename this draft carries, only relocated from migrations_drafts/
+-- to migrations/ with a 14-digit timestamp prefix at apply time), but this
+-- pass did not diff the two bodies character-for-character, so treat as
+-- "same effect, unverified byte match" rather than "identical". Kept here,
+-- unmodified below this banner, for history. <<<
 -- gh-969: D-291 trigger half — hover/RoofScope rebate, contract-signing -> job completion
 -- Tier 3 (D-182). DRAFT ONLY. NOT APPLIED. Mirrors the gh-1050/D-283 precedent
 -- (supabase/migrations/20260819225113_gh1050_commission_accrual_job_completion.sql),

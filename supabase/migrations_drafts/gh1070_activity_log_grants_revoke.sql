@@ -1,3 +1,24 @@
+-- STATUS (gh-1438, as of 2026-09-30T12:32Z): NOT APPLIED (this file's SQL). The anon revoke EFFECT is live via a different, shorter migration
+-- FILE ROLE: forward file of set gh1070_activity_log_grants_revoke (the STATUS is the set's; it describes the forward migration)
+-- EVIDENCE: anon has zero privileges on public.activity_log but the SQL that ran is 20260824183229_gh1070_revoke_anon_activity_log: comment 5494221280 (RW-DONE, PR #1471, supabase/migrations/MIGRATIONS-RECONCILIATION-1438.md Part 1, read-only queries 2026-09-01); ledger version 20260824183229 is in the 199-row schema_migrations snapshot recorded in supabase/migrations-reconciliation-baseline.json (queried 2026-09-29T20:55Z; comments 5902170993, 5902404090)
+-- REPO COPY: supabase/migrations/20260824183229_gh1070_revoke_anon_activity_log.sql -- DIFFERS in SQL statements (comment/whitespace-normalised compare, this session)
+-- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
+--
+-- >>> SUPERSEDED (2026-09-26, gh-1438 part 2, corrected) -- the anon-grant-
+-- revoke EFFECT this file proposes IS live (anon has zero privileges on
+-- public.activity_log, confirmed read-only this session), but this file's
+-- own SQL is NOT what ran. The migration that actually ran under a #1070
+-- name is supabase/migrations/20260824183229_gh1070_revoke_anon_activity_log.sql
+-- -- a single bare REVOKE, structurally different from and much shorter
+-- than this draft's broader, more heavily-annotated proposal (which also
+-- tightens the INSERT policy's WITH CHECK, an effect that did NOT ship).
+-- Do not represent this file as "the applied migration" -- it demonstrably
+-- isn't. Kept here, unmodified below this banner, for history. NOTE
+-- (self-correction, this commit): an earlier version of this banner+body
+-- pushed to this branch (commit 2f706c4) had drifted from this exact text
+-- (ASCII "--" substituted for this file's own em dash "—" in several
+-- places) -- refetched via get_file_contents and rebuilt from that exact
+-- text to fix it. <<<
 -- Migration: gh1070_activity_log_grants_revoke
 -- Author: Code lane sub-agent (automated), run-work orchestration
 -- Date: 2026-08-21

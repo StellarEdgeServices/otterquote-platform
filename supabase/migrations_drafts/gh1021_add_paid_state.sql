@@ -1,3 +1,15 @@
+-- STATUS (gh-1438, as of 2026-09-30T12:32Z): APPLIED
+-- FILE ROLE: forward file of set gh1021_add_paid_state (the STATUS is the set's; it describes the forward migration)
+-- EVIDENCE: applied as gh1150_add_paid_state, ledger version 20260821205432, SQL read back from schema_migrations.statements: comment 5494221280 (RW-DONE, PR #1471, supabase/migrations/MIGRATIONS-RECONCILIATION-1438.md Part 1, read-only queries 2026-09-01); ledger version 20260821205432 is in the 199-row schema_migrations snapshot recorded in supabase/migrations-reconciliation-baseline.json (queried 2026-09-29T20:55Z; comments 5902170993, 5902404090)
+-- REPO COPY: supabase/migrations/20260821205432_gh1150_add_paid_state.sql -- same SQL statements (differs only in comments/blank lines/BEGIN/COMMIT/whitespace)
+-- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
+--
+-- >>> APPLIED (2026-09-26, gh-1438 part 2) -- this draft's SQL is byte-
+-- identical to what ran. Filed as supabase/migrations/20260821205432_gh1150_add_paid_state.sql
+-- (confirmed read-only against yeszghaspzwwstvsrioa, both this session and
+-- the 2026-09-01 MIGRATIONS-RECONCILIATION-1438.md Part 1 pass). This copy
+-- kept here for history only -- do not re-run it; the live file above is
+-- the source of truth and the one the replay chain reads. <<<
 -- Migration: gh1021_add_paid_state
 -- Author: Code lane sub-agent (automated), run-work orchestration
 -- Date: 2026-08-21

@@ -1,3 +1,5 @@
+import { hasAdOptOutCookie } from './ad-optout';
+
 /**
  * [gh-2107 / D-330 half 2] Global Privacy Control, read from the browser.
  *
@@ -11,7 +13,9 @@
 export function gpcField(): { gpc?: true } {
   try {
     const nav = (typeof navigator !== 'undefined' ? navigator : undefined) as (Navigator & { globalPrivacyControl?: unknown }) | undefined;
-    return nav && nav.globalPrivacyControl === true ? { gpc: true } : {};
+    if (nav && nav.globalPrivacyControl === true) return { gpc: true };
+    // gh-1925 item 2: the privacy s12 button leaves the same oq_ad_optout=1 cookie GPC leaves; report it like GPC (exact match only).
+    return hasAdOptOutCookie() ? { gpc: true } : {};
   } catch {
     return {};
   }

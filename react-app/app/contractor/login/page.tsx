@@ -28,7 +28,7 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useAuthReady } from '@/hooks/use-auth-ready';
-import { supabase } from '@/lib/supabase';
+import { signInWithGoogleOAuth } from '@/lib/supabase-oauth';
 import { callAuthUniform } from '@/lib/auth-uniform';
 import { CONTRACTOR_LOGIN_COPY as C } from './copy';
 import {
@@ -157,9 +157,8 @@ export default function ContractorLoginPage() {
       localStorage.setItem('cs_auth_role', 'contractor');
       localStorage.setItem('cs_auth_role_at', String(Date.now()));
       stampRoleOwner(null); // gh-2344: email unknown before Google; bind to this tab
-      const { error: oauthError } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: { redirectTo: GOOGLE_OAUTH_REDIRECT },
+      const { error: oauthError } = await signInWithGoogleOAuth({
+        redirectTo: GOOGLE_OAUTH_REDIRECT,
       });
       if (oauthError) throw oauthError;
       // On success the browser navigates to Google; nothing else to do.

@@ -543,11 +543,49 @@
       }
     });
   };
+  // ====== gh-2019 (D-324): the accept path for the four disqualifier
+  // screens' own offer ("we would be happy to send you the contact
+  // information for contractors who ..."). Capture is ONE leads row via the
+  // same insertFreshLead + set_lead_role pair every other arm-E commitment
+  // uses, so the existing router-lead admin alert (trg_notify_admin_new_
+  // router_lead -> notify-admin-new-homeowner) fires with no new trigger,
+  // table or column. The row is marked by leads.variant =
+  // REFERRAL_OUT_VARIANT ('e-referral-out', a free-text column with no
+  // CHECK constraint): that keeps a disqualified visitor's request out of
+  // arm E's own qualified-lead counts (variant = 'e') and is what tells the
+  // admin alert to render a referral-out subject. Deliberately NOT done
+  // here: module-level leadId/email are never set (e-p7-5 treats a set
+  // leadId as "PATCH this row" and would overwrite the request), no Meta
+  // Lead / router_contact_submitted event fires (this visitor was
+  // disqualified, not converted), and no message is sent to the visitor
+  // (the approved D-324 email needs names Dustin supplies later). A repeat
+  // submit of the same address in one session (Back to another
+  // disqualifier screen) resolves without a second row. ======
+  var REFERRAL_OUT_VARIANT = 'e-referral-out';
+  var referralRequested = {};
+  function referralCapture(sourceToken) {
+    return function (emailValue) {
+      var key = String(emailValue).toLowerCase();
+      if (referralRequested[key]) return Promise.resolve();
+      if (!bridge.sb) { return Promise.reject(new Error('no client')); }
+      return bridge.insertFreshLead(name, emailValue, null, bridge.oqInternalOverride, REFERRAL_OUT_VARIANT).then(function (newId) {
+        referralRequested[key] = true;
+        bridge.trackRouter('router_referral_out_requested', { step: sourceToken, step_index: STEP_INDEX[sourceToken] });
+        // Never rejects: the row is already saved, so a failed role write
+        // must not present as a failed request (same rule as e-p7-5).
+        return bridge.sb.rpc('set_lead_role', { p_lead_id: newId, p_role: 'homeowner' }).then(function () {}, function (roleErr) {
+          console.error('[router-variant-e] referral set_lead_role failed -- request saved anyway:', roleErr);
+        });
+      });
+    };
+  }
+
   RENDERERS['e-dq-p6'] = function () {
     var RD = window.RouterDiscovery;
     RD.renderDisqualifier(root, {
       text: RD.COPY.dq4Text,
       opt1: RD.COPY.dq4Opt1,
+      onReferral: referralCapture('e-p6'),
       onContinue: function () { go('e-p7'); }
     });
   };
@@ -726,6 +764,7 @@
     RD.renderDisqualifier(root, {
       text: RD.COPY.dq5Text,
       opt1: RD.COPY.dq5Opt1,
+      onReferral: referralCapture('e-p8'),
       onContinue: function () { go('e-p9'); }
     });
   };
@@ -749,6 +788,7 @@
     RD.renderDisqualifier(root, {
       text: RD.COPY.dq6Text,
       opt1: RD.COPY.dq6Opt1,
+      onReferral: referralCapture('e-p10'),
       onContinue: function () { go('e-p11'); }
     });
   };
@@ -773,6 +813,7 @@
     RD.renderDisqualifier(root, {
       text: RD.COPY.dq7Text,
       opt1: RD.COPY.dq7Opt1,
+      onReferral: referralCapture('e-p12'),
       onContinue: function () { go('e-p13'); }
     });
   };

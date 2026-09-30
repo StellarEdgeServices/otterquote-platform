@@ -88,6 +88,9 @@ const SAFE_SENTENCES = [
   // would need new words, which the ruling forbids). Matches the
   // refuter's own precedent of not failing the box over generic residual
   // wording with no dollar amount (comment 5836510515, item 4).
+  // gh-2354 (D-341): the inspector Section 13 liability-cap floor. The "$100" is a limit on
+  // Otter Quotes' liability, not a fee offered to the partner; exact sentence only.
+  'SHALL NOT EXCEED THE GREATER OF TOTAL COMMISSIONS PAID TO PARTNER IN THE TWELVE (12) MONTHS PRECEDING THE CLAIM OR $100.',
   '4. Referral Fee Structure',
   'Referral fees and bonuses under Section 4 are paid through a third-party payment service',
 ];

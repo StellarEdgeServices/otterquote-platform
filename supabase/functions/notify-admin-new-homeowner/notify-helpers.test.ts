@@ -11,8 +11,14 @@ import {
   buildRouterLeadSubjectAndText,
   isRouterLeadAuthorized,
   buildRouterLeadEmail,
+  fundingLabel,
+  propertyAddressLabel,
   stripCrlf,
   UTM_MAX_LEN,
+  REFERRAL_OUT_VARIANT,
+  REFERRAL_OUT_ADMIN_NOTE,
+  isReferralOutLead,
+  REFERRAL_OUT_NO_NAME_NOTE,
 } from "./notify-helpers.ts";
 
 // ---------------------------------------------------------------------------
@@ -365,4 +371,136 @@ Deno.test("buildRouterLeadSubjectAndText: is pure — identical input produces i
   const a = buildRouterLeadSubjectAndText(record);
   const b = buildRouterLeadSubjectAndText(record);
   assertEquals(a, b);
+});
+
+// ---------------------------------------------------------------------------
+// gh-2362 (F3): the new-lead alert carries the property address and funding answer
+// ---------------------------------------------------------------------------
+
+Deno.test("gh-2362 F3: homeowner alert carries address and funding in text body and HTML rows", () => {
+  const leadRow = {
+    name: "Jane Homeowner", email: "jane@example.com", phone: "5125551234", role: "homeowner",
+    property_address: "123 Main St, Zionsville, IN 46077", funding_type: "insurance",
+  };
+  const { textBody } = buildRouterLeadSubjectAndText(leadRow);
+  assert(textBody.includes("Property   : 123 Main St, Zionsville, IN 46077"), textBody);
+  assert(textBody.includes("Funding    : Insurance claim"), textBody);
+  const { htmlRows } = buildRouterLeadEmail(leadRow);
+  assertStrictEquals(htmlRows.find(([l]) => l === "Property")?.[1], "123 Main St, Zionsville, IN 46077");
+  assertStrictEquals(htmlRows.find(([l]) => l === "Funding")?.[1], "Insurance claim");
+});
+
+Deno.test("gh-2362 F3: funding labels for cash and unsure; unknown values are not echoed", () => {
+  assertStrictEquals(fundingLabel("cash"), "Paying cash");
+  assertStrictEquals(fundingLabel("unsure"), "Not sure yet");
+  assertStrictEquals(fundingLabel("<b>x</b>"), "(not given)");
+  assertStrictEquals(fundingLabel(null), "(not given)");
+  assertStrictEquals(fundingLabel(undefined), "(not given)");
+});
+
+Deno.test("gh-2362 F3: negative control - address not yet saved renders an explicit placeholder, no throw", () => {
+  const leadRow = { name: "Jane", email: "j@example.com", phone: "5125551234", role: "homeowner", property_address: null, funding_type: null };
+  const { textBody } = buildRouterLeadSubjectAndText(leadRow);
+  assert(textBody.includes("Property   : (not provided yet)"), textBody);
+  assert(textBody.includes("Funding    : (not given)"), textBody);
+  assertStrictEquals(propertyAddressLabel("   "), "(not provided yet)");
+});
+
+Deno.test("gh-2362 F3: address is HTML-escaped in the row and CRLF-stripped; never reaches the subject", () => {
+  const leadRow = { role: "homeowner", email: "x@example.com", property_address: "<script>1</script>\r\nBcc: v@example.com", funding_type: "cash" };
+  const result = buildRouterLeadEmail(leadRow);
+  const row = result.htmlRows.find(([l]) => l === "Property")!;
+  assert(!row[1].includes("<script>") && row[1].includes("&lt;script&gt;"));
+  assert(!result.textBody.includes("\r"));
+  assert(!result.subject.includes("script") && !result.subject.includes("Bcc"));
+});
+
+Deno.test("gh-2362 F3: partner leads get no property/funding lines", () => {
+  const leadRow = { role: "referral_partner", partner_industry: "re_agent", property_address: "1 Leak St", funding_type: "cash" };
+  const { textBody } = buildRouterLeadSubjectAndText(leadRow);
+  assert(!textBody.includes("Property") && !textBody.includes("1 Leak St") && !textBody.includes("Funding"));
+  assert(!buildRouterLeadEmail(leadRow).htmlRows.some(([l]) => l === "Property" || l === "Funding"));
+});
+
+// ---------------------------------------------------------------------------
+// gh-2019 (D-324): referral-out request alert. A homeowner screened out of the
+// arm-E router who asked for contractor contact information is captured as a
+// router lead with variant = "e-referral-out"; the admin alert for that row
+// says so, and every other lead's alert is byte-identical to before.
+// ---------------------------------------------------------------------------
+
+Deno.test("gh-2019: REFERRAL_OUT_VARIANT is the exact marker the arm-E client writes", () => {
+  assertStrictEquals(REFERRAL_OUT_VARIANT, "e-referral-out");
+  assert(isReferralOutLead({ variant: "e-referral-out" }));
+});
+
+Deno.test("gh-2019: isReferralOutLead is strict equality -- near-misses and ordinary arms are not referral-out", () => {
+  for (const v of ["e", "c", "f", "E-REFERRAL-OUT", "e-referral-out ", "e-referral", "e-referral-out-x", "", null, undefined]) {
+    assertStrictEquals(isReferralOutLead({ variant: v }), false, `variant=${String(v)}`);
+  }
+  assertStrictEquals(isReferralOutLead({}), false);
+});
+
+Deno.test("gh-2019: referral-out alert subject and body name the request and the fixed hand-off rules", () => {
+  const row = {
+    name: "Jane Smith", email: "jane@example.com", phone: null, role: "homeowner",
+    partner_industry: null, variant: "e-referral-out", utm_source: "meta",
+  };
+  const { subject, textBody } = buildRouterLeadSubjectAndText(row);
+  assertEquals(subject, "[OtterQuote] Referral-out request: contractor contact information");
+  assert(textBody.includes("Name       : Jane Smith"));
+  assert(textBody.includes("Email      : jane@example.com"));
+  assert(textBody.includes("utm_source=meta"));
+  assert(textBody.includes(REFERRAL_OUT_ADMIN_NOTE));
+  // Admin-only email: no customer-facing copy, no callback line (no phone is collected here).
+  assert(!textBody.includes("callback"));
+  assert(!/[\r\n]/.test(subject));
+});
+
+Deno.test("gh-2019: referral-out HTML rows are escaped and carry no phone/role rows", () => {
+  const row = { name: "<b>x</b>", email: "a&b@example.com", variant: "e-referral-out" };
+  const built = buildRouterLeadEmail(row);
+  assertEquals(built.htmlRows.map((r) => r[0]), ["Name", "Email", "Attribution"]);
+  assertEquals(built.htmlRows[0][1], "&lt;b&gt;x&lt;/b&gt;");
+  assertEquals(built.htmlRows[1][1], "a&amp;b@example.com");
+  assert(built.extraHtml.includes("D-324"));
+});
+
+Deno.test("gh-2019: negative control -- an ordinary router lead's alert has no referral-out shape (gh-2362 F3 adds Property and Funding lines)", () => {
+  const row = { name: "Jane", email: "j@example.com", phone: "5551234567", role: "homeowner", variant: "e" };
+  const { subject, textBody } = buildRouterLeadSubjectAndText(row);
+  assertEquals(subject, "[OtterQuote] New router lead: Homeowner");
+  assert(textBody.includes("Phone carries no consent -- callback only."));
+  assert(!textBody.includes("D-324"));
+  const built = buildRouterLeadEmail(row);
+  // gh-2362 F3 intentionally changes the ordinary homeowner alert: it now also carries the Property and Funding rows
+  // (placeholders here, since this row has neither). Marty's ruling: the assertion is rewritten, no switch turns F3 off.
+  assertEquals(built.htmlRows.map((r) => r[0]), ["Name", "Email", "Phone", "Role", "Property", "Funding", "Attribution"]);
+  assertEquals(built.htmlRows.find(([l]) => l === "Property")?.[1], "(not provided yet)");
+  assertEquals(built.htmlRows.find(([l]) => l === "Funding")?.[1], "(not given)");
+  assert(textBody.includes("Property   : (not provided yet)"));
+  assert(textBody.includes("Funding    : (not given)"));
+  // A row with no variant at all (every pre-gh-2019 lead) behaves the same.
+  assertEquals(buildRouterLeadSubjectAndText({ name: "J", email: "j@example.com", role: "homeowner" }).subject, "[OtterQuote] New router lead: Homeowner");
+});
+
+Deno.test("gh-2019 (D-324): a referral-out row with no usable name says 'no name captured' in the admin alert (text and HTML)", () => {
+  for (const name of [null, undefined, "", "   ", "\r\n\t "]) {
+    const row = { name, email: "jane@example.com", variant: "e-referral-out" };
+    const { subject, textBody } = buildRouterLeadSubjectAndText(row);
+    assertEquals(subject, "[OtterQuote] Referral-out request: contractor contact information");
+    assert(textBody.includes("Name       : (no name captured)"), `name=${JSON.stringify(name)}`);
+    assert(textBody.includes(REFERRAL_OUT_NO_NAME_NOTE));
+    const built = buildRouterLeadEmail(row);
+    assertEquals(built.htmlRows[0], ["Name", "(no name captured)"]);
+    assert(built.extraHtml.includes("No name captured"));
+  }
+});
+
+Deno.test("gh-2019 (D-324): negative control -- a referral-out row WITH a name carries no 'no name captured' text", () => {
+  const row = { name: "Jane", email: "jane@example.com", variant: "e-referral-out" };
+  const { textBody } = buildRouterLeadSubjectAndText(row);
+  assert(!textBody.includes("no name captured"));
+  assert(!textBody.includes(REFERRAL_OUT_NO_NAME_NOTE));
+  assert(!buildRouterLeadEmail(row).extraHtml.includes("No name captured"));
 });
