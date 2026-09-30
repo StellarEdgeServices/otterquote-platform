@@ -173,7 +173,7 @@ Deno.test("the footer template matches 5821400303's shared-mechanics block verba
   );
   assertEquals(tmpl.includes(POSTAL_ADDRESS), true);
   assertEquals(tmpl.includes("[MAILING ADDRESS"), false, "the bracket placeholder from 5821400303 must be gone");
-  assertEquals(tmpl.includes("Questions? Reply to this email or contact support@otterquote.com / (317) 501-9215."), true);
+  assertEquals(tmpl.includes("Questions? Reply to this email or contact support@otterquote.com / (844) 875-3412."), true);
 });
 
 Deno.test("composeFinalCopy renders the real per-partner unsubscribe link, with the D-237 address, in BOTH bodies, and clears the placeholder gate", () => {

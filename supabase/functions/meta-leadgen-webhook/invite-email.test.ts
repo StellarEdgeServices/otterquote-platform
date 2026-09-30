@@ -104,7 +104,7 @@ Deno.test("buildInviteEmail: approved D-237 footer sentence and support contact 
   const email = buildInviteEmail("Jamie", "re_agent", "https://otterquote.com", "tok.sig", "https://x/optout?t=tok-out");
   assert(email.text.includes("Otter Quotes is a service of Stellar Edge Services LLC"));
   assert(email.text.includes("support@otterquote.com"));
-  assert(email.text.includes("(317) 501-9215"));
+  assert(email.text.includes("(844) 875-3412"));
 });
 
 // gh-2154 P-5 go-live (item 1): the unsubscribe link is now a real,

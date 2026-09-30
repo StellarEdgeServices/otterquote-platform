@@ -336,7 +336,7 @@ export function getUnsubscribeLineTemplate(): string {
   return (
     "Otter Quotes is a service of Stellar Edge Services LLC. You're receiving this because you signed up as an Otter Quotes referral partner. " +
     `${POSTAL_ADDRESS} · Manage email preferences / Unsubscribe: ${OPT_OUT_URL_TOKEN} · ` +
-    "Questions? Reply to this email or contact support@otterquote.com / (317) 501-9215."
+    "Questions? Reply to this email or contact support@otterquote.com / (844) 875-3412."
   );
 }
 
