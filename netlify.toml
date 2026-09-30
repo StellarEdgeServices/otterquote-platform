@@ -26,8 +26,10 @@
 # its placeholder logic are untouched. (js/config.js currently hardcodes its
 # keys, so the sed is a no-op today; kept so a %%STRIPE_PK%% placeholder works.)
 # A NEW root directory is published by default: scripts/netlify-publish-dir.test.py
-# pins the exact set of served top-level dirs and fails CI if one appears, so add
-# it to the denylist here (internal) or to the test (served) deliberately.
+# pins the exact set of served top-level dirs and fails if one appears, but NO
+# workflow runs that test yet (gh-2392 follow-up), so today nothing stops a new
+# internal root dir or file going live. Add it to the denylist here (internal)
+# or to the test (served) deliberately, and run the test before merging.
 # _redirects and [[headers]] are unaffected: _redirects is copied into _site/
 # and netlify.toml is read from the base dir.
 # Test: python3 scripts/netlify-publish-dir.test.py
