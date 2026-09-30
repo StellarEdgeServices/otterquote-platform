@@ -321,12 +321,24 @@
         "oq_partner_id"
       ],
       "stack": "react+static",
-      "status": "known-gap",
-      "reason": "sessionStorage attribution keys written from ?ref= / ?partner_id= and never cleared, so a reused tab attributes the next claim to the earlier partner. Attribution/commission surface: recommended default (consume on successful claim write, as gh-2062 does for the referral id) left as a Q on #2060.",
+      "status": "tested",
+      "reason": "CLOSED (CEO ruling, #2060 comment 5911272482): consumed (cookie + localStorage + sessionStorage) once a claim write succeeds, never on an error or no-op pass, on both stacks, as gh-2062 does for the referral id.",
       "tests": [
         {
           "file": "react-app/app/trade-selector/__tests__/gh2060-stale-session-keys.test.tsx",
-          "contains": "KNOWN GAP: oq_partner_id / oq_referral_source"
+          "contains": "left by an earlier visit are consumed (cleared, all copies)"
+        },
+        {
+          "file": "react-app/app/trade-selector/__tests__/gh2060-stale-session-keys.test.tsx",
+          "contains": "does NOT consume oq_partner_id / oq_referral_source"
+        },
+        {
+          "file": "react-app/app/trade-selector/__tests__/gh2060-stale-session-keys.test.tsx",
+          "contains": "partner lookup ERRORS + claim write succeeds: oq_partner_id is KEPT"
+        },
+        {
+          "file": "tests/gh2060-item3-partner-attribution-consume.mjs",
+          "contains": "trade-selector.html: partner-attribution keys are cleared only after a successful claim write"
         }
       ]
     },
