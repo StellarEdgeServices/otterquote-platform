@@ -27,14 +27,13 @@ const NAP = Object.freeze({
   addressRegion: 'IN',
   postalCode: '46224',
   addressCountry: 'US',
-  // Phone changed 2026-08-25, Dustin-directed ("Change the 844 number to
-  // (317) 501-9215 for now"). Supersedes D-240's locked 844-875-3412 for
-  // every VISIBLE surface — footer NAP, JSON-LD, and every tel: href that
-  // renders from this object. The Twilio 844 line (CONFIG.TWILIO_PHONE)
-  // stays configured and in service; it simply stops being advertised.
-  phoneDisplay: '(317) 501-9215',
-  phoneTelHref: 'tel:+13175019215',
-  phoneE164: '+1-317-501-9215',           // machine-readable schema.org telephone field (E.164-normalized)
+  // Phone changed 2026-08-25 to the cell, then reversed 2026-09-30 (Dustin: "Switch to 844
+  // (Recommended)", #2371): the sitewide nav phone is the business line 844-875-3412,
+  // never a personal cell. Applies to footer NAP, JSON-LD, and every tel: href that
+  // renders from this object.
+  phoneDisplay: '(844) 875-3412',
+  phoneTelHref: 'tel:+18448753412',
+  phoneE164: '+1-844-875-3412',           // machine-readable schema.org telephone field (E.164-normalized)
   email: 'info@otterquote.com',
   url: 'https://otterquote.com'
 });
@@ -1107,7 +1106,7 @@ const Nav = {
         document.getElementById('support-form-wrap').style.display = 'none';
         document.getElementById('support-success').style.display = 'block';
       } catch {
-        errEl.textContent = 'Something went wrong. Please email info@otterquote.com or call (317) 501-9215.';
+        errEl.textContent = 'Something went wrong. Please email info@otterquote.com or call (844) 875-3412.';
         errEl.style.display = 'block';
         btn.disabled = false;
         btn.textContent = 'Send Message';
