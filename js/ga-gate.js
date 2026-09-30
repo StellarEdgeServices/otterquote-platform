@@ -333,6 +333,9 @@
     // re-1.html/hi-1.html above; the FB-in-app-browser fallback form on
     // each page is the identical re-1/hi-1 form mechanism, unchanged.
     '/hi-5',
+    // gh-2378 HO-6: dark landing page + contact page. Both are unauthenticated funnel pages (no session read, no auth call).
+    '/ho6',
+    '/ho6/start',
     '/how-it-works',
     '/ins-1',
     // gh-2150/gh-2151 CEO RUN 71 wave 3: RE-3/INS-3 reuse the RE-1/INS-1
