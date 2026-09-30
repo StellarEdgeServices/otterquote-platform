@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Get my bids | Otter Quotes</title>
+<meta name="description" content="Tell us how to reach you and we will email you your next steps.">
+<!-- gh-2378 HO-6: the contact page behind the /ho6 buttons. noindex, follow; not in the sitemap. Served at /ho6/start by a _redirects rewrite. -->
+<meta name="robots" content="noindex, follow">
+<link rel="canonical" href="https://otterquote.com/ho6/start">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<link rel="stylesheet" href="/css/ho6.css">
+<script src="/js/internal-traffic.js"></script>
+<script>
+  window._oqErrorBuffer = window._oqErrorBuffer || [];
+  window.dataLayer = window.dataLayer || [];
+  window.gtag = window.gtag || function () { window.dataLayer.push(arguments); };
+  gtag('js', new Date());
+  gtag('config', 'G-D1Y1TLGEFY');
+  if (!window.fbq) {
+    var _oqFbqStub = function () { _oqFbqStub.callMethod ? _oqFbqStub.callMethod.apply(_oqFbqStub, arguments) : _oqFbqStub.queue.push(arguments); };
+    window.fbq = _oqFbqStub;
+    if (!window._fbq) { window._fbq = _oqFbqStub; }
+    _oqFbqStub.push = _oqFbqStub; _oqFbqStub.loaded = true; _oqFbqStub.version = '2.0'; _oqFbqStub.queue = [];
+  }
+</script>
+<script>
+  /* Sentry (same predeclared-onLoad pattern as the other static pages): report failed lead calls (lead id only, no PII; see js/oq-lead-core.js). */
+  window.sentryOnLoad = function () {
+    Sentry.init({
+      environment: window.location.hostname.includes("staging") ? "staging" : "production",
+      denyUrls: [/^data:/, /^file:/, /^blob:/, /data:text\/html/],
+      beforeSend: function (event) {
+        var proto = window.location.protocol;
+        if (proto !== "http:" && proto !== "https:") return null;
+        return event;
+      }
+    });
+  };
+</script>
+<script src="https://js.sentry-cdn.com/49b5839b50adc240398d822c46d4a86e.min.js" crossorigin="anonymous" async></script>
+<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.js" integrity="sha384-iLddHTLokph6Omwoyid4XKxHaWa6w41BnoEj0q5oOrzmYPpHIKt1wyjReA7s//pP" crossorigin="anonymous"></script>
+<script defer src="/js/cookie-storage.js"></script>
+<script defer src="/js/config.js"></script>
+<script defer src="/js/oq-lead-core.js"></script>
+<script defer src="/js/ho6-start.js"></script>
+</head>
+<body>
+<main>
+  <div id="ho6Steps" class="ho6-card">
+    <!-- STEP CONTAINER. Each <section data-ho6-step> is one step; js/ho6-start.js registers it in its STEPS table.
+         Later steps ("tell us about your job", then the loss sheet / measurement upload) are added here and there, not rewritten. -->
+    <section id="ho6StepContact" class="ho6-step" data-ho6-step="contact">
+      <p class="ho6-brand" style="text-align:center">OTTER QUOTES</p>
+      <h1>Get my bids now</h1>
+      <p class="ho6-lede">Tell us how to reach you.</p>
+      <form id="ho6Form" novalidate>
+        <div class="ho6-row">
+          <div class="ho6-field">
+            <label for="ho6First">First name</label>
+            <input type="text" id="ho6First" name="first_name" autocomplete="given-name" maxlength="60">
+            <div class="ho6-err" id="ho6FirstErr" role="alert"></div>
+          </div>
+          <div class="ho6-field">
+            <label for="ho6Last">Last name</label>
+            <input type="text" id="ho6Last" name="last_name" autocomplete="family-name" maxlength="60">
+            <div class="ho6-err" id="ho6LastErr" role="alert"></div>
+          </div>
+        </div>
+        <div class="ho6-field">
+          <label for="ho6Email">Email</label>
+          <input type="email" id="ho6Email" name="email" autocomplete="email" inputmode="email" maxlength="200">
+          <div class="ho6-err" id="ho6EmailErr" role="alert"></div>
+        </div>
+        <div class="ho6-field">
+          <label for="ho6Phone">Phone <span class="ho6-opt">(optional)</span></label>
+          <input type="tel" id="ho6Phone" name="phone" autocomplete="tel" inputmode="tel" maxlength="30">
+          <div class="ho6-err" id="ho6PhoneErr" role="alert"></div>
+        </div>
+        <!-- CONSENT: Tier C, APPROVED (#2378 comment 5899644479). Strings pinned by md5 in tests/gh2378-ho6.mjs and equal to js/ho6-start.js CONSENT. -->
+        <p class="ho6-consent" id="ho6EmailLine">Otter Quotes may email me about my project.</p>
+        <label class="ho6-check"><input type="checkbox" id="ho6TextCall" name="text_call_consent"><span id="ho6CheckLabel">Also text or call me at the number above about my project.</span></label>
+        <div class="ho6-err" id="ho6FormErr" role="alert"></div>
+        <button type="submit" id="ho6Submit" class="ho6-btn ho6-submit">Get my bids now</button>
+      </form>
+    </section>
+    <section id="ho6StepThanks" class="ho6-step" data-ho6-step="thanks" hidden>
+      <p id="ho6ThanksLine"></p>
+    </section>
+  </div>
+</main>
+
+<footer id="site-footer" class="ho6-foot" data-skip-nav="true">
+  <a href="/privacy.html">Privacy Policy</a>
+  <a href="/terms.html">Terms of Service</a>
+  <a id="footer-do-not-sell-link" href="/privacy.html#do-not-sell-or-share">Do Not Sell or Share My Personal Information</a>
+</footer>
+
+<script>
+(function () {
+  // GA4 (js/ga-gate.js) and Meta (js/meta-pixel-gate.js) load only here, on idle or first interaction, exactly like /ho6 and start.html.
+  var EVENTS = ['pointerdown', 'keydown', 'scroll', 'touchstart'], fired = false;
+  function run() {
+    if (fired) return; fired = true;
+    for (var j = 0; j < EVENTS.length; j++) { window.removeEventListener(EVENTS[j], run); }
+    var g = document.createElement('script'); g.src = '/js/ga-gate.js';
+    g.onload = function () {
+      window.__oqGateReady = true;
+      var cbs = window.__oqOnGateReady || []; window.__oqOnGateReady = [];
+      for (var k = 0; k < cbs.length; k++) { try { cbs[k](); } catch (e) {} }
+    };
+    document.head.appendChild(g);
+    var m = document.createElement('script'); m.src = '/js/meta-pixel-gate.js'; document.head.appendChild(m);
+  }
+  for (var j = 0; j < EVENTS.length; j++) { window.addEventListener(EVENTS[j], run, { passive: true, once: true }); }
+  if (window.requestIdleCallback) { window.requestIdleCallback(run, { timeout: 300 }); } else { setTimeout(run, 300); }
+})();
+</script>
+</body>
+</html>

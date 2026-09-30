@@ -1,0 +1,54 @@
+name: Static HO-6 Tests
+
+# gh-2378 -- /ho6 landing page (Dustin's copy, verbatim) + /ho6/start contact page. Runs tests/gh2378-ho6.mjs: the static half (copy pinned
+# byte for byte, links, consent md5 pin, photo manifest, Clarity gate, credential-claims guard) and the real-Chromium half (layout, colours,
+# CTA hrefs, mocked-Supabase end to end, thank-you has no call promise), each with its negative controls.
+# `pull_request` only, no secrets, read-only token, path-filtered.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'ho6.html'
+      - 'ho6-start.html'
+      - 'css/ho6.css'
+      - 'js/ho6-start.js'
+      - 'js/oq-lead-core.js'
+      - 'js/ga-gate.js'
+      - 'img/ho6/**'
+      - '_redirects'
+      - 'tests/gh2378-ho6.mjs'
+      - 'tests/fixtures/ho6-copy.txt'
+      - 'scripts/check-credential-claims.py'
+      - '.github/workflows/static-ho6-tests.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-ho6-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  ho6:
+    name: HO-6 static + Chromium acceptance (H1-H14, H16, consent pin)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Install e2e dependencies
+        working-directory: tests/e2e
+        run: npm ci
+      - name: Install Chromium
+        working-directory: tests/e2e
+        run: npx playwright install --with-deps chromium
+      - name: HO-6 acceptance tests with negative controls (gh2378-ho6)
+        run: node tests/gh2378-ho6.mjs

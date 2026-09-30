@@ -1,0 +1,59 @@
+{
+  "note": "HO-6 photo manifest (gh-2378). Pexels free licence, https://www.pexels.com/license/. Files are resized to 900px webp; images 2 and 3 are also cropped to keep faces out of frame.",
+  "images": [
+    {
+      "section": 1,
+      "file": "img/ho6/ho6-1.webp",
+      "page_url": "https://www.pexels.com/photo/group-of-people-wearing-hard-hats-standing-on-a-roof-4956920/",
+      "photographer": "Denniz Futalan",
+      "photographer_url": "https://www.pexels.com/@denniz-futalan-339724/",
+      "licence_url": "https://www.pexels.com/license/",
+      "edit": "resize only"
+    },
+    {
+      "section": 2,
+      "file": "img/ho6/ho6-2.webp",
+      "page_url": "https://www.pexels.com/photo/men-constructing-a-wooden-house-8817846/",
+      "photographer": "Ron Lach",
+      "photographer_url": "https://www.pexels.com/@ron-lach/",
+      "licence_url": "https://www.pexels.com/license/",
+      "edit": "cropped below the face, resized"
+    },
+    {
+      "section": 3,
+      "file": "img/ho6/ho6-3.webp",
+      "page_url": "https://www.pexels.com/photo/people-working-on-building-roof-15583203/",
+      "photographer": "Pew Nguyen",
+      "photographer_url": "https://www.pexels.com/@nguyendesigner/",
+      "licence_url": "https://www.pexels.com/license/",
+      "edit": "cropped to the lower part of the frame (heads removed), resized"
+    },
+    {
+      "section": 4,
+      "file": "img/ho6/ho6-4.webp",
+      "page_url": "https://www.pexels.com/photo/professional-roofer-installing-shingles-on-new-roof-33404248/",
+      "photographer": "Ryan Stephens",
+      "photographer_url": "https://www.pexels.com/@rstephens/",
+      "licence_url": "https://www.pexels.com/license/",
+      "edit": "resize only"
+    },
+    {
+      "section": 5,
+      "file": "img/ho6/ho6-5.webp",
+      "page_url": "https://www.pexels.com/photo/unrecognizable-workman-installing-window-in-house-during-renovation-process-5691531/",
+      "photographer": "Ksenia Chernaya",
+      "photographer_url": "https://www.pexels.com/@kseniachernaya/",
+      "licence_url": "https://www.pexels.com/license/",
+      "edit": "resize only"
+    },
+    {
+      "section": 6,
+      "file": "img/ho6/ho6-6.webp",
+      "page_url": "https://www.pexels.com/photo/handyman-installing-window-frame-with-drill-in-house-5691544/",
+      "photographer": "Ksenia Chernaya",
+      "photographer_url": "https://www.pexels.com/@kseniachernaya/",
+      "licence_url": "https://www.pexels.com/license/",
+      "edit": "resize only"
+    }
+  ]
+}
