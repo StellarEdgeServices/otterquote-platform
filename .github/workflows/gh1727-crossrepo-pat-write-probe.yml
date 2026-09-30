@@ -1,0 +1,34 @@
+# gh-1727 amended closes-on probe (CTO RUN 52). EVIDENCE-ONLY, NEVER MERGE.
+# Status codes only; no body, no token value is ever printed. PR is closed unmerged after the run is read.
+name: gh1727-crossrepo-pat-write-probe
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/gh1727-crossrepo-pat-write-probe.yml'
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      T: ${{ secrets.GH_CROSS_REPO_PAT }}
+    steps:
+      - name: status-code-only probe
+        run: |
+          set -u
+          echo "secret present: $([ -n "$T" ] && echo yes || echo NO)  length=${#T}"
+          code() { curl -s -o /dev/null -w '%{http_code}' -H "Accept: application/vnd.github+json" "$@"; }
+          P=StellarEdgeServices/otterquote-platform
+          C=StellarEdgeServices/otter-crm
+          A="Authorization: Bearer $T"
+          echo "--- READ (expect 200)"
+          echo "token otter-crm commits/main            : $(code -H "$A" https://api.github.com/repos/$C/commits/main)"
+          echo "--- WRITE attempts (expect 403 each; a 201/200/404 would mean write scope)"
+          echo "token POST platform git/blobs           : $(code -X POST -H "$A" -d '{"content":"x","encoding":"utf-8"}' https://api.github.com/repos/$P/git/blobs)"
+          echo "token POST otter-crm git/blobs          : $(code -X POST -H "$A" -d '{"content":"x","encoding":"utf-8"}' https://api.github.com/repos/$C/git/blobs)"
+          echo "token POST platform issue 999999999 cmt : $(code -X POST -H "$A" -d '{"body":"x"}' https://api.github.com/repos/$P/issues/999999999/comments)"
+          echo "--- ADMIN READ (expect 403)"
+          echo "token platform branches/main/protection : $(code -H "$A" https://api.github.com/repos/$P/branches/main/protection)"
+          echo "--- BASELINE"
+          echo "bogus POST platform git/blobs           : $(code -X POST -H "Authorization: Bearer ghp_invalid0000000000000000000000000000" -d '{"content":"x","encoding":"utf-8"}' https://api.github.com/repos/$P/git/blobs)"
