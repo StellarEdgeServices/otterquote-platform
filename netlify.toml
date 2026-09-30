@@ -11,12 +11,14 @@
 # case-insensitive for directory names and root file names -- /Supabase/config.toml,
 # /Scripts/*.py, /README.MD, /REACT-APP/package.json all still returned 200.
 # The build command above therefore also deletes those directories and root
-# files from the publish dir, which is case-proof. netlify.toml and netlify/
-# (edge-function source, bundled after the build) must stay on disk, so they
-# are covered by the redirects only (see /netlify/* below).
+# files from the publish dir, which is case-proof. Kept on disk on purpose:
+# netlify.toml, netlify/ (edge-function source, bundled after the build) and
+# react-app/app/lib/attribution-core.ts (imported by
+# netlify/edge-functions/first-touch-attribution.ts -- deleting react-app/
+# wholesale failed the deploy). Those are covered by the redirects only.
 [build]
   publish = "."
-  command = "sed -i \"s|%%STRIPE_PK%%|${STRIPE_PK}|g\" js/config.js && echo 'STRIPE_PK injected into js/config.js'; rm -rf supabase || true; rm -rf scripts || true; rm -rf sql || true; rm -rf tests || true; rm -rf handoffs || true; rm -rf react-app || true; rm -rf .github || true; rm -rf docs || true; rm -rf Docs || true; rm -rf Archive || true; rm -rf runbooks || true; rm -rf skills-for-code || true; rm -rf democracy || true; rm -rf deploy-checks || true; rm -rf forge-config || true; rm -rf otterquote-deploy || true; rm -rf .claude || true; rm -rf tools || true ; echo 'repo dirs removed from publish dir (gh-2389)'"
+  command = "sed -i \"s|%%STRIPE_PK%%|${STRIPE_PK}|g\" js/config.js && echo 'STRIPE_PK injected into js/config.js' && rm -rf supabase scripts sql tests handoffs .github docs Docs Archive runbooks skills-for-code democracy deploy-checks forge-config otterquote-deploy .claude tools && find react-app -type f ! -path react-app/app/lib/attribution-core.ts -delete && find react-app -depth -type d -empty -delete && rm -f *.md *.py tools-e2e-test.txt .gitignore .gitattributes && echo 'repo internals removed from publish dir (gh-2389)'"
 
 # Stripe publishable key per deploy context (not secrets — publishable keys are client-safe)
 [context.production.environment]
