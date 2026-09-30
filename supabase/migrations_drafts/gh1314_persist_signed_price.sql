@@ -1,3 +1,10 @@
+-- STATUS (gh-1438, as of 2026-09-30T12:32Z): NOT APPLIED
+-- FILE ROLE: forward file of set gh1314_persist_signed_price (the STATUS is the set's; it describes the forward migration)
+-- EVIDENCE: claims.signed_% columns: 0 rows: MIGRATIONS-RECONCILIATION-1438.md addendum '2026-09-26' (read-only pg queries); comment 5850997376 (CLOSE-REVIEW 2026-09-26). sql/schema-pending.json still declares the columns pending (repo declaration, not a measurement). Not re-measured since; re-query the live ledger before relying on it. Last measured 2026-09-26.
+-- REPO COPY: none in supabase/migrations/ or supabase/migrations_rollbacks/ for this file
+-- NOTE: supabase/functions/docusign-webhook/price-verify.test.ts reads this file (Deno test on CI); do not move or rename it without updating that test.
+-- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
+--
 -- gh-1314 step 4 — persist what the signed-price reconciliation actually read.
 --
 -- DRAFT. NOT APPLIED. Staged in migrations_drafts/ deliberately: this repo's

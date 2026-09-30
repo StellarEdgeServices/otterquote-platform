@@ -1,3 +1,10 @@
+<!--
+STATUS (gh-1438, as of 2026-09-30T12:32Z): APPLIED
+FILE ROLE: pre-flight file of set gh1050_commission_accrual_job_completion (the STATUS is the set's; it describes the forward migration)
+EVIDENCE: trigger after_claim_completed + apply_referral_commission() live: comment 5494221280 (RW-DONE, PR #1471, supabase/migrations/MIGRATIONS-RECONCILIATION-1438.md Part 1, read-only queries 2026-09-01); filed version 20260819225113; ledger version 20260819225113 is in the 199-row schema_migrations snapshot recorded in supabase/migrations-reconciliation-baseline.json (queried 2026-09-29T20:55Z; comments 5902170993, 5902404090)
+REPO COPY: supabase/migrations_rollbacks/gh1050_commission_accrual_job_completion_pre-flight.md -- same text (differs only in the top banner/whitespace)
+DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
+-->
 > **COMPANION OF AN APPLIED MIGRATION (2026-09-26, gh-1438 part 2)** -- the forward migration this pre-flight documents is live in production, filed as `supabase/migrations/20260819225113_gh1050_commission_accrual_job_completion.sql`. This document's own "DRAFT ONLY -- NOT APPLIED" status line below is historical. Kept unmodified below this banner for history.
 
 # Pre-Flight: gh1050_commission_accrual_job_completion
