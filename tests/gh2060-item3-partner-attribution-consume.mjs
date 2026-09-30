@@ -78,13 +78,33 @@ check('OtterQuoteReferral.clearPartnerAttribution clears cookie + localStorage +
   ok(R.read().oq_referral_id === 'r1', 'oq-ref referral id was consumed by the partner-attribution clear (it is gh-2062\'s job)');
 });
 
+check('OtterQuoteReferral.clearPartnerAttribution({partnerId:false}) keeps oq_partner_id, consumes oq_referral_source (round 2)', () => {
+  const sb = sandbox();
+  const R = sb.window.OtterQuoteReferral;
+  for (const k of ['oq_referral_source', 'oq_partner_id']) { sb.window.localStorage.setItem(k, 'x'); sb.window.sessionStorage.setItem(k, 'x'); }
+  R.clearPartnerAttribution({ source: true, partnerId: false });
+  ok(sb.window.sessionStorage.getItem('oq_referral_source') === null && sb.window.localStorage.getItem('oq_referral_source') === null, 'source not cleared');
+  ok(sb.window.sessionStorage.getItem('oq_partner_id') === 'x' && sb.window.localStorage.getItem('oq_partner_id') === 'x', 'oq_partner_id was cleared although partnerId:false');
+  R.clearPartnerAttribution({ source: false, partnerId: true });
+  ok(sb.window.sessionStorage.getItem('oq_partner_id') === null && sb.window.localStorage.getItem('oq_partner_id') === null, 'partnerId:true did not clear oq_partner_id');
+});
+
+check('trade-selector.html: oq_partner_id is consumed only when referralAgentId was stamped (round 2)', () => {
+  const src = read('trade-selector.html');
+  const m = /const consumePartnerId = ([^;]+);/.exec(src);
+  ok(m, 'no consumePartnerId in trade-selector.html');
+  ok(/partnerIdParam/.test(m[1]) && /referralAgentId/.test(m[1]), `consumePartnerId must require referralAgentId: ${m[1]}`);
+  ok(/clearPartnerAttribution\(\{\s*source: consumeSource,\s*partnerId: consumePartnerId\s*\}\)/.test(src), 'helper not called with per-key flags');
+  ok(!/clearPartnerAttribution\(\s*\)/.test(src), 'unconditional clearPartnerAttribution() call remains');
+});
+
 check('trade-selector.html: partner-attribution keys are cleared only after a successful claim write', () => {
   const src = read('trade-selector.html');
-  const call = src.indexOf('clearPartnerAttribution()');
-  ok(call !== -1, 'trade-selector.html never calls clearPartnerAttribution()');
+  const call = src.indexOf('clearPartnerAttribution(');
+  ok(call !== -1, 'trade-selector.html never calls clearPartnerAttribution(');
   // The guard directly above the call must require claimWriteSucceeded and this pass's keys.
-  const outer = src.lastIndexOf('if ((referralSource || partnerIdParam)', call);
-  ok(outer !== -1, 'clear is not guarded by (referralSource || partnerIdParam)');
+  const outer = src.lastIndexOf('if (claimWriteSucceeded)', call);
+  ok(outer !== -1, 'clear is not guarded by claimWriteSucceeded');
   const outerGuard = src.slice(outer, src.indexOf('{', outer));
   ok(/claimWriteSucceeded/.test(outerGuard), `guard does not require claimWriteSucceeded: ${outerGuard}`);
   // Must come after the last claimWriteSucceeded assignment (the write), so an early/unconditional pass cannot precede it.
@@ -92,7 +112,7 @@ check('trade-selector.html: partner-attribution keys are cleared only after a su
   ok(lastAssign !== -1 && lastAssign < call, 'clear is not after the claim write result');
   // No other clear of the two keys outside the guard (unconditional removeItem would consume on error passes).
   const stray = [...src.matchAll(/(?:sessionStorage|localStorage)\.removeItem\(\s*['"](oq_referral_source|oq_partner_id)['"]\s*\)/g)]
-    .filter((m) => m.index < outer || m.index > outer + 900);
+    .filter((m) => m.index < outer || m.index > outer + 1500);
   ok(stray.length === 0, `unguarded removeItem of a partner-attribution key at offset ${stray[0] && stray[0].index}`);
 });
 

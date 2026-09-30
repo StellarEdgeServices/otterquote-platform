@@ -333,6 +333,10 @@
           "contains": "does NOT consume oq_partner_id / oq_referral_source"
         },
         {
+          "file": "react-app/app/trade-selector/__tests__/gh2060-stale-session-keys.test.tsx",
+          "contains": "partner lookup ERRORS + claim write succeeds: oq_partner_id is KEPT"
+        },
+        {
           "file": "tests/gh2060-item3-partner-attribution-consume.mjs",
           "contains": "trade-selector.html: partner-attribution keys are cleared only after a successful claim write"
         }

@@ -474,8 +474,6 @@
   // click clock: written only with a click on record, returned by read() only
   // inside the window, purged by clear() and by the expired/undated purge.
   var REFERRAL_CLAIM_KEY = 'oq_referral_id_for_claim';
-  // gh-2060 item 3: partner-attribution keys consumed with the claim write.
-  var PARTNER_ATTRIBUTION_KEYS = ['oq_referral_source', 'oq_partner_id'];
 
   /** gh-2346: sessionStorage is PER TAB but the click clock (cookie +
    *  localStorage) is ONE per browser, so a newer click in another tab made
@@ -630,16 +628,21 @@
     },
 
     /** gh-2060 item 3 (CEO ruling, #2060 comment 5911272482): consume the
-     *  partner-attribution keys once a claim write has succeeded and the
-     *  referral/partner id is stamped on the claim -- the same rule gh-2062
-     *  applies to the oq-ref cookie. Clears the cookie plus the localStorage
-     *  and sessionStorage copies. Call ONLY after a successful claim write;
-     *  never on an error or no-op pass. */
-    clearPartnerAttribution: function () {
-      for (var i = 0; i < PARTNER_ATTRIBUTION_KEYS.length; i++) {
-        try { window.localStorage.removeItem(PARTNER_ATTRIBUTION_KEYS[i]); } catch (e) {}
-        try { window.sessionStorage.removeItem(PARTNER_ATTRIBUTION_KEYS[i]); } catch (e) {}
-        try { deleteCookie(PARTNER_ATTRIBUTION_KEYS[i]); } catch (e) {}
+     *  partner-attribution keys once a claim write has succeeded and the value
+     *  is stamped on the claim -- the same rule gh-2062 applies to the oq-ref
+     *  cookie. Clears the cookie plus the localStorage and sessionStorage
+     *  copies. `which` names the keys to consume ({ source: bool, partnerId:
+     *  bool }); each is cleared ONLY when its own value was stamped (round 2:
+     *  a failed partner lookup stamps no referral_agent_id, so oq_partner_id
+     *  must survive). Never call on an error or no-op pass. */
+    clearPartnerAttribution: function (which) {
+      var keys = [];
+      if (!which || which.source) keys.push('oq_referral_source');
+      if (!which || which.partnerId) keys.push('oq_partner_id');
+      for (var i = 0; i < keys.length; i++) {
+        try { window.localStorage.removeItem(keys[i]); } catch (e) {}
+        try { window.sessionStorage.removeItem(keys[i]); } catch (e) {}
+        try { deleteCookie(keys[i]); } catch (e) {}
       }
     },
 

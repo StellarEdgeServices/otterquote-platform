@@ -1532,15 +1532,27 @@
             }
 
             // gh-2060 item 3 (CEO ruling, #2060 comment 5911272482): the
-            // partner-attribution keys are consumed the same way -- only when
-            // this pass carried one forward (it is in the claim payload above)
-            // AND the claim write succeeded. An error or no-op pass leaves
-            // them alone. Cookie + localStorage + sessionStorage copies.
-            if ((referralSource || partnerIdParam) && claimWriteSucceeded) {
-              if (window.OtterQuoteReferral && window.OtterQuoteReferral.clearPartnerAttribution) {
-                window.OtterQuoteReferral.clearPartnerAttribution();
-              } else {
-                try { sessionStorage.removeItem('oq_referral_source'); sessionStorage.removeItem('oq_partner_id'); } catch (_) {}
+            // partner-attribution keys are consumed the same way, EACH only
+            // when its own value was stamped on the claim AND the claim write
+            // succeeded. oq_referral_source: referral_source is in the payload.
+            // oq_partner_id: only when the lookup resolved it into
+            // referral_agent_id -- a failed/absent lookup (RPC or network
+            // error, unknown code) stamps nothing, so the key is KEPT (round 2,
+            // LEGAL-READ + REVIEW FAIL on #2404). A definitive no-match is also
+            // kept (chosen: the lookup cannot tell it from an error). An error
+            // or no-op pass leaves both alone.
+            if (claimWriteSucceeded) {
+              const consumeSource = !!referralSource;
+              const consumePartnerId = !!(partnerIdParam && referralAgentId);
+              if (consumeSource || consumePartnerId) {
+                if (window.OtterQuoteReferral && window.OtterQuoteReferral.clearPartnerAttribution) {
+                  window.OtterQuoteReferral.clearPartnerAttribution({ source: consumeSource, partnerId: consumePartnerId });
+                } else {
+                  try {
+                    if (consumeSource) sessionStorage.removeItem('oq_referral_source');
+                    if (consumePartnerId) sessionStorage.removeItem('oq_partner_id');
+                  } catch (_) {}
+                }
               }
             }
           } catch (supabaseError) {

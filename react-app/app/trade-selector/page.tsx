@@ -1081,13 +1081,21 @@ export default function TradeSelectorPage() {
           }
 
           // gh-2060 item 3 (CEO ruling, #2060 comment 5911272482): consume the
-          // partner-attribution keys the same way -- only when this pass
-          // carried one forward (it is in the claim payload above) AND the
-          // claim write succeeded. An error or no-op pass leaves them alone.
-          // Cookie + localStorage + sessionStorage copies. Mirrors the static
-          // trade-selector.html claim writer.
-          if ((referralSource || partnerIdParam) && claimWriteSucceeded) {
-            clearPartnerAttribution();
+          // partner-attribution keys the same way, EACH only when its own value
+          // was stamped on the claim AND the claim write succeeded.
+          // oq_referral_source: referral_source is in the payload.
+          // oq_partner_id: only when the lookup resolved it into
+          // referral_agent_id -- a failed/absent lookup (RPC or network error,
+          // unknown code) stamps nothing, so the key is KEPT (round 2,
+          // LEGAL-READ + REVIEW FAIL on #2404). A definitive no-match is also
+          // kept (chosen: the lookup cannot tell it from an error). An error or
+          // no-op pass leaves both alone. Mirrors trade-selector.html.
+          if (claimWriteSucceeded) {
+            const consumeSource = !!referralSource;
+            const consumePartnerId = !!(partnerIdParam && referralAgentId);
+            if (consumeSource || consumePartnerId) {
+              clearPartnerAttribution({ source: consumeSource, partnerId: consumePartnerId });
+            }
           }
         } catch (claimErr) {
           console.warn('[trade-selector] claim upsert failed:', claimErr);
