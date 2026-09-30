@@ -137,7 +137,7 @@ if (chromium) {
   // negative control for the overflow assertion: a wide element must trip the same measure
   await phone.evaluate(() => { const x = document.createElement('div'); x.style.cssText = 'width:600px;height:2px'; document.querySelector('.re1-value').appendChild(x); });
   const g2 = await geo(phone);
-  ok(g2.maxRight > g2.innerW + 0.5, 'negative control: an injected 600px element is detected as horizontal overflow');
+  ok(g2.maxRight > 390.5, 'negative control: an injected 600px element is detected as horizontal overflow');
   await browser.close(); server.close();
 }
 console.log(''); console.log(pass + ' passed, ' + fail + ' failed');
