@@ -160,6 +160,13 @@
   var contactValues = null; // the contact form values (as typed); the address call re-sends them so the consent row is complete whichever call lands first
   var consentRecord = null; // the consent object sent with the contact call; the address call re-sends the SAME object (first row wins server-side)
   var leadEventFired = false;
+  // CRO-51 visible-view measurement (#2121). All of it goes through bridge.trackRouter -> gtag, so it inherits the
+  // ga-gate consent / internal-traffic gating exactly as router_step_view does; no separate send path.
+  var visAtLoad = null;      // document.visibilityState at hydration ('visible' | 'hidden' | ...)
+  var visibleAt = 0;         // Date.now() when the page first / most recently became visible; 0 = not visible yet
+  var visibleFired = false;  // router_step_visible: once per page load
+  var hiddenFired = false;   // router_step_hidden: once per page load, first transition to hidden / pagehide
+  var fundingTapped = false; // a funding button was tapped (boolean only; the answer itself never reaches analytics)
   var activeToken = null;
   var stack = [];
 
@@ -214,7 +221,11 @@
     if (extra) { Object.keys(extra).forEach(function (k) { p[k] = extra[k]; }); }
     return p;
   }
-  function emitView(token) { bridge.trackRouter('router_step_view', stepParams(token)); }
+  // CRO-51 / #2121 (measurement only): vis_at_load is document.visibilityState when this arm hydrated, stamped on
+  // the f-funding router_step_view only. Name, firing site and every other param of that event are unchanged.
+  function emitView(token) {
+    bridge.trackRouter('router_step_view', stepParams(token, token === 'f-funding' && visAtLoad ? { vis_at_load: visAtLoad } : null));
+  }
   function emitComplete(token) { bridge.trackRouter('router_step_complete', stepParams(token)); }
 
   var RENDERERS = {};
@@ -283,6 +294,7 @@
     RENDERERS[token]();
   }
   function go(token) {
+    if (activeToken === 'f-funding' && token === 'f-contact') fundingTapped = true;
     if (activeToken) emitComplete(activeToken);
     stack.push(activeToken);
     show(token);
@@ -743,7 +755,41 @@
     // The unload net for the details write (see beaconDetails).
     try { window.addEventListener('pagehide', beaconDetails); } catch (e) { /* none */ }
     try { document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') beaconDetails(); }); } catch (e) { /* none */ }
+    try { visAtLoad = document.visibilityState || null; } catch (e) { visAtLoad = null; }
     show('f-funding');
+    startVisibilityMeasure();
+  }
+
+  // CRO-51 (#2121): how many visitors actually SAW the funding screen, and for how long before the first hide.
+  // router_step_visible fires once, the first time the page is visible (now if it already is, else on the first
+  // visibilitychange to visible). router_step_hidden fires once, on the first hidden / pagehide after that, with the
+  // visible milliseconds and whether a funding button had been tapped. transport_type 'beacon' = navigator.sendBeacon.
+  function markVisible() {
+    if (!visibleAt) visibleAt = Date.now();
+    if (visibleFired) return;
+    visibleFired = true;
+    bridge.trackRouter('router_step_visible', stepParams('f-funding'));
+  }
+  function markHidden() {
+    if (hiddenFired || !visibleAt) return; // never visible -> nothing to time
+    hiddenFired = true;
+    bridge.trackRouter('router_step_hidden', stepParams('f-funding', {
+      visible_ms_before_first_hide: Math.max(0, Date.now() - visibleAt),
+      funding_tapped: fundingTapped ? 1 : 0,
+      transport_type: 'beacon'
+    }));
+  }
+  function startVisibilityMeasure() {
+    try {
+      if (visAtLoad === 'visible') markVisible();
+      document.addEventListener('visibilitychange', function () {
+        try {
+          if (document.visibilityState === 'visible') markVisible();
+          else if (document.visibilityState === 'hidden') markHidden();
+        } catch (e) { /* measurement must never break the flow */ }
+      });
+      window.addEventListener('pagehide', function () { try { markHidden(); } catch (e) { /* none */ } });
+    } catch (e) { /* none */ }
   }
 
   window.RouterVariantF = { init: init, COPY: COPY, STEP_INDEX: STEP_INDEX };
