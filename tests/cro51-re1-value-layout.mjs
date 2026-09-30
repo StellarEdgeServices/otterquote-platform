@@ -79,6 +79,17 @@ for (const m of manifest.images) {
 }
 ok(!fs.readdirSync(path.join(repoRoot, 'img/re1')).some((f) => /^TODO-photo/.test(f)), 'no TODO placeholder photos left');
 
+// v2 (Dustin review 2026-09-30): real-estate photos for sections 3-4 (closing, SOLD sign), no tool photos; form matches the page.
+ok(manifest.images[2].page_url.includes('8470836') && manifest.images[3].page_url.includes('8293717'), 'sections 3-4 use the closing/signing and SOLD-sign photos');
+ok(!/saw|drill|lumber|mitre/i.test(main), 'value block has no saw/drill/lumber photo alt text');
+for (const m of manifest.images) {
+  const im = new RegExp('src="/' + m.file.replace(/[.\/]/g, '\\$&') + '" width="(\\d+)" height="(\\d+)"').exec(html);
+  const buf = fs.readFileSync(path.join(repoRoot, m.file));
+  const w = buf.readUIntLE(26, 2) & 0x3fff, h = buf.readUIntLE(28, 2) & 0x3fff;
+  ok(im && Number(im[1]) === w && Number(im[2]) === h, m.file + ' WebP dimensions match declared width/height');
+}
+ok(/\.signup-section \{ background: #FFFFFF; color: #000000;/.test(html) && /\.signup-section \.btn-primary \{ background: #1E4FA8;/.test(html), 'signup section is white with the page blue submit button');
+
 // ── browser half ────────────────────────────────────────────────────────────
 let chromium = null;
 try {

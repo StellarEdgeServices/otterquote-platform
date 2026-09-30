@@ -393,6 +393,30 @@ a:hover { color: var(--amber-2); }
 
 /* #589: D-266 disclaimer sits on the dark signup panel here — was 3.64:1. */
 .referral-fee-disclaimer { color: #94A3B8 !important; }
+
+/* CRO51 v2 (Dustin review 2026-09-30): signup section restyled to match the white/black/blue value page above.
+   CSS ONLY -- no markup, id, name, consent, fee-sentence, D-266 or JS change. Same blue (#1E4FA8) and button
+   style as .re1-cta. Overrides the navy-panel rules above (the disclaimer rule above is superseded here). */
+.signup-section { background: #FFFFFF; color: #000000; padding: var(--sp-10) var(--sp-8) var(--sp-16); border-top: 1px solid #E2E8F0; }
+.signup-section .signup-form-wrap { max-width: 520px; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: var(--radius-md); box-shadow: 0 1px 3px rgba(15,23,42,0.08); padding: var(--sp-8); }
+.signup-section .form-label { color: #000000; font-size: 1rem; }
+.signup-section .form-input { width: 100%; box-sizing: border-box; background: #FFFFFF; color: #000000; border: 1px solid #94A3B8; font-size: 1rem; }
+.signup-section .form-input::placeholder { color: #64748B; }
+.signup-section .form-input:focus { background: #FFFFFF; border-color: #1E4FA8; box-shadow: 0 0 0 3px rgba(30,79,168,0.18); }
+.signup-section .form-checkbox { accent-color: #1E4FA8; }
+.signup-section .checkbox-label { color: #000000; font-size: 1rem; }
+.signup-section .checkbox-label a { color: #1E4FA8; }
+.signup-section .field-error { color: #B91C1C; }
+.signup-section .form-error { background: #FEF2F2; border-color: #FCA5A5; color: #991B1B; }
+.signup-section .btn-primary { background: #1E4FA8; color: #FFFFFF; padding: var(--sp-3) var(--sp-6); font-size: 1rem; font-weight: 600; }
+.signup-section .btn-primary:hover, .signup-section .btn-primary:focus-visible { background: #163B82; color: #FFFFFF; transform: none; box-shadow: none; }
+.signup-section .btn-loading::after { border-color: rgba(255,255,255,0.4); border-top-color: #FFFFFF; }
+.signup-section .partner-form > p { color: #000000 !important; }
+.signup-section .partner-form > .referral-fee-disclaimer { color: #334155 !important; }
+@media (max-width: 768px) {
+  .signup-section { padding: var(--sp-8) var(--sp-4) var(--sp-10); }
+  .signup-section .signup-form-wrap { padding: var(--sp-5); }
+}
 /* gh-2361 / CRO47: trust header (identical, modulo indentation, on re-1 / ins-1 / hi-1). The [data-skip-nav] selector out-ranks
    css/nav.css's sticky #site-header so the async nav.css swap cannot move or restyle this (CLS 0). */
 #site-header[data-skip-nav="true"] { position: static; background: #0D1B2E; border: 0; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
@@ -453,7 +477,7 @@ a:hover { color: var(--amber-2); }
     </div>
   </section>
   <section class="re1-section" data-re1-section="3">
-    <figure class="re1-photo"><img src="/img/re1/re1-3.webp" width="900" height="600" alt="Mitre saw cutting lumber on a construction site" loading="lazy" decoding="async"></figure>
+    <figure class="re1-photo"><img src="/img/re1/re1-3.webp" width="900" height="600" alt="Hand signing a real estate contract on a clipboard" loading="lazy" decoding="async"></figure>
     <div class="re1-text">
       <h2>See subcontractor pricing.</h2>
       <p>Clients can choose from local, well known contractors or work directly with the subcontractors who do the work.</p>
@@ -461,7 +485,7 @@ a:hover { color: var(--amber-2); }
     </div>
   </section>
   <section class="re1-section re1-section--flip" data-re1-section="4">
-    <figure class="re1-photo"><img src="/img/re1/re1-4.webp" width="900" height="600" alt="Tradesperson installing a window frame with a drill" loading="lazy" decoding="async"></figure>
+    <figure class="re1-photo"><img src="/img/re1/re1-4.webp" width="900" height="600" alt="Hand holding a house key in front of a red SOLD sign" loading="lazy" decoding="async"></figure>
     <div class="re1-text">
       <h2>Reduce unnecessary expenses.</h2>
       <p>Otter Quotes reduces the need for sales and marketing costs, so contractors can pass those savings along to your clients.</p>

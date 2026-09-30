@@ -1,5 +1,5 @@
 {
-  "note": "RE-1 value-layout photo manifest (CRO51, PR for gh-2150). Pexels free licence, https://www.pexels.com/license/. Photos re-used from the vetted HO-6 set (img/ho6/manifest.json, gh-2378), re-cropped, resized to 900x600 webp. No faces, no brand logos, no AI images.",
+  "note": "RE-1 value-layout photo manifest (CRO51, PR for gh-2150). Pexels free licence, https://www.pexels.com/license/. Sections 1-2 re-used from the vetted HO-6 set (img/ho6/manifest.json, gh-2378); sections 3-4 replaced 2026-09-30 (Dustin review: real-estate photos, not tools). All re-cropped to 3:2 and resized to 900x600 webp (width/height match the declared attributes). No faces, no brand logos, no AI images.",
   "images": [
     {
       "section": 1,
@@ -25,21 +25,21 @@
       "section": 3,
       "heading": "See subcontractor pricing.",
       "file": "img/re1/re1-3.webp",
-      "page_url": "https://www.pexels.com/photo/men-constructing-a-wooden-house-8817846/",
-      "photographer": "Ron Lach",
-      "photographer_url": "https://www.pexels.com/@ron-lach/",
+      "page_url": "https://www.pexels.com/photo/a-person-signing-a-contract-8470836/",
+      "photographer": "Thirdman",
+      "photographer_url": "https://www.pexels.com/@thirdman/",
       "licence_url": "https://www.pexels.com/license/",
-      "edit": "cropped tightly to the mitre saw and lumber (faces removed), resized"
+      "edit": "closing/signing: cropped from the 2:3 original to 3:2 around the pen and document, resized (hands only, no face)"
     },
     {
       "section": 4,
       "heading": "Reduce unnecessary expenses.",
       "file": "img/re1/re1-4.webp",
-      "page_url": "https://www.pexels.com/photo/handyman-installing-window-frame-with-drill-in-house-5691544/",
-      "photographer": "Ksenia Chernaya",
-      "photographer_url": "https://www.pexels.com/@kseniachernaya/",
+      "page_url": "https://www.pexels.com/photo/person-handing-out-a-house-key-8293717/",
+      "photographer": "RDNE Stock project",
+      "photographer_url": "https://www.pexels.com/@rdne/",
       "licence_url": "https://www.pexels.com/license/",
-      "edit": "cropped to the drill and window frame (subject seen from behind, face not visible), resized"
+      "edit": "SOLD sign + house key handover: cropped from the 2:3 original to 3:2, resized (hand only, no face; sign has no brokerage name)"
     }
   ]
 }
