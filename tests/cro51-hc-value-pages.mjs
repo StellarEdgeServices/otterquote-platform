@@ -56,8 +56,8 @@ const PINS = {
   'choice_decisions': '2220cfd5d3e14e5edb13879829ad61b3f52c299296c5c075521fbcc22367e787',
   'para_save-money': '08b8ad8a58c4951fc531a6cc368e405c3d4f4d52c335977925f4b92117971c55',
   'para_materials': 'd7bec219f889122916d97e1b113671d4e22bf95e7d7b6db3fde31ee5f3b0812f',
-  'para_warranties': '44b4e726829887656bb0700c4b78c9dbaa2579daaa28bb545b992d49ff6c9138',
-  'para_decisions': 'd6730afa5376cb63c0524559b61a369b9f5b10dee937def87ffc3ac7d55f6e89',
+  'para_warranties': 'f71c64709462c0dbcf36efb2ef8b828718f2dd61091796762a41f7c7ac945890',
+  'para_decisions': '15f67bfab50cf39dcdadbb69ad4c77eeb0a685d7be8c08b2b5a8548849b9f946',
 };
 
 // ── HTML helpers (no DOM in node: small purpose-built extractors) ──────────────────────────────────────────────────────────────────────────
@@ -118,7 +118,10 @@ function staticHalf() {
   }
   ok(!/20\s*[-\u2013]\s*50|percent/i.test(HTML['save-money']) && /Many insurers offer a discount/.test(HTML['save-money']), 'V2 the save-money page carries the approved replacement text, not the "20-50 percent" original');
   ok(/Ask yours what it offers\./.test(HTML['save-money']) && /more likely to include these upgrades for free or at discounted rates/.test(HTML['save-money']), 'V2 save-money keeps "Ask yours what it offers" and the approved "more likely" wording');
-  ok(/every product that goes on your home/.test(HTML.decisions), 'V2 decisions page text is the approved text INCLUDING "every product" (open question for Dustin; do not merge this page until answered)');
+  ok(!/unbiased/i.test(HTML.decisions) && !/every product/i.test(HTML.decisions) && !/unbiased|every product/i.test(COPY.para_decisions), 'V2 decisions page and fixture: the words "unbiased" and "every product" are absent (Dustin 2026-09-30: contractors pay a fee on the accepted bid)');
+  ok(/costs and benefits of the products that go on your home/.test(HTML.decisions) && /probably outlive you/.test(HTML.warranties) && !/out live/.test(HTML.warranties), 'V2 decisions reads "the products" and warranties reads "outlive" (Dustin 2026-09-30)');
+  control('V2 "unbiased" (injected into decisions page)', /unbiased/i.test(HTML.decisions.replace('do our best', 'do our best to be unbiased')));
+  control('V2 "every product" (injected into decisions page)', /every product/i.test(HTML.decisions.replace('of the products', 'of every product')));
 
   // V3 the bids links and the utm string
   {
