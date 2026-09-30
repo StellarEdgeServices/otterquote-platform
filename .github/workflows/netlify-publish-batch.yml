@@ -23,12 +23,24 @@
 # it rolls back to the old deploy and locks it again. If anything fails after the
 # unlock, it re-locks whatever is live, so the site is never left auto-publishing.
 #
-# The deploy list uses ?production=true&state=ready. The API honours these
-# parameters (verified 2026-09-30: 30 of 30 returned deploys were production/ready),
-# but the OpenAPI spec does not list them, so the script also filters client-side.
+# The deploy list uses ?production=true&state=ready. The OpenAPI spec lists these
+# filters (listSiteDeploys: production, state, branch, deploy-previews,
+# latest-published) and the API honours them (verified 2026-09-30: 30 of 30
+# returned deploys were production/ready), but a wrong publish is costly, so the
+# script does not rely on them: it also filters client-side on context, state and
+# branch, and on published_at. Only deploys that have NEVER been published are
+# candidates (published_at is null), so a deploy that was published once and then
+# rolled back because it was broken is never republished on a later run.
 #
-# Sites that are NOT locked are reported and left alone. otter-crm is not
-# listed on purpose.
+# Guards: from the first unlock to the end of the rollback, everything sits in one
+# try/finally that re-locks whatever deploy is live (idempotent: it reads `locked`
+# first and only POSTs a lock if the live deploy is unlocked). A final step with
+# `if: always()` does the same for both sites, covering a job timeout or cancel
+# between unlock and lock.
+#
+# A site found UNLOCKED at the start is a failure: the script re-locks it (not in
+# dry-run) and the run exits non-zero so a human sees that auto publishing was on.
+# otter-crm is not listed on purpose.
 #
 # Dry-run: workflow_dispatch input dry_run (default true), or repo variable
 # NETLIFY_PUBLISH_DRY_RUN == 'true' (applies to scheduled runs too). In dry-run
@@ -111,13 +123,20 @@ jobs:
               except Exception as e:
                   return f"ERR {e}"
 
+          RELOCK_FAILED = False
+
           def relock_live(site_id):
+              """Idempotent: lock whatever deploy is live, but only POST if it is not already locked."""
+              global RELOCK_FAILED
               try:
                   pd = must("GET", f"/sites/{site_id}")["published_deploy"]
-                  if not pd.get("locked"):
+                  if pd.get("locked"):
+                      print(f"  live deploy {pd['id']} is locked")
+                  else:
                       must("POST", f"/deploys/{pd['id']}/lock")
-                  print(f"  re-locked live deploy {pd['id']}")
+                      print(f"  re-locked live deploy {pd['id']}")
               except Exception as e:
+                  RELOCK_FAILED = True
                   print(f"  ::error::RE-LOCK FAILED: {e} -- site may be auto-publishing; lock it by hand")
 
           print(f"mode: {'DRY-RUN (no writes)' if DRY else 'LIVE'}")
@@ -133,41 +152,91 @@ jobs:
                   pub = site["published_deploy"]
                   print(f"  published: {pub['id']} commit {str(pub.get('commit_ref'))[:10]} created {pub.get('created_at')} locked={pub.get('locked')}")
                   if not pub.get("locked"):
-                      print("  NOT LOCKED (auto publishing is on) -- nothing to do, left alone")
-                      continue
+                      if not DRY:
+                          relock_live(site_id)
+                      raise RuntimeError("site was UNLOCKED at start (auto publishing was on)" + (" -- dry-run, not re-locked" if DRY else " -- re-lock attempted") + "; failing the run")
                   deploys = must("GET", f"/sites/{site_id}/deploys?production=true&state=ready&per_page=30")
                   ready = [d for d in deploys if d.get("context") == "production" and d.get("state") == "ready"
-                           and d.get("branch") == branch]
+                           and d.get("branch") == branch and not d.get("published_at")]
                   if not ready:
-                      print("  no ready production deploy found -- nothing to do"); continue
+                      print("  no never-published ready production deploy found -- nothing to do"); continue
                   newest = max(ready, key=lambda d: d["created_at"])
-                  print(f"  newest ready production: {newest['id']} commit {str(newest.get('commit_ref'))[:10]} created {newest['created_at']}")
+                  print(f"  newest never-published ready production: {newest['id']} commit {str(newest.get('commit_ref'))[:10]} created {newest['created_at']}")
                   if newest["id"] == pub["id"] or newest["created_at"] <= pub["created_at"]:
                       print("  up to date -- nothing to publish"); continue
                   if DRY:
                       print(f"  DRY-RUN: would unlock {pub['id']}, restore {newest['id']}, lock {newest['id']}, smoke {smoke_url}")
                       continue
-                  must("POST", f"/deploys/{pub['id']}/unlock")
                   try:
+                      must("POST", f"/deploys/{pub['id']}/unlock")
                       must("POST", f"/sites/{site_id}/deploys/{newest['id']}/restore")
                       must("POST", f"/deploys/{newest['id']}/lock")
-                  except Exception:
-                      relock_live(site_id); raise
-                  time.sleep(5)
-                  after = must("GET", f"/sites/{site_id}")["published_deploy"]
-                  code = http_status(smoke_url)
-                  print(f"  after: published {after['id']} locked={after.get('locked')} smoke {smoke_url} -> {code}")
-                  if after["id"] != newest["id"] or not after.get("locked"):
+                      time.sleep(5)
+                      after = must("GET", f"/sites/{site_id}")["published_deploy"]
+                      code = http_status(smoke_url)
+                      print(f"  after: published {after['id']} locked={after.get('locked')} smoke {smoke_url} -> {code}")
+                      if after["id"] != newest["id"] or not after.get("locked"):
+                          raise RuntimeError("verification failed: published deploy/lock state not as expected")
+                      if code != 200:
+                          print(f"  ::error::smoke check {code} -- rolling back to {pub['id']}")
+                          must("POST", f"/deploys/{newest['id']}/unlock")
+                          must("POST", f"/sites/{site_id}/deploys/{pub['id']}/restore")
+                          must("POST", f"/deploys/{pub['id']}/lock")
+                          raise RuntimeError(f"rolled back after smoke {code}")
+                      print(f"  PUBLISHED {newest['id']} and locked")
+                  finally:
+                      # Whatever happened after the first unlock (API error, applied-but-5xx,
+                      # failed verification, failed rollback), leave the live deploy locked.
                       relock_live(site_id)
-                      raise RuntimeError("verification failed: published deploy/lock state not as expected")
-                  if code != 200:
-                      print(f"  ::error::smoke check {code} -- rolling back to {pub['id']}")
-                      must("POST", f"/deploys/{newest['id']}/unlock")
-                      must("POST", f"/sites/{site_id}/deploys/{pub['id']}/restore")
-                      must("POST", f"/deploys/{pub['id']}/lock")
-                      raise RuntimeError(f"rolled back after smoke {code}")
-                  print(f"  PUBLISHED {newest['id']} and locked")
               except Exception as e:
                   failures += 1
                   print(f"::error::{name}: {e}")
-          sys.exit(1 if failures else 0)
+          sys.exit(1 if failures or RELOCK_FAILED else 0)
+
+      - name: Re-lock live deploys (always)
+        # Runs even if the publish step timed out or was cancelled between unlock
+        # and lock. Idempotent: reads `locked` first and POSTs a lock only when a
+        # live deploy is unlocked. Skipped in dry-run (no writes).
+        if: ${{ always() && env.DRY_RUN != 'true' }}
+        shell: python
+        run: |
+          import json, os, sys, urllib.request, urllib.error
+
+          SITES = {
+              "jade-alpaca-b82b5e": "6748a414-1baa-4309-a5f9-f3a7f45e3d94",
+              "otterquote-app":     "26316673-212a-4f20-a95e-902ece8387c4",
+          }
+          PAT = os.environ.get("NETLIFY_PAT", "")
+          if not PAT:
+              sys.exit("NETLIFY_PAT secret is empty or missing")
+          API = "https://api.netlify.com/api/v1"
+
+          def call(method, path):
+              req = urllib.request.Request(API + path, method=method, data=(b"" if method == "POST" else None),
+                  headers={"Authorization": "Bearer " + PAT, "User-Agent": "netlify-publish-batch"})
+              try:
+                  with urllib.request.urlopen(req, timeout=60) as r:
+                      body = r.read().decode()
+                      return r.status, (json.loads(body) if body else {})
+              except urllib.error.HTTPError as e:
+                  return e.code, {"error": e.read().decode()[:300]}
+
+          def must(method, path):
+              s, b = call(method, path)
+              if s >= 300:
+                  raise RuntimeError(f"{method} {path} -> HTTP {s} {b}")
+              return b
+
+          bad = 0
+          for name, site_id in SITES.items():
+              try:
+                  pd = must("GET", f"/sites/{site_id}")["published_deploy"]
+                  if pd.get("locked"):
+                      print(f"{name}: live deploy {pd['id']} is locked")
+                  else:
+                      must("POST", f"/deploys/{pd['id']}/lock")
+                      print(f"{name}: RE-LOCKED live deploy {pd['id']} (was unlocked)")
+              except Exception as e:
+                  bad += 1
+                  print(f"::error::{name}: RE-LOCK FAILED: {e} -- site may be auto-publishing; lock it by hand")
+          sys.exit(1 if bad else 0)
