@@ -166,6 +166,23 @@ if (chromium) {
   ok(d.bg === 'rgb(255, 255, 255)' && d.h1Color === 'rgb(30, 79, 168)' && d.h2Color === 'rgb(30, 79, 168)' && d.pColor === 'rgb(0, 0, 0)', 'colours: white background, blue headers, black text -- ' + [d.bg, d.h1Color, d.h2Color, d.pColor].join(' | '));
   ok(d.formBg === 'rgb(255, 255, 255)' && d.btnBg === 'rgb(30, 79, 168)', 'form section is white with a blue submit button -- ' + [d.formBg, d.btnBg].join(' | '));
   ok(/Rubik/.test(d.font), 'site font (Rubik) is used');
+  // WCAG AA text contrast (REVIEW FAIL 5916897295): the after-signup confirmation text and the fee/disclaimer fine print sit on the white
+  // signup card and must be >= 4.5:1 against their ACTUAL (composited) background. Was #8A9BAB (2.85:1) on the confirmation text.
+  const lin = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+  const rgbLum = (c) => 0.2126 * lin(c[0]) + 0.7152 * lin(c[1]) + 0.0722 * lin(c[2]);
+  const hexRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const ratio = (a, b) => { const x = rgbLum(a), y = rgbLum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+  const textContrast = await desk.evaluate(({ sels }) => {
+    const parse = (s) => { const m = s.match(/rgba?\(([^)]+)\)/)[1].split(',').map(Number); return { r: m[0], g: m[1], b: m[2], a: m.length > 3 ? m[3] : 1 }; };
+    const bgOf = (el) => { const layers = []; for (let e = el; e; e = e.parentElement) { const c = parse(getComputedStyle(e).backgroundColor); if (c.a > 0) layers.push(c); if (c.a >= 1) break; }
+      let base = { r: 255, g: 255, b: 255 }; for (let i = layers.length - 1; i >= 0; i--) { const l = layers[i]; base = { r: l.r * l.a + base.r * (1 - l.a), g: l.g * l.a + base.g * (1 - l.a), b: l.b * l.a + base.b * (1 - l.a) }; } return [base.r, base.g, base.b]; };
+    return sels.map((s) => Array.from(document.querySelectorAll(s)).map((el) => { const c = parse(getComputedStyle(el).color); return { sel: s, fg: [c.r, c.g, c.b], bg: bgOf(el) }; })).flat();
+  }, { sels: ['#signup .success-message p', '#signup form > p'] });
+  const succEls = textContrast.filter((t) => t.sel === '#signup .success-message p'), fineEls = textContrast.filter((t) => t.sel !== '#signup .success-message p');
+  ok(succEls.length >= 1 && succEls.every((t) => ratio(t.fg, t.bg) >= 4.5), 'signup confirmation text contrast >= 4.5:1 against its actual background -- ' + succEls.map((t) => ratio(t.fg, t.bg).toFixed(2)).join(', '));
+  ok(fineEls.length >= 1 && fineEls.every((t) => ratio(t.fg, t.bg) >= 4.5), 'signup fee/disclaimer fine print contrast >= 4.5:1 against its actual background -- ' + fineEls.map((t) => ratio(t.fg, t.bg).toFixed(2)).join(', '));
+  // negative control: the old #8A9BAB on the white card must fail the same test
+  ok(ratio(hexRgb('#8A9BAB'), hexRgb('#FFFFFF')) < 4.5 && ratio(hexRgb('#334155'), hexRgb('#FFFFFF')) >= 4.5, 'negative control: old #8A9BAB on white is ' + ratio(hexRgb('#8A9BAB'), hexRgb('#FFFFFF')).toFixed(2) + ':1 (fails 4.5), #334155 passes');
   // negative control for the overflow assertion: a wide element must trip the same measure
   await phone.evaluate(() => { const x = document.createElement('div'); x.style.cssText = 'width:600px;height:2px'; document.querySelector('.ins1-value').appendChild(x); });
   const g2 = await geo(phone);
