@@ -85,7 +85,8 @@ const APPROVED_STRINGS = [
   // purpose. The new headline/subhead are pinned here; the six value sections are pinned in the CRO51 test. The form, fee sentence,
   // D-266 disclaimer, confirmation and every script below are unchanged.
   ['H1', "Don't just send a check. SEND HELP AFTER THE STORM"],
-  ['Subhead', 'Otter Quotes gets multiple competitive bids for your clients.'],
+  // CRO51 v2 (Dustin, 2026-10-01; ruling: soften to "can"): the one-line subhead was replaced by this intro paragraph.
+  ['Intro paragraph', "Otter Quotes sends your client's scope of work to multiple contractors and makes them compete for the business. Your client can get better materials and warranties. You can get fewer claims, more referrals, and $200 for qualified jobs signed through the platform."],
   ['CTA', 'Get My Referral Link'],
   ['Agreement checkbox text', "I agree to Otter Quotes's Partner Terms"],
   ['Fee sentence (D-301/D-305, verbatim)', '$200 when a homeowner you refer completes a project of $10,000 or more. $50 on the same terms for referrals from partners you recruit.'],
@@ -115,6 +116,10 @@ for (const [label, text] of APPROVED_STRINGS) {
   ok(normalizedHtml.includes(normalize(text)), 'ins-1.html (a): approved copy present verbatim -- ' + label);
 }
 
+const RETIRED_SUBHEAD = 'Otter Quotes gets multiple competitive bids for your clients.';
+const retiredSubheadAbsent = (h) => !normalize(h).includes(RETIRED_SUBHEAD) && !h.includes(RETIRED_SUBHEAD);
+ok(retiredSubheadAbsent(html), 'ins-1.html (a): the retired one-line subhead is absent (replaced by the intro paragraph, Dustin 2026-10-01)');
+ok(!retiredSubheadAbsent(html.replace('</h1>', '</h1><p>' + RETIRED_SUBHEAD + '</p>')), 'ins-1.html (a) negative control: the retired-subhead check fires when the old subhead is put back');
 ok(html.includes(AGREE_ERROR_STRING), 'ins-1.html (a) LEGAL-READ FAIL 5836612835: agreement checkbox error is main\'s byte-identical string -- "' + AGREE_ERROR_STRING + '"');
 ok(!html.includes("You must agree to Otter Quotes's Partner Terms."), 'ins-1.html (a): the unapproved paraphrase error string is gone');
 

@@ -1,5 +1,5 @@
 /**
- * CRO51 -- INS-1 value layout (Dustin, 2026-09-30, verbatim; canonical source
+ * CRO51 -- INS-1 value layout (Dustin, 2026-09-30, verbatim; intro paragraph Dustin 2026-10-01; canonical source
  * Claude's Memories/otterquote-value-proposition.md section 5 item 5).
  * Pins Dustin's copy byte-for-byte (the ONLY edit is the obvious typo "all this" -> "allow this" in the fee section), the seven
  * "Become a partner today" buttons (top + six sections, each an in-page link to the EXISTING #signup form), the photo
@@ -27,7 +27,11 @@ ok(!!main, 'value block <div class="ins1-value"> exists');
 // ── Dustin's copy, byte for byte ────────────────────────────────────────────
 const H1_A = "Don't just send a check.";
 const H1_B = 'SEND HELP AFTER THE STORM';
-const SUBHEAD = 'Otter Quotes gets multiple competitive bids for your clients.';
+// CRO51 v2 (Dustin, 2026-10-01, verbatim request; his ruling on the two outcome sentences: 'Soften to "can" (Recommended)'):
+// the one-line subhead was REPLACED by this three-sentence intro paragraph. Pinned byte for byte (straight apostrophe, single spaces).
+const SUBHEAD = "Otter Quotes sends your client's scope of work to multiple contractors and makes them compete for the business. Your client can get better materials and warranties. You can get fewer claims, more referrals, and $200 for qualified jobs signed through the platform.";
+const SUBHEAD_FIRST = "Otter Quotes sends your client's scope of work to multiple contractors and makes them compete for the business.";
+const OLD_SUBHEAD = 'Otter Quotes gets multiple competitive bids for your clients.';
 const SECTIONS = [
   ['Easier Service.', 'Otter Quotes generates a scope of work and submits it to multiple contractors for bid. In less time than it takes for them to sign with a door to door canvasser, your client can get multiple bids from local, well-known contractors.'],
   ['Educated Clients.', 'We show your clients how higher grade materials can reduce damage from hail and wind. So you have fewer claims in the future and you get to surprise them with discounted rates.'],
@@ -37,7 +41,17 @@ const SECTIONS = [
   ['$200 referral fee.', 'For every client you refer who does $10,000 or more of work through Otter Quotes, we will send you $200. Please make sure your employment and licensing terms allow this.'],
 ];
 ok(main.includes('<h1><span class="ins1-h1-a">' + H1_A + '</span> <span class="ins1-h1-b">' + H1_B + '</span></h1>'), 'headline is "' + H1_A + '" then "' + H1_B + '" in the h1');
-ok(main.includes('<p class="ins1-sub">' + SUBHEAD + '</p>'), 'subhead is exactly "' + SUBHEAD + '"');
+ok(main.includes('<p class="ins1-sub">' + SUBHEAD + '</p>'), 'intro paragraph is exactly "' + SUBHEAD + '"');
+ok((html.match(/<p class="ins1-sub">/g) || []).length === 1, 'exactly one intro paragraph (.ins1-sub)');
+const oldSubheadAbsent = (h) => !h.includes(OLD_SUBHEAD);
+const introPinned = (h) => h.includes('<p class="ins1-sub">' + SUBHEAD + '</p>');
+ok(oldSubheadAbsent(html), 'the old subhead "' + OLD_SUBHEAD + '" is absent from the whole page (body, meta description, og:description)');
+ok(!oldSubheadAbsent(html.replace(SUBHEAD, OLD_SUBHEAD)) && !introPinned(html.replace(SUBHEAD, OLD_SUBHEAD)) && !introPinned(html.replace('Your client can get', 'Your client  can get')), 'negative control: the old-subhead and intro-paragraph checks fire when the old subhead is put back, and the byte-exact pin fires on a doubled space');
+// Dustin's ruling: outcomes are softened to "can"; the unsoftened wording must not be on the page.
+ok(SUBHEAD.includes('Your client can get better materials and warranties.') && SUBHEAD.includes('You can get fewer claims, more referrals, and $200 for qualified jobs signed through the platform.') && !/Your client gets better|You fewer claims|You get fewer claims/.test(html), 'intro outcomes use "can get" (ruling: soften to "can"); the unsoftened wording is absent');
+ok(/Your client gets better/.test(html.replace('Your client can get better', 'Your client gets better')), 'negative control: the unsoftened-wording check fires when "can get" is swapped back to "gets"');
+ok(!/[\u2018\u2019\u00a0]/.test(SUBHEAD) && !/  /.test(SUBHEAD) && SUBHEAD.length === 263, 'intro paragraph uses a straight apostrophe and single spaces (263 characters)');
+ok(html.includes('<meta name="description" content="' + SUBHEAD_FIRST + '">') && html.includes('<meta property="og:description" content="' + SUBHEAD_FIRST + '">') && SUBHEAD.startsWith(SUBHEAD_FIRST + ' '), 'meta description and og:description are the first sentence of the intro paragraph');
 const secs = main.match(/<section class="ins1-section[^"]*"[\s\S]*?<\/section>/g) || [];
 ok(secs.length === 6, 'exactly six value sections -- got ' + secs.length);
 SECTIONS.forEach(([h, body], i) => {
@@ -55,7 +69,7 @@ ok(/trusted/i.test(main.replace('well-known', 'trusted')), 'negative control: th
 // the one typo fix, and only that one
 ok(main.includes('licensing terms allow this.') && !/\ball this\b/.test(main), 'typo fix: "allow this" (Dustin wrote "all this"; fixed, flagged in the PR body)');
 // Top button directly under the subhead, same style + target.
-ok(main.includes('<p class="ins1-sub">' + SUBHEAD + '</p>\n                <a class="ins1-cta ins1-cta--top" href="#signup" data-ins1-cta="top">Become a partner today</a>'), 'one "Become a partner today" button sits directly under the subhead -> #signup, same ins1-cta style');
+ok(main.includes('<p class="ins1-sub">' + SUBHEAD + '</p>\n                <a class="ins1-cta ins1-cta--top" href="#signup" data-ins1-cta="top">Become a partner today</a>'), 'one "Become a partner today" button sits directly under the intro paragraph -> #signup, same ins1-cta style');
 ok((main.match(/<a class="ins1-cta[ "][^>]*>Become a partner today<\/a>/g) || []).length === 7 && (main.match(/href="#signup"/g) || []).length === 7, 'seven "Become a partner today" buttons in total (top + six sections), all -> #signup');
 ok(/gtag\('event', 'partner_cta_click', \{ position: a\.getAttribute\('data-ins1-cta'\)/.test(html) && /querySelectorAll\('\.ins1-cta'\)/.test(html), 'every .ins1-cta (top + six) fires the same partner_cta_click event with a position param (top/1-6)');
 ok(/<section class="form-section" id="signup">/.test(html) && /<form id="insuranceAgentForm"/.test(html), 'the button target #signup is the existing form section holding #insuranceAgentForm');
@@ -158,6 +172,9 @@ if (chromium) {
   const small = await open(390, 664, true);
   const tb = await small.evaluate(() => { const b = document.querySelector('[data-ins1-cta="top"]').getBoundingClientRect(); return { top: b.top, bottom: b.bottom, w: b.width }; });
   ok(tb.top >= 0 && tb.bottom <= 664 && tb.w > 100, '390x664: top "Become a partner today" button is fully inside the first screen (top ' + Math.round(tb.top) + ', bottom ' + Math.round(tb.bottom) + ')');
+  // intro paragraph: readable body size (never below 16px), centred, a bounded measure, and above the top button
+  const ip = await small.evaluate(() => { const e = document.querySelector('.ins1-sub'), cs = getComputedStyle(e), b = e.getBoundingClientRect(); return { fs: parseFloat(cs.fontSize), align: cs.textAlign, top: b.top, bottom: b.bottom, w: b.width, left: b.left, right: b.right }; });
+  ok(ip.fs >= 16 && ip.align === 'center' && ip.bottom <= tb.top && ip.left >= 0 && ip.right <= 390.5, '390x664: intro paragraph is >= 16px (' + ip.fs + 'px), centred, inside the viewport and above the top button (y ' + Math.round(ip.top) + '-' + Math.round(ip.bottom) + ')');
   await small.click('[data-ins1-cta="top"]');
   await small.waitForTimeout(900);
   const top2 = await small.evaluate(() => Math.round(document.getElementById('signup').getBoundingClientRect().top));
@@ -169,6 +186,8 @@ if (chromium) {
   ok(d.bg === 'rgb(255, 255, 255)' && d.h1Color === 'rgb(30, 79, 168)' && d.h2Color === 'rgb(30, 79, 168)' && d.pColor === 'rgb(0, 0, 0)', 'colours: white background, blue headers, black text -- ' + [d.bg, d.h1Color, d.h2Color, d.pColor].join(' | '));
   ok(d.formBg === 'rgb(255, 255, 255)' && d.btnBg === 'rgb(30, 79, 168)', 'form section is white with a blue submit button -- ' + [d.formBg, d.btnBg].join(' | '));
   ok(/Rubik/.test(d.font), 'site font (Rubik) is used');
+  const dp = await desk.evaluate(() => { const e = document.querySelector('.ins1-sub'), cs = getComputedStyle(e), b = e.getBoundingClientRect(); return { fs: parseFloat(cs.fontSize), w: b.width, mid: (b.left + b.right) / 2, align: cs.textAlign, h1fs: parseFloat(getComputedStyle(document.querySelector('.ins1-value h1')).fontSize) }; });
+  ok(dp.fs >= 16 && dp.fs < dp.h1fs && dp.w <= 720 && Math.abs(dp.mid - 640) < 2 && dp.align === 'center', '1280px: intro paragraph is body-sized (' + dp.fs + 'px, smaller than the headline), centred, with a bounded measure (' + Math.round(dp.w) + 'px wide)');
   // WCAG AA text contrast (REVIEW FAIL 5916897295): the after-signup confirmation text and the fee/disclaimer fine print sit on the white
   // signup card and must be >= 4.5:1 against their ACTUAL (composited) background. Was #8A9BAB (2.85:1) on the confirmation text.
   const lin = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };

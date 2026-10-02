@@ -36,11 +36,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
     <title>Send Help After the Storm | Otter Quotes</title>
-    <meta name="description" content="Otter Quotes gets multiple competitive bids for your clients.">
+    <meta name="description" content="Otter Quotes sends your client's scope of work to multiple contractors and makes them compete for the business.">
     <meta name="robots" content="noindex, nofollow">
     <link rel="canonical" href="https://otterquote.com/ins-1.html">
     <meta property="og:title" content="Send Help After the Storm · Otter Quotes">
-    <meta property="og:description" content="Otter Quotes gets multiple competitive bids for your clients.">
+    <meta property="og:description" content="Otter Quotes sends your client's scope of work to multiple contractors and makes them compete for the business.">
     <meta property="og:url" content="https://otterquote.com/ins-1.html">
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="Otter Quotes">
@@ -525,7 +525,8 @@
         .ins1-value h1 { color: #1E4FA8; font-size: clamp(2rem, 5vw, 3.25rem); letter-spacing: 0.01em; margin-bottom: var(--sp-4); }
         .ins1-value h1 .ins1-h1-a { display: block; font-size: 0.6em; font-weight: 500; letter-spacing: 0; margin-bottom: var(--sp-2); }
         .ins1-value h1 .ins1-h1-b { display: block; font-weight: 800; }
-        .ins1-value .ins1-sub { color: #000000; font-size: 1.25rem; line-height: 1.5; max-width: none; margin: 0; }
+        /* CRO51 v2 (Dustin, 2026-10-01): the one-line subhead became a three-sentence intro paragraph -- body-sized, centred, comfortable measure. */
+        .ins1-value .ins1-sub { color: #000000; font-size: 1.125rem; font-weight: 400; line-height: 1.6; max-width: 42rem; margin: 0 auto; text-wrap: pretty; }
         .ins1-section { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-12); align-items: center; max-width: 1080px; margin: 0 auto; padding: var(--sp-10) 0; border-top: 1px solid #E2E8F0; }
         .ins1-photo { margin: 0; order: 2; }
         .ins1-photo img { display: block; width: 100%; height: auto; border-radius: var(--radius-md); background: #EEF2F7; }
@@ -543,6 +544,8 @@
             .ins1-photo, .ins1-section--flip .ins1-photo { order: 1; }
             .ins1-text, .ins1-section--flip .ins1-text { order: 2; }
             .ins1-cta { display: block; width: 100%; }
+            .ins1-value .ins1-sub { font-size: 1rem; line-height: 1.55; }
+            .ins1-cta--top { margin-top: var(--sp-5); }
         }
 
         /* CRO51: signup form restyled to match the value page above (same blue #1E4FA8 and button style as .ins1-cta).
@@ -605,13 +608,13 @@
 
     <main>
         <!-- CRO51 (Dustin, 2026-09-30; source: Claude's Memories/otterquote-value-proposition.md section 5 item 5): INS-1 value layout.
-             Headline, subhead and the six sections below are DUSTIN'S WORDS VERBATIM (one typo fixed: "all this" -> "allow this" in
+             Headline, intro paragraph (Dustin 2026-10-01, softened to "can" by his ruling) and the six sections below are DUSTIN'S WORDS VERBATIM (one typo fixed: "all this" -> "allow this" in
              section 6). Each section's first sentence is its blue header. Every "Become a partner today" button is an in-page
              anchor to #signup (the existing INS-1 signup form below, unchanged). -->
         <div class="ins1-value" id="ins1-value">
             <section class="ins1-intro">
                 <h1><span class="ins1-h1-a">Don't just send a check.</span> <span class="ins1-h1-b">SEND HELP AFTER THE STORM</span></h1>
-                <p class="ins1-sub">Otter Quotes gets multiple competitive bids for your clients.</p>
+                <p class="ins1-sub">Otter Quotes sends your client's scope of work to multiple contractors and makes them compete for the business. Your client can get better materials and warranties. You can get fewer claims, more referrals, and $200 for qualified jobs signed through the platform.</p>
                 <a class="ins1-cta ins1-cta--top" href="#signup" data-ins1-cta="top">Become a partner today</a>
             </section>
             <section class="ins1-section" data-ins1-section="1">
