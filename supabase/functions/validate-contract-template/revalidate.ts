@@ -22,8 +22,8 @@
 // the same function locally in dry-run with a service key (no deploy needed).
 
 // deno-lint-ignore-file no-explicit-any
-import { MANIFEST, manifestSlotFor, scanOptionalAnchors, scanRequiredAnchors } from "./manifest.ts";
-import { describeMissingMarkers, detectFilledProposal, cancellationNoticeState } from "./starter-template.ts";
+import { MANIFEST, manifestSlotFor, scanLabeledSignTags, scanOptionalAnchors, scanRequiredAnchors } from "./manifest.ts";
+import { describeLabeledTagMarkers, describeMissingMarkers, detectFilledProposal, cancellationNoticeState } from "./starter-template.ts";
 import {
   CONTRACT_PRICE_FIELD_ID,
   CURRENT_TEMPLATE_MANIFEST_VERSION,
@@ -173,7 +173,9 @@ export async function revalidateTemplates(opts: RevalidateOptions): Promise<Reva
     const anchorResults = scanRequiredAnchors(pdfText, tradeManifest, manualOverrides);
     const optionalResults = scanOptionalAnchors(pdfText, tradeManifest);
     const requiredFoundCount = anchorResults.filter((a) => a.found).length;
-    const allRequiredFound = requiredFoundCount === tradeManifest.required.length;
+    // [gh-1314] identical rule to the fresh path: a labeled sign/init/date tag is a hard failure.
+    const labeledTagErrors = scanLabeledSignTags(pdfText);
+    const allRequiredFound = requiredFoundCount === tradeManifest.required.length && labeledTagErrors.length === 0;
 
     const { data: ownRec } = await supabase
       .from("contractors")
@@ -190,7 +192,8 @@ export async function revalidateTemplates(opts: RevalidateOptions): Promise<Reva
       allRequiredFound,
       anchors: anchorResults,
       optional: optionalResults,
-      missingMarkers: describeMissingMarkers(anchorResults),
+      missingMarkers: [...describeMissingMarkers(anchorResults), ...describeLabeledTagMarkers(labeledTagErrors)],
+      labeledTagErrors,
       filledProposal: detectFilledProposal(pdfText, {
         companyName: ownRec?.company_name ?? null,
         addressLine1: ownRec?.address_line1 ?? null,
@@ -215,7 +218,7 @@ export async function revalidateTemplates(opts: RevalidateOptions): Promise<Reva
       requiredCount: tradeManifest.requiredCount,
       allRequiredFound,
       contract_price_found: foundFieldIds(validationResult).has(CONTRACT_PRICE_FIELD_ID),
-      missing: anchorResults.filter((a) => !a.found).map((a) => a.field),
+      missing: [...anchorResults.filter((a) => !a.found).map((a) => a.field), ...labeledTagErrors.map((e) => `labeled ${e.type} tag: ${e.tag}`)],
       usable: afterU.usable,
       code: afterU.code,
     };

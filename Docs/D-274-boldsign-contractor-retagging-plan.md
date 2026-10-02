@@ -13,7 +13,9 @@ PR #797 (open, not merged) rewrites `create-docusign-envelope` to use BoldSign i
 ```
 
 Example, from PR #797's `validate-contract-template/index.ts` v3 manifest:
-`{{sign|2|*|Homeowner Signature|homeowner_signature}}`, `{{text|1|*|Contract Price|contract_price}}`.
+`{{sign|2|*||homeowner_signature}}`, `{{text|1|*|Contract Price|contract_price}}`.
+
+> **gh-1314 correction (measured 2026-09-30):** `sign`, `init` and `date` tags MUST have an EMPTY label (position 4). BoldSign accepts the send and then fails document creation permanently and silently when one carries a label, e.g. `{{sign|2|*|Homeowner Signature|homeowner_signature}}`. `text` tags keep their labels. The original example above showed the labeled form, which is unsignable; it has been corrected.
 
 Every contractor-uploaded template validated under the current DocuSign anchor scheme will **fail to place any fields at all** under BoldSign until it is re-tagged with this syntax. This is real operational lift, not a code fix — it cannot be automated away, because it requires literally editing each contractor's PDF.
 

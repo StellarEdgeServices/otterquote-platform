@@ -152,5 +152,6 @@ Deno.test("every missing marker comes back with a name, a place and something to
 Deno.test("field ids parse out of tags, and label_text markers have none", () => {
   assertEquals(fieldIdFromTag("{{text|1|*|Contract Price|contract_price}}"), "contract_price");
   assertEquals(fieldIdFromTag("{{sign|2|*|Homeowner Signature|homeowner_signature}}"), "homeowner_signature");
+  assertEquals(fieldIdFromTag("{{sign|2|*||homeowner_signature}}"), "homeowner_signature"); // gh-1314: the empty-label form the manifest now uses
   assertEquals(fieldIdFromTag("Manufacturer's Warranty:"), null);
 });

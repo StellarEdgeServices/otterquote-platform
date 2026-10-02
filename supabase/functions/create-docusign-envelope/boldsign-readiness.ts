@@ -248,11 +248,23 @@ async function documentIsListed(
     : { listed: false, probed: false, note: "list endpoint returned no readable page" };
 }
 
+// gh-1314 / gh-1842 SETTLE TIME. A HEALTHY document is also unlisted while it is being created:
+// measured 2026-09-30 (#1314 comment 5912190043), 5 of 5 healthy sends were properties-403 AND in
+// neither the Draft nor the WaitingForOthers list on the first poll (~1 s after send), and became
+// readable at 8.13 / 8.15 / 8.28 / 8.36 / 8.41 s. So "unlisted" proves nothing until well past
+// that window. The old default (probe at 5 s) sat INSIDE it: a healthy document probed at 5 s was
+// unlisted, was classified permanently failed, and its live pointer was cleared (a second paid
+// mint over a good document, gh-1400 inverted). A document is not "absent" until it has been
+// unlisted for longer than this many ms after send. 15 s is ~1.8x the slowest healthy sample; the
+// ceiling is raised so the probe still has room to run.
+export const ABSENCE_SETTLE_MS = 15000;
+export const READINESS_CEILING_MS = 30000;
+
 /**
  * Poll /v1/document/properties until the document is readable.
  *
  * Resolves on the first 200. Throws BoldSignPermanentCreationFailure once the
- * document has 403'd past `absenceProbeAfterMs` AND a successful list probe
+ * document has 403'd past `absenceProbeAfterMs` (default ABSENCE_SETTLE_MS, see above) AND a successful list probe
  * shows BoldSign does not know about it. Throws BoldSignReadinessTimeout if the
  * ceiling is reached while the document is (or may be) still building.
  */
@@ -263,8 +275,8 @@ export async function waitForBoldSignDocumentReady(
     headers,
     fetchImpl = fetch,
     intervalMs = 200,
-    ceilingMs = 15000,
-    absenceProbeAfterMs = 5000,
+    ceilingMs = READINESS_CEILING_MS,
+    absenceProbeAfterMs = ABSENCE_SETTLE_MS,
     now = () => Date.now(),
     sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms)),
   }: {
