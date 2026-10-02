@@ -86,7 +86,7 @@ const APPROVED_STRINGS = [
   // D-266 disclaimer, confirmation and every script below are unchanged.
   ['H1', "Don't just send a check. SEND HELP AFTER THE STORM"],
   // CRO51 v2 (Dustin, 2026-10-01; ruling: soften to "can"): the one-line subhead was replaced by this intro paragraph.
-  ['Intro paragraph', "Otter Quotes sends your client's scope of work to multiple contractors and makes them compete for the business. Your client can get better materials and warranties. You can get fewer claims, more referrals, and $200 for qualified jobs signed through the platform."],
+  ['Intro paragraph', "Otter Quotes sends your client's scope of work to multiple contractors and makes them compete for the business. Your client can get better materials and warranties. You can get fewer claims, more referrals, and $200 for qualified jobs completed through the platform."],
   ['CTA', 'Get My Referral Link'],
   ['Agreement checkbox text', "I agree to Otter Quotes's Partner Terms"],
   ['Fee sentence (D-301/D-305, verbatim)', '$200 when a homeowner you refer completes a project of $10,000 or more. $50 on the same terms for referrals from partners you recruit.'],

@@ -29,12 +29,12 @@ const H1_A = "Don't just send a check.";
 const H1_B = 'SEND HELP AFTER THE STORM';
 // CRO51 v2 (Dustin, 2026-10-01, verbatim request; his ruling on the two outcome sentences: 'Soften to "can" (Recommended)'):
 // the one-line subhead was REPLACED by this three-sentence intro paragraph. Pinned byte for byte (straight apostrophe, single spaces).
-const SUBHEAD = "Otter Quotes sends your client's scope of work to multiple contractors and makes them compete for the business. Your client can get better materials and warranties. You can get fewer claims, more referrals, and $200 for qualified jobs signed through the platform.";
+const SUBHEAD = "Otter Quotes sends your client's scope of work to multiple contractors and makes them compete for the business. Your client can get better materials and warranties. You can get fewer claims, more referrals, and $200 for qualified jobs completed through the platform.";
 const SUBHEAD_FIRST = "Otter Quotes sends your client's scope of work to multiple contractors and makes them compete for the business.";
 const OLD_SUBHEAD = 'Otter Quotes gets multiple competitive bids for your clients.';
 const SECTIONS = [
   ['Easier Service.', 'Otter Quotes generates a scope of work and submits it to multiple contractors for bid. In less time than it takes for them to sign with a door to door canvasser, your client can get multiple bids from local, well-known contractors.'],
-  ['Educated Clients.', 'We show your clients how higher grade materials can reduce damage from hail and wind. So you have fewer claims in the future and you get to surprise them with discounted rates.'],
+  ['Educated Clients.', 'We show your clients how higher grade materials can reduce damage from hail and wind. So you can have fewer claims in the future and may get to surprise them with discounted rates.'],
   ['Better Warranties and Materials.', "Otter Quotes helps contractors reduce or eliminate the cost of sales and marketing and forces them to compete. So they can funnel those savings into better material and warranties to win your clients' jobs."],
   ['No cost, no obligation.', 'There is no obligation to work with our contractors and no cost for homeowners who provide a copy of their insurance estimate.'],
   ['Simple and easy to send.', "We know it's hard to reach out to everyone affected by a storm. So we make it easy to send your link to clients."],
@@ -48,9 +48,14 @@ const introPinned = (h) => h.includes('<p class="ins1-sub">' + SUBHEAD + '</p>')
 ok(oldSubheadAbsent(html), 'the old subhead "' + OLD_SUBHEAD + '" is absent from the whole page (body, meta description, og:description)');
 ok(!oldSubheadAbsent(html.replace(SUBHEAD, OLD_SUBHEAD)) && !introPinned(html.replace(SUBHEAD, OLD_SUBHEAD)) && !introPinned(html.replace('Your client can get', 'Your client  can get')), 'negative control: the old-subhead and intro-paragraph checks fire when the old subhead is put back, and the byte-exact pin fires on a doubled space');
 // Dustin's ruling: outcomes are softened to "can"; the unsoftened wording must not be on the page.
-ok(SUBHEAD.includes('Your client can get better materials and warranties.') && SUBHEAD.includes('You can get fewer claims, more referrals, and $200 for qualified jobs signed through the platform.') && !/Your client gets better|You fewer claims|You get fewer claims/.test(html), 'intro outcomes use "can get" (ruling: soften to "can"); the unsoftened wording is absent');
+ok(SUBHEAD.includes('Your client can get better materials and warranties.') && SUBHEAD.includes('You can get fewer claims, more referrals, and $200 for qualified jobs completed through the platform.') && !/Your client gets better|You fewer claims|You get fewer claims/.test(html), 'intro outcomes use "can get" (ruling: soften to "can"); the unsoftened wording is absent');
 ok(/Your client gets better/.test(html.replace('Your client can get better', 'Your client gets better')), 'negative control: the unsoftened-wording check fires when "can get" is swapped back to "gets"');
-ok(!/[\u2018\u2019\u00a0]/.test(SUBHEAD) && !/  /.test(SUBHEAD) && SUBHEAD.length === 263, 'intro paragraph uses a straight apostrophe and single spaces (263 characters)');
+// Dustin 2026-10-01 rulings on the LEGAL-READ FAIL: the $200 trigger is "completed" (not "signed"); section 2 is softened to "can"/"may".
+const OLD_SIGNED = 'signed through the platform';
+const OLD_SEC2 = 'So you have fewer claims in the future and you get to surprise them';
+ok(!html.includes(OLD_SIGNED) && !html.includes(OLD_SEC2), 'old wording absent: "' + OLD_SIGNED + '" and "' + OLD_SEC2 + '" are not on the page');
+ok(html.replace('completed through the platform', OLD_SIGNED).includes(OLD_SIGNED) && html.replace('So you can have fewer claims in the future and may get to surprise them', OLD_SEC2).includes(OLD_SEC2), 'negative control: the old-wording checks fire when the old "signed" / section 2 wording is put back');
+ok(!/[\u2018\u2019\u00a0]/.test(SUBHEAD) && !/  /.test(SUBHEAD) && SUBHEAD.length === 266, 'intro paragraph uses a straight apostrophe and single spaces (266 characters)');
 ok(html.includes('<meta name="description" content="' + SUBHEAD_FIRST + '">') && html.includes('<meta property="og:description" content="' + SUBHEAD_FIRST + '">') && SUBHEAD.startsWith(SUBHEAD_FIRST + ' '), 'meta description and og:description are the first sentence of the intro paragraph');
 const secs = main.match(/<section class="ins1-section[^"]*"[\s\S]*?<\/section>/g) || [];
 ok(secs.length === 6, 'exactly six value sections -- got ' + secs.length);
