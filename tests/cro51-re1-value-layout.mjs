@@ -28,13 +28,13 @@ ok(!!main, 'value block <main class="re1-value"> exists');
 const HEADLINE = 'MEET YOUR NEW BEST FRIEND.';
 const SUBHEAD = 'Otter Quotes help realtors close deals faster.';
 const SECTIONS = [
-  // Section 1 replaced and sections 5-6 added by Dustin 2026-10-01 (rulings: "Free when they hire.", "as little as $15", "You can start getting bids back in 1-2 days.").
+  // Section 1 replaced and sections 5-6 added by Dustin 2026-10-01 (rulings: "Free when the job is done.", "as little as $15", "You can start getting bids back in 1-2 days.").
   ['Clients get repairs done faster.', 'Otter Quotes will create a scope of work and submit it to multiple contractors. You can start getting bids back in 1-2 days. Your client can schedule the work quickly, or use the numbers to negotiate.'],
   ['Get multiple competitive bids.', 'Contractors know they are competing for work on Otter Quotes. So they offer the best pricing they can.'],
   ['See subcontractor pricing.', 'Clients can choose from local, well known contractors or work directly with the subcontractors who do the work.'],
   ['Reduce unnecessary expenses.', 'Otter Quotes reduces the need for sales and marketing costs, so contractors can pass those savings along to your clients.'],
-  ['Free when they hire.', 'Clients pay an upfront charge of as little as $15 to purchase professional measurements that are used by every contractor. If they sign a contract on the platform, that money is refunded to them.'],
-  ['Earn $200 for qualified referrals.', 'For every client you refer to us that hires one of our contractors for a job of $10,000 or more, we will send you $200. Our app makes it quick and easy to send the link to your clients.'],
+  ['Free when the job is done.', 'Clients pay an upfront charge of as little as $15 to purchase professional measurements that are used by every contractor. If they complete a job on the platform, that money is refunded to them.'],
+  ['Earn $200 for qualified referrals.', 'For every client you refer to us that completes a job of $10,000 or more with one of our contractors, we will send you $200. Our app makes it quick and easy to send the link to your clients.'],
 ];
 ok(main.includes('<h1>' + HEADLINE + '</h1>'), 'headline is exactly "' + HEADLINE + '" in the h1');
 ok(main.includes('<p class="re1-sub">' + SUBHEAD + '</p>'), 'subhead is exactly "' + SUBHEAD + '"');
@@ -65,6 +65,9 @@ ok(html.includes('$200 when a homeowner you refer completes a project of $10,000
 ok(!/Get repairs done faster\.<\/h2>\s*<p>Otter Quotes will create a scope of work[^<]*one to two days/.test(main) && !main.includes('one to two days') && !main.includes("You'll have multiple bids back"), 'retired section-1 wording ("one to two days", "You\'ll have multiple bids back") is not on the page');
 ok(!main.includes('upfront charge of $15') && main.includes('as little as $15'), 'measurement charge reads "as little as $15" (ruling), never a bare "$15"');
 ok(!(secs[0] || '').replace('1-2 days', 'one to two days').includes('<p>' + SECTIONS[0][1] + '</p>') && !(secs[4] || '').replace('as little as $15', '$15').includes('<p>' + SECTIONS[4][1] + '</p>'), 'negative control: a one-phrase change to section 1 or section 5 fails the byte-for-byte pin');
+// Dustin 2026-10-01 (PR #2413 comment 5944922778): refund and $200 fee trigger at job completion (D-291), not signing/hiring. Old wording must be gone from the page.
+ok(!html.includes('If they sign a contract on the platform') && !html.includes('that hires one of our contractors') && !html.includes('Free when they hire'), 'retired section 5/6 wording ("sign a contract on the platform", "hires one of our contractors", "Free when they hire") is absent from re-1.html');
+ok(html.includes('If they complete a job on the platform, that money is refunded to them.') && html.includes('that completes a job of $10,000 or more with one of our contractors, we will send you $200.') && html.replace('If they complete a job on the platform', 'If they sign a contract on the platform').includes('If they sign a contract on the platform'), 'negative control: the old section 5 wording is detected when re-introduced');
 
 // ── banned phrases (value proposition sections 3 and 4) ─────────────────────
 const BANNED = [/free (?:roof )?(?:inspection|assessment)/i, /damage assessment/i, /\bvetted\b/i, /\bendorsed?\b/i, /\bcertified\b/i, /\bunbiased\b/i, /\bindependent\b/i,
