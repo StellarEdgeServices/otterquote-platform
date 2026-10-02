@@ -38,7 +38,7 @@ const SECTIONS = [
   ['Better Warranties and Materials.', "Otter Quotes helps contractors reduce or eliminate the cost of sales and marketing and forces them to compete. So they can funnel those savings into better material and warranties to win your clients' jobs."],
   ['No cost, no obligation.', 'There is no obligation to work with our contractors and no cost for homeowners who provide a copy of their insurance estimate.'],
   ['Simple and easy to send.', "We know it's hard to reach out to everyone affected by a storm. So we make it easy to send your link to clients."],
-  ['$200 referral fee.', 'For every client you refer who does $10,000 or more of work through Otter Quotes, we will send you $200. Please make sure your employment and licensing terms allow this.'],
+  ['$200 referral fee.', 'For every client you refer who completes $10,000 or more of work through Otter Quotes, we will send you $200. Please make sure your employment and licensing terms allow this.'],
 ];
 ok(main.includes('<h1><span class="ins1-h1-a">' + H1_A + '</span> <span class="ins1-h1-b">' + H1_B + '</span></h1>'), 'headline is "' + H1_A + '" then "' + H1_B + '" in the h1');
 ok(main.includes('<p class="ins1-sub">' + SUBHEAD + '</p>'), 'intro paragraph is exactly "' + SUBHEAD + '"');
@@ -57,6 +57,21 @@ ok(!html.includes(OLD_SIGNED) && !html.includes(OLD_SEC2), 'old wording absent: 
 ok(html.replace('completed through the platform', OLD_SIGNED).includes(OLD_SIGNED) && html.replace('So you can have fewer claims in the future and may get to surprise them', OLD_SEC2).includes(OLD_SEC2), 'negative control: the old-wording checks fire when the old "signed" / section 2 wording is put back');
 ok(!/[\u2018\u2019\u00a0]/.test(SUBHEAD) && !/  /.test(SUBHEAD) && SUBHEAD.length === 266, 'intro paragraph uses a straight apostrophe and single spaces (266 characters)');
 ok(html.includes('<meta name="description" content="' + SUBHEAD_FIRST + '">') && html.includes('<meta property="og:description" content="' + SUBHEAD_FIRST + '">') && SUBHEAD.startsWith(SUBHEAD_FIRST + ' '), 'meta description and og:description are the first sentence of the intro paragraph');
+// Dustin 2026-10-02 ("Yes please." to "Do you want "completes" there too?"): section 6 says "who completes $10,000 or more of work",
+// matching RE-1 and the completion trigger. The earlier "who does $10,000" wording must not be anywhere on the page.
+const SEC6_NEW = 'For every client you refer who completes $10,000 or more of work through Otter Quotes, we will send you $200.';
+const SEC6_NEXT = 'Please make sure your employment and licensing terms allow this.';
+const SEC6_OLD_FRAGMENT = 'who does $10,000';
+const sec6Pinned = (h) => h.split('<p>' + SEC6_NEW + ' ' + SEC6_NEXT + '</p>').length === 2;
+const sec6OldAbsent = (h) => !h.includes(SEC6_OLD_FRAGMENT) && !/who\s+does\s+\$10,000/i.test(h);
+ok(sec6Pinned(html), 'section 6 body is exactly "' + SEC6_NEW + ' ' + SEC6_NEXT + '" (once, in one <p>)');
+ok(sec6OldAbsent(html), 'old section 6 wording "' + SEC6_OLD_FRAGMENT + '" is absent from the whole page');
+{
+  const reverted = html.replace('who completes $10,000 or more of work', 'who does $10,000 or more of work');
+  ok(reverted !== html && !sec6Pinned(reverted) && !sec6OldAbsent(reverted), 'negative control: with "completes" swapped back to "does", the section 6 pin fails and the old-wording check fires');
+  const nextTouched = html.replace(SEC6_NEXT, 'Please make sure your employment and licensing terms all this.');
+  ok(nextTouched !== html && !sec6Pinned(nextTouched), 'negative control: the section 6 pin fails when the following sentence is altered');
+}
 const secs = main.match(/<section class="ins1-section[^"]*"[\s\S]*?<\/section>/g) || [];
 ok(secs.length === 6, 'exactly six value sections -- got ' + secs.length);
 SECTIONS.forEach(([h, body], i) => {
