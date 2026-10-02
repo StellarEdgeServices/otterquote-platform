@@ -47,7 +47,7 @@ const html = fs.readFileSync(path.join(repoRoot, PAGE_FILE), 'utf8');
 const APPROVED_STRINGS = [
   // CRO51 (Dustin, 2026-09-30, verbatim; see tests/cro51-re1-value-layout.mjs): the hero H1/subhead/bullets were REPLACED by Dustin's
   // value-layout copy. The old H1 "Every Realtor's New Best Friend", the old subhead and the three hero bullets are retired on purpose;
-  // the new headline/subhead are pinned here, the four value sections are pinned in the CRO51 test. The form, fee sentence and D-266
+  // the new headline/subhead are pinned here, the six value sections are pinned in the CRO51 test. The form, fee sentence and D-266
   // disclaimer below are unchanged.
   ["H1", "MEET YOUR NEW BEST FRIEND."],
   ["Subhead", "Otter Quotes help realtors close deals faster."],

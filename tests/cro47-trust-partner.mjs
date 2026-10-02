@@ -223,7 +223,7 @@ async function pageChecks(spec, mutate = {}) {
   res['P1 header text is exactly the wordmark (no new copy, no "free, no obligation")'] = r.headerText === 'Otter Quotes' && !r.hasFreeNoOblig;
   res['P1 no nav header / footer link farm / support bubble rendered (data-skip-nav honoured)'] = r.skipAttr && !r.navRendered && r.headerNavChildren === 0;
   res['P1 first form input top < 744 (form reachable on the first screen; got ' + r.firstInputTop + ', h1 top ' + r.h1Top + ', header height ' + r.headerH + ')'] = spec.file === 're-1.html' ? (r.h1Top !== null && r.h1Top < 744 && r.ctaToForm >= 5) : (r.firstInputTop !== null && r.firstInputTop < 744);
-  // CRO51 (Dustin's value layout): re-1.html puts four value sections above the form, so the form is intentionally NOT on the first
+  // CRO51 (Dustin's value layout): re-1.html puts six value sections above the form, so the form is intentionally NOT on the first
   // screen there. For that page the P1 guard becomes: the headline is on the first screen and >= 5 "Become a partner today" links
   // point at the form (#signup-section). The strict first-screen-form check above still applies to ins-1 / hi-1.
   res['P1 zero CLS (got ' + r.cls + ')'] = r.cls === 0;
