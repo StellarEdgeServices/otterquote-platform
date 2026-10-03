@@ -9,7 +9,7 @@ closes-on mapping (issue #2422):
         page in the run; CEO ruling on #2304), contains "send it to local
         contractors", lint-clean.
   (b) test_thin_county_emits_no_page, test_identical_county_content_fails_both,
-      test_indiana_profile_emits_nothing_under_strict_gate
+      test_indiana_only_counties_with_county_content_emit
         a county under 500 strict-unique words emits no page and no sitemap entry.
   (c) test_state_not_on_allowlist_emits_no_page
   (d) test_committed_allowlist_states_have_committed_profiles  (+ test_empty_allowlist_emits_nothing,
@@ -160,16 +160,20 @@ class GeneratorTests(unittest.TestCase):
         self.assertEqual(sm.count("/locations/"), 3 * 4)
         self.assertIn("https://otterquote.com/locations/alpha-county-zz/roofing/", sm)
 
-    def test_indiana_profile_emits_nothing_under_strict_gate(self):
-        # Indiana's committed profile has no county_content, so every page is
-        # template text shared with other pages: all fail the strict gate.
+    def test_indiana_only_counties_with_county_content_emit(self):
+        # Indiana's committed profile carries county_content for Marion, Lake and
+        # Allen roofing only. Those three pages clear the strict gate; every other
+        # county/trade page is template text shared with other pages and fails it.
         summary = self.run_gen(["IN"])
-        self.assertEqual(summary["written"], 0)
-        self.assertEqual(len(summary["skipped_thin"]), 92 * 4)
-        self.assertLess(summary["min_strict_unique_words"], glp.MIN_WORDS)
+        self.assertEqual(summary["written"], 3)
+        self.assertEqual(len(summary["skipped_thin"]), 92 * 4 - 3)
+        self.assertEqual(sorted(summary["paths"]),
+                         [("allen-county-in", "roofing"), ("lake-county-in", "roofing"),
+                          ("marion-county-in", "roofing")])
         self.assertLess(summary["median_strict_unique_words"], glp.MIN_WORDS)
-        self.assertFalse(self.out.exists())
-        self.assertEqual(self.sitemap.read_text(encoding="utf-8"), SITEMAP_SEED)
+        self.assertEqual(sorted(p.name for p in self.out.iterdir()),
+                         ["allen-county-in", "lake-county-in", "marion-county-in"])
+        self.assertNotEqual(self.sitemap.read_text(encoding="utf-8"), SITEMAP_SEED)
 
     def test_every_indiana_template_page_passes_the_lint(self):
         # The gate skips Indiana pages before linting, so lint the template
