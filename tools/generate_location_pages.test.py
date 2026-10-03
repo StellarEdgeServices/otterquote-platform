@@ -181,14 +181,14 @@ class GeneratorTests(unittest.TestCase):
     def test_strict_unique_counts_only_unshared_words(self):
         a = ["a%d" % i for i in range(30)] + ["shared%d" % i for i in range(20)]
         b = ["b%d" % i for i in range(40)] + ["shared%d" % i for i in range(20)]
-        ca, cb = glp.strict_unique_counts([a, b], drop_singletons=False)
+        ca, cb = glp.strict_unique_counts([a, b])
         # the 20 shared words (all inside shared 8-word shingles) do not count;
         # the 7 words before them ride in shingles that mix unique and shared
         # words, so they stay unique.
         self.assertEqual((ca, cb), (30, 40))
-        self.assertEqual(glp.strict_unique_counts([a], drop_singletons=False), [50])           # compared with nothing
-        self.assertEqual(glp.strict_unique_counts([a, a], drop_singletons=False), [0, 0])      # identical pages
-        self.assertEqual(glp.strict_unique_counts([["x", "y", "z"], ["x", "y", "z"]], drop_singletons=False), [3, 3])  # < 8 words: no shingles
+        self.assertEqual(glp.strict_unique_counts([a]), [50])           # compared with nothing
+        self.assertEqual(glp.strict_unique_counts([a, a]), [0, 0])      # identical pages
+        self.assertEqual(glp.strict_unique_counts([["x", "y"], ["x", "y"]]), [2, 2])  # < 3 words: no shingles
 
     # (b) negative: under the unique-word floor ------------------------------
     def test_thin_county_emits_no_page(self):
@@ -498,8 +498,8 @@ class GeneratorTests(unittest.TestCase):
     def test_repeated_paragraph_counts_once(self):
         para = ["w%d" % i for i in range(52)]
         page = para * 14
-        self.assertLess(glp.strict_unique_counts([page, ["other"] * 9], drop_singletons=False)[0], 120)
-        self.assertEqual(glp.strict_unique_counts([para * 1, ["other"] * 9], drop_singletons=False)[0], 52)
+        self.assertLess(glp.strict_unique_counts([page, ["other"] * 9])[0], 120)
+        self.assertEqual(glp.strict_unique_counts([para * 1, ["other"] * 9])[0], 52)
 
         def repeated(prof):
             para = " ".join(VOCAB[100:140])
@@ -711,11 +711,11 @@ class GeneratorTests(unittest.TestCase):
         self.assertGreaterEqual(summary["min_strict_unique_words"], glp.MIN_WORDS)
 
     def test_round8_page_mask_unit(self):
-        mask = glp.page_mask("Zedland", "St. Joseph")
-        self.assertEqual(glp.main_words("<main>St. Joseph-roofing joseph's Zedland windows</main>", mask),
-                         ["countyname", "countyname-tradename", "countyname", "statename", "tradename"])
+        mask = glp.StateMask("ZZ", "Zedland", ["St. Joseph", "Adams"], ["northern Zedland"])
+        self.assertEqual(glp.main_words("<main>St. Joseph-roofing joseph's Zedland windows ZZ northern</main>", mask),
+                         ["countyname", "countyname", "tradename", "countyname", "statename", "tradename",
+                          "statename", "regionname"])
 
-    # round 9: the gate cannot be padded with per-page junk -----------------------------
     GATE_COUNTIES = ("Alpha", "Beta", "Gamma")
 
     def junk_profile(self, junk_fn, every=7, n=773):
@@ -803,16 +803,42 @@ class GeneratorTests(unittest.TestCase):
         self.assertEqual(glp.load_profile("IN")["name"], "Indiana")      # the shipped profile still loads
 
     def test_round9_token_rules_unit(self):
-        mask = glp.page_mask("Zedland", "Adams")
+        mask = glp.StateMask("ZZ", "Zedland", ["Adams", "Wells"], ["north"])
         self.assertEqual(glp.main_words("<main>AdamsRoofing RoofingAdams Adamsville ZedlandNorth consider "
-                                        "insider</main>", mask),
-                         ["countyname", "countyname", "countyname", "statename", "consider", "insider"])
-        self.assertEqual(glp.main_words("<main>a1 b 2026-03-14 c 4x7 d</main>"), ["b", "c", "d"])   # digit tokens dropped
-        # a token on exactly one page vanishes; the shared text underneath collides
-        base = list(VOCAB[:30])
-        pages = [base[:7] + ["qzxjunk%s" % ch] + base[7:] for ch in "abc"]
-        self.assertEqual(glp.strict_unique_counts(pages), [0, 0, 0])
-        self.assertGreater(glp.strict_unique_counts(pages, drop_singletons=False)[0], 0)
+                                        "insider Wells</main>", mask),
+                         ["countyname", "countyname", "countyname", "statename", "consider", "insider", "countyname"])
+        # digit tokens dropped; single letters become placeholders
+        self.assertEqual(glp.main_words("<main>a1 bb 2026-03-14 c 4x7 dd</main>"), ["bb", "letterword", "dd"])
+
+    def test_round10_tokenisation_and_generic_masks(self):
+        mask = glp.StateMask("ZZ", "Zedland", ["Adams"], ["north"])
+        # hyphens, slashes and underscores separate tokens
+        self.assertEqual(glp.main_words("<main>eta-beta/gamma_delta</main>", mask),
+                         ["eta", "beta", "gamma", "natoword"])
+        self.assertEqual(glp.main_words("<main>two-hundred-thirty-seven twentieth first Charlie delta hotel b k XIV mix</main>",
+                                        mask),
+                         ["numberword"] * 4 + ["numberword", "numberword", "natoword", "natoword", "natoword",
+                                               "letterword", "letterword", "romanword", "romanword"])
+        self.assertEqual(glp.main_words("<main>Allen-flashing soffit fascia sash shingles</main>", mask),
+                         ["allen", "tradename", "tradename", "tradename", "tradename", "tradename"])
+        self.assertEqual(glp.main_words("<main>consider leave</main>", mask), ["consider", "leave"])
+
+    def test_round10_alignment_measure_unit(self):
+        base = list(VOCAB[:60])
+        # junk every 4 words: runs of 3 still match -> only the junk counts
+        pages = [[w for i, w in enumerate(base) for w in ([w] + (["junk%s%d" % (c, i)] if i % 3 == 2 else []))]
+                 for c in "abc"]
+        pages = [[t.replace("junk", "zq") for t in pg] for pg in pages]
+        counts = glp.strict_unique_counts(pages)
+        self.assertTrue(all(c <= len(pg) // 4 + 2 for c, pg in zip(counts, pages)), counts)
+        # order does not matter: shuffled sentences are still shared
+        sentences = [base[i:i + 12] for i in range(0, 60, 12)]
+        a = [w for sent in sentences for w in sent]
+        b = [w for sent in reversed(sentences) for w in sent]
+        self.assertEqual(glp.strict_unique_counts([a, b]), [0, 0])
+        # a baseline holding the text makes a lone page's copy of it shared
+        self.assertEqual(glp.strict_unique_counts([a], baseline_lists=[b]), [0])
+        self.assertEqual(glp.strict_unique_counts([a]), [60])
 
     def test_round9_genuine_text_still_writes_pages_at_indiana_scale(self):
         """92 counties x 4 trades of genuinely distinct per-page text drawn from a shared vocabulary:
@@ -836,6 +862,108 @@ class GeneratorTests(unittest.TestCase):
         print("\n[round 9 control] Indiana-scale genuine text: written %d, strict-unique min %s / median %s"
               % (summary["written"], summary["min_strict_unique_words"], summary["median_strict_unique_words"]),
               file=sys.stderr)
+
+    # round 10: insertion-tolerant measure ----------------------------------------------
+    NUM = ("zero one two three four five six seven eight nine ten eleven twelve").split()
+
+    @classmethod
+    def spelled(cls, i):
+        words = []
+        if i >= 100:
+            words += [cls.NUM[i // 100], "hundred"]
+            i %= 100
+        if i >= 20:
+            words += [["twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"][i // 10 - 2]]
+            i %= 10
+            if i:
+                words.append(cls.NUM[i])
+        elif i or not words:
+            words.append(["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven",
+                          "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"][i])
+        return words
+
+    ADJ = ("flashing", "soffit", "fascia", "sash")
+    NATO_WORDS = "alfa bravo charlie delta echo foxtrot golf hotel india juliet".split()
+
+    def test_round10_identity_tokens_from_ordinary_words_write_zero_pages(self):
+        cases = {
+            "hyphenated spelled index every 7": (lambda c, t, k, i: "-".join(self.spelled(i * 17 + 3)), 7),
+            "spelled index every 4": (lambda c, t, k, i: " ".join(self.spelled(i * 17 + 3)), 4),
+            "NATO index every 5": (lambda c, t, k, i: " ".join(self.NATO_WORDS[int(d)] for d in str(i * 7 + 11)), 5),
+            "spaced letter code every 5": (lambda c, t, k, i: f"{chr(97 + i % 26)} {chr(97 + (i * 5) % 26)}", 5),
+            "neighbouring county+trade word every 7": (lambda c, t, k, i: f"Allen-{self.ADJ[(i + k) % 4]}", 7),
+            "neighbouring county+trade pair every 6": (lambda c, t, k, i: f"Allen-{self.ADJ[(i + k) % 4]} Wayne-{self.ADJ[(i + k + 1) % 4]}", 6),
+            "3-letter abbreviation pair every 6": (lambda c, t, k, i: f"{c[:3]}-{self.ADJ[k % 4]} {t[:3]}-{self.ADJ[(k + 2) % 4]}", 6),
+            "county seat + trade word every 6": (lambda c, t, k, i: f"Fort Wayne {self.ADJ[(i + k) % 4]}", 6),
+            "roman numeral every 5": (lambda c, t, k, i: ["i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x", "xi", "xii"][i % 12], 5),
+        }
+        for label, (fn, every) in cases.items():
+            with self.subTest(label):
+                self.junk_profile(fn, every=every)
+                self.assert_writes_nothing(label)
+
+    def test_round10_older_attacks_still_write_zero_pages(self):
+        base = list(VOCAB[:780])
+
+        def shuffled(prof_fn):
+            self.write_profile(lambda p: p.update(county_content={
+                c: {t: prof_fn(c, t) for t in glp.ELIGIBLE_TRADES} for c in self.GATE_COUNTIES}))
+            self.assert_writes_nothing("attack")
+        # sentence shuffle: 39 sentences of 20 words, order shuffled per page
+        sentences = [base[i:i + 20] for i in range(0, 780, 20)]
+
+        def shuffle_text(c, t):
+            rnd = _random.Random(f"{c}{t}")
+            order = list(range(len(sentences)))
+            rnd.shuffle(order)
+            return "\n\n".join(" ".join(sentences[i]) for i in order)
+        shuffled(shuffle_text)
+        # synonym rotation: every 20th word swapped among three stand-ins, rotated per page
+        def rotate_text(c, t):
+            r = sum(map(ord, c + t))
+            return " ".join((VOCAB[790 + (i + r) % 3] if i % 20 == 0 else w) for i, w in enumerate(base))
+        shuffled(rotate_text)
+        # the same boilerplate on every page with a different paragraph order and per-page numbers
+        shuffled(lambda c, t: "\n\n".join(" ".join(base[j:j + 60] + [str(sum(map(ord, c + t)) + j)])
+                                            for j in range(0, 780, 60)))
+
+    def test_round10_density_boundary_is_documented_honestly(self):
+        """Junk drawn from a shared 2,000-word vocabulary, one junk token after every N real words.
+        N=3 and N=4 are caught (runs of 3+ real words still align). N=2 (runs of two real words
+        between junk tokens, one token in three is junk) is the documented residual: no run reaches
+        the 3-word block, so the page counts as unique. Visible spam, for the per-state R-177 read."""
+        import shutil
+        vocab = _make_vocab(2000, 21)
+        rnd = _random.Random(4)
+        for every in (5, 4, 3):
+            with self.subTest(every=every):
+                self.junk_profile(lambda c, t, k, i: rnd.choice(vocab), every=every)
+                self.assert_writes_nothing(f"junk after every {every} real words")
+        self.junk_profile(lambda c, t, k, i: rnd.choice(vocab), every=2)
+        if self.out.exists():
+            shutil.rmtree(self.out)
+        summary = self.run_fx()
+        # DOCUMENTED RESIDUAL: nothing in the gate catches this; see strict_unique_counts().
+        self.assertEqual(summary["written"], 12)
+
+    def test_round10_honest_single_county_four_trades_writes_four(self):
+        solo = self.tmp / "solo10.json"
+        solo.write_text(json.dumps({"states": [{"code": "ZZ", "counties": ["Solo"]}]}), encoding="utf-8")
+        prof = json.loads(json.dumps(FIXTURE_PROFILE))
+        prof["regions"] = {"north": {"label": "northern Zedland", "counties": ["Solo"],
+                                     "climate": [FIXTURE_CLIMATE % "northern"]}}
+        prof["county_content"] = {"Solo": {t: fixture_content("Solo", t) for t in glp.ELIGIBLE_TRADES}}
+        (self.fx_profiles / "ZZ.json").write_text(json.dumps(prof), encoding="utf-8")
+        summary = self.run_gen(["ZZ"], counties_path=solo, profiles_dir=self.fx_profiles)
+        self.assertEqual(summary["written"], 4)
+        self.assertGreaterEqual(summary["min_strict_unique_words"], glp.MIN_WORDS)
+        # the same boilerplate on all four trade pages writes none
+        shared = fixture_content("Solo", "roofing")
+        prof["county_content"] = {"Solo": {t: shared for t in glp.ELIGIBLE_TRADES}}
+        (self.fx_profiles / "ZZ.json").write_text(json.dumps(prof), encoding="utf-8")
+        import shutil
+        shutil.rmtree(self.out)
+        self.assertEqual(self.run_gen(["ZZ"], counties_path=solo, profiles_dir=self.fx_profiles)["written"], 0)
 
     # D-344 blocked states ----------------------------------------------------
     def test_blocked_states_are_refused_everywhere(self):

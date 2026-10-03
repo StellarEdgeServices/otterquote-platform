@@ -112,56 +112,53 @@ content that appears on no other page in the same run**. A page under the gate
 is not written to disk and not added to the sitemap; the run logs
 `SKIPPED (thin ...)`.
 
-Measured by `strict_unique_counts()`: the number of words in the page's `<main>`
-visible text that are covered by **no 8-word shingle that appears on any other
-page built in the run**. One pass builds shingle -> number of pages containing
-it; then, per page, every word inside a shared shingle is template content and
-the rest are counted.
+Measured by `strict_unique_counts()` (round 10 replaced the 8-word shingle measure, which
+any per-page token inserted every 7 words defeats): a word of page P is **shared**, not
+unique, when it sits inside a run of **3 or more consecutive words** that also appears
 
-- The shared template contributes about nothing. Today every Indiana page fails
-  (min 8, median 10 strict-unique words), so an Indiana run emits 0 pages. That is
-  the intended outcome until the CRO writes county-specific content.
-- Identical text on two counties, or on the same county's four trade pages, is
-  shared, so it counts for none of them.
-- Template baseline: every run also renders synthetic template-only pages (state
-  profile, no `county_content`; 60 per trade, `TEMPLATE_BASELINES`) that are compared
-  against but never scored or emitted. A one-county state, or a narrowed
-  `generate()` call, therefore cannot count template text as unique.
-- Repeats within a page count once: a paragraph repeated 14 times is one paragraph.
+- in any synthetic template baseline (never scored or emitted; 60 per trade), or
+- on one of P's **5 most similar other pages** (found through an inverted index of 3-word
+  shingles), or
+- earlier on P itself (a paragraph repeated 14 times counts once).
+
+Order does not matter, so shuffled sentences are still shared. Inserted junk only breaks
+shared text into shorter runs; runs of 3+ words still match, so only the junk itself
+counts. A page needs 500 words that are not in such runs.
+
+- The shared template contributes about nothing. Today every Indiana page fails (min 0,
+  median 0 strict-unique words), so an Indiana run emits 0 pages. That is the intended
+  outcome until the CRO writes county-specific content.
+- Identical text on two counties, or on the same county's four trade pages, is shared, so
+  it counts for none of them.
+- The template baseline means a one-county state, or a narrowed `generate()` call, cannot
+  count template text as unique.
 - The gate counts what a reader sees: words are NFKC-normalised, every Unicode format
-  character (zero-width, bidi, word joiner, BOM, tag characters) and combining mark is
-  dropped, Cyrillic/Greek lookalikes are folded to Latin, and text is casefolded before
-  shingling. So zero-width characters inside words do not make boilerplate look unique.
-- Token rules before shingling (round 9), applied after the folding and masking below:
-  tokens containing a digit are dropped (page numbers, dates, random numbers are not
-  content); a token that contains any of the page's county-name words (3+ letters), the
-  county name run together, the state name or a trade term is masked, so "AdamsRoofing",
-  "RoofingAdams" and "Adamsville" count as the same placeholder as "Adams"; and every token
-  that occurs on exactly one page of the run (pages plus the template baselines) is
-  dropped, so junk inserted into otherwise identical text vanishes and the text underneath
-  collides. Words are then counted over what remains.
-- **Residual risk, stated plainly.** This raises the cost of padding; it does not make it
-  impossible. Junk inserted at high density and drawn from a large shared vocabulary
-  (words that genuinely appear on several pages) survives the singleton drop and makes
-  every 8-word window unique. That is visible spam; catching it is the job of the per-state
-  R-177 read of `county_content`, not of this count. The singleton rule also drops an honest
-  page's rare words, so write county text in ordinary vocabulary and comfortably above 500
-  words.
-- Mail-merge fields are masked before shingling: each page's county name (every word of
-  it, and the words run together), the state name, and the trade names and synonyms
-  (roof/roofing/roofer, siding/sider, gutter/downspout, window/windows, shingle) become
-  fixed placeholders, also inside compounds ("Adams-roofing", "Adams_roofing",
-  "Adams's"). The same boilerplate with the county and/or trade name inserted every few
-  words is therefore the same text on every page and counts for none. County names and
-  trade words you write in genuinely different text are masked too, which only
-  slightly lowers that page's count.
+  character and combining mark is dropped, Cyrillic/Greek lookalikes are folded to Latin,
+  and text is casefolded. `county_content` must also be Latin-script (see below).
+- **Tokens** are split on hyphens, slashes and underscores. Tokens containing a digit are
+  dropped. These become fixed placeholders before comparison, so a per-page identity token
+  built from them is the same everywhere: **every county name of the state** (each word,
+  the words run together, and tokens that merely contain a county word of 3+ letters:
+  "AdamsRoofing", "RoofingAdams", "Adamsville"), the state name and code, the region
+  labels, the trade and trade-adjacent words (roof, roofing, roofer, shingle, siding,
+  gutter, downspout, window, soffit, fascia, flashing, sash, eave and plurals), number
+  words and ordinals (zero ... ninety, hundred, thousand, first ... twentieth), the NATO
+  alphabet, single letters, and valid Roman numerals. County seats are not carried by
+  `data/us-counties.json` or the profiles, so they are not masked; a seat plus a trade word
+  ("Fort Wayne soffit") is handled by the run-of-3 rule.
+- **Residual risk, stated plainly.** Junk drawn from a large shared vocabulary and inserted
+  after every TWO real words leaves runs of two, so no run reaches 3 and the page counts as
+  unique. Measured on 368 Indiana pages with a 773-word shared boilerplate and a
+  2,000-word junk vocabulary: junk after every 2 real words writes 368/368 (strict-unique
+  min 1131, median 1151); after every 3 real words 0 pages (min 253, median 257); every
+  4: 0 (min 190, median 193); every 5: 0 (min 151). That is visible spam, one word in
+  three nonsense, and catching it is the job of the per-state R-177 read of
+  `county_content`, not of this count. A genuinely different 640-word page from a shared
+  vocabulary scores min 639, median 640.
 - Hidden text in the template never counts (elements with `hidden`, `aria-hidden="true"`,
   `sr-only` classes, inline `display:none` / `visibility:hidden` / `font-size:0` /
   `opacity:0`, and `<noscript>`/`<template>`). `county_content` cannot carry markup at
   all (plain text only), so it cannot hide text.
-- Known gap: a filler token inserted every 7 words makes every 8-word shingle
-  unique. Closing it needs a shorter n-gram test that also flags ordinary prose, so
-  it is left to human review of `county_content`.
 - All pages of a run are built and linted before any file is written; one lint
   failure leaves zero pages and no sitemap change.
 - Each run prints min/median strict-unique words, and an **informational**
