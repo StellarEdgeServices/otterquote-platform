@@ -1548,7 +1548,11 @@ Log in to the admin panel to review and approve this contractor.`;
 
                 await fetch(`${window.location.origin}/functions/v1/send-support-email`, {
                   method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'apikey': CONFIG.SUPABASE_ANON,
+                    'Authorization': 'Bearer ' + CONFIG.SUPABASE_ANON,
+                  },
                   body: JSON.stringify({
                     from_name: data.company_name || 'New Contractor',
                     from_email: data.email || user.email,

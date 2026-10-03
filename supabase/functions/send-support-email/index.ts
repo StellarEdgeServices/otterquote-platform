@@ -8,16 +8,30 @@
  * The destination address (dustinstohler1@gmail.com) is hardcoded here —
  * callers cannot override the recipient for security reasons.
  *
+ * gh-2462 Q2: callers must present the anon/publishable key (apikey header or Bearer) or a
+ * service key (platform-health-check); fields are whitelisted and length-capped; requests are
+ * rate-limited per IP via check_rate_limit (rate_limit_config row 'send-support-email').
+ * See caller-gate.ts.
+ *
  * Environment variables required (already set in Supabase secrets):
  *   MAILGUN_API_KEY
  *   MAILGUN_DOMAIN
  *   SUPABASE_URL             (auto-injected by Supabase runtime)
  *   SUPABASE_SERVICE_ROLE_KEY (auto-injected by Supabase runtime)
+ *   SUPABASE_ANON_KEY / SUPABASE_PUBLISHABLE_KEYS (auto-injected; accepted caller keys)
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { supportEmailBody } from "./templates.ts"; // gh-1824: email body moved to templates.ts (testable, no serve() import)
+import {
+  acceptedKeys,
+  FUNCTION_NAME,
+  getClientIp,
+  hasAcceptedKey,
+  ipToUuid,
+  validatePayload,
+} from "./caller-gate.ts"; // gh-2462 Q2: key gate, field whitelist, rate-limit bucket (local file: deploy path does not resolve _shared/)
 
 const SUPPORT_DESTINATION = "dustinstohler1@gmail.com";
 const MAILGUN_TIMEOUT_MS  = 10_000; // 10s — defensive; Mailgun can be slow on cold calls
@@ -42,10 +56,30 @@ function buildCorsHeaders(req: Request): Record<string, string> {
   };
 }
 
-serve(async (req) => {
+function json(body: unknown, status: number, corsHeaders: Record<string, string>): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+// gh-2462 Q2: `getEnv` / `makeClient` are injectable so caller-gate.test.ts drives the real
+// handler (precedent: process-dunning/index.ts). serve() is guarded by import.meta.main.
+export async function handler(
+  req: Request,
+  getEnv: (name: string) => string | undefined = (n) => Deno.env.get(n),
+  makeClient: typeof createClient = createClient,
+): Promise<Response> {
   const corsHeaders = buildCorsHeaders(req);
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
+  }
+
+  // gh-2462 Q2: the caller must present the project's anon/publishable key (or a service key)
+  // in `apikey` or as the Bearer. Checked before any body read, client, Mailgun or DB I/O.
+  // Fails closed when no key env is set.
+  if (!hasAcceptedKey(req, acceptedKeys(getEnv))) {
+    return json({ error: "Unauthorized" }, 401, corsHeaders);
   }
 
   // Health check ping — returns immediately without doing real work.
@@ -60,24 +94,41 @@ serve(async (req) => {
   } catch { /* no-op */ }
 
   try {
-    const {
-      from_name,
-      from_email,
-      subject,
-      message,
-      user_id, // optional — passed when a logged-in user submits the support form
-    } = await req.json();
+    // gh-2462 Q2: whitelist exactly the form's fields (from_name, from_email, subject,
+    // message, optional user_id) with length caps; unknown/oversize -> 400 before any I/O.
+    let rawBody: unknown;
+    try {
+      rawBody = await req.json();
+    } catch {
+      return json({ error: "Invalid JSON body" }, 400, corsHeaders);
+    }
+    const checked = validatePayload(rawBody);
+    if (!checked.ok) return json({ error: checked.error }, 400, corsHeaders);
+    const { from_name, from_email, subject, message, user_id } = checked.value;
 
-    // Validate required fields
-    if (!from_name || !from_email || !message) {
-      return new Response(
-        JSON.stringify({ error: "Missing required fields: from_name, from_email, message" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    const supabase = makeClient(
+      getEnv("SUPABASE_URL") || "",
+      getEnv("SUPABASE_SERVICE_ROLE_KEY") || ""
+    );
+
+    // gh-2462 Q2: per-IP rate limit BEFORE Mailgun and the support_tickets insert. Synthetic
+    // per-IP bucket, as check-email-exists. RPC error -> fail OPEN (same posture as
+    // check-email-exists: a limiter hiccup must not drop a real support request);
+    // explicit { allowed: false } -> 429.
+    const clientIp = getClientIp(req);
+    const { data: rl, error: rlError } = await supabase.rpc("check_rate_limit", {
+      p_function_name: FUNCTION_NAME,
+      p_user_id: await ipToUuid(clientIp),
+    });
+    if (rlError) {
+      console.error(`[${FUNCTION_NAME}] rate limit check failed, failing open:`, rlError);
+    } else if (!rl?.allowed) {
+      console.warn(`[${FUNCTION_NAME}] RATE LIMITED ip=${clientIp}: ${rl?.reason}`);
+      return json({ error: "Too many requests. Please try again later." }, 429, corsHeaders);
     }
 
-    const MAILGUN_API_KEY = Deno.env.get("MAILGUN_API_KEY");
-    const MAILGUN_DOMAIN  = Deno.env.get("MAILGUN_DOMAIN");
+    const MAILGUN_API_KEY = getEnv("MAILGUN_API_KEY");
+    const MAILGUN_DOMAIN  = getEnv("MAILGUN_DOMAIN");
 
     if (!MAILGUN_API_KEY || !MAILGUN_DOMAIN) {
       throw new Error("Mailgun credentials not configured.");
@@ -137,7 +188,7 @@ serve(async (req) => {
       mailgunResult = await mailgunResponse.json();
     } catch (err) {
       clearTimeout(timeoutId);
-      if (err.name === "AbortError") {
+      if ((err as Error).name === "AbortError") {
         throw new Error("Mailgun request timed out after 10 seconds.");
       }
       throw err;
@@ -148,10 +199,6 @@ serve(async (req) => {
     // ── D-195: Insert support_ticket record for inbound support form submissions ──
     // Non-blocking: email was already sent; a DB failure here must not fail the response.
     try {
-      const supabase = createClient(
-        Deno.env.get("SUPABASE_URL")!,
-        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-      );
       const { error: insertError } = await supabase
         .from("support_tickets")
         .insert({
@@ -181,8 +228,12 @@ serve(async (req) => {
   } catch (error) {
     console.error("send-support-email error:", error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: (error as Error).message }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
-});
+}
+
+if (import.meta.main) {
+  serve((req) => handler(req));
+}

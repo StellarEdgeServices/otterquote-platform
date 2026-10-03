@@ -34,6 +34,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { type GetEnv, serviceGate } from "./caller-gate.ts"; // gh-2462
 
 const FUNCTION_NAME = "process-hover-rebate";
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
@@ -239,13 +240,35 @@ async function rebateOne(
   };
 }
 
-serve(async (req) => {
+// gh-2462: exported so caller-gate.test.ts can drive the REAL handler (gh-2309 precedent:
+// serve() guarded by import.meta.main, which the Edge runtime sets for the entry file).
+// `getEnv` defaults to Deno.env.get; `makeClient` defaults to createClient (tests stub it).
+export async function handler(
+  req: Request,
+  getEnv: GetEnv = (n) => Deno.env.get(n),
+  makeClient: typeof createClient = createClient,
+): Promise<Response> {
   const corsHeaders = buildCorsHeaders(req);
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
-  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-  const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const supabase = createClient(supabaseUrl, supabaseKey);
+  // gh-2462 caller gate. Real callers, both `Bearer <vault cron_service_role_key>`:
+  // pg_cron job 10 `process-hover-rebate-scan` ({scan:true}, sql/v108) and the
+  // after_claim_completed_rebate trigger's notify_hover_rebate() ({claim_id}, gh969
+  // migration). Anything else gets 401 BEFORE the Stripe key is read, the client is
+  // built, or any hover_orders read / Stripe refund. {health_check:true} stays ungated
+  // (unchanged response; no caller pings it today, kept for parity with gh-2309).
+  const bodyPeek = await req.clone().json().catch(() => ({}));
+  if ((bodyPeek as { health_check?: unknown } | null)?.health_check !== true) {
+    const denied = serviceGate(req, getEnv, corsHeaders);
+    if (denied) {
+      console.warn(`[${FUNCTION_NAME}] 401: called without the service bearer`);
+      return denied;
+    }
+  }
+
+  const supabaseUrl = getEnv("SUPABASE_URL")!;
+  const supabaseKey = getEnv("SUPABASE_SERVICE_ROLE_KEY")!;
+  const supabase = makeClient(supabaseUrl, supabaseKey);
 
   // Staging detection — use test-mode key when origin is staging (fix #86e19wk6z).
   // gh-1536: exact-match, not substring — "app-staging." falsely matched
@@ -256,8 +279,8 @@ serve(async (req) => {
   const isStaging = _reqOrigin === "https://jade-alpaca-b82b5e.netlify.app" ||
     _reqOrigin === "https://staging--jade-alpaca-b82b5e.netlify.app";
   const stripeSecretKey = isStaging
-    ? (Deno.env.get("STRIPE_SECRET_KEY_TEST") || Deno.env.get("STRIPE_SECRET_KEY"))
-    : Deno.env.get("STRIPE_SECRET_KEY");
+    ? (getEnv("STRIPE_SECRET_KEY_TEST") || getEnv("STRIPE_SECRET_KEY"))
+    : getEnv("STRIPE_SECRET_KEY");
   if (!stripeSecretKey) {
     return new Response(JSON.stringify({ error: "Stripe secret key not configured." }), {
       status: 500,
@@ -332,4 +355,8 @@ serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
-});
+}
+
+if (import.meta.main) {
+  serve((req) => handler(req));
+}

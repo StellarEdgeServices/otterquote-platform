@@ -446,6 +446,9 @@ jobs:
       - name: ownerTag cyrb53 parity across js/auth.js, React port and index.html (gh-2344)
         run: node tests/gh2344-owner-tag-parity.mjs
 
+      - name: partner-re one leads row per signup, variant carried (gh-2084 arm E)
+        run: node tests/gh2084-partner-re-one-lead-row.mjs
+
       - name: tsc --noEmit type gate (gh-414)
         working-directory: react-app
         run: npx tsc --noEmit

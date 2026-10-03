@@ -11,6 +11,7 @@
 // ============================================================
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+import { type GetEnv, serviceGate } from "./caller-gate.ts"; // gh-2462
 import { featureRequestEmailText, featureRequestEmailHtml } from "./templates.ts"; // gh-1824: email bodies moved to templates.ts (testable, no serve() import)
 
 // CORS tightened (Session 254): origin-allowlisted instead of wildcard.
@@ -34,16 +35,31 @@ function buildCorsHeaders(req: Request): Record<string, string> {
   };
 }
 
-serve(async (req: Request) => {
+// gh-2462: exported so caller-gate.test.ts can drive the REAL handler (gh-2309 precedent:
+// serve() guarded by import.meta.main, which the Edge runtime sets for the entry file).
+// `getEnv` defaults to Deno.env.get.
+export async function handler(
+  req: Request,
+  getEnv: GetEnv = (n) => Deno.env.get(n),
+): Promise<Response> {
   const corsHeaders = buildCorsHeaders(req);
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
+  // gh-2462 caller gate. The only real caller is the on_feature_request_insert trigger's
+  // notify_feature_request_webhook() (pg_net, `Bearer <vault cron_service_role_key>`,
+  // gh720 migration). Anything else gets 401 before Mailgun is touched.
+  const denied = serviceGate(req, getEnv, corsHeaders);
+  if (denied) {
+    console.warn("notify-feature-request: 401: called without the service bearer");
+    return denied;
+  }
+
   try {
-    const MAILGUN_API_KEY = Deno.env.get("MAILGUN_API_KEY");
-    const MAILGUN_DOMAIN  = Deno.env.get("MAILGUN_DOMAIN");
+    const MAILGUN_API_KEY = getEnv("MAILGUN_API_KEY");
+    const MAILGUN_DOMAIN  = getEnv("MAILGUN_DOMAIN");
 
     if (!MAILGUN_API_KEY || !MAILGUN_DOMAIN) {
       throw new Error("Mailgun credentials not configured. Set MAILGUN_API_KEY and MAILGUN_DOMAIN in Supabase secrets.");
@@ -106,4 +122,8 @@ serve(async (req: Request) => {
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
-});
+}
+
+if (import.meta.main) {
+  serve((req) => handler(req));
+}
