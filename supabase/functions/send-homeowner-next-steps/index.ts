@@ -171,6 +171,7 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import {
   type ActivityLogRow,
+  CHECKLIST_NUDGE_ELIGIBLE_STATUSES,
   NUDGE_ELIGIBLE_STATUS,
   NUDGE_EXCLUDED_STATUS,
   type NudgeStage,
@@ -178,6 +179,7 @@ import {
   screenClaim,
   TWO_HOURS_MS,
 } from "./select-stage.ts";
+import { BLOCKED_STATES_SETTING_KEY, parseBlockedStates } from "./blocked-states.ts";
 import { buildEmailContent } from "./email-content.ts";
 import {
   buildCandidateQuery,
@@ -869,9 +871,11 @@ serve(async (req: Request) => {
   {
     const { data: ccClaims, error: ccClaimsErr } = await supabase
       .from("claims")
-      .select("id, user_id, status, ready_for_bids, created_at")
+      .select(
+        "id, user_id, status, ready_for_bids, created_at, updated_at, property_state, funding_type, has_estimate, has_measurements, has_material_selection",
+      )
       .eq("is_test", scanIsTest)
-      .eq("status", NUDGE_ELIGIBLE_STATUS)
+      .in("status", [...CHECKLIST_NUDGE_ELIGIBLE_STATUSES])
       .order("created_at", { ascending: true })
       .limit(BATCH_LIMIT);
 
@@ -880,7 +884,20 @@ serve(async (req: Request) => {
     } else if (ccClaims && ccClaims.length > 0) {
       const ccClaimRows = ccClaims as {
         id: string; user_id: string; status: string; ready_for_bids: boolean | null; created_at: string;
+        updated_at: string | null; property_state: string | null; funding_type: string | null;
+        has_estimate: boolean | null; has_measurements: boolean | null; has_material_selection: boolean | null;
       }[];
+      // gh-1570 rail: same setting, same parser as notify-admin-new-homeowner
+      // (gh-2421); missing row, read error or malformed value -> FL/LA/TX.
+      const { data: ccBlockedSetting, error: ccBlockedErr } = await supabase
+        .from("platform_settings")
+        .select("value")
+        .eq("key", BLOCKED_STATES_SETTING_KEY)
+        .maybeSingle();
+      if (ccBlockedErr) {
+        console.warn(`[${FUNCTION_NAME}] blocked-states read failed, using default FL/LA/TX:`, ccBlockedErr.message);
+      }
+      const ccBlockedStates = parseBlockedStates(ccBlockedSetting?.value);
       const ccUserIds = [...new Set(ccClaimRows.map((c) => c.user_id))];
       const ccClaimIds = ccClaimRows.map((c) => c.id);
 
@@ -941,8 +958,9 @@ serve(async (req: Request) => {
 
         for (const c of ccClaimRows) {
           const decision = screenChecklistCompleteClaim(
-            { id: c.id, status: c.status, ready_for_bids: c.ready_for_bids },
+            c,
             {
+              blockedStates: ccBlockedStates,
               optedOutClaimIds: ccOptedOut,
               reduced: ccReduced,
               now,
@@ -990,7 +1008,7 @@ serve(async (req: Request) => {
             // creation (decision.stage being truthy here means ccReduced
             // .completedAtByClaim has this claim id — screenChecklistCompleteClaim
             // returns "not_checklist_complete" otherwise).
-            checklistCompletedAtIso: ccReduced.completedAtByClaim.get(c.id),
+            checklistCompletedAtIso: decision.checklistCompletedAtIso,
           });
 
           const dashboardUrl = `${siteUrl}/dashboard.html`;

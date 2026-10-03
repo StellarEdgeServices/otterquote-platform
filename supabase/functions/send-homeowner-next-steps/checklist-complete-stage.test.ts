@@ -20,7 +20,18 @@ const NOW = Date.parse("2026-09-26T18:00:00Z");
 const CLAIM = "claim-1";
 const USER = "u-homeowner-1";
 
-const claim = (overrides: Partial<{ status: string; ready_for_bids: boolean | null }> = {}) => ({
+const claim = (
+  overrides: Partial<{
+    status: string;
+    ready_for_bids: boolean | null;
+    property_state: string | null;
+    funding_type: string | null;
+    has_estimate: boolean | null;
+    has_measurements: boolean | null;
+    has_material_selection: boolean | null;
+    updated_at: string | null;
+  }> = {},
+) => ({
   id: CLAIM,
   status: "documents_needed",
   ready_for_bids: false,
@@ -93,7 +104,90 @@ Deno.test("ready_for_bids null/undefined behaves like false (never actually true
 
 Deno.test("status has already moved past documents_needed: ineligible_status", () => {
   assertEquals(screen(claim({ status: "active" }), [completeRow(3 * H)]).skipped_reason, "ineligible_status");
-  assertEquals(screen(claim({ status: "draft" }), [completeRow(3 * H)]).skipped_reason, "ineligible_status");
+  for (const status of ["submitted", "bidding", "contract_signed", "awarded"]) {
+    assertEquals(screen(claim({ status }), [completeRow(3 * H)]).skipped_reason, "ineligible_status", status);
+  }
+});
+
+// ── gh-1570 ruling 5965042243: widened to {documents_needed, draft} ─────────
+
+Deno.test("gh-1570 WIDENING: a draft claim with a complete checklist (event >= 2h old), not submitted: selected", () => {
+  const d = screen(claim({ status: "draft" }), [completeRow(3 * H)]);
+  assertEquals(d.stage, CHECKLIST_COMPLETE_STAGE);
+});
+
+Deno.test("gh-1570: documents_needed is still selected after the widening", () => {
+  assertEquals(screen(claim({ status: "documents_needed" }), [completeRow(3 * H)]).stage, CHECKLIST_COMPLETE_STAGE);
+});
+
+Deno.test("gh-1570 NEGATIVE CONTROL: a submitted claim (status submitted, or ready_for_bids true on a draft) is not selected", () => {
+  assertEquals(screen(claim({ status: "submitted" }), [completeRow(3 * H)]).stage, null);
+  assertEquals(screen(claim({ status: "draft", ready_for_bids: true }), [completeRow(3 * H)]).skipped_reason, "already_submitted");
+});
+
+Deno.test("gh-1570 RAIL: a draft in a blocked state (FL, LA, TX by default) is not selected, case/space-insensitively", () => {
+  for (const st of ["FL", "LA", "TX", " fl ", "tx"]) {
+    const d = screen(claim({ status: "draft", property_state: st }), [completeRow(3 * H)]);
+    assertEquals(d.stage, null, st);
+    assertEquals(d.skipped_reason, "blocked_state", st);
+  }
+});
+
+Deno.test("gh-1570 RAIL: the blocked list is the passed setting, not a hardcode; IN and null state still pass", () => {
+  const ctx = (blockedStates: string[]) => ({
+    optedOutClaimIds: new Set<string>(),
+    reduced: reduceChecklistCompleteActivity([completeRow(3 * H)]),
+    now: NOW,
+    priorNudgeCount: 0,
+    blockedStates,
+  });
+  assertEquals(screenChecklistCompleteClaim(claim({ status: "draft", property_state: "NY" }), ctx(["NY"])).skipped_reason, "blocked_state");
+  assertEquals(screenChecklistCompleteClaim(claim({ status: "draft", property_state: "FL" }), ctx([])).stage, CHECKLIST_COMPLETE_STAGE);
+  assertEquals(screenChecklistCompleteClaim(claim({ property_state: "IN" }), ctx(["FL"])).stage, CHECKLIST_COMPLETE_STAGE);
+  assertEquals(screenChecklistCompleteClaim(claim({ property_state: null }), ctx(["FL"])).stage, CHECKLIST_COMPLETE_STAGE);
+});
+
+Deno.test("gh-1570 RAIL: a waitlisted claim is not selected, even with a complete checklist event", () => {
+  const d = screen(claim({ status: "waitlisted" }), [completeRow(3 * H)]);
+  assertEquals(d.stage, null);
+  assertEquals(d.skipped_reason, "waitlisted");
+});
+
+Deno.test("gh-1570 DERIVE-FROM-COLUMNS: a draft with no checklist_complete event but complete columns is selected, clocked from updated_at", () => {
+  const updated = new Date(NOW - 24 * H).toISOString();
+  const d = screen(
+    claim({ status: "draft", funding_type: "cash", has_measurements: true, has_material_selection: true, updated_at: updated }),
+    [],
+  );
+  assertEquals(d.stage, CHECKLIST_COMPLETE_STAGE);
+  assertEquals(d.checklistCompletedAtIso, updated);
+});
+
+Deno.test("gh-1570 DERIVE-FROM-COLUMNS: insurance draft needs the estimate; cash draft needs measurements; both need material", () => {
+  const updated = new Date(NOW - 24 * H).toISOString();
+  const base = { status: "draft", updated_at: updated };
+  const sel = (o: Parameters<typeof claim>[0]) => screen(claim({ ...base, ...o }), []).stage;
+  assertEquals(sel({ funding_type: "insurance", has_estimate: true, has_material_selection: true }), CHECKLIST_COMPLETE_STAGE);
+  assertEquals(sel({ funding_type: null, has_estimate: true, has_material_selection: true }), CHECKLIST_COMPLETE_STAGE);
+  assertEquals(sel({ funding_type: "insurance", has_estimate: false, has_material_selection: true }), null);
+  assertEquals(sel({ funding_type: "cash", has_measurements: false, has_material_selection: true }), null);
+  assertEquals(sel({ funding_type: "cash", has_measurements: true, has_material_selection: false }), null);
+});
+
+Deno.test("gh-1570 DERIVE-FROM-COLUMNS: documents_needed with complete columns but no event is NOT derived (unchanged behaviour)", () => {
+  const d = screen(
+    claim({ status: "documents_needed", funding_type: "cash", has_measurements: true, has_material_selection: true, updated_at: new Date(NOW - 24 * H).toISOString() }),
+    [],
+  );
+  assertEquals(d.skipped_reason, "not_checklist_complete");
+});
+
+Deno.test("gh-1570 DERIVE-FROM-COLUMNS: derived draft updated < 2h ago is too_recent", () => {
+  const d = screen(
+    claim({ status: "draft", funding_type: "cash", has_measurements: true, has_material_selection: true, updated_at: new Date(NOW - 1 * H).toISOString() }),
+    [],
+  );
+  assertEquals(d.skipped_reason, "too_recent");
 });
 
 // ── Deliberately NOT gated on real activity — the whole point of this stage ─

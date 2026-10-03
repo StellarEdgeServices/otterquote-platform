@@ -428,7 +428,7 @@ function lossQueueRows(rows) {
 
 /**
  * gh-1570 Part 3 — claims stalled exactly where #1570 says they go invisible:
- * checklist complete, still `documents_needed`, never submitted. Sorted by
+ * checklist complete, still `documents_needed` or `draft` (gh-1570 ruling 5965042243), never submitted. Sorted by
  * `checklist_complete_at` ascending — REVIEW FIX: this was claim `created_at`
  * until #2081's review pointed out that's the wrong clock for a
  * stall-visibility surface (it answers "when did they sign up", not "how
@@ -438,7 +438,7 @@ function lossQueueRows(rows) {
  */
 function readyQueueRows(rows) {
   return rows
-    .filter(function (r) { return r.status === 'documents_needed' && r.checklist_complete === true; })
+    .filter(function (r) { return (r.status === 'documents_needed' || r.status === 'draft') && r.checklist_complete === true; })
     .slice()
     .sort(function (a, b) {
       var ta = a.checklist_complete_at ? new Date(a.checklist_complete_at).getTime() : Number.MAX_SAFE_INTEGER;
