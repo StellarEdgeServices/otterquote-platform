@@ -11,25 +11,40 @@
  *   POST { message_id: string }
  *
  * Returns:
- *   { success: true, notification_sent: boolean, recipient_email: string }
+ *   { success: true, notification_sent: boolean }
+ *   (gh-2462: recipient_email is NEVER returned; the caller is not entitled to it.)
  *
- * Auth: verify_jwt = false is NOT set — default Supabase JWT verification applies.
- *   Triggered by a DB trigger on messages table insert via pg_net (service role bearer).
- *   Rate-limited per sender_id to prevent notification spam.
+ * Auth (gh-2462): supabase/config.toml sets verify_jwt = false for this function, so the
+ *   gate is in this file. Callers are the browser messaging UIs only (dashboard.html,
+ *   contractor-dashboard.html, react-app Messaging.tsx, and the homeowner
+ *   functions.invoke path); there is NO DB-trigger/pg_net caller in supabase/migrations.
+ *   Accepted credentials, checked BEFORE any DB read or Mailgun call:
+ *     - a service bearer (runtime SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SECRET_KEYS.default), or
+ *     - a user access token (JWT) whose user is the message's sender_id (else 403).
+ *   Anything else is 401. Rate-limited per sender_id to prevent notification spam.
  *
  * Environment variables:
  *   SUPABASE_URL
  *   SUPABASE_SERVICE_ROLE_KEY
+ *   SUPABASE_SECRET_KEYS (optional; .default accepted as a service bearer)
  *   MAILGUN_API_KEY
  *   MAILGUN_DOMAIN
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import {
+  acceptedServiceKeys,
+  bearerToken,
+  deny,
+  type GetEnv,
+  hasServiceBearer,
+  looksLikeJwt,
+} from "./caller-gate.ts"; // gh-2462 (local copy; the deploy path does not resolve _shared/)
 import { messageNotificationHtml, messageNotificationText, MESSAGE_NOTIFICATION_SUBJECT } from "./templates.ts"; // gh-1824: footer moved to templates.ts (testable, no serve() import)
 
 const FUNCTION_NAME = "send-message-notification";
-const DASHBOARD_URL = "https://otterquote.com/dashboard";
+const DASHBOARD_URL = "https://otterquote.com/dashboard.html"; // gh-2462: same URL docusign-webhook uses
 const CONTRACTOR_DASHBOARD_URL = "https://otterquote.com/contractor-dashboard.html";
 
 // CORS allowlist
@@ -53,14 +68,15 @@ function buildCorsHeaders(req: Request): Record<string, string> {
 }
 
 async function sendMailgunEmail(
+  getEnv: GetEnv,
   recipientEmail: string,
-  senderName: string,
+  _senderName: string, // unused (lint); kept for call-site stability
   subject: string,
   htmlBody: string,
   textBody: string
 ): Promise<boolean> {
-  const apiKey = Deno.env.get("MAILGUN_API_KEY");
-  const domain = Deno.env.get("MAILGUN_DOMAIN");
+  const apiKey = getEnv("MAILGUN_API_KEY");
+  const domain = getEnv("MAILGUN_DOMAIN");
 
   if (!apiKey || !domain) {
     console.error("Missing Mailgun credentials");
@@ -91,12 +107,18 @@ async function sendMailgunEmail(
 
     return true;
   } catch (error) {
-    console.error(`Mailgun request failed: ${error.message}`);
+    console.error(`Mailgun request failed: ${error instanceof Error ? error.message : String(error)}`);
     return false;
   }
 }
 
-async function handleRequest(req: Request): Promise<Response> {
+// gh-2462: exported so caller-gate.test.ts drives the REAL handler (serve() is guarded by
+// import.meta.main). `getEnv` defaults to Deno.env.get; `makeClient` to createClient.
+export async function handler(
+  req: Request,
+  getEnv: GetEnv = (n) => Deno.env.get(n),
+  makeClient: typeof createClient = createClient,
+): Promise<Response> {
   // CORS preflight
   if (req.method === "OPTIONS") {
     return new Response(null, {
@@ -120,6 +142,36 @@ async function handleRequest(req: Request): Promise<Response> {
   }
 
   try {
+    // gh-2462 caller gate -- BEFORE the body is parsed, the client is built, or anything is
+    // read or sent. A service bearer passes; otherwise the bearer must be a user JWT, which
+    // is resolved to a user below (and must be the message's sender after the load).
+    const isService = hasServiceBearer(req, acceptedServiceKeys(getEnv));
+    const userToken = bearerToken(req);
+    if (!isService && !looksLikeJwt(userToken)) {
+      console.warn(`[${FUNCTION_NAME}] 401: no service bearer or user JWT`);
+      return deny(401, buildCorsHeaders(req));
+    }
+
+    // Initialize Supabase client
+    const supabaseUrl = getEnv("SUPABASE_URL");
+    const supabaseKey = getEnv("SUPABASE_SERVICE_ROLE_KEY");
+
+    if (!supabaseUrl || !supabaseKey) {
+      throw new Error("Missing Supabase credentials");
+    }
+
+    const supabase = makeClient(supabaseUrl, supabaseKey);
+
+    let callerUserId: string | null = null;
+    if (!isService) {
+      const { data: userData, error: userError } = await supabase.auth.getUser(userToken);
+      callerUserId = userData?.user?.id ?? null;
+      if (userError || !callerUserId) {
+        console.warn(`[${FUNCTION_NAME}] 401: user token rejected by auth`);
+        return deny(401, buildCorsHeaders(req));
+      }
+    }
+
     const body = await req.json();
     const messageId = body.message_id;
 
@@ -135,16 +187,6 @@ async function handleRequest(req: Request): Promise<Response> {
         }
       );
     }
-
-    // Initialize Supabase client
-    const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-
-    if (!supabaseUrl || !supabaseKey) {
-      throw new Error("Missing Supabase credentials");
-    }
-
-    const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Fetch the message and related data
     const { data: message, error: messageError } = await supabase
@@ -186,6 +228,12 @@ async function handleRequest(req: Request): Promise<Response> {
       );
     }
 
+    // gh-2462: a signed-in user may only notify for a message they sent.
+    if (!isService && callerUserId !== message.sender_id) {
+      console.warn(`[${FUNCTION_NAME}] 403: caller is not the message sender`);
+      return deny(403, buildCorsHeaders(req));
+    }
+
     const claim = message.claims;
     const senderProfile = message.profiles;
 
@@ -208,7 +256,7 @@ async function handleRequest(req: Request): Promise<Response> {
 
     // Determine recipient based on sender role
     let recipientId: string;
-    let recipientRole: string;
+    let _recipientRole: string;
     let dashboardUrl: string;
 
     if (message.sender_role === "homeowner") {
@@ -235,7 +283,7 @@ async function handleRequest(req: Request): Promise<Response> {
       }
 
       recipientId = quote.contractors.user_id;
-      recipientRole = "contractor";
+      _recipientRole = "contractor";
       dashboardUrl = CONTRACTOR_DASHBOARD_URL;
 
       // Get contractor profile for email
@@ -279,6 +327,7 @@ async function handleRequest(req: Request): Promise<Response> {
       );
 
       const emailSent = await sendMailgunEmail(
+        getEnv,
         contractorProfile.email,
         senderProfile.full_name,
         subject,
@@ -290,7 +339,6 @@ async function handleRequest(req: Request): Promise<Response> {
         JSON.stringify({
           success: true,
           notification_sent: emailSent,
-          recipient_email: contractorProfile.email,
         }),
         {
           status: 200,
@@ -302,6 +350,7 @@ async function handleRequest(req: Request): Promise<Response> {
       );
     } else {
       // Sender is contractor, find the homeowner
+      dashboardUrl = DASHBOARD_URL; // was never assigned on this branch (deno check TS2454); DASHBOARD_URL was unused
       const { data: homeownerProfile, error: homeownerError } = await supabase
         .from("profiles")
         .select("email, full_name")
@@ -342,6 +391,7 @@ async function handleRequest(req: Request): Promise<Response> {
       );
 
       const emailSent = await sendMailgunEmail(
+        getEnv,
         homeownerProfile.email,
         senderProfile.full_name,
         subject,
@@ -353,7 +403,6 @@ async function handleRequest(req: Request): Promise<Response> {
         JSON.stringify({
           success: true,
           notification_sent: emailSent,
-          recipient_email: homeownerProfile.email,
         }),
         {
           status: 200,
@@ -367,7 +416,7 @@ async function handleRequest(req: Request): Promise<Response> {
   } catch (error) {
     console.error(`${FUNCTION_NAME} error:`, error);
     return new Response(
-      JSON.stringify({ error: `Internal server error: ${error.message}` }),
+      JSON.stringify({ error: `Internal server error: ${error instanceof Error ? error.message : String(error)}` }),
       {
         status: 500,
         headers: {
@@ -378,4 +427,4 @@ async function handleRequest(req: Request): Promise<Response> {
   }
 }
 
-serve(handleRequest);
+if (import.meta.main) serve((req) => handler(req));

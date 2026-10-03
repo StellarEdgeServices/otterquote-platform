@@ -3658,9 +3658,12 @@
 
       // Send notification
       try {
+        // gh-2462: the EF requires the sender's session (service-role function; no anonymous callers).
+        const { data: { session: notifSession } } = await sb.auth.getSession();
+        const notifToken = notifSession?.access_token || "";
         await fetch(SEND_FUNCTION_URL, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "apikey": CONFIG.SUPABASE_ANON, "Authorization": `Bearer ${notifToken}` },
           body: JSON.stringify({ message_id: newMessage.id }),
         });
       } catch (notifError) {
@@ -3824,9 +3827,12 @@
       statusEl.textContent = "";
 
       try {
+        // gh-2462: the EF requires the sender's session (service-role function; no anonymous callers).
+        const { data: { session: notifSession } } = await sb.auth.getSession();
+        const notifToken = notifSession?.access_token || "";
         await fetch(SEND_FUNCTION_URL, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "apikey": CONFIG.SUPABASE_ANON, "Authorization": `Bearer ${notifToken}` },
           body: JSON.stringify({ message_id: newMessage.id }),
         });
       } catch (notifError) { console.error("Notification error:", notifError); }
