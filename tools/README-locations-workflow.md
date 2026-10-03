@@ -85,8 +85,19 @@ statute search clears (D-344) -> CRO writes `data/location-state-profiles/XX.jso
    skipped and listed. A missing or malformed profile, missing county data, or a
    county with no region fails the run with an explicit `StateConfigError`
    before anything is written.
-5. **PR**, with the page copy reviewed (Dustin / CRO own copy). Commit
-   `locations/` and `sitemap.xml` in that PR.
+5. **PR, one state per PR, with an R-177 LEGAL-READ.** (CEO ruling, #2304
+   comment 5964402773.) The PR that adds a state to the allow-list carries that
+   state's profile and `county_content`, and gets the R-177 LEGAL-READ against
+   D-345, D-326, D-104, D-312 and § 4 of the statute report before it merges.
+   That read, not the lint, is the guarantee. Commit `locations/` and
+   `sitemap.xml` in that PR.
+
+   CI enforces the cheap, diff-scoped half
+   (`tools/check_location_allowlist_change.py`, File Integrity workflow): a
+   change may add **at most one** state to the allow-list, and an added state's
+   `data/location-state-profiles/XX.json` must change **in the same PR**.
+   Removing a state always passes. The R-177 label and signature themselves
+   are enforced by the R-177 process, not by this check.
 
 Removing a state from the list stops regeneration and drops its URLs from the
 sitemap on the next run. It does not delete pages already on disk; delete
