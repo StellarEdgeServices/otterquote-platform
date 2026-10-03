@@ -1,0 +1,62 @@
+name: Static Referrals Insert Lockdown Tests
+
+# gh-2472 -- public.referrals must not accept direct client INSERTs (the old
+# "Public can insert referral clicks" WITH CHECK (true) policy let a browser
+# insert a referral at any status for any agent). Fails if the lockdown
+# migration loses its DROP POLICY / REVOKE INSERT, if a later migration
+# re-grants INSERT or re-creates a client INSERT policy on referrals, or if
+# browser code starts inserting into referrals directly instead of calling
+# track_referral_click. The test scans every browser source file in the
+# repo, so the paths filter covers every script/markup extension it reads.
+# `pull_request` + `push` to main, no secrets, read-only token.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'supabase/migrations/**'
+      - '**.html'
+      - '**.js'
+      - '**.mjs'
+      - '**.jsx'
+      - '**.ts'
+      - '**.tsx'
+      - 'tests/gh2472-static-referrals-insert-lockdown.mjs'
+      - '.github/workflows/static-referrals-insert-lockdown-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/**'
+      - '**.html'
+      - '**.js'
+      - '**.mjs'
+      - '**.jsx'
+      - '**.ts'
+      - '**.tsx'
+      - 'tests/gh2472-static-referrals-insert-lockdown.mjs'
+      - '.github/workflows/static-referrals-insert-lockdown-tests.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-referrals-insert-lockdown-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  static-referrals-insert-lockdown-tests:
+    name: Referrals INSERT lockdown (gh2472)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Client INSERT on referrals stays closed (gh2472)
+        run: node tests/gh2472-static-referrals-insert-lockdown.mjs
