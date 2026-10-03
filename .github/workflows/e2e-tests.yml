@@ -423,6 +423,14 @@ jobs:
       - name: partner signup duplicate-email error routing unit test (gh-2274 regression)
         run: node tests/gh2274-partner-dup-email-error.mjs
 
+      # gh-1925 / D-336: the "Do Not Sell or Share" opt-out control guard. It
+      # pins the ruled link text + href in every static page's own <footer>
+      # and on the React routes. It existed but ran in no workflow, so a PR
+      # that deleted a page's static footer link (#2458, finding 5965063789)
+      # stayed green. BUILD-FAILING.
+      - name: Do Not Sell or Share opt-out control guard (gh-1925, D-336)
+        run: node tests/gh1925-optout-control.mjs
+
       - name: cs_auth_role breadcrumb owner binding unit test (gh-2344)
         run: node tests/gh2344-cs-auth-role-owner.mjs
 
