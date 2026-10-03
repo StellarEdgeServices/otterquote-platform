@@ -89,7 +89,7 @@
    * click-id / funnel attribution, no name/email/phone/company) and the dashboard re-collects the
    * rest (name, phone, company, a freshly ticked terms checkbox -> a NEW termsAcceptedAt).
    * Every string in FORMS is copied VERBATIM from the matching signup page (partner-re,
-   * partner-insurance, partner-inspectors, partner-adjusters, partner-other); unknown type -> other.
+   * partner-insurance, partner-inspectors, partner-adjusters, partner-other). gh-2344: no trusted type -> the dashboard ASKS (never 'other' by default).
    * ------------------------------------------------------------------------------------------- */
   var CTX_KEY = 'oq_partner_signup_ctx';
   var CTX_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -115,7 +115,7 @@
   };
 
   /** The non-PII signup context ({agentType, attribution:{p_*}}) or null (missing / malformed / expired). */
-  function readCtx(storage, now) {
+  function readCtx(storage, now, ownTag) {
     var raw, c;
     try { raw = storage.getItem(CTX_KEY); } catch (e) { return null; }
     if (!raw) return null;
@@ -125,6 +125,12 @@
     var attr = {};
     var a = c.attribution && typeof c.attribution === 'object' ? c.attribution : {};
     CTX_ATTR.forEach(function (k) { if (a[k] !== undefined && a[k] !== null && a[k] !== '') attr[k] = a[k]; });
+    // gh-2344 (#2355 item b): the context is bound to the signup email by a one-way tag (Auth.ownerTag), never the address.
+    // When the caller supplies the signed-in user's tag, a context with no owner (pre-binding) or another owner is
+    // foreign (shared browser) and is ignored.
+    if (typeof ownTag === 'string' && ownTag) {
+      if (typeof c.owner !== 'string' || c.owner !== ownTag) return null;
+    }
     return { agentType: TYPES.indexOf(c.agentType) === -1 ? null : c.agentType, attribution: attr };
   }
   function clearCtx(storage) { try { storage.removeItem(CTX_KEY); } catch (e) { /* non-fatal */ } }
@@ -132,7 +138,10 @@
 
   /** register_partner arguments from the re-collected values (v: {first,last,full,phone,company}), the ctx and the signed-in email. termsAcceptedAt = the fresh ticked submit. */
   function buildRecollectParams(agentType, v, ctx, ownEmail, isTest, termsAcceptedAt) {
-    var type = TYPES.indexOf(agentType) === -1 ? 'other' : agentType;
+    // gh-2344 (CEO ruling, #2304 5965155761 item 1): never default an unknown/missing type to 'other' -- the caller must
+    // have a type from a trusted ctx or one the person picked on the re-collect ask.
+    if (TYPES.indexOf(agentType) === -1) return null;
+    var type = agentType;
     var form = formFor(type), first = String(v.first || '').trim(), last = String(v.last || '').trim();
     if (form.full) {
       var parts = String(v.full || '').trim().split(/\s+/).filter(Boolean);
@@ -146,11 +155,71 @@
     var p = { p_agent_type: type, p_first_name: first, p_last_name: last, p_email: norm(ownEmail), p_phone: String(v.phone).trim(), p_company: company || null };
     var attr = (ctx && ctx.attribution) || {};
     CTX_ATTR.forEach(function (k) { p[k] = attr[k] !== undefined ? attr[k] : null; });
+    // gh-2344: the re-collect ask's "Who Told You About Us?" text, sent as the signup pages send it (partner-other /
+    // partner-adjusters: p_referred_by_note). Only set when present, so the trusted-ctx path's arguments are unchanged.
+    if (typeof attr.p_referred_by_note === 'string' && attr.p_referred_by_note.trim()) p.p_referred_by_note = attr.p_referred_by_note.trim();
     p.p_is_test = !!isTest;
     p.p_metadata = { terms_accepted_at_client: new Date(termsAcceptedAt).toISOString(), completion_path: 'dashboard_recollect' };
     return p;
   }
 
+  /* ---------------------------------------------------------------------------------------------
+   * gh-2344 (CEO ruling, #2304 5965155761 item 1; LEGAL-READ FAIL 5965145560): when the signup ctx is dropped
+   * (missing, expired, unknown type, or a missing/different owner) the re-collect ASKS for the partner type and a
+   * recruiter code instead of defaulting to 'other' / the standard Partner Terms with no recruiter credited.
+   * ------------------------------------------------------------------------------------------- */
+  /**
+   * The shape of a real recruit_code: public.generate_recruit_code() (supabase/migrations/20260101000000_v000_baseline_schema.sql,
+   * the only writer, via the referral_agents_generate_recruit_code BEFORE INSERT trigger) returns 'r-' + 6 chars from
+   * [A-Z0-9]. Its index is (random() * 36)::INT + 1, which rounds and can reach 37, where substr() returns '' -- so a stored
+   * code can be shorter than 6. Hence {1,6}. Matched against the normalised value (normRecruitCode).
+   */
+  var RECRUIT_CODE_RE = /^r-[A-Z0-9]{1,6}$/;
+  var RECRUIT_LINK_RE = /[?&](?:code|recruit)=/i;
+  /** A typed recruit code, normalised exactly as recruit.html does (gh-1648); a pasted recruit link (?code= / ?recruit=) is accepted. '' when empty. */
+  function normRecruitCode(raw) {
+    var s = String(raw || '').trim();
+    var m = s.match(/[?&](?:code|recruit)=([^&#\s]+)/i);
+    if (m) { try { s = decodeURIComponent(m[1]); } catch (e) { s = m[1]; } }
+    return String(s).trim().toUpperCase().replace(/^R-/, 'r-');
+  }
+  /**
+   * The lookup the signup pages' detectRecruitCode() runs (active recruiter by recruit_code via get_referral_agents_public).
+   * {code, name} when an active recruiter holds it (name = the display name detectRecruitCode() puts in the referredBy
+   * field); {code: null} when the field is empty or no active recruiter holds it; {error} when the lookup itself failed.
+   */
+  async function lookupRecruitCode(sb, raw) {
+    var code = normRecruitCode(raw);
+    if (!code) return { code: null };
+    try {
+      var res = await sb.rpc('get_referral_agents_public').select('id, first_name, last_name, company').eq('recruit_code', code).eq('status', 'active').maybeSingle();
+      if (res && res.error) return { error: res.error };
+      var r = res && res.data;
+      if (!r) return { code: null };
+      var name = ((r.first_name || '') + ' ' + (r.last_name || '')).trim() || r.company || 'Otter Quotes Partner';
+      return { code: code, name: name };
+    } catch (e) { return { error: e }; }
+  }
+  /**
+   * The re-collect ask's "Who Told You About Us?" field -> register_partner attribution, mirroring partner-other.html /
+   * partner-adjusters.html: an active recruiter's code (or pasted recruit link) -> p_recruit_code, and p_referred_by_note =
+   * the recruiter's display name (on those pages detectRecruitCode() fills and locks the field with it, and the field is
+   * sent as p_referred_by_note); any other non-empty text -> p_referred_by_note = the trimmed text, not credited;
+   * empty -> neither. null when the lookup failed (the caller blocks the submit).
+   */
+  async function resolveReferral(sb, raw) {
+    var text = String(raw || '').trim();
+    if (!text) return {};
+    // Privacy (gh-2344 N1): only a pasted recruit link or recruit-code-shaped text is looked up; anything else (a name)
+    // is stored as the note with no network call, so it never reaches Supabase as a recruit_code filter.
+    if (!RECRUIT_LINK_RE.test(text) && !RECRUIT_CODE_RE.test(normRecruitCode(text))) return { p_referred_by_note: text };
+    var r = await lookupRecruitCode(sb, text);
+    if (r.error) return null;
+    if (r.code) return { p_recruit_code: r.code, p_referred_by_note: r.name };
+    return { p_referred_by_note: text };
+  }
+
   root.PartnerRegistration = { KEY: KEY, TTL_MS: TTL_MS, TYPES: TYPES, readMarker: readMarker, clearMarker: clearMarker, buildParams: buildParams, complete: complete,
-    CTX_KEY: CTX_KEY, FORMS: FORMS, ERR_TEXT: ERR_TEXT, SUBMITTING: SUBMITTING, readCtx: readCtx, clearCtx: clearCtx, formFor: formFor, buildRecollectParams: buildRecollectParams };
+    CTX_KEY: CTX_KEY, FORMS: FORMS, ERR_TEXT: ERR_TEXT, SUBMITTING: SUBMITTING, readCtx: readCtx, clearCtx: clearCtx, formFor: formFor, buildRecollectParams: buildRecollectParams,
+    normRecruitCode: normRecruitCode, lookupRecruitCode: lookupRecruitCode, resolveReferral: resolveReferral, RECRUIT_CODE_RE: RECRUIT_CODE_RE };
 })(typeof window !== 'undefined' ? window : this);

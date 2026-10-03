@@ -164,7 +164,7 @@
     } catch (e) {}
   }
 
-  function _oqGetIntent() {
+  function _oqGetIntent(userEmail) {
     // URL query param wins (survives OAuth round-trip without storage).
     // localStorage is a backup for older callers that haven't been updated.
     try {
@@ -189,8 +189,13 @@
     var CS_AUTH_ROLE_TTL_MS = 24 * 60 * 60 * 1000;
     var ls = localStorage.getItem('cs_auth_role');
     var lsAt = parseInt(localStorage.getItem('cs_auth_role_at') || '', 10);
+    // gh-2344: also require the breadcrumb to have been written for THIS signer
+    // (Auth.roleOwnerMatches: stored owner email === signed-in email, or this
+    // tab's OAuth nonce). Foreign / owner-less (legacy) => ignored and cleared.
+    var ownerOk = Auth.roleOwnerMatches(userEmail);
     var trusted = (
       ls !== null &&
+      ownerOk &&
       Number.isFinite(lsAt) &&
       // gh-2060 round-4 hardening 2: reject a future-dated stamp (negative age).
       (Date.now() - lsAt) >= 0 &&
@@ -198,7 +203,9 @@
     ) ? ls : null;
     localStorage.removeItem('cs_auth_role');
     localStorage.removeItem('cs_auth_role_at');
-    _oqLog('intent from localStorage:', ls, 'trusted:', trusted);
+    localStorage.removeItem('cs_auth_role_email');
+    try { sessionStorage.removeItem('cs_auth_role_tab'); } catch (e) {}
+    _oqLog('intent from localStorage:', ls, 'trusted:', trusted, 'ownerOk:', ownerOk);
     return trusted;
   }
 
@@ -219,7 +226,7 @@
     // not go through Auth.handleAuthCallback().
     try { if (Auth.recordFirstTouchAttribution) await Auth.recordFirstTouchAttribution(); } catch (e) { /* non-fatal */ }
 
-    var intent = _oqGetIntent();
+    var intent = _oqGetIntent(session.user && session.user.email);
 
     var role = null;
     try { role = await Auth.getRole(); } catch (e) { role = null; }

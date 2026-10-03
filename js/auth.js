@@ -654,8 +654,10 @@ window.Auth = {
       try {
         localStorage.removeItem('cs_auth_role');
         localStorage.removeItem('cs_auth_role_at');
+        localStorage.removeItem('cs_auth_role_email');
         sessionStorage.removeItem('cs_auth_role');
         sessionStorage.removeItem('cs_auth_role_at');
+        sessionStorage.removeItem('cs_auth_role_tab');
       } catch (e) { /* non-fatal */ }
       // gh-2060 item 2: an unconsumed cs_signup (name/phone/address) must not
       // outlive the session either.
@@ -1167,6 +1169,57 @@ window.Auth = {
     return data;
   },
 
+  // gh-2344: owner binding for the cs_auth_role breadcrumb. The role + 24h
+  // stamp bound its AGE but not WHO it is for: on a shared device a stranger's
+  // abandoned contractor signup steered the next user's post-login routing.
+  // stampRoleOwner() stores a one-way tag (ownerTag) of the signer's normalised
+  // (trimmed, lowercased) email in cs_auth_role_email beside the role, never the
+  // address itself (CodeQL js/clear-text-storage-of-sensitive-data; #2355 class);
+  // roleOwnerMatches() is true only when that equals ownerTag(signed-in email). A Google OAuth writer
+  // does not know the email before the redirect, so it passes null and gets
+  // 'oauth-tab:<nonce>' (nonce also in sessionStorage cs_auth_role_tab, which
+  // survives the same-tab Google round trip but not a closed tab). A legacy
+  // breadcrumb with no owner is foreign. Mirrors react-app
+  // lib/role-breadcrumb-owner.ts and index.html's inline copy.
+  stampRoleOwner(email) {
+    const e = typeof email === 'string' ? email.trim().toLowerCase() : '';
+    try {
+      if (e) { localStorage.setItem('cs_auth_role_email', this.ownerTag(e)); return; }
+      const nonce = Math.random().toString(36).slice(2) + Date.now().toString(36);
+      try { sessionStorage.setItem('cs_auth_role_tab', nonce); } catch (err) { /* non-fatal */ }
+      localStorage.setItem('cs_auth_role_email', 'oauth-tab:' + nonce);
+    } catch (err) { /* storage blocked: reader fails closed (no owner) */ }
+  },
+
+  // gh-2344 / #2355 item (b): a short one-way tag of the normalised email, used to bind non-PII browser state (the
+  // partner signup context) to its signer WITHOUT storing the address itself. cyrb53, sync, not a secret: it only
+  // has to tell two people on one browser apart. '' for an empty input.
+  ownerTag(email) {
+    const s = typeof email === 'string' ? email.trim().toLowerCase() : '';
+    if (!s) return '';
+    let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+    for (let i = 0; i < s.length; i++) {
+      const ch = s.charCodeAt(i);
+      h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return 'o1:' + (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+  },
+
+  roleOwnerMatches(userEmail) {
+    let stored = null;
+    try { stored = localStorage.getItem('cs_auth_role_email'); } catch (e) { stored = null; }
+    if (!stored) return false;
+    if (stored.indexOf('oauth-tab:') === 0) {
+      let tab = null;
+      try { tab = sessionStorage.getItem('cs_auth_role_tab'); } catch (e) { tab = null; }
+      return !!tab && stored === 'oauth-tab:' + tab;
+    }
+    const u = typeof userEmail === 'string' ? userEmail.trim().toLowerCase() : '';
+    return !!u && stored === this.ownerTag(u);
+  },
+
   clearContractorSignup() {
     ['cs_contractor_signup', 'cs_contractor_signup_at', 'cs_contractor_signup_session'].forEach((k) => {
       try { localStorage.removeItem(k); } catch (e) { /* non-fatal */ }
@@ -1241,8 +1294,15 @@ window.Auth = {
     const CS_AUTH_ROLE_TTL_MS = 24 * 60 * 60 * 1000;
     const storedRoleRaw = localStorage.getItem('cs_auth_role') || sessionStorage.getItem('cs_auth_role');
     const storedAt = parseInt(localStorage.getItem('cs_auth_role_at') || sessionStorage.getItem('cs_auth_role_at') || '', 10);
+    // gh-2344: honour the breadcrumb only when it was written for THIS signer
+    // (see roleOwnerMatches); a foreign or owner-less one is ignored and cleared below.
+    const roleOwnerOk = this.roleOwnerMatches(user.email);
+    if (storedRoleRaw !== null && !roleOwnerOk) {
+      console.warn('[cs_auth_role] ignored and cleared: not written for the signed-in user');
+    }
     let role = (
       storedRoleRaw !== null &&
+      roleOwnerOk &&
       Number.isFinite(storedAt) &&
       // gh-2060 round-4 hardening 2: a future-dated stamp (negative age) must
       // not pass the `<= TTL` check and be trusted indefinitely.
@@ -1251,8 +1311,10 @@ window.Auth = {
     ) ? storedRoleRaw : null;
     localStorage.removeItem('cs_auth_role');
     localStorage.removeItem('cs_auth_role_at');
+    localStorage.removeItem('cs_auth_role_email');
     sessionStorage.removeItem('cs_auth_role');
     sessionStorage.removeItem('cs_auth_role_at');
+    sessionStorage.removeItem('cs_auth_role_tab');
 
     // If no TRUSTED stored role (missing, or stale/expired past the TTL
     // above), check if a contractor record exists for this user — the live

@@ -28,6 +28,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
+import { ownerTag } from './fixtures/owner-tag.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const indexHtml = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
@@ -44,6 +45,7 @@ function makeJwt(userMetadataRole) {
   const header = Buffer.from(JSON.stringify({ alg: 'none' })).toString('base64url');
   const payload = Buffer.from(JSON.stringify({
     sub: 'test-user',
+    email: 'Test-User@Example.com', // gh-2344: signer email carried in the JWT
     user_metadata: userMetadataRole ? { role: userMetadataRole } : {},
   })).toString('base64url');
   return `${header}.${payload}.sig`;
@@ -65,6 +67,8 @@ function runBounce({ jwtRole, csAuthRole, csAuthRoleAt }) {
   // age.
   const store = {
     cs_auth_role: csAuthRole ?? undefined,
+    // gh-2344: breadcrumb owner (one-way tag of the normalised email) -- these pre-existing cases are the SAME signer.
+    cs_auth_role_email: csAuthRole == null ? undefined : ownerTag('test-user@example.com'),
     cs_auth_role_at:
       csAuthRole == null
         ? undefined
