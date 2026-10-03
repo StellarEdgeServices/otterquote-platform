@@ -35,6 +35,46 @@ export interface PendingHoverCharge {
   paymentIntentId: string;
   /** Date.now() at write time — informational only, not used to expire the record. */
   ts: number;
+  /**
+   * gh-2078 / LEGAL-READ: FAIL 5973374792 point 3: what Stripe CONFIRMED was charged (whole cents + currency), written by
+   * recordHoverChargeAmount() right after confirmCardPayment succeeds, so the resume route reports the same value the first
+   * route would have. Absent when the page was reloaded before it could be written: the resume route then sends no purchase event.
+   */
+  amountCents?: number;
+  currency?: string;
+}
+
+/** The confirmed payment of a charged PaymentIntent, as read from Stripe.js (amount_received, else amount, mirrors stripe-webhook). */
+export interface ChargedPayment {
+  amountCents: number;
+  currency: string;
+}
+
+/**
+ * The event value and currency for a confirmed charge, or null when the payment does not carry a positive whole-cent amount in USD
+ * (no event, never a wrong value). lib/track.ts types `measurement_purchase.currency` as 'USD' only, so a charge in another
+ * currency sends nothing here rather than being reported as USD.
+ */
+export function measurementPurchaseFromCharge(
+  charged: { amountCents?: unknown; currency?: unknown } | null | undefined,
+): { value: number; currency: 'USD' } | null {
+  if (!charged || typeof charged !== 'object') return null;
+  const cents = charged.amountCents;
+  if (typeof cents !== 'number' || !Number.isInteger(cents) || cents <= 0) return null;
+  if (typeof charged.currency !== 'string' || charged.currency.toUpperCase() !== 'USD') return null;
+  return { value: cents / 100, currency: 'USD' };
+}
+
+/** Add the confirmed amount to the pending-charge pointer for this PaymentIntent. Best-effort. */
+export function recordHoverChargeAmount(paymentIntentId: string, charged: ChargedPayment): void {
+  try {
+    const rec = readHoverChargeRecord();
+    if (!rec || rec.paymentIntentId !== paymentIntentId) return;
+    if (!measurementPurchaseFromCharge(charged)) return;
+    saveHoverChargeRecord({ ...rec, amountCents: charged.amountCents, currency: charged.currency });
+  } catch {
+    // Non-fatal: the resume route then sends no purchase event.
+  }
 }
 
 function storage(): Storage | null {
