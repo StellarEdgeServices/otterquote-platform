@@ -1546,7 +1546,7 @@ Date: ${new Date().toISOString()}
 
 Log in to the admin panel to review and approve this contractor.`;
 
-                await fetch(`${window.location.origin}/functions/v1/send-support-email`, {
+                await fetch(CONFIG.SUPABASE_URL + '/functions/v1/send-support-email', { // gh-2477: Supabase URL (no Netlify proxy for /functions/v1)
                   method: 'POST',
                   headers: {
                     'Content-Type': 'application/json',

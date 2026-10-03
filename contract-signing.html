@@ -2188,8 +2188,12 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'apikey': CONFIG.SUPABASE_ANON },
           body: JSON.stringify({
-            subject: 'Bid Renewal Requested \u2014 ' + (state.contractor?.company_name || 'Unknown Contractor'),
-            body: [
+            // gh-2477: the function requires from_name/from_email/message (it was sent `body`)
+            // and rejects any other field or a newline in subject. System sender.
+            from_name: 'OtterQuote Platform',
+            from_email: 'support@otterquote.com',
+            subject: ('Bid Renewal Requested \u2014 ' + (state.contractor?.company_name || 'Unknown Contractor')).replace(/[\r\n]+/g, ' '),
+            message: [
               'A homeowner has requested an updated bid (via contract-signing.html expired guard).',
               'Contractor: ' + (state.contractor?.company_name || 'N/A'),
               'Property: ' + (state.claim?.property_address || 'N/A'),

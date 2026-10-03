@@ -3384,7 +3384,7 @@
         try {
           if (sb && currentClaim?.id) {
             const reasonText = reasons.length > 0 ? reasons.join(', ') : 'No reason provided';
-            await fetch(`${window.location.origin}/functions/v1/send-support-email`, {
+            await fetch(CONFIG.SUPABASE_URL + '/functions/v1/send-support-email', { // gh-2477: Supabase URL (no Netlify proxy for /functions/v1)
               method:  'POST',
               headers: {
                 'Content-Type': 'application/json',
