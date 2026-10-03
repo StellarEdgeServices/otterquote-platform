@@ -1236,21 +1236,21 @@ TRADE_INTRO = {
     "roofing": [
         "A roof in {county} County can take hail strikes and wind uplift during a storm, and when it fails, the damage rarely stays confined to the shingles.",
         "A severe storm in {county} County can leave roofs with the full menu of problems: hail bruising, wind-lifted shingles, damaged flashing, and the slow leaks that follow. Getting more than one written bid is one way to understand what a repair may cost.",
-        "In {county} County, roofing is where storm season and the repair process meet. Hail and wind events leave damage that is easy to underestimate from the ground, and the repair market that springs up after every major storm makes it genuinely hard to know who to call and what a fair price looks like.",
+        "In {county} County, a hail or wind storm can leave roof damage that is easy to underestimate from the ground. Comparing written bids is one way to check scope and pricing.",
     ],
     "siding": [
-        "Siding takes the brunt of wind-driven hail in {county} County — dents, cracks, and punctures on the exposed elevations of a home are among the most common findings after a spring storm rolls through {region}.",
-        "In {county} County, siding damage is frequently discovered months after the storm that caused it. Hail impact marks, wind-creased panels, and cracked corner posts let moisture behind the wall system, and by the time staining or warping shows up inside, the repair scope has grown.",
+        "Siding can take the brunt of wind-driven hail: dents, cracks, and punctures on the exposed elevations of a home are things to look for after a storm.",
+        "Siding damage can go unnoticed for months after the storm that caused it. Hail impact marks, wind-creased panels, and cracked corner posts let moisture behind the wall system, and by the time staining or warping shows up inside, the repair scope has grown.",
         "Hail does not need to be large to damage siding. In {region}, storms can drop marginal-size hail that leaves siding damage {county} County homeowners never noticed — and matching discontinued siding profiles is a common complication when scoping repairs.",
     ],
     "gutters": [
-        "Gutters are the first thing hail hits and the last thing homeowners inspect. In {county} County, dented gutters and downspouts are often among the first visible signs that a storm dropped hail.",
-        "A gutter system in {county} County has two jobs: move heavy spring rain away from the foundation, and survive the ice load that {region} winters put on every eave. When hail flattens the profile or pulls fasteners loose, both jobs suffer, and the resulting water problems show up at the foundation and fascia long before the gutters themselves look obviously broken.",
-        "In {county} County, gutter damage is often the visible tip of larger storm damage. Hail that dents aluminum gutters has usually also hit the roof above them, which is why a proper storm inspection treats gutters, downspouts, and roof surfaces as one system.",
+        "Gutters are the first thing hail hits and the last thing homeowners inspect. After a storm, dented gutters and downspouts can be an early visible sign that hail fell.",
+        "A gutter system has two jobs: move rain away from the foundation, and carry whatever load winter puts on it. When hail flattens the profile or pulls fasteners loose, both jobs suffer, and the resulting water problems show up at the foundation and fascia long before the gutters themselves look obviously broken.",
+        "Gutter damage can be the visible tip of larger storm damage. Hail that dents aluminum gutters may also have hit the roof above them, which is why a proper storm inspection treats gutters, downspouts, and roof surfaces as one system.",
     ],
     "windows": [
         "Window damage in {county} County ranges from the obvious — cracked glass after a hailstorm — to the subtle: failed seals, fogged double panes, and hail-cratered cladding that lets water into the wall. Document each kind of damage you find; whether any of it is included is your insurer's decision under your policy. Water getting into a wall tends to add repair scope the longer it waits.",
-        "Storm damage to windows is easy to overlook in {region}. {county} County homeowners tend to notice broken glass immediately, but hail damage to frames, cladding, and glazing beads is easy to miss and worth including in your documentation.",
+        "Storm damage to windows is easy to overlook. Broken glass is obvious, but hail damage to frames, cladding, and glazing beads is easy to miss and worth including in your documentation.",
         "In {county} County, replacement windows are both a storm-repair item and an efficiency upgrade. When wind or hail compromises frames and seals, homeowners face a choice between like-for-like replacement and stepping up to modern units — and written bids that price each option can help you compare that choice.",
     ],
 }
@@ -1273,7 +1273,7 @@ TRADE_ISSUE_ITEMS = {
         "<li><strong>Hail dents and punctures</strong> — most visible on aluminum and thin vinyl, and concentrated on the storm-facing elevations.</li>",
         "<li><strong>Wind-creased and detached panels</strong> — compromised locking legs that let subsequent weather work panels loose.</li>",
         "<li><strong>Discontinued-profile matching</strong> — a common question when only some elevations are damaged.</li>",
-        "<li><strong>Moisture intrusion behind damaged panels</strong> — the hidden cost of postponing repairs through a {region} winter.</li>",
+        "<li><strong>Moisture intrusion behind damaged panels</strong> — the hidden cost of postponing repairs through a winter.</li>",
         "<li><strong>Oxidation lines and chalking</strong> — complicate spot repairs on older siding and affect how a scope is written.</li>",
         "<li><strong>Cracked corner posts and trim</strong> — small components that drive disproportionate water damage when ignored.</li>",
         "<li><strong>Fastener pull-through in high wind</strong> — panels that look intact but are no longer attached the way the manufacturer intended.</li>",
@@ -1281,7 +1281,7 @@ TRADE_ISSUE_ITEMS = {
     ],
     "gutters": [
         "<li><strong>Hail-flattened profiles</strong> — dents that reduce water-carrying capacity and often point to damage on the roof above.</li>",
-        "<li><strong>Pulled fasteners and sagging runs</strong> — ice and debris load that separates gutters from fascia over a {region} winter.</li>",
+        "<li><strong>Pulled fasteners and sagging runs</strong> — ice and debris load that separates gutters from fascia over a winter.</li>",
         "<li><strong>Downspout crushing and disconnects</strong> — drainage failures that surface as foundation and grading problems.</li>",
         "<li><strong>Fascia and soffit rot</strong> — the downstream cost of gutter systems that stopped doing their job quietly.</li>",
         "<li><strong>Seam and end-cap leaks</strong> — often storm-initiated, always worse after a freeze cycle.</li>",
