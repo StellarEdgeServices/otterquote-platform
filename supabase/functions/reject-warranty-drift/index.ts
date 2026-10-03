@@ -10,6 +10,7 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.104.0";
+import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -109,7 +110,7 @@ Deno.serve(async (req: Request) => {
   const newStatus = action === "reject" ? "rejected" : "skipped";
 
   try {
-    const { error: updateErr } = await sb
+    const { error: updateErr, data: updateRows } = await sb
       .from("warranty_manifest_drift")
       .update({
         status: newStatus,
@@ -117,9 +118,15 @@ Deno.serve(async (req: Request) => {
         reviewed_at: now,
         ...(rejectionReason ? { rejection_reason: rejectionReason } : {}),
       })
-      .eq("id", driftId);
+      .eq("id", driftId)
+      .select("id");
 
     if (updateErr) throw new Error(`Failed to update drift row: ${updateErr.message}`);
+    // gh-2105: hard-fail via the existing catch (generic 500, no new user text).
+    // Filter is id only, so zero rows is a real miss (row gone or RLS-hidden), not
+    // an idempotent state; the activity_log entry below must not claim a review
+    // that was never written.
+    if (!checkRowsWritten(updateRows).wroteRows) throw new Error(zeroRowWriteMessage("reject-warranty-drift", `warranty_manifest_drift.status=${newStatus} for drift ${driftId}`));
 
     // Log activity
     try {

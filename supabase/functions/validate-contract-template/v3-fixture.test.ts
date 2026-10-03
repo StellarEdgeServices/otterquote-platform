@@ -26,7 +26,7 @@
 // #1664 already made in starter-template.test.ts and revalidate.test.ts — so
 // there is nothing left in this file to drift out of sync with index.ts.
 import { assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
-import { MANIFEST, scanRequiredAnchors } from "./manifest.ts";
+import { MANIFEST, scanLabeledSignTags, scanRequiredAnchors } from "./manifest.ts";
 import { extractPdfText } from "./pdf-text.ts";
 import { fieldIdFromTag } from "./starter-template.ts";
 
@@ -71,4 +71,12 @@ Deno.test("v3 roofing/retail fixture: the found contract_price anchor resolves t
   }
   assertEquals(text.includes(priceReq.anchor), true, "contract_price anchor not found in fixture text");
   assertEquals(fieldIdFromTag(priceReq.anchor), "contract_price");
+});
+
+// [gh-1314] The reference document must carry the form BoldSign can actually build: no label on
+// any sign/init/date tag. (Before this fix the fixture used the labeled form, satisfied the old
+// manifest 13/13, and was exactly the kind of template BoldSign silently fails to create.)
+Deno.test("v3 roofing/retail fixture: no sign/init/date tag carries a label (gh-1314)", async () => {
+  const text = await extractPdfText(await Deno.readFile(FIXTURE_PDF_URL));
+  assertEquals(scanLabeledSignTags(text), []);
 });

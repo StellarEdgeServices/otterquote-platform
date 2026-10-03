@@ -209,5 +209,25 @@ for (const [p, cls] of [['react-app/app/(homeowner)/_shell/HomeownerShell.tsx', 
   ok(s.includes('<a id="footer-do-not-sell-link" href="' + RHREF + '">' + LINK_TEXT + '</a>') && s.split(LINK_TEXT).length === 2, 'react-app get-started/page.tsx (loads the ad tags): carries the exact string + absolute href, once');
   ok(/ALLOWED_PATHS = \["\/get-started"/.test(read('react-app/app/components/MetaPixelGate.tsx')), 'get-started is still a MetaPixelGate ALLOWED_PATH (so the assertion above stays load-bearing)');
 }
+// CEO ruling #2304 5963898698 item 5: the consumer React routes get the link through the root layout (DoNotSellLink, allowlist).
+{
+  const comp = read('react-app/app/components/DoNotSellLink.tsx');
+  const layout = read('react-app/app/layout.tsx');
+  ok(comp.includes("export const DO_NOT_SELL_TEXT = '" + LINK_TEXT + "'") && comp.includes("export const DO_NOT_SELL_HREF = '" + RHREF + "'"), 'react-app DoNotSellLink.tsx carries the exact string + absolute href');
+  ok(comp.includes("['/', '/login', '/refer', '/trade-selector', '/partner/dashboard'] as const"), 'react-app DoNotSellLink.tsx: route allowlist is exactly the five ruled routes (no admin, no auth-callback)');
+  ok(/<DoNotSellLink \/>/.test(layout) && /import \{ DoNotSellLink \} from '\.\/components\/DoNotSellLink'/.test(layout), 'react-app layout.tsx mounts <DoNotSellLink />');
+}
+{
+  const nf = read('react-app/app/not-found.tsx');
+  ok(/import \{ DO_NOT_SELL_HREF, DO_NOT_SELL_TEXT \} from '\.\/components\/DoNotSellLink'/.test(nf) && /href=\{DO_NOT_SELL_HREF\}>\{DO_NOT_SELL_TEXT\}<\/a>/.test(nf) && !nf.includes('shouldShowDoNotSell') && !nf.includes('usePathname'), 'react-app not-found.tsx carries the ruled link (shared constants) unconditionally, no route gate');
+}
+// The section 12 button records its source (migration 20261003011500_gh1925 widens the CHECK).
+ok(/ad_sharing_opt_out_source: 'in_page_button'/.test(privacy), "privacy.html section 12 button PATCH records source 'in_page_button'");
+{
+  const mig = fs.readdirSync(path.join(ROOT, 'supabase/migrations')).filter((f) => /gh1925_ad_sharing_opt_out_source_in_page_button\.sql$/.test(f));
+  const sql = mig.length ? read('supabase/migrations/' + mig[0]) : '';
+  ok(mig.length === 1 && /'in_page_button'\)\) NOT VALID;/.test(sql) && /VALIDATE CONSTRAINT profiles_ad_sharing_opt_out_source_check/.test(sql), 'migration widens profiles_ad_sharing_opt_out_source_check with in_page_button (NOT VALID + VALIDATE)');
+}
+
 console.log('\n' + passed + ' passed, ' + failed + ' failed');
 process.exit(failed ? 1 : 0);

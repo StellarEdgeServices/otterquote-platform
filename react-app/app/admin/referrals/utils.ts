@@ -10,7 +10,7 @@
  * The referral_agents read shape (REFERRAL_AGENTS_SELECT), the verify-W9 write
  * payload ({ w9_verified_at }), and the manual-unblock write payload
  * ({ payments_blocked: false }) reproduce the static page's queries byte-for-byte.
- * These are DIRECT table .update() calls, never Edge Functions, and no referral
+ * These are DIRECT table writes, never Edge Functions, and no referral
  * commission logic (apply_referral_commission) is referenced.
  *
  * §6.1 XSS note: all values are returned as plain data; JSX rendering in
@@ -236,3 +236,12 @@ export const W9_SIGNED_URL_TTL_SECONDS = 60;
  */
 export const UNBLOCK_CONFIRM_TEXT =
   'Manually unblock this partner without a W-9 on file? Only do this for grandfathered or exceptional cases.';
+
+// gh-2105 decision (a): supabase-js resolves { error: null } when RLS or the
+// filter matches ZERO rows, so each referral_agents write in page.tsx chains
+// .select('id') and treats an empty result as a failure. The failure is shown
+// through that handler's EXISTING error toast ('Error ...: ' + message); the
+// message is the guard's technical suffix, exactly as in batch 11.
+export function zeroRowError(rows: unknown[] | null | undefined): Error | null {
+  return Array.isArray(rows) && rows.length > 0 ? null : new Error('zero_rows_updated');
+}

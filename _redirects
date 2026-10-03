@@ -108,6 +108,13 @@ https://www.stellaredgeservices.com/* /stellar-edge.html 200
 /blog/what-is-scope-of-loss-roofing /blog/what-is-scope-of-loss-roofing.html 301
 /blog/when-not-to-file-roof-insurance-claim /blog/when-not-to-file-roof-insurance-claim.html 301
 /blog/why-roofers-quote-different-prices /blog/why-roofers-quote-different-prices.html 301
+# CRO RUN 52 / gh-2448 + gh-2449 (#2423): four week-1 guide pages. Same 301 as above;
+# as with the wave-2 rules, the edge function is what actually fires and these
+# lines are the documented source of truth.
+/guides/multiple-bids-roof-insurance-claim /guides/multiple-bids-roof-insurance-claim.html 301
+/guides/roof-bid-comparison-worksheet /guides/roof-bid-comparison-worksheet.html 301
+/guides/siding-bid-comparison /guides/siding-bid-comparison.html 301
+/guides/gutter-bid-comparison /guides/gutter-bid-comparison.html 301
 
 # gh-1795: twelve blog articles promoted from otterquote-deploy/blog/ (a committed
 # May-2026 working-directory mirror, unstyled, canonicalising to a 404) to the real
@@ -124,3 +131,19 @@ https://www.stellaredgeservices.com/* /stellar-edge.html 200
 /otterquote-deploy/blog/what-is-scope-of-loss-roofing.html /blog/what-is-scope-of-loss-roofing.html 301
 /otterquote-deploy/blog/when-not-to-file-roof-insurance-claim.html /blog/when-not-to-file-roof-insurance-claim.html 301
 /otterquote-deploy/blog/why-roofers-quote-different-prices.html /blog/why-roofers-quote-different-prices.html 301
+
+# gh-2378 HO-6: /ho6 is served by Netlify Pretty URLs from ho6.html (same as /hi-1 -> hi-1.html). /ho6/start has no static file at that
+# path (there is deliberately no ho6/ directory), so a plain 200 rewrite serves ho6-start.html and keeps the address bar and query string.
+/ho6/start   /ho6-start.html   200
+/ho6/start/  /ho6-start.html   200
+
+# cro51 / #2121 HO-1 rebuild: /hc (hub) is served by Netlify Pretty URLs from hc.html, like /ho6. The four topic pages have no file at their
+# clean path (deliberately no hc/ directory), so plain 200 rewrites serve hc-<topic>.html and keep the address bar and query string.
+/hc/save-money    /hc-save-money.html   200
+/hc/save-money/   /hc-save-money.html   200
+/hc/materials     /hc-materials.html    200
+/hc/materials/    /hc-materials.html    200
+/hc/warranties    /hc-warranties.html   200
+/hc/warranties/   /hc-warranties.html   200
+/hc/decisions     /hc-decisions.html    200
+/hc/decisions/    /hc-decisions.html    200

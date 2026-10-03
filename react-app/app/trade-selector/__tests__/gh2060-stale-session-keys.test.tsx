@@ -20,7 +20,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { seedStaleStorage } from '@/test/storage-fixtures';
 
-const { claimsInsertMock } = vi.hoisted(() => ({
+const { claimsInsertMock, rpcMock } = vi.hoisted(() => ({
+  rpcMock: vi.fn((..._a: unknown[]): unknown => Promise.resolve({ data: null, error: null })),
   claimsInsertMock: vi.fn((_payload: Record<string, unknown>) => ({
     select: () => ({
       single: () => Promise.resolve({ data: { id: 'test-claim-id' }, error: null }),
@@ -50,7 +51,7 @@ vi.mock('@/lib/supabase', () => {
         }
         return { select: () => claimsSelectChain };
       },
-      rpc: vi.fn(() => Promise.resolve({ data: null, error: null })),
+      rpc: (...a: unknown[]) => rpcMock(...a),
     },
   };
 });
@@ -86,6 +87,7 @@ describe('trade-selector — stale handoff keys from an earlier wizard run (gh-2
         single: () => Promise.resolve({ data: { id: 'test-claim-id' }, error: null }),
       }),
     }));
+    rpcMock.mockReset().mockImplementation(() => Promise.resolve({ data: null, error: null }));
     localStorage.clear();
     sessionStorage.clear();
     clearAllCookies();
@@ -153,19 +155,95 @@ describe('trade-selector — stale handoff keys from an earlier wizard run (gh-2
     expect(document.body.innerHTML).not.toContain('910 Congress Street');
   });
 
-  // KNOWN GAP (Q on #2060): encodes the RECOMMENDED DEFAULT (consume-on-success,
-  // the same rule gh-2062 already applies to the referral id/cookie) for the
-  // sessionStorage attribution keys. Today neither key is ever cleared, so a
-  // ?partner_id= / ?ref= from an earlier visit in a reused tab attributes THIS
-  // claim to that partner (commission attribution). `it.fails` passes while the
-  // gap exists and turns RED when the fix lands -- flip it to `it` then.
-  it.fails('KNOWN GAP: oq_partner_id / oq_referral_source left by an earlier visit are consumed (cleared) once a claim write succeeds', async () => {
+  // gh-2060 item 3 (CEO ruling, #2060 comment 5911272482): oq_referral_source /
+  // oq_partner_id are CONSUMED (cookie + localStorage + sessionStorage copies)
+  // once the claim write succeeded and they are stamped on the claim -- the
+  // same rule gh-2062 applies to the oq-ref cookie. Never cleared on an error
+  // or no-op pass. (Flipped from the earlier `it.fails` known-gap.)
+  it('oq_partner_id / oq_referral_source left by an earlier visit are consumed (cleared, all copies) once a claim write succeeds', async () => {
+    // Partner lookup RESOLVES: referral_agent_id is stamped, so oq_partner_id is consumed too.
+    rpcMock.mockImplementation(() => {
+      const chain: Record<string, unknown> = {};
+      chain.select = () => chain;
+      chain.eq = () => chain;
+      chain.limit = () => chain;
+      chain.maybeSingle = () => Promise.resolve({ data: { id: 'agent-uuid-1' }, error: null });
+      return chain;
+    });
     seedStaleStorage({
       sessionStorage: { oq_partner_id: 'PARTNER-FROM-EARLIER-VISIT', oq_referral_source: 'realtor' },
+      localStorage: { oq_partner_id: 'PARTNER-FROM-EARLIER-VISIT', oq_referral_source: 'realtor' },
+      cookies: { oq_partner_id: 'PARTNER-FROM-EARLIER-VISIT', oq_referral_source: 'realtor' },
     });
     await walkCash(false);
     await waitFor(() => expect(sessionStorage.getItem('oq_funding_type')).toBe('cash')); // flow finished
+    // The claim write carried the source it consumed.
+    const payload = claimsInsertMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload.referral_source).toBe('realtor');
+    expect(payload.referral_agent_id).toBe('agent-uuid-1'); // the partner id was actually stamped
     expect(sessionStorage.getItem('oq_partner_id')).toBeNull();
     expect(sessionStorage.getItem('oq_referral_source')).toBeNull();
+    expect(localStorage.getItem('oq_partner_id')).toBeNull();
+    expect(localStorage.getItem('oq_referral_source')).toBeNull();
+    expect(document.cookie).not.toContain('oq_partner_id');
+    expect(document.cookie).not.toContain('oq_referral_source');
+  });
+
+  it('a claim write that returns an ERROR does NOT consume oq_partner_id / oq_referral_source', async () => {
+    claimsInsertMock.mockReset().mockImplementation(() => ({
+      select: () => ({
+        single: () =>
+          Promise.resolve({
+            data: null,
+            error: { message: 'new row violates row-level security policy', code: '42501' },
+          }),
+      }),
+    }));
+    seedStaleStorage({
+      sessionStorage: { oq_partner_id: 'PARTNER-LIVE', oq_referral_source: 'realtor' },
+      localStorage: { oq_partner_id: 'PARTNER-LIVE', oq_referral_source: 'realtor' },
+    });
+    await walkCash(false);
+    await waitFor(() => expect(sessionStorage.getItem('oq_funding_type')).toBe('cash')); // flow finished
+    expect(sessionStorage.getItem('oq_partner_id')).toBe('PARTNER-LIVE');
+    expect(sessionStorage.getItem('oq_referral_source')).toBe('realtor');
+    expect(localStorage.getItem('oq_partner_id')).toBe('PARTNER-LIVE');
+    expect(localStorage.getItem('oq_referral_source')).toBe('realtor');
+  });
+
+  // Round 2 (LEGAL-READ + REVIEW FAIL on #2404): oq_partner_id is consumed only when
+  // it was actually stamped as referral_agent_id. A failed lookup stamps nothing.
+  it('partner lookup ERRORS + claim write succeeds: oq_partner_id is KEPT (nothing stamped), oq_referral_source is still consumed', async () => {
+    rpcMock.mockImplementation(() => Promise.reject(new Error('network down')));
+    seedStaleStorage({
+      sessionStorage: { oq_partner_id: 'PARTNER-LIVE', oq_referral_source: 'realtor' },
+      localStorage: { oq_partner_id: 'PARTNER-LIVE', oq_referral_source: 'realtor' },
+    });
+    await walkCash(false);
+    await waitFor(() => expect(sessionStorage.getItem('oq_funding_type')).toBe('cash')); // flow finished
+    const payload = claimsInsertMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload.referral_source).toBe('realtor');
+    expect(payload.referral_agent_id).toBeUndefined();
+    expect(sessionStorage.getItem('oq_partner_id')).toBe('PARTNER-LIVE');
+    expect(localStorage.getItem('oq_partner_id')).toBe('PARTNER-LIVE');
+    expect(sessionStorage.getItem('oq_referral_source')).toBeNull();
+    expect(localStorage.getItem('oq_referral_source')).toBeNull();
+  });
+
+  it('partner lookup returns an error object (not a throw) + claim write succeeds: oq_partner_id is KEPT', async () => {
+    rpcMock.mockImplementation(() => {
+      const chain: Record<string, unknown> = {};
+      chain.select = () => chain;
+      chain.eq = () => chain;
+      chain.limit = () => chain;
+      chain.maybeSingle = () => Promise.resolve({ data: null, error: { message: 'timeout' } });
+      return chain;
+    });
+    seedStaleStorage({ sessionStorage: { oq_partner_id: 'PARTNER-LIVE' } });
+    await walkCash(false);
+    await waitFor(() => expect(sessionStorage.getItem('oq_funding_type')).toBe('cash'));
+    const payload = claimsInsertMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload.referral_agent_id).toBeUndefined();
+    expect(sessionStorage.getItem('oq_partner_id')).toBe('PARTNER-LIVE');
   });
 });

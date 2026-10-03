@@ -1,0 +1,65 @@
+{
+  "note": "RE-1 value-layout photo manifest (CRO51, PR for gh-2150). Pexels free licence, https://www.pexels.com/license/. Sections 1-2 re-used from the vetted HO-6 set (img/ho6/manifest.json, gh-2378); sections 3-4 replaced 2026-09-30 (Dustin review: real-estate photos, not tools). All re-cropped to 3:2 and resized to 900x600 webp (width/height match the declared attributes). No faces, no brand logos, no AI images. Sections 5-6 added 2026-10-01 (Dustin: \"Free when they hire\", \"Earn $200 for qualified referrals\"); licence read on each Pexels photo page (License: Free).",
+  "images": [
+    {
+      "section": 1,
+      "heading": "Clients get repairs done faster.",
+      "file": "img/re1/re1-1.webp",
+      "page_url": "https://www.pexels.com/photo/professional-roofer-installing-shingles-on-new-roof-33404248/",
+      "photographer": "Ryan Stephens",
+      "photographer_url": "https://www.pexels.com/@rstephens/",
+      "licence_url": "https://www.pexels.com/license/",
+      "edit": "centre-cropped to 3:2, resized"
+    },
+    {
+      "section": 2,
+      "heading": "Get multiple competitive bids.",
+      "file": "img/re1/re1-2.webp",
+      "page_url": "https://www.pexels.com/photo/beautiful-house-with-large-windows-and-shingles-roof-18098285/",
+      "photographer": "Nikolaeva Nastia",
+      "photographer_url": "https://www.pexels.com/@nikolaeva-nastia-3312562/",
+      "licence_url": "https://www.pexels.com/license/",
+      "edit": "top-cropped to 3:2, resized"
+    },
+    {
+      "section": 3,
+      "heading": "See subcontractor pricing.",
+      "file": "img/re1/re1-3.webp",
+      "page_url": "https://www.pexels.com/photo/a-person-signing-a-contract-8470836/",
+      "photographer": "Thirdman",
+      "photographer_url": "https://www.pexels.com/@thirdman/",
+      "licence_url": "https://www.pexels.com/license/",
+      "edit": "closing/signing: cropped from the 2:3 original to 3:2 around the pen and document, resized (hands only, no face)"
+    },
+    {
+      "section": 4,
+      "heading": "Reduce unnecessary expenses.",
+      "file": "img/re1/re1-4.webp",
+      "page_url": "https://www.pexels.com/photo/person-handing-out-a-house-key-8293717/",
+      "photographer": "RDNE Stock project",
+      "photographer_url": "https://www.pexels.com/@rdne/",
+      "licence_url": "https://www.pexels.com/license/",
+      "edit": "SOLD sign + house key handover: cropped from the 2:3 original to 3:2, resized (hand only, no face; sign has no brokerage name)"
+    },
+    {
+      "section": 5,
+      "heading": "Free when the job is done.",
+      "file": "img/re1/re1-5.webp",
+      "page_url": "https://www.pexels.com/photo/set-of-various-instruments-for-work-for-architect-4792501/",
+      "photographer": "Anete Lusina",
+      "photographer_url": "https://www.pexels.com/@anete-lusina/",
+      "licence_url": "https://www.pexels.com/license/",
+      "edit": "tape measure, pencil and printed floor plan: centre-cropped to 3:2, resized (no people, no brand marks, no address)"
+    },
+    {
+      "section": 6,
+      "heading": "Earn $200 for qualified referrals.",
+      "file": "img/re1/re1-6.webp",
+      "page_url": "https://www.pexels.com/photo/person-using-smartphone-1458283/",
+      "photographer": "Adrienn",
+      "photographer_url": "https://www.pexels.com/@adrienn-638530/",
+      "licence_url": "https://www.pexels.com/license/",
+      "edit": "hands holding a phone: resized from the 3:2 original (hands only, no face; screen not visible, no logo)"
+    }
+  ]
+}

@@ -30,7 +30,11 @@ export const REMINDER_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 // leads.variant = 'HO-2', not 'f', so the original Arm-F-only gate silently
 // skipped every one of them. HO-3 (the $15 no-account funnel) must stay
 // excluded — do not widen this by prefix/regex match.
-export const REMINDER_ELIGIBLE_VARIANTS: readonly string[] = ["f", "HO-2"];
+//
+// gh-2378 (CRO51): the /ho6 landing page (PR #2384, js/oq-lead-core.js create
+// ({ variant: 'ho6' })) writes leads.variant = 'ho6'. Exact match only, like
+// the others. ho6 leads get their own copy (Variant A, email-content.ts).
+export const REMINDER_ELIGIBLE_VARIANTS: readonly string[] = ["f", "HO-2", "ho6"];
 
 export type SkipReason =
   | "disabled"
@@ -110,7 +114,7 @@ export function selectLeadForReminder(
     return { send: false, skip_reason: "synthetic_lead" };
   }
   // Fix round 1, must-fix 6 (widened by gh-2300): homeowner role, and
-  // variant must be one of REMINDER_ELIGIBLE_VARIANTS ('f' or 'HO-2').
+  // variant must be one of REMINDER_ELIGIBLE_VARIANTS ('f', 'HO-2' or 'ho6').
   if (
     lead.role !== "homeowner" ||
     lead.variant === null ||

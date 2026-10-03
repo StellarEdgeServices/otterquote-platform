@@ -158,7 +158,9 @@ async function findOrCreateUser(email, role) {
  * supabase/functions/validate-contract-template/index.ts's `tag()` exactly,
  * since these strings are the literal anchors the live scan looks for.
  */
+// gh-1314: sign/init/date tags MUST have an empty label (BoldSign cannot create a document from a labeled one).
 function boldsignTag(fieldType, signerIndex, required, label, fieldId) {
+  if (fieldType !== 'text' && label !== '') throw new Error(`gh-1314: ${fieldType} tag must have an empty label`);
   return `{{${fieldType}|${signerIndex}|${required ? '*' : ' '}|${label}|${fieldId}}}`;
 }
 const CONTRACTOR_IDX = 1;
@@ -174,10 +176,10 @@ const SEED_MANIFEST_SLOTS = {
     retail: {
       requiredCount: 13,
       required: [
-        { anchor: boldsignTag('sign', HOMEOWNER_IDX, true, 'Homeowner Signature', 'homeowner_signature'), mechanism: 'boldsign_tag', field: 'Homeowner signature', tabType: 'sign', source: 'HICA' },
-        { anchor: boldsignTag('date', HOMEOWNER_IDX, true, 'Homeowner Sign Date', 'homeowner_signature_date'), mechanism: 'boldsign_tag', field: 'Homeowner sign date', tabType: 'date', source: 'HICA' },
-        { anchor: boldsignTag('sign', CONTRACTOR_IDX, true, 'Contractor Signature', 'contractor_signature'), mechanism: 'boldsign_tag', field: 'Contractor signature', tabType: 'sign', source: 'HICA' },
-        { anchor: boldsignTag('date', CONTRACTOR_IDX, true, 'Contractor Sign Date', 'contractor_signature_date'), mechanism: 'boldsign_tag', field: 'Contractor sign date', tabType: 'date', source: 'HICA' },
+        { anchor: boldsignTag('sign', HOMEOWNER_IDX, true, '', 'homeowner_signature'), mechanism: 'boldsign_tag', field: 'Homeowner signature', tabType: 'sign', source: 'HICA' },
+        { anchor: boldsignTag('date', HOMEOWNER_IDX, true, '', 'homeowner_signature_date'), mechanism: 'boldsign_tag', field: 'Homeowner sign date', tabType: 'date', source: 'HICA' },
+        { anchor: boldsignTag('sign', CONTRACTOR_IDX, true, '', 'contractor_signature'), mechanism: 'boldsign_tag', field: 'Contractor signature', tabType: 'sign', source: 'HICA' },
+        { anchor: boldsignTag('date', CONTRACTOR_IDX, true, '', 'contractor_signature_date'), mechanism: 'boldsign_tag', field: 'Contractor sign date', tabType: 'date', source: 'HICA' },
         { anchor: boldsignTag('text', CONTRACTOR_IDX, true, 'Customer Name', 'customer_name'), mechanism: 'boldsign_tag', field: 'Customer name', tabType: 'text', source: 'Party identification' },
         { anchor: boldsignTag('text', CONTRACTOR_IDX, true, 'Property Address', 'customer_address'), mechanism: 'boldsign_tag', field: 'Property address', tabType: 'text', source: 'Property identification' },
         { anchor: boldsignTag('text', CONTRACTOR_IDX, true, 'Contract Price', 'contract_price'), mechanism: 'boldsign_tag', field: 'Total contract amount', tabType: 'text', source: 'Financial term' },
@@ -193,10 +195,10 @@ const SEED_MANIFEST_SLOTS = {
     insurance: {
       requiredCount: 14,
       required: [
-        { anchor: boldsignTag('sign', HOMEOWNER_IDX, true, 'Homeowner Signature', 'homeowner_signature'), mechanism: 'boldsign_tag', field: 'Homeowner signature', tabType: 'sign', source: 'HICA' },
-        { anchor: boldsignTag('date', HOMEOWNER_IDX, true, 'Homeowner Sign Date', 'homeowner_signature_date'), mechanism: 'boldsign_tag', field: 'Homeowner sign date', tabType: 'date', source: 'HICA' },
-        { anchor: boldsignTag('sign', CONTRACTOR_IDX, true, 'Contractor Signature', 'contractor_signature'), mechanism: 'boldsign_tag', field: 'Contractor signature', tabType: 'sign', source: 'HICA' },
-        { anchor: boldsignTag('date', CONTRACTOR_IDX, true, 'Contractor Sign Date', 'contractor_signature_date'), mechanism: 'boldsign_tag', field: 'Contractor sign date', tabType: 'date', source: 'HICA' },
+        { anchor: boldsignTag('sign', HOMEOWNER_IDX, true, '', 'homeowner_signature'), mechanism: 'boldsign_tag', field: 'Homeowner signature', tabType: 'sign', source: 'HICA' },
+        { anchor: boldsignTag('date', HOMEOWNER_IDX, true, '', 'homeowner_signature_date'), mechanism: 'boldsign_tag', field: 'Homeowner sign date', tabType: 'date', source: 'HICA' },
+        { anchor: boldsignTag('sign', CONTRACTOR_IDX, true, '', 'contractor_signature'), mechanism: 'boldsign_tag', field: 'Contractor signature', tabType: 'sign', source: 'HICA' },
+        { anchor: boldsignTag('date', CONTRACTOR_IDX, true, '', 'contractor_signature_date'), mechanism: 'boldsign_tag', field: 'Contractor sign date', tabType: 'date', source: 'HICA' },
         { anchor: boldsignTag('text', CONTRACTOR_IDX, true, 'Customer Name', 'customer_name'), mechanism: 'boldsign_tag', field: 'Customer name', tabType: 'text', source: 'Party identification' },
         { anchor: boldsignTag('text', CONTRACTOR_IDX, true, 'Property Address', 'customer_address'), mechanism: 'boldsign_tag', field: 'Property address', tabType: 'text', source: 'Property identification' },
         { anchor: boldsignTag('text', CONTRACTOR_IDX, true, 'Contract Price', 'contract_price'), mechanism: 'boldsign_tag', field: 'Total contract amount (RCV-based)', tabType: 'text', source: 'Financial term' },
@@ -215,10 +217,10 @@ const SEED_MANIFEST_SLOTS = {
     retail: {
       requiredCount: 13,
       required: [
-        { anchor: boldsignTag('sign', HOMEOWNER_IDX, true, 'Homeowner Signature', 'homeowner_signature'), mechanism: 'boldsign_tag', field: 'Homeowner signature', tabType: 'sign', source: 'HICA' },
-        { anchor: boldsignTag('date', HOMEOWNER_IDX, true, 'Homeowner Sign Date', 'homeowner_signature_date'), mechanism: 'boldsign_tag', field: 'Homeowner sign date', tabType: 'date', source: 'HICA' },
-        { anchor: boldsignTag('sign', CONTRACTOR_IDX, true, 'Contractor Signature', 'contractor_signature'), mechanism: 'boldsign_tag', field: 'Contractor signature', tabType: 'sign', source: 'HICA' },
-        { anchor: boldsignTag('date', CONTRACTOR_IDX, true, 'Contractor Sign Date', 'contractor_signature_date'), mechanism: 'boldsign_tag', field: 'Contractor sign date', tabType: 'date', source: 'HICA' },
+        { anchor: boldsignTag('sign', HOMEOWNER_IDX, true, '', 'homeowner_signature'), mechanism: 'boldsign_tag', field: 'Homeowner signature', tabType: 'sign', source: 'HICA' },
+        { anchor: boldsignTag('date', HOMEOWNER_IDX, true, '', 'homeowner_signature_date'), mechanism: 'boldsign_tag', field: 'Homeowner sign date', tabType: 'date', source: 'HICA' },
+        { anchor: boldsignTag('sign', CONTRACTOR_IDX, true, '', 'contractor_signature'), mechanism: 'boldsign_tag', field: 'Contractor signature', tabType: 'sign', source: 'HICA' },
+        { anchor: boldsignTag('date', CONTRACTOR_IDX, true, '', 'contractor_signature_date'), mechanism: 'boldsign_tag', field: 'Contractor sign date', tabType: 'date', source: 'HICA' },
         { anchor: boldsignTag('text', CONTRACTOR_IDX, true, 'Customer Name', 'customer_name'), mechanism: 'boldsign_tag', field: 'Customer name', tabType: 'text', source: 'Party identification' },
         { anchor: boldsignTag('text', CONTRACTOR_IDX, true, 'Property Address', 'customer_address'), mechanism: 'boldsign_tag', field: 'Property address', tabType: 'text', source: 'Property identification' },
         { anchor: boldsignTag('text', CONTRACTOR_IDX, true, 'Contract Price', 'contract_price'), mechanism: 'boldsign_tag', field: 'Total contract amount', tabType: 'text', source: 'Financial term' },
@@ -234,10 +236,10 @@ const SEED_MANIFEST_SLOTS = {
     insurance: {
       requiredCount: 14,
       required: [
-        { anchor: boldsignTag('sign', HOMEOWNER_IDX, true, 'Homeowner Signature', 'homeowner_signature'), mechanism: 'boldsign_tag', field: 'Homeowner signature', tabType: 'sign', source: 'HICA' },
-        { anchor: boldsignTag('date', HOMEOWNER_IDX, true, 'Homeowner Sign Date', 'homeowner_signature_date'), mechanism: 'boldsign_tag', field: 'Homeowner sign date', tabType: 'date', source: 'HICA' },
-        { anchor: boldsignTag('sign', CONTRACTOR_IDX, true, 'Contractor Signature', 'contractor_signature'), mechanism: 'boldsign_tag', field: 'Contractor signature', tabType: 'sign', source: 'HICA' },
-        { anchor: boldsignTag('date', CONTRACTOR_IDX, true, 'Contractor Sign Date', 'contractor_signature_date'), mechanism: 'boldsign_tag', field: 'Contractor sign date', tabType: 'date', source: 'HICA' },
+        { anchor: boldsignTag('sign', HOMEOWNER_IDX, true, '', 'homeowner_signature'), mechanism: 'boldsign_tag', field: 'Homeowner signature', tabType: 'sign', source: 'HICA' },
+        { anchor: boldsignTag('date', HOMEOWNER_IDX, true, '', 'homeowner_signature_date'), mechanism: 'boldsign_tag', field: 'Homeowner sign date', tabType: 'date', source: 'HICA' },
+        { anchor: boldsignTag('sign', CONTRACTOR_IDX, true, '', 'contractor_signature'), mechanism: 'boldsign_tag', field: 'Contractor signature', tabType: 'sign', source: 'HICA' },
+        { anchor: boldsignTag('date', CONTRACTOR_IDX, true, '', 'contractor_signature_date'), mechanism: 'boldsign_tag', field: 'Contractor sign date', tabType: 'date', source: 'HICA' },
         { anchor: boldsignTag('text', CONTRACTOR_IDX, true, 'Customer Name', 'customer_name'), mechanism: 'boldsign_tag', field: 'Customer name', tabType: 'text', source: 'Party identification' },
         { anchor: boldsignTag('text', CONTRACTOR_IDX, true, 'Property Address', 'customer_address'), mechanism: 'boldsign_tag', field: 'Property address', tabType: 'text', source: 'Property identification' },
         { anchor: boldsignTag('text', CONTRACTOR_IDX, true, 'Contract Price', 'contract_price'), mechanism: 'boldsign_tag', field: 'Total contract amount (RCV-based)', tabType: 'text', source: 'Financial term' },

@@ -345,8 +345,10 @@ function buildF(opts) {
   vm.runInContext(moduleSrc, ctx, { filename: 'js/router-variant-f.js' });
   const RVF = fakeWindow.RouterVariantF;
   if (!RVF || typeof RVF.init !== 'function') throw new Error('window.RouterVariantF.init was not defined after loading js/router-variant-f.js');
+  if (opts.hiddenAtLoad) document.visibilityState = 'hidden'; // CRO-51: page loaded in a background tab / prerender
   RVF.init(bridge, root);
   return {
+    fireVisibilityVisible: () => { document.visibilityState = 'visible'; (windowListeners.visibilitychange || []).forEach((fn) => fn()); },
     beacons, fireVisibilityHidden: () => { document.visibilityState = 'hidden'; (windowListeners.visibilitychange || []).forEach((fn) => fn()); },
     RVF, root, bridge, gtagCalls, fbqCalls, clarityCalls, insertCalls, rpcCalls, redirects, errors, fakeWindow, document, order, detailsCalls, sentry,
     firePagehide: () => (windowListeners.pagehide || []).forEach((fn) => fn()),
@@ -630,8 +632,8 @@ async function main() {
     ok(ls.ev('router_f_cta_loss_sheet').length === 1, 'the loss-sheet click fires router_f_cta_loss_sheet');
     // The #2127 review found the F15 key allow-list ran BEFORE any CTA click, so it could not see these events.
     const ctaKeys = new Set(); [...inWin.gtagCalls, ...ls.gtagCalls].forEach((c) => Object.keys(c.params || {}).forEach((k) => ctaKeys.add(k)));
-    const allowedAfterCta = new Set(['step', 'step_index', 'variant', 'ua_context', 'lead_id', 'event_id']);
-    ok([...ctaKeys].every((k) => allowedAfterCta.has(k)), 'AFTER the CTA clicks every GA4 parameter key is still one of variant / step / step_index / ua_context / lead_id / event_id (unexpected: ' + [...ctaKeys].filter((k) => !allowedAfterCta.has(k)).join(',') + ')');
+    const allowedAfterCta = new Set(['step', 'step_index', 'variant', 'ua_context', 'lead_id', 'event_id', 'vis_at_load', 'visible_ms_before_first_hide', 'funding_tapped', 'transport_type']) /* CRO-51: 4 non-PII measurement keys */;
+    ok([...ctaKeys].every((k) => allowedAfterCta.has(k)), 'AFTER the CTA clicks every GA4 parameter key is still one of variant / step / step_index / ua_context / lead_id / event_id / the 4 CRO-51 measurement keys (unexpected: ' + [...ctaKeys].filter((k) => !allowedAfterCta.has(k)).join(',') + ')');
   }
 
   // ═══ F10b (LEGAL-READ B1, D-299 / D-332; Dustin's rulings 5804614805): a lead with NO phone gets the approved no-call
@@ -766,7 +768,7 @@ async function main() {
     const leaked = banned.filter((t) => everything.indexOf(t) !== -1);
     ok(leaked.length === 0, 'no address, name, email, phone, consent text, fbc/fbp or fbclid in any GA4, Meta or Clarity call (leaked: ' + leaked.join(',') + ')');
     const keys = new Set(); s.gtagCalls.forEach((c) => Object.keys(c.params || {}).forEach((k) => keys.add(k)));
-    const allowed = new Set(['step', 'step_index', 'variant', 'ua_context', 'lead_id', 'event_id']);
+    const allowed = new Set(['step', 'step_index', 'variant', 'ua_context', 'lead_id', 'event_id', 'vis_at_load', 'visible_ms_before_first_hide', 'funding_tapped', 'transport_type']) /* CRO-51: 4 non-PII measurement keys */;
     const extra = [...keys].filter((k) => !allowed.has(k));
     ok(extra.length === 0, 'every GA4 parameter is one of variant / step / step_index / ua_context / lead_id / event_id (unexpected: ' + extra.join(',') + ')');
     ok(!keys.has('funding_type') && !keys.has('consent_given'), 'no funding_type and no consent_given parameter on any event');
@@ -942,6 +944,60 @@ async function main() {
     "S13: js/router-variant-f.js's fireConversion() fires Meta pixel 'Lead' with the shared event_id (behavioral proof above, F4/F17)");
   ok(!/li_fat_id|linkedin|LinkedIn Insight|_linkedin_data_partner_id/i.test(moduleSrc) && !/li_fat_id|linkedin partner|_linkedin_data_partner_id/i.test(startSrc),
     'S13: LinkedIn Insight is N/A -- no LinkedIn tracking call exists anywhere in the Arm F path (no LinkedIn traffic, per this checklist\'s own N/A convention)');
+
+  // ═══ CRO-51 (#2121): visible-view measurement on f-funding. Measurement only. ═══
+  console.log('\n=== CRO-51: router_step_visible / router_step_hidden / vis_at_load ===');
+  {
+    // Visible at hydration: vis_at_load on the existing view, router_step_visible fires immediately, exactly once.
+    const s = buildF({ ua: FB_UA, ssrHydrate: true });
+    const v = s.ev('router_step_view');
+    ok(v.length === 1 && v[0].params.vis_at_load === 'visible' && v[0].params.step === 'f-funding' && v[0].params.step_index === 1,
+      'CRO-51: router_step_view keeps its name/firing (one f-funding view) and now carries vis_at_load=visible');
+    const vis = s.ev('router_step_visible');
+    ok(vis.length === 1 && vis[0].params.step === 'f-funding' && vis[0].params.variant === 'f' && vis[0].params.ua_context === 'fb_iab',
+      'CRO-51: page visible at hydration -> router_step_visible fires immediately, once (step f-funding, variant f)');
+    s.fireVisibilityHidden(); s.fireVisibilityVisible();
+    ok(s.ev('router_step_visible').length === 1, 'CRO-51: a later hidden->visible does not fire router_step_visible again');
+    const h = s.ev('router_step_hidden');
+    ok(h.length === 1 && h[0].params.step === 'f-funding' && h[0].params.variant === 'f' && typeof h[0].params.visible_ms_before_first_hide === 'number' &&
+      h[0].params.visible_ms_before_first_hide >= 0 && h[0].params.funding_tapped === 0 && h[0].params.transport_type === 'beacon',
+      'CRO-51: first hide -> router_step_hidden {visible_ms_before_first_hide, funding_tapped 0, transport_type beacon}');
+    s.fireVisibilityHidden(); s.firePagehide();
+    ok(s.ev('router_step_hidden').length === 1, 'CRO-51: router_step_hidden fires once per page load (later hidden / pagehide add nothing)');
+    ok(!('funding' in h[0].params) && !JSON.stringify(h[0].params).match(/insurance|cash|unsure/i), 'CRO-51: the funding answer never reaches the hidden event (boolean tap flag only)');
+  }
+  {
+    // Loaded hidden: no visible event until the first visibilitychange to visible; hide before that sends nothing.
+    const s = buildF({ ua: FB_UA, ssrHydrate: true, hiddenAtLoad: true });
+    ok(s.ev('router_step_view')[0].params.vis_at_load === 'hidden', 'CRO-51: loaded hidden -> vis_at_load=hidden on router_step_view');
+    ok(s.ev('router_step_visible').length === 0, 'CRO-51: loaded hidden -> no router_step_visible at hydration');
+    s.firePagehide();
+    ok(s.ev('router_step_hidden').length === 0, 'CRO-51: never visible -> no router_step_hidden (nothing to time)');
+    s.fireVisibilityVisible();
+    ok(s.ev('router_step_visible').length === 1, 'CRO-51: first visibilitychange to visible fires router_step_visible once');
+    s.fireVisibilityHidden();
+    ok(s.ev('router_step_hidden').length === 1, 'CRO-51: hide after becoming visible fires router_step_hidden');
+  }
+  {
+    // A funding tap before the first hide is reported as funding_tapped 1; pagehide is also a trigger.
+    const s = buildF({ ua: FB_UA, ssrHydrate: true });
+    buttons(s.root)[0].dispatchClick();
+    s.firePagehide();
+    const h = s.ev('router_step_hidden');
+    ok(h.length === 1 && h[0].params.funding_tapped === 1, 'CRO-51: tap then pagehide -> router_step_hidden funding_tapped=1');
+    ok(s.ev('router_step_view').filter((e) => e.params.step === 'f-contact')[0].params.vis_at_load === undefined,
+      'CRO-51: vis_at_load is stamped on the f-funding view only');
+  }
+  {
+    // Non-SSR path (rebuild) measures identically, and consent/internal gating is inherited: every event goes through
+    // bridge.trackRouter -> gtag (ga-gate's gtag drops everything for internal/synthetic visits; nothing here calls gtag directly).
+    const s = buildF({ ua: SAFARI_UA });
+    ok(s.ev('router_step_visible').length === 1 && s.ev('router_step_view')[0].params.vis_at_load === 'visible', 'CRO-51: non-SSR render path measures the same way');
+    ok(!/\bgtag\s*\(/.test(moduleSrc), 'CRO-51: js/router-variant-f.js never calls gtag directly -- all events go through the shared trackRouter (same ga-gate gating as router_step_view)');
+    ok(!/router_step_(visible|hidden)/.test(fs.readFileSync(path.join(repoRoot, 'js', 'router-variant-d.js'), 'utf8')) &&
+       !/router_step_(visible|hidden)/.test(fs.readFileSync(path.join(repoRoot, 'js', 'router-variant-e.js'), 'utf8')) &&
+       !/router_step_(visible|hidden)/.test(fs.readFileSync(path.join(repoRoot, 'js', 'router-discovery.js'), 'utf8')), 'CRO-51: no other arm emits the new events (Arm F only)');
+  }
 
   console.log('\n=== Summary ===\n' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail === 0 ? 0 : 1);

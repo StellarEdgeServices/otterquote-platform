@@ -30,6 +30,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { PlatformSettingMissingError, resolveRequiredPriceCents } from "./price-setting.ts";
+import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
 
 const FUNCTION_NAME = "create-hover-order";
 const HOVER_API_BASE = "https://hover.to";
@@ -85,12 +86,20 @@ async function getValidAccessToken(supabase: any, clientId: string, clientSecret
   }
   const newTokenData = await refreshResponse.json();
   const newExpiresAt = new Date(Date.now() + (newTokenData.expires_in || 7200) * 1000).toISOString();
-  await supabase.from("hover_tokens").update({
+  const { error: tokenUpdateErr, data: tokenRows } = await supabase.from("hover_tokens").update({
     access_token: newTokenData.access_token,
     refresh_token: newTokenData.refresh_token || token.refresh_token,
     expires_at: newExpiresAt,
     scope: newTokenData.scope || token.scope,
-  }).eq("id", token.id);
+  }).eq("id", token.id).select("id");
+  // gh-2105: log-only. The refreshed access token is still returned so this
+  // order proceeds; but if the row was not written, Hover's rotated refresh
+  // token is lost and the next refresh will fail -- make that visible.
+  if (tokenUpdateErr) {
+    console.error(`[${FUNCTION_NAME}] hover_tokens refresh persist failed:`, tokenUpdateErr.message);
+  } else if (!checkRowsWritten(tokenRows).wroteRows) {
+    console.error(zeroRowWriteMessage(FUNCTION_NAME, `hover_tokens refresh persist for token ${token.id}`));
+  }
   return newTokenData.access_token;
 }
 
@@ -376,7 +385,7 @@ serve(async (req) => {
 
     // ===== PERSIST to hover_orders =====
     // D-181: store payment_intent_id, amount charged, and flip rebate_due=true.
-    const { error: updateError } = await supabase
+    const { error: updateError, data: updateRows } = await supabase
       .from("hover_orders")
       .update({
         hover_job_id: captureData.pending_job_id || null,
@@ -392,10 +401,27 @@ serve(async (req) => {
         homeowner_charge_amount: verifiedAmount,
         rebate_due: true,
       })
-      .eq("id", order_id);
+      .eq("id", order_id)
+      .select("id");
     if (updateError) {
       console.error("Failed to update hover_orders:", updateError);
       // Non-fatal — the capture request was created on Hover's side.
+    } else if (!checkRowsWritten(updateRows).wroteRows) {
+      // gh-2105 (money): the homeowner's payment_intent_id / charge amount /
+      // rebate_due flag did not land. Non-fatal for the same reason as above
+      // (the Hover capture request already exists), but alert so the rebate
+      // is not silently lost.
+      console.error(zeroRowWriteMessage(FUNCTION_NAME, `hover_orders D-181 charge fields for order ${order_id}`));
+      try {
+        await supabase.from("platform_alerts_log").insert({
+          alert_type: "gh2105_zero_row_update",
+          function_name: FUNCTION_NAME,
+          message: `Hover capture request ${captureData.identifier} was created but the hover_orders write (payment_intent_id, homeowner_charge_amount, rebate_due) matched zero rows for order ${order_id}. The D-181 rebate flag may be missing.`,
+          sent_at: new Date().toISOString(),
+        });
+      } catch (alertErr) {
+        console.error("platform_alerts_log insert failed:", alertErr);
+      }
     }
 
     console.log("Hover capture request created. ID:", captureData.id, "Identifier:", captureData.identifier);

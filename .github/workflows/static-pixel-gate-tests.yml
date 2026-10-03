@@ -21,6 +21,7 @@ on:
       - 'js/linkedin-insight-gate.js'
       - 'js/reddit-pixel-gate.js'
       - 'tests/gh1925-gpc-optout.mjs'
+      - 'tests/gh1925-optout-crossdevice.mjs'
       - 'js/internal-traffic.js'
       - 'tests/gh2356-synthetic-traffic-guard.mjs'
       - 'tests/gh2107-gpc-client.mjs'
@@ -72,8 +73,12 @@ on:
       - 'admin-measurements.html'
       - 're-1.html'
       - 'tests/gh2150-re1-page.mjs'
+      - 'tests/cro51-re1-value-layout.mjs'
+      - 'img/re1/**'
       - 'ins-1.html'
       - 'tests/gh2151-ins1-page.mjs'
+      - 'tests/cro51-ins1-value-layout.mjs'
+      - 'img/ins1/**'
       - 'hi-1.html'
       - 'tests/gh2152-hi1-page.mjs'
       - 'tests/cro47-trust-partner.mjs'
@@ -105,6 +110,7 @@ on:
       - 'js/linkedin-insight-gate.js'
       - 'js/reddit-pixel-gate.js'
       - 'tests/gh1925-gpc-optout.mjs'
+      - 'tests/gh1925-optout-crossdevice.mjs'
       - 'js/internal-traffic.js'
       - 'tests/gh2356-synthetic-traffic-guard.mjs'
       - 'tests/gh2107-gpc-client.mjs'
@@ -156,8 +162,12 @@ on:
       - 'admin-measurements.html'
       - 're-1.html'
       - 'tests/gh2150-re1-page.mjs'
+      - 'tests/cro51-re1-value-layout.mjs'
+      - 'img/re1/**'
       - 'ins-1.html'
       - 'tests/gh2151-ins1-page.mjs'
+      - 'tests/cro51-ins1-value-layout.mjs'
+      - 'img/ins1/**'
       - 'hi-1.html'
       - 'tests/gh2152-hi1-page.mjs'
       - 'tests/cro47-trust-partner.mjs'
@@ -205,6 +215,8 @@ jobs:
         run: node tests/gh2107-pixel-gate-optout.mjs
       - name: GPC opt-out extended to GA4/Clarity-adjacent and LinkedIn/Reddit static gates (gh1925-gpc-optout)
         run: node tests/gh1925-gpc-optout.mjs
+      - name: Section 12 opt-out follows the signed-in person (gh1925-optout-crossdevice)
+        run: node tests/gh1925-optout-crossdevice.mjs
       - name: GPC capture on the create-payment-intent call (gh2107-gpc-client)
         run: node tests/gh2107-gpc-client.mjs
       - name: Partner dashboard activation RPC, per-user flag (gh2154-p2-app-activation)
@@ -260,3 +272,7 @@ jobs:
           npx playwright install --with-deps chromium
       - name: Partner trust header on re-1/ins-1/hi-1 -- 390x744 FB UA, fields/legal/events unchanged, negative controls PN1-PN4 (cro47-trust-partner)
         run: node tests/cro47-trust-partner.mjs
+      - name: RE-1 value layout -- Dustin's copy byte-for-byte, Become a partner today buttons, banned phrases, 390px no overflow (cro51-re1-value-layout)
+        run: node tests/cro51-re1-value-layout.mjs
+      - name: INS-1 value layout -- Dustin's copy byte-for-byte, Become a partner today buttons, banned phrases, 390px no overflow (cro51-ins1-value-layout)
+        run: node tests/cro51-ins1-value-layout.mjs

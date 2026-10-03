@@ -200,7 +200,7 @@ serve(async (req: Request) => {
 
     // ── The write ────────────────────────────────────────────────────────────
     // The payload is built as a named object rather than passed inline on
-    // purpose. scripts/schema-column-lint.py validates inline `.update({...})`
+    // purpose. scripts/schema-column-lint.py validates inline update-call object
     // literals against sql/schema-snapshot.json, and loss_sheet_reviewed_at is
     // NOT in that snapshot yet — by design: the migration in this PR is
     // deliberately unapplied, so the snapshot (which mirrors production) must not
@@ -214,6 +214,7 @@ serve(async (req: Request) => {
     // Concurrency guard, same shape as mark-payout-paid: constrain the UPDATE
     // itself to the state we read, so two admins clicking at once produce one
     // write and one 409 rather than two writes.
+    // update-no-select-ok: gh-2105 -- rows ARE checked: the chain gets .select("id, ...") below via q, and zero rows is the 409 Conflict branch.
     let q = supabase.from("claims").update(patch).eq("id", claimId);
     q = reviewed ? q.is("loss_sheet_reviewed_at", null) : q.not("loss_sheet_reviewed_at", "is", null);
 

@@ -10,6 +10,7 @@ import {
   type CandidateLead,
   dedupeByNormalizedEmail,
   normalizeEmailKey,
+  REMINDER_ELIGIBLE_VARIANTS,
   REMINDER_MIN_AGE_MS,
   selectLeadForReminder,
 } from "./select-candidates.ts";
@@ -187,6 +188,31 @@ Deno.test("gh-2300: sends for role='homeowner' AND variant='HO-2' (native-form l
 Deno.test("gh-2300: skips variant='HO-3' (the $15 no-account funnel — negative control, must stay excluded)", () => {
   const lead = baseLead({ variant: "HO-3" });
   assertEquals(selectLeadForReminder(lead, true, NOW), { send: false, skip_reason: "not_reminder_eligible_variant" });
+});
+
+// -- gh-2378: /ho6 landing page leads (leads.variant = 'ho6') --
+
+Deno.test("gh-2378: sends for role='homeowner' AND variant='ho6'", () => {
+  const lead = baseLead({ role: "homeowner", variant: "ho6" });
+  assertEquals(selectLeadForReminder(lead, true, NOW), { send: true });
+});
+
+Deno.test("gh-2378: variant match is exact -- 'HO6', 'HO-6', 'ho-6' stay excluded", () => {
+  for (const v of ["HO6", "HO-6", "ho-6", "ho6 "]) {
+    const lead = baseLead({ variant: v });
+    assertEquals(selectLeadForReminder(lead, true, NOW), { send: false, skip_reason: "not_reminder_eligible_variant" });
+  }
+});
+
+Deno.test("gh-2378: ho6 still needs role='homeowner', and a synthetic ho6 lead is still skipped", () => {
+  assertEquals(selectLeadForReminder(baseLead({ variant: "ho6", role: "contractor" }), true, NOW),
+    { send: false, skip_reason: "not_reminder_eligible_variant" });
+  assertEquals(selectLeadForReminder(baseLead({ variant: "ho6", is_synthetic: true }), true, NOW),
+    { send: false, skip_reason: "synthetic_lead" });
+});
+
+Deno.test("gh-2378: eligible variants are exactly f, HO-2, ho6", () => {
+  assertEquals([...REMINDER_ELIGIBLE_VARIANTS], ["f", "HO-2", "ho6"]);
 });
 
 Deno.test("gh-2300: skips a synthetic HO-2 lead (synthetic check still wins)", () => {

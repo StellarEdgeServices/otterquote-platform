@@ -314,6 +314,12 @@
     '/guides/how-to-file-property-damage-claim',
     '/guides/how-to-negotiate-with-insurer',
     '/guides/how-to-read-contractor-estimate',
+    // cro51 / #2121 HO-1 rebuild: /hc hub + four topic pages. Unauthenticated funnel pages (no session read, no auth call), same as /ho6.
+    '/hc',
+    '/hc/save-money',
+    '/hc/materials',
+    '/hc/warranties',
+    '/hc/decisions',
     // gh-2150 round 2 (REVIEW FAIL 5836233175/5836199486, Ben ruling (3),
     // S12): the RE-1/INS-1/HI-1 dedicated single-purpose funnel landing
     // pages (D-333), added together in this one change so none of the
@@ -333,6 +339,9 @@
     // re-1.html/hi-1.html above; the FB-in-app-browser fallback form on
     // each page is the identical re-1/hi-1 form mechanism, unchanged.
     '/hi-5',
+    // gh-2378 HO-6: dark landing page + contact page. Both are unauthenticated funnel pages (no session read, no auth call).
+    '/ho6',
+    '/ho6/start',
     '/how-it-works',
     '/ins-1',
     // gh-2150/gh-2151 CEO RUN 71 wave 3: RE-3/INS-3 reuse the RE-1/INS-1

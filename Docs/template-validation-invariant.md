@@ -107,3 +107,27 @@ roofing/retail, 13/13 with the apostrophe fold, `contract_price` present) — th
 or claim, so a ceremony needs either a new `is_test` claim + bid for that contractor, or a v3 starter PDF
 (`{ starter: true, trade, funding_type }`) uploaded to the slot of one of the two existing contractors and
 validated. See the gh-1315 RUN 23 report for the exact upload.
+
+## Sign / init / date tags must have an empty label (gh-1314)
+
+BoldSign builds a document from its Text Tags asynchronously, after `POST /v1/document/send` has already
+returned 201 and a `documentId`. A `sign`, `init` or `date` tag that carries a label in position 4 fails that
+background build permanently and silently: the document 403s on `/v1/document/properties` forever, is in no
+`/v1/document/list` status, and cannot be revoked. `text` tags may keep their label. Measured 2026-09-30
+(#1314 comment 5912190043) with paired controls: `{{sign|1|*||contractor_signature}}` was readable in about
+8 s; `{{sign|1|*|Contractor Signature|contractor_signature}}`, a labeled date alone, a label with no spaces,
+and a 4-part tag with the id in position 4 all never became readable.
+
+* Correct form: `{{sign|1|*||contractor_signature}}`, `{{date|1|*||contractor_signature_date}}`,
+  `{{init|1|*||contractor_initial_sow}}`. Wrong: any character between the third and fourth `|`.
+* `validate-contract-template/manifest.ts` `tag()` refuses a label for sign/init/date, so the manifest and the
+  starter template built from it emit the empty-label form. The scan (`scanLabeledSignTags`) rejects a PDF that
+  carries a labeled sign/init/date tag with a message naming the tag and the fixed form, and a manual override
+  cannot pass it.
+* `create-docusign-envelope` runs `preflightTemplateTags` before `/v1/document/send` on both send paths and
+  refuses with HTTP 422 `TEMPLATE_LABELED_SIGN_TAG` (nothing is sent, nothing is recorded). If the PDF text
+  cannot be extracted the send is not blocked; it is logged.
+* The #1842 absence probe waits `ABSENCE_SETTLE_MS` (15 s) before it may call a document absent, because a
+  healthy document is also unlisted for its first ~8.4 s.
+* The manifest version is NOT bumped. Stored `v3` results for templates that carry the labeled form are stale
+  in substance: re-run the revalidation pass with `force: true` so they are rewritten as failing.

@@ -294,9 +294,8 @@ D266_PAGES_EXEMPT = {
     # category, directly under the recruit-bonus answer) and is no longer
     # exempt here.
     "contractor-agreement": (
-        "Sec. 7.7 W-9/1099-MISC tax-withholding clause for the contractor "
-        "referral commission program; a tax notice, not the D-266 "
-        "licensing-lawfulness disclaimer, and this page is not itself a "
+        "Formerly carried a Sec. 7.7 W-9/1099-MISC tax clause (removed "
+        "under D-319, gh-1509); this page is not itself a "
         "referral-partner enrollment funnel (see contractor-login.html's "
         "existing STATIC_FUNNEL_EXEMPT entry for the same reasoning)."
     ),

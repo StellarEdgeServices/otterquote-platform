@@ -519,6 +519,7 @@ export async function processClaim(
     // Stamp so we don't re-check on every cron run
     await supabase
       .from("claims")
+      // update-no-select-ok: gh-2105 decision b -- idempotency stamp keyed on the id of a claim this same run just read; a zero-row match (claim deleted meanwhile) needs no action and the next cron run re-derives state.
       .update({ profile_prompt_sent_at: new Date().toISOString() })
       .eq("id", claimId);
     return { claim_id: claimId, result: "already_has_profile" };
@@ -666,6 +667,7 @@ export async function processClaim(
   // Stamp profile_prompt_sent_at (idempotency gate)
   const { error: stampError } = await supabase
     .from("claims")
+    // update-no-select-ok: gh-2105 decision b -- idempotency stamp after the email is already sent, keyed on the id of a claim this same run just read; a zero-row match (claim deleted meanwhile) leaves nothing to stamp, and the existing non-fatal error branch below covers real failures.
     .update({ profile_prompt_sent_at: new Date().toISOString() })
     .eq("id", claimId);
 
