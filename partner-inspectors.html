@@ -72,7 +72,10 @@
 <meta property="og:url" content="https://otterquote.com/partner-inspectors.html">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Otter Quotes">
-<meta property="og:image" content="https://otterquote.com/img/otter-logo.svg">
+<meta property="og:image" content="https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png">
+<meta property="og:image:width" content="512">
+<meta property="og:image:height" content="512">
+<meta property="og:image:alt" content="Otter Quotes logo">
 
 <script src="/js/ga-gate.js"></script>
 <script src="/js/meta-pixel-gate.js"></script>
@@ -1057,7 +1060,7 @@ function captureUtmContext() {
  */
 async function detectRecruitCode() {
   const urlParams = new URLSearchParams(window.location.search);
-  const recruitCode = localStorage.getItem('cs_recruit_code') || urlParams.get('recruit');
+  const recruitCode = urlParams.get('recruit') || localStorage.getItem('cs_recruit_code'); // gh-2060 item 4: a ?recruit= on THIS load wins over a stale stored code
   if (!recruitCode) return;
 
   try {

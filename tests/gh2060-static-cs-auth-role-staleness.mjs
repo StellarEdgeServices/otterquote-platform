@@ -187,6 +187,7 @@ async function main() {
       // breadcrumb shape (a value that predates this fix, or was written by
       // an abandoned flow long ago) and must be treated as absent/stale.
       localStorage.setItem('cs_signup', homeownerSignupData);
+      localStorage.setItem('cs_signup_at', String(Date.now())); // gh-2060 item 2: a fresh, stamped signup
 
       await sandbox.window.Auth.handleAuthCallback();
       assert.notEqual(
@@ -209,6 +210,7 @@ async function main() {
       localStorage.setItem('cs_auth_role_email', ownerTag('user@example.com')); // gh-2344: same signer (one-way tag)
       localStorage.setItem('cs_auth_role_at', String(Date.now() - 25 * 60 * 60 * 1000)); // 25h ago
       localStorage.setItem('cs_signup', homeownerSignupData);
+      localStorage.setItem('cs_signup_at', String(Date.now())); // gh-2060 item 2: a fresh, stamped signup
 
       await sandbox.window.Auth.handleAuthCallback();
       assert.notEqual(
@@ -232,6 +234,7 @@ async function main() {
       localStorage.setItem('cs_auth_role_email', ownerTag('user@example.com')); // gh-2344: same signer (one-way tag)
       localStorage.setItem('cs_auth_role_at', String(Date.now()));
       localStorage.setItem('cs_signup', homeownerSignupData);
+      localStorage.setItem('cs_signup_at', String(Date.now())); // gh-2060 item 2: a fresh, stamped signup
 
       await sandbox.window.Auth.handleAuthCallback();
       assert.equal(
@@ -253,6 +256,7 @@ async function main() {
       localStorage.setItem('cs_auth_role_email', ownerTag('user@example.com')); // gh-2344: same signer (one-way tag)
       localStorage.setItem('cs_auth_role_at', String(Date.now() - 25 * 60 * 60 * 1000)); // 25h ago
       localStorage.setItem('cs_signup', homeownerSignupData);
+      localStorage.setItem('cs_signup_at', String(Date.now())); // gh-2060 item 2: a fresh, stamped signup
 
       await sandbox.window.Auth.handleAuthCallback();
       assert.equal(
@@ -288,6 +292,7 @@ async function main() {
       localStorage.setItem('cs_auth_role_email', ownerTag('user@example.com')); // gh-2344: same signer (one-way tag)
       localStorage.setItem('cs_auth_role_at', String(Date.now() + 365 * 24 * 60 * 60 * 1000)); // +1y
       localStorage.setItem('cs_signup', homeownerSignupData);
+      localStorage.setItem('cs_signup_at', String(Date.now())); // gh-2060 item 2: a fresh, stamped signup
 
       await sandbox.window.Auth.handleAuthCallback();
       assert.notEqual(

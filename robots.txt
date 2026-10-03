@@ -15,7 +15,6 @@ Disallow: /partner-dashboard.html
 Disallow: /refer-a-friend.html
 Disallow: /ref.html
 Disallow: /admin
-Disallow: /contractor-leads.html
 Disallow: /contractor-onboarding.html
 Disallow: /landing.html
 Disallow: /trade-selector
@@ -24,8 +23,5 @@ Disallow: /repair-intake
 
 # Admin and internal tools
 Disallow: /contractor-agreement.html
-
-# Scripts (belt-and-suspenders — stohler-hover-import.py removed from deploy)
-Disallow: /stohler-hover-import.py
 
 Sitemap: https://otterquote.com/sitemap.xml

@@ -1,7 +1,7 @@
 /**
  * blog-guides-redirect.ts — Netlify Edge Function (gh-1745, PR #1789 fix round 1)
  *
- * Intercepts the 22 extensionless /blog/ and /guides/ paths listed below and
+ * Intercepts the 27 extensionless /blog/ and /guides/ paths listed below and
  * 301s each to its .html twin, running AHEAD of Netlify's built-in Pretty
  * URLs post-processing.
  *
@@ -23,10 +23,10 @@
  * The `_redirects` rules added for gh-1745 are left in place unchanged as
  * the documented source of truth (same convention as recruit-redirect.ts);
  * this function exists solely to win the race against Pretty URLs for
- * these 22 literal paths (gh-1745 wave 2, CRO RUN 20, widened from the
+ * these 27 literal paths (gh-1745 wave 2, CRO RUN 20, widened from the
  * original 6). Everything else on the site — every other page,
  * every other `_redirects` rule — is untouched: this matches on exact
- * pathname only, no wildcard, so it cannot catch any path outside the 22
+ * pathname only, no wildcard, so it cannot catch any path outside the 27
  * listed below.
  *
  * 301 (not a 200 rewrite like recruit-redirect.ts) because gh-1745 is a
@@ -87,6 +87,14 @@ const REDIRECT_MAP: Record<string, string> = {
   '/blog/why-roofers-quote-different-prices':
     '/blog/why-roofers-quote-different-prices.html',
 
+  // gh-1745 wave 3: posts added after wave 2, plus the index.html twins.
+  '/blog/hail-damage-roof-inspection-first-72-hours':
+    '/blog/hail-damage-roof-inspection-first-72-hours.html',
+  '/blog/how-long-does-roof-insurance-claim-take-indiana':
+    '/blog/how-long-does-roof-insurance-claim-take-indiana.html',
+  '/blog/index.html': '/blog/',
+  '/guides/index.html': '/guides/',
+
   // CRO RUN 52 / gh-2448 + gh-2449 (#2423): four week-1 guide pages -- same
   // extensionless -> .html 301 as above so each is not dual-served.
   '/guides/multiple-bids-roof-insurance-claim':
@@ -97,6 +105,23 @@ const REDIRECT_MAP: Record<string, string> = {
     '/guides/siding-bid-comparison.html',
   '/guides/gutter-bid-comparison':
     '/guides/gutter-bid-comparison.html',
+  '/guides/after-adjuster-estimate-next-steps':
+    '/guides/after-adjuster-estimate-next-steps.html',
+
+  // CRO RUN 52 / #2423: generated /locations/ pages -- the index.html twin 301s to the
+  // trailing-slash URL (same class as /blog/index.html above).
+  '/locations/cuyahoga-county-oh/roofing/index.html':
+    '/locations/cuyahoga-county-oh/roofing/',
+  '/locations/davidson-county-tn/roofing/index.html':
+    '/locations/davidson-county-tn/roofing/',
+  '/locations/franklin-county-oh/roofing/index.html':
+    '/locations/franklin-county-oh/roofing/',
+  '/locations/hamilton-county-oh/roofing/index.html':
+    '/locations/hamilton-county-oh/roofing/',
+  '/locations/knox-county-tn/roofing/index.html':
+    '/locations/knox-county-tn/roofing/',
+  '/locations/shelby-county-tn/roofing/index.html':
+    '/locations/shelby-county-tn/roofing/',
 };
 
 export default async (req: Request, context: any) => {

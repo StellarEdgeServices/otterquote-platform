@@ -184,6 +184,7 @@ describe('TradeSelectorPage referral cookie — gh-2062 (money-path: both direct
 
   async function completeCashSingleTradeWalk() {
     localStorage.setItem('cs_signup', JSON.stringify(CS_SIGNUP));
+    localStorage.setItem('cs_signup_at', String(Date.now()));
     render(<TradeSelectorPage />);
 
     fireEvent.click(screen.getByText("I'm paying for this myself (retail/cash)"));
@@ -205,6 +206,7 @@ describe('TradeSelectorPage referral cookie — gh-2062 (money-path: both direct
    *  an existing claim before calling this. */
   async function completeCashSingleTradeWalkViaUpdate() {
     localStorage.setItem('cs_signup', JSON.stringify(CS_SIGNUP));
+    localStorage.setItem('cs_signup_at', String(Date.now()));
     render(<TradeSelectorPage />);
 
     fireEvent.click(screen.getByText("I'm paying for this myself (retail/cash)"));

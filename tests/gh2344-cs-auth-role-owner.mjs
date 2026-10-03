@@ -161,6 +161,7 @@ await check('js/auth.js: foreign-email cs_auth_role=contractor is ignored and cl
   const { Auth, localStorage, sessionStorage, calls } = makeAuth();
   seed(localStorage, 'contractor', STRANGER);
   localStorage.setItem('cs_signup', signup);
+  localStorage.setItem('cs_signup_at', String(Date.now())); // #2387: cs_signup is honoured only with a fresh stamp
   await Auth.handleAuthCallback();
   assert.notEqual(calls.profileUpsert, null, 'a stranger\'s contractor breadcrumb steered routing: the signed-in user\'s homeowner profile write was skipped');
   assertCleared(localStorage, sessionStorage);
@@ -169,6 +170,7 @@ await check('js/auth.js: legacy owner-less cs_auth_role=contractor is treated as
   const { Auth, localStorage, sessionStorage, calls } = makeAuth();
   seed(localStorage, 'contractor', undefined);
   localStorage.setItem('cs_signup', signup);
+  localStorage.setItem('cs_signup_at', String(Date.now())); // #2387: cs_signup is honoured only with a fresh stamp
   await Auth.handleAuthCallback();
   assert.notEqual(calls.profileUpsert, null, 'an owner-less breadcrumb steered routing');
   assertCleared(localStorage, sessionStorage);
@@ -177,6 +179,7 @@ await check('js/auth.js: POSITIVE CONTROL same-email (case/space-insensitive) cs
   const { Auth, localStorage, sessionStorage, calls } = makeAuth();
   seed(localStorage, 'contractor', '  USER@Example.com ');
   localStorage.setItem('cs_signup', signup);
+  localStorage.setItem('cs_signup_at', String(Date.now())); // #2387: cs_signup is honoured only with a fresh stamp
   await Auth.handleAuthCallback();
   assert.equal(calls.profileUpsert, null, 'same-signer contractor breadcrumb no longer honoured');
   assertCleared(localStorage, sessionStorage);
@@ -186,12 +189,14 @@ await check('js/auth.js: OAuth tab-bound breadcrumb honoured only in the tab tha
   let x = makeAuth({ cs_auth_role_tab: 'n0nce' });
   seed(x.localStorage, 'contractor', 'oauth-tab:n0nce');
   x.localStorage.setItem('cs_signup', signup);
+  x.localStorage.setItem('cs_signup_at', String(Date.now())); // #2387: cs_signup is honoured only with a fresh stamp
   await x.Auth.handleAuthCallback();
   assert.equal(x.calls.profileUpsert, null, 'same-tab OAuth breadcrumb was not honoured');
   // Another tab / stranger left it (no nonce in this tab's sessionStorage): foreign.
   x = makeAuth({});
   seed(x.localStorage, 'contractor', 'oauth-tab:n0nce');
   x.localStorage.setItem('cs_signup', signup);
+  x.localStorage.setItem('cs_signup_at', String(Date.now())); // #2387: cs_signup is honoured only with a fresh stamp
   await x.Auth.handleAuthCallback();
   assert.notEqual(x.calls.profileUpsert, null, 'another tab\'s OAuth breadcrumb steered routing');
   assertCleared(x.localStorage, x.sessionStorage);
