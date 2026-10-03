@@ -130,6 +130,9 @@ function buildFooter(optOutUrl: string, escapeForHtml: boolean): string {
     `Questions? support@otterquote.com`
   );
 }
+export function buildInviteEmail(optOutUrl: string) {
+  return { text: `Hi.\n\n${buildFooter(optOutUrl, false)}`, html: `<p>Hi.</p>${buildFooter(optOutUrl, true)}` };
+}
 """
 SEND_D = """
 await fetch("https://api.mailgun.net/v3/mail.otterquote.com/messages", { method: "POST" });
@@ -137,6 +140,13 @@ await fetch("https://api.mailgun.net/v3/mail.otterquote.com/messages", { method:
 FOOTER_D_NO_ADDRESS = FOOTER_D.replace("    `${POSTAL_ADDRESS_ONLY} · ` +\n", "")
 FOOTER_D_NO_OPTOUT = FOOTER_D.replace("    `Manage email preferences / Unsubscribe: ${unsubText} · ` +\n", "")
 FOOTER_D_BLANK = FOOTER_D.replace("3410 N High School Rd, Ste G #102, Indianapolis, IN 46224", "")
+# PR #2435 refuter holes: an opt-out that only survives in a `//` comment, and
+# a footer builder that is defined but never called by any email body.
+FOOTER_D_COMMENTED_OPTOUT = FOOTER_D.replace(
+    "    `Manage email preferences / Unsubscribe: ${unsubText} · ` +\n",
+    "    // `Manage email preferences / Unsubscribe: ${unsubText} · ` +\n",
+)
+FOOTER_D_UNUSED_BUILDER = FOOTER_D.split("export function buildInviteEmail")[0]
 
 
 def write_mode_d(root, footer_ts):
@@ -235,6 +245,14 @@ def main():
         write_mode_d(tmp_root, FOOTER_D_BLANK)
         code, out = run_guard()
         check("(f) blanked street constant exit code (FAIL)", code, 1)
+        write_mode_d(tmp_root, FOOTER_D_COMMENTED_OPTOUT)
+        code, out = run_guard()
+        check("(f) opt-out only inside a // comment exit code (FAIL)", code, 1)
+
+        write_mode_d(tmp_root, FOOTER_D_UNUSED_BUILDER)
+        code, out = run_guard()
+        check("(f) footer builder never called exit code (FAIL)", code, 1)
+
         write_mode_d(tmp_root, FOOTER_D)
         code, out = run_guard()
         check("(f) restored mode D exit code (PASS)", code, 0)

@@ -199,6 +199,44 @@ def _strip_block_comments(text):
     return _BLOCK_COMMENT_RE.sub("", text)
 
 
+_LINE_COMMENT_RE = re.compile(r"(^|[^:])//")
+_FUNC_DECL_RE = re.compile(r"function\s+([A-Za-z_$][\w$]*)\s*\(")
+
+
+def _first_live_match(regex, text):
+    """First match of regex that is not inside a `//` line comment.
+
+    A `//` preceded by `:` is a URL scheme (https://), not a comment."""
+    for m in regex.finditer(text):
+        line_start = text.rfind("\n", 0, m.start()) + 1
+        if not _LINE_COMMENT_RE.search(text[line_start:m.start()]):
+            return m
+    return None
+
+
+def _enclosing_function(text, pos):
+    """Name of the nearest `function NAME(` declared before pos, or None."""
+    name = None
+    for m in _FUNC_DECL_RE.finditer(text, 0, pos):
+        name = m.group(1)
+    return name
+
+
+def _call_count(text, name):
+    """Live (non-comment) call sites of name(...), excluding its declaration."""
+    call_re = re.compile(r"(?<![\w$])" + re.escape(name) + r"\s*\(")
+    count = 0
+    for m in call_re.finditer(text):
+        before = text[max(0, m.start() - 9):m.start()]
+        if before.rstrip().endswith("function"):
+            continue
+        line_start = text.rfind("\n", 0, m.start()) + 1
+        if _LINE_COMMENT_RE.search(text[line_start:m.start()]):
+            continue
+        count += 1
+    return count
+
+
 def _ts_files(func_dir):
     """Non-test .ts files in func_dir as {filename: comment-stripped contents}."""
     out = {}
@@ -250,14 +288,18 @@ def function_uses_footer(contents):
     # the exact D-237 street string, interpolates it, AND carries an opt-out
     # link in the same footer (CAN-SPAM needs both). An address with no opt-out,
     # an opt-out with no address, or an altered/blank constant never matches.
+    # Two refuter-found holes are closed here (PR #2435): the interpolation and
+    # opt-out must not sit in a `//` comment, and the footer builder that holds
+    # them must actually be called (once per body, so >= 2 call sites).
     for text in contents.values():
         m = DEFINE_ONLY_RE.search(text)
-        if (
-            m
-            and m.group(1) == CANONICAL_ADDRESS_ONLY
-            and INTERP_ONLY_RE.search(text)
-            and OPTOUT_RE.search(text)
-        ):
+        if not m or m.group(1) != CANONICAL_ADDRESS_ONLY:
+            continue
+        interp = _first_live_match(INTERP_ONLY_RE, text)
+        if interp is None or _first_live_match(OPTOUT_RE, text) is None:
+            continue
+        builder = _enclosing_function(text, interp.start())
+        if builder and _call_count(text, builder) >= 2:
             return True, "D"
 
     return False, None
