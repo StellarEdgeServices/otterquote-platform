@@ -11,12 +11,21 @@ uniqueness for every state the plan names (#2423: IN, OH, MO, MI, KY, TN) and
 for every other state whose count is stable since 2013.
 
 Data vintage: regenerated from the Census-derived FIPS master list
-(kjhealy/fips-codes). AK (29, pre-2019 Valdez-Cordova split) and VA (134,
-includes Bedford city, merged 2013) are older than the 2020 Census and are
-deliberately not pinned -- regenerate them before either state is allow-listed.
+(kjhealy/fips-codes), then brought to 2020 Census names: AK (Valdez-Cordova
+split into Chugach + Copper River, 2019; Wade Hampton -> Kusilvak, 2015),
+VA (Bedford city merged into Bedford County, 2013), SD (Shannon -> Oglala
+Lakota, 2015), LA ("La Salle" -> "LaSalle"). Every state is count-pinned.
+
+The six plan states (#2423: IN, OH, MO, MI, KY, TN) are also NAME-pinned by a
+sha256 of their sorted county list (first 16 hex chars: enough to catch any
+accidental change, and short enough not to trip the credential-shape sweep's
+20-hex-run rule), because a count pin cannot catch a
+same-count wrong name. Changing one of those lists on purpose means updating
+its hash here in the same PR.
 
 Run: python3 tools/us_counties_data.test.py
 """
+import hashlib
 import json
 import unicodedata
 import pathlib
@@ -27,6 +36,7 @@ DATA = ROOT / "data" / "us-counties.json"
 
 # County (or county-equivalent) counts, 2020 Census.
 EXPECTED = {
+    "AK": 30, "VA": 133,
     "AL": 67, "AZ": 15, "AR": 75, "CA": 58, "CO": 64, "CT": 8, "DE": 3,
     "DC": 1, "FL": 67, "GA": 159, "HI": 5, "ID": 44, "IL": 102, "IN": 92,
     "IA": 99, "KS": 105, "KY": 120, "LA": 64, "ME": 16, "MD": 24, "MA": 14,
@@ -35,7 +45,14 @@ EXPECTED = {
     "OK": 77, "OR": 36, "PA": 67, "RI": 5, "SC": 46, "SD": 66, "TN": 95,
     "TX": 254, "UT": 29, "VT": 14, "WA": 39, "WV": 55, "WI": 72, "WY": 23,
 }
-NOT_PINNED = {"AK", "VA"}
+NAME_HASHES = {
+    "IN": "19bd9b43693432af",
+    "OH": "2adc0f3cf23a2183",
+    "MO": "ca74b9fcfdd0fce9",
+    "MI": "be37f0aa55cd93a7",
+    "KY": "f3bff2188e953c13",
+    "TN": "2abb9019a0200707",
+}
 
 failures = []
 
@@ -47,7 +64,7 @@ def check(cond, msg):
 
 
 states = {s["code"]: s for s in json.loads(DATA.read_text(encoding="utf-8"))["states"]}
-check(set(states) == set(EXPECTED) | NOT_PINNED, "every state + DC present, nothing extra")
+check(set(states) == set(EXPECTED), "every state + DC present, nothing extra")
 
 for code, want in sorted(EXPECTED.items()):
     counties = states.get(code, {}).get("counties", [])
@@ -63,10 +80,16 @@ for code, s in sorted(states.items()):
            if unicodedata.normalize("NFC", c) != c or any(unicodedata.combining(ch) for ch in c)]
     check(not odd, f"{code}: no combining marks / non-NFC names (e.g. a mangled 'Doña Ana')")
 
+for code, want in sorted(NAME_HASHES.items()):
+    got = hashlib.sha256("\n".join(sorted(states[code]["counties"])).encode("utf-8")).hexdigest()[:16]
+    check(got == want, f"{code}: county names match the pinned list (sha256)")
+
 # Negative controls: the exact corruption this file shipped with must fail.
 check("Brunonianism" not in states["TN"]["counties"], "TN: corrupt 'Brunonianism' entry is gone")
 check("Livingston" in states["KY"]["counties"] and "Griggs" not in states["KY"]["counties"],
       "KY: 'Livingston' present, bogus 'Griggs' absent")
+check("Oglala Lakota" in states["SD"]["counties"] and "Shannon" not in states["SD"]["counties"],
+      "SD: 2015 rename to 'Oglala Lakota' applied")
 
 if failures:
     print(f"\n{len(failures)} check(s) failed.")
