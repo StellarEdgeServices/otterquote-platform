@@ -1492,13 +1492,11 @@ def build_page(county: str, trade: str, generated_on: str, state: str = "IN", pr
 <meta property="og:site_name" content="Otter Quotes">
 
 <!-- GA4 -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-D1Y1TLGEFY"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){{dataLayer.push(arguments)}}
-  gtag('js', new Date());
-  gtag('config', 'G-D1Y1TLGEFY');
-</script>
+<script src="/js/ga-gate.js"></script>
+<script src="/js/meta-pixel-gate.js"></script>
+<script src="/js/linkedin-insight-gate.js"></script>
+<script src="/js/reddit-pixel-gate.js"></script>
+<script>gtag('config','G-D1Y1TLGEFY');</script>
 
 <script type="application/ld+json">{safe_jsonld(local_business)}</script>
 <script type="application/ld+json">{safe_jsonld(service)}</script>

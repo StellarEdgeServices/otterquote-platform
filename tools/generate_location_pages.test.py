@@ -12,7 +12,8 @@ closes-on mapping (issue #2422):
       test_indiana_profile_emits_nothing_under_strict_gate
         a county under 500 strict-unique words emits no page and no sitemap entry.
   (c) test_state_not_on_allowlist_emits_no_page
-  (d) test_committed_allowlist_is_empty  (+ test_empty_allowlist_emits_nothing)
+  (d) test_committed_allowlist_states_have_committed_profiles  (+ test_empty_allowlist_emits_nothing,
+        which uses an injected empty allow-list)
   (e) test_lint_rejects_*  (our contractors / vetted / connects you with
         contractors who serve / vendor name / missing required phrase)
 
@@ -304,15 +305,34 @@ class GeneratorTests(unittest.TestCase):
         self.assertLessEqual(summary["min_unshared_shingles"], summary["median_unshared_shingles"])
 
     # (d) committed allow-list is empty --------------------------------------
-    def test_committed_allowlist_is_empty(self):
+    def test_committed_allowlist_states_have_committed_profiles(self):
+        # Invariant (replaces the launch-day "allow-list is empty" pin): every state on the
+        # committed allow-list loads, has a committed profile, and is not a D-344 blocked state.
         data = json.loads((REPO_ROOT / "data" / "location-pages-state-allowlist.json").read_text(encoding="utf-8"))
-        self.assertEqual(data["states"], [])
-        self.assertEqual(glp.load_allowlist(), [])
+        states = glp.load_allowlist()
+        self.assertEqual(states, [s.strip().upper() for s in data["states"]])
+        for st in states:
+            with self.subTest(st):
+                self.assertTrue((REPO_ROOT / "data" / "location-state-profiles" / f"{st}.json").is_file())
+                glp.load_profile(st)  # raises StateConfigError if malformed
+                self.assertNotIn(st, ("FL", "LA", "TX"))
+
+    def test_committed_generated_pages_belong_to_allowlisted_states(self):
+        # Invariant: no page is committed under locations/ for a state that is not on the allow-list.
+        allowed = {s.lower() for s in glp.load_allowlist()}
+        loc = REPO_ROOT / "locations"
+        if loc.is_dir():
+            for d in sorted(p for p in loc.iterdir() if p.is_dir()):
+                with self.subTest(d.name):
+                    self.assertIn(d.name.rsplit("-", 1)[-1], allowed)
 
     def test_empty_allowlist_emits_nothing(self):
+        # Injected empty allow-list file (not the committed one).
+        empty = self.tmp / "empty-allow.json"
+        empty.write_text(json.dumps({"states": []}), encoding="utf-8")
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
-            summary = glp.generate(glp.load_allowlist(), out_dir=self.out, sitemap_path=self.sitemap)
+            summary = glp.generate(glp.load_allowlist(empty), out_dir=self.out, sitemap_path=self.sitemap)
         self.assertEqual(summary["written"], 0)
         self.assertIn("allow-list is empty", buf.getvalue())
         self.assertFalse(self.out.exists())
@@ -320,7 +340,8 @@ class GeneratorTests(unittest.TestCase):
     # state support is explicit, never silent --------------------------------
     def test_allowlisted_state_without_profile_is_an_explicit_error(self):
         with self.assertRaises(glp.StateConfigError) as cm:
-            self.run_gen(["OH"])  # has county data, no climate profile
+            # OH has county data; the injected profiles dir is empty, so it has no profile.
+            self.run_gen(["OH"], profiles_dir=self.fx_profiles)
         self.assertIn("no state profile", str(cm.exception))
         self.assertFalse(self.out.exists())
 
@@ -344,9 +365,11 @@ class GeneratorTests(unittest.TestCase):
         self.assertEqual(prof["name"], "Indiana")
         self.assertEqual(set(prof["region_label"]), {"northern", "central", "southern"})
 
-    def test_committed_profiles_are_only_indiana(self):
-        names = sorted(p.name for p in (REPO_ROOT / "data" / "location-state-profiles").glob("*.json"))
-        self.assertEqual(names, ["IN.json"])
+    def test_committed_profiles_are_well_formed_and_match_their_filename(self):
+        # Invariant (replaces "only IN.json"): every committed profile loads; load_profile enforces code == filename.
+        for p in sorted((REPO_ROOT / "data" / "location-state-profiles").glob("*.json")):
+            with self.subTest(p.name):
+                glp.load_profile(p.stem)  # raises StateConfigError if malformed or if "code" != filename
 
     def test_malformed_profiles_are_explicit_errors_before_any_write(self):
         cases = {
