@@ -6,9 +6,9 @@
 -- WHAT. Replace profiles_ad_sharing_opt_out_source_check (gh-2107) with a superset: gpc_header, gpc_client, support_email, in_page_button.
 -- Strictly widening: every row valid before is valid after. No data change, no column change, RLS untouched.
 --
--- ORDER OF OPERATIONS (load-bearing). Apply this BEFORE the static privacy.html change that PATCHes
--- ad_sharing_opt_out_source='in_page_button' reaches production. Until the constraint is widened that PATCH would be rejected by the
--- OLD check and a signed-in visitor's cross-device flag write would fail (the cookie opt-out would still work).
+-- ORDER OF OPERATIONS. Not load-bearing for correctness: the privacy.html section 12 PATCH retries once without the source on a
+-- 23514 check violation, so the opt-out flag lands whether this is applied before or after the deploy. This migration only adds
+-- source attribution (rows written before it is applied carry a NULL source).
 --
 -- PATTERN. NOT VALID + VALIDATE split, same as gh-1387 / gh-1532. ADD ... NOT VALID takes a brief lock and does not scan;
 -- VALIDATE CONSTRAINT scans under SHARE UPDATE EXCLUSIVE (does not block reads/writes). DROP and ADD happen in one transaction,

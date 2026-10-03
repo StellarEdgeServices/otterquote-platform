@@ -19,8 +19,9 @@ Every pre-existing value (NULL, gpc_header, gpc_client, support_email) satisfies
 `SELECT ad_sharing_opt_out_source, count(*) FROM public.profiles GROUP BY 1;` expect only NULL / gpc_header / gpc_client / support_email.
 
 ## Applier runbook
-1. Apply this migration BEFORE the static privacy.html change deploys (Netlify auto-deploys on merge). Otherwise the signed-in PATCH
-   with `in_page_button` is rejected by the old CHECK and the cross-device flag write silently fails (best-effort catch; cookie opt-out unaffected).
+1. Deploy order does not matter for correctness. The privacy.html section 12 PATCH sends `in_page_button`; if the old CHECK rejects it
+   (PostgREST code 23514) it retries ONCE without the source and logs a console.warn, so the opt-out flag always lands. This migration
+   only adds source attribution: until it is applied, signed-in opt-outs are recorded with a NULL source (today's behaviour).
 2. Verify: `SELECT pg_get_constraintdef(oid), convalidated FROM pg_constraint WHERE conname='profiles_ad_sharing_opt_out_source_check';` shows `in_page_button` and convalidated = true.
 3. After merge, with an `is_test` account click the section 12 button and confirm the row shows `ad_sharing_opt_out_source = 'in_page_button'`.
 
