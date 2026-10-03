@@ -11,23 +11,62 @@
 -- after_claim_completed -> apply_referral_commission(), which accrued $200 with no window, status or
 -- is_test check; the same claim accrued a second $200 after swapping to another referral.
 --
--- 1. BEFORE UPDATE guard on public.claims: a client role (anon, authenticated) that is not an admin
---    cannot change referral_id or completion_date. Rejected with 42501 (loud, unlike the silent reset in
---    gh-2421's guard, so a probe sees the rejection). service_role and owner-level sessions are untouched.
---    The legitimate writers are unaffected: referral_id is stamped by the claim INSERT in trade-selector
---    (the guard is UPDATE-only), and completion_date is written by the mark-job-complete Edge Function
---    with the service-role client (supabase/functions/mark-job-complete/index.ts ~L377). No SQL function
---    in the live public schema updates claims.referral_id or claims.completion_date (pg_proc scan,
---    2026-10-03). SECURITY INVOKER on purpose: current_user must be the caller.
+-- APPLY ORDER (read this first): apply #2476 (migration 20261003141000, issue #2472, the `referrals` INSERT
+--    policy lockdown; merged, NOT yet applied as of 2026-10-03) FIRST, or in the same sitting immediately
+--    before this file. Until #2476 is applied the live `referrals` INSERT policy is WITH CHECK (true) and
+--    anon/authenticated hold INSERT, so a client can insert a referral row that is already `claim_submitted`
+--    with any created_at: checks (b) status and (c) window below are then forgeable through a client-inserted
+--    referral row. #2476's timestamp sorts before this file's, so a normal ordered apply is already correct;
+--    a hand apply must keep that order. This migration does not depend on #2476 to run, only to be effective.
+--
+-- 1. BEFORE INSERT OR UPDATE guard on public.claims (invoker; client roles anon/authenticated that are not
+--    admins and not service_role):
+--    - UPDATE: referral_id, completion_date and created_at cannot CHANGE (NEW.x IS DISTINCT FROM OLD.x).
+--      Re-sending the stored value is not a change and succeeds, so a client save whose payload carries an
+--      unchanged referral_id still lands (proof N1). A real change is rejected 42501 (loud, unlike the silent
+--      reset in gh-2421's guard, so a probe sees the rejection). service_role, admins and owner-level
+--      sessions are untouched.
+--    - INSERT: created_at is forced to now() (server time). trade-selector sends created_at from the browser
+--      clock on INSERT (trade-selector.html ~L1468); that value is discarded for client roles.
+--    ANCHOR: the attribution window is anchored on claims.created_at. For client callers it is now written
+--    only by the server (DEFAULT now() / forced to now() on INSERT) and is frozen on UPDATE, so the client
+--    cannot move it. It is the moment the claim row (and, via the claim INSERT or the guarded referral_id
+--    stamp, its attribution) came into existence, which is what Dustin's ruling on #2403 means by "measured
+--    at attribution" (the window is never now() - 30d at completion). Residual: for a claim created WITHOUT a
+--    referral_id and attributed later, the later stamp is a referral_id change; see QUESTIONS on PR #2502.
+--    OPEN QUESTION (not decided here): the existing-claim UPDATE branch of trade-selector.html (~L1446-1451)
+--    and react-app/app/trade-selector/page.tsx (~L999-1004) sends referral_id from the cookie on an UPDATE of
+--    the latest claim. When that value differs from the stored one (NULL -> id, or id -> newer id) it is a
+--    real CHANGE, so this guard rejects the whole row write for the signed-in user. That path is the very
+--    hole the guard closes (a client re-pointing its own claim at any referral), so it is NOT allowed here.
+--    Recommended design (separate PR, needs Dustin/CEO as an attribution rule): server-side attribution, e.g.
+--    a SECURITY DEFINER RPC that stamps referral_id once (only when NULL, only for a referral still inside
+--    the window at that moment) and the clients drop referral_id from the UPDATE payload.
+--    The legitimate writers: completion_date is written by the mark-job-complete Edge Function with the
+--    service-role client (supabase/functions/mark-job-complete/index.ts ~L377); referral_id is stamped by the
+--    claim INSERT in trade-selector (INSERT is not rejected). No SQL function in the live public schema
+--    updates claims.referral_id or claims.completion_date (pg_proc scan, 2026-10-03).
+--    SECURITY INVOKER on purpose: current_user must be the caller.
 --    A column REVOKE was not used: claims carries table-level UPDATE for anon/authenticated, so a column
 --    REVOKE would mean revoking the table grant and re-granting every other column.
 --
 -- 2. apply_referral_commission(): three checks before any write (is_test agreement, referral status in
 --    claim_submitted/bid_received/contract_signed, and the 30-day attribution window measured at claim
---    creation: referral.created_at >= claims.created_at - referral_attribution_window(), never
+--    creation (claims.created_at, client-frozen by the guard above): referral.created_at >= claims.created_at - referral_attribution_window(), never
 --    now() - 30d at completion). The payout_approvals rows now carry the claim's is_test (they took the
 --    column default false before). The rest of the function is the live body, byte for byte
 --    (pg_get_functiondef read from production 2026-10-03).
+--
+-- Recovery path (review finding 4 on PR #2502). Check (b) means a referral still `clicked`/`registered` (a
+--    swallowed claims_advance_referral failure, which logs and never breaks the claim write) or already
+--    `job_completed` accrues nothing. This is accepted, not widened, because the failure direction is "no
+--    money moves" (a missed payout is recoverable, a wrong payout is not), every skip writes a RAISE LOG
+--    line `apply_referral_commission: gh-2479 referral status ...` for a human to see, and a repair needs no
+--    new code: service_role or an admin (a) confirms in the DB that referral.created_at >= claims.created_at -
+--    referral_attribution_window(), (b) sets that referral's status to 'claim_submitted', then (c) sets the
+--    claim's completion_date to NULL and back to a timestamp (after_claim_completed fires on NULL -> NOT NULL;
+--    the guard exempts both callers), and the function accrues once through the normal path with all three
+--    checks. Eligibility is not widened: the status list and window are unchanged.
 --
 -- Not in this migration (named in #2479 comment 5969752407, not in the ruling): referrals.claim_id
 -- binding, the swallowed recruit-bonus guard failure, and revoking anon UPDATE/DELETE/TRUNCATE on claims.
@@ -46,11 +85,15 @@ BEGIN
   IF current_user IN ('anon', 'authenticated')
      AND COALESCE(auth.role(), '') <> 'service_role'
      AND NOT COALESCE(public.is_admin_email(), false) THEN
-    IF COALESCE(
+    IF TG_OP = 'INSERT' THEN
+      -- the window anchor is server time, never a browser-supplied value
+      NEW.created_at := now();
+    ELSIF COALESCE(
          (NEW.referral_id IS DISTINCT FROM OLD.referral_id)
-         OR (NEW.completion_date IS DISTINCT FROM OLD.completion_date),
+         OR (NEW.completion_date IS DISTINCT FROM OLD.completion_date)
+         OR (NEW.created_at IS DISTINCT FROM OLD.created_at),
          true) THEN
-      RAISE EXCEPTION 'claims: referral_id and completion_date can only be changed by service_role or an admin (gh-2479)'
+      RAISE EXCEPTION 'claims: referral_id, completion_date and created_at can only be changed by service_role or an admin (gh-2479)'
         USING ERRCODE = '42501';
     END IF;
   END IF;
@@ -59,12 +102,12 @@ END;
 $guard$;
 
 COMMENT ON FUNCTION public.claims_guard_referral_columns() IS
-  'gh-2479: BEFORE UPDATE guard on public.claims. Client roles (anon, authenticated) that are not admins cannot change referral_id or completion_date; rejected 42501. service_role and owner-level sessions are untouched.';
+  'gh-2479: BEFORE INSERT OR UPDATE guard on public.claims. Client roles (anon, authenticated) that are not admins cannot change referral_id, completion_date or created_at on UPDATE (rejected 42501; an unchanged value is not a change) and get created_at = now() on INSERT. service_role, admins and owner-level sessions are untouched.';
 
 DROP TRIGGER IF EXISTS claims_guard_referral_columns ON public.claims;
 
 CREATE TRIGGER claims_guard_referral_columns
-  BEFORE UPDATE ON public.claims
+  BEFORE INSERT OR UPDATE ON public.claims
   FOR EACH ROW
   EXECUTE FUNCTION public.claims_guard_referral_columns();
 
@@ -144,7 +187,7 @@ BEGIN
   END IF;
 
   -- (c) attribution window, measured when the id was stamped on the claim
-  --     (claims.created_at), never now() - 30 days at completion: a job that
+  --     (claims.created_at, frozen for client callers by the guard), never now() - 30 days at completion: a job that
   --     takes longer than 30 days keeps its commission. A NULL date accrues
   --     nothing (#2403 closes-on item 3).
   IF v_referral.created_at IS NULL

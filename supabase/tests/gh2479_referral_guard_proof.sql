@@ -9,6 +9,12 @@
 -- whole batch (migration DDL included) rolls back; the raw findings are the exception text.
 -- Expected BEFORE: S1 owner steps ACCEPTED and two accruals; S5/S6/S7 accrue (the bugs); S4/S8 accrue.
 -- Expected AFTER : S1 owner steps REJECTED 42501, no accrual; S5/S6/S7 no accrual; S4/S8 still accrue (is_test row).
+-- Review round (PR #2502, REVIEW: FAIL 5972835774), cases N1-N5:
+--   N1 owner UPDATE that re-sends the UNCHANGED stored referral_id plus a trades change: ACCEPTED before and after, trades persisted.
+--   N2 owner backdates claims.created_at: BEFORE accepted, AFTER REJECTED 42501 (window anchor frozen).
+--   N3 service_role completes after the N2 attempt, referral 45d older than the claim: BEFORE accrues 200 (reviewer's X3), AFTER no accrual.
+--   N4 owner UPDATE that CHANGES referral_id on an existing claim (the trade-selector UPDATE branch with a new cookie): AFTER REJECTED (kept strict, see QUESTIONS).
+--   N5 owner INSERT of a claim with a browser-supplied backdated created_at: AFTER created_at is server time (now()), BEFORE it is the backdated value.
 
 CREATE FUNCTION pg_temp.try_as(p_role text, p_sub uuid, p_sql text) RETURNS text
 LANGUAGE plpgsql AS $f$
@@ -132,6 +138,36 @@ BEGIN
   v_out := v_out || E'\nS8 TRAP service_role complete 70d after claim, referral 5d before claim: ' ||
     pg_temp.try_as('service_role', v_owner, format('UPDATE public.claims SET completion_date = now() WHERE id = %L', c_claim));
   v_out := v_out || E'\nS8 RESULT ' || pg_temp.acc(r7);
+
+
+  -- ===== review round: N1-N5 =====
+  UPDATE public.claims SET completion_date = NULL, referral_id = NULL, created_at = v_created WHERE id = c_claim;
+  -- N1: stored referral_id = R3; owner re-sends the SAME value together with a trades change (trade-selector existing-claim save)
+  UPDATE public.claims SET referral_id = r3, trades = ARRAY['gh2479_before']::text[] WHERE id = c_claim;
+  v_out := v_out || E'\nN1 OWNER save: unchanged referral_id + trades change: ' ||
+    pg_temp.try_as('authenticated', v_owner, format('UPDATE public.claims SET referral_id = %L, trades = ARRAY[''gh2479_after'']::text[], updated_at = now() WHERE id = %L', r3, c_claim));
+  v_out := v_out || E'\nN1 RESULT trades persisted=' || (SELECT (trades = ARRAY['gh2479_after']::text[])::text FROM public.claims WHERE id = c_claim)
+    || ' referral_id still R3=' || (SELECT (referral_id = r3)::text FROM public.claims WHERE id = c_claim);
+  -- N4: owner CHANGES referral_id on the existing claim (R3 -> R1)
+  v_out := v_out || E'\nN4 OWNER change referral_id R3->R1 on existing claim: ' ||
+    pg_temp.try_as('authenticated', v_owner, format('UPDATE public.claims SET referral_id = %L, updated_at = now() WHERE id = %L', r1, c_claim));
+  -- N2/N3: attributed referral 45d older than the claim; owner tries to backdate created_at 40d; then service_role completes
+  UPDATE public.claims SET completion_date = NULL, referral_id = NULL, created_at = v_created WHERE id = c_claim;
+  UPDATE public.referrals SET created_at = v_created - interval '45 days', status = 'claim_submitted', commission_amount = NULL, job_value = NULL WHERE id = r4;
+  DELETE FROM public.payout_approvals WHERE referral_id = r4;
+  PERFORM pg_temp.try_as('service_role', v_owner, format('UPDATE public.claims SET referral_id = %L WHERE id = %L', r4, c_claim));
+  UPDATE public.referrals SET status = 'claim_submitted' WHERE id = r4;
+  v_out := v_out || E'\nN2 OWNER backdates claims.created_at by 40 days: ' ||
+    pg_temp.try_as('authenticated', v_owner, format('UPDATE public.claims SET created_at = created_at - interval ''40 days'' WHERE id = %L', c_claim));
+  v_out := v_out || E'\nN2 RESULT claims.created_at moved=' || (SELECT (created_at <> v_created)::text FROM public.claims WHERE id = c_claim);
+  v_out := v_out || E'\nN3 service_role complete after the backdate attempt, referral 45d before claim: ' ||
+    pg_temp.try_as('service_role', v_owner, format('UPDATE public.claims SET completion_date = now() WHERE id = %L', c_claim));
+  v_out := v_out || E'\nN3 RESULT ' || pg_temp.acc(r4);
+  -- N5: owner INSERT with a browser-supplied backdated created_at
+  v_out := v_out || E'\nN5 OWNER INSERT claim with created_at = now() - 40 days: ' ||
+    pg_temp.try_as('authenticated', v_owner, format('INSERT INTO public.claims (user_id, is_test, created_at) VALUES (%L, true, now() - interval ''40 days'')', v_owner));
+  v_out := v_out || E'\nN5 RESULT newest owner claim created within 1 minute of now()=' ||
+    (SELECT (created_at > now() - interval '1 minute')::text FROM public.claims WHERE user_id = v_owner AND id <> c_claim ORDER BY updated_at DESC LIMIT 1);
 
   RAISE EXCEPTION E'GH2479_FORCED_ROLLBACK%', v_out;
 END
