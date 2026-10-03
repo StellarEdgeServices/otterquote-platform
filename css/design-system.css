@@ -19,6 +19,9 @@
   --amber-2:    #A85C00;
   --amber-light:#FAC775;
   --amber-glow: rgba(224, 123, 0, 0.15);
+  /* Text links on light backgrounds (#A85C00 = 4.75:1 on #F8F9FC; #E07B00 is only 2.85:1) */
+  --link-on-light:       #A85C00;
+  --link-on-light-deep:  #7A4200;
 
   /* Neutrals */
   --white:      #FFFFFF;
@@ -97,8 +100,27 @@ h3 { font-size: clamp(1.25rem, 2.5vw, 1.75rem); font-weight: 600; }
 h4 { font-size: 1.25rem; font-weight: 500; }
 
 p { line-height: 1.7; color: var(--slate); }
-a { color: var(--amber); text-decoration: none; transition: color var(--duration) var(--ease); }
-a:hover { color: var(--amber-2); }
+a { color: var(--link-on-light); text-decoration: none; transition: color var(--duration) var(--ease); }
+a:hover { color: var(--link-on-light-deep); text-decoration: underline; }
+/* Buttons are not text links: keep their own colours and no underline. */
+.btn:hover { text-decoration: none; }
+.btn-secondary { color: var(--amber); }
+.btn-secondary:hover { color: var(--amber-2); }
+/* Links on dark bands keep the brighter amber (#A85C00 is too dark on navy). */
+.nav-logo a,
+.related-links a:not(.btn),
+.section-dark a:not(.btn),
+.section-dark-2 a:not(.btn),
+.form-container a:not(.btn),
+.features-section a:not(.btn),
+.features-list a:not(.btn) { color: var(--amber); }
+.nav-logo a:hover,
+.related-links a:not(.btn):hover,
+.section-dark a:not(.btn):hover,
+.section-dark-2 a:not(.btn):hover,
+.form-container a:not(.btn):hover,
+.features-section a:not(.btn):hover,
+.features-list a:not(.btn):hover { color: var(--amber-2); text-decoration: none; }
 
 .text-white { color: var(--white); }
 .text-amber { color: var(--amber); }
