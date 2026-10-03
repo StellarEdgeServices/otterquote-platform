@@ -45,6 +45,7 @@ on:
       - '!handoffs/**'
       - '!img/**'
       - '!js/**'
+      - '!locations/**'
       - '!netlify/**'
       - '!otterquote-deploy/**'
       - '!react-app/**'
