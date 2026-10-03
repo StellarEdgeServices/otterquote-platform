@@ -331,7 +331,7 @@ serve(async (req: Request) => {
       // yet", which is exactly true pre-migration. Deleting this fallback after
       // the migration is applied is a one-line follow-up, not a correctness fix.
       supabase.from("claims").select(
-        "id, user_id, status, created_at, updated_at, trades, job_type, funding_type, is_test, homeowner_name, estimate_filename, has_estimate, loss_sheet_parsed_at"
+        "id, user_id, status, created_at, updated_at, trades, job_type, funding_type, is_test, homeowner_name, estimate_filename, has_estimate, loss_sheet_parsed_at, has_measurements, has_material_selection"
       ),
       supabase.from("profiles").select("id, full_name, email, created_at"),
     ]);

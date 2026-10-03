@@ -5,7 +5,7 @@ import { assertEquals, assertStrictEquals } from "https://deno.land/std@0.208.0/
 import {
   buildRows, daysSince, homeownerLabel, statusLabel, STATUS_LABELS,
   lossSheetNote, lossSheetPath, lossSheetStatus, lossSheetUploadedAt, signupAt,
-  isMigrationPendingError, PG_UNDEFINED_COLUMN,
+  isMigrationPendingError, PG_UNDEFINED_COLUMN, resolveChecklistCompleteAt,
   type ClaimIn,
 } from "./rows.ts";
 
@@ -334,4 +334,26 @@ Deno.test("buildRows: checklist_complete / checklist_complete_at default to fals
   );
   assertStrictEquals(rows[0].checklist_complete, false);
   assertStrictEquals(rows[0].checklist_complete_at, null);
+});
+
+// gh-1570 (ruling 5965042243): the admin "Ready, not submitted" tab covers
+// {documents_needed, draft}. A draft with no checklist_complete event derives
+// completion from its own columns (no backfill).
+Deno.test("buildRows: a draft with complete columns and no event is checklist_complete, clocked from updated_at", () => {
+  const rows = buildRows(
+    [
+      claim({ id: "d-done", user_id: "u1", status: "draft", funding_type: "cash", has_measurements: true, has_material_selection: true, updated_at: "2026-09-09T10:00:00Z" }),
+      claim({ id: "d-partial", user_id: "u1", status: "draft", funding_type: "cash", has_measurements: false, has_material_selection: true }),
+      claim({ id: "dn-no-event", user_id: "u1", status: "documents_needed", funding_type: "cash", has_measurements: true, has_material_selection: true }),
+    ],
+    [{ id: "u1", full_name: "Ada L", email: "ada@x.com" }],
+    NOW,
+  );
+  const by = new Map(rows.map((r) => [r.claim_id, r]));
+  assertStrictEquals(by.get("d-done")!.checklist_complete, true);
+  assertStrictEquals(by.get("d-done")!.checklist_complete_at, "2026-09-09T10:00:00Z");
+  assertStrictEquals(by.get("d-partial")!.checklist_complete, false);
+  // documents_needed still needs the event.
+  assertStrictEquals(by.get("dn-no-event")!.checklist_complete, false);
+  assertStrictEquals(resolveChecklistCompleteAt(claim({ id: "x", status: "submitted", has_material_selection: true, has_measurements: true }), undefined), null);
 });

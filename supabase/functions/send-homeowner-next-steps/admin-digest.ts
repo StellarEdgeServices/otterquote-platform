@@ -123,10 +123,15 @@ export function buildAdminDigestEmail(
     isChecklistCompleteStage: Boolean(c.isChecklistCompleteStage),
   }));
   const plural = rows.length === 1 ? "" : "s";
-  const subject = `[OtterQuote] ${rows.length} homeowner${plural} stalled at documents_needed`;
-
   const stalledRows = rows.filter((r) => !r.isChecklistCompleteStage);
   const checklistRows = rows.filter((r) => r.isChecklistCompleteStage);
+  // gh-1570: checklist-complete rows now include `draft` claims, so "stalled
+  // at documents_needed" is untrue for a digest made only of them. The
+  // original subject is kept byte-identical whenever any '48h' row (or no
+  // row at all) is present.
+  const subject = stalledRows.length === 0 && checklistRows.length > 0
+    ? `[OtterQuote] ${rows.length} homeowner${plural} completed the checklist, not yet submitted`
+    : `[OtterQuote] ${rows.length} homeowner${plural} stalled at documents_needed`;
 
   const stalledPlural = stalledRows.length === 1 ? "" : "s";
   const stalledVerb = stalledRows.length === 1 ? "is" : "are";

@@ -446,6 +446,9 @@ jobs:
       - name: ownerTag cyrb53 parity across js/auth.js, React port and index.html (gh-2344)
         run: node tests/gh2344-owner-tag-parity.mjs
 
+      - name: admin Ready-not-submitted tab includes draft claims (gh-1570)
+        run: node tests/gh1570-ready-queue-draft.mjs
+
       - name: partner-re one leads row per signup, variant carried (gh-2084 arm E)
         run: node tests/gh2084-partner-re-one-lead-row.mjs
 

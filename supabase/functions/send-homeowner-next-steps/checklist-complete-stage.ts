@@ -32,7 +32,13 @@ import {
   footerPostalAddressText,
 } from "./email-footer.ts";
 import { OPTOUT_LINK_TEXT, OPTOUT_TEXT_LINE } from "./email-content.ts";
-import { NUDGE_ELIGIBLE_STATUS, TWO_HOURS_MS } from "./select-stage.ts";
+import {
+  isChecklistNudgeEligibleStatus,
+  NUDGE_WAITLISTED_STATUS,
+  TWO_HOURS_MS,
+} from "./select-stage.ts";
+import { DEFAULT_BLOCKED_STATES, normalizeState } from "./blocked-states.ts";
+import { resolveChecklistCompletedAt } from "./checklist-columns.ts";
 
 /** The new stage id, alongside '2h' / '48h' from ./select-stage.ts. */
 export const CHECKLIST_COMPLETE_STAGE = "checklist_complete_not_submitted" as const;
@@ -104,10 +110,21 @@ export interface ChecklistCompleteClaim {
   status: string;
   /** `claims.ready_for_bids` — the column the "Submit for Bids" click flips. */
   ready_for_bids: boolean | null | undefined;
+  /** gh-1570 rail: `claims.property_state`; null on most real claims. */
+  property_state?: string | null;
+  /** Columns the derive-from-columns fallback reads (draft claims only). */
+  funding_type?: string | null;
+  has_estimate?: boolean | null;
+  has_measurements?: boolean | null;
+  has_material_selection?: boolean | null;
+  updated_at?: string | null;
+  created_at?: string | null;
 }
 
 export type ChecklistCompleteSkipReason =
   | "ineligible_status"
+  | "waitlisted"
+  | "blocked_state"
   | "already_submitted"
   | "d320_two_nudge_cap"
   | "not_checklist_complete"
@@ -118,6 +135,8 @@ export type ChecklistCompleteSkipReason =
 export interface ChecklistCompleteDecision {
   stage: typeof CHECKLIST_COMPLETE_STAGE | null;
   skipped_reason?: ChecklistCompleteSkipReason;
+  /** Set when stage is non-null: the event stamp, or the derived clock. */
+  checklistCompletedAtIso?: string;
 }
 
 /**
@@ -147,9 +166,21 @@ export function screenChecklistCompleteClaim(
      * ./select-stage.ts's reduceActivityRows already produces for the main
      * scan (gh-2219 / PR #2219 REVIEW: FAIL M1). */
     priorNudgeCount: number;
+    /** gh-1570 rail: parsed platform_settings.homeowner_blocked_states
+     * (parseBlockedStates). Omitted -> the FL/LA/TX default. */
+    blockedStates?: readonly string[];
   },
 ): ChecklistCompleteDecision {
-  if (claim.status !== NUDGE_ELIGIBLE_STATUS) {
+  // gh-1570 rails, first: a waitlisted claim and a claim in a blocked state
+  // are never nudged, whatever else is true of them.
+  if (claim.status === NUDGE_WAITLISTED_STATUS) {
+    return { stage: null, skipped_reason: "waitlisted" };
+  }
+  const state = normalizeState(claim.property_state);
+  if (state && (ctx.blockedStates ?? DEFAULT_BLOCKED_STATES).includes(state)) {
+    return { stage: null, skipped_reason: "blocked_state" };
+  }
+  if (!isChecklistNudgeEligibleStatus(claim.status)) {
     return { stage: null, skipped_reason: "ineligible_status" };
   }
   if (claim.ready_for_bids === true) {
@@ -164,7 +195,7 @@ export function screenChecklistCompleteClaim(
   if (ctx.reduced.alreadySent.has(claim.id)) {
     return { stage: null, skipped_reason: "already_sent" };
   }
-  const completedAtIso = ctx.reduced.completedAtByClaim.get(claim.id);
+  const completedAtIso = resolveChecklistCompletedAt(claim, ctx.reduced.completedAtByClaim.get(claim.id));
   if (completedAtIso === undefined) {
     return { stage: null, skipped_reason: "not_checklist_complete" };
   }
@@ -175,7 +206,7 @@ export function screenChecklistCompleteClaim(
   if (ctx.now - completedMs < CHECKLIST_COMPLETE_DELAY_MS) {
     return { stage: null, skipped_reason: "too_recent" };
   }
-  return { stage: CHECKLIST_COMPLETE_STAGE };
+  return { stage: CHECKLIST_COMPLETE_STAGE, checklistCompletedAtIso: completedAtIso };
 }
 
 // ─── Copy (locked — Tier B, gh-1570 Part 2; verbatim phrase from Ben's build
