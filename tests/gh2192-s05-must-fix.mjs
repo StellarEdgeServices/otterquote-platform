@@ -249,6 +249,15 @@ function makeContext({ search, configDelay, recruitLookupDelay, localStorageSeed
     },
     SUPPORT_EMAIL: 'support@otterquote.com', SITE_URL: 'https://otterquote.com', DEMO_MODE: false,
   };
+  // gh-2471: the pages' detectRecruitCode() now goes through the shared CONFIG.lookupRecruiter (js/config.js). Take the REAL
+  // helpers from the worktree's js/config.js so this harness keeps exercising the page code, not a copy of it.
+  {
+    const realCfg = vm.runInNewContext(readDisk('js/config.js') + '\n;CONFIG', {
+      window: { location: { hostname: 'otterquote.com' } }, console, setInterval() { return 0; }, clearInterval() {},
+    });
+    CONFIG.normRecruitCode = realCfg.normRecruitCode;
+    CONFIG.lookupRecruiter = realCfg.lookupRecruiter;
+  }
   function triggerConfigReady() {
     configReadySb = sb;
     win.supabase = { createClient() { return sb; } };
