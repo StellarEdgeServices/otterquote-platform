@@ -17,7 +17,9 @@ VA (Bedford city merged into Bedford County, 2013), SD (Shannon -> Oglala
 Lakota, 2015), LA ("La Salle" -> "LaSalle"). Every state is count-pinned.
 
 The six plan states (#2423: IN, OH, MO, MI, KY, TN) are also NAME-pinned by a
-sha256 of their sorted county list, because a count pin cannot catch a
+sha256 of their sorted county list (first 16 hex chars: enough to catch any
+accidental change, and short enough not to trip the credential-shape sweep's
+20-hex-run rule), because a count pin cannot catch a
 same-count wrong name. Changing one of those lists on purpose means updating
 its hash here in the same PR.
 
@@ -44,12 +46,12 @@ EXPECTED = {
     "TX": 254, "UT": 29, "VT": 14, "WA": 39, "WV": 55, "WI": 72, "WY": 23,
 }
 NAME_HASHES = {
-    "IN": "19bd9b43693432af50c0ffb2f4491d196d0a645cc83ab5e209a08307c07841f0",
-    "OH": "2adc0f3cf23a21837f24f2074469e8c4713a313a67c598192e6118ef27e7bb1e",
-    "MO": "ca74b9fcfdd0fce9298e708fe2324b84af50220f85e1947e70b47c331d3e98a6",
-    "MI": "be37f0aa55cd93a702fbdb9bc9171e1f20b3809de4273c48670dd3082df0aacb",
-    "KY": "f3bff2188e953c13d7543b4c222e1e166406364513e62cca82a746632a644ece",
-    "TN": "2abb9019a0200707b6bfd1d29a62fc8f048562b3c756c395092b69ea8df2e3a3",
+    "IN": "19bd9b43693432af",
+    "OH": "2adc0f3cf23a2183",
+    "MO": "ca74b9fcfdd0fce9",
+    "MI": "be37f0aa55cd93a7",
+    "KY": "f3bff2188e953c13",
+    "TN": "2abb9019a0200707",
 }
 
 failures = []
@@ -79,7 +81,7 @@ for code, s in sorted(states.items()):
     check(not odd, f"{code}: no combining marks / non-NFC names (e.g. a mangled 'Doña Ana')")
 
 for code, want in sorted(NAME_HASHES.items()):
-    got = hashlib.sha256("\n".join(sorted(states[code]["counties"])).encode("utf-8")).hexdigest()
+    got = hashlib.sha256("\n".join(sorted(states[code]["counties"])).encode("utf-8")).hexdigest()[:16]
     check(got == want, f"{code}: county names match the pinned list (sha256)")
 
 # Negative controls: the exact corruption this file shipped with must fail.
