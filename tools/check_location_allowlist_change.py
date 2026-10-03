@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """gh-2422 (D-345): a state joins the /locations/ allow-list only in its own R-177 PR.
 
-CEO ruling (Ben, #2304 5964402773): the copy lint is a tripwire; the guarantee is
+CEO ruling (Ben, #2304 5964402773): the copy lint is a tripwire; the control is
 the R-177 LEGAL-READ of each state's profile and county content, done in the PR
 that adds the state. This check enforces the cheap, diff-scoped half of that rule:
 
