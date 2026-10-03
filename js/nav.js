@@ -48,6 +48,8 @@ const Nav = {
     // contractor-about.html is a homeowner-facing page (viewing a contractor's profile);
     // it must not be treated as a contractor portal page despite its URL.
     if (path.includes('contractor-about')) return false;
+    // Articles under /guides/ and /blog/ are homeowner-facing even when the slug says "contractor".
+    if (path.indexOf('/guides/') === 0 || path.indexOf('/blog/') === 0) return false;
     return path.includes('contractor');
   },
 
