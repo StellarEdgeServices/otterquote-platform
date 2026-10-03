@@ -35,16 +35,33 @@ eligibility check (D-241 guardrail 1, MIN_CONTRACTORS) and the
 auto-noindex-below-2 rule (guardrail 3, inject_noindex). A county with zero
 contractors can get an indexable page.
 
-UNIQUE-CONTENT FLOOR (D-241 guardrail 2, KEPT): MIN_WORDS = 500.
-  unique_word_count() counts the words of the page's main content with the
-  boilerplate that every page shares removed: breadcrumb, call-to-action bar,
-  legal disclosure and the homeowner-guide link list (all marked
-  data-boilerplate in the template), plus everything outside <main> (nav,
-  head, footer, scripts, styles, JSON-LD). What remains is the page-specific
-  prose: intro, climate, issue list, expectations, season/timing, how it
-  works, FAQ. The earlier implementation counted every word in the HTML
-  after stripping tags, which let shared chrome and boilerplate count toward
-  the floor.
+UNIQUE-CONTENT FLOOR (D-241 guardrail 2: ">=500 words of unique non-template
+content per page", kept by D-345; STRICT reading per the CEO ruling on #2304):
+  A page is emitted only if it has >= MIN_WORDS (500) words of content that
+  appears on no other page in the same run. strict_unique_counts() measures
+  it as: the number of words in the page's <main> visible text that are
+  covered by NO 8-word shingle appearing on any other page built in the run.
+  One pass builds shingle -> number of pages containing it; then, per page,
+  every word inside a shared shingle is template content and the remaining
+  words are counted. Words shared across pages (the template pools, shared
+  boilerplate, identical county text) do not count.
+  - The shared template therefore contributes ~0. A page's 500 words must come
+    from county-specific content in the state profile's `county_content`
+    (per county and trade; see data/location-state-profiles/IN.json _readme).
+    Indiana's committed profile has none, so every Indiana page fails the gate
+    and nothing is emitted until the CRO writes that content.
+  - Identical text on two pages (two counties, or the same county on two
+    trades) is shared, so it counts for neither.
+  - A run that builds a single page compares it with nothing, so all its
+    words count as unique. The gate is meaningful when a state's full
+    county x trade set is generated together, which is what the CLI does.
+  - A page under the floor is NOT generated: not written, not sitemapped.
+  - Each run prints min/median strict-unique words, plus an informational
+    cross-page share-of-unshared-shingles metric.
+
+HARD REFUSAL (D-344): FL, LA and TX are blocked states (BLOCKED_STATES). The
+generator refuses them, even if listed in the allow-list or passed via
+--allowlist, with an error before anything is written.
 
 COPY RULE (D-345), enforced in the template AND in compliance_lint():
   Otter Quotes creates a scope of work and sends it to local contractors. We
@@ -71,6 +88,7 @@ import pathlib
 import datetime
 import argparse
 import statistics
+import unicodedata
 import importlib.util
 from html.parser import HTMLParser
 
@@ -102,7 +120,10 @@ TRADE_NOUN = {
     "windows": "window",
 }
 
-MIN_WORDS = 500  # unique-content floor per page (D-241 guardrail 2, kept by D-345)
+MIN_WORDS = 500  # strict unique-content floor per page (D-241 guardrail 2, kept by D-345)
+
+# D-344 blocked states. Hard-refused in load_allowlist() and generate().
+BLOCKED_STATES = ("FL", "LA", "TX")
 
 REQUIRED_PHRASE = "send it to local contractors"
 
@@ -159,6 +180,9 @@ HAVE_CONTRACTORS_BANS = (
     r"\bconnects?\s+(?:you|homeowners|consumers|customers)\s+with\s+(?:\w+\s+)?(?:contractors|roofers|pros|professionals)\b",
     r"\bplatform\s+coverage\b",
     r"\bcontractor\s+profiles?\b",
+    r"\b(?:our|trusted|local)\b[^.]{0,30}\b(?:team|roofers|crews?|pros|network)\b",
+    r"\balready\s+bid\s+through\b",
+    r"\bhundreds\s+of\b",
 )
 
 # Price / savings / speed promises (D-168 and the no-promises rule).
@@ -168,7 +192,13 @@ PROMISE_BANS = (
     r"\bfree\s+for\s+homeowners\b",
     r"\bin\s+\d+\s+(?:hours?|days?|minutes?)\b",
     r"\bwithin\s+(?:\d+|an?|one|two|three|four|five|a\s+few|several)\s+(?:business\s+)?(?:hours?|days?|minutes?)\b",
-    r"(?<!not )\bguarantee\w*",     # "does not guarantee the availability..." (disclosure) is allowed
+    r"\blowest\s+price",
+    r"\byou\s+will\s+(?:get|receive)\s+\w+\s+bids\b",
+    r"\bthree\s+(?:\w+\s+)?bids\b",
+    r"\bby\s+tomorrow\b",
+    r"\bfree\s+for\s+you\b",
+    # "guarantee" is checked separately in compliance_lint(): negated forms
+    # ("does not / doesn't / cannot guarantee", the disclosure) are allowed.
 )
 
 # D-326: no entitlement, coverage outcome, or statement of what an insurer
@@ -182,6 +212,13 @@ D326_BANS = (
     r"\blegitimate\s+(?:supplement|claim|scope|repair)\b",
     r"\blegitimately\s+part\b",
     r"\bpolic(?:y|ies)\s+(?:cover|covers|pay|pays)\b",
+    # "cover/covers/covered" with insurance as the subject. "coverage" is NOT
+    # matched: "your insurer decides coverage under your policy" and the
+    # disclosure's "insurance coverage decisions" are the approved procedural
+    # wording.
+    r"\b(?:insurance|insurer|insurers|policy|policies)\b[^.]{0,40}\bcover(?:s|ed)?\b",
+    r"\bentitled\b",
+    r"\bmaximi[sz]e\b",
 )
 
 # D-312: no vendor names on customer-facing pages. Reuse the list the repo's
@@ -222,6 +259,17 @@ class StateConfigError(RuntimeError):
 # Allow-list and county data
 # ---------------------------------------------------------------------------
 
+def refuse_blocked_states(states) -> None:
+    """D-344: FL, LA and TX are hard-refused wherever they come from."""
+    blocked = [st for st in states if st in BLOCKED_STATES]
+    if blocked:
+        raise StateConfigError(
+            f"REFUSED: {', '.join(blocked)} {'is' if len(blocked) == 1 else 'are'} blocked by D-344 "
+            f"(blocked states: {', '.join(BLOCKED_STATES)}). The generator will not emit pages for "
+            f"these states, even if allow-listed. Nothing was written."
+        )
+
+
 def load_allowlist(path=None) -> list:
     """Return the allow-listed state codes from the CRO-maintained file."""
     path = pathlib.Path(path or ALLOWLIST_PATH)
@@ -237,6 +285,7 @@ def load_allowlist(path=None) -> list:
             raise StateConfigError(f"{path}: invalid state code {code!r} (expected two capital letters)")
         if code not in out:
             out.append(code)
+    refuse_blocked_states(out)
     return out
 
 
@@ -312,8 +361,30 @@ def load_profile(state: str, profiles_dir=None) -> dict:
             county_region[c] = key
         region_label[key] = label
         region_climate[key] = climate
+
+    county_content = {}
+    raw_cc = data.get("county_content", {})
+    if not isinstance(raw_cc, dict):
+        raise bad('"county_content" must be an object mapping county -> html, or county -> {trade: html}')
+    for county, value in raw_cc.items():
+        if county not in county_region:
+            raise bad(f'county_content: "{county}" is not a county listed in any region')
+        if isinstance(value, str):
+            if not value.strip():
+                raise bad(f'county_content["{county}"] is empty')
+            county_content[county] = {t: value for t in ELIGIBLE_TRADES}
+        elif isinstance(value, dict):
+            for trade, text in value.items():
+                if trade not in ELIGIBLE_TRADES:
+                    raise bad(f'county_content["{county}"]: unknown trade "{trade}" (use {list(ELIGIBLE_TRADES)})')
+                if not (isinstance(text, str) and text.strip()):
+                    raise bad(f'county_content["{county}"]["{trade}"] must be a non-empty string')
+            county_content[county] = dict(value)
+        else:
+            raise bad(f'county_content["{county}"] must be a string or an object keyed by trade')
     return {"name": name, "county_region": county_region,
-            "region_label": region_label, "region_climate": region_climate}
+            "region_label": region_label, "region_climate": region_climate,
+            "county_content": county_content}
 
 
 def validate_states(states: list, counties_path=None, profiles_dir=None) -> dict:
@@ -366,8 +437,9 @@ _VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "me
 
 
 class _UniqueTextParser(HTMLParser):
-    """Collect text inside <main>, skipping script/style and any element
-    marked data-boilerplate (and everything nested in it)."""
+    """Collect the text inside <main> (scripts and styles skipped). Elements
+    marked data-boilerplate are NOT skipped: shared text is detected by the
+    cross-page shingle measure, not by markup."""
 
     def __init__(self):
         super().__init__(convert_charrefs=True)
@@ -381,7 +453,7 @@ class _UniqueTextParser(HTMLParser):
         a = dict(attrs)
         if tag == "main":
             self.in_main += 1
-        if self.skip_stack or tag in ("script", "style") or "data-boilerplate" in a:
+        if self.skip_stack or tag in ("script", "style"):
             self.skip_stack.append(tag)
 
     def handle_endtag(self, tag):
@@ -397,16 +469,16 @@ class _UniqueTextParser(HTMLParser):
             self.words.extend(w for w in data.split() if re.search(r"\w", w))
 
 
-def unique_words(html_text: str) -> list:
-    """Words of page-specific prose: <main> text minus data-boilerplate
-    blocks (see module docstring for the definition)."""
+def _norm_word(word: str) -> str:
+    return re.sub(r"^\W+|\W+$", "", word.lower())
+
+
+def main_words(html_text: str) -> list:
+    """Normalised (lower-case, edge punctuation stripped) words of the page's
+    <main> visible text. Scripts and styles are excluded."""
     p = _UniqueTextParser()
     p.feed(html_text)
-    return p.words
-
-
-def unique_word_count(html_text: str) -> int:
-    return len(unique_words(html_text))
+    return [w for w in (_norm_word(x) for x in p.words) if w]
 
 
 SHINGLE_SIZE = 8
@@ -416,6 +488,31 @@ def shingles(words: list) -> set:
     """Set of SHINGLE_SIZE-word shingles (lower-cased) of a word list."""
     w = [x.lower() for x in words]
     return {" ".join(w[i:i + SHINGLE_SIZE]) for i in range(max(0, len(w) - SHINGLE_SIZE + 1))}
+
+
+def strict_unique_counts(word_lists: list) -> list:
+    """The D-345 / D-241 guardrail-2 measure, per page: the number of words of
+    the page's <main> visible text that are covered by NO SHINGLE_SIZE-word
+    shingle appearing on any other page in the same run.
+
+    One pass builds shingle -> number of pages containing it; then, per page,
+    every word inside a shingle that also appears on another page is marked
+    template (shared) content, and the rest are counted. A page with fewer
+    than SHINGLE_SIZE words has no shingles, so all its words count."""
+    from collections import Counter
+    seen = Counter()
+    for words in word_lists:
+        seen.update(shingles(words))
+    counts = []
+    for words in word_lists:
+        w = [x.lower() for x in words]
+        covered = [False] * len(w)
+        for i in range(len(w) - SHINGLE_SIZE + 1):
+            if seen[" ".join(w[i:i + SHINGLE_SIZE])] >= 2:
+                for j in range(i, i + SHINGLE_SIZE):
+                    covered[j] = True
+        counts.append(len(w) - sum(covered))
+    return counts
 
 
 def cross_page_uniqueness(shingle_sets: list) -> list:
@@ -433,23 +530,56 @@ def cross_page_uniqueness(shingle_sets: list) -> list:
 
 _INLINE_TAGS = {"a", "abbr", "b", "bdi", "bdo", "cite", "code", "data", "dfn", "em", "i", "kbd", "mark",
                 "q", "s", "samp", "small", "span", "strong", "sub", "sup", "time", "u", "var", "font"}
-_ATTR_NAMES = {"title", "alt", "placeholder", "content", "value", "label"}
-_INVISIBLE = re.compile("[­​-‍⁠﻿]")
+_ATTR_NAMES = {"title", "alt", "placeholder", "content", "value", "label", "srcdoc"}
+
+# Cyrillic / Greek / small-cap lookalikes of the Latin letters that appear in
+# the ban terms, folded to ASCII after NFKC. (NFKC itself folds fullwidth,
+# ligatures, superscripts, etc.)
+_CONFUSABLE_PAIRS = (
+    # Cyrillic lower
+    ("\u0430", "a"), ("\u0441", "c"), ("\u0435", "e"), ("\u043e", "o"), ("\u0440", "p"), ("\u0445", "x"),
+    ("\u0443", "y"), ("\u0456", "i"), ("\u0458", "j"), ("\u0455", "s"), ("\u0501", "d"), ("\u04bb", "h"),
+    ("\u051b", "q"), ("\u051d", "w"), ("\u04cf", "l"), ("\u043a", "k"), ("\u043c", "m"), ("\u0442", "t"),
+    # Cyrillic upper
+    ("\u0410", "A"), ("\u0412", "B"), ("\u0415", "E"), ("\u041a", "K"), ("\u041c", "M"), ("\u041d", "H"),
+    ("\u041e", "O"), ("\u0420", "P"), ("\u0421", "C"), ("\u0422", "T"), ("\u0425", "X"), ("\u0406", "I"),
+    ("\u0408", "J"), ("\u0405", "S"), ("\u0423", "Y"),
+    # Greek lower
+    ("\u03bf", "o"), ("\u03b1", "a"), ("\u03bd", "v"), ("\u03b9", "i"), ("\u03c4", "t"), ("\u03c1", "p"),
+    ("\u03ba", "k"), ("\u03c5", "u"), ("\u03c7", "x"), ("\u03b5", "e"),
+    # Greek upper
+    ("\u039f", "O"), ("\u0391", "A"), ("\u0392", "B"), ("\u0395", "E"), ("\u0396", "Z"), ("\u0397", "H"),
+    ("\u0399", "I"), ("\u039a", "K"), ("\u039c", "M"), ("\u039d", "N"), ("\u03a1", "P"), ("\u03a4", "T"),
+    ("\u03a5", "Y"), ("\u03a7", "X"),
+    # Latin lookalikes
+    ("\u0131", "i"), ("\u0261", "g"), ("\u1d04", "c"), ("\u1d0f", "o"), ("\u1d1c", "u"), ("\u0280", "r"),
+    ("\u1d1b", "t"), ("\u0274", "n"), ("\u1d00", "a"), ("\u026a", "i"), ("\ua731", "s"), ("\u1d07", "e"),
+    ("\u1d05", "d"), ("\u029f", "l"), ("\u1d0d", "m"),
+)
+_CONFUSABLES = {ord(a): b for a, b in _CONFUSABLE_PAIRS}
+_CONFUSABLES.update({ord("\u2019"): "'", ord("\u2018"): "'", ord("\u02bc"): "'"})
+_HYPHENS = "-\u2010\u2011\u2012\u2013\u2014\u2015\u2212"
 
 
 class _LintViews(HTMLParser):
     """Split a page into what a reader or crawler sees: visible text,
-    text-bearing attribute values, JSON-LD scripts (any <script> whose type
+    text-bearing attribute values, CSS `content:` strings from <style>,
+    iframe srcdoc documents, JSON-LD scripts (any <script> whose type
     mentions ld+json, in any attribute order or quoting), and other scripts."""
 
     def __init__(self):
         super().__init__(convert_charrefs=True)
         self.visible, self.attrs, self.jsonld, self.scripts = [], [], [], []
+        self.style_text, self.srcdocs = [], []
         self._kind, self._buf = None, []
 
     def handle_starttag(self, tag, attrs):
         for name, value in attrs:
-            if value and (name in _ATTR_NAMES or name.startswith("aria-") or name.startswith("data-")):
+            if not value:
+                continue
+            if name == "srcdoc":
+                self.srcdocs.append(value)
+            if name in _ATTR_NAMES or name.startswith("aria-") or name.startswith("data-"):
                 self.attrs.append(value)
         if tag == "script":
             kind = "script"
@@ -469,6 +599,8 @@ class _LintViews(HTMLParser):
                 self.jsonld.append(body)
             elif self._kind == "script":
                 self.scripts.append(body)
+            elif self._kind == "style":
+                self.style_text.extend(_css_content_strings(body))
             self._kind, self._buf = None, []
         elif tag not in _INLINE_TAGS:
             self.visible.append(" ")
@@ -480,9 +612,39 @@ class _LintViews(HTMLParser):
             self.visible.append(data)
 
 
+def _css_content_strings(css: str) -> list:
+    """Text of every CSS `content:` declaration (adjacent strings joined,
+    CSS \\XXXX escapes decoded)."""
+    out = []
+    for m in re.finditer(r"content\s*:\s*([^;}]*)", css, flags=re.IGNORECASE):
+        parts = re.findall(r'"((?:[^"\\]|\\.)*)"|\'((?:[^\'\\]|\\.)*)\'', m.group(1))
+        s = "".join(a or b for a, b in parts)
+
+        def esc(mm):
+            cp = int(mm.group(1), 16)
+            return chr(cp) if cp <= 0x10FFFF else ""
+        s = re.sub(r"\\([0-9a-fA-F]{1,6})\s?", esc, s)
+        out.append(s.replace("\\", ""))
+    return out
+
+
 def _normalize(text: str) -> str:
-    text = _INVISIBLE.sub("", text)
-    return re.sub(r"[\s ]+", " ", text).strip()
+    """NFKC, drop every Unicode Cf (format) character, fold confusables,
+    collapse whitespace."""
+    text = unicodedata.normalize("NFKC", text)
+    text = "".join(ch for ch in text if unicodedata.category(ch) != "Cf")
+    text = text.translate(_CONFUSABLES)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _dehyphenate(text: str) -> str:
+    """Join hyphen-split words ("con-tractors" -> "contractors")."""
+    return re.sub(rf"(?<=\w)[{re.escape(_HYPHENS)}](?=\w)", "", text)
+
+
+def _hyphens_to_spaces(text: str) -> str:
+    """Treat a hyphen as a space ("Our-contractors" -> "Our contractors")."""
+    return re.sub(rf"[{re.escape(_HYPHENS)}]", " ", text)
 
 
 def _walk_strings(node, out):
@@ -510,10 +672,12 @@ def _jsonld_strings(html_text: str) -> str:
     return " ".join(out)
 
 
-def lintable_text(html_text: str) -> str:
+def lintable_text(html_text: str, _depth: int = 0) -> str:
     """Normalised text the lint matches against: visible text (tags stripped,
-    entities decoded, nbsp and zero-width characters handled) + text-bearing
-    attribute values + parsed JSON-LD strings + other script text."""
+    entities decoded) + text-bearing attribute values + CSS content strings +
+    iframe srcdoc documents (recursively) + parsed JSON-LD strings + other
+    script text, all NFKC-normalised with Cf characters removed and
+    confusables folded."""
     p = _LintViews()
     p.feed(html_text)
     ld = []
@@ -523,46 +687,75 @@ def lintable_text(html_text: str) -> str:
         except ValueError:
             raise ComplianceError("JSON-LD block is not valid JSON")
     scripts = [re.sub(r"<[^>]+>", " ", html.unescape(s)) for s in p.scripts]
-    return _normalize(" ".join(["".join(p.visible), " ".join(p.attrs), " ".join(ld), " ".join(scripts)]))
+    parts = ["".join(p.visible), " ".join(p.attrs), " ".join(p.style_text), " ".join(ld), " ".join(scripts)]
+    if _depth < 3:
+        parts.extend(lintable_text(sd, _depth + 1) for sd in p.srcdocs)
+    return _normalize(" ".join(parts))
+
+
+_NEGATED_GUARANTEE = re.compile(
+    r"\b(?:does\s+not|do\s+not|did\s+not|doesn't|don't|cannot|can\s+not|can't|will\s+not|won't|not)\s+guarantee\w*",
+    re.IGNORECASE)
+
+
+def _guide_labels() -> list:
+    labels = [label for _, label in CORNERSTONE_GUIDES]
+    for links in TRADE_EXTRA_LINKS.values():
+        labels.extend(label for _, label in links)
+    return sorted(set(labels), key=len, reverse=True)
 
 
 def compliance_lint(html_text: str, page_id: str) -> None:
     """Raise ComplianceError if the page breaks the D-345 copy rule or the
-    D-104 / D-168 / D-175 / D-312 / D-326 bans. Every check runs on the
-    normalised visible/attribute/JSON-LD text and, for the substring and
-    vendor checks, also on the raw markup."""
+    D-104 / D-168 / D-175 / D-312 / D-326 bans. Checks run on the normalised
+    visible/attribute/CSS/srcdoc/JSON-LD text and on de-hyphenated and
+    hyphen-as-space copies of it; the substring and vendor checks also run on the raw markup."""
     text = lintable_text(html_text)
     raw = _normalize(html.unescape(html_text))
-    lowered = text.lower()
+    views = [text, _dehyphenate(text), _hyphens_to_spaces(text)]
+    lowered = [v.lower() for v in views]
 
-    if REQUIRED_PHRASE not in lowered:
+    if REQUIRED_PHRASE not in lowered[0]:
         raise ComplianceError(f'[{page_id}] required phrase missing: "{REQUIRED_PHRASE}"')
 
-    for view in (lowered, raw.lower()):
+    for view in lowered + [raw.lower()]:
         for phrase in FORBIDDEN_PHRASES:
             if phrase in view:
                 raise ComplianceError(f"[{page_id}] forbidden phrase '{phrase}' in page copy")
 
     # D-175: the bare one-word brand is forbidden in copy; the otterquote.com
     # domain and URLs are fine.
-    for view in (text, raw):
+    for view in views + [raw]:
         stripped = re.sub(r"https?://[^\s\"'<>]+", "", view)
         stripped = re.sub(r"otterquote\.com", "", stripped, flags=re.IGNORECASE)
         for term in FORBIDDEN_CASE_SENSITIVE:
             if term in stripped:
                 raise ComplianceError(f"[{page_id}] forbidden term '{term}' in page copy")
 
-    for label, bans in (("have-contractors phrasing (D-345)", HAVE_CONTRACTORS_BANS),
-                        ("price/speed promise", PROMISE_BANS),
-                        ("insurer-obligation / coverage phrasing (D-326)", D326_BANS)):
-        for pattern in bans:
-            m = re.search(pattern, text, flags=re.IGNORECASE)
-            if m:
-                raise ComplianceError(f"[{page_id}] {label}: '{m.group(0)}'")
+    labels = _guide_labels()
+    for view in views:
+        for label, bans, strip_labels in (
+            ("have-contractors phrasing (D-345)", HAVE_CONTRACTORS_BANS, False),
+            ("price/speed promise", PROMISE_BANS, False),
+            ("insurer-obligation / coverage phrasing (D-326)", D326_BANS, True),
+        ):
+            target = view
+            if strip_labels:
+                # Titles of existing guide/blog pages are linked as-is and
+                # are reviewed separately (R-177); they are not page copy.
+                for guide_label in labels:
+                    target = target.replace(guide_label, " ")
+            for pattern in bans:
+                m = re.search(pattern, target, flags=re.IGNORECASE)
+                if m:
+                    raise ComplianceError(f"[{page_id}] {label}: '{m.group(0)}'")
+        m = re.search(r"\bguarantee\w*", _NEGATED_GUARANTEE.sub(" ", view), flags=re.IGNORECASE)
+        if m:
+            raise ComplianceError(f"[{page_id}] price/speed promise: '{m.group(0)}'")
 
     # D-312 vendor names. Strip CSS :hover / Tailwind hover: first (not vendor
     # references), then match whole words.
-    for view in (lowered, raw.lower()):
+    for view in lowered + [raw.lower()]:
         vendor_text = re.sub(r":hover|hover:", "", view)
         for token in VENDOR_TOKENS:
             if re.search(rf"\b{re.escape(token)}\b", vendor_text):
@@ -612,9 +805,9 @@ def page_seed(county: str, trade: str) -> int:
 
 SEASONAL = [
     "<p>The repair calendar in {region} has a shape worth planning around. Spring storm season generates the damage; early summer is when adjusters and contractors are busiest; late summer and fall often bring a different mix of contractor schedules and working weather; and winter narrows the options for exterior work while freeze-thaw cycles compound anything left unrepaired. Many homeowners in {county} County aim to move from documentation to a signed contract before mid-fall, ahead of both the post-storm rush and winter.</p>",
-    "<p>Timing matters in {county} County. Damage discovered in May competes with every other storm claim in {region} for adjuster and contractor attention; the same repair scoped in September may meet a different queue. Documentation is the part that does not depend on the calendar: photograph damage as soon as it is safe and note the date for your adjuster. Ask your insurer whether your policy sets a deadline for reporting damage.</p>",
-    "<p>Most exterior repair work in {county} County happens in a window that runs roughly from late spring through late fall. Inside that window, post-storm weeks are the most congested and the most quote-inflated; the weeks after the rush are a calmer time to compare bids. Whatever the calendar says, the sequence stays the same: document first, understand your policy second, compare written bids third — and let contractors compete for the job rather than racing to hand it to the first knock on the door.</p>",
-    "<p>Storm claims in {region} cluster hard: one hail event can put thousands of {county} County area roofs, gutters, and siding elevations into the repair pipeline in a single afternoon. Comparing more than one written bid for the same scope is one way homeowners check pricing when demand spikes.</p>",
+    "<p>Timing matters in {county} County. Damage discovered in May may compete with every other storm claim in {region} for adjuster and contractor attention; the same repair scoped in September may meet a different queue. Documentation is the part that does not depend on the calendar: photograph damage as soon as it is safe and note the date for your adjuster. Ask your insurer whether your policy sets a deadline for reporting damage.</p>",
+    "<p>Most exterior repair work in {county} County happens in a window that runs roughly from late spring through late fall. Inside that window, post-storm weeks can be congested, and quotes gathered in a hurry may be harder to compare; the weeks after the rush can be a calmer time to review bids. Whatever the calendar says, the sequence stays the same: document first, understand your policy second, compare any written bids you receive third — and take your time rather than rushing to agree with the first person who knocks on the door.</p>",
+    "<p>Storm damage in {region} can arrive in clusters: a single hail event can affect many roofs, gutters, and siding elevations in an area at once. Comparing more than one written bid for the same scope is one way homeowners check pricing when demand spikes.</p>",
 ]
 
 TRADE_INTRO = {
@@ -636,7 +829,7 @@ TRADE_INTRO = {
     "windows": [
         "Window damage in {county} County ranges from the obvious — cracked glass after a hailstorm — to the subtle: failed seals, fogged double panes, and hail-cratered cladding that lets water into the wall. Document each kind of damage you find; whether any of it is included is your insurer's decision under your policy. Water getting into a wall tends to add repair scope the longer it waits.",
         "Storm damage to windows is easy to overlook in {region}. {county} County homeowners tend to notice broken glass immediately, but hail damage to frames, cladding, and glazing beads is easy to miss and worth including in your documentation.",
-        "In {county} County, replacement windows are both a storm-repair item and an efficiency upgrade. When wind or hail compromises frames and seals, homeowners face a choice between like-for-like replacement and stepping up to modern units — and competing bids are the only reliable way to price that choice.",
+        "In {county} County, replacement windows are both a storm-repair item and an efficiency upgrade. When wind or hail compromises frames and seals, homeowners face a choice between like-for-like replacement and stepping up to modern units — and written bids that price each option can help you compare that choice.",
     ],
 }
 
@@ -682,7 +875,7 @@ TRADE_ISSUE_ITEMS = {
         "<li><strong>Screen and hardware damage</strong> — small items that are easy to leave off a first scope; list them in your documentation.</li>",
         "<li><strong>Wind-racked frames</strong> — openings knocked out of square that bind sashes and break seals over the following seasons.</li>",
         "<li><strong>Matching and availability questions</strong> — discontinued window lines raise the same repair-versus-replace questions that come up with siding.</li>",
-        "<li><strong>Energy-efficiency step-ups</strong> — homeowners choosing between like-for-like replacement and upgraded units need competing bids to price the difference.</li>",
+        "<li><strong>Energy-efficiency step-ups</strong> — homeowners choosing between like-for-like replacement and upgraded units can ask for written bids that price the difference.</li>",
     ],
 }
 
@@ -693,12 +886,12 @@ ISSUE_ITEMS_PER_PAGE = 5
 EXPECTATIONS_A = [
     "<p>Storm repair in {county} County follows a rhythm locals know well: a severe-weather event, a wave of door-knocking crews from out of the area, and then the slower, quieter work of getting damage documented, questions raised with your insurer, and a repair scoped carefully. Many homeowners find it helps to slow the process down at the start — documenting damage before tarps and repairs change the evidence, reading their policy before the first phone call, and getting more than one written bid before signing anything.</p>",
     "<p>Homeowners in {county} County navigating a storm claim juggle three parallel tracks: the insurance process (adjuster inspection, scope, settlement), the contractor process (bids, scheduling, materials), and their own documentation. Keeping those tracks separate is the single most useful habit — your insurer decides coverage under your policy; your contractor determines what the repair actually requires; and written bids give you something concrete to discuss with your adjuster.</p>",
-    "<p>The practical sequence for {county} County homeowners after storm damage: document everything with photos before any cleanup, review your policy and ask your insurer how to report damage, and line up written repair bids so you have a written scope and pricing to discuss with your adjuster. Nothing in that sequence requires committing to a contractor early — and keeping your options open until bids are in hand is exactly what a competitive process is for.</p>",
+    "<p>The practical sequence for {county} County homeowners after storm damage: document everything with photos before any cleanup, review your policy and ask your insurer how to report damage, and line up written repair bids so you have a written scope and pricing to discuss with your adjuster. Nothing in that sequence requires committing to a contractor early — you can keep your options open while you review any written bids you receive.</p>",
 ]
 
 EXPECTATIONS_B = [
-    "<p>Local demand also moves in waves. After a widely publicized hail event, every reputable contractor in {region} gets busy at once. Competing bids protect you twice in that environment: they give you a way to check pricing when demand spikes, and they can surface scope differences — what one bidder saw that another missed — before the work starts rather than after.</p>",
-    "<p>Be appropriately skeptical of anyone who shows up unsolicited after a storm, pressures you to sign paperwork on the spot, or quotes a price without getting on the roof or examining the damage up close. {state} sees storm-chasing crews every season, and one practical defense is unhurried, written bids that you can check against each other.</p>",
+    "<p>Local demand can also move in waves. After a widely publicized hail event, contractors across a region may get busy at once. If you receive more than one written bid, comparing them gives you a way to check pricing when demand spikes, and can surface scope differences — what one bidder saw that another missed — before the work starts rather than after.</p>",
+    "<p>Be appropriately skeptical of anyone who shows up unsolicited after a storm, pressures you to sign paperwork on the spot, or quotes a price without getting on the roof or examining the damage up close. Storm-chasing crews can show up after any major storm, and one practical defense is unhurried, written bids that you can check against each other.</p>",
     "<p>Ask any contractor for an itemized written estimate, proof of insurance, and local references. The process can take longer after county-wide storm events, when every roofer, sider, and installer in {region} is working the same backlog. Patience and paperwork usually serve homeowners better than speed and pressure.</p>",
 ]
 
@@ -719,7 +912,7 @@ FAQ = {
         ("Should I repair or replace after partial-slope damage?",
          "Shingle availability and the age of the roof both come into it; ask your adjuster how your policy addresses matching. Written bids that price both paths give you and your adjuster something concrete to discuss."),
         ("Do I need to be home for a roof inspection?",
-         "For the exterior portion, usually not — but being present means you see the documented damage yourself and can ask questions while the contractor is still on site."),
+         "For the exterior portion, usually not — but being present means you see the documented damage yourself and can ask questions of whoever inspects the roof."),
     ],
     "siding": [
         ("Who decides how matching is handled for my siding?",
@@ -807,6 +1000,8 @@ def build_page(county: str, trade: str, generated_on: str, state: str = "IN", pr
     ).format(county=county_esc, region=region_lbl, state=state_name)
     seasonal = variant(seed, 6, SEASONAL).format(county=county_esc, region=region_lbl)
     how_it_works = variant(seed, 5, HOW_IT_WORKS).format(county=county_esc)
+    county_html = (profile.get("county_content") or {}).get(county, {}).get(trade, "")
+    county_notes = f"<h2>{county_esc} County notes</h2>\n    {county_html}" if county_html else ""
 
     faq_selected = shuffle_items(seed, 8, FAQ[trade])[:FAQ_PER_PAGE]
     faq_pairs = [(q.format(county=county_esc), a) for q, a in faq_selected]
@@ -955,6 +1150,8 @@ def build_page(county: str, trade: str, generated_on: str, state: str = "IN", pr
     <h2>Season and timing</h2>
     {seasonal}
 
+    {county_notes}
+
     <h2>How Otter Quotes works here</h2>
     {how_it_works}
 
@@ -1008,15 +1205,25 @@ EMPTY_SITEMAP = (
 
 def resolve_sitemap_path(out_dir, sitemap_path=None) -> pathlib.Path:
     """Which sitemap a run may write. The repo-root sitemap.xml is used ONLY
-    when out_dir is the repo's locations/ directory. Any other out_dir gets
-    its own sitemap.xml next to it (never the repo's), unless the caller
-    passes an explicit path."""
+    when out_dir is the repo's locations/ directory. For any other out_dir the
+    sitemap goes next to it (its parent directory), EXCEPT that this is
+    refused (StateConfigError, nothing written) when that location would be
+    the repo's own sitemap.xml (out_dir directly under the repo root) or when
+    out_dir is the repo root itself: pass an explicit --sitemap in that case.
+    An explicit sitemap_path is always honoured."""
     if sitemap_path is not None:
         return pathlib.Path(sitemap_path)
     out_dir = pathlib.Path(out_dir)
     if out_dir.resolve() == LOCATIONS_DIR.resolve():
         return SITEMAP_PATH
-    return out_dir.parent / "sitemap.xml"
+    derived = out_dir.parent / "sitemap.xml"
+    if out_dir.resolve() == REPO_ROOT.resolve() or derived.resolve() == SITEMAP_PATH.resolve():
+        raise StateConfigError(
+            f"REFUSED: out_dir {out_dir} would put its sitemap at the repo's sitemap.xml ({SITEMAP_PATH}). "
+            f"Pass an explicit --sitemap PATH, or use an out_dir that is not the repo root or a "
+            f"first-level folder of it. Nothing was written."
+        )
+    return derived
 
 
 def update_sitemap(generated_paths: list, generated_on: str, dry_run: bool, sitemap_path=None) -> None:
@@ -1067,14 +1274,19 @@ def generate(states, out_dir=None, sitemap_path=None, counties_path=None,
              dry_run=False, build_fn=None, generated_on=None, profiles_dir=None) -> dict:
     """Generate pages for the given allow-listed states.
 
+    Every page of the run is built first; the strict unique-content gate
+    (strict_unique_counts) needs the whole run to tell shared text from unique
+    text. Pages under MIN_WORDS are skipped; the rest are linted and written.
+
     build_fn(county, trade, generated_on, state) -> html lets tests inject
     thin or non-compliant content. Returns a summary dict.
     """
+    refuse_blocked_states(states)
     out_dir = pathlib.Path(out_dir or LOCATIONS_DIR)
     sitemap_path = resolve_sitemap_path(out_dir, sitemap_path)
     generated_on = generated_on or datetime.date.today().isoformat()
     summary = {"states": list(states), "tuples": 0, "written": 0, "skipped_thin": [], "paths": [],
-               "min_unique_words": None, "median_unique_words": None,
+               "min_strict_unique_words": None, "median_strict_unique_words": None,
                "min_unshared_shingles": None, "median_unshared_shingles": None}
 
     if not states:
@@ -1092,19 +1304,16 @@ def generate(states, out_dir=None, sitemap_path=None, counties_path=None,
     summary["tuples"] = len(tuples)
     print(f"Allow-listed states: {', '.join(states)}; (county, trade) tuples: {len(tuples)}")
 
-    counts = []
-    shingle_sets = []
+    built = []
     for state, county, trade in tuples:
-        c_slug = county_slug(county, state)
-        page_id = f"{c_slug}/{trade}"
-        page_html = build_fn(county, trade, generated_on, state)
+        built.append((county_slug(county, state), trade, build_fn(county, trade, generated_on, state)))
+    word_lists = [main_words(page_html) for _, _, page_html in built]
+    strict = strict_unique_counts(word_lists)
 
-        words = unique_words(page_html)
-        wc = len(words)
-        counts.append(wc)
-        shingle_sets.append(shingles(words))
+    for (c_slug, trade, page_html), wc in zip(built, strict):
+        page_id = f"{c_slug}/{trade}"
         if wc < MIN_WORDS:
-            print(f"  SKIPPED (thin, {wc} < {MIN_WORDS} unique words): {page_id}")
+            print(f"  SKIPPED (thin, {wc} < {MIN_WORDS} strict-unique words): {page_id}")
             summary["skipped_thin"].append(page_id)
             continue
         compliance_lint(page_html, page_id)
@@ -1114,20 +1323,21 @@ def generate(states, out_dir=None, sitemap_path=None, counties_path=None,
         page_dir = out_dir / c_slug / trade
         page_path = page_dir / "index.html"
         if dry_run:
-            print(f"  [DRY RUN] Would write {page_path} ({wc} unique words)")
+            print(f"  [DRY RUN] Would write {page_path} ({wc} strict-unique words)")
         else:
             page_dir.mkdir(parents=True, exist_ok=True)
             page_path.write_text(page_html, encoding="utf-8", newline="\n")
-            print(f"  Written: {page_path} ({wc} unique words)")
+            print(f"  Written: {page_path} ({wc} strict-unique words)")
         summary["written"] += 1
         summary["paths"].append((c_slug, trade))
 
-    if counts:
-        summary["min_unique_words"] = min(counts)
-        summary["median_unique_words"] = statistics.median(counts)
-        print(f"Unique words per page (floor {MIN_WORDS}): min {summary['min_unique_words']}, "
-              f"median {summary['median_unique_words']:g} over {len(counts)} pages")
-        shares = cross_page_uniqueness(shingle_sets)
+    if strict:
+        summary["min_strict_unique_words"] = min(strict)
+        summary["median_strict_unique_words"] = statistics.median(strict)
+        print(f"Strict-unique words per page (floor {MIN_WORDS}; words on no shared {SHINGLE_SIZE}-word shingle): "
+              f"min {summary['min_strict_unique_words']}, median {summary['median_strict_unique_words']:g} "
+              f"over {len(strict)} pages")
+        shares = cross_page_uniqueness([shingles(w) for w in word_lists])
         summary["min_unshared_shingles"] = min(shares)
         summary["median_unshared_shingles"] = statistics.median(shares)
         print(f"Cross-page uniqueness ({SHINGLE_SIZE}-word shingles on no other page in this run; "
@@ -1149,7 +1359,8 @@ def main():
                         help="Path to the state allow-list JSON (default: data/location-pages-state-allowlist.json)")
     parser.add_argument("--out-dir", default=None,
                         help="Where to write pages (default: the repo's locations/). A non-default out-dir "
-                             "gets its own sitemap.xml next to it and never touches the repo sitemap.")
+                             "gets its own sitemap.xml next to it and never touches the repo sitemap; "
+                             "out-dir at the repo root or directly under it requires --sitemap.")
     parser.add_argument("--sitemap", default=None, help="Explicit sitemap path (default: see --out-dir)")
     args = parser.parse_args()
 
@@ -1165,10 +1376,12 @@ def main():
     print(f"  Allow-listed states:       {len(summary['states'])}")
     print(f"  Tuples considered:         {summary['tuples']}")
     print(f"  Pages generated:           {summary['written']}")
-    print(f"  Skipped (< {MIN_WORDS} unique words): {len(summary['skipped_thin'])}")
-    if summary["min_unique_words"] is not None:
-        print(f"  Unique words min / median:  {summary['min_unique_words']} / {summary['median_unique_words']:g}")
-        print(f"  Unshared shingles min / median: {summary['min_unshared_shingles']:.1%} / {summary['median_unshared_shingles']:.1%}")
+    print(f"  Skipped (< {MIN_WORDS} strict-unique words): {len(summary['skipped_thin'])}")
+    if summary["min_strict_unique_words"] is not None:
+        print(f"  Strict-unique words min / median: {summary['min_strict_unique_words']} / "
+              f"{summary['median_strict_unique_words']:g}")
+        print(f"  Unshared shingles min / median:   {summary['min_unshared_shingles']:.1%} / "
+              f"{summary['median_unshared_shingles']:.1%}")
 
 
 if __name__ == "__main__":

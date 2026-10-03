@@ -5,9 +5,12 @@ Self-test for tools/generate_location_pages.py (D-345, gh-2422).
 closes-on mapping (issue #2422):
   (a) test_zero_contractor_county_emits_indexable_compliant_page
         allow-listed test state, county with zero contractors -> indexable page,
-        >= 500 unique words, contains "send it to local contractors", lint-clean.
-  (b) test_thin_county_emits_no_page
-        a county under 500 unique words emits no page and no sitemap entry.
+        >= 500 STRICT-unique words (words on no 8-word shingle shared with another
+        page in the run; CEO ruling on #2304), contains "send it to local
+        contractors", lint-clean.
+  (b) test_thin_county_emits_no_page, test_identical_county_content_fails_both,
+      test_indiana_profile_emits_nothing_under_strict_gate
+        a county under 500 strict-unique words emits no page and no sitemap entry.
   (c) test_state_not_on_allowlist_emits_no_page
   (d) test_committed_allowlist_is_empty  (+ test_empty_allowlist_emits_nothing)
   (e) test_lint_rejects_*  (our contractors / vetted / connects you with
@@ -46,6 +49,15 @@ FIXTURE_CLIMATE = (
     "Paying attention to the calendar, documenting damage early, and comparing written bids gives homeowners in "
     "{county} County the most control over how a storm claim turns out."
 )
+
+
+def fixture_content(county, trade, n=520):
+    """n genuinely distinct words per (county, trade): no 8-word run repeats
+    on any other page, so all n are strict-unique."""
+    words = [f"{county.lower()}{trade}{chr(97 + i % 26)}{i}" for i in range(n)]
+    return "".join("<p>%s</p>" % " ".join(words[i:i + 52]) for i in range(0, n, 52))
+
+
 FIXTURE_COUNTIES = {"states": [{"code": "ZZ", "name": "Zedland", "counties": ["Alpha", "Beta", "Gamma"]}]}
 FIXTURE_PROFILE = {
     "code": "ZZ",
@@ -53,6 +65,10 @@ FIXTURE_PROFILE = {
     "regions": {
         "north": {"label": "northern Zedland", "counties": ["Alpha", "Beta"], "climate": [FIXTURE_CLIMATE % "northern"]},
         "south": {"label": "southern Zedland", "counties": ["Gamma"], "climate": [FIXTURE_CLIMATE % "southern"]},
+    },
+    "county_content": {
+        c: {t: fixture_content(c, t) for t in ("roofing", "siding", "gutters", "windows")}
+        for c in ("Alpha", "Beta", "Gamma")
     },
 }
 
@@ -108,43 +124,47 @@ class GeneratorTests(unittest.TestCase):
             page = (self.out / slug / trade / "index.html").read_text(encoding="utf-8")
             self.assertNotRegex(page, r'(?i)<meta[^>]+name="robots"')
             self.assertNotIn("noindex", page.lower())
-            self.assertGreaterEqual(glp.unique_word_count(page), glp.MIN_WORDS)
             self.assertIn("send it to local contractors", page)
+            self.assertIn("Alpha County notes" if county == "Alpha" else "Gamma County notes", page)
             glp.compliance_lint(page, f"{slug}/{trade}")  # must not raise
             self.assertIn('<link rel="canonical"', page)
             self.assertEqual(page.count('application/ld+json'), 3)  # JSON-LD kept
+        self.assertGreaterEqual(summary["min_strict_unique_words"], glp.MIN_WORDS)
         sm = self.sitemap.read_text(encoding="utf-8")
         self.assertEqual(sm.count("/locations/"), 3 * 4)
         self.assertIn("https://otterquote.com/locations/alpha-county-zz/roofing/", sm)
         self.assertNotIn("connects homeowners with contractors", page)
 
-    def test_indiana_profile_generates_every_page(self):
+    def test_indiana_profile_emits_nothing_under_strict_gate(self):
+        # Indiana's committed profile has no county_content, so every page is
+        # template text shared with other pages: all fail the strict gate.
         summary = self.run_gen(["IN"])
-        self.assertEqual(summary["written"], 92 * 4)
-        self.assertEqual(summary["skipped_thin"], [])
-        for county, trade in (("Ohio", "roofing"), ("Marion", "windows")):
-            slug = glp.county_slug(county, "IN")
-            page = (self.out / slug / trade / "index.html").read_text(encoding="utf-8")
-            self.assertNotRegex(page, r'(?i)<meta[^>]+name="robots"')
-            self.assertNotIn("noindex", page.lower())
-            self.assertGreaterEqual(glp.unique_word_count(page), glp.MIN_WORDS)
-            self.assertIn("send it to local contractors", page)
-            glp.compliance_lint(page, f"{slug}/{trade}")  # must not raise
-            self.assertIn('<link rel="canonical"', page)
-            self.assertEqual(page.count('application/ld+json'), 3)  # JSON-LD kept
-        sm = self.sitemap.read_text(encoding="utf-8")
-        self.assertEqual(sm.count("/locations/"), 92 * 4)
-        self.assertIn("https://otterquote.com/locations/ohio-county-in/roofing/", sm)
+        self.assertEqual(summary["written"], 0)
+        self.assertEqual(len(summary["skipped_thin"]), 92 * 4)
+        self.assertLess(summary["min_strict_unique_words"], glp.MIN_WORDS)
+        self.assertLess(summary["median_strict_unique_words"], glp.MIN_WORDS)
+        self.assertFalse(self.out.exists())
+        self.assertEqual(self.sitemap.read_text(encoding="utf-8"), SITEMAP_SEED)
 
-    def test_every_generated_page_clears_floor_and_lint(self):
-        # The full IN x 4 set is generated above under the same checks
-        # (generate() lints every page and raises on failure); here assert the
-        # minimum unique-word count across all pages for the record.
-        lo = min(
-            glp.unique_word_count(glp.build_page(c, t, "2026-01-01", "IN"))
-            for c in glp.load_counties("IN") for t in glp.ELIGIBLE_TRADES
-        )
-        self.assertGreaterEqual(lo, glp.MIN_WORDS)
+    def test_every_indiana_template_page_passes_the_lint(self):
+        # The gate skips Indiana pages before linting, so lint the template
+        # output directly: this guards the shared copy against every ban.
+        prof = glp.load_profile("IN")
+        for c in glp.load_counties("IN"):
+            for t in glp.ELIGIBLE_TRADES:
+                glp.compliance_lint(glp.build_page(c, t, "2026-01-01", "IN", profile=prof), f"{c}/{t}")
+
+    def test_strict_unique_counts_only_unshared_words(self):
+        a = ["a%d" % i for i in range(30)] + ["shared%d" % i for i in range(20)]
+        b = ["b%d" % i for i in range(40)] + ["shared%d" % i for i in range(20)]
+        ca, cb = glp.strict_unique_counts([a, b])
+        # the 20 shared words (all inside shared 8-word shingles) do not count;
+        # the 7 words before them ride in shingles that mix unique and shared
+        # words, so they stay unique.
+        self.assertEqual((ca, cb), (30, 40))
+        self.assertEqual(glp.strict_unique_counts([a]), [50])           # compared with nothing
+        self.assertEqual(glp.strict_unique_counts([a, a]), [0, 0])      # identical pages
+        self.assertEqual(glp.strict_unique_counts([["x", "y", "z"], ["x", "y", "z"]]), [3, 3])  # < 8 words: no shingles
 
     # (b) negative: under the unique-word floor ------------------------------
     def test_thin_county_emits_no_page(self):
@@ -167,16 +187,34 @@ class GeneratorTests(unittest.TestCase):
         self.assertNotIn("alpha-county-zz", self.sitemap.read_text(encoding="utf-8"))
         self.assertTrue((self.out / "beta-county-zz" / "roofing" / "index.html").exists())
 
-    def test_boilerplate_does_not_count_toward_floor(self):
-        # A page padded only with boilerplate (breadcrumb/cta/disclosure/guides
-        # blocks, or content outside <main>) must stay under the floor.
-        pad = " ".join(["word"] * 2000)
-        page = (
-            "<html><body><nav>%s</nav><main><div data-boilerplate><p>%s</p></div>"
-            "<p>send it to local contractors</p></main><footer>%s</footer></body></html>"
-            % (pad, pad, pad)
-        )
-        self.assertLess(glp.unique_word_count(page), 10)
+    def test_identical_county_content_fails_both(self):
+        def same(prof):
+            prof["county_content"]["Beta"] = json.loads(json.dumps(prof["county_content"]["Alpha"]))
+        self.write_profile(same)
+        summary = self.run_fx()
+        failed = sorted(summary["skipped_thin"])
+        self.assertEqual(failed, sorted(f"{c}-county-zz/{t}" for c in ("alpha", "beta") for t in glp.ELIGIBLE_TRADES))
+        self.assertEqual(summary["written"], 4)  # Gamma still passes
+        self.assertTrue((self.out / "gamma-county-zz" / "roofing" / "index.html").exists())
+        self.assertFalse((self.out / "alpha-county-zz").exists())
+        self.assertFalse((self.out / "beta-county-zz").exists())
+
+    def test_same_text_on_every_trade_of_a_county_is_shared_and_fails(self):
+        def one_string(prof):
+            prof["county_content"]["Gamma"] = fixture_content("gamma", "all")  # str: used for every trade
+        self.write_profile(one_string)
+        summary = self.run_fx()
+        self.assertEqual(sorted(summary["skipped_thin"]),
+                         sorted(f"gamma-county-zz/{t}" for t in glp.ELIGIBLE_TRADES))
+        self.assertEqual(summary["written"], 8)
+
+    def test_boilerplate_and_template_text_never_count(self):
+        # Large text shared by every page (nav-like or boilerplate) counts for none of them.
+        pad = " ".join("pad%d" % i for i in range(2000))
+        page = lambda tail: ("<html><body><main><p>%s</p><p>%s send it to local contractors</p></main></body></html>"
+                             % (pad, tail))
+        counts = glp.strict_unique_counts([glp.main_words(page("one")), glp.main_words(page("two"))])
+        self.assertLess(max(counts), 10)
 
     # (c) negative: state not on the allow-list ------------------------------
     def test_state_not_on_allowlist_emits_no_page(self):
@@ -308,21 +346,87 @@ class GeneratorTests(unittest.TestCase):
                     self.run_fx()
                 self.assertFalse(self.out.exists())
 
+    def test_malformed_county_content_is_an_explicit_error(self):
+        cases = {
+            "unknown county": lambda p: p["county_content"].update(Nowhere="<p>x</p>"),
+            "unknown trade": lambda p: p["county_content"]["Alpha"].update(plumbing="<p>x</p>"),
+            "empty string": lambda p: p["county_content"].update(Alpha="  "),
+            "empty trade text": lambda p: p["county_content"]["Alpha"].update(roofing=""),
+            "wrong type": lambda p: p["county_content"].update(Alpha=5),
+            "not an object": lambda p: p.update(county_content=["x"]),
+        }
+        for label, mutate in cases.items():
+            with self.subTest(label):
+                self.write_profile(mutate)
+                with self.assertRaises(glp.StateConfigError):
+                    self.run_fx()
+                self.assertFalse(self.out.exists())
+
+    def test_first_level_repo_dir_or_repo_root_out_dir_is_refused(self):
+        repo_sitemap = REPO_ROOT / "sitemap.xml"
+        before = repo_sitemap.read_bytes()
+        under = REPO_ROOT / "preview-locations-test"
+        self.assertFalse(under.exists())
+        for out in (under, REPO_ROOT):
+            with self.subTest(out=str(out)):
+                with self.assertRaises(glp.StateConfigError) as cm:
+                    quiet(glp.generate, ["ZZ"], out_dir=out, counties_path=self.fx_counties,
+                          profiles_dir=self.fx_profiles)
+                self.assertIn("REFUSED", str(cm.exception))
+                with self.assertRaises(glp.StateConfigError):
+                    quiet(glp.generate, [], out_dir=out)
+                self.assertEqual(repo_sitemap.read_bytes(), before)
+        self.assertFalse(under.exists())
+        # an explicit sitemap path is honoured (and the repo sitemap still untouched)
+        own = self.tmp / "own-sitemap.xml"
+        quiet(glp.generate, ["ZZ"], out_dir=self.tmp / "o3" / "locations", sitemap_path=own,
+              counties_path=self.fx_counties, profiles_dir=self.fx_profiles)
+        self.assertEqual(own.read_text(encoding="utf-8").count("/locations/"), 12)
+        self.assertEqual(repo_sitemap.read_bytes(), before)
+
+    # D-344 blocked states ----------------------------------------------------
+    def test_blocked_states_are_refused_everywhere(self):
+        for st in ("FL", "LA", "TX"):
+            with self.subTest(st):
+                f = self.tmp / f"allow-{st}.json"
+                f.write_text(json.dumps({"states": [st]}), encoding="utf-8")
+                with self.assertRaises(glp.StateConfigError) as cm:
+                    glp.load_allowlist(f)
+                self.assertIn("D-344", str(cm.exception))
+                # also refused when generate() is called directly, even next to a valid state
+                with self.assertRaises(glp.StateConfigError):
+                    self.run_fx(states=("ZZ", st))
+                self.assertFalse(self.out.exists())
+                self.assertEqual(self.sitemap.read_text(encoding="utf-8"), SITEMAP_SEED)
+
+    def test_cli_refuses_blocked_state_before_writing(self):
+        import subprocess
+        f = self.tmp / "allow-TX.json"
+        f.write_text(json.dumps({"states": ["TX"]}), encoding="utf-8")
+        out = self.tmp / "cli-out" / "locations"
+        r = subprocess.run([sys.executable, str(HERE / "generate_location_pages.py"), "--allowlist", str(f),
+                            "--out-dir", str(out)], capture_output=True, text=True)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("REFUSED", r.stderr)
+        self.assertIn("D-344", r.stderr)
+        self.assertFalse(out.exists())
+        self.assertFalse((self.tmp / "cli-out").exists())
+
     def test_missing_profile_is_an_explicit_error(self):
         (self.fx_profiles / "ZZ.json").unlink()
         with self.assertRaises(glp.StateConfigError) as cm:
             self.run_fx()
         self.assertIn("no state profile", str(cm.exception))
 
-    def test_run_reports_min_and_median_unique_words(self):
+    def test_run_reports_min_and_median_strict_unique_words(self):
         summary = self.run_fx()
-        self.assertGreaterEqual(summary["min_unique_words"], glp.MIN_WORDS)
-        self.assertGreaterEqual(summary["median_unique_words"], summary["min_unique_words"])
+        self.assertGreaterEqual(summary["min_strict_unique_words"], glp.MIN_WORDS)
+        self.assertGreaterEqual(summary["median_strict_unique_words"], summary["min_strict_unique_words"])
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             glp.generate(["ZZ"], out_dir=self.tmp / "o2", sitemap_path=self.sitemap,
                          counties_path=self.fx_counties, profiles_dir=self.fx_profiles)
-        self.assertRegex(buf.getvalue(), r"Unique words per page \(floor 500\): min \d+, median \d+")
+        self.assertRegex(buf.getvalue(), r"Strict-unique words per page \(floor 500;[^)]*\): min \d+, median \d+")
 
     def test_no_contractor_or_supabase_dependency_remains(self):
         for dead in ("MIN_CONTRACTORS", "inject_noindex", "NOINDEX_TAG", "supabase_get",
@@ -457,6 +561,66 @@ class LintTests(unittest.TestCase):
         self.lint_frag("<p>Otter Quotes does not guarantee the availability of any particular contractor.</p>")
         self.lint_frag("<p>Your insurer decides coverage under your policy; ask your adjuster whether it is included.</p>")
         self.lint_frag("<p>We create a scope of work and send it to local contractors, so you can compare any bids you receive.</p>")
+
+    # round-4 hardening ---------------------------------------------------------
+    def assert_fails(self, fragment):
+        with self.assertRaises(glp.ComplianceError, msg=fragment):
+            self.lint_frag(fragment)
+
+    def test_lint_rejects_unicode_tricks(self):
+        for bad in (
+            "<p>\uff2f\uff55\uff52 contractors</p>",               # fullwidth Our
+            "<p>\u041eur contractors</p>",                          # Cyrillic O
+            "<p>Our c\u043entractors</p>",                          # Cyrillic o
+            "<p>Our \u03bfr \u0441ontractors</p>",                  # Greek/Cyrillic mix
+            "<p>Our\u2060 contractors</p>",                         # word joiner (Cf)
+            "<p>O\u202eur contractors</p>",                         # bidi override (Cf)
+            "<p>Our\U000e0041 contractors</p>",                     # tag character (Cf)
+            "<p>Our cont\u00adractors</p>",                         # soft hyphen (Cf)
+            "<p>V\u0435tted pros</p>",                              # Cyrillic e in "vetted"
+        ):
+            with self.subTest(bad=bad):
+                self.assert_fails(bad)
+
+    def test_lint_reads_css_content_srcdoc_and_hyphen_splits(self):
+        for bad in (
+            '<style>.a::after{content:"Our contractors"}</style>',
+            '<style>.a::after{content:"\\4f ur contractors"}</style>',        # CSS escape for O
+            '<style>.a::before{content:"Our " "contractors"}</style>',
+            '<iframe srcdoc="&lt;p&gt;Our contractors&lt;/p&gt;"></iframe>',
+            "<p>Our con-tractors</p>",
+            "<p>con\u2010tractors who serve Marion County</p>",
+            "<p>Our\u2011contractors</p>",
+        ):
+            with self.subTest(bad=bad):
+                self.assert_fails(bad)
+
+    def test_lint_rejects_the_round4_bans(self):
+        for bad in (
+            # D-326
+            "Your insurance covers hail damage.", "The policy covered the roof.", "Insurers cover wind losses.",
+            "You are entitled to a new roof.", "Maximize your claim.", "Maximise the payout.",
+            # promises
+            "Lowest price in town.", "You will get three bids.", "Get three written bids.",
+            "Bids by tomorrow.", "It is free for you.", "We guarantee savings.", "Guaranteed results.",
+            # have-contractors
+            "Trusted local team.", "Our local pros.", "Local roofers handle it.", "Trusted pros nearby.",
+            "Contractors who already bid through Otter Quotes.", "Hundreds of contractors compete.",
+        ):
+            with self.subTest(bad=bad):
+                self.assert_fails("<p>%s</p>" % bad)
+
+    def test_lint_allows_negated_guarantee_and_approved_procedural_wording(self):
+        for ok in (
+            "Otter Quotes does not guarantee the availability of any particular contractor.",
+            "Otter Quotes doesn\u2019t guarantee a bid.", "Otter Quotes doesn't guarantee a bid.",
+            "We cannot guarantee a result.", "We can't guarantee a result.", "We do not guarantee a result.",
+            "Your insurer decides coverage under your policy; ask your adjuster whether it is included.",
+            "Insurance coverage decisions are made solely by your insurer under the terms of your policy.",
+            '<a href="/blog/x.html">Does Homeowners Insurance Cover Storm Damage?</a>',
+        ):
+            with self.subTest(ok=ok):
+                self.lint_frag("<p>%s</p>" % ok if not ok.startswith("<a") else ok)
 
     def test_lint_rejects_vendor_names_and_other_bans(self):
         for bad in ("Powered by Hover.", "Sign with DocuSign.", "Pay with Stripe.", "Via Mailgun.",
