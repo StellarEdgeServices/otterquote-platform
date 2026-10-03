@@ -437,6 +437,9 @@ jobs:
       - name: Do Not Sell or Share opt-out control guard (gh-1925, D-336)
         run: node tests/gh1925-optout-control.mjs
 
+      - name: partner-re one leads row per signup, variant carried (gh-2084 arm E)
+        run: node tests/gh2084-partner-re-one-lead-row.mjs
+
       - name: tsc --noEmit type gate (gh-414)
         working-directory: react-app
         run: npx tsc --noEmit
