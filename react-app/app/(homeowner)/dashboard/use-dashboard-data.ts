@@ -152,9 +152,9 @@ export function useHomeownerProfile(
         // No profile row — derive a minimal default and try to persist it.
         let signup: Record<string, unknown> = {};
         try {
-          signup = JSON.parse(
-            readFreshSignupRaw() || sessionStorage.getItem('cs_signup') || '{}',
-          );
+          // gh-2471: nothing ever writes cs_signup to sessionStorage (get-started writes localStorage only,
+          // read through the 24h freshness guard), so the old sessionStorage fallback was dead code.
+          signup = JSON.parse(readFreshSignupRaw() || '{}');
         } catch {
           signup = {};
         }

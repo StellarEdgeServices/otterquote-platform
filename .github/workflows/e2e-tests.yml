@@ -423,6 +423,9 @@ jobs:
       - name: storage-surface ledger — every storage key has a status + a cited test (gh-2060 closes-on c)
         run: node tests/gh2060-storage-surface-ledger.mjs
 
+      - name: partner pages — ?recruit= case/whitespace-normalised + URL-miss falls back to stored code (gh-2471)
+        run: node tests/gh2471-recruit-case.mjs
+
       - name: measurement-shape admin-fulfilment flip unit test (gh-1411 D-317 cl. 4-6; REVIEW finding A, PR #2236)
         run: node tests/measurement-shape-flip-on-deliver.mjs
 
