@@ -22,8 +22,11 @@ function ok(c, label) { if (c) { console.log('PASS: ' + label); pass++; } else {
 const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
 
 const SITES = [
-  ['dashboard.html', /await fetch\(SEND_FUNCTION_URL,/g, 2],
-  ['contractor-dashboard.html', /await fetch\(SEND_FUNCTION_URL,/g, 2],
+  // gh-2478: each static page had TWO messaging <script> blocks; the first posted to a dead
+  // /.netlify/functions/ URL (and, in contractor-dashboard.html, double-wired the Send button).
+  // That block is gone, so one call site per page remains (was 2).
+  ['dashboard.html', /await fetch\(SEND_FUNCTION_URL,/g, 1],
+  ['contractor-dashboard.html', /await fetch\(SEND_FUNCTION_URL,/g, 1],
   ['react-app/app/contractor/dashboard/Messaging.tsx', /await fetch\(efUrl\('send-message-notification'\),/g, 1],
 ];
 
@@ -57,6 +60,25 @@ for (const f of ['dashboard.html', 'contractor-dashboard.html', 'react-app/app/c
 // Homeowner React path: functions.invoke (session JWT attached by supabase-js).
 ok(/supabase\.functions\.invoke\('send-message-notification'/.test(read('react-app/app/(homeowner)/dashboard/actions.ts')),
   'homeowner actions.ts: uses supabase.functions.invoke (session JWT attached automatically)');
+
+// gh-2478: no browser source may post to the dead Netlify function path (there is no
+// netlify/functions dir and no redirect for it), and the session token must not go there.
+const DEAD = '/.netlify/functions/send-message-notification';
+const scan = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+  if (['node_modules', '.next', '.git', 'tests', 'e2e', '.claude', 'handoffs'].includes(e.name)) return [];
+  const full = path.join(dir, e.name);
+  if (e.isDirectory()) return scan(full);
+  return /\.(html|js|mjs|ts|tsx)$/.test(e.name) && !/\.(test|spec)\.[jt]sx?$/.test(e.name) ? [full] : [];
+});
+const offenders = scan(root).filter((f) => !f.includes(`${path.sep}supabase${path.sep}`) && fs.readFileSync(f, 'utf8').split('\n')
+  .some((l) => l.includes(DEAD) && !/^\s*(\*|\/\/)/.test(l)));
+ok(offenders.length === 0, `no browser source posts to ${DEAD} (offenders: ${offenders.map((f) => path.relative(root, f)).join(', ') || 'none'})`);
+for (const f of ['dashboard.html', 'contractor-dashboard.html']) {
+  const src = read(f);
+  ok((src.match(/getElementById\("messageSendBtn"\)\.addEventListener/g) || []).length === 1, `${f}: Send button wired exactly once (no duplicate messaging block)`);
+  ok((src.match(/const SEND_FUNCTION_URL =/g) || []).length === 1, `${f}: exactly one SEND_FUNCTION_URL definition`);
+  ok(/const SEND_FUNCTION_URL = "https:\/\/[a-z0-9]+\.supabase\.co\/functions\/v1\/send-message-notification"/.test(src), `${f}: SEND_FUNCTION_URL is the Supabase function URL`);
+}
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
