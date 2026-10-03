@@ -2,51 +2,63 @@
 """
 Generate programmatic /locations/[county]/[trade]/ SEO landing pages.
 
-Pulls (county, trade, active contractor count) tuples from Supabase and
-generates one static page per ELIGIBLE tuple at:
-  locations/[county-slug]/[trade-slug]/index.html   (repo root)
+D-345 (gh-2422) amended D-241 / D-169 for /locations/ pages. What this
+script does now:
 
-Netlify publishes the repo root (netlify.toml: publish = "."), so repo-root
-locations/ is what actually serves at /locations/ — same convention as the
-contractors/ and partners/ generators (gh-403 publish-root fix; the previous
-otterquote-deploy/ output path could never serve at the canonical URLs).
-
-Also updates the repo-root sitemap.xml with generated URLs
-(lastmod = generation timestamp).
+  1. Reads the STATE ALLOW-LIST (data/location-pages-state-allowlist.json),
+     which the CRO maintains. The list ships EMPTY; with an empty list the
+     generator emits nothing and says so. A state is added only after its
+     statute search (D-344 trigger a) -- see tools/README-locations-workflow.md.
+  2. For every allow-listed state, iterates (county, trade) over ALL of that
+     state's counties (data/us-counties.json) x the eligible trades. Page
+     discovery does NOT depend on contractors, and this script no longer
+     touches Supabase at all, so it runs with no credentials.
+  3. Builds one static page per tuple at
+       locations/[county-slug]/[trade-slug]/index.html   (repo root)
+     (Netlify publishes the repo root, netlify.toml: publish = ".").
+  4. Applies the unique-content floor (below). A page under the floor is NOT
+     generated: not written to disk, not added to the sitemap.
+  5. Runs the compliance lint (below) on every page that survives the floor.
+     A lint failure is a build error (copy bug), not a skip.
+  6. Rewrites the location entries in the repo-root sitemap.xml so it lists
+     exactly the pages generated this run. Every generated page is indexable;
+     this script never injects noindex.
 
 Usage:
-  python tools/generate_location_pages.py [--dry-run]
+  python tools/generate_location_pages.py [--dry-run] [--allowlist PATH]
 
-Eligibility (D-169 carve-out, D-241 guardrails — task 86e1h5hty):
-  - trade in {roofing, siding, gutters, windows}
-  - contractors.status = 'active' (the canonical live status: the admin
-    approval path sets 'active'; no 'approved' value exists in prod — gh-403)
-  - contractors.service_counties overlaps the county
-    ("Marion-IN" explicit entries; "IN:*" = statewide wildcard, expands
-    to all 92 Indiana counties)
-  - contractor count >= MIN_CONTRACTORS (2). HARD guardrail, non-negotiable:
-    false-advertising and thin-content risk if pages render with thin coverage.
+REMOVED by D-345 (do not reintroduce): the >=2-active-contractors
+eligibility check (D-241 guardrail 1, MIN_CONTRACTORS) and the
+auto-noindex-below-2 rule (guardrail 3, inject_noindex). A county with zero
+contractors can get an indexable page.
 
-Auto-noindex: if a previously generated page's tuple drops below the
-minimum at regeneration time, the page is KEPT on disk but a
-<meta name="robots" content="noindex"> tag is injected, and the URL is
-removed from the sitemap.
+UNIQUE-CONTENT FLOOR (D-241 guardrail 2, KEPT): MIN_WORDS = 500.
+  unique_word_count() counts the words of the page's main content with the
+  boilerplate that every page shares removed: breadcrumb, call-to-action bar,
+  legal disclosure and the homeowner-guide link list (all marked
+  data-boilerplate in the template), plus everything outside <main> (nav,
+  head, footer, scripts, styles, JSON-LD). What remains is the page-specific
+  prose: intro, climate, issue list, expectations, season/timing, how it
+  works, FAQ. The earlier implementation counted every word in the HTML
+  after stripping tags, which let shared chrome and boilerplate count toward
+  the floor.
 
-Compliance (enforced by lint in this script):
-  - D-104: no "vetted"/screening claims about contractors.
+COPY RULE (D-345), enforced in the template AND in compliance_lint():
+  Otter Quotes creates a scope of work and sends it to local contractors. We
+  never say or imply that we HAVE contractors in a county.
+  - Every page must contain the exact phrase "send it to local contractors".
+  - Banned (case-insensitive): have-contractors phrasing ("our contractors",
+    "our network of", "contractors who serve", "contractors serving",
+    "contractors in [County] County", "local contractors we",
+    "contractors near you", "approved contractors", "contractors available",
+    "contractors on the platform", ...). See HAVE_CONTRACTORS_BANS.
+  - D-104: no "vetted" / screening claims.
+  - D-312: no vendor names (list reused from scripts/vendor-scrub-check.py,
+    plus Stripe, Mailgun, Twilio).
   - D-168: no response-time claims.
   - D-175: brand is "Otter Quotes" (two words) in copy.
-  - Required informational pattern on every page:
-    "Otter Quotes connects you with contractors who serve [County]"
-
-Notes:
-  - Mirrors tools/generate_contractor_pages.py for Supabase access
-    (SUPABASE_SERVICE_ROLE_KEY env var or .deploy-secrets) and page/template
-    conventions (design-system CSS, GA4, JSON-LD, sitemap entry format).
-  - Run from repo root: python tools/generate_location_pages.py
 """
 
-import os
 import re
 import sys
 import json
@@ -55,22 +67,19 @@ import hashlib
 import pathlib
 import datetime
 import argparse
-import urllib.request
-import urllib.parse
+import importlib.util
+from html.parser import HTMLParser
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 
-SUPABASE_URL = "https://yeszghaspzwwstvsrioa.supabase.co"
 SITE_BASE = "https://otterquote.com"
 REPO_ROOT = pathlib.Path(__file__).parent.parent
 LOCATIONS_DIR = REPO_ROOT / "locations"
 SITEMAP_PATH = REPO_ROOT / "sitemap.xml"
-
-# HARD guardrail (D-241) — do NOT lower. Pages must never render with
-# fewer than 2 approved contractors covering the (county, trade) tuple.
-MIN_CONTRACTORS = 2
+ALLOWLIST_PATH = REPO_ROOT / "data" / "location-pages-state-allowlist.json"
+COUNTIES_PATH = REPO_ROOT / "data" / "us-counties.json"
 
 ELIGIBLE_TRADES = ("roofing", "siding", "gutters", "windows")
 
@@ -81,10 +90,11 @@ TRADE_LABELS = {
     "windows": "Windows",
 }
 
-MIN_WORDS = 500  # unique-content floor per page (task acceptance criterion)
+MIN_WORDS = 500  # unique-content floor per page (D-241 guardrail 2, kept by D-345)
 
-# Compliance lint — none of these may appear in rendered page text.
-# D-104 (no vetted claims), D-168 (no response-time claims), D-175 (naming).
+REQUIRED_PHRASE = "send it to local contractors"
+
+# D-104 (no vetted claims), D-168 (no response-time claims).
 FORBIDDEN_PHRASES = (
     "vetted",
     "vetting",
@@ -101,15 +111,56 @@ FORBIDDEN_PHRASES = (
     "fast response",
     "respond within",
     "response time",
-    "OtterQuote",   # D-175: brand copy is "Otter Quotes" (two words)
-    "ClaimShield",
 )
 
-REQUIRED_PATTERN = "Otter Quotes connects you with contractors who serve"
+# D-175: brand copy is "Otter Quotes" (two words). Case-sensitive.
+FORBIDDEN_CASE_SENSITIVE = ("OtterQuote", "ClaimShield")
+
+# D-345: phrasing that states or implies Otter Quotes HAS contractors in a
+# county. Regexes, matched case-insensitively against whitespace-normalised
+# text. Deliberately specific so that "send it to local contractors" and
+# neutral mentions of "contractors" / "local contractors" do not trip them.
+HAVE_CONTRACTORS_BANS = (
+    r"\bour\s+(?:\w+\s+)?contractors\b",                 # our contractors, our local contractors
+    r"\bour\s+(?:contractor\s+)?network\b",              # our network of, our contractor network
+    r"\bcontractors\s+who\s+serve\b",                    # connects you with contractors who serve X
+    r"\bcontractors\s+(?:that|which)\s+serve\b",
+    r"\bcontractors\s+serving\b",
+    r"\bcontractors\s+in\s+[^<>.]{1,40}?\bcounty\b",     # contractors in Marion County
+    r"\blocal\s+contractors\s+we\b",                     # local contractors we work with / have
+    r"\bcontractors\s+(?:near|around)\s+you\b",
+    r"\bcontractors\s+(?:working|operating|located|based)\s+in\b",
+    r"\bapproved\s+contractors?\b",
+    r"\bcontractors?\s+(?:are\s+)?available\b",
+    r"\bcontractors\s+on\s+(?:the\s+platform|otter\s+quotes)\b",
+    r"\b(?:we|otter\s+quotes)\s+(?:have|has|work\s+with|partner\s+with)\s+(?:\w+\s+){0,2}contractors\b",
+    r"\bplatform\s+coverage\b",
+    r"\bcontractor\s+profiles?\b",
+)
+
+# D-312: no vendor names on customer-facing pages. Reuse the list the repo's
+# own vendor-scrub meter uses; add the processors named in the D-345 brief.
+EXTRA_VENDOR_TOKENS = ("stripe", "mailgun", "twilio")
+
+
+def _load_vendor_tokens() -> tuple:
+    path = REPO_ROOT / "scripts" / "vendor-scrub-check.py"
+    spec = importlib.util.spec_from_file_location("vendor_scrub_check", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return tuple(dict.fromkeys(tuple(mod.VENDOR_TOKENS) + EXTRA_VENDOR_TOKENS))
+
+
+VENDOR_TOKENS = _load_vendor_tokens()
 
 # ---------------------------------------------------------------------------
-# Indiana counties (92) with coarse climate region bands.
-# Region drives climate copy only ("northern/central/southern Indiana").
+# State profiles. A state can be allow-listed only if it has (a) a county list
+# in data/us-counties.json and (b) a profile here: the climate-band copy is
+# written per state, and we do not invent it for states we have not written.
+# Indiana is the only state with both today.
+#
+# Indiana counties with coarse climate region bands. Region drives climate
+# copy only ("northern/central/southern Indiana").
 # ---------------------------------------------------------------------------
 
 NORTHERN = (
@@ -146,57 +197,93 @@ for _c in CENTRAL:
 for _c in SOUTHERN:
     COUNTY_REGION[_c] = "southern"
 
-STATE_CODE = "IN"
-STATE_NAME = "Indiana"
-STATEWIDE_WILDCARD = f"{STATE_CODE}:*"   # "IN:*" — contractor serves every IN county
+COUNTY_REGION = {}
+for _c in NORTHERN:
+    COUNTY_REGION[_c] = "northern"
+for _c in CENTRAL:
+    COUNTY_REGION[_c] = "central"
+for _c in SOUTHERN:
+    COUNTY_REGION[_c] = "southern"
 
 
 # ---------------------------------------------------------------------------
-# Supabase access (mirrors tools/generate_contractor_pages.py)
+# Errors
 # ---------------------------------------------------------------------------
 
-def load_service_key() -> str:
-    key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_SERVICE_KEY")
-    if key:
-        return key
-    secrets_path = REPO_ROOT / "tools" / ".deploy-secrets"
-    if not secrets_path.exists():
-        secrets_path = REPO_ROOT.parent / "Stellar Edge Services" / "OtterQuote" / "Tools" / ".deploy-secrets"
-    if secrets_path.exists():
-        for line in secrets_path.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if line.startswith("SUPABASE_SERVICE_ROLE_KEY="):
-                return line.split("=", 1)[1].strip()
-    raise RuntimeError(
-        "SUPABASE_SERVICE_ROLE_KEY not found. Set the env var or ensure .deploy-secrets is present."
-    )
+class ComplianceError(RuntimeError):
+    """A generated page failed the D-345 / D-104 / D-312 / D-168 / D-175 lint."""
 
 
-def supabase_get(service_key: str, path: str) -> list:
-    url = f"{SUPABASE_URL}/rest/v1/{path}"
-    req = urllib.request.Request(
-        url,
-        headers={
-            "apikey": service_key,
-            "Authorization": f"Bearer {service_key}",
-            "Content-Type": "application/json",
-        },
-    )
-    with urllib.request.urlopen(req, timeout=20) as resp:
-        return json.loads(resp.read())
+class StateConfigError(RuntimeError):
+    """An allow-listed state cannot be generated (bad config, no county data,
+    or no state profile). Always explicit; never skipped silently."""
 
 
-def fetch_approved_contractors(service_key: str) -> list:
-    """Fetch approved contractors with service areas and trades.
+# ---------------------------------------------------------------------------
+# Allow-list and county data
+# ---------------------------------------------------------------------------
 
-    Only aggregate counts and (for directory-opted-in contractors) the
-    company name + profile slug reach the generated HTML. No PII (D-249).
-    """
-    fields = "id,company_name,trades,service_counties,status,public_directory_optin"
-    # status=eq.active: canonical live-contractor status (admin approval path
-    # sets 'active'; prod has NO 'approved' rows — gh-403 status-semantics fix).
-    path = f"contractors?select={fields}&status=eq.active&order=company_name.asc"
-    return supabase_get(service_key, path)
+def load_allowlist(path=None) -> list:
+    """Return the allow-listed state codes from the CRO-maintained file."""
+    path = pathlib.Path(path or ALLOWLIST_PATH)
+    if not path.exists():
+        raise StateConfigError(f"State allow-list file not found: {path}")
+    data = json.loads(path.read_text(encoding="utf-8"))
+    states = data.get("states") if isinstance(data, dict) else None
+    if not isinstance(states, list):
+        raise StateConfigError(f'{path}: expected a JSON object with a "states" list')
+    out = []
+    for code in states:
+        if not (isinstance(code, str) and re.fullmatch(r"[A-Z]{2}", code)):
+            raise StateConfigError(f"{path}: invalid state code {code!r} (expected two capital letters)")
+        if code not in out:
+            out.append(code)
+    return out
+
+
+def load_counties(state: str, counties_path=None) -> list:
+    """County names for one state from data/us-counties.json."""
+    path = pathlib.Path(counties_path or COUNTIES_PATH)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    for entry in data.get("states", []):
+        if entry.get("code") == state:
+            counties = entry.get("counties") or []
+            if not counties:
+                raise StateConfigError(f"{state}: county list in {path} is empty")
+            return list(counties)
+    raise StateConfigError(f"{state}: no county data in {path}; cannot generate pages for this state")
+
+
+def state_profile(state: str) -> dict:
+    profile = STATE_PROFILES.get(state)
+    if profile is None:
+        raise StateConfigError(
+            f"{state}: no state profile in tools/generate_location_pages.py (STATE_PROFILES). "
+            f"Climate copy is written per state and is not invented; add a profile before allow-listing {state}."
+        )
+    return profile
+
+
+def validate_states(states: list, counties_path=None) -> None:
+    """Fail loudly, before anything is written, if any state is unsupported."""
+    for st in states:
+        profile = state_profile(st)
+        counties = load_counties(st, counties_path)
+        unknown = [c for c in counties if c not in profile["county_region"]]
+        if unknown:
+            raise StateConfigError(
+                f"{st}: counties in the data file with no climate-region mapping in the profile: {unknown}"
+            )
+
+
+def discover_tuples(states: list, counties_path=None) -> list:
+    """(state, county, trade) for every county of every allow-listed state."""
+    out = []
+    for st in states:
+        for county in load_counties(st, counties_path):
+            for trade in ELIGIBLE_TRADES:
+                out.append((st, county, trade))
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -211,71 +298,89 @@ def slugify(text: str) -> str:
     return text.strip("-") or "x"
 
 
-def county_slug(county: str) -> str:
-    return slugify(f"{county} County {STATE_CODE}")
+def county_slug(county: str, state: str) -> str:
+    return slugify(f"{county} County {state}")
 
 
 def safe_jsonld(obj) -> str:
     return json.dumps(obj, indent=2).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
 
 
-def contractor_serves_county(service_counties: list, county: str) -> bool:
-    if not service_counties:
-        return False
-    if STATEWIDE_WILDCARD in service_counties:
-        return True
-    return f"{county}-{STATE_CODE}" in service_counties
+_VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"}
 
 
-def compute_tuples(contractors: list) -> dict:
-    """Return {(county, trade): [contractor dicts]} for eligible trades.
+class _UniqueTextParser(HTMLParser):
+    """Collect text inside <main>, skipping script/style and any element
+    marked data-boilerplate (and everything nested in it)."""
 
-    Wildcard "IN:*" expands to all 92 Indiana counties. Only tuples meeting
-    MIN_CONTRACTORS survive into the eligible set (hard D-241 guardrail).
-    """
-    coverage = {}
-    for c in contractors:
-        trades = [t for t in (c.get("trades") or []) if t in ELIGIBLE_TRADES]
-        counties = c.get("service_counties") or []
-        if not trades or not counties:
-            continue
-        if STATEWIDE_WILDCARD in counties:
-            served = list(INDIANA_COUNTIES)
-        else:
-            served = [
-                x[: -len(f"-{STATE_CODE}")]
-                for x in counties
-                if x.endswith(f"-{STATE_CODE}")
-            ]
-            served = [x for x in served if x in COUNTY_REGION]
-        for county in served:
-            for trade in trades:
-                coverage.setdefault((county, trade), []).append(c)
-    return coverage
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.in_main = 0
+        self.skip_stack = []   # tag names currently being skipped (nesting-aware)
+        self.words = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag in _VOID:
+            return
+        a = dict(attrs)
+        if tag == "main":
+            self.in_main += 1
+        if self.skip_stack or tag in ("script", "style") or "data-boilerplate" in a:
+            self.skip_stack.append(tag)
+
+    def handle_endtag(self, tag):
+        if tag in _VOID:
+            return
+        if self.skip_stack and self.skip_stack[-1] == tag:
+            self.skip_stack.pop()
+        if tag == "main" and self.in_main:
+            self.in_main -= 1
+
+    def handle_data(self, data):
+        if self.in_main and not self.skip_stack:
+            self.words.extend(w for w in data.split() if re.search(r"\w", w))
 
 
-def word_count(html_text: str) -> int:
-    text = re.sub(r"<script.*?</script>", " ", html_text, flags=re.DOTALL)
-    text = re.sub(r"<style.*?</style>", " ", text, flags=re.DOTALL)
-    text = re.sub(r"<[^>]+>", " ", text)
-    return len([w for w in re.split(r"\s+", text) if w.strip()])
+def unique_word_count(html_text: str) -> int:
+    """Words of page-specific prose: <main> text minus data-boilerplate
+    blocks (see module docstring for the definition)."""
+    p = _UniqueTextParser()
+    p.feed(html_text)
+    return len(p.words)
 
 
 def compliance_lint(html_text: str, page_id: str) -> None:
-    lowered = html_text.lower()
+    """Raise ComplianceError if the page breaks the D-345 copy rule or the
+    D-104 / D-168 / D-175 / D-312 bans."""
+    text = re.sub(r"\s+", " ", html_text)
+    lowered = text.lower()
+
+    if REQUIRED_PHRASE not in lowered:
+        raise ComplianceError(f'[{page_id}] required phrase missing: "{REQUIRED_PHRASE}"')
+
     for phrase in FORBIDDEN_PHRASES:
-        # D-175 check is case-sensitive on the one-word brand form; the rest
-        # are case-insensitive.
-        if phrase in ("OtterQuote", "ClaimShield"):
-            # allow otterquote.com domain / URLs, forbid the bare brand form in copy
-            stripped = re.sub(r"otterquote\.com", "", html_text, flags=re.IGNORECASE)
-            stripped = re.sub(r"https?://[^\s\"'<>]+", "", stripped)
-            if phrase in stripped:
-                raise RuntimeError(f"COMPLIANCE LINT FAIL [{page_id}]: forbidden term '{phrase}' in page copy")
-        elif phrase in lowered:
-            raise RuntimeError(f"COMPLIANCE LINT FAIL [{page_id}]: forbidden phrase '{phrase}' in page copy")
-    if REQUIRED_PATTERN not in html_text:
-        raise RuntimeError(f"COMPLIANCE LINT FAIL [{page_id}]: required pattern missing: '{REQUIRED_PATTERN}...'")
+        if phrase in lowered:
+            raise ComplianceError(f"[{page_id}] forbidden phrase '{phrase}' in page copy")
+
+    # D-175: the bare one-word brand is forbidden in copy; the otterquote.com
+    # domain and URLs are fine.
+    stripped = re.sub(r"https?://[^\s\"'<>]+", "", text)
+    stripped = re.sub(r"otterquote\.com", "", stripped, flags=re.IGNORECASE)
+    for term in FORBIDDEN_CASE_SENSITIVE:
+        if term in stripped:
+            raise ComplianceError(f"[{page_id}] forbidden term '{term}' in page copy")
+
+    for pattern in HAVE_CONTRACTORS_BANS:
+        m = re.search(pattern, text, flags=re.IGNORECASE)
+        if m:
+            raise ComplianceError(f"[{page_id}] have-contractors phrasing (D-345): '{m.group(0)}'")
+
+    # D-312 vendor names. Strip CSS :hover / Tailwind hover: first (not vendor
+    # references), then match whole words.
+    vendor_text = re.sub(r":hover|hover:", "", lowered)
+    for token in VENDOR_TOKENS:
+        if re.search(rf"\b{re.escape(token)}\b", vendor_text):
+            raise ComplianceError(f"[{page_id}] vendor name '{token}' in page copy (D-312)")
 
 
 def section_hash(seed: int, salt: int) -> int:
@@ -353,7 +458,7 @@ SEASONAL = [
 TRADE_INTRO = {
     "roofing": [
         "A roof in {county} County works harder than most homeowners realize. It takes direct hail strikes in spring, wind uplift during summer storms, and months of freeze-thaw stress through the winter — and when it fails, the damage rarely stays confined to the shingles.",
-        "Roof damage is the most common storm-related insurance claim in Indiana, and {county} County homeowners deal with the full menu: hail bruising, wind-lifted shingles, damaged flashing, and the slow leaks that follow. Knowing what a repair should cost — and getting more than one bid — is the difference between a fair claim outcome and an expensive one.",
+        "Roof damage is the most common storm-related insurance claim in {state}, and {county} County homeowners deal with the full menu: hail bruising, wind-lifted shingles, damaged flashing, and the slow leaks that follow. Knowing what a repair should cost — and getting more than one bid — is the difference between a fair claim outcome and an expensive one.",
         "In {county} County, roofing is where storm season and insurance season meet. Hail and wind events leave damage that is easy to underestimate from the ground, and the repair market that springs up after every major storm makes it genuinely hard to know who to call and what a fair price looks like.",
     ],
     "siding": [
@@ -430,15 +535,15 @@ EXPECTATIONS_A = [
 ]
 
 EXPECTATIONS_B = [
-    "<p>Local demand also moves in waves. After a widely publicized hail event, every reputable contractor serving {county} County gets busy at once. Competing bids protect you twice in that environment: they keep pricing honest when demand spikes, and they surface scope differences — what one bidder saw that another missed — before the work starts rather than after.</p>",
-    "<p>Be appropriately skeptical of anyone who shows up unsolicited after a storm, pressures you to sign an assignment of benefits on the spot, or quotes a price without getting on the roof or examining the damage up close. Indiana sees storm-chasing crews every season, and the reliable defense is unhurried, written, competing bids from contractors who actually serve {county} County year-round.</p>",
+    "<p>Local demand also moves in waves. After a widely publicized hail event, every reputable contractor in {region} gets busy at once. Competing bids protect you twice in that environment: they keep pricing honest when demand spikes, and they surface scope differences — what one bidder saw that another missed — before the work starts rather than after.</p>",
+    "<p>Be appropriately skeptical of anyone who shows up unsolicited after a storm, pressures you to sign an assignment of benefits on the spot, or quotes a price without getting on the roof or examining the damage up close. {state} sees storm-chasing crews every season, and the reliable defense is unhurried, written, competing bids that you can check against each other.</p>",
     "<p>Expect legitimate contractors to provide itemized written estimates, proof of insurance, and local references on request. Expect the process to take longer after county-wide storm events, when every roofer, sider, and installer in {region} is working the same backlog. Patience plus paperwork beats speed plus pressure, every time.</p>",
 ]
 
 HOW_IT_WORKS = [
-    "<p>Otter Quotes connects you with contractors who serve {county} County. You describe your project once, and contractors on the platform submit competing bids you can compare side by side — scope, price, and terms in one place. The platform is informational and free for homeowners: it organizes the bidding process, and the decision stays entirely yours.</p>",
-    "<p>Otter Quotes connects you with contractors who serve {county} County. Instead of calling down a list and repeating your story, you post the project once and receive competing bids from contractors working in your area. Comparing multiple written bids is the most reliable way to understand fair local pricing — especially in the busy weeks after a storm.</p>",
-    "<p>Otter Quotes connects you with contractors who serve {county} County. The platform's job is simple: gather your project details once, put them in front of contractors who work in your area, and give you their written bids in one place to compare on scope, price, and terms. No obligation attaches to posting a project, and choosing a contractor — or choosing none of them — remains entirely your call.</p>",
+    "<p>Here is how Otter Quotes works for a {county} County project. You submit your project details once. Otter Quotes creates a scope of work from them, and we send it to local contractors. You then compare the written bids side by side, with scope, price, and terms in one place. The platform is informational, and the decision stays entirely yours.</p>",
+    "<p>Instead of calling down a list and repeating your story, you submit your {county} County project once. Otter Quotes builds the scope of work and we send it to local contractors; the bids that come back are written, so you can compare them on scope, price, and terms. Comparing multiple written bids is the most reliable way to understand fair local pricing, especially in the busy weeks after a storm.</p>",
+    "<p>The process has four steps: you submit your {county} County project, Otter Quotes creates a scope of work, we send it to local contractors, and you compare the bids. No obligation attaches to submitting a project, and choosing a contractor, or choosing none of them, remains entirely your call.</p>",
 ]
 
 # Four Q&As per trade; each page renders a deterministic selection of two,
@@ -516,75 +621,38 @@ TRADE_EXTRA_LINKS = {
 }
 
 
-def coverage_stats_html(county: str, trade: str, coverage: dict) -> str:
-    """Live per-county stats — real platform coverage numbers, not filler."""
-    count = len(coverage.get((county, trade), []))
-    other_rows = []
-    for t in ELIGIBLE_TRADES:
-        if t == trade:
-            continue
-        n = len(coverage.get((county, t), []))
-        if n >= MIN_CONTRACTORS:
-            other_rows.append(
-                f'<li><a href="/locations/{county_slug(county)}/{t}/">{TRADE_LABELS[t]} contractors serving {html.escape(county)} County</a> — {n} on the platform</li>'
-            )
-    others = ""
-    if other_rows:
-        others = (
-            "<p>Coverage in the county extends beyond this trade:</p><ul>"
-            + "".join(other_rows)
-            + "</ul>"
-        )
-    return (
-        f"<p>As of the most recent platform update, <strong>{count} approved {TRADE_LABELS[trade].lower()} "
-        f"contractor{'s' if count != 1 else ''}</strong> on Otter Quotes list {html.escape(county)} County, "
-        f"{STATE_NAME} in their service area. That coverage is what makes competing bids possible here: post one "
-        f"project, compare multiple written responses.</p>" + others
-    )
 
 
-def profile_links_html(county: str, trade: str, coverage: dict) -> str:
-    """Links to public /contractors/[slug]/ profiles (directory opt-in only, D-249)."""
-    entries = []
-    for c in coverage.get((county, trade), []):
-        if not c.get("public_directory_optin"):
-            continue
-        name = c.get("company_name") or ""
-        if not name:
-            continue
-        entries.append((slugify(name), name))
-    if not entries:
-        return ""
-    items = "".join(
-        f'<li><a href="/contractors/{s}/">{html.escape(n, quote=True)}</a></li>'
-        for s, n in sorted(set(entries))[:6]
-    )
-    return (
-        "<h2>Contractor profiles serving the county</h2>"
-        f"<ul>{items}</ul>"
-    )
+STATE_PROFILES = {
+    "IN": {
+        "name": "Indiana",
+        "county_region": COUNTY_REGION,
+        "region_label": REGION_LABEL,
+        "region_climate": REGION_CLIMATE,
+    },
+}
 
 
-def build_page(county: str, trade: str, coverage: dict, generated_on: str) -> str:
-    region = COUNTY_REGION[county]
-    region_lbl = REGION_LABEL[region]
+def build_page(county: str, trade: str, generated_on: str, state: str = "IN") -> str:
+    profile = state_profile(state)
+    state_name = profile["name"]
+    region = profile["county_region"][county]
+    region_lbl = profile["region_label"][region]
     seed = page_seed(county, trade)
-    c_slug = county_slug(county)
+    c_slug = county_slug(county, state)
     t_label = TRADE_LABELS[trade]
     county_esc = html.escape(county, quote=True)
     page_url = f"{SITE_BASE}/locations/{c_slug}/{trade}/"
 
-    intro = variant(seed, 1, TRADE_INTRO[trade]).format(county=county_esc, region=region_lbl)
-    climate = variant(seed, 2, REGION_CLIMATE[region]).format(county=county_esc)
+    intro = variant(seed, 1, TRADE_INTRO[trade]).format(county=county_esc, region=region_lbl, state=state_name)
+    climate = variant(seed, 2, profile["region_climate"][region]).format(county=county_esc)
     issue_items = shuffle_items(seed, 3, TRADE_ISSUE_ITEMS[trade])[:ISSUE_ITEMS_PER_PAGE]
     issues = ("<ul>" + "".join(issue_items) + "</ul>").format(region=region_lbl)
     expectations = (
         variant(seed, 4, EXPECTATIONS_A) + variant(seed, 7, EXPECTATIONS_B)
-    ).format(county=county_esc, region=region_lbl)
+    ).format(county=county_esc, region=region_lbl, state=state_name)
     seasonal = variant(seed, 6, SEASONAL).format(county=county_esc, region=region_lbl)
     how_it_works = variant(seed, 5, HOW_IT_WORKS).format(county=county_esc)
-    stats = coverage_stats_html(county, trade, coverage)
-    profiles = profile_links_html(county, trade, coverage)
 
     faq_selected = shuffle_items(seed, 8, FAQ[trade])[:FAQ_PER_PAGE]
     faq_pairs = [(q.format(county=county_esc), a) for q, a in faq_selected]
@@ -597,10 +665,11 @@ def build_page(county: str, trade: str, coverage: dict, generated_on: str) -> st
         for href, label in CORNERSTONE_GUIDES + TRADE_EXTRA_LINKS.get(trade, [])
     )
 
-    title = f"{t_label} Contractors Serving {county} County, {STATE_CODE} · Otter Quotes"
+    title = f"{t_label} Bids for {county} County, {state} Homeowners · Otter Quotes"
     meta_desc = (
-        f"Compare competing {t_label.lower()} bids from contractors who serve {county} County, {STATE_NAME}. "
-        f"Otter Quotes is a free, informational platform for homeowners — post your project once, review written bids side by side."
+        f"Storm-damage {t_label.lower()} help for homeowners in {county} County, {state_name}: "
+        f"Otter Quotes creates a scope of work for your project and we send it to local contractors, "
+        f"so you can compare their written bids side by side."
     )
 
     local_business = {
@@ -610,18 +679,18 @@ def build_page(county: str, trade: str, coverage: dict, generated_on: str) -> st
         "name": "Otter Quotes",
         "url": f"{SITE_BASE}/",
         "description": "Otter Quotes is an independent platform that connects homeowners with contractors for property damage repair and exterior improvement projects.",
-        "areaServed": {"@type": "State", "name": STATE_NAME},
+        "areaServed": {"@type": "State", "name": state_name},
     }
     service = {
         "@context": "https://schema.org",
         "@type": "Service",
         "serviceType": f"{t_label} contractor bidding",
-        "name": f"{t_label} Contractor Bids — {county} County, {STATE_CODE}",
+        "name": f"{t_label} Contractor Bids — {county} County, {state}",
         "url": page_url,
         "provider": {"@id": f"{SITE_BASE}/#organization"},
         "areaServed": {
             "@type": "AdministrativeArea",
-            "name": f"{county} County, {STATE_NAME}",
+            "name": f"{county} County, {state_name}",
         },
     }
     breadcrumb = {
@@ -630,7 +699,7 @@ def build_page(county: str, trade: str, coverage: dict, generated_on: str) -> st
         "itemListElement": [
             {"@type": "ListItem", "position": 1, "name": "Home", "item": f"{SITE_BASE}/"},
             {"@type": "ListItem", "position": 2, "name": "Locations", "item": f"{SITE_BASE}/locations/"},
-            {"@type": "ListItem", "position": 3, "name": f"{county} County, {STATE_CODE}", "item": f"{SITE_BASE}/locations/{c_slug}/"},
+            {"@type": "ListItem", "position": 3, "name": f"{county} County, {state}", "item": f"{SITE_BASE}/locations/{c_slug}/"},
             {"@type": "ListItem", "position": 4, "name": t_label, "item": page_url},
         ],
     }
@@ -705,12 +774,12 @@ def build_page(county: str, trade: str, coverage: dict, generated_on: str) -> st
 
 <main>
   <div class="loc-hero">
-    <div class="breadcrumb">
-      <a href="/">Home</a> &rsaquo; <a href="/locations/">Locations</a> &rsaquo; {county_esc} County, {STATE_CODE} &rsaquo; {t_label}
+    <div class="breadcrumb" data-boilerplate>
+      <a href="/">Home</a> &rsaquo; <a href="/locations/">Locations</a> &rsaquo; {county_esc} County, {state} &rsaquo; {t_label}
     </div>
     <div style="padding: var(--sp-8) var(--sp-6) 0;">
-      <h1>{t_label} Contractors Serving {county_esc} County, {STATE_NAME}</h1>
-      <p style="color:var(--slate); max-width:640px; margin:0 auto;">Compare competing written bids from {t_label.lower()} contractors working in {county_esc} County — informational, free for homeowners, and built around your insurance claim.</p>
+      <h1>{t_label} Bids for {county_esc} County, {state_name} Homeowners</h1>
+      <p style="color:var(--slate); max-width:640px; margin:0 auto;">Otter Quotes creates a scope of work for your {t_label.lower()} project and we send it to local contractors. You compare their written bids, and the decision stays yours.</p>
     </div>
   </div>
 
@@ -730,28 +799,25 @@ def build_page(county: str, trade: str, coverage: dict, generated_on: str) -> st
     <h2>Season and timing</h2>
     {seasonal}
 
-    <h2>Platform coverage in {county_esc} County</h2>
-    {stats}
-
-    {profiles}
-
     <h2>How Otter Quotes works here</h2>
     {how_it_works}
 
     <h2>Frequently asked questions</h2>
     {faq_html}
 
+    <div data-boilerplate>
     <h2>Homeowner guides</h2>
     <ul>
 {guide_links}
     </ul>
+    </div>
 
-    <div class="cta-bar">
-      <p>Ready to compare bids from contractors serving {county_esc} County?</p>
+    <div class="cta-bar" data-boilerplate>
+      <p>Ready to compare bids for your {county_esc} County project?</p>
       <a href="/start.html" class="btn btn-primary btn-lg">Start Your Project with Otter Quotes</a>
     </div>
 
-    <p class="disclosure">
+    <p class="disclosure" data-boilerplate>
       Otter Quotes is an independent, informational platform that connects homeowners with contractors for property damage repair and exterior improvement projects.
       Otter Quotes does not independently verify, endorse, or warrant the quality of any contractor's work, and does not guarantee the availability of any particular contractor.
       Insurance coverage decisions are made solely by your insurer under the terms of your policy.
@@ -773,54 +839,17 @@ def build_page(county: str, trade: str, coverage: dict, generated_on: str) -> st
 
 
 # ---------------------------------------------------------------------------
-# Auto-noindex for stale pages (count dropped below MIN_CONTRACTORS)
-# ---------------------------------------------------------------------------
-
-NOINDEX_TAG = '<meta name="robots" content="noindex">'
-
-
-def existing_page_paths() -> list:
-    if not LOCATIONS_DIR.exists():
-        return []
-    return sorted(LOCATIONS_DIR.glob("*/*/index.html"))
-
-
-def inject_noindex(path: pathlib.Path, dry_run: bool) -> bool:
-    """Keep the page but mark it noindex. Returns True if file changed."""
-    text = path.read_text(encoding="utf-8")
-    if re.search(r'<meta\s+name="robots"\s+content="[^"]*noindex[^"]*"\s*/?>', text, flags=re.IGNORECASE):
-        return False
-    new_text = text.replace(
-        '<meta name="viewport" content="width=device-width, initial-scale=1.0">',
-        '<meta name="viewport" content="width=device-width, initial-scale=1.0">\n' + NOINDEX_TAG,
-        1,
-    )
-    if new_text == text:
-        # Fallback: inject right after <head>
-        new_text = text.replace("<head>", "<head>\n" + NOINDEX_TAG, 1)
-    if new_text == text:
-        print(f"  WARNING: could not inject noindex into {path}")
-        return False
-    if dry_run:
-        print(f"  [DRY RUN] Would inject noindex: {path}")
-    else:
-        path.write_text(new_text, encoding="utf-8")
-        print(f"  Noindexed (coverage below {MIN_CONTRACTORS}): {path}")
-    return True
-
-
-# ---------------------------------------------------------------------------
 # Sitemap (mirrors generate_contractor_pages.update_sitemap; targets
 # the repo-root sitemap.xml, lastmod = generation timestamp)
 # ---------------------------------------------------------------------------
 
-def update_sitemap(eligible_paths: list, generated_on: str, dry_run: bool) -> None:
-    sitemap_text = SITEMAP_PATH.read_text(encoding="utf-8")
+def update_sitemap(generated_paths: list, generated_on: str, dry_run: bool, sitemap_path=None) -> None:
+    """Rewrite the /locations/ entries so they list exactly the pages
+    generated this run (and nothing else)."""
+    sitemap_path = pathlib.Path(sitemap_path or SITEMAP_PATH)
+    sitemap_text = sitemap_path.read_text(encoding="utf-8")
     original = sitemap_text
 
-    # Remove existing locations/ entries (so we regenerate cleanly; also
-    # drops URLs that just went noindex — noindexed pages stay on disk but
-    # leave the sitemap).
     sitemap_text = re.sub(
         r"\s*<url>\s*<loc>https://otterquote\.com/locations/[^<]*</loc>.*?</url>",
         "",
@@ -828,7 +857,7 @@ def update_sitemap(eligible_paths: list, generated_on: str, dry_run: bool) -> No
         flags=re.DOTALL,
     )
 
-    if eligible_paths:
+    if generated_paths:
         new_entries = "\n".join(
             f"""  <url>
     <loc>{SITE_BASE}/locations/{cs}/{ts}/</loc>
@@ -836,19 +865,77 @@ def update_sitemap(eligible_paths: list, generated_on: str, dry_run: bool) -> No
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>"""
-            for cs, ts in sorted(eligible_paths)
+            for cs, ts in sorted(generated_paths)
         )
         sitemap_text = sitemap_text.replace("</urlset>", f"\n{new_entries}\n</urlset>")
 
     if sitemap_text == original:
-        print("Sitemap unchanged — no location entries to add or remove.")
+        print("Sitemap unchanged: no location entries to add or remove.")
         return
 
     if dry_run:
-        print(f"[DRY RUN] Would update {SITEMAP_PATH} with {len(eligible_paths)} location URLs")
+        print(f"[DRY RUN] Would update {sitemap_path} with {len(generated_paths)} location URLs")
     else:
-        SITEMAP_PATH.write_text(sitemap_text, encoding="utf-8")
-        print(f"Updated {SITEMAP_PATH} — {len(eligible_paths)} location URLs")
+        sitemap_path.write_text(sitemap_text, encoding="utf-8")
+        print(f"Updated {sitemap_path}: {len(generated_paths)} location URLs")
+
+
+# ---------------------------------------------------------------------------
+# Generation
+# ---------------------------------------------------------------------------
+
+def generate(states, out_dir=None, sitemap_path=None, counties_path=None,
+             dry_run=False, build_fn=None, generated_on=None) -> dict:
+    """Generate pages for the given allow-listed states.
+
+    build_fn(county, trade, generated_on, state) -> html lets tests inject
+    thin or non-compliant content. Returns a summary dict.
+    """
+    build_fn = build_fn or build_page
+    out_dir = pathlib.Path(out_dir or LOCATIONS_DIR)
+    generated_on = generated_on or datetime.date.today().isoformat()
+    summary = {"states": list(states), "tuples": 0, "written": 0, "skipped_thin": [], "paths": []}
+
+    if not states:
+        print("State allow-list is empty: no pages emitted. "
+              "A state is added only after its D-344 statute search (see tools/README-locations-workflow.md).")
+        if sitemap_path is not None or out_dir == LOCATIONS_DIR:
+            update_sitemap([], generated_on, dry_run, sitemap_path)
+        return summary
+
+    validate_states(states, counties_path)
+
+    tuples = discover_tuples(states, counties_path)
+    summary["tuples"] = len(tuples)
+    print(f"Allow-listed states: {', '.join(states)}; (county, trade) tuples: {len(tuples)}")
+
+    for state, county, trade in tuples:
+        c_slug = county_slug(county, state)
+        page_id = f"{c_slug}/{trade}"
+        page_html = build_fn(county, trade, generated_on, state)
+
+        wc = unique_word_count(page_html)
+        if wc < MIN_WORDS:
+            print(f"  SKIPPED (thin, {wc} < {MIN_WORDS} unique words): {page_id}")
+            summary["skipped_thin"].append(page_id)
+            continue
+        compliance_lint(page_html, page_id)
+        if not page_html.rstrip().endswith("</html>"):
+            raise RuntimeError(f"INTEGRITY FAIL [{page_id}]: generated HTML does not end with </html>")
+
+        page_dir = out_dir / c_slug / trade
+        page_path = page_dir / "index.html"
+        if dry_run:
+            print(f"  [DRY RUN] Would write {page_path} ({wc} unique words)")
+        else:
+            page_dir.mkdir(parents=True, exist_ok=True)
+            page_path.write_text(page_html, encoding="utf-8", newline="\n")
+            print(f"  Written: {page_path} ({wc} unique words)")
+        summary["written"] += 1
+        summary["paths"].append((c_slug, trade))
+
+    update_sitemap(summary["paths"], generated_on, dry_run, sitemap_path)
+    return summary
 
 
 # ---------------------------------------------------------------------------
@@ -858,73 +945,23 @@ def update_sitemap(eligible_paths: list, generated_on: str, dry_run: bool) -> No
 def main():
     parser = argparse.ArgumentParser(description="Generate /locations/[county]/[trade]/ SEO pages")
     parser.add_argument("--dry-run", action="store_true", help="Print actions without writing files")
+    parser.add_argument("--allowlist", default=None,
+                        help="Path to the state allow-list JSON (default: data/location-pages-state-allowlist.json)")
     args = parser.parse_args()
 
-    generated_on = datetime.date.today().isoformat()
-
-    print("Loading Supabase service key...")
-    service_key = load_service_key()
-
-    print("Fetching approved contractors...")
-    contractors = fetch_approved_contractors(service_key)
-    print(f"Found {len(contractors)} approved contractors")
-
-    coverage = compute_tuples(contractors)
-    all_tuples = sorted(coverage.keys())
-    eligible = [t for t in all_tuples if len(coverage[t]) >= MIN_CONTRACTORS]
-    below_min = [t for t in all_tuples if len(coverage[t]) < MIN_CONTRACTORS]
-
-    print(f"Coverage tuples (any count): {len(all_tuples)}")
-    print(f"Eligible tuples (count >= {MIN_CONTRACTORS}, HARD guardrail): {len(eligible)}")
-    if below_min:
-        print(f"Below-minimum tuples suppressed by guardrail: {len(below_min)}")
-
-    eligible_set = set()
-    eligible_paths = []
-    pages_written = 0
-
-    for county, trade in eligible:
-        c_slug = county_slug(county)
-        page_html = build_page(county, trade, coverage, generated_on)
-
-        page_id = f"{c_slug}/{trade}"
-        wc = word_count(page_html)
-        if wc < MIN_WORDS:
-            raise RuntimeError(f"CONTENT GUARDRAIL FAIL [{page_id}]: {wc} words < {MIN_WORDS} minimum")
-        compliance_lint(page_html, page_id)
-        if not page_html.rstrip().endswith("</html>"):
-            raise RuntimeError(f"INTEGRITY FAIL [{page_id}]: generated HTML does not end with </html>")
-
-        out_dir = LOCATIONS_DIR / c_slug / trade
-        out_path = out_dir / "index.html"
-        if args.dry_run:
-            print(f"  [DRY RUN] Would write {out_path} ({wc} words, {len(coverage[(county, trade)])} contractors)")
-        else:
-            out_dir.mkdir(parents=True, exist_ok=True)
-            out_path.write_text(page_html, encoding="utf-8", newline="\n")
-            print(f"  Written: {out_path} ({wc} words, {len(coverage[(county, trade)])} contractors)")
-        pages_written += 1
-        eligible_set.add((c_slug, trade))
-        eligible_paths.append((c_slug, trade))
-
-    # Auto-noindex previously generated pages whose tuple fell below minimum.
-    noindexed = 0
-    for path in existing_page_paths():
-        c_slug = path.parent.parent.name
-        t_slug = path.parent.name
-        if (c_slug, t_slug) not in eligible_set:
-            if inject_noindex(path, args.dry_run):
-                noindexed += 1
-
-    # Sitemap: eligible pages in, stale/noindexed pages out.
-    update_sitemap(eligible_paths, generated_on, args.dry_run)
+    try:
+        states = load_allowlist(args.allowlist)
+        summary = generate(states, dry_run=args.dry_run)
+    except (StateConfigError, ComplianceError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        sys.exit(1)
 
     print()
     print(f"Done{' (dry run)' if args.dry_run else ''}.")
-    print(f"  Eligible tuples:  {len(eligible)}")
-    print(f"  Pages generated:  {pages_written}")
-    print(f"  Pages noindexed:  {noindexed}")
-    print(f"  Guardrail:        count >= {MIN_CONTRACTORS} approved contractors per (county, trade) — hard, non-negotiable")
+    print(f"  Allow-listed states:       {len(summary['states'])}")
+    print(f"  Tuples considered:         {summary['tuples']}")
+    print(f"  Pages generated:           {summary['written']}")
+    print(f"  Skipped (< {MIN_WORDS} unique words): {len(summary['skipped_thin'])}")
 
 
 if __name__ == "__main__":

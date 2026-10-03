@@ -47,3 +47,12 @@ jobs:
       # again) fails this job, the same posture as the step above.
       - name: Self-test the partner-parity D-266 per-track guard (gh-2020)
         run: python3 tools/partner_parity_check.test.py
+
+      # gh-2422 (D-345): self-test for the /locations/ page generator. Covers
+      # the closes-on positive case (zero-contractor county on an allow-listed
+      # state -> indexable >=500-unique-word page containing "send it to local
+      # contractors"), both negative controls (thin page, non-allow-listed
+      # state), the empty committed allow-list, and the copy-rule lint. Needs
+      # no credentials and writes only to a temp dir. BUILD-FAILING.
+      - name: Self-test the location-page generator (D-345)
+        run: python3 tools/generate_location_pages.test.py
