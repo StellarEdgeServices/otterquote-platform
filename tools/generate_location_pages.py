@@ -1056,12 +1056,12 @@ APPROVED_SENTENCES = frozenset(_sentence_key(x) for x in (
     # CEO wording, issue #2422: "Our statement should be that we create a scope of
     # work and \"send it to local contractors\"." (D-345, 2026-10-02.)
     "We create a scope of work and send it to local contractors.",
-    # Disclosure sentence 1, wording per LEGAL-READ B2 on PR #2429. It needs the
-    # exemption because block rule R2 reads "Otter Quotes" and "platform" as an
-    # affiliation trigger in a block that also names "contractor" (sentence 2).
-    "Otter Quotes is an informational platform for property damage repair and exterior improvement projects.",
-    # Existing disclosure, byte-identical to origin/main, D-number to be confirmed
-    # by CEO. (Sentence 2.)
+    # site-wide disclosure, byte-identical to main; wording is on Dustin's board (#2456)
+    # (Sentence 1 of the disclosure paragraph.)
+    "Otter Quotes is an independent, informational platform that connects homeowners with contractors for "
+    "property damage repair and exterior improvement projects.",
+    # site-wide disclosure, byte-identical to main; wording is on Dustin's board (#2456)
+    # (Sentence 2.)
     "Otter Quotes does not independently verify, endorse, or warrant the quality of any contractor's work, "
     "and does not guarantee the availability of any particular contractor.",
 ))
@@ -1274,7 +1274,7 @@ TRADE_ISSUE_ITEMS = {
         "<li><strong>Wind-creased and detached panels</strong> — compromised locking legs that let subsequent weather work panels loose.</li>",
         "<li><strong>Discontinued-profile matching</strong> — a common question when only some elevations are damaged.</li>",
         "<li><strong>Moisture intrusion behind damaged panels</strong> — the hidden cost of postponing repairs through a {region} winter.</li>",
-        "<li><strong>Oxidation lines and chalking</strong> — complicate spot repairs on older siding and affect how a fair scope is written.</li>",
+        "<li><strong>Oxidation lines and chalking</strong> — complicate spot repairs on older siding and affect how a scope is written.</li>",
         "<li><strong>Cracked corner posts and trim</strong> — small components that drive disproportionate water damage when ignored.</li>",
         "<li><strong>Fastener pull-through in high wind</strong> — panels that look intact but are no longer attached the way the manufacturer intended.</li>",
         "<li><strong>Wrap and sheathing damage</strong> — assessable only during repair; if found, note it and raise it with your adjuster.</li>",
@@ -1320,7 +1320,7 @@ EXPECTATIONS_B = [
 HOW_IT_WORKS = [
     "<p>Here is how Otter Quotes works for {article} {county} County project. You submit your project details once.</p><p>We create a scope of work and send it to local contractors.</p><p>You can then compare any written bids you receive side by side, on scope, price, and terms. The platform is informational, and the decision stays entirely yours.</p>",
     "<p>Instead of calling down a list and repeating your story, you submit your {county} County project once.</p><p>We create a scope of work and send it to local contractors.</p><p>Any bids you receive are written, so you can compare them on scope, price, and terms. Comparing more than one written bid is one way to understand local pricing, especially in the busy weeks after a storm.</p>",
-    "<p>The process has four steps. You submit your {county} County project.</p><p>We create a scope of work and send it to local contractors.</p><p>You compare any written bids you receive. You choose a contractor, or none of them, and that choice remains entirely your call. No obligation attaches to submitting a project.</p>",
+    "<p>The process has four steps. You submit your {county} County project.</p><p>We create a scope of work and send it to local contractors.</p><p>You compare any written bids you receive. You choose a contractor, or none of them, and that choice remains entirely your call. Submitting a project does not commit you to hiring anyone.</p>",
 ]
 
 # Four Q&As per trade; each page renders a deterministic selection of two,
@@ -1329,11 +1329,11 @@ FAQ = {
     "roofing": [
         ("Who decides whether my policy applies to roof damage in {county} County?",
          "Your insurer decides coverage under the terms of your policy. Read your policy, ask your adjuster what is included, and document the damage with dated photos. Our guide on filing a property damage claim walks through the process step by step."),
-        ("How many roofing bids should I get?",
-         "Many homeowners gather two or three. Comparing bids can surface scope differences and give you a way to check pricing, particularly during post-storm demand spikes."),
+        ("Is one roofing bid enough?",
+         "Comparing bids can surface scope differences and give you a way to check pricing, particularly during post-storm demand spikes."),
         ("Should I repair or replace after partial-slope damage?",
          "Shingle availability and the age of the roof both come into it; ask your adjuster how your policy addresses matching. Written bids that price both paths give you and your adjuster something concrete to discuss."),
-        ("Do I need to be home for a roof inspection?",
+        ("Do I need to be home when my contractor or insurer inspects the roof?",
          "For the exterior portion, usually not — but being present means you see the documented damage yourself and can ask questions of whoever inspects the roof."),
     ],
     "siding": [
@@ -1435,7 +1435,7 @@ def build_page(county: str, trade: str, generated_on: str, state: str = "IN", pr
         for href, label in CORNERSTONE_GUIDES + TRADE_EXTRA_LINKS.get(trade, [])
     )
 
-    title = f"{noun_title} Bids for {county} County, {state} Homeowners · Otter Quotes"
+    title = f"Comparing {noun_title} Bids in {county} County, {state} · Otter Quotes"
     meta_desc = (
         f"Help with storm-damaged {t_label.lower()} for homeowners in {county} County, {state_name}. "
         f"We create a scope of work and send it to local contractors. "
@@ -1550,7 +1550,7 @@ def build_page(county: str, trade: str, generated_on: str, state: str = "IN", pr
       <a href="/">Home</a> &rsaquo; <a href="/locations/">Locations</a> &rsaquo; {county_esc} County, {state} &rsaquo; {t_label}
     </div>
     <div style="padding: var(--sp-8) var(--sp-6) 0;">
-      <h1>{noun_title} Bids for {county_esc} County, {state_name} Homeowners</h1>
+      <h1>Comparing {noun_title} Bids in {county_esc} County, {state_name}</h1>
       <p style="color:var(--slate); max-width:640px; margin:0 auto;">We create a scope of work and send it to local contractors.</p>
       <p style="color:var(--slate); max-width:640px; margin:0 auto;">You compare any written bids you receive for your {noun} project, and the decision stays yours.</p>
     </div>
@@ -1593,7 +1593,7 @@ def build_page(county: str, trade: str, generated_on: str, state: str = "IN", pr
     </div>
 
     <p class="disclosure">
-      Otter Quotes is an informational platform for property damage repair and exterior improvement projects.
+      Otter Quotes is an independent, informational platform that connects homeowners with contractors for property damage repair and exterior improvement projects.
       Otter Quotes does not independently verify, endorse, or warrant the quality of any contractor's work, and does not guarantee the availability of any particular contractor.
       Insurance coverage decisions are made solely by your insurer under the terms of your policy.
       Page generated {generated_on}.

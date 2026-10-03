@@ -271,7 +271,7 @@ class GeneratorTests(unittest.TestCase):
     def test_generated_page_labels_and_jsonld_shape(self):
         prof = glp.load_profile("IN")
         page = glp.build_page("Ohio", "windows", "2026-01-01", "IN", profile=prof)
-        self.assertIn("Window Bids for Ohio County, Indiana Homeowners", page)
+        self.assertIn("Comparing Window Bids in Ohio County, Indiana", page)
         self.assertNotIn("Windows Bids", page)
         blocks = re.findall(r'<script type="application/ld\+json">(.*?)</script>', page, flags=re.DOTALL)
         docs = [json.loads(b) for b in blocks]
@@ -1376,18 +1376,17 @@ class LintTests(unittest.TestCase):
                 self.assertEqual(glp.sentence_findings(glp._drop_abbreviation_dots(
                     glp.lintable_text(glp.build_page(county, trade, "x", "IN", profile=prof)))), [])
 
-    # D-registry / disclosure text: sentence 1 per LEGAL-READ B2, sentences 2-3 and the rest byte-identical to origin/main
-    NEW_DISCLOSURE_SENTENCE_1 = "Otter Quotes is an informational platform for property damage repair and exterior improvement projects."
+    # D-registry / disclosure text: byte-identical to origin/main ---------------------
     MAIN_DISCLOSURE = (
         '    <p class="disclosure">\n'
-        '      Otter Quotes is an informational platform for property damage repair and exterior improvement projects.\n'
+        '      Otter Quotes is an independent, informational platform that connects homeowners with contractors for property damage repair and exterior improvement projects.\n'
         "      Otter Quotes does not independently verify, endorse, or warrant the quality of any contractor's work, and does not guarantee the availability of any particular contractor.\n"
         '      Insurance coverage decisions are made solely by your insurer under the terms of your policy.\n'
         '      Page generated 2026-01-01.\n'
         '    </p>'
     )
 
-    def test_disclosure_has_new_first_sentence_and_main_sentences_two_and_three(self):
+    def test_disclosure_is_byte_identical_to_origin_main(self):
         prof = glp.load_profile("IN")
         for trade in glp.ELIGIBLE_TRADES:
             page = glp.build_page("Ohio", trade, "2026-01-01", "IN", profile=prof)
@@ -1396,22 +1395,16 @@ class LintTests(unittest.TestCase):
             end = page.index("</p>", start) + 4
             self.assertEqual(page[start:end], self.MAIN_DISCLOSURE)
 
-    def test_connects_homeowners_phrase_appears_nowhere_and_fails_the_lint(self):
+    def test_connects_homeowners_phrase_is_allowed_only_as_the_exact_disclosure_sentence(self):
         for bad in ("Otter Quotes connects homeowners with contractors.",
                     "Otter Quotes is an independent, informational platform that connects homeowners with "
-                    "contractors for property damage repair and exterior improvement projects.",
-                    "Otter Quotes is an informational platform that connects homeowners with "
-                    "contractors for property damage repair and exterior improvement projects."):
+                    "contractors for property damage repair and exterior improvement projects in Marion County.",
+                    "Otter Quotes is an independent, informational platform that connects homeowners with "
+                    "contractors for property damage repair and exterior improvement projects. Contractors are ready."):
             with self.subTest(bad=bad):
                 self.assert_fails("<p>%s</p>" % bad)
-        self.lint_frag("<p>%s</p>" % self.NEW_DISCLOSURE_SENTENCE_1)
-        prof = glp.load_profile("IN")
-        for trade in glp.ELIGIBLE_TRADES:
-            page = glp.build_page("Ohio", trade, "2026-01-01", "IN", profile=prof)
-            low = re.sub(r"\s+", " ", glp.lintable_text(page).lower())
-            self.assertNotIn("connects homeowners", low)
-            self.assertNotIn("connects you with", low)
-            self.assertNotIn("independent, informational", low)
+        self.lint_frag("<p>Otter Quotes is an independent, informational platform that connects homeowners with "
+                       "contractors for property damage repair and exterior improvement projects.</p>")
 
     REMOVED_LINK_TARGETS = (
         "/guides/how-to-negotiate-with-insurer.html",
