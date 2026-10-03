@@ -3515,7 +3515,7 @@
 
     const { data: claims } = await sb
       .from("claims")
-      .select("id, property_address, selected_contractor_id, quotes(contractor_id, contractors(id, user_id)))")
+      .select("id, property_address, selected_contractor_id, quotes(contractor_id, contractors(id, user_id))")
       .eq("user_id", userId);
 
     if (!claims || claims.length === 0) {

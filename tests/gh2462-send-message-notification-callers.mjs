@@ -89,5 +89,14 @@ for (const f of ['dashboard.html', 'contractor-dashboard.html']) {
   ok(bad.length === 0, `${f}: no profiles embed inside a contractors( select (found ${bad.length})`);
 }
 
+// gh-2478 refuter: a select string with unbalanced parentheses is a PostgREST parse error
+// (PGRST100) that leaves the query null -- the same "panel never loads" symptom as the bad embed.
+const unbalanced = (q) => { let d = 0; for (const c of q) { if (c === '(') d++; else if (c === ')' && --d < 0) return true; } return d !== 0; };
+for (const f of ['dashboard.html', 'contractor-dashboard.html', 'supabase/functions/send-message-notification/index.ts']) {
+  const sels = (read(f).match(/\.select\(\s*["'`][^"'`\n]*["'`]/g) || []).map((m) => m.replace(/^\.select\(\s*["'`]|["'`]$/g, ''));
+  const off = sels.filter(unbalanced);
+  ok(sels.length > 0 && off.length === 0, `${f}: every .select() string has balanced parentheses (${sels.length} checked${off.length ? '; unbalanced: ' + off.join(' | ') : ''})`);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
