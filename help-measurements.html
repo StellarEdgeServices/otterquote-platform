@@ -974,7 +974,7 @@
 
         // ── gh-2078: measurement_purchase (GA4) + Purchase (Meta pixel), parity with the React page ──────────────────
         // Same event name and params as react-app/app/(homeowner)/help-measurements/page.tsx (value 15, USD, variant), same once-only
-        // marker key as its hover-charge-storage.ts (keyed on the charged PaymentIntent id), and the Meta eventID is the SAME
+        // marker key as its charge-storage module (keyed on the charged PaymentIntent id), and the Meta eventID is the SAME
         // `measurement_purchase:<paymentIntentId>` string supabase/functions/stripe-webhook/meta-capi.ts sends as the CAPI event_id,
         // so Meta dedups the two. Suppression is NOT re-implemented here: js/ga-gate.js drops gtag() on an internal/QA visit
         // (gh-2356) and never loads GA4 for an opted-out visitor, and js/meta-pixel-gate.js makes fbq() a no-op on an internal visit
