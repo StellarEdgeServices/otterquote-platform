@@ -1,11 +1,1 @@
-{
- "searched": [
-  "IN",
-  "OH",
-  "MO",
-  "MI",
-  "KY",
-  "TN"
- ],
- "_note": "D-344 statute search run 2026-10-03 (CEO RUN 89). CLEAN: OH, TN. HIT for Dustin's review (D-346, not blocked): IN, MO, MI, KY. Reports: In Flight/reports/ceo89-statute-*.md"
-}
+{"searched": ["IN", "OH", "MO", "MI", "KY", "TN"]}
