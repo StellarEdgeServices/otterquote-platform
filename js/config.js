@@ -190,28 +190,37 @@ function _oqFlushReadyCallbacks(result) {
 
 // ── gh-2471: recruiter-code normalisation + lookup (shared by the 11 partner signup / funnel pages) ──
 // Every page that reads `?recruit=` (hi-1/4/5, ins-1/3/5, partner-adjusters/inspectors/insurance/other/re)
-// loads this file, so the rule lives here once. It is the same normalisation recruit.html uses (gh-1648):
-// trim, upper-case, then a leading `R-` back to `r-` -- the stored shape of referral_agents.recruit_code
-// ('r-' + up to 6 of [A-Z0-9], generate_recruit_code()). The server match is an exact, case-sensitive
-// `recruit_code = <value>` (get_referral_agents_public filter and register_partner), so an un-normalised
-// URL value (`R-ABC123`, ` r-abc123 `) silently matched nobody.
+// loads this file, so the rule lives here once. The stored shape of referral_agents.recruit_code is
+// 'r-' + up to 6 of [A-Z0-9] (generate_recruit_code()), and the server match (get_referral_agents_public filter and
+// register_partner) is an exact, case-sensitive `recruit_code = <value>`.
+// CTO ruling 5973362277: the normaliser's output is EITHER canonical (r-[A-Z0-9]{1,6}) OR empty. Case and surrounding
+// whitespace are forgiven (mail and SMS clients case-fold links); anything else -- no `r-` prefix, extra characters, a
+// long value, look-alike unicode -- becomes '' BEFORE any lookup. Validation runs on the trimmed raw value, before
+// upper-casing, because toUpperCase() folds characters such as the dotless i and the sharp s into plain ASCII.
 CONFIG.normRecruitCode = function (raw) {
-  return String(raw == null ? '' : raw).trim().toUpperCase().replace(/^R-/, 'r-');
+  var t = String(raw == null ? '' : raw).trim();
+  if (!/^[rR]-[A-Za-z0-9]{1,6}$/.test(t)) return '';
+  return 'r-' + t.slice(2).toUpperCase();
 };
 
 // Resolve the active recruiter for a page load. Candidates, in order: the URL code (gh-2060 item 4: a ?recruit= on
-// THIS load wins), then the stored `cs_recruit_code`. A candidate that resolves to no active recruiter (typo,
-// inactive partner) falls through to the next one, so a mistyped URL code can no longer erase a valid stored one.
-// Returns { data, error, recruitCode } -- the shape of the supabase-js result the pages already destructure, plus
-// the normalised code that matched (or, when nothing matched, the first candidate; '' when there was none).
+// THIS load wins), then the stored `cs_recruit_code`. A canonical candidate that CLEANLY resolves to no active
+// recruiter (typo, inactive partner) falls through to the next one, so a mistyped URL code can no longer erase a valid
+// stored one. A lookup that ERRORS (network / RPC failure) is not a miss (CTO ruling 5973362277): when the URL code is
+// canonical, it stays the candidate and the stored code is NOT consulted -- a visitor who arrived on B's link must not
+// have B's recruit handed to A by a network blip. A non-canonical URL code is no candidate at all, so the stored code
+// is used. Returns { data, error, recruitCode, candidateCode } -- the supabase-js result shape the pages already
+// destructure, the normalised code that matched (or, when nothing matched, the first candidate; '' when none), and
+// `candidateCode`, set only when the URL code's lookup errored (the page keeps it as the code sent at signup).
 CONFIG.lookupRecruiter = async function (client, urlRaw, storedRaw) {
   var codes = [];
   [urlRaw, storedRaw].forEach(function (raw) {
     var c = CONFIG.normRecruitCode(raw);
     if (c && codes.indexOf(c) === -1) codes.push(c);
   });
-  var firstError = null;
+  var urlCode = CONFIG.normRecruitCode(urlRaw);
   for (var i = 0; i < codes.length; i++) {
+    var failure = null;
     try {
       var res = await client
         .rpc('get_referral_agents_public')
@@ -219,13 +228,16 @@ CONFIG.lookupRecruiter = async function (client, urlRaw, storedRaw) {
         .eq('recruit_code', codes[i])
         .eq('status', 'active')
         .maybeSingle();
-      if (res && res.error) { if (!firstError) firstError = res.error; continue; }
-      if (res && res.data) return { data: res.data, error: null, recruitCode: codes[i] };
+      if (res && res.error) failure = res.error;
+      else if (res && res.data) return { data: res.data, error: null, recruitCode: codes[i], candidateCode: '' };
     } catch (e) {
-      if (!firstError) firstError = e;
+      failure = e;
+    }
+    if (failure) {
+      return { data: null, error: failure, recruitCode: codes[i], candidateCode: (codes[i] === urlCode) ? urlCode : '' };
     }
   }
-  return { data: null, error: firstError, recruitCode: codes[0] || '' };
+  return { data: null, error: null, recruitCode: codes[0] || '', candidateCode: '' };
 };
 
 CONFIG.whenReady = function (cb) {

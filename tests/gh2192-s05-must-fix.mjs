@@ -310,7 +310,7 @@ async function testRecruitCodeRace(pageFile, formId, fields, label) {
       search: '',
       configDelay: 'manual',
       recruitLookupDelay: 'delayed',
-      localStorageSeed: { cs_recruit_code: 'RVREC' },
+      localStorageSeed: { cs_recruit_code: 'r-RVREC' },
     });
     try {
       runScript(ctx, joined);
@@ -341,11 +341,11 @@ async function testRecruitCodeRace(pageFile, formId, fields, label) {
     await submitPromise;
     await flush(6);
     const call = rpcCalls.find((c) => c.name === 'register_partner');
-    const gotRecruitCode = !!call && call.params.p_recruit_code === 'RVREC';
+    const gotRecruitCode = !!call && call.params.p_recruit_code === 'r-RVREC';
     if (source.includes('pre-fix')) {
       preFixExpect(!gotRecruitCode, label + ' [' + source + ']: (fail-first control) confirms the bug -- p_recruit_code is dropped on an immediate first-interaction submit -- got ' + JSON.stringify(call && call.params.p_recruit_code));
     } else {
-      ok(gotRecruitCode, label + ' [' + source + ']: p_recruit_code="RVREC" reaches register_partner on an immediate first-interaction submit -- got ' + JSON.stringify(call && call.params.p_recruit_code));
+      ok(gotRecruitCode, label + ' [' + source + ']: p_recruit_code="r-RVREC" reaches register_partner on an immediate first-interaction submit -- got ' + JSON.stringify(call && call.params.p_recruit_code));
     }
   }
 }

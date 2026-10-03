@@ -51,7 +51,8 @@ function extractDetect(src) {
 }
 
 /** Fake supabase client: ONE active recruiter, matched EXACTLY on recruit_code like the server's `=`. Records every eq('recruit_code', x). */
-function fakeClient(activeCode) {
+function fakeClient(activeCode, errorCodes = []) {
+  const actives = Array.isArray(activeCode) ? activeCode : [activeCode];
   const seen = [];
   const client = {
     seen,
@@ -60,7 +61,8 @@ function fakeClient(activeCode) {
       q.select = () => q;
       q.eq = (col, val) => { q.filters[col] = val; if (col === 'recruit_code') seen.push(val); return q; };
       q.maybeSingle = async () => {
-        const hit = q.filters.recruit_code === activeCode && q.filters.status === 'active';
+        if (errorCodes.includes(q.filters.recruit_code)) return { data: null, error: { message: 'network: simulated RPC failure' } };
+        const hit = actives.includes(q.filters.recruit_code) && q.filters.status === 'active';
         return { data: hit ? { id: 'rec-1', first_name: 'Rita', last_name: 'Recruiter', company: 'RR LLC' } : null, error: null };
       };
       return q;
@@ -77,10 +79,10 @@ function loadConfig() {
   return vm.runInContext('CONFIG', sandbox);
 }
 
-async function drive(page, { search, stored, active }) {
+async function drive(page, { search, stored, active, errors = [] }) {
   const src = read(page);
   const fn = extractDetect(src);
-  const client = fakeClient(active);
+  const client = fakeClient(active, errors);
   const store = new Map(stored == null ? [] : [['cs_recruit_code', stored]]);
   const sb = vm.createContext({
     console: { warn() {}, log() {}, error() {} },
@@ -102,7 +104,18 @@ const FORMS = [
   ['r-abc123', 'all lower case'],
   ['%20r-abc123%20', 'surrounding whitespace'],
   ['R-ABC123', 'upper-case prefix'],
-  ['AbC123', 'mixed case, no prefix typed (issue example)'],
+];
+
+const NON_CANONICAL = [
+  ['ABC123', 'no r- prefix'],
+  ['r-abc-123', 'hyphen inside the code'],
+  ['r-' + 'a'.repeat(198), '200 characters'],
+  ['r-\u0410\u0412\u0421123', 'Cyrillic look-alikes'],
+  ['r-\u0131abc', 'dotless i, upper-cases to ASCII I'],
+  ['r-\u00dfa', 'sharp s, upper-cases to ASCII SS'],
+  ['r-\uff21\uff22\uff23123', 'full-width look-alikes'],
+  ['r-ABCDEFG', 'seven characters'],
+  ['r-', 'prefix only'],
 ];
 
 await check('discovery: 11 partner pages read ?recruit= via urlParams.get', () => {
@@ -112,7 +125,7 @@ await check('discovery: 11 partner pages read ?recruit= via urlParams.get', () =
 
 for (const page of PAGES) {
   for (const [raw, label] of FORMS) {
-    const expected = raw === 'AbC123' ? 'ABC123' : ACTIVE;
+    const expected = ACTIVE;
     await check(`${page}: ?recruit=${raw} (${label}) reaches the lookup as '${expected}' and is stored in recruitContext as sent to register_partner`, async () => {
       const { context, seen } = await drive(page, { search: `?recruit=${raw}`, stored: null, active: expected });
       ok(seen.length >= 1 && seen[0] === expected, `lookup received ${JSON.stringify(seen)}, wanted ${expected}`);
@@ -138,14 +151,106 @@ for (const page of PAGES) {
   });
 }
 
-await check('CONFIG.normRecruitCode matches recruit.html (gh-1648): trim, upper-case, R- -> r-', () => {
+await check('CONFIG.normRecruitCode: output is canonical r-[A-Z0-9]{1,6} or empty (ruling 5973362277 rule 1)', () => {
   const C = loadConfig();
-  const html = read('recruit.html');
-  ok(html.includes(".trim().toUpperCase().replace(/^R-/, 'r-')"), 'recruit.html normalisation changed -- keep the two in step');
-  for (const [i, o] of [['  R-abc123 ', 'r-ABC123'], ['r-abc123', 'r-ABC123'], ['R-ABC123', 'r-ABC123'], ['r-ABC123', 'r-ABC123'], ['', ''], [null, ''], [undefined, '']]) {
-    ok(C.normRecruitCode(i) === o, `${JSON.stringify(i)} -> ${JSON.stringify(C.normRecruitCode(i))}, wanted ${JSON.stringify(o)}`);
+  for (const [i, o] of [['  R-abc123 ', 'r-ABC123'], ['r-abc123', 'r-ABC123'], ['R-ABC123', 'r-ABC123'], ['r-ABC123', 'r-ABC123'], ['\u00a0r-abc123\t\n', 'r-ABC123'], ['r-a', 'r-A'],
+    ['', ''], [null, ''], [undefined, ''], ...NON_CANONICAL.map(([v]) => [v, ''])]) {
+    ok(C.normRecruitCode(i) === o, `${String(JSON.stringify(i)).slice(0, 40)} -> ${JSON.stringify(C.normRecruitCode(i))}, wanted ${JSON.stringify(o)}`);
   }
 });
+
+await check('recruit.html uses the shared CONFIG.normRecruitCode (no private copy of the normaliser)', () => {
+  const html = read('recruit.html');
+  ok(html.includes("CONFIG.normRecruitCode(params.get('code'))"), 'recruit.html does not call CONFIG.normRecruitCode');
+  ok(!html.includes(".trim().toUpperCase().replace(/^R-/, 'r-')"), 'recruit.html still carries its own normaliser');
+});
+
+// ───────────────────────── gh-2471 follow-up: CTO ruling 5973362277 case table ─────────────────────────
+const B = 'r-BBBBBB', A = 'r-AAAAAA';
+for (const page of PAGES) {
+  await check(`${page}: [1] valid B over stored A -> B wins`, async () => {
+    const { context, seen } = await drive(page, { search: `?recruit=${B}`, stored: A, active: [A, B] });
+    ok(context && context.recruitCode === B && seen[0] === B, `ctx = ${JSON.stringify(context)}, lookups = ${JSON.stringify(seen)}`);
+  });
+  await check(`${page}: [2] typo with nothing stored -> nobody credited`, async () => {
+    const { context } = await drive(page, { search: '?recruit=r-TYPO99', stored: null, active: [A, B] });
+    ok(!context, `ctx = ${JSON.stringify(context)}`);
+  });
+  await check(`${page}: [3] typo with A stored -> A stays`, async () => {
+    const { context } = await drive(page, { search: '?recruit=r-TYPO99', stored: A, active: [A, B] });
+    ok(context && context.recruitCode === A, `ctx = ${JSON.stringify(context)}`);
+  });
+  await check(`${page}: [4] lookup ERROR on canonical B with A stored -> B kept as candidate, A not credited, stored code never looked up`, async () => {
+    const { context, seen } = await drive(page, { search: `?recruit=${B}`, stored: A, active: [A, B], errors: [B] });
+    ok(context && context.recruitCode === B, `ctx = ${JSON.stringify(context)} (A would be a misattribution)`);
+    ok(!seen.includes(A), `stored code was looked up after the error: ${JSON.stringify(seen)}`);
+  });
+  await check(`${page}: [5] lookup error on a NON-canonical value with A stored -> A stays (value never reaches a lookup)`, async () => {
+    const { context, seen } = await drive(page, { search: '?recruit=ABC123', stored: A, active: [A], errors: ['ABC123'] });
+    ok(context && context.recruitCode === A, `ctx = ${JSON.stringify(context)}`);
+    ok(seen.length === 1 && seen[0] === A, `lookups = ${JSON.stringify(seen)}`);
+  });
+  for (const [val, label] of NON_CANONICAL) {
+    await check(`${page}: [7] non-canonical ?recruit= (${label}) -> empty, NO lookup call, nobody credited`, async () => {
+      const { context, seen } = await drive(page, { search: `?recruit=${encodeURIComponent(val)}`, stored: null, active: [A, B, 'r-ABC123'] });
+      ok(seen.length === 0 && !context, `lookups = ${JSON.stringify(seen)}, ctx = ${JSON.stringify(context)}`);
+    });
+  }
+}
+
+/** recruit.html?code= driver: the page's real handleRecruit() against the real config.js; logs every storage write and lookup in order. */
+async function driveRecruit({ code, stored, active, errors = [] }) {
+  const src = read('recruit.html');
+  const script = src.slice(src.lastIndexOf('<script>') + 8, src.indexOf("document.addEventListener('DOMContentLoaded', handleRecruit)"));
+  const events = [];
+  const client = fakeClient(active, errors);
+  const origRpc = client.rpc.bind(client);
+  client.rpc = (...a) => { const q = origRpc(...a); const eq = q.eq; q.eq = (c, v) => { if (c === 'recruit_code') events.push(`lookup:${v}`); return eq(c, v); }; const ms = q.maybeSingle; q.maybeSingle = async () => { const r = await ms(); if (r.data) r.data.agent_type = 'home_inspector'; return r; }; return q; };
+  const store = new Map(stored == null ? [] : [['cs_recruit_code', stored]]);
+  let redirected = null, chooser = false;
+  const el = () => ({ style: {}, textContent: '', innerHTML: '', appendChild() {}, addEventListener() {}, className: '', type: '' });
+  const ctx = vm.createContext({
+    console: { warn() {}, log() {}, error() {} },
+    window: { location: { search: `?code=${encodeURIComponent(code)}`, replace: (u) => { redirected = u; } } },
+    localStorage: { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => { if (k === 'cs_recruit_code') { events.push(`write:${v}`); store.set(k, v); } }, removeItem() {} },
+    document: { getElementById: () => { chooser = chooser || false; return el(); }, createElement: el },
+    URLSearchParams, encodeURIComponent, sb: client, CONFIG: loadConfig(), gtag: () => {}, initNav: () => {},
+  });
+  vm.runInContext(read('js/agent-types.js'), ctx, { filename: 'js/agent-types.js' });
+  ctx.AgentTypes = ctx.window.AgentTypes; // a browser's window IS the global scope
+  vm.runInContext(`${script}; this.__run = handleRecruit();`, ctx);
+  await ctx.__run;
+  return { events, stored: store.get('cs_recruit_code') ?? null, redirected };
+}
+
+await check('recruit.html?code=: [6] typo with A stored -> A stays, NOTHING is written (before or after resolution)', async () => {
+  const r = await driveRecruit({ code: 'r-TYPO99', stored: A, active: [A, B] });
+  ok(r.stored === A && !r.events.some((e) => e.startsWith('write:')), `stored = ${r.stored}, events = ${JSON.stringify(r.events)}`);
+  ok(r.events[0] === 'lookup:r-TYPO99', `events = ${JSON.stringify(r.events)}`);
+});
+await check('recruit.html?code=: nothing is written before the lookup has resolved (every write follows a lookup)', async () => {
+  const r = await driveRecruit({ code: B, stored: A, active: [A, B] });
+  const w = r.events.findIndex((e) => e.startsWith('write:')), l = r.events.findIndex((e) => e.startsWith('lookup:'));
+  ok(l === 0 && w > l, `events = ${JSON.stringify(r.events)}`);
+});
+await check('recruit.html?code=: valid B over stored A -> B stored', async () => {
+  const r = await driveRecruit({ code: 'R-bbbbbb', stored: A, active: [A, B] });
+  ok(r.stored === B, `stored = ${r.stored}, events = ${JSON.stringify(r.events)}`);
+});
+await check('recruit.html?code=: typo with nothing stored -> nothing written', async () => {
+  const r = await driveRecruit({ code: 'r-TYPO99', stored: null, active: [A, B] });
+  ok(r.stored === null && !r.events.some((e) => e.startsWith('write:')), `stored = ${r.stored}, events = ${JSON.stringify(r.events)}`);
+});
+await check('recruit.html?code=: lookup ERROR on canonical B with A stored -> B kept as candidate (stored), A not kept', async () => {
+  const r = await driveRecruit({ code: B, stored: A, active: [A, B], errors: [B] });
+  ok(r.stored === B, `stored = ${r.stored}, events = ${JSON.stringify(r.events)}`);
+});
+for (const [val, label] of NON_CANONICAL) {
+  await check(`recruit.html?code=: non-canonical (${label}) -> NO lookup, nothing written, stored A untouched`, async () => {
+    const r = await driveRecruit({ code: val, stored: A, active: [A, B] });
+    ok(r.events.length === 0 && r.stored === A, `stored = ${r.stored}, events = ${JSON.stringify(r.events)}`);
+  });
+}
 
 await check("react-app: the dead sessionStorage.getItem('cs_signup') fallback is gone (0 occurrences)", () => {
   const hits = [];

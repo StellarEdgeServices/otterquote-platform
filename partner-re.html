@@ -1420,10 +1420,12 @@
     // resolves to no active recruiter falls back to the stored code instead of recording no recruiter.
 
     try {
-      const { data: recruiter, error, recruitCode } = await CONFIG.lookupRecruiter(sb, urlParams.get('recruit'), localStorage.getItem('cs_recruit_code'));
+      const { data: recruiter, error, recruitCode, candidateCode } = await CONFIG.lookupRecruiter(sb, urlParams.get('recruit'), localStorage.getItem('cs_recruit_code'));
 
       if (error) {
         console.warn('Recruit code lookup failed:', error.message);
+        // gh-2471 (ruling 5973362277): an ERRORED lookup keeps a canonical URL code as the candidate; it never falls back to the stored one.
+        if (candidateCode) recruitContext = { recruitCode: candidateCode, recruiterId: null };
         return;
       }
       if (!recruiter) return;
