@@ -124,28 +124,12 @@ const REDIRECT_MAP: Record<string, string> = {
     '/locations/shelby-county-tn/roofing/',
   '/locations/jackson-county-mo/roofing/index.html':
     '/locations/jackson-county-mo/roofing/',
-  '/locations/jackson-county-mo/siding/index.html':
-    '/locations/jackson-county-mo/siding/',
-  '/locations/jackson-county-mo/gutters/index.html':
-    '/locations/jackson-county-mo/gutters/',
-  '/locations/jackson-county-mo/windows/index.html':
-    '/locations/jackson-county-mo/windows/',
-  '/locations/st-charles-county-mo/roofing/index.html':
-    '/locations/st-charles-county-mo/roofing/',
-  '/locations/st-charles-county-mo/siding/index.html':
-    '/locations/st-charles-county-mo/siding/',
   '/locations/st-charles-county-mo/gutters/index.html':
     '/locations/st-charles-county-mo/gutters/',
-  '/locations/st-charles-county-mo/windows/index.html':
-    '/locations/st-charles-county-mo/windows/',
   '/locations/st-louis-county-mo/roofing/index.html':
     '/locations/st-louis-county-mo/roofing/',
-  '/locations/st-louis-county-mo/siding/index.html':
-    '/locations/st-louis-county-mo/siding/',
   '/locations/st-louis-county-mo/gutters/index.html':
     '/locations/st-louis-county-mo/gutters/',
-  '/locations/st-louis-county-mo/windows/index.html':
-    '/locations/st-louis-county-mo/windows/',
 };
 
 export default async (req: Request, context: any) => {
