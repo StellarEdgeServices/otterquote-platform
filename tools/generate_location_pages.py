@@ -1307,7 +1307,7 @@ ISSUE_ITEMS_PER_PAGE = 5
 # paragraph slots (A x B = 9 combinations) rather than fixed pairs.
 EXPECTATIONS_A = [
     "<p>Storm repair in {county} County follows a rhythm locals know well: a severe-weather event, a wave of door-knocking crews from out of the area, and then the slower, quieter work of getting damage documented, questions raised with your insurer, and a repair scoped carefully. Many homeowners find it helps to slow the process down at the start — documenting damage before tarps and repairs change the evidence, reading their policy before the first phone call, and getting more than one written bid before signing anything.</p>",
-    "<p>Homeowners in {county} County navigating a storm claim juggle three parallel tracks: the insurance process (adjuster inspection, scope, settlement), the contractor process (bids, scheduling, materials), and their own documentation. Keeping those tracks separate is the single most useful habit — your insurer decides coverage under your policy; your contractor determines what the repair actually requires; and written bids give you something concrete to discuss with your adjuster.</p>",
+    "<p>Homeowners in {county} County navigating a storm claim juggle three parallel tracks: the insurance process (adjuster inspection, scope, settlement), the contractor process (bids, scheduling, materials), and their own documentation. Keeping those tracks separate is the single most useful habit — your insurer decides coverage under your policy; your contractor determines what the repair actually requires; and written bids let you compare scope and pricing side by side.</p>",
     "<p>The practical sequence for {county} County homeowners after storm damage: document everything with photos before any cleanup, review your policy and ask your insurer how to report damage, and gather written repair bids so you can compare scope and pricing side by side. Nothing in that sequence requires committing to a contractor early — you can keep your options open while you review any written bids you receive.</p>",
 ]
 
@@ -1338,7 +1338,7 @@ FAQ = {
     ],
     "siding": [
         ("Who decides how matching is handled for my siding?",
-         "Your insurer decides how matching is handled under your policy, and discontinued profiles can complicate the conversation. Document the damage thoroughly and get written bids that address matching explicitly, so your discussion with your adjuster is grounded in specifics."),
+         "Your insurer decides how matching is handled under your policy, and discontinued profiles can complicate the conversation. Document the damage thoroughly and get written bids that address matching explicitly, so you can compare scope and pricing side by side."),
         ("Can hail damage siding without visible holes?",
          "Yes — dents, cracks, and chalk-line disturbances can be signs of hail impact even when panels remain attached. An up-close inspection of storm-facing elevations tells the real story."),
         ("Do all elevations get replaced if one is damaged?",
