@@ -49,6 +49,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
+import { ownerTag } from './fixtures/owner-tag.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const authPath = process.argv[2]
@@ -144,7 +145,7 @@ function makeSandbox({ hasContractorRecord }) {
   vm.createContext(sandbox);
   vm.runInContext(authSrc, sandbox, { filename: 'js/auth.js' });
 
-  sandbox.window.Auth.getUser = async () => ({ id: 'user-gh2060' });
+  sandbox.window.Auth.getUser = async () => ({ id: 'user-gh2060', email: 'user@example.com' });
   sandbox.__calls = calls; // exposed so tests can read it after running handleAuthCallback()
 
   return { sandbox, localStorage, sessionStorage, calls };
@@ -181,6 +182,7 @@ async function main() {
     async () => {
       const { sandbox, localStorage, calls } = makeSandbox({ hasContractorRecord: false });
       localStorage.setItem('cs_auth_role', 'contractor');
+      localStorage.setItem('cs_auth_role_email', ownerTag('user@example.com')); // gh-2344: same signer (one-way tag)
       // Deliberately NO cs_auth_role_at — this is exactly the pre-fix
       // breadcrumb shape (a value that predates this fix, or was written by
       // an abandoned flow long ago) and must be treated as absent/stale.
@@ -205,6 +207,7 @@ async function main() {
     async () => {
       const { sandbox, localStorage, calls } = makeSandbox({ hasContractorRecord: false });
       localStorage.setItem('cs_auth_role', 'contractor');
+      localStorage.setItem('cs_auth_role_email', ownerTag('user@example.com')); // gh-2344: same signer (one-way tag)
       localStorage.setItem('cs_auth_role_at', String(Date.now() - 25 * 60 * 60 * 1000)); // 25h ago
       localStorage.setItem('cs_signup', homeownerSignupData);
       localStorage.setItem('cs_signup_at', String(Date.now())); // gh-2060 item 2: a fresh, stamped signup
@@ -228,6 +231,7 @@ async function main() {
     async () => {
       const { sandbox, localStorage, calls } = makeSandbox({ hasContractorRecord: false });
       localStorage.setItem('cs_auth_role', 'contractor');
+      localStorage.setItem('cs_auth_role_email', ownerTag('user@example.com')); // gh-2344: same signer (one-way tag)
       localStorage.setItem('cs_auth_role_at', String(Date.now()));
       localStorage.setItem('cs_signup', homeownerSignupData);
       localStorage.setItem('cs_signup_at', String(Date.now())); // gh-2060 item 2: a fresh, stamped signup
@@ -249,6 +253,7 @@ async function main() {
     async () => {
       const { sandbox, localStorage, calls } = makeSandbox({ hasContractorRecord: true });
       localStorage.setItem('cs_auth_role', 'homeowner');
+      localStorage.setItem('cs_auth_role_email', ownerTag('user@example.com')); // gh-2344: same signer (one-way tag)
       localStorage.setItem('cs_auth_role_at', String(Date.now() - 25 * 60 * 60 * 1000)); // 25h ago
       localStorage.setItem('cs_signup', homeownerSignupData);
       localStorage.setItem('cs_signup_at', String(Date.now())); // gh-2060 item 2: a fresh, stamped signup
@@ -268,6 +273,7 @@ async function main() {
     async () => {
       const { sandbox, localStorage } = makeSandbox({ hasContractorRecord: false });
       localStorage.setItem('cs_auth_role', 'contractor');
+      localStorage.setItem('cs_auth_role_email', ownerTag('user@example.com')); // gh-2344: same signer (one-way tag)
       localStorage.setItem('cs_auth_role_at', String(Date.now()));
 
       await sandbox.window.Auth.handleAuthCallback();
@@ -283,6 +289,7 @@ async function main() {
     async () => {
       const { sandbox, localStorage, calls } = makeSandbox({ hasContractorRecord: false });
       localStorage.setItem('cs_auth_role', 'contractor');
+      localStorage.setItem('cs_auth_role_email', ownerTag('user@example.com')); // gh-2344: same signer (one-way tag)
       localStorage.setItem('cs_auth_role_at', String(Date.now() + 365 * 24 * 60 * 60 * 1000)); // +1y
       localStorage.setItem('cs_signup', homeownerSignupData);
       localStorage.setItem('cs_signup_at', String(Date.now())); // gh-2060 item 2: a fresh, stamped signup
@@ -303,6 +310,7 @@ async function main() {
     async () => {
       const { sandbox, localStorage, sessionStorage } = makeSandbox({ hasContractorRecord: false });
       localStorage.setItem('cs_auth_role', 'contractor');
+      localStorage.setItem('cs_auth_role_email', ownerTag('user@example.com')); // gh-2344: same signer (one-way tag)
       localStorage.setItem('cs_auth_role_at', String(Date.now()));
       sessionStorage.setItem('cs_auth_role', 'contractor');
       sessionStorage.setItem('cs_auth_role_at', String(Date.now()));

@@ -437,6 +437,15 @@ jobs:
       - name: Do Not Sell or Share opt-out control guard (gh-1925, D-336)
         run: node tests/gh1925-optout-control.mjs
 
+      - name: cs_auth_role breadcrumb owner binding unit test (gh-2344)
+        run: node tests/gh2344-cs-auth-role-owner.mjs
+
+      - name: partner-site owner stamp + signup-ctx binding + dropped-ctx re-collect ask unit test (gh-2344, LEGAL-READ 5965145560)
+        run: node tests/gh2344-partner-site-owner-stamp.mjs
+
+      - name: ownerTag cyrb53 parity across js/auth.js, React port and index.html (gh-2344)
+        run: node tests/gh2344-owner-tag-parity.mjs
+
       - name: admin Ready-not-submitted tab includes draft claims (gh-1570)
         run: node tests/gh1570-ready-queue-draft.mjs
 

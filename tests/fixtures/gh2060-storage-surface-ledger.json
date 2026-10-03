@@ -4,11 +4,21 @@
     {
       "key": "cs_auth_role",
       "also": [
-        "cs_auth_role_at"
+        "cs_auth_role_at",
+        "cs_auth_role_email",
+        "cs_auth_role_tab"
       ],
       "stack": "react+static",
       "status": "tested",
       "tests": [
+        {
+          "file": "tests/gh2344-cs-auth-role-owner.mjs",
+          "contains": "foreign-email cs_auth_role=contractor is ignored and cleared"
+        },
+        {
+          "file": "react-app/app/auth-callback/__tests__/gh2344-cs-auth-role-owner.test.tsx",
+          "contains": "foreign-email cs_auth_role=contractor is ignored and cleared"
+        },
         {
           "file": "react-app/app/auth-callback/__tests__/page.test.tsx",
           "contains": "treats a FUTURE-dated cs_auth_role_at"

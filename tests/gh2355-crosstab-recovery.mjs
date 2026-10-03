@@ -46,7 +46,7 @@ function ctxFromPage(file, args, local) {
   const line = read(file).split('\n').find((l) => l.includes("localStorage.setItem('" + CTX + "'"));
   if (!line) return { missing: true };
   const stmt = line.slice(line.indexOf("try { localStorage.setItem('" + CTX + "'"), line.indexOf('// gh-2355: NON-PII'));
-  vm.runInContext(stmt, vm.createContext({ localStorage: local, partnerRpcArgs: args, JSON, Date }));
+  vm.runInContext(stmt, vm.createContext({ localStorage: local, partnerRpcArgs: args, JSON, Date, oqCtxOwner: 'o1:sampletag' /* gh-2344: computed on the statement before, as the pages do */ }));
   return {};
 }
 const sampleArgs = { p_agent_type: 'adjuster', p_first_name: 'Jane', p_last_name: 'Smith', p_email: OWN, p_phone: '3175551234', p_company: 'Acme Claims Co', p_referred_by_note: 'Jane Smith', p_recruit_code: 'RECRUIT1', p_metadata: { adjuster_type: 'x' },
@@ -128,12 +128,13 @@ if (showSrc && beginSrc && recSrc) {
     const l2 = store();
     if (t) l2.setItem(CTX, JSON.stringify({ ts: Date.now(), agentType: t, attribution: {} }));
     r = await dashboardTab({ local: l2, values: V });
-    ok(r.rpcCalls.length === 1 && r.rpcCalls[0].params.p_agent_type === 'other', '(4) type ' + JSON.stringify(t) + ' -> the other form, agent type "other"');
+    // gh-2344 (CEO ruling #2304 5965155761 item 1): no trusted type -> the page ASKS; it never defaults to 'other'.
+    ok(r.rpcCalls.length === 0 && !!r.byId('partnerRecollect_agentType') && !r.byId('partnerRecollectForm'), '(4) type ' + JSON.stringify(t) + ' -> the partner-type ask is shown, no form and no register_partner until a type is picked');
   }
   const l3 = store();
   l3.setItem(CTX, JSON.stringify({ ts: Date.now() - 31 * 864e5, agentType: 'adjuster', attribution: { p_utm_source: 'x' } }));
   r = await dashboardTab({ local: l3, values: V });
-  ok(r.rpcCalls.length === 1 && r.rpcCalls[0].params.p_agent_type === 'other' && r.rpcCalls[0].params.p_utm_source === null, '(4) an expired ctx is ignored');
+  ok(r.rpcCalls.length === 0 && !!r.byId('partnerRecollect_agentType'), '(4) an expired ctx is ignored (the ask is shown, never the other form)');
 
   r = await dashboardTab({ local: store(), agentType: 'insurance_agent', values: { full: 'Jane van Smith', phone: '3175551234', company: 'Acme Claims Co' } });
   ok(r.rpcCalls.length === 1 && r.rpcCalls[0].params.p_first_name === 'Jane' && r.rpcCalls[0].params.p_last_name === 'van Smith', '(5) insurance_agent: Full Name split into first/last');
