@@ -154,6 +154,9 @@ jobs:
       - name: cookie-storage.js/config.js load-order check (Stage 5 prevention, #601)
         run: python3 scripts/check-script-load-order.py
 
+      - name: sitemap.xml vs repo consistency guard (gh-2447)
+        run: python3 scripts/check-sitemap.py
+
       - name: Sentry loader/onLoad ordering guard (gh-2010/PR #2023/gh-2043)
         run: python3 scripts/check-sentry-onload-order.py
 
