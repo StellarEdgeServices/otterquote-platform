@@ -12,7 +12,8 @@ closes-on mapping (issue #2422):
       test_indiana_profile_emits_nothing_under_strict_gate
         a county under 500 strict-unique words emits no page and no sitemap entry.
   (c) test_state_not_on_allowlist_emits_no_page
-  (d) test_committed_allowlist_is_empty  (+ test_empty_allowlist_emits_nothing)
+  (d) test_committed_allowlist_states_have_committed_profiles  (+ test_empty_allowlist_emits_nothing,
+        which uses an injected empty allow-list)
   (e) test_lint_rejects_*  (our contractors / vetted / connects you with
         contractors who serve / vendor name / missing required phrase)
 
@@ -303,16 +304,87 @@ class GeneratorTests(unittest.TestCase):
         self.assertIsNotNone(summary["min_unshared_shingles"])
         self.assertLessEqual(summary["min_unshared_shingles"], summary["median_unshared_shingles"])
 
-    # (d) committed allow-list is empty --------------------------------------
-    def test_committed_allowlist_is_empty(self):
+    def test_generated_pages_link_only_to_existing_locations_urls(self):
+        # R1 (review of #2482): every internal /locations/ href and every JSON-LD URL under
+        # /locations/ must be the page's own canonical or another generated page.
+        self.run_fx()
+        pages = sorted(self.out.glob("*/*/index.html"))
+        self.assertGreater(len(pages), 0)
+        urls = {f"{glp.SITE_BASE}/locations/{p.parent.parent.name}/{p.parent.name}/" for p in pages}
+        def walk(o):
+            if isinstance(o, dict):
+                for v in o.values():
+                    yield from walk(v)
+            elif isinstance(o, list):
+                for v in o:
+                    yield from walk(v)
+            elif isinstance(o, str):
+                yield o
+        for p in pages:
+            own = f"{glp.SITE_BASE}/locations/{p.parent.parent.name}/{p.parent.name}/"
+            html_text = p.read_text(encoding="utf-8")
+            found = []
+            for h in re.findall(r'href="([^"]*)"', html_text):
+                if h.startswith("/locations") or h.startswith(glp.SITE_BASE + "/locations"):
+                    found.append(h if h.startswith("http") else glp.SITE_BASE + h)
+            for blk in re.findall(r'<script type="application/ld\+json">(.*?)</script>', html_text, re.S):
+                for sv in walk(json.loads(blk)):
+                    if sv.startswith(glp.SITE_BASE + "/locations"):
+                        found.append(sv)
+            self.assertIn(own, found)  # canonical / breadcrumb self-reference is present
+            for u in found:
+                with self.subTest(page=str(p.relative_to(self.out)), url=u):
+                    self.assertIn(u, urls)
+
+    def test_service_jsonld_name_equals_h1_and_nav_logo_file_exists(self):
+        # Legal-read carry-forward (#2422 5965730069 item 1): Service name == visible H1.
+        # Nav logo: the <img> in the page's nav script must point at a file that exists in the repo.
+        self.run_fx()
+        pages = sorted(self.out.glob("*/*/index.html"))
+        self.assertGreater(len(pages), 0)
+        import html as _html
+        for p in pages:
+            text = p.read_text(encoding="utf-8")
+            h1 = _html.unescape(re.search(r"<h1>(.*?)</h1>", text, re.S).group(1)).strip()
+            names = []
+            for blk in re.findall(r'<script type="application/ld\+json">(.*?)</script>', text, re.S):
+                d = json.loads(blk)
+                if isinstance(d, dict) and d.get("@type") == "Service":
+                    names.append(d["name"])
+            with self.subTest(page=str(p.relative_to(self.out))):
+                self.assertEqual(names, [h1])
+                for src in re.findall(r'<img src="(/img/[^"]+)"', text):
+                    self.assertTrue((REPO_ROOT / src.lstrip("/")).is_file(), src)
+
+    # (d) committed allow-list states have committed profiles --------------------------------------
+    def test_committed_allowlist_states_have_committed_profiles(self):
+        # Invariant (replaces the launch-day "allow-list is empty" pin): every state on the
+        # committed allow-list loads, has a committed profile, and is not a D-344 blocked state.
         data = json.loads((REPO_ROOT / "data" / "location-pages-state-allowlist.json").read_text(encoding="utf-8"))
-        self.assertEqual(data["states"], [])
-        self.assertEqual(glp.load_allowlist(), [])
+        states = glp.load_allowlist()
+        self.assertEqual(states, [s.strip().upper() for s in data["states"]])
+        for st in states:
+            with self.subTest(st):
+                self.assertTrue((REPO_ROOT / "data" / "location-state-profiles" / f"{st}.json").is_file())
+                glp.load_profile(st)  # raises StateConfigError if malformed
+                self.assertNotIn(st, ("FL", "LA", "TX"))
+
+    def test_committed_generated_pages_belong_to_allowlisted_states(self):
+        # Invariant: no page is committed under locations/ for a state that is not on the allow-list.
+        allowed = {s.lower() for s in glp.load_allowlist()}
+        loc = REPO_ROOT / "locations"
+        if loc.is_dir():
+            for d in sorted(p for p in loc.iterdir() if p.is_dir()):
+                with self.subTest(d.name):
+                    self.assertIn(d.name.rsplit("-", 1)[-1], allowed)
 
     def test_empty_allowlist_emits_nothing(self):
+        # Injected empty allow-list file (not the committed one).
+        empty = self.tmp / "empty-allow.json"
+        empty.write_text(json.dumps({"states": []}), encoding="utf-8")
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
-            summary = glp.generate(glp.load_allowlist(), out_dir=self.out, sitemap_path=self.sitemap)
+            summary = glp.generate(glp.load_allowlist(empty), out_dir=self.out, sitemap_path=self.sitemap)
         self.assertEqual(summary["written"], 0)
         self.assertIn("allow-list is empty", buf.getvalue())
         self.assertFalse(self.out.exists())
@@ -320,7 +392,8 @@ class GeneratorTests(unittest.TestCase):
     # state support is explicit, never silent --------------------------------
     def test_allowlisted_state_without_profile_is_an_explicit_error(self):
         with self.assertRaises(glp.StateConfigError) as cm:
-            self.run_gen(["OH"])  # has county data, no climate profile
+            # OH has county data; the injected profiles dir holds only the ZZ fixture, so OH has no profile.
+            self.run_gen(["OH"], profiles_dir=self.fx_profiles)
         self.assertIn("no state profile", str(cm.exception))
         self.assertFalse(self.out.exists())
 
@@ -344,9 +417,11 @@ class GeneratorTests(unittest.TestCase):
         self.assertEqual(prof["name"], "Indiana")
         self.assertEqual(set(prof["region_label"]), {"northern", "central", "southern"})
 
-    def test_committed_profiles_are_only_indiana(self):
-        names = sorted(p.name for p in (REPO_ROOT / "data" / "location-state-profiles").glob("*.json"))
-        self.assertEqual(names, ["IN.json"])
+    def test_committed_profiles_are_well_formed_and_match_their_filename(self):
+        # Invariant (replaces "only IN.json"): every committed profile loads; load_profile enforces code == filename.
+        for p in sorted((REPO_ROOT / "data" / "location-state-profiles").glob("*.json")):
+            with self.subTest(p.name):
+                glp.load_profile(p.stem)  # raises StateConfigError if malformed or if "code" != filename
 
     def test_malformed_profiles_are_explicit_errors_before_any_write(self):
         cases = {
@@ -1134,7 +1209,7 @@ class LintTests(unittest.TestCase):
         self.assertNotIn("Contractor Bids", page)
         ld = glp._jsonld_strings(page)
         self.assertIn("send it to local contractors", ld)
-        self.assertIn("Roofing Bids — Ohio County, IN", ld)
+        self.assertIn("Comparing Roofing Bids in Ohio County, Indiana", ld)
 
     # the rest of the have-contractors list
     def test_lint_rejects_other_have_contractors_phrasing(self):
