@@ -384,6 +384,123 @@ class GeneratorTests(unittest.TestCase):
         self.assertEqual(own.read_text(encoding="utf-8").count("/locations/"), 12)
         self.assertEqual(repo_sitemap.read_bytes(), before)
 
+    # round 5 --------------------------------------------------------------------
+    def test_explicit_sitemap_path_equal_to_repo_sitemap_is_refused_unless_repo_locations(self):
+        repo_sitemap = REPO_ROOT / "sitemap.xml"
+        before = repo_sitemap.read_bytes()
+        with self.assertRaises(glp.StateConfigError) as cm:
+            quiet(glp.generate, ["ZZ"], out_dir=self.tmp / "o" / "locations", sitemap_path=repo_sitemap,
+                  counties_path=self.fx_counties, profiles_dir=self.fx_profiles)
+        self.assertNotIn(str(repo_sitemap), str(cm.exception))   # message does not point at the repo file
+        self.assertNotIn("Pass an explicit", str(cm.exception))
+        self.assertFalse((self.tmp / "o").exists())
+        self.assertEqual(repo_sitemap.read_bytes(), before)
+        # a path that merely RESOLVES to it (relative / dotted) is refused too
+        sneaky = REPO_ROOT / "tools" / ".." / "sitemap.xml"
+        with self.assertRaises(glp.StateConfigError):
+            glp.resolve_sitemap_path(self.tmp / "o" / "locations", sneaky)
+        # allowed when out_dir is the repo's locations/ (resolve only: nothing is written)
+        self.assertEqual(glp.resolve_sitemap_path(glp.LOCATIONS_DIR, repo_sitemap), repo_sitemap)
+
+    def test_derived_sitemap_inside_the_repo_tree_is_refused(self):
+        for out in (REPO_ROOT / "tools" / "x" / "locations",      # -> tools/x/sitemap.xml
+                    REPO_ROOT / "locations" / "sub",              # -> locations/sitemap.xml
+                    REPO_ROOT / "tools" / "locations",            # -> tools/sitemap.xml
+                    REPO_ROOT):
+            with self.subTest(out=str(out)):
+                with self.assertRaises(glp.StateConfigError):
+                    glp.resolve_sitemap_path(out)
+        # outside the repo tree is fine
+        self.assertEqual(glp.resolve_sitemap_path(self.tmp / "z" / "locations"), self.tmp / "z" / "sitemap.xml")
+
+    def test_single_county_state_without_county_content_emits_nothing(self):
+        solo_counties = self.tmp / "solo-counties.json"
+        solo_counties.write_text(json.dumps({"states": [{"code": "ZZ", "counties": ["Solo"]}]}), encoding="utf-8")
+        def solo_profile(with_content):
+            prof = json.loads(json.dumps(FIXTURE_PROFILE))
+            prof["regions"] = {"north": {"label": "northern Zedland", "counties": ["Solo"],
+                                         "climate": [FIXTURE_CLIMATE % "northern"]}}
+            prof["county_content"] = ({"Solo": {t: fixture_content("Solo", t) for t in glp.ELIGIBLE_TRADES}}
+                                      if with_content else {})
+            (self.fx_profiles / "ZZ.json").write_text(json.dumps(prof), encoding="utf-8")
+        solo_profile(False)
+        summary = self.run_gen(["ZZ"], counties_path=solo_counties, profiles_dir=self.fx_profiles)
+        self.assertEqual(summary["written"], 0)
+        self.assertLess(summary["min_strict_unique_words"], 100)   # template counted as shared
+        self.assertFalse(self.out.exists())
+        solo_profile(True)                                         # real county content still passes
+        summary = self.run_gen(["ZZ"], counties_path=solo_counties, profiles_dir=self.fx_profiles)
+        self.assertEqual(summary["written"], 4)
+
+    def test_repeated_paragraph_counts_once(self):
+        para = ["w%d" % i for i in range(52)]
+        page = para * 14
+        self.assertLess(glp.strict_unique_counts([page, ["other"] * 9])[0], 120)
+        self.assertEqual(glp.strict_unique_counts([para * 1, ["other"] * 9])[0], 52)
+
+        def repeated(prof):
+            para_html = "<p>%s</p>" % " ".join("alphaword%d" % i for i in range(40))
+            prof["county_content"]["Alpha"] = {t: para_html * 14 for t in glp.ELIGIBLE_TRADES}
+        self.write_profile(repeated)
+        summary = self.run_fx()
+        self.assertIn("alpha-county-zz/roofing", summary["skipped_thin"])
+
+    def test_hidden_text_never_counts_and_is_rejected_in_county_content(self):
+        words = " ".join("hid%d" % i for i in range(100))
+        for wrapper in ('<div hidden>%s</div>', '<div aria-hidden="true">%s</div>',
+                        '<p style="display:none">%s</p>', '<p style="color:red; visibility: hidden">%s</p>',
+                        '<noscript>%s</noscript>', '<div hidden><div><span>%s</span></div></div>'):
+            with self.subTest(wrapper=wrapper):
+                page = "<main><p>visible words here</p>%s</main>" % (wrapper % words)
+                self.assertEqual(glp.main_words(page), ["visible", "words", "here"])
+        for bad in ('<div hidden>x</div>', '<p style="display:none">x</p>', '<p style="visibility:hidden">x</p>',
+                    '<p style="font-size:0">x</p>'):
+            with self.subTest(bad=bad):
+                self.write_profile(lambda p: p["county_content"]["Alpha"].update(roofing=bad))
+                with self.assertRaises(glp.StateConfigError):
+                    self.run_fx()
+                self.assertFalse(self.out.exists())
+
+    def test_lint_failure_on_any_page_leaves_zero_pages_and_no_sitemap_change(self):
+        profile = glp.load_profile("ZZ", self.fx_profiles)
+
+        def bad_last(county, trade, generated_on, state):
+            page = glp.build_page(county, trade, generated_on, state, profile=profile)
+            if (county, trade) == ("Gamma", "windows"):          # the very last page built
+                page = page.replace("</main>", "<p>Our contractors will call.</p></main>")
+            return page
+
+        with self.assertRaises(glp.ComplianceError):
+            self.run_fx(build_fn=bad_last)
+        self.assertFalse(self.out.exists())
+        self.assertEqual(self.sitemap.read_text(encoding="utf-8"), SITEMAP_SEED)
+
+    def test_article_agrees_with_county_name(self):
+        prof = glp.load_profile("IN")
+        seen = set()
+        for county, trade in (("Allen", "roofing"), ("Elkhart", "siding"), ("Ohio", "gutters"), ("Union", "windows"),
+                              ("Marion", "roofing"), ("Lake", "siding")):
+            for t in glp.ELIGIBLE_TRADES:
+                page = glp.build_page(county, t, "x", "IN", profile=prof)
+                self.assertNotRegex(page, r"\ba [AEIOUaeiou]\w* County project")
+                self.assertNotRegex(page, r"\ban [^AEIOUaeiou\s]\w* County project")
+                if f"works for an {county} County project" in page:
+                    seen.add(county)
+        self.assertTrue(seen & {"Allen", "Elkhart", "Ohio", "Union"})
+
+    def test_blocked_states_are_refused_in_any_case(self):
+        for st in ("tx", "Fl", "lA"):
+            with self.subTest(st):
+                with self.assertRaises(glp.StateConfigError) as cm:
+                    self.run_fx(states=(st,))
+                self.assertIn("D-344", str(cm.exception))
+                self.assertNotIn("no state profile", str(cm.exception))
+                f = self.tmp / "allow-lc.json"
+                f.write_text(json.dumps({"states": [st]}), encoding="utf-8")
+                with self.assertRaises(glp.StateConfigError) as cm:
+                    glp.load_allowlist(f)
+                self.assertIn("D-344", str(cm.exception))
+
     # D-344 blocked states ----------------------------------------------------
     def test_blocked_states_are_refused_everywhere(self):
         for st in ("FL", "LA", "TX"):
@@ -606,6 +723,10 @@ class LintTests(unittest.TestCase):
             # have-contractors
             "Trusted local team.", "Our local pros.", "Local roofers handle it.", "Trusted pros nearby.",
             "Contractors who already bid through Otter Quotes.", "Hundreds of contractors compete.",
+            # round 5
+            "We've got contractors lined up.", "We\u2019ve got roofers waiting.", "We have got crews ready.",
+            "Otter Quotes has got contractors in your area.", "Contractors lined up for your job.",
+            "Roofers line up to bid.",
         ):
             with self.subTest(bad=bad):
                 self.assert_fails("<p>%s</p>" % bad)

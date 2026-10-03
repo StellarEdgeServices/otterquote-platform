@@ -21,9 +21,12 @@ Every generated page is indexable. The generator never injects `noindex`.
 
 The repo-root `sitemap.xml` is written only when the output directory is the repo's
 `locations/`. With `--out-dir` elsewhere, the sitemap goes next to that directory
-(its parent), **except** that an `--out-dir` at the repo root, or directly under it
-(where "next to it" would be the repo's own `sitemap.xml`), is refused with an
-error before anything is written; pass an explicit `--sitemap PATH` in that case.
+(its parent). Refused with an error before anything is written: an `--out-dir` at the
+repo root, or one whose derived sitemap would land anywhere inside the repo tree
+(`./sitemap.xml`, `tools/sitemap.xml`, `locations/sitemap.xml`, ...), and an explicit
+`--sitemap` that resolves to the repo's own `sitemap.xml`, unless `--out-dir` is the
+repo's `locations/`. Use an out-dir whose parent is outside the repo, or a `--sitemap`
+path outside the repo.
 The site-wide JSON-LD entity is an `Organization` with no `areaServed`; geography
 lives on each page's `Service`.
 
@@ -31,8 +34,8 @@ lives on each page's `Service`.
 python3 tools/generate_location_pages.py --dry-run      # show what would happen
 python3 tools/generate_location_pages.py                # write pages + sitemap
 python3 tools/generate_location_pages.py --allowlist X  # use another allow-list file
-python3 tools/generate_location_pages.py --out-dir DIR  # write elsewhere; sitemap goes to DIR/../sitemap.xml (refused if that is the repo's)
-python3 tools/generate_location_pages.py --out-dir DIR --sitemap PATH
+python3 tools/generate_location_pages.py --out-dir DIR  # write elsewhere; sitemap goes to DIR/../sitemap.xml (refused if inside the repo)
+python3 tools/generate_location_pages.py --out-dir DIR --sitemap PATH  # PATH must not be the repo's sitemap.xml
 python3 tools/generate_location_pages.test.py           # self-test (CI runs this)
 ```
 
@@ -101,9 +104,19 @@ the rest are counted.
   the intended outcome until the CRO writes county-specific content.
 - Identical text on two counties, or on the same county's four trade pages, is
   shared, so it counts for none of them.
-- A run that builds only one page compares it with nothing, so all its words
-  count. The gate is meaningful when a state's full county x trade set is
-  generated together, which is what the CLI does.
+- Template baseline: every run also renders synthetic template-only pages (state
+  profile, no `county_content`; 60 per trade, `TEMPLATE_BASELINES`) that are compared
+  against but never scored or emitted. A one-county state, or a narrowed
+  `generate()` call, therefore cannot count template text as unique.
+- Repeats within a page count once: a paragraph repeated 14 times is one paragraph.
+- Hidden text never counts (elements with `hidden`, `aria-hidden="true"`, inline
+  `display:none` / `visibility:hidden` / `font-size:0` / `opacity:0`, and
+  `<noscript>`/`<template>`), and `county_content` containing any of those is rejected.
+- Known gap: a filler token inserted every 7 words makes every 8-word shingle
+  unique. Closing it needs a shorter n-gram test that also flags ordinary prose, so
+  it is left to human review of `county_content`.
+- All pages of a run are built and linted before any file is written; one lint
+  failure leaves zero pages and no sitemap change.
 - Each run prints min/median strict-unique words, and an **informational**
   cross-page metric (share of each page's 8-word shingles on no other page).
 
@@ -166,6 +179,28 @@ Enforced in the template and in `compliance_lint()`:
   `scripts/vendor-scrub-check.py`, plus Stripe, Mailgun, Twilio).
 
 A lint failure stops the run with an error; it is a copy bug, not a skip.
+
+### Writing county content around the lint (known false positives)
+
+The lint is deliberately blunt and does not understand context; do not expect it
+to be loosened. Phrases that county content (storm history, housing stock, permit
+notes) is likely to trip, and how to phrase around them:
+
+| Trips on | Why | Phrase it as |
+|---|---|---|
+| "hundreds of homes" | "hundreds of" (implies scale of our network) | "many homes", "a large share of the housing stock", or give the real figure with its source |
+| "screened porch", "screened-in" | D-104 "screened" | "enclosed porch", "porch with screens" |
+| "in 15 minutes", "in 3 days", "within 2 days" | speed promises | "a short drive", "after the storm", or no timing at all |
+| "the local team", "local crews", "local pros" | have-contractors (local ... team/crews/pros/roofers/network) | "the county's building department", "storm-response crews from the utility" (name the actual body; never imply it is ours) |
+| "a network of storm sirens", "network of" | "network of" | "a system of sirens", "a grid of" |
+| "the county's contractors", "Marion County roofers" | "[County] contractors/roofers" | "roofing work in Marion County", "roof replacements in the county" |
+| "your policy covers", "insurance covered the loss", "the damage is covered" | D-326: no coverage statements, nothing that interprets a policy | "ask your insurer what your policy includes", "your insurer decides coverage" ("coverage" alone is allowed) |
+| "entitled to", "maximize", "lowest price" | D-326 / promises | "may be able to ask", "get the most from", or drop the claim |
+| "guarantee" | promises (only "does not / cannot guarantee" passes) | "promise" is fine only for negated statements; otherwise drop |
+| "free", "save up to", "% off" | price promises | state facts without price claims |
+
+If a legitimate sentence still trips a ban, rewrite the sentence; a lint failure
+stops the whole run and nothing is written.
 
 ## Removed by D-345
 

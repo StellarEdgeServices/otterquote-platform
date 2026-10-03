@@ -169,14 +169,14 @@ HAVE_CONTRACTORS_BANS = (
     r"\bcontractors\s+serving\b",
     rf"\b{_PLURAL_TRADESPEOPLE}\s+(?:in|near|serving|across|throughout|around|covering|covers?|working\s+in|operating\s+in)\s+[^.<>]{{0,40}}?\bcounty\b",
     rf"\bcounty\s+{_PLURAL_TRADESPEOPLE}\b",                                  # Marion County contractors
-    rf"\b{_PLURAL_TRADESPEOPLE}\s+(?:ready|standing\s+by|waiting|eager|willing|able|on\s+call)\b",
+    rf"\b{_PLURAL_TRADESPEOPLE}\s+(?:ready|standing\s+by|waiting|eager|willing|able|on\s+call|lined\s+up|line\s+up)\b",
     r"\blocal\s+contractors\s+we\b",                                          # local contractors we work with / have
     r"\bcontractors\s+(?:near|around)\s+you\b",
     r"\bcontractors\s+(?:working|operating|located|based)\s+in\b",
     r"\bapproved\s+contractors?\b",
     r"\bcontractors?\s+(?:are\s+)?available\b",
     r"\bcontractors\s+on\s+(?:the\s+platform|otter\s+quotes)\b",
-    rf"\b(?:we|otter\s+quotes)\s+(?:have|has|employ|employs|use|uses|work\s+with|works\s+with|partner\s+with|partners\s+with)\s+(?:\w+\s+){{0,3}}{_PLURAL_TRADESPEOPLE}\b",
+    rf"\b(?:we|otter\s+quotes)(?:\s+|'ve\s+|'s\s+)(?:have\s+got|has\s+got|got|have|has|employ|employs|use|uses|work\s+with|works\s+with|partner\s+with|partners\s+with)\s+(?:\w+\s+){{0,3}}{_PLURAL_TRADESPEOPLE}\b",
     r"\bconnects?\s+(?:you|homeowners|consumers|customers)\s+with\s+(?:\w+\s+)?(?:contractors|roofers|pros|professionals)\b",
     r"\bplatform\s+coverage\b",
     r"\bcontractor\s+profiles?\b",
@@ -261,7 +261,7 @@ class StateConfigError(RuntimeError):
 
 def refuse_blocked_states(states) -> None:
     """D-344: FL, LA and TX are hard-refused wherever they come from."""
-    blocked = [st for st in states if st in BLOCKED_STATES]
+    blocked = [str(st).upper() for st in states if str(st).upper() in BLOCKED_STATES]
     if blocked:
         raise StateConfigError(
             f"REFUSED: {', '.join(blocked)} {'is' if len(blocked) == 1 else 'are'} blocked by D-344 "
@@ -279,6 +279,7 @@ def load_allowlist(path=None) -> list:
     states = data.get("states") if isinstance(data, dict) else None
     if not isinstance(states, list):
         raise StateConfigError(f'{path}: expected a JSON object with a "states" list')
+    refuse_blocked_states([c for c in states if isinstance(c, str)])   # D-344, any case, first
     out = []
     for code in states:
         if not (isinstance(code, str) and re.fullmatch(r"[A-Z]{2}", code)):
@@ -364,6 +365,9 @@ def load_profile(state: str, profiles_dir=None) -> dict:
 
     county_content = {}
     raw_cc = data.get("county_content", {})
+    if _HIDDEN_TEXT_IN_CONTENT.search(json.dumps(raw_cc)):
+        raise bad('county_content must not contain hidden text ("hidden", display:none, visibility:hidden, '
+                  "font-size:0, opacity:0)")
     if not isinstance(raw_cc, dict):
         raise bad('"county_content" must be an object mapping county -> html, or county -> {trade: html}')
     for county, value in raw_cc.items():
@@ -436,8 +440,26 @@ def safe_jsonld(obj) -> str:
 _VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"}
 
 
+_HIDDEN_STYLE = re.compile(r"display\s*:\s*none|visibility\s*:\s*hidden|font-size\s*:\s*0\b|opacity\s*:\s*0\b",
+                           re.IGNORECASE)
+_HIDDEN_TEXT_IN_CONTENT = re.compile(
+    r"\bhidden\b|display\s*:\s*none|visibility\s*:\s*hidden|font-size\s*:\s*0\b|opacity\s*:\s*0\b",
+    re.IGNORECASE)
+
+
+def _is_hidden(attrs: dict) -> bool:
+    """Elements a reader cannot see: hidden attribute, aria-hidden="true",
+    or an inline style that hides them. Their words never count."""
+    if "hidden" in attrs:
+        return True
+    if (attrs.get("aria-hidden") or "").strip().lower() == "true":
+        return True
+    return bool(_HIDDEN_STYLE.search(attrs.get("style") or ""))
+
+
 class _UniqueTextParser(HTMLParser):
-    """Collect the text inside <main> (scripts and styles skipped). Elements
+    """Collect the text inside <main> (scripts, styles, <noscript> and hidden
+    elements skipped). Elements
     marked data-boilerplate are NOT skipped: shared text is detected by the
     cross-page shingle measure, not by markup."""
 
@@ -453,7 +475,7 @@ class _UniqueTextParser(HTMLParser):
         a = dict(attrs)
         if tag == "main":
             self.in_main += 1
-        if self.skip_stack or tag in ("script", "style"):
+        if self.skip_stack or tag in ("script", "style", "noscript", "template") or _is_hidden(a):
             self.skip_stack.append(tag)
 
     def handle_endtag(self, tag):
@@ -490,28 +512,42 @@ def shingles(words: list) -> set:
     return {" ".join(w[i:i + SHINGLE_SIZE]) for i in range(max(0, len(w) - SHINGLE_SIZE + 1))}
 
 
-def strict_unique_counts(word_lists: list) -> list:
+def strict_unique_counts(word_lists: list, baseline_lists=()) -> list:
     """The D-345 / D-241 guardrail-2 measure, per page: the number of words of
     the page's <main> visible text that are covered by NO SHINGLE_SIZE-word
     shingle appearing on any other page in the same run.
 
     One pass builds shingle -> number of pages containing it; then, per page,
-    every word inside a shingle that also appears on another page is marked
-    template (shared) content, and the rest are counted. A page with fewer
-    than SHINGLE_SIZE words has no shingles, so all its words count."""
+    every word inside a shared shingle is template content and the rest are
+    counted. Two refinements:
+      - baseline_lists: word lists of template-only pages that are compared
+        against but never scored or emitted (see TEMPLATE_BASELINES), so a run
+        of one county cannot count template text as unique;
+      - repeats within a page: a shingle that already occurred earlier on the
+        same page is a repeat, and its words are not counted again, so a
+        paragraph repeated N times counts once.
+    A page with fewer than SHINGLE_SIZE words has no shingles, so all its
+    words count.
+
+    Not defended: a token inserted every 7 words makes every 8-word shingle
+    unique. Closing that needs a shorter n-gram test that also flags ordinary
+    prose, so it is left to review of county_content (a CRO-authored file)."""
     from collections import Counter
     seen = Counter()
-    for words in word_lists:
+    for words in list(word_lists) + list(baseline_lists):
         seen.update(shingles(words))
     counts = []
     for words in word_lists:
         w = [x.lower() for x in words]
-        covered = [False] * len(w)
+        excluded = [False] * len(w)
+        first_seen = set()
         for i in range(len(w) - SHINGLE_SIZE + 1):
-            if seen[" ".join(w[i:i + SHINGLE_SIZE])] >= 2:
+            sh = " ".join(w[i:i + SHINGLE_SIZE])
+            if seen[sh] >= 2 or sh in first_seen:
                 for j in range(i, i + SHINGLE_SIZE):
-                    covered[j] = True
-        counts.append(len(w) - sum(covered))
+                    excluded[j] = True
+            first_seen.add(sh)
+        counts.append(len(w) - sum(excluded))
     return counts
 
 
@@ -896,7 +932,7 @@ EXPECTATIONS_B = [
 ]
 
 HOW_IT_WORKS = [
-    "<p>Here is how Otter Quotes works for a {county} County project. You submit your project details once. Otter Quotes creates a scope of work from them, and we send it to local contractors. You can then compare any written bids you receive side by side, on scope, price, and terms. The platform is informational, and the decision stays entirely yours.</p>",
+    "<p>Here is how Otter Quotes works for {article} {county} County project. You submit your project details once. Otter Quotes creates a scope of work from them, and we send it to local contractors. You can then compare any written bids you receive side by side, on scope, price, and terms. The platform is informational, and the decision stays entirely yours.</p>",
     "<p>Instead of calling down a list and repeating your story, you submit your {county} County project once. Otter Quotes builds the scope of work and we send it to local contractors; any bids you receive are written, so you can compare them on scope, price, and terms. Comparing more than one written bid is one way to understand local pricing, especially in the busy weeks after a storm.</p>",
     "<p>The process has four steps: you submit your {county} County project, Otter Quotes creates a scope of work, we send it to local contractors, and you compare any written bids you receive. No obligation attaches to submitting a project, and choosing a contractor, or choosing none of them, remains entirely your call.</p>",
 ]
@@ -999,7 +1035,8 @@ def build_page(county: str, trade: str, generated_on: str, state: str = "IN", pr
         variant(seed, 4, EXPECTATIONS_A) + variant(seed, 7, EXPECTATIONS_B)
     ).format(county=county_esc, region=region_lbl, state=state_name)
     seasonal = variant(seed, 6, SEASONAL).format(county=county_esc, region=region_lbl)
-    how_it_works = variant(seed, 5, HOW_IT_WORKS).format(county=county_esc)
+    article = "an" if county[:1].lower() in "aeiou" else "a"
+    how_it_works = variant(seed, 5, HOW_IT_WORKS).format(county=county_esc, article=article)
     county_html = (profile.get("county_content") or {}).get(county, {}).get(trade, "")
     county_notes = f"<h2>{county_esc} County notes</h2>\n    {county_html}" if county_html else ""
 
@@ -1203,25 +1240,47 @@ EMPTY_SITEMAP = (
 )
 
 
+def _inside_repo(path: pathlib.Path) -> bool:
+    try:
+        path.resolve().relative_to(REPO_ROOT.resolve())
+        return True
+    except ValueError:
+        return False
+
+
 def resolve_sitemap_path(out_dir, sitemap_path=None) -> pathlib.Path:
-    """Which sitemap a run may write. The repo-root sitemap.xml is used ONLY
-    when out_dir is the repo's locations/ directory. For any other out_dir the
-    sitemap goes next to it (its parent directory), EXCEPT that this is
-    refused (StateConfigError, nothing written) when that location would be
-    the repo's own sitemap.xml (out_dir directly under the repo root) or when
-    out_dir is the repo root itself: pass an explicit --sitemap in that case.
-    An explicit sitemap_path is always honoured."""
-    if sitemap_path is not None:
-        return pathlib.Path(sitemap_path)
+    """Which sitemap a run may write.
+
+    The repo's own sitemap.xml, and any location inside the repo tree that is
+    derived rather than chosen, are used ONLY when out_dir is the repo's
+    locations/ directory (then: the repo-root sitemap.xml).
+
+    - Explicit sitemap_path: honoured, except that the repo's sitemap.xml is
+      refused unless out_dir is locations/.
+    - Derived (no sitemap_path): next to out_dir (its parent). Refused when
+      out_dir is the repo root or when that location is anywhere inside the
+      repo tree (tools/sitemap.xml, locations/sitemap.xml, ./sitemap.xml...);
+      a location outside the repo tree is fine.
+    Refusals raise StateConfigError before anything is written."""
     out_dir = pathlib.Path(out_dir)
-    if out_dir.resolve() == LOCATIONS_DIR.resolve():
+    is_repo_locations = out_dir.resolve() == LOCATIONS_DIR.resolve()
+    if sitemap_path is not None:
+        explicit = pathlib.Path(sitemap_path)
+        if explicit.resolve() == SITEMAP_PATH.resolve() and not is_repo_locations:
+            raise StateConfigError(
+                "REFUSED: that sitemap path is the repository's sitemap.xml, which is written only when "
+                "the output directory is the repo's locations/ directory. Use a sitemap path outside "
+                "the repository. Nothing was written."
+            )
+        return explicit
+    if is_repo_locations:
         return SITEMAP_PATH
     derived = out_dir.parent / "sitemap.xml"
-    if out_dir.resolve() == REPO_ROOT.resolve() or derived.resolve() == SITEMAP_PATH.resolve():
+    if out_dir.resolve() == REPO_ROOT.resolve() or _inside_repo(derived):
         raise StateConfigError(
-            f"REFUSED: out_dir {out_dir} would put its sitemap at the repo's sitemap.xml ({SITEMAP_PATH}). "
-            f"Pass an explicit --sitemap PATH, or use an out_dir that is not the repo root or a "
-            f"first-level folder of it. Nothing was written."
+            f"REFUSED: out_dir {out_dir} would put its sitemap inside the repository tree ({derived}). "
+            f"Pass an explicit --sitemap PATH outside the repository, or use an out_dir whose parent "
+            f"directory is outside the repository. Nothing was written."
         )
     return derived
 
@@ -1270,6 +1329,31 @@ def update_sitemap(generated_paths: list, generated_on: str, dry_run: bool, site
 # Generation
 # ---------------------------------------------------------------------------
 
+TEMPLATE_BASELINES = 60   # synthetic template-only pages per trade (see template_baseline_words)
+
+
+def template_baseline_words(states, profiles: dict, generated_on: str) -> list:
+    """Word lists of synthetic, template-only pages (state profile, NO
+    county_content) that are compared against but never scored or emitted.
+
+    They make the shared template text count as shared even in a run of one
+    county (a one-county state, a narrowed generate() call). TEMPLATE_BASELINES
+    pages per trade, spread round-robin over the profile's regions, with fixed
+    names, so every template variant and every region's climate copy is
+    rendered by several of them."""
+    out = []
+    for st in states:
+        profile = dict(profiles[st])
+        profile["county_content"] = {}
+        regions = sorted(profile["region_label"])
+        names = {f"Baseline{n:02d}": regions[n % len(regions)] for n in range(TEMPLATE_BASELINES)}
+        profile["county_region"] = {**profile["county_region"], **names}
+        for trade in ELIGIBLE_TRADES:
+            for name in names:
+                out.append(main_words(build_page(name, trade, generated_on, st, profile=profile)))
+    return out
+
+
 def generate(states, out_dir=None, sitemap_path=None, counties_path=None,
              dry_run=False, build_fn=None, generated_on=None, profiles_dir=None) -> dict:
     """Generate pages for the given allow-listed states.
@@ -1308,18 +1392,25 @@ def generate(states, out_dir=None, sitemap_path=None, counties_path=None,
     for state, county, trade in tuples:
         built.append((county_slug(county, state), trade, build_fn(county, trade, generated_on, state)))
     word_lists = [main_words(page_html) for _, _, page_html in built]
-    strict = strict_unique_counts(word_lists)
+    baseline_lists = template_baseline_words(states, profiles, generated_on)
+    strict = strict_unique_counts(word_lists, baseline_lists)
 
+    # Pass 1: gate. Pass 2: lint EVERY passing page before any file is written,
+    # so a lint failure leaves zero pages and no sitemap change. Pass 3: write.
+    passing = []
     for (c_slug, trade, page_html), wc in zip(built, strict):
         page_id = f"{c_slug}/{trade}"
         if wc < MIN_WORDS:
             print(f"  SKIPPED (thin, {wc} < {MIN_WORDS} strict-unique words): {page_id}")
             summary["skipped_thin"].append(page_id)
             continue
+        passing.append((c_slug, trade, page_html, wc))
+    for c_slug, trade, page_html, _wc in passing:
+        page_id = f"{c_slug}/{trade}"
         compliance_lint(page_html, page_id)
         if not page_html.rstrip().endswith("</html>"):
             raise RuntimeError(f"INTEGRITY FAIL [{page_id}]: generated HTML does not end with </html>")
-
+    for c_slug, trade, page_html, wc in passing:
         page_dir = out_dir / c_slug / trade
         page_path = page_dir / "index.html"
         if dry_run:
