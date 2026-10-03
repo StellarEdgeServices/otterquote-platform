@@ -22,6 +22,8 @@
   /* Text links on light backgrounds (#A85C00 = 4.75:1 on #F8F9FC; #E07B00 is only 2.85:1) */
   --link-on-light:       #A85C00;
   --link-on-light-deep:  #7A4200;
+  /* Links over the faint amber hero tint (#A85C00 is 4.48:1 at the tint's origin; this is 4.97:1) */
+  --link-on-light-hero:  #9E5600;
 
   /* Neutrals */
   --white:      #FFFFFF;
@@ -100,27 +102,40 @@ h3 { font-size: clamp(1.25rem, 2.5vw, 1.75rem); font-weight: 600; }
 h4 { font-size: 1.25rem; font-weight: 500; }
 
 p { line-height: 1.7; color: var(--slate); }
-a { color: var(--link-on-light); text-decoration: none; transition: color var(--duration) var(--ease); }
-a:hover { color: var(--link-on-light-deep); text-decoration: underline; }
-/* Buttons are not text links: keep their own colours and no underline. */
-.btn:hover { text-decoration: none; }
-.btn-secondary { color: var(--amber); }
-.btn-secondary:hover { color: var(--amber-2); }
-/* Links on dark bands keep the brighter amber (#A85C00 is too dark on navy). */
-.nav-logo a,
-.related-links a:not(.btn),
-.section-dark a:not(.btn),
-.section-dark-2 a:not(.btn),
-.form-container a:not(.btn),
-.features-section a:not(.btn),
-.features-list a:not(.btn) { color: var(--amber); }
-.nav-logo a:hover,
-.related-links a:not(.btn):hover,
-.section-dark a:not(.btn):hover,
-.section-dark-2 a:not(.btn):hover,
-.form-container a:not(.btn):hover,
-.features-section a:not(.btn):hover,
-.features-list a:not(.btn):hover { color: var(--amber-2); text-decoration: none; }
+a { color: var(--amber); text-decoration: none; transition: color var(--duration) var(--ease); }
+a:hover { color: var(--amber-2); }
+
+/* Body text links on LIGHT backgrounds only. The global `a` rule above is unchanged, so
+   links on dark panels (nav bar, FAQ/form/TOC panels, cards, footer bands) and the logo keep
+   the brighter amber. Hover is conveyed by the darker colour alone (no underline). */
+.article-body .step a:not(.btn),
+.article-body .article-section a:not(.btn),
+.article-body .definition-table a:not(.btn),
+.article-body .toc-list a,
+main.article-body .faq-answer a,
+.nav-grid a.nav-card,
+.login-form-wrap #forgot-password-link,
+.login-form-wrap #resend-link,
+.cl-form-wrap #resend-link,
+.howto-qr-link { color: var(--link-on-light); }
+.article-body .step a:not(.btn):hover,
+.article-body .article-section a:not(.btn):hover,
+.article-body .definition-table a:not(.btn):hover,
+.article-body .toc-list a:hover,
+main.article-body .faq-answer a:hover,
+.nav-grid a.nav-card:hover,
+.login-form-wrap #forgot-password-link:hover,
+.login-form-wrap #resend-link:hover,
+.cl-form-wrap #resend-link:hover,
+.howto-qr-link:hover { color: var(--link-on-light-deep); }
+
+/* Links over a faint amber tint (hero, highlight box). :where() keeps specificity low so a page's own breadcrumb colour still wins. */
+.article-body .highlight-box a:not(.btn),
+:where(.page-hero) p a:not(.btn),
+:where(.page-hero .breadcrumb) a { color: var(--link-on-light-hero); }
+.article-body .highlight-box a:not(.btn):hover,
+:where(.page-hero) p a:not(.btn):hover,
+:where(.page-hero .breadcrumb) a:hover { color: var(--link-on-light-deep); }
 
 .text-white { color: var(--white); }
 .text-amber { color: var(--amber); }

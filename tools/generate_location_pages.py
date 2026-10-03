@@ -1520,14 +1520,14 @@ def build_page(county: str, trade: str, generated_on: str, state: str = "IN", pr
 .loc-body ul {{ margin: 0 0 var(--sp-4) 1.2rem; }}
 .loc-body li {{ margin-bottom: var(--sp-2); }}
 .loc-body a:not(.btn) {{ color: var(--link-on-light); }}
-.loc-body a:not(.btn):hover {{ color: var(--link-on-light-deep); text-decoration: underline; }}
+.loc-body a:not(.btn):hover {{ color: var(--link-on-light-deep); }}
 .site-nav {{ position: sticky; top: 0; z-index: 100; background: rgba(10, 30, 44, 0.95); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255,255,255,0.06); }}
 footer p {{ color: #3D4F60; }}
 .breadcrumb {{ font-size: 0.85rem; color: #3D4F60; padding: var(--sp-4) 0 0; text-align: center; }}
-.breadcrumb a {{ color: var(--link-on-light); text-decoration: none; }}
-.breadcrumb a:hover {{ color: var(--link-on-light-deep); text-decoration: underline; }}
+.breadcrumb a {{ color: var(--link-on-light-hero); text-decoration: none; }}
+.breadcrumb a:hover {{ color: var(--link-on-light-deep); }}
 footer a {{ color: var(--link-on-light) !important; }}
-footer a:hover {{ color: var(--link-on-light-deep) !important; text-decoration: underline; }}
+footer a:hover {{ color: var(--link-on-light-deep) !important; }}
 .cta-bar {{ text-align: center; padding: var(--sp-10) 0 var(--sp-6); border-top: 1px solid rgba(255,255,255,0.06); }}
 .cta-bar p {{ color: #3D4F60; margin-bottom: var(--sp-6); }}
 .disclosure {{
