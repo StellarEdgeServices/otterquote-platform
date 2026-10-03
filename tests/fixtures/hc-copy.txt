@@ -1,0 +1,14 @@
+# HO-1 rebuild value pages: approved copy, extracted verbatim by script from Claude's Memories/otterquote-value-proposition.md
+# (section 5 hub + four topic paragraphs; section 2.3.2 for the right-decisions paragraph). Format: key<TAB>text. Do not hand-edit.
+# source sha256 (whole file at extraction time, informational): 47ddfa021d85a84080dc052d311818d059491d97225e4f85c8e9a5dc0f1b2660
+hub_h1	Find out how to get the most from your contractor.
+hub_lede	Tell us what matters to you.
+choice_bids	I want to get competitive bids today
+choice_save-money	I want to save money
+choice_materials	I want the best materials
+choice_warranties	I want the best warranties
+choice_decisions	I want to make the right decisions
+para_save-money	Many insurers offer a discount when you install impact-resistant roofing, and the amount varies by company and state. Ask yours what it offers. On Otter Quotes, contractors compete for your business, so they are more likely to include these upgrades for free or at discounted rates.
+para_materials	Roofing and siding manufacturers make higher grade products with better resistance to wind, hail, and algae as well as insulated products that can make your home more comfortable. When contractors know they are competing for your business, they are more likely to include these upgrades for free or at discounted rates.
+para_warranties	Some warranties are basically worthless, and some warranties mean the roof will probably outlive you. Otter Quotes will help you learn the difference so you can assess the real value of what contractors offer you.
+para_decisions	We will do our best to explain the costs and benefits of the products that go on your home so you can make informed decisions about what is best for you. Our goal isn't to sell you upgrades. It's to help you negotiate the best products you can for your home.

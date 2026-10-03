@@ -129,3 +129,14 @@ https://www.stellaredgeservices.com/* /stellar-edge.html 200
 # path (there is deliberately no ho6/ directory), so a plain 200 rewrite serves ho6-start.html and keeps the address bar and query string.
 /ho6/start   /ho6-start.html   200
 /ho6/start/  /ho6-start.html   200
+
+# cro51 / #2121 HO-1 rebuild: /hc (hub) is served by Netlify Pretty URLs from hc.html, like /ho6. The four topic pages have no file at their
+# clean path (deliberately no hc/ directory), so plain 200 rewrites serve hc-<topic>.html and keep the address bar and query string.
+/hc/save-money    /hc-save-money.html   200
+/hc/save-money/   /hc-save-money.html   200
+/hc/materials     /hc-materials.html    200
+/hc/materials/    /hc-materials.html    200
+/hc/warranties    /hc-warranties.html   200
+/hc/warranties/   /hc-warranties.html   200
+/hc/decisions     /hc-decisions.html    200
+/hc/decisions/    /hc-decisions.html    200
