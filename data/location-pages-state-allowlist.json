@@ -2,6 +2,7 @@
   "_readme": "State allow-list for tools/generate_location_pages.py (D-345, gh-2422). Maintained by the CRO. SHIPS EMPTY: the generator emits pages ONLY for states listed in \"states\". To add a state: (1) complete that state's D-344 statute search; (2) confirm data/us-counties.json has the state and the CRO has written data/location-state-profiles/XX.json for it (the generator errors out loudly if either is missing or malformed); (3) add the two-letter code to \"states\" in a PR. FL, LA and TX are blocked by D-344: the generator refuses them even if listed. A listed state emits pages only for counties whose profile county_content gives each county/trade page 500+ words found on no other page. See tools/README-locations-workflow.md.",
   "states": [
     "OH",
-    "TN"
+    "TN",
+    "IN"
   ]
 }
