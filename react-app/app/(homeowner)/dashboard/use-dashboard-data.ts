@@ -20,7 +20,7 @@ import type {
   HoverOrder,
   HoverRebateOrder,
 } from './types';
-import { DEFAULT_BLOCKED_STATES, resolveBlockedStates } from './utils';
+import { BLOCKED_STATES_TIMEOUT_MS, DEFAULT_BLOCKED_STATES, resolveBlockedStates } from './utils';
 
 // ── Latest claim id (with draft auto-create, dashboard.html:1594-1704) ───────
 
@@ -214,7 +214,15 @@ export function useBlockedStates(): { blockedStates: string[]; loading: boolean 
     (async () => {
       let states: string[] = [...DEFAULT_BLOCKED_STATES];
       try {
-        const { data, error } = await supabase.rpc('get_homeowner_blocked_states');
+        const { data, error } = await Promise.race([
+          supabase.rpc('get_homeowner_blocked_states'),
+          new Promise<{ data: null; error: { message: string } }>((resolve) =>
+            setTimeout(
+              () => resolve({ data: null, error: { message: `timed out after ${BLOCKED_STATES_TIMEOUT_MS}ms` } }),
+              BLOCKED_STATES_TIMEOUT_MS,
+            ),
+          ),
+        ]);
         const resolved = resolveBlockedStates(data, error);
         if (resolved.usedFallback) {
           console.warn('[StateGate] blocked-state rpc failed; using default list:', error?.message ?? 'non-array result');

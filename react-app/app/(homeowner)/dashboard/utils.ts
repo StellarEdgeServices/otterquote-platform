@@ -20,6 +20,9 @@ import { claimHasFullMeasurements } from '@/lib/measurement-shape';
  */
 export const DEFAULT_BLOCKED_STATES: readonly string[] = ['FL', 'LA', 'TX'];
 
+/** A hung rpc falls back to the default list after this long (ms). */
+export const BLOCKED_STATES_TIMEOUT_MS = 5000;
+
 /**
  * Normalise an rpc result into the blocked list. Any error or non-array result
  * falls back to DEFAULT_BLOCKED_STATES; `usedFallback` lets the caller warn.
@@ -31,13 +34,13 @@ export function resolveBlockedStates(
   if (error || !Array.isArray(data)) {
     return { states: [...DEFAULT_BLOCKED_STATES], usedFallback: true };
   }
-  return { states: data.map((s) => String(s).toUpperCase()), usedFallback: false };
+  return { states: data.map((s) => String(s).trim().toUpperCase()), usedFallback: false };
 }
 
 /**
  * D-344 — block homeowners whose property_state is on the blocked list. Mirrors
  * dashboard.html `init()`:
- *   `currentClaim?.property_state && blockedStates.includes(property_state.toUpperCase())`
+ *   `currentClaim?.property_state && blockedStates.includes(property_state.trim().toUpperCase())`
  * Every other state, including IN, is NOT gated. A null/absent property_state
  * (e.g. an auto-created draft before intake) is NOT gated — the static page
  * deliberately does not pre-seed property_state on drafts.
@@ -47,7 +50,7 @@ export function isStateGated(
   blockedStates: readonly string[] = DEFAULT_BLOCKED_STATES,
 ): boolean {
   const state = claim?.property_state;
-  return !!state && blockedStates.includes(String(state).toUpperCase());
+  return !!state && blockedStates.includes(String(state).trim().toUpperCase());
 }
 
 // ── Progress checklist (estimate / measurements / material) ─────────────────

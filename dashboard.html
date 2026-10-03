@@ -1595,12 +1595,19 @@
       async function loadBlockedStates() {
         if (CONFIG.DEMO_MODE || !sb) return DEFAULT_BLOCKED_STATES;
         try {
-          const { data, error } = await sb.rpc('get_homeowner_blocked_states');
+          // A hung request must not leave the homeowner on a blank page: give
+          // the rpc 5 s, then fall back to the default list.
+          const { data, error } = await Promise.race([
+            sb.rpc('get_homeowner_blocked_states'),
+            new Promise(function(resolve) {
+              setTimeout(function() { resolve({ data: null, error: { message: 'timed out after 5s' } }); }, 5000);
+            }),
+          ]);
           if (error || !Array.isArray(data)) {
             console.warn('[StateGate] blocked-state rpc failed; using default list:', error?.message || 'non-array result');
             return DEFAULT_BLOCKED_STATES;
           }
-          return data.map(function(s) { return String(s).toUpperCase(); });
+          return data.map(function(s) { return String(s).trim().toUpperCase(); });
         } catch (err) {
           console.warn('[StateGate] blocked-state rpc threw; using default list:', err?.message || err);
           return DEFAULT_BLOCKED_STATES;
@@ -1633,7 +1640,7 @@
           // list so the gate never fails open to a blocked state. gh-2421.
           if (currentClaim?.property_state) {
             const blockedStates = await loadBlockedStates();
-            if (blockedStates.includes(String(currentClaim.property_state).toUpperCase())) {
+            if (blockedStates.includes(String(currentClaim.property_state).trim().toUpperCase())) {
               showStateGateCard(currentClaim.property_state);
               return;
             }

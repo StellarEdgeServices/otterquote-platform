@@ -123,6 +123,11 @@ describe('D-344 state gate (blocked list; amends D-178)', () => {
     expect(isStateGated(claim({ property_state: 'la' }))).toBe(true);
     expect(isStateGated(claim({ property_state: 'fl' }))).toBe(true);
   });
+  it('trims whitespace around property_state (" FL" is still gated)', () => {
+    expect(isStateGated(claim({ property_state: ' FL' }))).toBe(true);
+    expect(isStateGated(claim({ property_state: 'tx ' }))).toBe(true);
+    expect(isStateGated(claim({ property_state: ' WA ' }))).toBe(false);
+  });
   it('does not gate a null/absent property_state (pre-intake draft)', () => {
     expect(isStateGated(claim({ property_state: null }))).toBe(false);
     expect(isStateGated(undefined)).toBe(false);

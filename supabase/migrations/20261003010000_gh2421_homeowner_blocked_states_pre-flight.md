@@ -4,7 +4,7 @@ NOT APPLIED. Refs #2421 (D-344, amends D-178).
 
 ## What it does
 - Seeds `platform_settings` key `homeowner_blocked_states` = `["FL","LA","TX"]` (`ON CONFLICT (key) DO NOTHING`; `key` is the PK).
-- Creates `public.get_homeowner_blocked_states() RETURNS text[]` (STABLE, SECURITY DEFINER, `search_path = public`). Upper-cases and de-duplicates valid 2-letter codes. Missing row, non-array value, array with no valid code, or any exception returns `{FL,LA,TX}`. An explicit `[]` returns an empty array (operator intent: nothing blocked).
+- Creates `public.get_homeowner_blocked_states() RETURNS text[]` (STABLE, SECURITY DEFINER, `search_path = public, pg_temp`). Trims, upper-cases and de-duplicates 2-letter codes. Missing row, non-array value, an array containing ANY element that is not a 2-letter code string (fail closed: a typo like `"Texas"` must never silently unblock a state), or any exception returns `{FL,LA,TX}`. Round-2 scratch Postgres 16 run: applied twice; seed `{FL,LA,TX}`; `["fl"," ny ","TX","tx"]` → `{FL,NY,TX}`; `["FL","LA","Texas"]` → `{FL,LA,TX}`; `["FL",3]`, `{"a":1}`, `"FL"`, missing row → `{FL,LA,TX}`; anon EXECUTE false, authenticated true; rollback leaves 0 functions. An explicit `[]` returns an empty array (operator intent: nothing blocked).
 - REVOKE from PUBLIC and anon; GRANT EXECUTE to authenticated only (the dashboard requires auth).
 - The RLS allow-list policy on `platform_settings` is untouched (tier 3B, out of scope).
 

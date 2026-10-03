@@ -26,7 +26,7 @@ RETURNS text[]
 LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, pg_temp
 AS $fn$
 DECLARE
   v_default CONSTANT text[] := ARRAY['FL','LA','TX']::text[];
@@ -47,15 +47,22 @@ BEGIN
     RETURN ARRAY[]::text[];
   END IF;
 
-  SELECT COALESCE(array_agg(DISTINCT upper(btrim(e)) ORDER BY upper(btrim(e))), ARRAY[]::text[])
-    INTO v_codes
-    FROM jsonb_array_elements_text(v_val) AS t(e)
-   WHERE upper(btrim(e)) ~ '^[A-Z]{2}$';
-
-  -- Non-empty array with no valid 2-letter code is malformed: default.
-  IF COALESCE(array_length(v_codes, 1), 0) = 0 THEN
+  -- Fail closed: if ANY element is not a string holding a 2-letter code, the
+  -- whole value is treated as malformed and the default is returned. Dropping
+  -- only the bad element would silently UNBLOCK a state on a typo (e.g.
+  -- '["FL","LA","Texas"]' would open Texas).
+  IF EXISTS (
+    SELECT 1
+      FROM jsonb_array_elements(v_val) AS t(e)
+     WHERE jsonb_typeof(e) <> 'string'
+        OR upper(btrim(e #>> '{}')) !~ '^[A-Z]{2}$'
+  ) THEN
     RETURN v_default;
   END IF;
+
+  SELECT array_agg(DISTINCT upper(btrim(e)) ORDER BY upper(btrim(e)))
+    INTO v_codes
+    FROM jsonb_array_elements_text(v_val) AS t(e);
 
   RETURN v_codes;
 EXCEPTION WHEN OTHERS THEN

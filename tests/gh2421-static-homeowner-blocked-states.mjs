@@ -26,7 +26,7 @@ const migration = fs.readFileSync(path.join(ROOT, 'supabase/migrations/202610030
 ok(!/property_state\s*!==\s*['"]IN['"]/.test(dash), "dashboard.html: the Indiana-only `property_state !== 'IN'` gate literal is gone");
 ok(/sb\.rpc\(\s*['"]get_homeowner_blocked_states['"]\s*\)/.test(dash), 'dashboard.html: reads the blocked list via sb.rpc(get_homeowner_blocked_states)');
 ok(/DEFAULT_BLOCKED_STATES\s*=\s*\[\s*'FL'\s*,\s*'LA'\s*,\s*'TX'\s*\]/.test(dash), 'dashboard.html: hard-coded fallback list is exactly FL, LA, TX');
-ok(/blockedStates\.includes\(\s*String\(currentClaim\.property_state\)\.toUpperCase\(\)\s*\)/.test(dash), 'dashboard.html: gate tests the upper-cased property_state against the blocked list');
+ok(/blockedStates\.includes\(\s*String\(currentClaim\.property_state\)\.trim\(\)\.toUpperCase\(\)\s*\)/.test(dash), 'dashboard.html: gate tests the trimmed, upper-cased property_state against the blocked list');
 ok(/if \(CONFIG\.DEMO_MODE \|\| !sb\) return DEFAULT_BLOCKED_STATES;/.test(dash), 'dashboard.html: DEMO_MODE skips the rpc');
 ok(/showStateGateCard\(currentClaim\.property_state\)/.test(dash), 'dashboard.html: blocked states still call showStateGateCard');
 ok(/status:\s*'waitlisted'/.test(dash) && /expansion_waitlist/.test(dash), "dashboard.html: waitlisted status + expansion_waitlist handling retained");

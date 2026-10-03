@@ -132,6 +132,19 @@ describe('useBlockedStates (D-344)', () => {
     expect(result.current.blockedStates).toEqual(['FL', 'LA', 'TX', 'NY']);
   });
 
+  it('a hung rpc falls back to FL, LA, TX after the timeout', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    sb.rpc.mockReturnValue(new Promise(() => {}));
+    const { result } = renderHook(() => useBlockedStates());
+    expect(result.current.loading).toBe(true);
+    await vi.advanceTimersByTimeAsync(5000);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.blockedStates).toEqual(['FL', 'LA', 'TX']);
+    expect(warn).toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
   it('rpc error falls back to FL, LA, TX and warns', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     sb.rpc.mockResolvedValue({ data: null, error: { message: 'function does not exist' } });
