@@ -43,6 +43,13 @@ import {
 } from "./caller-gate.ts"; // gh-2462 (local copy; the deploy path does not resolve _shared/)
 import { messageNotificationHtml, messageNotificationText, MESSAGE_NOTIFICATION_SUBJECT } from "./templates.ts"; // gh-1824: footer moved to templates.ts (testable, no serve() import)
 
+// gh-2462: the service-role client is typed `any`, as process-dunning's and notify-contractors'
+// are (gh-2309). The handler is now imported by caller-gate.test.ts, so this file is type-checked
+// in CI for the first time; with no generated Database types, supabase-js types the embedded
+// joins (claims, quotes.contractors, profiles) as arrays and the row reads fail TS2339.
+// deno-lint-ignore no-explicit-any
+type SupabaseLike = any;
+
 const FUNCTION_NAME = "send-message-notification";
 const DASHBOARD_URL = "https://otterquote.com/dashboard.html"; // gh-2462: same URL docusign-webhook uses
 const CONTRACTOR_DASHBOARD_URL = "https://otterquote.com/contractor-dashboard.html";
@@ -160,7 +167,7 @@ export async function handler(
       throw new Error("Missing Supabase credentials");
     }
 
-    const supabase = makeClient(supabaseUrl, supabaseKey);
+    const supabase: SupabaseLike = makeClient(supabaseUrl, supabaseKey);
 
     let callerUserId: string | null = null;
     if (!isService) {
