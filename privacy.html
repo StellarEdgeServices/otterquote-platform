@@ -497,7 +497,7 @@
     <script>
     // gh-1925 item 2: the section 12 button sets the SAME oq_ad_optout cookie the GPC path sets (1 year, Path=/, Domain=.otterquote.com
     // on otterquote hosts, SameSite=Lax; identical to oqWriteAdOptOutCookie in js/meta-pixel-gate.js and the other three gates), which
-    // every gate reads on later page loads. No profile-flag write: no client-side write path exists (record-ad-sharing-opt-out is admin-only).
+    // every gate reads on later page loads. Signed-in users also get a best-effort profiles.ad_sharing_opt_out write (gh-1925 #2381; see persistProfileFlag below).
     (function () {
       var btn = document.getElementById('oq-ad-optout-btn');
       if (!btn) { return; }

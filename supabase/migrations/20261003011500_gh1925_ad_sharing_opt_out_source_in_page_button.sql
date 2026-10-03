@@ -10,8 +10,9 @@
 -- 23514 check violation, so the opt-out flag lands whether this is applied before or after the deploy. This migration only adds
 -- source attribution (rows written before it is applied carry a NULL source).
 --
--- PATTERN. NOT VALID + VALIDATE split, same as gh-1387 / gh-1532. ADD ... NOT VALID takes a brief lock and does not scan;
--- VALIDATE CONSTRAINT scans under SHARE UPDATE EXCLUSIVE (does not block reads/writes). DROP and ADD happen in one transaction,
+-- PATTERN. NOT VALID + VALIDATE, same shape as gh-1387 / gh-1532. Note: DROP CONSTRAINT and ADD CONSTRAINT both take ACCESS
+-- EXCLUSIVE on profiles, and VALIDATE runs inside the same transaction while that lock is still held, so this split does not
+-- avoid blocking here -- the table is small and lock_timeout (5s) bounds the wait. DROP and ADD happen in one transaction,
 -- so other sessions see the old or the new constraint, never none.
 --
 -- Companion rollback: supabase/migrations_rollbacks/20261003011500_gh1925_ad_sharing_opt_out_source_in_page_button_rollback.sql

@@ -57,14 +57,10 @@ describe('gh-1925: Do Not Sell link on the consumer React routes (root layout)',
       expect(container.textContent).not.toContain(TEXT);
     });
   }
-  it('negative control: the same layout tree minus <DoNotSellLink /> fails the positive assertion on every route', () => {
-    for (const route of ROUTES) {
-      mockPath = route;
-      const { container } = render(<div><main>page</main></div>); // the layout without the component
-      expect(dnsLinks(container)).toHaveLength(0);
-      cleanup();
-    }
-  });
+  // The real negative control for the layout mount is the source assertion below plus the
+  // per-route RootLayout renders above: removing the mount from layout.tsx fails both (observed
+  // when the PR was built). A render of a hand-built tree without the component cannot fail and
+  // would prove nothing, so none is kept here.
   it('the layout source mounts DoNotSellLink', () => {
     const src = fs.readFileSync(path.join(__dirname, '../../layout.tsx'), 'utf8');
     expect(src).toContain('<DoNotSellLink />');
