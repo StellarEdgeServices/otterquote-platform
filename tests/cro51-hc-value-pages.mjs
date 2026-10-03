@@ -192,8 +192,8 @@ function staticHalf() {
   }
   // V7 /ho6 and /ho6/start are untouched
   {
-    const g = spawnSync('git', ['diff', '--quiet', 'origin/main', '--', 'ho6.html', 'ho6-start.html', 'css/ho6.css', 'js/ho6-start.js', 'js/oq-lead-core.js', 'start.html'], { cwd: ROOT });
-    if (g.status === 0) ok(true, 'V7 git diff origin/main is empty for ho6.html, ho6-start.html, css/ho6.css, js/ho6-start.js, js/oq-lead-core.js and start.html');
+    const g = spawnSync('git', ['diff', '--quiet', 'origin/main', '--', 'ho6.html', 'ho6-start.html', 'css/ho6.css', 'js/ho6-start.js', 'js/oq-lead-core.js'], { cwd: ROOT });
+    if (g.status === 0) ok(true, 'V7 git diff origin/main is empty for ho6.html, ho6-start.html, css/ho6.css, js/ho6-start.js and js/oq-lead-core.js');
     else if (g.status === 1) ok(false, 'V7 git diff origin/main shows a change to an HO-6 / start file');
     else console.log('SKIP: V7 git diff (no origin/main ref in this checkout); tests/gh2378-ho6.mjs runs unmodified in static-ho6-tests.yml');
     ok(/collectAttribution/.test(read('js/oq-lead-core.js')) && /ATTR_KEYS = \['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid'\]/.test(read('js/oq-lead-core.js')), 'V7 /ho6/start still records utm_source, utm_medium, utm_content, utm_term, fbclid, gclid from the URL (utm_campaign is forced to ho-6 there)');

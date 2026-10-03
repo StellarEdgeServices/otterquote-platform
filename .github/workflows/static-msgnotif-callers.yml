@@ -1,0 +1,43 @@
+name: Static send-message-notification Caller Tests
+
+# gh-2462 Q3 -- every browser caller of send-message-notification must send the signed-in
+# user's session token (the function now requires the caller to be the message's sender).
+# Runs tests/gh2462-send-message-notification-callers.mjs (static, no browser, no network).
+# `pull_request` only, no secrets, read-only token, path-filtered.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'dashboard.html'
+      - 'contractor-dashboard.html'
+      - 'react-app/app/contractor/dashboard/Messaging.tsx'
+      - 'react-app/app/(homeowner)/dashboard/actions.ts'
+      - 'supabase/functions/send-message-notification/**'
+      - 'tests/gh2462-send-message-notification-callers.mjs'
+      - '.github/workflows/static-msgnotif-callers.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-msgnotif-callers-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  callers:
+    name: send-message-notification callers send the session token
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Caller tests (gh2462-send-message-notification-callers)
+        run: node tests/gh2462-send-message-notification-callers.mjs

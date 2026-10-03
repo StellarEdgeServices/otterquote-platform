@@ -177,25 +177,54 @@
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
-  "@type": "Organization",
-  "name": "Otter Quotes",
-  "url": "https://otterquote.com",
-  "logo": "https://otterquote.com/img/otter-logo.svg",
-  "description": "Otter Quotes helps homeowners get competing quotes from roofing contractors — for insurance claims and out-of-pocket projects — at zero cost to homeowners.",
-  "contactPoint": {
-    "@type": "ContactPoint",
-    "email": "info@otterquote.com",
-    "contactType": "customer service"
-  },
-  "serviceType": "Roofing and Exterior Contractor Matching"
-}
-</script>
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "WebSite",
-  "name": "Otter Quotes",
-  "url": "https://otterquote.com"
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": "https://otterquote.com/#organization",
+      "name": "Otter Quotes",
+      "legalName": "Stellar Edge Services LLC",
+      "url": "https://otterquote.com/",
+      "logo": {
+        "@type": "ImageObject",
+        "@id": "https://otterquote.com/#logo",
+        "url": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png",
+        "width": 512,
+        "height": 512
+      },
+      "image": {
+        "@id": "https://otterquote.com/#logo"
+      },
+      "description": "Otter Quotes is an online platform that helps homeowners compare bids from roofing and exterior contractors and sign with the contractor they choose.",
+      "email": "info@otterquote.com",
+      "telephone": "+1-844-875-3412",
+      "address": {
+        "@type": "PostalAddress",
+        "streetAddress": "3410 N High School Rd Ste G #102",
+        "addressLocality": "Indianapolis",
+        "addressRegion": "IN",
+        "postalCode": "46224",
+        "addressCountry": "US"
+      },
+      "contactPoint": [
+        {
+          "@type": "ContactPoint",
+          "contactType": "customer service",
+          "telephone": "+1-844-875-3412",
+          "email": "info@otterquote.com"
+        }
+      ]
+    },
+    {
+      "@type": "WebSite",
+      "@id": "https://otterquote.com/#website",
+      "url": "https://otterquote.com/",
+      "name": "Otter Quotes",
+      "inLanguage": "en-US",
+      "publisher": {
+        "@id": "https://otterquote.com/#organization"
+      }
+    }
+  ]
 }
 </script>
 <!-- RoofingContractor JSON-LD (D-237/D-240 NAP) — rendered client-side by js/nav.js
@@ -1060,6 +1089,20 @@
     <p class="text-center" style="margin-top:var(--sp-6);">
       <a href="partners.html" style="color:var(--amber);font-weight:600;" data-hide-when-inspector="true">Not sure which one you are? Start here &rarr;</a>
     </p>
+  </div>
+</section>
+
+<!-- Learn: static links so crawlers without JavaScript reach the guides and blog -->
+<section class="section-dark-2" id="learn">
+  <div class="container" style="text-align:center;">
+    <h2>Guides for Storm Damage and Insurance Claims</h2>
+    <p style="max-width:640px;margin:0 auto var(--sp-6);">Plain-English guides to the claims process, reading an estimate and comparing contractor bids.</p>
+    <ul style="list-style:none;padding:0;margin:0 0 var(--sp-6);">
+      <li><a href="/guides/how-to-file-property-damage-claim.html">How to file a property damage insurance claim</a></li>
+      <li><a href="/guides/how-to-read-contractor-estimate.html">How to read a roofing contractor estimate</a></li>
+      <li><a href="/guides/how-to-choose-contractor.html">How to choose a contractor for insurance repairs</a></li>
+    </ul>
+    <p><a href="/guides/">All guides</a> &middot; <a href="/blog/">Read the blog</a></p>
   </div>
 </section>
 

@@ -1691,7 +1691,7 @@
           // Create default profile if doesn't exist — use actual DB column names
           // D-178 fix: read from localStorage first (persists after magic link redirect),
           // fall back to sessionStorage (same-tab flows), then empty object.
-          const signupData = JSON.parse(localStorage.getItem('cs_signup') || sessionStorage.getItem('cs_signup') || '{}');
+          const signupData = Auth.readFreshSignup() /* gh-2060 item 2: 24h TTL */;
           const firstName = signupData.first_name || currentUser.user_metadata?.full_name?.split(' ')[0] || '';
           const lastName = signupData.last_name || currentUser.user_metadata?.full_name?.split(' ')[1] || '';
           currentProfile = {
@@ -1712,7 +1712,7 @@
           }
         } else if (!currentProfile.full_name) {
           // Profile row exists but name was never saved — derive from auth metadata and persist
-          const signupData = JSON.parse(localStorage.getItem('cs_signup') || sessionStorage.getItem('cs_signup') || '{}');
+          const signupData = Auth.readFreshSignup() /* gh-2060 item 2: 24h TTL */;
           const firstName = signupData.first_name || currentUser.user_metadata?.full_name?.split(' ')[0] || '';
           const lastName  = signupData.last_name  || currentUser.user_metadata?.full_name?.split(' ')[1] || '';
           const derivedName = (firstName + ' ' + lastName).trim() || currentUser.email?.split('@')[0] || '';
@@ -3386,7 +3386,11 @@
             const reasonText = reasons.length > 0 ? reasons.join(', ') : 'No reason provided';
             await fetch(`${window.location.origin}/functions/v1/send-support-email`, {
               method:  'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: {
+                'Content-Type': 'application/json',
+                'apikey': CONFIG.SUPABASE_ANON,
+                'Authorization': 'Bearer ' + CONFIG.SUPABASE_ANON,
+              },
               body: JSON.stringify({
                 from_name:  currentProfile?.full_name || 'Homeowner',
                 from_email: currentUser?.email || '',
@@ -3658,9 +3662,12 @@
 
       // Send notification
       try {
+        // gh-2462: the EF requires the sender's session (service-role function; no anonymous callers).
+        const { data: { session: notifSession } } = await sb.auth.getSession();
+        const notifToken = notifSession?.access_token || "";
         await fetch(SEND_FUNCTION_URL, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "apikey": CONFIG.SUPABASE_ANON, "Authorization": `Bearer ${notifToken}` },
           body: JSON.stringify({ message_id: newMessage.id }),
         });
       } catch (notifError) {
@@ -3824,9 +3831,12 @@
       statusEl.textContent = "";
 
       try {
+        // gh-2462: the EF requires the sender's session (service-role function; no anonymous callers).
+        const { data: { session: notifSession } } = await sb.auth.getSession();
+        const notifToken = notifSession?.access_token || "";
         await fetch(SEND_FUNCTION_URL, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "apikey": CONFIG.SUPABASE_ANON, "Authorization": `Bearer ${notifToken}` },
           body: JSON.stringify({ message_id: newMessage.id }),
         });
       } catch (notifError) { console.error("Notification error:", notifError); }

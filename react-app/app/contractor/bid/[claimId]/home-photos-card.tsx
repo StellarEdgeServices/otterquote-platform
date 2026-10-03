@@ -30,7 +30,9 @@ function readCache(claimId: string): PhotoPayload | null {
     const raw = sessionStorage.getItem('hover_photos_' + claimId);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as PhotoPayload;
-    if (Date.now() - parsed.ts < HOVER_PHOTOS_TTL) return parsed;
+    // gh-2060 item 7: a future-dated ts (negative age) is not "fresh".
+    const age = Date.now() - parsed.ts;
+    if (Number.isFinite(age) && age >= 0 && age < HOVER_PHOTOS_TTL) return parsed;
   } catch { /* ignore */ }
   return null;
 }

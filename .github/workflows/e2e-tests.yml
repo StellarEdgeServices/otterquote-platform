@@ -154,6 +154,12 @@ jobs:
       - name: cookie-storage.js/config.js load-order check (Stage 5 prevention, #601)
         run: python3 scripts/check-script-load-order.py
 
+      - name: sitemap.xml vs repo consistency guard (gh-2447)
+        run: python3 scripts/check-sitemap.py
+
+      - name: sitemap guard self-test, incl. /locations/ index.html twins (gh-2447 + locations)
+        run: python3 scripts/check-sitemap.test.py
+
       - name: Sentry loader/onLoad ordering guard (gh-2010/PR #2023/gh-2043)
         run: python3 scripts/check-sentry-onload-order.py
 
@@ -433,6 +439,9 @@ jobs:
 
       - name: admin Ready-not-submitted tab includes draft claims (gh-1570)
         run: node tests/gh1570-ready-queue-draft.mjs
+
+      - name: partner-re one leads row per signup, variant carried (gh-2084 arm E)
+        run: node tests/gh2084-partner-re-one-lead-row.mjs
 
       - name: tsc --noEmit type gate (gh-414)
         working-directory: react-app

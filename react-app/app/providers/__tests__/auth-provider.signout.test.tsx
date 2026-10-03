@@ -152,4 +152,29 @@ describe('AuthProvider.signOut — deterministic session clear (D-211 P33, 86e20
       expect(localStorage.getItem('cs_auth_role_at')).toBeNull();
     }
   });
+
+  it('gh-2060 items 2 and 7: sign-out clears cs_signup (+_at) and oq_cpa_redirect_guard, leaves unrelated keys (resolve AND reject)', async () => {
+    for (const settle of ['resolve', 'reject'] as const) {
+      if (settle === 'resolve') supabaseSignOut.mockResolvedValue({ error: null });
+      else supabaseSignOut.mockRejectedValue(new Error('network down'));
+      seedStaleStorage({
+        localStorage: {
+          cs_signup: JSON.stringify({ first_name: 'Stranger', phone: '555-0100' }),
+          cs_signup_at: String(Date.now()),
+          oq_cpa_redirect_guard: '1',
+          unrelated_key: 'keep',
+        },
+      });
+      render(
+        <AuthProvider>
+          <Consumer />
+        </AuthProvider>,
+      );
+      await capturedSignOut!().catch(() => undefined);
+      expect(localStorage.getItem('cs_signup')).toBeNull();
+      expect(localStorage.getItem('cs_signup_at')).toBeNull();
+      expect(localStorage.getItem('oq_cpa_redirect_guard')).toBeNull();
+      expect(localStorage.getItem('unrelated_key')).toBe('keep');
+    }
+  });
 });

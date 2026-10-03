@@ -77,6 +77,17 @@ describe('hover_photos_<claimId> — stale sessionStorage cache (home-photos-car
     expect(img.getAttribute('src')).toBe('https://img.test/new.jpg');
   });
 
+  it('a FUTURE-dated entry (negative age) is not "fresh" - it is refetched, not trusted (gh-2060 item 7)', async () => {
+    invokeMock.mockResolvedValue({ data: { design_images: ['https://img.test/new.jpg'] }, error: null });
+    seedStaleStorage({
+      sessionStorage: { hover_photos_claim_mine: photosPayload(['https://img.test/future.jpg'], Date.now() + 24 * 60 * 60 * 1000) },
+    });
+    render(<HomePhotosCard claimId="claim_mine" isSiding={false} />);
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledTimes(1));
+    const img = await screen.findByAltText('Property view 1');
+    expect(img.getAttribute('src')).toBe('https://img.test/new.jpg');
+  });
+
   it('a cache entry with no timestamp (older app version shape) is not trusted', async () => {
     invokeMock.mockResolvedValue({ data: { design_images: [] }, error: null });
     seedStaleStorage({ sessionStorage: { hover_photos_claim_mine: JSON.stringify({ images: ['https://img.test/legacy.jpg'] }) } });
@@ -122,6 +133,19 @@ describe('d202_warranty_options - stale sessionStorage cache (warranty-card.tsx)
     expect(screen.queryByText('StaleMfr')).toBeNull();
     // and the refreshed catalog replaced the stale one in storage
     expect(sessionStorage.getItem('d202_warranty_options')).toContain('FreshMfr');
+  });
+
+  it('a FUTURE-dated catalog stamp (negative age) is not "fresh" - the catalog is refetched (gh-2060 item 7)', async () => {
+    warrantyRows.mockReturnValue([row('FreshMfr')]);
+    seedStaleStorage({
+      sessionStorage: {
+        d202_warranty_options: JSON.stringify([row('StaleMfr')]),
+        d202_warranty_options_at: String(Date.now() + 24 * 60 * 60 * 1000),
+      },
+    });
+    render(<WarrantyCard contractorId={null} onChange={() => undefined} />);
+    expect(await screen.findByText('FreshMfr')).toBeTruthy();
+    expect(screen.queryByText('StaleMfr')).toBeNull();
   });
 
   it('a cached catalog with no timestamp (older app version) is not trusted', async () => {

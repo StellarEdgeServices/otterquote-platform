@@ -116,9 +116,12 @@ export function Messaging({ userId }: { userId: string }) {
       setStatus('');
       // Fire-and-forget notification (EF contract unchanged; failure non-fatal).
       try {
+        // gh-2462: the EF requires the sender's session (service-role function).
+        const { data: sessionData } = await supabase.auth.getSession();
+        const notifToken = sessionData?.session?.access_token ?? '';
         await fetch(efUrl('send-message-notification'), {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${notifToken}` },
           body: JSON.stringify({ message_id: newMessage.id }),
         });
       } catch (notifErr) {

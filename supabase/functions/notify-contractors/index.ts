@@ -31,6 +31,15 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { selectFanOutContractors } from "./test-exclusion.ts";
+import { acceptedServiceKeys, deny, type GetEnv } from "./caller-gate.ts"; // gh-2462
+import { authorizeNotifyCaller, type NotifyBody, type OwnershipLookups } from "./user-gate.ts"; // gh-2462
+
+// gh-2462: the service-role client is typed `any`, as process-dunning's is (gh-2309).
+// The handler is now imported by caller-gate.test.ts, so this file is type-checked in CI
+// for the first time; with no generated Database types, `ReturnType<typeof createClient>`
+// infers every row as `never` (100 latent errors on main), and `any` is the honest type.
+// deno-lint-ignore no-explicit-any
+type SupabaseLike = any;
 import {
   DASHBOARD_URL,
   OPPORTUNITIES_URL,
@@ -240,7 +249,7 @@ async function sendSmsViaEdgeFunction(
  */
 async function handleBidAccepted(
   body: Record<string, any>,
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseLike,
   mailgunApiKey: string,
   mailgunDomain: string,
   corsHeaders: Record<string, string>
@@ -354,7 +363,7 @@ async function handleBidAccepted(
 
 async function handleContractSigned(
   body: Record<string, any>,
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseLike,
   mailgunApiKey: string,
   mailgunDomain: string,
   supabaseUrl: string,
@@ -491,7 +500,7 @@ async function handleContractSigned(
 // =============================================================================
 async function handleBidUpdateConfirmed(
   body: Record<string, any>,
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseLike,
   mailgunApiKey: string,
   mailgunDomain: string,
   corsHeaders: Record<string, string>
@@ -586,7 +595,7 @@ async function handleBidUpdateConfirmed(
  */
 async function handleBidExpired(
   body: Record<string, any>,
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseLike,
   mailgunApiKey: string,
   mailgunDomain: string,
   corsHeaders: Record<string, string>
@@ -684,7 +693,7 @@ async function handleBidExpired(
  */
 async function handleBidRenewalRequested(
   body: Record<string, any>,
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseLike,
   mailgunApiKey: string,
   mailgunDomain: string,
   corsHeaders: Record<string, string>
@@ -790,7 +799,7 @@ async function notifyContractorsForSingleTrade(
   claim_county: string | undefined,
   job_type: string,
   claimIsTest: boolean,
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseLike,
   mailgunApiKey: string,
   mailgunDomain: string,
   supabaseUrl: string,
@@ -972,7 +981,7 @@ async function notifyContractorsForSingleTrade(
  */
 async function handleNewOpportunity(
   body: Record<string, any>,
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseLike,
   mailgunApiKey: string,
   mailgunDomain: string,
   supabaseUrl: string,
@@ -1148,7 +1157,7 @@ async function handleNewOpportunity(
 // =============================================================================
 async function handleAgreementRequested(
   body: Record<string, any>,
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseLike,
   mailgunApiKey: string,
   mailgunDomain: string,
   supabaseUrl: string,
@@ -1297,7 +1306,37 @@ async function handleAgreementRequested(
 // =============================================================================
 // MAIN ENTRY POINT
 // =============================================================================
-serve(async (req) => {
+/** gh-2462: ownership lookups for user-gate.ts, on the (lazily built) service-role client. */
+function ownershipLookups(getClient: () => SupabaseLike): OwnershipLookups {
+  return {
+    async userIdForToken(token) {
+      const { data, error } = await getClient().auth.getUser(token);
+      return error ? null : (data?.user?.id ?? null);
+    },
+    async claimOwnerId(claimId) {
+      const { data, error } = await getClient().from("claims").select("user_id").eq("id", claimId).limit(1);
+      return error || !Array.isArray(data) ? null : ((data[0] as { user_id?: string } | undefined)?.user_id ?? null);
+    },
+    async contractorUserId(contractorId) {
+      const { data, error } = await getClient().from("contractors").select("user_id").eq("id", contractorId).limit(1);
+      return error || !Array.isArray(data) ? null : ((data[0] as { user_id?: string } | undefined)?.user_id ?? null);
+    },
+    async contractorHasQuote(claimId, contractorId) {
+      const { data, error } = await getClient()
+        .from("quotes").select("id").eq("claim_id", claimId).eq("contractor_id", contractorId).limit(1);
+      return !error && Array.isArray(data) && data.length > 0;
+    },
+  };
+}
+
+// gh-2462: exported so caller-gate.test.ts can drive the REAL handler (gh-2309 precedent:
+// serve() guarded by import.meta.main, which the Edge runtime sets for the entry file).
+// `getEnv` defaults to Deno.env.get; `makeClient` defaults to createClient (tests stub it).
+export async function handler(
+  req: Request,
+  getEnv: GetEnv = (n) => Deno.env.get(n),
+  makeClient: typeof createClient = createClient,
+): Promise<Response> {
   const corsHeaders = buildCorsHeaders(req);
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -1305,21 +1344,40 @@ serve(async (req) => {
 
   // Health check ping -- returns immediately without doing real work.
   // Called by platform-health-check every 15 minutes.
+  let bodyPeek: unknown = {};
   try {
-    const bodyPeek = await req.clone().json().catch(() => ({}));
-    if (bodyPeek?.health_check === true) {
+    bodyPeek = await req.clone().json().catch(() => ({}));
+    if ((bodyPeek as { health_check?: unknown } | null)?.health_check === true) {
       return new Response(JSON.stringify({ status: "ok" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200,
       });
     }
   } catch { /* no-op */ }
 
-  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-  const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const supabase = createClient(supabaseUrl, supabaseKey);
+  const supabaseUrl = getEnv("SUPABASE_URL")!;
+  const supabaseKey = getEnv("SUPABASE_SERVICE_ROLE_KEY")!;
+  // Built lazily: a request with no credential (or a non-JWT bearer) is refused by the
+  // gate below without the client ever being created.
+  let client: SupabaseLike | null = null;
+  const getClient = () => (client ??= makeClient(supabaseUrl, supabaseKey));
 
-  const MAILGUN_API_KEY = Deno.env.get("MAILGUN_API_KEY");
-  const MAILGUN_DOMAIN = Deno.env.get("MAILGUN_DOMAIN");
+  // gh-2462 caller gate (see user-gate.ts for the caller map). Service bearer -> any
+  // event, body unchanged. Signed-in user -> only new_opportunity / bid_accepted on a
+  // claim they own, or bid_update_confirmed / bid_renewal_requested as the contractor
+  // with a quote on that claim, with only the fields their real caller sends.
+  // Else 401/403 before any Mailgun / SMS / rate-limit / fan-out work.
+  const peekBody: NotifyBody =
+    bodyPeek && typeof bodyPeek === "object" && !Array.isArray(bodyPeek) ? (bodyPeek as NotifyBody) : {};
+  const decision = await authorizeNotifyCaller(req, peekBody, acceptedServiceKeys(getEnv), ownershipLookups(getClient));
+  if (!decision.ok) {
+    console.warn(`notify-contractors: ${decision.status} (${decision.reason})`);
+    return deny(decision.status, corsHeaders);
+  }
+
+  const supabase = getClient();
+
+  const MAILGUN_API_KEY = getEnv("MAILGUN_API_KEY");
+  const MAILGUN_DOMAIN = getEnv("MAILGUN_DOMAIN");
 
   if (!MAILGUN_API_KEY || !MAILGUN_DOMAIN) {
     return new Response(
@@ -1329,7 +1387,8 @@ serve(async (req) => {
   }
 
   try {
-    const body = await req.json();
+    // gh-2462: service callers keep their full body; user callers get the sanitized one.
+    const body = decision.caller === "service" ? await req.json() : decision.body;
     const event_type = body.event_type || "new_opportunity";
 
     console.log(`notify-contractors: event_type=${event_type}, claim_id=${body.claim_id}`);
@@ -1368,4 +1427,8 @@ serve(async (req) => {
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
-});
+}
+
+if (import.meta.main) {
+  serve((req) => handler(req));
+}
