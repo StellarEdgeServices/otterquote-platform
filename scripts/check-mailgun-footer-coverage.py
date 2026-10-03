@@ -83,6 +83,17 @@ DEFINE_RE = re.compile(r'\bPOSTAL_ADDRESS\b\s*(?::\s*string)?\s*=\s*"([^"]*)"')
 WRAPPER_DEFINE_RE = re.compile(r"function\s+footerPostalAddress(?:Html|Text)\s*\(")
 WRAPPER_CALL_RE = re.compile(r"(?<!function )footerPostalAddress(?:Html|Text)\s*\(\s*\)")
 INTERP_RE = re.compile(r"\$\{POSTAL_ADDRESS\}")
+# MODE D (gh-1824, partner-invite senders): the street-only constant plus a
+# signed opt-out link in the same footer builder.
+DEFINE_ONLY_RE = re.compile(r'\bPOSTAL_ADDRESS_ONLY\b\s*(?::\s*string)?\s*=\s*"([^"]*)"')
+INTERP_ONLY_RE = re.compile(r"\$\{POSTAL_ADDRESS_ONLY\}")
+OPTOUT_RE = re.compile(r"Unsubscribe[^`\n]*\$\{(?:unsubText|optOutUrl)\}")
+
+# The street-only form of the D-237 address, as used by the partner-invite
+# footers (meta-leadgen-webhook/invite-email.ts, send-partner-invite-reminder/
+# invite-email-copy.ts). The business-name prefix is a separate sentence in
+# those footers ("Otter Quotes is a service of Stellar Edge Services LLC.").
+CANONICAL_ADDRESS_ONLY = "3410 N High School Rd, Ste G #102, Indianapolis, IN 46224"
 
 CANONICAL_ADDRESS = (
     "Stellar Edge Services, LLC d/b/a Otter Quotes · "
@@ -117,6 +128,7 @@ RATCHET_FOOTER = {
     "counter-sig-reminders",
     "mark-job-complete",
     "mark-payout-paid",
+    "meta-leadgen-webhook",       # MODE D (partner invite footer + opt-out)
     "notify-admin-new-contractor",
     "notify-contractors",
     "notify-feature-request",
@@ -132,6 +144,7 @@ RATCHET_FOOTER = {
     "send-home-profile-prompt",
     "send-incomplete-onboarding-reminders",
     "send-message-notification",
+    "send-partner-invite-reminder",  # MODE D (partner invite footer + opt-out)
     "send-referral-out-email",
     "send-support-email",
     "send-welcome-email",
@@ -186,6 +199,44 @@ def _strip_block_comments(text):
     return _BLOCK_COMMENT_RE.sub("", text)
 
 
+_LINE_COMMENT_RE = re.compile(r"(^|[^:])//")
+_FUNC_DECL_RE = re.compile(r"function\s+([A-Za-z_$][\w$]*)\s*\(")
+
+
+def _first_live_match(regex, text):
+    """First match of regex that is not inside a `//` line comment.
+
+    A `//` preceded by `:` is a URL scheme (https://), not a comment."""
+    for m in regex.finditer(text):
+        line_start = text.rfind("\n", 0, m.start()) + 1
+        if not _LINE_COMMENT_RE.search(text[line_start:m.start()]):
+            return m
+    return None
+
+
+def _enclosing_function(text, pos):
+    """Name of the nearest `function NAME(` declared before pos, or None."""
+    name = None
+    for m in _FUNC_DECL_RE.finditer(text, 0, pos):
+        name = m.group(1)
+    return name
+
+
+def _call_count(text, name):
+    """Live (non-comment) call sites of name(...), excluding its declaration."""
+    call_re = re.compile(r"(?<![\w$])" + re.escape(name) + r"\s*\(")
+    count = 0
+    for m in call_re.finditer(text):
+        before = text[max(0, m.start() - 9):m.start()]
+        if before.rstrip().endswith("function"):
+            continue
+        line_start = text.rfind("\n", 0, m.start()) + 1
+        if _LINE_COMMENT_RE.search(text[line_start:m.start()]):
+            continue
+        count += 1
+    return count
+
+
 def _ts_files(func_dir):
     """Non-test .ts files in func_dir as {filename: comment-stripped contents}."""
     out = {}
@@ -232,6 +283,24 @@ def function_uses_footer(contents):
     for text in contents.values():
         if MAILGUN_RE.search(text) and all(c in text for c in CANONICAL_ADDRESS_COMPONENTS):
             return True, "C"
+
+    # MODE D -- partner-invite footer: ONE file defines POSTAL_ADDRESS_ONLY as
+    # the exact D-237 street string, interpolates it, AND carries an opt-out
+    # link in the same footer (CAN-SPAM needs both). An address with no opt-out,
+    # an opt-out with no address, or an altered/blank constant never matches.
+    # Two refuter-found holes are closed here (PR #2435): the interpolation and
+    # opt-out must not sit in a `//` comment, and the footer builder that holds
+    # them must actually be called (once per body, so >= 2 call sites).
+    for text in contents.values():
+        m = DEFINE_ONLY_RE.search(text)
+        if not m or m.group(1) != CANONICAL_ADDRESS_ONLY:
+            continue
+        interp = _first_live_match(INTERP_ONLY_RE, text)
+        if interp is None or _first_live_match(OPTOUT_RE, text) is None:
+            continue
+        builder = _enclosing_function(text, interp.start())
+        if builder and _call_count(text, builder) >= 2:
+            return True, "D"
 
     return False, None
 
