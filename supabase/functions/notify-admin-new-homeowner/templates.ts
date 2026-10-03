@@ -226,3 +226,8 @@ export function newHomeownerHtml(p: any): string {
 export function routerLeadHtml(htmlRows: [string, string][], extraHtml: string): string {
   return buildEmailHtml("New Router Lead", htmlRows, extraHtml);
 }
+
+/** Out-of-state claim alert HTML (rows + extra HTML come from notify-helpers.ts buildOutOfStateClaimEmail). gh-2421 */
+export function outOfStateClaimHtml(htmlRows: [string, string][], extraHtml: string): string {
+  return buildEmailHtml("Out-of-State Claim", htmlRows, extraHtml);
+}

@@ -1,39 +1,59 @@
 # Otter Quotes
 
-> The first platform that delivers fully executed contracts to roofing and exterior contractors for insurance-related repair and retail projects.
+Otter Quotes is a technology platform based in Indianapolis, Indiana that helps homeowners and contractors navigate property damage repair projects. For insurance-backed projects, after a homeowner files their own claim with their insurance carrier, Otter Quotes gathers the loss sheet, coordinates professional aerial roof measurements, facilitates material and color selection, runs a competitive bidding process, and delivers a fully executed contract to the winning contractor — ready to start work. Homeowners paying out of pocket can start without an insurance claim. There is no cost for homeowners who provide a copy of their insurance estimate. Homeowners without one pay an upfront charge of as little as $15 for professional measurements that are used by every contractor; that money is refunded if they complete a job on the platform. Contractors pay a percentage-based platform fee only on signed contracts they win.
 
-Otter Quotes is a technology platform based in Zionsville, Indiana that helps homeowners and contractors navigate property damage repair projects across the United States. After a homeowner files their own insurance claim, Otter Quotes gathers the loss sheet, coordinates aerial measurements, facilitates material and color selection, runs a competitive bidding process, and delivers a fully executed contract to the winning contractor — ready to start work. Homeowners pay nothing to use the platform. Contractors pay a percentage-based platform fee only on signed contracts they win.
-
-Otter Quotes does not represent homeowners in their insurance claims and is not a public adjuster. The platform organizes and executes the contractor selection process after a claim has been filed.
+Otter Quotes does not represent homeowners in their insurance claims and is not a public adjuster. The platform organizes and executes the contractor selection process; on insurance-backed projects that begins after the homeowner has filed their own claim.
 
 ## How It Works for Homeowners
 
-- File your own property damage claim with your insurance carrier
-- Upload your loss sheet and project details at [otterquote.com/get-started](https://otterquote.com/get-started.html)
-- Select materials and colors using Hover's aerial 3D design tool
-- Receive bids from contractors who serve your area and choose to bid
+- File your own property damage claim with your insurance carrier (or start an out-of-pocket project without one)
+- Upload your loss sheet and project details at [otterquote.com/start](https://otterquote.com/start.html)
+- Select materials and colors; manufacturers' visualizer tools let you see them on your own house
+- Contractors who choose to bid send written bids
 - Compare bids and sign with your chosen contractor through the platform
 - Otter Quotes delivers a fully executed agreement — no paperwork chasing
 
 ## How It Works for Contractors
 
 - Join at [otterquote.com/contractor-join](https://otterquote.com/contractor-join.html)
-- Browse available project opportunities in your service area
+- Browse project opportunities
 - Submit bids with your pricing, warranty terms, and materials
 - Receive signed contracts — not leads
-- Platform delivers: executed agreement, insurance loss sheet, Hover aerial measurements, full material specifications, and homeowner contact details
+- Platform delivers: executed agreement, insurance loss sheet, professional aerial roof measurements, full material specifications, and homeowner contact details
 - Pay a percentage-based platform fee only on signed contracts you win
 
 ## Primary Pages
 
 - [How It Works](https://otterquote.com/how-it-works.html)
-- [Get Started — Homeowners](https://otterquote.com/get-started.html)
+- [Get Started — Homeowners](https://otterquote.com/start.html)
 - [Homeowner FAQ](https://otterquote.com/faq.html)
 - [Contractor Join](https://otterquote.com/contractor-join.html)
 - [Contractor FAQ](https://otterquote.com/contractor-faq.html)
 - [Contractor How It Works](https://otterquote.com/contractor-how-it-works.html)
-- [Blog: What to Do After Storm Damage](https://otterquote.com/blog/what-to-do-after-storm-damages-roof.html)
-- [Blog: How to Negotiate an Insurance Claim Settlement](https://otterquote.com/blog/how-to-negotiate-better-roof-repair-insurance-claim.html)
+
+## Guides
+
+- [All guides](https://otterquote.com/guides/)
+- [Gutter Replacement Bids: Linear Feet, Downspouts and What to Check](https://otterquote.com/guides/gutter-bid-comparison.html)
+- [How to Choose a Contractor for Insurance Repairs](https://otterquote.com/guides/how-to-choose-contractor.html)
+- [How to File a Property Damage Insurance Claim](https://otterquote.com/guides/how-to-file-property-damage-claim.html)
+- [How to Read a Roofing Contractor Estimate](https://otterquote.com/guides/how-to-read-contractor-estimate.html)
+- [Can You Get Multiple Bids on a Roof Insurance Claim?](https://otterquote.com/guides/multiple-bids-roof-insurance-claim.html)
+- [How to Compare Roofing Bids: A Side-by-Side Worksheet](https://otterquote.com/guides/roof-bid-comparison-worksheet.html)
+- [Siding Replacement Bids: What a Quote Should Include and How to Compare](https://otterquote.com/guides/siding-bid-comparison.html)
+
+## Blog
+
+- [All posts](https://otterquote.com/blog/)
+- [Aerial Roof Measurement Reports vs. Tape-Measure Quotes](https://otterquote.com/blog/aerial-roof-measurement-reports.html)
+- [Hail Damage Roof Inspection: What to Do in the First 72 Hours](https://otterquote.com/blog/hail-damage-roof-inspection-first-72-hours.html)
+- [Roofing Warranty Tiers Explained: GAF, Owens Corning & CertainTeed](https://otterquote.com/blog/roof-shingle-warranty-tiers-explained.html)
+- [7 Red Flags in a Roofing Contractor Estimate](https://otterquote.com/blog/roofing-estimate-red-flags.html)
+- [Storm Chaser Roofing Scams: How to Spot One](https://otterquote.com/blog/storm-chaser-roofing-scams.html)
+- [Recoverable Depreciation on Roof Claims Explained](https://otterquote.com/blog/what-is-recoverable-depreciation-roofing.html)
+- [What "Scope of Loss" Actually Means on a Roof Claim](https://otterquote.com/blog/what-is-scope-of-loss-roofing.html)
+- [What to Do After a Storm Damages Your Roof: A Step-by-Step Guide](https://otterquote.com/blog/what-to-do-after-storm-damages-roof.html)
+- [Why Two Roofers Quote Different Prices for the Same Job](https://otterquote.com/blog/why-roofers-quote-different-prices.html)
 
 ## Legal & Policy
 
@@ -46,5 +66,5 @@ Otter Quotes does not represent homeowners in their insurance claims and is not 
 - Website: [otterquote.com](https://otterquote.com)
 - Email: info@otterquote.com
 - Phone: (844) 875-3412
-- Location: Zionsville, Indiana 46077
+- Address: 3410 N High School Rd, Ste G #102, Indianapolis, IN 46224
 - Operated by: Stellar Edge Services, LLC
