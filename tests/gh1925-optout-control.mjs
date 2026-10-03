@@ -217,6 +217,10 @@ for (const [p, cls] of [['react-app/app/(homeowner)/_shell/HomeownerShell.tsx', 
   ok(comp.includes("['/', '/login', '/refer', '/trade-selector', '/partner/dashboard'] as const"), 'react-app DoNotSellLink.tsx: route allowlist is exactly the five ruled routes (no admin, no auth-callback)');
   ok(/<DoNotSellLink \/>/.test(layout) && /import \{ DoNotSellLink \} from '\.\/components\/DoNotSellLink'/.test(layout), 'react-app layout.tsx mounts <DoNotSellLink />');
 }
+{
+  const nf = read('react-app/app/not-found.tsx');
+  ok(/import \{ DO_NOT_SELL_HREF, DO_NOT_SELL_TEXT \} from '\.\/components\/DoNotSellLink'/.test(nf) && /href=\{DO_NOT_SELL_HREF\}>\{DO_NOT_SELL_TEXT\}<\/a>/.test(nf) && !nf.includes('shouldShowDoNotSell') && !nf.includes('usePathname'), 'react-app not-found.tsx carries the ruled link (shared constants) unconditionally, no route gate');
+}
 // The section 12 button records its source (migration 20261003011500_gh1925 widens the CHECK).
 ok(/ad_sharing_opt_out_source: 'in_page_button'/.test(privacy), "privacy.html section 12 button PATCH records source 'in_page_button'");
 {
