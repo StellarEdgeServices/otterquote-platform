@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>Multiple Roof Bids on an Insurance Claim | Otter Quotes</title>
+<meta name="description" content="How to ask several contractors to bid on your roof after you have an insurance estimate, and how to make the bids comparable. Includes a checklist.">
+<link rel="canonical" href="https://otterquote.com/guides/multiple-bids-roof-insurance-claim.html">
+<meta property="og:title" content="Multiple Roof Bids on an Insurance Claim | Otter Quotes">
+<meta property="og:description" content="How to ask several contractors to bid on your roof after you have an insurance estimate, and how to make the bids comparable. Includes a checklist.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://otterquote.com/guides/multiple-bids-roof-insurance-claim.html">
+<meta property="og:image" content="https://otterquote.com/img/otter-logo.svg">
+<meta property="og:site_name" content="Otter Quotes">
+<meta property="article:published_time" content="2026-10-03">
+
+<!-- GA4 -->
+<script src="/js/ga-gate.js"></script>
+<script src="/js/meta-pixel-gate.js"></script>
+<script>gtag('config', 'G-D1Y1TLGEFY');</script>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/design-system.css">
+<link rel="stylesheet" href="../css/nav.css">
+
+<style>
+/* Blog Article Layout */
+.page-hero {
+  padding: var(--sp-16) 0 var(--sp-12);
+  text-align: center;
+  background: radial-gradient(ellipse at 50% 0%, rgba(224,123,0,0.06) 0%, transparent 60%);
+}
+.page-hero h1 {
+  margin-bottom: var(--sp-4);
+}
+.page-hero .subtitle {
+  max-width: 700px;
+  margin: 0 auto;
+  font-size: 1.1rem;
+  color: var(--slate);
+}
+.page-hero .meta {
+  font-size: 0.9rem;
+  color: var(--gray);
+  margin-top: var(--sp-4);
+}
+
+.article-body {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 var(--sp-6);
+}
+
+.article-intro {
+  background: rgba(224, 123, 0, 0.06);
+  border-left: 4px solid var(--amber);
+  padding: var(--sp-6);
+  margin-bottom: var(--sp-10);
+  border-radius: var(--radius-md);
+}
+.article-intro p {
+  font-size: 1.05rem;
+  color: var(--slate);
+  line-height: 1.8;
+}
+
+.step {
+  margin-bottom: var(--sp-10);
+  padding-bottom: var(--sp-8);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.step:last-of-type {
+  border-bottom: none;
+}
+.step-number {
+  display: inline-block;
+  background: var(--amber);
+  color: var(--navy);
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  text-align: center;
+  line-height: 2.5rem;
+  font-weight: 700;
+  font-family: var(--font-body);
+  margin-bottom: var(--sp-3);
+}
+.step h2 {
+  margin-bottom: var(--sp-3);
+  margin-top: var(--sp-2);
+}
+.step p {
+  color: var(--slate);
+  margin-bottom: var(--sp-4);
+  line-height: 1.8;
+}
+.step ul {
+  margin-left: var(--sp-6);
+  margin-bottom: var(--sp-4);
+}
+.step li {
+  margin-bottom: var(--sp-3);
+  color: var(--slate);
+  line-height: 1.7;
+}
+.step li strong {
+  color: var(--white);
+}
+
+.highlight-box {
+  background: rgba(245, 158, 11, 0.08);
+  border-left: 4px solid #E07B00;
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+  border-radius: var(--radius-md);
+}
+.highlight-box strong {
+  color: #fbbf24;
+}
+.highlight-box, .highlight-box p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.warning-box {
+  background: rgba(239, 68, 68, 0.08);
+  border-left: 4px solid var(--red);
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+  border-radius: var(--radius-md);
+}
+.warning-box strong {
+  color: #f87171;
+}
+.warning-box, .warning-box p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.cta-box {
+  background: var(--navy-2);
+  border: 1px solid rgba(224, 123, 0, 0.2);
+  padding: var(--sp-10);
+  border-radius: var(--radius-lg);
+  margin: var(--sp-10) 0;
+  text-align: center;
+}
+.cta-box h3 {
+  color: var(--white);
+  margin-bottom: var(--sp-4);
+}
+.cta-box p {
+  color: var(--slate);
+  margin-bottom: var(--sp-6);
+  line-height: 1.6;
+}
+
+.definition-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: var(--sp-6) 0;
+}
+.definition-table th {
+  background: rgba(224, 123, 0, 0.12);
+  color: var(--amber);
+  padding: var(--sp-3) var(--sp-4);
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.9rem;
+  border-bottom: 2px solid rgba(224, 123, 0, 0.2);
+}
+.definition-table td {
+  padding: var(--sp-3) var(--sp-4);
+  color: var(--slate);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  line-height: 1.6;
+  vertical-align: top;
+}
+.definition-table tr:last-child td {
+  border-bottom: none;
+}
+.definition-table td:first-child {
+  font-weight: 600;
+  color: var(--white);
+  white-space: nowrap;
+}
+
+/* FAQ Section */
+.faq-section {
+  background: var(--navy-2);
+  padding: var(--sp-10) var(--sp-8);
+  border-radius: var(--radius-lg);
+  margin-top: var(--sp-12);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.faq-section h2 {
+  margin-bottom: var(--sp-8);
+  text-align: center;
+}
+.faq-item {
+  margin-bottom: var(--sp-6);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  padding-bottom: var(--sp-6);
+}
+.faq-item:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+.faq-item h3 {
+  color: var(--white);
+  font-family: var(--font-body);
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-bottom: var(--sp-3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  user-select: none;
+  transition: color var(--duration) var(--ease);
+}
+.faq-item h3:hover {
+  color: var(--amber);
+}
+.faq-item h3::before {
+  content: "\25B6";
+  color: var(--amber);
+  margin-right: var(--sp-3);
+  font-size: 0.8rem;
+  transition: transform 0.3s var(--ease);
+}
+.faq-item.active h3::before {
+  transform: rotate(90deg);
+}
+.faq-answer {
+  color: var(--slate);
+  line-height: 1.8;
+  display: none;
+  padding-left: var(--sp-6);
+}
+.faq-item.active .faq-answer {
+  display: block;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--amber);
+  font-size: 0.9rem;
+  font-weight: 500;
+  margin-bottom: var(--sp-8);
+  transition: color var(--duration) var(--ease);
+}
+.back-link:hover {
+  color: var(--amber-2);
+  text-decoration: none;
+}
+
+@media (max-width: 768px) {
+  .article-body {
+    padding: 0 var(--sp-4);
+  }
+  .cta-box {
+    padding: var(--sp-6) var(--sp-4);
+  }
+  .faq-section {
+    padding: var(--sp-6) var(--sp-4);
+  }
+}
+
+/* Guide pages: table scroll wrapper, quote, FAQ shown in full, button */
+.step ol { margin-left: var(--sp-6); margin-bottom: var(--sp-4); }
+.step h3 { margin-top: var(--sp-6); margin-bottom: var(--sp-3); }
+.step blockquote {
+  margin: var(--sp-4) 0;
+  padding: var(--sp-4) var(--sp-6);
+  border-left: 4px solid var(--amber);
+  background: rgba(224, 123, 0, 0.06);
+  border-radius: var(--radius-md);
+}
+.step blockquote p { margin-bottom: 0; }
+.step a { color: var(--amber); }
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: var(--sp-6) 0;
+}
+.table-wrap .definition-table { margin: 0; min-width: 480px; }
+.table-wrap .definition-table td:first-child { white-space: normal; }
+.article-intro p + p { margin-top: var(--sp-4); }
+.article-intro a { color: var(--amber); }
+.cta-box.cta-box-button { margin: var(--sp-8) 0; padding: var(--sp-8); }
+.faq-item h3 { cursor: default; }
+.faq-item h3:hover { color: var(--white); }
+.faq-item h3::before { content: none; }
+.faq-item .faq-answer { display: block; padding-left: 0; }
+</style>
+</head>
+<body>
+
+<header id="site-header"></header>
+
+<section class="page-hero">
+  <div class="container">
+    <h1>Can You Get Multiple Bids on a Roof Insurance Claim?</h1>
+  </div>
+</section>
+
+<section class="main">
+  <div class="article-body">
+
+    <a href="/guides/" class="back-link">&#8592; All Guides</a>
+
+    <div class="article-intro">
+      <p>Asking for a bid is between you and a contractor. Whether your policy or insurer has rules about contractors is a question for your insurer. A bid is each contractor's own written plan for the work: scope, materials, warranty and schedule. To compare bids fairly, give every contractor the same scope and measurements.</p>
+      <p>A door-knocking roofer may tell you to "just sign with us." This page explains what a bid is, why some roofers discourage comparing, what to read before signing anything, and how to line bids up so the differences you see are real ones.</p>
+    </div>
+
+    <section class="step">
+      <h2>Can I get more than one bid when insurance is involved?</h2>
+      <p>Asking for a bid is between you and a contractor. Whether your policy or insurer has rules about contractors is a question for your insurer. A bid is a separate document from the insurer's estimate: the contractor writes it to describe the planned work, products, warranty and start date.</p>
+      <p>Your insurer's estimate and a contractor's bid are different documents. The estimate comes out of your claim. The bid is an offer to do the work. Some homeowners collect more than one offer before hiring anyone for a large project.</p>
+      <p>Whether your insurer has any process or preference about contractors is a question for your insurer. The section called "What should I ask my insurer?" below has wording you can use.</p>
+      <p>If you want to understand the document your insurer sent, our guide to <a href="/blog/what-is-scope-of-loss-roofing.html">scope of loss</a> explains the terms.</p>
+    </section>
+
+    <section class="step">
+      <h2>Why do some roofers discourage getting more bids?</h2>
+      <p>Some roofers discourage comparison because they want the job, and some have reasons that sound sensible. Their stated reasons are worth hearing out. Then look at what you give up if you sign with the first contractor who asks: comparison of materials, warranty, schedule, and who does the work.</p>
+      <p>Here are reasons some roofers give, described fairly:</p>
+      <ul>
+        <li><strong>"The insurance sets the price anyway."</strong> How your insurer's estimate relates to a contractor's price is a question for your insurer. The estimate and a bid are different documents, and bids can differ from each other in materials, warranty and schedule. Ask each contractor what their bid includes.</li>
+        <li><strong>"Storm work is busy, so you need to lock in a spot now."</strong> Schedules after a storm can be tight, which is a good reason to ask every contractor for a start date in writing. It is not a reason to skip comparing.</li>
+        <li><strong>"It's easier if one company handles everything."</strong> A single point of contact is convenient. You can ask each contractor how they handle communication and still compare them.</li>
+        <li><strong>"Other bids won't match the scope."</strong> That can be true when scopes are written differently, which is why the next sections show how to put every bid on the same scope.</li>
+      </ul>
+      <h3>What you give up by signing with the first contractor</h3>
+      <ul>
+        <li><strong>Materials.</strong> With one bid you cannot see which shingle line, underlayment and flashing other contractors would use for the same roof.</li>
+        <li><strong>Warranty.</strong> Warranties differ by type and by who stands behind them. With one bid you have nothing to compare against.</li>
+        <li><strong>Schedule.</strong> Start dates and crew availability vary. One bid shows one calendar.</li>
+        <li><strong>Who does the work.</strong> Some companies use their own crews, some use subcontractors, and some sell the job and hand it off. If you do not ask, you may not learn which.</li>
+      </ul>
+      <p>For more on why bids differ even on the same house, read <a href="/blog/why-roofers-quote-different-prices.html">why roofers quote different prices</a>.</p>
+    </section>
+
+    <section class="step">
+      <h2>What is a contingency agreement, and what should I read before signing one?</h2>
+      <p>A contingency agreement is a contract some contractors offer to homeowners with an open insurance claim. It is an agreement that refers to your insurance claim. Terms vary from company to company. We do not give legal advice, so the safe approach is simple: read every page, ask questions, and take your time.</p>
+      <p>Before you sign anything, read it and ask:</p>
+      <ul>
+        <li>Does signing commit me to hire you for the work, or can I still collect other bids?</li>
+        <li>What happens if I decide to hire someone else? Is there a cancellation window, and is there any fee?</li>
+        <li>Does this document give you permission to speak with my insurer on my behalf? What exactly can you discuss or change?</li>
+        <li>Does the document describe the scope, the materials and the warranty, or only say that you will do the work?</li>
+        <li>Who signs for the company, and is every promise made to me in conversation also written down?</li>
+        <li>May I take the document home, or have someone else read it, before I sign?</li>
+      </ul>
+      <p>If a contractor says you must sign today, ask why, and ask for the reason in writing. If you want help reading a contract, a licensed attorney in your area is the person to ask. A pressured signature is a reason to slow down.</p>
+    </section>
+
+    <section class="step">
+      <h2>How do I make the bids comparable?</h2>
+      <p>Give every contractor the same written scope of work, the same measurements and the same material grade, then ask for line items. When the starting documents match, the differences between bids come down to materials, warranty, schedule and crew, which are the things worth weighing.</p>
+      <p>Follow these steps:</p>
+      <ol>
+        <li><strong>Write the scope once.</strong> List what is being replaced or repaired: roof, gutters, siding or windows, and any items your insurer's estimate describes. Send the same list to every contractor.</li>
+        <li><strong>Share the same measurements.</strong> If one contractor measures and another guesses, the bids will not match. Give everyone one set of numbers.</li>
+        <li><strong>Name the material grade.</strong> "Architectural shingles" is a category, not a product. Ask each contractor for the manufacturer, the product line and the color.</li>
+        <li><strong>Ask for line items.</strong> A single lump sum hides what is and is not included.</li>
+        <li><strong>Ask for everything in writing, in the same format</strong>, with a date.</li>
+      </ol>
+      <p>Line items to check on every bid:</p>
+      <div class="table-wrap">
+        <table class="definition-table">
+          <thead>
+            <tr>
+              <th>Line item</th>
+              <th>What to look for</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Tear-off and disposal</td>
+              <td>Is removal of the old roofing included, and how many layers?</td>
+            </tr>
+            <tr>
+              <td>Shingles</td>
+              <td>Manufacturer, product line, color</td>
+            </tr>
+            <tr>
+              <td>Underlayment</td>
+              <td>Type named, not just "underlayment"</td>
+            </tr>
+            <tr>
+              <td>Ice and water shield</td>
+              <td>Where it is installed</td>
+            </tr>
+            <tr>
+              <td>Drip edge, starter, ridge cap</td>
+              <td>Listed or left out</td>
+            </tr>
+            <tr>
+              <td>Flashing and pipe boots</td>
+              <td>New or reused</td>
+            </tr>
+            <tr>
+              <td>Decking</td>
+              <td>How damaged boards are handled and how they are priced</td>
+            </tr>
+            <tr>
+              <td>Ventilation</td>
+              <td>What is being installed</td>
+            </tr>
+            <tr>
+              <td>Permit</td>
+              <td>Who pulls it and whether it is listed</td>
+            </tr>
+            <tr>
+              <td>Cleanup</td>
+              <td>Nails, debris, protection of landscaping</td>
+            </tr>
+            <tr>
+              <td>Warranty</td>
+              <td>Type, length, and who stands behind it</td>
+            </tr>
+            <tr>
+              <td>Start date and duration</td>
+              <td>Written, with what could change it</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>For a longer walk through each line, see our guide on <a href="/guides/how-to-read-contractor-estimate.html">how to read a contractor estimate</a>.</p>
+    </section>
+
+    <section class="step">
+      <h2>What should I ask my insurer?</h2>
+      <p>Ask your insurer directly, in writing where you can, and keep a copy. These are questions to ask, not statements about what any insurer will do. Answers depend on your policy and your insurer, so record them in your own claim file.</p>
+      <p>What to ask:</p>
+      <ul>
+        <li>Does my policy say anything about which contractor I use?</li>
+        <li>If a contractor's bid differs from your estimate, do you have a process for that, and who do I contact?</li>
+        <li>Can you send me a copy of the estimate, with all line items and measurements?</li>
+        <li>Is there a form or document you need from a contractor I am considering?</li>
+        <li>Who should the contractor contact if they have questions about the scope?</li>
+        <li>Is there anything in my policy I should read before I sign a contract with a contractor?</li>
+        <li>Where do I find the dates and deadlines that apply to my claim?</li>
+      </ul>
+      <p>Otter Quotes does not work with your insurance company, negotiate claims or act as a public adjuster. Questions about your coverage and your claim belong with your insurer.</p>
+    </section>
+
+    <section class="step">
+      <h2>What differs between bids when the scope is the same?</h2>
+      <p>When scope, measurements and material grade match, four things can still separate bids: the materials behind the headline name, the warranty, the timeline, and the crew. Those are the areas to compare line by line, and the reason to collect more than one bid.</p>
+      <div class="table-wrap">
+        <table class="definition-table">
+          <thead>
+            <tr>
+              <th>What to compare</th>
+              <th>Questions to ask each contractor</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Materials</td>
+              <td>Which exact product lines? Are underlayment and flashing the same?</td>
+            </tr>
+            <tr>
+              <td>Warranty</td>
+              <td>Is it a manufacturer warranty, a workmanship warranty, or both? Who honors it, and for how long? What voids it?</td>
+            </tr>
+            <tr>
+              <td>Timeline</td>
+              <td>When can you start, how long will it take, and what could delay it?</td>
+            </tr>
+            <tr>
+              <td>Crew</td>
+              <td>Is the work done by your employees or by subcontractors? Who is on site, and who is my contact?</td>
+            </tr>
+            <tr>
+              <td>Protections</td>
+              <td>Are you licensed and insured? Can I see proof?</td>
+            </tr>
+            <tr>
+              <td>Paperwork</td>
+              <td>Is everything we discussed in the written bid?</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Some warranties are worth more than others. Ask each contractor to explain the difference in plain language and to show you the document, not just the brand name.</p>
+    </section>
+
+    <section class="step">
+      <h2>What to ask: a checklist you can copy</h2>
+      <ul>
+        <li>Is my scope written down, and did every contractor get the same copy?</li>
+        <li>Does every bid use the same measurements?</li>
+        <li>Does every bid name the product line, not just the category?</li>
+        <li>Is every line item listed, including permit, cleanup and decking?</li>
+        <li>Is the warranty type and length written, and who stands behind it?</li>
+        <li>Is a start date written, and what could change it?</li>
+        <li>Who does the work: employees or subcontractors?</li>
+        <li>Did I read any agreement fully before signing, and did I ask my questions?</li>
+        <li>Did I ask my insurer the questions that belong with the insurer?</li>
+      </ul>
+      <p>For a broader look at choosing a contractor once the bids are in, see <a href="/guides/how-to-choose-contractor.html">how to choose a contractor</a>.</p>
+    </section>
+
+    <section class="step">
+      <h2>Where does Otter Quotes fit?</h2>
+      <p>Otter Quotes creates a written scope of work for your project and sends it to multiple contractors, who compete with bids on that same scope. You compare the bids online, next to reviews and licensing information, and sign online without a salesperson in your home. There is no cost for homeowners who provide a copy of their insurance estimate. Because contractors know they are competing, they are more likely to include better materials and warranties. Contractors pay Otter Quotes a fee on the accepted bid. We do not work with your insurance company, we do not offer free inspections, and we do not sell upgrades. Call 844-875-3412 with questions.</p>
+      <div class="cta-box cta-box-button">
+        <a href="/start.html" class="btn btn-primary btn-lg">Get my bids today</a>
+      </div>
+    </section>
+
+    <section class="faq-section">
+      <h2>Frequently asked questions</h2>
+
+      <div class="faq-item">
+        <h3>Can I get more than one bid after I already have my insurance estimate?</h3>
+        <div class="faq-answer">
+          <p>Asking for a bid is between you and a contractor. Ask your insurer whether your policy says anything about contractors. A bid is each contractor's own written offer for the work, separate from the document your insurer sent you. Ask each contractor to bid on the same written scope so the offers are easy to compare.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Why would a roofer tell me not to get other bids?</h3>
+        <div class="faq-answer">
+          <p>Some roofers want the job, and some say storm schedules are tight or that one company handling everything is easier. Those points are worth hearing, and each can be answered by asking for a written start date and a written scope. Signing with the first contractor means you cannot compare materials, warranty, schedule or crew.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>What should I read before signing a contingency agreement?</h3>
+        <div class="faq-answer">
+          <p>Read every page and ask questions before you sign. Ask whether it commits you to hire that contractor, what happens if you choose someone else, whether there is a cancellation window or fee, and what the contractor may discuss with your insurer. This is not legal advice. A licensed attorney can explain a contract to you.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>How do I make bids from different contractors comparable?</h3>
+        <div class="faq-answer">
+          <p>Send every contractor the same written scope, the same measurements and the same material grade. Ask for line items instead of a lump sum, and ask for the manufacturer and product line by name. Then compare warranty type, start date, crew and what each bid lists for decking, permit and cleanup.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Does Otter Quotes work with my insurance company?</h3>
+        <div class="faq-answer">
+          <p>No. Otter Quotes does not work with your insurance company, negotiate claims or act as a public adjuster. We create a written scope of work for your project, send it to multiple contractors, and let you compare their bids online. Questions about your coverage and your claim belong with your insurer.</p>
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+</section>
+
+<footer id="site-footer"></footer>
+
+<!-- JSON-LD Schema Markup -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "Can You Get Multiple Bids on a Roof Insurance Claim?",
+  "description": "How to ask several contractors to bid on your roof after you have an insurance estimate, and how to make the bids comparable. Includes a checklist.",
+  "image": "https://otterquote.com/img/otter-logo.svg",
+  "author": {
+    "@type": "Organization",
+    "name": "Otter Quotes"
+  },
+  "datePublished": "2026-10-03",
+  "dateModified": "2026-10-03",
+  "publisher": {
+    "@type": "Organization",
+    "name": "Otter Quotes",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://otterquote.com/img/otter-logo.svg"
+    }
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://otterquote.com/guides/multiple-bids-roof-insurance-claim.html"
+  }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Can I get more than one bid after I already have my insurance estimate?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Asking for a bid is between you and a contractor. Ask your insurer whether your policy says anything about contractors. A bid is each contractor's own written offer for the work, separate from the document your insurer sent you. Ask each contractor to bid on the same written scope so the offers are easy to compare."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Why would a roofer tell me not to get other bids?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Some roofers want the job, and some say storm schedules are tight or that one company handling everything is easier. Those points are worth hearing, and each can be answered by asking for a written start date and a written scope. Signing with the first contractor means you cannot compare materials, warranty, schedule or crew."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What should I read before signing a contingency agreement?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Read every page and ask questions before you sign. Ask whether it commits you to hire that contractor, what happens if you choose someone else, whether there is a cancellation window or fee, and what the contractor may discuss with your insurer. This is not legal advice. A licensed attorney can explain a contract to you."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "How do I make bids from different contractors comparable?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Send every contractor the same written scope, the same measurements and the same material grade. Ask for line items instead of a lump sum, and ask for the manufacturer and product line by name. Then compare warranty type, start date, crew and what each bid lists for decking, permit and cleanup."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does Otter Quotes work with my insurance company?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No. Otter Quotes does not work with your insurance company, negotiate claims or act as a public adjuster. We create a written scope of work for your project, send it to multiple contractors, and let you compare their bids online. Questions about your coverage and your claim belong with your insurer."
+      }
+    }
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": "https://otterquote.com"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "Guides",
+      "item": "https://otterquote.com/guides/"
+    },
+    {
+      "@type": "ListItem",
+      "position": 3,
+      "name": "Can You Get Multiple Bids on a Roof Insurance Claim?",
+      "item": "https://otterquote.com/guides/multiple-bids-roof-insurance-claim.html"
+    }
+  ]
+}
+</script>
+
+<script src="../js/cookie-storage.js"></script>
+<script src="../js/config.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/nav.js"></script>
+
+<script>
+// gh-1994 phase 2 (round 2, review 5705874119 B1/N1): carry utm_*/fbclid/
+// gclid from this page's own URL onto every "Get started" CTA that points
+// at the router, on top of the oq_ft cookie fallback (gh-1983)
+// start.html's own collectAttribution() already reads -- belt and
+// suspenders for cookie-blocked browsers. No PII, same allow-list
+// start.html reads. Matches by normalized pathname, not an exact-string
+// selector, because Netlify's pretty-URL rewrite serves the on-disk
+// href="/start.html" as href="/start" (no ".html", no trailing slash) --
+// an exact-string selector never matches that served markup, only a local
+// static server without the rewrite. Also tolerates a trailing slash
+// ("/start/") and a login.html-style relative "start.html". Idempotent:
+// run once per page load, never runs twice on the same anchor.
+(function () {
+  'use strict';
+  var ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid'];
+  var params = new URLSearchParams(window.location.search);
+  var qs = '';
+  ATTR_KEYS.forEach(function (k) {
+    var v = params.get(k);
+    if (v) qs += (qs ? '&' : '?') + k + '=' + encodeURIComponent(v);
+  });
+  if (!qs) return;
+  function isStartHref(href) {
+    if (!href) return false;
+    try {
+      var p = new URL(href, window.location.href).pathname.replace(/\/+$/, '');
+      return p === '/start' || p === '/start.html';
+    } catch (e) {
+      return false;
+    }
+  }
+  document.querySelectorAll('a[href]').forEach(function (a) {
+    var href = a.getAttribute('href');
+    if (isStartHref(href)) {
+      a.setAttribute('href', href + qs);
+    }
+  });
+})();
+</script>
+</body>
+</html>
