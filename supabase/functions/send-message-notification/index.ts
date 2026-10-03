@@ -41,7 +41,12 @@ import {
   hasServiceBearer,
   looksLikeJwt,
 } from "./caller-gate.ts"; // gh-2462 (local copy; the deploy path does not resolve _shared/)
-import { messageNotificationHtml, messageNotificationText, MESSAGE_NOTIFICATION_SUBJECT } from "./templates.ts"; // gh-1824: footer moved to templates.ts (testable, no serve() import)
+import {
+  contractorBoundSenderLabel,
+  messageNotificationHtml,
+  messageNotificationText,
+  MESSAGE_NOTIFICATION_SUBJECT,
+} from "./templates.ts"; // gh-1824: footer moved to templates.ts (testable, no serve() import)
 
 // gh-2462: the service-role client is typed `any`, as process-dunning's and notify-contractors'
 // are (gh-2309). The handler is now imported by caller-gate.test.ts, so this file is type-checked
@@ -208,7 +213,8 @@ export async function handler(
         created_at,
         claims:claim_id (
           id,
-          user_id
+          user_id,
+          property_address
         ),
         profiles:sender_id (
           id,
@@ -315,20 +321,28 @@ export async function handler(
         );
       }
 
-      // Send email to contractor
+      // Send email to contractor.
+      // gh-2478 / Contractor Agreement 6.2 / D-277: the contractor receives no personally
+      // identifiable information about the homeowner until the platform fee is collected, and
+      // this runs at quote status "selected" (before the fee). Ben's ruling (exec #2304,
+      // 5972464230): label the sender "the homeowner" plus the property address the contractor
+      // already has, as notify-contractors does -- never profiles.full_name, never a first name
+      // or initial. Every contractor-bound string below (subject, body, text, and the Mailgun
+      // sender argument) is built from `senderLabel`, not senderProfile.
+      const senderLabel = contractorBoundSenderLabel(claim.property_address);
       const subject = MESSAGE_NOTIFICATION_SUBJECT;
       const messagePreview = message.body.substring(0, 200);
       const messageTruncated = message.body.length > 200;
       const htmlBody = messageNotificationHtml(
         contractorProfile.full_name || "",
-        senderProfile.full_name || "",
+        senderLabel,
         messagePreview,
         messageTruncated,
         dashboardUrl
       );
       const textBody = messageNotificationText(
         contractorProfile.full_name || "",
-        senderProfile.full_name || "",
+        senderLabel,
         messagePreview,
         messageTruncated,
         dashboardUrl
@@ -337,7 +351,7 @@ export async function handler(
       const emailSent = await sendMailgunEmail(
         getEnv,
         contractorProfile.email,
-        senderProfile.full_name,
+        senderLabel,
         subject,
         htmlBody,
         textBody
