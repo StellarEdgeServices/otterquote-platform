@@ -431,6 +431,9 @@ jobs:
       - name: Do Not Sell or Share opt-out control guard (gh-1925, D-336)
         run: node tests/gh1925-optout-control.mjs
 
+      - name: admin Ready-not-submitted tab includes draft claims (gh-1570)
+        run: node tests/gh1570-ready-queue-draft.mjs
+
       - name: tsc --noEmit type gate (gh-414)
         working-directory: react-app
         run: npx tsc --noEmit
