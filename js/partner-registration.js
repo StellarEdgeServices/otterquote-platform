@@ -168,6 +168,14 @@
    * (missing, expired, unknown type, or a missing/different owner) the re-collect ASKS for the partner type and a
    * recruiter code instead of defaulting to 'other' / the standard Partner Terms with no recruiter credited.
    * ------------------------------------------------------------------------------------------- */
+  /**
+   * The shape of a real recruit_code: public.generate_recruit_code() (supabase/migrations/20260101000000_v000_baseline_schema.sql,
+   * the only writer, via the referral_agents_generate_recruit_code BEFORE INSERT trigger) returns 'r-' + 6 chars from
+   * [A-Z0-9]. Its index is (random() * 36)::INT + 1, which rounds and can reach 37, where substr() returns '' -- so a stored
+   * code can be shorter than 6. Hence {1,6}. Matched against the normalised value (normRecruitCode).
+   */
+  var RECRUIT_CODE_RE = /^r-[A-Z0-9]{1,6}$/;
+  var RECRUIT_LINK_RE = /[?&](?:code|recruit)=/i;
   /** A typed recruit code, normalised exactly as recruit.html does (gh-1648); a pasted recruit link (?code= / ?recruit=) is accepted. '' when empty. */
   function normRecruitCode(raw) {
     var s = String(raw || '').trim();
@@ -202,6 +210,9 @@
   async function resolveReferral(sb, raw) {
     var text = String(raw || '').trim();
     if (!text) return {};
+    // Privacy (gh-2344 N1): only a pasted recruit link or recruit-code-shaped text is looked up; anything else (a name)
+    // is stored as the note with no network call, so it never reaches Supabase as a recruit_code filter.
+    if (!RECRUIT_LINK_RE.test(text) && !RECRUIT_CODE_RE.test(normRecruitCode(text))) return { p_referred_by_note: text };
     var r = await lookupRecruitCode(sb, text);
     if (r.error) return null;
     if (r.code) return { p_recruit_code: r.code, p_referred_by_note: r.name };
@@ -210,5 +221,5 @@
 
   root.PartnerRegistration = { KEY: KEY, TTL_MS: TTL_MS, TYPES: TYPES, readMarker: readMarker, clearMarker: clearMarker, buildParams: buildParams, complete: complete,
     CTX_KEY: CTX_KEY, FORMS: FORMS, ERR_TEXT: ERR_TEXT, SUBMITTING: SUBMITTING, readCtx: readCtx, clearCtx: clearCtx, formFor: formFor, buildRecollectParams: buildRecollectParams,
-    normRecruitCode: normRecruitCode, lookupRecruitCode: lookupRecruitCode, resolveReferral: resolveReferral };
+    normRecruitCode: normRecruitCode, lookupRecruitCode: lookupRecruitCode, resolveReferral: resolveReferral, RECRUIT_CODE_RE: RECRUIT_CODE_RE };
 })(typeof window !== 'undefined' ? window : this);

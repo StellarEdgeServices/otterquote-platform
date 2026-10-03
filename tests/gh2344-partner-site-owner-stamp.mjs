@@ -112,9 +112,13 @@ ok(/PR\.readCtx\(localStorage, undefined, .*Auth\.ownerTag\(currentUser\.email\)
   // (e) unknown code -> not credited (as on the signup pages); empty -> not credited
   r = await run({ ctx: legacyCtx, pick: 'adjuster', recruitTyped: 'r-NOPE99', values: V });
   ok(r.rpcCalls.length === 1 && r.rpcCalls[0].params.p_recruit_code === null && r.rpcCalls[0].params.p_agent_type === 'adjuster', '(e) unknown recruit code: registered as the picked type, not credited');
-  ok(r.rpcCalls[0] && r.rpcCalls[0].params.p_referred_by_note === 'r-NOPE99', '(e) unknown code text kept as p_referred_by_note');
+  ok(r.rpcCalls[0] && r.rpcCalls[0].params.p_referred_by_note === 'r-NOPE99' && r.lookups.length === 1, '(e) code-shaped but unknown: looked up, kept as p_referred_by_note, not credited');
   r = await run({ ctx: legacyCtx, pick: 'home_inspector', recruitTyped: '  Jane Smith  ', values: V });
   ok(r.rpcCalls.length === 1 && r.rpcCalls[0].params.p_referred_by_note === 'Jane Smith' && r.rpcCalls[0].params.p_recruit_code === null, '(e) a typed NAME is sent as p_referred_by_note (trimmed), not credited -- as on partner-other/partner-adjusters');
+  ok(r.lookups.length === 0, '(e) privacy N1: a typed NAME triggers NO get_referral_agents_public lookup (never sent as a recruit_code filter) -- lookups ' + JSON.stringify(r.lookups));
+  r = await run({ ctx: legacyCtx, pick: 'adjuster', recruitTyped: 'Acme Roofing, r-ABC123 told me', values: V });
+  ok(r.lookups.length === 0 && r.rpcCalls[0] && r.rpcCalls[0].params.p_referred_by_note === 'Acme Roofing, r-ABC123 told me' && r.rpcCalls[0].params.p_recruit_code === null, '(e) privacy N1: free text that merely contains a code is not code-shaped -> note only, no lookup');
+  ok(!!PR.RECRUIT_CODE_RE && PR.RECRUIT_CODE_RE.test('r-ABC123') && PR.RECRUIT_CODE_RE.test('r-AB12C') && !PR.RECRUIT_CODE_RE.test('JANE SMITH') && !PR.RECRUIT_CODE_RE.test('r-ABC1234') && !PR.RECRUIT_CODE_RE.test('r-'), 'RECRUIT_CODE_RE matches generate_recruit_code() output only');
   ok(r.find('partnerRecollect_recruitCode').placeholder === 'Name or company of the person who recommended Otter Quotes' && fs.readFileSync(path.join(ROOT, 'partner-other.html'), 'utf8').includes('placeholder="Name or company of the person who recommended Otter Quotes"'), '(e) field placeholder verbatim from partner-other.html');
   r = await run({ ctx: legacyCtx, pick: 'other', recruitTyped: '', values: V });
   ok(r.rpcCalls.length === 1 && r.rpcCalls[0].params.p_agent_type === 'other' && r.rpcCalls[0].params.p_recruit_code === null && !('p_referred_by_note' in r.rpcCalls[0].params) && r.lookups.length === 0, '(e) "other" only when explicitly picked; empty field -> no lookup, neither code nor note sent');
