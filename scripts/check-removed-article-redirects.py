@@ -51,7 +51,7 @@ for slug, target in REMOVED.items():
             dest, code, via = s
             if code != 301: errs.append("%s: hop %s is %d, want 301" % (form, cur, code)); break
             hops += 1; chain.append("%s -%d(%s)-> %s" % (cur, code, via, dest))
-            if dest in seen or hops > 4: errs.append("%s: loop"); break
+            if dest in seen or hops > 4: errs.append("%s: loop or more than 4 hops" % form); break
             seen.add(cur); cur = dest
         ok = cur == target and 1 <= hops <= 2 and file_for(cur)
         if cur != target: errs.append("%s ends at %s, want %s" % (form, cur, target))
