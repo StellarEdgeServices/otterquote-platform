@@ -136,7 +136,6 @@ class GeneratorTests(unittest.TestCase):
         sm = self.sitemap.read_text(encoding="utf-8")
         self.assertEqual(sm.count("/locations/"), 3 * 4)
         self.assertIn("https://otterquote.com/locations/alpha-county-zz/roofing/", sm)
-        self.assertNotIn("connects homeowners with contractors", page)
 
     def test_indiana_profile_emits_nothing_under_strict_gate(self):
         # Indiana's committed profile has no county_content, so every page is
@@ -179,7 +178,7 @@ class GeneratorTests(unittest.TestCase):
                 return real
             return (
                 "<!DOCTYPE html><html><head><title>t</title></head><body><main>"
-                "<p>Otter Quotes creates a scope of work and we send it to local contractors.</p>"
+                "<p>We create a scope of work and send it to local contractors.</p>"
                 "</main></body></html>"
             )
 
@@ -591,6 +590,109 @@ class GeneratorTests(unittest.TestCase):
                     glp.load_allowlist(f)
                 self.assertIn("D-344", str(cm.exception))
 
+    def test_round8_invisible_characters_rejected_in_county_content(self):
+        for ch in ("\u200b", "\u200c", "\u200d", "\u200e", "\u200f", "\u202a", "\u202c", "\u202e", "\u2060",
+                   "\u2062", "\u2064", "\u206f", "\ufeff", "\U000e0041", "\ufe0f", "\U000e0100", "\u034f",
+                   "\u00ad", "\u2800", "\u3164", "\u0301", "\u2028", "\ue000", "\x7f", "\u180e"):
+            with self.subTest(ch=hex(ord(ch))):
+                self.write_profile(lambda p, c=ch: p["county_content"]["Alpha"].update(roofing=f"wor{c}d text"))
+                with self.assertRaises(glp.StateConfigError):
+                    self.run_fx()
+                self.assertFalse(self.out.exists())
+        # visible non-ASCII text is fine
+        self.write_profile(lambda p: p["county_content"]["Alpha"].update(
+            roofing="Caf\u00e9 \u2014 it\u2019s \u201cquoted\u201d \u00bd"))
+        glp.load_profile("ZZ", self.fx_profiles)
+
+    def test_round8_profile_strings_with_markup_are_rejected(self):
+        for mutate in (lambda p: p["regions"]["north"].update(label="northern <b>Zedland</b>"),
+                       lambda p: p["regions"]["north"].update(climate=["{county} <i>x</i>"]),
+                       lambda p: p["regions"]["north"].update(climate=["{county} a &amp; b"]),
+                       lambda p: p["regions"]["north"].update(climate=["{county} wor\u200bd"]),
+                       lambda p: p.update(name="Zed<script>")):
+            self.write_profile(mutate)
+            with self.assertRaises(glp.StateConfigError):
+                self.run_fx()
+            self.assertFalse(self.out.exists())
+
+    @staticmethod
+    def boilerplate_words(n=650):
+        return ["boiler%d" % i for i in range(n)]
+
+    def zw_page(self, county, trade, generated_on, state):
+        """A page whose 650-word boilerplate is identical everywhere except that a zero-width
+        space is inserted inside words at page-specific positions. Bypasses the profile on purpose."""
+        words = self.boilerplate_words()
+        k = (sum(map(ord, county + trade)) % 5) + 1
+        varied = [w[:k] + "\u200b" + w[k:] if i % 3 == 0 else w for i, w in enumerate(words)]
+        body = " ".join(varied)
+        return ("<!DOCTYPE html><html><head><title>t</title></head><body><main>"
+                "<p>We create a scope of work and send it to local contractors.</p><p>%s</p></main></body></html>"
+                % body)
+
+    def test_round8_zero_width_varied_boilerplate_writes_zero_pages(self):
+        summary = self.run_fx(build_fn=self.zw_page)
+        self.assertEqual(summary["written"], 0)
+        self.assertFalse(self.out.exists())
+        self.assertEqual(self.sitemap.read_text(encoding="utf-8"), SITEMAP_SEED)
+        # the words as the gate sees them are identical across pages
+        a = glp.main_words(self.zw_page("Alpha", "roofing", "x", "ZZ"))
+        b = glp.main_words(self.zw_page("Beta", "siding", "x", "ZZ"))
+        self.assertEqual(a, b)
+        # combining-mark and homoglyph variation fold away too
+        self.assertEqual(glp.main_words("<main>r\u00e9ady \u0440aint</main>"), glp.main_words("<main>ready paint</main>"))
+
+    def merge_profile(self, token_for):
+        """Same 650-word boilerplate for every county and trade, with a mail-merge token every 6 words."""
+        base = self.boilerplate_words()
+
+        def text(county, trade):
+            out = []
+            for i, w in enumerate(base):
+                out.append(w)
+                if i % 6 == 5:
+                    out.append(token_for(county, trade))
+            return " ".join(out)
+
+        def mutate(prof):
+            prof["county_content"] = {c: {t: text(c, t) for t in glp.ELIGIBLE_TRADES}
+                                      for c in ("Alpha", "Beta", "Gamma")}
+        self.write_profile(mutate)
+
+    def test_round8_mail_merge_tokens_do_not_make_boilerplate_unique(self):
+        cases = {
+            "county-trade compound": lambda c, t: f"{c}-{t}",
+            "county-trade compound with trade label": lambda c, t: f"{c}-{t.capitalize()}",
+            "county alone": lambda c, t: c,
+            "county possessive": lambda c, t: f"{c}'s",
+            "trade alone": lambda c, t: t,
+            "trade singular synonym": lambda c, t: {"roofing": "roof", "siding": "sider", "gutters": "gutter",
+                                                     "windows": "window"}[t],
+            "county and trade separate": lambda c, t: f"{c} {t}",
+            "county and trade underscore/slash": lambda c, t: f"{c}_{t}/{c}",
+            "state name": lambda c, t: "Zedland",
+            "all three": lambda c, t: f"Zedland-{c}-{t}",
+        }
+        for label, fn in cases.items():
+            with self.subTest(label):
+                self.merge_profile(fn)
+                if self.out.exists():
+                    import shutil
+                    shutil.rmtree(self.out)
+                summary = self.run_fx()
+                self.assertEqual(summary["written"], 0, label)
+                self.assertFalse(self.out.exists())
+        # control: genuinely different per-county and per-trade text still passes
+        self.write_profile(lambda p: None)
+        summary = self.run_fx()
+        self.assertEqual(summary["written"], 12)
+        self.assertGreaterEqual(summary["min_strict_unique_words"], glp.MIN_WORDS)
+
+    def test_round8_page_mask_unit(self):
+        mask = glp.page_mask("Zedland", "St. Joseph")
+        self.assertEqual(glp.main_words("<main>St. Joseph-roofing joseph's Zedland windows</main>", mask),
+                         ["countyname", "countyname-tradename", "countyname", "statename", "tradename"])
+
     # D-344 blocked states ----------------------------------------------------
     def test_blocked_states_are_refused_everywhere(self):
         for st in ("FL", "LA", "TX"):
@@ -643,7 +745,7 @@ class GeneratorTests(unittest.TestCase):
 
 
 class LintTests(unittest.TestCase):
-    GOOD = ("<main><p>Otter Quotes creates a scope of work and we send it to local contractors. "
+    GOOD = ("<main><p>We create a scope of work and send it to local contractors. "
             "Compare the bids.</p></main>")
 
     def lint(self, extra=""):
@@ -683,7 +785,6 @@ class LintTests(unittest.TestCase):
     def test_generated_jsonld_and_disclosure_use_approved_framing(self):
         prof = glp.load_profile("IN")
         page = glp.build_page("Ohio", "roofing", "2026-01-01", "IN", profile=prof)
-        self.assertNotIn("connects homeowners with contractors", page)
         self.assertNotIn("Contractor Bids", page)
         ld = glp._jsonld_strings(page)
         self.assertIn("send it to local contractors", ld)
@@ -768,7 +869,7 @@ class LintTests(unittest.TestCase):
         self.lint_frag("<p>Otter Quotes does not independently verify, endorse, or warrant the quality of any "
                        "contractor's work, and does not guarantee the availability of any particular contractor.</p>")
         self.lint_frag("<p>Your insurer decides coverage under your policy; ask your adjuster whether it is included.</p>")
-        self.lint_frag("<p>Otter Quotes creates a scope of work and we send it to local contractors.</p>")
+        self.lint_frag("<p>We create a scope of work and send it to local contractors.</p>")
         self.lint_frag("<p>Local contractors set their own prices.</p>")
         self.lint_frag("<p>Ask contractors about permits.</p>")
 
@@ -850,7 +951,7 @@ class LintTests(unittest.TestCase):
 
     def test_lint_still_allows_the_approved_lines_and_every_indiana_page(self):
         for ok in (
-            "Otter Quotes creates a scope of work and we send it to local contractors.",
+            "We create a scope of work and send it to local contractors.",
             "Otter Quotes does not independently verify, endorse, or warrant the quality of any contractor's work, "
             "and does not guarantee the availability of any particular contractor.",
             "Ask any contractor for an itemized written estimate, proof of insurance, and local references.",
@@ -893,8 +994,8 @@ class LintTests(unittest.TestCase):
     def test_sentence_rules_allow_neutral_contractor_sentences_and_only_exact_approved_ones(self):
         for ok in ("Local contractors set their own prices.", "Ask contractors about permits.",
                    "Ask any contractor for an itemized written estimate, proof of insurance, and local references.",
-                   "Otter Quotes creates a scope of work and we send it to local contractors.",
-                   "Otter Quotes creates a scope of work and we send it to local contractors"):
+                   "We create a scope of work and send it to local contractors.",
+                   "We create a scope of work and send it to local contractors"):
             with self.subTest(ok=ok):
                 self.lint_frag("<p>%s</p>" % ok)
         # not allow-listed by pattern: any change to the approved sentence is judged on its own words
@@ -904,22 +1005,106 @@ class LintTests(unittest.TestCase):
                     "Otter Quotes creates a scope of work for your roofing project and we send it to local contractors."):
             with self.subTest(bad=bad):
                 self.assert_fails("<p>%s</p>" % bad)
-        self.assertEqual(len(glp.APPROVED_SENTENCES), 2)
+        self.assertEqual(len(glp.APPROVED_SENTENCES), 3)
 
-    def test_every_template_sentence_with_a_noun_passes_without_the_allow_list_except_approved_two(self):
+    def test_only_blocks_holding_an_approved_sentence_need_the_allow_list(self):
         prof = glp.load_profile("IN")
         saved = glp.APPROVED_SENTENCES
         try:
             glp.APPROVED_SENTENCES = frozenset()
-            seen = set()
-            for county in ("Allen", "Ohio", "Marion"):
+            tripping = set()
+            for county in ("Allen", "Ohio", "Marion", "St. Joseph"):
                 for trade in glp.ELIGIBLE_TRADES:
-                    for _rule, sentence in glp.sentence_findings(
-                            glp.lintable_text(glp.build_page(county, trade, "x", "IN", profile=prof))):
-                        seen.add(sentence)
+                    page = glp.build_page(county, trade, "x", "IN", profile=prof)
+                    for _rule, block in glp.sentence_findings(
+                            glp._drop_abbreviation_dots(glp.lintable_text(page))):
+                        tripping.add(block)
         finally:
             glp.APPROVED_SENTENCES = saved
-        self.assertEqual(seen, set(saved))
+        self.assertTrue(tripping)
+        for block in tripping:     # every such block contains one of the three approved sentences
+            self.assertTrue(any(a in block for a in saved), block)
+        # and with the real allow-list nothing trips anywhere
+        for county in glp.load_counties("IN")[:10]:
+            for trade in glp.ELIGIBLE_TRADES:
+                self.assertEqual(glp.sentence_findings(glp._drop_abbreviation_dots(
+                    glp.lintable_text(glp.build_page(county, trade, "x", "IN", profile=prof)))), [])
+
+    # D-registry / disclosure text: byte-identical to origin/main ---------------------
+    MAIN_DISCLOSURE = (
+        '    <p class="disclosure">\n'
+        '      Otter Quotes is an independent, informational platform that connects homeowners with contractors for property damage repair and exterior improvement projects.\n'
+        "      Otter Quotes does not independently verify, endorse, or warrant the quality of any contractor's work, and does not guarantee the availability of any particular contractor.\n"
+        '      Insurance coverage decisions are made solely by your insurer under the terms of your policy.\n'
+        '      Page generated 2026-01-01.\n'
+        '    </p>'
+    )
+
+    def test_disclosure_is_byte_identical_to_origin_main(self):
+        prof = glp.load_profile("IN")
+        for trade in glp.ELIGIBLE_TRADES:
+            page = glp.build_page("Ohio", trade, "2026-01-01", "IN", profile=prof)
+            self.assertIn(self.MAIN_DISCLOSURE, page)
+            start = page.index('    <p class="disclosure"')
+            end = page.index("</p>", start) + 4
+            self.assertEqual(page[start:end], self.MAIN_DISCLOSURE)
+
+    def test_connects_homeowners_phrase_is_allowed_only_as_the_exact_disclosure_sentence(self):
+        for bad in ("Otter Quotes connects homeowners with contractors.",
+                    "Otter Quotes is an independent, informational platform that connects homeowners with "
+                    "contractors for property damage repair and exterior improvement projects in Marion County.",
+                    "Otter Quotes is an independent, informational platform that connects homeowners with "
+                    "contractors for property damage repair and exterior improvement projects. Contractors are ready."):
+            with self.subTest(bad=bad):
+                self.assert_fails("<p>%s</p>" % bad)
+        self.lint_frag("<p>Otter Quotes is an independent, informational platform that connects homeowners with "
+                       "contractors for property damage repair and exterior improvement projects.</p>")
+
+    # round 8 ---------------------------------------------------------------------------
+    def test_round8_block_rules_reject_every_refuter_string(self):
+        for bad in (
+            # abbreviations must not split a sentence
+            "Roofers in St. Joseph County are ready to bid on your job.",
+            "Contractors near Ft. Wayne are waiting for your scope.",
+            "Many roofers, e.g. the ones we work with, bid on scopes here.",
+            "Roofers in Mt. Vernon, Co. Marion, i.e. nearby, are ready.",
+            # pronoun carry-over and fragments
+            "Your scope goes out to local contractors. They are ready to bid today.",
+            "Roofers. Ready. Now.", "Contractors... ready.",
+            "They'll call you within the hour.",
+            # nouns beyond contractor/roofer
+            "Local experts are ready to bid.", "Roofing specialists in your area are standing by.",
+            "Roofing companies in your area are ready to bid.", "Local firms are ready to bid on your scope.",
+            "Experienced technicians are available today.", "Seasoned roofing outfits are eager to bid on your home.",
+            "Experts we trust review your scope.", "Specialists from our list bid on your scope.",
+            "Contractors who've joined bid on your scope.", "Our businesses are ready.", "Handymen are on call.",
+            "Laborers are lined up.",
+            # quality, speed, outcome
+            "Top-rated contractors bid on your project.", "Certified contractors bid on your project.",
+            "Trusted contractors bid on your project.", "Reputable roofers bid on your project.",
+            "Qualified installers bid on your project.", "Hand-picked pros bid on your project.",
+            "A local roofer will call you within the hour.", "Get same-day bids from local contractors.",
+            "Contractors will reach out to you right away.", "Roofers will be in touch shortly.",
+            "Contractors respond immediately.", "Several contractors will bid on your project.",
+            "Multiple roofers will bid.", "Contractors compete for your job.", "Local contractors want your job.",
+            "Contractors who are screened bid.", "Approved roofers bid.",
+            # combining marks
+            "R\u00e9ady contractors", "Contractors are re\u0301ady",
+        ):
+            with self.subTest(bad=bad):
+                self.assert_fails("<p>%s</p>" % bad)
+
+    def test_round8_block_rules_see_through_the_approved_sentence(self):
+        a1 = "We create a scope of work and send it to local contractors."
+        for bad in (a1 + " Ready today.", a1 + " Bids within the hour.", a1 + " Several will bid.",
+                    "Ready today. " + a1):
+            with self.subTest(bad=bad):
+                self.assert_fails("<p>%s</p>" % bad)
+        # the approved sentence in its own block, next to ordinary text in other blocks, is fine
+        self.lint_frag("<p>%s</p><p>You compare any written bids you receive.</p>" % a1)
+        # pronoun in a block after a noun block counts; after a noun-free block it does not
+        self.assert_fails("<p>Local contractors set their own prices.</p><p>They are ready.</p>")
+        self.lint_frag("<p>Adjusters visit after storms.</p><p>They set their own schedules.</p>")
 
     def test_lint_allows_negated_guarantee_and_approved_procedural_wording(self):
         for ok in (
@@ -947,8 +1132,7 @@ class LintTests(unittest.TestCase):
             glp.compliance_lint("<main><p>Otter Quotes helps homeowners.</p></main>", "t/t")
 
     def test_lint_does_not_false_positive_on_the_required_copy(self):
-        self.lint("Contractors compete for the job. A contractor's estimate. Local contractors bid. "
-                  "css a:hover { color: red }")
+        self.lint("A contractor's estimate. Local contractors set their own prices. css a:hover { color: red }")
 
 
 if __name__ == "__main__":

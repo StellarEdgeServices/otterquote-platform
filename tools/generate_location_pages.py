@@ -77,6 +77,10 @@ COPY RULE (D-345), enforced in the template AND in compliance_lint():
     plus Stripe, Mailgun, Twilio).
   - D-168: no response-time claims.
   - D-175: brand is "Otter Quotes" (two words) in copy.
+  The lint is a TRIPWIRE, not a guarantee: it catches honest mistakes and cheap
+  evasions (see the block-level R1/R2/R3 rules and APPROVED_SENTENCES below).
+  The guarantee is the R-177 legal read of each state's profile and
+  county_content before the state is allow-listed.
 """
 
 import re
@@ -317,11 +321,42 @@ def load_counties(state: str, counties_path=None) -> list:
 _PLAIN_TEXT_FORBIDDEN = re.compile(r"[<>&{}\\\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
 
+_INVISIBLE_FILLERS = set("\u2800\u3164\u115f\u1160\u17b4\u17b5\u034f\u180b\u180c\u180d\u180e\u061c")
+
+
+def _invisible_char(ch: str) -> bool:
+    """Characters a reader cannot see (or that change how neighbours render):
+    Unicode format characters (zero-width, bidi controls, word joiner, BOM, tag
+    characters), control characters other than newline/tab, surrogates,
+    private-use and unassigned code points, line/paragraph separators, combining
+    marks (incl. variation selectors) and the usual blank "filler" letters."""
+    if ch in "\n\r\t":
+        return False
+    cat = unicodedata.category(ch)
+    return (cat.startswith("C") or cat in ("Zl", "Zp", "Mn", "Me") or ch in _INVISIBLE_FILLERS
+            or "\ufe00" <= ch <= "\ufe0f" or "\U000e0100" <= ch <= "\U000e01ef")
+
+
 def _require_plain_text(text: str, bad, where: str) -> None:
     m = _PLAIN_TEXT_FORBIDDEN.search(text)
     if m:
         raise bad(f"{where} must be plain text: the character {m.group(0)!r} is not allowed "
                   "(no markup, entities, braces or backslashes; separate paragraphs with a blank line)")
+    for ch in text:
+        if _invisible_char(ch):
+            raise bad(f"{where} contains an invisible or format character (U+{ord(ch):04X}, "
+                      f"{unicodedata.category(ch)}); only visible characters are allowed")
+
+
+def _require_no_markup(text: str, bad, where: str) -> None:
+    """For profile strings that legitimately contain {county}: no markup, entities,
+    backslashes or invisible characters."""
+    m = re.search(r"[<>&\\]", text)
+    if m:
+        raise bad(f"{where} must not contain markup or entities: {m.group(0)!r} is not allowed")
+    for ch in text:
+        if _invisible_char(ch):
+            raise bad(f"{where} contains an invisible or format character (U+{ord(ch):04X})")
 
 
 def render_county_text(text: str) -> str:
@@ -360,6 +395,7 @@ def load_profile(state: str, profiles_dir=None) -> dict:
     name = data.get("name")
     if not (isinstance(name, str) and name.strip()):
         raise bad('"name" must be a non-empty string')
+    _require_no_markup(name, bad, '"name"')
     regions = data.get("regions")
     if not (isinstance(regions, dict) and regions):
         raise bad('"regions" must be a non-empty object')
@@ -373,11 +409,13 @@ def load_profile(state: str, profiles_dir=None) -> dict:
         climate = reg.get("climate")
         if not (isinstance(label, str) and label.strip()):
             raise bad(f'region "{key}": "label" must be a non-empty string')
+        _require_no_markup(label, bad, f'region "{key}" label')
         if not (isinstance(counties, list) and counties and all(isinstance(c, str) and c for c in counties)):
             raise bad(f'region "{key}": "counties" must be a non-empty list of strings')
         if not (isinstance(climate, list) and climate and all(isinstance(c, str) and c.strip() for c in climate)):
             raise bad(f'region "{key}": "climate" must be a non-empty list of strings')
         for text in climate:
+            _require_no_markup(text, bad, f'region "{key}" climate paragraph')
             if "{county}" not in text:
                 raise bad(f'region "{key}": every climate paragraph must contain the {{county}} placeholder')
             try:
@@ -522,12 +560,64 @@ def _norm_word(word: str) -> str:
     return re.sub(r"^\W+|\W+$", "", word.lower())
 
 
-def main_words(html_text: str) -> list:
-    """Normalised (lower-case, edge punctuation stripped) words of the page's
-    <main> visible text. Scripts and styles are excluded."""
+def _fold(text: str, casefold: bool = False) -> str:
+    """What a reader sees: NFKC, every Unicode Cf (format) character dropped,
+    combining marks dropped (NFKD), Cyrillic/Greek lookalikes folded to Latin,
+    optionally casefolded. Shared by the lint and the strict gate."""
+    text = unicodedata.normalize("NFKC", text)
+    text = "".join(ch for ch in text if unicodedata.category(ch) != "Cf")
+    text = unicodedata.normalize("NFKD", text)
+    text = "".join(ch for ch in text if unicodedata.category(ch) not in ("Mn", "Me", "Cf"))
+    text = text.translate(_CONFUSABLES)
+    return text.casefold() if casefold else text
+
+
+_TRADE_TERMS = ("roof", "roofs", "roofing", "roofer", "roofers", "shingle", "shingles", "siding", "sidings",
+                "sider", "siders", "gutter", "gutters", "guttering", "downspout", "downspouts", "window",
+                "windows")
+_WORD_TOKEN = re.compile(r"[^\W_]+(?:'[^\W_]+)*")   # alphanumeric runs; "_" separates
+
+
+def _tokens(text: str) -> list:
+    """Folded, lower-cased alphanumeric tokens; a trailing possessive is dropped."""
+    out = []
+    for tok in _WORD_TOKEN.findall(_fold(text, casefold=True)):
+        if tok.endswith("'s"):
+            tok = tok[:-2]
+        if tok:
+            out.append(tok)
+    return out
+
+
+def page_mask(state_name: str, county: str) -> dict:
+    """token -> placeholder for the page-specific mail-merge fields: the
+    county's name (each word of it, and the words run together), the state's
+    name, and the trade names and synonyms. Applied before shingling so a
+    county or trade name inserted into otherwise identical text cannot make it
+    look unique."""
+    mask = {t: "countyname" for t in _tokens(county)}
+    mask["".join(_tokens(county))] = "countyname"
+    mask.update({t: "statename" for t in _tokens(state_name)})
+    mask.update({t: "tradename" for t in _TRADE_TERMS})
+    return mask
+
+
+def main_words(html_text: str, mask: dict = None) -> list:
+    """Words of the page's <main> visible text as a reader sees them: folded
+    (see _fold), lower-cased, punctuation-split tokens of each whitespace chunk
+    joined with "-" (one word per chunk), with mail-merge tokens replaced by
+    placeholders when a mask is given. Scripts and styles are excluded."""
     p = _UniqueTextParser()
     p.feed(html_text)
-    return [w for w in (_norm_word(x) for x in p.words) if w]
+    out = []
+    for chunk in p.words:
+        toks = _tokens(chunk)
+        if not toks:
+            continue
+        if mask:
+            toks = [mask.get(t, t) for t in toks]
+        out.append("-".join(toks))
+    return out
 
 
 SHINGLE_SIZE = 8
@@ -591,7 +681,7 @@ def cross_page_uniqueness(shingle_sets: list) -> list:
     return out
 
 
-_INLINE_TAGS = {"a", "abbr", "b", "bdi", "bdo", "cite", "code", "data", "dfn", "em", "i", "kbd", "mark",
+_INLINE_TAGS = {"br", "a", "abbr", "b", "bdi", "bdo", "cite", "code", "data", "dfn", "em", "i", "kbd", "mark",
                 "q", "s", "samp", "small", "span", "strong", "sub", "sup", "time", "u", "var", "font"}
 _ATTR_NAMES = {"title", "alt", "placeholder", "content", "value", "label", "srcdoc"}
 
@@ -692,11 +782,9 @@ def _css_content_strings(css: str) -> list:
 
 
 def _normalize(text: str, keep_newlines: bool = False) -> str:
-    """NFKC, drop every Unicode Cf (format) character, fold confusables,
-    collapse whitespace (keeping newlines as sentence boundaries if asked)."""
-    text = unicodedata.normalize("NFKC", text)
-    text = "".join(ch for ch in text if unicodedata.category(ch) != "Cf")
-    text = text.translate(_CONFUSABLES)
+    """_fold, then collapse whitespace (keeping newlines as block boundaries
+    if asked)."""
+    text = _fold(text)
     if keep_newlines:
         text = re.sub(r"[^\S\n]+", " ", text)
         return re.sub(r" ?\n[ \n]*", "\n", text).strip()
@@ -771,63 +859,125 @@ def _guide_labels() -> list:
     return sorted(set(labels), key=len, reverse=True)
 
 
-# --- Sentence-level co-occurrence rules (round 7) ---------------------------
-# Adjacency patterns can always be dodged by one inserted word, a singular noun
-# or punctuation. These rules look at a whole SENTENCE: split on . ! ? and on
-# block boundaries; ; : ( ) and arrows are deliberately NOT boundaries, because
-# "Contractors: ready" / "Contractors (ready to bid)" / "Contractors -> ready"
-# are exactly how the adjacency bans get dodged.
+# --- Block-level co-occurrence rules (rounds 7-8) ------------------------------
+# Adjacency patterns can always be dodged by one inserted word, a singular noun,
+# punctuation or an abbreviation. These rules judge a whole BLOCK (one <p>, <li>,
+# heading, attribute value or JSON-LD string): after the exact approved sentences
+# are masked out, a block fails if it names a tradesperson AND carries a readiness,
+# speed, quality, outcome, ownership or affiliation trigger anywhere. Punctuation
+# (. ; : ( ) and arrows) never separates "Contractors" from "ready".
+# THIS LINT IS A TRIPWIRE, NOT A GUARANTEE. Blunt rules catch honest mistakes and
+# cheap evasions; the guarantee is the R-177 legal read of each state's profile
+# and county_content before that state is allow-listed.
 _TRADESPERSON = (r"(?:contractors?|roofers?|crews?|pros?|installers?|builders?|tradespeople|tradesperson|"
-                 r"tradesm[ae]n|siders?|professionals?|bidders?)")
-_R1_WORDS = (r"(?:ready|waiting|waits?|waited|standby|stand(?:s|ing)?\s+by|stand(?:s|ing)?\s+ready|"
-             r"lined\s+up|line\s+up|lines\s+up|lining\s+up|queued|queue\s+up|on\s+call|available|"
-             r"assign(?:s|ed|ing|ment)?|match(?:es|ed|ing)?|dispatch(?:ed|es)?|on\s+hand|at\s+the\s+ready|booked)")
+                 r"tradesm[ae]n|handym[ae]n|siders?|professionals?|bidders?|experts?|specialists?|"
+                 r"compan(?:y|ies)|firms?|technicians?|outfits?|teams?|providers?|business(?:es)?|"
+                 r"laborers?|labourers?)")
+_PRONOUN = r"(?:they|them|their|theirs)"
+_R1_WORDS = (
+    # readiness / availability / assignment / matching
+    r"(?:ready|waiting|waits?|waited|standby|stand(?:s|ing)?\s+by|stand(?:s|ing)?\s+ready|lined\s+up|"
+    r"line\s+up|lines\s+up|lining\s+up|queued|queue\s+up|on\s+call|available|assign(?:s|ed|ing|ment)?|"
+    r"match(?:es|ed|ing)?|dispatch(?:ed|es)?|on\s+hand|at\s+the\s+ready|booked"
+    # speed
+    r"|within|same[-\s]day|today|tonight|right\s+away|immediately|shortly|soon|call\s+you|reach\s+out|"
+    r"in\s+touch|respond(?:s|ed|ing)?|contact\s+you"
+    # quality
+    r"|top[-\s]rated|certified|trusted|reputable|best|licensed\s+and\s+insured|qualified|screened|"
+    r"pre[-\s]screened|hand[-\s]picked|approved"
+    # outcome
+    r"|compet(?:e|es|ed|ing|itive)|eager|several|multiple|will\s+bid|would\s+bid|want\s+your\s+job|guaranteed)")
+_SPEED_CONTACT = (r"(?:within|same[-\s]day|today|tonight|right\s+away|immediately|shortly|soon|call\s+you|"
+                  r"reach\s+out|in\s+touch|respond(?:s|ed|ing)?|contact\s+you)")
 _R2_WORDS = (r"(?:we|we'll|we've|we're|our|ours|us|otter\s+quotes|network|platform|affiliated|partners?|vetted|"
-             r"members?|(?:dozens|hundreds|thousands|many)\s+of)")
+             r"members?|joined|(?:dozens|hundreds|thousands|many)\s+of)")
 _R3_NETWORK = r"\bnetwork\b"
 _R3_OWNER = r"(?:\bwe\b|\bour\b|\bours\b|\bus\b|otter\s+quotes|\bplatform\b)"
+
+_ABBREV_DOT = re.compile(r"\b(St|Ste|Ft|Mt|Mr|Mrs|Ms|Dr|Jr|Sr|No|Co|Inc|Ltd|vs|etc|approx)\.", re.IGNORECASE)
+
+
+def _drop_abbreviation_dots(text: str) -> str:
+    """"St. Joseph" -> "St Joseph", "e.g." -> "eg": an abbreviation's period is
+    not a sentence boundary and must not split a pattern."""
+    text = re.sub(r"\be\.g\.", "eg", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bi\.e\.", "ie", text, flags=re.IGNORECASE)
+    return _ABBREV_DOT.sub(lambda m: m.group(1), text)
 
 
 def _sentence_key(sentence: str) -> str:
     return re.sub(r"\s+", " ", sentence.strip().lower()).strip(" .,;:\"'")
 
 
-# The ONLY sentences allowed to contain a tradesperson noun together with a
-# readiness / affiliation word. Compared whole, after normalisation; never by
-# pattern. Keep this list as short as possible; Ben reads it for R-177.
+# The ONLY sentences exempt from the lint (the block rules and the adjacency /
+# promise bans), compared whole after normalisation, never by pattern. Keep this
+# list as short as possible; Ben reads it for R-177.
 APPROVED_SENTENCES = frozenset(_sentence_key(x) for x in (
-    # D-345 (CEO chat 2026-10-02, issue #2422): the approved statement of what
-    # Otter Quotes does. Appears as its own sentence everywhere it is used.
-    "Otter Quotes creates a scope of work and we send it to local contractors.",
-    # Disclosure sentence carried verbatim from the pre-D-345 generator
-    # (origin/main a3ea4d0, the D-169 carve-out page template). Not changed by
-    # D-345. D-number for the disclosure to be confirmed by the CEO.
+    # CEO wording, issue #2422: "Our statement should be that we create a scope of
+    # work and \"send it to local contractors\"." (D-345, 2026-10-02.)
+    "We create a scope of work and send it to local contractors.",
+    # Existing disclosure, byte-identical to origin/main, D-number to be confirmed
+    # by CEO. (Sentence 1 of the disclosure paragraph.)
+    "Otter Quotes is an independent, informational platform that connects homeowners with contractors for "
+    "property damage repair and exterior improvement projects.",
+    # Existing disclosure, byte-identical to origin/main, D-number to be confirmed
+    # by CEO. (Sentence 2.)
     "Otter Quotes does not independently verify, endorse, or warrant the quality of any contractor's work, "
     "and does not guarantee the availability of any particular contractor.",
 ))
 
 
-def sentence_findings(text_with_newlines: str) -> list:
-    """(rule, sentence) for every sentence that breaks R1 (a tradesperson noun
-    with a readiness/availability/assignment/matching word), R2 (a noun with an
-    affiliation word) or R3 (network with an Otter Quotes/we/our word), unless
-    the whole sentence is in APPROVED_SENTENCES."""
+def mask_approved(text_with_newlines: str) -> str:
+    """Remove the exact APPROVED_SENTENCES from each block (blocks stay
+    separated by newlines); everything else is kept verbatim, punctuation
+    included, and is still checked."""
     out = []
-    for raw_sentence in re.split(r"[.!?\n]+", text_with_newlines):
-        key = _sentence_key(raw_sentence)
-        if not key or key in APPROVED_SENTENCES:
-            continue
-        for view in (key, _dehyphenate(key), _hyphens_to_spaces(key)):
-            has_noun = re.search(rf"\b{_TRADESPERSON}\b", view)
-            if has_noun and re.search(rf"\b{_R1_WORDS}\b", view):
-                out.append(("R1 readiness/availability/matching", key))
-                break
-            if has_noun and re.search(rf"\b{_R2_WORDS}\b", view):
-                out.append(("R2 affiliation/ownership", key))
-                break
-            if re.search(_R3_NETWORK, view) and re.search(_R3_OWNER, view):
-                out.append(("R3 network", key))
-                break
+    for block in text_with_newlines.split("\n"):
+        pieces = re.split(r"([.!?]+)", block)       # sentence, delimiter, sentence, delimiter, ...
+        kept = []
+        for i in range(0, len(pieces), 2):
+            sentence = pieces[i]
+            delim = pieces[i + 1] if i + 1 < len(pieces) else ""
+            if sentence.strip() and _sentence_key(sentence) in APPROVED_SENTENCES:
+                continue
+            kept.append(sentence + delim)
+        out.append(re.sub(r"\s+", " ", "".join(kept)).strip())
+    return "\n".join(out)
+
+
+def sentence_findings(text_with_newlines: str) -> list:
+    """(rule, block) for every block that breaks R1 (a tradesperson noun with a
+    readiness / speed / quality / outcome word), R2 (a noun with an ownership /
+    affiliation word) or R3 (network with a we/our/Otter Quotes/platform word).
+    The noun is looked for in the whole block, the triggers only after the
+    approved sentences are masked, so text appended to an approved sentence is
+    judged against the noun it leans on. they/them/their count as a noun when
+    the block or the previous block names a tradesperson, and always with a
+    speed/contact word."""
+    text = _drop_abbreviation_dots(text_with_newlines)
+    out = []
+    prev_noun = False
+    for block in text.split("\n"):
+        full = _sentence_key(block)
+        masked = _sentence_key(mask_approved(block))
+        noun_views = (full, _dehyphenate(full), _hyphens_to_spaces(full))
+        has_noun = any(re.search(rf"\b{_TRADESPERSON}\b", v) for v in noun_views)
+        if masked:
+            for view in (masked, _dehyphenate(masked), _hyphens_to_spaces(masked)):
+                r1 = re.search(rf"\b{_R1_WORDS}\b", view)
+                r2 = re.search(rf"\b{_R2_WORDS}\b", view)
+                pron = re.search(rf"\b{_PRONOUN}\b", view)
+                if has_noun and r1:
+                    out.append(("R1 readiness/speed/quality/outcome", full)); break
+                if has_noun and r2:
+                    out.append(("R2 affiliation/ownership", full)); break
+                if pron and (has_noun or prev_noun) and (r1 or r2):
+                    out.append(("R1/R2 via they/them/their", full)); break
+                if pron and re.search(rf"\b{_SPEED_CONTACT}\b", view):
+                    out.append(("R1 via they/them/their with speed/contact", full)); break
+                if re.search(_R3_NETWORK, view) and re.search(_R3_OWNER, view):
+                    out.append(("R3 network", full)); break
+        prev_noun = has_noun
     return out
 
 
@@ -836,14 +986,16 @@ def compliance_lint(html_text: str, page_id: str) -> None:
     D-104 / D-168 / D-175 / D-312 / D-326 bans. Checks run on the normalised
     visible/attribute/CSS/srcdoc/JSON-LD text and on de-hyphenated and
     hyphen-as-space copies of it; the substring and vendor checks also run on the raw markup."""
-    text_nl = lintable_text(html_text)
-    text = re.sub(r"\s+", " ", text_nl)
+    full_nl = _drop_abbreviation_dots(lintable_text(html_text))
     raw = _normalize(html.unescape(html_text))
+    if REQUIRED_PHRASE not in re.sub(r"\s+", " ", full_nl).lower():
+        raise ComplianceError(f'[{page_id}] required phrase missing: "{REQUIRED_PHRASE}"')
+    # Everything below runs with the approved sentences masked out (they are the
+    # exact, allow-listed wording); every other word on the page is checked.
+    text_nl = mask_approved(full_nl)
+    text = re.sub(r"\s+", " ", text_nl)
     views = [text, _dehyphenate(text), _hyphens_to_spaces(text)]
     lowered = [v.lower() for v in views]
-
-    if REQUIRED_PHRASE not in lowered[0]:
-        raise ComplianceError(f'[{page_id}] required phrase missing: "{REQUIRED_PHRASE}"')
 
     for view in lowered + [raw.lower()]:
         for phrase in FORBIDDEN_PHRASES:
@@ -859,7 +1011,7 @@ def compliance_lint(html_text: str, page_id: str) -> None:
             if term in stripped:
                 raise ComplianceError(f"[{page_id}] forbidden term '{term}' in page copy")
 
-    for rule, sentence in sentence_findings(text_nl):
+    for rule, sentence in sentence_findings(full_nl):
         raise ComplianceError(f"[{page_id}] {rule} (D-345): \"{sentence[:160]}\"")
 
     labels = _guide_labels()
@@ -935,7 +1087,7 @@ def page_seed(county: str, trade: str) -> int:
 
 SEASONAL = [
     "<p>The repair calendar in {region} has a shape worth planning around. Spring storm season generates the damage; early summer is when adjusters and contractors are busiest; late summer and fall often bring a different mix of contractor schedules and working weather; and winter narrows the options for exterior work while freeze-thaw cycles compound anything left unrepaired. Many homeowners in {county} County aim to move from documentation to a signed contract before mid-fall, ahead of both the post-storm rush and winter.</p>",
-    "<p>Timing matters in {county} County. Damage discovered in May may compete with every other storm claim in {region} for adjuster and contractor attention; the same repair scoped in September may meet a different queue. Documentation is the part that does not depend on the calendar: photograph damage as soon as it is safe and note the date for your adjuster. Ask your insurer whether your policy sets a deadline for reporting damage.</p>",
+    "<p>Timing matters in {county} County. Damage discovered in May joins every other storm claim in {region} in the line for adjuster and contractor attention; the same repair scoped in September may meet a different queue. Documentation is the part that does not depend on the calendar: photograph damage once it is safe and note the date for your adjuster. Ask your insurer whether your policy sets a deadline for reporting damage.</p>",
     "<p>Most exterior repair work in {county} County happens in a window that runs roughly from late spring through late fall. Inside that window, post-storm weeks can be congested, and quotes gathered in a hurry may be harder to compare; the weeks after the rush can be a calmer time to review bids. Whatever the calendar says, the sequence stays the same: document first, understand your policy second, compare any written bids you receive third — and take your time rather than rushing to agree with the first person who knocks on the door.</p>",
     "<p>Storm damage in {region} can arrive in clusters: a single hail event can affect many roofs, gutters, and siding elevations in an area at once. Comparing more than one written bid for the same scope is one way homeowners check pricing when demand spikes.</p>",
 ]
@@ -1016,7 +1168,7 @@ ISSUE_ITEMS_PER_PAGE = 5
 EXPECTATIONS_A = [
     "<p>Storm repair in {county} County follows a rhythm locals know well: a severe-weather event, a wave of door-knocking crews from out of the area, and then the slower, quieter work of getting damage documented, questions raised with your insurer, and a repair scoped carefully. Many homeowners find it helps to slow the process down at the start — documenting damage before tarps and repairs change the evidence, reading their policy before the first phone call, and getting more than one written bid before signing anything.</p>",
     "<p>Homeowners in {county} County navigating a storm claim juggle three parallel tracks: the insurance process (adjuster inspection, scope, settlement), the contractor process (bids, scheduling, materials), and their own documentation. Keeping those tracks separate is the single most useful habit — your insurer decides coverage under your policy; your contractor determines what the repair actually requires; and written bids give you something concrete to discuss with your adjuster.</p>",
-    "<p>The practical sequence for {county} County homeowners after storm damage: document everything with photos before any cleanup, review your policy and ask your insurer how to report damage, and line up written repair bids so you have a written scope and pricing to discuss with your adjuster. Nothing in that sequence requires committing to a contractor early — you can keep your options open while you review any written bids you receive.</p>",
+    "<p>The practical sequence for {county} County homeowners after storm damage: document everything with photos before any cleanup, review your policy and ask your insurer how to report damage, and gather written repair bids so you have a written scope and pricing to discuss with your adjuster. Nothing in that sequence requires committing to a contractor early — you can keep your options open while you review any written bids you receive.</p>",
 ]
 
 EXPECTATIONS_B = [
@@ -1026,9 +1178,9 @@ EXPECTATIONS_B = [
 ]
 
 HOW_IT_WORKS = [
-    "<p>Here is how Otter Quotes works for {article} {county} County project. You submit your project details once. Otter Quotes creates a scope of work and we send it to local contractors. You can then compare any written bids you receive side by side, on scope, price, and terms. The platform is informational, and the decision stays entirely yours.</p>",
-    "<p>Instead of calling down a list and repeating your story, you submit your {county} County project once. Otter Quotes creates a scope of work and we send it to local contractors. Any bids you receive are written, so you can compare them on scope, price, and terms. Comparing more than one written bid is one way to understand local pricing, especially in the busy weeks after a storm.</p>",
-    "<p>The process has four steps. You submit your {county} County project. Otter Quotes creates a scope of work and we send it to local contractors. You compare any written bids you receive. You choose a contractor, or none of them, and that choice remains entirely your call. No obligation attaches to submitting a project.</p>",
+    "<p>Here is how Otter Quotes works for {article} {county} County project. You submit your project details once.</p><p>We create a scope of work and send it to local contractors.</p><p>You can then compare any written bids you receive side by side, on scope, price, and terms. The platform is informational, and the decision stays entirely yours.</p>",
+    "<p>Instead of calling down a list and repeating your story, you submit your {county} County project once.</p><p>We create a scope of work and send it to local contractors.</p><p>Any bids you receive are written, so you can compare them on scope, price, and terms. Comparing more than one written bid is one way to understand local pricing, especially in the busy weeks after a storm.</p>",
+    "<p>The process has four steps. You submit your {county} County project.</p><p>We create a scope of work and send it to local contractors.</p><p>You compare any written bids you receive. You choose a contractor, or none of them, and that choice remains entirely your call. No obligation attaches to submitting a project.</p>",
 ]
 
 # Four Q&As per trade; each page renders a deterministic selection of two,
@@ -1149,7 +1301,7 @@ def build_page(county: str, trade: str, generated_on: str, state: str = "IN", pr
     title = f"{noun_title} Bids for {county} County, {state} Homeowners · Otter Quotes"
     meta_desc = (
         f"Help with storm-damaged {t_label.lower()} for homeowners in {county} County, {state_name}. "
-        f"Otter Quotes creates a scope of work and we send it to local contractors. "
+        f"We create a scope of work and send it to local contractors. "
         f"Homeowners can compare any written bids they receive."
     )
 
@@ -1162,7 +1314,7 @@ def build_page(county: str, trade: str, generated_on: str, state: str = "IN", pr
         "@id": f"{SITE_BASE}/#organization",
         "name": "Otter Quotes",
         "url": f"{SITE_BASE}/",
-        "description": "Otter Quotes is an independent platform for property damage repair and exterior improvement projects. Otter Quotes creates a scope of work and we send it to local contractors. Homeowners can compare any written bids they receive.",
+        "description": "We create a scope of work and send it to local contractors. Homeowners can compare any written bids they receive.",
     }
     service = {
         "@context": "https://schema.org",
@@ -1262,7 +1414,8 @@ def build_page(county: str, trade: str, generated_on: str, state: str = "IN", pr
     </div>
     <div style="padding: var(--sp-8) var(--sp-6) 0;">
       <h1>{noun_title} Bids for {county_esc} County, {state_name} Homeowners</h1>
-      <p style="color:var(--slate); max-width:640px; margin:0 auto;">Otter Quotes creates a scope of work and we send it to local contractors. You compare any written bids you receive for your {noun} project, and the decision stays yours.</p>
+      <p style="color:var(--slate); max-width:640px; margin:0 auto;">We create a scope of work and send it to local contractors.</p>
+      <p style="color:var(--slate); max-width:640px; margin:0 auto;">You compare any written bids you receive for your {noun} project, and the decision stays yours.</p>
     </div>
   </div>
 
@@ -1302,8 +1455,8 @@ def build_page(county: str, trade: str, generated_on: str, state: str = "IN", pr
       <a href="/start.html" class="btn btn-primary btn-lg">Start Your Project with Otter Quotes</a>
     </div>
 
-    <p class="disclosure" data-boilerplate>
-      Otter Quotes is an independent, informational platform for property damage repair and exterior improvement projects. Otter Quotes creates a scope of work and we send it to local contractors.
+    <p class="disclosure">
+      Otter Quotes is an independent, informational platform that connects homeowners with contractors for property damage repair and exterior improvement projects.
       Otter Quotes does not independently verify, endorse, or warrant the quality of any contractor's work, and does not guarantee the availability of any particular contractor.
       Insurance coverage decisions are made solely by your insurer under the terms of your policy.
       Page generated {generated_on}.
@@ -1455,7 +1608,8 @@ def template_baseline_words(states, profiles: dict, generated_on: str) -> list:
         profile["county_region"] = {**profile["county_region"], **names}
         for trade in ELIGIBLE_TRADES:
             for name in names:
-                out.append(main_words(build_page(name, trade, generated_on, st, profile=profile)))
+                out.append(main_words(build_page(name, trade, generated_on, st, profile=profile),
+                                      page_mask(profile["name"], name)))
     return out
 
 
@@ -1493,10 +1647,11 @@ def generate(states, out_dir=None, sitemap_path=None, counties_path=None,
     summary["tuples"] = len(tuples)
     print(f"Allow-listed states: {', '.join(states)}; (county, trade) tuples: {len(tuples)}")
 
-    built = []
+    built, masks = [], []
     for state, county, trade in tuples:
         built.append((county_slug(county, state), trade, build_fn(county, trade, generated_on, state)))
-    word_lists = [main_words(page_html) for _, _, page_html in built]
+        masks.append(page_mask(profiles[state]["name"], county))
+    word_lists = [main_words(page_html, mask) for (_, _, page_html), mask in zip(built, masks)]
     baseline_lists = template_baseline_words(states, profiles, generated_on)
     strict = strict_unique_counts(word_lists, baseline_lists)
 

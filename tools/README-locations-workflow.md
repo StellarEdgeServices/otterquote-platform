@@ -4,6 +4,14 @@
 pages. D-345 (gh-2422) amended D-241 and D-169 for these pages. This file
 describes how the generator behaves now and how a state is added.
 
+## What the lint is, and what is the guarantee
+
+**The lint and the gate are a tripwire, not a guarantee.** They catch honest mistakes
+and cheap evasions; they cannot prove that a page is legally sound, and a determined
+author can always write around blunt rules. **The guarantee is the R-177 legal read of
+each state's profile and `county_content`, done before that state is added to the
+allow-list.** Nothing here replaces that read; it only keeps obvious problems out of it.
+
 ## What the generator does
 
 1. Reads the **state allow-list**, `data/location-pages-state-allowlist.json`.
@@ -109,6 +117,18 @@ the rest are counted.
   against but never scored or emitted. A one-county state, or a narrowed
   `generate()` call, therefore cannot count template text as unique.
 - Repeats within a page count once: a paragraph repeated 14 times is one paragraph.
+- The gate counts what a reader sees: words are NFKC-normalised, every Unicode format
+  character (zero-width, bidi, word joiner, BOM, tag characters) and combining mark is
+  dropped, Cyrillic/Greek lookalikes are folded to Latin, and text is casefolded before
+  shingling. So zero-width characters inside words do not make boilerplate look unique.
+- Mail-merge fields are masked before shingling: each page's county name (every word of
+  it, and the words run together), the state name, and the trade names and synonyms
+  (roof/roofing/roofer, siding/sider, gutter/downspout, window/windows, shingle) become
+  fixed placeholders, also inside compounds ("Adams-roofing", "Adams_roofing",
+  "Adams's"). The same boilerplate with the county and/or trade name inserted every few
+  words is therefore the same text on every page and counts for none. County names and
+  trade words you write in genuinely different text are masked too, which only
+  slightly lowers that page's count.
 - Hidden text in the template never counts (elements with `hidden`, `aria-hidden="true"`,
   `sr-only` classes, inline `display:none` / `visibility:hidden` / `font-size:0` /
   `opacity:0`, and `<noscript>`/`<template>`). `county_content` cannot carry markup at
@@ -135,11 +155,17 @@ county-specific text. In `data/location-state-profiles/XX.json`:
 }
 ```
 
-- **Plain text only.** No HTML, no entities. The loader rejects `<`, `>`, `&`, `{`, `}`,
-  backslashes and control characters, so no tag, attribute, style or entity can reach
+- **Plain text only.** No HTML, no entities, no invisible characters. The loader rejects `<`, `>`, `&`, `{`, `}`,
+  backslashes, control characters and every invisible or format character (zero-width
+  space/joiner, bidi controls, word joiner, BOM, tag characters, variation selectors,
+  combining marks, blank filler letters, line/paragraph separators), so no tag, attribute, style or entity can reach
   the page from `county_content`. Paragraphs are separated by a blank line; the
   generator HTML-escapes the text and wraps each paragraph in a bare `<p>` with no
-  attributes. Ordinary words such as "hidden hail damage" are fine. (Write "and",
+  attributes. Ordinary words such as "hidden hail damage" and visible non-ASCII text
+  (accented letters, curly quotes, dashes) are fine; use precomposed characters, not
+  combining marks. The same no-markup, no-invisible-character rule applies to a region's
+  `label`, `climate` paragraphs (which keep their `{county}` placeholder) and the state
+  `name`. (Write "and",
   not "&"; write "less than", not "<".)
 - **Written per trade.** Keys are county names exactly as in `data/us-counties.json`;
   each value is an object keyed by trade (roofing, siding, gutters, windows). A plain
@@ -186,40 +212,54 @@ Enforced in the template and in `compliance_lint()`:
 
 A lint failure stops the run with an error; it is a copy bug, not a skip.
 
-### Sentence-level rules (R1, R2, R3)
+### Block-level rules (R1, R2, R3)
 
-Adjacency bans can always be dodged by one inserted word, a singular noun or
-punctuation, so the lint also judges whole **sentences**. After normalisation
-(NFKC, confusables folded, entities decoded, tags stripped, hyphen-split words
-joined), text is split into sentences on `.`, `!`, `?` and block boundaries.
-`;`, `:`, parentheses and arrows are deliberately **not** boundaries, because
-"Contractors: ready" and "Contractors (ready to bid)" must stay one sentence. A
-sentence fails if it contains a tradesperson noun (contractor, roofer, crew, pro,
-installer, builder, tradesperson/tradespeople, sider, professional, bidder, singular
-or plural) **and**:
+Adjacency bans can always be dodged by one inserted word, a singular noun, punctuation or
+an abbreviation, so the lint also judges whole **blocks**: one `<p>`, `<li>`, heading,
+attribute value (title, alt, aria-*, meta content) or JSON-LD string. After normalisation
+(NFKC, format characters and combining marks dropped, confusables folded, entities decoded,
+tags stripped, hyphen-split words joined, abbreviation periods such as "St.", "Ft.",
+"e.g." dropped) the exact approved sentences are masked out of the block; the rest is
+checked. Punctuation (`. ; : ( )`, ellipses, arrows) never separates a noun from a
+trigger inside a block. A block fails if it names a **tradesperson** (contractor, roofer,
+crew, pro, installer, builder, tradesperson/tradespeople, sider, professional, bidder,
+expert, specialist, company/companies, firm, technician, outfit, team, provider,
+business(es), handyman, laborer; singular or plural) **and**, anywhere in the masked block:
 
-- **R1**: a readiness / availability / assignment / matching word: ready, waiting,
-  wait, standby, stand(s/ing) by, lined up, line up, queued, on call, available,
-  assigned, assign, match/matched/matching, dispatched, on hand, at the ready, booked;
+- **R1**: a readiness / availability / assignment / matching word (ready, waiting, standby,
+  stand by, lined up, line up, queued, on call, available, assigned, match/matched/matching,
+  dispatched, on hand, at the ready, booked), a speed word (within, same-day, today, tonight,
+  right away, immediately, shortly, soon, call you, reach out, in touch, respond, contact
+  you), a quality word (top-rated, certified, trusted, reputable, best, licensed and insured,
+  qualified, screened, pre-screened, hand-picked, approved), or an outcome word (compete,
+  competing, eager, several, multiple, will bid, want your job, guaranteed);
 - **R2**: an ownership / affiliation word: we, we'll, we've, our, ours, us, Otter Quotes
-  (incl. possessive), network, platform, affiliated, partner(s), vetted, member(s),
+  (incl. possessive), network, platform, affiliated, partner(s), vetted, member(s), joined,
   "dozens/hundreds/thousands/many of".
 
-**R3**: a sentence with "network" and any of we / our / us / Otter Quotes / platform.
+They/them/their count as a tradesperson when the block or the previous block names one
+(and always when the block has a speed/contact word). **R3**: "network" with we / our / us /
+Otter Quotes / platform. The noun is looked for in the whole block (approved sentence
+included), the triggers only in what is left after masking, so "[approved sentence] Ready
+today." fails. Put the approved statement in its own block.
 
-The only exceptions are two whole sentences, listed in `APPROVED_SENTENCES` and compared
-after normalisation (never by pattern):
+`APPROVED_SENTENCES` holds exactly three whole sentences, compared after normalisation and
+never by pattern. They are exempt from the rules above and from the adjacency, promise
+and D-326 bans:
 
-1. `Otter Quotes creates a scope of work and we send it to local contractors.` (D-345,
-   CEO chat 2026-10-02, issue #2422)
-2. `Otter Quotes does not independently verify, endorse, or warrant the quality of any
+1. `We create a scope of work and send it to local contractors.` (CEO wording, issue #2422:
+   "Our statement should be that we create a scope of work and \"send it to local
+   contractors\"." D-345, 2026-10-02.)
+2. `Otter Quotes is an independent, informational platform that connects homeowners with
+   contractors for property damage repair and exterior improvement projects.` (existing
+   disclosure, byte-identical to origin/main, D-number to be confirmed by CEO)
+3. `Otter Quotes does not independently verify, endorse, or warrant the quality of any
    contractor's work, and does not guarantee the availability of any particular
-   contractor.` (disclosure carried verbatim from the pre-D-345 generator; D-number to be
-   confirmed)
+   contractor.` (existing disclosure, byte-identical to origin/main, D-number to be
+   confirmed by CEO)
 
-Because the approved statement is matched whole, it must stand alone as its own sentence.
-Any added words ("... local contractors who are ready", "... in Marion County") make it an
-ordinary sentence that R1/R2 judge on its own words.
+The disclosure paragraph is byte-identical to origin/main and a test pins it. Any change
+to the wording of an approved sentence, or text added to it, makes it an ordinary sentence.
 
 ### Writing county content around the lint (known false positives)
 
@@ -234,8 +274,8 @@ notes) is likely to trip, and how to phrase around them:
 | "in 15 minutes", "in 3 days", "within 2 days" | speed promises | "a short drive", "after the storm", or no timing at all |
 | "the local team", "local crews", "local pros" | have-contractors (local ... team/crews/pros/roofers/network) | "the county's building department", "storm-response crews from the utility" (name the actual body; never imply it is ours) |
 | "a network of storm sirens", "network of" | "network of" | "a system of sirens", "a grid of" |
-| any sentence naming contractors/roofers/crews/pros with "we", "our", "us", "platform", "network", "partners", "members", "many of" (R2) | affiliation/ownership | split it: "Roofers in the county set their own prices." (no we/our/platform in that sentence); say what Otter Quotes does in a different sentence |
-| a sentence naming contractors/roofers/crews/pros with "ready", "available", "waiting", "matched", "assigned", "booked", "on call" (R1) | readiness/matching | "Roofers were booked for weeks after the 2012 storms" trips R1 even though it is history, not an availability claim: rephrase without the noun or the word, e.g. "Repair schedules ran long after the 2012 storms" |
+| any block naming contractors/roofers/crews/pros/experts/companies/teams with "we", "our", "us", "platform", "network", "partners", "members", "many of" (R2) | affiliation/ownership | split it into separate paragraphs: "Roofers in the county set their own prices." (no we/our/platform in that sentence); say what Otter Quotes does in a different sentence |
+| a block naming contractors/roofers/crews/pros/experts/companies/teams with "ready", "available", "waiting", "matched", "assigned", "booked", "on call", "within", "today", "soon", "best", "approved", "several", "compete" (R1) | readiness / speed / quality / outcome | "Roofers were booked for weeks after the 2012 storms" trips R1 even though it is history, not an availability claim: rephrase without the noun or the word, e.g. "Repair schedules ran long after the 2012 storms" |
 | "the county's contractors", "Marion County roofers" | "[County] contractors/roofers" | "roofing work in Marion County", "roof replacements in the county" |
 | "your policy covers", "insurance covered the loss", "the damage is covered" | D-326: no coverage statements, nothing that interprets a policy | "ask your insurer what your policy includes", "your insurer decides coverage" ("coverage" alone is allowed) |
 | "entitled to", "maximize", "lowest price" | D-326 / promises | "may be able to ask", "get the most from", or drop the claim |
