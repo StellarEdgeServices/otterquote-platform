@@ -20,7 +20,7 @@ import {
 
 const LEAD = "6f57d7f4-0b69-4808-9f2d-141fea785cbd";
 const CONSENT_TEXT =
-  "I agree that OtterQuote / Stellar Edge Services may call or text me at the number above about my roof assessment, including by autodialer or prerecorded/artificial voice. Consent is not a condition of purchase. Msg & data rates may apply.";
+  "I agree that OtterQuote / Stellar Edge Services may call or text me at the number above about my project, including by autodialer or prerecorded/artificial voice. Consent is not a condition of purchase. Msg & data rates may apply.";
 
 function goodBody(over: Record<string, unknown> = {}): Record<string, unknown> {
   return {
