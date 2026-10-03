@@ -1526,6 +1526,8 @@ footer p {{ color: #3D4F60; }}
 .breadcrumb {{ font-size: 0.85rem; color: #3D4F60; padding: var(--sp-4) 0 0; text-align: center; }}
 .breadcrumb a {{ color: var(--link-on-light); text-decoration: none; }}
 .breadcrumb a:hover {{ color: var(--link-on-light-deep); text-decoration: underline; }}
+footer a {{ color: var(--link-on-light) !important; }}
+footer a:hover {{ color: var(--link-on-light-deep) !important; text-decoration: underline; }}
 .cta-bar {{ text-align: center; padding: var(--sp-10) 0 var(--sp-6); border-top: 1px solid rgba(255,255,255,0.06); }}
 .cta-bar p {{ color: #3D4F60; margin-bottom: var(--sp-6); }}
 .disclosure {{
@@ -1604,7 +1606,7 @@ footer p {{ color: #3D4F60; }}
 
 <footer style="text-align:center; padding: var(--sp-8); color: #3D4F60; font-size:0.85rem; border-top: 1px solid rgba(255,255,255,0.06);">
   <p>&copy; {datetime.date.today().year} Stellar Edge Services, LLC &mdash; Otter Quotes</p>
-  <p><a href="/terms.html">Terms</a> &bull; <a href="/privacy.html">Privacy</a> &bull; <a href="/privacy.html#do-not-sell-or-share">Do Not Sell or Share My Personal Information</a></p>
+  <p><a href="/terms.html" style="color:var(--amber)">Terms</a> &bull; <a href="/privacy.html" style="color:var(--amber)">Privacy</a> &bull; <a href="/privacy.html#do-not-sell-or-share" style="color:var(--amber)">Do Not Sell or Share My Personal Information</a></p>
 </footer>
 
 </body>
