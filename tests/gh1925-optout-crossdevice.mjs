@@ -50,7 +50,7 @@ function run({ jar = '', cfg = { SUPABASE_URL: 'https://x.supabase.co/', SUPABAS
     ok(c.url.includes('or=(ad_sharing_opt_out.is.null,ad_sharing_opt_out.eq.false)'), 'signed in: an already-true flag is never rewritten (or-filter)');
     ok(c.opts.headers.Authorization === 'Bearer ' + goodToken && c.opts.headers.apikey === 'anon-key', 'signed in: uses the user\'s own token + publishable key');
     const b = JSON.parse(c.opts.body);
-    ok(b.ad_sharing_opt_out === true && typeof b.ad_sharing_opt_out_at === 'string' && !('ad_sharing_opt_out_source' in b) && Object.keys(b).length === 2, 'signed in: body sets only the flag and its timestamp (source untouched, CHECK-safe)');
+    ok(b.ad_sharing_opt_out === true && typeof b.ad_sharing_opt_out_at === 'string' && b.ad_sharing_opt_out_source === 'in_page_button' && Object.keys(b).length === 3, 'signed in: body sets the flag, its timestamp and source in_page_button (CHECK widened by 20261003011500_gh1925)');
   } else { ok(false, 'signed in: a PATCH call exists to inspect'); }
   ok(r.btn.disabled === true, 'signed in: button disabled after click');
 }
