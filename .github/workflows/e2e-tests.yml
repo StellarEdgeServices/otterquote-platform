@@ -423,6 +423,9 @@ jobs:
       - name: partner signup duplicate-email error routing unit test (gh-2274 regression)
         run: node tests/gh2274-partner-dup-email-error.mjs
 
+      - name: partner-re one leads row per signup, variant carried (gh-2084 arm E)
+        run: node tests/gh2084-partner-re-one-lead-row.mjs
+
       - name: tsc --noEmit type gate (gh-414)
         working-directory: react-app
         run: npx tsc --noEmit

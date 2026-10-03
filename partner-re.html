@@ -1551,22 +1551,25 @@
       // with zero register_partner / signUp calls made.
       const generatedPassword = generateSecurePartnerPassword();
 
+      // gh-2084: one signup = one leads row. The router (start.html) already
+      // inserted this visitor's row (variant carried) and handed it over as
+      // ?lead=<uuid> (window.__oqRouterLeadId); inserting here as well made
+      // a second, variant-less row. leads.variant is write-once and
+      // get_lead_prefill() has already stamped the row, so no write is needed.
       // Save lead to database
       // gh-2068 (cto38-b2068r fix pass): X-OQ-Internal header attached to
       // THIS insert only -- see oqInternalHeader() above.
-      const leadInsert = sb
-        .from('leads')
-        .insert({
-          name: `${firstName} ${lastName}`,
-          email: email,
-          source: 're_agent',
-          created_at: new Date().toISOString(),
-        });
-      const oqHeader = oqInternalHeader();
-      if (oqHeader['x-oq-internal']) {
-        leadInsert.setHeader('x-oq-internal', oqHeader['x-oq-internal']);
+      if (!window.__oqRouterLeadId) {
+        const leadRow = { name: `${firstName} ${lastName}`, email: email, source: 're_agent', created_at: new Date().toISOString() };
+        const knownVariant = getOqVariant();
+        if (knownVariant !== 'unknown') leadRow.variant = knownVariant;
+        const leadInsert = sb.from('leads').insert(leadRow);
+        const oqHeader = oqInternalHeader();
+        if (oqHeader['x-oq-internal']) {
+          leadInsert.setHeader('x-oq-internal', oqHeader['x-oq-internal']);
+        }
+        await leadInsert;
       }
-      const { error: leadError } = await leadInsert;
 
       // gh-2282: the exact register_partner arguments, built once so the pending marker (dashboard completion) and the RPC below can never drift apart.
       const partnerRpcArgs = {
