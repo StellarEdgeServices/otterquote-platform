@@ -7,9 +7,10 @@ from pathlib import Path
 BASE = "https://otterquote.com"
 # Public pages deliberately NOT in the sitemap and NOT noindex (keep this list short).
 UNLISTED_OK = {"login.html", "contractors/index.html"}
-# Pages that gh-2450 (T4) marks noindex. Remove these entries once that change is on main.
-UNLISTED_OK |= {"re-1.html", "re-3.html", "re-5.html", "ref-inspector.html", "ref-insurance.html",
-                "ref-re.html", "contractor-auto-bids.html", "oqom-onboarding.html"}
+# Not a public page: contractor-about.html needs ?contractor_id= and a signed-in user (without them it renders an error page).
+UNLISTED_OK.add("contractor-about.html")
+# Pages PR #2460 (gh-2450, T4) makes noindex. Remove these five entries when #2460 merges.
+UNLISTED_OK |= {"re-1.html", "re-3.html", "re-5.html", "contractor-auto-bids.html", "oqom-onboarding.html"}
 
 def read(p): return Path(p).read_text(encoding="utf-8", errors="replace")
 robots = read("robots.txt")
