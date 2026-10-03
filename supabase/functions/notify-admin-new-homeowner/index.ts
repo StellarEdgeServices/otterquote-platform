@@ -114,7 +114,10 @@ import {
   roleLabel,
   isRouterLeadAuthorized,
   buildRouterLeadEmail,
+  isExcludedEmail,
+  isOutOfStateClaimAuthorized,
 } from "./notify-helpers.ts";
+import { handleOutOfStateClaim } from "./out-of-state.ts"; // gh-2421 (D-344)
 import {
   backfillDigestHtml,
   backfillDigestText,
@@ -127,6 +130,7 @@ import {
   newHomeownerHtml,
   newHomeownerText,
   routerLeadHtml,
+  outOfStateClaimHtml,
 } from "./templates.ts"; // gh-1824 email bodies (pinned by templates.test.ts)
 
 const NOTIF_TYPE_HOMEOWNER   = "admin_new_homeowner";
@@ -134,6 +138,7 @@ const NOTIF_TYPE_CLAIM       = "admin_new_claim";
 const NOTIF_TYPE_DIGEST      = "admin_homeowner_signup_digest";
 const NOTIF_TYPE_BACKFILL    = "admin_homeowner_signup_backfill";
 const NOTIF_TYPE_ROUTER_LEAD = "admin_router_lead";
+// (admin_out_of_state_claim notification type lives in out-of-state.ts)
 
 const DEFAULT_MIN_AGE_MINUTES = 20;
 const MAX_AGE_DAYS            = 7;
@@ -156,26 +161,6 @@ function buildCorsHeaders(req: Request): Record<string, string> {
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
     "Vary": "Origin",
   };
-}
-
-// gh-1932 rework 2: anchored exclusion filter (see doc header for the exact
-// spec). Deliberately does NOT match a real address that merely contains
-// "test" as a substring.
-function isExcludedEmail(email: string): boolean {
-  const lower = (email || "").toLowerCase().trim();
-  if (!lower || lower.indexOf("@") <= 0) return true; // no usable address
-  const at = lower.indexOf("@");
-  const local  = lower.slice(0, at);
-  const domain = lower.slice(at + 1);
-
-  if (local === "test") return true;
-  if (/^test[0-9+._-]/.test(local)) return true;
-  if (local.includes("+test")) return true;
-  if (["example.com", "example.org", "test.local"].includes(domain)) return true;
-  if (domain === "otterquote.com" || domain === "tryotterquote.com" || domain === "stellaredgeservices.com") return true;
-  if (lower.includes("stohler")) return true;
-
-  return false;
 }
 
 
@@ -240,6 +225,31 @@ serve(async (req: Request) => {
         );
       }
       return await handleRouterLead(sb, normalized.record, mailgunDomain, mailgunKey, corsHeaders);
+    }
+
+    if (normalized.eventType === "out_of_state_claim") {
+      // gh-2421 (D-344): service-role only, same reasoning as router_lead --
+      // the dedupe stamp (claims.out_of_state_alerted_at) is on a row the
+      // homeowner can write, and the anon key is public.
+      if (!isOutOfStateClaimAuthorized(bearerToken, serviceRoleKey)) {
+        console.error("notify-admin-new-homeowner: out_of_state_claim requires the service-role credential");
+        return new Response(
+          JSON.stringify({ error: "Unauthorized" }),
+          { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      const result = await handleOutOfStateClaim(
+        {
+          sb: sb as any,
+          sendMail: (subject, textBody, htmlRows, extraHtml) =>
+            sendMail(mailgunDomain, mailgunKey, subject, textBody, outOfStateClaimHtml(htmlRows, extraHtml)),
+        },
+        normalized.record,
+      );
+      return new Response(
+        JSON.stringify(result.body),
+        { status: result.status, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
     // eventType === "claim_created"
