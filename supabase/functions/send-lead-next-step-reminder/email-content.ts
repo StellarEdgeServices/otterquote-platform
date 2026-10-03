@@ -75,6 +75,33 @@ nothing to photograph.
 
 Either one keeps your project moving.`;
 
+// gh-2378 (CRO51) -- HO-6 (/ho6) "next steps" email, Variant A, verbatim from
+// In Flight/drafts/cro50-ho6-next-step-email-DRAFT-20260930.md. Dustin chose
+// "A, Reply-To you" on #2378 (comment 5911291213). Only {first_name} is
+// substituted. No CTA links (the reply IS the next step), no call promise, no
+// price. The footer below is the existing template footer, unchanged.
+export const HO6_VARIANT = "ho6";
+export const HO6_SUBJECT = "Your next step with Otter Quotes";
+export const HO6_PREHEADER =
+  "Reply with a few lines about your job and we'll take it from there.";
+export const HO6_BODY_TEMPLATE =
+  `Hi {first_name},
+
+Thanks for reaching out to Otter Quotes. Your next step is simple: reply to this email and tell us about your job in a few lines, in your own words. What needs to be done, and anything else you think we should know.
+
+From there we help you create a scope of work and send it to multiple contractors, so you can compare their bids.
+
+Contractors compete. Homeowners win.
+
+The Otter Quotes team`;
+/** Reply-To for ho6 sends only (Dustin's choice, #2378 comment 5911291213). */
+export const HO6_REPLY_TO = "dustinstohler1@gmail.com";
+
+/** Reply-To for a lead's variant: the address for "ho6", undefined for every other variant. */
+export function replyToForVariant(variant: string | null | undefined): string | undefined {
+  return variant === HO6_VARIANT ? HO6_REPLY_TO : undefined;
+}
+
 export const LOSS_SHEET_CTA_LABEL = "Upload your loss sheet";
 export const MEASUREMENT_CTA_LABEL = "Get the $15 measurement report";
 
@@ -143,6 +170,30 @@ export interface LeadReminderEmail {
   htmlBody: string;
 }
 
+function buildHo6Email(firstName: string, optOutUrl: string): LeadReminderEmail {
+  const body = HO6_BODY_TEMPLATE.replace("{first_name}", () => firstName);
+  // Same footer construction as buildLeadReminderEmail, unchanged.
+  const textBody =
+    `${body}\n\n` +
+    `${FROM_ADDRESS}\n\n` +
+    `${POSTAL_ADDRESS}\n\n` +
+    `${OPTOUT_TEXT_LINE} ${OPTOUT_LINK_TEXT}: ${optOutUrl}`;
+  const htmlBody =
+    `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.5;color:#1a1a1a;">` +
+    `<p style="display:none;max-height:0;overflow:hidden;">${escapeHtml(HO6_PREHEADER)}</p>` +
+    body
+      .split("\n\n")
+      .map((para) => `<p>${escapeHtml(para).replace(/\n/g, "<br>")}</p>`)
+      .join("\n") +
+    `<hr style="border:none;border-top:1px solid #ddd;margin:24px 0;">` +
+    `<p style="font-size:12px;color:#666;">${escapeHtml(FROM_ADDRESS)}<br>` +
+    `${escapeHtml(POSTAL_ADDRESS)}<br>` +
+    `${escapeHtml(OPTOUT_TEXT_LINE)} <a href="${optOutUrl}" style="color:#666;">${escapeHtml(OPTOUT_LINK_TEXT)}</a>` +
+    `</p>` +
+    `</div>`;
+  return { subject: HO6_SUBJECT, preheader: HO6_PREHEADER, textBody, htmlBody };
+}
+
 export function buildLeadReminderEmail(
   leadId: string,
   name: string | null | undefined,
@@ -153,8 +204,14 @@ export function buildLeadReminderEmail(
   // -- index.ts is the one caller in this repo and always passes the real
   // value explicitly.
   hasPhone = true,
+  // gh-2378: lead's leads.variant. Only the exact value "ho6" changes anything;
+  // undefined / any other value renders the existing copy byte-for-byte.
+  variant?: string | null,
 ): LeadReminderEmail {
   const firstName = firstNameOf(name);
+  if (variant === HO6_VARIANT) {
+    return buildHo6Email(firstName, optOutUrl);
+  }
   const template = hasPhone ? BODY_TEMPLATE : BODY_TEMPLATE_NO_PHONE;
   // Fix round 1 (should-fix, adversarial test A11): a function replacer
   // (`() => firstName`) is used instead of `template.replace("{first_name}",
