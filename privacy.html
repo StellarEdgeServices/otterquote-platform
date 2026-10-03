@@ -497,7 +497,7 @@
     <script>
     // gh-1925 item 2: the section 12 button sets the SAME oq_ad_optout cookie the GPC path sets (1 year, Path=/, Domain=.otterquote.com
     // on otterquote hosts, SameSite=Lax; identical to oqWriteAdOptOutCookie in js/meta-pixel-gate.js and the other three gates), which
-    // every gate reads on later page loads. No profile-flag write: no client-side write path exists (record-ad-sharing-opt-out is admin-only).
+    // every gate reads on later page loads. Signed-in users also get a best-effort profiles.ad_sharing_opt_out write (gh-1925 #2381; see persistProfileFlag below).
     (function () {
       var btn = document.getElementById('oq-ad-optout-btn');
       if (!btn) { return; }
@@ -520,8 +520,7 @@
       // WRITE. It is one plain REST PATCH with the user's own token: profiles_user_update (RLS, id = auth.uid()) and the
       // authenticated UPDATE column grants already allow it, so there is no migration and no Edge Function. The `or` filter means
       // a flag that is already TRUE is never rewritten (the first opted-out-at and source survive). ad_sharing_opt_out_source is
-      // left NULL on purpose: the CHECK only allows gpc_header/gpc_client/support_email, and widening it is a separate additive
-      // migration. Best effort: a failure never blocks the cookie opt-out above, which has already taken effect in this browser.
+      // 'in_page_button' (the CHECK is widened by migration 20261003011500_gh1925; until it is applied a 23514 rejection retries once without the source, so deploy order never loses the flag). Best effort: a failure never blocks the cookie opt-out above, which has already taken effect in this browser.
       function persistProfileFlag() {
         try {
           var m = document.cookie.match(/(?:^|; )sb-otterquote-at=([^;]*)/);
@@ -532,11 +531,20 @@
           if (parts.length !== 3) { return; }
           var sub = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/'))).sub;
           if (typeof sub !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sub)) { return; }
-          fetch(String(cfg.SUPABASE_URL).replace(/\/+$/, '') + '/rest/v1/profiles?id=eq.' + encodeURIComponent(sub) +
-                '&or=(ad_sharing_opt_out.is.null,ad_sharing_opt_out.eq.false)', {
-            method: 'PATCH',
-            headers: { apikey: cfg.SUPABASE_ANON, Authorization: 'Bearer ' + token, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-            body: JSON.stringify({ ad_sharing_opt_out: true, ad_sharing_opt_out_at: new Date().toISOString() })
+          var url = String(cfg.SUPABASE_URL).replace(/\/+$/, '') + '/rest/v1/profiles?id=eq.' + encodeURIComponent(sub) +
+                    '&or=(ad_sharing_opt_out.is.null,ad_sharing_opt_out.eq.false)';
+          var headers = { apikey: cfg.SUPABASE_ANON, Authorization: 'Bearer ' + token, 'Content-Type': 'application/json', Prefer: 'return=minimal' };
+          var body = { ad_sharing_opt_out: true, ad_sharing_opt_out_at: new Date().toISOString(), ad_sharing_opt_out_source: 'in_page_button' };
+          // Deploy-order safety: until migration 20261003011500_gh1925 widens the CHECK, PostgREST rejects the source value with
+          // code 23514 (check_violation). On exactly that error, retry ONCE without the source so the opt-out flag itself always lands.
+          fetch(url, { method: 'PATCH', headers: headers, body: JSON.stringify(body) }).then(function (res) {
+            if (!res || res.ok || typeof res.json !== 'function') { return; }
+            return res.json().then(function (err) { return err; }, function () { return null; }).then(function (err) {
+              if (!err || err.code !== '23514') { return; }
+              try { console.warn('oq opt-out: source rejected by CHECK (23514); retrying without ad_sharing_opt_out_source'); } catch (e) { /* no console */ }
+              var fallback = { ad_sharing_opt_out: body.ad_sharing_opt_out, ad_sharing_opt_out_at: body.ad_sharing_opt_out_at };
+              return fetch(url, { method: 'PATCH', headers: headers, body: JSON.stringify(fallback) });
+            });
           }).catch(function () { /* best effort */ });
         } catch (e) { /* never break a page over the profile write */ }
       }

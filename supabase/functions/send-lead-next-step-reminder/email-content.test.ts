@@ -6,6 +6,8 @@ import {
   BODY_TEMPLATE,
   BODY_TEMPLATE_NO_PHONE,
   FROM_ADDRESS,
+  HO6_BODY_TEMPLATE,
+  HO6_REPLY_TO,
   OPTOUT_LINK_TEXT,
   POSTAL_ADDRESS,
   PREHEADER,
@@ -14,6 +16,7 @@ import {
   firstNameOf,
   lossSheetCtaUrl,
   measurementCtaUrl,
+  replyToForVariant,
 } from "./email-content.ts";
 
 function countOccurrences(haystack: string, needle: string): number {
@@ -139,4 +142,71 @@ Deno.test("a '$&'-shaped name does not corrupt the greeting (adversarial test A1
   // replacement-pattern bug.
   assertStringIncludes(email.textBody, "Hi there,");
   assertEquals(countOccurrences(email.textBody, "there"), 1);
+});
+
+// ── gh-2378 (CRO51): HO-6 next-step email, Variant A, Reply-To ───────────────
+// Copy is Dustin's selection "A, Reply-To you (Recommended)" on #2378
+// (comment 5911291213), verbatim from cro50-ho6-next-step-email-DRAFT-20260930.md.
+
+const OPT = "https://example.com/optout?t=abc";
+
+const HO6_EXPECTED_BODY = [
+  "Hi Jane,",
+  "",
+  "Thanks for reaching out to Otter Quotes. Your next step is simple: reply to this email and tell us about your job in a few lines, in your own words. What needs to be done, and anything else you think we should know.",
+  "",
+  "From there we help you create a scope of work and send it to multiple contractors, so you can compare their bids.",
+  "",
+  "Contractors compete. Homeowners win.",
+  "",
+  "The Otter Quotes team",
+].join("\n");
+
+Deno.test("ho6: subject, preheader and body are Variant A verbatim (only first_name substituted)", () => {
+  const email = buildLeadReminderEmail("lead-1", "Jane Doe", OPT, true, "ho6");
+  assertEquals(email.subject, "Your next step with Otter Quotes");
+  assertEquals(email.preheader, "Reply with a few lines about your job and we'll take it from there.");
+  assertEquals(email.textBody.startsWith(HO6_EXPECTED_BODY + "\n\n"), true);
+  assertEquals(HO6_BODY_TEMPLATE.replace("{first_name}", "Jane"), HO6_EXPECTED_BODY);
+});
+
+Deno.test("ho6: footer is the existing footer, unchanged, and appears once", () => {
+  const ho6 = buildLeadReminderEmail("lead-1", "Jane", OPT, true, "ho6");
+  const f = buildLeadReminderEmail("lead-1", "Jane", OPT, true, "f");
+  const footerOf = (t: string) => t.slice(t.indexOf(FROM_ADDRESS));
+  assertEquals(footerOf(ho6.textBody), footerOf(f.textBody));
+  assertStringIncludes(ho6.textBody, POSTAL_ADDRESS);
+  assertEquals(countOccurrences(ho6.textBody, "Stop these updates"), 1);
+  assertEquals(countOccurrences(ho6.htmlBody, "Stop these updates"), 1);
+  assertStringIncludes(ho6.htmlBody, POSTAL_ADDRESS);
+  assertStringIncludes(ho6.htmlBody, `<a href="${OPT}"`);
+});
+
+Deno.test("ho6: never promises a call, whatever the phone flag; no CTA links, no price", () => {
+  for (const hasPhone of [true, false]) {
+    const email = buildLeadReminderEmail("lead-1", "Jane", OPT, hasPhone, "ho6");
+    for (const part of [email.textBody, email.htmlBody]) {
+      const lower = part.toLowerCase();
+      for (const banned of ["call you", "dustin", "$15", "help-measurements", "help-estimate", "vetted", "endorsed"]) {
+        if (lower.includes(banned)) throw new Error(`ho6 copy contains "${banned}"`);
+      }
+    }
+    // hasPhone must not change ho6 output at all
+    assertEquals(email.textBody, buildLeadReminderEmail("lead-1", "Jane", OPT, true, "ho6").textBody);
+  }
+});
+
+Deno.test("ho6: reply-to is dustinstohler1@gmail.com for ho6 only", () => {
+  assertEquals(HO6_REPLY_TO, "dustinstohler1@gmail.com");
+  assertEquals(replyToForVariant("ho6"), "dustinstohler1@gmail.com");
+  for (const v of ["f", "HO-2", "HO-3", "HO6", null, undefined]) assertEquals(replyToForVariant(v), undefined);
+});
+
+Deno.test("existing variants are unchanged: f / HO-2 / no variant render identically to the pre-ho6 call", () => {
+  const legacy = buildLeadReminderEmail("lead-1", "Jane", OPT, true);
+  for (const v of ["f", "HO-2", "HO-3", null, undefined, "HO6"]) {
+    assertEquals(buildLeadReminderEmail("lead-1", "Jane", OPT, true, v), legacy);
+  }
+  assertStringIncludes(legacy.textBody, "Dustin will still call you");
+  assertEquals(legacy.subject, "Next step on your roof assessment");
 });

@@ -1,0 +1,16 @@
+/* cro51 / #2121 HO-1 rebuild: /hc hub + four topic pages. Loaded AFTER css/ho6.css and only adds what the tap-target layout needs
+   (ho6.css tokens, .ho6-btn, .ho6-brand and .ho6-foot are reused unchanged). Phone-first: at 390x664 the hub question and all five
+   choices are above the fold (tests/cro51-hc-value-pages.mjs measures this in real Chromium). */
+.hc-card { max-width: 520px; margin: 0 auto; padding: 16px 20px 8px; }
+.hc-card .ho6-brand { text-align: center; margin: 0 0 8px; }
+.hc-card h1 { font-size: 28px; text-align: center; margin: 0 0 8px; }
+.hc-lede { text-align: center; font-size: 18px; margin: 0 0 16px; }
+.hc-para { margin: 12px 0 20px; }
+.hc-choice { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 56px; margin: 0 0 12px; padding: 12px 16px; font-size: 18px; line-height: 1.25; }
+.ho6-btn.hc-alt { background: #FFFFFF; color: var(--ho6-blue); border: 2px solid var(--ho6-blue); }
+.ho6-btn.hc-alt:hover, .ho6-btn.hc-alt:focus { background: #EFF6FF; color: var(--ho6-blue-dark); }
+.hc-more { margin: 20px 0 8px; }
+.hc-more ul { list-style: none; margin: 0; padding: 0; }
+.hc-more li { border-top: 1px solid var(--ho6-line); }
+.hc-more a { display: block; padding: 14px 4px; color: var(--ho6-blue); font-weight: 600; text-decoration: underline; }
+@media (min-width: 641px) { .hc-card { padding-top: 40px; } .hc-card h1 { font-size: 34px; } }

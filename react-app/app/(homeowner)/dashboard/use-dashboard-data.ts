@@ -20,6 +20,7 @@ import type {
   HoverOrder,
   HoverRebateOrder,
 } from './types';
+import { BLOCKED_STATES_TIMEOUT_MS, DEFAULT_BLOCKED_STATES, resolveBlockedStates } from './utils';
 
 // ── Latest claim id (with draft auto-create, dashboard.html:1594-1704) ───────
 
@@ -195,6 +196,52 @@ export function useHomeownerProfile(
   }, [userId, email]);
 
   return { profile, loading };
+}
+
+// ── D-344: blocked-state list (get_homeowner_blocked_states rpc) ─────────────
+
+/**
+ * Fetch the homeowner blocked-state list. Any failure (rpc error, non-array
+ * result, thrown exception) falls back to DEFAULT_BLOCKED_STATES with a
+ * console.warn, so the gate never fails open to a blocked state.
+ */
+export function useBlockedStates(): { blockedStates: string[]; loading: boolean } {
+  const [blockedStates, setBlockedStates] = useState<string[]>([...DEFAULT_BLOCKED_STATES]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      let states: string[] = [...DEFAULT_BLOCKED_STATES];
+      try {
+        const { data, error } = await Promise.race([
+          supabase.rpc('get_homeowner_blocked_states'),
+          new Promise<{ data: null; error: { message: string } }>((resolve) =>
+            setTimeout(
+              () => resolve({ data: null, error: { message: `timed out after ${BLOCKED_STATES_TIMEOUT_MS}ms` } }),
+              BLOCKED_STATES_TIMEOUT_MS,
+            ),
+          ),
+        ]);
+        const resolved = resolveBlockedStates(data, error);
+        if (resolved.usedFallback) {
+          console.warn('[StateGate] blocked-state rpc failed; using default list:', error?.message ?? 'non-array result');
+        }
+        states = resolved.states;
+      } catch (err) {
+        console.warn('[StateGate] blocked-state rpc threw; using default list:', err);
+      }
+      if (mounted) {
+        setBlockedStates(states);
+        setLoading(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  return { blockedStates, loading };
 }
 
 // ── Carriers (dashboard.html:1579-1592) ──────────────────────────────────────

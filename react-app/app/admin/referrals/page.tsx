@@ -25,7 +25,7 @@
  * ⚠️  W-9 / PAYMENT-BLOCK CONTRACTS UNCHANGED (Tier-3): the referral_agents read
  * (REFERRAL_AGENTS_SELECT), verify-W9 write ({ w9_verified_at }), and manual-
  * unblock write ({ payments_blocked: false }) are byte-for-byte the static
- * queries — DIRECT table .update() calls, NOT Edge Functions. No commission
+ * queries — DIRECT table writes, NOT Edge Functions. No commission
  * logic (apply_referral_commission) is touched.
  *
  * gh-865: this route had no `agent_type` correction path at all (only
@@ -34,7 +34,7 @@
  * the Edit control). Added here to close that divergence: openAgentTypeEditor
  * / handleChangeAgentType below mirror admin-referrals.html's
  * openAgentTypeEditor()/changeAgentType() 1:1 — same direct
- * `.update({ agent_type })` write, same RLS policy ("Admin can update
+ * `update({ agent_type })` write, same RLS policy ("Admin can update
  * referral agents", is_admin_email(), p18_admin_identity_allowlist.sql), same
  * six-value referral_agents_agent_type_check option set. Whitelisted to this
  * file only, so the label map + modal live inline here rather than in
@@ -70,6 +70,7 @@ import {
   W9_BUCKET,
   W9_SIGNED_URL_TTL_SECONDS,
   UNBLOCK_CONFIRM_TEXT,
+  zeroRowError,
 } from './utils';
 
 // gh-865: mirrors admin-referrals.html's AGENT_TYPE_LABELS in
@@ -146,10 +147,12 @@ function AdminReferralsContent() {
 
   // ── Verify W-9 (DIRECT table update — UNCHANGED contract) ───────────────────
   async function handleVerify(id: string) {
-    const { error } = await supabase
+    const { data: rows, error: writeError } = await supabase
       .from('referral_agents')
       .update(verifyW9Payload(new Date().toISOString()))
-      .eq('id', id);
+      .eq('id', id)
+      .select('id');
+    const error = writeError ?? zeroRowError(rows);
 
     if (error) {
       showToast('Error verifying W-9: ' + error.message);
@@ -170,10 +173,12 @@ function AdminReferralsContent() {
     if (!unblockTarget) return;
     const id = unblockTarget.id;
 
-    const { error } = await supabase
+    const { data: rows, error: writeError } = await supabase
       .from('referral_agents')
       .update(unblockPayload())
-      .eq('id', id);
+      .eq('id', id)
+      .select('id');
+    const error = writeError ?? zeroRowError(rows);
 
     closeUnblock();
     if (error) {
@@ -204,10 +209,12 @@ function AdminReferralsContent() {
 
     // Matches referral_agents_agent_type_check (baseline schema): re_agent,
     // insurance_agent, home_inspector, customer, adjuster, other.
-    const { error } = await supabase
+    const { data: rows, error: writeError } = await supabase
       .from('referral_agents')
       .update({ agent_type: newType })
-      .eq('id', id);
+      .eq('id', id)
+      .select('id');
+    const error = writeError ?? zeroRowError(rows);
 
     if (error) {
       showToast('Error changing partner type: ' + error.message);
@@ -371,7 +378,7 @@ function AdminReferralsContent() {
 
       {/* gh-865: agent-type correction modal — mirrors admin-referrals.html
           openAgentTypeEditor(); same six-value option set, same direct
-          .update({ agent_type }) write on Save. */}
+          update({ agent_type }) write on Save. */}
       {editTypeTarget !== null && (
         <div
           className="oqr-modal-overlay"

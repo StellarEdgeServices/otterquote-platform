@@ -11,6 +11,7 @@ import type { Metadata } from 'next';
 import Script from 'next/script';
 import './globals.css';
 import { AttributionCapture } from './components/AttributionCapture';
+import { DoNotSellLink } from './components/DoNotSellLink';
 import { GA4Gate } from './components/GA4Gate';
 import { MetaPixelGate } from './components/MetaPixelGate';
 import { LinkedInInsightGate } from './components/LinkedInInsightGate';
@@ -117,6 +118,8 @@ export default function RootLayout({
         <AttributionCapture />
         <QueryClientProvider>
           <AuthProvider>{children}</AuthProvider>
+          {/* gh-1925 (CEO ruling #2304 5963898698 item 5): ruled Do Not Sell link on the allowlisted consumer routes only. */}
+          <DoNotSellLink />
         </QueryClientProvider>
       </body>
     </html>

@@ -7,7 +7,7 @@
  * is provided by HomeownerShell; this page wires the data:
  *   • latest claim (auto-creates a draft if none) + LIVE claim-stage updates via
  *     the shared useClaimStatus subscription;
- *   • D-178 state gate (blocks non-IN homeowners);
+ *   • D-344 state gate (blocks only the blocked-list states; was Indiana-only under D-178);
  *   • D-178 status banner, D-181 display-only rebate card, the pre-submission
  *     checklist (upload → parse-loss-sheet, submit → notify-contractors, Hover
  *     resend), D-231 home-profile prompt, D-171 switch-contractor survey, the
@@ -18,7 +18,7 @@
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import { useClaimStatus } from '@/hooks/use-claim-status';
 import { HomeownerShell } from '../_shell/HomeownerShell';
-import { useClaimAux, useHomeownerProfile, useLatestClaim } from './use-dashboard-data';
+import { useBlockedStates, useClaimAux, useHomeownerProfile, useLatestClaim } from './use-dashboard-data';
 import { isStateGated } from './utils';
 import type { HomeownerClaim } from './types';
 import { StateGateCard } from './components/StateGateCard';
@@ -57,8 +57,9 @@ function DashboardContent() {
   const claim = liveClaim as HomeownerClaim | null;
   const { profile } = useHomeownerProfile(userId, email);
   const aux = useClaimAux(claimId, userId);
+  const { blockedStates, loading: blockedLoading } = useBlockedStates();
 
-  if (idLoading || (!!claimId && claimLoading)) return <Loading />;
+  if (idLoading || blockedLoading || (!!claimId && claimLoading)) return <Loading />;
 
   if (!claim) {
     return (
@@ -69,8 +70,8 @@ function DashboardContent() {
     );
   }
 
-  // D-178 — block non-IN homeowners before rendering the dashboard body.
-  if (isStateGated(claim)) {
+  // D-344 (amends D-178) — block blocked-list states before rendering the dashboard body.
+  if (isStateGated(claim, blockedStates)) {
     return <StateGateCard claim={claim} userId={userId} />;
   }
 
