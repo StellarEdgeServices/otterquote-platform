@@ -117,8 +117,8 @@ any per-page token inserted every 7 words defeats): a word of page P is **shared
 unique, when it sits inside a run of **3 or more consecutive words** that also appears
 
 - in any synthetic template baseline (never scored or emitted; 60 per trade), or
-- on one of P's **5 most similar other pages** (found through an inverted index of 3-word
-  shingles), or
+- on **any other page of the run** (a global document-frequency table of 3-word shingles:
+  text found on two pages, or on two hundred, is shared however many pages repeat it), or
 - earlier on P itself (a paragraph repeated 14 times counts once).
 
 Order does not matter, so shuffled sentences are still shared. Inserted junk only breaks
@@ -128,8 +128,12 @@ counts. A page needs 500 words that are not in such runs.
 - The shared template contributes about nothing. Today every Indiana page fails (min 0,
   median 0 strict-unique words), so an Indiana run emits 0 pages. That is the intended
   outcome until the CRO writes county-specific content.
-- Identical text on two counties, or on the same county's four trade pages, is shared, so
-  it counts for none of them.
+- Text that appears on two or more pages of the run, whether two counties, a county's four
+  trade pages, or the same paragraph repeated on 19 pages, is shared, so it counts for
+  none of them. (Rounds 10 and earlier compared each page with only its 5 most similar
+  pages, so a paragraph on 6+ pages could count as unique; that is fixed.) A common phrase
+  of three words that happens to appear on another page also marks its words shared, so
+  write county text with a comfortable margin above 500 words.
 - The template baseline means a one-county state, or a narrowed `generate()` call, cannot
   count template text as unique.
 - The gate counts what a reader sees: words are NFKC-normalised, every Unicode format
@@ -150,8 +154,8 @@ counts. A page needs 500 words that are not in such runs.
   after every TWO real words leaves runs of two, so no run reaches 3 and the page counts as
   unique. Measured on 368 Indiana pages with a 773-word shared boilerplate and a
   2,000-word junk vocabulary: junk after every 2 real words writes 368/368 (strict-unique
-  min 1131, median 1151); after every 3 real words 0 pages (min 253, median 257); every
-  4: 0 (min 190, median 193); every 5: 0 (min 151). That is visible spam, one word in
+  min 751, median 855); after every 3 real words 0 pages (min 198, median 214); every
+  4: 0 (min 144, median 161.5); every 5: 0 (min 115, median 129). That is visible spam, one word in
   three nonsense, and catching it is the job of the per-state R-177 read of
   `county_content`, not of this count. A genuinely different 640-word page from a shared
   vocabulary scores min 639, median 640.
@@ -178,15 +182,18 @@ county-specific text. In `data/location-state-profiles/XX.json`:
 }
 ```
 
-- **Plain text only.** No HTML, no entities, no invisible characters, and **Latin script
-  only**: after NFKC every letter must be a Latin letter in Basic Latin, Latin-1 or Latin
-  Extended-A/B (accented letters such as é ü ø are fine). Cyrillic, Greek, Armenian and
-  IPA lookalike letters (for example U+0585, U+0251, U+0433) are rejected at load, which
-  closes the homoglyph class for the gate and the lint. Digits and ordinary punctuation,
-  including curly quotes and dashes, are fine. The loader rejects `<`, `>`, `&`, `{`, `}`,
-  backslashes, control characters and every invisible or format character (zero-width
-  space/joiner, bidi controls, word joiner, BOM, tag characters, variation selectors,
-  combining marks, blank filler letters, line/paragraph separators), so no tag, attribute, style or entity can reach
+- **Plain text, strict character allow-list.** No HTML, no entities. Every character of
+  `county_content` (and of region labels, climate paragraphs and the state name) must be
+  one of: printable ASCII (letters, digits, ASCII punctuation, the ordinary space; plus
+  newline for paragraphs), the typographic marks `’ ‘ “ ” – — …`, or a Latin-1
+  letter `À`-`ÿ` other than eth and thorn (`Ð ð Þ þ`). Anything else is refused at
+  load: other scripts (Cyrillic, Greek, Armenian...), Latin Extended lookalikes (such as
+  U+01C0, U+0196, U+0237, U+0138, U+0110, U+0189, U+0251), every non-ASCII space (U+00A0,
+  U+2000-U+200A, U+202F), zero-width and other format characters, combining marks and
+  spacing marks, symbols (including U+1D159, the middle dot U+00B7, U+02D9, the
+  multiplication and division signs), line/paragraph separators and non-ASCII digits. The
+  check runs on the raw text. The loader also rejects `<`, `>`, `&`, `{`, `}` and
+  backslashes in `county_content`, so no tag, attribute, style, entity or hidden character can reach
   the page from `county_content`. Paragraphs are separated by a blank line; the
   generator HTML-escapes the text and wraps each paragraph in a bare `<p>` with no
   attributes. Ordinary words such as "hidden hail damage" and visible non-ASCII text

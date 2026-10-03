@@ -623,7 +623,7 @@ class GeneratorTests(unittest.TestCase):
                 self.assertFalse(self.out.exists())
         # visible non-ASCII text is fine
         self.write_profile(lambda p: p["county_content"]["Alpha"].update(
-            roofing="Caf\u00e9 \u2014 it\u2019s \u201cquoted\u201d \u00bd"))
+            roofing="Caf\u00e9 \u2014 it\u2019s \u201cquoted\u201d \u2026"))
         glp.load_profile("ZZ", self.fx_profiles)
 
     def test_round8_profile_strings_with_markup_are_rejected(self):
@@ -798,7 +798,7 @@ class GeneratorTests(unittest.TestCase):
                 self.run_fx()
         # accented Latin letters, digits and typographic punctuation are fine
         self.write_profile(lambda p: p["county_content"]["Alpha"].update(
-            roofing="Caf\u00e9 \u00fcber na\u00efve \u00f8re \u0142 \u00df 1969 \u2019 \u201c \u201d \u2013 \u2014"))
+            roofing="Caf\u00e9 \u00fcber na\u00efve \u00f8re \u00df \u00ff 1969 \u2019 \u201c \u201d \u2013 \u2014"))
         glp.load_profile("ZZ", self.fx_profiles)
         self.assertEqual(glp.load_profile("IN")["name"], "Indiana")      # the shipped profile still loads
 
@@ -964,6 +964,80 @@ class GeneratorTests(unittest.TestCase):
         import shutil
         shutil.rmtree(self.out)
         self.assertEqual(self.run_gen(["ZZ"], counties_path=solo, profiles_dir=self.fx_profiles)["written"], 0)
+
+    # round 11: global document frequency; strict character allow-list --------------------
+    def test_round11_text_on_many_pages_counts_as_shared_fixture_scale(self):
+        """Each ~40-word paragraph appears verbatim on 7 of the 12 pages (more than the five
+        'nearest' pages an earlier version compared with); every page is 20+ such paragraphs. All shared,
+        so no page is written."""
+        rnd = _random.Random(11)
+        paras = [" ".join(rnd.choice(VOCAB) for _ in range(40)) for _ in range(34)]
+        order = [(c, t) for c in self.GATE_COUNTIES for t in glp.ELIGIBLE_TRADES]
+
+        def text(c, t):
+            pidx = order.index((c, t))
+            return "\n\n".join(para for j, para in enumerate(paras) if (pidx - j) % 12 < 7)
+        self.write_profile(lambda prof: prof.update(county_content={
+            c: {t: text(c, t) for t in glp.ELIGIBLE_TRADES} for c in self.GATE_COUNTIES}))
+        self.assertGreaterEqual(len(text("Alpha", "roofing").split()), 500)
+        self.assert_writes_nothing("each paragraph on 7 of 12 pages")
+
+    def test_round11_literal_repetition_across_19_pages_at_indiana_scale(self):
+        """The refuter's design: the real 92-county Indiana list, each ~40-word paragraph verbatim on 19
+        pages, 20 such paragraphs per page. Written pages: 0."""
+        import tempfile as _tf
+        counties = glp.load_counties("IN")
+        base = json.loads((REPO_ROOT / "data" / "location-state-profiles" / "IN.json").read_text(encoding="utf-8"))
+        vocab = _make_vocab(3000, 13)
+        rnd = _random.Random(2)
+        pairs = [(c, t) for c in counties for t in glp.ELIGIBLE_TRADES]        # 368 pages
+        n_par = len(pairs) * 20 // 19
+        paras = [" ".join(rnd.choice(vocab) for _ in range(40)) for _ in range(n_par)]
+        # paragraph j is placed on 19 pages; every page gets 20 of them
+        pages = {pr: [] for pr in pairs}
+        for j, para in enumerate(paras):
+            for k in range(19):
+                pages[pairs[(j * 19 + k) % len(pairs)]].append(para)
+        self.assertTrue(all(len(v) >= 19 for v in pages.values()))
+        base["county_content"] = {c: {t: "\n\n".join(pages[(c, t)]) for t in glp.ELIGIBLE_TRADES} for c in counties}
+        d = pathlib.Path(_tf.mkdtemp(dir=str(self.tmp)))
+        (d / "IN.json").write_text(json.dumps(base), encoding="utf-8")
+        summary = quiet(glp.generate, ["IN"], out_dir=self.tmp / "r11" / "locations", profiles_dir=d, dry_run=True)
+        self.assertEqual(summary["written"], 0)
+        print("\n[round 11] 19-page literal repetition, Indiana scale: written %d, strict-unique min %s / median %s"
+              % (summary["written"], summary["min_strict_unique_words"], summary["median_strict_unique_words"]),
+              file=sys.stderr)
+
+    def test_round11_latin_lookalikes_and_separators_are_refused_everywhere(self):
+        bad_chars = {
+            "U+01C0 latin click": "\u01c0", "U+0196 latin iota": "\u0196", "U+0237 dotless j": "\u0237",
+            "U+0138 kra": "\u0138", "U+00D0 ETH": "\u00d0", "U+00F0 eth": "\u00f0", "U+0110 D stroke": "\u0110",
+            "U+0189 african D": "\u0189", "U+00DE THORN": "\u00de", "U+00FE thorn": "\u00fe",
+            "U+0142 l stroke": "\u0142", "U+0251": "\u0251", "U+1D159 null notehead": "\U0001d159",
+            "U+00A0 nbsp": "\u00a0", "U+2000 en quad": "\u2000", "U+2003 em space": "\u2003",
+            "U+200A hair space": "\u200a", "U+202F narrow nbsp": "\u202f", "U+00B7 middle dot": "\u00b7",
+            "U+02D9 dot above": "\u02d9", "U+00D7 times": "\u00d7", "U+00F7 divide": "\u00f7",
+            "U+00B4 acute accent (Sk)": "\u00b4", "U+00AC not (Sm)": "\u00ac", "U+0301 combining": "\u0301",
+            "U+0903 spacing mark (Mc)": "\u0903", "U+20DD enclosing (Me)": "\u20dd", "U+2028 line sep": "\u2028",
+            "U+0661 arabic digit": "\u0661",
+        }
+        for label, ch in bad_chars.items():
+            with self.subTest(label):
+                word = f"ro{ch}f"
+                for mutate in (lambda pf, w=word: pf["county_content"]["Alpha"].update(roofing=f"a {w} b"),
+                               lambda pf, w=word: pf["regions"]["north"].update(label=f"north{w}"),
+                               lambda pf, w=word: pf["regions"]["north"].update(climate=["{county} " + w]),
+                               lambda pf, w=word: pf.update(name=f"Zed{w}")):
+                    self.write_profile(mutate)
+                    with self.assertRaises(glp.StateConfigError):
+                        self.run_fx()
+                    self.assertFalse(self.out.exists())
+        # allowed: ASCII punctuation, typographic marks and Latin-1 letters (not eth/thorn)
+        self.write_profile(lambda pf: pf["county_content"]["Alpha"].update(
+            roofing="Plain, ASCII: (ok) \"x\" 'y' - ! ? ; # % \u2019 \u2018 \u201c \u201d \u2013 \u2014 \u2026 "
+                    "\u00c0 \u00c9 \u00d1 \u00d6 \u00dc \u00df \u00e0 \u00e9 \u00f1 \u00f6 \u00fc \u00ff"))
+        glp.load_profile("ZZ", self.fx_profiles)
+        self.assertEqual(glp.load_profile("IN")["name"], "Indiana")
 
     # D-344 blocked states ----------------------------------------------------
     def test_blocked_states_are_refused_everywhere(self):

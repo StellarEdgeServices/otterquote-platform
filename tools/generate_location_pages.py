@@ -41,8 +41,8 @@ content per page", kept by D-345; STRICT reading per the CEO ruling on #2304):
   appears on no other page in the same run. strict_unique_counts() measures
   it as: the number of words in the page's visible text that are NOT inside a
   run of 3 or more consecutive words that also appears in the template
-  baselines, on one of the page's 5 most similar other pages, or earlier on the
-  page itself (order does not matter). Inserted junk only breaks shared text
+  baselines, on any other page of the run (global 3-word document frequency),
+  or earlier on the page itself (order does not matter). Inserted junk only breaks shared text
   into shorter runs; runs of 3+ words still match.
   - The shared template therefore contributes ~0. A page's 500 words must come
     from county-specific content in the state profile's `county_content`
@@ -58,8 +58,8 @@ content per page", kept by D-345; STRICT reading per the CEO ruling on #2304):
     tokens containing a digit are dropped; every county name of the state, the
     state name and code, region labels, trade and trade-adjacent words (also as
     parts of longer tokens), number words and ordinals, the NATO alphabet, single
-    letters and Roman numerals become fixed placeholders; county_content must be
-    Latin-script plain text. See strict_unique_counts for the residual risk.
+    letters and Roman numerals become fixed placeholders; county_content and the other profile text must use the character allow-list
+    (_char_allowed: ASCII, a few typographic marks, Latin-1 letters). See strict_unique_counts for the residual risk.
   - A page under the floor is NOT generated: not written, not sitemapped.
   - Each run prints min/median strict-unique words, plus an informational
     cross-page share-of-unshared-shingles metric.
@@ -342,16 +342,39 @@ def _invisible_char(ch: str) -> bool:
             or "\ufe00" <= ch <= "\ufe0f" or "\U000e0100" <= ch <= "\U000e01ef")
 
 
+_ALLOWED_PUNCTUATION = frozenset("\u2019\u2018\u201c\u201d\u2013\u2014\u2026")
+_EXCLUDED_LATIN1_LETTERS = frozenset("\u00d0\u00f0\u00de\u00fe")      # eth and thorn: lookalikes of d and p
+
+
+def _char_allowed(ch: str) -> bool:
+    """The only characters profile text may contain: printable ASCII
+    (letters, digits, ASCII punctuation, the ordinary space), newline/tab for
+    paragraphs, the typographic marks U+2019 U+2018 U+201C U+201D U+2013 U+2014
+    U+2026, and the Latin-1 letters U+00C0..U+00FF except eth and thorn.
+    Everything else is refused: other scripts, Latin Extended lookalikes
+    (U+01C0, U+0196, U+0237, U+0138, U+0110, U+0189...), every non-ASCII space
+    (U+00A0, U+2000..U+200A, U+202F), format characters, combining marks, symbols
+    (So, Sk, Sm: U+1D159, the middle dot U+00B7, U+02D9, the multiplication sign),
+    and Unicode digits."""
+    if ch in "\n\r\t":
+        return True
+    o = ord(ch)
+    if 0x20 <= o <= 0x7E or ch in _ALLOWED_PUNCTUATION:
+        return True
+    return 0xC0 <= o <= 0xFF and ch.isalpha() and ch not in _EXCLUDED_LATIN1_LETTERS
+
+
 def _require_latin_script(text: str, bad, where: str) -> None:
-    """After NFKC every LETTER must be a Latin letter in Basic Latin, Latin-1
-    or Latin Extended-A/B (U+0041..U+024F): accented letters are fine; Cyrillic,
-    Greek, Armenian, IPA lookalikes (e.g. U+0251) and other scripts are not.
-    That closes the whole homoglyph class for both the gate and the lint. Digits
-    and ordinary punctuation (including curly quotes and dashes) are allowed."""
-    for ch in unicodedata.normalize("NFKC", text):
-        if ch.isalpha() and not (ord(ch) <= 0x24F and unicodedata.name(ch, "").startswith("LATIN")):
-            raise bad(f"{where} contains a non-Latin letter {ch!r} (U+{ord(ch):04X}, "
-                      f"{unicodedata.name(ch, 'unnamed')}); only Latin-script letters are allowed")
+    """Refuse any character outside the allow-list in _char_allowed, checked on
+    the raw text (so a no-break or thin space, which NFKC would turn into an
+    ordinary space, is refused too). That closes the homoglyph and
+    invisible-separator classes for the gate and the lint."""
+    for ch in text:
+        if not _char_allowed(ch):
+            raise bad(f"{where} contains a character that is not allowed: {ch!r} (U+{ord(ch):04X}, "
+                      f"{unicodedata.name(ch, 'unnamed')}, {unicodedata.category(ch)}). Allowed: ASCII, "
+                      "the typographic marks \u2019 \u2018 \u201c \u201d \u2013 \u2014 \u2026, and the "
+                      "Latin-1 letters (not eth or thorn)")
 
 
 def _require_plain_text(text: str, bad, where: str) -> None:
@@ -710,8 +733,6 @@ def main_words(html_text: str, mask: "StateMask" = None) -> list:
 
 SHINGLE_SIZE = 8
 STRICT_BLOCK = 3          # a shared run of this many consecutive words is template, not content
-STRICT_NEIGHBOURS = 5     # each page is compared with its K most similar other pages
-_POSTING_CAP = 30         # pages listed per 3-word shingle when ranking similarity
 
 
 def shingles(words: list) -> set:
@@ -726,7 +747,7 @@ def _tri(words: list) -> list:
     return [" ".join(w[i:i + STRICT_BLOCK]) for i in range(max(0, len(w) - STRICT_BLOCK + 1))]
 
 
-def strict_unique_counts(word_lists: list, baseline_lists=(), k: int = STRICT_NEIGHBOURS) -> list:
+def strict_unique_counts(word_lists: list, baseline_lists=()) -> list:
     """The D-345 / D-241 guardrail-2 measure, per page: the number of words of
     the page's visible text that are NOT part of text shared with other pages.
 
@@ -734,8 +755,9 @@ def strict_unique_counts(word_lists: list, baseline_lists=(), k: int = STRICT_NE
     of at least STRICT_BLOCK (3) consecutive words that also appears
       (a) in any synthetic template baseline (baseline_lists: template-only pages
           that are compared against but never scored or emitted), or
-      (b) on one of P's K most similar OTHER pages (K = STRICT_NEIGHBOURS, found
-          through an inverted index of 3-word shingles), or
+      (b) on ANY other page of the run (a global document-frequency table of
+          3-word shingles: text found on two pages or on two hundred counts as
+          shared, however many pages repeat it), or
       (c) earlier on P itself (a repeated paragraph counts once).
     Order does not matter, so shuffled sentences are still shared.
 
@@ -748,14 +770,18 @@ def strict_unique_counts(word_lists: list, baseline_lists=(), k: int = STRICT_NE
     A page with fewer than STRICT_BLOCK words has no shingles, so all its words
     count.
 
+    Cost to honest pages: a common 3-word phrase ("one of the") that appears on
+    any other page marks its three words shared, so write county text with
+    comfortable margin above 500 words.
+
     RESIDUAL RISK, stated plainly: a junk word drawn from a large shared
     vocabulary (words that do appear on many pages) inserted after every TWO
     real words leaves runs of two between junk tokens; no run reaches 3, and the
     page counts as unique. Measured on 368 Indiana pages with a 773-word shared
     boilerplate and junk from a 2,000-word vocabulary: junk after every 2 real
-    words writes 368/368 (strict-unique min 1131, median 1151); after every 3
-    writes 0 (min 253, median 257); every 4: 0 (min 190, median 193); every 5:
-    0 (min 151). That is visible spam, one token in three nonsense, and
+    words writes 368/368 (strict-unique min 751, median 855); after every 3
+    writes 0 (min 198, median 214); every 4: 0 (min 144, median 161.5); every 5:
+    0 (min 115, median 129). That is visible spam, one token in three nonsense, and
     catching it is the job of the per-state R-177 read of county_content, not
     of this count. Digits, names, number words, NATO words, single letters and
     Roman numerals do not help an attacker: they are dropped or masked first.
@@ -763,31 +789,18 @@ def strict_unique_counts(word_lists: list, baseline_lists=(), k: int = STRICT_NE
     (640 words, shared vocabulary) scores min 639, median 640."""
     from collections import Counter
     tris = [_tri(w) for w in word_lists]
-    tri_sets = [set(t) for t in tris]
+    page_df = Counter()
+    for t in tris:
+        page_df.update(set(t))
     baseline_set = set()
     for words in baseline_lists:
         baseline_set.update(_tri(words))
-    postings = {}
-    for i, sh in enumerate(tri_sets):
-        for s in sh:
-            lst = postings.setdefault(s, [])
-            if len(lst) < _POSTING_CAP:
-                lst.append(i)
     counts = []
-    for p, words in enumerate(word_lists):
-        near = Counter()
-        for s in tri_sets[p]:
-            for q in postings.get(s, ()):
-                if q != p:
-                    near[q] += 1
-        top = [q for q, _ in sorted(near.items(), key=lambda kv: (-kv[1], kv[0]))[:k]]
-        neighbour = set()
-        for q in top:
-            neighbour |= tri_sets[q]
+    for words, tri in zip(word_lists, tris):
         covered = [False] * len(words)
         first = set()
-        for i, s in enumerate(tris[p]):
-            if s in baseline_set or s in neighbour or s in first:
+        for i, s in enumerate(tri):
+            if s in baseline_set or page_df[s] >= 2 or s in first:
                 for j in range(i, i + STRICT_BLOCK):
                     covered[j] = True
             first.add(s)
