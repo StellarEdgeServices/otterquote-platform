@@ -455,6 +455,20 @@ ALLOWLIST = [
         "certification directly on the manufacturer's own website -- the "
         "sentence's own next clause says exactly that.",
     ),
+    (
+        "guides/siding-bid-comparison.html",
+        "Where contractors are licensed, you can look up the license with the agency that issued it",
+        "Consumer advice: tells the homeowner to check the contractor's own licence "
+        "with the issuing agency; not a claim about contractors on the platform. "
+        "CRO RUN 52, gh-2448/gh-2449.",
+    ),
+    (
+        "guides/multiple-bids-roof-insurance-claim.html",
+        "Are you licensed and insured? Can I see proof?",
+        "Consumer advice: a question the homeowner asks each contractor, asking to see "
+        "the contractor's own licence/insurance proof; not a claim about contractors "
+        "on the platform. CRO RUN 52, gh-2448/gh-2449.",
+    ),
 ]
 
 
