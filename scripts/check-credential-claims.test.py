@@ -143,6 +143,49 @@ def main():
             output.strip().startswith("PASS: check-credential-claims"),
         )
         preapproval_clean.unlink()
+
+        print()
+        print("gh-2121: planted positives -- ampersand forms of \"licensed and insured\" "
+              "(the homepage trust bar said \"Licensed &amp; Insured Contractors\" and "
+              "slipped past the \"and\"-only pattern)")
+        for label, snippet in (
+            ("&amp;", '<span>Licensed &amp; Insured Contractors</span>'),
+            ("&amp; no space", '<span>Licensed &amp;Insured Contractors</span>'),
+            ("bare &", '<h3>Licensed & Insured</h3>'),
+            ("bare & no spaces", '<h3>Licensed&Insured</h3>'),
+        ):
+            amp = tmp_root / "gh2121-ampersand-fixture.html"
+            amp.write_text(f"<html><body>{snippet}</body></html>", encoding="utf-8")
+            code, output = run_against(tmp_root)
+            check(f"gh-2121 {label} tree exit code", code, 1)
+            check_true(f"gh-2121 {label} tree names the fixture file",
+                       "gh2121-ampersand-fixture.html" in output)
+            amp.unlink()
+
+        print()
+        print("gh-2121: existing consumer-advice allowances still pass (real ALLOWLIST, "
+              "fixture at the allowlisted path)")
+        advice = tmp_root / "blog"
+        advice.mkdir()
+        advice_file = advice / "what-to-do-after-storm-damages-roof.html"
+        advice_file.write_text(
+            "<html><body><p>You have the right to choose any licensed, insured "
+            "contractor to repair your roof.</p></body></html>",
+            encoding="utf-8",
+        )
+        code, output = run_against(tmp_root)
+        check("gh-2121 allowlisted consumer advice exit code", code, 0)
+        advice_file.unlink()
+        advice.rmdir()
+        plain = tmp_root / "gh2121-advice-fixture.html"
+        plain.write_text(
+            "<html><body><p>Ask each contractor for their license number and "
+            "proof of insurance before you sign.</p></body></html>",
+            encoding="utf-8",
+        )
+        code, output = run_against(tmp_root)
+        check("gh-2121 advice to check credentials yourself exit code", code, 0)
+        plain.unlink()
     finally:
         shutil.rmtree(tmp_root, ignore_errors=True)
 
