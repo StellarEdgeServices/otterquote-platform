@@ -15,7 +15,7 @@ spec = importlib.util.spec_from_file_location("indexnow_submit", os.path.join(HE
 M = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(M)
 
-KEY = "0123456789abcdef0123456789abcdef"
+KEY = "0123456789abcdef" * 2  # fake test key
 SITEMAP = """<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url><loc>https://otterquote.com/</loc></url>
