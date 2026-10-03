@@ -14,6 +14,18 @@ import { footerPostalAddressHtml, footerPostalAddressText } from "./email-footer
 export const MESSAGE_NOTIFICATION_SUBJECT =
   "You have a new message on your Otter Quotes project";
 
+/**
+ * gh-2478 (Contractor Agreement 6.2 / D-277; Ben's DECIDED 5972464230 on exec #2304): the
+ * sender label for every contractor-bound email from this function. It names no person:
+ * "the homeowner", plus the property address the contractor already has (the wording
+ * notify-contractors' bid-accepted email uses: "The homeowner at <address>"). First name
+ * + last initial was rejected. Do not pass profiles.full_name on a contractor-bound path.
+ */
+export function contractorBoundSenderLabel(propertyAddress?: string | null): string {
+  const address = (propertyAddress ?? "").trim();
+  return address ? `the homeowner at ${address}` : "the homeowner";
+}
+
 export function buildEmail(bodyHtml: string): string {
   return `<!DOCTYPE html>
 <html>
