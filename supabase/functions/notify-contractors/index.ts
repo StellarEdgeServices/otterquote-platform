@@ -33,6 +33,13 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { selectFanOutContractors } from "./test-exclusion.ts";
 import { acceptedServiceKeys, deny, type GetEnv } from "./caller-gate.ts"; // gh-2462
 import { authorizeNotifyCaller, type NotifyBody, type OwnershipLookups } from "./user-gate.ts"; // gh-2462
+
+// gh-2462: the service-role client is typed `any`, as process-dunning's is (gh-2309).
+// The handler is now imported by caller-gate.test.ts, so this file is type-checked in CI
+// for the first time; with no generated Database types, `ReturnType<typeof createClient>`
+// infers every row as `never` (100 latent errors on main), and `any` is the honest type.
+// deno-lint-ignore no-explicit-any
+type SupabaseLike = any;
 import {
   DASHBOARD_URL,
   OPPORTUNITIES_URL,
@@ -242,7 +249,7 @@ async function sendSmsViaEdgeFunction(
  */
 async function handleBidAccepted(
   body: Record<string, any>,
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseLike,
   mailgunApiKey: string,
   mailgunDomain: string,
   corsHeaders: Record<string, string>
@@ -356,7 +363,7 @@ async function handleBidAccepted(
 
 async function handleContractSigned(
   body: Record<string, any>,
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseLike,
   mailgunApiKey: string,
   mailgunDomain: string,
   supabaseUrl: string,
@@ -493,7 +500,7 @@ async function handleContractSigned(
 // =============================================================================
 async function handleBidUpdateConfirmed(
   body: Record<string, any>,
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseLike,
   mailgunApiKey: string,
   mailgunDomain: string,
   corsHeaders: Record<string, string>
@@ -588,7 +595,7 @@ async function handleBidUpdateConfirmed(
  */
 async function handleBidExpired(
   body: Record<string, any>,
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseLike,
   mailgunApiKey: string,
   mailgunDomain: string,
   corsHeaders: Record<string, string>
@@ -686,7 +693,7 @@ async function handleBidExpired(
  */
 async function handleBidRenewalRequested(
   body: Record<string, any>,
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseLike,
   mailgunApiKey: string,
   mailgunDomain: string,
   corsHeaders: Record<string, string>
@@ -792,7 +799,7 @@ async function notifyContractorsForSingleTrade(
   claim_county: string | undefined,
   job_type: string,
   claimIsTest: boolean,
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseLike,
   mailgunApiKey: string,
   mailgunDomain: string,
   supabaseUrl: string,
@@ -974,7 +981,7 @@ async function notifyContractorsForSingleTrade(
  */
 async function handleNewOpportunity(
   body: Record<string, any>,
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseLike,
   mailgunApiKey: string,
   mailgunDomain: string,
   supabaseUrl: string,
@@ -1150,7 +1157,7 @@ async function handleNewOpportunity(
 // =============================================================================
 async function handleAgreementRequested(
   body: Record<string, any>,
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseLike,
   mailgunApiKey: string,
   mailgunDomain: string,
   supabaseUrl: string,
@@ -1300,7 +1307,7 @@ async function handleAgreementRequested(
 // MAIN ENTRY POINT
 // =============================================================================
 /** gh-2462: ownership lookups for user-gate.ts, on the (lazily built) service-role client. */
-function ownershipLookups(getClient: () => ReturnType<typeof createClient>): OwnershipLookups {
+function ownershipLookups(getClient: () => SupabaseLike): OwnershipLookups {
   return {
     async userIdForToken(token) {
       const { data, error } = await getClient().auth.getUser(token);
@@ -1351,7 +1358,7 @@ export async function handler(
   const supabaseKey = getEnv("SUPABASE_SERVICE_ROLE_KEY")!;
   // Built lazily: a request with no credential (or a non-JWT bearer) is refused by the
   // gate below without the client ever being created.
-  let client: ReturnType<typeof createClient> | null = null;
+  let client: SupabaseLike | null = null;
   const getClient = () => (client ??= makeClient(supabaseUrl, supabaseKey));
 
   // gh-2462 caller gate (see user-gate.ts for the caller map). Service bearer -> any
