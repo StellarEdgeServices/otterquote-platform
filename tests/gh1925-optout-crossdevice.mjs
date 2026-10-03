@@ -23,7 +23,7 @@ const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m
 ok(scripts.length === 1, 'privacy.html has exactly one inline script wiring the section 12 button');
 
 function run({ jar = '', cfg = { SUPABASE_URL: 'https://x.supabase.co/', SUPABASE_ANON: 'anon-key' }, fetchImpl }) {
-  const calls = []; const cookieWrites = []; let listener = null; let cookieJar = jar;
+  const calls = []; const warns = []; const cookieWrites = []; let listener = null; let cookieJar = jar;
   const btn = { disabled: false, addEventListener(t, fn) { if (t === 'click') listener = fn; } };
   const document = {
     get cookie() { return cookieJar; },
@@ -31,11 +31,11 @@ function run({ jar = '', cfg = { SUPABASE_URL: 'https://x.supabase.co/', SUPABAS
     getElementById: (id) => (id === 'oq-ad-optout-btn' ? btn : null),
   };
   const fetchFn = fetchImpl || ((url, opts) => { calls.push({ url, opts }); return Promise.resolve({ ok: true }); });
-  const ctx = { window: { location: { hostname: 'otterquote.com' } }, document, navigator: {}, CONFIG: cfg, fetch: fetchFn, atob: (s) => Buffer.from(s, 'base64').toString('binary'), decodeURIComponent, encodeURIComponent, JSON, String, Date, RegExp };
+  const ctx = { window: { location: { hostname: 'otterquote.com' } }, document, navigator: {}, CONFIG: cfg, fetch: fetchFn, atob: (s) => Buffer.from(s, 'base64').toString('binary'), decodeURIComponent, encodeURIComponent, JSON, String, Date, RegExp, Promise, console: { warn: (...a) => warns.push(a.join(' ')) } };
   if (fetchImpl) ctx.fetch = (u, o) => { calls.push({ url: u, opts: o }); return fetchImpl(u, o); };
   vm.createContext(ctx);
   vm.runInContext(scripts[0] || '', ctx);
-  return { btn, click: () => listener && listener(), calls, cookieWrites };
+  return { btn, click: () => listener && listener(), calls, cookieWrites, warns };
 }
 
 // 1. signed in: one PATCH to the person's own row, cookie still written
@@ -50,7 +50,7 @@ function run({ jar = '', cfg = { SUPABASE_URL: 'https://x.supabase.co/', SUPABAS
     ok(c.url.includes('or=(ad_sharing_opt_out.is.null,ad_sharing_opt_out.eq.false)'), 'signed in: an already-true flag is never rewritten (or-filter)');
     ok(c.opts.headers.Authorization === 'Bearer ' + goodToken && c.opts.headers.apikey === 'anon-key', 'signed in: uses the user\'s own token + publishable key');
     const b = JSON.parse(c.opts.body);
-    ok(b.ad_sharing_opt_out === true && typeof b.ad_sharing_opt_out_at === 'string' && !('ad_sharing_opt_out_source' in b) && Object.keys(b).length === 2, 'signed in: body sets only the flag and its timestamp (source untouched, CHECK-safe)');
+    ok(b.ad_sharing_opt_out === true && typeof b.ad_sharing_opt_out_at === 'string' && b.ad_sharing_opt_out_source === 'in_page_button' && Object.keys(b).length === 3, 'signed in: body sets the flag, its timestamp and source in_page_button (CHECK widened by 20261003011500_gh1925)');
   } else { ok(false, 'signed in: a PATCH call exists to inspect'); }
   ok(r.btn.disabled === true, 'signed in: button disabled after click');
 }
@@ -74,5 +74,37 @@ for (const [name, tok] of [['not a jwt', 'abc'], ['sub not a uuid', 'h.' + b64u(
   try { r.click(); } catch (e) { threw = true; }
   ok(!threw && r.cookieWrites.length === 1 && r.btn.disabled === true, 'fetch rejects: no throw, cookie written, button disabled');
 }
+// 6. deploy-order safety: a CHECK violation (PostgREST 23514) on the source retries ONCE without the source; the flag still lands
+const tick = () => new Promise((r) => setTimeout(r, 20));
+const respond = (status, json) => ({ ok: status >= 200 && status < 300, status, json: () => Promise.resolve(json) });
+const AT = 'sb-otterquote-at=' + encodeURIComponent(goodToken);
+{
+  let n = 0;
+  const r = run({ jar: AT, fetchImpl: () => Promise.resolve(++n === 1 ? respond(400, { code: '23514', message: 'violates check constraint "profiles_ad_sharing_opt_out_source_check"' }) : respond(204, null)) });
+  r.click(); await tick();
+  ok(r.calls.length === 2, '23514: exactly one retry (2 PATCHes total, got ' + r.calls.length + ')');
+  if (r.calls.length === 2) {
+    const b1 = JSON.parse(r.calls[0].opts.body), b2 = JSON.parse(r.calls[1].opts.body);
+    ok(b1.ad_sharing_opt_out_source === 'in_page_button', '23514: first attempt sends source in_page_button');
+    ok(b2.ad_sharing_opt_out === true && typeof b2.ad_sharing_opt_out_at === 'string' && !('ad_sharing_opt_out_source' in b2) && Object.keys(b2).length === 2, '23514: retry body is the same PATCH minus the source (flag + timestamp only)');
+    ok(r.calls[1].url === r.calls[0].url && r.calls[1].opts.method === 'PATCH' && r.calls[1].opts.headers.Authorization === r.calls[0].opts.headers.Authorization, '23514: retry hits the same URL/method/auth');
+  }
+  ok(r.warns.length === 1 && /23514/.test(r.warns[0]), '23514: exactly one console.warn on the fallback');
+  ok(r.cookieWrites.length === 1 && r.btn.disabled === true, '23514: cookie written, button disabled');
+}
+// 6b. a retry that also fails does not loop (never more than one retry)
+{
+  const r = run({ jar: AT, fetchImpl: () => Promise.resolve(respond(400, { code: '23514' })) });
+  r.click(); await tick();
+  ok(r.calls.length === 2, '23514 twice: still exactly one retry, no loop (got ' + r.calls.length + ')');
+}
+// 7. other errors never retry
+for (const [name, res] of [['PostgREST 42501 (RLS/permission)', respond(403, { code: '42501' })], ['HTTP 500 without a code', respond(500, { message: 'boom' })], ['HTTP 400 with a non-JSON body', { ok: false, status: 400, json: () => Promise.reject(new Error('not json')) }], ['23505 unique violation', respond(409, { code: '23505' })]]) {
+  const r = run({ jar: AT, fetchImpl: () => Promise.resolve(res) });
+  r.click(); await tick();
+  ok(r.calls.length === 1 && r.warns.length === 0 && r.btn.disabled === true, name + ': no retry, no warn');
+}
+// 7b. success: no retry
+{ const r = run({ jar: AT, fetchImpl: () => Promise.resolve(respond(204, null)) }); r.click(); await tick(); ok(r.calls.length === 1 && r.warns.length === 0, 'success: single PATCH, no retry'); }
 console.log(passed + ' passed, ' + failed + ' failed');
 process.exit(failed ? 1 : 0);
