@@ -1,7 +1,7 @@
 // gh-2462 -- inbound caller gate (the #2309 process-dunning pattern, generalised).
 //
 // BYTE-IDENTICAL COPIES live in: process-hover-rebate, check-siding-design-completion,
-// notify-feature-request, notify-contractors (each <fn>/caller-gate.ts). The copies are
+// notify-feature-request, notify-contractors, check-rate-limits (each <fn>/caller-gate.ts). The copies are
 // pinned identical by process-hover-rebate/caller-gate.test.ts. Kept as local files
 // (not _shared/) because the EF body-deploy path does not resolve _shared/ imports for
 // new modules -- same reason process-dunning/caller-gate.ts is local (gh-2309).
