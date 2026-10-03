@@ -12,6 +12,7 @@
  */
 import { test, expect } from '@playwright/test';
 
+// gh-2471 (ruling 5973362277): codes must be canonical r-[A-Z0-9]{1,6}; the fixture code is r-TEST01 (r-TESTCODE was 8 characters and is now rejected as non-canonical).
 test('recruit.html with a resolvable code redirects to /partners.html', async ({ page }) => {
   // Stub the recruiter lookup so this test doesn't depend on a real seeded
   // row in the live Supabase project. get_referral_agents_public is a
@@ -26,17 +27,17 @@ test('recruit.html with a resolvable code redirects to /partners.html', async ({
     })
   );
 
-  await page.goto('/recruit.html?code=r-TESTCODE');
+  await page.goto('/recruit.html?code=r-TEST01');
   await page.waitForURL('**/partners.html**');
 
   const url = new URL(page.url());
   expect(url.pathname).toBe('/partners.html');
-  expect(url.searchParams.get('recruit')).toBe('r-TESTCODE');
+  expect(url.searchParams.get('recruit')).toBe('r-TEST01');
 });
 
 test('gh-1648: a case-folded recruit code is normalised before lookup and forwarding', async ({ page }) => {
   // Mail/SMS clients case-fold URLs. generate_recruit_code() emits 'r-' + 6 UPPERCASE
-  // alphanumerics, so before gh-1648 'R-TESTCODE' / 'r-testcode' missed at PostgREST and the
+  // alphanumerics, so before gh-1648 'R-TEST01' / 'r-test01' missed at PostgREST and the
   // referral was silently voided. Pin: the lookup and the forwarded ?recruit= both carry the
   // normalised code.
   let lookedUp: string | null = null;
@@ -49,10 +50,10 @@ test('gh-1648: a case-folded recruit code is normalised before lookup and forwar
     });
   });
 
-  await page.goto('/recruit.html?code=R-testcode');
+  await page.goto('/recruit.html?code=R-test01');
   await page.waitForURL('**/partners.html**');
 
-  expect(lookedUp).toBe('eq.r-TESTCODE');
+  expect(lookedUp).toBe('eq.r-TEST01');
   const url = new URL(page.url());
-  expect(url.searchParams.get('recruit')).toBe('r-TESTCODE');
+  expect(url.searchParams.get('recruit')).toBe('r-TEST01');
 });
