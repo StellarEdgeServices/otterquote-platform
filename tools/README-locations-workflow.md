@@ -245,9 +245,10 @@ Enforced in the template and in `compliance_lint()`:
   "coverage" is deliberately allowed ("your insurer decides coverage under your
   policy"). Titles of the linked guide/blog pages are not scanned for D-326 (they are
   other pages' titles and get their own R-177 review).
-- Also banned: "connects you with contractors", "connects homeowners with
-  contractors". The lint scans the page HTML **and** the decoded JSON-LD strings;
-  the LocalBusiness description and the disclosure use the approved framing.
+- Also banned everywhere, with no exemption: "connects you with contractors",
+  "connects homeowners with contractors". The lint scans the page HTML **and** the decoded
+  JSON-LD strings; the Organization JSON-LD description and the disclosure use the
+  approved framing.
 - D-104: no "vetted" or screening claims. D-168: no response-time claims.
   D-175: brand is "Otter Quotes". D-312: no vendor names (list reused from
   `scripts/vendor-scrub-check.py`, plus Stripe, Mailgun, Twilio).
@@ -292,16 +293,21 @@ and D-326 bans:
 1. `We create a scope of work and send it to local contractors.` (CEO wording, issue #2422:
    "Our statement should be that we create a scope of work and \"send it to local
    contractors\"." D-345, 2026-10-02.)
-2. `Otter Quotes is an independent, informational platform that connects homeowners with
-   contractors for property damage repair and exterior improvement projects.` (existing
-   disclosure, byte-identical to origin/main, D-number to be confirmed by CEO)
+2. `Otter Quotes is an informational platform for property damage repair and exterior
+   improvement projects.` (disclosure sentence 1, wording per LEGAL-READ B2 on PR #2429.
+   It is listed because block rule R2 reads "Otter Quotes" and "platform" as an
+   affiliation trigger in the disclosure block, which also names "contractor".)
 3. `Otter Quotes does not independently verify, endorse, or warrant the quality of any
    contractor's work, and does not guarantee the availability of any particular
-   contractor.` (existing disclosure, byte-identical to origin/main, D-number to be
-   confirmed by CEO)
+   contractor.` (existing disclosure sentence 2, byte-identical to origin/main, D-number to
+   be confirmed by CEO)
 
-The disclosure paragraph is byte-identical to origin/main and a test pins it. Any change
-to the wording of an approved sentence, or text added to it, makes it an ordinary sentence.
+Disclosure sentences 2 and 3 as printed on a page (the third being "Insurance coverage
+decisions are made solely by your insurer under the terms of your policy.") are
+byte-identical to origin/main, and a test pins the whole paragraph. The phrase "connects
+homeowners with contractors" is on no list: it fails the lint wherever it appears. Any
+change to the wording of an approved sentence, or text added to it, makes it an ordinary
+sentence.
 
 ### Writing county content around the lint (known false positives)
 

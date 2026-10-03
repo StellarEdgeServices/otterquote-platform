@@ -1056,10 +1056,10 @@ APPROVED_SENTENCES = frozenset(_sentence_key(x) for x in (
     # CEO wording, issue #2422: "Our statement should be that we create a scope of
     # work and \"send it to local contractors\"." (D-345, 2026-10-02.)
     "We create a scope of work and send it to local contractors.",
-    # Existing disclosure, byte-identical to origin/main, D-number to be confirmed
-    # by CEO. (Sentence 1 of the disclosure paragraph.)
-    "Otter Quotes is an independent, informational platform that connects homeowners with contractors for "
-    "property damage repair and exterior improvement projects.",
+    # Disclosure sentence 1, wording per LEGAL-READ B2 on PR #2429. It needs the
+    # exemption because block rule R2 reads "Otter Quotes" and "platform" as an
+    # affiliation trigger in a block that also names "contractor" (sentence 2).
+    "Otter Quotes is an informational platform for property damage repair and exterior improvement projects.",
     # Existing disclosure, byte-identical to origin/main, D-number to be confirmed
     # by CEO. (Sentence 2.)
     "Otter Quotes does not independently verify, endorse, or warrant the quality of any contractor's work, "
@@ -1371,29 +1371,26 @@ FAQ = {
 FAQ_PER_PAGE = 2
 
 CORNERSTONE_GUIDES = [
-    ("/guides/how-to-file-property-damage-claim.html", "How to File a Property Damage Claim"),
-    ("/guides/how-to-choose-contractor.html", "How to Choose a Contractor"),
-    ("/guides/how-to-read-contractor-estimate.html", "How to Read a Contractor Estimate"),
-    ("/guides/how-to-negotiate-with-insurer.html", "How to Negotiate with Your Insurer"),
+    ("/guides/how-to-file-property-damage-claim.html", "How to File a Property Damage Insurance Claim"),
+    ("/guides/how-to-choose-contractor.html", "How to Choose a Contractor for Insurance Repairs"),
+    ("/guides/how-to-read-contractor-estimate.html", "How to Read a Roofing Contractor Estimate"),
 ]
 
 TRADE_EXTRA_LINKS = {
     "roofing": [
-        ("/blog/hail-vs-wind-roof-damage.html", "Hail vs. Wind Roof Damage"),
-        ("/blog/roofing-estimate-red-flags.html", "Roofing Estimate Red Flags"),
-        ("/blog/storm-chaser-roofing-scams.html", "Storm-Chaser Roofing Scams"),
+        ("/blog/hail-vs-wind-roof-damage.html", "Hail vs. Wind Damage: How Insurers Tell the Difference"),
+        ("/blog/roofing-estimate-red-flags.html", "7 Red Flags in a Roofing Contractor Estimate"),
+        ("/blog/storm-chaser-roofing-scams.html", "Storm Chaser Roofing Scams: How to Spot One"),
     ],
     "siding": [
-        ("/blog/storm-chaser-roofing-scams.html", "Storm-Chaser Contractor Scams"),
-        ("/blog/what-is-scope-of-loss-roofing.html", "What Is a Scope of Loss?"),
+        ("/blog/storm-chaser-roofing-scams.html", "Storm Chaser Roofing Scams: How to Spot One"),
+        ("/blog/what-is-scope-of-loss-roofing.html", 'What "Scope of Loss" Actually Means on a Roof Claim'),
     ],
     "gutters": [
-        ("/blog/hail-vs-wind-roof-damage.html", "Hail vs. Wind Damage"),
-        ("/blog/what-is-recoverable-depreciation-roofing.html", "What Is Recoverable Depreciation?"),
+        ("/blog/hail-vs-wind-roof-damage.html", "Hail vs. Wind Damage: How Insurers Tell the Difference"),
     ],
     "windows": [
-        ("/blog/does-homeowners-insurance-cover-roof-damage.html", "Does Homeowners Insurance Cover Storm Damage?"),
-        ("/blog/what-is-scope-of-loss-roofing.html", "What Is a Scope of Loss?"),
+        ("/blog/what-is-scope-of-loss-roofing.html", 'What "Scope of Loss" Actually Means on a Roof Claim'),
     ],
 }
 
@@ -1413,13 +1410,13 @@ def build_page(county: str, trade: str, generated_on: str, state: str = "IN", pr
     county_esc = html.escape(county, quote=True)
     page_url = f"{SITE_BASE}/locations/{c_slug}/{trade}/"
 
-    intro = variant(seed, 1, TRADE_INTRO[trade]).format(county=county_esc, region=region_lbl, state=state_name)
+    intro = variant(seed, 1, TRADE_INTRO[trade]).format(county=county_esc, region=region_lbl)
     climate = variant(seed, 2, profile["region_climate"][region]).format(county=county_esc)
     issue_items = shuffle_items(seed, 3, TRADE_ISSUE_ITEMS[trade])[:ISSUE_ITEMS_PER_PAGE]
     issues = ("<ul>" + "".join(issue_items) + "</ul>").format(region=region_lbl)
     expectations = (
         variant(seed, 4, EXPECTATIONS_A) + variant(seed, 7, EXPECTATIONS_B)
-    ).format(county=county_esc, region=region_lbl, state=state_name)
+    ).format(county=county_esc, region=region_lbl)
     seasonal = variant(seed, 6, SEASONAL).format(county=county_esc, region=region_lbl)
     article = "an" if county[:1].lower() in "aeiou" else "a"
     how_it_works = variant(seed, 5, HOW_IT_WORKS).format(county=county_esc, article=article)
@@ -1596,7 +1593,7 @@ def build_page(county: str, trade: str, generated_on: str, state: str = "IN", pr
     </div>
 
     <p class="disclosure">
-      Otter Quotes is an independent, informational platform that connects homeowners with contractors for property damage repair and exterior improvement projects.
+      Otter Quotes is an informational platform for property damage repair and exterior improvement projects.
       Otter Quotes does not independently verify, endorse, or warrant the quality of any contractor's work, and does not guarantee the availability of any particular contractor.
       Insurance coverage decisions are made solely by your insurer under the terms of your policy.
       Page generated {generated_on}.
@@ -1835,7 +1832,7 @@ def generate(states, out_dir=None, sitemap_path=None, counties_path=None,
     if strict:
         summary["min_strict_unique_words"] = min(strict)
         summary["median_strict_unique_words"] = statistics.median(strict)
-        print(f"Strict-unique words per page (floor {MIN_WORDS}; words on no shared {SHINGLE_SIZE}-word shingle): "
+        print(f"Strict-unique words per page (floor {MIN_WORDS}; words outside any {STRICT_BLOCK}-word run shared with another page): "
               f"min {summary['min_strict_unique_words']}, median {summary['median_strict_unique_words']:g} "
               f"over {len(strict)} pages")
         shares = cross_page_uniqueness([shingles(w) for w in word_lists])

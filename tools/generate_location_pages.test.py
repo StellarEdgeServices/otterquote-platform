@@ -5,7 +5,7 @@ Self-test for tools/generate_location_pages.py (D-345, gh-2422).
 closes-on mapping (issue #2422):
   (a) test_zero_contractor_county_emits_indexable_compliant_page
         allow-listed test state, county with zero contractors -> indexable page,
-        >= 500 STRICT-unique words (words on no 8-word shingle shared with another
+        >= 500 STRICT-unique words (words outside any 3-word run shared with another
         page in the run; CEO ruling on #2304), contains "send it to local
         contractors", lint-clean.
   (b) test_thin_county_emits_no_page, test_identical_county_content_fails_both,
@@ -1376,17 +1376,18 @@ class LintTests(unittest.TestCase):
                 self.assertEqual(glp.sentence_findings(glp._drop_abbreviation_dots(
                     glp.lintable_text(glp.build_page(county, trade, "x", "IN", profile=prof)))), [])
 
-    # D-registry / disclosure text: byte-identical to origin/main ---------------------
+    # D-registry / disclosure text: sentence 1 per LEGAL-READ B2, sentences 2-3 and the rest byte-identical to origin/main
+    NEW_DISCLOSURE_SENTENCE_1 = "Otter Quotes is an informational platform for property damage repair and exterior improvement projects."
     MAIN_DISCLOSURE = (
         '    <p class="disclosure">\n'
-        '      Otter Quotes is an independent, informational platform that connects homeowners with contractors for property damage repair and exterior improvement projects.\n'
+        '      Otter Quotes is an informational platform for property damage repair and exterior improvement projects.\n'
         "      Otter Quotes does not independently verify, endorse, or warrant the quality of any contractor's work, and does not guarantee the availability of any particular contractor.\n"
         '      Insurance coverage decisions are made solely by your insurer under the terms of your policy.\n'
         '      Page generated 2026-01-01.\n'
         '    </p>'
     )
 
-    def test_disclosure_is_byte_identical_to_origin_main(self):
+    def test_disclosure_has_new_first_sentence_and_main_sentences_two_and_three(self):
         prof = glp.load_profile("IN")
         for trade in glp.ELIGIBLE_TRADES:
             page = glp.build_page("Ohio", trade, "2026-01-01", "IN", profile=prof)
@@ -1395,16 +1396,57 @@ class LintTests(unittest.TestCase):
             end = page.index("</p>", start) + 4
             self.assertEqual(page[start:end], self.MAIN_DISCLOSURE)
 
-    def test_connects_homeowners_phrase_is_allowed_only_as_the_exact_disclosure_sentence(self):
+    def test_connects_homeowners_phrase_appears_nowhere_and_fails_the_lint(self):
         for bad in ("Otter Quotes connects homeowners with contractors.",
                     "Otter Quotes is an independent, informational platform that connects homeowners with "
-                    "contractors for property damage repair and exterior improvement projects in Marion County.",
-                    "Otter Quotes is an independent, informational platform that connects homeowners with "
-                    "contractors for property damage repair and exterior improvement projects. Contractors are ready."):
+                    "contractors for property damage repair and exterior improvement projects.",
+                    "Otter Quotes is an informational platform that connects homeowners with "
+                    "contractors for property damage repair and exterior improvement projects."):
             with self.subTest(bad=bad):
                 self.assert_fails("<p>%s</p>" % bad)
-        self.lint_frag("<p>Otter Quotes is an independent, informational platform that connects homeowners with "
-                       "contractors for property damage repair and exterior improvement projects.</p>")
+        self.lint_frag("<p>%s</p>" % self.NEW_DISCLOSURE_SENTENCE_1)
+        prof = glp.load_profile("IN")
+        for trade in glp.ELIGIBLE_TRADES:
+            page = glp.build_page("Ohio", trade, "2026-01-01", "IN", profile=prof)
+            low = re.sub(r"\s+", " ", glp.lintable_text(page).lower())
+            self.assertNotIn("connects homeowners", low)
+            self.assertNotIn("connects you with", low)
+            self.assertNotIn("independent, informational", low)
+
+    REMOVED_LINK_TARGETS = (
+        "/guides/how-to-negotiate-with-insurer.html",
+        "/blog/does-homeowners-insurance-cover-roof-damage.html",
+        "/blog/what-is-recoverable-depreciation-roofing.html",
+    )
+
+    def test_no_generated_page_links_to_a_ruled_out_guide(self):
+        prof = glp.load_profile("IN")
+        for target in self.REMOVED_LINK_TARGETS:
+            self.assertNotIn(target, [h for h, _ in glp.CORNERSTONE_GUIDES])
+            for links in glp.TRADE_EXTRA_LINKS.values():
+                self.assertNotIn(target, [h for h, _ in links])
+        for trade in glp.ELIGIBLE_TRADES:
+            page = glp.build_page("Ohio", trade, "2026-01-01", "IN", profile=prof)
+            for target in self.REMOVED_LINK_TARGETS:
+                self.assertNotIn(target, page)
+
+    def test_every_guide_anchor_equals_its_target_h1(self):
+        import html as _html
+        prof = glp.load_profile("IN")
+        seen = set()
+        for trade in glp.ELIGIBLE_TRADES:
+            page = glp.build_page("Ohio", trade, "2026-01-01", "IN", profile=prof)
+            anchors = re.findall(r'<a href="(/(?:guides|blog)/[^"]+)">(.*?)</a>', page)
+            self.assertGreaterEqual(len(anchors), 3)
+            for href, label in anchors:
+                target = REPO_ROOT / href.lstrip("/")
+                self.assertTrue(target.is_file(), "link target missing from repo: " + href)
+                h1s = re.findall(r"<h1\b[^>]*>(.*?)</h1>", target.read_text(encoding="utf-8"), re.S)
+                self.assertEqual(len(h1s), 1, href)
+                h1 = _html.unescape(re.sub(r"<[^>]+>", "", h1s[0]))
+                self.assertEqual(_html.unescape(label), h1, href)
+                seen.add(href)
+        self.assertTrue(seen)
 
     # round 8 ---------------------------------------------------------------------------
     def test_round8_block_rules_reject_every_refuter_string(self):
@@ -1460,7 +1502,7 @@ class LintTests(unittest.TestCase):
             "We cannot guarantee a result.", "We can't guarantee a result.", "We do not guarantee a result.",
             "Your insurer decides coverage under your policy; ask your adjuster whether it is included.",
             "Insurance coverage decisions are made solely by your insurer under the terms of your policy.",
-            '<a href="/blog/x.html">Does Homeowners Insurance Cover Storm Damage?</a>',
+            '<a href="/blog/x.html">%s</a>' % glp.TRADE_EXTRA_LINKS["roofing"][0][1],
         ):
             with self.subTest(ok=ok):
                 self.lint_frag("<p>%s</p>" % ok if not ok.startswith("<a") else ok)
