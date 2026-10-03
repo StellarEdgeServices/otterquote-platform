@@ -5,7 +5,7 @@
  * public WITH CHECK (true) plus the INSERT grant for anon/authenticated, so a
  * browser could insert a referral already at registered..commission_paid for
  * any agent, skipping track_referral_click() and the #2345 30-day check.
- * Migration 20261003140000_gh2472_referrals_insert_lockdown drops that policy
+ * Migration 20261003141000_gh2472_referrals_insert_lockdown drops that policy
  * and revokes INSERT from anon/authenticated; clicks go only through the
  * SECURITY DEFINER rpc.
  *
@@ -30,7 +30,7 @@ import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(HERE, '..');
 const MIG_DIR = path.join(ROOT, 'supabase/migrations');
-const MIG_NAME = '20261003140000_gh2472_referrals_insert_lockdown.sql';
+const MIG_NAME = '20261003141000_gh2472_referrals_insert_lockdown.sql';
 
 let passed = 0, failed = 0;
 function ok(cond, msg) { if (cond) { passed++; console.log('PASS: ' + msg); } else { failed++; console.log('FAIL: ' + msg); } }

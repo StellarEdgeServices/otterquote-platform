@@ -1,4 +1,4 @@
-# Pre-flight: 20261003140000_gh2472_referrals_insert_lockdown (Tier 3B)
+# Pre-flight: 20261003141000_gh2472_referrals_insert_lockdown (Tier 3B)
 
 NOT APPLIED. Refs #2472 (sideways finding from the #2345 close-review). Protective only (R-134). Tier 3B because it drops an RLS policy and revokes a table grant: R-097 notice applies.
 
@@ -52,7 +52,7 @@ Run the "closes-on proof" block below once before the migration. Expected result
 `... authenticated INSERT status=registered: ACCEPTED | anon INSERT status=registered: ACCEPTED | anon track_referral_click: id=<uuid> status=clicked`
 
 ## 3. Apply
-`supabase/migrations/20261003140000_gh2472_referrals_insert_lockdown.sql`.
+`supabase/migrations/20261003141000_gh2472_referrals_insert_lockdown.sql`.
 
 ## 4. After applying: paste the same block again (closes-on)
 Expected:
@@ -162,7 +162,7 @@ SELECT ra.is_test,
 (c) The only exact source is the API gateway log, within its retention window: any `POST /rest/v1/referrals` request is a direct client insert (the legitimate path is `POST /rest/v1/rpc/track_referral_click`). In the Supabase Logs Explorer: `select timestamp, event_message from edge_logs where regexp_contains(event_message, 'POST.*/rest/v1/referrals') order by timestamp desc limit 100`. Older inserts are not recoverable exactly.
 
 ## Rollback
-`supabase/migrations_rollbacks/20261003140000_gh2472_referrals_insert_lockdown_rollback.sql` restores the policy (`WITH CHECK (true)`) and the anon/authenticated INSERT grant, which re-opens #2472. Use it only if a client insert path that depends on the grant turns up.
+`supabase/migrations_rollbacks/20261003141000_gh2472_referrals_insert_lockdown_rollback.sql` restores the policy (`WITH CHECK (true)`) and the anon/authenticated INSERT grant, which re-opens #2472. Use it only if a client insert path that depends on the grant turns up.
 
 ## Verification (author)
 Local Postgres 16 scratch harness only: Supabase-like roles (anon, authenticated, service_role with BYPASSRLS), table and function owned by a non-superuser role without BYPASSRLS, the baseline `referrals` table, live policies, and `track_referral_click` copied verbatim from gh1302. Before: authenticated and anon inserts at `registered` succeed. After (applied twice): both fail with 42501 `permission denied for table referrals`, anon `clicked` direct insert fails too, the RPC as anon and as authenticated still returns an id with a `clicked` row, service_role insert still succeeds, `has_table_privilege(anon|authenticated, INSERT)` = false. Rollback restores the pre-fix behaviour; re-apply closes it again. The proof block above was run in both states on the harness. Not run against a Supabase branch or production.

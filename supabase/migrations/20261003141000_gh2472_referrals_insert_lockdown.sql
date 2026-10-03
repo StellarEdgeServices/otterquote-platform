@@ -1,9 +1,9 @@
--- Migration: 20261003140000_gh2472_referrals_insert_lockdown
+-- Migration: 20261003141000_gh2472_referrals_insert_lockdown
 -- GitHub: #2472 (sideways finding from the #2345 close-review). Referral/commission path (D-301).
 -- Tier: 3B (DROP POLICY + REVOKE on a table: RLS/grant change). Protective only (R-134).
 -- NOT APPLIED by the authoring session. R-097 notice applies.
--- Rollback: supabase/migrations_rollbacks/20261003140000_gh2472_referrals_insert_lockdown_rollback.sql
--- Pre-flight: 20261003140000_gh2472_referrals_insert_lockdown_pre-flight.md
+-- Rollback: supabase/migrations_rollbacks/20261003141000_gh2472_referrals_insert_lockdown_rollback.sql
+-- Pre-flight: 20261003141000_gh2472_referrals_insert_lockdown_pre-flight.md
 --
 -- Problem: public.referrals carries the policy "Public can insert referral
 -- clicks" (FOR INSERT TO public WITH CHECK (true)) and anon/authenticated
