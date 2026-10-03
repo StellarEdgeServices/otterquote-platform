@@ -56,3 +56,8 @@ jobs:
       # no credentials and writes only to a temp dir. BUILD-FAILING.
       - name: Self-test the location-page generator (D-345)
         run: python3 tools/generate_location_pages.test.py
+
+      # gh-2433: data/us-counties.json feeds the D-345 location generator;
+      # it shipped corrupt for 28 of 51 states. Pin counts + uniqueness.
+      - name: Check county data used by the location generator (gh-2433)
+        run: python3 tools/us_counties_data.test.py

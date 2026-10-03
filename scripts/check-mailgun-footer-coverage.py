@@ -83,6 +83,17 @@ DEFINE_RE = re.compile(r'\bPOSTAL_ADDRESS\b\s*(?::\s*string)?\s*=\s*"([^"]*)"')
 WRAPPER_DEFINE_RE = re.compile(r"function\s+footerPostalAddress(?:Html|Text)\s*\(")
 WRAPPER_CALL_RE = re.compile(r"(?<!function )footerPostalAddress(?:Html|Text)\s*\(\s*\)")
 INTERP_RE = re.compile(r"\$\{POSTAL_ADDRESS\}")
+# MODE D (gh-1824, partner-invite senders): the street-only constant plus a
+# signed opt-out link in the same footer builder.
+DEFINE_ONLY_RE = re.compile(r'\bPOSTAL_ADDRESS_ONLY\b\s*(?::\s*string)?\s*=\s*"([^"]*)"')
+INTERP_ONLY_RE = re.compile(r"\$\{POSTAL_ADDRESS_ONLY\}")
+OPTOUT_RE = re.compile(r"Unsubscribe[^`\n]*\$\{(?:unsubText|optOutUrl)\}")
+
+# The street-only form of the D-237 address, as used by the partner-invite
+# footers (meta-leadgen-webhook/invite-email.ts, send-partner-invite-reminder/
+# invite-email-copy.ts). The business-name prefix is a separate sentence in
+# those footers ("Otter Quotes is a service of Stellar Edge Services LLC.").
+CANONICAL_ADDRESS_ONLY = "3410 N High School Rd, Ste G #102, Indianapolis, IN 46224"
 
 CANONICAL_ADDRESS = (
     "Stellar Edge Services, LLC d/b/a Otter Quotes · "
@@ -117,6 +128,7 @@ RATCHET_FOOTER = {
     "counter-sig-reminders",
     "mark-job-complete",
     "mark-payout-paid",
+    "meta-leadgen-webhook",       # MODE D (partner invite footer + opt-out)
     "notify-admin-new-contractor",
     "notify-contractors",
     "notify-feature-request",
@@ -132,6 +144,7 @@ RATCHET_FOOTER = {
     "send-home-profile-prompt",
     "send-incomplete-onboarding-reminders",
     "send-message-notification",
+    "send-partner-invite-reminder",  # MODE D (partner invite footer + opt-out)
     "send-referral-out-email",
     "send-support-email",
     "send-welcome-email",
@@ -186,6 +199,44 @@ def _strip_block_comments(text):
     return _BLOCK_COMMENT_RE.sub("", text)
 
 
+_LINE_COMMENT_RE = re.compile(r"(^|[^:])//")
+_FUNC_DECL_RE = re.compile(r"function\s+([A-Za-z_$][\w$]*)\s*\(")
+
+
+def _first_live_match(regex, text):
+    """First match of regex that is not inside a `//` line comment.
+
+    A `//` preceded by `:` is a URL scheme (https://), not a comment."""
+    for m in regex.finditer(text):
+        line_start = text.rfind("\n", 0, m.start()) + 1
+        if not _LINE_COMMENT_RE.search(text[line_start:m.start()]):
+            return m
+    return None
+
+
+def _enclosing_function(text, pos):
+    """Name of the nearest `function NAME(` declared before pos, or None."""
+    name = None
+    for m in _FUNC_DECL_RE.finditer(text, 0, pos):
+        name = m.group(1)
+    return name
+
+
+def _call_count(text, name):
+    """Live (non-comment) call sites of name(...), excluding its declaration."""
+    call_re = re.compile(r"(?<![\w$])" + re.escape(name) + r"\s*\(")
+    count = 0
+    for m in call_re.finditer(text):
+        before = text[max(0, m.start() - 9):m.start()]
+        if before.rstrip().endswith("function"):
+            continue
+        line_start = text.rfind("\n", 0, m.start()) + 1
+        if _LINE_COMMENT_RE.search(text[line_start:m.start()]):
+            continue
+        count += 1
+    return count
+
+
 def _ts_files(func_dir):
     """Non-test .ts files in func_dir as {filename: comment-stripped contents}."""
     out = {}
@@ -201,6 +252,78 @@ def _ts_files(func_dir):
 
 def function_sends_via_mailgun(contents):
     return any(MAILGUN_RE.search(text) for text in contents.values())
+
+
+_EXPORT_FN_RE = re.compile(r"export\s+function\s+([A-Za-z_$][\w$]*)\s*\(")
+_BODY_MARK_RE = re.compile(
+    r"(?:^|(?<=[\s{,]))(?:(?:const|let|var)\s+(text|html)\s*=|(text|html)\s*:)"
+)
+
+
+def _function_body(text, name_end):
+    """Source from a top-level function's `(` to its closing `}` at column 0."""
+    end = text.find("\n}", name_end)
+    return text[name_end:end if end != -1 else len(text)]
+
+
+def _body_reaches_footer(body, builder):
+    """True if BOTH the text and the HTML body of an email-builder function
+    interpolate the footer builder's RESULT: `${v}` where `const v = builder(`,
+    or a direct `${builder(`. Computing the footer without interpolating it
+    does not count (gh-2439 hole 1)."""
+    refs = [re.escape("${" + builder + "(")]
+    for m in re.finditer(r"\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=]+)?=\s*"
+                         + re.escape(builder) + r"\s*\(", body):
+        line_start = body.rfind("\n", 0, m.start()) + 1
+        if not _LINE_COMMENT_RE.search(body[line_start:m.start()]):
+            refs.append(r"\$\{\s*" + re.escape(m.group(1)) + r"\s*\}")
+    ref_re = re.compile("|".join(refs))
+    marks = [(m.start(), m.group(1) or m.group(2)) for m in _BODY_MARK_RE.finditer(body)]
+    seen = set()
+    for i, (pos, key) in enumerate(marks):
+        seg = body[pos:marks[i + 1][0] if i + 1 < len(marks) else len(body)]
+        if _first_live_match(ref_re, seg) is not None:
+            seen.add(key)
+    return seen == {"text", "html"}
+
+
+def _sender_uses_builder(text, fn):
+    """True if the Mailgun-sending file calls exported builder fn and uses the
+    result's .text and .html (gh-2439 hole 3), via `const v = fn(...)` then
+    `v.text` / `v.html`, or `const { text, html } = fn(...)`."""
+    for m in re.finditer(r"(?<![\w$])" + re.escape(fn) + r"\s*\(", text):
+        line_start = text.rfind("\n", 0, m.start()) + 1
+        head = text[line_start:m.start()]
+        if _LINE_COMMENT_RE.search(head) or head.rstrip().endswith("function"):
+            continue
+        a = re.search(r"(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=]+)?=\s*(?:await\s+)?$", head)
+        if a:
+            v = re.escape(a.group(1))
+            if all(_first_live_match(re.compile(r"(?<![\w$.])" + v + r"\.%s\b" % f), text)
+                   for f in ("text", "html")):
+                return True
+        d = re.search(r"(?:const|let|var)\s*\{([^}]*)\}\s*=\s*(?:await\s+)?$", head)
+        if d and all(re.search(r"\b%s\b" % f, d.group(1)) for f in ("text", "html")):
+            return True
+    return False
+
+
+def _delivers_footer(contents, builder_text, footer_builder):
+    """MODE D delivery proof (gh-2439): some EXPORTED email builder in the
+    footer's file interpolates the footer result into both bodies, AND a
+    different Mailgun-sending file calls that builder and sends its
+    .text/.html. Dead builders never satisfy this: only a builder the sender
+    actually calls counts."""
+    for m in _EXPORT_FN_RE.finditer(builder_text):
+        fn = m.group(1)
+        if not _body_reaches_footer(_function_body(builder_text, m.end()), footer_builder):
+            continue
+        for other in contents.values():
+            if other is builder_text or not MAILGUN_RE.search(other):
+                continue
+            if _sender_uses_builder(other, fn):
+                return True
+    return False
 
 
 def function_uses_footer(contents):
@@ -232,6 +355,25 @@ def function_uses_footer(contents):
     for text in contents.values():
         if MAILGUN_RE.search(text) and all(c in text for c in CANONICAL_ADDRESS_COMPONENTS):
             return True, "C"
+
+    # MODE D -- partner-invite footer: ONE file defines POSTAL_ADDRESS_ONLY as
+    # the exact D-237 street string, interpolates it, AND carries an opt-out
+    # link in the same footer (CAN-SPAM needs both). An address with no opt-out,
+    # an opt-out with no address, or an altered/blank constant never matches.
+    # Two refuter-found holes are closed here (PR #2435): the interpolation and
+    # opt-out must not sit in a `//` comment, and the footer builder that holds
+    # them must actually be called. gh-2439 tightens that from "called twice
+    # somewhere" to proof of delivery: see _delivers_footer.
+    for text in contents.values():
+        m = DEFINE_ONLY_RE.search(text)
+        if not m or m.group(1) != CANONICAL_ADDRESS_ONLY:
+            continue
+        interp = _first_live_match(INTERP_ONLY_RE, text)
+        if interp is None or _first_live_match(OPTOUT_RE, text) is None:
+            continue
+        builder = _enclosing_function(text, interp.start())
+        if builder and _delivers_footer(contents, text, builder):
+            return True, "D"
 
     return False, None
 
