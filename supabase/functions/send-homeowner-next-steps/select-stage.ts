@@ -46,6 +46,23 @@ export const NUDGE_ELIGIBLE_STATUS = "documents_needed";
 // telling them "You're one step from bids" is wrong.
 export const NUDGE_EXCLUDED_STATUS = "draft";
 
+// gh-1570 (CEO ruling, comment 5965042243): the checklist-complete stage, the
+// admin digest rows it feeds and the admin "Ready, not submitted" tab cover
+// {documents_needed, draft}. A `draft` whose checklist is complete is a
+// homeowner who finished everything and never clicked Submit for Bids, which
+// is the stall #1570 exists to surface. NUDGE_ELIGIBLE_STATUS above is NOT
+// widened: it keys the '2h'/'48h' age ladder, whose copy ("one step from
+// bids") is wrong for a homeowner still mid-intake and whose scan carries the
+// gh-1580 `neq draft` predicate.
+export const CHECKLIST_NUDGE_ELIGIBLE_STATUSES: readonly string[] = ["documents_needed", "draft"];
+// A claim in this status is never nudged: the D-178 state gate parked it
+// because the homeowner's state is uncovered.
+export const NUDGE_WAITLISTED_STATUS = "waitlisted";
+
+export function isChecklistNudgeEligibleStatus(status: string | null | undefined): boolean {
+  return status != null && CHECKLIST_NUDGE_ELIGIBLE_STATUSES.includes(status);
+}
+
 export function isNudgeEligibleStatus(status: string | null | undefined): boolean {
   if (status == null) return false;
   if (status === NUDGE_EXCLUDED_STATUS) return false;

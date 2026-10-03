@@ -126,6 +126,10 @@ export function validatePayload(raw: unknown): PayloadCheck {
     return { ok: false, error: "Missing required fields: from_name, from_email, message" };
   }
   if (!EMAIL_RE.test(from_email.trim())) return { ok: false, error: "Invalid from_email" };
+  // gh-2477: refuse CR/LF in subject (header-injection hygiene; subject is mailed as a header).
+  if (typeof body.subject === "string" && /[\r\n]/.test(body.subject)) {
+    return { ok: false, error: "Invalid subject" };
+  }
   return {
     ok: true,
     value: {

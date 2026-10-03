@@ -6,7 +6,7 @@
 // (401 + zero fetch + no client) FAIL. Raw output is in the builder report.
 import { assert, assertEquals } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import { handler } from "./index.ts";
-import { LIMITS } from "./caller-gate.ts";
+import { LIMITS, validatePayload } from "./caller-gate.ts";
 
 const ANON = "fixture-anon-header.fixture-anon-payload.fixture-anon-signature";
 const PUBLISHABLE = "sb_publishable_fixture";
@@ -217,4 +217,22 @@ Deno.test("wiring order: gate -> body validation -> rate limit -> Mailgun -> tic
   assert(order.every((i) => i > 0), `missing marker: ${order}`);
   assertEquals([...order].sort((a, b) => a - b), order);
   assert(src.includes("if (import.meta.main)"));
+});
+
+// ── gh-2477: refuse CR/LF in subject (CTO ruling 5969702599) ────────────────────────────────
+Deno.test("gh-2477 validatePayload: single-line subject accepted", () => {
+  assert(validatePayload({ ...GOOD, subject: "Bid Renewal Requested" }).ok);
+});
+
+Deno.test("gh-2477 validatePayload: LF or CR in subject refused", () => {
+  for (const subject of ["a\nBcc: evil@example.com", "a\rb", "a\r\nb"]) {
+    const r = validatePayload({ ...GOOD, subject });
+    assertEquals(r.ok, false);
+  }
+});
+
+Deno.test("gh-2477 handler: newline in subject -> 400 before Mailgun", async () => {
+  const r = await run(post({ ...GOOD, subject: "x\nBcc: evil@example.com" }, { apikey: ANON }));
+  assertEquals(r.res.status, 400);
+  assertEquals(r.fetchCalls.length, 0);
 });

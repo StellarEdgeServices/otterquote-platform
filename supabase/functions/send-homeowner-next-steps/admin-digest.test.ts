@@ -220,3 +220,25 @@ Deno.test("constants: recipient and notification_type match this repo's admin-di
   assertEquals(ADMIN_DIGEST_EMAIL, "dustinstohler1@gmail.com");
   assertEquals(ADMIN_DIGEST_NOTIFICATION_TYPE, "admin_stalled_homeowner_digest");
 });
+
+// gh-1570 (ruling 5965042243): a draft claim reaches the digest as a
+// checklist-complete row; the subject must not say it is stalled at
+// documents_needed when no '48h' row is present.
+Deno.test("gh-1570: a digest of only checklist-complete rows (draft included) does not say 'stalled at documents_needed'", () => {
+  const { subject, rows } = buildAdminDigestEmail(
+    [candidate({ claimId: "draft-1", isChecklistCompleteStage: true, checklistCompletedAtIso: "2026-09-13T12:00:00.000Z" })],
+    "https://otterquote.com/admin-homeowners.html",
+    NOW,
+  );
+  assertEquals(subject, "[OtterQuote] 1 homeowner completed the checklist, not yet submitted");
+  assertEquals(rows[0].daysStalled, 2);
+});
+
+Deno.test("gh-1570: with any '48h' row present the original subject is byte-identical", () => {
+  const { subject } = buildAdminDigestEmail(
+    [candidate({ claimId: "a" }), candidate({ claimId: "b", isChecklistCompleteStage: true })],
+    "https://otterquote.com/admin-homeowners.html",
+    NOW,
+  );
+  assertEquals(subject, "[OtterQuote] 2 homeowners stalled at documents_needed");
+});
