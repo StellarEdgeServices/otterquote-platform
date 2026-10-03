@@ -177,25 +177,54 @@
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
-  "@type": "Organization",
-  "name": "Otter Quotes",
-  "url": "https://otterquote.com",
-  "logo": "https://otterquote.com/img/otter-logo.svg",
-  "description": "Otter Quotes helps homeowners get competing quotes from roofing contractors — for insurance claims and out-of-pocket projects — at zero cost to homeowners.",
-  "contactPoint": {
-    "@type": "ContactPoint",
-    "email": "info@otterquote.com",
-    "contactType": "customer service"
-  },
-  "serviceType": "Roofing and Exterior Contractor Matching"
-}
-</script>
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "WebSite",
-  "name": "Otter Quotes",
-  "url": "https://otterquote.com"
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": "https://otterquote.com/#organization",
+      "name": "Otter Quotes",
+      "legalName": "Stellar Edge Services LLC",
+      "url": "https://otterquote.com/",
+      "logo": {
+        "@type": "ImageObject",
+        "@id": "https://otterquote.com/#logo",
+        "url": "https://otterquote.com/img/brand-assets/otter-quotes-icon-512.png",
+        "width": 512,
+        "height": 512
+      },
+      "image": {
+        "@id": "https://otterquote.com/#logo"
+      },
+      "description": "Otter Quotes is an online platform that helps homeowners compare bids from roofing and exterior contractors and sign with the contractor they choose.",
+      "email": "info@otterquote.com",
+      "telephone": "+1-844-875-3412",
+      "address": {
+        "@type": "PostalAddress",
+        "streetAddress": "3410 N High School Rd Ste G #102",
+        "addressLocality": "Indianapolis",
+        "addressRegion": "IN",
+        "postalCode": "46224",
+        "addressCountry": "US"
+      },
+      "contactPoint": [
+        {
+          "@type": "ContactPoint",
+          "contactType": "customer service",
+          "telephone": "+1-844-875-3412",
+          "email": "info@otterquote.com"
+        }
+      ]
+    },
+    {
+      "@type": "WebSite",
+      "@id": "https://otterquote.com/#website",
+      "url": "https://otterquote.com/",
+      "name": "Otter Quotes",
+      "inLanguage": "en-US",
+      "publisher": {
+        "@id": "https://otterquote.com/#organization"
+      }
+    }
+  ]
 }
 </script>
 <!-- RoofingContractor JSON-LD (D-237/D-240 NAP) — rendered client-side by js/nav.js
