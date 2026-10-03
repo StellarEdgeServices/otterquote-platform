@@ -1,5 +1,5 @@
 {
- "_readme": "State profile for tools/generate_location_pages.py (D-345). Authored by the CRO (Sloane), CRO RUN 52, claim cro-2026-10-03T00:36:49Z. Regions: NOAA climate divisions (ncei.noaa.gov/pub/data/cirs/climdiv/county-to-climdivs.txt). county_content holds roofing notes for the first counties only; every figure in it is sourced in Marketing/seo-pages/locations/*.sources.md on Dustin's PC (NOAA Storm Events Database bulk files, U.S. Census Bureau ACS, and the local building department's own pages). Counties and trades with no county_content are skipped by the strict 500-word gate.",
+ "_readme": "State profile for tools/generate_location_pages.py; schema is documented in data/location-state-profiles/IN.json.",
  "code": "OH",
  "name": "Ohio",
  "regions": {
