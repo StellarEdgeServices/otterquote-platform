@@ -18,6 +18,7 @@ deliberately not pinned -- regenerate them before either state is allow-listed.
 Run: python3 tools/us_counties_data.test.py
 """
 import json
+import unicodedata
 import pathlib
 import sys
 
@@ -56,6 +57,11 @@ for code, want in sorted(EXPECTED.items()):
 for code, s in sorted(states.items()):
     bad = [c for c in s["counties"] if not c or c != c.strip() or c.endswith((" County", " Parish"))]
     check(not bad, f"{code}: names are trimmed, non-empty, without a County/Parish suffix")
+
+for code, s in sorted(states.items()):
+    odd = [c for c in s["counties"]
+           if unicodedata.normalize("NFC", c) != c or any(unicodedata.combining(ch) for ch in c)]
+    check(not odd, f"{code}: no combining marks / non-NFC names (e.g. a mangled 'Doña Ana')")
 
 # Negative controls: the exact corruption this file shipped with must fail.
 check("Brunonianism" not in states["TN"]["counties"], "TN: corrupt 'Brunonianism' entry is gone")
