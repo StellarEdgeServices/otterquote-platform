@@ -1096,7 +1096,7 @@
                     try {
                         const today = new Date().toISOString().split('T')[0];
                         const now = new Date().toISOString();
-                        const { error } = await sb
+                        const { data: acceptedRows, error: acceptErr } = await sb
                             .from('contractors')
                             .update({
                                 agreement_accepted_at: now,
@@ -1107,7 +1107,10 @@
                                 cpa_accepted_at:          now,
                                 needs_cpa_reattestation:  false,
                             })
-                            .eq('id', currentContractor.id);
+                            .eq('id', currentContractor.id)
+                            .select('id');
+                        // gh-2105 decision (a, legal): a zero-row match is a failed acceptance and takes the existing 'Error accepting agreement' branch.
+                        const error = acceptErr || (!Array.isArray(acceptedRows) || acceptedRows.length === 0 ? new Error('zero_rows_updated') : null);
 
                         if (!error) {
                             currentContractor.agreement_accepted_at = now;
@@ -1150,10 +1153,13 @@
                         const now = new Date().toISOString();
 
                         // 1. Write cpa_version + cpa_accepted_at (covered by existing RLS UPDATE policy)
-                        const { error: updateErr } = await sb
+                        const { data: cpaRows, error: cpaWriteErr } = await sb
                             .from('contractors')
                             .update({ cpa_version: CURRENT_CPA_VERSION, cpa_accepted_at: now, needs_cpa_reattestation: false })
-                            .eq('id', currentContractor.id);
+                            .eq('id', currentContractor.id)
+                            .select('id');
+                        // gh-2105 decision (a, legal): a zero-row match is a failed acceptance and takes the existing 'Error saving agreement acceptance' branch.
+                        const updateErr = cpaWriteErr || (!Array.isArray(cpaRows) || cpaRows.length === 0 ? new Error('zero_rows_updated') : null);
 
                         if (updateErr) {
                             console.error('CPA update error:', updateErr);
@@ -1738,6 +1744,7 @@
             try {
                 await sb
                     .from('notifications')
+                    // update-no-select-ok: best-effort dismiss of an informational banner; a zero-row match (rows already gone) is harmless and nothing is shown to the user (gh-2105 decision b)
                     .update({ read_at: new Date().toISOString() })
                     .in('id', _bidAcceptedNotifIds);
                 _bidAcceptedNotifIds = [];
@@ -1751,11 +1758,14 @@
             const btn = document.getElementById('dunningRetryBtn');
             if (btn) { btn.disabled = true; btn.textContent = 'Retrying…'; }
             try {
-                const { error } = await sb
+                const { data: dunningRows, error } = await sb
                     .from('payment_failures')
                     .update({ dunning_status: 'retried' })
-                    .eq('id', activeDunningRecord.id);
+                    .eq('id', activeDunningRecord.id)
+                    .select('id');
                 if (error) throw error;
+                // gh-2105 decision (a, money): a zero-row match keeps the banner and re-enables the button via the existing catch.
+                if (!Array.isArray(dunningRows) || dunningRows.length === 0) throw new Error('zero_rows_updated: payment_failures.dunning_status');
                 const banner = document.getElementById('dunningAlertBanner');
                 if (banner) banner.style.display = 'none';
                 activeDunningRecord = null;

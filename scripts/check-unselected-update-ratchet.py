@@ -84,18 +84,18 @@ BASELINE: dict[str, int] = {
     "admin-cpa.html": 0,  # gh-2105 batch 7: both sites fixed (see PR body)
     "admin-fee-config.html": 0,
     "admin-measurements.html": 3,
-    "admin-referrals.html": 4,
+    "admin-referrals.html": 0,  # gh-2105 batch 12: 3 fixed (a), 1 comment reworded
     "admin-template-review.html": 0,  # gh-2105 batch 7: both sites fixed (see PR body)
     "bids.html": 2,
     "color-selection.html": 1,
     "contract-signing.html": 0,  # gh-2105 batch 11: log-only stamps
     "contractor-auto-bids.html": 1,
     "contractor-bid-form.html": 0,  # gh-2105 batch 11: decision a, money
-    "contractor-dashboard.html": 4,
+    "contractor-dashboard.html": 0,  # gh-2105 batch 12: 3 fixed (a), 1 annotated (b)
     "contractor-pre-approval.html": 2,
     "contractor-profile.html": 1,
-    "contractor-settings.html": 9,
-    "dashboard.html": 4,
+    "contractor-settings.html": 0,  # gh-2105 batch 12: 8 fixed (a), 1 annotated (b)
+    "dashboard.html": 0,  # gh-2105 batch 12: 2 log-only, 1 fixed (a), 1 already selected (comment reworded)
     "help-estimate.html": 1,
     "help-materials.html": 1,
     "help-measurements.html": 1,
@@ -125,8 +125,8 @@ BASELINE: dict[str, int] = {
     "react-app/app/(homeowner)/repair-intake/use-repair-intake-data.ts": 2,
     "react-app/app/admin/contractors/page.tsx": 1,
     "react-app/app/admin/fee-config/page.tsx": 0,
-    "react-app/app/admin/referrals/page.tsx": 6,
-    "react-app/app/admin/referrals/utils.ts": 1,
+    "react-app/app/admin/referrals/page.tsx": 0,  # gh-2105 batch 12: 3 fixed (a), 3 comment mentions reworded
+    "react-app/app/admin/referrals/utils.ts": 0,  # gh-2105 batch 12: comment mention reworded
     "react-app/app/admin/template-review/page.tsx": 0,  # gh-2105 batch 7: both sites fixed (see PR body)
     "react-app/app/contractor/auto-bids/page.tsx": 1,
     "react-app/app/contractor/bid/[claimId]/bid-form.tsx": 0,
