@@ -1555,11 +1555,27 @@
       // inserted this visitor's row (variant carried) and handed it over as
       // ?lead=<uuid> (window.__oqRouterLeadId); inserting here as well made
       // a second, variant-less row. leads.variant is write-once and
-      // get_lead_prefill() has already stamped the row, so no write is needed.
+      // get_lead_prefill() has already stamped the row, so no write is needed
+      // once that row is confirmed (see the guard below).
+      // gh-2084 (REVIEW FAIL fix): skip only when the router row is CONFIRMED
+      // (get_lead_prefill returned a row). A garbage, unknown, expired or
+      // redeemed id is unconfirmed and falls through to the normal insert.
+      // If the prefill lookup is still in flight, wait for it (bounded, so a
+      // stalled network can never block signup; a timeout means unconfirmed).
+      if (window.__oqRouterLeadId && window.__oqRouterPrefillPromise) {
+        let prefillTimer;
+        try {
+          await Promise.race([
+            window.__oqRouterPrefillPromise,
+            new Promise((resolve) => { prefillTimer = setTimeout(resolve, 3000); }),
+          ]);
+        } catch (e) { /* unconfirmed: fall through to the insert */ }
+        clearTimeout(prefillTimer);
+      }
       // Save lead to database
       // gh-2068 (cto38-b2068r fix pass): X-OQ-Internal header attached to
       // THIS insert only -- see oqInternalHeader() above.
-      if (!window.__oqRouterLeadId) {
+      if (!window.__oqRouterLeadConfirmed) {
         const leadRow = { name: `${firstName} ${lastName}`, email: email, source: 're_agent', created_at: new Date().toISOString() };
         const knownVariant = getOqVariant();
         if (knownVariant !== 'unknown') leadRow.variant = knownVariant;
@@ -1795,9 +1811,11 @@
     if (typeof supabase === 'undefined' || typeof CONFIG === 'undefined' ||
         !CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_ANON) return;
     var _sb = window.sb || supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON, { auth: { storage: window.OtterQuoteCookieStorage, storageKey: window.OTTERQUOTE_AUTH_STORAGE_KEY || 'sb-otterquote-auth' } }); // gh-1980 PR2: converge fallback client onto canonical key too
-    _sb.rpc('get_lead_prefill', { p_lead_id: leadId }).then(function (res) {
+    // gh-2084: the promise is kept on window so the submit handler can wait for it.
+    window.__oqRouterPrefillPromise = _sb.rpc('get_lead_prefill', { p_lead_id: leadId }).then(function (res) {
       var row = res && res.data && res.data[0];
       if (!row) return; // expired, unknown id, or migration not applied yet
+      window.__oqRouterLeadConfirmed = true; // gh-2084: router row exists; submit skips its own leads insert
       var setVal = function (id, val) {
         if (!val) return;
         var el = document.getElementById(id);

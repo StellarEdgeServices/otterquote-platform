@@ -20,6 +20,12 @@
  *   (c) without a lead id and no variant known: exactly one insert, and no
  *       variant key is sent (never a bogus 'unknown').
  *   (d) static: partner-insurance.html has no leads write at all.
+ *   (e)-(h) REVIEW FAIL fix: the insert is skipped only when get_lead_prefill
+ *       CONFIRMED the router row (window.__oqRouterLeadConfirmed). The page's
+ *       real head script sets __oqRouterLeadId from ?lead= (not injected).
+ *       Garbage id / unknown uuid with no prefill row: 1 insert (x-oq-internal
+ *       kept). Submit before prefill resolves: the handler waits; row -> 0
+ *       inserts, no row -> 1 insert.
  * Negative control: on origin/main (a) fails (a second insert is made) and
  * (b) fails (variant missing).
  *
@@ -100,7 +106,7 @@ function makeElementStore() {
 // Auth.signUpWithPassword() REJECTS with Supabase's own literal duplicate-
 // registration message -- this is the auth.users-level duplicate the RPC
 // above cannot see.
-function runPageScript(html, { search = '', leadId = null, signUp = 'ok', dupError = null, rpcError = null, signUpSeq = null, rpcSeq = null, sessionEmail = null, ls = null, ss = null } = {}) {
+function runPageScript(html, { search = '', leadId = null, signUp = 'ok', dupError = null, rpcError = null, signUpSeq = null, rpcSeq = null, sessionEmail = null, ls = null, ss = null, prefill = 'none', deferPrefill = false } = {}) {
   const script = extractInlineScripts(html);
   if (!script || script.indexOf('register_partner') === -1) {
     return { setupError: 'no inline script containing register_partner was found on the page' };
@@ -111,6 +117,7 @@ function runPageScript(html, { search = '', leadId = null, signUp = 'ok', dupErr
   const callOrder = [];
   let signUpN = 0, rpcN = 0;
   const alertCalls = [];
+  const prefillResolvers = [];
   // gh2274 fix-up: a plain always-Promise-returning Proxy trap (the prior
   // shape here) breaks the moment a caller does something other than a
   // single terminal method call -- e.g. partner-re.html builds the query
@@ -142,6 +149,13 @@ function runPageScript(html, { search = '', leadId = null, signUp = 'ok', dupErr
         const rpcErr = rpcSeq ? rpcSeq[Math.min(rpcN++, rpcSeq.length - 1)] : rpcError;
         if (rpcErr) return Promise.resolve({ data: null, error: rpcErr });
         return Promise.resolve({ data: { id: 'gh2274-test-id', unique_code: 'TESTCODE123' }, error: null });
+      }
+      if (name === 'get_lead_prefill') {
+        // gh-2084 fix: the real prefill script calls this. 'row' = a live router
+        // row, 'none' = expired/unknown/garbage id (RPC returns no rows).
+        const result = { data: prefill === 'row' ? [{ name: 'Jane Test', email: 'router@example.com', phone: '3175550000' }] : [], error: null };
+        if (deferPrefill) return new Promise((resolve) => { prefillResolvers.push((rowOrNull) => resolve({ data: rowOrNull ? [rowOrNull] : [], error: null })); });
+        return Promise.resolve(result);
       }
       if (name === 'claim_partner_account') {
         return Promise.resolve({ data: { claimed: true }, error: null });
@@ -186,7 +200,7 @@ function runPageScript(html, { search = '', leadId = null, signUp = 'ok', dupErr
   const cryptoStub = { getRandomValues(arr) { for (let i = 0; i < arr.length; i++) arr[i] = i % 256; return arr; } };
   const domContentLoadedListeners = [];
   const doc = {
-    referrer: '',
+    referrer: '', cookie: '',
     getElementById: store.getElementById,
     createElement: store.createElement,
     querySelector(sel) {
@@ -200,7 +214,10 @@ function runPageScript(html, { search = '', leadId = null, signUp = 'ok', dupErr
     body: store.createElement('body'),
   };
   const win = {
-    __oqRouterLeadId: leadId || undefined,
+    // gh-2084 fix: __oqRouterLeadId is NOT injected; the page's real first <head>
+    // script sets it from ?lead= in location.search.
+    history: { state: null, replaceState() {} },
+    sb,
     location: { search: search || '', hostname: 'otterquote.com', href: '', replace() {} },
     localStorage, sessionStorage,
     addEventListener() {}, removeEventListener() {},
@@ -209,6 +226,7 @@ function runPageScript(html, { search = '', leadId = null, signUp = 'ok', dupErr
     crypto: cryptoStub,
     supabase: {},
   };
+  void leadId;
   win.window = win;
   // The bug: Auth.signUpWithPassword() throws Supabase's own literal
   // duplicate-registration error -- always AFTER register_partner has
@@ -226,6 +244,7 @@ function runPageScript(html, { search = '', leadId = null, signUp = 'ok', dupErr
   };
   win.Auth = AuthObj;
   const ctx = {
+    history: win.history, supabase: {},
     window: win, document: doc, localStorage, sessionStorage,
     navigator: { clipboard: { writeText: () => Promise.resolve() } },
     console, URLSearchParams,
@@ -239,7 +258,7 @@ function runPageScript(html, { search = '', leadId = null, signUp = 'ok', dupErr
     fbq() {}, gtag() {},
     Sentry: new Proxy({}, { get: () => (...args) => { const cb = args.find((a) => typeof a === 'function'); if (cb) cb({ setTag() {}, setContext() {}, setLevel() {}, setUser() {} }); } }),
     sb, Auth: AuthObj,
-    CONFIG: { whenReady(cb) { cb(sb); }, SUPPORT_EMAIL: 'support@otterquote.com', SITE_URL: 'https://otterquote.com', DEMO_MODE: false },
+    CONFIG: { SUPABASE_URL: 'https://example.supabase.co', SUPABASE_ANON: 'anon', whenReady(cb) { cb(sb); }, SUPPORT_EMAIL: 'support@otterquote.com', SITE_URL: 'https://otterquote.com', DEMO_MODE: false },
     AgentTypes: { CHOOSER_LABELS: { re_agent: 'Real Estate Agent', insurance_agent: 'Insurance Agent', home_inspector: 'Home Inspector', adjuster: 'Adjuster', other: 'Other' } },
   };
   vm.createContext(ctx);
@@ -249,7 +268,7 @@ function runPageScript(html, { search = '', leadId = null, signUp = 'ok', dupErr
     return { setupError: 'script execution error while loading the page: ' + e.message };
   }
   for (const fn of domContentLoadedListeners) { try { fn(); } catch (e) {} }
-  return { store, rpcCalls, leadsCalls, alertCalls, callOrder, lsStore, ssStore };
+  return { store, rpcCalls, leadsCalls, alertCalls, callOrder, lsStore, ssStore, win, prefillResolvers };
 }
 
 async function submitForm(runResult, formId, fill, { hasConfirmPopup = false } = {}) {
@@ -288,13 +307,26 @@ async function scenario(opts) {
   await submitForm(r, 'partner-form', FIELDS, { hasConfirmPopup: true });
   return r;
 }
+// Submit while get_lead_prefill is still in flight, THEN let it resolve.
+async function scenarioSubmitBeforePrefill(opts, prefillRow) {
+  const r = runPageScript(reHtml, { ...opts, deferPrefill: true });
+  if (r.setupError) { ok(false, 'setup: ' + r.setupError); return null; }
+  const submitted = submitForm(r, 'partner-form', FIELDS, { hasConfirmPopup: true });
+  await new Promise((res) => setTimeout(res, 20));
+  r.prefillInFlightAtSubmit = r.prefillResolvers.length > 0;
+  r.insertsBeforeResolve = leadsWrites(r).length;
+  r.prefillResolvers.forEach((fn) => fn(prefillRow));
+  await submitted;
+  return r;
+}
 const leadsWrites = (r) => r.leadsCalls.filter((c) => c.table === 'leads' && c.op);
 const leadsRpcWrites = (r) => r.rpcCalls.filter((c) => /lead/i.test(c.name) && !/prefill/i.test(c.name));
 
 // (a) router lead id present
 {
-  const r = await scenario({ search: '?v=e', leadId: LEAD_ID });
+  const r = await scenario({ search: '?v=e&lead=' + LEAD_ID, prefill: 'row' });
   if (r) {
+    ok(r.win.__oqRouterLeadId === LEAD_ID && r.win.__oqRouterLeadConfirmed === true, '(a) the real head script captured the id and the prefill confirmed the row');
     ok(r.rpcCalls.some((c) => c.name === 'register_partner'), '(a) register_partner still runs on the signup');
     ok(leadsWrites(r).length === 0, '(a) with ?lead=<uuid> the page performs NO leads insert/upsert/update (found ' + leadsWrites(r).length + ')');
     ok(leadsRpcWrites(r).length === 0, '(a) no leads-writing RPC is called either (the router row already carries variant e)');
@@ -317,6 +349,41 @@ const leadsRpcWrites = (r) => r.rpcCalls.filter((c) => /lead/i.test(c.name) && !
     const w = leadsWrites(r);
     ok(w.length === 1 && w[0].op === 'insert', '(c) no lead id, no variant: exactly one leads insert (found ' + w.length + ')');
     ok(w.length === 1 && !('variant' in w[0].payload), '(c) no variant key is sent when none is known');
+  }
+}
+// (e) invalid / unconfirmed ids still write exactly one row (REVIEW FAIL fix)
+{
+  const r = await scenario({ search: '?v=e&lead=not-a-real-lead', prefill: 'none' });
+  if (r) {
+    const w = leadsWrites(r);
+    ok(r.win.__oqRouterLeadId === 'not-a-real-lead' && !r.win.__oqRouterLeadConfirmed, '(e) garbage id: captured by the head script but never confirmed');
+    ok(w.length === 1 && w[0].op === 'insert', '(e) ?lead=not-a-real-lead: exactly one leads insert (found ' + w.length + ')');
+    ok(w.length === 1 && w[0].payload.variant === 'e' && w[0].payload.source === 're_agent', '(e) that insert carries variant e and source re_agent');
+  }
+}
+{
+  const r = await scenario({ search: '?v=e&oq_internal=1&lead=' + LEAD_ID, prefill: 'none' });
+  if (r) {
+    const w = leadsWrites(r);
+    ok(w.length === 1 && w[0].op === 'insert', '(f) well-formed uuid, prefill returns no row: exactly one leads insert (found ' + w.length + ')');
+    ok(w.length === 1 && w[0].headers['x-oq-internal'] === '1', '(f) the fallback insert keeps the x-oq-internal header (?oq_internal=1)');
+  }
+}
+// (g)/(h) submit BEFORE get_lead_prefill resolves
+{
+  const r = await scenarioSubmitBeforePrefill({ search: '?v=e&lead=' + LEAD_ID }, { name: 'Jane Test', email: 'router@example.com', phone: '3175550000' });
+  if (r) {
+    ok(r.prefillInFlightAtSubmit && r.insertsBeforeResolve === 0, '(g) race setup: prefill was still in flight and nothing was inserted yet');
+    ok(leadsWrites(r).length === 0, '(g) submit before prefill, prefill returns a row: ZERO direct inserts (found ' + leadsWrites(r).length + ')');
+    ok(r.rpcCalls.some((c) => c.name === 'register_partner'), '(g) register_partner still runs');
+  }
+}
+{
+  const r = await scenarioSubmitBeforePrefill({ search: '?v=e&lead=' + LEAD_ID }, null);
+  if (r) {
+    const w = leadsWrites(r);
+    ok(r.prefillInFlightAtSubmit, '(h) race setup: prefill was still in flight at submit');
+    ok(w.length === 1 && w[0].op === 'insert', '(h) submit before prefill, prefill returns no row: exactly one insert (found ' + w.length + ')');
   }
 }
 // (d) static: the parallel insurance page never writes leads
