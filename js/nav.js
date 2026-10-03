@@ -48,6 +48,8 @@ const Nav = {
     // contractor-about.html is a homeowner-facing page (viewing a contractor's profile);
     // it must not be treated as a contractor portal page despite its URL.
     if (path.includes('contractor-about')) return false;
+    // Articles under /guides/ and /blog/ are homeowner-facing even when the slug says "contractor".
+    if (path.indexOf('/guides/') === 0 || path.indexOf('/blog/') === 0) return false;
     return path.includes('contractor');
   },
 
@@ -1162,13 +1164,13 @@ const Nav = {
               <a href="/contractor-faq.html">FAQ</a>
               <a href="/contractor-opportunities.html">Browse Opportunities</a>
               <a href="/tools.html">Contractor Tools</a>
-              <a href="/blog/index.html">Blog</a>
+              <a href="/blog/">Blog</a>
               <a href="/guides/">Guides</a>
             ` : `
               <a href="/how-it-works.html">How It Works</a>
               ${!this._isInspectorTrack() ? '<a href="/faq.html">FAQ</a>' : ''}
               <a href="/start.html${this._attributionQuery()}">Get Started</a>
-              <a href="/blog/index.html">Blog</a>
+              <a href="/blog/">Blog</a>
               <a href="/guides/">Guides</a>
             `}
           </div>

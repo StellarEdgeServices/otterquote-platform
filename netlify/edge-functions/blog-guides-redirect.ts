@@ -1,7 +1,7 @@
 /**
  * blog-guides-redirect.ts — Netlify Edge Function (gh-1745, PR #1789 fix round 1)
  *
- * Intercepts the 23 extensionless /blog/ and /guides/ paths listed below and
+ * Intercepts the 27 extensionless /blog/ and /guides/ paths listed below and
  * 301s each to its .html twin, running AHEAD of Netlify's built-in Pretty
  * URLs post-processing.
  *
@@ -23,10 +23,10 @@
  * The `_redirects` rules added for gh-1745 are left in place unchanged as
  * the documented source of truth (same convention as recruit-redirect.ts);
  * this function exists solely to win the race against Pretty URLs for
- * these 23 literal paths (gh-1745 wave 2, CRO RUN 20, widened from the
+ * these 27 literal paths (gh-1745 wave 2, CRO RUN 20, widened from the
  * original 6). Everything else on the site — every other page,
  * every other `_redirects` rule — is untouched: this matches on exact
- * pathname only, no wildcard, so it cannot catch any path outside the 23
+ * pathname only, no wildcard, so it cannot catch any path outside the 27
  * listed below.
  *
  * 301 (not a 200 rewrite like recruit-redirect.ts) because gh-1745 is a
@@ -86,6 +86,14 @@ const REDIRECT_MAP: Record<string, string> = {
     '/blog/when-not-to-file-roof-insurance-claim.html',
   '/blog/why-roofers-quote-different-prices':
     '/blog/why-roofers-quote-different-prices.html',
+
+  // gh-1745 wave 3: posts added after wave 2, plus the index.html twins.
+  '/blog/hail-damage-roof-inspection-first-72-hours':
+    '/blog/hail-damage-roof-inspection-first-72-hours.html',
+  '/blog/how-long-does-roof-insurance-claim-take-indiana':
+    '/blog/how-long-does-roof-insurance-claim-take-indiana.html',
+  '/blog/index.html': '/blog/',
+  '/guides/index.html': '/guides/',
 
   // CRO RUN 52 / gh-2448 + gh-2449 (#2423): four week-1 guide pages -- same
   // extensionless -> .html 301 as above so each is not dual-served.

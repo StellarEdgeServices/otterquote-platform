@@ -48,3 +48,11 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Run Vitest unit tests
         run: npm test
+      # gh-1462: ESLint gate (flat config, eslint 9 + eslint-config-next 16). Runs in this
+      # existing job so it reuses the installed dependencies (no extra job, no extra billing
+      # minute) and inherits the same path filters and push:main trigger. Errors fail the
+      # step; --max-warnings is a ratchet pinned at the warning count measured on main
+      # (124, all from the five react-hooks v7 rules set to "warn" in eslint.config.mjs).
+      # Lower it as warnings are cleaned up; never raise it without a tracked reason.
+      - name: Run ESLint (gh-1462)
+        run: npx eslint . --max-warnings=124
