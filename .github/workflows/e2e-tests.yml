@@ -418,6 +418,15 @@ jobs:
       - name: partner signup duplicate-email error routing unit test (gh-2274 regression)
         run: node tests/gh2274-partner-dup-email-error.mjs
 
+      - name: cs_auth_role breadcrumb owner binding unit test (gh-2344)
+        run: node tests/gh2344-cs-auth-role-owner.mjs
+
+      - name: partner-site owner stamp + signup-ctx binding + dropped-ctx re-collect ask unit test (gh-2344, LEGAL-READ 5965145560)
+        run: node tests/gh2344-partner-site-owner-stamp.mjs
+
+      - name: ownerTag cyrb53 parity across js/auth.js, React port and index.html (gh-2344)
+        run: node tests/gh2344-owner-tag-parity.mjs
+
       - name: tsc --noEmit type gate (gh-414)
         working-directory: react-app
         run: npx tsc --noEmit

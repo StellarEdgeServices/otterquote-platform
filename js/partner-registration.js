@@ -89,7 +89,7 @@
    * click-id / funnel attribution, no name/email/phone/company) and the dashboard re-collects the
    * rest (name, phone, company, a freshly ticked terms checkbox -> a NEW termsAcceptedAt).
    * Every string in FORMS is copied VERBATIM from the matching signup page (partner-re,
-   * partner-insurance, partner-inspectors, partner-adjusters, partner-other); unknown type -> other.
+   * partner-insurance, partner-inspectors, partner-adjusters, partner-other). gh-2344: no trusted type -> the dashboard ASKS (never 'other' by default).
    * ------------------------------------------------------------------------------------------- */
   var CTX_KEY = 'oq_partner_signup_ctx';
   var CTX_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -138,7 +138,10 @@
 
   /** register_partner arguments from the re-collected values (v: {first,last,full,phone,company}), the ctx and the signed-in email. termsAcceptedAt = the fresh ticked submit. */
   function buildRecollectParams(agentType, v, ctx, ownEmail, isTest, termsAcceptedAt) {
-    var type = TYPES.indexOf(agentType) === -1 ? 'other' : agentType;
+    // gh-2344 (CEO ruling, #2304 5965155761 item 1): never default an unknown/missing type to 'other' -- the caller must
+    // have a type from a trusted ctx or one the person picked on the re-collect ask.
+    if (TYPES.indexOf(agentType) === -1) return null;
+    var type = agentType;
     var form = formFor(type), first = String(v.first || '').trim(), last = String(v.last || '').trim();
     if (form.full) {
       var parts = String(v.full || '').trim().split(/\s+/).filter(Boolean);
@@ -157,6 +160,34 @@
     return p;
   }
 
+  /* ---------------------------------------------------------------------------------------------
+   * gh-2344 (CEO ruling, #2304 5965155761 item 1; LEGAL-READ FAIL 5965145560): when the signup ctx is dropped
+   * (missing, expired, unknown type, or a missing/different owner) the re-collect ASKS for the partner type and a
+   * recruiter code instead of defaulting to 'other' / the standard Partner Terms with no recruiter credited.
+   * ------------------------------------------------------------------------------------------- */
+  /** A typed recruit code, normalised exactly as recruit.html does (gh-1648); a pasted recruit link (?code= / ?recruit=) is accepted. '' when empty. */
+  function normRecruitCode(raw) {
+    var s = String(raw || '').trim();
+    var m = s.match(/[?&](?:code|recruit)=([^&#\s]+)/i);
+    if (m) { try { s = decodeURIComponent(m[1]); } catch (e) { s = m[1]; } }
+    return String(s).trim().toUpperCase().replace(/^R-/, 'r-');
+  }
+  /**
+   * The lookup the signup pages' detectRecruitCode() runs (active recruiter by recruit_code via get_referral_agents_public).
+   * {code} when an active recruiter holds it; {code: null} when the field is empty or no active recruiter holds it (not
+   * credited -- same as the signup pages); {error} when the lookup itself failed (the caller must not register uncredited).
+   */
+  async function lookupRecruitCode(sb, raw) {
+    var code = normRecruitCode(raw);
+    if (!code) return { code: null };
+    try {
+      var res = await sb.rpc('get_referral_agents_public').select('id').eq('recruit_code', code).eq('status', 'active').maybeSingle();
+      if (res && res.error) return { error: res.error };
+      return { code: res && res.data ? code : null };
+    } catch (e) { return { error: e }; }
+  }
+
   root.PartnerRegistration = { KEY: KEY, TTL_MS: TTL_MS, TYPES: TYPES, readMarker: readMarker, clearMarker: clearMarker, buildParams: buildParams, complete: complete,
-    CTX_KEY: CTX_KEY, FORMS: FORMS, ERR_TEXT: ERR_TEXT, SUBMITTING: SUBMITTING, readCtx: readCtx, clearCtx: clearCtx, formFor: formFor, buildRecollectParams: buildRecollectParams };
+    CTX_KEY: CTX_KEY, FORMS: FORMS, ERR_TEXT: ERR_TEXT, SUBMITTING: SUBMITTING, readCtx: readCtx, clearCtx: clearCtx, formFor: formFor, buildRecollectParams: buildRecollectParams,
+    normRecruitCode: normRecruitCode, lookupRecruitCode: lookupRecruitCode };
 })(typeof window !== 'undefined' ? window : this);
