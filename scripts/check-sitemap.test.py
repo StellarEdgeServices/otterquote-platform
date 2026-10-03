@@ -53,6 +53,21 @@ check("REJECTED: listed redirecting URL exits 1 (_redirects rule)", code == 1 an
 code, out = run(good, sitemap(["/", "/blog/"]))
 check("REJECTED: public indexable page missing from sitemap exits 1 (missing)", code == 1 and "missing from sitemap" in out)
 
+# gh-live-fixes: generated /locations/ pages need an index.html-twin 301 in _redirects AND the edge function map.
+EDGE = "netlify/edge-functions/blog-guides-redirect.ts"
+LOC = "locations/zz-county-oh/roofing/index.html"
+loc_files = {**good, LOC: page(), EDGE: "const M = {\n  '/locations/zz-county-oh/roofing/index.html':\n    '/locations/zz-county-oh/roofing/',\n};\n"}
+loc_sm = sitemap(["/", "/faq.html", "/blog/", "/locations/zz-county-oh/roofing/"])
+loc_red = "/blog/index.html /blog/ 301\n/locations/zz-county-oh/roofing/index.html /locations/zz-county-oh/roofing/ 301\n"
+code, out = run(loc_files, loc_sm, redirects=loc_red)
+check("CLEAN locations tree (rule in _redirects and edge map) exits 0", code == 0 and "PASS" in out)
+code, out = run(loc_files, loc_sm, redirects="/blog/index.html /blog/ 301\n")
+check("REJECTED: locations page with no _redirects index.html rule exits 1", code == 1 and "no _redirects rule" in out)
+code, out = run({**loc_files, EDGE: "const M = {};\n"}, loc_sm, redirects=loc_red)
+check("REJECTED: locations page missing from the edge function map exits 1", code == 1 and "REDIRECT_MAP" in out)
+code, out = run(loc_files, sitemap(["/", "/faq.html", "/blog/"]), redirects=loc_red)
+check("REJECTED: locations page missing from sitemap exits 1", code == 1 and "missing from sitemap" in out)
+
 print()
 print("FAILED: %d" % len(FAILURES) if FAILURES else "all assertions passed")
 sys.exit(1 if FAILURES else 0)

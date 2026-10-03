@@ -116,6 +116,18 @@ https://www.stellaredgeservices.com/* /stellar-edge.html 200
 # as with the wave-2 rules, the edge function is what actually fires and these
 # lines are the documented source of truth.
 /guides/multiple-bids-roof-insurance-claim /guides/multiple-bids-roof-insurance-claim.html 301
+# CRO RUN 52 / #2423: generated /locations/<county>/<trade>/ pages. Pretty URLs also serves
+# the on-disk .../index.html file as a second 200 beside the trailing-slash URL (same body), so the
+# index.html twin 301s to the slash URL -- the same class as /blog/index.html and /guides/index.html
+# above. The edge function (netlify/edge-functions/blog-guides-redirect.ts) is what actually fires;
+# these lines are the documented source of truth. scripts/check-sitemap.py fails if a generated
+# page lacks its rule here and its entry in the edge function map.
+/locations/cuyahoga-county-oh/roofing/index.html /locations/cuyahoga-county-oh/roofing/ 301
+/locations/davidson-county-tn/roofing/index.html /locations/davidson-county-tn/roofing/ 301
+/locations/franklin-county-oh/roofing/index.html /locations/franklin-county-oh/roofing/ 301
+/locations/hamilton-county-oh/roofing/index.html /locations/hamilton-county-oh/roofing/ 301
+/locations/knox-county-tn/roofing/index.html /locations/knox-county-tn/roofing/ 301
+/locations/shelby-county-tn/roofing/index.html /locations/shelby-county-tn/roofing/ 301
 /guides/roof-bid-comparison-worksheet /guides/roof-bid-comparison-worksheet.html 301
 /guides/siding-bid-comparison /guides/siding-bid-comparison.html 301
 /guides/gutter-bid-comparison /guides/gutter-bid-comparison.html 301

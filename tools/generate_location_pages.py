@@ -1519,7 +1519,7 @@ def build_page(county: str, trade: str, generated_on: str, state: str = "IN", pr
 .loc-body p {{ margin-bottom: var(--sp-3); }}
 .loc-body ul {{ margin: 0 0 var(--sp-4) 1.2rem; }}
 .loc-body li {{ margin-bottom: var(--sp-2); }}
-.loc-body a {{ color: var(--amber); }}
+.loc-body a:not(.btn) {{ color: var(--amber); }}
 .breadcrumb {{ font-size: 0.85rem; color: var(--gray); padding: var(--sp-4) 0 0; text-align: center; }}
 .breadcrumb a {{ color: var(--amber); text-decoration: none; }}
 .cta-bar {{ text-align: center; padding: var(--sp-10) 0 var(--sp-6); border-top: 1px solid rgba(255,255,255,0.06); }}
@@ -1535,7 +1535,7 @@ def build_page(county: str, trade: str, generated_on: str, state: str = "IN", pr
 
 <script>
 (function() {{
-  var navHtml = '<nav class="site-nav"><div class="nav-inner"><a class="nav-logo" href="/"><img src="/img/brand-assets/otter-icon.png" alt="Otter Quotes" class="nav-logo-icon" style="height:36px;width:auto;object-fit:contain;"></a><div class="nav-links"><a href="/how-it-works.html">How It Works</a><a href="/contractor-join.html">For Contractors</a><a href="/start.html" class="btn btn-primary btn-sm">Get Started</a></div></div></nav>';
+  var navHtml = '<nav class="site-nav"><div class="nav-inner container"><a class="nav-logo" href="/"><img src="/img/brand-assets/otter-icon.png" alt="Otter Quotes" class="nav-logo-icon" style="height:36px;width:auto;object-fit:contain;"></a><div class="nav-links"><a href="/how-it-works.html">How It Works</a><a href="/contractor-join.html">For Contractors</a><a href="/start.html" class="btn btn-primary btn-sm">Get Started</a></div></div></nav>';
   document.write(navHtml);
 }})();
 </script>
