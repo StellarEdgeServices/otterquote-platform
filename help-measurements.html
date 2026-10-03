@@ -51,6 +51,9 @@
     <!-- Stripe.js &mdash; required for card payment on measurement report purchase -->
     <script src="https://js.stripe.com/v3/"></script>
     <script src="/js/ga-gate.js"></script>
+    <!-- gh-2078 / D-330: the measurement checkout is the one authenticated page the Meta Pixel may load on, Purchase only (no PageView). -->
+    <script>window.OQ_META_PURCHASE_ONLY = true;</script>
+    <script src="/js/meta-pixel-gate.js"></script>
     <script>gtag('config', 'G-D1Y1TLGEFY');</script>
 <!-- Microsoft Clarity (wwr7qlk8g5) is loaded by /js/ga-gate.js, behind the same production-host gate as GA4 (gh-1619). Do not add a per-page loader. -->
 
@@ -969,6 +972,40 @@
             }
         }
 
+        // ── gh-2078: measurement_purchase (GA4) + Purchase (Meta pixel), parity with the React page ──────────────────
+        // Same event name and params as react-app/app/(homeowner)/help-measurements/page.tsx (value 15, USD, variant), same once-only
+        // marker key as its hover-charge-storage.ts (keyed on the charged PaymentIntent id), and the Meta eventID is the SAME
+        // `measurement_purchase:<paymentIntentId>` string supabase/functions/stripe-webhook/meta-capi.ts sends as the CAPI event_id,
+        // so Meta dedups the two. Suppression is NOT re-implemented here: js/ga-gate.js drops gtag() on an internal/QA visit
+        // (gh-2356) and never loads GA4 for an opted-out visitor, and js/meta-pixel-gate.js makes fbq() a no-op on an internal visit
+        // and never loads fbevents.js for oq_ad_optout=1 / Global Privacy Control / a stored opt-out (gh-1925, gh-2107).
+        function getMeasurementVariant() {
+            var VARIANT_RE = /^[a-z0-9]{1,8}$/;
+            try {
+                var v = String(window.localStorage.getItem('oq_variant_v3') || '').trim().toLowerCase();
+                if (VARIANT_RE.test(v)) return v;
+            } catch (e) {}
+            try {
+                var m = document.cookie.match(/(?:^|; )oq_variant_v3=([^;]*)/);
+                var c = m ? decodeURIComponent(m[1]).trim().toLowerCase() : '';
+                if (VARIANT_RE.test(c)) return c;
+            } catch (e) {}
+            return 'unknown';
+        }
+
+        function fireMeasurementPurchase(paymentIntentId) {
+            if (!paymentIntentId) return;
+            var FIRED_KEY = 'oq_ga4_measurement_purchase_fired_v1:' + paymentIntentId;
+            try { if (window.localStorage.getItem(FIRED_KEY) === '1') return; } catch (e) {}
+            var variant = getMeasurementVariant();
+            try { gtag('event', 'measurement_purchase', { value: 15.0, currency: 'USD', variant: variant }); } catch (e) {}
+            try {
+                fbq('track', 'Purchase', { value: 15.0, currency: 'USD', variant: variant },
+                    { eventID: 'measurement_purchase:' + paymentIntentId });
+            } catch (e) {}
+            try { window.localStorage.setItem(FIRED_KEY, '1'); } catch (e) {}
+        }
+
         // Step 2 — Confirm card payment, then (and only then) create the measurement order
         async function confirmHoverPayment() {
             const payBtn = document.getElementById('payHoverBtn');
@@ -1016,6 +1053,9 @@
                     payment_intent_id: paymentIntent.id, // D-181: verified server-side against the catalog price
                     buyer_role: 'homeowner',
                 });
+
+                // gh-2078: the homeowner conversion event, once per charged PaymentIntent, only after the order step resolved.
+                fireMeasurementPurchase(paymentIntent.id);
 
                 // Show success state
                 document.getElementById('hoverSection').querySelector('.section-card').style.display = 'none';

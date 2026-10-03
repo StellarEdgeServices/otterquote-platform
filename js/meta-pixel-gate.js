@@ -362,5 +362,15 @@
   // title) on real clicks once any event has fired. autoConfig is turned off for this pixel before `init`, on every init.
   window.fbq('set', 'autoConfig', false, PIXEL_ID);
   window.fbq('init', PIXEL_ID);
-  window.fbq('track', 'PageView');
+  // gh-2078 / D-330 (Dustin's ruling 5777193662, Purchase only on the measurement checkout): a page that sets
+  // window.OQ_META_PURCHASE_ONLY = true BEFORE this file loads (help-measurements.html) initialises the pixel but sends NO PageView, and a
+  // back/forward-cache restore (fbevents.js's own `pageshow` listener sends a PageView on one) is stopped at the capture phase. Same rule
+  // as react-app/app/components/MetaPixelGate.tsx's PURCHASE_ONLY_PATHS. Every other page leaves the flag unset and is unchanged.
+  if (window.OQ_META_PURCHASE_ONLY === true) {
+    try {
+      window.addEventListener('pageshow', function (e) { if (e && e.persisted) { e.stopImmediatePropagation(); } }, true);
+    } catch (e) { /* never break a page over a listener */ }
+  } else {
+    window.fbq('track', 'PageView');
+  }
 })();
