@@ -121,3 +121,18 @@ Deno.test("blog-guides-redirect: all 18 mapped paths (config.path) 301 and none 
     assertEquals(loc, `https://otterquote.com${p}.html`, `wrong location for ${p}`);
   }
 });
+
+Deno.test("blog-guides-redirect: a generated /locations/ index.html twin 301s to the slash URL and the slash URL falls through", async () => {
+  const twin = await handler(
+    new Request("https://otterquote.com/locations/franklin-county-oh/roofing/index.html?utm_source=x"),
+    fakeContext(),
+  );
+  const loc = new URL(twin.headers.get("location")!);
+  assertEquals(twin.status, 301);
+  assertEquals(loc.pathname, "/locations/franklin-county-oh/roofing/");
+  assertEquals(loc.searchParams.get("utm_source"), "x");
+
+  const ctx = fakeContext();
+  await handler(new Request("https://otterquote.com/locations/franklin-county-oh/roofing/"), ctx);
+  assertEquals(ctx.nextCalled, true);
+});

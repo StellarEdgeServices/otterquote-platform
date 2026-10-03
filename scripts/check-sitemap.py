@@ -42,7 +42,21 @@ for loc in locs:
     if noindex(f): errs.append(f"{loc}: page is noindex")
     if blocked("/" + f) or blocked(path): errs.append(f"{loc}: disallowed in robots.txt")
     if redirected(path): errs.append(f"{loc}: matches a _redirects rule (listing a redirecting URL)")
-cands = glob.glob("*.html") + glob.glob("blog/*.html") + glob.glob("guides/*.html") + glob.glob("contractors/*.html")
+# Generated /locations/<county>/<trade>/index.html pages (tools/generate_location_pages.py). Pretty URLs serves
+# the on-disk .../index.html as a second 200 beside the slash URL, so each one needs a 301 for its index.html twin
+# in _redirects AND in the edge function map that actually fires (same mechanism as /blog/index.html, #2461).
+loc_pages = sorted(glob.glob("locations/*/*/index.html"))
+edge_src = read("netlify/edge-functions/blog-guides-redirect.ts") if Path("netlify/edge-functions/blog-guides-redirect.ts").is_file() else ""
+for f in loc_pages:
+    if f not in listed and not noindex(f):
+        errs.append(f"{f}: public + indexable but missing from sitemap.xml (list it, add noindex, or add to UNLISTED_OK)")
+    twin = "/" + f
+    slash = twin[: -len("index.html")]
+    if twin not in redirect_src:
+        errs.append(f"{f}: index.html twin has no _redirects rule ({twin} {slash} 301)")
+    if f"'{twin}'" not in edge_src and f'"{twin}"' not in edge_src:
+        errs.append(f"{f}: index.html twin is not in the blog-guides-redirect.ts REDIRECT_MAP (the edge function is what fires)")
+cands = glob.glob("*.html") + glob.glob("blog/*.html") + glob.glob("guides/*.html") + glob.glob("contractors/*.html") + loc_pages
 for f in sorted(cands):
     if f in listed or f in UNLISTED_OK or f.startswith("admin-") or f == "404.html": continue
     if noindex(f) or blocked("/" + f) or redirected("/" + f): continue

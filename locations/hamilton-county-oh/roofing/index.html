@@ -76,17 +76,19 @@
 .loc-body { max-width: 820px; margin: 0 auto; padding: var(--sp-8) var(--sp-6) var(--sp-10); }
 .loc-body h2 { margin: var(--sp-8) 0 var(--sp-3); font-size: 1.25rem; }
 .loc-body h3 { margin: var(--sp-5) 0 var(--sp-2); font-size: 1.05rem; }
-.loc-body p, .loc-body li { color: var(--slate); line-height: 1.75; }
+.loc-body p, .loc-body li { color: #3D4F60; line-height: 1.75; }
 .loc-body p { margin-bottom: var(--sp-3); }
 .loc-body ul { margin: 0 0 var(--sp-4) 1.2rem; }
 .loc-body li { margin-bottom: var(--sp-2); }
-.loc-body a { color: var(--amber); }
-.breadcrumb { font-size: 0.85rem; color: var(--gray); padding: var(--sp-4) 0 0; text-align: center; }
+.loc-body a:not(.btn) { color: var(--amber); }
+.site-nav { position: sticky; top: 0; z-index: 100; background: rgba(10, 30, 44, 0.95); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255,255,255,0.06); }
+footer p { color: #3D4F60; }
+.breadcrumb { font-size: 0.85rem; color: #3D4F60; padding: var(--sp-4) 0 0; text-align: center; }
 .breadcrumb a { color: var(--amber); text-decoration: none; }
 .cta-bar { text-align: center; padding: var(--sp-10) 0 var(--sp-6); border-top: 1px solid rgba(255,255,255,0.06); }
-.cta-bar p { color: var(--slate); margin-bottom: var(--sp-6); }
+.cta-bar p { color: #3D4F60; margin-bottom: var(--sp-6); }
 .disclosure {
-  font-size: 0.82rem; color: var(--gray); text-align: center;
+  font-size: 0.82rem; color: #3D4F60; text-align: center;
   padding: var(--sp-4) var(--sp-6) var(--sp-10); max-width: 700px;
   margin: 0 auto; line-height: 1.6;
 }
@@ -96,7 +98,7 @@
 
 <script>
 (function() {
-  var navHtml = '<nav class="site-nav"><div class="nav-inner"><a class="nav-logo" href="/"><img src="/img/brand-assets/otter-icon.png" alt="Otter Quotes" class="nav-logo-icon" style="height:36px;width:auto;object-fit:contain;"></a><div class="nav-links"><a href="/how-it-works.html">How It Works</a><a href="/contractor-join.html">For Contractors</a><a href="/start.html" class="btn btn-primary btn-sm">Get Started</a></div></div></nav>';
+  var navHtml = '<nav class="site-nav"><div class="nav-inner container"><a class="nav-logo" href="/"><img src="/img/brand-assets/otter-icon.png" alt="Otter Quotes" class="nav-logo-icon" style="height:36px;width:auto;object-fit:contain;"></a><div class="nav-links"><a href="/how-it-works.html" class="nav-link">How It Works</a><a href="/contractor-join.html" class="nav-link">For Contractors</a><a href="/start.html" class="btn btn-primary btn-sm">Get Started</a></div></div></nav>';
   document.write(navHtml);
 })();
 </script>
@@ -108,8 +110,8 @@
     </div>
     <div style="padding: var(--sp-8) var(--sp-6) 0;">
       <h1>Comparing Roofing Bids in Hamilton County, Ohio</h1>
-      <p style="color:var(--slate); max-width:640px; margin:0 auto;">We create a scope of work and send it to local contractors.</p>
-      <p style="color:var(--slate); max-width:640px; margin:0 auto;">You compare any written bids you receive for your roofing project, and the decision stays yours.</p>
+      <p style="color:#3D4F60; max-width:640px; margin:0 auto;">We create a scope of work and send it to local contractors.</p>
+      <p style="color:#3D4F60; max-width:640px; margin:0 auto;">You compare any written bids you receive for your roofing project, and the decision stays yours.</p>
     </div>
   </div>
 
@@ -178,7 +180,7 @@
   </div>
 </main>
 
-<footer style="text-align:center; padding: var(--sp-8); color: var(--gray); font-size:0.85rem; border-top: 1px solid rgba(255,255,255,0.06);">
+<footer style="text-align:center; padding: var(--sp-8); color: #3D4F60; font-size:0.85rem; border-top: 1px solid rgba(255,255,255,0.06);">
   <p>&copy; 2026 Stellar Edge Services, LLC &mdash; Otter Quotes</p>
   <p><a href="/terms.html" style="color:var(--amber)">Terms</a> &bull; <a href="/privacy.html" style="color:var(--amber)">Privacy</a> &bull; <a href="/privacy.html#do-not-sell-or-share" style="color:var(--amber)">Do Not Sell or Share My Personal Information</a></p>
 </footer>

@@ -107,6 +107,21 @@ const REDIRECT_MAP: Record<string, string> = {
     '/guides/gutter-bid-comparison.html',
   '/guides/after-adjuster-estimate-next-steps':
     '/guides/after-adjuster-estimate-next-steps.html',
+
+  // CRO RUN 52 / #2423: generated /locations/ pages -- the index.html twin 301s to the
+  // trailing-slash URL (same class as /blog/index.html above).
+  '/locations/cuyahoga-county-oh/roofing/index.html':
+    '/locations/cuyahoga-county-oh/roofing/',
+  '/locations/davidson-county-tn/roofing/index.html':
+    '/locations/davidson-county-tn/roofing/',
+  '/locations/franklin-county-oh/roofing/index.html':
+    '/locations/franklin-county-oh/roofing/',
+  '/locations/hamilton-county-oh/roofing/index.html':
+    '/locations/hamilton-county-oh/roofing/',
+  '/locations/knox-county-tn/roofing/index.html':
+    '/locations/knox-county-tn/roofing/',
+  '/locations/shelby-county-tn/roofing/index.html':
+    '/locations/shelby-county-tn/roofing/',
 };
 
 export default async (req: Request, context: any) => {
