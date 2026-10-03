@@ -18,14 +18,15 @@
  * read site is therefore unreachable for a real visitor today, and the leak below is latent -- it becomes live the
  * moment arm A/B (or any arm using this handler) is served. A check pins that fact so a flip trips this suite.
  *
- * SEMANTICS: `check` = current correct behaviour (must pass). `knownGap` = the recommended-safe behaviour, EXPECTED TO
- * FAIL today (suite stays green, prints KNOWN GAP); the run FAILS when one starts passing ("KNOWN GAP CLOSED") so the
- * ledger entry gets converted. Same convention as tests/gh2060-static-surfaces-staleness.mjs.
+ * FIXED (gh-2060 item 6b, Marty A 5899109815): start.html reuses the stored id only when THIS page context inserted it
+ * (in-memory `ownedLeadId`); an id merely sitting in sessionStorage (another visitor's leftover) is ignored and a fresh
+ * lead is inserted. The former known-gap is now a normal check().
  *
  * NEGATIVE CONTROLS (run in-process on MUTATED COPIES of start.html served through route interception; product files
  * are never touched):
  *   M1 remove the pageshow clearing        -> the "bfcache restore clears ..." check must go RED
- *   M2 add an ownership check (a "fix")    -> the known-gap must flip ("KNOWN GAP CLOSED") while the legit-resubmit checks stay GREEN
+ *   M2 revert the 6b fix (pre-fix source)  -> the "stored lead id this page did not create ..." check must go RED while
+ *                                             the legit-resubmit checks stay GREEN
  *
  * Run: node tests/gh2060-oq-router-lead-id-stale.mjs      Exit 0 = green.
  * Playwright resolves from tests/e2e (CI: `npm ci` there + `npx playwright install chromium`), else the global install.
@@ -126,13 +127,6 @@ async function runSuite(browser, base, mutate) {
     try { await fn(); results.push({ kind: 'pass', name }); }
     catch (e) { results.push({ kind: 'fail', name, msg: e.message }); }
   }
-  async function knownGap(name, fn) {
-    try { await fn(); results.push({ kind: 'gap-closed', name }); }
-    catch (e) {
-      if (e instanceof assert.AssertionError) results.push({ kind: 'gap', name, msg: e.message });
-      else results.push({ kind: 'fail', name, msg: 'harness error (not an assertion): ' + e.message });
-    }
-  }
   const open = (o) => openStart(browser, base, Object.assign({ mutate }, o));
 
   // REACHABILITY
@@ -208,9 +202,9 @@ async function runSuite(browser, base, mutate) {
     } finally { await context.close(); }
   });
 
-  // (a) different visitor's stale id. Actual behaviour today is recorded in the known-gap's failure reason.
-  // Recommended-safe expectation: EXPECTED TO FAIL TODAY.
-  await knownGap('a stored lead id this page did not create (stale/other visitor) is never sent to update_lead_contact; a fresh lead is inserted instead', async () => {
+  // (a) different visitor's stale id. FIXED by gh-2060 item 6b (Marty A 5899109815): start.html reuses the stored id only
+  // if this page context inserted it (ownedLeadId). Negative control M2 (below) reverts the fix and this check goes RED.
+  await check('a stored lead id this page did not create (stale/other visitor) is never sent to update_lead_contact; a fresh lead is inserted instead', async () => {
     const { page, context } = await open({ seedId: STRANGER_ID });
     try {
       await submitStep1(page, VISITOR_B);
@@ -268,13 +262,10 @@ function mutateOrThrow(src, from, to, label) {
   return src.replace(from, to);
 }
 const M1_NO_CLEAR = (src) => mutateOrThrow(src, "try { sessionStorage.removeItem(LEAD_ID_STORAGE_KEY); } catch (e3) {}", '/* M1: clearing removed */', 'M1');
-// "Fix": only reuse an id this JS context itself inserted (in-memory ownership).
-const M2_OWNER_CHECK = (src) => {
-  let s = mutateOrThrow(src, "try { return sessionStorage.getItem(LEAD_ID_STORAGE_KEY); } catch (e) { return null; }",
-    "try { var v = sessionStorage.getItem(LEAD_ID_STORAGE_KEY); return (v && v === window.__oqOwnedLeadId) ? v : null; } catch (e) { return null; }", 'M2a');
-  s = mutateOrThrow(s, "try { sessionStorage.setItem(LEAD_ID_STORAGE_KEY, id); }", "window.__oqOwnedLeadId = id; try { sessionStorage.setItem(LEAD_ID_STORAGE_KEY, id); }", 'M2b');
-  return s;
-};
+// Revert the 6b fix (pre-fix source): the stored id is reused whether or not this page context inserted it.
+const M2_REVERT_FIX = (src) => mutateOrThrow(src,
+  "try { var v = sessionStorage.getItem(LEAD_ID_STORAGE_KEY); return (v && v === ownedLeadId) ? v : null; } catch (e) { return null; }",
+  "try { return sessionStorage.getItem(LEAD_ID_STORAGE_KEY); } catch (e) { return null; }", 'M2');
 
 function report(results, indent = '') {
   let fails = 0, gaps = 0, passes = 0;
@@ -303,13 +294,13 @@ try {
   if (m1Red) console.log('✓ PASS: control M1 detected -- removing the clearing turns the clear check RED');
   else { failures++; console.log('✗ FAIL: control M1 NOT detected -- the harness cannot see a missing clear'); }
 
-  console.log('\n== negative control M2: ownership check added (expect the known gap to flip, legit resubmit still green) ==');
-  const m2 = await runSuite(browser, base, M2_OWNER_CHECK);
+  console.log('\n== negative control M2: the 6b fix reverted = pre-fix source (expect the stale-id check RED, legit resubmit still green) ==');
+  const m2 = await runSuite(browser, base, M2_REVERT_FIX);
   report(m2, '  [M2] ');
-  const m2Flip = m2.some((r) => r.kind === 'gap-closed');
+  const m2Red = m2.some((r) => r.kind === 'fail' && r.name.startsWith('a stored lead id this page did not create'));
   const m2Legit = m2.some((r) => r.kind === 'pass' && r.name.startsWith('same visitor resubmits within the window'));
-  if (m2Flip && m2Legit) console.log('✓ PASS: control M2 detected -- an owner check flips the known gap and keeps the legit dedup resubmit green');
-  else { failures++; console.log(`✗ FAIL: control M2 NOT detected (flip=${m2Flip}, legitGreen=${m2Legit})`); }
+  if (m2Red && m2Legit) console.log('✓ PASS: control M2 detected -- reverting the fix turns the stale-id check RED and keeps the legit dedup resubmit green');
+  else { failures++; console.log(`✗ FAIL: control M2 NOT detected (red=${m2Red}, legitGreen=${m2Legit})`); }
 
   console.log(`\n${real.passes} passed, ${real.gaps} known gap(s), ${failures} failed.`);
 } finally {

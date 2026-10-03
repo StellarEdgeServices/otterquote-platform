@@ -657,6 +657,12 @@ window.Auth = {
         sessionStorage.removeItem('cs_auth_role');
         sessionStorage.removeItem('cs_auth_role_at');
       } catch (e) { /* non-fatal */ }
+      // gh-2060 item 2: an unconsumed cs_signup (name/phone/address) must not
+      // outlive the session either.
+      try { this.clearSignup(); } catch (e) { /* non-fatal */ }
+      // gh-2060 item 7: the CPA anti-loop guard is per-session; a stale one would
+      // suppress the redirect to the CPA re-attestation modal for the next user.
+      try { localStorage.removeItem('oq_cpa_redirect_guard'); } catch (e) { /* non-fatal */ }
       window.location.href = '/index.html';
     }
   },
@@ -1091,6 +1097,44 @@ window.Auth = {
     }
   },
 
+  // gh-2060 item 2: cs_signup (homeowner name/phone/address, written by get-started)
+  // has no owner key, so an abandoned signup left on a shared browser seeded the
+  // NEXT person's profile / HubSpot contact. Same rule as cs_auth_role: cs_signup_at
+  // must be present, non-future and < 24h old, otherwise the blob is ignored AND
+  // cleared. Returns the raw JSON string or null. Falls back to sessionStorage
+  // (same-tab flows) using the same stamp lookup as cs_auth_role.
+  readFreshSignupRaw() {
+    const TTL_MS = 24 * 60 * 60 * 1000;
+    let raw = null;
+    let at = NaN;
+    try {
+      raw = localStorage.getItem('cs_signup') || sessionStorage.getItem('cs_signup');
+      at = parseInt(localStorage.getItem('cs_signup_at') || sessionStorage.getItem('cs_signup_at') || '', 10);
+    } catch (e) { return null; }
+    if (!raw) return null;
+    const age = Date.now() - at;
+    if (!Number.isFinite(at) || age < 0 || age > TTL_MS) {
+      console.warn('[cs_signup] ignored and cleared: missing, future-dated or stale cs_signup_at stamp');
+      this.clearSignup();
+      return null;
+    }
+    return raw;
+  },
+
+  /** Parsed fresh cs_signup, or {} (absent / stale / unparseable). */
+  readFreshSignup() {
+    const raw = this.readFreshSignupRaw();
+    if (!raw) return {};
+    try { const d = JSON.parse(raw); return d && typeof d === 'object' ? d : {}; } catch (e) { return {}; }
+  },
+
+  clearSignup() {
+    ['cs_signup', 'cs_signup_at'].forEach((k) => {
+      try { localStorage.removeItem(k); } catch (e) { /* non-fatal */ }
+      try { sessionStorage.removeItem(k); } catch (e) { /* non-fatal */ }
+    });
+  },
+
   // gh-2340: cs_contractor_signup (written by contractor-join.html) carries a
   // company's signup data and is applied on the NEXT sign-in in this browser.
   // With no owner check, an abandoned signup left on a shared browser promoted
@@ -1271,7 +1315,8 @@ window.Auth = {
     }
 
     // Handle homeowner signup data (check localStorage first, fall back to sessionStorage)
-    const signupData = localStorage.getItem('cs_signup') || sessionStorage.getItem('cs_signup');
+    // gh-2060 item 2: only a fresh (< 24h, stamped) cs_signup is honoured; a stale one is cleared.
+    const signupData = this.readFreshSignupRaw();
     // Never overwrite a contractor's profile with homeowner signup data (bug fix May 7, 2026)
     if (signupData && role !== 'contractor') {
       try {
@@ -1287,8 +1332,7 @@ window.Auth = {
           sms_consent_ts: data.sms_consent_ts || null,
         });
 
-        localStorage.removeItem('cs_signup');
-        sessionStorage.removeItem('cs_signup');
+        this.clearSignup();
       } catch (err) {
         console.error('Error creating profile from signup data:', err);
       }

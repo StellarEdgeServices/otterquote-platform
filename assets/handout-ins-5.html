@@ -235,6 +235,18 @@
                 if (raw) storedContact = JSON.parse(raw);
             } catch (e) { /* no personalization data -- template stays generic/printable as-is */ }
 
+            // gh-2060 item 5: honour the stored contact only when its code matches the
+            // URL ?code= (or the URL has no code, e.g. a reload after the address-bar
+            // scrub). A contact left by a DIFFERENT partner's earlier click in this tab
+            // must not put that partner's name/company on this partner's handout.
+            try {
+                var urlCodeForOwner = new URLSearchParams(window.location.search).get('code');
+                if (storedContact && urlCodeForOwner && storedContact.code !== urlCodeForOwner) {
+                    storedContact = null;
+                    try { sessionStorage.removeItem('oq_handout_ins5_contact'); } catch (e) { /* non-fatal */ }
+                }
+            } catch (e) { /* no URL to compare -- keep whatever was stored */ }
+
             try {
                 var CODE_RE = /^[A-Za-z0-9_-]{1,64}$/;
                 var qp = new URLSearchParams(window.location.search);

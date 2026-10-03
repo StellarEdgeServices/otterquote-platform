@@ -28,6 +28,7 @@ import { recordFirstTouch } from '@/lib/attribution';
 import { isTestEmail } from '@/lib/test-signal';
 import { parseAddress, fullAddress, isValidZip, hasFullAddress, type ParsedAddress } from './utils';
 import { gtagEventBeforeNavigation } from '@/lib/ga-events';
+import { readFreshSignupRaw } from '@/lib/signup-storage';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -412,7 +413,7 @@ export default function TradeSelectorPage() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
-      const raw = localStorage.getItem('cs_signup');
+      const raw = readFreshSignupRaw();
       if (!raw) return;
       const signup = JSON.parse(raw) as Record<string, unknown>;
       const projectType = typeof signup.project_type === 'string' ? signup.project_type : '';
@@ -441,7 +442,7 @@ export default function TradeSelectorPage() {
     (async () => {
       let csSignup: Record<string, unknown> = {};
       try {
-        const raw = typeof localStorage !== 'undefined' ? localStorage.getItem('cs_signup') : null;
+        const raw = typeof localStorage !== 'undefined' ? readFreshSignupRaw() : null;
         if (raw) csSignup = JSON.parse(raw);
       } catch {
         // cs_signup missing/malformed — treated the same as absent below
@@ -827,7 +828,7 @@ export default function TradeSelectorPage() {
       // Read cs_signup profile data from localStorage
       let csSignup: Record<string, unknown> = {};
       try {
-        const raw = typeof localStorage !== 'undefined' ? localStorage.getItem('cs_signup') : null;
+        const raw = typeof localStorage !== 'undefined' ? readFreshSignupRaw() : null;
         if (raw) csSignup = JSON.parse(raw);
       } catch {
         // cs_signup missing — continue with empty

@@ -74,6 +74,7 @@ describe('isNewlyCreatedUser', () => {
 describe('readReferralSourceFromCsSignup', () => {
   it('reads referral_source out of the cs_signup payload get-started/page.tsx wrote', () => {
     localStorage.setItem('cs_signup', JSON.stringify({ referral_source: 'realtor' }));
+    localStorage.setItem('cs_signup_at', String(Date.now()));
     expect(readReferralSourceFromCsSignup()).toBe('realtor');
   });
 
@@ -83,11 +84,13 @@ describe('readReferralSourceFromCsSignup', () => {
 
   it('falls back to "" when cs_signup is present but unparsable', () => {
     localStorage.setItem('cs_signup', '{not json');
+    localStorage.setItem('cs_signup_at', String(Date.now()));
     expect(readReferralSourceFromCsSignup()).toBe('');
   });
 
   it('falls back to "" when referral_source is missing or not a string', () => {
     localStorage.setItem('cs_signup', JSON.stringify({ referral_source: 42 }));
+    localStorage.setItem('cs_signup_at', String(Date.now()));
     expect(readReferralSourceFromCsSignup()).toBe('');
   });
 });
