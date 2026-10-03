@@ -139,9 +139,15 @@ export async function handleOutOfStateClaim(
     mg = await sendMail(subject, textBody, htmlRows, extraHtml);
   } catch (mailErr) {
     console.error(`notify-admin-new-homeowner: mailgun send failed for out_of_state claim_id=${claimId}, reverting stamp:`, mailErr);
-    const { error: revertErr } = await sb.from("claims").update({ out_of_state_alerted_at: null }).eq("id", claimId);
-    if (revertErr) {
-      console.error(`notify-admin-new-homeowner: failed to revert out_of_state_alerted_at for claim_id=${claimId}:`, revertErr);
+    // gh-2105: a revert that matches zero rows leaves the stamp set and the
+    // alert permanently lost, so check the returned row, not just error.
+    const { data: reverted, error: revertErr } = await sb
+      .from("claims")
+      .update({ out_of_state_alerted_at: null })
+      .eq("id", claimId)
+      .select("id");
+    if (revertErr || !reverted?.length) {
+      console.error(`notify-admin-new-homeowner: failed to revert out_of_state_alerted_at for claim_id=${claimId} (alert will not retry):`, revertErr ?? "0 rows matched");
     }
     return { status: 500, body: { error: "failed to send out-of-state alert email" } };
   }
