@@ -310,6 +310,27 @@ def load_counties(state: str, counties_path=None) -> list:
     raise StateConfigError(f"{state}: no county data in {path}; cannot generate pages for this state")
 
 
+# county_content is PLAIN TEXT. These characters can start markup, an entity, a
+# CSS rule or an escape, so none may appear: with them gone, no tag, attribute,
+# style or entity can reach the page from county_content. (The text is also
+# HTML-escaped when rendered; the rule makes a mistake fail loudly at load.)
+_PLAIN_TEXT_FORBIDDEN = re.compile(r"[<>&{}\\\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+
+
+def _require_plain_text(text: str, bad, where: str) -> None:
+    m = _PLAIN_TEXT_FORBIDDEN.search(text)
+    if m:
+        raise bad(f"{where} must be plain text: the character {m.group(0)!r} is not allowed "
+                  "(no markup, entities, braces or backslashes; separate paragraphs with a blank line)")
+
+
+def render_county_text(text: str) -> str:
+    """Plain county_content text -> HTML: paragraphs split on blank lines,
+    each HTML-escaped and wrapped in a bare <p> with no attributes."""
+    paragraphs = [" ".join(chunk.split()) for chunk in re.split(r"\n\s*\n", text.strip())]
+    return "\n    ".join(f"<p>{html.escape(chunk)}</p>" for chunk in paragraphs if chunk)
+
+
 def load_profile(state: str, profiles_dir=None) -> dict:
     """Load and validate data/location-state-profiles/<state>.json.
 
@@ -372,9 +393,6 @@ def load_profile(state: str, profiles_dir=None) -> dict:
 
     county_content = {}
     raw_cc = data.get("county_content", {})
-    if _HIDDEN_TEXT_IN_CONTENT.search(json.dumps(raw_cc)):
-        raise bad('county_content must not contain hidden text ("hidden", display:none, visibility:hidden, '
-                  "font-size:0, opacity:0, sr-only, visually-hidden, far-offscreen left:, clip:, white text)")
     if not isinstance(raw_cc, dict):
         raise bad('"county_content" must be an object mapping county -> html, or county -> {trade: html}')
     for county, value in raw_cc.items():
@@ -383,6 +401,7 @@ def load_profile(state: str, profiles_dir=None) -> dict:
         if isinstance(value, str):
             if not value.strip():
                 raise bad(f'county_content["{county}"] is empty')
+            _require_plain_text(value, bad, f'county_content["{county}"]')
             county_content[county] = {t: value for t in ELIGIBLE_TRADES}
         elif isinstance(value, dict):
             for trade, text in value.items():
@@ -390,6 +409,7 @@ def load_profile(state: str, profiles_dir=None) -> dict:
                     raise bad(f'county_content["{county}"]: unknown trade "{trade}" (use {list(ELIGIBLE_TRADES)})')
                 if not (isinstance(text, str) and text.strip()):
                     raise bad(f'county_content["{county}"]["{trade}"] must be a non-empty string')
+                _require_plain_text(text, bad, f'county_content["{county}"]["{trade}"]')
             county_content[county] = dict(value)
         else:
             raise bad(f'county_content["{county}"] must be a string or an object keyed by trade')
@@ -449,10 +469,6 @@ _VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "me
 
 _HIDDEN_STYLE = re.compile(r"display\s*:\s*none|visibility\s*:\s*hidden|font-size\s*:\s*0\b|opacity\s*:\s*0\b",
                            re.IGNORECASE)
-_HIDDEN_TEXT_IN_CONTENT = re.compile(
-    r"\bhidden\b|display\s*:\s*none|visibility\s*:\s*hidden|font-size\s*:\s*0\b|opacity\s*:\s*0\b"
-    r"|sr-only|visually-hidden|left\s*:\s*-\d{3,}px|clip\s*:|color\s*:\s*#?fff|color\s*:\s*white",
-    re.IGNORECASE)
 _HIDDEN_CLASS = re.compile(r"\b(?:sr-only|visually-hidden)\b", re.IGNORECASE)
 
 
@@ -637,7 +653,7 @@ class _LintViews(HTMLParser):
         elif tag == "style":
             self._kind, self._buf = "style", []
         elif tag not in _INLINE_TAGS:
-            self.visible.append(" ")
+            self.visible.append("\n")      # block boundary = sentence boundary
 
     def handle_endtag(self, tag):
         if tag in ("script", "style") and self._kind:
@@ -650,13 +666,13 @@ class _LintViews(HTMLParser):
                 self.style_text.extend(_css_content_strings(body))
             self._kind, self._buf = None, []
         elif tag not in _INLINE_TAGS:
-            self.visible.append(" ")
+            self.visible.append("\n")
 
     def handle_data(self, data):
         if self._kind:
             self._buf.append(data)
         else:
-            self.visible.append(data)
+            self.visible.append(re.sub(r"\s+", " ", data))   # source line breaks are not boundaries
 
 
 def _css_content_strings(css: str) -> list:
@@ -675,12 +691,15 @@ def _css_content_strings(css: str) -> list:
     return out
 
 
-def _normalize(text: str) -> str:
+def _normalize(text: str, keep_newlines: bool = False) -> str:
     """NFKC, drop every Unicode Cf (format) character, fold confusables,
-    collapse whitespace."""
+    collapse whitespace (keeping newlines as sentence boundaries if asked)."""
     text = unicodedata.normalize("NFKC", text)
     text = "".join(ch for ch in text if unicodedata.category(ch) != "Cf")
     text = text.translate(_CONFUSABLES)
+    if keep_newlines:
+        text = re.sub(r"[^\S\n]+", " ", text)
+        return re.sub(r" ?\n[ \n]*", "\n", text).strip()
     return re.sub(r"\s+", " ", text).strip()
 
 
@@ -734,10 +753,10 @@ def lintable_text(html_text: str, _depth: int = 0) -> str:
         except ValueError:
             raise ComplianceError("JSON-LD block is not valid JSON")
     scripts = [re.sub(r"<[^>]+>", " ", html.unescape(s)) for s in p.scripts]
-    parts = ["".join(p.visible), " ".join(p.attrs), " ".join(p.style_text), " ".join(ld), " ".join(scripts)]
+    parts = ["".join(p.visible), "\n".join(p.attrs), "\n".join(p.style_text), "\n".join(ld), "\n".join(scripts)]
     if _depth < 3:
         parts.extend(lintable_text(sd, _depth + 1) for sd in p.srcdocs)
-    return _normalize(" ".join(parts))
+    return _normalize("\n".join(parts), keep_newlines=True)
 
 
 _NEGATED_GUARANTEE = re.compile(
@@ -752,12 +771,73 @@ def _guide_labels() -> list:
     return sorted(set(labels), key=len, reverse=True)
 
 
+# --- Sentence-level co-occurrence rules (round 7) ---------------------------
+# Adjacency patterns can always be dodged by one inserted word, a singular noun
+# or punctuation. These rules look at a whole SENTENCE: split on . ! ? and on
+# block boundaries; ; : ( ) and arrows are deliberately NOT boundaries, because
+# "Contractors: ready" / "Contractors (ready to bid)" / "Contractors -> ready"
+# are exactly how the adjacency bans get dodged.
+_TRADESPERSON = (r"(?:contractors?|roofers?|crews?|pros?|installers?|builders?|tradespeople|tradesperson|"
+                 r"tradesm[ae]n|siders?|professionals?|bidders?)")
+_R1_WORDS = (r"(?:ready|waiting|waits?|waited|standby|stand(?:s|ing)?\s+by|stand(?:s|ing)?\s+ready|"
+             r"lined\s+up|line\s+up|lines\s+up|lining\s+up|queued|queue\s+up|on\s+call|available|"
+             r"assign(?:s|ed|ing|ment)?|match(?:es|ed|ing)?|dispatch(?:ed|es)?|on\s+hand|at\s+the\s+ready|booked)")
+_R2_WORDS = (r"(?:we|we'll|we've|we're|our|ours|us|otter\s+quotes|network|platform|affiliated|partners?|vetted|"
+             r"members?|(?:dozens|hundreds|thousands|many)\s+of)")
+_R3_NETWORK = r"\bnetwork\b"
+_R3_OWNER = r"(?:\bwe\b|\bour\b|\bours\b|\bus\b|otter\s+quotes|\bplatform\b)"
+
+
+def _sentence_key(sentence: str) -> str:
+    return re.sub(r"\s+", " ", sentence.strip().lower()).strip(" .,;:\"'")
+
+
+# The ONLY sentences allowed to contain a tradesperson noun together with a
+# readiness / affiliation word. Compared whole, after normalisation; never by
+# pattern. Keep this list as short as possible; Ben reads it for R-177.
+APPROVED_SENTENCES = frozenset(_sentence_key(x) for x in (
+    # D-345 (CEO chat 2026-10-02, issue #2422): the approved statement of what
+    # Otter Quotes does. Appears as its own sentence everywhere it is used.
+    "Otter Quotes creates a scope of work and we send it to local contractors.",
+    # Disclosure sentence carried verbatim from the pre-D-345 generator
+    # (origin/main a3ea4d0, the D-169 carve-out page template). Not changed by
+    # D-345. D-number for the disclosure to be confirmed by the CEO.
+    "Otter Quotes does not independently verify, endorse, or warrant the quality of any contractor's work, "
+    "and does not guarantee the availability of any particular contractor.",
+))
+
+
+def sentence_findings(text_with_newlines: str) -> list:
+    """(rule, sentence) for every sentence that breaks R1 (a tradesperson noun
+    with a readiness/availability/assignment/matching word), R2 (a noun with an
+    affiliation word) or R3 (network with an Otter Quotes/we/our word), unless
+    the whole sentence is in APPROVED_SENTENCES."""
+    out = []
+    for raw_sentence in re.split(r"[.!?\n]+", text_with_newlines):
+        key = _sentence_key(raw_sentence)
+        if not key or key in APPROVED_SENTENCES:
+            continue
+        for view in (key, _dehyphenate(key), _hyphens_to_spaces(key)):
+            has_noun = re.search(rf"\b{_TRADESPERSON}\b", view)
+            if has_noun and re.search(rf"\b{_R1_WORDS}\b", view):
+                out.append(("R1 readiness/availability/matching", key))
+                break
+            if has_noun and re.search(rf"\b{_R2_WORDS}\b", view):
+                out.append(("R2 affiliation/ownership", key))
+                break
+            if re.search(_R3_NETWORK, view) and re.search(_R3_OWNER, view):
+                out.append(("R3 network", key))
+                break
+    return out
+
+
 def compliance_lint(html_text: str, page_id: str) -> None:
     """Raise ComplianceError if the page breaks the D-345 copy rule or the
     D-104 / D-168 / D-175 / D-312 / D-326 bans. Checks run on the normalised
     visible/attribute/CSS/srcdoc/JSON-LD text and on de-hyphenated and
     hyphen-as-space copies of it; the substring and vendor checks also run on the raw markup."""
-    text = lintable_text(html_text)
+    text_nl = lintable_text(html_text)
+    text = re.sub(r"\s+", " ", text_nl)
     raw = _normalize(html.unescape(html_text))
     views = [text, _dehyphenate(text), _hyphens_to_spaces(text)]
     lowered = [v.lower() for v in views]
@@ -778,6 +858,9 @@ def compliance_lint(html_text: str, page_id: str) -> None:
         for term in FORBIDDEN_CASE_SENSITIVE:
             if term in stripped:
                 raise ComplianceError(f"[{page_id}] forbidden term '{term}' in page copy")
+
+    for rule, sentence in sentence_findings(text_nl):
+        raise ComplianceError(f"[{page_id}] {rule} (D-345): \"{sentence[:160]}\"")
 
     labels = _guide_labels()
     for view in views:
@@ -943,9 +1026,9 @@ EXPECTATIONS_B = [
 ]
 
 HOW_IT_WORKS = [
-    "<p>Here is how Otter Quotes works for {article} {county} County project. You submit your project details once. Otter Quotes creates a scope of work from them, and we send it to local contractors. You can then compare any written bids you receive side by side, on scope, price, and terms. The platform is informational, and the decision stays entirely yours.</p>",
-    "<p>Instead of calling down a list and repeating your story, you submit your {county} County project once. Otter Quotes builds the scope of work and we send it to local contractors; any bids you receive are written, so you can compare them on scope, price, and terms. Comparing more than one written bid is one way to understand local pricing, especially in the busy weeks after a storm.</p>",
-    "<p>The process has four steps: you submit your {county} County project, Otter Quotes creates a scope of work, we send it to local contractors, and you compare any written bids you receive. No obligation attaches to submitting a project, and choosing a contractor, or choosing none of them, remains entirely your call.</p>",
+    "<p>Here is how Otter Quotes works for {article} {county} County project. You submit your project details once. Otter Quotes creates a scope of work and we send it to local contractors. You can then compare any written bids you receive side by side, on scope, price, and terms. The platform is informational, and the decision stays entirely yours.</p>",
+    "<p>Instead of calling down a list and repeating your story, you submit your {county} County project once. Otter Quotes creates a scope of work and we send it to local contractors. Any bids you receive are written, so you can compare them on scope, price, and terms. Comparing more than one written bid is one way to understand local pricing, especially in the busy weeks after a storm.</p>",
+    "<p>The process has four steps. You submit your {county} County project. Otter Quotes creates a scope of work and we send it to local contractors. You compare any written bids you receive. You choose a contractor, or none of them, and that choice remains entirely your call. No obligation attaches to submitting a project.</p>",
 ]
 
 # Four Q&As per trade; each page renders a deterministic selection of two,
@@ -1048,8 +1131,9 @@ def build_page(county: str, trade: str, generated_on: str, state: str = "IN", pr
     seasonal = variant(seed, 6, SEASONAL).format(county=county_esc, region=region_lbl)
     article = "an" if county[:1].lower() in "aeiou" else "a"
     how_it_works = variant(seed, 5, HOW_IT_WORKS).format(county=county_esc, article=article)
-    county_html = (profile.get("county_content") or {}).get(county, {}).get(trade, "")
-    county_notes = f"<h2>{county_esc} County notes</h2>\n    {county_html}" if county_html else ""
+    county_text = (profile.get("county_content") or {}).get(county, {}).get(trade, "")
+    county_notes = (f"<h2>{county_esc} County notes</h2>\n    {render_county_text(county_text)}"
+                    if county_text.strip() else "")
 
     faq_selected = shuffle_items(seed, 8, FAQ[trade])[:FAQ_PER_PAGE]
     faq_pairs = [(q.format(county=county_esc), a) for q, a in faq_selected]
@@ -1064,9 +1148,9 @@ def build_page(county: str, trade: str, generated_on: str, state: str = "IN", pr
 
     title = f"{noun_title} Bids for {county} County, {state} Homeowners · Otter Quotes"
     meta_desc = (
-        f"Help with storm-damaged {t_label.lower()} for homeowners in {county} County, {state_name}: "
-        f"Otter Quotes creates a scope of work for your project and we send it to local contractors, "
-        f"so you can compare any written bids you receive side by side."
+        f"Help with storm-damaged {t_label.lower()} for homeowners in {county} County, {state_name}. "
+        f"Otter Quotes creates a scope of work and we send it to local contractors. "
+        f"Homeowners can compare any written bids they receive."
     )
 
     # Site-wide organization entity: no areaServed (it would conflict from one
@@ -1078,7 +1162,7 @@ def build_page(county: str, trade: str, generated_on: str, state: str = "IN", pr
         "@id": f"{SITE_BASE}/#organization",
         "name": "Otter Quotes",
         "url": f"{SITE_BASE}/",
-        "description": "Otter Quotes is an independent platform for property damage repair and exterior improvement projects. Otter Quotes creates a scope of work and we send it to local contractors, so homeowners can compare any written bids they receive.",
+        "description": "Otter Quotes is an independent platform for property damage repair and exterior improvement projects. Otter Quotes creates a scope of work and we send it to local contractors. Homeowners can compare any written bids they receive.",
     }
     service = {
         "@context": "https://schema.org",
@@ -1178,7 +1262,7 @@ def build_page(county: str, trade: str, generated_on: str, state: str = "IN", pr
     </div>
     <div style="padding: var(--sp-8) var(--sp-6) 0;">
       <h1>{noun_title} Bids for {county_esc} County, {state_name} Homeowners</h1>
-      <p style="color:var(--slate); max-width:640px; margin:0 auto;">Otter Quotes creates a scope of work for your {noun} project and we send it to local contractors. You compare any written bids you receive, and the decision stays yours.</p>
+      <p style="color:var(--slate); max-width:640px; margin:0 auto;">Otter Quotes creates a scope of work and we send it to local contractors. You compare any written bids you receive for your {noun} project, and the decision stays yours.</p>
     </div>
   </div>
 

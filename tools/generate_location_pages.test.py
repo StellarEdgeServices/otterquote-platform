@@ -55,7 +55,7 @@ def fixture_content(county, trade, n=520):
     """n genuinely distinct words per (county, trade): no 8-word run repeats
     on any other page, so all n are strict-unique."""
     words = [f"{county.lower()}{trade}{chr(97 + i % 26)}{i}" for i in range(n)]
-    return "".join("<p>%s</p>" % " ".join(words[i:i + 52]) for i in range(0, n, 52))
+    return "\n\n".join(" ".join(words[i:i + 52]) for i in range(0, n, 52))   # PLAIN TEXT, blank-line paragraphs
 
 
 FIXTURE_COUNTIES = {"states": [{"code": "ZZ", "name": "Zedland", "counties": ["Alpha", "Beta", "Gamma"]}]}
@@ -126,6 +126,9 @@ class GeneratorTests(unittest.TestCase):
             self.assertNotIn("noindex", page.lower())
             self.assertIn("send it to local contractors", page)
             self.assertIn("Alpha County notes" if county == "Alpha" else "Gamma County notes", page)
+            notes = page.split("County notes</h2>")[1].split("<h2>")[0]
+            self.assertRegex(notes, r"^\s*<p>")
+            self.assertNotRegex(notes.replace("<p>", "").replace("</p>", ""), r"[<>]")   # bare <p> only
             glp.compliance_lint(page, f"{slug}/{trade}")  # must not raise
             self.assertIn('<link rel="canonical"', page)
             self.assertEqual(page.count('application/ld+json'), 3)  # JSON-LD kept
@@ -478,8 +481,8 @@ class GeneratorTests(unittest.TestCase):
         self.assertEqual(glp.strict_unique_counts([para * 1, ["other"] * 9])[0], 52)
 
         def repeated(prof):
-            para_html = "<p>%s</p>" % " ".join("alphaword%d" % i for i in range(40))
-            prof["county_content"]["Alpha"] = {t: para_html * 14 for t in glp.ELIGIBLE_TRADES}
+            para = " ".join("alphaword%d" % i for i in range(40))
+            prof["county_content"]["Alpha"] = {t: "\n\n".join([para] * 14) for t in glp.ELIGIBLE_TRADES}
         self.write_profile(repeated)
         summary = self.run_fx()
         self.assertIn("alpha-county-zz/roofing", summary["skipped_thin"])
@@ -502,6 +505,51 @@ class GeneratorTests(unittest.TestCase):
                 with self.assertRaises(glp.StateConfigError):
                     self.run_fx()
                 self.assertFalse(self.out.exists())
+
+    # round 7: county_content is plain text ---------------------------------------
+    HIDDEN_STYLES = (
+        "font-size:0px", "color:transparent", "text-indent:-9999px", "opacity:.01",
+        "color:rgb(255,255,255)", "color:hsl(0,0%,100%)", "color:#FEFEFE",
+        "position:absolute;top:-9999px", "position:absolute;left:-999em", "transform:scale(0)",
+        "width:0;height:0", "max-height:0;overflow:auto", "filter:opacity(0)", "clip-path:inset(50%)",
+        "font-size:1px", "dis\\play:none", "color&#58;white", "display:none", "visibility:hidden",
+    )
+
+    def test_county_content_with_hidden_styles_is_rejected_at_load_and_writes_nothing(self):
+        for style in self.HIDDEN_STYLES:
+            for form in ('<p style="%s">hidden words</p>', '<span class="x" style=\'%s\'>hidden words</span>',
+                         "<div style=%s>hidden words</div>"):
+                payload = form % style
+                with self.subTest(payload=payload):
+                    self.write_profile(lambda p, payload=payload: p["county_content"]["Alpha"].update(roofing=payload))
+                    with self.assertRaises(glp.StateConfigError):
+                        self.run_fx()
+                    self.assertFalse(self.out.exists())
+        # the same property text WITHOUT markup is plain words (escaped, harmless), except where it
+        # carries a forbidden character; entity-encoded and backslash-escaped forms are rejected outright
+        for forbidden in ("color&#58;white", "dis\\play:none", "{display:none}", "a < b", "a > b", "tom & jerry"):
+            with self.subTest(forbidden=forbidden):
+                self.write_profile(lambda p, f=forbidden: p["county_content"]["Alpha"].update(roofing=f))
+                with self.assertRaises(glp.StateConfigError):
+                    self.run_fx()
+
+    def test_county_content_ordinary_words_are_accepted_and_escaped(self):
+        text = "Hidden hail damage is common after storms. It's often missed.\n\nA second paragraph about \"permits\"."
+        self.write_profile(lambda p: p["county_content"]["Alpha"].update(roofing=text))
+        prof = glp.load_profile("ZZ", self.fx_profiles)
+        page = glp.build_page("Alpha", "roofing", "x", "ZZ", profile=prof)
+        notes = page.split("County notes</h2>")[1].split("<h2>")[0]
+        self.assertEqual(notes.count("<p>"), 2)
+        self.assertIn("Hidden hail damage is common after storms.", notes)
+        self.assertNotRegex(notes, r"<(?!/?p>)")             # no tag but bare <p>
+        self.assertEqual(glp.main_words(page).count("hidden"), 1)   # ordinary word counts as a word
+
+    def test_county_content_rejects_markup_free_but_forbidden_characters(self):
+        for bad in ("braces {x}", "back\\slash", "null\x00byte", "bell\x07"):
+            with self.subTest(bad=bad):
+                self.write_profile(lambda p, b=bad: p["county_content"]["Alpha"].update(roofing=b))
+                with self.assertRaises(glp.StateConfigError):
+                    self.run_fx()
 
     def test_lint_failure_on_any_page_leaves_zero_pages_and_no_sitemap_change(self):
         profile = glp.load_profile("ZZ", self.fx_profiles)
@@ -717,9 +765,12 @@ class LintTests(unittest.TestCase):
                     self.lint_frag("<p>%s</p>" % bad)
 
     def test_lint_allows_the_disclosure_and_required_copy(self):
-        self.lint_frag("<p>Otter Quotes does not guarantee the availability of any particular contractor.</p>")
+        self.lint_frag("<p>Otter Quotes does not independently verify, endorse, or warrant the quality of any "
+                       "contractor's work, and does not guarantee the availability of any particular contractor.</p>")
         self.lint_frag("<p>Your insurer decides coverage under your policy; ask your adjuster whether it is included.</p>")
-        self.lint_frag("<p>We create a scope of work and send it to local contractors, so you can compare any bids you receive.</p>")
+        self.lint_frag("<p>Otter Quotes creates a scope of work and we send it to local contractors.</p>")
+        self.lint_frag("<p>Local contractors set their own prices.</p>")
+        self.lint_frag("<p>Ask contractors about permits.</p>")
 
     # round-4 hardening ---------------------------------------------------------
     def assert_fails(self, fragment):
@@ -812,9 +863,68 @@ class LintTests(unittest.TestCase):
             for tr in glp.ELIGIBLE_TRADES:
                 glp.compliance_lint(glp.build_page(c, tr, "x", "IN", profile=prof), f"{c}/{tr}")
 
+    # round 7: sentence-level rules --------------------------------------------------
+    def test_sentence_rules_reject_readiness_affiliation_and_matching(self):
+        for bad in (
+            # blocker 1 / 2: punctuation, inserted words, singular nouns, other verbs
+            "Queued up: local contractors.", "Contractors are already lined up.", "Contractors are now ready",
+            "Contractors are all ready", "Contractors here are ready", "Contractors are just waiting.",
+            "Contractors in your area are ready", "Your roofer is ready.", "Your contractor is ready",
+            "A crew is ready", "A local pro is ready", "A roofer is waiting for you.",
+            "Contractors stand ready.", "Contractors on standby.", "Contractors (ready to bid)",
+            "Contractors: ready.", "Contractors \u2192 ready", "Contractors -> ready", "Contractors; ready",
+            # blocker 3: ownership / affiliation / matching
+            "the contractors we work with", "Contractors on our platform", "Otter Quotes' network",
+            "Otter Quotes\u2019s network", "contractors affiliated with Otter Quotes",
+            "A contractor is assigned to your job.", "We'll match you with a roofer.",
+            "We match homeowners with contractors", "Get matched with local contractors",
+            "Many local contractors use Otter Quotes", "Dozens of contractors", "Hundreds of roofers",
+            "Thousands of crews", "Contractors who are members", "Our partners bid on every job",
+            "Roofers dispatched to your address", "Installers on hand", "A builder is booked for you",
+            "Tradespeople are available", "Siding pros at the ready",
+        ):
+            with self.subTest(bad=bad):
+                self.assert_fails("<p>%s</p>" % bad)
+        for bad_attr in ('<img alt="Contractors are ready">', '<a title="Contractors on our platform">x</a>',
+                         '<meta name="description" content="We match you with a roofer">'):
+            with self.subTest(bad_attr=bad_attr):
+                self.assert_fails(bad_attr)
+
+    def test_sentence_rules_allow_neutral_contractor_sentences_and_only_exact_approved_ones(self):
+        for ok in ("Local contractors set their own prices.", "Ask contractors about permits.",
+                   "Ask any contractor for an itemized written estimate, proof of insurance, and local references.",
+                   "Otter Quotes creates a scope of work and we send it to local contractors.",
+                   "Otter Quotes creates a scope of work and we send it to local contractors"):
+            with self.subTest(ok=ok):
+                self.lint_frag("<p>%s</p>" % ok)
+        # not allow-listed by pattern: any change to the approved sentence is judged on its own words
+        for bad in ("Otter Quotes creates a scope of work and we send it to local contractors who are ready.",
+                    "Otter Quotes creates a scope of work and we send it to local contractors in Marion County.",
+                    "We send it to local contractors.",
+                    "Otter Quotes creates a scope of work for your roofing project and we send it to local contractors."):
+            with self.subTest(bad=bad):
+                self.assert_fails("<p>%s</p>" % bad)
+        self.assertEqual(len(glp.APPROVED_SENTENCES), 2)
+
+    def test_every_template_sentence_with_a_noun_passes_without_the_allow_list_except_approved_two(self):
+        prof = glp.load_profile("IN")
+        saved = glp.APPROVED_SENTENCES
+        try:
+            glp.APPROVED_SENTENCES = frozenset()
+            seen = set()
+            for county in ("Allen", "Ohio", "Marion"):
+                for trade in glp.ELIGIBLE_TRADES:
+                    for _rule, sentence in glp.sentence_findings(
+                            glp.lintable_text(glp.build_page(county, trade, "x", "IN", profile=prof))):
+                        seen.add(sentence)
+        finally:
+            glp.APPROVED_SENTENCES = saved
+        self.assertEqual(seen, set(saved))
+
     def test_lint_allows_negated_guarantee_and_approved_procedural_wording(self):
         for ok in (
-            "Otter Quotes does not guarantee the availability of any particular contractor.",
+            "Otter Quotes does not independently verify, endorse, or warrant the quality of any contractor's work, "
+            "and does not guarantee the availability of any particular contractor.",
             "Otter Quotes doesn\u2019t guarantee a bid.", "Otter Quotes doesn't guarantee a bid.",
             "We cannot guarantee a result.", "We can't guarantee a result.", "We do not guarantee a result.",
             "Your insurer decides coverage under your policy; ask your adjuster whether it is included.",

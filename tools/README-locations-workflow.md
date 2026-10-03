@@ -109,9 +109,10 @@ the rest are counted.
   against but never scored or emitted. A one-county state, or a narrowed
   `generate()` call, therefore cannot count template text as unique.
 - Repeats within a page count once: a paragraph repeated 14 times is one paragraph.
-- Hidden text never counts (elements with `hidden`, `aria-hidden="true"`, inline
-  `display:none` / `visibility:hidden` / `font-size:0` / `opacity:0`, and
-  `<noscript>`/`<template>`), and `county_content` containing any of those is rejected.
+- Hidden text in the template never counts (elements with `hidden`, `aria-hidden="true"`,
+  `sr-only` classes, inline `display:none` / `visibility:hidden` / `font-size:0` /
+  `opacity:0`, and `<noscript>`/`<template>`). `county_content` cannot carry markup at
+  all (plain text only), so it cannot hide text.
 - Known gap: a filler token inserted every 7 words makes every 8-word shingle
   unique. Closing it needs a shorter n-gram test that also flags ordinary prose, so
   it is left to human review of `county_content`.
@@ -120,7 +121,7 @@ the rest are counted.
 - Each run prints min/median strict-unique words, and an **informational**
   cross-page metric (share of each page's 8-word shingles on no other page).
 
-### `county_content` in the state profile
+### `county_content` in the state profile (PLAIN TEXT only)
 
 Where the CRO puts county storm history, housing stock, permit notes and similar
 county-specific text. In `data/location-state-profiles/XX.json`:
@@ -128,19 +129,24 @@ county-specific text. In `data/location-state-profiles/XX.json`:
 ```json
 "county_content": {
   "Marion": {
-    "roofing": "<p>...500+ words about Marion County roofing...</p>",
-    "siding": "<p>...</p>", "gutters": "<p>...</p>", "windows": "<p>...</p>"
+    "roofing": "First paragraph, 500+ words in total across paragraphs...\n\nSecond paragraph...",
+    "siding": "...", "gutters": "...", "windows": "..."
   }
 }
 ```
 
-- Keys are county names exactly as in `data/us-counties.json`; each value is an
-  object keyed by trade (roofing, siding, gutters, windows) holding HTML
-  paragraphs. A plain string is accepted and used for every trade, but the same
-  text on four trade pages is shared, so it will fail the gate.
-- The text is rendered under an `<h2>[County] County notes</h2>` heading. It is
-  checked by the same lint as all other copy: procedural only, no insurer or
-  coverage statements, no claims that Otter Quotes has contractors anywhere.
+- **Plain text only.** No HTML, no entities. The loader rejects `<`, `>`, `&`, `{`, `}`,
+  backslashes and control characters, so no tag, attribute, style or entity can reach
+  the page from `county_content`. Paragraphs are separated by a blank line; the
+  generator HTML-escapes the text and wraps each paragraph in a bare `<p>` with no
+  attributes. Ordinary words such as "hidden hail damage" are fine. (Write "and",
+  not "&"; write "less than", not "<".)
+- **Written per trade.** Keys are county names exactly as in `data/us-counties.json`;
+  each value is an object keyed by trade (roofing, siding, gutters, windows). A plain
+  string is accepted and used for every trade, but the same text on four trade pages
+  is shared, so it can never pass the gate.
+- The text is rendered under an `<h2>[County] County notes</h2>` heading and is checked
+  by the same lint as all other copy (see below).
 - A county or trade with no content gets no notes section and will not reach 500.
 
 ## Copy rule (D-345)
@@ -180,6 +186,41 @@ Enforced in the template and in `compliance_lint()`:
 
 A lint failure stops the run with an error; it is a copy bug, not a skip.
 
+### Sentence-level rules (R1, R2, R3)
+
+Adjacency bans can always be dodged by one inserted word, a singular noun or
+punctuation, so the lint also judges whole **sentences**. After normalisation
+(NFKC, confusables folded, entities decoded, tags stripped, hyphen-split words
+joined), text is split into sentences on `.`, `!`, `?` and block boundaries.
+`;`, `:`, parentheses and arrows are deliberately **not** boundaries, because
+"Contractors: ready" and "Contractors (ready to bid)" must stay one sentence. A
+sentence fails if it contains a tradesperson noun (contractor, roofer, crew, pro,
+installer, builder, tradesperson/tradespeople, sider, professional, bidder, singular
+or plural) **and**:
+
+- **R1**: a readiness / availability / assignment / matching word: ready, waiting,
+  wait, standby, stand(s/ing) by, lined up, line up, queued, on call, available,
+  assigned, assign, match/matched/matching, dispatched, on hand, at the ready, booked;
+- **R2**: an ownership / affiliation word: we, we'll, we've, our, ours, us, Otter Quotes
+  (incl. possessive), network, platform, affiliated, partner(s), vetted, member(s),
+  "dozens/hundreds/thousands/many of".
+
+**R3**: a sentence with "network" and any of we / our / us / Otter Quotes / platform.
+
+The only exceptions are two whole sentences, listed in `APPROVED_SENTENCES` and compared
+after normalisation (never by pattern):
+
+1. `Otter Quotes creates a scope of work and we send it to local contractors.` (D-345,
+   CEO chat 2026-10-02, issue #2422)
+2. `Otter Quotes does not independently verify, endorse, or warrant the quality of any
+   contractor's work, and does not guarantee the availability of any particular
+   contractor.` (disclosure carried verbatim from the pre-D-345 generator; D-number to be
+   confirmed)
+
+Because the approved statement is matched whole, it must stand alone as its own sentence.
+Any added words ("... local contractors who are ready", "... in Marion County") make it an
+ordinary sentence that R1/R2 judge on its own words.
+
 ### Writing county content around the lint (known false positives)
 
 The lint is deliberately blunt and does not understand context; do not expect it
@@ -193,6 +234,8 @@ notes) is likely to trip, and how to phrase around them:
 | "in 15 minutes", "in 3 days", "within 2 days" | speed promises | "a short drive", "after the storm", or no timing at all |
 | "the local team", "local crews", "local pros" | have-contractors (local ... team/crews/pros/roofers/network) | "the county's building department", "storm-response crews from the utility" (name the actual body; never imply it is ours) |
 | "a network of storm sirens", "network of" | "network of" | "a system of sirens", "a grid of" |
+| any sentence naming contractors/roofers/crews/pros with "we", "our", "us", "platform", "network", "partners", "members", "many of" (R2) | affiliation/ownership | split it: "Roofers in the county set their own prices." (no we/our/platform in that sentence); say what Otter Quotes does in a different sentence |
+| a sentence naming contractors/roofers/crews/pros with "ready", "available", "waiting", "matched", "assigned", "booked", "on call" (R1) | readiness/matching | "Roofers were booked for weeks after the 2012 storms" trips R1 even though it is history, not an availability claim: rephrase without the noun or the word, e.g. "Repair schedules ran long after the 2012 storms" |
 | "the county's contractors", "Marion County roofers" | "[County] contractors/roofers" | "roofing work in Marion County", "roof replacements in the county" |
 | "your policy covers", "insurance covered the loss", "the damage is covered" | D-326: no coverage statements, nothing that interprets a policy | "ask your insurer what your policy includes", "your insurer decides coverage" ("coverage" alone is allowed) |
 | "entitled to", "maximize", "lowest price" | D-326 / promises | "may be able to ask", "get the most from", or drop the claim |
