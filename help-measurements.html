@@ -977,7 +977,7 @@
         // marker key as its charge-storage module (keyed on the charged PaymentIntent id), and the Meta eventID is the SAME
         // `measurement_purchase:<paymentIntentId>` string supabase/functions/stripe-webhook/meta-capi.ts sends as the CAPI event_id,
         // so Meta dedups the two. Suppression is NOT re-implemented here: js/ga-gate.js drops gtag() on an internal/QA visit
-        // (gh-2356) and never loads GA4 for an opted-out visitor, and js/meta-pixel-gate.js makes fbq() a no-op on an internal visit
+        // (gh-2356); the account-stored opt-out is read at fire time (below); and js/meta-pixel-gate.js makes fbq() a no-op on an internal visit
         // and never loads fbevents.js for oq_ad_optout=1 / Global Privacy Control / a stored opt-out (gh-1925, gh-2107).
         function getMeasurementVariant() {
             var VARIANT_RE = /^[a-z0-9]{1,8}$/;
@@ -993,17 +993,28 @@
             return 'unknown';
         }
 
+        // LEGAL-READ: FAIL 5973345257 fix: the opt-out is resolved HERE, at fire time, through the shared js/meta-pixel-gate.js helper
+        // (cookie + GPC + the signed-in account's stored ad_sharing_opt_out). Opted out, or a stored flag that cannot be read (fail
+        // closed): no GA4 event, no Google conversion ping, no Meta event. The helper missing counts as unreadable.
         function fireMeasurementPurchase(paymentIntentId) {
-            if (!paymentIntentId) return;
+            if (!paymentIntentId) return Promise.resolve(false);
             var FIRED_KEY = 'oq_ga4_measurement_purchase_fired_v1:' + paymentIntentId;
-            try { if (window.localStorage.getItem(FIRED_KEY) === '1') return; } catch (e) {}
-            var variant = getMeasurementVariant();
-            try { gtag('event', 'measurement_purchase', { value: 15.0, currency: 'USD', variant: variant }); } catch (e) {}
+            try { if (window.localStorage.getItem(FIRED_KEY) === '1') return Promise.resolve(false); } catch (e) {}
+            var blockedP;
             try {
-                fbq('track', 'Purchase', { value: 15.0, currency: 'USD', variant: variant },
-                    { eventID: 'measurement_purchase:' + paymentIntentId });
-            } catch (e) {}
-            try { window.localStorage.setItem(FIRED_KEY, '1'); } catch (e) {}
+                blockedP = (typeof window.OQ_adSharingBlocked === 'function') ? window.OQ_adSharingBlocked() : Promise.resolve(true);
+            } catch (e) { blockedP = Promise.resolve(true); }
+            return Promise.resolve(blockedP).then(function (blocked) {
+                if (blocked !== false) return false;
+                var variant = getMeasurementVariant();
+                try { gtag('event', 'measurement_purchase', { value: 15.0, currency: 'USD', variant: variant }); } catch (e) {}
+                try {
+                    fbq('track', 'Purchase', { value: 15.0, currency: 'USD', variant: variant },
+                        { eventID: 'measurement_purchase:' + paymentIntentId });
+                } catch (e) {}
+                try { window.localStorage.setItem(FIRED_KEY, '1'); } catch (e) {}
+                return true;
+            }, function () { return false; });
         }
 
         // Step 2 — Confirm card payment, then (and only then) create the measurement order
@@ -1055,6 +1066,7 @@
                 });
 
                 // gh-2078: the homeowner conversion event, once per charged PaymentIntent, only after the order step resolved.
+                // not awaited: the success screen never waits on the opt-out read; the function never rejects.
                 fireMeasurementPurchase(paymentIntent.id);
 
                 // Show success state

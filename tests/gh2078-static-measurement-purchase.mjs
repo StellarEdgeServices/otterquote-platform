@@ -56,25 +56,43 @@ ok(iGa > -1 && iFlag > iGa && iMeta > iFlag, 'the page loads the shared gates in
 ok(!/connect\.facebook\.net|googletagmanager\.com\/gtag/.test(html), 'no vendor loader was added to the page');
 
 // -- 2. behaviour: run the real confirmHoverPayment ----------------------------------------------------------------------------
-async function runCheckout({ stripeResult, orderThrows = false, store = new Map(), piId = 'pi_TEST123', variant = 'e' }) {
+const UID = '11111111-2222-3333-4444-555555555555';
+const b64u = (o) => Buffer.from(JSON.stringify(o)).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const JWT = b64u({ alg: 'HS256' }) + '.' + b64u({ sub: UID }) + '.sig';
+// `account`: undefined = signed out (no session cookie); true / false = the stored profiles.ad_sharing_opt_out; 'error' = the read fails (network error);
+// 'http500' = the read answers non-200. The REAL js/meta-pixel-gate.js is loaded into the same window, so the page calls the REAL shared helper.
+async function runCheckout({ stripeResult, orderThrows = false, store = new Map(), piId = 'pi_TEST123', variant = 'e', cookie = '', gpc = false, account, noHelper = false }) {
   const calls = [];
   const ls = { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)) };
   if (variant) store.set('oq_variant_v3', variant);
   const els = new Map();
   const el = (id) => { if (!els.has(id)) els.set(id, { id, style: {}, classList: { add() {} }, querySelector: () => el(id + '>'), textContent: '', innerHTML: '', disabled: false }); return els.get(id); };
+  const doc = { getElementById: el, cookie: (account !== undefined ? 'sb-otterquote-at=' + JWT + '; ' : '') + cookie, createElement: (tag) => ({ tag }), head: { appendChild() {} } };
+  const win = { localStorage: ls, location: { hostname: 'otterquote.com', hash: '', search: '' }, addEventListener() {}, removeEventListener() {}, requestIdleCallback: () => 1, cancelIdleCallback() {} };
+  win.window = win;
+  const fetchImpl = async (url) => {
+    calls.push(['account-read', String(url)]);
+    if (account === 'error') throw new Error('network down');
+    if (account === 'http500') return { ok: false, json: async () => null };
+    return { ok: true, json: async () => [{ ad_sharing_opt_out: account === true }] };
+  };
   const ctx = {
-    window: { localStorage: ls }, document: { getElementById: el, cookie: '' },
+    window: win, document: doc, navigator: { globalPrivacyControl: gpc },
     gtag: (...a) => calls.push(['gtag', ...a]), fbq: (...a) => calls.push(['fbq', ...a]),
     hoverStripe: { confirmCardPayment: async () => stripeResult(piId) }, hoverCardElement: {}, hoverClientSecret: 'cs_test',
     currentClaim: { id: 'claim-1' }, MEASUREMENT_PRODUCT_CODE: 'x',
     Services: { createMeasurementOrder: async () => { calls.push(['order']); if (orderThrows) throw new Error('order failed'); return {}; } },
-    console: { error() {}, log() {} }, decodeURIComponent, String, RegExp, Error,
+    console: { error() {}, log() {} }, decodeURIComponent, encodeURIComponent, String, RegExp, Error, Promise, JSON, atob, URLSearchParams, setTimeout, clearTimeout,
+    fetch: fetchImpl, CONFIG: { SUPABASE_URL: 'https://x.supabase.co', SUPABASE_ANON: 'anon' },
   };
   vm.createContext(ctx);
+  if (!noHelper) vm.runInContext(metaGate, ctx); // the real shared helper (and gate) on the same window
   vm.runInContext(variantSrc + '\n' + fireSrc + '\n' + confirmSrc + '\n;this.__run = confirmHoverPayment;', ctx);
   await ctx.__run();
+  await new Promise((r) => setTimeout(r, 25)); // the fire-time opt-out read is not awaited by the checkout; let it settle
   return { calls, store };
 }
+const vendorCalls = (r) => r.calls.filter((c) => c[0] === 'gtag' || c[0] === 'fbq');
 if (confirmSrc && fireSrc && variantSrc) {
   const success = (id) => ({ paymentIntent: { id, status: 'succeeded' }, error: null });
   const r1 = await runCheckout({ stripeResult: success });
@@ -92,6 +110,25 @@ if (confirmSrc && fireSrc && variantSrc) {
   ok(pending.calls.filter((c) => c[0] === 'gtag' || c[0] === 'fbq').length === 0, 'non-succeeded PaymentIntent: no event');
   const orderFail = await runCheckout({ stripeResult: success, orderThrows: true });
   ok(orderFail.calls.filter((c) => c[0] === 'gtag' || c[0] === 'fbq').length === 0, 'charge succeeded but the order step threw: no event (React fires only after the order resolves)');
+  // LEGAL-READ: FAIL 5973345257 -- the opt-out is resolved at FIRE time, including the account-stored value.
+  const acctOut = await runCheckout({ stripeResult: success, account: true });
+  ok(vendorCalls(acctOut).length === 0, 'signed-in, account opt-out stored, no cookie, no GPC: ZERO vendor requests (no GA4, no Google conversion, no Meta)');
+  ok(acctOut.calls.some((c) => c[0] === 'account-read') && acctOut.calls.some((c) => c[0] === 'order'), 'account opt-out case: the stored flag was actually read and the order still completed');
+  const acctUnreadable = await runCheckout({ stripeResult: success, account: 'error' });
+  ok(vendorCalls(acctUnreadable).length === 0, 'account state unreadable (network error): ZERO vendor requests (fail closed)');
+  const acct500 = await runCheckout({ stripeResult: success, account: 'http500' });
+  ok(vendorCalls(acct500).length === 0, 'account state unreadable (non-200 answer): ZERO vendor requests (fail closed)');
+  const noHelper = await runCheckout({ stripeResult: success, noHelper: true });
+  ok(vendorCalls(noHelper).length === 0, 'shared helper absent: ZERO vendor requests (fail closed)');
+  const acctIn = await runCheckout({ stripeResult: success, account: false });
+  ok(vendorCalls(acctIn).filter((c) => c[0] === 'gtag').length === 1 && vendorCalls(acctIn).filter((c) => c[0] === 'fbq' && c[2] === 'Purchase' && c[4].eventID === 'measurement_purchase:pi_TEST123').length === 1, 'CONTROL signed-in, stored flag false: exactly one GA4 purchase and one Meta Purchase with the shared event id');
+  const cookieOut = await runCheckout({ stripeResult: success, cookie: 'oq_ad_optout=1' });
+  ok(vendorCalls(cookieOut).length === 0, 'oq_ad_optout=1 cookie at fire time: zero vendor requests');
+  const gpcOut = await runCheckout({ stripeResult: success, gpc: true });
+  ok(vendorCalls(gpcOut).length === 0, 'GPC at fire time: zero vendor requests');
+  const signedOut = await runCheckout({ stripeResult: success });
+  ok(vendorCalls(signedOut).length === 2 && !signedOut.calls.some((c) => c[0] === 'account-read'), 'CONTROL signed-out visitor: behaviour unchanged (one GA4 + one Meta, no account read)');
+  ok(acctOut.store.get('oq_ga4_measurement_purchase_fired_v1:pi_TEST123') === undefined, 'a withheld event does not set the once-only marker');
   const nov = await runCheckout({ stripeResult: success, variant: null });
   ok(nov.calls.find((c) => c[0] === 'gtag')[3].variant === 'unknown', "no stored arm: variant is 'unknown' (React's fallback)");
 }

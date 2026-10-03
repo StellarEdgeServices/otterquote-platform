@@ -97,3 +97,23 @@ export async function readStoredOptOut(sb: ProfileReader): Promise<StoredOptOut>
     return 'unknown';
   }
 }
+
+/**
+ * [gh-2078 / LEGAL-READ: FAIL 5973345257] "Must this page send nothing to an ad/analytics vendor right now?", answered at FIRE time with ALL
+ * THREE inputs: the oq_ad_optout cookie, Global Privacy Control, and the signed-in account's stored `ad_sharing_opt_out`.
+ *   - cookie or GPC            -> blocked (synchronous, as before);
+ *   - stored flag `true`       -> blocked (readStoredOptOut also leaves the cookie);
+ *   - stored flag `'unknown'`  -> blocked: FAIL CLOSED, an opt-out that cannot be read is not shared;
+ *   - stored flag `false`, or `'no_session'` (a signed-out visitor: nothing to read, cookie + GPC were the whole answer) -> allowed.
+ * Total: resolves, never rejects. Callers: help-measurements/page.tsx's measurement_purchase + Purchase.
+ */
+export async function adSharingBlockedAtFire(sb: ProfileReader): Promise<boolean> {
+  try {
+    if (isAdSharingOptedOut()) return true;
+    const stored = await readStoredOptOut(sb);
+    if (stored === false || stored === 'no_session') return !!isAdSharingOptedOut();
+    return true;
+  } catch {
+    return true;
+  }
+}

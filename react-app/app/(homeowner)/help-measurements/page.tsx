@@ -70,6 +70,30 @@ import { track, fbqTrack, buildMeasurementPurchaseEventId } from '@/lib/track';
 import { getVariant } from '@/lib/variant';
 import { supabase } from '@/lib/supabase';
 import { linkPendingLeadOnce } from '@/lib/lead-capture';
+import { adSharingBlockedAtFire, type ProfileReader } from '@/lib/ad-optout';
+
+/**
+ * gh-2078 / LEGAL-READ: FAIL 5973345257: the ONE place this page sends the homeowner conversion to GA4 (`measurement_purchase`, which
+ * carries Google Ads once linked) and Meta (`Purchase`). The advertising-sharing opt-out is resolved HERE, at fire time, including the
+ * signed-in account's stored value (lib/ad-optout.ts adSharingBlockedAtFire): an opted-out buyer, or one whose stored flag cannot be
+ * read (fail closed), sends NOTHING and the once-only marker is left unset. Never throws and never delays the success screen (callers
+ * do not await it).
+ */
+async function fireMeasurementPurchaseIfAllowed(paymentIntentId: string): Promise<void> {
+  try {
+    if (hasFiredMeasurementPurchase(paymentIntentId)) return;
+    if (await adSharingBlockedAtFire(supabase as unknown as ProfileReader)) return;
+    if (hasFiredMeasurementPurchase(paymentIntentId)) return; // the other route (handlePaid / resume) won the race while we read
+    const variant = getVariant();
+    track('measurement_purchase', { value: 15.0, currency: 'USD', variant });
+    // gh-2078c: eventID lets Meta dedup this client event against the server-side CAPI Purchase (PR #2107) sent from the SAME
+    // paymentIntent id -- see lib/track.ts's buildMeasurementPurchaseEventId header.
+    fbqTrack('Purchase', { value: 15.0, currency: 'USD', variant }, buildMeasurementPurchaseEventId(paymentIntentId));
+    markMeasurementPurchaseFired(paymentIntentId);
+  } catch {
+    /* an analytics failure must never break a purchase */
+  }
+}
 
 /**
  * NEW operational copy for the gh-951 resume flow — like gh-416's ORDER_RETRY_COPY
@@ -204,20 +228,7 @@ function PageBody({
           // id as handlePaid's own call -- if handlePaid somehow already
           // fired for this id (e.g. a race between the two paths), this
           // is a no-op, not a double-count.
-          if (!hasFiredMeasurementPurchase(pendingResume.paymentIntentId)) {
-            const variant = getVariant();
-            track('measurement_purchase', { value: 15.0, currency: 'USD', variant });
-            // gh-2078c: eventID lets Meta dedup this client pixel event
-            // against the server-side CAPI Purchase (PR #2107) sent from
-            // the SAME paymentIntent id -- see lib/track.ts's
-            // buildMeasurementPurchaseEventId header.
-            fbqTrack(
-              'Purchase',
-              { value: 15.0, currency: 'USD', variant },
-              buildMeasurementPurchaseEventId(pendingResume.paymentIntentId),
-            );
-            markMeasurementPurchaseFired(pendingResume.paymentIntentId);
-          }
+          void fireMeasurementPurchaseIfAllowed(pendingResume.paymentIntentId);
           setHoverStage('success');
           setView('hover');
         } else {
@@ -320,24 +331,7 @@ function PageBody({
       // (a graceful EF-pending result counts as a completed order here,
       // same as the resume-effect's own success criterion elsewhere in
       // this file -- gh-951).
-      if (!hasFiredMeasurementPurchase(paymentIntentId)) {
-        const variant = getVariant();
-        track('measurement_purchase', { value: 15.0, currency: 'USD', variant });
-        // Meta Pixel: guarded no-op if fbevents.js was never loaded on this
-        // page -- see lib/track.ts's fbqTrack header for why (this is an
-        // authenticated route, outside MetaPixelGate.tsx's ALLOWED_PATHS
-        // today; see the gh-2078 PR description for the follow-up this
-        // leaves open). gh-2078c: eventID lets Meta dedup this client event
-        // against the server-side CAPI Purchase (PR #2107) sent from the
-        // SAME paymentIntent id -- see lib/track.ts's
-        // buildMeasurementPurchaseEventId header.
-        fbqTrack(
-          'Purchase',
-          { value: 15.0, currency: 'USD', variant },
-          buildMeasurementPurchaseEventId(paymentIntentId),
-        );
-        markMeasurementPurchaseFired(paymentIntentId);
-      }
+      void fireMeasurementPurchaseIfAllowed(paymentIntentId);
       setHoverStage('success');
     },
     [profile, claim, user],
