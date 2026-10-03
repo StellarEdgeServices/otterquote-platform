@@ -6,11 +6,12 @@ vi.mock('@/lib/supabase', () => ({
   supabase: {
     auth: { getUser: vi.fn() },
     from: vi.fn(),
+    rpc: vi.fn(),
   },
 }));
 
 import { supabase } from '@/lib/supabase';
-import { useLatestClaim } from '../use-dashboard-data';
+import { useBlockedStates, useLatestClaim } from '../use-dashboard-data';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const sb = supabase as any;
@@ -116,5 +117,48 @@ describe('useLatestClaim (gh-2004)', () => {
     await waitFor(() => expect(result.current.error).not.toBeNull());
     expect(result.current.error?.message).toBe('rls denied');
     expect(window.location.href).toBe('');
+  });
+});
+
+// D-344 / gh-2421 — blocked-state list hook.
+describe('useBlockedStates (D-344)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('returns the list from get_homeowner_blocked_states', async () => {
+    sb.rpc.mockResolvedValue({ data: ['FL', 'LA', 'TX', 'NY'], error: null });
+    const { result } = renderHook(() => useBlockedStates());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(sb.rpc).toHaveBeenCalledWith('get_homeowner_blocked_states');
+    expect(result.current.blockedStates).toEqual(['FL', 'LA', 'TX', 'NY']);
+  });
+
+  it('a hung rpc falls back to FL, LA, TX after the timeout', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    sb.rpc.mockReturnValue(new Promise(() => {}));
+    const { result } = renderHook(() => useBlockedStates());
+    expect(result.current.loading).toBe(true);
+    await vi.advanceTimersByTimeAsync(5000);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.blockedStates).toEqual(['FL', 'LA', 'TX']);
+    expect(warn).toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it('rpc error falls back to FL, LA, TX and warns', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    sb.rpc.mockResolvedValue({ data: null, error: { message: 'function does not exist' } });
+    const { result } = renderHook(() => useBlockedStates());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.blockedStates).toEqual(['FL', 'LA', 'TX']);
+    expect(warn).toHaveBeenCalled();
+  });
+
+  it('a thrown rpc falls back to FL, LA, TX', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    sb.rpc.mockRejectedValue(new Error('network'));
+    const { result } = renderHook(() => useBlockedStates());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.blockedStates).toEqual(['FL', 'LA', 'TX']);
   });
 });

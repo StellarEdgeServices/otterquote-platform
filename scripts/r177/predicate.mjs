@@ -100,6 +100,7 @@ export const COPY_GUARD_FILES = new Set([
   'scripts/check-credential-claims.py',
   'scripts/check-email-parts.py',
   'scripts/check-legal-surface-links.py',
+  'scripts/check-mailgun-footer-coverage.py',
   'scripts/check-partner-consent-link.py',
   'scripts/check-payout-timing-copy-drift.py',
   'scripts/check-sentry-onload-order.py',

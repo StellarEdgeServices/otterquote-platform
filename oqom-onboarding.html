@@ -733,9 +733,8 @@ const WIZARD_CONFIG = {
     // Real, already-live OtterQuote support line (same number published on
     // contractor-faq.html and backed by the Twilio number in js/config.js).
     // The prototype's own placeholder here was a fictional 555-01xx number.
-    supportPhone: "+13175019215",
-    supportPhoneDisplay: "(317) 501-9215",
-    supportSms: "+13175019215",
+    supportPhone: "+18448753412",
+    supportPhoneDisplay: "(844) 875-3412",
   },
   estimatedMinutes: 10,
   // Vendor step order + all copy for each delegated-access flow.
@@ -1203,10 +1202,9 @@ function renderVendorStep(vendor){
 
       <div class="stuck-panel" id="stuckPanel">
         <h3>No problem — we'll do it together</h3>
-        <p>Tap below and we'll hop on a quick 5-minute call or text to get ${vendor.name} connected. We've marked this account as "needs help" so our team already knows to follow up.</p>
+        <p>Tap below and we'll hop on a quick 5-minute call to get ${vendor.name} connected. We've marked this account as "needs help" so our team already knows to follow up.</p>
         <div class="stuck-actions">
           <a class="stuck-call" href="tel:${WIZARD_CONFIG.access.supportPhone}">\u{1F4DE} Call us: ${WIZARD_CONFIG.access.supportPhoneDisplay}</a>
-          <a class="stuck-text" href="sms:${WIZARD_CONFIG.access.supportSms}?&body=${encodeURIComponent("Hi! I need help connecting " + vendor.name + " for OQ Online Services.")}">\u{1F4AC} Text us</a>
         </div>
       </div>
 

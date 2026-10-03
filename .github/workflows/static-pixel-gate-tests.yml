@@ -73,8 +73,12 @@ on:
       - 'admin-measurements.html'
       - 're-1.html'
       - 'tests/gh2150-re1-page.mjs'
+      - 'tests/cro51-re1-value-layout.mjs'
+      - 'img/re1/**'
       - 'ins-1.html'
       - 'tests/gh2151-ins1-page.mjs'
+      - 'tests/cro51-ins1-value-layout.mjs'
+      - 'img/ins1/**'
       - 'hi-1.html'
       - 'tests/gh2152-hi1-page.mjs'
       - 'tests/cro47-trust-partner.mjs'
@@ -158,8 +162,12 @@ on:
       - 'admin-measurements.html'
       - 're-1.html'
       - 'tests/gh2150-re1-page.mjs'
+      - 'tests/cro51-re1-value-layout.mjs'
+      - 'img/re1/**'
       - 'ins-1.html'
       - 'tests/gh2151-ins1-page.mjs'
+      - 'tests/cro51-ins1-value-layout.mjs'
+      - 'img/ins1/**'
       - 'hi-1.html'
       - 'tests/gh2152-hi1-page.mjs'
       - 'tests/cro47-trust-partner.mjs'
@@ -264,3 +272,7 @@ jobs:
           npx playwright install --with-deps chromium
       - name: Partner trust header on re-1/ins-1/hi-1 -- 390x744 FB UA, fields/legal/events unchanged, negative controls PN1-PN4 (cro47-trust-partner)
         run: node tests/cro47-trust-partner.mjs
+      - name: RE-1 value layout -- Dustin's copy byte-for-byte, Become a partner today buttons, banned phrases, 390px no overflow (cro51-re1-value-layout)
+        run: node tests/cro51-re1-value-layout.mjs
+      - name: INS-1 value layout -- Dustin's copy byte-for-byte, Become a partner today buttons, banned phrases, 390px no overflow (cro51-ins1-value-layout)
+        run: node tests/cro51-ins1-value-layout.mjs

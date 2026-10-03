@@ -14,12 +14,19 @@ a separate class of review, but none has been individually triaged yet.
 
 Rather than block every PR on that full backlog, this is a RATCHET: each
 file gets a baseline violation count (BASELINE below, captured the day this
-guard was added). CI fails only when a file's current count exceeds its
-baseline -- i.e. a NEW un-annotated `.update(` without `.select(` was added
--- never on the pre-existing backlog. Fixing a site (adding `.select(` or
-annotating it, see below) lowers that file's live count below its baseline;
-BASELINE is not auto-lowered so the improvement is visible, but it never
-causes a failure.
+guard was added). CI fails when a file's current count differs from its
+baseline: above it means a NEW un-annotated `.update(` without `.select(`
+was added; the pre-existing backlog itself never fails. Fixing a site (adding `.select(` or
+annotating it, see below) lowers that file's live count below its baseline,
+and the SAME change must lower BASELINE to match: a baseline above the live
+count also fails. That slack is exactly where a new un-annotated write hides
+(gh-2105, 5902317441: 10 fixed files kept their old baselines, 35 slack
+sites, and a synthetic `.update(` appended to admin-contractor-action passed
+the gate with exit 0).
+
+Known limit: the count is per file, so fixing one site and adding a new
+un-annotated one in the SAME change leaves the count equal and passes. Review
+of the diff is what catches that case, not this gate.
 
 A site that legitimately matches zero rows (decision b in gh-2105/#2103's
 own triage, e.g. an idempotent re-send) does not need `.select(` -- it can
@@ -28,9 +35,10 @@ line directly above it, documenting why, and is excluded from the count
 without touching the ratchet baseline.
 
 Exit codes:
-  0 -- no file exceeds its baseline
+  0 -- every file's live count equals its baseline
   1 -- one or more files have MORE un-annotated, un-selected `.update(`
-       call sites than their recorded baseline
+       call sites than their recorded baseline, OR a baseline is higher
+       than the file's live count (stale -- lower it in the same PR)
 """
 from __future__ import annotations
 import json
@@ -76,18 +84,18 @@ BASELINE: dict[str, int] = {
     "admin-cpa.html": 0,  # gh-2105 batch 7: both sites fixed (see PR body)
     "admin-fee-config.html": 0,
     "admin-measurements.html": 3,
-    "admin-referrals.html": 4,
+    "admin-referrals.html": 0,  # gh-2105 batch 12: 3 fixed (a), 1 comment reworded
     "admin-template-review.html": 0,  # gh-2105 batch 7: both sites fixed (see PR body)
     "bids.html": 2,
     "color-selection.html": 1,
-    "contract-signing.html": 2,
+    "contract-signing.html": 0,  # gh-2105 batch 11: log-only stamps
     "contractor-auto-bids.html": 1,
-    "contractor-bid-form.html": 1,
-    "contractor-dashboard.html": 4,
+    "contractor-bid-form.html": 0,  # gh-2105 batch 11: decision a, money
+    "contractor-dashboard.html": 0,  # gh-2105 batch 12: 3 fixed (a), 1 annotated (b)
     "contractor-pre-approval.html": 2,
     "contractor-profile.html": 1,
-    "contractor-settings.html": 9,
-    "dashboard.html": 4,
+    "contractor-settings.html": 0,  # gh-2105 batch 12: 8 fixed (a), 1 annotated (b)
+    "dashboard.html": 0,  # gh-2105 batch 12: 2 log-only, 1 fixed (a), 1 already selected (comment reworded)
     "help-estimate.html": 1,
     "help-materials.html": 1,
     "help-measurements.html": 1,
@@ -117,8 +125,8 @@ BASELINE: dict[str, int] = {
     "react-app/app/(homeowner)/repair-intake/use-repair-intake-data.ts": 2,
     "react-app/app/admin/contractors/page.tsx": 1,
     "react-app/app/admin/fee-config/page.tsx": 0,
-    "react-app/app/admin/referrals/page.tsx": 6,
-    "react-app/app/admin/referrals/utils.ts": 1,
+    "react-app/app/admin/referrals/page.tsx": 0,  # gh-2105 batch 12: 3 fixed (a), 3 comment mentions reworded
+    "react-app/app/admin/referrals/utils.ts": 0,  # gh-2105 batch 12: comment mention reworded
     "react-app/app/admin/template-review/page.tsx": 0,  # gh-2105 batch 7: both sites fixed (see PR body)
     "react-app/app/contractor/auto-bids/page.tsx": 1,
     "react-app/app/contractor/bid/[claimId]/bid-form.tsx": 0,
@@ -135,10 +143,10 @@ BASELINE: dict[str, int] = {
     "react-app/app/lib/services.ts": 2,
     "react-app/app/trade-selector/page.tsx": 1,
     "repair-intake.html": 2,
-    "supabase/functions/admin-contractor-action/index.ts": 6,
-    "supabase/functions/approve-warranty-drift/index.ts": 4,
+    "supabase/functions/admin-contractor-action/index.ts": 0,  # gh-2105 slack closed (5902317441): fixed by an earlier batch, baseline never lowered
+    "supabase/functions/approve-warranty-drift/index.ts": 0,  # gh-2105 slack closed (5902317441): fixed by an earlier batch, baseline never lowered
     "supabase/functions/check-rate-limits/index.ts": 1,
-    "supabase/functions/check-siding-design-completion/index.ts": 3,
+    "supabase/functions/check-siding-design-completion/index.ts": 0,  # gh-2105 slack closed (5902317441): fixed by an earlier batch, baseline never lowered
     # gh-2105 batch 5: fixed all 4 remaining sites (gh-1400/gh-1842 envelope
     # pointer writes in handleContractorSign + the getEmbeddedSignLink resume
     # path). All 4 stay fire-and-forget by design (a paid-for BoldSign
@@ -147,7 +155,7 @@ BASELINE: dict[str, int] = {
     # zero-row match, no throw added, matching stripe-webhook/docusign-webhook's
     # batch 2/3 precedent for money/legal-critical fire-and-forget writes.
     "supabase/functions/create-docusign-envelope/index.ts": 0,
-    "supabase/functions/create-hover-order/index.ts": 2,
+    "supabase/functions/create-hover-order/index.ts": 0,  # gh-2105 batch 11: 1 fixed money, 1 log-only
     "supabase/functions/create-payment-intent/index.ts": 0,  # gh-2105 batch 7: ad-sharing opt-out site fixed (see PR body)
     "supabase/functions/create-setup-intent/index.ts": 0,
     # gh-2105 batch 3: fixed all 13 real call sites (see the batch-3 PR body
@@ -163,38 +171,38 @@ BASELINE: dict[str, int] = {
     "supabase/functions/docusign-webhook/index.ts": 0,
     "supabase/functions/get-hover-pdf/index.ts": 1,
     "supabase/functions/get-hover-siding-data/index.ts": 1,
-    "supabase/functions/hover-webhook/index.ts": 4,
+    "supabase/functions/hover-webhook/index.ts": 0,  # gh-2105 slack closed (5902317441): fixed by an earlier batch, baseline never lowered
     "supabase/functions/lead-next-step-optout/index.ts": 0,  # gh-2105 batch 7: decision-b annotated (see PR body)
-    "supabase/functions/mark-job-complete/index.ts": 2,
-    "supabase/functions/mark-loss-sheet-reviewed/index.ts": 2,
+    "supabase/functions/mark-job-complete/index.ts": 0,  # gh-2105 slack closed (5902317441): fixed by an earlier batch, baseline never lowered
+    "supabase/functions/mark-loss-sheet-reviewed/index.ts": 0,  # gh-2105 batch 11: annotated (already selects)
     "supabase/functions/mark-payout-paid/index.ts": 0,
     "supabase/functions/notify-admin-new-homeowner/index.ts": 1,
-    "supabase/functions/notify-payout-pending/index.ts": 1,
+    "supabase/functions/notify-payout-pending/index.ts": 0,  # gh-2105 slack closed (5902317441): fixed by an earlier batch, baseline never lowered
     "supabase/functions/parse-hover-measurements/index.ts": 1,
     "supabase/functions/parse-loss-sheet/index.ts": 1,
     "supabase/functions/partner-email-optout/index.ts": 0,  # gh-2105 batch 7: decision-b annotated (see PR body)
-    "supabase/functions/platform-health-check/index.ts": 2,
-    "supabase/functions/process-bid-expirations/index.ts": 4,
-    "supabase/functions/process-coi-reminders/index.ts": 5,
+    "supabase/functions/platform-health-check/index.ts": 0,  # gh-2105 batch 11: decision b annotated
+    "supabase/functions/process-bid-expirations/index.ts": 0,  # gh-2105 slack closed (5902317441): fixed by an earlier batch, baseline never lowered
+    "supabase/functions/process-coi-reminders/index.ts": 0,  # gh-2105 slack closed (5902317441): fixed by an earlier batch, baseline never lowered
     # gh-2105 batch 3: fixed all 15 real call sites (see the batch-3 PR body
     # for the full grep enumeration + per-site a/b/c decisions). Lowered
     # 15->0, following batches 1-2's precedent (see the docusign-webhook
     # entry above for the same note).
     "supabase/functions/process-dunning/index.ts": 0,
     "supabase/functions/process-hover-rebate/index.ts": 0,
-    "supabase/functions/process-payout-reminders/index.ts": 2,
+    "supabase/functions/process-payout-reminders/index.ts": 0,  # gh-2105 slack closed (5902317441): fixed by an earlier batch, baseline never lowered
     "supabase/functions/record-attestation/index.ts": 0,  # gh-2105 batch 7: fixed (see PR body)
-    "supabase/functions/record-warranty-upload/index.ts": 1,
-    "supabase/functions/reject-warranty-drift/index.ts": 1,
+    "supabase/functions/record-warranty-upload/index.ts": 0,  # gh-2105 batch 11: fixed
+    "supabase/functions/reject-warranty-drift/index.ts": 0,  # gh-2105 batch 11: fixed
     "supabase/functions/rescind-bid/index.ts": 0,
-    "supabase/functions/resend-hover-link/index.ts": 1,
-    "supabase/functions/send-adjuster-email/index.ts": 1,
-    "supabase/functions/send-home-profile-prompt/index.ts": 2,
+    "supabase/functions/resend-hover-link/index.ts": 0,  # gh-2105 batch 11: fixed log-only
+    "supabase/functions/send-adjuster-email/index.ts": 0,  # gh-2105 batch 11: fixed log-only
+    "supabase/functions/send-home-profile-prompt/index.ts": 0,  # gh-2105 batch 11: decision b annotated
     "supabase/functions/send-incomplete-onboarding-reminders/index.ts": 1,
     "supabase/functions/send-partner-onboarding/index.ts": 3,
     "supabase/functions/stripe-webhook/index.ts": 0,
     "supabase/functions/submit-partner-w9/index.ts": 0,
-    "supabase/functions/switch-contractor/index.ts": 4,
+    "supabase/functions/switch-contractor/index.ts": 0,  # gh-2105 slack closed (5902317441): fixed by an earlier batch, baseline never lowered
     "supabase/functions/validate-contract-template/index.ts": 0,  # gh-2105 batch 7: fixed (see PR body)
     "supabase/functions/validate-contract-template/revalidate.ts": 0,  # gh-2105 batch 7: fixed (see PR body)
     "supabase/functions/verify-payment-method/index.ts": 0,
@@ -276,18 +284,26 @@ def main() -> int:
                 "zero-row match is legitimate here (gh-2105 decision b)."
             )
         elif count < base:
-            print(f"IMPROVED: {rel} -- {count} live vs baseline {base} (consider lowering BASELINE)")
+            # gh-2105 (5902317441): slack between a stale baseline and the live
+            # count lets a NEW un-annotated .update() pass unseen, so a stale
+            # baseline is a failure, not a hint.
+            failures += 1
+            print(
+                f"FAIL: {rel} -- {count} live vs baseline {base}: stale baseline. "
+                f"lower BASELINE to {count} in this same change (slack of "
+                f"{base - count} would hide new un-selected .update() sites)."
+            )
 
     total_live = sum(len(v) for v in live.values())
     if failures:
         print()
-        print(f"{failures} file(s) exceed their gh-2105 ratchet baseline.")
+        print(f"{failures} file(s) do not match their gh-2105 ratchet baseline.")
         print("Reference: react-app/app/(homeowner)/bids/actions.ts fixed in gh-2105 (bid award/decline).")
         return 1
 
     print(
         f"check-unselected-update-ratchet: {len(live)} file(s) with pre-existing "
-        f"sites ({total_live} total), no file exceeds its baseline."
+        f"sites ({total_live} total), every file matches its baseline."
     )
     return 0
 

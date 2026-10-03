@@ -169,6 +169,11 @@ jobs:
       - name: Mailgun-sender postal-address footer coverage guard (D-237, gh-1824)
         run: python3 scripts/check-mailgun-footer-coverage.py
 
+      # gh-1824: the guard's own negative controls (modes A-D). A self-test
+      # nothing runs is a file, not a gate.
+      - name: Self-test the Mailgun footer coverage guard (gh-1824)
+        run: python3 scripts/check-mailgun-footer-coverage.test.py
+
       - name: Partner-signup consent checkbox link guard (D-278, gh-943)
         run: python3 scripts/check-partner-consent-link.py
 

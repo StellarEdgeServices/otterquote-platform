@@ -41,7 +41,7 @@ const CORE = read('js/oq-lead-core.js');
 const START_JS = read('js/ho6-start.js');
 
 // ── Pinned strings ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-// Dustin's copy: tests/fixtures/ho6-copy.txt is the #2378 issue body's quote block, byte for byte (leading "> " removed, nothing else).
+// Dustin's copy: tests/fixtures/ho6-copy.txt is the #2378 issue body's quote block, byte for byte (leading "> " removed, nothing else).  Amended 2026-09-30 at Dustin's instruction: Better Materials and Warranties last sentence now reads "more likely to include them".
 const COPY_LINES = read('tests/fixtures/ho6-copy.txt').replace(/\r\n/g, '\n').replace(/\n+$/, '').split('\n');
 // The approved consent (#2378 comment 5899644479, "Consent as recommended"). The md5 is over the joined string that is stored.
 const CONSENT_EMAIL_LINE = 'Otter Quotes may email me about my project.';
@@ -106,6 +106,11 @@ function staticHalf() {
     control('H2', !(gotM.length === 7 && gotM.every((l, i) => l === COPY_LINES[i])));
     const mut2 = LANDING.replace('No pants required!', 'No pants required.');
     control('H2 (last sentence)', renderedCopy(mut2)[6] !== COPY_LINES[6]);
+    // gh-2378 (Dustin, 2026-09-30): "Better Materials and Warranties" must not promise what contractors will do. Negative control: the old wording is absent and the new wording is present.
+    ok(!LANDING.includes('they get thrown in for free'), 'H2 /ho6 no longer says "they get thrown in for free"');
+    ok(!COPY_LINES.join('\n').includes('they get thrown in for free'), 'H2 fixture no longer says "they get thrown in for free"');
+    ok(LANDING.includes('they are more likely to include them for free to win your business.'), 'H2 /ho6 says "they are more likely to include them for free to win your business."');
+    control('H2 (thrown-in absent)', /they get thrown in for free/.test(LANDING.replace('they are more likely to include them for free', 'they get thrown in for free')));
   }
   // H4 colours (css side; computed side is in the browser half)
   ok(/--ho6-blue:\s*#1D4ED8/i.test(CSS) && /--ho6-text:\s*#000000/i.test(CSS) && /--ho6-bg:\s*#FFFFFF/i.test(CSS), 'H4 css tokens: blue #1D4ED8, black text, white background');

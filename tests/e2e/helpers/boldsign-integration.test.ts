@@ -78,9 +78,9 @@ function buildTestPdfBase64(): string {
   text(50, 750, 16, "OTTERQUOTE / BOLDSIGN INTEGRATION TEST");
   text(50, 725, 11, "THIS IS NOT A REAL CONTRACT.");
   text(50, 670, 10, "{{text|1|*|Test Text|test_text}}");
-  text(50, 645, 10, "{{sign|1|*|Test Signature|test_signature}}");
-  text(50, 620, 10, "{{init|1|*|Test Initial|test_initial}}");
-  text(50, 595, 10, "{{date|1|*|Test Date|test_date}}");
+  text(50, 645, 10, "{{sign|1|*||test_signature}}");
+  text(50, 620, 10, "{{init|1|*||test_initial}}");
+  text(50, 595, 10, "{{date|1|*||test_date}}");
   const stream = content.join("\n");
   const pdfLines: string[] = [];
   const pdfObjs: number[] = [];

@@ -303,6 +303,16 @@ verify_jwt = false
 [functions.hover-webhook]
 verify_jwt = false
 
+# gh-2019: notify-admin-new-homeowner is deployed verify_jwt=false (Supabase
+# Management API /functions, 2026-09-30) but had NO stanza here, so a flagless
+# `functions deploy` (CLI default verify_jwt=true) would silently flip it. Its
+# callers (notify_admin_new_claim / notify_admin_new_router_lead triggers and
+# cron gh1932-homeowner-signup-sweep) send the service-role key as bearer and
+# the handler authorises the bearer in-code, same model as
+# notify-admin-new-contractor. Pin matches deployed state; no behaviour change.
+[functions.notify-admin-new-homeowner]
+verify_jwt = false
+
 [functions.notify-admin-new-contractor]
 verify_jwt = false
 

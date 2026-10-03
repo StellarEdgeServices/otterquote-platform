@@ -34,6 +34,10 @@ function fakeDb(overrides: Partial<DbAdapter> = {}): DbAdapter {
       data: { id: "stub", email: "resolved-from-auth-user@otterquote-internal.test" },
       error: null,
     }),
+    getAdminSignals: async () => ({
+      data: { profile_role: "contractor", contractor_roles: [], app_metadata_role: null },
+      error: null,
+    }),
     generateMagicLink: async () => ({
       data: { action_link: "https://stub.supabase.co/auth/v1/verify?token=stub" },
       error: null,
@@ -703,4 +707,99 @@ Deno.test("gh-2047 F3: 403 via contractor_id alone even when its linked user_id 
   );
   assertEquals(result.status, 403);
   assertStringIncludes(String(result.body.error), "#2047");
+});
+
+// ───────────────────────── R-134 (mint134): admin accounts are never minted ─────────────────────────
+// These model an admin identity that is NOT on the gh-2047 id denylist (the
+// denylist's own doc says it is to be deleted once gh-2047 lands), with every
+// is_test column reading true, exactly as the founder's profile does today.
+// On main's code (no admin check) each refusal test below FAILS with a 200.
+
+const NON_DENYLISTED_ID = "11111111-2222-4333-8444-555555555555";
+
+function adminTargetDb(over: Partial<DbAdapter> = {}, email = "someone@otterquote-internal.test") {
+  let minted = 0;
+  const db = fakeDb({
+    getContractorById: async () => ({
+      data: { id: "c-admin", user_id: NON_DENYLISTED_ID, email, is_test: true },
+      error: null,
+    }),
+    getAuthUserById: async () => ({ data: { id: NON_DENYLISTED_ID, email }, error: null }),
+    generateMagicLink: async () => {
+      minted++;
+      return { data: { action_link: "https://stub.supabase.co/auth/v1/verify?token=x" }, error: null };
+    },
+    ...over,
+  });
+  return { db, minted: () => minted };
+}
+
+Deno.test("R-134 A: admin allow-list email (is_test true everywhere) -> 403 ADMIN_ACCOUNT_REFUSED, no link minted", async () => {
+  for (const email of ["dustinstohler1@gmail.com", "dustin@otterquote.com", "  DustinStohler1@Gmail.com "]) {
+    const { db, minted } = adminTargetDb({}, email);
+    const r = await resolveAndMint({ contractor_id: "c-admin" }, db, ACTOR_EMAIL);
+    assertEquals(r.status, 403);
+    assertEquals(r.body.code, "ADMIN_ACCOUNT_REFUSED");
+    assertEquals(minted(), 0);
+  }
+});
+
+Deno.test("R-134 B: role-column admin (profiles.role / contractors.template_review_role / app_metadata.role) -> 403", async () => {
+  const cases: Array<[string, { profile_role: string | null; contractor_roles: (string | null)[]; app_metadata_role: string | null }]> = [
+    ["profiles.role", { profile_role: "admin", contractor_roles: [], app_metadata_role: null }],
+    ["template_review_role", { profile_role: "contractor", contractor_roles: [null, "admin"], app_metadata_role: null }],
+    ["app_metadata.role", { profile_role: null, contractor_roles: [], app_metadata_role: "admin" }],
+  ];
+  for (const [name, signals] of cases) {
+    const { db, minted } = adminTargetDb({ getAdminSignals: async () => ({ data: signals, error: null }) });
+    const r = await resolveAndMint({ contractor_id: "c-admin" }, db, ACTOR_EMAIL);
+    assertEquals(r.status, 403, name);
+    assertEquals(r.body.code, "ADMIN_ACCOUNT_REFUSED", name);
+    assertEquals(minted(), 0, name);
+  }
+});
+
+Deno.test("R-134 C: admin check cannot be evaluated (error / throw / null / malformed) -> fail closed 403", async () => {
+  const variants: Array<Partial<DbAdapter>> = [
+    { getAdminSignals: async () => ({ data: null, error: { message: "boom" } }) },
+    { getAdminSignals: async () => { throw new Error("network"); } },
+    { getAdminSignals: async () => ({ data: null, error: null }) },
+    // deno-lint-ignore no-explicit-any
+    { getAdminSignals: async () => ({ data: {} as any, error: null }) },
+  ];
+  for (const v of variants) {
+    const { db, minted } = adminTargetDb(v);
+    const r = await resolveAndMint({ contractor_id: "c-admin" }, db, ACTOR_EMAIL);
+    assertEquals(r.status, 403);
+    assertEquals(r.body.code, "ADMIN_CHECK_UNAVAILABLE");
+    assertEquals(minted(), 0);
+  }
+});
+
+Deno.test("R-134 D: a non-admin is_test account still mints (200) on the contractor and user_id paths", async () => {
+  const { db, minted } = adminTargetDb({}, "test-contractor@otterquote-internal.test");
+  const r = await resolveAndMint({ contractor_id: "c-admin" }, db, ACTOR_EMAIL);
+  assertEquals(r.status, 200);
+  assertEquals(r.body.ok, true);
+  assertEquals(minted(), 1);
+
+  const hdb = fakeDb({
+    getClaimsByUserId: async () => ({ data: [{ id: "k1", is_test: true }], error: null }),
+    getAuthUserById: async () => ({ data: { id: NON_DENYLISTED_ID, email: "hw@otterquote-internal.test" }, error: null }),
+  });
+  const r2 = await resolveAndMint({ user_id: NON_DENYLISTED_ID }, hdb, ACTOR_EMAIL);
+  assertEquals(r2.status, 200);
+});
+
+Deno.test("R-134 E: non-test target is still refused as before (not-is_test 403 message unchanged)", async () => {
+  const { db, minted } = adminTargetDb({
+    getContractorById: async () => ({
+      data: { id: "c-real", user_id: NON_DENYLISTED_ID, email: "real@example.com", is_test: false },
+      error: null,
+    }),
+  });
+  const r = await resolveAndMint({ contractor_id: "c-real" }, db, ACTOR_EMAIL);
+  assertEquals(r.status, 403);
+  assertStringIncludes(String(r.body.error), "not marked is_test");
+  assertEquals(minted(), 0);
 });

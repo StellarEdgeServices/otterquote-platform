@@ -196,6 +196,26 @@ export function fieldIdFromTag(anchor: string): string | null {
 }
 
 /**
+ * [gh-1314] One MissingMarker per sign/init/date tag that carries a label. BoldSign accepts the
+ * send and then silently fails to create the document, so the contractor is told which tag to
+ * change and exactly what to change it to. Takes the violations from boldsign-tag-lint.ts.
+ */
+export function describeLabeledTagMarkers(
+  violations: Array<{ tag: string; type: string; label: string; fieldId: string | null; fixedTag: string }>,
+): MissingMarker[] {
+  return violations.map((v) => ({
+    anchor: v.tag,
+    mechanism: "boldsign_tag",
+    fieldId: v.fieldId,
+    name: `Remove the label from ${v.tag}`,
+    where: "Wherever this tag already appears in your document.",
+    why: `A ${v.type} tag cannot carry a label ("${v.label}"): the e-signature service accepts the document and then fails to build it, so it could never be signed. The label position must be empty.`,
+    example: v.fixedTag,
+    howTo: `Replace ${v.tag} with ${v.fixedTag} (keep the two bars in the label position, with nothing between them).`,
+  }));
+}
+
+/**
  * Turn the validator's own per-anchor results into instructions.
  *
  * The validator already knew all of this. It just never said it: the UI

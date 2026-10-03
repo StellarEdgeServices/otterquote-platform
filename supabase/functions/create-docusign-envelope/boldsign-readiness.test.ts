@@ -670,3 +670,77 @@ Deno.test("clearStrandedEnvelopePointer (stateful): the guarded fallback clears 
   assertEquals(seed.claims[0].docusign_envelope_id, null);
   assertEquals(seed.claims[0].contract_sent_at, null);
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// gh-1314 / gh-1842 SETTLE TIME. Measured 2026-09-30 (#1314 comment 5912190043): 5 of 5 HEALTHY
+// sends were properties-403 AND unlisted on the first poll (~1 s) and readable at 8.13-8.41 s.
+// A healthy document therefore looks exactly like a dead one until ~8.5 s. Paired fixtures:
+//   healthy (403 + unlisted for 8.4 s, then 200)  -> must be ACCEPTED, and the probe must not fire early
+//   dead    (403 + unlisted forever)              -> must still be REJECTED as permanent, but only AFTER the settle time
+import { ABSENCE_SETTLE_MS, READINESS_CEILING_MS } from "./boldsign-readiness.ts";
+
+/** properties 403 until the fake clock passes `readyAtMs`; never listed until then (listed after). */
+function timedBoldSign(id: string, readyAtMs: number, clock: { now: () => number }) {
+  const calls = { properties: 0, list: 0, firstListAt: null as number | null };
+  const fetchImpl = ((url: string | URL | Request) => {
+    const u = String(url);
+    if (u.includes("/v1/document/properties")) {
+      calls.properties++;
+      return Promise.resolve(clock.now() >= readyAtMs ? json(200, { status: "InProgress" }) : json(403, { error: "Forbidden" }));
+    }
+    if (u.includes("/v1/document/list")) {
+      calls.list++;
+      if (calls.firstListAt === null) calls.firstListAt = clock.now();
+      const status = new URL(u).searchParams.get("Status");
+      const listed = clock.now() >= readyAtMs && status === "WaitingForOthers";
+      return Promise.resolve(json(200, { result: listed ? [{ documentId: id }] : [] }));
+    }
+    throw new Error("unexpected fetch: " + u);
+  }) as unknown as typeof fetch;
+  return { fetchImpl, calls };
+}
+
+Deno.test("gh-1314 settle: constants are past the slowest healthy sample (8.41 s) and inside the ceiling", () => {
+  assert(ABSENCE_SETTLE_MS > 8410 * 1.5, `settle ${ABSENCE_SETTLE_MS}`);
+  assert(READINESS_CEILING_MS > ABSENCE_SETTLE_MS, "ceiling must leave room for the probe");
+});
+
+Deno.test("gh-1314 settle: a HEALTHY document unlisted for 8.4 s is accepted with the DEFAULT settle (GREEN)", async () => {
+  const clock = fakeClock();
+  const { fetchImpl, calls } = timedBoldSign(SLOW, 8410, clock);
+  await waitForBoldSignDocumentReady(SLOW, {
+    apiBase: API, headers: { "X-API-KEY": "test" }, fetchImpl, intervalMs: 1000, now: clock.now, sleep: clock.sleep,
+  });
+  assertEquals(calls.list, 0, "no list probe may run inside the settle window");
+});
+
+Deno.test("gh-1314 settle: the SAME healthy document under the OLD 5 s probe is misclassified permanent (negative control)", async () => {
+  const clock = fakeClock();
+  const { fetchImpl } = timedBoldSign(SLOW, 8410, clock);
+  let caught: unknown = null;
+  try {
+    await waitForBoldSignDocumentReady(SLOW, {
+      apiBase: API, headers: { "X-API-KEY": "test" }, fetchImpl, intervalMs: 1000,
+      ceilingMs: 15000, absenceProbeAfterMs: 5000, now: clock.now, sleep: clock.sleep,
+    });
+  } catch (e) {
+    caught = e;
+  }
+  assert(caught instanceof BoldSignPermanentCreationFailure, "the old defaults wrongly condemned a healthy document");
+});
+
+Deno.test("gh-1314 settle: a DEAD document is not declared absent before the settle time, but is after it (RED beside GREEN)", async () => {
+  const clock = fakeClock();
+  const { fetchImpl, calls } = timedBoldSign(DEAD, Infinity, clock);
+  let caught: unknown = null;
+  try {
+    await waitForBoldSignDocumentReady(DEAD, {
+      apiBase: API, headers: { "X-API-KEY": "test" }, fetchImpl, intervalMs: 1000, now: clock.now, sleep: clock.sleep,
+    });
+  } catch (e) {
+    caught = e;
+  }
+  assert(caught instanceof BoldSignPermanentCreationFailure, "a truly dead document is still condemned");
+  assert(calls.firstListAt !== null && calls.firstListAt >= ABSENCE_SETTLE_MS, `first list probe at ${calls.firstListAt} ms, must be >= ${ABSENCE_SETTLE_MS}`);
+  assert(clock.now() < READINESS_CEILING_MS, "and it must still fail before the ceiling");
+});

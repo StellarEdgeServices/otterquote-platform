@@ -4,7 +4,7 @@
  * [D-274 / #631, 2026-08-13] Re-platformed from DocuSign to BoldSign.
  *
  * The PLATFORM DISCLOSURE acknowledgment is enforced at signing time by an
- * inline BoldSign Text Tag (`{{sign|<homeowner_idx>|*|...|otterquote_acknowledgment}}`,
+ * inline BoldSign Text Tag (`{{sign|<homeowner_idx>|*||otterquote_acknowledgment}}`,
  * see create-docusign-envelope's buildAddendumTabs-equivalent) on the
  * generated IC 24-5-11 compliance addendum. This module is the
  * completion-side verification layer: given the AUTHORITATIVE signer/field

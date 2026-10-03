@@ -23,7 +23,7 @@ import { useState, useEffect, useCallback } from 'react';
 import type { ReactNode, ChangeEvent } from 'react';
 import { useAuthReady } from '@/hooks/use-auth-ready';
 import { supabase } from '@/lib/supabase';
-import { readReferralIds, clearReferralIds } from '@/lib/cookie-storage';
+import { readReferralIds, clearReferralIds, clearPartnerAttribution } from '@/lib/cookie-storage';
 import { recordFirstTouch } from '@/lib/attribution';
 import { isTestEmail } from '@/lib/test-signal';
 import { parseAddress, fullAddress, isValidZip, hasFullAddress, type ParsedAddress } from './utils';
@@ -1078,6 +1078,24 @@ export default function TradeSelectorPage() {
           if ((chainReferralId || chainReferralAgentId) && claimWriteSucceeded) {
             clearReferralIds();
             localStorage.removeItem('oq_referral_id_for_claim');
+          }
+
+          // gh-2060 item 3 (CEO ruling, #2060 comment 5911272482): consume the
+          // partner-attribution keys the same way, EACH only when its own value
+          // was stamped on the claim AND the claim write succeeded.
+          // oq_referral_source: referral_source is in the payload.
+          // oq_partner_id: only when the lookup resolved it into
+          // referral_agent_id -- a failed/absent lookup (RPC or network error,
+          // unknown code) stamps nothing, so the key is KEPT (round 2,
+          // LEGAL-READ + REVIEW FAIL on #2404). A definitive no-match is also
+          // kept (chosen: the lookup cannot tell it from an error). An error or
+          // no-op pass leaves both alone. Mirrors trade-selector.html.
+          if (claimWriteSucceeded) {
+            const consumeSource = !!referralSource;
+            const consumePartnerId = !!(partnerIdParam && referralAgentId);
+            if (consumeSource || consumePartnerId) {
+              clearPartnerAttribution({ source: consumeSource, partnerId: consumePartnerId });
+            }
           }
         } catch (claimErr) {
           console.warn('[trade-selector] claim upsert failed:', claimErr);

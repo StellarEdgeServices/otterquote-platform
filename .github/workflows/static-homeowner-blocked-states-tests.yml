@@ -1,0 +1,49 @@
+name: Static Homeowner Blocked-States Tests
+
+# gh-2421 (D-344) -- the homeowner state gate is a blocked list (FL, LA, TX
+# fallback; live list via get_homeowner_blocked_states), not Indiana-only.
+# This fails if dashboard.html regresses to the `!== 'IN'` literal or loses
+# the blocked-list read. `pull_request` only, no secrets, read-only token.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'dashboard.html'
+      - 'react-app/app/(homeowner)/dashboard/utils.ts'
+      - 'supabase/migrations/20261003010000_gh2421_homeowner_blocked_states.sql'
+      - 'tests/gh2421-static-homeowner-blocked-states.mjs'
+      - '.github/workflows/static-homeowner-blocked-states-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'dashboard.html'
+      - 'react-app/app/(homeowner)/dashboard/utils.ts'
+      - 'supabase/migrations/20261003010000_gh2421_homeowner_blocked_states.sql'
+      - 'tests/gh2421-static-homeowner-blocked-states.mjs'
+      - '.github/workflows/static-homeowner-blocked-states-tests.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-homeowner-blocked-states-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  static-homeowner-blocked-states-tests:
+    name: Homeowner blocked-list state gate (dashboard.html)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Blocked-list gate present; Indiana-only literal gone (gh2421)
+        run: node tests/gh2421-static-homeowner-blocked-states.mjs

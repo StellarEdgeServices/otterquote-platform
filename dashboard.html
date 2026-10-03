@@ -1590,6 +1590,30 @@
         window.currentClaim = currentClaim;  // gh-1276 follow-up: Home Profile IIFE reads window.currentClaim
       }
 
+      // D-344 / gh-2421: blocked-state list for the homeowner gate.
+      const DEFAULT_BLOCKED_STATES = ['FL', 'LA', 'TX'];
+      async function loadBlockedStates() {
+        if (CONFIG.DEMO_MODE || !sb) return DEFAULT_BLOCKED_STATES;
+        try {
+          // A hung request must not leave the homeowner on a blank page: give
+          // the rpc 5 s, then fall back to the default list.
+          const { data, error } = await Promise.race([
+            sb.rpc('get_homeowner_blocked_states'),
+            new Promise(function(resolve) {
+              setTimeout(function() { resolve({ data: null, error: { message: 'timed out after 5s' } }); }, 5000);
+            }),
+          ]);
+          if (error || !Array.isArray(data)) {
+            console.warn('[StateGate] blocked-state rpc failed; using default list:', error?.message || 'non-array result');
+            return DEFAULT_BLOCKED_STATES;
+          }
+          return data.map(function(s) { return String(s).trim().toUpperCase(); });
+        } catch (err) {
+          console.warn('[StateGate] blocked-state rpc threw; using default list:', err?.message || err);
+          return DEFAULT_BLOCKED_STATES;
+        }
+      }
+
       // ── Main Initialization ──
       async function init() {
         try {
@@ -1609,10 +1633,17 @@
             await loadClaimData();
           }
 
-          // D-178: State gate — block non-IN homeowners before any UI renders
-          if (currentClaim?.property_state && currentClaim.property_state !== 'IN') {
-            showStateGateCard(currentClaim.property_state);
-            return;
+          // D-344 (amends D-178): State gate — every state is open EXCEPT the
+          // blocked list (FL, LA, TX at launch), read from platform_settings
+          // key homeowner_blocked_states via get_homeowner_blocked_states().
+          // Any rpc error or non-array result falls back to the hard-coded
+          // list so the gate never fails open to a blocked state. gh-2421.
+          if (currentClaim?.property_state) {
+            const blockedStates = await loadBlockedStates();
+            if (blockedStates.includes(String(currentClaim.property_state).trim().toUpperCase())) {
+              showStateGateCard(currentClaim.property_state);
+              return;
+            }
           }
 
           // 2. Render UI
@@ -1887,8 +1918,11 @@
           sb.from('claims')
             .update({ status: 'waitlisted' })
             .eq('id', currentClaim.id)
-            .then(({ error }) => {
+            .select('id')
+            .then(({ data, error }) => {
               if (error) console.warn('[StateGate] Could not update claim status to waitlisted:', error.message);
+              // gh-2105: log-only. The gate card and the expansion_waitlist row are the source of truth; a zero-row match must not disturb the homeowner.
+              else if (!Array.isArray(data) || data.length === 0) console.warn('[StateGate] gh-2105: zero-row update -- claims.status waitlisted matched no rows for claim ' + currentClaim.id);
             });
         }
       }
@@ -2910,7 +2944,10 @@
                 });
                 if (adjData) {
                   // Link adjuster_id back to the claim (silent update)
-                  await sb.from('claims').update({ adjuster_id: adjData }).eq('id', currentClaim.id);
+                  const { data: adjLinkRows, error: adjLinkErr } = await sb.from('claims').update({ adjuster_id: adjData }).eq('id', currentClaim.id).select('id');
+                  // gh-2105: log-only (non-critical KB link; the save above already succeeded).
+                  if (adjLinkErr) console.warn('Adjuster KB link failed (non-critical):', adjLinkErr);
+                  else if (!Array.isArray(adjLinkRows) || adjLinkRows.length === 0) console.warn('gh-2105: zero-row update -- claims.adjuster_id matched no rows for claim ' + currentClaim.id);
                   currentClaim.adjuster_id = adjData;
                 }
               } catch (adjErr) {
@@ -3096,7 +3133,7 @@
               .update({
                 [updateField]: true,
                 // Full storage path — contractor pages open this document via
-                // createSignedUrl(), which needs the object path; a bare
+                // createSignedUrl(), which needs the object path, and a bare
                 // display name 404s (E2E walk fix 2026-07-07).
                 [filenameField]: uploadedStoragePath || file.name,
               })
@@ -3201,12 +3238,15 @@
           });
 
           if (!CONFIG.DEMO_MODE && sb && currentClaim.id) {
-            const { error } = await sb
+            const { data: submittedRows, error } = await sb
               .from('claims')
               .update(submitUpdate)
-              .eq('id', currentClaim.id);
+              .eq('id', currentClaim.id)
+              .select('id');
 
             if (error) throw error;
+            // gh-2105 decision (a): a zero-row match must not show the success state; it falls into the existing 'Failed to submit your project' catch.
+            if (!Array.isArray(submittedRows) || submittedRows.length === 0) throw new Error('zero_rows_updated: claims submit-for-bids');
 
             // Notify contractors via Edge Function (non-fatal)
             try {

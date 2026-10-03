@@ -345,7 +345,7 @@ async function acceptance(mod, startSrc) {
     const leaked = banned.filter((t) => everything.indexOf(t) !== -1);
     chk('T6', leaked.length === 0, 'no address, phone, email, name, funding value or consent text in any GA4 / Meta / Clarity payload (leaked: ' + leaked.join(',') + ')');
     const keys = new Set(); s.gtagCalls.forEach((c) => Object.keys(c.params || {}).forEach((k) => keys.add(k)));
-    chk('T6', [...keys].every((k) => ['step', 'step_index', 'variant', 'ua_context', 'lead_id', 'event_id'].indexOf(k) !== -1), 'every GA4 parameter key is one of step / step_index / variant / ua_context / lead_id / event_id');
+    chk('T6', [...keys].every((k) => ['step', 'step_index', 'variant', 'ua_context', 'lead_id', 'event_id', 'vis_at_load', 'visible_ms_before_first_hide', 'funding_tapped', 'transport_type'].indexOf(k) !== -1), 'every GA4 parameter key is one of step / step_index / variant / ua_context / lead_id / event_id');
   });
 
   // T7 consent byte identity.

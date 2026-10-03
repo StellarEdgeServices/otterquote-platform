@@ -749,10 +749,13 @@
         }
 
         async function verifyW9(agentId) {
-            const { error } = await sb
+            const { data: w9Rows, error: w9Err } = await sb
                 .from('referral_agents')
                 .update({ w9_verified_at: new Date().toISOString() })
-                .eq('id', agentId);
+                .eq('id', agentId)
+                .select('id');
+            // gh-2105 decision (a): a zero-row RLS/filter match is a failure, shown through the existing error toast.
+            const error = w9Err || (!Array.isArray(w9Rows) || w9Rows.length === 0 ? new Error('zero_rows_updated') : null);
 
             if (error) {
                 showToast('Error verifying W-9: ' + error.message);
@@ -766,10 +769,13 @@
         async function manualUnblock(agentId) {
             if (!confirm('Manually unblock this partner without a W-9 on file? Only do this for grandfathered or exceptional cases.')) return;
 
-            const { error } = await sb
+            const { data: unblockRows, error: unblockErr } = await sb
                 .from('referral_agents')
                 .update({ payments_blocked: false })
-                .eq('id', agentId);
+                .eq('id', agentId)
+                .select('id');
+            // gh-2105 decision (a): zero rows -> the existing error toast.
+            const error = unblockErr || (!Array.isArray(unblockRows) || unblockRows.length === 0 ? new Error('zero_rows_updated') : null);
 
             if (error) {
                 showToast('Error unblocking partner: ' + error.message);
@@ -784,7 +790,7 @@
         // signup pages now make the visitor confirm their own type, but
         // partners created before that fix (or mis-typed some other way)
         // have no self-service correction path, so admin is the floor
-        // (issue AC4). Uses the same direct .update() pattern as verifyW9 /
+        // (issue AC4). Uses the same direct table write pattern as verifyW9 /
         // manualUnblock above — "Admin can update referral agents" RLS
         // (is_admin_email(), p18_admin_identity_allowlist.sql) already
         // permits this column, so no migration is needed.
@@ -843,10 +849,13 @@
         async function changeAgentType(agentId, newType) {
             // Matches referral_agents_agent_type_check (baseline schema):
             // re_agent, insurance_agent, home_inspector, customer, adjuster, other.
-            const { error } = await sb
+            const { data: typeRows, error: typeErr } = await sb
                 .from('referral_agents')
                 .update({ agent_type: newType })
-                .eq('id', agentId);
+                .eq('id', agentId)
+                .select('id');
+            // gh-2105 decision (a): zero rows -> the existing error toast.
+            const error = typeErr || (!Array.isArray(typeRows) || typeRows.length === 0 ? new Error('zero_rows_updated') : null);
 
             if (error) {
                 showToast('Error changing partner type: ' + error.message);

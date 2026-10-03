@@ -1,0 +1,65 @@
+{
+  "note": "INS-1 value-layout photo manifest (CRO51, gh-2151). Pexels free licence, https://www.pexels.com/license/ -- each page was opened and its licence line read on 2026-09-30. All cropped/resized to 3:2, 900x600 webp (width/height match the declared attributes). No recognisable faces, no brand logos, no readable addresses, no AI images. Photos are not used in any other funnel page.",
+  "images": [
+    {
+      "section": 1,
+      "heading": "Easier Service.",
+      "file": "img/ins1/ins1-1.webp",
+      "page_url": "https://www.pexels.com/photo/village-houses-with-damaged-roofs-and-uprooted-trees-4170448/",
+      "photographer": "K",
+      "photographer_url": "https://www.pexels.com/@kelly/",
+      "licence_url": "https://www.pexels.com/license/",
+      "edit": "aerial view of storm-damaged homes after a tornado (no people); centre-cropped to 3:2, resized"
+    },
+    {
+      "section": 2,
+      "heading": "Educated Clients.",
+      "file": "img/ins1/ins1-2.webp",
+      "page_url": "https://www.pexels.com/photo/grayscale-photo-of-a-broken-roof-tiles-14615663/",
+      "photographer": "Andreas Ebner",
+      "photographer_url": "https://www.pexels.com/@andreasebnerfotografie/",
+      "licence_url": "https://www.pexels.com/license/",
+      "edit": "storm-damaged roof tiles (no people); cropped from the 2:3 original to 3:2 around the damage, resized"
+    },
+    {
+      "section": 3,
+      "heading": "Better Warranties and Materials.",
+      "file": "img/ins1/ins1-3.webp",
+      "page_url": "https://www.pexels.com/photo/historic-home-roof-replacement-in-weatherford-33501308/",
+      "photographer": "Ryan Stephens",
+      "photographer_url": "https://www.pexels.com/@rstephens/",
+      "licence_url": "https://www.pexels.com/license/",
+      "edit": "new roof being installed on a house; crew are small and not recognisable, no signs or addresses readable; resize only"
+    },
+    {
+      "section": 4,
+      "heading": "No cost, no obligation.",
+      "file": "img/ins1/ins1-4.webp",
+      "page_url": "https://www.pexels.com/photo/a-home-insurance-policy-7736032/",
+      "photographer": "Mikhail Nilov",
+      "photographer_url": "https://www.pexels.com/@mikhail-nilov/",
+      "licence_url": "https://www.pexels.com/license/",
+      "edit": "hands filling out a generic home insurance policy form (hands only, no faces, no brand logo); resize only"
+    },
+    {
+      "section": 5,
+      "heading": "Simple and easy to send.",
+      "file": "img/ins1/ins1-5.webp",
+      "page_url": "https://www.pexels.com/photo/hands-of-a-woman-with-red-nails-typing-on-a-smartphone-6963601/",
+      "photographer": "cottonbro studio",
+      "photographer_url": "https://www.pexels.com/@cottonbro/",
+      "licence_url": "https://www.pexels.com/license/",
+      "edit": "hands typing on a smartphone (hands only, no readable text, no logo); resize only"
+    },
+    {
+      "section": 6,
+      "heading": "$200 referral fee.",
+      "file": "img/ins1/ins1-6.webp",
+      "page_url": "https://www.pexels.com/photo/close-up-shot-of-a-handshake-7255731/",
+      "photographer": "MART PRODUCTION",
+      "photographer_url": "https://www.pexels.com/@mart-production/",
+      "licence_url": "https://www.pexels.com/license/",
+      "edit": "handshake, hands and sleeves only (no faces, no logo); resize only"
+    }
+  ]
+}

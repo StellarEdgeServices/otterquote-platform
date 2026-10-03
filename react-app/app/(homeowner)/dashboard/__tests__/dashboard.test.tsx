@@ -14,7 +14,9 @@ import {
   buildSwitchSurveyMessage,
   canSwitchContractor,
   deriveStatusBanner,
+  DEFAULT_BLOCKED_STATES,
   isStateGated,
+  resolveBlockedStates,
   isSwitchWithinCutoff,
   shouldShowHomeProfilePrompt,
   shouldShowRebateCard,
@@ -104,16 +106,47 @@ describe('HomeownerShell gate', () => {
 const claim = (over: Partial<HomeownerClaim> = {}): HomeownerClaim =>
   ({ id: 'c-abcd1234', user_id: 'u1', status: 'active', ...over }) as HomeownerClaim;
 
-describe('D-178 state gate', () => {
+describe('D-344 state gate (blocked list; amends D-178)', () => {
   it('does not gate Indiana', () => {
     expect(isStateGated(claim({ property_state: 'IN' }))).toBe(false);
   });
-  it('gates a non-IN state', () => {
-    expect(isStateGated(claim({ property_state: 'OH' }))).toBe(true);
+  it('does not gate Washington or any other non-blocked state', () => {
+    expect(isStateGated(claim({ property_state: 'WA' }))).toBe(false);
+    expect(isStateGated(claim({ property_state: 'OH' }))).toBe(false);
+  });
+  it('gates FL, LA and TX', () => {
+    for (const st of ['FL', 'LA', 'TX']) {
+      expect(isStateGated(claim({ property_state: st }))).toBe(true);
+    }
+  });
+  it('is case-insensitive on property_state', () => {
+    expect(isStateGated(claim({ property_state: 'la' }))).toBe(true);
+    expect(isStateGated(claim({ property_state: 'fl' }))).toBe(true);
+  });
+  it('trims whitespace around property_state (" FL" is still gated)', () => {
+    expect(isStateGated(claim({ property_state: ' FL' }))).toBe(true);
+    expect(isStateGated(claim({ property_state: 'tx ' }))).toBe(true);
+    expect(isStateGated(claim({ property_state: ' WA ' }))).toBe(false);
   });
   it('does not gate a null/absent property_state (pre-intake draft)', () => {
     expect(isStateGated(claim({ property_state: null }))).toBe(false);
     expect(isStateGated(undefined)).toBe(false);
+  });
+  it('honors an operator-supplied list (a state added without a deploy)', () => {
+    expect(isStateGated(claim({ property_state: 'NY' }), ['FL', 'NY'])).toBe(true);
+    expect(isStateGated(claim({ property_state: 'TX' }), ['FL', 'NY'])).toBe(false);
+  });
+  it('exports the default list', () => {
+    expect([...DEFAULT_BLOCKED_STATES]).toEqual(['FL', 'LA', 'TX']);
+  });
+  it('rpc failure falls back to the default list', () => {
+    expect(resolveBlockedStates(null, { message: 'boom' })).toEqual({ states: ['FL', 'LA', 'TX'], usedFallback: true });
+    expect(resolveBlockedStates({ not: 'array' }, null).usedFallback).toBe(true);
+    expect(resolveBlockedStates(undefined, null).states).toEqual(['FL', 'LA', 'TX']);
+  });
+  it('a valid rpc result is upper-cased and used as is', () => {
+    expect(resolveBlockedStates(['fl', 'NY'], null)).toEqual({ states: ['FL', 'NY'], usedFallback: false });
+    expect(resolveBlockedStates([], null)).toEqual({ states: [], usedFallback: false });
   });
 });
 

@@ -1810,6 +1810,17 @@
       }).join('');
     }
 
+    // gh-2105: supabase-js resolves { error: null } on an RLS/filter match of
+    // ZERO rows, so every write below chains .select('id') and passes the result
+    // here. A DB error or an empty result throws into the caller's existing
+    // catch, which shows that handler's existing failure alert (no new copy).
+    function assertRowsWritten(res, what) {
+      if (res && res.error) throw res.error;
+      if (!res || !Array.isArray(res.data) || res.data.length === 0) {
+        throw new Error('zero_rows_updated: ' + what);
+      }
+    }
+
     // Set a payment method as default
     window.setDefaultMethod = async function(methodId) {
       if (!contractorRecord || !sb) return;
@@ -1817,17 +1828,19 @@
         // Clear all defaults for this contractor
         await sb
           .from('contractor_payment_methods')
+          // update-no-select-ok: a contractor with no current default legitimately matches zero rows (gh-2105 decision b)
           .update({ is_default: false })
           .eq('contractor_id', contractorRecord.id);
         // Set the selected one as default
-        await sb
+        assertRowsWritten(await sb
           .from('contractor_payment_methods')
           .update({ is_default: true })
-          .eq('id', methodId);
+          .eq('id', methodId)
+          .select('id'), 'contractor_payment_methods.is_default');
         // Also update legacy field on contractors table for backward compat
         const method = savedPaymentMethods.find(m => m.id === methodId);
         if (method) {
-          await sb
+          assertRowsWritten(await sb
             .from('contractors')
             .update({
               stripe_payment_method_id: method.stripe_payment_method_id,
@@ -1835,7 +1848,8 @@
               stripe_payment_method_brand: method.payment_type === 'card' ? method.brand : method.bank_name,
               updated_at: new Date().toISOString(),
             })
-            .eq('id', contractorRecord.id);
+            .eq('id', contractorRecord.id)
+            .select('id'), 'contractors.stripe_payment_method_*');
         }
         await loadPaymentMethods();
       } catch (err) {
@@ -1874,12 +1888,13 @@
         // If we removed the default, promote the next one
         const remaining = savedPaymentMethods.filter(m => m.id !== methodId);
         if (method.is_default && remaining.length > 0) {
-          await sb
+          assertRowsWritten(await sb
             .from('contractor_payment_methods')
             .update({ is_default: true })
-            .eq('id', remaining[0].id);
+            .eq('id', remaining[0].id)
+            .select('id'), 'contractor_payment_methods.is_default (promote)');
           // Update legacy fields
-          await sb
+          assertRowsWritten(await sb
             .from('contractors')
             .update({
               stripe_payment_method_id: remaining[0].stripe_payment_method_id,
@@ -1887,13 +1902,14 @@
               stripe_payment_method_brand: remaining[0].payment_type === 'card' ? remaining[0].brand : remaining[0].bank_name,
               updated_at: new Date().toISOString(),
             })
-            .eq('id', contractorRecord.id);
+            .eq('id', contractorRecord.id)
+            .select('id'), 'contractors.stripe_payment_method_* (promote)');
         } else if (remaining.length === 0) {
           // No methods left &mdash; clear legacy fields AND the has_payment_method flag together.
           // The CHECK constraint (contractors_has_payment_method_requires_verified_method) forbids
           // has_payment_method = true with a null stripe_payment_method_id, so these must land in
           // one UPDATE (gh-1425 path 3).
-          await sb
+          assertRowsWritten(await sb
             .from('contractors')
             .update({
               has_payment_method: false,
@@ -1902,7 +1918,8 @@
               stripe_payment_method_brand: null,
               updated_at: new Date().toISOString(),
             })
-            .eq('id', contractorRecord.id);
+            .eq('id', contractorRecord.id)
+            .select('id'), 'contractors.has_payment_method');
         }
 
         await loadPaymentMethods();
@@ -2494,11 +2511,14 @@
                     uploaded_at: new Date().toISOString()
                 });
 
-                const { error: updateError } = await sb.from('contractors')
+                const { data: updatedRows, error: updateError } = await sb.from('contractors')
                     .update({ contract_templates: updatedTemplates, updated_at: new Date().toISOString() })
-                    .eq('id', contractorRecord.id);
+                    .eq('id', contractorRecord.id)
+                    .select('id');
 
                 if (updateError) throw updateError;
+                // gh-2105 decision (a): a zero-row match falls into the existing 'Failed to upload template' catch.
+                if (!Array.isArray(updatedRows) || updatedRows.length === 0) throw new Error('zero_rows_updated: contractors.contract_templates');
 
                 // Update local state and reload templates
                 contractorRecord.contract_templates = updatedTemplates;
@@ -2618,11 +2638,14 @@
             statusEl.style.color = '#065F46';
 
             try {
-                const { error } = await sb
+                const { data: mappedRows, error } = await sb
                     .from('contractors')
                     .update({ contract_templates: updatedTemplates })
-                    .eq('id', contractorRecord.id);
+                    .eq('id', contractorRecord.id)
+                    .select('id');
                 if (error) throw error;
+                // gh-2105 decision (a): zero rows -> the existing 'Error saving. Please try again.' catch.
+                if (!Array.isArray(mappedRows) || mappedRows.length === 0) throw new Error('zero_rows_updated: contractors.contract_templates (field_mappings)');
                 contractorRecord.contract_templates = updatedTemplates;
                 statusEl.textContent = '\u2705 Field mapping saved.';
                 setTimeout(() => { statusEl.style.display = 'none'; }, 3000);
@@ -3194,12 +3217,15 @@
       }
 
       try {
-        const { error } = await sb
+        const { data: savedRows, error } = await sb
           .from('contractors')
           .update(settings)
-          .eq('id', contractorRecord.id);
+          .eq('id', contractorRecord.id)
+          .select('id');
 
         if (error) throw error;
+        // gh-2105 decision (a): zero rows -> the existing 'Error - Try Again' button state in the catch.
+        if (!Array.isArray(savedRows) || savedRows.length === 0) throw new Error('zero_rows_updated: contractors settings');
 
         // Update local record
         Object.assign(contractorRecord, settings);
