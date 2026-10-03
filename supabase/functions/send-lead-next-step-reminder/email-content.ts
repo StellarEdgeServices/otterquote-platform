@@ -24,7 +24,7 @@ export const APP_BASE_URL = "https://app.otterquote.com";
 export const MEASUREMENT_CTA_PATH = "/help-measurements";
 export const LOSS_SHEET_CTA_PATH = "/help-estimate";
 
-export const SUBJECT = "Next step on your roof assessment";
+export const SUBJECT = "Your next step with Otter Quotes";
 
 export const PREHEADER =
   "Two quick ways to keep things moving while you wait to hear from Dustin.";
@@ -36,17 +36,17 @@ export const PREHEADER =
 export const BODY_TEMPLATE =
   `Hi {first_name},
 
-We've got your roof assessment request. Dustin will still call you
+We've got your request. Dustin will still call you
 directly -- this is just a faster way to move things along while you
 wait.
 
 Two quick options:
 
 Already have your insurance loss sheet? Upload it now and we'll start
-matching you with a contractor.
+sending your scope of work to local contractors.
 
 Want bids ready sooner? Get a $15 measurement report ($15, rebated if
-you use an Otter Quotes contractor) -- no ladder, no appointment,
+you complete a job) -- no ladder, no appointment,
 nothing to photograph.
 
 Either one keeps your project moving.`;
@@ -62,15 +62,15 @@ Either one keeps your project moving.`;
 export const BODY_TEMPLATE_NO_PHONE =
   `Hi {first_name},
 
-We've got your roof assessment request.
+We've got your request.
 
 Two quick options:
 
 Already have your insurance loss sheet? Upload it now and we'll start
-matching you with a contractor.
+sending your scope of work to local contractors.
 
 Want bids ready sooner? Get a $15 measurement report ($15, rebated if
-you use an Otter Quotes contractor) -- no ladder, no appointment,
+you complete a job) -- no ladder, no appointment,
 nothing to photograph.
 
 Either one keeps your project moving.`;
