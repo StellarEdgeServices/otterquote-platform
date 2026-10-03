@@ -343,7 +343,7 @@ section("Service area coverage");
 // ---------------------------------------------------------------------------
 // Inline the same logic used in dashboard.html so smoke tests stay dependency-free.
 
-section("D-178 state gating");
+section("D-344 state gating (blocked list; amends D-178)");
 
 function parseStateFromAddress(address) {
   if (!address) return null;
@@ -352,8 +352,9 @@ function parseStateFromAddress(address) {
   return null;
 }
 
-function stateGateWouldFire(property_state) {
-  return Boolean(property_state && property_state !== 'IN');
+const DEFAULT_BLOCKED_STATES = ['FL', 'LA', 'TX'];
+function stateGateWouldFire(property_state, blocked = DEFAULT_BLOCKED_STATES) {
+  return Boolean(property_state && blocked.includes(String(property_state).toUpperCase()));
 }
 
 // Test 1 -- Indiana address -> "IN", gate does NOT fire (homeowner proceeds normally)
@@ -363,11 +364,11 @@ function stateGateWouldFire(property_state) {
   eq("IN homeowner: gate does NOT fire", stateGateWouldFire(state), false);
 }
 
-// Test 2 -- Ohio address -> "OH", gate fires and waitlist row would be created
+// Test 2 -- Ohio address -> "OH", D-344: no longer gated (only FL/LA/TX are blocked)
 {
   const state = parseStateFromAddress("456 Oak Ave, Columbus, OH 43215");
   eq("OH address parses to 'OH'", state, "OH");
-  eq("OH homeowner: gate fires, waitlist row created", stateGateWouldFire(state), true);
+  eq("OH homeowner: gate does NOT fire (D-344)", stateGateWouldFire(state), false);
 }
 
 // Test 3 -- null input -> null, gate does NOT fire (new signup before state is set)
@@ -376,11 +377,13 @@ function stateGateWouldFire(property_state) {
   eq("null state: gate does NOT fire (no false gate on new signups)", stateGateWouldFire(null), false);
 }
 
-// Test 4 -- Kentucky address -> "KY", gate fires and waitlist row would be created
+// Test 4 -- Texas address -> "TX", gate fires and waitlist row would be created
 {
-  const state = parseStateFromAddress("789 Maple Dr, Louisville, KY 40202");
-  eq("KY address parses to 'KY'", state, "KY");
-  eq("KY homeowner: gate fires, waitlist row created", stateGateWouldFire(state), true);
+  const state = parseStateFromAddress("789 Maple Dr, Austin, TX 78701");
+  eq("TX address parses to 'TX'", state, "TX");
+  eq("TX homeowner: gate fires, waitlist row created", stateGateWouldFire(state), true);
+  eq("lowercase 'fl' still gated", stateGateWouldFire("fl"), true);
+  eq("WA homeowner: gate does NOT fire", stateGateWouldFire("WA"), false);
 }
 
 // ---------------------------------------------------------------------------
