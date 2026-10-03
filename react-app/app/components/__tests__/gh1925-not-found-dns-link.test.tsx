@@ -43,6 +43,14 @@ describe('gh-1925 not-found carries the Do Not Sell link', () => {
     expect(links[0].getAttribute('href')).toBe(HREF);
   });
 
+  it.each(['/no-such-page', '/a/b/c'])('exactly one home link to the marketing site at %s', (p) => {
+    const { container } = renderNotFoundInLayout(p);
+    const home = [...container.querySelectorAll('a')].filter((a) => a.textContent === 'Go to the homepage');
+    expect(home).toHaveLength(1);
+    expect(home[0].getAttribute('href')).toBe('https://otterquote.com/');
+    expect(dnsLinks(container)).toHaveLength(1);
+  });
+
   it('layout allowlist is exactly the five real routes, so the layout link cannot double on a 404', () => {
     expect([...DO_NOT_SELL_ROUTES]).toEqual(['/', '/login', '/refer', '/trade-selector', '/partner/dashboard']);
   });
