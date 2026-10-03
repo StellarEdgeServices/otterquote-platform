@@ -55,6 +55,10 @@ content per page", kept by D-345; STRICT reading per the CEO ruling on #2304):
   - A run that builds a single page compares it with nothing, so all its
     words count as unique. The gate is meaningful when a state's full
     county x trade set is generated together, which is what the CLI does.
+  - Tokens with digits are dropped, tokens containing a county/state/trade word are
+    masked, and tokens found on only one page of the run are dropped before shingling;
+    county_content must be Latin-script plain text (see strict_unique_counts for the
+    residual risk).
   - A page under the floor is NOT generated: not written, not sitemapped.
   - Each run prints min/median strict-unique words, plus an informational
     cross-page share-of-unshared-shingles metric.
@@ -337,6 +341,18 @@ def _invisible_char(ch: str) -> bool:
             or "\ufe00" <= ch <= "\ufe0f" or "\U000e0100" <= ch <= "\U000e01ef")
 
 
+def _require_latin_script(text: str, bad, where: str) -> None:
+    """After NFKC every LETTER must be a Latin letter in Basic Latin, Latin-1
+    or Latin Extended-A/B (U+0041..U+024F): accented letters are fine; Cyrillic,
+    Greek, Armenian, IPA lookalikes (e.g. U+0251) and other scripts are not.
+    That closes the whole homoglyph class for both the gate and the lint. Digits
+    and ordinary punctuation (including curly quotes and dashes) are allowed."""
+    for ch in unicodedata.normalize("NFKC", text):
+        if ch.isalpha() and not (ord(ch) <= 0x24F and unicodedata.name(ch, "").startswith("LATIN")):
+            raise bad(f"{where} contains a non-Latin letter {ch!r} (U+{ord(ch):04X}, "
+                      f"{unicodedata.name(ch, 'unnamed')}); only Latin-script letters are allowed")
+
+
 def _require_plain_text(text: str, bad, where: str) -> None:
     m = _PLAIN_TEXT_FORBIDDEN.search(text)
     if m:
@@ -346,6 +362,7 @@ def _require_plain_text(text: str, bad, where: str) -> None:
         if _invisible_char(ch):
             raise bad(f"{where} contains an invisible or format character (U+{ord(ch):04X}, "
                       f"{unicodedata.category(ch)}); only visible characters are allowed")
+    _require_latin_script(text, bad, where)
 
 
 def _require_no_markup(text: str, bad, where: str) -> None:
@@ -357,6 +374,7 @@ def _require_no_markup(text: str, bad, where: str) -> None:
     for ch in text:
         if _invisible_char(ch):
             raise bad(f"{where} contains an invisible or format character (U+{ord(ch):04X})")
+    _require_latin_script(text, bad, where)
 
 
 def render_county_text(text: str) -> str:
@@ -589,33 +607,70 @@ def _tokens(text: str) -> list:
     return out
 
 
-def page_mask(state_name: str, county: str) -> dict:
-    """token -> placeholder for the page-specific mail-merge fields: the
-    county's name (each word of it, and the words run together), the state's
-    name, and the trade names and synonyms. Applied before shingling so a
-    county or trade name inserted into otherwise identical text cannot make it
-    look unique."""
-    mask = {t: "countyname" for t in _tokens(county)}
-    mask["".join(_tokens(county))] = "countyname"
-    mask.update({t: "statename" for t in _tokens(state_name)})
-    mask.update({t: "tradename" for t in _TRADE_TERMS})
+class PageMask(dict):
+    """token -> placeholder (exact matches) plus `substrings`: (term, placeholder)
+    pairs, so a token that merely CONTAINS a county, state or trade word is masked
+    too ("AdamsRoofing", "roofingAdams", "Adamsville")."""
+
+    def __init__(self):
+        super().__init__()
+        self.substrings = []
+
+    def placeholder(self, token: str):
+        found = self.get(token)
+        if found:
+            return found
+        for term, ph in self.substrings:
+            if term in token:
+                return ph
+        return None
+
+
+# Short trade words ("sider") sit inside ordinary words ("consider"): exact match only.
+_TRADE_EXACT_ONLY = ("sider", "siders")
+
+
+def page_mask(state_name: str, county: str) -> PageMask:
+    """Mail-merge masking for one page: the county's name (each word of it, and
+    the words run together), the state's name, and the trade names and
+    synonyms become fixed placeholders. Exact matches always; tokens CONTAINING
+    a county or state word of 3+ letters or a trade term are masked too.
+    Applied before shingling so a county or trade name inserted into otherwise
+    identical text, however joined, cannot make it look unique."""
+    mask = PageMask()
+    county_tokens = _tokens(county)
+    joined = "".join(county_tokens)
+    for t in county_tokens + [joined]:
+        mask[t] = "countyname"
+    for t in _tokens(state_name):
+        mask[t] = "statename"
+    for t in _TRADE_TERMS:
+        mask[t] = "tradename"
+    for term in sorted({t for t in county_tokens + [joined] if len(t) >= 3}, key=len, reverse=True):
+        mask.substrings.append((term, "countyname"))
+    for term in sorted({t for t in _tokens(state_name) if len(t) >= 3}, key=len, reverse=True):
+        mask.substrings.append((term, "statename"))
+    for term in sorted((t for t in _TRADE_TERMS if t not in _TRADE_EXACT_ONLY), key=len, reverse=True):
+        mask.substrings.append((term, "tradename"))
     return mask
 
 
 def main_words(html_text: str, mask: dict = None) -> list:
     """Words of the page's <main> visible text as a reader sees them: folded
     (see _fold), lower-cased, punctuation-split tokens of each whitespace chunk
-    joined with "-" (one word per chunk), with mail-merge tokens replaced by
-    placeholders when a mask is given. Scripts and styles are excluded."""
+    joined with "-" (one word per chunk). Tokens containing a digit are dropped
+    (page numbers, dates, random numbers are not content). With a mask,
+    mail-merge tokens are replaced by placeholders (see page_mask). Scripts and
+    styles are excluded."""
     p = _UniqueTextParser()
     p.feed(html_text)
     out = []
     for chunk in p.words:
-        toks = _tokens(chunk)
+        toks = [t for t in _tokens(chunk) if not any(ch.isdigit() for ch in t)]
         if not toks:
             continue
-        if mask:
-            toks = [mask.get(t, t) for t in toks]
+        if mask is not None:
+            toks = [(mask.placeholder(t) if hasattr(mask, "placeholder") else mask.get(t)) or t for t in toks]
         out.append("-".join(toks))
     return out
 
@@ -629,29 +684,69 @@ def shingles(words: list) -> set:
     return {" ".join(w[i:i + SHINGLE_SIZE]) for i in range(max(0, len(w) - SHINGLE_SIZE + 1))}
 
 
-def strict_unique_counts(word_lists: list, baseline_lists=()) -> list:
+def _drop_singleton_tokens(word_lists: list, baseline_lists) -> list:
+    """Remove every token that occurs on exactly ONE page of the run (candidate
+    pages plus the synthetic baselines), so junk inserted into otherwise
+    identical text (random strings, per-page IDs) vanishes and the text
+    underneath collides. Words are the "-"-joined tokens produced by
+    main_words; a word whose tokens are all dropped disappears."""
+    from collections import Counter
+    df = Counter()
+    for words in list(word_lists) + list(baseline_lists):
+        seen_here = set()
+        for w in words:
+            seen_here.update(w.split("-"))
+        df.update(seen_here)
+    out = []
+    for words in word_lists:
+        kept = []
+        for w in words:
+            toks = [t for t in w.split("-") if df[t] >= 2]
+            if toks:
+                kept.append("-".join(toks))
+        out.append(kept)
+    return out
+
+
+def strict_unique_counts(word_lists: list, baseline_lists=(), drop_singletons: bool = True) -> list:
     """The D-345 / D-241 guardrail-2 measure, per page: the number of words of
     the page's <main> visible text that are covered by NO SHINGLE_SIZE-word
     shingle appearing on any other page in the same run.
 
     One pass builds shingle -> number of pages containing it; then, per page,
     every word inside a shared shingle is template content and the rest are
-    counted. Two refinements:
+    counted. Refinements:
       - baseline_lists: word lists of template-only pages that are compared
         against but never scored or emitted (see TEMPLATE_BASELINES), so a run
         of one county cannot count template text as unique;
       - repeats within a page: a shingle that already occurred earlier on the
         same page is a repeat, and its words are not counted again, so a
-        paragraph repeated N times counts once.
+        paragraph repeated N times counts once;
+      - drop_singletons (default on): before shingling, every token that occurs
+        on exactly ONE page of the run (pages plus baselines) is dropped. Junk
+        inserted every few words (random strings, IDs, joined names) is made of
+        tokens that appear on one page only, so it vanishes and the identical
+        text underneath collides. main_words has already dropped tokens with
+        digits and masked county/state/trade tokens.
     A page with fewer than SHINGLE_SIZE words has no shingles, so all its
     words count.
 
-    Not defended: a token inserted every 7 words makes every 8-word shingle
-    unique. Closing that needs a shorter n-gram test that also flags ordinary
-    prose, so it is left to review of county_content (a CRO-authored file)."""
+    RESIDUAL RISK, stated plainly: this raises the cost of padding, it does not
+    make it impossible. Junk inserted at high density and drawn from a LARGE
+    SHARED vocabulary (words that really do appear on several pages) survives
+    the singleton drop and makes each 8-word window unique. That is visible
+    spam, and catching it is the job of the per-state R-177 read of
+    county_content, not of this count. A page's genuinely rare words are also
+    dropped by the singleton rule, which lowers honest counts a little: write
+    county text with ordinary vocabulary and more than the minimum words."""
     from collections import Counter
+    baseline_lists = list(baseline_lists)
+    if drop_singletons:
+        # one filtering pass over pages + baselines together
+        combined = _drop_singleton_tokens(list(word_lists) + baseline_lists, [])
+        word_lists, baseline_lists = combined[:len(word_lists)], combined[len(word_lists):]
     seen = Counter()
-    for words in list(word_lists) + list(baseline_lists):
+    for words in list(word_lists) + baseline_lists:
         seen.update(shingles(words))
     counts = []
     for words in word_lists:
@@ -1590,6 +1685,9 @@ def update_sitemap(generated_paths: list, generated_on: str, dry_run: bool, site
 TEMPLATE_BASELINES = 60   # synthetic template-only pages per trade (see template_baseline_words)
 
 
+_BASELINE_CACHE = {}   # (state, date, profile) -> word lists; baselines are deterministic
+
+
 def template_baseline_words(states, profiles: dict, generated_on: str) -> list:
     """Word lists of synthetic, template-only pages (state profile, NO
     county_content) that are compared against but never scored or emitted.
@@ -1603,13 +1701,17 @@ def template_baseline_words(states, profiles: dict, generated_on: str) -> list:
     for st in states:
         profile = dict(profiles[st])
         profile["county_content"] = {}
-        regions = sorted(profile["region_label"])
-        names = {f"Baseline{n:02d}": regions[n % len(regions)] for n in range(TEMPLATE_BASELINES)}
-        profile["county_region"] = {**profile["county_region"], **names}
-        for trade in ELIGIBLE_TRADES:
-            for name in names:
-                out.append(main_words(build_page(name, trade, generated_on, st, profile=profile),
-                                      page_mask(profile["name"], name)))
+        key = (st, generated_on, json.dumps({k: profile[k] for k in sorted(profile)}, sort_keys=True))
+        cached = _BASELINE_CACHE.get(key)
+        if cached is None:
+            regions = sorted(profile["region_label"])
+            names = {f"Baseline{n:02d}": regions[n % len(regions)] for n in range(TEMPLATE_BASELINES)}
+            profile["county_region"] = {**profile["county_region"], **names}
+            cached = [main_words(build_page(name, trade, generated_on, st, profile=profile),
+                                 page_mask(profile["name"], name))
+                      for trade in ELIGIBLE_TRADES for name in names]
+            _BASELINE_CACHE[key] = cached
+        out.extend(cached)
     return out
 
 

@@ -51,11 +51,33 @@ FIXTURE_CLIMATE = (
 )
 
 
-def fixture_content(county, trade, n=520):
-    """n genuinely distinct words per (county, trade): no 8-word run repeats
-    on any other page, so all n are strict-unique."""
-    words = [f"{county.lower()}{trade}{chr(97 + i % 26)}{i}" for i in range(n)]
-    return "\n\n".join(" ".join(words[i:i + 52]) for i in range(0, n, 52))   # PLAIN TEXT, blank-line paragraphs
+import random as _random
+
+
+def _make_vocab(size, seed):
+    """Pseudo-words built from consonant-vowel syllables (no digits). Tokens are SHARED across
+    pages, as ordinary vocabulary is; none contains a fixture county, state or trade word."""
+    rnd = _random.Random(seed)
+    bad = ("alpha", "beta", "gamma", "zedland", "roof", "siding", "gutter", "window", "shingle", "downspout")
+    out, seen = [], set()
+    while len(out) < size:
+        w = "".join(rnd.choice("bdfgklmnprstvz") + rnd.choice("aeiou") for _ in range(rnd.choice((3, 4))))
+        if w not in seen and not any(x in w for x in bad):
+            seen.add(w)
+            out.append(w)
+    return out
+
+
+VOCAB = _make_vocab(800, 7)
+
+
+def fixture_content(county, trade, n=700):
+    """n words of distinct per-(county, trade) text drawn at random from a shared vocabulary: every
+    8-word run is unique to its page, but individual words recur across pages, as in real prose.
+    PLAIN TEXT, blank-line paragraphs."""
+    rnd = _random.Random(f"{county}|{trade}")
+    words = [rnd.choice(VOCAB) for _ in range(n)]
+    return "\n\n".join(" ".join(words[i:i + 50]) for i in range(0, n, 50))
 
 
 FIXTURE_COUNTIES = {"states": [{"code": "ZZ", "name": "Zedland", "counties": ["Alpha", "Beta", "Gamma"]}]}
@@ -159,14 +181,14 @@ class GeneratorTests(unittest.TestCase):
     def test_strict_unique_counts_only_unshared_words(self):
         a = ["a%d" % i for i in range(30)] + ["shared%d" % i for i in range(20)]
         b = ["b%d" % i for i in range(40)] + ["shared%d" % i for i in range(20)]
-        ca, cb = glp.strict_unique_counts([a, b])
+        ca, cb = glp.strict_unique_counts([a, b], drop_singletons=False)
         # the 20 shared words (all inside shared 8-word shingles) do not count;
         # the 7 words before them ride in shingles that mix unique and shared
         # words, so they stay unique.
         self.assertEqual((ca, cb), (30, 40))
-        self.assertEqual(glp.strict_unique_counts([a]), [50])           # compared with nothing
-        self.assertEqual(glp.strict_unique_counts([a, a]), [0, 0])      # identical pages
-        self.assertEqual(glp.strict_unique_counts([["x", "y", "z"], ["x", "y", "z"]]), [3, 3])  # < 8 words: no shingles
+        self.assertEqual(glp.strict_unique_counts([a], drop_singletons=False), [50])           # compared with nothing
+        self.assertEqual(glp.strict_unique_counts([a, a], drop_singletons=False), [0, 0])      # identical pages
+        self.assertEqual(glp.strict_unique_counts([["x", "y", "z"], ["x", "y", "z"]], drop_singletons=False), [3, 3])  # < 8 words: no shingles
 
     # (b) negative: under the unique-word floor ------------------------------
     def test_thin_county_emits_no_page(self):
@@ -476,11 +498,11 @@ class GeneratorTests(unittest.TestCase):
     def test_repeated_paragraph_counts_once(self):
         para = ["w%d" % i for i in range(52)]
         page = para * 14
-        self.assertLess(glp.strict_unique_counts([page, ["other"] * 9])[0], 120)
-        self.assertEqual(glp.strict_unique_counts([para * 1, ["other"] * 9])[0], 52)
+        self.assertLess(glp.strict_unique_counts([page, ["other"] * 9], drop_singletons=False)[0], 120)
+        self.assertEqual(glp.strict_unique_counts([para * 1, ["other"] * 9], drop_singletons=False)[0], 52)
 
         def repeated(prof):
-            para = " ".join("alphaword%d" % i for i in range(40))
+            para = " ".join(VOCAB[100:140])
             prof["county_content"]["Alpha"] = {t: "\n\n".join([para] * 14) for t in glp.ELIGIBLE_TRADES}
         self.write_profile(repeated)
         summary = self.run_fx()
@@ -617,7 +639,7 @@ class GeneratorTests(unittest.TestCase):
 
     @staticmethod
     def boilerplate_words(n=650):
-        return ["boiler%d" % i for i in range(n)]
+        return list(VOCAB[:n])
 
     def zw_page(self, county, trade, generated_on, state):
         """A page whose 650-word boilerplate is identical everywhere except that a zero-width
@@ -692,6 +714,128 @@ class GeneratorTests(unittest.TestCase):
         mask = glp.page_mask("Zedland", "St. Joseph")
         self.assertEqual(glp.main_words("<main>St. Joseph-roofing joseph's Zedland windows</main>", mask),
                          ["countyname", "countyname-tradename", "countyname", "statename", "tradename"])
+
+    # round 9: the gate cannot be padded with per-page junk -----------------------------
+    GATE_COUNTIES = ("Alpha", "Beta", "Gamma")
+
+    def junk_profile(self, junk_fn, every=7, n=773):
+        """Same n-word visible boilerplate on every county x trade page (which alone writes 0
+        pages), with one junk token per `every` words. junk_fn(county, trade, k, page_index)."""
+        base = list(VOCAB[:n]) if n <= len(VOCAB) else [VOCAB[i % len(VOCAB)] for i in range(n)]
+        index = {(c, t): i for i, (c, t) in enumerate((c, t) for c in self.GATE_COUNTIES for t in glp.ELIGIBLE_TRADES)}
+
+        def text(c, t):
+            out, k = [], 0
+            for i, w in enumerate(base):
+                out.append(w)
+                if i % every == every - 1:
+                    out.append(junk_fn(c, t, k, index[(c, t)]))
+                    k += 1
+            return " ".join(out)
+
+        def mutate(prof):
+            prof["county_content"] = {c: {t: text(c, t) for t in glp.ELIGIBLE_TRADES} for c in self.GATE_COUNTIES}
+        self.write_profile(mutate)
+
+    def assert_writes_nothing(self, label):
+        import shutil
+        if self.out.exists():
+            shutil.rmtree(self.out)
+        summary = self.run_fx()
+        self.assertEqual(summary["written"], 0, label)
+        self.assertFalse(self.out.exists(), label)
+
+    def test_round9_per_page_junk_tokens_write_zero_pages(self):
+        rnd = _random.Random(9)
+        letters = "bcdfghjklmnpqrstvwxz"
+        cases = {
+            "page index every 7 words": (lambda c, t, k, i: str(i), 7),
+            "page index every 4 words": (lambda c, t, k, i: str(i), 4),
+            "random 4-digit number": (lambda c, t, k, i: str(rnd.randrange(1000, 10000)), 7),
+            "date 2026-MM-DD": (lambda c, t, k, i: "2026-%02d-%02d" % (1 + (i + k) % 12, 1 + (i * 3 + k) % 28), 7),
+            "county+trade joined, no separator": (lambda c, t, k, i: f"{c}{t.capitalize()}", 7),
+            "trade+county joined (reverse)": (lambda c, t, k, i: f"{t.capitalize()}{c}", 7),
+            "county + 'ville' join": (lambda c, t, k, i: f"{c}ville", 7),
+            "county lower+trade lower joined": (lambda c, t, k, i: f"{c.lower()}{t}", 4),
+            "random letter strings": (lambda c, t, k, i: "".join(rnd.choice(letters) for _ in range(7)), 7),
+            "letters+digits ids": (lambda c, t, k, i: f"id{i}x{k}", 5),
+        }
+        for label, (fn, every) in cases.items():
+            with self.subTest(label):
+                self.junk_profile(fn, every=every)
+                self.assert_writes_nothing(label)
+
+    def test_round9_old_routes_still_hold(self):
+        # zero-width characters, separated tokens and repetition
+        self.run_fx()   # sanity: the fixture itself writes pages
+        self.junk_profile(lambda c, t, k, i: f"{c} {t}")                       # separated county and trade
+        self.assert_writes_nothing("separated tokens")
+        self.junk_profile(lambda c, t, k, i: f"{c}-{t}", every=6)              # hyphen compound
+        self.assert_writes_nothing("hyphen compound")
+        self.write_profile(lambda p: p["county_content"]["Alpha"].update(
+            roofing="\n\n".join([" ".join(VOCAB[100:140])] * 14)))            # repetition
+        self.assertIn("alpha-county-zz/roofing", self.run_fx()["skipped_thin"])
+        page = glp.main_words(self.zw_page("Alpha", "roofing", "x", "ZZ"))
+        self.assertEqual(page, glp.main_words(self.zw_page("Beta", "siding", "x", "ZZ")))
+
+    def test_round9_homoglyphs_outside_the_fold_table_are_rejected_at_load(self):
+        glyphs = {"armenian o": "\u0585", "armenian u": "\u057d", "armenian n": "\u0578", "armenian h": "\u0570",
+                  "armenian c": "\u0581", "armenian z": "\u0566", "latin alpha": "\u0251", "latin iota": "\u0269",
+                  "cyrillic ge": "\u0433", "cyrillic u": "\u04af", "cyrillic we": "\u051d", "greek omicron": "\u03bf",
+                  "cyrillic a": "\u0430", "latin small capital": "\u1d0f", "fullwidth-ok-but-ipa": "\u0261"}
+        for label, ch in glyphs.items():
+            with self.subTest(label):
+                self.write_profile(lambda p, c=ch: p["county_content"]["Alpha"].update(roofing=f"R{c}ofers wait"))
+                with self.assertRaises(glp.StateConfigError):
+                    self.run_fx()
+                self.assertFalse(self.out.exists())
+        # the same letters in labels, climate and the state name
+        for mutate in (lambda p: p["regions"]["north"].update(label="n\u0585rthern"),
+                       lambda p: p["regions"]["north"].update(climate=["{county} sits h\u0585re"]),
+                       lambda p: p.update(name="Z\u0435dland")):
+            self.write_profile(mutate)
+            with self.assertRaises(glp.StateConfigError):
+                self.run_fx()
+        # accented Latin letters, digits and typographic punctuation are fine
+        self.write_profile(lambda p: p["county_content"]["Alpha"].update(
+            roofing="Caf\u00e9 \u00fcber na\u00efve \u00f8re \u0142 \u00df 1969 \u2019 \u201c \u201d \u2013 \u2014"))
+        glp.load_profile("ZZ", self.fx_profiles)
+        self.assertEqual(glp.load_profile("IN")["name"], "Indiana")      # the shipped profile still loads
+
+    def test_round9_token_rules_unit(self):
+        mask = glp.page_mask("Zedland", "Adams")
+        self.assertEqual(glp.main_words("<main>AdamsRoofing RoofingAdams Adamsville ZedlandNorth consider "
+                                        "insider</main>", mask),
+                         ["countyname", "countyname", "countyname", "statename", "consider", "insider"])
+        self.assertEqual(glp.main_words("<main>a1 b 2026-03-14 c 4x7 d</main>"), ["b", "c", "d"])   # digit tokens dropped
+        # a token on exactly one page vanishes; the shared text underneath collides
+        base = list(VOCAB[:30])
+        pages = [base[:7] + ["qzxjunk%s" % ch] + base[7:] for ch in "abc"]
+        self.assertEqual(glp.strict_unique_counts(pages), [0, 0, 0])
+        self.assertGreater(glp.strict_unique_counts(pages, drop_singletons=False)[0], 0)
+
+    def test_round9_genuine_text_still_writes_pages_at_indiana_scale(self):
+        """92 counties x 4 trades of genuinely distinct per-page text drawn from a shared vocabulary:
+        all 368 pages are written; min/median strict-unique words are recorded."""
+        import tempfile as _tf
+        counties = glp.load_counties("IN")
+        vocab = _make_vocab(3000, 11)
+        base = json.loads((REPO_ROOT / "data" / "location-state-profiles" / "IN.json").read_text(encoding="utf-8"))
+        rnd = _random.Random(3)
+
+        def text():
+            words = [rnd.choice(vocab) for _ in range(640)]
+            return "\n\n".join(" ".join(words[i:i + 50]) for i in range(0, 640, 50))
+        base["county_content"] = {c: {t: text() for t in glp.ELIGIBLE_TRADES} for c in counties}
+        d = pathlib.Path(_tf.mkdtemp(dir=str(self.tmp)))
+        (d / "IN.json").write_text(json.dumps(base), encoding="utf-8")
+        summary = quiet(glp.generate, ["IN"], out_dir=self.tmp / "in-out" / "locations",
+                        profiles_dir=d, dry_run=True)
+        self.assertEqual(summary["written"], 368)
+        self.assertGreaterEqual(summary["min_strict_unique_words"], glp.MIN_WORDS)
+        print("\n[round 9 control] Indiana-scale genuine text: written %d, strict-unique min %s / median %s"
+              % (summary["written"], summary["min_strict_unique_words"], summary["median_strict_unique_words"]),
+              file=sys.stderr)
 
     # D-344 blocked states ----------------------------------------------------
     def test_blocked_states_are_refused_everywhere(self):

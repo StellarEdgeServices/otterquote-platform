@@ -132,6 +132,21 @@ the rest are counted.
   character (zero-width, bidi, word joiner, BOM, tag characters) and combining mark is
   dropped, Cyrillic/Greek lookalikes are folded to Latin, and text is casefolded before
   shingling. So zero-width characters inside words do not make boilerplate look unique.
+- Token rules before shingling (round 9), applied after the folding and masking below:
+  tokens containing a digit are dropped (page numbers, dates, random numbers are not
+  content); a token that contains any of the page's county-name words (3+ letters), the
+  county name run together, the state name or a trade term is masked, so "AdamsRoofing",
+  "RoofingAdams" and "Adamsville" count as the same placeholder as "Adams"; and every token
+  that occurs on exactly one page of the run (pages plus the template baselines) is
+  dropped, so junk inserted into otherwise identical text vanishes and the text underneath
+  collides. Words are then counted over what remains.
+- **Residual risk, stated plainly.** This raises the cost of padding; it does not make it
+  impossible. Junk inserted at high density and drawn from a large shared vocabulary
+  (words that genuinely appear on several pages) survives the singleton drop and makes
+  every 8-word window unique. That is visible spam; catching it is the job of the per-state
+  R-177 read of `county_content`, not of this count. The singleton rule also drops an honest
+  page's rare words, so write county text in ordinary vocabulary and comfortably above 500
+  words.
 - Mail-merge fields are masked before shingling: each page's county name (every word of
   it, and the words run together), the state name, and the trade names and synonyms
   (roof/roofing/roofer, siding/sider, gutter/downspout, window/windows, shingle) become
@@ -166,7 +181,12 @@ county-specific text. In `data/location-state-profiles/XX.json`:
 }
 ```
 
-- **Plain text only.** No HTML, no entities, no invisible characters. The loader rejects `<`, `>`, `&`, `{`, `}`,
+- **Plain text only.** No HTML, no entities, no invisible characters, and **Latin script
+  only**: after NFKC every letter must be a Latin letter in Basic Latin, Latin-1 or Latin
+  Extended-A/B (accented letters such as é ü ø are fine). Cyrillic, Greek, Armenian and
+  IPA lookalike letters (for example U+0585, U+0251, U+0433) are rejected at load, which
+  closes the homoglyph class for the gate and the lint. Digits and ordinary punctuation,
+  including curly quotes and dashes, are fine. The loader rejects `<`, `>`, `&`, `{`, `}`,
   backslashes, control characters and every invisible or format character (zero-width
   space/joiner, bidi controls, word joiner, BOM, tag characters, variation selectors,
   combining marks, blank filler letters, line/paragraph separators), so no tag, attribute, style or entity can reach
