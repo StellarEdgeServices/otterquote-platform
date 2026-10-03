@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>Gutter Replacement Bids: What to Check | Otter Quotes</title>
+<meta name="description" content="Compare gutter replacement estimates with a copyable table: linear feet, downspouts, fascia repair, guards and warranty, so each bid prices one job.">
+<link rel="canonical" href="https://otterquote.com/guides/gutter-bid-comparison.html">
+<meta property="og:title" content="Gutter Replacement Bids: What to Check | Otter Quotes">
+<meta property="og:description" content="Compare gutter replacement estimates with a copyable table: linear feet, downspouts, fascia repair, guards and warranty, so each bid prices one job.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://otterquote.com/guides/gutter-bid-comparison.html">
+<meta property="og:image" content="https://otterquote.com/img/otter-logo.svg">
+<meta property="og:site_name" content="Otter Quotes">
+<meta property="article:published_time" content="2026-10-03">
+
+<!-- GA4 -->
+<script src="/js/ga-gate.js"></script>
+<script src="/js/meta-pixel-gate.js"></script>
+<script>gtag('config', 'G-D1Y1TLGEFY');</script>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/design-system.css">
+<link rel="stylesheet" href="../css/nav.css">
+
+<style>
+/* Blog Article Layout */
+.page-hero {
+  padding: var(--sp-16) 0 var(--sp-12);
+  text-align: center;
+  background: radial-gradient(ellipse at 50% 0%, rgba(224,123,0,0.06) 0%, transparent 60%);
+}
+.page-hero h1 {
+  margin-bottom: var(--sp-4);
+}
+.page-hero .subtitle {
+  max-width: 700px;
+  margin: 0 auto;
+  font-size: 1.1rem;
+  color: var(--slate);
+}
+.page-hero .meta {
+  font-size: 0.9rem;
+  color: var(--gray);
+  margin-top: var(--sp-4);
+}
+
+.article-body {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 var(--sp-6);
+}
+
+.article-intro {
+  background: rgba(224, 123, 0, 0.06);
+  border-left: 4px solid var(--amber);
+  padding: var(--sp-6);
+  margin-bottom: var(--sp-10);
+  border-radius: var(--radius-md);
+}
+.article-intro p {
+  font-size: 1.05rem;
+  color: var(--slate);
+  line-height: 1.8;
+}
+
+.step {
+  margin-bottom: var(--sp-10);
+  padding-bottom: var(--sp-8);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.step:last-of-type {
+  border-bottom: none;
+}
+.step-number {
+  display: inline-block;
+  background: var(--amber);
+  color: var(--navy);
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  text-align: center;
+  line-height: 2.5rem;
+  font-weight: 700;
+  font-family: var(--font-body);
+  margin-bottom: var(--sp-3);
+}
+.step h2 {
+  margin-bottom: var(--sp-3);
+  margin-top: var(--sp-2);
+}
+.step p {
+  color: var(--slate);
+  margin-bottom: var(--sp-4);
+  line-height: 1.8;
+}
+.step ul {
+  margin-left: var(--sp-6);
+  margin-bottom: var(--sp-4);
+}
+.step li {
+  margin-bottom: var(--sp-3);
+  color: var(--slate);
+  line-height: 1.7;
+}
+.step li strong {
+  color: var(--white);
+}
+
+.highlight-box {
+  background: rgba(245, 158, 11, 0.08);
+  border-left: 4px solid #E07B00;
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+  border-radius: var(--radius-md);
+}
+.highlight-box strong {
+  color: #fbbf24;
+}
+.highlight-box, .highlight-box p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.warning-box {
+  background: rgba(239, 68, 68, 0.08);
+  border-left: 4px solid var(--red);
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+  border-radius: var(--radius-md);
+}
+.warning-box strong {
+  color: #f87171;
+}
+.warning-box, .warning-box p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.cta-box {
+  background: var(--navy-2);
+  border: 1px solid rgba(224, 123, 0, 0.2);
+  padding: var(--sp-10);
+  border-radius: var(--radius-lg);
+  margin: var(--sp-10) 0;
+  text-align: center;
+}
+.cta-box h3 {
+  color: var(--white);
+  margin-bottom: var(--sp-4);
+}
+.cta-box p {
+  color: var(--slate);
+  margin-bottom: var(--sp-6);
+  line-height: 1.6;
+}
+
+.definition-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: var(--sp-6) 0;
+}
+.definition-table th {
+  background: rgba(224, 123, 0, 0.12);
+  color: var(--amber);
+  padding: var(--sp-3) var(--sp-4);
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.9rem;
+  border-bottom: 2px solid rgba(224, 123, 0, 0.2);
+}
+.definition-table td {
+  padding: var(--sp-3) var(--sp-4);
+  color: var(--slate);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  line-height: 1.6;
+  vertical-align: top;
+}
+.definition-table tr:last-child td {
+  border-bottom: none;
+}
+.definition-table td:first-child {
+  font-weight: 600;
+  color: var(--white);
+  white-space: nowrap;
+}
+
+/* FAQ Section */
+.faq-section {
+  background: var(--navy-2);
+  padding: var(--sp-10) var(--sp-8);
+  border-radius: var(--radius-lg);
+  margin-top: var(--sp-12);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.faq-section h2 {
+  margin-bottom: var(--sp-8);
+  text-align: center;
+}
+.faq-item {
+  margin-bottom: var(--sp-6);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  padding-bottom: var(--sp-6);
+}
+.faq-item:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+.faq-item h3 {
+  color: var(--white);
+  font-family: var(--font-body);
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-bottom: var(--sp-3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  user-select: none;
+  transition: color var(--duration) var(--ease);
+}
+.faq-item h3:hover {
+  color: var(--amber);
+}
+.faq-item h3::before {
+  content: "\25B6";
+  color: var(--amber);
+  margin-right: var(--sp-3);
+  font-size: 0.8rem;
+  transition: transform 0.3s var(--ease);
+}
+.faq-item.active h3::before {
+  transform: rotate(90deg);
+}
+.faq-answer {
+  color: var(--slate);
+  line-height: 1.8;
+  display: none;
+  padding-left: var(--sp-6);
+}
+.faq-item.active .faq-answer {
+  display: block;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--amber);
+  font-size: 0.9rem;
+  font-weight: 500;
+  margin-bottom: var(--sp-8);
+  transition: color var(--duration) var(--ease);
+}
+.back-link:hover {
+  color: var(--amber-2);
+  text-decoration: none;
+}
+
+@media (max-width: 768px) {
+  .article-body {
+    padding: 0 var(--sp-4);
+  }
+  .cta-box {
+    padding: var(--sp-6) var(--sp-4);
+  }
+  .faq-section {
+    padding: var(--sp-6) var(--sp-4);
+  }
+}
+
+/* Guide pages: table scroll wrapper, quote, FAQ shown in full, button */
+.step ol { margin-left: var(--sp-6); margin-bottom: var(--sp-4); }
+.step h3 { margin-top: var(--sp-6); margin-bottom: var(--sp-3); }
+.step blockquote {
+  margin: var(--sp-4) 0;
+  padding: var(--sp-4) var(--sp-6);
+  border-left: 4px solid var(--amber);
+  background: rgba(224, 123, 0, 0.06);
+  border-radius: var(--radius-md);
+}
+.step blockquote p { margin-bottom: 0; }
+.step a { color: var(--amber); }
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: var(--sp-6) 0;
+}
+.table-wrap .definition-table { margin: 0; min-width: 480px; }
+.table-wrap .definition-table td:first-child { white-space: normal; }
+.article-intro p + p { margin-top: var(--sp-4); }
+.article-intro a { color: var(--amber); }
+.cta-box.cta-box-button { margin: var(--sp-8) 0; padding: var(--sp-8); }
+.faq-item h3 { cursor: default; }
+.faq-item h3:hover { color: var(--white); }
+.faq-item h3::before { content: none; }
+.faq-item .faq-answer { display: block; padding-left: 0; }
+</style>
+</head>
+<body>
+
+<header id="site-header"></header>
+
+<section class="page-hero">
+  <div class="container">
+    <h1>Gutter Replacement Bids: Linear Feet, Downspouts and What to Check</h1>
+  </div>
+</section>
+
+<section class="main">
+  <div class="article-body">
+
+    <a href="/guides/" class="back-link">&#8592; All Guides</a>
+
+    <div class="article-intro">
+      <p>Two gutter estimates only compare when they price the same job. Ask every contractor to write down the total linear feet and how it was measured, the gutter size and material, the number and discharge of downspouts, what happens if fascia is rotten, what is removed, and the warranty. Then line the answers up in one table.</p>
+    </div>
+
+    <section class="step">
+      <h2>Gutter bid comparison table</h2>
+      <p>Copy this table into a document or spreadsheet and fill in one column per bid. Any blank cell is a question to send back to that contractor before you compare totals. Each row is one detail that can change the price of the job.</p>
+      <div class="table-wrap">
+        <table class="definition-table">
+          <thead>
+            <tr>
+              <th>What to look for</th>
+              <th>Bid A</th>
+              <th>Bid B</th>
+              <th>Bid C</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Total linear feet of gutter, and how it was measured</td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>Gutter size and profile (K-style or half-round, and the width)</td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>Material and thickness or gauge (aluminum, steel, copper)</td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>Seamless (one continuous piece per run) or sectional</td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>Downspouts: number, size and length</td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>Where downspouts discharge (extensions, splash blocks, underground drains, included or not)</td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>Hangers and fasteners: type and spacing</td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>End caps, mitered corners and outlets</td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>Fascia and soffit inspection, and how repair is priced if rot is found (per foot, allowance, or excluded)</td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>Drip edge or gutter apron</td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>Gutter guards (included, optional or none, and which type)</td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>Removal and disposal of old gutters</td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>Color</td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>Warranty on material and finish, and on workmanship, in writing</td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>Payment schedule and deposit</td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>Start window and duration</td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>Who does the work, with proof of license and insurance</td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>Exclusions</td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>Change-order pricing</td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="step">
+      <h2>What should a gutter replacement estimate include?</h2>
+      <p>A complete gutter estimate names the measurements, the products, the downspout plan, the removal of the old system, the warranty and the exclusions in writing. A single lump sum with a line such as "install new gutters" leaves you guessing, and it makes the bids impossible to compare.</p>
+      <p>Use the table above as the checklist. A good estimate answers many of these rows without being asked. Where a row is missing, ask for it in writing and note the answer in that bidder's column.</p>
+      <p>Two bids can differ in total linear feet, in gutter width, in how many downspouts they add, or in whether old gutters are hauled away. Each of those changes the price without changing the sentence "new gutters." That is why the line items matter more than the bottom line. Our guide to <a href="/guides/how-to-read-contractor-estimate.html">reading a contractor estimate</a> shows the same habit applied to roofing.</p>
+    </section>
+
+    <section class="step">
+      <h2>How do I check the linear footage in a bid?</h2>
+      <p>Linear footage is the total length of gutter the contractor plans to hang, measured along the eaves. Ask each bidder for the number and for how they got it: a tape on site, a measurement taken from a plan, or a measurement from aerial imagery. Bids built on different numbers are pricing different jobs.</p>
+      <p>You can check the number yourself:</p>
+      <ul>
+        <li>Walk the roof edge at ground level and measure each run that gets a gutter, or count the runs on each side of the house.</li>
+        <li>Add the runs and compare your total with the bid. A small difference can come from corners and overlaps. A large one deserves a question.</li>
+        <li>Confirm that the number covers every side that is getting gutters, including porches, garages and any lower roof sections.</li>
+        <li>Ask whether the figure includes the downspout runs, or only the horizontal gutter.</li>
+      </ul>
+      <p>If one bid lists a much shorter total than the others, that bid may leave sections out, and the lower total is not a saving. Ask the contractor to confirm which sections are included.</p>
+    </section>
+
+    <section class="step">
+      <h2>What size and material should each bid name?</h2>
+      <p>Each bid should state the gutter profile (K-style or half-round), the width, the material, and the thickness or gauge. These details change how much water a gutter carries and how it holds up, so they belong in the written scope. Without them, one bid may quote a lighter product than another.</p>
+      <p>Ask for the product line and the gauge or thickness on the quote, not only the word "aluminum" or "steel." Copper is a different product from aluminum and steel, so make sure you are comparing like with like.</p>
+      <p>This page does not rank materials or brands. The goal is simply that every bid names what it will install, so you can ask each contractor why they chose it for your house. If you want to see one more option priced, ask all bidders to price it on the same terms.</p>
+    </section>
+
+    <section class="step">
+      <h2>Seamless or sectional: what changes in the bid?</h2>
+      <p>Seamless gutters are made as one continuous piece for each run, so a run has fewer joints than one built from sections. Sectional gutters come in set lengths that are joined together. In a bid, the difference shows up in the method, the number of joints and sometimes the materials, so each bid should say which one it quotes.</p>
+      <p>Do not compare a seamless bid with a sectional bid as though they were the same product. If you are open to either, ask for each option priced separately by the same contractor.</p>
+      <p>Also ask how corners and ends are handled. Seamless runs still have corners, end caps and outlets, and those are places where leaks can start. A written line for mitered corners, end caps and outlets tells you the contractor has planned them rather than left them to the crew on the day.</p>
+    </section>
+
+    <section class="step">
+      <h2>Are downspouts, hangers and fascia repair included?</h2>
+      <p>Downspouts, hangers and fascia repair are easy to leave out of a low bid. Check that each bid states how many downspouts it adds, their size and length, where the water is sent, what hangers hold the gutter up, and what happens if the fascia behind the gutter is found to be damaged.</p>
+      <p>Go through each one:</p>
+      <ul>
+        <li><strong>Downspouts.</strong> Ask for the number, size and length, and where each one discharges. Extensions, splash blocks and underground drain connections can be included, optional or excluded. Ask which.</li>
+        <li><strong>Hangers and fasteners.</strong> Ask what type they use and what spacing they use. You are not expected to know the right answer, only to see that every bid states one.</li>
+        <li><strong>Fascia and soffit.</strong> Where gutters fasten to the fascia, the condition of that board matters. Ask whether the contractor inspects it before installing, and how repair is priced if rot is found: per foot, as an allowance, or excluded and handled later by change order.</li>
+        <li><strong>Drip edge or gutter apron.</strong> Ask whether one is included, because it is meant to direct water from the roof edge into the gutter instead of behind it.</li>
+      </ul>
+    </section>
+
+    <section class="step">
+      <h2>Should gutters be replaced at the same time as the roof?</h2>
+      <p>It can make sense to coordinate the two, because roofing and gutters meet at the same roof edge. Where a drip edge or gutter apron is used, it sits at that edge, between the roofing and the gutter. Planning both jobs together lets each trade work in a sensible order and can help avoid damage to new work.</p>
+      <p>Sequencing is the part to ask about. Roofing crews work along the eaves, and old gutters may need to come off to reach the edge. If both are being replaced, ask whether the new gutters go up after the roofing is finished, so that the new system is not knocked or dented during the roof work.</p>
+      <p>Ask each bidder who plans the order of work, whether the gutter and roof crews are the same company or different ones, and what happens if the schedules slip. If you are comparing roof bids at the same time, our <a href="/guides/roof-bid-comparison-worksheet.html">roof bid comparison worksheet</a> uses the same row-by-row approach.</p>
+    </section>
+
+    <section class="step">
+      <h2>Do I need gutter guards in the bid?</h2>
+      <p>Gutter guards are an option, not a requirement of every bid. To keep bids comparable, ask each contractor to price the gutters without guards first, then to price guards as a separate line, naming the type. That way the guard decision does not change which bid looks cheapest.</p>
+      <p>When a bid includes guards, ask the following:</p>
+      <ul>
+        <li>Which type of guard is it, and who makes it?</li>
+        <li>Does the warranty cover the guard separately from the gutter?</li>
+        <li>Can the guard be removed for cleaning or repair, and is that written down?</li>
+      </ul>
+      <p>If a bid says nothing about guards, write "none" in that cell. A blank is easy to misread later.</p>
+    </section>
+
+    <section class="step">
+      <h2>What if the gutters were damaged in a storm?</h2>
+      <p>If the gutters appear on an insurance estimate, that estimate can serve as the shared written scope. Give the same document to every contractor so each bid starts from the same items and measurements. Whether gutter damage is part of your claim is a question for your insurer, so ask them and check your policy.</p>
+      <p>Otter Quotes does not work with your insurance company. If you are working through the steps after a storm, our guide on <a href="/blog/what-to-do-after-storm-damages-roof.html">what to do after a storm damages your roof</a> walks through the sequence.</p>
+    </section>
+
+    <section class="step">
+      <h2>Is the lowest gutter bid the best one?</h2>
+      <p>Not necessarily. A low total may reflect shorter linear footage, fewer downspouts, no fascia inspection, no removal of old gutters, or a thinner warranty. Compare the table first, then the price, so you know the low bid covers the same job as the others.</p>
+      <p>Look at the gaps. If one column has blanks the others filled in, ask that contractor to complete them in writing. A bid that cannot answer the questions may still be honest, but you cannot tell what you would be buying.</p>
+      <p>Then weigh what is left: the written warranty on both material and workmanship, the payment schedule and deposit, the start window, and whether the contractor can show a current license and insurance. Our guide to <a href="/guides/how-to-choose-contractor.html">choosing a contractor</a> covers how to check those.</p>
+    </section>
+
+    <section class="step">
+      <h2>What to ask every gutter contractor</h2>
+      <p>Copy these questions and send them to each bidder in the same message. Asking everyone the same things gives you answers you can line up in the comparison table, and it shows which contractors explain their bid clearly and which leave gaps:</p>
+      <ul>
+        <li>What is the total linear footage, and how did you measure it?</li>
+        <li>What gutter profile, width, material and thickness are you quoting?</li>
+        <li>Is it seamless or sectional?</li>
+        <li>How many downspouts, what size, and where does each one discharge?</li>
+        <li>What hangers and fasteners do you use, and what spacing?</li>
+        <li>Will you inspect the fascia and soffit, and how do you price repair if rot is found?</li>
+        <li>Is drip edge or a gutter apron included?</li>
+        <li>Are guards included, optional or not quoted, and which type?</li>
+        <li>Do you remove and dispose of the old gutters?</li>
+        <li>What is the warranty on material, finish and workmanship, in writing?</li>
+        <li>What are the deposit and payment schedule, and the start window?</li>
+        <li>Can you show proof of license and insurance?</li>
+        <li>What is excluded, and how are change orders priced?</li>
+      </ul>
+    </section>
+
+    <section class="step">
+      <h2>Where Otter Quotes fits</h2>
+      <p>Otter Quotes creates a written scope of work for your project and sends it to multiple contractors, so every contractor bids on the same scope of work and the same measurements. That is the problem this page is about, handled at the start. Otter Quotes covers roofing, siding, gutters and windows. You compare the bids online, next to reviews and licensing information, and you do not need a salesperson to visit your home. Contractors pay Otter Quotes a fee on the accepted bid. We do not sell upgrades, and we are not a contractor.</p>
+      <div class="cta-box cta-box-button">
+        <a href="/start.html" class="btn btn-primary btn-lg">Get my bids today</a>
+      </div>
+    </section>
+
+    <section class="faq-section">
+      <h2>Frequently asked questions</h2>
+
+      <div class="faq-item">
+        <h3>How do I compare gutter replacement estimates?</h3>
+        <div class="faq-answer">
+          <p>Ask every contractor for the same written details: total linear feet and how it was measured, gutter size and material, downspout count and discharge, hangers, fascia repair terms, removal of old gutters, warranty and exclusions. Put the answers side by side in one table. Any blank cell is a question to send back before you compare totals.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>How do I check the linear footage in a gutter bid?</h3>
+        <div class="faq-answer">
+          <p>Ask the contractor how the number was measured, then check it yourself from the ground by measuring each roof edge that gets a gutter and adding the runs. Small differences can come from corners and overlaps. A much shorter total than the other bids may mean sections are left out, so ask which sections are included.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>What is the difference between seamless and sectional gutters in a bid?</h3>
+        <div class="faq-answer">
+          <p>Seamless gutters are made as one continuous piece for each run, so a run has fewer joints than one built from sections. Sectional gutters come in set lengths joined together. The two are different methods, so each bid should say which one it quotes. If you are open to either, ask the same contractor to price both separately.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Should I ask for gutter guards in my bid?</h3>
+        <div class="faq-answer">
+          <p>Treat guards as an option. Ask each contractor to price the gutters without guards, then price guards as a separate line and name the type. That keeps the bids comparable and lets you decide on guards afterward. If a bid says nothing about guards, ask for a written answer.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Are fascia repair and downspout extensions included in a gutter estimate?</h3>
+        <div class="faq-answer">
+          <p>Not always, so ask. Each bid should say how many downspouts it adds, where they discharge, and whether extensions or underground drains are included. It should also say how fascia repair is priced if rot is found: per foot, as an allowance, or excluded and handled later by change order.</p>
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+</section>
+
+<footer id="site-footer"></footer>
+
+<!-- JSON-LD Schema Markup -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "Gutter Replacement Bids: Linear Feet, Downspouts and What to Check",
+  "description": "Compare gutter replacement estimates with a copyable table: linear feet, downspouts, fascia repair, guards and warranty, so each bid prices one job.",
+  "image": "https://otterquote.com/img/otter-logo.svg",
+  "author": {
+    "@type": "Organization",
+    "name": "Otter Quotes"
+  },
+  "datePublished": "2026-10-03",
+  "dateModified": "2026-10-03",
+  "publisher": {
+    "@type": "Organization",
+    "name": "Otter Quotes",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://otterquote.com/img/otter-logo.svg"
+    }
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://otterquote.com/guides/gutter-bid-comparison.html"
+  }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "How do I compare gutter replacement estimates?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Ask every contractor for the same written details: total linear feet and how it was measured, gutter size and material, downspout count and discharge, hangers, fascia repair terms, removal of old gutters, warranty and exclusions. Put the answers side by side in one table. Any blank cell is a question to send back before you compare totals."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "How do I check the linear footage in a gutter bid?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Ask the contractor how the number was measured, then check it yourself from the ground by measuring each roof edge that gets a gutter and adding the runs. Small differences can come from corners and overlaps. A much shorter total than the other bids may mean sections are left out, so ask which sections are included."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What is the difference between seamless and sectional gutters in a bid?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Seamless gutters are made as one continuous piece for each run, so a run has fewer joints than one built from sections. Sectional gutters come in set lengths joined together. The two are different methods, so each bid should say which one it quotes. If you are open to either, ask the same contractor to price both separately."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Should I ask for gutter guards in my bid?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Treat guards as an option. Ask each contractor to price the gutters without guards, then price guards as a separate line and name the type. That keeps the bids comparable and lets you decide on guards afterward. If a bid says nothing about guards, ask for a written answer."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Are fascia repair and downspout extensions included in a gutter estimate?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Not always, so ask. Each bid should say how many downspouts it adds, where they discharge, and whether extensions or underground drains are included. It should also say how fascia repair is priced if rot is found: per foot, as an allowance, or excluded and handled later by change order."
+      }
+    }
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": "https://otterquote.com"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "Guides",
+      "item": "https://otterquote.com/guides/"
+    },
+    {
+      "@type": "ListItem",
+      "position": 3,
+      "name": "Gutter Replacement Bids: Linear Feet, Downspouts and What to Check",
+      "item": "https://otterquote.com/guides/gutter-bid-comparison.html"
+    }
+  ]
+}
+</script>
+
+<script src="../js/cookie-storage.js"></script>
+<script src="../js/config.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/nav.js"></script>
+
+<script>
+// gh-1994 phase 2 (round 2, review 5705874119 B1/N1): carry utm_*/fbclid/
+// gclid from this page's own URL onto every "Get started" CTA that points
+// at the router, on top of the oq_ft cookie fallback (gh-1983)
+// start.html's own collectAttribution() already reads -- belt and
+// suspenders for cookie-blocked browsers. No PII, same allow-list
+// start.html reads. Matches by normalized pathname, not an exact-string
+// selector, because Netlify's pretty-URL rewrite serves the on-disk
+// href="/start.html" as href="/start" (no ".html", no trailing slash) --
+// an exact-string selector never matches that served markup, only a local
+// static server without the rewrite. Also tolerates a trailing slash
+// ("/start/") and a login.html-style relative "start.html". Idempotent:
+// run once per page load, never runs twice on the same anchor.
+(function () {
+  'use strict';
+  var ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid'];
+  var params = new URLSearchParams(window.location.search);
+  var qs = '';
+  ATTR_KEYS.forEach(function (k) {
+    var v = params.get(k);
+    if (v) qs += (qs ? '&' : '?') + k + '=' + encodeURIComponent(v);
+  });
+  if (!qs) return;
+  function isStartHref(href) {
+    if (!href) return false;
+    try {
+      var p = new URL(href, window.location.href).pathname.replace(/\/+$/, '');
+      return p === '/start' || p === '/start.html';
+    } catch (e) {
+      return false;
+    }
+  }
+  document.querySelectorAll('a[href]').forEach(function (a) {
+    var href = a.getAttribute('href');
+    if (isStartHref(href)) {
+      a.setAttribute('href', href + qs);
+    }
+  });
+})();
+</script>
+</body>
+</html>

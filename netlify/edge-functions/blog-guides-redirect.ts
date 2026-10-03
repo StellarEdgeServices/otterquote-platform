@@ -86,6 +86,19 @@ const REDIRECT_MAP: Record<string, string> = {
     '/blog/when-not-to-file-roof-insurance-claim.html',
   '/blog/why-roofers-quote-different-prices':
     '/blog/why-roofers-quote-different-prices.html',
+
+  // CRO RUN 52 / gh-2448 + gh-2449 (#2423): five week-1 guide pages -- same
+  // extensionless -> .html 301 as above so each is not dual-served.
+  '/guides/multiple-bids-roof-insurance-claim':
+    '/guides/multiple-bids-roof-insurance-claim.html',
+  '/guides/after-adjuster-estimate-next-steps':
+    '/guides/after-adjuster-estimate-next-steps.html',
+  '/guides/roof-bid-comparison-worksheet':
+    '/guides/roof-bid-comparison-worksheet.html',
+  '/guides/siding-bid-comparison':
+    '/guides/siding-bid-comparison.html',
+  '/guides/gutter-bid-comparison':
+    '/guides/gutter-bid-comparison.html',
 };
 
 export default async (req: Request, context: any) => {
