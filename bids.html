@@ -1995,7 +1995,12 @@
             'apikey': CONFIG.SUPABASE_ANON,
           },
           body: JSON.stringify({
-            subject: '[Bid Renewal Requested] ' + (c.company_name || 'Contractor') + ' — ' + (currentClaim ? (currentClaim.property_address || currentClaim.id) : 'Unknown Claim'),
+            // gh-2477: the function requires from_name/from_email/message and rejects any other
+            // field or a newline in subject. System sender (admin-routed notice, recipient is
+            // fixed server-side).
+            from_name: 'OtterQuote Platform',
+            from_email: 'support@otterquote.com',
+            subject: ('[Bid Renewal Requested] ' + (c.company_name || 'Contractor') + ' — ' + (currentClaim ? (currentClaim.property_address || currentClaim.id) : 'Unknown Claim')).replace(/[\r\n]+/g, ' '),
             message: [
               'A homeowner has requested an updated bid from a contractor whose bid has expired.',
               '',
