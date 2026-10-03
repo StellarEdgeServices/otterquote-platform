@@ -1862,10 +1862,10 @@ Let me know if you have any questions!
         // localStorage context the signup pages leave (PartnerRegistration.readCtx).
         // gh-2344 (CEO ruling, #2304 5965155761 item 1; LEGAL-READ FAIL 5965145560): when that context is dropped (none,
         // expired, unknown type, or a missing/different owner) the page ASKS for the partner type -- which selects that
-        // type's form and agreement exactly as the signup pages do -- and a recruiter code (optional, same lookup as the
-        // signup pages' detectRecruitCode). It never defaults to 'other' or the standard Partner Terms.
+        // type's form and agreement exactly as the signup pages do -- and who referred them (optional: a recruit code is credited
+        // via the signup pages' detectRecruitCode lookup; other text is kept as p_referred_by_note). It never defaults to 'other' or the standard Partner Terms.
         // Every label/placeholder/terms/error string is verbatim from the matching signup page (see FORMS in js/partner-registration.js);
-        // the ask reuses recruit.html's chooser heading, AgentTypes.CHOOSER_LABELS and partner-other.html's referredBy label.
+        // the ask reuses recruit.html's chooser heading, AgentTypes.CHOOSER_LABELS and partner-other.html's referredBy label + placeholder.
         function renderPartnerRecollect() {
             const host = document.getElementById('partnerRecollect');
             if (!host || !window.PartnerRegistration || !sb || !currentUser || !currentUser.email) return;
@@ -1935,18 +1935,19 @@ Let me know if you have any questions!
                 const typeSel = el('select', { id: 'partnerRecollect_agentType', className: 'form-select', required: true });
                 typeSel.appendChild(el('option', { value: '', selected: true, disabled: true }, []));
                 PR.TYPES.forEach((t) => { if (LABELS[t]) typeSel.appendChild(el('option', { value: t }, [LABELS[t]])); });
-                const recruitInput = el('input', { type: 'text', id: 'partnerRecollect_recruitCode', className: 'form-input' });
+                const recruitInput = el('input', { type: 'text', id: 'partnerRecollect_recruitCode', className: 'form-input', placeholder: 'Name or company of the person who recommended Otter Quotes' });
                 const recruitLbl = el('label', { className: 'form-label', htmlFor: 'partnerRecollect_recruitCode' }, ['Who Told You About Us? ', el('span', {}, ['(optional)'])]);
                 host.appendChild(el('div', { id: 'partnerRecollectAsk' }, [
                     el('div', { className: 'form-group' }, [el('label', { className: 'form-label', htmlFor: 'partnerRecollect_agentType' }, ['What kind of partner are you?']), typeSel]),
                     el('div', { className: 'form-group' }, [recruitLbl, recruitInput])
                 ]));
                 host.appendChild(formHost);
-                // Recruiter credited only when an active recruiter holds the typed code (as on the signup pages); a failed lookup blocks the submit.
+                // As on partner-other / partner-adjusters: an active recruiter's code is credited (p_recruit_code); any other
+                // text is kept as p_referred_by_note, not credited (PR.resolveReferral). A failed lookup blocks the submit.
                 const askAttribution = async () => {
-                    const r = await PR.lookupRecruitCode(sb, recruitInput.value);
-                    if (r.error) { console.warn('Recruit code lookup failed:', r.error); return null; }
-                    return r.code ? { p_recruit_code: r.code } : {};
+                    const r = await PR.resolveReferral(sb, recruitInput.value);
+                    if (!r) console.warn('Recruit code lookup failed');
+                    return r;
                 };
                 typeSel.addEventListener('change', () => {
                     const t = typeSel.value;

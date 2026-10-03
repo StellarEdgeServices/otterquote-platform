@@ -54,12 +54,12 @@ ok(/PR\.readCtx\(localStorage, undefined, .*Auth\.ownerTag\(currentUser\.email\)
     Object.defineProperty(n, 'textContent', { get() { return n._t || ''; }, set(v) { n._t = v; n.children = []; } }); return n; };
   const walk = (n, fn) => { fn(n); (n.children || []).forEach((c) => walk(c, fn)); };
   const tick = async () => { for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 0)); };
-  async function run({ ctx, pick, recruitTyped, values, recruiters = { 'r-ABC123': true }, lookupError = false }) {
+  async function run({ ctx, pick, recruitTyped, values, recruiters = { 'r-ABC123': { id: 'rec1', first_name: 'Pat', last_name: 'Recruiter', company: 'PR Co' } }, lookupError = false }) {
     const local = store(); if (ctx) local.setItem('oq_partner_signup_ctx', JSON.stringify(ctx));
     const els = new Map(); const rpcCalls = []; const lookups = []; const alerts = []; let reloads = 0;
     const doc = { getElementById(id) { if (!els.has(id)) els.set(id, mkNode('div')); return els.get(id); }, createElement: (t) => mkNode(t), createTextNode: (t) => ({ text: t, children: [] }) };
     const sb = { rpc(name, params) {
-      if (name === 'get_referral_agents_public') { const f = {}; const b = { select() { return b; }, eq(k, v) { f[k] = v; return b; }, maybeSingle: async () => { lookups.push(f); if (lookupError) return { data: null, error: { message: 'network' } }; return { data: recruiters[f.recruit_code] && f.status === 'active' ? { id: 'rec1' } : null, error: null }; } }; return b; }
+      if (name === 'get_referral_agents_public') { const f = {}; const b = { select() { return b; }, eq(k, v) { f[k] = v; return b; }, maybeSingle: async () => { lookups.push(f); if (lookupError) return { data: null, error: { message: 'network' } }; return { data: recruiters[f.recruit_code] && f.status === 'active' ? recruiters[f.recruit_code] : null, error: null }; } }; return b; }
       rpcCalls.push({ name, params }); return Promise.resolve({ error: null }); } };
     const win = { location: { reload() { reloads++; } } }; win.window = win;
     const c = { window: win, document: doc, localStorage: local, sessionStorage: store(), sb, currentUser: { id: 'u1', email: OWN }, console: { error() {}, log() {}, warn() {} }, alert: (m) => alerts.push(String(m)), JSON, Date, String, Promise, Object, isFinite };
@@ -104,6 +104,7 @@ ok(/PR\.readCtx\(localStorage, undefined, .*Auth\.ownerTag\(currentUser\.email\)
   const pc = r.rpcCalls[0] && r.rpcCalls[0].params;
   ok(r.rpcCalls.length === 1 && r.rpcCalls[0].name === 'register_partner' && pc.p_agent_type === 'home_inspector', '(c) register_partner with the PICKED type home_inspector');
   ok(!!pc && pc.p_recruit_code === 'r-ABC123' && r.lookups.length === 1 && r.lookups[0].recruit_code === 'r-ABC123' && r.lookups[0].status === 'active', '(c) typed recruiter code normalised, looked up (active), and credited');
+  ok(!!pc && pc.p_referred_by_note === 'Pat Recruiter', '(c) valid code: p_referred_by_note = the recruiter display name, as partner-other/partner-adjusters send it (detectRecruitCode fills the field with it) -- ' + JSON.stringify(pc && pc.p_referred_by_note));
   ok(!!pc && pc.p_utm_source === null && pc.p_recruit_code !== 'r-CTX111', '(c) nothing from the dropped ctx is used');
   // (d) pasted recruit link is accepted
   r = await run({ ctx: null, pick: 're_agent', recruitTyped: 'https://otterquote.com/recruit.html?code=r-ABC123', values: V });
@@ -111,15 +112,19 @@ ok(/PR\.readCtx\(localStorage, undefined, .*Auth\.ownerTag\(currentUser\.email\)
   // (e) unknown code -> not credited (as on the signup pages); empty -> not credited
   r = await run({ ctx: legacyCtx, pick: 'adjuster', recruitTyped: 'r-NOPE99', values: V });
   ok(r.rpcCalls.length === 1 && r.rpcCalls[0].params.p_recruit_code === null && r.rpcCalls[0].params.p_agent_type === 'adjuster', '(e) unknown recruit code: registered as the picked type, not credited');
+  ok(r.rpcCalls[0] && r.rpcCalls[0].params.p_referred_by_note === 'r-NOPE99', '(e) unknown code text kept as p_referred_by_note');
+  r = await run({ ctx: legacyCtx, pick: 'home_inspector', recruitTyped: '  Jane Smith  ', values: V });
+  ok(r.rpcCalls.length === 1 && r.rpcCalls[0].params.p_referred_by_note === 'Jane Smith' && r.rpcCalls[0].params.p_recruit_code === null, '(e) a typed NAME is sent as p_referred_by_note (trimmed), not credited -- as on partner-other/partner-adjusters');
+  ok(r.find('partnerRecollect_recruitCode').placeholder === 'Name or company of the person who recommended Otter Quotes' && fs.readFileSync(path.join(ROOT, 'partner-other.html'), 'utf8').includes('placeholder="Name or company of the person who recommended Otter Quotes"'), '(e) field placeholder verbatim from partner-other.html');
   r = await run({ ctx: legacyCtx, pick: 'other', recruitTyped: '', values: V });
-  ok(r.rpcCalls.length === 1 && r.rpcCalls[0].params.p_agent_type === 'other' && r.rpcCalls[0].params.p_recruit_code === null && r.lookups.length === 0, '(e) "other" only when explicitly picked; empty code -> no lookup, not credited');
+  ok(r.rpcCalls.length === 1 && r.rpcCalls[0].params.p_agent_type === 'other' && r.rpcCalls[0].params.p_recruit_code === null && !('p_referred_by_note' in r.rpcCalls[0].params) && r.lookups.length === 0, '(e) "other" only when explicitly picked; empty field -> no lookup, neither code nor note sent');
   // (f) lookup failure blocks the submit (never registers uncredited by accident)
   r = await run({ ctx: legacyCtx, pick: 'home_inspector', recruitTyped: 'r-ABC123', values: V, lookupError: true });
   ok(r.rpcCalls.length === 0 && r.alerts.includes(PR.ERR_TEXT), '(f) recruit lookup error: no register_partner, page error text shown');
   // (g) owner-matching ctx -> unchanged path: no ask, ctx type + ctx recruit code
   r = await run({ ctx: { ...legacyCtx, owner: tag(OWN), agentType: 'adjuster' }, values: V });
   ok(!r.askShown && r.formBeforePick, '(g) owner-matching ctx: no ask, the form is shown directly');
-  ok(r.rpcCalls.length === 1 && r.rpcCalls[0].params.p_agent_type === 'adjuster' && r.rpcCalls[0].params.p_recruit_code === 'r-CTX111' && r.rpcCalls[0].params.p_utm_source === 'facebook' && r.lookups.length === 0, '(g) owner-matching ctx: type + recruit code + UTM from the ctx (unchanged)');
+  ok(r.rpcCalls.length === 1 && r.rpcCalls[0].params.p_agent_type === 'adjuster' && r.rpcCalls[0].params.p_recruit_code === 'r-CTX111' && r.rpcCalls[0].params.p_utm_source === 'facebook' && r.lookups.length === 0 && !('p_referred_by_note' in r.rpcCalls[0].params), '(g) owner-matching ctx: type + recruit code + UTM from the ctx (unchanged, no note key)');
 }
 console.log(fail ? ('\n' + fail + ' check(s) FAILED') : '\nOK: gh-2344 partner-site owner stamp + ctx binding + dropped-ctx ask proven.');
 process.exit(fail ? 1 : 0);

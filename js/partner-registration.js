@@ -155,6 +155,9 @@
     var p = { p_agent_type: type, p_first_name: first, p_last_name: last, p_email: norm(ownEmail), p_phone: String(v.phone).trim(), p_company: company || null };
     var attr = (ctx && ctx.attribution) || {};
     CTX_ATTR.forEach(function (k) { p[k] = attr[k] !== undefined ? attr[k] : null; });
+    // gh-2344: the re-collect ask's "Who Told You About Us?" text, sent as the signup pages send it (partner-other /
+    // partner-adjusters: p_referred_by_note). Only set when present, so the trusted-ctx path's arguments are unchanged.
+    if (typeof attr.p_referred_by_note === 'string' && attr.p_referred_by_note.trim()) p.p_referred_by_note = attr.p_referred_by_note.trim();
     p.p_is_test = !!isTest;
     p.p_metadata = { terms_accepted_at_client: new Date(termsAcceptedAt).toISOString(), completion_path: 'dashboard_recollect' };
     return p;
@@ -174,20 +177,38 @@
   }
   /**
    * The lookup the signup pages' detectRecruitCode() runs (active recruiter by recruit_code via get_referral_agents_public).
-   * {code} when an active recruiter holds it; {code: null} when the field is empty or no active recruiter holds it (not
-   * credited -- same as the signup pages); {error} when the lookup itself failed (the caller must not register uncredited).
+   * {code, name} when an active recruiter holds it (name = the display name detectRecruitCode() puts in the referredBy
+   * field); {code: null} when the field is empty or no active recruiter holds it; {error} when the lookup itself failed.
    */
   async function lookupRecruitCode(sb, raw) {
     var code = normRecruitCode(raw);
     if (!code) return { code: null };
     try {
-      var res = await sb.rpc('get_referral_agents_public').select('id').eq('recruit_code', code).eq('status', 'active').maybeSingle();
+      var res = await sb.rpc('get_referral_agents_public').select('id, first_name, last_name, company').eq('recruit_code', code).eq('status', 'active').maybeSingle();
       if (res && res.error) return { error: res.error };
-      return { code: res && res.data ? code : null };
+      var r = res && res.data;
+      if (!r) return { code: null };
+      var name = ((r.first_name || '') + ' ' + (r.last_name || '')).trim() || r.company || 'Otter Quotes Partner';
+      return { code: code, name: name };
     } catch (e) { return { error: e }; }
+  }
+  /**
+   * The re-collect ask's "Who Told You About Us?" field -> register_partner attribution, mirroring partner-other.html /
+   * partner-adjusters.html: an active recruiter's code (or pasted recruit link) -> p_recruit_code, and p_referred_by_note =
+   * the recruiter's display name (on those pages detectRecruitCode() fills and locks the field with it, and the field is
+   * sent as p_referred_by_note); any other non-empty text -> p_referred_by_note = the trimmed text, not credited;
+   * empty -> neither. null when the lookup failed (the caller blocks the submit).
+   */
+  async function resolveReferral(sb, raw) {
+    var text = String(raw || '').trim();
+    if (!text) return {};
+    var r = await lookupRecruitCode(sb, text);
+    if (r.error) return null;
+    if (r.code) return { p_recruit_code: r.code, p_referred_by_note: r.name };
+    return { p_referred_by_note: text };
   }
 
   root.PartnerRegistration = { KEY: KEY, TTL_MS: TTL_MS, TYPES: TYPES, readMarker: readMarker, clearMarker: clearMarker, buildParams: buildParams, complete: complete,
     CTX_KEY: CTX_KEY, FORMS: FORMS, ERR_TEXT: ERR_TEXT, SUBMITTING: SUBMITTING, readCtx: readCtx, clearCtx: clearCtx, formFor: formFor, buildRecollectParams: buildRecollectParams,
-    normRecruitCode: normRecruitCode, lookupRecruitCode: lookupRecruitCode };
+    normRecruitCode: normRecruitCode, lookupRecruitCode: lookupRecruitCode, resolveReferral: resolveReferral };
 })(typeof window !== 'undefined' ? window : this);
