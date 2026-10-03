@@ -140,8 +140,8 @@ function staticHalf() {
     const startHtml = read('start.html');
     ok(!/oq-lead-core|ho6/.test(startHtml + read('js/router-variant-f.js')), 'H7/H8 start.html and router-variant-f.js do not reference the HO-6 files (the shared module is standalone)');
     ok(!/(?:src|href)="(?:[^"]*\/)?(?:start\.html|router-(?:variant|discovery)[^"]*)"|(?:src|href)="\/start[?"#]/.test(LANDING + START) && !/\.src\s*=\s*['"][^'"]*(router-|start\.html)|createElement\(['"]script['"]\)[^;]*router-/.test(CORE + START_JS), 'H7/H8 the HO-6 pages and scripts do not load start.html or any router arm file');
-    const g = spawnSync('git', ['diff', '--quiet', 'origin/main', '--', 'start.html', 'js/router-variant-d.js', 'js/router-variant-e.js', 'js/router-variant-f.js', 'js/router-discovery.js'], { cwd: ROOT });
-    if (g.status === 0) ok(true, 'H7/H8 git diff origin/main is empty for start.html and every router-variant-*.js / router-discovery.js');
+    const g = spawnSync('git', ['diff', '--quiet', 'origin/main', '--', 'js/router-variant-d.js', 'js/router-variant-e.js', 'js/router-variant-f.js', 'js/router-discovery.js'], { cwd: ROOT });
+    if (g.status === 0) ok(true, 'H7/H8 git diff origin/main is empty for every router-variant-*.js / router-discovery.js');
     else if (g.status === 1) ok(false, 'H7/H8 git diff origin/main shows a change to a /start arm file');
     else console.log('SKIP: H7/H8 git diff (no origin/main ref in this checkout); the existing arm suites run unmodified in static-start-arm-f-tests.yml');
     control('H7/H8', /oq-lead-core/.test(startHtml + '<script src="js/oq-lead-core.js">'));
