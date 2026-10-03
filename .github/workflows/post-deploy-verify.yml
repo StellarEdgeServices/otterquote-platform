@@ -48,7 +48,42 @@ jobs:
       - name: Self-test the partner-parity D-266 per-track guard (gh-2020)
         run: python3 tools/partner_parity_check.test.py
 
+      # gh-2422 (D-345): self-test for the /locations/ page generator. Covers
+      # the closes-on positive case (zero-contractor county on an allow-listed
+      # state -> indexable >=500-unique-word page containing "send it to local
+      # contractors"), both negative controls (thin page, non-allow-listed
+      # state), the empty committed allow-list, and the copy-rule lint. Needs
+      # no credentials and writes only to a temp dir. BUILD-FAILING.
+      - name: Self-test the location-page generator (D-345)
+        run: python3 tools/generate_location_pages.test.py
+
       # gh-2433: data/us-counties.json feeds the D-345 location generator;
       # it shipped corrupt for 28 of 51 states. Pin counts + uniqueness.
       - name: Check county data used by the location generator (gh-2433)
         run: python3 tools/us_counties_data.test.py
+
+      # gh-2422 (CEO ruling 5964402773 on #2304): a state joins the /locations/
+      # allow-list only in its own R-177 PR, which carries that state's profile
+      # and county content for the legal read. Diff-scoped: at most one state
+      # added per change, and an added state's profile must change in the same
+      # diff. Removals always pass. pull_request diffs the merge ref against the
+      # current base tip (the merge ref's first parent, so only this PR's
+      # changes); merge_group diffs against the group's base_sha; push is not
+      # checked (the PR or merge group already was). BUILD-FAILING.
+      - name: Self-test the location allow-list change rule (gh-2422)
+        run: python3 tools/check_location_allowlist_change.py --self-test
+
+      - name: Location allow-list change rule, one state per R-177 PR (gh-2422)
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          MERGE_GROUP_BASE: ${{ github.event.merge_group.base_sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "merge_group" ]; then
+            git fetch -q --no-tags --depth=1 origin "$MERGE_GROUP_BASE"
+          else
+            git fetch -q --no-tags --depth=1 origin "$BASE_REF"
+          fi
+          python3 tools/check_location_allowlist_change.py --base FETCH_HEAD --head HEAD

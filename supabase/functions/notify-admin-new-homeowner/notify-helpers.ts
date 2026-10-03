@@ -50,7 +50,8 @@ export type NormalizedEvent =
   | { eventType: "claim_created"; record: Record<string, unknown> }
   | { eventType: "signup_sweep"; minAgeMinutes: number }
   | { eventType: "signup_backfill" }
-  | { eventType: "router_lead"; record: Record<string, unknown> };
+  | { eventType: "router_lead"; record: Record<string, unknown> }
+  | { eventType: "out_of_state_claim"; record: Record<string, unknown> };
 
 const DEFAULT_MIN_AGE_MINUTES = 20;
 
@@ -89,6 +90,14 @@ export function normalizeBody(body: any): NormalizedEvent | null {
   if (body.event_type === "router_lead") {
     if (!body.record || typeof body.record !== "object") return null;
     return { eventType: "router_lead", record: body.record };
+  }
+
+  // gh-2421 (D-344): a claim whose property_state is set to something that is
+  // not IN and not on the blocked list. Only record.id is ever read from the
+  // payload (see out-of-state.ts); everything in the email comes from the DB.
+  if (body.event_type === "out_of_state_claim") {
+    if (!body.record || typeof body.record !== "object") return null;
+    return { eventType: "out_of_state_claim", record: body.record };
   }
 
   // Supabase native database-webhook shape: {type:"INSERT", table, record}
@@ -389,4 +398,106 @@ export function buildRouterLeadSubjectAndText(record: Record<string, unknown>): 
   lines.push(`Attribution: ${attribution}`, ``, `Phone carries no consent -- callback only.`);
 
   return { subject, textBody: lines.join("\n") };
+}
+
+// gh-1932 rework 2: anchored exclusion filter (see doc header for the exact
+// spec). Deliberately does NOT match a real address that merely contains
+// "test" as a substring.
+export function isExcludedEmail(email: string): boolean {
+  const lower = (email || "").toLowerCase().trim();
+  if (!lower || lower.indexOf("@") <= 0) return true; // no usable address
+  const at = lower.indexOf("@");
+  const local  = lower.slice(0, at);
+  const domain = lower.slice(at + 1);
+
+  if (local === "test") return true;
+  if (/^test[0-9+._-]/.test(local)) return true;
+  if (local.includes("+test")) return true;
+  if (["example.com", "example.org", "test.local"].includes(domain)) return true;
+  if (domain === "otterquote.com" || domain === "tryotterquote.com" || domain === "stellaredgeservices.com") return true;
+  if (lower.includes("stohler")) return true;
+
+  return false;
+}
+
+
+// ---------------------------------------------------------------------------
+// gh-2421 (D-344): out-of-state claim alert -- pure helpers
+// ---------------------------------------------------------------------------
+
+// Fallback when platform_settings.homeowner_blocked_states is missing or
+// malformed. Matches the D-344 seed. Fails CLOSED toward "blocked": a state on
+// this list never triggers an out-of-state alert, so a config read failure can
+// only suppress alerts for FL/LA/TX, never invent alerts for them.
+export const DEFAULT_BLOCKED_STATES: readonly string[] = ["FL", "LA", "TX"];
+export const BLOCKED_STATES_SETTING_KEY = "homeowner_blocked_states";
+export const HOME_STATE = "IN";
+
+export function normalizeState(v: unknown): string {
+  return typeof v === "string" ? v.trim().toUpperCase() : "";
+}
+
+// Accepts the jsonb value of the platform_settings row. Anything that is not
+// an array of strings (missing row, null, object, number) falls back to the
+// default. An empty array is a valid, deliberate "nothing blocked".
+export function parseBlockedStates(value: unknown): string[] {
+  if (!Array.isArray(value) || !value.every((s) => typeof s === "string")) {
+    return [...DEFAULT_BLOCKED_STATES];
+  }
+  return value.map(normalizeState).filter(Boolean);
+}
+
+// True when a claim in this state should trigger the D-344 alert: a state is
+// present, it is not IN, and it is not blocked.
+export function isAlertableOutOfState(propertyState: unknown, blocked: readonly string[]): boolean {
+  const s = normalizeState(propertyState);
+  if (!s || s === HOME_STATE) return false;
+  return !blocked.includes(s);
+}
+
+// Service-role only, like router_lead: the dedupe stamp lives on a claims row
+// the homeowner can write, and the anon key is public.
+export function isOutOfStateClaimAuthorized(bearerToken: string, serviceRoleKey: string): boolean {
+  return !!bearerToken && bearerToken === serviceRoleKey;
+}
+
+export function tradesLabel(trades: unknown): string {
+  const list = Array.isArray(trades)
+    ? trades.filter((t) => typeof t === "string" && t.trim()).map((t) => stripCrlf(String(t).trim()))
+    : [];
+  return list.length ? list.join(", ") : "(no trade recorded)";
+}
+
+export interface OutOfStateClaimEmail {
+  subject: string;
+  textBody: string;
+  htmlRows: [string, string][];
+  extraHtml: string;
+}
+
+// Reads ONLY the DB row returned by the atomic claim-and-read query.
+export function buildOutOfStateClaimEmail(row: Record<string, unknown>): OutOfStateClaimEmail {
+  const state = stripCrlf(normalizeState(row.property_state)) || "(unknown)";
+  const trades = tradesLabel(row.trades);
+  const claimId = stripCrlf(String(row.id ?? "(unknown)"));
+  const claimNumber = row.claim_number ? stripCrlf(String(row.claim_number)) : "";
+  const subject = `Out-of-state claim: ${state} \u2014 ${trades} \u2014 ${claimId}`;
+  const textLines = [
+    "A claim was created for a property outside Indiana that is not on the blocked-state list.",
+    "",
+    `State: ${state}`,
+    `Trade(s): ${trades}`,
+    `Claim ID: ${claimId}`,
+  ];
+  if (claimNumber) textLines.push(`Claim number: ${claimNumber}`);
+  textLines.push("", "Internal alert (D-344). Sent once per claim.");
+  const htmlRows: [string, string][] = [
+    ["State", escapeHtml(state)],
+    ["Trade(s)", escapeHtml(trades)],
+    ["Claim ID", escapeHtml(claimId)],
+  ];
+  if (claimNumber) htmlRows.push(["Claim number", escapeHtml(claimNumber)]);
+  const extraHtml =
+    `<p style="font-family:sans-serif;font-size:12px;color:#94A3B8;margin:0 0 16px;">Internal alert (D-344). Sent once per claim.</p>`;
+  return { subject, textBody: textLines.join("\n"), htmlRows, extraHtml };
 }

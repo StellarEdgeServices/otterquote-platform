@@ -108,6 +108,13 @@ https://www.stellaredgeservices.com/* /stellar-edge.html 200
 /blog/what-is-scope-of-loss-roofing /blog/what-is-scope-of-loss-roofing.html 301
 /blog/when-not-to-file-roof-insurance-claim /blog/when-not-to-file-roof-insurance-claim.html 301
 /blog/why-roofers-quote-different-prices /blog/why-roofers-quote-different-prices.html 301
+# CRO RUN 52 / gh-2448 + gh-2449 (#2423): four week-1 guide pages. Same 301 as above;
+# as with the wave-2 rules, the edge function is what actually fires and these
+# lines are the documented source of truth.
+/guides/multiple-bids-roof-insurance-claim /guides/multiple-bids-roof-insurance-claim.html 301
+/guides/roof-bid-comparison-worksheet /guides/roof-bid-comparison-worksheet.html 301
+/guides/siding-bid-comparison /guides/siding-bid-comparison.html 301
+/guides/gutter-bid-comparison /guides/gutter-bid-comparison.html 301
 
 # gh-1795: twelve blog articles promoted from otterquote-deploy/blog/ (a committed
 # May-2026 working-directory mirror, unstyled, canonicalising to a 404) to the real
