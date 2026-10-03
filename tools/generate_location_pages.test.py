@@ -336,6 +336,26 @@ class GeneratorTests(unittest.TestCase):
                 with self.subTest(page=str(p.relative_to(self.out)), url=u):
                     self.assertIn(u, urls)
 
+    def test_service_jsonld_name_equals_h1_and_nav_logo_file_exists(self):
+        # Legal-read carry-forward (#2422 5965730069 item 1): Service name == visible H1.
+        # Nav logo: the <img> in the page's nav script must point at a file that exists in the repo.
+        self.run_fx()
+        pages = sorted(self.out.glob("*/*/index.html"))
+        self.assertGreater(len(pages), 0)
+        import html as _html
+        for p in pages:
+            text = p.read_text(encoding="utf-8")
+            h1 = _html.unescape(re.search(r"<h1>(.*?)</h1>", text, re.S).group(1)).strip()
+            names = []
+            for blk in re.findall(r'<script type="application/ld\+json">(.*?)</script>', text, re.S):
+                d = json.loads(blk)
+                if isinstance(d, dict) and d.get("@type") == "Service":
+                    names.append(d["name"])
+            with self.subTest(page=str(p.relative_to(self.out))):
+                self.assertEqual(names, [h1])
+                for src in re.findall(r'<img src="(/img/[^"]+)"', text):
+                    self.assertTrue((REPO_ROOT / src.lstrip("/")).is_file(), src)
+
     # (d) committed allow-list states have committed profiles --------------------------------------
     def test_committed_allowlist_states_have_committed_profiles(self):
         # Invariant (replaces the launch-day "allow-list is empty" pin): every state on the
@@ -1189,7 +1209,7 @@ class LintTests(unittest.TestCase):
         self.assertNotIn("Contractor Bids", page)
         ld = glp._jsonld_strings(page)
         self.assertIn("send it to local contractors", ld)
-        self.assertIn("Roofing Bids — Ohio County, IN", ld)
+        self.assertIn("Comparing Roofing Bids in Ohio County, Indiana", ld)
 
     # the rest of the have-contractors list
     def test_lint_rejects_other_have_contractors_phrasing(self):
