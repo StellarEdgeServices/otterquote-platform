@@ -1,0 +1,143 @@
+{
+ "_readme": "State profile for tools/generate_location_pages.py (D-345). Authored by the CRO (Sloane), CRO RUN 52, claim cro-2026-10-03T00:36:49Z. Regions: the three Grand Divisions, Tenn. Code Ann. 4-1-202 to 4-1-204. county_content holds roofing notes for the first counties only; every figure in it is sourced in Marketing/seo-pages/locations/*.sources.md on Dustin's PC (NOAA Storm Events Database bulk files, U.S. Census Bureau ACS, and the local building department's own pages). Counties and trades with no county_content are skipped by the strict 500-word gate.",
+ "code": "TN",
+ "name": "Tennessee",
+ "regions": {
+  "west": {
+   "label": "West Tennessee",
+   "counties": [
+    "Benton",
+    "Carroll",
+    "Chester",
+    "Crockett",
+    "Decatur",
+    "Dyer",
+    "Fayette",
+    "Gibson",
+    "Hardeman",
+    "Hardin",
+    "Haywood",
+    "Henderson",
+    "Henry",
+    "Lake",
+    "Lauderdale",
+    "Madison",
+    "McNairy",
+    "Obion",
+    "Shelby",
+    "Tipton",
+    "Weakley"
+   ],
+   "climate": [
+    "{county} County is part of the Western Grand Division defined in Tennessee Code Annotated section 4-1-204. NWS Memphis says June is the most active month for thunderstorm wind events in its warning area, and that the majority of those events occur between March and July. It says hail occurs most frequently from March through June, with May the most active month.",
+    "NWS Memphis studied tornadoes from 2007 to 2020 in its warning area and found that April accounted for 57 of 276 tornadoes, with May next at 50. The study reports that tornadoes occurred most frequently between 5:00 and 6:00 PM, with 40 of the 276 in that hour. It adds that tornado activity dramatically lowers from June through November. NWS Memphis also says severe weather reports peak in the late afternoon and early evening hours, and the Memphis warning area includes {county} County's region.",
+    "NOAA's Tennessee state climate summary says summers are warm and humid for most of the state, while winters are cool with occasional episodes of very cold arctic air. It states that total annual precipitation has been mostly above average since 1990. It describes summer average high temperatures as warmer in western and central Tennessee than in the eastern portion of the state. It adds that winter weather includes occasional snow and ice storms, a statewide statement that includes {county} County."
+   ]
+  },
+  "middle": {
+   "label": "Middle Tennessee",
+   "counties": [
+    "Bedford",
+    "Cannon",
+    "Cheatham",
+    "Clay",
+    "Coffee",
+    "Davidson",
+    "DeKalb",
+    "Dickson",
+    "Fentress",
+    "Franklin",
+    "Giles",
+    "Grundy",
+    "Hickman",
+    "Houston",
+    "Humphreys",
+    "Jackson",
+    "Lawrence",
+    "Lewis",
+    "Lincoln",
+    "Macon",
+    "Marshall",
+    "Maury",
+    "Montgomery",
+    "Moore",
+    "Overton",
+    "Perry",
+    "Pickett",
+    "Putnam",
+    "Robertson",
+    "Rutherford",
+    "Sequatchie",
+    "Smith",
+    "Stewart",
+    "Sumner",
+    "Trousdale",
+    "Van Buren",
+    "Warren",
+    "Wayne",
+    "White",
+    "Williamson",
+    "Wilson"
+   ],
+   "climate": [
+    "{county} County is part of the Middle Grand Division defined in Tennessee Code Annotated section 4-1-203. NWS Nashville's tornado statistics page lists an average of 18 tornadoes per year in Middle Tennessee for 1995 to 2025, against 31 per year statewide. A separate NWS Nashville climatology covers Middle Tennessee tornadoes from 1830 to 2003, and a third NWS Nashville study covers heavy precipitation.",
+    "NWS Nashville's tornado climatology of Middle Tennessee for 1830 to 2003 says nearly two-thirds of its tornadoes occurred in March, April and May. It reports that the most common hour of the day is 5:00 to 5:59 PM Central Standard Time. For the same 1830 to 2003 record it notes a secondary peak centered around November, when thirty tornadoes, 6 percent of the total, struck, a note that applies to {county} County's region.",
+    "NWS Nashville's heavy precipitation climatology for Middle Tennessee, based on 1961 to 1990 data from 43 cooperative stations, calls November through May the wet season, when two-thirds of annual precipitation falls. It gives March as the wettest month at 5.76 inches and October as the driest at 3.38 inches. These are regional figures for the area that includes {county} County."
+   ]
+  },
+  "east": {
+   "label": "East Tennessee",
+   "counties": [
+    "Anderson",
+    "Bledsoe",
+    "Blount",
+    "Bradley",
+    "Campbell",
+    "Carter",
+    "Claiborne",
+    "Cocke",
+    "Cumberland",
+    "Grainger",
+    "Greene",
+    "Hamblen",
+    "Hamilton",
+    "Hancock",
+    "Hawkins",
+    "Jefferson",
+    "Johnson",
+    "Knox",
+    "Loudon",
+    "Marion",
+    "McMinn",
+    "Meigs",
+    "Monroe",
+    "Morgan",
+    "Polk",
+    "Rhea",
+    "Roane",
+    "Scott",
+    "Sevier",
+    "Sullivan",
+    "Unicoi",
+    "Union",
+    "Washington"
+   ],
+   "climate": [
+    "{county} County is part of the Eastern Grand Division defined in Tennessee Code Annotated section 4-1-202. NOAA's Tennessee state climate summary says temperatures decrease as elevation increases, averaging a 3 degree F decline per 1,000 feet. It describes the Cumberland Plateau as averaging 2,000 feet in elevation and Smoky Mountains peaks as reaching 6,000 feet, and it says these higher areas are cooler than lower-elevation areas.",
+    "NWS Morristown's snowfall records show how elevation matters in East Tennessee. For March 12 to 14, 1993, the office lists widespread 24 to 36 inch amounts in the mountains and 40 to 60 inches on the highest peaks of Sevier County. For February 12 to 14, 1960, it lists 10 to 15 inches in the mountains and 5 to 10 inches across the southern valley, an example from the region that includes {county} County.",
+    "An NWS Morristown study of supercells over the eastern Tennessee River Valley says the topography of the Great Tennessee Valley may have enhanced the pooling of moisture across central east Tennessee. It also says the higher elevations of the northern Cumberland Plateau appeared to influence the development of some tornadoes by enhancing an outflow boundary. The study covers East Tennessee, where {county} County is located."
+   ]
+  }
+ },
+ "county_content": {
+  "Davidson": {
+   "roofing": "<h3>Storm record in Davidson County</h3>\n<p>NOAA's Storm Events Database lists 69 hail reports in Davidson County on 32 separate days between May 2016 and November 2025. The largest in those NOAA reports is 2.50 inches on May 10, 2016, in a report that names Andrew Jackson Parkway in Hermitage. NOAA lists two 1.75 inch reports that same night, at Old Hickory and Tulip Grove. NOAA reports of 1.50 inches are dated March 25, 2021 (Oak Hill), January 12, 2023 (near Oak Hill) and March 31, 2023 (Bull Run). By month in that 2016 to 2025 NOAA record, 54 of the 69 hail reports, on 23 of the 32 days, fall between March and June, and May alone has 25 reports on 8 days.</p>\n<p>The database also lists 431 thunderstorm wind reports on 126 days between April 2016 and April 2026, and 107 of those days fall from March through August. In that NOAA record the busiest day is July 1, 2023, with 25 reports. The highest estimated gusts in the NOAA file are 74 knots, on March 25, 2021 (Nashville) and December 11, 2021 (Maplewood).</p>\n<p>NOAA lists 18 tornado reports on 9 days between March 2017 and April 2026. The strongest rating is EF3, on March 3, 2020, for a tornado that began in western Davidson County and tracked more than 60 miles east into Wilson and Smith counties. An EF2 is listed in the Madison area on December 9, 2023. EF1 ratings appear for Bordeaux on August 31, 2017, near Joelton on November 18, 2017, and near Forest Grove on April 28, 2026. Seven of the 18 NOAA tornado reports are from December 11, 2021 and December 9, 2023. NOAA's 2026 file is preliminary. These are reports of weather across Davidson County, not a record of any home and no guide to future storms.</p>\n<h3>Housing stock</h3>\n<p>The U.S. Census Bureau's American Community Survey 5-year estimates for 2020 to 2024 count 357,113 housing units in Davidson County, 324,907 of them occupied and 171,526 of those, or 52.8 percent, owner-occupied. The same 2020 to 2024 survey puts 49.4 percent of all units in 1-unit detached buildings and gives 1986 as the median year structures were built. Adding that survey's 2020 to 2024 year-built rows for 1979 and earlier gives 146,507 units, or 41.0 percent of the county's housing units. As a general observation, older homes mean more roofs past a first replacement cycle.</p>\n<h3>Permits and local rules</h3>\n<p>Permits come from the Metro Nashville Department of Codes and Building Safety. Its Residential Building Permits page lists, among the times a building permit is required, \"Install siding, roofing, fireplaces or solar panels.\" The same page describes \"repairs to an existing roof not to exceed 33 percent of the roof area\" as normal maintenance repairs. The department's page on renovating a single-family residence has a table headed \"Required for 1 and 2 Dwellings\" that marks \"Roofing, New Layer or Replacing More Than 1/3 of The Roof\" as Yes. Confirm with the department whether your own re-roof needs a permit before work starts.</p>\n<p>The Residential Building Permits page says an owner who occupies or intends to occupy a single-family residence may obtain a \"Self Permit,\" and then \"the property owner assumes all responsibility\" for meeting the codes. The pages we read publish no rule on roof layers or ice barrier, so check with the Department of Codes and Building Safety at 615-862-6500.</p>\n<p>To look up a permit, the department's Property Permit History page says to open the Metro Parcel Viewer map, search the address and \"select Permit History.\"</p>\n<p>Two state thresholds apply to a Davidson County roof job, on Tennessee Board for Licensing Contractors pages read in early October 2026. A contractor's license is required \"before contracting, including bidding, offering to engage, or negotiating a price, for projects of $25,000 or more\" on the board's contractor page. Its Home Improvement page says that license \"is required for residential remodeling projects from $3,000 to $24,999\" in the counties that adopted the law, and Davidson is second in its list of nine. The Verify a License link on tn.gov is the public lookup.</p>\n<h3>Before you ask for bids on a Davidson County roof</h3>\n<ul>\n<li>A copy of your insurer's written estimate, if one exists, so each bid is prepared from one document.</li>\n<li>For each bidder: will the bidder or you pull the Metro building permit, and will the permit number be written into the contract?</li>\n<li>Each bidder's Tennessee license number, looked up through Verify a License.</li>\n</ul>"
+  },
+  "Shelby": {
+   "roofing": "<h3>Storm record for Shelby County</h3>\n<p>NOAA's Storm Events Database lists 66 hail reports in Shelby County on 32 different days between March 2016 and April 2026. NOAA's 2026 data is preliminary. In that March 2016 to April 2026 record, hail reports appear in 11 calendar months, with none in October, but they cluster in spring: 34 of the 66 reports fall in April and May, and May has more hail days than any other month, nine.</p>\n<p>The largest hail in those NOAA reports measured 2.00 inches, logged on January 25, 2021, on Shelby Drive near Capleville. On April 2, 2025, NOAA lists 10 hail reports on that one day, including 1.75-inch hail near Shelby Drive and Forest Hill Irene Road and at Lenow. Seven NOAA reports between February 2023 and April 2025 give 1.50 inches, in places such as Millington (February 15, 2023), Bailey (April 27, 2023) and Brunswick (July 8, 2024).</p>\n<p>The same database lists 188 thunderstorm wind reports on 77 days in that period, and reports from May, June and July make up 111 of the 188. The strongest estimated gust in the NOAA file is 78 knots at Raleigh on March 9, 2017. There is one tornado report in the NOAA file for 2016 through April 2026: an EF1 on October 21, 2019, that began at Memphis International Airport and lifted in the Balmoral area of East Memphis.</p>\n<p>These are weather reports for Shelby County as a whole, not a record of any particular home, and they say nothing about future storms.</p>\n<h3>Housing in Shelby County</h3>\n<p>For 2020 to 2024, the U.S. Census Bureau's American Community Survey 5-year estimates count 404,333 housing units in Shelby County and 362,741 occupied units, of which 196,379, or 54.1 percent, are owner-occupied. The same 2020 to 2024 survey gives 1977 as the median year structures were built and puts 268,206 units, or 66.3 percent, in 1-unit detached buildings. Summing the 1979-and-earlier year-built rows of those 2020 to 2024 estimates gives 220,208 units, or 54.5 percent of Shelby County's total. As a general observation, the older the homes in an area, the more roofs have reached a first replacement.</p>\n<h3>Permits and licenses for a roof replacement</h3>\n<p>Memphis and Shelby County Construction Enforcement, on develop901.com, says it reviews plans, issues construction permits and inspects projects in \"Memphis, Arlington, Germantown, Lakeland, Millington, and unincorporated Shelby County.\" The office's Policy for Roof Installations, revised June 8, 2022, answers the reroof permit question for a single-family home: \"No, a permit is not required unless the decking is to be repaired or altered.\" It adds that \"New sheathing or repair to sheathing does require a permit.\"</p>\n<p>The same policy says the office enforces Chapter 9 of the 2021 International Residential Code, with no amendments to that chapter \"other than we do not require an ice barrier.\" It answers \"Yes\" on underlayment and on a drip edge. On how many layers of roofing a house can have, the June 2022 policy says only that this \"depends entirely on-site specific circumstances and the materials used.\" For your house, check with the office.</p>\n<p>To look up a permit, the Construction Enforcement page offers a permit activity search that lets you \"Search and download permits and associated documents for submitted applications.\" Its questions and answers say contractors holding a Tennessee license \"are required to register their licenses with our office\" and give the Licensing Section's number, 901-222-8390.</p>\n<p>The county's roofing policy of June 2022 also asks whether a Tennessee license is required for roofing in Shelby County and answers \"Yes, when a project is over $3,000.\" The Tennessee Board for Licensing Contractors pages, read in early October 2026, set out two tiers: a Home Improvement license for residential remodeling \"from $3,000 to $24,999\" in the nine counties that adopted the law, with Shelby last in the board's list, and a contractor's license \"for projects of $25,000 or more.\" The public lookup is verify.tn.gov.</p>\n<h3>Before you ask for bids on a Shelby County roof</h3>\n<ul>\n<li>Your insurer's estimate, if you have one, kept at hand for every bidder to read.</li>\n<li>A written scope that names underlayment and drip edge, which the county policy says it enforces.</li>\n<li>A question for each bidder: will the job involve deck repair or new sheathing, and who pulls the permit if it does?</li>\n<li>The license classification and number for each bidder, searched on verify.tn.gov, plus the bidder's registration with Construction Enforcement.</li>\n</ul>"
+  },
+  "Knox": {
+   "roofing": "<h3>Storm record in the NOAA database</h3>\n<p>NOAA's Storm Events Database lists 42 hail reports in Knox County, Tennessee, on 19 distinct days between May 2016 and October 2025. The file we read runs to May 20, 2026, and NOAA's 2026 data is preliminary. Eighteen of those 42 NOAA hail reports were filed in April and May, on 6 of the 19 hail days.</p>\n<p>The largest hail size in the NOAA file for 2016 to 2025 is 1.75 inches. NOAA lists 7 such reports on 6 days: May 2, 2016 at Farragut; March 21, 2017 near Powell; April 22, 2017 in West Knoxville; May 26, 2024 at Millertown; April 10, 2025 at Solway and Robinson; and September 4, 2025 at Beaver Ridge. NOAA lists 9 hail reports for September 4, 2025, the highest count for any single day in the file, and 16 hail reports on 3 days for 2025 as a whole.</p>\n<p>Thunderstorm wind is the larger category in the NOAA file: 182 reports on 94 distinct days between February 2016 and May 2026. Of those NOAA reports, 127 (on 66 days) fall between May and August. The busiest single day in the NOAA file is August 12, 2023, with 7 reports. The highest gust in the NOAA file, 63 knots, was measured at Lovell on May 20, 2025.</p>\n<p>NOAA lists one tornado report for the county between 2016 and May 2026: an EF2 near Byrds Chapel on August 7, 2023. These are reports of weather events in Knox County, not a statement about any particular home or a forecast of future storms.</p>\n<h3>Housing stock</h3>\n<p>Knox County has 218,661 housing units in the U.S. Census Bureau's American Community Survey 5-year estimates for 2020 to 2024. Of the 201,146 occupied units in that 2020 to 2024 survey, 131,117 (65.2 percent) are owner-occupied. The survey's 2020 to 2024 median year structures were built is 1985, and adding its year-built rows for 1979 and earlier gives 94,524 units, or 43.2 percent. Single-unit detached homes number 144,045 in the same 2020 to 2024 estimates, or 65.9 percent of all units. A general observation, not a statistic: where housing is older, more roofs have already been through one replacement.</p>\n<h3>Permits and local rules for a re-roof</h3>\n<p>The City of Knoxville's Plans Review and Inspections office, at 400 Main Street, Suite 475, is the city's permit office. Its Fast Fact Guides page gives a general rule that one- and two-family dwellings and townhouses need a construction permit unless the work is exempt under section R105.2 of the residential code, and the city's Construction Codes page lists the 2024 International Residential Code. The same guides page says: \"A qualified registrant is REQUIRED for roof replacements or reroofs of all buildings of 5,000 square feet or more or greater than two stories in height.\" The pages we read do not say in plain words whether a re-roof of a house needs a permit, and they state no layer limit or ice barrier rule, so check with Plans Review and Inspections (865-215-4311) before work starts.</p>\n<p>The Plans Review and Inspections page on knoxvilletn.gov has a Permit Search link for looking up existing permits. Knox County Codes Administration, in Suite 547 of the City County Building at the same 400 Main Street address, runs its own Knox Permit Portal and a Permit Inspection Lookup, with a help line at 865-215-2325. Its page does not say which addresses fall under it, so check with Knox County Codes Administration if your home may be outside the city limits.</p>\n<p>For a Knox County address, the Tennessee Board for Licensing Contractors pages we read in early October 2026 say a contractor's license is required \"for projects of $25,000 or more.\" For residential remodeling projects from $3,000 to less than $25,000, the same pages say a Home Improvement license applies in nine counties, with Knox fifth in the list, and name roofing among the improvements. The Verify a License option on tn.gov is where you look up a license number.</p>\n<h3>Before you ask for bids on a Knox County roof</h3>\n<ul>\n<li>The estimate from your insurer, if one has been written.</li>\n<li>Your home's approximate age and number of stories, since the registrant rule above refers to size and height.</li>\n<li>Which office issues permits at your address: the city's Plans Review and Inspections or Knox County Codes Administration.</li>\n<li>For every bidder: who pulls the permit, what is the permit number, and what is the Tennessee license number?</li>\n</ul>"
+  }
+ }
+}
