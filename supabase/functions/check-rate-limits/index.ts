@@ -8,6 +8,7 @@
  * Can be triggered:
  * - Manually via REST API: POST /functions/v1/check-rate-limits
  * - By scheduled cron job (pg_cron) if set up in Supabase
+ * Either way the caller must send the service bearer (gh-2462 caller gate below).
  *
  * Usage:
  *   POST /functions/v1/check-rate-limits
@@ -24,12 +25,11 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
+import { type GetEnv, serviceGate } from "./caller-gate.ts"; // gh-2462
 import { rateLimitAlertText } from "./templates.ts"; // gh-1824: email body moved to templates.ts (testable, no serve() import)
 
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-const MAILGUN_API_KEY = Deno.env.get("MAILGUN_API_KEY");
-const MAILGUN_DOMAIN = Deno.env.get("MAILGUN_DOMAIN") || "mail.otterquote.com";
+// gh-2462: SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY / MAILGUN_* are read inside the handler,
+// after the caller gate, through the injectable getEnv.
 const ALERT_EMAIL = "dustinstohler1@gmail.com";
 const THRESHOLD = 0.7; // 70%
 
@@ -52,15 +52,35 @@ function buildCorsHeaders(req: Request): Record<string, string> {
   };
 }
 
-serve(async (req) => {
+// gh-2462: exported so caller-gate.test.ts can drive the REAL handler (gh-2309 precedent:
+// serve() guarded by import.meta.main, which the Edge runtime sets for the entry file).
+// `getEnv` defaults to Deno.env.get; `makeClient` defaults to createClient (tests stub it).
+export async function handler(
+  req: Request,
+  getEnv: GetEnv = (n) => Deno.env.get(n),
+  makeClient: typeof createClient = createClient,
+): Promise<Response> {
   const corsHeaders = buildCorsHeaders(req);
   // Handle CORS
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
+  // gh-2462 caller gate (CTO ruling on #2304 5965391365: service-only). No caller exists in
+  // the repo or on production (none of the live pg_cron jobs, no trigger, no EF, no
+  // frontend), so a future cron or server job must send the service bearer. Anything else
+  // gets 401 before the client is built, the DB is read or Mailgun is called.
+  const denied = serviceGate(req, getEnv, corsHeaders);
+  if (denied) {
+    console.warn("check-rate-limits: 401: called without the service bearer");
+    return denied;
+  }
+
+  const MAILGUN_API_KEY = getEnv("MAILGUN_API_KEY") || "";
+  const MAILGUN_DOMAIN = getEnv("MAILGUN_DOMAIN") || "mail.otterquote.com";
+
   try {
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const supabase = makeClient(getEnv("SUPABASE_URL") || "", getEnv("SUPABASE_SERVICE_ROLE_KEY") || "");
 
     // Fetch all rate limit configs
     const { data: configs, error: configError } = await supabase
@@ -150,7 +170,11 @@ serve(async (req) => {
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
     );
   }
-});
+}
+
+if (import.meta.main) {
+  serve((req) => handler(req));
+}
 
 // Send email via Mailgun API
 async function sendMailgunEmail(
