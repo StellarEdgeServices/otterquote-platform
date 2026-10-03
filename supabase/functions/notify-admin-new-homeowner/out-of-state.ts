@@ -83,15 +83,20 @@ export async function handleOutOfStateClaim(
   const state = normalizeState(claim.property_state);
   if (!state) return skipped("no_state");
 
-  // Blocked list: read the platform_settings row directly (service role);
-  // missing row, read error or malformed value -> default FL/LA/TX.
+  // Blocked list: read the platform_settings row directly (service role).
+  // Missing row or malformed value -> FL/LA/TX, by the same rule as the
+  // database function get_homeowner_blocked_states() (gh-2492). A READ ERROR
+  // fails closed (CTO ruling 5969703832 on #2492, same as send-homeowner-next-
+  // steps): no alert and no stamp, so the claim is retried, instead of falling
+  // back to the default and alerting on a state the real list may block.
   const { data: setting, error: settingErr } = await sb
     .from("platform_settings")
     .select("value")
     .eq("key", BLOCKED_STATES_SETTING_KEY)
     .maybeSingle();
   if (settingErr) {
-    console.warn("notify-admin-new-homeowner: blocked-states read failed, using default FL/LA/TX:", settingErr);
+    console.error(`notify-admin-new-homeowner: blocked-states read failed for claim_id=${claimId}, alert skipped (fail closed):`, settingErr);
+    return { status: 500, body: { error: "failed to read blocked-states setting" } };
   }
   const blocked = parseBlockedStates(setting?.value);
   if (!isAlertableOutOfState(state, blocked)) {
