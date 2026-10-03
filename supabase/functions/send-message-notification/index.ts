@@ -208,8 +208,7 @@ export async function handler(
         created_at,
         claims:claim_id (
           id,
-          user_id,
-          selected_trades
+          user_id
         ),
         profiles:sender_id (
           id,

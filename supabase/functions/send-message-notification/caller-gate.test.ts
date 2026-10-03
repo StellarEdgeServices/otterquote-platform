@@ -167,3 +167,10 @@ Deno.test("caller-gate.ts is byte-identical to notify-feature-request/caller-gat
   }
   assertEquals(here, other);
 });
+
+Deno.test("gh-2478: the message query does not select claims.selected_trades (no such column; nothing reads it)", async () => {
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  const sel = src.slice(src.indexOf('.from("messages")'), src.indexOf(".eq(\"id\", messageId)"));
+  assert(sel.includes("claims:claim_id"), "located the message select");
+  assertFalse(sel.includes("selected_trades"), "select must not name selected_trades");
+});
