@@ -89,6 +89,13 @@ for (const f of ['dashboard.html', 'contractor-dashboard.html']) {
   ok(bad.length === 0, `${f}: no profiles embed inside a contractors( select (found ${bad.length})`);
 }
 
+// gh-2478 refuter round 2: profiles RLS is own-row only, so the other party's msg.profiles is
+// null; an unguarded msg.profiles.full_name throws inside .map and blanks the whole thread.
+for (const f of ['dashboard.html', 'contractor-dashboard.html']) {
+  const src = read(f);
+  ok(!/escapeHtml\(msg\.profiles\.full_name\)/.test(src) && /msg\.profiles && msg\.profiles\.full_name/.test(src), `${f}: message render tolerates an RLS-hidden sender profile`);
+}
+
 // gh-2478 refuter: a select string with unbalanced parentheses is a PostgREST parse error
 // (PGRST100) that leaves the query null -- the same "panel never loads" symptom as the bad embed.
 const unbalanced = (q) => { let d = 0; for (const c of q) { if (c === '(') d++; else if (c === ')' && --d < 0) return true; } return d !== 0; };
