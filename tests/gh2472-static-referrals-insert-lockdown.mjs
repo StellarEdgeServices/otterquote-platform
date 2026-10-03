@@ -39,7 +39,8 @@ const stripSql = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/--.*$/gm, ''
 const statements = (s) => stripSql(s).split(';').map((x) => x.replace(/\s+/g, ' ').trim()).filter(Boolean);
 
 const CLIENT_ROLE = /\b(anon|authenticated|public)\b/i;
-const REFERRALS = /\bpublic\.referrals\b(?!_)|\bON\s+(TABLE\s+)?referrals\b(?!_)/i;
+// Matches referrals bare, schema-qualified, or quoted ("referrals", public."referrals", "public"."referrals").
+const REFERRALS = /(?:\b|")public"?\."?referrals\b"?(?!_)|\bON\s+(TABLE\s+)?"?referrals\b"?(?!_)/i;
 
 // A statement that grants INSERT (or ALL) on referrals, or on all tables in public, to a client role.
 function isClientInsertGrant(st) {
@@ -120,9 +121,14 @@ const browserFiles = [];
 })(ROOT, '');
 const stripJsLineComments = (s) => s.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
 const DIRECT_WRITE = /\.from\(\s*['"`]referrals['"`]\s*\)\s*\.(insert|upsert)\s*\(/;
-const offenders = browserFiles.filter((f) => DIRECT_WRITE.test(stripJsLineComments(fs.readFileSync(path.join(ROOT, f), 'utf8'))));
+// A raw PostgREST POST to /rest/v1/referrals is the same write without supabase-js.
+const REST_WRITE = /rest\/v1\/referrals\b(?!_)[\s\S]{0,400}?method\s*:\s*['"`](POST|PUT|PATCH)['"`]/i;
+const offenders = browserFiles.filter((f) => {
+  const src = stripJsLineComments(fs.readFileSync(path.join(ROOT, f), 'utf8'));
+  return DIRECT_WRITE.test(src) || REST_WRITE.test(src);
+});
 ok(browserFiles.length > 50, `scanned ${browserFiles.length} browser source files`);
-ok(offenders.length === 0, 'no browser code does .from(\'referrals\').insert/upsert' + (offenders.length ? ': ' + offenders.join(', ') : ''));
+ok(offenders.length === 0, 'no browser code does .from(\'referrals\').insert/upsert or POSTs to /rest/v1/referrals' + (offenders.length ? ': ' + offenders.join(', ') : ''));
 for (const page of ['ref.html', 'ref-re.html', 'ref-inspector.html', 'ref-insurance.html']) {
   const src = fs.readFileSync(path.join(ROOT, page), 'utf8');
   ok(/\.rpc\(\s*['"]track_referral_click['"]/.test(src), `${page}: records the click via rpc('track_referral_click')`);
@@ -132,7 +138,8 @@ for (const page of ['ref.html', 'ref-re.html', 'ref-inspector.html', 'ref-insura
 let rpcDef = '';
 for (const f of allMigs) {
   const src = fs.readFileSync(path.join(MIG_DIR, f), 'utf8');
-  const m = src.match(/CREATE OR REPLACE FUNCTION public\.track_referral_click\([\s\S]*?\$function\$;/);
+  // Schema prefix and quoting optional, so a later unqualified redefinition is still the one checked.
+  const m = src.match(/CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+(?:"?public"?\.)?"?track_referral_click"?\s*\([\s\S]*?\$(function|\w*)\$;/i);
   if (m) rpcDef = m[0];
 }
 ok(/\bSECURITY DEFINER\b/.test(rpcDef), 'track_referral_click (latest definition): SECURITY DEFINER');

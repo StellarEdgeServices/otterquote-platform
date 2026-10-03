@@ -49,16 +49,16 @@ SELECT policyname, cmd, roles, qual, with_check FROM pg_policies
 
 ## 2. Negative control: paste BEFORE applying (closes-on)
 Run the "closes-on proof" block below once before the migration. Expected result is an ERROR line (the block always raises, which rolls everything back) reading:
-`... authenticated INSERT status=registered: ACCEPTED | anon INSERT status=registered: ACCEPTED | anon track_referral_click: id=<uuid> status=clicked`
+`... authenticated INSERT status=registered: ACCEPTED | anon INSERT status=registered: ACCEPTED | track_referral_click: id=<uuid> status=clicked new_rows=1`
 
 ## 3. Apply
 `supabase/migrations/20261003141000_gh2472_referrals_insert_lockdown.sql`.
 
 ## 4. After applying: paste the same block again (closes-on)
 Expected:
-`... authenticated INSERT status=registered: REJECTED 42501 permission denied for table referrals | anon INSERT status=registered: REJECTED 42501 permission denied for table referrals | anon track_referral_click: id=<uuid> status=clicked`
+`... authenticated INSERT status=registered: REJECTED 42501 permission denied for table referrals | anon INSERT status=registered: REJECTED 42501 permission denied for table referrals | track_referral_click: id=<uuid> status=clicked new_rows=1`
 
-If the RPC line reads `id=NULL`, the click path is broken (or the rate limiter refused this caller): roll back immediately, then investigate.
+If the RPC line reads `id=NULL` or `new_rows=0`, the click path is broken (the fresh `sub` gives this call its own rate-limit bucket, so a limiter refusal is unlikely): roll back immediately, then investigate.
 
 ### Closes-on proof block (single paste; works in the SQL editor; nothing survives)
 `set_config('role', x, true)` is `SET LOCAL ROLE x`; the final RAISE rolls back the whole block, including the test rows and the rate-limit counter write.
@@ -71,6 +71,8 @@ DECLARE
   v_id     uuid;
   v_status text;
   v_out    text := '';
+  v_page   text := 'https://otterquote.com/gh2472-proof-' || gen_random_uuid();
+  v_new    int;
 BEGIN
   SELECT id, unique_code INTO v_agent, v_code
     FROM public.referral_agents
@@ -96,14 +98,20 @@ BEGIN
     PERFORM set_config('role', 'none', true);           -- RESET ROLE
   END LOOP;
 
-  -- legitimate click path, as anon (what ref.html / ref-*.html call)
-  PERFORM set_config('request.jwt.claims', '{"role":"anon"}', true);
-  PERFORM set_config('role', 'anon', true);
-  v_id := public.track_referral_click(v_code, 'https://otterquote.com/gh2472-proof', NULL, NULL, NULL);
+  -- legitimate click path (what ref.html / ref-*.html call). Called as authenticated with a
+  -- fresh sub, so it has its own rate-limit bucket (anon callers share one NULL-caller bucket,
+  -- which could refuse this call for reasons unrelated to the fix), and with a landing page
+  -- unique to this run, so the 10-second dedupe cannot hand back an older row: new_rows counts
+  -- rows written by THIS call.
+  PERFORM set_config('request.jwt.claims',
+    json_build_object('role', 'authenticated', 'sub', gen_random_uuid())::text, true);
+  PERFORM set_config('role', 'authenticated', true);
+  v_id := public.track_referral_click(v_code, v_page, NULL, NULL, NULL);
   PERFORM set_config('role', 'none', true);
   SELECT status INTO v_status FROM public.referrals WHERE id = v_id;
-  v_out := v_out || format(' | anon track_referral_click: id=%s status=%s',
-                           coalesce(v_id::text, 'NULL'), coalesce(v_status, '-'));
+  SELECT count(*) INTO v_new FROM public.referrals WHERE landing_page = v_page;
+  v_out := v_out || format(' | track_referral_click: id=%s status=%s new_rows=%s',
+                           coalesce(v_id::text, 'NULL'), coalesce(v_status, '-'), v_new);
 
   RAISE EXCEPTION 'gh2472 proof (everything rolled back): %', v_out;
 END

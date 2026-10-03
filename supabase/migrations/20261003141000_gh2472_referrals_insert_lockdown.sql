@@ -40,4 +40,20 @@ DROP POLICY IF EXISTS "Public can insert referral clicks" ON public.referrals;
 
 REVOKE INSERT ON TABLE public.referrals FROM PUBLIC, anon, authenticated;
 
+-- Post-condition: a REVOKE run by a role that is not the grantor only WARNs and leaves the
+-- grant in place. Fail the migration loudly instead of shipping an open hole.
+DO $post$
+BEGIN
+  IF has_table_privilege('anon', 'public.referrals', 'INSERT')
+     OR has_table_privilege('authenticated', 'public.referrals', 'INSERT') THEN
+    RAISE EXCEPTION 'gh2472: INSERT on public.referrals is still granted to anon/authenticated after REVOKE (grantor/owner mismatch?)';
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_policies
+              WHERE schemaname = 'public' AND tablename = 'referrals'
+                AND policyname = 'Public can insert referral clicks') THEN
+    RAISE EXCEPTION 'gh2472: policy "Public can insert referral clicks" still exists';
+  END IF;
+END
+$post$;
+
 COMMIT;
