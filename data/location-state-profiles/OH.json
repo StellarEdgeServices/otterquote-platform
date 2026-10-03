@@ -56,7 +56,7 @@
    ],
    "climate": [
     "The Northeast division, which includes {county} County, has a continental climate with four distinct seasons, according to a summary prepared with the Midwest Regional Climate Center. It describes hot and humid summers and cold, snowy winters. The summary says the division receives abundant lake effect snow from mid-November until ice covers the surface of Lake Erie, which it places in late January or early February.",
-    "NWS Cleveland's report on the January 2016 lake effect event says the highest Ohio snowfall totals were recorded in Geauga County, which is in the same NOAA climate division as {county} County. It describes Lake Erie as mostly open water east of the islands, which supplied moisture for a prolonged period of snow under west to northwest winds. It also says lake effect bands vary quickly in intensity over short distances.",
+    "NWS Cleveland's report on the January 2016 lake effect event says the highest Ohio snowfall totals were recorded in Geauga County, which is in the same NOAA climate division as {county} County. It describes Lake Erie as mostly ice free east of the islands, which supplied moisture for a prolonged period of snow under west to northwest winds. It also says lake effect bands vary quickly in intensity over short distances.",
     "In its summary of the 2022-23 winter, NWS Cleveland reports that snowbelt counties east of Cleveland received 30 to 60 inches that winter, against normal amounts of 70 to over 100 inches in those areas. The same summary says the mild winter inhibited ice formation on Lake Erie, and that a mid-March lake effect event added 6 to 10 inches across eastern counties. {county} County is one of the Northeast division counties in NOAA's list."
    ]
   },

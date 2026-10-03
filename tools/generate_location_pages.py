@@ -1226,16 +1226,16 @@ def page_seed(county: str, trade: str) -> int:
 # ---------------------------------------------------------------------------
 
 SEASONAL = [
-    "<p>The repair calendar in {region} has a shape worth planning around. Spring storm season generates the damage; early summer is when adjusters and contractors are busiest; late summer and fall often bring a different mix of contractor schedules and working weather; and winter narrows the options for exterior work while freeze-thaw cycles compound anything left unrepaired. Exterior roofing work is often easier to schedule before winter weather sets in, so moving from documentation to a signed contract by mid-fall can help avoid both the post-storm rush and winter.</p>",
-    "<p>Timing matters in {county} County. Damage discovered in May joins every other storm claim in {region} in the line for adjuster and contractor attention; the same repair scoped in September may meet a different queue. Documentation is the part that does not depend on the calendar: photograph damage once it is safe and note the date for your adjuster. Ask your insurer whether your policy sets a deadline for reporting damage.</p>",
-    "<p>Most exterior repair work in {county} County happens in a window that runs roughly from late spring through late fall. Inside that window, post-storm weeks can be congested, and quotes gathered in a hurry may be harder to compare; the weeks after the rush can be a calmer time to review bids. Whatever the calendar says, the sequence stays the same: document first, understand your policy second, compare any written bids you receive third — and take your time rather than rushing to agree with the first person who knocks on the door.</p>",
+    "<p>Timing is worth planning. The weeks after a storm can be busy for adjusters and contractors, and winter weather can limit exterior work. Document the damage first, then take the time you need to compare any written bids you receive.</p>",
+    "<p>Timing matters in {county} County. The weeks after a storm can be busy for adjusters and contractors. Documentation is the part that does not depend on the calendar: photograph damage once it is safe and note the date for your adjuster. Ask your insurer whether your policy sets a deadline for reporting damage.</p>",
+    "<p>Post-storm weeks can be congested, and quotes gathered in a hurry may be harder to compare; the weeks after the rush can be a calmer time to review bids. Whatever the calendar says, the sequence stays the same: document first, understand your policy second, compare any written bids you receive third — and take your time rather than rushing to agree with the first person who knocks on the door.</p>",
     "<p>Storm damage in {region} can arrive in clusters: a single hail event can affect many roofs, gutters, and siding elevations in an area at once. Comparing more than one written bid for the same scope is one way homeowners check pricing when demand spikes.</p>",
 ]
 
 TRADE_INTRO = {
     "roofing": [
-        "A roof in {county} County works harder than most homeowners realize. It takes direct hail strikes in spring, wind uplift during summer storms, and months of freeze-thaw stress through the winter — and when it fails, the damage rarely stays confined to the shingles.",
-        "Storm season in {county} County can leave roofs with the full menu of problems: hail bruising, wind-lifted shingles, damaged flashing, and the slow leaks that follow. Getting more than one written bid is one way to understand what a repair may cost.",
+        "A roof in {county} County can take hail strikes and wind uplift during a storm, and when it fails, the damage rarely stays confined to the shingles.",
+        "A severe storm in {county} County can leave roofs with the full menu of problems: hail bruising, wind-lifted shingles, damaged flashing, and the slow leaks that follow. Getting more than one written bid is one way to understand what a repair may cost.",
         "In {county} County, roofing is where storm season and the repair process meet. Hail and wind events leave damage that is easy to underestimate from the ground, and the repair market that springs up after every major storm makes it genuinely hard to know who to call and what a fair price looks like.",
     ],
     "siding": [
@@ -1262,12 +1262,12 @@ TRADE_ISSUE_ITEMS = {
     "roofing": [
         "<li><strong>Hail bruising and granule loss</strong> — impact marks that shorten shingle life even when no leak appears immediately.</li>",
         "<li><strong>Wind-lifted and creased shingles</strong> — broken seal strips let later storms drive rain under the roof surface.</li>",
-        "<li><strong>Flashing and penetration damage</strong> — chimneys, vents, and valleys are where most post-storm leaks actually start.</li>",
-        "<li><strong>Ice dams and freeze-thaw stress</strong> — winter conditions that turn minor storm damage into interior water stains by February.</li>",
+        "<li><strong>Flashing and penetration damage</strong> — check chimneys, vents, and valleys, where post-storm leaks can start.</li>",
+        "<li><strong>Slow leaks after a storm</strong> — minor damage can go unnoticed until water stains show indoors.</li>",
         "<li><strong>Impact damage that hides from the ground</strong> — hail strikes are hard to see without getting on the roof, which is why documentation matters.</li>",
-        "<li><strong>Partial-slope damage</strong> — storms often damage one or two elevations, raising repair-versus-replace questions that comparing bids can help you think through.</li>",
-        "<li><strong>Decking and underlayment issues</strong> — discovered only at tear-off, and a common source of change orders worth understanding in advance.</li>",
-        "<li><strong>Ventilation and code items</strong> — older roofs may need code-related upgrades; ask your adjuster and your contractor how local code items are handled.</li>",
+        "<li><strong>Partial-slope damage</strong> — storms can damage one or two elevations, raising repair-versus-replace questions that comparing bids can help you think through.</li>",
+        "<li><strong>Decking and underlayment issues</strong> — discovered only at tear-off, and can be a source of change orders worth understanding in advance.</li>",
+        "<li><strong>Ventilation and code items</strong> — older roofs may need code-related upgrades; ask your contractor and your building department how local code items are handled.</li>",
     ],
     "siding": [
         "<li><strong>Hail dents and punctures</strong> — most visible on aluminum and thin vinyl, and concentrated on the storm-facing elevations.</li>",
@@ -1306,15 +1306,15 @@ ISSUE_ITEMS_PER_PAGE = 5
 # Local-expectations copy is assembled from two independently selected
 # paragraph slots (A x B = 9 combinations) rather than fixed pairs.
 EXPECTATIONS_A = [
-    "<p>Storm repair in {county} County follows a rhythm locals know well: a severe-weather event, a wave of door-knocking crews from out of the area, and then the slower, quieter work of getting damage documented, questions raised with your insurer, and a repair scoped carefully. Many homeowners find it helps to slow the process down at the start — documenting damage before tarps and repairs change the evidence, reading their policy before the first phone call, and getting more than one written bid before signing anything.</p>",
-    "<p>Homeowners in {county} County navigating a storm claim juggle three parallel tracks: the insurance process (adjuster inspection, scope, settlement), the contractor process (bids, scheduling, materials), and their own documentation. Keeping those tracks separate is the single most useful habit — your insurer decides coverage under your policy; your contractor determines what the repair actually requires; and written bids let you compare scope and pricing side by side.</p>",
+    "<p>After a storm in {county} County, the useful work is slow: getting damage documented, raising questions with your insurer, and having the repair scoped carefully. Many homeowners find it helps to slow the process down at the start — documenting damage before tarps and repairs change the evidence, reading their policy before the first phone call, and getting more than one written bid before signing anything.</p>",
+    "<p>Homeowners in {county} County navigating a storm claim juggle three parallel tracks: the insurance process (adjuster inspection, scope, settlement), the contractor process (bids, scheduling, materials), and their own documentation. Keeping those tracks separate is the single most useful habit — your insurer decides coverage under your policy; your contractor proposes the repair scope; and written bids let you compare scope and pricing side by side.</p>",
     "<p>The practical sequence for {county} County homeowners after storm damage: document everything with photos before any cleanup, review your policy and ask your insurer how to report damage, and gather written repair bids so you can compare scope and pricing side by side. Nothing in that sequence requires committing to a contractor early — you can keep your options open while you review any written bids you receive.</p>",
 ]
 
 EXPECTATIONS_B = [
     "<p>Local demand can also move in waves. After a widely publicized hail event, contractors across a region may get busy at once. If you receive more than one written bid, comparing them gives you a way to check pricing when demand spikes, and can surface scope differences — what one bidder saw that another missed — before the work starts rather than after.</p>",
     "<p>Be appropriately skeptical of anyone who shows up unsolicited after a storm, pressures you to sign paperwork on the spot, or quotes a price without getting on the roof or examining the damage up close. Storm-chasing crews can show up after any major storm, and one practical defense is unhurried, written bids that you can check against each other.</p>",
-    "<p>Ask any contractor for an itemized written estimate, proof of insurance, and local references. The process can take longer after county-wide storm events, when every roofer, sider, and installer in {region} is working the same backlog. Patience and paperwork usually serve homeowners better than speed and pressure.</p>",
+    "<p>Ask any contractor for an itemized written estimate, proof of insurance, and local references. The process can take longer after a widespread storm, when repair schedules fill up. Patience and paperwork usually serve homeowners better than speed and pressure.</p>",
 ]
 
 HOW_IT_WORKS = [
@@ -1457,7 +1457,7 @@ def build_page(county: str, trade: str, generated_on: str, state: str = "IN", pr
         "@context": "https://schema.org",
         "@type": "Service",
         "serviceType": f"{noun_title} bid comparison",
-        "name": f"{noun_title} Bids — {county} County, {state}",
+        "name": f"Comparing {noun_title} Bids in {county} County, {state_name}",
         "url": page_url,
         "provider": {"@id": f"{SITE_BASE}/#organization"},
         "areaServed": {
@@ -1535,7 +1535,7 @@ def build_page(county: str, trade: str, generated_on: str, state: str = "IN", pr
 
 <script>
 (function() {{
-  var navHtml = '<nav class="site-nav"><div class="nav-inner"><a class="nav-logo" href="/"><img src="/img/brand-assets/otter-logo-inline.svg" alt="Otter Quotes" height="32"></a><div class="nav-links"><a href="/how-it-works.html">How It Works</a><a href="/contractor-join.html">For Contractors</a><a href="/start.html" class="btn btn-primary btn-sm">Get Started</a></div></div></nav>';
+  var navHtml = '<nav class="site-nav"><div class="nav-inner"><a class="nav-logo" href="/"><img src="/img/brand-assets/otter-icon.png" alt="Otter Quotes" class="nav-logo-icon" style="height:36px;width:auto;object-fit:contain;"></a><div class="nav-links"><a href="/how-it-works.html">How It Works</a><a href="/contractor-join.html">For Contractors</a><a href="/start.html" class="btn btn-primary btn-sm">Get Started</a></div></div></nav>';
   document.write(navHtml);
 }})();
 </script>
@@ -1559,7 +1559,7 @@ def build_page(county: str, trade: str, generated_on: str, state: str = "IN", pr
     <h2>The {region_lbl} climate and your {t_label.lower()}</h2>
     <p>{climate}</p>
 
-    <h2>Common {noun} issues in {county_esc} County</h2>
+    <h2>{noun_title} issues to look for after a storm</h2>
     {issues}
 
     <h2>What to expect locally</h2>
