@@ -6,6 +6,8 @@
  * verbatim and unchanged; the href is the same absolute privacy.html section 12 anchor the shells and /get-started use
  * (privacy.html is served from otterquote.com, the React app from app.otterquote.com).
  *
+ * /contractor/login (signed-out contractor sign-in, renders no ContractorShell) was added by CEO ruling #2304 5973477617.
+ *
  * Rendered once from the root layout, gated on an explicit allowlist (not a deny-list) so a new route never silently gains or
  * loses the link. Staff-only /admin/*, /auth-callback and every route whose shell/page already carries the link
  * (HomeownerShell, ContractorShell, /get-started) are deliberately absent, so the link never renders twice.
@@ -16,7 +18,7 @@ import { usePathname } from 'next/navigation';
 
 export const DO_NOT_SELL_TEXT = 'Do Not Sell or Share My Personal Information';
 export const DO_NOT_SELL_HREF = 'https://otterquote.com/privacy.html#do-not-sell-or-share';
-export const DO_NOT_SELL_ROUTES = ['/', '/login', '/refer', '/trade-selector', '/partner/dashboard'] as const;
+export const DO_NOT_SELL_ROUTES = ['/', '/login', '/refer', '/trade-selector', '/partner/dashboard', '/contractor/login'] as const;
 
 export function shouldShowDoNotSell(pathname: string | null | undefined): boolean {
   if (!pathname) return false;

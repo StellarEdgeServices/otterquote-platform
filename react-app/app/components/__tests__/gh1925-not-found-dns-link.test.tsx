@@ -51,7 +51,7 @@ describe('gh-1925 not-found carries the Do Not Sell link', () => {
     expect(dnsLinks(container)).toHaveLength(1);
   });
 
-  it('layout allowlist is exactly the five real routes, so the layout link cannot double on a 404', () => {
-    expect([...DO_NOT_SELL_ROUTES]).toEqual(['/', '/login', '/refer', '/trade-selector', '/partner/dashboard']);
+  it('layout allowlist is exactly the six real routes (five consumer routes + /contractor/login, CEO ruling #2304 5973477617), so the layout link cannot double on a 404', () => {
+    expect([...DO_NOT_SELL_ROUTES]).toEqual(['/', '/login', '/refer', '/trade-selector', '/partner/dashboard', '/contractor/login']);
   });
 });
