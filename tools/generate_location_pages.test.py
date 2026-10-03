@@ -192,6 +192,55 @@ class GeneratorTests(unittest.TestCase):
         f.write_text(json.dumps({"states": []}), encoding="utf-8")
         self.assertEqual(glp.load_allowlist(f), [])
 
+    # sitemap safety: a non-repo out_dir never touches the repo sitemap -------
+    def test_non_repo_out_dir_leaves_repo_sitemap_byte_identical(self):
+        repo_sitemap = REPO_ROOT / "sitemap.xml"
+        before = repo_sitemap.read_bytes()
+        out = self.tmp / "elsewhere" / "locations"
+        quiet(glp.generate, [], out_dir=out)
+        quiet(glp.generate, ["ZZ"], out_dir=out, counties_path=self.fx_counties, profiles_dir=self.fx_profiles)
+        self.assertEqual(repo_sitemap.read_bytes(), before)
+        own = self.tmp / "elsewhere" / "sitemap.xml"
+        self.assertTrue(own.exists())
+        self.assertEqual(own.read_text(encoding="utf-8").count("/locations/"), 3 * 4)
+        self.assertEqual(glp.resolve_sitemap_path(out), own)
+        self.assertEqual(glp.resolve_sitemap_path(glp.LOCATIONS_DIR), glp.SITEMAP_PATH)
+
+    def test_generated_page_labels_and_jsonld_shape(self):
+        prof = glp.load_profile("IN")
+        page = glp.build_page("Ohio", "windows", "2026-01-01", "IN", profile=prof)
+        self.assertIn("Window Bids for Ohio County, Indiana Homeowners", page)
+        self.assertNotIn("Windows Bids", page)
+        blocks = re.findall(r'<script type="application/ld\+json">(.*?)</script>', page, flags=re.DOTALL)
+        docs = [json.loads(b) for b in blocks]
+        org = [d for d in docs if d["@type"] == "Organization"][0]
+        self.assertNotIn("areaServed", org)
+        self.assertEqual(org["@id"], "https://otterquote.com/#organization")
+        self.assertFalse([d for d in docs if d["@type"] == "LocalBusiness"])
+        svc = [d for d in docs if d["@type"] == "Service"][0]
+        self.assertIn("areaServed", svc)
+        for d in docs:
+            self.assertNotIn("their written bids", json.dumps(d))
+
+    def test_no_outcome_promise_in_generated_copy(self):
+        prof = glp.load_profile("IN")
+        for trade in glp.ELIGIBLE_TRADES:
+            page = glp.build_page("Ohio", trade, "2026-01-01", "IN", profile=prof)
+            for bad in ("their written bids", "bids that come back", "compare the written bids",
+                        "most common storm-related insurance claim"):
+                self.assertNotIn(bad, page)
+
+    def test_cross_page_uniqueness_metric(self):
+        a = ["w%d" % i for i in range(30)]
+        b = a[:15] + ["x%d" % i for i in range(15)]
+        sa, sb = glp.shingles(a), glp.shingles(b)
+        shares = glp.cross_page_uniqueness([sa, sb])
+        self.assertTrue(0 < shares[0] < 1 and 0 < shares[1] < 1)
+        self.assertEqual(glp.cross_page_uniqueness([sa]), [1.0])
+        summary = self.run_fx()
+        self.assertIsNotNone(summary["min_unshared_shingles"])
+        self.assertLessEqual(summary["min_unshared_shingles"], summary["median_unshared_shingles"])
+
     # (d) committed allow-list is empty --------------------------------------
     def test_committed_allowlist_is_empty(self):
         data = json.loads((REPO_ROOT / "data" / "location-pages-state-allowlist.json").read_text(encoding="utf-8"))
@@ -346,6 +395,68 @@ class LintTests(unittest.TestCase):
             with self.subTest(bad=bad):
                 with self.assertRaises(glp.ComplianceError):
                     self.lint(bad)
+
+    # robustness: each of these used to pass and must fail ---------------------
+    def lint_frag(self, fragment):
+        glp.compliance_lint(self.GOOD.replace("</main>", fragment + "</main>"), "t/t")
+
+    def test_lint_rejects_markup_and_entity_bypasses(self):
+        for bad in (
+            "<p>Our <em>local</em> contractors</p>",
+            "<p>Our&nbsp;contractors</p>",
+            "<p>&#79;ur contractors</p>",
+            "<p>Our roofers cover Marion County</p>",
+            "<p>We have roofers in Marion County</p>",
+            "<p>Local pros in Marion County</p>",
+            "<p>A network of Marion County contractors</p>",
+            "<p>Otter Quotes partners with roofers across the state</p>",
+            "<p>Contractors ready to bid in Marion County</p>",
+            "<p>Our\u200b contractors</p>",
+            "<p>O<b>ur</b> <i>contractors</i></p>",
+        ):
+            with self.subTest(bad=bad):
+                with self.assertRaises(glp.ComplianceError):
+                    self.lint_frag(bad)
+
+    def test_lint_rejects_banned_text_in_attributes(self):
+        for bad in ('<img src="/x.png" alt="Our contractors">',
+                    '<a href="/x" title="Vetted pros">link</a>',
+                    '<meta name="description" content="Contractors serving Marion County">',
+                    '<div aria-label="Our network of roofers"></div>'):
+            with self.subTest(bad=bad):
+                with self.assertRaises(glp.ComplianceError):
+                    self.lint_frag(bad)
+
+    def test_lint_parses_jsonld_tolerantly(self):
+        for tag in ("<script data-x=\"1\" TYPE='application/ld+json' >",
+                    '<script  type = "application/ld+json"  id="a">',
+                    '<script id="a" class="b" type="application/LD+JSON">'):
+            with self.subTest(tag=tag):
+                page = self.GOOD.replace(
+                    "<main>", tag + '{"description": "Our contractors will call"}</script><main>')
+                with self.assertRaises(glp.ComplianceError):
+                    glp.compliance_lint(page, "t/t")
+        bad_json = self.GOOD.replace("<main>", '<script type="application/ld+json">{not json</script><main>')
+        with self.assertRaises(glp.ComplianceError):
+            glp.compliance_lint(bad_json, "t/t")
+
+    def test_lint_rejects_d104_promises_and_d326_phrasing(self):
+        for bad in (
+            "&#118;etted pros", "Vet&shy;ted pros", "All bidders are screened.", "Licensed and insured crews.",
+            "Save up to 20% on your roof.", "Get 15% off.", "It is free for homeowners.",
+            "A bid in 24 hours.", "Bids within 3 days.", "Bids within a few days.", "We guarantee savings.",
+            "Your insurer must pay for this.", "Insurance will pay for the roof.", "Storm damage is covered.",
+            "Hail dents are claimable.", "This belongs in the claim.", "A legitimate supplement item.",
+            "It is legitimately part of the scope.", "Insurance typically pays for like-kind replacement.",
+        ):
+            with self.subTest(bad=bad):
+                with self.assertRaises(glp.ComplianceError):
+                    self.lint_frag("<p>%s</p>" % bad)
+
+    def test_lint_allows_the_disclosure_and_required_copy(self):
+        self.lint_frag("<p>Otter Quotes does not guarantee the availability of any particular contractor.</p>")
+        self.lint_frag("<p>Your insurer decides coverage under your policy; ask your adjuster whether it is included.</p>")
+        self.lint_frag("<p>We create a scope of work and send it to local contractors, so you can compare any bids you receive.</p>")
 
     def test_lint_rejects_vendor_names_and_other_bans(self):
         for bad in ("Powered by Hover.", "Sign with DocuSign.", "Pay with Stripe.", "Via Mailgun.",

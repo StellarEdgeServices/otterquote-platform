@@ -94,16 +94,27 @@ TRADE_LABELS = {
     "windows": "Windows",
 }
 
+# Singular noun for titles ("Window Bids", not "Windows Bids") and "your X project".
+TRADE_NOUN = {
+    "roofing": "roofing",
+    "siding": "siding",
+    "gutters": "gutter",
+    "windows": "window",
+}
+
 MIN_WORDS = 500  # unique-content floor per page (D-241 guardrail 2, kept by D-345)
 
 REQUIRED_PHRASE = "send it to local contractors"
 
-# D-104 (no vetted claims), D-168 (no response-time claims).
+# D-104 (no vetted claims), D-168 (no response-time claims). Plain substrings,
+# matched case-insensitively against the normalised page text.
 FORBIDDEN_PHRASES = (
     "vetted",
     "vetting",
     "pre-screened",
     "prescreened",
+    "screened",
+    "licensed and insured",
     "background-checked",
     "background checked",
     "we verify",
@@ -120,27 +131,57 @@ FORBIDDEN_PHRASES = (
 # D-175: brand copy is "Otter Quotes" (two words). Case-sensitive.
 FORBIDDEN_CASE_SENSITIVE = ("OtterQuote", "ClaimShield")
 
-# D-345: phrasing that states or implies Otter Quotes HAS contractors in a
-# county. Regexes, matched case-insensitively against whitespace-normalised
-# text. Deliberately specific so that "send it to local contractors" and
-# neutral mentions of "contractors" / "local contractors" do not trip them.
+# Nouns used to describe the people we would be (wrongly) claiming to have.
+_TRADESPEOPLE = r"(?:contractors?|roofers?|siders?|installers?|pros|professionals|crews|companies|providers|bidders|vendors|partners)"
+_PLURAL_TRADESPEOPLE = r"(?:contractors|roofers|siders|installers|pros|professionals|crews|companies|providers|bidders|vendors|partners)"
+
+# D-345: phrasing that states or implies Otter Quotes HAS contractors (or
+# roofers, pros, ...) in a county. Regexes, matched case-insensitively against
+# the normalised text (tags stripped, entities decoded, whitespace collapsed).
+# Deliberately specific so that "send it to local contractors" and neutral
+# mentions of "contractors" / "local contractors" do not trip them.
 HAVE_CONTRACTORS_BANS = (
-    r"\bour\s+(?:\w+\s+)?contractors\b",                 # our contractors, our local contractors
-    r"\bour\s+(?:contractor\s+)?network\b",              # our network of, our contractor network
-    r"\bcontractors\s+who\s+serve\b",                    # connects you with contractors who serve X
+    rf"\bour\s+(?:\w+\s+){{0,2}}(?:{_TRADESPEOPLE}|network|team|crews?)\b",   # our contractors / our local roofers / our network
+    r"\bnetwork\s+of\b",                                                      # a network of ... / our network of
+    r"\bcontractors\s+who\s+serve\b",                                         # connects you with contractors who serve X
     r"\bcontractors\s+(?:that|which)\s+serve\b",
     r"\bcontractors\s+serving\b",
-    r"\bcontractors\s+in\s+[^<>.]{1,40}?\bcounty\b",     # contractors in Marion County
-    r"\blocal\s+contractors\s+we\b",                     # local contractors we work with / have
+    rf"\b{_PLURAL_TRADESPEOPLE}\s+(?:in|near|serving|across|throughout|around|covering|covers?|working\s+in|operating\s+in)\s+[^.<>]{{0,40}}?\bcounty\b",
+    rf"\bcounty\s+{_PLURAL_TRADESPEOPLE}\b",                                  # Marion County contractors
+    rf"\b{_PLURAL_TRADESPEOPLE}\s+(?:ready|standing\s+by|waiting|eager|willing|able|on\s+call)\b",
+    r"\blocal\s+contractors\s+we\b",                                          # local contractors we work with / have
     r"\bcontractors\s+(?:near|around)\s+you\b",
     r"\bcontractors\s+(?:working|operating|located|based)\s+in\b",
     r"\bapproved\s+contractors?\b",
     r"\bcontractors?\s+(?:are\s+)?available\b",
     r"\bcontractors\s+on\s+(?:the\s+platform|otter\s+quotes)\b",
-    r"\b(?:we|otter\s+quotes)\s+(?:have|has|work\s+with|partner\s+with)\s+(?:\w+\s+){0,2}contractors\b",
-    r"\bconnects?\s+(?:you|homeowners|consumers|customers)\s+with\s+(?:\w+\s+)?contractors\b",
+    rf"\b(?:we|otter\s+quotes)\s+(?:have|has|employ|employs|use|uses|work\s+with|works\s+with|partner\s+with|partners\s+with)\s+(?:\w+\s+){{0,3}}{_PLURAL_TRADESPEOPLE}\b",
+    r"\bconnects?\s+(?:you|homeowners|consumers|customers)\s+with\s+(?:\w+\s+)?(?:contractors|roofers|pros|professionals)\b",
     r"\bplatform\s+coverage\b",
     r"\bcontractor\s+profiles?\b",
+)
+
+# Price / savings / speed promises (D-168 and the no-promises rule).
+PROMISE_BANS = (
+    r"\bsave\s+up\s+to\b",
+    r"\d\s*%\s*off\b",
+    r"\bfree\s+for\s+homeowners\b",
+    r"\bin\s+\d+\s+(?:hours?|days?|minutes?)\b",
+    r"\bwithin\s+(?:\d+|an?|one|two|three|four|five|a\s+few|several)\s+(?:business\s+)?(?:hours?|days?|minutes?)\b",
+    r"(?<!not )\bguarantee\w*",     # "does not guarantee the availability..." (disclosure) is allowed
+)
+
+# D-326: no entitlement, coverage outcome, or statement of what an insurer
+# must do; nothing interprets a policy. Copy is procedural only.
+D326_BANS = (
+    r"\byour\s+insurer\s+(?:must|will|has\s+to|is\s+required)\b",
+    r"\binsurance\s+(?:will\s+|should\s+|typically\s+)?pays?\b",
+    r"\b(?:is|are)\s+covered\b",
+    r"\bclaimable\b",
+    r"\bbelongs?\s+in\s+(?:the\s+|your\s+)?(?:same\s+)?claim\b",
+    r"\blegitimate\s+(?:supplement|claim|scope|repair)\b",
+    r"\blegitimately\s+part\b",
+    r"\bpolic(?:y|ies)\s+(?:cover|covers|pay|pays)\b",
 )
 
 # D-312: no vendor names on customer-facing pages. Reuse the list the repo's
@@ -356,69 +397,176 @@ class _UniqueTextParser(HTMLParser):
             self.words.extend(w for w in data.split() if re.search(r"\w", w))
 
 
-def unique_word_count(html_text: str) -> int:
+def unique_words(html_text: str) -> list:
     """Words of page-specific prose: <main> text minus data-boilerplate
     blocks (see module docstring for the definition)."""
     p = _UniqueTextParser()
     p.feed(html_text)
-    return len(p.words)
+    return p.words
+
+
+def unique_word_count(html_text: str) -> int:
+    return len(unique_words(html_text))
+
+
+SHINGLE_SIZE = 8
+
+
+def shingles(words: list) -> set:
+    """Set of SHINGLE_SIZE-word shingles (lower-cased) of a word list."""
+    w = [x.lower() for x in words]
+    return {" ".join(w[i:i + SHINGLE_SIZE]) for i in range(max(0, len(w) - SHINGLE_SIZE + 1))}
+
+
+def cross_page_uniqueness(shingle_sets: list) -> list:
+    """For each page, the share of its shingles that appear on no other page
+    in the run. Informational metric only; it does not gate generation."""
+    from collections import Counter
+    seen = Counter()
+    for s in shingle_sets:
+        seen.update(s)
+    out = []
+    for s in shingle_sets:
+        out.append(sum(1 for sh in s if seen[sh] == 1) / len(s) if s else 0.0)
+    return out
+
+
+_INLINE_TAGS = {"a", "abbr", "b", "bdi", "bdo", "cite", "code", "data", "dfn", "em", "i", "kbd", "mark",
+                "q", "s", "samp", "small", "span", "strong", "sub", "sup", "time", "u", "var", "font"}
+_ATTR_NAMES = {"title", "alt", "placeholder", "content", "value", "label"}
+_INVISIBLE = re.compile("[­​-‍⁠﻿]")
+
+
+class _LintViews(HTMLParser):
+    """Split a page into what a reader or crawler sees: visible text,
+    text-bearing attribute values, JSON-LD scripts (any <script> whose type
+    mentions ld+json, in any attribute order or quoting), and other scripts."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.visible, self.attrs, self.jsonld, self.scripts = [], [], [], []
+        self._kind, self._buf = None, []
+
+    def handle_starttag(self, tag, attrs):
+        for name, value in attrs:
+            if value and (name in _ATTR_NAMES or name.startswith("aria-") or name.startswith("data-")):
+                self.attrs.append(value)
+        if tag == "script":
+            kind = "script"
+            for name, value in attrs:
+                if name == "type" and value and "ld+json" in value.lower():
+                    kind = "ld"
+            self._kind, self._buf = kind, []
+        elif tag == "style":
+            self._kind, self._buf = "style", []
+        elif tag not in _INLINE_TAGS:
+            self.visible.append(" ")
+
+    def handle_endtag(self, tag):
+        if tag in ("script", "style") and self._kind:
+            body = "".join(self._buf)
+            if self._kind == "ld":
+                self.jsonld.append(body)
+            elif self._kind == "script":
+                self.scripts.append(body)
+            self._kind, self._buf = None, []
+        elif tag not in _INLINE_TAGS:
+            self.visible.append(" ")
+
+    def handle_data(self, data):
+        if self._kind:
+            self._buf.append(data)
+        else:
+            self.visible.append(data)
+
+
+def _normalize(text: str) -> str:
+    text = _INVISIBLE.sub("", text)
+    return re.sub(r"[\s ]+", " ", text).strip()
+
+
+def _walk_strings(node, out):
+    if isinstance(node, str):
+        out.append(node)
+    elif isinstance(node, dict):
+        for v in node.values():
+            _walk_strings(v, out)
+    elif isinstance(node, list):
+        for v in node:
+            _walk_strings(v, out)
 
 
 def _jsonld_strings(html_text: str) -> str:
     """All string values from the page's JSON-LD blocks, decoded, so the lint
-    sees them exactly as a crawler does (the raw HTML carries \\uXXXX escapes)."""
+    sees them exactly as a crawler does (raw HTML carries \\uXXXX escapes)."""
+    p = _LintViews()
+    p.feed(html_text)
     out = []
-
-    def walk(node):
-        if isinstance(node, str):
-            out.append(node)
-        elif isinstance(node, dict):
-            for v in node.values():
-                walk(v)
-        elif isinstance(node, list):
-            for v in node:
-                walk(v)
-
-    for block in re.findall(r'<script type="application/ld\+json">(.*?)</script>', html_text, flags=re.DOTALL):
+    for block in p.jsonld:
         try:
-            walk(json.loads(block))
+            _walk_strings(json.loads(block), out)
         except ValueError:
             raise ComplianceError("JSON-LD block is not valid JSON")
     return " ".join(out)
 
 
+def lintable_text(html_text: str) -> str:
+    """Normalised text the lint matches against: visible text (tags stripped,
+    entities decoded, nbsp and zero-width characters handled) + text-bearing
+    attribute values + parsed JSON-LD strings + other script text."""
+    p = _LintViews()
+    p.feed(html_text)
+    ld = []
+    for block in p.jsonld:
+        try:
+            _walk_strings(json.loads(block), ld)
+        except ValueError:
+            raise ComplianceError("JSON-LD block is not valid JSON")
+    scripts = [re.sub(r"<[^>]+>", " ", html.unescape(s)) for s in p.scripts]
+    return _normalize(" ".join(["".join(p.visible), " ".join(p.attrs), " ".join(ld), " ".join(scripts)]))
+
+
 def compliance_lint(html_text: str, page_id: str) -> None:
     """Raise ComplianceError if the page breaks the D-345 copy rule or the
-    D-104 / D-168 / D-175 / D-312 bans."""
-    text = re.sub(r"\s+", " ", html_text + " " + _jsonld_strings(html_text))
+    D-104 / D-168 / D-175 / D-312 / D-326 bans. Every check runs on the
+    normalised visible/attribute/JSON-LD text and, for the substring and
+    vendor checks, also on the raw markup."""
+    text = lintable_text(html_text)
+    raw = _normalize(html.unescape(html_text))
     lowered = text.lower()
 
     if REQUIRED_PHRASE not in lowered:
         raise ComplianceError(f'[{page_id}] required phrase missing: "{REQUIRED_PHRASE}"')
 
-    for phrase in FORBIDDEN_PHRASES:
-        if phrase in lowered:
-            raise ComplianceError(f"[{page_id}] forbidden phrase '{phrase}' in page copy")
+    for view in (lowered, raw.lower()):
+        for phrase in FORBIDDEN_PHRASES:
+            if phrase in view:
+                raise ComplianceError(f"[{page_id}] forbidden phrase '{phrase}' in page copy")
 
     # D-175: the bare one-word brand is forbidden in copy; the otterquote.com
     # domain and URLs are fine.
-    stripped = re.sub(r"https?://[^\s\"'<>]+", "", text)
-    stripped = re.sub(r"otterquote\.com", "", stripped, flags=re.IGNORECASE)
-    for term in FORBIDDEN_CASE_SENSITIVE:
-        if term in stripped:
-            raise ComplianceError(f"[{page_id}] forbidden term '{term}' in page copy")
+    for view in (text, raw):
+        stripped = re.sub(r"https?://[^\s\"'<>]+", "", view)
+        stripped = re.sub(r"otterquote\.com", "", stripped, flags=re.IGNORECASE)
+        for term in FORBIDDEN_CASE_SENSITIVE:
+            if term in stripped:
+                raise ComplianceError(f"[{page_id}] forbidden term '{term}' in page copy")
 
-    for pattern in HAVE_CONTRACTORS_BANS:
-        m = re.search(pattern, text, flags=re.IGNORECASE)
-        if m:
-            raise ComplianceError(f"[{page_id}] have-contractors phrasing (D-345): '{m.group(0)}'")
+    for label, bans in (("have-contractors phrasing (D-345)", HAVE_CONTRACTORS_BANS),
+                        ("price/speed promise", PROMISE_BANS),
+                        ("insurer-obligation / coverage phrasing (D-326)", D326_BANS)):
+        for pattern in bans:
+            m = re.search(pattern, text, flags=re.IGNORECASE)
+            if m:
+                raise ComplianceError(f"[{page_id}] {label}: '{m.group(0)}'")
 
     # D-312 vendor names. Strip CSS :hover / Tailwind hover: first (not vendor
     # references), then match whole words.
-    vendor_text = re.sub(r":hover|hover:", "", lowered)
-    for token in VENDOR_TOKENS:
-        if re.search(rf"\b{re.escape(token)}\b", vendor_text):
-            raise ComplianceError(f"[{page_id}] vendor name '{token}' in page copy (D-312)")
+    for view in (lowered, raw.lower()):
+        vendor_text = re.sub(r":hover|hover:", "", view)
+        for token in VENDOR_TOKENS:
+            if re.search(rf"\b{re.escape(token)}\b", vendor_text):
+                raise ComplianceError(f"[{page_id}] vendor name '{token}' in page copy (D-312)")
 
 
 def section_hash(seed: int, salt: int) -> int:
@@ -463,31 +611,31 @@ def page_seed(county: str, trade: str) -> int:
 # ---------------------------------------------------------------------------
 
 SEASONAL = [
-    "<p>The repair calendar in {region} has a shape worth planning around. Spring storm season generates the damage; early summer is when adjusters and contractors are busiest; late summer and fall offer the best mix of contractor availability and working weather; and winter narrows the options for exterior work while freeze-thaw cycles compound anything left unrepaired. Homeowners in {county} County who move from documentation to signed contract before mid-fall generally avoid both the post-storm rush and the winter penalty.</p>",
-    "<p>Timing matters in {county} County. Damage discovered in May competes with every other storm claim in {region} for adjuster and contractor attention; the same repair scoped in September often schedules faster. What should not wait is documentation — photograph damage as soon as it is safe, file promptly, and let the bidding process run while the queue clears. Policies also carry claim-filing deadlines, so the paperwork clock starts at the storm, not at the repair.</p>",
-    "<p>Most exterior repair work in {county} County happens in a window that runs roughly from late spring through late fall. Inside that window, post-storm weeks are the most congested and the most quote-inflated; the weeks after the rush are when competing bids do their best work. Whatever the calendar says, the sequence stays the same: document first, understand your policy second, compare written bids third — and let contractors compete for the job rather than racing to hand it to the first knock on the door.</p>",
-    "<p>Storm claims in {region} cluster hard: one hail event can put thousands of {county} County area roofs, gutters, and siding elevations into the repair pipeline in a single afternoon. That clustering is exactly why a competitive bidding process protects homeowners — when demand spikes, single-quote pricing drifts, and the only reliable calibration is a second and third written bid for the identical scope.</p>",
+    "<p>The repair calendar in {region} has a shape worth planning around. Spring storm season generates the damage; early summer is when adjusters and contractors are busiest; late summer and fall often bring a different mix of contractor schedules and working weather; and winter narrows the options for exterior work while freeze-thaw cycles compound anything left unrepaired. Many homeowners in {county} County aim to move from documentation to a signed contract before mid-fall, ahead of both the post-storm rush and winter.</p>",
+    "<p>Timing matters in {county} County. Damage discovered in May competes with every other storm claim in {region} for adjuster and contractor attention; the same repair scoped in September may meet a different queue. Documentation is the part that does not depend on the calendar: photograph damage as soon as it is safe and note the date for your adjuster. Ask your insurer whether your policy sets a deadline for reporting damage.</p>",
+    "<p>Most exterior repair work in {county} County happens in a window that runs roughly from late spring through late fall. Inside that window, post-storm weeks are the most congested and the most quote-inflated; the weeks after the rush are a calmer time to compare bids. Whatever the calendar says, the sequence stays the same: document first, understand your policy second, compare written bids third — and let contractors compete for the job rather than racing to hand it to the first knock on the door.</p>",
+    "<p>Storm claims in {region} cluster hard: one hail event can put thousands of {county} County area roofs, gutters, and siding elevations into the repair pipeline in a single afternoon. Comparing more than one written bid for the same scope is one way homeowners check pricing when demand spikes.</p>",
 ]
 
 TRADE_INTRO = {
     "roofing": [
         "A roof in {county} County works harder than most homeowners realize. It takes direct hail strikes in spring, wind uplift during summer storms, and months of freeze-thaw stress through the winter — and when it fails, the damage rarely stays confined to the shingles.",
-        "Roof damage is the most common storm-related insurance claim in {state}, and {county} County homeowners deal with the full menu: hail bruising, wind-lifted shingles, damaged flashing, and the slow leaks that follow. Knowing what a repair should cost — and getting more than one bid — is the difference between a fair claim outcome and an expensive one.",
-        "In {county} County, roofing is where storm season and insurance season meet. Hail and wind events leave damage that is easy to underestimate from the ground, and the repair market that springs up after every major storm makes it genuinely hard to know who to call and what a fair price looks like.",
+        "Storm season in {county} County can leave roofs with the full menu of problems: hail bruising, wind-lifted shingles, damaged flashing, and the slow leaks that follow. Getting more than one written bid is one way to understand what a repair may cost.",
+        "In {county} County, roofing is where storm season and the repair process meet. Hail and wind events leave damage that is easy to underestimate from the ground, and the repair market that springs up after every major storm makes it genuinely hard to know who to call and what a fair price looks like.",
     ],
     "siding": [
         "Siding takes the brunt of wind-driven hail in {county} County — dents, cracks, and punctures on the exposed elevations of a home are among the most common findings after a spring storm rolls through {region}.",
         "In {county} County, siding damage is frequently discovered months after the storm that caused it. Hail impact marks, wind-creased panels, and cracked corner posts let moisture behind the wall system, and by the time staining or warping shows up inside, the repair scope has grown.",
-        "Hail does not need to be large to damage siding. In {region}, storms drop enough marginal-size hail that {county} County homeowners often have legitimate siding claims they never noticed — and matching discontinued siding profiles is one of the most common complications in settling them fairly.",
+        "Hail does not need to be large to damage siding. In {region}, storms can drop marginal-size hail that leaves siding damage {county} County homeowners never noticed — and matching discontinued siding profiles is a common complication when scoping repairs.",
     ],
     "gutters": [
-        "Gutters are the first thing hail hits and the last thing homeowners inspect. In {county} County, dented gutters and downspouts are one of the most reliable indicators that a storm dropped damaging hail — adjusters look at them for exactly that reason.",
+        "Gutters are the first thing hail hits and the last thing homeowners inspect. In {county} County, dented gutters and downspouts are often among the first visible signs that a storm dropped hail.",
         "A gutter system in {county} County has two jobs: move heavy spring rain away from the foundation, and survive the ice load that {region} winters put on every eave. When hail flattens the profile or pulls fasteners loose, both jobs suffer, and the resulting water problems show up at the foundation and fascia long before the gutters themselves look obviously broken.",
-        "In {county} County, gutter damage is often the visible tip of a larger storm claim. Hail that dents aluminum gutters has usually also hit the roof above them, which is why a proper storm inspection treats gutters, downspouts, and roof surfaces as one system.",
+        "In {county} County, gutter damage is often the visible tip of larger storm damage. Hail that dents aluminum gutters has usually also hit the roof above them, which is why a proper storm inspection treats gutters, downspouts, and roof surfaces as one system.",
     ],
     "windows": [
-        "Window damage in {county} County ranges from the obvious — cracked glass after a hailstorm — to the subtle: failed seals, fogged double panes, and hail-cratered cladding that lets water into the wall. All of it is claimable when a storm caused it, and all of it gets more expensive the longer it waits.",
-        "Storm-damaged windows are one of the most under-claimed items in {region}. {county} County homeowners tend to notice broken glass immediately, but hail damage to frames, cladding, and glazing beads is easy to miss and just as legitimate a repair item.",
+        "Window damage in {county} County ranges from the obvious — cracked glass after a hailstorm — to the subtle: failed seals, fogged double panes, and hail-cratered cladding that lets water into the wall. Document each kind of damage you find; whether any of it is included is your insurer's decision under your policy. Water getting into a wall tends to add repair scope the longer it waits.",
+        "Storm damage to windows is easy to overlook in {region}. {county} County homeowners tend to notice broken glass immediately, but hail damage to frames, cladding, and glazing beads is easy to miss and worth including in your documentation.",
         "In {county} County, replacement windows are both a storm-repair item and an efficiency upgrade. When wind or hail compromises frames and seals, homeowners face a choice between like-for-like replacement and stepping up to modern units — and competing bids are the only reliable way to price that choice.",
     ],
 }
@@ -502,38 +650,38 @@ TRADE_ISSUE_ITEMS = {
         "<li><strong>Flashing and penetration damage</strong> — chimneys, vents, and valleys are where most post-storm leaks actually start.</li>",
         "<li><strong>Ice dams and freeze-thaw stress</strong> — winter conditions that turn minor storm damage into interior water stains by February.</li>",
         "<li><strong>Impact damage that hides from the ground</strong> — hail strikes are hard to see without getting on the roof, which is why documentation matters.</li>",
-        "<li><strong>Partial-slope damage</strong> — storms often damage one or two elevations, raising repair-versus-replace questions that competing bids answer honestly.</li>",
+        "<li><strong>Partial-slope damage</strong> — storms often damage one or two elevations, raising repair-versus-replace questions that comparing bids can help you think through.</li>",
         "<li><strong>Decking and underlayment issues</strong> — discovered only at tear-off, and a common source of change orders worth understanding in advance.</li>",
-        "<li><strong>Ventilation and code items</strong> — older roofs in the county frequently need code-required upgrades that belong in the claim scope.</li>",
+        "<li><strong>Ventilation and code items</strong> — older roofs may need code-related upgrades; ask your adjuster and your contractor how local code items are handled.</li>",
     ],
     "siding": [
         "<li><strong>Hail dents and punctures</strong> — most visible on aluminum and thin vinyl, and concentrated on the storm-facing elevations.</li>",
         "<li><strong>Wind-creased and detached panels</strong> — compromised locking legs that let subsequent weather work panels loose.</li>",
-        "<li><strong>Discontinued-profile matching</strong> — a central issue in siding claims when only some elevations are damaged.</li>",
+        "<li><strong>Discontinued-profile matching</strong> — a common question when only some elevations are damaged.</li>",
         "<li><strong>Moisture intrusion behind damaged panels</strong> — the hidden cost of postponing repairs through a {region} winter.</li>",
         "<li><strong>Oxidation lines and chalking</strong> — complicate spot repairs on older siding and affect how a fair scope is written.</li>",
         "<li><strong>Cracked corner posts and trim</strong> — small components that drive disproportionate water damage when ignored.</li>",
         "<li><strong>Fastener pull-through in high wind</strong> — panels that look intact but are no longer attached the way the manufacturer intended.</li>",
-        "<li><strong>Wrap and sheathing damage</strong> — assessable only during repair, and a legitimate supplement item when found.</li>",
+        "<li><strong>Wrap and sheathing damage</strong> — assessable only during repair; if found, note it and raise it with your adjuster.</li>",
     ],
     "gutters": [
-        "<li><strong>Hail-flattened profiles</strong> — dents that reduce water-carrying capacity and mark the whole roof system as storm-hit.</li>",
+        "<li><strong>Hail-flattened profiles</strong> — dents that reduce water-carrying capacity and often point to damage on the roof above.</li>",
         "<li><strong>Pulled fasteners and sagging runs</strong> — ice and debris load that separates gutters from fascia over a {region} winter.</li>",
         "<li><strong>Downspout crushing and disconnects</strong> — drainage failures that surface as foundation and grading problems.</li>",
         "<li><strong>Fascia and soffit rot</strong> — the downstream cost of gutter systems that stopped doing their job quietly.</li>",
         "<li><strong>Seam and end-cap leaks</strong> — often storm-initiated, always worse after a freeze cycle.</li>",
         "<li><strong>Improper pitch after impact</strong> — gutters that survived the storm but no longer drain toward the downspouts.</li>",
-        "<li><strong>Gutter guards damaged or displaced</strong> — a commonly missed line item in storm scopes.</li>",
+        "<li><strong>Gutter guards damaged or displaced</strong> — an item that is easy to leave off a first scope.</li>",
         "<li><strong>Overflow staining and landscape erosion</strong> — evidence adjusters and contractors both read when reconstructing what the storm did.</li>",
     ],
     "windows": [
-        "<li><strong>Cracked and shattered glazing</strong> — the obvious claim item, priced very differently across window lines and installers.</li>",
+        "<li><strong>Cracked and shattered glazing</strong> — the most obvious damage, priced very differently across window lines and installers.</li>",
         "<li><strong>Hail-damaged frames and cladding</strong> — dents and fractures that compromise weather sealing even when glass survives.</li>",
-        "<li><strong>Failed insulated-glass seals</strong> — post-storm fogging between panes that is claimable when the event caused it.</li>",
-        "<li><strong>Water intrusion at damaged openings</strong> — interior finish damage that belongs in the same claim as the window.</li>",
-        "<li><strong>Screen and hardware damage</strong> — small items that are legitimately part of a storm scope and frequently left off first drafts.</li>",
+        "<li><strong>Failed insulated-glass seals</strong> — post-storm fogging between panes; document it and ask your adjuster whether it is included.</li>",
+        "<li><strong>Water intrusion at damaged openings</strong> — interior finish damage near a damaged opening; document it and mention it to your adjuster.</li>",
+        "<li><strong>Screen and hardware damage</strong> — small items that are easy to leave off a first scope; list them in your documentation.</li>",
         "<li><strong>Wind-racked frames</strong> — openings knocked out of square that bind sashes and break seals over the following seasons.</li>",
-        "<li><strong>Matching and availability questions</strong> — discontinued window lines raise the same repair-versus-replace questions siding claims see.</li>",
+        "<li><strong>Matching and availability questions</strong> — discontinued window lines raise the same repair-versus-replace questions that come up with siding.</li>",
         "<li><strong>Energy-efficiency step-ups</strong> — homeowners choosing between like-for-like replacement and upgraded units need competing bids to price the difference.</li>",
     ],
 }
@@ -543,65 +691,65 @@ ISSUE_ITEMS_PER_PAGE = 5
 # Local-expectations copy is assembled from two independently selected
 # paragraph slots (A x B = 9 combinations) rather than fixed pairs.
 EXPECTATIONS_A = [
-    "<p>Storm repair in {county} County follows a rhythm locals know well: a severe-weather event, a wave of door-knocking crews from out of the area, and then the slower, quieter work of getting damage documented, a claim filed, and a repair done right. The homeowners who come out ahead are consistently the ones who slow the process down at the start — documenting damage before tarps and repairs change the evidence, reading their policy before the first phone call, and getting more than one written bid before signing anything.</p>",
-    "<p>Homeowners in {county} County navigating a storm claim juggle three parallel tracks: the insurance process (adjuster inspection, scope, settlement), the contractor process (bids, scheduling, materials), and their own documentation. Keeping those tracks separate is the single most useful habit — your insurer determines what is covered; your contractor determines what the repair actually requires; and written bids are how you reconcile the two when they disagree.</p>",
-    "<p>The practical sequence for {county} County homeowners after storm damage: document everything with photos before any cleanup, review your policy's wind/hail provisions and deductible, file promptly if damage is evident, and line up written repair bids so you can evaluate the adjuster's scope against real local pricing. Nothing in that sequence requires committing to a contractor early — and keeping your options open until bids are in hand is exactly what a competitive process is for.</p>",
+    "<p>Storm repair in {county} County follows a rhythm locals know well: a severe-weather event, a wave of door-knocking crews from out of the area, and then the slower, quieter work of getting damage documented, questions raised with your insurer, and a repair scoped carefully. Many homeowners find it helps to slow the process down at the start — documenting damage before tarps and repairs change the evidence, reading their policy before the first phone call, and getting more than one written bid before signing anything.</p>",
+    "<p>Homeowners in {county} County navigating a storm claim juggle three parallel tracks: the insurance process (adjuster inspection, scope, settlement), the contractor process (bids, scheduling, materials), and their own documentation. Keeping those tracks separate is the single most useful habit — your insurer decides coverage under your policy; your contractor determines what the repair actually requires; and written bids give you something concrete to discuss with your adjuster.</p>",
+    "<p>The practical sequence for {county} County homeowners after storm damage: document everything with photos before any cleanup, review your policy and ask your insurer how to report damage, and line up written repair bids so you have a written scope and pricing to discuss with your adjuster. Nothing in that sequence requires committing to a contractor early — and keeping your options open until bids are in hand is exactly what a competitive process is for.</p>",
 ]
 
 EXPECTATIONS_B = [
-    "<p>Local demand also moves in waves. After a widely publicized hail event, every reputable contractor in {region} gets busy at once. Competing bids protect you twice in that environment: they keep pricing honest when demand spikes, and they surface scope differences — what one bidder saw that another missed — before the work starts rather than after.</p>",
-    "<p>Be appropriately skeptical of anyone who shows up unsolicited after a storm, pressures you to sign an assignment of benefits on the spot, or quotes a price without getting on the roof or examining the damage up close. {state} sees storm-chasing crews every season, and the reliable defense is unhurried, written, competing bids that you can check against each other.</p>",
-    "<p>Expect legitimate contractors to provide itemized written estimates, proof of insurance, and local references on request. Expect the process to take longer after county-wide storm events, when every roofer, sider, and installer in {region} is working the same backlog. Patience plus paperwork beats speed plus pressure, every time.</p>",
+    "<p>Local demand also moves in waves. After a widely publicized hail event, every reputable contractor in {region} gets busy at once. Competing bids protect you twice in that environment: they give you a way to check pricing when demand spikes, and they can surface scope differences — what one bidder saw that another missed — before the work starts rather than after.</p>",
+    "<p>Be appropriately skeptical of anyone who shows up unsolicited after a storm, pressures you to sign paperwork on the spot, or quotes a price without getting on the roof or examining the damage up close. {state} sees storm-chasing crews every season, and one practical defense is unhurried, written bids that you can check against each other.</p>",
+    "<p>Ask any contractor for an itemized written estimate, proof of insurance, and local references. The process can take longer after county-wide storm events, when every roofer, sider, and installer in {region} is working the same backlog. Patience and paperwork usually serve homeowners better than speed and pressure.</p>",
 ]
 
 HOW_IT_WORKS = [
-    "<p>Here is how Otter Quotes works for a {county} County project. You submit your project details once. Otter Quotes creates a scope of work from them, and we send it to local contractors. You then compare the written bids side by side, with scope, price, and terms in one place. The platform is informational, and the decision stays entirely yours.</p>",
-    "<p>Instead of calling down a list and repeating your story, you submit your {county} County project once. Otter Quotes builds the scope of work and we send it to local contractors; the bids that come back are written, so you can compare them on scope, price, and terms. Comparing multiple written bids is the most reliable way to understand fair local pricing, especially in the busy weeks after a storm.</p>",
-    "<p>The process has four steps: you submit your {county} County project, Otter Quotes creates a scope of work, we send it to local contractors, and you compare the bids. No obligation attaches to submitting a project, and choosing a contractor, or choosing none of them, remains entirely your call.</p>",
+    "<p>Here is how Otter Quotes works for a {county} County project. You submit your project details once. Otter Quotes creates a scope of work from them, and we send it to local contractors. You can then compare any written bids you receive side by side, on scope, price, and terms. The platform is informational, and the decision stays entirely yours.</p>",
+    "<p>Instead of calling down a list and repeating your story, you submit your {county} County project once. Otter Quotes builds the scope of work and we send it to local contractors; any bids you receive are written, so you can compare them on scope, price, and terms. Comparing more than one written bid is one way to understand local pricing, especially in the busy weeks after a storm.</p>",
+    "<p>The process has four steps: you submit your {county} County project, Otter Quotes creates a scope of work, we send it to local contractors, and you compare any written bids you receive. No obligation attaches to submitting a project, and choosing a contractor, or choosing none of them, remains entirely your call.</p>",
 ]
 
 # Four Q&As per trade; each page renders a deterministic selection of two,
 # so same-trade pages don't all share an identical FAQ block.
 FAQ = {
     "roofing": [
-        ("Does homeowners insurance cover roof damage in {county} County?",
-         "Most standard homeowners policies cover sudden storm damage from wind and hail, subject to your deductible and policy terms. Coverage questions are ultimately between you and your insurer — our guide on filing a property damage claim walks through the process step by step."),
+        ("Who decides whether my policy applies to roof damage in {county} County?",
+         "Your insurer decides coverage under the terms of your policy. Read your policy, ask your adjuster what is included, and document the damage with dated photos. Our guide on filing a property damage claim walks through the process step by step."),
         ("How many roofing bids should I get?",
-         "At least two, ideally three. Competing bids surface scope differences and keep pricing honest, particularly during post-storm demand spikes when quotes can drift upward."),
+         "Many homeowners gather two or three. Comparing bids can surface scope differences and give you a way to check pricing, particularly during post-storm demand spikes."),
         ("Should I repair or replace after partial-slope damage?",
-         "It depends on shingle availability, the age of the roof, and how your policy treats matching. Written bids that price both paths give you and your adjuster something concrete to discuss."),
+         "Shingle availability and the age of the roof both come into it; ask your adjuster how your policy addresses matching. Written bids that price both paths give you and your adjuster something concrete to discuss."),
         ("Do I need to be home for a roof inspection?",
          "For the exterior portion, usually not — but being present means you see the documented damage yourself and can ask questions while the contractor is still on site."),
     ],
     "siding": [
-        ("Will insurance pay to match my existing siding?",
-         "Matching rules vary by policy and state guidance, and discontinued profiles complicate it further. Document the damage thoroughly and get written bids that address matching explicitly, so the scope conversation with your insurer is grounded in specifics."),
+        ("Who decides how matching is handled for my siding?",
+         "Your insurer decides how matching is handled under your policy, and discontinued profiles can complicate the conversation. Document the damage thoroughly and get written bids that address matching explicitly, so your discussion with your adjuster is grounded in specifics."),
         ("Can hail damage siding without visible holes?",
-         "Yes — dents, cracks, and chalk-line disturbances all count as damage even when panels remain attached. An up-close inspection of storm-facing elevations tells the real story."),
+         "Yes — dents, cracks, and chalk-line disturbances can be signs of hail impact even when panels remain attached. An up-close inspection of storm-facing elevations tells the real story."),
         ("Do all elevations get replaced if one is damaged?",
-         "Not automatically. Outcomes range from single-elevation repair to full replacement depending on matching, policy language, and negotiation — which is why bids that spell out both scopes are valuable."),
+         "Not automatically. A scope can range from single-elevation repair to full replacement; ask your adjuster how matching is handled, and consider bids that spell out both scopes."),
         ("How soon after a storm should siding be inspected?",
-         "Promptly — both because policies carry filing deadlines and because open impact points let moisture behind the wall system, where damage compounds quietly."),
+         "Promptly — both because your policy may set a deadline for reporting damage (ask your insurer) and because open impact points let moisture behind the wall system, where damage compounds quietly."),
     ],
     "gutters": [
-        ("Are dented gutters worth claiming?",
-         "Dented gutters are frequently part of a larger storm claim — hail that damaged gutters has usually hit the roof too. They matter both as a repair item and as evidence of the storm's severity."),
+        ("Should I document dented gutters?",
+         "Yes. Hail that dents gutters has often hit the roof too, so gutter dents are worth photographing both as a repair item and as a sign of the storm's severity. Ask your adjuster whether they are included in the scope."),
         ("Should gutters be replaced with a roof?",
-         "Often yes, when both were storm-damaged or when roof work requires removing aged gutter runs. Written bids that price the combination let you compare against separate repairs."),
-        ("Do gutter guards complicate a storm claim?",
-         "They add a line item and occasionally a matching question, but damaged guards are legitimately part of the scope. Make sure bids and the adjuster's scope both address them."),
+         "It can make sense when both were storm-damaged or when roof work requires removing aged gutter runs. Written bids that price the combination let you compare against separate repairs."),
+        ("Do gutter guards complicate the repair scope?",
+         "They add a line item and occasionally a matching question. Make sure your bids list them, and ask your adjuster whether they are included in the scope."),
         ("What size hail dents aluminum gutters?",
          "Smaller than most people expect — gutters often show impact evidence from hail that left shingles looking intact from the ground, which is why they're a standard inspection point."),
     ],
     "windows": [
-        ("Is a fogged window claimable after a storm?",
-         "If the storm caused the seal failure — from impact or wind-racking — it can be a legitimate claim item. Timing and documentation matter, so photograph damage promptly."),
+        ("What should I do about a fogged window after a storm?",
+         "Photograph it promptly, with dates, and note when you first saw it. Whether it is included is your insurer's decision under your policy, so ask your adjuster."),
         ("Should I replace like-for-like or upgrade?",
-         "Insurance typically pays for like-kind replacement; upgrades are out-of-pocket deltas. Competing bids that price both options make the decision concrete instead of hypothetical."),
+         "Ask your adjuster how your policy treats replacement and upgrades. Bids that price both options make the decision concrete instead of hypothetical."),
         ("Does a cracked pane mean the whole window needs replacing?",
          "Sometimes only the sash or glass unit needs replacement; sometimes frame damage makes a full unit the sound choice. Bids that separate the options keep the decision in your hands."),
-        ("Are damaged screens and hardware claimable?",
-         "Generally yes when the storm caused the damage — they're small items, but legitimate scope, and worth listing in your documentation from the start."),
+        ("Should I list damaged screens and hardware?",
+         "Yes — they are small items, but worth listing in your documentation from the start. Ask your adjuster whether they are included."),
     ],
 }
 
@@ -645,6 +793,8 @@ def build_page(county: str, trade: str, generated_on: str, state: str = "IN", pr
     seed = page_seed(county, trade)
     c_slug = county_slug(county, state)
     t_label = TRADE_LABELS[trade]
+    noun = TRADE_NOUN[trade]
+    noun_title = noun.capitalize()
     county_esc = html.escape(county, quote=True)
     page_url = f"{SITE_BASE}/locations/{c_slug}/{trade}/"
 
@@ -669,27 +819,29 @@ def build_page(county: str, trade: str, generated_on: str, state: str = "IN", pr
         for href, label in CORNERSTONE_GUIDES + TRADE_EXTRA_LINKS.get(trade, [])
     )
 
-    title = f"{t_label} Bids for {county} County, {state} Homeowners · Otter Quotes"
+    title = f"{noun_title} Bids for {county} County, {state} Homeowners · Otter Quotes"
     meta_desc = (
-        f"Storm-damage {t_label.lower()} help for homeowners in {county} County, {state_name}: "
+        f"Help with storm-damaged {t_label.lower()} for homeowners in {county} County, {state_name}: "
         f"Otter Quotes creates a scope of work for your project and we send it to local contractors, "
-        f"so you can compare their written bids side by side."
+        f"so you can compare any written bids you receive side by side."
     )
 
+    # Site-wide organization entity: no areaServed (it would conflict from one
+    # state's pages to the next; D-169 geo-neutral). Geography lives on the
+    # per-page Service below.
     local_business = {
         "@context": "https://schema.org",
-        "@type": "LocalBusiness",
+        "@type": "Organization",
         "@id": f"{SITE_BASE}/#organization",
         "name": "Otter Quotes",
         "url": f"{SITE_BASE}/",
-        "description": "Otter Quotes is an independent platform for property damage repair and exterior improvement projects. Otter Quotes creates a scope of work and we send it to local contractors, so homeowners can compare written bids.",
-        "areaServed": {"@type": "State", "name": state_name},
+        "description": "Otter Quotes is an independent platform for property damage repair and exterior improvement projects. Otter Quotes creates a scope of work and we send it to local contractors, so homeowners can compare any written bids they receive.",
     }
     service = {
         "@context": "https://schema.org",
         "@type": "Service",
-        "serviceType": f"{t_label} bid comparison",
-        "name": f"{t_label} Bids — {county} County, {state}",
+        "serviceType": f"{noun_title} bid comparison",
+        "name": f"{noun_title} Bids — {county} County, {state}",
         "url": page_url,
         "provider": {"@id": f"{SITE_BASE}/#organization"},
         "areaServed": {
@@ -782,8 +934,8 @@ def build_page(county: str, trade: str, generated_on: str, state: str = "IN", pr
       <a href="/">Home</a> &rsaquo; <a href="/locations/">Locations</a> &rsaquo; {county_esc} County, {state} &rsaquo; {t_label}
     </div>
     <div style="padding: var(--sp-8) var(--sp-6) 0;">
-      <h1>{t_label} Bids for {county_esc} County, {state_name} Homeowners</h1>
-      <p style="color:var(--slate); max-width:640px; margin:0 auto;">Otter Quotes creates a scope of work for your {t_label.lower()} project and we send it to local contractors. You compare their written bids, and the decision stays yours.</p>
+      <h1>{noun_title} Bids for {county_esc} County, {state_name} Homeowners</h1>
+      <p style="color:var(--slate); max-width:640px; margin:0 auto;">Otter Quotes creates a scope of work for your {noun} project and we send it to local contractors. You compare any written bids you receive, and the decision stays yours.</p>
     </div>
   </div>
 
@@ -794,7 +946,7 @@ def build_page(county: str, trade: str, generated_on: str, state: str = "IN", pr
     <h2>The {region_lbl} climate and your {t_label.lower()}</h2>
     <p>{climate}</p>
 
-    <h2>Common {t_label.lower()} issues in {county_esc} County</h2>
+    <h2>Common {noun} issues in {county_esc} County</h2>
     {issues}
 
     <h2>What to expect locally</h2>
@@ -817,7 +969,7 @@ def build_page(county: str, trade: str, generated_on: str, state: str = "IN", pr
     </div>
 
     <div class="cta-bar" data-boilerplate>
-      <p>Ready to compare bids for your {county_esc} County project?</p>
+      <p>Ready to start your {county_esc} County project?</p>
       <a href="/start.html" class="btn btn-primary btn-lg">Start Your Project with Otter Quotes</a>
     </div>
 
@@ -847,11 +999,34 @@ def build_page(county: str, trade: str, generated_on: str, state: str = "IN", pr
 # the repo-root sitemap.xml, lastmod = generation timestamp)
 # ---------------------------------------------------------------------------
 
+EMPTY_SITEMAP = (
+    '<?xml version="1.0" encoding="UTF-8"?>\n'
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+    "</urlset>\n"
+)
+
+
+def resolve_sitemap_path(out_dir, sitemap_path=None) -> pathlib.Path:
+    """Which sitemap a run may write. The repo-root sitemap.xml is used ONLY
+    when out_dir is the repo's locations/ directory. Any other out_dir gets
+    its own sitemap.xml next to it (never the repo's), unless the caller
+    passes an explicit path."""
+    if sitemap_path is not None:
+        return pathlib.Path(sitemap_path)
+    out_dir = pathlib.Path(out_dir)
+    if out_dir.resolve() == LOCATIONS_DIR.resolve():
+        return SITEMAP_PATH
+    return out_dir.parent / "sitemap.xml"
+
+
 def update_sitemap(generated_paths: list, generated_on: str, dry_run: bool, sitemap_path=None) -> None:
     """Rewrite the /locations/ entries so they list exactly the pages
     generated this run (and nothing else)."""
     sitemap_path = pathlib.Path(sitemap_path or SITEMAP_PATH)
-    sitemap_text = sitemap_path.read_text(encoding="utf-8")
+    if sitemap_path.exists():
+        sitemap_text = sitemap_path.read_text(encoding="utf-8")
+    else:
+        sitemap_text = EMPTY_SITEMAP
     original = sitemap_text
 
     sitemap_text = re.sub(
@@ -896,15 +1071,16 @@ def generate(states, out_dir=None, sitemap_path=None, counties_path=None,
     thin or non-compliant content. Returns a summary dict.
     """
     out_dir = pathlib.Path(out_dir or LOCATIONS_DIR)
+    sitemap_path = resolve_sitemap_path(out_dir, sitemap_path)
     generated_on = generated_on or datetime.date.today().isoformat()
     summary = {"states": list(states), "tuples": 0, "written": 0, "skipped_thin": [], "paths": [],
-               "min_unique_words": None, "median_unique_words": None}
+               "min_unique_words": None, "median_unique_words": None,
+               "min_unshared_shingles": None, "median_unshared_shingles": None}
 
     if not states:
         print("State allow-list is empty: no pages emitted. "
               "A state is added only after its D-344 statute search (see tools/README-locations-workflow.md).")
-        if sitemap_path is not None or out_dir == LOCATIONS_DIR:
-            update_sitemap([], generated_on, dry_run, sitemap_path)
+        update_sitemap([], generated_on, dry_run, sitemap_path)
         return summary
 
     profiles = validate_states(states, counties_path, profiles_dir)
@@ -917,13 +1093,16 @@ def generate(states, out_dir=None, sitemap_path=None, counties_path=None,
     print(f"Allow-listed states: {', '.join(states)}; (county, trade) tuples: {len(tuples)}")
 
     counts = []
+    shingle_sets = []
     for state, county, trade in tuples:
         c_slug = county_slug(county, state)
         page_id = f"{c_slug}/{trade}"
         page_html = build_fn(county, trade, generated_on, state)
 
-        wc = unique_word_count(page_html)
+        words = unique_words(page_html)
+        wc = len(words)
         counts.append(wc)
+        shingle_sets.append(shingles(words))
         if wc < MIN_WORDS:
             print(f"  SKIPPED (thin, {wc} < {MIN_WORDS} unique words): {page_id}")
             summary["skipped_thin"].append(page_id)
@@ -948,6 +1127,12 @@ def generate(states, out_dir=None, sitemap_path=None, counties_path=None,
         summary["median_unique_words"] = statistics.median(counts)
         print(f"Unique words per page (floor {MIN_WORDS}): min {summary['min_unique_words']}, "
               f"median {summary['median_unique_words']:g} over {len(counts)} pages")
+        shares = cross_page_uniqueness(shingle_sets)
+        summary["min_unshared_shingles"] = min(shares)
+        summary["median_unshared_shingles"] = statistics.median(shares)
+        print(f"Cross-page uniqueness ({SHINGLE_SIZE}-word shingles on no other page in this run; "
+              f"informational, not a gate): min {summary['min_unshared_shingles']:.1%}, "
+              f"median {summary['median_unshared_shingles']:.1%}")
 
     update_sitemap(summary["paths"], generated_on, dry_run, sitemap_path)
     return summary
@@ -962,11 +1147,15 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="Print actions without writing files")
     parser.add_argument("--allowlist", default=None,
                         help="Path to the state allow-list JSON (default: data/location-pages-state-allowlist.json)")
+    parser.add_argument("--out-dir", default=None,
+                        help="Where to write pages (default: the repo's locations/). A non-default out-dir "
+                             "gets its own sitemap.xml next to it and never touches the repo sitemap.")
+    parser.add_argument("--sitemap", default=None, help="Explicit sitemap path (default: see --out-dir)")
     args = parser.parse_args()
 
     try:
         states = load_allowlist(args.allowlist)
-        summary = generate(states, dry_run=args.dry_run)
+        summary = generate(states, out_dir=args.out_dir, sitemap_path=args.sitemap, dry_run=args.dry_run)
     except (StateConfigError, ComplianceError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         sys.exit(1)
@@ -979,6 +1168,7 @@ def main():
     print(f"  Skipped (< {MIN_WORDS} unique words): {len(summary['skipped_thin'])}")
     if summary["min_unique_words"] is not None:
         print(f"  Unique words min / median:  {summary['min_unique_words']} / {summary['median_unique_words']:g}")
+        print(f"  Unshared shingles min / median: {summary['min_unshared_shingles']:.1%} / {summary['median_unshared_shingles']:.1%}")
 
 
 if __name__ == "__main__":

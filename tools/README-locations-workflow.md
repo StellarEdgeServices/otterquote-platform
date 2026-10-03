@@ -19,10 +19,16 @@ describes how the generator behaves now and how a state is added.
 
 Every generated page is indexable. The generator never injects `noindex`.
 
+The repo-root `sitemap.xml` is written only when the output directory is the repo's
+`locations/`. With `--out-dir` elsewhere, the sitemap goes next to that directory.
+The site-wide JSON-LD entity is an `Organization` with no `areaServed`; geography
+lives on each page's `Service`.
+
 ```
 python3 tools/generate_location_pages.py --dry-run      # show what would happen
 python3 tools/generate_location_pages.py                # write pages + sitemap
 python3 tools/generate_location_pages.py --allowlist X  # use another allow-list file
+python3 tools/generate_location_pages.py --out-dir DIR  # write elsewhere; gets DIR/../sitemap.xml, never the repo sitemap
 python3 tools/generate_location_pages.test.py           # self-test (CI runs this)
 ```
 
@@ -74,8 +80,13 @@ is not written to disk and not added to the sitemap. The run logs it as
 `<main>` content, minus the blocks every page shares (breadcrumb, CTA bar,
 legal disclosure, homeowner-guide link list, all marked `data-boilerplate` in
 the template). Nav, head, footer, scripts, styles and JSON-LD are outside
-`<main>` and never count. What is left is the page-specific prose. Today every
-Indiana page lands between 536 and 658.
+`<main>` and never count. What is left is the page-specific prose. Each run prints the min and median.
+Today every Indiana page lands between 534 and about 650 (median 601).
+
+Each run also prints an **informational** cross-page uniqueness metric: the share
+of each page's 8-word shingles that appear on no other page in the run (min and
+median). It does not gate generation; D-345's reading of "unique" is pending a
+CEO/CRO ruling. Indiana today: min 2.5%, median 5.2%.
 
 ## Copy rule (D-345)
 
@@ -89,6 +100,16 @@ Enforced in the template and in `compliance_lint()`:
   [X] County", "local contractors we", "contractors near you", "approved
   contractors", "contractors available", "contractors on the platform",
   "we have ... contractors", "platform coverage", "contractor profiles".
+- Also banned: price, savings and speed promises ("save up to", "% off", "free for
+  homeowners", "in 24 hours", "within N days", "guarantee" other than "does not
+  guarantee"), D-104 "vetted" / "screened" / "licensed and insured", and D-326
+  insurer-obligation phrasing ("your insurer must", "insurance will pay", "is
+  covered", "claimable", "belongs in the claim", "legitimate supplement"). Page
+  copy is procedural only: it never states an entitlement, a coverage outcome or
+  what an insurer must do.
+- The lint reads the visible text (tags stripped, entities and nbsp decoded), the
+  text-bearing attributes (title, alt, aria-*, meta content), and the parsed
+  JSON-LD, so markup and entity tricks do not bypass it.
 - Also banned: "connects you with contractors", "connects homeowners with
   contractors". The lint scans the page HTML **and** the decoded JSON-LD strings;
   the LocalBusiness description and the disclosure use the approved framing.
