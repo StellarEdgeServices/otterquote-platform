@@ -83,6 +83,17 @@ DEFINE_RE = re.compile(r'\bPOSTAL_ADDRESS\b\s*(?::\s*string)?\s*=\s*"([^"]*)"')
 WRAPPER_DEFINE_RE = re.compile(r"function\s+footerPostalAddress(?:Html|Text)\s*\(")
 WRAPPER_CALL_RE = re.compile(r"(?<!function )footerPostalAddress(?:Html|Text)\s*\(\s*\)")
 INTERP_RE = re.compile(r"\$\{POSTAL_ADDRESS\}")
+# MODE D (gh-1824, partner-invite senders): the street-only constant plus a
+# signed opt-out link in the same footer builder.
+DEFINE_ONLY_RE = re.compile(r'\bPOSTAL_ADDRESS_ONLY\b\s*(?::\s*string)?\s*=\s*"([^"]*)"')
+INTERP_ONLY_RE = re.compile(r"\$\{POSTAL_ADDRESS_ONLY\}")
+OPTOUT_RE = re.compile(r"Unsubscribe[^`\n]*\$\{(?:unsubText|optOutUrl)\}")
+
+# The street-only form of the D-237 address, as used by the partner-invite
+# footers (meta-leadgen-webhook/invite-email.ts, send-partner-invite-reminder/
+# invite-email-copy.ts). The business-name prefix is a separate sentence in
+# those footers ("Otter Quotes is a service of Stellar Edge Services LLC.").
+CANONICAL_ADDRESS_ONLY = "3410 N High School Rd, Ste G #102, Indianapolis, IN 46224"
 
 CANONICAL_ADDRESS = (
     "Stellar Edge Services, LLC d/b/a Otter Quotes · "
@@ -117,6 +128,7 @@ RATCHET_FOOTER = {
     "counter-sig-reminders",
     "mark-job-complete",
     "mark-payout-paid",
+    "meta-leadgen-webhook",       # MODE D (partner invite footer + opt-out)
     "notify-admin-new-contractor",
     "notify-contractors",
     "notify-feature-request",
@@ -132,6 +144,7 @@ RATCHET_FOOTER = {
     "send-home-profile-prompt",
     "send-incomplete-onboarding-reminders",
     "send-message-notification",
+    "send-partner-invite-reminder",  # MODE D (partner invite footer + opt-out)
     "send-referral-out-email",
     "send-support-email",
     "send-welcome-email",
@@ -232,6 +245,20 @@ def function_uses_footer(contents):
     for text in contents.values():
         if MAILGUN_RE.search(text) and all(c in text for c in CANONICAL_ADDRESS_COMPONENTS):
             return True, "C"
+
+    # MODE D -- partner-invite footer: ONE file defines POSTAL_ADDRESS_ONLY as
+    # the exact D-237 street string, interpolates it, AND carries an opt-out
+    # link in the same footer (CAN-SPAM needs both). An address with no opt-out,
+    # an opt-out with no address, or an altered/blank constant never matches.
+    for text in contents.values():
+        m = DEFINE_ONLY_RE.search(text)
+        if (
+            m
+            and m.group(1) == CANONICAL_ADDRESS_ONLY
+            and INTERP_ONLY_RE.search(text)
+            and OPTOUT_RE.search(text)
+        ):
+            return True, "D"
 
     return False, None
 

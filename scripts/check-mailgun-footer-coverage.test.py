@@ -119,6 +119,35 @@ def write_fixture(root, index_ts=INDEX_TS, email_footer_ts=EMAIL_FOOTER_TS):
             footer_path.unlink()
 
 
+FOOTER_D = """
+const POSTAL_ADDRESS_ONLY = "3410 N High School Rd, Ste G #102, Indianapolis, IN 46224";
+function buildFooter(optOutUrl: string, escapeForHtml: boolean): string {
+  const unsubText = escapeForHtml ? `<a href="${optOutUrl}">${optOutUrl}</a>` : optOutUrl;
+  return (
+    `Otter Quotes is a service of Stellar Edge Services LLC. ` +
+    `${POSTAL_ADDRESS_ONLY} · ` +
+    `Manage email preferences / Unsubscribe: ${unsubText} · ` +
+    `Questions? support@otterquote.com`
+  );
+}
+"""
+SEND_D = """
+await fetch("https://api.mailgun.net/v3/mail.otterquote.com/messages", { method: "POST" });
+"""
+FOOTER_D_NO_ADDRESS = FOOTER_D.replace("    `${POSTAL_ADDRESS_ONLY} · ` +\n", "")
+FOOTER_D_NO_OPTOUT = FOOTER_D.replace("    `Manage email preferences / Unsubscribe: ${unsubText} · ` +\n", "")
+FOOTER_D_BLANK = FOOTER_D.replace("3410 N High School Rd, Ste G #102, Indianapolis, IN 46224", "")
+
+
+def write_mode_d(root, footer_ts):
+    d = root / "fake-sender"
+    if d.exists():
+        shutil.rmtree(d)
+    d.mkdir(parents=True)
+    (d / "index.ts").write_text(SEND_D, encoding="utf-8")
+    (d / "invite-email.ts").write_text(footer_ts, encoding="utf-8")
+
+
 def run_guard():
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
@@ -189,6 +218,29 @@ def main():
         mod.REQUIRED_FOOTER = {"fake-sender"}
         mod.RATCHET_FOOTER = set()
 
+        print()
+        print("(f) MODE D (partner-invite footer: street constant + opt-out link)")
+        write_mode_d(tmp_root, FOOTER_D)
+        code, out = run_guard()
+        check("(f) mode D compliant exit code (PASS)", code, 0)
+        check("(f) mode D reported as mode D", "[mode D]" in out, True)
+        write_mode_d(tmp_root, FOOTER_D_NO_ADDRESS)
+        code, out = run_guard()
+        check("(f) opt-out link but NO address exit code (FAIL)", code, 1)
+        check("(f) opt-out-no-address names fake-sender", "fake-sender" in out, True)
+        write_mode_d(tmp_root, FOOTER_D_NO_OPTOUT)
+        code, out = run_guard()
+        check("(f) address but NO opt-out exit code (FAIL)", code, 1)
+        check("(f) address-no-optout names fake-sender", "fake-sender" in out, True)
+        write_mode_d(tmp_root, FOOTER_D_BLANK)
+        code, out = run_guard()
+        check("(f) blanked street constant exit code (FAIL)", code, 1)
+        write_mode_d(tmp_root, FOOTER_D)
+        code, out = run_guard()
+        check("(f) restored mode D exit code (PASS)", code, 0)
+        write_fixture(tmp_root)
+        shutil.rmtree(tmp_root / "fake-sender" / "__none__", ignore_errors=True)
+
     finally:
         mod.FUNCTIONS_DIR = original_functions_dir
         mod.REQUIRED_FOOTER = original_required
@@ -201,7 +253,7 @@ def main():
         return 1
     print(
         "check-mailgun-footer-coverage: all assertions passed (negative controls "
-        "(a)/(b)/(c)/(e) observed FAILING; baseline and restore observed PASSING)."
+        "(a)/(b)/(c)/(e)/(f) observed FAILING; baseline and restore observed PASSING)."
     )
     return 0
 
