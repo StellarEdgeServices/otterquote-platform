@@ -20,7 +20,6 @@ import { requestBidRenewal as bidsRenewal } from '../bids/actions';
 import { requestBidRenewal as signingRenewal } from '../contract-signing/use-contract-signing-data';
 import { validatePayload } from '../../../../supabase/functions/send-support-email/caller-gate';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const sb = supabase as any;
 
 function supportBody(): unknown {
