@@ -133,8 +133,19 @@ function buildFooter(optOutUrl: string, escapeForHtml: boolean): string {
 export function buildInviteEmail(optOutUrl: string) {
   return { text: `Hi.\n\n${buildFooter(optOutUrl, false)}`, html: `<p>Hi.</p>${buildFooter(optOutUrl, true)}` };
 }
+export function buildReminderEmail(optOutUrl: string) {
+  const footerText = buildFooter(optOutUrl, false);
+  const footerHtml = buildFooter(optOutUrl, true);
+  const text = `Reminder.\n\n${footerText}`;
+  const html = `<p style="a:b;">Reminder.</p><p>${footerHtml}</p>`;
+  return { subject: "Reminder", text, html };
+}
 """
 SEND_D = """
+import { buildReminderEmail } from "./invite-email.ts";
+const email = buildReminderEmail(optOutUrl);
+formData.append("text", email.text);
+formData.append("html", email.html);
 await fetch("https://api.mailgun.net/v3/mail.otterquote.com/messages", { method: "POST" });
 """
 FOOTER_D_NO_ADDRESS = FOOTER_D.replace("    `${POSTAL_ADDRESS_ONLY} · ` +\n", "")
@@ -147,14 +158,25 @@ FOOTER_D_COMMENTED_OPTOUT = FOOTER_D.replace(
     "    // `Manage email preferences / Unsubscribe: ${unsubText} · ` +\n",
 )
 FOOTER_D_UNUSED_BUILDER = FOOTER_D.split("export function buildInviteEmail")[0]
+# gh-2439 holes (LEGAL-READ 5963970520 c3), one fixture per hole:
+# 1. footer computed (`const footerText = buildFooter(...)`) but never interpolated.
+FOOTER_D_NOT_INTERPOLATED = FOOTER_D.replace("${footerText}", "").replace("${footerHtml}", "")
+# 2. reminder builder stops calling buildFooter; the dead buildInviteEmail in
+#    the same file still calls it twice (and is never called by the sender).
+FOOTER_D_DEAD_BUILDER_ONLY = FOOTER_D.replace(
+    "  const footerText = buildFooter(optOutUrl, false);\n  const footerHtml = buildFooter(optOutUrl, true);\n",
+    "  const footerText = \"\";\n  const footerHtml = \"\";\n",
+)
+# 3. index.ts sends a hard-coded body instead of email.text / email.html.
+SEND_D_HARDCODED = SEND_D.replace("email.text", '"Hi, no footer"').replace("email.html", '"<p>Hi, no footer</p>"')
 
 
-def write_mode_d(root, footer_ts):
+def write_mode_d(root, footer_ts, send_ts=None):
     d = root / "fake-sender"
     if d.exists():
         shutil.rmtree(d)
     d.mkdir(parents=True)
-    (d / "index.ts").write_text(SEND_D, encoding="utf-8")
+    (d / "index.ts").write_text(send_ts or SEND_D, encoding="utf-8")
     (d / "invite-email.ts").write_text(footer_ts, encoding="utf-8")
 
 
@@ -253,6 +275,19 @@ def main():
         code, out = run_guard()
         check("(f) footer builder never called exit code (FAIL)", code, 1)
 
+        write_mode_d(tmp_root, FOOTER_D_NOT_INTERPOLATED)
+        code, out = run_guard()
+        check("(f) hole 1: footer computed but not interpolated exit code (FAIL)", code, 1)
+        check("(f) hole 1 names fake-sender", "fake-sender" in out, True)
+        write_mode_d(tmp_root, FOOTER_D_DEAD_BUILDER_ONLY)
+        code, out = run_guard()
+        check("(f) hole 2: reminder builder drops buildFooter, dead builder keeps 2 calls exit code (FAIL)", code, 1)
+        check("(f) hole 2 names fake-sender", "fake-sender" in out, True)
+        write_mode_d(tmp_root, FOOTER_D, SEND_D_HARDCODED)
+        code, out = run_guard()
+        check("(f) hole 3: index.ts sends hard-coded body exit code (FAIL)", code, 1)
+        check("(f) hole 3 names fake-sender", "fake-sender" in out, True)
+
         write_mode_d(tmp_root, FOOTER_D)
         code, out = run_guard()
         check("(f) restored mode D exit code (PASS)", code, 0)
@@ -271,7 +306,7 @@ def main():
         return 1
     print(
         "check-mailgun-footer-coverage: all assertions passed (negative controls "
-        "(a)/(b)/(c)/(e)/(f) observed FAILING; baseline and restore observed PASSING)."
+        "(a)/(b)/(c)/(e)/(f), incl. gh-2439 holes 1-3, observed FAILING; baseline and restore observed PASSING)."
     )
     return 0
 
