@@ -122,6 +122,10 @@ const REDIRECT_MAP: Record<string, string> = {
     '/locations/knox-county-tn/roofing/',
   '/locations/shelby-county-tn/roofing/index.html':
     '/locations/shelby-county-tn/roofing/',
+  '/locations/jackson-county-mo/roofing/index.html':
+    '/locations/jackson-county-mo/roofing/',
+  '/locations/st-louis-county-mo/roofing/index.html':
+    '/locations/st-louis-county-mo/roofing/',
 };
 
 export default async (req: Request, context: any) => {
