@@ -346,3 +346,22 @@ the empty-allow-list state. If a nightly regeneration is wanted after a state is
 added, the job needs no Supabase secret; it is
 `python3 tools/generate_location_pages.py` followed by committing `locations/`
 and `sitemap.xml`. Adding it is a separate decision.
+
+## After publish: tell search engines (IndexNow, gh-2423)
+
+Once a publish is live on otterquote.com, submit the changed pages:
+
+```
+python3 tools/indexnow_submit.py --since <previous published sha> --send
+```
+
+Drop `--send` for a dry run (prints the payload, sends nothing; this is the
+default). `--urls <file or list>` submits specific URLs; with no option it submits
+every sitemap URL. The script refuses any URL not on otterquote.com and refuses to
+send unless the live key file `https://otterquote.com/<key>.txt` is served as
+text/plain with the right content. The key is public by design (it is served from
+the site), so it lives in the repo as a root `<32-hex>.txt` file.
+
+Run it after the publish, not at merge: merges are published by hand later, and an
+automatic send at merge time would announce URLs that are not live yet. There is
+deliberately no GitHub Actions step for this.
