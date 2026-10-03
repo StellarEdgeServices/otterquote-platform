@@ -1226,7 +1226,7 @@ def page_seed(county: str, trade: str) -> int:
 # ---------------------------------------------------------------------------
 
 SEASONAL = [
-    "<p>The repair calendar in {region} has a shape worth planning around. Spring storm season generates the damage; early summer is when adjusters and contractors are busiest; late summer and fall often bring a different mix of contractor schedules and working weather; and winter narrows the options for exterior work while freeze-thaw cycles compound anything left unrepaired. Many homeowners in {county} County aim to move from documentation to a signed contract before mid-fall, ahead of both the post-storm rush and winter.</p>",
+    "<p>The repair calendar in {region} has a shape worth planning around. Spring storm season generates the damage; early summer is when adjusters and contractors are busiest; late summer and fall often bring a different mix of contractor schedules and working weather; and winter narrows the options for exterior work while freeze-thaw cycles compound anything left unrepaired. Exterior roofing work is often easier to schedule before winter weather sets in, so moving from documentation to a signed contract by mid-fall can help avoid both the post-storm rush and winter.</p>",
     "<p>Timing matters in {county} County. Damage discovered in May joins every other storm claim in {region} in the line for adjuster and contractor attention; the same repair scoped in September may meet a different queue. Documentation is the part that does not depend on the calendar: photograph damage once it is safe and note the date for your adjuster. Ask your insurer whether your policy sets a deadline for reporting damage.</p>",
     "<p>Most exterior repair work in {county} County happens in a window that runs roughly from late spring through late fall. Inside that window, post-storm weeks can be congested, and quotes gathered in a hurry may be harder to compare; the weeks after the rush can be a calmer time to review bids. Whatever the calendar says, the sequence stays the same: document first, understand your policy second, compare any written bids you receive third — and take your time rather than rushing to agree with the first person who knocks on the door.</p>",
     "<p>Storm damage in {region} can arrive in clusters: a single hail event can affect many roofs, gutters, and siding elevations in an area at once. Comparing more than one written bid for the same scope is one way homeowners check pricing when demand spikes.</p>",
@@ -1308,7 +1308,7 @@ ISSUE_ITEMS_PER_PAGE = 5
 EXPECTATIONS_A = [
     "<p>Storm repair in {county} County follows a rhythm locals know well: a severe-weather event, a wave of door-knocking crews from out of the area, and then the slower, quieter work of getting damage documented, questions raised with your insurer, and a repair scoped carefully. Many homeowners find it helps to slow the process down at the start — documenting damage before tarps and repairs change the evidence, reading their policy before the first phone call, and getting more than one written bid before signing anything.</p>",
     "<p>Homeowners in {county} County navigating a storm claim juggle three parallel tracks: the insurance process (adjuster inspection, scope, settlement), the contractor process (bids, scheduling, materials), and their own documentation. Keeping those tracks separate is the single most useful habit — your insurer decides coverage under your policy; your contractor determines what the repair actually requires; and written bids give you something concrete to discuss with your adjuster.</p>",
-    "<p>The practical sequence for {county} County homeowners after storm damage: document everything with photos before any cleanup, review your policy and ask your insurer how to report damage, and gather written repair bids so you have a written scope and pricing to discuss with your adjuster. Nothing in that sequence requires committing to a contractor early — you can keep your options open while you review any written bids you receive.</p>",
+    "<p>The practical sequence for {county} County homeowners after storm damage: document everything with photos before any cleanup, review your policy and ask your insurer how to report damage, and gather written repair bids so you can compare scope and pricing side by side. Nothing in that sequence requires committing to a contractor early — you can keep your options open while you review any written bids you receive.</p>",
 ]
 
 EXPECTATIONS_B = [
@@ -1332,7 +1332,7 @@ FAQ = {
         ("Is one roofing bid enough?",
          "Comparing bids can surface scope differences and give you a way to check pricing, particularly during post-storm demand spikes."),
         ("Should I repair or replace after partial-slope damage?",
-         "Shingle availability and the age of the roof both come into it; ask your adjuster how your policy addresses matching. Written bids that price both paths give you and your adjuster something concrete to discuss."),
+         "Shingle availability and the age of the roof both come into it; your insurer can tell you how your policy addresses matching. Written bids that price both paths let you compare the two side by side."),
         ("Do I need to be home when my contractor or insurer inspects the roof?",
          "For the exterior portion, usually not — but being present means you see the documented damage yourself and can ask questions of whoever inspects the roof."),
     ],
@@ -1470,9 +1470,7 @@ def build_page(county: str, trade: str, generated_on: str, state: str = "IN", pr
         "@type": "BreadcrumbList",
         "itemListElement": [
             {"@type": "ListItem", "position": 1, "name": "Home", "item": f"{SITE_BASE}/"},
-            {"@type": "ListItem", "position": 2, "name": "Locations", "item": f"{SITE_BASE}/locations/"},
-            {"@type": "ListItem", "position": 3, "name": f"{county} County, {state}", "item": f"{SITE_BASE}/locations/{c_slug}/"},
-            {"@type": "ListItem", "position": 4, "name": t_label, "item": page_url},
+            {"@type": "ListItem", "position": 2, "name": f"{county} County, {state} {t_label.lower()}", "item": page_url},
         ],
     }
 
@@ -1545,7 +1543,7 @@ def build_page(county: str, trade: str, generated_on: str, state: str = "IN", pr
 <main>
   <div class="loc-hero">
     <div class="breadcrumb" data-boilerplate>
-      <a href="/">Home</a> &rsaquo; <a href="/locations/">Locations</a> &rsaquo; {county_esc} County, {state} &rsaquo; {t_label}
+      <a href="/">Home</a> &rsaquo; {county_esc} County, {state} {t_label.lower()}
     </div>
     <div style="padding: var(--sp-8) var(--sp-6) 0;">
       <h1>Comparing {noun_title} Bids in {county_esc} County, {state_name}</h1>

@@ -304,7 +304,39 @@ class GeneratorTests(unittest.TestCase):
         self.assertIsNotNone(summary["min_unshared_shingles"])
         self.assertLessEqual(summary["min_unshared_shingles"], summary["median_unshared_shingles"])
 
-    # (d) committed allow-list is empty --------------------------------------
+    def test_generated_pages_link_only_to_existing_locations_urls(self):
+        # R1 (review of #2482): every internal /locations/ href and every JSON-LD URL under
+        # /locations/ must be the page's own canonical or another generated page.
+        self.run_fx()
+        pages = sorted(self.out.glob("*/*/index.html"))
+        self.assertGreater(len(pages), 0)
+        urls = {f"{glp.SITE_BASE}/locations/{p.parent.parent.name}/{p.parent.name}/" for p in pages}
+        def walk(o):
+            if isinstance(o, dict):
+                for v in o.values():
+                    yield from walk(v)
+            elif isinstance(o, list):
+                for v in o:
+                    yield from walk(v)
+            elif isinstance(o, str):
+                yield o
+        for p in pages:
+            own = f"{glp.SITE_BASE}/locations/{p.parent.parent.name}/{p.parent.name}/"
+            html_text = p.read_text(encoding="utf-8")
+            found = []
+            for h in re.findall(r'href="([^"]*)"', html_text):
+                if h.startswith("/locations") or h.startswith(glp.SITE_BASE + "/locations"):
+                    found.append(h if h.startswith("http") else glp.SITE_BASE + h)
+            for blk in re.findall(r'<script type="application/ld\+json">(.*?)</script>', html_text, re.S):
+                for sv in walk(json.loads(blk)):
+                    if sv.startswith(glp.SITE_BASE + "/locations"):
+                        found.append(sv)
+            self.assertIn(own, found)  # canonical / breadcrumb self-reference is present
+            for u in found:
+                with self.subTest(page=str(p.relative_to(self.out)), url=u):
+                    self.assertIn(u, urls)
+
+    # (d) committed allow-list states have committed profiles --------------------------------------
     def test_committed_allowlist_states_have_committed_profiles(self):
         # Invariant (replaces the launch-day "allow-list is empty" pin): every state on the
         # committed allow-list loads, has a committed profile, and is not a D-344 blocked state.
@@ -340,7 +372,7 @@ class GeneratorTests(unittest.TestCase):
     # state support is explicit, never silent --------------------------------
     def test_allowlisted_state_without_profile_is_an_explicit_error(self):
         with self.assertRaises(glp.StateConfigError) as cm:
-            # OH has county data; the injected profiles dir is empty, so it has no profile.
+            # OH has county data; the injected profiles dir holds only the ZZ fixture, so OH has no profile.
             self.run_gen(["OH"], profiles_dir=self.fx_profiles)
         self.assertIn("no state profile", str(cm.exception))
         self.assertFalse(self.out.exists())
