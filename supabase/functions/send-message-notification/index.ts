@@ -269,7 +269,9 @@ export async function handler(
       // Sender is homeowner, find the contractor
       const { data: quote, error: quoteError } = await supabase
         .from("quotes")
-        .select("contractor_id, contractors:contractor_id(user_id, profiles:profiles(email, full_name))")
+        // gh-2478: no contractors -> profiles foreign key exists (PGRST200); the
+        // contractor profile is loaded by user_id in the query below.
+        .select("contractor_id, contractors:contractor_id(user_id)")
         .eq("claim_id", claim.id)
         .eq("status", "selected")
         .single();

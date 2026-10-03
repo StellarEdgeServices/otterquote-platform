@@ -80,5 +80,14 @@ for (const f of ['dashboard.html', 'contractor-dashboard.html']) {
   ok(/const SEND_FUNCTION_URL = "https:\/\/[a-z0-9]+\.supabase\.co\/functions\/v1\/send-message-notification"/.test(src), `${f}: SEND_FUNCTION_URL is the Supabase function URL`);
 }
 
+// gh-2478: contractors has no FK to profiles (PostgREST PGRST200), so no embed of profiles
+// under contractors( may appear in the messaging pages.
+for (const f of ['dashboard.html', 'contractor-dashboard.html']) {
+  const src = read(f);
+  ok(!src.includes('profiles:profiles'), `${f}: no profiles:profiles embed`);
+  const bad = (src.match(/\.select\("[^"\n]*"\)/g) || []).filter((q) => /contractors\((?:[^()]|\([^()]*\))*profiles/.test(q));
+  ok(bad.length === 0, `${f}: no profiles embed inside a contractors( select (found ${bad.length})`);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

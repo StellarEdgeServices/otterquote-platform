@@ -3515,7 +3515,7 @@
 
     const { data: claims } = await sb
       .from("claims")
-      .select("id, property_address, selected_contractor_id, quotes(contractor_id, contractors(id, profiles:profiles(full_name, email)))")
+      .select("id, property_address, selected_contractor_id, quotes(contractor_id, contractors(id, user_id)))")
       .eq("user_id", userId);
 
     if (!claims || claims.length === 0) {
@@ -3560,13 +3560,25 @@
 
     const { data: claim } = await sb
       .from("claims")
-      .select("selected_contractor_id, quotes(contractor_id, contractors(profiles(full_name)))")
+      .select("selected_contractor_id, quotes(contractor_id, contractors(id, user_id))")
       .eq("id", currentClaimId)
       .single();
 
+    // gh-2478: contractors has no FK to profiles (PGRST200), so the name is a
+    // second lookup by contractors.user_id. RLS lets a user read only their own
+    // profiles row, so for a homeowner this resolves only if that policy widens;
+    // until then the "--" placeholder stays.
     if (claim?.quotes && claim.quotes.length > 0) {
-      const name = claim.quotes[0]?.contractors?.profiles?.full_name;
-      if (name) document.getElementById("contractorName").textContent = name;
+      const contractorUserId = claim.quotes[0]?.contractors?.user_id;
+      if (contractorUserId) {
+        const { data: contractorProfile } = await sb
+          .from("profiles")
+          .select("full_name")
+          .eq("id", contractorUserId)
+          .maybeSingle();
+        const name = contractorProfile?.full_name;
+        if (name) document.getElementById("contractorName").textContent = name;
+      }
     }
 
     const { data: messages, error } = await sb
