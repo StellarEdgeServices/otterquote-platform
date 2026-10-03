@@ -21,3 +21,22 @@ Deno.test("blocked-states: parseBlockedStates/normalizeState agree with notify-h
     assertEquals(local.normalizeState(i), canonical.normalizeState(i), JSON.stringify(i));
   }
 });
+
+// CTO REVIEW M1 (#2469): a failed blocked-states READ must fail closed -- the
+// checklist stage sends nothing that tick -- instead of falling back to the
+// default list (which would silently re-open any state added beyond FL/LA/TX).
+// index.ts exports no handler, so this pins the wiring at source level.
+Deno.test("blocked-states: index.ts checklist stage skips the tick on a blocked-states read error", async () => {
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  const start = src.indexOf("error: ccBlockedErr");
+  if (start < 0) throw new Error("ccBlockedErr read not found in index.ts");
+  const stage = src.slice(start);
+  const gate = stage.indexOf("if (ccBlockedErr)");
+  const firstElse = stage.indexOf("} else if (ccActivityErr)");
+  if (gate < 0 || firstElse < 0 || gate > firstElse) {
+    throw new Error("ccBlockedErr must head the checklist stage's error chain (before ccActivityErr), so a read error skips the send");
+  }
+  if (/blocked-states read failed, using default/.test(src)) {
+    throw new Error("index.ts still falls back to the default list on a blocked-states read error");
+  }
+});

@@ -888,15 +888,15 @@ serve(async (req: Request) => {
         has_estimate: boolean | null; has_measurements: boolean | null; has_material_selection: boolean | null;
       }[];
       // gh-1570 rail: same setting, same parser as notify-admin-new-homeowner
-      // (gh-2421); missing row, read error or malformed value -> FL/LA/TX.
+      // (gh-2421); missing row or malformed value -> FL/LA/TX. A READ ERROR
+      // fails closed instead (CTO REVIEW M1, #2469): the checklist stage sends
+      // nothing this tick, so a list extended beyond the default can never be
+      // silently re-opened by a transient error. pg_cron retries in 30 minutes.
       const { data: ccBlockedSetting, error: ccBlockedErr } = await supabase
         .from("platform_settings")
         .select("value")
         .eq("key", BLOCKED_STATES_SETTING_KEY)
         .maybeSingle();
-      if (ccBlockedErr) {
-        console.warn(`[${FUNCTION_NAME}] blocked-states read failed, using default FL/LA/TX:`, ccBlockedErr.message);
-      }
       const ccBlockedStates = parseBlockedStates(ccBlockedSetting?.value);
       const ccUserIds = [...new Set(ccClaimRows.map((c) => c.user_id))];
       const ccClaimIds = ccClaimRows.map((c) => c.id);
@@ -926,7 +926,9 @@ serve(async (req: Request) => {
         ccClaimIds,
       );
 
-      if (ccActivityErr) {
+      if (ccBlockedErr) {
+        console.error(`[${FUNCTION_NAME}] checklist-complete-stage skipped this tick: blocked-states read failed:`, ccBlockedErr.message);
+      } else if (ccActivityErr) {
         console.error(`[${FUNCTION_NAME}] checklist-complete-stage activity_log read failed:`, ccActivityErr.message);
       } else if (ccOptOutErr) {
         console.error(`[${FUNCTION_NAME}] checklist-complete-stage opt-out read failed:`, ccOptOutErr.message);
