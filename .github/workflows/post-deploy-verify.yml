@@ -47,3 +47,8 @@ jobs:
       # again) fails this job, the same posture as the step above.
       - name: Self-test the partner-parity D-266 per-track guard (gh-2020)
         run: python3 tools/partner_parity_check.test.py
+
+      # gh-2433: data/us-counties.json feeds the D-345 location generator;
+      # it shipped corrupt for 28 of 51 states. Pin counts + uniqueness.
+      - name: Check county data used by the location generator (gh-2433)
+        run: python3 tools/us_counties_data.test.py
