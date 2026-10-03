@@ -1485,6 +1485,11 @@ class LintTests(unittest.TestCase):
         "/guides/how-to-negotiate-with-insurer.html",
         "/blog/does-homeowners-insurance-cover-roof-damage.html",
         "/blog/what-is-recoverable-depreciation-roofing.html",
+        # gh-2480 Part 5 R1: five articles removed by 301 (no page behind these URLs any more).
+        "/blog/how-long-does-roof-insurance-claim-take-indiana.html",
+        "/blog/hail-damage-roof-inspection-first-72-hours.html",
+        "/blog/roofing-estimate-red-flags.html",
+        "/blog/when-not-to-file-roof-insurance-claim.html",
     )
 
     def test_no_generated_page_links_to_a_ruled_out_guide(self):
