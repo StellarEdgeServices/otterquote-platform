@@ -1,0 +1,206 @@
+{
+ "_readme": "State profile for tools/generate_location_pages.py (D-345). Authored by the CRO (Sloane), CRO RUN 52, claim cro-2026-10-03T00:36:49Z. Regions: NOAA climate divisions (ncei.noaa.gov/pub/data/cirs/climdiv/county-to-climdivs.txt). county_content holds roofing notes for the first counties only; every figure in it is sourced in Marketing/seo-pages/locations/*.sources.md on Dustin's PC (NOAA Storm Events Database bulk files, U.S. Census Bureau ACS, and the local building department's own pages). Counties and trades with no county_content are skipped by the strict 500-word gate.",
+ "code": "OH",
+ "name": "Ohio",
+ "regions": {
+  "northwest": {
+   "label": "northwest Ohio",
+   "counties": [
+    "Allen",
+    "Defiance",
+    "Fulton",
+    "Hancock",
+    "Henry",
+    "Lucas",
+    "Paulding",
+    "Putnam",
+    "Van Wert",
+    "Williams",
+    "Wood"
+   ],
+   "climate": [
+    "{county} County is in the Northwest division of NOAA's ten Ohio climate divisions. A division summary prepared with the Midwest Regional Climate Center describes the climate as continental and driven by the movement of pressure systems across the country. It says summers are generally quite warm in the inland areas and that winters can be cold with moderate to heavy snowfall. The same summary says lake effect reaches the northeastern corner of the division, near Toledo, when winds are easterly.",
+    "NOAA's Ohio state climate summary says annual precipitation varies regionally and places the northwestern part of the state, where {county} County sits, on the drier side compared with the southern part. It notes that winter can bring snowstorms and ice storms, and it calls thunderstorms, flood-producing rainstorms, hail and tornadoes common in the warmer months. The summary also reports a significant increase in heavy rain events across Ohio.",
+    "NWS Cleveland's report on a January 2016 lake effect event gives snowfall totals ranging from a trace in Toledo to several inches across the snowbelt of northeast Ohio and northwest Pennsylvania. The same report says most of northern Ohio received a light coating of snow from that system. For {county} County, the division summary and this event report together describe a region where lake influence is limited."
+   ]
+  },
+  "north_central": {
+   "label": "north central Ohio",
+   "counties": [
+    "Crawford",
+    "Erie",
+    "Huron",
+    "Lorain",
+    "Ottawa",
+    "Sandusky",
+    "Seneca",
+    "Wyandot"
+   ],
+   "climate": [
+    "A regional summary for the North Central division, prepared with the Midwest Regional Climate Center, calls its climate primarily continental, with larger temperature ranges than places at the same latitude beside the Great Lakes. It places the division in the snowbelt of northern Ohio, where significant lake-effect snow can occur, and says Lake Erie somewhat tempers temperatures. NOAA's county list assigns {county} County to this division.",
+    "NOAA's Ohio state climate summary describes lake-effect snow as the result of arctic air masses warmed and moistened as they cross the Great Lakes. The same summary records that Ohio's deadliest tornado, on June 28, 1924, struck the towns of Sandusky and Lorain, which lie in the North Central division with {county} County. It also states that dangerous storms can occur in every season.",
+    "The division summary adds that precipitation is well distributed through the year, with slightly more rain in late spring and early summer. NWS Cleveland's study of El Nino winters found that lake effect snow and orographic effects may mask the El Nino signal in some years at stations near the Great Lakes and the Appalachian Mountains. That study covers the lower Great Lakes, which includes {county} County."
+   ]
+  },
+  "northeast": {
+   "label": "northeast Ohio",
+   "counties": [
+    "Ashtabula",
+    "Cuyahoga",
+    "Geauga",
+    "Lake",
+    "Medina",
+    "Portage",
+    "Summit",
+    "Trumbull"
+   ],
+   "climate": [
+    "The Northeast division, which includes {county} County, has a continental climate with four distinct seasons, according to a summary prepared with the Midwest Regional Climate Center. It describes hot and humid summers and cold, snowy winters. The summary says the division receives abundant lake effect snow from mid-November until ice covers the surface of Lake Erie, which it places in late January or early February.",
+    "NWS Cleveland's report on the January 2016 lake effect event says the highest Ohio snowfall totals were recorded in Geauga County, which is in the same NOAA climate division as {county} County. It describes Lake Erie as mostly open water east of the islands, which supplied moisture for a prolonged period of snow under west to northwest winds. It also says lake effect bands vary quickly in intensity over short distances.",
+    "In its summary of the 2022-23 winter, NWS Cleveland reports that snowbelt counties east of Cleveland received 30 to 60 inches that winter, against normal amounts of 70 to over 100 inches in those areas. The same summary says the mild winter inhibited ice formation on Lake Erie, and that a mid-March lake effect event added 6 to 10 inches across eastern counties. {county} County is one of the Northeast division counties in NOAA's list."
+   ]
+  },
+  "west_central": {
+   "label": "west central Ohio",
+   "counties": [
+    "Auglaize",
+    "Champaign",
+    "Clark",
+    "Darke",
+    "Hardin",
+    "Logan",
+    "Mercer",
+    "Miami",
+    "Shelby"
+   ],
+   "climate": [
+    "NWS Wilmington's summary of April 17, 2024 confirms an EF0 tornado in Champaign County and an EF1 tornado in Delaware County. Champaign County is in the West Central division of NOAA's Ohio climate divisions, alongside {county} County. The same office's summary for that date also mentions large hail and wind, without giving sizes. NOAA's Ohio state climate summary adds that dangerous storms can occur in every season.",
+    "NWS Wilmington's summary for March 26, 2026 reports an EF1 tornado near Kenton, in Hardin County, which is part of the West Central division with {county} County. It describes several clusters of thunderstorms that developed ahead of and along a southward-advancing front, in an environment with enough instability and wind shear, and that produced hail, wind and tornadoes. NOAA's Ohio state climate summary puts such storms in context, saying winter can bring snowstorms and ice storms while convective storms are common in the warmer months.",
+    "NWS Cleveland's study of El Nino winters says winters in the Ohio Valley and lower Great Lakes averaged warmer than normal during the events it examined. It found a winter precipitation deficit in seven of the eight events studied, and below normal snowfall at many stations, particularly those away from lake effect snow areas. The study region includes {county} County."
+   ]
+  },
+  "central": {
+   "label": "central Ohio",
+   "counties": [
+    "Delaware",
+    "Fairfield",
+    "Fayette",
+    "Franklin",
+    "Licking",
+    "Madison",
+    "Marion",
+    "Morrow",
+    "Pickaway",
+    "Union"
+   ],
+   "climate": [
+    "A summary for the Central division, prepared with the Midwest Regional Climate Center, describes a humid continental climate with hot and humid summers and cool to cold winters. It calls precipitation in Ohio moderate compared with the rest of the country, and relatively consistent year-round. It also says severe weather is not uncommon in the division, including tornado threats, and {county} County is one of its counties.",
+    "The same Central division summary says gorge-like river valleys near Columbus, particularly along the Scioto and Olentangy, create microclimates that experience distinct weather from the surrounding areas. NOAA's Ohio state climate summary reports that since 2000 Columbus has averaged 22 warm nights per year, against 9 in the 1950s through 1970s. {county} County lies in the same division as Columbus.",
+    "NWS Wilmington's summary of April 17, 2024 confirms an EF1 tornado in Delaware County, which is in the Central division with {county} County. NOAA's Ohio state climate summary says dangerous storms can occur in every season, and it lists snowstorms and ice storms among winter weather. It lists thunderstorms, flood-producing rainstorms, hail and tornadoes among the convective storms it calls common in the warmer months."
+   ]
+  },
+  "central_hills": {
+   "label": "the central hills of Ohio",
+   "counties": [
+    "Ashland",
+    "Coshocton",
+    "Holmes",
+    "Knox",
+    "Richland",
+    "Wayne"
+   ],
+   "climate": [
+    "NWS Pittsburgh's severe weather climatology covers Coshocton County, which is in the Central Hills division with {county} County. The climatology looks at tornadoes from 1950 to 2020, severe winds of 58 mph or greater from 1955 to 2019, and hail of 0.75 inch or larger from 1955 to 2019. The office adds that it relies on spotters, broadcast media, cooperative observers, county officials and the public for reports.",
+    "NOAA's Ohio state climate summary says annual average temperature in Ohio has risen more than 1.5 degrees F since the beginning of the 20th century and more than 2 degrees F since the 1970s. It adds that the warming has been concentrated in winter and spring, and that summer days have not warmed substantially. {county} County is one of the Central Hills division counties in NOAA's list.",
+    "The state summary also reports a significant increase in heavy rain events in Ohio. It records that the Great Flood of 1913 was Ohio's greatest weather disaster and was one of the deadliest floods in U.S. history. It also says winter can bring snowstorms and ice storms, and that dangerous storms can occur in every season, which applies statewide including {county} County."
+   ]
+  },
+  "northeast_hills": {
+   "label": "the northeast hills of Ohio",
+   "counties": [
+    "Carroll",
+    "Columbiana",
+    "Harrison",
+    "Jefferson",
+    "Mahoning",
+    "Stark",
+    "Tuscarawas"
+   ],
+   "climate": [
+    "NWS Pittsburgh's severe weather climatology includes the Ohio counties of Carroll, Columbiana and Harrison, all part of the Northeast Hills division that also contains {county} County. It counts tornadoes from 1950 to 2020, severe winds of 58 mph or greater from 1955 to 2019, and large hail from 1955 to 2019. It also covers Jefferson County in Ohio, and it analyzes each severe weather element by month, by time of day and by year.",
+    "The Pittsburgh office notes that the threshold for severe hail changed in 2010 from 0.75 inch to 1.00 inch in diameter, though it still collects reports of hail above 0.75 inch. It states that it remains diligent in documenting every occurrence of severe weather but understands that a lot of cases go unrecorded. Any count for {county} County therefore reflects reports received, not every storm.",
+    "NWS Cleveland's El Nino study says lake effect snow and orographic effects may mask the El Nino signal in some years at stations near the Great Lakes and the Appalachian Mountains. The study also found warmer than normal winters across the Ohio Valley and lower Great Lakes during the events it examined. {county} County is within the Northeast Hills division of NOAA's climate list."
+   ]
+  },
+  "southwest": {
+   "label": "southwest Ohio",
+   "counties": [
+    "Brown",
+    "Butler",
+    "Clermont",
+    "Clinton",
+    "Greene",
+    "Hamilton",
+    "Highland",
+    "Montgomery",
+    "Preble",
+    "Warren"
+   ],
+   "climate": [
+    "NOAA's Ohio state climate summary records that the Xenia tornado, rated F5, was part of the Super Outbreak of 1974. Xenia is in Greene County, in the Southwest division that also contains {county} County. The same summary calls the Great Flood of 1913 Ohio's greatest weather disaster, and it states that dangerous storms can occur in every season. It also lists snowstorms and ice storms as winter weather in Ohio.",
+    "NWS Wilmington's summary of May 10, 2020 says thunderstorms developed along a cold front in Indiana and moved east across Ohio during the afternoon and early evening. It reports that the storms became strong to severe in many locations, and that additional thunderstorms produced hail across southern Ohio and northern Kentucky. It notes that temperatures were only in the upper 50s to lower 60s, even as the storms became strong to severe. The event covers southern Ohio, which includes {county} County.",
+    "NOAA's Ohio state climate summary says a prolonged heat wave affected the Ohio River Valley from July 17 to 24, 2011. It also says high temperatures combined with high humidity can create dangerous heat index values. The summary names extreme heat as a particular concern for the state's urban areas. {county} County is in the Southwest division of NOAA's Ohio climate divisions."
+   ]
+  },
+  "south_central": {
+   "label": "south central Ohio",
+   "counties": [
+    "Adams",
+    "Gallia",
+    "Jackson",
+    "Lawrence",
+    "Meigs",
+    "Pike",
+    "Ross",
+    "Scioto"
+   ],
+   "climate": [
+    "NOAA's Ohio state climate summary records that between March 1 and 3, 1997, 6 to 12 inches of rain fell in parts of southern Ohio. It also reports a significant increase in heavy rain events in Ohio, and it calls flood-producing rainstorms common in the warmer months. {county} County is in the South Central division of NOAA's Ohio climate divisions.",
+    "NWS Charleston's severe weather climatology covers part of southern Ohio and identifies April through July as the months when hail events cluster, with June the peak month. It reports that thunderstorm wind events are concentrated between April and August, and that hail events concentrate between 1 PM and 7 PM. Gallia, Jackson and Lawrence Counties are in its Ohio coverage and in the same division as {county} County.",
+    "The same NWS Charleston climatology says tornado events in its record cluster in the four months of April through July. It reports that tornadoes peak during the 5 to 6 PM hour and that the large majority of severe weather reports fall between 1 PM and 9 PM. These findings are for the Charleston forecast area, which includes Gallia, Jackson and Lawrence Counties of the South Central division that holds {county} County."
+   ]
+  },
+  "southeast": {
+   "label": "southeast Ohio",
+   "counties": [
+    "Athens",
+    "Belmont",
+    "Guernsey",
+    "Hocking",
+    "Monroe",
+    "Morgan",
+    "Muskingum",
+    "Noble",
+    "Perry",
+    "Vinton",
+    "Washington"
+   ],
+   "climate": [
+    "NWS Charleston's severe weather climatology says the lack of rugged steep terrain plays a role in the density of tornadoes in southeast Ohio and along the Ohio River. Its coverage includes nine southeast Ohio counties, among them Athens, Meigs, Vinton, Perry, Gallia, Jackson and Lawrence. Its report covers hail, thunderstorm wind and tornado events. {county} County is in the Southeast division of NOAA's Ohio climate divisions.",
+    "The same climatology says the large majority of thunderstorm wind events in its record fall in the months from April to August. It also states that severe weather events concentrate between 1 PM and 9 PM, with hail peaking between 2 PM and 3 PM and tornadoes peaking in the 5 to 6 PM hour. Those findings describe the Charleston forecast area, which includes southeast Ohio counties near {county} County.",
+    "NWS Pittsburgh's severe weather climatology also covers Belmont, Guernsey and Monroe Counties, which are in the same Southeast division as {county} County. It uses tornado reports from 1950 to 2020 and severe wind and hail reports from 1955 to 2019. Its authors say a lot of cases go unrecorded, so report counts are a floor and not a full record."
+   ]
+  }
+ },
+ "county_content": {
+  "Franklin": {
+   "roofing": "<h3>Storm record for Franklin County</h3>\n<p>NOAA's Storm Events Database lists 92 hail reports in Franklin County, Ohio, on 32 separate days between April 2016 and June 2026. Of those 92 NOAA reports, 50 on 21 days gave a hail diameter of 1.00 inch or more. The largest size in those reports is 1.75 inches, listed for Dublin on September 1, 2019, and for Westerville on July 24, 2023.</p>\n<p>The busiest hail day in NOAA's reports is April 17, 2024, with 10 reports naming Dublin, Gahanna, Grandview Heights, Westerville and Port Columbus airport, and a largest size of 1.00 inch. April 3, 2018 has 8 reports across Canal Winchester, Grove City, Groveport and Pleasant Corners.</p>\n<p>The same database lists 169 thunderstorm wind reports on 78 days between March 2016 and June 2026. June and July account for 93 of those reports, on 40 of the 78 days. June 10, 2020 is the heaviest day, with 13 reports.</p>\n<p>NOAA's database holds 9 tornado reports on 5 days in the county between June 2016 and March 2025: an EF0 in Columbus on June 4, 2016; an EF1 near Grove City on April 3, 2018; an EF1 filed under Hanford on September 26, 2018; five reports from the morning of February 28, 2024, rated EF0, EF1, EF0, EF0 and EF2, with the EF2 filed under Blacklick; and an EF0 in south Columbus on March 30, 2025.</p>\n<p>Counting NOAA's hail reports by month for April 2016 through June 2026, April has the largest number (33 reports on 6 days), July is second (23 reports on 7 days) and March is third (15 reports on 6 days). The 2026 entries are preliminary.</p>\n<h3>Housing stock</h3>\n<p>The U.S. Census Bureau's QuickFacts page for Franklin County shows 616,365 housing units as of July 1, 2025 (Vintage 2025 estimate). In the Bureau's DP04 housing table from the American Community Survey for 2020 to 2024, 292,123 of Franklin County's 553,099 occupied housing units, or 52.8 percent, are owner-occupied. That table counts 309,840 single-unit detached houses, 52.0 percent of its 595,469 housing units, and dates 10.9 percent of units to 1939 or earlier. Counting every decade band up to 1970 to 1979 gives 306,426 units built before 1980, which is 51.5 percent of the 2020 to 2024 count. As a general observation, the older the houses in your neighborhood, the more roofs may be past a first replacement, so know how old your own roof is before you plan.</p>\n<h3>Permits and local rules</h3>\n<p>Columbus Building and Zoning Services states on its Frequently Asked Questions page: \"The replacement of a roof, siding, windows or doors require a Roof, Siding, Windows, Doors permit.\" That permit type includes one inspection. The department's Typical Residential Projects sheet (revision BA 3/26) lists replacing a roof as needing a permit but not plan review. Neither page says how many roof layers Columbus allows or what it requires for ice barrier; check with Columbus Building and Zoning Services at 614-645-7433.</p>\n<p>The Ohio Department of Commerce describes the Ohio Construction Industry Licensing Board as licensing \"electrical, HVAC, plumbing, hydronics and refrigeration commercial contractors.\" Roofing does not appear in that description, which leaves a roofer's registration in Columbus to the city. Columbus offers a \"Home Improvement - Limited Contractor\" category for work \"limited to a specific scope (ex: roofing, decks, fencing, etc.)\" on existing one, two or three family dwellings, and its application sheet asks a limited contractor for a minimum of one full year of hands-on experience in that field. The city's online portal has a \"Search for a Contractor\" link that lists contractors by trade.</p>\n<p>If your home is in an unincorporated part of the county, the Franklin County Building Department says it is \"responsible for issuing building permits for 1-, 2- and 3-family residential structures and associated development.\" It lists Brown, Clinton, Franklin, Hamilton, Madison, Mifflin, Norwich, Pleasant, Sharon and Truro townships as places where a Certificate of Zoning Compliance comes first, through the county's Economic Development and Planning Department. That page does not mention re-roofing, so check with the Franklin County Building Department about roof work.</p>\n<h3>What to line up before you ask for bids</h3>\n<ul>\n<li>If your insurer has given you a written estimate, a copy for each bidder.</li>\n<li>The name of the office that issues roof permits where you live: Columbus Building and Zoning Services, the Franklin County Building Department, or your own city or village.</li>\n<li>If your home is in Columbus, how each bidder appears in the city portal's \"Search for a Contractor\" list.</li>\n</ul>"
+  },
+  "Cuyahoga": {
+   "roofing": "<h3>Storm record for Cuyahoga County</h3>\n<p>NOAA's Storm Events Database lists 62 hail reports in Cuyahoga County on 18 separate days between March 2017 and June 2026; its 2016 records hold no hail report for the county. Hail reports cluster in spring: in that same NOAA record, April and May account for 32 of the 62 reports, spread over 8 days, and July adds 13 reports on 3 days.</p>\n<p>The largest hail reports are recent. On April 15, 2026, NOAA's database holds 12 hail reports from Bedford, Bedford Heights, Maple Heights, Middleburg Heights, Moreland Hills, Parma, Parma Heights, Solon and Walton Hills. Two of them, in Bedford and Solon, give a stone size of 2.25 inches, the largest in the file. Earlier 2.00-inch reports are listed for Newburgh Heights on April 7, 2020, and Westlake on July 20, 2023. The 2026 file was compiled on September 18, 2026 and is preliminary, so 2026 counts may change.</p>\n<p>Thunderstorm wind is the more frequent report type: NOAA lists 219 reports on 71 days between May 2016 and June 2026. June, July and August hold 133 of them on 42 days. August alone has 72 reports on 13 days, and August 6, 2024 has 32 reports, with estimated gusts of 75 knots listed for Cleveland and Parma Heights. NOAA also lists 6 tornado reports on 3 days between June 2019 and August 2024: an EF1 near Oakwood on June 16, 2019; an EF1 on Cleveland's east side and an EF2 in Bedford Heights, both on August 24, 2023; and three EF1 reports on August 6, 2024, in the Bay Village and Brook Park areas.</p>\n<p>These are reports of weather events. They say nothing about any particular roof or address.</p>\n\n<h3>Housing stock</h3>\n<p>The Census Bureau's American Community Survey 5-year data for 2020 to 2024 (table DP04) counts 615,331 housing units in Cuyahoga County. Of the 554,551 occupied units in that 2020 to 2024 table, 329,173, or 59.4 percent, are owner-occupied. Single-unit detached houses number 365,283, or 59.4 percent of all units in the same survey.</p>\n<p>The same table puts 27.8 percent of housing units in buildings put up in 1939 or earlier. Adding the 1940s through 1970s gives 494,874 units, or 80.4 percent of the 2020 to 2024 total, built before 1980. As a general observation, the older a house is, the more roof replacements it may already have behind it, so the age of your own roof is worth checking before you plan a project.</p>\n\n<h3>Permits and local rules</h3>\n<p>Cleveland's Department of Building and Housing answers the question on its own page: \"a residential permit is required to reroof, apply siding, install gutters, doors, and windows.\" Its Division of Construction Permitting issues the permits and registers contractors. The department's home-building page says \"contractors must be bonded, insured and registered\" to build or rehabilitate Cleveland homes, and lists 216.664.2884 for registration questions. It also says homeowners who have hired a contractor \"should call 216.664.2910 to verify that their contractor is registered and should ask the contractor for copies of all permits before work begins,\" and that work \"should not be accepted prior to final inspection by a Building and Housing inspector.\" Those Cleveland pages give no layer or ice barrier requirement; ask the Cleveland Department of Building and Housing.</p>\n<p>Cleveland's rules stop at the city line. The City of Parma Heights, for one, publishes a roof permit application that lists tear-off and re-roof options, says \"One re-roof allowed (2 layers),\" and says \"Ice guard required.\" The form gives 440-884-9607 for the Parma Heights Building Department. If you live in another city, village or township, ask its building department.</p>\n<p>The Ohio Construction Industry Licensing Board's own page names the trades it licenses: electrical, HVAC, plumbing, hydronics and refrigeration. Roofing is not among them. In Cleveland, a roofer's registration is with the city's Division of Construction Permitting.</p>\n\n<h3>What to line up before you ask for bids</h3>\n<ul>\n<li>A copy of your insurer's estimate, where one exists, so each bid is written against the same scope of work.</li>\n<li>How many layers are on your roof now, and its age, since the Parma Heights form allows one re-roof and your own city may set a different limit.</li>\n<li>The name of your building department. In Cleveland, call 216.664.2910 to confirm a contractor's registration; in a suburb, call that city's own office.</li>\n<li>From each bidder, copies of all permits before work begins, as Cleveland's department advises.</li>\n</ul>"
+  },
+  "Hamilton": {
+   "roofing": "<h3>Storm record in Hamilton County</h3>\n<p>NOAA's Storm Events Database lists 57 hail reports in Hamilton County, Ohio, on 20 distinct days between April 2016 and March 2025 (NOAA's 2026 data is preliminary). Hail reports cluster in spring: 34 of those 57 NOAA reports, and 10 of the 20 days, fall in March and April, with 18 reports in March and 16 in April.</p>\n<p>The largest hail size in those reports is 2.00 inches, logged near Harrison on March 1, 2017; NOAA's narrative there reads \"Hail of 1 to 2 inches in diameter was reported in the Harrison area.\" The next largest is 1.50 inches at the Blue Ash airport on April 8, 2020. Seven reports list 1.25-inch hail, among them Forestville (April 26, 2016), Deer Park and Silverton (December 1, 2018), and Mt. Summit and Cherry Grove (May 23, 2020).</p>\n<p>Thunderstorm wind is the bigger count: NOAA lists 149 reports on 73 distinct days between March 2016 and June 2026. May, June and July account for 96 of those reports and 51 of the days. The highest gust is an estimated 87 knots at Covedale on July 13, 2016; the highest measured gust is 66 knots at Lunken Field on August 4, 2018.</p>\n<p>NOAA lists four tornado reports on three days between July 2016 and April 2020, all rated EF0: Covedale (July 13, 2016), Mt. Washington (March 1, 2017), and Bevis and Silverton (both April 8, 2020). These reports say nothing about any particular address and are not a forecast.</p>\n<h3>Housing stock</h3>\n<p>Hamilton County has an estimated 383,689 housing units as of July 1, 2025, according to the U.S. Census Bureau's QuickFacts page. The Bureau's American Community Survey 5-year table DP04 for 2020 to 2024 counts 354,739 occupied housing units in Hamilton County, and 210,407 of them, or 59.3 percent, are owner-occupied. Detached single-unit houses come to 222,028 in that table, 58.2 percent of the 381,356 units in the 2020 to 2024 survey.</p>\n<p>The DP04 table for 2020 to 2024 puts 24.9 percent of Hamilton County's housing units in buildings from 1939 or earlier. Add the four decade bands from 1940 through 1979 and the pre-1980 figure is 277,032 units, or 72.6 percent of that 2020 to 2024 count. Seen as a general observation, the more decades a house has stood, the more roof cycles it has been through, so check the age of your own roof before you plan.</p>\n<h3>Permits and local rules for a roof replacement</h3>\n<p>Inside the City of Cincinnati, the Department of Buildings and Inspections publishes a Residential Permit Guide. It says \"Construction and repairs for 1, 2, and 3 family dwellings are exempt from permit requirements as follows\" and the list includes \"Roof coverings (no more than two layers of roofing material).\" For more than two layers, or a different kind of building, check with the Department of Buildings and Inspections, which lists (513) 352-3271. The guide states no ice barrier rule, so ask the department.</p>\n<p>The same guide says \"contractors are required to be registered by the City prior to the start of work,\" and the City's contractor registration page says a registration \"must be renewed on an annual basis.\" The permit guide links the City's Find a Registered Contractor lookup. It exempts the owner of a one, two or three family dwelling only if the owner personally performs the work and will occupy the home for at least one year.</p>\n<p>Outside Cincinnati, the rules depend on where the home sits. Hamilton County Buildings and Inspections, part of Planning and Development, describes itself as \"responsible for issuing building permits in the unincorporated townships of Hamilton County and in six contract jurisdictions.\" Its page offers a Track Permit/Inspection lookup and lists 513-946-4550.</p>\n<p>At the state level, the Ohio Construction Industry Licensing Board licenses \"electrical, Heating Ventilating and Air Conditioning (HVAC), plumbing, hydronics and refrigeration contractors.\" Roofing is not named there. Inside Cincinnati, a roofer's registration is with the City, as the permit guide says.</p>\n<h3>What to line up before you ask for bids</h3>\n<ul>\n<li>The age of your roof and its number of layers, since Cincinnati's exemption refers to two.</li>\n<li>Your address's jurisdiction: City of Cincinnati, another city or village, or Hamilton County Buildings and Inspections.</li>\n<li>A written answer from each bidder on who pulls the permit, if one is needed, and the exact company name to check in Cincinnati's Find a Registered Contractor lookup.</li>\n<li>If you have received a written document from your insurer about the roof, a copy to share with each bidder.</li>\n</ul>"
+  }
+ }
+}
