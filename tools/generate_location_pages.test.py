@@ -402,6 +402,45 @@ class GeneratorTests(unittest.TestCase):
         # allowed when out_dir is the repo's locations/ (resolve only: nothing is written)
         self.assertEqual(glp.resolve_sitemap_path(glp.LOCATIONS_DIR, repo_sitemap), repo_sitemap)
 
+    def test_explicit_sitemap_inside_repo_tree_is_refused_unless_repo_locations(self):
+        out = self.tmp / "o" / "locations"
+        for inside in (REPO_ROOT / "tools" / "sitemap.xml", REPO_ROOT / "locations" / "sitemap.xml",
+                       REPO_ROOT / "data" / "x" / "sm.xml"):
+            with self.subTest(inside=str(inside)):
+                with self.assertRaises(glp.StateConfigError):
+                    glp.resolve_sitemap_path(out, inside)
+        self.assertEqual(glp.resolve_sitemap_path(out, self.tmp / "ok.xml"), self.tmp / "ok.xml")
+        # with out_dir == the repo's locations/, an explicit path is accepted (resolve only)
+        self.assertEqual(glp.resolve_sitemap_path(glp.LOCATIONS_DIR, REPO_ROOT / "tools" / "sitemap.xml"),
+                         REPO_ROOT / "tools" / "sitemap.xml")
+
+    def test_hardlink_to_the_repo_sitemap_is_refused(self):
+        import os
+        # A directory on the same filesystem as the repo but OUTSIDE the repo tree
+        # (its parent), so only the hardlink check, not the inside-repo check, can refuse.
+        try:
+            link = pathlib.Path(tempfile.mkdtemp(dir=str(REPO_ROOT.parent)))
+        except OSError as exc:
+            self.skipTest(f"no writable directory beside the repo: {exc}")
+        try:
+            hl = link / "sitemap.xml"
+            try:
+                os.link(REPO_ROOT / "sitemap.xml", hl)
+            except OSError as exc:
+                self.skipTest(f"cannot hardlink on this filesystem: {exc}")
+            before = (REPO_ROOT / "sitemap.xml").read_bytes()
+            with self.assertRaises(glp.StateConfigError):
+                glp.resolve_sitemap_path(self.tmp / "o" / "locations", hl)
+            # derived hardlink: a sitemap.xml next to out_dir that is the repo file
+            out = link / "locations"
+            with self.assertRaises(glp.StateConfigError):
+                glp.resolve_sitemap_path(out)
+            self.assertEqual((REPO_ROOT / "sitemap.xml").read_bytes(), before)
+        finally:
+            for f in link.iterdir():
+                f.unlink()
+            link.rmdir()
+
     def test_derived_sitemap_inside_the_repo_tree_is_refused(self):
         for out in (REPO_ROOT / "tools" / "x" / "locations",      # -> tools/x/sitemap.xml
                     REPO_ROOT / "locations" / "sub",              # -> locations/sitemap.xml
@@ -454,7 +493,10 @@ class GeneratorTests(unittest.TestCase):
                 page = "<main><p>visible words here</p>%s</main>" % (wrapper % words)
                 self.assertEqual(glp.main_words(page), ["visible", "words", "here"])
         for bad in ('<div hidden>x</div>', '<p style="display:none">x</p>', '<p style="visibility:hidden">x</p>',
-                    '<p style="font-size:0">x</p>'):
+                    '<p style="font-size:0">x</p>', '<span class="sr-only">x</span>',
+                    '<span class="Visually-Hidden">x</span>', '<p style="position:absolute;left:-9999px">x</p>',
+                    '<p style="clip: rect(0,0,0,0)">x</p>', '<p style="COLOR:#FFF">x</p>',
+                    '<p style="color: #ffffff">x</p>'):
             with self.subTest(bad=bad):
                 self.write_profile(lambda p: p["county_content"]["Alpha"].update(roofing=bad))
                 with self.assertRaises(glp.StateConfigError):
@@ -730,6 +772,45 @@ class LintTests(unittest.TestCase):
         ):
             with self.subTest(bad=bad):
                 self.assert_fails("<p>%s</p>" % bad)
+
+    def test_lint_rejects_round6_have_contractors_variants(self):
+        for bad in (
+            "<p>Contractors are lined up.</p>",
+            "<p>We've lined up contractors for you.</p>",
+            "<p>Otter Quotes' contractors are lined up</p>",
+            "<p>Otter Quotes\u2019 contractors are lined up</p>",
+            "<p>Otter Quotes's roofers will handle it.</p>",
+            "<p>The Otter Quotes contractors in Marion.</p>",
+            "<p>Otter Quotes contractors bid on your job.</p>",
+            "<p>Contractors from Otter Quotes bid on your job.</p>",
+            "<p>Contractors are queued up.</p>",
+            "<p>Plenty of contractors are lined up for your project.</p>",
+            "<p>Contractors have lined up.</p>",
+            "<p>Roofing contractors are waiting.</p>",
+            "<p>Otter Quotes has got a crew queued up for you.</p>",
+            "<p>We have got a crew.</p>",
+            "<p>Local contractors will line up to bid on your job.</p>",
+            "<p>Contractors have been standing by.</p>",
+            '<img alt="Marion County roofing contractors">',
+            "<p>Marion County local roofing contractors</p>",
+        ):
+            with self.subTest(bad=bad):
+                self.assert_fails(bad)
+
+    def test_lint_still_allows_the_approved_lines_and_every_indiana_page(self):
+        for ok in (
+            "Otter Quotes creates a scope of work and we send it to local contractors.",
+            "Otter Quotes does not independently verify, endorse, or warrant the quality of any contractor's work, "
+            "and does not guarantee the availability of any particular contractor.",
+            "Ask any contractor for an itemized written estimate, proof of insurance, and local references.",
+            "Comparing bids can help; you decide whether to hire any contractor.",
+        ):
+            with self.subTest(ok=ok):
+                self.lint_frag("<p>%s</p>" % ok)
+        prof = glp.load_profile("IN")
+        for c in glp.load_counties("IN"):
+            for tr in glp.ELIGIBLE_TRADES:
+                glp.compliance_lint(glp.build_page(c, tr, "x", "IN", profile=prof), f"{c}/{tr}")
 
     def test_lint_allows_negated_guarantee_and_approved_procedural_wording(self):
         for ok in (

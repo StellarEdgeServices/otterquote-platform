@@ -89,6 +89,7 @@ import datetime
 import argparse
 import statistics
 import unicodedata
+import os
 import importlib.util
 from html.parser import HTMLParser
 
@@ -153,8 +154,11 @@ FORBIDDEN_PHRASES = (
 FORBIDDEN_CASE_SENSITIVE = ("OtterQuote", "ClaimShield")
 
 # Nouns used to describe the people we would be (wrongly) claiming to have.
-_TRADESPEOPLE = r"(?:contractors?|roofers?|siders?|installers?|pros|professionals|crews|companies|providers|bidders|vendors|partners)"
+_TRADESPEOPLE = r"(?:contractors?|roofers?|siders?|installers?|pros|professionals|crews?|companies|providers|bidders|vendors|partners)"
 _PLURAL_TRADESPEOPLE = r"(?:contractors|roofers|siders|installers|pros|professionals|crews|companies|providers|bidders|vendors|partners)"
+# "Contractors are/have been/will be ... ready / lined up / queued up".
+_HELPER = r"(?:(?:are|is|were|have|has|have\s+been|will|will\s+be)\s+)?"
+_READY = r"(?:ready|standing\s+by|waiting|eager|willing|able|on\s+call|lined\s+up|line\s+up|queued(?:\s+up)?)"
 
 # D-345: phrasing that states or implies Otter Quotes HAS contractors (or
 # roofers, pros, ...) in a county. Regexes, matched case-insensitively against
@@ -168,15 +172,18 @@ HAVE_CONTRACTORS_BANS = (
     r"\bcontractors\s+(?:that|which)\s+serve\b",
     r"\bcontractors\s+serving\b",
     rf"\b{_PLURAL_TRADESPEOPLE}\s+(?:in|near|serving|across|throughout|around|covering|covers?|working\s+in|operating\s+in)\s+[^.<>]{{0,40}}?\bcounty\b",
-    rf"\bcounty\s+{_PLURAL_TRADESPEOPLE}\b",                                  # Marion County contractors
-    rf"\b{_PLURAL_TRADESPEOPLE}\s+(?:ready|standing\s+by|waiting|eager|willing|able|on\s+call|lined\s+up|line\s+up)\b",
+    rf"\bcounty\s+(?:\w+\s+){{0,2}}{_PLURAL_TRADESPEOPLE}\b",                 # Marion County (roofing) contractors
+    rf"\b{_PLURAL_TRADESPEOPLE}\s+{_HELPER}{_READY}\b",                     # contractors are lined up / waiting / queued up
+    rf"\b(?:lined|line|queued)\s+up\s+(?:\w+\s+){{0,2}}{_TRADESPEOPLE}\b",      # we've lined up contractors for you
+    rf"\botter\s+quotes(?:'s?)?\s+(?:\w+\s+){{0,2}}{_TRADESPEOPLE}\b",          # Otter Quotes' / Otter Quotes's / Otter Quotes contractors
+    rf"\b{_PLURAL_TRADESPEOPLE}\s+(?:from|with|at|through)\s+otter\s+quotes\b",
     r"\blocal\s+contractors\s+we\b",                                          # local contractors we work with / have
     r"\bcontractors\s+(?:near|around)\s+you\b",
     r"\bcontractors\s+(?:working|operating|located|based)\s+in\b",
     r"\bapproved\s+contractors?\b",
     r"\bcontractors?\s+(?:are\s+)?available\b",
     r"\bcontractors\s+on\s+(?:the\s+platform|otter\s+quotes)\b",
-    rf"\b(?:we|otter\s+quotes)(?:\s+|'ve\s+|'s\s+)(?:have\s+got|has\s+got|got|have|has|employ|employs|use|uses|work\s+with|works\s+with|partner\s+with|partners\s+with)\s+(?:\w+\s+){{0,3}}{_PLURAL_TRADESPEOPLE}\b",
+    rf"\b(?:we|otter\s+quotes)(?:\s+|'ve\s+|'s\s+)(?:have\s+got|has\s+got|got|have|has|employ|employs|use|uses|work\s+with|works\s+with|partner\s+with|partners\s+with)\s+(?:\w+\s+){{0,3}}{_TRADESPEOPLE}\b",
     r"\bconnects?\s+(?:you|homeowners|consumers|customers)\s+with\s+(?:\w+\s+)?(?:contractors|roofers|pros|professionals)\b",
     r"\bplatform\s+coverage\b",
     r"\bcontractor\s+profiles?\b",
@@ -367,7 +374,7 @@ def load_profile(state: str, profiles_dir=None) -> dict:
     raw_cc = data.get("county_content", {})
     if _HIDDEN_TEXT_IN_CONTENT.search(json.dumps(raw_cc)):
         raise bad('county_content must not contain hidden text ("hidden", display:none, visibility:hidden, '
-                  "font-size:0, opacity:0)")
+                  "font-size:0, opacity:0, sr-only, visually-hidden, far-offscreen left:, clip:, white text)")
     if not isinstance(raw_cc, dict):
         raise bad('"county_content" must be an object mapping county -> html, or county -> {trade: html}')
     for county, value in raw_cc.items():
@@ -443,8 +450,10 @@ _VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "me
 _HIDDEN_STYLE = re.compile(r"display\s*:\s*none|visibility\s*:\s*hidden|font-size\s*:\s*0\b|opacity\s*:\s*0\b",
                            re.IGNORECASE)
 _HIDDEN_TEXT_IN_CONTENT = re.compile(
-    r"\bhidden\b|display\s*:\s*none|visibility\s*:\s*hidden|font-size\s*:\s*0\b|opacity\s*:\s*0\b",
+    r"\bhidden\b|display\s*:\s*none|visibility\s*:\s*hidden|font-size\s*:\s*0\b|opacity\s*:\s*0\b"
+    r"|sr-only|visually-hidden|left\s*:\s*-\d{3,}px|clip\s*:|color\s*:\s*#?fff|color\s*:\s*white",
     re.IGNORECASE)
+_HIDDEN_CLASS = re.compile(r"\b(?:sr-only|visually-hidden)\b", re.IGNORECASE)
 
 
 def _is_hidden(attrs: dict) -> bool:
@@ -453,6 +462,8 @@ def _is_hidden(attrs: dict) -> bool:
     if "hidden" in attrs:
         return True
     if (attrs.get("aria-hidden") or "").strip().lower() == "true":
+        return True
+    if _HIDDEN_CLASS.search(attrs.get("class") or ""):
         return True
     return bool(_HIDDEN_STYLE.search(attrs.get("style") or ""))
 
@@ -1255,8 +1266,9 @@ def resolve_sitemap_path(out_dir, sitemap_path=None) -> pathlib.Path:
     derived rather than chosen, are used ONLY when out_dir is the repo's
     locations/ directory (then: the repo-root sitemap.xml).
 
-    - Explicit sitemap_path: honoured, except that the repo's sitemap.xml is
-      refused unless out_dir is locations/.
+    - Explicit sitemap_path: honoured, except that the repo's sitemap.xml (or a
+      hardlink to it) and any path inside the repo tree are refused unless
+      out_dir is locations/.
     - Derived (no sitemap_path): next to out_dir (its parent). Refused when
       out_dir is the repo root or when that location is anywhere inside the
       repo tree (tools/sitemap.xml, locations/sitemap.xml, ./sitemap.xml...);
@@ -1264,19 +1276,28 @@ def resolve_sitemap_path(out_dir, sitemap_path=None) -> pathlib.Path:
     Refusals raise StateConfigError before anything is written."""
     out_dir = pathlib.Path(out_dir)
     is_repo_locations = out_dir.resolve() == LOCATIONS_DIR.resolve()
+
+    def is_repo_sitemap(path: pathlib.Path) -> bool:
+        if path.resolve() == SITEMAP_PATH.resolve():
+            return True
+        try:   # a hardlink (or any other alias) of the repo sitemap
+            return path.exists() and os.path.samefile(path, SITEMAP_PATH)
+        except OSError:
+            return False
+
     if sitemap_path is not None:
         explicit = pathlib.Path(sitemap_path)
-        if explicit.resolve() == SITEMAP_PATH.resolve() and not is_repo_locations:
+        if not is_repo_locations and (is_repo_sitemap(explicit) or _inside_repo(explicit)):
             raise StateConfigError(
-                "REFUSED: that sitemap path is the repository's sitemap.xml, which is written only when "
-                "the output directory is the repo's locations/ directory. Use a sitemap path outside "
-                "the repository. Nothing was written."
+                "REFUSED: that sitemap path is the repository's sitemap.xml or inside the repository tree; "
+                "a sitemap there is written only when the output directory is the repo's locations/ "
+                "directory. Use a sitemap path outside the repository. Nothing was written."
             )
         return explicit
     if is_repo_locations:
         return SITEMAP_PATH
     derived = out_dir.parent / "sitemap.xml"
-    if out_dir.resolve() == REPO_ROOT.resolve() or _inside_repo(derived):
+    if out_dir.resolve() == REPO_ROOT.resolve() or _inside_repo(derived) or is_repo_sitemap(derived):
         raise StateConfigError(
             f"REFUSED: out_dir {out_dir} would put its sitemap inside the repository tree ({derived}). "
             f"Pass an explicit --sitemap PATH outside the repository, or use an out_dir whose parent "
