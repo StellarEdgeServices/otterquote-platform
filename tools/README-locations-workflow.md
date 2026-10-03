@@ -159,6 +159,13 @@ counts. A page needs 500 words that are not in such runs.
   three nonsense, and catching it is the job of the per-state R-177 read of
   `county_content`, not of this count. A genuinely different 640-word page from a shared
   vocabulary scores min 639, median 640.
+- **KNOWN LIMIT: ASCII lookalikes are not folded** (CEO ruling #2304 5965397235, round 11
+  final). The gate does not treat `I` and `l`, `rn` and `m`, `vv` and `w`, or `cl` and `d`
+  as the same text, and it does not fold `ø` or `æ`. A writer who swaps these characters in
+  copied text can make shared text count as unique. Measured: one text on 2 pages, the second
+  with `l` changed to `I`, writes 2 pages; one county's 4 trade pages varied the same way
+  write 4 of 4. The swaps are visible misspellings on the page, so catching them is the job
+  of the per-state R-177 read of `county_content`, not of this count.
 - Hidden text in the template never counts (elements with `hidden`, `aria-hidden="true"`,
   `sr-only` classes, inline `display:none` / `visibility:hidden` / `font-size:0` /
   `opacity:0`, and `<noscript>`/`<template>`). `county_content` cannot carry markup at
