@@ -1590,6 +1590,23 @@
         window.currentClaim = currentClaim;  // gh-1276 follow-up: Home Profile IIFE reads window.currentClaim
       }
 
+      // D-344 / gh-2421: blocked-state list for the homeowner gate.
+      const DEFAULT_BLOCKED_STATES = ['FL', 'LA', 'TX'];
+      async function loadBlockedStates() {
+        if (CONFIG.DEMO_MODE || !sb) return DEFAULT_BLOCKED_STATES;
+        try {
+          const { data, error } = await sb.rpc('get_homeowner_blocked_states');
+          if (error || !Array.isArray(data)) {
+            console.warn('[StateGate] blocked-state rpc failed; using default list:', error?.message || 'non-array result');
+            return DEFAULT_BLOCKED_STATES;
+          }
+          return data.map(function(s) { return String(s).toUpperCase(); });
+        } catch (err) {
+          console.warn('[StateGate] blocked-state rpc threw; using default list:', err?.message || err);
+          return DEFAULT_BLOCKED_STATES;
+        }
+      }
+
       // ── Main Initialization ──
       async function init() {
         try {
@@ -1609,10 +1626,17 @@
             await loadClaimData();
           }
 
-          // D-178: State gate — block non-IN homeowners before any UI renders
-          if (currentClaim?.property_state && currentClaim.property_state !== 'IN') {
-            showStateGateCard(currentClaim.property_state);
-            return;
+          // D-344 (amends D-178): State gate — every state is open EXCEPT the
+          // blocked list (FL, LA, TX at launch), read from platform_settings
+          // key homeowner_blocked_states via get_homeowner_blocked_states().
+          // Any rpc error or non-array result falls back to the hard-coded
+          // list so the gate never fails open to a blocked state. gh-2421.
+          if (currentClaim?.property_state) {
+            const blockedStates = await loadBlockedStates();
+            if (blockedStates.includes(String(currentClaim.property_state).toUpperCase())) {
+              showStateGateCard(currentClaim.property_state);
+              return;
+            }
           }
 
           // 2. Render UI
