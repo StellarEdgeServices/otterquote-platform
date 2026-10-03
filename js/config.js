@@ -188,6 +188,46 @@ function _oqFlushReadyCallbacks(result) {
   });
 }
 
+// ── gh-2471: recruiter-code normalisation + lookup (shared by the 11 partner signup / funnel pages) ──
+// Every page that reads `?recruit=` (hi-1/4/5, ins-1/3/5, partner-adjusters/inspectors/insurance/other/re)
+// loads this file, so the rule lives here once. It is the same normalisation recruit.html uses (gh-1648):
+// trim, upper-case, then a leading `R-` back to `r-` -- the stored shape of referral_agents.recruit_code
+// ('r-' + up to 6 of [A-Z0-9], generate_recruit_code()). The server match is an exact, case-sensitive
+// `recruit_code = <value>` (get_referral_agents_public filter and register_partner), so an un-normalised
+// URL value (`R-ABC123`, ` r-abc123 `) silently matched nobody.
+CONFIG.normRecruitCode = function (raw) {
+  return String(raw == null ? '' : raw).trim().toUpperCase().replace(/^R-/, 'r-');
+};
+
+// Resolve the active recruiter for a page load. Candidates, in order: the URL code (gh-2060 item 4: a ?recruit= on
+// THIS load wins), then the stored `cs_recruit_code`. A candidate that resolves to no active recruiter (typo,
+// inactive partner) falls through to the next one, so a mistyped URL code can no longer erase a valid stored one.
+// Returns { data, error, recruitCode } -- the shape of the supabase-js result the pages already destructure, plus
+// the normalised code that matched (or, when nothing matched, the first candidate; '' when there was none).
+CONFIG.lookupRecruiter = async function (client, urlRaw, storedRaw) {
+  var codes = [];
+  [urlRaw, storedRaw].forEach(function (raw) {
+    var c = CONFIG.normRecruitCode(raw);
+    if (c && codes.indexOf(c) === -1) codes.push(c);
+  });
+  var firstError = null;
+  for (var i = 0; i < codes.length; i++) {
+    try {
+      var res = await client
+        .rpc('get_referral_agents_public')
+        .select('id, first_name, last_name, company')
+        .eq('recruit_code', codes[i])
+        .eq('status', 'active')
+        .maybeSingle();
+      if (res && res.error) { if (!firstError) firstError = res.error; continue; }
+      if (res && res.data) return { data: res.data, error: null, recruitCode: codes[i] };
+    } catch (e) {
+      if (!firstError) firstError = e;
+    }
+  }
+  return { data: null, error: firstError, recruitCode: codes[0] || '' };
+};
+
 CONFIG.whenReady = function (cb) {
   if (_oqCreateSupabaseClient()) {
     cb(sb);
