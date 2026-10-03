@@ -12,7 +12,10 @@ script does now:
   2. For every allow-listed state, iterates (county, trade) over ALL of that
      state's counties (data/us-counties.json) x the eligible trades. Page
      discovery does NOT depend on contractors, and this script no longer
-     touches Supabase at all, so it runs with no credentials.
+     touches Supabase at all, so it runs with no credentials. Each state's
+     county-to-climate-region map and climate copy come from
+     data/location-state-profiles/XX.json (CRO-authored, no code change);
+     a missing or malformed profile is a StateConfigError before any write.
   3. Builds one static page per tuple at
        locations/[county-slug]/[trade-slug]/index.html   (repo root)
      (Netlify publishes the repo root, netlify.toml: publish = ".").
@@ -67,6 +70,7 @@ import hashlib
 import pathlib
 import datetime
 import argparse
+import statistics
 import importlib.util
 from html.parser import HTMLParser
 
@@ -134,6 +138,7 @@ HAVE_CONTRACTORS_BANS = (
     r"\bcontractors?\s+(?:are\s+)?available\b",
     r"\bcontractors\s+on\s+(?:the\s+platform|otter\s+quotes)\b",
     r"\b(?:we|otter\s+quotes)\s+(?:have|has|work\s+with|partner\s+with)\s+(?:\w+\s+){0,2}contractors\b",
+    r"\bconnects?\s+(?:you|homeowners|consumers|customers)\s+with\s+(?:\w+\s+)?contractors\b",
     r"\bplatform\s+coverage\b",
     r"\bcontractor\s+profiles?\b",
 )
@@ -153,58 +158,11 @@ def _load_vendor_tokens() -> tuple:
 
 VENDOR_TOKENS = _load_vendor_tokens()
 
-# ---------------------------------------------------------------------------
-# State profiles. A state can be allow-listed only if it has (a) a county list
-# in data/us-counties.json and (b) a profile here: the climate-band copy is
-# written per state, and we do not invent it for states we have not written.
-# Indiana is the only state with both today.
-#
-# Indiana counties with coarse climate region bands. Region drives climate
-# copy only ("northern/central/southern Indiana").
-# ---------------------------------------------------------------------------
-
-NORTHERN = (
-    "Adams", "Allen", "Benton", "Carroll", "Cass", "DeKalb", "Elkhart",
-    "Fulton", "Huntington", "Jasper", "Kosciusko", "LaGrange", "Lake",
-    "LaPorte", "Marshall", "Miami", "Newton", "Noble", "Porter", "Pulaski",
-    "St. Joseph", "Starke", "Steuben", "Wabash", "Wells", "White", "Whitley",
-)
-CENTRAL = (
-    "Bartholomew", "Blackford", "Boone", "Brown", "Clay", "Clinton",
-    "Decatur", "Delaware", "Fayette", "Fountain", "Franklin", "Grant",
-    "Hamilton", "Hancock", "Hendricks", "Henry", "Howard", "Jay", "Johnson",
-    "Madison", "Marion", "Monroe", "Montgomery", "Morgan", "Owen", "Parke",
-    "Putnam", "Randolph", "Rush", "Shelby", "Tippecanoe", "Tipton", "Union",
-    "Vermillion", "Vigo", "Warren", "Wayne",
-)
-SOUTHERN = (
-    "Clark", "Crawford", "Daviess", "Dearborn", "Dubois", "Floyd", "Gibson",
-    "Greene", "Harrison", "Jackson", "Jefferson", "Jennings", "Knox",
-    "Lawrence", "Martin", "Ohio", "Orange", "Perry", "Pike", "Posey",
-    "Ripley", "Scott", "Spencer", "Sullivan", "Switzerland", "Vanderburgh",
-    "Warrick", "Washington",
-)
-
-INDIANA_COUNTIES = NORTHERN + CENTRAL + SOUTHERN
-assert len(INDIANA_COUNTIES) == 92, f"Expected 92 Indiana counties, got {len(INDIANA_COUNTIES)}"
-assert len(set(INDIANA_COUNTIES)) == 92, "Duplicate county in INDIANA_COUNTIES"
-
-COUNTY_REGION = {}
-for _c in NORTHERN:
-    COUNTY_REGION[_c] = "northern"
-for _c in CENTRAL:
-    COUNTY_REGION[_c] = "central"
-for _c in SOUTHERN:
-    COUNTY_REGION[_c] = "southern"
-
-COUNTY_REGION = {}
-for _c in NORTHERN:
-    COUNTY_REGION[_c] = "northern"
-for _c in CENTRAL:
-    COUNTY_REGION[_c] = "central"
-for _c in SOUTHERN:
-    COUNTY_REGION[_c] = "southern"
-
+# State profiles live in data/location-state-profiles/XX.json (county-to-climate-
+# region map plus the region climate copy), authored by the CRO. A state can be
+# allow-listed only if it has (a) a county list in data/us-counties.json and
+# (b) a valid profile file; otherwise the run fails with StateConfigError.
+PROFILES_DIR = REPO_ROOT / "data" / "location-state-profiles"
 
 # ---------------------------------------------------------------------------
 # Errors
@@ -254,26 +212,83 @@ def load_counties(state: str, counties_path=None) -> list:
     raise StateConfigError(f"{state}: no county data in {path}; cannot generate pages for this state")
 
 
-def state_profile(state: str) -> dict:
-    profile = STATE_PROFILES.get(state)
-    if profile is None:
+def load_profile(state: str, profiles_dir=None) -> dict:
+    """Load and validate data/location-state-profiles/<state>.json.
+
+    Returns {"name", "county_region", "region_label", "region_climate"}.
+    A missing or malformed profile raises StateConfigError (never a silent
+    skip, never a traceback from deep inside page building).
+    """
+    path = pathlib.Path(profiles_dir or PROFILES_DIR) / f"{state}.json"
+    if not path.exists():
         raise StateConfigError(
-            f"{state}: no state profile in tools/generate_location_pages.py (STATE_PROFILES). "
-            f"Climate copy is written per state and is not invented; add a profile before allow-listing {state}."
+            f"{state}: no state profile at {path}. Climate copy is written per state by the CRO "
+            f"and is not invented; add the profile (see tools/README-locations-workflow.md) "
+            f"before allow-listing {state}."
         )
-    return profile
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except ValueError as exc:
+        raise StateConfigError(f"{state}: profile {path} is not valid JSON: {exc}")
+
+    def bad(msg):
+        return StateConfigError(f"{state}: malformed profile {path}: {msg}")
+
+    if not isinstance(data, dict):
+        raise bad("top level must be a JSON object")
+    if data.get("code") != state:
+        raise bad(f'"code" must be "{state}"')
+    name = data.get("name")
+    if not (isinstance(name, str) and name.strip()):
+        raise bad('"name" must be a non-empty string')
+    regions = data.get("regions")
+    if not (isinstance(regions, dict) and regions):
+        raise bad('"regions" must be a non-empty object')
+
+    county_region, region_label, region_climate = {}, {}, {}
+    for key, reg in regions.items():
+        if not isinstance(reg, dict):
+            raise bad(f'region "{key}" must be an object')
+        label = reg.get("label")
+        counties = reg.get("counties")
+        climate = reg.get("climate")
+        if not (isinstance(label, str) and label.strip()):
+            raise bad(f'region "{key}": "label" must be a non-empty string')
+        if not (isinstance(counties, list) and counties and all(isinstance(c, str) and c for c in counties)):
+            raise bad(f'region "{key}": "counties" must be a non-empty list of strings')
+        if not (isinstance(climate, list) and climate and all(isinstance(c, str) and c.strip() for c in climate)):
+            raise bad(f'region "{key}": "climate" must be a non-empty list of strings')
+        for text in climate:
+            if "{county}" not in text:
+                raise bad(f'region "{key}": every climate paragraph must contain the {{county}} placeholder')
+            try:
+                text.format(county="X")
+            except (KeyError, IndexError, ValueError) as exc:
+                raise bad(f'region "{key}": climate paragraph has an invalid placeholder ({exc!r}); only {{county}} is allowed')
+        for c in counties:
+            if c in county_region:
+                raise bad(f'county "{c}" appears in more than one region')
+            county_region[c] = key
+        region_label[key] = label
+        region_climate[key] = climate
+    return {"name": name, "county_region": county_region,
+            "region_label": region_label, "region_climate": region_climate}
 
 
-def validate_states(states: list, counties_path=None) -> None:
-    """Fail loudly, before anything is written, if any state is unsupported."""
+def validate_states(states: list, counties_path=None, profiles_dir=None) -> dict:
+    """Fail loudly, before anything is written, if any state is unsupported.
+    Returns {state: profile}."""
+    profiles = {}
     for st in states:
-        profile = state_profile(st)
+        profile = load_profile(st, profiles_dir)
         counties = load_counties(st, counties_path)
         unknown = [c for c in counties if c not in profile["county_region"]]
         if unknown:
             raise StateConfigError(
                 f"{st}: counties in the data file with no climate-region mapping in the profile: {unknown}"
             )
+        profiles[st] = profile
+    return profiles
 
 
 def discover_tuples(states: list, counties_path=None) -> list:
@@ -349,10 +364,33 @@ def unique_word_count(html_text: str) -> int:
     return len(p.words)
 
 
+def _jsonld_strings(html_text: str) -> str:
+    """All string values from the page's JSON-LD blocks, decoded, so the lint
+    sees them exactly as a crawler does (the raw HTML carries \\uXXXX escapes)."""
+    out = []
+
+    def walk(node):
+        if isinstance(node, str):
+            out.append(node)
+        elif isinstance(node, dict):
+            for v in node.values():
+                walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                walk(v)
+
+    for block in re.findall(r'<script type="application/ld\+json">(.*?)</script>', html_text, flags=re.DOTALL):
+        try:
+            walk(json.loads(block))
+        except ValueError:
+            raise ComplianceError("JSON-LD block is not valid JSON")
+    return " ".join(out)
+
+
 def compliance_lint(html_text: str, page_id: str) -> None:
     """Raise ComplianceError if the page breaks the D-345 copy rule or the
     D-104 / D-168 / D-175 / D-312 bans."""
-    text = re.sub(r"\s+", " ", html_text)
+    text = re.sub(r"\s+", " ", html_text + " " + _jsonld_strings(html_text))
     lowered = text.lower()
 
     if REQUIRED_PHRASE not in lowered:
@@ -423,30 +461,6 @@ def page_seed(county: str, trade: str) -> int:
 # and per-county interpolation this produces unique >=500-word pages rather
 # than a single substituted template.
 # ---------------------------------------------------------------------------
-
-REGION_LABEL = {
-    "northern": "northern Indiana",
-    "central": "central Indiana",
-    "southern": "southern Indiana",
-}
-
-REGION_CLIMATE = {
-    "northern": [
-        "Homes in {county} County sit in the northern band of Indiana, where winters run colder and longer than the rest of the state. Freeze-thaw cycling is the quiet destroyer here: moisture works into small gaps, freezes, expands, and pries building materials apart a little further each cycle. Counties near Lake Michigan also pick up lake-effect snow loads that downstate homes rarely see, and spring brings the same severe thunderstorm and hail exposure the whole state shares.",
-        "The northern tier of Indiana, where {county} County sits, takes the state's roughest winters. Extended stretches below freezing, heavier snow accumulation, and repeated freeze-thaw swings put year-round stress on every exterior surface of a home. When spring arrives, the region trades snow load for thunderstorm season — wind, hail, and driving rain from April into July are a normal part of the calendar.",
-        "Weather works on {county} County homes from two directions. Winter in northern Indiana means sustained cold, snow load, and the freeze-thaw cycling that gradually enlarges every small opening a storm has ever made; spring and summer mean convective storms carrying hail and damaging wind across the region. Exterior systems that shrug off one season often show their weaknesses in the other, which is why local damage assessments look at the whole year, not just the last storm.",
-    ],
-    "central": [
-        "{county} County sits in central Indiana, squarely inside the Midwest's spring hail corridor. Severe thunderstorms tracking across the state from April through July drop hail and straight-line winds on this region nearly every year, and the insurance claims that follow are a routine part of homeownership here. Winters add freeze-thaw cycling that gradually works on any small gap or crack a storm has opened.",
-        "Central Indiana, home to {county} County, sees some of the state's most active severe-weather seasons. Spring and early summer bring recurring rounds of thunderstorms capable of producing damaging hail and wind gusts; late fall and winter bring ice, snow, and the freeze-thaw swings that widen every small defect left behind. Exterior damage in this region is often a multi-season story, not a single event.",
-        "Severe weather is not an occasional visitor in {county} County — it is a season. The central Indiana storm corridor produces hail and straight-line wind events most years between April and July, and the months that follow are when the damage those storms caused quietly compounds: UV exposure through the summer, moisture through the fall, and freeze-thaw pressure through the winter. Homeowners here learn to treat post-storm inspection as routine maintenance.",
-    ],
-    "southern": [
-        "{county} County lies in southern Indiana, where the climate runs warmer and more humid than the rest of the state. Storm systems riding up the Ohio Valley bring intense rain, wind, and periodic hail, while the longer humid season accelerates moisture-driven wear — rot, mold, and premature material aging — on homes that aren't kept tight. Winters are milder but still deliver enough freeze events to punish unresolved damage.",
-        "Southern Indiana's river-valley climate gives {county} County hotter summers, higher humidity, and powerful storm systems moving up from the south and west. Wind and hail events cluster in spring and early summer, and the extended warm season keeps moisture pressure on exterior materials for more months of the year than homeowners further north experience.",
-        "In {county} County, the exterior of a home fights humidity as much as it fights storms. Southern Indiana's long warm season keeps moisture working on wood, fasteners, and sealants for most of the year, so storm damage that would stay stable for months in a drier climate deteriorates faster here. The storm systems themselves arrive mostly in spring and early summer, riding the Ohio Valley with wind, hail, and heavy rain.",
-    ],
-}
 
 SEASONAL = [
     "<p>The repair calendar in {region} has a shape worth planning around. Spring storm season generates the damage; early summer is when adjusters and contractors are busiest; late summer and fall offer the best mix of contractor availability and working weather; and winter narrows the options for exterior work while freeze-thaw cycles compound anything left unrepaired. Homeowners in {county} County who move from documentation to signed contract before mid-fall generally avoid both the post-storm rush and the winter penalty.</p>",
@@ -623,18 +637,8 @@ TRADE_EXTRA_LINKS = {
 
 
 
-STATE_PROFILES = {
-    "IN": {
-        "name": "Indiana",
-        "county_region": COUNTY_REGION,
-        "region_label": REGION_LABEL,
-        "region_climate": REGION_CLIMATE,
-    },
-}
-
-
-def build_page(county: str, trade: str, generated_on: str, state: str = "IN") -> str:
-    profile = state_profile(state)
+def build_page(county: str, trade: str, generated_on: str, state: str = "IN", profile: dict = None) -> str:
+    profile = profile or load_profile(state)
     state_name = profile["name"]
     region = profile["county_region"][county]
     region_lbl = profile["region_label"][region]
@@ -678,14 +682,14 @@ def build_page(county: str, trade: str, generated_on: str, state: str = "IN") ->
         "@id": f"{SITE_BASE}/#organization",
         "name": "Otter Quotes",
         "url": f"{SITE_BASE}/",
-        "description": "Otter Quotes is an independent platform that connects homeowners with contractors for property damage repair and exterior improvement projects.",
+        "description": "Otter Quotes is an independent platform for property damage repair and exterior improvement projects. Otter Quotes creates a scope of work and we send it to local contractors, so homeowners can compare written bids.",
         "areaServed": {"@type": "State", "name": state_name},
     }
     service = {
         "@context": "https://schema.org",
         "@type": "Service",
-        "serviceType": f"{t_label} contractor bidding",
-        "name": f"{t_label} Contractor Bids — {county} County, {state}",
+        "serviceType": f"{t_label} bid comparison",
+        "name": f"{t_label} Bids — {county} County, {state}",
         "url": page_url,
         "provider": {"@id": f"{SITE_BASE}/#organization"},
         "areaServed": {
@@ -818,7 +822,7 @@ def build_page(county: str, trade: str, generated_on: str, state: str = "IN") ->
     </div>
 
     <p class="disclosure" data-boilerplate>
-      Otter Quotes is an independent, informational platform that connects homeowners with contractors for property damage repair and exterior improvement projects.
+      Otter Quotes is an independent, informational platform for property damage repair and exterior improvement projects. Otter Quotes creates a scope of work and we send it to local contractors.
       Otter Quotes does not independently verify, endorse, or warrant the quality of any contractor's work, and does not guarantee the availability of any particular contractor.
       Insurance coverage decisions are made solely by your insurer under the terms of your policy.
       Page generated {generated_on}.
@@ -885,16 +889,16 @@ def update_sitemap(generated_paths: list, generated_on: str, dry_run: bool, site
 # ---------------------------------------------------------------------------
 
 def generate(states, out_dir=None, sitemap_path=None, counties_path=None,
-             dry_run=False, build_fn=None, generated_on=None) -> dict:
+             dry_run=False, build_fn=None, generated_on=None, profiles_dir=None) -> dict:
     """Generate pages for the given allow-listed states.
 
     build_fn(county, trade, generated_on, state) -> html lets tests inject
     thin or non-compliant content. Returns a summary dict.
     """
-    build_fn = build_fn or build_page
     out_dir = pathlib.Path(out_dir or LOCATIONS_DIR)
     generated_on = generated_on or datetime.date.today().isoformat()
-    summary = {"states": list(states), "tuples": 0, "written": 0, "skipped_thin": [], "paths": []}
+    summary = {"states": list(states), "tuples": 0, "written": 0, "skipped_thin": [], "paths": [],
+               "min_unique_words": None, "median_unique_words": None}
 
     if not states:
         print("State allow-list is empty: no pages emitted. "
@@ -903,18 +907,23 @@ def generate(states, out_dir=None, sitemap_path=None, counties_path=None,
             update_sitemap([], generated_on, dry_run, sitemap_path)
         return summary
 
-    validate_states(states, counties_path)
+    profiles = validate_states(states, counties_path, profiles_dir)
+    if build_fn is None:
+        def build_fn(county, trade, generated_on, state):
+            return build_page(county, trade, generated_on, state, profile=profiles[state])
 
     tuples = discover_tuples(states, counties_path)
     summary["tuples"] = len(tuples)
     print(f"Allow-listed states: {', '.join(states)}; (county, trade) tuples: {len(tuples)}")
 
+    counts = []
     for state, county, trade in tuples:
         c_slug = county_slug(county, state)
         page_id = f"{c_slug}/{trade}"
         page_html = build_fn(county, trade, generated_on, state)
 
         wc = unique_word_count(page_html)
+        counts.append(wc)
         if wc < MIN_WORDS:
             print(f"  SKIPPED (thin, {wc} < {MIN_WORDS} unique words): {page_id}")
             summary["skipped_thin"].append(page_id)
@@ -933,6 +942,12 @@ def generate(states, out_dir=None, sitemap_path=None, counties_path=None,
             print(f"  Written: {page_path} ({wc} unique words)")
         summary["written"] += 1
         summary["paths"].append((c_slug, trade))
+
+    if counts:
+        summary["min_unique_words"] = min(counts)
+        summary["median_unique_words"] = statistics.median(counts)
+        print(f"Unique words per page (floor {MIN_WORDS}): min {summary['min_unique_words']}, "
+              f"median {summary['median_unique_words']:g} over {len(counts)} pages")
 
     update_sitemap(summary["paths"], generated_on, dry_run, sitemap_path)
     return summary
@@ -962,6 +977,8 @@ def main():
     print(f"  Tuples considered:         {summary['tuples']}")
     print(f"  Pages generated:           {summary['written']}")
     print(f"  Skipped (< {MIN_WORDS} unique words): {len(summary['skipped_thin'])}")
+    if summary["min_unique_words"] is not None:
+        print(f"  Unique words min / median:  {summary['min_unique_words']} / {summary['median_unique_words']:g}")
 
 
 if __name__ == "__main__":

@@ -13,6 +13,10 @@ closes-on mapping (issue #2422):
   (e) test_lint_rejects_*  (our contractors / vetted / connects you with
         contractors who serve / vendor name / missing required phrase)
 
+The closes-on tests use a FIXTURE state ("ZZ", county file and profile written
+to a temp dir), so they do not depend on Indiana's copy. Indiana's real profile
+is exercised separately (test_indiana_*).
+
 All output goes to a temp dir; nothing is written into the repo.
 Run: python3 tools/generate_location_pages.test.py
 """
@@ -33,6 +37,25 @@ glp = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(glp)
 
 REPO_ROOT = HERE.parent
+# Fixture state: county data + a minimal CRO-style profile, written to temp dirs.
+FIXTURE_CLIMATE = (
+    "{county} County sits in the fixture state's %s band. Winters bring freeze-thaw cycling that works on small "
+    "gaps in roofing, siding, gutters, and windows, while spring storms bring hail and damaging wind across the "
+    "region. Homeowners here deal with the same seasonal pattern each year: damage arrives in spring and early "
+    "summer, repairs cluster in the warm months, and anything left unrepaired is tested again by the next winter. "
+    "Paying attention to the calendar, documenting damage early, and comparing written bids gives homeowners in "
+    "{county} County the most control over how a storm claim turns out."
+)
+FIXTURE_COUNTIES = {"states": [{"code": "ZZ", "name": "Zedland", "counties": ["Alpha", "Beta", "Gamma"]}]}
+FIXTURE_PROFILE = {
+    "code": "ZZ",
+    "name": "Zedland",
+    "regions": {
+        "north": {"label": "northern Zedland", "counties": ["Alpha", "Beta"], "climate": [FIXTURE_CLIMATE % "northern"]},
+        "south": {"label": "southern Zedland", "counties": ["Gamma"], "climate": [FIXTURE_CLIMATE % "southern"]},
+    },
+}
+
 SITEMAP_SEED = (
     '<?xml version="1.0" encoding="UTF-8"?>\n'
     '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
@@ -53,6 +76,11 @@ class GeneratorTests(unittest.TestCase):
         self.out = self.tmp / "locations"
         self.sitemap = self.tmp / "sitemap.xml"
         self.sitemap.write_text(SITEMAP_SEED, encoding="utf-8")
+        self.fx_counties = self.tmp / "us-counties.json"
+        self.fx_counties.write_text(json.dumps(FIXTURE_COUNTIES), encoding="utf-8")
+        self.fx_profiles = self.tmp / "profiles"
+        self.fx_profiles.mkdir()
+        (self.fx_profiles / "ZZ.json").write_text(json.dumps(FIXTURE_PROFILE), encoding="utf-8")
 
     def tearDown(self):
         self._tmp.cleanup()
@@ -60,10 +88,37 @@ class GeneratorTests(unittest.TestCase):
     def run_gen(self, states, **kw):
         return quiet(glp.generate, states, out_dir=self.out, sitemap_path=self.sitemap, **kw)
 
+    def run_fx(self, states=("ZZ",), **kw):
+        return self.run_gen(list(states), counties_path=self.fx_counties, profiles_dir=self.fx_profiles, **kw)
+
+    def write_profile(self, mutate, name="ZZ"):
+        prof = json.loads(json.dumps(FIXTURE_PROFILE))
+        mutate(prof)
+        (self.fx_profiles / f"{name}.json").write_text(json.dumps(prof), encoding="utf-8")
+
     # (a) positive -----------------------------------------------------------
     def test_zero_contractor_county_emits_indexable_compliant_page(self):
-        # No contractor data is read or passed anywhere: every county is a
-        # "zero contractors" county. Marion is the largest; use a small one too.
+        # No contractor data exists anywhere in this flow: every county is a
+        # "zero contractors" county. Fixture state, fixture profile.
+        summary = self.run_fx()
+        self.assertEqual(summary["written"], 3 * 4)
+        self.assertEqual(summary["skipped_thin"], [])
+        for county, trade in (("Alpha", "roofing"), ("Gamma", "windows")):
+            slug = glp.county_slug(county, "ZZ")
+            page = (self.out / slug / trade / "index.html").read_text(encoding="utf-8")
+            self.assertNotRegex(page, r'(?i)<meta[^>]+name="robots"')
+            self.assertNotIn("noindex", page.lower())
+            self.assertGreaterEqual(glp.unique_word_count(page), glp.MIN_WORDS)
+            self.assertIn("send it to local contractors", page)
+            glp.compliance_lint(page, f"{slug}/{trade}")  # must not raise
+            self.assertIn('<link rel="canonical"', page)
+            self.assertEqual(page.count('application/ld+json'), 3)  # JSON-LD kept
+        sm = self.sitemap.read_text(encoding="utf-8")
+        self.assertEqual(sm.count("/locations/"), 3 * 4)
+        self.assertIn("https://otterquote.com/locations/alpha-county-zz/roofing/", sm)
+        self.assertNotIn("connects homeowners with contractors", page)
+
+    def test_indiana_profile_generates_every_page(self):
         summary = self.run_gen(["IN"])
         self.assertEqual(summary["written"], 92 * 4)
         self.assertEqual(summary["skipped_thin"], [])
@@ -93,9 +148,11 @@ class GeneratorTests(unittest.TestCase):
 
     # (b) negative: under the unique-word floor ------------------------------
     def test_thin_county_emits_no_page(self):
+        profile = glp.load_profile("ZZ", self.fx_profiles)
+
         def thin_for_ohio(county, trade, generated_on, state):
-            real = glp.build_page(county, trade, generated_on, state)
-            if county != "Ohio":
+            real = glp.build_page(county, trade, generated_on, state, profile=profile)
+            if county != "Alpha":
                 return real
             return (
                 "<!DOCTYPE html><html><head><title>t</title></head><body><main>"
@@ -103,12 +160,12 @@ class GeneratorTests(unittest.TestCase):
                 "</main></body></html>"
             )
 
-        summary = self.run_gen(["IN"], build_fn=thin_for_ohio)
+        summary = self.run_fx(build_fn=thin_for_ohio)
         self.assertEqual(sorted(summary["skipped_thin"]),
-                         sorted(f"ohio-county-in/{t}" for t in glp.ELIGIBLE_TRADES))
-        self.assertFalse((self.out / "ohio-county-in").exists())
-        self.assertNotIn("ohio-county-in", self.sitemap.read_text(encoding="utf-8"))
-        self.assertTrue((self.out / "marion-county-in" / "roofing" / "index.html").exists())
+                         sorted(f"alpha-county-zz/{t}" for t in glp.ELIGIBLE_TRADES))
+        self.assertFalse((self.out / "alpha-county-zz").exists())
+        self.assertNotIn("alpha-county-zz", self.sitemap.read_text(encoding="utf-8"))
+        self.assertTrue((self.out / "beta-county-zz" / "roofing" / "index.html").exists())
 
     def test_boilerplate_does_not_count_toward_floor(self):
         # A page padded only with boilerplate (breadcrumb/cta/disclosure/guides
@@ -123,7 +180,7 @@ class GeneratorTests(unittest.TestCase):
 
     # (c) negative: state not on the allow-list ------------------------------
     def test_state_not_on_allowlist_emits_no_page(self):
-        summary = self.run_gen([])  # IN exists in the data but is not listed
+        summary = self.run_fx(states=[])  # ZZ has data + profile but is not listed
         self.assertEqual(summary["written"], 0)
         self.assertFalse(self.out.exists())
         self.assertEqual(self.sitemap.read_text(encoding="utf-8"), SITEMAP_SEED)
@@ -170,8 +227,53 @@ class GeneratorTests(unittest.TestCase):
             glp.load_allowlist(f)
 
     def test_indiana_profile_matches_county_data(self):
-        self.assertEqual(sorted(glp.load_counties("IN")), sorted(glp.INDIANA_COUNTIES))
-        self.assertEqual(len(glp.INDIANA_COUNTIES), 92)
+        prof = glp.load_profile("IN")
+        self.assertEqual(sorted(glp.load_counties("IN")), sorted(prof["county_region"]))
+        self.assertEqual(len(prof["county_region"]), 92)
+        self.assertEqual(prof["name"], "Indiana")
+        self.assertEqual(set(prof["region_label"]), {"northern", "central", "southern"})
+
+    def test_committed_profiles_are_only_indiana(self):
+        names = sorted(p.name for p in (REPO_ROOT / "data" / "location-state-profiles").glob("*.json"))
+        self.assertEqual(names, ["IN.json"])
+
+    def test_malformed_profiles_are_explicit_errors_before_any_write(self):
+        cases = {
+            "not json": None,
+            "wrong code": lambda p: p.update(code="QQ"),
+            "no name": lambda p: p.pop("name"),
+            "no regions": lambda p: p.update(regions={}),
+            "empty climate": lambda p: p["regions"]["north"].update(climate=[]),
+            "climate lacks {county}": lambda p: p["regions"]["north"].update(climate=["no placeholder here"]),
+            "bad placeholder": lambda p: p["regions"]["north"].update(climate=["{county} {nope}"]),
+            "county in two regions": lambda p: p["regions"]["south"].update(counties=["Gamma", "Alpha"]),
+            "county unmapped": lambda p: p["regions"]["south"].update(counties=["Gamma"]) or p["regions"]["north"].update(counties=["Alpha"]),
+        }
+        for label, mutate in cases.items():
+            with self.subTest(label):
+                if mutate is None:
+                    (self.fx_profiles / "ZZ.json").write_text("{not json", encoding="utf-8")
+                else:
+                    self.write_profile(mutate)
+                with self.assertRaises(glp.StateConfigError):
+                    self.run_fx()
+                self.assertFalse(self.out.exists())
+
+    def test_missing_profile_is_an_explicit_error(self):
+        (self.fx_profiles / "ZZ.json").unlink()
+        with self.assertRaises(glp.StateConfigError) as cm:
+            self.run_fx()
+        self.assertIn("no state profile", str(cm.exception))
+
+    def test_run_reports_min_and_median_unique_words(self):
+        summary = self.run_fx()
+        self.assertGreaterEqual(summary["min_unique_words"], glp.MIN_WORDS)
+        self.assertGreaterEqual(summary["median_unique_words"], summary["min_unique_words"])
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            glp.generate(["ZZ"], out_dir=self.tmp / "o2", sitemap_path=self.sitemap,
+                         counties_path=self.fx_counties, profiles_dir=self.fx_profiles)
+        self.assertRegex(buf.getvalue(), r"Unique words per page \(floor 500\): min \d+, median \d+")
 
     def test_no_contractor_or_supabase_dependency_remains(self):
         for dead in ("MIN_CONTRACTORS", "inject_noindex", "NOINDEX_TAG", "supabase_get",
@@ -202,6 +304,30 @@ class LintTests(unittest.TestCase):
     def test_lint_rejects_connects_you_with_contractors_who_serve(self):
         with self.assertRaises(glp.ComplianceError):
             self.lint("Otter Quotes connects you with contractors who serve Ohio County.")
+
+    def test_lint_rejects_connects_homeowners_with_contractors(self):
+        for bad in ("Otter Quotes connects homeowners with contractors.",
+                    "Otter Quotes connects you with contractors."):
+            with self.subTest(bad=bad):
+                with self.assertRaises(glp.ComplianceError):
+                    self.lint(bad)
+
+    def test_lint_scans_jsonld_including_escaped_text(self):
+        # The banned phrase hides in a JSON-LD string, with a \u escape so a
+        # raw-HTML substring match alone would miss it.
+        ld = '{"description": "Our\\u0020contractors will call", "@type": "Service"}'
+        page = self.GOOD.replace("<main>", '<script type="application/ld+json">%s</script><main>' % ld)
+        with self.assertRaises(glp.ComplianceError):
+            glp.compliance_lint(page, "t/t")
+
+    def test_generated_jsonld_and_disclosure_use_approved_framing(self):
+        prof = glp.load_profile("IN")
+        page = glp.build_page("Ohio", "roofing", "2026-01-01", "IN", profile=prof)
+        self.assertNotIn("connects homeowners with contractors", page)
+        self.assertNotIn("Contractor Bids", page)
+        ld = glp._jsonld_strings(page)
+        self.assertIn("send it to local contractors", ld)
+        self.assertIn("Roofing Bids — Ohio County, IN", ld)
 
     # the rest of the have-contractors list
     def test_lint_rejects_other_have_contractors_phrasing(self):

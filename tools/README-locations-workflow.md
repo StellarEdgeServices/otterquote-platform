@@ -38,19 +38,27 @@ With an empty list the generator emits nothing and prints
 `State allow-list is empty: no pages emitted.` No page publishes until a state
 is added.
 
-**How a state is added** (after its D-344 statute search is complete):
+### How to add a state
 
-1. Confirm the state's statute search is done and recorded (D-344 trigger a).
-2. Confirm `data/us-counties.json` has the state's county list, and that
-   `STATE_PROFILES` in `tools/generate_location_pages.py` has a profile for it
-   (county-to-climate-region map and the region climate copy). Climate copy is
-   written per state and is not invented. **Indiana is the only state with a
-   profile today.** Allow-listing a state that lacks county data or a profile
-   fails the run with an explicit error before anything is written.
-3. Add the two-letter code to `"states"` in a PR, and get the page copy
-   reviewed (Dustin / CRO own copy).
-4. Run the generator, review the output, and commit `locations/` and
-   `sitemap.xml` in that PR.
+statute search clears (D-344) -> CRO writes `data/location-state-profiles/XX.json`
+-> add `XX` to the allow-list -> run the generator -> PR.
+
+1. **Statute search clears** (D-344 trigger a), and the result is recorded.
+2. **CRO writes the state profile**, `data/location-state-profiles/XX.json`
+   (no code change). Copy `IN.json` as the model; its `_readme` documents the
+   schema: `code`, `name`, and `regions`, where each region has a `label`, the
+   `counties` it contains, and one or more `climate` paragraphs (each must contain
+   `{county}`). Every county of the state in `data/us-counties.json` must appear
+   in exactly one region. Climate copy is written per state and is not invented.
+   **Indiana is the only state with a profile today.**
+3. **Add `XX` to `"states"`** in `data/location-pages-state-allowlist.json`.
+4. **Run the generator** (`--dry-run` first) and review the output. The run
+   prints the min and median unique-word count; a thin margin over 500 is
+   visible there. A missing or malformed profile, missing county data, or a
+   county with no region fails the run with an explicit `StateConfigError`
+   before anything is written.
+5. **PR**, with the page copy reviewed (Dustin / CRO own copy). Commit
+   `locations/` and `sitemap.xml` in that PR.
 
 Removing a state from the list stops regeneration and drops its URLs from the
 sitemap on the next run. It does not delete pages already on disk; delete
@@ -81,6 +89,9 @@ Enforced in the template and in `compliance_lint()`:
   [X] County", "local contractors we", "contractors near you", "approved
   contractors", "contractors available", "contractors on the platform",
   "we have ... contractors", "platform coverage", "contractor profiles".
+- Also banned: "connects you with contractors", "connects homeowners with
+  contractors". The lint scans the page HTML **and** the decoded JSON-LD strings;
+  the LocalBusiness description and the disclosure use the approved framing.
 - D-104: no "vetted" or screening claims. D-168: no response-time claims.
   D-175: brand is "Otter Quotes". D-312: no vendor names (list reused from
   `scripts/vendor-scrub-check.py`, plus Stripe, Mailgun, Twilio).
