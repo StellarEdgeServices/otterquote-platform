@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="/img/brand-assets/favicon.png">
+<title>Got the Adjuster's Estimate? Next Steps | Otter Quotes</title>
+<meta name="description" content="Your insurer&#x27;s estimate arrived and you have no contractor yet. Here is what to read, ask and compare, in order, before you sign anything.">
+<link rel="canonical" href="https://otterquote.com/guides/after-adjuster-estimate-next-steps.html">
+<meta property="og:title" content="Got the Adjuster&#x27;s Estimate? Next Steps | Otter Quotes">
+<meta property="og:description" content="Your insurer&#x27;s estimate arrived and you have no contractor yet. Here is what to read, ask and compare, in order, before you sign anything.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://otterquote.com/guides/after-adjuster-estimate-next-steps.html">
+<meta property="og:image" content="https://otterquote.com/img/otter-logo.svg">
+<meta property="og:site_name" content="Otter Quotes">
+<meta property="article:published_time" content="2026-10-03">
+
+<!-- GA4 -->
+<script src="/js/ga-gate.js"></script>
+<script src="/js/meta-pixel-gate.js"></script>
+<script>gtag('config', 'G-D1Y1TLGEFY');</script>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/design-system.css">
+<link rel="stylesheet" href="../css/nav.css">
+
+<style>
+/* Blog Article Layout */
+.page-hero {
+  padding: var(--sp-16) 0 var(--sp-12);
+  text-align: center;
+  background: radial-gradient(ellipse at 50% 0%, rgba(224,123,0,0.06) 0%, transparent 60%);
+}
+.page-hero h1 {
+  margin-bottom: var(--sp-4);
+}
+.page-hero .subtitle {
+  max-width: 700px;
+  margin: 0 auto;
+  font-size: 1.1rem;
+  color: var(--slate);
+}
+.page-hero .meta {
+  font-size: 0.9rem;
+  color: var(--gray);
+  margin-top: var(--sp-4);
+}
+
+.article-body {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 var(--sp-6);
+}
+
+.article-intro {
+  background: rgba(224, 123, 0, 0.06);
+  border-left: 4px solid var(--amber);
+  padding: var(--sp-6);
+  margin-bottom: var(--sp-10);
+  border-radius: var(--radius-md);
+}
+.article-intro p {
+  font-size: 1.05rem;
+  color: var(--slate);
+  line-height: 1.8;
+}
+
+.step {
+  margin-bottom: var(--sp-10);
+  padding-bottom: var(--sp-8);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.step:last-of-type {
+  border-bottom: none;
+}
+.step-number {
+  display: inline-block;
+  background: var(--amber);
+  color: var(--navy);
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  text-align: center;
+  line-height: 2.5rem;
+  font-weight: 700;
+  font-family: var(--font-body);
+  margin-bottom: var(--sp-3);
+}
+.step h2 {
+  margin-bottom: var(--sp-3);
+  margin-top: var(--sp-2);
+}
+.step p {
+  color: var(--slate);
+  margin-bottom: var(--sp-4);
+  line-height: 1.8;
+}
+.step ul {
+  margin-left: var(--sp-6);
+  margin-bottom: var(--sp-4);
+}
+.step li {
+  margin-bottom: var(--sp-3);
+  color: var(--slate);
+  line-height: 1.7;
+}
+.step li strong {
+  color: var(--white);
+}
+
+.highlight-box {
+  background: rgba(245, 158, 11, 0.08);
+  border-left: 4px solid #E07B00;
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+  border-radius: var(--radius-md);
+}
+.highlight-box strong {
+  color: #fbbf24;
+}
+.highlight-box, .highlight-box p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.warning-box {
+  background: rgba(239, 68, 68, 0.08);
+  border-left: 4px solid var(--red);
+  padding: var(--sp-4) var(--sp-6);
+  margin: var(--sp-6) 0;
+  border-radius: var(--radius-md);
+}
+.warning-box strong {
+  color: #f87171;
+}
+.warning-box, .warning-box p {
+  color: var(--slate);
+  line-height: 1.7;
+}
+
+.cta-box {
+  background: var(--navy-2);
+  border: 1px solid rgba(224, 123, 0, 0.2);
+  padding: var(--sp-10);
+  border-radius: var(--radius-lg);
+  margin: var(--sp-10) 0;
+  text-align: center;
+}
+.cta-box h3 {
+  color: var(--white);
+  margin-bottom: var(--sp-4);
+}
+.cta-box p {
+  color: var(--slate);
+  margin-bottom: var(--sp-6);
+  line-height: 1.6;
+}
+
+.definition-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: var(--sp-6) 0;
+}
+.definition-table th {
+  background: rgba(224, 123, 0, 0.12);
+  color: var(--amber);
+  padding: var(--sp-3) var(--sp-4);
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.9rem;
+  border-bottom: 2px solid rgba(224, 123, 0, 0.2);
+}
+.definition-table td {
+  padding: var(--sp-3) var(--sp-4);
+  color: var(--slate);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  line-height: 1.6;
+  vertical-align: top;
+}
+.definition-table tr:last-child td {
+  border-bottom: none;
+}
+.definition-table td:first-child {
+  font-weight: 600;
+  color: var(--white);
+  white-space: nowrap;
+}
+
+/* FAQ Section */
+.faq-section {
+  background: var(--navy-2);
+  padding: var(--sp-10) var(--sp-8);
+  border-radius: var(--radius-lg);
+  margin-top: var(--sp-12);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.faq-section h2 {
+  margin-bottom: var(--sp-8);
+  text-align: center;
+}
+.faq-item {
+  margin-bottom: var(--sp-6);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  padding-bottom: var(--sp-6);
+}
+.faq-item:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+.faq-item h3 {
+  color: var(--white);
+  font-family: var(--font-body);
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-bottom: var(--sp-3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  user-select: none;
+  transition: color var(--duration) var(--ease);
+}
+.faq-item h3:hover {
+  color: var(--amber);
+}
+.faq-item h3::before {
+  content: "\25B6";
+  color: var(--amber);
+  margin-right: var(--sp-3);
+  font-size: 0.8rem;
+  transition: transform 0.3s var(--ease);
+}
+.faq-item.active h3::before {
+  transform: rotate(90deg);
+}
+.faq-answer {
+  color: var(--slate);
+  line-height: 1.8;
+  display: none;
+  padding-left: var(--sp-6);
+}
+.faq-item.active .faq-answer {
+  display: block;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--amber);
+  font-size: 0.9rem;
+  font-weight: 500;
+  margin-bottom: var(--sp-8);
+  transition: color var(--duration) var(--ease);
+}
+.back-link:hover {
+  color: var(--amber-2);
+  text-decoration: none;
+}
+
+@media (max-width: 768px) {
+  .article-body {
+    padding: 0 var(--sp-4);
+  }
+  .cta-box {
+    padding: var(--sp-6) var(--sp-4);
+  }
+  .faq-section {
+    padding: var(--sp-6) var(--sp-4);
+  }
+}
+
+/* Guide pages: table scroll wrapper, quote, FAQ shown in full, button */
+.step ol { margin-left: var(--sp-6); margin-bottom: var(--sp-4); }
+.step h3 { margin-top: var(--sp-6); margin-bottom: var(--sp-3); }
+.step blockquote {
+  margin: var(--sp-4) 0;
+  padding: var(--sp-4) var(--sp-6);
+  border-left: 4px solid var(--amber);
+  background: rgba(224, 123, 0, 0.06);
+  border-radius: var(--radius-md);
+}
+.step blockquote p { margin-bottom: 0; }
+.step a { color: var(--amber); }
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: var(--sp-6) 0;
+}
+.table-wrap .definition-table { margin: 0; min-width: 480px; }
+.table-wrap .definition-table td:first-child { white-space: normal; }
+.article-intro p + p { margin-top: var(--sp-4); }
+.article-intro a { color: var(--amber); }
+.cta-box.cta-box-button { margin: var(--sp-8) 0; padding: var(--sp-8); }
+.faq-item h3 { cursor: default; }
+.faq-item h3:hover { color: var(--white); }
+.faq-item h3::before { content: none; }
+.faq-item .faq-answer { display: block; padding-left: 0; }
+</style>
+</head>
+<body>
+
+<header id="site-header"></header>
+
+<section class="page-hero">
+  <div class="container">
+    <h1>You Got the Adjuster's Estimate. Now What?</h1>
+  </div>
+</section>
+
+<section class="main">
+  <div class="article-body">
+
+    <a href="/guides/" class="back-link">&#8592; All Guides</a>
+
+    <div class="article-intro">
+      <p>The adjuster's estimate is in your inbox or mailbox, and you have not picked a contractor. Read the estimate line by line, ask your insurer about anything unclear, then collect written bids from several contractors that price the same work. Compare the bids side by side, and read every contract before you sign.</p>
+    </div>
+
+    <section class="step">
+      <h2>What is the adjuster's estimate, and what are its parts called?</h2>
+      <p>The estimate is a written document from your insurer, prepared by an adjuster, that lists repair work line by line. You may also hear it called a loss sheet or a scope of loss. Each line has a description, a quantity, a unit and a price, and the page adds up to a total.</p>
+      <p>Here are words you are likely to see:</p>
+      <ul>
+        <li><strong>Line item:</strong> one task or material, such as tear-off, shingles, underlayment, flashing or a ridge cap.</li>
+        <li><strong>Quantity and unit:</strong> how much of that item the estimate lists. Roofing is often counted in "squares," gutters in linear feet and siding in square feet.</li>
+        <li><strong>Unit price:</strong> the price listed for one unit of that item.</li>
+        <li><strong>Totals and adjustments:</strong> subtotal lines and other money lines. Depreciation, deductible and similar terms appear here. Ask your insurer what each one means on your policy.</li>
+      </ul>
+      <p>Different insurers lay the page out differently, so your document may not match another homeowner's. This guide covers what to do next.</p>
+    </section>
+
+    <section class="step">
+      <h2>How do I read the estimate myself?</h2>
+      <p>Read it slowly, one page at a time, with a pen in hand. You do not need roofing expertise for this. The goal is to know what the document says: which parts of your house it lists, what sizes and materials it names, and which words you do not understand. Write those words down as questions.</p>
+      <p>Go through the document in this order:</p>
+      <ol>
+        <li><strong>Your name, address and date of the storm.</strong> Find them on the first page, and tell your insurer if any of them is wrong.</li>
+        <li><strong>The parts of the house listed.</strong> Note which parts the estimate names, such as the roof, gutters, siding or windows, so you can describe the same job to contractors.</li>
+        <li><strong>Measurements.</strong> Find the size listed for each area, such as the number of roofing squares or the linear feet of gutter. Contractors price from these numbers. If you cannot tell what a number or unit means, write it down.</li>
+        <li><strong>Materials named.</strong> Note the type of shingle, siding or gutter the estimate names, so you can give contractors the same description.</li>
+        <li><strong>Every other line.</strong> Read every line, including any about roof slope, height and small parts, so you know what the document lists.</li>
+        <li><strong>Notes and small print.</strong> Read any paragraph of small print or comments from the adjuster, and mark any sentence you do not understand.</li>
+      </ol>
+      <p>Take photos of the estimate pages and keep the originals. Mark the words and numbers you do not understand in the margin, because you will use them in the next step.</p>
+    </section>
+
+    <section class="step">
+      <h2>What should I ask my insurer about the estimate?</h2>
+      <p>Ask your insurer to explain anything on the page you do not understand, and ask in writing when you can so you have a record. Your policy is the place to look for what applies to your claim. Your part here is to understand the document and ask clear questions about it.</p>
+      <p>Copy this list and add your own questions:</p>
+      <ul>
+        <li>Can you walk me through each section of this estimate and what the terms on it mean?</li>
+        <li>Can you show me where each part of the house I reported appears in my claim file?</li>
+        <li>Can you explain the measurements and units on this estimate?</li>
+        <li>How does my deductible apply to this estimate?</li>
+        <li>What does my policy say about depreciation?</li>
+        <li>Who is my contact for questions, and what is the best way to reach them?</li>
+        <li>Can you send me a copy of the full estimate and any photos or notes in my claim file?</li>
+        <li>What does my policy say about choosing my own contractor?</li>
+      </ul>
+      <p>Write down the date, the name of the person you spoke with and what they said. Ask for answers in writing when a phone call leaves anything unclear.</p>
+    </section>
+
+    <section class="step">
+      <h2>When and how should I get contractor bids?</h2>
+      <p>A practical time to start collecting bids is once you have the estimate in hand and have read it. Use the estimate as the shared written scope, so every contractor prices the same work. When bids describe different work, you cannot tell which price is actually lower.</p>
+      <p>Give each contractor the same document and the same questions. Then compare their bids side by side.</p>
+      <p>A useful bid lists, in writing:</p>
+      <ul>
+        <li><strong>Each line of work,</strong> with a quantity and a unit, in the same order as the estimate where possible.</li>
+        <li><strong>Materials by name,</strong> including product line, color and grade.</li>
+        <li><strong>Warranty terms,</strong> both the manufacturer's and the contractor's, with what each covers and for how long.</li>
+        <li><strong>Licensing and insurance information</strong> for the company.</li>
+        <li><strong>Cleanup, disposal and permit</strong> details.</li>
+        <li><strong>A total price</strong> and what is included in it.</li>
+        <li><strong>A proposed start window</strong> and how long the work is expected to take.</li>
+      </ul>
+      <p>When bids come back, line them up in a table like this. The estimate column is the shared scope, so you can see that every bid describes the same job:</p>
+      <div class="table-wrap">
+        <table class="definition-table">
+          <thead>
+            <tr>
+              <th>What to compare</th>
+              <th>Insurer's estimate</th>
+              <th>Contractor A</th>
+              <th>Contractor B</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Parts of the house listed</td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>Quantities and units</td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>Materials named</td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>Warranty terms</td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td>Total price</td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>A bid that is much lower or higher than the others is a reason to ask what is different, not a reason to pick or drop it. For a way to line bids up item by item, see the <a href="/guides/roof-bid-comparison-worksheet.html">roof bid comparison worksheet</a>.</p>
+    </section>
+
+    <section class="step">
+      <h2>What if a contractor's bid lists work the estimate does not?</h2>
+      <p>Two different people wrote the two documents, so they may not match. Ask the contractor to explain, in writing, any line in the bid that is not on the estimate, so you know what you would be paying for. Whether your insurer considers anything beyond its own estimate, and how, is a question for your insurer.</p>
+      <p>Otter Quotes takes no part in that conversation. Be wary of anyone who tells you the outcome in advance. Neither a contractor nor a website can know how your insurer will respond.</p>
+    </section>
+
+    <section class="step">
+      <h2>What should I read before signing anything?</h2>
+      <p>Read the whole contract, every page, and take your time. A contract is a written commitment, so know what it says before you sign. You can ask for a copy to read at home and you can ask questions about any line. Anyone pressuring you to sign on the spot is giving you information about how they work.</p>
+      <p>Before you sign, look for these items:</p>
+      <ul>
+        <li><strong>The scope of work</strong> matches the bid you chose, line by line.</li>
+        <li><strong>The price</strong> matches the bid, and the contract says what could change it and how.</li>
+        <li><strong>The payment terms:</strong> when payments are due and what each one covers.</li>
+        <li><strong>Materials and warranties</strong> are named in the contract itself, not only in a sales conversation.</li>
+        <li><strong>Cancellation terms</strong> and anything you are agreeing to give up.</li>
+        <li><strong>Any language about your insurance claim,</strong> such as authority for the contractor to speak with your insurer. Ask what each sentence means, and ask your insurer about it before you sign.</li>
+        <li><strong>Start window, completion and cleanup</strong> terms.</li>
+        <li><strong>Permits</strong> and who handles them.</li>
+      </ul>
+      <p>If any section is unclear, ask the contractor to explain it in writing. For more on collecting bids when a claim is involved, see <a href="/guides/multiple-bids-roof-insurance-claim.html">can you get multiple bids on a roof insurance claim</a>.</p>
+    </section>
+
+    <section class="step">
+      <h2>What is the order of steps from estimate to signed contract?</h2>
+      <p>Work through these steps in order, from the day the estimate arrives to the day you sign with a contractor. The list is a sequence, not a schedule, so move at the pace your situation allows, and go back a step whenever something is unclear.</p>
+      <ol>
+        <li>Save the full estimate, every page, in a safe place and make a copy.</li>
+        <li>Read it line by line and mark any word or number you do not understand.</li>
+        <li>Note the parts of the house, the sizes and the materials it lists.</li>
+        <li>Ask your insurer, in writing where you can, to explain anything you marked.</li>
+        <li>Keep a record of every answer.</li>
+        <li>Check your policy, or ask your insurer, for anything it says about choosing a contractor.</li>
+        <li>Give the same estimate to each contractor you want a bid from.</li>
+        <li>Ask for bids that list each line of work, materials, warranties and a total.</li>
+        <li>Line up the bids side by side and compare them.</li>
+        <li>Ask each contractor to explain, in writing, anything in a bid you do not understand.</li>
+        <li>Read each contract in full before you sign anything.</li>
+        <li>Sign only when you understand every line.</li>
+      </ol>
+    </section>
+
+    <section class="step">
+      <h2>Where does Otter Quotes fit?</h2>
+      <p>Otter Quotes handles the bid steps, seven through nine. You provide a copy of your insurance estimate, we create a written scope of work for your project, and we send that scope to multiple contractors. They compete online with bids on the same work, and you compare the bids next to reviews and licensing information. You sign online, with no salesperson in your home. There is no cost for homeowners who provide a copy of their insurance estimate. Contractors pay Otter Quotes a fee on the accepted bid. We do not work with your insurance company, and we do not negotiate claims.</p>
+      <div class="cta-box cta-box-button">
+        <a href="/start.html" class="btn btn-primary btn-lg">Get my bids today</a>
+      </div>
+    </section>
+
+    <section class="faq-section">
+      <h2>Frequently asked questions</h2>
+
+      <div class="faq-item">
+        <h3>What is an adjuster's estimate?</h3>
+        <div class="faq-answer">
+          <p>It is a written document from your insurer, prepared by an adjuster, that lists repair work line by line with descriptions, quantities and prices. You may also hear it called a loss sheet or a scope of loss. Read it closely and ask your insurer to explain any term you do not understand.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Should I show my contractor my insurance estimate?</h3>
+        <div class="faq-answer">
+          <p>Giving each contractor the same estimate lets them all price the same written scope, which makes bids easier to compare. Ask each one to answer in writing, line by line. If you have questions about sharing claim documents, ask your insurer or read your policy before you send anything.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>Can I ask for contractor bids while I still have questions about the estimate?</h3>
+        <div class="faq-answer">
+          <p>Requesting a bid is a conversation between you and a contractor. You can read the estimate, send questions to your insurer and collect bids as separate tasks. Ask your insurer whether your policy says anything about contractors, and keep a written record of every answer you receive.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>What if a contractor's bid is different from the estimate?</h3>
+        <div class="faq-answer">
+          <p>Differences between the two documents are worth understanding. Ask the contractor to explain in writing any line that is not on the estimate. Questions about the estimate itself go to your insurer. Otter Quotes does not work with your insurance company or negotiate claims.</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <h3>How does Otter Quotes use my insurance estimate?</h3>
+        <div class="faq-answer">
+          <p>You provide a copy of your estimate, and we create a written scope of work for your project. We send that scope to multiple contractors, who compete online with bids on the same work. There is no cost for homeowners who provide a copy of their insurance estimate. We do not work with your insurance company or negotiate claims.</p>
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+</section>
+
+<footer id="site-footer"></footer>
+
+<!-- JSON-LD Schema Markup -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "You Got the Adjuster's Estimate. Now What?",
+  "description": "Your insurer's estimate arrived and you have no contractor yet. Here is what to read, ask and compare, in order, before you sign anything.",
+  "image": "https://otterquote.com/img/otter-logo.svg",
+  "author": {
+    "@type": "Organization",
+    "name": "Otter Quotes"
+  },
+  "datePublished": "2026-10-03",
+  "dateModified": "2026-10-03",
+  "publisher": {
+    "@type": "Organization",
+    "name": "Otter Quotes",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://otterquote.com/img/otter-logo.svg"
+    }
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://otterquote.com/guides/after-adjuster-estimate-next-steps.html"
+  }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "What is an adjuster's estimate?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "It is a written document from your insurer, prepared by an adjuster, that lists repair work line by line with descriptions, quantities and prices. You may also hear it called a loss sheet or a scope of loss. Read it closely and ask your insurer to explain any term you do not understand."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Should I show my contractor my insurance estimate?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Giving each contractor the same estimate lets them all price the same written scope, which makes bids easier to compare. Ask each one to answer in writing, line by line. If you have questions about sharing claim documents, ask your insurer or read your policy before you send anything."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can I ask for contractor bids while I still have questions about the estimate?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Requesting a bid is a conversation between you and a contractor. You can read the estimate, send questions to your insurer and collect bids as separate tasks. Ask your insurer whether your policy says anything about contractors, and keep a written record of every answer you receive."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What if a contractor's bid is different from the estimate?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Differences between the two documents are worth understanding. Ask the contractor to explain in writing any line that is not on the estimate. Questions about the estimate itself go to your insurer. Otter Quotes does not work with your insurance company or negotiate claims."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "How does Otter Quotes use my insurance estimate?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "You provide a copy of your estimate, and we create a written scope of work for your project. We send that scope to multiple contractors, who compete online with bids on the same work. There is no cost for homeowners who provide a copy of their insurance estimate. We do not work with your insurance company or negotiate claims."
+      }
+    }
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": "https://otterquote.com"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "Guides",
+      "item": "https://otterquote.com/guides/"
+    },
+    {
+      "@type": "ListItem",
+      "position": 3,
+      "name": "You Got the Adjuster's Estimate. Now What?",
+      "item": "https://otterquote.com/guides/after-adjuster-estimate-next-steps.html"
+    }
+  ]
+}
+</script>
+
+<script src="../js/cookie-storage.js"></script>
+<script src="../js/config.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/nav.js"></script>
+
+<script>
+// gh-1994 phase 2 (round 2, review 5705874119 B1/N1): carry utm_*/fbclid/
+// gclid from this page's own URL onto every "Get started" CTA that points
+// at the router, on top of the oq_ft cookie fallback (gh-1983)
+// start.html's own collectAttribution() already reads -- belt and
+// suspenders for cookie-blocked browsers. No PII, same allow-list
+// start.html reads. Matches by normalized pathname, not an exact-string
+// selector, because Netlify's pretty-URL rewrite serves the on-disk
+// href="/start.html" as href="/start" (no ".html", no trailing slash) --
+// an exact-string selector never matches that served markup, only a local
+// static server without the rewrite. Also tolerates a trailing slash
+// ("/start/") and a login.html-style relative "start.html". Idempotent:
+// run once per page load, never runs twice on the same anchor.
+(function () {
+  'use strict';
+  var ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid'];
+  var params = new URLSearchParams(window.location.search);
+  var qs = '';
+  ATTR_KEYS.forEach(function (k) {
+    var v = params.get(k);
+    if (v) qs += (qs ? '&' : '?') + k + '=' + encodeURIComponent(v);
+  });
+  if (!qs) return;
+  function isStartHref(href) {
+    if (!href) return false;
+    try {
+      var p = new URL(href, window.location.href).pathname.replace(/\/+$/, '');
+      return p === '/start' || p === '/start.html';
+    } catch (e) {
+      return false;
+    }
+  }
+  document.querySelectorAll('a[href]').forEach(function (a) {
+    var href = a.getAttribute('href');
+    if (isStartHref(href)) {
+      a.setAttribute('href', href + qs);
+    }
+  });
+})();
+</script>
+</body>
+</html>

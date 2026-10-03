@@ -1,7 +1,7 @@
 /**
  * blog-guides-redirect.ts — Netlify Edge Function (gh-1745, PR #1789 fix round 1)
  *
- * Intercepts the 26 extensionless /blog/ and /guides/ paths listed below and
+ * Intercepts the 27 extensionless /blog/ and /guides/ paths listed below and
  * 301s each to its .html twin, running AHEAD of Netlify's built-in Pretty
  * URLs post-processing.
  *
@@ -23,10 +23,10 @@
  * The `_redirects` rules added for gh-1745 are left in place unchanged as
  * the documented source of truth (same convention as recruit-redirect.ts);
  * this function exists solely to win the race against Pretty URLs for
- * these 26 literal paths (gh-1745 wave 2, CRO RUN 20, widened from the
+ * these 27 literal paths (gh-1745 wave 2, CRO RUN 20, widened from the
  * original 6). Everything else on the site — every other page,
  * every other `_redirects` rule — is untouched: this matches on exact
- * pathname only, no wildcard, so it cannot catch any path outside the 26
+ * pathname only, no wildcard, so it cannot catch any path outside the 27
  * listed below.
  *
  * 301 (not a 200 rewrite like recruit-redirect.ts) because gh-1745 is a
@@ -105,6 +105,8 @@ const REDIRECT_MAP: Record<string, string> = {
     '/guides/siding-bid-comparison.html',
   '/guides/gutter-bid-comparison':
     '/guides/gutter-bid-comparison.html',
+  '/guides/after-adjuster-estimate-next-steps':
+    '/guides/after-adjuster-estimate-next-steps.html',
 };
 
 export default async (req: Request, context: any) => {
