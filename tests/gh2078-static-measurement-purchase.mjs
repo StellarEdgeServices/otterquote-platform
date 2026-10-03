@@ -35,20 +35,22 @@ function extractFn(src, name) {
 const confirmSrc = extractFn(html, 'confirmHoverPayment');
 const fireSrc = extractFn(html, 'fireMeasurementPurchase');
 const variantSrc = extractFn(html, 'getMeasurementVariant');
+const amountSrc = extractFn(html, 'measurementPurchaseFromPayment');
 
 // -- 1. static structure -------------------------------------------------------------------------------------------------------
-ok(!!confirmSrc && !!fireSrc && !!variantSrc, 'page defines confirmHoverPayment, fireMeasurementPurchase and getMeasurementVariant');
+ok(!!confirmSrc && !!fireSrc && !!variantSrc && !!amountSrc, 'page defines confirmHoverPayment, fireMeasurementPurchase, measurementPurchaseFromPayment and getMeasurementVariant');
 ok((html.match(/fireMeasurementPurchase\(/g) || []).length === 2, 'fireMeasurementPurchase is defined once and called from exactly one place');
-ok(!!confirmSrc && confirmSrc.includes('fireMeasurementPurchase(paymentIntent.id)'), 'the single call site is inside confirmHoverPayment and passes the Stripe PaymentIntent id');
+ok(!!confirmSrc && confirmSrc.includes('fireMeasurementPurchase(paymentIntent)'), 'the single call site is inside confirmHoverPayment and passes the confirmed Stripe PaymentIntent (id, amount and currency come from it)');
 if (confirmSrc) {
   const iStripeErr = confirmSrc.indexOf('if (stripeError)');
   const iStatus = confirmSrc.indexOf("paymentIntent.status !== 'succeeded'");
   const iOrder = confirmSrc.indexOf('await Services.createMeasurementOrder');
-  const iFire = confirmSrc.indexOf('fireMeasurementPurchase(paymentIntent.id)');
+  const iFire = confirmSrc.indexOf('fireMeasurementPurchase(paymentIntent)');
   ok(iStripeErr > -1 && iStatus > iStripeErr && iOrder > iStatus && iFire > iOrder, 'the purchase fires AFTER the declined-card return, the status check and the awaited order creation');
 }
-ok(/gtag\('event', 'measurement_purchase', \{ value: 15\.0, currency: 'USD', variant: variant \}\)/.test(html), 'GA4 event name and params match the React page (value 15, USD, variant)');
-ok(html.includes("{ eventID: 'measurement_purchase:' + paymentIntentId }"), "Meta eventID is 'measurement_purchase:' + paymentIntentId");
+ok(/gtag\('event', 'measurement_purchase', \{ value: purchase\.value, currency: purchase\.currency, variant: variant \}\)/.test(html), 'GA4 event name and params match the React page (value, currency, variant), with value and currency taken from the confirmed payment');
+ok(!/value:\s*15(\.0)?\b/.test((fireSrc || '') + (amountSrc || '')), 'gh-2078 LEGAL-READ 5973374792 point 3: no hard-coded 15 in the purchase function (value comes from paymentIntent.amount / 100)');
+ok(html.includes("{ eventID: 'measurement_purchase:' + paymentIntentId }") && /fbq\('track', 'Purchase', \{ value: purchase\.value, currency: purchase\.currency, variant: variant \}/.test(html), "Meta eventID is 'measurement_purchase:' + paymentIntentId");
 ok(/return `measurement_purchase:\$\{paymentIntentId\}`/.test(capi), "the server-side CAPI event_id (stripe-webhook/meta-capi.ts buildCapiEventId) is the same 'measurement_purchase:<id>' string");
 ok(/oq_ga4_measurement_purchase_fired_v1:/.test(html), 'once-only marker key matches the React page (hover-charge-storage.ts)');
 const iGa = html.indexOf('/js/ga-gate.js'), iFlag = html.indexOf('window.OQ_META_PURCHASE_ONLY = true'), iMeta = html.indexOf('/js/meta-pixel-gate.js');
@@ -61,7 +63,7 @@ const b64u = (o) => Buffer.from(JSON.stringify(o)).toString('base64').replace(/\
 const JWT = b64u({ alg: 'HS256' }) + '.' + b64u({ sub: UID }) + '.sig';
 // `account`: undefined = signed out (no session cookie); true / false = the stored profiles.ad_sharing_opt_out; 'error' = the read fails (network error);
 // 'http500' = the read answers non-200. The REAL js/meta-pixel-gate.js is loaded into the same window, so the page calls the REAL shared helper.
-async function runCheckout({ stripeResult, orderThrows = false, store = new Map(), piId = 'pi_TEST123', variant = 'e', cookie = '', gpc = false, account, noHelper = false }) {
+async function runCheckout({ stripeResult, orderThrows = false, store = new Map(), piId = 'pi_TEST123', variant = 'e', cookie = '', gpc = false, account, noHelper = false, pageUser = false, pageProfile }) {
   const calls = [];
   const ls = { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)) };
   if (variant) store.set('oq_variant_v3', variant);
@@ -85,16 +87,18 @@ async function runCheckout({ stripeResult, orderThrows = false, store = new Map(
     console: { error() {}, log() {} }, decodeURIComponent, encodeURIComponent, String, RegExp, Error, Promise, JSON, atob, URLSearchParams, setTimeout, clearTimeout,
     fetch: fetchImpl, CONFIG: { SUPABASE_URL: 'https://x.supabase.co', SUPABASE_ANON: 'anon' },
   };
+  if (pageUser) { ctx.currentUser = { id: UID }; ctx.currentProfile = pageProfile === 'unreadable' ? null : { ad_sharing_opt_out: pageProfile === true }; }
   vm.createContext(ctx);
   if (!noHelper) vm.runInContext(metaGate, ctx); // the real shared helper (and gate) on the same window
-  vm.runInContext(variantSrc + '\n' + fireSrc + '\n' + confirmSrc + '\n;this.__run = confirmHoverPayment;', ctx);
+  vm.runInContext(variantSrc + '\n' + amountSrc + '\n' + fireSrc + '\n' + confirmSrc + '\n;this.__run = confirmHoverPayment;', ctx);
   await ctx.__run();
   await new Promise((r) => setTimeout(r, 25)); // the fire-time opt-out read is not awaited by the checkout; let it settle
   return { calls, store };
 }
 const vendorCalls = (r) => r.calls.filter((c) => c[0] === 'gtag' || c[0] === 'fbq');
-if (confirmSrc && fireSrc && variantSrc) {
-  const success = (id) => ({ paymentIntent: { id, status: 'succeeded' }, error: null });
+if (confirmSrc && fireSrc && variantSrc && amountSrc) {
+  const success = (id, amount = 1500, currency = 'usd') => ({ paymentIntent: { id, status: 'succeeded', amount, currency }, error: null });
+  const successWithout = (id, field) => { const r = success(id); delete r.paymentIntent[field]; return r; }; // the field is absent, not undefined-by-default
   const r1 = await runCheckout({ stripeResult: success });
   const ga = r1.calls.filter((c) => c[0] === 'gtag'), fb = r1.calls.filter((c) => c[0] === 'fbq');
   ok(ga.length === 1 && ga[0][1] === 'event' && ga[0][2] === 'measurement_purchase' && ga[0][3].value === 15 && ga[0][3].currency === 'USD' && ga[0][3].variant === 'e', 'success: exactly one GA4 measurement_purchase (value 15, USD, variant e)');
@@ -129,6 +133,33 @@ if (confirmSrc && fireSrc && variantSrc) {
   const signedOut = await runCheckout({ stripeResult: success });
   ok(vendorCalls(signedOut).length === 2 && !signedOut.calls.some((c) => c[0] === 'account-read'), 'CONTROL signed-out visitor: behaviour unchanged (one GA4 + one Meta, no account read)');
   ok(acctOut.store.get('oq_ga4_measurement_purchase_fired_v1:pi_TEST123') === undefined, 'a withheld event does not set the once-only marker');
+  // gh-2078 / LEGAL-READ: FAIL 5973374792 point 3 (CEO): the event value and currency come from the CONFIRMED payment, not a constant.
+  const r25 = await runCheckout({ stripeResult: (id) => success(id, 2500, 'usd'), piId: 'pi_25' });
+  const ga25 = r25.calls.filter((c) => c[0] === 'gtag'), fb25 = r25.calls.filter((c) => c[0] === 'fbq');
+  ok(ga25.length === 1 && ga25[0][3].value === 25 && ga25[0][3].currency === 'USD', 'confirmed payment of 2500 cents ($25.00): GA4 measurement_purchase carries value 25, USD');
+  ok(fb25.length === 1 && fb25[0][3].value === 25 && fb25[0][3].currency === 'USD' && fb25[0][4].eventID === 'measurement_purchase:pi_25', 'confirmed payment of 2500 cents ($25.00): Meta Purchase carries value 25, USD, eventID measurement_purchase:pi_25');
+  ok(ga25.length === 1 && fb25.length === 1 && ga25[0][3].value === fb25[0][3].value && ga25[0][3].currency === fb25[0][3].currency, 'GA4 and Meta carry the identical value and currency');
+  const r1500 = await runCheckout({ stripeResult: (id) => success(id, 1500, 'usd'), piId: 'pi_15' });
+  ok(r1500.calls.filter((c) => c[0] === 'gtag')[0][3].value === 15 && r1500.calls.filter((c) => c[0] === 'fbq')[0][3].value === 15, 'confirmed payment of 1500 cents: value 15 (the server-side Purchase value for the same PaymentIntent)');
+  const rEur = await runCheckout({ stripeResult: (id) => success(id, 1500, 'eur'), piId: 'pi_eur' });
+  ok(rEur.calls.filter((c) => c[0] === 'gtag')[0][3].currency === 'EUR', 'currency is paymentIntent.currency upper-cased (eur -> EUR), not a constant');
+  for (const [label, amt] of [['zero', 0], ['negative', -1500], ['a string', '2500'], ['not an integer number of cents', 1500.5], ['NaN', NaN]]) {
+    const bad = await runCheckout({ stripeResult: (id) => success(id, amt, 'usd'), piId: 'pi_bad' });
+    ok(vendorCalls(bad).length === 0 && bad.calls.some((c) => c[0] === 'order'), 'amount ' + label + ': NO purchase event (no wrong value is sent) and the order still completes');
+    ok(bad.store.get('oq_ga4_measurement_purchase_fired_v1:pi_bad') === undefined, 'amount ' + label + ': the once-only marker is not set');
+  }
+  const noAmt = await runCheckout({ stripeResult: (id) => successWithout(id, 'amount'), piId: 'pi_bad' });
+  ok(vendorCalls(noAmt).length === 0 && noAmt.calls.some((c) => c[0] === 'order'), 'amount missing from the confirmed payment: NO purchase event (no wrong value is sent) and the order still completes');
+  ok(noAmt.store.get('oq_ga4_measurement_purchase_fired_v1:pi_bad') === undefined, 'amount missing: the once-only marker is not set');
+  const noCur = await runCheckout({ stripeResult: (id) => successWithout(id, 'currency'), piId: 'pi_nocur' });
+  ok(vendorCalls(noCur).length === 0, 'currency missing: NO purchase event');
+  // LEGAL-READ: FAIL 5973374792 point 1: the page's OWN loaded profile (currentProfile.ad_sharing_opt_out) and "profile could not be read".
+  const pageOut = await runCheckout({ stripeResult: success, pageUser: true, pageProfile: true });
+  ok(vendorCalls(pageOut).length === 0, 'page profile (currentProfile.ad_sharing_opt_out === true), no cookie, no GPC, no session cookie: ZERO vendor requests');
+  const pageUnreadable = await runCheckout({ stripeResult: success, pageUser: true, pageProfile: 'unreadable' });
+  ok(vendorCalls(pageUnreadable).length === 0, 'signed-in page whose profile could not be read (currentProfile null): ZERO vendor requests (fail closed)');
+  const pageIn = await runCheckout({ stripeResult: success, pageUser: true, pageProfile: false, account: false });
+  ok(vendorCalls(pageIn).length === 2, 'CONTROL page profile loaded with ad_sharing_opt_out false: one GA4 + one Meta');
   const nov = await runCheckout({ stripeResult: success, variant: null });
   ok(nov.calls.find((c) => c[0] === 'gtag')[3].variant === 'unknown', "no stored arm: variant is 'unknown' (React's fallback)");
 }

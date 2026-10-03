@@ -64,6 +64,9 @@ import {
   clearHoverChargeRecord,
   hasFiredMeasurementPurchase,
   markMeasurementPurchaseFired,
+  measurementPurchaseFromCharge,
+  recordHoverChargeAmount,
+  type ChargedPayment,
   type PendingHoverCharge,
 } from './hover-charge-storage';
 import { track, fbqTrack, buildMeasurementPurchaseEventId } from '@/lib/track';
@@ -78,17 +81,25 @@ import { adSharingBlockedAtFire, type ProfileReader } from '@/lib/ad-optout';
  * signed-in account's stored value (lib/ad-optout.ts adSharingBlockedAtFire): an opted-out buyer, or one whose stored flag cannot be
  * read (fail closed), sends NOTHING and the once-only marker is left unset. Never throws and never delays the success screen (callers
  * do not await it).
+ *
+ * gh-2078 / LEGAL-READ: FAIL 5973374792 point 3: the event value and currency are what Stripe CONFIRMED was charged
+ * (`charged.amountCents / 100`, USD), never a constant. No confirmed positive USD amount, no event.
  */
-async function fireMeasurementPurchaseIfAllowed(paymentIntentId: string): Promise<void> {
+async function fireMeasurementPurchaseIfAllowed(
+  paymentIntentId: string,
+  charged?: { amountCents?: unknown; currency?: unknown } | null,
+): Promise<void> {
   try {
+    const purchase = measurementPurchaseFromCharge(charged);
+    if (!purchase) return;
     if (hasFiredMeasurementPurchase(paymentIntentId)) return;
     if (await adSharingBlockedAtFire(supabase as unknown as ProfileReader)) return;
     if (hasFiredMeasurementPurchase(paymentIntentId)) return; // the other route (handlePaid / resume) won the race while we read
     const variant = getVariant();
-    track('measurement_purchase', { value: 15.0, currency: 'USD', variant });
+    track('measurement_purchase', { value: purchase.value, currency: purchase.currency, variant });
     // gh-2078c: eventID lets Meta dedup this client event against the server-side CAPI Purchase (PR #2107) sent from the SAME
     // paymentIntent id -- see lib/track.ts's buildMeasurementPurchaseEventId header.
-    fbqTrack('Purchase', { value: 15.0, currency: 'USD', variant }, buildMeasurementPurchaseEventId(paymentIntentId));
+    fbqTrack('Purchase', { value: purchase.value, currency: purchase.currency, variant }, buildMeasurementPurchaseEventId(paymentIntentId));
     markMeasurementPurchaseFired(paymentIntentId);
   } catch {
     /* an analytics failure must never break a purchase */
@@ -228,7 +239,10 @@ function PageBody({
           // id as handlePaid's own call -- if handlePaid somehow already
           // fired for this id (e.g. a race between the two paths), this
           // is a no-op, not a double-count.
-          void fireMeasurementPurchaseIfAllowed(pendingResume.paymentIntentId);
+          void fireMeasurementPurchaseIfAllowed(pendingResume.paymentIntentId, {
+            amountCents: pendingResume.amountCents,
+            currency: pendingResume.currency,
+          });
           setHoverStage('success');
           setView('hover');
         } else {
@@ -309,8 +323,10 @@ function PageBody({
   // double-charge guard; supersedes the static's confirmHoverPayment re-arm behaviour).
   // A graceful EF-pending result resolves (placeholder) and advances to the success state.
   const handlePaid = useCallback(
-    async (paymentIntentId: string) => {
+    async (paymentIntentId: string, charged?: ChargedPayment) => {
       if (!claim) throw new Error('Missing claim. Please refresh and try again.');
+      // gh-2078: keep the confirmed amount with the resume pointer so the resume route reports the same value.
+      if (charged) recordHoverChargeAmount(paymentIntentId, charged);
       await placeHoverOrder({ profile, claim, user, paymentIntentId });
       // gh-951: the order step reached (a graceful-degrade) completion — clear the resume
       // pointer so a later reload doesn't re-attempt an already-placed order.
@@ -331,7 +347,7 @@ function PageBody({
       // (a graceful EF-pending result counts as a completed order here,
       // same as the resume-effect's own success criterion elsewhere in
       // this file -- gh-951).
-      void fireMeasurementPurchaseIfAllowed(paymentIntentId);
+      void fireMeasurementPurchaseIfAllowed(paymentIntentId, charged);
       setHoverStage('success');
     },
     [profile, claim, user],
