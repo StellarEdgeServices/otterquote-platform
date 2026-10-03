@@ -22,12 +22,15 @@
  *   POST /functions/v1/check-siding-design-completion
  *   Body: { "claim_id": "..." }  ← optional; omit to scan all
  *
- * No JWT auth required (cron caller uses service role key via Authorization header).
+ * Auth (gh-2462): verify_jwt stays false, but the handler requires the service bearer
+ * (runtime SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SECRET_KEYS.default -- the vault
+ * cron_service_role_key the cron job sends). Anything else: 401 before any I/O.
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.114.0";
 import { checkRowsWritten, zeroRowWriteMessage } from "../_shared/zero-row-update-guard.ts";
+import { type GetEnv, serviceGate } from "./caller-gate.ts"; // gh-2462
 
 const HOVER_API_BASE = "https://hover.to";
 
@@ -85,14 +88,32 @@ async function writeCronHealth(supabase: any, status: "success" | "error", error
   }
 }
 
-serve(async (req) => {
+// gh-2462: exported so caller-gate.test.ts can drive the REAL handler (gh-2309 precedent:
+// serve() guarded by import.meta.main, which the Edge runtime sets for the entry file).
+// `getEnv` defaults to Deno.env.get; `makeClient` defaults to createClient (tests stub it).
+export async function handler(
+  req: Request,
+  getEnv: GetEnv = (n) => Deno.env.get(n),
+  makeClient: typeof createClient = createClient,
+): Promise<Response> {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: buildCorsHeaders(req) });
   }
 
-  const supabaseUrl  = Deno.env.get("SUPABASE_URL")!;
-  const serviceKey   = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const supabase     = createClient(supabaseUrl, serviceKey);
+  // gh-2462 caller gate. Real callers: pg_cron job 6 `check-siding-design-completion`
+  // (`Bearer <vault cron_service_role_key>`, body {}, sql/v108) and hover-webhook's D-164
+  // immediate check (`Bearer <SUPABASE_SERVICE_ROLE_KEY>`, body {claim_id}). Anything
+  // else gets 401 before the client is built, any claims read, Hover call, bid release
+  // or notify-contractors fan-out.
+  const denied = serviceGate(req, getEnv, buildCorsHeaders(req));
+  if (denied) {
+    console.warn("[D-164] 401: called without the service bearer");
+    return denied;
+  }
+
+  const supabaseUrl  = getEnv("SUPABASE_URL")!;
+  const serviceKey   = getEnv("SUPABASE_SERVICE_ROLE_KEY")!;
+  const supabase     = makeClient(supabaseUrl, serviceKey);
   const selfBaseUrl  = supabaseUrl.replace(".supabase.co", ".functions.supabase.co");
 
   const results: any[] = [];
@@ -189,7 +210,11 @@ serve(async (req) => {
       headers: { "Content-Type": "application/json" },
     });
   }
-});
+}
+
+if (import.meta.main) {
+  serve((req) => handler(req));
+}
 
 
 /**

@@ -187,7 +187,11 @@ enable_leaked_password_protection = true
 # (CLI default verify_jwt=true) can't silently flip them. No behavior change.
 
 [functions.notify-contractors]
-# Cron/EF-invoked fan-out — auth gated in-handler. Pin false (matches deployed v67).
+# gh-2462: auth gated in-handler (caller-gate.ts + user-gate.ts). Service bearer (runtime
+# SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SECRET_KEYS.default) -> any event; a signed-in user's
+# session JWT -> only new_opportunity/bid_accepted on a claim they own, or bid_update_confirmed/
+# bid_renewal_requested as the contractor with a quote on it; else 401/403 before any send.
+# verify_jwt stays false: the service secret key is not a JWT (gh-2309 measurement).
 verify_jwt = false
 
 [functions.process-bid-expirations]
@@ -285,6 +289,8 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.check-siding-design-completion]
+# gh-2462: service bearer required in-handler (cron job 6 vault key, hover-webhook runtime key);
+# 401 with zero I/O otherwise. verify_jwt stays false: the vault key is not a JWT (gh-2309).
 verify_jwt = false
 
 [functions.create-hover-order]
@@ -323,6 +329,8 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.notify-feature-request]
+# gh-2462: service bearer required in-handler (on_feature_request_insert trigger, vault key);
+# 401 with no Mailgun call otherwise. verify_jwt stays false: the vault key is not a JWT (gh-2309).
 verify_jwt = false
 
 [functions.parse-hover-measurements]
@@ -336,6 +344,9 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.process-hover-rebate]
+# gh-2462: service bearer required in-handler (cron job 10 + after_claim_completed_rebate trigger,
+# both vault key); 401 before any Stripe/DB call otherwise. verify_jwt stays false: the vault key
+# is not a JWT (gh-2309).
 verify_jwt = false
 
 [functions.record-warranty-upload]
