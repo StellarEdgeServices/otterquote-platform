@@ -426,6 +426,9 @@ jobs:
       - name: partner pages — ?recruit= case/whitespace-normalised + URL-miss falls back to stored code (gh-2471)
         run: node tests/gh2471-recruit-case.mjs
 
+      - name: referral-bonus pages carry no W-9 / 1099 promise, tax-responsibility sentences kept (gh-1509 D-319)
+        run: node tests/gh1509-w9-1099-copy-absent.mjs
+
       - name: measurement-shape admin-fulfilment flip unit test (gh-1411 D-317 cl. 4-6; REVIEW finding A, PR #2236)
         run: node tests/measurement-shape-flip-on-deliver.mjs
 
