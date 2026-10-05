@@ -52,14 +52,14 @@ export const MEASUREMENTS_COPY = {
   hoverIcon: '📐',
   hoverCardTitle: 'Complete Property Report',
   // D-291 price line (repriced from D-205's $150) — LOCKED, exact.
-  hoverCardPrice: '$15 (rebated if you use an Otter Quotes contractor)',
+  hoverCardPrice: '$15 (rebated if you complete a job on the platform)',
   hoverCardDescription:
     "Get a complete 3D model of your home — roof, walls, openings, and full measurements — by taking photos with your phone. Our measurement technology builds the model from your photos. This is your best option for any full-replacement project.",
   hoverCardFeatures: [
     'Precise, professional-grade measurements',
     '3D model of your property',
     'Ready in 24-48 hours',
-    'Cost rebated when using an Otter Quotes contractor',
+    'Cost rebated when you complete a job on the platform',
   ],
 
   // ── Path B card — Ask Adjuster, FREE (help-measurements.html:588-599) ──
