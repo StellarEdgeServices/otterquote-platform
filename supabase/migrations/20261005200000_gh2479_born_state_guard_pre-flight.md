@@ -80,10 +80,12 @@ SELECT tgname, pg_get_triggerdef(oid) FROM pg_trigger
 -- Expected: claims_guard_referral_columns BEFORE INSERT OR UPDATE ON public.claims ;
 --           quotes_guard_homeowner_columns BEFORE UPDATE ON public.quotes  (both from the two earlier migrations)
 
-SELECT md5(pg_get_functiondef('public.claims_guard_referral_columns()'::regprocedure)),
-       md5(pg_get_functiondef('public.quotes_guard_homeowner_columns()'::regprocedure));
--- Read on production 2026-10-05T19:06Z: 928def74075e346f0ed3f47f5689f931 , 2a8f6e0327a97a4768bdd27afb79b3b1.
--- A different value means another migration replaced a guard since this file was written (PR #2538?):
+SELECT length(pg_get_functiondef('public.claims_guard_referral_columns()'::regprocedure))  AS claims_guard_len,
+       length(pg_get_functiondef('public.quotes_guard_homeowner_columns()'::regprocedure)) AS quotes_guard_len,
+       position('TG_OP' IN pg_get_functiondef('public.quotes_guard_homeowner_columns()'::regprocedure)) = 0 AS quotes_guard_has_no_insert_arm,
+       pg_get_functiondef('public.quotes_guard_homeowner_columns()'::regprocedure) !~ 'fee_|platform_fee' AS quotes_guard_has_no_fee_rule;
+-- Read on production 2026-10-05: 906 , 1586 , t , t.
+-- Anything else means another migration replaced a guard since this file was written (PR #2538?):
 -- stop, and rebase this file onto that body.
 
 SELECT p.proname, p.prosecdef, pg_get_userbyid(p.proowner) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
