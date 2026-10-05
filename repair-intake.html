@@ -816,7 +816,7 @@
                     <p>ITEL covers 170+ manufacturers and 35,000+ products — including discontinued materials.</p>
                     <p>They can even source and ship discontinued shingles directly to your job site.</p>
                     <div class="tier-option">
-                        <strong>💰 Starting at $75</strong> — refunded if you use an Otter Quotes contractor
+                        <strong>💰 Starting at $75</strong>
                     </div>
                     <p style="margin-top: 1rem; margin-bottom: 1rem;"><strong>Choose your method:</strong></p>
                     <p>Option 1: Submit photos</p>
@@ -1267,7 +1267,7 @@
                     return;
                 }
 
-                // ── Collect material data ───────────────────────────────────
+                // ── Collect material data ─────────────────────────────────────
                 const materialBrand   = document.querySelector('input[data-field="brand"]')?.value.trim() || null;
                 const materialProduct = document.querySelector('input[data-field="product"]')?.value.trim() || null;
                 const materialColor   = document.querySelector('input[data-field="color"]')?.value.trim() || null;
@@ -1276,7 +1276,7 @@
                 const roofAge         = document.getElementById('roof-age')?.value.trim() || null;
                 const shinglesCount   = document.getElementById('shingles-count')?.value || null;
 
-                // ── Get claim_id from URL or sessionStorage ─────────────────
+                // ── Get claim_id from URL or sessionStorage ───────────────────
                 const params = new URLSearchParams(window.location.search);
                 let claimId = params.get('claim_id') || sessionStorage.getItem('oq_claim_id');
 
@@ -1307,7 +1307,7 @@
                     if (updateErr) throw new Error(updateErr.message);
                 }
 
-                // ── Upload photos to Supabase Storage ──────────────────────
+                // ── Upload photos to Supabase Storage ──────────────────────────
                 const allPhotos = Object.entries(state.uploadedPhotos).flatMap(([tier, files]) =>
                     files.map(f => ({ tier, file: f }))
                 );
@@ -1321,12 +1321,12 @@
                     if (uploadErr) console.warn('Photo upload failed:', uploadErr.message);
                 }
 
-                // ── Mark claim as submitted ─────────────────────────────────
+                // ── Mark claim as submitted ─────────────────────────────────────
                 await sb.from('claims').update({
                     status: 'submitted'
                 }).eq('id', claimId).eq('user_id', user.id);
 
-                // ── GA4 ─────────────────────────────────────────────────────
+                // ── GA4 ───────────────────────────────────────────────────────
                 // fix4 (CEO ruling, PR #1979 comment 5698878146): claim_id
                 // removed — a per-homeowner database identifier must not
                 // reach GA4.
@@ -1336,7 +1336,7 @@
                     has_material: !!(materialBrand || materialProduct)
                 });
 
-                // ── Show opted-in contractors ────────────────────────────────
+                // ── Show opted-in contractors ────────────────────────────────────
                 await showRepairContractors(selectedTrade || 'roofing');
 
                 // Show success
