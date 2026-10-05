@@ -174,3 +174,35 @@ Deno.test("gh-2478: the message query does not select claims.selected_trades (no
   assert(sel.includes("claims:claim_id"), "located the message select");
   assertFalse(sel.includes("selected_trades"), "select must not name selected_trades");
 });
+
+Deno.test("gh-2478: no select string embeds profiles via contractors (no FK -> PGRST200)", async () => {
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  assertFalse(src.includes("profiles:profiles"), "index.ts must not use a profiles:profiles embed");
+  const selects = [...src.matchAll(/\.select\(\s*"([^"]*)"/g)].map((m) => m[1]);
+  assert(selects.length > 0, "located select strings");
+  for (const s of selects) {
+    assertFalse(/contractors[^()]*\([^)]*profiles/.test(s), `select embeds profiles under contractors: ${s}`);
+  }
+});
+
+Deno.test("gh-2478: homeowner sender with an awarded contractor -> notification_sent true, one Mailgun call", async () => {
+  const rows: Rows = {
+    messages: [{
+      id: MESSAGE_ID,
+      claim_id: "c1",
+      sender_id: USER_ID,
+      sender_role: "homeowner",
+      body: "hello contractor",
+      created_at: "2026-10-01T00:00:00Z",
+      claims: { id: "c1", user_id: "homeowner-1" },
+      profiles: { id: USER_ID, full_name: "Homeowner Name", email: "sender-fixture@example.test" },
+    }],
+    quotes: [{ contractor_id: "k1", contractors: { user_id: "contractor-user-1" } }],
+    profiles: [{ email: RECIPIENT_EMAIL, full_name: "Contractor Name" }],
+  };
+  const r = await run(req(URL_, BODY, `Bearer ${USER_JWT}`), rows);
+  assertEquals(r.res.status, 200);
+  assertEquals(JSON.parse(r.text).notification_sent, true);
+  assertEquals(mailgun(r.fetchCalls).length, 1);
+  assertFalse(r.text.includes(RECIPIENT_EMAIL));
+});

@@ -147,7 +147,9 @@ _CRED = r"(?:contractors?|professionals?|roofers?)"
 _NO_NEG = r"(?:(?!\bnot\b|n't|\bnever\b|\bcannot\b|\bdon\b)[^.])"
 
 PATTERNS = [
-    re.compile(r"licensed,?\s+(?:and\s+)?insured", re.IGNORECASE),
+    # gh-2121: "&" and "&amp;" count as "and" -- the homepage trust bar said
+    # "Licensed &amp; Insured Contractors" and the old form slipped past.
+    re.compile(r"licensed(?:,?\s+(?:and\s+)?|\s*(?:&amp;|&)\s*)insured", re.IGNORECASE),
     re.compile(
         r"\b(?:vetted|pre[- ]?screened|screened|background[- ]checked|"
         r"credential[- ]verified|license[- ]verified)\s+"

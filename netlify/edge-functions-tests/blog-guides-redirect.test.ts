@@ -91,7 +91,7 @@ Deno.test("blog-guides-redirect: a wave-2 /blog/ path (previously unmapped) 301s
   assertEquals(ctx.nextCalled, false);
 });
 
-Deno.test("blog-guides-redirect: all 18 mapped paths (config.path) 301 and none loop to itself", async () => {
+Deno.test("blog-guides-redirect: all 15 mapped paths (config.path) 301 and none loop to itself", async () => {
   const REDIRECT_MAP_KEYS = [
     "/blog/what-to-do-after-storm-damages-roof",
     "/blog/how-to-negotiate-better-roof-repair-insurance-claim",
@@ -105,11 +105,8 @@ Deno.test("blog-guides-redirect: all 18 mapped paths (config.path) 301 and none 
     "/blog/public-adjuster-vs-diy-roof-claim",
     "/blog/rcv-vs-acv-roof-insurance",
     "/blog/roof-shingle-warranty-tiers-explained",
-    "/blog/roofing-estimate-red-flags",
     "/blog/storm-chaser-roofing-scams",
-    "/blog/what-is-recoverable-depreciation-roofing",
     "/blog/what-is-scope-of-loss-roofing",
-    "/blog/when-not-to-file-roof-insurance-claim",
     "/blog/why-roofers-quote-different-prices",
   ];
   for (const p of REDIRECT_MAP_KEYS) {
@@ -135,4 +132,22 @@ Deno.test("blog-guides-redirect: a generated /locations/ index.html twin 301s to
   const ctx = fakeContext();
   await handler(new Request("https://otterquote.com/locations/franklin-county-oh/roofing/"), ctx);
   assertEquals(ctx.nextCalled, true);
+});
+
+// gh-2480 Part 5 R1: five articles were deleted and 301 to their targets from _redirects. They must NOT be in
+// the map (an entry would 301 to the deleted .html and so to a 404): the function hands them to Netlify.
+Deno.test("blog-guides-redirect: the five removed articles are not in the map (fall through to _redirects)", async () => {
+  for (const slug of [
+    "how-long-does-roof-insurance-claim-take-indiana",
+    "hail-damage-roof-inspection-first-72-hours",
+    "roofing-estimate-red-flags",
+    "what-is-recoverable-depreciation-roofing",
+    "when-not-to-file-roof-insurance-claim",
+  ]) {
+    for (const p of [`/blog/${slug}`, `/blog/${slug}.html`, `/blog/${slug}/`]) {
+      const ctx = fakeContext();
+      await handler(new Request(`https://otterquote.com${p}`), ctx);
+      assertEquals(ctx.nextCalled, true, `${p} must fall through`);
+    }
+  }
 });

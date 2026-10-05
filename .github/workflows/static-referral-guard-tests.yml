@@ -1,0 +1,49 @@
+name: Static Referral Guard Tests
+
+# gh-2479 -- claims.referral_id / claims.completion_date stay frozen for client callers, and
+# apply_referral_commission() keeps its attribution-window, status and is_test checks. Static
+# check of the migration text, its rollback and every later migration (a later migration must not
+# drop the guard). The live proof is supabase/tests/gh2479_referral_guard_proof.sql, a rolled-back
+# run a human does against production; CI never touches the database.
+# `pull_request` + `push` to main, no secrets, read-only token.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'supabase/migrations/**'
+      - 'supabase/migrations_rollbacks/**'
+      - 'tests/gh2479-static-referral-guard.mjs'
+      - '.github/workflows/static-referral-guard-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/**'
+      - 'supabase/migrations_rollbacks/**'
+      - 'tests/gh2479-static-referral-guard.mjs'
+      - '.github/workflows/static-referral-guard-tests.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-referral-guard-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  static-referral-guard-tests:
+    name: Referral guard (gh2479)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Referral guard and commission checks stay in place (gh2479)
+        run: node tests/gh2479-static-referral-guard.mjs

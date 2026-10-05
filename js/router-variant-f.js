@@ -70,7 +70,7 @@
   'use strict';
 
   var COPY = Object.freeze({
-    arm_f_s1_headline: "See if storm damage qualifies your roof for a free assessment.",
+    arm_f_s1_headline: "Storm damage at your home? Make contractors compete for your job.",
     arm_f_s1_subhead: "One quick question, then we'll get your info. Takes under a minute.",
     arm_f_s1_question_label: "How will you pay for the repair?",
     arm_f_s1_option_insurance: "Insurance claim",

@@ -119,6 +119,13 @@ export interface ClaimIn {
    * against the pre-migration schema.
    */
   loss_sheet_reviewed_at?: string | null;
+  /**
+   * gh-1570 — checklist columns, read only to derive `checklist_complete` for a
+   * `draft` claim that has no `checklist_complete` event (derive-from-columns,
+   * no backfill). Optional so pre-gh-1570 callers and fixtures are unchanged.
+   */
+  has_measurements?: boolean | null;
+  has_material_selection?: boolean | null;
 }
 
 /**
@@ -332,6 +339,23 @@ export interface HomeownerRow {
 }
 
 /**
+ * gh-1570 (CEO ruling 5965042243): the "Ready, not submitted" tab covers
+ * {documents_needed, draft}. The `checklist_complete` event only exists for
+ * claims that loaded the dashboard after #2081, so a `draft` claim with no
+ * event derives completion from its own columns (same rule as
+ * send-homeowner-next-steps/checklist-columns.ts, which a parity test pins),
+ * clocked from `updated_at`. Other statuses still require the event. Pure,
+ * read-time, no backfill.
+ */
+export function resolveChecklistCompleteAt(c: ClaimIn, eventAtIso: string | undefined): string | null {
+  if (eventAtIso !== undefined) return eventAtIso;
+  if (c.status !== "draft") return null;
+  const cash = c.funding_type === "cash";
+  const complete = (cash || !!c.has_estimate) && !!c.has_material_selection && (!cash || !!c.has_measurements);
+  return complete ? (c.updated_at ?? c.created_at ?? null) : null;
+}
+
+/**
  * One row per claim, sorted longest-dwell first (ties: oldest created_at
  * first, then claim_id for a stable order). Every claim is returned, is_test
  * included — hiding test rows is the page's display filter, not this EF's
@@ -355,6 +379,7 @@ export function buildRows(
     const statusSince = c.updated_at ?? c.created_at ?? null;
     const uploaded = lossSheetUploadedAt(c, uploadedAtByPath);
     const signup = signupAt(profile, c);
+    const checklistCompleteAt = resolveChecklistCompleteAt(c, checklistCompleteAtByClaimId?.get(c.id));
     return {
       claim_id: c.id,
       homeowner_name: who.name,
@@ -381,8 +406,8 @@ export function buildRows(
       days_since_signup: daysSince(signup.at, nowMs),
       signup_basis: signup.basis,
 
-      checklist_complete: checklistCompleteAtByClaimId?.has(c.id) ?? false,
-      checklist_complete_at: checklistCompleteAtByClaimId?.get(c.id) ?? null,
+      checklist_complete: checklistCompleteAt !== null,
+      checklist_complete_at: checklistCompleteAt,
     };
   });
 

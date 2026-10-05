@@ -4,7 +4,9 @@
 import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
   type ActivityLogRow,
+  CHECKLIST_NUDGE_ELIGIBLE_STATUSES,
   FORTY_EIGHT_HOURS_MS,
+  isChecklistNudgeEligibleStatus,
   isNudgeEligibleStatus,
   type NudgeStage,
   reduceActivityRows,
@@ -28,6 +30,17 @@ Deno.test("documents_needed is the only eligible status", () => {
 });
 
 Deno.test("draft is explicitly excluded (RUN 22: Dustin's own draft claim was targeted)", () => {
+  assertEquals(isNudgeEligibleStatus("draft"), false);
+});
+
+Deno.test("gh-1570: the checklist-stage set is exactly {documents_needed, draft}; the age ladder stays documents_needed-only", () => {
+  assertEquals([...CHECKLIST_NUDGE_ELIGIBLE_STATUSES].sort(), ["documents_needed", "draft"]);
+  assertEquals(isChecklistNudgeEligibleStatus("draft"), true);
+  assertEquals(isChecklistNudgeEligibleStatus("documents_needed"), true);
+  for (const s of ["submitted", "active", "waitlisted", "bidding", "contract_signed", "awarded", "", null, undefined]) {
+    assertEquals(isChecklistNudgeEligibleStatus(s), false, String(s));
+  }
+  // The '2h'/'48h' ladder must NOT email a mid-intake draft (gh-1580 defect 1).
   assertEquals(isNudgeEligibleStatus("draft"), false);
 });
 

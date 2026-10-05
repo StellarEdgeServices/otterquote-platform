@@ -1874,6 +1874,10 @@ Let me know if you have any questions!
             const isTest = !!(window.Auth && typeof Auth.isTestEmail === 'function' && Auth.isTestEmail(currentUser.email));
             const el = (tag, props, kids) => { const n = document.createElement(tag); Object.keys(props || {}).forEach((k) => { n[k] = props[k]; }); (kids || []).forEach((c) => n.appendChild(typeof c === 'string' ? document.createTextNode(c) : c)); return n; };
             const formHost = el('div', { id: 'partnerRecollectFormHost' });
+            // gh-2473: D-266 sentence (verbatim, as at #referralFeeDisclaimer and D266_TEXT in tools/partner_parity_check.py) for the fee-eligible types;
+            // Home Inspector gets the existing D-333 no-fee sentence (as in updateUI) instead.
+            const D266_SENTENCE = 'Check your employment agreement and your governing licensing agency to make sure it is lawful for you to accept referral fees.';
+            const NO_FEE_SENTENCE = 'Home-inspector partners do not receive a referral fee or recruit bonus.';
             // Renders the type's form (fields, terms/agreement, submit). attribution() resolves the register_partner attribution at submit (null = blocked).
             const renderForm = (agentType, attribution) => {
                 const form = PR.formFor(agentType);
@@ -1892,6 +1896,7 @@ Let me know if you have any questions!
                 else { formEl.appendChild(group('first', form.first, 'text', true)); formEl.appendChild(group('last', form.last, 'text', true)); }
                 formEl.appendChild(group('phone', form.phone, 'tel', true));
                 formEl.appendChild(group('company', form.company, 'text', form.company.required));
+                formEl.appendChild(el('p', { className: 'link-hint', id: 'partnerRecollectFeeNote' }, [agentType === 'home_inspector' ? NO_FEE_SENTENCE : D266_SENTENCE]));
                 const terms = el('input', { type: 'checkbox', id: 'partnerRecollect_terms', required: true });
                 const termsLbl = el('label', { htmlFor: 'partnerRecollect_terms' }, form.terms.map((p) => (p.a ? el('a', { href: p.a }, [p.t]) : p.t)));
                 formEl.appendChild(el('div', { className: 'form-group' }, [terms, termsLbl]));
@@ -1935,11 +1940,17 @@ Let me know if you have any questions!
                 const typeSel = el('select', { id: 'partnerRecollect_agentType', className: 'form-select', required: true });
                 typeSel.appendChild(el('option', { value: '', selected: true, disabled: true }, []));
                 PR.TYPES.forEach((t) => { if (LABELS[t]) typeSel.appendChild(el('option', { value: t }, [LABELS[t]])); });
-                const recruitInput = el('input', { type: 'text', id: 'partnerRecollect_recruitCode', className: 'form-input', placeholder: 'Name or company of the person who recommended Otter Quotes' });
+                const recruitInput = el('input', { type: 'text', id: 'partnerRecollect_recruitCode', className: 'form-input', placeholder: 'Recruit code (starts with r-) or their name' });
                 const recruitLbl = el('label', { className: 'form-label', htmlFor: 'partnerRecollect_recruitCode' }, ['Who Told You About Us? ', el('span', {}, ['(optional)'])]);
+                // gh-2473: helper under the field (approved copy, comment 5967384243). The last sentence is hidden once Home Inspector is picked (D-333 item 7).
+                const recruitBonusSentence = el('span', { id: 'partnerRecollect_recruitBonusNote' }, [' Whether any recruit bonus is paid is set by the Partner Terms.']);
+                const recruitHelp = el('p', { className: 'link-hint', id: 'partnerRecollect_recruitHelp' }, [
+                    'If they gave you a recruit code or a recruit link, enter the code or paste the link here. A valid code records them as the partner who recruited you. A name without a code is saved as a note only and records no recruiter.',
+                    recruitBonusSentence
+                ]);
                 host.appendChild(el('div', { id: 'partnerRecollectAsk' }, [
                     el('div', { className: 'form-group' }, [el('label', { className: 'form-label', htmlFor: 'partnerRecollect_agentType' }, ['What kind of partner are you?']), typeSel]),
-                    el('div', { className: 'form-group' }, [recruitLbl, recruitInput])
+                    el('div', { className: 'form-group' }, [recruitLbl, recruitInput, recruitHelp])
                 ]));
                 host.appendChild(formHost);
                 // As on partner-other / partner-adjusters: an active recruiter's code is credited (p_recruit_code); any other
@@ -1951,6 +1962,7 @@ Let me know if you have any questions!
                 };
                 typeSel.addEventListener('change', () => {
                     const t = typeSel.value;
+                    recruitBonusSentence.style.display = (t === 'home_inspector') ? 'none' : '';
                     if (PR.TYPES.indexOf(t) === -1) { formHost.textContent = ''; return; }
                     renderForm(t, askAttribution);
                 });

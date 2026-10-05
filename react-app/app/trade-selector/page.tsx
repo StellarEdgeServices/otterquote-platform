@@ -957,9 +957,11 @@ export default function TradeSelectorPage() {
             updated_at: new Date().toISOString(),
             ...(referralSource && { referral_source: referralSource }),
             ...(referralAgentId && { referral_agent_id: referralAgentId }),
-            // #567: ref.html click-chain attribution — the only writer of
-            // claims.referral_id (the commission trigger's key column).
-            ...(chainReferralId && { referral_id: chainReferralId }),
+            // gh-2479: referral_id is NOT in this shared payload. It rides the
+            // INSERT of a NEW claim only (below) — #567's click-chain
+            // attribution. The database now refuses any client change to
+            // claims.referral_id on an existing row (PR #2502), so sending it
+            // on the UPDATE would fail the WHOLE trades save with 42501.
             ...(!referralAgentId && chainReferralAgentId && { referral_agent_id: chainReferralAgentId }),
             ...(chainReferralCode && { referral_code: chainReferralCode }),
             // gh-1337: only write when get-started's checkbox actually ran —
@@ -1015,6 +1017,10 @@ export default function TradeSelectorPage() {
               .insert({
                 user_id: user.id,
                 ...claimPayload,
+                // #567: ref.html click-chain attribution — the only writer of
+                // claims.referral_id (the commission trigger's key column).
+                // gh-2479: new-claim INSERT only.
+                ...(chainReferralId && { referral_id: chainReferralId }),
                 is_test: isTestEmail(user.email),
                 created_at: new Date().toISOString(),
               })
@@ -1076,7 +1082,11 @@ export default function TradeSelectorPage() {
           // must leave a live, unconsumed referral cookie alone, not
           // destroy it out from under a partner who is still owed the
           // commission. Mirrors the static trade-selector.html claim writer.
-          if ((chainReferralId || chainReferralAgentId) && claimWriteSucceeded) {
+          // gh-2479: on an EXISTING claim referral_id is no longer written, so
+          // chainReferralId alone is not "consumed" there — only a new-claim
+          // INSERT stamps it. A cookie id that was never used must stay live.
+          const referralIdStamped = !existingClaim && !!chainReferralId;
+          if ((referralIdStamped || chainReferralAgentId) && claimWriteSucceeded) {
             clearReferralIds();
             localStorage.removeItem('oq_referral_id_for_claim');
           }
