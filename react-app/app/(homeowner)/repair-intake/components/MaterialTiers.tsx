@@ -283,8 +283,7 @@ export function MaterialTiers({
             </p>
             <p>They can even source and ship discontinued shingles directly to your job site.</p>
             <div className="ri-coming-soon">
-              <strong>💰 Starting at $75</strong> — refunded if you use an Otter
-              Quotes contractor
+              <strong>💰 Starting at $75</strong>
             </div>
             <p>
               <strong>Choose your method:</strong>
