@@ -502,6 +502,12 @@ function docLinkHtml(r) {
  * prescribed remedy ("Convert a file to addEventListener + dataset").
  */
 function reviewBtnHtml(r, reviewed, busy) {
+  // gh-1796: a row with no loss sheet uploaded has nothing to review. Offering
+  // "Mark reviewed" there let a real claim be cleared out of the queue while it
+  // still owed a loss sheet. Only the Undo button (reviewed === false) and rows
+  // that actually have a file get a button. The server refuses the same call
+  // (mark-loss-sheet-reviewed, 409 no_loss_sheet), so this is the courtesy half.
+  if (reviewed && r.loss_sheet !== 'uploaded_unreviewed') return '';
   var cls = reviewed ? 'btn-review' : 'btn-undo';
   var label = busy ? 'Working…' : (reviewed ? 'Mark reviewed' : 'Undo');
   return '<button type="button" class="' + cls + ' js-review"' +

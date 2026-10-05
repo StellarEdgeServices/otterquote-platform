@@ -452,6 +452,9 @@ jobs:
       - name: admin Ready-not-submitted tab includes draft claims (gh-1570)
         run: node tests/gh1570-ready-queue-draft.mjs
 
+      - name: admin loss-sheet queue offers no Mark reviewed on a Not-uploaded row + EF guard (gh-1796)
+        run: node tests/gh1796-no-review-without-loss-sheet.mjs
+
       - name: partner-re one leads row per signup, variant carried (gh-2084 arm E)
         run: node tests/gh2084-partner-re-one-lead-row.mjs
 
