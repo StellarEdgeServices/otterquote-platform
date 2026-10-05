@@ -112,6 +112,8 @@ const REDIRECT_MAP: Record<string, string> = {
     '/locations/franklin-county-oh/roofing/',
   '/locations/hamilton-county-oh/roofing/index.html':
     '/locations/hamilton-county-oh/roofing/',
+  '/locations/jackson-county-mo/roofing/index.html':
+    '/locations/jackson-county-mo/roofing/',
   '/locations/knox-county-tn/roofing/index.html':
     '/locations/knox-county-tn/roofing/',
   '/locations/lake-county-in/roofing/index.html':
@@ -120,6 +122,8 @@ const REDIRECT_MAP: Record<string, string> = {
     '/locations/marion-county-in/roofing/',
   '/locations/shelby-county-tn/roofing/index.html':
     '/locations/shelby-county-tn/roofing/',
+  '/locations/st-louis-county-mo/roofing/index.html':
+    '/locations/st-louis-county-mo/roofing/',
 };
 
 export default async (req: Request, context: any) => {
