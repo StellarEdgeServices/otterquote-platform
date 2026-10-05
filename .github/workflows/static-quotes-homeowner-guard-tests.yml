@@ -1,0 +1,61 @@
+name: Static Quotes Homeowner Guard Tests
+
+# gh-2479 / gh-2519 -- quotes.claim_id, quotes.total_price and quotes.status stay guarded for client
+# callers, and referral_agents.agent_type stays frozen for them. Static check of the migration text, its
+# rollback, every later migration (a later migration must not drop a guard) and the client payloads that
+# write quotes. The live proof is supabase/tests/gh2479_quotes_guard_proof.sql, a rolled-back run a human
+# does against production; CI never touches the database.
+# `pull_request` + `push` to main, no secrets, read-only token.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'supabase/migrations/**'
+      - 'supabase/migrations_rollbacks/**'
+      - 'tests/gh2479-static-quotes-homeowner-guard.mjs'
+      - 'supabase/tests/gh2479_quotes_guard_proof.sql'
+      - 'react-app/app/(homeowner)/bids/actions.ts'
+      - 'react-app/app/(homeowner)/contract-signing/use-contract-signing-data.ts'
+      - 'contract-signing.html'
+      - 'contractor-bid-form.html'
+      - 'bids.html'
+      - '.github/workflows/static-quotes-homeowner-guard-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/**'
+      - 'supabase/migrations_rollbacks/**'
+      - 'tests/gh2479-static-quotes-homeowner-guard.mjs'
+      - 'supabase/tests/gh2479_quotes_guard_proof.sql'
+      - 'react-app/app/(homeowner)/bids/actions.ts'
+      - 'react-app/app/(homeowner)/contract-signing/use-contract-signing-data.ts'
+      - 'contract-signing.html'
+      - 'contractor-bid-form.html'
+      - 'bids.html'
+      - '.github/workflows/static-quotes-homeowner-guard-tests.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-quotes-homeowner-guard-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  static-quotes-homeowner-guard-tests:
+    name: Quotes homeowner guard (gh2479, gh2519)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Quotes and agent_type guards stay in place (gh2479, gh2519)
+        run: node tests/gh2479-static-quotes-homeowner-guard.mjs
