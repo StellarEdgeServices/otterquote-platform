@@ -227,7 +227,11 @@ export async function requestBidRenewal(params: {
   }
 
   try {
-    const subject = `[Bid Renewal Requested] ${companyName} — ${claim ? claim.property_address || claim.id : 'Unknown Claim'}`;
+    // gh-2477: send-support-email refuses a newline in subject; companyName/address are user data.
+    const subject = `[Bid Renewal Requested] ${companyName} — ${claim ? claim.property_address || claim.id : 'Unknown Claim'}`.replace(
+      /[\r\n]+/g,
+      ' ',
+    );
     const message = [
       'A homeowner has requested an updated bid from a contractor whose bid has expired.',
       '',
@@ -241,7 +245,9 @@ export async function requestBidRenewal(params: {
     ].join('\n');
 
     const { error } = await supabase.functions.invoke('send-support-email', {
-      body: { subject, message },
+      // gh-2477: the function requires from_name/from_email/subject/message (it was sent only
+      // subject + message, so every call was a 400). System sender; recipient is fixed server-side.
+      body: { from_name: 'OtterQuote Platform', from_email: 'support@otterquote.com', subject, message },
     });
     if (!error) emailOk = true;
   } catch {

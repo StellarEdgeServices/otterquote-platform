@@ -227,6 +227,27 @@
   // reads the queue again once fbevents.js has taken over via callMethod.
   // See #2000 for the live proof (fbq.callMethod.apply(...) reaches Meta,
   // the plain stub call does not).
+  // gh-2078 / LEGAL-READ: FAIL 5973345257: the ONE shared answer to "has this visitor opted out of advertising sharing?" at the moment a
+  // page is about to send a conversion to an ad/analytics vendor. Merges all three inputs: the oq_ad_optout cookie, Global Privacy Control,
+  // and the signed-in account's stored profiles.ad_sharing_opt_out (read over the same REST call the load-time gate uses). Resolves to
+  // true (BLOCKED: send nothing) or false (not opted out). FAIL CLOSED: a stored flag that cannot be read (network error, non-200,
+  // expired token, no fetch/Promise) resolves true. A signed-out visitor (no session cookie) has nothing to read, so for them the answer is
+  // exactly cookie + GPC, as before. Never throws, never rejects. Callers: help-measurements.html fireMeasurementPurchase.
+  window.OQ_adSharingBlocked = function () {
+    try {
+      if (oqAdOptOut()) { return Promise.resolve(true); }
+      var token = oqSessionToken();
+      if (!token) { return Promise.resolve(false); }
+      return oqReadStoredOptOut(token).then(function (v) {
+        if (v === false) { return false; }
+        if (v === true) { oqWriteAdOptOutCookie(); }
+        return true; // true (opted out) or 'unknown' (unreadable): not shared
+      }, function () { return true; });
+    } catch (e) {
+      return (typeof Promise !== 'undefined') ? Promise.resolve(true) : { then: function (f) { f(true); } };
+    }
+  };
+
   if (!window.fbq) {
     var fbqStub = function () {
       fbqStub.callMethod
@@ -362,5 +383,15 @@
   // title) on real clicks once any event has fired. autoConfig is turned off for this pixel before `init`, on every init.
   window.fbq('set', 'autoConfig', false, PIXEL_ID);
   window.fbq('init', PIXEL_ID);
-  window.fbq('track', 'PageView');
+  // gh-2078 / D-330 (Dustin's ruling 5777193662, Purchase only on the measurement checkout): a page that sets
+  // window.OQ_META_PURCHASE_ONLY = true BEFORE this file loads (help-measurements.html) initialises the pixel but sends NO PageView, and a
+  // back/forward-cache restore (fbevents.js's own `pageshow` listener sends a PageView on one) is stopped at the capture phase. Same rule
+  // as react-app/app/components/MetaPixelGate.tsx's PURCHASE_ONLY_PATHS. Every other page leaves the flag unset and is unchanged.
+  if (window.OQ_META_PURCHASE_ONLY === true) {
+    try {
+      window.addEventListener('pageshow', function (e) { if (e && e.persisted) { e.stopImmediatePropagation(); } }, true);
+    } catch (e) { /* never break a page over a listener */ }
+  } else {
+    window.fbq('track', 'PageView');
+  }
 })();

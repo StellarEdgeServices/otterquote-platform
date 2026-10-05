@@ -60,6 +60,7 @@ SERVED_TOP_LEVEL_DIRS = {"assets", "blog", "contractors", "css", "data", "guides
 SERVED_TOP_LEVEL_FILES = {
     "_redirects", "admin-app.webmanifest", "admin-sw.js", "llms.txt",
     "partner-app.webmanifest", "partner-sw.js", "robots.txt", "sitemap.xml",
+    "720d6a2ce517bf2e53d7215e06c107ea.txt",
 }
 REQUIRED = [
     "index.html", "login.html", "start.html", "privacy.html", "terms.html",

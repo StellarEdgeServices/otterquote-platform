@@ -80,5 +80,30 @@ for (const f of ['dashboard.html', 'contractor-dashboard.html']) {
   ok(/const SEND_FUNCTION_URL = "https:\/\/[a-z0-9]+\.supabase\.co\/functions\/v1\/send-message-notification"/.test(src), `${f}: SEND_FUNCTION_URL is the Supabase function URL`);
 }
 
+// gh-2478: contractors has no FK to profiles (PostgREST PGRST200), so no embed of profiles
+// under contractors( may appear in the messaging pages.
+for (const f of ['dashboard.html', 'contractor-dashboard.html']) {
+  const src = read(f);
+  ok(!src.includes('profiles:profiles'), `${f}: no profiles:profiles embed`);
+  const bad = (src.match(/\.select\("[^"\n]*"\)/g) || []).filter((q) => /contractors\((?:[^()]|\([^()]*\))*profiles/.test(q));
+  ok(bad.length === 0, `${f}: no profiles embed inside a contractors( select (found ${bad.length})`);
+}
+
+// gh-2478 refuter round 2: profiles RLS is own-row only, so the other party's msg.profiles is
+// null; an unguarded msg.profiles.full_name throws inside .map and blanks the whole thread.
+for (const f of ['dashboard.html', 'contractor-dashboard.html']) {
+  const src = read(f);
+  ok(!/escapeHtml\(msg\.profiles\.full_name\)/.test(src) && /msg\.profiles && msg\.profiles\.full_name/.test(src), `${f}: message render tolerates an RLS-hidden sender profile`);
+}
+
+// gh-2478 refuter: a select string with unbalanced parentheses is a PostgREST parse error
+// (PGRST100) that leaves the query null -- the same "panel never loads" symptom as the bad embed.
+const unbalanced = (q) => { let d = 0; for (const c of q) { if (c === '(') d++; else if (c === ')' && --d < 0) return true; } return d !== 0; };
+for (const f of ['dashboard.html', 'contractor-dashboard.html', 'supabase/functions/send-message-notification/index.ts']) {
+  const sels = (read(f).match(/\.select\(\s*["'`][^"'`\n]*["'`]/g) || []).map((m) => m.replace(/^\.select\(\s*["'`]|["'`]$/g, ''));
+  const off = sels.filter(unbalanced);
+  ok(sels.length > 0 && off.length === 0, `${f}: every .select() string has balanced parentheses (${sels.length} checked${off.length ? '; unbalanced: ' + off.join(' | ') : ''})`);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

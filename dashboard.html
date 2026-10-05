@@ -3384,7 +3384,7 @@
         try {
           if (sb && currentClaim?.id) {
             const reasonText = reasons.length > 0 ? reasons.join(', ') : 'No reason provided';
-            await fetch(`${window.location.origin}/functions/v1/send-support-email`, {
+            await fetch(CONFIG.SUPABASE_URL + '/functions/v1/send-support-email', { // gh-2477: Supabase URL (no Netlify proxy for /functions/v1)
               method:  'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -3519,7 +3519,7 @@
 
     const { data: claims } = await sb
       .from("claims")
-      .select("id, property_address, selected_contractor_id, quotes(contractor_id, contractors(id, profiles:profiles(full_name, email)))")
+      .select("id, property_address, selected_contractor_id, quotes(contractor_id, contractors(id, user_id))")
       .eq("user_id", userId);
 
     if (!claims || claims.length === 0) {
@@ -3564,13 +3564,25 @@
 
     const { data: claim } = await sb
       .from("claims")
-      .select("selected_contractor_id, quotes(contractor_id, contractors(profiles(full_name)))")
+      .select("selected_contractor_id, quotes(contractor_id, contractors(id, user_id))")
       .eq("id", currentClaimId)
       .single();
 
+    // gh-2478: contractors has no FK to profiles (PGRST200), so the name is a
+    // second lookup by contractors.user_id. RLS lets a user read only their own
+    // profiles row, so for a homeowner this resolves only if that policy widens;
+    // until then the "--" placeholder stays.
     if (claim?.quotes && claim.quotes.length > 0) {
-      const name = claim.quotes[0]?.contractors?.profiles?.full_name;
-      if (name) document.getElementById("contractorName").textContent = name;
+      const contractorUserId = claim.quotes[0]?.contractors?.user_id;
+      if (contractorUserId) {
+        const { data: contractorProfile } = await sb
+          .from("profiles")
+          .select("full_name")
+          .eq("id", contractorUserId)
+          .maybeSingle();
+        const name = contractorProfile?.full_name;
+        if (name) document.getElementById("contractorName").textContent = name;
+      }
     }
 
     const { data: messages, error } = await sb
@@ -3591,7 +3603,7 @@
       const isOwn = msg.sender_id === userId;
       const timestamp = new Date(msg.created_at).toLocaleString();
       return '<div style="margin-bottom:12px;padding:12px;background:' + (isOwn ? "#EFF6FF" : "#F1F5F9") + ';border-radius:6px;border-left:3px solid ' + (isOwn ? "var(--navy)" : "var(--amber)") + ';">' +
-        '<div style="font-weight:600;font-size:13px;color:var(--navy);margin-bottom:4px;">' + escapeHtml(msg.profiles.full_name) + (isOwn ? " (You)" : "") + '</div>' +
+        '<div style="font-weight:600;font-size:13px;color:var(--navy);margin-bottom:4px;">' + escapeHtml((msg.profiles && msg.profiles.full_name) || "--") + (isOwn ? " (You)" : "") + '</div>' +
         '<div style="font-size:13px;color:#333;margin-bottom:8px;word-wrap:break-word;">' + escapeHtml(msg.body) + '</div>' +
         '<div style="font-size:11px;color:#94A3B8;">' + timestamp + '</div></div>';
     }).join("");

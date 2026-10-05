@@ -1,0 +1,45 @@
+name: Static send-support-email Caller Tests
+
+# gh-2477 -- every static caller of send-support-email must send a payload the function's own
+# validator (supabase/functions/send-support-email/caller-gate.ts validatePayload) accepts, to the
+# Supabase function URL with the public key. Runs tests/gh2477-support-email-callers.mjs
+# (static, no browser, no network). The React callers are covered by Vitest
+# (react-app/app/(homeowner)/__tests__/gh2477-support-email-contract.test.ts, react-app-tests.yml).
+# `pull_request` only, no secrets, read-only token, path-filtered.
+
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - 'bids.html'
+      - 'contract-signing.html'
+      - 'dashboard.html'
+      - 'js/auth.js'
+      - 'supabase/functions/send-support-email/**'
+      - 'tests/gh2477-support-email-callers.mjs'
+      - '.github/workflows/static-support-email-callers.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: static-support-email-callers-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  callers:
+    name: send-support-email callers send the fields the function requires
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - name: Caller contract tests (gh2477-support-email-callers)
+        run: node --experimental-strip-types tests/gh2477-support-email-callers.mjs

@@ -463,9 +463,13 @@ export async function requestBidRenewal(args: {
   // 2. Support email so admin has visibility.
   try {
     const { error } = await supabase.functions.invoke('send-support-email', {
+      // gh-2477: the function requires from_name/from_email/subject/message (it was sent `body`)
+      // and rejects any other field or a newline in subject. System sender.
       body: {
-        subject: 'Bid Renewal Requested — ' + (contractor?.company_name || 'Unknown Contractor'),
-        body: [
+        from_name: 'OtterQuote Platform',
+        from_email: 'support@otterquote.com',
+        subject: ('Bid Renewal Requested — ' + (contractor?.company_name || 'Unknown Contractor')).replace(/[\r\n]+/g, ' '),
+        message: [
           'A homeowner has requested an updated bid (via contract-signing expired guard).',
           'Contractor: ' + (contractor?.company_name || 'N/A'),
           'Property: ' + (claim?.property_address || 'N/A'),

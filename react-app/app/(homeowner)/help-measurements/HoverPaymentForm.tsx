@@ -30,6 +30,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { MEASUREMENTS_COPY as M } from './copy';
+import type { ChargedPayment } from './hover-charge-storage';
 
 // ── Minimal Stripe.js typings (no @stripe/* package on the client) ──
 interface StripeElementLike {
@@ -44,6 +45,9 @@ interface StripeElementsLike {
 interface PaymentIntentLike {
   id: string;
   status?: string;
+  amount?: number;
+  amount_received?: number;
+  currency?: string;
 }
 interface StripeLike {
   elements: () => StripeElementsLike;
@@ -90,7 +94,7 @@ interface Props {
   /** The client_secret of the PaymentIntent the parent created (BEFORE this form mounts). */
   clientSecret: string;
   /** Called with paymentIntent.id once the card payment succeeds. */
-  onPaid: (paymentIntentId: string) => void | Promise<void>;
+  onPaid: (paymentIntentId: string, charged?: ChargedPayment) => void | Promise<void>;
   /** Called when the user cancels the card form. */
   onCancel: () => void;
 }
@@ -129,6 +133,8 @@ export function HoverPaymentForm({ clientSecret, onPaid, onCancel }: Props) {
    */
   const [paidIntentId, setPaidIntentId] = useState<string | null>(null);
   const [orderError, setOrderError] = useState('');
+  /** gh-2078: what Stripe confirmed was charged (amount_received, else amount; currency), for the purchase event value. */
+  const chargedRef = useRef<ChargedPayment | null>(null);
 
   // Mount the Card Element once Stripe.js is ready (static purchaseHover 909-924).
   useEffect(() => {
@@ -172,7 +178,10 @@ export function HoverPaymentForm({ clientSecret, onPaid, onCancel }: Props) {
       setPayState('ordering');
       setOrderError('');
       try {
-        await onPaid(paymentIntentId);
+        // gh-2078: the confirmed amount/currency ride along only when Stripe reported them (a second argument is never passed otherwise).
+        const charged = chargedRef.current;
+        if (charged) await onPaid(paymentIntentId, charged);
+        else await onPaid(paymentIntentId);
       } catch (err) {
         setOrderError(
           err instanceof Error && err.message ? err.message : ORDER_RETRY_COPY.orderFailedFallback,
@@ -221,6 +230,11 @@ export function HoverPaymentForm({ clientSecret, onPaid, onCancel }: Props) {
         return;
       }
       chargedIntentId = paymentIntent.id;
+      const cents = paymentIntent.amount_received ?? paymentIntent.amount;
+      chargedRef.current =
+        typeof cents === 'number' && typeof paymentIntent.currency === 'string'
+          ? { amountCents: cents, currency: paymentIntent.currency }
+          : null;
     } catch (err) {
       // The CONFIRM step itself threw — no successful charge was observed, so re-arming
       // Pay is legitimate (re-confirming the same PaymentIntent cannot double-charge).
