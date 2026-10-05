@@ -39,7 +39,7 @@ function ok(cond, label) {
 }
 
 // ── Pinned strings ────────────────────────────────────────────────────────────────────────────────────────────
-const APPROVED_CONSENT_MD5 = '8b70cec83a92d9787a4a527c0e5d2f89';
+const APPROVED_CONSENT_MD5 = 'f7fe8e93d1b6ee978c103488d95ed9a2';
 const APPROVED_PRIVACY = 'By continuing, you agree to our Privacy Policy and Terms.';
 const NEW_CONTACT_HEADLINE = 'How should we reach you?'; // "Almost done — " deleted from the approved string, nothing else (Sloane, CRO RUN 47, Q6)
 // Sloane's ruling (Q2): the who-we-are line is the live partner-profile.html sentence, byte-for-byte. Derived from that file,

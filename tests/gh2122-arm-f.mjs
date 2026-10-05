@@ -76,7 +76,7 @@ if (moduleSrc === null) { console.log('\n=== Summary ===\n' + pass + ' passed, '
 // other key is read from the module's own constants block, so a Sloane copy
 // swap stays a one-line change; the legal lines may not drift without this
 // file (and the LEGAL-READ) noticing. Source: comment 5801132485 table. ──
-const APPROVED_CONSENT = 'I agree that OtterQuote / Stellar Edge Services may call or text me at the number above about my roof assessment, including by autodialer or prerecorded/artificial voice. Consent is not a condition of purchase. Msg & data rates may apply.';
+const APPROVED_CONSENT = 'I agree that OtterQuote / Stellar Edge Services may call or text me at the number above about my project, including by autodialer or prerecorded/artificial voice. Consent is not a condition of purchase. Msg & data rates may apply.';
 const APPROVED_PRIVACY = 'By continuing, you agree to our Privacy Policy and Terms.';
 // The complete approved key list (32 table keys + the approved no-call line = 33). The block must contain exactly these.
 const APPROVED_KEYS = [
