@@ -1321,7 +1321,7 @@
                     if (uploadErr) console.warn('Photo upload failed:', uploadErr.message);
                 }
 
-                // ── Mark claim as submitted ───────────────────────────────────
+                // ── Mark claim as submitted ─────────────────────────────────
                 await sb.from('claims').update({
                     status: 'submitted'
                 }).eq('id', claimId).eq('user_id', user.id);
@@ -1336,7 +1336,7 @@
                     has_material: !!(materialBrand || materialProduct)
                 });
 
-                // ── Show opted-in contractors ──────────────────────────────────
+                // ── Show opted-in contractors ────────────────────────────────
                 await showRepairContractors(selectedTrade || 'roofing');
 
                 // Show success
