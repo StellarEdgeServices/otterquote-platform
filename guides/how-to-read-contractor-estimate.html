@@ -74,7 +74,7 @@
 }
 .section:last-of-type { border-bottom: none; }
 .section h2 { margin-bottom: var(--sp-4); margin-top: 0; }
-.section h3 { color: var(--link-on-light-deep); font-size: 1rem; margin-top: var(--sp-6); margin-bottom: var(--sp-2); }
+.section h3 { color: var(--link-on-light-deep, #7A4200); font-size: 1rem; margin-top: var(--sp-6); margin-bottom: var(--sp-2); }
 .section p {
   color: var(--dark-gray);
   margin-bottom: var(--sp-4);
@@ -90,6 +90,9 @@
   line-height: 1.7;
 }
 .section li strong { color: var(--navy); }
+.article-intro a:not(.btn) { color: var(--link-on-light-hero, #9E5600); }
+.section a:not(.btn) { color: var(--link-on-light, #A85C00); }
+.article-intro a:not(.btn):hover, .section a:not(.btn):hover { color: var(--link-on-light-deep, #7A4200); }
 
 .highlight-box {
   background: rgba(245, 158, 11, 0.08);
@@ -129,7 +132,7 @@
 }
 .line-item-table th {
   background: rgba(224, 123, 0, 0.12);
-  color: var(--link-on-light-deep);
+  color: var(--link-on-light-deep, #7A4200);
   padding: var(--sp-3) var(--sp-4);
   text-align: left;
   font-weight: 600;
@@ -158,7 +161,7 @@
 }
 .warranty-table th {
   background: rgba(224, 123, 0, 0.12);
-  color: var(--link-on-light-deep);
+  color: var(--link-on-light-deep, #7A4200);
   padding: var(--sp-2) var(--sp-3);
   text-align: left;
   font-weight: 600;
@@ -229,7 +232,7 @@
   margin-bottom: 0;
 }
 .breadcrumb a { color: var(--gray); text-decoration: none; }
-.breadcrumb a:hover { color: var(--link-on-light-deep); }
+.breadcrumb a:hover { color: var(--link-on-light-deep, #7A4200); }
 .breadcrumb span { margin: 0 var(--sp-2); }
 
 .author-line {

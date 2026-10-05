@@ -47,7 +47,7 @@
 .step ul { margin-left: var(--sp-6); margin-bottom: var(--sp-4); }
 .step li { margin-bottom: var(--sp-3); color: var(--dark-gray); line-height: 1.7; }
 .step li strong { color: var(--navy); }
-.step em { color: var(--link-on-light-deep); font-style: italic; }
+.step em { color: var(--link-on-light-deep, #7A4200); font-style: italic; }
 .highlight-box { background: rgba(245, 158, 11, 0.08); border-left: 4px solid #E07B00; padding: var(--sp-4) var(--sp-6); margin: var(--sp-6) 0; border-radius: var(--radius-md); }
 .highlight-box strong { color: var(--navy); }
 .highlight-box, .highlight-box p { color: var(--dark-gray); line-height: 1.7; }
@@ -71,8 +71,8 @@
 .faq-item.active h3::before { transform: rotate(90deg); }
 .faq-answer { color: var(--slate); line-height: 1.8; display: none; padding-left: var(--sp-6); }
 .faq-item.active .faq-answer { display: block; }
-.back-link { display: inline-flex; align-items: center; gap: var(--sp-2); color: var(--link-on-light); font-size: 0.9rem; font-weight: 500; margin-bottom: var(--sp-8); transition: color var(--duration) var(--ease); }
-.back-link:hover { color: var(--link-on-light-deep); text-decoration: none; }
+.back-link { display: inline-flex; align-items: center; gap: var(--sp-2); color: var(--link-on-light, #A85C00); font-size: 0.9rem; font-weight: 500; margin-bottom: var(--sp-8); transition: color var(--duration) var(--ease); }
+.back-link:hover { color: var(--link-on-light-deep, #7A4200); text-decoration: none; }
 .warranty-table {
   width: 100%;
   border-collapse: collapse;
@@ -81,7 +81,7 @@
 }
 .warranty-table th {
   background: rgba(224, 123, 0, 0.12);
-  color: var(--link-on-light-deep);
+  color: var(--link-on-light-deep, #7A4200);
   padding: var(--sp-2) var(--sp-3);
   text-align: left;
   font-weight: 600;
