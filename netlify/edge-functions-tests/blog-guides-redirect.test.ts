@@ -91,22 +91,19 @@ Deno.test("blog-guides-redirect: a wave-2 /blog/ path (previously unmapped) 301s
   assertEquals(ctx.nextCalled, false);
 });
 
-Deno.test("blog-guides-redirect: all 15 mapped paths (config.path) 301 and none loop to itself", async () => {
+Deno.test("blog-guides-redirect: all 12 mapped paths (config.path) 301 and none loop to itself", async () => {
   const REDIRECT_MAP_KEYS = [
     "/blog/what-to-do-after-storm-damages-roof",
     "/blog/how-to-negotiate-better-roof-repair-insurance-claim",
-    "/guides/how-to-file-property-damage-claim",
     "/guides/how-to-choose-contractor",
     "/guides/how-to-negotiate-with-insurer",
     "/guides/how-to-read-contractor-estimate",
     "/blog/aerial-roof-measurement-reports",
     "/blog/does-homeowners-insurance-cover-roof-damage",
     "/blog/hail-vs-wind-roof-damage",
-    "/blog/public-adjuster-vs-diy-roof-claim",
     "/blog/rcv-vs-acv-roof-insurance",
     "/blog/roof-shingle-warranty-tiers-explained",
     "/blog/storm-chaser-roofing-scams",
-    "/blog/what-is-scope-of-loss-roofing",
     "/blog/why-roofers-quote-different-prices",
   ];
   for (const p of REDIRECT_MAP_KEYS) {
@@ -145,6 +142,18 @@ Deno.test("blog-guides-redirect: the five removed articles are not in the map (f
     "when-not-to-file-roof-insurance-claim",
   ]) {
     for (const p of [`/blog/${slug}`, `/blog/${slug}.html`, `/blog/${slug}/`]) {
+      const ctx = fakeContext();
+      await handler(new Request(`https://otterquote.com${p}`), ctx);
+      assertEquals(ctx.nextCalled, true, `${p} must fall through`);
+    }
+  }
+});
+
+// gh-2480 Part 5 R2: the scope-of-loss article, the filing guide and the public-adjuster article were deleted and 301 to their targets from
+// _redirects. They must NOT be in the map (an entry would 301 to the deleted .html and so to a 404).
+Deno.test("blog-guides-redirect: the three R2 removed pages are not in the map (fall through to _redirects)", async () => {
+  for (const base of ["/blog/what-is-scope-of-loss-roofing", "/guides/how-to-file-property-damage-claim", "/blog/public-adjuster-vs-diy-roof-claim"]) {
+    for (const p of [base, `${base}.html`, `${base}/`]) {
       const ctx = fakeContext();
       await handler(new Request(`https://otterquote.com${p}`), ctx);
       assertEquals(ctx.nextCalled, true, `${p} must fall through`);

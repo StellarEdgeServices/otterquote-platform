@@ -83,7 +83,6 @@ https://www.stellaredgeservices.com/* /stellar-edge.html 200
 # path, so there's nothing for Netlify to prioritize over this rule.
 /blog/what-to-do-after-storm-damages-roof /blog/what-to-do-after-storm-damages-roof.html 301
 /blog/how-to-negotiate-better-roof-repair-insurance-claim /blog/how-to-negotiate-better-roof-repair-insurance-claim.html 301
-/guides/how-to-file-property-damage-claim /guides/how-to-file-property-damage-claim.html 301
 /guides/how-to-choose-contractor /guides/how-to-choose-contractor.html 301
 /guides/how-to-negotiate-with-insurer /guides/how-to-negotiate-with-insurer.html 301
 /guides/how-to-read-contractor-estimate /guides/how-to-read-contractor-estimate.html 301
@@ -99,11 +98,10 @@ https://www.stellaredgeservices.com/* /stellar-edge.html 200
 /blog/aerial-roof-measurement-reports /blog/aerial-roof-measurement-reports.html 301
 /blog/does-homeowners-insurance-cover-roof-damage /blog/does-homeowners-insurance-cover-roof-damage.html 301
 /blog/hail-vs-wind-roof-damage /blog/hail-vs-wind-roof-damage.html 301
-/blog/public-adjuster-vs-diy-roof-claim /blog/public-adjuster-vs-diy-roof-claim.html 301
+/blog/public-adjuster-vs-diy-roof-claim /blog/does-homeowners-insurance-cover-roof-damage.html 301
 /blog/rcv-vs-acv-roof-insurance /blog/rcv-vs-acv-roof-insurance.html 301
 /blog/roof-shingle-warranty-tiers-explained /blog/roof-shingle-warranty-tiers-explained.html 301
 /blog/storm-chaser-roofing-scams /blog/storm-chaser-roofing-scams.html 301
-/blog/what-is-scope-of-loss-roofing /blog/what-is-scope-of-loss-roofing.html 301
 /blog/why-roofers-quote-different-prices /blog/why-roofers-quote-different-prices.html 301
 /blog/index.html /blog/ 301
 /guides/index.html /guides/ 301
@@ -140,9 +138,9 @@ https://www.stellaredgeservices.com/* /stellar-edge.html 200
 # NOT in netlify/edge-functions/blog-guides-redirect.ts (that map only 301s extensionless -> an .html
 # file that exists; an entry for a deleted page would redirect to a 404). The legacy
 # /otterquote-deploy/blog/ rules further down point at the same targets directly.
-/blog/how-long-does-roof-insurance-claim-take-indiana.html /guides/how-to-file-property-damage-claim.html 301
-/blog/how-long-does-roof-insurance-claim-take-indiana /guides/how-to-file-property-damage-claim.html 301
-/blog/how-long-does-roof-insurance-claim-take-indiana/ /guides/how-to-file-property-damage-claim.html 301
+/blog/how-long-does-roof-insurance-claim-take-indiana.html /guides/ 301
+/blog/how-long-does-roof-insurance-claim-take-indiana /guides/ 301
+/blog/how-long-does-roof-insurance-claim-take-indiana/ /guides/ 301
 /blog/hail-damage-roof-inspection-first-72-hours.html /blog/what-to-do-after-storm-damages-roof.html 301
 /blog/hail-damage-roof-inspection-first-72-hours /blog/what-to-do-after-storm-damages-roof.html 301
 /blog/hail-damage-roof-inspection-first-72-hours/ /blog/what-to-do-after-storm-damages-roof.html 301
@@ -156,19 +154,35 @@ https://www.stellaredgeservices.com/* /stellar-edge.html 200
 /blog/when-not-to-file-roof-insurance-claim /guides/ 301
 /blog/when-not-to-file-roof-insurance-claim/ /guides/ 301
 
+# gh-2480 Part 5 R2 (CRO RUN 54; the revenue executive's decision on #2480): three more articles are removed,
+# same mechanism as R1 above. Each file is DELETED and every URL form 301s straight to its target in one hop
+# (.html, extensionless, trailing slash). None of the three slugs is in netlify/edge-functions/blog-guides-redirect.ts
+# any more (an entry for a deleted page would 301 to a 404), and netlify.toml no longer runs the function on
+# /guides/how-to-file-property-damage-claim. The public-adjuster article's extensionless rule and its legacy
+# /otterquote-deploy/ rule (both earlier in this file) now point at the same target as its two new rules. The R1 how-long-does-roof-insurance-claim-take-indiana rules
+# above used to point at the filing guide; they now point at /guides/ so that no URL takes two hops.
+/blog/what-is-scope-of-loss-roofing.html /guides/after-adjuster-estimate-next-steps.html 301
+/blog/what-is-scope-of-loss-roofing /guides/after-adjuster-estimate-next-steps.html 301
+/blog/what-is-scope-of-loss-roofing/ /guides/after-adjuster-estimate-next-steps.html 301
+/guides/how-to-file-property-damage-claim.html /guides/ 301
+/guides/how-to-file-property-damage-claim /guides/ 301
+/guides/how-to-file-property-damage-claim/ /guides/ 301
+/blog/public-adjuster-vs-diy-roof-claim.html /blog/does-homeowners-insurance-cover-roof-damage.html 301
+/blog/public-adjuster-vs-diy-roof-claim/ /blog/does-homeowners-insurance-cover-roof-damage.html 301
+
 # gh-1795: twelve blog articles promoted from otterquote-deploy/blog/ (a committed
 # May-2026 working-directory mirror, unstyled, canonicalising to a 404) to the real
 # blog/ tree. 301s preserve any inbound/crawled links to the old path.
 /otterquote-deploy/blog/aerial-roof-measurement-reports.html /blog/aerial-roof-measurement-reports.html 301
 /otterquote-deploy/blog/does-homeowners-insurance-cover-roof-damage.html /blog/does-homeowners-insurance-cover-roof-damage.html 301
 /otterquote-deploy/blog/hail-vs-wind-roof-damage.html /blog/hail-vs-wind-roof-damage.html 301
-/otterquote-deploy/blog/public-adjuster-vs-diy-roof-claim.html /blog/public-adjuster-vs-diy-roof-claim.html 301
+/otterquote-deploy/blog/public-adjuster-vs-diy-roof-claim.html /blog/does-homeowners-insurance-cover-roof-damage.html 301
 /otterquote-deploy/blog/rcv-vs-acv-roof-insurance.html /blog/rcv-vs-acv-roof-insurance.html 301
 /otterquote-deploy/blog/roof-shingle-warranty-tiers-explained.html /blog/roof-shingle-warranty-tiers-explained.html 301
 /otterquote-deploy/blog/roofing-estimate-red-flags.html /guides/how-to-read-contractor-estimate.html 301
 /otterquote-deploy/blog/storm-chaser-roofing-scams.html /blog/storm-chaser-roofing-scams.html 301
 /otterquote-deploy/blog/what-is-recoverable-depreciation-roofing.html /blog/rcv-vs-acv-roof-insurance.html 301
-/otterquote-deploy/blog/what-is-scope-of-loss-roofing.html /blog/what-is-scope-of-loss-roofing.html 301
+/otterquote-deploy/blog/what-is-scope-of-loss-roofing.html /guides/after-adjuster-estimate-next-steps.html 301
 /otterquote-deploy/blog/when-not-to-file-roof-insurance-claim.html /guides/ 301
 /otterquote-deploy/blog/why-roofers-quote-different-prices.html /blog/why-roofers-quote-different-prices.html 301
 

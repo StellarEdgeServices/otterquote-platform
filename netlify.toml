@@ -256,10 +256,6 @@ echo 'STRIPE_PK injected into _site/js/config.js; repo internals excluded from p
   function = "blog-guides-redirect"
 
 [[edge_functions]]
-  path = "/guides/how-to-file-property-damage-claim"
-  function = "blog-guides-redirect"
-
-[[edge_functions]]
   path = "/guides/how-to-choose-contractor"
   function = "blog-guides-redirect"
 

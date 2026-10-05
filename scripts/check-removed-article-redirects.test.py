@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Self-test for scripts/check-removed-article-redirects.py (gh-2480 Part 5 R1). Builds throwaway repo trees: one
+"""Self-test for scripts/check-removed-article-redirects.py (gh-2480 Part 5 R1 + R2). Builds throwaway repo trees: one
 consistent tree must PASS, and each defect class (old file still on disk, missing rule, 302, wrong target, target
 without a file, edge-map entry for a removed slug, redirect chain over two hops / loop) must be REJECTED (exit 1).
 Run: python3 scripts/check-removed-article-redirects.test.py"""
@@ -14,19 +14,22 @@ def check(label, ok):
     if not ok: FAILURES.append(label)
 
 REMOVED = {
-    "how-long-does-roof-insurance-claim-take-indiana": "/guides/how-to-file-property-damage-claim.html",
-    "hail-damage-roof-inspection-first-72-hours": "/blog/what-to-do-after-storm-damages-roof.html",
-    "roofing-estimate-red-flags": "/guides/how-to-read-contractor-estimate.html",
-    "what-is-recoverable-depreciation-roofing": "/blog/rcv-vs-acv-roof-insurance.html",
-    "when-not-to-file-roof-insurance-claim": "/guides/",
+    "blog/how-long-does-roof-insurance-claim-take-indiana": "/guides/",
+    "blog/hail-damage-roof-inspection-first-72-hours": "/blog/what-to-do-after-storm-damages-roof.html",
+    "blog/roofing-estimate-red-flags": "/guides/how-to-read-contractor-estimate.html",
+    "blog/what-is-recoverable-depreciation-roofing": "/blog/rcv-vs-acv-roof-insurance.html",
+    "blog/when-not-to-file-roof-insurance-claim": "/guides/",
+    "blog/what-is-scope-of-loss-roofing": "/guides/after-adjuster-estimate-next-steps.html",
+    "guides/how-to-file-property-damage-claim": "/guides/",
+    "blog/public-adjuster-vs-diy-roof-claim": "/blog/does-homeowners-insurance-cover-roof-damage.html",
 }
-TARGET_FILES = ["guides/how-to-file-property-damage-claim.html", "blog/what-to-do-after-storm-damages-roof.html",
-                "guides/how-to-read-contractor-estimate.html", "blog/rcv-vs-acv-roof-insurance.html", "guides/index.html"]
+TARGET_FILES = ["blog/what-to-do-after-storm-damages-roof.html", "guides/after-adjuster-estimate-next-steps.html",
+                "guides/how-to-read-contractor-estimate.html", "blog/rcv-vs-acv-roof-insurance.html", "guides/index.html", "blog/does-homeowners-insurance-cover-roof-damage.html"]
 
 def redirects(skip=None, code="301", override=None):
     out = []
     for slug, t in REMOVED.items():
-        for form in ("/blog/%s.html", "/blog/%s", "/blog/%s/"):
+        for form in ("/%s.html", "/%s", "/%s/"):
             src = form % slug
             if src == skip: continue
             out.append("%s %s %s" % (src, (override or {}).get(src, t), code))
@@ -50,6 +53,10 @@ code, out = run(redirects())
 check("CLEAN tree exits 0 and prints PASS", code == 0 and "PASS" in out)
 code, out = run(redirects(), extra_files=["blog/roofing-estimate-red-flags.html"])
 check("REJECTED: old file still on disk exits 1", code == 1 and "still on disk" in out)
+code, out = run(redirects(), extra_files=["guides/how-to-file-property-damage-claim.html"])
+check("REJECTED: old /guides/ file still on disk exits 1", code == 1 and "still on disk" in out)
+code, out = run(redirects(skip="/guides/how-to-file-property-damage-claim.html"))
+check("REJECTED: missing .html rule on the /guides/ page exits 1", code == 1 and "how-to-file-property-damage-claim" in out)
 code, out = run(redirects(skip="/blog/roofing-estimate-red-flags"))
 check("REJECTED: missing extensionless rule exits 1", code == 1 and "roofing-estimate-red-flags" in out)
 code, out = run(redirects(code="302"))

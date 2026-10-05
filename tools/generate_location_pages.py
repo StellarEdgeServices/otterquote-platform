@@ -1328,7 +1328,7 @@ HOW_IT_WORKS = [
 FAQ = {
     "roofing": [
         ("Who decides whether my policy applies to roof damage in {county} County?",
-         "Your insurer decides coverage under the terms of your policy. Read your policy, ask your adjuster what is included, and document the damage with dated photos. Our guide on filing a property damage claim walks through the process step by step."),
+         "Your insurer decides coverage under the terms of your policy. Read your policy, ask your adjuster what is included, and document the damage with dated photos."),
         ("Is one roofing bid enough?",
          "Comparing bids can surface scope differences and give you a way to check pricing, particularly during post-storm demand spikes."),
         ("Should I repair or replace after partial-slope damage?",
@@ -1371,7 +1371,6 @@ FAQ = {
 FAQ_PER_PAGE = 2
 
 CORNERSTONE_GUIDES = [
-    ("/guides/how-to-file-property-damage-claim.html", "How to File a Property Damage Insurance Claim"),
     ("/guides/how-to-choose-contractor.html", "How to Choose a Contractor for Insurance Repairs"),
     ("/guides/how-to-read-contractor-estimate.html", "How to Read a Roofing Contractor Estimate"),
 ]
@@ -1383,13 +1382,13 @@ TRADE_EXTRA_LINKS = {
     ],
     "siding": [
         ("/blog/storm-chaser-roofing-scams.html", "Storm Chaser Roofing Scams: How to Spot One"),
-        ("/blog/what-is-scope-of-loss-roofing.html", 'What "Scope of Loss" Actually Means on a Roof Claim'),
+        ("/guides/after-adjuster-estimate-next-steps.html", "You Got the Adjuster's Estimate. Now What?"),
     ],
     "gutters": [
         ("/blog/hail-vs-wind-roof-damage.html", "Hail vs. Wind Roof Damage: How They Differ"),
     ],
     "windows": [
-        ("/blog/what-is-scope-of-loss-roofing.html", 'What "Scope of Loss" Actually Means on a Roof Claim'),
+        ("/guides/after-adjuster-estimate-next-steps.html", "You Got the Adjuster's Estimate. Now What?"),
     ],
 }
 

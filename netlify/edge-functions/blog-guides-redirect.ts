@@ -48,8 +48,6 @@ const REDIRECT_MAP: Record<string, string> = {
     '/blog/what-to-do-after-storm-damages-roof.html',
   '/blog/how-to-negotiate-better-roof-repair-insurance-claim':
     '/blog/how-to-negotiate-better-roof-repair-insurance-claim.html',
-  '/guides/how-to-file-property-damage-claim':
-    '/guides/how-to-file-property-damage-claim.html',
   '/guides/how-to-choose-contractor':
     '/guides/how-to-choose-contractor.html',
   '/guides/how-to-negotiate-with-insurer':
@@ -68,22 +66,18 @@ const REDIRECT_MAP: Record<string, string> = {
     '/blog/does-homeowners-insurance-cover-roof-damage.html',
   '/blog/hail-vs-wind-roof-damage':
     '/blog/hail-vs-wind-roof-damage.html',
-  '/blog/public-adjuster-vs-diy-roof-claim':
-    '/blog/public-adjuster-vs-diy-roof-claim.html',
   '/blog/rcv-vs-acv-roof-insurance':
     '/blog/rcv-vs-acv-roof-insurance.html',
   '/blog/roof-shingle-warranty-tiers-explained':
     '/blog/roof-shingle-warranty-tiers-explained.html',
   '/blog/storm-chaser-roofing-scams':
     '/blog/storm-chaser-roofing-scams.html',
-  '/blog/what-is-scope-of-loss-roofing':
-    '/blog/what-is-scope-of-loss-roofing.html',
   '/blog/why-roofers-quote-different-prices':
     '/blog/why-roofers-quote-different-prices.html',
 
   // gh-1745 wave 3: the index.html twins. (The two wave-3 posts, and the other
-  // three removed articles, were deleted by gh-2480 Part 5 R1 and 301 to their
-  // targets from _redirects; a map entry for a deleted page would 301 to a 404.)
+  // three removed articles, were deleted by gh-2480 Part 5 R1, and the scope-of-loss article, the
+  // filing guide and the public-adjuster article by Part 5 R2; all 301 to their targets from _redirects; a map entry for a deleted page would 301 to a 404.)
   '/blog/index.html': '/blog/',
   '/guides/index.html': '/guides/',
 

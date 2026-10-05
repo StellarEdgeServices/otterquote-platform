@@ -1494,7 +1494,19 @@ class LintTests(unittest.TestCase):
         "/blog/hail-damage-roof-inspection-first-72-hours.html",
         "/blog/roofing-estimate-red-flags.html",
         "/blog/when-not-to-file-roof-insurance-claim.html",
+        # gh-2480 Part 5 R2: the scope-of-loss article and the filing guide removed by 301.
+        "/blog/what-is-scope-of-loss-roofing.html",
+        "/guides/how-to-file-property-damage-claim.html",
+        # gh-2480 Part 5 R2: the public-adjuster article removed by 301.
+        "/blog/public-adjuster-vs-diy-roof-claim.html",
     )
+
+    def test_no_faq_answer_names_the_retired_filing_guide(self):
+        # The sentence was plain text (no href), so REMOVED_LINK_TARGETS cannot see it.
+        for trade, qas in glp.FAQ.items():
+            for _q, a in qas:
+                self.assertNotIn("filing a property damage claim", a, trade)
+                self.assertNotIn("step by step", a, trade)
 
     def test_no_generated_page_links_to_a_ruled_out_guide(self):
         prof = glp.load_profile("IN")
