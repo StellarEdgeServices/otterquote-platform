@@ -3,6 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   AD_OPTOUT_COOKIE,
+  adSharingBlockedAtFire,
   gpcOptOut,
   hasAdOptOutCookie,
   isAdSharingOptedOut,
@@ -139,4 +140,28 @@ describe("readStoredOptOut (the signed-in visitor's stored flag)", () => {
     expect(await readStoredOptOut(fakeSb({ session: null, sessionError: { message: 'x' } }).sb)).toBe('unknown');
     expect(hasAdOptOutCookie()).toBe(false);
   });
+
+// gh-2078 / LEGAL-READ: FAIL 5973345257 -- the fire-time answer merges cookie + GPC + the stored account flag, failing closed.
+describe('adSharingBlockedAtFire', () => {
+  beforeEach(clearCookie);
+  afterEach(() => { clearCookie(); vi.unstubAllGlobals(); });
+
+  it('stored opt-out true, no cookie, no GPC: blocked', async () => {
+    expect(await adSharingBlockedAtFire(fakeSb({ row: { ad_sharing_opt_out: true } }).sb)).toBe(true);
+  });
+  it("stored flag unreadable ('unknown'): blocked (fail closed)", async () => {
+    expect(await adSharingBlockedAtFire(fakeSb({ error: { code: '42703' } }).sb)).toBe(true);
+    expect(await adSharingBlockedAtFire(fakeSb({ sessionThrows: true }).sb)).toBe(true);
+  });
+  it('cookie or GPC: blocked without reading the account', async () => {
+    document.cookie = `${AD_OPTOUT_COOKIE}=1; path=/`;
+    const a = fakeSb({ row: { ad_sharing_opt_out: false } });
+    expect(await adSharingBlockedAtFire(a.sb)).toBe(true);
+    expect(a.selected).toEqual([]);
+  });
+  it('stored false: not blocked. Signed out (no session) with no cookie/GPC: not blocked, as before', async () => {
+    expect(await adSharingBlockedAtFire(fakeSb({ row: { ad_sharing_opt_out: false } }).sb)).toBe(false);
+    expect(await adSharingBlockedAtFire(fakeSb({ session: null }).sb)).toBe(false);
+  });
+});
 });

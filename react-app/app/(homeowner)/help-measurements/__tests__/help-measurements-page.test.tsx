@@ -28,6 +28,8 @@ vi.mock('@/lib/supabase', () => ({
   // actually returns and would leave the capture stuck for this test.
   supabase: {
     from: vi.fn(),
+    // gh-2078 LEGAL-READ FAIL 5973345257: the page reads the signed-in account's stored ad opt-out at fire time.
+    auth: { getSession: vi.fn() },
     functions: { invoke: vi.fn() },
     rpc: vi.fn(() => Promise.resolve({ data: true, error: null, status: 200 })),
   },
@@ -41,6 +43,9 @@ vi.mock('../use-help-measurements-data', () => ({
   sendMeasurementRequest: vi.fn(),
 }));
 
+// gh-2078 / LEGAL-READ: FAIL 5973374792 point 3: what the (mocked) Stripe confirmation reports as charged. null = the payment object carried no amount.
+const chargedMock = vi.hoisted(() => ({ value: { amountCents: 1500, currency: 'usd' } as { amountCents: number; currency: string } | null }));
+
 // Mock the Stripe card form so the test can drive onPaid/onCancel without Stripe.js.
 vi.mock('../HoverPaymentForm', () => ({
   isStripeConfigured: vi.fn(() => true),
@@ -48,7 +53,7 @@ vi.mock('../HoverPaymentForm', () => ({
     onPaid,
     onCancel,
   }: {
-    onPaid: (id: string) => void | Promise<void>;
+    onPaid: (id: string, charged?: { amountCents: number; currency: string }) => void | Promise<void>;
     onCancel: () => void;
   }) => (
     <div data-testid="hover-payment-form">
@@ -56,7 +61,8 @@ vi.mock('../HoverPaymentForm', () => ({
         data-testid="pay-now"
         onClick={async () => {
           try {
-            await onPaid('pi_test_123');
+            if (chargedMock.value) await onPaid('pi_test_123', chargedMock.value);
+            else await onPaid('pi_test_123');
           } catch {
             /* the real form surfaces this; swallow in the stub */
           }
@@ -72,6 +78,7 @@ vi.mock('../HoverPaymentForm', () => ({
 }));
 
 import { useAuthReady } from '@/hooks/use-auth-ready';
+import { supabase as sbMock } from '@/lib/supabase';
 import {
   useHelpMeasurementsData,
   requestHoverPaymentIntent,
@@ -89,6 +96,26 @@ import {
 } from '../hover-charge-storage';
 
 type Fn = ReturnType<typeof vi.fn>;
+
+// gh-2078 fire-time opt-out: drive what the account read returns. true / false = profiles.ad_sharing_opt_out;
+// 'error' = the profile read answers an error; 'throw' = the read throws (network down); 'no_session' = signed out.
+function setAccountOptOut(v: boolean | 'error' | 'throw' | 'no_session') {
+  (sbMock.auth.getSession as unknown as Fn).mockResolvedValue({
+    data: { session: v === 'no_session' ? null : { user: { id: 'u1' } } },
+    error: null,
+  });
+  (sbMock.from as unknown as Fn).mockImplementation(() => ({
+    select: () => ({
+      eq: () => ({
+        maybeSingle: () => {
+          if (v === 'throw') return Promise.reject(new Error('network down'));
+          if (v === 'error') return Promise.resolve({ data: null, error: { message: 'boom' } });
+          return Promise.resolve({ data: { ad_sharing_opt_out: v === true }, error: null });
+        },
+      }),
+    }),
+  }));
+}
 
 const authed = (over: Record<string, unknown> = {}) => ({
   user: { id: 'u1', email: 'jane@example.com' },
@@ -129,6 +156,8 @@ beforeEach(() => {
   (sendMeasurementRequest as unknown as Fn).mockResolvedValue(undefined);
   // gh-951: start every test with a clean resume pointer (real sessionStorage, not mocked).
   clearHoverChargeRecord();
+  // gh-2078: default account state = signed in, stored opt-out false (the normal buyer).
+  setAccountOptOut(false);
 });
 
 afterEach(() => {
@@ -369,7 +398,7 @@ describe('help-measurements page — gh-951 resume after a full-page reload', ()
   });
 
   it('PR #2092 review fix 1: fires measurement_purchase on a RESUMED order too (tab reload between charge and order), not just the handlePaid path', async () => {
-    saveHoverChargeRecord({ claimId: 'c1', paymentIntentId: 'pi_resume_conversion_1', ts: Date.now() });
+    saveHoverChargeRecord({ claimId: 'c1', paymentIntentId: 'pi_resume_conversion_1', ts: Date.now(), amountCents: 1500, currency: 'usd' });
     (placeHoverOrder as unknown as Fn).mockResolvedValue({
       order_id: 'o1',
       capture_link: 'https://hover.example/capture/1',
@@ -381,7 +410,8 @@ describe('help-measurements page — gh-951 resume after a full-page reload', ()
     render(<HelpMeasurementsPage />);
 
     await screen.findByText(M.hoverSuccessTitle);
-    expect(hasFiredMeasurementPurchase('pi_resume_conversion_1')).toBe(true);
+    // the fire-time opt-out read is not awaited by the success screen
+    await waitFor(() => expect(hasFiredMeasurementPurchase('pi_resume_conversion_1')).toBe(true));
   });
 
   it('shows the neutral resume-unresolved message (not a false success) when the order does not confirm', async () => {
@@ -461,5 +491,152 @@ describe('help-measurements page — gh-2121 already-signed-in lead link', () =>
 
     await screen.findByText(M.pathIntroTitle);
     expect(supabase.rpc).not.toHaveBeenCalled();
+  });
+});
+
+// ── gh-2078 / LEGAL-READ: FAIL 5973345257: the opt-out is resolved at FIRE time, account-stored value included ──────────────
+
+describe('help-measurements page — measurement_purchase honours the advertising-sharing opt-out at fire time', () => {
+  const PI = 'pi_test_123';
+  let gtag: ReturnType<typeof vi.fn>;
+  let fbq: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    gtag = vi.fn();
+    fbq = vi.fn();
+    (window as unknown as { gtag: unknown }).gtag = gtag;
+    (window as unknown as { fbq: unknown }).fbq = fbq;
+    document.cookie = 'oq_ad_optout=; max-age=0; path=/';
+    localStorage.removeItem('oq_ga4_measurement_purchase_fired_v1:' + PI);
+    chargedMock.value = { amountCents: 1500, currency: 'usd' };
+    Object.defineProperty(navigator, 'globalPrivacyControl', { value: undefined, configurable: true });
+  });
+  afterEach(() => {
+    chargedMock.value = { amountCents: 1500, currency: 'usd' };
+    delete (window as unknown as { gtag?: unknown }).gtag;
+    delete (window as unknown as { fbq?: unknown }).fbq;
+    document.cookie = 'oq_ad_optout=; max-age=0; path=/';
+    localStorage.removeItem('oq_ga4_measurement_purchase_fired_v1:' + PI);
+    Object.defineProperty(navigator, 'globalPrivacyControl', { value: undefined, configurable: true });
+  });
+
+  async function payThroughHandlePaid() {
+    render(<HelpMeasurementsPage />);
+    fireEvent.click((await screen.findAllByText(M.cardSelectButton))[0]);
+    expect(await screen.findByText(M.hoverSectionTitle)).toBeTruthy();
+    fireEvent.click(screen.getByText(M.hoverPurchaseButton));
+    await screen.findByTestId('hover-payment-form');
+    fireEvent.click(screen.getByTestId('pay-now'));
+    await waitFor(() => expect(placeHoverOrder as unknown as Fn).toHaveBeenCalledTimes(1));
+    await screen.findByText(M.hoverSuccessTitle);
+    // let the (un-awaited) fire-time read settle
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  // The purchase conversion only: the page's pre-existing GA4 help_tool_used engagement event is outside this fix (see PR comment).
+  const events = () => gtag.mock.calls.filter((c) => c[0] === 'event' && c[1] === 'measurement_purchase');
+
+  it('CONTROL not opted out (stored flag false): exactly one GA4 measurement_purchase and one Meta Purchase with the shared event id', async () => {
+    setAccountOptOut(false);
+    await payThroughHandlePaid();
+    expect(events().length).toBe(1);
+    expect(events()[0][1]).toBe('measurement_purchase');
+    const purchases = fbq.mock.calls.filter((c) => c[0] === 'track' && c[1] === 'Purchase');
+    expect(purchases.length).toBe(1);
+    expect(purchases[0][3]).toEqual({ eventID: 'measurement_purchase:' + PI });
+    expect(events()[0][2]).toMatchObject({ value: 15, currency: 'USD' });
+    expect(purchases[0][2]).toMatchObject({ value: 15, currency: 'USD' });
+    expect(hasFiredMeasurementPurchase(PI)).toBe(true);
+  });
+
+  it('gh-2078 value from the confirmed payment: a charge of 2500 cents ($25.00) sends value 25 USD to GA4 and Meta (identical)', async () => {
+    setAccountOptOut(false);
+    chargedMock.value = { amountCents: 2500, currency: 'usd' };
+    await payThroughHandlePaid();
+    expect(events().length).toBe(1);
+    expect(events()[0][2]).toMatchObject({ value: 25, currency: 'USD' });
+    const purchases = fbq.mock.calls.filter((c) => c[0] === 'track' && c[1] === 'Purchase');
+    expect(purchases.length).toBe(1);
+    expect(purchases[0][2]).toMatchObject({ value: 25, currency: 'USD' });
+    expect(purchases[0][3]).toEqual({ eventID: 'measurement_purchase:' + PI });
+  });
+
+  it('gh-2078 value from the confirmed payment: no amount on the confirmed payment -> NO purchase event, the order still completes, no marker', async () => {
+    setAccountOptOut(false);
+    chargedMock.value = null;
+    await payThroughHandlePaid();
+    expect(events().length).toBe(0);
+    expect(fbq).not.toHaveBeenCalled();
+    expect(hasFiredMeasurementPurchase(PI)).toBe(false);
+  });
+
+  it.each([[0], [-1500], [15.5], [Number.NaN]])('gh-2078 value from the confirmed payment: amount %s is not a positive whole number of cents -> NO purchase event', async (bad) => {
+    setAccountOptOut(false);
+    chargedMock.value = { amountCents: bad as number, currency: 'usd' };
+    await payThroughHandlePaid();
+    expect(events().length).toBe(0);
+    expect(fbq).not.toHaveBeenCalled();
+  });
+
+  it('gh-2078: the RESUME route sends the amount stored from the confirmed payment (2500 cents -> value 25)', async () => {
+    setAccountOptOut(false);
+    saveHoverChargeRecord({ claimId: 'c1', paymentIntentId: PI, ts: Date.now(), amountCents: 2500, currency: 'usd' });
+    (placeHoverOrder as unknown as Fn).mockResolvedValue({ order_id: 'o1', capture_link: 'x', capture_request_id: 'cap_1' });
+    render(<HelpMeasurementsPage />);
+    await screen.findByText(M.hoverSuccessTitle);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(events().length).toBe(1);
+    expect(events()[0][2]).toMatchObject({ value: 25, currency: 'USD' });
+    expect(fbq.mock.calls.filter((c) => c[0] === 'track' && c[1] === 'Purchase')[0][2]).toMatchObject({ value: 25, currency: 'USD' });
+  });
+
+  it('gh-2078: the RESUME route with no stored amount (page reloaded before it was written) -> NO purchase event', async () => {
+    setAccountOptOut(false);
+    saveHoverChargeRecord({ claimId: 'c1', paymentIntentId: PI, ts: Date.now() });
+    (placeHoverOrder as unknown as Fn).mockResolvedValue({ order_id: 'o1', capture_link: 'x', capture_request_id: 'cap_1' });
+    render(<HelpMeasurementsPage />);
+    await screen.findByText(M.hoverSuccessTitle);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(events().length).toBe(0);
+    expect(fbq).not.toHaveBeenCalled();
+  });
+
+  it('signed in, account opt-out stored, NO cookie, NO GPC: zero vendor requests (no GA4, no Meta) and the order still completes', async () => {
+    setAccountOptOut(true);
+    await payThroughHandlePaid();
+    expect(events().length).toBe(0);
+    expect(fbq).not.toHaveBeenCalled();
+    expect(hasFiredMeasurementPurchase(PI)).toBe(false);
+  });
+
+  it('account state unreadable (profile read errors): zero vendor requests (fail closed)', async () => {
+    setAccountOptOut('error');
+    await payThroughHandlePaid();
+    expect(events().length).toBe(0);
+    expect(fbq).not.toHaveBeenCalled();
+  });
+
+  it('account state unreadable (read throws / network down): zero vendor requests (fail closed)', async () => {
+    setAccountOptOut('throw');
+    await payThroughHandlePaid();
+    expect(events().length).toBe(0);
+    expect(fbq).not.toHaveBeenCalled();
+  });
+
+  it('oq_ad_optout cookie present: zero vendor requests', async () => {
+    document.cookie = 'oq_ad_optout=1; path=/';
+    await payThroughHandlePaid();
+    expect(events().length).toBe(0);
+    expect(fbq).not.toHaveBeenCalled();
+  });
+
+  it('the RESUME route is gated the same way: stored opt-out, no cookie, no GPC -> zero vendor requests', async () => {
+    setAccountOptOut(true);
+    saveHoverChargeRecord({ claimId: 'c1', paymentIntentId: PI, ts: Date.now(), amountCents: 1500, currency: 'usd' });
+    (placeHoverOrder as unknown as Fn).mockResolvedValue({ order_id: 'o1', capture_link: 'x', capture_request_id: 'cap_1' });
+    render(<HelpMeasurementsPage />);
+    await screen.findByText(M.hoverSuccessTitle);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(events().length).toBe(0);
+    expect(fbq).not.toHaveBeenCalled();
   });
 });
