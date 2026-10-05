@@ -15,6 +15,8 @@
 --   N3 service_role completes after the N2 attempt, referral 45d older than the claim: BEFORE accrues 200 (reviewer's X3), AFTER no accrual.
 --   N4 owner UPDATE that CHANGES referral_id on an existing claim (the trade-selector UPDATE branch with a new cookie): AFTER REJECTED (kept strict, see QUESTIONS).
 --   N5 owner INSERT of a claim with a browser-supplied backdated created_at: AFTER created_at is server time (now()), BEFORE it is the backdated value.
+-- gh-2403 closes-on (3), case S9 (CTO comment 5973062559): claim with referral_id = NULL completed as service_role.
+--   S9 BEFORE and AFTER: no error, zero new payout_approvals rows (whole table, before vs after), referrals R1-R7 unchanged (md5 of status/commission/job_value).
 
 CREATE FUNCTION pg_temp.try_as(p_role text, p_sub uuid, p_sql text) RETURNS text
 LANGUAGE plpgsql AS $f$
@@ -56,7 +58,7 @@ DECLARE
   r6 constant uuid := '0cf7eeeb-62cd-4eeb-9354-db98889bcd32';
   r7 constant uuid := 'dd14c823-1edb-4cd1-90f1-aaa8ea5273b1';
   v_owner uuid; v_created timestamptz; v_stranger uuid := gen_random_uuid();
-  v_out text := ''; v_fx text;
+  v_out text := ''; v_fx text; v_s9_pa_before bigint; v_s9_ref_before text;
 BEGIN
   SELECT user_id, created_at INTO v_owner, v_created FROM public.claims WHERE id = c_claim AND is_test;
   SELECT format('claim_is_test=%s owner_profile_is_test=%s referrals_is_test=%s agents_is_test=%s open_commission=%s',
@@ -168,6 +170,17 @@ BEGIN
     pg_temp.try_as('authenticated', v_owner, format('INSERT INTO public.claims (user_id, is_test, created_at) VALUES (%L, true, now() - interval ''40 days'')', v_owner));
   v_out := v_out || E'\nN5 RESULT newest owner claim created within 1 minute of now()=' ||
     (SELECT (created_at > now() - interval '1 minute')::text FROM public.claims WHERE user_id = v_owner AND id <> c_claim ORDER BY updated_at DESC LIMIT 1);
+
+  -- S9 (gh-2403 closes-on 3): claim with referral_id = NULL, selected quote >= 10000, completed as service_role.
+  -- Expect: no error, no accrual anywhere (payout_approvals total unchanged), no referral row changed.
+  UPDATE public.claims SET completion_date = NULL, referral_id = NULL, created_at = v_created WHERE id = c_claim;
+  v_s9_pa_before := (SELECT count(*) FROM public.payout_approvals);
+  v_s9_ref_before := (SELECT md5(string_agg(format('%s|%s|%s|%s', id, status, commission_amount, job_value), ',' ORDER BY id)) FROM public.referrals WHERE id IN (r1,r2,r3,r4,r5,r6,r7));
+  v_out := v_out || E'\nS9 service_role complete, claim referral_id IS NULL: ' ||
+    pg_temp.try_as('service_role', v_owner, format('UPDATE public.claims SET completion_date = now() WHERE id = %L', c_claim));
+  v_out := v_out || E'\nS9 RESULT referral_id still null=' || (SELECT (referral_id IS NULL)::text FROM public.claims WHERE id = c_claim)
+    || ' | payout_approvals rows before=' || v_s9_pa_before || ' after=' || (SELECT count(*) FROM public.payout_approvals)
+    || ' | R1-R7 unchanged=' || ((SELECT md5(string_agg(format('%s|%s|%s|%s', id, status, commission_amount, job_value), ',' ORDER BY id)) FROM public.referrals WHERE id IN (r1,r2,r3,r4,r5,r6,r7)) = v_s9_ref_before)::text;
 
   RAISE EXCEPTION E'GH2479_FORCED_ROLLBACK%', v_out;
 END
