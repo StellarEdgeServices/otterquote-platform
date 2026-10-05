@@ -102,6 +102,8 @@ const REDIRECT_MAP: Record<string, string> = {
 
   // CRO RUN 52 / #2423: generated /locations/ pages -- the index.html twin 301s to the
   // trailing-slash URL (same class as /blog/index.html above).
+  '/locations/allen-county-in/roofing/index.html':
+    '/locations/allen-county-in/roofing/',
   '/locations/cuyahoga-county-oh/roofing/index.html':
     '/locations/cuyahoga-county-oh/roofing/',
   '/locations/davidson-county-tn/roofing/index.html':
@@ -112,6 +114,10 @@ const REDIRECT_MAP: Record<string, string> = {
     '/locations/hamilton-county-oh/roofing/',
   '/locations/knox-county-tn/roofing/index.html':
     '/locations/knox-county-tn/roofing/',
+  '/locations/lake-county-in/roofing/index.html':
+    '/locations/lake-county-in/roofing/',
+  '/locations/marion-county-in/roofing/index.html':
+    '/locations/marion-county-in/roofing/',
   '/locations/shelby-county-tn/roofing/index.html':
     '/locations/shelby-county-tn/roofing/',
 };
