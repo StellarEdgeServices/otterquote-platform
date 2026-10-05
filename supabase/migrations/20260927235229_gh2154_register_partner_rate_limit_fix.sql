@@ -1,8 +1,10 @@
--- STATUS (gh-1438, as of 2026-10-05T20:57:39Z): APPLIED
--- FILE ROLE: forward file of set gh2154_register_partner_rate_limit_fix (the STATUS is the set's; it describes the forward migration)
--- EVIDENCE: applied as ledger versions 20260927235229 and 20260927235943 (both name gh2154_register_partner_rate_limit_fix; the second is an idempotent re-apply, PR #2237 comments 5861052277, 5861206755); rate_limit_client_key() is live (pg_proc, 1 row, 2026-10-05T20:57Z); normalized statements of both ledger rows equal this file's body: gh-1438 part 4.
--- REPO COPY: supabase/migrations/20260927235229_gh2154_register_partner_rate_limit_fix.sql (same statements; the second ledger version 20260927235943 is not filed separately); rollback at supabase/migrations_rollbacks/gh2154_register_partner_rate_limit_fix_rollback.sql
--- DO NOT RUN FROM THIS DIRECTORY -- see supabase/migrations_drafts/README.md
+-- gh-1438 reconciliation part 4 (2026-10-05T20:57:39Z): filed copy of supabase/migrations_drafts/gh2154_register_partner_rate_limit_fix.sql under its REAL
+-- applied ledger version 20260927235229 (supabase_migrations.schema_migrations, name=gh2154_register_partner_rate_limit_fix).
+-- SELECT-only verified: normalized-statement text of this file's body equals the ledger's recorded statements
+-- for that version. A second ledger row, version 20260927235943, carries the same statements (an idempotent re-apply by a parallel session, PR #2237 comments 5861052277 / 5861206755); it is deliberately not filed twice.
+--
+-- The draft in migrations_drafts/ is left untouched except for its STATUS header (a test or doc may read it).
+-- Executable SQL is the draft's, unchanged.
 --
 -- gh-2154 (rate-limit fix, discovered CEO RUN 71 pr2223-fix3, 2026-09-26) --
 -- register_partner()'s rate-limit gate (gh973, 2026-08-18) keyed every
