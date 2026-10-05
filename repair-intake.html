@@ -1307,7 +1307,7 @@
                     if (updateErr) throw new Error(updateErr.message);
                 }
 
-                // ── Upload photos to Supabase Storage ──────────────────────────
+                // ── Upload photos to Supabase Storage ────────────────────────
                 const allPhotos = Object.entries(state.uploadedPhotos).flatMap(([tier, files]) =>
                     files.map(f => ({ tier, file: f }))
                 );
@@ -1321,12 +1321,12 @@
                     if (uploadErr) console.warn('Photo upload failed:', uploadErr.message);
                 }
 
-                // ── Mark claim as submitted ─────────────────────────────────────
+                // ── Mark claim as submitted ───────────────────────────────────
                 await sb.from('claims').update({
                     status: 'submitted'
                 }).eq('id', claimId).eq('user_id', user.id);
 
-                // ── GA4 ───────────────────────────────────────────────────────
+                // ── GA4 ───────────────────────────────────────────────────
                 // fix4 (CEO ruling, PR #1979 comment 5698878146): claim_id
                 // removed — a per-homeowner database identifier must not
                 // reach GA4.
@@ -1336,7 +1336,7 @@
                     has_material: !!(materialBrand || materialProduct)
                 });
 
-                // ── Show opted-in contractors ────────────────────────────────────
+                // ── Show opted-in contractors ──────────────────────────────────
                 await showRepairContractors(selectedTrade || 'roofing');
 
                 // Show success
