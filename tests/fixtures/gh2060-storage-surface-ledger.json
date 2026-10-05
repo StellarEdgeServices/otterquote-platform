@@ -529,9 +529,13 @@
         {
           "file": "tests/gh2060-static-surfaces-staleness.mjs",
           "contains": "takes precedence over a stale stored recruit code"
+        },
+        {
+          "file": "tests/gh2471-recruit-case.mjs",
+          "contains": "reaches the lookup as"
         }
       ],
-      "note": "CLOSED (gh-2060 item 4, Marty A 5899109815): a ?recruit= on the current load wins over the stored code on all 11 pages."
+      "note": "CLOSED (gh-2060 item 4, Marty A 5899109815): a ?recruit= on the current load wins over the stored code on all 11 pages. gh-2471: the URL and stored codes are case/whitespace-normalised in CONFIG.lookupRecruiter (js/config.js) and a URL code that resolves to no active recruiter falls back to the stored one."
     },
     {
       "key": "oq_partner_pending_registration",
