@@ -31,8 +31,8 @@ Deno.test("subject and preheader are verbatim from comment 5821796976", () => {
   );
 });
 
-Deno.test("body template is 79 words — matches the comment's own word-count check", () => {
-  assertEquals(BODY_TEMPLATE.split(/\s+/).filter(Boolean).length, 79);
+Deno.test("body template is 82 words — matches the comment's own word-count check", () => {
+  assertEquals(BODY_TEMPLATE.split(/\s+/).filter(Boolean).length, 82);
 });
 
 Deno.test("CTA URLs are the live Arm F deep links with ?lead=<id>", () => {

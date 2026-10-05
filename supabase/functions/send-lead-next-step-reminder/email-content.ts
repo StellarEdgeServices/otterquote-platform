@@ -46,7 +46,7 @@ Already have your insurance loss sheet? Upload it now and we'll start
 sending your scope of work to local contractors.
 
 Want bids ready sooner? Get a $15 measurement report ($15, rebated if
-you complete a job) -- no ladder, no appointment,
+you complete a job on the platform) -- no ladder, no appointment,
 nothing to photograph.
 
 Either one keeps your project moving.`;
@@ -70,7 +70,7 @@ Already have your insurance loss sheet? Upload it now and we'll start
 sending your scope of work to local contractors.
 
 Want bids ready sooner? Get a $15 measurement report ($15, rebated if
-you complete a job) -- no ladder, no appointment,
+you complete a job on the platform) -- no ladder, no appointment,
 nothing to photograph.
 
 Either one keeps your project moving.`;
