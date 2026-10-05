@@ -56,9 +56,11 @@ export function stampRoleOwner(email?: string | null): void {
     localStorage.setItem(ROLE_EMAIL_KEY, ownerTag(e));
     return;
   }
-  const nonce = Math.random().toString(36).slice(2) + Date.now().toString(36);
-  try { sessionStorage.setItem(ROLE_TAB_KEY, nonce); } catch { /* non-fatal */ }
-  localStorage.setItem(ROLE_EMAIL_KEY, OAUTH_PREFIX + nonce);
+  // Tab-correlation id (gh-2523): a random label, not a credential, token or email. It is only compared for
+  // equality between this tab's sessionStorage and localStorage; it grants nothing.
+  const tabId = Math.random().toString(36).slice(2) + Date.now().toString(36);
+  try { sessionStorage.setItem(ROLE_TAB_KEY, tabId); } catch { /* non-fatal */ }
+  localStorage.setItem(ROLE_EMAIL_KEY, OAUTH_PREFIX + tabId);
 }
 
 export function clearRoleBreadcrumb(): void {
